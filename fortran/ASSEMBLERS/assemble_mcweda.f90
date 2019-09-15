@@ -109,9 +109,7 @@
      &                        iwrtneigh)
             call num_neigh_tot (numorb_max)
 ! bias voltage option
-             if (ibias .eq. 1) then
-              call reallocate_bias (natoms)
-             endif
+!             if (ibias .eq. 1) call reallocate_bias (natoms)     ! IF_DEF_BIAS_END
            else
             !write (*,*) ' Using neighbor map from NEIGHBORS file. '
             call initneighbors (natoms, ivdw, nstepi)
@@ -213,8 +211,7 @@
            call assemble_2c (nprocs, iforce, iordern, ioff2c)
            call assemble_2c_PP (nprocs, iforce, iordern)
 ! assemble bias matrix
-            if (ibias .eq. 1) call assemble_Vbias (nprocs, iforce, iordern, &
-     &                        ioff2c)
+!            if (ibias .eq. 1) call assemble_Vbias ( nprocs, iforce, iordern, ioff2c )   ! IF_DEF_BIAS_END
           end if ! end if of Kscf = 1
 
 ! Call the exchange-correlation interactions based on method chosen
@@ -275,16 +272,20 @@
            !write (*,*) ' Assemble three-center PP interactions. '
            call assemble_3c_PP (nprocs, iordern)
 ! JIMM
-           if (iqmmm .eq.1 ) then
-             !write (*,*) ' Assemble qm/mm interactions. '
-             if (idipole .eq. 0) call assemble_qmmm (nprocs, iordern)
-             if (idipole .eq. 1) call assemble_qmmm_dip (nprocs, iordern)
-           else
-             eqmmm = 0.0d0
-             ewaldqmmm = 0.0d0
-           end if
-          end if
+! IF_DEF_QMMM
+!           if (iqmmm .eq.1 ) then
+!             !write (*,*) ' Assemble qm/mm interactions. '
+!             if (idipole .eq. 0) call assemble_qmmm (nprocs, iordern)
+!             if (idipole .eq. 1) call assemble_qmmm_dip (nprocs, iordern)
+!           else
+!             eqmmm = 0.0d0
+!             ewaldqmmm = 0.0d0
+!           end if
+! END_DEF_QMMM
 !JIMM
+
+          end if
+
           if (itheory .eq. 1) then
            !write (*,*) ' Assemble three-center DOGS interactions. '
            if (idipole .eq. 0) call assemble_ca_3c (nprocs, iordern, igauss)
@@ -306,9 +307,8 @@
      &                 testrange, ibias, iwrtHS)
 ! ===========================================================================
 ! For iwrthampiece .eq. 1 (file - output.input), !write out Hamiltonian pieces
-          if (iwrthampiece .eq. 1) then
-           call hampiece (itheory)
-          end if
+!          if (iwrthampiece .eq. 1) call hampiece (itheory)  ! IF_DEF_HAMPIECES_END
+
 
 ! Deallocate Arrays
 ! ===========================================================================

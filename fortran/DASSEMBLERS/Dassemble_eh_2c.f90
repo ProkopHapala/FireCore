@@ -176,8 +176,7 @@
         end do
 
 ! Sum sub_ewald, sub_dewald over procs
-         if (iordern .eq. 1)                                                 &
-     &    call assemble_ordern_sub_dewald (natoms, sub_ewald, sub_dewald)
+!         if (iordern .eq. 1)  call assemble_ordern_sub_dewald (natoms, sub_ewald, sub_dewald)
 
 ! ****************************************************************************
 ! Loop over the atoms in the central cell.
@@ -410,7 +409,7 @@
          end do
         end do
  
-        if (iordern .eq. 1) call Dassemble_eh_2c_ordern_final (natoms)
+!        if (iordern .eq. 1) call Dassemble_eh_2c_ordern_final (natoms)
 
 ! Format Statements
 ! ===========================================================================

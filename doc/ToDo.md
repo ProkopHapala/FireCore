@@ -6,5 +6,10 @@
 
 ## Minor
 
+ * Automatic script to reformat line breaks like this:
+  ```
+   rhoij_off(imu,inu,ineigh,iatom) = rhoij_off(imu,inu,ineigh,iatom) &
+     &         + rhomx(imu,inu)*Qneutral(isorp,in2)
+  ```
  * rename spanish names of files and subroutines `unocentros`, `doscentros`, `trescentros`
 

@@ -498,8 +498,7 @@
 
 !        if (iordern .eq. 1)                                                  &
 !     &   call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)
-
-        call writeout_neighborsPP (nprocs, iwrtneigh, basisfile)
+!        call writeout_neighborsPP (nprocs, iwrtneigh, basisfile)
  
 ! Format Statements
 ! ===========================================================================

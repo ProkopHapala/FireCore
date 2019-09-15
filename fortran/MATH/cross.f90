@@ -1,9 +1,11 @@
 ! copyright info:
 !
-!                             @Copyright 2002
-!                            Fireball Committee
+!                             @Copyright 2001
+!                           Fireball Committee
 ! Brigham Young University - James P. Lewis, Chair
 ! Arizona State University - Otto F. Sankey
+! Motorola, Physical Sciences Research Labs - Alex Demkov
+! University of Regensburg - Juergen Fritsch
 ! Universidad de Madrid - Jose Ortega
 
 ! Other contributors, past and present:
@@ -12,10 +14,8 @@
 ! Arizona State University - Kevin Schmidt
 ! Arizona State University - John Tomfohr
 ! Lawrence Livermore National Laboratory - Kurt Glaesemann
-! Motorola, Physical Sciences Research Labs - Alex Demkov
-! Motorola, Physical Sciences Research Labs - Jun Wang
+! Motorola - Jun Wang
 ! Ohio University - Dave Drabold
-! University of Regensburg - Juergen Fritsch
 
 !
 ! fireball-qmd is a free (GPLv3) open project.
@@ -33,12 +33,11 @@
 ! You should have received a copy of the GNU General Public License
 ! along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
- 
-! Dassemble_ca_2c_ordern_final.f90
+
+! cross.f90
 ! Program Description
 ! ===========================================================================
-!       Take contributions from each processor and perform an all_reduce 
-! command to get all contributions combined to each processor.
+!       Computes c = a X b.
 !
 ! ===========================================================================
 ! Code written by:
@@ -53,54 +52,26 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_ca_2c_ordern_final (natoms)
-        use forces
-        use mpi_declarations
-        use neighbor_map
+        subroutine cross (a, b, c)
         implicit none
  
-        include 'mpif.h'
-
 ! Argument Declaration and Description
 ! ===========================================================================
-! Input
-        integer, intent (in) :: natoms
+        real, intent(in), dimension(3) :: a
+        real, intent(in), dimension(3) :: b
+        real, intent(out), dimension(3) :: c
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
  
 ! Local Variable Declaration and Description
 ! ===========================================================================
-        integer ierror
-
-        real, dimension (:, :, :), allocatable :: r3_tmp
-
-! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
  
-! Allocate Arrays
-! ===========================================================================
-        allocate (r3_tmp (3, natoms, neigh_max))
-
 ! Procedure
 ! ===========================================================================
-        call MPI_ALLREDUCE (faca, r3_tmp, 3*neigh_max*natoms,                &
-     &                      mpi_whatever_real, MPI_SUM, MPI_BTN_WORLD, ierror)
-        faca = r3_tmp
-        call MPI_ALLREDUCE (faxc_ca, r3_tmp, 3*neigh_max*natoms,             &
-     &                      mpi_whatever_real, MPI_SUM, MPI_BTN_WORLD, ierror)
-        faxc_ca = r3_tmp
-        call MPI_ALLREDUCE (fotca, r3_tmp, 3*neigh_max*natoms,               &
-     &                      mpi_whatever_real, MPI_SUM, MPI_BTN_WORLD, ierror)
-        fotca = r3_tmp
-        call MPI_ALLREDUCE (fotxc_ca, r3_tmp, 3*neigh_max*natoms,            &
-     &                      mpi_whatever_real, MPI_SUM, MPI_BTN_WORLD, ierror)
-        fotxc_ca = r3_tmp
-
-! Deallocate Arrays
-! ===========================================================================
-        deallocate (r3_tmp)
+        c(1) = a(2)*b(3) - a(3)*b(2)
+        c(2) = a(3)*b(1) - a(1)*b(3)
+        c(3) = a(1)*b(2) - a(2)*b(1)
  
 ! Format Statements
 ! ===========================================================================

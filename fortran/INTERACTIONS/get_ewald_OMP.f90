@@ -547,8 +547,7 @@
 
         end if ! if (iforce)
 
-        if (iordern .eq. 1)                                                  &
-     &   call ewald_energy_ordern_final (natoms, iforce, icluster, itheory)
+!        if (iordern .eq. 1) call ewald_energy_ordern_final (natoms, iforce, icluster, itheory)   ! IF_DEF_ORDERN_END
 
 ! deallocate local arrays
         deallocate ( ewaldl )

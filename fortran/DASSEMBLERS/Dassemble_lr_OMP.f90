@@ -147,22 +147,24 @@
         allocate ( flrewl(3,natoms,nth) )
         flrewl = 0.0d0
 
-! Determine which atoms are assigned to this processor.
-        if (impi .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
- 
+! ! IF_DEF_MPI
+! ! Determine which atoms are assigned to this processor.
+!         if (impi .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_MPI
+
 ! Initialize some arrays to zero.
         sub_ewald = 0.0d0
         sub_dewald = 0.0d0
@@ -192,8 +194,7 @@
         end do ! do iatom
  
 ! sum sub_ewald, sub_dewald over procs
-        if (impi .eq. 1)                                                 &
-     &   call assemble_ordern_sub_dewald (natoms, sub_ewald, sub_dewald)
+!        if (impi .eq. 1)  call assemble_ordern_sub_dewald (natoms, sub_ewald, sub_dewald)
 
 ! Now the meat of the calculation.  Construct ewaldlr(mu,nu,i,m) ===>
 ! the matrix elements of the long-range parts of the Hamiltonian.

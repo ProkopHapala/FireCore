@@ -153,25 +153,30 @@
         ! Initialize matrices
         if (Kscf .eq. 1) sm_mat = 0.0d0
         if (Kscf .eq. 1 .and. iforce .eq. 1) spm_mat = 0.0d0
-        if (Kscf .eq. 1 .and. igauss .eq. 1) then
-            smGS = 0.d0
-           spmGS = 0.d0
-        end if
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
+! ! IF_DEF_GAUSS
+!         if (Kscf .eq. 1 .and. igauss .eq. 1) then
+!             smGS = 0.d0
+!            spmGS = 0.d0
+!         end if
+! ! END_DEF_GAUSS
+
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! IF_DEF_ORDERN
 
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++
 !
@@ -474,23 +479,21 @@
 
 ! HAO May 27, 2005 gaussianupdate
 ! Interaction 3 is n_mu,nu for different shells.
-            if (igauss .eq. 0) then
+!            if (igauss .eq. 0) then   ! IF_DEF_GAUSS_END
              call trescentros (interaction, isorp, isorpmax, in1, in2,   &
      &                        indna, x, y, cost, eps, rhomx, nspecies)
 
              call trescentrosS (isorp, isorpmax, in1, in2, indna, x, y,  &
      &                         cost, eps, rhomm, nspecies)
-
-            end if
-
-            if (igauss .eq. 1) then
-             call trescentrosG_VXC (isorp, in1, in2, indna, x, y, cost,&
-     &                               eps, rhomx, rcutoff)
-!
-             call trescentrosGS_VXC(isorp, in1, in2, indna, x, y, cost,&
-     &                                eps, rhomm, rcutoff)
-
-            end if ! end if of igauss .eq. 1
+! ! IF_DEF_GAUSS
+!             end if
+!             if (igauss .eq. 1) then
+!              call trescentrosG_VXC (isorp, in1, in2, indna, x, y, cost,&
+!      &                               eps, rhomx, rcutoff)
+!              call trescentrosGS_VXC(isorp, in1, in2, indna, x, y, cost,&
+!      &                                eps, rhomm, rcutoff)
+!             end if ! end if of igauss .eq. 1
+! ! END_DEF_GAUSS
 
 !!$omp critical (rho3)
             do inu = 1, num_orb(in2)
@@ -678,10 +681,8 @@
            end if
 
 ! overlap matrix for gaussian
-           if (igauss .eq. 1) then
-              call doscentrosGS_overlap (in1, in2, y, eps, smGS, spmGS, &
-     &                                   rcutoff)
-           end if
+!           if (igauss .eq. 1) call doscentrosGS_overlap (in1, in2, y, eps, smGS, spmGS, rcutoff )    !   IF_DEF_GAUSS_END
+
 ! We assemble the average density in molecular coordinates.  The average
 ! density is used later in the exchange-correlation energy, potential,
 ! corresponding derivatives.

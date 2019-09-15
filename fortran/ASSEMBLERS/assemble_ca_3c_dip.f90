@@ -190,21 +190,23 @@
          spmG = 0.0d0
          spmatG = 0.0d0
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_ORDERN
 
         do iatom = iatomstart, iatomstart - 1 + natomsp
          matom = neigh_self(iatom)
@@ -237,16 +239,16 @@
           call epsilon (r2, sighat, eps)
           call deps2cent (r1, r2, eps, deps)
 
-           if (igauss .eq. 1) then
-              call doscentrosG_overlap (in1, in2, y, eps, deps, smG,    &
-     &                                  spmG, rcutoff)
-
-             do inu = 1, num_orb (in2)
-              do imu = 1, num_orb (in1)
-               smatG (imu,inu,ineigh,iatom) = smG (imu,inu)
-              end do
-             end do
-            end if
+! ! IF_DEF_GAUSS
+!            if (igauss .eq. 1) then
+!               call doscentrosG_overlap ( in1, in2, y, eps, deps, smG, spmG, rcutoff )
+!              do inu = 1, num_orb (in2)
+!               do imu = 1, num_orb (in1)
+!                smatG (imu,inu,ineigh,iatom) = smG (imu,inu)
+!               end do
+!              end do
+!             end if
+! ! END_DEF_GAUSS
 
 ! End loop over iatom and its neighbors - jatom.
          end do
@@ -448,16 +450,17 @@
            bcca = 0.0d0
            do isorp = 1, nssh(indna)
 
-           if (igauss .eq. 0) then
-           interaction = 1
-            call trescentros (interaction, isorp, isorpmax, in1, in2,   &
-     &                        indna, x, y, cost, eps, bccax, nspecies)
-           end if
-
-          if (igauss .eq. 1) then
-             call trescentrosG_VNA_SH(isorp, in1, in2, indna, x, y,     &
-     &                                cost, eps, bccax, rcutoff)
-          end if
+! ! IF_DEF_GAUSS
+!            if (igauss .eq. 0) then
+!            interaction = 1
+!             call trescentros (interaction, isorp, isorpmax, in1, in2,   &
+!      &                        indna, x, y, cost, eps, bccax, nspecies)
+!            end if
+!           if (igauss .eq. 1) then
+!              call trescentrosG_VNA_SH(isorp, in1, in2, indna, x, y,     &
+!      &                                cost, eps, bccax, rcutoff)
+!           end if
+! ! END_DEF_GAUSS
 
 ! Find the charge associated with this shell
             dxn = (Qin(isorp,ialp) - Qneutral(isorp,indna))

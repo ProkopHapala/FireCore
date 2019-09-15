@@ -147,22 +147,24 @@
         ewaldsr = 0.0d0
         Vewaldsr = 0.0d0
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                     &  
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
-        sub_ewald = 0.0d0
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                     &  
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+!         sub_ewald = 0.0d0
+! ! END_DEF_ORDERN
 
 ! First a preliminary quantity. ewald(i,j) = sum(L) 1/(| bi-bj +/- L|
 ! We need to calculate SUMS of ewald sums in which the charge is included.
@@ -187,7 +189,7 @@
         end do
 
 ! sum sub_ewald over procs
-        if (iordern .eq. 1) call assemble_ordern_sub_ewald (natoms, sub_ewald)
+!        if (iordern .eq. 1) call assemble_ordern_sub_ewald (natoms, sub_ewald)     !   IF_DEF_ORDERN
  
 ! ****************************************************************************
 ! Loop over the atoms in the central cell.
@@ -377,7 +379,7 @@
          end do
         end do
 
-        if (iordern .eq. 1) call assemble_eh_2c_ordern_final (natoms)
+!        if (iordern .eq. 1) call assemble_eh_2c_ordern_final (natoms)
  
 ! ****************************************************************************
 ! Format Statements

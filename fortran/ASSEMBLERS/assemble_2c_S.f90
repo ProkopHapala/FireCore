@@ -123,21 +123,23 @@
         s_mat = 0.0d0
         sp_mat = 0.0d0
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_ORDERN
 
 ! Loop over the atoms in the central cell.
 !!$omp parallel do private (ineigh, in1, in2, in3, jatom, matom, mbeta, kforce) &

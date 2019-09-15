@@ -53,8 +53,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine buildh (nprocs, itheory, iordern, itestrange,&
-     &                     testrange, ibias, iwrtHS)
+        subroutine buildh ( nprocs, itheory, iordern, itestrange, testrange, ibias, iwrtHS )
         use configuration
         use interactions
         use neighbor_map
@@ -118,20 +117,21 @@
 ! Procedure
 ! ===========================================================================
 ! Find out which processor this is.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-     &                + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
+! IF_DEF_ORDERN
+!        if (iordern .eq. 1) then
+!         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!         natomsp = natoms/nprocs
+!         if (my_proc .lt. mod(natoms,nprocs)) then
+!          natomsp = natomsp + 1
+!          iatomstart = natomsp*my_proc + 1
+!         else
+!          iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!         end if
+!        else
+!         iatomstart = 1
+!         natomsp = natoms
+!        end if  ! iordern
+! END_DEF_ORDERN
 
 ! Set up the full Hamiltonian.
 !$omp parallel do private (in1, ineigh, mbeta, jatom, in2, inu, imu, distance)
@@ -252,9 +252,7 @@
         end do ! do iatom
 
 
-        if (iordern .eq. 1) then
-         call buildh_ordern_final (natoms, nprocs, my_proc, itheory)
-        end if
+!        if (iordern .eq. 1) call buildh_ordern_final (natoms, nprocs, my_proc, itheory)    ! IF_DEF_ORDERN_END
 
 ! ===========================================================================
         if (iwrtHS .eq. 1) then

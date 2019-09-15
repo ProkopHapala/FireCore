@@ -108,10 +108,12 @@
           etot = etot + vdw
          end if
 
-         if (idftd3 .ge. 1) then
-          call dftd3_corrections
-          etot = etot + etot_dftd3
-         end if
+! IF_DEF_DFTD3
+!         if (idftd3 .ge. 1) then
+!          call dftd3_corrections
+!          etot = etot + etot_dftd3
+!         end if
+! END_DEF_DFTD3
 
          if (iharmonic .eq. 1) then
           call getHarmonic() 

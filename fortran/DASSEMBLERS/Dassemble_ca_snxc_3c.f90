@@ -197,23 +197,24 @@
         f3xcb_ca = 0.0d0
         f3xcc_ca = 0.0d0
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
- 
- 
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_ORDERN
+
 !****************************************************************************
 !                      T H R E E - C E N T E R   P A R T
 !                                 S N X C
@@ -312,32 +313,30 @@
            do isorp = 1, nssh(indna)
 
 ! HAO: include gaussians at May 27, 2005
-          if (igauss.eq.0) then
+!          if (igauss.eq.0) then       ! IF_DEF_GAUSS_END
             call Dtrescentros (interaction, isorp, isorpmax, in1,            &
      &                         in2, indna, x, y, cost, eps, depsA, depsB,    &
      &                         rhat, sighat, rhoin, rhoxpa, rhoxpb, rhoxpc,  &
      &                         nspecies)
-
 ! The terms rhompa, rhompb, and rhompc are already force-like ( - ) !!
             call trescentrosS (isorp, isorpmax, in1, in2, indna, x, y, cost, &
      &                         eps, rhomm, nspecies)
-
             call DtrescentrosS (isorp, isorpmax, in1, in2, indna, x, y, cost,& 
      &                          rhat, sighat, rhomm, rhompa, rhompb, rhompc, &
      &                          nspecies)
-            else if (igauss.eq.1) then
-            call DtrescentrosG_VXC (isorp, in1, in2, indna, x, y, cost, &
-     &                              eps, depsA, depsB, rhat, sighat,    &
-     &                              rhoin, rhoxpa, rhoxpb, rhoxpc, rcutoff)
-
-! The terms rhompa, rhompb, and rhompc are already force-like ( - ) !!
-            call trescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost, &
-     &                              eps, rhomm, rcutoff)
-
-            call DtrescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost,&
-     &                               rhat, sighat, rhomm, rhompa,       &
-     &                               rhompb, rhompc, rcutoff)
-          end if
+! ! IF_DEF_GAUSS
+!             else if (igauss.eq.1) then
+!             call DtrescentrosG_VXC (isorp, in1, in2, indna, x, y, cost, &
+!      &                              eps, depsA, depsB, rhat, sighat,    &
+!      &                              rhoin, rhoxpa, rhoxpb, rhoxpc, rcutoff)
+! ! The terms rhompa, rhompb, and rhompc are already force-like ( - ) !!
+!             call trescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost, &
+!      &                              eps, rhomm, rcutoff)
+!             call DtrescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost,&
+!      &                               rhat, sighat, rhomm, rhompa,       &
+!      &                               rhompb, rhompc, rcutoff)
+!           end if
+! ! END_DEF_GAUSS
 
 ! rhoin is input density in crystal coordinates
 ! The terms rhoxpa, rhoxpb, and rhoxpc ARE force-like ( - ) !!

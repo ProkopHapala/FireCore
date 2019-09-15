@@ -146,8 +146,8 @@ subroutine neighbors (nprocs, my_proc, iordern, icluster,    &
 
 	call fillneigh(iatomstart,natomsp,nprocs,my_proc)
 	
-    if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)
-	call writeout_neighbors (nprocs, ivdw, iwrtneigh)
+!    if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)     ! IF_DEF_ORDERN_END
+!	call writeout_neighbors (nprocs, ivdw, iwrtneigh)
 !END CHROM
 	return
 end subroutine neighbors
@@ -236,8 +236,7 @@ subroutine fillneigh(iatomstart,natomsp, nprocs,my_proc)
  		if (ivdw .eq. 1) neighn_vdw(iatom) = num_neigh_vdw
  	end do
  
- 	if (iordern .eq. 1)&
-		& call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)
+! 	if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)  ! IF_DEF_ORDERN_END
 
 end subroutine fillneigh
 

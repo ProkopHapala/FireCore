@@ -66,29 +66,33 @@
 ! Procedure
 ! ===========================================================================
 
-!CHROM: classical forces given by a potential
-		if ( iclassicMD > 0 ) then
-			call getforces_classic ()
-			return
-		else
-!	        write (*,*) '  '
-!    	    write (*,100)
-!        	write (*,*) ' Now we are assembling forces. '
-!	        write (*,*) '  '
-		endif
-!END CHROM
+! ! IF_DEF_classicMD
+! ! CHROM: classical forces given by a potential
+! 		if ( iclassicMD > 0 ) then
+! 			call getforces_classic ()
+! 			return
+! 		else
+! !	        write (*,*) '  '
+! !    	    write (*,100)
+! !        	write (*,*) ' Now we are assembling forces. '
+! !	        write (*,*) '  '
+! 		endif
+! ! END CHROM
+! ! END_DEF_classicMD
 
-! doing extended Hubbard
-        if (ihubbard .eq. 1) then
-         call getforces_eh ()
-         return
-        endif
+! ! IF_DEF_KS
+! ! doing extended Hubbard
+!         if (ihubbard .eq. 1) then
+!          call getforces_eh ()
+!          return
+!         endif
+! ! END_DEF_KS
 
-! doing Kohn-Sham
-        if (iKS .eq. 1) then
-         call getforces_KS ()
-         return
-        endif
+! ! doing Kohn-Sham
+!         if (iKS .eq. 1) then
+!          call getforces_KS ()
+!          return
+!         endif
 
 ! doing Horsfield data
         if (itheory_xc .eq. 0) then
@@ -102,14 +106,13 @@
           return
         endif
 
-! doing xczw data
-        if (itheory_xc .eq. 4) then
-          call getforces_zw ()
-          return
-        endif
-
-
-
+! ! IF_DEF_ZW
+! ! doing xczw data
+!         if (itheory_xc .eq. 4) then
+!           call getforces_zw ()
+!           return
+!         endif
+! ! END_DEF_ZW
 
 ! Deallocate Arrays
 ! ===========================================================================

@@ -72,11 +72,13 @@
 !        write (*,*) ' Now we are calculating the total energy. '
 !        write (*,*) '  '
 
-! doing McWeda         
-        if (iks .eq. 1) then
-          call getenergy_ks (itime_step)
-          return 
-        endif 
+! ! IF_DEF_KS
+! ! doing Kohn-Sham Grid
+!         if (iks .eq. 1) then
+!           call getenergy_ks (itime_step)
+!           return 
+!         endif 
+! ! END_DEF_KS
 
 ! doing extended Hubbard
         if (itheory .eq. 2) then
@@ -96,14 +98,13 @@
           return 
         endif 
 
-! doing zw mcweda second order with Mulliken-Dipole
-        if (itheory_xc .eq. 4) then
-          call getenergy_zw (itime_step)
-          return
-        endif
-
-        
-
+! ! IF_DEF_ZW
+! ! doing zw mcweda second order with Mulliken-Dipole
+!         if (itheory_xc .eq. 4) then
+!           call getenergy_zw (itime_step)
+!           return
+!         endif
+! ! END_DEF_ZW
 
 ! Deallocate Arrays
 ! ===========================================================================

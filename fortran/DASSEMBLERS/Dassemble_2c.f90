@@ -122,22 +122,24 @@
         fro = 0.0d0
         if (igauss .eq. 1) fxcro = 0.0d0
 
-! Determine which atoms are assigned to this processor.
-        if (impi .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
- 
+! ! Determine which atoms are assigned to this processor.
+! ! IF_DEF_MPI
+!         if (impi .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_MPI
+
 ! Loop over the atoms in the central cell.
 !!$omp parallel do private (matom, r1, in1, ineigh, mbeta, jatom, r2, in2)    &
 !!$omp&  private (r21, y, sighat, eps, deps, ix, sumT, sumS, inu, imu, muxc)  &

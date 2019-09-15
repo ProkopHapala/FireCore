@@ -99,9 +99,10 @@
         elseif (itheory_xc .gt. 0 .and. itheory_xc .lt. 4 .and. itheory .lt. 4 ) then
           call assemble_mcweda ()
 !          return
-
-        elseif (itheory_xc .eq. 4) then
-          call assemble_xczw ()
+! IF_DEF_ZW
+!        elseif (itheory_xc .eq. 4) then
+!          call assemble_xczw ()
+! END_DEF_ZW
         endif
 
 ! GAP ENRIQUE-FF
