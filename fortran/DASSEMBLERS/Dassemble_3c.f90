@@ -157,21 +157,23 @@
         f3nab = 0.0d0
         f3nac = 0.0d0
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_ORDERN
 
 ! Choose atom ialp in the central cell. This is the atom whose position
 ! we take the derivative, and is the atom who has the the neutral atom
@@ -261,16 +263,19 @@
 ! ****************************************************************************
            isorp = 0
            interaction = 1
-           if (igauss .eq. 0) then
+ !          if (igauss .eq. 0) then       IF_DEF_GAUSS_END
             call Dtrescentros (interaction, isorp, isorpmax, in1,       &
      &                         in2, indna, x, y, cost, eps, depsA,      &
      &                         depsB, rhat, sighat, bcnax, f3naXa,      &
      &                         f3naXb, f3naXc, nspecies)
-           else
-            call DtrescentrosG_VNA (in1, in2, indna, x, y, cost, eps,   &
-     &                              depsA, depsB, rhat, sighat, bcnax,  &
-     &                              f3naXa, f3naXb, f3naXc, rcutoff)
-           end if
+
+! ! IF_DEF_GAUSS
+!            else
+!             call DtrescentrosG_VNA (in1, in2, indna, x, y, cost, eps,   &
+!      &                              depsA, depsB, rhat, sighat, bcnax,  &
+!      &                              f3naXa, f3naXb, f3naXc, rcutoff)
+!            end if
+! ! END_DEF_GAUSS
 
 ! The terms f3naXa, f3naXb, and f3naXc are already force-like.
 !$omp critical (Dna3)

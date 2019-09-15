@@ -497,8 +497,7 @@
 ! ***********************************************************************
         if (iforce .eq. 1) fewald = fewald1 + fewald2
 
-        if (iordern .eq. 1)                                                  &
-     &   call ewald_energy_ordern_final (natoms, iforce, icluster, itheory)
+!        if (iordern .eq. 1) call ewald_energy_ordern_final (natoms, iforce, icluster, itheory)   ! IF_DEF_ORDERN
  
 ! Format Statements
 ! ===========================================================================

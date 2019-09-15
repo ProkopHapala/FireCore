@@ -162,7 +162,7 @@
          if (ivdw .eq. 1) neigh_max_vdw = max(neigh_max_vdw, num_neigh_vdw)
 !$omp end critical
         end do
-        if (iordern .eq. 1) call find_neigh_max_ordern_final()
+!        if (iordern .eq. 1) call find_neigh_max_ordern_final()     ! IF_DEF_ORDERN_END
 
 ! Format Statements
 ! ===========================================================================

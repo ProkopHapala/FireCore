@@ -111,14 +111,16 @@
            !write (*,*) ' Dassemble three-center long-range contributions. '
            if (idipole .eq. 0) call Dassemble_lr (nprocs, iordern)
            if (idipole .eq. 1) call Dassemble_lr_dip (nprocs, iordern)
-           if (iqmmm .eq. 1) then
-             !write (*,*) ' Dassemble three-center qm/mm contributions. '
-             if (idipole .eq. 0) call Dassemble_qmmm (nprocs, iordern)
-             if (idipole .eq. 1) call Dassemble_qmmm_dip (nprocs, iordern)
-           else
-             flrew_qmmm = 0.0d0
+! IF_DEF_QMMM
+!           if (iqmmm .eq. 1) then
+!             !write (*,*) ' Dassemble three-center qm/mm contributions. '
+!             if (idipole .eq. 0) call Dassemble_qmmm (nprocs, iordern)
+!             if (idipole .eq. 1) call Dassemble_qmmm_dip (nprocs, iordern)
+!           else
+!             flrew_qmmm = 0.0d0
 !             qmmm_struct%dxyzcl = 0.0d0
-           end if
+!           end if
+! END_DEF_QMMM
           end if
 
 ! Call the exchange-correlation interactions based on method chosen
@@ -135,12 +137,11 @@
 ! ============================================================================
 ! Call assemble_F: This program assembles all the forces we have calculated
 ! in Dassemble_2c and Dassemble_3c, and assemble_usr.
-          !write (*,*) '  '
-          !write (*,*) '  '
-          !write (*,*) ' ***************************************************** '
-          !write (*,*) ' Assemble all force contributions. '
-          call assemble_F (natoms, itheory, itheory_xc, igauss, ivdw,       &
-     &     iharmonic, ibias, iwrtfpieces)
+!          write (*,*) '  '
+!          write (*,*) '  '
+!          write (*,*) ' ***************************************************** '
+!          write (*,*) ' Assemble all force contributions. '
+          call assemble_F (natoms, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias, iwrtfpieces)
 
 ! Reassign forces for tolerance testing.
           ftotold = ftotnew

@@ -283,14 +283,11 @@
 !                                 Build H
 ! ===========================================================================
 ! Set up the full Hamiltonian and !writeout HS.dat.
-          call buildh (nprocs, itheory, iordern, itestrange,    &
-     &                 testrange, ibias, iwrtHS)
+          call buildh (nprocs, itheory, iordern, itestrange, testrange, ibias, iwrtHS)
 ! ===========================================================================
-! For iwrthampiece .eq. 1 (file - output.input), !write out Hamiltonian pieces
-          if (iwrthampiece .eq. 1) then
-           call hampiece (itheory)
-          end if
 
+! For iwrthampiece .eq. 1 (file - output.input), !write out Hamiltonian pieces
+!           if (iwrthampiece .eq. 1) call hampiece (itheory)   ! IF_DEF_HAMPIECES_END
 
 ! Deallocate Arrays
 ! ===========================================================================

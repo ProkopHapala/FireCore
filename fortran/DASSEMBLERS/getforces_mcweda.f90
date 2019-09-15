@@ -83,10 +83,8 @@
 
           !write (*,*) ' Dassemble two-center PP force contributions. '
           call Dassemble_2c_PP (nprocs, iordern)
-!bias
-           if (ibias .eq. 1) then
-             call Dassemble_bias (nprocs, iordern)
-           endif
+
+!           if (ibias .eq. 1) call Dassemble_bias (nprocs, iordern)     ! IF_DEF_BIAS_END
 
 
 
@@ -136,14 +134,16 @@
            !write (*,*) ' Dassemble three-center long-range contributions. '
            if (idipole .eq. 0) call Dassemble_lr (nprocs, iordern)
            if (idipole .eq. 1) call Dassemble_lr_dip (nprocs, iordern)
-           if (iqmmm .eq. 1) then
-             !write (*,*) ' Dassemble three-center qm/mm contributions. '
-             if (idipole .eq. 0) call Dassemble_qmmm (nprocs, iordern)
-             if (idipole .eq. 1) call Dassemble_qmmm_dip (nprocs, iordern)
-           else
-             flrew_qmmm = 0.0d0
+! IF_DEF_QMMM
+!           if (iqmmm .eq. 1) then
+!             !write (*,*) ' Dassemble three-center qm/mm contributions. '
+!             if (idipole .eq. 0) call Dassemble_qmmm (nprocs, iordern)
+!             if (idipole .eq. 1) call D_dip (nprocs, iordern)
+!           else
+!             flrew_qmmm = 0.0d0
 !             qmmm_struct%dxyzcl = 0.0d0
-           end if
+!           end if
+! END_DEF_QMMM
           end if
 
 ! Call the exchange-correlation interactions based on method chosen

@@ -178,21 +178,23 @@
          f3xcc_ca = 0.0d0
         end if
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_ORDERN
 
 ! Choose atom ialp in the central cell. This is the atom whose position
 ! we take the derivative, and is the atom who has the the neutral atom
@@ -301,7 +303,7 @@
 ! ****************************************************************************
            isorp = 0
            interaction = 2
-           if (igauss .eq. 0) then
+!         if (igauss.eq.0) then      IF_DEF_GAUSS_END
             call Dtrescentros (interaction, isorp, ideriv_max, in1, in2,&
      &                         indna, x, y, cost, eps, depsA, depsB,    &
      &                         rhat, sighat, bcxcx, f3xcXa, f3xcXb,     &
@@ -313,40 +315,39 @@
              do imu = 1, num_orb(in1)
               do ix = 1, 3
 !$omp atomic
-               f3xca(ix,ialp) = f3xca(ix,ialp)                          &
-     &          + 2*rho(imu,inu,mneigh,iatom)*f3xcXa(ix,imu,inu)
+               f3xca(ix,ialp) = f3xca(ix,ialp)    + 2*rho(imu,inu,mneigh,iatom)*f3xcXa(ix,imu,inu)
 !$omp atomic
-               f3xcb(ix,iatom) = f3xcb(ix,iatom)                        &
-     &          + 2*rho(imu,inu,mneigh,iatom)*f3xcXb(ix,imu,inu)
+               f3xcb(ix,iatom) = f3xcb(ix,iatom)  + 2*rho(imu,inu,mneigh,iatom)*f3xcXb(ix,imu,inu)
 !$omp atomic
-               f3xcc(ix,jatom) = f3xcc(ix,jatom)                        &
-     &          + 2*rho(imu,inu,mneigh,iatom)*f3xcXc(ix,imu,inu)
+               f3xcc(ix,jatom) = f3xcc(ix,jatom)  + 2*rho(imu,inu,mneigh,iatom)*f3xcXc(ix,imu,inu)
               end do
              end do
             end do
 !$omp end critical (D3hxc_1)
-           else 
-            call DtrescentrosGHXC_VXC (in1,in2, indna, x, y, cost, eps, &
-     &                               depsA, depsB, rhat, sighat, bcxcx, &
-     &                               f3xcXa, f3xcXb, f3xcXc, rcutoff)
-!$omp critical (D3hxc_2)
-            do inu = 1, num_orb(in2)
-             do imu = 1, num_orb(in1)
-              do ix = 1, 3
-!$omp atomic
-               f3xca(ix,ialp)=f3xca(ix,ialp)+rho(imu,inu,mneigh,iatom)  &
-     &            *2*nuxc_total(imu,inu,mneigh,iatom)*f3xcXa(ix,imu,inu)
-!$omp atomic
-               f3xcb(ix,iatom)=f3xcb(ix,iatom)+rho(imu,inu,mneigh,iatom)&
-     &            *2*nuxc_total(imu,inu,mneigh,iatom)*f3xcXb(ix,imu,inu)
-!$omp atomic
-               f3xcc(ix,jatom)=f3xcc(ix,jatom)+rho(imu,inu,mneigh,iatom)&
-     &            *2*nuxc_total(imu,inu,mneigh,iatom)*f3xcXc(ix,imu,inu)
-              end do
-             end do
-            end do  
-!$omp end critical (D3hxc_2)
-           end if
+! ! IF_DEF_GAUSS
+!            else 
+!             call DtrescentrosGHXC_VXC (in1,in2, indna, x, y, cost, eps, &
+!      &                               depsA, depsB, rhat, sighat, bcxcx, &
+!      &                               f3xcXa, f3xcXb, f3xcXc, rcutoff)
+! !$omp critical (D3hxc_2)
+!             do inu = 1, num_orb(in2)
+!              do imu = 1, num_orb(in1)
+!               do ix = 1, 3
+! !$omp atomic
+!                f3xca(ix,ialp)=f3xca(ix,ialp)+rho(imu,inu,mneigh,iatom)  &
+!      &            *2*nuxc_total(imu,inu,mneigh,iatom)*f3xcXa(ix,imu,inu)
+! !$omp atomic
+!                f3xcb(ix,iatom)=f3xcb(ix,iatom)+rho(imu,inu,mneigh,iatom)&
+!      &            *2*nuxc_total(imu,inu,mneigh,iatom)*f3xcXb(ix,imu,inu)
+! !$omp atomic
+!                f3xcc(ix,jatom)=f3xcc(ix,jatom)+rho(imu,inu,mneigh,iatom)&
+!      &            *2*nuxc_total(imu,inu,mneigh,iatom)*f3xcXc(ix,imu,inu)
+!               end do
+!              end do
+!             end do  
+! !$omp end critical (D3hxc_2)
+!            end if
+! ! END_DEF_GAUSS
 
 ! ****************************************************************************
 !

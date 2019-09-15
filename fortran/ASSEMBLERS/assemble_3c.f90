@@ -148,21 +148,23 @@
 ! Presumably, the two-center interactions have already been calculated.
 ! As such, at this point and time these arrays should not be zero.
  
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_ORDERN
 
 ! Choose atom ialp in the central cell. This is the atom whose position
 ! we take the derivative, and is the atom who has the the neutral atom
@@ -252,14 +254,16 @@
 ! ****************************************************************************
            isorp = 0
            interaction = 1
-           if (igauss .eq. 0) then
-            call trescentros (interaction, isorp, isorpmax, in1, in2,   &
-     &                        indna, x, y, cost, eps, bcnax, nspecies)
-           else 
-            call trescentrosG_VNA (in1, in2, indna, x, y, cost, eps,    &
-     &                             bcnax, rcutoff)
-           end if
- 
+! ! IF_DEF_GAUSS
+!            if (igauss .eq. 0) then
+!             call trescentros (interaction, isorp, isorpmax, in1, in2,   &
+!      &                        indna, x, y, cost, eps, bcnax, nspecies)
+!            else 
+!             call trescentrosG_VNA (in1, in2, indna, x, y, cost, eps,    &
+!      &                             bcnax, rcutoff)
+!            end if
+! ! END_DEF_GAUSS
+
 ! Add this piece for iatom, jatom, and katom into the total - bcna and bcca
 !$omp critical (vna3)
            do inu = 1, num_orb(in2)

@@ -173,21 +173,23 @@
          spmG = 0.d0
         end if
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_ORDERN
 
 ! Choose atom ialp in the central cell. This is the atom whose position
 ! we take the derivative, and is the atom who has the the neutral atom
@@ -284,36 +286,35 @@
            if (Kscf .eq. 1) then
             isorp = 0
             interaction = 2
-            if (igauss .eq. 0) then
-             call trescentros (interaction, isorp, ideriv_max, in1, in2,     &
-     &                         indna, x, y, cost, eps, bcxcx, nspecies)
-
-! Add this piece for iatom, jatom, and katom into the total - bcxc
-!$omp critical (vxc3)
-             do inu = 1, num_orb(in2)
-              do imu = 1, num_orb(in1)
-               vxc(imu,inu,mneigh,iatom) =                              &
-     &          vxc(imu,inu,mneigh,iatom) + bcxcx(imu,inu)
-             vxc(inu,imu,jneigh,jatom) = vxc(imu,inu,mneigh,iatom)
-
-              end do
-             end do
-!$omp end critical (vxc3)
-            else 
-             call trescentrosGHXC_VXC (in1, in2, indna, x, y, cost,     &
-     &                                 eps, bcxcx, rcutoff)
-!$omp critical (den3)
-             do inu = 1, num_orb(in2)
-              do imu = 1, num_orb(in1)
-               density_3c(imu,inu,mneigh,iatom) =                       &
-     &          density_3c(imu,inu,mneigh,iatom) + bcxcx(imu,inu)
-         density_3c(inu,imu,jneigh,jatom) = density_3c(imu,inu,mneigh,iatom) 
-              end do
-             end do
-!$omp end critical (den3)
-            end if
-           end if
-
+! ! IF_DEF_GAUSS
+!             if (igauss .eq. 0) then
+!              call trescentros (interaction, isorp, ideriv_max, in1, in2,     &
+!      &                         indna, x, y, cost, eps, bcxcx, nspecies)
+! ! Add this piece for iatom, jatom, and katom into the total - bcxc
+! !$omp critical (vxc3)
+!              do inu = 1, num_orb(in2)
+!               do imu = 1, num_orb(in1)
+!                vxc(imu,inu,mneigh,iatom) =                              &
+!      &          vxc(imu,inu,mneigh,iatom) + bcxcx(imu,inu)
+!              vxc(inu,imu,jneigh,jatom) = vxc(imu,inu,mneigh,iatom)
+!               end do
+!              end do
+! !$omp end critical (vxc3)
+!             else 
+!              call trescentrosGHXC_VXC (in1, in2, indna, x, y, cost,     &
+!      &                                 eps, bcxcx, rcutoff)
+! !$omp critical (den3)
+!              do inu = 1, num_orb(in2)
+!               do imu = 1, num_orb(in1)
+!                density_3c(imu,inu,mneigh,iatom) =                       &
+!      &          density_3c(imu,inu,mneigh,iatom) + bcxcx(imu,inu)
+!          density_3c(inu,imu,jneigh,jatom) = density_3c(imu,inu,mneigh,iatom) 
+!               end do
+!              end do
+! !$omp end critical (den3)
+!             end if
+!            end if
+! ! END_DEF_GAUSS
 
 ! ****************************************************************************
 !
@@ -352,6 +353,12 @@
          end do
         end do
 
+
+
+
+
+! IF_DEF_GAUSS
+!
 ! Approximation for three-center interactions using gaussian fits to 
 ! wavefunctions.
 ! ****************************************************************************
@@ -362,145 +369,139 @@
 ! XC --- LDA - Ceperley - Alder exchange-correlation potential and energy
 ! as parameterized by Perdew and Zunger, Phys. Rev. B23, 5048 (1981)
 ! ****************************************************************************
-        if (igauss .eq. 1) then
-        do iatom = iatomstart, iatomstart - 1 + natomsp
-         matom = neigh_self(iatom)
-         r1(:) = ratom(:,iatom)
-         in1 = imass(iatom)
+!         if (igauss .eq. 1) then
+!         do iatom = iatomstart, iatomstart - 1 + natomsp
+!          matom = neigh_self(iatom)
+!          r1(:) = ratom(:,iatom)
+!          in1 = imass(iatom)
 
-! Loop over the neighbors of each iatom.
-         do ineigh = 1, neighn(iatom)          ! <==== loop over i's neighbors
-          mbeta = neigh_b(ineigh,iatom)
-          jatom = neigh_j(ineigh,iatom)
-          r2(:) = ratom(:,jatom) + xl(:,mbeta)
-          in2 = imass(jatom)
+! ! Loop over the neighbors of each iatom.
+!          do ineigh = 1, neighn(iatom)          ! <==== loop over i's neighbors
+!           mbeta = neigh_b(ineigh,iatom)
+!           jatom = neigh_j(ineigh,iatom)
+!           r2(:) = ratom(:,jatom) + xl(:,mbeta)
+!           in2 = imass(jatom)
 
-! SET-UP STUFF
-! ****************************************************************************
-! Find r21 = vector pointing from r1 to r2, the two ends of the bondcharge.
-! This gives us the distance dbc (or y value in the 2D grid).
-          r21(:) = r2(:) - r1(:)
-          y = sqrt(r21(1)*r21(1) + r21(2)*r21(2) + r21(3)*r21(3))
+! ! SET-UP STUFF
+! ! ****************************************************************************
+! ! Find r21 = vector pointing from r1 to r2, the two ends of the bondcharge.
+! ! This gives us the distance dbc (or y value in the 2D grid).
+!           r21(:) = r2(:) - r1(:)
+!           y = sqrt(r21(1)*r21(1) + r21(2)*r21(2) + r21(3)*r21(3))
 
-! Find the unit vector in sigma direction.
-           if (y .lt. 1.0d-05) then
-            sighat(1) = 0.0d0
-            sighat(2) = 0.0d0
-            sighat(3) = 1.0d0
-           else
-            sighat(:) = r21(:)/y
-           end if
+! ! Find the unit vector in sigma direction.
+!            if (y .lt. 1.0d-05) then
+!             sighat(1) = 0.0d0
+!             sighat(2) = 0.0d0
+!             sighat(3) = 1.0d0
+!            else
+!             sighat(:) = r21(:)/y
+!            end if
 
-           call epsilon (r2, sighat, eps)
-           call deps2cent (r1, r2, eps, deps)
+!            call epsilon (r2, sighat, eps)
+!            call deps2cent (r1, r2, eps, deps)
 
-           if (iatom .eq. jatom .and. mbeta .eq. 0) then
+!            if (iatom .eq. jatom .and. mbeta .eq. 0) then
 
-! Do nothing here - special case. Interaction already calculated in unocentros.f
+! ! Do nothing here - special case. Interaction already calculated in unocentros.f
 
-           else
+!            else
 
-! We need to find the two-center density and subtract it off the three-center density.
+! ! We need to find the two-center density and subtract it off the three-center density.
 
-! For the atom case: these loops are both over in1 indeed!  This is because
-! the two wavefunctions are located on the same site, but the potential is
-! located at a different site.
-             cost = 0.0d0
-             in3 = in1
-             call dosgaussians (in1, in2, in3, y, cost, eps, deps,      &
-     &                          bcxcx, bcxcpx, rcutoff)
+! ! For the atom case: these loops are both over in1 indeed!  This is because
+! ! the two wavefunctions are located on the same site, but the potential is
+! ! located at a different site.
+!              cost = 0.0d0
+!              in3 = in1
+!              call dosgaussians (in1, in2, in3, y, cost, eps, deps,  bcxcx, bcxcpx, rcutoff)
 
-             do inu = 1, num_orb(in3)
-              do imu = 1, num_orb(in1)
-               density_2c(imu,inu,matom,iatom) = bcxcx(imu,inu)
-              end do
-             end do
-
-! For the ontop left case, the density is in the first atom (iatom):
-!             cost = -1.0d0
-!             in3 = in2
-!             call dosgaussians (in1, in1, in3, y, cost, eps, deps,      &
-!     &                          bcxcx, bcxcpx, rcutoff)
-!
-!             do inu = 1, num_orb(in3)
-!              do imu = 1, num_orb(in1)
-!              density_2c(imu,inu,ineigh,iatom) =                       &
-!     &         density_2c(imu,inu,ineigh,iatom) + bcxcx(imu,inu)
+!              do inu = 1, num_orb(in3)
+!               do imu = 1, num_orb(in1)
+!                density_2c(imu,inu,matom,iatom) = bcxcx(imu,inu)
+!               end do
 !              end do
+
+! ! For the ontop left case, the density is in the first atom (iatom):
+! !             cost = -1.0d0
+! !             in3 = in2
+! !             call dosgaussians (in1, in1, in3, y, cost, eps, deps, bcxcx, bcxcpx, rcutoff)
+! !
+! !             do inu = 1, num_orb(in3)
+! !              do imu = 1, num_orb(in1)
+! !              density_2c(imu,inu,ineigh,iatom) = density_2c(imu,inu,ineigh,iatom) + bcxcx(imu,inu)
+! !              end do
+! !             end do
+
+! ! For the ontop right case, the density is in the second atom (iatom):
+!              cost = 1.0d0
+!              in3 = in2
+!              call dosgaussians (in1, in2, in3, y, cost, eps, deps, bcxcx, bcxcpx, rcutoff)
+!              do inu = 1, num_orb(in3)
+!               do imu = 1, num_orb(in1)
+!                density_2c(imu,inu,ineigh,iatom) =  density_2c(imu,inu,ineigh,iatom) + bcxcx(imu,inu)
+!               end do
+!              end do
+
+! ! overlap matrix for gaussian
+!            call doscentrosG_overlap (in1, in2, y, eps, deps, smG, spmG,  rcutoff )
+
+!            do inu = 1, num_orb(in2)
+!             do imu = 1, num_orb(in1)
+ 
+! ! Calculate nbar
+!              if (abs(smG(imu,inu)) .lt. xc_overtolG) then
+!               rho_3c = 0.0d0
+!               rho_2c = 0.0d0
+
+! ! bar_density_2c means <phi(1)|(N1_2c + N2_2c)|phi(2)>/<phi(1)|phi(2)>
+! ! bar_density_3c means <phi(1)| N_3c |phi(2)>/<phi(1)|phi(2)>
+!              else
+!              rho_3c = density_3c(imu,inu,ineigh,iatom)/smG(imu,inu)
+!              rho_2c = density_2c(imu,inu,ineigh,iatom)/smG(imu,inu)
+!              end if
+
+! ! Get the average electron density.
+! ! Setup matries bardens4_3c and bardens4n12 for force calculation
+!              if (rho_3c .lt. 0.0d0) rho_3c =0.0d0
+!              if (rho_2c .lt. 0.0d0) rho_2c = 0.0d0
+!              bar_density_3c(imu,inu,ineigh,iatom) = rho_3c
+!              bar_density_2c(imu,inu,ineigh,iatom) = rho_2c
+
+! ! CALL subroutine xc-capal for total density and the two-center density.
+! ! LDA - Ceperley - Alder exchange-correlation potential and energy
+! ! as parameterized by Perdew and Zunger, Phys. Rev. B23, 5048 (1981)
+!              rho_total = rho_3c + rho_2c
+!              call ceperley_alder (rho_total, epsxc, potxc_total, dpotxc_total)
+!              call ceperley_alder (rho_2c, epsxc, potxc_2c, dpotxc_2c)
+ 
+! ! three-center correction
+!              potxc_3c = potxc_total - potxc_2c
+
+!              vxc_3c(imu,inu,ineigh,iatom) = potxc_3c*smG(imu,inu)
+! !             vxc_3c(imu,inu,ineigh,iatom) = 0.d0
+! ! The three-center exchange-correlation correction matrix is:
+! ! vxc_3c = vxc_3c * S 
+! ! Finally, inculding the two-center exchange-correlation contribution
+!              vxc(imu,inu,ineigh,iatom) = vxc(imu,inu,ineigh,iatom) +    &
+!      &                                vxc_3c(imu,inu,ineigh,iatom)
+
+! ! The derivative of exchange-correlation energy matrix respect to density are
+! ! in atomic units. We should convert it to hartree (eV) units.
+! ! Finally, the units of exchange-correlation potential matrix dpotxc* is eV*A**2
+!              dpotxc_3c = dpotxc_total - dpotxc_2c
+ 
+!              nuxc_3c(imu,inu,ineigh,iatom) = dpotxc_3c
+!              nuxc_total(imu,inu,ineigh,iatom) = dpotxc_total
 !             end do
+!            end do
 
-! For the ontop right case, the density is in the second atom (iatom):
-             cost = 1.0d0
-             in3 = in2
-             call dosgaussians (in1, in2, in3, y, cost, eps, deps,      &
-     &                          bcxcx, bcxcpx, rcutoff)
-             do inu = 1, num_orb(in3)
-              do imu = 1, num_orb(in1)
-               density_2c(imu,inu,ineigh,iatom) =                       &
-     &         density_2c(imu,inu,ineigh,iatom) + bcxcx(imu,inu)
-              end do
-             end do
+!           end if ! end if of iatom .eq. jatom .and. mbeta .eq. 0
 
-! overlap matrix for gaussian
-           call doscentrosG_overlap (in1, in2, y, eps, deps, smG, spmG, &
-     &                               rcutoff)
-
-
-           do inu = 1, num_orb(in2)
-            do imu = 1, num_orb(in1)
- 
-! Calculate nbar
-             if (abs(smG(imu,inu)) .lt. xc_overtolG) then
-              rho_3c = 0.0d0
-              rho_2c = 0.0d0
-
-! bar_density_2c means <phi(1)|(N1_2c + N2_2c)|phi(2)>/<phi(1)|phi(2)>
-! bar_density_3c means <phi(1)| N_3c |phi(2)>/<phi(1)|phi(2)>
-             else
-             rho_3c = density_3c(imu,inu,ineigh,iatom)/smG(imu,inu)
-             rho_2c = density_2c(imu,inu,ineigh,iatom)/smG(imu,inu)
-             end if
-
-! Get the average electron density.
-! Setup matries bardens4_3c and bardens4n12 for force calculation
-             if (rho_3c .lt. 0.0d0) rho_3c =0.0d0
-             if (rho_2c .lt. 0.0d0) rho_2c = 0.0d0
-             bar_density_3c(imu,inu,ineigh,iatom) = rho_3c
-             bar_density_2c(imu,inu,ineigh,iatom) = rho_2c
-
-! CALL subroutine xc-capal for total density and the two-center density.
-! LDA - Ceperley - Alder exchange-correlation potential and energy
-! as parameterized by Perdew and Zunger, Phys. Rev. B23, 5048 (1981)
-             rho_total = rho_3c + rho_2c
-             call ceperley_alder (rho_total, epsxc, potxc_total, dpotxc_total)
-             call ceperley_alder (rho_2c, epsxc, potxc_2c, dpotxc_2c)
- 
-! three-center correction
-             potxc_3c = potxc_total - potxc_2c
-
-             vxc_3c(imu,inu,ineigh,iatom) = potxc_3c*smG(imu,inu)
-!             vxc_3c(imu,inu,ineigh,iatom) = 0.d0
-! The three-center exchange-correlation correction matrix is:
-! vxc_3c = vxc_3c * S 
-! Finally, inculding the two-center exchange-correlation contribution
-             vxc(imu,inu,ineigh,iatom) = vxc(imu,inu,ineigh,iatom) +    &
-     &                                vxc_3c(imu,inu,ineigh,iatom)
-
-! The derivative of exchange-correlation energy matrix respect to density are
-! in atomic units. We should convert it to hartree (eV) units.
-! Finally, the units of exchange-correlation potential matrix dpotxc* is eV*A**2
-             dpotxc_3c = dpotxc_total - dpotxc_2c
- 
-             nuxc_3c(imu,inu,ineigh,iatom) = dpotxc_3c
-             nuxc_total(imu,inu,ineigh,iatom) = dpotxc_total
-            end do
-           end do
-
-          end if ! end if of iatom .eq. jatom .and. mbeta .eq. 0
-
-          end do ! end do of ineigh
-         end do  ! end do of iatom
-        end if   ! end if of igauss
+!           end do ! end do of ineigh
+!          end do  ! end do of iatom
+!         end if   ! end if of igauss
+! END_DEF_GAUSS
 
 ! Format Statements
 ! ===========================================================================

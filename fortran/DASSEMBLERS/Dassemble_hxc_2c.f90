@@ -126,22 +126,23 @@
         if (igauss .eq. 1) then
         end if
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
-         iatomstart = 1
-         natomsp = natoms
-        end if
- 
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+!          iatomstart = 1
+!          natomsp = natoms
+!         end if
+! ! END_DEF_ORDERN
+
 ! Loop over the atoms in the central cell.
 !$omp parallel do private (in1, in2, in3, interaction, isorp, jatom, kforce) &
 !$omp &           private (matom, mbeta, dq1, dq2, y, bcxcx, bcxcpx, eps)    &
@@ -187,29 +188,22 @@
           else
            sighat(:) = r21(:)/y
           end if
- 
           call epsilon (r2, sighat, eps)
           call deps2cent (r1, r2, eps, deps)
  
- 
 ! ****************************************************************************
-!
 ! ASSEMBLE EXCHANGE-CORRELATION FOR ATM AND ONTOP CASE - NA CASE
 ! ****************************************************************************
 ! Check to make sure we are not doing <1|V(1)|1>. This is done in the atm case.
           if (iatom .eq. jatom .and. mbeta .eq. 0) then
- 
 ! Do nothing here - special case. This interaction comes from unicentro.f
- 
           else
- 
 ! This is the atm case for the exchange-correlation energy
            isorp = 0
            kforce = 1              ! calculate forces here
            interaction = 7
            in3 = in1
-           call doscentros (interaction, isorp, kforce, in1, in2, in3,  &
-     &                      y, eps, deps, bcxcx, bcxcpx)
+           call doscentros ( interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bcxcx, bcxcpx )
  
 ! Note: these loops are both over in1 indeed!  This is because the two
 ! wavefunctions are located on the same site, but the potential is located
@@ -219,8 +213,7 @@
             do imu = 1, num_orb(in1)
              do ix = 1, 3
 !$omp atomic
-              faxc(ix,ineigh,iatom) = faxc(ix,ineigh,iatom)             &
-     &         - rho(imu,inu,matom,iatom)*bcxcpx(ix,imu,inu)
+              faxc(ix,ineigh,iatom) = faxc(ix,ineigh,iatom) - rho(imu,inu,matom,iatom)*bcxcpx(ix,imu,inu)
              end do
             end do
            end do
@@ -229,40 +222,37 @@
            isorp = 0
            interaction = 6
            in3 = in2
-           call doscentros (interaction, isorp, kforce, in1, in2, in3,  &
-     &                      y, eps, deps, bcxcx, bcxcpx)
+           call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bcxcx, bcxcpx)
  
 ! Notice the explicit - sign which makes f force like.
            do inu = 1, num_orb(in3)
             do imu = 1, num_orb(in1)
              do ix = 1, 3
 !$omp atomic
-              fotxc(ix,ineigh,iatom) = fotxc(ix,ineigh,iatom)           &
-     &         - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
+              fotxc(ix,ineigh,iatom) = fotxc(ix,ineigh,iatom) - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
              end do
             end do
            end do
 
-! Use the gaussian approximation for the three-center interactions.
-           if (igauss .eq. 1) then
+! ! IF_DEF_GAUSS
+! ! Use the gaussian approximation for the three-center interactions.
+!            if (igauss .eq. 1) then
+! ! Form the right ontop force. Use the derivatives, since the derivative is
+! ! with respect to d/d(ratom) when the atom is ontop iatom.
+!             cost = 1.0d0
+!             in3 = in2
+!             call dosgaussians (in1, in2, in3, y, cost, eps, deps, bcxcx, bcxcpx, rcutoff)
+!             do inu = 1, num_orb(in3)
+!              do imu = 1, num_orb(in1)
+!               do ix = 1, 3
+! !$omp atomic
+!                fotxc(ix,ineigh,iatom) = fotxc(ix,ineigh,iatom)  - rho(imu,inu,ineigh,iatom) * nuxc_3c(imu,inu,ineigh,iatom) * bcxcpx(ix,imu,inu)
+!               end do
+!              end do
+!             end do
+!            end if  ! igauss 
+! ! END_DEF_GAUSS
 
-! Form the right ontop force. Use the derivatives, since the derivative is
-! with respect to d/d(ratom) when the atom is ontop iatom.
-            cost = 1.0d0
-            in3 = in2
-            call dosgaussians (in1, in2, in3, y, cost, eps, deps, bcxcx,&
-     &                         bcxcpx, rcutoff)
-            do inu = 1, num_orb(in3)
-             do imu = 1, num_orb(in1)
-              do ix = 1, 3
-!$omp atomic
-               fotxc(ix,ineigh,iatom) = fotxc(ix,ineigh,iatom)          &
-     &          - rho(imu,inu,ineigh,iatom)                             &
-     &            *nuxc_3c(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
-              end do
-             end do
-            end do
-           end if
           end if
 
 
@@ -273,11 +263,8 @@
 ! Check to make sure we are not doing <1|V(1)|1>. This is done in the atm case.
           if (itheory .eq. 1) then
            if (iatom .eq. jatom .and. mbeta .eq. 0) then
-
 ! Do nothing here - special case. This interaction comes from unicentro.f
-
            else
-
 ! Initialize dqfact; dq1 and dq2 are weighted by dq(in1) and q(in2)
             dqfact(1) = -dq1/(2.0d0*dq(in1))
             dqfact(2) =  dq1/(2.0d0*dq(in1))
@@ -290,8 +277,7 @@
             interaction = 7
             in3 = in1
             do isorp = 1, 4
-             call doscentros (interaction, isorp, kforce, in1, in2, &
-     &                        in3, y, eps, deps, bcxcx, bcxcpx)
+             call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bcxcx, bcxcpx)
 
 ! Note: these loops are both over in1 indeed!  This is because the two
 ! wavefunctions are located on the same site, but the potential is located
@@ -301,8 +287,7 @@
               do imu = 1, num_orb(in1)
                do ix = 1, 3
 !$omp atomic
-               faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom) -    &
-     &         rho(imu,inu,matom,iatom)*bcxcpx(ix,imu,inu)*dqfact(isorp)
+               faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom) - rho(imu,inu,matom,iatom) * bcxcpx(ix,imu,inu) * dqfact(isorp)
                end do
               end do
              end do
@@ -312,16 +297,14 @@
             interaction = 6
             in3 = in2
             do isorp = 1, 4
-             call doscentros (interaction, isorp, kforce, in1, in2, in3,&
-     &                        y, eps, deps, bcxcx, bcxcpx)
+             call doscentros ( interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bcxcx, bcxcpx )
 
 ! Notice the explicit - sign which makes f force like.
              do inu = 1, num_orb(in3)
               do imu = 1, num_orb(in1)
                do ix = 1, 3
 !$omp atomic
-               fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom) -  &
-     &         rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dqfact(isorp)
+               fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom) - rho(imu,inu,ineigh,iatom) * bcxcpx(ix,imu,inu) * dqfact(isorp)
                end do
               end do
              end do

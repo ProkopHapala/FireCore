@@ -245,8 +245,7 @@
         end do
 
 
-        if (iordern .eq. 1)                                                  &
-     &   call common_neighbors_ordern_final (natoms, nprocs, my_proc)
+!        if (iordern .eq. 1)  call common_neighbors_ordern_final (natoms, nprocs, my_proc)     !   IF_DEF_ORDERN_END
 
 ! Option for writing out the results for debugging.
         if (iwrtneigh .eq. 1 .and. my_proc.eq.0) then
