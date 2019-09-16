@@ -13,3 +13,6 @@
   ```
  * rename spanish names of files and subroutines `unocentros`, `doscentros`, `trescentros`
 
+## Contemplation
+
+ * Possibly use [**fypp**](https://github.com/aradi/fypp)
