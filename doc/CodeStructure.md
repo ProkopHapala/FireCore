@@ -19,6 +19,16 @@
 * Minor / IO
     * `iwrtfpieces`  Write individual components of Hamiltonian (?) (For debugging?)
 
+## Notes
+ * `(D)assemble_ca_*`        ? DOGS ?  What is DOGS ? 
+ * `(D)assemble_eh_*`        (?) Extended Hubbard
+ * `(D)assemble_lr_*`        long-range ewald 
+ * `(D)assemble_hxc_*`       Horsfield exchange-correlation
+ * `(D)assemble_snsxc_*`     Sankey-Niklewski two-center  exchange correlation
+   * `(D)assemble_olsxc_*`   What is the difference from  `snxc`  ? 
+ * `(D)assemble_scissor`        Koopman correction potential 
+
+
 ## NOTES:
  * `/ASSEMBLERS/getenergy.f90` contains nice overview of different electronics structure options (`itheory` etc.)
 
