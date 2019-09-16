@@ -332,7 +332,7 @@
              end do ! do ix
             end do ! do imu
            end do ! do inu
-          endif ! if (matom .eq. ineigh)
+          end if ! if (matom .eq. ineigh)
           
 ! ****************************************************************************
 !

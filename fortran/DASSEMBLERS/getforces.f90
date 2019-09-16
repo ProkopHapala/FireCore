@@ -76,7 +76,7 @@
 ! !    	    write (*,100)
 ! !        	write (*,*) ' Now we are assembling forces. '
 ! !	        write (*,*) '  '
-! 		endif
+! 		end if
 ! ! END CHROM
 ! ! END_DEF_classicMD
 
@@ -85,26 +85,26 @@
 !         if (ihubbard .eq. 1) then
 !          call getforces_eh ()
 !          return
-!         endif
+!         end if
 ! ! END_DEF_KS
 
 ! ! doing Kohn-Sham
 !         if (iKS .eq. 1) then
 !          call getforces_KS ()
 !          return
-!         endif
+!         end if
 
 ! doing Horsfield data
         if (itheory_xc .eq. 0) then
           call getforces_hxc ()
           return
-        endif
+        end if
 
 ! doing McWeda data
         if (itheory_xc .ne. 0 .and. itheory_xc .lt. 4) then
           call getforces_mcweda ()
           return
-        endif
+        end if
 
 ! ! IF_DEF_ZW
 ! ! doing xczw data

@@ -391,7 +391,7 @@
      &          (sm*rhop_3cb(:,issh,jssh) - rho_3c(issh,jssh)*spm(:))/(sm*sm)
               avrhop_c (:,issh,jssh) = avrhop_c (:,issh,jssh) +              &
      &         (sm*rhop_3cc(:,issh,jssh) + rho_3c(issh,jssh)*spm(:))/(sm*sm)
-             endif
+             end if
             end do
            end do
 
