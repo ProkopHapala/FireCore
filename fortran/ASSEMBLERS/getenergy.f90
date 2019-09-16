@@ -72,48 +72,21 @@
 !        write (*,*) ' Now we are calculating the total energy. '
 !        write (*,*) '  '
 
-! ! IF_DEF_KS
-! ! doing Kohn-Sham Grid
-!         if (iks .eq. 1) then
-!           call getenergy_ks (itime_step)
-!           return 
-!         endif 
-! ! END_DEF_KS
-
-! doing extended Hubbard
-        if (itheory .eq. 2) then
-         call getenergy_eh (itime_step)
-         return
-        endif
-
-! doing Horsfield 
-        if (itheory_xc .eq. 0) then
-          call getenergy_hxc (itime_step)
-          return 
-        endif
-
-! doing McWeda         
+        if      (iks        .eq. 1) then  
+                call getenergy_ks (itime_step)         ! Kohn-Sham Grid
+        else if (itheory    .eq. 2) then
+                call getenergy_eh (itime_step)         ! Extended Hubbard
+        else if (itheory_xc .eq. 0) then
+                call getenergy_hxc (itime_step)        ! doing Horsfield 
         if (itheory_xc .ne. 0 .and. itheory_xc .lt. 4) then
-          call getenergy_mcweda (itime_step)
-          return 
-        endif 
-
-! ! IF_DEF_ZW
-! ! doing zw mcweda second order with Mulliken-Dipole
-!         if (itheory_xc .eq. 4) then
-!           call getenergy_zw (itime_step)
-!           return
-!         endif
-! ! END_DEF_ZW
-
-! Deallocate Arrays
-! ===========================================================================
-
+                call getenergy_mcweda (itime_step)     ! doing McWeda
+        if (itheory_xc .eq. 4) then
+                call getenergy_zw (itime_step)         ! doing ZW-McWeda ( second order with Mulliken-Dipole )
+        endif
  
 ! Format Statements
 ! ===========================================================================
 100     format (2x, 70('='))
-
 
         return
         end subroutine getenergy

@@ -5,22 +5,48 @@ import re
 import traceback
 import string
 
-def insertRecord( dct, name, fname, il, iw ):
-    loc = [il]
+def insertRecord( dct, name, fname, rec ):
     if name in dct:
         dct_name = dct[name]
-        dct_name[fname] = dct_name.get(fname,[]) + loc
+        dct_name[fname] = dct_name.get(fname,[]) + [rec]
     else:
-        dct[name] = {fname:loc}
+        dct[name] = {fname:[rec]}
 
-def searchKeywordsInFile_re( fpath, fname, keyw_dict, re_split, bToLowerCase=True, bFname=True, found=None, verbose=False ):
+''''
+def insertRecord( dct, name, fname, il, iw ):
+    loc = [il]
+
+def insertRecordLine( dct, name, fname, il, l ):
+    rec = [(il,l)]
+    if name in dct:
+        dct_name = dct[name]
+        dct_name[fname] = dct_name.get(fname,[]) + rec
+    else:
+        dct[name] = {fname:rec}
+'''
+
+def searchNamesInFile_re( fpath, fname, keyw_dict, re_split, bToLowerCase=True, bLine=True, found=None, verbose=False ):
     if found is None:
         found = [ {} for k in keyw_dict ]
     with open( fpath, 'r' ) as fin:
         for iline,line in enumerate(fin):
             c=line[0]
             if c=='C' or c=='c' or c=='*' or c=='!' : continue     # old-style comments
+            ws = re_split.findall(line)
+            for iw,w in enumerate(ws):
+                if w == '!': break
+                w = w.lower()
+                ikey = keyw_dict.get(w,-1)
+                insertRecord( found[ikey], w, fname, (iline,line) )
+    return found
 
+def searchKeywordsInFile_re( fpath, fname, keyw_dict, re_split, bToLowerCase=True, ound=None, verbose=False ):
+    if found is None:
+        found = [ {} for k in keyw_dict ]
+    with open( fpath, 'r' ) as fin:
+        for iline,line in enumerate(fin):
+            c=line[0]
+            if c=='C' or c=='c' or c=='*' or c=='!' : continue     # old-style comments
             ws = re_split.findall(line)
             for iw,w in enumerate(ws):
                 if w == '!': break
@@ -33,7 +59,7 @@ def searchKeywordsInFile_re( fpath, fname, keyw_dict, re_split, bToLowerCase=Tru
                             w_next = ws[iw+1].lower()
                             i = keyw_dict[w]
                             if(verbose): print "found.append( %s )" %str(rec)
-                            insertRecord( found[ikey], w_next, fname, iline, iw )
+                            insertRecord( found[ikey], w_next, fname, iline )
                     except Exception as e:
                         traceback.print_exc()
                         print "DEBUG w{"+w+"} line{"+line+"}"
@@ -41,6 +67,36 @@ def searchKeywordsInFile_re( fpath, fname, keyw_dict, re_split, bToLowerCase=Tru
                         raise Exception("ERROR in searchKeywordsInFile_split [%i,%i] of %s" %(iline,iw,fname)  )
     return found
 
+#def searchKeywordsInPath( root_path, keywords, exts=['.f90','.f'], wchars="a-zA-Z0-9_", tab_dir='----', tab_file='    ', verbose=True, bToLowerCase=True, bStorePath=True ):
+def searchInPath( root_path, keywords, exts=['.f90','.f'], tab_dir='----', tab_file='    ', verbose=True, bToLowerCase=True, bStorePath=True, serchFunc=searchKeywordsInFile_re ):
+    exts_set = set(exts)
+    keyw_dict = { kw:i for i,kw in enumerate(keywords) }
+    re_split  = re.compile( '''!|'.*?'|".*?"|\w+''' )
+    found = [ {} for k in keyw_dict ]
+    nkw = len(keywords)
+    for path, dirs, files in os.walk(root_path):
+        path_lst     = path.split(os.sep)
+        level=len(path_lst)
+        path_rel = os.path.relpath( path, root_path )
+        if(verbose): print tab_dir*(level-1), os.path.basename(path)
+        for fname in files:
+            name,ext = os.path.splitext(fname)
+            fpath = path+os.sep+fname
+            if ext in exts_set:
+                if(verbose):
+                    nfound0 = [ len(found[i]) for i in xrange(nkw) ]
+                fname_=fname
+                if bStorePath:fname_= path_rel +os.sep+ fname
+                serchFunc( fpath, fname_, keyw_dict, re_split, found=found, bToLowerCase=bToLowerCase )
+                if(verbose):
+                    nfound  = [ len(found[i])-nfound0[i] for i in xrange(nkw) ]
+                    print tab_file*level, fname, "       ", nfound
+    return found
+
+
+
+
+"""
 def searchKeywordsInPath( root_path, keywords, exts=['.f90','.f'], wchars="a-zA-Z0-9_", tab_dir='----', tab_file='    ', verbose=True, bToLowerCase=True, bStorePath=True ):
     exts_set = set(exts)
     keyw_dict = { kw:i for i,kw in enumerate(keywords) }
@@ -65,14 +121,23 @@ def searchKeywordsInPath( root_path, keywords, exts=['.f90','.f'], wchars="a-zA-
                     nfound  = [ len(found[i])-nfound0[i] for i in xrange(nkw) ]
                     print tab_file*level, fname, "       ", nfound
     return found
+"""
 
 def writeTabled(fout,s,ic,nc_min):
     nspace = nc_min-ic
     fout.write( (" "*nspace ) )
-    fout.write( s                  )
+    fout.write(   s           )
     return ic+nspace+len(s)
 
-def writeTags( fout, dct, tab="    ",  ntab1=35, ntab2=80, bSortNames=True ):
+def writeListNewLine(fout,lst, ntab=4 ):
+    fout.write("[")
+    for item in lst:
+        fout.write("\n")
+        writeTabled(fout,str(item),0,ntab)
+        fout.write(",")
+    fout.write("]")
+
+def writeTags( fout, dct, tab="    ",  ntab1=35, ntab2=80, bSortNames=True, bNewLineLine=False ):
     names = dct.keys()
     if bSortNames:
         names=sorted(names)
@@ -83,11 +148,15 @@ def writeTags( fout, dct, tab="    ",  ntab1=35, ntab2=80, bSortNames=True ):
         if nrec==0:
             print "WARRNING: record for name{"+name+"} is empty" 
         elif nrec==1:
-            rec=next(iter(recs))
+            fname=next(iter(recs))
             ic= writeTabled(fout, "'%s'" %name, 0,0 )
-            ic= writeTabled(fout, ":{", ic,ntab1-5 )
-            ic= writeTabled(fout, "'%s'"  %str(rec), ic, ntab1 )
-            ic= writeTabled(fout, ":%s"  %str(recs[rec]), ic, ntab2 )
+            ic= writeTabled(fout, ":{",   ic,ntab1-5 )
+            ic= writeTabled(fout, "'%s'" %str(fname      ), ic, ntab1 )
+            if bNewLineLine:
+                fout.write(":")
+                writeListNewLine(fout, recs[fname], ntab=ntab2 )
+            else:
+                ic= writeTabled(fout, ":%s"  %str(recs[fname]), ic, ntab2 )
             ic= writeTabled(fout, "},\n", ic, ntab2 )
         else:
             ic= writeTabled(fout, "'%s'" %name, 0,0 )
@@ -95,17 +164,22 @@ def writeTags( fout, dct, tab="    ",  ntab1=35, ntab2=80, bSortNames=True ):
             fnames=recs.keys()
             if bSortNames:
                 fnames=sorted(fnames)
-            for rec in fnames:
+            for fname in fnames:
                 fout.write("\n")
-                ic = writeTabled(fout, "'%s'"  %str(rec), 0, ntab1 )
-                ic = writeTabled(fout, ":%s,"  %str(recs[rec]), ic, ntab2 )
+                ic = writeTabled(fout, "'%s'"  %str(fname), 0, ntab1 )
+                if bNewLineLine:
+                    fout.write(":")
+                    writeListNewLine(fout, recs[fname], ntab=ntab2 )
+                    fout.write(",")
+                else:
+                    ic= writeTabled(fout, ":%s,"  %str(recs[fname]), ic, ntab2 )
             ic= writeTabled(fout, "},\n", ic, ntab2 )
 
-def writeFoundTagFiles_py( keywords, found ):
+def writeFoundTagFiles_py( keywords, found, ntab1=35, ntab2=80, bSortNames=True, bNewLineLine=False ):
     for ik,key in enumerate(keywords):
         with open("tags_%s.py" %key, 'w' ) as fout:
             fout.write( "tag_dict_%s ={\n" %key )
-            writeTags(fout, found[ik] )
+            writeTags(fout, found[ik], ntab1=ntab1, ntab2=ntab2, bSortNames=bSortNames, bNewLineLine=bNewLineLine )
             fout.write( "}\n\n" )
 
 def writeDefCallPairs( fout, defs, calls, tab="    ", bSort=True ):
@@ -136,15 +210,25 @@ def writeDefCallPairs( fout, defs, calls, tab="    ", bSort=True ):
         fout.write( "'Calls'  : "); fout.write( str(calls_name) ); fout.write("\n"  )
         fout.write( "}\n" )
 
-
-
 if __name__ == "__main__":
 
-    
-    keywords = [ 'function', 'subroutine', 'call', 'use' ]
     #path = "../SRC/LOOPS"
     path = "../fortran"
-    found = searchKeywordsInPath( path, keywords )
+
+    names = [
+        'itheory','itheory_xc',
+        'iks','iqmmm','iordern','ibias',
+        'iforce',
+        'idipole','igauss','ivdw','iharmonic',
+        'iwrtfpieces'
+    ]
+    found = searchInPath( path, names, serchFunc=searchNamesInFile_re )
+    writeFoundTagFiles_py( names, found, ntab1=4, ntab2=8, bNewLineLine=True )
+
+    exit()
+
+    keywords = [ 'function', 'subroutine', 'call', 'use' ]
+    found = searchKeywordsInPath( path, keywords, serchFunc=searchKeywordsInFile_re )
     writeFoundTagFiles_py( keywords, found )
     
     from tags_subroutine import *
