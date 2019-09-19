@@ -127,7 +127,7 @@
          real, dimension (:, :, :, :), allocatable :: ewaldsr
          real, dimension (:, :, :, :), allocatable :: vca
          real, dimension (:, :, :, :), allocatable :: vxc_ca
-         real, dimension (:, :, :, :), allocatable :: ewaldqmmm
+!         real, dimension (:, :, :, :), allocatable :: ewaldqmmm    ! IF_DEF_QMMM_END
 
 ! ! IF_DEF_dipole
 ! ! Dipole with XYZ components

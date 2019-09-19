@@ -12,7 +12,7 @@
          integer neighPP_max
 
 ! Maximum number of neighbors - for van der Waals interactions. 
-         integer neigh_max_vdw 
+!         integer neigh_max_vdw                  ! IF_DEF_vdW
 
 ! Neighbor mapping and storage.
          integer, dimension (:, :), allocatable :: neigh_b
@@ -38,10 +38,12 @@
          integer, dimension (:, :), allocatable :: neighPP_j
          integer, dimension (:),    allocatable :: neighPPn
 
-! Neighbor mapping and storage - for van der Waals interactions.
-         integer, dimension (:, :), allocatable :: neigh_b_vdw
-         integer, dimension (:, :), allocatable :: neigh_j_vdw
-         integer, dimension (:),    allocatable :: neighn_vdw
+! ! IF_DEF_vdW
+! ! Neighbor mapping and storage - for van der Waals interactions.
+!          integer, dimension (:, :), allocatable :: neigh_b_vdw
+!          integer, dimension (:, :), allocatable :: neigh_j_vdw
+!          integer, dimension (:),    allocatable :: neighn_vdw
+! ! END_DEF_vdW
 
 ! Common neighbor mapping and storage.
          integer, dimension (:, :, :), allocatable :: neigh_comb 
@@ -63,7 +65,7 @@
 ! neigh_self is the m value for the "self m"
          integer, dimension (:),  allocatable :: neigh_self
          integer, dimension (:),  allocatable :: neighPP_self
-         integer, dimension (:),  allocatable :: neigh_vdw_self
+!         integer, dimension (:),  allocatable :: neigh_vdw_self   ! IF_DEF_vdW_END
 
 ! total neighbor mapping (mapping neigh and neighPP together)
          integer, dimension(:),   allocatable :: neighn_tot
@@ -90,5 +92,5 @@
 
 
 ! Cutoff range for vdw interactions
-         real range_vdw
+!         real range_vdw                          ! IF_DEF_vdW
         end module

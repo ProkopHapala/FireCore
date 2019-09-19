@@ -14,10 +14,8 @@
          real, dimension (:, :),    allocatable :: fewald
          real, dimension (:, :),    allocatable :: flrew
 
-! QM/MM forces
-         real, dimension (:, :), allocatable :: flrew_qmmm
-! DFTD3  forces
-         real, dimension (:, :), allocatable :: ftot_dftd3
+!        real, dimension (:, :), allocatable :: flrew_qmmm     ! IF_DEF_QMMM_END
+!        real, dimension (:, :), allocatable :: ftot_dftd3     ! IF_DEF_DFTD3_END
  
 ! Derivatives of interactions
          real, dimension (:, :, :, :, :),    allocatable :: dipp
@@ -67,24 +65,14 @@
          real, dimension (:, :), allocatable :: f3caa, f3cab, f3cac
          real, dimension (:, :), allocatable :: f3xca_ca, f3xcb_ca, f3xcc_ca
 
-! Forces - XCZW
-         real, dimension (:, :, :), allocatable :: dxcdcc_zw
+!         real, dimension (:, :), allocatable :: fcoulomb     ! IF_DEF_Hubbard_END
+!         real, dimension (:, :), allocatable :: fxcnu        ! IF_DEF_Hubbard_END
 
+!         real, dimension (:, :, :), allocatable :: dxcdcc_zw     ! IF_DEF_ZW_END
 
-! Forces - extended-Hubbard
-         real, dimension (:, :), allocatable :: fcoulomb
-         real, dimension (:, :), allocatable :: fxcnu
-
-! Forces - van der Waals
-         real, dimension (:, :), allocatable :: fvdw
-
-! Forces - external field (harmonic) for thermodynamic integration
-         real, dimension (:, :), allocatable :: fharmonic
-
-! Forces - gaussians approximation for three-center interactions. 
-         real, dimension (:, :, :), allocatable :: fxcro
-
-! Forces - bias voltage
-         real, dimension (:, :), allocatable :: fbias
+!         real, dimension (:, :), allocatable :: fvdw          ! IF_DEF_vdW_END
+!         real, dimension (:, :), allocatable :: fharmonic     ! IF_DEF_harmonic_END
+!         real, dimension (:, :, :), allocatable :: fxcro      ! IF_DEF_Gauss_END
+!         real, dimension (:, :), allocatable :: fbias         ! IF_DEF_bias_END
 
         end module
