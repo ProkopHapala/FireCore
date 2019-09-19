@@ -140,8 +140,8 @@
         real rho_modified
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE             ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE    ! IF_DEF_ORDERN_END
 
 ! Allocate Arrays
 ! ===========================================================================
@@ -169,14 +169,13 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!         end if  ! IF_DEF_ORDERN_END
 
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++
 !
@@ -228,8 +227,7 @@
               eps(issh,issh) = 1.0d0
            enddo
 
-           call doscentrosS (interaction0, isorp, iforce, in1, in2,     &
-     &                           in3, y, eps, sm, spm)
+           call doscentrosS (interaction0, isorp, iforce, in1, in2, in3, y, eps, sm, spm)
 
 ! Loop over the neighbors of each iatom.
            do ineigh = 1, neighn(iatom)       ! <==== loop over i's neighbors

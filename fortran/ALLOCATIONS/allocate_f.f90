@@ -54,9 +54,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine allocate_f (natoms, neigh_max, neighPP_max, numorb_max,  &
-     &                         nsh_max, itheory, itheory_xc, igauss, ivdw,  &
-     &                         iharmonic, ibias)
+        subroutine allocate_f (natoms, neigh_max, neighPP_max, numorb_max, nsh_max, itheory, itheory_xc, igauss, ivdw,  iharmonic, ibias)
         use forces
         use options, only : idipole
         implicit none

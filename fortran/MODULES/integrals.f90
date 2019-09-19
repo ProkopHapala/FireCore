@@ -87,24 +87,24 @@
 !         integer, dimension (1:21, 0:8) :: ind2c
          integer, dimension (1:23, 0:8) :: ind2c
 ! end jel-F2c
-         integer, dimension (:, :, :), allocatable :: numz2c
+         integer, dimension (:, :, :),       allocatable :: numz2c
 
-         real, dimension (:, :, :, :, :), allocatable :: xintegral_2c
+         real, dimension (:, :, :, :, :),    allocatable :: xintegral_2c
          real, dimension (:, :, :, :, :, :), allocatable :: splineint_2c
-         real, dimension (:, :, :), allocatable :: z2cmax
+         real, dimension (:, :, :),          allocatable :: z2cmax
 
 ! One center integrals
-         real, dimension (:, :), allocatable :: exc1c_0
+         real, dimension (:, :),       allocatable :: exc1c_0
          real, dimension (:, :, :, :), allocatable :: exc1c
-         real, dimension (:, :, :), allocatable :: xcnu1c
-         real, dimension (:, :, :), allocatable :: xcnu1cs
+         real, dimension (:, :, :),    allocatable :: xcnu1c
+         real, dimension (:, :, :),    allocatable :: xcnu1cs
 ! jel-der
 !         real, dimension (: ,), allocatable :: exc1c0
-         real, dimension (:, :, :), allocatable :: exc1c0
-         real, dimension (:, :, :), allocatable :: nuxc1c
-         real, dimension (:, :, :, :), allocatable :: dexc1c
-         real, dimension (:, :, :), allocatable :: d2exc1c
-         real, dimension (:, :, :, :), allocatable :: dnuxc1c
+         real, dimension (:, :, :),       allocatable :: exc1c0
+         real, dimension (:, :, :),       allocatable :: nuxc1c
+         real, dimension (:, :, :, :),    allocatable :: dexc1c
+         real, dimension (:, :, :),       allocatable :: d2exc1c
+         real, dimension (:, :, :, :),    allocatable :: dnuxc1c
          real, dimension (:, :, :, :, :), allocatable :: d2nuxc1c
 ! end jel-der
 

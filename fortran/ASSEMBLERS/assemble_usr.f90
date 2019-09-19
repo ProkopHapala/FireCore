@@ -84,8 +84,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_usr (itheory, itheory_xc, iforce,   &
-     &                           uxcdcc, uiiuee)
+        subroutine assemble_usr (itheory, itheory_xc, iforce, uxcdcc, uiiuee)
         use charges
         use configuration
         use constants_fireball
@@ -213,7 +212,6 @@
      &                                       + (r2(3) - r1(3))**2)
  
 ! ****************************************************************************
-!
 ! GET COULOMB INTERACTIONS 
 ! ****************************************************************************
 ! Now find the three coulomb integrals need to evaluate the neutral
@@ -223,8 +221,7 @@
           interaction = 12
           ideriv = 0
           do index = 1, index_coulomb
-           call interpolate_1d (interaction, ideriv, in1, in2, index,   &
-     &                          iforce, distance, slist(index), dslist(index))
+           call interpolate_1d (interaction, ideriv, in1, in2, index, iforce, distance, slist(index), dslist(index))
           end do
  
 ! We have the data, it is stored in the following way: v(1,1), v(1,2),
@@ -295,7 +292,6 @@
  
  
 ! ****************************************************************************
-!
 ! XC DOUBLE COUNTING CORRECTION
 ! ****************************************************************************
            if (itheory_xc .eq. 0) then 
@@ -332,22 +328,17 @@
             interaction = 8
             non2c = 1
             ideriv = 0
-            call interpolate_1d (interaction, ideriv, in1, in2, non2c,  &
-     &                           iforce, distance, xc00, dxc00)
+            call interpolate_1d (interaction, ideriv, in1, in2, non2c, iforce, distance, xc00, dxc00)
  
             if (itheory .eq. 1) then
              ideriv = 1
-             call interpolate_1d (interaction, ideriv, in1, in2, non2c, &
-     &                            iforce, distance, xcM0, dxcM0)
+             call interpolate_1d (interaction, ideriv, in1, in2, non2c, iforce, distance, xcM0, dxcM0)
              ideriv = 2
-             call interpolate_1d (interaction, ideriv, in1, in2, non2c, &
-     &                            iforce, distance, xcP0, dxcP0)
+             call interpolate_1d (interaction, ideriv, in1, in2, non2c, iforce, distance, xcP0, dxcP0)
              ideriv = 3
-             call interpolate_1d (interaction, ideriv, in1, in2, non2c, &
-     &                            iforce, distance, xc0M, dxc0M)
+             call interpolate_1d (interaction, ideriv, in1, in2, non2c, iforce, distance, xc0M, dxc0M)
              ideriv = 4
-             call interpolate_1d (interaction, ideriv, in1, in2, non2c, &
-     &                            iforce, distance, xc0P, dxc0P)
+             call interpolate_1d (interaction, ideriv, in1, in2, non2c, iforce, distance, xc0P, dxc0P)
             end if
  
 ! Determine dqj and dq2:
@@ -386,38 +377,26 @@
 ! Non-neutral case:
 ! Do this for DOGS only!
             if (itheory .eq. 1) then
-
 ! There are four cases, note the (ge,gt,le,lt) set:
 ! (+,+) case I
              if (dqi .gt. 0.0d0 .and. dqj .gt. 0.0d0) then
-              xc = xc + ((xcP0 - xc00)/dq1)*dqi +                       &
-     &                  ((xc0P - xc00)/dq2)*dqj
-              dxc = dxc + ((dxcP0 - dxc00)/dq1)*dqi +                   &
-     &                    ((dxc0P - dxc00)/dq2)*dqj
+              xc  =  xc + (( xcP0 -  xc00)/dq1)*dqi +  (( xc0P -  xc00)/dq2)*dqj
+              dxc = dxc + ((dxcP0 - dxc00)/dq1)*dqi +  ((dxc0P - dxc00)/dq2)*dqj
              end if
- 
 ! (-,-) case II
              if (dqi .lt. 0.0d0 .and. dqj .lt. 0.0d0) then
-              xc = xc + ((xc00 - xcM0)/dq1)*dqi +                       &
-     &                  ((xc00 - xc0M)/dq2)*dqj
-              dxc = dxc + ((dxc00 - dxcM0)/dq1)*dqi +                   &
-     &                    ((dxc00 - dxc0M)/dq2)*dqj
+              xc  =  xc + (( xc00 -  xcM0)/dq1)*dqi +  (( xc00 -  xc0M)/dq2)*dqj
+              dxc = dxc + ((dxc00 - dxcM0)/dq1)*dqi +  ((dxc00 - dxc0M)/dq2)*dqj
              end if
- 
 ! (+,-) case III
              if (dqi .gt. 0.0d0 .and. dqj .lt. 0.0d0) then
-              xc = xc + ((xcP0 - xc00)/dq1)*dqi +                       &
-     &                  ((xc00 - xc0M)/dq2)*dqj
-              dxc = dxc + ((dxcP0 - dxc00)/dq1)*dqi +                   &
-     &                    ((dxc00 - dxc0M)/dq2)*dqj
+              xc  =  xc + ((xcP0 - xc00)/dq1)*dqi   +  (( xc00 -  xc0M)/dq2)*dqj
+              dxc = dxc + ((dxcP0 - dxc00)/dq1)*dqi +  ((dxc00 - dxc0M)/dq2)*dqj
              end if
- 
 ! (-,+) case IV
              if (dqi .lt. 0.0d0 .and. dqj .ge. 0.0d0) then
-              xc = xc + ((xc00 - xcM0)/dq1)*dqi +                       &
-     &                  ((xc0P - xc00)/dq2)*dqj
-              dxc = dxc + ((dxc00 - dxcM0)/dq1)*dqi +                   &
-     &                    ((dxc0P - dxc00)/dq2)*dqj
+              xc  =  xc + ((xc00 - xcM0)/dq1)*dqi   + (( xc0P -  xc00)/dq2)*dqj
+              dxc = dxc + ((dxc00 - dxcM0)/dq1)*dqi + ((dxc0P - dxc00)/dq2)*dqj
              end if
             end if
  
@@ -428,7 +407,6 @@
            end if                          !end if(itheory_xc)
  
 ! ***************************************************************************
-!
 !                                FORCES
 ! ***************************************************************************
            if (iforce .eq. 1) then
@@ -440,23 +418,19 @@
             if (itheory .eq. 1) then
              do issh = 1, nssh(in1)
               do jssh = 1, nssh(in2)
-               xforce = xforce +                                        &
-     &         Qin(issh,iatom)*Qin(jssh,jatom)*coulombD(issh,jssh)
+               xforce = xforce + Qin(issh,iatom)*Qin(jssh,jatom)*coulombD(issh,jssh)
               end do
              end do
             else if (itheory .eq. 0 .or. itheory .eq. 2) then
              do issh = 1, nssh(in1)
               do jssh = 1, nssh(in2)
-               xforce = xforce +                                        &
-     &         Qneutral(issh,in1)*Qneutral(jssh,in2)*coulombD(issh,jssh)
+               xforce = xforce + Qneutral(issh,in1)*Qneutral(jssh,in2)*coulombD(issh,jssh)
               end do
              end do
             end if
               
-            dusr(:,iatom) = dusr(:,iatom) -                             &
-     &        eta(:)*(eq2/2.0d0)*(Zi*Zj/distance**2 + xforce)
-            dusr(:,jatom) = dusr(:,jatom) +                             &
-     &        eta(:)*(eq2/2.0d0)*(Zi*Zj/distance**2 + xforce)
+            dusr(:,iatom) = dusr(:,iatom) - eta(:)*(eq2/2.0d0)*(Zi*Zj/distance**2 + xforce)
+            dusr(:,jatom) = dusr(:,jatom) + eta(:)*(eq2/2.0d0)*(Zi*Zj/distance**2 + xforce)
 
 ! Now we add the corksr correction. Both of these are d/dr1
 ! derivatives and are NOT force-like.
@@ -465,7 +439,6 @@
              dusr(:,iatom) = dusr(:,iatom) - dcorksr(:)
              dusr(:,jatom) = dusr(:,jatom) + dcorksr(:)
             end if
- 
 ! XC-DOUBLE COUNTING FORCE:
             if (itheory_xc .eq. 0) then
              dxcv(:,iatom) = dxcv(:,iatom) + eta(:)*dxc/2.0d0
@@ -473,12 +446,8 @@
             end if
            end if                  ! end if (forces)
           end if                   ! end if (iatom .eq. jatom)
- 
-! End of loop over neighbors
-         end do
- 
-! End of loop over iatom
-        end do
+         end do   ! End of loop over neighbors
+        end do  ! End of loop over iatom
 
 ! Subtract the forces for the ewald interaction
 ! The variable fewald is already force-like.
@@ -510,14 +479,12 @@
         if (itheory .eq. 1) then
          do iatom = 1, natoms
           do jatom = iatom, natoms
-           
 ! Calculate q(iatom)*q(jatom) - q0(iatom)*q0(jatom) = QQ
            QQ = Q(iatom)*Q(jatom) - Q0(iatom)*Q0(jatom)
            if (iatom .eq. jatom) then
             eklr = eklr + (eq2/2.0d0)*ewald(iatom,jatom)*QQ
            else
-            eklr = eklr + (eq2/2.0d0)*ewald(iatom,jatom)*QQ +           &
-     &                    (eq2/2.0d0)*ewald(jatom,iatom)*QQ
+            eklr = eklr + (eq2/2.0d0)*ewald(iatom,jatom)*QQ +(eq2/2.0d0)*ewald(jatom,iatom)*QQ
            end if
           end do
          end do

@@ -134,8 +134,8 @@
         real, dimension (3) :: sighat
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE               ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE      ! IF_DEF_ORDERN_END
  
 ! Procedure
 ! ========================================================================
@@ -157,14 +157,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!         end if     ! IF_DEF_ORDERN_END
+
 
 !***************************************************************************
 !                        T W O - C E N T E R   P A R T
@@ -227,17 +227,14 @@
            isorp = 0
            interaction = 6
            in3 = in2
-           call doscentros (interaction, isorp, kforce, in1, in2, in3, y,   &
-     &                      eps, deps, bcxcx, bcxcpx)
+           call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bcxcx, bcxcpx)
  
 ! Notice the explicit - sign which makes f force like.
            do inu = 1, num_orb(in3)
             do imu = 1, num_orb(in1)
              do ix = 1, 3
-!             faxc(ix,ineigh,iatom) = faxc(ix,ineigh,iatom)            &
-!    &         - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
-              fotxc(ix,ineigh,iatom) = fotxc(ix,ineigh,iatom)            &
-     &         - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
+!             faxc(ix,ineigh,iatom)  = faxc(ix,ineigh,iatom)   - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
+              fotxc(ix,ineigh,iatom) = fotxc(ix,ineigh,iatom)  - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
              end do
             end do
            end do 

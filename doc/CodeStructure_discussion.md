@@ -35,169 +35,26 @@ _VNL  … non-local potential?
 
 # PLEASE SELECT WHICH CAN BE REMOVED:
 
-
-## ASSEMBLERS
-
-
-[ ] assemble_1c_vdip.f90
-[ ] assemble_2c.f90
-[x] assemble_2c_ordern_final.f90
-[x] assemble_2c_ordern_init.f90
-[ ] assemble_2c_PP.f90
-[ ] assemble_2c_S.f90
-[ ] assemble_3c.f90
-[x] assemble_3c_ordern_final.f90
-[ ] assemble_3c_PP.f90
-[ ] assemble_ca_2c_dip.f90
-[ ] assemble_ca_2c.f90
-[x] assemble_ca_2c_ordern_final.f90
-[ ] assemble_ca_3c_dip.f90
-[ ] assemble_ca_3c.f90
-[x] assemble_ca_3c_ordern_final.f90
-[ ] assemble_eh_2c.f90
-[x] assemble_eh_2c_ordern_final.f90
-[ ] assemble_eh.f90
-[ ] assemble_eh_usr.f90
-[ ] assemble_F.f90
-[ ] assemble_hartree.f90
-[ ] assemble_h.f90
-[ ] assemble_h_ks.f90
-[ ] assemble_hxc_1c.f90
-[ ] assemble_hxc_2c.f90
-[ ] assemble_hxc_3c.f90
-[ ] assemble_hxc.f90
-[ ] assemble_hxc_usr.f90
-[ ] assemble_lr_dip.f90
-[ ] assemble_lr.f90
-[x] assemble_lr_ordern_final.f90
-[ ] assemble_mcweda.f90
-[ ] assemble_olsxc_1c.f90
-[ ] assemble_olsxc_off.f90
-[ ] assemble_olsxc_on.f90
-[x] assemble_scissor.f90
-[ ] assemble_S.f90
-[ ] assemble_snxc_off.f90
-[ ] assemble_snxc_on.f90
-[ ] assemble_sVNL.f90
-[ ] assemble_usr.f90
-[ ] assemble_xczw.f90
-[ ] assemble_zw_1c_na.f90
-[ ] assemble_zw_2c_ct.f90
-[ ] assemble_zw_3c_ct.f90
-[ ] assemble_zw_off_na.f90
-[ ] assemble_zw_on_na.f90
-[ ] average_ca_rho.f90
-[ ] average_rho.f90
-[ ] build_ca_olsxc_on.f90
-[ ] build_ca_snxc_on.f90
-[ ] buildh.f90
-[ ] build_olsxc_off.f90
-[ ] build_olsxc_on.f90
-[ ] build_snxc_off.f90
-[ ] build_snxc_on.f90
-[ ] build_zw_off_na.f90
-[ ] build_zw_on_na.f90
-[ ] getenergy_eh.f90
-[ ] getenergy.f90
-[ ] getenergy_hxc.f90
-[ ] getenergy_KS.f90
-[ ] getenergy_mcweda.f90
-[ ] getenergy_zw.f90
-[ ] getherm.f90
-[ ] laplace_fdm.f90
-
-
-## INTERACTIONS
-
-
-[ ] cl_value.f90
-[ ] Dgelements.f90
-[ ] DgelementsG_overlap.f90
-[ ] DgelementsGS_overlap.f90
-[ ] DgelementsGS_VXC.f90
-[ ] DgelementsG_VNA.f90
-[ ] DgelementsG_VNA_SH.f90
-[ ] DgelementsG_VNA_SH_RNA.f90
-[ ] DgelementsG_VXC.f90
-[ ] Dgelements_VXC.f90
-[ ] doscentrosDipX.f90
-[ ] doscentrosDipY.f90
-[ ] doscentros.f90
-[ ] doscentrosG_overlap.f90
-[ ] doscentrosGS_overlap.f90
-[ ] doscentrosPP.f90
-[ ] doscentrosS.f90
-[ ] dosgaussians.f90
-[ ] Dtrescentros.f90
-[ ] DtrescentrosGHXC_VXC.f90
-[ ] DtrescentrosGS_VXC.f90
-[ ] DtrescentrosG_VNA.f90
-[ ] DtrescentrosG_VNA_SH.f90
-[ ] DtrescentrosG_VXC.f90
-[ ] DtrescentrosS.f90
-[ ] gelements.f90
-[ ] gelementsG_overlap.f90
-[ ] gelementsGS_overlap.f90
-[ ] gelementsGS_VXC.f90
-[ ] gelementsG_VNA.f90
-[ ] gelementsG_VNA_SH.f90
-[ ] gelementsG_VNA_SH_RNA.f90
-[ ] gelementsG_VXC.f90
-[ ] gelements_VXC.f90
-[ ] get_ewald.f90
-[ ] get_ewald_OMP.f90
-[ ] getHarmonic.f90
-[ ] get_info_orbital.f90
-[ ] get_vdw.f90
-[ ] internalLambda.f90
-[ ] smoother.f90
-[ ] tester2c.f90
-[ ] trescentros.f90
-[ ] trescentrosGHXC_VXC.f90
-[ ] trescentrosGS_VXC.f90
-[ ] trescentrosG_VNA.f90
-[ ] trescentrosG_VNA_SH.f90
-[ ] trescentrosG_VXC.f90
-[ ] trescentrosS.f90
-[ ] unocentros.f90
-
-
-## ROTATIONS
-
-
-[ ] chooserd.f90
-[ ] chooser.f90
-[ ] deps2center.f90
-[ ] deps3center.f90
-[ ] epsilon.f90
-[ ] makeDmat.f90
-[ ] makeDmatPP.f90
-[ ] rotated.f90
-[ ] rotatedPP.f90
-[ ] rotate.f90
-[ ] rotatePP.f90
-[ ] twisterd.f90
-[ ] twister.f90
-
-
-## INTERPOLATERS
-
-
-[ ] buildspline_1d.f90
-[ ] buildspline2_1d.f90
-[ ] getpsi.f90
-[ ] getvna.f90
-[ ] getYlm.f90
-[ ] interpolate_1d.f90
-[ ] interpolate_2d.f90
-[ ] recover_2cDipX.f90
-[ ] recover_2cDipY.f90
-[ ] recover_2c.f90
-[ ] recover_3c.f90
-[ ] recoverC.f90
-[ ] recover_PP.f90
-[ ] recover_S.f90
-[ ] setterp_2d.f90
-
-
-
+There ifs should be removed  `getforces_mcweda.f90`
+```
+          if (itheory_xc .eq. 1) then
+           !write (*,*) ' Dassemble on-site SNXC force contributions. '
+           if (itheory .eq. 1) then
+             call Dassemble_ca_snxc_on (nprocs, iordern)
+             call Dassemble_ca_snxc_2c (nprocs, iordern)
+           else
+             call Dassemble_snxc_on (nprocs, iordern)
+             call Dassemble_snxc_2c (nprocs, iordern)
+           endif
+          end if
+          if (itheory_xc .eq. 2) then
+           !write (*,*) ' Dassemble on-site OSLXC force contributions. '
+           if (itheory .eq. 1) then
+             call Dassemble_ca_olsxc_on (nprocs, iordern)
+             call Dassemble_ca_olsxc_2c (nprocs, iordern)
+           else
+             call Dassemble_olsxc_on (nprocs, iordern)
+             call Dassemble_olsxc_2c (nprocs, iordern)
+           endif
+          end if
+```

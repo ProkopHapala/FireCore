@@ -55,8 +55,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine reallocate_h (natoms, neigh_max, neighPP_max, itheory, &
-     &                           itheory_xc, igauss)
+        subroutine reallocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
         use interactions
         use options, only : idipole
         implicit none

@@ -61,8 +61,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine doscentrosS (interaction, isub, iforce, in1, in2, &
-     &                         in3, distance, eps, sx, spx)
+        subroutine doscentrosS (interaction, isub, iforce, in1, in2, in3, distance, eps, sx, spx)
         use dimensions
         use interactions
         implicit none
@@ -153,14 +152,10 @@
 ! -slist = output list of matrix elements
 ! -dslist = output list of derivatives of matrix elements
         do index = 1, index_maxS(in1,in3)
-
          if (interaction .ne. 20) then
-          
-          call interpolate_1d (interaction, isub, in1, in2, index, iforce,   &
-     &                         distance, slist(index), dslist(index))
+          call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, slist(index), dslist(index))
          else
-          call interpolate_1d (interaction, isub, in1, in3, index, iforce,   &
-     &                         distance, slist(index), dslist(index))
+          call interpolate_1d (interaction, isub, in1, in3, index, iforce, distance, slist(index), dslist(index))
          end if
         end do
 ! Now recover ss ans spm which are two-dimensional arrays from

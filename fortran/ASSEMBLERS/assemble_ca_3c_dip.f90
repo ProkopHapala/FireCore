@@ -170,8 +170,8 @@
         real, dimension (:, :, :, :), allocatable :: spmatG
       
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                ! IF_DEF_ORDERN_END
+!        common /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE        ! IF_DEF_ORDERN_END
 
 ! Procedure
 ! ========================================================================
@@ -199,14 +199,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)   + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!       end if   ! IF_DEF_ORDERN_END
+
 
         do iatom = iatomstart, iatomstart - 1 + natomsp
          matom = neigh_self(iatom)
@@ -453,12 +453,10 @@
 ! ! IF_DEF_GAUSS
 !            if (igauss .eq. 0) then
 !            interaction = 1
-!             call trescentros (interaction, isorp, isorpmax, in1, in2,   &
-!      &                        indna, x, y, cost, eps, bccax, nspecies)
+!             call trescentros (interaction, isorp, isorpmax, in1, in2, indna, x, y, cost, eps, bccax, nspecies)
 !            end if
 !           if (igauss .eq. 1) then
-!              call trescentrosG_VNA_SH(isorp, in1, in2, indna, x, y,     &
-!      &                                cost, eps, bccax, rcutoff)
+!              call trescentrosG_VNA_SH(isorp, in1, in2, indna, x, y,   cost, eps, bccax, rcutoff)
 !           end if
 ! ! END_DEF_GAUSS
 

@@ -183,8 +183,8 @@
         real, dimension (3) :: sighat
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                 ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE        ! IF_DEF_ORDERN_END
 
 ! Procedure
 ! ========================================================================
@@ -205,14 +205,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!         end if        ! IF_DEF_ORDERN_END
+
 
 !
 !****************************************************************************
@@ -312,28 +312,14 @@
 
 ! HAO : include gaussians at May 27, 2005
 !         if (igauss.eq.0) then      IF_DEF_GAUSS_END
-            call Dtrescentros (interaction, isorp, isorpmax, in1,            &
-     &                         in2, indna, x, y, cost, eps, depsA, depsB,    &
-     &                         rhat, sighat, rhoin, rhoxpa, rhoxpb, rhoxpc,  &
-     &                         nspecies)
-
-
-            call DtrescentrosS (isorp, isorpmax, in1, in2, indna, x, y, cost,&
-     &                          rhat, sighat, rhomm, rhompa, rhompb, rhompc, &
-     &                          nspecies)
+            call Dtrescentros  (interaction, isorp, isorpmax, in1, in2, indna, x, y, cost, eps, depsA, depsB,  rhat, sighat, rhoin, rhoxpa, rhoxpb, rhoxpc, nspecies)
+            call DtrescentrosS (isorp, isorpmax, in1, in2, indna, x, y, cost, rhat, sighat, rhomm, rhompa, rhompb, rhompc, nspecies)
 ! ! IF_DEF_GAUSS
 !             else if (igauss.eq.1) then
-!             call DtrescentrosG_VXC (isorp, in1, in2, indna, x, y, cost, &
-!      &                              eps, depsA, depsB, rhat, sighat,    &
-!      &                              rhoin, rhoxpa, rhoxpb, rhoxpc, rcutoff)
-
+!             call DtrescentrosG_VXC (isorp, in1, in2, indna, x, y, cost, eps, depsA, depsB, rhat, sighat,rhoin, rhoxpa, rhoxpb, rhoxpc, rcutoff)
 ! ! The terms rhompa, rhompb, and rhompc are already force-like ( - ) !!
-!             call trescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost, &
-!      &                              eps, rhomm, rcutoff)
-
-!             call DtrescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost,&
-!      &                               rhat, sighat, rhomm, rhompa,       &
-!      &                               rhompb, rhompc, rcutoff)
+!             call trescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost, eps, rhomm, rcutoff)
+!             call DtrescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost, rhat, sighat, rhomm, rhompa, rhompb, rhompc, rcutoff)
 !          end if
 ! ! END_DEF_GAUSS
 

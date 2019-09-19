@@ -86,8 +86,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine trescentros (interaction, isorp, maxtype, in1, in2, indna, &
-     &                           x, y, cost, eps, bcnax, nspecies)
+        subroutine trescentros (interaction, isorp, maxtype, in1, in2, indna,  x, y, cost, eps, bcnax, nspecies)
         use dimensions
         use interactions
         use integrals

@@ -54,8 +54,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-subroutine allocate_neigh (nprocs, my_proc, iordern, &
- &icluster, ivdw, ifixneigh,iwrthampiece, iwrtatom)
+subroutine allocate_neigh (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh,iwrthampiece, iwrtatom)
 	use configuration
 	use interactions
 	use neighbor_map

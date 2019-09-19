@@ -70,8 +70,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine neighborsPP (nprocs, my_proc, iordern, icluster,   &
-     &                        iwrtneigh)
+        subroutine neighborsPP (nprocs, my_proc, iordern, icluster, iwrtneigh)
         use configuration
         use dimensions
         use interactions
@@ -135,8 +134,7 @@
           natomsp = natomsp + 1
           iatomstart = natomsp*my_proc + 1
          else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-     &                + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+          iatomstart = (natomsp + 1)*mod(natoms,nprocs)   + natomsp*(my_proc - mod(natoms,nprocs)) + 1
          end if
         else
          iatomstart = 1
@@ -496,8 +494,7 @@
           end do
         end do
 
-!        if (iordern .eq. 1)                                                  &
-!     &   call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)
+!        if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)
 !        call writeout_neighborsPP (nprocs, iwrtneigh, basisfile)
  
 ! Format Statements

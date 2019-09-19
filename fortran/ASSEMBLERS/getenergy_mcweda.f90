@@ -50,7 +50,7 @@
 
         use options 
         use energy
-        use mpi_main
+!        use mpi_main     ! IF_DEF_MPI_END
         use scf
         use configuration
         use interactions
@@ -76,8 +76,7 @@
 ! Now call the stuff for the short-range interactions and the ewald terms
 ! for the final time to get the forces.
          if (itheory .eq. 1 .or. itheory .eq. 2) then
-          call get_ewald (nprocs, my_proc, iforce, icluster, itheory,&
-     &                    iordern)
+          call get_ewald (nprocs, my_proc, iforce, icluster, itheory,iordern)
          end if
  
 ! Now call the short-ranged potential to get: u0(iatom,ineigh) and uee00(iatom).
@@ -85,8 +84,7 @@
 ! neighbor to iatom.  The total energy per unit cell is
 ! sum(iatom,ineigh) u0(iatom,ineigh) - sum(iatom) uee00(iatom).
 ! The energy/cell uii_uee is returned in the calling statment.
-         call assemble_usr (itheory, itheory_xc, iforce, uxcdcc_hf,  &
-     &                      uiiuee)
+         call assemble_usr (itheory, itheory_xc, iforce, uxcdcc_hf,  uiiuee)
 
 ! If using the average density approximation or the orbital occupancy
 ! formalism, then the double-counting correction term must be different.
@@ -103,24 +101,26 @@
 
 ! ===========================================================================
          etot = ebs + uiiuee + uxcdcc + etotxc_1c
-         if (ivdw .eq. 1) then
-          call get_vdw () 
-          etot = etot + vdw
-         end if
-
+! ! IF_DEF_VDW
+!          if (ivdw .eq. 1) then
+!           call get_vdw () 
+!           etot = etot + vdw
+!          end if
+! ! END_DEF_VDW
 ! IF_DEF_DFTD3
 !         if (idftd3 .ge. 1) then
 !          call dftd3_corrections
 !          etot = etot + etot_dftd3
 !         end if
 ! END_DEF_DFTD3
-
-         if (iharmonic .eq. 1) then
-          call getHarmonic() 
-          etot = etot + enHarmonic
-         end if
-         etot = etot + eqmmm
-!         write(*,*) 'eqmmm =', eqmmm
+! ! IF_DEF_harmonic
+!          if (iharmonic .eq. 1) then
+!           call getHarmonic() 
+!           etot = etot + enHarmonic
+!          end if
+! ! END_DEF_harmonic
+!         etot = etot + eqmmm              ! IF_DEF_QMMM
+! !         write(*,*) 'eqmmm =', eqmmm    ! IF_DEF_QMMM
          etotper = etot/natoms
 !         please leave this until I finish--Brandon
 !         etotPerfectLattice = -322.813965
@@ -142,7 +142,7 @@
           write (*,503) uiiuee
           write (*,504) etotxc_1c
           write (*,505) uxcdcc
-          if (ivdw .eq. 1) write (*,506) vdw
+!          if (ivdw .eq. 1) write (*,506) vdw     IF_DEF_VDW_END
           write (*,507) etot
           write (*,508) etotper
           write (*,509) atomic_energy

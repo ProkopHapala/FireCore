@@ -68,8 +68,6 @@
        integer iatom, jatom, iorb, jorb
        logical readnij
 
-
-
 ! Procedure
 ! ===========================================================================
 
@@ -78,69 +76,52 @@
 !        write (*,*) ' Now we are assembling piecies of Hamiltonian. '
 !        write (*,*) '  '
 
-! read extended Hubbard
-        if (itheory .eq. 2) then
-         call assemble_eh ()
-!         return
-!        endif
+    if (itheory_xc .gt. 0 .and. itheory_xc .lt. 4 .and. itheory .lt. 4 ) then
+        call assemble_mcweda ()
+!    else if (itheory .eq. 2) then       ! IF_DEF_Hubbard_END
+!        call assemble_eh ()             ! IF_DEF_Hubbard_END
+!    else if (itheory_xc .eq. 0) then    ! IF_DEF_Horsfield_END
+!        call assemble_hxc ()            ! IF_DEF_Horsfield_END
+!    else if (itheory_xc .eq. 4) then    ! IF_DEF_ZW_END
+!        call assemble_xczw ()         ! IF_DEF_ZW_END
+    end if
+ 
 
-! read Horsfield data
-        elseif (itheory_xc .eq. 0) then
-          call assemble_hxc ()
-!          return
-!        endif
+! ! IF_DEF_gap
+! ! GAP ENRIQUE-FF
+!         if ((igap.eq.1) .or. (igap.eq.2)) then
+! ! read the previous nij if it exists, if not, consider nij=0
+! 	     inquire (file = './nijmatrix', exist = readnij)
+! 	     if (readnij) then
+!           open(271, file = './nijmatrix', status='old')
+! 	      write (*,*) 'nijmatrix exists'
+!           do iatom = natomhf_beg, natomhf_end
+!             do jatom = natomhf_beg, natomhf_end
+!               do iorb = 1, numorb_max
+!                 do jorb = 1, numorb_max
+!                   read(271,*) nij(iorb,iatom,jorb,jatom)
+!                 end do
+!               end do
+!             end do
+!           end do
+! 	      close(271)
+!          else
+! 	       nij = 0.0
+! 	     end if
+!         end if
 
-! +++++++++
-!              New theory Mcweda second-order
-!++++++++++
+!         if (igap.eq.1) then
+! 	     call assemble_hartree()
+!         end if
 
-
-! read McWeda data
-        elseif (itheory_xc .gt. 0 .and. itheory_xc .lt. 4 .and. itheory .lt. 4 ) then
-          call assemble_mcweda ()
-!          return
-! IF_DEF_ZW
-!        elseif (itheory_xc .eq. 4) then
-!          call assemble_xczw ()
-! END_DEF_ZW
-        endif
-
-! GAP ENRIQUE-FF
-        if ((igap.eq.1) .or. (igap.eq.2)) then
-! read the previous nij if it exists, if not, consider nij=0
-	     inquire (file = './nijmatrix', exist = readnij)
-	     if (readnij) then
-          open(271, file = './nijmatrix', status='old')
-	      write (*,*) 'nijmatrix exists'
-          do iatom = natomhf_beg, natomhf_end
-            do jatom = natomhf_beg, natomhf_end
-              do iorb = 1, numorb_max
-                do jorb = 1, numorb_max
-                  read(271,*) nij(iorb,iatom,jorb,jatom)
-                end do
-              end do
-            end do
-          end do
-	      close(271)
-         else
-	       nij = 0.0
-	     end if
-        end if
-
-        if (igap.eq.1) then
-	     call assemble_hartree()
-        end if
-
-        if ((igap.eq.3).and.(Kscf.eq.1)) then
-         call assemble_scissor()
-        end if
-! end GAP ENRIQUE-FF
-
-
+!         if ((igap.eq.3).and.(Kscf.eq.1)) then
+!          call assemble_scissor()
+!         end if
+! ! end GAP ENRIQUE-FF
+! ! IF_DEF_gap
 
 ! Deallocate Arrays
 ! ===========================================================================
-
 
 ! Format Statements
 ! ===========================================================================

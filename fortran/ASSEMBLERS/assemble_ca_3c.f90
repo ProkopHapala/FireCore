@@ -165,8 +165,8 @@
         real, dimension (:, :, :, :), allocatable :: spmatG
       
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE              ! IF_DEF_ORDERN_END
+!        common /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE      ! IF_DEF_ORDERN_END
 
 ! Procedure
 ! ========================================================================
@@ -194,14 +194,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)    + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!         end if    ! IF_DEF_ORDERN_END
+
 
         do iatom = iatomstart, iatomstart - 1 + natomsp
          matom = neigh_self(iatom)
@@ -361,10 +361,8 @@
 ! ****************************************************************************
 ! Need direction cosines from atom 1 to ratm (rhatA1),
 ! and atom 2 to ratm (rhatA2).
-           distance_13 = sqrt((rna(1) - r1(1))**2 + (rna(2) - r1(2))**2 &
-     &                                           + (rna(3) - r1(3))**2)
-           distance_23 = sqrt((rna(1) - r2(1))**2 + (rna(2) - r2(2))**2 &
-     &                                           + (rna(3) - r2(3))**2)
+           distance_13 = sqrt((rna(1) - r1(1))**2 + (rna(2) - r1(2))**2 + (rna(3) - r1(3))**2)
+           distance_23 = sqrt((rna(1) - r2(1))**2 + (rna(2) - r2(2))**2 + (rna(3) - r2(3))**2)
  
 ! Now let's calculate the asymptotic form so that we can match these
 ! better with the sticky smooters.
@@ -424,12 +422,10 @@
             do imu = 1, num_orb(in1)
              sterm = dq3*s_mat(imu,inu,mneigh,iatom)/2.0d0
              dterm = dq3*dip(imu,inu,mneigh,iatom)/y
-             emnpl(imu,inu) = (sterm - dterm)/distance_13               &
-     &                       + (sterm + dterm)/distance_23
-             ewaldsr(imu,inu,mneigh,iatom) =                            &
-     &        ewaldsr(imu,inu,mneigh,iatom) + emnpl(imu,inu)*eq2
+             emnpl(imu,inu) = (sterm - dterm)/distance_13 + (sterm + dterm)/distance_23
+             ewaldsr(imu,inu,mneigh,iatom) = ewaldsr(imu,inu,mneigh,iatom) + emnpl(imu,inu)*eq2
             !SFIRE
-            ewaldsr(inu,imu,jneigh,jatom)=ewaldsr(imu,inu,mneigh,iatom)
+            ewaldsr(inu,imu,jneigh,jatom) = ewaldsr(imu,inu,mneigh,iatom)
             !SFIRE
             end do
            end do
@@ -446,12 +442,10 @@
 ! ! IF_DEF_GAUSS
 !            if (igauss .eq. 0) then
 !            interaction = 1
-!             call trescentros (interaction, isorp, isorpmax, in1, in2,   &
-!      &                        indna, x, y, cost, eps, bccax, nspecies)
+!             call trescentros (interaction, isorp, isorpmax, in1, in2, indna, x, y, cost, eps, bccax, nspecies)
 !            end if
 !           if (igauss .eq. 1) then
-!              call trescentrosG_VNA_SH(isorp, in1, in2, indna, x, y,     &
-!      &                                cost, eps, bccax, rcutoff)
+!              call trescentrosG_VNA_SH(isorp, in1, in2, indna, x, y, cost, eps, bccax, rcutoff)
 !           end if
 ! ! END_DEF_GAUSS
 
@@ -462,10 +456,8 @@
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
               if (igauss .eq. 1) then
-              bccax(imu,inu) = bccax(imu,inu) +                         &
-     &            smatG(imu,inu,mneigh,iatom)/R_na(isorp,indna)
+                bccax(imu,inu) = bccax(imu,inu) + smatG(imu,inu,mneigh,iatom)/R_na(isorp,indna)
               end if
-
               bcca(imu,inu) = bcca(imu,inu) + bccax(imu,inu)*dxn
              end do
             end do
@@ -476,14 +468,10 @@
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
 !$omp atomic 
-             vca(imu,inu,mneigh,iatom) = vca(imu,inu,mneigh,iatom) +    &
-                                      (stn1(imu,inu)*bcca(imu,inu) +    &
-     &                                 stn2(imu,inu)*emnpl(imu,inu))*eq2
-
+             vca(imu,inu,mneigh,iatom) = vca(imu,inu,mneigh,iatom) + ( stn1(imu,inu)*bcca (imu,inu) + stn2(imu,inu)*emnpl(imu,inu) )*eq2
              !Symmetrize Hamiltonian (April 2018): jneigh is the
             !back_neigh:
               vca(inu,imu,jneigh,jatom) = vca(imu,inu,mneigh,iatom)
-
             end do
            end do
  

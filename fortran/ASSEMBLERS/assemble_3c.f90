@@ -139,8 +139,8 @@
         real, dimension (3) :: sighat
  
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                ! IF_DEF_ORDERN_END
+!        common /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE        ! IF_DEF_ORDERN_END
 
 ! Procedure
 ! ========================================================================
@@ -157,14 +157,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)    + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
-! ! END_DEF_ORDERN
+! ! END_DEF_ORDERN 
+        iatomstart = 1
+        natomsp = natoms
+!         end if   ! IF_DEF_ORDERN_END
+
 
 ! Choose atom ialp in the central cell. This is the atom whose position
 ! we take the derivative, and is the atom who has the the neutral atom
@@ -256,11 +256,9 @@
            interaction = 1
 ! ! IF_DEF_GAUSS
 !            if (igauss .eq. 0) then
-!             call trescentros (interaction, isorp, isorpmax, in1, in2,   &
-!      &                        indna, x, y, cost, eps, bcnax, nspecies)
+!             call trescentros (interaction, isorp, isorpmax, in1, in2, indna, x, y, cost, eps, bcnax, nspecies)
 !            else 
-!             call trescentrosG_VNA (in1, in2, indna, x, y, cost, eps,    &
-!      &                             bcnax, rcutoff)
+!             call trescentrosG_VNA (in1, in2, indna, x, y, cost, eps,   bcnax, rcutoff)
 !            end if
 ! ! END_DEF_GAUSS
 

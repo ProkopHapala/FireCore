@@ -59,8 +59,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine buildspline_1d (integral, numz, itype, in1, in2, xmax,   &
-     &                             interaction)
+        subroutine buildspline_1d (integral, numz, itype, in1, in2, xmax,  interaction)
         use dimensions
         use constants_fireball
         use integrals

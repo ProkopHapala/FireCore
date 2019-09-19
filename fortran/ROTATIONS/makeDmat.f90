@@ -52,8 +52,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine makeDmat (in1, in2, matm, dmatm, dmat,     &
-     &                       pmat, ddmat, dpmat, term)
+        subroutine makeDmat (in1, in2, matm, dmatm, dmat, pmat, ddmat, dpmat, term)
         use dimensions
         use interactions
         implicit none

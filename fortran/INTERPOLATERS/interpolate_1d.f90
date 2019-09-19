@@ -60,8 +60,7 @@
 !
 ! Program Declaration
 ! =========================================================================
-        subroutine interpolate_1d (interaction, isub, in1, in2, non2c,       &
-     &                             ioption, xin, yout, dfdx)
+        subroutine interpolate_1d (interaction, isub, in1, in2, non2c, ioption, xin, yout, dfdx)
         use dimensions
         use constants_fireball
         use integrals

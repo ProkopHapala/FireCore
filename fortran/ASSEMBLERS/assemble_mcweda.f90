@@ -99,21 +99,15 @@
 ! neighb(iatom,ineigh) = beta-sub-m, the beta value for the ineigh'th neighbor.
           if (Kscf .eq. 1) then
            if (ifixneigh .eq. 0) then
-            call reallocate_neigh (nprocs, my_proc, iordern,         &
-     &                             itheory, itheory_xc, igauss, icluster,    &
-     &                             ivdw, iwrthampiece,       &
-     &                             iwrtatom, igrid)
-            call neighbors (nprocs, my_proc, iordern, icluster,      &
-     &                      iwrtneigh, ivdw)
-            call neighborsPP (nprocs, my_proc, iordern, icluster,    &
-     &                        iwrtneigh)
+            call reallocate_neigh (nprocs, my_proc, iordern, itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece, iwrtatom, igrid)
+            call neighbors (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
+            call neighborsPP (nprocs, my_proc, iordern, icluster,iwrtneigh)
             call num_neigh_tot (numorb_max)
 ! bias voltage option
 !             if (ibias .eq. 1) call reallocate_bias (natoms)     ! IF_DEF_BIAS_END
            else
             !write (*,*) ' Using neighbor map from NEIGHBORS file. '
             call initneighbors (natoms, ivdw, nstepi)
-
             call num_neigh_tot (numorb_max)
            end if
            call backnay ()
@@ -121,8 +115,7 @@
             call neighbors_pairs(icluster)
             !SFIRE
            call common_neighbors (nprocs, my_proc, iordern, iwrtneigh_com)
-           call common_neighborsPP (nprocs, my_proc, iordern,        &
-     &                              iwrtneigh_com, icluster)
+           call common_neighborsPP (nprocs, my_proc, iordern,   iwrtneigh_com, icluster)
           end if ! end if (Kscf .eq. 1)
 
 
@@ -131,8 +124,7 @@
 ! ===========================================================================
           if ((itheory .eq. 1 .or. itheory .eq. 2) .and. Kscf .eq. 1) then
            kforce = 0
-           call get_ewald (nprocs, my_proc, kforce, icluster,        &
-     &                     itheory, iordern)
+           call get_ewald (nprocs, my_proc, kforce, icluster, itheory, iordern)
           end if
 
 ! ===========================================================================
@@ -189,11 +181,8 @@
            !write (*,*) ' Assemble OLS-xc exchange-correlation interactions. '
            call assemble_olsxc_1c (natoms, itheory, iforce)
           endif
-  
          if (V_intra_dip .eq. 1) then
-         
             call assemble_1c_vdip (natoms, itheory, iforce)
-
          end if !end V_intra_dip
 
 ! ===========================================================================
@@ -226,12 +215,10 @@
           endif
 
            !write (*,*) ' Assembling on-site part.'
-           call assemble_snxc_on (natoms, nprocs, my_proc, iordern, itheory, &
-     &                            uxcdcc_sn)
+           call assemble_snxc_on (natoms, nprocs, my_proc, iordern, itheory, uxcdcc_sn)
 
            !write (*,*) ' Assembling off-site part.'
-           call assemble_snxc_off (natoms, nprocs, my_proc, iordern,    &
-     &                             itheory)
+           call assemble_snxc_off (natoms, nprocs, my_proc, iordern,  itheory)
           end if ! if (itheory_xc = 1)
 
           if (itheory_xc .eq. 2 ) then
@@ -245,8 +232,7 @@
            endif
 
            !write (*,*) ' Assembling on-site part.'
-           call assemble_olsxc_on (natoms, nprocs, my_proc, iordern,    &
-     &                             itheory, uxcdcc_ols)
+           call assemble_olsxc_on (natoms, nprocs, my_proc, iordern, itheory, uxcdcc_ols)
 
            !write (*,*) ' Assembling off-site part.'
            call assemble_olsxc_off (nprocs, my_proc, iordern, itheory)
@@ -303,8 +289,7 @@
 !                                 Build H
 ! ===========================================================================
 ! Set up the full Hamiltonian and !writeout HS.dat.
-          call buildh (nprocs, itheory, iordern, itestrange,    &
-     &                 testrange, ibias, iwrtHS)
+          call buildh (nprocs, itheory, iordern, itestrange, testrange, ibias, iwrtHS)
 ! ===========================================================================
 ! For iwrthampiece .eq. 1 (file - output.input), !write out Hamiltonian pieces
 !          if (iwrthampiece .eq. 1) call hampiece (itheory)  ! IF_DEF_HAMPIECES_END

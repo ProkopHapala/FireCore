@@ -89,9 +89,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine DtrescentrosS (isorp, maxtype, in1, in2, indna, x, y,    &
-     &                           cost, rhat, sighat, bcnax, f3naXa, f3naXb, &
-     &                           f3naXc, nspecies)
+        subroutine DtrescentrosS (isorp, maxtype, in1, in2, indna, x, y, cost, rhat, sighat, bcnax, f3naXa, f3naXb, f3naXc, nspecies)
         use dimensions
         use interactions
         use integrals
@@ -209,32 +207,23 @@
          end if
 
         do iME = 1, index_maxS(in1,in2)
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(0,iME) = Q_L
            dxbcnalist(0,iME) = dQ_Ldx
            dybcnalist(0,iME) = dQ_Ldy
-
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(1,iME) = Q_L
            dxbcnalist(1,iME) = dQ_Ldx
            dybcnalist(1,iME) = dQ_Ldy
-
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(2,iME) = Q_L
            dxbcnalist(2,iME) = dQ_Ldx
            dybcnalist(2,iME) = dQ_Ldy
-
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(3,iME) = Q_L
            dxbcnalist(3,iME) = dQ_Ldx
            dybcnalist(3,iME) = dQ_Ldy
-
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(4,iME) = Q_L
            dxbcnalist(4,iME) = dQ_Ldx
            dybcnalist(4,iME) = dQ_Ldy
@@ -319,7 +308,6 @@
          do inu = 1, nssh(in2)
           do imu = 1, nssh(in1)
            f3naMa(ix,imu,inu) = temp(imu,inu)
-
           end do
          end do
 
@@ -328,8 +316,7 @@
 
          do iME = 1, index_maxS(in1,in2)
 !           hlist(iME) = - sighat(ix)*dyhlist(iME) - hlist(iME)/2.0d0
-          hlist(iME) = - sighat(ix)*dyhlist(iME)                             &
-     &                   + bmt*dphlist(iME) - hlist(iME)/2.0d0
+          hlist(iME) = - sighat(ix)*dyhlist(iME)   + bmt*dphlist(iME) - hlist(iME)/2.0d0
          end do
 
 ! Now recover f3naMb which is a two-dimensional array from hlist which

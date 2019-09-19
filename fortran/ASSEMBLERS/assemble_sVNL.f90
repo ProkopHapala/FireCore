@@ -141,8 +141,7 @@
 ! That is we get <phi_i | VNL_j>. We treat it just like an overlap.
           isorp = 0
           interaction = 5
-          call doscentrosPP (interaction, isorp, y, eps, deps, iforce,       &
-     &                       in1, in2, sVNLx, spVNLx)
+          call doscentrosPP (interaction, isorp, y, eps, deps, iforce, in1, in2, sVNLx, spVNLx)
  
 ! Now write arrays sVNL and spVNL (derivatives).
           if (ineigh .ne. matom) then

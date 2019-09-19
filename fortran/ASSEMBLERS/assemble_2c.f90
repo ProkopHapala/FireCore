@@ -119,8 +119,8 @@
         real, dimension (3, numorb_max, numorb_max) :: dippx
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                  ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE         ! IF_DEF_ORDERN_END
 
 ! Allocate Arrays
 ! ===========================================================================
@@ -150,14 +150,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!       end if       ! IF_DEF_ORDERN_END
+
 
 ! Loop over the atoms in the central cell.
 !!$omp parallel do private (ineigh, in1, in2, in3, jatom, matom, mbeta, kforce) &
@@ -210,14 +210,12 @@
           isorp = 0
           interaction = 1
           in3 = in2
-          call doscentros (interaction, isorp, iforce, in1, in2, in3, y,&
-     &                     eps, deps, sx, spx)
+          call doscentros (interaction, isorp, iforce, in1, in2, in3, y,  eps, deps, sx, spx)
  
           isorp = 0
           interaction = 13
           in3 = in2
-          call doscentros (interaction, isorp, iforce, in1, in2, in3, y,&
-     &                     eps, deps, tx, tpx)
+          call doscentros (interaction, isorp, iforce, in1, in2, in3, y, eps, deps, tx, tpx)
  
 ! Write s and t to appropriate arrays
           do inu = 1, num_orb(in2)
@@ -259,8 +257,7 @@
           kforce = 1                             ! don't calculate forces here
           interaction = 4
           in3 = in1
-          call doscentros (interaction, isorp, kforce, in1, in2, in3, y,&
-     &                     eps, deps, bcnax, bcnapx)
+          call doscentros (interaction, isorp, kforce, in1, in2, in3, y,  eps, deps, bcnax, bcnapx)
  
           do inu = 1, num_orb(in3)
            do imu = 1, num_orb(in1)
@@ -288,8 +285,7 @@
            isorp = 0
            interaction = 2
            in3 = in2
-           call doscentros (interaction, isorp, kforce, in1, in1, in3,  &
-     &                      y, eps, deps, bcnax, bcnapx)
+           call doscentros (interaction, isorp, kforce, in1, in1, in3,  y, eps, deps, bcnax, bcnapx)
  
            do inu = 1, num_orb(in3)
             do imu = 1, num_orb(in1)
@@ -302,8 +298,7 @@
            isorp = 0
            interaction = 3
            in3 = in2
-           call doscentros (interaction, isorp, kforce, in1, in2, in3,  &
-     &                      y, eps, deps, bcnax, bcnapx)
+           call doscentros (interaction, isorp, kforce, in1, in2, in3,  y, eps, deps, bcnax, bcnapx)
  
            do inu = 1, num_orb(in3)
             do imu = 1, num_orb(in1)
@@ -335,8 +330,7 @@
            isorp = 0
            interaction = 9
            in3 = in2
-           call doscentros (interaction, isorp, iforce, in1, in2, in3, y,     &
-      &                     eps, deps, dipx, dippx)
+           call doscentros (interaction, isorp, iforce, in1, in2, in3, y,   eps, deps, dipx, dippx)
 
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
@@ -356,8 +350,7 @@
            isorp = 0
            interaction = 10
            in3 = in2
-           call doscentrosDipY (interaction, isorp, iforce, in1, in2, in3, y,   &
-      &                     eps, deps, dipx, dippx)
+           call doscentrosDipY (interaction, isorp, iforce, in1, in2, in3, y,  eps, deps, dipx, dippx)
 
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
@@ -372,8 +365,7 @@
            isorp = 0
            interaction = 11
            in3 = in2
-           call doscentrosDipX (interaction, isorp, iforce, in1, in2, in3, y,   &
-      &                     eps, deps, dipx, dippx)
+           call doscentrosDipX (interaction, isorp, iforce, in1, in2, in3, y,  eps, deps, dipx, dippx)
 
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)

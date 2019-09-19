@@ -121,8 +121,7 @@
 ! term A: dAleft/dr*Aright*matrix
 ! term B: Aleft*dAright/dr*matrix
 ! term C Aleft*Aright*dmatrix/dr 
-        call makeDmat (in1, in2, matm, dmatm,   &
-     &                 dmat, pmat, ddmat, dpmat, dmatx)
+        call makeDmat (in1, in2, matm, dmatm, dmat, pmat, ddmat, dpmat, dmatx)
  
 ! Format Statements
 ! ===========================================================================

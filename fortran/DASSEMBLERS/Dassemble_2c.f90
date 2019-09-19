@@ -110,8 +110,8 @@
         real, dimension (3) :: sighat
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                  ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE         ! IF_DEF_ORDERN_END
 
 ! Procedure
 ! ===========================================================================
@@ -131,14 +131,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_MPI
+          iatomstart = 1
+          natomsp = natoms
+!         end if  ! IF_DEF_ORDERN_END
+
 
 ! Loop over the atoms in the central cell.
 !!$omp parallel do private (matom, r1, in1, ineigh, mbeta, jatom, r2, in2)    &
@@ -199,10 +199,8 @@
            sumS = 0.0d0
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
-             sumT = sumT                                                     &
-     &             + rho(imu,inu,ineigh,iatom)*tp_mat(ix,imu,inu,ineigh,iatom)
-             sumS = sumS                                                     &
-     &             + cape(imu,inu,ineigh,iatom)*sp_mat(ix,imu,inu,ineigh,iatom)
+             sumT = sumT + rho (imu,inu,ineigh,iatom)*tp_mat(ix,imu,inu,ineigh,iatom)
+             sumS = sumS + cape(imu,inu,ineigh,iatom)*sp_mat(ix,imu,inu,ineigh,iatom)
             end do
            end do
  
@@ -257,8 +255,7 @@
           kforce = 1           ! calculate forces here
           interaction = 4
           in3 = in1
-          call doscentros (interaction, isorp, kforce, in1, in2, in3, y,    &
-    &                      eps, deps, bcnax, bcnapx)
+          call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bcnax, bcnapx)
  
 ! Note that the loop below involves num_orb(in1) ONLY. Why?
 ! Because the potential is somewhere else (or even at iatom), but we are
@@ -268,8 +265,7 @@
           do inu = 1, num_orb(in3)
            do imu = 1, num_orb(in1)
             do ix = 1, 3
-             fana(ix,ineigh,iatom) = fana(ix,ineigh,iatom)                   &
-     &        - rho(imu,inu,matom,iatom)*bcnapx(ix,imu,inu)*eq2
+             fana(ix,ineigh,iatom) = fana(ix,ineigh,iatom)  - rho(imu,inu,matom,iatom)*bcnapx(ix,imu,inu)*eq2
             end do
            end do
           end do
@@ -300,15 +296,13 @@
            isorp = 0
            interaction = 2
            in3 = in2
-           call doscentros (interaction, isorp, kforce, in1, in1, in3, y,   &
-     &                      eps, deps, bcnax, bcnapx)
+           call doscentros (interaction, isorp, kforce, in1, in1, in3, y,  eps, deps, bcnax, bcnapx)
  
 ! Notice the explicit - sign which makes f force like.
            do inu = 1, num_orb(in3)
             do imu = 1, num_orb(in1)
              do ix = 1, 3
-              fotna(ix,ineigh,iatom) = fotna(ix,ineigh,iatom)                &
-     &         - rho(imu,inu,ineigh,iatom)*bcnapx(ix,imu,inu)*eq2
+              fotna(ix,ineigh,iatom) = fotna(ix,ineigh,iatom) - rho(imu,inu,ineigh,iatom)*bcnapx(ix,imu,inu)*eq2
              end do
             end do
            end do

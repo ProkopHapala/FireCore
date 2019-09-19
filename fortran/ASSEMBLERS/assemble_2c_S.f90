@@ -108,8 +108,8 @@
         real, dimension (3, numorb_max, numorb_max) :: spx
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE              ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE     ! IF_DEF_ORDERN_END
 
 ! Allocate Arrays
 ! ===========================================================================
@@ -132,14 +132,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                 &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs) + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+           iatomstart = 1
+           natomsp = natoms
+!       end if   ! IF_DEF_ORDERN_END
+
 
 ! Loop over the atoms in the central cell.
 !!$omp parallel do private (ineigh, in1, in2, in3, jatom, matom, mbeta, kforce) &
@@ -193,8 +193,7 @@
           interaction = 1
           kforce = 0
           in3 = in2
-          call doscentros (interaction, isorp, kforce, in1, in2, in3, y,&
-     &                     eps, deps, sx, spx)
+          call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, sx, spx)
 
 
 ! Write s and t to appropriate arrays

@@ -61,8 +61,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine doscentros (interaction, isub, iforce, in1, in2, in3,    & 
-     &                         distance, eps, deps, sx, spx)
+        subroutine doscentros (interaction, isub, iforce, in1, in2, in3,  distance, eps, deps, sx, spx)
         use dimensions
         use interactions
         implicit none
@@ -171,11 +170,9 @@
 !         if (interaction .ne. 2 .or. interaction .ne. 15) then
          if ( switch ) then
 !            if(interaction .eq. 2) write(*,*) 'Wrong'
-          call interpolate_1d (interaction, isub, in1, in2, index, iforce,   &
-     &                         distance, slist(index), dslist(index))
+          call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, slist(index), dslist(index))
          else
-          call interpolate_1d (interaction, isub, in1, in3, index, iforce,   &
-     &                         distance, slist(index), dslist(index))
+          call interpolate_1d (interaction, isub, in1, in3, index, iforce, distance, slist(index), dslist(index))
 !          write (1000,*) interaction, isub, slist(index),dslist(index)
          end if
         end do
