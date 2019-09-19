@@ -89,9 +89,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dtrescentros (interaction, isorp, maxtype, in1, in2, indna,&
-     &                           x, y, cost, eps, depsA, depsB, rhat, sighat, &
-     &                           bcnax, f3naXa, f3naXb, f3naXc, nspecies)
+        subroutine Dtrescentros (interaction, isorp, maxtype, in1, in2, indna, x, y, cost, eps, depsA, depsB, rhat, sighat, bcnax, f3naXa, f3naXb, f3naXc, nspecies)
         use dimensions
         use interactions
         use integrals

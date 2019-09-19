@@ -52,8 +52,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine doscentrosDipY (interaction, isub, iforce, in1, in2, in3,    & 
-     &                         distance, eps, deps, sx, spx)
+        subroutine doscentrosDipY (interaction, isub, iforce, in1, in2, in3, distance, eps, deps, sx, spx)
         use dimensions
         use interactions
         implicit none
@@ -131,8 +130,7 @@
 ! -slist = output list of matrix elements
 ! -dslist = output list of derivatives of matrix elements
         do index = 1, index_max2cDipY(in1,in3)
-          call interpolate_1d (interaction, isub, in1, in2, index, iforce,   &
-     &                         distance, slist(index), dslist(index))
+          call interpolate_1d (interaction, isub, in1, in2, index, iforce,distance, slist(index), dslist(index))
         end do
  
 ! Now recover sm ans spm which are two-dimensional arrays from
@@ -175,9 +173,7 @@
            end if
           end do
          end do
- 
          call rotated (in1, in3, eps, deps, sm, spmx, spx)
-
         end if
 
 ! Format Statements

@@ -55,8 +55,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine deps3center (r1, r2, r21, distance12, ratm, rnabc,   &
-     &                          eps3, dera3, der13)
+        subroutine deps3center (r1, r2, r21, distance12, ratm, rnabc, eps3, dera3, der13)
         use constants_fireball
         implicit none
  

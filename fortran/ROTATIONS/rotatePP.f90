@@ -130,8 +130,7 @@
            do m1 = 1, 2*l1 + 1
             do k2 = 1, 2*l2 + 1
              do k1 = 1, 2*l1 + 1
-              xmatrix(n1+k1,n2+k2) = xmatrix(n1+k1,n2+k2)   &
-     &          + left(k1,m1)*mmatrix(n1+m1,n2+m2)*right(k2,m2)
+              xmatrix(n1+k1,n2+k2) = xmatrix(n1+k1,n2+k2) + left(k1,m1)*mmatrix(n1+m1,n2+m2)*right(k2,m2)
              end do
             end do
            end do

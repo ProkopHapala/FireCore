@@ -100,22 +100,14 @@
 ! neighb(iatom,ineigh) = beta-sub-m, the beta value for the ineigh'th neighbor.
           if (Kscf .eq. 1) then
            if (ifixneigh .eq. 0) then
-            call reallocate_neigh (nprocs, my_proc, iordern,         &
-     &                             itheory, itheory_xc, igauss, icluster,    &
-     &                             ivdw, iwrthampiece,       &
-     &                             iwrtatom, igrid)
-            call neighbors (nprocs, my_proc, iordern, icluster,      &
-     &                      iwrtneigh, ivdw)
-
+            call reallocate_neigh (nprocs, my_proc, iordern,  itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece,  iwrtatom, igrid)
+            call neighbors (nprocs, my_proc, iordern, icluster,  iwrtneigh, ivdw)
             call num_neigh_tot (numorb_max)
-
            else
             write (*,*) ' Using neighbor map from NEIGHBORS file. '
             call initneighbors (natoms, ivdw, nstepi)
-
             call num_neigh_tot (numorb_max)
            end if
-
            call backnay ()
             !SFIRE
            call common_neighbors (nprocs, my_proc, iordern, iwrtneigh_com)

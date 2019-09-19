@@ -57,8 +57,7 @@
 ! email: jelinekp@fzu.cz
 !
 ! ===========================================================================
-        subroutine assemble_olsxc_on (natoms, nprocs, my_proc, iordern,      &
-     &                                itheory, uxcdcc)
+        subroutine assemble_olsxc_on (natoms, nprocs, my_proc, iordern, itheory, uxcdcc)
         use charges
         use density
         use dimensions
@@ -109,8 +108,7 @@
           natomsp = natomsp + 1
           iatomstart = natomsp*my_proc + 1
          else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-     &                + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+          iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
          end if
         else
          iatomstart = 1
@@ -136,8 +134,7 @@
           in3 = in1
           do inu = 1, num_orb(in3)
            do imu = 1, num_orb(in1)
-            vxc_ca(imu,inu,matom,iatom) =                                       &
-     &       vxc_ca(imu,inu,matom,iatom) + bcxcx(imu,inu)
+            vxc_ca(imu,inu,matom,iatom) =  vxc_ca(imu,inu,matom,iatom) + bcxcx(imu,inu)
            end do
           end do
           
@@ -149,8 +146,7 @@
           in3 = in1
           do inu = 1, num_orb(in3)
            do imu = 1, num_orb(in1)
-            vxc(imu,inu,matom,iatom) =                                    &
-     &       vxc(imu,inu,matom,iatom) + bcxcx(imu,inu)
+            vxc(imu,inu,matom,iatom) = vxc(imu,inu,matom,iatom) + bcxcx(imu,inu)
            end do
           end do
          end if

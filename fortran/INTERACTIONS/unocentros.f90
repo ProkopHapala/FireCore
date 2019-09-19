@@ -67,8 +67,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine unocentros (in1, iatom, iforce, itheory, itheory_xc,    &
-     &                         exc_1c, muexc_1c, dccexc_1c, mu1xc)
+        subroutine unocentros (in1, iatom, iforce, itheory, itheory_xc, exc_1c, muexc_1c, dccexc_1c, mu1xc)
      
         use dimensions
         use interactions

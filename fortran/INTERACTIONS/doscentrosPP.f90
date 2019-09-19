@@ -46,8 +46,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine doscentrosPP (interaction, isub, distance, eps, deps,     &
-     &                           iforce, in1, in2, sx, spx)
+        subroutine doscentrosPP (interaction, isub, distance, eps, deps, iforce, in1, in2, sx, spx)
         use dimensions
         use interactions
         implicit none
@@ -101,8 +100,7 @@
         if (iforce .eq. 1) spx = 0.0d0
 
         do index = 1, index_maxPP(in1,in2)
-         call interpolate_1d (interaction, isub, in1, in2, index, iforce,    &
-     &                        distance, pplist(index), dpplist(index))
+         call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, pplist(index), dpplist(index))
         end do
 
 ! When you change from < 1 | 2 > to < 2 | 1 > sometimes you need to change the 

@@ -37,10 +37,11 @@ def searchNamesInFile_re( fpath, fname, keyw_dict, re_split, bToLowerCase=True, 
                 if w == '!': break
                 w = w.lower()
                 ikey = keyw_dict.get(w,-1)
-                insertRecord( found[ikey], w, fname, (iline,line) )
+                if ikey >= 0:
+                    insertRecord( found[ikey], w, fname, (iline,line.strip()) )
     return found
 
-def searchKeywordsInFile_re( fpath, fname, keyw_dict, re_split, bToLowerCase=True, ound=None, verbose=False ):
+def searchKeywordsInFile_re( fpath, fname, keyw_dict, re_split, bToLowerCase=True, found=None, verbose=False ):
     if found is None:
         found = [ {} for k in keyw_dict ]
     with open( fpath, 'r' ) as fin:
@@ -137,7 +138,7 @@ def writeListNewLine(fout,lst, ntab=4 ):
         fout.write(",")
     fout.write("]")
 
-def writeTags( fout, dct, tab="    ",  ntab1=35, ntab2=80, bSortNames=True, bNewLineLine=False ):
+def writeTags( fout, dct, ntab1=35, ntab2=80, bSortNames=True, bNewLineLine=False, bAsVar=True ):
     names = dct.keys()
     if bSortNames:
         names=sorted(names)
@@ -149,8 +150,12 @@ def writeTags( fout, dct, tab="    ",  ntab1=35, ntab2=80, bSortNames=True, bNew
             print "WARRNING: record for name{"+name+"} is empty" 
         elif nrec==1:
             fname=next(iter(recs))
-            ic= writeTabled(fout, "'%s'" %name, 0,0 )
-            ic= writeTabled(fout, ":{",   ic,ntab1-5 )
+            if bAsVar:
+                ic= writeTabled(fout, "%s" %name, 0,0 )
+                ic= writeTabled(fout, "={",   ic,ntab1-5 )
+            else:
+                ic= writeTabled(fout, "'%s'" %name, 0,0 )
+                ic= writeTabled(fout, ":{",   ic,ntab1-5 )
             ic= writeTabled(fout, "'%s'" %str(fname      ), ic, ntab1 )
             if bNewLineLine:
                 fout.write(":")
@@ -159,8 +164,12 @@ def writeTags( fout, dct, tab="    ",  ntab1=35, ntab2=80, bSortNames=True, bNew
                 ic= writeTabled(fout, ":%s"  %str(recs[fname]), ic, ntab2 )
             ic= writeTabled(fout, "},\n", ic, ntab2 )
         else:
-            ic= writeTabled(fout, "'%s'" %name, 0,0 )
-            ic= writeTabled(fout, ":{", ic,ntab1-5 )
+            if bAsVar:
+                ic= writeTabled(fout, "%s" %name, 0,0 )
+                ic= writeTabled(fout, "={", ic,ntab1-5 )
+            else:
+                ic= writeTabled(fout, "'%s'" %name, 0,0 )
+                ic= writeTabled(fout, ":{", ic,ntab1-5 )
             fnames=recs.keys()
             if bSortNames:
                 fnames=sorted(fnames)
@@ -175,11 +184,16 @@ def writeTags( fout, dct, tab="    ",  ntab1=35, ntab2=80, bSortNames=True, bNew
                     ic= writeTabled(fout, ":%s,"  %str(recs[fname]), ic, ntab2 )
             ic= writeTabled(fout, "},\n", ic, ntab2 )
 
-def writeFoundTagFiles_py( keywords, found, ntab1=35, ntab2=80, bSortNames=True, bNewLineLine=False ):
+def writeFoundTagFile_py( fname, keywords, found, ntab1=4, ntab2=8, bSortNames=True, bNewLineLine=False, bAsVar=True ):
+    with open(fname, 'w' ) as fout:
+        for ik,key in enumerate(keywords):
+            writeTags( fout, found[ik], ntab1=ntab1, ntab2=ntab2, bSortNames=bSortNames, bNewLineLine=bNewLineLine, bAsVar=bAsVar )
+
+def writeFoundTagFiles_py( keywords, found, ntab1=35, ntab2=80, bSortNames=True, bNewLineLine=False, bAsVar=True ):
     for ik,key in enumerate(keywords):
         with open("tags_%s.py" %key, 'w' ) as fout:
             fout.write( "tag_dict_%s ={\n" %key )
-            writeTags(fout, found[ik], ntab1=ntab1, ntab2=ntab2, bSortNames=bSortNames, bNewLineLine=bNewLineLine )
+            writeTags(fout, found[ik], ntab1=ntab1, ntab2=ntab2, bSortNames=bSortNames, bNewLineLine=bNewLineLine, bAsVar=bAsVar )
             fout.write( "}\n\n" )
 
 def writeDefCallPairs( fout, defs, calls, tab="    ", bSort=True ):
@@ -214,6 +228,7 @@ if __name__ == "__main__":
 
     #path = "../SRC/LOOPS"
     path = "../fortran"
+    #path = "../fortran_tmp"
 
     names = [
         'itheory','itheory_xc',
@@ -223,17 +238,17 @@ if __name__ == "__main__":
         'iwrtfpieces'
     ]
     found = searchInPath( path, names, serchFunc=searchNamesInFile_re )
-    writeFoundTagFiles_py( names, found, ntab1=4, ntab2=8, bNewLineLine=True )
-
-    exit()
+    #writeFoundTagFiles_py( names, found, ntab1=4, ntab2=8, bNewLineLine=True )
+    writeFoundTagFile_py( "tags_ioption.py",  names, found, ntab1=4, ntab2=40, bSortNames=True, bNewLineLine=False )
+    #exit()
 
     keywords = [ 'function', 'subroutine', 'call', 'use' ]
-    found = searchKeywordsInPath( path, keywords, serchFunc=searchKeywordsInFile_re )
-    writeFoundTagFiles_py( keywords, found )
+    found = searchInPath( path, keywords, serchFunc=searchKeywordsInFile_re )
+    writeFoundTagFiles_py( keywords, found, bAsVar=False )
     
     from tags_subroutine import *
     from tags_call       import *
     with open('tags_subroutine2call.py','w') as fout:
         fout.write("\n\n\n\n\n\n")
-        writeDefCallPairs( fout, tag_dict_subroutine, tag_dict_call )
+        writeDefCallPairs( fout, tag_dict_subroutine, tag_dict_call  )
 

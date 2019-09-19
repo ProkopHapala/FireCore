@@ -173,11 +173,9 @@
         do igrid = 1,numz 
          do index = 1, index_max2c(in1,in3)
           if ( switch ) then
-           call interpolate_1d (interaction, isub, in1, in2, index, iforce,   &
-     &                         distance, slist(index), dslist(index))
+           call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, slist(index), dslist(index))
           else
-           call interpolate_1d (interaction, isub, in1, in3, index, iforce,   &
-     &                         distance, slist(index), dslist(index))
+           call interpolate_1d (interaction, isub, in1, in3, index, iforce, distance, slist(index), dslist(index))
           end if
          end do
          distance = distance + dx

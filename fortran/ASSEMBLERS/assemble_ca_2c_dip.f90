@@ -137,8 +137,8 @@
         real stn2
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE       ! IF_DEF_ORDERN_END
 
 
 ! Procedure
@@ -156,14 +156,13 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!         end if      ! IF_DEF_ORDERN_END
 
 ! Loop over the atoms in the central cell.
 !!$omp parallel do private (icount, icount_sav, in1, in2, in3, interaction)   &
@@ -316,8 +315,7 @@
           interaction = 4
           in3 = in1
           do isorp = 1, nssh(in2)
-           call doscentros (interaction, isorp, kforce, in1, in2, in3, y,    &
-     &                      eps, deps, bccax, bccapx)
+           call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bccax, bccapx)
            dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))
  
 ! Now correct bccax by doing the stinky correction.
@@ -367,8 +365,7 @@
            interaction = 2
            in3 = in2
            do isorp = 1, nssh(in1)
-            call doscentros (interaction, isorp, kforce, in1, in1, in3, y,   &
-     &                       eps, deps, bccax, bccapx)
+            call doscentros (interaction, isorp, kforce, in1, in1, in3, y, eps, deps, bccax, bccapx)
  
             dxn = (Qin(isorp,iatom) - Qneutral(isorp,in1))
             do inu = 1, num_orb(in3)
@@ -383,8 +380,7 @@
            interaction = 3
            in3 = in2
            do isorp = 1, nssh(in2)
-            call doscentros (interaction, isorp, kforce, in1, in2, in3, y,   &
-     &                       eps, deps, bccax, bccapx)
+            call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bccax, bccapx)
  
             dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))
             do inu = 1, num_orb(in3)

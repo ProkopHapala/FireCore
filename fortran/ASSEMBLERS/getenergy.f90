@@ -72,16 +72,16 @@
 !        write (*,*) ' Now we are calculating the total energy. '
 !        write (*,*) '  '
 
-        if      (iks        .eq. 1) then  
-                call getenergy_ks (itime_step)         ! Kohn-Sham Grid
-        else if (itheory    .eq. 2) then
-                call getenergy_eh (itime_step)         ! Extended Hubbard
-        else if (itheory_xc .eq. 0) then
-                call getenergy_hxc (itime_step)        ! doing Horsfield 
         if (itheory_xc .ne. 0 .and. itheory_xc .lt. 4) then
-                call getenergy_mcweda (itime_step)     ! doing McWeda
-        if (itheory_xc .eq. 4) then
-                call getenergy_zw (itime_step)         ! doing ZW-McWeda ( second order with Mulliken-Dipole )
+                call getenergy_mcweda (itime_step)      ! doing McWeda
+!        else if (iks        .eq. 1) then               ! IF_DEF_KS_END
+!                call getenergy_ks (itime_step)         ! IF_DEF_KS_END
+!        else if (itheory    .eq. 2) then               ! IF_DEF_Hubbard_END
+!                call getenergy_eh (itime_step)         ! IF_DEF_Hubbard_END 
+!        else if (itheory_xc .eq. 0) then               ! IF_DEF_Horsfield_END
+!                call getenergy_hxc (itime_step)        ! IF_DEF_Horsfield_END
+!        if (itheory_xc .eq. 4) then                    ! IF_DEF_ZW_END
+!                call getenergy_zw (itime_step)         ! IF_DEF_ZW_END     doing ZW-McWeda ( second order with Mulliken-Dipole )
         endif
  
 ! Format Statements

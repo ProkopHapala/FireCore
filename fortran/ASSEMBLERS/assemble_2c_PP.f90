@@ -97,9 +97,9 @@
         real, dimension (numorb_max) :: cl
         real, dimension (numorb_max, numorb_max) :: PPx
 
-! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+! BTN communication domain               
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                 ! IF_DEF_ordern_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE        ! IF_DEF_ordern_END
 
 ! Allocate Arrays
 ! ===========================================================================
@@ -118,14 +118,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs) + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!    end if   ! IF_DEF_ordern_END
+
 
 ! ****************************************************************************
 !
@@ -153,8 +153,7 @@
            do imu = 1, num_orb(in1)
             PPx(imu,inu) = 0.0d0
             do ncc = 1, num_orbPP(in2)
-             PPx(imu,inu) = PPx(imu,inu)                                     &
-     &        + cl(ncc)*sVNL(imu,ncc,ineigh,iatom)*sVNL(inu,ncc,ineigh,iatom)
+             PPx(imu,inu) = PPx(imu,inu) + cl(ncc)*sVNL(imu,ncc,ineigh,iatom)*sVNL(inu,ncc,ineigh,iatom)
             end do
            end do
           end do
@@ -163,8 +162,7 @@
           do inu = 1, num_orb(in1)
            do imu = 1, num_orb(in1)
 !$omp atomic
-            vnl(imu,inu,matom,iatom) = vnl(imu,inu,matom,iatom)              &
-     &                                    + PPx(imu,inu)
+            vnl(imu,inu,matom,iatom) = vnl(imu,inu,matom,iatom) + PPx(imu,inu)
            end do
           end do
 
@@ -199,8 +197,7 @@
            if (nPPx_self(iatom) .ne. ineigh) then
             write (*,*) ' Something really wrong in assemble_2c_PP.f90 '
             write (*,*) ' iatom, jatom, mbeta = ', iatom, jatom, mbeta
-            write (*,*) ' neigh_self(iatom), ineigh = ',                     &
-     &                    nPPx_self(iatom), ineigh  
+            write (*,*) ' neigh_self(iatom), ineigh = ', nPPx_self(iatom), ineigh  
 ! FIXME stop is not allowed in an OpenMP parallelized loop
 !           stop
            end if ! if(neighPP_self)
@@ -217,9 +214,7 @@
             do imu = 1, num_orb(in1)
              PPx(imu,inu) = 0.0d0
              do ncc = 1, num_orbPP(in1)
-              PPx(imu,inu) = PPx(imu,inu)                                    &
-     &         + cl(ncc)*sVNL(imu,ncc,mneigh_self,iatom)                     &
-     &                  *sVNL(inu,ncc,jneigh,jatom)
+              PPx(imu,inu) = PPx(imu,inu) + cl(ncc)*sVNL(imu,ncc,mneigh_self,iatom) *sVNL(inu,ncc,jneigh,jatom)
              end do ! do ncc
             end do ! do imu
            end do ! do inu
@@ -230,8 +225,7 @@
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
 !$omp atomic
-             vnl(imu,inu,kneigh,iatom) =                                    &
-     &        vnl(imu,inu,kneigh,iatom) + PPx(imu,inu)
+             vnl(imu,inu,kneigh,iatom) = vnl(imu,inu,kneigh,iatom) + PPx(imu,inu)
             end do ! do imu
            end do ! do inu
 
@@ -266,8 +260,7 @@
            if (nPP_self(iatom) .ne. ineigh) then
             write (*,*) ' Something really wrong in assemble_2c_PP.f90 '
             write (*,*) ' iatom, jatom, mbeta = ', iatom, jatom, mbeta
-            write (*,*) ' neigh_self(iatom), ineigh = ',                     &
-     &                    nPP_self(iatom), ineigh  
+            write (*,*) ' neigh_self(iatom), ineigh = ', nPP_self(iatom), ineigh  
 ! FIXME stop is not allowed in an OpenMP parallelized loop
            stop
            end if ! if(neighPP_self)
@@ -283,9 +276,7 @@
             do imu = 1, num_orb(in1)
              PPx(imu,inu) = 0.0d0
              do ncc = 1, num_orbPP(in2)
-              PPx(imu,inu) = PPx(imu,inu)                                    &
-     &         + cl(ncc)*sVNL(imu,ncc,ineigh,iatom)                          &
-     &                  *sVNL(inu,ncc,mneigh_self,jatom)
+              PPx(imu,inu) = PPx(imu,inu) + cl(ncc)*sVNL(imu,ncc,ineigh,iatom) *sVNL(inu,ncc,mneigh_self,jatom)
              end do
             end do
            end do
@@ -296,8 +287,7 @@
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
 !$omp atomic
-             vnl(imu,inu,kneigh,iatom) =                                    &
-     &        vnl(imu,inu,kneigh,iatom) + PPx(imu,inu)
+             vnl(imu,inu,kneigh,iatom) = vnl(imu,inu,kneigh,iatom) + PPx(imu,inu)
             end do
            end do
 

@@ -53,8 +53,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, &
-                                   igrid)
+        subroutine reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, igrid)
         use density
         use charges
         use interactions

@@ -121,7 +121,9 @@
              end do ! ineigh 
              if (count_neig .eq. 0) then
              num_neig_tot = num_neig_tot + 1
-             neighj_aux(num_neig_tot,iatom) = jatomPP 
+             neighj_aux(  ```
+             rhoij_off(imu,inu,ineigh,iatom) = rhoij_off(imu,inu,ineigh,iatom) &
+               &         + rhomx(imu,inu)*Qneutral(isorp,in2)num_neig_tot,iatom) = jatomPP 
              neighb_aux(num_neig_tot,iatom) = mbetaPP
              end if
            end do ! ineighPP

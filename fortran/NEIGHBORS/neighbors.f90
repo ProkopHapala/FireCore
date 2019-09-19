@@ -72,8 +72,7 @@
 ! Program Declaration
 ! ===========================================================================
 
-subroutine neighbors (nprocs, my_proc, iordern, icluster,    &
-     &                        iwrtneigh, ivdw)
+subroutine neighbors (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
     use configuration, only: nspecies, mbeta_max, natoms
     use options, only: iclassicMD
     use dimensions
@@ -107,10 +106,11 @@ subroutine neighbors (nprocs, my_proc, iordern, icluster,    &
 		implicit none
 		integer, intent(in) :: nprocs, my_proc,iatomstart,natomsp
 	end subroutine fillneigh
-
-	subroutine fillneigh_class(iatomstart,natomsp,nprocs, my_proc)
-		integer, intent(in) :: nprocs, my_proc,iatomstart,natomsp
-	end subroutine
+! ! IF_DEF_iclassicMD_END
+! 	subroutine fillneigh_class(iatomstart,natomsp,nprocs, my_proc)
+! 		integer, intent(in) :: nprocs, my_proc,iatomstart,natomsp
+! 	end subroutine
+! ! END_DEF_iclassicMD_END
 	end interface
 !END CHROM
 ! Procedure
@@ -130,24 +130,23 @@ subroutine neighbors (nprocs, my_proc, iordern, icluster,    &
           	natomsp = natomsp + 1
           	iatomstart = natomsp*my_proc + 1
          else
-          	iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-     &                + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+          	iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
          end if
     else
          iatomstart = 1
          natomsp = natoms
     end if
-    
-!CHROM
-	if (iclassicMD > 0)then
-		call fillneigh_class(iatomstart,natomsp,nprocs, my_proc)
-		return
-	endif
 
-	call fillneigh(iatomstart,natomsp,nprocs,my_proc)
-	
-!    if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)     ! IF_DEF_ORDERN_END
-!	call writeout_neighbors (nprocs, ivdw, iwrtneigh)
+!CHROM
+! ! IF_DEF_iclassicMD_END
+!     if (iclassicMD > 0)then                                             
+!         call fillneigh_class(iatomstart,natomsp,nprocs, my_proc)     
+!         return
+!     endif
+! ! END_DEF_iclassicMD_END
+    call fillneigh(iatomstart,natomsp,nprocs,my_proc)
+!    if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)     ! IF_DEF_ordern_END
+!    call writeout_neighbors (nprocs, ivdw, iwrtneigh)
 !END CHROM
 	return
 end subroutine neighbors
@@ -240,73 +239,75 @@ subroutine fillneigh(iatomstart,natomsp, nprocs,my_proc)
 
 end subroutine fillneigh
 
+! ! IF_DEF_iclassicMD_END
+! subroutine fillneigh_class(iatomstart,natomsp,nprocs, my_proc)
 
-subroutine fillneigh_class(iatomstart,natomsp,nprocs, my_proc)
+! 	use neighbor_map, only: neigh_b_classic, neigh_max_class, neighn_classic, neigh_classic
+! 	use configuration, only: ratom, xl, mbeta_max, natoms
+! 	use interactions, only: imass
+! 	use classicMD, only: potential
+! 	use options, only: icluster
+! 	implicit none
 
-	use neighbor_map, only: neigh_b_classic, neigh_max_class, neighn_classic, neigh_classic
-	use configuration, only: ratom, xl, mbeta_max, natoms
-	use interactions, only: imass
-	use classicMD, only: potential
-	use options, only: icluster
-	implicit none
+! 	interface
+! 		subroutine reallocate_2D_iarray(x,y,newx,newy,array)
+! 		    integer, intent (in) :: x,y
+! 	        integer, intent(in) :: newx, newy
+! 		    integer, dimension(:,:), allocatable :: array
+! 		end subroutine
+! 	end interface                                                                                                    
 
-	interface
-		subroutine reallocate_2D_iarray(x,y,newx,newy,array)
-		    integer, intent (in) :: x,y
-	        integer, intent(in) :: newx, newy
-		    integer, dimension(:,:), allocatable :: array
-		end subroutine
-	end interface                                                                                                    
+! 	integer, intent(in) :: nprocs, my_proc, iatomstart, natomsp
 
-	integer, intent(in) :: nprocs, my_proc, iatomstart, natomsp
+! 	integer :: iatom,jatom,mbeta,num_neigh,in1,in2, beta_max
+! 	real :: distance2,range2
 
-	integer :: iatom,jatom,mbeta,num_neigh,in1,in2, beta_max
-	real :: distance2,range2
+! 	if( icluster == 1 )then  
+! 		beta_max = 0
+! 	else 
+! 		beta_max = mbeta_max	
+! 	endif
 
-	if( icluster == 1 )then  
-		beta_max = 0
-	else 
-		beta_max = mbeta_max	
-	endif
-
-	do iatom = iatomstart, iatomstart - 1 + natomsp
- 		num_neigh = 0
- 		in1 = imass(iatom)
- 		do mbeta = 0, beta_max
- 			do jatom = 1, natoms
- 				in2 = imass(jatom)
-				distance2 = (ratom(1,iatom) - (xl(1,mbeta) + ratom(1,jatom)))**2&
-					&+ (ratom(2,iatom) - (xl(2,mbeta) + ratom(2,jatom)))**2 &
-					&+ (ratom(3,iatom) - (xl(3,mbeta) + ratom(3,jatom)))**2
+! 	do iatom = iatomstart, iatomstart - 1 + natomsp
+!  		num_neigh = 0
+!  		in1 = imass(iatom)
+!  		do mbeta = 0, beta_max
+!  			do jatom = 1, natoms
+!  				in2 = imass(jatom)
+! 				distance2 = (ratom(1,iatom) - (xl(1,mbeta) + ratom(1,jatom)))**2&
+! 					&+ (ratom(2,iatom) - (xl(2,mbeta) + ratom(2,jatom)))**2 &
+! 					&+ (ratom(3,iatom) - (xl(3,mbeta) + ratom(3,jatom)))**2
  
-				range2 = (potential(in1,in2)%cutoff)**2
-				if (distance2 <= range2) then
-					if ( iatom /= jatom  .and. distance2 < 0.7d0 .and. distance2 > 1.0d-8 ) then
-						write (*,*) ' WARNING - atoms dangerously close! '
-						write (*,*) ' iatom, jatom, distance = ', iatom, jatom, sqrt(distance2)
-					end if
- 					num_neigh = num_neigh + 1
- 					if( num_neigh == neigh_max_class ) then
-						neigh_max_class = floor(1.5*num_neigh)
-						call reallocate_2D_iarray(num_neigh,natoms,neigh_max_class,natoms,neigh_classic)
-						call reallocate_2D_iarray(num_neigh,natoms,neigh_max_class,natoms,neigh_b_classic)
-					endif
-					if(jatom==0)then
-						write(*,*)'ERROR - id of neighbor is 0!'
-						stop
-					endif
- 					neigh_classic(num_neigh,iatom) = jatom
- 					neigh_b_classic(num_neigh,iatom) = mbeta
-				end if
-			end do
- 		end do
- 		neighn_classic(iatom) = num_neigh
-! 		write(*,*)iatom,num_neigh
- 	end do
-! 	write(*,*)neigh_classic(4,1)
-! 	write(*,*)neighn_classic(1)
-! 	stop
-end subroutine fillneigh_class
+! 				range2 = (potential(in1,in2)%cutoff)**2
+! 				if (distance2 <= range2) then
+! 					if ( iatom /= jatom  .and. distance2 < 0.7d0 .and. distance2 > 1.0d-8 ) then
+! 						write (*,*) ' WARNING - atoms dangerously close! '
+! 						write (*,*) ' iatom, jatom, distance = ', iatom, jatom, sqrt(distance2)
+! 					end if
+!  					num_neigh = num_neigh + 1
+!  					if( num_neigh == neigh_max_class ) then
+! 						neigh_max_class = floor(1.5*num_neigh)
+! 						call reallocate_2D_iarray(num_neigh,natoms,neigh_max_class,natoms,neigh_classic)
+! 						call reallocate_2D_iarray(num_neigh,natoms,neigh_max_class,natoms,neigh_b_classic)
+! 					endif
+! 					if(jatom==0)then
+! 						write(*,*)'ERROR - id of neighbor is 0!'
+! 						stop
+! 					endif
+!  					neigh_classic(num_neigh,iatom) = jatom
+!  					neigh_b_classic(num_neigh,iatom) = mbeta
+! 				end if
+! 			end do
+!  		end do
+!  		neighn_classic(iatom) = num_neigh
+! ! 		write(*,*)iatom,num_neigh
+!  	end do
+! ! 	write(*,*)neigh_classic(4,1)
+! ! 	write(*,*)neighn_classic(1)
+! ! 	stop
+! end subroutine fillneigh_class
+! ! END_DEF_iclassicMD_END
+
 
 subroutine reallocate_2D_iarray(x,y,newx,newy,array)
 	implicit none

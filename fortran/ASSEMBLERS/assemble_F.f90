@@ -53,8 +53,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_F (natoms, itheory, itheory_xc, igauss, ivdw,    &
-       &                       iharmonic, ibias, iwrt_fpieces)
+        subroutine assemble_F (natoms, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias, iwrt_fpieces)
         use dimensions
         use forces
         use neighbor_map

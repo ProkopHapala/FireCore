@@ -5,48 +5,6 @@ import re
 import traceback
 import string
 
-'''
-
-if (a == 0) then
-    XXXXXXXXX
-else if (a < 0) then
-    XXXXXXXXX
-else
-    XXXXXXXXX
-end if
-
-where (a > 0 .and. a < 2)
-    XXXXXXXXX
-else where (a >= 4)
-    XXXXXXXXX
-end where
-
-select case (marks)
-    case (91:100)
-        XXXXXXXXX
-    case (71:80)
-        XXXXXXXXX
-end select
-
-do while (i < 5)
-    XXXXXXXXX
-end do
-
-do i = 1, 10, 2
-    XXXXXXXXX
-end do
-
-module
-    XXXXXXXXX
-end module
-
-program main
-end program main
-
-subroutine quack(this)
-end subroutine quack(this)
-'''
-
 scope_begins = {
     'if'        :('else','then'),
     'select'    :('case',),
@@ -59,9 +17,7 @@ scope_begins = {
 }
 
 scope_ends = { 'enddo':'do', 'endif':'if' } 
-
 scope_mids = { 'else','case','contains' }
-
 re_split  = re.compile( '''!|'.*?'|".*?"|\w+''' )
 
 def checkScope_re( line, stack, il ):
@@ -261,4 +217,55 @@ if __name__ == "__main__":
         rewriteFile_joinSplitLines( fin, fout,    bNoEmptyLines=True, bNoComments=True, bScope=True, tab='  ' )
     '''
 
-    rewritePath( "../fortran", "../fortran_tmp", exts=['.f90'], bNoEmptyLines=True, bNoComments=True, bScope=True, tab='  ' )
+    #rewritePath( "../fortran", "../fortran_tmp", exts=['.f90'], bNoEmptyLines=True, bNoComments=True, bScope=True, tab='  ' )
+    rewritePath( "../fortran", "../fortran_tmp", exts=['.f90'], bNoEmptyLines=True, bNoComments=True, bScope=False, tab='  ' )
+
+
+
+line_replce = {
+
+'''
+! Program Description
+! ===========================================================================
+'''
+:"! ================ Program Description",
+
+'''
+! Procedure
+! ===========================================================================
+''',
+:"! ================ Body ",
+
+'''
+! Local Parameters and Data Declaration
+! ===========================================================================
+'''
+:"! ================ Local Parameters ",
+
+'''
+! Local Variable Declaration and Description
+! ===========================================================================
+'''
+:"! ================ Local Variables  ",
+
+'''
+! Argument Declaration and Description
+! ===========================================================================
+'''
+:"! ================ Arguments ",
+
+'''
+! Format Statements
+! ===========================================================================
+'''
+:"! ================ Formats ",
+
+'''
+! Allocate Arrays
+! ===========================================================================
+''',
+:"! ================ Allocations ",
+
+
+
+}

@@ -100,8 +100,7 @@
          ! set olsxc flag  
          ! ixc =  itheory_xc  in unocentros.f90 
          ixc = 2
-         call unocentros (in1, iatom, iforce, itheory, ixc, exc_1c, muexc_1c, &
-      &                   dccexc_1c, mu1xc)
+         call unocentros (in1, iatom, iforce, itheory, ixc, exc_1c, muexc_1c,  dccexc_1c, mu1xc)
   
 ! Now add Integral n*(exc-muxc) d^3r to etotxc_1c - The atom "overcounting"
 ! correction. We set derivative of this EQUAL TO ZERO. Certainly the neutral
@@ -115,8 +114,7 @@
 ! Note vxc is initialized in initnanlxc above.
          do imu = 1, num_orb(in1)
           do inu = 1, num_orb(in1)
-           vxc_1c(imu,inu,matom,iatom) =                                     &
-     &      vxc_1c(imu,inu,matom,iatom) + mu1xc(imu,inu) 
+           vxc_1c(imu,inu,matom,iatom) =  vxc_1c(imu,inu,matom,iatom) + mu1xc(imu,inu) 
           end do
          end do
  

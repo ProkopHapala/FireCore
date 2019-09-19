@@ -53,8 +53,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine interpolate_2d (xin, yin, iforce, nx, ny, hx, hy,  &
-     &                             xintegral, Q_L, dQ_Ldx, dQ_Ldy)
+        subroutine interpolate_2d (xin, yin, iforce, nx, ny, hx, hy, xintegral, Q_L, dQ_Ldx, dQ_Ldy)
         use dimensions
         use interactions
         use constants_fireball

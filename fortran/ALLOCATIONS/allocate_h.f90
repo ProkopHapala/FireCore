@@ -54,8 +54,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine allocate_h (natoms, neigh_max, neighPP_max, itheory,      &
-     &                         itheory_xc, igauss, iwrtdos, iwrthop, iwrtatom)
+        subroutine allocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss, iwrtdos, iwrthop, iwrtatom)
 
         use interactions
         use options, only : idipole, V_intra_dip

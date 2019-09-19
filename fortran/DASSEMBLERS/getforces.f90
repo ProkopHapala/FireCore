@@ -68,37 +68,34 @@
 
 ! ! IF_DEF_classicMD
 ! ! CHROM: classical forces given by a potential
-! 		if ( iclassicMD > 0 ) then
-! 			call getforces_classic ()
-! 			return
-! 		else
-! !	        write (*,*) '  '
-! !    	    write (*,100)
-! !        	write (*,*) ' Now we are assembling forces. '
-! !	        write (*,*) '  '
-! 		end if
+!    if ( iclassicMD > 0 ) then
+!       call getforces_classic ()
+!       return
+!    end if
 ! ! END CHROM
 ! ! END_DEF_classicMD
 
-! ! IF_DEF_KS
 ! ! doing extended Hubbard
 !         if (ihubbard .eq. 1) then
 !          call getforces_eh ()
 !          return
 !         end if
-! ! END_DEF_KS
 
+! ! IF_DEF_KS
 ! ! doing Kohn-Sham
 !         if (iKS .eq. 1) then
 !          call getforces_KS ()
 !          return
 !         end if
+! ! END_DEF_KS
 
-! doing Horsfield data
-        if (itheory_xc .eq. 0) then
-          call getforces_hxc ()
-          return
-        end if
+! ! IF_DEF_Horsfield
+! ! doing Horsfield data
+!         if (itheory_xc .eq. 0) then
+!           call getforces_hxc ()
+!           return
+!         end if
+! ! END_DEF_Horsfield
 
 ! doing McWeda data
         if (itheory_xc .ne. 0 .and. itheory_xc .lt. 4) then

@@ -11,8 +11,8 @@
 
 ! Ewald and long-range forces
          real, dimension (:, :, :), allocatable :: dewald
-         real, dimension (:, :), allocatable :: fewald
-         real, dimension (:, :), allocatable :: flrew
+         real, dimension (:, :),    allocatable :: fewald
+         real, dimension (:, :),    allocatable :: flrew
 
 ! QM/MM forces
          real, dimension (:, :), allocatable :: flrew_qmmm
@@ -20,13 +20,13 @@
          real, dimension (:, :), allocatable :: ftot_dftd3
  
 ! Derivatives of interactions
-         real, dimension (:, :, :, :, :), allocatable :: dipp
-         real, dimension (:, :, :, :), allocatable :: dippcm
+         real, dimension (:, :, :, :, :),    allocatable :: dipp
+         real, dimension (:, :, :, :),       allocatable :: dippcm
          real, dimension (:, :, :, :, :, :), allocatable :: dippc
-         real, dimension (:, :, :, :, :), allocatable :: sp_mat
-         real, dimension (:, :, :, :, :), allocatable :: spm_mat
-         real, dimension (:, :, :, :, :), allocatable :: spVNL
-         real, dimension (:, :, :, :, :), allocatable :: tp_mat
+         real, dimension (:, :, :, :, :),    allocatable :: sp_mat
+         real, dimension (:, :, :, :, :),    allocatable :: spm_mat
+         real, dimension (:, :, :, :, :),    allocatable :: spVNL
+         real, dimension (:, :, :, :, :),    allocatable :: tp_mat
 
 ! Forces
          real, dimension (:, :), allocatable :: dusr

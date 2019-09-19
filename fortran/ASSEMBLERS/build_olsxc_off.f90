@@ -71,8 +71,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine build_olsxc_off (in1, in2, den1x, denx, sx, ineigh,       &
-     &                              iatom, bcxcx)
+        subroutine build_olsxc_off (in1, in2, den1x, denx, sx, ineigh, iatom, bcxcx)
         use charges
         use density
         use interactions

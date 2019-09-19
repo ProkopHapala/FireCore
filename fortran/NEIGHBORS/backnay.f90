@@ -37,9 +37,12 @@
 ! backnay.f90
 ! Program Description
 ! ===========================================================================
+!
+! Back-Neighbors in short
+!
 !       This is a neighbor routine, that we need for the nonlocal 
 ! pseudopotential.  For now we will worry about ontops.  Here is the problem.
-! Suppose we need <i | VNL(i) |j> = <i|V(i)><V(i)|j>.  Now, suppose we are
+! Suppose we need <i|VNL(i)|j> = <i|V(i)><V(i)|j>.  Now, suppose we are
 ! looping over iatom and jatom is the ineigh'th neighbor.  Well, the second 
 ! term of above is <V(iatom)|jatom>.  So we need 
 ! overlap(mu,nu,jatom,neighbor of j), but how do we know it.  We have 
@@ -47,7 +50,7 @@
 ! what neighbor number is jatom to iatom. You see we know the neighbor
 ! number of jatom to iatom, but what is the neighbor number of iatom to jatom?
 ! Confusing isn't it.
-
+!
 ! ==========================================================================
 ! Code written by:
 ! James P. Lewis

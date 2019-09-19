@@ -175,8 +175,7 @@
           !write (*,*) '  '
           !write (*,*) ' ***************************************************** '
           !write (*,*) ' Assemble all force contributions. '
-          call assemble_F (natoms, itheory, itheory_xc, igauss, ivdw,       &
-     &     iharmonic, ibias, iwrtfpieces)
+          call assemble_F (natoms, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias, iwrtfpieces)
 
 ! Reassign forces for tolerance testing.
           ftotold = ftotnew

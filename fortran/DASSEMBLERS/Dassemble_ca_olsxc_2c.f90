@@ -137,8 +137,8 @@
         real, dimension (3) :: sighat
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE       ! IF_DEF_ORDERN_END
  
 ! Procedure
 ! ========================================================================
@@ -162,14 +162,14 @@
 !           natomsp = natomsp + 1
 !           iatomstart = natomsp*my_proc + 1
 !          else
-!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)    + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !          end if
 !         else
-!          iatomstart = 1
-!          natomsp = natoms
-!         end if
 ! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!         end if        ! IF_DEF_ORDERN_END
+
 
 !***************************************************************************
 !                        T W O - C E N T E R   P A R T
@@ -229,18 +229,15 @@
            isorp = 0
            interaction = 6
            in3 = in2
-           call doscentros (interaction, isorp, kforce, in1, in2, in3, y,   &
-     &                      eps, deps, bcxcx, bcxcpx)
+           call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bcxcx, bcxcpx)
  
 ! Notice the explicit - sign which makes f force like.
            do inu = 1, num_orb(in3)
             do imu = 1, num_orb(in1)
              do ix = 1, 3
 !$omp atomic
-!             faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom)           &
-!    &         - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
-              fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom)           &
-     &         - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
+!             faxc_ca(ix,ineigh,iatom)  = faxc_ca(ix,ineigh,iatom)   - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
+              fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom)  - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)
              end do
             end do
            end do 
@@ -250,18 +247,15 @@
            interaction = 18
             in3 = in2
             do isorp = 1, nssh(in1)
-             call doscentros (interaction, isorp, kforce, in1, in1, in3, y,   &
-     &                       eps, deps, bcxcx, bcxcpx )
+             call doscentros (interaction, isorp, kforce, in1, in1, in3, y, eps, deps, bcxcx, bcxcpx )
 
             dxn = (Qin(isorp,iatom) - Qneutral(isorp,in1))
 ! Notice the explicit - sign which makes f force like.
             do inu = 1, num_orb(in3)
              do imu = 1, num_orb(in1)
               do ix = 1, 3
-!             faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom)           &
-!    &         - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dxn
-              fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom)           &
-     &         - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dxn
+!             faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom)  - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dxn
+              fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom) - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dxn
               end do
              end do
             end do
@@ -272,17 +266,14 @@
            interaction = 19
            in3 = in2
            do isorp = 1, nssh(in2)
-            call doscentros (interaction, isorp, kforce, in1, in2, in3, y,   &
-     &                       eps, deps, bcxcx, bcxcpx )
+            call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, bcxcx, bcxcpx )
 
             dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))
             do inu = 1, num_orb(in3)
              do imu = 1, num_orb(in1)
               do ix = 1, 3
-!              faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom)           &
-!    &          - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dxn
-               fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom)           &
-     &          - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dxn
+!              faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom)  - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dxn
+               fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom)  - rho(imu,inu,ineigh,iatom)*bcxcpx(ix,imu,inu)*dxn
               end do
              end do
             end do
@@ -319,8 +310,7 @@
                rhoinp(:) =  rhopij_off(:,imu,inu,ineigh,iatom)
 
 ! mxcb is the derivative of XC matrix element w.r.t. atom 1
-               mxcb(:,imu,inu) = spx(:)*(rho_av*dmuxc - muxc)                &
-     &          + rhop_av(:)*d2muxc*(rho_av*sx - rhoin) - rhoinp(:)*dmuxc
+               mxcb(:,imu,inu) = spx(:)*(rho_av*dmuxc - muxc)  + rhop_av(:)*d2muxc*(rho_av*sx - rhoin) - rhoinp(:)*dmuxc
               end do ! do index
              end do ! do index
 ! End loop over shells.

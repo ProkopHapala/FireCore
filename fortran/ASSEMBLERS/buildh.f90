@@ -108,8 +108,8 @@
         integer mbeta0
 
 ! BTN communication domain
-        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
-        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE
+!        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                  ! IF_DEF_ORDERN_END
+!        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE         ! IF_DEF_ORDERN_END
 
 ! Allocate Arrays
 ! ===========================================================================
@@ -117,7 +117,7 @@
 ! Procedure
 ! ===========================================================================
 ! Find out which processor this is.
-! IF_DEF_ORDERN
+! ! IF_DEF_ORDERN
 !        if (iordern .eq. 1) then
 !         call MPI_COMM_RANK (MPI_BTN_WORLD, my_proc, ierror)
 !         natomsp = natoms/nprocs
@@ -128,10 +128,11 @@
 !          iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
 !         end if
 !        else
-!         iatomstart = 1
-!         natomsp = natoms
-!        end if  ! iordern
-! END_DEF_ORDERN
+! ! END_DEF_ORDERN
+         iatomstart = 1
+         natomsp = natoms
+!        end if  ! IF_DEF_ORDERN_END
+
 
 ! Set up the full Hamiltonian.
 !$omp parallel do private (in1, ineigh, mbeta, jatom, in2, inu, imu, distance)

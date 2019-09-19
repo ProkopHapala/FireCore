@@ -55,8 +55,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine reallocate_f (natoms, neigh_max, neighPP_max, itheory,   & 
-     &                           itheory_xc, igauss )
+        subroutine reallocate_f (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss )
         use forces
         use density
         use interactions

@@ -86,8 +86,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine trescentrosS ( isorp, maxtype, in1, in2, indna, x, y,    &
-     &                            cost, eps, bcnax, nspecies)
+        subroutine trescentrosS ( isorp, maxtype, in1, in2, indna, x, y, cost, eps, bcnax, nspecies)
         use dimensions
         use interactions
         use integrals
@@ -175,24 +174,15 @@
            stop
          end if
         do iME = 1, index_maxS(in1,in2)
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(0,iME) = Q_L
-
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(1,iME) = Q_L
-
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(2,iME) = Q_L
-
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(3,iME) = Q_L
-
-           call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                       den3S_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+           call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3S_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist(4,iME) = Q_L
         end do
 

@@ -54,10 +54,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine reallocate_neigh (nprocs, my_proc, iordern,       &
-     &                               itheory, itheory_xc, igauss, icluster,  &
-     &                               ivdw, iwrthampiece,     &
-     &                               iwrtatom, igrid)
+        subroutine reallocate_neigh (nprocs, my_proc, iordern,  itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece, iwrtatom, igrid)
         use configuration
         use interactions
         use neighbor_map
@@ -133,13 +130,10 @@
          allocate (neigh_pair_n2 (neigh_max*natoms))
          
 
-         call reallocate_h (natoms, neigh_max, neighPP_max, itheory,   &
-     &                     itheory_xc, igauss)
-         call reallocate_f (natoms, neigh_max, neighPP_max, itheory,   &
-     &                     itheory_xc, igauss)
+         call reallocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
+         call reallocate_f (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
 ! jel-grid
-         call reallocate_rho (natoms, neigh_max, neighPP_max,          &
-     &                        itheory_xc, igrid)
+         call reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, igrid)
 ! end jel-grid
         end if
 
@@ -206,20 +200,16 @@
          allocate (neighb_tot (neigh_max+neighPP_max, natoms))
          if (iwrtatom .ge. 1) then                   
           deallocate (hr_box)  
-          allocate (hr_box (numorb_max, numorb_max, natoms,                  &
-     &              0:(neigh_max+neighPP_max)))
+          allocate (hr_box (numorb_max, numorb_max, natoms, 0:(neigh_max+neighPP_max)))
          end if
 
 ! FIX ME
 ! In the future we must to optimize this part. This means we separate neighPP 
 ! and neigh into two different subroutines. To avoid double reallocation in 
 ! the case as neighPP_max and neigh_max are changed
-         call reallocate_h (natoms, neigh_max, neighPP_max, itheory,   &
-     &                      itheory_xc, igauss)
-         call reallocate_f (natoms, neigh_max, neighPP_max, itheory,   &
-     &                      itheory_xc, igauss)
-         call reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, &
-     &                        igrid)
+         call reallocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
+         call reallocate_f (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
+         call reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, igrid)
 
         end if 
 
