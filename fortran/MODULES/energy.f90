@@ -18,22 +18,19 @@
         real uiiuee
         real uxcdcc
         real uxcdcc_sn
-        real uxcdcc_hf
+!        real uxcdcc_hf             ! IF_DEF_Horsfield_END
         real uxcdcc_ols
-        real uxcdcc_zw
-        real dc_v_intra_dip_1c
-        real, dimension (3) :: duxcdcc_zw
-! Kohn-Sham
+!        real uxcdcc_zw                       ! IF_DEF_ZW_END
+!        real dc_v_intra_dip_1c               ! IF_DEF_ZW_END
+!        real, dimension (3) :: duxcdcc_zw    ! IF_DEF_ZW_END
 !        real uxcdcc_ks   ! IF_DEF_KS_END
 !        real uhdcc_ks    ! IF_DEF_KS_END
 ! Ext Hubbard
-        real ehxcc
-        real ehcoolc
-        real Umuxc_1c
-        real Uexc_1c
-! QM/MM energy
+!        real ehxcc       ! IF_DEF_Hubbard_END
+!        real ehcoolc     ! IF_DEF_Hubbard_END
+!        real Umuxc_1c     ! IF_DEF_Hubbard_END
+!        real Uexc_1c      ! IF_DEF_Hubbard_END
 !        real eqmmm        ! IF_DEF_QMMM_END
-! DFTD3 energy   
 !        real etot_dftd3   ! IF_DEF_DFTD3_END
 
  end module energy 
