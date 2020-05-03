@@ -70,7 +70,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine find_neighPP_max (nprocs, my_proc, iordern, icluster)
+        subroutine find_neighPP_max ! (nprocs, my_proc, iordern, icluster)
+        use options
         use configuration
         use dimensions
         use interactions
@@ -80,10 +81,10 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: icluster
-        integer, intent (in) :: iordern
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: icluster
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: my_proc
+        ! integer, intent (in) :: nprocs
 
 !$ volatile icluster, natoms, nprocs, my_proc, iordern
  

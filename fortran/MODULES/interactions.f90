@@ -129,11 +129,11 @@
          real, dimension (:, :, :, :), allocatable :: vxc_ca
 !         real, dimension (:, :, :, :), allocatable :: ewaldqmmm    ! IF_DEF_QMMM_END
 
-! ! IF_DEF_dipole
-! ! Dipole with XYZ components
-!          real, dimension (:, :, :),       allocatable :: dipcm
-!          real, dimension (:, :, :, :, :), allocatable :: dipc
-! ! END_DEF_dipole
+! IF_DEF_dipole
+! Dipole with XYZ components
+        real, dimension (:, :, :),       allocatable :: dipcm
+        real, dimension (:, :, :, :, :), allocatable :: dipc
+! END_DEF_dipole
 
 ! ! IF_DEF_hubbard
 ! ! These arrays store interactions which are needed for the extended-Hubbard
@@ -155,10 +155,12 @@
 
 !         complex, dimension (:,:), allocatable   :: hamk  ! These arrays for the dos calculation  ! IF_DEF_DOS_END
 
+         real, parameter ::  xc_overtol = 5.0d-5
+
 ! ! IF_DEF_gauss
 ! ! CGP
 ! ! Define for the gaussian
-!         real, parameter ::  xc_overtol = 5.0d-5
+
 !         real, parameter ::  xc_overtolG = 5.0d-5
 ! ! These arrays are for evaluating the gaussian approximation to the 
 ! ! three-center exchange-correlation contributions.

@@ -55,22 +55,24 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine reallocate_f (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss )
+        subroutine reallocate_f ! (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss )
         use forces
         use density
         use interactions
-        use options, only : idipole
+        use configuration
+        use neighbor_map
+        use options !, only : idipole
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: igauss
-        integer, intent (in) :: itheory
-        integer, intent (in) :: itheory_xc
-        integer, intent (in) :: natoms
-        integer, intent (in) :: neigh_max
-        integer, intent (in) :: neighPP_max
+        ! integer, intent (in) :: igauss
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: itheory_xc
+        ! integer, intent (in) :: natoms
+        ! integer, intent (in) :: neigh_max
+        ! integer, intent (in) :: neighPP_max
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -96,7 +98,8 @@
         deallocate (fotna)
 
         deallocate (fotxc)
-        if (igauss .eq. 1) deallocate (fxcro)
+
+!         if (igauss .eq. 1) deallocate (fxcro) ! IF_DEF_GAUSS_END
  
         allocate (fana (3, neigh_max, natoms))
         allocate (faxc (3, neigh_max, natoms))
@@ -104,7 +107,7 @@
         allocate (fotna (3, neigh_max, natoms))
 
 
-        if (igauss .eq. 1) allocate (fxcro (3, neigh_max, natoms))
+! if (igauss .eq. 1) allocate (fxcro (3, neigh_max, natoms)) ! IF_DEF_GAUSS_END
 
 ! Reallocate components of the forces needed for DOGS
         if (itheory .eq. 1 .or. idipole .eq. 1) then
@@ -147,12 +150,14 @@
          allocate (dxcdcc (3, neigh_max, natoms))
         end if
 
+! ! IF_DEF_ZW
 ! Allocate xczw forces (double countig correction)
-         if (itheory_xc .eq. 4) then 
-             deallocate (dxcdcc_zw)
-             allocate (dxcdcc_zw (3, neigh_max,natoms))
-         end if
- 
+!         if (itheory_xc .eq. 4) then 
+!             deallocate (dxcdcc_zw)
+!             allocate (dxcdcc_zw (3, neigh_max,natoms))
+!         end if
+! ! END_DEF_ZW
+
 ! PP part
 ! Deallocate
         deallocate (spVNL)

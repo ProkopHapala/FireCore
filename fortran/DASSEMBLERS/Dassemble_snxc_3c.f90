@@ -82,7 +82,7 @@
 ! Old statement
 !        subroutine Dassemble_snxc_3c (natoms, nspecies, nprocs, iordern)
 ! MHL to include gaussians.
-        subroutine Dassemble_snxc_3c (nprocs, iordern, igauss)
+        subroutine Dassemble_snxc_3c
 
         use configuration
         use constants_fireball
@@ -98,10 +98,9 @@
 ! ===========================================================================
 ! Input
 
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
-! MHL
-        integer, intent (in) :: igauss
+!        integer, intent (in) :: iordern
+!        integer, intent (in) :: nprocs
+!        integer, intent (in) :: igauss
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================

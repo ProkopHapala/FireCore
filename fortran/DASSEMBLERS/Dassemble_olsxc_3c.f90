@@ -82,7 +82,7 @@
 ! Old statement
 !        subroutine Dassemble_olsxc_3c (natoms, nspecies, nprocs, iordern)
 ! MHL to include gausssians.
-        subroutine Dassemble_olsxc_3c (nprocs, iordern, igauss)
+        subroutine Dassemble_olsxc_3c
         use configuration
         use constants_fireball
         use density
@@ -96,11 +96,9 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
-! MHL
-        integer, intent (in) :: igauss
+!        integer, intent (in) :: iordern
+!        integer, intent (in) :: nprocs
+!        integer, intent (in) :: igauss
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -315,30 +313,20 @@
 
 ! MHL : include gaussians
 !           if (igauss.eq.0) then   ! IF_DEF_GAUSS_END
-            call Dtrescentros (interaction, isorp, isorpmax, in1,       &
-     &                         in2, indna, x, y, cost, eps, depsA,      &
-     &                         depsB, rhat, sighat, rhoin, rhoxpa,      &
-     &                         rhoxpb, rhoxpc, nspecies)
+            call Dtrescentros (interaction, isorp, isorpmax, in1,  in2, indna, x, y, cost, eps, depsA,     depsB, rhat, sighat, rhoin, rhoxpa,    rhoxpb, rhoxpc, nspecies)
 
-!
 ! The terms rhompa, rhompb, and rhompc are already force-like ( - ) !!
-            call trescentrosS (isorp, isorpmax, in1, in2, indna, x, y,  &
-     &                         cost, eps, rhomm, nspecies)
+            call trescentrosS (isorp, isorpmax, in1, in2, indna, x, y,    cost, eps, rhomm, nspecies)
+            call DtrescentrosS (isorp, isorpmax, in1, in2, indna, x, y,   cost, rhat, sighat, rhomm, rhompa,    rhompb, rhompc, nspecies)
 
-
-            call DtrescentrosS (isorp, isorpmax, in1, in2, indna, x, y, &
-     &                          cost, rhat, sighat, rhomm, rhompa,      &
-     &                          rhompb, rhompc, nspecies)
 ! ! IF_DEF_GAUSS
 !             else if (igauss.eq.1) then
 !             call DtrescentrosG_VXC (isorp, in1, in2, indna, x, y, cost, &
 !      &                              eps, depsA, depsB, rhat, sighat,    &
 !      &                              rhoin, rhoxpa, rhoxpb, rhoxpc, rcutoff)
-
 ! ! The terms rhompa, rhompb, and rhompc are already force-like ( - ) !!
 !             call trescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost, &
 !      &                              eps, rhomm, rcutoff)
-
 !             call DtrescentrosGS_VXC (isorp, in1, in2, indna, x, y, cost,&
 !      &                               rhat, sighat, rhomm, rhompa,       &
 !      &                               rhompb, rhompc, rcutoff)
@@ -354,25 +342,17 @@
 
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
-              rhoinpa(:,imu,inu) =                                           &
-     &         rhoinpa(:,imu,inu) - rhoxpa(:,imu,inu)*Qneutral(isorp,indna)
-              rhoinpb(:,imu,inu) =                                           &
-     &         rhoinpb(:,imu,inu) - rhoxpb(:,imu,inu)*Qneutral(isorp,indna)
-              rhoinpc(:,imu,inu) =                                           &
-     &         rhoinpc(:,imu,inu) - rhoxpc(:,imu,inu)*Qneutral(isorp,indna)
+              rhoinpa(:,imu,inu) = rhoinpa(:,imu,inu) - rhoxpa(:,imu,inu)*Qneutral(isorp,indna)
+              rhoinpb(:,imu,inu) = rhoinpb(:,imu,inu) - rhoxpb(:,imu,inu)*Qneutral(isorp,indna)
+              rhoinpc(:,imu,inu) = rhoinpc(:,imu,inu) - rhoxpc(:,imu,inu)*Qneutral(isorp,indna)
              end do
             end do
-
             do inu = 1, nssh(in2)
              do imu = 1, nssh(in1)
-              rho_3c(imu,inu) = rho_3c(imu,inu)                              &
-                                + rhomm(imu,inu)*Qneutral(isorp,indna)
-              rhop_3ca(:,imu,inu) =                                          &
-     &         rhop_3ca(:,imu,inu) - rhompa(:,imu,inu)*Qneutral(isorp,indna)
-              rhop_3cb(:,imu,inu) =                                          &
-     &         rhop_3cb(:,imu,inu) - rhompb(:,imu,inu)*Qneutral(isorp,indna)
-              rhop_3cc(:,imu,inu) =                                          &
-     &         rhop_3cc(:,imu,inu) - rhompc(:,imu,inu)*Qneutral(isorp,indna)
+              rho_3c(imu,inu) = rho_3c(imu,inu)  + rhomm(imu,inu)*Qneutral(isorp,indna)
+              rhop_3ca(:,imu,inu) =  rhop_3ca(:,imu,inu) - rhompa(:,imu,inu)*Qneutral(isorp,indna)
+              rhop_3cb(:,imu,inu) =  rhop_3cb(:,imu,inu) - rhompb(:,imu,inu)*Qneutral(isorp,indna)
+              rhop_3cc(:,imu,inu) =  rhop_3cc(:,imu,inu) - rhompc(:,imu,inu)*Qneutral(isorp,indna)
              end do
             end do
 
@@ -387,10 +367,8 @@
              sm = sm_mat(issh,jssh,mneigh,iatom)
              if (abs(sm) .gt. xc_overtol) then
               spm(:) = spm_mat(:,issh,jssh,mneigh,iatom)
-              avrhop_b (:,issh,jssh) = avrhop_b (:,issh,jssh) +              &
-     &          (sm*rhop_3cb(:,issh,jssh) - rho_3c(issh,jssh)*spm(:))/(sm*sm)
-              avrhop_c (:,issh,jssh) = avrhop_c (:,issh,jssh) +              &
-     &         (sm*rhop_3cc(:,issh,jssh) + rho_3c(issh,jssh)*spm(:))/(sm*sm)
+              avrhop_b (:,issh,jssh) = avrhop_b (:,issh,jssh) +  (sm*rhop_3cb(:,issh,jssh) - rho_3c(issh,jssh)*spm(:))/(sm*sm)
+              avrhop_c (:,issh,jssh) = avrhop_c (:,issh,jssh) +  (sm*rhop_3cc(:,issh,jssh) + rho_3c(issh,jssh)*spm(:))/(sm*sm)
              end if
             end do
            end do
@@ -420,12 +398,8 @@
                sx = s_mat(imu,inu,mneigh,iatom)
 
 ! derivatives of XC matrix elements: mxca, mxcb and mxcc
-               mxcb(:,imu,inu) =                                             &
-     &           rhop_avb(:)*d2muxc*(rhoin(imu,inu) - rho_av*sx)             &
-     &          + rhoinpb(:,imu,inu)*dmuxc
-               mxcc(:,imu,inu) =                                             &
-     &          + rhop_avc(:)*d2muxc*(rhoin(imu,inu) - rho_av*sx)            &
-     &          + rhoinpc(:,imu,inu)*dmuxc
+               mxcb(:,imu,inu) =   rhop_avb(:)*d2muxc*(rhoin(imu,inu) - rho_av*sx)   + rhoinpb(:,imu,inu)*dmuxc
+               mxcc(:,imu,inu) =   rhop_avc(:)*d2muxc*(rhoin(imu,inu) - rho_av*sx)   + rhoinpc(:,imu,inu)*dmuxc
                mxca(:,imu,inu) = - mxcb(:,imu,inu) - mxcc(:,imu,inu)
 
 ! End loop over shells.
@@ -439,12 +413,9 @@
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
              do ix = 1, 3
-              f3xca(ix,ialp) = f3xca(ix,ialp)                                &
-     &         - 2*rho(imu,inu,mneigh,iatom)*mxca(ix,imu,inu)
-              f3xcb(ix,iatom) = f3xcb(ix,iatom)                              &
-     &        - 2*rho(imu,inu,mneigh,iatom)*mxcb(ix,imu,inu)
-              f3xcc(ix,jatom) = f3xcc(ix,jatom)                              &
-     &         - 2*rho(imu,inu,mneigh,iatom)*mxcc(ix,imu,inu)
+              f3xca(ix,ialp) = f3xca(ix,ialp)    - 2*rho(imu,inu,mneigh,iatom)*mxca(ix,imu,inu)
+              f3xcb(ix,iatom) = f3xcb(ix,iatom)  - 2*rho(imu,inu,mneigh,iatom)*mxcb(ix,imu,inu)
+              f3xcc(ix,jatom) = f3xcc(ix,jatom)  - 2*rho(imu,inu,mneigh,iatom)*mxcc(ix,imu,inu)
              end do
             end do
            end do

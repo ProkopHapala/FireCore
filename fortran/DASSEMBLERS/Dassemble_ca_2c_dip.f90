@@ -51,7 +51,7 @@
 ! ===========================================================================!
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_ca_2c_dip (nprocs, iordern)
+        subroutine Dassemble_ca_2c_dip
         use charges
         use configuration
         use constants_fireball
@@ -65,8 +65,8 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
+!        integer, intent (in) :: iordern
+!        integer, intent (in) :: nprocs
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -287,20 +287,9 @@
            do inu = 1, num_orb(in1)
             do imu = 1, num_orb(in1)
              ! ==============  NEW STUFF : COMPUTE THE TRUE DIPOLE
-             ! ===========
-             
-             dterm = (dipc(1,imu,inu,matom,iatom)*r21(1)     &
-                &   + dipc(2,imu,inu,matom,iatom)*r21(2)     &
-                &   + dipc(3,imu,inu,matom,iatom)*r21(3))
-
-
-             emnpl(imu,inu) =  dq2*(s_mat(imu,inu,matom,iatom)/y)   &
-             &               + dq2*(dterm/(y*y*y))
-
-             demnpl(:,imu,inu)= (dq2*s_mat(imu,inu,matom,iatom)/(y*y*y))*r21(:)  &
-             &                 - dq2*dipc(:,imu,inu,matom,iatom)/(y*y*y)        &
-             &                 + dq2*3*dterm*r21(:)/(y*y*y*y*y)
-
+             dterm = (dipc(1,imu,inu,matom,iatom)*r21(1)  + dipc(2,imu,inu,matom,iatom)*r21(2)    + dipc(3,imu,inu,matom,iatom)*r21(3))
+             emnpl(imu,inu) =  dq2*(s_mat(imu,inu,matom,iatom)/y)                + dq2*(dterm/(y*y*y))
+             demnpl(:,imu,inu)= (dq2*s_mat(imu,inu,matom,iatom)/(y*y*y))*r21(:)  - dq2*dipc(:,imu,inu,matom,iatom)/(y*y*y)   + dq2*3*dterm*r21(:)/(y*y*y*y*y)
              dewaldsr(:,imu,inu) = eq2*demnpl(:,imu,inu)
             end do !end do imu = 1,num_orb(in1)
            end do  !end do inu = 1,num_orb(in1)

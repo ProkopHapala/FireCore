@@ -53,21 +53,24 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, igrid)
+        subroutine reallocate_rho ! (natoms, neigh_max, neighPP_max, itheory_xc, igrid)
         use density
         use charges
         use interactions
         use scf
+        use options
+        use configuration
+        use neighbor_map
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: itheory_xc
-        integer, intent (in) :: natoms
-        integer, intent (in) :: neigh_max
-        integer, intent (in) :: neighPP_max
-        integer, intent (in) :: igrid
+        ! integer, intent (in) :: itheory_xc
+        ! integer, intent (in) :: natoms
+        ! integer, intent (in) :: neigh_max
+        ! integer, intent (in) :: neighPP_max
+        ! integer, intent (in) :: igrid
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -115,34 +118,37 @@
          allocate (rhoij_off (numorb_max, numorb_max, neigh_max, natoms))
          allocate (rho_on (numorb_max, numorb_max, natoms))
          allocate (rhoi_on (numorb_max, numorb_max, natoms))
-        end if                                                       
-! jel-grid
-        if (igrid .eq. 1) then
-         deallocate (rho_in)
-         deallocate (rho_out)
-         ndim = numorb_max*numorb_max*neigh_max*natoms
-         allocate (rho_in (ndim))
-         allocate (rho_out (ndim))
-         if (ialgmix .eq. 4) then
-           deallocate (mwe)
-           deallocate (drwe)
-           allocate (drwe (ndim))
-           allocate (mwe (ndim))
-         endif
-! save the old density matrix
-         deallocate (rho_old) 
-         allocate (rho_old (numorb_max, numorb_max, neigh_max, natoms))
-        endif
-! end jel-grid
+        end if    
 
-! Pulay mixing
-        if ((ialgmix .eq. 4) .and. (igrid .ne. 1)) then
-          deallocate (mwe)
-          deallocate (drwe)
-          ndim = nsh_max*natoms
-          allocate (mwe (ndim))
-          allocate (drwe (ndim))
-        endif
+! ! IF_DEF_GRID
+! ! jel-grid
+!         if (igrid .eq. 1) then
+!          deallocate (rho_in)
+!          deallocate (rho_out)
+!          ndim = numorb_max*numorb_max*neigh_max*natoms
+!          allocate (rho_in (ndim))
+!          allocate (rho_out (ndim))
+!          if (ialgmix .eq. 4) then
+!            deallocate (mwe)
+!            deallocate (drwe)
+!            allocate (drwe (ndim))
+!            allocate (mwe (ndim))
+!          endif
+! ! save the old density matrix
+!          deallocate (rho_old) 
+!          allocate (rho_old (numorb_max, numorb_max, neigh_max, natoms))
+!         endif
+! ! end jel-grid
+! ! END_DEF_GRID
+
+! ! Pulay mixing
+!         if ((ialgmix .eq. 4) .and. (igrid .ne. 1)) then
+!           deallocate (mwe)
+!           deallocate (drwe)
+!           ndim = nsh_max*natoms
+!           allocate (mwe (ndim))
+!           allocate (drwe (ndim))
+!         endif
 
 ! Deallocate Arrays
 ! ===========================================================================

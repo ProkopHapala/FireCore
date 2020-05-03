@@ -80,7 +80,7 @@
  
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_ca_3c (nprocs, iordern, igauss) 
+        subroutine Dassemble_ca_3c
         use charges
         use configuration
         use constants_fireball
@@ -94,9 +94,9 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: igauss
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
+!        integer, intent (in) :: igauss
+!        integer, intent (in) :: iordern
+!        integer, intent (in) :: nprocs
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================

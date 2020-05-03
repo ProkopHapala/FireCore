@@ -54,7 +54,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_2c (nprocs, impi, igauss)
+        subroutine Dassemble_2c
         use configuration
         use constants_fireball
         use density
@@ -67,9 +67,9 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: igauss
-        integer, intent (in) :: impi
-        integer, intent (in) :: nprocs
+!       integer, intent (in) :: igauss
+!        integer, intent (in) :: impi
+!        integer, intent (in) :: nprocs
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -120,7 +120,7 @@
         fotna = 0.0d0
         ft = 0.0d0
         fro = 0.0d0
-        if (igauss .eq. 1) fxcro = 0.0d0
+!        if (igauss .eq. 1) fxcro = 0.0d0 ! IF_DEF_GAUSS_END
 
 ! ! Determine which atoms are assigned to this processor.
 ! ! IF_DEF_MPI
@@ -218,25 +218,22 @@
            fro(ix,jatom) = fro(ix,jatom) -          sumS
 !!$omp end critical
           end do ! do ix
- 
-! Gaussian approximation to three-center exchange-correlation interactions.
-          if (igauss .eq. 1) then
-           do ix = 1, 3
-            do inu = 1, num_orb(in2)
-             do imu = 1, num_orb(in1) 
-              muxc = - vxc_3c(imu,inu,ineigh,iatom)                          &
-     &               + nuxc_3c(imu,inu,ineigh,iatom)                         &
-     &                 *bar_density_2c(imu,inu,ineigh,iatom)                 &
-     &               + nuxc_total(imu,inu,ineigh,iatom)                      &
-     &                 *bar_density_3c(imu,inu,ineigh,iatom) 
-     
-              fxcro(ix,ineigh,iatom) = fxcro(ix,ineigh,iatom)                &
-     &         + muxc*rho(imu,inu,ineigh,iatom)*sp_mat(ix,imu,inu,ineigh,iatom) 
-             end do 
-            end do 
-           end do 
-          end if 
 
+! ! IF_DEF_GAUSS
+! ! Gaussian approximation to three-center exchange-correlation interactions.
+!           if (igauss .eq. 1) then
+!            do ix = 1, 3
+!             do inu = 1, num_orb(in2)
+!              do imu = 1, num_orb(in1) 
+!               muxc = - vxc_3c(imu,inu,ineigh,iatom)                                              &
+!      &               + nuxc_3c(imu,inu,ineigh,iatom)    * bar_density_2c(imu,inu,ineigh,iatom)   &
+!      &               + nuxc_total(imu,inu,ineigh,iatom) * bar_density_3c(imu,inu,ineigh,iatom) 
+!               fxcro(ix,ineigh,iatom) = fxcro(ix,ineigh,iatom)  + muxc*rho(imu,inu,ineigh,iatom) * sp_mat(ix,imu,inu,ineigh,iatom) 
+!              end do 
+!             end do 
+!            end do 
+!           end if 
+! ! END_DEF_GAUSS
  
 ! ****************************************************************************
 !

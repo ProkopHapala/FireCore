@@ -70,7 +70,6 @@
         integer, intent (in) :: iordern
         integer, intent (in) :: Kscf
         integer, intent (in) :: nprocs
-
         integer, intent (in) :: igauss
 
 ! Local Parameters and Data Declaration

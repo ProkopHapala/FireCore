@@ -77,7 +77,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_lr_dip (nprocs, iordern)
+        subroutine Dassemble_lr_dip
         use charges
         use configuration
         use constants_fireball
@@ -91,8 +91,8 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent(in) :: iordern
-        integer, intent(in) :: nprocs
+!        integer, intent(in) :: iordern
+!        integer, intent(in) :: nprocs
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
