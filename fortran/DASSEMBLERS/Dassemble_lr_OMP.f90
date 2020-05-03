@@ -70,7 +70,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_lr (natoms, nprocs, impi)
+        subroutine Dassemble_lr 
         use charges
         use configuration
         use constants_fireball
@@ -85,9 +85,9 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent(in) :: impi
-        integer, intent(in) :: natoms
-        integer, intent(in) :: nprocs
+!        integer, intent(in) :: impi
+!        integer, intent(in) :: natoms
+!        integer, intent(in) :: nprocs
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================

@@ -54,25 +54,29 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine allocate_f (natoms, neigh_max, neighPP_max, numorb_max, nsh_max, itheory, itheory_xc, igauss, ivdw,  iharmonic, ibias)
+        !subroutine allocate_f (natoms, neigh_max, neighPP_max, numorb_max, nsh_max, itheory, itheory_xc, igauss, ivdw,  iharmonic, ibias)
+        subroutine allocate_f
         use forces
-        use options, only : idipole
+        use options !, only : idipole
+        use configuration
+        use interactions
+        use neighbor_map
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: igauss
-        integer, intent (in) :: iharmonic
-        integer, intent (in) :: itheory
-        integer, intent (in) :: itheory_xc
-        integer, intent (in) :: ivdw
-        integer, intent (in) :: ibias
-        integer, intent (in) :: natoms
-        integer, intent (in) :: neigh_max
-        integer, intent (in) :: neighPP_max
-        integer, intent (in) :: numorb_max
-        integer, intent (in) :: nsh_max
+        ! integer, intent (in) :: igauss
+        ! integer, intent (in) :: iharmonic
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: itheory_xc
+        ! integer, intent (in) :: ivdw
+        ! integer, intent (in) :: ibias
+        ! integer, intent (in) :: natoms
+        ! integer, intent (in) :: neigh_max
+        ! integer, intent (in) :: neighPP_max
+        ! integer, intent (in) :: numorb_max
+        ! integer, intent (in) :: nsh_max
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -108,7 +112,7 @@
         allocate (f3xcc (3, natoms))
         allocate (fotxc (3, neigh_max, natoms))
         allocate (fotna (3, neigh_max, natoms))
-        allocate (ftot_dftd3 (3, natoms))
+!        allocate (ftot_dftd3 (3, natoms))
  
 ! Procedure
 ! ===========================================================================
@@ -118,14 +122,16 @@
         allocate (fanl (3, neighPP_max, natoms))
         allocate (fotnl (3, neighPP_max, natoms))
 
-        if (igauss .eq. 1) allocate (fxcro (3, neigh_max, natoms))
+! ! IF_DEF_GAUSS
+!        if (igauss .eq. 1) allocate (fxcro (3, neigh_max, natoms))
+! ! END_DEF_GAUSS
 
 ! Allocate components of the forces - needed for either DOGS or extended-Hubbard
         if (itheory .ne. 0) then
          allocate (dewald (3, natoms, natoms))
          allocate (fewald (3, natoms))
          allocate (flrew (3, natoms))
-         allocate (flrew_qmmm (3, natoms))
+ !        allocate (flrew_qmmm (3, natoms))
         end if
 
 ! Allocate components of the forces - needed for DOGS   
@@ -147,11 +153,13 @@
          allocate (fotxc_ca (3, neigh_max, natoms))
         end if
 
+! IF_DEF_HUBBARD
 ! Allocate components of the forces - needed for extended Hubbard
-        if (itheory .eq. 2) then
-         allocate (fcoulomb (3, natoms))
-         allocate (fxcnu (3, natoms))
-        end if
+!        if (itheory .eq. 2) then
+!         allocate (fcoulomb (3, natoms))
+!         allocate (fxcnu (3, natoms))
+!        end if
+! END_DEF_HUBBARD
 
 ! Allocate snxc forces
         if (itheory_xc .eq. 1 .or. itheory_xc .eq. 2 .or. itheory_xc .eq. 4) then
@@ -167,16 +175,16 @@
         end if
 
 ! Allocate xczw forces (double countig correction)
-         if (itheory_xc .eq. 4) allocate (dxcdcc_zw (3, neigh_max, natoms))
+!         if (itheory_xc .eq. 4) allocate (dxcdcc_zw (3, neigh_max, natoms))
 
 ! Allocate vdw forces if requested.
-        if (ivdw .eq. 1) allocate (fvdw (3, natoms))
+!        if (ivdw .eq. 1) allocate (fvdw (3, natoms))
 
 ! Allocate external field forces for thermodynamic integration if requested.
-        if (iharmonic .eq. 1) allocate (fharmonic (3, natoms)) 
+!        if (iharmonic .eq. 1) allocate (fharmonic (3, natoms)) 
  
 ! Allocate bias forces for bias voltage field if requested.
-        if (ibias .eq. 1) allocate (fbias (3, natoms)) 
+!        if (ibias .eq. 1) allocate (fbias (3, natoms)) 
 
 ! Deallocate Arrays
 ! ===========================================================================

@@ -79,7 +79,7 @@
  
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_ca_snxc_3c (nprocs, iordern, igauss)
+        subroutine Dassemble_ca_snxc_3c
         use configuration
         use constants_fireball
         use density
@@ -93,11 +93,9 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
-
-        integer, intent (in) :: igauss
+!        integer, intent (in) :: iordern
+!        integer, intent (in) :: nprocs
+!        integer, intent (in) :: igauss
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================

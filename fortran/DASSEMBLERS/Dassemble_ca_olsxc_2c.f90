@@ -60,7 +60,7 @@
  
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_ca_olsxc_2c (nprocs, iordern )
+        subroutine Dassemble_ca_olsxc_2c
         use configuration
         use constants_fireball
         use density
@@ -74,8 +74,8 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
+!        integer, intent (in) :: iordern
+!        integer, intent (in) :: nprocs
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================

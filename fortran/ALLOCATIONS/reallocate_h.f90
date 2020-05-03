@@ -55,20 +55,22 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine reallocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
+        subroutine reallocate_h ! (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
         use interactions
-        use options, only : idipole
+        use configuration
+        use neighbor_map
+        use options !, only : idipole
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: igauss
-        integer, intent (in) :: itheory
-        integer, intent (in) :: itheory_xc
-        integer, intent (in) :: natoms
-        integer, intent (in) :: neigh_max
-        integer, intent (in) :: neighPP_max
+        ! integer, intent (in) :: igauss
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: itheory_xc
+        ! integer, intent (in) :: natoms
+        ! integer, intent (in) :: neigh_max
+        ! integer, intent (in) :: neighPP_max
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -103,36 +105,38 @@
         allocate (vxc (numorb_max, numorb_max, neigh_max, natoms))
         allocate (vxc_1c (numorb_max, numorb_max, neigh_max, natoms))
 
-        if (igauss .eq. 1) then
-         deallocate (bar_density_2c)
-         deallocate (bar_density_3c)
-         deallocate (density_2c)
-         deallocate (density_3c)
-         deallocate (nuxc_3c)
-         deallocate (nuxc_total)
-         deallocate (vxc_3c)
+! !  IF_DEF_GAUSS_END
+        ! if (igauss .eq. 1) then
+        !  deallocate (bar_density_2c)
+        !  deallocate (bar_density_3c)
+        !  deallocate (density_2c)
+        !  deallocate (density_3c)
+        !  deallocate (nuxc_3c)
+        !  deallocate (nuxc_total)
+        !  deallocate (vxc_3c)
 
-         allocate (bar_density_2c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (bar_density_3c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (density_2c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (density_3c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (nuxc_3c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (nuxc_total (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (vxc_3c (numorb_max, numorb_max, neigh_max, natoms))
-        end if
+        !  allocate (bar_density_2c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (bar_density_3c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (density_2c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (density_3c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (nuxc_3c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (nuxc_total (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (vxc_3c (numorb_max, numorb_max, neigh_max, natoms))
+        ! end if
+! !  END_DEF_GAUSS_END
 
         if (itheory .ne. 0) then
          deallocate (ewaldlr)
          deallocate (ewaldsr)
          deallocate (vca)
          deallocate (vxc_ca)
-         deallocate (ewaldqmmm)
+         !deallocate (ewaldqmmm)
 
          allocate (ewaldlr (numorb_max, numorb_max, neigh_max, natoms))
          allocate (ewaldsr (numorb_max, numorb_max, neigh_max, natoms))
          allocate (vca (numorb_max, numorb_max, neigh_max, natoms))
          allocate (vxc_ca (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (ewaldqmmm (numorb_max, numorb_max, neigh_max,natoms))
+         !allocate (ewaldqmmm (numorb_max, numorb_max, neigh_max,natoms))
         end if
 
         if (itheory .eq. 1 .or. idipole .eq. 1) then
@@ -152,12 +156,14 @@
          allocate (sm_mat (nsh_max, nsh_max, neigh_max, natoms))
         end if
 
-       if (itheory_xc .eq. 4) then
-          deallocate(g2nu)
-          allocate (g2nu(nsh_max,nsh_max,neigh_max,natoms))
-          deallocate(g2nup)
-          allocate (g2nup(3,nsh_max,nsh_max,neigh_max,natoms))
-       end if ! end if itheory = 4
+! ! IF_DEF_ZW
+       !if (itheory_xc .eq. 4) then
+       !   deallocate(g2nu)
+       !   allocate (g2nu(nsh_max,nsh_max,neigh_max,natoms))
+       !   deallocate(g2nup)
+       !   allocate (g2nup(3,nsh_max,nsh_max,neigh_max,natoms))
+       !end if ! end if itheory = 4
+! ! END_DEF_ZW
 
 ! Deallocate Arrays
 ! ===========================================================================

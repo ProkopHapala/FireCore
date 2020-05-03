@@ -84,7 +84,7 @@
  
 ! Program Declaration
 ! ===========================================================================
-        subroutine Dassemble_3c_PP (nprocs, impi) 
+        subroutine Dassemble_3c_PP
         use configuration
         use constants_fireball
         use density
@@ -97,8 +97,8 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: impi
-        integer, intent (in) :: nprocs
+!        integer, intent (in) :: impi
+!        integer, intent (in) :: nprocs
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================

@@ -53,24 +53,25 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_F (natoms, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias, iwrt_fpieces)
+        subroutine assemble_F ! (natoms, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias, iwrt_fpieces)
         use dimensions
         use forces
         use neighbor_map
-        use options, only : idftd3, verbosity
+        use options !, only : idftd3, verbosity
+        use configuration
         implicit none
 
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent(in) :: igauss
-        integer, intent(in) :: itheory
-        integer, intent(in) :: itheory_xc
-        integer, intent(in) :: ivdw
-        integer, intent(in) :: iharmonic
-        integer, intent(in) :: ibias
-        integer, intent(in) :: iwrt_fpieces
-        integer, intent(in) :: natoms
+!        integer, intent(in) :: igauss
+!        integer, intent(in) :: itheory
+!        integer, intent(in) :: itheory_xc
+!        integer, intent(in) :: ivdw
+!        integer, intent(in) :: iharmonic
+!        integer, intent(in) :: ibias
+!        integer, intent(in) :: iwrt_fpieces
+!        integer, intent(in) :: natoms
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -194,10 +195,12 @@
           end if
 
 ! exchange-correlation three-center interactions - gaussian approximation
-          if (igauss .eq. 1) then
-           f3xc(:,iatom) = f3xc(:,iatom) + fxcro(:,ineigh,iatom)
-           f3xc(:,jatom) = f3xc(:,jatom) - fxcro(:,ineigh,iatom)
-          end if
+! !  IF_DEF_GAUSS_END
+        !   if (igauss .eq. 1) then
+        !    f3xc(:,iatom) = f3xc(:,iatom) + fxcro(:,ineigh,iatom)
+        !    f3xc(:,jatom) = f3xc(:,jatom) - fxcro(:,ineigh,iatom)
+        !   end if
+! !  END_DEF_GAUSS_END
 
 ! The ontop terms.
 ! The factor 2.0d0 comes from ontop the bra or ontop the ket.

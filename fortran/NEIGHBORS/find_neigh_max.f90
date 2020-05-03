@@ -52,7 +52,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine find_neigh_max (nprocs, my_proc, iordern, icluster, ivdw)
+        subroutine find_neigh_max ! (nprocs, my_proc, iordern, icluster, ivdw)
+        use options
         use configuration  
         use dimensions
         use interactions
@@ -62,11 +63,11 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: icluster
-        integer, intent (in) :: iordern
-        integer, intent (in) :: ivdw
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: icluster
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: ivdw
+        ! integer, intent (in) :: my_proc
+        ! integer, intent (in) :: nprocs
 
 
 

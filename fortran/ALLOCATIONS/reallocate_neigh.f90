@@ -54,27 +54,28 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine reallocate_neigh (nprocs, my_proc, iordern,  itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece, iwrtatom, igrid)
+        subroutine reallocate_neigh !(nprocs, my_proc, iordern,  itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece, iwrtatom, igrid)
+        use options
         use configuration
         use interactions
         use neighbor_map
-        use module_dos
+        !use module_dos
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: icluster
-        integer, intent (in) :: igauss
-        integer, intent (in) :: iordern
-        integer, intent (in) :: itheory
-        integer, intent (in) :: itheory_xc
-        integer, intent (in) :: ivdw
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: nprocs
-        integer, intent (in) :: iwrthampiece
-        integer, intent (in) :: iwrtatom
-        integer, intent (in) :: igrid
+        ! integer, intent (in) :: icluster
+        ! integer, intent (in) :: igauss
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: itheory_xc
+        ! integer, intent (in) :: ivdw
+        ! integer, intent (in) :: my_proc
+        ! integer, intent (in) :: nprocs
+        ! integer, intent (in) :: iwrthampiece
+        ! integer, intent (in) :: iwrtatom
+        ! integer, intent (in) :: igrid
 
 
 
@@ -83,17 +84,24 @@
  
 ! Variable Declaration and Description
 ! ===========================================================================
+
+
+
         integer neigh_max_old
         integer neigh_max_vdw_old
         integer neighPP_max_old
+
+        integer my_proc
+
+my_proc = 0
 
 ! Procedure
 ! ===========================================================================
         neigh_max_old = neigh_max
         neighPP_max_old = neighPP_max
-        if(ivdw .eq. 1) neigh_max_vdw_old = neigh_max_vdw
+        ! if(ivdw .eq. 1) neigh_max_vdw_old = neigh_max_vdw
 
-        call find_neigh_max (nprocs, my_proc, iordern, icluster, ivdw)
+        call find_neigh_max ! (nprocs, my_proc, iordern, icluster, ivdw)
         if (neigh_max_old .ne. neigh_max) then 
          if (my_proc .eq. 0) then
           write (*,*) ' The maximum number of neighbors has changed. '
@@ -129,27 +137,25 @@
          allocate (neigh_pair_n1 (neigh_max*natoms))
          allocate (neigh_pair_n2 (neigh_max*natoms))
          
-
-         call reallocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
-         call reallocate_f (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
+         call reallocate_h !(natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
+         call reallocate_f !(natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
 ! jel-grid
-         call reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, igrid)
+!         call reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, igrid)   ! IF_DEF_GRID_END
 ! end jel-grid
         end if
 
 ! VdW part
-        if (ivdw .eq. 1) then 
-         if ( neigh_max_vdw_old .ne. neigh_max_vdw) then
-          deallocate (neigh_b_vdw)
-          deallocate (neigh_j_vdw)
-
-          allocate (neigh_b_vdw (neigh_max_vdw, natoms))
-          allocate (neigh_j_vdw (neigh_max_vdw, natoms))
-         endif 
-        end if
+        ! if (ivdw .eq. 1) then 
+        !  if ( neigh_max_vdw_old .ne. neigh_max_vdw) then
+        !   deallocate (neigh_b_vdw)
+        !   deallocate (neigh_j_vdw)
+        !   allocate (neigh_b_vdw (neigh_max_vdw, natoms))
+        !   allocate (neigh_j_vdw (neigh_max_vdw, natoms))
+        !  endif 
+        ! end if
 
 ! PP part
-        call find_neighPP_max (nprocs, my_proc, iordern, icluster)
+        call find_neighPP_max   ! (nprocs, my_proc, iordern, icluster)
 
         if (neighPP_max_old .ne. neighPP_max) then 
          if (my_proc .eq. 0) then
@@ -198,18 +204,18 @@
          deallocate (neighb_tot)  
          allocate (neighj_tot (neigh_max+neighPP_max, natoms))
          allocate (neighb_tot (neigh_max+neighPP_max, natoms))
-         if (iwrtatom .ge. 1) then                   
-          deallocate (hr_box)  
-          allocate (hr_box (numorb_max, numorb_max, natoms, 0:(neigh_max+neighPP_max)))
-         end if
+         !if (iwrtatom .ge. 1) then                   
+         ! deallocate (hr_box)  
+         ! allocate (hr_box (numorb_max, numorb_max, natoms, 0:(neigh_max+neighPP_max)))
+         !end if
 
 ! FIX ME
 ! In the future we must to optimize this part. This means we separate neighPP 
 ! and neigh into two different subroutines. To avoid double reallocation in 
 ! the case as neighPP_max and neigh_max are changed
-         call reallocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
-         call reallocate_f (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
-         call reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, igrid)
+         call reallocate_h   !(natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
+         call reallocate_f   !(natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
+         call reallocate_rho !(natoms, neigh_max, neighPP_max, itheory_xc, igrid)
 
         end if 
 

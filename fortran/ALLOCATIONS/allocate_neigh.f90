@@ -54,29 +54,25 @@
 !
 ! Program Declaration
 ! ===========================================================================
-subroutine allocate_neigh (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh,iwrthampiece, iwrtatom)
+subroutine allocate_neigh ! (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh,iwrthampiece, iwrtatom)
+	use options
 	use configuration
 	use interactions
 	use neighbor_map
-	use module_dos
-        use options, only : itheory_xc
-!CHROM
-	use options, only: iclassicMD
-	use classicMD, only: find_neigh_max_class
-!END CHROM
+	!use module_dos
 	implicit none
 	
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-	integer, intent (in) :: icluster
-	integer, intent (in) :: ifixneigh
-	integer, intent (in) :: iordern
-	integer, intent (in) :: ivdw
-	integer, intent (in) :: my_proc
-	integer, intent (in) :: nprocs
-	integer, intent (in) :: iwrthampiece
-	integer, intent (in) :: iwrtatom
+	! integer, intent (in) :: icluster
+	! integer, intent (in) :: ifixneigh
+	! integer, intent (in) :: iordern
+	! integer, intent (in) :: ivdw
+	! integer, intent (in) :: my_proc
+	! integer, intent (in) :: nprocs
+	! integer, intent (in) :: iwrthampiece
+	! integer, intent (in) :: iwrtatom
 
 
 ! Parameters and Data Declaration
@@ -94,63 +90,63 @@ subroutine allocate_neigh (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh,i
 ! If we are fixing the number of neighbors, then get the dimensions for
 ! the maximum number of neighbors from the NEIGHBORS file.
 
-	if (ifixneigh .eq. 1) then
- 		inquire (file = 'NEIGHBORS', exist = neighborsfile)
- 		if (.not. neighborsfile) then
- 			write (*,*) ' ifixneigh = 1, but there is no NEIGHBORS file! '
- 			stop
- 		end if 
- 		open (unit = 20, file = 'NEIGHBORS', status = 'old')
- 		read (20,*) num_atoms, neigh_max, fromwhichfile
- 		write (*,101) fromwhichfile
- 		if (num_atoms .ne. natoms) then
- 			write (*,*) ' The neighbors file that you are using must not belong '
- 			write (*,*) ' to the basis file that you are now calculating. '
-	 		write (*,*) ' The number of atoms differs between the two. ' 
-			write (*,*) ' Check the NEIGHBORS file and start over! '
-			stop
-	 	end if
- 		close (unit = 20)
-! For vdw interactions
- 		if (ivdw .eq. 1) then
- 			inquire (file = 'NEIGHBORS_VDW', exist = neighborsfile)
-			if (.not. neighborsfile) then
- 				write (*,*) ' ifixneigh = 1, but there is no NEIGHBORS file! '
- 				stop
-			end if
- 		end if
-	 	open (unit = 21, file = 'NEIGHBORS', status = 'old')
- 		read (21,*) num_atoms, neigh_max_vdw, fromwhichfile
-	 	write (*,101) fromwhichfile
- 		if (num_atoms .ne. natoms) then
-			write (*,*) ' The neighbors file that you are using must not belong '
-			write (*,*) ' to the basis file that you are now calculating. '
-			write (*,*) ' The number of atoms differs between the two. ' 
-			write (*,*) ' Check the NEIGHBORS file and start over! '
-			stop
- 		end if
-	 	close (unit = 21)
-! For PP interactions
-		inquire (file = 'NEIGHBORS_PP', exist = neighborsfile)
- 		if (.not. neighborsfile) then
-			write (*,*) ' ifixneigh = 1, but there is no NEIGHBORS_PP file! '
-			stop
- 		end if 
- 		open (unit = 22, file = 'NEIGHBORS_PP', status = 'old')
- 		read (22,*) num_atoms, neighPP_max, fromwhichfile
- 		write (*,101) fromwhichfile
- 		if (num_atoms .ne. natoms) then
-			write (*,*) ' The neighbors file that you are using must not belong '
-			write (*,*) ' to the basis file that you are now calculating. '
-			write (*,*) ' The number of atoms differs between the two. ' 
-			write (*,*) ' Check the NEIGHBORS_PP file and start over! '
-			stop
-	 	end if
- 		close (unit = 22)
-	else 
-		call find_neigh_max (nprocs, my_proc, iordern, icluster, ivdw)
- 		call find_neighPP_max (nprocs, my_proc, iordern, icluster)
-	end if
+! 	if (ifixneigh .eq. 1) then
+!  		inquire (file = 'NEIGHBORS', exist = neighborsfile)
+!  		if (.not. neighborsfile) then
+!  			write (*,*) ' ifixneigh = 1, but there is no NEIGHBORS file! '
+!  			stop
+!  		end if 
+!  		open (unit = 20, file = 'NEIGHBORS', status = 'old')
+!  		read (20,*) num_atoms, neigh_max, fromwhichfile
+!  		write (*,101) fromwhichfile
+!  		if (num_atoms .ne. natoms) then
+!  			write (*,*) ' The neighbors file that you are using must not belong '
+!  			write (*,*) ' to the basis file that you are now calculating. '
+! 	 		write (*,*) ' The number of atoms differs between the two. ' 
+! 			write (*,*) ' Check the NEIGHBORS file and start over! '
+! 			stop
+! 	 	end if
+!  		close (unit = 20)
+! ! For vdw interactions
+!  		! if (ivdw .eq. 1) then
+!  		! 	inquire (file = 'NEIGHBORS_VDW', exist = neighborsfile)
+! 		! 	if (.not. neighborsfile) then
+!  		! 		write (*,*) ' ifixneigh = 1, but there is no NEIGHBORS file! '
+!  		! 		stop
+! 		! 	end if
+!  		! end if
+! 	 	open (unit = 21, file = 'NEIGHBORS', status = 'old')
+!  		read (21,*) num_atoms, neigh_max_vdw, fromwhichfile
+! 	 	write (*,101) fromwhichfile
+!  		if (num_atoms .ne. natoms) then
+! 			write (*,*) ' The neighbors file that you are using must not belong '
+! 			write (*,*) ' to the basis file that you are now calculating. '
+! 			write (*,*) ' The number of atoms differs between the two. ' 
+! 			write (*,*) ' Check the NEIGHBORS file and start over! '
+! 			stop
+!  		end if
+! 	 	close (unit = 21)
+! ! For PP interactions
+! 		inquire (file = 'NEIGHBORS_PP', exist = neighborsfile)
+!  		if (.not. neighborsfile) then
+! 			write (*,*) ' ifixneigh = 1, but there is no NEIGHBORS_PP file! '
+! 			stop
+!  		end if 
+!  		open (unit = 22, file = 'NEIGHBORS_PP', status = 'old')
+!  		read (22,*) num_atoms, neighPP_max, fromwhichfile
+!  		write (*,101) fromwhichfile
+!  		if (num_atoms .ne. natoms) then
+! 			write (*,*) ' The neighbors file that you are using must not belong '
+! 			write (*,*) ' to the basis file that you are now calculating. '
+! 			write (*,*) ' The number of atoms differs between the two. ' 
+! 			write (*,*) ' Check the NEIGHBORS_PP file and start over! '
+! 			stop
+! 	 	end if
+!  		close (unit = 22)
+! 	else 
+		call find_neigh_max   ! (nprocs, my_proc, iordern, icluster, ivdw)
+ 		call find_neighPP_max ! (nprocs, my_proc, iordern, icluster)
+	!end if
 
 	allocate (neigh_b (neigh_max, natoms))
 	allocate (neigh_j (neigh_max, natoms))
@@ -194,23 +190,23 @@ subroutine allocate_neigh (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh,i
  	allocate (neighj_tot (neigh_max+neighPP_max, natoms))
  	allocate (neighb_tot (neigh_max+neighPP_max, natoms))
  	allocate (neighn_tot (natoms))
- 	if (ivdw .eq. 1) then
- 		allocate (neigh_b_vdw (neigh_max_vdw, natoms))
- 		allocate (neigh_j_vdw (neigh_max_vdw, natoms))
- 		allocate (neighn_vdw (natoms))
- 		allocate (neigh_vdw_self (natoms))
-	end if
+! 	if (ivdw .eq. 1) then
+! 		allocate (neigh_b_vdw (neigh_max_vdw, natoms))
+! 		allocate (neigh_j_vdw (neigh_max_vdw, natoms))
+! 		allocate (neighn_vdw (natoms))
+! 		allocate (neigh_vdw_self (natoms))
+!	end if
 
- 	if (iwrtatom .ge. 1) then 
- 		allocate (hr_box (numorb_max, numorb_max, natoms,0:(neigh_max+neighPP_max)))
- 	end if
+! 	if (iwrtatom .ge. 1) then 
+! 		allocate (hr_box (numorb_max, numorb_max, natoms,0:(neigh_max+neighPP_max)))
+! 	end if
 !CHROM
-	if (iclassicMD>0)then
-		neigh_max_class = find_neigh_max_class(icluster)
-		allocate(neigh_classic(neigh_max_class,natoms))
-		allocate(neighn_classic(natoms))
-		allocate(neigh_b_classic(neigh_max_class,natoms))
-	endif
+!	if (iclassicMD>0)then
+!		neigh_max_class = find_neigh_max_class(icluster)
+!		allocate(neigh_classic(neigh_max_class,natoms))
+!		allocate(neighn_classic(natoms))
+!		allocate(neigh_b_classic(neigh_max_class,natoms))
+!	endif
 !END CHROM
 
 ! Deallocate Arrays

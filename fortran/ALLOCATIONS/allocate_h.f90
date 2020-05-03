@@ -54,26 +54,29 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine allocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss, iwrtdos, iwrthop, iwrtatom)
-
+        !subroutine allocate_h (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss, iwrtdos, iwrthop, iwrtatom)
+        subroutine allocate_h
         use interactions
-        use options, only : idipole, V_intra_dip
+        use options !, only : idipole, V_intra_dip
+        use configuration
+        use interactions
+        use neighbor_map
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
-! Input
-        integer, intent (in) :: igauss
-        integer, intent (in) :: itheory
-        integer, intent (in) :: itheory_xc
-        integer, intent (in) :: natoms
-        integer, intent (in) :: neigh_max
-        integer, intent (in) :: neighPP_max
- ! CGP
-        integer, intent (in) :: iwrtdos
-        integer, intent (in) :: iwrthop
-        integer, intent (in) :: iwrtatom
-!end CGP
+! ! Input
+!         integer, intent (in) :: igauss
+!         integer, intent (in) :: itheory
+!         integer, intent (in) :: itheory_xc
+!         integer, intent (in) :: natoms
+!         integer, intent (in) :: neigh_max
+!         integer, intent (in) :: neighPP_max
+!  ! CGP
+!         integer, intent (in) :: iwrtdos
+!         integer, intent (in) :: iwrthop
+!         integer, intent (in) :: iwrtatom
+! !end CGP
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -102,15 +105,17 @@
 
 ! Interactions needed for gaussian approximation to three-center
 ! exchange-correlation interactions.        
-        if (igauss .eq. 1) then
-         allocate (bar_density_2c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (bar_density_3c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (density_2c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (density_3c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (nuxc_3c (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (nuxc_total (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (vxc_3c (numorb_max, numorb_max, neigh_max, natoms))
-        end if 
+! ! IF_DEF_GAUSS
+        ! if (igauss .eq. 1) then
+        !  allocate (bar_density_2c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (bar_density_3c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (density_2c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (density_3c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (nuxc_3c (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (nuxc_total (numorb_max, numorb_max, neigh_max, natoms))
+        !  allocate (vxc_3c (numorb_max, numorb_max, neigh_max, natoms))
+        ! end if 
+! ! END_DEF_GAUSS
 
 ! Interactions needed for SCF algorithms - either DOGS or extended-Hubbard
         if (itheory .ne. 0) then
@@ -119,15 +124,14 @@
          allocate (ewaldsr (numorb_max, numorb_max, neigh_max, natoms))
          allocate (vca (numorb_max, numorb_max, neigh_max, natoms))
          allocate (vxc_ca (numorb_max, numorb_max, neigh_max, natoms))
-         allocate (ewaldqmmm (numorb_max, numorb_max, neigh_max,natoms))
+         ! allocate (ewaldqmmm (numorb_max, numorb_max, neigh_max,natoms))
         end if
 
 ! zw mcweda second order
-        if (itheory_xc .eq. 4) then
-         allocate (g2nu(nsh_max,nsh_max,neigh_max,natoms))
-                              
-         allocate (g2nup(3,nsh_max,nsh_max,neigh_max,natoms))
-        end if !end if itheory_xc .eq. 4
+!        if (itheory_xc .eq. 4) then
+!         allocate (g2nu(nsh_max,nsh_max,neigh_max,natoms))
+!         allocate (g2nup(3,nsh_max,nsh_max,neigh_max,natoms))
+!        end if !end if itheory_xc .eq. 4
 
 ! Interactions needed only for DOGS
         if (itheory .eq. 1 .or. idipole .eq. 1) then
@@ -137,16 +141,19 @@
          allocate (dipc (3, numorb_max, numorb_max, neigh_max, natoms))
         endif
 !Intra-atomic dipolar potential
-        if (V_intra_dip .eq. 1) then
-          allocate(Vdip_1c(numorb_max,numorb_max,natoms))
-        end if
-! Interactions needed only for extended-Hubbard
-        if (itheory .eq. 2) then
-         allocate (Vcoulomb (nsh_max, natoms))
-         allocate (Vewaldsr (nsh_max, natoms))
-         allocate (Vxcnu (nsh_max, natoms))
-        end if
- 
+!        if (V_intra_dip .eq. 1) then
+!          allocate(Vdip_1c(numorb_max,numorb_max,natoms))
+!        end if
+
+! ! IF_DEF_HUBBARD
+! ! Interactions needed only for extended-Hubbard
+!         if (itheory .eq. 2) then
+!          allocate (Vcoulomb (nsh_max, natoms))
+!          allocate (Vewaldsr (nsh_max, natoms))
+!          allocate (Vxcnu (nsh_max, natoms))
+!         end if
+! ! END_DEF_HUBBARD
+
 ! Interactions needed for Sankey-Niklewski type average densities.
         if (itheory_xc .eq. 1 .or. itheory_xc .eq. 2 .or. itheory_xc .eq. 4) then
          allocate (sm_mat (nsh_max, nsh_max, neigh_max, natoms))
@@ -154,10 +161,10 @@
 
 ! CGP
 ! allocations for the dos calculation
-        if (iwrtdos.ge.1.or.iwrthop.ge.1.or.iwrtatom.ge.1) then
-           allocate (hamk(norbitals,norbitals))
-           hamk = 0.0d0
-        end if
+!        if (iwrtdos.ge.1.or.iwrthop.ge.1.or.iwrtatom.ge.1) then
+!           allocate (hamk(norbitals,norbitals))
+!           hamk = 0.0d0
+!        end if
 !end CGP
 
 ! Deallocate Arrays

@@ -77,5 +77,5 @@ module configuration
 
 !   type ( qmmm_structure ) qmmm_struct      ! this cause problems  in code_rewrite.py
               
-! end module
+end module
 ! ! END_DEF_QMMM
