@@ -37,10 +37,12 @@ GROUPS = {
 'interactions',
 'kpoints',
 'neighbor_map',
+'vnneutral',
 'wavefunction',
 'options',
 'energy',
-'scf',
+#'scf',
+'loops',
 ],
 }, #END MODULES
 
@@ -56,8 +58,10 @@ GROUPS = {
 }, #END READFILES
 
 'INTERPOLATERS' : {
-'' : ['buildspline_1d','interpolate_1d','interpolate_2d','recover_2c','recover_3c','recover_PP','recoverC','setterp_2d','recover_2cDipY',
-        'recover_2cDipX','recover_S','buildspline2_1d','getpsi','getYlm','getvna'],
+'' : ['buildspline_1d','interpolate_1d','interpolate_2d','recover_2c','recover_3c','recover_PP','recoverC','setterp_2d',
+#'recover_2cDipY',
+#'recover_2cDipX',
+'recover_S','buildspline2_1d','getpsi','getYlm','getvna'],
 }, #END INTERPOLATERS
 
 
@@ -80,20 +84,20 @@ GROUPS = {
 'make_munu',
 'make_munuPP',
 #'restart',
-'make_munuDipY',
-'make_munuDipX',
+#'make_munuDipY',
+#'make_munuDipX',
 #'zero_ang_mom',
 'initamat',
 'make_munuS',
 #'getkpoints',
-'initdenmat',
+#'initdenmat',
 #'get_info_orbital',
 'initbasics'
 ],
 }, #END INITIALIZERS
 
 'NEIGHBORS' : {
-'' : ['backnay','common_neighbors','find_neigh_max','find_neigh_max_class','mpairnay','neighbors','neighbors_pairs','find_neighPP_max',
+'' : ['backnay','common_neighbors','find_neigh_max','mpairnay','neighbors','neighbors_pairs','find_neighPP_max',
         'neighborsPP','common_neighborsPP','num_neigh_tot'],
 }, #END NEIGHBORS
 
@@ -108,8 +112,8 @@ GROUPS = {
 'Dtrescentros', 
 'doscentros', 
 'doscentrosPP', 
-'doscentrosDipY', 
-'doscentrosDipX', 
+#'doscentrosDipY', 
+#'doscentrosDipX', 
 'get_ewald', 
 'trescentros', 
 'unocentros', 
@@ -154,13 +158,10 @@ GROUPS = {
 'getenergy_mcweda',
 'assemble_S',
 'assemble_2c_S',
-'assemble_ca_2c_dip',
-'assemble_ca_3c_dip',
-'assemble_lr_dip',
-'assemble_1c_vdip',
-
-
-
+#'assemble_ca_2c_dip',
+#'assemble_ca_3c_dip',
+#'assemble_lr_dip',
+#'assemble_1c_vdip',
 ],
 }, #END ASSEMBLERS
 
@@ -185,9 +186,9 @@ GROUPS = {
 'Dassemble_ca_olsxc_3c',
 'Dassemble_ca_snxc_2c',
 'Dassemble_ca_olsxc_2c',
-'Dassemble_ca_2c_dip',
-'Dassemble_ca_3c_dip',
-'Dassemble_lr_dip',
+#'Dassemble_ca_2c_dip',
+#'Dassemble_ca_3c_dip',
+#'Dassemble_lr_dip',
 'getforces_mcweda',
 'getforces',
 ],

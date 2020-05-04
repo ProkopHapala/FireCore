@@ -87,7 +87,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine get_ewald (natoms, nprocs, my_proc, iforce, icluster, itheory, iordern, a1vec, a2vec, a3vec)
+        subroutine get_ewald ! (natoms, nprocs, my_proc, iforce, icluster, itheory, iordern, a1vec, a2vec, a3vec)
         use charges
         use configuration
         use constants_fireball
@@ -100,17 +100,17 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: icluster
-        integer, intent (in) :: iforce
-        integer, intent (in) :: iordern
-        integer, intent (in) :: itheory
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: natoms
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: icluster
+        ! integer, intent (in) :: iforce
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: my_proc
+        ! integer, intent (in) :: natoms
+        ! integer, intent (in) :: nprocs
  
-        real, intent (in), dimension (3) :: a1vec
-        real, intent (in), dimension (3) :: a2vec
-        real, intent (in), dimension (3) :: a3vec
+        ! real, intent (in), dimension (3) :: a1vec
+        ! real, intent (in), dimension (3) :: a2vec
+        ! real, intent (in), dimension (3) :: a3vec
 !$ volatile a1vec, a2vec, a3vec
  
 ! Local Parameters and Data Declaration

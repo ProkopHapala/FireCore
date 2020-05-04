@@ -70,7 +70,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_3c (nprocs, iordern, igauss, itheory_xc)
+        subroutine assemble_3c ! (nprocs, iordern, igauss, itheory_xc)
+        use options
         use configuration
         use constants_fireball
         use dimensions
@@ -82,10 +83,10 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: itheory_xc
-        integer, intent (in) :: igauss
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: itheory_xc
+        ! integer, intent (in) :: igauss
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: nprocs
  
  
 ! Local Parameters and Data Declaration

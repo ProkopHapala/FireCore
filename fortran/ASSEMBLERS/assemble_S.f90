@@ -47,17 +47,15 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine assemble_S ()
-
         use options
-        use outputs
-        use mpi_main
-        use scf
+        !use outputs
+        !use mpi_main
+        use loops
         use neighbor_map
         use configuration
         use interactions
         use energy
-        use md
-
+        !use md
         implicit none
 
 ! Argument Declaration and Description
@@ -100,19 +98,19 @@
 ! neighb(iatom,ineigh) = beta-sub-m, the beta value for the ineigh'th neighbor.
           if (Kscf .eq. 1) then
            if (ifixneigh .eq. 0) then
-            call reallocate_neigh (nprocs, my_proc, iordern,  itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece,  iwrtatom, igrid)
-            call neighbors (nprocs, my_proc, iordern, icluster,  iwrtneigh, ivdw)
-            call num_neigh_tot (numorb_max)
+            call reallocate_neigh ! (nprocs, my_proc, iordern,  itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece,  iwrtatom, igrid)
+            call neighbors        ! (nprocs, my_proc, iordern, icluster,  iwrtneigh, ivdw)
+            call num_neigh_tot    ! (numorb_max)
            else
             write (*,*) ' Using neighbor map from NEIGHBORS file. '
-            call initneighbors (natoms, ivdw, nstepi)
-            call num_neigh_tot (numorb_max)
+            call initneighbors ! (natoms, ivdw, nstepi)
+            call num_neigh_tot ! (numorb_max)
            end if
            call backnay ()
             !SFIRE
-           call common_neighbors (nprocs, my_proc, iordern, iwrtneigh_com)
+           call common_neighbors ! (nprocs, my_proc, iordern, iwrtneigh_com)
            !SFIRE
-           call neighbors_pairs (icluster)
+           call neighbors_pairs  !  (icluster)
            !SFIRE
           end if ! end if (Kscf .eq. 1)
 
@@ -151,7 +149,7 @@
 
 
           write (*,*) ' Assemble two-center interactions. '
-          call assemble_2c_S (nprocs, iforce, iordern, ioff2c)
+          call assemble_2c_S ! (nprocs, iforce, iordern, ioff2c)
 
 
 ! Deallocate Arrays

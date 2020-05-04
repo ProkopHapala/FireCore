@@ -57,7 +57,7 @@
         use density
         use charges
         use interactions
-        use scf
+        use loops
         use options
         use configuration
         use neighbor_map

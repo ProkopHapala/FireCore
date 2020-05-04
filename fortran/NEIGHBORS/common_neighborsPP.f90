@@ -70,7 +70,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine common_neighborsPP (nprocs, my_proc, iordern, iwrtneigh, icluster )
+        subroutine common_neighborsPP ! (nprocs, my_proc, iordern, iwrtneigh, icluster )
+        use options
         use configuration
         use dimensions
         use interactions
@@ -80,11 +81,11 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input 
-        integer, intent (in) :: iordern
-        integer, intent (in) :: iwrtneigh
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: nprocs
-        integer, intent (in) :: icluster
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: iwrtneigh
+        ! integer, intent (in) :: my_proc
+        ! integer, intent (in) :: nprocs
+        ! integer, intent (in) :: icluster
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -124,20 +125,22 @@
 !         write (*,*) ' common neighbors for Pseudopotential. '
 !        end if
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+! ! END_DEF_ORDERN
          iatomstart = 1
          natomsp = natoms
-        end if
+!        end if ! IF_DEF_ORDERN_END
 
 
 ! ****************************************************************************
@@ -247,37 +250,37 @@
 
 !        if (iordern .eq. 1)  call common_neighbors_ordern_final (natoms, nprocs, my_proc)     !   IF_DEF_ORDERN_END
 
-! Option for writing out the results for debugging.
-        if (iwrtneigh .eq. 1 .and. my_proc.eq.0) then
-         write (*,*) '  '
-         write (*,*) ' Common neighbors (Pseudopotential) of each atom: '
-         do ialp = 1, natoms
-          num_neigh = neighPP_comn(ialp)
-          write (*,*) '  '
-          write (*,*) ' num_neigh = ', num_neigh
-          write (*,100)
-          write (*,101)
-          do ineigh = 1, num_neigh
-           iatom = neighPP_comj(1,ineigh,ialp)
-           ibeta = neighPP_comb(1,ineigh,ialp)
-           jatom = neighPP_comj(2,ineigh,ialp)
-           jbeta = neighPP_comb(2,ineigh,ialp)
-           kneigh = neighPP_comm(ineigh,ialp)
+! ! Option for writing out the results for debugging.
+!         if (iwrtneigh .eq. 1 .and. my_proc.eq.0) then
+!          write (*,*) '  '
+!          write (*,*) ' Common neighbors (Pseudopotential) of each atom: '
+!          do ialp = 1, natoms
+!           num_neigh = neighPP_comn(ialp)
+!           write (*,*) '  '
+!           write (*,*) ' num_neigh = ', num_neigh
+!           write (*,100)
+!           write (*,101)
+!           do ineigh = 1, num_neigh
+!            iatom = neighPP_comj(1,ineigh,ialp)
+!            ibeta = neighPP_comb(1,ineigh,ialp)
+!            jatom = neighPP_comj(2,ineigh,ialp)
+!            jbeta = neighPP_comb(2,ineigh,ialp)
+!            kneigh = neighPP_comm(ineigh,ialp)
 
-           distance =                                                        &
-     &      sqrt(((ratom(1,iatom) + xl(1,ibeta))                             &
-     &            - (ratom(1,jatom) + xl(1,jbeta)))**2                       &
-     &           + ((ratom(2,iatom) + xl(2,ibeta))                           &
-     &              - (ratom(2,jatom) + xl(2,jbeta)))**2                     &
-     &           + ((ratom(3,iatom) + xl(3,ibeta))                           &
-     &              - (ratom(3,jatom) + xl(3,jbeta)))**2)
+!            distance =                                                        &
+!      &      sqrt(((ratom(1,iatom) + xl(1,ibeta))                             &
+!      &            - (ratom(1,jatom) + xl(1,jbeta)))**2                       &
+!      &           + ((ratom(2,iatom) + xl(2,ibeta))                           &
+!      &              - (ratom(2,jatom) + xl(2,jbeta)))**2                     &
+!      &           + ((ratom(3,iatom) + xl(3,ibeta))                           &
+!      &              - (ratom(3,jatom) + xl(3,jbeta)))**2)
  
-           dvec(:) = xl(:,jbeta) + ratom(:,jatom) - xl(:,ibeta) - ratom(:,iatom)
-           write (*,102) ialp, ineigh, iatom, ibeta, jatom, jbeta, kneigh,   &
-     &                   distance, dvec
-          end do
-         end do
-        end if
+!            dvec(:) = xl(:,jbeta) + ratom(:,jatom) - xl(:,ibeta) - ratom(:,iatom)
+!            write (*,102) ialp, ineigh, iatom, ibeta, jatom, jbeta, kneigh,   &
+!      &                   distance, dvec
+!           end do
+!          end do
+!         end if  ! iwrtneigh
  
 ! Deallocate Arrays
 ! ===========================================================================

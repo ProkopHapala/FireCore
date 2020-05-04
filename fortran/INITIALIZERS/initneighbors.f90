@@ -54,16 +54,19 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine initneighbors (natoms, ivdw, nstepi)
+        subroutine initneighbors ! (natoms, ivdw, nstepi)
+        use loops
+        use options
+        use configuration
         use neighbor_map
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: ivdw
-        integer, intent (in) :: natoms
-        integer, intent (in) :: nstepi
+        ! integer, intent (in) :: ivdw
+        ! integer, intent (in) :: natoms
+        ! integer, intent (in) :: nstepi
  
 ! Output
  
@@ -201,29 +204,30 @@
           end do
         end do
 
-
-! For van der Waals interactions.        
-        if (ivdw .eq. 1) then
-         open (unit = 21, file = 'NEIGHBORS_VDW', status = 'unknown')
-         read (21,*) 
-         do iatom = 1, natoms
-          read (21,*) num_neigh_vdw 
-          neighn_vdw(iatom) = num_neigh_vdw
-          do ineigh = 1, num_neigh_vdw
-           read (21,*) katom, kneigh, mbeta, jatom 
-           if (katom .ne. iatom .or. kneigh .ne. ineigh) then
-            write (*,*) ' iatom, katom = ', iatom, katom
-            write (*,*) ' ineigh, kneigh = ', ineigh, kneigh
-            write (*,*) ' Problem in NEIGHBORS, atoms not lined up correctly. '
-            write (*,*) ' Fix and restart! '
-            stop
-           end if 
-           neigh_b_vdw(ineigh,iatom) = mbeta
-           neigh_j_vdw(ineigh,iatom) = jatom
-          end do 
-         end do 
-         close (unit = 21)
-        end if        
+! ! IF_DEF_VDW
+! ! For van der Waals interactions.        
+!         if (ivdw .eq. 1) then
+!          open (unit = 21, file = 'NEIGHBORS_VDW', status = 'unknown')
+!          read (21,*) 
+!          do iatom = 1, natoms
+!           read (21,*) num_neigh_vdw 
+!           neighn_vdw(iatom) = num_neigh_vdw
+!           do ineigh = 1, num_neigh_vdw
+!            read (21,*) katom, kneigh, mbeta, jatom 
+!            if (katom .ne. iatom .or. kneigh .ne. ineigh) then
+!             write (*,*) ' iatom, katom = ', iatom, katom
+!             write (*,*) ' ineigh, kneigh = ', ineigh, kneigh
+!             write (*,*) ' Problem in NEIGHBORS, atoms not lined up correctly. '
+!             write (*,*) ' Fix and restart! '
+!             stop
+!            end if 
+!            neigh_b_vdw(ineigh,iatom) = mbeta
+!            neigh_j_vdw(ineigh,iatom) = jatom
+!           end do 
+!          end do 
+!          close (unit = 21)
+!         end if  ! (ivdw .eq. 1) 
+! ! END_DEF_VDW
  
 ! Format Statements
 ! ===========================================================================

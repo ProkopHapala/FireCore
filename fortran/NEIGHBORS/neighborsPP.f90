@@ -70,7 +70,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine neighborsPP (nprocs, my_proc, iordern, icluster, iwrtneigh)
+        subroutine neighborsPP ! (nprocs, my_proc, iordern, icluster, iwrtneigh)
+        use options
         use configuration
         use dimensions
         use interactions
@@ -80,11 +81,11 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: icluster
-        integer, intent (in) :: iordern
-        integer, intent (in) :: iwrtneigh
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: icluster
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: iwrtneigh
+        ! integer, intent (in) :: my_proc
+        ! integer, intent (in) :: nprocs
 
 
 !$ volatile rcutoff
@@ -127,19 +128,21 @@
 !     &  write (*,*) ' Welcome to neighborsPP - determine mapping of PP neighbors. '
         if (icluster .eq. 1) mbeta_max = 0
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)   + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)   + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+! ! END_DEF_ORDERN
          iatomstart = 1
          natomsp = natoms
-        end if
+!        end if    ! IF_DEF_ORDERN_END
 
 
 ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -74,22 +74,23 @@
 !        subroutine read_1c (nspecies, itheory, itheory_xc, ispin,       &
 !     &                      ioff1c)
         subroutine read_1c (nspecies, ioff1c)
+        use options
         use charges
         use dimensions
         use integrals
         use interactions
         use options
-        use nonadiabatic
+        ! use nonadiabatic
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: ioff1c
+       integer, intent (in) :: ioff1c
 !       integer, intent (in) :: ispin
 !       integer, intent (in) :: itheory
 !       integer, intent (in) :: itheory_xc
-        integer, intent (in) :: nspecies
+       integer, intent (in) :: nspecies
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -145,9 +146,7 @@
 ! Procedure
 ! ===========================================================================
 ! ***************************************************************************
-!
 !         H O R S E F I E L D    E X C H A N G E - C O R R E L A T I O N
-!
 ! *************************************************************************** 
 
 ! Initialize to zero.
@@ -219,8 +218,7 @@
  
 ! Read data from the 1-center exchange-correlation extended hubbard file.
         if (itheory .eq. 2) then
-         open (unit = 37, file = trim(fdataLocation)//'/nuxc_onecenter.dat',         &
-     &         status = 'unknown')
+         open (unit = 37, file = trim(fdataLocation)//'/nuxc_onecenter.dat',  status = 'unknown')
          do iline = 1, 4
           read (37,100) message
          end do
@@ -243,8 +241,7 @@
            end do
           else 
            read (37,*) itype, numsh
-           if (itype .ne. in1 .or. numsh .ne. nssh(in2)) stop           &
-     &      ' Problem reading nuxc_onecenter.dat file '
+           if (itype .ne. in1 .or. numsh .ne. nssh(in2)) stop  ' Problem reading nuxc_onecenter.dat file '
            do issh = 1, numsh
             read (37,*) (xcnu1c(issh,jssh,in2), jssh = 1, numsh)
            end do
@@ -253,49 +250,45 @@
          end do
          close (unit = 37)
 
-! Read data from the 1-center spin exchange-correlation extended hubbard
-! file.
-          if (ispin .eq. 1) then
-     open (unit = 38, file = trim(fdataLocation)//'/nuxcs_onecenter.dat',              &
-     &           status = 'unknown')
-           do iline = 1, 4
-            read (38,100) message
-           end do
- 
-           do in1 = 1, nspecies + nsup
-            read (38,100) message
-           end do
-           read (38,100) message
-
-           in2 = 1
-           do in1 = 1, nspecies + nsup
-            skip_it = .false.
-            do ins = 1, nsup
-             if (nsu(ins) .eq. in1) skip_it = .true.
-            end do
-            if (skip_it) then
-             read (38,*) itype, numsh
-             do issh = 1, numsh
-              read(38,100) message
-             end do
-            else
-             read (38,*) itype, numsh
-             if (itype .ne. in1 .or. numsh .ne. nssh(in2)) stop              &
-     &        ' Problem reading nuxcs_onecenter.dat  file '
-             do issh = 1, numsh
-              read (38,*) (xcnu1cs(issh,jssh,in2),jssh = 1, numsh)
-             end do
-             in2 = in2 + 1
-            end if
-           end do
-           close (unit = 38)
-          end if
+! Read data from the 1-center spin exchange-correlation extended hubbard file.
+! ! IF_DEF_SPIN
+!          if (ispin .eq. 1) then
+!      open (unit = 38, file = trim(fdataLocation)//'/nuxcs_onecenter.dat', status = 'unknown')
+!            do iline = 1, 4
+!             read (38,100) message
+!            end do
+!            do in1 = 1, nspecies + nsup
+!             read (38,100) message
+!            end do
+!            read (38,100) message
+!            in2 = 1
+!            do in1 = 1, nspecies + nsup
+!             skip_it = .false.
+!             do ins = 1, nsup
+!              if (nsu(ins) .eq. in1) skip_it = .true.
+!             end do
+!             if (skip_it) then
+!              read (38,*) itype, numsh
+!              do issh = 1, numsh
+!               read(38,100) message
+!              end do
+!             else
+!              read (38,*) itype, numsh
+!              if (itype .ne. in1 .or. numsh .ne. nssh(in2)) stop              &
+!      &        ' Problem reading nuxcs_onecenter.dat  file '
+!              do issh = 1, numsh
+!               read (38,*) (xcnu1cs(issh,jssh,in2),jssh = 1, numsh)
+!              end do
+!              in2 = in2 + 1
+!             end if
+!            end do
+!            close (unit = 38)
+!           end if !  (ispin .eq. 1) 
+! ! END_DEF_SPIN
          end if
         end if   ! end if (itheory_xc .eq. 0)
 ! ***************************************************************************
-!
 !            M c W E D A   E X C H A N G E - C O R R E L A T I O N
-!
 ! *************************************************************************** 
         if (itheory_xc .eq. 2 .or. itheory_xc .eq. 4) then 
         
@@ -306,12 +299,15 @@
          allocate(dnuxc1c (nspecies,nsh_max,nsh_max,nsh_max))
          allocate(d2nuxc1c (nspecies,nsh_max,nsh_max,nsh_max,nsh_max))
            
-! jel-nac
-!         if (imdet .eq. 1) then 
-         if (imdet .ne. 0) then 
-           allocate(f1nac1c (nspecies,nsh_max,nsh_max))
-           allocate(f2nac1c (nspecies,nsh_max,nsh_max))
-         end if
+
+! ! IF_DEF_NAC
+! ! jel-nac
+! !         if (imdet .eq. 1) then 
+!          if (imdet .ne. 0) then 
+!            allocate(f1nac1c (nspecies,nsh_max,nsh_max))
+!            allocate(f2nac1c (nspecies,nsh_max,nsh_max))
+!          end if
+! ! END_DEF_NAC
 
          open (unit = 36, file = trim(fdataLocation)//'/xc1c_dqi.dat', status = 'unknown')
         
@@ -490,128 +486,127 @@
           end if ! if (skip_it)
          end do ! in1
 
-         if (imdet .eq. 1) then
-! ==================================================================
-!       READ FILES             goverlapf1.dat and goverlapf2.dat
-! ==================================================================
-         open (unit = 36, file = trim(fdataLocation)//'/goverlapf1.dat', status = 'unknown')
 
-! Read header
-         do iline = 1, 4
-          read (36,100) message
-         end do
 
-         do in1 = 1, nspecies + nsup
-          read (36,100) message
-         end do
-         read (36,100) message
-
-         in2 = 1
-! skip unsed species
-! JOM-warning : I am not sure that "skip" works well here
-         do in1 = 1, nspecies + nsup
-          skip_it = .false.
-          do ins = 1, nsup
-           if (nsu(ins) .eq. in1) skip_it = .true.
-          end do
-
-          if (skip_it) then
-
-!          do 
-!           read (36,*) itype, numsh, kkssh
-            read (36,*) itype, numsh
-            do issh = 1, numsh
-             read (36,*)
-            end do
-!           if (numsh .eq. kkssh) exit
-!          end do ! do kssh 
-
-          else
-
-!          do kssh = 1, nssh(in2)
-!           read (36,*) itype, numsh, kkssh
-            read (36,*) itype, numsh
-            if (numsh .ne. nssh(in2)) then
-             write (*,*) ' numsh .ne. nssh in read_1c.f90 '
-             write (*,*) itype, numsh, in1, nssh(in2)
-             stop
-            end if
-
-            do issh = 1, numsh
-             read (36,*) (f1nac1c(in2,issh,jssh),jssh=1,numsh)
-            end do
-
-!            do issh = 1, numsh
-!             do jssh = 1, numsh
-!              dnuxc1c(in2,issh,jssh,kssh) = dnuxc1c(in2,issh,jssh,kssh)*ioff1c
-!!              dexc1c(in2,issh,jssh,kssh) = exc1c0(in2,issh,jssh.kssh)*ioff1c
+! ! IF_DEF_NAC
+!          if (imdet .eq. 1) then
+! ! ==================================================================
+! !       READ FILES             goverlapf1.dat and goverlapf2.dat
+! ! ==================================================================
+!          open (unit = 36, file = trim(fdataLocation)//'/goverlapf1.dat', status = 'unknown')
+! ! Read header
+!          do iline = 1, 4
+!           read (36,100) message
+!          end do
+!          do in1 = 1, nspecies + nsup
+!           read (36,100) message
+!          end do
+!          read (36,100) message
+!          in2 = 1
+! ! skip unsed species
+! ! JOM-warning : I am not sure that "skip" works well here
+!          do in1 = 1, nspecies + nsup
+!           skip_it = .false.
+!           do ins = 1, nsup
+!            if (nsu(ins) .eq. in1) skip_it = .true.
+!           end do
+!           if (skip_it) then
+! !          do 
+! !           read (36,*) itype, numsh, kkssh
+!             read (36,*) itype, numsh
+!             do issh = 1, numsh
+!              read (36,*)
 !             end do
-!            end do
-!          end do ! do kssh
-! increment 'shadow' ispec counter
-           in2 = in2 + 1
-          end if ! if (skip_it)
-         end do ! in1
+! !           if (numsh .eq. kkssh) exit
+! !          end do ! do kssh 
 
-         open (unit = 37, file = trim(fdataLocation)//'/goverlapf2.dat', status = 'unknown')
+!           else
 
-! Read header
-         do iline = 1, 4
-          read (37,100) message
-         end do
+! !          do kssh = 1, nssh(in2)
+! !           read (36,*) itype, numsh, kkssh
+!             read (36,*) itype, numsh
+!             if (numsh .ne. nssh(in2)) then
+!              write (*,*) ' numsh .ne. nssh in read_1c.f90 '
+!              write (*,*) itype, numsh, in1, nssh(in2)
+!              stop
+!             end if
 
-         do in1 = 1, nspecies + nsup
-          read (37,100) message
-         end do
-         read (37,100) message
-
-         in2 = 1
-! skip unsed species
-! JOM-warning : I am not sure that "skip" works well here
-         do in1 = 1, nspecies + nsup
-          skip_it = .false.
-          do ins = 1, nsup
-           if (nsu(ins) .eq. in1) skip_it = .true.
-          end do
-
-          if (skip_it) then
-
-!          do 
-!           read (36,*) itype, numsh, kkssh
-            read (37,*) itype, numsh
-            do issh = 1, numsh
-             read (37,*)
-            end do
-!           if (numsh .eq. kkssh) exit
-!          end do ! do kssh 
-
-          else
-
-!          do kssh = 1, nssh(in2)
-!           read (36,*) itype, numsh, kkssh
-            read (37,*) itype, numsh
-            if (numsh .ne. nssh(in2)) then
-             write (*,*) ' numsh .ne. nssh in read_1c.f90 '
-             write (*,*) itype, numsh, in1, nssh(in2)
-             stop
-            end if
-
-            do issh = 1, numsh
-             read (37,*) (f2nac1c(in2,issh,jssh),jssh=1,numsh)
-            end do
-
-!            do issh = 1, numsh
-!             do jssh = 1, numsh
-!              dnuxc1c(in2,issh,jssh,kssh) = dnuxc1c(in2,issh,jssh,kssh)*ioff1c
-!!              dexc1c(in2,issh,jssh,kssh) = exc1c0(in2,issh,jssh.kssh)*ioff1c
+!             do issh = 1, numsh
+!              read (36,*) (f1nac1c(in2,issh,jssh),jssh=1,numsh)
 !             end do
-!            end do
-!          end do ! do kssh
-! increment 'shadow' ispec counter
-           in2 = in2 + 1
-          end if ! if (skip_it)
-         end do ! in1
-         end if
+
+! !            do issh = 1, numsh
+! !             do jssh = 1, numsh
+! !              dnuxc1c(in2,issh,jssh,kssh) = dnuxc1c(in2,issh,jssh,kssh)*ioff1c
+! !!              dexc1c(in2,issh,jssh,kssh) = exc1c0(in2,issh,jssh.kssh)*ioff1c
+! !             end do
+! !            end do
+! !          end do ! do kssh
+! ! increment 'shadow' ispec counter
+!            in2 = in2 + 1
+!           end if ! if (skip_it)
+!          end do ! in1
+
+!          open (unit = 37, file = trim(fdataLocation)//'/goverlapf2.dat', status = 'unknown')
+
+! ! Read header
+!          do iline = 1, 4
+!           read (37,100) message
+!          end do
+
+!          do in1 = 1, nspecies + nsup
+!           read (37,100) message
+!          end do
+!          read (37,100) message
+
+!          in2 = 1
+! ! skip unsed species
+! ! JOM-warning : I am not sure that "skip" works well here
+!          do in1 = 1, nspecies + nsup
+!           skip_it = .false.
+!           do ins = 1, nsup
+!            if (nsu(ins) .eq. in1) skip_it = .true.
+!           end do
+
+!           if (skip_it) then
+
+! !          do 
+! !           read (36,*) itype, numsh, kkssh
+!             read (37,*) itype, numsh
+!             do issh = 1, numsh
+!              read (37,*)
+!             end do
+! !           if (numsh .eq. kkssh) exit
+! !          end do ! do kssh 
+
+!           else
+
+! !          do kssh = 1, nssh(in2)
+! !           read (36,*) itype, numsh, kkssh
+!             read (37,*) itype, numsh
+!             if (numsh .ne. nssh(in2)) then
+!              write (*,*) ' numsh .ne. nssh in read_1c.f90 '
+!              write (*,*) itype, numsh, in1, nssh(in2)
+!              stop
+!             end if
+
+!             do issh = 1, numsh
+!              read (37,*) (f2nac1c(in2,issh,jssh),jssh=1,numsh)
+!             end do
+
+! !            do issh = 1, numsh
+! !             do jssh = 1, numsh
+! !              dnuxc1c(in2,issh,jssh,kssh) = dnuxc1c(in2,issh,jssh,kssh)*ioff1c
+! !!              dexc1c(in2,issh,jssh,kssh) = exc1c0(in2,issh,jssh.kssh)*ioff1c
+! !             end do
+! !            end do
+! !          end do ! do kssh
+! ! increment 'shadow' ispec counter
+!            in2 = in2 + 1
+!           end if ! if (skip_it)
+!          end do ! in1
+!          end if ! (imdet .eq. 1) 
+! ! END_DEF_NAC
 
          if (itheory_xc .eq. 4) then
             allocate(xcnu1c (nsh_max, nsh_max, nspecies))
@@ -655,60 +650,51 @@
 ! ==================================================================
          end if ! if(itheory_xc.eq.2 .or. 4) 
 
-       !+++++++++++++++++++++++++++++++NEW JUNE 2019+++++++++++++++++++++++++++
-      !.........................Vip 1c...........................................
-      !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-      if (V_intra_dip .eq. 1) then
-      allocate(Nlines_vdip1c(nspecies))
-      Nlines_vdip1c_max=0
-      root = trim(fdataLocation)//'/vdip_onecenter'
-      do in1 = 1,nspecies
-       write (extension,'(''_'',i2.2)') in1
-       filename = append_string (root,extension)
-      open (unit = 36, file = filename, status = 'unknown')
-      read(36,501) Nlines_vdip1c(in1)
-      if (Nlines_vdip1c(in1) .gt. Nlines_vdip1c_max) then
-      Nlines_vdip1c_max=Nlines_vdip1c(in1)
-      end if
-      close(36)
-      end do !end do in1
-        
-       allocate(muR(Nlines_vdip1c_max,nspecies))
-       allocate(nuR(Nlines_vdip1c_max,nspecies))
-       allocate(alphaR(Nlines_vdip1c_max,nspecies))
-       allocate(betaR(Nlines_vdip1c_max,nspecies))
-       allocate(IR(Nlines_vdip1c_max,nspecies))
+! ! IF_DEF_DIPOLE
+!       !+++++++++++++++++++++++++++++++NEW JUNE 2019+++++++++++++++++++++++++++
+!       !.........................Vip 1c...........................................
+!       !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+!       if (V_intra_dip .eq. 1) then
+!         allocate(Nlines_vdip1c(nspecies))
+!         Nlines_vdip1c_max=0
+!         root = trim(fdataLocation)//'/vdip_onecenter'
+!         do in1 = 1,nspecies
+!         write (extension,'(''_'',i2.2)') in1
+!         filename = append_string (root,extension)
+!         open (unit = 36, file = filename, status = 'unknown')
+!         read(36,501) Nlines_vdip1c(in1)
+!         if (Nlines_vdip1c(in1) .gt. Nlines_vdip1c_max) then
+!         Nlines_vdip1c_max=Nlines_vdip1c(in1)
+!         end if
+!         close(36)
+!         end do !end do in1
+!         allocate(muR(Nlines_vdip1c_max,nspecies))
+!         allocate(nuR(Nlines_vdip1c_max,nspecies))
+!         allocate(alphaR(Nlines_vdip1c_max,nspecies))
+!         allocate(betaR(Nlines_vdip1c_max,nspecies))
+!         allocate(IR(Nlines_vdip1c_max,nspecies))
+!         muR    = 0.0d0
+!         nuR    = 0.0d0
+!         alphaR = 0.0d0
+!         betaR  = 0.0d0
+!         IR     = 0.0d0
+!         do in1 = 1,nspecies
+!         write (extension,'(''_'',i2.2)') in1
+!         filename = append_string (root,extension)
+!         open (unit = 36, file = filename, status = 'unknown')
+!         read(36,501) trash
+!         do iline = 1,Nlines_vdip1c(in1)
+!                 read(36,500) muR(iline,in1), nuR(iline,in1), alphaR(iline,in1), betaR(iline,in1), IR(iline,in1)
+!         end do !end do iline = 1,Nlines_vdip1c
+!         close(36)
+!         write(*,*) 'Alles gut bisher' !Ankais
+!         end do !end do in1 = 1,nspecies
+!       end if ! if (V_intra_dip .eq. 1)
+!       !+++++++++++++++++++++++++++++++NEW JUNE 2019+++++++++++++++++++++++++++
+!       !.........................END OF Vip 1c...........................................
+!       !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+! ! END_DEF_DIPOLE
 
-       muR    = 0.0d0
-       nuR    = 0.0d0
-       alphaR = 0.0d0
-       betaR  = 0.0d0
-       IR     = 0.0d0
-
-         
-      do in1 = 1,nspecies
-       write (extension,'(''_'',i2.2)') in1
-       filename = append_string (root,extension)
-       open (unit = 36, file = filename, status = 'unknown')
-       read(36,501) trash
-         
-       do iline = 1,Nlines_vdip1c(in1)
-          
-          
-        read(36,500) muR(iline,in1), nuR(iline,in1), alphaR(iline,in1), betaR(iline,in1), IR(iline,in1)
-
-
-      end do !end do iline = 1,Nlines_vdip1c
-
-      close(36)
-      write(*,*) 'Alles gut bisher' !Ankais
-      end do !end do in1 = 1,nspecies
-
-      end if ! if (V_intra_dip .eq. 1)
-      !+++++++++++++++++++++++++++++++NEW JUNE 2019+++++++++++++++++++++++++++
-      !.........................END OF Vip 1c...........................................
-      !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        
 ! Deallocate Arrays
 ! ===========================================================================
  

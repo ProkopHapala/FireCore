@@ -53,25 +53,23 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_2c (nprocs, iforce, iordern, ioff2c)
+        subroutine assemble_2c ! (nprocs, iforce, iordern, ioff2c)
         use configuration
         use constants_fireball
         use dimensions
         use forces
         use interactions
         use neighbor_map
-        use options, only: idipole, itheory_xc
+        use options !, only: idipole, itheory_xc
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iforce
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
- 
-! 15 different two-center interactions
-        integer, intent (in), dimension (1:24) :: ioff2c
+        ! integer, intent (in) :: iforce
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: nprocs
+        ! integer, intent (in), dimension (1:24) :: ioff2c
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================

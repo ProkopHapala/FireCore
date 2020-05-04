@@ -53,17 +53,16 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine initconstants (sigma, sigmaold, scf_achieved)
+        subroutine initconstants ! (sigma, sigmaold, scf_achieved)
         use constants_fireball
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Output
-        real, intent (out) :: sigma
-        real, intent (out) :: sigmaold
- 
-        logical, intent (out) :: scf_achieved
+!        real, intent    (out) :: sigma
+!        real, intent    (out) :: sigmaold
+!        logical, intent (out) :: scf_achieved
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -73,9 +72,7 @@
  
 ! Procedure
 ! ===========================================================================
-        sigma = 0.0d0
-        sigmaold = 0.0d0
- 
+
 ! Now set up Kronecker delta and levi-civita symbols.
         delk = 0.0d0
         delk(1,1) = 1.0d0
@@ -90,8 +87,6 @@
         xlevi(2,3,1) = 1.0d0
         xlevi(2,1,3) = -1.0d0
 
-        scf_achieved = .true.
- 
 ! Format Statements
 ! ===========================================================================
  

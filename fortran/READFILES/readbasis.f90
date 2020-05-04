@@ -64,17 +64,14 @@
         subroutine readbasis ( nzx, imass)
         use configuration
         use dimensions
-        use md, only : T_instantaneous
-        use options, only : verbosity,inputxyz, restartxyz
+        !use md, only : T_instantaneous
+        use options !, only : verbosity,inputxyz, restartxyz
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
- 
         integer, intent (in), dimension (nspecies) :: nzx
- 
- 
 ! Output
         integer, dimension (natoms), intent(out) :: imass
  
@@ -108,11 +105,11 @@
         end if
 
       if (inputxyz .eq. 1) then 
-
-        if (restartxyz .eq. 0) read (69,*)
-        if (restartxyz .eq. 1) then
-          read (69,908)  etot_tmp,T_instantaneous, init_time
-        end if   
+        read (69,*)
+        !if (restartxyz .eq. 0) read (69,*)
+        !if (restartxyz .eq. 1) then
+        !  read (69,908)  etot_tmp,T_instantaneous, init_time
+        !end if   
       
         do iatom = 1, natoms
          if (restartxyz .eq. 0) read (69,*) symbol(iatom),ratom(:,iatom)

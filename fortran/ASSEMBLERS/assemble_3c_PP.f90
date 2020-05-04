@@ -72,7 +72,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_3c_PP (nprocs, iordern)
+        subroutine assemble_3c_PP ! (nprocs, iordern)
+        use options
         use configuration
         use constants_fireball
         use dimensions
@@ -84,8 +85,8 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: nprocs
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================

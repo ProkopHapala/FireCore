@@ -53,7 +53,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine denmat (ifixcharge, iqout, icluster, iwrtefermi, tempfe,  ebs, iwrtpop, bmix, Kscf, igap)
+        subroutine denmat(ebs)   ! (ifixcharge, iqout, icluster, iwrtefermi, tempfe,  ebs, iwrtpop, bmix, Kscf, igap)
+        use options
         use charges
         use configuration
         use constants_fireball
@@ -68,16 +69,15 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: icluster
-        integer, intent (in) :: ifixcharge
-        integer, intent (in) :: iqout
-        integer, intent (in) :: iwrtefermi
-        integer, intent (in) :: iwrtpop
-        integer, intent (in) :: bmix
-        integer, intent (in) :: Kscf
-        integer, intent (in) :: igap
-
-        real, intent (in) :: tempfe
+        ! integer, intent (in) :: icluster
+        ! integer, intent (in) :: ifixcharge
+        ! integer, intent (in) :: iqout
+        ! integer, intent (in) :: iwrtefermi
+        ! integer, intent (in) :: iwrtpop
+        ! integer, intent (in) :: bmix
+        ! integer, intent (in) :: Kscf
+        ! integer, intent (in) :: igap
+        ! real, intent (in) :: tempfe
 
 ! Output
         real, intent (out) :: ebs
@@ -142,7 +142,6 @@
 !        write (*,*) ' ****************************************************** '
 !
 ! ****************************************************************************
-!
 !                     C H A R G E    O C C U P A T I O N S
 ! ****************************************************************************
 ! If there exists a file 'OCCUPATION', then make a list of energy eigenvalues
@@ -263,7 +262,6 @@
 
 
 ! ****************************************************************************
-!
 !                      C O M P U T E    D E N S I T I E S
 ! ****************************************************************************
 ! Loop over all atoms iatom in the unit cell, and then over all its neighbors.
@@ -397,7 +395,6 @@
         end do
 
 ! ****************************************************************************
-!
 !  C O M P U T E    L O W D I N    C H A R G E S
 ! ****************************************************************************
 ! Initialize
@@ -456,7 +453,6 @@
 
 
 ! ****************************************************************************
-!
 !  C O M P U T E    M U L L I K E N    C H A R G E S
 ! ****************************************************************************
 ! Compute Mulliken charges.
@@ -516,21 +512,21 @@
         end if      ! endif of iqout .eq. 2
 
 
-! GAP ENRIQUE-FF
-       if ((igap.eq.1).or.(igap.eq.2)) then
-         call buildnij(ioccupy_k,foccupy, bmix, Kscf)
-       end if
-       if (igap .eq. 2 ) then
-         call koopman(natoms,nkpoints,ratom,ioccupy_k,foccupy)
-       end if
-! end GAP ENRIQUE-FF
-
+! ! IF_DEF_GAP
+! ! GAP ENRIQUE-FF
+!        if ((igap.eq.1).or.(igap.eq.2)) then
+!          call buildnij(ioccupy_k,foccupy, bmix, Kscf)
+!        end if
+!        if (igap .eq. 2 ) then
+!          call koopman(natoms,nkpoints,ratom,ioccupy_k,foccupy)
+!        end if
+! ! end GAP ENRIQUE-FF
+! ! END_DEF_GAP
 
 
 
 
 ! ****************************************************************************
-!
 !  C O M P U T E    M U L L I K E N - D I P O L E    C H A R G E S
 ! ****************************************************************************
 ! Compute Mulliken-dipole charges.
@@ -538,9 +534,7 @@
          Qout = 0.0d0
          QMulliken = 0.0d0
          QMulliken_TOT = 0.0d0
-
          if (ifixcharge .eq. 1) then
-
           do iatom = 1, natoms
            in1 = imass(iatom)
            QMulliken_TOT(iatom) = 0.0d0
@@ -549,9 +543,7 @@
             QMulliken_TOT(iatom) = QMulliken_TOT(iatom) +Qin(issh,iatom)
            end do
           end do
-
          else
-
           do iatom = 1, natoms
            in1 = imass(iatom)
            r1(:) = ratom(:,iatom)
@@ -561,13 +553,11 @@
             in2 = imass(jatom)
             r2(:) = ratom(:,jatom)
 
-
 ! ****************************************************************************
 ! Find r21 = vector pointing from r1 to r2, the two ends of the
 ! bondcharge, and the bc distance, y
            r21(:) = r2(:) - r1(:)
            y = sqrt(r21(1)*r21(1) + r21(2)*r21(2) + r21(3)*r21(3))
-
             jneigh = neigh_back(iatom,ineigh)
             do imu = 1, num_orb(in1)
              do inu = 1, num_orb(in2)
@@ -576,36 +566,23 @@
      &        + rho(inu,imu,jneigh,jatom)*s_mat(inu,imu,jneigh,jatom))
              end do
             end do
-             
 ! dipole correction. Only if the two atoms are different
           if (y .gt. 1.0d-05) then
-           
-
             do imu = 1, num_orb(in1)
              do inu = 1, num_orb(in2)
-
           !    write(*,*) 'Qb(',imu,',',iatom,')= ',QMulliken(imu,iatom)
-
               QMulliken(imu,iatom) = QMulliken(imu,iatom)+                  &
      &        (-rho(imu,inu,ineigh,iatom)*dip(imu,inu,ineigh,iatom)         &
      &        + rho(inu,imu,jneigh,jatom)*dip(inu,imu,jneigh,jatom))/y
-             
- 
            !         write(*,*) 'DIPOLE when iatom,jatom,imu,inu = ',  &
      ! &        iatom,jatom,imu,inu,' is',dip(imu,inu,ineigh,iatom),    &
      ! &        dip(inu,imu,jneigh,jatom) 
-
      !          write(*,*) 'Qa(',imu,',',iatom,')= ',QMulliken(imu,iatom)
-
              end do
             end do
           end if !end if y .gt. 1.0d-05)
-
-         
-
 ! End loop over neighbors
            end do
-
 ! Finally the imu loop.
            imu = 0
            do issh = 1, nssh(in1)
@@ -615,7 +592,6 @@
             end do
                QMulliken_TOT(iatom) = QMulliken_TOT(iatom) +Qout(issh,iatom)
            end do
-
 !Check whether there are negative charges and correct
 !If there's more than one shell whose charge is negative, more work is
 !needed, but that'd be quite pathological a situation...
@@ -629,7 +605,6 @@
                   Qout(issh,iatom) = 0.0d0               
                end if !end if  Qout(issh,iatom) .lt. 0
             end do !end do issh = 1, nssh(in1)
-
 ! End loop over atoms
           end do
          end if     ! endif of ifixcharges
@@ -637,111 +612,90 @@
 
 
 
-! ****************************************************************************
-!
-! C O M P U T E    M U L L I K E N    P O P U L A T I O N    F O R   MOs
-! 
-! ****************************************************************************
-
-        if (iwrtpop .eq. 1) then
-! It is probable that you would like to know about charge localization on
-! certain sites, how much eigenvector there is in orbital mu, etc.
-! The MOs are selected from predefined energy windows
-! see J.P. Lewis et al, J. Phys. Chem. B 107, 2581 (2003)
-! Note: from principles it should be applied only to G k-point case
-
-         open (unit = 34, file = 'populations.dat', status = 'unknown')
-         write (34,*) ' # Charge localizations (per level): '
-
-! Loop over states
-         do iband = 1,  norbitals_new
-
-! Reset charge per atom
-          pqmu = 0.0d0
-
-! Loop over the special k points.
-          do ikpoint = 1, nkpoints
-
-! is MO in the given energy range?
-           if ((eigen_k(iband, ikpoint) .gt. Epop_L) .and. (eigen_k(iband, ikpoint) .lt. Epop_U)) then 
-
-! Loop over the atoms and the neighbors
-            do iatom = 1, natoms
-             in1 = imass(iatom)
-             do ineigh = 1, neighn(iatom)
-              mbeta = neigh_b(ineigh,iatom)
-              jatom = neigh_j(ineigh,iatom)
-              in2 = imass(jatom)
-              vec = xl(:,mbeta) + ratom(:,jatom) - ratom(:,iatom)
-
-! calculate phase factor
-              dot = special_k(1,ikpoint)*vec(1) + special_k(2,ikpoint)*vec(2)  + special_k(3,ikpoint)*vec(3)
-              phase = cmplx(cos(dot),sin(dot))*weight_k(ikpoint)
-
-! Loop over all bands
-              if (icluster .ne. 1) then
-               do imu = 1, num_orb(in1)
-                mmu = imu + degelec(iatom)
-                step1 = phase*(bbnkre(mmu,iband,ikpoint)   - ai*bbnkim(mmu,iband,ikpoint))
-                do inu = 1, num_orb(in2)
-                 nnu = inu + degelec(jatom)
-                 step2 = step1*(bbnkre(nnu,iband,ikpoint)  + ai*bbnkim(nnu,iband,ikpoint))
-                 gutr = real(step2)
-                 pqmu(iatom) = pqmu(iatom) + gutr*s_mat(imu,inu,ineigh,iatom)
-
-! Finished loop over bands
-                end do  ! inu
-               end do ! imu
-              else ! icluster
-               do imu = 1, num_orb(in1)
-                mmu = imu + degelec(iatom)
-                step1 = phase*bbnkre(mmu,iband,ikpoint)
-                do inu = 1, num_orb(in2)
-                 nnu = inu + degelec(jatom)
-                 step2 = step1*bbnkre(nnu,iband,ikpoint)
-                 gutr = real(step2)
-                 pqmu(iatom) = pqmu(iatom) + gutr*s_mat(imu,inu,ineigh,iatom)
-
-! Finished loop over bands
-                end do ! inu
-               end do ! imu
-              end if ! icluster
-
-! Finished loop over atoms
-             end do  ! ineigh           
-            end do ! iatom
-
-! Calculate localization factor of MOs W(mu)
-!            checksum = 0.0d0
-!            do iatom = 1, natoms
-!             checksum = checksum + pqmu(iatom) 
-!            end do
-!            pqmu = pqmu / checksum
-!            checksum = 0.0d0
-!            do iatom = 1, natoms
-!             checksum = checksum + pqmu(iatom) 
-!            end do
- 
-            checksum = 0.0d0
-            do iatom = 1, natoms
-             checksum = checksum + pqmu(iatom)*log(abs(pqmu(iatom)))
-            end do
-            Wmu = exp(-1.0d0*checksum)
-            write (34,301) iband,eigen_k(iband,ikpoint),Wmu 
-
-           end if ! eigen_k
-
-! Finished loop over special k-points
-          end do  ! ikpoint 
-! Finished loop over MOs
-         end do ! iband
-
-         close (unit = 34)
-
-        end if ! end if of iwrt_pop = 1
+! ! ****************************************************************************
+! ! C O M P U T E    M U L L I K E N    P O P U L A T I O N    F O R   MOs
+! ! ****************************************************************************
+!         if (iwrtpop .eq. 1) then
+! ! It is probable that you would like to know about charge localization on
+! ! certain sites, how much eigenvector there is in orbital mu, etc.
+! ! The MOs are selected from predefined energy windows
+! ! see J.P. Lewis et al, J. Phys. Chem. B 107, 2581 (2003)
+! ! Note: from principles it should be applied only to G k-point case
+!          open (unit = 34, file = 'populations.dat', status = 'unknown')
+!          write (34,*) ' # Charge localizations (per level): '
+! ! Loop over states
+!          do iband = 1,  norbitals_new
+! ! Reset charge per atom
+!           pqmu = 0.0d0
+! ! Loop over the special k points.
+!           do ikpoint = 1, nkpoints
+! ! is MO in the given energy range?
+!            if ((eigen_k(iband, ikpoint) .gt. Epop_L) .and. (eigen_k(iband, ikpoint) .lt. Epop_U)) then 
+! ! Loop over the atoms and the neighbors
+!             do iatom = 1, natoms
+!              in1 = imass(iatom)
+!              do ineigh = 1, neighn(iatom)
+!               mbeta = neigh_b(ineigh,iatom)
+!               jatom = neigh_j(ineigh,iatom)
+!               in2 = imass(jatom)
+!               vec = xl(:,mbeta) + ratom(:,jatom) - ratom(:,iatom)
+! ! calculate phase factor
+!               dot = special_k(1,ikpoint)*vec(1) + special_k(2,ikpoint)*vec(2)  + special_k(3,ikpoint)*vec(3)
+!               phase = cmplx(cos(dot),sin(dot))*weight_k(ikpoint)
+! ! Loop over all bands
+!               if (icluster .ne. 1) then
+!                do imu = 1, num_orb(in1)
+!                 mmu = imu + degelec(iatom)
+!                 step1 = phase*(bbnkre(mmu,iband,ikpoint)   - ai*bbnkim(mmu,iband,ikpoint))
+!                 do inu = 1, num_orb(in2)
+!                  nnu = inu + degelec(jatom)
+!                  step2 = step1*(bbnkre(nnu,iband,ikpoint)  + ai*bbnkim(nnu,iband,ikpoint))
+!                  gutr = real(step2)
+!                  pqmu(iatom) = pqmu(iatom) + gutr*s_mat(imu,inu,ineigh,iatom)
+! ! Finished loop over bands
+!                 end do  ! inu
+!                end do ! imu
+!               else ! icluster
+!                do imu = 1, num_orb(in1)
+!                 mmu = imu + degelec(iatom)
+!                 step1 = phase*bbnkre(mmu,iband,ikpoint)
+!                 do inu = 1, num_orb(in2)
+!                  nnu = inu + degelec(jatom)
+!                  step2 = step1*bbnkre(nnu,iband,ikpoint)
+!                  gutr = real(step2)
+!                  pqmu(iatom) = pqmu(iatom) + gutr*s_mat(imu,inu,ineigh,iatom)
+! ! Finished loop over bands
+!                 end do ! inu
+!                end do ! imu
+!               end if ! icluster
+! ! Finished loop over atoms
+!              end do  ! ineigh           
+!             end do ! iatom
+! ! Calculate localization factor of MOs W(mu)
+! !            checksum = 0.0d0
+! !            do iatom = 1, natoms
+! !             checksum = checksum + pqmu(iatom) 
+! !            end do
+! !            pqmu = pqmu / checksum
+! !            checksum = 0.0d0
+! !            do iatom = 1, natoms
+! !             checksum = checksum + pqmu(iatom) 
+! !            end do
+!             checksum = 0.0d0
+!             do iatom = 1, natoms
+!              checksum = checksum + pqmu(iatom)*log(abs(pqmu(iatom)))
+!             end do
+!             Wmu = exp(-1.0d0*checksum)
+!             write (34,301) iband,eigen_k(iband,ikpoint),Wmu 
+!            end if ! eigen_k
+! ! Finished loop over special k-points
+!           end do  ! ikpoint 
+! ! Finished loop over MOs
+!          end do ! iband
+!          close (unit = 34)
+!         end if ! end if of iwrt_pop = 1
 
 ! ****************************************************************************
-!
 !  C O M P U T E    B A N D - S T R U C T U R E    E N E R G Y
 ! ****************************************************************************
 ! Compute ebs, the band structure energy.

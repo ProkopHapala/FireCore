@@ -47,17 +47,15 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine assemble_mcweda ()
-
         use options
-        use outputs
-        use mpi_main
-        use scf
+        !use outputs
+        !use mpi_main
+        use loops
         use neighbor_map
         use configuration
         use interactions
         use energy
-        use md
-
+        !use md
         implicit none
 
 ! Argument Declaration and Description
@@ -99,23 +97,23 @@
 ! neighb(iatom,ineigh) = beta-sub-m, the beta value for the ineigh'th neighbor.
           if (Kscf .eq. 1) then
            if (ifixneigh .eq. 0) then
-            call reallocate_neigh (nprocs, my_proc, iordern, itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece, iwrtatom, igrid)
-            call neighbors (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
-            call neighborsPP (nprocs, my_proc, iordern, icluster,iwrtneigh)
-            call num_neigh_tot (numorb_max)
+            call reallocate_neigh ! (nprocs, my_proc, iordern, itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece, iwrtatom, igrid)
+            call neighbors   ! (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
+            call neighborsPP ! (nprocs, my_proc, iordern, icluster,iwrtneigh)
+            call num_neigh_tot ! (numorb_max)
 ! bias voltage option
 !             if (ibias .eq. 1) call reallocate_bias (natoms)     ! IF_DEF_BIAS_END
            else
             !write (*,*) ' Using neighbor map from NEIGHBORS file. '
-            call initneighbors (natoms, ivdw, nstepi)
-            call num_neigh_tot (numorb_max)
+            call initneighbors ! (natoms, ivdw, nstepi)
+            call num_neigh_tot ! (numorb_max)
            end if
            call backnay ()
             !SFIRE
-            call neighbors_pairs(icluster)
+            call neighbors_pairs ! (icluster)
             !SFIRE
-           call common_neighbors (nprocs, my_proc, iordern, iwrtneigh_com)
-           call common_neighborsPP (nprocs, my_proc, iordern,   iwrtneigh_com, icluster)
+           call common_neighbors   ! (nprocs, my_proc, iordern, iwrtneigh_com)
+           call common_neighborsPP ! (nprocs, my_proc, iordern,  iwrtneigh_com, icluster)
           end if ! end if (Kscf .eq. 1)
 
 
@@ -124,7 +122,7 @@
 ! ===========================================================================
           if ((itheory .eq. 1 .or. itheory .eq. 2) .and. Kscf .eq. 1) then
            kforce = 0
-           call get_ewald (nprocs, my_proc, kforce, icluster, itheory, iordern)
+           call get_ewald ! (nprocs, my_proc, kforce, icluster, itheory, iordern)
           end if
 
 ! ===========================================================================
@@ -154,22 +152,23 @@
            do ineigh = 1, neighPPn(iatom)
             mbeta = neighPP_b(ineigh,iatom)
             jatom = neighPP_j(ineigh,iatom)
-            if (iatom .eq. jatom .and. mbeta .eq. 0)                         &
-     &       neighPP_self(iatom) = ineigh
+            if (iatom .eq. jatom .and. mbeta .eq. 0)  neighPP_self(iatom) = ineigh
            end do
           end do
 
-          if (ivdw .eq. 1) then
-           neigh_vdw_self = -999
-           do iatom = 1, natoms
-            do ineigh = 1, neighn_vdw(iatom)
-             mbeta = neigh_b_vdw(ineigh,iatom)
-             jatom = neigh_j_vdw(ineigh,iatom)
-             if (iatom .eq. jatom .and. mbeta .eq. 0)                        &
-     &        neigh_vdw_self(iatom) = ineigh
-            end do
-           end do
-          end if
+! ! IF_DEF_VDW
+!           if (ivdw .eq. 1) then
+!            neigh_vdw_self = -999
+!            do iatom = 1, natoms
+!             do ineigh = 1, neighn_vdw(iatom)
+!              mbeta = neigh_b_vdw(ineigh,iatom)
+!              jatom = neigh_j_vdw(ineigh,iatom)
+!              if (iatom .eq. jatom .and. mbeta .eq. 0)   neigh_vdw_self(iatom) = ineigh
+!             end do
+!            end do
+!           end if
+! ! IF_DEF_VDW
+
 ! ===========================================================================
 !                               assemble_1c
 ! ===========================================================================
@@ -179,11 +178,9 @@
            !write (*,*) ' ***************************************************** '
            !write (*,*) ' Assemble one-center interactions. '
            !write (*,*) ' Assemble OLS-xc exchange-correlation interactions. '
-           call assemble_olsxc_1c (natoms, itheory, iforce)
+           call assemble_olsxc_1c ! (natoms, itheory, iforce)
           endif
-         if (V_intra_dip .eq. 1) then
-            call assemble_1c_vdip (natoms, itheory, iforce)
-         end if !end V_intra_dip
+         !if (V_intra_dip .eq. 1) call assemble_1c_vdip ! (natoms, itheory, iforce)    ! 
 
 ! ===========================================================================
 !                               assemble_2c
@@ -196,9 +193,9 @@
           if (Kscf .eq. 1) then
 
            !write (*,*) ' Assemble two-center interactions. '
-           call assemble_sVNL (iforce)
-           call assemble_2c (nprocs, iforce, iordern, ioff2c)
-           call assemble_2c_PP (nprocs, iforce, iordern)
+           call assemble_sVNL()  ! (iforce)
+           call assemble_2c()    ! (nprocs, iforce, iordern, ioff2c)
+           call assemble_2c_PP() ! (nprocs, iforce, iordern)
 ! assemble bias matrix
 !            if (ibias .eq. 1) call assemble_Vbias ( nprocs, iforce, iordern, ioff2c )   ! IF_DEF_BIAS_END
           end if ! end if of Kscf = 1
@@ -209,40 +206,43 @@
           !write (*,*) ' Assemble SN-xc exchange-correlation interactions. '
 
           if (itheory .eq. 1) then
-           call average_ca_rho (nprocs, Kscf, iforce, iordern, igauss)
+           call average_ca_rho ! (nprocs, Kscf, iforce, iordern, igauss)
           else
-           call average_rho (nprocs, Kscf, iforce, iordern, igauss)
+           call average_rho ! (nprocs, Kscf, iforce, iordern, igauss)
           endif
 
            !write (*,*) ' Assembling on-site part.'
-           call assemble_snxc_on (natoms, nprocs, my_proc, iordern, itheory, uxcdcc_sn)
+           call assemble_snxc_on ( uxcdcc_sn ) ! (natoms, nprocs, my_proc, iordern, itheory, uxcdcc_sn)
 
            !write (*,*) ' Assembling off-site part.'
-           call assemble_snxc_off (natoms, nprocs, my_proc, iordern,  itheory)
+           call assemble_snxc_off ! (natoms, nprocs, my_proc, iordern,  itheory)
           end if ! if (itheory_xc = 1)
 
           if (itheory_xc .eq. 2 ) then
            !write (*,*) ' Assemble OLS-xc exchange-correlation interactions.'
 
            if (itheory .eq. 1) then
-            call average_ca_rho (nprocs, Kscf, iforce, iordern, igauss)
+            call average_ca_rho ! (nprocs, Kscf, iforce, iordern, igauss)
             !call average_rho (nprocs, Kscf, iforce, iordern, igauss)
            else
-            call average_rho (nprocs, Kscf, iforce, iordern, igauss)
+            call average_rho ! (nprocs, Kscf, iforce, iordern, igauss)
            endif
 
            !write (*,*) ' Assembling on-site part.'
-           call assemble_olsxc_on (natoms, nprocs, my_proc, iordern, itheory, uxcdcc_ols)
+           call assemble_olsxc_on (uxcdcc_ols) ! (natoms, nprocs, my_proc, iordern, itheory, uxcdcc_ols)
 
            !write (*,*) ' Assembling off-site part.'
-           call assemble_olsxc_off (nprocs, my_proc, iordern, itheory)
+           call assemble_olsxc_off ! (nprocs, my_proc, iordern, itheory)
           end if ! if (itheory_xc = 2)
 
 !JIMM
           if (itheory .eq. 1) then
            !write (*,*) ' Assemble two-center DOGS interactions. '
-           if (idipole .eq. 0) call assemble_ca_2c (nprocs, iforce, iordern)
-           if (idipole .eq. 1) call assemble_ca_2c_dip (nprocs, iforce, iordern)
+           !if (idipole .eq. 1) then                                ! IF_DEF_DIPOL_END
+           !     call assemble_ca_2c_dip !(nprocs, iforce, iordern) ! IF_DEF_DIPOL_END
+           !else                                                    ! IF_DEF_DIPOL_END
+                call assemble_ca_2c     !(nprocs, iforce, iordern)
+           ! end if                                                 ! IF_DEF_DIPOL_END
           endif
 ! ===========================================================================
 !                               assemble_3c
@@ -254,9 +254,9 @@
           !write(*,*) '  '
           if (Kscf .eq. 1) then
            !write (*,*) ' Assemble three-center interactions. '
-           call assemble_3c (nprocs, iordern, igauss, itheory_xc)
+           call assemble_3c    ! (nprocs, iordern, igauss, itheory_xc)
            !write (*,*) ' Assemble three-center PP interactions. '
-           call assemble_3c_PP (nprocs, iordern)
+           call assemble_3c_PP ! (nprocs, iordern)
 ! JIMM
 ! IF_DEF_QMMM
 !           if (iqmmm .eq.1 ) then
@@ -274,13 +274,19 @@
 
           if (itheory .eq. 1) then
            !write (*,*) ' Assemble three-center DOGS interactions. '
-           if (idipole .eq. 0) call assemble_ca_3c (nprocs, iordern, igauss)
-           if (idipole .eq. 1) call assemble_ca_3c_dip (nprocs, iordern, igauss)
+           ! if (idipole .eq. 1) then                              ! IF_DEF_DIPOL_END
+           !     call assemble_ca_3c_dip (nprocs, iordern, igauss) ! IF_DEF_DIPOL_END
+           ! else                                                  ! IF_DEF_DIPOL_END
+                call assemble_ca_3c ! (nprocs, iordern, igauss)
+           !end if                                                 ! IF_DEF_DIPOL_END
 
 ! Add assemble_lr here for the long long-range ewald contributions
            !write (*,*) ' Assemble long-range interactions. '
-           if (idipole .eq. 0) call assemble_lr (nprocs, iordern)
-           if (idipole .eq. 1) call assemble_lr_dip (nprocs, iordern)
+           !if (idipole .eq. 1)                              ! IF_DEF_DIPOL_END
+           !     call assemble_lr_dip (nprocs, iordern)      ! IF_DEF_DIPOL_END
+           !else                                             ! IF_DEF_DIPOL_END
+                call assemble_lr ! (nprocs, iordern)
+           !end if                                           ! IF_DEF_DIPOL_END
           endif
 
           !write (*,*) ' ***************************************************** '
@@ -289,7 +295,7 @@
 !                                 Build H
 ! ===========================================================================
 ! Set up the full Hamiltonian and !writeout HS.dat.
-          call buildh (nprocs, itheory, iordern, itestrange, testrange, ibias, iwrtHS)
+          call buildh !(nprocs, itheory, iordern, itestrange, testrange, ibias, iwrtHS)
 ! ===========================================================================
 ! For iwrthampiece .eq. 1 (file - output.input), !write out Hamiltonian pieces
 !          if (iwrthampiece .eq. 1) call hampiece (itheory)  ! IF_DEF_HAMPIECES_END

@@ -18,8 +18,8 @@
         real uiiuee
         real uxcdcc
         real uxcdcc_sn
-!        real uxcdcc_hf             ! IF_DEF_Horsfield_END
         real uxcdcc_ols
+        real uxcdcc_hf             ! IF_DEF_Horsfield_END
 !        real uxcdcc_zw                       ! IF_DEF_ZW_END
 !        real dc_v_intra_dip_1c               ! IF_DEF_ZW_END
 !        real, dimension (3) :: duxcdcc_zw    ! IF_DEF_ZW_END

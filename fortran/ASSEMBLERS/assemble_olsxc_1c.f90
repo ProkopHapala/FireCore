@@ -53,7 +53,9 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_olsxc_1c (natoms, itheory, iforce)
+        subroutine assemble_olsxc_1c ! (natoms, itheory, iforce)
+        use options
+        use configuration
         use charges
         use dimensions
         use interactions
@@ -64,9 +66,9 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent(in) :: iforce
-        integer, intent(in) :: itheory
-        integer, intent(in) :: natoms
+        ! integer, intent(in) :: iforce
+        ! integer, intent(in) :: itheory
+        ! integer, intent(in) :: natoms
  
 ! Output
  
@@ -90,8 +92,8 @@
 ! ===========================================================================
 ! Initialize
         etotxc_1c = 0.0d0
-        Uexc_1c = 0.0d0
-        Umuxc_1c = 0.0d0
+        ! Uexc_1c = 0.0d0     ! IF_DEF_Hubbard_END
+        ! Umuxc_1c = 0.0d0      ! IF_DEF_Hubbard_END
         vxc_1c = 0.0d0
 ! Loop over all atoms.
         do iatom = 1, natoms

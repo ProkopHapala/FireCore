@@ -242,14 +242,14 @@
            dxcv(:,jatom) = dxcv(:,jatom) - dxcdcc(:,ineigh,iatom)
 
           endif
-   
-         if((itheory_xc .eq. 4)) then
-         ! double counting correction (XCZW)
-           dxcv(:,iatom) = dxcv(:,iatom) + dxcdcc_zw(:,ineigh,iatom)
-           dxcv(:,jatom) = dxcv(:,jatom) - dxcdcc_zw(:,ineigh,iatom)
 
-         endif
-
+! ! IF_DEF_ZW
+!         if((itheory_xc .eq. 4)) then
+!         ! double counting correction (XCZW)
+!           dxcv(:,iatom) = dxcv(:,iatom) + dxcdcc_zw(:,ineigh,iatom)
+!           dxcv(:,jatom) = dxcv(:,jatom) - dxcdcc_zw(:,ineigh,iatom)
+!         endif
+! ! END_DEF_ZW
 
          end do     ! end loop over neighbors
         end do      ! end loop over atoms
@@ -272,7 +272,6 @@
 ! non-local forces - atm case
           fnlatm(:,iatom) = fnlatm(:,iatom) + fanl(:,ineigh,iatom)
           fnlatm(:,jatom) = fnlatm(:,jatom) - fanl(:,ineigh,iatom)
-
          end do     ! end loop over PP-neighbors
         end do      ! end loop over atoms
 
@@ -293,11 +292,12 @@
 ! Form fna = f3na + fnaatm + fnaot, and similarly for the others.
         do iatom = 1, natoms
 
+
 ! charged atom total force
          if (itheory .eq. 1) then
           fca(:,iatom) = f3ca(:,iatom) + fcaatm(:,iatom) + fcaot(:,iatom)
-         else if (itheory .eq. 2) then
-          fca(:,iatom) = fcoulomb(:,iatom)
+         !else if (itheory .eq. 2) then        ! IF_DEF_HUBBARD_END
+         ! fca(:,iatom) = fcoulomb(:,iatom)    ! IF_DEF_HUBBARD_END
          else
           fca(:,iatom) = 0.0d0
          end if
@@ -312,10 +312,9 @@
 
 ! charged atom exchange-correlation total force
          if (itheory .eq. 1) then
-          fxc_ca(:,iatom) = fxcatm_ca(:,iatom) + fxcot_ca(:,iatom)           &
-     &                     + f3xc_ca(:,iatom)
-         else if (itheory .eq. 2) then
-          fxc_ca(:,iatom) = fxcnu(:,iatom)
+          fxc_ca(:,iatom) = fxcatm_ca(:,iatom) + fxcot_ca(:,iatom) + f3xc_ca(:,iatom)
+         ! else if (itheory .eq. 2) then       ! IF_DEF_HUBBARD_END 
+         !  fxc_ca(:,iatom) = fxcnu(:,iatom)   ! IF_DEF_HUBBARD_END
          else
           fxc_ca(:,iatom) = 0.0d0
          end if
@@ -326,136 +325,137 @@
 ! If iwrt_fpieces = 1, then write out all of the pieces of the
 ! band-structure force.
 ! ****************************************************************************
-        if (iwrt_fpieces .eq. 1) then
-         write (*,*) '  '
-         write (*,*) ' ******************************************************* '
-         write (*,*) ' Write out the contributions to the band-structure force.'
-         write (*,*) ' ******************************************************* '
-         write (*,*) '  '
-         write (*,*) ' The kinetic force: '
-         do iatom = 1, natoms
-          write (*,101) iatom, ft(:,iatom)
-         end do
+        ! if (iwrt_fpieces .eq. 1) then
+        !  write (*,*) '  '
+        !  write (*,*) ' ******************************************************* '
+        !  write (*,*) ' Write out the contributions to the band-structure force.'
+        !  write (*,*) ' ******************************************************* '
+        !  write (*,*) '  '
+        !  write (*,*) ' The kinetic force: '
+        !  do iatom = 1, natoms
+        !   write (*,101) iatom, ft(:,iatom)
+        !  end do
 
-         write (*,*) '  '
-         write (*,*) ' The neutral atom force: '
-         do iatom = 1, natoms
-          write (*,102) iatom, fna(:,iatom)
-         end do
+        !  write (*,*) '  '
+        !  write (*,*) ' The neutral atom force: '
+        !  do iatom = 1, natoms
+        !   write (*,102) iatom, fna(:,iatom)
+        !  end do
 
-         write (*,*) '  '
-         write (*,*) ' The neutral atom force ATM : '
-         do iatom = 1, natoms
-          write (*,108) iatom, fnaatm(:,iatom)
-         end do
+        !  write (*,*) '  '
+        !  write (*,*) ' The neutral atom force ATM : '
+        !  do iatom = 1, natoms
+        !   write (*,108) iatom, fnaatm(:,iatom)
+        !  end do
 
-         write (*,*) '  '
-         write (*,*) ' The neutral atom force ONTop : '
-         do iatom = 1, natoms
-          write (*,109) iatom, fnaot(:,iatom)
-         end do
+        !  write (*,*) '  '
+        !  write (*,*) ' The neutral atom force ONTop : '
+        !  do iatom = 1, natoms
+        !   write (*,109) iatom, fnaot(:,iatom)
+        !  end do
 
-         write (*,*) '  '
-         write (*,*) ' The neutral atom force, 3-center: '
-         do iatom = 1, natoms
-          write (*,301) iatom, f3na(:,iatom)
-         end do
+        !  write (*,*) '  '
+        !  write (*,*) ' The neutral atom force, 3-center: '
+        !  do iatom = 1, natoms
+        !   write (*,301) iatom, f3na(:,iatom)
+        !  end do
 
-         if (itheory .eq. 1 .or. itheory .eq. 2) then
-          write (*,*) '  '
-          write (*,*) ' The charged atom force: '
-          do iatom = 1, natoms
-           write (*,103) iatom, fca(:,iatom)
-          end do
+        !  if (itheory .eq. 1 .or. itheory .eq. 2) then
+        !   write (*,*) '  '
+        !   write (*,*) ' The charged atom force: '
+        !   do iatom = 1, natoms
+        !    write (*,103) iatom, fca(:,iatom)
+        !   end do
 
-          write (*,*) '  '
-          write (*,*) ' The 3c charged atom force: '
-          do iatom = 1, natoms
-           write (*,302) iatom, f3ca(:,iatom)
-          end do
+        !   write (*,*) '  '
+        !   write (*,*) ' The 3c charged atom force: '
+        !   do iatom = 1, natoms
+        !    write (*,302) iatom, f3ca(:,iatom)
+        !   end do
 
-          write (*,*) '  '
-          write (*,*) ' The atomic charged atom force: '
-          do iatom = 1, natoms
-           write (*,303) iatom, fcaatm(:,iatom)
-          end do
+        !   write (*,*) '  '
+        !   write (*,*) ' The atomic charged atom force: '
+        !   do iatom = 1, natoms
+        !    write (*,303) iatom, fcaatm(:,iatom)
+        !   end do
 
-          write (*,*) '  '
-          write (*,*) ' The ontop charged atom force: '
-          do iatom = 1, natoms
-           write (*,304) iatom, fcaot(:,iatom)
-          end do
-         end if
+        !   write (*,*) '  '
+        !   write (*,*) ' The ontop charged atom force: '
+        !   do iatom = 1, natoms
+        !    write (*,304) iatom, fcaot(:,iatom)
+        !   end do
+        !  end if
 
-         write (*,*) '  '
-         write (*,*) ' The non-local force: '
-         do iatom = 1, natoms
-          write (*,104) iatom, fnl(:,iatom)
-         end do
+        !  write (*,*) '  '
+        !  write (*,*) ' The non-local force: '
+        !  do iatom = 1, natoms
+        !   write (*,104) iatom, fnl(:,iatom)
+        !  end do
 
-         if (itheory .eq. 0) then
-          write (*,*) '  '
-          write (*,*) ' The exchange-correlation force: '
-          do iatom = 1, natoms
-           write (*,105) iatom, fxc(:,iatom)
-          end do
+        !  if (itheory .eq. 0) then
+        !   write (*,*) '  '
+        !   write (*,*) ' The exchange-correlation force: '
+        !   do iatom = 1, natoms
+        !    write (*,105) iatom, fxc(:,iatom)
+        !   end do
 
-          write (*,*) '  '
-          write (*,*) ' The exchange-correlation force, 3c-center: '
-          do iatom = 1, natoms
-           write (*,305) iatom, f3xc(:,iatom)
-          end do
+        !   write (*,*) '  '
+        !   write (*,*) ' The exchange-correlation force, 3c-center: '
+        !   do iatom = 1, natoms
+        !    write (*,305) iatom, f3xc(:,iatom)
+        !   end do
 
-          write (*,*) '  '
-          write (*,*) ' The exchange-correlation force atm: '
-          do iatom = 1, natoms
-           write (*,306) iatom, fxcatm(:,iatom)
-          end do
+        !   write (*,*) '  '
+        !   write (*,*) ' The exchange-correlation force atm: '
+        !   do iatom = 1, natoms
+        !    write (*,306) iatom, fxcatm(:,iatom)
+        !   end do
 
-          write (*,*) '  '
-          write (*,*) ' The exchange-correlation force ontop: '
-          do iatom = 1, natoms
-           write (*,307) iatom, fxcot(:,iatom)
-          end do
-         end if
+        !   write (*,*) '  '
+        !   write (*,*) ' The exchange-correlation force ontop: '
+        !   do iatom = 1, natoms
+        !    write (*,307) iatom, fxcot(:,iatom)
+        !   end do
+        !  end if
 
-         if (itheory .eq. 1 .or. itheory .eq. 2) then
-            write (*,*) '  '
-            write (*,*) ' The charged atom exchange-correlation force: '
-            do iatom = 1, natoms
-               write (*,106) iatom, fxc_ca(:,iatom)
-            end do
+        !  if (itheory .eq. 1 .or. itheory .eq. 2) then
+        !     write (*,*) '  '
+        !     write (*,*) ' The charged atom exchange-correlation force: '
+        !     do iatom = 1, natoms
+        !        write (*,106) iatom, fxc_ca(:,iatom)
+        !     end do
 
-            write (*,*) '  '
-            write (*,*) ' The exchange-correlation force 3c: '
-            do iatom = 1, natoms
-               write (*,308) iatom, f3xc_ca(:,iatom)
-            end do
+        !     write (*,*) '  '
+        !     write (*,*) ' The exchange-correlation force 3c: '
+        !     do iatom = 1, natoms
+        !        write (*,308) iatom, f3xc_ca(:,iatom)
+        !     end do
 
-            write (*,*) '  '
-            write (*,*) ' The exchange-correlation force atm: '
-            do iatom = 1, natoms
-               write (*,309) iatom, fxcatm_ca(:,iatom)
-            end do
+        !     write (*,*) '  '
+        !     write (*,*) ' The exchange-correlation force atm: '
+        !     do iatom = 1, natoms
+        !        write (*,309) iatom, fxcatm_ca(:,iatom)
+        !     end do
 
-            write (*,*) '  '
-            write (*,*) ' The exchange-correlation force ontop: '
-            do iatom = 1, natoms
-               write (*,310) iatom, fxcot_ca(:,iatom)
-            end do
+        !     write (*,*) '  '
+        !     write (*,*) ' The exchange-correlation force ontop: '
+        !     do iatom = 1, natoms
+        !        write (*,310) iatom, fxcot_ca(:,iatom)
+        !     end do
 
-         end if
+        !  end if ! (itheory .eq. 1 .or. itheory .eq. 2)
 
-         if (itheory .eq. 1 .or. itheory .eq. 2) then
-          write (*,*) '  '
-          write (*,*) ' The long-range electrostatic force: '
-          do iatom = 1, natoms
-           write (*,107) iatom, flrew(:,iatom)
-          end do
-         end if
-         write (*,*) ' *********************************************** '
-         write (*,*) '  '
-        end if
+        !  if (itheory .eq. 1 .or. itheory .eq. 2) then
+        !   write (*,*) '  '
+        !   write (*,*) ' The long-range electrostatic force: '
+        !   do iatom = 1, natoms
+        !    write (*,107) iatom, flrew(:,iatom)
+        !   end do
+        !  end if !  (itheory .eq. 1 .or. itheory .eq. 2)
+
+        !  write (*,*) ' *********************************************** '
+        !  write (*,*) '  '
+        ! end if
 
 ! ****************************************************************************
 ! Put together the entire bandstructure force. Add in the LR BS force.
@@ -463,8 +463,8 @@
         do iatom = 1, natoms
          fbs(:,iatom) = ft(:,iatom) + fna(:,iatom) + fnl(:,iatom) + fxc(:,iatom)
          if (itheory .eq. 1 .or. itheory .eq. 2) then
-          fbs(:,iatom) = fbs(:,iatom) + fca(:,iatom) + fxc_ca(:,iatom)       &
-     &                                + flrew(:,iatom) + flrew_qmmm(:,iatom)
+          fbs(:,iatom) = fbs(:,iatom) + fca(:,iatom) + fxc_ca(:,iatom)  + flrew(:,iatom)
+          ! fbs(:,iatom) = fbs(:,iatom) + flrew_qmmm(:,iatom)   ! IF_DEF_QMMM_END
          end if
         end do
         if (itheory .eq. 3) fbs = 0.0d0
@@ -472,74 +472,71 @@
 ! ****************************************************************************
 ! If iwrt_fpieces = 1, then write out all of the pieces of the total force.
 ! ****************************************************************************
-        if (iwrt_fpieces .eq. 1) then
-         write (*,*) '  '
-         write (*,*) ' *********************************************** '
-         write (*,*) ' Write out the contributions to the total force. '
-         write (*,*) ' *********************************************** '
-         write (*,*) '  '
-         write (*,*) ' The band-structure force: '
-         do iatom = 1, natoms
-          write (*,200) iatom, fbs(:,iatom)
-         end do
+        ! if (iwrt_fpieces .eq. 1) then
+        !  write (*,*) '  '
+        !  write (*,*) ' *********************************************** '
+        !  write (*,*) ' Write out the contributions to the total force. '
+        !  write (*,*) ' *********************************************** '
+        !  write (*,*) '  '
+        !  write (*,*) ' The band-structure force: '
+        !  do iatom = 1, natoms
+        !   write (*,200) iatom, fbs(:,iatom)
+        !  end do
 
-         write (*,*) '  '
-         write (*,*) ' The short-range force: '
-         do iatom = 1, natoms
-          write (*,201) iatom, dusr(:,iatom)
-         end do
+        !  write (*,*) '  '
+        !  write (*,*) ' The short-range force: '
+        !  do iatom = 1, natoms
+        !   write (*,201) iatom, dusr(:,iatom)
+        !  end do
 
-         write (*,*) '  '
-         write (*,*) ' The exchange-correlation double-counting force: '
-         do iatom = 1, natoms
-          write (*,202) iatom, dxcv(:,iatom)
-         end do
+        !  write (*,*) '  '
+        !  write (*,*) ' The exchange-correlation double-counting force: '
+        !  do iatom = 1, natoms
+        !   write (*,202) iatom, dxcv(:,iatom)
+        !  end do
 
-         write (*,*) '  '
-         write (*,*) ' The overlap-repulsive force: '
-         do iatom = 1, natoms
-          write (*,203) iatom, fro(:,iatom)
-         end do
+        !  write (*,*) '  '
+        !  write (*,*) ' The overlap-repulsive force: '
+        !  do iatom = 1, natoms
+        !   write (*,203) iatom, fro(:,iatom)
+        !  end do
 
-         if (ivdw .eq. 1) then
-          write (*,*) '  '
-          write (*,*) ' The van der Waals force: '
-          do iatom = 1, natoms
-           write (*,204) iatom, fvdw(:,iatom)
-          end do
-         end if
+        !  if (ivdw .eq. 1) then
+        !   write (*,*) '  '
+        !   write (*,*) ' The van der Waals force: '
+        !   do iatom = 1, natoms
+        !    write (*,204) iatom, fvdw(:,iatom)
+        !   end do
+        !  end if
 
-         if (iharmonic .eq. 1) then
-          write (*,*) '  '
-          write (*,*) ' The external field force: '
-          do iatom = 1, natoms
-           write (*,205) iatom, fharmonic(:,iatom)
-          end do
-         end if
+        !  if (iharmonic .eq. 1) then
+        !   write (*,*) '  '
+        !   write (*,*) ' The external field force: '
+        !   do iatom = 1, natoms
+        !    write (*,205) iatom, fharmonic(:,iatom)
+        !   end do
+        !  end if
 
-         if (ibias .eq. 1) then
-          write (*,*) '  '
-          write (*,*) ' The bias field force: '
-          do iatom = 1, natoms
-           write (*,206) iatom, fbias(:,iatom)
-          end do
-         end if
+        !  if (ibias .eq. 1) then
+        !   write (*,*) '  '
+        !   write (*,*) ' The bias field force: '
+        !   do iatom = 1, natoms
+        !    write (*,206) iatom, fbias(:,iatom)
+        !   end do
+        !  end if
 
 
-        end if
+        ! end if
 
 ! ****************************************************************************
 ! Now the total force: ftot
 ! ****************************************************************************
         do iatom = 1, natoms
-         ftot(:,iatom) = fbs(:,iatom) + dusr(:,iatom) + dxcv(:,iatom)        &
-     &                                + fro(:,iatom)
-         if (ivdw .eq. 1) ftot(:,iatom) = ftot(:,iatom) + fvdw(:,iatom)
-         if (idftd3 .ge. 1) ftot(:,iatom) = ftot(:,iatom) + ftot_dftd3(:,iatom)
-         if (iharmonic .eq. 1) ftot(:,iatom) = ftot(:,iatom)                 &
-     &                                        + fharmonic(:,iatom)
-         if (ibias .eq. 1) ftot(:,iatom) = ftot(:,iatom)                     &
-     &                                        + fbias(:,iatom)
+         ftot(:,iatom) = fbs(:,iatom) + dusr(:,iatom) + dxcv(:,iatom)     + fro(:,iatom)
+        ! if (ivdw .eq. 1) ftot(:,iatom) = ftot(:,iatom) + fvdw(:,iatom)
+        ! if (idftd3 .ge. 1) ftot(:,iatom) = ftot(:,iatom) + ftot_dftd3(:,iatom)
+        ! if (iharmonic .eq. 1) ftot(:,iatom) = ftot(:,iatom)        + fharmonic(:,iatom)
+        ! if (ibias .eq. 1) ftot(:,iatom) = ftot(:,iatom)            + fbias(:,iatom)
         end do
 
         if (verbosity .ge. 1 )  then

@@ -53,26 +53,26 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine buildh ( nprocs, itheory, iordern, itestrange, testrange, ibias, iwrtHS )
+        subroutine buildh ! ( nprocs, itheory, iordern, itestrange, testrange, ibias, iwrtHS )
+        use options
         use configuration
         use interactions
         use neighbor_map
         use dimensions
         use density
-        use bias
-        use options, only: V_intra_dip
+        ! use bias
+        !use options, only: V_intra_dip
         implicit none
 
 ! Argument Declaration and Description
 ! ===========================================================================
-        integer, intent (in) :: iordern
-        integer, intent (in) :: itestrange
-        integer, intent (in) :: itheory
-        integer, intent (in) :: nprocs
-        integer, intent (in) :: ibias
-        integer, intent (in) :: iwrtHS
-
-        real, intent (in) :: testrange
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: itestrange
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: nprocs
+        ! integer, intent (in) :: ibias
+        ! integer, intent (in) :: iwrtHS
+        ! real,    intent (in) :: testrange
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -175,49 +175,49 @@
 !$omp atomic
               h_mat(imu,inu,ineigh,iatom) = h_mat(imu,inu,ineigh,iatom)       &
      &         + vca(imu,inu,ineigh,iatom) + vxc_ca(imu,inu,ineigh,iatom)     &
-     &         + ewaldlr(imu,inu,ineigh,iatom) - ewaldsr(imu,inu,ineigh,iatom) &
-               + ewaldqmmm(imu,inu,ineigh,iatom)
+     &         + ewaldlr(imu,inu,ineigh,iatom) - ewaldsr(imu,inu,ineigh,iatom)
+            !   h_mat(imu,inu,ineigh,iatom) = h_mat(imu,inu,ineigh,iatom) + ewaldqmmm(imu,inu,ineigh,iatom)   ! IF_DEF_QMMM_END
              end do ! do imu
             end do ! do inu
            end if ! if (itheory .eq. 1)
           endif ! if (iKS .eq. 1)
          end do ! do ineigh
 
-            !New V_intra_dip_1c JUNE 2019
-            if (V_intra_dip .eq. 1) then
-              matom = neigh_self(iatom)
-              do inu = 1, num_orb(in1)
-               do imu = 1, num_orb(in1)
-
-                h_mat(imu,inu,matom,iatom) = h_mat(imu,inu,matom,iatom) + Vdip_1c(imu,inu,iatom)
-
-               end do ! do imu
-              end do ! do inu
-            end if ! if (V_intra_dip .eq. 1) 
-            !End of New V_intra_dip_1c JUNE 2019
+! ! IF_DEF_IXCZW
+!             !New V_intra_dip_1c JUNE 2019
+!             if (V_intra_dip .eq. 1) then
+!               matom = neigh_self(iatom)
+!               do inu = 1, num_orb(in1)
+!                do imu = 1, num_orb(in1)
+!                 h_mat(imu,inu,matom,iatom) = h_mat(imu,inu,matom,iatom) + Vdip_1c(imu,inu,iatom)
+!                end do ! do imu
+!               end do ! do inu
+!             end if ! if (V_intra_dip .eq. 1) 
+!             !End of New V_intra_dip_1c JUNE 2019
+! ! END_DEF_IXCZW
 
         end do ! do iatom
 
-! Here we add extra terms of Hamiltonian comming from the bias voltage (not KS)
-        if (ibias .eq. 1 .and. itheory .ne. 3) then
-         do iatom = 1, natoms
-          in1 = imass(iatom)
-! loop over neighbors
-          do ineigh = 1, neighn(iatom)
-           mbeta = neigh_b(ineigh,iatom)
-           jatom = neigh_j(ineigh,iatom)
-           in2 = imass(jatom)
-
-! Add all the pieces together for the Hamiltonian.
-           do inu = 1, num_orb(in2)
-            do imu = 1, num_orb(in1)
-             h_mat(imu,inu,ineigh,iatom) = h_mat(imu,inu,ineigh,iatom)      &
-     &          + Vbias_mat(imu,inu,ineigh,iatom)
-            end do
-           end do
-          enddo ! do ineigh
-         enddo ! do iatom
-        endif ! if(ibias)
+! ! IF_DEF_BIAS
+! ! Here we add extra terms of Hamiltonian comming from the bias voltage (not KS)
+!         if (ibias .eq. 1 .and. itheory .ne. 3) then
+!          do iatom = 1, natoms
+!           in1 = imass(iatom)
+! ! loop over neighbors
+!           do ineigh = 1, neighn(iatom)
+!            mbeta = neigh_b(ineigh,iatom)
+!            jatom = neigh_j(ineigh,iatom)
+!            in2 = imass(jatom)
+! ! Add all the pieces together for the Hamiltonian.
+!            do inu = 1, num_orb(in2)
+!             do imu = 1, num_orb(in1)
+!              h_mat(imu,inu,ineigh,iatom) = h_mat(imu,inu,ineigh,iatom)       + Vbias_mat(imu,inu,ineigh,iatom)
+!             end do
+!            end do
+!           enddo ! do ineigh
+!          enddo ! do iatom
+!         endif ! if(ibias)
+! ! END_DEF_BIAS_END
 
 
 ! We set matrix elements equal to zero if outside our test range.
@@ -243,7 +243,7 @@
               if (itheory .eq. 1 .or. itheory .eq. 2) then
                ewaldlr(imu,inu,ineigh,iatom) = 0.0d0
                ewaldsr(imu,inu,ineigh,iatom) = 0.0d0
-               ewaldqmmm(imu,inu,ineigh,iatom) = 0.0d0
+!               ewaldqmmm(imu,inu,ineigh,iatom) = 0.0d0    ! IF_DEF_QMMM_END
               end if
              end do
             end do
@@ -256,86 +256,86 @@
 !        if (iordern .eq. 1) call buildh_ordern_final (natoms, nprocs, my_proc, itheory)    ! IF_DEF_ORDERN_END
 
 ! ===========================================================================
-        if (iwrtHS .eq. 1) then
-! Writeout HS.dat
-        write (*,*)
-        write (*,*) ' The information needed to make a TB model or '
-        write (*,*) ' for doing the complex band-structure is in '
-        write (*,*) ' the file ---> HS.dat'
+!         if (iwrtHS .eq. 1) then
+! ! Writeout HS.dat
+!         write (*,*)
+!         write (*,*) ' The information needed to make a TB model or '
+!         write (*,*) ' for doing the complex band-structure is in '
+!         write (*,*) ' the file ---> HS.dat'
 
-        open (unit = 11, file = 'HS.dat', status = 'unknown')
+!         open (unit = 11, file = 'HS.dat', status = 'unknown')
 
-        numorb = 0
-        do iatom = 1, natoms
-         in1 = imass(iatom)
-         do ineigh = 1, neighn_tot(iatom)
-          jatom = neighj_tot(ineigh,iatom)
-          in2 = imass(jatom)
-          do imu = 1, num_orb(in1)
-           do inu = 1, num_orb(in2)
-              numorb = numorb + 1
-           end do  ! do imu
-          end do  ! do inu
-!
-         end do  ! do ineigh
-        end do ! do iatom
-!
-        write (11,*) numorb
+!         numorb = 0
+!         do iatom = 1, natoms
+!          in1 = imass(iatom)
+!          do ineigh = 1, neighn_tot(iatom)
+!           jatom = neighj_tot(ineigh,iatom)
+!           in2 = imass(jatom)
+!           do imu = 1, num_orb(in1)
+!            do inu = 1, num_orb(in2)
+!               numorb = numorb + 1
+!            end do  ! do imu
+!           end do  ! do inu
+! !
+!          end do  ! do ineigh
+!         end do ! do iatom
+! !
+!         write (11,*) numorb
 
-        do iatom = 1, natoms
-         in1 = imass(iatom)
-! loop over total list of neighbors
-         do ineigh = 1, neighn_tot(iatom)
-          jatom = neighj_tot(ineigh,iatom)
-          mbeta = neighb_tot(ineigh,iatom)
-          in2 = imass(jatom)
-          dvec(:) = ratom(:,jatom) + xl(:,mbeta) - ratom(:,iatom)
-          htemp = 0.0d0
-          stemp = 0.0d0
+!         do iatom = 1, natoms
+!          in1 = imass(iatom)
+! ! loop over total list of neighbors
+!          do ineigh = 1, neighn_tot(iatom)
+!           jatom = neighj_tot(ineigh,iatom)
+!           mbeta = neighb_tot(ineigh,iatom)
+!           in2 = imass(jatom)
+!           dvec(:) = ratom(:,jatom) + xl(:,mbeta) - ratom(:,iatom)
+!           htemp = 0.0d0
+!           stemp = 0.0d0
 
-! loop over regular list of neighbors
-          do ineigh0 = 1, neighn(iatom)
-           jatom0 = neigh_j(ineigh0,iatom)
-           mbeta0 = neigh_b(ineigh0,iatom)
+! ! loop over regular list of neighbors
+!           do ineigh0 = 1, neighn(iatom)
+!            jatom0 = neigh_j(ineigh0,iatom)
+!            mbeta0 = neigh_b(ineigh0,iatom)
 
-! find identical neighbors
-           if (jatom .eq. jatom0 .and. mbeta .eq. mbeta0) then
-            do imu = 1, num_orb(in1)
-             do inu = 1, num_orb(in2)
-              htemp(imu,inu) = htemp(imu,inu) + h_mat(imu,inu,ineigh0,iatom)
-              stemp(imu,inu) = s_mat(imu,inu,ineigh0,iatom)
-             enddo ! inu
-            enddo ! imu
-           endif
-          enddo ! do ineigh0
-! loop over PP list of neighbors
-          do ineigh0 = 1, neighPPn(iatom)
-           jatom0 = neighPP_j(ineigh0,iatom)
-           mbeta0 = neighPP_b(ineigh0,iatom)
+! ! find identical neighbors
+!            if (jatom .eq. jatom0 .and. mbeta .eq. mbeta0) then
+!             do imu = 1, num_orb(in1)
+!              do inu = 1, num_orb(in2)
+!               htemp(imu,inu) = htemp(imu,inu) + h_mat(imu,inu,ineigh0,iatom)
+!               stemp(imu,inu) = s_mat(imu,inu,ineigh0,iatom)
+!              enddo ! inu
+!             enddo ! imu
+!            endif
+!           enddo ! do ineigh0
+! ! loop over PP list of neighbors
+!           do ineigh0 = 1, neighPPn(iatom)
+!            jatom0 = neighPP_j(ineigh0,iatom)
+!            mbeta0 = neighPP_b(ineigh0,iatom)
 
-! find identical neighbors
-           if (jatom .eq. jatom0 .and. mbeta .eq. mbeta0) then
-            do imu = 1, num_orb(in1)
-             do inu = 1, num_orb(in2)
-              htemp(imu,inu) = htemp(imu,inu) + vnl(imu,inu,ineigh0,iatom)
-             enddo ! inu
-            enddo ! imu
-           endif
-          enddo ! do ineigh0
+! ! find identical neighbors
+!            if (jatom .eq. jatom0 .and. mbeta .eq. mbeta0) then
+!             do imu = 1, num_orb(in1)
+!              do inu = 1, num_orb(in2)
+!               htemp(imu,inu) = htemp(imu,inu) + vnl(imu,inu,ineigh0,iatom)
+!              enddo ! inu
+!             enddo ! imu
+!            endif
+!           enddo ! do ineigh0
 
-! write elements
-          do imu = 1, num_orb(in1)
-           do inu = 1, num_orb(in2)
-            write (11,50) iatom, imu, jatom, inu, htemp(imu,inu),       &
-     &                   stemp(imu,inu), dvec
-           end do  ! do imu
-          end do  ! do inu
-!
-         end do  ! do ineigh
-        end do ! do iatom
+! ! write elements
+!           do imu = 1, num_orb(in1)
+!            do inu = 1, num_orb(in2)
+!             write (11,50) iatom, imu, jatom, inu, htemp(imu,inu), stemp(imu,inu), dvec
+!            end do  ! do imu
+!           end do  ! do inu
+! !
+!          end do  ! do ineigh
+!         end do ! do iatom
 
-        close (unit = 11)
-        end if
+!         close (unit = 11)
+!         end if ! (iwrtHS .eq. 1)
+
 ! Format Statements
 ! ===========================================================================
  50     format (4i4, 2f12.6, 3f12.6)

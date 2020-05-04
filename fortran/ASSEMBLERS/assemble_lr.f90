@@ -61,7 +61,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_lr (nprocs, iordern) 
+        subroutine assemble_lr ! (nprocs, iordern) 
+        use options
         use charges
         use configuration
         use constants_fireball
@@ -73,8 +74,8 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent(in) :: iordern
-        integer, intent(in) :: nprocs 
+        ! integer, intent(in) :: iordern
+        ! integer, intent(in) :: nprocs 
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================

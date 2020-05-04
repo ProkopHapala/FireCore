@@ -47,11 +47,10 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine getenergy_mcweda (itime_step)
-
         use options 
         use energy
 !        use mpi_main     ! IF_DEF_MPI_END
-        use scf
+        use loops
         use configuration
         use interactions
         use charges, only : efermi
@@ -76,7 +75,7 @@
 ! Now call the stuff for the short-range interactions and the ewald terms
 ! for the final time to get the forces.
          if (itheory .eq. 1 .or. itheory .eq. 2) then
-          call get_ewald (nprocs, my_proc, iforce, icluster, itheory,iordern)
+          call get_ewald ! (nprocs, my_proc, iforce, icluster, itheory,iordern)
          end if
  
 ! Now call the short-ranged potential to get: u0(iatom,ineigh) and uee00(iatom).
@@ -84,7 +83,7 @@
 ! neighbor to iatom.  The total energy per unit cell is
 ! sum(iatom,ineigh) u0(iatom,ineigh) - sum(iatom) uee00(iatom).
 ! The energy/cell uii_uee is returned in the calling statment.
-         call assemble_usr (itheory, itheory_xc, iforce, uxcdcc_hf,  uiiuee)
+         call assemble_usr (uxcdcc_hf,  uiiuee) ! (itheory, itheory_xc, iforce, uxcdcc_hf,  uiiuee)
 
 ! If using the average density approximation or the orbital occupancy
 ! formalism, then the double-counting correction term must be different.
@@ -157,11 +156,11 @@
 !-----------------------------------------------------------------------------
 !export energies for thermodynamic integration of <dE/dlambda>
 !----------------------------------------------------------------------------
-         if (ithermoint .eq. 1) then
-          open(unit=400,file='energyValues.txt',status='unknown')
-          write(400,*)etot
-          close(400)
-         endif
+        ! if (ithermoint .eq. 1) then
+        !  open(unit=400,file='energyValues.txt',status='unknown')
+        !  write(400,*)etot
+        !  close(400)
+        ! endif
 
 ! Deallocate Arrays
 ! ===========================================================================
