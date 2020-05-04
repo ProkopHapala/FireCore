@@ -82,15 +82,15 @@
 ! one-center
         write (*,*) '  '
         write (*,*) ' Calling   for 1-center exchange-correlation '
-        call read_1c (nspecies, itheory, itheory_xc, ispin, ioff2c(7))
+        !call read_1c (nspecies, itheory, itheory_xc, ispin, ioff2c(7))
+        call read_1c (nspecies, ioff2c(7))
 ! two-center
         interaction_start = 1
         do interaction = interaction_start, 5
          write (*,*) '  '
          write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
          write (*,100)
-         call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+         call read_2c (interaction, nspecies, itheory,  ioff2c(interaction), nzx)
         end do
 ! horsfield interaction 
        
@@ -99,22 +99,19 @@
         write (*,*) '  '
         write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
         write (*,100)
-        call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+        call read_2c (interaction, nspecies, itheory,  ioff2c(interaction), nzx)
         ! xc_atom-atom
         interaction = 7
         write (*,*) '  '
         write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
         write (*,100)
-        call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+        call read_2c (interaction, nspecies, itheory,   ioff2c(interaction), nzx)
         ! xc_correction
         interaction = 8
         write (*,*) '  '
         write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
         write (*,100)
-        call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+        call read_2c (interaction, nspecies, itheory,  ioff2c(interaction), nzx)
 
        
         if (itheory .eq. 1) then
@@ -122,8 +119,7 @@
          write (*,*) '  '
          write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
          write (*,100)
-         call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+         call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
         end if
 
 ! JIMM
@@ -135,8 +131,7 @@
           write (*,*) '  '
           write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
           write (*,100)
-          call read_2c (interaction, nspecies, itheory,                  &
-     &                  ioff2c(interaction), nzx)
+          call read_2c (interaction, nspecies, itheory,   ioff2c(interaction), nzx)
          end if
 
          if (itheory .eq. 1) then
@@ -144,8 +139,7 @@
           write (*,*) '  '
           write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
           write (*,100)
-          call read_2c (interaction, nspecies, itheory,                  &
-     &                  ioff2c(interaction), nzx)
+          call read_2c (interaction, nspecies, itheory,  ioff2c(interaction), nzx)
          end if
 
         end if ! idipole .eq. 1
@@ -154,14 +148,12 @@
         write (*,*) '  '
         write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
         write (*,100)
-        call read_2c (interaction, nspecies, itheory,            &
-     &                ioff2c(interaction), nzx)
+        call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
         interaction = 13
         write (*,*) '  '
         write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
         write (*,100)
-        call read_2c (interaction, nspecies, itheory,            &
-     &                ioff2c(interaction), nzx)
+        call read_2c (interaction, nspecies, itheory,  ioff2c(interaction), nzx)
 
 ! Do not need xintegral_2c if doing superspline (use splineint_2c)
         if (superspline) deallocate (xintegral_2c)

@@ -1,6 +1,12 @@
 
 ## Electronic Problem Options
 
+
+
+
+
+
+
 * Core ?
     * `itheory`
     * `itheory_xc`
@@ -47,13 +53,9 @@
 
 #### Electronic Theory Modes
 
-* `itheory`    Level of theory (0=> harris, 1=> idogs, 2=> extended hubbard)
-! Level of exchange-correlation theory
-! 0 => Horsfield,
-! 1 => Generalized Sankey-Niklewski (GSN)
-! 2 => McWEDA
-* `itheory_xc`
+* `itheory`    Level of theory (0=> harris; 1=> idogs; 2=> extended hubbard, 3=> Kohn-Sham )
 
+* `itheory_xc`  Level of exchange-correlation theory ( 0=> Horsfield; 1=>Generalized Sankey-Niklewski (GSN); 2=> McWEDA, 4=> ZW)
 * `igsn`        Generalized Snakye Niklewsky (even simpler than Harris?)
 * `iharris`     implest non-SCF ( SNXC Snakye-Niklewski )
 * `idogs`       SCF on top of Harris
@@ -61,9 +63,9 @@
 * `ixczw`       Second order XC theory ( Diego )                               ! IF_DEF_IXCZW_END
 * `ihorsfield`  version of SCF SN not work well for condensed systems, McWeda is corrected version of this  ! IF_DEF_HORSFIELD_END
 * `ihubbard`    simple kind of Hubbard_U / LDA+U, not used, can remove                    ! IF_DEF_HUBBARD_END
-* `iks`         Kohn-Sahm Grid                                                           ! IF_DEF_KS_END
+* `iks`         Kohn-Sahm Grid                                                            ! IF_DEF_KS_END
 
-* `igauss`      Use gaussian approximation to 3-center                                     ! IF_DEF_GAUSS_END 
+* `igauss`      Use gaussian approximation to 3-center                                    ! IF_DEF_GAUSS_END 
 
 * `idipole`     Long range term with XYZ dipole (correction of long range electrostatics, problem in PBC)
 * `V_intra_dip` Intra-atomic dipolar potential   ( Diego )                                     ! IF_DEF_IXCZW_END

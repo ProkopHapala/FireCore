@@ -47,12 +47,10 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine assemble_h ()
-
         use options
         use interactions
-        use scf
-        use hartree_fock
-
+        use loops
+        !use hartree_fock
         implicit none
 
 ! Argument Declaration and Description

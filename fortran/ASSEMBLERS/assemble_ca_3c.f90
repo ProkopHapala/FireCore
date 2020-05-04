@@ -68,23 +68,24 @@
  
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_ca_3c (nprocs, iordern, igauss)
+        subroutine assemble_ca_3c ! (nprocs, iordern, igauss)
+        use options
         use charges
         use configuration
         use constants_fireball
         use dimensions
         use interactions
         use neighbor_map
-        use gaussG
+        !use gaussG
 
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: igauss
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: igauss
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: nprocs
  
 !$ volatile rcutoff
  
@@ -439,11 +440,11 @@
            bcca = 0.0d0
            do isorp = 1, nssh(indna)
 
+!            if (igauss .eq. 0) then ! IF_DEF_GAUSS_END
+            interaction = 1
+             call trescentros (interaction, isorp, isorpmax, in1, in2, indna, x, y, cost, eps, bccax, nspecies)
+!            end if                  ! IF_DEF_GAUSS_END
 ! ! IF_DEF_GAUSS
-!            if (igauss .eq. 0) then
-!            interaction = 1
-!             call trescentros (interaction, isorp, isorpmax, in1, in2, indna, x, y, cost, eps, bccax, nspecies)
-!            end if
 !           if (igauss .eq. 1) then
 !              call trescentrosG_VNA_SH(isorp, in1, in2, indna, x, y, cost, eps, bccax, rcutoff)
 !           end if
@@ -455,9 +456,9 @@
 ! Add this piece for iatom, jatom, and ialp into the total - bcca
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
-              if (igauss .eq. 1) then
-                bccax(imu,inu) = bccax(imu,inu) + smatG(imu,inu,mneigh,iatom)/R_na(isorp,indna)
-              end if
+              !if (igauss .eq. 1) then   ! IF_DEF_GAUSS_END
+              !  bccax(imu,inu) = bccax(imu,inu) + smatG(imu,inu,mneigh,iatom)/R_na(isorp,indna) ! IF_DEF_GAUSS_END
+              !end if ! IF_DEF_GAUSS_END
               bcca(imu,inu) = bcca(imu,inu) + bccax(imu,inu)*dxn
              end do
             end do

@@ -152,9 +152,7 @@
 ! ! END_DEF_VDW
 
 !         real enHarmonic        ! harmonic oscillator interactions                                ! IF_DEF_harmonic_END
-
 !         complex, dimension (:,:), allocatable   :: hamk  ! These arrays for the dos calculation  ! IF_DEF_DOS_END
-
          real, parameter ::  xc_overtol = 5.0d-5
 
 ! ! IF_DEF_gauss

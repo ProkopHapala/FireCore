@@ -101,7 +101,7 @@
         integer mbeta
         integer natomsp
         integer num_neigh
-        integer num_neigh_vdw
+!        integer num_neigh_vdw   ! IF_DEF_VDW
 
         real distance2
         real range2
@@ -116,20 +116,22 @@
 
         if (icluster .eq. 1) mbeta_max = 0
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
+!                       + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+! ! END_DEF_ORDERN
          iatomstart = 1
          natomsp = natoms
-        end if
+!        end if ! IF_DEF_ORDERN_END
 
 
 ! Note: We need two loops to determine max number of neighbors, namely 

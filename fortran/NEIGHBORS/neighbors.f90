@@ -72,24 +72,25 @@
 ! Program Declaration
 ! ===========================================================================
 
-subroutine neighbors (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
-    use configuration, only: nspecies, mbeta_max, natoms
-    use options, only: iclassicMD
+subroutine neighbors ! (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
+	use options
+    use configuration !, only: nspecies, mbeta_max, natoms
+    use options !, only: iclassicMD
     use dimensions
     use interactions
     use neighbor_map
-    use classicMD,only: potential
+    !use classicMD,only: potential
     implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-    integer, intent (in) :: icluster
-    integer, intent (in) :: iordern
-    integer, intent (in) :: ivdw
-    integer, intent (in) :: iwrtneigh
-    integer, intent (in) :: my_proc
-    integer, intent (in) :: nprocs
+    ! integer, intent (in) :: icluster
+    ! integer, intent (in) :: iordern
+    ! integer, intent (in) :: ivdw
+    ! integer, intent (in) :: iwrtneigh
+    ! integer, intent (in) :: my_proc
+    ! integer, intent (in) :: nprocs
 
 !$ volatile rcutoff
  
@@ -100,19 +101,20 @@ subroutine neighbors (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
 ! ===========================================================================
     integer iatomstart
     integer natomsp
-!CHROM classic empirical potential(Zdenka Chromcova, chrom@fzu.cz)
-	interface
-	subroutine fillneigh(iatomstart,natomsp,nprocs, my_proc)
-		implicit none
-		integer, intent(in) :: nprocs, my_proc,iatomstart,natomsp
-	end subroutine fillneigh
 ! ! IF_DEF_iclassicMD_END
-! 	subroutine fillneigh_class(iatomstart,natomsp,nprocs, my_proc)
+! 	!CHROM classic empirical potential(Zdenka Chromcova, chrom@fzu.cz)
+! 	interface
+! 	subroutine fillneigh(iatomstart,natomsp,nprocs, my_proc)
+! 		implicit none
 ! 		integer, intent(in) :: nprocs, my_proc,iatomstart,natomsp
-! 	end subroutine
+! 	end subroutine fillneigh
+
+!  	subroutine fillneigh_class(iatomstart,natomsp,nprocs, my_proc)
+!  		integer, intent(in) :: nprocs, my_proc,iatomstart,natomsp
+!  	end subroutine
+! 	end interface
+! ! END CHROM
 ! ! END_DEF_iclassicMD_END
-	end interface
-!END CHROM
 ! Procedure
 ! ===========================================================================
 
@@ -123,123 +125,115 @@ subroutine neighbors (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
         
     if (icluster .eq. 1) mbeta_max = 0
 
-! Determine which atoms are assigned to this processor.
-    if (iordern .eq. 1) then
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          	natomsp = natomsp + 1
-          	iatomstart = natomsp*my_proc + 1
-         else
-          	iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-    else
-         iatomstart = 1
-         natomsp = natoms
-    end if
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!     if (iordern .eq. 1) then
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           	natomsp = natomsp + 1
+!           	iatomstart = natomsp*my_proc + 1
+!          else
+!           	iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!     else
+! ! END_DEF_ORDERN
+          iatomstart = 1
+          natomsp = natoms
+!     end if   ! IF_DEF_ORDERN_END
 
-!CHROM
+
 ! ! IF_DEF_iclassicMD_END
-!     if (iclassicMD > 0)then                                             
+! ! CHROM
+	!     if (iclassicMD > 0)then                                             
 !         call fillneigh_class(iatomstart,natomsp,nprocs, my_proc)     
 !         return
 !     endif
-! ! END_DEF_iclassicMD_END
-    call fillneigh(iatomstart,natomsp,nprocs,my_proc)
+!    call fillneigh(iatomstart,natomsp,nprocs,my_proc)
 !    if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)     ! IF_DEF_ordern_END
 !    call writeout_neighbors (nprocs, ivdw, iwrtneigh)
 !END CHROM
+! ! END_DEF_iclassicMD_END
 	return
 end subroutine neighbors
 
 
-!CHROM
-subroutine fillneigh(iatomstart,natomsp, nprocs,my_proc)
+! ! IF_DEF_iclassicMD
+! !CHROM
+! subroutine fillneigh(iatomstart,natomsp, nprocs,my_proc)
+! 	use interactions !, only: nssh,nsh_max,wrtout,imass
+! 	use neighbor_map !, only: neigh_j_vdw,neigh_b_vdw,neigh_b,range_vdw,neighn_vdw,neigh_b_classic,neighn,neigh_j,neigh_max
+! 	use configuration! , only: ratom,xl,mbeta_max,rcutoff,natoms
+! 	use options      !, only: iordern,icluster,ivdw
+! 	use dimensions   !, only: nspec_max
+! 	implicit none
+! 	integer, intent(in) :: nprocs, my_proc,natomsp,iatomstart
+! !local variables
+! 	integer :: iatom,jatom,mbeta,num_neigh,num_neigh_vdw,in1,imu,in2,neighcount
+! 	real    :: distance2,rcutoff_j, rcutoff_i,distance,range2,rc_max
+! 	integer :: mbeta_max2
+! 	integer :: neigh_max_old, ii, jj
+! ! Loop over all atoms.
+! !$omp parallel do private (num_neigh, num_neigh_vdw, rcutoff_i, rcutoff_j) &
+! !$omp&private (in1, in2, distance, distance2, range2, jatom, mbeta)
+! 	rc_max = 0.00
+! 	do iatom = iatomstart, iatomstart - 1 + natomsp
+!  		num_neigh = 0
+! 		num_neigh_vdw = 0
+!  		rcutoff_i = 0.0d0
+! 		in1 = imass(iatom)
+!  		do imu = 1, nssh(in1)
+!  			if (rcutoff(in1,imu) .gt. rcutoff_i) rcutoff_i = rcutoff(in1,imu)
+! 		end do
+! ! Loop over all possible neighbors
+!  		do mbeta = 0, mbeta_max
+!  			do jatom = 1, natoms
+! 				rcutoff_j = 0.0d0
+!  				in2 = imass(jatom)
+! 				do imu = 1, nssh(in2)
+! 					if (rcutoff(in2,imu) .gt. rcutoff_j) rcutoff_j = rcutoff(in2,imu)
+!  				end do
+! ! Find the distance from (mbeta,jatom) to (0,iatom)
+! 				distance2 = (ratom(1,iatom) - (xl(1,mbeta) + ratom(1,jatom)))**2&
+! 					&+ (ratom(2,iatom) - (xl(2,mbeta) + ratom(2,jatom)))**2 &
+! 					&+ (ratom(3,iatom) - (xl(3,mbeta) + ratom(3,jatom)))**2
+! 				distance = sqrt(distance2)
+! ! Add a small displacement to the sum of cutoffs.
+! 				range2 = (rcutoff_i + rcutoff_j - 0.01d0)**2
+!  				rc_max = max(rc_max,(rcutoff_i + rcutoff_j))
+! 				if (distance2 .le. range2) then
+! 					if (distance2 .lt. 0.7d0 .and. distance .gt. 1.0d-4 .and.&
+! 						 &iatom .ne. jatom .and. wrtout) then
+! 						write (*,*) ' WARNING - atoms dangerously close! '
+! 						write (*,*) ' WARNING - atoms dangerously close! '
+! 						write (*,*) ' WARNING - atoms dangerously close! '
+! 						write (*,*) ' iatom, jatom, distance = ', iatom, jatom, distance
+! 					end if
+!  					num_neigh = num_neigh + 1
+! ! The num_neigh'th neighbor to (0,iatom) at (mbeta,jatom)
+!  					neigh_j(num_neigh,iatom) = jatom
+!  					neigh_b(num_neigh,iatom) = mbeta
+! 				end if
+! ! ! IF_DEF_VDW
+! ! ! This is a neighbor mapping for including the van der Waals interactions.
+! !  				if (ivdw .eq. 1 .and. distance2 .le. range_vdw**2) then
+! !  					num_neigh_vdw = num_neigh_vdw + 1
+! ! ! The num_neigh'th neighbor to (0,iatom) at (mbeta,jatom)
+! !  					neigh_j_vdw(num_neigh_vdw,iatom) = jatom
+! !  					neigh_b_vdw(num_neigh_vdw,iatom) = mbeta
+! ! 				end if
+! ! ! END_DEF_VDW
+!  			end do
+!   		end do
+! ! The number of neighbors to atom iatom is num_neigh.
+! ! Remember, that in the total count, the atom itself is a neighbor!
+! 		neighn(iatom) = num_neigh
+!  		if (ivdw .eq. 1) neighn_vdw(iatom) = num_neigh_vdw
+!  	end do
+! ! 	if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)  ! IF_DEF_ORDERN_END
+! end subroutine fillneigh
+! ! END_DEF_iclassicMD
 
-	use interactions, only: nssh,nsh_max,wrtout,imass
-	use neighbor_map, only: neigh_j_vdw,neigh_b_vdw,neigh_b,range_vdw,neighn_vdw,neigh_b_classic,neighn,neigh_j,neigh_max
-	use configuration, only: ratom,xl,mbeta_max,rcutoff,natoms
-	use options, only: iordern,icluster,ivdw
-	use dimensions, only: nspec_max
-	implicit none
-
-	integer, intent(in) :: nprocs, my_proc,natomsp,iatomstart
-
-!local variables
-	integer :: iatom,jatom,mbeta,num_neigh,num_neigh_vdw,in1,imu,in2,neighcount
-	real :: distance2,rcutoff_j, rcutoff_i,distance,range2,rc_max
-	integer :: mbeta_max2
-	integer :: neigh_max_old, ii, jj
-
-! Loop over all atoms.
-!$omp parallel do private (num_neigh, num_neigh_vdw, rcutoff_i, rcutoff_j) &
-!$omp&private (in1, in2, distance, distance2, range2, jatom, mbeta)
-
-	rc_max = 0.00
-	do iatom = iatomstart, iatomstart - 1 + natomsp
- 		num_neigh = 0
-		num_neigh_vdw = 0
- 		rcutoff_i = 0.0d0
-		in1 = imass(iatom)
- 		do imu = 1, nssh(in1)
- 			if (rcutoff(in1,imu) .gt. rcutoff_i) rcutoff_i = rcutoff(in1,imu)
-		end do
-
-! Loop over all possible neighbors
- 		do mbeta = 0, mbeta_max
- 			do jatom = 1, natoms
-				rcutoff_j = 0.0d0
- 				in2 = imass(jatom)
-				do imu = 1, nssh(in2)
-					if (rcutoff(in2,imu) .gt. rcutoff_j) rcutoff_j = rcutoff(in2,imu)
- 				end do
- 
-! Find the distance from (mbeta,jatom) to (0,iatom)
-				distance2 = (ratom(1,iatom) - (xl(1,mbeta) + ratom(1,jatom)))**2&
-					&+ (ratom(2,iatom) - (xl(2,mbeta) + ratom(2,jatom)))**2 &
-					&+ (ratom(3,iatom) - (xl(3,mbeta) + ratom(3,jatom)))**2
-				distance = sqrt(distance2)
- 
-! Add a small displacement to the sum of cutoffs.
-				range2 = (rcutoff_i + rcutoff_j - 0.01d0)**2
- 				rc_max = max(rc_max,(rcutoff_i + rcutoff_j))
- 
-				if (distance2 .le. range2) then
-					if (distance2 .lt. 0.7d0 .and. distance .gt. 1.0d-4 .and.&
-						 &iatom .ne. jatom .and. wrtout) then
-						write (*,*) ' WARNING - atoms dangerously close! '
-						write (*,*) ' WARNING - atoms dangerously close! '
-						write (*,*) ' WARNING - atoms dangerously close! '
-						write (*,*) ' iatom, jatom, distance = ', iatom, jatom, distance
-					end if
- 					num_neigh = num_neigh + 1
- 
-! The num_neigh'th neighbor to (0,iatom) at (mbeta,jatom)
- 					neigh_j(num_neigh,iatom) = jatom
- 					neigh_b(num_neigh,iatom) = mbeta
-				end if
-
-! This is a neighbor mapping for including the van der Waals interactions.
- 				if (ivdw .eq. 1 .and. distance2 .le. range_vdw**2) then
- 					num_neigh_vdw = num_neigh_vdw + 1
-
-! The num_neigh'th neighbor to (0,iatom) at (mbeta,jatom)
- 					neigh_j_vdw(num_neigh_vdw,iatom) = jatom
- 					neigh_b_vdw(num_neigh_vdw,iatom) = mbeta
-				end if
-			end do
- 		end do
- 
-! The number of neighbors to atom iatom is num_neigh.
-! Remember, that in the total count, the atom itself is a neighbor!
-		neighn(iatom) = num_neigh
- 		if (ivdw .eq. 1) neighn_vdw(iatom) = num_neigh_vdw
- 	end do
- 
-! 	if (iordern .eq. 1) call neighbors_ordern_final (natoms, nprocs, my_proc, ivdw)  ! IF_DEF_ORDERN_END
-
-end subroutine fillneigh
-
-! ! IF_DEF_iclassicMD_END
+! ! IF_DEF_iclassicMD
 ! subroutine fillneigh_class(iatomstart,natomsp,nprocs, my_proc)
 
 ! 	use neighbor_map, only: neigh_b_classic, neigh_max_class, neighn_classic, neigh_classic
@@ -306,7 +300,7 @@ end subroutine fillneigh
 ! ! 	write(*,*)neighn_classic(1)
 ! ! 	stop
 ! end subroutine fillneigh_class
-! ! END_DEF_iclassicMD_END
+! ! END_DEF_iclassicMD
 
 
 subroutine reallocate_2D_iarray(x,y,newx,newy,array)

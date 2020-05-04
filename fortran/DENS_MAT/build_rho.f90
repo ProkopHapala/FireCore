@@ -48,8 +48,7 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine build_rho (itime_step)
-
-        use scf
+        use loops
         use density
         !use outputs
         use options
@@ -110,7 +109,7 @@
 !           if (icDFT .eq. 1) then
 !            call denmat_es (ifixcharge, iqout, icluster, iwrtefermi, tempfe, ebs, iwrtpop,bmix,Kscf,igap)
 !           else 
-            call denmat (ifixcharge, iqout, icluster, iwrtefermi, tempfe, ebs, iwrtpop,bmix,Kscf,igap)
+            call denmat (ebs)  ! (ifixcharge, iqout, icluster, iwrtefermi, tempfe, ebs, iwrtpop,bmix,Kscf,igap)
 !           end if ! end (icDFT .eq. 1)
 
 

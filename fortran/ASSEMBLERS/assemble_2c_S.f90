@@ -53,7 +53,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_2c_S (nprocs, iforce, iordern, ioff2c)
+        subroutine assemble_2c_S ! (nprocs, iforce, iordern, ioff2c)
+        use options
         use configuration
         use constants_fireball
         use dimensions
@@ -65,12 +66,11 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iforce
-        integer, intent (in) :: iordern
-        integer, intent (in) :: nprocs
-
+!        integer, intent (in) :: iforce
+!        integer, intent (in) :: iordern
+!        integer, intent (in) :: nprocs
 ! 15 different two-center interactions
-        integer, intent (in), dimension (1:24) :: ioff2c
+!        integer, intent (in), dimension (1:24) :: ioff2c
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================

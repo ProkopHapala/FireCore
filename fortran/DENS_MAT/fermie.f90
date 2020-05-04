@@ -56,8 +56,7 @@
         use dimensions
         use constants_fireball
         use kpoints
-        use scf 
-
+        use loops 
         implicit none
  
 ! Argument Declaration and Description

@@ -54,23 +54,25 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine average_rho (nprocs, Kscf, iforce, iordern, igauss)
+        subroutine average_rho ! (nprocs, Kscf, iforce, iordern, igauss)
+        use options
         use charges
         use configuration
         use density
         use forces
         use interactions
         use neighbor_map
+        use loops
         implicit none
 
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iforce
-        integer, intent (in) :: iordern
-        integer, intent (in) :: Kscf
-        integer, intent (in) :: nprocs
-        integer, intent (in) :: igauss
+      !   integer, intent (in) :: iforce
+      !   integer, intent (in) :: iordern
+      !   integer, intent (in) :: Kscf
+      !   integer, intent (in) :: nprocs
+      !   integer, intent (in) :: igauss
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -134,8 +136,8 @@
         real, dimension (nsh_max, nsh_max) :: sm
         real, dimension (3, nsh_max, nsh_max) :: spm
 !
-        real, dimension (nsh_max, nsh_max) :: smGS
-        real, dimension (3, nsh_max, nsh_max) :: spmGS
+        !real, dimension (nsh_max, nsh_max) :: smGS          ! IF_DEF_GAUSS_END
+        !real, dimension (3, nsh_max, nsh_max) :: spmGS      ! IF_DEF_GAUSS_END
         real rho_modified
 
 ! BTN communication domain
@@ -714,7 +716,7 @@
      &            - rhom_2c(issh,jssh)*spm(:,issh,jssh))               &
      &            /(sm(issh,jssh)*sm(issh,jssh))
 
-              if (igauss .eq. 0) then
+!              if (igauss .eq. 0) then    ! IF_DEF_GAUSS_END
 
                 rho_modified=rhom_3c(issh,jssh,ineigh,iatom)/sm(issh,jssh)
 
@@ -722,7 +724,7 @@
      &           arho_off(issh,jssh,ineigh,iatom)                        &
      &           + rhom_2c(issh,jssh)/sm(issh,jssh) + rho_modified
 
-              end if
+!              end if ! (igauss .eq. 0)   ! IF_DEF_GAUSS_END
 
                arhop_off(:,issh,jssh,ineigh,iatom) =                    &
      &          arhop_off(:,issh,jssh,ineigh,iatom)                     &
@@ -731,39 +733,33 @@
      &              /(sm(issh,jssh)*sm(issh,jssh))
 
 
-! Since the density rhom_3c obtained by gaussian, so we have to divided it by
-! the overlap using gaussian wavefunctions
-              if (igauss .eq. 1) then
-                 if (abs(sm(issh,jssh)) .lt. xc_overtol) then
-                   if (sm(issh,jssh) .gt. 0.0d0) then
-                    sm(issh,jssh) =  xc_overtol
-                   else
-                    sm(issh,jssh) =  -1.0d0*xc_overtol
-                   endif
-                 endif
+! ! IF_DEF_GAUSS
+! ! Since the density rhom_3c obtained by gaussian, so we have to divided it by
+! ! the overlap using gaussian wavefunctions
+!               if (igauss .eq. 1) then
+!                  if (abs(sm(issh,jssh)) .lt. xc_overtol) then
+!                    if (sm(issh,jssh) .gt. 0.0d0) then
+!                     sm(issh,jssh) =  xc_overtol
+!                    else
+!                     sm(issh,jssh) =  -1.0d0*xc_overtol
+!                    endif
+!                  endif
+!                  arho_off(issh,jssh,ineigh,iatom) = arho_off(issh,jssh,ineigh,iatom) +  rhom_2c(issh,jssh)/sm(issh,jssh)
+! ! Since the density rhom_3c obtained by gaussian, so we have to divided it by
+! ! the overlap using gaussian wavefunctions
+!                 if (abs(smGS(issh,jssh)) .lt. xc_overtolG) then
+!                    if (sm(issh,jssh) .gt. 0.0d0) then
+!                     sm(issh,jssh) =  xc_overtolG
+!                    else
+!                     sm(issh,jssh) =  -1.0d0*xc_overtolG
+!                    endif
+!                 endif
+!                 rho_modified = rhom_3c(issh,jssh,ineigh,iatom)/   smGS(issh,jssh)
+!                 arho_off(issh,jssh,ineigh,iatom) =    arho_off(issh,jssh,ineigh,iatom) + rho_modified
+!               end if ! if (igauss .eq. 1) 
+! ! END_DEF_GAUSS
 
-                 arho_off(issh,jssh,ineigh,iatom) =                     &
-     &            arho_off(issh,jssh,ineigh,iatom) +                    &
-     &            rhom_2c(issh,jssh)/sm(issh,jssh)
-
-! Since the density rhom_3c obtained by gaussian, so we have to divided it by
-! the overlap using gaussian wavefunctions
-
-                if (abs(smGS(issh,jssh)) .lt. xc_overtolG) then
-                   if (sm(issh,jssh) .gt. 0.0d0) then
-                    sm(issh,jssh) =  xc_overtolG
-                   else
-                    sm(issh,jssh) =  -1.0d0*xc_overtolG
-                   endif
-                endif
-
-                rho_modified = rhom_3c(issh,jssh,ineigh,iatom)/        &
-     &                             smGS(issh,jssh)
-
-                arho_off(issh,jssh,ineigh,iatom) =                     &
-     &           arho_off(issh,jssh,ineigh,iatom) + rho_modified
-              end if
-
+              
 ! End loop over shells.
             end do ! end do jssh
            end do ! end do issh

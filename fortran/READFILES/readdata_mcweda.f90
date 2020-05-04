@@ -127,7 +127,7 @@
         if (verbosity .ge. 3) write (*,*) ' Calling   for 1-center exchange-correlation '
 ! JOM-info : the options are passed now in MODULES/options.f90
 !       call read_1c (nspecies, itheory, itheory_xc, ispin, ioff2c(7))
-        call read_1c (nspecies, ioff2c(7))
+       call read_1c (nspecies, ioff2c(7))
 
 ! two-center
         interaction_start = 1
@@ -135,8 +135,7 @@
          if (verbosity .ge. 3) write (*,*) '  '
          if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
          if (verbosity .ge. 3) write (*,100)
-         call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+         call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
         end do
 
 ! horsfield-like interaction (not needed for SNXC) 
@@ -146,23 +145,20 @@
          if (verbosity .ge. 3) write (*,*) '  '
          if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
          if (verbosity .ge. 3) write (*,100)
-         call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+         call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
          ! xc_atom-atom
          interaction = 7
          if (verbosity .ge. 3) write (*,*) '  '
          if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
          if (verbosity .ge. 3) write (*,100)
-         call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+         call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
 
          ! xc_correction
          interaction = 8
          if (verbosity .ge. 3) write (*,*) '  '
          if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
          if (verbosity .ge. 3) write (*,100)
-         call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+         call read_2c (interaction, nspecies, itheory,ioff2c(interaction), nzx)
 
         end if
         
@@ -171,8 +167,7 @@
          if (verbosity .ge. 3) write (*,*) '  '
          if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
          if (verbosity .ge. 3) write (*,100)
-         call read_2c (interaction, nspecies, itheory,                  &
-     &                 ioff2c(interaction), nzx)
+         call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
 
         end if
 
@@ -183,8 +178,7 @@
           if (verbosity .ge. 3) write (*,*) '  '
           if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
           if (verbosity .ge. 3) write (*,100)
-          call read_2c (interaction, nspecies, itheory,                  &
-     &                  ioff2c(interaction), nzx)
+          call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
 
          end if
 
@@ -193,8 +187,7 @@
           if (verbosity .ge. 3) write (*,*) '  '
           if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
           if (verbosity .ge. 3) write (*,100)
-          call read_2c (interaction, nspecies, itheory,                  &
-     &                  ioff2c(interaction), nzx)
+          call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
 
          end if
 
@@ -205,15 +198,13 @@
         if (verbosity .ge. 3) write (*,*) '  '
         if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
         if (verbosity .ge. 3) write (*,100)
-        call read_2c (interaction, nspecies, itheory,            &
-     &                ioff2c(interaction), nzx)
+        call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
 
         interaction = 13
         if (verbosity .ge. 3) write (*,*) '  '
         if (verbosity .ge. 3) write (*,*) ' Calling read_2c for 2-Center Interaction # ', interaction
         if (verbosity .ge. 3) write (*,100)
-        call read_2c (interaction, nspecies, itheory,            &
-     &                ioff2c(interaction), nzx)
+        call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
 
  
 ! Spherical OLSXC exchange-correlation
@@ -222,8 +213,7 @@
          if (verbosity .ge. 3) write (*,*) ' Calling read2c for 2-Center Interaction # ', interaction
          if (verbosity .ge. 3) write (*,100)
 
-         call read_2c (interaction, nspecies, itheory, ioff2c(interaction), &
-     &                  nzx)
+         call read_2c (interaction, nspecies, itheory, ioff2c(interaction),  nzx)
 
         end do
 

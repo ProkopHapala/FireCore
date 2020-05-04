@@ -54,24 +54,25 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine average_ca_rho (nprocs, Kscf, iforce, iordern, igauss)
+        subroutine average_ca_rho ! (nprocs, Kscf, iforce, iordern, igauss)
+        use options
         use charges
         use configuration
         use density
         use forces
         use interactions
         use neighbor_map
+        use loops
         implicit none
 
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iforce
-        integer, intent (in) :: iordern
-        integer, intent (in) :: Kscf
-        integer, intent (in) :: nprocs
-
-        integer, intent (in) :: igauss
+      !   integer, intent (in) :: iforce
+      !   integer, intent (in) :: iordern
+      !   integer, intent (in) :: Kscf
+      !   integer, intent (in) :: nprocs
+      !   integer, intent (in) :: igauss
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -134,9 +135,9 @@
         real, dimension (3) :: sighat
         real, dimension (nsh_max, nsh_max) :: sm
         real, dimension (3, nsh_max, nsh_max) :: spm
-!
-        real, dimension (nsh_max, nsh_max) :: smGS
-        real, dimension (3, nsh_max, nsh_max) :: spmGS
+
+!        real, dimension (nsh_max, nsh_max) :: smGS        ! IF_DEF_GAUSS_END
+!        real, dimension (3, nsh_max, nsh_max) :: spmGS    ! IF_DEF_GAUSS_END
         real rho_modified
 
 ! BTN communication domain

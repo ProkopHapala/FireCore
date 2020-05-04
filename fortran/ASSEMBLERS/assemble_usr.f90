@@ -84,7 +84,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_usr (itheory, itheory_xc, iforce, uxcdcc, uiiuee)
+        subroutine assemble_usr (uxcdcc, uiiuee) ! (itheory, itheory_xc, iforce, uxcdcc, uiiuee)
+        use options
         use charges
         use configuration
         use constants_fireball
@@ -92,16 +93,16 @@
         use forces
         use interactions
         use neighbor_map
-        use energy, only:  dc_v_intra_dip_1c
-        use options, only: V_intra_dip
+        !use energy   , only:  dc_v_intra_dip_1c
+        !use options  , only: V_intra_dip
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iforce
-        integer, intent (in) :: itheory
-        integer, intent (in) :: itheory_xc
+        ! integer, intent (in) :: iforce
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: itheory_xc
  
 ! Output
         real, intent (out) :: uiiuee
@@ -491,11 +492,14 @@
          u0tot = u0tot - eklr
         end if
         uiiuee = u0tot - ue0tot
-        if (V_intra_dip .eq. 1) then
-            write(*,*) 'Ankais dc_v_intra_dip = ', dc_v_intra_dip_1c
-             uiiuee = uiiuee + dc_v_intra_dip_1c
-             !Double-counting V_intra_dip_1c here??? Double counting
-        end if !end if V_intra_dip .eq. 1
+
+! ! IF_DEF_IXCZW
+!         if (V_intra_dip .eq. 1) then
+!             write(*,*) 'Ankais dc_v_intra_dip = ', dc_v_intra_dip_1c
+!              uiiuee = uiiuee + dc_v_intra_dip_1c
+!              !Double-counting V_intra_dip_1c here??? Double counting
+!         end if !end if V_intra_dip .eq. 1
+! ! END_DEF_IXCZW
 
 ! Format Statements
 ! ===========================================================================

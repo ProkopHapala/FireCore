@@ -60,7 +60,7 @@
         use neighbor_map
         use density
         use charges 
-        use scf
+        use loops
         !use outputs, only : iwrtdosng
         use interactions !, only : norbitals
         use kpoints      !, only : nkpoints

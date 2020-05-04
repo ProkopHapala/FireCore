@@ -50,10 +50,10 @@
 !
 ! Program Declaration
 ! ===========================================================================
-         subroutine num_neigh_tot (numorb_max)
-
+         subroutine num_neigh_tot ! (numorb_max)
+          use interactions
          use neighbor_map
-         use module_dos
+         !use module_dos
          use configuration
 
          implicit none
@@ -61,7 +61,7 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-         integer, intent(in)          :: numorb_max
+!         integer, intent(in)          :: numorb_max
 
 ! Local Parameters and Data Declaration
 ! ============================================================================
@@ -90,9 +90,8 @@
          deallocate (neighj_tot)
          deallocate (neighb_tot)
          endif
-         if ( allocated (hr_box)) deallocate (hr_box)
-! JOM-warning : these allocations seem arbitrary. we should
-! improve
+         ! if ( allocated (hr_box)) deallocate (hr_box)   ! IF_DEF_DOS_END
+! JOM-warning : these allocations seem arbitrary. we should improve
          allocate (neighj_aux(neigh_max+neighPP_max**2,natoms))
          allocate (neighb_aux(neigh_max+neighPP_max**2,natoms))
          neighj_aux = 0
@@ -121,9 +120,7 @@
              end do ! ineigh 
              if (count_neig .eq. 0) then
              num_neig_tot = num_neig_tot + 1
-             neighj_aux(  ```
-             rhoij_off(imu,inu,ineigh,iatom) = rhoij_off(imu,inu,ineigh,iatom) &
-               &         + rhomx(imu,inu)*Qneutral(isorp,in2)num_neig_tot,iatom) = jatomPP 
+             neighj_aux(num_neig_tot,iatom) = jatomPP 
              neighb_aux(num_neig_tot,iatom) = mbetaPP
              end if
            end do ! ineighPP
@@ -133,17 +130,15 @@
          num_neig_maxtot = maxval(neighn_tot(1:natoms))
          allocate (neighj_tot(num_neig_maxtot,natoms))
          allocate (neighb_tot(num_neig_maxtot,natoms))
-         allocate (hr_box(numorb_max,numorb_max,natoms,0:num_neig_maxtot))
+         !allocate (hr_box(numorb_max,numorb_max,natoms,0:num_neig_maxtot))    ! IF_DEF_DOS_END
          neighj_tot = 0
          neighb_tot = 0
-         hr_box = 0.0d0
+         !hr_box = 0.0d0  ! IF_DEF_DOS_END
 
 ! Loop over atoms
          do iatom = 1,natoms
-            neighj_tot(1:neighn_tot(iatom),iatom) =                     &
-     &               neighj_aux(1:neighn_tot(iatom),iatom)
-            neighb_tot(1:neighn_tot(iatom),iatom) =                     &
-     &               neighb_aux(1:neighn_tot(iatom),iatom)
+            neighj_tot(1:neighn_tot(iatom),iatom) =  neighj_aux(1:neighn_tot(iatom),iatom)
+            neighb_tot(1:neighn_tot(iatom),iatom) =  neighb_aux(1:neighn_tot(iatom),iatom)
          end do
 
          deallocate (neighb_aux)

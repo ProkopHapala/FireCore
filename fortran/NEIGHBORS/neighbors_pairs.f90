@@ -45,8 +45,9 @@
 ! Program Declaration
 ! ===========================================================================
 
-subroutine neighbors_pairs (icluster)
-    use configuration, only: natoms
+subroutine neighbors_pairs ! (icluster)
+    use options
+    use configuration ! , only: natoms
     use dimensions
     use interactions
     use neighbor_map
@@ -55,7 +56,7 @@ subroutine neighbors_pairs (icluster)
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-    integer, intent (in) :: icluster
+!    integer, intent (in) :: icluster
 
 !$ volatile rcutoff
  

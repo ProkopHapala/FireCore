@@ -56,7 +56,9 @@
 ! email: jelinekp@fzu.cz
 !
 ! ===========================================================================
-        subroutine assemble_snxc_on (natoms, nprocs, my_proc, iordern, itheory, uxcdcc)
+        subroutine assemble_snxc_on (uxcdcc) ! (natoms, nprocs, my_proc, iordern, itheory, uxcdcc)
+        use options
+        use configuration
         use charges
         use density
         use dimensions
@@ -68,14 +70,13 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iordern
-        integer, intent (in) :: itheory
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: natoms
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: my_proc
+        ! integer, intent (in) :: natoms
+        ! integer, intent (in) :: nprocs
 
-! Output
-        real, intent (out) :: uxcdcc
+         real, intent (out) :: uxcdcc
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -102,20 +103,22 @@
         vxc = 0.0d0
         if (itheory .eq. 1) vxc_ca = 0.0d0
         uxcdcc = 0.0d0
-  
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs) + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
+
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs) + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+! ! END_DEF_ORDERN
          iatomstart = 1
          natomsp = natoms
-        end if
+!        end if ! IF_DEF_ORDERN_END
 
 ! Loop over the atoms in the central cell.
 !!$omp parallel do private (matom, in1, in3, bcxcx, xc)

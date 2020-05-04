@@ -52,22 +52,23 @@
 ! email: jelinekp@fzu.cz
 !
 ! ===========================================================================
-        subroutine assemble_olsxc_off (nprocs, my_proc, iordern, itheory)
+        subroutine assemble_olsxc_off ! (nprocs, my_proc, iordern, itheory)
+        use options
+        use configuration
         use charges
         use density
         use dimensions
         use interactions
         use neighbor_map
-	use configuration
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iordern
-        integer, intent (in) :: itheory
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: nprocs
+        ! integer, intent (in) :: iordern
+        ! integer, intent (in) :: itheory
+        ! integer, intent (in) :: my_proc
+        ! integer, intent (in) :: nprocs
 
 
 ! Local Parameters and Data Declaration
@@ -105,19 +106,21 @@
 ! Procedure
 ! ===========================================================================
 ! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-           + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
+! ! IF_DEF_ORDERN
+!         if (iordern .eq. 1) then
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
+!            + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+! ! END_DEF_ORDERN
          iatomstart = 1
          natomsp = natoms
-        end if
+!        end if  ! IF_DEF_ORDERN_END
 
 ! Loop over the atoms in the central cell.
 !$omp parallel do private ()

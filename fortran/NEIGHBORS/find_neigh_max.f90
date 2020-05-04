@@ -100,24 +100,26 @@
 
         if (icluster .eq. 1) mbeta_max = 0
 
-! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
+! ! IF_DEF_ORDERN
+! ! Determine which atoms are assigned to this processor.
+!         if (iordern .eq. 1) then
+!          natomsp = natoms/nprocs
+!          if (my_proc .lt. mod(natoms,nprocs)) then
+!           natomsp = natomsp + 1
+!           iatomstart = natomsp*my_proc + 1
+!          else
+!           iatomstart = (natomsp + 1)*mod(natoms,nprocs) + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!          end if
+!         else
+! ! END_DEF_ORDERN
          iatomstart = 1
          natomsp = natoms
-        end if
+!        end if     ! IF_DEF_ORDERN_END
 
 ! Loop over all atoms.
         neigh_max = -99
-        if (ivdw .eq. 1) neigh_max_vdw = -99
+
+!        if (ivdw .eq. 1) neigh_max_vdw = -99   ! IF_DEF_VDW_END
 !$omp parallel do private (num_neigh, num_neigh_vdw, rcutoff_i, rcutoff_j)   &
 !$omp&            private (in1, in2, imu, distance2, range2)
         do iatom = iatomstart, iatomstart - 1 + natomsp
@@ -128,7 +130,6 @@
          do imu = 1, nssh(in1)
           if (rcutoff(in1,imu) .gt. rcutoff_i) rcutoff_i = rcutoff(in1,imu)
          end do
-
 ! Loop over all possible neighbors
          do mbeta = 0, mbeta_max
           do jatom = 1, natoms
@@ -137,22 +138,14 @@
            do imu = 1, nssh(in2)
             if (rcutoff(in2,imu) .gt. rcutoff_j) rcutoff_j = rcutoff(in2,imu)
            end do
-
 ! Find the distance from (mbeta,jatom) to (0,iatom)
-           distance2 = (ratom(1,iatom) - (xl(1,mbeta) + ratom(1,jatom)))**2  &
-     &                + (ratom(2,iatom) - (xl(2,mbeta) + ratom(2,jatom)))**2 &
-     &                + (ratom(3,iatom) - (xl(3,mbeta) + ratom(3,jatom)))**2
-
+           distance2 = (ratom(1,iatom) - (xl(1,mbeta) + ratom(1,jatom)))**2    +   (ratom(2,iatom) - (xl(2,mbeta) + ratom(2,jatom)))**2    +   (ratom(3,iatom) - (xl(3,mbeta) + ratom(3,jatom)))**2
 ! Add a small displacement to the sum of cutoffs. 
            range2 = (rcutoff_i + rcutoff_j - 0.01d0)**2
-
            if (distance2 .le. range2) then
             num_neigh = num_neigh + 1
            end if
-           
-           if (ivdw .eq. 1 .and. distance2 .le. range_vdw**2) then 
-            num_neigh_vdw = num_neigh_vdw + 1
-           end if
+!           if (ivdw .eq. 1 .and. distance2 .le. range_vdw**2) num_neigh_vdw = num_neigh_vdw + 1 ! IF_DEF_VDW_END
           end do
          end do
 
@@ -160,7 +153,7 @@
 ! FIXME: I tried using omp atomic here and it crashed.
 !$omp critical
          neigh_max = max(neigh_max, num_neigh)
-         if (ivdw .eq. 1) neigh_max_vdw = max(neigh_max_vdw, num_neigh_vdw)
+!         if (ivdw .eq. 1) neigh_max_vdw = max(neigh_max_vdw, num_neigh_vdw) ! IF_DEF_VDW_END
 !$omp end critical
         end do
 !        if (iordern .eq. 1) call find_neigh_max_ordern_final()     ! IF_DEF_ORDERN_END
