@@ -344,11 +344,11 @@ if __name__ == "__main__":
     #groups_flat = groups2files( GROUPS, variant_names, post=".f90" )
     groups_flat = groups2files_cc( GROUPS, all_variant_names, cc_kinds=CC_KINDS, inv_SPECIAL_CC=inv_SPECIAL_CC )
 
-    #print "======= CHECK GROUP FOLDERs "; checkFiles       ( src_path_check, group_names,                  bRedudant=True, bMissing=True )
-    #print "======= CHECK GROUP FILEs   "; checkFilesInPaths( group_names, groups_flat, pre=src_path_check, bRedudant=True, bMissing=True )
+    print "======= CHECK GROUP FOLDERs "; checkFiles       ( src_path_check,  all_group_names,                  bRedudant=True, bMissing=True )
+    print "======= CHECK GROUP FILEs   "; checkFilesInPaths( all_group_names, groups_flat, pre=src_path_check, bRedudant=True, bMissing=True )
     
-    print "======= CHECK GROUP FOLDERs "; checkFiles       ( src_path_check, all_group_names,                  bRedudant=False, bMissing=True )
-    print "======= CHECK GROUP FILEs   "; checkFilesInPaths( all_group_names, groups_flat, pre=src_path_check, bRedudant=False, bMissing=True )
+    #print "======= CHECK GROUP FOLDERs "; checkFiles       ( src_path_check, all_group_names,                  bRedudant=False, bMissing=True )
+    #print "======= CHECK GROUP FILEs   "; checkFilesInPaths( all_group_names, groups_flat, pre=src_path_check, bRedudant=False, bMissing=True )
 
     with open("Makefile",'w') as fout:
         
