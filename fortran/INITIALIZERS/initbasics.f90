@@ -128,7 +128,7 @@
         scf_achieved = .true.
 ! Read in the diagnostics parameters. This allows the user to turn
 ! particular interactions on or off.
-        call diagnostics (ioff2c, ioff3c, itestrange, testrange)
+!        call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
 
 ! Read the parameter file - fireball.param
         call readparam ()
@@ -179,7 +179,7 @@
 
 ! Read data from the lattice vectors file - XXX.lvs.
 ! Set up the boxes surrounding the central unit cell.
-        call readlvs (lvsfile, a1vec, a2vec, a3vec, icluster, rescal)
+!        call readlvs (lvsfile, a1vec, a2vec, a3vec, icluster, rescal)    ! IF_DEF_READLVS_END
 
 ! Define volume of unit cell
         call cross (a2vec, a3vec, vector)
@@ -203,10 +203,10 @@
 
 ! Read in a FRAGMENTS file (if it exists).  Use it to fix the internal
 ! geometry of various parts of the system.
-        call readfragments ()
+!        call readfragments () ! IF_DEF_READFRAGMENTS_END
 
 ! Initialize the masses from the info.dat file.
-        call initmasses (natoms, symbol, smass, xmass)
+!        call initmasses (natoms, symbol, smass, xmass)    ! IF_DEF_INITMASSES_END
 
 ! Read information from the quench.optional file. This file contains all the
 ! information needed for the quenching cycles.

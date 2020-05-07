@@ -318,7 +318,7 @@ if __name__ == "__main__":
     MPI_PATH = "/usr/lib/x86_64-linux-gnu/openmpi"
     #FFLAGS, LFLAGS_, LPATHS = genFlags( ["OPT"], MKL_PATH=MKL_PATH, MPI_PATH=MPI_PATH )
     LFLAGS_, LPATHS   = genLFLAGS( MKL_PATH=MKL_PATH, MPI_PATH=MPI_PATH )
-    _FFLAGS = Makefile_machines._FFLAGS
+    _FFLAGS = Makefile_machines._FFLAGS 
     #mode_opt = 'OPT'
     mode_opt = 'DEBUG'
 
@@ -366,9 +366,9 @@ if __name__ == "__main__":
         #toMakefile_name( fout, "FFLAGS77", FFLAGS   )
         #toMakefile_name( fout, "LFLAGS_",  LFLAGS_  )
         #print "DEBUG 5 "
-        toMakefile_name( fout, "FFLAGS",   _FFLAGS[mode_opt] + _FFLAGS['F90']  )
-        toMakefile_name( fout, "FFLAGS77", _FFLAGS[mode_opt] + _FFLAGS['F77']  )
-        toMakefile_name( fout, "FFLAGSC",  _FFLAGS[mode_opt] + _FFLAGS['CC' ]  )
+        toMakefile_name( fout, "FFLAGS",   "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['F90']  )
+        toMakefile_name( fout, "FFLAGS77", "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['F77']  )
+        toMakefile_name( fout, "FFLAGSC",  "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['CC' ]  )
         toMakefile_name( fout, "LFLAGS_",  LFLAGS_  )
         #print "DEBUG 6 "
         toMakefile_name( fout, "LPATHS",   LPATHS   )
@@ -382,7 +382,8 @@ if __name__ == "__main__":
         #writeTarget( fout, "fireball.x"       , "$(OBJECTS)", [OBJECTS       ] )
         #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", [OBJECTS_SERVER] )
         #print "DEBUG 9 "
-        toMakefile_target( fout, "fireball.x"       , "$(OBJECTS)", "$(OBJECTS)"        )
+        #toMakefile_target( fout, "fireball.x"    , "$(OBJECTS)", "$(OBJECTS)"        )
+        toMakefile_target( fout, "libfireball.so", "$(OBJECTS)", "$(OBJECTS)", compiler="$(F90)", fflags=" -shared -fPIC $(FFLAGS)", lflags="$(LFLAGS)" )
         #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", "OBJECTS_SERVER" )
         #print "DEBUG 10 "
         for key,body in inline_targets.iteritems() :

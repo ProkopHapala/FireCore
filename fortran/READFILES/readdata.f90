@@ -150,24 +150,19 @@
 
 !CHROM
 !============NEW==============
-
-		if(iclassicMD > 0 )then
-!classical solution only
-		elseif (ihubbard .eq. 1) then
-! read extended Hubbard data
-			call readdata_eh ()
-		elseif (iks .eq. 1) then
-! read Kohn_Sham data   
-		 	call readdata_KS ()
-		elseif (itheory_xc .eq. 0) then
-! read Horsfield data  
-			call readdata_hxc ()
-		elseif (itheory_xc .ne. 0 .and. itheory_xc .lt. 4) then
-! read McWeda data         
+		if (itheory_xc .ne. 0 .and. itheory_xc .lt. 4) then
+			! read McWeda data         
 			call readdata_mcweda ()
-                 elseif (itheory_xc .eq. 4) then
-! read McWeda data         
-                        call readdata_xczw ()
+!		else if(iclassicMD > 0 )then            ! IF_DEF_iclassicMD_END
+!classical solution only
+!		elseif (ihubbard .eq. 1) then           ! IF_DEF_hubbard_END
+!			call readdata_eh ()                 ! IF_DEF_hubbard_END
+!		elseif (iks .eq. 1) then                ! IF_DEF_GRID_END
+!		 	call readdata_KS ()                 ! IF_DEF_GRID_END  
+!		elseif (itheory_xc .eq. 0) then         ! IF_DEF_Horsfield_END
+!			call readdata_hxc ()  ! Horsfield   ! IF_DEF_Horsfield_END
+!        elseif (itheory_xc .eq. 4) then        ! IF_DEF_zw_END
+!            call readdata_xczw ()              ! IF_DEF_zw_END
 		endif
 
 ! assign the right pointer on subroutine force

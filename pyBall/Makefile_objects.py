@@ -9,7 +9,7 @@ SPECIAL_CC={
 
 # =================== GROUPS (MODULES) AND OPTIONS (VARIANTS)
 
-all_group_names = ['MODULES','DENS_MAT','DASSEMBLERS','INTERACTIONS','ALLOCATIONS','ASSEMBLERS','INITIALIZERS','INTERPOLATERS','NEIGHBORS','READFILES','ROTATIONS','XC']
+all_group_names = ['MODULES','MATH','DENS_MAT','DASSEMBLERS','INTERACTIONS','ALLOCATIONS','ASSEMBLERS','INITIALIZERS','INTERPOLATERS','NEIGHBORS','READFILES','ROTATIONS','XC']
 
 #all_modes   = [ 'DOUBLE', 'GAMMA','OPENMP', 'MPI-k', 'SCALAPACK', 'LAPACK95','ORDERN'   ]
 all_modes    = [ 'GAMMA'  ]
@@ -53,8 +53,12 @@ GROUPS = {
 'READFILES' : {
 '' : ['append_string','read_1c','read_2c','read_3c','readbasis','readdata_2c','readdata_3c','readheader_2c',
         'readheader_3c','readinfo','readparam',
-        'findFdata','read_wf','read_vna','readdata','readdata_mcweda',
-        'checksum_options','getsections'],
+        'findFdata',
+        #'read_wf',
+        #'read_vna',
+        'readdata','readdata_mcweda',
+        #'checksum_options',
+        'getsections'],
 }, #END READFILES
 
 'INTERPOLATERS' : {
@@ -91,7 +95,7 @@ GROUPS = {
 'make_munuS',
 #'getkpoints',
 #'initdenmat',
-#'get_info_orbital',
+'get_info_orbital',
 'initbasics'
 ],
 }, #END INITIALIZERS
@@ -200,6 +204,13 @@ GROUPS = {
 'fermie',
 #'build_rho',
 'kspace2'
+],
+}, #END FORM_RHO
+
+'MATH' : {
+'' : [
+'cross',
+'factorial'
 ],
 }, #END FORM_RHO
 

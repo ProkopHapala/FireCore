@@ -111,9 +111,12 @@
           end if
 
           if (itheory .eq. 1) then
-           !write (*,*) ' Dassemble two-center DOGS force contributions. '
-           if (idipole .eq. 0) call Dassemble_ca_2c     ()
-           if (idipole .eq. 1) call Dassemble_ca_2c_dip ()
+           !write (*,*) ' Dassemble two-center DOGS force contributions. ' 
+           !if (idipole .eq. 1) then      ! IF_DIPOLE_END
+           ! call Dassemble_ca_2c_dip ()  ! IF_DIPOLE_END
+           !else                          ! IF_DIPOLE_END
+            call Dassemble_ca_2c     ()  
+           !end if                        ! IF_DIPOLE_END
           endif
 
 ! ===========================================================================
@@ -128,11 +131,19 @@
 
           if (itheory .eq. 1) then
            !write (*,*) ' Dassemble three-center DOGS force contributions. '
-           if (idipole .eq. 0) call Dassemble_ca_3c ()
-           if (idipole .eq. 1) call Dassemble_ca_3c_dip ()
-           !write (*,*) ' Dassemble three-center long-range contributions. '
-           if (idipole .eq. 0) call Dassemble_lr     ()
-           if (idipole .eq. 1) call Dassemble_lr_dip ()
+
+          !if (idipole .eq. 1) then     ! IF_DIPOLE_END
+          !  call Dassemble_ca_3c_dip () ! IF_DIPOLE_END
+          !else                         ! IF_DIPOLE_END
+            call Dassemble_ca_3c ()
+          !end if                       ! IF_DIPOLE_END
+          !write (*,*) ' Dassemble three-center long-range contributions. '
+
+          !if (idipole .eq. 1)          ! IF_DIPOLE_END
+          !  call Dassemble_lr_dip ()    ! IF_DIPOLE_END
+          !else                          ! IF_DIPOLE_END
+            call Dassemble_lr     ()
+          !end if                        ! IF_DIPOLE_END
 ! IF_DEF_QMMM
 !           if (iqmmm .eq. 1) then
 !             !write (*,*) ' Dassemble three-center qm/mm contributions. '
