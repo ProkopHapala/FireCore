@@ -1,6 +1,7 @@
 
 from Makefile_machines import *
 
+'''
 OBJECTS_COM = [ 
     'DFTD3', 'INITMPI', 'ORDERN', 'ALLOCATIONS', 'ASSEMBLERS', 
     'DASSEMBLERS', 'INITIALIZERS', 'INTERACTIONS', 'INTERPOLATERS',
@@ -9,15 +10,11 @@ OBJECTS_COM = [
     'UTIL_SPARSE', 'VISUALIZATION', 'XC', 'CG', 'DOS', 'THERMOINT', 
     'NEB', 'TRANS', 'GRID', 'TDSE', 'BIAS', 'NAC',
 ]
+'''
 
-'''
-$(DFTD3) $(INITMPI) $(ORDERN) $(ALLOCATIONS) $(ASSEMBLERS) \
-        $(DASSEMBLERS) $(INITIALIZERS) $(INTERACTIONS) $(INTERPOLATERS) \
-        $(LOOPS) $(MD) $(NEIGHBORS) $(PRESSURE) $(READFILES) \
-        $(ROTATIONS) $(SOLVESH_DIAG) $(FORM_RHO) $(UMBRELLA) $(UTIL) \
-        $(UTIL_SPARSE) $(VISUALIZATION) $(XC) $(CG) $(DOS) $(THERMOINT) \
-        $(NEB) $(TRANS) $(GRID) $(TDSE) $(BIAS) $(NAC)
-'''
+OBJECTS_COM = [ 
+    'ALLOCATIONS', 'ASSEMBLERS', 'DASSEMBLERS', 'INITIALIZERS', 'INTERACTIONS', 'INTERPOLATERS',
+    'NEIGHBORS', 'READFILES', 'ROTATIONS', 'XC']
 
 OBJECTS              = [ 'MODULES' ] + OBJECTS_COM + [ 'MAIN' ]
 OBJECTS_QMMM         = [ 'MODULES' ] + OBJECTS_COM + [ 'QMMM' ]
@@ -64,8 +61,10 @@ inline_targets = {
 
 "extraclean": "veryclean",
 
+#"all":'''
+#	make fireball.x''',
 "all":'''
-	make fireball.x''',
+	make libFireball.so''',
 
 "libfireball": '''$(OBJECTS_QMMM)
 	ar rv libfireball.a $(OBJECTS_QMMM)

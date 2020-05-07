@@ -53,7 +53,7 @@
         use interactions 
         use integrals
         use options
-        use gaussG
+        !use gaussG
         use charges
         
         implicit none
