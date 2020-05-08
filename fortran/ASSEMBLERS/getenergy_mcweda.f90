@@ -46,7 +46,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine getenergy_mcweda (itime_step)
+        subroutine getenergy_mcweda ()
         use options 
         use energy
 !        use mpi_main     ! IF_DEF_MPI_END
@@ -56,12 +56,7 @@
         use charges, only : efermi
         
         implicit none
- 
-! Argument Declaration and Description
-! ===========================================================================
-! Input
-       integer, intent (in) :: itime_step
- 
+  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
  
@@ -133,9 +128,8 @@
  
          if (wrtout) then
           write (*,*) ' ---------- T H E  T O T A L  E N E R G Y ----------- '
-          if (itheory .ne. 0) write (*,500) itime_step, Kscf 
-          if (itheory .eq. 0) write (*,501) itime_step
-
+!          if (itheory .ne. 0) write (*,500) itime_step, Kscf 
+!          if (itheory .eq. 0) write (*,501) itime_step
           write (*,*) '  '
           write (*,502) ebs
           write (*,503) uiiuee

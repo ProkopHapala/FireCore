@@ -7,6 +7,7 @@ integer  max_scf_iterations
 integer  Kscf
 logical  scf_achieved
 
+real bmix     ! charge mixing coeficient
 real tempfe   ! feri smearing
 
 ! Ionic  steps (MD )

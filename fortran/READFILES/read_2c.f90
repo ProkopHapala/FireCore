@@ -188,14 +188,12 @@
  
 ! Allocate and initialize arrays
         if(interaction .eq. 1) then
-         allocate (xintegral_2c (ME2c_max, nfofx, interactions2c_max,        &
-     &                           nspecies, nspecies))
+         allocate (xintegral_2c (ME2c_max, nfofx, interactions2c_max,  nspecies, nspecies))
          allocate (z2cmax (interactions2c_max, nspecies, nspecies))
          allocate (numz2c (interactions2c_max, nspecies, nspecies))
          xintegral_2c = 0.0d0
          if (superspline) then
-          allocate (splineint_2c(1:4, ME2c_max, nfofx, interactions2c_max,   &
-     &                           nspecies, nspecies))
+          allocate (splineint_2c(1:4, ME2c_max, nfofx, interactions2c_max, nspecies, nspecies))
           splineint_2c = 0.0d0
          end if
         end if
@@ -228,9 +226,6 @@
 
 ! Now generate the file name of the file to be opened.  Loop over all cases of
 ! the interaction (e.g. different charges of the xc-stuff)
-
-
-
 
 ! Loop over atoms in1
         do in1 = 1, nspecies
@@ -277,8 +272,7 @@
            filename = append_string (filename, extension)
 !           if (isorp .eq. initype) write (*,'('' Opening data file: '',a100)') filename
            open (unit = iounit, file = filename, status = 'old')
-           call readheader_2c (interaction, iounit, nsh_max, numz, rc1, rc2, &
-     &                         zmin, zmax, npseudo, cl_pseudo)
+           call readheader_2c (interaction, iounit, nsh_max, numz, rc1, rc2, zmin, zmax, npseudo, cl_pseudo)
            if (numz .gt. nfofx) then
             write (*,*) ' numz = ', numz, ' in read_2c.f90'
             write (*,*) ' nfofx = ',nfofx
@@ -295,6 +289,7 @@
  
 ! Here are the data file characteristics: number of points and the grid range
            itype = ind2c(interaction,isorp)
+           write (*,*) "DEBUG read_2c.f90 z2cmax", itype,in1,in2
            z2cmax(itype,in1,in2) = zmax
            numz2c(itype,in1,in2) = numz
  

@@ -142,14 +142,15 @@
 !          return 
 !        endif
 
-! read McWeda data        
-!        if (itheory_xc .ne. 0) then
-!          call readdata_mcweda ()
-!          return 
-!        endif 
+!read McWeda data        
+!    if (itheory_xc .ne. 0) then
+!        call readdata_mcweda ()
+!        return 
+!    endif 
 
 !CHROM
 !============NEW==============
+!        write(*,*) " readdata"
 		if (itheory_xc .ne. 0 .and. itheory_xc .lt. 4) then
 			! read McWeda data         
 			call readdata_mcweda ()

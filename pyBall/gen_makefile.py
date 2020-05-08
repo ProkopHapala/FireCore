@@ -382,7 +382,7 @@ if __name__ == "__main__":
         #writeTarget( fout, "fireball.x"       , "$(OBJECTS)", [OBJECTS       ] )
         #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", [OBJECTS_SERVER] )
         #print "DEBUG 9 "
-        #toMakefile_target( fout, "fireball.x"    , "$(OBJECTS)", "$(OBJECTS)"        )
+        toMakefile_target( fout, "fireball.x"    , "$(OBJECTS)", "$(OBJECTS)"        )
         toMakefile_target( fout, "libfireball.so", "$(OBJECTS)", "$(OBJECTS)", compiler="$(F90)", fflags=" -shared -fPIC $(FFLAGS)", lflags="$(LFLAGS)" )
         #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", "OBJECTS_SERVER" )
         #print "DEBUG 10 "
