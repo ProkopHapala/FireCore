@@ -562,65 +562,62 @@
 !!         H_k(1:norbitals,1:norbitals,ikpoint) = yyyy(1:norbitals,1:norbitals)
 !!       endif
 
-!! DIAGONALIZE THE HAMILTONIAN.
-!! ****************************************************************************
-!!        if (wrtout) then
-!!          write (*,*) '  '
-!!          write (*,*) ' Call diagonalizer for Hamiltonian. '
-!!          write (*,*) '            The energy eigenvalues: '
-!!          write (*,*) ' *********************************************** '
-!!        end if
-! 
-!! Eigenvectors are needed to calculate the charges and for forces!
-!        if (divide) then
-!          call zheevd('V', 'U', norbitals, yyyy, norbitals, eigen, work,lwork, rwork , lrwork, iwork, liwork, info )
-!        else
-!! set default size of working space
-!          lwork = 1
-!          deallocate (work)
-!          allocate (work(lwork))
-!! first find optimal working space
-!          call zheev ('V', 'U', norbitals, yyyy, norbitals, eigen, work, -1, rwork, info)
-!! resize working space
-!          lwork = work(1)
-!!          write (*,*) 'lwork =',lwork
-!          deallocate (work)
-!          allocate (work(lwork))
-!! diagonalize the overlap matrix with the new working space
-!          call zheev ('V', 'U', norbitals, yyyy, norbitals, eigen, work, lwork, rwork, info)
+! DIAGONALIZE THE HAMILTONIAN.
+! ****************************************************************************
+!        if (wrtout) then
+!          write (*,*) '  '
+!          write (*,*) ' Call diagonalizer for Hamiltonian. '
+!          write (*,*) '            The energy eigenvalues: '
+!          write (*,*) ' *********************************************** '
 !        end if
-!        if (info .ne. 0) call diag_error (info, 0)
+
+! Eigenvectors are needed to calculate the charges and for forces!
+       if (divide) then
+         call zheevd('V', 'U', norbitals, yyyy, norbitals, eigen, work,lwork, rwork , lrwork, iwork, liwork, info )
+       else
+! set default size of working space
+         lwork = 1
+         deallocate (work)
+         allocate (work(lwork))
+! first find optimal working space
+         call zheev ('V', 'U', norbitals, yyyy, norbitals, eigen, work, -1, rwork, info)
+! resize working space
+         lwork = work(1)
+!          write (*,*) 'lwork =',lwork
+         deallocate (work)
+         allocate (work(lwork))
+! diagonalize the overlap matrix with the new working space
+         call zheev ('V', 'U', norbitals, yyyy, norbitals, eigen, work, lwork, rwork, info)
+       end if
+       if (info .ne. 0) call diag_error (info, 0)
 
 !! FIXME - Should only go up to norbitals_new, but we do not know what
 !! eigenvalues and eigenvectors correspond to the removed MO's.  Their
 !! eigenvalues will be very close to zero, but not exactly.  Also, we do not
 !! know if a real eigen value is near zero.
-
 !!        if (ishort .eq. 1 .and. wrtout) then
 !!         write (*,100) eigen(1), eigen(norbitals)
 !!        else if (wrtout) then
 !!         write (*,200) (eigen(imu), imu = 1, norbitals)
 !!        end if
 
-!!
-!! INFORMATION FOR THE LOWDIN CHARGES
-!! ****************************************************************************
-!! xxxx = S^-1/2 in AO basis
-!! zzzz = Unused
-!! yyyy = Hamiltonian eigenvectors in the MO basis
-!        eigen_k(1:norbitals,ikpoint) = eigen(:)
-!        if (iqout .ne. 2) blowre(:,:,ikpoint) = real(yyyy(:,:))
-!        if (iqout .ne. 2 .and. icluster .ne. 1)  blowim(:,:,ikpoint) = aimag(yyyy(:,:))
+!
+! INFORMATION FOR THE LOWDIN CHARGES
+! ****************************************************************************
+! xxxx = S^-1/2 in AO basis
+! zzzz = Unused
+! yyyy = Hamiltonian eigenvectors in the MO basis
+       eigen_k(1:norbitals,ikpoint) = eigen(:)
+       if (iqout .ne. 2) blowre(:,:,ikpoint) = real(yyyy(:,:))
+       if (iqout .ne. 2 .and. icluster .ne. 1)  blowim(:,:,ikpoint) = aimag(yyyy(:,:))
 
-!        if (iqout .ne. 3) then
-!         call zhemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, yyyy, norbitals, a0, zzzz, norbitals )
-!!NPA
-!        else
-!         call zgemm ( 'N', 'N', norbitals, norbitals, norbitals, a1, xxxx, norbitals, yyyy, norbitals, a0, zzzz, norbitals )
-!        end if
-
-!        bbnkre(:,:,ikpoint) = real(zzzz(:,:))
-!        if (icluster .ne. 1) bbnkim(:,:,ikpoint) = aimag(zzzz(:,:))
+       if (iqout .ne. 3) then
+        call zhemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, yyyy, norbitals, a0, zzzz, norbitals )
+       else !NPA
+        call zgemm ( 'N', 'N', norbitals, norbitals, norbitals, a1, xxxx, norbitals, yyyy, norbitals, a0, zzzz, norbitals )
+       end if
+       bbnkre(:,:,ikpoint) = real(zzzz(:,:))
+       if (icluster .ne. 1) bbnkim(:,:,ikpoint) = aimag(zzzz(:,:))
 
 
 ! We did a symmetric orthogonalization followed by a diagnalization

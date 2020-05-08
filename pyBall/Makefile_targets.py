@@ -61,12 +61,8 @@ inline_targets = {
 
 "extraclean": "veryclean",
 
-#"all":'''
-#	make fireball.x''',
 "all":'''
-	make libFireball.so''',
+	make fireball.x'''
+#	make libFireball.so''',
 
-"libfireball": '''$(OBJECTS_QMMM)
-	ar rv libfireball.a $(OBJECTS_QMMM)
-	ranlib libfireball.a''',
 }

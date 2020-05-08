@@ -96,8 +96,8 @@
 ! jel-grid
         character (len=1)  :: charx
         integer nchar
-!        character (len=25), dimension (:,:), allocatable :: wavefxn
-!        character (len=25), dimension (:,:), allocatable :: napot
+        character (len=25), dimension (:,:), allocatable :: wavefxn
+        character (len=25), dimension (:,:), allocatable :: napot
 ! end jel-grid
  
         logical skip_it
@@ -205,8 +205,8 @@
 
 ! allocate local arrays
         allocate (cutoff (nsh_max, temp_nsup))
-!        allocate (wavefxn (nsh_max, temp_nsup)) ! IF_DEF_GRID_END
-!        allocate (napot (0:nsh_max, temp_nsup)) ! IF_DEF_GRID_END
+        allocate (wavefxn (nsh_max, temp_nsup)) ! IF_DEF_GRID_END
+        allocate (napot (0:nsh_max, temp_nsup)) ! IF_DEF_GRID_END
 
 ! Now read in the data
         ispec = 1
@@ -270,34 +270,34 @@
            rcutoff(ispec, issh) = cutoff(issh,ispec)*0.529177d0
           end do
 
-! ! IF_DEF_GRID
-!           read (12,103) (wavefxn(issh,ispec), issh = 1, nssh(ispec))  
-!           read (12,103) (napot(issh,ispec), issh = 0, nssh(ispec))    
-! ! jel-grid
-! ! adjust the potential file name
-!           do issh = 0, nssh(ispec)
-!            nchar = len_trim(napot(issh,ispec))
-!            do imu = 1,nchar
-!             charx = napot(issh,ispec)(imu:imu)
-!             if ( lle(charx,'/') .and. lge(charx,'/') ) then 
-!              ins = imu
-!             endif
-!            enddo ! do imu
-! 	   napot(issh,ispec) = trim('/basis/'//napot(issh,ispec)(ins+1:nchar))
-!           enddo ! do issh
-! ! adjust the wavefunction file name
-!           do issh = 1, nssh(ispec)
-!            nchar = len_trim(wavefxn(issh,ispec))
-!            do imu = 1,nchar
-!             charx = wavefxn(issh,ispec)(imu:imu)
-!             if ( lle(charx,'/') .and. lge(charx,'/') ) then 
-!              ins = imu
-!             endif
-!            enddo ! do imu
-! 	   wavefxn(issh,ispec) = trim('/basis/'//wavefxn(issh,ispec)(ins+1:nchar))
-!           enddo ! do issh 
-! ! end jel-grid
-! ! END_DEF_GRID
+! IF_DEF_GRID
+          read (12,103) (wavefxn(issh,ispec), issh = 1, nssh(ispec))  
+          read (12,103) (napot(issh,ispec), issh = 0, nssh(ispec))    
+! jel-grid
+! adjust the potential file name
+          do issh = 0, nssh(ispec)
+           nchar = len_trim(napot(issh,ispec))
+           do imu = 1,nchar
+            charx = napot(issh,ispec)(imu:imu)
+            if ( lle(charx,'/') .and. lge(charx,'/') ) then 
+             ins = imu
+            endif
+           enddo ! do imu
+	   napot(issh,ispec) = trim('/basis/'//napot(issh,ispec)(ins+1:nchar))
+          enddo ! do issh
+! adjust the wavefunction file name
+          do issh = 1, nssh(ispec)
+           nchar = len_trim(wavefxn(issh,ispec))
+           do imu = 1,nchar
+            charx = wavefxn(issh,ispec)(imu:imu)
+            if ( lle(charx,'/') .and. lge(charx,'/') ) then 
+             ins = imu
+            endif
+           enddo ! do imu
+	   wavefxn(issh,ispec) = trim('/basis/'//wavefxn(issh,ispec)(ins+1:nchar))
+          enddo ! do issh 
+! end jel-grid
+! END_DEF_GRID
 
           read (12,*) etotatom(ispec)
           read (12,*)
@@ -316,8 +316,8 @@
             write (*,314) rc_PP(ispec)
             write (*,309) (Qneutral(issh,ispec), issh = 1, nssh(ispec))
             write (*,310) (cutoff(issh,ispec), issh = 1, nssh(ispec))
-!            write (*,311) (wavefxn(issh,ispec), issh = 1, nssh(ispec))   ! IF_DEF_GRID_END
-!            write (*,312) (napot(issh,ispec), issh = 0, nssh(ispec))     ! IF_DEF_GRID_END
+            write (*,311) (wavefxn(issh,ispec), issh = 1, nssh(ispec))   ! IF_DEF_GRID_END
+            write (*,312) (napot(issh,ispec), issh = 0, nssh(ispec))     ! IF_DEF_GRID_END
             write (*,313) etotatom(ispec)
             write (*,100)
           endif !verbosity 

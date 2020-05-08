@@ -1,0 +1,5 @@
+&OPTION
+basisfile  = 'answer.bas'
+icluster   = 1    ! PBC: 0 3D PBC; 1 cluster
+iqout      = 3
+&END

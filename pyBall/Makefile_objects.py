@@ -9,7 +9,7 @@ SPECIAL_CC={
 
 # =================== GROUPS (MODULES) AND OPTIONS (VARIANTS)
 
-all_group_names = ['MODULES','MATH','DENS_MAT','DASSEMBLERS','INTERACTIONS','ALLOCATIONS','ASSEMBLERS','INITIALIZERS','INTERPOLATERS','NEIGHBORS','READFILES','ROTATIONS','XC']
+all_group_names = ['MODULES','MATH','MAIN','DASSEMBLERS','INTERACTIONS','ALLOCATIONS','ASSEMBLERS','INITIALIZERS','INTERPOLATERS','NEIGHBORS','READFILES','ROTATIONS']
 
 #all_modes   = [ 'DOUBLE', 'GAMMA','OPENMP', 'MPI-k', 'SCALAPACK', 'LAPACK95','ORDERN'   ]
 all_modes    = [ 'GAMMA'  ]
@@ -43,6 +43,7 @@ GROUPS = {
 'energy',
 #'scf',
 'loops',
+'workmat',
 ],
 }, #END MODULES
 
@@ -105,9 +106,9 @@ GROUPS = {
         'neighborsPP','common_neighborsPP','num_neigh_tot'],
 }, #END NEIGHBORS
 
-'XC' : {
-'' : ['cepal'],
-}, #END XC
+#'XC' : {
+#'' : ['cepal'],
+#}, #END XC
 
 
 'INTERACTIONS' : {
@@ -198,19 +199,28 @@ GROUPS = {
 ],
 }, #END DASSEMBLERS
 
-'DENS_MAT' : {
+'MAIN' : {
 '' : [
+'fireball',
 'denmat',
 'fermie',
 #'build_rho',
-'kspace2'
+#'kspace',
+#'kspace2'
+
+'sqrtS',
+'ktransform',
+'solveH',
+
+
 ],
 }, #END FORM_RHO
 
 'MATH' : {
 '' : [
 'cross',
-'factorial'
+'factorial',
+'cepal'
 ],
 }, #END FORM_RHO
 
