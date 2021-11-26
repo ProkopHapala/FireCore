@@ -1,0 +1,11 @@
+&OPTION
+basisfile  = 'input.bas'
+icluster   = 1    ! PBC: 0 3D PBC; 1 cluster
+iqout      = 3
+&END
+
+
+&OUTPUT
+iwrtxyz    = 1 
+&END
+

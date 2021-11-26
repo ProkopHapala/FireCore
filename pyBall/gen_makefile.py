@@ -314,10 +314,14 @@ if __name__ == "__main__":
     src_path_check = "fortran/"
     #src_path = "SRC/"
     #MKL_PATH = "/home/prokop/SW/intel"
-    MKL_PATH = "/home/prokop/intel"
+    #MKL_PATH = "/home/prokop/intel"
+    MKL_PATH = "/home/prokop/SW/intel"
     MPI_PATH = "/usr/lib/x86_64-linux-gnu/openmpi"
     #FFLAGS, LFLAGS_, LPATHS = genFlags( ["OPT"], MKL_PATH=MKL_PATH, MPI_PATH=MPI_PATH )
     LFLAGS_, LPATHS   = genLFLAGS( MKL_PATH=MKL_PATH, MPI_PATH=MPI_PATH )
+    print "LFLAGS_ ", LFLAGS_
+    print "LPATH   ", LPATHS
+
     _FFLAGS = Makefile_machines._FFLAGS 
     #mode_opt = 'OPT'
     mode_opt = 'DEBUG'
@@ -375,8 +379,10 @@ if __name__ == "__main__":
         toMakefile_name( fout, "INCLUDES", INCLUDES )
         #toMakefile_list_vars( fout, "LFLAGS", ["LPATHS","LFLAGS_"] )
         #print "DEBUG 7 "
-        LFLAGS = " -L/home/prokop/intel/mkl/lib/intel64 -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -L/home/prokop/intel/mkl/intel64 -I/home/prokop/intel/mkl/include/fftw -lfftw3xf_gnu -lm -Bdynamic -L/usr/lib/x86_64-linux-gnu/openmpi/lib -I/usr/lib/x86_64-linux-gnu/openmpi/include -lmpi "
-        toMakefile_name( fout, "LFLAGS", LFLAGS )
+        #LFLAGS = " -L/home/prokop/intel/mkl/lib/intel64 -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -L/home/prokop/intel/mkl/intel64 -I/home/prokop/intel/mkl/include/fftw -lfftw3xf_gnu -lm -Bdynamic -L/usr/lib/x86_64-linux-gnu/openmpi/lib -I/usr/lib/x86_64-linux-gnu/openmpi/include -lmpi "
+        LFLAGS = " -L"+MKL_PATH+"/mkl/lib/intel64 -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -L/home/prokop/intel/mkl/intel64 -I/home/prokop/intel/mkl/include/fftw -lfftw3xf_gnu -lm -Bdynamic -L/usr/lib/x86_64-linux-gnu/openmpi/lib -I/usr/lib/x86_64-linux-gnu/openmpi/include -lmpi "
+        
+	toMakefile_name( fout, "LFLAGS", LFLAGS )
         #toMakefile_name( fout, "FFLAGS", FFLAGS )
         #print "DEBUG 8 "
         #writeTarget( fout, "fireball.x"       , "$(OBJECTS)", [OBJECTS       ] )

@@ -285,7 +285,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
         endif ! if (isfile)
 
 ! checkout the data consistency
-!        call checksum_options ()   ! IF_DEF_checksum_END
+        call checksum_options ()   ! IF_DEF_checksum_END
 
 ! ! SECTION OPTIONS
 !         write (*,*) ' The name of the basisfile: '

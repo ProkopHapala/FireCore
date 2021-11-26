@@ -122,6 +122,8 @@
         write (*,100)
         write (*,*) ' READING DATA FROM DATA FILES IN FDATA DIRECTORY: '
         write (*,100)
+
+        write (*,*) 'DEBUG  readdata_mcweda 1 '
 ! one-center
         if (verbosity .ge. 3) write (*,*) '  '
         if (verbosity .ge. 3) write (*,*) ' Calling   for 1-center exchange-correlation '
@@ -129,6 +131,7 @@
 !       call read_1c (nspecies, itheory, itheory_xc, ispin, ioff2c(7))
        call read_1c (nspecies, ioff2c(7))
 
+       write (*,*) 'DEBUG  readdata_mcweda 2 '
 ! two-center
         interaction_start = 1
         do interaction = interaction_start, 5
@@ -138,6 +141,7 @@
          call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
         end do
 
+        write (*,*) 'DEBUG  readdata_mcweda 3 '
 ! horsfield-like interaction (not needed for SNXC) 
         if (itheory_xc .ne. 1) then
          !  xc_ontop
@@ -171,6 +175,8 @@
 
         end if
 
+        write (*,*) 'DEBUG  readdata_mcweda 4 '
+
         if (idipole .eq. 1) then
 
          if (itheory .eq. 1) then
@@ -193,6 +199,8 @@
 
         end if ! idipole .eq. 1
  
+        write (*,*) 'DEBUG  readdata_mcweda 5 '
+
 !       interaction = 10, 11 are x and y dipole
         interaction = 12
         if (verbosity .ge. 3) write (*,*) '  '
@@ -206,7 +214,8 @@
         if (verbosity .ge. 3) write (*,100)
         call read_2c (interaction, nspecies, itheory, ioff2c(interaction), nzx)
 
- 
+        write (*,*) 'DEBUG  readdata_mcweda 6 '
+
 ! Spherical OLSXC exchange-correlation
         do interaction = 15, 23
          if (verbosity .ge. 3) write (*,*) '  '
@@ -216,6 +225,8 @@
          call read_2c (interaction, nspecies, itheory, ioff2c(interaction),  nzx)
 
         end do
+
+        write (*,*) 'DEBUG  readdata_mcweda 7 '
 
 ! Do not need xintegral_2c if doing superspline (use splineint_2c)
         if (superspline) deallocate (xintegral_2c)
@@ -241,6 +252,7 @@
          call setterp_2d (nspecies, itheory_xc, itheory)
 !        end if ! end if igauss  ! IF_DEF_GAUSS_END
 
+         write (*,*) 'DEBUG  readdata_mcweda 8 '
 
 ! ! IF_DEF_GAUSS
 !         if (igauss .eq. 1) then
