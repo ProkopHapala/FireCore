@@ -58,7 +58,7 @@ GROUPS = {
         #'read_wf',
         #'read_vna',
         'readdata','readdata_mcweda',
-        #'checksum_options',
+        'checksum_options',
         'getsections'],
 }, #END READFILES
 

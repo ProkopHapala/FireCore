@@ -413,6 +413,7 @@
         ind2c(13,0) = icount
         icount = icount + 1
         ind2c(14,0) = icount
+        write (*,*) "DEBUG initbasics.f90 itheory_xc ", itheory_xc
         if (itheory_xc .eq. 1 .or. itheory_xc .eq. 2 .or. itheory_xc .eq. 4 ) then
          if (itheory_xc .eq. 4) then 
           icount = icount + 1

@@ -1,0 +1,13 @@
+&OPTION
+basisfile     = 'input.bas'
+lvsfile       = 'cel.lvs'
+kptpreference = 'input.kpts'
+icluster   =  0  ! PBC: 0 3D PBC; 1 cluster
+iqout      =  3
+iquench    = -6
+&END
+
+&OUTPUT
+iwrtxyz    = 1 
+&END
+

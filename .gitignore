@@ -10,7 +10,7 @@
 *_tmp
 *.bak
 
-
+*.out
 *.log
 *.npy
 *.xsf
