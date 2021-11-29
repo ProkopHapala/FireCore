@@ -199,9 +199,6 @@
         end if
         iounit = 71
 
-
-!        write (*,*) "DEBUG read_2c.f90 shape(z2cmax)", shape(z2cmax)
-
 ! Here are the roots for the file names for all interactions
         if (interaction .eq. 1)  root = trim(fdataLocation)//'/overlap'
         if (interaction .eq. 2)  root = trim(fdataLocation)//'/vna_ontopl'
@@ -292,7 +289,6 @@
  
 ! Here are the data file characteristics: number of points and the grid range
            itype = ind2c(interaction,isorp)
-!           write (*,*) "DEBUG read_2c.f90 ind2c(interaction,isorp)", interaction,isorp, "->", itype
            z2cmax(itype,in1,in2) = zmax
            numz2c(itype,in1,in2) = numz
  

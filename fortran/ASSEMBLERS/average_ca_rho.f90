@@ -54,7 +54,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine average_ca_rho ! (nprocs, Kscf, iforce, iordern, igauss)
+        subroutine average_ca_rho () ! (nprocs, Kscf, iforce, iordern, igauss)
         use options
         use charges
         use configuration
@@ -193,6 +193,7 @@
         arhoi_on  = 0.0d0
         rho_on    = 0.0d0
         rhoi_on   = 0.0d0
+
 ! forces
         arhop_on = 0.0d0
         rhop_on  = 0.0d0
@@ -221,6 +222,7 @@
            interaction0 = 23
            in3 = in2
            sighat = 0.0d0
+
 
 ! eps   unit matrix
            eps = 0.0d0
@@ -256,7 +258,6 @@
 
               call epsilon (r2, sighat, eps)
               call deps2cent (r1, r2, eps, deps)
-
 
 ! ****************************************************************************
 !
