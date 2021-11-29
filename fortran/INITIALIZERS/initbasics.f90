@@ -416,7 +416,6 @@
         ind2c(13,0) = icount
         icount = icount + 1
         ind2c(14,0) = icount
-        !write (*,*) "DEBUG initbasics.f90 itheory_xc ", itheory_xc
         if (itheory_xc .eq. 1 .or. itheory_xc .eq. 2 .or. itheory_xc .eq. 4 ) then
          if (itheory_xc .eq. 4) then 
           icount = icount + 1
@@ -604,7 +603,8 @@
         call allocate_neigh ! (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh, iwrthampiece,  iwrtatom)
         call allocate_f ! (natoms, neigh_max, neighPP_max, numorb_max, nsh_max, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias)
         call allocate_h ! (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss, iwrtdos, iwrthop, iwrtatom)
-!        call allocate_rho (natoms, neigh_max, neighPP_max, numorb_max, sh_max, itheory_xc, igrid)   ! IF_DEF_GRID_END
+        !call allocate_rho (natoms, neigh_max, neighPP_max, numorb_max, sh_max, itheory_xc, igrid)
+        call allocate_rho !(natoms, neigh_max, neighPP_max, numorb_max, sh_max, itheory_xc, igrid)
 !        call allocate_dos (natoms, iwrtdos, iwrthop)                                                ! IF_DEF_GRID_DOS
 
 ! ! IF_DEF_TRANS

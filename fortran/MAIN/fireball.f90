@@ -26,15 +26,6 @@ program fireball
     write(*,*) "DEBUG fireball.f90 1"
     call initbasics ()
 
-    ! DEBUG  DEBUG ind2c
-    !do  i = 1,23
-    !    write (*,'(A,i10)',advance='no') "DEBUG ind2c ", i
-    !    do j = 0,8
-    !        write (*,'(i10)',advance='no')   ind2c( i,j)
-    !    end do
-    !    write (*,*)
-    !end do
-
     ! TODO : It does not read CHARGES   (that is the reason for difference from Fireball-progs)
 
     write(*,*) "DEBUG fireball.f90 2"
