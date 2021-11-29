@@ -30,8 +30,9 @@ _FFLAGS = {
     'CC'       : " -freal-4-real-8 -ffree-form -ffree-line-length-none ",
     'OPT'      : " -O3 -mtune=native -ftree-vectorize ",
     'VERY_OPT' : " -Ofast -march=native -mtune=native ",
-    'DEBUG'    : " -Og -g -fbounds-check -Wall -Wno-tabs",
-    'DEBUGw'   : " -Og -g -fbounds-check ",
+    'DEBUGbak' : " -Og -g -fbounds-check -Wall -Wno-tabs",
+    'DEBUG'    : " -Og -g -fcheck=all -fbounds-check -Wall -Wno-tabs -Wno-unused-variable -Wno-unused-label -Wno-missing-include-dirs",
+    'DEBUGw'   : " -Og -g -fcheck=all -fbounds-check ",
 }
 
 _LFLAGS = {

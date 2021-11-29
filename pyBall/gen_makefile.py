@@ -325,6 +325,7 @@ if __name__ == "__main__":
     _FFLAGS = Makefile_machines._FFLAGS 
     #mode_opt = 'OPT'
     mode_opt = 'DEBUG'
+    #mode_opt = 'DEBUGw'
 
     #FFLAGS = _FFLAGS[mode_opt] + _FFLAGS['F90']
     #FFLAGS = _FFLAGS[mode_opt] + _FFLAGS['F90']

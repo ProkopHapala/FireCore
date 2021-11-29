@@ -120,7 +120,7 @@
 ! which is a representation in molecular coordinates.
 ! The variable spx is [d/d(r1) atmna(mu,nu)] where atmna(mu,nu) is
 ! < phi(mu,r-r1) ! vna(r-ratm) ! phi(nu,r-r1)>.
-        real, intent (out), dimension (numorb_max, numorb_max) :: sx
+        real, intent (out), dimension (   numorb_max, numorb_max) :: sx
         real, intent (out), dimension (3, numorb_max, numorb_max) :: spx
  
 ! Local Parameters and Data Declaration
@@ -151,16 +151,35 @@
 ! For the ontop case, in2 = in1 (left) or in3 (right).
 ! Initialize sm, scam and sx to zero.
 ! < n1 | n2 | n3 >
-        sm = 0.0d0
-        sx = 0.0d0
-        if (iforce .eq. 1) spm = 0.0d0
-        if (iforce .eq. 1) spmx = 0.0d0
-        if (iforce .eq. 1) spx = 0.0d0
+
+        write(*,*) "DEBUG doscentros numorb_max,numorb_max ", numorb_max, iforce
+        write(*,*) "DEBUG doscentros 1.0"
+        sm = 0
+        write(*,*) "DEBUG doscentros 1.1"
+        sx = 0
+        
+        if (iforce .eq. 0) then
+                write(*,*) "DEBUG doscentros iforce "
+        end if 
+        
+        write(*,*) "DEBUG doscentros 1.2"
+
+        if (iforce .eq. 1) then
+            spm = 0
+            write(*,*) "DEBUG doscentros 1.3"
+            spmx = 0
+            write(*,*) "DEBUG doscentros 1.4"
+            spx = 0
+        end if !  (iforce .eq. 1) 
+
+        write(*,*) "DEBUG doscentros 1.5"
 
         switch = .true.
         if(interaction .eq. 2) switch = .false.
         if(interaction .eq. 15) switch = .false.
         if(interaction .eq. 18) switch = .false.
+
+        write(*,*) "DEBUG doscentros 2.0"
 
 ! This subroutine calls the subroutine intrp1d as needed to find the value of
 ! the matrix elements for any given atomic separation distance.
