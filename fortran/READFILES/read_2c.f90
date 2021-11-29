@@ -200,7 +200,7 @@
         iounit = 71
 
 
-        write (*,*) "DEBUG read_2c.f90 shape(z2cmax)", shape(z2cmax)
+!        write (*,*) "DEBUG read_2c.f90 shape(z2cmax)", shape(z2cmax)
 
 ! Here are the roots for the file names for all interactions
         if (interaction .eq. 1)  root = trim(fdataLocation)//'/overlap'
@@ -292,7 +292,7 @@
  
 ! Here are the data file characteristics: number of points and the grid range
            itype = ind2c(interaction,isorp)
-           write (*,*) "DEBUG read_2c.f90 ind2c(interaction,isorp)", interaction,isorp, "->", itype
+!           write (*,*) "DEBUG read_2c.f90 ind2c(interaction,isorp)", interaction,isorp, "->", itype
            z2cmax(itype,in1,in2) = zmax
            numz2c(itype,in1,in2) = numz
  
@@ -308,8 +308,7 @@
 ! For the vna_atom and xc_atoms cases, the number of interactions is equal
 ! to the number of shells for in1,in1 pair not in1, in2 pair.  This is because
 ! the wavefunctions are both located only on in1!
-           if (interaction .eq. 4 .or. interaction .eq. 7)                   &
-     &      num_nonzero = index_max2c(in1,in1)
+           if (interaction .eq. 4 .or. interaction .eq. 7) num_nonzero = index_max2c(in1,in1)
 ! JIMM
            if (interaction .eq. 10)  num_nonzero = index_max2cDipY(in1,in2)
            if (interaction .eq. 11)  num_nonzero = index_max2cDipX(in1,in2)
@@ -319,17 +318,14 @@
 
 ! Special case for coulomb (short-range) part.  It's special because it is not
 ! a matrix element.  This in interaction = 12
-           if (interaction .eq. 12 .or. interaction .eq. 14)                 &
-     &      num_nonzero = nssh(in1)*nssh(in2)
+           if (interaction .eq. 12 .or. interaction .eq. 14) num_nonzero = nssh(in1)*nssh(in2)
 ! Special case for spehrical density approximation.  It's special because 
 ! it has different size of a matrix element.  
 ! This in interaction = 20,21,22
-           if (interaction .eq. 20 .or. interaction .eq. 21)                 &
-     &       num_nonzero = index_maxS(in1,in2)
+           if (interaction .eq. 20 .or. interaction .eq. 21)  num_nonzero = index_maxS(in1,in2)
            if (interaction .eq. 23) num_nonzero = index_maxS(in1,in2)
           
-           call readdata_2c (interaction, iounit, num_nonzero, numz, zmax,   &
-     &                       itype, in1, in2, ioff2c)
+           call readdata_2c (interaction, iounit, num_nonzero, numz, zmax,  itype, in1, in2, ioff2c)
 
            close (unit = iounit)
           end do

@@ -4,7 +4,7 @@
 !$ volatile nelectron, nzx, Qin, Qinmixer, Qneutral, Qout, Qoutmixer, dq
 !$ volatile QLowdin_TOT, QMulliken_TOT
 
-         real    efermi
+         real efermi
          real ztot
          real qstate
 

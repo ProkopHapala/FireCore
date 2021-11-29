@@ -95,6 +95,9 @@
 
 my_proc = 0
 
+
+write (*,*) "DEBUG reallocate_neigh() "
+
 ! Procedure
 ! ===========================================================================
         neigh_max_old = neigh_max

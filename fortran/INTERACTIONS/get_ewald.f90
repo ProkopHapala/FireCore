@@ -83,8 +83,8 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine get_ewald (nprocs, my_proc, iforce, icluster,     &
-     &                        itheory, iordern)
+        subroutine get_ewald  () ! (nprocs, my_proc, iforce, icluster, itheory, iordern )
+        use options
         use charges
         use configuration
         use constants_fireball
@@ -96,12 +96,12 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: icluster
-        integer, intent (in) :: iforce
-        integer, intent (in) :: iordern
-        integer, intent (in) :: itheory
-        integer, intent (in) :: my_proc
-        integer, intent (in) :: nprocs
+!        integer, intent (in) :: icluster
+!        integer, intent (in) :: iforce
+!        integer, intent (in) :: iordern
+!        integer, intent (in) :: itheory
+!        integer, intent (in) :: my_proc
+!        integer, intent (in) :: nprocs
  
  
 ! Local Parameters and Data Declaration
@@ -159,14 +159,18 @@
         real, dimension (3) :: g1, g2, g3
         real, dimension (natoms) :: Q, Q0
         real, dimension (3) :: vecl
- 
+
+!        write (*,*) "DEBUB get_ewald 0."
+
 ! Procedure
 ! ===========================================================================
 ! Initialize ewald, dewald to zero
         ewald = 0.0d0
         if (iforce .eq. 1) dewald = 0.0d0
         if (iforce .eq. 1) fewald = 0.0d0
- 
+
+!        write (*,*) "DEBUB get_ewald 1."
+
 ! Calculate delta charges (integer) into a real variable.
         do iatom = 1, natoms
          Q(iatom) = 0.0d0
@@ -177,6 +181,8 @@
           Q0(iatom) = Q0(iatom) + Qneutral(issh,in1)
          end do
         end do
+
+!        write (*,*) "DEBUB get_ewald 1.1"
 
 !        if (my_proc .eq. 0 .and. icluster .eq. 0) then
 !         write (*,*) '  '
@@ -189,6 +195,8 @@
 ! First get a2 X a3.
         call cross (a2vec, a3vec, cvec)
  
+!        write (*,*) "DEBUB get_ewald 1.2"
+
 ! Next find the volume of the cell.
 ! NOTE: volcel actually has a sign in the above. At this point the sign is
 ! important since we form g vectors by dividing by a1 dot (a2 X a3).
@@ -224,6 +232,9 @@
         r2mag2 = a2vec(1)**2 + a2vec(2)**2 + a2vec(3)**2
         r3mag2 = a3vec(1)**2 + a3vec(2)**2 + a3vec(3)**2
  
+
+!        write (*,*) "DEBUB get_ewald 1.3"
+
 ! ****************************************************************************
 ! The parameter kappa is adjustable, chosen to make the sum's converge rapidly.
 ! The sum over g converges as exp (-g**2/(4*kappa*kappa)), while the
@@ -242,7 +253,9 @@
  
 ! Now set rmin2*kappa**2 = gmin2/(4*kappa**2) and solve for kappa.
         kappa = sqrt(sqrt(gmin2/(4.0d0*rmin2)))
- 
+
+!        write (*,*) "DEBUB get_ewald 1.4"
+
 ! ****************************************************************************
 ! In gamma1 we must sum over g vectors. The decay is exp(-g**2/4*kappa*kappa).
 ! We require the exponent for a given direction in g-space to be gmax**2.
@@ -260,6 +273,8 @@
         if (ig2mx .le. 1) ig2mx = 2
         if (ig3mx .le. 1) ig3mx = 2
  
+!        write (*,*) "DEBUB get_ewald 1.5"
+
 ! In gamma2 we must sum over l vectors. The asymptotic decay is
 ! exp(-kappa*kappa*r**2). We require the exponent for a given direction
 ! in r-space to be rmax**2. For instance rmax = 5.0, corresponding to an
@@ -279,35 +294,43 @@
 ! Compute the total number of loop iterations.
         niters = (natoms*(natoms + 1)) / 2
 
+!        write (*,*) "DEBUB get_ewald 2."
+
+! ! IF_DEF_ORDERN
 ! Determine which iterations are assigned to this processor.
-        if (iordern .eq. 1) then
-         nitersp = niters/nprocs
-         if (my_proc .lt. mod(niters,nprocs)) then
-          nitersp = nitersp + 1
-          iiterstart = nitersp*my_proc + 1
-         else
-          iiterstart = (nitersp + 1)*mod(niters,nprocs)                      &
-     &                + nitersp*(my_proc - mod(niters,nprocs)) + 1
-         end if
-        else
+!        if (iordern .eq. 1) then
+!         nitersp = niters/nprocs
+!         if (my_proc .lt. mod(niters,nprocs)) then
+!          nitersp = nitersp + 1
+!          iiterstart = nitersp*my_proc + 1
+!         else
+!          iiterstart = (nitersp + 1)*mod(niters,nprocs)  + nitersp*(my_proc - mod(niters,nprocs)) + 1
+!         end if
+!        else
+! ! END_DEF_ORDERN
          iiterstart = 1
          nitersp = niters
-        end if
+!        end if   ! IF_DEF_ORDERN_END
  
+!        write (*,*) "DEBUB get_ewald 3."
+
 ! Determine which atoms are assigned to this processor.
-        if (iordern .eq. 1) then
-         natomsp = natoms/nprocs
-         if (my_proc .lt. mod(natoms,nprocs)) then
-          natomsp = natomsp + 1
-          iatomstart = natomsp*my_proc + 1
-         else
-          iatomstart = (natomsp + 1)*mod(natoms,nprocs)                      &
-                      + natomsp*(my_proc - mod(natoms,nprocs)) + 1
-         end if
-        else
+! ! IF_DEF_ORDERN
+!        if (iordern .eq. 1) then
+!         natomsp = natoms/nprocs
+!         if (my_proc .lt. mod(natoms,nprocs)) then
+!          natomsp = natomsp + 1
+!          iatomstart = natomsp*my_proc + 1
+!         else
+!          iatomstart = (natomsp + 1)*mod(natoms,nprocs)  + natomsp*(my_proc - mod(natoms,nprocs)) + 1
+!         end if
+!        else
+! ! END_DEF_ORDERN
          iatomstart = 1
          natomsp = natoms
-        end if
+!        end if ! IF_DEF_ORDERN_END
+
+!       write (*,*) "DEBUB get_ewald 4."
 
 ! The real answer: now compute gamma ewald.
 ! ***********************************************************************
@@ -323,6 +346,7 @@
          ig2mx = 0
          ig3mx = 0
         end if
+
         do ig1 = -ig1mx, ig1mx
          do ig2 = -ig2mx, ig2mx
           do ig3 = -ig3mx, ig3mx
@@ -330,7 +354,7 @@
 ! skip the origin
            if (.not. (ig1 .eq. 0 .and. ig2 .eq. 0 .and. ig3 .eq. 0)) then
             g(:) = ig1*g1(:) + ig2*g2(:) + ig3*g3(:)
-            gsq = g(1)*g(1) + g(2)*g(2) + g(3)*g(3)
+            gsq  = g(1)*g(1) + g(2)*g(2) + g(3)*g(3)
             argument = gsq/(4.0d0*kappa**2)
  
 ! The variable stuff contains a number of factors, including the exponential
@@ -346,14 +370,11 @@
               if (jatom .eq. iatom) factor = 0.5d0*stuff
  
 ! g dot b:
-              gdotb = g(1)*(ratom(1,iatom) - ratom(1,jatom))                 &
-     &               + g(2)*(ratom(2,iatom) - ratom(2,jatom))                &
-     &               + g(3)*(ratom(3,iatom) - ratom(3,jatom))
+              gdotb = g(1)*(ratom(1,iatom) - ratom(1,jatom))  + g(2)*(ratom(2,iatom) - ratom(2,jatom)) + g(3)*(ratom(3,iatom) - ratom(3,jatom))
 
 ! Calculate q(iatom)*q(jatom) - q0(iatom)*q0(jatom) = QQ
               if (itheory .eq. 1) QQ = Q(iatom)*Q(jatom) - Q0(iatom)*Q0(jatom)
-              if (itheory .eq. 2)                                            &
-     &         QQ = (Q(iatom) - Q0(iatom))*(Q(jatom) - Q0(jatom))
+              if (itheory .eq. 2) QQ = (Q(iatom) - Q0(iatom))*(Q(jatom) - Q0(jatom))
 
 !$omp atomic
               ewald(iatom,jatom) = ewald(iatom,jatom) + factor*cos(gdotb)
@@ -365,33 +386,31 @@
               if (iforce .eq. 1) then
                do ix = 1, 3
 !$omp atomic 
-                fewald1(ix,iatom) =                                          &
-     &           fewald1(ix,iatom) + QQ*factorf*sin(gdotb)*g(ix)
+                fewald1(ix,iatom) = fewald1(ix,iatom) + QQ*factorf*sin(gdotb)*g(ix)
                end do
                do ix = 1, 3
 !$omp atomic
-                fewald1(ix,jatom) =                                          &
-     &           fewald1(ix,jatom) - QQ*factorf*sin(gdotb)*g(ix)
+                fewald1(ix,jatom) = fewald1(ix,jatom) - QQ*factorf*sin(gdotb)*g(ix)
                end do
 
 ! The variable dewald is not a force-like derivative
                do ix = 1, 3
 !$omp atomic
-                dewald(ix,iatom,jatom) =                                     &
-     &           dewald(ix,iatom,jatom) - factor*sin(gdotb)*g(ix)
+                dewald(ix,iatom,jatom) = dewald(ix,iatom,jatom) - factor*sin(gdotb)*g(ix)
                end do
                do ix = 1, 3
 !$omp atomic
-                dewald(ix,jatom,iatom) =                                     &
-     &           dewald(ix,jatom,iatom) + factor*sin(gdotb)*g(ix)
+                dewald(ix,jatom,iatom) = dewald(ix,jatom,iatom) + factor*sin(gdotb)*g(ix)
                end do
-              end if
-             end do
-           end if
-          end do
-         end do
-        end do
+              end if !  (iforce .eq. 1)
+             end do ! iteration
+           end if ! (.not. (ig1 .eq. 0 .and. ig2 .eq. 0 .and. ig3 .eq. 0)) 
+          end do ! ig1
+         end do ! ig2
+        end do ! ig3
  
+!        write (*,*) "DEBUB get_ewald 5."
+
 ! ***********************************************************************
 ! Compute gamma2:
 ! ***********************************************************************
@@ -423,8 +442,7 @@
  
 ! Calculate q(iatom)*q(jatom) - q0(iatom)*q0(jatom) = QQ
              if (itheory .eq. 1) QQ = Q(iatom)*Q(jatom) - Q0(iatom)*Q0(jatom)
-             if (itheory .eq. 2)                                             &
-     &        QQ = (Q(iatom) - Q0(iatom))*(Q(jatom) - Q0(jatom))
+             if (itheory .eq. 2) QQ = (Q(iatom) - Q0(iatom))*(Q(jatom) - Q0(jatom))
  
              vecl(:) = il1*a1vec(:) + il2*a2vec(:) + il3*a3vec(:)
              eta(:) = vecl(:) + ratom(:,iatom) - ratom(:,jatom)
@@ -435,44 +453,38 @@
               argument = kappa*distance
  
 !$omp atomic
-              ewald(iatom,jatom) =                                           &
-     &         ewald(iatom,jatom) + factor*erfc(argument)/distance
+              ewald(iatom,jatom) = ewald(iatom,jatom) + factor*erfc(argument)/distance
 !$omp atomic
-              ewald(jatom,iatom) =                                           &
-     &         ewald(jatom,iatom) + factor*erfc(argument)/distance
-              derfcdr = (2.0d0*exp(-argument**2)*kappa/sqrt(pi)              &
-     &                   + erfc(argument)/distance)/distance**2
- 
+              ewald(jatom,iatom) = ewald(jatom,iatom) + factor*erfc(argument)/distance
+              derfcdr = ( 2.0d0*exp(-argument**2)*kappa/sqrt(pi)  + erfc(argument)/distance )/distance**2
 ! The variable fewald2 is a force-like derivative => multiply by -1.0d0
               if (iforce .eq. 1) then
                do ix = 1, 3
 !$omp atomic 
-                fewald2(ix,iatom) =                                          &
-     &           fewald2(ix,iatom) + QQ*eta(ix)*factorf*derfcdr
+                fewald2(ix,iatom) = fewald2(ix,iatom) + QQ*eta(ix)*factorf*derfcdr
                end do
                do ix = 1, 3
 !$omp atomic
-                fewald2(ix,jatom) =                                          &
-     &           fewald2(ix,jatom) - QQ*eta(ix)*factorf*derfcdr
+                fewald2(ix,jatom) = fewald2(ix,jatom) - QQ*eta(ix)*factorf*derfcdr
                end do
 
 ! The variable dewald is not a force-like derivative
                do ix = 1, 3
 !$omp atomic
-                dewald(ix,iatom,jatom) =                                     &
-     &           dewald(ix,iatom,jatom) - eta(ix)*factor*derfcdr
+                dewald(ix,iatom,jatom) = dewald(ix,iatom,jatom) - eta(ix)*factor*derfcdr
                end do
                do ix = 1, 3
 !$omp atomic
-                dewald(ix,jatom,iatom) =                                     &
-     &           dewald(ix,jatom,iatom) + eta(ix)*factor*derfcdr
+                dewald(ix,jatom,iatom) = dewald(ix,jatom,iatom) + eta(ix)*factor*derfcdr
                end do
-              end if
-             end if
-            end do
-           end do
-          end do
-         end do
+              end if ! (distance .gt. 0.0001d0)
+             end if ! (iforce .eq. 1)
+            end do ! iteration
+           end do ! il3
+          end do ! il2
+         end do ! il1
+
+!        write (*,*) "DEBUB get_ewald 6."
 
 ! ***********************************************************************
 ! Compute gamma3:
@@ -501,6 +513,8 @@
 ! Format Statements
 ! ===========================================================================
  
+!        write (*,*) "DEBUB get_ewald 7."
+
         return
         end
 

@@ -122,6 +122,8 @@
 
         logical flag
 
+	write (*,*) "DEBUG neighborsPP() "
+
 ! Procedure
 ! ===========================================================================
 !        if (my_proc .eq. 0)                                                  &

@@ -113,6 +113,8 @@
 
          etotxc_1c = etotxc_1c + dccexc_1c
 
+        write(*,*) "DEBUG assemble_olsxc_1c matom,iatom ", matom,iatom
+
 ! Note vxc is initialized in initnanlxc above.
          do imu = 1, num_orb(in1)
           do inu = 1, num_orb(in1)
