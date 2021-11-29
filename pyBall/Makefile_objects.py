@@ -44,6 +44,7 @@ GROUPS = {
 #'scf',
 'loops',
 'workmat',
+'debug',
 ],
 }, #END MODULES
 

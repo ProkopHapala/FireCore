@@ -6,6 +6,9 @@
 ! Toggles read from the options.input file.
 ! ---------------------------------------------------------------------------
 
+
+ !       integer nprocs   iordern  ! IF_DEF_ORDERN_END
+
 ! ====== Electronic Theory Modes
 
         ! Level of theory (0=> harris, 1=> idogs, 2=> extended hubbard)
@@ -77,7 +80,8 @@
 
 ! ====== Switches affecting Electronic Solution 
 
-        integer imix                   ! which density mixer to use
+
+!        integer imix                   ! which density mixer to use
         integer iforce                 ! Calculate forces ?                     ! IF_DEF_force_END
         integer icluster               ! Calculate gas-phase                    ! IF_DEF_PBC_END
         integer iimage                 ! How often we image the box.            ! IF_DEF_PBC_END

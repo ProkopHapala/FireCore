@@ -23,23 +23,24 @@ program fireball
 
     ! ====== Body
     call cpu_time (time_begin)
-    write(*,*) "DEBUG 1"
+    write(*,*) "DEBUG fireball.f90 1"
     call initbasics ()
 
-    do  i = 1,23
-        write (*,'(A,i10)',advance='no') "DEBUG ind2c ", i
-        do j = 0,8
-            write (*,'(i10)',advance='no')   ind2c( i,j)
-        end do
-        write (*,*)
-    end do
+    ! DEBUG  DEBUG ind2c
+    !do  i = 1,23
+    !    write (*,'(A,i10)',advance='no') "DEBUG ind2c ", i
+    !    do j = 0,8
+    !        write (*,'(i10)',advance='no')   ind2c( i,j)
+    !    end do
+    !    write (*,*)
+    !end do
 
     ! TODO : It does not read CHARGES   (that is the reason for difference from Fireball-progs)
 
-    write(*,*) "DEBUG 2"
+    write(*,*) "DEBUG fireball.f90 2"
     !call readdata ()
     call readdata_mcweda ()
-    write(*,*) "DEBUG 3"
+    write(*,*) "DEBUG fireball.f90 3"
     !call main_loop ()
     !call scf_loop (itime_step)
 
@@ -57,8 +58,7 @@ program fireball
     eigen_k = 0.0d0
     bbnkim = 0.0d0
     bbnkre = 0.0d0
-    write(*,*) "DEBUG norbitals, nkpoints ", norbitals, nkpoints
-
+    write(*,*) "DEBUG fireball.f90 norbitals, nkpoints, max_scf_iterations", norbitals, nkpoints, max_scf_iterations
 
     do Kscf = 1, max_scf_iterations
         write(*,*) "! ======== Kscf ", Kscf
@@ -72,11 +72,11 @@ program fireball
         Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
         !call mixCharge
     end do
-    write(*,*) "DEBUG 4"
+    write(*,*) "DEBUG fireball.f90 4"
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
     call getenergy_mcweda () 
-    write(*,*) "DEBUG 5"
+    write(*,*) "DEBUG fireball.f90 5"
 
     call cpu_time (time_end)
     write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'

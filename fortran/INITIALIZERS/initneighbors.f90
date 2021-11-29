@@ -90,6 +90,8 @@
 ! Allocate arrays
 ! ===========================================================================
  
+	write (*,*) "DEBUG initneighbors() "
+
 ! Procedure
 ! ===========================================================================
 ! If there is a neighbor file from a previous run, or the user added one,

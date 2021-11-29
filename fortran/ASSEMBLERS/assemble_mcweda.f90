@@ -47,6 +47,7 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine assemble_mcweda ()
+        use debug
         use options
         !use outputs
         !use mpi_main
@@ -116,6 +117,8 @@
            call common_neighborsPP ! (nprocs, my_proc, iordern,  iwrtneigh_com, icluster)
           end if ! end if (Kscf .eq. 1)
 
+          write(*,*) "DEBUG 1"
+          call debug_writeArray_1i( "neigh_self", neigh_self, natoms )
 
 ! ===========================================================================
 !                              ewald energy
@@ -124,6 +127,9 @@
            kforce = 0
            call get_ewald ! (nprocs, my_proc, kforce, icluster, itheory, iordern)
           end if
+
+          write(*,*) "DEBUG 2"
+          call debug_writeArray_1i( "neigh_self", neigh_self, natoms )
 
 ! ===========================================================================
 ! ---------------------------------------------------------------------------
@@ -139,11 +145,15 @@
 ! VNA(mu,nu,iatom,neigh_self).
 ! Initialize to something ridiculous.
 
+          write(*,*) "DEBUG (ia,ing) ", iatom,ineigh, " ->(jatom,mbeta) ", jatom,mbeta
+
           neigh_self = -999
           do iatom = 1, natoms
+           write(*,*) "DEBUG neighn(iatom) ", iatom,neighn(iatom)
            do ineigh = 1, neighn(iatom)
             mbeta = neigh_b(ineigh,iatom)
             jatom = neigh_j(ineigh,iatom)
+            write(*,*) "DEBUG (ia,ing) ", iatom,ineigh, " ->(jatom,mbeta) ", jatom,mbeta
             if (iatom .eq. jatom .and. mbeta .eq. 0) neigh_self(iatom) = ineigh
            end do
           end do
@@ -168,6 +178,9 @@
 !            end do
 !           end if
 ! ! IF_DEF_VDW
+
+          write(*,*) "DEBUG 3"
+          call debug_writeArray_1i( "neigh_self", neigh_self, natoms )
 
 ! ===========================================================================
 !                               assemble_1c
