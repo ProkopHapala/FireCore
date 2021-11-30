@@ -141,7 +141,8 @@
 !        write (*,*) '  '
 !        write (*,*) ' ****************************************************** '
 
-        write(*,*) "DEBUG solveH() "
+        write(*,*) "DEBUG denmat() "
+        write(*,*) "DEBUG denmat() shape(special_k)", shape(special_k), " nkpoints ", nkpoints
 
 
 ! ****************************************************************************
@@ -152,6 +153,8 @@
 ! above E-fermi.
         inquire (file = 'OCCUPATION', exist = read_occupy)
         if (read_occupy) then
+
+        write(*,*) "DEBUG denmat() 1 "
 
 ! Open the file and read information.
          open (unit = 22, file = 'OCCUPATION', status = 'old')
@@ -169,6 +172,7 @@
          end do
          close (unit = 22)
 
+         write(*,*) "DEBUG denmat() 2 "
 ! If you are monkeying with the occupation it is probable that you would like
 ! to know about charge localization on the snuffed sites, how much
 ! eigenvector there is in orbital mu, etc.
@@ -233,6 +237,7 @@
          end do
         end if
 
+        write(*,*) "DEBUG denmat() 3 "
 
 !  WARRNING : foccupy must be set somewhere !!!!
 !! ****************************************************************************
@@ -330,7 +335,7 @@
          end do
         end do
 
-
+        write(*,*) "DEBUG denmat() 4 "
 !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 !                   M A T R I X     D E N S I T Y
 !                          PP-neighbors
@@ -397,6 +402,7 @@
          end do
         end do
 
+        write(*,*) "DEBUG denmat() 5 "
 ! ****************************************************************************
 !  C O M P U T E    L O W D I N    C H A R G E S
 ! ****************************************************************************
@@ -454,7 +460,7 @@
          end if      ! endif of ifixcharges
         end if       ! endif of iqout .ne. 1
 
-
+        write(*,*) "DEBUG denmat() 6 "
 ! ****************************************************************************
 !  C O M P U T E    M U L L I K E N    C H A R G E S
 ! ****************************************************************************
@@ -514,7 +520,7 @@
          end if     ! endif of ifixcharges
         end if      ! endif of iqout .eq. 2
 
-
+        write(*,*) "DEBUG denmat() 7 "
 ! ! IF_DEF_GAP
 ! ! GAP ENRIQUE-FF
 !        if ((igap.eq.1).or.(igap.eq.2)) then
@@ -614,7 +620,7 @@
         end if      ! endif of iqout .eq. 4
 
 
-
+        write(*,*) "DEBUG denmat() 8 "
 ! ! ****************************************************************************
 ! ! C O M P U T E    M U L L I K E N    P O P U L A T I O N    F O R   MOs
 ! ! ****************************************************************************
@@ -704,8 +710,10 @@
 ! Compute ebs, the band structure energy.
         ebs = 0.0d0
         ztest = 0.0d0
+        write(*,*) "DEBUG nkpoints,norbitals_new ", nkpoints, norbitals_new
         do ikpoint = 1, nkpoints
          do iorbital = 1, norbitals_new
+          write(*,*) "DEBUG ikpoint,iorbital ",ikpoint,iorbital, " ioccupy_k, weight_k, spin, foccupy ",  ioccupy_k(iorbital,ikpoint), weight_k(ikpoint), spin, foccupy(iorbital,ikpoint)
           if (ioccupy_k(iorbital,ikpoint) .eq. 1) then
            ebs = ebs + weight_k(ikpoint)*spin*eigen_k(iorbital,ikpoint) *foccupy(iorbital,ikpoint)
            ztest = ztest + weight_k(ikpoint)*spin*foccupy(iorbital,ikpoint)
@@ -720,7 +728,7 @@
          write (*,*) ' In denmat.f - ztest .ne. ztot! '
          stop
         end if
-
+        write(*,*) "DEBUG denmat() 9 "
 ! Format Statements
 ! ===========================================================================
 100     format (2x, 2i4, f8.4)
