@@ -242,8 +242,9 @@
 !  WARRNING : foccupy must be set somewhere !!!!
 !! ****************************************************************************
 !! Get the Fermi energy.
-!        call fermie (norbitals, ztot, eigen_k, efermi, ioccupy_k, foccupy)
-!!        write (*,*) ' Fermi Level = ', efermi
+        call fermie (norbitals, ztot, eigen_k, efermi, ioccupy_k, foccupy)
+
+        !!        write (*,*) ' Fermi Level = ', efermi
 !        if (iwrtefermi .eq. 1) then
 !         write (*,*) '  '
 !         write (*,*) ' We write out the occupancies of the levels  '
@@ -712,7 +713,8 @@
         ztest = 0.0d0
         write(*,*) "DEBUG nkpoints,norbitals_new ", nkpoints, norbitals_new
         do ikpoint = 1, nkpoints
-         do iorbital = 1, norbitals_new
+         !do iorbital = 1, norbitals_new
+         do iorbital = 1, norbitals   ! DEBUG
           write(*,*) "DEBUG ikpoint,iorbital ",ikpoint,iorbital, " ioccupy_k, weight_k, spin, foccupy ",  ioccupy_k(iorbital,ikpoint), weight_k(ikpoint), spin, foccupy(iorbital,ikpoint)
           if (ioccupy_k(iorbital,ikpoint) .eq. 1) then
            ebs = ebs + weight_k(ikpoint)*spin*eigen_k(iorbital,ikpoint) *foccupy(iorbital,ikpoint)
