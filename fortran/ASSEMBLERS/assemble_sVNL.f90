@@ -53,7 +53,8 @@
  
 ! Program Declaration
 ! ===========================================================================
-        subroutine assemble_sVNL (iforce)
+        subroutine assemble_sVNL ! (iforce)
+        use options
         use dimensions
         use configuration
         use forces
@@ -64,7 +65,7 @@
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in) :: iforce
+!        integer, intent (in) :: iforce
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================

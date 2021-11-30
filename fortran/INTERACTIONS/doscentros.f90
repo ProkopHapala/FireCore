@@ -61,7 +61,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine doscentros (interaction, isub, iforce, in1, in2, in3,  distance, eps, deps, sx, spx)
+        subroutine doscentros (interaction, isub, iforce_, in1, in2, in3,  distance, eps, deps, sx, spx)
         use dimensions
         use interactions
         implicit none
@@ -105,7 +105,7 @@
 !               21           isorp = 0       sph overlap
  
 ! Derivatives are computed if and only if iforce = 1.
-        integer, intent (in) :: iforce
+        integer, intent (in) :: iforce_
 
         integer, intent (in) :: in1
         integer, intent (in) :: in2
@@ -131,6 +131,8 @@
         integer imu
         integer inu
         integer index
+
+        integer iforce
  
         real, dimension (3) :: eta
  
@@ -152,34 +154,46 @@
 ! Initialize sm, scam and sx to zero.
 ! < n1 | n2 | n3 >
 
-        write(*,*) "DEBUG doscentros numorb_max,numorb_max ", numorb_max, iforce
-        write(*,*) "DEBUG doscentros 1.0"
+        !write(*,*) "!!!! DEBUG doscentros START "
+
+        !iforce = 0
+        iforce = iforce_
+
+        !write(*,*) "DEBUG doscentros before ", iforce
+        !if (iforce .eq. 0) then
+        !        write(*,*) "DEBUG doscentros iforce "
+        !end if 
+        !write(*,*) "DEBUG doscentros after "
+
+
+        !write(*,*) "DEBUG doscentros numorb_max,numorb_max ", numorb_max, iforce
+        !write(*,*) "DEBUG doscentros 1.0"
         sm = 0
-        write(*,*) "DEBUG doscentros 1.1"
+        !write(*,*) "DEBUG doscentros 1.1"
         sx = 0
         
-        if (iforce .eq. 0) then
-                write(*,*) "DEBUG doscentros iforce "
-        end if 
+        !if (iforce .eq. 0) then
+        !        write(*,*) "DEBUG doscentros iforce "
+        !end if 
         
-        write(*,*) "DEBUG doscentros 1.2"
+        !write(*,*) "DEBUG doscentros 1.2"
 
         if (iforce .eq. 1) then
             spm = 0
-            write(*,*) "DEBUG doscentros 1.3"
+            !write(*,*) "DEBUG doscentros 1.3"
             spmx = 0
-            write(*,*) "DEBUG doscentros 1.4"
+            !write(*,*) "DEBUG doscentros 1.4"
             spx = 0
         end if !  (iforce .eq. 1) 
 
-        write(*,*) "DEBUG doscentros 1.5"
+        !write(*,*) "DEBUG doscentros 1.5"
 
         switch = .true.
         if(interaction .eq. 2) switch = .false.
         if(interaction .eq. 15) switch = .false.
         if(interaction .eq. 18) switch = .false.
 
-        write(*,*) "DEBUG doscentros 2.0"
+        !write(*,*) "DEBUG doscentros 2.0"
 
 ! This subroutine calls the subroutine intrp1d as needed to find the value of
 ! the matrix elements for any given atomic separation distance.
