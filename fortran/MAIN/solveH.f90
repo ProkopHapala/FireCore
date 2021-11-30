@@ -121,6 +121,8 @@ subroutine solveH( ikpoint, kpoint )
 ! ===========================================================================
 ! Initialize some things
 
+        write(*,*) "DEBUG solveH() "
+
         !ishort = 1
         !if (iwrteigen .eq. 1) ishort = 0
 
@@ -129,8 +131,9 @@ subroutine solveH( ikpoint, kpoint )
         allocate ( Sk(norbitals,norbitals) )
         allocate ( slam(norbitals) )
 
-        call ktransform( kpoint, Sk, Hk )
-
+        write(*,*) "DEBUG solveH() 1 "
+        call ktransform( kpoint, norbitals, Sk, Hk )
+        write(*,*) "DEBUG solveH() 2 "
         if (divide) then
             lwork  = 100*norbitals + norbitals*norbitals
             lrwork = 100*norbitals + 3*norbitals*norbitals ! for old versions of cheevd
@@ -143,15 +146,13 @@ subroutine solveH( ikpoint, kpoint )
             lrwork = 3*norbitals
             allocate (rwork(lrwork))
         end if
-
+        write(*,*) "DEBUG solveH() 3 "
         if (.not. allocated(sm12_save)) then
             allocate (sm12_save(norbitals,norbitals,nkpoints))
         end if
-
+        write(*,*) "DEBUG solveH() 4 "
         if (Kscf .eq. 1) then
-
             call sqrtS( Sk, norbitals, divide )
-
             do inu = 1, norbitals
                 do imu = 1, norbitals
                     sm12_save(imu,inu,ikpoint) = xxxx(imu,inu)
@@ -161,6 +162,7 @@ subroutine solveH( ikpoint, kpoint )
                 xxxx(:,:) = sm12_save(:,:,ikpoint)  ! Restore S^-1/2 from s(k)^-1/2,
         end if  ! Kscf .eq. 1 
 
+        write(*,*) "DEBUG solveH() 5 "
 ! xxxx = S^-1/2 in AO basis
 ! Sk = Unused (used as temporary work area below)
 ! Hk = Hamiltonian in AO basis
@@ -170,6 +172,7 @@ subroutine solveH( ikpoint, kpoint )
         call chemm ( 'R', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals, a0, Sk, norbitals ) ! Set M=H*(S^-.5)
         call chemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, Sk, norbitals, a0, Hk, norbitals ) ! Set Z=(S^-.5)*M
 
+        write(*,*) "DEBUG solveH() 6 "
 ! xxxx = S^-1/2 in AO basis
 ! Sk = Unused (used as complex workspace in cheev call below)
 ! Hk = Hamiltonian in the MO basis set
@@ -178,6 +181,7 @@ subroutine solveH( ikpoint, kpoint )
 ! DIAGONALIZE THE HAMILTONIAN.
 ! ****************************************************************************
 
+        write(*,*) "DEBUG solveH() 7 "
 ! Eigenvectors are needed to calculate the charges and for forces!
         if (divide) then
           call cheevd('V', 'U', norbitals, Hk, norbitals, eigen, work, lwork, rwork , lrwork, iwork, liwork, info ) 
@@ -191,7 +195,7 @@ subroutine solveH( ikpoint, kpoint )
 ! eigenvalues will be very close to zero, but not exactly.  Also, we do not
 ! know if a real eigen value is near zero.
 
-
+        write(*,*) "DEBUG solveH() 8 "
 ! INFORMATION FOR THE LOWDIN CHARGES
 ! ****************************************************************************
 ! xxxx = S^-1/2 in AO basis
@@ -207,6 +211,8 @@ subroutine solveH( ikpoint, kpoint )
 ! We did a symmetric orthogonalization followed by a diagnalization
 ! of the Hamiltonian in this "MO" basis set. This yields a net
 ! canonical diagnolization with matrix bbnk.
+
+        write(*,*) "DEBUG solveH() 9 "
 
 ! xxxx = S^-1/2 in AO basis
 ! Sk = S^-1/2 * Hk
@@ -224,13 +230,14 @@ subroutine solveH( ikpoint, kpoint )
           deallocate (iwork)
         end if
 
+        write(*,*) "DEBUG solveH() 10 "
+
 ! Format Statements
 ! ===========================================================================
 100     format (2x, ' eigenvalue(1) = ', f10.6, ' eigenvalue(norbitals) = ', f10.6)
 200     format (4(2x, f12.4))
         return
       end subroutine solveH
-
 
 ! ============ diag_error 
 subroutine diag_error (info, istyle)

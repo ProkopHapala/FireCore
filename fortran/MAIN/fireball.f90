@@ -37,6 +37,7 @@ program fireball
 
     ! =========== Allocate MOs
     nkpoints = 1
+    k_temp(:) = 0
     if (iqout .ne. 2) then 
         allocate (blowre (norbitals, norbitals, nkpoints))
         allocate (blowim (norbitals, norbitals, nkpoints))
@@ -53,9 +54,12 @@ program fireball
 
     do Kscf = 1, max_scf_iterations
         write(*,*) "! ======== Kscf ", Kscf
-        call assemble_h ()
+        !call assemble_h ()
+        call assemble_mcweda ()
         !call diag_k()
-        k_temp(:) = special_k(:,ikpoint)
+        !write(*,*) "shape(k_temp) ", shape(k_temp)
+        !write(*,*) "special_k     ", shape(special_k)
+        !k_temp(:) = special_k(:,ikpoint)
         !call kspace( nprocs, my_proc, Kscf, iqout, icluster, iwrteigen, ikpoint, k_temp, nkpoints, iwrtdos, iwrthop, iwrtatom, itrans, igap )
         call solveH   ( Kscf, ikpoint, k_temp )
         !call build_rho() 

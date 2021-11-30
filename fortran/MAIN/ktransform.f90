@@ -57,7 +57,7 @@
 ! Program Declaration
 ! ===========================================================================
 !subroutine kspace (nprocs, my_proc, Kscf, iqout, icluster, iwrteigen, ikpoint, sks, nkpoints, iwrtdos, iwrthop, iwrtatom, itrans)
-subroutine ktransform( kpoint, Sk, Hk )
+subroutine ktransform( kpoint, n, Sk, Hk )
         use configuration  
         use density
         use dimensions
@@ -71,8 +71,9 @@ subroutine ktransform( kpoint, Sk, Hk )
 !        integer, intent (in) :: icluster
         !integer, intent (in) :: ikpoint
          real,    dimension (3), intent (in) :: kpoint
-         complex, dimension (:,:), pointer, intent (out) :: Sk
-         complex, dimension (:,:), pointer, intent (out) :: Hk
+         integer,                intent (in) :: n
+         complex, dimension (n,n), intent (out) :: Sk
+         complex, dimension (n,n), intent (out) :: Hk
 !        integer, intent (in) :: iqout
 !        integer, intent (in) :: iwrteigen
 !        integer, intent (in) :: Kscf
@@ -130,6 +131,8 @@ subroutine ktransform( kpoint, Sk, Hk )
 ! to the (1,2) portion at the right place we use degelec(iatom), which is
 ! passed, it remembers how many orbitals one must skip to get to the spot
 ! reserved for iatom, e.g. in this example degelec(1)=0, degelc(2)=3.
+
+write(*,*) "DEBUG ktransform()"
 
 !
 ! COMPUTE S(K) AND H(K)
