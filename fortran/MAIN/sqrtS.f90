@@ -62,7 +62,7 @@ subroutine sqrtS( Smat, norbitals, divide )
     implicit none
 
 ! Arguments
-    complex, dimension (:,:), pointer, intent(inout) :: Smat
+    complex, dimension (norbitals,norbitals), intent(inout) :: Smat
     integer, intent (in) :: norbitals
     logical, intent(inout) :: divide  ! do we divide and conquer?
 
@@ -108,14 +108,14 @@ subroutine sqrtS( Smat, norbitals, divide )
     norbitals_new = norbitals + 1 - mineig
     if (norbitals_new .ne. norbitals) then
         write (*,*) '  '
-        write (*,*) ' WARNING. ############################ '
+        write (*,*) ' ############################ '
+        write (*,*) ' WARRNING in sqrtS() '
         write (*,*) ' Linear dependence encountered in basis set. '
         write (*,*) ' An overlap eigenvalue is very small. '
         write (*,*) norbitals - norbitals_new, ' vectors removed. '
         write (*,*) ' Spurious orbital energies near zero will '
         write (*,*) ' appear as a result of dropping these orbitals'
-        write (*,*) ' You can change this by adjusting overtol in '
-        write (*,*) ' kspace.f '
+        write (*,*) ' You can change this by adjusting overtol '
         write (*,*) '  '
         ! if(ishort .eq. 1) then    ! Don't print out again if done above
         !     write (*,*) '            The overlap eigenvalues: '

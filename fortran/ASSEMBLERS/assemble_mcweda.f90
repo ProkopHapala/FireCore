@@ -75,7 +75,7 @@
         integer kforce
 
 ! Procedure
-
+write(*,*) "DEBUG assemble_mcweda() "
 ! ===========================================================================
 
 !        !write (*,*) '  '
