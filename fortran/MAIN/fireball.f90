@@ -37,7 +37,7 @@ program fireball
 
     ! =========== Allocate MOs
     nkpoints = 1
-    k_temp(:) = 0
+    ! k_temp(:) = 0
     if (iqout .ne. 2) then 
         allocate (blowre (norbitals, norbitals, nkpoints))
         allocate (blowim (norbitals, norbitals, nkpoints))
@@ -47,10 +47,16 @@ program fireball
     allocate (bbnkre (norbitals, norbitals, nkpoints))
     allocate (bbnkim (norbitals, norbitals, nkpoints))
     allocate (eigen_k (norbitals, nkpoints))
+    allocate (special_k(3,nkpoints))
+    allocate (weight_k (nkpoints))
     eigen_k = 0.0d0
     bbnkim = 0.0d0
     bbnkre = 0.0d0
     write(*,*) "DEBUG fireball.f90 norbitals, nkpoints, max_scf_iterations", norbitals, nkpoints, max_scf_iterations
+
+    special_k(:,:) = 0
+    weight_k (:)   = 1
+    k_temp(:) = special_k(:,nkpoints)
 
     do Kscf = 1, max_scf_iterations
         write(*,*) "! ======== Kscf ", Kscf
