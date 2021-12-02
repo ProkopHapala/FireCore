@@ -138,7 +138,7 @@
 !        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                 ! IF_DEF_ORDERN_END
 !        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE        ! IF_DEF_ORDERN_END
 
-!        write(*,*) "DEBUG assemble_ca_2c() "
+        if(idebugWrite .gt. 0) write(*,*) "DEBUG assemble_ca_2c() "
 
 ! Procedure
 ! ===========================================================================
@@ -225,8 +225,6 @@
           call epsilon (r2, sighat, eps)
           call deps2cent (r1, r2, eps, deps)
  
-!          write(*,*) "DEBUG assemble_ca_2c()  iatom,ineigh ",   iatom,ineigh
-
 ! ****************************************************************************
 !
 ! CALL DOSCENTROS AND GET DIP
@@ -234,7 +232,6 @@
           isorp = 0
           interaction = 9
           in3 = in2
-!          write(*,*)  "DEBUG  assemble_ca_2c call doscentros() 1,  iforce ", iforce
           call doscentros (interaction, isorp, iforce, in1, in2, in3, y, eps, deps, dipx, dippx)
  
           do inu = 1, num_orb(in2)
@@ -340,7 +337,6 @@
           interaction = 4
           in3 = in1
           do isorp = 1, nssh(in2)
-!           write(*,*)  "DEBUG  assemble_ca_2c call doscentros() 2 "
            call doscentros (interaction, isorp, kforce, in1, in2, in3, y,  eps, deps, bccax, bccapx)
            dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))
  
@@ -409,7 +405,6 @@
            interaction = 2
            in3 = in2
            do isorp = 1, nssh(in1)
-!            write(*,*)  "DEBUG  assemble_ca_2c call doscentros() 3 "
             call doscentros (interaction, isorp, kforce, in1, in1, in3, y, eps, deps, bccax, bccapx)
  
             dxn = (Qin(isorp,iatom) - Qneutral(isorp,in1))
@@ -425,7 +420,7 @@
            interaction = 3
            in3 = in2
            do isorp = 1, nssh(in2)
-!            write(*,*)  "DEBUG  assemble_ca_2c call doscentros() 4 "
+
             call doscentros (interaction, isorp, kforce, in1, in2, in3, y,  eps, deps, bccax, bccapx)
  
             dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))

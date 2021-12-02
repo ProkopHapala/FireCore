@@ -132,8 +132,6 @@ subroutine ktransform( kpoint, n, Sk, Hk )
 ! passed, it remembers how many orbitals one must skip to get to the spot
 ! reserved for iatom, e.g. in this example degelec(1)=0, degelc(2)=3.
 
-write(*,*) "DEBUG ktransform()"
-
 !
 ! COMPUTE S(K) AND H(K)
 ! ****************************************************************************
