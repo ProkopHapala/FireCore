@@ -67,6 +67,8 @@
 ! Procedure
 ! ===========================================================================
 
+        if(idebugWrite .gt. 0) write (*,*) "DEBUG getenergy_mcweda()"
+
 ! Now call the stuff for the short-range interactions and the ewald terms
 ! for the final time to get the forces.
          if (itheory .eq. 1 .or. itheory .eq. 2) then

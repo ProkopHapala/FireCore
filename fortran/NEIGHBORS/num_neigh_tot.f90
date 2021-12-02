@@ -85,8 +85,6 @@
 ! ============================================================================
 ! Initializate
 
-        write (*,*) "DEBUG num_neigh_tot() "
-
 ! test allocated arrays
          if ( allocated (neighj_tot)) then
          deallocate (neighj_tot)

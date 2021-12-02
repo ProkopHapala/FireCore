@@ -118,6 +118,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
 
 ! Procedure
 ! ===========================================================================
+        if(idebugWrite .gt. 0) write (*,*) "DEBUG readparam() "
 
 ! default settings
 ! ------  DEFAULT OPTIONS  ------

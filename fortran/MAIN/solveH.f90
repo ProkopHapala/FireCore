@@ -121,6 +121,8 @@ subroutine solveH( ikpoint, kpoint )
 ! ===========================================================================
 ! Initialize some things
 
+        if(idebugWrite .gt. 0) write(*,*) "DEBUG solveH()"
+
         !ishort = 1
         !if (iwrteigen .eq. 1) ishort = 0
 
@@ -153,7 +155,7 @@ subroutine solveH( ikpoint, kpoint )
                 end do
             end do
         else    ! Kscf .eq. 1 
-                xxxx(:,:) = sm12_save(:,:,ikpoint)  ! Restore S^-1/2 from s(k)^-1/2,
+            xxxx(:,:) = sm12_save(:,:,ikpoint)  ! Restore S^-1/2 from s(k)^-1/2,
         end if  ! Kscf .eq. 1 
 
 ! xxxx = S^-1/2 in AO basis

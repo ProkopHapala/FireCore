@@ -89,9 +89,6 @@
         integer mbeta
         integer iloop
 
-
-	write (*,*) "DEBUG backnay() "
-
 ! Procedure
 ! ===========================================================================
   727   continue

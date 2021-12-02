@@ -75,7 +75,7 @@ subroutine neighbors_pairs ! (icluster)
 !Create list of pairs of neighbors without repetitions: SYMMETRIC FIREBALL,
 !APRIL 2018
 
-      write (*,*) "DEBUG neighbors_pairs() "
+      if(idebugWrite .gt. 0)  write (*,*) "DEBUG neighbors_pairs() "
 
 num_pairs = 0
 
