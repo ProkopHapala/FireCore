@@ -165,6 +165,8 @@
         if(interaction .eq. 15) switch = .false.
         if(interaction .eq. 18) switch = .false.
 
+        write (*,*) "DEBUG doscentros()  in1,in3,index_max2c(in1,in3) ", in1,in3,index_max2c(in1,in3)
+
 ! This subroutine calls the subroutine intrp1d as needed to find the value of
 ! the matrix elements for any given atomic separation distance.
 ! -slist = output list of matrix elements
@@ -174,6 +176,9 @@
          if ( switch ) then
 !            if(interaction .eq. 2) write(*,*) 'Wrong'
           call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, slist(index), dslist(index))
+
+          write (*,*) "DEBUG doscentros()  index,distance",index, distance, slist
+
          else
           call interpolate_1d (interaction, isub, in1, in3, index, iforce, distance, slist(index), dslist(index))
 !          write (1000,*) interaction, isub, slist(index),dslist(index)

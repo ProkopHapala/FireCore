@@ -23,8 +23,8 @@ program fireball
 
     ! ====== Body
 
-    !idebugWrite = 1
-    idebugWrite = 0
+    idebugWrite = 1
+    !idebugWrite = 0
 
     call cpu_time (time_begin)
     call initbasics ()
@@ -60,9 +60,13 @@ program fireball
     weight_k (:)   = 1
     k_temp(:) = special_k(:,ikpoint)
 
+
+    !debug_writeIntegral( interaction, isub, in1, in2, index )
+
     do Kscf = 1, max_scf_iterations
         write(*,*) "! ======== Kscf ", Kscf
         !call assemble_h ()
+
         call assemble_mcweda ()
         !call diag_k()
         !write(*,*) "shape(k_temp) ", shape(k_temp)

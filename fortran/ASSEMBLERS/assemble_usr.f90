@@ -222,6 +222,7 @@
           interaction = 12
           ideriv = 0
           do index = 1, index_coulomb
+           !    interpolate_1d (interaction, isub,  in1,  in2, non2c, ioption, xin,     yout,         dfdx         )
            call interpolate_1d (interaction, ideriv, in1, in2, index, iforce, distance, slist(index), dslist(index))
           end do
  
@@ -303,8 +304,7 @@
 ! Then interpolate for the currnt charge distribution of the pair. Here is the
 ! key from creator:
 !
-! We calculate   (n1+n2)*(exc(1+2)-muxc(1+2)) - n1*(exc(1)-xcmu(1))
-!                                             - n2*(exc(2)-xcmu(2))
+! We calculate   (n1+n2)*(exc(1+2)-muxc(1+2)) - n1*(exc(1)-xcmu(1)) - n2*(exc(2)-xcmu(2))
 ! The catch comes in when we compute derivatives. We compute
 ! neutral,neutral for ideriv1. For other ideriv's we have the following KEY:
 !

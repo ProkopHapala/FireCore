@@ -61,6 +61,7 @@
         use interactions
         use neighbor_map
         use options !, only: idipole, itheory_xc
+        use debug
         implicit none
  
 ! Argument Declaration and Description
@@ -185,6 +186,8 @@
           call epsilon (r2, sighat, eps)
           call deps2cent (r1, r2, eps, deps)
  
+        write( *,* ) "DEBUG assemble_2c() iatom,ineigh ", iatom,ineigh, " rij ", y
+
 ! ****************************************************************************
 !
 ! CALL DOSCENTROS AND GET S AND T
@@ -198,11 +201,13 @@
 ! derivatives are computed only if iforce = 1 !
 ! For these interactions, there are no subtypes and isorp = 0
           isorp = 0
-          interaction = 1
+          interaction = 1   ! Overlap
           in3 = in2
           call doscentros (interaction, isorp, iforce, in1, in2, in3, y,  eps, deps, sx, spx)
+          call debug_writeIntegralSet( "intS.log", interaction, isorp, in1, in2 )
+
           isorp = 0
-          interaction = 13
+          interaction = 13   ! Kinetic
           in3 = in2
           call doscentros (interaction, isorp, iforce, in1, in2, in3, y, eps, deps, tx, tpx)
 ! Write s and t to appropriate arrays
@@ -210,6 +215,9 @@
            do imu = 1, num_orb(in1)
             s_mat(imu,inu,ineigh,iatom) = sx(imu,inu)
             t_mat(imu,inu,ineigh,iatom) = tx(imu,inu)
+
+            write( *,* ) "DEBUG [,",imu,",",inu,"] S ", real(sx(imu,inu)), " T ", real( tx(imu,inu))
+
             if (iforce .eq. 1) then
              sp_mat(:,imu,inu,ineigh,iatom) = spx(:,imu,inu)
              tp_mat(:,imu,inu,ineigh,iatom) = tpx(:,imu,inu)

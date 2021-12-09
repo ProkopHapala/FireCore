@@ -58,8 +58,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine readdata_2c (interaction, iounit, num_nonzero, numz, zmax,&
-     &                          itype, in1, in2, ioff2c)
+        subroutine readdata_2c (interaction, iounit, num_nonzero, numz, zmax, itype, in1, in2, ioff2c)
         use dimensions
         use integrals
         use interactions
@@ -99,6 +98,7 @@
 ! ===========================================================================
 ! This set to zero unset elements (see 'diagnostics.input')
         
+        write(*,*) "DEBUG readdata_2c() superspline ", superspline
 
         xoff = real(ioff2c)
         if (interaction .ne. 8) then
@@ -107,15 +107,12 @@
          end do
          do ipoint = 1, numz
           do integral = 1, num_nonzero
-        xintegral_2c(integral,ipoint,itype,in1,in2) =                     &
-     &      gstore(integral,ipoint)*xoff
-
+            xintegral_2c(integral,ipoint,itype,in1,in2) =  gstore(integral,ipoint)*xoff
           end do
          end do
          if (superspline) then
           do integral = 1, num_nonzero
-           call buildspline_1d (integral, numz, itype, in1, in2, zmax,       &
-     &                          interaction)
+           call buildspline_1d (integral, numz, itype, in1, in2, zmax, interaction)
           end do
          end if
         else
