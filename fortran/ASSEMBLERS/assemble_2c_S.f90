@@ -118,6 +118,8 @@
 ! ===========================================================================
 ! Initialize interactions
 
+        write( *,* ) "DEBUG assemble_2c_S() "
+
 ! necessary because these arrays will be partially computed and then summed
 ! over the procs
         s_mat = 0.0d0
@@ -195,7 +197,7 @@
           in3 = in2
           call doscentros (interaction, isorp, kforce, in1, in2, in3, y, eps, deps, sx, spx)
 
-
+          write( *,* ) "DEBUG assemble_2c_S() iatom,ineigh ", iatom,ineigh, " rij ", y
 ! Write s and t to appropriate arrays
           do inu = 1, num_orb(in2)
            do imu = 1, num_orb(in1)

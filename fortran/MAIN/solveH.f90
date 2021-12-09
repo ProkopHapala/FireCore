@@ -68,6 +68,7 @@ subroutine solveH( ikpoint, kpoint )
         use interactions
         use neighbor_map
         use workmat
+        use debug
         implicit none
 
 ! Argument Declaration and Description
@@ -130,6 +131,10 @@ subroutine solveH( ikpoint, kpoint )
         allocate ( Hk(norbitals,norbitals) )
         allocate ( Sk(norbitals,norbitals) )
         allocate ( slam(norbitals) )
+
+        call debug_writeBlockedMat( "Sk.log", Sk )
+        call debug_writeBlockedMat( "Hk.log", Hk )
+        stop  ! DEBUG
 
         call ktransform( kpoint, norbitals, Sk, Hk )
         if (divide) then
