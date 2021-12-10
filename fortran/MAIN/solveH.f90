@@ -132,10 +132,6 @@ subroutine solveH( ikpoint, kpoint )
         allocate ( Sk(norbitals,norbitals) )
         allocate ( slam(norbitals) )
 
-        call debug_writeBlockedMat( "Sk.log", Sk )
-        call debug_writeBlockedMat( "Hk.log", Hk )
-        stop  ! DEBUG
-
         call ktransform( kpoint, norbitals, Sk, Hk )
         if (divide) then
             lwork  = 100*norbitals + norbitals*norbitals

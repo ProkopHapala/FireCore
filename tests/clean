@@ -7,7 +7,7 @@ bkdir=`pwd`
 for d in $names; do
     echo $d
     cd $d
-    rm CHARGES param.dat answer.* *.out
+    rm CHARGES param.dat answer.* *.out *.log
     rm cel_.lvs answer-image.*
     cd $bkdir
 done

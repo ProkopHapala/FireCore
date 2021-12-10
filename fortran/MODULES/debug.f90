@@ -12,7 +12,7 @@ subroutine debug_writeArray_1i( name, arr, n )
     integer i
     ! ===== Body
     do i=1,n
-        write(*,'(A,i6,A,i6)') name,"[",i,"]: ", arr(i)
+        write(*,*) name,"[",i,"]: ", arr(i)
     end do
 end subroutine debug_writeArray_1i
 
@@ -23,7 +23,7 @@ subroutine debug_writeBlockedMat( name, M )
     ! allocate (s_mat (numorb_max, numorb_max, neigh_max, natoms))
     ! ===== Parameters
     character(len=*)                                               , intent(in)  :: name
-    complex, dimension( numorb_max, numorb_max, neigh_max, natoms ), intent (in) :: M
+    real, dimension( numorb_max, numorb_max, neigh_max, natoms ), intent (in) :: M
     ! ===== Variables
     integer iatom, jatom, ineigh, inu, imu,  jnu, jmu, in1,in2
     ! ===== Body
@@ -83,11 +83,11 @@ subroutine debug_writeIntegral( ifile, interaction, isub, in1, in2, index )
     zmax  = z2cmax(itype,in1,in2)
     dz    = zmax/numz
     !open( 164646, file=fname, status='unknown' ) 
-    write(*,*) "debug_writeIntegral() shape(xintegral_2c) ",  shape(xintegral_2c)
-    write(*,*) "debug_writeIntegral() shape(splineint_2c) ",  shape(splineint_2c)
-    write(*,*) "debug_writeIntegral() index,itype,in1,in2, numz ",  index,itype,in1,in2,   numz
+    !write(*,*) "debug_writeIntegral() shape(xintegral_2c) ",  shape(xintegral_2c)
+    !write(*,*) "debug_writeIntegral() shape(splineint_2c) ",  shape(splineint_2c)
+    !write(*,*) "debug_writeIntegral() index,itype,in1,in2, numz ",  index,itype,in1,in2,   numz
     !val = xintegral_2c(1,1,1,1,1)
-    write(*,*) "debug_writeIntegral() val ", val
+    !write(*,*) "debug_writeIntegral() val ", val
     do i=1,numz
         !write(*,*) "debug_writeIntegral() i ", i
         !write(*,*) "debug_writeIntegral() index,i,itype,in1,in2 ", index,i,itype,in1,in2
@@ -121,6 +121,7 @@ subroutine debug_writeIntegralSet( fname, interaction, isub, in1, in2 )
     integer ifile, index
     ! ===== Body
     ifile = 164646
+    write (ifile,*) " debug_writeIntegralSet ", fname
     open( ifile, file=fname, status='unknown' ) 
     do index = 1, index_max2c(in1,in2)
         ! call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, slist(index), dslist(index))

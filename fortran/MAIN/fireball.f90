@@ -8,7 +8,7 @@ program fireball
     use density
     use kpoints
     use charges
-    
+    use debug
     implicit none
 
     ! ====== global variables
@@ -73,6 +73,12 @@ program fireball
         !write(*,*) "special_k     ", shape(special_k)
         !k_temp(:) = special_k(:,ikpoint)
         !call kspace( nprocs, my_proc, Kscf, iqout, icluster, iwrteigen, ikpoint, k_temp, nkpoints, iwrtdos, iwrthop, iwrtatom, itrans, igap )
+
+        call debug_writeBlockedMat( "S_mat.log", s_mat )
+        call debug_writeBlockedMat( "H_mat.log", h_mat )
+        write (*,*) "DEBUG STOP in fireball.f90"
+        stop  ! DEBUG
+
         call solveH   ( ikpoint, k_temp )
         !call build_rho() 
         call denmat ()
