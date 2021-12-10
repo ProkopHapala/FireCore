@@ -77,7 +77,7 @@ GROUPS = {
 
 'INITIALIZERS' : {
 '' : [ 
-#'diagnostics',
+'diagnostics',
 #'initconstraints',
 'initcharges',
 'initconstants',

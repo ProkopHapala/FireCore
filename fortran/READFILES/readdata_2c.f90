@@ -98,9 +98,10 @@
 ! ===========================================================================
 ! This set to zero unset elements (see 'diagnostics.input')
         
-        write(*,*) "DEBUG readdata_2c() superspline ", superspline
-
         xoff = real(ioff2c)
+
+        write(*,*) "DEBUG readdata_2c() superspline, xoff ", superspline, xoff
+
         if (interaction .ne. 8) then
          do ipoint = 1, numz
           read (iounit,*) (gstore(integral,ipoint), integral = 1, num_nonzero)
@@ -108,6 +109,7 @@
          do ipoint = 1, numz
           do integral = 1, num_nonzero
             xintegral_2c(integral,ipoint,itype,in1,in2) =  gstore(integral,ipoint)*xoff
+            write(*,*) "DEBUG readdata_2c() [",ipoint,integral,"] ",xintegral_2c(integral,ipoint,itype,in1,in2)
           end do
          end do
          if (superspline) then

@@ -128,7 +128,7 @@
         scf_achieved = .true.
 ! Read in the diagnostics parameters. This allows the user to turn
 ! particular interactions on or off.
-!        call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
+        call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
 
 ! Read the parameter file - fireball.param
         call readparam ()

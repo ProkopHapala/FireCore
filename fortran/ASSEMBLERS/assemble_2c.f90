@@ -186,7 +186,7 @@
           call epsilon (r2, sighat, eps)
           call deps2cent (r1, r2, eps, deps)
  
-        write( *,* ) "DEBUG assemble_2c() iatom,ineigh ", iatom,ineigh, " rij ", y
+        !write( *,* ) "DEBUG assemble_2c() iatom,ineigh ", iatom,ineigh, " rij ", y
 
 ! ****************************************************************************
 !
@@ -204,7 +204,7 @@
           interaction = 1   ! Overlap
           in3 = in2
           call doscentros (interaction, isorp, iforce, in1, in2, in3, y,  eps, deps, sx, spx)
-          call debug_writeIntegralSet( "intS.log", interaction, isorp, in1, in2 )
+          !call debug_writeIntegralSet( "intS.log", interaction, isorp, in1, in2 )
 
           isorp = 0
           interaction = 13   ! Kinetic
@@ -216,7 +216,7 @@
             s_mat(imu,inu,ineigh,iatom) = sx(imu,inu)
             t_mat(imu,inu,ineigh,iatom) = tx(imu,inu)
 
-            write( *,* ) "DEBUG [,",imu,",",inu,"] S ", real(sx(imu,inu)), " T ", real( tx(imu,inu))
+            !write( *,* ) "DEBUG assemble_2c [,",imu,",",inu,"] S ", real(sx(imu,inu)), " T ", real( tx(imu,inu))
 
             if (iforce .eq. 1) then
              sp_mat(:,imu,inu,ineigh,iatom) = spx(:,imu,inu)
