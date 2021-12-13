@@ -3,6 +3,8 @@
 program fireball
     use options
     use loops
+    use configuration
+    use forces
     use interactions
     use integrals
     use density
@@ -62,7 +64,7 @@ program fireball
 
 
     !debug_writeIntegral( interaction, isub, in1, in2, index )
-
+    iforce = 0
     do Kscf = 1, max_scf_iterations
         write(*,*) "! ======== Kscf ", Kscf
         !call assemble_h ()
@@ -74,10 +76,10 @@ program fireball
         !k_temp(:) = special_k(:,ikpoint)
         !call kspace( nprocs, my_proc, Kscf, iqout, icluster, iwrteigen, ikpoint, k_temp, nkpoints, iwrtdos, iwrthop, iwrtatom, itrans, igap )
 
-        call debug_writeBlockedMat( "S_mat.log", s_mat )
-        call debug_writeBlockedMat( "H_mat.log", h_mat )
-        write (*,*) "DEBUG STOP in fireball.f90"
-        stop  ! DEBUG
+        !call debug_writeBlockedMat( "S_mat.log", s_mat )
+        !call debug_writeBlockedMat( "H_mat.log", h_mat )
+        !write (*,*) "DEBUG STOP in fireball.f90"
+        !stop  ! DEBUG
 
         call solveH   ( ikpoint, k_temp )
         !call build_rho() 
@@ -87,7 +89,16 @@ program fireball
     end do
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
+    iforce = 1
+    call assemble_mcweda ()
     call getenergy_mcweda () 
+    call getforces ()   ! Assemble forces
+    
+    !call move_ions_FIRE (itime_step, 0 )   ! Move ions now
+
+    do i=1, natoms
+        write(*,*) "force[",i,"] ",  ftot(:,i)
+    end do
 
     call cpu_time (time_end)
     write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
