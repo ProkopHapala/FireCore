@@ -44,6 +44,7 @@ GROUPS = {
 #'scf',
 'loops',
 'workmat',
+'optimization',
 'debug',
 ],
 }, #END MODULES
@@ -212,8 +213,7 @@ GROUPS = {
 'sqrtS',
 'ktransform',
 'solveH',
-
-
+'main_loop_FIRE',
 ],
 }, #END FORM_RHO
 
