@@ -400,6 +400,8 @@
 ! ****************************************************************************
 ! Initialize
         if (iqout .eq. 1 .or. iqout .eq. 3) then
+
+         write(*,*)  " DEBUG  Compute Lowdin charges."
          Qout = 0.0d0
          QLowdin_TOT = 0.0d0
 
@@ -434,6 +436,9 @@
                 if (icluster .ne. 1) then
                  aux3 = aux2*(blowre(mmu,iorbital,ikpoint)**2 + blowim(mmu,iorbital,ikpoint)**2)
                 else
+
+                 write (*,*) "DEBUG denmat ", iatom, issh, mqn,  aux2*blowre(mmu,iorbital,ikpoint)**2, blowre(mmu,iorbital,ikpoint), foccupy(iorbital,ikpoint), weight_k(ikpoint)
+                 !write (*,*) "DEBUG denmat ", iatom, issh, mqn,  blowre(mmu,iorbital,ikpoint)
                  aux3 = aux2*blowre(mmu,iorbital,ikpoint)**2
                 end if
                 Qout(issh,iatom) = Qout(issh,iatom) + aux3
@@ -457,7 +462,7 @@
 ! ****************************************************************************
 ! Compute Mulliken charges.
         if (iqout .eq. 2) then
-
+        write(*,*)  " DEBUG  Compute Mulliken charges."
          Qout = 0.0d0
          QMulliken = 0.0d0
          QMulliken_TOT = 0.0d0
@@ -472,24 +477,19 @@
             QMulliken_TOT(iatom) = QMulliken_TOT(iatom) + Qin(issh,iatom)
            end do
           end do
-
          else
-
           do iatom = 1, natoms
            in1 = imass(iatom)
-
 ! Loop over neighbors
            do ineigh = 1, neighn(iatom)
             jatom = neigh_j(ineigh,iatom)
             in2 = imass(jatom)
-
-     
             jneigh = neigh_back(iatom,ineigh)
             do imu = 1, num_orb(in1)
              do inu = 1, num_orb(in2)
-              QMulliken(imu,iatom) = QMulliken(imu,iatom)                    &
-     &        + 0.5d0*(rho(imu,inu,ineigh,iatom)*s_mat(imu,inu,ineigh,iatom) &
-     &        + rho(inu,imu,jneigh,jatom)*s_mat(inu,imu,jneigh,jatom))
+              QMulliken(imu,iatom) = QMulliken(imu,iatom) +    0.5d0 *( &
+     &          rho(imu,inu,ineigh,iatom)*s_mat(imu,inu,ineigh,iatom)   &
+     &        + rho(inu,imu,jneigh,jatom)*s_mat(inu,imu,jneigh,jatom) )
              end do
             end do
 
@@ -562,7 +562,7 @@
              do inu = 1, num_orb(in2)
               QMulliken(imu,iatom) = QMulliken(imu,iatom)                   &
      &        +0.5d0*(rho(imu,inu,ineigh,iatom)*s_mat(imu,inu,ineigh,iatom) &
-     &        + rho(inu,imu,jneigh,jatom)*s_mat(inu,imu,jneigh,jatom))
+     &        +       rho(inu,imu,jneigh,jatom)*s_mat(inu,imu,jneigh,jatom))
              end do
             end do
 ! dipole correction. Only if the two atoms are different
