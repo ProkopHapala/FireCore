@@ -95,6 +95,8 @@ subroutine solveH( ikpoint, kpoint )
         !integer jnu
         !integer mbeta
 
+        integer i,j
+
         real dot
 
         real, dimension (norbitals) :: eigen
@@ -111,11 +113,13 @@ subroutine solveH( ikpoint, kpoint )
         complex, dimension (:, :), allocatable :: Sk
 !        complex, dimension (:, :, :), allocatable, save :: sm12_save
 
-! work vector for cheev/cheevd
+! --- work vector for cheev/cheevd
 !        complex, allocatable, dimension (:) :: work
 !        real,    allocatable, dimension (:) :: rwork
 !        integer, allocatable, dimension (:) :: iwork
 !        integer lwork, lrwork, liwork
+
+
         logical, parameter :: divide = .false.  ! do we divide and conquer?
 
 ! Procedure
@@ -175,6 +179,27 @@ subroutine solveH( ikpoint, kpoint )
 ! DIAGONALIZE THE HAMILTONIAN.
 ! ****************************************************************************
 
+
+! Eigenvectors are needed to calculate the charges and for forces!
+!        if (divide) then
+!            call zheevd('V', 'U', norbitals, Hk, norbitals, eigen, work,lwork, rwork , lrwork, iwork, liwork, info )
+!          else
+!   ! set default size of working space
+!            lwork = 1
+!            deallocate (work)
+!            allocate (work(lwork))
+!   ! first find optimal working space
+!            call zheev ('V', 'U', norbitals, Hk, norbitals, eigen, work, -1, rwork, info)
+!   ! resize working space
+!            lwork = work(1)
+!   !          write (*,*) 'lwork =',lwork
+!            deallocate (work)
+!            allocate (work(lwork))
+!   ! diagonalize the overlap matrix with the new working space
+!            call zheev ('V', 'U', norbitals, Hk, norbitals, eigen, work, lwork, rwork, info)
+!        end if
+!        if (info .ne. 0) call diag_error (info, 0)
+
 ! Eigenvectors are needed to calculate the charges and for forces!
         if (divide) then
           call cheevd('V', 'U', norbitals, Hk, norbitals, eigen, work, lwork, rwork , lrwork, iwork, liwork, info ) 
@@ -187,6 +212,16 @@ subroutine solveH( ikpoint, kpoint )
 ! eigenvalues and eigenvectors correspond to the removed MO's.  Their
 ! eigenvalues will be very close to zero, but not exactly.  Also, we do not
 ! know if a real eigen value is near zero.
+
+
+    write (*,*) "DEBUG kspace2 | are blowre orthonormal ? :", norbitals
+    do i = 1, norbitals
+        do j = 1, norbitals
+        !dot =  sum( Hk(:,i) * Hk(:,j) )
+        dot = dot_product( real(Hk(:,i)), real( Hk(:,j) ) )
+        write (*,*) i,j, dot
+        end do
+    end do
 
 ! INFORMATION FOR THE LOWDIN CHARGES
 ! ****************************************************************************

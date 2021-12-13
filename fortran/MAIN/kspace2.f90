@@ -112,6 +112,8 @@
         integer lm
         integer issh
 
+        integer i,j,sij
+
         real dot
         real*8 sqlami
 
@@ -590,6 +592,17 @@
          call zheev ('V', 'U', norbitals, yyyy, norbitals, eigen, work, lwork, rwork, info)
        end if
        if (info .ne. 0) call diag_error (info, 0)
+
+
+       ! ============ Check Coefs Matrix
+
+       write (*,*) "DEBUG kspace2 | are blowre orthonormal ? :", norbitals
+       do i = 1, norbitals
+        do j = 1, norbitals
+        sij =  sum( yyyy(:,i) * yyyy(:,j) )
+        write (*,*) i,j, sij
+        end do
+       end do
 
 !! FIXME - Should only go up to norbitals_new, but we do not know what
 !! eigenvalues and eigenvectors correspond to the removed MO's.  Their
