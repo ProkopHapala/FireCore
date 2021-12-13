@@ -209,6 +209,8 @@ GROUPS = {
 #'build_rho',
 #'kspace',
 #'kspace2'
+'mixer',
+'anderson2',
 
 'sqrtS',
 'ktransform',
