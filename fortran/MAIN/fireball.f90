@@ -15,7 +15,7 @@ program fireball
 
     ! ====== global variables
 
-    integer i,j
+    integer i,j, in1
     integer ikpoint
     integer imu
     real, dimension (3) :: k_temp
@@ -64,6 +64,7 @@ program fireball
 
 
     !debug_writeIntegral( interaction, isub, in1, in2, index )
+    max_scf_iterations = 10
     iforce = 0
     do Kscf = 1, max_scf_iterations
         write(*,*) "! ======== Kscf ", Kscf
@@ -84,8 +85,28 @@ program fireball
         call solveH   ( ikpoint, k_temp )
         !call build_rho() 
         call denmat ()
-        Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
+
+        sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
+
+        if ( sigma .lt. sigmatol) then
+            write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol
+            exit
+        end if ! simga
+
+        !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
         !call mixCharge
+        !call mixer ()
+
+        do i = 1, natoms
+            in1 = imass(i)
+            write (*,'(A,i5,A)',advance='no') "atom[",i,"]" 
+            do j = 1, nssh(in1)
+              write (*,'(f10.5)',advance='no') Qin (j,i)
+              write (*,'(f10.5)',advance='no') Qout(j,i)
+            end do
+            write (*,*)
+        end do ! 
+
     end do
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy

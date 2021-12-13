@@ -14,7 +14,7 @@ real  sigmatol
 real  sigmaold
 real  sigma
 
-integer ialgmix
+!integer ialgmix
 
 ! idmix: Defines the mixing procedure: idmix=1 means simple mixing
 ! For larger idmix values, the choice of bmix becomes less important

@@ -109,7 +109,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
                                          iqout, qstate, icluster, ifixcharge, ifixneigh,   &
                                          iimage,  &
                                          iconstraints, basisfile, lvsfile,    &
-                                         max_scf_iterations, bmix, sigmatol, ialgmix, tempfe,  &
+                                         max_scf_iterations, bmix, sigmatol, tempfe,  &   ! ialgmix, 
                                          kptpreference,         &
                                          rescal, xyz2line, &
                                          fdataLocation, verbosity, ntpr, restartxyz,   &
@@ -163,7 +163,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
 !        T_final = 10.0d0
         max_scf_iterations = 200
         bmix = 0.04d0
-        ialgmix = 1
+!        ialgmix = 1
         sigmatol = 1.0E-8
         tempfe = 100.0d0
 !        itdse = 0
