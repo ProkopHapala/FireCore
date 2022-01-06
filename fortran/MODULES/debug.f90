@@ -16,6 +16,36 @@ subroutine debug_writeArray_1i( name, arr, n )
     end do
 end subroutine debug_writeArray_1i
 
+subroutine debug_writeMat( ifile, mat, n, m )
+    ! ===== Parameters
+    integer,                 intent (in) :: ifile
+    real, dimension( :, : ), intent (in) :: mat
+    integer,                 intent (in) :: n, m
+    ! ===== Variables
+    integer i, j
+    ! ===== Body
+    do i=1,n
+        do j=1,m
+            write(ifile,'(e20.10)',advance='no' ) mat(i,j) 
+        end do
+        write (ifile,*)
+    end do
+end subroutine debug_writeMat
+
+subroutine debug_writeMatFile( fname, mat, n, m )
+    ! ===== Parameters
+    character(len=*), intent(in) :: fname
+    real, dimension( :, : ), intent (in) :: mat
+    integer,                 intent (in) :: n, m
+    ! ===== Variables
+    integer                 ifile
+    ! ===== Body
+    ifile = 11111
+    open( ifile, file=fname, status='unknown' )
+    call debug_writeMat( ifile, mat, n, m )
+    close(ifile)
+end subroutine debug_writeMatFile
+
 subroutine debug_writeBlockedMat( name, M )
     use configuration
     use neighbor_map

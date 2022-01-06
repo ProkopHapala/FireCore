@@ -96,6 +96,7 @@ subroutine solveH( ikpoint, kpoint )
         !integer mbeta
 
         integer i,j
+        integer ifile
 
         real dot
 
@@ -113,6 +114,10 @@ subroutine solveH( ikpoint, kpoint )
         complex, dimension (:, :), allocatable :: Sk
 !        complex, dimension (:, :, :), allocatable, save :: sm12_save
 
+        !NPA
+        complex*16, dimension (:, :), allocatable :: ssss
+        real*8,     dimension (:),    allocatable :: ww
+
 ! --- work vector for cheev/cheevd
 !        complex, allocatable, dimension (:) :: work
 !        real,    allocatable, dimension (:) :: rwork
@@ -126,29 +131,41 @@ subroutine solveH( ikpoint, kpoint )
 ! ===========================================================================
 ! Initialize some things
 
+        a0 = cmplx(0.0d0,0.0d0)
+        a1 = cmplx(1.0d0,0.0d0)
+        
         if(idebugWrite .gt. 0) write(*,*) "DEBUG solveH()"
 
         !ishort = 1
         !if (iwrteigen .eq. 1) ishort = 0
 
-        allocate ( xxxx(norbitals,norbitals) )
         allocate ( Hk(norbitals,norbitals) )
         allocate ( Sk(norbitals,norbitals) )
-        allocate ( slam(norbitals) )
+
+        !allocate ( xxxx(norbitals,norbitals) )
+        !allocate ( slam(norbitals) )
+
+        !if (divide) then
+        !    lwork  = 100*norbitals + norbitals*norbitals
+        !    lrwork = 100*norbitals + 3*norbitals*norbitals ! for old versions of cheevd
+        !    liwork = 10*norbitals
+        !    allocate (work(lwork))
+        !    allocate (iwork(liwork))
+        !    allocate (rwork(lrwork))
+        !else
+        !    lwork = norbitals*norbitals ! Use xxxx, Hk and Sk for work area
+        !    lrwork = 3*norbitals
+        !    allocate (rwork(lrwork))
+        !end if
+
+        if (iqout .eq. 3) then
+            allocate (ssss(norbitals,norbitals))
+            allocate (ww(norbitals))
+        endif
+        call alloc_work( norbitals, divide )
 
         call ktransform( kpoint, norbitals, Sk, Hk )
-        if (divide) then
-            lwork  = 100*norbitals + norbitals*norbitals
-            lrwork = 100*norbitals + 3*norbitals*norbitals ! for old versions of cheevd
-            liwork = 10*norbitals
-            allocate (work(lwork))
-            allocate (iwork(liwork))
-            allocate (rwork(lrwork))
-        else
-            lwork = norbitals*norbitals ! Use xxxx, Hk and Sk for work area
-            lrwork = 3*norbitals
-            allocate (rwork(lrwork))
-        end if
+
         if (.not. allocated(sm12_save)) then
             allocate (sm12_save(norbitals,norbitals,nkpoints))
         end if
@@ -169,12 +186,41 @@ subroutine solveH( ikpoint, kpoint )
 
 ! CALCULATE (S^-1/2)*H*(S^-1/2)
 ! ****************************************************************************
-        call chemm ( 'R', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals, a0, Sk, norbitals ) ! Set M=H*(S^-.5)
-        call chemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, Sk, norbitals, a0, Hk, norbitals ) ! Set Z=(S^-.5)*M
+!        call chemm ( 'R', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk,   norbitals, a0, zzzz, norbitals ) ! Set M=H*(S^-.5)
+!        call chemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, zzzz, norbitals, a0, Hk,   norbitals ) ! Set Z=(S^-.5)*M
 ! xxxx = S^-1/2 in AO basis
 ! Sk = Unused (used as complex workspace in cheev call below)
 ! Hk = Hamiltonian in the MO basis set
 
+
+! CALCULATE (S^-1/2)*H*(S^-1/2)
+! ****************************************************************************
+        ifile = 111111
+        write(*,*) " norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
+        open( ifile, file='solveH_mats.log', status='unknown' )
+        !call debug_writeMatFile( "sqrtS.log", real(xxxx), norbitals, norbitals )
+        !call debug_writeMatFile( "Hk.log",    real(Hk),   norbitals, norbitals )
+        write(ifile,*) "sqrtS: "
+        call debug_writeMat( ifile, real(xxxx), norbitals, norbitals )
+        write(ifile,*) "Hk: "
+        call debug_writeMat( ifile, real(Hk),   norbitals, norbitals )
+        if (iqout .ne. 3) then
+            write (*,*) " iqout .ne. 3 "
+            call zhemm ( 'R', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals,   a0, zzzz, norbitals )   ! M=H*(S^-.5)
+            call zhemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, zzzz, norbitals, a0, Hk, norbitals )   ! Z=(S^-.5)*M
+        else ! FIXME: I think these two calls we don't need them!!
+            call zgemm ('C', 'N', norbitals, norbitals, norbitals, a1, xxxx,  norbitals,  Sk, norbitals, a0, zzzz, norbitals)
+            call zgemm ('N', 'N', norbitals, norbitals, norbitals, a1, zzzz,   norbitals, xxxx, norbitals, a0, Sk, norbitals)
+            ! FIXME
+            call zgemm ( 'C', 'N', norbitals, norbitals, norbitals, a1, xxxx,  norbitals, Hk, norbitals, a0, zzzz, norbitals ) ! Set conjg((W(WSW)^-1/2)T)*H
+            call zgemm ( 'N', 'N', norbitals, norbitals, norbitals, a1, zzzz,  norbitals, xxxx, norbitals, a0, Hk, norbitals )  ! Set M*(W(WSW)^-1/2)
+            ! so we have conjg((W(WSW)^-1/2)T)*H*(W(WSW)^-1/2) now
+        endif
+        !call debug_writeMatFile( "SHS.log",    real(Hk), norbitals, norbitals )
+        write(ifile,*) "S^0.5*H*S^0.5: "
+        call debug_writeMat( ifile,    real(Hk), norbitals, norbitals )
+        close(ifile)
+        stop
 
 ! DIAGONALIZE THE HAMILTONIAN.
 ! ****************************************************************************
@@ -201,17 +247,47 @@ subroutine solveH( ikpoint, kpoint )
 !        if (info .ne. 0) call diag_error (info, 0)
 
 ! Eigenvectors are needed to calculate the charges and for forces!
-        if (divide) then
-          call cheevd('V', 'U', norbitals, Hk, norbitals, eigen, work, lwork, rwork , lrwork, iwork, liwork, info ) 
-        else
-          call cheev ('V', 'U', norbitals, Hk, norbitals, eigen, Sk, lwork, rwork, info)
-        end if
-        if (info .ne. 0) call diag_error (info, 0)
+!        if (divide) then
+!          call cheevd('V', 'U', norbitals, Hk, norbitals, eigen, work, lwork, rwork , lrwork, iwork, liwork, info ) 
+!        else
+!          call cheev ('V', 'U', norbitals, Hk, norbitals, eigen, Sk, lwork, rwork, info)
+!        end if
+!        if (info .ne. 0) call diag_error (info, 0)
 
 ! FIXME - Should only go up to norbitals_new, but we do not know what
 ! eigenvalues and eigenvectors correspond to the removed MO's.  Their
 ! eigenvalues will be very close to zero, but not exactly.  Also, we do not
 ! know if a real eigen value is near zero.
+
+
+! DIAGONALIZE THE HAMILTONIAN.
+! ****************************************************************************
+!        if (wrtout) then
+!          write (*,*) '  '
+!          write (*,*) ' Call diagonalizer for Hamiltonian. '
+!          write (*,*) '            The energy eigenvalues: '
+!          write (*,*) ' *********************************************** '
+!        end if
+ 
+! Eigenvectors are needed to calculate the charges and for forces!
+        if (divide) then
+            call zheevd('V', 'U', norbitals, Hk, norbitals, eigen, work,  lwork, rwork , lrwork, iwork, liwork, info )
+          else
+  ! set default size of working space
+            lwork = 1
+            deallocate (work)
+            allocate (work(lwork))
+  ! first find optimal working space
+            call zheev ('V', 'U', norbitals, Hk, norbitals, eigen, work,  -1, rwork, info)
+  ! resize working space
+            lwork = work(1)
+  !          write (*,*) 'lwork =',lwork
+            deallocate (work)
+            allocate (work(lwork))
+  ! diagonalize the overlap matrix with the new working space
+            call zheev ('V', 'U', norbitals, Hk, norbitals, eigen, work,  lwork, rwork, info)
+          end if ! divide
+          if (info .ne. 0) call diag_error (info, 0)
 
 
     write (*,*) "DEBUG kspace2 | are blowre orthonormal ? :", norbitals
@@ -245,15 +321,23 @@ subroutine solveH( ikpoint, kpoint )
 
 ! Deallocate Arrays
 ! ===========================================================================
-        deallocate (xxxx)
+
         deallocate (Hk)
         deallocate (Sk)
-        deallocate (slam)
-        deallocate (rwork)
-        if (divide) then
-          deallocate (work)
-          deallocate (iwork)
-        end if
+
+        if (iqout .eq. 3) then
+            deallocate (ww)
+            deallocate (ssss)
+        endif
+
+        call dealloc_work()
+        !deallocate (slam)
+        !deallocate (xxxx)
+        !deallocate (rwork)
+        !if (divide) then
+        !  deallocate (work)
+        !  deallocate (iwork)
+        !end if
 
 ! Format Statements
 ! ===========================================================================

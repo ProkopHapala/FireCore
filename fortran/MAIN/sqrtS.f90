@@ -58,13 +58,14 @@
 ! ===========================================================================
 !subroutine kspace (nprocs, my_proc, Kscf, iqout, icluster, iwrteigen, ikpoint, sks, nkpoints, iwrtdos, iwrthop, iwrtatom, itrans)
 subroutine sqrtS( Smat, norbitals, divide )
+    use debug
     use  workmat
     implicit none
 
 ! Arguments
     complex, dimension (norbitals,norbitals), intent(inout) :: Smat
-    integer, intent (in) :: norbitals
-    logical, intent(inout) :: divide  ! do we divide and conquer?
+    integer, intent(in) :: norbitals
+    logical, intent(in) :: divide  ! do we divide and conquer?
 
 ! globals
     real sqlami
@@ -73,75 +74,109 @@ subroutine sqrtS( Smat, norbitals, divide )
     integer info
     integer imu,jmu
 
+    integer ifile
+
     real*8, parameter :: overtol = 1.0d-4
 
 ! Procedure
 ! ===========================================================================
-! Initialize some things
+! DIAGONALIZE THE OVERLAP MATRIX
+! ****************************************************************************
+! If you are within the scf loop, you do not have to recalculate the overlap.
+! NPA
+
+    ! Call the diagonalizer
+    !         if (wrtout) then
+    !           write (*,*) ' Call diagonalizer for overlap. '
+    !           write (*,*) '                  The overlap eigenvalues: '
+    !           write (*,*) ' ******************************************************* '
+    !!         end if
+
+
+    zzzz = Smat
 
     if (divide) then
-        call cheevd('V', 'U', norbitals, Smat, norbitals, slam, work, lwork, rwork , lrwork, iwork, liwork, info ) 
+        call zheevd('V', 'U', norbitals, zzzz, norbitals, slam, work,  lwork, rwork , lrwork, iwork, liwork, info )
     else
-        call cheev ('V', 'U', norbitals, Smat, norbitals, slam, xxxx, lwork, rwork , info)
+! first find optimal working space
+        call zheev ('V', 'U', norbitals, zzzz, norbitals, slam, work,   -1, rwork, info)
+! resize working space
+        lwork = work(1)
+        deallocate (work)
+        allocate (work(lwork))
+! diagonalize the overlap matrix with the new working space
+        call zheev ('V', 'U', norbitals, zzzz, norbitals, slam, work,  lwork, rwork , info)
     end if
+
     if (info .ne. 0) call diag_error (info, 0)
+!    if (ishort .eq. 1 .and. wrtout) then
+!          write (*,100) slam(1), slam(norbitals)
+!    else if (wrtout) then
+!          write (*,200) (slam(imu), imu = 1, norbitals)
+!    end if
 
-    ! xxxx = unused
-    ! zzzz = Overlap eigenvectors
-    ! yyyy = Hamiltonian
+! xxxx = unused
+! zzzz = Overlap eigenvectors
+! yyyy = Hamiltonian
 
-    ! CHECK THE LINEAR DEPENDENCE
-    ! ****************************************************************************
-    ! Fix the linear dependence problem. References: Szabo and Ostlund, Modern
-    ! Quantum Chem. McGraw Hill 1989 p. 142; Szabo and Ostlund, Modern Quantum
-    ! Chem. Dover 1996 p. 145. A tolerance for a small overlap eigenvalue is
-    ! set by overtol.
-    ! Determine the smallest active eigenvector
+
+! CHECK THE LINEAR DEPENDENCE
+! ****************************************************************************
+! Fix the linear dependence problem. References: Szabo and Ostlund, Modern
+! Quantum Chem. McGraw Hill 1989 p. 142; Szabo and Ostlund, Modern Quantum
+! Chem. Dover 1996 p. 145. A tolerance for a small overlap eigenvalue is
+! set by overtol.
+
+! Determine the smallest active eigenvector
     mineig = 0
     do imu = 1, norbitals
-        if (slam(imu) .lt. overtol) mineig = imu
+    if (slam(imu) .lt. overtol) mineig = imu
     end do
 
-    ! You can specify a specific number of orbitals to drop with this next line, by uncommenting it.
-    ! mineig = 0  {Don't drop any}
+! You can specify a specific number of orbitals to drop with this
+! next line, by uncommenting it.
+! mineig = 0  {Don't drop any}
+
     mineig = mineig + 1
     norbitals_new = norbitals + 1 - mineig
+
     if (norbitals_new .ne. norbitals) then
-        write (*,*) '  '
-        write (*,*) ' ############################ '
-        write (*,*) ' WARRNING in sqrtS() '
-        write (*,*) ' Linear dependence encountered in basis set. '
-        write (*,*) ' An overlap eigenvalue is very small. '
-        write (*,*) norbitals - norbitals_new, ' vectors removed. '
-        write (*,*) ' Spurious orbital energies near zero will '
-        write (*,*) ' appear as a result of dropping these orbitals'
-        write (*,*) ' You can change this by adjusting overtol '
-        write (*,*) '  '
-        ! if(ishort .eq. 1) then    ! Don't print out again if done above
-        !     write (*,*) '            The overlap eigenvalues: '
-        !     write (*,*) ' ********************************************** '
-        !     write (*,200) (slam(imu), imu = 1, norbitals)
-        !     else                      ! They asked for extra printout
-        !     write(*,*) ' '
-        !     write(*,*) ' Eigenvectors that correspond to eigenvalues'
-        !     write(*,*) ' that were eliminated.  These might provide'
-        !     write(*,*) ' insight into what atomic orbitals are causing'
-        !     write(*,*) ' the problem.'
-        !     write(*,*) ' '
-        !     do imu = 1, mineig - 1
-        !         write(*,*) ' eigenvector',imu
-        !         do jmu = 1, norbitals
-        !             write(*,*) jmu,' ',zzzz(jmu,imu)
-        !         end do
-        !     end do
-        ! end if
-        write (*,*) ' '
-        do imu = mineig, norbitals
-            jmu = imu - mineig + 1
-            Smat(:,jmu) = Smat(:,imu)
-            slam(jmu) = slam(imu)
-        end do
-    end if ! (norbitals_new .ne. norbitals)
+    write (*,*) '  '
+    write (*,*) ' WARNING. ############################ '
+    write (*,*) ' Linear dependence encountered in basis set. '
+    write (*,*) ' An overlap eigenvalue is very small. '
+    write (*,*) norbitals - norbitals_new, ' vectors removed. '
+    write (*,*) ' Spurious orbital energies near zero will '
+    write (*,*) ' appear as a result of dropping these orbitals'
+    write (*,*) ' You can change this by adjusting overtol in '
+    write (*,*) ' kspace.f '
+    write (*,*) '  '
+    !if(ishort .eq. 1) then    ! Don't print out again if done above
+    !    write (*,*) '            The overlap eigenvalues: '
+    !    write (*,*) ' ********************************************** '
+    !    write (*,200) (slam(imu), imu = 1, norbitals)
+    !else                      ! They asked for extra printout
+    !    write(*,*) ' '
+    !    write(*,*) ' Eigenvectors that correspond to eigenvalues'
+    !    write(*,*) ' that were eliminated.  These might provide'
+    !    write(*,*) ' insight into what atomic orbitals are causing'
+    !    write(*,*) ' the problem.'
+    !    write(*,*) ' '
+    !    do imu = 1, mineig - 1
+    !    write(*,*) ' eigenvector',imu
+    !    do jmu = 1, norbitals
+    !        write(*,*) jmu,' ',zzzz(jmu,imu)
+    !    end do
+    !    end do
+    !end if ! ishort
+    write (*,*) ' '
+
+    do imu = mineig, norbitals
+    jmu = imu - mineig + 1
+    zzzz(:,jmu) = zzzz(:,imu)
+    slam(jmu) = slam(imu)
+    end do
+    end if
 
     ! CALCULATE (S^-1/2) --> sm1
     ! ****************************************************************************
@@ -153,10 +188,10 @@ subroutine sqrtS( Smat, norbitals, divide )
     ! after it is combined with overlap.
     do imu = 1, norbitals_new
         sqlami = slam(imu)**(-0.25d0)
-        Smat(:,imu) = Smat(:,imu)*sqlami
+        zzzz(:,imu) = zzzz(:,imu)*sqlami
     end do
 
-    call cgemm ('N', 'C', norbitals, norbitals, norbitals_new, cmplx(1.0d0,0.0d0), Smat, norbitals, Smat, norbitals, cmplx(0.0d0,0.0d0), xxxx, norbitals)
+    call zgemm ('N', 'C', norbitals, norbitals, norbitals_new, cmplx(1.0d0,0.0d0), zzzz, norbitals, zzzz, norbitals, cmplx(0.0d0,0.0d0), xxxx, norbitals)
+
 
 end subroutine sqrtS
-
