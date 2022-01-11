@@ -60,6 +60,7 @@
 subroutine sqrtS( Smat, norbitals, divide )
     use debug
     use  workmat
+    use interactions, only: norbitals_new
     implicit none
 
 ! Arguments
@@ -70,7 +71,7 @@ subroutine sqrtS( Smat, norbitals, divide )
 ! globals
     real sqlami
     integer mineig
-    integer norbitals_new
+    !integer norbitals_new
     integer info
     integer imu,jmu
 
@@ -193,5 +194,6 @@ subroutine sqrtS( Smat, norbitals, divide )
 
     call zgemm ('N', 'C', norbitals, norbitals, norbitals_new, cmplx(1.0d0,0.0d0), zzzz, norbitals, zzzz, norbitals, cmplx(0.0d0,0.0d0), xxxx, norbitals)
 
+    write(*,*) "DEBUG sqrtS() norbitals_new ", norbitals_new
 
 end subroutine sqrtS

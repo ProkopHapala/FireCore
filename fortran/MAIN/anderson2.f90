@@ -57,6 +57,7 @@
 ! ===========================================================================
  subroutine anderson ( x_try, x_old, beta, r2, iter, max_order, nmsh, max_scf_iterations)
    
+   use debug
    use charges
    implicit none
 
@@ -83,8 +84,8 @@
 ! Local Variable Declaration and Description
 ! ===========================================================================
    real, allocatable, dimension(:,:) :: a_matrix  ! Eq. 5.17
-   real, allocatable, dimension(:) :: delF_F      ! <delF|F> in Eq. 5.31
-   real, allocatable, dimension(:) :: contribution
+   real, allocatable, dimension(:)   :: delF_F      ! <delF|F> in Eq. 5.31
+   real, allocatable, dimension(:)   :: contribution
    
    integer iloop
    integer jloop
@@ -99,8 +100,7 @@
 ! Procedure
 ! ===========================================================================
 
-   write (*,*) "DEBUG anderson_l95.f90"
-   stop 
+   write (*,*) "DEBUG anderson2.f90", iter, max_order
 
    if(.not. allocated(Fv))then
       allocate (Fv(nmsh,max_scf_iterations))
@@ -132,26 +132,19 @@
       return
    end if
 
-! Add to r2_sav
    r2_sav(iter) = r2
-
-! Add to delF
-   delF(:,iter-1) = Fv(:,iter) - Fv(:,iter-1) ! Eq. 5.6
-
-! Add to delX
-   delX(:,iter-1) = Xv(:,iter) - Xv(:,iter-1) ! Eq. 5.5
+   delF(:,iter-1) = Fv(:,iter) - Fv(:,iter-1) ! Eq. 5.6    Add to delF
+   delX(:,iter-1) = Xv(:,iter) - Xv(:,iter-1) ! Eq. 5.5   Add to delX
 
 ! Make sure step with lowest r2 value is always used (ie. not lost)
    if (iter .gt. max_order .and. max_order .ge. 6) then
       if (r2_sav(iter-max_order) .lt. minval(r2_sav(iter-max_order+1:iter))) then
 !         Throw away second oldest step instead
          r2_sav(iter-max_order+1) = r2_sav(iter-max_order)
-         Fv(:,iter-max_order+1) = Fv(:,iter-max_order)
-         Xv(:,iter-max_order+1) = Xv(:,iter-max_order)
-         delX(:,iter-max_order+1) =                                         &
-   &               Xv(:,iter-max_order+2) - Xv(:,iter-max_order+1)
-         delF(:,iter-max_order+1) =                                         &
-   &               Fv(:,iter-max_order+2) - Fv(:,iter-max_order+1)
+         Fv(:,iter-max_order+1)   = Fv(:,iter-max_order)
+         Xv(:,iter-max_order+1)   = Xv(:,iter-max_order)
+         delX(:,iter-max_order+1) = Xv(:,iter-max_order+2) - Xv(:,iter-max_order+1)
+         delF(:,iter-max_order+1) = Fv(:,iter-max_order+2) - Fv(:,iter-max_order+1)
       end if
    end if
 
@@ -169,16 +162,18 @@
       delF_F(iloop) = dot_product(delF(:,iloop),Fv(:,iter))  
    end do
 
+   call debug_writeMatFile( "anderson_mat.log", a_matrix, mix_order-1, mix_order-1 )
+
+
 ! Solve for gammas Eq. 5.31, 7.4 (We move a-inverse to other side: a * gamma = <|>)
    lwork = (mix_order-1)**2
    allocate (work(lwork))
    allocate (ipiv(mix_order-1))
    info = 0
-   call dsysv('U', mix_order-1, 1, a_matrix, mix_order-1, ipiv, delF_F, &
-     &                  mix_order-1, work, lwork, info )
+   call dsysv('U', mix_order-1, 1, a_matrix, mix_order-1, ipiv, delF_F, mix_order-1, work, lwork, info )
    if(info .ne. 0) then
       write(*,*) ' Error in Anderson, info =',info
-      if(mix_order .le. 2)stop ! if you can't solve a 2x2 something is wrong
+      if(mix_order .le. 2) stop ! if you can't solve a 2x2 something is wrong
       mix_order = mix_order-1
       deallocate (work,ipiv,delF_F,a_matrix)
       goto 888 ! Try again with lower order
@@ -207,6 +202,8 @@
 !    deallocate(contribution)
 
    deallocate (delF_F,a_matrix,work,ipiv)
+
+   write (*,*) "DEBUG anderson2.f90 END"
 
 ! Format Statements
 ! ===========================================================================
