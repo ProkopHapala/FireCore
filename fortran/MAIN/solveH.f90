@@ -195,15 +195,15 @@ subroutine solveH( ikpoint, kpoint )
 
 ! CALCULATE (S^-1/2)*H*(S^-1/2)
 ! ****************************************************************************
-        ifile = 111111
-        write(*,*) " norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
-        open( ifile, file='solveH_mats.log', status='unknown' )
+        !ifile = 111111
+        !write(*,*) " norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
+        !open( ifile, file='solveH_mats.log', status='unknown' )
         !call debug_writeMatFile( "sqrtS.log", real(xxxx), norbitals, norbitals )
         !call debug_writeMatFile( "Hk.log",    real(Hk),   norbitals, norbitals )
-        write(ifile,*) "sqrtS: "
-        call debug_writeMat( ifile, real(xxxx), norbitals, norbitals )
-        write(ifile,*) "Hk: "
-        call debug_writeMat( ifile, real(Hk),   norbitals, norbitals )
+        !write(ifile,*) "sqrtS: "
+        !call debug_writeMat( ifile, real(xxxx), norbitals, norbitals )
+        !write(ifile,*) "Hk: "
+        !call debug_writeMat( ifile, real(Hk),   norbitals, norbitals )
         if (iqout .ne. 3) then
             write (*,*) " iqout .ne. 3 "
             call zhemm ( 'R', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals,   a0, zzzz, norbitals )   ! M=H*(S^-.5)
@@ -217,10 +217,10 @@ subroutine solveH( ikpoint, kpoint )
             ! so we have conjg((W(WSW)^-1/2)T)*H*(W(WSW)^-1/2) now
         endif
         !call debug_writeMatFile( "SHS.log",    real(Hk), norbitals, norbitals )
-        write(ifile,*) "S^0.5*H*S^0.5: "
-        call debug_writeMat( ifile,    real(Hk), norbitals, norbitals )
-        close(ifile)
-        stop
+        !write(ifile,*) "S^0.5*H*S^0.5: "
+        !call debug_writeMat( ifile,    real(Hk), norbitals, norbitals )
+        !close(ifile)
+        !stop
 
 ! DIAGONALIZE THE HAMILTONIAN.
 ! ****************************************************************************
@@ -289,27 +289,46 @@ subroutine solveH( ikpoint, kpoint )
           end if ! divide
           if (info .ne. 0) call diag_error (info, 0)
 
-
-    write (*,*) "DEBUG kspace2 | are blowre orthonormal ? :", norbitals
-    do i = 1, norbitals
-        do j = 1, norbitals
-        !dot =  sum( Hk(:,i) * Hk(:,j) )
-        dot = dot_product( real(Hk(:,i)), real( Hk(:,j) ) )
-        write (*,*) i,j, dot
+          do inu=1,norbitals
+            write(*,*) "DEBUG eig[",inu,"] ", eigen(inu)
         end do
-    end do
+        
+    !write(ifile,*) "B_Low coefs: "
+    !call debug_writeMat( ifile, real(Hk), norbitals, norbitals )
+
+
+    !write (*,*) "DEBUG kspace2 | are blowre orthonormal ? :", norbitals
+    !do i = 1, norbitals
+    !    do j = 1, norbitals
+    !    !dot =  sum( Hk(:,i) * Hk(:,j) )
+    !    dot = dot_product( real(Hk(:,i)), real( Hk(:,j) ) )
+    !    write (*,*) i,j, dot
+    !    end do
+    !end do
 
 ! INFORMATION FOR THE LOWDIN CHARGES
 ! ****************************************************************************
 ! xxxx = S^-1/2 in AO basis
-! Sk = Unused
-! Hk = Hamiltonian eigenvectors in the MO basis
-        eigen_k(1:norbitals,ikpoint) = eigen(:)
-        if (iqout .ne. 2) blowre(:,:,ikpoint) = real(Hk(:,:))
-        if (iqout .ne. 2 .and. icluster .ne. 1) blowim(:,:,ikpoint) = aimag(Hk(:,:))
-        call chemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals, a0, Sk, norbitals )
-        bbnkre(:,:,ikpoint) = real(Sk(:,:))
-        if (icluster .ne. 1) bbnkim(:,:,ikpoint) = aimag(Sk(:,:))
+! zzzz = Unused
+! yyyy = Hamiltonian eigenvectors in the MO basis
+    eigen_k(1:norbitals,ikpoint) = eigen(:)
+    if (iqout .ne. 2) blowre(:,:,ikpoint) = real(Hk(:,:))
+    if (iqout .ne. 2 .and. icluster .ne. 1) blowim(:,:,ikpoint) = aimag(Hk(:,:))
+
+    if (iqout .ne. 3) then
+     call zhemm ( 'L', 'U', norbitals, norbitals, a1, xxxx,  norbitals, Hk, norbitals, a0, zzzz, norbitals )
+    else  !NPA
+     call zgemm ( 'N', 'N', norbitals, norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals, a0, zzzz, norbitals )
+    end if
+
+    bbnkre(:,:,ikpoint) = real(zzzz(:,:))
+    if (icluster .ne. 1) bbnkim(:,:,ikpoint) = aimag(zzzz(:,:))
+
+    !write(ifile,*) "B_ao coefs: "
+    !call debug_writeMat( ifile, real(zzzz), norbitals, norbitals )
+    !close(ifile) !
+    !stop
+
 
 ! We did a symmetric orthogonalization followed by a diagnalization
 ! of the Hamiltonian in this "MO" basis set. This yields a net

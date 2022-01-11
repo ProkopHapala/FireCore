@@ -85,29 +85,37 @@ program fireball
         call solveH   ( ikpoint, k_temp )
         !call build_rho() 
         call denmat ()
+        
+        !write (*,*) "Qin ",  Qin(1,:)
+        !write (*,*) "Qout ", Qout(1,:)
 
         sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
 
         if ( sigma .lt. sigmatol) then
             write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol
             exit
+        else 
+            write (*,*) "# SCF converged not ", Kscf ,sigma, sigmatol
         end if ! simga
 
         !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
         !call mixCharge
-        !call mixer ()
+        call mixer ()
 
-        do i = 1, natoms
-            in1 = imass(i)
-            write (*,'(A,i5,A)',advance='no') "atom[",i,"]" 
-            do j = 1, nssh(in1)
-              write (*,'(f10.5)',advance='no') Qin (j,i)
-              write (*,'(f10.5)',advance='no') Qout(j,i)
-            end do
-            write (*,*)
-        end do ! 
+        write (*,*) "Qin ",  Qin(1,:)
+        write (*,*) "Qout ", Qout(1,:)
 
-    end do
+        !do i = 1, natoms
+        !    in1 = imass(i)
+        !    write (*,'(A,i5,A)',advance='no') "atom[",i,"]" 
+        !    do j = 1, nssh(in1)
+        !      write (*,'(f10.5)',advance='no') Qin (j,i)
+        !      write (*,'(f10.5)',advance='no') Qout(j,i)
+        !    end do
+        !    write (*,*)
+        !end do ! 
+
+    end do ! Kscf
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
     iforce = 1

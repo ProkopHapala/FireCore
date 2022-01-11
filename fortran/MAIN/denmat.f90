@@ -267,6 +267,8 @@
 !                      C O M P U T E    D E N S I T I E S
 ! ****************************************************************************
 ! Loop over all atoms iatom in the unit cell, and then over all its neighbors.
+
+        write (*,*) "DEBUG denmat natoms, nkpoints, norbitals_new, icluster ", natoms, nkpoints, norbitals_new, icluster
         do iatom = 1, natoms
          in1 = imass(iatom)
          do ineigh = 1, neighn(iatom)
@@ -274,15 +276,13 @@
           jatom = neigh_j(ineigh,iatom)
           in2 = imass(jatom)
           vec = xl(:,mbeta) + ratom(:,jatom) - ratom(:,iatom)
-
-! Loop over the special k points.
           do ikpoint = 1, nkpoints
            dot = special_k(1,ikpoint)*vec(1) + special_k(2,ikpoint)*vec(2) + special_k(3,ikpoint)*vec(3)
            phasex = cmplx(cos(dot),sin(dot))*weight_k(ikpoint)*spin
 
-! Loop over all bands
            if (icluster .ne. 1) then
             do iband = 1, norbitals_new
+             write (*,*) "DEBUG denmat ioccupy_k(iband,ikpoint) ", iband,ikpoint, ioccupy_k(iband,ikpoint)
              if (ioccupy_k(iband,ikpoint) .ne. 0) then
               phase = phasex*foccupy(iband,ikpoint)
               do imu = 1, num_orb(in1)
@@ -292,17 +292,15 @@
                 nnu = inu + degelec(jatom)
                 step2 = step1*(bbnkre(nnu,iband,ikpoint) + ai*bbnkim(nnu,iband,ikpoint))
                 gutr = real(step2)
-! Finally the expressions.........
                 rho(imu,inu,ineigh,iatom)  = rho(imu,inu,ineigh,iatom) + gutr
                 cape(imu,inu,ineigh,iatom) = cape(imu,inu,ineigh,iatom) + eigen_k(iband,ikpoint)*gutr
-               end do
-              end do
-             end if
-
-! Finish loop over bands.
-            end do
-           else
+               end do ! inu
+              end do ! imu
+             end if ! ioccupy_k
+            end do ! iband
+           else ! icluster
             do iband = 1, norbitals_new
+             write (*,*) "DEBUG denmat ioccupy_k(iband,ikpoint) ", iband,ikpoint, ioccupy_k(iband,ikpoint)
              if (ioccupy_k(iband,ikpoint) .ne. 0) then
               phase = phasex*foccupy(iband,ikpoint)
               do imu = 1, num_orb(in1)
@@ -312,22 +310,17 @@
                 nnu = inu + degelec(jatom)
                 step2 = step1*bbnkre(nnu,iband,ikpoint)
                 gutr = real(step2)
-! Finally the expressions.........
                 rho(imu,inu,ineigh,iatom) = rho(imu,inu,ineigh,iatom) + gutr
                 cape(imu,inu,ineigh,iatom) = cape(imu,inu,ineigh,iatom) + eigen_k(iband,ikpoint)*gutr
-               end do
-              end do
-             end if
+               end do ! inu
+              end do ! imu
+             end if ! ioccupy_k
+            end do ! iband
+           end if ! icluster
 
-! Finish loop over bands.
-            end do
-           end if
-
-! Finish loop over k-points.
-          end do
-! Finish loop over atoms and neighbors.
-         end do
-        end do
+          end do ! ikpoint
+         end do ! ineigh
+        end do ! iatom
 
 !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 !                   M A T R I X     D E N S I T Y
@@ -462,18 +455,17 @@
 ! ****************************************************************************
 ! Compute Mulliken charges.
         if (iqout .eq. 2) then
-        write(*,*)  " DEBUG  Compute Mulliken charges."
+         write(*,*)  " DEBUG  Compute Mulliken charges.", ifixcharge
          Qout = 0.0d0
          QMulliken = 0.0d0
          QMulliken_TOT = 0.0d0
 
          if (ifixcharge .eq. 1) then
-
           do iatom = 1, natoms
            in1 = imass(iatom)
            QMulliken_TOT(iatom) = 0.0d0
            do issh = 1, nssh(in1)
-            Qout(issh,iatom) = Qin(issh,iatom)
+            Qout(issh,iatom)     = Qin(issh,iatom)
             QMulliken_TOT(iatom) = QMulliken_TOT(iatom) + Qin(issh,iatom)
            end do
           end do
@@ -482,11 +474,12 @@
            in1 = imass(iatom)
 ! Loop over neighbors
            do ineigh = 1, neighn(iatom)
-            jatom = neigh_j(ineigh,iatom)
-            in2 = imass(jatom)
+            jatom  = neigh_j(ineigh,iatom)
+            in2    = imass(jatom)
             jneigh = neigh_back(iatom,ineigh)
             do imu = 1, num_orb(in1)
              do inu = 1, num_orb(in2)
+              write(*,*) "DEBUG ",iatom,ineigh,imu,inu,"rho",rho(imu,inu,ineigh,iatom)," S ", s_mat(imu,inu,ineigh,iatom) 
               QMulliken(imu,iatom) = QMulliken(imu,iatom) +    0.5d0 *( &
      &          rho(imu,inu,ineigh,iatom)*s_mat(imu,inu,ineigh,iatom)   &
      &        + rho(inu,imu,jneigh,jatom)*s_mat(inu,imu,jneigh,jatom) )
@@ -523,7 +516,7 @@
 ! ! END_DEF_GAP
 
 
-
+        write (*,*) "DEBUG denmapt: Qout ", Qout(1,:)
 
 ! ****************************************************************************
 !  C O M P U T E    M U L L I K E N - D I P O L E    C H A R G E S
