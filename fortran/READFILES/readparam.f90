@@ -108,7 +108,7 @@
 Namelist /option/ iharris, idogs, imcweda, igsn, &
                                          iqout, qstate, icluster, ifixcharge, ifixneigh,   &
                                          iimage,  &
-                                         iconstraints, basisfile, lvsfile,    &
+                                         iconstraints, basisfile, lvsfile, nstepf,    &
                                          max_scf_iterations, bmix, sigmatol, tempfe,  &   ! ialgmix, 
                                          kptpreference,         &
                                          rescal, xyz2line, &
@@ -156,8 +156,8 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
         fdataLocation = 'Fdata'
         !acfile = 'ac.dat'
         !xvfile = 'xv.dat'
-        nstepi = 1
-!        nstepf = 100
+!        nstepi = 1
+        nstepf = 1
 !        dt = 0.5d0
 !        T_initial = 0.0d0
 !        T_final = 10.0d0

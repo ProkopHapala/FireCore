@@ -1,6 +1,6 @@
 #!/bin/bash
 
-names="t01_H2 t02_CH4 t03_C2H2 t04_C2H4 t05_C2H6 t06_C6H6 t07_Cn t08_CnHn"
+names="t01_H2 t02_H4 t02_CH4 t03_C2H2 t04_C2H4 t05_C2H6 t06_C6H6 t07_Cn t08_CnHn"
 
 bkdir=`pwd`
 

@@ -262,13 +262,12 @@
 !         write (*,*) '  '
 !        end if
 
-
 ! ****************************************************************************
 !                      C O M P U T E    D E N S I T I E S
 ! ****************************************************************************
 ! Loop over all atoms iatom in the unit cell, and then over all its neighbors.
 
-        write (*,*) "DEBUG denmat natoms, nkpoints, norbitals_new, icluster ", natoms, nkpoints, norbitals_new, icluster
+        !write (*,*) "DEBUG denmat natoms, nkpoints, norbitals_new, icluster ", natoms, nkpoints, norbitals_new, icluster
         do iatom = 1, natoms
          in1 = imass(iatom)
          do ineigh = 1, neighn(iatom)
@@ -282,7 +281,7 @@
 
            if (icluster .ne. 1) then
             do iband = 1, norbitals_new
-             write (*,*) "DEBUG denmat ioccupy_k(iband,ikpoint) ", iband,ikpoint, ioccupy_k(iband,ikpoint)
+             !write (*,*) "DEBUG denmat ioccupy_k(iband,ikpoint) ", iband,ikpoint, ioccupy_k(iband,ikpoint)
              if (ioccupy_k(iband,ikpoint) .ne. 0) then
               phase = phasex*foccupy(iband,ikpoint)
               do imu = 1, num_orb(in1)
@@ -300,7 +299,7 @@
             end do ! iband
            else ! icluster
             do iband = 1, norbitals_new
-             write (*,*) "DEBUG denmat ioccupy_k(iband,ikpoint) ", iband,ikpoint, ioccupy_k(iband,ikpoint)
+             !write (*,*) "DEBUG denmat ioccupy_k(iband,ikpoint) ", iband,ikpoint, ioccupy_k(iband,ikpoint)
              if (ioccupy_k(iband,ikpoint) .ne. 0) then
               phase = phasex*foccupy(iband,ikpoint)
               do imu = 1, num_orb(in1)
@@ -394,7 +393,7 @@
 ! Initialize
         if (iqout .eq. 1 .or. iqout .eq. 3) then
 
-         write(*,*)  " DEBUG  Compute Lowdin charges."
+         !write(*,*)  " DEBUG  Compute Lowdin charges."
          Qout = 0.0d0
          QLowdin_TOT = 0.0d0
 
@@ -430,7 +429,7 @@
                  aux3 = aux2*(blowre(mmu,iorbital,ikpoint)**2 + blowim(mmu,iorbital,ikpoint)**2)
                 else
 
-                 write (*,*) "DEBUG denmat ", iatom, issh, mqn,  aux2*blowre(mmu,iorbital,ikpoint)**2, blowre(mmu,iorbital,ikpoint), foccupy(iorbital,ikpoint), weight_k(ikpoint)
+                 !write (*,*) "DEBUG denmat ", iatom, issh, mqn,  aux2*blowre(mmu,iorbital,ikpoint)**2, blowre(mmu,iorbital,ikpoint), foccupy(iorbital,ikpoint), weight_k(ikpoint)
                  !write (*,*) "DEBUG denmat ", iatom, issh, mqn,  blowre(mmu,iorbital,ikpoint)
                  aux3 = aux2*blowre(mmu,iorbital,ikpoint)**2
                 end if
@@ -455,7 +454,7 @@
 ! ****************************************************************************
 ! Compute Mulliken charges.
         if (iqout .eq. 2) then
-         write(*,*)  " DEBUG  Compute Mulliken charges.", ifixcharge
+         !write(*,*)  " DEBUG  Compute Mulliken charges.", ifixcharge
          Qout = 0.0d0
          QMulliken = 0.0d0
          QMulliken_TOT = 0.0d0
@@ -479,7 +478,7 @@
             jneigh = neigh_back(iatom,ineigh)
             do imu = 1, num_orb(in1)
              do inu = 1, num_orb(in2)
-              write(*,*) "DEBUG ",iatom,ineigh,imu,inu,"rho",rho(imu,inu,ineigh,iatom)," S ", s_mat(imu,inu,ineigh,iatom) 
+              !write(*,*) "DEBUG ",iatom,ineigh,imu,inu,"rho",rho(imu,inu,ineigh,iatom)," S ", s_mat(imu,inu,ineigh,iatom) 
               QMulliken(imu,iatom) = QMulliken(imu,iatom) +    0.5d0 *( &
      &          rho(imu,inu,ineigh,iatom)*s_mat(imu,inu,ineigh,iatom)   &
      &        + rho(inu,imu,jneigh,jatom)*s_mat(inu,imu,jneigh,jatom) )
@@ -516,7 +515,7 @@
 ! ! END_DEF_GAP
 
 
-        write (*,*) "DEBUG denmapt: Qout ", Qout(1,:)
+        !write (*,*) "DEBUG denmapt: Qout ", Qout(1,:)
 
 ! ****************************************************************************
 !  C O M P U T E    M U L L I K E N - D I P O L E    C H A R G E S
@@ -685,21 +684,22 @@
 !          close (unit = 34)
 !         end if ! end if of iwrt_pop = 1
 
+
 ! ****************************************************************************
 !  C O M P U T E    B A N D - S T R U C T U R E    E N E R G Y
 ! ****************************************************************************
 ! Compute ebs, the band structure energy.
-        ebs = 0.0d0
-        ztest = 0.0d0
+        ebs = 0
+        ztest = 0
         do ikpoint = 1, nkpoints
-         !do iorbital = 1, norbitals_new
-         do iorbital = 1, norbitals   ! DEBUG
+         do iorbital = 1, norbitals_new   ! DEBUG
+          !write (*,*) "DEBUG denmat  ikpoint,iorbital ", ikpoint,iorbital, ioccupy_k(iorbital,ikpoint)
           if (ioccupy_k(iorbital,ikpoint) .eq. 1) then
-           ebs = ebs + weight_k(ikpoint)*spin*eigen_k(iorbital,ikpoint) *foccupy(iorbital,ikpoint)
+           ebs   = ebs + weight_k(ikpoint)*spin*eigen_k(iorbital,ikpoint) *foccupy(iorbital,ikpoint)
            ztest = ztest + weight_k(ikpoint)*spin*foccupy(iorbital,ikpoint)
-          end if
-         end do
-        end do
+          end if !  ioccupy_k
+         end do ! iorbital
+        end do ! ikpoint
 
 ! Test to make sure we get the proper number of states.
         if (abs(ztest - ztot) .gt. 1.0d-02) then

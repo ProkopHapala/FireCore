@@ -64,7 +64,7 @@ subroutine debug_writeBlockedMat( name, M )
          !mbeta = neigh_b(ineigh,iatom)
          jatom = neigh_j(ineigh,iatom)
          in2 = imass(jatom)
-         write(164646,*) "iatom ",iatom," ineigh ",ineigh 
+         !write(164646,*) "iatom ",iatom," ineigh ",ineigh 
          do inu = 1, num_orb(in2)
           jnu = inu + degelec(jatom)
           do imu = 1, num_orb(in1)

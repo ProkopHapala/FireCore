@@ -182,7 +182,7 @@
 ! ===========================================================================
 ! Set up isub2c. 
 
-        write(*,*) "DEBUG read_2c(interaction, nspecies, itheory, ioff2c, nzx) ", interaction, nspecies, itheory, ioff2c, nzx
+        !write(*,*) "DEBUG read_2c(interaction, nspecies, itheory, ioff2c, nzx) ", interaction, nspecies, itheory, ioff2c, nzx
 
         isub2c = 0
         if (interaction .eq. 6) isub2c = 4

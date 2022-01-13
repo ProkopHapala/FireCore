@@ -100,7 +100,7 @@
         
         xoff = real(ioff2c)
 
-        write(*,*) "DEBUG readdata_2c() superspline, xoff ", superspline, xoff
+        !write(*,*) "DEBUG readdata_2c() superspline, xoff ", superspline, xoff
 
         if (interaction .ne. 8) then
          do ipoint = 1, numz
@@ -109,7 +109,7 @@
          do ipoint = 1, numz
           do integral = 1, num_nonzero
             xintegral_2c(integral,ipoint,itype,in1,in2) =  gstore(integral,ipoint)*xoff
-            write(*,*) "DEBUG readdata_2c() [",ipoint,integral,"] ",xintegral_2c(integral,ipoint,itype,in1,in2)
+            !write(*,*) "DEBUG readdata_2c() [",ipoint,integral,"] ",xintegral_2c(integral,ipoint,itype,in1,in2)
           end do
          end do
          if (superspline) then

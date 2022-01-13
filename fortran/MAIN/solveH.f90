@@ -195,15 +195,13 @@ subroutine solveH( ikpoint, kpoint )
 
 ! CALCULATE (S^-1/2)*H*(S^-1/2)
 ! ****************************************************************************
-        !ifile = 111111
-        !write(*,*) " norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
-        !open( ifile, file='solveH_mats.log', status='unknown' )
-        !call debug_writeMatFile( "sqrtS.log", real(xxxx), norbitals, norbitals )
-        !call debug_writeMatFile( "Hk.log",    real(Hk),   norbitals, norbitals )
-        !write(ifile,*) "sqrtS: "
-        !call debug_writeMat( ifile, real(xxxx), norbitals, norbitals )
-        !write(ifile,*) "Hk: "
-        !call debug_writeMat( ifile, real(Hk),   norbitals, norbitals )
+        ifile = 111111
+        write(*,*) " norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
+        open( ifile, file='solveH_mats.log', status='unknown' )
+        write(ifile,*) "sqrtS: "
+        call debug_writeMat( ifile, real(xxxx), norbitals, norbitals )
+        write(ifile,*) "Hk: "
+        call debug_writeMat( ifile, real(Hk),   norbitals, norbitals )
         if (iqout .ne. 3) then
             write (*,*) " iqout .ne. 3 "
             call zhemm ( 'R', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals,   a0, zzzz, norbitals )   ! M=H*(S^-.5)
@@ -216,10 +214,9 @@ subroutine solveH( ikpoint, kpoint )
             call zgemm ( 'N', 'N', norbitals, norbitals, norbitals, a1, zzzz,  norbitals, xxxx, norbitals, a0, Hk, norbitals )  ! Set M*(W(WSW)^-1/2)
             ! so we have conjg((W(WSW)^-1/2)T)*H*(W(WSW)^-1/2) now
         endif
-        !call debug_writeMatFile( "SHS.log",    real(Hk), norbitals, norbitals )
-        !write(ifile,*) "S^0.5*H*S^0.5: "
-        !call debug_writeMat( ifile,    real(Hk), norbitals, norbitals )
-        !close(ifile)
+        write(ifile,*) "S^0.5*H*S^0.5: "
+        call debug_writeMat( ifile,    real(Hk), norbitals, norbitals )
+        close(ifile)
         !stop
 
 ! DIAGONALIZE THE HAMILTONIAN.
@@ -289,7 +286,7 @@ subroutine solveH( ikpoint, kpoint )
           end if ! divide
           if (info .ne. 0) call diag_error (info, 0)
 
-          do inu=1,norbitals
+        do inu=1,norbitals
             write(*,*) "DEBUG eig[",inu,"] ", eigen(inu)
         end do
         

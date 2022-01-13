@@ -122,9 +122,8 @@
            do jkpoint = ikpoint, nkpoints
             do inu = imu, norbitals
              if (abs(eigen_k(imu,ikpoint) - eigen_k(inu,jkpoint)) .lt. tol) then
-              eigen_k(inu,jkpoint) =                                         &
-     &         (eigen_k(imu,ikpoint) + eigen_k(inu,jkpoint))/2.0d0
-              eigen_k(imu,ikpoint) = eigen_k(inu,jkpoint)
+              eigen_k(inu,jkpoint) = (eigen_k(imu,ikpoint) + eigen_k(inu,jkpoint))/2.0d0
+              eigen_k(imu,ikpoint) =  eigen_k(inu,jkpoint)
              end if
             end do
            end do
