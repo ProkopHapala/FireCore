@@ -64,32 +64,31 @@ program fireball
 
 
     !debug_writeIntegral( interaction, isub, in1, in2, index )
-    max_scf_iterations = 10
+    !max_scf_iterations = 1
     iforce = 0
+    write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf,max_scf_iterations
+
     do Kscf = 1, max_scf_iterations
         write(*,*) "! ======== Kscf ", Kscf
         !call assemble_h ()
 
         call assemble_mcweda ()
-        !call diag_k()
-        !write(*,*) "shape(k_temp) ", shape(k_temp)
-        !write(*,*) "special_k     ", shape(special_k)
-        !k_temp(:) = special_k(:,ikpoint)
-        !call kspace( nprocs, my_proc, Kscf, iqout, icluster, iwrteigen, ikpoint, k_temp, nkpoints, iwrtdos, iwrthop, iwrtatom, itrans, igap )
-
+        
         !call debug_writeBlockedMat( "S_mat.log", s_mat )
-        !call debug_writeBlockedMat( "H_mat.log", h_mat )
-        !write (*,*) "DEBUG STOP in fireball.f90"
-        !stop  ! DEBUG
+        call debug_writeBlockedMat( "H_mat.log", h_mat )
 
         call solveH   ( ikpoint, k_temp )
+        !write (*,*) "eig(k=1): ",  eigen_k(:,1)    ! for some reason this stops denmat to work
         !call build_rho() 
         call denmat ()
-        
+
+        write(*,*) "DEBUG 1"
         !write (*,*) "Qin ",  Qin(1,:)
         !write (*,*) "Qout ", Qout(1,:)
 
         sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
+
+        write(*,*) "DEBUG 2"
 
         if ( sigma .lt. sigmatol) then
             write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol
@@ -98,24 +97,17 @@ program fireball
             write (*,*) "# SCF converged not ", Kscf ,sigma, sigmatol
         end if ! simga
 
+        write(*,*) "DEBUG 3"
         !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
         !call mixCharge
         call mixer ()
 
+        write(*,*) "DEBUG 4"
         write (*,*) "Qin ",  Qin(1,:)
         write (*,*) "Qout ", Qout(1,:)
 
-        !do i = 1, natoms
-        !    in1 = imass(i)
-        !    write (*,'(A,i5,A)',advance='no') "atom[",i,"]" 
-        !    do j = 1, nssh(in1)
-        !      write (*,'(f10.5)',advance='no') Qin (j,i)
-        !      write (*,'(f10.5)',advance='no') Qout(j,i)
-        !    end do
-        !    write (*,*)
-        !end do ! 
-
     end do ! Kscf
+
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
     iforce = 1

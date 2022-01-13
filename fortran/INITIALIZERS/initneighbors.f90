@@ -96,7 +96,7 @@
 ! ===========================================================================
 ! If there is a neighbor file from a previous run, or the user added one,
 ! then initialize the input neighbor map accordingly.
-        if (nstepi .gt. 1) then
+        !if (nstepi .gt. 1) then
             
         open (unit = 20, file = 'NEIGHBORS', status = 'unknown')
         read (20,*) 
@@ -130,11 +130,10 @@
           if (katom .ne. iatom .or. kneigh .ne. ineigh) then
            write (*,*) ' iatom, katom = ', iatom, katom
            write (*,*) ' ineigh, kneigh = ', ineigh, kneigh
-           write (*,*) ' Problem in NEIGHBORS_PP (neighPPn)',           &
-     &                 ' atoms not lined up correctly. '
+           write (*,*) ' Problem in NEIGHBORS_PP (neighPPn)', ' atoms not lined up correctly. '
            write (*,*) ' Fix and restart! '
            stop
-          end if 
+          end if ! (katom .ne. iatom .or. kneigh .ne. ineigh)
           neighPP_b(ineigh,iatom) = mbeta
           neighPP_j(ineigh,iatom) = jatom
          end do 
@@ -148,8 +147,7 @@
           if (katom .ne. iatom .or. kneigh .ne. ineigh) then
            write (*,*) ' iatom, katom = ', iatom, katom
            write (*,*) ' ineigh, kneigh = ', ineigh, kneigh
-           write (*,*) ' Problem in NEIGHBORS_PP (nPPn)',               &
-     &                 '  atoms not lined up correctly. '
+           write (*,*) ' Problem in NEIGHBORS_PP (nPPn)','  atoms not lined up correctly. '
            write (*,*) ' Fix and restart! '
            stop
           end if 
@@ -170,7 +168,7 @@
            write (*,*) ' Problem in NEIGHBORS, atoms not lined up correctly. '
            write (*,*) ' Fix and restart! '
            stop
-          end if 
+          end if ! (katom .ne. iatom .or. kneigh .ne. ineigh)
           nPPx_b(ineigh,iatom) = mbeta
           nPPx_j(ineigh,iatom) = jatom
           nPPx_map(ineigh,iatom) = jneigh
@@ -178,7 +176,8 @@
          end do 
         end do 
         close (unit = 22)
-        end if
+
+        !end if ! (nstepi .gt. 1)
 
 ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 !   SELF nPP_self  
