@@ -255,22 +255,21 @@
 ! ****************************************************************************
            isorp = 0
            interaction = 1
+
+!            if (igauss .eq. 0) then ! IF_DEF_ORDERN_END
+             call trescentros (interaction, isorp, isorpmax, in1, in2, indna, x, y, cost, eps, bcnax, nspecies)
 ! ! IF_DEF_GAUSS
-!            if (igauss .eq. 0) then
-!             call trescentros (interaction, isorp, isorpmax, in1, in2, indna, x, y, cost, eps, bcnax, nspecies)
-!            else 
+!            else        
 !             call trescentrosG_VNA (in1, in2, indna, x, y, cost, eps,   bcnax, rcutoff)
-!            end if
+!           end if  
 ! ! END_DEF_GAUSS
 
 ! Add this piece for iatom, jatom, and katom into the total - bcna and bcca
 !$omp critical (vna3)
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
-             vna(imu,inu,mneigh,iatom) =                                &
-     &        vna(imu,inu,mneigh,iatom) + bcnax(imu,inu)*eq2
-            !Symmetrize Hamiltonian (April 2018): jneigh is the
-            !back_neigh:
+             vna(imu,inu,mneigh,iatom) = vna(imu,inu,mneigh,iatom) + bcnax(imu,inu)*eq2
+            !Symmetrize Hamiltonian (April 2018): jneigh is the  back_neigh:
               vna(inu,imu,jneigh,jatom) = vna(imu,inu,mneigh,iatom)
             end do
            end do
