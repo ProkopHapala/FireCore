@@ -54,6 +54,7 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine assemble_F ! (natoms, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias, iwrt_fpieces)
+        use debug
         use dimensions
         use forces
         use neighbor_map
@@ -78,6 +79,7 @@
 
 ! Local Variable Declaration and Description
 ! ===========================================================================
+        integer ifile
         integer iatom
         integer ineigh
         integer jatom
@@ -117,28 +119,26 @@
 ! Assemble three-center forces from Dassemble_3c:
 ! f3naa, f3nab, f3nac, f3nla, f3nlb, f3nlc, f3xca, f3xcb, f3xcc
 ! ****************************************************************************
+        ifile =111
+        open(ifile, file="assemble_F.log", status="REPLACE")
+
+
+        call debug_writeAtomCartes( ifile, "f3caa" , f3caa,  natoms )
+        call debug_writeAtomCartes( ifile, "f3cab" , f3cab,  natoms )
+        call debug_writeAtomCartes( ifile, "f3cac" , f3cac,  natoms )
+
+
         do iatom = 1, natoms
-
-! non-local pseudopotential interactions
-         f3nl(:,iatom) = f3nla(:,iatom) + f3nlb(:,iatom) + f3nlc(:,iatom)
-
-! neutral atom interactions
-         f3na(:,iatom) = f3naa(:,iatom) + f3nab(:,iatom) + f3nac(:,iatom)
-
-! charged atom interactions
+         f3nl(:,iatom) = f3nla(:,iatom) + f3nlb(:,iatom) + f3nlc(:,iatom)   ! non-local pseudopotential interactions
+         f3na(:,iatom) = f3naa(:,iatom) + f3nab(:,iatom) + f3nac(:,iatom)   ! neutral atom interactions
          if (itheory .eq. 1) then
-          f3ca(:,iatom) = f3caa(:,iatom) + f3cab(:,iatom) + f3cac(:,iatom)
+          f3ca(:,iatom) = f3caa(:,iatom) + f3cab(:,iatom) + f3cac(:,iatom)  ! charged atom interactions
          else
           f3ca(:,iatom) = 0.0d0
          end if
-
-! exchange-correlation interactions
-         f3xc(:,iatom) = f3xca(:,iatom) + f3xcb(:,iatom) + f3xcc(:,iatom)
-
-! charged exchange-correlation interactions
+         f3xc(:,iatom) = f3xca(:,iatom) + f3xcb(:,iatom) + f3xcc(:,iatom)   ! exchange-correlation interactions
          if (itheory .eq. 1) then
-          f3xc_ca(:,iatom) = f3xca_ca(:,iatom) + f3xcb_ca(:,iatom)           &
-     &                      + f3xcc_ca(:,iatom)
+          f3xc_ca(:,iatom) = f3xca_ca(:,iatom) + f3xcb_ca(:,iatom)  + f3xcc_ca(:,iatom)  ! charged exchange-correlation interactions
          else
           f3xc_ca(:,iatom) = 0.0d0
          end if
@@ -287,6 +287,10 @@
           fnlot(:,jatom) = fnlot(:,jatom) - 2.0d0*fotnl(:,ineigh,iatom)
          end do     ! end loop over PP-neighbors
         end do      ! end loop over atoms
+
+        call debug_writeAtomCartes( ifile, "f3ca"   , f3ca,    natoms )
+        call debug_writeAtomCartes( ifile, "fcaatm" , fcaatm,  natoms )
+        call debug_writeAtomCartes( ifile, "fcaot"  , fcaot,   natoms )
 
 ! Now put together all the pieces of the NA, XC, and NL forces.
 ! Form fna = f3na + fnaatm + fnaot, and similarly for the others.
@@ -457,6 +461,16 @@
         !  write (*,*) '  '
         ! end if
 
+
+        call debug_writeAtomCartes( ifile, "ft" , ft,  natoms )
+        call debug_writeAtomCartes( ifile, "fna", fna, natoms )
+        call debug_writeAtomCartes( ifile, "fnl", fnl, natoms )
+        call debug_writeAtomCartes( ifile, "fxc", fxc,  natoms )
+
+        call debug_writeAtomCartes( ifile, "fca"   , fca,    natoms )
+        call debug_writeAtomCartes( ifile, "fxc_ca", fxc_ca, natoms )
+        call debug_writeAtomCartes( ifile, "flrew", flrew,   natoms )
+
 ! ****************************************************************************
 ! Put together the entire bandstructure force. Add in the LR BS force.
 ! ****************************************************************************
@@ -524,19 +538,23 @@
         !    write (*,206) iatom, fbias(:,iatom)
         !   end do
         !  end if
-
-
         ! end if
+
+        call debug_writeAtomCartes( ifile, "fbs" , fbs,  natoms )
+        call debug_writeAtomCartes( ifile, "dusr", dusr, natoms )
+        call debug_writeAtomCartes( ifile, "dxcv", dxcv, natoms )
+        call debug_writeAtomCartes( ifile, "fro" , fro,  natoms )
+        close(ifile)
 
 ! ****************************************************************************
 ! Now the total force: ftot
 ! ****************************************************************************
         do iatom = 1, natoms
          ftot(:,iatom) = fbs(:,iatom) + dusr(:,iatom) + dxcv(:,iatom)     + fro(:,iatom)
-        ! if (ivdw .eq. 1) ftot(:,iatom) = ftot(:,iatom) + fvdw(:,iatom)
-        ! if (idftd3 .ge. 1) ftot(:,iatom) = ftot(:,iatom) + ftot_dftd3(:,iatom)
-        ! if (iharmonic .eq. 1) ftot(:,iatom) = ftot(:,iatom)        + fharmonic(:,iatom)
-        ! if (ibias .eq. 1) ftot(:,iatom) = ftot(:,iatom)            + fbias(:,iatom)
+        ! if (ivdw .eq. 1)      ftot(:,iatom) = ftot(:,iatom) + fvdw(:,iatom)
+        ! if (idftd3 .ge. 1)    ftot(:,iatom) = ftot(:,iatom) + ftot_dftd3(:,iatom)
+        ! if (iharmonic .eq. 1) ftot(:,iatom) = ftot(:,iatom) + fharmonic(:,iatom)
+        ! if (ibias .eq. 1)     ftot(:,iatom) = ftot(:,iatom) + fbias(:,iatom)
         end do
 
         if (verbosity .ge. 1 )  then

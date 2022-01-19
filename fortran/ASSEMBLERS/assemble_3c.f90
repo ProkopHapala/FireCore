@@ -270,7 +270,7 @@
             do imu = 1, num_orb(in1)
              vna(imu,inu,mneigh,iatom) = vna(imu,inu,mneigh,iatom) + bcnax(imu,inu)*eq2
             !Symmetrize Hamiltonian (April 2018): jneigh is the  back_neigh:
-              vna(inu,imu,jneigh,jatom) = vna(imu,inu,mneigh,iatom)
+             vna(inu,imu,jneigh,jatom) = vna(imu,inu,mneigh,iatom)
             end do
            end do
 !$omp end critical (vna3)

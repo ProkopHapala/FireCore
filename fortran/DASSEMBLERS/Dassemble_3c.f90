@@ -263,12 +263,11 @@
 ! ****************************************************************************
            isorp = 0
            interaction = 1
- !          if (igauss .eq. 0) then       IF_DEF_GAUSS_END
+!          if (igauss .eq. 0) then       IF_DEF_GAUSS_END
             call Dtrescentros (interaction, isorp, isorpmax, in1,       &
      &                         in2, indna, x, y, cost, eps, depsA,      &
      &                         depsB, rhat, sighat, bcnax, f3naXa,      &
      &                         f3naXb, f3naXc, nspecies)
-
 ! ! IF_DEF_GAUSS
 !            else
 !             call DtrescentrosG_VNA (in1, in2, indna, x, y, cost, eps,   &
@@ -283,12 +282,9 @@
             do imu = 1, num_orb(in1)
              do ix = 1, 3
                 !multiply by 2 to use the "symmetrization" argument
-              f3naa(ix,ialp) = f3naa(ix,ialp)                           &
-     &         + 2.0d0*rho(imu,inu,mneigh,iatom)*f3naXa(ix,imu,inu)*eq2
-              f3nab(ix,iatom) = f3nab(ix,iatom)                         &
-     &        + 2.0d0*rho(imu,inu,mneigh,iatom)*f3naXb(ix,imu,inu)*eq2
-              f3nac(ix,jatom) = f3nac(ix,jatom)                         &
-     &        + 2.0d0*rho(imu,inu,mneigh,iatom)*f3naXc(ix,imu,inu)*eq2
+              f3naa(ix,ialp)  = f3naa(ix,ialp)  + 2.0d0*rho(imu,inu,mneigh,iatom)*f3naXa(ix,imu,inu)*eq2
+              f3nab(ix,iatom) = f3nab(ix,iatom) + 2.0d0*rho(imu,inu,mneigh,iatom)*f3naXb(ix,imu,inu)*eq2
+              f3nac(ix,jatom) = f3nac(ix,jatom) + 2.0d0*rho(imu,inu,mneigh,iatom)*f3naXc(ix,imu,inu)*eq2
              end do
             end do
            end do

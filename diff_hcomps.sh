@@ -3,8 +3,9 @@
 #fname=$1
 
 #folder="t01_H2/"
-folder="t02_H4/"
-#folder="t02_CH4/"
+#folder="t02_H4/"
+folder="t02_CH4/"
+
 
 path1="./tests/"
 path2="../Fireball-progs/TESTS/"
