@@ -189,32 +189,27 @@
          end if
 
          do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                         bcna_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
           bcnalist(0,iME) = Q_L
           dxbcnalist(0,iME) = dQ_Ldx
           dybcnalist(0,iME) = dQ_Ldy
 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  & 
-     &                         bcna_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(1,iME) = Q_L
           dxbcnalist(1,iME) = dQ_Ldx
           dybcnalist(1,iME) = dQ_Ldy
 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  & 
-     &                         bcna_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(2,iME) = Q_L
           dxbcnalist(2,iME) = dQ_Ldx
           dybcnalist(2,iME) = dQ_Ldy
 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, &
-     &                         bcna_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(3,iME) = Q_L
           dxbcnalist(3,iME) = dQ_Ldx
           dybcnalist(3,iME) = dQ_Ldy
 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, & 
-     &                         bcna_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(4,iME) = Q_L
           dxbcnalist(4,iME) = dQ_Ldx
           dybcnalist(4,iME) = dQ_Ldy
@@ -236,32 +231,27 @@
          end if
 
          do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  & 
-     &                         xc3c_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  xc3c_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(0,iME) = Q_L
           dxbcnalist(0,iME) = dQ_Ldx
           dybcnalist(0,iME) = dQ_Ldy
 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  & 
-     &                         xc3c_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(1,iME) = Q_L
           dxbcnalist(1,iME) = dQ_Ldx
           dybcnalist(1,iME) = dQ_Ldy
 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  & 
-     &                         xc3c_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(2,iME) = Q_L
           dxbcnalist(2,iME) = dQ_Ldx
           dybcnalist(2,iME) = dQ_Ldy
 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  & 
-     &                         xc3c_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(3,iME) = Q_L
           dxbcnalist(3,iME) = dQ_Ldx
           dybcnalist(3,iME) = dQ_Ldy
 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  & 
-     &                         xc3c_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
           bcnalist(4,iME) = Q_L
           dxbcnalist(4,iME) = dQ_Ldx
           dybcnalist(4,iME) = dQ_Ldy
@@ -284,32 +274,27 @@
          end if
 
          do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, &
-     &                         den3_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
           bcnalist(0,iME) = Q_L
           dxbcnalist(0,iME) = dQ_Ldx
           dybcnalist(0,iME) = dQ_Ldy
                                                                                                                              
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  &
-     &                         den3_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
           bcnalist(1,iME) = Q_L
           dxbcnalist(1,iME) = dQ_Ldx
           dybcnalist(1,iME) = dQ_Ldy
                                                                                                                              
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, &
-     &                         den3_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
           bcnalist(2,iME) = Q_L
           dxbcnalist(2,iME) = dQ_Ldx
           dybcnalist(2,iME) = dQ_Ldy
                                                                                                                              
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, &
-     &                         den3_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
           bcnalist(3,iME) = Q_L
           dxbcnalist(3,iME) = dQ_Ldx
           dybcnalist(3,iME) = dQ_Ldy
                        
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, &
-     &                         den3_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, den3_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
           bcnalist(4,iME) = Q_L
           dxbcnalist(4,iME) = dQ_Ldx
           dybcnalist(4,iME) = dQ_Ldy
@@ -403,8 +388,7 @@
          bmt = (cost*sighat(ix) - rhat(ix))/y
          do iME = 1, index_max3c(in1,in2)
 !           hlist(iME) = - sighat(ix)*dyhlist(iME) - hlist(iME)/2.0d0
-           hlist(iME) = - sighat(ix)*dyhlist(iME)                             &
-     &                   + bmt*dphlist(iME) - hlist(iME)/2.0d0
+           hlist(iME) = - sighat(ix)*dyhlist(iME) + bmt*dphlist(iME) - hlist(iME)/2.0d0
          end do
  
 ! Now recover f3naMb which is a two-dimensional array from hlist which

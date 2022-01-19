@@ -16,6 +16,25 @@ subroutine debug_writeArray_1i( name, arr, n )
     end do
 end subroutine debug_writeArray_1i
 
+subroutine debug_writeAtomCartes( ifile, name, arr, n )
+    ! ===== Parameters
+    integer,                  intent (in) :: ifile
+    character(len=*)        , intent(in)  :: name
+    real, dimension( :, : ) , intent (in) :: arr
+    integer,                  intent (in) :: n
+    ! ===== Variables
+    integer i
+    ! ===== Body
+    do i=1,n
+        if(ifile .eq. 0) then
+            write(*,*) name,"[",i,"]: ", arr(1,i),arr(2,i),arr(3,i)
+        else
+            write(ifile,*) name,"[",i,"]: ", arr(1,i),arr(2,i),arr(3,i)
+        end if
+    end do
+end subroutine debug_writeAtomCartes
+
+
 subroutine debug_writeMat( ifile, mat, n, m )
     ! ===== Parameters
     integer,                 intent (in) :: ifile
