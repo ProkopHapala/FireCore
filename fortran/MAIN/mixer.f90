@@ -160,8 +160,10 @@
 !          call pulay (Qoutmixer, Qinmixer, bmix, sigma, Kscf, idmix, imix , max_scf_iterations)
 !       end select !ialgmix
 
-
+        !write(*,*) "DEBUG Qoutmixer ", Qoutmixer(:)
+        !write(*,*) "DEBUG Qinmixer  ", Qinmixer (:)
 ! end of honza
+        !write(*,*) "DEBUG mixer  Kscf, sigma, sigmaold ", Kscf, sigma, sigmaold
        
        if (Kscf .gt. 1) then
          if (sigma .lt. sigmaold) then
@@ -174,6 +176,8 @@
 ! Check convergence of charge; sigmatol is in scf.optional
 !       write (*,*) '  '
        if (sigma .lt. sigmatol) scf_achieved = .true.
+
+       !write(*,*) "DEBUG mixer scf_achieved ", scf_achieved, Kscf, sigma, sigmaold
 
        if (.not. scf_achieved) then
          imix = 0

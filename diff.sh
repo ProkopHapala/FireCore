@@ -1,10 +1,11 @@
 #!/bin/bash
 
-fname=$1
+dfile="assemble_F.log"
+fname=${1-$dfile}
 
 #dfolder="t01_H2/"
-dfolder="t02_H4/"
-#dfolder="t02_CH4/"
+#dfolder="t02_H4/"
+dfolder="t02_CH4/"
 
 folder=${2-$dfolder}
 
