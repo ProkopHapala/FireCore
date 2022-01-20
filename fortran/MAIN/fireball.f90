@@ -109,7 +109,7 @@ program fireball
 
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
-    call assemble_mcweda ()
+    !call assemble_mcweda ()
     call getenergy_mcweda () 
     call getforces ()   ! Assemble forces
     
