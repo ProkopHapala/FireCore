@@ -89,21 +89,22 @@ program fireball
 
         sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
 
-        if ( sigma .lt. sigmatol) then
-            write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol
+        !if ( (sigma .lt. sigmatol) ) then
+        if(  scf_achieved ) then
+            write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol, scf_achieved
             exit
         else 
-            write (*,*) "# SCF converged not ", Kscf ,sigma, sigmatol
+            write (*,*) "# SCF converged not ", Kscf ,sigma, sigmatol, scf_achieved
         end if ! simga
 
         !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
         !call mixCharge
 
-        write (*,*) "Qin ",  Qin(1,:)
-        write (*,*) "Qout ", Qout(1,:)
+        write (*,*) "DEBUG mixer <<Qin  ", Qin (1,:)
+        write (*,*) "DEBUG mixer <<Qout ", Qout(1,:)
         call mixer ()
-        write (*,*) "Qin ",  Qin(1,:)
-        write (*,*) "Qout ", Qout(1,:)
+        write (*,*) "DEBUG mixer >>Qin  ", Qin (1,:)
+        write (*,*) "DEBUG mixer >>Qout ", Qout(1,:)
 
     end do ! Kscf
 
