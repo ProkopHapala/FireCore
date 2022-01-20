@@ -201,6 +201,9 @@
             do imu = 1, num_orb(in1)
              sumT = sumT + rho (imu,inu,ineigh,iatom)*tp_mat(ix,imu,inu,ineigh,iatom)
              sumS = sumS + cape(imu,inu,ineigh,iatom)*sp_mat(ix,imu,inu,ineigh,iatom)
+             !if( ix .eq. 1 )then
+             !   write(*,*) "i,j,inu,imu,tp,sp ", iatom,jatom,inu,imu,  tp_mat(:,imu,inu,ineigh,iatom), sp_mat(:,imu,inu,ineigh,iatom)
+             !end if
             end do
            end do
  
@@ -218,6 +221,11 @@
            fro(ix,jatom) = fro(ix,jatom) -          sumS
 !!$omp end critical
           end do ! do ix
+
+          !write(*,*) "i,j,fro,ft ", iatom,jatom, fro(:,iatom), ft(:,iatom)
+          !write(*,*) "i,j,sumT,sumS ", iatom,jatom, sumT, sumS
+
+
 
 ! ! IF_DEF_GAUSS
 ! ! Gaussian approximation to three-center exchange-correlation interactions.
@@ -306,8 +314,8 @@
           end if
 ! ****************************************************************************
 ! End loop over iatom and its neighbors - jatom.
-         end do
-        end do
+         end do ! jatom
+        end do ! iatom
 
 ! Format Statements
 ! ===========================================================================

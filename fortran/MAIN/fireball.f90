@@ -68,6 +68,8 @@ program fireball
     iforce = 0
     write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf,max_scf_iterations
 
+    iforce = 1
+    scf_achieved = .false.
     do Kscf = 1, max_scf_iterations
         write(*,*) "! ======== Kscf ", Kscf
         !call assemble_h ()
@@ -82,13 +84,10 @@ program fireball
         !call build_rho() 
         call denmat ()
 
-        write(*,*) "DEBUG 1"
         !write (*,*) "Qin ",  Qin(1,:)
         !write (*,*) "Qout ", Qout(1,:)
 
         sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
-
-        write(*,*) "DEBUG 2"
 
         if ( sigma .lt. sigmatol) then
             write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol
@@ -97,12 +96,12 @@ program fireball
             write (*,*) "# SCF converged not ", Kscf ,sigma, sigmatol
         end if ! simga
 
-        write(*,*) "DEBUG 3"
         !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
         !call mixCharge
-        call mixer ()
 
-        write(*,*) "DEBUG 4"
+        write (*,*) "Qin ",  Qin(1,:)
+        write (*,*) "Qout ", Qout(1,:)
+        call mixer ()
         write (*,*) "Qin ",  Qin(1,:)
         write (*,*) "Qout ", Qout(1,:)
 
@@ -110,7 +109,6 @@ program fireball
 
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
-    iforce = 1
     call assemble_mcweda ()
     call getenergy_mcweda () 
     call getforces ()   ! Assemble forces

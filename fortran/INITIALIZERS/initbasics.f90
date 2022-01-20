@@ -126,6 +126,7 @@
         ! sigma = 0.0d0
         ! sigmaold = 0.0d0
         scf_achieved = .true.
+        !scf_achieved = .false.
 ! Read in the diagnostics parameters. This allows the user to turn
 ! particular interactions on or off.
         call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS

@@ -374,7 +374,7 @@
 ! Note that dsrewald is equivalent to demnpl calculated below.
            dq3 = 0.0d0
            do issh = 1, nssh(indna)
-            write (*,*) "DEBUG ialp,indna,issh, dq3 ", ialp,indna,issh, Qin(issh,ialp),Qneutral(issh,indna)
+            !write (*,*) "DEBUG ialp,indna,issh, dq3 ", ialp,indna,issh, Qin(issh,ialp),Qneutral(issh,indna)
             dq3 = dq3 + (Qin(issh,ialp) - Qneutral(issh,indna))
            end do
 
