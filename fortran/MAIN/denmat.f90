@@ -132,6 +132,8 @@
         ai = cmplx(0.0d0,1.0d0)
 ! jel: where you set rho to zero ??? JOM: in build_rho
         rhoPP = 0.0d0
+        rho   = 0.0d0
+        cape  = 0.0d0
 
 !        write (*,*) '  '
 !        write (*,*) '  '
