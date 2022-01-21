@@ -108,7 +108,7 @@
 Namelist /option/ iharris, idogs, imcweda, igsn, &
                                          iqout, qstate, icluster, ifixcharge, ifixneigh,   &
                                          iimage,  &
-                                         iconstraints, basisfile, lvsfile, nstepf,    &
+                                         iconstraints, basisfile, lvsfile, nstepf,  force_tol,  &
                                          max_scf_iterations, bmix, sigmatol, tempfe,  &   ! ialgmix, 
                                          kptpreference,         &
                                          rescal, xyz2line, &
@@ -158,7 +158,8 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
         !xvfile = 'xv.dat'
 !        nstepi = 1
         nstepf = 1
-!        dt = 0.5d0
+        force_tol = 1.0E-6
+        dt = 0.5
 !        T_initial = 0.0d0
 !        T_final = 10.0d0
         max_scf_iterations = 200

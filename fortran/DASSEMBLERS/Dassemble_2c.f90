@@ -203,7 +203,7 @@
              sumS = sumS + cape(imu,inu,ineigh,iatom)*sp_mat(ix,imu,inu,ineigh,iatom)
              if( ix .eq. 1 )then
              !   write(*,*) "i,j,inu,imu,tp,sp ", iatom,jatom,inu,imu,  tp_mat(:,imu,inu,ineigh,iatom), sp_mat(:,imu,inu,ineigh,iatom)
-             write(*,*) "i,j,inu,imu,cape,sp_mat ", iatom,jatom,inu,imu,  cape(imu,inu,ineigh,iatom), sp_mat(:,imu,inu,ineigh,iatom)
+             !write(*,*) "i,j,inu,imu,cape,sp_mat ", iatom,jatom,inu,imu,  cape(imu,inu,ineigh,iatom), sp_mat(:,imu,inu,ineigh,iatom)
              end if
             end do
            end do

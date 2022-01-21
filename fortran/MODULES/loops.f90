@@ -23,5 +23,8 @@ real  sigma
 ! Ionic  steps (MD )
 
 integer  nstepf
+integer  itime_step
+real     force_tol
+real     dt
 
- end module loops
+end module loops

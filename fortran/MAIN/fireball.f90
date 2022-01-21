@@ -3,7 +3,9 @@
 program fireball
     use options
     use loops
+    use fire
     use configuration
+    use energy
     use forces
     use interactions
     use integrals
@@ -15,7 +17,7 @@ program fireball
 
     ! ====== global variables
 
-    integer i,j, in1
+    integer i,j, in1, istepf
     integer ikpoint
     integer imu
     real, dimension (3) :: k_temp
@@ -62,63 +64,77 @@ program fireball
     weight_k (:)   = 1
     k_temp(:) = special_k(:,ikpoint)
 
+    write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf, max_scf_iterations
+    call init_FIRE( )
 
-    !debug_writeIntegral( interaction, isub, in1, in2, index )
-    !max_scf_iterations = 1
-    iforce = 0
-    write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf,max_scf_iterations
-
-    iforce = 1
-    scf_achieved = .false.
-    do Kscf = 1, max_scf_iterations
-        write(*,*) "! ======== Kscf ", Kscf
-        !call assemble_h ()
-
-        call assemble_mcweda ()
+    do istepf = 1,nstepf
+        !debug_writeIntegral( interaction, isub, in1, in2, index )
+        !max_scf_iterations = 1
+        iforce = 0
         
-        !call debug_writeBlockedMat( "S_mat.log", s_mat )
-        call debug_writeBlockedMat( "H_mat.log", h_mat )
+        iforce = 1
+        scf_achieved = .false.
+        
+        do Kscf = 1, max_scf_iterations
+            write(*,*) "! ======== Kscf ", Kscf
+            !call assemble_h ()
 
-        call solveH   ( ikpoint, k_temp )
-        !write (*,*) "eig(k=1): ",  eigen_k(:,1)    ! for some reason this stops denmat to work
-        !call build_rho() 
-        call denmat ()
+            call assemble_mcweda ()
+            
+            !call debug_writeBlockedMat( "S_mat.log", s_mat )
+            call debug_writeBlockedMat( "H_mat.log", h_mat )
 
-        !write (*,*) "Qin ",  Qin(1,:)
-        !write (*,*) "Qout ", Qout(1,:)
+            call solveH   ( ikpoint, k_temp )
+            !write (*,*) "eig(k=1): ",  eigen_k(:,1)    ! for some reason this stops denmat to work
+            !call build_rho() 
+            call denmat ()
 
-        sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
+            !write (*,*) "Qin ",  Qin(1,:)
+            !write (*,*) "Qout ", Qout(1,:)
 
-        !if ( (sigma .lt. sigmatol) ) then
-        if(  scf_achieved ) then
-            write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol, scf_achieved
-            exit
-        else 
-            write (*,*) "# SCF converged not ", Kscf ,sigma, sigmatol, scf_achieved
-        end if ! simga
+            sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
 
-        !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
-        !call mixCharge
+            !if ( (sigma .lt. sigmatol) ) then
+            if(  scf_achieved ) then
+                write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol, scf_achieved
+                exit
+            else 
+                write (*,*) "# SCF converged not ", Kscf ,sigma, sigmatol, scf_achieved
+            end if ! simga
 
-        write (*,*) "DEBUG mixer <<Qin  ", Qin (1,:)
-        write (*,*) "DEBUG mixer <<Qout ", Qout(1,:)
-        call mixer ()
-        write (*,*) "DEBUG mixer >>Qin  ", Qin (1,:)
-        write (*,*) "DEBUG mixer >>Qout ", Qout(1,:)
+            !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
+            !call mixCharge
 
-    end do ! Kscf
+            write (*,*) "DEBUG mixer <<Qin  ", Qin (1,:)
+            write (*,*) "DEBUG mixer <<Qout ", Qout(1,:)
+            call mixer ()
+            write (*,*) "DEBUG mixer >>Qin  ", Qin (1,:)
+            write (*,*) "DEBUG mixer >>Qout ", Qout(1,:)
 
+        end do ! Kscf
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
     !call assemble_mcweda ()
-    call getenergy_mcweda () 
-    call getforces ()   ! Assemble forces
-    
-    !call move_ions_FIRE (itime_step, 0 )   ! Move ions now
+        call getenergy_mcweda () 
+        call getforces ()   ! Assemble forces
+        
+        do i=1, natoms
+            write(*,*) "force[",i,"] ",  ftot(:,i)
+        end do
 
-    do i=1, natoms
-        write(*,*) "force[",i,"] ",  ftot(:,i)
-    end do
+        call getforces ()   ! Assemble forces
+        call move_ions_FIRE (itime_step, 0 )   ! Move ions now
+
+        call write_bas(  )
+
+        write (*,'(A,i6,2f16.8)') ' ++++ i, Fmax, force_tol ', itime_step, deltaFmax, force_tol
+        !	if ( FIRE_Ftot .lt. force_tol ) then
+        if ( deltaFmax .lt. force_tol ) then
+            write (*,*) ' +++++ FIRE.optionalimization converged +++++ '
+            write (*,*) 'That`sall for now, bye ..'
+            exit
+        endif
+    end do ! istepf
 
     call cpu_time (time_end)
     write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
