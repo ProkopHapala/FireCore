@@ -44,7 +44,8 @@ GROUPS = {
 #'scf',
 'loops',
 'workmat',
-'optimization',
+#'optimization',
+'FIRE',
 'debug',
 ],
 }, #END MODULES
@@ -211,11 +212,10 @@ GROUPS = {
 #'kspace2'
 'mixer',
 'anderson2',
-
 'sqrtS',
 'ktransform',
 'solveH',
-'main_loop_FIRE',
+#'main_loop_FIRE',
 ],
 }, #END FORM_RHO
 
