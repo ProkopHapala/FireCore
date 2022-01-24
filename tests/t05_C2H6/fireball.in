@@ -1,12 +1,13 @@
 &OPTION
 basisfile  = 'input.bas'
 icluster   = 1    ! PBC: 0 3D PBC; 1 cluster
-iqout      = 3
-iquench    = -6
+iqout      = 2
+max_scf_iterations = 100
+nstepf     = 100
 &END
 
 
 &OUTPUT
-iwrtxyz    = 1 
+iwrtxyz    = 1
 &END
 

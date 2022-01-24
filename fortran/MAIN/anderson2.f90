@@ -100,8 +100,6 @@
 ! Procedure
 ! ===========================================================================
 
-   write (*,*) "DEBUG anderson2.f90", iter, max_order
-
    if(.not. allocated(Fv))then
       allocate (Fv(nmsh,max_scf_iterations))
       allocate (Xv(nmsh,max_scf_iterations))
@@ -109,7 +107,6 @@
       allocate (delX(nmsh,max_scf_iterations))
       allocate (r2_sav(max_scf_iterations))
    end if
-   write (*,*) "DEBUG anderson2.f90 0:1 "
    if(max_order .le. 0 .or. iter .gt. max_scf_iterations) then
       write (*,*) ' Stop in Anderson '
       write (*,*) ' max_order=', max_order
@@ -117,7 +114,6 @@
       write (*,*) ' max_scf_iterations=',max_scf_iterations
       stop
    end if
-   write (*,*) "DEBUG anderson2.f90 0:2 "
    Xv(:,iter) = x_old(:)
    Fv(:,iter) = x_try(:) - x_old(:)
    
@@ -126,19 +122,15 @@
 
 ! What order interpolation do we use this time
    mix_order = min(iter,max_order)
-   write (*,*) "DEBUG anderson2.f90 0:3 ", beta
 ! Only doing simple extrapolation, or converged
    if(mix_order .eq. 1 .or. r2 .lt. tr2) then
       x_old(:) = x_old(:) + beta*Fv(:,iter)
-      write (*,*) "DEBUG anderson2.f90 x_old ", x_old(:)
       return
    end if
 
    r2_sav(iter) = r2
    delF(:,iter-1) = Fv(:,iter) - Fv(:,iter-1) ! Eq. 5.6    Add to delF
    delX(:,iter-1) = Xv(:,iter) - Xv(:,iter-1) ! Eq. 5.5   Add to delX
-
-   write (*,*) "DEBUG anderson2.f90 1 "
 
 ! Make sure step with lowest r2 value is always used (ie. not lost)
    if (iter .gt. max_order .and. max_order .ge. 6) then
@@ -160,17 +152,13 @@
       end do
    end do
 
-   write (*,*) "DEBUG anderson2.f90 2 "
-
 ! Build delF_F Eq. 5.31
    allocate (delF_F(iter-mix_order+1:iter-1))
    do iloop = iter-mix_order+1, iter-1
       delF_F(iloop) = dot_product(delF(:,iloop),Fv(:,iter))  
    end do
 
-   write (*,*) "DEBUG anderson2.f90 3 "
-
-   call debug_writeMatFile( "anderson_mat.log", a_matrix, mix_order-1, mix_order-1 )
+   !call debug_writeMatFile( "anderson_mat.log", a_matrix, mix_order-1, mix_order-1 )
 
 ! Solve for gammas Eq. 5.31, 7.4 (We move a-inverse to other side: a * gamma = <|>)
    lwork = (mix_order-1)**2
@@ -185,10 +173,6 @@
       deallocate (work,ipiv,delF_F,a_matrix)
       goto 888 ! Try again with lower order
    end if
-
-   write (*,*) "DEBUG anderson2.f90 4 "
-
-   write(*,*) "DEBUG anderson2.f90: beta, delF_F(:) ", beta, delF_F(:)
 
 ! Generate new guess at charges Eq. 7.7  (delF_F is now gamma)
    x_old(:) = x_old(:) + beta*Fv(:,iter)  ! First-order term
@@ -213,9 +197,6 @@
 !    deallocate(contribution)
 
    deallocate (delF_F,a_matrix,work,ipiv)
-
-   write (*,*) "DEBUG anderson2.f90 6 "
-   write (*,*) "DEBUG anderson2.f90 END"
 
 ! Format Statements
 ! ===========================================================================

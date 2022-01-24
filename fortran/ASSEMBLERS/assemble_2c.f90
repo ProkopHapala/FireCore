@@ -126,7 +126,7 @@
 
 ! Procedure
 ! ===========================================================================
-        write(*,*) "DEBUG assemble_2c.f90", iforce
+        if(idebugWrite .gt. 0) write(*,*) "DEBUG assemble_2c.f90", iforce
 ! Initialize interactions
         vna = 0.0d0
 
@@ -222,7 +222,7 @@
             if (iforce .eq. 1) then   
              sp_mat(:,imu,inu,ineigh,iatom) = spx(:,imu,inu)
              tp_mat(:,imu,inu,ineigh,iatom) = tpx(:,imu,inu)
-             write(*,*) "i,j,inu,imu,spx,tpx ", iatom,jatom,inu,imu,  spx(:,imu,inu), tpx(:,imu,inu)
+             !write(*,*) "i,j,inu,imu,spx,tpx ", iatom,jatom,inu,imu,  spx(:,imu,inu), tpx(:,imu,inu)
             end if
            end do
           end do

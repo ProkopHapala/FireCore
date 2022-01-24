@@ -96,7 +96,7 @@ subroutine solveH( ikpoint, kpoint )
         !integer mbeta
 
         integer i,j
-        integer ifile
+        !integer ifile
 
         real dot
 
@@ -195,15 +195,14 @@ subroutine solveH( ikpoint, kpoint )
 
 ! CALCULATE (S^-1/2)*H*(S^-1/2)
 ! ****************************************************************************
-        ifile = 111111
-        write(*,*) " norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
-        open( ifile, file='solveH_mats.log', status='unknown' )
-        write(ifile,*) "sqrtS: "
-        call debug_writeMat( ifile, real(xxxx), norbitals, norbitals )
-        write(ifile,*) "Hk: "
-        call debug_writeMat( ifile, real(Hk),   norbitals, norbitals )
+        if(idebugWrite .gt. 0) write(*,*) "DEBUG solveH norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
+        !ifile = 111111
+        !open( ifile, file='solveH_mats.log', status='unknown' )
+        !write(ifile,*) "sqrtS: "
+        !call debug_writeMat( ifile, real(xxxx), norbitals, norbitals )
+        !write(ifile,*) "Hk: "
+        !call debug_writeMat( ifile, real(Hk),   norbitals, norbitals )
         if (iqout .ne. 3) then
-            write (*,*) " iqout .ne. 3 "
             call zhemm ( 'R', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals,   a0, zzzz, norbitals )   ! M=H*(S^-.5)
             call zhemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, zzzz, norbitals, a0, Hk, norbitals )   ! Z=(S^-.5)*M
         else ! FIXME: I think these two calls we don't need them!!
@@ -214,9 +213,9 @@ subroutine solveH( ikpoint, kpoint )
             call zgemm ( 'N', 'N', norbitals, norbitals, norbitals, a1, zzzz,  norbitals, xxxx, norbitals, a0, Hk, norbitals )  ! Set M*(W(WSW)^-1/2)
             ! so we have conjg((W(WSW)^-1/2)T)*H*(W(WSW)^-1/2) now
         endif
-        write(ifile,*) "S^0.5*H*S^0.5: "
-        call debug_writeMat( ifile,    real(Hk), norbitals, norbitals )
-        close(ifile)
+        !write(ifile,*) "S^0.5*H*S^0.5: "
+        !call debug_writeMat( ifile,    real(Hk), norbitals, norbitals )
+        !close(ifile)
         !stop
 
 ! DIAGONALIZE THE HAMILTONIAN.
@@ -286,9 +285,9 @@ subroutine solveH( ikpoint, kpoint )
           end if ! divide
           if (info .ne. 0) call diag_error (info, 0)
 
-        do inu=1,norbitals
-            write(*,*) "DEBUG eig[",inu,"] ", eigen(inu)
-        end do
+        !do inu=1,norbitals
+        !    write(*,*) "DEBUG eig[",inu,"] ", eigen(inu)
+        !end do
         
     !write(ifile,*) "B_Low coefs: "
     !call debug_writeMat( ifile, real(Hk), norbitals, norbitals )

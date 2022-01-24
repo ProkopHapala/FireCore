@@ -192,8 +192,6 @@
 ! Procedure
 ! ============================================================================
 
-
-        write(*,*) "DEBUG Dassemble_ca_3c()"
 ! Initialize the force contributions to zero.
         f3caa = 0.0d0
         f3cab = 0.0d0
@@ -560,6 +558,5 @@
  
 ! Format Statements
 ! ===========================================================================
-        write(*,*) "DEBUG Dassemble_ca_3c() END"
         return
         end

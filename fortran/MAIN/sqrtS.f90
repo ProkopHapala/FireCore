@@ -194,6 +194,4 @@ subroutine sqrtS( Smat, norbitals, divide )
 
     call zgemm ('N', 'C', norbitals, norbitals, norbitals_new, cmplx(1.0d0,0.0d0), zzzz, norbitals, zzzz, norbitals, cmplx(0.0d0,0.0d0), xxxx, norbitals)
 
-    write(*,*) "DEBUG sqrtS() norbitals_new ", norbitals_new
-
 end subroutine sqrtS

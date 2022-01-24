@@ -112,4 +112,6 @@
         integer ioff3c (1:4)
         real    testrange
 
+        integer iwrtxyz
+
  end module options
