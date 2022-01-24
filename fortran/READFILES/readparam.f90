@@ -121,6 +121,9 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
 ! ===========================================================================
         if(idebugWrite .gt. 0) write (*,*) "DEBUG readparam() "
 
+        nkpoints = 1
+
+
 ! default settings
 ! ------  DEFAULT OPTIONS  ------
         iharris = 0
