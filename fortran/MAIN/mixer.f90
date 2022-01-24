@@ -89,6 +89,10 @@
  
 ! Procedure
 ! ===========================================================================
+  if(idebugWrite .gt. 0) then
+   write (*,*) "DEBUG mixer <<Qin  ", Qin (1,:)
+   write (*,*) "DEBUG mixer <<Qout ", Qout(1,:)
+  end if  
 
 ! Check to see if input charges and output charges are within tolerance.
 ! If they are within tolerance, then perform a motional time step. If
@@ -220,16 +224,17 @@
 !    write (*,*) ' (After  renormalization)  zcheck = ', zcheck
 !    write (*,*) ' (What it must be)           ztot = ', ztot
 !    write (*,*) '  '
-    if (verbosity .ge. 1) write (*,303) sigma, sigmatol, Kscf
-
+    !if (verbosity .ge. 1) write (*,'(A,i3,A,e14.7,A,e14.7)' ) "=============> Kscf", Kscf, "sigma = ",sigma," Must be < ", sigmatol 
+    if(idebugWrite .gt. 0) then
+      write (*,*) "DEBUG mixer >>Qin  ", Qin (1,:)
+      write (*,*) "DEBUG mixer >>Qout ", Qout(1,:)
+     end if  
 
 ! Format Statements
 ! ===========================================================================
 300     format (2x, ' Deviation (rms) of input/output charges = ', f9.4)
 301     format (2x, ' Deviation (max) of input/output charges = ', f9.4)
 302     format (2x, ' Renormalization of Qin:   renorm = ', 4x, f14.8)
-303     format (' =============> sigma = ', e14.7,                           &
-     &          ' Must be less than', e14.7, ' SCF step = ', i3)
 501     format (2x,'Your chosen mixing routine is: ',a)
     
       return

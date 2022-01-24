@@ -17,7 +17,7 @@ program fireball
 
     ! ====== global variables
 
-    integer i,j, in1, istepf
+    integer i,j, in1
     integer ikpoint
     integer imu
     real, dimension (3) :: k_temp
@@ -27,8 +27,8 @@ program fireball
 
     ! ====== Body
 
-    idebugWrite = 1
-    !idebugWrite = 0
+    !idebugWrite = 1
+    idebugWrite = 0
 
     call cpu_time (time_begin)
     call initbasics ()
@@ -67,7 +67,7 @@ program fireball
     write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf, max_scf_iterations
     call init_FIRE( )
 
-    do istepf = 1,nstepf
+    do itime_step = 1,nstepf
         !debug_writeIntegral( interaction, isub, in1, in2, index )
         !max_scf_iterations = 1
         iforce = 0
@@ -76,40 +76,24 @@ program fireball
         scf_achieved = .false.
         
         do Kscf = 1, max_scf_iterations
-            write(*,*) "! ======== Kscf ", Kscf
+            !write(*,*) "! ======== Kscf ", Kscf
             !call assemble_h ()
 
             call assemble_mcweda ()
             
             !call debug_writeBlockedMat( "S_mat.log", s_mat )
-            call debug_writeBlockedMat( "H_mat.log", h_mat )
+            !call debug_writeBlockedMat( "H_mat.log", h_mat )
 
             call solveH   ( ikpoint, k_temp )
-            !write (*,*) "eig(k=1): ",  eigen_k(:,1)    ! for some reason this stops denmat to work
-            !call build_rho() 
             call denmat ()
 
-            !write (*,*) "Qin ",  Qin(1,:)
-            !write (*,*) "Qout ", Qout(1,:)
-
             sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
-
-            !if ( (sigma .lt. sigmatol) ) then
-            if(  scf_achieved ) then
-                write (*,*) "# SCF converged ", Kscf ,sigma, sigmatol, scf_achieved
-                exit
-            else 
-                write (*,*) "# SCF converged not ", Kscf ,sigma, sigmatol, scf_achieved
-            end if ! simga
+            write (*,*) "### SCF converged? ", scf_achieved, " Kscf ", Kscf, " |Qin-Oout| ",sigma," < tol ", sigmatol
+            if(  scf_achieved ) exit
 
             !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
             !call mixCharge
-
-            write (*,*) "DEBUG mixer <<Qin  ", Qin (1,:)
-            write (*,*) "DEBUG mixer <<Qout ", Qout(1,:)
             call mixer ()
-            write (*,*) "DEBUG mixer >>Qin  ", Qin (1,:)
-            write (*,*) "DEBUG mixer >>Qout ", Qout(1,:)
 
         end do ! Kscf
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
@@ -118,16 +102,16 @@ program fireball
         call getenergy_mcweda () 
         call getforces ()   ! Assemble forces
         
-        do i=1, natoms
-            write(*,*) "force[",i,"] ",  ftot(:,i)
-        end do
+        !do i=1, natoms
+        !    write(*,*) "force[",i,"] ",  ftot(:,i)
+        !end do
 
         call getforces ()   ! Assemble forces
-        call move_ions_FIRE (itime_step, 0 )   ! Move ions now
+        call move_ions_FIRE (itime_step, iwrtxyz )   ! Move ions now
 
         call write_bas(  )
 
-        write (*,'(A,i6,2f16.8)') ' ++++ i, Fmax, force_tol ', itime_step, deltaFmax, force_tol
+        write (*,'(A,i6,A,i6,A,f16.8,A,f16.8)') " ###### Time Step", itime_step,"(of ",nstepf,") |Fmax| ",  deltaFmax , " > force_tol " , force_tol
         !	if ( FIRE_Ftot .lt. force_tol ) then
         if ( deltaFmax .lt. force_tol ) then
             write (*,*) ' +++++ FIRE.optionalimization converged +++++ '

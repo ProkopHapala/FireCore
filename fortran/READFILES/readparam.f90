@@ -86,7 +86,8 @@
         integer ccmd, i
 
 ! Namelist for options control
-!   Namelist /output/ iwrtcdcoefs, iwrtcharges, iwrtdensity, iwrteigen,       &
+Namelist /output/                          iwrtxyz
+!                                           iwrtcdcoefs, iwrtcharges, iwrtdensity, iwrteigen,       &
 !                                          iwrtefermi, iwrtfpieces, iwrthampiece, iwrtcomponents, &
 !                                          iwrtneigh, iwrtneigh_com, iwrtxyz, iwrtdos, iwrtdosng, iwrthop,   &
 !                                          iwrtatom, iwrtpop, iwrtHS, iwrtvel, iwrtden, iwrtewf, iwrtdipole, &
@@ -158,20 +159,20 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
         !xvfile = 'xv.dat'
 !        nstepi = 1
         nstepf = 1
-        force_tol = 1.0E-6
+        force_tol = 1.0E-4
         dt = 0.5
 !        T_initial = 0.0d0
 !        T_final = 10.0d0
         max_scf_iterations = 200
         bmix = 0.04d0
 !        ialgmix = 1
-        sigmatol = 1.0E-8
+        sigmatol = 1.0E-5
         tempfe = 100.0d0
 !        itdse = 0
 !        ibias = 0
         rescal = 1.0d0
         xyz2line = 2
-        verbosity = 1
+        verbosity = 0
         ntpr = 1
         restartxyz = 0
         inputxyz = 0
@@ -229,7 +230,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
 !        iwrtcomponents = 0
 !        iwrtneigh = 0
 !        iwrtneigh_com = 0
-!        iwrtxyz = 0
+         iwrtxyz = 0
 !        iwrtdos = 0
 !        iwrtdosng = 0
 !        iwrthop = 0
@@ -274,9 +275,9 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
 
 ! section OUTPUT
 ! check if the section OUTPUT is listed
-!         str = '&OUTPUT'
-!         call issection (str,isstr)
-!         if (isstr) read (60, NML=output)
+         str = '&OUTPUT'
+         call issection (str,isstr)
+         if (isstr) read (60, NML=output)
 
 ! close unit
          close (unit = 60)

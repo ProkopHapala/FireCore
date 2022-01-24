@@ -55,6 +55,8 @@ subroutine init_FIRE( )
 	FIRE_dt       = FIRE_dtmax * 0.25
 	FIRE_acoef    = FIRE_acoef0
 
+	vatom(:,:) = 0
+
 	!if ( .not. allocated( fragxyz ) ) then
 	!	allocate( fragxyz(3,natoms) ) 
 	!	fragxyz( :,:) = 0
@@ -96,14 +98,17 @@ subroutine move_ions_FIRE( istep, iwrtxyz )
 				ff = ff + ftot(k,iatom)**2
 				vv = vv + vatom(k,iatom)**2
 				vf = vf + vatom(k,iatom) * ftot(k,iatom)
+				!write(*,*) "DEBUG iatom,k, ftot,vatom, ff,vv,vf ", iatom, k, ftot(k,iatom), vatom(k,iatom), ff, vv, vf
 			!end if ! fragxyz(k,iatom)
 		end do ! k
 	end do ! iatom
+	!write(*,*) "DEBUG ff,vv,vf ", ff,vv,vf
 	FIRE_Ftot = sqrt( ff )
+	
 
 ! FIRE update depending of projection <v|f>
 	if ( vf .lt. 0 ) then
-		write (*,*) " DEBUG FIRE: <v|f>  < 0 "
+		!write (*,*) " DEBUG FIRE: <v|f>  < 0 "
 		vatom(:,:)   = 0 
 		!FIRE_dt      = FIRE_dt * FIRE_fdec
 		FIRE_dt      = max( FIRE_dt * FIRE_fdec, FIRE_dtmin )
@@ -137,8 +142,9 @@ subroutine move_ions_FIRE( istep, iwrtxyz )
 		enddo
 	enddo
 
-	write ( xyz_headline, '(A, i6, 5f16.8)' ) " #### FIRE: i,Fmax,|F|,v,<v|f>,dt: ", istep, deltaFmax, FIRE_Ftot, sqrt(vv), vf, FIRE_dt  
+	write ( xyz_headline, '(A, i6, 6f16.8)' ) " #### FIRE: i,Fmax,|F|,v,<v|f>,dt: ", istep, deltaFmax, FIRE_Ftot, vv, sqrt(vv), vf, FIRE_dt  
 	write ( *, '(A)' )  xyz_headline
+	!write(*,*) "DEBGU move_ions_FIRE() : iwrtxyz ", iwrtxyz
 	if ( iwrtxyz .eq. 1 ) call write_to_xyz( xyz_headline, istep )
 
 end subroutine move_ions_FIRE
