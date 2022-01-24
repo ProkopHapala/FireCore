@@ -16,9 +16,9 @@
          real, dimension (:, :, :, :), allocatable :: rhoPP
 
 ! These arrays store the densities in excited state.
-         real, dimension (:, :, :, :), allocatable :: cape_es
-         real, dimension (:, :, :, :), allocatable :: rho_es
-         real, dimension (:, :, :, :), allocatable :: rhoPP_es
+!         real, dimension (:, :, :, :), allocatable :: cape_es
+!         real, dimension (:, :, :, :), allocatable :: rho_es
+!         real, dimension (:, :, :, :), allocatable :: rhoPP_es
 
 ! jel-grid
         !  real, dimension (:, :), allocatable :: rhoA
