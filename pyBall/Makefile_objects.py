@@ -205,6 +205,7 @@ GROUPS = {
 'MAIN' : {
 '' : [
 'fireball',
+'libFireCore',
 'denmat',
 'fermie',
 #'build_rho',
