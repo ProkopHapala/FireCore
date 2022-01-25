@@ -24,15 +24,17 @@ BLAS       = "-lblas"
 MODMPI     = "-I/usr/local/mpich/include"
 VISFLAGS   = ""
 
+FFLAG_ALL = " -fPIC "
+
 _FFLAGS = {
-    'F90'      : " -freal-4-real-8 -ffree-form -ffree-line-length-none ",
-    'F77'      : " -freal-4-real-8 ",
-    'CC'       : " -freal-4-real-8 -ffree-form -ffree-line-length-none ",
-    'OPT'      : " -O3 -mtune=native -ftree-vectorize ",
-    'VERY_OPT' : " -Ofast -march=native -mtune=native ",
-    'DEBUGbak' : " -Og -g -fbounds-check -Wall -Wno-tabs",
-    'DEBUG'    : " -Og -g -fcheck=all -fbounds-check -Wall -Wno-tabs -Wno-unused-variable -Wno-unused-label -Wno-missing-include-dirs",
-    'DEBUGw'   : " -Og -g -fcheck=all -fbounds-check ",
+    'F90'      : FFLAG_ALL+" -freal-4-real-8 -ffree-form -ffree-line-length-none ",
+    'F77'      : FFLAG_ALL+" -freal-4-real-8 ",
+    'CC'       : FFLAG_ALL+" -freal-4-real-8 -ffree-form -ffree-line-length-none ",
+    'OPT'      : FFLAG_ALL+" -O3 -mtune=native -ftree-vectorize ",
+    'VERY_OPT' : FFLAG_ALL+" -Ofast -march=native -mtune=native ",
+    'DEBUGbak' : FFLAG_ALL+" -Og -g -fbounds-check -Wall -Wno-tabs",
+    'DEBUG'    : FFLAG_ALL+" -Og -g -fcheck=all -fbounds-check -Wall -Wno-tabs -Wno-unused-variable -Wno-unused-label -Wno-missing-include-dirs",
+    'DEBUGw'   : FFLAG_ALL+" -Og -g -fcheck=all -fbounds-check ",
 }
 
 _LFLAGS = {

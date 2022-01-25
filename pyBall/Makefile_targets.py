@@ -49,20 +49,20 @@ def writeTarget( fout, name, depend, objs, compiler="$(F90)", fflags="$(FFLAGS)"
 
 # ==================================================
 
-inline_targets = {
+inline_targets = [
 
-".PHONY" :" clean veryclean extraclean",
+'''all :
+	make fireball.x
+	make libFireCore.so''',
 
-"clean" : '''
+".PHONY : clean veryclean extraclean",
+
+'''clean : 
 	rm -f -r core *.o .nfs* rii_files fireball.x.ip*  *.mod ldtmp* *.vo *~ *.il''',
 
-"veryclean": ''' clean
-	rm -f fireball.x libfireball.a''',
+'''veryclean :  clean
+	rm -f fireball.x libfireball.a libFireCore.so''',
 
-"extraclean": "veryclean",
+'''extraclean : veryclean''',
 
-"all":'''
-	make fireball.x'''
-#	make libFireball.so''',
-
-}
+]

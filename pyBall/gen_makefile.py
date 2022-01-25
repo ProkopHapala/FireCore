@@ -223,8 +223,8 @@ def toMakefile_list_vars( fout, name, lst, pre=" $(", post=") " ):
 def toMakefile_name( fout, name, val ):
     fout.write( name + " = " + val + "\n\n" )
 
-def toMakefile_tar_inline_target( fout, name, body ):
-    fout.write( name +" : "+body+"\n\n" )
+def toMakefile_tar_inline_target( fout, body ):
+    fout.write( body+"\n\n" )
 
 def toMakefile_target( fout, name, depend, objs, compiler="$(F90)", fflags="$(FFLAGS)", lflags="$(LFLAGS)" ):
     fout.write( name +" : "+depend+"\n" )
@@ -356,47 +356,36 @@ if __name__ == "__main__":
     #print "======= CHECK GROUP FILEs   "; checkFilesInPaths( all_group_names, groups_flat, pre=src_path_check, bRedudant=False, bMissing=True )
 
     with open("Makefile",'w') as fout:
-        
-        #print "DEBUG 1 "
         toMakefile_obj_groups( fout, GROUPS, all_group_names, my_variant_names )
-        #print "DEBUG 2 "
         #toMakefile_list_vars( fout, "OBJECTS_SERVER", OBJECTS_SERVER, )
         #toMakefile_list_vars( fout, "OBJECTS",        OBJECTS,        )
-        #print "DEBUG 3 "
         toMakefile_list_vars( fout, "OBJECTS", my_group_names )
-        #print "DEBUG 4 "
         #fout.write( "(OBJ)/%.o" + "\n\n" )
         fout.write( "F90 = gfortran\n" )
         #toMakefile_name( fout, "FFLAGS",   FFLAGS   )
         #toMakefile_name( fout, "FFLAGS77", FFLAGS   )
         #toMakefile_name( fout, "LFLAGS_",  LFLAGS_  )
-        #print "DEBUG 5 "
         toMakefile_name( fout, "FFLAGS",   "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['F90']  )
         toMakefile_name( fout, "FFLAGS77", "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['F77']  )
         toMakefile_name( fout, "FFLAGSC",  "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['CC' ]  )
         toMakefile_name( fout, "LFLAGS_",  LFLAGS_  )
-        #print "DEBUG 6 "
         toMakefile_name( fout, "LPATHS",   LPATHS   )
         toMakefile_name( fout, "INCLUDES", INCLUDES )
         #toMakefile_list_vars( fout, "LFLAGS", ["LPATHS","LFLAGS_"] )
-        #print "DEBUG 7 "
         #LFLAGS = " -L/home/prokop/intel/mkl/lib/intel64 -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -L/home/prokop/intel/mkl/intel64 -I/home/prokop/intel/mkl/include/fftw -lfftw3xf_gnu -lm -Bdynamic -L/usr/lib/x86_64-linux-gnu/openmpi/lib -I/usr/lib/x86_64-linux-gnu/openmpi/include -lmpi "
         LFLAGS = " -L"+MKL_PATH+"/mkl/lib/intel64 -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -L/home/prokop/intel/mkl/intel64 -I/home/prokop/intel/mkl/include/fftw -lfftw3xf_gnu -lm -Bdynamic -L/usr/lib/x86_64-linux-gnu/openmpi/lib -I/usr/lib/x86_64-linux-gnu/openmpi/include -lmpi "
         
 	toMakefile_name( fout, "LFLAGS", LFLAGS )
         #toMakefile_name( fout, "FFLAGS", FFLAGS )
-        #print "DEBUG 8 "
         #writeTarget( fout, "fireball.x"       , "$(OBJECTS)", [OBJECTS       ] )
         #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", [OBJECTS_SERVER] )
-        #print "DEBUG 9 "
-        toMakefile_target( fout, "fireball.x"    , "$(OBJECTS)", "$(OBJECTS)"        )
-        toMakefile_target( fout, "libfireball.so", "$(OBJECTS)", "$(OBJECTS)", compiler="$(F90)", fflags=" -shared -fPIC $(FFLAGS)", lflags="$(LFLAGS)" )
-        #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", "OBJECTS_SERVER" )
-        #print "DEBUG 10 "
-        for key,body in inline_targets.iteritems() :
+        for body in inline_targets :
             #writeInlineTarget( fout, key, body )
-            toMakefile_tar_inline_target( fout, key, body )
-        #print "DEBUG 11 "
+            toMakefile_tar_inline_target( fout, body )
+        toMakefile_target( fout, "fireball.x"    , "$(OBJECTS)", "$(OBJECTS)"        )
+        #toMakefile_target( fout, "libfireball.so", "$(OBJECTS)", "$(OBJECTS)", compiler="$(F90)", fflags=" -shared -fPIC $(FFLAGS)", lflags="$(LFLAGS)" )
+        toMakefile_target( fout, "libFireCore.so", "$(OBJECTS)", "$(OBJECTS)", compiler="$(F90)", fflags=" -shared -fPIC $(FFLAGS)", lflags="$(LFLAGS)" )
+        #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", "OBJECTS_SERVER" )
         #toMakefile_cc_objs   ( fout, GROUPS, group_names, variant_names, special_cc=SPECIAL_CC, src_path=src_path_make )
         toMakefile_cc_objs   ( fout, GROUPS, all_group_names, my_variant_names, src_path=src_path_make, cc_kinds=CC_KINDS, inv_SPECIAL_CC=inv_SPECIAL_CC )
     
