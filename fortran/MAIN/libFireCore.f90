@@ -3,7 +3,19 @@
 ! ============ subroutine firecore_init
 ! ==================================================
 
-subroutine firecore_init( natoms_, atomTypes, atomsPos )
+subroutine firecore_hello( ) bind(c, name='firecore_hello')
+    use iso_c_binding
+    ! ====== Parameters
+    ! ====== global variables
+    
+    ! ====== Body
+    write(*,*) " firecore_hello says HELLO !!!! "
+    return
+end subroutine firecore_hello
+
+
+subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
+    use iso_c_binding
     use options, only : idebugWrite
     use loops
     !use fire
@@ -18,13 +30,20 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos )
     !use debug
     implicit none
     ! ====== Parameters
-    integer,                      intent(in) :: natoms_
-    integer, dimension(:),        intent(in) :: atomTypes
-    real,    dimension(3,natoms), intent(in) :: atomsPos
+    integer(c_int),                      intent(in) :: natoms_
+    integer(c_int), dimension(natoms),   intent(in) :: atomTypes
+    real(c_double), dimension(3,natoms), intent(in) :: atomsPos
     ! ====== global variables
     !real time_begin
     !real time_end
+    integer i
     ! ====== Body
+    write(*,*) "DEBUG ", natoms_
+    return
+
+    do i = 1,natoms_
+        write(*,*) atomTypes(i), atomsPos(:,i)
+    end do !
     idebugWrite = 0
     !call cpu_time (time_begin)
     call initbasics ()    
@@ -37,7 +56,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos )
     !call init_FIRE( )
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
-    stop
+    return
 end subroutine firecore_init
 
 ! ==================================================
@@ -59,8 +78,8 @@ subroutine firecore_SCF( nmax_scf, forces_ )
     use debug
     implicit none
     ! ====== Parameters
-    integer,                 intent(in) :: nmax_scf
-    real,    dimension(:,:), intent(in) :: forces_
+    integer,                 intent(in)  :: nmax_scf
+    real,    dimension(:,:), intent(out) :: forces_
     ! ====== global variables
     integer ikpoint
     real, dimension (3) :: k_temp
@@ -93,9 +112,11 @@ subroutine firecore_SCF( nmax_scf, forces_ )
     !call assemble_mcweda ()
     call getenergy_mcweda () 
     call getforces ()   ! Assemble forces
+
+    forces_(:,:) = ftot(:,:)
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
-    stop
+    return
 end subroutine firecore_SCF
 
 ! ==================================================
