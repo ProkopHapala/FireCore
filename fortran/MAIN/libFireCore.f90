@@ -55,46 +55,65 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     ! ====== global variables
     !real time_begin
     !real time_end
-    integer i ,    iatom, numorbPP_max
+    integer i, ispec, iatom, numorbPP_max
     real distance
     real, dimension (3) :: vector
+    logical zindata
     ! ====== Body
-    write(*,*) "DEBUG natoms_", natoms_
+    natoms = natoms_
+
+    write(*,*) "DEBUG natoms_", natoms
     write(*,*) "DEBUG shape(atomTypes,atomsPos)", shape(atomTypes), shape(atomsPos)
     do i = 1,natoms_
         write(*,*) atomTypes(i), atomsPos(:,i)
     end do !
-    return
+
     idebugWrite = 0
     !call cpu_time (time_begin)
 
     !call initbasics () 
     ! >>> BEGIN INIT_BASICS
+    write(*,*) "DEBUG initbasics START "
     call initconstants ! (sigma, sigmaold, scf_achieved)
     scf_achieved = .true.
     call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
     call readparam ()
     call readinfo () 
-    open (unit = 69, file = basisfile, status = 'old')
-    read (69, *) natoms
-    close (unit = 69)
-    allocate (degelec (natoms))
-    allocate (imass (natoms))
-    allocate (ratom (3, natoms))
-    allocate (nowMinusInitialPos (3, natoms))
-    allocate (initialPosition (3, natoms))
-    allocate (vatom (3, natoms))
-    allocate (symbol (natoms))
-    allocate (xmass (natoms))
+    allocate (degelec   (natoms))
+    allocate (imass     (natoms))
+    allocate (symbol    (natoms))
+    allocate (xmass     (natoms))
+    allocate (ratom  (3, natoms))
+    allocate (vatom  (3, natoms))
     allocate (ximage (3, natoms))
+    allocate (nowMinusInitialPos (3, natoms))
+    allocate (initialPosition    (3, natoms))
     ximage = 0.0d0
-    call readbasis (nzx, imass)
-    ishiftO = 0
+    !call readbasis (nzx, imass)
+
+    !imass(:)   = atomTypes(:)
+    ratom(:,:) = atomsPos (:,:)
+    write (*,*) " check atom species ... "
     do iatom = 1, natoms
-       distance = ratom(1,iatom)**2 + ratom(2,iatom)**2 + ratom(3,iatom)**2
-       distance = sqrt(distance)
-       if (distance .lt. 1.0d-4) ishiftO = 1
-    end do 
+        zindata = .false.
+        do ispec = 1, nspecies
+             if ( atomTypes(iatom) .eq. nzx(ispec)) then
+                zindata = .true.
+                imass(:) = ispec
+             end if
+        end do
+        if ( .not. zindata ) then
+            write (*,*) "atom[",iatom,"] type not know ", atomTypes(iatom)
+            stop
+            return
+        else 
+            write (*,*) "atom[",iatom,"] ",imass(iatom) 
+        end if ! zindata
+
+    end do ! iatom
+    write(*,*) " ... Atoms are OK "
+    !return
+
     call cross (a2vec, a3vec, vector)
     Vouc=a1vec(1)*vector(1)+a1vec(2)*vector(2)+a1vec(3)*vector(3)
     call initboxes (1)
@@ -112,17 +131,19 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     allocate (xdot (0:5, 3, natoms)) ! Initialized below
  ! Allocate the stuff that depends on natoms, neigh_max, and numorb_max
     write (*,*) ' Initiallizing arrays '
-    call allocate_neigh ! (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh, iwrthampiece,  iwrtatom)
-    call allocate_f ! (natoms, neigh_max, neighPP_max, numorb_max, nsh_max, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias)
-    call allocate_h ! (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss, iwrtdos, iwrthop, iwrtatom)
-    !call allocate_rho (natoms, neigh_max, neighPP_max, numorb_max, sh_max, itheory_xc, igrid)
-    call allocate_rho !(natoms, neigh_max, neighPP_max, numorb_max, sh_max, itheory_xc, igrid)
- !        call allocate_dos (natoms, iwrtdos, iwrthop)                                                ! IF_DEF_GRID_DOS
+    call allocate_neigh()
+    call allocate_f() 
+    call allocate_h() 
+    call allocate_rho() 
+    !call allocate_dos() ! IF_DEF_GRID_DOS
     !<<< END INIT_BASICS
+    write(*,*) "DEBUG initbasics END "
 
     !call readdata ()
     call readdata_mcweda ()
+    write(*,*) "DEBUG readdata_mcweda END "
     call init_wfs(norbitals, nkpoints)
+    write(*,*) "DEBUG firecore_init END "
     return
 end subroutine firecore_init
 
@@ -130,7 +151,8 @@ end subroutine firecore_init
 ! ============ subroutine firecore_SCF
 ! ==================================================
 
-subroutine firecore_SCF( nmax_scf, forces_ )
+subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalForce')
+    use iso_c_binding
     use options
     use loops
     use fire
@@ -145,8 +167,8 @@ subroutine firecore_SCF( nmax_scf, forces_ )
     use debug
     implicit none
     ! ====== Parameters
-    integer,                 intent(in)  :: nmax_scf
-    real,    dimension(:,:), intent(out) :: forces_
+    integer(c_int),                 intent(in),value :: nmax_scf
+    real(c_double), dimension(:,:), intent(out)      :: forces_
     ! ====== global variables
     integer ikpoint
     real, dimension (3) :: k_temp
@@ -184,7 +206,7 @@ subroutine firecore_SCF( nmax_scf, forces_ )
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
     return
-end subroutine firecore_SCF
+end subroutine firecore_evalForce
 
 ! ==================================================
 ! ============ subroutine init_wfs
