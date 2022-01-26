@@ -32,19 +32,20 @@ end function sum2val
 
 subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
     use iso_c_binding
-    use options, only : idebugWrite
+    use options
     use loops
     !use fire
     use configuration
     !use energy
     !use forces
     use interactions
-    !use integrals
-    !use density
+    use integrals
+    use density
     use kpoints
-    !use charges
+    use charges
     !use debug
     implicit none
+
     ! ====== Parameters
     integer(c_int),                      intent(in), value :: natoms_
     !integer(c_int), dimension(natoms),   intent(in)        :: atomTypes
@@ -54,7 +55,9 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     ! ====== global variables
     !real time_begin
     !real time_end
-    integer i
+    integer i ,    iatom, numorbPP_max
+    real distance
+    real, dimension (3) :: vector
     ! ====== Body
     write(*,*) "DEBUG natoms_", natoms_
     write(*,*) "DEBUG shape(atomTypes,atomsPos)", shape(atomTypes), shape(atomsPos)
@@ -64,16 +67,62 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     return
     idebugWrite = 0
     !call cpu_time (time_begin)
-    call initbasics ()    
+
+    !call initbasics () 
+    ! >>> BEGIN INIT_BASICS
+    call initconstants ! (sigma, sigmaold, scf_achieved)
+    scf_achieved = .true.
+    call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
+    call readparam ()
+    call readinfo () 
+    open (unit = 69, file = basisfile, status = 'old')
+    read (69, *) natoms
+    close (unit = 69)
+    allocate (degelec (natoms))
+    allocate (imass (natoms))
+    allocate (ratom (3, natoms))
+    allocate (nowMinusInitialPos (3, natoms))
+    allocate (initialPosition (3, natoms))
+    allocate (vatom (3, natoms))
+    allocate (symbol (natoms))
+    allocate (xmass (natoms))
+    allocate (ximage (3, natoms))
+    ximage = 0.0d0
+    call readbasis (nzx, imass)
+    ishiftO = 0
+    do iatom = 1, natoms
+       distance = ratom(1,iatom)**2 + ratom(2,iatom)**2 + ratom(3,iatom)**2
+       distance = sqrt(distance)
+       if (distance .lt. 1.0d-4) ishiftO = 1
+    end do 
+    call cross (a2vec, a3vec, vector)
+    Vouc=a1vec(1)*vector(1)+a1vec(2)*vector(2)+a1vec(3)*vector(3)
+    call initboxes (1)
+ ! Call make_munu. This routine determines all of the non-zero matrix elements for the two- and three-center matrix elements.  These non-zero matrix elements are determined based on selection rules.
+    call make_munu   (nspecies)
+    call make_munuPP (nspecies)
+    call make_munuS  (nspecies)  
+    call countOrbitals(numorb_max)                                                              ! IF_DEF_GRID_END
+    call initcharges  (natoms, nspecies, itheory, ifixcharge, symbol) 
+    call countIsorp()
+    call countChargeDeglect(numorbPP_max)
+    call get_info_orbital (natoms)
+    if (itheory .eq. 2) call make_mu2shell (nspecies)
+    call initamat(nspecies)
+    allocate (xdot (0:5, 3, natoms)) ! Initialized below
+ ! Allocate the stuff that depends on natoms, neigh_max, and numorb_max
+    write (*,*) ' Initiallizing arrays '
+    call allocate_neigh ! (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh, iwrthampiece,  iwrtatom)
+    call allocate_f ! (natoms, neigh_max, neighPP_max, numorb_max, nsh_max, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias)
+    call allocate_h ! (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss, iwrtdos, iwrthop, iwrtatom)
+    !call allocate_rho (natoms, neigh_max, neighPP_max, numorb_max, sh_max, itheory_xc, igrid)
+    call allocate_rho !(natoms, neigh_max, neighPP_max, numorb_max, sh_max, itheory_xc, igrid)
+ !        call allocate_dos (natoms, iwrtdos, iwrthop)                                                ! IF_DEF_GRID_DOS
+    !<<< END INIT_BASICS
+
     !call readdata ()
     call readdata_mcweda ()
     call init_wfs(norbitals, nkpoints)
-    !if(idebugWrite .gt. 0) write(*,*) "DEBUG fireball.f90 norbitals, nkpoints, max_scf_iterations", norbitals, nkpoints
-    ! TODO : It does not read CHARGES   (that is the reason for difference from Fireball-progs)
-    !write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf, max_scf_iterations
-    !call init_FIRE( )
-    !call cpu_time (time_end)
-    !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
     return
 end subroutine firecore_init
 
