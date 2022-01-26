@@ -324,32 +324,6 @@ subroutine initbasics ()
 !            write (*,*) '    The results will be written into populations.dat file '
 !         endif ! iwrtpop
 
-! ! Count the orbitals
-!    norbitals = 0
-!    do iatom = 1, natoms
-!       in1 = imass(iatom)
-!       norbitals = norbitals + num_orb(in1)
-!    end do
-
-! ! Count the total number of shells in the system.
-!    nssh_tot = 0
-!    do iatom = 1, natoms
-!       in1 = imass(iatom)
-!       do issh = 1, nssh(in1)
-!          nssh_tot = nssh_tot + 1
-!       end do
-!    end do
-
-! ! Count the maximum number of orbital interactions between any given two atoms.
-!    numorb_max = 0
-!    do in1 = 1, nspecies
-!       numorb = 0
-!       do issh = 1, nssh(in1)
-!          numorb = numorb + 2*lssh(issh,in1) + 1
-!       end do
-!       if (numorb .gt. numorb_max) numorb_max = numorb
-!    end do
-
    call countOrbitals(numorb_max)
 
 ! We originally use the neutral atom charges from the info.dat file.
@@ -361,146 +335,9 @@ subroutine initbasics ()
    call initcharges (natoms, nspecies, itheory, ifixcharge, symbol)
 !        endif                                                                ! IF_DEF_GRID_END
 
-! ! Calculate isorpmax and ideriv_max
-!         isorpmax = 0
-!         if (itheory .eq. 1) then
-!          do in1 = 1, nspecies
-!           isorpmax = max(isorpmax,nssh(in1))
-!          end do
-!         end if
-! ! this is only for density-oslxc, in future should be the same as above
-! ! depending on the harris-oslxc
-!         isorpmax_xc = 0
-!         do in1 = 1, nspecies
-!            isorpmax_xc = max(isorpmax_xc,nssh(in1))
-!         end do
-!         ideriv_max = 0
-!         if (itheory .eq. 1) ideriv_max = 6
-! ! Set up the index field ind2c:
-!         icount = 0
-!         ind2c = 0
-!         icount = icount + 1
-!         ind2c(1,0) = icount
-!         do isorp = 0, isorpmax
-!          icount = icount + 1
-!          ind2c(2,isorp) = icount
-!         end do
-!         do isorp = 0, isorpmax
-!          icount = icount + 1
-!          ind2c(3,isorp) = icount
-!         end do
-!         do isorp = 0, isorpmax
-!          icount = icount + 1
-!          ind2c(4,isorp) = icount
-!         end do
-!         icount = icount + 1
-!         ind2c(5,0) = icount
-!         do ideriv = 0, 4
-!          icount = icount + 1
-!          ind2c(6,ideriv) = icount
-!         end do
-!         do ideriv = 0, 4
-!          icount = icount + 1
-!          ind2c(7,ideriv) = icount
-!         end do
-!         do ideriv = 0, 4
-!          icount = icount + 1
-!          ind2c(8,ideriv) = icount
-!         end do
-!         icount = icount + 1
-!         ind2c(9,0) = icount
-!         icount = icount + 1
-!         ind2c(10,0) = icount
-!         icount = icount + 1
-!         ind2c(11,0) = icount
-!         icount = icount + 1
-!         ind2c(12,0) = icount
-!         icount = icount + 1
-!         ind2c(13,0) = icount
-!         icount = icount + 1
-!         ind2c(14,0) = icount
-!         if (itheory_xc .eq. 1 .or. itheory_xc .eq. 2 .or. itheory_xc .eq. 4 ) then
-!          if (itheory_xc .eq. 4) then
-!           icount = icount + 1
-!           ind2c(14,0) = icount
-!          end if !end if itheory_xc .eq. 4
-!          do isorp = 1, isorpmax_xc
-!           icount = icount + 1
-!           ind2c(15,isorp) = icount
-!          end do
-!          do isorp = 1, isorpmax_xc
-!           icount = icount + 1
-!           ind2c(16,isorp) = icount
-!          end do
-!          do isorp = 1, isorpmax_xc
-!           icount = icount + 1
-!           ind2c(17,isorp) = icount
-!          end do
-!          do isorp = 1, isorpmax_xc
-!           icount = icount + 1
-!           ind2c(18,isorp) = icount
-!          end do
-!          do isorp = 1, isorpmax_xc
-!           icount = icount + 1
-!           ind2c(19,isorp) = icount
-!          end do
-!          do isorp = 1, isorpmax_xc
-!           icount = icount + 1
-!           ind2c(20,isorp) = icount
-!          end do
-!          do isorp = 1, isorpmax_xc
-!           icount = icount + 1
-!           ind2c(21,isorp) = icount
-!          end do
-!          do isorp = 1, isorpmax_xc
-!           icount = icount + 1
-!           ind2c(22,isorp) = icount
-!          end do
-!          icount = icount + 1
-!          ind2c(23,0) = icount
-! !dani.JOM.jel-fr-end
-!         end if
-!         interactions2c_max = icount
-
    call countIsorp()
 
    call countChargeDeglect(numorbPP_max)
-
-! !>>>>>
-! ! Calculate ztot
-!    ztot = 0.0d0
-!    nelectron = 0.0d0
-!    do iatom = 1, natoms
-!       in1 = imass(iatom)
-!       do issh = 1, nssh(in1)
-!          ztot = ztot + Qneutral(issh,in1)
-!          nelectron(iatom) = nelectron(iatom) + int( Qneutral(issh,in1) )
-!       end do
-!    end do
-! ! ADD Feb. 15, 2006, need to be tested.
-!    if (abs(qstate) .gt. 0.00001) ztot = ztot + qstate
-! ! Calculate degelec.  We only need this once at the beginning of the simulation.
-!    degelec(1) = 0
-!    do iatom = 2, natoms
-!       degelec(iatom) = 0
-!       in1 = imass(iatom - 1)
-!       degelec(iatom) = degelec(iatom - 1) + num_orb(in1)
-!    end do
-! ! This is a fix from Jose - evidently, there were problems with transition
-! ! metals where the orbitals are different than the pseudopotential.
-! ! For the dimensions of pp-arrays, we need to fix numorb_max to something
-! ! different. For the moment find numorbPP_max and choose the greater of
-! ! numorb_max and numorbPP_max. This can be improved later.
-!    numorbPP_max = 0
-!    do in1 = 1, nspecies
-!       numorb = 0
-!       do issh = 1, nsshPP(in1)
-!          numorb = numorb + 2*lsshPP(issh,in1) + 1
-!       end do
-!       if (numorb .gt.  numorbPP_max) numorbPP_max = numorb
-!    end do
-!    if (numorbPP_max .gt.  numorb_max) numorb_max = numorbPP_max
-! !<<<<<
 
 
 ! ! IF_DEF_ZW
@@ -691,31 +528,14 @@ subroutine initbasics ()
    return
 end subroutine initbasics
 
-
 subroutine countOrbitals( numorb )
-   !use options
    use configuration
    use interactions ! ----
-   !use loops
-   !use integrals
-!use outputs
-   !use kpoints
-!use optimization
-!use md
-   !use charges
-!use barrier
-!use transport
-   !use energy
-   !use neighbor_map
-   !use forces
-!use mpi_main
-!use hartree_fock
    implicit none
 ! ========= Parameters
    integer,intent(out):: numorb
-   !integer,intent(out):: numorbPP_max
 ! ========= Variables
-   integer in1,iatom,issh !,numorb,numorbPP_max
+   integer in1,iatom,issh
 ! ========= Body
    ! Count the orbitals
    norbitals = 0
@@ -743,63 +563,49 @@ subroutine countOrbitals( numorb )
 end subroutine countOrbitals
 
 subroutine countChargeDeglect( numorbPP_max )
-!use options
-use configuration
-use interactions ! ----
-!use loops
-!use integrals
-!use outputs
-!use kpoints
-!use optimization
-!use md
-use charges
-!use barrier
-!use transport
-!use energy
-!use neighbor_map
-!use forces
-!use mpi_main
-!use hartree_fock
-implicit none
-! ========= Parameters
-!integer,intent(inout):: numorb
-integer,intent(out):: numorbPP_max
-! ========= Variables
-integer in1,iatom,issh, numorb
-! ========= Body
-! Calculate ztot
-ztot = 0.0d0
-nelectron = 0.0d0
-do iatom = 1, natoms
-   in1 = imass(iatom)
-   do issh = 1, nssh(in1)
-      ztot = ztot + Qneutral(issh,in1)
-      nelectron(iatom) = nelectron(iatom) + int( Qneutral(issh,in1) )
+   use configuration
+   use interactions
+   use charges
+   implicit none
+   ! ========= Parameters
+   !integer,intent(inout):: numorb
+   integer,intent(out):: numorbPP_max
+   ! ========= Variables
+   integer in1,iatom,issh, numorb
+   ! ========= Body
+   ! Calculate ztot
+   ztot = 0.0d0
+   nelectron = 0.0d0
+   do iatom = 1, natoms
+      in1 = imass(iatom)
+      do issh = 1, nssh(in1)
+         ztot = ztot + Qneutral(issh,in1)
+         nelectron(iatom) = nelectron(iatom) + int( Qneutral(issh,in1) )
+      end do
    end do
-end do
-! ADD Feb. 15, 2006, need to be tested.
-if (abs(qstate) .gt. 0.00001) ztot = ztot + qstate
-! Calculate degelec.  We only need this once at the beginning of the simulation.
-degelec(1) = 0
-do iatom = 2, natoms
-   degelec(iatom) = 0
-   in1 = imass(iatom - 1)
-   degelec(iatom) = degelec(iatom - 1) + num_orb(in1)
-end do
-! This is a fix from Jose - evidently, there were problems with transition
-! metals where the orbitals are different than the pseudopotential.
-! For the dimensions of pp-arrays, we need to fix numorb_max to something
-! different. For the moment find numorbPP_max and choose the greater of
-! numorb_max and numorbPP_max. This can be improved later.
-numorbPP_max = 0
-do in1 = 1, nspecies
-   numorb = 0
-   do issh = 1, nsshPP(in1)
-      numorb = numorb + 2*lsshPP(issh,in1) + 1
+   ! ADD Feb. 15, 2006, need to be tested.
+   if (abs(qstate) .gt. 0.00001) ztot = ztot + qstate
+   ! Calculate degelec.  We only need this once at the beginning of the simulation.
+   degelec(1) = 0
+   do iatom = 2, natoms
+      degelec(iatom) = 0
+      in1 = imass(iatom - 1)
+      degelec(iatom) = degelec(iatom - 1) + num_orb(in1)
    end do
-   if (numorb .gt.  numorbPP_max) numorbPP_max = numorb
-end do
-if (numorbPP_max .gt.  numorb_max) numorb_max = numorbPP_max
+   ! This is a fix from Jose - evidently, there were problems with transition
+   ! metals where the orbitals are different than the pseudopotential.
+   ! For the dimensions of pp-arrays, we need to fix numorb_max to something
+   ! different. For the moment find numorbPP_max and choose the greater of
+   ! numorb_max and numorbPP_max. This can be improved later.
+   numorbPP_max = 0
+   do in1 = 1, nspecies
+      numorb = 0
+      do issh = 1, nsshPP(in1)
+         numorb = numorb + 2*lsshPP(issh,in1) + 1
+      end do
+      if (numorb .gt.  numorbPP_max) numorbPP_max = numorb
+   end do
+   if (numorbPP_max .gt.  numorb_max) numorb_max = numorbPP_max
 end subroutine countChargeDeglect
 
 subroutine countIsorp( )
@@ -811,17 +617,7 @@ subroutine countIsorp( )
 ! ========= Parameters
 ! ========= Variables
    !integer iatom
-   integer in1
-   integer icount
-   !integer counter
-   !integer counter_ini
-   integer isorp
-   integer ideriv
-   !integer issh
-   !integer numorbPP_max
-   !integer numorb
-   !integer l
-   integer imu
+   integer in1, icount, isorp, ideriv, imu
 ! ========= Body
 ! Calculate isorpmax and ideriv_max
    isorpmax = 0
