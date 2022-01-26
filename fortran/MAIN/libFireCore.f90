@@ -13,6 +13,22 @@ subroutine firecore_hello( ) bind(c, name='firecore_hello')
     return
 end subroutine firecore_hello
 
+function sum2(a) result(b) bind(c, name='sum2')
+    use iso_c_binding
+    implicit none
+    real(c_double), intent(in)  :: a
+    real(c_double)              :: b
+    b = a + 2.d0
+end function sum2
+
+function sum2val(a,b) result(c) bind(c, name='sum2val')
+    use iso_c_binding
+    implicit none
+    real(c_double), intent(in),value  :: a
+    real(c_double), intent(in),value  :: b
+    real(c_double)                    :: c
+    c = a + b
+end function sum2val
 
 subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
     use iso_c_binding
@@ -30,20 +46,22 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     !use debug
     implicit none
     ! ====== Parameters
-    integer(c_int),                      intent(in) :: natoms_
-    integer(c_int), dimension(natoms),   intent(in) :: atomTypes
-    real(c_double), dimension(3,natoms), intent(in) :: atomsPos
+    integer(c_int),                      intent(in), value :: natoms_
+    !integer(c_int), dimension(natoms),   intent(in)        :: atomTypes
+    !real(c_double), dimension(3,natoms), intent(in)        :: atomsPos
+    integer(c_int), dimension(natoms_),   intent(in)        :: atomTypes
+    real(c_double), dimension(3,natoms_), intent(in)        :: atomsPos
     ! ====== global variables
     !real time_begin
     !real time_end
     integer i
     ! ====== Body
-    write(*,*) "DEBUG ", natoms_
-    return
-
+    write(*,*) "DEBUG natoms_", natoms_
+    write(*,*) "DEBUG shape(atomTypes,atomsPos)", shape(atomTypes), shape(atomsPos)
     do i = 1,natoms_
         write(*,*) atomTypes(i), atomsPos(:,i)
     end do !
+    return
     idebugWrite = 0
     !call cpu_time (time_begin)
     call initbasics ()    

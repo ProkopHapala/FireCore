@@ -1,7 +1,7 @@
 
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
-import ctypes
+import ctypes as ct
 import os
 import sys
 
@@ -9,14 +9,17 @@ import sys
 #from pyMeta import cpp_utils 
 import cpp_utils
 
-c_double_p = ctypes.POINTER(c_double)
-c_int_p    = ctypes.POINTER(c_int)
+c_double_p = ct.POINTER(c_double)
+c_int_p    = ct.POINTER(c_int)
+
+def fortReal(a):
+    ct.byref(ct.c_double(a))
 
 def _np_as(arr,atype):
     if arr is None:
         return None
     else: 
-        return arr.ctypes.data_as(atype)
+        return arr.ct.data_as(atype)
 
 cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
@@ -26,15 +29,15 @@ header_strings = [
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
-#libSDL = ctypes.CDLL( "/usr/lib/x86_64-linux-gnu/libSDL2.so", ctypes.RTLD_GLOBAL )
-#libGL  = ctypes.CDLL( "/usr/lib/x86_64-linux-gnu/libGL.so",   ctypes.RTLD_GLOBAL )
+#libSDL = ct.CDLL( "/usr/lib/x86_64-linux-gnu/libSDL2.so", ct.RTLD_GLOBAL )
+#libGL  = ct.CDLL( "/usr/lib/x86_64-linux-gnu/libGL.so",   ct.RTLD_GLOBAL )
 
 
 #cpp_name='CombatModels'
 #cpp_utils.make(cpp_name)
 #LIB_PATH      = os.path.dirname( os.path.realpath(__file__) )
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
-#lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
+#lib = ct.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
 cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '/../build/' ) 
 lib = cpp_utils.loadLib('FireCore', recompile=False )
@@ -54,19 +57,53 @@ def firecore_hello():
     return lib.firecore_hello()
 
 #  subroutine firecore_init( natoms_, atomTypes, atomsPos )
+lib.sum2.argtypes  = [c_double_p ] 
+lib.sum2.restype   =  c_double
+def sum2( a ):
+    a = ct.c_double(a)
+    return lib.sum2( ct.byref(a) )
+
+#  subroutine firecore_init( natoms_, atomTypes, atomsPos )
+lib.sum2val.argtypes  = [c_double,c_double ] 
+lib.sum2val.restype   =  c_double
+def sum2val( a, b ):
+    return lib.sum2val( a, b )
+
+'''
+#  subroutine firecore_init( natoms_, atomTypes, atomsPos )
+lib.firecore_init.argtypes  = [c_int, c_int_p, c_double_p ] 
+lib.firecore_init.restype   =  None
+def firecore_init(natoms, atomTypes, atomPos ):
+    atomTypes_ = atomTypes.ctypes. data_as(c_int_p)
+    atomPos_   = atomPos  .ctypes.data_as(c_double_p)
+    return lib.firecore_init(natoms, atomTypes_, atomPos_ )
+'''
+
+#  subroutine firecore_init( natoms_, atomTypes, atomsPos )
 lib.firecore_init.argtypes  = [c_int, array1i, array2d ] 
 lib.firecore_init.restype   =  None
 def firecore_init(natoms, atomTypes, atomPos ):
-    return lib.firecore_init(natoms, atomTypes, atomPos)
+    return lib.firecore_init(natoms, atomTypes, atomPos )
 
 # ========= Python Functions
 
 if __name__ == "__main__":
+
+    # b = sum2   ( 5.0 ); print "sum2   ", b
+    # b = sum2val( 5.0,6.0 ); print "sum2val", b
+
+    #a = ct.c_double(5)
+    #b = lib.sum2(ct.byref(a))
+    #print b
+
+    
     firecore_hello()
     
     natoms = 5
     atomType = np.random.randint(6, size=natoms).astype(np.int32)
     atomPos  = np.random.random((3,natoms))
+    print "atomType ", atomType
+    print "atomPos  ", atomPos
     firecore_init( natoms, atomType, atomPos )
     
 
