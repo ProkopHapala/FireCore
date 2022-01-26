@@ -85,6 +85,14 @@ lib.firecore_init.restype   =  None
 def firecore_init(natoms, atomTypes, atomPos ):
     return lib.firecore_init(natoms, atomTypes, atomPos )
 
+#  subroutine firecore_evalForce( nmax_scf, forces_ )
+lib.firecore_evalForce.argtypes  = [c_int, array2d ] 
+lib.firecore_evalForce.restype   =  None
+def firecore_evalForce( nmax_scf=100, forces=None, natom=5 ):
+    if forces is None:
+        forces = np.zeros( (3,natom) )
+    return lib.firecore_evalForce( nmax_scf, forces )
+
 # ========= Python Functions
 
 if __name__ == "__main__":
@@ -100,10 +108,19 @@ if __name__ == "__main__":
     firecore_hello()
     
     natoms = 5
-    atomType = np.random.randint(6, size=natoms).astype(np.int32)
-    atomPos  = np.random.random((3,natoms))
+    #atomType = np.random.randint(6, size=natoms).astype(np.int32)
+    #atomPos  = np.random.random((3,natoms))
+    atomType = np.array([6,1,1,1,1]).astype(np.int32)
+    atomPos  = np.array([
+        [ 0.0,0.0,0.1  ],
+        [ -1.0,+1.0,+1.0  ],
+        [ +1.0,-1.0,+1.0  ],
+        [ +1.0,+1.0,-1.0  ],
+        [ -1.0,-1.0,-1.0  ],
+    ])
     print "atomType ", atomType
     print "atomPos  ", atomPos
     firecore_init( natoms, atomType, atomPos )
+    forces = firecore_evalForce()
     
 

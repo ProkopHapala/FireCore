@@ -1,7 +1,11 @@
 #!/bin/bash
 
 rm answer.bas answer.xyz params.dat CHARGES *.out
-fireball="../../build/fireball.x"
+
+#fireball="../../build/fireball.x"
+fireball="python ../../pyBall/FireCore.py"
+
+
 #PATH=$PATH:/home/prokop/SW/intel/mkl/lib/intel64
 #LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/prokop/SW/intel/mkl/lib/intel64
 #LD_LIBRARY_PATH=/home/prokop/SW/intel/mkl/lib/intel64:$LD_LIBRARY_PATH
