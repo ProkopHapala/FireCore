@@ -29,87 +29,24 @@ header_strings = [
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
-#libSDL = ct.CDLL( "/usr/lib/x86_64-linux-gnu/libSDL2.so", ct.RTLD_GLOBAL )
-#libGL  = ct.CDLL( "/usr/lib/x86_64-linux-gnu/libGL.so",   ct.RTLD_GLOBAL )
-
-
-#cpp_name='CombatModels'
-#cpp_utils.make(cpp_name)
-#LIB_PATH      = os.path.dirname( os.path.realpath(__file__) )
-#LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
-#lib = ct.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
-
-
-#libSDL = ctypes.CDLL( "/usr/lib/x86_64-linux-gnu/libSDL2.so", ctypes.RTLD_GLOBAL )
-#libGL  = ctypes.CDLL( "/usr/lib/x86_64-linux-gnu/libGL.so",   ctypes.RTLD_GLOBAL )
-#libGL  = ctypes.CDLL( "/usr/lib/nvidia-375/libGL.so",   ctypes.RTLD_GLOBAL )
-
 # LFLAGS   = " -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lfftw3xf_gnu -lm -Bdynamic -lmpi "
 
-
 libs = {}
-
 def loadLib(name, dic=libs):
     lib = ct.CDLL( name, ct.RTLD_GLOBAL )
     dic[name] = lib
     return lib
 
-
-
-#libMKL_avx2_ = ct.CDLL( "/usr/lib/x86_64-linux-gnu/libpthread.so", ct.RTLD_GLOBAL )
-'''
-loadLib( "/lib/x86_64-linux-gnu/libpthread.so.0" )
-loadLib( "/usr/lib/x86_64-linux-gnu/libmpi.so" )
-'''
-
 mkldir = "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/"
-
-#loadLib( mkldir+"libmkl_rt.so" )
-
-
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_rt.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_blacs_openmpi_lp64.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_blacs_intelmpi_ilp64.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_intel_lp64.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_scalapack_lp64.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_gnu_thread.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_intel_thread.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_avx2.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_scalapack_lp64.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_core.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"libmkl_def.so", ct.RTLD_GLOBAL )
-
-
-#libMKL_avx2_ = ct.CDLL( mkldir+"", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( mkldir+"", ct.RTLD_GLOBAL )
-
-
-#libMKL_avx2_ = ct.CDLL( "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/libmkl_intel_thread.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/libmkl_rt.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/libmkl_def.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/libmkl_core.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/libmkl_avx2.so", ct.RTLD_GLOBAL )
-#libMKL_avx2_ = ct.CDLL( "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/libmkl_avx2.so", ct.RTLD_GLOBAL )
-
-#libMKL_avx2_ = ct.CDLL( "/home/prokop/SW/intel-2/compilers_and_libraries_2019.4.243/linux/mkl/lib/intel64_lin/libmkl_avx2.so", ct.RTLD_GLOBAL )
-#libMKL_avx2  = ct.CDLL( "/home/prokop/SW/intel/mkl/lib/intel64/libmkl_avx2.so", ct.RTLD_GLOBAL )
 
 cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '/../build/' ) 
 lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_GLOBAL )
 
 '''
-loadLib( mkldir+"libmkl_blacs_openmpi_lp64.so" )
-loadLib( mkldir+"libmkl_blacs_intelmpi_ilp64.so" )
 loadLib( mkldir+"libmkl_def.so"        )
 loadLib( mkldir+"libmkl_core.so"       )
-loadLib( mkldir+"libmkl_intel_lp64.so" )
-loadLib( mkldir+"libmkl_gnu_thread.so", )
 loadLib( mkldir+"libmkl_avx2.so", )
-#loadLib( mkldir+"libmkl_scalapack_lp64.so", )
 '''
-
-
 
 array1ui = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='CONTIGUOUS')
 array1i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=1, flags='CONTIGUOUS')
@@ -190,6 +127,7 @@ if __name__ == "__main__":
     print ("atomType ", atomType)
     print ("atomPos  ", atomPos)
     firecore_init( natoms, atomType, atomPos )
-    forces = firecore_evalForce()
+    forces = firecore_evalForce(nmax_scf=100)
+    print( "Python: Forces", forces )
     
 

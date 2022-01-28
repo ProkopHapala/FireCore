@@ -156,16 +156,15 @@
  
 ! Procedure
 ! ===========================================================================
-!        write (*,*) '  '
-!        write (*,*) ' Welcome to assemble_usr.f! '
-!        write (*,*) '  '
- 
+        write (*,*) ' DEBUG assemble_usr() '
+
 ! Initialize arrays
         dxcv = 0.0d0
         dusr = 0.0d0
         u0 = 0.0d0
         uxcdcc = 0.0d0
  
+        write (*,*) ' DEBUG assemble_usr() --- '
 
 ! Calculate delta charges (integer) into a real variable.
         do iatom = 1, natoms
@@ -178,6 +177,8 @@
          end do
         end do
    
+        write (*,*) ' DEBUG ..1 '
+
 ! Loop over all atoms in the central cell.
 !!$omp parallel do private (r1, in1, qi, Zi, dqi, dq1, mbeta, jatom, r2, in2) &
 !!$omp&   private (qj, Zj, QQ, distance, index_coulomb, interaction, ideriv)  &
@@ -209,8 +210,7 @@
           QQ = Zi*Zj - qi*qj
  
 ! Calculate the distance between the two atoms.
-          distance = sqrt((r2(1) - r1(1))**2 + (r2(2) - r1(2))**2       &
-     &                                       + (r2(3) - r1(3))**2)
+          distance = sqrt((r2(1) - r1(1))**2 + (r2(2) - r1(2))**2  + (r2(3) - r1(3))**2)
  
 ! ****************************************************************************
 ! GET COULOMB INTERACTIONS 
@@ -450,6 +450,8 @@
          end do   ! End of loop over neighbors
         end do  ! End of loop over iatom
 
+        write (*,*) ' DEBUG ..2 '
+
 ! Subtract the forces for the ewald interaction
 ! The variable fewald is already force-like.
         if (itheory .eq. 1) then 
@@ -474,6 +476,8 @@
          end do
         end do
  
+        write (*,*) ' DEBUG ..3 '
+
 ! Notice that we add the corksr correction to etot.
 ! This is because of the subtraction minus discussed above.
         eklr = 0.0d0
@@ -492,6 +496,8 @@
          u0tot = u0tot - eklr
         end if
         uiiuee = u0tot - ue0tot
+
+        write (*,*) ' DEBUG ..4 '
 
 ! ! IF_DEF_IXCZW
 !         if (V_intra_dip .eq. 1) then

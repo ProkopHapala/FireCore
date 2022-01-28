@@ -261,6 +261,8 @@ subroutine initbasics ()
 !        allocate (ratom_final (3, natoms))
 !        call readbarrier (natoms, nspecies, imass, nzx)
 
+   write(*,*) "DEBUG nssh(:)", nssh(:)
+
 ! Call make_munu. This routine determines all of the non-zero matrix elements
 ! for the two- and three-center matrix elements.  These non-zero matrix
 ! elements are determined based on selection rules.
@@ -541,6 +543,7 @@ subroutine countOrbitals( numorb )
    norbitals = 0
    do iatom = 1, natoms
       in1 = imass(iatom)
+      write(*,*) "DEBUG countOrbitals() iatom,in1,num_orb(in1)", iatom,in1,num_orb(in1)
       norbitals = norbitals + num_orb(in1)
    end do
    ! Count the total number of shells in the system.

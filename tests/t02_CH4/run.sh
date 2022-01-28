@@ -2,8 +2,8 @@
 
 rm answer.bas answer.xyz params.dat CHARGES *.out
 
-#fireball="../../build/fireball.x"
-fireball="python ../../pyBall/FireCore.py"
+fireball="../../build/fireball.x"
+fireball_py="python ../../pyBall/FireCore.py"
 
 
 #PATH=$PATH:/home/prokop/SW/intel/mkl/lib/intel64
@@ -17,4 +17,5 @@ echo $LD_LIBRARY_PATH
 rm answer.bas answer.xyz params.dat CHARGES *.out
 
 
-$fireball | tee relaxation.out
+$fireball    | tee relaxation.out
+$fireball_py | tee relaxation.py.out
