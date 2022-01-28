@@ -178,6 +178,10 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     !idebugWrite = 1
     !idebugWrite = 0
     !call cpu_time (time_begin)
+
+    idebugWrite = 1
+    verbosity   = 1 
+
     ikpoint = 1
     max_scf_iterations = nmax_scf
     write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations
