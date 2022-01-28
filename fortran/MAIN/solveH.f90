@@ -166,10 +166,8 @@ subroutine solveH( ikpoint, kpoint )
 
         call ktransform( kpoint, norbitals, Sk, Hk )
 
-
-        write(*,*) "DEBUG Sk: \n", real(Sk(:,:))
-        write(*,*) "DEBUG Hk: \n", real(Hk(:,:))
-
+        !write(*,*) "DEBUG Sk: \n", real(Sk(:,:))
+        !write(*,*) "DEBUG Hk: \n", real(Hk(:,:))
 
         if (.not. allocated(sm12_save)) then
             allocate (sm12_save(norbitals,norbitals,nkpoints))

@@ -114,9 +114,11 @@
          num_orb(in1) = 0
          do issh1 = 1 , nssh(in1)
           l1 = lssh(issh1,in1)
+          write (*,*) "DEBUG make_munu() in1,issh1,lssh(issh1,in1) ", in1,issh1,lssh(issh1,in1)
           num_orb(in1) = num_orb(in1) + 2*l1 + 1
          end do
         end do
+        write (*,*) "DEBUG make_munu() num_orb(:) ", num_orb(:)
  
 ! Now we calculate ME3c_max and ME2c_max
 ! ME2c_max is the maximum number of two-center matrix elements: 

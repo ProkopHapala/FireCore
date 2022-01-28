@@ -55,7 +55,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     ! ====== global variables
     !real time_begin
     !real time_end
-    integer i, ispec, iatom, numorbPP_max
+    integer i, ispec, in1, iatom, numorbPP_max
     real distance
     real, dimension (3) :: vector
     logical zindata
@@ -99,7 +99,9 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
         do ispec = 1, nspecies
              if ( atomTypes(iatom) .eq. nzx(ispec)) then
                 zindata = .true.
-                imass(:) = ispec
+                imass(iatom) = ispec
+                in1 = imass(iatom)
+                symbol(iatom) = symbolA(in1)
              end if
         end do
         if ( .not. zindata ) then
@@ -109,14 +111,20 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
         else 
             write (*,*) "atom[",iatom,"] ",imass(iatom) 
         end if ! zindata
-
     end do ! iatom
+
+
     write(*,*) " ... Atoms are OK "
+    write(*,*) " ... atomTypes(:) ", atomTypes(:)
+    write(*,*) " ... imass(:) ", imass(:)
     !return
 
     call cross (a2vec, a3vec, vector)
     Vouc=a1vec(1)*vector(1)+a1vec(2)*vector(2)+a1vec(3)*vector(3)
     call initboxes (1)
+
+    write(*,*) "DEBUG nssh(:)", nssh(:)
+
  ! Call make_munu. This routine determines all of the non-zero matrix elements for the two- and three-center matrix elements.  These non-zero matrix elements are determined based on selection rules.
     call make_munu   (nspecies)
     call make_munuPP (nspecies)
@@ -184,7 +192,8 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
 
     ikpoint = 1
     max_scf_iterations = nmax_scf
-    write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations
+    scf_achieved = .false.
+    write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations, scf_achieved
     do Kscf = 1, max_scf_iterations
         !write(*,*) "! ======== Kscf ", Kscf
         !call assemble_h ()
@@ -203,12 +212,16 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
     !call assemble_mcweda ()
-    call getenergy_mcweda () 
+    write(*,*) "DEBUG 1 "
+    call getenergy_mcweda ()
+    write(*,*) "DEBUG 2 " 
     call getforces ()   ! Assemble forces
-
+    write(*,*) "DEBUG 3 "
     forces_(:,:) = ftot(:,:)
+    write(*,*) "DEBUG 4 "
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
+    write (*,*) '!!!! SCF LOOP DONE in ', Kscf, " iterations"
     return
 end subroutine firecore_evalForce
 
