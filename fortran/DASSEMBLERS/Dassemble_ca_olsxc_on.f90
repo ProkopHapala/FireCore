@@ -224,7 +224,7 @@
 ! ------------------------------------------------------------------------
 ! Double counting correction forces (dxcv)
 ! ------------------------------------------------------------------------
-            write(*,*)   "DEBUG iatom,ineigh,imu,imu, arhop_on ", iatom,ineigh,issh, arhop_on(:,issh,issh,ineigh,iatom)
+            !write(*,*)   "DEBUG iatom,ineigh,imu,imu, arhop_on ", iatom,ineigh,issh, arhop_on(:,issh,issh,ineigh,iatom)
             rhoxc_av = arho_on(issh,issh,iatom)
             drhoxc_av(:) = arhop_on(:,issh,issh,ineigh,iatom)
             call cepal(rhoxc_av, exc, muxc, dexc, d2exc, dmuxc, d2muxc)

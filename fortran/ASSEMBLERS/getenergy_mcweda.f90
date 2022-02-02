@@ -75,16 +75,12 @@
           call get_ewald ! (nprocs, my_proc, iforce, icluster, itheory,iordern)
          end if
  
-         write(*,*) "DEBUG .1"
-         write(*,*) "DEBUG .1-"
 ! Now call the short-ranged potential to get: u0(iatom,ineigh) and uee00(iatom).
 ! Here iatom is a basis atom in the unit cell and ineigh is the ineigh'th
 ! neighbor to iatom.  The total energy per unit cell is
 ! sum(iatom,ineigh) u0(iatom,ineigh) - sum(iatom) uee00(iatom).
 ! The energy/cell uii_uee is returned in the calling statment.
          call assemble_usr (uxcdcc_hf,  uiiuee) ! (itheory, itheory_xc, iforce, uxcdcc_hf,  uiiuee)
-
-         write(*,*) "DEBUG .2"
 
 ! If using the average density approximation or the orbital occupancy
 ! formalism, then the double-counting correction term must be different.
@@ -99,7 +95,6 @@
            etotxc_1c = 0.0d0
         endif
 
-        write(*,*) "DEBUG .3"
 ! ===========================================================================
          etot = ebs + uiiuee + uxcdcc + etotxc_1c
 ! ! IF_DEF_VDW
@@ -132,7 +127,6 @@
 !         print*,'tau(itime_step)',tau(itime_step)
 !         print*,'enHarmonic',enHarmonic
 !         print*,'etotPerfectLattice',etotPerfectLattice
-         write(*,*) "DEBUG .4"
          if (wrtout) then
           write (*,*) ' ---------- T H E  T O T A L  E N E R G Y ----------- '
 !          if (itheory .ne. 0) write (*,500) itime_step, Kscf 
@@ -154,7 +148,6 @@
          end if
          etotold = etotnew
          etotnew = etotper
-         write(*,*) "DEBUG .5"
 !-----------------------------------------------------------------------------
 !export energies for thermodynamic integration of <dE/dlambda>
 !----------------------------------------------------------------------------

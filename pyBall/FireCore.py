@@ -118,11 +118,11 @@ if __name__ == "__main__":
     #atomPos  = np.random.random((3,natoms))
     atomType = np.array([6,1,1,1,1]).astype(np.int32)
     atomPos  = np.array([
-        [ 0.0,0.0,0.1  ],
-        [ -1.0,+1.0,+1.0  ],
-        [ +1.0,-1.0,+1.0  ],
-        [ +1.0,+1.0,-1.0  ],
-        [ -1.0,-1.0,-1.0  ],
+        [ 0.1,      0.0,     0.0],
+        [-1.0,     +1.0,    -1.0],
+        [+1.0,     -1.0,    -1.0],
+        [-1.0,     -1.0,    +1.0],
+        [+1.0,     +1.0,    +1.0],
     ])
     print ("atomType ", atomType)
     print ("atomPos  ", atomPos)

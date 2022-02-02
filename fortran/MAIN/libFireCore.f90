@@ -93,7 +93,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
 
     !imass(:)   = atomTypes(:)
     ratom(:,:) = atomsPos (:,:)
-    write (*,*) " check atom species ... "
+    !write (*,*) " DEBUG check atom species ... "
     do iatom = 1, natoms
         zindata = .false.
         do ispec = 1, nspecies
@@ -112,18 +112,16 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
             write (*,*) "atom[",iatom,"] ",imass(iatom) 
         end if ! zindata
     end do ! iatom
-
-
-    write(*,*) " ... Atoms are OK "
-    write(*,*) " ... atomTypes(:) ", atomTypes(:)
-    write(*,*) " ... imass(:) ", imass(:)
+    !write(*,*) " DEBUG Atoms are OK "
+    !write(*,*) " DEBUG atomTypes(:) ", atomTypes(:)
+    !write(*,*) " DEBUG imass(:) ", imass(:)
     !return
 
     call cross (a2vec, a3vec, vector)
     Vouc=a1vec(1)*vector(1)+a1vec(2)*vector(2)+a1vec(3)*vector(3)
     call initboxes (1)
 
-    write(*,*) "DEBUG nssh(:)", nssh(:)
+    !write(*,*) "DEBUG nssh(:)", nssh(:)
 
  ! Call make_munu. This routine determines all of the non-zero matrix elements for the two- and three-center matrix elements.  These non-zero matrix elements are determined based on selection rules.
     call make_munu   (nspecies)
@@ -145,13 +143,13 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     call allocate_rho() 
     !call allocate_dos() ! IF_DEF_GRID_DOS
     !<<< END INIT_BASICS
-    write(*,*) "DEBUG initbasics END "
+    !write(*,*) "DEBUG initbasics END "
 
     !call readdata ()
     call readdata_mcweda ()
-    write(*,*) "DEBUG readdata_mcweda END "
+    !write(*,*) "DEBUG readdata_mcweda END "
     call init_wfs(norbitals, nkpoints)
-    write(*,*) "DEBUG firecore_init END "
+    !write(*,*) "DEBUG firecore_init END "
     return
 end subroutine firecore_init
 
@@ -187,7 +185,7 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     !idebugWrite = 0
     !call cpu_time (time_begin)
 
-    idebugWrite = 1
+    idebugWrite = 0
     verbosity   = 1 
     iforce      = 1
 
@@ -213,13 +211,9 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     !call postscf ()               ! optionally perform post-processing (DOS etc.)
     !call getenergy (itime_step)    ! calculate the total energy
     !call assemble_mcweda ()
-    write(*,*) "DEBUG 1 "
     call getenergy_mcweda ()
-    write(*,*) "DEBUG 2 " 
     call getforces ()   ! Assemble forces
-    write(*,*) "DEBUG 3 "
     forces_(:,:) = ftot(:,:)
-    write(*,*) "DEBUG 4 "
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
     write (*,*) '!!!! SCF LOOP DONE in ', Kscf, " iterations"

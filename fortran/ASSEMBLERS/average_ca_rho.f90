@@ -312,7 +312,7 @@
                        do imu = 1, nssh(in3)
                           rhom_2c(imu,inu)    = rhom_2c(imu,inu)    +  rhomm(imu,inu)*Qin(isorp,jatom)
                           rhomp_2c(:,imu,inu) = rhomp_2c(:,imu,inu) +  rhompm(:,imu,inu)*Qin(isorp,jatom)
-                          write(*,*) "DEBUG iatom,isorp,imu,inu, rhompm ",  iatom,isorp,imu,inu,  rhompm(:,imu,inu)
+                          !write(*,*) "DEBUG iatom,isorp,imu,inu, rhompm ",  iatom,isorp,imu,inu,  rhompm(:,imu,inu)
                        end do ! endo imu
                     end do ! enddo inu
                  end do ! endo do isorp
