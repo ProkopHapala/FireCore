@@ -189,10 +189,11 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
 
     idebugWrite = 1
     verbosity   = 1 
+    iforce      = 1
 
     ikpoint = 1
-    max_scf_iterations = nmax_scf
     scf_achieved = .false.
+    max_scf_iterations = nmax_scf
     write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations, scf_achieved
     do Kscf = 1, max_scf_iterations
         !write(*,*) "! ======== Kscf ", Kscf
