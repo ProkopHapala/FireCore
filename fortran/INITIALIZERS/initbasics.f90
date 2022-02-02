@@ -543,7 +543,6 @@ subroutine countOrbitals( numorb )
    norbitals = 0
    do iatom = 1, natoms
       in1 = imass(iatom)
-      write(*,*) "DEBUG countOrbitals() iatom,in1,num_orb(in1)", iatom,in1,num_orb(in1)
       norbitals = norbitals + num_orb(in1)
    end do
    ! Count the total number of shells in the system.

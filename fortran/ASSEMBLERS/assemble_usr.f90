@@ -156,7 +156,6 @@
  
 ! Procedure
 ! ===========================================================================
-        write (*,*) ' DEBUG assemble_usr() '
 
 ! Initialize arrays
         dxcv = 0.0d0
@@ -164,8 +163,6 @@
         u0 = 0.0d0
         uxcdcc = 0.0d0
  
-        write (*,*) ' DEBUG assemble_usr() --- '
-
 ! Calculate delta charges (integer) into a real variable.
         do iatom = 1, natoms
          Q(iatom) = 0.0d0
@@ -177,8 +174,6 @@
          end do
         end do
    
-        write (*,*) ' DEBUG ..1 '
-
 ! Loop over all atoms in the central cell.
 !!$omp parallel do private (r1, in1, qi, Zi, dqi, dq1, mbeta, jatom, r2, in2) &
 !!$omp&   private (qj, Zj, QQ, distance, index_coulomb, interaction, ideriv)  &
@@ -245,15 +240,13 @@
            if (itheory .eq. 1) then
             do issh = 1, nssh(in1)
              do jssh = 1, nssh(in1)
-              uee00(iatom) = uee00(iatom)                               &
-     &         + Qin(issh,iatom)*Qin(jssh,jatom)*coulomb(issh,jssh)
+              uee00(iatom) = uee00(iatom)  + Qin(issh,iatom)*Qin(jssh,jatom)*coulomb(issh,jssh)
              end do
             end do
            else if (itheory .eq. 0 .or. itheory .eq. 2) then
             do issh = 1, nssh(in1)
              do jssh = 1, nssh(in1)
-              uee00(iatom) = uee00(iatom) +                             &
-     &         Qneutral(issh,in1)*Qneutral(jssh,in2)*coulomb(issh,jssh)
+              uee00(iatom) = uee00(iatom) + Qneutral(issh,in1)*Qneutral(jssh,in2)*coulomb(issh,jssh)
              end do
             end do
            end if
@@ -270,15 +263,13 @@
            if (itheory .eq. 1) then
             do issh = 1, nssh(in1)
              do jssh = 1, nssh(in2)
-              u0(iatom,ineigh) = u0(iatom,ineigh) +                     &
-     &          Qin(issh,iatom)*Qin(jssh,jatom)*coulomb(issh,jssh)
+              u0(iatom,ineigh) = u0(iatom,ineigh) + Qin(issh,iatom)*Qin(jssh,jatom)*coulomb(issh,jssh)
              end do
             end do
            else if (itheory .eq. 0 .or. itheory .eq. 2) then
             do issh = 1, nssh(in1)
              do jssh = 1, nssh(in2)
-              u0(iatom,ineigh) = u0(iatom,ineigh) +                     &
-     &          Qneutral(issh,in1)*Qneutral(jssh,in2)*coulomb(issh,jssh)
+              u0(iatom,ineigh) = u0(iatom,ineigh) +  Qneutral(issh,in1)*Qneutral(jssh,in2)*coulomb(issh,jssh)
              end do
             end do
            end if
@@ -450,8 +441,6 @@
          end do   ! End of loop over neighbors
         end do  ! End of loop over iatom
 
-        write (*,*) ' DEBUG ..2 '
-
 ! Subtract the forces for the ewald interaction
 ! The variable fewald is already force-like.
         if (itheory .eq. 1) then 
@@ -475,8 +464,6 @@
           if (itheory .eq. 1) u0tot = u0tot + corksr(iatom,ineigh)
          end do
         end do
- 
-        write (*,*) ' DEBUG ..3 '
 
 ! Notice that we add the corksr correction to etot.
 ! This is because of the subtraction minus discussed above.
@@ -496,8 +483,6 @@
          u0tot = u0tot - eklr
         end if
         uiiuee = u0tot - ue0tot
-
-        write (*,*) ' DEBUG ..4 '
 
 ! ! IF_DEF_IXCZW
 !         if (V_intra_dip .eq. 1) then

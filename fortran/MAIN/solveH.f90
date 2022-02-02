@@ -310,7 +310,7 @@ subroutine solveH( ikpoint, kpoint )
 ! xxxx = S^-1/2 in AO basis
 ! zzzz = Unused
 ! yyyy = Hamiltonian eigenvectors in the MO basis
-    write(*,*) "DEBUG norbitals,ikpoint ", norbitals,ikpoint, " shape(eigen_k) ", shape(eigen_k), " shape(eigen_k) ", shape(eigen) 
+
     if (verbosity .gt. 0) write(*,*) "eigenvalues[k",ikpoint,"]", eigen(:)
     eigen_k(1:norbitals,ikpoint) = eigen(:)
     if (iqout .ne. 2) blowre(:,:,ikpoint) = real(Hk(:,:))

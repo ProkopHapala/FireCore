@@ -191,11 +191,11 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     const int natom_test      = 5;
     int    atyp_test[natom_test  ] = {6,1,1,1,1};
     double apos_test[natom_test*3] = {
-         0.0, 0.0, 0.1,
-        +1.0,+1.0, 1.0,
-        -1.0,-1.0, 1.0,
-        +1.0,-1.0,-1.0,
-        -1.0,+1.0,-1.0
+         0.1,      0.0,     0.0,
+        -1.0,     +1.0,    -1.0,
+        +1.0,     -1.0,    -1.0,
+        -1.0,     -1.0,    +1.0,
+        +1.0,     +1.0,    +1.0,
     };
 
     Vec3d aforce_test[natom_test*3];
