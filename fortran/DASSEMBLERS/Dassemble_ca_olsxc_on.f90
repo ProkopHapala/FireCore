@@ -224,6 +224,7 @@
 ! ------------------------------------------------------------------------
 ! Double counting correction forces (dxcv)
 ! ------------------------------------------------------------------------
+            write(*,*)   "DEBUG iatom,ineigh,imu,imu, arhop_on ", iatom,ineigh,issh, arhop_on(:,issh,issh,ineigh,iatom)
             rhoxc_av = arho_on(issh,issh,iatom)
             drhoxc_av(:) = arhop_on(:,issh,issh,ineigh,iatom)
             call cepal(rhoxc_av, exc, muxc, dexc, d2exc, dmuxc, d2muxc)
@@ -242,8 +243,10 @@
      &          +  (dexc - dmuxc)*(drhoxc(:) - drhoxc_av(:)) )*q_mu
 
 ! Convert to forces (we use '-' in sum)
-             dxcdcc(:,ineigh,iatom) =                                        &
-     &        dxcdcc(:,ineigh,iatom) -  bcxcpx(:,imu,imu)
+             !write(*,*)   "DEBUG iatom,ineigh,imu,imu, bcxcpx ", iatom,ineigh,imu,imu, dexc,d2exc,dmuxc,d2muxc,rhoxc,rhoxc_av,q_mu ! drhoxc_av(:)
+             !write(*,*)   "DEBUG iatom,ineigh,imu,imu, bcxcpx ", iatom,ineigh,imu,imu, drhoxc_av(:)
+             !write(*,*)   "DEBUG iatom,ineigh,imu,imu, bcxcpx ", iatom,ineigh,imu,imu, bcxcpx(:,imu,imu)
+             dxcdcc(:,ineigh,iatom) = dxcdcc(:,ineigh,iatom) -  bcxcpx(:,imu,imu)
             end do !do index = -l1, l1
             n1 = n1 + l1
 !-------------------------------------------------------------------------
@@ -275,20 +278,13 @@
 ! Loop over orbitals in the y-shell
               do jndex = -l2, l2
                inu = n2 + jndex
-                       
                rhoxc  = rho_on(imu,inu,iatom)
                drhoxc(:) = rhop_on(:,imu,inu,ineigh,iatom)
 ! Assemble matrices                       
                do ix = 1,3
-                bcxcpx(ix,imu,inu) =                                         &
-     &           drhoxc(ix)*dmuxc + rhoxc*drhoxc_av(ix)*d2muxc               &
-     &           - delta(imu,inu)*drhoxc_av(ix)*d2muxc*rhoxc_av  
-
-! Convert to forces (we use '-' in sum)
-!               fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom)        &
-!   &            -  bcxcpx(ix,imu,inu)*rho(imu,inu,matom,iatom)
-                faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom)        &
-    &            -  bcxcpx(ix,imu,inu)*rho(imu,inu,matom,iatom)
+                bcxcpx(ix,imu,inu) = drhoxc(ix)*dmuxc + rhoxc*drhoxc_av(ix)*d2muxc - delta(imu,inu)*drhoxc_av(ix)*d2muxc*rhoxc_av  
+!               fotxc_ca(ix,ineigh,iatom) = fotxc_ca(ix,ineigh,iatom)  -  bcxcpx(ix,imu,inu)*rho(imu,inu,matom,iatom) ! Convert to forces (we use '-' in sum)
+                faxc_ca(ix,ineigh,iatom) = faxc_ca(ix,ineigh,iatom)    -  bcxcpx(ix,imu,inu)*rho(imu,inu,matom,iatom)
                end do ! do ix =1,3
               end do !do jndex = -l2, l2
              end do !do index = -l1, l1

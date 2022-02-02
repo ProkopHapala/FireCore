@@ -15,6 +15,6 @@ echo $LD_LIBRARY_PATH
 
 rm answer.bas answer.xyz params.dat CHARGES *.out
 
-#$fireball    | tee relaxation.out
+$fireball    | tee relaxation.out
 #$fireball_py | tee relaxation.py.out
 $fireball_cpp | tee relaxation.cpp.out
