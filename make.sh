@@ -3,6 +3,12 @@
 set -e   # stop on error  ; see  https://stackoverflow.com/questions/3474526/stop-on-first-error
 
 dr=`pwd`
+
+
+cd cpp/Build
+make
+cd $dr
+
 python pyBall/gen_makefile.py
 #ln -s Makefile ../build/Makefile
 

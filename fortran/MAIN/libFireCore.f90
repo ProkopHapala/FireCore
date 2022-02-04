@@ -174,7 +174,8 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     implicit none
     ! ====== Parameters
     integer(c_int),                 intent(in),value :: nmax_scf
-    real(c_double), dimension(:,:), intent(out)      :: forces_
+    !real(c_double), dimension(:,:), intent(out)      :: forces_
+    real(c_double), dimension(3,natoms), intent(out) :: forces_
     ! ====== global variables
     integer ikpoint
     real, dimension (3) :: k_temp
@@ -194,14 +195,17 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     max_scf_iterations = nmax_scf
     write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations, scf_achieved
     do Kscf = 1, max_scf_iterations
-        !write(*,*) "! ======== Kscf ", Kscf
-        !call assemble_h ()
+        write(*,*) "! ======== Kscf ", Kscf
         call assemble_mcweda ()
+        write(*,*) "DEBUG 1"
         !call debug_writeBlockedMat( "S_mat.log", s_mat )
         !call debug_writeBlockedMat( "H_mat.log", h_mat )
         k_temp(:) = special_k(:,ikpoint)
+        write(*,*) "DEBUG 2"
         call solveH ( ikpoint, k_temp )
+        write(*,*) "DEBUG 3"
         call denmat ()
+        write(*,*) "DEBUG 4"
         sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
         write (*,*) "### SCF converged? ", scf_achieved, " Kscf ", Kscf, " |Qin-Oout| ",sigma," < tol ", sigmatol
         if( scf_achieved ) exit
@@ -213,6 +217,7 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     !call assemble_mcweda ()
     call getenergy_mcweda ()
     call getforces ()   ! Assemble forces
+    write(*,*) "DEBUG shape(forces_,ftot)", shape(forces_)," | ", shape(ftot)
     forces_(:,:) = ftot(:,:)
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
