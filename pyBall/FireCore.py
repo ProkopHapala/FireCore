@@ -92,12 +92,13 @@ def firecore_init(natoms, atomTypes, atomPos ):
     return lib.firecore_init(natoms, atomTypes, atomPos )
 
 #  subroutine firecore_evalForce( nmax_scf, forces_ )
-lib.firecore_evalForce.argtypes  = [c_int, array2d ] 
+lib.firecore_evalForce.argtypes  = [c_int, array2d, array2d ] 
 lib.firecore_evalForce.restype   =  None
-def firecore_evalForce( nmax_scf=100, forces=None, natom=5 ):
+def firecore_evalForce( pos, forces=None, natom=5, nmax_scf=100 ):
     if forces is None:
         forces = np.zeros( (3,natom) )
-    return lib.firecore_evalForce( nmax_scf, forces )
+    lib.firecore_evalForce( nmax_scf, pos, forces )
+    return forces
 
 # ========= Python Functions
 
@@ -110,8 +111,7 @@ if __name__ == "__main__":
     #b = lib.sum2(ct.byref(a))
     #print b
 
-    
-    firecore_hello()
+    #firecore_hello()
     
     natoms = 5
     #atomType = np.random.randint(6, size=natoms).astype(np.int32)
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     print ("atomType ", atomType)
     print ("atomPos  ", atomPos)
     firecore_init( natoms, atomType, atomPos )
-    forces = firecore_evalForce(nmax_scf=100)
-    print( "Python: Forces", forces )
+    forces = firecore_evalForce(atomPos, nmax_scf=100)
+    print( "Python: Forces", forces.transpose() )
     
 

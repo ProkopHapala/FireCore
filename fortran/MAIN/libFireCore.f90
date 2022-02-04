@@ -157,7 +157,7 @@ end subroutine firecore_init
 ! ============ subroutine firecore_SCF
 ! ==================================================
 
-subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalForce')
+subroutine firecore_evalForce( nmax_scf, positions_, forces_ )  bind(c, name='firecore_evalForce')
     use iso_c_binding
     use options
     use loops
@@ -175,13 +175,16 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     ! ====== Parameters
     integer(c_int),                 intent(in),value :: nmax_scf
     !real(c_double), dimension(:,:), intent(out)      :: forces_
+    real(c_double), dimension(3,natoms), intent(in) :: positions_
     real(c_double), dimension(3,natoms), intent(out) :: forces_
     ! ====== global variables
-    integer ikpoint
+    integer ikpoint, i
     real, dimension (3) :: k_temp
     !real time_begin
     !real time_end
     ! ====== Body
+
+    ratom(:,:) = positions_(:,:)
     !idebugWrite = 1
     !idebugWrite = 0
     !call cpu_time (time_begin)
@@ -190,6 +193,7 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     verbosity   = 0 
     iforce      = 1
 
+    ftot(:,:) = 0
     ikpoint = 1
     scf_achieved = .false.
     max_scf_iterations = nmax_scf
@@ -212,13 +216,30 @@ subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalF
     !call getenergy (itime_step)    ! calculate the total energy
     !call assemble_mcweda ()
     call getenergy_mcweda ()
-    call getforces ()   ! Assemble forces
+    call getforces_mcweda ()
+    !do i = 1, natoms
+    !    write (*,*) "Force[",i,"] ", ftot(:,i)
+    !end do
+    !call getforces ()   ! Assemble forces
     forces_(:,:) = ftot(:,:)
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
     if(verbosity.gt.0)write (*,*) '!!!! SCF LOOP DONE in ', Kscf, " iterations"
     return
 end subroutine firecore_evalForce
+
+subroutine firecore_getCharges( charges_ )  bind(c, name='getCharges')
+    use iso_c_binding
+    use configuration
+    use charges
+    use options
+    real(c_double), dimension(natoms), intent(out) :: charges_
+    if (iqout .eq. 2) then
+        charges_(:) = QMulliken_TOT(:)
+    else
+        charges_(:) = QLowdin_TOT(:)
+    end if
+end 
 
 ! ==================================================
 ! ============ subroutine init_wfs
