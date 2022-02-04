@@ -131,7 +131,6 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
 
 AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
-
     //setupFireball();
     // ========== Fireball End
 
@@ -159,10 +158,17 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
     loadFireCore( );
     pfirecore_init      ( mol.natoms, mol.atomType, (double*)mol.pos );
-    pfirecore_evalForce ( 10, (double*)world.aforce );
-    for(int i=0; i<mol.natoms; i++){
-        printf( "aforce[%i] %g %g %g \n", world.aforce[i].x,world.aforce[i].y,world.aforce[i].z );
+    int nMDpre = 0;
+    for(int imd=0; imd<nMDpre; imd++){
+        printf("### START MDStep imd,nMDpre %i / %i \n", imd, nMDpre );
+        pfirecore_evalForce ( 100, (double*)world.aforce );
+        for(int i=0; i<mol.natoms; i++){
+            printf( "aforce[%i] %g %g %g \n", i, world.aforce[i].x,world.aforce[i].y,world.aforce[i].z );
+        }
+        printf("### END MDStep imd,nMDpre %i / %i \n", imd, nMDpre );
     }
+    //exit(0);
+
     assignFF();             printf( " ### assignFF DONE \n");
     makeGridFF( false );    printf( " ### GridFF   DONE \n");
     //makeGridFF( true  );  printf( " ### GridFF   DONE \n");
@@ -171,10 +177,8 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
 double AppMolecularEditor2::MDstep(int itr){
     double F2;
-    DEBUG
     for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0); }
-    pfirecore_evalForce( 10, (double*)world.aforce );
-    DEBUG
+    pfirecore_evalForce( 100, (double*)world.aforce );
     /*
     world.eval_FFgrid();
     world.eval_bonds(true);
@@ -188,7 +192,6 @@ double AppMolecularEditor2::MDstep(int itr){
         //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
         world.aforce[ipicked].add( f );
     };
-    DEBUG
     /*
     for(int i=0; i<world.natoms; i++){
         world.aforce[i].add( getForceHamakerPlane( world.apos[i], {0.0,0.0,1.0}, -3.0, 0.3, 2.0 ) );
@@ -213,20 +216,17 @@ void AppMolecularEditor2::draw(){
 	glColor3f( 0.0f,0.0f,0.0f );
     printf( "==== frameCount %i  \n", frameCount );
 
-	DEBUG
 	//Draw3D::drawAxis(10); // NOT SURE WHY THIS IS CRASHING ?
 	glEnable(GL_LIGHTING);
 	glEnable(GL_DEPTH_TEST);
-    DEBUG
 	//if(isoOgl)viewSubstrate( 2, 2, isoOgl, world.gridFF.grid.cell.a, world.gridFF.grid.cell.b );
 
-    DEBUG
     ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
 
-    DEBUG
+    perFrame = 1;
 	for(int itr=0; itr<perFrame; itr++){ MDstep(itr); }
     //Draw3D::drawVecInPos( (Vec3d){0.0,0.0,1.0},  (Vec3d){0.0,0.0,0.0} );
     //printf( "==== frameCount %i  |F| %g \n", frameCount, sqrt(F2) );
@@ -307,9 +307,9 @@ void AppMolecularEditor2:: makeMolecules( Molecule& mol, bool bSubCOG ) {
     Mat3d rot; rot.setOne();
     double z0 = 4.0;
     builder.insertMolecule (&mol, {0.0,0.0,z0}, rot, false );
-    builder.insertMolecule (&mol, {5.0,0.0,z0}, rot, false );
-    builder.insertMolecule (&mol, {0.0,5.0,z0}, rot, false );
-    builder.insertMolecule (&mol, {5.0,5.0,z0}, rot, false );
+    //builder.insertMolecule (&mol, {5.0,0.0,z0}, rot, false );
+    //builder.insertMolecule (&mol, {0.0,5.0,z0}, rot, false );
+    //builder.insertMolecule (&mol, {5.0,5.0,z0}, rot, false );
     //builder.assignAtomTypes();
     builder.assignAtomREQs( &params );
     builder.toMMFF( &world, &params );
@@ -386,7 +386,6 @@ void AppMolecularEditor2:: makeGridFF( bool recalcFF ) {
     //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
     world.gridFF.evalCombindGridFF            ( testREQ, FFtot );
     if(idebug>1) saveXSF( "FFtot_z.xsf",  world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
-    DEBUG
     isoOgl = glGenLists(1);
     glNewList(isoOgl, GL_COMPILE);
     //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
@@ -396,14 +395,11 @@ void AppMolecularEditor2:: makeGridFF( bool recalcFF ) {
     renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.01, true, 0.1);
     Draw3D::drawAxis(1.0);
     glEndList();
-    DEBUG
     delete [] FFtot;
-    DEBUG
 }
 
 void AppMolecularEditor2:: setupFireball( ) {
     loadFireCore( );
-
     const int natom_test      = 5;
     int    atyp_test[natom_test  ] = {6,1,1,1,1};
     double apos_test[natom_test*3] = {
@@ -413,13 +409,9 @@ void AppMolecularEditor2:: setupFireball( ) {
         -1.0,     -1.0,    +1.0,
         +1.0,     +1.0,    +1.0,
     };
-
-
     Vec3d aforce_test[natom_test*3];
-
     pfirecore_init      ( 5, atyp_test, apos_test );
-    pfirecore_evalForce ( 10, (double*)aforce_test );
-
+    pfirecore_evalForce( 10, (double*)world.aforce );
     for(int i=0; i<natom_test; i++){
         printf( "aforce[%i] %g %g %g \n", aforce_test[i].x,aforce_test[i].y,aforce_test[i].z );
     }

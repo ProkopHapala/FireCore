@@ -53,7 +53,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine denmat(ebs)   ! (ifixcharge, iqout, icluster, iwrtefermi, tempfe,  ebs, iwrtpop, bmix, Kscf, igap)
+        subroutine denmat   ! (ifixcharge, iqout, icluster, iwrtefermi, tempfe,  ebs, iwrtpop, bmix, Kscf, igap)
         use options
         use charges
         use configuration
@@ -63,6 +63,7 @@
         use interactions
         use neighbor_map
         use kpoints
+        use energy, only: ebs 
         ! use hartree_fock
         implicit none
 
@@ -80,7 +81,7 @@
         ! real, intent (in) :: tempfe
 
 ! Output
-        real, intent (out) :: ebs
+!        real, intent (out) :: ebs
 
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -153,7 +154,7 @@
 ! above E-fermi.
         inquire (file = 'OCCUPATION', exist = read_occupy)
         if (read_occupy) then
-
+        
 ! Open the file and read information.
          open (unit = 22, file = 'OCCUPATION', status = 'old')
          write (*,*) '  '
@@ -162,12 +163,12 @@
          if (noccupy .gt. norbitals) then
           write (*,*) ' noccupy > norbitals: from OCCUPATION file. '
           stop
-         end if
+         end if ! (noccupy .gt. norbitals) 
          do imu = 1, noccupy
           read (22,*) iband, deltae
           eigen_k(iband,1:nkpoints) = eigen_k(iband,1:nkpoints) + deltae
           ioccupy(imu) = iband
-         end do
+         end do ! noccupy
          close (unit = 22)
 
 ! If you are monkeying with the occupation it is probable that you would like
@@ -232,7 +233,9 @@
            write (*,100) iband, iatom, pcharge
           end do
          end do
-        end if
+
+        end if  ! if (read_occupy)
+
 
 !  WARRNING : foccupy must be set somewhere !!!!
 !! ****************************************************************************
@@ -693,11 +696,13 @@
 ! Compute ebs, the band structure energy.
         ebs = 0
         ztest = 0
+        !write(*,*) "DEBUG nkpoints,norbitals_new", nkpoints, norbitals_new
         do ikpoint = 1, nkpoints
          do iorbital = 1, norbitals_new   ! DEBUG
-          !write (*,*) "DEBUG denmat  ikpoint,iorbital ", ikpoint,iorbital, ioccupy_k(iorbital,ikpoint)
+          !write(*,*) "DEBUG shape(eigen_k)", shape(eigen_k)
+          !write (*,*) "DEBUG denmat  ikpoint,iorbital,spin, ioccupy_k,weight_k,foccupy,eigen_k", ikpoint,iorbital,spin, ioccupy_k(iorbital,ikpoint), weight_k(ikpoint), foccupy(iorbital,ikpoint), eigen_k(iorbital,ikpoint)
           if (ioccupy_k(iorbital,ikpoint) .eq. 1) then
-           ebs   = ebs + weight_k(ikpoint)*spin*eigen_k(iorbital,ikpoint) *foccupy(iorbital,ikpoint)
+           ebs   = ebs + weight_k(ikpoint)*spin*foccupy(iorbital,ikpoint)* eigen_k(iorbital,ikpoint)
            ztest = ztest + weight_k(ikpoint)*spin*foccupy(iorbital,ikpoint)
           end if !  ioccupy_k
          end do ! iorbital
