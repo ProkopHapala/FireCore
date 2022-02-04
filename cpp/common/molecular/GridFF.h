@@ -76,7 +76,7 @@ class GridFF{ public:
             line = fgets( buff, 1024, pFile );  //printf("%s",line);
             double Q;
             int nret = sscanf( line, "%s %lf %lf %lf %lf\n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q );
-            if( nret<5 ) Q = 0.0d;
+            if( nret<5 ) Q = 0.0;
             //printf(                  "%s %lf %lf %lf %lf\n", at_name,  apos[i].x,  apos[i].y,  apos[i].z,  Q );
             aREQs[i].z = Q;
             // atomType[i] = atomChar2int( ch );
@@ -153,9 +153,9 @@ class GridFF{ public:
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs ){
         //interateGrid3D( (Vec3d){0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            Vec3d fp = (Vec3d){0.0d,0.0d,0.0d};
-            Vec3d fl = (Vec3d){0.0d,0.0d,0.0d};
-            Vec3d fe = (Vec3d){0.0d,0.0d,0.0d};
+            Vec3d fp = (Vec3d){0.0,0.0,0.0};
+            Vec3d fl = (Vec3d){0.0,0.0,0.0};
+            Vec3d fe = (Vec3d){0.0,0.0,0.0};
             for(int ia=0; ia<natoms; ia++){
                 Vec3d dp; dp.set_sub( p, apos[ia] );
                 Vec3d REQi = aREQs[ia];
@@ -165,7 +165,7 @@ class GridFF{ public:
                 double fexp   = alpha*expar*REQi.y*ir;
                 fp.add_mul( dp, fexp*expar*2 );                    // repulsive part of Morse
                 fl.add_mul( dp, fexp         );                    // attractive part of Morse
-                fe.add_mul( dp, -14.3996448915d*REQi.z*ir*ir*ir ); // Coulomb
+                fe.add_mul( dp, -14.3996448915*REQi.z*ir*ir*ir ); // Coulomb
             }
             if(FFPauli)  FFPauli [ibuff]=fp;
             if(FFLondon) FFLondon[ibuff]=fl;
@@ -176,9 +176,9 @@ class GridFF{ public:
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs, Vec3i nPBC ){
         //interateGrid3D( (Vec3d){0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            Vec3d fp = (Vec3d){0.0d,0.0d,0.0d};
-            Vec3d fl = (Vec3d){0.0d,0.0d,0.0d};
-            Vec3d fe = (Vec3d){0.0d,0.0d,0.0d};
+            Vec3d fp = (Vec3d){0.0,0.0,0.0};
+            Vec3d fl = (Vec3d){0.0,0.0,0.0};
+            Vec3d fe = (Vec3d){0.0,0.0,0.0};
             for(int iat=0; iat<natoms; iat++){
                 Vec3d dp0; dp0.set_sub( p, apos[iat] );
                 Vec3d REQi = aREQs[iat];
@@ -210,7 +210,7 @@ class GridFF{ public:
     void evalCombindGridFF( Vec3d REQ, Vec3d * FF ){
         Vec3d PLQ = REQ2PLQ( REQ, alpha );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            Vec3d f = (Vec3d){0.0d,0.0d,0.0d};
+            Vec3d f = (Vec3d){0.0,0.0,0.0};
             if(FFPauli ) f.add_mul( FFPauli[ibuff],  PLQ.x );
             if(FFLondon) f.add_mul( FFLondon[ibuff], PLQ.y );
             if(FFelec  ) f.add_mul( FFelec[ibuff],   PLQ.z );
@@ -221,7 +221,7 @@ class GridFF{ public:
     void evalCombindGridFF_CheckInterp( Vec3d REQ, Vec3d * FF ){
         Vec3d PLQ = REQ2PLQ( REQ, alpha );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            Vec3d f = (Vec3d){0.0d,0.0d,0.0d};
+            Vec3d f = (Vec3d){0.0,0.0,0.0};
             //addForce( p, PLQ, f );
             addForce( p+(Vec3d){0.1,0.1,0.1}, PLQ, f );
             FF[ibuff] =  f;
@@ -229,7 +229,7 @@ class GridFF{ public:
     }
 
     void evalFFline( int n, Vec3d p0, Vec3d p1, Vec3d PLQ, Vec3d * pos, Vec3d * fs ){
-        Vec3d dp = p1-p0; dp.mul(1.0d/(n-1));
+        Vec3d dp = p1-p0; dp.mul(1.0/(n-1));
         Vec3d  p = p0;
         for(int i=0; i<n; i++){
             if(fs ){

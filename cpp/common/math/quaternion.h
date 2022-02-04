@@ -71,6 +71,18 @@ class Quat4T {
 	inline void setOne(  ){ x=y=z=0; w=1; };
 	inline void setXYZ( const VEC& v){ x=v.x; y=v.y; z=v.z; };
 
+
+    inline void setView_XY (){set(1.0,0.0,0.0,0.0);}    // top view  x=x, y=-y,
+    inline void setView_XYm(){set(0.0,0.0,0.0,1.0);}  // bottom view
+    //inline void set( 0.0,0.0,1.0,0.0 );  // bottom view
+    //inline void set( 0.0,1.0,0.0,0.0 );  // top view  x=-x, y=y,
+    //inline void setView_(){set( +0.70710678118,0.0,0.0,  0.70710678118 );} // side down
+    //inline void setView_(){set( -0.70710678118,0.0,0.0,  0.70710678118 );} // x=x, z=y,  y=-y,
+    //inline void setView_(){set( 0.0, -0.70710678118,0.0, 0.70710678118 );} // z=-x, y=y
+    //inline void setView_(){set( 0.0, +0.70710678118,0.0, 0.70710678118 );} // z=+x, y=y
+    //inline void setView_(){set( 0.0,0.0, +0.70710678118, 0.70710678118 );} // y=-x, x=y
+    //inline void setView_(){set( 0.0,0.0, -0.70710678118, 0.70710678118 );} // y=x, x=-y
+
 	inline void setInverseUnitary( const  QUAT& q){ x=-q.x; y=-q.y; z=-q.z; w=q.w; };
 	inline void setInverse       ( const  QUAT& q){ setInverseUnitary(); mul(1./q.norm2()); };
 

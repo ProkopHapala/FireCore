@@ -370,9 +370,7 @@ void interateGrid3D( const GridShape& grid, FUNC func ){
 	Vec3d pos;  pos.set( grid.pos0 );
 	//printf(" interateGrid3D : args %i \n", args );
 	for ( int ic=0; ic<nz; ic++ ){
-        std::cout << "ic " << ic;
-        std::cout.flush();
-        std::cout << '\r';
+        //printf("ic %i \n", ic );
 		for ( int ib=0; ib<ny; ib++ ){
 	        for ( int ia=0; ia<nx; ia++ ){
 			    int ibuff = i3D( ia, ib, ic );
