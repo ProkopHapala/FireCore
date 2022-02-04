@@ -71,7 +71,8 @@ program fireball
         !call getenergy (itime_step)    ! calculate the total energy
         !call assemble_mcweda ()
         call getenergy_mcweda () 
-        call getforces ()   ! Assemble forces
+        call getforces_mcweda ()
+        !call getforces ()   ! Assemble forces
         !do i=1, natoms
         !    write(*,*) "force[",i,"] ",  ftot(:,i)
         !end do

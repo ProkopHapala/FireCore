@@ -62,9 +62,10 @@ TO DO:
 // subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalForce')
 //  subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
 typedef void (*Pprocedure)();
-typedef void (*Pfirecore_evalForce)(int,double*);
-typedef void (*Pfirecore_init     )(int,int*,double*);
-
+//typedef void (*Pfirecore_evalForce)(int,double*);
+typedef void (*Pfirecore_evalForce  )(int,double*,double*);
+typedef void (*Pfirecore_init       )(int,int*,double*);
+typedef void (*Pfirecore_getCharges )(double*);
 
 
 
@@ -96,18 +97,20 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
     char str[256];
 
     Vec3d ray0;
-    int ipicked  = -1, ibpicked = -1;
-    int perFrame =  50;
+    int ipicked   = -1, ibpicked = -1;
+    int perFrame  =  50;
+    bool bRelaxed = false;
+    double FConv  = 1e-4; 
 
     double drndv =  10.0;
     double drndp =  0.5;
 
-    double  atomSize = 0.25 * 4.0;
+    double  atomSize = 0.25 ;
 
     void        *lib_handle = 0;
-    Pfirecore_evalForce pfirecore_evalForce =0;
-    Pfirecore_init      pfirecore_init      =0;
-
+    Pfirecore_evalForce  pfirecore_evalForce =0;
+    Pfirecore_init       pfirecore_init      =0;
+    Pfirecore_getCharges pfirecore_getCharges=0;
 
 
 	virtual void draw   ()  override;
@@ -116,14 +119,14 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
 	virtual void eventHandling   ( const SDL_Event& event  ) override;
 	virtual void keyStateHandling( const Uint8 *keys ) override;
 
-    int  loadFireCore( );
+    int  loadFireCore ( );
     void setupFireball( );
 
     void makeMolecules( Molecule& mol, bool bSubCOG=true );
     void assignFF     ( );
-    void makeGridFF   (  bool recalcFF=false );
+    void makeGridFF   (bool recalcFF=false);
     void setupRender  ( );
-    double MDstep(int itr);
+    void MDloop       ( );
 
 	AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ );
 
@@ -161,7 +164,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     int nMDpre = 0;
     for(int imd=0; imd<nMDpre; imd++){
         printf("### START MDStep imd,nMDpre %i / %i \n", imd, nMDpre );
-        pfirecore_evalForce ( 100, (double*)world.aforce );
+        pfirecore_evalForce ( 100, (double*)world.apos, (double*)world.aforce );
         for(int i=0; i<mol.natoms; i++){
             printf( "aforce[%i] %g %g %g \n", i, world.aforce[i].x,world.aforce[i].y,world.aforce[i].z );
         }
@@ -175,10 +178,13 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     setupRender( );         printf( " ### SETUP    DONE \n");
 }
 
-double AppMolecularEditor2::MDstep(int itr){
-    double F2;
+void AppMolecularEditor2::MDloop(){
+    perFrame = 1;
+    if(bRelaxed) return;
+    double F2=0;
+    for(int itr=0; itr<perFrame; itr++){ 
     for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0); }
-    pfirecore_evalForce( 100, (double*)world.aforce );
+    pfirecore_evalForce( 100, (double*)world.apos, (double*)world.aforce );
     /*
     world.eval_FFgrid();
     world.eval_bonds(true);
@@ -204,9 +210,13 @@ double AppMolecularEditor2::MDstep(int itr){
     //world.aforce[ipivot].set(0.0);
     //opt.move_LeapFrog(0.01);
     //opt.move_MDquench();
+    opt.move_GD(  0.01  );
     F2 = opt.move_FIRE();
     //exit(0);
-    return F2;
+    printf( "==== frameCount %i  |F| %g \n", frameCount, sqrt(F2) );
+    if(F2<sq(FConv)) bRelaxed = true;
+    //delay = 200;
+    }
 }
 
 
@@ -214,7 +224,7 @@ void AppMolecularEditor2::draw(){
     glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	glColor3f( 0.0f,0.0f,0.0f );
-    printf( "==== frameCount %i  \n", frameCount );
+    //printf( "==== frameCount %i  \n", frameCount );
 
 	//Draw3D::drawAxis(10); // NOT SURE WHY THIS IS CRASHING ?
 	glEnable(GL_LIGHTING);
@@ -226,8 +236,8 @@ void AppMolecularEditor2::draw(){
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
 
-    perFrame = 1;
-	for(int itr=0; itr<perFrame; itr++){ MDstep(itr); }
+    MDloop();
+
     //Draw3D::drawVecInPos( (Vec3d){0.0,0.0,1.0},  (Vec3d){0.0,0.0,0.0} );
     //printf( "==== frameCount %i  |F| %g \n", frameCount, sqrt(F2) );
 
@@ -248,7 +258,7 @@ void AppMolecularEditor2::draw(){
     glShadeModel(GL_SMOOTH);
     for(int i=0; i<world.natoms; i++){
         //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.apos[i],0.2);
-        glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(world.aforce[i]*30.0,world.apos[i]);
+        glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(world.aforce[i]*1.0,world.apos[i]);
         //glCallList( ogl_sph );
         glEnable(GL_LIGHTING);
         Mat3d mat;
@@ -285,6 +295,8 @@ int AppMolecularEditor2 :: loadFireCore( ){
     if ((error = dlerror())){ printf( "%s\n", error); pfirecore_init    =0; }
     pfirecore_evalForce = (Pfirecore_evalForce)dlsym(lib_handle, "firecore_evalForce");
     if ((error = dlerror())){ printf("%s\n", error); pfirecore_evalForce=0; }
+    pfirecore_getCharges = (Pfirecore_getCharges)dlsym(lib_handle, "firecore_getCharges");
+    if ((error = dlerror())){ printf("%s\n", error); pfirecore_getCharges=0; }
     return 0;
 }
 
@@ -411,7 +423,7 @@ void AppMolecularEditor2:: setupFireball( ) {
     };
     Vec3d aforce_test[natom_test*3];
     pfirecore_init      ( 5, atyp_test, apos_test );
-    pfirecore_evalForce( 10, (double*)world.aforce );
+    pfirecore_evalForce( 10, (double*)world.apos, (double*)world.aforce );
     for(int i=0; i<natom_test; i++){
         printf( "aforce[%i] %g %g %g \n", aforce_test[i].x,aforce_test[i].y,aforce_test[i].z );
     }
