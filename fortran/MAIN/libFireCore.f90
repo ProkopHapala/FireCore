@@ -228,17 +228,19 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_ )  bind(c, name='fi
     return
 end subroutine firecore_evalForce
 
-subroutine firecore_getCharges( charges_ )  bind(c, name='getCharges')
+subroutine firecore_getCharges( charges_ )  bind(c, name='firecore_getCharges')
     use iso_c_binding
     use configuration
     use charges
     use options
     real(c_double), dimension(natoms), intent(out) :: charges_
+    !write(*,*) "DEBUG firecore_getCharges START"
     if (iqout .eq. 2) then
         charges_(:) = QMulliken_TOT(:)
     else
         charges_(:) = QLowdin_TOT(:)
     end if
+    !write(*,*) "DEBUG firecore_getCharges END"
 end 
 
 ! ==================================================

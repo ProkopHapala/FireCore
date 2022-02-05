@@ -6,6 +6,10 @@ Non-Bonded Force-Field
 #ifndef NBFF_h
 #define NBFF_h
 
+#include "fastmath.h"
+//#include "Vec2.h"
+#include "Vec3.h"
+
 //#include "Forces.h"
 
 bool checkPairsSorted( int n, Vec2i* pairs ){
@@ -97,6 +101,44 @@ inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, dou
     }
     return 0;
 }
+
+
+class NBFF_AB{ public:
+    int n=0,m=0;
+    Vec3d *A_ps=0,*A_REQs=0,*A_fs=0;
+    Vec3d *B_ps=0,*B_REQs=0,*B_fs=0;
+
+    inline void bindA( int n_, Vec3d* A_ps_, Vec3d* A_REQs_, Vec3d* A_fs_ ){ n=n_; A_ps=A_ps_; A_REQs=A_REQs_; A_fs=A_fs_; }
+    inline void bindB( int m_, Vec3d* B_ps_, Vec3d* B_REQs_, Vec3d* B_fs_ ){ m=m_; B_ps=B_ps_; B_REQs=B_REQs_; B_fs=B_fs_; }
+
+    double evalLJQ( ){
+        double E=0;
+        //printf("DEBUG NBFF_AB.evalLJQ() n,m %i %i \n", n,m);
+        for(int i=0; i<n; i++){
+            Vec3d fi = Vec3dZero;
+            Vec3d Api = A_ps[i];
+            const Vec3d& AREQi = A_REQs[i];
+            for(int j=0; j<m; j++){    // atom-atom
+                //Vec3d fij = Vec3dZero;
+                Vec3d REQij; combineREQ( B_REQs[j], AREQi, REQij );
+                //printf( "NBFF_AB::evalLJQ REQ[%i,%i] %g %g %g \n", i,j, REQij.x,REQij.y,REQij.z );
+                //printf( "REQ[%i,%i] (%g,%g,%g) (%g,%g,%g) \n", i,j, AREQi.x,AREQi.y,AREQi.z, B_REQs[j].x,B_REQs[j].y,B_REQs[j].z  );
+                E += addAtomicForceLJQ( B_ps[j]-Api, fi, REQij );
+                //fs[j].sub(fij);
+                //fi   .add(fij);
+            }
+            A_fs[i].add(fi);
+        }
+        return E;
+    }
+
+};
+
+
+
+
+
+
 
 class NBFF{ public:
 // non bonded forcefield
