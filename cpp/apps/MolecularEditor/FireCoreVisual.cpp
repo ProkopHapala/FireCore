@@ -26,10 +26,11 @@
 #include "MMFF.h"
 #include "MMFFBuilder.h"
 
+#include "NBFF.h"
+
 //#include "RBMMFF.h"
 
 #include "IO_utils.h"
-
 
 #include "DynamicOpt.h"
 
@@ -89,6 +90,8 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
     MMFF        world;
     MM::Builder builder;
 
+    NBFF_AB     nff;
+
     DynamicOpt  opt;
 
     int     fontTex;
@@ -107,6 +110,8 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
 
     double  atomSize = 0.25 ;
 
+    double* charges_tmp = 0;
+
     void        *lib_handle = 0;
     Pfirecore_evalForce  pfirecore_evalForce =0;
     Pfirecore_init       pfirecore_init      =0;
@@ -124,7 +129,8 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
 
     void makeMolecules( Molecule& mol, bool bSubCOG=true );
     void assignFF     ( );
-    void makeGridFF   (bool recalcFF=false);
+    void makeSurface  ();
+    void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     void setupRender  ( );
     void MDloop       ( );
 
@@ -153,6 +159,16 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     mol.loadXYZ_bas( "input.bas" );
 
     makeMolecules(mol, false);
+    assignFF();             printf( " ### assignFF    DONE \n");
+    makeSurface();          printf( " ### makeSurface DONE \n");
+    //makeGridFF( false );    printf( " ### makeGridFF  DONE \n");
+    //makeGridFF( true  );  printf( " ### makeGridFF  DONE \n");
+    setupRender( );         printf( " ### setupRender DONE \n");
+
+    //nff.bindOrRealloc( world.natoms, world.nbonds, ff.apos, ff.aforce, 0, ff.bond2atom );
+    nff.bindA( world.natoms,        world.apos,        world.aREQ,         world.aforce );
+    nff.bindB( world.gridFF.natoms, world.gridFF.apos, world.gridFF.aREQs, 0            );
+    charges_tmp = new double[world.natoms];
 
     //opt.bindOrAllocate( 3*world.natoms, (double*)world.apos, new double[3*world.natoms], (double*)world.aforce, NULL );
     opt.bindArrays( 3*world.natoms, (double*)world.apos, new double[3*world.natoms], (double*)world.aforce, NULL );
@@ -172,10 +188,6 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     }
     //exit(0);
 
-    assignFF();             printf( " ### assignFF DONE \n");
-    makeGridFF( false );    printf( " ### GridFF   DONE \n");
-    //makeGridFF( true  );  printf( " ### GridFF   DONE \n");
-    setupRender( );         printf( " ### SETUP    DONE \n");
 }
 
 void AppMolecularEditor2::MDloop(){
@@ -183,16 +195,22 @@ void AppMolecularEditor2::MDloop(){
     if(bRelaxed) return;
     double F2=0;
     for(int itr=0; itr<perFrame; itr++){ 
+    
     for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0); }
     pfirecore_evalForce( 100, (double*)world.apos, (double*)world.aforce );
-    /*
-    world.eval_FFgrid();
-    world.eval_bonds(true);
+
+    pfirecore_getCharges( charges_tmp );
+    //for(int i=0; i<world.natoms; i++){ world.aREQ[i].z = charges_tmp[i];  }
+
+    nff.evalLJQ( );
+
+    //world.eval_FFgrid();
+    //world.eval_bonds(true);
     //world.eval_angles();
-    world.eval_angcos();
+    //world.eval_angcos();
     //world.eval_LJq_On2();
-    world.eval_MorseQ_On2();
-    */
+    //world.eval_MorseQ_On2();
+    
     if(ipicked>=0){
         Vec3d f = getForceSpringRay( world.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
         //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
@@ -210,7 +228,7 @@ void AppMolecularEditor2::MDloop(){
     //world.aforce[ipivot].set(0.0);
     //opt.move_LeapFrog(0.01);
     //opt.move_MDquench();
-    opt.move_GD(  0.01  );
+    //opt.move_GD(  0.01  );
     F2 = opt.move_FIRE();
     //exit(0);
     printf( "==== frameCount %i  |F| %g \n", frameCount, sqrt(F2) );
@@ -229,7 +247,6 @@ void AppMolecularEditor2::draw(){
 	//Draw3D::drawAxis(10); // NOT SURE WHY THIS IS CRASHING ?
 	glEnable(GL_LIGHTING);
 	glEnable(GL_DEPTH_TEST);
-	//if(isoOgl)viewSubstrate( 2, 2, isoOgl, world.gridFF.grid.cell.a, world.gridFF.grid.cell.b );
 
     ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
@@ -240,6 +257,23 @@ void AppMolecularEditor2::draw(){
 
     //Draw3D::drawVecInPos( (Vec3d){0.0,0.0,1.0},  (Vec3d){0.0,0.0,0.0} );
     //printf( "==== frameCount %i  |F| %g \n", frameCount, sqrt(F2) );
+
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    glShadeModel(GL_SMOOTH);
+    //if(isoOgl)viewSubstrate( 2, 2, isoOgl, world.gridFF.grid.cell.a, world.gridFF.grid.cell.b );
+    for(int i=0; i<world.gridFF.natoms; i++){
+        glEnable(GL_LIGHTING);
+        Mat3d mat;
+        mat.setOne();
+        mat.mul( atomSize * ( world.gridFF.aREQs[i].x ) );
+        Draw::setRGB( params.atypes[world.gridFF.atypes[i]].color );
+        Draw3D::drawShape(ogl_sph, world.gridFF.apos[i],mat);
+        glDisable(GL_LIGHTING);
+    }
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+
 
     glColor3f(0.6f,0.6f,0.6f); plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     for(int i=0; i<world.nbonds; i++){
@@ -292,11 +326,11 @@ int AppMolecularEditor2 :: loadFireCore( ){
         lib_handle=plib;
     }else{ printf( "%s\n", dlerror()); return -1; }
     pfirecore_init      = (Pfirecore_init)     dlsym(lib_handle, "firecore_init");
-    if ((error = dlerror())){ printf( "%s\n", error); pfirecore_init    =0; }
+    if ((error = dlerror())){ printf( "%s\n", error); pfirecore_init    =0; exit(0); }
     pfirecore_evalForce = (Pfirecore_evalForce)dlsym(lib_handle, "firecore_evalForce");
-    if ((error = dlerror())){ printf("%s\n", error); pfirecore_evalForce=0; }
+    if ((error = dlerror())){ printf("%s\n", error); pfirecore_evalForce=0; exit(0); }
     pfirecore_getCharges = (Pfirecore_getCharges)dlsym(lib_handle, "firecore_getCharges");
-    if ((error = dlerror())){ printf("%s\n", error); pfirecore_getCharges=0; }
+    if ((error = dlerror())){ printf("%s\n", error); pfirecore_getCharges=0; exit(0); }
     return 0;
 }
 
@@ -357,7 +391,21 @@ void AppMolecularEditor2:: makeMolecules( Molecule& mol, bool bSubCOG ) {
     */
  }
 
-void AppMolecularEditor2:: makeGridFF( bool recalcFF ) {
+void AppMolecularEditor2::makeSurface(){
+    //world.gridFF.loadXYZ  ( "inputs/answer_Na_L1.xyz", params );
+    //world.gridFF.loadXYZ  ( "inputs/Xe_instead_Na.xyz", params );
+    //world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
+    world.gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    //world.gridFF.loadXYZ( "inputs/Cl.xyz", params );
+    world.translate( {0.0,0.0,2.5} );
+    GridFF& g = world.gridFF;
+    //printf( "world.gridFF.natoms %i \n", g.natoms );
+    //for(int i=0; i<world.gridFF.natoms; i++){
+    //    printf( "gridFF.REQs[%i] (%g,%g,%g) \n", i, g.aREQs[i].x, g.aREQs[i].y, g.aREQs[i].z );
+    //}
+};
+
+void AppMolecularEditor2:: makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //world.substrate.grid.n    = (Vec3i){120,120,200};
     world.gridFF.grid.n    = (Vec3i){60,60,100};
     //world.substrate.grid.n    = (Vec3i){12,12,20};
@@ -365,15 +413,7 @@ void AppMolecularEditor2:: makeGridFF( bool recalcFF ) {
     world.gridFF.loadCell ( "inputs/cel.lvs" );
     //world.gridFF.loadCell ( "inputs/cel_2.lvs" );
     world.gridFF.grid.printCell();
-    //world.gridFF.loadXYZ  ( "inputs/answer_Na_L1.xyz", params );
-    //world.gridFF.loadXYZ  ( "inputs/Xe_instead_Na.xyz", params );
-    //world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
-    world.gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
-    //world.gridFF.loadXYZ( "inputs/Cl.xyz", params );
-    world.translate( {0.0,0.0,2.5} );
     //testREQ = (Vec3d){ 2.181, 0.0243442, 0.0}; // Xe
-    testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
-    testPLQ = REQ2PLQ( testREQ, -1.6 );
     world.genPLQ();
     world.gridFF.allocateFFs();
     //world.gridFF.evalGridFFs( {0,0,0} );
@@ -390,24 +430,28 @@ void AppMolecularEditor2:: makeGridFF( bool recalcFF ) {
         if(world.gridFF.FFPauli)  loadBin( "data/FFPauli-.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPauli );
         if(world.gridFF.FFLondon) loadBin( "data/FFLondon-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLondon );
     }
-    int iatom = 11;
-    printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
-    printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.aREQ[iatom].x, world.aREQ[iatom].y, world.aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
-    Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
-    //world.gridFF.evalCombindGridFF_CheckInterp( (Vec3d){ 2.181, 0.0243442, 0.0}, FFtot );
-    //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
-    world.gridFF.evalCombindGridFF            ( testREQ, FFtot );
-    if(idebug>1) saveXSF( "FFtot_z.xsf",  world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
-    isoOgl = glGenLists(1);
-    glNewList(isoOgl, GL_COMPILE);
-    //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
-    //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
-    //renderSubstrate_( world.gridFF.grid, FFtot, 0.1, true );
-    //renderSubstrate_( world.gridFF.grid, FFtot, 0.01, true );
-    renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.01, true, 0.1);
-    Draw3D::drawAxis(1.0);
-    glEndList();
-    delete [] FFtot;
+    if(bRenderGridFF){
+        int iatom = 11;
+        testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
+        testPLQ = REQ2PLQ( testREQ, -1.6 );
+        printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
+        printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.aREQ[iatom].x, world.aREQ[iatom].y, world.aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
+        Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
+        //world.gridFF.evalCombindGridFF_CheckInterp( (Vec3d){ 2.181, 0.0243442, 0.0}, FFtot );
+        //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
+        world.gridFF.evalCombindGridFF            ( testREQ, FFtot );
+        if(idebug>1) saveXSF( "FFtot_z.xsf",  world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
+        isoOgl = glGenLists(1);
+        glNewList(isoOgl, GL_COMPILE);
+        //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
+        //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
+        //renderSubstrate_( world.gridFF.grid, FFtot, 0.1, true );
+        //renderSubstrate_( world.gridFF.grid, FFtot, 0.01, true );
+        renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.01, true, 0.1);
+        Draw3D::drawAxis(1.0);
+        glEndList();
+        delete [] FFtot;
+    }
 }
 
 void AppMolecularEditor2:: setupFireball( ) {
