@@ -98,17 +98,14 @@ subroutine move_ions_FIRE( istep, iwrtxyz )
 				ff = ff + ftot(k,iatom)**2
 				vv = vv + vatom(k,iatom)**2
 				vf = vf + vatom(k,iatom) * ftot(k,iatom)
-				!write(*,*) "DEBUG iatom,k, ftot,vatom, ff,vv,vf ", iatom, k, ftot(k,iatom), vatom(k,iatom), ff, vv, vf
 			!end if ! fragxyz(k,iatom)
 		end do ! k
 	end do ! iatom
-	!write(*,*) "DEBUG ff,vv,vf ", ff,vv,vf
 	FIRE_Ftot = sqrt( ff )
 	
 
 ! FIRE update depending of projection <v|f>
 	if ( vf .lt. 0 ) then
-		!write (*,*) " DEBUG FIRE: <v|f>  < 0 "
 		vatom(:,:)   = 0 
 		!FIRE_dt      = FIRE_dt * FIRE_fdec
 		FIRE_dt      = max( FIRE_dt * FIRE_fdec, FIRE_dtmin )

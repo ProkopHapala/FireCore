@@ -95,7 +95,7 @@
 
 my_proc = 0
 
-if(idebugWrite .gt. 0) write (*,*) "DEBUG reallocate_neigh() "
+if(idebugWrite .gt. 0) write (*,*) "BEGIN reallocate_neigh() "
 
 ! Procedure
 ! ===========================================================================

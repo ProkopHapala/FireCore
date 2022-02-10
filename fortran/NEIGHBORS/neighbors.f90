@@ -123,7 +123,7 @@ subroutine neighbors ! (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
 ! Procedure
 ! ===========================================================================
 
-	 if(idebugWrite .gt. 0)  write (*,*) "DEBUG neighbors() "
+	 if(idebugWrite .gt. 0)  write (*,*) "BEGIN neighbors() "
 
 !    if (my_proc .eq. 0)  write (*,*) ' Welcome to neighbors - determine mapping of neighbors. Npoc=',nprocs,'iordern=',iordern
         

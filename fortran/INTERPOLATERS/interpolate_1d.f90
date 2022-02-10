@@ -149,11 +149,6 @@
 ! note : the points must be equally spaced and start at 0
         h = (xmax - xmin)/(nnum - 1)
 
-
-        !write (*,*) "DEBUG interpolate_1d() superspline", superspline
-        !write (*,*) "DEBUG interpolate_1d() non2c,1,jxx,in1,in2", non2c,1,jxx,in1,in2
-        !write (*,*) "DEBUG interpolate_1d() xintegral_2c(non2c,1,jxx,in1,in2)", xintegral_2c(non2c,1,jxx,in1,in2)
-
         if (xin .lt. xmin) then
           write (*,*) ' xin, xmin = ', xin, xmin
           write (*,*) '  error in intrp1d : xin < xmin'

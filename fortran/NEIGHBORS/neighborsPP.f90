@@ -122,7 +122,7 @@
 
         logical flag
 
-	if(idebugWrite .gt. 0)  write (*,*) "DEBUG neighborsPP() "
+	if(idebugWrite .gt. 0)  write (*,*) "BEGIN neighborsPP() "
 
 ! Procedure
 ! ===========================================================================

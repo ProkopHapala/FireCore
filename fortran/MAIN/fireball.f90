@@ -38,7 +38,7 @@ program fireball
     call init_wfs(norbitals, nkpoints)
     ikpoint = 1
 
-    if(idebugWrite .gt. 0) write(*,*) "DEBUG fireball.f90 norbitals, nkpoints, max_scf_iterations", norbitals, nkpoints, max_scf_iterations
+    if(idebugWrite .gt. 0) write(*,*) "BEGIN fireball.f90 norbitals, nkpoints, max_scf_iterations", norbitals, nkpoints, max_scf_iterations
     ! TODO : It does not read CHARGES   (that is the reason for difference from Fireball-progs)
     write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf, max_scf_iterations
     call init_FIRE( )

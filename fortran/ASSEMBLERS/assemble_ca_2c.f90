@@ -138,7 +138,7 @@
 !        integer MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE                 ! IF_DEF_ORDERN_END
 !        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE        ! IF_DEF_ORDERN_END
 
-        if(idebugWrite .gt. 0) write(*,*) "DEBUG assemble_ca_2c() "
+        if(idebugWrite .gt. 0) write(*,*) "BEGIN assemble_ca_2c() "
 
 ! Procedure
 ! ===========================================================================

@@ -116,7 +116,7 @@
 ! Allocate Arrays
 ! ===========================================================================
  
-        if(idebugWrite .gt. 0)  write (*,*) "DEBUG common_neighborsPP() "
+        if(idebugWrite .gt. 0)  write (*,*) "BEGIN common_neighborsPP() "
 
 ! Procedure
 ! ===========================================================================

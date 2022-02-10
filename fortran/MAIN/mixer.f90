@@ -90,8 +90,8 @@
 ! Procedure
 ! ===========================================================================
   if(idebugWrite .gt. 0) then
-   write (*,*) "DEBUG mixer <<Qin  ", Qin (1,:)
-   write (*,*) "DEBUG mixer <<Qout ", Qout(1,:)
+   write (*,*) "mixer <<Qin  ", Qin (1,:)
+   write (*,*) "mixer <<Qout ", Qout(1,:)
   end if  
 
 ! Check to see if input charges and output charges are within tolerance.
@@ -164,10 +164,7 @@
 !          call pulay (Qoutmixer, Qinmixer, bmix, sigma, Kscf, idmix, imix , max_scf_iterations)
 !       end select !ialgmix
 
-        !write(*,*) "DEBUG Qoutmixer ", Qoutmixer(:)
-        !write(*,*) "DEBUG Qinmixer  ", Qinmixer (:)
 ! end of honza
-        !write(*,*) "DEBUG mixer  Kscf, sigma, sigmaold ", Kscf, sigma, sigmaold
        
        if (Kscf .gt. 1) then
          if (sigma .lt. sigmaold) then
@@ -180,9 +177,6 @@
 ! Check convergence of charge; sigmatol is in scf.optional
 !       write (*,*) '  '
        if (sigma .lt. sigmatol) scf_achieved = .true.
-
-       !write(*,*) "DEBUG mixer scf_achieved ", scf_achieved, Kscf, sigma, sigmaold
-
        if (.not. scf_achieved) then
          imix = 0
          do iatom = 1, natoms
@@ -226,8 +220,8 @@
 !    write (*,*) '  '
     !if (verbosity .ge. 1) write (*,'(A,i3,A,e14.7,A,e14.7)' ) "=============> Kscf", Kscf, "sigma = ",sigma," Must be < ", sigmatol 
     if(idebugWrite .gt. 0) then
-      write (*,*) "DEBUG mixer >>Qin  ", Qin (1,:)
-      write (*,*) "DEBUG mixer >>Qout ", Qout(1,:)
+      write (*,*) "mixer >>Qin  ", Qin (1,:)
+      write (*,*) "mixer >>Qout ", Qout(1,:)
      end if  
 
 ! Format Statements

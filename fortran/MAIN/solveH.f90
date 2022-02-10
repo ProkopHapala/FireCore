@@ -134,7 +134,7 @@ subroutine solveH( ikpoint, kpoint )
         a0 = cmplx(0.0d0,0.0d0)
         a1 = cmplx(1.0d0,0.0d0)
         
-        if(idebugWrite .gt. 0) write(*,*) "DEBUG solveH()"
+        if(idebugWrite .gt. 0) write(*,*) "BEGIN solveH()"
 
         !ishort = 1
         !if (iwrteigen .eq. 1) ishort = 0
@@ -166,9 +166,6 @@ subroutine solveH( ikpoint, kpoint )
 
         call ktransform( kpoint, norbitals, Sk, Hk )
 
-        !write(*,*) "DEBUG Sk: \n", real(Sk(:,:))
-        !write(*,*) "DEBUG Hk: \n", real(Hk(:,:))
-
         if (.not. allocated(sm12_save)) then
             allocate (sm12_save(norbitals,norbitals,nkpoints))
         end if
@@ -198,7 +195,7 @@ subroutine solveH( ikpoint, kpoint )
 
 ! CALCULATE (S^-1/2)*H*(S^-1/2)
 ! ****************************************************************************
-        if(idebugWrite .gt. 0) write(*,*) "DEBUG solveH norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
+        if(idebugWrite .gt. 0) write(*,*) "solveH norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
         !ifile = 111111
         !open( ifile, file='solveH_mats.log', status='unknown' )
         !write(ifile,*) "sqrtS: "
@@ -289,14 +286,14 @@ subroutine solveH( ikpoint, kpoint )
           if (info .ne. 0) call diag_error (info, 0)
 
         !do inu=1,norbitals
-        !    write(*,*) "DEBUG eig[",inu,"] ", eigen(inu)
+        !    write(*,*) " eig[",inu,"] ", eigen(inu)
         !end do
         
     !write(ifile,*) "B_Low coefs: "
     !call debug_writeMat( ifile, real(Hk), norbitals, norbitals )
 
 
-    !write (*,*) "DEBUG kspace2 | are blowre orthonormal ? :", norbitals
+    !write (*,*) " kspace2 | are blowre orthonormal ? :", norbitals
     !do i = 1, norbitals
     !    do j = 1, norbitals
     !    !dot =  sum( Hk(:,i) * Hk(:,j) )

@@ -90,7 +90,7 @@
 ! Allocate arrays
 ! ===========================================================================
  
-	if(idebugWrite .gt. 0) write (*,*) "DEBUG initneighbors() "
+	if(idebugWrite .gt. 0) write (*,*) "BEGIN initneighbors() "
 
 ! Procedure
 ! ===========================================================================
