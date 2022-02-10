@@ -21,7 +21,6 @@ contains
         logical, intent(in) :: divide  ! do we divide and conquer?
         ! ===== Variables
         ! ===== Body
-        !write(*,*) "DEBUG alloc_work norbitals, divide ", norbitals, divide 
         allocate ( slam(norbitals) )
         allocate ( xxxx(norbitals,norbitals) )
         allocate ( zzzz(norbitals,norbitals) )

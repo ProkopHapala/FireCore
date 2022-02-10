@@ -75,7 +75,7 @@
         integer kforce
 
 ! Procedure
-        if(idebugWrite .gt. 0) write(*,*) "DEBUG assemble_mcweda() itheory", itheory
+        if(idebugWrite .gt. 0) write(*,*) "BEGIN assemble_mcweda() itheory", itheory
 ! ===========================================================================
 
 !        !write (*,*) '  '

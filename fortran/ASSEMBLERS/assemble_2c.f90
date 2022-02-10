@@ -126,7 +126,7 @@
 
 ! Procedure
 ! ===========================================================================
-        if(idebugWrite .gt. 0) write(*,*) "DEBUG assemble_2c.f90", iforce
+        if(idebugWrite .gt. 0) write(*,*) "BEGIN assemble_2c.f90", iforce
 ! Initialize interactions
         vna = 0.0d0
 
@@ -186,8 +186,7 @@
           end if
           call epsilon (r2, sighat, eps)
           call deps2cent (r1, r2, eps, deps)
- 
-        !write( *,* ) "DEBUG assemble_2c() iatom,ineigh ", iatom,ineigh, " rij ", y
+
 
 ! ****************************************************************************
 !
@@ -216,9 +215,6 @@
            do imu = 1, num_orb(in1)
             s_mat(imu,inu,ineigh,iatom) = sx(imu,inu)
             t_mat(imu,inu,ineigh,iatom) = tx(imu,inu)
-
-            !write( *,* ) "DEBUG assemble_2c [,",imu,",",inu,"] S ", real(sx(imu,inu)), " T ", real( tx(imu,inu))
-
             if (iforce .eq. 1) then   
              sp_mat(:,imu,inu,ineigh,iatom) = spx(:,imu,inu)
              tp_mat(:,imu,inu,ineigh,iatom) = tpx(:,imu,inu)

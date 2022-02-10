@@ -15,6 +15,7 @@ python pyBall/gen_makefile.py
 
 mkdir build  || true
 cd    build
+
 ln -s ../Makefile      || true
 #make | tee make.log
 rm make.log                        || true

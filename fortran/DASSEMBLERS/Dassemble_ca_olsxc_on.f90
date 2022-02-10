@@ -224,7 +224,6 @@
 ! ------------------------------------------------------------------------
 ! Double counting correction forces (dxcv)
 ! ------------------------------------------------------------------------
-            !write(*,*)   "DEBUG iatom,ineigh,imu,imu, arhop_on ", iatom,ineigh,issh, arhop_on(:,issh,issh,ineigh,iatom)
             rhoxc_av = arho_on(issh,issh,iatom)
             drhoxc_av(:) = arhop_on(:,issh,issh,ineigh,iatom)
             call cepal(rhoxc_av, exc, muxc, dexc, d2exc, dmuxc, d2muxc)
@@ -243,9 +242,6 @@
      &          +  (dexc - dmuxc)*(drhoxc(:) - drhoxc_av(:)) )*q_mu
 
 ! Convert to forces (we use '-' in sum)
-             !write(*,*)   "DEBUG iatom,ineigh,imu,imu, bcxcpx ", iatom,ineigh,imu,imu, dexc,d2exc,dmuxc,d2muxc,rhoxc,rhoxc_av,q_mu ! drhoxc_av(:)
-             !write(*,*)   "DEBUG iatom,ineigh,imu,imu, bcxcpx ", iatom,ineigh,imu,imu, drhoxc_av(:)
-             !write(*,*)   "DEBUG iatom,ineigh,imu,imu, bcxcpx ", iatom,ineigh,imu,imu, bcxcpx(:,imu,imu)
              dxcdcc(:,ineigh,iatom) = dxcdcc(:,ineigh,iatom) -  bcxcpx(:,imu,imu)
             end do !do index = -l1, l1
             n1 = n1 + l1

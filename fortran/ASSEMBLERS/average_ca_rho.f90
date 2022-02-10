@@ -312,7 +312,6 @@
                        do imu = 1, nssh(in3)
                           rhom_2c(imu,inu)    = rhom_2c(imu,inu)    +  rhomm(imu,inu)*Qin(isorp,jatom)
                           rhomp_2c(:,imu,inu) = rhomp_2c(:,imu,inu) +  rhompm(:,imu,inu)*Qin(isorp,jatom)
-                          !write(*,*) "DEBUG iatom,isorp,imu,inu, rhompm ",  iatom,isorp,imu,inu,  rhompm(:,imu,inu)
                        end do ! endo imu
                     end do ! enddo inu
                  end do ! endo do isorp
@@ -329,10 +328,6 @@
                        sm(issh,jssh) =  -1.0d0*xc_overtol
                      endif
                    endif
-                   !write(*,*) "DEBUG iatom,issh,jssh, rhomp_2c - spm ",  iatom,issh,jssh,  rhomp_2c(:,issh,jssh)," - ",spm(:,issh,jssh)
-                   !write(*,*) "DEBUG iatom,issh,jssh, rhom_2c, sm ",  iatom,issh,jssh,  rhomp_2c(:,issh,jssh)," * ",sm(issh,jssh)," - ", rhom_2c(issh,jssh)," * ",spm(:,issh,jssh)
-                   !write(*,*) "DEBUG iatom,issh,jssh, rhom_2c, sm ",  iatom,issh,jssh,  rhomp_2c(:,issh,jssh)*sm(issh,jssh)," - ", rhom_2c(issh,jssh)*spm(:,issh,jssh)," / ", sm(issh,jssh)*sm(issh,jssh)
-                   !write(*,*) "DEBUG iatom,issh,jssh, rhom_2c, sm ",  iatom,issh,jssh, ( rhomp_2c(:,issh,jssh)*sm(issh,jssh)  - rhom_2c(issh,jssh)*spm(:,issh,jssh) ) /  ( sm(issh,jssh)*sm(issh,jssh) )
                    arhop_on(:,issh,jssh,ineigh,iatom) = arhop_on(:,issh,jssh,ineigh,iatom)  + ( rhomp_2c(:,issh,jssh)*sm(issh,jssh)  - rhom_2c(issh,jssh)*spm(:,issh,jssh) ) /  ( sm(issh,jssh)*sm(issh,jssh) )
                  enddo ! do jssh
               enddo ! do issh
@@ -353,7 +348,6 @@
                     sm(issh,jssh) =  -1.0d0*xc_overtol
                   endif
                 endif
-                !write(*,*) "DEBUG iatom,issh,jssh, rhom_2c, sm ",  iatom,issh,jssh,  rhom_2c(issh,jssh), sm(issh,jssh)
                 arho_on(issh,jssh,iatom)  = arho_on(issh,jssh,iatom)  + rhom_2c(issh,jssh) / sm(issh,jssh)
                 arhoi_on(issh,jssh,iatom) = arhoi_on(issh,jssh,iatom) + rhomi_2c(issh,jssh) / sm(issh,jssh)
               enddo ! do jssh

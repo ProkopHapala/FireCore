@@ -165,8 +165,6 @@
         if(interaction .eq. 15) switch = .false.
         if(interaction .eq. 18) switch = .false.
 
-        !write (*,*) "DEBUG doscentros()  in1,in3,index_max2c(in1,in3) ", in1,in3,index_max2c(in1,in3)
-
 ! This subroutine calls the subroutine intrp1d as needed to find the value of
 ! the matrix elements for any given atomic separation distance.
 ! -slist = output list of matrix elements

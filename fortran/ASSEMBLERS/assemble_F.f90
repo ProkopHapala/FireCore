@@ -113,7 +113,7 @@
 
 ! Procedure
 ! ===========================================================================
-        if(idebugWrite.gt.0) write (*,*) ' DEBUG assemble_F() '
+        if(idebugWrite.gt.0) write (*,*) ' BEGIN assemble_F() '
 
 ! ****************************************************************************
 ! Assemble three-center forces from Dassemble_3c:

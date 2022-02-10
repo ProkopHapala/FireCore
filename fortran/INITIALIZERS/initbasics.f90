@@ -261,8 +261,6 @@ subroutine initbasics ()
 !        allocate (ratom_final (3, natoms))
 !        call readbarrier (natoms, nspecies, imass, nzx)
 
-   write(*,*) "DEBUG nssh(:)", nssh(:)
-
 ! Call make_munu. This routine determines all of the non-zero matrix elements
 ! for the two- and three-center matrix elements.  These non-zero matrix
 ! elements are determined based on selection rules.
