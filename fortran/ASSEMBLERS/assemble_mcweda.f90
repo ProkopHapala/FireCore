@@ -195,52 +195,62 @@
 ! assemble_2c ONLY does 2c terms. No 3c terms allowed. See assemble_3c
 ! and trescentros for 3c terms.
           call timer_start_i(8)
-          if (Kscf .eq. 1) then
 
+          if (Kscf .eq. 1) then
+           call timer_start_i(20)
            !write (*,*) ' Assemble two-center interactions. '
            call assemble_sVNL()  ! (iforce)
            call assemble_2c()    ! (nprocs, iforce, iordern, ioff2c)
            call assemble_2c_PP() ! (nprocs, iforce, iordern)
 ! assemble bias matrix
 !            if (ibias .eq. 1) call assemble_Vbias ( nprocs, iforce, iordern, ioff2c )   ! IF_DEF_BIAS_END
+           call timer_stop_i(20)
           end if ! end if of Kscf = 1
 
 ! Call the exchange-correlation interactions based on method chosen
 ! (i.e. itheory_xc).
           if (itheory_xc .eq. 1 ) then
           !write (*,*) ' Assemble SN-xc exchange-correlation interactions. '
-
+          call timer_start_i(21)
           if (itheory .eq. 1) then
            call average_ca_rho ! (nprocs, Kscf, iforce, iordern, igauss)
           else
            call average_rho ! (nprocs, Kscf, iforce, iordern, igauss)
           endif
+          call timer_stop_i(21)
 
-           !write (*,*) ' Assembling on-site part.'
+           call timer_start_i(22)
            call assemble_snxc_on ( uxcdcc_sn ) ! (natoms, nprocs, my_proc, iordern, itheory, uxcdcc_sn)
+           call timer_stop_i(22)
 
-           !write (*,*) ' Assembling off-site part.'
+           call timer_start_i(23)
            call assemble_snxc_off ! (natoms, nprocs, my_proc, iordern,  itheory)
+           call timer_stop_i(23)
           end if ! if (itheory_xc = 1)
 
           if (itheory_xc .eq. 2 ) then
            !write (*,*) ' Assemble OLS-xc exchange-correlation interactions.'
-
+           
+           call timer_start_i(21)
            if (itheory .eq. 1) then
             call average_ca_rho ! (nprocs, Kscf, iforce, iordern, igauss)
             !call average_rho (nprocs, Kscf, iforce, iordern, igauss)
            else
             call average_rho ! (nprocs, Kscf, iforce, iordern, igauss)
            endif
+           call timer_stop_i(21)
 
-           !write (*,*) ' Assembling on-site part.'
+           call timer_start_i(22)
            call assemble_olsxc_on (uxcdcc_ols) ! (natoms, nprocs, my_proc, iordern, itheory, uxcdcc_ols)
+           call timer_stop_i(22)
 
-           !write (*,*) ' Assembling off-site part.'
+           call timer_start_i(23)
            call assemble_olsxc_off ! (nprocs, my_proc, iordern, itheory)
+           call timer_stop_i(23)
           end if ! if (itheory_xc = 2)
 
 !JIMM
+          call timer_start_i(24)
           if (itheory .eq. 1) then
            !write (*,*) ' Assemble two-center DOGS interactions. '
            !if (idipole .eq. 1) then                                ! IF_DEF_DIPOL_END
@@ -249,6 +259,7 @@
                 call assemble_ca_2c     !(nprocs, iforce, iordern)
            ! end if                                                 ! IF_DEF_DIPOL_END
           endif
+          call timer_stop_i(24)
           call timer_stop_i(8)
 
           !call debug_writeBlockedMat( "H_2c_t.log", t_mat )
@@ -270,10 +281,15 @@
           
           call timer_start_i(9)
           if (Kscf .eq. 1) then
-           !write (*,*) ' Assemble three-center interactions. '
+           
+           call timer_start_i(31)
            call assemble_3c    ! (nprocs, iordern, igauss, itheory_xc)
-           !write (*,*) ' Assemble three-center PP interactions. '
+           call timer_stop_i(31)
+
+           call timer_start_i(32)
            call assemble_3c_PP ! (nprocs, iordern)
+           call timer_stop_i(32)
+
 ! JIMM
 ! IF_DEF_QMMM
 !           if (iqmmm .eq.1 ) then
@@ -290,13 +306,16 @@
           end if
 
           if (itheory .eq. 1) then
+           call timer_start_i(33)
            !write (*,*) ' Assemble three-center DOGS interactions. '
            ! if (idipole .eq. 1) then                              ! IF_DEF_DIPOL_END
            !     call assemble_ca_3c_dip (nprocs, iordern, igauss) ! IF_DEF_DIPOL_END
            ! else                                                  ! IF_DEF_DIPOL_END
                 call assemble_ca_3c ! (nprocs, iordern, igauss)
            !end if                                                 ! IF_DEF_DIPOL_END
+           call timer_stop_i(33)
 
+           call timer_start_i(34)
 ! Add assemble_lr here for the long long-range ewald contributions
            !write (*,*) ' Assemble long-range interactions. '
            !if (idipole .eq. 1)                              ! IF_DEF_DIPOL_END
@@ -304,6 +323,7 @@
            !else                                             ! IF_DEF_DIPOL_END
                 call assemble_lr ! (nprocs, iordern)
            !end if                                           ! IF_DEF_DIPOL_END
+           call timer_stop_i(34)     
           endif
           call timer_stop_i(9)
           !call debug_writeBlockedMat( "H_3c_t.log", t_mat )

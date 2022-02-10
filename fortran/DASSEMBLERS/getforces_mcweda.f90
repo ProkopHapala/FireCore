@@ -54,7 +54,7 @@
         use configuration
         use forces
         !use qmmm_module, only : qmmm_struct
-
+        use timing
         implicit none
 
 ! Argument Declaration and Description
@@ -79,9 +79,13 @@
           !write (*,*) '  '
           !write (*,*) ' ***************************************************** '
           !write (*,*) ' Dassemble two-center force contributions. '
+          call timer_start_i(51)
           call Dassemble_2c()
+          call timer_stop_i(51)
           !write (*,*) ' Dassemble two-center PP force contributions. '
+          call timer_start_i(52)
           call Dassemble_2c_PP()
+          call timer_stop_i(52)
 
 !           if (ibias .eq. 1) call Dassemble_bias (nprocs, iordern)     ! IF_DEF_BIAS_END
 
@@ -99,17 +103,24 @@
              call Dassemble_snxc_2c()
            endif
           end if
+
           if (itheory_xc .eq. 2) then
            !write (*,*) ' Dassemble on-site OSLXC force contributions. '
+            
            if (itheory .eq. 1) then
+             call timer_start_i(53)
              call Dassemble_ca_olsxc_on()
+             call timer_stop_i(53)
+             call timer_start_i(54)
              call Dassemble_ca_olsxc_2c()
+             call timer_stop_i(54)
            else
              call Dassemble_olsxc_on()
              call Dassemble_olsxc_2c()
            endif
           end if
 
+          call timer_start_i(55)
           if (itheory .eq. 1) then
            !write (*,*) ' Dassemble two-center DOGS force contributions. ' 
            !if (idipole .eq. 1) then      ! IF_DIPOLE_END
@@ -118,32 +129,41 @@
             call Dassemble_ca_2c     ()  
            !end if                        ! IF_DIPOLE_END
           endif
+          call timer_stop_i(55)
 
 ! ===========================================================================
 !                               Dassemble_3c
 ! ===========================================================================
           !write (*,*) '  '
           !write (*,*) ' Dassemble three-center force contributions. '
+          call timer_start_i(56)
           call Dassemble_3c ()
+          call timer_stop_i(56)
 
           !write (*,*) ' Dassemble three-center PP force contributions. '
+          call timer_start_i(57)
           call Dassemble_3c_PP ()
+          call timer_stop_i(57)
 
           if (itheory .eq. 1) then
            !write (*,*) ' Dassemble three-center DOGS force contributions. '
 
+          call timer_start_i(58)
           !if (idipole .eq. 1) then     ! IF_DIPOLE_END
           !  call Dassemble_ca_3c_dip () ! IF_DIPOLE_END
           !else                         ! IF_DIPOLE_END
             call Dassemble_ca_3c ()
           !end if                       ! IF_DIPOLE_END
           !write (*,*) ' Dassemble three-center long-range contributions. '
+          call timer_stop_i(58)  
 
+          call timer_start_i(59)
           !if (idipole .eq. 1)          ! IF_DIPOLE_END
           !  call Dassemble_lr_dip ()    ! IF_DIPOLE_END
           !else                          ! IF_DIPOLE_END
             call Dassemble_lr     ()
           !end if                        ! IF_DIPOLE_END
+          call timer_stop_i(59)
 ! IF_DEF_QMMM
 !           if (iqmmm .eq. 1) then
 !             !write (*,*) ' Dassemble three-center qm/mm contributions. '
@@ -165,13 +185,16 @@
            else
             call Dassemble_snxc_3c ()
            endif
+
           else if(itheory_xc .eq. 2) then
            !write (*,*) ' Dassemble off-site OLS exchange-correlation forces. '
+            call timer_start_i(60)
            if (itheory .eq. 1) then
             call Dassemble_ca_olsxc_3c ()
            else
             call Dassemble_olsxc_3c ()
            endif
+           call timer_stop_i(60)
           end if
 
           !write (*,*) ' ***************************************************** '
@@ -185,7 +208,9 @@
           !write (*,*) '  '
           !write (*,*) ' ***************************************************** '
           !write (*,*) ' Assemble all force contributions. '
+          call timer_start_i(50)
           call assemble_F ! (natoms, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias, iwrtfpieces)
+          call timer_stop_i(50)
 
 ! Reassign forces for tolerance testing.
           ftotold = ftotnew
