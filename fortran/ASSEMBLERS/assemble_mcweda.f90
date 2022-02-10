@@ -57,6 +57,7 @@
         use interactions
         use energy
         !use md
+        use timing
         implicit none
 
 ! Argument Declaration and Description
@@ -97,6 +98,7 @@
 ! neighj(iatom,ineigh) = j-sub-m, the jatom value of the ineigh'th neighbor.
 ! neighb(iatom,ineigh) = beta-sub-m, the beta value for the ineigh'th neighbor.
           if (Kscf .eq. 1) then
+           call timer_start_i(5)
            if (ifixneigh .eq. 0) then
             call reallocate_neigh ! (nprocs, my_proc, iordern, itheory, itheory_xc, igauss, icluster, ivdw, iwrthampiece, iwrtatom, igrid)
             call neighbors   ! (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
@@ -115,15 +117,18 @@
             !SFIRE
            call common_neighbors   ! (nprocs, my_proc, iordern, iwrtneigh_com)
            call common_neighborsPP ! (nprocs, my_proc, iordern,  iwrtneigh_com, icluster)
+           call timer_stop_i(5)
           end if ! end if (Kscf .eq. 1)
 
 ! ===========================================================================
 !                              ewald energy
 ! ===========================================================================
+          call timer_start_i(6)
           if ((itheory .eq. 1 .or. itheory .eq. 2) .and. Kscf .eq. 1) then
            kforce = 0
            call get_ewald ! (nprocs, my_proc, kforce, icluster, itheory, iordern)
           end if
+          call timer_stop_i(6)
 
 ! ===========================================================================
 ! ---------------------------------------------------------------------------
@@ -173,7 +178,7 @@
 !                               assemble_1c
 ! ===========================================================================
 ! Assemble the one-center exchange-correlation interactions.
-          !write (*,*) '  '
+          call timer_start_i(7)
           if(itheory_xc .eq. 2 ) then
            !write (*,*) ' ***************************************************** '
            !write (*,*) ' Assemble one-center interactions. '
@@ -181,7 +186,7 @@
            call assemble_olsxc_1c ! (natoms, itheory, iforce)
           endif
          !if (V_intra_dip .eq. 1) call assemble_1c_vdip ! (natoms, itheory, iforce)    ! 
-
+          call timer_stop_i(7)
 ! ===========================================================================
 !                               assemble_2c
 ! ===========================================================================
@@ -189,7 +194,7 @@
 ! doscentros does the interpolating and "fundamental" calculations.
 ! assemble_2c ONLY does 2c terms. No 3c terms allowed. See assemble_3c
 ! and trescentros for 3c terms.
-          !write(*,*) '  '
+          call timer_start_i(8)
           if (Kscf .eq. 1) then
 
            !write (*,*) ' Assemble two-center interactions. '
@@ -244,6 +249,7 @@
                 call assemble_ca_2c     !(nprocs, iforce, iordern)
            ! end if                                                 ! IF_DEF_DIPOL_END
           endif
+          call timer_stop_i(8)
 
           !call debug_writeBlockedMat( "H_2c_t.log", t_mat )
           !call debug_writeBlockedMat( "H_2c_vna.log", vna )
@@ -261,7 +267,8 @@
 ! trecentros does the interpolating and "fundamental" calculations.
 ! assemble_3c ONLY does 3c terms. No 2c terms allowed. See assemble_2c
 ! and doscentros for 2c terms.
-          !write(*,*) '  '
+          
+          call timer_start_i(9)
           if (Kscf .eq. 1) then
            !write (*,*) ' Assemble three-center interactions. '
            call assemble_3c    ! (nprocs, iordern, igauss, itheory_xc)
@@ -298,7 +305,7 @@
                 call assemble_lr ! (nprocs, iordern)
            !end if                                           ! IF_DEF_DIPOL_END
           endif
-
+          call timer_stop_i(9)
           !call debug_writeBlockedMat( "H_3c_t.log", t_mat )
           !call debug_writeBlockedMat( "H_3c_vna.log", vna )
           !call debug_writeBlockedMat( "H_3c_vxc.log", vxc )
@@ -315,7 +322,9 @@
 !                                 Build H
 ! ===========================================================================
 ! Set up the full Hamiltonian and !writeout HS.dat.
+          call timer_start_i(10)
           call buildh !(nprocs, itheory, iordern, itestrange, testrange, ibias, iwrtHS)
+          call timer_stop_i(10)
 ! ===========================================================================
 ! For iwrthampiece .eq. 1 (file - output.input), !write out Hamiltonian pieces
 !          if (iwrthampiece .eq. 1) call hampiece (itheory)  ! IF_DEF_HAMPIECES_END
