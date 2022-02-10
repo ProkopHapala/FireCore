@@ -47,6 +47,7 @@ GROUPS = {
 #'optimization',
 'FIRE',
 'debug',
+'timing',
 ],
 }, #END MODULES
 

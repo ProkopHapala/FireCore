@@ -99,11 +99,12 @@ if(idebugWrite .gt. 0) write (*,*) "BEGIN reallocate_neigh() "
 
 ! Procedure
 ! ===========================================================================
-        neigh_max_old = neigh_max
+        neigh_max_old   = neigh_max
         neighPP_max_old = neighPP_max
         ! if(ivdw .eq. 1) neigh_max_vdw_old = neigh_max_vdw
 
         call find_neigh_max ! (nprocs, my_proc, iordern, icluster, ivdw)
+        !if (neigh_max_old .lt. neigh_max) then   ! By Prokop -  WARRNING - This will change behavour considerably - We should test it
         if (neigh_max_old .ne. neigh_max) then 
          if (my_proc .eq. 0) then
           write (*,*) ' The maximum number of neighbors has changed. '
