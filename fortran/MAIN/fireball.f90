@@ -39,6 +39,7 @@ program fireball
     call init_wfs(norbitals, nkpoints)
     ikpoint = 1
 
+    write (*,*) "fireball.f90: itheory, itheory_xc ", itheory, itheory_xc
     if(idebugWrite .gt. 0) write(*,*) "BEGIN fireball.f90 norbitals, nkpoints, max_scf_iterations", norbitals, nkpoints, max_scf_iterations
     ! TODO : It does not read CHARGES   (that is the reason for difference from Fireball-progs)
     write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf, max_scf_iterations
@@ -78,12 +79,14 @@ program fireball
         !call getenergy (itime_step)    ! calculate the total energy
         !call assemble_mcweda ()
         call getenergy_mcweda () 
+        call timer_stop_i(4)
+        call timer_start_i(11)
         call getforces_mcweda ()
         !call getforces ()   ! Assemble forces
         !do i=1, natoms
         !    write(*,*) "force[",i,"] ",  ftot(:,i)
         !end do
-        call timer_stop_i(4)
+        call timer_stop_i(11)
         call move_ions_FIRE (itime_step, iwrtxyz )   ! Move ions now
         call write_bas()
 
@@ -99,17 +102,41 @@ program fireball
     call cpu_time (time_end)
     write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
 
-    write(*,*) "TIME[1] spent in assemble_mcweda() ", timer_sums(1)
-    write(*,*) "TIME[2] spent in solveH()          ", timer_sums(2)
-    write(*,*) "TIME[3] spent in denmat()          ", timer_sums(3)
-    write(*,*) "TIME[4] spent in post-SCF          ", timer_sums(4)
-    write(*,*) "-----------------------------------"
-    write(*,*) "TIME[ 5] spent in assemble(Kscf=0)  ", timer_sums(5)
-    write(*,*) "TIME[ 6] spent in get_ewald         ", timer_sums(6)
-    write(*,*) "TIME[ 7] spent in assemble_1c       ", timer_sums(7)
-    write(*,*) "TIME[ 8] spent in assemble_2c       ", timer_sums(8)
-    write(*,*) "TIME[ 9] spent in assemble_3c       ", timer_sums(9)
-    write(*,*) "TIME[10] spent in buildH            ", timer_sums(10)
-
+    write(*,*) "TIME  1 assemble_mcweda  ", timer_sums(1)
+    write(*,*) "TIME  2 solveH           ", timer_sums(2)
+    write(*,*) "TIME  3 denmat           ", timer_sums(3)
+    write(*,*) "TIME  4 getenergy_mcweda ", timer_sums(4)
+    write(*,*) "TIME 11 getforces_mcweda ", timer_sums(11)
+    !write(*,*) "-----------------------------------"
+    write(*,*) "TIME  5 assemble(Kscf=1)  ", timer_sums(5)
+    write(*,*) "TIME  6 get_ewald         ", timer_sums(6)
+    write(*,*) "TIME  7 assemble_1c       ", timer_sums(7)
+    write(*,*) "TIME  8 assemble_2c       ", timer_sums(8)
+    write(*,*) "TIME  9 assemble_3c       ", timer_sums(9)
+    write(*,*) "TIME 10 buildH            ", timer_sums(10)
+    !write(*,*) "-----------------------------------"
+    write(*,*) "TIME 20 assemle_2c(Kscf=1) ", timer_sums(20)
+    write(*,*) "TIME 21 average_rho        ", timer_sums(21)
+    write(*,*) "TIME 22 assemble_olsxc_on  ", timer_sums(22)
+    write(*,*) "TIME 23 assemble_olsxc_off ", timer_sums(23)
+    write(*,*) "TIME 24 assemble_ca_2c     ", timer_sums(24)
+    !write(*,*) "-----------------------------------"
+    write(*,*) "TIME 31 assemble_3c        ", timer_sums(31)
+    write(*,*) "TIME 32 assemble_3c_PP     ", timer_sums(32)
+    write(*,*) "TIME 33 assemble_ca_3c     ", timer_sums(33)
+    write(*,*) "TIME 34 assemble_lr        ", timer_sums(34)
+    !write(*,*) "-----------------------------------"
+    write(*,*) "TIME 50 assemble_F            ", timer_sums(50)
+    write(*,*) "TIME 51 Dassemble_2c          ", timer_sums(51)
+    write(*,*) "TIME 52 Dassemble_2c_PP       ", timer_sums(52)
+    write(*,*) "TIME 53 Dassemble_ca_olsxc_on ", timer_sums(53)
+    write(*,*) "TIME 54 Dassemble_ca_olsxc_2c ", timer_sums(54)
+    write(*,*) "TIME 55 Dassemble_ca_2c       ", timer_sums(55)
+    write(*,*) "TIME 56 Dassemble_3c          ", timer_sums(56)
+    write(*,*) "TIME 57 Dassemble_3c_PP       ", timer_sums(57)
+    write(*,*) "TIME 58 Dassemble_ca_3c       ", timer_sums(58)
+    write(*,*) "TIME 59 Dassemble_lr          ", timer_sums(59)
+    write(*,*) "TIME 60 Dassemble_ca_olsxc_3c ", timer_sums(60)
+    
     stop
 end program fireball
