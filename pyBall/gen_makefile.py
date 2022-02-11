@@ -326,6 +326,7 @@ if __name__ == "__main__":
     #mode_opt = 'OPT'
     mode_opt = 'DEBUG'
     #mode_opt = 'DEBUGw'
+    if len(sys.argv)>1: mode_opt=sys.argv[1]
 
     #FFLAGS = _FFLAGS[mode_opt] + _FFLAGS['F90']
     #FFLAGS = _FFLAGS[mode_opt] + _FFLAGS['F90']

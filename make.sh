@@ -9,18 +9,23 @@ cd cpp/Build
 make
 cd $dr
 
-python pyBall/gen_makefile.py
+python pyBall/gen_makefile.py OPT
 #ln -s Makefile ../build/Makefile
 
 
-mkdir build  || true
-cd    build
+#mkdir build  || true
+#cd    build
 
-ln -s ../Makefile      || true
+mkdir build_opt || true
+cd    build_opt
+
+
+#ln -s ../Makefile      || true
+cp ../Makefile . || true
 #make | tee make.log
 rm make.log                        || true
 echo "==== START make "
 pwd
 make 2>&1 | tee -a make.log
 cd $dr
-ln -s build/make.log .             || true
+#ln -s build/make.log .             || true
