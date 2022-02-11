@@ -134,33 +134,13 @@ subroutine initbasics ()
 ! Read the parameter file - fireball.param
    call readparam ()
 
-! Read the info.dat file.  Allocate lsshPP, etc. inside!
-   call readinfo ()
-!CHROM
-! Cutoff dist. of the classical interaction is used in neighbor routine
-!		if( iclassicMD > 0 ) call readdata_classicMD ()      ! IF_DEF_classicMD_END
-!END CHROM
-
-
-!        nprocs = 1  ! IF_DEF_ORDERN_END
-
-
 ! Read data from the basis file - XXX.bas.
    open (unit = 69, file = basisfile, status = 'old')
    read (69, *) natoms
    close (unit = 69)
-
-! ! IF_DEF_MD
-! ! Initialize aux. variable
-!         if (nstepi .eq. 1) then
-!          T_average = T_initial
-!          T_previous = 0.0d0
-!          time = 0.0d0
-!         end if
-! ! END_DEF_MD
-
 ! Allocate more arrays.
    allocate (degelec (natoms))
+   allocate (iatyp (natoms))
    allocate (imass (natoms))
    allocate (ratom (3, natoms))
    allocate (nowMinusInitialPos (3, natoms))
@@ -172,7 +152,7 @@ subroutine initbasics ()
    ! allocate (mask (3,natoms))      ! IF_DEF_OPT_END
    ! mask = 1.0d0                    ! IF_DEF_OPT_END
    ximage = 0.0d0
-   call readbasis (nzx, imass)
+   call readbasis ! (nzx, imass)
 ! decide if need to shift atoms since one is situated at origin
    ishiftO = 0
    do iatom = 1, natoms
@@ -180,6 +160,24 @@ subroutine initbasics ()
       distance = sqrt(distance)
       if (distance .lt. 1.0d-4) ishiftO = 1
    end do
+
+! Read the info.dat file.  Allocate lsshPP, etc. inside!
+   call readinfo ()
+!CHROM
+! Cutoff dist. of the classical interaction is used in neighbor routine
+!		if( iclassicMD > 0 ) call readdata_classicMD ()      ! IF_DEF_classicMD_END
+!END CHROM
+
+!        nprocs = 1  ! IF_DEF_ORDERN_END
+
+! ! IF_DEF_MD
+! ! Initialize aux. variable
+!         if (nstepi .eq. 1) then
+!          T_average = T_initial
+!          T_previous = 0.0d0
+!          time = 0.0d0
+!         end if
+! ! END_DEF_MD
 
 ! Read data from the lattice vectors file - XXX.lvs.
 ! Set up the boxes surrounding the central unit cell.

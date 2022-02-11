@@ -61,19 +61,20 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine readbasis ( nzx, imass)
+        subroutine readbasis ( )
         use configuration
         use dimensions
         !use md, only : T_instantaneous
         use options !, only : verbosity,inputxyz, restartxyz
+        use interactions,only: iatyp
         implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Input
-        integer, intent (in), dimension (nspecies) :: nzx
+!        integer, intent (in), dimension (nspecies) :: nzx
 ! Output
-        integer, dimension (natoms), intent(out) :: imass
+!        integer, dimension (natoms), intent(out) :: imass
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -88,7 +89,7 @@
         
         real etot_tmp 
  
-        logical zindata
+        !logical zindata
 
 ! Procedure
 ! ===========================================================================
@@ -104,71 +105,59 @@
           stop
         end if
 
-      if (inputxyz .eq. 1) then 
-        read (69,*)
-        !if (restartxyz .eq. 0) read (69,*)
-        !if (restartxyz .eq. 1) then
-        !  read (69,908)  etot_tmp,T_instantaneous, init_time
-        !end if   
+!       if (inputxyz .eq. 1) then 
+!         read (69,*)
+!         !if (restartxyz .eq. 0) read (69,*)
+!         !if (restartxyz .eq. 1) then
+!         !  read (69,908)  etot_tmp,T_instantaneous, init_time
+!         !end if   
       
-        do iatom = 1, natoms
-         if (restartxyz .eq. 0) read (69,*) symbol(iatom),ratom(:,iatom)
-         if (restartxyz .eq. 1) read (69,*) symbol(iatom),ratom(:,iatom),vatom(:,iatom)
+!         do iatom = 1, natoms
+!          if (restartxyz .eq. 0) read (69,*) symbol(iatom),ratom(:,iatom)
+!          if (restartxyz .eq. 1) read (69,*) symbol(iatom),ratom(:,iatom),vatom(:,iatom)
 
-         zindata = .false.
-         do ispec = 1, nspecies
-          if (trim(symbol(iatom)) .eq. symbolA(ispec)) then
-           zindata = .true.
-           imass(iatom) = ispec
-          end if
-         end do
-         if (.not. zindata) then
-          write (*,*) ' The atomic symbol = ',symbol(iatom) 
-          write (*,*) ' that is contained in your basis file is '
-          write (*,*) ' not contained in your data files - info.dat '
-          write (*,*) ' Remake your create data files or fix your basis file'
-          stop
-         end if
-        end do
+!          zindata = .false.
+!          do ispec = 1, nspecies
+!           if (trim(symbol(iatom)) .eq. symbolA(ispec)) then
+!            zindata = .true.
+!            imass(iatom) = ispec
+!           end if
+!          end do
+!          if (.not. zindata) then
+!           write (*,*) ' The atomic symbol = ',symbol(iatom) 
+!           write (*,*) ' that is contained in your basis file is '
+!           write (*,*) ' not contained in your data files - info.dat '
+!           write (*,*) ' Remake your create data files or fix your basis file'
+!           stop
+!          end if
+!         end do
 
-      else
+!       else
 ! Loop over the number of atoms
         do iatom = 1, natoms
-         read (69,*) nucz, ratom(:,iatom)
-         zindata = .false.
-         do ispec = 1, nspecies
-          if (nucz .eq. nzx(ispec)) then
-           zindata = .true.
-           imass(iatom) = ispec
-          end if
-         end do
-         if (.not. zindata) then
-          write (*,*) ' The atomic number, nucz = ', nucz
-          write (*,*) ' that is contained in your basis file is '
-          write (*,*) ' not contained in your data files - info.dat '
-          write (*,*) ' Remake your create data files or fix your basis file.'
-          stop
-         end if
+         !read (69,'(i,f,f,f)') iatyp(iatom), ratom(:,iatom)
+         read (69,*) iatyp(iatom), ratom(:,iatom)
+         !read (69,*) imass, ratom(:,iatom)
         end do
 
-      endif
+      !endif
 
         do iatom = 1, natoms
           ratom(:,iatom)=ratom(:,iatom)*rescal
         end do 
 
 ! Now write out the basis file information.
-        write (*,*) ' Reading atom Coordinates from Basis File '
-        if (verbosity .ge. 3)  write (*,200)
-        if (verbosity .ge. 3)  write (*,201)
-        if (verbosity .ge. 3)  write (*,200)
-          do iatom = 1, natoms
-           in1 = imass(iatom)
-           symbol(iatom) = symbolA(in1)
-           if (verbosity .ge. 3) write (*,202) iatom, symbol(iatom), ratom(:,iatom), imass(iatom)
-          end do
-          if (verbosity .ge. 3) write (*,200)
-          if (verbosity .ge. 3) write (*,*) '  '
+        ! write (*,*) ' Reading atom Coordinates from Basis File '
+        ! if (verbosity .ge. 3)  write (*,200)
+        ! if (verbosity .ge. 3)  write (*,201)
+        ! if (verbosity .ge. 3)  write (*,200)
+        !   do iatom = 1, natoms
+        !    in1 = imass(iatom)
+        !    symbol(iatom) = symbolA(in1)
+        !    if (verbosity .ge. 3) write (*,202) iatom, symbol(iatom), ratom(:,iatom), imass(iatom)
+        !   end do
+        !   if (verbosity .ge. 3) write (*,200)
+        !   if (verbosity .ge. 3) write (*,*) '  '
 ! Format Statements
 ! ===========================================================================
 200     format (2x, 70('='))

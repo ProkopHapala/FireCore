@@ -88,7 +88,8 @@
         character (len=2), dimension (50) :: temp_symbol
  
         real, dimension (:,:), allocatable :: cutoff  ! cutoff radius in bohr
-        real :: nucz
+        !real nucz
+        integer nucz 
  
         character (len=25) :: signature
         character (len=2)  :: symbolA_temp
@@ -102,10 +103,11 @@
  
         logical skip_it
         logical new_one
+        logical zindata
 ! zdenka chromcova - test that info.dat is ok
-		integer foundspecies
- 		
- 		foundspecies=0
+	integer foundspecies
+
+ 	foundspecies=0
 ! Procedure
 ! ===========================================================================
 ! Initialize rcutoff array - we loop over all of it elsewhere
@@ -135,55 +137,67 @@
         allocate (rcutoff (nspecies, nsh_max)) 
         rcutoff = 0.0d0
 
+        ! PROKOP : WTF? This should not be here, it is in readbasis.f90 
+!         if (inputxyz .eq. 1) then
+!           open  (unit = 69, file = basisfile, status = 'old')
+!           read (69, *) natoms
+!           read(69,*)
+! ! Loop over the number of atoms
+!           temp_nsup = 0
+!           do iatom = 1, natoms
+!            read (69,*) symbolA_temp
+!            new_one = .true.
+!            do imu = 1, temp_nsup
+!             if (trim(symbolA_temp) .eq. temp_symbol(imu)) new_one = .false.
+!            end do
+!            if (new_one) then
+!             temp_nsup = temp_nsup + 1
+!             temp_symbol(temp_nsup) = trim(symbolA_temp)
+!            end if
+!           end do
+!           close (unit = 69)
+!         else
+!           open  (unit = 69, file = basisfile, status = 'old')
+!           read (69, *) natoms
+! ! Loop over the number of atoms
+!           temp_nsup = 0
+!           do iatom = 1, natoms
+!            read (69,*) nucz
+!            new_one = .true.
+!            do imu = 1, temp_nsup
+!             if (nucz .eq. temp_nsu(imu)) new_one = .false.
+!            end do
+!            if (new_one) then
+!             temp_nsup = temp_nsup + 1
+!             temp_nsu(temp_nsup) = nucz
+!            end if
+!           end do
+!           close (unit = 69)
+!         end if
 
+        ! find number of unique atom types
+        temp_nsup   = 0
+        temp_nsu(:) = 0
+        do iatom = 1, natoms
+            nucz = iatyp(iatom)
+            new_one = .true.
+            !write(*,*) "DEBUG iatom ",iatom," nucz ", nucz, " temp_nsup ", temp_nsup
+            do imu = 1, temp_nsup
+             !write(*,*) "DEBUG imu ",imu," nucz ", nucz, " temp_nsu(imu) ", temp_nsu(imu)
+             if (nucz .eq. temp_nsu(imu)) then
+              new_one = .false.
+              exit
+             end if
+            end do
+            if (new_one) then
+             temp_nsup = temp_nsup + 1
+             temp_nsu(temp_nsup) = nucz
+            end if
+        end do
 
-        if (inputxyz .eq. 1) then
-
-          open  (unit = 69, file = basisfile, status = 'old')
-          read (69, *) natoms
-          read(69,*)
-! Loop over the number of atoms
-          temp_nsup = 0
-          do iatom = 1, natoms
-           read (69,*) symbolA_temp
-           new_one = .true.
-           do imu = 1, temp_nsup
-            if (trim(symbolA_temp) .eq. temp_symbol(imu)) new_one = .false.
-           end do
-           if (new_one) then
-            temp_nsup = temp_nsup + 1
-            temp_symbol(temp_nsup) = trim(symbolA_temp)
-           end if
-          end do
-          close (unit = 69)
-
-        else
-! It's handy to not read all the files if you only want some of them
-!        open (unit = 41, file = 'script.input', status = 'old')
-!        read (41,*) basisfile
-!        close (unit = 41)
-          open  (unit = 69, file = basisfile, status = 'old')
-          read (69, *) natoms
-
-! Loop over the number of atoms
-          temp_nsup = 0
-          do iatom = 1, natoms
-           read (69,*) nucz
-           new_one = .true.
-           do imu = 1, temp_nsup
-            if (nucz .eq. temp_nsu(imu)) new_one = .false.
-           end do
-           if (new_one) then
-            temp_nsup = temp_nsup + 1
-            temp_nsu(temp_nsup) = nucz
-           end if
-          end do
-          close (unit = 69)
-        end if
         if (verbosity .ge. 3) write (*,*) ' We will only read these atomic indexes: '
         if (verbosity .ge. 3) write (*,*) temp_nsu(1:temp_nsup)
         if (verbosity .ge. 3) write (*,*)
-
         rewind (unit = 12)
         read (12,*)
         read (12,*)
@@ -333,6 +347,24 @@
         	write(*,*)'Exiting. Please check the info.dat'
 			stop
 		end if
+
+        ! PROKOP - assign atom types
+        do iatom = 1, natoms
+                nucz = iatyp(iatom)
+                zindata = .false.
+                do ispec = 1, nspecies
+                        if (nucz .eq. nzx(ispec)) then
+                                zindata = .true.
+                                imass(iatom) = ispec
+                                symbol(iatom) = symbolA( ispec )
+                        end if
+                end do
+                if (.not. zindata) then
+                        write (*,*) ' The atomic number, nucz = ', nucz, ' that is contained in your basis file is not contained in your data files - info.dat '
+                        write (*,*) ' Remake your create data files or fix your basis file.'
+                        stop
+                end if
+        end do
 
 ! Deallocate Arrays
 ! ===========================================================================

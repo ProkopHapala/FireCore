@@ -19,6 +19,14 @@ add_executable( FireCoreVisual
 )
 target_link_libraries( FireCoreVisual ${OpenGL_LIBRARIES} ${GLU_LIBRARY} ${SDL2_LIBRARY} -rdynamic -ldl -lm )
 
+add_executable( FireCoreMMFFmini
+	FireCoreMMFFmini.cpp
+	$<TARGET_OBJECTS:DynamicOpt>
+	$<TARGET_OBJECTS:SDL2OGL>  
+)
+target_link_libraries( FireCoreMMFFmini ${OpenGL_LIBRARIES} ${GLU_LIBRARY} ${SDL2_LIBRARY} -rdynamic -ldl -lm )
+
+
 add_executable( ${NAME}_old_main
 	${NAME}_old_main.cpp 
 	#$<TARGET_OBJECTS:Body> 

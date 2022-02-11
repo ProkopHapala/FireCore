@@ -99,6 +99,7 @@
          integer, dimension (:, :, :), allocatable :: mvalueS
 
 ! This array stores the species information for each atom.
+         integer, dimension (:), allocatable :: iatyp
          integer, dimension (:), allocatable :: imass
  
          real, dimension (:, :), allocatable :: cl_PP
