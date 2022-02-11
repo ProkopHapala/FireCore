@@ -5,8 +5,6 @@
 #include <vector>
 #include <math.h>
 
-#include <dlfcn.h>
-
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 
@@ -38,6 +36,8 @@
 
 #include "MolecularDraw.h"
 
+#include "FireCoreAPI.h"
+
 int idebug = 0;
 
 
@@ -58,19 +58,6 @@ TO DO:
  - some bonds too long
  - correct angular forcefield to repdesent kinked groups ( e.g. -OH )
 */
-
-
-// subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalForce')
-//  subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
-typedef void (*Pprocedure)();
-//typedef void (*Pfirecore_evalForce)(int,double*);
-typedef void (*Pfirecore_evalForce  )(int,double*,double*);
-typedef void (*Pfirecore_init       )(int,int*,double*);
-typedef void (*Pfirecore_getCharges )(double*);
-
-
-
-
 
 std::vector<Vec3d> iso_points;
 int isoOgl;
@@ -112,20 +99,16 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
 
     double* charges_tmp = 0;
 
-    void        *lib_handle = 0;
-    Pfirecore_evalForce  pfirecore_evalForce =0;
-    Pfirecore_init       pfirecore_init      =0;
-    Pfirecore_getCharges pfirecore_getCharges=0;
-
-
+    FireCore::Lib fireCore;
+ 
 	virtual void draw   ()  override;
 	virtual void drawHUD()  override;
 	//virtual void mouseHandling( )  = override;
 	virtual void eventHandling   ( const SDL_Event& event  ) override;
 	virtual void keyStateHandling( const Uint8 *keys ) override;
 
-    int  loadFireCore ( );
-    void setupFireball( );
+    //int  loadFireCore ( );
+    //void setupFireball( );
 
     void makeMolecules( Molecule& mol, bool bSubCOG=true );
     void assignFF     ( );
@@ -175,12 +158,12 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     opt.setInvMass( 1.0 );
     opt.cleanVel( );
 
-    loadFireCore( );
-    pfirecore_init      ( mol.natoms, mol.atomType, (double*)mol.pos );
+    fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
+    fireCore.init      ( mol.natoms, mol.atomType, (double*)mol.pos );
     int nMDpre = 0;
     for(int imd=0; imd<nMDpre; imd++){
         printf("### START MDStep imd,nMDpre %i / %i \n", imd, nMDpre );
-        pfirecore_evalForce ( 100, (double*)world.apos, (double*)world.aforce );
+        fireCore.evalForce ( 100, (double*)world.apos, (double*)world.aforce );
         for(int i=0; i<mol.natoms; i++){
             printf( "aforce[%i] %g %g %g \n", i, world.aforce[i].x,world.aforce[i].y,world.aforce[i].z );
         }
@@ -197,9 +180,9 @@ void AppMolecularEditor2::MDloop(){
     for(int itr=0; itr<perFrame; itr++){ 
     
     for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0); }
-    pfirecore_evalForce( 100, (double*)world.apos, (double*)world.aforce );
+    fireCore.evalForce( 100, (double*)world.apos, (double*)world.aforce );
 
-    pfirecore_getCharges( charges_tmp );
+    fireCore.getCharges( charges_tmp );
     //for(int i=0; i<world.natoms; i++){ world.aREQ[i].z = charges_tmp[i];  }
 
     nff.evalLJQ( );
@@ -314,25 +297,6 @@ void AppMolecularEditor2::draw(){
     if(frameCount>=10){STOP = true;}
     */
 };
-
-
-int AppMolecularEditor2 :: loadFireCore( ){
-    char *error;
-    if(lib_handle){ dlclose(lib_handle); lib_handle=0; };
-    char fullname[1024] = "/home/prokop/git/FireCore/build/libFireCore.so";
-    printf("loading %s :\n", fullname );
-    void* plib = dlopen( fullname, RTLD_LAZY | RTLD_GLOBAL );
-    if (plib){
-        lib_handle=plib;
-    }else{ printf( "%s\n", dlerror()); return -1; }
-    pfirecore_init      = (Pfirecore_init)     dlsym(lib_handle, "firecore_init");
-    if ((error = dlerror())){ printf( "%s\n", error); pfirecore_init    =0; exit(0); }
-    pfirecore_evalForce = (Pfirecore_evalForce)dlsym(lib_handle, "firecore_evalForce");
-    if ((error = dlerror())){ printf("%s\n", error); pfirecore_evalForce=0; exit(0); }
-    pfirecore_getCharges = (Pfirecore_getCharges)dlsym(lib_handle, "firecore_getCharges");
-    if ((error = dlerror())){ printf("%s\n", error); pfirecore_getCharges=0; exit(0); }
-    return 0;
-}
 
 void AppMolecularEditor2:: makeMolecules( Molecule& mol, bool bSubCOG ) {
     mol.bondsOfAtoms();   mol.printAtom2Bond();
@@ -454,6 +418,7 @@ void AppMolecularEditor2:: makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     }
 }
 
+/*
 void AppMolecularEditor2:: setupFireball( ) {
     loadFireCore( );
     const int natom_test      = 5;
@@ -466,12 +431,13 @@ void AppMolecularEditor2:: setupFireball( ) {
         +1.0,     +1.0,    +1.0,
     };
     Vec3d aforce_test[natom_test*3];
-    pfirecore_init      ( 5, atyp_test, apos_test );
-    pfirecore_evalForce( 10, (double*)world.apos, (double*)world.aforce );
+    fireCore.init      ( 5, atyp_test, apos_test );
+    fireCore.evalForce( 10, (double*)world.apos, (double*)world.aforce );
     for(int i=0; i<natom_test; i++){
         printf( "aforce[%i] %g %g %g \n", aforce_test[i].x,aforce_test[i].y,aforce_test[i].z );
     }
 }
+*/
 
 void AppMolecularEditor2:: setupRender( ) {
     ogl_sph = glGenLists(1);

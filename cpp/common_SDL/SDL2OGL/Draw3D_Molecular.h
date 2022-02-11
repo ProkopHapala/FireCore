@@ -37,6 +37,17 @@ void plotSurfPlane( Vec3d normal, double c0, Vec2d d, Vec2i n ){
     Draw3D::drawRectGridLines( n*2, (da*-n.a)+(db*-n.b) + normal*c0, da, db );
 }
 
+void torsion( Quat4i t, const Vec3d* apos ){
+    float sz=0.1;
+    //Vec2i b=ff.ang2bond[i];
+    //Quat4i t=ff.tors2atom[i];
+    Draw3D::drawArrow(apos[t.x],apos[t.y],sz);
+    Draw3D::drawArrow(apos[t.y],apos[t.z],sz);
+    Draw3D::drawArrow(apos[t.z],apos[t.w],sz);
+    //if(b.i&SIGN_MASK){ Draw3D::drawArrow(apos[a.x],apos[a.y]); }else{ Draw3D::drawArrow(apos[a.x],apos[a.y]); };
+    //if(b.j&SIGN_MASK){   };
+}
+
 void makeSphereOgl( int& ogl, int nsub, float sz ){
     ogl = Draw::list(ogl);
     //glNewList( ogl, GL_COMPILE );

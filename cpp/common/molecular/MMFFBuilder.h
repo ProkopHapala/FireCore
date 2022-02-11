@@ -1104,10 +1104,11 @@ class Builder{  public:
         for(int i=0; i<n; i++){ apos[i]= atoms[i0+i].pos; }
     }
 
-    void export_atypes(int*& atypes, int i0=0, int n=-1)const{
+    int* export_atypes(int*& atypes, int i0=0, int n=-1)const{
         natom_def(n,i0);
         _allocIfNull(atypes,n);
         for(int i=0; i<n; i++){ atypes[i]= atoms[i0+i].type; }
+        return atypes;
     }
 
     void export_bonds(Vec2i* b2a, double* l0s=0, double* ks=0, int i0=0, int n=-1)const{

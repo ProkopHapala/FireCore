@@ -62,7 +62,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     ! ====== Body
     natoms = natoms_
 
-    write(*,*) "DEBUG natoms_", natoms
+    write(*,*) "DEBUG natoms, natoms_", natoms, natoms_
     write(*,*) "DEBUG shape(atomTypes,atomsPos)", shape(atomTypes), shape(atomsPos)
     do i = 1,natoms_
         write(*,*) atomTypes(i), atomsPos(:,i)
@@ -75,48 +75,40 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     ! >>> BEGIN INIT_BASICS
     write(*,*) "DEBUG initbasics START "
     call initconstants ! (sigma, sigmaold, scf_achieved)
+    write(*,*) "DEBUG 1 natoms, natoms_", natoms, natoms_
     scf_achieved = .true.
+    write(*,*) "DEBUG 2 natoms, natoms_", natoms, natoms_
     call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
+    write(*,*) "DEBUG 3 natoms, natoms_", natoms, natoms_
     call readparam ()
-    call readinfo () 
-    allocate (degelec   (natoms))
-    allocate (imass     (natoms))
-    allocate (symbol    (natoms))
-    allocate (xmass     (natoms))
-    allocate (ratom  (3, natoms))
-    allocate (vatom  (3, natoms))
-    allocate (ximage (3, natoms))
+    write(*,*) "DEBUG 4 natoms, natoms_", natoms, natoms_
+
+ ! Allocate more arrays.
+    allocate (degelec (natoms))
+    allocate (iatyp (natoms))
+    allocate (imass (natoms))
+    allocate (ratom (3, natoms))
     allocate (nowMinusInitialPos (3, natoms))
-    allocate (initialPosition    (3, natoms))
+    allocate (initialPosition (3, natoms))
+    allocate (vatom (3, natoms))
+    allocate (symbol (natoms))
+    allocate (xmass (natoms))
+    allocate (ximage (3, natoms))
+    ! allocate (mask (3,natoms))      ! IF_DEF_OPT_END
+    ! mask = 1.0d0                    ! IF_DEF_OPT_END
     ximage = 0.0d0
     !call readbasis (nzx, imass)
+    write(*,*) "DEBUG shape(iatyp) ",shape(iatyp),"DEBUG shape(atomTypes) ", shape(atomTypes)
+    iatyp(:) = atomTypes(:)
+    ratom(:,:) = atomsPos(:,:)
 
+ ! Read the info.dat file.  Allocate lsshPP, etc. inside!
+    call readinfo ()
+
+    write(*,*) "DEBUG natoms,natoms_ ", natoms,natoms_
+    write(*,*) "DEBUG shape(ratom) ",shape(ratom),"DEBUG shape(atomsPos) ", shape(atomsPos)
     !imass(:)   = atomTypes(:)
-    ratom(:,:) = atomsPos (:,:)
-    !write (*,*) " DEBUG check atom species ... "
-    do iatom = 1, natoms
-        zindata = .false.
-        do ispec = 1, nspecies
-             if ( atomTypes(iatom) .eq. nzx(ispec)) then
-                zindata = .true.
-                imass(iatom) = ispec
-                in1 = imass(iatom)
-                symbol(iatom) = symbolA(in1)
-             end if
-        end do
-        if ( .not. zindata ) then
-            write (*,*) "atom[",iatom,"] type not know ", atomTypes(iatom)
-            stop
-            return
-        else 
-            write (*,*) "atom[",iatom,"] ",imass(iatom) 
-        end if ! zindata
-    end do ! iatom
-    !write(*,*) " DEBUG Atoms are OK "
-    !write(*,*) " DEBUG atomTypes(:) ", atomTypes(:)
-    !write(*,*) " DEBUG imass(:) ", imass(:)
-    !return
-
+    
     call cross (a2vec, a3vec, vector)
     Vouc=a1vec(1)*vector(1)+a1vec(2)*vector(2)+a1vec(3)*vector(3)
     call initboxes (1)
