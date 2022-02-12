@@ -93,6 +93,7 @@
         use dimensions
         use interactions
         use integrals
+        use options, only: ivec_3c
         implicit none
 
 ! Argument Declaration and Description
@@ -162,6 +163,12 @@
 
 ! Procedure
 ! ===========================================================================
+
+        !if(ivec_3c .gt. 0) then ! PROKOP_2022/02/12
+        !        call DtrescentrosS_vec (isorp, maxtype, in1, in2, indna, x, y, cost, rhat, sighat, bcnax, f3naXa, f3naXb, f3naXc, nspecies)
+        !        return
+        !end if
+
 ! Initialize bcnam and bcnax and forces.
         do inu = 1, nssh(in2)
          do imu = 1, nssh(in1)

@@ -17,11 +17,42 @@ module timing
     integer ncall_twisterd
     integer ncall_makeDmat
     integer ncall_rotate_fb
+    integer ncall_interpolate_2d_vec
+
+    ! integer ntotcall_doscentros
+    ! integer ntotcall_doscentrosS
+    ! integer ntotcall_trescentros
+    ! integer ntotcall_trescentrosS
+    ! integer ntotcall_epsilon
+    ! integer ntotcall_deps2cent
+    ! integer ntotcall_interpolate_1d
+    ! integer ntotcall_interpolate_2d
+    ! integer ntotcall_twister
+    ! integer ntotcall_twisterd
+    ! integer ntotcall_makeDmat
+    ! integer ntotcall_rotate_fb
+    ! integer ntotcall_interpolate_2d_vec
 
     real timer_starts(timer_index_max)
     real timer_sums  (timer_index_max)
 
     contains
+
+    ! subroutine clean_ntotcall()
+    !     ntotcall_doscentros   =0
+    !     ntotcall_doscentrosS  =0
+    !     ntotcall_trescentros  =0
+    !     ntotcall_trescentrosS =0
+    !     ntotcall_epsilon      =0
+    !     ntotcall_deps2cent    =0
+    !     ntotcall_interpolate_1d =0
+    !     ntotcall_interpolate_2d =0
+    !     ntotcall_twister      =0
+    !     ntotcall_twisterd     =0
+    !     ntotcall_makeDmat     =0
+    !     ntotcall_rotate_fb    =0
+    !     ntotcall_interpolate_2d_vec = 0
+    ! end subroutine clean_ncall
 
     subroutine clean_ncall()
         ncall_doscentros   =0
@@ -36,22 +67,42 @@ module timing
         ncall_twisterd     =0
         ncall_makeDmat     =0
         ncall_rotate_fb    =0
+        ncall_interpolate_2d_vec = 0
+        ! ntotcall_doscentros   = ntotcall_doscentros 
+        ! ntotcall_doscentrosS  = ntotcall_doscentrosS
+        ! ntotcall_trescentros  = ntotcall_trescentros
+        ! ntotcall_trescentrosS = ntotcall_trescentrosS
+        ! ntotcall_epsilon      = ntotcall_epsilon
+        ! ntotcall_deps2cent    = ntotcall_deps2cent
+        ! ntotcall_interpolate_1d = ntotcall_interpolate_1d
+        ! ntotcall_interpolate_2d = ntotcall_interpolate_2d
+        ! ntotcall_twister      = ntotcall_twister 
+        ! ntotcall_twisterd     = ntotcall_twisterd 
+        ! ntotcall_makeDmat     = ntotcall_makeDmat
+        ! ntotcall_rotate_fb    = ntotcall_rotate_fb 
+        ! ntotcall_interpolate_2d_vec = ntotcall_interpolate_2d_vec
     end subroutine clean_ncall
 
     subroutine write_ncall()
-        write(*,*) "ncall_doscentros",     ncall_doscentros
-        write(*,*) "ncall_doscentrosS",    ncall_doscentrosS  
-        write(*,*) "ncall_trescentros",    ncall_trescentros  
-        write(*,*) "ncall_trescentrosS",   ncall_trescentrosS 
-        write(*,*) "ncall_epsilon",        ncall_epsilon      
-        write(*,*) "ncall_deps2cent",      ncall_deps2cent    
-        write(*,*) "ncall_interpolate_1d", ncall_interpolate_1d 
-        write(*,*) "ncall_interpolate_2d", ncall_interpolate_2d 
-        write(*,*) "ncall_twister",        ncall_twister      
-        write(*,*) "ncall_twisterd",       ncall_twisterd     
-        write(*,*) "ncall_makeDmat",       ncall_makeDmat    
-        write(*,*) "ncall_rotate_fb",      ncall_rotate_fb 
+        write(*,*) "ncall_doscentros         ", ncall_doscentros
+        write(*,*) "ncall_doscentrosS        ", ncall_doscentrosS  
+        write(*,*) "ncall_trescentros        ", ncall_trescentros  
+        write(*,*) "ncall_trescentrosS       ", ncall_trescentrosS 
+        write(*,*) "ncall_epsilon            ", ncall_epsilon      
+        write(*,*) "ncall_deps2cent          ", ncall_deps2cent    
+        write(*,*) "ncall_interpolate_1d     ", ncall_interpolate_1d 
+        write(*,*) "ncall_interpolate_2d     ", ncall_interpolate_2d 
+        write(*,*) "ncall_interpolate_2d_vec ", ncall_interpolate_2d_vec
+        write(*,*) "ncall_twister            ", ncall_twister      
+        write(*,*) "ncall_twisterd           ", ncall_twisterd     
+        write(*,*) "ncall_makeDmat           ", ncall_makeDmat    
+        write(*,*) "ncall_rotate_fb          ", ncall_rotate_fb 
     end subroutine write_ncall
+
+    subroutine writeclean_ncall()
+        call write_ncall()
+        call clean_ncall()
+    end subroutine writeclean_ncall
 
     subroutine timer_init()
         timer_index = 1

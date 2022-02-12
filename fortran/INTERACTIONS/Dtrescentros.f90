@@ -93,6 +93,7 @@
         use dimensions
         use interactions
         use integrals
+        use options, only: ivec_3c
         implicit none
  
 ! Argument Declaration and Description
@@ -163,6 +164,12 @@
 
 ! Procedure
 ! ===========================================================================
+
+        if(ivec_3c .gt. 0) then ! PROKOP_2022/02/12
+                call Dtrescentros_vec (interaction, isorp, maxtype, in1, in2, indna, x, y, cost, eps, depsA, depsB, rhat, sighat, bcnax, f3naXa, f3naXb, f3naXc, nspecies)
+                return
+        end if
+
         kforce = 1
  
 ! Now interpolate.

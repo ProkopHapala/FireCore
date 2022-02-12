@@ -91,6 +91,7 @@
         use interactions
         use integrals
         use timing
+        use options, only: ivec_3c
         implicit none
  
 ! Argument Declaration and Description
@@ -144,6 +145,11 @@
 ! Procedure
 ! ===========================================================================
         ncall_trescentrosS=ncall_trescentrosS+1
+
+        if(ivec_3c .gt. 0) then ! PROKOP_2022/02/12
+                call trescentrosS_vec ( isorp, maxtype, in1, in2, indna, x, y, cost, eps, bcnax, nspecies)
+                return
+        end if
 
         ! Initialize bcnax
         do inu = 1, nssh(in2)
