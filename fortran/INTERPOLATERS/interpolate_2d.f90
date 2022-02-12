@@ -263,8 +263,6 @@
         !  write(*,*) ' Some methods that sucked have been removed '
         !  stop
         !end if
-
-        return
 ! A final note, if you are interested in splines, you should start with
 ! "Handbook on SPLINES for the User"
 ! by Eugene V. Shikin and Alexander I. Plis.  1995, CRC Press.  Most other
