@@ -10,8 +10,8 @@ make
 cd $dr
 
 python pyBall/gen_makefile.py VERY_OPT
+#python pyBall/gen_makefile.py DEBUG
 #ln -s Makefile ../build/Makefile
-
 
 #mkdir build  || true
 #cd    build

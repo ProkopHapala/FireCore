@@ -4,6 +4,7 @@ icluster   = 1    ! PBC: 0 3D PBC; 1 cluster
 iqout      = 2
 max_scf_iterations = 100
 nstepf     = 100
+ivec_3c    = 1
 &END
 
 
