@@ -93,7 +93,7 @@
 ! Local Variable Declaration and Description
 ! ===========================================================================
         integer imidx, imidy
-        integer k
+        integer k, ik
 
         real f0p3, f0p6, f1m1, f1m2, f1m3, f1p3, f1p6, f2p1, flm1
         real gradtest
@@ -104,8 +104,13 @@
 
         real bb0,bb1,bb2,bb3
 ! -1 to 2 since we do third order
-        real, dimension (-1:2,-1:2) :: fun
-        real, dimension (-1:2) :: g, gp
+        !real, dimension (4,4) :: fun
+        real, dimension (4)   :: g,gp
+        
+        real inv_hx
+        real inv_hy
+        real inv_hx_36
+        real inv_hy_36
 
 ! Procedure
 ! ===========================================================================
@@ -116,14 +121,19 @@
 
         ncall_interpolate_2d=ncall_interpolate_2d+1
 
-        imidx = int((xin - xmin)/hx) + 1
+        inv_hx = 1/hx
+        inv_hy = 1/hy
+        inv_hx_36=inv_hx/36
+        inv_hy_36=inv_hy/36
+
+        imidx = int((xin - xmin)*inv_hx) + 1
         if (imidx .lt. 2) then
           imidx = 2
         else if (imidx .gt. nx - 2) then
           imidx = nx - 2
         end if
 
-        imidy = int((yin - ymin)/hy) + 1
+        imidy = int((yin - ymin)*inv_hy) + 1
         if (imidy .lt. 2) then
           imidy = 2
         else if (imidy .gt. ny - 2) then
@@ -135,31 +145,31 @@
  
 ! Now copy grid values to fun array for third order
 ! Note:  F90 syntax is slower f(-1:2,-1:2) = xintegral(imidx - 1:imidx + 2,imidy - 1:imidy + 2)
-        fun(-1,-1) = xintegral(imidx - 1,imidy - 1)
-        fun(0,-1) = xintegral(imidx,imidy - 1) 
-        fun(1,-1) = xintegral(imidx + 1,imidy - 1)
-        fun(2,-1) = xintegral(imidx + 2,imidy - 1)
+        !fun(1,1) = xintegral(imidx - 1,imidy + 1)
+        !fun(2,1) = xintegral(imidx    ,imidy + 1) 
+        !fun(3,1) = xintegral(imidx + 1,imidy + 1)
+        !fun(4,1) = xintegral(imidx + 2,imidy + 1)
 
-        fun(-1, 0) = xintegral(imidx - 1,imidy)
-        fun(0, 0) = xintegral(imidx,imidy) 
-        fun(1, 0) = xintegral(imidx + 1,imidy) 
-        fun(2, 0) = xintegral(imidx + 2,imidy)
+        !fun(1,2) = xintegral(imidx - 1,imidy    )
+        !fun(2,2) = xintegral(imidx    ,imidy    ) 
+        !fun(3,2) = xintegral(imidx + 1,imidy    ) 
+        !fun(4,2) = xintegral(imidx + 2,imidy    )
 
-        fun(-1, 1) = xintegral(imidx - 1,imidy + 1)
-        fun(0, 1) = xintegral(imidx,imidy + 1)
-        fun(1, 1) = xintegral(imidx + 1,imidy + 1)
-        fun(2, 1) = xintegral(imidx + 2,imidy + 1)
+        !fun(1,3) = xintegral(imidx - 1,imidy + 1)
+        !fun(2,3) = xintegral(imidx    ,imidy + 1)
+        !fun(3,3) = xintegral(imidx + 1,imidy + 1)
+        !fun(4,3) = xintegral(imidx + 2,imidy + 1)
 
-        fun(-1, 2) = xintegral(imidx - 1,imidy + 2)
-        fun(0, 2) = xintegral(imidx,imidy + 2)
-        fun(1, 2) = xintegral(imidx + 1,imidy + 2)
-        fun(2, 2) = xintegral(imidx + 2,imidy + 2)
+        !fun(1,4) = xintegral(imidx - 1,imidy + 2)
+        !fun(2,4) = xintegral(imidx    ,imidy + 2)
+        !fun(3,4) = xintegral(imidx + 1,imidy + 2)
+        !fun(4,4) = xintegral(imidx + 2,imidy + 2)
  
 ! ===========================================================================
 ! Adaptive interpolation - estimate gradient:
-        gradx = (fun(1,0) - fun(0,0))/hx
-        grady = (fun(0,1) - fun(0,0))/hy
-        gradtest = abs(gradx) + abs(grady)
+!        gradx = (fun(1,0) - fun(0,0))/hx
+!        grady = (fun(0,1) - fun(0,0))/hy
+!        gradtest = abs(gradx) + abs(grady)
 
 !         if (gradtest .lt. tiny) then ! METHOD 1
 ! ! Do three point linear bivariate interpolation
@@ -197,18 +207,23 @@
 ! Total number of points used is 16
         !else if (D2intMeth .eq. 1) then
 !        else ! PROKOP - we do not need IF here
-         do k = -1, 2
-          f1m1 = fun(k,-1)
+         do k = 1, 4
+          ik = imidx + k-2
+          f1m1 =  xintegral(ik,imidy - 1)
+          !f1m1 = fun(k,1)
           f1m2 = 2*f1m1
           f1m3 = 3*f1m1
 
-          f0p3 = 3*fun(k,0)
+          f0p3 = 3*xintegral(ik,imidy )
+          !f0p3 = 3*fun(k,2)
           f0p6 = 2*f0p3
 
-          f1p3 = 3*fun(k,1)
+          f1p3 = 3*xintegral(ik,imidy + 1 )
+          !f1p3 = 3*fun(k,3)
           f1p6 = 2*f1p3
 
-          f2p1 = fun(k,2)
+          f2p1 = xintegral(ik,imidy + 2 )
+          !f2p1 = fun(k,4)
 
           bb3 = - f1m1 + f0p3 - f1p3 + f2p1
           bb2 =   f1m3 - f0p6 + f1p3
@@ -219,17 +234,17 @@
           if (iforce .eq. 1) gp(k) = ((3*bb3*py + 2*bb2)*py + bb1)
          end do ! k
 
-         f1m1 = g(-1)
+         f1m1 = g(1)
          f1m2 = 2*f1m1
          f1m3 = 3*f1m1
     
-         f0p3 = 3*g(0)
+         f0p3 = 3*g(2)
          f0p6 = 2*f0p3
  
-         f1p3 = 3*g(1)
+         f1p3 = 3*g(3)
          f1p6 = 2*f1p3
 
-         f2p1 = g(2) 
+         f2p1 = g(4) 
 
          bb3 = - f1m1 + f0p3 - f1p3 + f2p1
          bb2 =   f1m3 - f0p6 + f1p3
@@ -239,26 +254,26 @@
          Q_L = (((bb3*px + bb2)*px + bb1)*px + bb0)/36.0d0
 
          if (iforce .eq. 1) then
-           dQ_Ldx = ((3*bb3*px + 2*bb2)*px + bb1)/(36.0d0*hx)
+           dQ_Ldx = ((3*bb3*px + 2*bb2)*px + bb1)*inv_hx_36
 
-           f1m1 = gp(-1)
+           f1m1 = gp(1)
            f1m2 = 2*f1m1
            f1m3 = 3*f1m1
     
-           f0p3 = 3*gp(0)
+           f0p3 = 3*gp(2)
            f0p6 = 2*f0p3
     
-           f1p3 = 3*gp(1)
+           f1p3 = 3*gp(3)
            f1p6 = 2*f1p3
 
-           f2p1 = gp(2) 
+           f2p1 = gp(4) 
 
            bb3 = - f1m1 + f0p3 - f1p3 + f2p1
-           bb2 = f1m3 - f0p6 + f1p3
+           bb2 =   f1m3 - f0p6 + f1p3
            bb1 = - f1m2 - f0p3 + f1p6 - f2p1
            bb0 = f0p6
 
-           dQ_Ldy = (((bb3*px + bb2)*px + bb1)*px + bb0)/(36.0d0*hy)
+           dQ_Ldy = (((bb3*px + bb2)*px + bb1)*px + bb0)*inv_hy_36
 
         end if
         !else  ! PROKOP
