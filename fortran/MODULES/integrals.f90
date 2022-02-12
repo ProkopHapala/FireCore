@@ -55,6 +55,7 @@
          real, dimension (:, :, :, :, :), allocatable :: xc3c_03
          real, dimension (:, :, :, :, :), allocatable :: xc3c_04
          real, dimension (:, :, :, :, :), allocatable :: xc3c_05
+
 !xc3c_SN
 ! XC interactions; 7 implies different derivative types; there are five den3
 ! arrays - one for each theta, used only for SNXC method
@@ -79,6 +80,10 @@
          real, dimension (:, :, :, :, :), allocatable :: den3S_05
 
 !end xc3c_SN
+         real, dimension (:,:,:,:,:,:), allocatable :: bcna_vec  ! PROKOP_2022/02/12
+         real, dimension (:,:,:,:,:,:), allocatable :: xc3c_vec  ! PROKOP_2022/02/12
+         real, dimension (:,:,:,:,:,:), allocatable :: den3_vec  ! PROKOP_2022/02/12
+         real, dimension (:,:,:,:,:,:), allocatable :: den3S_vec ! PROKOP_2022/02/12
 
 ! ****************************************************************************
 ! Two center integrals
