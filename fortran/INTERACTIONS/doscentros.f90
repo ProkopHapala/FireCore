@@ -64,6 +64,7 @@
         subroutine doscentros (interaction, isub, iforce, in1, in2, in3,  distance, eps, deps, sx, spx)
         use dimensions
         use interactions
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -151,6 +152,8 @@
 ! For the ontop case, in2 = in1 (left) or in3 (right).
 ! Initialize sm, scam and sx to zero.
 ! < n1 | n2 | n3 >
+
+        ncall_doscentros = ncall_doscentros+1
 
         sm(:,:) = 0
         sx(:,:) = 0

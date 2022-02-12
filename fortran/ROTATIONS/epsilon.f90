@@ -79,6 +79,7 @@
 ! Program Declaration
 ! ===========================================================================
          subroutine epsilon(R1,R2,spe)
+         use timing
          implicit none
  
 ! Argument Declaration and Description
@@ -98,6 +99,7 @@
  
 ! Procedure
 ! ===========================================================================
+        ncall_epsilon=ncall_epsilon+1
         r1mag=sqrt(r1(1)*r1(1)+r1(2)*r1(2)+r1(3)*r1(3))
         r2mag=sqrt(r2(1)*r2(1)+r2(2)*r2(2)+r2(3)*r2(3))
 !

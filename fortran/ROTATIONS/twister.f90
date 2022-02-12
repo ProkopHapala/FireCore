@@ -75,6 +75,7 @@
 ! ===========================================================================
         subroutine twister (eps, dmat, pmat)
         use constants_fireball
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -104,6 +105,8 @@
  
 ! Procedure
 ! ===========================================================================
+        ncall_twister=ncall_twister+1
+
 ! Nothing for S orbitals
 ! Set the P matrices: eps - x,y,z => pmat - y,z,x
         pmat(1,1) = eps(2,2) 

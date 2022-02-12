@@ -113,7 +113,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
                                          max_scf_iterations, bmix, sigmatol, tempfe,  &   ! ialgmix, 
                                          kptpreference,         &
                                          rescal, xyz2line, &
-                                         fdataLocation, verbosity, idebugwrite, ntpr, restartxyz,   &
+                                         fdataLocation, verbosity, idebugwrite, timing_verbosity, ntpr, restartxyz,   &
                                          inputxyz
 
 
@@ -177,6 +177,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, &
         xyz2line = 2
         verbosity = 0
         idebugwrite = 0
+        timing_verbosity = 0
         ntpr = 1
         restartxyz = 0
         inputxyz = 0

@@ -90,6 +90,7 @@
         use dimensions
         use interactions
         use integrals
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -142,7 +143,9 @@
  
 ! Procedure
 ! ===========================================================================
-! Initialize bcnax
+        ncall_trescentrosS=ncall_trescentrosS+1
+
+        ! Initialize bcnax
         do inu = 1, nssh(in2)
          do imu = 1, nssh(in1)
           bcnax(imu,inu) = 0.0d0

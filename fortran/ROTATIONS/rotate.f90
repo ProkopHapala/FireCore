@@ -74,6 +74,7 @@
         subroutine rotate_fb (in1, in2, eps, mmatrix, xmatrix)
         use dimensions
         use interactions
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -106,6 +107,8 @@
  
 ! Procedure
 ! ===========================================================================
+        ncall_rotate_fb=ncall_rotate_fb+1
+
 ! Set up the matrices to rotate p and d orbitals.
         call twister (eps, dmat, pmat)
  

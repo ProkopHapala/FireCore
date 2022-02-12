@@ -56,6 +56,7 @@
 ! ===========================================================================
         subroutine deps2cent(r1,r2,eps2,deps2)
         use constants_fireball
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -83,6 +84,7 @@
  
 ! Procedure
 ! ===========================================================================
+        ncall_deps2cent=ncall_deps2cent+1
         deps2=0.e0
 
 ! If we are doing an atom, r1=r2. Then set deps2 to zero.
@@ -125,19 +127,10 @@
 ! now calculate deps
         do ii=1,3
          do ix=1,3
-          term=xlevi(ix,ii,1)*r2(1)+   &
-     &         xlevi(ix,ii,2)*r2(2)+   &
-     &         xlevi(ix,ii,3)*r2(3)
-
-          deps2(ix,ii,1)=(eps2(ii,1)*eps2(ix,3)*ddinv)-(eps2(ii,1)*  &
-     &     crossinv**2)*(r2mag2*r1(ix)-dot*r2(ix))+  &
-     &     ddinv*crossinv*(delk(ii,ix)*(r2mag2-dot)-  &
-     &     r1(ii)*r2(ix)-r2(ii)*r2(ix)+2.e0*r1(ix)*r2(ii))
-
-          deps2(ix,ii,2)=crossinv*(term+(eps2(ii,2)*crossinv)*  &
-     &        (dot*r2(ix)-r2mag2*r1(ix)))
-
-          deps2(ix,ii,3)=-(delk(ii,ix)-eps2(ii,3)*eps2(ix,3))*ddinv
+          term           =  xlevi(ix,ii,1)*r2(1)  + xlevi(ix,ii,2)*r2(2)  + xlevi(ix,ii,3)*r2(3)
+          deps2(ix,ii,1) = (eps2(ii,1)*eps2(ix,3)*ddinv) - (eps2(ii,1)* crossinv**2)*(r2mag2*r1(ix)-dot*r2(ix)) + ddinv*crossinv*(delk(ii,ix)*(r2mag2-dot) - r1(ii)*r2(ix)-r2(ii)*r2(ix)+2.e0*r1(ix)*r2(ii))
+          deps2(ix,ii,2) = crossinv*(term+(eps2(ii,2)*crossinv) * (dot*r2(ix)-r2mag2*r1(ix)))
+          deps2(ix,ii,3) = -(delk(ii,ix)-eps2(ii,3)*eps2(ix,3))*ddinv
          end do
         end do
 !

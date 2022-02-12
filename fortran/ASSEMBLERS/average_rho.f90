@@ -229,8 +229,7 @@
               eps(issh,issh) = 1.0d0
            enddo
 
-           call doscentrosS (interaction0, isorp, iforce, in1, in2,     &
-     &                           in3, y, eps, sm, spm)
+           call doscentrosS (interaction0, isorp, iforce, in1, in2, in3, y, eps, sm, spm)
 
 ! Loop over the neighbors of each iatom.
            do ineigh = 1, neighn(iatom)       ! <==== loop over i's neighbors
@@ -256,90 +255,58 @@
                  sighat(:) = r21(:)/y
               end if
 
-              call epsilon (r2, sighat, eps)
+              call epsilon   (r2, sighat, eps)
               call deps2cent (r1, r2, eps, deps)
-
 
 ! ****************************************************************************
 !
 ! CALL DOSCENTROS AND GET VXC FOR ATM CASE - AVERAGE DENSITY APPROXIMATION
 ! ****************************************************************************
               if (iatom .eq. jatom .and. mbeta .eq. 0) then
-
                  interaction = 17
                  interaction0 = 22
                  in3 = in1
                  do isorp = 1, nssh(in2)
-                    call doscentros (interaction, isorp, iforce, in1, in2,   &
-     &                               in3, y, eps, deps, rhomx, rhompx)
-
-                    call doscentrosS (interaction0, isorp, iforce, in1, in2, &
-     &                                in3, y, eps, rhomm, rhompm)
-
+                    call doscentros (interaction, isorp, iforce, in1, in2, in3, y, eps, deps, rhomx, rhompx)
+                    call doscentrosS (interaction0, isorp, iforce, in1, in2, in3, y, eps, rhomm, rhompm)
                     do inu = 1, num_orb(in1)
                        do imu = 1, num_orb(in3)
-! scf atomic density term
-                         rhoi_on(imu,inu,iatom) = rhoi_on(imu,inu,iatom)     &
-     &                     + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rhoi_2c(imu,inu) = rhoi_2c(imu,inu)                 &
-     &                     + rhomx(imu,inu)*Qneutral(isorp,in2)
-! scf onsite density term
-                         rho_on(imu,inu,iatom) = rho_on(imu,inu,iatom)       &
-     &                     + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rho_2c(imu,inu) = rho_2c(imu,inu)                   &
-     &                     + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rhoi_on(imu,inu,iatom) = rhoi_on(imu,inu,iatom)      + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rhoi_2c(imu,inu) = rhoi_2c(imu,inu)                + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rho_on(imu,inu,iatom) = rho_on(imu,inu,iatom)      + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rho_2c(imu,inu) = rho_2c(imu,inu)         + rhomx(imu,inu)*Qneutral(isorp,in2)
                        end do
                     end do
-
                     do inu = 1, nssh(in1)
                        do imu = 1, nssh(in3)
-                          rhom_2c(imu,inu) = rhom_2c(imu,inu) +              &
-     &                             rhomm(imu,inu)*Qneutral(isorp,in2)
-                          rhomi_2c(imu,inu) = rhomi_2c(imu,inu) +            &
-     &                             rhomm(imu,inu)*Qneutral(isorp,in2)
+                          rhom_2c(imu,inu) = rhom_2c(imu,inu) +       rhomm(imu,inu)*Qneutral(isorp,in2)
+                          rhomi_2c(imu,inu) = rhomi_2c(imu,inu) +      rhomm(imu,inu)*Qneutral(isorp,in2)
                        end do ! endo imu
                     end do ! enddo inu
                  end do ! endo do isorp
-
               else
-
                  interaction = 17
                  interaction0 = 22
                  in3 = in1
                  do isorp = 1, nssh(in2)
-                    call doscentros (interaction, isorp, iforce, in1, in2,   &
-     &                               in3, y, eps, deps, rhomx, rhompx)
-
-                    call doscentrosS (interaction0, isorp, iforce, in1, in2, &
-     &                                in3, y, eps, rhomm, rhompm)
-
+                    call doscentros (interaction, isorp, iforce, in1, in2,    in3, y, eps, deps, rhomx, rhompx)
+                    call doscentrosS (interaction0, isorp, iforce, in1, in2,  in3, y, eps, rhomm, rhompm)
                     do inu = 1, num_orb(in1)
                        do imu = 1, num_orb(in3)
-! scf onsite density term
-                         rho_on(imu,inu,iatom) = rho_on(imu,inu,iatom)       &
-     &                      + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rho_2c(imu,inu) = rho_2c(imu,inu)                   &
-     &                      + rhomx(imu,inu)*Qneutral(isorp,in2)
-! scf onsite derivative of density term
-                         rhop_on(:,imu,inu,ineigh,iatom) =                   &
-     &                      rhop_on(:,imu,inu,ineigh,iatom)                  &
-     &                      + rhompx(:,imu,inu)*Qneutral(isorp,in2)
+                         rho_on(imu,inu,iatom) = rho_on(imu,inu,iatom)   + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rho_2c(imu,inu) = rho_2c(imu,inu)       + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rhop_on(:,imu,inu,ineigh,iatom) =       rhop_on(:,imu,inu,ineigh,iatom)      + rhompx(:,imu,inu)*Qneutral(isorp,in2)
                        end do ! do imu
                     end do ! do inu
-
 ! spherical symetric
                     do inu = 1, nssh(in1)
                        do imu = 1, nssh(in3)
-                          rhom_2c(imu,inu) = rhom_2c(imu,inu) +              &
-     &                             rhomm(imu,inu)*Qneutral(isorp,in2)
-                          rhomp_2c(:,imu,inu) = rhomp_2c(:,imu,inu) +        &
-     &                             rhompm(:,imu,inu)*Qneutral(isorp,in2)
+                          rhom_2c(imu,inu)    = rhom_2c(imu,inu)    + rhomm(imu,inu)*Qneutral(isorp,in2)
+                          rhomp_2c(:,imu,inu) = rhomp_2c(:,imu,inu) + rhompm(:,imu,inu)*Qneutral(isorp,in2)
                        end do ! endo imu
                     end do ! enddo inu
                  end do ! endo do isorp
-
               end if ! end if (iatom.eq.jatom)
-
 ! Now assemble the derivative average density using the density pieces
 ! from above.
               do issh = 1,nssh(in1)
@@ -351,11 +318,7 @@
                        sm(issh,jssh) =  -1.0d0*xc_overtol
                      endif
                    endif
-                   arhop_on(:,issh,jssh,ineigh,iatom) =                    &
-     &                 arhop_on(:,issh,jssh,ineigh,iatom)                    &
-     &                 + ( rhomp_2c(:,issh,jssh)*sm(issh,jssh)               &
-     &                 - rhom_2c(issh,jssh)*spm(:,issh,jssh) ) /             &
-     &                 ( sm(issh,jssh)*sm(issh,jssh) )
+                   arhop_on(:,issh,jssh,ineigh,iatom) = arhop_on(:,issh,jssh,ineigh,iatom) + ( rhomp_2c(:,issh,jssh)*sm(issh,jssh) - rhom_2c(issh,jssh)*spm(:,issh,jssh) ) / ( sm(issh,jssh)*sm(issh,jssh) )
                  enddo ! do jssh
               enddo ! do issh
            end do ! end do ineigh
@@ -375,10 +338,8 @@
                     sm(issh,jssh) =  -1.0d0*xc_overtol
                   endif
                 endif
-                arho_on(issh,jssh,iatom) = (arho_on(issh,jssh,iatom)       &
-     &              + rhom_2c(issh,jssh) / sm(issh,jssh))
-                arhoi_on(issh,jssh,iatom) = (arhoi_on(issh,jssh,iatom)     &
-     &              + rhomi_2c(issh,jssh) / sm(issh,jssh))
+                arho_on(issh,jssh,iatom)  = (arho_on(issh,jssh,iatom)   + rhom_2c(issh,jssh) / sm(issh,jssh))
+                arhoi_on(issh,jssh,iatom) = (arhoi_on(issh,jssh,iatom)  + rhomi_2c(issh,jssh) / sm(issh,jssh))
               enddo ! do jssh
            enddo ! do issh
         enddo ! end do iatom
@@ -481,18 +442,13 @@
 ! HAO May 27, 2005 gaussianupdate
 ! Interaction 3 is n_mu,nu for different shells.
 !            if (igauss .eq. 0) then   ! IF_DEF_GAUSS_END
-             call trescentros (interaction, isorp, isorpmax, in1, in2,   &
-     &                        indna, x, y, cost, eps, rhomx, nspecies)
-
-             call trescentrosS (isorp, isorpmax, in1, in2, indna, x, y,  &
-     &                         cost, eps, rhomm, nspecies)
+             call trescentros (interaction, isorp, isorpmax, in1, in2,  indna, x, y, cost, eps, rhomx, nspecies)
+             call trescentrosS (isorp, isorpmax, in1, in2, indna, x, y, cost, eps, rhomm, nspecies)
 ! ! IF_DEF_GAUSS
 !             end if
 !             if (igauss .eq. 1) then
-!              call trescentrosG_VXC (isorp, in1, in2, indna, x, y, cost,&
-!      &                               eps, rhomx, rcutoff)
-!              call trescentrosGS_VXC(isorp, in1, in2, indna, x, y, cost,&
-!      &                                eps, rhomm, rcutoff)
+!              call trescentrosG_VXC (isorp, in1, in2, indna, x, y, cost, eps, rhomx, rcutoff)
+!              call trescentrosGS_VXC(isorp, in1, in2, indna, x, y, cost, eps, rhomm, rcutoff)
 !             end if ! end if of igauss .eq. 1
 ! ! END_DEF_GAUSS
 
@@ -500,20 +456,16 @@
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
 !$omp atomic
-              rho_off(imu,inu,mneigh,iatom) =                                 &
-     &         rho_off(imu,inu,mneigh,iatom) + rhomx(imu,inu)*Qneutral(isorp,indna)
-              !Symmetrize:
-             rho_off(inu,imu,jneigh,jatom) = rho_off(imu,inu,mneigh,iatom)
+            rho_off(imu,inu,mneigh,iatom) = rho_off(imu,inu,mneigh,iatom) + rhomx(imu,inu)*Qneutral(isorp,indna)
+             rho_off(inu,imu,jneigh,jatom) = rho_off(imu,inu,mneigh,iatom)  !Symmetrize:
              end do
             end do
 
             do inu = 1, nssh(in2)
              do imu = 1, nssh(in1)
 !$omp atomic
-              rhom_3c(imu,inu,mneigh,iatom) =                                 &
-     &         rhom_3c(imu,inu,mneigh,iatom) + rhomm(imu,inu)*Qneutral(isorp,indna)
-               !Symmetrize:
-      rhom_3c(inu,imu,jneigh,jatom) = rhom_3c(imu,inu,mneigh,iatom) 
+              rhom_3c(imu,inu,mneigh,iatom) = rhom_3c(imu,inu,mneigh,iatom) + rhomm(imu,inu)*Qneutral(isorp,indna)      
+              rhom_3c(inu,imu,jneigh,jatom) = rhom_3c(imu,inu,mneigh,iatom)  !Symmetrize:
              end do
             end do
 !!$omp end critical (rho3)
@@ -583,93 +535,57 @@
            rhom_2c = 0.0d0
            rhomp_2c = 0.0d0
            do isorp = 1, nssh(in3)
-            call doscentros (interaction, isorp, iforce, in1, in3, in2, &
-     &                       y, eps, deps, rhomx, rhompx)
-
-            call doscentrosS (interaction0, isorp, iforce, in1, in3,    &
-     &                        in2, y, eps, rhomm, rhompm)
-
+            call doscentros (interaction, isorp, iforce, in1, in3, in2,  y, eps, deps, rhomx, rhompx)
+            call doscentrosS (interaction0, isorp, iforce, in1, in3,  in2, y, eps, rhomm, rhompm)
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
-              rhoij_off(imu,inu,ineigh,iatom) = rhoij_off(imu,inu,ineigh,iatom) &
-     &         + rhomx(imu,inu)*Qneutral(isorp,in1)
-              rhopij_off(:,imu,inu,ineigh,iatom) =                             &
-     &         rhopij_off(:,imu,inu,ineigh,iatom)                              &
-     &          + rhompx(:,imu,inu)*Qneutral(isorp,in1)
-              rho_off(imu,inu,ineigh,iatom) =                           &
-     &                               rho_off(imu,inu,ineigh,iatom)      &
-     &                           + rhomx(imu,inu)*Qneutral(isorp,in1)
-              rhop_off(:,imu,inu,ineigh,iatom) =                        &
-     &                            rhop_off(:,imu,inu,ineigh,iatom)      &
-     &                        + rhompx(:,imu,inu)*Qneutral(isorp,in1)
+              rhoij_off(imu,inu,ineigh,iatom)    = rhoij_off(imu,inu,ineigh,iatom)    + rhomx(imu,inu)*Qneutral(isorp,in1)
+              rhopij_off(:,imu,inu,ineigh,iatom) = rhopij_off(:,imu,inu,ineigh,iatom) + rhompx(:,imu,inu)*Qneutral(isorp,in1)
+              rho_off(imu,inu,ineigh,iatom)      = rho_off(imu,inu,ineigh,iatom)      + rhomx(imu,inu)*Qneutral(isorp,in1)
+              rhop_off(:,imu,inu,ineigh,iatom)   = rhop_off(:,imu,inu,ineigh,iatom)   + rhompx(:,imu,inu)*Qneutral(isorp,in1)
              end do
             end do
-
             do inu = 1, nssh(in2)
              do imu = 1, nssh(in1)
-              rhom_2c(imu,inu) = rhom_2c(imu,inu) +                     &
-     &                             rhomm(imu,inu)*Qneutral(isorp,in1)
-              rhomp_2c(:,imu,inu) = rhomp_2c(:,imu,inu) +               &
-     &                          rhompm(:,imu,inu)*Qneutral(isorp,in1)
+              rhom_2c(imu,inu)    = rhom_2c(imu,inu)    + rhomm(imu,inu)*Qneutral(isorp,in1)
+              rhomp_2c(:,imu,inu) = rhomp_2c(:,imu,inu) + rhompm(:,imu,inu)*Qneutral(isorp,in1)
              end do
             end do
-
 ! end of isorp
            end do
-
 ! Right piece: den_ontopr <i|n_j|j> (den0) part of <i|n|j> (denmx)
            interaction = 16
            interaction0 = 21
            in3 = in2
            do isorp = 1, nssh(in3)
-            call doscentros (interaction, isorp, iforce, in1, in3, in2, y,   &
-     &                       eps, deps, rhomx, rhompx)
-
-            call doscentrosS (interaction0, isorp, iforce, in1, in3, in2, y, &
-     &                        eps, rhomm, rhompm)
-
+            call doscentros (interaction, isorp, iforce, in1, in3, in2, y,  eps, deps, rhomx, rhompx)
+            call doscentrosS (interaction0, isorp, iforce, in1, in3, in2, y, eps, rhomm, rhompm)
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
-              rhoij_off(imu,inu,ineigh,iatom) = rhoij_off(imu,inu,ineigh,iatom) &
-     &         + rhomx(imu,inu)*Qneutral(isorp,in2)
-              rhopij_off(:,imu,inu,ineigh,iatom) =                             &
-     &         rhopij_off(:,imu,inu,ineigh,iatom)                              &
-     &          + rhompx(:,imu,inu)*Qneutral(isorp,in2)
-              rho_off(imu,inu,ineigh,iatom) =                                 &
-     &         rho_off(imu,inu,ineigh,iatom) + rhomx(imu,inu)*Qneutral(isorp,in2)
-              rhop_off(:,imu,inu,ineigh,iatom) =                              &
-     &         rhop_off(:,imu,inu,ineigh,iatom)                               &
-     &          + rhompx(:,imu,inu)*Qneutral(isorp,in2)
+              rhoij_off(imu,inu,ineigh,iatom)    = rhoij_off(imu,inu,ineigh,iatom)    + rhomx(imu,inu)*Qneutral(isorp,in2)
+              rhopij_off(:,imu,inu,ineigh,iatom) = rhopij_off(:,imu,inu,ineigh,iatom) + rhompx(:,imu,inu)*Qneutral(isorp,in2)
+              rho_off(imu,inu,ineigh,iatom)      = rho_off(imu,inu,ineigh,iatom)      + rhomx(imu,inu)*Qneutral(isorp,in2)
+              rhop_off(:,imu,inu,ineigh,iatom)   = rhop_off(:,imu,inu,ineigh,iatom)   + rhompx(:,imu,inu)*Qneutral(isorp,in2)
              end do
             end do
-
             do inu = 1, nssh(in2)
              do imu = 1, nssh(in1)
-              rhom_2c(imu,inu) = rhom_2c(imu,inu) +                          &
-     &         rhomm(imu,inu)*Qneutral(isorp,in2)
-              rhomp_2c(:,imu,inu) =                                           &
-     &         rhomp_2c(:,imu,inu) + rhompm(:,imu,inu)*Qneutral(isorp,in2)
+              rhom_2c(imu,inu)    = rhom_2c(imu,inu)    + rhomm(imu,inu)*Qneutral(isorp,in2)
+              rhomp_2c(:,imu,inu) = rhomp_2c(:,imu,inu) + rhompm(:,imu,inu)*Qneutral(isorp,in2)
              end do
             end do
-
 ! end of isorp
            end do
-
 !           rhom_3c(:,:,ineigh,iatom) = rhom_3c(:,:,ineigh,iatom) + rhom_2c(:,:)
-
            if (Kscf .eq. 1) then
               isorp = 0
               interaction0 = 23
               in3 = in2
-              call doscentrosS (interaction0, isorp, iforce, in1, in2,  &
-     &                           in3, y, eps, sm, spm)
-
+              call doscentrosS (interaction0, isorp, iforce, in1, in2, in3, y, eps, sm, spm)
               do inu = 1, nssh(in2)
                  do imu = 1, nssh(in1)
                     sm_mat(imu,inu,ineigh,iatom) = sm(imu,inu)
-
-                    if (iforce .eq. 1)                                  &
-     &                spm_mat(:,imu,inu,ineigh,iatom) = spm(:,imu,inu)
+                    if (iforce .eq. 1) spm_mat(:,imu,inu,ineigh,iatom) = spm(:,imu,inu)
                  end do
               end do
            else
@@ -706,31 +622,13 @@
                 endif
               endif
 
-              arhoij_off(issh,jssh,ineigh,iatom) =                      &
-     &              arhoij_off(issh,jssh,ineigh,iatom) +                 &
-     &              rhom_2c(issh,jssh)/sm(issh,jssh)
-
-              arhopij_off(:,issh,jssh,ineigh,iatom) =                   &
-     &          arhopij_off(:,issh,jssh,ineigh,iatom)                    &
-     &           + (rhomp_2c(:,issh,jssh)*sm(issh,jssh)                &
-     &            - rhom_2c(issh,jssh)*spm(:,issh,jssh))               &
-     &            /(sm(issh,jssh)*sm(issh,jssh))
-
-!              if (igauss .eq. 0) then    ! IF_DEF_GAUSS_END
-
-                rho_modified=rhom_3c(issh,jssh,ineigh,iatom)/sm(issh,jssh)
-
-                arho_off(issh,jssh,ineigh,iatom) =                       &
-     &           arho_off(issh,jssh,ineigh,iatom)                        &
-     &           + rhom_2c(issh,jssh)/sm(issh,jssh) + rho_modified
-
-!              end if ! (igauss .eq. 0)   ! IF_DEF_GAUSS_END
-
-               arhop_off(:,issh,jssh,ineigh,iatom) =                    &
-     &          arhop_off(:,issh,jssh,ineigh,iatom)                     &
-     &           + (rhomp_2c(:,issh,jssh)*sm(issh,jssh)                 &
-     &              - rhom_2c(issh,jssh)*spm(:,issh,jssh))              &
-     &              /(sm(issh,jssh)*sm(issh,jssh))
+              arhoij_off(issh,jssh,ineigh,iatom)    = arhoij_off(issh,jssh,ineigh,iatom)    +   rhom_2c(issh,jssh)/sm(issh,jssh)
+              arhopij_off(:,issh,jssh,ineigh,iatom) = arhopij_off(:,issh,jssh,ineigh,iatom) + (rhomp_2c(:,issh,jssh)*sm(issh,jssh) - rhom_2c(issh,jssh)*spm(:,issh,jssh) )/(sm(issh,jssh)*sm(issh,jssh))
+!             if (igauss .eq. 0) then    ! IF_DEF_GAUSS_END
+                rho_modified = rhom_3c(issh,jssh,ineigh,iatom)/sm(issh,jssh)
+                arho_off(issh,jssh,ineigh,iatom)    = arho_off(issh,jssh,ineigh,iatom)      + rhom_2c(issh,jssh)/sm(issh,jssh) + rho_modified
+!             end if ! (igauss .eq. 0)   ! IF_DEF_GAUSS_END
+              arhop_off(:,issh,jssh,ineigh,iatom)   =  arhop_off(:,issh,jssh,ineigh,iatom)  + (rhomp_2c(:,issh,jssh)*sm(issh,jssh) - rhom_2c(issh,jssh)*spm(:,issh,jssh)) /(sm(issh,jssh)*sm(issh,jssh))
 
 
 ! ! IF_DEF_GAUSS
