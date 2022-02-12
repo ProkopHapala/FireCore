@@ -63,11 +63,11 @@
         ! Input
                 integer, intent(in) :: in1, in2
          
-                real, intent(in) :: dmat (5, 5)
+                real, intent(in) :: dmat  (5, 5)
                 real, intent(in) :: dmatm (3, numorb_max, numorb_max)
                 real, intent(in) :: ddmat (3, 5, 5)
-                real, intent(in) :: matm (numorb_max, numorb_max)
-                real, intent(in) :: pmat (3, 3)
+                real, intent(in) :: matm  (numorb_max, numorb_max)
+                real, intent(in) :: pmat  (3, 3)
                 real, intent(in) :: dpmat (3, 3, 3)
          
         ! Output
@@ -81,11 +81,12 @@
                 integer l1, l2
                 integer m1, m2
                 integer n1, n2
+                integer nl1,nl2
          
                 real dleft (3, 5, 5)
-                real dright (3, 5, 5)
-                real left (5, 5)
-                real right (5, 5)
+                real dright(3, 5, 5)
+                real left     (5, 5)
+                real right    (5, 5)
          
         ! Procedure
         ! ===========================================================================
@@ -103,36 +104,42 @@
                   l2 = lssh(jssh,in2)
                   call chooserd (l2, ddmat, dpmat, dright)
                   call chooser (l2, dmat, pmat, right)
+
+                  nl1 = 2*l1 + 1
+                  nl2 = 2*l2 + 1   
+
          
         ! Initialize
-                  do k2 = 1, 2*l2 + 1
-                   do k1 = 1, 2*l1 + 1
-                    do ix = 1, 3
-                     term(ix,n1+k1,n2+k2) = 0.0d0
-                    end do
+                  do k2 = 1, nl2
+                   do k1 = 1, nl1
+                     term(:,n1+k1,n2+k2) = 0
                    end do
                   end do
          
         ! Calculate
-                  do m2 = 1, 2*l2 + 1
-                   do k2 = 1, 2*l2 + 1
-                    do m1 = 1, 2*l1 + 1
-                     do k1 = 1, 2*l1 + 1
-                      do ix = 1, 3
-        ! A, B, C terms in order
-                        term(ix,n1+k1,n2+k2) = term(ix,n1+k1,n2+k2)  &
-             &           + dleft(ix,k1,m1)*right(k2,m2)    *matm(n1+m1,n2+m2)    &
-             &           + left(k1,m1)    *dright(ix,k2,m2)*matm(n1+m1,n2+m2)    &
-             &           + left(k1,m1)    *right(k2,m2)    *dmatm(ix,n1+m1,n2+m2)
-                      end do
+                  do m2 = 1, nl2
+                   do k2 = 1, nl2
+                    do m1 = 1, nl1
+                     do k1 = 1, nl1
+        !               do ix = 1, 3
+        !                 term(ix,n1+k1,n2+k2) = term(ix,n1+k1,n2+k2)  &
+        !      &           + dleft(ix,k1,m1)*right(k2,m2)    *matm(n1+m1,n2+m2)    &
+        !      &           + left(k1,m1)    *dright(ix,k2,m2)*matm(n1+m1,n2+m2)    &
+        !      &           + left(k1,m1)    *right(k2,m2)    *dmatm(ix,n1+m1,n2+m2)
+        !               end do
+
+             term(:,n1+k1,n2+k2) = term(:,n1+k1,n2+k2)  &
+             &           + dleft(:,k1,m1)      *( right(k2,m2) * matm(n1+m1,n2+m2) )   &
+             &           + dright(:,k2,m2)     *( left(k1,m1)  * matm(n1+m1,n2+m2) )   &
+             &           + dmatm(:,n1+m1,n2+m2)*( left(k1,m1)  * right(k2,m2)      )
                      end do
                     end do
                    end do
                   end do
          
-                  n2 = n2 + 2*l2 + 1
+                  n2 = n2 + nl2
                  end do
-                 n1 = n1 + 2*l1 + 1
+                 n1 = n1 + nl1
                 end do
          
         ! Format Statements
