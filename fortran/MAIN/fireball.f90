@@ -45,6 +45,7 @@ program fireball
     write(*,*) "!!!! LOOP nstepf, max_scf_iterations ", nstepf, max_scf_iterations
     call init_FIRE( )
 
+    call clean_ncall()
     do itime_step = 1,nstepf
         !debug_writeIntegral( interaction, isub, in1, in2, index )
         !max_scf_iterations = 1
@@ -54,7 +55,7 @@ program fireball
         scf_achieved = .false.
         
         do Kscf = 1, max_scf_iterations
-            call clean_ncall()
+            !call clean_ncall()
             !write(*,*) "! ======== Kscf ", Kscf
             !call assemble_h ()
             call timer_start_i(1)
@@ -74,9 +75,9 @@ program fireball
             if( scf_achieved ) exit
             !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
             call mixer ()
-            if(timing_verbosity .gt. 0) call write_ncall()
+            if(timing_verbosity .gt. 0) call writeclean_ncall()
         end do ! Kscf
-        call clean_ncall()
+        !call clean_ncall()
         call timer_start_i(4)
         !call postscf ()               ! optionally perform post-processing (DOS etc.)
         !call getenergy (itime_step)    ! calculate the total energy
@@ -92,7 +93,7 @@ program fireball
         call timer_stop_i(11)
         call move_ions_FIRE (itime_step, iwrtxyz )   ! Move ions now
         call write_bas()
-        if(timing_verbosity .gt. 0) call write_ncall()
+        if(timing_verbosity .gt. 0) call writeclean_ncall()
         write (*,'(A,i6,A,i6,A,f16.8,A,f16.8)') " ###### Time Step", itime_step,"(of ",nstepf,") |Fmax| ",  deltaFmax , " > force_tol " , force_tol
         !	if ( FIRE_Ftot .lt. force_tol ) then
         if ( deltaFmax .lt. force_tol ) then
@@ -103,6 +104,9 @@ program fireball
     end do ! istepf
 
     call cpu_time (time_end)
+
+    call writeclean_ncall()
+
     write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
 
     write(*,*) "TIME  1 assemble_mcweda  ", timer_sums(1)

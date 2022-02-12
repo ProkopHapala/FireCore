@@ -117,7 +117,7 @@
 ! ===========================================================================
 ! We need to find what point of the grid to use
 
-        ncall_interpolate_2d=ncall_interpolate_2d+1
+        ncall_interpolate_2d_vec=ncall_interpolate_2d_vec+1
 
         inv_hx = 1/hx
         inv_hy = 1/hy
