@@ -419,35 +419,53 @@
         end subroutine read_3c
 
 
-subroutine vectorize_3c()   ! PROKOP_2022_02_12
+subroutine vectorize_3c()   ! PROKOP_2022/02/12
         use dimensions
         use integrals
         use interactions
-        allocate (bcna_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3)) 
-        allocate (xc3c_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3))
-        allocate (den3_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3)) 
-        allocate (den3S_vec(5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3))
-        bcna_vec(1,:,:,:,:,:) = bcna_01(:,:,:,:,:)
-        bcna_vec(2,:,:,:,:,:) = bcna_02(:,:,:,:,:)
-        bcna_vec(3,:,:,:,:,:) = bcna_03(:,:,:,:,:)
-        bcna_vec(4,:,:,:,:,:) = bcna_04(:,:,:,:,:)
-        bcna_vec(5,:,:,:,:,:) = bcna_05(:,:,:,:,:)
+        use configuration, only : nspecies
+        implicit none
 
-        xc3c_vec(1,:,:,:,:,:) = xc3c_01(:,:,:,:,:)
-        xc3c_vec(2,:,:,:,:,:) = xc3c_02(:,:,:,:,:)
-        xc3c_vec(3,:,:,:,:,:) = xc3c_03(:,:,:,:,:)
-        xc3c_vec(4,:,:,:,:,:) = xc3c_04(:,:,:,:,:)
-        xc3c_vec(5,:,:,:,:,:) = xc3c_05(:,:,:,:,:)
-
-        den3_vec(1,:,:,:,:,:)  = den3_01(:,:,:,:,:)
-        den3_vec(2,:,:,:,:,:)  = den3_02(:,:,:,:,:)
-        den3_vec(3,:,:,:,:,:)  = den3_03(:,:,:,:,:)
-        den3_vec(4,:,:,:,:,:)  = den3_04(:,:,:,:,:)
-        den3_vec(5,:,:,:,:,:)  = den3_05(:,:,:,:,:)
-
-        den3S_vec(1,:,:,:,:,:) = den3S_01(:,:,:,:,:)
-        den3S_vec(2,:,:,:,:,:) = den3S_02(:,:,:,:,:) 
-        den3S_vec(3,:,:,:,:,:) = den3S_03(:,:,:,:,:) 
-        den3S_vec(4,:,:,:,:,:) = den3S_04(:,:,:,:,:) 
-        den3S_vec(5,:,:,:,:,:) = den3S_05(:,:,:,:,:) 
+        write(*,*) " DEBUG vectorize_3c() BEGIN "
+        if( allocated(bcna_01) ) then
+                write(*,*) " DEBUG vectorize_3c() 1 "
+                allocate (bcna_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3)) 
+                !write(*,*) " DEBUG shape(bcna_vec) ", shape(bcna_vec) 
+                !write(*,*) " DEBUG shape(bcna_01)  ", shape(bcna_01)  
+                bcna_vec(1,:,:,:,:,:) = bcna_01(:,:,:,:,:)
+                bcna_vec(2,:,:,:,:,:) = bcna_02(:,:,:,:,:)
+                bcna_vec(3,:,:,:,:,:) = bcna_03(:,:,:,:,:)
+                bcna_vec(4,:,:,:,:,:) = bcna_04(:,:,:,:,:)
+                bcna_vec(5,:,:,:,:,:) = bcna_05(:,:,:,:,:)
+        end if
+        if( allocated(xc3c_01) ) then
+                write(*,*) " DEBUG vectorize_3c() 2 "
+                allocate (xc3c_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3))
+                !write(*,*) " DEBUG shape(xc3c_vec) ", shape(xc3c_vec) 
+                !write(*,*) " DEBUG shape(xc3c_01)  ", shape(xc3c_01)  
+                xc3c_vec(1,:,:,:,:,:) = xc3c_01(:,:,:,:,:)
+                xc3c_vec(2,:,:,:,:,:) = xc3c_02(:,:,:,:,:)
+                xc3c_vec(3,:,:,:,:,:) = xc3c_03(:,:,:,:,:)
+                xc3c_vec(4,:,:,:,:,:) = xc3c_04(:,:,:,:,:)
+                xc3c_vec(5,:,:,:,:,:) = xc3c_05(:,:,:,:,:)
+        end if
+        if( allocated(den3_01) ) then
+                write(*,*) " DEBUG vectorize_3c() 3 "
+                allocate (den3_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3)) 
+                den3_vec(1,:,:,:,:,:)  = den3_01(:,:,:,:,:)
+                den3_vec(2,:,:,:,:,:)  = den3_02(:,:,:,:,:)
+                den3_vec(3,:,:,:,:,:)  = den3_03(:,:,:,:,:)
+                den3_vec(4,:,:,:,:,:)  = den3_04(:,:,:,:,:)
+                den3_vec(5,:,:,:,:,:)  = den3_05(:,:,:,:,:)
+        end if
+        if( allocated(den3S_01) ) then
+                write(*,*) " DEBUG vectorize_3c() 4 "
+                allocate (den3S_vec(5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3))
+                den3S_vec(1,:,:,:,:,:) = den3S_01(:,:,:,:,:)
+                den3S_vec(2,:,:,:,:,:) = den3S_02(:,:,:,:,:) 
+                den3S_vec(3,:,:,:,:,:) = den3S_03(:,:,:,:,:) 
+                den3S_vec(4,:,:,:,:,:) = den3S_04(:,:,:,:,:) 
+                den3S_vec(5,:,:,:,:,:) = den3S_05(:,:,:,:,:) 
+        end if
+        write(*,*) " DEBUG vectorize_3c() END "
 end subroutine vectorize_3c

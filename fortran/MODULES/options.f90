@@ -115,4 +115,6 @@
 
         integer iwrtxyz
 
+        integer ivec_3c
+
  end module options

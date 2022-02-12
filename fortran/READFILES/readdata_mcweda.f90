@@ -289,7 +289,7 @@
 !        end if
 ! ! END_DEF_ORDERN
 
-
+        if( ivec_3c .gt. 0) call vectorize_3c() ! PROKOP_2022/02/12
 
 ! Deallocate Arrays
 ! ===========================================================================
