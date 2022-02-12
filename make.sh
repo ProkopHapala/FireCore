@@ -9,7 +9,7 @@ cd cpp/Build
 make
 cd $dr
 
-python pyBall/gen_makefile.py OPT
+python pyBall/gen_makefile.py VERY_OPT
 #ln -s Makefile ../build/Makefile
 
 

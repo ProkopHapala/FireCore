@@ -82,6 +82,7 @@
 ! ===========================================================================
         subroutine twisterd (eps, deps, ddmat, dpmat)
         use constants_fireball
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -108,6 +109,8 @@
  
 ! Procedure
 ! ===========================================================================
+
+        ncall_twisterd=ncall_twisterd+1
 ! Nothing for S orbitals.
 ! Set the dP/drk matrices: eps: x,y,z; pmat: y,z,x
         do ix = 1, 3

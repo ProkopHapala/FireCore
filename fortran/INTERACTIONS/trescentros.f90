@@ -90,6 +90,7 @@
         use dimensions
         use interactions
         use integrals
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -138,6 +139,8 @@
  
 ! Procedure
 ! ===========================================================================
+        ncall_trescentros=ncall_trescentros+1
+
         kforce = 0
 
 ! Now interpolate.

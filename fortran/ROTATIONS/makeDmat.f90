@@ -55,6 +55,7 @@
         subroutine makeDmat (in1, in2, matm, dmatm, dmat, pmat, ddmat, dpmat, term)
         use dimensions
         use interactions
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -88,6 +89,9 @@
  
 ! Procedure
 ! ===========================================================================
+
+        ncall_makeDmat=ncall_makeDmat+1 
+
         n1 = 0
         do issh = 1, nssh(in1)
          l1 = lssh(issh,in1)

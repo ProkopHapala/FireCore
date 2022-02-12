@@ -64,6 +64,7 @@
         subroutine doscentrosS (interaction, isub, iforce, in1, in2, in3, distance, eps, sx, spx)
         use dimensions
         use interactions
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -143,6 +144,7 @@
 ! For the atom case, in3 = in1, but for everything else in3 = in2.
 ! For the ontop case, in2 = in1 (left) or in3 (right).
 ! Initialize sm, scam and sx to zero.
+        ncall_doscentrosS = ncall_doscentrosS+1
         sx = 0.0d0
         if (iforce .eq. 1) spm = 0.0d0
         if (iforce .eq. 1) spx = 0.0d0

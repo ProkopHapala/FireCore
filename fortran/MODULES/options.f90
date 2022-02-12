@@ -100,6 +100,7 @@
 
 ! ======= Debug / Test / Log
 
+        integer timing_verbosity
         integer idebugWrite
         integer verbosity       ! 0 minimal, 10 max         
         integer ntpr            ! Every ntpr steps, information will be printed , if = 0 nothing will be write until the end        

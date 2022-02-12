@@ -64,6 +64,7 @@
         use dimensions
         use constants_fireball
         use integrals
+        use timing
         implicit none
 
 ! Argument Declaration and Description
@@ -142,6 +143,8 @@
  
 ! Procedure
 ! ===========================================================================
+        ncall_interpolate_1d=ncall_interpolate_1d+1
+
         jxx = ind2c(interaction,isub)
         nnum = numz2c(jxx,in1,in2)
 

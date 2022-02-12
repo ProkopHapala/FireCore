@@ -57,6 +57,7 @@
         use dimensions
         use interactions
         use constants_fireball
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -112,6 +113,9 @@
 ! We assume that x<xmin and x>xmax has been checked for
 ! ===========================================================================
 ! We need to find what point of the grid to use
+
+        ncall_interpolate_2d=ncall_interpolate_2d+1
+
         imidx = int((xin - xmin)/hx) + 1
         if (imidx .lt. 2) then
           imidx = 2
@@ -157,40 +161,32 @@
         grady = (fun(0,1) - fun(0,0))/hy
         gradtest = abs(gradx) + abs(grady)
 
-        if (gradtest .lt. tiny) then
+!         if (gradtest .lt. tiny) then ! METHOD 1
+! ! Do three point linear bivariate interpolation
+! ! Handbook of Mathematical Functions..., edited by M. Abramowitz
+! ! and I.A. Stegun, Dover edition, Pg. 882, Eq. 25.2.65
+!          Q_L = (1.0d0 - px - py)*fun(0,0) + px*fun(1,0) + py*fun(0,1)
+!          if (iforce .eq. 1) then
+!           dQ_Ldx = gradx
+!           dQ_Ldy = grady
+!          end if
 
-!
-! METHOD 1
-!
 
-! Do three point linear bivariate interpolation
-! Handbook of Mathematical Functions..., edited by M. Abramowitz
-! and I.A. Stegun, Dover edition, Pg. 882, Eq. 25.2.65
-         Q_L = (1.0d0 - px - py)*fun(0,0) + px*fun(1,0) + py*fun(0,1)
-         if (iforce .eq. 1) then
-          dQ_Ldx = gradx
-          dQ_Ldy = grady
-         end if
-        else if (gradtest .lt. small) then
-
-!
-! METHOD 2
-!
-
-! Do quadratic bivariate interpolation (six point formula, Eq. 25.2.67)
-         Q_L = py*(py-1)*0.5d0*fun(0,-1) + px*(px-1)*0.5d0*fun(-1,0)         &
-     &        + (1 + px*py - px*px - py*py)*fun(0,0)                         &
-     &        + px*(px - 2*py + 1)*fun(1,0)*0.5d0                            &
-     &        + py*(py - 2*px + 1)*fun(0,1)*0.5d0                            &
-     &        + px*py*fun(1,1)
-         if (iforce .eq. 1) then
-          dQ_Ldx = ((fun(1,1) - fun(1,0) - fun(0,1) + fun(0,0))*py           &
-     &            + (fun(-1,0) + fun(1,0) - 2.0d0*fun(0,0))*px               &
-     &            - 0.5d0*(fun(-1,0) - fun(1,0)))/hx
-          dQ_Ldy = ((fun(1,1) - fun(1,0) - fun(0,1) + fun(0,0))*px           &
-     &            + (fun(0,-1) + fun(0,1) - 2.0d0*fun(0,0))*py               &
-     &            - 0.5d0*(fun(0,-1) - fun(0,1)))/hy
-         end if
+!         else if (gradtest .lt. small) then  ! METHOD 2
+! ! Do quadratic bivariate interpolation (six point formula, Eq. 25.2.67)
+!          Q_L = py*(py-1)*0.5d0*fun(0,-1) + px*(px-1)*0.5d0*fun(-1,0)         &
+!      &        + (1 + px*py - px*px - py*py)*fun(0,0)                         &
+!      &        + px*(px - 2*py + 1)*fun(1,0)*0.5d0                            &
+!      &        + py*(py - 2*px + 1)*fun(0,1)*0.5d0                            &
+!      &        + px*py*fun(1,1)
+!          if (iforce .eq. 1) then
+!           dQ_Ldx = ((fun(1,1) - fun(1,0) - fun(0,1) + fun(0,0))*py           &
+!      &            + (fun(-1,0) + fun(1,0) - 2.0d0*fun(0,0))*px               &
+!      &            - 0.5d0*(fun(-1,0) - fun(1,0)))/hx
+!           dQ_Ldy = ((fun(1,1) - fun(1,0) - fun(0,1) + fun(0,0))*px           &
+!      &            + (fun(0,-1) + fun(0,1) - 2.0d0*fun(0,0))*py               &
+!      &            - 0.5d0*(fun(0,-1) - fun(0,1)))/hy
+!          end if
 
 !
 ! METHOD 3
@@ -199,7 +195,8 @@
 ! Interpolate one direction, then interpolate using these values to get
 ! the final value.  Use Eq. 25.2.13 (4 point intepolater).
 ! Total number of points used is 16
-        else if (D2intMeth .eq. 1) then
+        !else if (D2intMeth .eq. 1) then
+!        else ! PROKOP - we do not need IF here
          do k = -1, 2
           f1m1 = fun(k,-1)
           f1m2 = 2*f1m1
@@ -214,13 +211,13 @@
           f2p1 = fun(k,2)
 
           bb3 = - f1m1 + f0p3 - f1p3 + f2p1
-          bb2 = f1m3 - f0p6 + f1p3
+          bb2 =   f1m3 - f0p6 + f1p3
           bb1 = - f1m2 - f0p3 + f1p6 - f2p1
-          bb0 = f0p6
+          bb0 =   f0p6
 
           g(k) = ((bb3*py + bb2)*py + bb1)*py + bb0
           if (iforce .eq. 1) gp(k) = ((3*bb3*py + 2*bb2)*py + bb1)
-         end do
+         end do ! k
 
          f1m1 = g(-1)
          f1m2 = 2*f1m1
@@ -235,9 +232,9 @@
          f2p1 = g(2) 
 
          bb3 = - f1m1 + f0p3 - f1p3 + f2p1
-         bb2 = f1m3 - f0p6 + f1p3
+         bb2 =   f1m3 - f0p6 + f1p3
          bb1 = - f1m2 - f0p3 + f1p6 - f2p1
-         bb0 = f0p6
+         bb0 =   f0p6
 
          Q_L = (((bb3*px + bb2)*px + bb1)*px + bb0)/36.0d0
 
@@ -263,12 +260,12 @@
 
            dQ_Ldy = (((bb3*px + bb2)*px + bb1)*px + bb0)/(36.0d0*hy)
 
-         end if
-        else
-          write(*,*) ' Invalid interpolation in interpolate_2d '
-          write(*,*) ' Some methods that sucked have been removed '
-          stop
         end if
+        !else  ! PROKOP
+        !  write(*,*) ' Invalid interpolation in interpolate_2d '
+        !  write(*,*) ' Some methods that sucked have been removed '
+        !  stop
+        !end if
 
         return
 ! A final note, if you are interested in splines, you should start with
