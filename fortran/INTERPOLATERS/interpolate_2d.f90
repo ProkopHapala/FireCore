@@ -87,21 +87,22 @@
 ! ===========================================================================
 ! If you think that lower order interpolation for slowly changing parts
 ! of the surface are bad, set these two to zero.
-        real, parameter :: tiny = 1.0d-5
-        real, parameter :: small= 1.0d-4
+!        real, parameter :: tiny = 1.0d-5
+!        real, parameter :: small= 1.0d-4
 
 ! Local Variable Declaration and Description
 ! ===========================================================================
         integer imidx, imidy
         integer k, ik
 
-        real f0p3, f0p6, f1m1, f1m2, f1m3, f1p3, f1p6, f2p1, flm1
         real gradtest
         real gradx, grady
         real px, py
         real, parameter :: xmin = 0
         real, parameter :: ymin = 0
 
+        real f1m1, f0p3, f1p3, f2p1
+        !real f1m2, f1m3, f0p6, f1p6
         real bb0,bb1,bb2,bb3
 ! -1 to 2 since we do third order
         !real, dimension (4,4) :: fun
@@ -209,72 +210,53 @@
 !        else ! PROKOP - we do not need IF here
          do k = 1, 4
           ik = imidx + k-2
-          f1m1 =  xintegral(ik,imidy - 1)
-          !f1m1 = fun(k,1)
-          f1m2 = 2*f1m1
-          f1m3 = 3*f1m1
-
+        !   f1m1 =  xintegral(ik,imidy - 1)
+        !   !f1m1 = fun(k,1)
+        !   f1m2 = 2*f1m1
+        !   f1m3 = 3*f1m1
+        !   f0p3 = 3*xintegral(ik,imidy )
+        !   !f0p3 = 3*fun(k,2)
+        !   f0p6 = 2*f0p3
+        !   f1p3 = 3*xintegral(ik,imidy + 1 )
+        !   !f1p3 = 3*fun(k,3)
+        !   f1p6 = 2*f1p3
+        !   f2p1 = xintegral(ik,imidy + 2 )
+        !   !f2p1 = fun(k,4)
+        !   bb3 = - f1m1 + f0p3 - f1p3 + f2p1
+        !   bb2 =   f1m3 - f0p6 + f1p3
+        !   bb1 = - f1m2 - f0p3 + f1p6 - f2p1
+        !   bb0 =   f0p6
+          f1m1 =   xintegral(ik,imidy - 1)
           f0p3 = 3*xintegral(ik,imidy )
-          !f0p3 = 3*fun(k,2)
-          f0p6 = 2*f0p3
-
           f1p3 = 3*xintegral(ik,imidy + 1 )
-          !f1p3 = 3*fun(k,3)
-          f1p6 = 2*f1p3
-
-          f2p1 = xintegral(ik,imidy + 2 )
-          !f2p1 = fun(k,4)
-
-          bb3 = - f1m1 + f0p3 - f1p3 + f2p1
-          bb2 =   f1m3 - f0p6 + f1p3
-          bb1 = - f1m2 - f0p3 + f1p6 - f2p1
-          bb0 =   f0p6
-
+          f2p1 =   xintegral(ik,imidy + 2 )
+          bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
+          bb2 =   3*f1m1 - 2*f0p3 +   f1p3
+          bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
+          bb0 =   2*f0p3
           g(k) = ((bb3*py + bb2)*py + bb1)*py + bb0
           if (iforce .eq. 1) gp(k) = ((3*bb3*py + 2*bb2)*py + bb1)
          end do ! k
-
-         f1m1 = g(1)
-         f1m2 = 2*f1m1
-         f1m3 = 3*f1m1
-    
+         f1m1 =   g(1)
          f0p3 = 3*g(2)
-         f0p6 = 2*f0p3
- 
          f1p3 = 3*g(3)
-         f1p6 = 2*f1p3
-
-         f2p1 = g(4) 
-
-         bb3 = - f1m1 + f0p3 - f1p3 + f2p1
-         bb2 =   f1m3 - f0p6 + f1p3
-         bb1 = - f1m2 - f0p3 + f1p6 - f2p1
-         bb0 =   f0p6
-
+         f2p1 =   g(4) 
+         bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
+         bb2 =   3*f1m1 - 2*f0p3 +   f1p3
+         bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
+         bb0 =   2*f0p3
          Q_L = (((bb3*px + bb2)*px + bb1)*px + bb0)/36.0d0
-
          if (iforce .eq. 1) then
            dQ_Ldx = ((3*bb3*px + 2*bb2)*px + bb1)*inv_hx_36
-
-           f1m1 = gp(1)
-           f1m2 = 2*f1m1
-           f1m3 = 3*f1m1
-    
+           f1m1 =   gp(1)
            f0p3 = 3*gp(2)
-           f0p6 = 2*f0p3
-    
            f1p3 = 3*gp(3)
-           f1p6 = 2*f1p3
-
-           f2p1 = gp(4) 
-
-           bb3 = - f1m1 + f0p3 - f1p3 + f2p1
-           bb2 =   f1m3 - f0p6 + f1p3
-           bb1 = - f1m2 - f0p3 + f1p6 - f2p1
-           bb0 = f0p6
-
+           f2p1 =   gp(4) 
+           bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
+           bb2 =   3*f1m1 - 2*f0p3 +   f1p3
+           bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
+           bb0 =   2*f0p3
            dQ_Ldy = (((bb3*px + bb2)*px + bb1)*px + bb0)*inv_hy_36
-
         end if
         !else  ! PROKOP
         !  write(*,*) ' Invalid interpolation in interpolate_2d '
