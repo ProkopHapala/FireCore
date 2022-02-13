@@ -132,6 +132,8 @@
         integer imu
         integer inu
         integer index
+
+        integer in_
  
         real, dimension (3) :: eta
  
@@ -164,7 +166,7 @@
         end if !  (iforce .eq. 1) 
 
         switch = .true.
-        if(interaction .eq. 2) switch = .false.
+        if(interaction .eq. 2)  switch = .false.
         if(interaction .eq. 15) switch = .false.
         if(interaction .eq. 18) switch = .false.
 
@@ -172,16 +174,15 @@
 ! the matrix elements for any given atomic separation distance.
 ! -slist = output list of matrix elements
 ! -dslist = output list of derivatives of matrix elements
+        if ( switch ) then
         do index = 1, index_max2c(in1,in3)
-!         if (interaction .ne. 2 .or. interaction .ne. 15) then
-         if ( switch ) then
-!            if(interaction .eq. 2) write(*,*) 'Wrong'
-          call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, slist(index), dslist(index))
-         else
-          call interpolate_1d (interaction, isub, in1, in3, index, iforce, distance, slist(index), dslist(index))
-!          write (1000,*) interaction, isub, slist(index),dslist(index)
-         end if
+            call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, slist(index), dslist(index))
         end do
+        else
+        do index = 1, index_max2c(in1,in3)
+            call interpolate_1d (interaction, isub, in1, in3, index, iforce, distance, slist(index), dslist(index))
+        end do
+        end if
  
 ! Now recover sm ans spm which are two-dimensional arrays from
 ! slist and dslist which are one-dimensional arrays.

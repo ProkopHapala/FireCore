@@ -1,5 +1,6 @@
         module integrals
          use dimensions 
+         use Fdata3c
 
 !$ volatile icon3c, numx3c_bcna, numy3c_bcna, hx_bcna, hy_bcna, x3cmax_bcna
 !$ volatile y3cmax_bcna, bcna_01, bcna_02, bcna_03, bcna_04, bcna_05
@@ -84,6 +85,8 @@
          real, dimension (:,:,:,:,:,:), allocatable :: xc3c_vec  ! PROKOP_2022/02/12
          real, dimension (:,:,:,:,:,:), allocatable :: den3_vec  ! PROKOP_2022/02/12
          real, dimension (:,:,:,:,:,:), allocatable :: den3S_vec ! PROKOP_2022/02/12
+
+         type(t_data3c),dimension(:,:),allocatable ::  bcna_t,xc3c_t,den3_t,den3S_t
 
 ! ****************************************************************************
 ! Two center integrals
