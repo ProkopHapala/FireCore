@@ -80,6 +80,7 @@
 
 ! ====== Switches affecting Electronic Solution 
 
+        integer i2dlin
 
 !        integer imix                   ! which density mixer to use
         integer iforce                 ! Calculate forces ?                     ! IF_DEF_force_END

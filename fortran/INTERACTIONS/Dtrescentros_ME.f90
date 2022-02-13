@@ -128,7 +128,7 @@
 ! Local Variable Declaration and Description
 ! ===========================================================================
         integer imu
-        integer iME
+        integer iME, nME
         integer index
         integer inu
         integer ix
@@ -139,9 +139,9 @@
         real argument
         real bmt
         real cost2
-        real dQ_Ldx(5)
-        real dQ_Ldy(5)
-        real Q_L(5)
+        !real dQ_Ldx(5)
+        !real dQ_Ldy(5)
+        !real Q_L(5)
         real sint
         real hx, hy
         integer nx, ny
@@ -174,71 +174,11 @@
         index = icon3c(in1,in2,indna)
 
         if (interaction .eq. 1) then
-         hx = hx_bcna(isorp,index)
-         hy = hy_bcna(isorp,index)
-         nx = numx3c_bcna(isorp,index)
-         ny = numy3c_bcna(isorp,index)
-         xxmax = x3cmax_bcna(isorp,index)
-         yymax = y3cmax_bcna(isorp,index)
-
-         if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) then
-           write (*,*) ' What the heck is going on in Dtrescentros!!! error!!! '
-           write (*,*) ' x = ', x, ' Max of data = ', xxmax
-           write (*,*) ' y = ', y, ' Max of data = ', yymax
-           stop
-         end if
-
-         do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d_vec (x, y, kforce, nx, ny, hx, hy, bcna_vec(:,1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-          bcnalist  (:,iME)   = Q_L
-          dxbcnalist(:,iME) = dQ_Ldx
-          dybcnalist(:,iME) = dQ_Ldy
-         end do
-
+            call t_data3c_interpolate_2d(bcna_t(isorp,index), x,y,kforce, bcnalist, dxbcnalist, dybcnalist  )
         else if (interaction .eq. 2) then
-         hx = hx_xc3c(isorp,index)
-         hy = hy_xc3c(isorp,index)
-         nx = numx3c_xc3c(isorp,index)
-         ny = numy3c_xc3c(isorp,index)
-         xxmax = x3cmax_xc3c(isorp,index)
-         yymax = y3cmax_xc3c(isorp,index)
-
-         if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) then
-           write (*,*) ' What the heck is going on in Dtrescentros!!! error!!! '
-           write (*,*) ' x = ', x, ' Max of data = ', xxmax
-           write (*,*) ' y = ', y, ' Max of data = ', yymax
-           stop
-         end if
-
-         do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d_vec (x, y, kforce, nx, ny, hx, hy,  xc3c_vec(:,1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist  (:,iME) = Q_L
-          dxbcnalist(:,iME) = dQ_Ldx
-          dybcnalist(:,iME) = dQ_Ldy
-         end do
-
+            call t_data3c_interpolate_2d(xc3c_t(isorp,index), x,y,kforce, bcnalist, dxbcnalist, dybcnalist ) 
         else if (interaction .eq. 3) then
-
-         hx = hx_den3(isorp,index)
-         hy = hy_den3(isorp,index)
-         nx = numx3c_den3(isorp,index)
-         ny = numy3c_den3(isorp,index)
-         xxmax = x3cmax_den3(isorp,index)
-         yymax = y3cmax_den3(isorp,index)
-
-         if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) then
-           write (*,*) ' What the heck is going on in trescentros!!! error!!! '
-           write (*,*) ' x = ', x, ' Max of data = ', xxmax
-           write (*,*) ' y = ', y, ' Max of data = ', yymax
-           stop
-         end if
-
-         do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d_vec (x, y, kforce, nx, ny, hx, hy, den3_vec(:,1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-          bcnalist  (:,iME) = Q_L
-          dxbcnalist(:,iME) = dQ_Ldx
-          dybcnalist(:,iME) = dQ_Ldy
-         end do                                                                                                         
+            call t_data3c_interpolate_2d(den3_t(isorp,index), x,y,kforce, bcnalist, dxbcnalist, dybcnalist )
         end if
 
 ! Now calculate the matrix elements in molecular coordinates.
@@ -382,4 +322,4 @@
 ! ===========================================================================
  
         return
-      end subroutine Dtrescentros_vec
+      end subroutine Dtrescentros_ME

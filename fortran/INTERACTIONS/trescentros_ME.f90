@@ -86,12 +86,11 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine trescentros (interaction, isorp, maxtype, in1, in2, indna,  x, y, cost, eps, bcnax, nspecies)
+        subroutine trescentros_ME(interaction, isorp, maxtype, in1, in2, indna,  x, y, cost, eps, bcnax, nspecies)
         use dimensions
         use interactions
         use integrals
         use timing
-        use options, only : ivec_3c
         implicit none
  
 ! Argument Declaration and Description
@@ -125,14 +124,16 @@
 
         real argument
         real cost2
-        real dQ_Ldx
-        real dQ_Ldy
-        real Q_L
+        !real dQ_Ldx(5)
+        !real dQ_Ldy(5)
+        !real Q_L(5)
         real sint
         integer nx, ny
         real xxmax, yymax
         real hx, hy
  
+        real, dimension (0:ntheta - 1, ME3c_max) :: dxbcnalist
+        real, dimension (0:ntheta - 1, ME3c_max) :: dybcnalist
         real, dimension (0:ntheta - 1, ME3c_max) :: bcnalist
         real, dimension (numorb_max, numorb_max) :: bcnam
         real, dimension (ME3c_max) :: hlist
@@ -142,14 +143,6 @@
 ! ===========================================================================
         ncall_trescentros=ncall_trescentros+1
 
-        if(ivec_3c .eq. 1) then ! PROKOP_2022/02/12
-                call trescentros_vec(interaction, isorp, maxtype, in1, in2, indna,  x, y, cost, eps, bcnax, nspecies)
-                return
-        !else if (ivec_3c .eq. 2)
-        !        call trescentros_ME(interaction, isorp, maxtype, in1, in2, indna,  x, y, cost, eps, bcnax, nspecies)
-        !        return
-        end if
-
         kforce = 0
 
 ! Now interpolate.
@@ -157,91 +150,11 @@
 ! of the matrix elements for any given atomic configuration.
         index = icon3c(in1,in2,indna)
         if (interaction .eq. 1) then
-
-         hx = hx_bcna(isorp,index)
-         hy = hy_bcna(isorp,index)
-         nx = numx3c_bcna(isorp,index)
-         ny = numy3c_bcna(isorp,index)
-         xxmax = x3cmax_bcna(isorp,index)
-         yymax = y3cmax_bcna(isorp,index)
-
-         if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) then
-           write (*,*) ' What the heck is going on in trescentros!!! error!!! '
-           write (*,*) ' x = ', x, ' Max of data = ', xxmax
-           write (*,*) ' y = ', y, ' Max of data = ', yymax
-           stop
-         end if
-
-         do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(0,iME) = Q_L
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(1,iME) = Q_L
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(2,iME) = Q_L
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(3,iME) = Q_L
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, bcna_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(4,iME) = Q_L
-         end do
-
+            call t_data3c_interpolate_2d(bcna_t(isorp,index), x,y,kforce  bcnalist, dxbcnalist, dybcnalist )
         else if (interaction .eq. 2) then
-
-         hx = hx_xc3c(isorp,index)
-         hy = hy_xc3c(isorp,index)
-         nx = numx3c_xc3c(isorp,index)
-         ny = numy3c_xc3c(isorp,index)
-         xxmax = x3cmax_xc3c(isorp,index)
-         yymax = y3cmax_xc3c(isorp,index)
-
-         if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) then
-           write (*,*) ' What the heck is going on in trescentros!!! error!!! ' 
-           write (*,*) ' x = ', x, ' Max of data = ', xxmax
-           write (*,*) ' y = ', y, ' Max of data = ', yymax
-           stop
-         end if
-
-         do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(0,iME) = Q_L
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(1,iME) = Q_L
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(2,iME) = Q_L
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(3,iME) = Q_L
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy, xc3c_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy) 
-          bcnalist(4,iME) = Q_L
-         end do
-
+            call t_data3c_interpolate_2d(xc3c_t(isorp,index), x,y,kforce, bcnalist, dxbcnalist, dybcnalist ) 
         else if (interaction .eq. 3) then
-
-         hx = hx_den3(isorp,index)
-         hy = hy_den3(isorp,index)
-         nx = numx3c_den3(isorp,index)
-         ny = numy3c_den3(isorp,index)
-         xxmax = x3cmax_den3(isorp,index)
-         yymax = y3cmax_den3(isorp,index)
-
-         if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) then
-           write (*,*) ' What the heck is going on in trescentros!!! error!!! '
-           write (*,*) ' x = ', x, ' Max of data = ', xxmax
-           write (*,*) ' y = ', y, ' Max of data = ', yymax
-           stop
-         end if
-
-         do iME = 1, index_max3c(in1,in2)
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  den3_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-          bcnalist(0,iME) = Q_L                                                                                                             
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  den3_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-          bcnalist(1,iME) = Q_L                                                                                                                     
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  den3_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-          bcnalist(2,iME) = Q_L                                                                                            
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  den3_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-          bcnalist(3,iME) = Q_L                                                                                                                 
-          call interpolate_2d (x, y, kforce, nx, ny, hx, hy,  den3_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-          bcnalist(4,iME) = Q_L
-         end do
+            call t_data3c_interpolate_2d(den3_t(isorp,index), x,y,kforce, bcnalist, dxbcnalist, dybcnalist )
         end if
 
 ! Now calculate the matrix elements in molecular coordinates.
@@ -285,4 +198,4 @@
 ! ===========================================================================
  
         return
-      end subroutine trescentros
+      end subroutine trescentros_ME

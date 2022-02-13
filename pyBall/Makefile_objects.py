@@ -48,6 +48,8 @@ GROUPS = {
 'FIRE',
 'debug',
 'timing',
+
+'Fdata3c',
 ],
 }, #END MODULES
 

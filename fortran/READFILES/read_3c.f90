@@ -233,21 +233,20 @@
          do in2 = 1, nspecies
           do in3 = 1, nspecies
            index = icon3c(in1,in2,in3)
- 
-! Loop over all cases of the interaction (e.g. different charges of the 
-! xc-stuff, or the different contributions for the neutral atom potential stuff)
-           maxtype = 0
-           mintype = 0
-           if (itheory .eq. 1) then
-            if (interaction .eq. 1) maxtype = nssh(in3)
-            if (interaction .eq. 2) maxtype = ideriv_max
-           end if
-! Average density: we need loop over all orbitals on ialp atoms           
-           if (interaction .eq. 3 .or. interaction .eq. 4) then 
-              maxtype = nssh(in3)
-              mintype = 1
-           endif
-
+            ! Loop over all cases of the interaction (e.g. different charges of the 
+            ! xc-stuff, or the different contributions for the neutral atom potential stuff)
+           !maxtype = 0
+           !mintype = 0
+           !if (itheory .eq. 1) then
+           ! if (interaction .eq. 1) maxtype = nssh(in3)
+           ! if (interaction .eq. 2) maxtype = ideriv_max
+           !end if
+           ! Average density: we need loop over all orbitals on ialp atoms           
+           !if (interaction .eq. 3 .or. interaction .eq. 4) then 
+           !   maxtype = nssh(in3)
+           !   mintype = 1
+           !endif
+           call getIsorpRange(interaction,itheory,in3,maxtype,mintype)
            do isorp = mintype, maxtype
  
 ! Loop over all expansion coefficients
@@ -428,10 +427,8 @@ subroutine vectorize_3c()   ! PROKOP_2022/02/12
 
         write(*,*) " DEBUG vectorize_3c() BEGIN "
         if( allocated(bcna_01) ) then
-                write(*,*) " DEBUG vectorize_3c() 1 "
                 allocate (bcna_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3)) 
-                !write(*,*) " DEBUG shape(bcna_vec) ", shape(bcna_vec) 
-                !write(*,*) " DEBUG shape(bcna_01)  ", shape(bcna_01)  
+                write(*,*) " DEBUG shape(bcna_vec)", shape(bcna_vec)
                 bcna_vec(1,:,:,:,:,:) = bcna_01(:,:,:,:,:)
                 bcna_vec(2,:,:,:,:,:) = bcna_02(:,:,:,:,:)
                 bcna_vec(3,:,:,:,:,:) = bcna_03(:,:,:,:,:)
@@ -439,10 +436,8 @@ subroutine vectorize_3c()   ! PROKOP_2022/02/12
                 bcna_vec(5,:,:,:,:,:) = bcna_05(:,:,:,:,:)
         end if
         if( allocated(xc3c_01) ) then
-                write(*,*) " DEBUG vectorize_3c() 2 "
                 allocate (xc3c_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3))
-                !write(*,*) " DEBUG shape(xc3c_vec) ", shape(xc3c_vec) 
-                !write(*,*) " DEBUG shape(xc3c_01)  ", shape(xc3c_01)  
+                write(*,*) " DEBUG shape(xc3c_vec)", shape(xc3c_vec)
                 xc3c_vec(1,:,:,:,:,:) = xc3c_01(:,:,:,:,:)
                 xc3c_vec(2,:,:,:,:,:) = xc3c_02(:,:,:,:,:)
                 xc3c_vec(3,:,:,:,:,:) = xc3c_03(:,:,:,:,:)
@@ -450,8 +445,8 @@ subroutine vectorize_3c()   ! PROKOP_2022/02/12
                 xc3c_vec(5,:,:,:,:,:) = xc3c_05(:,:,:,:,:)
         end if
         if( allocated(den3_01) ) then
-                write(*,*) " DEBUG vectorize_3c() 3 "
-                allocate (den3_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3)) 
+                allocate (den3_vec (5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3))
+                write(*,*) " DEBUG shape(den3_vec)", shape(den3_vec) 
                 den3_vec(1,:,:,:,:,:)  = den3_01(:,:,:,:,:)
                 den3_vec(2,:,:,:,:,:)  = den3_02(:,:,:,:,:)
                 den3_vec(3,:,:,:,:,:)  = den3_03(:,:,:,:,:)
@@ -459,8 +454,8 @@ subroutine vectorize_3c()   ! PROKOP_2022/02/12
                 den3_vec(5,:,:,:,:,:)  = den3_05(:,:,:,:,:)
         end if
         if( allocated(den3S_01) ) then
-                write(*,*) " DEBUG vectorize_3c() 4 "
                 allocate (den3S_vec(5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3))
+                write(*,*) " DEBUG shape(den3S_vec)", shape(den3S_vec) 
                 den3S_vec(1,:,:,:,:,:) = den3S_01(:,:,:,:,:)
                 den3S_vec(2,:,:,:,:,:) = den3S_02(:,:,:,:,:) 
                 den3S_vec(3,:,:,:,:,:) = den3S_03(:,:,:,:,:) 
@@ -468,4 +463,98 @@ subroutine vectorize_3c()   ! PROKOP_2022/02/12
                 den3S_vec(5,:,:,:,:,:) = den3S_05(:,:,:,:,:) 
         end if
         write(*,*) " DEBUG vectorize_3c() END "
-end subroutine vectorize_3c
+end subroutine
+
+subroutine getIsorpRange(interaction,itheory,in3,maxtype,mintype)
+    use interactions
+    implicit none
+    integer, intent(in)  :: interaction,itheory,in3
+    integer, intent(out) :: maxtype, mintype
+    maxtype = 0
+    mintype = 0
+    if (itheory .eq. 1) then
+        if (interaction .eq. 1) maxtype = nssh(in3)
+        if (interaction .eq. 2) maxtype = ideriv_max
+    end if        
+    if (interaction .eq. 3 .or. interaction .eq. 4) then 
+        maxtype = nssh(in3)
+        mintype = 1
+    endif
+    return
+end subroutine
+
+! !subroutine t_data3c_load(this, isorp,index )
+subroutine tt_data3c_load(this, isorp,index, d1,d2,d3,d4,d5 )
+    use dimensions
+    !use integrals
+    use interactions
+    use configuration, only : nspecies
+    use Fdata3c
+    implicit none
+    type   ( t_data3c ) :: this
+    integer,intent(in)  :: isorp,index
+    real   ,intent(in), dimension( numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3)  :: d1,d2,d3,d4,d5
+    integer i
+    do i=1,this%nME
+        this%data(1,i,:,:) = d1( :,:, i, isorp,index )
+        this%data(2,i,:,:) = d2( :,:, i, isorp,index )
+        this%data(3,i,:,:) = d3( :,:, i, isorp,index )
+        this%data(4,i,:,:) = d4( :,:, i, isorp,index )
+        this%data(5,i,:,:) = d5( :,:, i, isorp,index )
+    end do
+end subroutine
+
+subroutine objectize_3c_i( interaction, objs, d1,d2,d3,d4,d5   )
+    use dimensions
+    use options
+    use integrals
+    use interactions
+    use configuration, only : nspecies
+    use Fdata3c
+    implicit none
+    integer,intent(in) :: interaction
+    type(t_data3c),intent(in), dimension( 0:isorpmax, nspecies**3 )  :: objs
+    real          ,intent(in), dimension( numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3)  :: d1,d2,d3,d4,d5   
+    integer index,isorp  , in1,in2,in3,   maxtype, mintype , nME,nx,ny  
+    !if( .not. allocated(d1)  ) return
+    do in1 = 1, nspecies
+        do in2 = 1, nspecies
+            do in3 = 1, nspecies
+                index = icon3c(in1,in2,in3)
+                nME   = index_max3c(in1,in2)
+                call getIsorpRange(interaction,itheory,in3,maxtype,mintype)
+                do isorp = mintype, maxtype
+                    nx = numx3c_bcna(isorp,index)
+                    ny = numy3c_bcna(isorp,index)
+                    call t_data3c_new ( objs(isorp,index), nx,ny,nME )
+                    !call t_data3c_load( objs(isorp,index), isorp,index, d1,d2,d3,d4,d5 )
+                    call tt_data3c_load( objs(isorp,index), isorp,index, d1,d2,d3,d4,d5 )
+                end do
+            end do
+        end do
+    end do
+end subroutine
+
+
+subroutine objectize_3c()  
+    use dimensions
+    use integrals
+    use interactions
+    use configuration, only : nspecies
+    use Fdata3c
+    implicit none
+    write(*,*) " DEBUG objectize_3c() BEGIN "
+    !if (interaction .eq. 1) root1 = trim(fdataLocation)//'/bcna'
+    !if (interaction .eq. 2) root1 = trim(fdataLocation)//'/xc3c'
+    !if (interaction .eq. 3) root1 = trim(fdataLocation)//'/den3'
+    !if (interaction .eq. 4) root1 = trim(fdataLocation)//'/deS3'
+    allocate( bcna_t ( 0:isorpmax, nspecies**3) )
+    allocate( xc3c_t ( 0:isorpmax, nspecies**3) )
+    allocate( den3_t ( 0:isorpmax, nspecies**3) )
+    allocate( den3S_t( 0:isorpmax, nspecies**3) )
+    if( allocated(bcna_01) ) call objectize_3c_i( 1, bcna_t,  bcna_01,  bcna_02,  bcna_03,  bcna_04,  bcna_05  )
+    if( allocated(xc3c_01) ) call objectize_3c_i( 2, xc3c_t,  xc3c_01,  xc3c_02,  xc3c_03,  xc3c_04,  xc3c_05  )
+    if( allocated(den3_t ) ) call objectize_3c_i( 3, den3_t,  den3_01,  den3_02,  den3_03,  den3_04,  den3_05  )
+    if( allocated(den3S_t) ) call objectize_3c_i( 4, den3S_t, den3S_01, den3S_02, den3S_03, den3S_04, den3S_04 )
+    write(*,*) " DEBUG objectize_3c() END "
+end subroutine
