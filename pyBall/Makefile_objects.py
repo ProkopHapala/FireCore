@@ -27,12 +27,14 @@ GROUPS = {
 
 'MODULES' : {
 '' : [
+
 'dimensions',
 'charges',
 'configuration',
 'constants_fireball',
 'density',
 'forces',
+'Fdata3c',
 'integrals',
 'interactions',
 'kpoints',
@@ -48,8 +50,6 @@ GROUPS = {
 'FIRE',
 'debug',
 'timing',
-
-'Fdata3c',
 ],
 }, #END MODULES
 

@@ -38,8 +38,37 @@ class Lib{ public:
         return 0;
     }
 
-};
+}; // class Lib
 
-}
+class QMMM{ public:
+    int  nQM;      // number of atoms in QM     
+    int* iMMs=0;   // map QM to those MM indexes
+    //int* iMMs=0;
+
+    void qm2mm( int nj, double* qm, double* mm){
+        for(int iq=0; iq<nQM; iq++){
+            int im = iMMs[iq];
+            double* qi=qm+iq;
+            double* mi=mm+im;
+            for(int j=0; j<nj; j++){
+                mm[j] = qm[j];
+            }
+        }
+    }
+
+    void mm2qm( int nj, double* qm, double* mm){
+        for(int iq=0; iq<nQM; iq++){
+            int im = iMMs[iq];
+            double* qi=qm+iq;
+            double* mi=mm+im;
+            for(int j=0; j<nj; j++){
+                qm[j] = mm[j];
+            }
+        }
+    }
+
+}; // class QMMM
+
+} // namespace FireCore
 
 #endif
