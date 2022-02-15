@@ -75,14 +75,15 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     bool bConverged = false;
     bool bRunRelax  = false;
 
-    int     fontTex;
-    int     ogl_sph=0;
-    int     ogl_mol=0;
+    int  fontTex;
+    int  ogl_sph=0;
+    int  ogl_mol=0;
 
     char str[256];
 
     Vec3d ray0;
     int ipicked  = -1, ibpicked = -1, iangPicked = -1;
+    Vec3d* picked_lvec = 0;
     int perFrame =  50;
 
     double drndv =  10.0;
@@ -98,8 +99,8 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 
 	TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ );
 
-	int makeMoleculeInline();
-	int makeMoleculeInlineBuilder( bool bPBC );
+	//int makeMoleculeInline();
+	//int makeMoleculeInlineBuilder( bool bPBC );
 	int loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
 	//int loadMoleculeXYZ( const char* fname, bool bAutoH );
 	int loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
@@ -113,21 +114,209 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 
 };
 
-/*
-int pickBond( const MMFFmini& ff, const Vec3d& ro, const Vec3d& rd, double R ){
-    int    imin=-1;
-    double rmin=1e+300;
-    for(int i=0; i<ff.nbonds;i++){
-        const Vec2i& b  = ff.bond2atom[i];
-        const Vec3d& p0 = ff.apos[b.a];
-        const Vec3d& p1 = ff.apos[b.b];
-        //double r = rayLineDist( ro, rd, p0, p1-p0 );
-        double r = capsulaIntersect( ro, rd, p0, p1, R );
-        if(r<rmin){ rmin=r; imin=i; }
+//=================================================
+//                   INIT()
+//=================================================
+
+TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
+
+    fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
+
+    int nheavy = 0;
+    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
+    params.loadBondTypes( "common_resources/BondTypes.dat" );
+    builder.bindParams(&params);
+
+    readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
+    molecules.push_back( new Molecule() ); molecules[0]->atomTypeDict = builder.atomTypeDict; molecules[0]->load_xyz("common_resources/polymer-2.xyz", true);
+    //molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", true);
+    builder.insertFlexibleMolecule(  molecules[0], {0,0,0}           , Mat3dIdentity, -1 );
+    //builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
+
+    builder.lvec.a.x *= 2.3;
+
+    //builder.printAtoms ();
+    //builder.printConfs ();
+    builder.printAtomConfs();
+    builder.export_atypes(atypes);
+    builder.bDEBUG = true;
+    //builder.autoBonds ();             builder.printBonds ();
+    builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
+    //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
+    //builder.autoAngles( 0.5, 0.5 );     builder.printAngles();
+    builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
+    builder.toMMFFmini( ff, &params );
+    builder.saveMol( "data/polymer.mol" );
+
+    //builder.lvec.a.x *= 2.0;
+
+    nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.aforce, 0, ff.bond2atom );
+    builder.export_REQs( nff.REQs );
+
+    //bNonBonded = false;
+    if(bNonBonded){
+        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
+            printf( "ERROR: nff.pairMask is not sorted => exit \n" );
+            exit(0);
+        };
+    }else{
+        printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
     }
-    return imin;
+
+    fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
+    atypeZ = new int[ff.natoms];
+    for(int i=0; i<ff.natoms; i++){ 
+        atypeZ[i]= (atypes[i]==0)?  1 : 6 ;
+        printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypes[i], atypeZ[i] ); 
+    }  // NOTE : This is just temporary hack 
+    fireCore.init   ( ff.natoms, atypeZ, (double*)ff.apos );
+
+    opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.aforce, 0 );
+    //opt.setInvMass( 1.0 );
+    opt.cleanVel( );
+
+    // ======== Test before we run
+    nff.printAtomParams();
+    ff.printAtomPos();
+    ff.printBondParams();
+    ff.printAngleParams();
+    ff.printTorsionParams();
+    double E = ff.eval(true);
+    printf( "iter0 E = %g \n", E );
+    printf("TestAppMMFFmini.init() DONE \n");
+    //exit(0);
+
+    //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
+    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
+
+    //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
+	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
+    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+
+    std::unordered_set<int> innodes;
+    //innodes.insert(12);
+    innodes.insert(11);
+    MM::splitGraphs( ff.nbonds, ff.bond2atom, 22, innodes );
+    for( int i : innodes ){ selection.push_back(i); }
+
+    picked_lvec = &builder.lvec.a;
 }
-*/
+
+//=================================================
+//                   DRAW()
+//=================================================
+
+void TestAppMMFFmini::draw(){
+    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+
+    //printf( "====== Frame # %i \n", frameCount );
+    //cam.qrot.rotate(M_PI*0.01,Vec3fX);
+    //Draw3D::drawAxis(  10. );
+    //if( ogl_mol ){ glCallList( ogl_mol ); return; }
+    //printf( "builder.lvec: " ); builder.lvec.print();
+
+    if(frameCount==1){
+        qCamera.pitch( M_PI );
+        ff.printAtomPos();
+        ff.printBondParams();
+        ff.printAngleParams();
+        ff.printTorsionParams();
+        //lvec_a0 = builder.lvec.a;
+        //printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
+    }
+
+	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
+    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    Draw3D::drawPointCross( ray0, 0.1 );
+    //Draw3D::drawVecInPos( camMat.c, ray0 );
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+
+    double Ftol = 1e-6;
+    //double Ftol = 1e-2;
+
+    //ff.apos[0].set(-2.0,0.0,0.0);
+    //perFrame = 1;
+    //perFrame = 100;
+    perFrame = 20;
+    //bRunRelax = false;
+
+    bool makeScreenshot = false;
+    if(bRunRelax){
+        //builder.lvec.a    = lvec_a0 + Vec3d{-1.0,0.0,0.0};
+
+        for(int itr=0; itr<perFrame; itr++){
+            double E=0;
+            ff.cleanAtomForce();
+            E += ff.eval(false);
+            if(bNonBonded){
+                //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
+                E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
+            }
+            if(ipicked>=0){
+                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+                //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
+                ff.aforce[ipicked].add( f );
+            };
+            float K = -0.01;
+            for(int i=0; i<ff.natoms; i++){
+                //ff.aforce[i].add( getForceHamakerPlane( ff.apos[i], {0.0,0.0,1.0}, -3.0, 0.3, 2.0 ) );
+                ff.aforce[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) );
+                //ff.aforce[i].z += ff.apos[i].z * K;
+
+                //printf( "%g %g %g\n",  world.aforce[i].x, world.aforce[i].y, world.aforce[i].z );
+            }
+
+            ff.aforce[  10 ].set(0.0); // This is Hack to stop molecule from moving
+
+            //opt.move_LeapFrog(0.01);
+            //opt.move_MDquench();
+            //opt.move_GD(0.001);
+            double f2 = opt.move_FIRE();
+
+            // =========== Molecular Dynamics with random velicity
+            //float d = 0.05;
+            //for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
+            //double f2; opt.move_MD( 0.1, 0.005 );
+
+            //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
+            if(f2<sq(Ftol)){
+                bConverged=true;
+            }
+
+        }
+    }
+
+    if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
+    //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
+    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+
+    if(builder.bPBC){
+        //printf( "draw PBC \n" );
+        //Draw3D::drawPBC( (Vec3i){1,1,0}, builder.lvec, [&](){drawSystem();} );
+        Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](){drawSystem();} );
+    }else{
+        drawSystem();
+    }
+
+    for(int i=0; i<selection.size(); i++){
+        int ia = selection[i];
+        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );
+    }
+
+    if(iangPicked>=0){
+        glColor3f(0.,1.,0.);
+        Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
+    }
+
+    if(makeScreenshot){ saveScreenshot( icell ); icell++; }
+
+};
 
 void TestAppMMFFmini::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;
@@ -163,7 +352,6 @@ void  TestAppMMFFmini::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
     for( int i:*sel){ selection.push_back(i); };
 }
 
-
 int TestAppMMFFmini::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH ){
     params.loadAtomTypes( "common_resources/AtomTypes.dat" );
     params.loadBondTypes( "common_resources/BondTypes.dat" );
@@ -192,7 +380,6 @@ int TestAppMMFFmini::loadMoleculeXYZ( const char* fname, const char* fnameLvs, b
 
     return nheavy;
 }
-
 
 int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoadTypes ){
 
@@ -269,237 +456,19 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
     return nheavy;
 }
 
-int TestAppMMFFmini::makeMoleculeInlineBuilder( bool bPBC ){
-    //const int natom=4,nbond=3,nang=2,ntors=1;
-    //const int natom=4,nbond=3,nang=0,ntors=0;
-    const int natom=4,nbond=4;
-    Vec3d apos0[] = {
-        {-2.0,0.0,0.0},  // 0
-        {-1.0,2.0,0.0},  // 1
-        {+1.0,2.0,0.0},  // 2
-        {+2.0,0.0,1.0},  // 3
-    };
-    Vec2i bond2atom[] = {
-        {0,1},  // 0
-        {1,2},  // 1
-        {2,3},  // 2
-        {3,0},  // 3  // PBC
-    };
-    // ============ Build molecule
-    MM::Atom brushAtom        { -1, -1, -1 , Vec3dZero, MM::Atom::defaultREQ };
-    MM::Bond brushBond        { -1, {-1,-1}, 1.5,  25.0 };
-    builder.capBond = MM::Bond{ -1, {-1,-1}, 1.07, 15.0 };
-
-    builder.insertAtoms( natom, brushAtom,  apos0    );
-    builder.insertBonds( nbond, brushBond, bond2atom );
-    builder.setConfs   ( 0, 0 );
-    builder.autoAngles ( 2.5, 1.25 );
-
-    // instert aditional dihedral
-    MM::Dihedral brushDihedral{ -1,   {-1,-1,-1},    3, 0.5 };  println(brushDihedral);
-    builder.insertDihedralByAtom( {0,1,2,3}, brushDihedral );
-    builder.trySortBonds();
-
-    builder.toMMFFmini( ff, &params );
-
-    builder.lvec.a = (Vec3d){  5.0,0.0,0.0 };
-    builder.lvec.b = (Vec3d){  0.0,5.0,0.0 };
-    builder.lvec.c = (Vec3d){  0.0,0.0,5.0 };
-    if(bPBC){    // --- Periodic Boundary Conditions
-        ff.initPBC();                 // as far as good, pbc-shifts are curenlty zero, so no change
-        ff.pbcShifts[1] = builder.lvec.a*-1.; // make bond 3 from nighboring cell
-        ff.printBondParams();
-    }
-
-    return natom;
-}
-
-int TestAppMMFFmini::makeMoleculeInline(){
-    printf( "----- makeMoleculeInline \n" );
-    const int natom=5+2,nbond=4+3,nang=6, ntors=0;
-    Vec3d apos0[] = {
-        { 0.5, 0.5, 0.5},  // 0
-        {-1.0,+1.0,+1.0},  // 1
-        {+1.0,-1.0,+1.0},  // 2
-        {-1.0,-1.0,-1.0},  // 3
-        {+1.0,+1.0,-1.0},  // 4
-        {-1.0,-1.0,-2.0},  // 5
-        {+1.0,+1.0,-2.0}   // 6
-    };
-    Vec2i bong2atom[] = {
-        {0,1},  // 0
-        {0,2},  // 1
-        {0,3},  // 2
-        {0,4},  // 3
-        {5,6},  // 4
-        {3,5},  // 5
-        {4,6}   // 6
-    };
-    Vec2i ang2bond[] = {
-        {0,1},
-        {0,2},
-        {0,3},
-        {1,2},
-        {1,3},
-        {2,3}
-    };
-    double a0s[] ={
-        2.0,
-        2.0,
-        2.0,
-        2.0,
-        2.0,
-        2.0
-    };
-    Vec3i tors2bond[] = { };
-    double l0    = 1.5;
-    double Kbond = 10.0;
-    double Kang  = 3.0;
-    double Ktors = 1.0;
-    int tors_n = 3;
-    ff.realloc(natom,nbond,nang,ntors);
-    printf( "----- Atoms \n" );
-    for(int i=0; i<ff.natoms; i++){
-        ff.apos[i] = apos0[i];
-    }
-    printf( "----- Bonds \n" );
-    for(int i=0; i<ff.nbonds; i++){
-        ff.bond2atom[i] = bong2atom[i];
-        ff.bond_k [i] = Kbond;
-        ff.bond_l0[i] = l0;
-    }
-    printf( "----- Angles \n" );
-    for(int i=0; i<ff.nang; i++){
-        ff.ang2bond[i] = ang2bond[i];
-        double a0 = -a0s[i]/2.0; // NOTE: we use half-angle
-        ff.ang_cs0[i] = { cos(a0), sin(a0) };
-        ff.ang_k  [i] = Kang;
-    }
-    printf( "----- Dihedrals \n" );
-    for(int i=0; i<ff.ntors; i++){
-        ff.tors2bond[i] = tors2bond[i];
-        ff.tors_k   [i] = Ktors;
-        ff.tors_n   [i] = tors_n;
-    }
-    ff.angles_bond2atom  ();
-    ff.torsions_bond2atom();
-    return natom;
-};
-
-//void TestAppMMFFmini::makeAtoms(){}
-//template<typename T> std::function<T(const T&,const T&         )> F2;
-
-TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
-
-    fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
-
-    // ------ using molecule from mol-file does not seem to work now - There is some problem with AtomConfs
-    // >> This algorithm assumes all atoms with conf precede atoms without confs in the array
-    // >>   ERROR in builder.sortBonds() => exit
-
-    int nheavy = 0;
-    //nheavy = loadMoleculeXYZ( "common_resources/polymer.xyz", false );
-    //nheavy = loadMoleculeXYZ    ( "common_resources/polymer-2.xyz", "common_resources/polymer-2.lvs", false );
-    //nheavy = loadMoleculeXYZ    ( "common_resources/polymer-2-monomer.xyz", "common_resources/polymer-2.lvs", false );
-
-
-    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
-    params.loadBondTypes( "common_resources/BondTypes.dat" );
-    builder.bindParams(&params);
-
-    readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
-    molecules.push_back( new Molecule() ); molecules[0]->atomTypeDict = builder.atomTypeDict; molecules[0]->load_xyz("common_resources/polymer-2.xyz", true);
-    molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", true);
-    builder.insertFlexibleMolecule(  molecules[0], {0,0,0}       , Mat3dIdentity, -1 );
-    builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
-
-    builder.lvec.a.x *= 2.3;
-
-    //builder.printAtoms ();
-    //builder.printConfs ();
-    builder.printAtomConfs();
-    builder.export_atypes(atypes);
-    builder.bDEBUG = true;
-    //builder.autoBonds ();             builder.printBonds ();
-    builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
-    //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
-    //builder.autoAngles( 0.5, 0.5 );     builder.printAngles();
-    builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
-    builder.toMMFFmini( ff, &params );
-    builder.saveMol( "data/polymer.mol" );
-
-    //builder.lvec.a.x *= 2.0;
-
-    nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.aforce, 0, ff.bond2atom );
-    builder.export_REQs( nff.REQs );
-
-    //bNonBonded = false;
-    if(bNonBonded){
-        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
-            printf( "ERROR: nff.pairMask is not sorted => exit \n" );
-            exit(0);
-        };
-    }else{
-        printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
-    }
-
-    fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
-    atypeZ = new int[ff.natoms];
-    for(int i=0; i<ff.natoms; i++){ 
-        atypeZ[i]= (atypes[i]==0)?  1 : 6 ;
-        printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypes[i], atypeZ[i] ); 
-    }  // NOTE : This is just temporary hack 
-    fireCore.init   ( ff.natoms, atypeZ, (double*)ff.apos );
-
-    opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.aforce, 0 );
-    //opt.setInvMass( 1.0 );
-    opt.cleanVel( );
-
-    // ======== Test before we run
-    nff.printAtomParams();
-    ff.printAtomPos();
-    ff.printBondParams();
-    ff.printAngleParams();
-    ff.printTorsionParams();
-    double E = ff.eval(true);
-    printf( "iter0 E = %g \n", E );
-    printf("TestAppMMFFmini.init() DONE \n");
-    //exit(0);
-
-    //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
-
-    //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
-	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
-
-    //selection.insert( selection.end(), {12, 16, 14, 6, 2, 3,   20,18,31,25,26} );
-    //selection.insert( selection.end(), {13,29,30} );
-    //splitGraphs( ff.nbonds, ff.bond2atom, 12, 22 );
-    std::unordered_set<int> innodes;
-    //innodes.insert(12);
-    innodes.insert(11);
-    MM::splitGraphs( ff.nbonds, ff.bond2atom, 22, innodes );
-    for( int i : innodes ){ selection.push_back(i); }
-
-}
-
 void TestAppMMFFmini::drawSystem( ){
     //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
     glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    //glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
+    glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
     //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
     //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
 
     //glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
+    //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-    //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
 }
-
 
 void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
     //if(makeScreenshot){
@@ -517,199 +486,6 @@ void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
         SDL_FreeSurface(bitmap);
         delete[] screenPixels;
 }
-
-void TestAppMMFFmini::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-
-    //printf( "====== Frame # %i \n", frameCount );
-
-    //cam.qrot.rotate(M_PI*0.01,Vec3fX);
-
-    if(frameCount==1){
-
-        qCamera.pitch( M_PI );
-        ff.printAtomPos();
-        ff.printBondParams();
-        ff.printAngleParams();
-        ff.printTorsionParams();
-
-        lvec_a0 = builder.lvec.a;
-        printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
-    }
-
-    //Draw3D::drawAxis(  10. );
-
-	if( ogl_mol ){
-        glCallList( ogl_mol );
-        return;
-        //exit(0);
-    }
-
-	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
-    Draw3D::drawPointCross( ray0, 0.1 );
-    //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
-
-    double Ftol = 1e-6;
-    //double Ftol = 1e-2;
-
-    //ff.apos[0].set(-2.0,0.0,0.0);
-    //perFrame = 1;
-    //perFrame = 100;
-    perFrame = 20;
-    //bRunRelax = false;
-
-    //Vec3d::rotate( selection.size(), &selection[0], ff.apos, ff.apos[12], (ff.apos[13]-ff.apos[12]).normalized(), 0.1 );
-    //Vec3d::rotate( selection.size(), &selection[0], ff.apos, ff.apos[13], (ff.apos[11]-ff.apos[13]).normalized(), 0.1 );
-
-    bool makeScreenshot = false;
-    if(bRunRelax){
-        //builder.lvec.a.mul(1.001);
-        //builder.lvec.a.mul(0.999);
-        //builder.lvec.a.rotate( 0.01, Vec3dZ );
-        //builder.lvec.b.rotate( 0.01, Vec3dZ );
-
-        /*
-        if(frameCount>1){
-            //int icell    = frameCount/10;
-            int ncell    = 10;
-            double dcell = 1.0;
-            builder.lvec.a    = lvec_a0;
-            builder.lvec.a.x += (abs( icell%ncell - ncell/2 )-ncell/3)*dcell;
-            builder.lvec.a.y += (icell/ncell)*dcell;
-        }
-        */
-        builder.lvec.a    = lvec_a0 + Vec3d{-1.0,0.0,0.0};
-
-        for(int itr=0; itr<perFrame; itr++){
-            //if(bConverged) break;
-            //printf( "======= frame %i \n", frameCount );
-
-            //printf( "DEBUG run 1 \n" );
-
-            // rotate arom[0]
-            //ff.apos[0] = ff.apos[1] + (ff.apos[0]-ff.apos[1]).rotate( 2*M_PI/perFrame, ff.apos[2]-ff.apos[1] );
-
-            double E=0;
-            ff.cleanAtomForce();
-            E += ff.eval(false);
-            if(bNonBonded){
-                //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
-                E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
-            }
-            //Vec3d cog,fsum,torq;
-            //checkForceInvariatns( ff.natoms, ff.aforce, ff.apos, cog, fsum, torq );
-            //printf( "fsum %g torq %g   cog (%g,%g,%g) \n", fsum.norm(), torq.norm(), cog.x, cog.y, cog.z );
-
-
-            //for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0d); }
-            //printf( "DEBUG x.1 \n" );
-            //world.eval_bonds(true);
-            //world.eval_angles();
-            //printf( "DEBUG x.2 \n" );
-            //world.eval_angles();
-            //printf( "DEBUG x.3 \n" );
-            //world.eval_LJq_On2();
-
-
-            //exit(0);
-            if(ipicked>=0){
-                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
-                //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
-                ff.aforce[ipicked].add( f );
-            };
-
-
-            float K = -0.01;
-            for(int i=0; i<ff.natoms; i++){
-                //ff.aforce[i].add( getForceHamakerPlane( ff.apos[i], {0.0,0.0,1.0}, -3.0, 0.3, 2.0 ) );
-                ff.aforce[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) );
-                //ff.aforce[i].z += ff.apos[i].z * K;
-
-                //printf( "%g %g %g\n",  world.aforce[i].x, world.aforce[i].y, world.aforce[i].z );
-            }
-
-
-            //exit(0);
-
-            //for(int i=0; i<world.natoms; i++){ world.aforce[i].add({0.0,-0.01,0.0}); }
-            //int ipivot = 0;
-            //world.aforce[ipivot].set(0.0);
-            //opt.move_LeapFrog(0.01);
-            //opt.move_MDquench();
-
-            //opt.move_GD(0.001);
-            //double f2 = opt.move_FIRE();
-
-            float d = 0.05;
-            for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
-
-            double f2; opt.move_MD( 0.1, 0.005 );
-
-
-            //exit(0);
-
-            //makeScreenshot = true;
-
-            //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
-            if(f2<sq(Ftol)){
-                bConverged=true;
-                /*
-                if((icell<400)&&(frameCount>frameCountPrev+10)){
-                    printf( "CONVERGED icell %i \n", icell );
-                    icell++; frameCountPrev=frameCount;
-                    makeScreenshot = true;
-                }
-                */
-            }
-
-        }
-    }
-
-    if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
-    //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-
-    if(builder.bPBC){
-        //printf( "draw PBC \n" );
-        //Draw3D::drawPBC( (Vec3i){1,1,0}, builder.lvec, [&](){drawSystem();} );
-        Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](){drawSystem();} );
-    }else{
-        drawSystem();
-    }
-
-    for(int i=0; i<selection.size(); i++){
-        int ia = selection[i];
-        glColor3f( 0.f,1.f,0.f );
-        Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );
-    }
-
-    if(iangPicked>=0){
-        glColor3f(0.,1.,0.);
-        Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
-    }
-
-    /*
-    printf("==========\n");
-    for(int i=0; i<world.natoms; i++){
-        printf("iatom %i (%g,%g,%g) (%g,%g,%g) \n", i, world.apos[i].x,world.apos[i].y,world.apos[i].z, world.aforce[i].x,world.aforce[i].y,world.aforce[i].z  );
-    }
-    if(frameCount>=10){STOP = true;}
-    */
-
-    if(makeScreenshot){
-        saveScreenshot( icell );
-        icell++;
-    }
-
-
-};
-
 
 void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
     //printf( "NonInert_seats::eventHandling() \n" );
@@ -739,14 +515,18 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_KP_7: builder.lvec.a.mul(   1.01); break;
                 //case SDLK_KP_4: builder.lvec.a.mul( 1/1.01); break;
 
-                case SDLK_KP_7: builder.lvec.a.x+=xstep; break;
-                case SDLK_KP_4: builder.lvec.a.x-=xstep; break;
+                case SDLK_KP_1: picked_lvec = &builder.lvec.a; break;
+                case SDLK_KP_2: picked_lvec = &builder.lvec.b; break;
+                case SDLK_KP_3: picked_lvec = &builder.lvec.c; break;
 
-                case SDLK_KP_8: builder.lvec.a.y+=xstep; break;
-                case SDLK_KP_5: builder.lvec.a.y-=xstep; break;
+                case SDLK_KP_7: picked_lvec->x+=xstep; break;
+                case SDLK_KP_4: picked_lvec->x-=xstep; break;
 
-                case SDLK_KP_9: builder.lvec.a.z+=xstep; break;
-                case SDLK_KP_6: builder.lvec.a.z-=xstep; break;
+                case SDLK_KP_8: picked_lvec->y+=xstep; break;
+                case SDLK_KP_5: picked_lvec->y-=xstep; break;
+
+                case SDLK_KP_9: picked_lvec->z+=xstep; break;
+                case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
@@ -828,8 +608,8 @@ int main(int argc, char *argv[]){
 	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
 	//SDL_SetRelativeMouseMode( SDL_TRUE );
 	int junk;
-	//thisApp = new TestAppMMFFmini( junk , 800, 600 );
-	thisApp = new TestAppMMFFmini( junk , 800, 400 );
+	thisApp = new TestAppMMFFmini( junk , 800, 600 );
+	//thisApp = new TestAppMMFFmini( junk , 800, 400 );
 	thisApp->loop( 1000000 );
 	return 0;
 }
