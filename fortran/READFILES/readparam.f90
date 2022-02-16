@@ -106,7 +106,7 @@ Namelist /output/                          iwrtxyz
 !                                          cut_embedding, fdataLocation, verbosity, ntpr, restartxyz,   &
 !                                          inputxyz, V_intra_dip, isocket, socket, inet, port, host
 
-Namelist /option/ iharris, idogs, imcweda, igsn, ivec_3c, i2dlin, &
+Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
                                          iqout, qstate, icluster, ifixcharge, ifixneigh,   &
                                          iimage,  &
                                          iconstraints, basisfile, lvsfile, nstepf,  force_tol,  &
@@ -126,6 +126,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, ivec_3c, i2dlin, &
 
 ! default settings
 ! ------  DEFAULT OPTIONS  ------
+        ivec_2c = 0
         ivec_3c = 0
         i2dlin  = 0
         iharris = 0

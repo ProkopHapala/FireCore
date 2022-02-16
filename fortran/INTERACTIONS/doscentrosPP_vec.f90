@@ -46,10 +46,9 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine doscentrosPP (interaction, isub, distance, eps, deps, iforce, in1, in2, sx, spx)
+        subroutine doscentrosPP_vec (interaction, isub, distance, eps, deps, iforce, in1, in2, sx, spx)
         use dimensions
         use interactions
-        use options, only : ivec_2c
         implicit none
  
 ! Argument Declaration and Description
@@ -76,7 +75,7 @@
 ! ===========================================================================
         integer imu
         integer inu
-        integer index
+        integer nME
 
         real, dimension (ME2cPP_max) :: dpplist
         real, dimension (3) :: eta
@@ -88,10 +87,6 @@
 ! Procedure
 ! ===========================================================================
 ! For the non-local Pseudopotential:  interaction=5, isub=0.
-        if( ivec_2c .eq. 1) then
-                call doscentrosPP_vec (interaction, isub, distance, eps, deps, iforce, in1, in2, sx, spx)
-                return
-        end if
 
         if (interaction .ne. 5 .or. isub .ne. 0) then
          write (*,*) ' interaction = ', interaction
@@ -105,9 +100,8 @@
         sx = 0.0d0
         if (iforce .eq. 1) spx = 0.0d0
 
-        do index = 1, index_maxPP(in1,in2)
-         call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, pplist(index), dpplist(index))
-        end do
+        nME = index_maxPP(in1,in2)
+        call interpolate_1d_vec (interaction, isub, in1, in2, nME, iforce, distance, pplist, dpplist )
 
 ! When you change from < 1 | 2 > to < 2 | 1 > sometimes you need to change the 
 ! sign; it is the same thing with the overlap: < s | pz > = - < pz | s > ....

@@ -18,6 +18,7 @@ module timing
     integer ncall_makeDmat
     integer ncall_rotate_fb
     integer ncall_interpolate_2d_vec
+    integer ncall_interpolate_1d_vec
 
     ! integer ntotcall_doscentros
     ! integer ntotcall_doscentrosS
@@ -68,6 +69,7 @@ module timing
         ncall_makeDmat     =0
         ncall_rotate_fb    =0
         ncall_interpolate_2d_vec = 0
+        ncall_interpolate_1d_vec = 0
         ! ntotcall_doscentros   = ntotcall_doscentros 
         ! ntotcall_doscentrosS  = ntotcall_doscentrosS
         ! ntotcall_trescentros  = ntotcall_trescentros
@@ -91,6 +93,7 @@ module timing
         write(*,*) "ncall_epsilon            ", ncall_epsilon      
         write(*,*) "ncall_deps2cent          ", ncall_deps2cent    
         write(*,*) "ncall_interpolate_1d     ", ncall_interpolate_1d 
+        write(*,*) "ncall_interpolate_1d_vec ", ncall_interpolate_1d_vec
         write(*,*) "ncall_interpolate_2d     ", ncall_interpolate_2d 
         write(*,*) "ncall_interpolate_2d_vec ", ncall_interpolate_2d_vec
         write(*,*) "ncall_twister            ", ncall_twister      
