@@ -69,7 +69,7 @@ GROUPS = {
 }, #END READFILES
 
 'INTERPOLATERS' : {
-'' : ['buildspline_1d','interpolate_1d','interpolate_2d','interpolate_2d_vec','recover_2c','recover_3c','recover_PP','recoverC','setterp_2d',
+'' : ['buildspline_1d','interpolate_1d','interpolate_1d_vec','interpolate_2d','interpolate_2d_vec','recover_2c','recover_3c','recover_PP','recoverC','setterp_2d',
 #'recover_2cDipY',
 #'recover_2cDipX',
 'recover_S','buildspline2_1d','getpsi','getYlm','getvna'],
@@ -126,6 +126,10 @@ GROUPS = {
 'doscentros', 
 'doscentrosS',
 'doscentrosPP', 
+'doscentros_vec', 
+'doscentrosS_vec',
+'doscentrosPP_vec', 
+
 #'doscentrosDipY', 
 #'doscentrosDipX', 
 'trescentros',  

@@ -80,7 +80,9 @@
 
 ! ====== Switches affecting Electronic Solution 
 
-        integer i2dlin
+        integer ivec_2c   !   use vectorized versersion of interpolation rutines for 2-center integrals ?
+        integer ivec_3c   !   use vectorized versersion of interpolation rutines for 3-center integrals ?
+        integer i2dlin    !   use be-linear (rather than bi-cubic) interpolation for 3-center integrals ? 
 
 !        integer imix                   ! which density mixer to use
         integer iforce                 ! Calculate forces ?                     ! IF_DEF_force_END
@@ -116,6 +118,6 @@
 
         integer iwrtxyz
 
-        integer ivec_3c
+
 
  end module options

@@ -61,10 +61,9 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine doscentros (interaction, isub, iforce, in1, in2, in3,  distance, eps, deps, sx, spx)
+        subroutine doscentrosS_vec (interaction, isub, iforce, in1, in2, in3, distance, eps, sx, spx)
         use dimensions
         use interactions
-        use options, only : ivec_2c
         use timing
         implicit none
  
@@ -79,7 +78,6 @@
 ! Here is information from read2c
 !
 !           interaction    subtype
-!               1            isorp = 0, 8    average density 
 !               1            0               overlap
 !               2            0               vna_ontopl
 !               2            isorp = 1, 8    vna_ontopl shell isorp
@@ -100,7 +98,6 @@
 !               15           isorp = 1, 8    density_ontopl
 !               16           isorp = 1, 8    density_ontopr
 !               17           isorp = 1, 8    density_atom  
-!  spherical density (only doscentrosS)
 !               18           isorp = 1, 4    sph dens ontopl
 !               19           isorp = 1, 4    sph dens_ontopr
 !               20           isorp = 1, 4    sph den_atom
@@ -108,13 +105,12 @@
  
 ! Derivatives are computed if and only if iforce = 1.
         integer, intent (in) :: iforce
-
+ 
         integer, intent (in) :: in1
         integer, intent (in) :: in2
         integer, intent (in) :: in3
 
         real, intent (inout) :: distance
-        real, intent (in), dimension (3, 3, 3) :: deps
         real, intent (in), dimension (3, 3) :: eps
  
 ! Output
@@ -122,8 +118,8 @@
 ! which is a representation in molecular coordinates.
 ! The variable spx is [d/d(r1) atmna(mu,nu)] where atmna(mu,nu) is
 ! < phi(mu,r-r1) ! vna(r-ratm) ! phi(nu,r-r1)>.
-        real, intent (out), dimension (   numorb_max, numorb_max) :: sx
-        real, intent (out), dimension (3, numorb_max, numorb_max) :: spx
+        real, intent (out), dimension (nsh_max, nsh_max) :: sx
+        real, intent (out), dimension (3, nsh_max, nsh_max) :: spx
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
@@ -132,109 +128,52 @@
 ! ===========================================================================
         integer imu
         integer inu
-        integer index
-
-        integer in_
+        integer nME, in_
  
         real, dimension (3) :: eta
  
 ! -slist = output list of matrix elements
 ! -dslist = output list of derivatives of matrix elements
-        real, dimension (ME2c_max) :: dslist
-        real, dimension (ME2c_max) :: slist
-
-        real, dimension (numorb_max,numorb_max) :: sm
-        real, dimension (numorb_max,numorb_max) :: spm
-        real, dimension (3,numorb_max,numorb_max) :: spmx
-
-        logical switch
-
+        real, dimension (MES_max) :: dslist
+        real, dimension (MES_max) :: slist
+ 
+        real, dimension (nsh_max,nsh_max) :: spm
+ 
 ! Procedure
 ! ===========================================================================
-! For the atom case, in3 = in1, but for everything else in3 = in2.
-! For the ontop case, in2 = in1 (left) or in3 (right).
-! Initialize sm, scam and sx to zero.
-! < n1 | n2 | n3 >
 
-        if( ivec_2c .eq. 1) then
-                call doscentros_vec (interaction, isub, iforce, in1, in2, in3,  distance, eps, deps, sx, spx)
-                return
+        ncall_doscentrosS = ncall_doscentrosS+1
+        sx = 0.0d0
+        if (iforce .eq. 1) spm = 0.0d0
+        if (iforce .eq. 1) spx = 0.0d0
+ 
+        if (interaction .ne. 20) then
+                in_=in2
+        else
+                in_=in3
         end if
-        ncall_doscentros = ncall_doscentros+1
-
-        sm(:,:) = 0
-        sx(:,:) = 0
+        nME = index_maxS(in1,in3)
+        call interpolate_1d_vec (interaction, isub, in1, in_, nME, iforce, distance, slist, dslist )
+        call recover_S (in1, in3, slist, sx)
+        call recover_S (in1, in3, dslist, spm)
+! ------------------- FORCES
         if (iforce .eq. 1) then
-            spm(:,:) = 0
-            spmx(:,:,:) = 0
-            spx (:,:,:) = 0
-        end if !  (iforce .eq. 1) 
 
-        switch = .true.
-        if(interaction .eq. 2)  switch = .false.
-        if(interaction .eq. 15) switch = .false.
-        if(interaction .eq. 18) switch = .false.
-
-! This subroutine calls the subroutine intrp1d as needed to find the value of
-! the matrix elements for any given atomic separation distance.
-! -slist = output list of matrix elements
-! -dslist = output list of derivatives of matrix elements
-        if ( switch ) then ! NOT(interaction=2,15,18)
-                do index = 1, index_max2c(in1,in3)
-                        call interpolate_1d (interaction, isub, in1, in2, index, iforce, distance, slist(index), dslist(index))
-                end do
-        else               ! YES(interaction=2,15,18)
-                do index = 1, index_max2c(in1,in3)
-                        call interpolate_1d (interaction, isub, in1, in3, index, iforce, distance, slist(index), dslist(index))
-                end do
-        end if
- 
-! Now recover sm ans spm which are two-dimensional arrays from
-! slist and dslist which are one-dimensional arrays.
-        call recover_2c (in1, in3, slist, sm)
-        call recover_2c (in1, in3, dslist, spm)
- 
-! Rotate sm into crystal-coordinates: sm --> sx
-        call rotate_fb (in1, in3, eps, sm, sx)
- 
-! ****************************************************************************
-!
-! FORCES
-! ****************************************************************************
-! spm   is the "scalar" derivative of the matrix.
-!
-! When we are done, we get:
-! spx   is the vector derivative of the matrix.
-!
-! Only compute derivative if and only if iforce = 1.
-        if (iforce .eq. 1) then
- 
-! As long as epsilon1 is called with sighat in the second "spot" as
-! call epsilon1(R1,sighat,spe), then eps(ix,3) = eta(ix).
          eta(:) = eps(:,3)
- 
-! First do the matrix.
-         do inu = 1, num_orb(in3)
-          do imu = 1, num_orb(in1)
- 
-! Note that if we are calculating the on-site matrix elements, then the
-! derivatives should be exactly zero.  This is what Otto referred to as the
-! ferbie test.  For example, for the on-site overlap, we get an identity
-! matrix, thus surely we should never use a "derivative of the unit matrix".
- 
-! Note the minus sign. d/dr1 = - eta * d/dd.
+
+         do inu = 1, nssh(in3)
+          do imu = 1, nssh(in1)
            if (distance .gt. 1.0d-3) then
-            spmx(:,imu,inu) = - eta(:)*spm(imu,inu)
+            spx(:,imu,inu) = - eta(:)*spm(imu,inu)
            end if
           end do
          end do
  
-         call rotated (in1, in3, eps, deps, sm, spmx, spx)
-
         end if
 
+         if (interaction .eq. 14) then
+         end if 
 ! Format Statements
 ! ===========================================================================
- 
         return
-      end subroutine doscentros
+      end subroutine doscentrosS_vec
