@@ -83,13 +83,10 @@
  
 ! Local Parameters and Data Declaration
 ! ===========================================================================
-        integer imid, jxx
+        integer imid, jxx, i
         integer nnum
         real h, xmax
-        real xxp
-        real, dimension (5) :: bb
-        real, dimension (nfofx) :: pdenom
-        real, dimension (nfofx) :: xx
+        real x !, x2, x3  !, xn
  
         real, dimension (nME) :: aaa, bbb, ccc, ddd
  
@@ -103,27 +100,54 @@
 ! note : the points must be equally spaced and start at 0
         h = xmax/(nnum - 1)
         if (xin .gt. xmax) then
-          xxp = xmax
+          x = xmax
         else if (xin .le. 0) then
           yout(:) = splineint_2c(1,:nME,1,jxx,in1,in2)
           if (ioption .eq. 1) dfdx = 0
           return  
         else
-          xxp = xin
+          x = xin
         end if
 
-        imid = int(xxp/h) + 1         ! imid is the point to the left (code assumes this)
+        imid = int(x/h) + 1         ! imid is the point to the left (code assumes this)
         if (imid .gt. nnum) imid=nnum ! If we have gone off of the end
+        x=x-(imid-1)*h
+        !x2 = x 
+        !x3 = x*x2
+
+        ! ---- This method uses more local memory, but is very vectorized
         aaa(:)=splineint_2c(1,:nME,imid,jxx,in1,in2)
         bbb(:)=splineint_2c(2,:nME,imid,jxx,in1,in2)
         ccc(:)=splineint_2c(3,:nME,imid,jxx,in1,in2)
         ddd(:)=splineint_2c(4,:nME,imid,jxx,in1,in2)
+        if(ioption .eq. 1) dfdx(:nME) =            bbb + x*(2*ccc + (3*x)*ddd )
+                           yout(:nME) = aaa +   x*(bbb + x*(  ccc +    x *ddd ))
+        !if(ioption .eq. 1) dfdx(:nME) =         bbb   + ccc*(x*2) + ddd*(x2*3) 
+        !                   yout(:nME) = aaa +   bbb*x + ccc* x2   + ddd* x3  
 
-        xxp=xxp-(imid-1)*h
+        !x2 = x 
+        !x3 = x*x2
+        !yout(:nME) =   splineint_2c(1,:nME,imid,jxx,in1,in2)  &
+        !        &  +x *splineint_2c(2,:nME,imid,jxx,in1,in2)  &
+        !        &  +x2*splineint_2c(3,:nME,imid,jxx,in1,in2)  & 
+        !        &  +x3*splineint_2c(4,:nME,imid,jxx,in1,in2) 
+        !if(ioption .eq. 1) then
+        !dfdx(:nME) =      splineint_2c(2,:nME,imid,jxx,in1,in2)  &
+        !      &  +(x *2)*splineint_2c(3,:nME,imid,jxx,in1,in2)  & 
+        !      &  +(x2*3)*splineint_2c(4,:nME,imid,jxx,in1,in2) 
+        !end if
 
-        if(ioption .eq. 1) dfdx(:nME) =             bbb + xxp*( ccc*2 + xxp*ddd*3 )
-                           yout(:nME) = aaa + xxp*( bbb + xxp*( ccc   + xxp*ddd   ) )
-!       d2fdx2=2.0d0*ccc+6.0d0*ddd*xxp
+        ! ---- This method use less local memory, but also is less vectorized
+        !yout(:nME) = splineint_2c(1,:nME,imid,jxx,in1,in2)
+        !if(ioption .eq. 1) dfdx(:nME) = 0
+        !xn = 1
+        !do i = 1,3
+        !        aaa(:) = splineint_2c(i+1,:nME,imid,jxx,in1,in2)*xn
+        !        if(ioption .eq. 1) dfdx(:nME) = dfdx(:nME) + aaa*(xn*i)
+        !        xn=xn*xxp
+        !        yout(:nME)                    = yout(:nME) + aaa*xn     
+        !end do
+
 
 ! Format Statements
 ! ===========================================================================

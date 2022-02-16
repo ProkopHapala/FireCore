@@ -454,6 +454,7 @@ subroutine vectorize_3c()   ! PROKOP_2022/02/12
                 den3_vec(5,:,:,:,:,:)  = den3_05(:,:,:,:,:)
         end if
         if( allocated(den3S_01) ) then
+                ! allocate (den3S_01( numXmax, numYmax, ME3c_max, 0:maxtype, nspecies**3))
                 allocate (den3S_vec(5,numXmax, numYmax, ME3c_max, 0:isorpmax, nspecies**3))
                 write(*,*) " DEBUG shape(den3S_vec)", shape(den3S_vec) 
                 den3S_vec(1,:,:,:,:,:) = den3S_01(:,:,:,:,:)

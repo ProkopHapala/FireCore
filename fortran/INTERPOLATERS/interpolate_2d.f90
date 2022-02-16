@@ -54,224 +54,125 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine interpolate_2d (xin, yin, iforce, nx, ny, hx, hy, xintegral, Q_L, dQ_Ldx, dQ_Ldy)
-        use dimensions
-        use interactions
-        use constants_fireball
-        use timing
-        implicit none
- 
-! Argument Declaration and Description
-! ===========================================================================
-! Input
-        integer, intent (in) :: iforce
-
-! Number of points in 3-center integrals
-        integer, intent(in) :: nx
-        integer, intent(in) :: ny
-
-        real, intent (in) :: xin
-        real, intent (in) :: yin
-
-! Difference between points along x and y
-        real, intent (in) :: hx
-        real, intent (in) :: hy
-
-        real, intent (in), dimension (numXmax, numYmax) :: xintegral
- 
-! Output
-        real, intent (out) :: Q_L    ! the contibutions for a matrix element
-        real, intent (out) :: dQ_Ldx ! d/dx Q_L (Computed only if iforce = 1)
-        real, intent (out) :: dQ_Ldy ! d/dy Q_L (Computed only if iforce = 1)
-
-! Local Parameters and Data Declaration
-! ===========================================================================
-! If you think that lower order interpolation for slowly changing parts
-! of the surface are bad, set these two to zero.
-!        real, parameter :: tiny = 1.0d-5
-!        real, parameter :: small= 1.0d-4
-
-! Local Variable Declaration and Description
-! ===========================================================================
-        integer imidx, imidy
-        integer k, ik
-
-        real gradtest
-        real gradx, grady
-        real px, py
-        real, parameter :: xmin = 0
-        real, parameter :: ymin = 0
-
-        real f1m1, f0p3, f1p3, f2p1
-        !real f1m2, f1m3, f0p6, f1p6
-        real bb0,bb1,bb2,bb3
-! -1 to 2 since we do third order
-        !real, dimension (4,4) :: fun
-        real, dimension (4)   :: g,gp
+                use dimensions
+                use interactions
+                use constants_fireball
+                use timing
+                implicit none
+         
+        ! Argument Declaration and Description
+        ! ===========================================================================
+        ! Input
+                integer, intent (in) :: iforce
         
-        real inv_hx
-        real inv_hy
-        real inv_hx_36
-        real inv_hy_36
+        ! Number of points in 3-center integrals
+                integer, intent(in) :: nx
+                integer, intent(in) :: ny
+        
+                real, intent (in) :: xin
+                real, intent (in) :: yin
+        
+        ! Difference between points along x and y
+                real, intent (in) :: hx
+                real, intent (in) :: hy
+        
+                real, intent (in), dimension (numXmax, numYmax) :: xintegral
+         
+        ! Output
+                real, intent (out) :: Q_L    ! the contibutions for a matrix element
+                real, intent (out) :: dQ_Ldx ! d/dx Q_L (Computed only if iforce = 1)
+                real, intent (out) :: dQ_Ldy ! d/dy Q_L (Computed only if iforce = 1)
+        
+        ! Local Parameters and Data Declaration
+        ! ===========================================================================
+        ! If you think that lower order interpolation for slowly changing parts
+        ! of the surface are bad, set these two to zero.
+        !        real, parameter :: tiny = 1.0d-5
+        !        real, parameter :: small= 1.0d-4
+        
+        ! Local Variable Declaration and Description
+        ! ===========================================================================
+                integer imidx, imidy
+                integer k, ik
+        
+                real px, py, inv_hx, inv_hy
+                real, parameter :: xmin = 0
+                real, parameter :: ymin = 0
+        
+                real f1m1, f0p3, f1p3, f2p1
+                !real f1m2, f1m3, f0p6, f1p6
+                real bb0,bb1,bb2,bb3
+        ! -1 to 2 since we do third order
+                !real, dimension (4,4) :: fun
+                real, dimension (4)   :: g,gp
 
-! Procedure
-! ===========================================================================
-! We assume xmin = ymin = 0.0d0 always in our interpolations.
-! We assume that x<xmin and x>xmax has been checked for
-! ===========================================================================
-! We need to find what point of the grid to use
-
-        ncall_interpolate_2d=ncall_interpolate_2d+1
-
-        inv_hx = 1/hx
-        inv_hy = 1/hy
-        inv_hx_36=inv_hx/36
-        inv_hy_36=inv_hy/36
-
-        imidx = int((xin - xmin)*inv_hx) + 1
-        if (imidx .lt. 2) then
-          imidx = 2
-        else if (imidx .gt. nx - 2) then
-          imidx = nx - 2
-        end if
-
-        imidy = int((yin - ymin)*inv_hy) + 1
-        if (imidy .lt. 2) then
-          imidy = 2
-        else if (imidy .gt. ny - 2) then
-          imidy = ny - 2
-        end if
-
-        px = xin/hx - (imidx - 1)
-        py = yin/hy - (imidy - 1)
- 
-! Now copy grid values to fun array for third order
-! Note:  F90 syntax is slower f(-1:2,-1:2) = xintegral(imidx - 1:imidx + 2,imidy - 1:imidy + 2)
-        !fun(1,1) = xintegral(imidx - 1,imidy + 1)
-        !fun(2,1) = xintegral(imidx    ,imidy + 1) 
-        !fun(3,1) = xintegral(imidx + 1,imidy + 1)
-        !fun(4,1) = xintegral(imidx + 2,imidy + 1)
-
-        !fun(1,2) = xintegral(imidx - 1,imidy    )
-        !fun(2,2) = xintegral(imidx    ,imidy    ) 
-        !fun(3,2) = xintegral(imidx + 1,imidy    ) 
-        !fun(4,2) = xintegral(imidx + 2,imidy    )
-
-        !fun(1,3) = xintegral(imidx - 1,imidy + 1)
-        !fun(2,3) = xintegral(imidx    ,imidy + 1)
-        !fun(3,3) = xintegral(imidx + 1,imidy + 1)
-        !fun(4,3) = xintegral(imidx + 2,imidy + 1)
-
-        !fun(1,4) = xintegral(imidx - 1,imidy + 2)
-        !fun(2,4) = xintegral(imidx    ,imidy + 2)
-        !fun(3,4) = xintegral(imidx + 1,imidy + 2)
-        !fun(4,4) = xintegral(imidx + 2,imidy + 2)
- 
-! ===========================================================================
-! Adaptive interpolation - estimate gradient:
-!        gradx = (fun(1,0) - fun(0,0))/hx
-!        grady = (fun(0,1) - fun(0,0))/hy
-!        gradtest = abs(gradx) + abs(grady)
-
-!         if (gradtest .lt. tiny) then ! METHOD 1
-! ! Do three point linear bivariate interpolation
-! ! Handbook of Mathematical Functions..., edited by M. Abramowitz
-! ! and I.A. Stegun, Dover edition, Pg. 882, Eq. 25.2.65
-!          Q_L = (1.0d0 - px - py)*fun(0,0) + px*fun(1,0) + py*fun(0,1)
-!          if (iforce .eq. 1) then
-!           dQ_Ldx = gradx
-!           dQ_Ldy = grady
-!          end if
-
-
-!         else if (gradtest .lt. small) then  ! METHOD 2
-! ! Do quadratic bivariate interpolation (six point formula, Eq. 25.2.67)
-!          Q_L = py*(py-1)*0.5d0*fun(0,-1) + px*(px-1)*0.5d0*fun(-1,0)         &
-!      &        + (1 + px*py - px*px - py*py)*fun(0,0)                         &
-!      &        + px*(px - 2*py + 1)*fun(1,0)*0.5d0                            &
-!      &        + py*(py - 2*px + 1)*fun(0,1)*0.5d0                            &
-!      &        + px*py*fun(1,1)
-!          if (iforce .eq. 1) then
-!           dQ_Ldx = ((fun(1,1) - fun(1,0) - fun(0,1) + fun(0,0))*py           &
-!      &            + (fun(-1,0) + fun(1,0) - 2.0d0*fun(0,0))*px               &
-!      &            - 0.5d0*(fun(-1,0) - fun(1,0)))/hx
-!           dQ_Ldy = ((fun(1,1) - fun(1,0) - fun(0,1) + fun(0,0))*px           &
-!      &            + (fun(0,-1) + fun(0,1) - 2.0d0*fun(0,0))*py               &
-!      &            - 0.5d0*(fun(0,-1) - fun(0,1)))/hy
-!          end if
-
-!
-! METHOD 3
-!
-
-! Interpolate one direction, then interpolate using these values to get
-! the final value.  Use Eq. 25.2.13 (4 point intepolater).
-! Total number of points used is 16
-        !else if (D2intMeth .eq. 1) then
-!        else ! PROKOP - we do not need IF here
-         do k = 1, 4
-          ik = imidx + k-2
-        !   f1m1 =  xintegral(ik,imidy - 1)
-        !   !f1m1 = fun(k,1)
-        !   f1m2 = 2*f1m1
-        !   f1m3 = 3*f1m1
-        !   f0p3 = 3*xintegral(ik,imidy )
-        !   !f0p3 = 3*fun(k,2)
-        !   f0p6 = 2*f0p3
-        !   f1p3 = 3*xintegral(ik,imidy + 1 )
-        !   !f1p3 = 3*fun(k,3)
-        !   f1p6 = 2*f1p3
-        !   f2p1 = xintegral(ik,imidy + 2 )
-        !   !f2p1 = fun(k,4)
-        !   bb3 = - f1m1 + f0p3 - f1p3 + f2p1
-        !   bb2 =   f1m3 - f0p6 + f1p3
-        !   bb1 = - f1m2 - f0p3 + f1p6 - f2p1
-        !   bb0 =   f0p6
-          f1m1 =   xintegral(ik,imidy - 1)
-          f0p3 = 3*xintegral(ik,imidy )
-          f1p3 = 3*xintegral(ik,imidy + 1 )
-          f2p1 =   xintegral(ik,imidy + 2 )
-          bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
-          bb2 =   3*f1m1 - 2*f0p3 +   f1p3
-          bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
-          bb0 =   2*f0p3
-          g(k) = ((bb3*py + bb2)*py + bb1)*py + bb0
-          if (iforce .eq. 1) gp(k) = ((3*bb3*py + 2*bb2)*py + bb1)
-         end do ! k
-         f1m1 =   g(1)
-         f0p3 = 3*g(2)
-         f1p3 = 3*g(3)
-         f2p1 =   g(4) 
-         bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
-         bb2 =   3*f1m1 - 2*f0p3 +   f1p3
-         bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
-         bb0 =   2*f0p3
-         Q_L = (((bb3*px + bb2)*px + bb1)*px + bb0)/36.0d0
-         if (iforce .eq. 1) then
-           dQ_Ldx = ((3*bb3*px + 2*bb2)*px + bb1)*inv_hx_36
-           f1m1 =   gp(1)
-           f0p3 = 3*gp(2)
-           f1p3 = 3*gp(3)
-           f2p1 =   gp(4) 
-           bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
-           bb2 =   3*f1m1 - 2*f0p3 +   f1p3
-           bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
-           bb0 =   2*f0p3
-           dQ_Ldy = (((bb3*px + bb2)*px + bb1)*px + bb0)*inv_hy_36
-        end if
-        !else  ! PROKOP
-        !  write(*,*) ' Invalid interpolation in interpolate_2d '
-        !  write(*,*) ' Some methods that sucked have been removed '
-        !  stop
-        !end if
-! A final note, if you are interested in splines, you should start with
-! "Handbook on SPLINES for the User"
-! by Eugene V. Shikin and Alexander I. Plis.  1995, CRC Press.  Most other
-! books on slines and bivariate interpolation are nothing but proofs and
-! abstract math, but this one gives the real equations you need to get
-! the actual work done.
-
-! Format Statements
-! ===========================================================================
- 
-        return
-        end
+        
+        ! Procedure
+        ! ===========================================================================
+        ! We assume xmin = ymin = 0.0d0 always in our interpolations.
+        ! We assume that x<xmin and x>xmax has been checked for
+        ! ===========================================================================
+        ! We need to find what point of the grid to use
+        
+                ncall_interpolate_2d=ncall_interpolate_2d+1
+        
+                inv_hx = 1/hx
+                inv_hy = 1/hy
+        
+                imidx = int((xin - xmin)*inv_hx)
+                if (imidx .lt. 1) then
+                  imidx = 1
+                else if (imidx .gt. nx - 1) then
+                  imidx = nx - 1
+                end if
+        
+                imidy = int((yin - ymin)*inv_hy)
+                if (imidy .lt. 1) then
+                  imidy = 1
+                else if (imidy .gt. ny - 1) then
+                  imidy = ny - 1
+                end if
+        
+                px = xin*inv_hx - imidx
+                py = yin*inv_hy - imidy
+         
+                 do k = 1, 4
+                  ik = k + imidx-1
+                  f1m1 =   xintegral(ik,imidy     )
+                  f0p3 = 3*xintegral(ik,imidy + 1 )
+                  f1p3 = 3*xintegral(ik,imidy + 2 )
+                  f2p1 =   xintegral(ik,imidy + 3 )
+                  bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
+                  bb2 =   3*f1m1 - 2*f0p3 +   f1p3
+                  bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
+                  bb0 =   2*f0p3
+                  g(k)                     = ((bb3*py + bb2)*py + bb1)*py + bb0
+                  if (iforce .eq. 1) gp(k) = ((3*bb3*py + 2*bb2)*py + bb1)
+                 end do ! k
+                 f1m1 =   g(1)
+                 f0p3 = 3*g(2)
+                 f1p3 = 3*g(3)
+                 f2p1 =   g(4) 
+                 bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
+                 bb2 =   3*f1m1 - 2*f0p3 +   f1p3
+                 bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
+                 bb0 =   2*f0p3
+                 Q_L = (((bb3*px + bb2)*px + bb1)*px + bb0)/36
+                 if (iforce .eq. 1) then
+                   dQ_Ldx = ((3*bb3*px + 2*bb2)*px + bb1)*inv_hx/36
+                   f1m1 =   gp(1)
+                   f0p3 = 3*gp(2)
+                   f1p3 = 3*gp(3)
+                   f2p1 =   gp(4) 
+                   bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
+                   bb2 =   3*f1m1 - 2*f0p3 +   f1p3
+                   bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
+                   bb0 =   2*f0p3
+                   dQ_Ldy = (((bb3*px + bb2)*px + bb1)*px + bb0)*inv_hy/36
+                end if
+        
+        ! Format Statements
+        ! ===========================================================================
+         
+                return
+                end
