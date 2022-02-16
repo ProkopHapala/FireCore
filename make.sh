@@ -9,16 +9,16 @@ cd cpp/Build
 make
 cd $dr
 
-python pyBall/gen_makefile.py VERY_OPT
+#python pyBall/gen_makefile.py VERY_OPT
 #python pyBall/gen_makefile.py OPT
-#python pyBall/gen_makefile.py DEBUG
+python pyBall/gen_makefile.py DEBUG
 #ln -s Makefile ../build/Makefile
 
-#mkdir build  || true
-#cd    build
+mkdir build  || true
+cd    build
 
-mkdir build_opt || true
-cd    build_opt
+#mkdir build_opt || true
+#cd    build_opt
 
 
 #ln -s ../Makefile      || true

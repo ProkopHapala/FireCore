@@ -2,6 +2,8 @@
 #ifndef  macroUtils_h
 #define  macroUtils_h
 
+#include <vector>
+
 #define SWAP( a, b, TYPE ) { TYPE t = a; a = b; b = t; }
 //#define _max(a,b)      ((a>b)?a:b)
 //#define _min(a,b)      ((a<b)?a:b)
@@ -82,11 +84,15 @@ struct Arr{
 #define _for0N(i,i0,n)     for(int i=i0;i<n;i++)
 #define _for0Nd(i,i0,n,d)  for(int i=i0;i<n;i+=d)
 
+//#define _list2array(T,n,lst,to) { T tmp[]=lst; for(int i=0 ;i<n;i++)to[i]=tmp[i]; }
+
 #define _template_Func   template<typename Func>
 #define _template_T      template<typename T>
 #define _template_N      template<size_t N>
 #define _template_TN     template<typename T,size_t N>
 #define _inline_T        template<typename T> inline
+
+template<typename T> void _vec2arr(T*out, const std::vector<T>& v){ for(int i=0;i<v.size();i++)out[i]=v[i];} 
 
 
 _inline_T void _swap  (T& a, T& b) { T t=a; a=b; b=t;   }

@@ -27,13 +27,15 @@
          real, dimension (:, :, :, :, :),    allocatable :: tp_mat
 
 ! Forces
+         real, dimension (:, :), allocatable, target :: ftot
+         real, dimension (:, :), allocatable :: ftotold
+         real, dimension (:, :), allocatable :: ftotnew
+
          real, dimension (:, :), allocatable :: dusr
          real, dimension (:, :), allocatable :: dxcv
          real, dimension (:, :), allocatable :: fro
          real, dimension (:, :), allocatable :: ft
-         real, dimension (:, :), allocatable :: ftot
-         real, dimension (:, :), allocatable :: ftotold
-         real, dimension (:, :), allocatable :: ftotnew
+
          real, dimension (:, :), allocatable :: deltaF
 
          real, dimension (:, :, :), allocatable :: fana

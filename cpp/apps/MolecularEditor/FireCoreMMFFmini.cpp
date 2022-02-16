@@ -48,7 +48,8 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     NBFF       nff;
     MM::Builder builder;
     DynamicOpt  opt;
-    FireCore::Lib fireCore;
+    FireCore::Lib  fireCore;
+    FireCore::QMMM qmmm;
 
     int* atypes = 0;
     int* atypeZ = 0;
@@ -164,12 +165,19 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     }
 
     fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
-    atypeZ = new int[ff.natoms];
-    for(int i=0; i<ff.natoms; i++){ 
-        atypeZ[i]= (atypes[i]==0)?  1 : 6 ;
-        printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypes[i], atypeZ[i] ); 
-    }  // NOTE : This is just temporary hack 
-    fireCore.init   ( ff.natoms, atypeZ, (double*)ff.apos );
+    
+    qmmm.bindFireCoreLib( fireCore );
+    qmmm.init(6);
+    _vec2arr(qmmm.imms,  {4,5,10,11,    8,23} );
+    _vec2arr(qmmm.isCap, {0,0, 0, 0,    1, 1} );
+    ff.reallocMask();
+    qmmm.maskMMFF(ff);
+    qmmm.setAtypes( atypes );
+    qmmm.mm2qm(3,(double*)qmmm.apos,(double*)ff.apos);
+    fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
+
+    //_list2array(int,qmmm.nqm,#{4,5,10,11,  8,23},qmmm.imms);
+    //int imms_[] = ; _forN(i,qmmm.nqm) qmmm.imms[i]=imms_;
 
     opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.aforce, 0 );
     //opt.setInvMass( 1.0 );
@@ -251,6 +259,10 @@ void TestAppMMFFmini::draw(){
         for(int itr=0; itr<perFrame; itr++){
             double E=0;
             ff.cleanAtomForce();
+
+            //qmmm.evalQM      ( ff.apos, ff.aforce );
+            //qmmm.applyCharges( nff.REQs );
+
             E += ff.eval(false);
             if(bNonBonded){
                 //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
