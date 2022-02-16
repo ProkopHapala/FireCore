@@ -206,8 +206,8 @@
            stop
          end if
 
-        do iME = 1, index_maxS(in1,in2)
-           call interpolate_2d_vec(x, y, kforce, nx, ny, hx, hy, den3S_vec(:,1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+         do iME = 1, index_maxS(in1,in2)
+           call interpolate_2d_vec(x, y, kforce, nx, ny, hx, hy, den3S_vec(1,1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
            bcnalist  (:,iME) = Q_L
            dxbcnalist(:,iME) = dQ_Ldx
            dybcnalist(:,iME) = dQ_Ldy

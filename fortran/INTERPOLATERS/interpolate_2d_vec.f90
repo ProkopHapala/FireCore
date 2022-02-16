@@ -120,33 +120,31 @@
         
                 inv_hx = 1/hx
                 inv_hy = 1/hy
-                !inv_hx_36=inv_hx/36
-                !inv_hy_36=inv_hy/36
-        
-                imidx = int(xin*inv_hx) + 1
-                if (imidx .lt. 2) then
-                  imidx = 2
-                else if (imidx .gt. nx - 2) then
-                  imidx = nx - 2
+
+                imidx = int(xin*inv_hx)
+                if (imidx .lt. 1) then
+                  imidx = 1
+                else if (imidx .gt. nx-1) then
+                  imidx = nx-1
                 end if
         
-                imidy = int(yin*inv_hy) + 1
-                if (imidy .lt. 2) then
-                  imidy = 2
-                else if (imidy .gt. ny - 2) then
-                  imidy = ny - 2
+                imidy = int(yin*inv_hy)
+                if (imidy .lt. 1) then
+                  imidy = 1
+                else if (imidy .gt. ny-1) then
+                  imidy = ny-1
                 end if
         
-                px = xin*inv_hx - (imidx - 1)
-                py = yin*inv_hy - (imidy - 1)
+                px = xin*inv_hx - imidx
+                py = yin*inv_hy - imidy
          
                 if(i2dlin .gt. 0)then  ! ============== linear interpolation
                         mx = 1-px
-                        my = 1-py 
-                        g(:,1) = xintegral(:,imidx  ,imidy  )
-                        g(:,2) = xintegral(:,imidx+1,imidy  )
-                        g(:,3) = xintegral(:,imidx  ,imidy+1)
-                        g(:,4) = xintegral(:,imidx+1,imidy+1)
+                        my = 1-py
+                        g(:,1) = xintegral(:,imidx+1,imidy+1)
+                        g(:,2) = xintegral(:,imidx+2,imidy+1)
+                        g(:,3) = xintegral(:,imidx+1,imidy+2)
+                        g(:,4) = xintegral(:,imidx+2,imidy+2)
                         Q_L    = (mx*g(:,1) + px*g(:,2))*my  +  (mx*g(:,3) + px*g(:,4))*py
                         if (iforce .eq. 1) then
                         dQ_Ldx = ( (g(:,2)-g(:,1))*my + (g(:,4)-g(:,3))*py ) * inv_hx
@@ -155,10 +153,10 @@
                 else                   ! ============== cubic interpolation
                 do k = 1, 4
                         ik = imidx + k-2
-                        f1m1(:) =   xintegral(:,ik,imidy - 1 )
-                        f0p3(:) = 3*xintegral(:,ik,imidy     )
-                        f1p3(:) = 3*xintegral(:,ik,imidy + 1 )
-                        f2p1(:) =   xintegral(:,ik,imidy + 2 )
+                        f1m1(:) =   xintegral(:,ik,imidy     )
+                        f0p3(:) = 3*xintegral(:,ik,imidy + 1 )
+                        f1p3(:) = 3*xintegral(:,ik,imidy + 2 )
+                        f2p1(:) =   xintegral(:,ik,imidy + 3 )
                         bb3 = -   f1m1 +   f0p3 -   f1p3 + f2p1
                         bb2 =   3*f1m1 - 2*f0p3 +   f1p3
                         bb1 = - 2*f1m1 -   f0p3 + 2*f1p3 - f2p1
