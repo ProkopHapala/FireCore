@@ -98,9 +98,9 @@ class MMFFmini{ public:
     double * lbond  = 0;   // bond lengths
     Vec3d  * hbond  = 0;   // normalized bond unitary vectors
 
-
-
-
+    bool *bondMasked=0;
+    bool *angMasked =0;
+    bool *torsMasked=0;
 
 void realloc( int natoms_, int nbonds_, int nang_, int ntors_ ){
     natoms=natoms_; nbonds=nbonds_; nang=nang_; ntors=ntors_;
@@ -126,8 +126,6 @@ void realloc( int natoms_, int nbonds_, int nang_, int ntors_ ){
     _realloc( tors_n    , ntors  );
     _realloc( tors_k    , ntors  );
 
-
-
 }
 
 void dealloc(){
@@ -151,6 +149,18 @@ void dealloc(){
     _dealloc( tors2atom );
     _dealloc( tors_n    );
     _dealloc( tors_k    );
+}
+
+void reallocMask(){
+    _realloc( bondMasked , nbonds);  _forN(i,nbonds) bondMasked[i]=false;
+    _realloc( angMasked  , nang  );  _forN(i,nang  ) angMasked [i]=false;
+    _realloc( torsMasked , ntors );  _forN(i,ntors ) torsMasked[i]=false;
+    
+}
+void deallocMask(){
+    _dealloc( bondMasked );
+    _dealloc( angMasked  );
+    _dealloc( torsMasked );
 }
 
 
@@ -180,6 +190,7 @@ int i_DEBUG = 0;
 
 double eval_bond(int ib){
     //printf( "bond %i\n", ib );
+    if(bondMasked)if(bondMasked[ib])return 0;
     Vec2i iat = bond2atom[ib];
     Vec3d f; f.set_sub( apos[iat.y], apos[iat.x] );
 
@@ -199,6 +210,7 @@ double eval_bond(int ib){
 }
 
 double eval_angle(int ig){
+    if(angMasked)if(angMasked[ig])return 0;
     //if(ig!=i_DEBUG) return 0;
     // efficient angular forcefield of cos(a/2) which prevent vanishing derivative of cos(a)
     // E = K*cos(a/2) = K*|ha+hb|/2
@@ -229,7 +241,7 @@ double eval_angle(int ig){
     // angular force
     Vec3d h; h.set_add( ha, hb );
     //Vec3d h; h.set_sub( hb, ha );
-    double c2 = h.norm2()*0.25d;               // cos(a/2) = |ha+hb|
+    double c2 = h.norm2()*0.25;               // cos(a/2) = |ha+hb|
     double s2 = 1-c2;
     //printf( "ang[%i] (%g,%g,%g) (%g,%g,%g) (%g,%g,%g) c2 %g s2 %g \n", ig, ha.x,ha.y,ha.z,  hb.x,hb.y,hb.z,  h.x,h.y,h.z,   c2, s2 );
     double c  = sqrt(c2);
@@ -308,7 +320,7 @@ double eval_angle(int ig){
 
 
 double eval_torsion(int it){
-
+    if(torsMasked)if(torsMasked[it])return 0;
     Vec3i  ib = tors2bond[it];
     Quat4i ia = tors2atom[it];
 

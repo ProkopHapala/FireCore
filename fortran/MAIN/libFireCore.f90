@@ -3,32 +3,33 @@
 ! ============ subroutine firecore_init
 ! ==================================================
 
-subroutine firecore_hello( ) bind(c, name='firecore_hello')
+! see : https://stackoverflow.com/questions/29153501/when-i-pass-a-pointer-from-fortran-to-c-the-value-of-the-first-element-is-lost
+subroutine firecore_getPointer_ratom( ratom_ ) bind(c, name='firecore_getPointer_ratom')
     use iso_c_binding
-    ! ====== Parameters
-    ! ====== global variables
-    
-    ! ====== Body
-    write(*,*) " firecore_hello says HELLO !!!! "
-    return
-end subroutine firecore_hello
+    use configuration
+    type(C_PTR),      intent(out) :: ratom_
+    ratom_ = c_loc( ratom ) 
+end subroutine
 
-function sum2(a) result(b) bind(c, name='sum2')
+subroutine firecore_getPointer_ftot( ftot_ ) bind(c, name='firecore_getPointer_ftot')
     use iso_c_binding
-    implicit none
-    real(c_double), intent(in)  :: a
-    real(c_double)              :: b
-    b = a + 2.d0
-end function sum2
+    use forces
+    type(C_PTR),      intent(out) :: ftot_
+    ftot_ = c_loc( ftot ) 
+end subroutine 
 
-function sum2val(a,b) result(c) bind(c, name='sum2val')
+subroutine firecore_getPointer_charges( charges_ )  bind(c, name='firecore_getPointer_charges')
     use iso_c_binding
-    implicit none
-    real(c_double), intent(in),value  :: a
-    real(c_double), intent(in),value  :: b
-    real(c_double)                    :: c
-    c = a + b
-end function sum2val
+    use charges
+    use options
+    type(C_PTR),      intent(out) :: charges_
+    if (iqout .eq. 2) then
+        charges_ = c_loc( QMulliken_TOT )
+    else
+        charges_ = c_loc( QLowdin_TOT   )
+    end if
+    !write(*,*) "DEBUG firecore_getCharges END"
+end 
 
 subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
     use iso_c_binding

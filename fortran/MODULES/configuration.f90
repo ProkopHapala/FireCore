@@ -4,7 +4,7 @@ module configuration
        integer :: natoms
        integer :: nspecies
 
-       real, dimension (:, :), allocatable :: ratom
+       real, dimension (:, :), allocatable, target :: ratom
        real, dimension (:, :), allocatable :: ximage                 ! IF_DEF_PBC_END
        real, dimension (:, :, :), allocatable :: xdot
        real, dimension (:, :), allocatable :: nowMinusInitialPos     ! ????  ! IF_DEF_move_END

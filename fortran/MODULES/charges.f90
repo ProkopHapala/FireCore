@@ -18,8 +18,8 @@
          real, dimension (:), allocatable :: Qoutmixer
          real, dimension (:), allocatable :: dq
 
-         real, dimension (:), allocatable :: QLowdin_TOT
-         real, dimension (:), allocatable :: QMulliken_TOT
+         real, dimension (:), allocatable, target :: QLowdin_TOT
+         real, dimension (:), allocatable, target :: QMulliken_TOT
 
 ! vlada-cdft-mdet
          real, dimension (:, :), allocatable :: Qin_es
