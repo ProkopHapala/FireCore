@@ -90,13 +90,15 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     double drndv =  10.0;
     double drndp =  0.5;
 
-    
+
 
 	virtual void draw   ();
 	virtual void drawHUD();
 	//virtual void mouseHandling( );
 	virtual void eventHandling   ( const SDL_Event& event  );
 	//virtual void keyStateHandling( const Uint8 *keys );
+
+    void MDloop();
 
 	TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ );
 
@@ -107,6 +109,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 	int loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
 
 	void drawSystem( );
+    void drawSystemQMMM();
 
 	void selectShorterSegment( const Vec3d& ro, const Vec3d& rd );
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
@@ -165,15 +168,15 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     }
 
     fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
-    
     qmmm.bindFireCoreLib( fireCore );
     qmmm.init(6);
     _vec2arr(qmmm.imms,  {4,5,10,11,    8,23} );
     _vec2arr(qmmm.isCap, {0,0, 0, 0,    1, 1} );
     ff.reallocMask();
+    //ff.bondMasked[0] = true; printf( "bondMasked[0] %i,%i \n", ff.bond2atom[0].a,ff.bond2atom[0].b );
     qmmm.maskMMFF(ff);
-    qmmm.setAtypes( atypes );
-    qmmm.mm2qm(3,(double*)qmmm.apos,(double*)ff.apos);
+    qmmm.setAtypes( atypes);
+    qmmm.load_apos(ff.apos);
     fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
 
     //_list2array(int,qmmm.nqm,#{4,5,10,11,  8,23},qmmm.imms);
@@ -184,13 +187,16 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     opt.cleanVel( );
 
     // ======== Test before we run
+    /*
     nff.printAtomParams();
     ff.printAtomPos();
     ff.printBondParams();
     ff.printAngleParams();
     ff.printTorsionParams();
+    */
     double E = ff.eval(true);
-    printf( "iter0 E = %g \n", E );
+    printf( "iter0 ff.eval() E = %g \n", E );
+    //for(int i=0; i<ff.natoms; i++){ printf( "ff.aforce[%i] %g %g %g \n", i, ff.aforce[i].x, ff.aforce[i].y, ff.aforce[i].z ); }
     printf("TestAppMMFFmini.init() DONE \n");
     //exit(0);
 
@@ -210,6 +216,60 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     for( int i : innodes ){ selection.push_back(i); }
 
     picked_lvec = &builder.lvec.a;
+
+    params.printAtomTypeDict();
+    printf( " # ==== SETUP DONE ==== \n" );
+}
+
+//=================================================
+//                   MDloop()
+//=================================================
+void TestAppMMFFmini::MDloop(){
+    //builder.lvec.a    = lvec_a0 + Vec3d{-1.0,0.0,0.0};
+    double Ftol = 1e-6;
+    //double Ftol = 1e-2;
+    //ff.apos[0].set(-2.0,0.0,0.0);
+    perFrame = 1;
+    //perFrame = 100;
+    //perFrame = 20;
+    //bRunRelax = false;
+    for(int itr=0; itr<perFrame; itr++){
+        double E=0;
+        ff.cleanAtomForce();
+        //qmmm.evalQM      ( ff.apos, ff.aforce );
+        //qmmm.applyCharges( nff.REQs );
+        E += ff.eval(false);
+        if(bNonBonded){
+            //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
+            E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
+        }
+        if(ipicked>=0){
+            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+            //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
+            ff.aforce[ipicked].add( f );
+        };
+        float K = -0.01;
+        for(int i=0; i<ff.natoms; i++){
+            //ff.aforce[i].add( getForceHamakerPlane( ff.apos[i], {0.0,0.0,1.0}, -3.0, 0.3, 2.0 ) );
+            ff.aforce[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) );
+            //ff.aforce[i].z += ff.apos[i].z * K;
+            //printf( "%g %g %g\n",  world.aforce[i].x, world.aforce[i].y, world.aforce[i].z );
+        }
+        ff.aforce[  10 ].set(0.0); // This is Hack to stop molecule from moving
+        //opt.move_LeapFrog(0.01);
+        opt.move_MDquench();
+        //opt.move_GD(0.001);
+        double f2=1;
+        //double f2 = opt.move_FIRE();
+        // =========== Molecular Dynamics with random velicity
+        //float d = 0.05;
+        //for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
+        //double f2; opt.move_MD( 0.1, 0.005 );
+        //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
+        if(f2<sq(Ftol)){
+            bConverged=true;
+        }
+    }
 }
 
 //=================================================
@@ -217,8 +277,8 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 //=================================================
 
 void TestAppMMFFmini::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    //glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     //printf( "====== Frame # %i \n", frameCount );
@@ -227,7 +287,7 @@ void TestAppMMFFmini::draw(){
     //if( ogl_mol ){ glCallList( ogl_mol ); return; }
     //printf( "builder.lvec: " ); builder.lvec.print();
 
-    if(frameCount==1){
+    if(frameCount==-1){
         qCamera.pitch( M_PI );
         ff.printAtomPos();
         ff.printBondParams();
@@ -238,96 +298,32 @@ void TestAppMMFFmini::draw(){
     }
 
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+    //ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*(HEIGHT-mouse_begin_y));
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
 
-    double Ftol = 1e-6;
-    //double Ftol = 1e-2;
-
-    //ff.apos[0].set(-2.0,0.0,0.0);
-    //perFrame = 1;
-    //perFrame = 100;
-    perFrame = 20;
-    //bRunRelax = false;
-
     bool makeScreenshot = false;
-    if(bRunRelax){
-        //builder.lvec.a    = lvec_a0 + Vec3d{-1.0,0.0,0.0};
+    if(bRunRelax){ MDloop(); }
 
-        for(int itr=0; itr<perFrame; itr++){
-            double E=0;
-            ff.cleanAtomForce();
-
-            //qmmm.evalQM      ( ff.apos, ff.aforce );
-            //qmmm.applyCharges( nff.REQs );
-
-            E += ff.eval(false);
-            if(bNonBonded){
-                //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
-                E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
-            }
-            if(ipicked>=0){
-                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
-                //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
-                ff.aforce[ipicked].add( f );
-            };
-            float K = -0.01;
-            for(int i=0; i<ff.natoms; i++){
-                //ff.aforce[i].add( getForceHamakerPlane( ff.apos[i], {0.0,0.0,1.0}, -3.0, 0.3, 2.0 ) );
-                ff.aforce[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) );
-                //ff.aforce[i].z += ff.apos[i].z * K;
-
-                //printf( "%g %g %g\n",  world.aforce[i].x, world.aforce[i].y, world.aforce[i].z );
-            }
-
-            ff.aforce[  10 ].set(0.0); // This is Hack to stop molecule from moving
-
-            //opt.move_LeapFrog(0.01);
-            //opt.move_MDquench();
-            //opt.move_GD(0.001);
-            double f2 = opt.move_FIRE();
-
-            // =========== Molecular Dynamics with random velicity
-            //float d = 0.05;
-            //for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
-            //double f2; opt.move_MD( 0.1, 0.005 );
-
-            //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
-            if(f2<sq(Ftol)){
-                bConverged=true;
-            }
-
-        }
-    }
-
-    if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
+    Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
+    Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
+    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
 
-    if(builder.bPBC){
-        //printf( "draw PBC \n" );
-        //Draw3D::drawPBC( (Vec3i){1,1,0}, builder.lvec, [&](){drawSystem();} );
-        Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](){drawSystem();} );
-    }else{
-        drawSystem();
-    }
-
-    for(int i=0; i<selection.size(); i++){
-        int ia = selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );
-    }
-
+    drawSystemQMMM();
+    if(builder.bPBC){  Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](){drawSystem();} );}
+    else            { drawSystem();                                                          }
+    for(int i=0; i<selection.size(); i++){ int ia = selection[i];
+        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
     if(iangPicked>=0){
-        glColor3f(0.,1.,0.);
-        Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
+        glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
     }
-
     if(makeScreenshot){ saveScreenshot( icell ); icell++; }
-
 };
 
 void TestAppMMFFmini::selectRect( const Vec3d& p0, const Vec3d& p1 ){
@@ -474,12 +470,27 @@ void TestAppMMFFmini::drawSystem( ){
     glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
     //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
     //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
-
     //glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
     Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+}
+
+void TestAppMMFFmini::drawSystemQMMM(){
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    glShadeModel(GL_SMOOTH);
+    double Rsub = 1.0; 
+    double Rsc  = 0.5;
+    for(int i=0; i<qmmm.nqm; i++){
+        int im = qmmm.imms[i];
+        //const AtomType& atyp = params.atypes[atypes[i]];
+        int ityp = qmmm.isCap[i]? 0 : 1;
+        const AtomType& atyp = params.atypes[ ityp ];
+        Draw::setRGB( atyp.color );
+        Draw3D::drawShape( ogl_sph, ff.apos[im], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
+    }
 }
 
 void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){

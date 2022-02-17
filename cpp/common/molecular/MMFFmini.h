@@ -85,7 +85,15 @@ class MMFFmini{ public:
     int    * tors_n    = 0;
     double * tors_k    = 0; // [eV/A^2]
 
-    //Vec3d * hpi = 0;  // NOTE : nstead of pi define dummy atom !!!!
+    //Vec3d * hpi = 0;  // NOTE : Instead of pi define dummy atom !!!!
+
+
+    int npi;
+    double * kpi;       // stiffness of pi-interaction for each atom // if negative there is no pi-interaction
+    Vec3d  * hpi;       // direction of pi-orbital for each atom
+    //Vec3i * pi2sigma; // which other pi-bonds interacts with it?
+    //Vec3i * pi2pi;    // which other
+
 
 
     // --- State variables
@@ -155,7 +163,7 @@ void reallocMask(){
     _realloc( bondMasked , nbonds);  _forN(i,nbonds) bondMasked[i]=false;
     _realloc( angMasked  , nang  );  _forN(i,nang  ) angMasked [i]=false;
     _realloc( torsMasked , ntors );  _forN(i,ntors ) torsMasked[i]=false;
-    
+
 }
 void deallocMask(){
     _dealloc( bondMasked );
@@ -190,17 +198,15 @@ int i_DEBUG = 0;
 
 double eval_bond(int ib){
     //printf( "bond %i\n", ib );
-    if(bondMasked)if(bondMasked[ib])return 0;
     Vec2i iat = bond2atom[ib];
     Vec3d f; f.set_sub( apos[iat.y], apos[iat.x] );
-
     if(pbcShifts)f.add( pbcShifts[ib] );
-
     //printf( "bond[%i|%i,%i] (%g,%g,%g) (%g,%g,%g) \n", ib,iat.a,iat.b, apos[iat.x].x, apos[iat.x].y, apos[iat.x].z, apos[iat.y].x, apos[iat.y].y, apos[iat.y].z );
     double l = f.normalize();
     //printf( "bond[%i|%i,%i] (%g,%g,%g) %g \n", ib,iat.a,iat.b, f.x, f.y, f.z, l );
     lbond [ib] = l;
     hbond [ib] = f;
+    if(bondMasked)if(bondMasked[ib])return 0;
     const double k = bond_k[ib];
     double dl = (l-bond_l0[ib]);
     f.mul( dl*k*2 );

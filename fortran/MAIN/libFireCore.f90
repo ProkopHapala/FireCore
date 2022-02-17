@@ -44,6 +44,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     use density
     use kpoints
     use charges
+    use FIRE, only: write_to_xyz
     !use debug
     implicit none
 
@@ -143,6 +144,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     !write(*,*) "DEBUG readdata_mcweda END "
     call init_wfs(norbitals, nkpoints)
     !write(*,*) "DEBUG firecore_init END "
+    call write_to_xyz( "#DEBUG libFireCore::firecore_init() ", 1 )
     return
 end subroutine firecore_init
 
