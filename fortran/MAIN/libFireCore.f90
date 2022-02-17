@@ -29,7 +29,74 @@ subroutine firecore_getPointer_charges( charges_ )  bind(c, name='firecore_getPo
         charges_ = c_loc( QLowdin_TOT   )
     end if
     !write(*,*) "DEBUG firecore_getCharges END"
-end 
+end subroutine
+
+subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
+    use iso_c_binding
+    use options
+    use options
+    use configuration
+    use kpoints
+    !use MD
+    use loops
+    use charges
+    !use barrier
+    !use nonadiabatic
+    use integrals !, only : fdataLocation
+
+    iparam_file = 0
+
+    call initconstants ! (sigma, sigmaold, scf_achieved)
+    scf_achieved = .true.
+    call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
+    call readparam ()
+
+    ivec_2c = 0
+    ivec_3c = 0
+    i2dlin  = 0
+    iharris = 0
+    idogs = 1
+    imcweda = 1
+    igsn = 0
+    iqout = 1
+    qstate = 0.0d0
+    icluster = 0
+    ifixcharge = 0
+    ifixneigh = 0
+    iimage = 0
+    !iconstraints(1) = 0
+    !iconstraints(2) = 1
+    !iconstraints(3) = 1
+    !iconstraints(4) = 1
+    !basisfile = 'input.bas'
+    !lvsfile = 'input.lvs'
+    !kptpreference = 'input.kpts'
+    !fdataLocation = 'Fdata'
+    nstepf = 100
+    force_tol = 1.0E-4
+    dt = 0.5
+    max_scf_iterations = 200
+    bmix = 0.04d0
+    sigmatol = 1.0E-5
+    tempfe = 100.0d0
+    rescal = 1.0d0
+    xyz2line = 2
+    verbosity = 0
+    idebugwrite = 0
+    timing_verbosity = 0
+    !ntpr = 1
+    !restartxyz = 0
+    inputxyz = 0
+end subroutine
+
+subroutine firecore_lvs( lvs_ )  bind(c, name='firecore_lvs')
+    use iso_c_binding
+    use configuration
+    real(c_double), dimension(3,3), intent(in) :: lvs_
+    a1vec = lvs_(:,1)
+    a2vec = lvs_(:,2)
+    a3vec = lvs_(:,3)
+end subroutine
 
 subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
     use iso_c_binding
@@ -75,15 +142,10 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
 
     !call initbasics () 
     ! >>> BEGIN INIT_BASICS
-    write(*,*) "DEBUG initbasics START "
     call initconstants ! (sigma, sigmaold, scf_achieved)
-    write(*,*) "DEBUG 1 natoms, natoms_", natoms, natoms_
     scf_achieved = .true.
-    write(*,*) "DEBUG 2 natoms, natoms_", natoms, natoms_
     call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
-    write(*,*) "DEBUG 3 natoms, natoms_", natoms, natoms_
     call readparam ()
-    write(*,*) "DEBUG 4 natoms, natoms_", natoms, natoms_
 
  ! Allocate more arrays.
     allocate (degelec (natoms))
@@ -100,7 +162,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     ! mask = 1.0d0                    ! IF_DEF_OPT_END
     ximage = 0.0d0
     !call readbasis (nzx, imass)
-    write(*,*) "DEBUG shape(iatyp) ",shape(iatyp),"DEBUG shape(atomTypes) ", shape(atomTypes)
+    !write(*,*) "DEBUG shape(iatyp) ",shape(iatyp),"DEBUG shape(atomTypes) ", shape(atomTypes)
     iatyp(:) = atomTypes(:)
     ratom(:,:) = atomsPos(:,:)
 
