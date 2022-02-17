@@ -11,4 +11,4 @@ echo $LD_LIBRARY_PATH
 
 $fireball | tee relaxation.out
 
-#image answer 3 2 2
+image answer 3 2 2

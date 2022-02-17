@@ -181,7 +181,7 @@ subroutine initbasics ()
 
 ! Read data from the lattice vectors file - XXX.lvs.
 ! Set up the boxes surrounding the central unit cell.
-!        call readlvs (lvsfile, a1vec, a2vec, a3vec, icluster, rescal)    ! IF_DEF_READLVS_END
+   call readlvs (lvsfile, a1vec, a2vec, a3vec, icluster, rescal)  
 
 ! Define volume of unit cell
    call cross (a2vec, a3vec, vector)
