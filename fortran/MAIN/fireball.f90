@@ -28,6 +28,7 @@ program fireball
 
     ! ====== Body
 
+    iparam_file = 1
     !idebugWrite = 1
     idebugWrite = 0
 

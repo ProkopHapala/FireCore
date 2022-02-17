@@ -9,6 +9,8 @@
 
  !       integer nprocs   iordern  ! IF_DEF_ORDERN_END
 
+        integer iparam_file
+
 ! ====== Electronic Theory Modes
 
         ! Level of theory (0=> harris, 1=> idogs, 2=> extended hubbard)

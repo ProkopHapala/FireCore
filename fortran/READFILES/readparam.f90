@@ -123,7 +123,6 @@ Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
 
         nkpoints = 1
 
-
 ! default settings
 ! ------  DEFAULT OPTIONS  ------
         ivec_2c = 0
@@ -260,6 +259,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
 !        host = "localhost"//achar(0)
 !        port = 31415
 
+     if( iparam_file .gt.0 ) then     
         inquire (file = initfile, exist = isfile)
 ! file fireball.in exists so let's read it
         if (isfile) then
@@ -295,6 +295,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
          write (*,*) ' Fireball.in file does not exist. Default settings used. '
          write (*,*) '  '
         endif ! if (isfile)
+     end if ! iparam_file
 
 ! checkout the data consistency
         call checksum_options ()   ! IF_DEF_checksum_END
