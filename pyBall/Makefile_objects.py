@@ -58,8 +58,10 @@ GROUPS = {
 # ======================================
 
 'READFILES' : {
-'' : ['append_string','read_1c','read_2c','read_3c','readbasis','readdata_2c','readdata_3c','readheader_2c',
-        'readheader_3c','readinfo','readparam',
+'' : ['append_string',
+        'read_1c','read_2c','read_3c','readdata_2c','readdata_3c',
+        'readheader_2c','readheader_3c',
+        'readinfo','readparam','readbasis','readlvs',
         'findFdata',
         #'read_wf',
         #'read_vna',

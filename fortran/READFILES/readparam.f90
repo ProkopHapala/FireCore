@@ -164,7 +164,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
         !acfile = 'ac.dat'
         !xvfile = 'xv.dat'
 !        nstepi = 1
-        nstepf = 1
+        nstepf = 100
         force_tol = 1.0E-4
         dt = 0.5
 !        T_initial = 0.0d0
