@@ -45,7 +45,7 @@ class Lib{ public:
 }; // class Lib
 
 class QMMM{ public:
-    int   nqm;      // number of atoms in QM     
+    int   nqm;      // number of atoms in QM
     int*  imms=0;   // map QM to those MM indexes
     bool* isCap=0;
     //int* iMMs=0;
@@ -53,7 +53,7 @@ class QMMM{ public:
     Vec3d*  apos=0;
     Vec3d*  aforce=0;
     double* charges=0;
-    
+
     P_evalForce  p_evalForce=0;
     P_getCharges p_getCharges=0;
     int nmax_scf = 100;
@@ -74,34 +74,34 @@ class QMMM{ public:
     }
 
     void setAtypes(int* atypes){
-        for(int i=0; i<nqm; i++){ 
+        for(int i=0; i<nqm; i++){
             int im = imms[i];
-            //atypeZ[i]= (atypes[im]==0)?  1 : 6 ;   
-            atypeZ[i]= isCap[im] ? 1 : 6;   // TODO : This is not CORRECT in general
-            printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypeZ[i] ); 
-        }  // NOTE : This is just temporary hack 
+            //atypeZ[i]= (atypes[im]==0)?  1 : 6 ;
+            atypeZ[i]= isCap[i] ? 1 : 6;   // TODO : This is not CORRECT in general
+            printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypeZ[i] );
+        }  // NOTE : This is just temporary hack
     }
 
-
-    void qm2mm( int nj, const double* qm, double* mm){
+    void qm2mm( int nj, const double* qm, double* mm)const{
         for(int iq=0; iq<nqm; iq++){
             int im = imms[iq];
-            const double* qi=qm+iq;
-            double*       mi=mm+im;
+            const double* qi=qm+iq*nj;
+            double*       mi=mm+im*nj;
             for(int j=0; j<nj; j++){
                 mi[j] = qi[j];
             }
         }
     }
 
-    void mm2qm( int nj, double* qm, const double* mm){
+    void mm2qm( int nj, double* qm, const double* mm)const{
         for(int iq=0; iq<nqm; iq++){
             int im = imms[iq];
-            double*       qi=qm+iq;
-            const double* mi=mm+im;
+            double*       qi=qm+iq*nj;
+            const double* mi=mm+im*nj;
             for(int j=0; j<nj; j++){
                 qi[j] = mi[j];
             }
+            //for(int j=0; j<nj; j++){ qi[nj+j] = mi[j];  }
         }
     }
 
@@ -113,34 +113,38 @@ class QMMM{ public:
         }
     }
 
+    void load_apos  ( const Vec3d* mmpos   )     { 
+        mm2qm(3,(      double*)apos  ,(const double*)mmpos   ); 
+        for(int i=0; i<nqm; i++){ int im=imms[i]; printf( "QM apos[%i->%i] cap %i Z %i %g %g %g |  %g %g %g \n",i,im, isCap[i], atypeZ[i], apos[i].x,apos[i].y,apos[i].z,   mmpos[im].x,mmpos[im].y,mmpos[im].z  ); }
+    };
+    void save_aforce(       Vec3d* mmforce )const{ qm2mm(3,(const double*)aforce,(      double*)mmforce ); };
     void evalQM(const Vec3d* mmpos, Vec3d* mmforce){
-        mm2qm(3,(double*)apos,(double*)mmpos);
+        load_apos( mmpos );
         p_evalForce ( nmax_scf, (double*)apos, (double*)aforce );
-        mm2qm(3,(double*)aforce, (double*)mmforce );
+        save_aforce( mmforce );
     }
 
 #ifdef MMFFmini_h
-    void maskMMFF( MMFFmini& ff ){
+    void maskMMFF( MMFFmini& ff )const{
         std::unordered_set<int> imm_set;
         for(int i=0; i<nqm; i++){ imm_set.insert( imms[i] ); }
+        for(int i:imm_set){  };
         for(int i=0; i<ff.nbonds; i++ ){
             printf( "DEBUG mask bond?  %i/%i \n", i, ff.nbonds );
             Vec2i iat = ff.bond2atom[i];
             if( imm_set.end() == imm_set.find(iat.a) ) continue;
-            if( imm_set.end() == imm_set.find(iat.b) ){
-                ff.bondMasked[i] = true;
-                printf( "DEBUG bond %i, (%i,%i) masked \n", i, iat.a, iat.b ); 
-            }
+            if( imm_set.end() == imm_set.find(iat.b) ) continue;
+            ff.bondMasked[i] = true;
+            printf( "DEBUG bond %i, (%i,%i) masked \n", i, iat.a, iat.b );
         }
         printf("DEBUG bondMasked DONE \n");
         for(int i=0; i<ff.nang; i++ ){
             Vec3i iat = ff.ang2atom[i];
             if( imm_set.end() == imm_set.find(iat.a) ) continue;
             if( imm_set.end() == imm_set.find(iat.b) ) continue;
-            if( imm_set.end() == imm_set.find(iat.c) ){
-                ff.angMasked[i] = true;
-                printf( "DEBUG angle %i, (%i,%i,%i) masked \n", i, iat.a, iat.b, iat.b ); 
-            }
+            if( imm_set.end() == imm_set.find(iat.c) ) continue;
+            ff.angMasked[i] = true;
+            printf( "DEBUG angle %i, (%i,%i,%i) masked \n", i, iat.a, iat.b, iat.b );
         }
         printf("DEBUG angMasked DONE \n");
         for(int i=0; i<ff.nang; i++ ){
@@ -148,10 +152,9 @@ class QMMM{ public:
             if( imm_set.end() == imm_set.find(iat.x) ) continue;
             if( imm_set.end() == imm_set.find(iat.y) ) continue;
             if( imm_set.end() == imm_set.find(iat.z) ) continue;
-            if( imm_set.end() == imm_set.find(iat.w) ){
-                ff.torsMasked[i] = true;
-                printf( "DEBUG torsion %i, (%i,%i,%i,%i) masked \n", i, iat.x, iat.y, iat.z, iat.w );
-            }
+            if( imm_set.end() == imm_set.find(iat.w) ) continue;
+            ff.torsMasked[i] = true;
+            printf( "DEBUG torsion %i, (%i,%i,%i,%i) masked \n", i, iat.x, iat.y, iat.z, iat.w );
         }
         printf("DEBUG torsMasked DONE \n");
     }
