@@ -12,15 +12,22 @@ namespace FireCore{
 
 typedef void (*P_evalForce  )(int,double*,double*);
 typedef void (*P_init       )(int,int*,double*);
-typedef void (*P_getCharges )(double*);
-typedef void (*P_getPointer )(double*);
+//typedef void (*P_getCharges )(double*);
+typedef void (*P_1d         )(double*);
+typedef void (*P_proc       )();
 
 class Lib{ public:
     void        *lib_handle = 0;
     P_evalForce  evalForce =0;
     P_init       init      =0;
-    P_getCharges getCharges=0;
-    P_getPointer getp_ratom=0;
+    P_1d getCharges=0;
+    P_1d set_lvs=0;
+
+    P_proc preinit=0;
+
+    //P_1d getp_ratom=0;
+    //P_1d getp_ftot =0;
+
 
     inline int loadLib( const char* fullname ){
         char *error;
@@ -35,10 +42,19 @@ class Lib{ public:
         if ((error = dlerror())){ printf( "%s\n", error); init    =0; exit(0); }
         evalForce = (P_evalForce)dlsym(lib_handle, "firecore_evalForce");
         if ((error = dlerror())){ printf("%s\n", error); evalForce=0; exit(0); }
-        getCharges = (P_getCharges)dlsym(lib_handle, "firecore_getCharges");
+        getCharges = (P_1d)dlsym(lib_handle, "firecore_getCharges");
         if ((error = dlerror())){ printf("%s\n", error); getCharges=0; exit(0); }
-        getp_ratom = (P_getPointer)dlsym(lib_handle, "firecore_getPointer_ratom");
-        if ((error = dlerror())){ printf("%s\n", error); getp_ratom=0; exit(0); }
+        set_lvs    = (P_1d)dlsym(lib_handle, "firecore_set_lvs");
+        if ((error = dlerror())){ printf("%s\n", error); set_lvs=0; exit(0); }
+
+        preinit    = (P_proc)dlsym(lib_handle, "firecore_preinit");
+        if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
+
+        //getp_ratom = (P_1d)dlsym(lib_handle, "firecore_getPointer_ratom");
+        //!if ((error = dlerror())){ printf("%s\n", error); getp_ratom=0; exit(0); }
+        //!getp_ftot = (P_1d)dlsym(lib_handle, "firecore_getPointer_ftot");
+        //!if ((error = dlerror())){ printf("%s\n", error); getp_ftot=0; exit(0); }
+
         return 0;
     }
 
@@ -55,7 +71,7 @@ class QMMM{ public:
     double* charges=0;
 
     P_evalForce  p_evalForce=0;
-    P_getCharges p_getCharges=0;
+    P_1d         p_getCharges=0;
     int nmax_scf = 100;
 
     void bindFireCoreLib(const Lib& lib){
@@ -115,7 +131,7 @@ class QMMM{ public:
 
     void load_apos  ( const Vec3d* mmpos   )     { 
         mm2qm(3,(      double*)apos  ,(const double*)mmpos   ); 
-        for(int i=0; i<nqm; i++){ int im=imms[i]; printf( "QM apos[%i->%i] cap %i Z %i %g %g %g |  %g %g %g \n",i,im, isCap[i], atypeZ[i], apos[i].x,apos[i].y,apos[i].z,   mmpos[im].x,mmpos[im].y,mmpos[im].z  ); }
+        //for(int i=0; i<nqm; i++){ int im=imms[i]; printf( "QM apos[%i->%i] cap %i Z %i %g %g %g |  %g %g %g \n",i,im, isCap[i], atypeZ[i], apos[i].x,apos[i].y,apos[i].z,   mmpos[im].x,mmpos[im].y,mmpos[im].z  ); }
     };
     void save_aforce(       Vec3d* mmforce )const{ qm2mm(3,(const double*)aforce,(      double*)mmforce ); };
     void evalQM(const Vec3d* mmpos, Vec3d* mmforce){

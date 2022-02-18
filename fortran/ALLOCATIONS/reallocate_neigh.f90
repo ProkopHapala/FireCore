@@ -106,7 +106,7 @@ if(idebugWrite .gt. 0) write (*,*) "BEGIN reallocate_neigh() "
         call find_neigh_max ! (nprocs, my_proc, iordern, icluster, ivdw)
         !if (neigh_max_old .lt. neigh_max) then   ! By Prokop -  WARRNING - This will change behavour considerably - We should test it
         if (neigh_max_old .ne. neigh_max) then 
-         if (my_proc .eq. 0) then
+         if ( (my_proc .eq. 0) .and. (verbosity .gt. 0) ) then
           write (*,*) ' The maximum number of neighbors has changed. '
           write (*,*) ' Reallocating neighbor_map arrays! '
           write (*,*) ' neigh_max = ', neigh_max
@@ -161,7 +161,8 @@ if(idebugWrite .gt. 0) write (*,*) "BEGIN reallocate_neigh() "
         call find_neighPP_max   ! (nprocs, my_proc, iordern, icluster)
 
         if (neighPP_max_old .ne. neighPP_max) then 
-         if (my_proc .eq. 0) then
+
+         if ( (my_proc .eq. 0) .and. (verbosity .gt. 0) ) then
           write (*,*) ' The maximum number of PP-neighbors has changed. '
           write (*,*) ' Reallocating PP-neighbor_map arrays! '
           write (*,*) ' neighPP_max = ', neighPP_max
