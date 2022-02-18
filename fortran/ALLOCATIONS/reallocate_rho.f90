@@ -98,7 +98,6 @@
         !deallocate (rhoPP_es)
         !allocate (rhoPP_es (numorb_max, numorb_max, neighPP_max**2, natoms))
 
-        
         if (itheory_xc .eq. 1 .or. itheory_xc .eq. 2 .or. itheory_xc .eq. 4) then 
          deallocate (arho_on)
          deallocate (arhoi_on)
