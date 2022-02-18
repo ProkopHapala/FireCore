@@ -91,6 +91,8 @@
 !END SYMMETRIC FIREBALL
 
 
+            integer kneigh_max  ! PROKOP_2022/02/18
+
 ! Cutoff range for vdw interactions
 !         real range_vdw                          ! IF_DEF_vdW
         end module

@@ -142,9 +142,7 @@ if(idebugWrite .gt. 0) write (*,*) "BEGIN reallocate_neigh() "
          
          call reallocate_h !(natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
          call reallocate_f !(natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss)
-! jel-grid
-!         call reallocate_rho (natoms, neigh_max, neighPP_max, itheory_xc, igrid)   ! IF_DEF_GRID_END
-! end jel-grid
+         call reallocate_rho !(natoms, neigh_max, neighPP_max, itheory_xc, igrid)   
         end if
 
 ! VdW part
@@ -212,6 +210,12 @@ if(idebugWrite .gt. 0) write (*,*) "BEGIN reallocate_neigh() "
          ! deallocate (hr_box)  
          ! allocate (hr_box (numorb_max, numorb_max, natoms, 0:(neigh_max+neighPP_max)))
          !end if
+
+
+
+         
+
+
 
 ! FIX ME
 ! In the future we must to optimize this part. This means we separate neighPP 

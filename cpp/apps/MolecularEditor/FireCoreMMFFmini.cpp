@@ -253,12 +253,6 @@ void TestAppMMFFmini::MDloop(){
                 //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
                 E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
             }
-            if(ipicked>=0){
-                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
-                //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
-                ff.aforce[ipicked].add( f );
-            };
-            float K = -0.01;
             for(int i=0; i<ff.natoms; i++){
                 //ff.aforce[i].add( getForceHamakerPlane( ff.apos[i], {0.0,0.0,1.0}, -3.0, 0.3, 2.0 ) );
                 ff.aforce[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) );
@@ -266,6 +260,11 @@ void TestAppMMFFmini::MDloop(){
                 //printf( "%g %g %g\n",  world.aforce[i].x, world.aforce[i].y, world.aforce[i].z );
             }
         }
+        if(ipicked>=0){
+            float K = -2.0;
+            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, K );
+            ff.aforce[ipicked].add( f );
+        };
         ff.aforce[  10 ].set(0.0); // This is Hack to stop molecule from moving
         //opt.move_LeapFrog(0.01);
         opt.move_MDquench();
@@ -316,7 +315,7 @@ void TestAppMMFFmini::draw(){
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
 
     bool makeScreenshot = false;
-    //bDoQM=1; bDoMM=0;
+    bDoQM=1; bDoMM=0;
     if(bRunRelax){ MDloop(); }
 
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;

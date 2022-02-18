@@ -118,8 +118,10 @@
            call common_neighbors   ! (nprocs, my_proc, iordern, iwrtneigh_com)
            call common_neighborsPP ! (nprocs, my_proc, iordern,  iwrtneigh_com, icluster)
            call timer_stop_i(5)
-          end if ! end if (Kscf .eq. 1)
 
+           call check_neighbors()
+          end if ! end if (Kscf .eq. 1)
+          !call check_neighbors()
 ! ===========================================================================
 !                              ewald energy
 ! ===========================================================================

@@ -73,7 +73,8 @@
         use dimensions
         use interactions
         use neighbor_map
-        use options, only : itheory_xc 
+        use options, only: itheory_xc 
+        use density, only: rho_off
         implicit none
  
 ! Argument Declaration and Description
@@ -114,7 +115,8 @@
         real, dimension (3) :: dvec
         real, dimension (3) :: vec, vec1, vec2
 
-
+        integer nrank   ! PROKOP_debug
+        integer sh(10)  ! PROKOP_debug
 
         integer my_proc
         my_proc = 0
@@ -144,6 +146,8 @@
          iatomstart = 1
          natomsp = natoms
 !        end if   ! IF_DEF_ORDERN_END
+
+         kneigh_max=0
 
 ! Loop over all atoms
 !$omp parallel do private (num_neigh, imu, iatom, jatom, katom, ibeta, jbeta) &
@@ -191,8 +195,7 @@
              vec2(:) = ratom(:,jatom) + xl(:,jbeta)
 
 ! Check distance from iatom to jatom.
-             distance2 = (vec2(1) - vec1(1))**2 + (vec2(2) - vec1(2))**2     &
-                        + (vec2(3) - vec1(3))**2
+             distance2 = (vec2(1) - vec1(1))**2 + (vec2(2) - vec1(2))**2  + (vec2(3) - vec1(3))**2
  
              range2 = (rcutoff_i + rcutoff_j - 0.01d0)**2
              if (distance2 .le. range2) then
@@ -208,7 +211,7 @@
                write (*,*) ' So far (*but still counting) we have '
                write (*,*) ' num_neigh = ', num_neigh, ' within neighbors.f90! '
 ! FIXME can't have a stop statement in an OpenMP loop
-!              stop
+               stop
               end if
 
 ! Put iatom in first spot
@@ -233,22 +236,28 @@
                katom = neigh_j(kneigh,iatom)
                kbeta = neigh_b(kneigh,iatom)
                vec(:) = xl(:,kbeta) + ratom(:,katom) - ratom(:,iatom)
-               if ((abs(vec(1) - diff(1)) .lt. 1.0d-4) .and.                 & 
-     &             (abs(vec(2) - diff(2)) .lt. 1.0d-4) .and.                 &
-     &             (abs(vec(3) - diff(3)) .lt. 1.0d-4))                      &
-     &          neigh_comm(num_neigh,ialp) = kneigh
+               kneigh_max = max(kneigh_max,kneigh)
+               if ((abs(vec(1) - diff(1)) .lt. 1.0d-4) .and. (abs(vec(2) - diff(2)) .lt. 1.0d-4) .and. (abs(vec(3) - diff(3)) .lt. 1.0d-4)) then
+                neigh_comm(num_neigh,ialp) = kneigh
+                !kneigh_max = max(kneigh_max,kneigh)
+               end if
               end do
-
 ! We check to see if it really was a neighbor. (could be very close to cutoff)
-              if (neigh_comm(num_neigh,ialp) .eq. -9999)                     &
-     &         num_neigh = num_neigh - 1 
-             end if
-            end if
-           end do
+              if (neigh_comm(num_neigh,ialp) .eq. -9999) num_neigh = num_neigh - 1 
+             end if !  (distance2 .le. range2) 
+            end if ! if (.not. (jatom .eq. ialp .and. jbeta .eq. 0) 
+           end do ! jneigh = 1, neighn(ialp)
           end if
          end do
          neigh_comn(ialp) = num_neigh
         end do
+
+        !nrank=rank(rho_off)           ! PROKOP_debug
+        !sh(:nrank) = shape(rho_off)   ! PROKOP_debug
+        !if(kneigh_max .gt. sh(3) ) then  ! PROKOP_debug
+        !    write (*,*) "ERROR in common_neighbors()  kneigh_max ", kneigh_max ," .gt. shape(rho_off)(3) ", sh(3)," neigh_max ", neigh_max 
+        !    stop
+        !end if
 
 !        if (iordern .eq. 1) call common_neighbors_ordern_final (natoms, nprocs, my_proc)    ! IF_DEF_ORDERN_END
 

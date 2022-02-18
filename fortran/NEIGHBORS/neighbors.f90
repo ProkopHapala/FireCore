@@ -333,3 +333,36 @@ subroutine reallocate_2D_iarray(x,y,newx,newy,array)
 	enddo
 end subroutine
 !END CHROM
+
+subroutine check_neighbors()
+	use dimensions
+	use neighbor_map
+    use configuration
+    use density
+    implicit none
+	! ==== VARIABLES
+    integer ialp, iatom, ineigh, mneigh, jneigh, in1, in2
+    integer nrank
+    integer sh(10)
+	! ==== BODY
+	!write (*,*) " DEBUG check_neighbors() "
+	do ialp = 1, natoms
+		do ineigh = 1, neigh_comn(ialp)
+		 mneigh = neigh_comm(ineigh,ialp)
+		 if (mneigh .ne. 0) then
+		  iatom = neigh_comj(1,ineigh,ialp)
+		  jneigh = neigh_back(iatom,mneigh)
+          nrank=rank(rho_off)
+          sh(:nrank) = shape(rho_off)
+          if(sh(3) .lt. mneigh ) then
+            write(*,*) "ERROR in check_neighbors(): mneigh ",mneigh," outside rho_off(,,",sh(3),",) | neigh_max ", neigh_max 
+            stop
+          end if 
+          if(sh(3) .lt. jneigh ) then
+            write(*,*) "ERROR in check_neighbors(): jneigh ",jneigh," outside rho_off(,,",sh(3),",) | neigh_max ", neigh_max 
+            stop
+          end if 
+		 end if
+		end do ! end do neigh_comn(ialp)
+	   end do  ! end do ialp
+end subroutine
