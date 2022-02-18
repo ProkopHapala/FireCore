@@ -243,7 +243,7 @@ void TestAppMMFFmini::MDloop(){
         ff.cleanAtomForce();
         if(bDoQM){
             qmmm.evalQM      ( ff.apos, ff.aforce );
-            //qmmm.applyCharges( nff.REQs );
+            qmmm.applyCharges( nff.REQs );
         }
         if(bDoMM){
             //qmmm.evalQM      ( ff.apos, ff.aforce );
@@ -502,6 +502,9 @@ void TestAppMMFFmini::drawSystemQMMM(){
         Draw::setRGB( atyp.color );
         Draw3D::drawShape( ogl_sph, ff.apos[im], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
     }
+    glColor3f(0.5f,0.0f,0.0f); 
+    Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex );
+
 }
 
 void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
