@@ -7,6 +7,7 @@
 subroutine firecore_getPointer_ratom( ratom_ ) bind(c, name='firecore_getPointer_ratom')
     use iso_c_binding
     use configuration
+    implicit none
     type(C_PTR),      intent(out) :: ratom_
     ratom_ = c_loc( ratom ) 
 end subroutine
@@ -14,6 +15,7 @@ end subroutine
 subroutine firecore_getPointer_ftot( ftot_ ) bind(c, name='firecore_getPointer_ftot')
     use iso_c_binding
     use forces
+    implicit none
     type(C_PTR),      intent(out) :: ftot_
     ftot_ = c_loc( ftot ) 
 end subroutine 
@@ -22,6 +24,7 @@ subroutine firecore_getPointer_charges( charges_ )  bind(c, name='firecore_getPo
     use iso_c_binding
     use charges
     use options
+    implicit none
     type(C_PTR),      intent(out) :: charges_
     if (iqout .eq. 2) then
         charges_ = c_loc( QMulliken_TOT )
@@ -43,59 +46,29 @@ subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     !use barrier
     !use nonadiabatic
     use integrals !, only : fdataLocation
-
+    implicit none
+    ! ========= body
     iparam_file = 0
-
     call initconstants ! (sigma, sigmaold, scf_achieved)
     scf_achieved = .true.
     call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
-    call readparam ()
-
-    ivec_2c = 0
-    ivec_3c = 0
-    i2dlin  = 0
-    iharris = 0
-    idogs = 1
-    imcweda = 1
-    igsn = 0
-    iqout = 1
-    qstate = 0.0d0
-    icluster = 0
-    ifixcharge = 0
-    ifixneigh = 0
-    iimage = 0
-    !iconstraints(1) = 0
-    !iconstraints(2) = 1
-    !iconstraints(3) = 1
-    !iconstraints(4) = 1
-    !basisfile = 'input.bas'
-    !lvsfile = 'input.lvs'
-    !kptpreference = 'input.kpts'
-    !fdataLocation = 'Fdata'
-    nstepf = 100
-    force_tol = 1.0E-4
-    dt = 0.5
-    max_scf_iterations = 200
-    bmix = 0.04d0
-    sigmatol = 1.0E-5
-    tempfe = 100.0d0
-    rescal = 1.0d0
-    xyz2line = 2
-    verbosity = 0
-    idebugwrite = 0
-    timing_verbosity = 0
-    !ntpr = 1
-    !restartxyz = 0
-    inputxyz = 0
+    !call readparam ()
+    call set_default_params ()
+    call checksum_options ()
+    write(*,*) "DEBUG firecore_preinit() icluster", icluster
 end subroutine
 
-subroutine firecore_lvs( lvs_ )  bind(c, name='firecore_lvs')
+subroutine firecore_set_lvs( lvs_ )  bind(c, name='firecore_set_lvs')
     use iso_c_binding
     use configuration
+    use options
+    implicit none
     real(c_double), dimension(3,3), intent(in) :: lvs_
+    icluster = 0
     a1vec = lvs_(:,1)
     a2vec = lvs_(:,2)
     a3vec = lvs_(:,3)
+    write(*,*) "DEBUG firecore_set_lvs() icluster", icluster
 end subroutine
 
 subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
@@ -129,6 +102,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     real, dimension (3) :: vector
     logical zindata
     ! ====== Body
+    write(*,*) "DEBUG firecore_init() icluster", icluster
     natoms = natoms_
 
     write(*,*) "DEBUG natoms, natoms_", natoms, natoms_
@@ -142,10 +116,15 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
 
     !call initbasics () 
     ! >>> BEGIN INIT_BASICS
-    call initconstants ! (sigma, sigmaold, scf_achieved)
-    scf_achieved = .true.
-    call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
-    call readparam ()
+    !call initconstants ! (sigma, sigmaold, scf_achieved)
+    !scf_achieved = .true.
+    !call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
+    !call readparam ()
+
+    write(*,*) "icluster", icluster
+    write(*,*) "a1vec", a1vec
+    write(*,*) "a3vec", a2vec
+    write(*,*) "a2vec", a3vec
 
  ! Allocate more arrays.
     allocate (degelec (natoms))

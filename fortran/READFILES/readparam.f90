@@ -54,7 +54,153 @@
 !
 ! Program Declaration
 ! ===========================================================================
-        subroutine readparam ()
+
+subroutine set_default_params ()
+        !use outputs
+        use options
+        use configuration
+        use kpoints
+        !use MD
+        use loops
+        use charges
+        !use barrier
+        !use nonadiabatic
+        use integrals !, only : fdataLocation
+        !use fb_sockets, only : socket, inet, port, host
+        ! ============ BODY
+        nkpoints = 1
+        ivec_2c = 0
+        ivec_3c = 0
+        i2dlin  = 0
+        iharris = 0
+        idogs = 1
+        !ihubbard = 0
+        !ihorsfield = 0
+        imcweda = 1
+!       ixczw = 0
+        !iks = 0
+        igsn = 0
+        iqout = 1
+        qstate = 0.0d0
+        !iquench = -1
+        icluster = 1
+        !iensemble = 0
+        ifixcharge = 0
+        ifixneigh = 0
+        !iumbrella = 0
+        !ibarrier = 0
+        !ivdw = 0
+        iimage = 0
+        !idynmat = 0
+        !iharmonic = 0
+        iconstraints(1) = 0
+        iconstraints(2) = 1
+        iconstraints(3) = 1
+        iconstraints(4) = 1
+        !iendtemp = 0
+        !ineb = 0
+        !itrans = 0
+        basisfile = 'input.bas'
+        lvsfile = 'input.lvs'
+        kptpreference = 'input.kpts'
+        fdataLocation = 'Fdata'
+        !acfile = 'ac.dat'
+        !xvfile = 'xv.dat'
+!        nstepi = 1
+        nstepf = 100
+        force_tol = 1.0E-4
+        dt = 0.5
+!        T_initial = 0.0d0
+!        T_final = 10.0d0
+        max_scf_iterations = 200
+        bmix = 0.04d0
+!        ialgmix = 1
+        sigmatol = 1.0E-5
+        tempfe = 100.0d0
+!        itdse = 0
+!        ibias = 0
+        rescal = 1.0d0
+        xyz2line = 2
+        verbosity = 0
+        idebugwrite = 0
+        timing_verbosity = 0
+        ntpr = 1
+        restartxyz = 0
+        inputxyz = 0
+!JOm-add
+!        imdet = 0
+!        iProjWF = 0 
+!        nddt = 1000
+!CHROM        classic potential in interactions in MD or GO
+!        iclassicMD = 0
+!END CHROM
+! GAP ENRIQUE-FF
+!        igap = 0
+! cDFT
+!        icDFT = 0
+! these options are currently out of order
+! to switch them on, you have to list them in the param_option Namelist
+!        ispin = 0
+!        ipathintegral = 0
+!        ireducekpts = 0
+!        iordern = 0
+!        ithermoint = 0
+!        igauss = 0
+! QM/MM 
+!        iqmmm = 0
+!        mix_embedding = 0
+!        cut_embedding = 999
+! e-ph coupling 
+!        iephc = 0
+! DFTD3 corrections
+!        idftd3 = 0
+!        dftd3_func = 'fb_bio'
+!        dftd3_version = 4
+!        dftd3_tz = .false.
+!        dftd3_s6 = 1.0d0
+!        dftd3_rs6 = 0.4298
+!        dftd3_s18  = 2.6996
+!        dftd3_rs18  = 4.2359
+!        dftd3_alp = 14.0d0 
+! Long range dipole
+!        idipole = 0
+! Intra-atomic dipolar potential
+!        V_intra_dip = 0
+! ------  DEFAULT OUTPUTS  ------
+!        iwrtcdcoefs = 0
+!        iwrtcharges = 0
+!        iwrtdensity = 0
+!        iwrteigen = 0
+!        iwrtefermi = 0
+!        iwrtfpieces = 0
+!        iwrthampiece = 0
+!        iwrtcomponents = 0
+!        iwrtneigh = 0
+!        iwrtneigh_com = 0
+         iwrtxyz = 0
+!        iwrtdos = 0
+!        iwrtdosng = 0
+!        iwrthop = 0
+!        iwrtatom = 0
+!        iwrtpop = 0
+!        iwrtHS = 0
+!        iwrtvel = 0
+!        iwrtden = 0
+!        iwrtewf = 0
+!        iwrtxsf = 0
+!        idensimport = 0
+!        iwrtpsit = 0
+!        iwrtqt = 0
+!        iwrtdipole = 0
+! socket for i/pi
+!        isocket = 0
+!        ccmd = 0
+!        inet = 1
+!        host = "localhost"//achar(0)
+!        port = 31415
+end
+
+subroutine readparam ()
         !use outputs
         use options
         use configuration
@@ -119,146 +265,8 @@ Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
 
 ! Procedure
 ! ===========================================================================
-        if(idebugWrite .gt. 0) write (*,*) "BEGIN readparam() "
-
-        nkpoints = 1
-
-! default settings
-! ------  DEFAULT OPTIONS  ------
-        ivec_2c = 0
-        ivec_3c = 0
-        i2dlin  = 0
-        iharris = 0
-        idogs = 1
-        !ihubbard = 0
-        !ihorsfield = 0
-        imcweda = 1
-!       ixczw = 0
-        !iks = 0
-        igsn = 0
-        iqout = 1
-        qstate = 0.0d0
-        !iquench = -1
-        icluster = 0
-        !iensemble = 0
-        ifixcharge = 0
-        ifixneigh = 0
-        !iumbrella = 0
-        !ibarrier = 0
-        !ivdw = 0
-        iimage = 0
-        !idynmat = 0
-        !iharmonic = 0
-        iconstraints(1) = 0
-        iconstraints(2) = 1
-        iconstraints(3) = 1
-        iconstraints(4) = 1
-        !iendtemp = 0
-        !ineb = 0
-        !itrans = 0
-        basisfile = 'input.bas'
-        lvsfile = 'input.lvs'
-        kptpreference = 'input.kpts'
-        fdataLocation = 'Fdata'
-        !acfile = 'ac.dat'
-        !xvfile = 'xv.dat'
-!        nstepi = 1
-        nstepf = 100
-        force_tol = 1.0E-4
-        dt = 0.5
-!        T_initial = 0.0d0
-!        T_final = 10.0d0
-        max_scf_iterations = 200
-        bmix = 0.04d0
-!        ialgmix = 1
-        sigmatol = 1.0E-5
-        tempfe = 100.0d0
-!        itdse = 0
-!        ibias = 0
-        rescal = 1.0d0
-        xyz2line = 2
-        verbosity = 0
-        idebugwrite = 0
-        timing_verbosity = 0
-        ntpr = 1
-        restartxyz = 0
-        inputxyz = 0
-!JOm-add
-!        imdet = 0
-!        iProjWF = 0 
-!        nddt = 1000
-!CHROM        classic potential in interactions in MD or GO
-!        iclassicMD = 0
-!END CHROM
-
-! GAP ENRIQUE-FF
-!        igap = 0
-! cDFT
-!        icDFT = 0
-
-! these options are currently out of order
-! to switch them on, you have to list them in the param_option Namelist
-!        ispin = 0
-!        ipathintegral = 0
-!        ireducekpts = 0
-!        iordern = 0
-!        ithermoint = 0
-!        igauss = 0
-
-! QM/MM 
-!        iqmmm = 0
-!        mix_embedding = 0
-!        cut_embedding = 999
-! e-ph coupling 
-!        iephc = 0
-! DFTD3 corrections
-!        idftd3 = 0
-!        dftd3_func = 'fb_bio'
-!        dftd3_version = 4
-!        dftd3_tz = .false.
-!        dftd3_s6 = 1.0d0
-!        dftd3_rs6 = 0.4298
-!        dftd3_s18  = 2.6996
-!        dftd3_rs18  = 4.2359
-!        dftd3_alp = 14.0d0 
-! Long range dipole
-!        idipole = 0
-! Intra-atomic dipolar potential
-!        V_intra_dip = 0
-
-! ------  DEFAULT OUTPUTS  ------
-!        iwrtcdcoefs = 0
-!        iwrtcharges = 0
-!        iwrtdensity = 0
-!        iwrteigen = 0
-!        iwrtefermi = 0
-!        iwrtfpieces = 0
-!        iwrthampiece = 0
-!        iwrtcomponents = 0
-!        iwrtneigh = 0
-!        iwrtneigh_com = 0
-         iwrtxyz = 0
-!        iwrtdos = 0
-!        iwrtdosng = 0
-!        iwrthop = 0
-!        iwrtatom = 0
-!        iwrtpop = 0
-!        iwrtHS = 0
-!        iwrtvel = 0
-!        iwrtden = 0
-!        iwrtewf = 0
-!        iwrtxsf = 0
-!        idensimport = 0
-!        iwrtpsit = 0
-!        iwrtqt = 0
-!        iwrtdipole = 0
-! socket for i/pi
-!        isocket = 0
-!        ccmd = 0
-!        inet = 1
-!        host = "localhost"//achar(0)
-!        port = 31415
-
+     if(idebugWrite .gt. 0) write (*,*) "BEGIN readparam() "
+     call set_default_params ()
      if( iparam_file .gt.0 ) then     
         inquire (file = initfile, exist = isfile)
 ! file fireball.in exists so let's read it
