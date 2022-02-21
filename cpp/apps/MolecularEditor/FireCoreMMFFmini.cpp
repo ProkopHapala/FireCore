@@ -23,6 +23,7 @@
 #include "Molecule.h"
 #include "MMFFmini.h"
 #include "NBFF.h"
+#include "GridFF.h"
 #include "MMFFparams.h"
 #include "MMFFBuilder.h"
 #include "DynamicOpt.h"
@@ -35,7 +36,11 @@
 //#include "NBSRFF.h"
 #include "IO_utils.h"
 
+#include "MolecularDraw.h"
 #include "AppSDL2OGL_3D.h"
+
+int idebug=0;
+
 
 // ===========================================
 // ================= MAIN CLASS ==============
@@ -46,6 +51,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 	MMFFparams  params;
     MMFFmini    ff;
     NBFF       nff;
+    GridFF     gridFF;
     MM::Builder builder;
     DynamicOpt  opt;
     FireCore::Lib  fireCore;
@@ -80,6 +86,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     int  fontTex;
     int  ogl_sph=0;
     int  ogl_mol=0;
+    int  ogl_isosurf=0;
 
     char str[256];
 
@@ -90,6 +97,8 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 
     double drndv =  10.0;
     double drndp =  0.5;
+
+    Vec3d testREQ,testPLQ;
 
 
 
@@ -105,9 +114,10 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 
 	//int makeMoleculeInline();
 	//int makeMoleculeInlineBuilder( bool bPBC );
-	int loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
+	int  loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
 	//int loadMoleculeXYZ( const char* fname, bool bAutoH );
-	int loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
+	int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
+    void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
 
 	void drawSystem( );
     void drawSystemQMMM();
@@ -167,6 +177,9 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     }else{
         printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
     }
+
+    makeGridFF();
+
 
     qmmm.init(6);
     qmmm.params=&params;
@@ -327,6 +340,7 @@ void TestAppMMFFmini::draw(){
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b );
 
     //printf( "bDoQM %i bDoMM %i \n", bDoQM, bDoMM );
     if(bDoQM)drawSystemQMMM();
@@ -372,6 +386,57 @@ void  TestAppMMFFmini::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
     selection.clear();
     for( int i:*sel){ selection.push_back(i); };
 }
+
+void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
+    //world.substrate.grid.n    = (Vec3i){120,120,200};
+    gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    gridFF.grid.n    = (Vec3i){60,60,100};
+    //world.substrate.grid.n    = (Vec3i){12,12,20};
+    gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
+    gridFF.loadCell ( "inputs/cel.lvs" );
+    //world.gridFF.loadCell ( "inputs/cel_2.lvs" );
+    gridFF.grid.printCell();
+    //testREQ = (Vec3d){ 2.181, 0.0243442, 0.0}; // Xe
+    //genPLQ();
+    gridFF.allocateFFs();
+    //world.gridFF.evalGridFFs( {0,0,0} );
+    //world.gridFF.evalGridFFs( {1,1,1} );
+    //world.gridFF.evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs );
+    //bool recalcFF = true;
+    if( recalcFF ){
+        gridFF.evalGridFFs( {1,1,1} );
+        if(gridFF.FFelec )  saveBin( "data/FFelec-.bin",   gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFelec );
+        if(gridFF.FFPauli)  saveBin( "data/FFPauli-.bin",  gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFPauli );
+        if(gridFF.FFLondon) saveBin( "data/FFLondon-.bin", gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFLondon );
+    }else{
+        if(gridFF.FFelec )  loadBin( "data/FFelec-.bin",   gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFelec );
+        if(gridFF.FFPauli)  loadBin( "data/FFPauli-.bin",  gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFPauli );
+        if(gridFF.FFLondon) loadBin( "data/FFLondon-.bin", gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFLondon );
+    }
+    if(bRenderGridFF){
+        int iatom = 11;
+        testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
+        testPLQ = REQ2PLQ( testREQ, -1.6 );
+        //printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
+        //printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, aREQ[iatom].x, aREQ[iatom].y, aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
+        Vec3d * FFtot = new Vec3d[ gridFF.grid.getNtot() ];
+        //world.gridFF.evalCombindGridFF_CheckInterp( (Vec3d){ 2.181, 0.0243442, 0.0}, FFtot );
+        //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
+        gridFF.evalCombindGridFF            ( testREQ, FFtot );
+        if(idebug>1) saveXSF( "FFtot_z.xsf",  gridFF.grid, FFtot, 2, gridFF.natoms, gridFF.apos, gridFF.atypes );
+        ogl_isosurf = glGenLists(1);
+        glNewList(ogl_isosurf, GL_COMPILE);
+        //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
+        //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
+        //renderSubstrate_( world.gridFF.grid, FFtot, 0.1, true );
+        //renderSubstrate_( world.gridFF.grid, FFtot, 0.01, true );
+        renderSubstrate_( gridFF.grid, FFtot, gridFF.FFelec, 0.01, true, 0.1);
+        Draw3D::drawAxis(1.0);
+        glEndList();
+        delete [] FFtot;
+    }
+}
+
 
 int TestAppMMFFmini::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH ){
     params.loadAtomTypes( "common_resources/AtomTypes.dat" );

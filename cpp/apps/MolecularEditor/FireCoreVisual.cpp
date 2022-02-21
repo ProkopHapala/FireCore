@@ -244,7 +244,7 @@ void AppMolecularEditor2::draw(){
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     glShadeModel(GL_SMOOTH);
-    //if(isoOgl)viewSubstrate( 2, 2, isoOgl, world.gridFF.grid.cell.a, world.gridFF.grid.cell.b );
+    if(isoOgl)viewSubstrate( 2, 2, isoOgl, world.gridFF.grid.cell.a, world.gridFF.grid.cell.b );
     for(int i=0; i<world.gridFF.natoms; i++){
         glEnable(GL_LIGHTING);
         Mat3d mat;
