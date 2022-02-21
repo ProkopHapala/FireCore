@@ -169,6 +169,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     }
 
     qmmm.init(6);
+    qmmm.params=&params;
     _vec2arr(qmmm.imms,  {4,5,10,11,    8,23} );
     _vec2arr(qmmm.isCap, {0,0, 0, 0,    1, 1} );
     ff.reallocMask();
@@ -176,6 +177,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     qmmm.maskMMFF(ff);
     qmmm.setAtypes( atypes);
     qmmm.load_apos(ff.apos);
+
     
     fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
     fireCore.preinit( );
@@ -243,7 +245,7 @@ void TestAppMMFFmini::MDloop(){
         ff.cleanAtomForce();
         if(bDoQM){
             qmmm.evalQM      ( ff.apos, ff.aforce );
-            qmmm.applyCharges( nff.REQs );
+            qmmm.applyCharges( nff.REQs, true );
         }
         if(bDoMM){
             //qmmm.evalQM      ( ff.apos, ff.aforce );

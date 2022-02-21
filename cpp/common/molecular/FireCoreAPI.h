@@ -3,6 +3,8 @@
 
 #include <dlfcn.h>
 
+#include "MMFFparams.h"
+
 namespace FireCore{
 
 // subroutine firecore_evalForce( nmax_scf, forces_ )  bind(c, name='firecore_evalForce')
@@ -66,9 +68,12 @@ class QMMM{ public:
     bool* isCap=0;
     //int* iMMs=0;
     int*    atypeZ=0;
+    int*    atype=0;
     Vec3d*  apos=0;
     Vec3d*  aforce=0;
     double* charges=0;
+    MMFFparams* params=0;
+
 
     P_evalForce  p_evalForce=0;
     P_1d         p_getCharges=0;
@@ -84,16 +89,20 @@ class QMMM{ public:
         imms  = new int [nqm];
         isCap = new bool[nqm];
         atypeZ  = new int  [nqm];
+        atype   = new int  [nqm];
         apos    = new Vec3d[nqm];
         aforce  = new Vec3d[nqm];
         charges = new double[nqm];
     }
 
-    void setAtypes(int* atypes){
+    void setAtypes(int* atypes_){
         for(int i=0; i<nqm; i++){
             int im = imms[i];
-            //atypeZ[i]= (atypes[im]==0)?  1 : 6 ;
-            atypeZ[i]= isCap[i] ? 1 : 6;   // TODO : This is not CORRECT in general
+            int Z=6;
+            int ityp = atypes_[im];
+            if(params)Z=params->atypes[ ityp ].iZ;
+            atypeZ[i]= isCap[i] ? 1 : Z;   
+            atype [i]= isCap[i] ? 0 : ityp;
             printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypeZ[i] );
         }  // NOTE : This is just temporary hack
     }
@@ -121,12 +130,22 @@ class QMMM{ public:
         }
     }
 
-    void applyCharges( Vec3d* aREQs ){
+    void applyCharges( Vec3d* aREQs, bool bDiff=false ){
         p_getCharges( charges );
+        if( bDiff ){
+            if(params==0){ printf( "ERROR: QMMM::applyCharges() substracting valence charge but *params==null \n"); exit(0); }
+            for(int iq=0; iq<nqm; iq++){ 
+                const AtomType& at = params->atypes[ atype[iq] ];
+                printf( "charges[%i|ityp=%i] Q %g Q0 %i iZ %i name %s\n", iq, atype[iq], charges[iq], at.neval, at.iZ, at.name  );
+                charges[iq]-=params->atypes[ atype[iq] ].neval; 
+            }
+        }
         for(int iq=0; iq<nqm; iq++){
             int im      = imms[iq];
+            if(params)
             aREQs[im].z = charges[iq];
         }
+
     }
 
     void load_apos  ( const Vec3d* mmpos   )     { 
