@@ -189,11 +189,11 @@ void renderSubstrate_( const GridShape& grid, Vec3d * FF, Vec3d * FFel, double i
     //exit(0);
 }
 
-void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b ){
+void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
     glPushMatrix();
     for( int ix = -nx; ix<=nx; ix++ ){
         for( int iy = -ny; iy<=ny; iy++ ){
-            Vec3d pos = a*ix + b*iy;
+            Vec3d pos = a*ix + b*iy + pos0;
             glTranslatef(pos.x, pos.y, pos.z);
             glCallList(isoOgl);
             glTranslatef(-pos.x, -pos.y, -pos.z);

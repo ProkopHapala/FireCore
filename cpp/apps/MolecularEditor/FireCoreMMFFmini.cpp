@@ -178,8 +178,10 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
         printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
     }
 
-    makeGridFF();
 
+    DEBUG
+    makeGridFF();
+    DEBUG
 
     qmmm.init(6);
     qmmm.params=&params;
@@ -305,6 +307,12 @@ void TestAppMMFFmini::draw(){
     glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
     //glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
+    glEnable(GL_LINE_SMOOTH);
+    glEnable(GL_BLEND);
+    //glDepthMask(false);
+    //glLineWidth(lw);
+    //glDrawArrays(GL_LINE_STRIP, offset, count);
 
     //printf( "====== Frame # %i \n", frameCount );
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
@@ -340,7 +348,7 @@ void TestAppMMFFmini::draw(){
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b );
+    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift );
 
     //printf( "bDoQM %i bDoMM %i \n", bDoQM, bDoMM );
     if(bDoQM)drawSystemQMMM();
@@ -403,16 +411,18 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //world.gridFF.evalGridFFs( {1,1,1} );
     //world.gridFF.evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs );
     //bool recalcFF = true;
-    if( recalcFF ){
+    //if( recalcFF ){
+    if( 0==fopen("data/FFelec.bin", "r") ){
         gridFF.evalGridFFs( {1,1,1} );
-        if(gridFF.FFelec )  saveBin( "data/FFelec-.bin",   gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFelec );
-        if(gridFF.FFPauli)  saveBin( "data/FFPauli-.bin",  gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFPauli );
-        if(gridFF.FFLondon) saveBin( "data/FFLondon-.bin", gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFLondon );
+        if(gridFF.FFelec )  saveBin( "data/FFelec.bin",   gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFelec );
+        if(gridFF.FFPauli)  saveBin( "data/FFPauli.bin",  gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFPauli );
+        if(gridFF.FFLondon) saveBin( "data/FFLondon.bin", gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFLondon );
     }else{
-        if(gridFF.FFelec )  loadBin( "data/FFelec-.bin",   gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFelec );
-        if(gridFF.FFPauli)  loadBin( "data/FFPauli-.bin",  gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFPauli );
-        if(gridFF.FFLondon) loadBin( "data/FFLondon-.bin", gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFLondon );
+        if(gridFF.FFelec )  loadBin( "data/FFelec.bin",   gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFelec );
+        if(gridFF.FFPauli)  loadBin( "data/FFPauli.bin",  gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFPauli );
+        if(gridFF.FFLondon) loadBin( "data/FFLondon.bin", gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFLondon );
     }
+    gridFF.shift = (Vec3d){0.0,0.0,-8.0};
     if(bRenderGridFF){
         int iatom = 11;
         testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
@@ -426,6 +436,9 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
         if(idebug>1) saveXSF( "FFtot_z.xsf",  gridFF.grid, FFtot, 2, gridFF.natoms, gridFF.apos, gridFF.atypes );
         ogl_isosurf = glGenLists(1);
         glNewList(ogl_isosurf, GL_COMPILE);
+        glShadeModel( GL_SMOOTH );
+        glEnable(GL_LIGHTING);
+        glEnable(GL_DEPTH_TEST);
         //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
         //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
         //renderSubstrate_( world.gridFF.grid, FFtot, 0.1, true );
