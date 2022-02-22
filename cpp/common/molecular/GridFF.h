@@ -26,6 +26,8 @@ class GridFF{ public:
     Vec3d  * aREQs  = NULL;
     //Vec3d  * aPLQ = NULL;
 
+    Vec3d shift = Vec3dZero;
+
     double alpha    = -1.6;
 
 
@@ -97,23 +99,29 @@ class GridFF{ public:
         return natoms;
     }
 
-    inline void addForce( Vec3d pos, Vec3d PLQ, Vec3d& f ) const {
+    inline void addForce( const Vec3d& pos, const Vec3d& PLQ, Vec3d& f ) const {
         Vec3d gpos;
         grid.cartesian2grid(pos, gpos);
         //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) \n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z );
-
         f.add_mul( interpolate3DvecWrap( FFPauli,  grid.n, gpos ) , PLQ.x );
         f.add_mul( interpolate3DvecWrap( FFLondon, grid.n, gpos ) , PLQ.y );
         f.add_mul( interpolate3DvecWrap( FFelec,   grid.n, gpos ) , PLQ.z );
-
         //f = interpolate3DvecWrap( FFLondon,  grid.n, gpos );
         //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
+    }
+
+    inline void addForce_surf( Vec3d pos, const Vec3d& PLQ, Vec3d& f ) const {
+        pos.add( shift );
+        if     ( pos.z > grid.cell.c.z ){ pos.z = grid.dCell.c.z*-0.1 + grid.cell.c.z; }
+        else if( pos.z < 0             ){ pos.z = grid.dCell.c.z* 0.1;                 }
+        return addForce( pos, PLQ, f );
     }
 
     void init( Vec3i n, Mat3d cell, Vec3d pos0 ){
         grid.n     = n;
         grid.setCell(cell);
         grid.pos0  = pos0;
+        //zmax = cell.c.z;
         allocateFFs();
     }
 
@@ -211,9 +219,9 @@ class GridFF{ public:
         Vec3d PLQ = REQ2PLQ( REQ, alpha );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Vec3d f = (Vec3d){0.0,0.0,0.0};
-            if(FFPauli ) f.add_mul( FFPauli[ibuff],  PLQ.x );
+            if(FFPauli ) f.add_mul( FFPauli [ibuff], PLQ.x );
             if(FFLondon) f.add_mul( FFLondon[ibuff], PLQ.y );
-            if(FFelec  ) f.add_mul( FFelec[ibuff],   PLQ.z );
+            if(FFelec  ) f.add_mul( FFelec  [ibuff], PLQ.z );
             FF[ibuff] =  f;
         });
     }
