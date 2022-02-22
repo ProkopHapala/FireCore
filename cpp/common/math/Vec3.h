@@ -344,6 +344,7 @@ class Vec3T{
 		return ab.dot(ap) / ab.norm(ab);
 	}
 
+    inline void abs(){ x=_abs(x);y=_abs(y);z=_abs(z); };
 	inline int maxComponent(){ return (x>y)?((x>z)?0:2):((y>z)?1:2); };
 	inline int minComponent(){ return (x<y)?((x<z)?0:2):((y<z)?1:2); };
 
