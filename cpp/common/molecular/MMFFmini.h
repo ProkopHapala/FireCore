@@ -87,14 +87,22 @@ class MMFFmini{ public:
 
     //Vec3d * hpi = 0;  // NOTE : Instead of pi define dummy atom !!!!
 
+    // --- Pi orbitals
+    //int npi=0;
+    //double * kpi=0;     // stiffness of pi-interaction for each atom // if negative there is no pi-interaction
+    //Vec3d  * hpi=0;     // direction of pi-orbital for each atom
+    //Vec3i * pi2sigma=0; // which other pi-bonds interacts with it?
+    //Vec3i * pi2pi=0;    // which other
 
-    int npi;
-    double * kpi;       // stiffness of pi-interaction for each atom // if negative there is no pi-interaction
-    Vec3d  * hpi;       // direction of pi-orbital for each atom
-    //Vec3i * pi2sigma; // which other pi-bonds interacts with it?
-    //Vec3i * pi2pi;    // which other
-
-
+    // --- Pi planes   -  ToDo : This may be an independnet forcefield ?
+    int nplane=0,nplaneatoms=0;
+    int*    plane2atom0=0;   // [nplane+1] umber of atoms in each plane
+    int*    plane2atoms=0;   // [nplaneatoms] indexes of atoms in each plne
+    Vec3d*  planeh=0;        // [nplane]  - direction of pi-plane
+    Vec3d*  plane0=0;        // [nplane]  - centers of pi-plane
+    double* planeK=0;        // [nplane]  - forces
+    Vec3d*  fplaneh=0;       // [nplane]
+    Vec3d*  fplane0=0;       // [nplane]
 
     // --- State variables
 
@@ -491,6 +499,32 @@ double _bak_eval_torsion(int it){
     aforce[ia.z].sub((fb+fa)*0.5);
     aforce[ia.w].add(fb);
     */
+    return E;
+}
+
+double evalPlane(int ip){
+    double E = 0; 
+    int i0=plane2atom0[ip  ];
+    int i1=plane2atom0[ip+1];
+    double K        =  planeK[ip]; 
+    const Vec3d& p0 =  plane0[ip];
+    const Vec3d& h  =  planeh[ip];
+    Vec3d&      fp0 = fplane0[ip];
+    Vec3d&      fh  = fplaneh[ip];
+    for(int i=i0;i<i1;i++){
+        int ia = plane2atoms[i];
+        Vec3d dp; dp.set_sub(  p0, apos[ia] );
+        double cp = h.dot( dp ); 
+        E        += K*cp*cp;
+        Vec3d f; f.set_mul( h,  K*cp );
+        aforce[ia].add( f );
+        fp0       .sub( f );
+        fh        .add_mul( dp, K*cp );
+        // if radial damp 
+        // double r2 = dp.
+        // er = 1-r2;
+        // E *= er*er;
+    }
     return E;
 }
 
