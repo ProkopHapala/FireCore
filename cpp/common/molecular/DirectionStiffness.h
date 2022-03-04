@@ -45,7 +45,7 @@ class Deformer{ public:
             Vec3d d = apos[i] - center;
             Vec3d f; f.set_cross( hdir, d );
             double r2 = f.norm2();
-            if(r2>R2)continue;
+            if( (r2>R2) || (r2<1e-8) )continue;
             f.mul( (1-r2*iR2)*K );
             apos[i].add( f );
         }
@@ -65,6 +65,16 @@ class Deformer{ public:
         for(int istep=0; istep<nstep; istep++){
             evalForce(natoms*3, (const double*)apos, (double*)aforce );           // eval relaxation forces
             for(int i=0; i<npick;  i++){ aforce[i].add_mul(pulls[picks[i]], L );    }  //
+            for(int i=0; i<natoms; i++){ apos  [i].add_mul( aforce[i], dt ); }  //
+        }
+    }
+
+    void deform_Rot(){
+        for(int istep=0; istep<nstep; istep++){
+            evalForce(natoms*3, (const double*)apos, (double*)aforce );           // eval relaxation forces
+            for(int i=0; i<npick; i++){
+                addRotationForces( apos[ picks[i]], pulls[i], 1.0, L );
+            }
             for(int i=0; i<natoms; i++){ apos  [i].add_mul( aforce[i], dt ); }  //
         }
     }

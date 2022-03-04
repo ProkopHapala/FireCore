@@ -194,7 +194,7 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
     }
 
     deformer.bind( ff.natoms, ff.apos, ff.aforce );
-    deformer.initPicks( 3 );
+    deformer.initPicks( 1 );
     deformer.genPicks();
     deformer.genPulls();
     deformer.evalForce = defeormer_evalForce;
@@ -245,7 +245,8 @@ void TestAppDirectionStiffness::MDloop(  ){
     for(int itr=0; itr<perFrame; itr++){
 
         deformer.L = 3.0;
-        deformer.deform_F();
+        //deformer.deform_F();
+        deformer.deform_Rot();
 
 
         //ff.cleanAtomForce();
@@ -720,8 +721,9 @@ int main(int argc, char *argv[]){
 	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
 	//SDL_SetRelativeMouseMode( SDL_TRUE );
 	int junk;
+	thisApp = new TestAppDirectionStiffness( junk , 1000, 800 );
 	//thisApp = new TestAppDirectionStiffness( junk , 800, 600 );
-	thisApp = new TestAppDirectionStiffness( junk , 800, 400 );
+	//thisApp = new TestAppDirectionStiffness( junk , 800, 400 );
 	thisApp->loop( 1000000 );
 	return 0;
 }
