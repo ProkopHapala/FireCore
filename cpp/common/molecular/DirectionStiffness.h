@@ -2,10 +2,74 @@
 #ifndef DirectionStiffness_h
 #define DirectionStiffness_h
 
+#include "macroUtils.h"
 #include <Vec3.h>
 #include "VecN.h"
 #include "CG.h"
 
+class Deformer{ public:
+    int natoms;
+    Vec3d* apos=0;
+    Vec3d* aforce=0;
+    DotFunc evalForce=0;
+
+    int    npick=0; // number of picked atoms;
+    int*   picks=0; // picked atoms
+    Vec3d* pulls=0; // pull vectors
+
+
+    int    nstep=5;   // number of relaxation steps
+    double L    =1.0; // pull lenght
+    double dt   =0.01; // relaxation speed
+
+    void bind( int natoms_, Vec3d* apos_, Vec3d* aforce_ ){ natoms=natoms_; apos=apos_; aforce=aforce_;  }
+
+    void initPicks(int npick_){
+        npick=npick_;
+        _realloc(picks,npick);
+        _realloc(pulls,npick);
+    }
+
+    void genPicks(){
+        for(int i=0; i<npick; i++){ picks[i]=rand()%npick; }
+    }
+
+    void genPulls(){
+        for(int i=0; i<npick; i++){ pulls[i].fromRandomSphereSample(); }
+    }
+
+    void addRotationForces( const Vec3d& center, const Vec3d& hdir, double K, double R ){
+        double R2 = R*R;
+        double iR2 = 1/R2;
+        for(int i=0; i<npick; i++){
+            Vec3d d = apos[i] - center;
+            Vec3d f; f.set_cross( hdir, d );
+            double r2 = f.norm2();
+            if(r2>R2)continue;
+            f.mul( (1-r2*iR2)*K );
+            apos[i].add( f );
+        }
+    }
+
+    void deform_L(){
+        double dl = L/nstep;
+        for(int istep=0; istep<nstep; istep++){
+            for(int i=0; i<npick; i++){ apos[i].add_mul( pulls[i], dl); }     // pull the atoms
+            evalForce(natoms*3, (const double*)apos, (double*)aforce );                              // eval relaxation forces
+            for(int i=0; i<npick;  i++){ aforce[i].set(0.0); }                  //
+            for(int i=0; i<natoms; i++){ apos  [i].add_mul( aforce[i], dt ); }  //
+        }
+    }
+
+    void deform_F(){
+        for(int istep=0; istep<nstep; istep++){
+            evalForce(natoms*3, (const double*)apos, (double*)aforce );           // eval relaxation forces
+            for(int i=0; i<npick;  i++){ aforce[i].add_mul(pulls[picks[i]], L );    }  //
+            for(int i=0; i<natoms; i++){ apos  [i].add_mul( aforce[i], dt ); }  //
+        }
+    }
+
+};
 
 
 class DirStiff{ public:
@@ -38,7 +102,7 @@ class DirStiff{ public:
     }
 
     void sparseLinearBondSmoother( Vec3d* dpos, Vec3d* dpos_, double trash ){
-        // this shoud spread pull-vector between neighboring atoms depending on bond stiffness
+        // this should spread pull-vector between neighboring atoms depending on bond stiffness
         //  - in principle it is approximation of running force field relaxation, but without re-calculating stiffness matrix and bond directions
         for(int i=0; i<natoms; i++){ dpos_[i]=dpos[i]; }
         for(int ib=0; ib<nbonds; ib++){
@@ -47,19 +111,19 @@ class DirStiff{ public:
             Vec3d vk; vk.set_mul( bondDir[ib], bond_k[ib] );
             Vec3d fa; fa.set_div( vk, dirStiff[b.a] );
             Vec3d fb; fb.set_div( vk, dirStiff[b.b] );
-            dpos_[b.a].add_mul();
-            dpos_[b.b].add_mul();
+            dpos_[b.a].add(fa);
+            dpos_[b.b].add(fb);
         }
         return;
     }
 
-    void evalLinearForce( Vec3d* dpos, Vec3d* force ){  // plug this as    CG.dotA(n,x,r) 
+    void evalLinearForce( Vec3d* dpos, Vec3d* force ){  // plug this as    CG.dotA(n,x,r)
         //for(int i=0; i<natoms; i++){ amask[i] =( dpos.norm2()<R2min ); }
         for(int ib=0; ib<nbonds; ib++){
             const Vec2i& b = bond2atom[ib];
             // To Do we can set some masks and trasholds to speed things up
             //if( !(amask[b.a]||amask[b.b])  ) continue;
-            Vec3d fv; 
+            Vec3d fv;
             fv.set_sub( dpos[b.a], dpos[b.b]   );         // d = di-dj
             // if( fv.norm2()<F2min ) contine;
             const Vec3d& hdir = bondDir[ib];
@@ -77,16 +141,16 @@ class DirStiff{ public:
         for(int ia=0; ia<natoms; ia++){
             for(int ing=0; ing<nneighs[ia]; ing++){
                 int    ja=neighs[ing];
-                double kb=kneighs[ing]; 
+                double kb=kneighs[ing];
             }
         }
         return;
     }
     */
 
-    evalStiffnessSubSpace( int npick, int* iatoms  ){
+    void evalStiffnessSubSpace( int npick, int* iatoms  ){
         // calculate small stiffness matrix for several selected atoms, considering just bonds (no angles etc.)
-        // Kij = E/(dxi*dxj)  
+        // Kij = E/(dxi*dxj)
     }
 
 }; // DirStiff
