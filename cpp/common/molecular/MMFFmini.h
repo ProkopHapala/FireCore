@@ -503,10 +503,10 @@ double _bak_eval_torsion(int it){
 }
 
 double evalPlane(int ip){
-    double E = 0; 
+    double E = 0;
     int i0=plane2atom0[ip  ];
     int i1=plane2atom0[ip+1];
-    double K        =  planeK[ip]; 
+    double K        =  planeK[ip];
     const Vec3d& p0 =  plane0[ip];
     const Vec3d& h  =  planeh[ip];
     Vec3d&      fp0 = fplane0[ip];
@@ -514,13 +514,13 @@ double evalPlane(int ip){
     for(int i=i0;i<i1;i++){
         int ia = plane2atoms[i];
         Vec3d dp; dp.set_sub(  p0, apos[ia] );
-        double cp = h.dot( dp ); 
+        double cp = h.dot( dp );
         E        += K*cp*cp;
         Vec3d f; f.set_mul( h,  K*cp );
         aforce[ia].add( f );
         fp0       .sub( f );
         fh        .add_mul( dp, K*cp );
-        // if radial damp 
+        // if radial damp
         // double r2 = dp.
         // er = 1-r2;
         // E *= er*er;
@@ -554,6 +554,11 @@ double eval( bool bClean=true ){
     //printf( "Eb %g Ea %g Et %g\n", Eb, Ea, Et );
     return Eb+Ea+Et;
 };
+
+
+double getFmax(){ double Fmax=0; for(int i=0; i<natoms;i++){ _max( Fmax, aforce[i].norm2() ); }; return Fmax; };
+void moveGD(double dt){ for(int i=0; i<natoms;i++){ apos[i].add_mul( aforce[i],dt); } };
+
 
 // ============== Preparation
 

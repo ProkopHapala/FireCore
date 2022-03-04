@@ -84,6 +84,15 @@ void atomLabels( int n, const Vec3d* apos, int fontTex, float sz=0.02 ){
     }
 }
 
+void vecsInPos( int n, const Vec3d* vecs, const Vec3d* pos, double sz=1.0 ){
+    glBegin(GL_LINES);
+    for(int i=0; i<n; i++){
+        Vec3d p=pos[i];         glVertex3f(p.x,p.y,p.z);
+        p.add_mul(vecs[i], sz); glVertex3f(p.x,p.y,p.z);
+    }
+    glEnd();
+}
+
 void atomPropertyLabel( int n, double* data, Vec3d* ps, int pitch, int offset, int fontTex, float sz=0.02, const char* format="%4.2f\0" ){
     for(int i=0; i<n; i++){
         drawDouble( ps[i], data[i*pitch+offset], fontTex, sz, format );
