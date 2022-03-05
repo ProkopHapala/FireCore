@@ -6,7 +6,7 @@
 #include "VecN.h"
 
 
-typedef  void (*DotFunc)( int n, const double * x, double * Ax );
+typedef  double (*DotFunc)( int n, const double * x, double * Ax );
 
 class CG{ public:
 

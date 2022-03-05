@@ -7,20 +7,25 @@
 #include "VecN.h"
 #include "CG.h"
 
+#include "MolecularGraph.h"
+
 class Deformer{ public:
     int natoms;
     Vec3d* apos=0;
     Vec3d* aforce=0;
     DotFunc evalForce=0;
+    MolecularGraph* graph=0;
 
-    int    npick=0; // number of picked atoms;
-    int*   picks=0; // picked atoms
-    Vec3d* pulls=0; // pull vectors
+    int     npick=0; // number of picked atoms;
+    int*    picks=0; // picked atoms
+    double* Ks=0;
+    Vec3d*  pulls=0; // pull vectors
 
 
-    int    nstep=5;   // number of relaxation steps
+
+    int    nstep=1;   // number of relaxation steps
     double L    =1.0; // pull lenght
-    double dt   =0.01; // relaxation speed
+    double dt   =0.02; // relaxation speed
 
     void bind( int natoms_, Vec3d* apos_, Vec3d* aforce_ ){ natoms=natoms_; apos=apos_; aforce=aforce_;  }
 
@@ -28,10 +33,14 @@ class Deformer{ public:
         npick=npick_;
         _realloc(picks,npick);
         _realloc(pulls,npick);
+        _realloc(Ks,npick);
     }
 
     void genPicks(){
         for(int i=0; i<npick; i++){ picks[i]=rand()%npick; }
+    }
+    void genKs(double K){
+        for(int i=0; i<npick; i++){ Ks[i]=randf(-K,K); }
     }
 
     void genPulls(){
@@ -76,6 +85,42 @@ class Deformer{ public:
                 addRotationForces( apos[ picks[i]], pulls[i], 1.0, L );
             }
             for(int i=0; i<natoms; i++){ apos  [i].add_mul( aforce[i], dt ); }  //
+        }
+    }
+
+    double rotateNeighs( int ia, const Vec3d& hdir, double K ){
+        const Vec3d& p0=apos[ia];
+        int* ngs=graph->atom2neigh + graph->ngIs[ia];
+        int  nng=graph->ngNs[ia];
+        //moment;
+        for(int i=0; i<nng; i++){
+            int ja=ngs[i];
+            Vec3d d; d.set_sub  (apos[ja],p0);
+            Vec3d f; f.set_cross( hdir,   d );
+            aforce[ja].add_mul( f, K );
+            //printf( "ia,ja %i,%i f(%g,%g,%g) K %g \n", ia, ja, f.x,f.y,f.z, K  );
+        }
+        return 0;
+    }
+
+    void bondRot( int ib, double K ){
+        const Vec2i& b = graph->bond2atom[ib];
+        Vec3d hdir=apos[b.a]-apos[b.b];
+        hdir.normalize();
+        //printf( " === bond[%i](%i,%i) hdir(%g,%g,%g) \n", ib, b.a, b.b, hdir.x,hdir.y,hdir.z );
+        rotateNeighs( b.a, hdir,  K );
+        rotateNeighs( b.b, hdir, -K );
+        //aforce[b.a].add( 0.,0.,+10.);
+        //aforce[b.b].add( 0.,0.,-10.);
+    }
+
+    void deform_BondRot( double K ){
+        for(int istep=0; istep<nstep; istep++){
+            evalForce(natoms*3, (const double*)apos, (double*)aforce );           // eval relaxation forces
+            for(int i=0; i<npick; i++){
+                bondRot( picks[i], Ks[i]*K );
+            }
+            for(int i=0; i<natoms; i++){ apos[i].add_mul( aforce[i], dt ); }  //
         }
     }
 
