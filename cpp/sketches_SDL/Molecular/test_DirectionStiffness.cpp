@@ -29,6 +29,7 @@
 #include "QEq.h"
 
 #include "DirectionStiffness.h"
+#include "MolecularGraph.h"
 
 
 #include "Draw3D_Molecular.h"  // it needs to know MMFFparams
@@ -59,9 +60,12 @@ void relax1(int nmax, double Fmax, double dt){
     }
 }
 
-void defeormer_evalForce(int n, const double * x, double * Ax){
+double defeormer_evalForce(int n, const double * x, double * Ax){
+    double E=0;
     p_mmff->cleanAtomForce();
-    p_mmff->eval_bonds();
+    E+=p_mmff->eval_bonds();
+    E+=p_mmff->eval_angles();
+    return E;
 }
 
 // ===========================================
@@ -76,7 +80,11 @@ class TestAppDirectionStiffness : public AppSDL2OGL_3D { public:
     MM::Builder builder;
     DynamicOpt  opt;
 
+    MolecularGraph graph;
     Deformer deformer;
+    int ndeform=0;
+    int deform_Nsteps=50;
+    int deform_K     =10.0;
 
     int* atypes = 0;
 
@@ -193,16 +201,26 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
         printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
     }
 
+    graph.bindOrRealloc( ff.natoms, ff.nbonds, ff.bond2atom );
+    graph.makeNeighbors();
+    graph.printNeighs();
+    //exit(0);
+
     deformer.bind( ff.natoms, ff.apos, ff.aforce );
-    deformer.initPicks( 1 );
-    deformer.genPicks();
-    deformer.genPulls();
+    deformer.initPicks( 2 );
+    deformer.picks[0]=17; // select bond #17
+    deformer.picks[1]=42; // select bond #17
+    deformer.genKs( 1.0 );
+    //deformer.genPicks();
+    //deformer.genPulls();
+    deformer.graph=&graph;
     deformer.evalForce = defeormer_evalForce;
     p_mmff = &ff;
 
     opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.aforce, 0 );
     //opt.setInvMass( 1.0 );
     opt.cleanVel( );
+    opt.initOpt( 0.1, 0.1 );
 
     // ======== Test before we run
     nff.printAtomParams();
@@ -239,51 +257,51 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
 void TestAppDirectionStiffness::MDloop(  ){
 
     double Ftol = 1e-6;
-    perFrame = 1;
+    perFrame = 25;
     builder.lvec.a    = lvec_a0 + Vec3d{-1.0,0.0,0.0};
 
     for(int itr=0; itr<perFrame; itr++){
 
-        deformer.L = 3.0;
-        //deformer.deform_F();
-        deformer.deform_Rot();
+        deform_Nsteps=50;
+        deform_K     =10.0;
 
+        //ndeform=1;
+        if(ndeform>0){
+            //deformer.deform_F();
+            //deformer.deform_Rot();
+            deformer.deform_BondRot( deform_K );
+            ndeform--;
+        }else{
 
-        //ff.cleanAtomForce();
-        //ff.eval_bonds();
-        //ff.moveGD( 0.01 );
+            double E=0;
+            ff.cleanAtomForce();
+            E += ff.eval(false);
+            if(bNonBonded){
+                //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
+                E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
+            }
+            if(ipicked>=0){
+                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+                //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
+                ff.aforce[ipicked].add( f );
+            };
 
-        /*
-        double E=0;
-        ff.cleanAtomForce();
-        E += ff.eval(false);
+            float K = -0.01;
+            for(int i=0; i<ff.natoms; i++){
+                ff.aforce[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) );
 
+            }
 
+            //float d = 0.05;
+            //for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
 
-        if(bNonBonded){
-            //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
-            E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
+            //double f2; opt.move_MD( 0.1, 0.005 );
+            double f2 = opt.move_FIRE( );
+
+            if(f2<sq(Ftol)){
+                bConverged=true;
+            }
         }
-        if(ipicked>=0){
-            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
-            //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
-            ff.aforce[ipicked].add( f );
-        };
-
-        float K = -0.01;
-        for(int i=0; i<ff.natoms; i++){
-            ff.aforce[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) );
-
-        }
-
-        float d = 0.05;
-        for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
-
-        double f2; opt.move_MD( 0.1, 0.005 );
-        if(f2<sq(Ftol)){
-            bConverged=true;
-        }
-        */
     }
 }
 
@@ -640,6 +658,8 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_KP_9: builder.lvec.a.z+=xstep; break;
                 case SDLK_KP_6: builder.lvec.a.z-=xstep; break;
+
+                case SDLK_RETURN:{ ndeform=deform_Nsteps; deformer.genKs(1); }break;
 
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
