@@ -143,7 +143,7 @@ class MolecularGraph{ public:
 
 
 
-//  algorithm copied from 
+//  algorithm copied from
 //    https://www.geeksforgeeks.org/bridge-in-a-graph/
 
 
@@ -158,11 +158,13 @@ class Graph{ public:
 	int V; // No. of vertices
 	list<int> *adj; // A dynamic array of adjacency lists
     // Array of lists // neighbors
-	
+    vector<Vec2i> found;
+
     void bridgeUtil(int v, bool visited[], int disc[], int low[], int parent[]);
 	Graph(int V); // Constructor
 	void addEdge(int v, int w); // to add an edge to graph
 	void bridge(); // prints all bridges
+	void fromBonds( int nb, const Vec2i* bonds );
 };
 
 Graph::Graph(int V){
@@ -175,6 +177,15 @@ void Graph::addEdge(int v, int w){
 	adj[w].push_back(v); // Note: the graph is undirected
 }
 
+
+void Graph::fromBonds( int nb, const Vec2i* bonds ){
+    for(int i=0; i<nb; i++){
+        //if( (atypes[bonds[i].a]==ignore) || (atypes[bonds[i].b]==ignore)   ) continue;
+        if( (bonds[i].a>=V) || (bonds[i].b>=V)  ) continue;
+        addEdge(bonds[i].a, bonds[i].b);
+    }
+}
+
 // A recursive function that finds and prints bridges using // DFS traversal
 // u         --> The vertex to be visited next
 // visited[] --> keeps track of visited vertices
@@ -185,13 +196,17 @@ void Graph::bridgeUtil(int u, bool visited[], int disc[],  int low[], int parent
 	visited[u]       = true;     // Mark the current node as visited
 	disc[u] = low[u] = ++time;   // Initialize discovery time and low value
 	list<int>::iterator i;       // Go through all vertices adjacent to this
+
 	for (i = adj[u].begin(); i != adj[u].end(); ++i){
 		int v = *i; // v is current adjacent of u
 		if (!visited[v]){   // If v is not visited yet, then recur for it
 			parent[v] = u;
 			bridgeUtil( v, visited, disc, low, parent );
 			low[u] = min(low[u], low[v]);                        // Check if the subtree rooted with v has a connection to one of the ancestors of u
-			if (low[v] > disc[u]) printf( "%i %i \n", u, v );   // If the lowest vertex reachable from subtree under v is below u in DFS tree, then u-v is a bridge
+			if (low[v] > disc[u]){   // If the lowest vertex reachable from subtree under v is below u in DFS tree, then u-v is a bridge
+                printf( "%i %i \n", u, v );
+                found.push_back( (Vec2i){u,v} );
+            }
 		} else if (v != parent[u])  low[u] = min(low[u], disc[v]);  // Update low value of u for parent function calls.
 	}
 }
