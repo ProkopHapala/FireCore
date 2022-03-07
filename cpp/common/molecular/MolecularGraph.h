@@ -15,6 +15,14 @@ class MolecularGraph{ public:
     int*   ngIs=0;
     int*   atom2bond=0;
     int*   atom2neigh=0;
+
+    // for the bidge-algorithm
+    bool *visited = 0; // new bool[V];
+    int  *disc    = 0; // new int[V];
+    int  *low     = 0; // new int[V];
+    int  *parent  = 0; // new int[V];
+    std::vector<int> foundBonds;
+
     int*   amask=0;
     int*   bmask=0;
 
@@ -138,6 +146,44 @@ class MolecularGraph{ public:
         }
     }
 
+
+    void bridgeUtil( int u ) {
+        static int time = 0;                 // A static variable is used for simplicity, we can avoid use of static variable by passing a pointer.
+        visited[u]      = true;              // Mark the current node as visited
+        disc[u]         = low[u] = ++time;   // Initialize discovery time and low value
+        //list<int>::iterator i;             // Go through all vertices adjacent to this
+        //for (i = adj[u].begin(); i != adj[u].end(); ++i){
+        int  i0 =ngIs[u];
+        int  ng =ngNs[u];
+        int* ngs=atom2neigh+i0;
+        for (int i=0; i<ng; ++i){
+            int v =  ngs[i];    // v is current adjacent of u
+            if (!visited[v]){   // If v is not visited yet, then recur for it
+                parent[v] = u;
+                bridgeUtil( v );
+                low[u] = _min( low[u], low[v] );   // Check if the sub-tree rooted with v has a connection to one of the ancestors of u
+                if ( low[v] > disc[u] ){        // If the lowest vertex reachable from subtree under v is below u in DFS tree, then u-v is a bridge
+                    //printf( "%i %i \n", u, v );
+                    //found.push_back( (Vec2i){u,v} );
+                    foundBonds.push_back( atom2bond[ i0+i ] );
+                }
+            } else if (v != parent[u])  low[u] = _min(low[u], disc[v]);  // Update low value of u for parent function calls.
+        }
+    }
+
+    // DFS based function to find all bridges. It uses recursive function bridgeUtil()
+    void findBridges(){
+        visited = new bool[natom];
+        disc    = new int [natom];
+        low     = new int [natom];
+        parent  = new int [natom];
+        for (int i=0; i<natom; i++){ // Initialize parent and visited arrays
+            parent [i] = -1;
+            visited[i] = false;      // Mark all the vertices as not visited
+        }
+        for (int i=0; i<natom; i++) if (visited[i] == false) bridgeUtil(i);  // Call the recursive helper function to find Bridges in DFS tree rooted with vertex 'i'
+    }
+
 };
 
 
@@ -196,7 +242,6 @@ void Graph::bridgeUtil(int u, bool visited[], int disc[],  int low[], int parent
 	visited[u]       = true;     // Mark the current node as visited
 	disc[u] = low[u] = ++time;   // Initialize discovery time and low value
 	list<int>::iterator i;       // Go through all vertices adjacent to this
-
 	for (i = adj[u].begin(); i != adj[u].end(); ++i){
 		int v = *i; // v is current adjacent of u
 		if (!visited[v]){   // If v is not visited yet, then recur for it
@@ -213,15 +258,15 @@ void Graph::bridgeUtil(int u, bool visited[], int disc[],  int low[], int parent
 
 // DFS based function to find all bridges. It uses recursive function bridgeUtil()
 void Graph::bridge(){
-	bool *visited = new bool[V];
-	int *disc = new int[V];
-	int *low = new int[V];
-	int *parent = new int[V];
-	for (int i = 0; i < V; i++)	{   // Initialize parent and visited arrays
-		parent[i] = NIL;
-		visited[i] = false;          // Mark all the vertices as not visited
-	}
-	for (int i = 0; i < V; i++) if (visited[i] == false) bridgeUtil(i, visited, disc, low, parent);  // Call the recursive helper function to find Bridges in DFS tree rooted with vertex 'i'
+    bool *visited = new bool[V];
+    int *disc     = new int[V];
+    int *low      = new int[V];
+    int *parent   = new int[V];
+    for (int i = 0; i < V; i++)	{   // Initialize parent and visited arrays
+        parent[i] = NIL;
+        visited[i] = false;          // Mark all the vertices as not visited
+    }
+    for (int i = 0; i < V; i++) if (visited[i] == false) bridgeUtil(i, visited, disc, low, parent);  // Call the recursive helper function to find Bridges in DFS tree rooted with vertex 'i'
 }
 
 // Driver program to test above function
