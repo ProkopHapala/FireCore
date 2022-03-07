@@ -80,11 +80,14 @@ class TestAppDirectionStiffness : public AppSDL2OGL_3D { public:
     MM::Builder builder;
     DynamicOpt  opt;
 
+    Graph* graph2=0;
     MolecularGraph graph;
     Deformer deformer;
     int ndeform=0;
     int deform_Nsteps=50;
     int deform_K     =10.0;
+
+
 
     int* atypes = 0;
 
@@ -169,9 +172,9 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
 
     readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
     molecules.push_back( new Molecule() ); molecules[0]->atomTypeDict = builder.atomTypeDict; molecules[0]->load_xyz("common_resources/polymer-2.xyz", true);
-    molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", true);
+    //molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", true);
     builder.insertFlexibleMolecule(  molecules[0], {0,0,0}       , Mat3dIdentity, -1 );
-    builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
+    //builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
 
     builder.lvec.a.x *= 2.3;
 
@@ -204,6 +207,11 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
     graph.bindOrRealloc( ff.natoms, ff.nbonds, ff.bond2atom );
     graph.makeNeighbors();
     graph.printNeighs();
+    //exit(0);
+
+    graph2 = new Graph( builder.confs.size());
+    graph2->fromBonds( ff.nbonds, ff.bond2atom );
+    graph2->bridge();
     //exit(0);
 
     deformer.bind( ff.natoms, ff.apos, ff.aforce );
@@ -310,6 +318,7 @@ void TestAppDirectionStiffness::draw(){
     //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
     glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	glEnable(GL_DEPTH_TEST);
 
     if(frameCount==1){
 
@@ -341,26 +350,15 @@ void TestAppDirectionStiffness::draw(){
         MDloop();
     }
 
+
     drawSystem();
     glColor3f(0.,1.,0.); for(int i=0; i<deformer.npick; i++){  int ia=deformer.picks[i]; Draw3D::drawVecInPos(deformer.aforce[ia]*15.0,deformer.apos[ia]); }
 
-    /*
-    for(int i=0; i<selection.size(); i++){
-        int ia = selection[i];
-        glColor3f( 0.f,1.f,0.f );
-        Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );
+    glDisable(GL_DEPTH_TEST);
+    glColor3f(0.,1.,1.);
+    for(const Vec2i& b : graph2->found ){
+        Draw3D::drawLine( ff.apos[b.a], ff.apos[b.b] );
     }
-
-    if(iangPicked>=0){
-        glColor3f(0.,1.,0.);
-        Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
-    }
-
-    if(makeScreenshot){
-        saveScreenshot( icell );
-        icell++;
-    }
-    */
 
 };
 
