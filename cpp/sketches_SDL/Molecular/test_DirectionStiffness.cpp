@@ -22,6 +22,7 @@
 
 #include "Molecule.h"
 #include "MMFFmini.h"
+#include "MMFFsp3.h"
 #include "NBFF.h"
 #include "MMFFparams.h"
 #include "MMFFBuilder.h"
