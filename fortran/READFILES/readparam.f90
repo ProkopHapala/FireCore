@@ -78,7 +78,10 @@ subroutine set_default_params ()
         !ihorsfield = 0
         imcweda = 1
 !       ixczw = 0
-        !iks = 0
+        iks   = 0
+        igrid = 0
+        iwrtewf = 0
+
         igsn = 0
         iqout = 1
         qstate = 0.0d0
@@ -255,6 +258,7 @@ Namelist /output/                          iwrtxyz
 Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
                                          iqout, qstate, icluster, ifixcharge, ifixneigh,   &
                                          iimage,  &
+                                         iks, igrid, iwrtewf,  &
                                          iconstraints, basisfile, lvsfile, nstepf,  force_tol,  &
                                          max_scf_iterations, bmix, sigmatol, tempfe,  &   ! ialgmix, 
                                          kptpreference,         &
@@ -274,7 +278,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
 
          write (*,*) '  '
          write (*,100)
-         write (*,*) ' Now reading file fireball.in '
+         write (*,*) ' Now reading file fireball.in  XXXXXXXXX '
          write (*,*) '  '
          write (*,*) '  '
 

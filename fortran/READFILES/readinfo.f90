@@ -97,8 +97,8 @@
 ! jel-grid
         character (len=1)  :: charx
         integer nchar
-        character (len=25), dimension (:,:), allocatable :: wavefxn
-        character (len=25), dimension (:,:), allocatable :: napot
+!        character (len=25), dimension (:,:), allocatable :: wavefxn
+!        character (len=25), dimension (:,:), allocatable :: napot
 ! end jel-grid
  
         logical skip_it

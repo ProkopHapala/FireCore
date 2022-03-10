@@ -172,13 +172,11 @@
 !         real, dimension (:, :, :, :), allocatable :: vxc_3c
 ! ! END_DEF_gauss
 
-! ! IF_DEF_grid
-! ! jel-grid
-! ! These variables contains names of wavefunction and potential files
-!         character (len=25), dimension (:,:), allocatable :: wavefxn
-!         character (len=25), dimension (:,:), allocatable :: napot
-! ! end jel-grid
-! ! END_DEF_grid
+! IF_DEF_GRID
+! These variables contains names of wavefunction and potential files
+         character (len=25), dimension (:,:), allocatable :: wavefxn
+         character (len=25), dimension (:,:), allocatable :: napot
+! END_DEF_GRID
 
 ! ! IF_DEF_ZW
 ! ! new zw mcweda

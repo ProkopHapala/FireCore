@@ -101,19 +101,19 @@
        ! allocate (rhoPP_es (numorb_max, numorb_max, neighPP_max**2, natoms))
 
 
-! ! IF_DEF_GRID
-!         if (igrid .eq. 1) then
-!          allocate (rhoA (numorb_max, natoms))
-!          allocate (rho_old (numorb_max, numorb_max, neigh_max, natoms))
-!          ndim = numorb_max*numorb_max*neigh_max*natoms
-!          allocate (rho_in (ndim))
-!          allocate (rho_out (ndim))
-!          if (ialgmix .eq. 4) then 
-!            allocate (mwe (ndim))
-!            allocate (drwe (ndim))
-!          endif
-!         endif 
-! ! END_DEF_GRID
+! IF_DEF_GRID
+         if (igrid .eq. 1) then
+          allocate (rhoA (numorb_max, natoms))
+          allocate (rho_old (numorb_max, numorb_max, neigh_max, natoms))
+          ndim = numorb_max*numorb_max*neigh_max*natoms
+          allocate (rho_in (ndim))
+          allocate (rho_out (ndim))
+          !if (ialgmix .eq. 4) then 
+          !  allocate (mwe (ndim))
+          !  allocate (drwe (ndim))
+          !endif
+         endif 
+! END_DEF_GRID
 
 ! ! Pulay mixing
 !         if ((ialgmix .eq. 4) .and. (igrid .ne. 1)) then 

@@ -327,11 +327,11 @@ subroutine initbasics ()
 ! We originally use the neutral atom charges from the info.dat file.
 ! If this is a restart run, or the user wishes to start with charges other
 ! than the neutral atom stuff, then information is read in from a charge file.
-!        if (iKS .eq. 1) then                                                 ! IF_DEF_GRID_END
-!         call initcharges_KS (natoms, nspecies, itheory, ifixcharge, symbol) ! IF_DEF_GRID_END
-!        else                                                                 ! IF_DEF_GRID_END
-   call initcharges (natoms, nspecies, itheory, ifixcharge, symbol)
-!        endif                                                                ! IF_DEF_GRID_END
+    if (iKS .eq. 1) then                                                 ! IF_DEF_GRID_END
+         call initcharges_KS (natoms, nspecies, itheory, ifixcharge, symbol) ! IF_DEF_GRID_END
+    else                                                                 ! IF_DEF_GRID_END
+        call initcharges (natoms, nspecies, itheory, ifixcharge, symbol)
+   endif                                                                ! IF_DEF_GRID_END
 
    call countIsorp()
 
@@ -367,22 +367,29 @@ subroutine initbasics ()
 ! Initialize the amat array for twister routines and set haveDorbitals
    call initamat(nspecies)
 
-! ! IF_DEF_GRID
-! ! check if we need the grid
-!        igrid = 0
-!        if (iwrtden .eq. 1) igrid = 1
-!        if (iwrtewf .eq. 1) igrid = 1
-!        if (iks     .eq. 1) igrid = 1
-!        if (iwrtdipole .eq. 1) igrid = 1
-!        if (igrid    .eq. 1) then
-! ! call readgrid before initconstraints subroutine to avoid atom shift
-! ! when we fix the mesh position
-!          call readgrid (iwrtewf)
-!        endif
-! ! END_DEF_GRID
+! IF_DEF_GRID
+! check if we need the grid
+        !igrid = 0
+        !if (iwrtden .eq. 1) igrid = 1
+        !if (iwrtewf .eq. 1) igrid = 1
+        !if (iks     .eq. 1) igrid = 1
+        !if (iwrtdipole .eq. 1) igrid = 1
+        if (igrid    .eq. 1) then
+!    call readgrid before initconstraints subroutine to avoid atom shift  when we fix the mesh position
+          call readgrid !(iwrtewf)
+          call allocate_grid !(natoms, nspecies)
+          write (*,*) ' call read_wf'
+          call read_wf ()
+          write (*,*) ' call read_vna'
+          call read_vna ()
+          write (*,*) ' initialize grid'
+          call initgrid !(icluster)
+         endif
+! END_DEF_GRID
 
-! ! IF_DEF_GRID
-! ! read bais option
+
+! IF_DEF_BIAS
+! read bais option
 !         if (ibias .eq. 1) then
 !          write (*,*) ' Read bias parameters'
 !          call readbias (natoms)
@@ -395,17 +402,7 @@ subroutine initbasics ()
 !       call initconstraints (iconstraints, iensemble, T_initial, ibarrier, ratom_final, imass,  fixCenOfMass, rcmOld, xmassTot) ! IF_DEF_MD_END
 !       initialPosition = ratom !do this POST shift
 
-! ! IF_DEF_GRID
-!        if (igrid .eq. 1) then
-!          call allocate_grid (natoms, nspecies)
-!          write (*,*) ' call read_wf'
-!          call read_wf ()
-!          write (*,*) ' call read_vna'
-!          call read_vna ()
-!          write (*,*) ' initialize grid'
-!          call initgrid (icluster)
-!         endif
-! ! END_DEF_GRID
+
 
 ! NEB
 ! initialize parameters of NEB methof
@@ -464,23 +461,20 @@ subroutine initbasics ()
 !         end if
 ! ! END_DEF_TRANS
 
-! ! IF_DEF_GRID
-! ! jel-grid
-! ! Initialize the density matrix
-!         if (igrid .eq. 1 ) then
-!          call neighbors (nprocs, my_proc, iordern, icluster,      &
-!      &                      iwrtneigh, ivdw)
-!          !SFIRE  APRIL 2018
-!          call neighbors_pairs(icluster)
-!          !SFIRE  APRIL 2018
-!          write (*,*) 'Initialize density matrix'
-!          call initdenmat (natoms)
-! ! end jel-grid
-! ! END_DEF_GRID
+! IF_DEF_GRID
+    if (igrid .eq. 1 ) then
+          call neighbors !(nprocs, my_proc, iordern, icluster,   iwrtneigh, ivdw)
+          !SFIRE  APRIL 2018
+          call neighbors_pairs ! (icluster)
+          !SFIRE  APRIL 2018
+          write (*,*) 'Initialize density matrix'
+          call initdenmat ! (natoms)
+    end if
+! END_DEF_GRID
 
 ! ! IF_DEF_classicMD
 ! !CHROM
-!         elseif ( iclassicMD > 0 .and. igrid /= 1 )then
+!         if ( iclassicMD > 0 .and. igrid /= 1 )then
 ! 		 	call neighbors (nprocs, my_proc, iordern, icluster, iwrtneigh, ivdw)
 !                          !SFIRE  APRIL 2018
 !                         call neighbors_pairs(icluster)
