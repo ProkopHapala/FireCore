@@ -278,7 +278,7 @@ Namelist /option/ iharris, idogs, imcweda, igsn, ivec_2c, ivec_3c, i2dlin, &
 
          write (*,*) '  '
          write (*,100)
-         write (*,*) ' Now reading file fireball.in  XXXXXXXXX '
+         write (*,*) ' Now reading file fireball.in '
          write (*,*) '  '
          write (*,*) '  '
 
