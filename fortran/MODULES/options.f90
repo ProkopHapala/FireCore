@@ -28,8 +28,9 @@
 !        integer ixczw                  ! Second order XC theory ( Diego )                               ! IF_DEF_IXCZW_END
 !        integer ihorsfield  ! version of SCF SN not work well for condensed systems, McWeda is corrected version of this  ! IF_DEF_HORSFIELD_END
 !        integer ihubbard    ! simple kind of Hubbard_U / LDA+U, not used, can remove                    ! IF_DEF_HUBBARD_END
-!        integer iks          ! Kohn-Sahm Grid                                                           ! IF_DEF_KS_END
-
+        integer iks          ! Kohn-Sahm Grid                                                            ! IF_DEF_GRID_END
+        integer igrid        ! the grid projection                                                       ! IF_DEF_GRID_END
+        integer iwrtewf      ! write out wavefunctions                                                   ! IF_DEF_GRID_END
 !        integer igauss     ! Use gaussian approximation to 3-center                                     ! IF_DEF_GAUSS_END 
 
         integer idipole     ! Long range term with XYZ dipole (correction of long range electrostatics, problem in PBC)
@@ -77,7 +78,6 @@
 
 ! ====== Optional Modules - I/O & Misc
 
-!        integer igrid                  ! the grid projection            ! IF_DEF_KS_END
 !        integer isocket                ! socket for i-pi ( Jesus )      ! IF_DEF_socket_END
 
 ! ====== Switches affecting Electronic Solution 

@@ -155,7 +155,9 @@ def toMakefile_cc_kind( fout, o, pre="", cc_kinds=CC_KINDS, inv_SPECIAL_CC={}, d
 
 #def toMakefile_cc_objs( fout, group_dict, group_names, var_names, special_cc={}, src_path="", ccomment='*', ncomment=50 ):
 def toMakefile_cc_objs( fout, group_dict, group_names, var_names, cc_kinds=CC_KINDS, inv_SPECIAL_CC={}, default_cc="F90", src_path="", ccomment='*', ncomment=50 ):
+    #print "!!!!!!!!!!!! DEBUG : toMakefile_cc_objs group_names: ", group_names 
     for name in group_names:
+        #print "name ", name
         varinants = group_dict[name]
         fout.write("\n\n")
         cmline = "#"   +(ccomment*ncomment)+"\n"

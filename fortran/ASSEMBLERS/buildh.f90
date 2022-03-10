@@ -217,7 +217,7 @@
 !           enddo ! do ineigh
 !          enddo ! do iatom
 !         endif ! if(ibias)
-! ! END_DEF_BIAS_END
+! ! END_DEF_BIAS
 
 
 ! We set matrix elements equal to zero if outside our test range.

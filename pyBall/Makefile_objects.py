@@ -9,7 +9,7 @@ SPECIAL_CC={
 
 # =================== GROUPS (MODULES) AND OPTIONS (VARIANTS)
 
-all_group_names = ['MODULES','MATH','MAIN','DASSEMBLERS','INTERACTIONS','ALLOCATIONS','ASSEMBLERS','INITIALIZERS','INTERPOLATERS','NEIGHBORS','READFILES','ROTATIONS']
+all_group_names = ['MODULES','MATH','MAIN','DASSEMBLERS','INTERACTIONS','ALLOCATIONS','ASSEMBLERS','INITIALIZERS','INTERPOLATERS','NEIGHBORS','READFILES','ROTATIONS','GRID']
 
 #all_modes   = [ 'DOUBLE', 'GAMMA','OPENMP', 'MPI-k', 'SCALAPACK', 'LAPACK95','ORDERN'   ]
 all_modes    = [ 'GAMMA'  ]
@@ -43,6 +43,7 @@ GROUPS = {
 'wavefunction',
 'options',
 'energy',
+'grid',
 #'scf',
 'loops',
 'workmat',
@@ -214,6 +215,32 @@ GROUPS = {
 'getforces',
 ],
 }, #END DASSEMBLERS
+
+'GRID' : {
+'' : [
+    # Project Orbitals on Grid
+    'read_wf',
+    'read_vna',
+    'readgrid',
+    'initgrid',
+    'allocate_grid',
+    'project_orb',
+    'project_orb_complex',
+    #  Khon-Sham SCF loop
+    'readdata_KS',
+    'initcharges_KS',
+    'initdenmat',
+    'ceperley_alder',
+    'assemble_KS_mat',
+    'assemble_KS_usr',
+    'assemble_KS_dcc',
+    'assemble_KS_den0',
+    'assemble_KS_den',
+    'assemble_KS_vna',
+    'laplace_fft',
+    'mixer_KS',
+    ],
+}, #END GRID
 
 'MAIN' : {
 '' : [

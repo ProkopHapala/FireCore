@@ -20,10 +20,10 @@
 !         real, dimension (:, :, :, :), allocatable :: rho_es
 !         real, dimension (:, :, :, :), allocatable :: rhoPP_es
 
-! jel-grid
-        !  real, dimension (:, :), allocatable :: rhoA
-        !  real, dimension (:, :, :, :), allocatable :: rho_old
-! end jel-grid
+! IF_DEF_GRID
+          real, dimension (:, :), allocatable :: rhoA
+          real, dimension (:, :, :, :), allocatable :: rho_old
+! END_DEF_GRID
 
 ! These arrays store stuff related to the average density.
 ! Used in the OLSXC exchange-correlation interactions.

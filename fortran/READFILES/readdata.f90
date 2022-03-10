@@ -130,12 +130,13 @@
 !         return
 !        endif
 
-! read Kohn_Sham data
-!        if (iks .eq. 1) then
-!         call readdata_KS ()
-!         return
-!        endif
-
+! IF_DEF_GRID
+        if (iks .eq. 1) then
+         call readdata_KS ()
+         return
+        endif
+! END_DEF_GRID
+        
 ! read Horsfield data
 !        if (itheory_xc .eq. 0) then
 !          call readdata_hxc ()
@@ -158,8 +159,8 @@
 !classical solution only
 !		elseif (ihubbard .eq. 1) then           ! IF_DEF_hubbard_END
 !			call readdata_eh ()                 ! IF_DEF_hubbard_END
-!		elseif (iks .eq. 1) then                ! IF_DEF_GRID_END
-!		 	call readdata_KS ()                 ! IF_DEF_GRID_END  
+		elseif (iks .eq. 1) then                ! IF_DEF_GRID_END
+		 	call readdata_KS ()                 ! IF_DEF_GRID_END  
 !		elseif (itheory_xc .eq. 0) then         ! IF_DEF_Horsfield_END
 !			call readdata_hxc ()  ! Horsfield   ! IF_DEF_Horsfield_END
 !        elseif (itheory_xc .eq. 4) then        ! IF_DEF_zw_END

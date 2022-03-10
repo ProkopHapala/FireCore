@@ -117,26 +117,24 @@
          allocate (rhoi_on (numorb_max, numorb_max, natoms))
         end if    
 
-! ! IF_DEF_GRID
-! ! jel-grid
-!         if (igrid .eq. 1) then
-!          deallocate (rho_in)
-!          deallocate (rho_out)
-!          ndim = numorb_max*numorb_max*neigh_max*natoms
-!          allocate (rho_in (ndim))
-!          allocate (rho_out (ndim))
-!          if (ialgmix .eq. 4) then
-!            deallocate (mwe)
-!            deallocate (drwe)
-!            allocate (drwe (ndim))
-!            allocate (mwe (ndim))
-!          endif
-! ! save the old density matrix
-!          deallocate (rho_old) 
-!          allocate (rho_old (numorb_max, numorb_max, neigh_max, natoms))
-!         endif
-! ! end jel-grid
-! ! END_DEF_GRID
+! IF_DEF_GRID
+         if (igrid .eq. 1) then
+          deallocate (rho_in)
+          deallocate (rho_out)
+          ndim = numorb_max*numorb_max*neigh_max*natoms
+          allocate (rho_in (ndim))
+          allocate (rho_out (ndim))
+          !if (ialgmix .eq. 4) then
+          !  deallocate (mwe)
+          !  deallocate (drwe)
+          !  allocate (drwe (ndim))
+          !  allocate (mwe (ndim))
+          !endif
+! save the old density matrix
+          deallocate (rho_old) 
+          allocate (rho_old (numorb_max, numorb_max, neigh_max, natoms))
+         endif
+! END_DEF_GRID
 
 ! ! Pulay mixing
 !         if ((ialgmix .eq. 4) .and. (igrid .ne. 1)) then
