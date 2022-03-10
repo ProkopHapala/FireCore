@@ -12,9 +12,24 @@ program fireball
     use density
     use kpoints
     use charges
+    use grid
     use debug
     use timing
     implicit none
+
+    interface
+    subroutine writeout_xsf (xsfname, message, aa)
+     real, dimension (:), pointer, intent (in) :: aa
+     character (len=40) xsfname
+     character (len=30) message
+    end
+    end interface
+    interface
+    subroutine  project_orb(iband,ewfaux)
+        integer iband
+        real, dimension (:), pointer, intent (out) :: ewfaux
+       end
+    end interface
 
     ! ====== global variables
 
@@ -25,6 +40,11 @@ program fireball
 
     real time_begin
     real time_end
+
+    real,  target,  dimension (:), allocatable :: ewfaux
+    real,  pointer, dimension (:)              :: pewf
+    character (40) namewf
+    character (30) mssg
 
     ! ====== Body
 
@@ -103,6 +123,16 @@ program fireball
             exit
         endif
     end do ! istepf
+
+    if(iwrtewf .gt. 0) then
+        allocate   ( ewfaux(0:nrm-1))
+        pewf => ewfaux
+        call project_orb( 2, pewf )
+        write( namewf, '(A,i4.4,A)') 'bandplot_',1,'.xsf'
+        mssg = 'density_3D'
+        call writeout_xsf ( namewf, mssg, pewf )
+        deallocate ( ewfaux )
+    end if
 
     call cpu_time (time_end)
 

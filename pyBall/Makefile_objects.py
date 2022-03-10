@@ -226,6 +226,8 @@ GROUPS = {
     'allocate_grid',
     'project_orb',
     'project_orb_complex',
+    'ew2mesh',
+    'writeout_xsf',
     #  Khon-Sham SCF loop
     'readdata_KS',
     'initcharges_KS',
