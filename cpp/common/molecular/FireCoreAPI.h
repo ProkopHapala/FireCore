@@ -22,7 +22,7 @@ typedef void (*P_1d         )(double*);
 typedef void (*P_proc       )();
 
 typedef void (*P_getGridMO)(int,double*);
-typedef void (*P_setupGrid)(double,int,double*);
+typedef void (*P_setupGrid)(double,int,double*,int*,double*);
 
 class Lib{ public:
     void        *lib_handle = 0;

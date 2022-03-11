@@ -279,7 +279,7 @@ subroutine firecore_getCharges( charges_ )  bind(c, name='firecore_getCharges')
     !write(*,*) "DEBUG firecore_getCharges END"
 end subroutine
 
-subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_  )  bind(c, name='firecore_setupGrid' )
+subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_,    ngrid, dCell  )  bind(c, name='firecore_setupGrid' )
     use iso_c_binding
     use grid
     use configuration
@@ -291,28 +291,23 @@ subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_  )  bind(c, name='firecore_se
     real   (c_double)               ,intent(in),value :: Ecut_
     integer(c_int)                  ,intent(in),value :: ifixg0_
     real   (c_double), dimension (3),intent(in) :: g0_
+    integer(c_int),    dimension (3),intent(out) :: ngrid
+    real   (c_double), dimension (3,3),intent(out) :: dCell
     !call readgrid !(iwrtewf)
     ! Namelist /mesh/ Ecut, iewform, npbands, pbands, ewfewin_max, ewfewin_min, ifixg0, g0
     ! ========= Body
-    write (*,*) "DEBUG firecore_setupGrid 1"
-    write (*,*) "DEBUG firecore_setupGrid 1", Ecut_
     Ecut   = Ecut_
-    write (*,*) "DEBUG firecore_setupGrid 1.1"
-    write (*,*) "DEBUG firecore_setupGrid 1", ifixg0_
     ifixg0 = ifixg0_
-    write (*,*) "DEBUG firecore_setupGrid 1.2"
-    write (*,*) "DEBUG firecore_setupGrid 1", g0_
     g0(:)  = g0_(:)
-    write (*,*) "DEBUG firecore_setupGrid 2"
     call allocate_grid !(natoms, nspecies)
-    write (*,*) "DEBUG firecore_setupGrid 3"
     call read_wf ()
-    write (*,*) "DEBUG firecore_setupGrid 4"
     call read_vna ()
-    write (*,*) "DEBUG firecore_setupGrid 5"
     ! np(i) = int (2 * sqrt(Ecut) / (cvec(i)*abohr) + 1)     
     call initgrid !(icluster)
-    write (*,*) "DEBUG firecore_setupGrid 6"
+    ngrid(1)=rm1
+    ngrid(2)=rm1
+    ngrid(3)=rm1
+    dCell(:,:) = elvec(:,:)
 end subroutine
 
 subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' )
