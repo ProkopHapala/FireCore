@@ -36,7 +36,9 @@
 //#include "NBSRFF.h"
 #include "IO_utils.h"
 
+#include "MarchingCubes.h"
 #include "MolecularDraw.h"
+
 #include "AppSDL2OGL_3D.h"
 
 int idebug=0;
@@ -56,6 +58,8 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     DynamicOpt  opt;
     FireCore::Lib  fireCore;
     FireCore::QMMM qmmm;
+
+    GridShape MOgrid;
 
     int* atypes = 0;
     int* atypeZ = 0;
@@ -87,6 +91,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     int  ogl_sph=0;
     int  ogl_mol=0;
     int  ogl_isosurf=0;
+    int  ogl_MO = 0;
 
     char str[256];
 
@@ -121,6 +126,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 
 	void drawSystem( );
     void drawSystemQMMM();
+    void renderOrbital(int i);
 
 	void selectShorterSegment( const Vec3d& ro, const Vec3d& rd );
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
@@ -199,7 +205,10 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     fireCore.set_lvs( (double*)&(builder.lvec) );
     fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
     double tmp[3]{0.,0.,0.};
-    fireCore.setupGrid( 100.0, 0, tmp );
+    fireCore.setupGrid( 100.0, 0, tmp, (int*)&MOgrid.n, (double*)&MOgrid.dCell );
+    MOgrid.printCell();
+    //exit(0);
+
     qmmm.bindFireCoreLib( fireCore );
 
     //_list2array(int,qmmm.nqm,#{4,5,10,11,  8,23},qmmm.imms);
@@ -244,6 +253,18 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     params.printAtomTypeDict();
     printf( " # ==== SETUP DONE ==== \n" );
 }
+
+
+void TestAppMMFFmini::renderOrbital(int iMO ){
+    double* ewfaux = new double[MOgrid.n.x,MOgrid.n.y,MOgrid.n.z];
+    fireCore.getGridMO( iMO, ewfaux );
+    ogl_MO  = glGenLists(1);
+    glNewList(ogl_isosurf, GL_COMPILE);
+    Draw3D::MarchingCubesCross( MOgrid, 0.01, ewfaux  );
+    glEnd();
+    delete [] ewfaux;
+}
+
 
 //=================================================
 //                   MDloop()
@@ -518,7 +539,7 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
         params.assignREs( mol.natoms, mol.atomType, mol.REQs );
         mol.autoAngles(true);
         Vec3d cog = mol.getCOG_av();
-        mol.addToPos( cog*-1.0d );
+        mol.addToPos( cog*-1.0 );
         builder.insertMolecule(&mol, Vec3dZero, Mat3dIdentity, false );
         builder.toMMFFmini( ff, &params );
     }
@@ -646,6 +667,9 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
+
+
+                case SDLK_m: renderOrbital( 2 ); break;
 
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );

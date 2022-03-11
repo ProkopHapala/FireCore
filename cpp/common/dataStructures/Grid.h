@@ -561,7 +561,6 @@ void saveXSF( char * fname, GridShape& grid, double * FF, int natoms, Vec3d * ap
     fclose(fout);
 }
 
-
 #endif
 
 
