@@ -198,6 +198,8 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     fireCore.preinit( );
     fireCore.set_lvs( (double*)&(builder.lvec) );
     fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
+    double tmp[3]{0.,0.,0.};
+    fireCore.setupGrid( 100.0, 0, tmp );
     qmmm.bindFireCoreLib( fireCore );
 
     //_list2array(int,qmmm.nqm,#{4,5,10,11,  8,23},qmmm.imms);
