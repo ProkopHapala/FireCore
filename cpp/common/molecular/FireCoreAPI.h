@@ -12,11 +12,17 @@ namespace FireCore{
 //typedef void (*Pprocedure)();
 //typedef void (*Pfirecore_evalForce)(int,double*);
 
+//subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' )
+//subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_  )  bind(c, name='firecore_setupGrid' )
+
 typedef void (*P_evalForce  )(int,double*,double*);
 typedef void (*P_init       )(int,int*,double*);
 //typedef void (*P_getCharges )(double*);
 typedef void (*P_1d         )(double*);
 typedef void (*P_proc       )();
+
+typedef void (*P_getGridMO)(int,double*);
+typedef void (*P_setupGrid)(double,int,double*);
 
 class Lib{ public:
     void        *lib_handle = 0;
@@ -27,9 +33,11 @@ class Lib{ public:
 
     P_proc preinit=0;
 
+    P_getGridMO getGridMO=0;
+    P_setupGrid setupGrid=0;
+
     //P_1d getp_ratom=0;
     //P_1d getp_ftot =0;
-
 
     inline int loadLib( const char* fullname ){
         char *error;
@@ -50,6 +58,11 @@ class Lib{ public:
         if ((error = dlerror())){ printf("%s\n", error); set_lvs=0; exit(0); }
 
         preinit    = (P_proc)dlsym(lib_handle, "firecore_preinit");
+        if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
+
+        getGridMO    = (P_getGridMO)dlsym(lib_handle, "firecore_getGridMO");
+        if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
+        setupGrid    = (P_setupGrid)dlsym(lib_handle, "firecore_setupGrid");
         if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
 
         //getp_ratom = (P_1d)dlsym(lib_handle, "firecore_getPointer_ratom");

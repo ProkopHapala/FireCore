@@ -67,7 +67,8 @@
 ! ===========================================================================
 ! Input
 
-   real, dimension (:), pointer, intent (in) :: aa
+   !real, dimension (:), pointer, intent (in) :: aa
+   real, dimension (nrm), intent (in) :: aa
    character (len=40) xsfname
    character (len=30) message
    !character (:) xsfname
@@ -156,7 +157,7 @@
         endif
 ! mapping index within the regular mesh
         index = i0 + rm1*j0 + rm1*rm2*k0
-        write (302,200) aa(index)
+        write (302,200) aa(index+1)
       enddo ! do i
     enddo ! do j
   enddo ! do k

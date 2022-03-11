@@ -89,7 +89,8 @@
 ! Input
 
    integer iband
-   real, dimension (:), pointer, intent (out) :: ewfaux
+   !real, dimension (:), pointer, intent (out) :: ewfaux
+   real, dimension (nrm), intent (out) :: ewfaux
    ! real, target, dimension (:), allocatable :: ewfaux
 
 !Output
@@ -141,9 +142,6 @@
 
 ! Procedure
 ! ===========================================================================
-
-
-!write (*,*) " HEY ! project_orb   HERE! "
 
     ewfaux = 0.0d0
 

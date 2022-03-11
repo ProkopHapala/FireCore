@@ -277,7 +277,82 @@ subroutine firecore_getCharges( charges_ )  bind(c, name='firecore_getCharges')
         charges_(:) = QLowdin_TOT(:)
     end if
     !write(*,*) "DEBUG firecore_getCharges END"
-end 
+end subroutine
+
+subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_  )  bind(c, name='firecore_setupGrid' )
+    use iso_c_binding
+    use grid
+    use configuration
+    implicit none
+    ! ========= Parameters
+    !integer(c_int),                 intent(in),value :: nmax_scf
+    !real(c_double), dimension(3,natoms), intent(in) :: positions_
+    !real(c_double), dimension(3,natoms), intent(out) :: forces_
+    real   (c_double)               ,intent(in),value :: Ecut_
+    integer(c_int)                  ,intent(in),value :: ifixg0_
+    real   (c_double), dimension (3),intent(in) :: g0_
+    !call readgrid !(iwrtewf)
+    ! Namelist /mesh/ Ecut, iewform, npbands, pbands, ewfewin_max, ewfewin_min, ifixg0, g0
+    ! ========= Body
+    write (*,*) "DEBUG firecore_setupGrid 1"
+    write (*,*) "DEBUG firecore_setupGrid 1", Ecut_
+    Ecut   = Ecut_
+    write (*,*) "DEBUG firecore_setupGrid 1.1"
+    write (*,*) "DEBUG firecore_setupGrid 1", ifixg0_
+    ifixg0 = ifixg0_
+    write (*,*) "DEBUG firecore_setupGrid 1.2"
+    write (*,*) "DEBUG firecore_setupGrid 1", g0_
+    g0(:)  = g0_(:)
+    write (*,*) "DEBUG firecore_setupGrid 2"
+    call allocate_grid !(natoms, nspecies)
+    write (*,*) "DEBUG firecore_setupGrid 3"
+    call read_wf ()
+    write (*,*) "DEBUG firecore_setupGrid 4"
+    call read_vna ()
+    write (*,*) "DEBUG firecore_setupGrid 5"
+    ! np(i) = int (2 * sqrt(Ecut) / (cvec(i)*abohr) + 1)     
+    call initgrid !(icluster)
+    write (*,*) "DEBUG firecore_setupGrid 6"
+end subroutine
+
+subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' )
+    use iso_c_binding
+    use grid
+    use configuration
+    implicit none
+    ! ========= Parameters
+    integer(c_int) iMO
+    real(c_double), dimension (nrm), intent(out) :: ewfaux
+    !real(c_double), dimension(3,natoms_), intent(in)        :: atomsPos
+    ! ========= Interfaces
+    !interface
+    !subroutine writeout_xsf (xsfname, message, aa)
+    ! real, dimension (:), pointer, intent (in) :: aa
+    ! character (len=40) xsfname
+    ! character (len=30) message
+    !end
+    !end interface
+    !interface
+    !subroutine  project_orb(iband,ewfaux)
+    !    integer iband
+    !    real, dimension (:), pointer, intent (out) :: ewfaux
+    !   end
+    !end interface
+    ! ========= Variables
+    !real,  target,  dimension (:), allocatable :: ewfaux
+    !real,  pointer, dimension (:)              :: pewf
+    !character (40) namewf
+    !character (30) mssg
+    ! ========= Body
+    !allocate   ( ewfaux(0:nrm-1))
+    !pewf => ewfaux
+    call project_orb( iMO, ewfaux )
+    !write( namewf, '(A,i4.4,A)') 'bandplot_',1,'.xsf'
+    !mssg = 'density_3D'
+    !call writeout_xsf ( namewf, mssg, pewf )
+    !deallocate ( ewfaux )
+end subroutine
+
 
 ! ==================================================
 ! ============ subroutine init_wfs
