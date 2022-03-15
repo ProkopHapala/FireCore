@@ -224,6 +224,7 @@ GROUPS = {
     'readgrid',
     'initgrid',
     'allocate_grid',
+    'project_dens',
     'project_orb',
     'project_orb_complex',
     'ew2mesh',

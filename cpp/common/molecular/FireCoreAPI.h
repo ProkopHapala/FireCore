@@ -21,7 +21,8 @@ typedef void (*P_init       )(int,int*,double*);
 typedef void (*P_1d         )(double*);
 typedef void (*P_proc       )();
 
-typedef void (*P_getGridMO)(int,double*);
+typedef void (*P_getGridMO  )(int,double*);
+typedef void (*P_getGridDens)(int,int,double*);
 typedef void (*P_setupGrid)(double,int,double*,int*,double*);
 
 class Lib{ public:
@@ -34,6 +35,7 @@ class Lib{ public:
     P_proc preinit=0;
 
     P_getGridMO getGridMO=0;
+    P_getGridDens getGridDens=0;
     P_setupGrid setupGrid=0;
 
     //P_1d getp_ratom=0;
@@ -61,6 +63,8 @@ class Lib{ public:
         if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
 
         getGridMO    = (P_getGridMO)dlsym(lib_handle, "firecore_getGridMO");
+        if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
+        getGridDens  = (P_getGridDens)dlsym(lib_handle, "firecore_getGridDens");
         if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
         setupGrid    = (P_setupGrid)dlsym(lib_handle, "firecore_setupGrid");
         if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
