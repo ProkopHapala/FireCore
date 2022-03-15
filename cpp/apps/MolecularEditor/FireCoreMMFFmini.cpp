@@ -126,7 +126,8 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 
 	void drawSystem( );
     void drawSystemQMMM();
-    void renderOrbital(int i);
+    void renderOrbital(int i, double iso=0.1);
+    void renderDensity(       double iso=0.1);
 
 	void selectShorterSegment( const Vec3d& ro, const Vec3d& rd );
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
@@ -255,7 +256,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 }
 
 
-void TestAppMMFFmini::renderOrbital(int iMO ){
+void TestAppMMFFmini::renderOrbital(int iMO, double iso ){
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
     fireCore.getGridMO( iMO, ewfaux );
@@ -267,13 +268,27 @@ void TestAppMMFFmini::renderOrbital(int iMO ){
     glNewList(ogl_MO, GL_COMPILE);
     //glColor3f(0.0,1.0,0.0);
     //glTranslatef( -p.x, -p.y, -p.z );
-    int ntris = Draw3D::MarchingCubesCross( MOgrid, 0.1, ewfaux  );
-    printf( "renderOrbital() ntris %i \n", ntris );
+    int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux  );
+    //printf( "renderOrbital() ntris %i \n", ntris );
     //int ntris = Draw3D::Grid2Points( MOgrid, 0.1, ewfaux );
     //glTranslatef( +p.x, +p.y, +p.z );
     glEndList();
     delete [] ewfaux;
 }
+
+void TestAppMMFFmini::renderDensity(double iso){
+    int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
+    double* ewfaux = new double[ ntot ];
+    fireCore.getGridDens( 0, 0, ewfaux );
+    ogl_MO  = glGenLists(1);
+    glNewList(ogl_MO, GL_COMPILE);
+    int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux  );
+    //printf( "renderOrbital() ntris %i \n", ntris );
+    glEndList();
+    delete [] ewfaux;
+}
+
+
 
 
 //=================================================
@@ -343,6 +358,8 @@ void TestAppMMFFmini::draw(){
     // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
     glEnable(GL_LINE_SMOOTH);
     glEnable(GL_BLEND);
+    glEnable(GL_LIGHTING );
+    glEnable(GL_DEPTH_TEST);
     //glDepthMask(false);
     //glLineWidth(lw);
     //glDrawArrays(GL_LINE_STRIP, offset, count);
@@ -363,12 +380,7 @@ void TestAppMMFFmini::draw(){
         //printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
     }
 
-    if(ogl_MO){ 
-        glEnable(GL_LIGHTING );
-        glEnable(GL_DEPTH_TEST);
-        glColor3f(1.0,1.0,1.0); 
-        glCallList(ogl_MO); return; 
-    }
+
 
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
 	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
@@ -381,11 +393,24 @@ void TestAppMMFFmini::draw(){
     bDoQM=1; bDoMM=0;
     if(bRunRelax){ MDloop(); }
 
+    
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    { 
+        glPushMatrix();
+        Vec3d c = builder.lvec.a*-0.5 + builder.lvec.b*-0.5 + builder.lvec.c*-0.5;
+        glTranslatef( c.x, c.y, c.z );
+        glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+        if(ogl_MO){ 
+
+            glColor3f(1.0,1.0,1.0); 
+            glCallList(ogl_MO); 
+            //return; 
+        }
+        glPopMatrix();
+    }
     //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift );
@@ -687,8 +712,8 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
-
                 case SDLK_m: renderOrbital( 1 ); break;
+                case SDLK_r: renderDensity(   ); break;
 
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );

@@ -318,26 +318,6 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     ! ========= Parameters
     integer(c_int), value :: iMO
     real(c_double), dimension (nrm), intent(out) :: ewfaux
-    !real(c_double), dimension(3,natoms_), intent(in)        :: atomsPos
-    ! ========= Interfaces
-    !interface
-    !subroutine writeout_xsf (xsfname, message, aa)
-    ! real, dimension (:), pointer, intent (in) :: aa
-    ! character (len=40) xsfname
-    ! character (len=30) message
-    !end
-    !end interface
-    !interface
-    !subroutine  project_orb(iband,ewfaux)
-    !    integer iband
-    !    real, dimension (:), pointer, intent (out) :: ewfaux
-    !   end
-    !end interface
-    ! ========= Variables
-    !real,  target,  dimension (:), allocatable :: ewfaux
-    !real,  pointer, dimension (:)              :: pewf
-    !character (40) namewf
-    !character (30) mssg
     real vmin,vmax
     integer i
     ! ========= Body
@@ -353,11 +333,20 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     end do
     write (*,*) "project_orb vmin, vmax ", vmin, vmax
     write (*,*) "DEBUG firecore_getGridMO 1"
-    !write( namewf, '(A,i4.4,A)') 'bandplot_',1,'.xsf'
-    !mssg = 'density_3D'
-    !call writeout_xsf ( namewf, mssg, pewf )
-    !deallocate ( ewfaux )
 end subroutine
+
+subroutine firecore_getGridDens( imo0, imo1, ewfaux )  bind(c, name='firecore_getGridDens' )
+    use iso_c_binding
+    use grid
+    use configuration
+    implicit none
+    ! ========= Parameters
+    integer(c_int), value :: imo0, imo1
+    real(c_double), dimension (nrm), intent(out) :: ewfaux
+    ! ========= Body
+    call project_dens( ewfaux )
+end subroutine
+
 
 
 ! ==================================================
