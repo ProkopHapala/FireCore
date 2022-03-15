@@ -318,43 +318,67 @@ static int triTable[256][16] =
 Vec3d LerpQ(Quat4d p1, Quat4d p2, double value){
 	Quat4d p;
 	if(p1.e != p2.e){
-        double c = 1/(p2.e-p1.e)*(value-p1.e);
+        double c = (value-p1.e)/(p2.e-p1.e);
 		p = p1 + (p2-p1)*c;
     }else{
 		p = p1;}
 	return p.f;
+   //vertex(p1.f);
+   //vertex(p2.f);
+   return p1.f;
 }
 
-void MarchingCubesCross( const GridShape& gs, double minValue, double* data ){
+int MarchingCubesCross( const GridShape& gs, double minValue, double* data ){
 	//this should be enough space, if not change 3 to 4
 	//TRIANGLE * triangles = new TRIANGLE[3*ncells.x*ncells.y*ncells.z];
 	//numTriangles = int(0);
 	int nxy = gs.n.y*gs.n.x;	//for little extra speed
 	//go through all the points
-    int ind=0;
+    int ind=-1;
+    gs.printCell();
     glBegin( GL_TRIANGLES );
-    for(int iz=0; iz<gs.n.z; iz++){
-		//ni = i*YtimeZ;
-		for(int iy=0; iy<gs.n.y; iy++){	
-			//nj = j*(ncell.z+1);
-				for(int ix=0; ix < gs.n.x; ix++){		
+    //glBegin( GL_LINES );
+    //glBegin( GL_POINTS );
+    int ntris=0;
+    double vmin=+1e+300;
+    double vmax=-1e+300;
+    for(int iz=0; iz<(gs.n.z-1); iz++){
+		for(int iy=0; iy<(gs.n.y-1); iy++){	
+			for(int ix=0; ix <(gs.n.x-1); ix++){	
+    //for(int iz=0; iz<gs.n.z; iz++){
+	//	for(int iy=0; iy<gs.n.y; iy++){	
+	//		for(int ix=0; ix <gs.n.x; ix++){	
+                ind = nxy*iz + gs.n.x*iy + ix;
 				//initialize vertices
 				//mp4Vector verts[8];
                 Quat4d verts[8];
 				//int ind = ni + nj + k;
-                Vec3d p0 = gs.dCell.a*ix + gs.dCell.b*iy + gs.dCell.c*iz;
-                verts[0].e = data[ind                    ];    verts[0].f = p0 ;
-				verts[1].e = data[ind + nxy              ];    verts[1].f = p0              + gs.dCell.c;
-				verts[2].e = data[ind + nxy          + 1 ];    verts[2].f = p0              + gs.dCell.c + gs.dCell.a;
-				verts[3].e = data[ind                + 1 ];    verts[3].f = p0                           + gs.dCell.a;
-				verts[4].e = data[ind +       gs.n.x     ];    verts[4].f = p0 + gs.dCell.b;
-				verts[5].e = data[ind + nxy + gs.n.x     ];    verts[5].f = p0 + gs.dCell.b + gs.dCell.c;
-				verts[6].e = data[ind + nxy + gs.n.x + 1 ];    verts[6].f = p0 + gs.dCell.b + gs.dCell.c + gs.dCell.a;
-				verts[7].e = data[ind +       gs.n.x + 1 ];    verts[7].f = p0 + gs.dCell.b              + gs.dCell.a;
+                vmax=fmax(vmax,data[ind]);
+                vmin=fmin(vmin,data[ind]);
+                Vec3d p0 = gs.pos0 + gs.dCell.a*ix + gs.dCell.b*iy + gs.dCell.c*iz;
+				//verts[1] = points[ind + YtimeZ                   ];
+				//verts[2] = points[ind + YtimeZ +               1 ];
+				//verts[3] = points[ind +                        1 ];
+				//verts[4] = points[ind +          (ncellsZ+1)     ];
+				//verts[5] = points[ind + YtimeZ + (ncellsZ+1)     ];
+				//verts[6] = points[ind + YtimeZ + (ncellsZ+1) + 1 ];
+				//verts[7] = points[ind +          (ncellsZ+1) + 1 ];
+                verts[0].e = data[ind                    ];    verts[0].f = p0                                        ;
+				verts[1].e = data[ind + nxy              ];    verts[1].f = p0 + gs.dCell.c                           ;
+				verts[2].e = data[ind + nxy          + 1 ];    verts[2].f = p0 + gs.dCell.c               + gs.dCell.a;
+				verts[3].e = data[ind                + 1 ];    verts[3].f = p0                            + gs.dCell.a;
+				verts[4].e = data[ind +       gs.n.x     ];    verts[4].f = p0              + gs.dCell.b              ;
+				verts[5].e = data[ind + nxy + gs.n.x     ];    verts[5].f = p0 + gs.dCell.c + gs.dCell.b              ;
+				verts[6].e = data[ind + nxy + gs.n.x + 1 ];    verts[6].f = p0 + gs.dCell.c + gs.dCell.b  + gs.dCell.a;
+				verts[7].e = data[ind +       gs.n.x + 1 ];    verts[7].f = p0              + gs.dCell.b  + gs.dCell.a;
 				//get the index
 				int cubeIndex = 0;
-				for(int i=0; i < 8; i++){ 
-                    if( verts[i].e <= minValue ) cubeIndex |= (1 << i);
+				for(int iv=0; iv < 8; iv++){ 
+                    if( verts[iv].e < minValue ){ 
+                        cubeIndex |= (1 << iv);
+                        //vertex( verts[iv].f );
+                        //printf( "ixyz(%i,%i,%i) ind %i iv %i \n", ix,iy,iz, ind,  iv );
+                    }
                 }
                 if(!edgeTable[cubeIndex]) continue;   //check if its completely inside or outside
 				//get linearly interpolated vertices on edges and save into the array
@@ -372,31 +396,59 @@ void MarchingCubesCross( const GridShape& gs, double minValue, double* data ){
 				if(edgeTable[cubeIndex] & 1024) intVerts[10] = LerpQ(verts[2], verts[6], minValue);
 				if(edgeTable[cubeIndex] & 2048) intVerts[11] = LerpQ(verts[3], verts[7], minValue);
 				//now build the triangles using triTable
-				for (int n=0; triTable[cubeIndex][n] != -1; n+=3) {
-                    Vec3d p0=intVerts[triTable[cubeIndex][n+2]];
-                    Vec3d p1=intVerts[triTable[cubeIndex][n+1]];
-                    Vec3d p2=intVerts[triTable[cubeIndex][n+0]];
+				for (int k=0; triTable[cubeIndex][k] != -1; k+=3) {
+                    Vec3d p0=intVerts[triTable[cubeIndex][k+2]];
+                    Vec3d p1=intVerts[triTable[cubeIndex][k+1]];
+                    Vec3d p2=intVerts[triTable[cubeIndex][k+0]];
                     Vec3d nr; nr.set_cross(p1-p0,p2-p0);
                     nr.normalize();
                     normal(nr);
-                    vertex(intVerts[triTable[cubeIndex][n+2]]);
-                    vertex(intVerts[triTable[cubeIndex][n+2]]);
-                    vertex(intVerts[triTable[cubeIndex][n+2]]);
-	                //triangles[numTriangles].p[0] = intVerts[triTable[cubeIndex][n+2]];
-					//triangles[numTriangles].p[1] = intVerts[triTable[cubeIndex][n+1]];
-					//triangles[numTriangles].p[2] = intVerts[triTable[cubeIndex][n  ]];
-					//Computing normal as cross product of triangle's edges
-	                //triangles[numTriangles].norm = ((triangles[numTriangles].p[1] - 
-					//	triangles[numTriangles].p[0]).Cross(triangles[numTriangles].p[2] - 
-					//	triangles[numTriangles].p[0])).Normalize();
-					//numTriangles++;
+                    vertex(p0);
+                    vertex(p1);
+                    vertex(p2);
+                    ntris++;
 				}
-                ind++;
-			}	//END OF Z FOR LOOP
-		}	//END OF Y FOR LOOP
-	}	//END OF X FOR LOOP
+                
+                //ind++;
+			}	
+		}	
+	}	
     glEnd();
+    printf( "MarchingCubesCross vmin, vmax %g %g \n", vmin, vmax );
+    return ntris;
 }
+
+int Grid2Points( const GridShape& gs, double minValue, double* data ){
+	int nxy = gs.n.y*gs.n.x;	//for little extra speed
+    int ind=-1;
+    glBegin( GL_POINTS );
+    int ntris=0;
+    double vmin=+1e+300;
+    double vmax=-1e+300;
+    for(int iz=0; iz<gs.n.z-1; iz++){
+		for(int iy=0; iy<gs.n.y-1; iy++){	
+				for(int ix=0; ix<gs.n.x-1; ix++){	
+                ind++;	
+				//int ind = ni + nj + k;
+                double val = data[ind];
+                vmax=fmax(vmax,val);
+                vmin=fmin(vmin,val);
+                bool b=false;
+                if     ( val>  minValue ){ glColor3f( 0.,0.,1. ); b=true; }
+                else if( val< -minValue ){ glColor3f( 1.,0.,0. ); b=true; };
+                if(b){
+                    Vec3d p0 = gs.dCell.a*ix + gs.dCell.b*iy + gs.dCell.c*iz;
+                    vertex(p0);
+                }
+                //ind++;
+			}	
+		}	
+	}	
+    glEnd();
+    printf( "MarchingCubesCross vmin, vmax %g %g \n", vmin, vmax );
+    return ntris;
+}
+
 
 /*
 //	VERSION  2  //

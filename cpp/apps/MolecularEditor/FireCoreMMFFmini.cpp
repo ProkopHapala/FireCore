@@ -256,12 +256,22 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
 
 void TestAppMMFFmini::renderOrbital(int iMO ){
-    double* ewfaux = new double[MOgrid.n.x,MOgrid.n.y,MOgrid.n.z];
+    int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
+    double* ewfaux = new double[ ntot ];
     fireCore.getGridMO( iMO, ewfaux );
+    //for(int i=0; i<ntot; i++) ewfaux[i]=0;
+    //ewfaux[ntot/2 + MOgrid.n.x*(MOgrid.n.y/2) + MOgrid.n.x/2 ] = 1.0;
+    //MOgrid.pos0 = MOgrid.dCell.a*(-MOgrid.n.a/3) + MOgrid.dCell.b*(-MOgrid.n.b/2) + MOgrid.dCell.c*(-MOgrid.n.c/2);
+    //MOgrid.pos0 = Vec3dZero; ewfaux[10*MOgrid.n.x*MOgrid.n.y + MOgrid.n.x*10 + 10 ] = 1.0;
     ogl_MO  = glGenLists(1);
-    glNewList(ogl_isosurf, GL_COMPILE);
-    Draw3D::MarchingCubesCross( MOgrid, 0.01, ewfaux  );
-    glEnd();
+    glNewList(ogl_MO, GL_COMPILE);
+    //glColor3f(0.0,1.0,0.0);
+    //glTranslatef( -p.x, -p.y, -p.z );
+    int ntris = Draw3D::MarchingCubesCross( MOgrid, 0.1, ewfaux  );
+    printf( "renderOrbital() ntris %i \n", ntris );
+    //int ntris = Draw3D::Grid2Points( MOgrid, 0.1, ewfaux );
+    //glTranslatef( +p.x, +p.y, +p.z );
+    glEndList();
     delete [] ewfaux;
 }
 
@@ -353,6 +363,13 @@ void TestAppMMFFmini::draw(){
         //printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
     }
 
+    if(ogl_MO){ 
+        glEnable(GL_LIGHTING );
+        glEnable(GL_DEPTH_TEST);
+        glColor3f(1.0,1.0,1.0); 
+        glCallList(ogl_MO); return; 
+    }
+
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
 	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
     //ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*(HEIGHT-mouse_begin_y));
@@ -372,6 +389,8 @@ void TestAppMMFFmini::draw(){
     //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift );
+
+    
 
     //printf( "bDoQM %i bDoMM %i \n", bDoQM, bDoMM );
     if(bDoQM)drawSystemQMMM();
@@ -669,7 +688,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
 
-                case SDLK_m: renderOrbital( 2 ); break;
+                case SDLK_m: renderOrbital( 1 ); break;
 
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );

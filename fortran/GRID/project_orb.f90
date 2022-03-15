@@ -140,8 +140,21 @@
    real, dimension (3,3)          :: lmat
    real, dimension (3,3)          :: invl
 
+   !real vmin,vmax
+
 ! Procedure
 ! ===========================================================================
+
+!do i=0,100
+!    in1  = 1
+!    issh = 1
+!    distX = 0.1*i
+!    call getpsi(in1,issh,distX,psiR,dpsiR) ! get radial part of wf.
+!    write(*,*) "DEBUG i,R,psiR, dpisR ", i,distX, psiR, dpsiR
+!end do
+!vmin = +1e+300
+!vmax = -1e+300
+
 
     ewfaux = 0.0d0
 
@@ -252,25 +265,18 @@
            mmu = imu + degelec(iatom)
            dens = dens + bbnkre(mmu,iband,ikpoint)*psi1(imu)
           end do ! do inu
-! Old density without sign/phase 
-     !    do imu = 1, num_orb(in1)
-     !     mmu = imu + degelec(iatom)
-     !     step1 = phase*bbnkre(mmu,iband,ikpoint)
-     !     do inu = 1, num_orb(in2)
-     !      nnu = inu + degelec(jatom)
-     !      step2 = step1*bbnkre(nnu,iband,ikpoint)
-     !      gutr = real(step2)
-     !      dens = dens + gutr*psi1(imu)*psi2(inu)
-     !     end do ! do inu
-     !    end do ! do imu
         end do ! do ikpoint
+        !if( psi1(1) .gt. 0.1 ) then
+        !write (*,*) "DEBUG ",  psi1(1), imesh, dens
+        !end if
+        !vmin=min(vmin, dens)
+        !vmax=max(vmax, dens)
         ewfaux(ind) = ewfaux(ind) + dens
       end do ! do imesh
 !$OMP END DO
 !$OMP END PARALLEL
-
     end do ! do iatom
-
+    !write (*,*) "project_orb vmin, vmax ", vmin, vmax
    return
  end subroutine project_orb
 
