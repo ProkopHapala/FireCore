@@ -37,7 +37,6 @@ end subroutine
 subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     use iso_c_binding
     use options
-    use options
     use configuration
     use kpoints
     !use MD
@@ -54,6 +53,7 @@ subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
     !call readparam ()
     call set_default_params ()
+    igrid = 1
     call checksum_options ()
     write(*,*) "DEBUG firecore_preinit() icluster", icluster
 end subroutine
@@ -305,8 +305,8 @@ subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_,    ngrid, dCell  )  bind(c, 
     ! np(i) = int (2 * sqrt(Ecut) / (cvec(i)*abohr) + 1)     
     call initgrid !(icluster)
     ngrid(1)=rm1
-    ngrid(2)=rm1
-    ngrid(3)=rm1
+    ngrid(2)=rm2
+    ngrid(3)=rm3
     dCell(:,:) = elvec(:,:)
 end subroutine
 
@@ -316,7 +316,7 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     use configuration
     implicit none
     ! ========= Parameters
-    integer(c_int) iMO
+    integer(c_int), value :: iMO
     real(c_double), dimension (nrm), intent(out) :: ewfaux
     !real(c_double), dimension(3,natoms_), intent(in)        :: atomsPos
     ! ========= Interfaces
@@ -338,10 +338,21 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     !real,  pointer, dimension (:)              :: pewf
     !character (40) namewf
     !character (30) mssg
+    real vmin,vmax
+    integer i
     ! ========= Body
     !allocate   ( ewfaux(0:nrm-1))
     !pewf => ewfaux
+    write (*,*) "DEBUG firecore_getGridMO 1", iMO
     call project_orb( iMO, ewfaux )
+    vmin = +1e+300
+    vmax = -1e+300
+    do i=1,nrm
+        vmin=min(vmin, ewfaux(i))
+        vmax=max(vmax, ewfaux(i))
+    end do
+    write (*,*) "project_orb vmin, vmax ", vmin, vmax
+    write (*,*) "DEBUG firecore_getGridMO 1"
     !write( namewf, '(A,i4.4,A)') 'bandplot_',1,'.xsf'
     !mssg = 'density_3D'
     !call writeout_xsf ( namewf, mssg, pewf )
