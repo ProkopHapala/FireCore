@@ -193,6 +193,113 @@ end subroutine firecore_init
 ! ============ subroutine firecore_SCF
 ! ==================================================
 
+subroutine firecore_assembleH( iforce_, Kscf_, positions_ ) bind(c, name='firecore_assembleH')
+    use iso_c_binding
+    use options
+    use configuration
+    use debug
+    use loops, only : Kscf
+    implicit none
+    ! ====== Parameters
+    integer(c_int),                 intent(in),value :: iforce_
+    integer(c_int),                 intent(in),value :: Kscf_
+    real(c_double), dimension(3,natoms), intent(in) :: positions_
+    ! ====== global variables
+    integer ikpoint
+    real, dimension (3) :: k_temp
+    ! ====== Body
+    Kscf       = Kscf_
+    iforce     = iforce_
+    ratom(:,:) = positions_(:,:)
+    idebugWrite = 0
+    verbosity   = 0 
+    call assemble_mcweda ()
+    return
+end subroutine
+
+subroutine firecore_solveH( k_temp, ikpoint ) bind(c, name='firecore_solveH')
+    use iso_c_binding
+    use options
+    use configuration
+    use debug
+    implicit none
+    ! ====== Parameters
+    integer(c_int),                 intent(in),value :: ikpoint
+    real(c_double), dimension(3),   intent(in)       :: k_temp
+    ! ====== global variables
+    ! ====== Body
+    call solveH ( ikpoint, k_temp )
+    return
+end subroutine
+
+subroutine firecore_updateCharges( sigmatol_, sigma_ ) bind(c, name='firecore_updateCharges')
+    use iso_c_binding
+    use options
+    use configuration
+    use charges
+    use loops, only: sigma,sigmatol
+    use debug
+    implicit none
+    ! ====== Parameters
+    real(c_double), intent(in) ,value   :: sigmatol_
+    real(c_double), intent(out)         :: sigma_
+    ! ====== global variables
+    ! ====== Body
+    sigmatol=sigmatol_
+    call denmat ()
+    sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
+    call mixer ()
+    sigma_=sigma
+    return
+end subroutine
+
+subroutine firecore_SCF( nmax_scf, positions_, iforce_  )  bind(c, name='firecore_SCF')
+    use iso_c_binding
+    use options
+    use loops
+    use fire
+    use configuration
+    use energy
+    use forces
+    use interactions
+    use integrals
+    use density
+    use kpoints
+    use charges
+    use debug
+    implicit none
+    ! ====== Parameters
+    integer(c_int),                 intent(in),value :: nmax_scf
+    integer(c_int),                 intent(in),value :: iforce_
+    real(c_double), dimension(3,natoms), intent(in)  :: positions_
+    ! ====== global variables
+    integer ikpoint, i
+    real, dimension (3) :: k_temp
+    ! ====== Body
+    ratom(:,:) = positions_(:,:)
+    idebugWrite = 0
+    verbosity   = 0 
+    iforce      = iforce_
+    ikpoint = 1
+    scf_achieved = .false.
+    max_scf_iterations = nmax_scf
+    if(verbosity.gt.0)write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations, scf_achieved
+    do Kscf = 1, max_scf_iterations
+        if(idebugWrite.gt.0)write(*,*) "! ======== Kscf ", Kscf
+        call assemble_mcweda ()
+        k_temp(:) = special_k(:,ikpoint)
+        call solveH ( ikpoint, k_temp )
+        call denmat ()
+        sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
+        if(verbosity.gt.0)write (*,*) "### SCF converged? ", scf_achieved, " Kscf ", Kscf, " |Qin-Oout| ",sigma," < tol ", sigmatol
+        if( scf_achieved ) exit
+        call mixer ()
+    end do ! Kscf
+    return
+end subroutine firecore_SCF
+
+
+
 subroutine firecore_evalForce( nmax_scf, positions_, forces_ )  bind(c, name='firecore_evalForce')
     use iso_c_binding
     use options
