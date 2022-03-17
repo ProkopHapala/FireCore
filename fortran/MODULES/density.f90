@@ -4,11 +4,11 @@
 
 ! These arrays contain the coefficients to calculate the density matrix
 ! and the Lowdin charges:
-         real, dimension (:, :, :), allocatable :: bbnkre
-         real, dimension (:, :, :), allocatable :: bbnkim
-         real, dimension (:, :, :), allocatable :: blowim
-         real, dimension (:, :, :), allocatable :: blowre
-         real, dimension (:, :), allocatable :: eigen_k
+         real, dimension (:, :, :), allocatable, target :: bbnkre
+         real, dimension (:, :, :), allocatable, target :: bbnkim
+         real, dimension (:, :, :), allocatable, target :: blowim
+         real, dimension (:, :, :), allocatable, target :: blowre
+         real, dimension (:, :), allocatable, target :: eigen_k
 
 ! These arrays store the densities.
          real, dimension (:, :, :, :), allocatable :: cape
