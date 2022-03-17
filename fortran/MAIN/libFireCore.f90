@@ -20,6 +20,14 @@ subroutine firecore_getPointer_ftot( ftot_ ) bind(c, name='firecore_getPointer_f
     ftot_ = c_loc( ftot ) 
 end subroutine 
 
+subroutine firecore_getPointer_wfcoef( bbnkre_ ) bind(c, name='firecore_getPointer_wfcoef')
+    use iso_c_binding
+    use density
+    implicit none
+    type(C_PTR),      intent(out) :: bbnkre_
+    bbnkre_ = c_loc( bbnkre ) 
+end subroutine 
+
 subroutine firecore_getPointer_charges( charges_ )  bind(c, name='firecore_getPointer_charges')
     use iso_c_binding
     use charges
@@ -398,7 +406,7 @@ subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_,    ngrid, dCell  )  bind(c, 
     real   (c_double)               ,intent(in),value :: Ecut_
     integer(c_int)                  ,intent(in),value :: ifixg0_
     real   (c_double), dimension (3),intent(in) :: g0_
-    integer(c_int),    dimension (3),intent(out) :: ngrid
+    integer(c_int),    dimension (3),intent  (out) :: ngrid
     real   (c_double), dimension (3,3),intent(out) :: dCell
     !call readgrid !(iwrtewf)
     ! Namelist /mesh/ Ecut, iewform, npbands, pbands, ewfewin_max, ewfewin_min, ifixg0, g0
@@ -425,21 +433,11 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     ! ========= Parameters
     integer(c_int), value :: iMO
     real(c_double), dimension (nrm), intent(out) :: ewfaux
-    real vmin,vmax
-    integer i
     ! ========= Body
     !allocate   ( ewfaux(0:nrm-1))
     !pewf => ewfaux
-    write (*,*) "DEBUG firecore_getGridMO 1", iMO
+    !write(*,*) "firecore_getGridMO ", iMO
     call project_orb( iMO, ewfaux )
-    vmin = +1e+300
-    vmax = -1e+300
-    do i=1,nrm
-        vmin=min(vmin, ewfaux(i))
-        vmax=max(vmax, ewfaux(i))
-    end do
-    write (*,*) "project_orb vmin, vmax ", vmin, vmax
-    write (*,*) "DEBUG firecore_getGridMO 1"
 end subroutine
 
 subroutine firecore_getGridDens( imo0, imo1, ewfaux )  bind(c, name='firecore_getGridDens' )
@@ -451,6 +449,7 @@ subroutine firecore_getGridDens( imo0, imo1, ewfaux )  bind(c, name='firecore_ge
     integer(c_int), value :: imo0, imo1
     real(c_double), dimension (nrm), intent(out) :: ewfaux
     ! ========= Body
+    !write(*,*) "firecore_getGridDens "
     call project_dens( ewfaux )
 end subroutine
 

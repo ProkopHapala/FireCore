@@ -19,13 +19,24 @@ def _np_as(arr,atype):
     if arr is None:
         return None
     else: 
-        return arr.ct.data_as(atype)
+        return arr.ctypes.data_as(atype)
 
 cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
 # ===== To generate Interfaces automatically from headers call:
 header_strings = [
-"void init_buffers(){",
+"void getCharges( double* charges )",
+"void preinit( ) ",
+"void set_lvs( double* lvs )" ,
+"void init( int natoms, int* atomTypes, double* atomsPos )",
+"void assembleH( int iforce, int Kscf, double* positions )",
+"void solveH( double* k_temp, int ikpoint )",
+"void updateCharges( double sigmatol, double* sigma )",
+"void SCF( int nmax_scf, double* positions, int iforce  )",
+"void evalForce( int nmax_scf, double* positions_, double* forces )",
+"void setupGrid( double Ecut, it ifixg0, doube* g0,  int ngrid, double* dCell  )", 
+"void getGridMO( int iMO, double* ewfaux )",
+"void getGridDens( int imo0, int imo1, double* ewfaux )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -56,49 +67,112 @@ array2d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=2, flags='CONTIGUOUS')
 array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ========= C functions
 
-#  subroutine hello( )
-lib.firecore_hello.argtypes  = [ ] 
-lib.firecore_hello.restype   =  None
-def firecore_hello():
-    return lib.firecore_hello()
-
-#  subroutine firecore_init( natoms_, atomTypes, atomsPos )
-lib.sum2.argtypes  = [c_double_p ] 
-lib.sum2.restype   =  c_double
-def sum2( a ):
-    a = ct.c_double(a)
-    return lib.sum2( ct.byref(a) )
-
-#  subroutine firecore_init( natoms_, atomTypes, atomsPos )
-lib.sum2val.argtypes  = [c_double,c_double ] 
-lib.sum2val.restype   =  c_double
-def sum2val( a, b ):
-    return lib.sum2val( a, b )
-
-'''
-#  subroutine firecore_init( natoms_, atomTypes, atomsPos )
-lib.firecore_init.argtypes  = [c_int, c_int_p, c_double_p ] 
-lib.firecore_init.restype   =  None
-def firecore_init(natoms, atomTypes, atomPos ):
-    atomTypes_ = atomTypes.ctypes. data_as(c_int_p)
-    atomPos_   = atomPos  .ctypes.data_as(c_double_p)
-    return lib.firecore_init(natoms, atomTypes_, atomPos_ )
-'''
 
 #  subroutine firecore_init( natoms_, atomTypes, atomsPos )
 lib.firecore_init.argtypes  = [c_int, array1i, array2d ] 
 lib.firecore_init.restype   =  None
-def firecore_init(natoms, atomTypes, atomPos ):
+def init(natoms, atomTypes, atomPos ):
     return lib.firecore_init(natoms, atomTypes, atomPos )
 
 #  subroutine firecore_evalForce( nmax_scf, forces_ )
 lib.firecore_evalForce.argtypes  = [c_int, array2d, array2d ] 
 lib.firecore_evalForce.restype   =  None
-def firecore_evalForce( pos, forces=None, natom=5, nmax_scf=100 ):
+def evalForce( pos, forces=None, natom=5, nmax_scf=100 ):
     if forces is None:
         forces = np.zeros( (3,natom) )
     lib.firecore_evalForce( nmax_scf, pos, forces )
     return forces
+
+#  void getCharges( double* charges )
+lib.firecore_getCharges.argtypes  = [array2d] 
+lib.firecore_getCharges.restype   =  None
+def getCharges(charges):
+    return lib.firecore_getCharges(charges) 
+
+
+#  void preinit( ) 
+lib.firecore_preinit.argtypes  = [] 
+lib.firecore_preinit.restype   =  None
+def preinit():
+    return lib.firecore_preinit() 
+
+
+
+#  void set_lvs( double* lvs )
+lib.firecore_set_lvs.argtypes  = [array2d] 
+lib.firecore_set_lvs.restype   =  None
+def set_lvs(lvs):
+    return lib.firecore_set_lvs(lvs) 
+
+#  void assembleH( int iforce, int Kscf, double* positions )
+lib.firecore_assembleH.argtypes  = [c_int, c_int, array2d ] 
+lib.firecore_assembleH.restype   =  None
+def assembleH( positions, iforce=0, Kscf=1 ):
+    return lib.firecore_assembleH(iforce, Kscf, positions) 
+
+
+
+#  void solveH( double* k_temp, int ikpoint )
+lib.firecore_solveH.argtypes  = [ array1d, c_int] 
+lib.firecore_solveH.restype   =  None
+def solveH(k_temp=None, ikpoint=1):
+    if k_temp is None:
+        k_temp = np.array([0.0,0.0,0.0])
+    return lib.firecore_solveH(k_temp, ikpoint ) 
+
+
+
+#  void updateCharges( double sigmatol, double* sigma )
+lib.firecore_updateCharges.argtypes  = [c_double, c_double_p] 
+lib.firecore_updateCharges.restype   =  None
+def updateCharges( sigmatol=1e-6, sigma=None):
+    if sigma is None:
+        sigma = np.zeros(1)
+    lib.firecore_updateCharges(sigmatol, _np_as(sigma,c_double_p)) 
+    return sigma
+
+
+#  void SCF( int nmax_scf, double* positions, int iforce  )
+lib.firecore_SCF.argtypes  = [c_int, array2d, c_int] 
+lib.firecore_SCF.restype   =  None
+def SCF( positions, iforce=0, nmax_scf=200 ):
+    return lib.firecore_SCF( nmax_scf, positions, iforce ) 
+
+
+#  void setupGrid( double Ecut, int ifixg0, doube* g0,  int ngrid, double* dCell  )
+lib.firecore_setupGrid.argtypes  = [c_double, c_int, array1d, array1i, array2d ] 
+lib.firecore_setupGrid.restype   =  None
+def setupGrid(Ecut=100, ifixg0=0, g0=None, ngrid=None, dCell=None):
+    if g0 is None:
+        g0=np.array([0.0,0.0,0.0])
+    if ngrid is None:
+        ngrid = np.zeros(3,dtype=np.int32)
+    if dCell is None:
+        dCell = np.zeros( (3,3) )
+    lib.firecore_setupGrid(Ecut, ifixg0, g0, ngrid, dCell )
+    return ngrid, dCell 
+
+
+
+#  void getGridMO( int iMO, double* ewfaux )
+lib.firecore_getGridMO.argtypes  = [ c_int, array3d ] 
+lib.firecore_getGridMO.restype   =  None
+def getGridMO(iMO, ewfaux=None, ngrid=None):
+    if ewfaux is None:
+        ewfaux = np.zeros(ngrid)
+    lib.firecore_getGridMO(iMO, ewfaux )
+    return ewfaux
+
+
+
+#  void getGridDens( int imo0, int imo1, double* ewfaux )
+lib.firecore_getGridDens.argtypes  = [c_int, c_int, array3d ] 
+lib.firecore_getGridDens.restype   =  None
+def getGridDens(imo0=0, imo1=1000, ewfaux=None, ngrid=None):
+    if ewfaux is None:
+        ewfaux = np.zeros(ngrid)
+    lib.firecore_getGridDens(imo0, imo1, ewfaux ) 
+    return ewfaux 
 
 # ========= Python Functions
 
@@ -126,8 +200,41 @@ if __name__ == "__main__":
     ])
     print ("atomType ", atomType)
     print ("atomPos  ", atomPos)
-    firecore_init( natoms, atomType, atomPos )
-    forces = firecore_evalForce(atomPos, nmax_scf=100)
-    print( "Python: Forces", forces.transpose() )
+    preinit()
+    init( natoms, atomType, atomPos )
+
+    '''
+    # =========== Molecular Orbital
+    assembleH( atomPos)
+    solveH()
+    ngrid, dCell = setupGrid()
+    ewfaux = getGridMO( 2, ngrid=ngrid )
+    #ewfaux = getGridDens( ngrid=ngrid )
+    print( ewfaux.min(),ewfaux.max() )
+    import matplotlib.pyplot as plt
+    sh = ewfaux.shape
+    plt.figure(); plt.imshow( ewfaux[ sh[0]/2+5,:,: ] )
+    plt.figure(); plt.imshow( ewfaux[ sh[0]/2  ,:,: ] )
+    plt.figure(); plt.imshow( ewfaux[ sh[0]/2-5,:,: ] )
+    plt.show()
+    '''
+
+    # =========== Electron Density
+    assembleH( atomPos)
+    solveH()
+    sigma=updateCharges() ; print sigma
+    ngrid, dCell = setupGrid()
+    ewfaux = getGridDens( ngrid=ngrid )
+    print( ewfaux.min(),ewfaux.max() )
+    import matplotlib.pyplot as plt
+    sh = ewfaux.shape
+    plt.figure(); plt.imshow( ewfaux[ sh[0]/2+5,:,: ] )
+    plt.figure(); plt.imshow( ewfaux[ sh[0]/2  ,:,: ] )
+    plt.figure(); plt.imshow( ewfaux[ sh[0]/2-5,:,: ] )
+    plt.show()
+
+    # ============= Forces
+    #forces = evalForce(atomPos, nmax_scf=100)
+    #print( "Python: Forces", forces.transpose() )
     
 
