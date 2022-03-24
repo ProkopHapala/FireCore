@@ -1,34 +1,31 @@
 
 import os
-import ctypes
 
-clean_build = True 
-recompile_glob = True
-lib_ext   ='.so'
-s_numpy_data_as_call = "_np_as(%s,%s)"
+recompile = True 
+lib_ext   ='_lib.so'
 
 def work_dir( v__file__ ): 
     return os.path.dirname( os.path.realpath( v__file__ ) )
 
 PACKAGE_PATH = work_dir( __file__ )
-BUILD_PATH   = os.path.normpath( PACKAGE_PATH + '../../../cpp/Build/libs/CombatModels' )
+CPP_PATH     = os.path.normpath( PACKAGE_PATH + '../../cpp/' )
 
-print (" PACKAGE_PATH : ", PACKAGE_PATH)
-print (" BUILD_PATH   : ", BUILD_PATH)
+print(" PACKAGE_PATH = ", PACKAGE_PATH)
+print(" CPP_PATH     = ", CPP_PATH)
 
 def compile_lib( name,
         #FFLAGS = "-std=c++11 -Og -g -Wall",
         FFLAGS = "-std=c++11 -O3 -ftree-vectorize -unroll-loops -ffast-math",
         LFLAGS = "-I/usr/local/include/SDL2 -lSDL2",
-        path   = BUILD_PATH,
+        path   = CPP_PATH,
         clean  = True,
     ):
     lib_name = name+lib_ext
-    print (" COMPILATION OF : "+name)
+    print(" COMPILATION OF : "+name)
     if path is not None:
         dir_bak = os.getcwd()
         os.chdir( path );
-    print (os.getcwd())
+    print(os.getcwd())
     if clean:
         try:
             os.remove( lib_name  )
@@ -40,33 +37,24 @@ def compile_lib( name,
     if path is not None:
         os.chdir( dir_bak )
 
+def makeclean( ):
+    CWD=os.getcwd()
+    os.chdir( CPP_PATH )
+    os.system("make clean")
+    os.chdir(CWD)
+
 def make( what="" ):
     current_directory = os.getcwd()
-    os.chdir ( BUILD_PATH          )
-    print ("CPP_PATH " + BUILD_PATH)
-    if clean_build:
+    os.chdir ( CPP_PATH          )
+    if recompile:
         os.system("make clean")
     os.system( "make "+what      )
     os.chdir ( current_directory )
 
-def loadLib( cpp_name, recompile=True, mode=ctypes.RTLD_LOCAL ):
-    if recompile and recompile_glob:
-        make(cpp_name)
-    return ctypes.CDLL(  BUILD_PATH + "/lib" + cpp_name + lib_ext, mode ) 
-
 
 # ============ automatic C-python interface generation
 
-def _np_as(arr,atype):
-    if arr is None:
-        return None
-    elif isinstance( arr, str ):
-        #arr = arr.encode('utf-8')
-        #print "arr = ", arr
-        #return arr
-        return arr.encode('utf-8')
-    else: 
-        return arr.ctypes.data_as(atype)
+
 
 def parseFuncHeader( s ):
     #args = []
@@ -92,8 +80,8 @@ def parseFuncHeader( s ):
 def translateTypeName( tname ):
     np = tname.count('*')
     if np > 1 :
-        print ("Cannot do pointer-to-pointer (**) ", s)
-        print ("=> exit() ")
+        print("Cannot do pointer-to-pointer (**) ", s)
+        print("=> exit() ")
         exit()
     else:
         if(np==1):
@@ -131,10 +119,10 @@ def writeFuncInterface( parsed ):
 def writeFuncInterfaces( func_headers, debug=False ):
     for s in func_headers:
         parsed = parseFuncHeader( s ); 
-        if debug : print ("parsed :\n", parsed)
+        if debug : print("parsed :\n", parsed)
         sgen   = writeFuncInterface( parsed )
-        print ("\n# ", s)
-        print (sgen,"\n\n")
+        print("\n# ", s)
+        print(sgen,"\n\n")
 
 
 

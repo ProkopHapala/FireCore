@@ -7,7 +7,9 @@ import sys
 
 #sys.path.append('../')
 #from pyMeta import cpp_utils 
-import cpp_utils
+#import cpp_utils
+from . import cpp_utils_ as cpp_utils
+#cpp_utils = cpp_utils_
 
 c_double_p = ct.POINTER(c_double)
 c_int_p    = ct.POINTER(c_int)
@@ -150,7 +152,9 @@ def setupGrid(Ecut=100, ifixg0=0, g0=None, ngrid=None, dCell=None):
     if dCell is None:
         dCell = np.zeros( (3,3) )
     lib.firecore_setupGrid(Ecut, ifixg0, g0, ngrid, dCell )
-    return ngrid, dCell 
+    lvs = np.array( [ [0.0,0.0,0.0], dCell[0]*ngrid[0], dCell[1]*ngrid[1], dCell[2]*ngrid[2], ] )
+    ngrid = ngrid[::-1].copy()
+    return ngrid, dCell, lvs
 
 
 
@@ -169,6 +173,8 @@ def getGridMO(iMO, ewfaux=None, ngrid=None):
 lib.firecore_getGridDens.argtypes  = [c_int, c_int, array3d ] 
 lib.firecore_getGridDens.restype   =  None
 def getGridDens(imo0=0, imo1=1000, ewfaux=None, ngrid=None):
+    #ngrid=ngrid[::-1]
+    print( ngrid ); #exit(0)
     if ewfaux is None:
         ewfaux = np.zeros(ngrid)
     lib.firecore_getGridDens(imo0, imo1, ewfaux ) 
@@ -222,8 +228,8 @@ if __name__ == "__main__":
     # =========== Electron Density
     assembleH( atomPos)
     solveH()
-    sigma=updateCharges() ; print sigma
-    ngrid, dCell = setupGrid()
+    sigma=updateCharges() ; print( sigma )
+    ngrid, dCell, lvs = setupGrid()
     ewfaux = getGridDens( ngrid=ngrid )
     print( ewfaux.min(),ewfaux.max() )
     import matplotlib.pyplot as plt
