@@ -123,14 +123,16 @@ void loadData( float* data_ ){
 
 void runFFT(){
     //err = clEnqueueWriteBuffer ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL );
-    err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &queue, 0, NULL, NULL, &data_cl, NULL, NULL);  // Execute the plan.                                                              
+    err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &queue, 0, NULL, NULL, &data_cl, NULL, NULL);  // Execute the plan. -> Forward Transform
+    //err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &queue, 0, NULL, NULL, &data_cl, NULL, NULL);  // Execute the plan.  -> Backward Transform                                                        
     err = clEnqueueReadBuffer  ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL ); // Fetch results of calculations. 
     err = clFinish(queue);    // Wait for calculations to be finished. 
+    //printData( data ); 
 }
 
 void cleanup(){
     clReleaseMemObject( data_cl );
-    free( data );
+    //free( data );
     err = clfftDestroyPlan( &planHandle );
     clfftTeardown( );
     clReleaseCommandQueue( queue );
@@ -138,10 +140,10 @@ void cleanup(){
 }
 
 void runAll( ){
-    printf("DEBUG Ns[%li,%li,%li]\n", clLengths[0], clLengths[1], clLengths[2] );
+    //printf("DEBUG Ns[%li,%li,%li]\n", clLengths[0], clLengths[1], clLengths[2] );
     makeData();  printData( data );    printf( "DEBUG 1 \n" );
     initOCL();                         printf( "DEBUG 2 \n" );
-    printf("DEBUG Ns[%li,%li,%li]\n", clLengths[0], clLengths[1], clLengths[2] );
+    //printf("DEBUG Ns[%li,%li,%li]\n", clLengths[0], clLengths[1], clLengths[2] );
     initFFT( 3, clLengths );           printf( "DEBUG 3 \n" );
     loadData( data );
     runFFT();    printData(data );     printf( "DEBUG 5 \n" );
