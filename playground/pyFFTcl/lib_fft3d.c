@@ -6,28 +6,6 @@
 #include <clFFT.h>
 #include "lib_fft3.h"
 
-/*
-static    cl_int err;
-static    cl_platform_id platform = 0;
-static    cl_device_id device = 0;
-static    cl_context_properties props[3] = { CL_CONTEXT_PLATFORM, 0, 0 };
-static    cl_context ctx = 0;
-static    cl_command_queue queue = 0;
-static    cl_mem bufX;
-static    float *X;
-static    cl_event event = NULL;
-static    int ret = 0;
-static    const size_t N0 = 4, N1 = 4, N2 = 4;
-static    char platform_name[128];
-static    char device_name[128];
-
-// FFT library realted declarations
-static    clfftPlanHandle planHandle;
-static    clfftDim dim = CLFFT_3D;
-static    size_t clLengths[3] = {N0, N1, N2};
-static    size_t buffer_size;
-*/
-
 static int ret = 0;
 static cl_int err;
 static char platform_name[128];
@@ -45,6 +23,9 @@ static clfftDim dim = CLFFT_3D;
 static const size_t N0 = 4, N1 = 4, N2 = 4;
 static size_t clLengths[3] = {N0, N1, N2};
 static size_t buffer_size;
+//static int clLengths[3] = {N0, N1, N2};
+//static int buffer_size;
+
 
 static cl_mem data_cl;
 static float *data;
@@ -103,13 +84,6 @@ void initOCL(){
     queue = clCreateCommandQueue( ctx,  device, 0, &err );             printf("DEBUG 1.6 \n");
 }
 
-void initFFT(){
-    /* Setup clFFT. */
-    clfftSetupData fftSetup;
-    err  = clfftInitSetupData(&fftSetup);
-    err  = clfftSetup(&fftSetup);
-    data_cl = clCreateBuffer( ctx, CL_MEM_READ_WRITE, buffer_size, NULL, &err );
-}
 
 void planFFT(){
     // Create a default plan for a complex FFT. 
@@ -120,8 +94,35 @@ void planFFT(){
     err = clfftBakePlan         (planHandle, 1, &queue, NULL, NULL);
 }
 
+
+void initFFT( int ndim, size_t* Ns ){
+    printf("DEBUG initFFT() ndim %i Ns[%li,%li,%li]\n", ndim, Ns[0], Ns[1], Ns[2] );
+    if     (ndim==1){ dim=CLFFT_1D; printf("CLFFT_1D \n"); }
+    else if(ndim==2){ dim=CLFFT_2D; printf("CLFFT_2D \n"); }
+    else if(ndim==3){ dim=CLFFT_3D; printf("CLFFT_3D \n");  };
+    clLengths[0] = Ns[0];
+    clLengths[1] = Ns[1];
+    clLengths[2] = Ns[2];
+    buffer_size  = 2 * sizeof(*data);
+    for(int i=0; i<ndim;i++){ buffer_size *= Ns[i]; }
+
+    clfftSetupData fftSetup;
+    err  = clfftInitSetupData(&fftSetup);
+    err  = clfftSetup(&fftSetup);
+    data_cl = clCreateBuffer( ctx, CL_MEM_READ_WRITE, buffer_size, NULL, &err );
+    planFFT(  );
+}
+
+void loadData( float* data_ ){
+    printf("DEBUG loadData() \n");
+    data = data_;
+    //makeData();
+    //printData( data ); 
+    err = clEnqueueWriteBuffer  ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL );
+}
+
 void runFFT(){
-    err = clEnqueueWriteBuffer ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL );
+    //err = clEnqueueWriteBuffer ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL );
     err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &queue, 0, NULL, NULL, &data_cl, NULL, NULL);  // Execute the plan.                                                              
     err = clEnqueueReadBuffer  ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL ); // Fetch results of calculations. 
     err = clFinish(queue);    // Wait for calculations to be finished. 
@@ -137,10 +138,12 @@ void cleanup(){
 }
 
 void runAll( ){
+    printf("DEBUG Ns[%li,%li,%li]\n", clLengths[0], clLengths[1], clLengths[2] );
     makeData();  printData( data );    printf( "DEBUG 1 \n" );
-    initOCL();                            printf( "DEBUG 2 \n" );
-    initFFT();                            printf( "DEBUG 3 \n" );
-    planFFT();                            printf( "DEBUG 4 \n" );
-    runFFT();    printData(data );    printf( "DEBUG 5 \n" );
-    cleanup();                            printf( "DEBUG 6 \n" );
+    initOCL();                         printf( "DEBUG 2 \n" );
+    printf("DEBUG Ns[%li,%li,%li]\n", clLengths[0], clLengths[1], clLengths[2] );
+    initFFT( 3, clLengths );           printf( "DEBUG 3 \n" );
+    loadData( data );
+    runFFT();    printData(data );     printf( "DEBUG 5 \n" );
+    cleanup();                         printf( "DEBUG 6 \n" );
 }
