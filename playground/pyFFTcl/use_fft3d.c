@@ -24,11 +24,11 @@
 //FFTcl fftcl;
 
 int main( void ){
-    makeData();  printData( X );    printf( "DEBUG 1 \n" );
+    makeData();  printDataX();    printf( "DEBUG 1 \n" );
     initOCL();                                  printf( "DEBUG 2 \n" );
     initFFT();                                  printf( "DEBUG 3 \n" );
     planFFT();                                  printf( "DEBUG 4 \n" );
-    runFFT();    printData( X );    printf( "DEBUG 5 \n" );
+    runFFT();    printDataX();    printf( "DEBUG 5 \n" );
     cleanup();                                  printf( "DEBUG 6 \n" );
     return 0;
 }
