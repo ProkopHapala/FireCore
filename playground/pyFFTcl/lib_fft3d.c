@@ -6,6 +6,7 @@
 #include <clFFT.h>
 #include "lib_fft3.h"
 
+/*
 static    cl_int err;
 static    cl_platform_id platform = 0;
 static    cl_device_id device = 0;
@@ -25,11 +26,32 @@ static    clfftPlanHandle planHandle;
 static    clfftDim dim = CLFFT_3D;
 static    size_t clLengths[3] = {N0, N1, N2};
 static    size_t buffer_size;
+*/
 
+static int ret = 0;
+static cl_int err;
+static char platform_name[128];
+static char device_name  [128];
+static cl_platform_id platform = 0;
+static cl_device_id device     = 0;
+static cl_context_properties props[3] = { CL_CONTEXT_PLATFORM, 0, 0 };
+static cl_context ctx         = 0;
+static cl_command_queue queue = 0;
+
+static cl_event event = NULL;
+static clfftPlanHandle planHandle;
+static clfftDim dim = CLFFT_3D;
+
+static const size_t N0 = 4, N1 = 4, N2 = 4;
+static size_t clLengths[3] = {N0, N1, N2};
+static size_t buffer_size;
+
+static cl_mem data_cl;
+static float *data;
 
 void makeData(){
-    buffer_size  = N0 * N1 * N2 * 2 * sizeof(*X);
-    X = (float *)malloc(buffer_size);
+    buffer_size  = N0 * N1 * N2 * 2 * sizeof(*data);
+    data = (float *)malloc(buffer_size);
     printf("\nPerforming fft on an two dimensional array of size N0 x N1 x N2 : %lu x %lu x %lu\n", (unsigned long)N0, (unsigned long)N1, (unsigned long)N2);
     for (size_t i=0; i<N0; ++i) {
         for (size_t j=0; j<N1; ++j) {
@@ -38,8 +60,8 @@ void makeData(){
                 float y = 0.0f;
                 if (i==0 && j==0 && k==0) { x = y = 0.5f; }
                 size_t idx = 2*(k+j*N2+i*N1*N2);
-                X[idx  ] = x  + (rand()&0xFF)/256.0;
-                X[idx+1] = y;
+                data[idx  ] = x  + (rand()&0xFF)/256.0;
+                data[idx+1] = y;
                 //printf("(%f, %f) ", X[idx], X[idx+1]);
             }
             //printf("\n");
@@ -64,7 +86,7 @@ void printData( float* X ){
     printf("\n");
 }
 
-void printDataX(){ printData(X); };
+void printDataX(){ printData(data); };
 
 void initOCL(){
     printf("DEBUG 1.0 \n");
@@ -86,7 +108,7 @@ void initFFT(){
     clfftSetupData fftSetup;
     err  = clfftInitSetupData(&fftSetup);
     err  = clfftSetup(&fftSetup);
-    bufX = clCreateBuffer( ctx, CL_MEM_READ_WRITE, buffer_size, NULL, &err );
+    data_cl = clCreateBuffer( ctx, CL_MEM_READ_WRITE, buffer_size, NULL, &err );
 }
 
 void planFFT(){
@@ -99,15 +121,15 @@ void planFFT(){
 }
 
 void runFFT(){
-    err = clEnqueueWriteBuffer ( queue, bufX, CL_TRUE, 0, buffer_size, X, 0, NULL, NULL );
-    err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &queue, 0, NULL, NULL, &bufX, NULL, NULL);  // Execute the plan.                                                              
-    err = clEnqueueReadBuffer  ( queue, bufX, CL_TRUE, 0, buffer_size, X, 0, NULL, NULL ); // Fetch results of calculations. 
+    err = clEnqueueWriteBuffer ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL );
+    err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &queue, 0, NULL, NULL, &data_cl, NULL, NULL);  // Execute the plan.                                                              
+    err = clEnqueueReadBuffer  ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL ); // Fetch results of calculations. 
     err = clFinish(queue);    // Wait for calculations to be finished. 
 }
 
 void cleanup(){
-    clReleaseMemObject( bufX );
-    free(X);
+    clReleaseMemObject( data_cl );
+    free( data );
     err = clfftDestroyPlan( &planHandle );
     clfftTeardown( );
     clReleaseCommandQueue( queue );
@@ -115,10 +137,10 @@ void cleanup(){
 }
 
 void runAll( ){
-    makeData();  printData( X );    printf( "DEBUG 1 \n" );
+    makeData();  printData( data );    printf( "DEBUG 1 \n" );
     initOCL();                            printf( "DEBUG 2 \n" );
     initFFT();                            printf( "DEBUG 3 \n" );
     planFFT();                            printf( "DEBUG 4 \n" );
-    runFFT();    printData( X );    printf( "DEBUG 5 \n" );
+    runFFT();    printData(data );    printf( "DEBUG 5 \n" );
     cleanup();                            printf( "DEBUG 6 \n" );
 }
