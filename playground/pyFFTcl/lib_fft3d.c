@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 // No need to explicitely include the OpenCL headers 
-#include <clFFT.h>
+//#include <clFFT.h>
 #include "lib_fft3.h"
 
 static int ret = 0;
@@ -13,8 +13,8 @@ static char device_name  [128];
 static cl_platform_id platform = 0;
 static cl_device_id device     = 0;
 static cl_context_properties props[3] = { CL_CONTEXT_PLATFORM, 0, 0 };
-static cl_context ctx         = 0;
-static cl_command_queue queue = 0;
+static cl_context          ctx   = 0;
+static cl_command_queue    queue = 0;
 
 static cl_event event = NULL;
 static clfftPlanHandle planHandle;
@@ -26,9 +26,19 @@ static size_t buffer_size;
 //static int clLengths[3] = {N0, N1, N2};
 //static int buffer_size;
 
-
 static cl_mem data_cl;
 static float *data;
+
+
+int N=0;
+int size = N * N;
+static cl_mem d_a, d_b, d_c;
+
+
+// ========= GRENERAL OpenCL ========== 
+static cl_program       program;       // compute program
+static cl_kernel        kernel;        // compute kernel
+static KernelDims kdim;
 
 void makeData(){
     buffer_size  = N0 * N1 * N2 * 2 * sizeof(*data);
@@ -70,18 +80,18 @@ void printData( float* X ){
 void printDataX(){ printData(data); };
 
 void initOCL(){
-    printf("DEBUG 1.0 \n");
-    err = clGetPlatformIDs( 1, &platform, NULL );      printf("DEBUG 1.1 \n");
+    //printf("DEBUG 1.0 \n");
+    err = clGetPlatformIDs( 1, &platform, NULL );      //printf("DEBUG 1.1 \n");
     size_t ret_param_size = 0;
 
-    err = clGetPlatformInfo(platform, CL_PLATFORM_NAME,sizeof(platform_name), platform_name, &ret_param_size);   printf("DEBUG 1.2 \n");
+    err = clGetPlatformInfo(platform, CL_PLATFORM_NAME,sizeof(platform_name), platform_name, &ret_param_size);   //printf("DEBUG 1.2 \n");
     printf("Platform found: %s\n", platform_name);
-    err = clGetDeviceIDs( platform, CL_DEVICE_TYPE_DEFAULT, 1, &device, NULL );                        printf("DEBUG 1.3 \n");
-    err = clGetDeviceInfo(device, CL_DEVICE_NAME,sizeof(device_name), device_name,&ret_param_size);    printf("DEBUG 1.4 \n");
+    err = clGetDeviceIDs( platform, CL_DEVICE_TYPE_DEFAULT, 1, &device, NULL );                        //printf("DEBUG 1.3 \n");
+    err = clGetDeviceInfo(device, CL_DEVICE_NAME,sizeof(device_name), device_name,&ret_param_size);    //printf("DEBUG 1.4 \n");
     printf("Device found on the above platform: %s\n", device_name);
     props[1] = (cl_context_properties)platform;
-    ctx   = clCreateContext( props, 1, &device, NULL, NULL, &err );    printf("DEBUG 1.5 \n");
-    queue = clCreateCommandQueue( ctx,  device, 0, &err );             printf("DEBUG 1.6 \n");
+    ctx   = clCreateContext( props, 1, &device, NULL, NULL, &err );    //printf("DEBUG 1.5 \n");
+    queue = clCreateCommandQueue( ctx,  device, 0, &err );             //printf("DEBUG 1.6 \n");
 }
 
 
@@ -96,10 +106,10 @@ void planFFT(){
 
 
 void initFFT( int ndim, size_t* Ns ){
-    printf("DEBUG initFFT() ndim %i Ns[%li,%li,%li]\n", ndim, Ns[0], Ns[1], Ns[2] );
-    if     (ndim==1){ dim=CLFFT_1D; printf("CLFFT_1D \n"); }
-    else if(ndim==2){ dim=CLFFT_2D; printf("CLFFT_2D \n"); }
-    else if(ndim==3){ dim=CLFFT_3D; printf("CLFFT_3D \n");  };
+    //printf("DEBUG initFFT() ndim %i Ns[%li,%li,%li]\n", ndim, Ns[0], Ns[1], Ns[2] );
+    if     (ndim==1){ dim=CLFFT_1D; }
+    else if(ndim==2){ dim=CLFFT_2D; }
+    else if(ndim==3){ dim=CLFFT_3D; };
     clLengths[0] = Ns[0];
     clLengths[1] = Ns[1];
     clLengths[2] = Ns[2];
@@ -114,7 +124,7 @@ void initFFT( int ndim, size_t* Ns ){
 }
 
 void loadData( float* data_ ){
-    printf("DEBUG loadData() \n");
+    //printf("DEBUG loadData() \n");
     data = data_;
     //makeData();
     //printData( data ); 
@@ -148,4 +158,109 @@ void runAll( ){
     loadData( data );
     runFFT();    printData(data );     printf( "DEBUG 5 \n" );
     cleanup();                         printf( "DEBUG 6 \n" );
+}
+
+
+
+
+// ======================================================
+// ==================== GENERAL OPENCL
+// ======================================================
+// CODE FROM /home/prokop/Dropbox/MyDevSW/OpenCL/OpenCL_in_C/MatrixMutl
+
+char * getKernelSource(char *filename){
+    FILE *file = fopen(filename, "r");
+    if (!file){
+        printf( "Error: Could not open kernel source file\n");
+        exit(EXIT_FAILURE);
+    }
+    fseek(file, 0, SEEK_END);
+    int len = ftell(file) + 1;
+    rewind(file);
+
+    char *source = (char *)calloc(sizeof(char), len);
+    if (!source){
+        printf( "Error: Could not allocate memory for source string\n");
+        exit(EXIT_FAILURE);
+    }
+    fread(source, sizeof(char), len, file);
+    fclose(file);
+    return source;
+}
+
+int makeKernel( char * fname, char * name ){
+    char * kernelsource = getKernelSource( fname);
+    // Create the comput program from the source buffer
+    program = clCreateProgramWithSource(ctx, 1, (const char **) & kernelsource, NULL, &err);
+    char tmpstr[1024];
+    sprintf(tmpstr,"Creating program with %s", fname);
+    checkError(err, tmpstr);
+    free(kernelsource);
+    // Build the program
+    err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    if (err != CL_SUCCESS){
+        size_t len;
+        char buffer[2048];
+        printf("Error: Failed to build program executable!\n%s\n", err_code(err));
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+        printf("%s\n", buffer);
+        return EXIT_FAILURE;
+    }
+    // Create the compute kernel from the program
+    kernel = clCreateKernel(program, name, &err);
+    checkError(err, tmpstr);
+}
+
+
+int runKernel( int kind, KernelDims kdim ){
+
+    //zero_mat(N, h_C);
+    //setArray      ( N*N,  0.0,   h_C );
+    //cl_uint  work_dim  = 1;
+    //size_t   global[2] = {N,N};
+    //size_t   local [2] = {N,N};
+
+    err =  clSetKernelArg(kernel, 0, sizeof(int),    &N   );
+    err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_a );
+    err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &d_b );
+    err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &d_c );
+    if       (kind==1){
+        err |= clSetKernelArg(kernel, 4, sizeof(float) * N, NULL);
+    }else if (kind==2){
+        err |= clSetKernelArg(kernel, 4, sizeof(float) * kdim.blocksize * kdim.blocksize, NULL);
+        err |= clSetKernelArg(kernel, 5, sizeof(float) * kdim.blocksize * kdim.blocksize, NULL);
+    }
+    checkError(err, "Setting kernel args");
+
+    double start_time = wtime();
+    err = clEnqueueNDRangeKernel(  queue,   kernel,   kdim.dim, NULL, kdim.global, kdim.local, 0, NULL, NULL);    
+    checkError(err, "Enqueueing kernel");
+
+    err = clFinish(queue);
+    checkError(err, "Waiting for kernel to finish");
+    double run_time = wtime() - start_time;
+
+    //err = clEnqueueReadBuffer(  queue, d_c, CL_TRUE, 0, sizeof(float) * size, h_C,  0, NULL, NULL);
+    //checkError(err, "Reading back d_c");
+    //results(N, h_C, run_time);
+}
+
+
+void runCLKernel(){
+    makeKernel( "cl/C_block_form.cl", "mmul" );
+    kdim.dim        = 2;
+    kdim.blocksize  = 16;
+    kdim.global[0]  = N;              kdim.global[1]  = N;
+    kdim.local [0]  = kdim.blocksize; kdim.local [1]  = kdim.blocksize;
+    runKernel( 2, kdim );
+}
+
+void releasOCL(){
+    clReleaseMemObject(d_a);
+    clReleaseMemObject(d_b);
+    clReleaseMemObject(d_c);
+    clReleaseProgram(program);
+    clReleaseKernel(kernel);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(ctx);
 }

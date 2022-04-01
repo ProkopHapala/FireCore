@@ -81,47 +81,55 @@ def initFFT( arr ):
     Ns = np.array(arr.shape,dtype=np.int64)
     lib.initFFT( ndim, Ns )
 
+def TestFFT_3D( useGPU=True, n=256 ):
+    import time 
+    print(  "============ RUN TestFFT_3D ========== useGPU ", useGPU, " n = ", n ,"^3" )
+    t0=time.clock()
+    xs       = np.linspace(-2.0,2.0,n)
+    Xs,Ys,Zs = np.meshgrid(xs,xs,xs)
+    arr      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)/( 1 + Xs**2 + Ys**2 + Zs**2)
+    arr = arr.astype( np.csingle )
+    print( arr.sum() )
+    print( "TIME data init ", time.clock()-t0 ); t0=time.clock()
+    if (useGPU):
+        initOCL()             
+        initFFT (arr)      
+        print( "TIME openCL init ", time.clock()-t0 ); t0=time.clock()              
+        loadData(arr)                 
+        runFFT()         
+        print( "TIME GPU run time ", time.clock()-t0 )
+    else:
+        t0=time.clock()
+        arr = np.fft.fftn(arr)
+        print( "TIME CPU run time ", time.clock()-t0 )
+    print( arr.sum() )
+
+def TestFFT_2D():
+    print(  "============ RUN TestFFT_2D ==========" )
+    n=1024
+    xs    = np.linspace(-2.0,2.0,n)
+    Xs,Ys = np.meshgrid(xs,xs)
+    arr   = np.sin(Xs*3 + (Xs**2)*5.1 )*np.cos(Ys*20 + (Xs**2)*3.0)/(1+Xs**2+Ys**2)   + np.random.rand(n,n)*0.1
+    arr   = arr.astype( np.csingle )
+    #arr.imag = np.cos(Xs*3)*np.sin(Ys*20)/(1+Xs**2+Ys**2)
+    import matplotlib.pyplot as plt
+    plt.figure(); plt.imshow( arr.real )
+    #plt.figure(); plt.imshow( arr.imag )
+
+    initOCL()           
+    initFFT(arr)                   
+    loadData(arr)                   
+    runFFT()         
+
+    print( arr )
+    #plt.figure(); plt.imshow( arr.real ); plt.colorbar(); 
+    plt.figure(); plt.imshow( arr.real, vmin=-100.0, vmax=100.0 ); plt.colorbar(); 
+    plt.show()
 
 # ======================= RUN ===============
 
-#runAll()
-#initOCL()
+#TestFFT_2D()
+TestFFT_3D()
+TestFFT_3D(useGPU=False)
 
-'''
-print(  "============ RUN FFT 2D ==========" )
-xs       = np.linspace(-2.0,2.0,4)
-Xs,Ys,Zs = np.meshgrid(xs,xs,xs)
-arr      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)/( 1 + Xs**2 + Ys**2 + Zs**2)
-arr = arr.astype( np.csingle )
-print( arr )
-initOCL()         ;print( "DEBUG 1")          
-initFFT (arr)     ;print( "DEBUG 2")                  
-loadData(arr)     ;print( "DEBUG 3")                 
-runFFT()          ;print( "DEBUG 4")   
-print( arr )
-'''
-
-print(  "============ RUN FFT 3D ==========" )
-n=1024
-xs    = np.linspace(-2.0,2.0,n)
-Xs,Ys = np.meshgrid(xs,xs)
-arr   = np.sin(Xs*3 + (Xs**2)*5.1 )*np.cos(Ys*20 + (Xs**2)*3.0)/(1+Xs**2+Ys**2)   + np.random.rand(n,n)*0.1
-arr   = arr.astype( np.csingle )
-#arr.imag = np.cos(Xs*3)*np.sin(Ys*20)/(1+Xs**2+Ys**2)
-
-import matplotlib.pyplot as plt
-plt.figure(); plt.imshow( arr.real )
-#plt.figure(); plt.imshow( arr.imag )
-
-
-initOCL()         ;print( "DEBUG 1")          
-initFFT(arr)      ;print( "DEBUG 2")                  
-loadData(arr)     ;print( "DEBUG 3")                 
-runFFT()          ;print( "DEBUG 4")   
-
-print( arr )
-#plt.figure(); plt.imshow( arr.real ); plt.colorbar(); 
-plt.figure(); plt.imshow( arr.real, vmin=-100.0, vmax=100.0 ); plt.colorbar(); 
-plt.show()
-
-cleanup()         ;print( "DEBUG 5")   
+cleanup()         
