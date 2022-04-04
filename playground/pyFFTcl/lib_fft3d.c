@@ -211,15 +211,7 @@ int makeKernel( char * fname, char * name ){
     checkError(err, tmpstr);
 }
 
-
 int runKernel( int kind, KernelDims kdim ){
-
-    //zero_mat(N, h_C);
-    //setArray      ( N*N,  0.0,   h_C );
-    //cl_uint  work_dim  = 1;
-    //size_t   global[2] = {N,N};
-    //size_t   local [2] = {N,N};
-
     err =  clSetKernelArg(kernel, 0, sizeof(int),    &N   );
     err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_a );
     err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &d_b );
@@ -231,20 +223,13 @@ int runKernel( int kind, KernelDims kdim ){
         err |= clSetKernelArg(kernel, 5, sizeof(float) * kdim.blocksize * kdim.blocksize, NULL);
     }
     checkError(err, "Setting kernel args");
-
     double start_time = wtime();
     err = clEnqueueNDRangeKernel(  queue,   kernel,   kdim.dim, NULL, kdim.global, kdim.local, 0, NULL, NULL);    
     checkError(err, "Enqueueing kernel");
-
     err = clFinish(queue);
     checkError(err, "Waiting for kernel to finish");
     double run_time = wtime() - start_time;
-
-    //err = clEnqueueReadBuffer(  queue, d_c, CL_TRUE, 0, sizeof(float) * size, h_C,  0, NULL, NULL);
-    //checkError(err, "Reading back d_c");
-    //results(N, h_C, run_time);
 }
-
 
 void runCLKernel(){
     makeKernel( "cl/C_block_form.cl", "mmul" );
