@@ -2,6 +2,8 @@
 #ifndef  OCLerrors_h
 #define  OCLerrors_h
 
+static bool bOCLCheckError = true;
+
 //----------------------------------------------------------------------------
 // Purpose:  Function to output descriptions of errors for an input error code
 //           and quit a program on an error with a user message
@@ -99,6 +101,6 @@ void OCL_check_error(cl_int err, const char *operation, char *filename, int line
     }
 }
 
-#define OCL_checkError(E, S) OCL_check_error(E,S,__FILE__,__LINE__)
+#define OCL_checkError(E, S) if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__);
 
 #endif
