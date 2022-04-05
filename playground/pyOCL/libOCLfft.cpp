@@ -34,6 +34,13 @@ class OCLfft : public OCLsystem { public:
     //static cl_mem d_a, d_b, d_c;
 
     int iKernell_mull=-1;
+    int iKernell_project=-1;
+    OCLtask cltask_mul;
+    OCLtask cltask_project;
+
+    int    nAtoms;
+    float4 pos0, dA, dB, dC;
+    int ibuff_atoms,ibuff_coefs;
 
     void updateNtot(){
         Ntot=1; for(int i=0; i<ndim; i++){ Ntot=Ns[i]; };
@@ -90,19 +97,11 @@ class OCLfft : public OCLsystem { public:
         //printData( data ); 
     }
 
-
-
     void mul_buffs( int ibuffA, int ibuffB, int ibuff_result ){
         KernelDims kdim;
         kdim.dim        = 1;
-        //kdim.blocksize  = 16;
         kdim.global[0]  = Ntot*2;
         kdim.local [0]  = 16;
-        //cl_uint  dim       = 1;
-        //cl_int   blocksize = 16;
-        //size_t global[]    = {Ntot*2};
-        //size_t local []    = {blocksize};
-
         cl_kernel kernel = kernels[iKernell_mull]; 
         //int N2 = Ntot*2;
         err =  clSetKernelArg(kernel, 0, sizeof(int),    &kdim.global        );
@@ -114,15 +113,53 @@ class OCLfft : public OCLsystem { public:
         printf( "mul_buffs kdim: dim %i global %li local %li \n", kdim.dim, kdim.global[0], kdim.local[0] ); 
         err = clEnqueueNDRangeKernel(  commands, kernel,   kdim.dim, NULL, kdim.global, kdim.local, 0, NULL, NULL);    
         OCL_checkError(err, "Enqueueing kernel");
-        err = clFinish(commands);
-        OCL_checkError(err, "Waiting for kernel to finish");
+        //err = clFinish(commands);
+        //OCL_checkError(err, "Waiting for kernel to finish");
         //double run_time = wtime() - start_time;
     }
 
+    void initTask_mul( int ibuffA, int ibuffB, int ibuff_result ){
+        cltask_mul.setup( this, iKernell_mull, 1, Ntot*2, 16 );
+        cltask_mul.args = { 
+            INTarg (cltask_mul.global[0]),
+            BUFFarg(ibuffA),
+            BUFFarg(ibuffB),
+            BUFFarg(ibuff_result),
+        };
+    }
+
+    void initTask_project( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
+        pos0=(float4){0.0f,0.0f,0.0f,0.0f};
+        dA  =(float4){0.1f,0.0f,0.0f,0.0f};
+        dB  =(float4){0.0f,0.1f,0.0f,0.0f};
+        dC  =(float4){0.0f,0.0f,0.1f,0.0f};
+        cltask_project.setup( this, iKernell_project, 1, Ntot*2, 16 );
+        cltask_project.args = { 
+            INTarg (nAtoms),
+            BUFFarg(ibuffAtoms),
+            BUFFarg(ibuffCoefs),
+            BUFFarg(ibuff_result),
+            REFarg(pos0),
+            REFarg(dA),
+            REFarg(dB),
+            REFarg(dC)
+        };
+    }
+
+    void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){
+        upload(ibuff_atoms,atoms);
+        upload(ibuff_coefs,coefs);
+        initTask_project( ibuff_atoms, ibuff_coefs, ibuff_result );
+        cltask_project.enque( );
+        //upload(ibuff_coefs,coefs);
+    }
+    
     void convolution( int ibuffA, int ibuffB, int ibuff_result ){
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffB].p_gpu, NULL, NULL);  
-        mul_buffs( ibuffA, ibuffB, ibuff_result );
+        //mul_buffs( ibuffA, ibuffB, ibuff_result );
+        initTask_mul( ibuffA, ibuffB, ibuff_result );  //cltask_mul.print_arg_list();
+        cltask_mul.enque( );
         err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL);  
     }
 
@@ -139,7 +176,8 @@ class OCLfft : public OCLsystem { public:
 
     void makeMyKernels(){
         buildProgram( "myprog.cl" );
-        iKernell_mull = newKernel( "mul" );
+        iKernell_mull    = newKernel( "mul" );
+        iKernell_project = newKernel( "projectAtomsToGrid" );
     };
 
 
@@ -175,7 +213,15 @@ extern "C" {
         oclfft.newFFTbuffer( "inputA" );
         oclfft.newFFTbuffer( "inputB" );
         oclfft.newFFTbuffer( "outputC" );
+        //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
+
+    int initAtoms( int nAtoms_ ){
+        oclfft.nAtoms=nAtoms_;
+        int ibuff0=oclfft.newBuffer( "atoms", nAtoms_, sizeof(float4), 0, CL_MEM_READ_ONLY );
+                   oclfft.newBuffer( "coefs", nAtoms_, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        return ibuff0;
+    };
 
     void runfft( int ibuff, bool fwd              ){ oclfft.runFFT( ibuff,fwd,0);     };
     //void runfft( int ibuff, bool fwd, float* data ){ oclfft.runFFT( ibuff,fwd, data); };
@@ -183,7 +229,7 @@ extern "C" {
         oclfft.convolution( ibuffA, ibuffB, ibuff_result  );
         //oclfft.mul_buffs( ibuffA, ibuffB, ibuff_result );
     }
-
+    void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){ oclfft.projectAtoms( atoms, coefs, ibuff_result ); }
     void cleanup(){ oclfft.cleanup(); }
 
 };
