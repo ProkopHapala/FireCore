@@ -226,10 +226,10 @@ class OCLsystem{
 #define OCL_LBUFF  4
 #define OCL_PTR    5
 
-#define BUFFarg(X)  OCLarg( X, OCL_BUFF  )
-#define INTarg(X)   OCLarg( X, OCL_INT   )
+#define BUFFarg(X)  OCLarg( (int)X, OCL_BUFF  )
+#define INTarg(X)   OCLarg( (int)X, OCL_INT   )
 #define FLOATarg(X) OCLarg( (float)X     )
-#define LBUFFarg(X) OCLarg( X, OCL_LBUFF )
+#define LBUFFarg(X) OCLarg( (int)X, OCL_LBUFF )
 #define PTRarg(X,n) OCLarg( (void*)X, OCL_PTR, n )
 #define REFarg(X)   OCLarg( (void*)&X, sizeof(X) )
 
@@ -243,12 +243,12 @@ class OCLarg{
         void*  ptr;
     };
     inline void setFloat(  float f_ ){ f=f_; kind=OCL_FLOAT; }
-    inline void setInt  (  int   i_ ){ i=i_; kind=OCL_FLOAT; }
+    inline void setInt  (  int   i_ ){ i=i_; kind=OCL_INT  ; }
     inline void setBuff (  int   i_ ){ i=i_; kind=OCL_BUFF;  }
     OCLarg(){};
-    OCLarg( float f_                ):f(f_), kind(OCL_FLOAT) {}
-    OCLarg( int   i_,   int kind_   ):i(i_), kind(kind_)     {}
-    OCLarg( void* ptr_, int nbytes_ ):ptr(ptr_), kind(OCL_PTR), nbytes(nbytes_){ }
+    OCLarg( float f_                ):f(f_), kind(OCL_FLOAT) {}//  printf( "!!!!! OCLarg(f %f kind %i )\n", f, kind ); }
+    OCLarg( int   i_,   int kind_   ):i(i_), kind(kind_)     {}//  printf( "!!!!! OCLarg(i %i kind %i )\n", i, kind ); }
+    OCLarg( void* ptr_, int nbytes_ ):ptr(ptr_), kind(OCL_PTR), nbytes(nbytes_){}//  printf( "!!!!! OCLarg(ptr %li kind %i )\n", (long)ptr, kind ); }
 };
 
 class OCLtask{
@@ -271,12 +271,12 @@ class OCLtask{
             switch(arg.kind){
                 case OCL_BUFF:
                     //printf( "buffArg args[%i] ibuff %i p_gpu %i \n", i, arg.i, cl->buffers[arg.i].p_gpu );
-                    err |= clSetKernelArg( kernel, i, sizeof(cl_mem), &(cl->buffers[arg.i].p_gpu) );              OCL_checkError(err, "setAsArg"); break;
-                //case OCL_BUFF:  err |= cl->buffers[arg.i].setAsArg( kernel, i );                                OCL_checkError(err, "setAsArg"); break;
-                case OCL_INT:   err |= clSetKernelArg( kernel, i, sizeof(int),    &(arg.i) );                     OCL_checkError(err, "setAsArg"); break;
-                case OCL_FLOAT: err |= clSetKernelArg( kernel, i, sizeof(float),  &(arg.f) );                     OCL_checkError(err, "setAsArg"); break;
-                case OCL_LBUFF: err |= clSetKernelArg( kernel, i, arg.i,  NULL );                                 OCL_checkError(err, "setAsArg"); break;
-                case OCL_PTR:   err |= clSetKernelArg( kernel, i, arg.nbytes,  arg.ptr );                         OCL_checkError(err, "setAsArg"); break;
+                    err |= clSetKernelArg( kernel, i, sizeof(cl_mem), &(cl->buffers[arg.i].p_gpu) );             OCL_checkError(err, "setAsArg"); break;
+                //case OCL_BUFF:  err |= cl->buffers[arg.i].setAsArg( kernel, i );                               OCL_checkError(err, "setAsArg"); break;
+                case OCL_INT:   err |= clSetKernelArg( kernel, i, sizeof(int)  , &(arg.i) );                     OCL_checkError(err, "setAsArg"); break;
+                case OCL_FLOAT: err |= clSetKernelArg( kernel, i, sizeof(float), &(arg.f) );                     OCL_checkError(err, "setAsArg"); break;
+                case OCL_LBUFF: err |= clSetKernelArg( kernel, i, arg.i,          NULL    );                     OCL_checkError(err, "setAsArg"); break;
+                case OCL_PTR:   err |= clSetKernelArg( kernel, i, arg.nbytes,     arg.ptr );                     OCL_checkError(err, "setAsArg"); break;
             }
         }
         return err;
@@ -296,12 +296,13 @@ class OCLtask{
     }
 
     void print_arg_list(){
-        printf("kernel( ");
+        printf("kernel[narg=%li]( ", args.size() );
         for(size_t i=0; i<args.size(); i++){
             switch(args[i].kind){
-                case OCL_INT:   printf( "int %i, ",      args[i].i ); break;
-                case OCL_FLOAT: printf( "float %g, ",    args[i].f ); break;
-                case OCL_BUFF:  printf( "buff[%i]:%s, ", args[i].i, cl->buffers[args[i].i].name );   break;
+                case OCL_INT:   printf( "[%li]int %i, ",     i, args[i].i ); break;
+                case OCL_FLOAT: printf( "[%li]float %g, ",   i, args[i].f ); break;
+                case OCL_BUFF:  printf( "[%li]buff[%i]:%s, ",i, args[i].i, cl->buffers[args[i].i].name );   break;
+                default:        printf( "[%li]arg(type=%i,val=%i) ",  i, args[i].kind, args[i].i );   break;
             }
         }
         printf(")\n");
