@@ -5,8 +5,9 @@ __kernel void mul(
     __global float* B,
     __global float* out
 ){
-    const size_t i = get_local_id(0);
+    const size_t i = get_global_id(0);
     if(i<N){ 
         out[i] = A[i] * B[i]; 
+        //out[i] = sin( i*0.1 ); 
     }
 };

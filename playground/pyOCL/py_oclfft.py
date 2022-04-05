@@ -89,11 +89,63 @@ lib.convolve.restype   =  None
 def convolve(iA,iB,iOut):
     lib.convolve( iA,iB,iOut )
 
+'''
 # void run_fft( int ibuff, bool fwd, float* data )
 lib.runfft.argtypes  = [ c_int, c_bool, c_float_p ] 
 lib.runfft.restype   =  None
 def runfft(ibuff, outbuff, fwd=True ):
     lib.runfft( ibuff, fwd,  _np_as( outbuff, c_float_p ) )
+'''
+
+# void run_fft( int ibuff, bool fwd, float* data )
+lib.runfft.argtypes  = [ c_int, c_bool ] 
+lib.runfft.restype   =  None
+def runfft(ibuff, fwd=True ):
+    lib.runfft( ibuff, fwd )
+
+def Test_fft2d(n=64):
+    import matplotlib.pyplot as plt
+    print( "# ========= TEST   runFFT()  " )
+    xs    = np.linspace(-2.0,2.0,n)
+    Xs,Ys = np.meshgrid(xs,xs)
+    #arrA   = np.sin(Xs*3 + (Xs**2)*5.1 )*np.cos(Ys*20 + (Xs**2)*3.0)   + np.random.rand(n,n)*0.1
+    arrA   = 1/( np.sin(Xs*2)**2 + np.cos(Ys*3 )**2 + 0.1 ) + np.random.rand(n,n)*0.1
+    arrA   = arrA.astype( np.csingle )
+    arrB   = ( np.sin(Xs*6)**2 + np.cos(Ys*3 )**2 + 0.1 )/np.exp( -0.1*(Xs**2 + Ys**2) )  + np.random.rand(n,n)*0.1
+    arrB   = arrB.astype( np.csingle )
+    arrC = arrA.copy(); arrC[:,:]=0
+    init()
+    initFFT(    arrA )
+    upload ( 0, arrA )    ;plt.figure(); plt.imshow( arrA.real )
+    upload ( 1, arrB )    ;plt.figure(); plt.imshow( arrB.real )
+    #convolve( 0,1,   2 )
+    #arrC = np.zeros(arrA.shape)
+    #download( 2, arrC)    ;plt.figure(); plt.imshow( arrC.real ) 
+    runfft (0 ); download ( 0, arrA )    ;plt.figure(); plt.imshow( np.log( np.abs(arrA)) ) 
+    runfft (1 ); download ( 1, arrB )    ;plt.figure(); plt.imshow( np.log( np.abs(arrB)) ) 
+    plt.show(); 
+    cleanup()
+
+def Test_Convolution2d( n=1024):
+    import matplotlib.pyplot as plt
+    print( "# ========= TEST   convolve()  " )
+    xs    = np.linspace(-2.0,2.0,n)
+    Xs,Ys = np.meshgrid(xs,xs)
+    #arrA   = np.sin(Xs*3 + (Xs**2)*5.1 )*np.cos(Ys*20 + (Xs**2)*3.0)   + np.random.rand(n,n)*0.1
+    arrA   = 1/( np.sin(Xs*2)**2 + np.cos(Ys*3 )**2 + 0.1 )
+    arrA   = arrA.astype( np.csingle )
+    arrB   = (Xs*Ys)/np.exp( -0.55*(Xs**2 + Ys**2) )  + np.random.rand(n,n)*0.1
+    arrB   = arrB.astype( np.csingle )
+    arrC = arrA.copy(); arrC[:,:]=0
+    init()
+    initFFT(    arrA )
+    upload ( 0, arrA )    ;plt.figure(); plt.imshow( arrA.real )
+    upload ( 1, arrB )    ;plt.figure(); plt.imshow( arrB.real )
+    upload ( 2, arrC ) 
+    convolve( 0,1,2 )
+    download( 2, arrC)    ;plt.figure(); plt.imshow( arrC.real )
+    plt.show(); 
+    cleanup()
 
 '''
 n=256
@@ -103,86 +155,5 @@ arrA      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)
 arrB      = 1/( 1 + Xs**2 + Ys**2 + Zs**2)
 '''
 
-n=1024
-xs    = np.linspace(-2.0,2.0,n)
-Xs,Ys = np.meshgrid(xs,xs)
-arrA   = np.sin(Xs*3 + (Xs**2)*5.1 )*np.cos(Ys*20 + (Xs**2)*3.0)   + np.random.rand(n,n)*0.1
-arrA   = arrA.astype( np.csingle )
-
-arrB   = 1/(1+Xs**2+Ys**2)  + np.random.rand(n,n)*0.1
-arrB   = arrB.astype( np.csingle )
-
-
-init()
-initFFT(    arrA )
-upload ( 0, arrA )
-upload ( 1, arrB )
-convolve( 0,1,   2 )
-arrC = np.zeros(arrA.shape)
-download( 2, arrC)
-
-import matplotlib.pyplot as plt
-plt.figure(); plt.imshow( arrA.real )
-plt.figure(); plt.imshow( arrB.real )
-plt.figure(); plt.imshow( arrC.real )
-plt.show()
-
-#cleanup()
-
-
-
-
-'''
-def TestFFT_3D( useGPU=True, n=256 ):
-    import time 
-    print(  "============ RUN TestFFT_3D ========== useGPU ", useGPU, " n = ", n ,"^3" )
-    t0=time.clock()
-    xs       = np.linspace(-2.0,2.0,n)
-    Xs,Ys,Zs = np.meshgrid(xs,xs,xs)
-    arr      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)/( 1 + Xs**2 + Ys**2 + Zs**2)
-    arr = arr.astype( np.csingle )
-    print( arr.sum() )
-    print( "TIME data init ", time.clock()-t0 ); t0=time.clock()
-    if (useGPU):
-        initOCL()             
-        initFFT (arr)      
-        print( "TIME openCL init ", time.clock()-t0 ); t0=time.clock()              
-        loadData(arr)                 
-        runFFT()         
-        print( "TIME GPU run time ", time.clock()-t0 )
-    else:
-        t0=time.clock()
-        arr = np.fft.fftn(arr)
-        print( "TIME CPU run time ", time.clock()-t0 )
-    print( arr.sum() )
-
-def TestFFT_2D():
-    print(  "============ RUN TestFFT_2D ==========" )
-    n=1024
-    xs    = np.linspace(-2.0,2.0,n)
-    Xs,Ys = np.meshgrid(xs,xs)
-    arr   = np.sin(Xs*3 + (Xs**2)*5.1 )*np.cos(Ys*20 + (Xs**2)*3.0)/(1+Xs**2+Ys**2)   + np.random.rand(n,n)*0.1
-    arr   = arr.astype( np.csingle )
-    #arr.imag = np.cos(Xs*3)*np.sin(Ys*20)/(1+Xs**2+Ys**2)
-    import matplotlib.pyplot as plt
-    plt.figure(); plt.imshow( arr.real )
-    #plt.figure(); plt.imshow( arr.imag )
-
-    initOCL()           
-    initFFT(arr)                   
-    loadData(arr)                   
-    runFFT()         
-
-    print( arr )
-    #plt.figure(); plt.imshow( arr.real ); plt.colorbar(); 
-    plt.figure(); plt.imshow( arr.real, vmin=-100.0, vmax=100.0 ); plt.colorbar(); 
-    plt.show()
-
-# ======================= RUN ===============
-
-#TestFFT_2D()
-TestFFT_3D()
-TestFFT_3D(useGPU=False)
-
-cleanup()         
-'''
+#Test_fft2d()
+Test_Convolution2d()

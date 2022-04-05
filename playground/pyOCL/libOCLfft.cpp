@@ -94,7 +94,7 @@ class OCLfft : public OCLsystem { public:
 
     void mul_buffs( int ibuffA, int ibuffB, int ibuff_result ){
         KernelDims kdim;
-        kdim.dim        = 2;
+        kdim.dim        = 1;
         //kdim.blocksize  = 16;
         kdim.global[0]  = Ntot*2;
         kdim.local [0]  = 16;
@@ -111,10 +111,11 @@ class OCLfft : public OCLsystem { public:
         err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &(buffers[2].p_gpu) );
         //checkError(err, "Setting kernel args");
         //double start_time = wtime();
+        printf( "mul_buffs kdim: dim %i global %li local %li \n", kdim.dim, kdim.global[0], kdim.local[0] ); 
         err = clEnqueueNDRangeKernel(  commands, kernel,   kdim.dim, NULL, kdim.global, kdim.local, 0, NULL, NULL);    
-        //checkError(err, "Enqueueing kernel");
-        //err = clFinish(queue);
-        //checkError(err, "Waiting for kernel to finish");
+        OCL_checkError(err, "Enqueueing kernel");
+        err = clFinish(commands);
+        OCL_checkError(err, "Waiting for kernel to finish");
         //double run_time = wtime() - start_time;
     }
 
@@ -176,10 +177,11 @@ extern "C" {
         oclfft.newFFTbuffer( "outputC" );
     }
 
-    void runfft( int ibuff, bool fwd, float* data ){ oclfft.runFFT( ibuff,fwd, data); };
+    void runfft( int ibuff, bool fwd              ){ oclfft.runFFT( ibuff,fwd,0);     };
+    //void runfft( int ibuff, bool fwd, float* data ){ oclfft.runFFT( ibuff,fwd, data); };
     void convolve( int ibuffA, int ibuffB, int ibuff_result ){
-        //oclfft.convolution( ibuffA, ibuffB, ibuff_result  );
-        oclfft.mul_buffs( ibuffA, ibuffB, ibuff_result );
+        oclfft.convolution( ibuffA, ibuffB, ibuff_result  );
+        //oclfft.mul_buffs( ibuffA, ibuffB, ibuff_result );
     }
 
     void cleanup(){ oclfft.cleanup(); }
