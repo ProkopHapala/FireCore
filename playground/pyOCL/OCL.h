@@ -58,7 +58,7 @@ class OCLBuffer{
     inline int setAsArg( cl_kernel& kernel, int i   ){ return clSetKernelArg(kernel, i, sizeof(cl_mem), &p_gpu );  };
 
 
-    inline int fromGPU ( cl_command_queue& commands,       void* cpu_data ){ return clEnqueueReadBuffer ( commands, p_gpu, CL_TRUE, 0, byteSize(), cpu_data, 0, NULL, NULL);  }
+    inline int fromGPU ( cl_command_queue& commands,       void* cpu_data ){ return clEnqueueReadBuffer ( commands, p_gpu, CL_TRUE, 0, byteSize(), cpu_data, 0, NULL, NULL );  }
     inline int toGPU   ( cl_command_queue& commands, const void* cpu_data ){ return clEnqueueWriteBuffer( commands, p_gpu, CL_TRUE, 0, byteSize(), cpu_data, 0, NULL, NULL ); }
     inline int fromGPU ( cl_command_queue& commands ){ return fromGPU ( commands, p_cpu ); }
     inline int toGPU   ( cl_command_queue& commands ){ return toGPU   ( commands, p_cpu ); }
@@ -248,7 +248,7 @@ class OCLarg{
     OCLarg(){};
     OCLarg( float f_                ):f(f_), kind(OCL_FLOAT) {}//  printf( "!!!!! OCLarg(f %f kind %i )\n", f, kind ); }
     OCLarg( int   i_,   int kind_   ):i(i_), kind(kind_)     {}//  printf( "!!!!! OCLarg(i %i kind %i )\n", i, kind ); }
-    OCLarg( void* ptr_, int nbytes_ ):ptr(ptr_), kind(OCL_PTR), nbytes(nbytes_){}//  printf( "!!!!! OCLarg(ptr %li kind %i )\n", (long)ptr, kind ); }
+    OCLarg( void* ptr_, int nbytes_ ):ptr(ptr_), kind(OCL_PTR), nbytes(nbytes_){  printf( "!!!!! OCLarg(ptr %li kind %i  nbytes %i )\n", (long)ptr, kind, nbytes ); }
 };
 
 class OCLtask{

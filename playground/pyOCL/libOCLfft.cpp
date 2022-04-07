@@ -22,8 +22,9 @@ class OCLfft : public OCLsystem { public:
 
     //const size_t N0 = 4, N1 = 4, N2 = 4;
     int ndim=0;
-    size_t Ns[3]; // = {N0, N1, N2};
+    size_t Ns[4]; // = {N0, N1, N2};
     size_t Ntot;
+    int4   Nvec;
     //size_t buffer_size;
 
     //static cl_mem data_cl;
@@ -74,6 +75,13 @@ class OCLfft : public OCLsystem { public:
         return newBuffer( name, Ntot, sizeof(float2), 0, CL_MEM_READ_WRITE );
     }
 
+    int initAtoms( int nAtoms_ ){
+        nAtoms=nAtoms_;
+        ibuff_atoms=newBuffer( "atoms", nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        ibuff_coefs=newBuffer( "coefs", nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        return ibuff_atoms;
+    };
+
     //void loadData( float* data_ ){
         //printf("DEBUG loadData() \n");
         //data = data_;
@@ -119,7 +127,8 @@ class OCLfft : public OCLsystem { public:
     }
 
     void initTask_mul( int ibuffA, int ibuffB, int ibuff_result ){
-        cltask_mul.setup( this, iKernell_mull, 1, Ntot*2, 16 );
+        //cltask_mul.setup( this, iKernell_mull, 1, Ntot*2, 16 );
+        cltask_mul.setup( this, iKernell_mull, 1, 8, 1 ); printf( "WARRNING : initTask_mul() IS WRONG !!!! %i %i \n", ibuffA, ibuffB );
         cltask_mul.args = { 
             INTarg (cltask_mul.global[0]),
             BUFFarg(ibuffA),
@@ -133,25 +142,40 @@ class OCLfft : public OCLsystem { public:
         dA  =(float4){0.1f,0.0f,0.0f,0.0f};
         dB  =(float4){0.0f,0.1f,0.0f,0.0f};
         dC  =(float4){0.0f,0.0f,0.1f,0.0f};
+        Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
+        //printf( "SizeOff dA %li Ns %li \n", sizeof(dA), sizeof(Ns) );
+        //printf( "nAtoms %i \n", nAtoms );
         cltask_project.setup( this, iKernell_project, 1, Ntot*2, 16 );
         cltask_project.args = { 
-            INTarg (nAtoms),
-            BUFFarg(ibuffAtoms),
-            BUFFarg(ibuffCoefs),
-            BUFFarg(ibuff_result),
-            REFarg(pos0),
-            REFarg(dA),
-            REFarg(dB),
-            REFarg(dC)
+            INTarg (nAtoms),        //1
+            BUFFarg(ibuffAtoms),    //2
+            BUFFarg(ibuffCoefs),    //3
+            BUFFarg(ibuff_result),  //4
+            REFarg(Nvec),           //5
+            REFarg(pos0),           //6
+            REFarg(dA),           //7
+            REFarg(dB),           //8
+            REFarg(dC)            //9
         };
+        cltask_project.print_arg_list();
     }
 
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){
+        for(int i=0; i<nAtoms;i++){printf( "atom[%i] xyz|e(%g,%g,%g|%g) coefs(%g,%g,%g|%g)\n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  coefs[i].x,coefs[i].y,coefs[i].z,coefs[i].w  );}
         upload(ibuff_atoms,atoms);
         upload(ibuff_coefs,coefs);
+        //ibuff_atoms=0;
+        //ibuff_coefs=1;
+        //printf("ibuff_atoms %i ibuff_coefs %i \n", ibuff_atoms, ibuff_coefs);
+        //err = clEnqueueWriteBuffer  ( queue, data_cl,                   CL_TRUE, 0, buffer_size,           data,  0, NULL, NULL );
+        //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_atoms].p_gpu, CL_TRUE, 0, sizeof(float4)*nAtoms, atoms, 0, NULL, NULL ); OCL_checkError(err, "Creating ibuff_atoms");
+        //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_coefs].p_gpu, CL_TRUE, 0, sizeof(float4)*nAtoms, coefs, 0, NULL, NULL ); OCL_checkError(err, "Creating ibuff_coefs");
+        clFinish(commands); 
         initTask_project( ibuff_atoms, ibuff_coefs, ibuff_result );
         cltask_project.enque( );
-        //upload(ibuff_coefs,coefs);
+        //initTask_mul( ibuff_atoms, ibuff_coefs,   ibuff_result   );
+        //cltask_mul.enque( );
+        clFinish(commands); 
     }
     
     void convolution( int ibuffA, int ibuffB, int ibuff_result ){
@@ -216,20 +240,14 @@ extern "C" {
         //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
 
-    int initAtoms( int nAtoms_ ){
-        oclfft.nAtoms=nAtoms_;
-        int ibuff0=oclfft.newBuffer( "atoms", nAtoms_, sizeof(float4), 0, CL_MEM_READ_ONLY );
-                   oclfft.newBuffer( "coefs", nAtoms_, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        return ibuff0;
-    };
-
-    void runfft( int ibuff, bool fwd              ){ oclfft.runFFT( ibuff,fwd,0);     };
+    int initAtoms( int nAtoms          ){  return oclfft.initAtoms( nAtoms ); };
+    void runfft( int ibuff, bool fwd   ){ oclfft.runFFT( ibuff,fwd,0);     };
     //void runfft( int ibuff, bool fwd, float* data ){ oclfft.runFFT( ibuff,fwd, data); };
     void convolve( int ibuffA, int ibuffB, int ibuff_result ){
         oclfft.convolution( ibuffA, ibuffB, ibuff_result  );
         //oclfft.mul_buffs( ibuffA, ibuffB, ibuff_result );
     }
-    void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){ oclfft.projectAtoms( atoms, coefs, ibuff_result ); }
+    void projectAtoms( float* atoms, float* coefs, int ibuff_result ){ oclfft.projectAtoms( (float4*)atoms, (float4*)coefs, ibuff_result ); }
     void cleanup(){ oclfft.cleanup(); }
 
 };
