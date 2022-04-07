@@ -5,6 +5,8 @@
 //======= int
 
 struct int2   { int x,y; };
+struct int4   { int x,y,z,w; };
+struct int8   { int x,y,z,w,hx,hy,hz,hw; };
 
 //======= float
 

@@ -36,7 +36,8 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     int  download ( int i,       float* cpu_data )
     void initFFT  ( int ndim, size_t* Ns_ ){
     void run_fft( int ibuff, bool fwd, float* data )
-    void convolve ( int ibuffA, int ibuffB, int ibuff_result ){
+    void convolve ( int ibuffA, int ibuffB, int ibuff_result )
+    void projectAtoms( float4* atoms, float4* coefs, int ibuff_result )
 '''
 
 #mode=ct.RTLD_GLOBAL
@@ -78,16 +79,30 @@ def upload( i, data):
 #void initFFT ( int ndim, int* Ns );
 lib.initFFT.argtypes  = [ c_int, array1l ] 
 lib.initFFT.restype   =  None
-def initFFT( arr ):
-    ndim=len(arr.shape)
-    Ns = np.array(arr.shape,dtype=np.int64)
+def initFFT( Ns ):
+    Ns=np.array(Ns,dtype=np.int64)
+    ndim=len(Ns)
     lib.initFFT( ndim, Ns )
 
+#void initFFT ( int ndim, int* Ns );
+lib.initAtoms.argtypes  = [ c_int ] 
+lib.initAtoms.restype   =  None
+def initAtoms( N ):
+    lib.initAtoms( N )
 
 lib.convolve.argtypes  = [ c_int, c_int, c_int ] 
 lib.convolve.restype   =  None
 def convolve(iA,iB,iOut):
     lib.convolve( iA,iB,iOut )
+
+
+#projectAtoms( float* atoms, float4* coefs, int ibuff_result )
+lib.projectAtoms.argtypes  = [ c_float_p, c_float_p, c_int ] 
+lib.projectAtoms.restype   =  None
+def projectAtoms(atoms,coefs,iOut):
+    lib.projectAtoms( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut )
+
+
 
 '''
 # void run_fft( int ibuff, bool fwd, float* data )
@@ -103,6 +118,40 @@ lib.runfft.restype   =  None
 def runfft(ibuff, fwd=True ):
     lib.runfft( ibuff, fwd )
 
+
+def Test_projectAtoms(n=64):
+    import matplotlib.pyplot as plt
+    print( "# ========= TEST   runFFT()  " )
+    acs=[
+    [[1.0,2.0,3.0,1.0],    [0.0,0.0,0.0,1.0]],  
+    [[2.0,3.0,2.0,1.0],    [3.0,0.0,0.0,0.0]],
+
+    [[2.0, 2.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    [[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    [[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    [[-1.0,-1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    [[2.0,-1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    [[2.0,-2.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    ]
+    atoms = np.array([ a[0] for a in acs ], dtype=np.float32)
+    coefs = np.array([ a[1] for a in acs ], dtype=np.float32)
+    print( "atoms ", atoms, atoms.dtype )
+    print( "coefs ", coefs )
+    init()
+    Ns=(100,100,100)
+    initFFT( Ns  )
+    initAtoms( len(atoms) )
+    projectAtoms( atoms, coefs, 0 )
+    arrA = np.zeros(Ns,dtype=np.csingle  )
+    download ( 0, arrA )    
+    plt.figure(); 
+    print( arrA[10,10].real )
+    plt.imshow( arrA[10].real ) 
+    #plt.imshow( np.log( np.abs(arrA[10])) ) 
+    plt.show(); 
+    cleanup()
+
+
 def Test_fft2d(n=64):
     import matplotlib.pyplot as plt
     print( "# ========= TEST   runFFT()  " )
@@ -115,7 +164,7 @@ def Test_fft2d(n=64):
     arrB   = arrB.astype( np.csingle )
     arrC = arrA.copy(); arrC[:,:]=0
     init()
-    initFFT(    arrA )
+    initFFT(    arrA.shape )
     upload ( 0, arrA )    ;plt.figure(); plt.imshow( arrA.real )
     upload ( 1, arrB )    ;plt.figure(); plt.imshow( arrB.real )
     #convolve( 0,1,   2 )
@@ -138,7 +187,7 @@ def Test_Convolution2d( n=1024):
     arrB   = arrB.astype( np.csingle )
     arrC = arrA.copy(); arrC[:,:]=0
     init()
-    initFFT(    arrA )
+    initFFT(    arrA.shape )
     upload ( 0, arrA )    ;plt.figure(); plt.imshow( arrA.real )
     upload ( 1, arrB )    ;plt.figure(); plt.imshow( arrB.real )
     upload ( 2, arrC ) 
@@ -156,4 +205,6 @@ arrB      = 1/( 1 + Xs**2 + Ys**2 + Zs**2)
 '''
 
 #Test_fft2d()
-Test_Convolution2d()
+#Test_Convolution2d()
+
+Test_projectAtoms(n=64)
