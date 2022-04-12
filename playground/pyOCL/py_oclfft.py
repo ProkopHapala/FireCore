@@ -38,6 +38,8 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     void run_fft( int ibuff, bool fwd, float* data )
     void convolve ( int ibuffA, int ibuffB, int ibuff_result )
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result )
+    void setGridShape( float* pos0, float* dA, float* dB, float* dC ){
+    int  initBasisTable( int nx, int ny, float* data );
 '''
 
 #mode=ct.RTLD_GLOBAL
@@ -90,11 +92,18 @@ lib.initAtoms.restype   =  None
 def initAtoms( N ):
     lib.initAtoms( N )
 
+'''
+#int  initBasisTable( int nx, int ny, float* data );
+lib.initBasisTable.argtypes  = [ c_int, c_int, c_float_p ] 
+lib.initBasisTable.restype   =  c_int
+def initBasisTable( nx,ny, data ):
+    return lib.initBasisTable( nx,ny, _np_as( data, c_float_p ) )
+'''
+
 lib.convolve.argtypes  = [ c_int, c_int, c_int ] 
 lib.convolve.restype   =  None
 def convolve(iA,iB,iOut):
     lib.convolve( iA,iB,iOut )
-
 
 #projectAtoms( float* atoms, float4* coefs, int ibuff_result )
 lib.projectAtoms.argtypes  = [ c_float_p, c_float_p, c_int ] 
@@ -102,6 +111,16 @@ lib.projectAtoms.restype   =  None
 def projectAtoms(atoms,coefs,iOut):
     lib.projectAtoms( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut )
 
+
+#setGridShape( float* pos0, float* dA, float* dB, float* dC ){
+lib.setGridShape.argtypes  = [ c_float_p, c_float_p, c_float_p, c_float_p ] 
+lib.setGridShape.restype   =  None
+def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,0.,0.,0.1]):
+    pos0=np.array(pos0,dtype=np.float32)
+    dA=np.array(dA,dtype=np.float32)
+    dB=np.array(dB,dtype=np.float32)
+    dC=np.array(dC,dtype=np.float32)
+    lib.setGridShape( _np_as( pos0, c_float_p ),_np_as( dA, c_float_p ), _np_as( dB, c_float_p ), _np_as( dC, c_float_p ) )
 
 
 '''
@@ -119,9 +138,12 @@ def runfft(ibuff, fwd=True ):
     lib.runfft( ibuff, fwd )
 
 
-def Test_projectAtoms(n=64):
+def Test_projectAtoms(n=64, natoms=1000):
     import matplotlib.pyplot as plt
+    import time
     print( "# ========= TEST   runFFT()  " )
+    
+    '''
     acs=[
     [[1.0,2.0,3.0,1.0],    [0.0,0.0,0.0,1.0]],  
     [[2.0,3.0,2.0,1.0],    [3.0,0.0,0.0,0.0]],
@@ -135,17 +157,34 @@ def Test_projectAtoms(n=64):
     ]
     atoms = np.array([ a[0] for a in acs ], dtype=np.float32)
     coefs = np.array([ a[1] for a in acs ], dtype=np.float32)
-    print( "atoms ", atoms, atoms.dtype )
-    print( "coefs ", coefs )
+    '''
+    atoms = np.random.rand(natoms,4).astype(np.float32);    atoms[:,:3]*=10.0; atoms[:,3]=3.0;
+    coefs = np.random.rand(natoms,4).astype(np.float32);    coefs[:,:3] = 0.0; coefs[:,3]=1.0; 
+
+    '''
+    xs = np.linspace(0.0,10.0,100)
+    ys = np.ones(16)
+    basis,_=np.meshgrid(xs,ys).astype(np.float32)
+    plt.imshow(basis); plt.show()
+    '''
+
+    #print( "atoms ", atoms, atoms.dtype )
+    #print( "coefs ", coefs )
     init()
+    #Ns=(128,128,128)
     Ns=(100,100,100)
     initFFT( Ns  )
     initAtoms( len(atoms) )
+
+    #initBasisTable( basis.shape[0], basis.shape[1], basis )
+    setGridShape()
+    t0 = time.clock()
     projectAtoms( atoms, coefs, 0 )
     arrA = np.zeros(Ns,dtype=np.csingle  )
     download ( 0, arrA )    
+    t = time.clock()-t0; print( "projection time ", t )
     plt.figure(); 
-    print( arrA[10,10].real )
+    #print( arrA[10,10].real )
     plt.imshow( arrA[10].real ) 
     #plt.imshow( np.log( np.abs(arrA[10])) ) 
     plt.show(); 

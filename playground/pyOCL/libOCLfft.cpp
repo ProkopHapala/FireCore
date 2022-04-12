@@ -36,8 +36,11 @@ class OCLfft : public OCLsystem { public:
 
     int iKernell_mull=-1;
     int iKernell_project=-1;
+    int iKernell_project_tex=-1;
     OCLtask cltask_mul;
     OCLtask cltask_project;
+    OCLtask cltask_project_tex;
+    int itex_basis=-1;
 
     int    nAtoms;
     float4 pos0, dA, dB, dC;
@@ -81,6 +84,11 @@ class OCLfft : public OCLsystem { public:
         ibuff_coefs=newBuffer( "coefs", nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
         return ibuff_atoms;
     };
+
+    int initBasisTable( int nx, int ny, float* data ){
+        itex_basis = newBufferImage2D( "BasisTable", nx, ny,   sizeof(float),  data, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR , {CL_RGBA, CL_FLOAT} );
+        return itex_basis;
+    }
 
     //void loadData( float* data_ ){
         //printf("DEBUG loadData() \n");
@@ -138,13 +146,7 @@ class OCLfft : public OCLsystem { public:
     }
 
     void initTask_project( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
-        pos0=(float4){0.0f,0.0f,0.0f,0.0f};
-        dA  =(float4){0.1f,0.0f,0.0f,0.0f};
-        dB  =(float4){0.0f,0.1f,0.0f,0.0f};
-        dC  =(float4){0.0f,0.0f,0.1f,0.0f};
         Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
-        //printf( "SizeOff dA %li Ns %li \n", sizeof(dA), sizeof(Ns) );
-        //printf( "nAtoms %i \n", nAtoms );
         cltask_project.setup( this, iKernell_project, 1, Ntot*2, 16 );
         cltask_project.args = { 
             INTarg (nAtoms),        //1
@@ -157,11 +159,29 @@ class OCLfft : public OCLsystem { public:
             REFarg(dB),           //8
             REFarg(dC)            //9
         };
+        //cltask_project.print_arg_list();
+    }
+
+    void initTask_project_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
+        Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
+        cltask_project.setup( this, iKernell_project_tex, 1, Ntot*2, 16 );
+        cltask_project.args = { 
+            INTarg (nAtoms),        //1
+            BUFFarg(ibuffAtoms),    //2
+            BUFFarg(ibuffCoefs),    //3
+            BUFFarg(ibuff_result),  //4
+            BUFFarg(itex_basis),    //4
+            REFarg(Nvec),           //5
+            REFarg(pos0),           //6
+            REFarg(dA),           //7
+            REFarg(dB),           //8
+            REFarg(dC)            //9
+        };
         cltask_project.print_arg_list();
     }
 
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){
-        for(int i=0; i<nAtoms;i++){printf( "atom[%i] xyz|e(%g,%g,%g|%g) coefs(%g,%g,%g|%g)\n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  coefs[i].x,coefs[i].y,coefs[i].z,coefs[i].w  );}
+        //for(int i=0; i<nAtoms;i++){printf( "atom[%i] xyz|e(%g,%g,%g|%g) coefs(%g,%g,%g|%g)\n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  coefs[i].x,coefs[i].y,coefs[i].z,coefs[i].w  );}
         upload(ibuff_atoms,atoms);
         upload(ibuff_coefs,coefs);
         //ibuff_atoms=0;
@@ -249,5 +269,14 @@ extern "C" {
     }
     void projectAtoms( float* atoms, float* coefs, int ibuff_result ){ oclfft.projectAtoms( (float4*)atoms, (float4*)coefs, ibuff_result ); }
     void cleanup(){ oclfft.cleanup(); }
+
+    void setGridShape( float* pos0, float* dA, float* dB, float* dC ){
+        oclfft.pos0=*(float4*)pos0;
+        oclfft.dA  =*(float4*)dA;
+        oclfft.dB  =*(float4*)dB;
+        oclfft.dC  =*(float4*)dC;
+    }
+
+    int initBasisTable( int nx, int ny, float* data );
 
 };
