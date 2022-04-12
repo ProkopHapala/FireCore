@@ -9,7 +9,6 @@
 
 #include "datatypes.h"
 
-
 //void print( cl_mem cmem ){ printf( "\n", cmem.  ); };
 
 class OCLBuffer{
@@ -30,11 +29,11 @@ class OCLBuffer{
 
     inline int initOnGPU ( cl_context& context ){
         int err;
-        printf( "initOnGPU() buff_size %li | n %li typesize %li \n", byteSize(), n, typesize );
+        //printf( "initOnGPU() buff_size %li | n %li typesize %li \n", byteSize(), n, typesize );
         if( (flags&CL_MEM_COPY_HOST_PTR)||(flags&CL_MEM_USE_HOST_PTR) ){
                 p_gpu = clCreateBuffer(context, flags, byteSize(), p_cpu,   &err);
         }else{  p_gpu = clCreateBuffer(context, flags, byteSize(), 0,       &err); }
-        printf( "initOnGPU p_gpu: %li \n", (long)p_gpu );
+        //printf( "initOnGPU p_gpu: %li \n", (long)p_gpu );
         return err;
     }
 
@@ -162,7 +161,9 @@ class OCLsystem{
         sprintf(tmpstr,"Creating program with %s", fname);
         OCL_checkError(err, tmpstr);
         free(kernelsource);
-        err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+        //errNum = clBuildProgram(program, numDevices,deviceIDs, "-I.", NULL, NULL);
+        err =      clBuildProgram(program, 0,         NULL,      "-I. -cl-std=CL2.0", NULL, NULL);
+        //err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
         if (err != CL_SUCCESS){
             printf( " ERROR in clBuildProgram %s \n", fname);
             OCL_buildProgramFailure( program, device );
@@ -248,7 +249,7 @@ class OCLarg{
     OCLarg(){};
     OCLarg( float f_                ):f(f_), kind(OCL_FLOAT) {}//  printf( "!!!!! OCLarg(f %f kind %i )\n", f, kind ); }
     OCLarg( int   i_,   int kind_   ):i(i_), kind(kind_)     {}//  printf( "!!!!! OCLarg(i %i kind %i )\n", i, kind ); }
-    OCLarg( void* ptr_, int nbytes_ ):ptr(ptr_), kind(OCL_PTR), nbytes(nbytes_){  printf( "!!!!! OCLarg(ptr %li kind %i  nbytes %i )\n", (long)ptr, kind, nbytes ); }
+    OCLarg( void* ptr_, int nbytes_ ):ptr(ptr_), kind(OCL_PTR), nbytes(nbytes_){} //{  printf( "!!!!! OCLarg(ptr %li kind %i  nbytes %i )\n", (long)ptr, kind, nbytes ); }
 };
 
 class OCLtask{
