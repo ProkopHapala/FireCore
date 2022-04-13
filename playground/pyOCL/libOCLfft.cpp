@@ -164,20 +164,20 @@ class OCLfft : public OCLsystem { public:
 
     void initTask_project_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
         Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
-        cltask_project.setup( this, iKernell_project_tex, 1, Ntot*2, 16 );
-        cltask_project.args = { 
+        cltask_project_tex.setup( this, iKernell_project_tex, 1, Ntot*2, 16 );
+        cltask_project_tex.args = { 
             INTarg (nAtoms),        //1
             BUFFarg(ibuffAtoms),    //2
             BUFFarg(ibuffCoefs),    //3
             BUFFarg(ibuff_result),  //4
-            BUFFarg(itex_basis),    //4
-            REFarg(Nvec),           //5
-            REFarg(pos0),           //6
-            REFarg(dA),           //7
-            REFarg(dB),           //8
-            REFarg(dC)            //9
+            BUFFarg(itex_basis),    //5
+            REFarg(Nvec),           //6
+            REFarg(pos0),           //7
+            REFarg(dA),           //8
+            REFarg(dB),           //9
+            REFarg(dC)            //10
         };
-        cltask_project.print_arg_list();
+        cltask_project_tex.print_arg_list();
     }
 
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){
@@ -191,8 +191,10 @@ class OCLfft : public OCLsystem { public:
         //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_atoms].p_gpu, CL_TRUE, 0, sizeof(float4)*nAtoms, atoms, 0, NULL, NULL ); OCL_checkError(err, "Creating ibuff_atoms");
         //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_coefs].p_gpu, CL_TRUE, 0, sizeof(float4)*nAtoms, coefs, 0, NULL, NULL ); OCL_checkError(err, "Creating ibuff_coefs");
         clFinish(commands); 
-        initTask_project( ibuff_atoms, ibuff_coefs, ibuff_result );
-        cltask_project.enque( );
+        //initTask_project( ibuff_atoms, ibuff_coefs, ibuff_result );
+        //cltask_project.enque( );
+        initTask_project_tex( ibuff_atoms, ibuff_coefs, ibuff_result );
+        cltask_project_tex.enque( );
         //initTask_mul( ibuff_atoms, ibuff_coefs,   ibuff_result   );
         //cltask_mul.enque( );
         clFinish(commands); 
@@ -222,6 +224,7 @@ class OCLfft : public OCLsystem { public:
         buildProgram( "myprog.cl" );
         iKernell_mull    = newKernel( "mul" );
         iKernell_project = newKernel( "projectAtomsToGrid" );
+        iKernell_project_tex = newKernel( "projectAtomsToGrid_texture" );
     };
 
 
@@ -277,6 +280,6 @@ extern "C" {
         oclfft.dC  =*(float4*)dC;
     }
 
-    int initBasisTable( int nx, int ny, float* data );
+    int initBasisTable( int nx, int ny, float* data ){  return oclfft.initBasisTable(nx,ny,data ); };
 
 };

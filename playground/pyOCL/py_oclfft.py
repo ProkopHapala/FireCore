@@ -92,13 +92,11 @@ lib.initAtoms.restype   =  None
 def initAtoms( N ):
     lib.initAtoms( N )
 
-'''
 #int  initBasisTable( int nx, int ny, float* data );
 lib.initBasisTable.argtypes  = [ c_int, c_int, c_float_p ] 
 lib.initBasisTable.restype   =  c_int
 def initBasisTable( nx,ny, data ):
     return lib.initBasisTable( nx,ny, _np_as( data, c_float_p ) )
-'''
 
 lib.convolve.argtypes  = [ c_int, c_int, c_int ] 
 lib.convolve.restype   =  None
@@ -143,30 +141,27 @@ def Test_projectAtoms(n=64, natoms=1000):
     import time
     print( "# ========= TEST   runFFT()  " )
     
-    '''
     acs=[
-    [[1.0,2.0,3.0,1.0],    [0.0,0.0,0.0,1.0]],  
-    [[2.0,3.0,2.0,1.0],    [3.0,0.0,0.0,0.0]],
-
-    [[2.0, 2.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
-    [[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
-    [[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
-    [[-1.0,-1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
-    [[2.0,-1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
-    [[2.0,-2.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    [[1.0,2.0,0.0,1.0],    [0.0,0.0,0.0,1.0]],  
+    #[[2.0,3.0,0.0,1.0],    [0.0,0.0,0.0,1.0]],
+    #[[2.0, 2.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    #[[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    #[[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    #[[-1.0,-1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    #[[2.0,-1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
+    #[[2.0,-2.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
     ]
     atoms = np.array([ a[0] for a in acs ], dtype=np.float32)
     coefs = np.array([ a[1] for a in acs ], dtype=np.float32)
-    '''
-    atoms = np.random.rand(natoms,4).astype(np.float32);    atoms[:,:3]*=10.0; atoms[:,3]=3.0;
-    coefs = np.random.rand(natoms,4).astype(np.float32);    coefs[:,:3] = 0.0; coefs[:,3]=1.0; 
+    
+    #atoms = np.random.rand(natoms,4).astype(np.float32);    atoms[:,:3]*=10.0; atoms[:,3]=3.0;
+    #coefs = np.random.rand(natoms,4).astype(np.float32);    coefs[:,:3] = 0.0; coefs[:,3]=1.0; 
 
-    '''
-    xs = np.linspace(0.0,10.0,100)
+    xs = np.linspace(0.0,10.0,100)*-1.0
     ys = np.ones(16)
-    basis,_=np.meshgrid(xs,ys).astype(np.float32)
+    basis,_=np.meshgrid(xs,ys); #basis=np.exp(-0.3*(basis-2.0)**2)*-1+np.exp(-0.3*(basis)**2)*1;  
+    basis=basis.astype(np.float32)
     plt.imshow(basis); plt.show()
-    '''
 
     #print( "atoms ", atoms, atoms.dtype )
     #print( "coefs ", coefs )
@@ -176,7 +171,7 @@ def Test_projectAtoms(n=64, natoms=1000):
     initFFT( Ns  )
     initAtoms( len(atoms) )
 
-    #initBasisTable( basis.shape[0], basis.shape[1], basis )
+    initBasisTable( basis.shape[0], basis.shape[1], basis )
     setGridShape()
     t0 = time.clock()
     projectAtoms( atoms, coefs, 0 )
