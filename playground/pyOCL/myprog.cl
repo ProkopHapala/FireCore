@@ -210,7 +210,9 @@ __kernel void projectAtomsToGrid_texture(
                 float4 xyzq  = LATOMS[j];
                 float4 cs    = LCOEFS[j];
                 //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
-                wf.x += sp3_tex( pos-xyzq.xyz, cs, xyzq.w, imgIn );
+                wf.x += sp3_tex( (pos-xyzq.xyz)*0.3f, cs, 0.1, imgIn );
+
+                //wf.x += sp3_tex( pos, cs, 0.1, imgIn );
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
