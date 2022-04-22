@@ -1,7 +1,13 @@
 ﻿#define R2SAFE          1e-4f
 #define COULOMB_CONST   14.399644f  // [eV*Ang/e^2]
 
-__constant sampler_t sampler_1 =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
+//__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
+//__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_LINEAR;
+//__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_LINEAR;
+__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
+//__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST;
+//__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
+
 __constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST;
 
 
@@ -54,11 +60,13 @@ float4 interpFE( float2 pos, float3 dinvA, float3 dinvB, float3 dinvC, __read_on
 */
 
 float4 lerp_basis( float x, float slot, __read_only image2d_t imgIn ){
-    float d = 0.01;
+    //float d = 0.01;
     float icoord;
-    float fc     =  fract( x/d, &icoord );
-    return read_imagef( imgIn, sampler_1, (float2){ x  , slot } )*(1.f-fc)
-        +  read_imagef( imgIn, sampler_1, (float2){ x+d, slot } )*    fc ;
+    float fc     =  fract( x, &icoord );
+    return read_imagef( imgIn, sampler_wrf, (float2){ icoord  , slot } )*(1.f-fc)
+        +  read_imagef( imgIn, sampler_wrf, (float2){ icoord+1, slot } )*     fc ;
+    //return read_imagef( imgIn, sampler_wrf, (float2){ x  , slot } )*(1.f-fc)
+    //    +  read_imagef( imgIn, sampler_wrf, (float2){ x+1, slot } )*    fc ;
     //return coord;
 }
 
@@ -71,7 +79,7 @@ __kernel void mul(
 ){
     const size_t i = get_global_id(0);
     if(i<N){ 
-        printf( "DEBUG_GPU mul[%i] A=%g B=%g \n", i, A[i], B[i] );
+        //printf( "DEBUG_GPU mul[%i] A=%g B=%g \n", i, A[i], B[i] );
         out[i] = A[i] * B[i]; 
         //out[i] = sin( i*0.1 ); 
     }
@@ -95,8 +103,10 @@ float sp3_tex( float3 dp, float4 c, float slot, __read_only image2d_t imgIn ){
     float   r   = sqrt(r2);
     float   ir  = 1/r;
     float4  fr  = lerp_basis( r, slot, imgIn );
+    //float4  fr  = read_imagef( imgIn, sampler_wrf, (float2){ r, slot } );
     float4  v = (float4) ( dp*ir, 1 )*fr;
     return  dot( v ,c );
+    //return r;
 }
 
 
@@ -196,8 +206,9 @@ __kernel void projectAtomsToGrid_texture(
     if(iG>nMax) return;
     //if(iG==0) for(int ia=0; ia<nAtoms;ia++)printf( "DEBUG_GPU atoms[%i](%g,%g,%g,%g) coefs[0](%g,%g,%g,%g) \n", ia, atoms[ia].x,atoms[ia].y,atoms[ia].z,atoms[ia].w,  coefs[ia].x,coefs[ia].y,coefs[ia].z,coefs[ia].w  );
     float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
-    outGrid[iG].x = sin(pos.x+pos.y+pos.z);
+
     float2 wf   = (float2) (0.0f,0.0f);
+    //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*10.f ).x;
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         // TODO : we can optimize it here - load just the atom which are close to center of the block !!!!!
@@ -210,12 +221,13 @@ __kernel void projectAtomsToGrid_texture(
                 float4 xyzq  = LATOMS[j];
                 float4 cs    = LCOEFS[j];
                 //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
-                wf.x += sp3_tex( (pos-xyzq.xyz)*0.3f, cs, 0.1, imgIn );
-
+                wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
+                //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
                 //wf.x += sp3_tex( pos, cs, 0.1, imgIn );
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
     outGrid[iG] = wf;
 }
