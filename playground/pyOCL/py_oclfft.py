@@ -142,8 +142,8 @@ def Test_projectAtoms(n=64, natoms=1000):
     print( "# ========= TEST   runFFT()  " )
     
     acs=[
-    [[1.0,2.0,0.0,1.0],    [0.0,0.0,0.0,1.0]],  
-    #[[2.0,3.0,0.0,1.0],    [0.0,0.0,0.0,1.0]],
+    [[0.0,0.0,0.0,8.001],    [0.0,0.0,0.0,1.0]],  
+    [[6.0,0.0,0.0,7.999],    [0.0,0.0,0.0,1.0]],
     #[[2.0, 2.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
     #[[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
     #[[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
@@ -157,11 +157,34 @@ def Test_projectAtoms(n=64, natoms=1000):
     #atoms = np.random.rand(natoms,4).astype(np.float32);    atoms[:,:3]*=10.0; atoms[:,3]=3.0;
     #coefs = np.random.rand(natoms,4).astype(np.float32);    coefs[:,:3] = 0.0; coefs[:,3]=1.0; 
 
-    xs = np.linspace(0.0,10.0,100)*-1.0
-    ys = np.ones(16)
-    basis,_=np.meshgrid(xs,ys); #basis=np.exp(-0.3*(basis-2.0)**2)*-1+np.exp(-0.3*(basis)**2)*1;  
+    ny=32
+    nx=128
+    basis        = np.zeros( (ny,nx,4) )  # RGBA   resp {x,y,z,s}
+    '''
+    xs = np.linspace(0.0,10.0,nx)*-1.0
+    ys = np.linspace(0.0,2.0,ny)*-1.0
+    Xs,Ys=np.meshgrid(xs,ys); # basis=np.exp(-0.3*(basis-2.0)**2)*-1+np.exp(-0.3*(basis)**2)*1;  
+    
+    basis[:,:,3] = np.sin( Xs**2 + Ys**2 )
+    '''
+    '''
+    for i in range(ny):
+        dx=2.0*(i//8)
+        basis[i,:] = xs 
+        #basis[i,:] = np.exp(-2.0*(xs+dx+1.0)**2) #+ np.exp(-0.3*(xs-dx+5.0)**2)
+        #basis[i,i*4:i*4+8] = 1.0
+    '''
+    basis[0:8 ,:3] = 1.0
+    basis[8:32,:3] = 1.0
+    basis[0:8,10:20] = 1.0
+    basis[0:8,40:50] = 1.0
+    basis[8:32,30:40] = 1.0
+    basis[8:32,40:50] = -1.0
+    basis[8:32,50:60] = 1.0
+    
+
     basis=basis.astype(np.float32)
-    plt.imshow(basis); plt.show()
+    plt.imshow(basis[:,:,0], interpolation='nearest'); #plt.show()
 
     #print( "atoms ", atoms, atoms.dtype )
     #print( "coefs ", coefs )
@@ -182,6 +205,7 @@ def Test_projectAtoms(n=64, natoms=1000):
     #print( arrA[10,10].real )
     plt.imshow( arrA[10].real ) 
     #plt.imshow( np.log( np.abs(arrA[10])) ) 
+    plt.grid()
     plt.show(); 
     cleanup()
 
