@@ -149,9 +149,12 @@ def approx( xs, ys, ws=None, npoly=14 ):
 # loadWf(const char* fname, double* out){
 lib.loadWf.argtypes  = [ c_char_p, c_double_p ] 
 lib.loadWf.restype   =  None
-def loadWf( fname, np=1000 ):
-    data=np.zeros(np)
-    return lib.loadWf( fname, _np_as( data, c_double_p ) )
+def loadWf_C( fname, n=1000 ):
+    data=np.zeros(n)
+    #fname = c_char_p( fname) 
+    fname = fname.encode('utf-8')
+    lib.loadWf( fname, _np_as( data, c_double_p ) )
+    return data
 
 def Test_projectAtoms(n=64, natoms=1000):
     import matplotlib.pyplot as plt
@@ -279,8 +282,9 @@ arrA      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)
 arrB      = 1/( 1 + Xs**2 + Ys**2 + Zs**2)
 '''
 
-loadWf( "basis/001_450.wf1"  )
-
+data = loadWf_C( "basis/001_450.wf1"  )
+print( data )
+exit()
 
 def loadWf( fname="basis/001_450.wf1" ):
     txt = open( fname, 'r' ).readlines()

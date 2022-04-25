@@ -326,18 +326,19 @@ extern "C" {
     void loadWf(const char* fname, double* out){
         const int nbuff = 1024;
         char buff[nbuff]; char* line;
-        FILE *pFile = fopen(fname, 'r');
+        FILE *pFile = fopen(fname, "r" );
         line=fgets(buff,nbuff,pFile);
         line=fgets(buff,nbuff,pFile);
         line=fgets(buff,nbuff,pFile);
         line=fgets(buff,nbuff,pFile);
         line=fgets(buff,nbuff,pFile);
-        double xs[4];
+        //double xs[4];
         while(true){
             line=fgets(buff,nbuff,pFile);
-            int i = sscanf (line, "%f %f %f %f\n", &out[0], &out[1], &out[2], &out[3] );
-            printf( " %g %g %g %g \n", out[0], out[1], out[2], out[3] );
+            for(int i=0; i<nbuff; i++){ if(line[i]=='D')line[i]='e'; }
+            int i = sscanf (line, "%lf %lf %lf %lf\n", &out[0], &out[1], &out[2], &out[3] );
             if(i!=4) break;
+            printf( " %g %g %g %g \n", out[0], out[1], out[2], out[3] );
             out+=4;
         }
         fclose(pFile);
