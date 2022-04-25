@@ -40,6 +40,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result )
     void setGridShape( float* pos0, float* dA, float* dB, float* dC ){
     int  initBasisTable( int nx, int ny, float* data );
+    void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
 '''
 
 #mode=ct.RTLD_GLOBAL
@@ -120,7 +121,6 @@ def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,
     dC=np.array(dC,dtype=np.float32)
     lib.setGridShape( _np_as( pos0, c_float_p ),_np_as( dA, c_float_p ), _np_as( dB, c_float_p ), _np_as( dC, c_float_p ) )
 
-
 '''
 # void run_fft( int ibuff, bool fwd, float* data )
 lib.runfft.argtypes  = [ c_int, c_bool, c_float_p ] 
@@ -135,6 +135,15 @@ lib.runfft.restype   =  None
 def runfft(ibuff, fwd=True ):
     lib.runfft( ibuff, fwd )
 
+
+#void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
+lib.approx.argtypes  = [ c_int, c_int, c_double_p, c_double_p, c_double_p ] 
+lib.approx.restype   =  None
+def approx( xs, ys, ws=None, npoly=14 ):
+    n=len(xs)
+    if ws is None:
+        ws = np.ones(n)
+    return lib.approx( n, npoly, _np_as( xs, c_double_p ),_np_as( ys, c_double_p ), _np_as( ws, c_double_p ) )
 
 def Test_projectAtoms(n=64, natoms=1000):
     import matplotlib.pyplot as plt
@@ -262,7 +271,28 @@ arrA      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)
 arrB      = 1/( 1 + Xs**2 + Ys**2 + Zs**2)
 '''
 
+def loadWf( fname="basis/001_450.wf1" ):
+    txt = open( fname, 'r' ).readlines()
+    txt = [ l.replace('D','e') for l in txt ]
+    data = np.genfromtxt( txt, skip_header=5, skip_footer=1 )
+    data = data.flatten()
+    print( len(data) )
+    return data
+
+import matplotlib.pyplot as plt
+xs = np.linspace( 0.0,4.5,1000 )
+wf_Hs = loadWf( "basis/001_450.wf1" )  ;plt.plot( xs, wf_Hs, label="Hs" )
+wf_Cs = loadWf( "basis/006_450.wf1" )  ;plt.plot( xs, wf_Cs, label="Cs" )
+wf_Cp = loadWf( "basis/006_450.wf2" )  ;plt.plot( xs, wf_Cp, label="Cp" )
+
+approx( xs, wf_Hs, npoly=15 )
+#approx( xs, wf_Cs, npoly=15 )
+#approx( xs, wf_Cp, npoly=15 )
+
+plt.grid()
+plt.show()
+
 #Test_fft2d()
 #Test_Convolution2d()
 
-Test_projectAtoms(n=64)
+#Test_projectAtoms(n=64)
