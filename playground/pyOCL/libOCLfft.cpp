@@ -6,7 +6,11 @@
 
 #include  "OCL.h"
 
+#include  "approximation.h"
+
+
 OCLsystem ocl;
+Approx::AutoApprox aaprox;
 
 typedef struct{
     cl_uint  dim;
@@ -284,5 +288,40 @@ extern "C" {
     }
 
     int initBasisTable( int nx, int ny, float* data ){  return oclfft.initBasisTable(nx,ny,data ); };
+
+
+
+    void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
+        //int npoints = 100;
+        const int npows   = 4;
+        //int npolys  = 15;
+        double pows[npows] {1,2,4,8};
+        //double pows [npows ]{-1,-2,-4,-8};
+        //int    polys[npolys]{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+        //double pows [];
+        int    polys[npolys]; for(int i=0;i<npolys; i++)polys[i]=i;
+        aaprox.bindOrRealloc( npolys, npows, npoints, polys, pows );
+        aaprox.ws.alloc(aaprox.np);
+        //aaprox.ws = aaprox.ys_ref;
+        for(int i=0; i<npoints; i++){
+            aaprox.xs    [i] = xs[i];
+            aaprox.ys_ref[i] = ys[i];
+            aaprox.ws    [i] = ws[i];
+        }
+        aaprox.reallocAux();
+        aaprox.preparePowers();
+        for(int i=0; i<aaprox.npows; i++){
+            //int order = aaprox.tryVariant(10, 50, i ); // order of polynominal required for that accuracy?
+            int order = aaprox.tryVariant(5, npoints, i );
+            //int order = aaprox.ascendingPolyFit_(10, 50, i );
+            if(order<0){ order=aaprox.npoly; printf("(not converged)"); }
+            printf("[%i] pow %g err %g coefs[%i]: ", i, aaprox.pows[i], aaprox.err, order );
+            //for(int j=0; j<order; j++ ) printf( "%i %g \n", i, aaprox.coefs[j] );
+            for(int j=0; j<order; j++ ) printf( " %g ", aaprox.coefs[j] );
+            printf("\n");
+        }
+
+    }
+
 
 };
