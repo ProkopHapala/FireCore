@@ -41,6 +41,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     void setGridShape( float* pos0, float* dA, float* dB, float* dC ){
     int  initBasisTable( int nx, int ny, float* data );
     void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
+    void loadWf(const char* fname, double* out){
 '''
 
 #mode=ct.RTLD_GLOBAL
@@ -144,6 +145,13 @@ def approx( xs, ys, ws=None, npoly=14 ):
     if ws is None:
         ws = np.ones(n)
     return lib.approx( n, npoly, _np_as( xs, c_double_p ),_np_as( ys, c_double_p ), _np_as( ws, c_double_p ) )
+
+# loadWf(const char* fname, double* out){
+lib.loadWf.argtypes  = [ c_char_p, c_double_p ] 
+lib.loadWf.restype   =  None
+def loadWf( fname, np=1000 ):
+    data=np.zeros(np)
+    return lib.loadWf( fname, _np_as( data, c_double_p ) )
 
 def Test_projectAtoms(n=64, natoms=1000):
     import matplotlib.pyplot as plt
@@ -270,6 +278,9 @@ Xs,Ys,Zs = np.meshgrid(xs,xs,xs)
 arrA      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)
 arrB      = 1/( 1 + Xs**2 + Ys**2 + Zs**2)
 '''
+
+loadWf( "basis/001_450.wf1"  )
+
 
 def loadWf( fname="basis/001_450.wf1" ):
     txt = open( fname, 'r' ).readlines()
