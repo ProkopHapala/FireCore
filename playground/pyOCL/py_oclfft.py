@@ -42,6 +42,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     int  initBasisTable( int nx, int ny, float* data );
     void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
     void loadWf(const char* fname, double* out){
+    void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
 '''
 
 #mode=ct.RTLD_GLOBAL
@@ -156,14 +157,22 @@ def loadWf_C( fname, n=1000 ):
     lib.loadWf( fname, _np_as( data, c_double_p ) )
     return data
 
+#void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
+lib.loadWfBasis.argtypes  = [ c_float, c_int, c_int, c_int, c_int_p ] 
+lib.loadWfBasis.restype   =  None
+def loadWfBasis( iZs, nsamp=100, ntmp=1000, Rcut=4.5 ):
+    nZ=len(iZs)
+    iZs=np.array(iZs,dtype=np.int32)
+    return lib.loadWfBasis( Rcut, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ) )
+
 def Test_projectAtoms(n=64, natoms=1000):
     import matplotlib.pyplot as plt
     import time
     print( "# ========= TEST   runFFT()  " )
     
     acs=[
-    [[0.0,0.0,0.0,8.001],    [0.0,0.0,0.0,1.0]],  
-    [[6.0,0.0,0.0,7.999],    [0.0,0.0,0.0,1.0]],
+    [[0.0,2.0,0.0,1.001],    [0.0,1.0,0.0,0.0]],  
+    [[6.0,2.0,0.0,0.999],    [0.0,0.0,0.0,1.0]],
     #[[2.0, 2.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
     #[[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
     #[[-1.0, 1.0,0.0,1.0],    [1.0,0.0,0.0,1.0]], 
@@ -177,23 +186,10 @@ def Test_projectAtoms(n=64, natoms=1000):
     #atoms = np.random.rand(natoms,4).astype(np.float32);    atoms[:,:3]*=10.0; atoms[:,3]=3.0;
     #coefs = np.random.rand(natoms,4).astype(np.float32);    coefs[:,:3] = 0.0; coefs[:,3]=1.0; 
 
+    '''
     ny=32
     nx=128
     basis        = np.zeros( (ny,nx,4) )  # RGBA   resp {x,y,z,s}
-    '''
-    xs = np.linspace(0.0,10.0,nx)*-1.0
-    ys = np.linspace(0.0,2.0,ny)*-1.0
-    Xs,Ys=np.meshgrid(xs,ys); # basis=np.exp(-0.3*(basis-2.0)**2)*-1+np.exp(-0.3*(basis)**2)*1;  
-    
-    basis[:,:,3] = np.sin( Xs**2 + Ys**2 )
-    '''
-    '''
-    for i in range(ny):
-        dx=2.0*(i//8)
-        basis[i,:] = xs 
-        #basis[i,:] = np.exp(-2.0*(xs+dx+1.0)**2) #+ np.exp(-0.3*(xs-dx+5.0)**2)
-        #basis[i,i*4:i*4+8] = 1.0
-    '''
     basis[0:8 ,:3] = 1.0
     basis[8:32,:3] = 1.0
     basis[0:8,10:20] = 1.0
@@ -201,10 +197,9 @@ def Test_projectAtoms(n=64, natoms=1000):
     basis[8:32,30:40] = 1.0
     basis[8:32,40:50] = -1.0
     basis[8:32,50:60] = 1.0
-    
-
     basis=basis.astype(np.float32)
     plt.imshow(basis[:,:,0], interpolation='nearest'); #plt.show()
+    '''
 
     #print( "atoms ", atoms, atoms.dtype )
     #print( "coefs ", coefs )
@@ -212,9 +207,10 @@ def Test_projectAtoms(n=64, natoms=1000):
     #Ns=(128,128,128)
     Ns=(100,100,100)
     initFFT( Ns  )
+    loadWfBasis( [1,6], Rcut=4.5 )
     initAtoms( len(atoms) )
+    #initBasisTable( basis.shape[0], basis.shape[1], basis )
 
-    initBasisTable( basis.shape[0], basis.shape[1], basis )
     setGridShape()
     t0 = time.clock()
     projectAtoms( atoms, coefs, 0 )
@@ -282,9 +278,11 @@ arrA      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)
 arrB      = 1/( 1 + Xs**2 + Ys**2 + Zs**2)
 '''
 
-data = loadWf_C( "basis/001_450.wf1"  )
-print( data )
-exit()
+#data = loadWf_C( "basis/001_450.wf1"  )
+#print( data )
+#exit()
+
+'''
 
 def loadWf( fname="basis/001_450.wf1" ):
     txt = open( fname, 'r' ).readlines()
@@ -307,7 +305,10 @@ approx( xs, wf_Hs, npoly=15 )
 plt.grid()
 plt.show()
 
+'''
+
 #Test_fft2d()
 #Test_Convolution2d()
 
-#Test_projectAtoms(n=64)
+
+Test_projectAtoms(n=64)

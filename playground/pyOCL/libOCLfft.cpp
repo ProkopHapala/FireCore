@@ -9,6 +9,48 @@
 #include  "approximation.h"
 
 
+
+bool loadWf_(const char* fname, float* out){
+    const int nbuff = 1024;
+    char buff[nbuff]; char* line;
+    printf( "loadWf %s \n", fname );
+    FILE *pFile = fopen(fname, "r" );
+    if(pFile==0)return false;
+    //printf( "loadWf_ 0 \n" );
+    line=fgets(buff,nbuff,pFile);
+    line=fgets(buff,nbuff,pFile);
+    line=fgets(buff,nbuff,pFile);
+    line=fgets(buff,nbuff,pFile);
+    line=fgets(buff,nbuff,pFile);
+    //printf( "loadWf_ 1 \n" );
+    //double xs[4];
+    while(true){
+        line=fgets(buff,nbuff,pFile);
+        //printf( "loadWf_ >>%s<< \n", line );
+        for(int i=0; i<nbuff; i++){ if(line[i]=='D')line[i]='e'; }
+        //int i = sscanf (line, "%lf %lf %lf %lf\n", &out[0], &out[1], &out[2], &out[3] );
+        int i = sscanf (line, "%f %f %f %f\n", &out[0], &out[1], &out[2], &out[3] );
+        if(i!=4) break;
+        //printf( " %g %g %g %g \n", out[0], out[1], out[2], out[3] );
+        out+=4;
+    }
+    fclose(pFile);
+    return true;
+}
+
+void resample1D(int nout, float x0to, float x0from, float dxTo, float dxFrom, float* from, float* to, int pitch, int off ){
+    float invdx = 1/dxFrom;
+    for(int i=0; i<nout; i++){
+        float  x = ((x0to + i*dxTo)-x0from)*invdx;
+        int   ix = (int)x;
+        float  f = x-ix;
+        int iout = i*pitch+off;
+        to[iout] =  from[ix]*(1-f)-from[ix+1]*f;  // lerp
+        printf("resample1D %i : %g \n", i, to[iout] );
+    }
+}
+
+
 OCLsystem ocl;
 Approx::AutoApprox aaprox;
 
@@ -248,6 +290,31 @@ class OCLfft : public OCLsystem { public:
     }
 */
 
+    void loadWfBasis( float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
+        float* data     = new float[nsamp*2*nZ];
+        float* data_tmp = new float[ntmp      ];
+        char fname[64];
+        float dxTmp =Rcut/ntmp;
+        float dxSamp=Rcut/nsamp;
+        printf( "loadWfBasis nsamp %i ntmp %i nZ %i Rcut %g \n", nsamp, ntmp, nZ, Rcut );
+        for(int i=0; i<nZ; i++){
+            int iz=iZs[i];
+            sprintf( fname, "basis/%03i_%03i.wf%i", iz, (int)(Rcut*100), 1 );
+            loadWf_(fname, data_tmp );
+            resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,0 );
+            sprintf( fname, "basis/%03i_%03i.wf%i", iz, (int)(Rcut*100), 2 );
+            if( loadWf_(fname, data_tmp ) ){
+                resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,1 );
+            }else{
+                for(int j=0; j<nsamp; j++){ data[nsamp*(i*2)+2*j+1]=data[nsamp*(i*2)+2*j]; }
+            }
+        }
+        for(int i=0; i<nsamp; i++){ printf("[%i] (%f,%f)   (%f,%f) \n", i, data[i*2],data[i*2+1],data[i*2+2*nsamp],data[i*2+1+2*nsamp] );  }
+        delete [] data_tmp;
+        itex_basis = newBufferImage2D( "BasisTable", nsamp, nZ,  sizeof(float)*2,  data, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR , {CL_RG, CL_FLOAT} );
+        delete [] data;
+    }
+
 };
 
 OCLfft oclfft;
@@ -323,25 +390,8 @@ extern "C" {
 
     }
 
-    void loadWf(const char* fname, double* out){
-        const int nbuff = 1024;
-        char buff[nbuff]; char* line;
-        FILE *pFile = fopen(fname, "r" );
-        line=fgets(buff,nbuff,pFile);
-        line=fgets(buff,nbuff,pFile);
-        line=fgets(buff,nbuff,pFile);
-        line=fgets(buff,nbuff,pFile);
-        line=fgets(buff,nbuff,pFile);
-        //double xs[4];
-        while(true){
-            line=fgets(buff,nbuff,pFile);
-            for(int i=0; i<nbuff; i++){ if(line[i]=='D')line[i]='e'; }
-            int i = sscanf (line, "%lf %lf %lf %lf\n", &out[0], &out[1], &out[2], &out[3] );
-            if(i!=4) break;
-            printf( " %g %g %g %g \n", out[0], out[1], out[2], out[3] );
-            out+=4;
-        }
-        fclose(pFile);
-    }
+    void loadWf(const char* fname, float* out){ loadWf_(fname, out); };
+
+    void loadWfBasis( float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){ oclfft.loadWfBasis(Rcut,nsamp,ntmp,nZ,iZs ); }
 
 };

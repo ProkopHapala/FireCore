@@ -59,12 +59,12 @@ float4 interpFE( float2 pos, float3 dinvA, float3 dinvB, float3 dinvC, __read_on
 }
 */
 
-float4 lerp_basis( float x, float slot, __read_only image2d_t imgIn ){
+float2 lerp_basis( float x, float slot, __read_only image2d_t imgIn ){
     //float d = 0.01;
     float icoord;
     float fc     =  fract( x, &icoord );
-    return read_imagef( imgIn, sampler_wrf, (float2){ icoord  , slot } )*(1.f-fc)
-        +  read_imagef( imgIn, sampler_wrf, (float2){ icoord+1, slot } )*     fc ;
+    return read_imagef( imgIn, sampler_wrf, (float2){ icoord  , slot } ).xy*(1.f-fc)
+        +  read_imagef( imgIn, sampler_wrf, (float2){ icoord+1, slot } ).xy*     fc ;
     //return read_imagef( imgIn, sampler_wrf, (float2){ x  , slot } )*(1.f-fc)
     //    +  read_imagef( imgIn, sampler_wrf, (float2){ x+1, slot } )*    fc ;
     //return coord;
@@ -102,7 +102,7 @@ float sp3_tex( float3 dp, float4 c, float slot, __read_only image2d_t imgIn ){
     float   r2  = ( dot(dp,dp) +  R2SAFE );
     float   r   = sqrt(r2);
     float   ir  = 1/r;
-    float4  fr  = lerp_basis( r, slot, imgIn );
+    float4  fr  = lerp_basis( r, slot, imgIn ).xyyy;
     //float4  fr  = read_imagef( imgIn, sampler_wrf, (float2){ r, slot } );
     float4  v = (float4) ( dp*ir, 1 )*fr;
     return  dot( v ,c );
@@ -209,6 +209,10 @@ __kernel void projectAtomsToGrid_texture(
 
     float2 wf   = (float2) (0.0f,0.0f);
     //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*10.f ).x;
+    //wf.x = read_imagef( imgIn, sampler_wrf, (float2){ pos.x*10.0f, 0.5 } ).x;
+
+    //if(iG==0){    for(int i=0; i<100; i++){ wf = read_imagef( imgIn, sampler_wrf, (float2){ i*10.f, 0.5 } ).xy; printf( "wf [%i] %g %g \n", i, wf.x, wf.y ); };}
+
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         // TODO : we can optimize it here - load just the atom which are close to center of the block !!!!!
@@ -221,9 +225,9 @@ __kernel void projectAtomsToGrid_texture(
                 float4 xyzq  = LATOMS[j];
                 float4 cs    = LCOEFS[j];
                 //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
-                wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
+                //wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
                 //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
-                //wf.x += sp3_tex( pos, cs, 0.1, imgIn );
+                wf.x += sp3_tex( (pos-xyzq.xyz)*10.0f, cs, xyzq.w, imgIn );
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
