@@ -48,7 +48,7 @@ void resample1D(int nout, float x0to, float x0from, float dxTo, float dxFrom, fl
         float  f = x-ix;
         int iout = i*pitch+off;
         to[iout] =  from[ix]*(1-f)-from[ix+1]*f;  // lerp
-        printf("resample1D %i : %g \n", i, to[iout] );
+        //printf("resample1D %i : %g \n", i, to[iout] );
     }
 }
 
@@ -64,6 +64,7 @@ typedef struct{
 } KernelDims;
 
 class OCLfft : public OCLsystem { public:
+
 
     clfftPlanHandle planHandle;
     clfftDim fft_dim = CLFFT_3D;
@@ -92,6 +93,7 @@ class OCLfft : public OCLsystem { public:
 
     int    nAtoms;
     float4 pos0, dA, dB, dC;
+    GridShape grid;
     int ibuff_atoms,ibuff_coefs;
 
     void updateNtot(){
@@ -317,6 +319,14 @@ class OCLfft : public OCLsystem { public:
         delete [] data;
     }
 
+
+    void saveToXsf(const char* fname, int ibuff){
+        float* cpu_data = new float[Ntot];
+        download( ibuff,cpu_data);
+        grid.saveXSF( fname, cpu_data, -1 );
+        delete [] cpu_data;
+    }
+
 };
 
 OCLfft oclfft;
@@ -395,5 +405,7 @@ extern "C" {
     void loadWf(const char* fname, float* out){ loadWf_(fname, out); };
 
     void loadWfBasis( float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){ oclfft.loadWfBasis(Rcut,nsamp,ntmp,nZ,iZs ); }
+
+    void saveToXsf(const char* fname, int ibuff){ return saveToXsf(fname, ibuff); }
 
 };

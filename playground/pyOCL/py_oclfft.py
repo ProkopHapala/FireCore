@@ -43,6 +43,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
     void loadWf(const char* fname, double* out){
     void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
+    void saveToXsf(const char* fname, int ibuff){
 '''
 
 #mode=ct.RTLD_GLOBAL
@@ -156,6 +157,13 @@ def loadWf_C( fname, n=1000 ):
     fname = fname.encode('utf-8')
     lib.loadWf( fname, _np_as( data, c_double_p ) )
     return data
+
+# void saveToXsf(const char* fname, int ibuff){
+lib.saveToXsf.argtypes  = [ c_char_p, c_int ] 
+lib.saveToXsf.restype   =  None
+def saveToXsf( fname, ibuff ):
+    fname = fname.encode('utf-8')
+    lib.saveToXsf( fname, ibuff )
 
 #void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
 lib.loadWfBasis.argtypes  = [ c_float, c_int, c_int, c_int, c_int_p ] 
