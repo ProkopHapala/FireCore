@@ -117,11 +117,14 @@ def projectAtoms(atoms,coefs,iOut):
 #setGridShape( float* pos0, float* dA, float* dB, float* dC ){
 lib.setGridShape.argtypes  = [ c_float_p, c_float_p, c_float_p, c_float_p ] 
 lib.setGridShape.restype   =  None
-def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,0.,0.,0.1]):
+def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,0.,0.1,0.0]):
     pos0=np.array(pos0,dtype=np.float32)
     dA=np.array(dA,dtype=np.float32)
     dB=np.array(dB,dtype=np.float32)
     dC=np.array(dC,dtype=np.float32)
+    print( "dA ", dA);
+    print( "dB ", dB);
+    print( "dC ", dC);
     lib.setGridShape( _np_as( pos0, c_float_p ),_np_as( dA, c_float_p ), _np_as( dB, c_float_p ), _np_as( dC, c_float_p ) )
 
 '''
@@ -222,6 +225,7 @@ def Test_projectAtoms(n=64, natoms=1000):
     setGridShape()
     t0 = time.clock()
     projectAtoms( atoms, coefs, 0 )
+    saveToXsf( "test.xsf", 0 )
     arrA = np.zeros(Ns,dtype=np.csingle  )
     download ( 0, arrA )    
     t = time.clock()-t0; print( "projection time ", t )
