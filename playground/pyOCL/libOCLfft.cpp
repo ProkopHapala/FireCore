@@ -8,6 +8,8 @@
 
 #include  "approximation.h"
 
+#include "Grid.h"
+
 
 
 bool loadWf_(const char* fname, float* out){
