@@ -321,9 +321,21 @@ class OCLfft : public OCLsystem { public:
 
 
     void saveToXsf(const char* fname, int ibuff){
+        printf("saveToXsf() %g %g %g \n", dC.x, dC.y, dC.z );
+        grid.cell.a=(Vec3d)(*(Vec3f*)&dA)*Ns[0];
+        grid.cell.b=(Vec3d)(*(Vec3f*)&dB)*Ns[1];
+        grid.cell.c=(Vec3d)(*(Vec3f*)&dC)*Ns[2];
+        grid.pos0  =(Vec3d)(*(Vec3f*)&pos0);
+        grid.n = (Vec3i){(int)Ns[0],(int)Ns[1],(int)Ns[2]}; //Ntot;
+        grid.updateCell();
+        grid.printCell();
+        printf("saveToXsf() 1 \n");
         float* cpu_data = new float[Ntot];
+        printf("saveToXsf() 2 %i \n", ibuff);
         download( ibuff,cpu_data);
+        printf("saveToXsf() 3 \n");
         grid.saveXSF( fname, cpu_data, -1 );
+        printf("saveToXsf() 4 \n");
         delete [] cpu_data;
     }
 
@@ -364,6 +376,10 @@ extern "C" {
         oclfft.dA  =*(float4*)dA;
         oclfft.dB  =*(float4*)dB;
         oclfft.dC  =*(float4*)dC;
+        //printf( "setGridShape dA %g %g %g \n", oclfft.dA.x, oclfft.dA.y, oclfft.dA.z ); 
+        //printf( "setGridShape dB %g %g %g \n", oclfft.dB.x, oclfft.dB.y, oclfft.dB.z ); 
+        //printf( "setGridShape dC %g %g %g \n", oclfft.dC.x, oclfft.dC.y, oclfft.dC.z ); 
+
     }
 
     int initBasisTable( int nx, int ny, float* data ){  return oclfft.initBasisTable(nx,ny,data ); };
@@ -406,6 +422,6 @@ extern "C" {
 
     void loadWfBasis( float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){ oclfft.loadWfBasis(Rcut,nsamp,ntmp,nZ,iZs ); }
 
-    void saveToXsf(const char* fname, int ibuff){ return saveToXsf(fname, ibuff); }
+    void saveToXsf(const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff); }
 
 };
