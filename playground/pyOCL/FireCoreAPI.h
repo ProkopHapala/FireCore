@@ -47,6 +47,7 @@ class Lib{ public:
     P_assembleH   assembleH=0;
     P_solveH      solveH   =0;
     P_getPointer  getPointer_wfcoef=0;
+    //getGridMO=0;
 
 
     //P_1d getp_ratom=0;

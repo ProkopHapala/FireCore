@@ -323,8 +323,7 @@ class OCLfft : public OCLsystem { public:
         delete [] data;
     }
 
-
-    void saveToXsf(const char* fname, int ibuff){
+    void update_GridShape(){
         printf("saveToXsf() %g %g %g \n", dC.x, dC.y, dC.z );
         grid.cell.a=(Vec3d)(*(Vec3f*)&dA)*Ns[0];
         grid.cell.b=(Vec3d)(*(Vec3f*)&dB)*Ns[1];
@@ -333,6 +332,10 @@ class OCLfft : public OCLsystem { public:
         grid.n = (Vec3i){(int)Ns[0],(int)Ns[1],(int)Ns[2]}; //Ntot;
         grid.updateCell();
         grid.printCell();
+    }
+
+    void saveToXsf(const char* fname, int ibuff){
+        update_GridShape();
         printf("saveToXsf() 1 \n");
         float* cpu_data = new float[Ntot*2]; // complex 2*float
         printf("saveToXsf() 2 %i \n", ibuff);
@@ -431,8 +434,26 @@ extern "C" {
     void saveToXsf(const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff); }
 
     void initFireBall( int natoms, int* atypes, double* apos ){
+
+        // ==== Init OpenCL FFT
+        oclfft.init();
+        oclfft.makeMyKernels();
+        size_t Ns[3]{100,100,100};
+        int iZs[2]{1,6}; 
+        initFFT( 3, Ns );
+        oclfft.loadWfBasis( "Fdata/basis/", 4.50,100,1000, 2,iZs );
+        initAtoms( natoms );
+        // ==== Convert Wave-Function coefs and project using OpenCL 
+        float pos0[4]{ -5.0, -5.0, -5.0, 0.0};
+        float dA  [4]{ 0.1, 0.0, 0.0, 0.0};
+        float dB  [4]{ 0.0, 0.1, 0.0, 0.0};
+        float dC  [4]{ 0.0, 0.0, 0.1, 0.0};
+        setGridShape( pos0, dA, dB, dC );
+        oclfft.update_GridShape();
+
         // ======= Init Fireball
         fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
+        fireCore.set_lvs( (double*)&( oclfft.grid.cell) );
         fireCore.preinit();
         fireCore.init   ( natoms, atypes, apos );
 
@@ -444,25 +465,16 @@ extern "C" {
         fireCore.getPointer_wfcoef( &pwfcoef );
         for(int i=0; i<64; i++){ printf( "pwfcoef[%i] %g \n", i, pwfcoef[i] ); };
 
-        int iMO=0;
+        int iMO=2;
         int Norb = 8;
         double* pwf = pwfcoef+Norb*iMO;
 
-        // ==== Init OpenCL FFT
-        oclfft.init();
-        oclfft.makeMyKernels();
-        size_t Ns[3]{100,100,100};
-        int iZs[2]{1,6}; 
-        initFFT( 3, Ns );
-        oclfft.loadWfBasis( "Fdata/basis/", 4.50,100,1000, 2,iZs );
-        initAtoms( natoms );
-
-        // ==== Convert Wave-Function coefs and project using OpenCL 
-        float pos0[4]{ -5.0, -5.0, -5.0, 0.0};
-        float dA  [4]{ 0.1, 0.0, 0.0, 0.0};
-        float dB  [4]{ 0.0, 0.1, 0.0, 0.0};
-        float dC  [4]{ 0.0, 0.0, 0.1, 0.0};
-        setGridShape( pos0, dA, dB, dC );
+        double tmp[3]{0.,0.,0.};
+        fireCore.setupGrid( 100.0, 0, tmp, (int*)&oclfft.grid.dCell, (double*)&oclfft.grid.dCell );
+        double* ewfaux = new double[ oclfft.Ntot ];
+        fireCore.getGridMO( iMO, ewfaux );
+        //fireCore.getGridMO();
+        oclfft.grid.saveXSF( "ref.xsf", ewfaux );
 
         float4* coefs  = new float4[natoms];
         float4* apos_  = new float4[natoms];
@@ -487,6 +499,7 @@ extern "C" {
 
         delete [] coefs;
         delete [] apos;
+        delete [] ewfaux;
     }
 
 };
