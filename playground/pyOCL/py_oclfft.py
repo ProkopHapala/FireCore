@@ -44,6 +44,8 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     void loadWf(const char* fname, double* out){
     void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
     void saveToXsf(const char* fname, int ibuff){
+
+    void initFireBall( int natoms, int* atypes, double* apos ){
 '''
 
 #mode=ct.RTLD_GLOBAL
@@ -135,12 +137,19 @@ def runfft(ibuff, outbuff, fwd=True ):
     lib.runfft( ibuff, fwd,  _np_as( outbuff, c_float_p ) )
 '''
 
+
+#void initFireBall( int natoms, int* atypes, double* apos ){
+lib.initFireBall.argtypes  = [ c_int, array1i, array2d ] 
+lib.initFireBall.restype   =  None
+def initFireBall( atypes, apos ):
+    natoms = len(atypes)
+    lib.initFireBall( natoms, atypes, apos )
+
 # void run_fft( int ibuff, bool fwd, float* data )
 lib.runfft.argtypes  = [ c_int, c_bool ] 
 lib.runfft.restype   =  None
 def runfft(ibuff, fwd=True ):
     lib.runfft( ibuff, fwd )
-
 
 #void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
 lib.approx.argtypes  = [ c_int, c_int, c_double_p, c_double_p, c_double_p ] 
@@ -169,12 +178,52 @@ def saveToXsf( fname, ibuff ):
     lib.saveToXsf( fname, ibuff )
 
 #void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
-lib.loadWfBasis.argtypes  = [ c_float, c_int, c_int, c_int, c_int_p ] 
+lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p ] 
 lib.loadWfBasis.restype   =  None
-def loadWfBasis( iZs, nsamp=100, ntmp=1000, Rcut=4.5 ):
+def loadWfBasis( iZs, nsamp=100, ntmp=1000, Rcut=4.5, path="Fdata/basis/" ):
     nZ=len(iZs)
     iZs=np.array(iZs,dtype=np.int32)
-    return lib.loadWfBasis( Rcut, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ) )
+    path = path.encode('utf-8')
+    return lib.loadWfBasis( path, Rcut, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ) )
+
+
+def projectAtoms( atoms, acoefs):
+    import matplotlib.pyplot as plt
+    import time
+    print( "# ========= TEST   runFFT()  " )
+
+    #initFireBall( atypes, atoms )
+
+    init()
+    Ns=(100,100,100)
+    initFFT( Ns  )
+    loadWfBasis( [1,6], Rcut=4.5 )
+    initAtoms( len(atoms) )
+    #initBasisTable( basis.shape[0], basis.shape[1], basis )
+
+    setGridShape()
+    t0 = time.clock()
+    projectAtoms( atoms, coefs, 0 )
+    saveToXsf( "test.xsf", 0 )
+    arrA = np.zeros(Ns,dtype=np.csingle  )
+    download ( 0, arrA )    
+    t = time.clock()-t0; print( "projection time ", t )
+    plt.figure(); 
+    #print( arrA[10,10].real )
+    plt.imshow( arrA[10].real ) 
+    #plt.imshow( np.log( np.abs(arrA[10])) ) 
+    plt.grid()
+    plt.show(); 
+    cleanup()
+
+
+
+
+
+
+
+
+
 
 def Test_projectAtoms(n=64, natoms=1000):
     import matplotlib.pyplot as plt
@@ -323,4 +372,53 @@ plt.show()
 #Test_Convolution2d()
 
 
-Test_projectAtoms(n=64)
+sys.path.append("../../")
+
+
+if __name__ == "__main__":
+    
+    import pyBall as pb
+    from pyBall import FireCore as fc
+
+    natoms = 5
+    #atomType = np.random.randint(6, size=natoms).astype(np.int32)
+    #atomPos  = np.random.random((3,natoms))
+    atomType = np.array([6,1,1,1,1]).astype(np.int32)
+    atomPos  = np.array([
+        [ 0.1,      0.0,     0.0],
+        [-1.0,     +1.0,    -1.0],
+        [+1.0,     -1.0,    -1.0],
+        [-1.0,     -1.0,    +1.0],
+        [+1.0,     +1.0,    +1.0],
+    ])
+
+    initFireBall( atomType, atomPos )
+
+
+    '''
+    print ("atomType ", atomType)
+    print ("atomPos  ", atomPos)
+    fc.preinit()
+    fc.init( natoms, atomType, atomPos )
+    
+    # =========== Electron Density
+    fc.assembleH( atomPos)
+    fc.solveH()
+    sigma=fc.updateCharges() ; print( sigma )
+
+    wfcoef = fc.firecore_get_wfcoef(norb=8)
+    print( "wfcoef: \n", wfcoef )
+
+    ngrid, dCell, lvs = fc.setupGrid()
+    ewfaux = fc.getGridMO(ngrid=ngrid)
+    #ewfaux = fc.getGridDens( ngrid=ngrid )
+    print( ewfaux.min(),ewfaux.max() )
+    import matplotlib.pyplot as plt
+    sh = ewfaux.shape
+    plt.figure(); plt.imshow( ewfaux[ sh[0]//2+5,:,: ] )
+    plt.figure(); plt.imshow( ewfaux[ sh[0]//2  ,:,: ] )
+    plt.figure(); plt.imshow( ewfaux[ sh[0]//2-5,:,: ] )
+    plt.show()
+    
+    Test_projectAtoms(n=64)
+    '''

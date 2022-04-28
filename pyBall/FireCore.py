@@ -39,6 +39,8 @@ header_strings = [
 "void setupGrid( double Ecut, it ifixg0, doube* g0,  int ngrid, double* dCell  )", 
 "void getGridMO( int iMO, double* ewfaux )",
 "void getGridDens( int imo0, int imo1, double* ewfaux )",
+"void firecore_getPointer_wfcoef( double* bbnkre )",
+"void firecore_get_wfcoef( int ikp, double* wfcoefs )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -91,6 +93,22 @@ lib.firecore_getCharges.restype   =  None
 def getCharges(charges):
     return lib.firecore_getCharges(charges) 
 
+
+#  "void firecore_getPointer_wfcoef( double* bbnkre )
+lib.firecore_getPointer_wfcoef.argtypes  = [array2d] 
+lib.firecore_getPointer_wfcoef.restype   =  None
+def firecore_getPointer_wfcoef(charges):
+    return lib.firecore_getPointer_wfcoef(charges) 
+
+"void firecore_get_wfcoef( int ikp, double* wfcoefs )",
+#  void getCharges( double* charges )
+lib.firecore_get_wfcoef.argtypes  = [c_int, array2d] 
+lib.firecore_get_wfcoef.restype   =  None
+def firecore_get_wfcoef(wfcoef=None,norb=None, ikp=1):
+    if(wfcoef is None):
+        wfcoef=np.zeros( (norb,norb) )
+    lib.firecore_get_wfcoef(ikp,wfcoef) 
+    return wfcoef
 
 #  void preinit( ) 
 lib.firecore_preinit.argtypes  = [] 
