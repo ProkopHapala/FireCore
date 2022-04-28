@@ -207,18 +207,14 @@ class GridShape {
         fclose(fout);
     }
 
-
-    void toXSF( FILE* fout, float* FF, int icomp ) const {
+    void toXSF( FILE* fout, float* FF, int stride, int offset ) const {
         headerToXsf( fout );
         int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
         for ( int ic=0; ic<nz; ic++ ){
             for ( int ib=0; ib<ny; ib++ ){
                 for ( int ia=0; ia<nx; ia++ ){
                    int i = i3D( ia, ib, ic );
-                   float val;
-                   if(icomp<0){ val =          FF [i];              }
-                   else       { val = ((Vec3d*)FF)[i].array[icomp]; }
-                   fprintf( fout, "%6.5e\n", val );
+                   fprintf( fout, "%6.5e\n", FF[i*stride+offset] );
                 }
             }
         }
@@ -226,12 +222,12 @@ class GridShape {
         fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
     }
 
-    void saveXSF( const char * fname, float* FF, int icomp=-1 )const {
+    void saveXSF( const char * fname, float* FF, int stride, int offset )const {
         printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");
         if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
-        toXSF( fout, FF, icomp );
+        toXSF( fout, FF, stride, offset );
         fclose(fout);
     }
 
