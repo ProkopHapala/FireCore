@@ -159,6 +159,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     opt.cleanVel( );
 
     fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
+    fireCore.preinit();
     fireCore.init      ( mol.natoms, mol.atomType, (double*)mol.pos );
     int nMDpre = 0;
     for(int imd=0; imd<nMDpre; imd++){

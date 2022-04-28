@@ -10,6 +10,7 @@
 
 #include "Grid.h"
 
+#include "FireCoreAPI.h"
 
 
 bool loadWf_(const char* fname, float* out){
@@ -55,6 +56,9 @@ void resample1D(int nout, float x0to, float x0from, float dxTo, float dxFrom, fl
 
 OCLsystem ocl;
 Approx::AutoApprox aaprox;
+FireCore::Lib fireCore;
+
+
 
 typedef struct{
     cl_uint  dim;
@@ -294,7 +298,7 @@ class OCLfft : public OCLsystem { public:
     }
 */
 
-    void loadWfBasis( float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
+    void loadWfBasis( const char* path, float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
         float* data     = new float[nsamp*2*nZ];
         float* data_tmp = new float[ntmp      ];
         char fname[64];
@@ -303,10 +307,10 @@ class OCLfft : public OCLsystem { public:
         printf( "loadWfBasis nsamp %i ntmp %i nZ %i Rcut %g \n", nsamp, ntmp, nZ, Rcut );
         for(int i=0; i<nZ; i++){
             int iz=iZs[i];
-            sprintf( fname, "basis/%03i_%03i.wf%i", iz, (int)(Rcut*100), 1 );
+            sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Rcut*100), 1 );
             loadWf_(fname, data_tmp );
             resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,0 );
-            sprintf( fname, "basis/%03i_%03i.wf%i", iz, (int)(Rcut*100), 2 );
+            sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Rcut*100), 2 );
             if( loadWf_(fname, data_tmp ) ){
                 resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,1 );
             }else{
@@ -422,8 +426,62 @@ extern "C" {
 
     void loadWf(const char* fname, float* out){ loadWf_(fname, out); };
 
-    void loadWfBasis( float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){ oclfft.loadWfBasis(Rcut,nsamp,ntmp,nZ,iZs ); }
+    void loadWfBasis( const char* path, float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){ oclfft.loadWfBasis(path, Rcut,nsamp,ntmp,nZ,iZs ); }
 
     void saveToXsf(const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff); }
+
+    void initFireBall( int natoms, int* atypes, double* apos ){
+        // ======= Init Fireball
+        fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
+        fireCore.preinit();
+        fireCore.init   ( natoms, atypes, apos );
+
+        // ======= Calculate Molecular Orbitals
+        fireCore.assembleH( 0, 1, apos );
+        double k0[3]{0.,0.,0.};
+        fireCore.solveH( k0, 1  );
+        double* pwfcoef; 
+        fireCore.getPointer_wfcoef( &pwfcoef );
+        for(int i=0; i<64; i++){ printf( "pwfcoef[%i] %g \n", i, pwfcoef[i] ); };
+
+        // ==== Init OpenCL FFT
+        oclfft.init();
+        oclfft.makeMyKernels();
+        size_t Ns[3]{100,100,100};
+        int iZs[2]{1,6}; 
+        initFFT( 3, Ns );
+        oclfft.loadWfBasis( "Fdata/basis/", 4.50,100,1000, 2,iZs );
+        initAtoms( natoms );
+
+        // ==== Convert Wave-Function coefs and project using OpenCL 
+        float pos0[4]{ -5.0, -5.0, -5.0, 0.0};
+        float dA  [4]{ 0.1, 0.0, 0.0, 0.0};
+        float dB  [4]{ 0.0, 0.1, 0.0, 0.0};
+        float dC  [4]{ 0.0, 0.0, 0.1, 0.0};
+        setGridShape( pos0, dA, dB, dC );
+
+        float4* coefs  = new float4[natoms];
+        float4* apos_  = new float4[natoms];
+        Vec3d*  apos__ = (Vec3d*)apos; 
+        int j=0;
+        for(int i=0; i<natoms; i++){
+            apos_[i] = (float4){  (float)apos__[i].x, (float)apos__[i].y, (float)apos__[i].z, atypes[i]-0.5f };
+            if( atypes[i]==1 ){
+                coefs[i]=(float4){(float)pwfcoef[j],0.f,0.f,0.f};  j++;
+            }else{
+                coefs[i]=(float4){(float)pwfcoef[j],(float)pwfcoef[j+1],(float)pwfcoef[j+2],(float)pwfcoef[j+3]};  j+=4;
+
+            }
+        }
+        projectAtoms( (float*)apos_, (float*)coefs, 0 );
+        oclfft.saveToXsf( "test.xsf", 0 );
+
+        //exit(0);
+        //firecore_assembleH( iforce_, Kscf_, positions_ )
+        //firecore_solveH( k_temp, ikpoint ) 
+
+        delete [] coefs;
+        delete [] apos;
+    }
 
 };

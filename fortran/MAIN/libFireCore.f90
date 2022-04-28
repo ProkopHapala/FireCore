@@ -193,6 +193,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     !write(*,*) "DEBUG readdata_mcweda END "
     call init_wfs(norbitals, nkpoints)
     !write(*,*) "DEBUG firecore_init END "
+    write (*,*) ", norbitals ", norbitals
     call write_to_xyz( "#DEBUG libFireCore::firecore_init() ", 1 )
     return
 end subroutine firecore_init
@@ -392,6 +393,18 @@ subroutine firecore_getCharges( charges_ )  bind(c, name='firecore_getCharges')
         charges_(:) = QLowdin_TOT(:)
     end if
     !write(*,*) "DEBUG firecore_getCharges END"
+end subroutine
+
+subroutine firecore_get_wfcoef( ikp, wfcoefs )  bind(c, name='firecore_get_wfcoef')
+    use iso_c_binding
+    use configuration
+    use interactions
+    use density
+    use options
+    integer(c_int)                                , intent(in),value :: ikp
+    real(c_double), dimension(norbitals,norbitals), intent(out) :: wfcoefs
+    write (*,*) "shape(bbnkre) ", shape(bbnkre), ikp
+    wfcoefs(:,:) = bbnkre(:,:,ikp)
 end subroutine
 
 subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_,    ngrid, dCell  )  bind(c, name='firecore_setupGrid' )
