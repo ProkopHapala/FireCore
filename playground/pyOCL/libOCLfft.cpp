@@ -444,6 +444,10 @@ extern "C" {
         fireCore.getPointer_wfcoef( &pwfcoef );
         for(int i=0; i<64; i++){ printf( "pwfcoef[%i] %g \n", i, pwfcoef[i] ); };
 
+        int iMO=0;
+        int Norb = 8;
+        double* pwf = pwfcoef+Norb*iMO;
+
         // ==== Init OpenCL FFT
         oclfft.init();
         oclfft.makeMyKernels();
@@ -463,13 +467,14 @@ extern "C" {
         float4* coefs  = new float4[natoms];
         float4* apos_  = new float4[natoms];
         Vec3d*  apos__ = (Vec3d*)apos; 
+        
         int j=0;
         for(int i=0; i<natoms; i++){
             apos_[i] = (float4){  (float)apos__[i].x, (float)apos__[i].y, (float)apos__[i].z, atypes[i]-0.5f };
             if( atypes[i]==1 ){
-                coefs[i]=(float4){(float)pwfcoef[j],0.f,0.f,0.f};  j++;
+                coefs[i]=(float4){(float)pwf[j],0.f,0.f,0.f};  j++;
             }else{
-                coefs[i]=(float4){(float)pwfcoef[j],(float)pwfcoef[j+1],(float)pwfcoef[j+2],(float)pwfcoef[j+3]};  j+=4;
+                coefs[i]=(float4){(float)pwf[j],(float)pwf[j+1],(float)pwf[j+2],(float)pwf[j+3]};  j+=4;
 
             }
         }
