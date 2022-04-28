@@ -330,11 +330,13 @@ class OCLfft : public OCLsystem { public:
         grid.updateCell();
         grid.printCell();
         printf("saveToXsf() 1 \n");
-        float* cpu_data = new float[Ntot];
+        float* cpu_data = new float[Ntot*2]; // complex 2*float
         printf("saveToXsf() 2 %i \n", ibuff);
         download( ibuff,cpu_data);
+        printf("saveToXsf() 2.5 %i \n", ibuff);
+        finishRaw();
         printf("saveToXsf() 3 \n");
-        grid.saveXSF( fname, cpu_data, -1 );
+        grid.saveXSF( fname, cpu_data, 2, 0 );
         printf("saveToXsf() 4 \n");
         delete [] cpu_data;
     }
