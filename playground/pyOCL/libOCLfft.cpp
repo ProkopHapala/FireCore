@@ -317,7 +317,7 @@ class OCLfft : public OCLsystem { public:
                 for(int j=0; j<nsamp; j++){ data[nsamp*(i*2)+2*j+1]=data[nsamp*(i*2)+2*j]; }
             }
         }
-        for(int i=0; i<nsamp; i++){ printf("[%i] (%f,%f)   (%f,%f) \n", i, data[i*2],data[i*2+1],data[i*2+2*nsamp],data[i*2+1+2*nsamp] );  }
+        //for(int i=0; i<nsamp; i++){ printf("[%i] (%f,%f)   (%f,%f) \n", i, data[i*2],data[i*2+1],data[i*2+2*nsamp],data[i*2+1+2*nsamp] );  }
         delete [] data_tmp;
         itex_basis = newBufferImage2D( "BasisTable", nsamp, nZ,  sizeof(float)*2,  data, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR , {CL_RG, CL_FLOAT} );
         delete [] data;
@@ -388,7 +388,6 @@ extern "C" {
         //printf( "setGridShape dA %g %g %g \n", oclfft.dA.x, oclfft.dA.y, oclfft.dA.z ); 
         //printf( "setGridShape dB %g %g %g \n", oclfft.dB.x, oclfft.dB.y, oclfft.dB.z ); 
         //printf( "setGridShape dC %g %g %g \n", oclfft.dC.x, oclfft.dC.y, oclfft.dC.z ); 
-
     }
 
     int initBasisTable( int nx, int ny, float* data ){  return oclfft.initBasisTable(nx,ny,data ); };
@@ -504,7 +503,23 @@ extern "C" {
             printf( "coefs[%i] t %i | %g %g %g p|s %g \n", i, atypes[i],  coefs[i].x, coefs[i].y, coefs[i].z, coefs[i].w );
         }
         projectAtoms( (float*)apos_, (float*)coefs, 0 );
-        oclfft.saveToXsf( "test.xsf", 0 );
+        //oclfft.saveToXsf( "test.xsf", 0 );
+
+
+        oclfft.update_GridShape();
+        float* cpu_data = new float[oclfft.Ntot*2]; // complex 2*float
+        oclfft.download( 0, cpu_data);
+        oclfft.finishRaw();
+
+        int i0 = oclfft.Ns[0]*oclfft.Ns[1]*oclfft.Ns[3]/2 + oclfft.Ns[0]*oclfft.Ns[1]/2;
+        printf( "Ntot %li i0 %i Ns (%li,%li,%li) \n", oclfft.Ntot*2, i0*2, oclfft.Ns[0],oclfft.Ns[1],oclfft.Ns[2]  );
+
+        for(int i=0; i<44; i++){
+            printf( "[%i] %g \n", i, cpu_data[ (i0+i)*2 ] );
+        }
+
+
+
 
         //exit(0);
         //firecore_assembleH( iforce_, Kscf_, positions_ )
@@ -513,6 +528,7 @@ extern "C" {
         delete [] coefs;
         delete [] apos;
         delete [] ewfaux;
+        delete [] cpu_data;
     }
 
 };
