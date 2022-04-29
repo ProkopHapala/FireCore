@@ -435,6 +435,8 @@ extern "C" {
 
     void initFireBall( int natoms, int* atypes, double* apos ){
 
+        GridShape& g = oclfft.grid;
+
         // ======= Init Fireball
         fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
         fireCore.set_lvs( (double*)&( oclfft.grid.cell) );
@@ -450,38 +452,39 @@ extern "C" {
         fireCore.getPointer_wfcoef( &pwfcoef );
         for(int i=0; i<64; i++){ printf( "pwfcoef[%i] %g \n", i, pwfcoef[i] ); };
 
-        int iMO=1;
+        int iMO=0;
         int Norb = 8;
         double* pwf = pwfcoef+Norb*iMO;
 
         double tmp[3]{0.,0.,0.};
         // Ecut_, ifixg0_, g0_,  |   ngrid, dCell ) 
-        fireCore.setupGrid( 100.0, 0, tmp, (int*)&oclfft.grid.n, (double*)&oclfft.grid.dCell );
+        fireCore.setupGrid( 100.0, 0, tmp, (int*)&g.n, (double*)&g.dCell );
         //printf( "setupGrid N (%i,%i,%i) dA.x (%g,%g,%g) dB (%g,%g,%g) dC (%g,%g,%g) \n", oclfft.grid.n.x,oclfft.grid.n.x,oclfft.grid.n.x );
-        oclfft.grid.updateCell_2();
-        oclfft.grid.printCell();
-        int ntot = oclfft.grid.getNtot();
+        g.updateCell_2();
+        g.printCell();
+        int ntot = g.getNtot();
         double* ewfaux = new double[ ntot ];
-        fireCore.getGridMO( iMO, ewfaux );
+        fireCore.getGridMO( iMO+1, ewfaux );
         //for(int i=0; i<ntot; i+=100){ printf("%g \n", ewfaux[i] ); }
         //fireCore.getGridMO();
-        oclfft.grid.saveXSF( "ref.xsf", ewfaux );
+        g.saveXSF( "ref.xsf", ewfaux );
 
-        exit(0);
+        //exit(0);
 
         // ==== Init OpenCL FFT
         oclfft.init();
         oclfft.makeMyKernels();
-        size_t Ns[3]{100,100,100};
+        size_t Ns[3]{ (size_t)g.n.x, (size_t)g.n.y, (size_t)g.n.z };
         int iZs[2]{1,6}; 
         initFFT( 3, Ns );
         oclfft.loadWfBasis( "Fdata/basis/", 4.50,100,1000, 2,iZs );
         initAtoms( natoms );
         // ==== Convert Wave-Function coefs and project using OpenCL 
-        float pos0[4]{ -5.0, -5.0, -5.0, 0.0};
-        float dA  [4]{ 0.1, 0.0, 0.0, 0.0};
-        float dB  [4]{ 0.0, 0.1, 0.0, 0.0};
-        float dC  [4]{ 0.0, 0.0, 0.1, 0.0};
+        float pos0[4]{ (float)g.cell.a.x*-0.5f, (float)g.cell.b.y*-0.5f, (float)g.cell.c.z*-0.5f, 0.0};
+        //printf( "pos0 (%g,%g,%g) \n", pos0[0],pos0[1],pos0[2] ); exit(0);
+        float dA  [4]{ (float)g.dCell.a.x, (float)g.dCell.a.y, (float)g.dCell.a.z, 0.0};
+        float dB  [4]{ (float)g.dCell.b.x, (float)g.dCell.b.y, (float)g.dCell.b.z, 0.0};
+        float dC  [4]{ (float)g.dCell.c.x, (float)g.dCell.c.y, (float)g.dCell.c.z, 0.0};
         setGridShape( pos0, dA, dB, dC );
         oclfft.update_GridShape();
         float4* coefs  = new float4[natoms];
@@ -494,11 +497,11 @@ extern "C" {
         for(int i=0; i<natoms; i++){
             apos_[i] = (float4){  (float)apos__[i].x, (float)apos__[i].y, (float)apos__[i].z, atypes[i]-0.5f };
             if( atypes[i]==1 ){
-                coefs[i]=(float4){(float)pwf[j],0.f,0.f,0.f};  j++;
+                coefs[i]=(float4){0.f,0.f,0.f,(float)pwf[j]};  j++;
             }else{
-                coefs[i]=(float4){(float)pwf[j],(float)pwf[j+1],(float)pwf[j+2],(float)pwf[j+3]};  j+=4;
-
+                coefs[i]=(float4){(float)pwf[j+1],(float)pwf[j+2],(float)pwf[j+3],(float)pwf[j]};  j+=4;
             }
+            printf( "coefs[%i] t %i | %g %g %g p|s %g \n", i, atypes[i],  coefs[i].x, coefs[i].y, coefs[i].z, coefs[i].w );
         }
         projectAtoms( (float*)apos_, (float*)coefs, 0 );
         oclfft.saveToXsf( "test.xsf", 0 );
