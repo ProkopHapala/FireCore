@@ -187,7 +187,7 @@ def loadWfBasis( iZs, nsamp=100, ntmp=1000, Rcut=4.5, path="Fdata/basis/" ):
     return lib.loadWfBasis( path, Rcut, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ) )
 
 
-def projectAtoms( atoms, acoefs):
+def projectAtoms__( atoms, acoefs):
     import matplotlib.pyplot as plt
     import time
     print( "# ========= TEST   runFFT()  " )
@@ -201,9 +201,9 @@ def projectAtoms( atoms, acoefs):
     initAtoms( len(atoms) )
     #initBasisTable( basis.shape[0], basis.shape[1], basis )
 
-    setGridShape()
+    setGridShape( )
     t0 = time.clock()
-    projectAtoms( atoms, coefs, 0 )
+    projectAtoms( atoms, acoefs, 0 )
     saveToXsf( "test.xsf", 0 )
     arrA = np.zeros(Ns,dtype=np.csingle  )
     download ( 0, arrA )    
@@ -375,14 +375,36 @@ plt.show()
 sys.path.append("../../")
 
 
+def convCoefs( atypes, oCs, oatoms, iMO=0 ):
+    na = len( atypes)
+    norbs = [ 1 if (x == 1) else 4 for x in atypes ]
+    norb = sum(norbs)
+    atoms = np.zeros( (na,4), dtype=np.float32)
+    coefs = np.zeros( (na,4), dtype=np.float32)
+    print( "atoms.shape ", atoms.shape, "oatoms.shape ", oatoms.shape  )
+    atoms[:,:3] = oatoms[:,:3]
+    atoms[:,3]=0.1
+    j=0
+    for i,no in enumerate(norbs):
+        coefs[i,3]=oCs[iMO,j]; j+=1
+        if(no>1):
+            coefs[i,0]=oCs[iMO,j+0]
+            coefs[i,1]=oCs[iMO,j+1]
+            coefs[i,2]=oCs[iMO,j+2]
+            j+=3
+    print( "atoms ", atoms )
+    print( "coefs ", coefs )
+    return atoms, coefs
+
+
 if __name__ == "__main__":
     
     import pyBall as pb
     from pyBall import FireCore as fc
 
-    natoms = 5
     #atomType = np.random.randint(6, size=natoms).astype(np.int32)
     #atomPos  = np.random.random((3,natoms))
+    '''
     atomType = np.array([6,1,1,1,1]).astype(np.int32)
     atomPos  = np.array([
         [ 0.1,      0.0,     0.0],
@@ -391,34 +413,66 @@ if __name__ == "__main__":
         [-1.0,     -1.0,    +1.0],
         [+1.0,     +1.0,    +1.0],
     ])
-
-    initFireBall( atomType, atomPos )
-
-
     '''
+    
+    atomType = np.array([1]).astype(np.int32)
+    atomPos  = np.array([
+        [ 0.1,      0.0,     0.0],
+    ])
+    
+
+    #initFireBall( atomType, atomPos )
+
     print ("atomType ", atomType)
     print ("atomPos  ", atomPos)
     fc.preinit()
-    fc.init( natoms, atomType, atomPos )
+    fc.init( atomType, atomPos )
     
     # =========== Electron Density
     fc.assembleH( atomPos)
     fc.solveH()
     sigma=fc.updateCharges() ; print( sigma )
 
-    wfcoef = fc.firecore_get_wfcoef(norb=8)
-    print( "wfcoef: \n", wfcoef )
-
     ngrid, dCell, lvs = fc.setupGrid()
-    ewfaux = fc.getGridMO(ngrid=ngrid)
+    ewfaux = fc.getGridMO( 1,ngrid=ngrid)
     #ewfaux = fc.getGridDens( ngrid=ngrid )
     print( ewfaux.min(),ewfaux.max() )
-    import matplotlib.pyplot as plt
-    sh = ewfaux.shape
-    plt.figure(); plt.imshow( ewfaux[ sh[0]//2+5,:,: ] )
-    plt.figure(); plt.imshow( ewfaux[ sh[0]//2  ,:,: ] )
-    plt.figure(); plt.imshow( ewfaux[ sh[0]//2-5,:,: ] )
-    plt.show()
     
-    Test_projectAtoms(n=64)
-    '''
+    sh = ewfaux.shape
+    print( "ewfaux.shape ", ewfaux.shape )
+    #plt.figure(); plt.imshow( ewfaux[ sh[0]//2+5,:,: ] )
+    #plt.figure(); plt.imshow( ewfaux[ sh[0]//2  ,:,: ] )
+    #plt.figure(); plt.imshow( ewfaux[ sh[0]//2-5,:,: ] )
+    #plt.show()
+
+
+    wfcoef = fc.firecore_get_wfcoef(norb=1)
+    print( "wfcoef: \n", wfcoef )
+    apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
+
+
+    init()
+    Ns=(32,32,32)
+    initFFT( Ns  )                    ;print("DEBUG 1 ")
+    loadWfBasis( [1,6], Rcut=4.5 )    ;print("DEBUG 2 ")
+    initAtoms( len(apos_) )           ;print("DEBUG 3 ")
+    setGridShape( pos0=[-2.5812965,-2.5812965,-2.5812965,0.],dA=[0.16133103125,0.,0.,0.],dB=[0.,0.16133103125,0.,0.],dC=[0.,0.,0.16133103125,0.0] )
+    projectAtoms( apos_, wfcoef_, 0 ) ;print("DEBUG 4 ") 
+    #saveToXsf( "test.xsf", 0 )
+    arrA = np.zeros(Ns+(2,),dtype=np.float32)  
+    download(0,arrA)                  ;print("DEBUG 5 ")
+
+    print( arrA  [16,16,:,0] )
+    print( ewfaux[16,16,:] )
+
+    import matplotlib.pyplot as plt
+    plt.plot( arrA  [16,16,:,0], label="GPU" )
+    plt.plot( ewfaux[16,16,:], label="CPU" )
+    plt.legend()
+    plt.show()
+
+
+
+    #exit()
+    #Test_projectAtoms(n=64)
+    

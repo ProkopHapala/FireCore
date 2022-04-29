@@ -75,7 +75,8 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 #  subroutine firecore_init( natoms_, atomTypes, atomsPos )
 lib.firecore_init.argtypes  = [c_int, array1i, array2d ] 
 lib.firecore_init.restype   =  None
-def init(natoms, atomTypes, atomPos ):
+def init(atomTypes, atomPos ):
+    natoms = len(atomTypes)
     return lib.firecore_init(natoms, atomTypes, atomPos )
 
 #  subroutine firecore_evalForce( nmax_scf, forces_ )
@@ -250,6 +251,7 @@ if __name__ == "__main__":
     ngrid, dCell, lvs = setupGrid()
     ewfaux = getGridDens( ngrid=ngrid )
     print( ewfaux.min(),ewfaux.max() )
+    
     import matplotlib.pyplot as plt
     sh = ewfaux.shape
     plt.figure(); plt.imshow( ewfaux[ sh[0]/2+5,:,: ] )
