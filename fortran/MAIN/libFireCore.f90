@@ -87,6 +87,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     use configuration
     !use energy
     !use forces
+    use grid
     use interactions
     use integrals
     use density
@@ -133,6 +134,10 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     write(*,*) "a1vec", a1vec
     write(*,*) "a3vec", a2vec
     write(*,*) "a2vec", a3vec
+    write(*,*) "a2vec", a3vec
+    write(*,*) "rm1,rm2,rm3,nrm ", rm1,rm2,rm3, nrm
+    write(*,*) "em1,em2,em3,nem ", rm1,rm2,rm3, nem
+
 
  ! Allocate more arrays.
     allocate (degelec (natoms))

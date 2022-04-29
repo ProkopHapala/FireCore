@@ -123,6 +123,7 @@
 ! Procedure
 ! ===========================================================================
 ! Compute grid size from cutoff energy.
+   write (*,*) "DEBUG initgrid "
 
 ! find Rc_max
    Rc_max = 0.0d0
@@ -231,8 +232,6 @@
    do i = 1, 3
    write (*,*) (rlvec(i,j)*abohr,j=1,3)
    enddo
-
-
 
 ! calc number of mesh points along axis
    do i = 1,3
@@ -344,7 +343,6 @@
 ! =======   Map the Extended mesh to the Regular grid   ========
 ! ==============================================================
 
-   
 ! allocate arrays
   allocate (e2r(nem))
 
@@ -556,9 +554,6 @@
     enddo ! do i
    enddo ! do j
   enddo ! do k
-
-
-
 
 ! Format Statements
 ! ===========================================================================

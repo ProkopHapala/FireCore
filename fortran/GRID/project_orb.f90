@@ -264,6 +264,7 @@
           do imu = 1, num_orb(in1)
            mmu = imu + degelec(iatom)
            dens = dens + bbnkre(mmu,iband,ikpoint)*psi1(imu)
+           if(imesh .eq. nam/2) write (*,*) " dens, coef, psi ", dens, bbnkre(mmu,iband,ikpoint), psi1(imu)
           end do ! do inu
         end do ! do ikpoint
         !if( psi1(1) .gt. 0.1 ) then
