@@ -6,6 +6,7 @@ max_scf_iterations = 100
 nstepf      = 100
 verbosity   = 1
 idebugWrite = 1
+igrid       = 1
 &END
 
 

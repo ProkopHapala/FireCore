@@ -435,6 +435,40 @@ extern "C" {
 
     void initFireBall( int natoms, int* atypes, double* apos ){
 
+        // ======= Init Fireball
+        fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
+        fireCore.set_lvs( (double*)&( oclfft.grid.cell) );
+        fireCore.preinit();
+        fireCore.init   ( natoms, atypes, apos );
+        //exit(0);
+
+        // ======= Calculate Molecular Orbitals
+        fireCore.assembleH( 0, 1, apos );
+        double k0[3]{0.,0.,0.};
+        fireCore.solveH( k0, 1  );
+        double* pwfcoef; 
+        fireCore.getPointer_wfcoef( &pwfcoef );
+        for(int i=0; i<64; i++){ printf( "pwfcoef[%i] %g \n", i, pwfcoef[i] ); };
+
+        int iMO=1;
+        int Norb = 8;
+        double* pwf = pwfcoef+Norb*iMO;
+
+        double tmp[3]{0.,0.,0.};
+        // Ecut_, ifixg0_, g0_,  |   ngrid, dCell ) 
+        fireCore.setupGrid( 100.0, 0, tmp, (int*)&oclfft.grid.n, (double*)&oclfft.grid.dCell );
+        //printf( "setupGrid N (%i,%i,%i) dA.x (%g,%g,%g) dB (%g,%g,%g) dC (%g,%g,%g) \n", oclfft.grid.n.x,oclfft.grid.n.x,oclfft.grid.n.x );
+        oclfft.grid.updateCell_2();
+        oclfft.grid.printCell();
+        int ntot = oclfft.grid.getNtot();
+        double* ewfaux = new double[ ntot ];
+        fireCore.getGridMO( iMO, ewfaux );
+        //for(int i=0; i<ntot; i+=100){ printf("%g \n", ewfaux[i] ); }
+        //fireCore.getGridMO();
+        oclfft.grid.saveXSF( "ref.xsf", ewfaux );
+
+        exit(0);
+
         // ==== Init OpenCL FFT
         oclfft.init();
         oclfft.makeMyKernels();
@@ -450,36 +484,12 @@ extern "C" {
         float dC  [4]{ 0.0, 0.0, 0.1, 0.0};
         setGridShape( pos0, dA, dB, dC );
         oclfft.update_GridShape();
-
-        // ======= Init Fireball
-        fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
-        fireCore.set_lvs( (double*)&( oclfft.grid.cell) );
-        fireCore.preinit();
-        fireCore.init   ( natoms, atypes, apos );
-
-        // ======= Calculate Molecular Orbitals
-        fireCore.assembleH( 0, 1, apos );
-        double k0[3]{0.,0.,0.};
-        fireCore.solveH( k0, 1  );
-        double* pwfcoef; 
-        fireCore.getPointer_wfcoef( &pwfcoef );
-        for(int i=0; i<64; i++){ printf( "pwfcoef[%i] %g \n", i, pwfcoef[i] ); };
-
-        int iMO=2;
-        int Norb = 8;
-        double* pwf = pwfcoef+Norb*iMO;
-
-        double tmp[3]{0.,0.,0.};
-        fireCore.setupGrid( 100.0, 0, tmp, (int*)&oclfft.grid.dCell, (double*)&oclfft.grid.dCell );
-        double* ewfaux = new double[ oclfft.Ntot ];
-        fireCore.getGridMO( iMO, ewfaux );
-        //fireCore.getGridMO();
-        oclfft.grid.saveXSF( "ref.xsf", ewfaux );
-
         float4* coefs  = new float4[natoms];
         float4* apos_  = new float4[natoms];
         Vec3d*  apos__ = (Vec3d*)apos; 
-        
+
+        printf("DEBUG 5 \n");
+
         int j=0;
         for(int i=0; i<natoms; i++){
             apos_[i] = (float4){  (float)apos__[i].x, (float)apos__[i].y, (float)apos__[i].z, atypes[i]-0.5f };

@@ -51,6 +51,13 @@ class GridShape {
 		dCell.invert_T_to( diCell );
 	}
 
+    inline void updateCell_2(){
+        cell.a.set_mul( dCell.a, n.a );
+		cell.b.set_mul( dCell.b, n.b );
+		cell.c.set_mul( dCell.c, n.c );
+		dCell.invert_T_to( diCell );
+	}
+
 	inline void setCell( const Mat3d& cell_ ){
 		//n.set( n_ );
 		cell.set( cell_ );

@@ -41,9 +41,9 @@ class Lib{ public:
 
     P_proc preinit=0;
 
-    P_getGridMO getGridMO=0;
+    P_getGridMO   getGridMO=0;
     P_getGridDens getGridDens=0;
-    P_setupGrid setupGrid=0;
+    P_setupGrid   setupGrid=0;
     P_assembleH   assembleH=0;
     P_solveH      solveH   =0;
     P_getPointer  getPointer_wfcoef=0;
