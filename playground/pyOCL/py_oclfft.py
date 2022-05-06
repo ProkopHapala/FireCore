@@ -161,13 +161,14 @@ def approx( xs, ys, ws=None, npoly=14 ):
     return lib.approx( n, npoly, _np_as( xs, c_double_p ),_np_as( ys, c_double_p ), _np_as( ws, c_double_p ) )
 
 # loadWf(const char* fname, double* out){
-lib.loadWf.argtypes  = [ c_char_p, c_double_p ] 
+lib.loadWf.argtypes  = [ c_char_p, c_float_p ] 
 lib.loadWf.restype   =  None
 def loadWf_C( fname, n=1000 ):
-    data=np.zeros(n)
+    data=np.zeros(n, dtype=np.float32)
     #fname = c_char_p( fname) 
     fname = fname.encode('utf-8')
-    lib.loadWf( fname, _np_as( data, c_double_p ) )
+    lib.loadWf( fname, _np_as( data, c_float_p ) )
+    print( data )
     return data
 
 # void saveToXsf(const char* fname, int ibuff){
@@ -432,6 +433,19 @@ if __name__ == "__main__":
     fc.assembleH( atomPos)
     fc.solveH()
     sigma=fc.updateCharges() ; print( sigma )
+    ngrid, dCell, lvs = fc.setupGrid()
+
+    ys_2 = loadWf_C( "Fdata/basis/001_450.wf1" )
+
+    ys = fc.getpsi(in1=1, issh=1, n=250, dx=0.01, x0=0.0, ys=None, theta=0.0, phi=0.0)
+    import matplotlib.pyplot as plt
+    plt.plot( np.linspace(0,3.5,len(ys)),   ys,   label="FireCore" )
+    plt.plot( np.linspace(0,3.5,len(ys_2)), ys_2, label="pyOCL" )
+    plt.legend()
+    plt.show()
+
+
+    exit(0)
 
     ngrid, dCell, lvs = fc.setupGrid()
     ewfaux = fc.getGridMO( 1,ngrid=ngrid)

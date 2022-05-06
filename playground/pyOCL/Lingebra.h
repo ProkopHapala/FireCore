@@ -783,7 +783,7 @@ void orthtoForce(int nv, int m, double * P, double * F ){
         // cos(a/2) = sqrt((cos(a)+1)/2) = sqrt( 1 +   (cos(a)-1)/2 )  =  sqrt( 1 +   x )
         double x  = (cii-1);
         // taylor for sqrt( 1 +   x )
-        double ch = -x*( -0.5d + x*( 0.375d + x*-0.3125d ) );
+        double ch = -x*( -0.5 + x*( 0.375 + x*-0.3125 ) );
         for(int k=0;k<m;k++){ fi[k]+=pi[k]*ch; }
         for(int j=0;j<i;j++){
             double* pj = P+j*m;

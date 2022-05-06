@@ -471,7 +471,28 @@ subroutine firecore_getGridDens( imo0, imo1, ewfaux )  bind(c, name='firecore_ge
     call project_dens( ewfaux )
 end subroutine
 
-
+subroutine firecore_getpsi( l, m, theta, phi, in1,issh, n, x0, dx, ys )  bind(c, name='firecore_getpsi' )
+    use iso_c_binding
+    implicit none
+    integer(c_int), value :: in1, issh, n, l, m
+    real(c_double), value :: x0, dx, theta, phi
+    real(c_double), dimension (n), intent(out) :: ys
+    integer i
+    real psi, dpsi, x
+    real, dimension (3)   :: rvec     ! r(:)
+    real, dimension (5)   :: Y      ! psi(x)
+    real, dimension (3,5) :: dY     ! dpsi/dx
+    rvec(1) = cos(theta)*cos(phi)
+    rvec(2) = cos(theta)*sin(phi)
+    rvec(3) = sin(theta)
+    do i=1,n
+        x = x0+dx*(i-1)
+        call getpsi(in1,issh,x,psi,dpsi)
+        call getYlm(l,rvec*x,Y,dY) 
+        ys(i) = psi  !*Y(m)
+        !write (*,*) "", in1,issh, i,x,psi,dpsi
+    end do 
+end subroutine
 
 ! ==================================================
 ! ============ subroutine init_wfs
