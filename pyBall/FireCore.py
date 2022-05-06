@@ -41,6 +41,7 @@ header_strings = [
 "void getGridDens( int imo0, int imo1, double* ewfaux )",
 "void firecore_getPointer_wfcoef( double* bbnkre )",
 "void firecore_get_wfcoef( int ikp, double* wfcoefs )",
+"void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -198,6 +199,17 @@ def getGridDens(imo0=0, imo1=1000, ewfaux=None, ngrid=None):
         ewfaux = np.zeros(ngrid)
     lib.firecore_getGridDens(imo0, imo1, ewfaux ) 
     return ewfaux 
+
+
+
+#"void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
+lib.firecore_getpsi.argtypes  = [c_int, c_int, c_double, c_double,  c_int, c_int, c_int, c_double, c_double, array1d ] 
+lib.firecore_getpsi.restype   =  None
+def getpsi(in1=1, issh=1, n=50, dx=0.1, x0=0.0, ys=None, l=1, m=1, theta=0.0, phi=0.0):
+    if ys is None:
+        ys = np.zeros(n)
+    lib.firecore_getpsi(l,m,theta,phi,in1, issh, n, x0, dx, ys )
+    return ys
 
 # ========= Python Functions
 

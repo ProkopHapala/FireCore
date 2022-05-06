@@ -27,6 +27,7 @@ bool loadWf_(const char* fname, float* out){
     line=fgets(buff,nbuff,pFile);
     //printf( "loadWf_ 1 \n" );
     //double xs[4];
+    int n=0;
     while(true){
         line=fgets(buff,nbuff,pFile);
         //printf( "loadWf_ >>%s<< \n", line );
@@ -34,10 +35,13 @@ bool loadWf_(const char* fname, float* out){
         //int i = sscanf (line, "%lf %lf %lf %lf\n", &out[0], &out[1], &out[2], &out[3] );
         int i = sscanf (line, "%f %f %f %f\n", &out[0], &out[1], &out[2], &out[3] );
         if(i!=4) break;
-        //printf( " %g %g %g %g \n", out[0], out[1], out[2], out[3] );
+        printf( " %g %g %g %g \n", out[0], out[1], out[2], out[3] );
         out+=4;
+        n+=4;
     }
     fclose(pFile);
+    out-=n;
+    for(int i=0; i<n; i++){ printf( "DEBUG[%i] %g \n", i, out[i] ); }
     return true;
 }
 
