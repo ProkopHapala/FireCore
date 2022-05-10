@@ -10,6 +10,9 @@ __constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_C
 
 __constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST;
 
+__constant float pref_s = 0.28209479177; // sqrt(1.0f/(4.0f*M_PI));
+__constant float pref_p = 0.4886025119;  //sqrt(3.0f/(4.0f*M_PI));
+__constant float pref_d = 1.09254843059; //sqrt(15.0f/(4.0f*M_PI));
 
 /*
 float4 read_imagef_trilin( __read_only image3d_t imgIn, float4 coord ){
@@ -104,7 +107,8 @@ float sp3_tex( float3 dp, float4 c, float slot, __read_only image2d_t imgIn ){
     float   ir  = 1/r;
     float4  fr  = lerp_basis( r, slot, imgIn ).xyyy;
     //float4  fr  = read_imagef( imgIn, sampler_wrf, (float2){ r, slot } );
-    float4  v = (float4) ( dp*ir, 1 )*fr;
+    float4  v = (float4) ( dp*ir*pref_p, pref_s )*fr;
+    //float4  v = (float4) ( dp*ir, 0.0f )*fr;
     return  dot( v ,c );
     //return r;
 }
@@ -176,9 +180,6 @@ __kernel void projectAtomsToGrid(
     outGrid[iG] = wf;
 }
 
-
-
-
 __kernel void projectAtomsToGrid_texture(
     const int nAtoms,            //1
     __global float4*  atoms,     //2
@@ -227,11 +228,53 @@ __kernel void projectAtomsToGrid_texture(
                 //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
                 //wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
                 //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
+                wf.x += sp3_tex( (pos-xyzq.xyz)*40.0f, cs, xyzq.w, imgIn );
+                //if((ia==16)&&(ib==16)){ printf("DEBUG_GPU pos(%g,%g,%g) xyzq(%g,%g,%g,%g) cs(%g,%g,%g,%g) wf(%g,%g) \n", pos.x,pos.y,pos.z,  xyzq.x,xyzq.y,xyzq.z,xyzq.w, cs.x,cs.y,cs.z,cs.w, wf.x, wf.y ); }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    //if((ia==16)&&(ib==16)){ printf("DEBUG_GPU pos(%g,%g,%g) wf(%g,%g) \n", pos.x,pos.y,pos.z, wf.x, wf.y ); }
+    outGrid[iG] = wf;
+}
+
+
+__kernel void projectWfAtPoints_tex(
+    const int nAtoms,            //1
+    __global float4*  atoms,     //2
+    __global float4*  coefs,     //3
+    int   nPos,                  //4
+    __global float4*  poss,      //5
+    __global float2*  out,       //6
+    __read_only image2d_t imgIn  //7
+){
+    __local float4 LATOMS[N_LOCAL];
+    __local float4 LCOEFS[N_LOCAL];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    
+    if(iG>nPos) return;
+    float3 pos  = poss[iG].xyz;
+    float2 wf   = (float2) (0.0f,0.0f);
+    for (int i0=0; i0<nAtoms; i0+= nL ){
+        int i = i0 + iL;
+        // TODO : we can optimize it here - load just the atom which are close to center of the block !!!!!
+        //        BUT it will be better/faster to do this on CPU ... atoms-buffer should be already segment to blocks each considering to local work-group (3D tile)
+        LATOMS[iL] = atoms[i];
+        LCOEFS[iL] = coefs[i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            if( (j+i0)<nAtoms ){ 
+                float4 xyzq  = LATOMS[j];
+                float4 cs    = LCOEFS[j];
+                //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
+                //wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
+                //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
                 wf.x += sp3_tex( (pos-xyzq.xyz)*10.0f, cs, xyzq.w, imgIn );
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-
-    outGrid[iG] = wf;
+    out[iG] = wf;
 }

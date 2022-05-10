@@ -35,13 +35,13 @@ bool loadWf_(const char* fname, float* out){
         //int i = sscanf (line, "%lf %lf %lf %lf\n", &out[0], &out[1], &out[2], &out[3] );
         int i = sscanf (line, "%f %f %f %f\n", &out[0], &out[1], &out[2], &out[3] );
         if(i!=4) break;
-        printf( " %g %g %g %g \n", out[0], out[1], out[2], out[3] );
+        //printf( " %g %g %g %g \n", out[0], out[1], out[2], out[3] );
         out+=4;
         n+=4;
     }
     fclose(pFile);
     out-=n;
-    for(int i=0; i<n; i++){ printf( "DEBUG[%i] %g \n", i, out[i] ); }
+    //for(int i=0; i<n; i++){ printf( "DEBUG[%i] %g \n", i, out[i] ); }
     return true;
 }
 
@@ -94,15 +94,19 @@ class OCLfft : public OCLsystem { public:
     int iKernell_mull=-1;
     int iKernell_project=-1;
     int iKernell_project_tex=-1;
+    int iKernell_projectPos_tex=1;
     OCLtask cltask_mul;
     OCLtask cltask_project;
     OCLtask cltask_project_tex;
+    OCLtask cltask_projectPos_tex;
     int itex_basis=-1;
 
     int    nAtoms;
+    int    nPos;
     float4 pos0, dA, dB, dC;
     GridShape grid;
     int ibuff_atoms,ibuff_coefs;
+    //int ibuff_poss;
 
     void updateNtot(){
         Ntot=1; for(int i=0; i<ndim; i++){ Ntot=Ns[i]; };
@@ -125,11 +129,11 @@ class OCLfft : public OCLsystem { public:
         //buffer_size  = sizeof(float2);
         Ntot=1; for(int i=0; i<ndim;i++){  Ns[i]=Ns_[i];  Ntot*= Ns[i]; }
         printf( "initFFT ndim %i Ntot %li [%li,%li,%li]\n", ndim, Ntot, Ns[0],Ns[1],Ns[2] );
-        clfftSetupData fftSetup;
-        err  = clfftInitSetupData(&fftSetup);
-        err  = clfftSetup        (&fftSetup);
+        clfftSetupData fftSetup;                printf("initFFT 1 \n");
+        err  = clfftInitSetupData(&fftSetup);   printf("initFFT 2 \n");
+        err  = clfftSetup        (&fftSetup);   printf("initFFT 3 \n");
         //data_cl = clCreateBuffer( context, CL_MEM_READ_WRITE, buffer_size, NULL, &err );
-        planFFT(  );
+        planFFT(  );                            printf("initFFT 4 \n");
     }
 
     int newFFTbuffer( char* name ){
@@ -195,6 +199,50 @@ class OCLfft : public OCLsystem { public:
         //double run_time = wtime() - start_time;
     }
 
+
+    void projectAtomPosTex( int ibuffAtoms, int ibuffCoefs, int nPos, float* poss, float* out ){
+        KernelDims kdim;
+        kdim.dim        = 1;
+        kdim.global[0]  = Ntot*2;
+        kdim.local [0]  = 16;
+        cl_kernel kernel = kernels[iKernell_projectPos_tex]; 
+        /*
+            INTarg (nAtoms),        //1
+            BUFFarg(ibuffAtoms),    //2
+            BUFFarg(ibuffCoefs),    //3
+            INTarg (nPos),          //4
+            BUFFarg(ibuff_poss),    //5
+            BUFFarg(ibuff_out),     //6
+            BUFFarg(itex_basis),    //7
+        */
+        int ibuff_poss = newBuffer( "poss", nPos, sizeof(float4), poss, CL_MEM_READ_WRITE );
+        int ibuff_out  = newBuffer( "out" , nPos, sizeof(float2), out , CL_MEM_READ_WRITE );
+        buffers[ibuff_poss].toGPU(commands);
+        //buffers[ibuff_out ].toGPU(commands);
+        //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_poss].p_gpu, CL_TRUE, 0, sizeof(float4)*nPos, poss, 0, NULL, NULL );
+        //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_out ].p_gpu, CL_TRUE, 0, sizeof(float2)*nPos, out,  0, NULL, NULL );
+        err =  clSetKernelArg(kernel, 0, sizeof(int),    &nAtoms        );
+        err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[ibuffAtoms].p_gpu) );
+        err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &(buffers[ibuffCoefs].p_gpu) );
+        err =  clSetKernelArg(kernel, 3, sizeof(int),    &nPos          );
+        err |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &(buffers[ibuff_poss].p_gpu) );
+        err |= clSetKernelArg(kernel, 5, sizeof(cl_mem), &(buffers[ibuff_out].p_gpu) );
+        err |= clSetKernelArg(kernel, 6, sizeof(cl_mem), &(buffers[itex_basis].p_gpu) );
+        //checkError(err, "Setting kernel args");
+        //double start_time = wtime();
+        printf( "mul_buffs kdim: dim %i global %li local %li \n", kdim.dim, kdim.global[0], kdim.local[0] ); 
+        err = clEnqueueNDRangeKernel(  commands, kernel,   kdim.dim, NULL, kdim.global, kdim.local, 0, NULL, NULL);    
+        OCL_checkError(err, "Enqueueing kernel");
+        //buffers[ibuff_poss].fromGPU();
+        buffers[ibuff_out ].fromGPU(commands);
+        clFinish(commands);
+        buffers[ibuff_poss].release();
+        buffers[ibuff_out ].release();
+        //err = clFinish(commands);
+        //OCL_checkError(err, "Waiting for kernel to finish");
+        //double run_time = wtime() - start_time;
+    }
+
     void initTask_mul( int ibuffA, int ibuffB, int ibuff_result ){
         //cltask_mul.setup( this, iKernell_mull, 1, Ntot*2, 16 );
         cltask_mul.setup( this, iKernell_mull, 1, 8, 1 ); printf( "WARRNING : initTask_mul() IS WRONG !!!! %i %i \n", ibuffA, ibuffB );
@@ -224,6 +272,7 @@ class OCLfft : public OCLsystem { public:
     }
 
     void initTask_project_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
+        printf("DEBUG initTask_project_tex() \n");
         Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
         cltask_project_tex.setup( this, iKernell_project_tex, 1, Ntot*2, 16 );
         cltask_project_tex.args = { 
@@ -240,6 +289,22 @@ class OCLfft : public OCLsystem { public:
         };
         cltask_project_tex.print_arg_list();
     }
+
+/*
+    void initTask_projectPos_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_poss, int ibuff_out ){
+        cltask_projectPos_tex.setup( this, iKernell_project_tex, 1, Ntot*2, 16 );
+        cltask_projectPos_tex.args = { 
+            INTarg (nAtoms),        //1
+            BUFFarg(ibuffAtoms),    //2
+            BUFFarg(ibuffCoefs),    //3
+            INTarg (nPos),        //4
+            BUFFarg(ibuff_poss),  //5
+            BUFFarg(ibuff_out),  //6
+            BUFFarg(itex_basis),    //7
+        };
+        cltask_projectPos_tex.print_arg_list();
+    }
+*/
 
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){
         //for(int i=0; i<nAtoms;i++){printf( "atom[%i] xyz|e(%g,%g,%g|%g) coefs(%g,%g,%g|%g)\n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  coefs[i].x,coefs[i].y,coefs[i].z,coefs[i].w  );}
@@ -282,10 +347,14 @@ class OCLfft : public OCLsystem { public:
 
 
     void makeMyKernels(){
+        printf( "DEBUG makeMyKernels \n" );
         buildProgram( "myprog.cl" );
         iKernell_mull    = newKernel( "mul" );
         iKernell_project = newKernel( "projectAtomsToGrid" );
-        iKernell_project_tex = newKernel( "projectAtomsToGrid_texture" );
+        iKernell_project_tex    = newKernel( "projectAtomsToGrid_texture" );
+        iKernell_projectPos_tex = newKernel( "projectWfAtPoints_tex" );
+        printf( "DEBUG makeMyKernels END \n" );
+        //exit(0);
     };
 
 
@@ -367,10 +436,10 @@ extern "C" {
     int download(int i,       float* cpu_data ){ return oclfft.download(i,cpu_data);  oclfft.finishRaw();   };
 
     void initFFT( int ndim, size_t* Ns_ ){
-        oclfft.initFFT( ndim, Ns_ );
-        oclfft.newFFTbuffer( "inputA" );
-        oclfft.newFFTbuffer( "inputB" );
-        oclfft.newFFTbuffer( "outputC" );
+        oclfft.initFFT( ndim, Ns_ );      printf( "C initFFT 1 \n" );
+        oclfft.newFFTbuffer( "inputA" );  printf( "C initFFT 2 \n" );
+        oclfft.newFFTbuffer( "inputB" );  printf( "C initFFT 3 \n" );
+        oclfft.newFFTbuffer( "outputC" ); printf( "C initFFT 4 \n" );
         //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
 
@@ -493,9 +562,6 @@ extern "C" {
         float4* coefs  = new float4[natoms];
         float4* apos_  = new float4[natoms];
         Vec3d*  apos__ = (Vec3d*)apos; 
-
-        printf("DEBUG 5 \n");
-
         int j=0;
         for(int i=0; i<natoms; i++){
             apos_[i] = (float4){  (float)apos__[i].x, (float)apos__[i].y, (float)apos__[i].z, atypes[i]-0.5f };

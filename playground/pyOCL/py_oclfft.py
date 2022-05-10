@@ -91,6 +91,7 @@ def initFFT( Ns ):
     Ns=np.array(Ns,dtype=np.int64)
     ndim=len(Ns)
     lib.initFFT( ndim, Ns )
+    print( "DEBUG py: initFFT DONE" )
 
 #void initFFT ( int ndim, int* Ns );
 lib.initAtoms.argtypes  = [ c_int ] 
@@ -168,7 +169,7 @@ def loadWf_C( fname, n=1000 ):
     #fname = c_char_p( fname) 
     fname = fname.encode('utf-8')
     lib.loadWf( fname, _np_as( data, c_float_p ) )
-    print( data )
+    #print( data )
     return data
 
 # void saveToXsf(const char* fname, int ibuff){
@@ -435,19 +436,20 @@ if __name__ == "__main__":
     sigma=fc.updateCharges() ; print( sigma )
     ngrid, dCell, lvs = fc.setupGrid()
 
-    ys_2 = loadWf_C( "Fdata/basis/001_450.wf1" )
-
+    '''
+    pref_s = np.sqrt( 1.0/(4.0*np.pi))
+    pref_p = np.sqrt( 3.0/(4.0*np.pi))
+    pref_d = np.sqrt(15.0/(4.0*np.pi))
+    ys_2 = loadWf_C( "Fdata/basis/001_450.wf1" )*pref_s
     ys = fc.getpsi(in1=1, issh=1, n=250, dx=0.01, x0=0.0, ys=None, theta=0.0, phi=0.0)
     import matplotlib.pyplot as plt
     plt.plot( np.linspace(0,3.5,len(ys)),   ys,   label="FireCore" )
     plt.plot( np.linspace(0,3.5,len(ys_2)), ys_2, label="pyOCL" )
     plt.legend()
     plt.show()
-
-
     exit(0)
+    '''
 
-    ngrid, dCell, lvs = fc.setupGrid()
     ewfaux = fc.getGridMO( 1,ngrid=ngrid)
     #ewfaux = fc.getGridDens( ngrid=ngrid )
     print( ewfaux.min(),ewfaux.max() )
@@ -464,13 +466,12 @@ if __name__ == "__main__":
     print( "wfcoef: \n", wfcoef )
     apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
 
-
-    init()
+    init()                            ;print("DEBUG 0 ")
     Ns=(32,32,32)
     initFFT( Ns  )                    ;print("DEBUG 1 ")
     loadWfBasis( [1,6], Rcut=4.5 )    ;print("DEBUG 2 ")
     initAtoms( len(apos_) )           ;print("DEBUG 3 ")
-    setGridShape( pos0=[-2.5812965,-2.5812965,-2.5812965,0.],dA=[0.16133103125,0.,0.,0.],dB=[0.,0.16133103125,0.,0.],dC=[0.,0.,0.16133103125,0.0] )
+    setGridShape( pos0=[-2.5812965+0.16133103125*1.5,-2.5812965+0.16133103125*1.5*0,-2.5812965+0.16133103125*1.5*0,0.],dA=[0.16133103125,0.,0.,0.],dB=[0.,0.16133103125,0.,0.],dC=[0.,0.,0.16133103125,0.0] )
     projectAtoms( apos_, wfcoef_, 0 ) ;print("DEBUG 4 ") 
     #saveToXsf( "test.xsf", 0 )
     arrA = np.zeros(Ns+(2,),dtype=np.float32)  
@@ -481,7 +482,9 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
     plt.plot( arrA  [16,16,:,0], label="GPU" )
-    plt.plot( ewfaux[16,16,:], label="CPU" )
+    plt.plot( ewfaux[16,16,:],   label="CPU" )
+    #plt.figure(); plt.imshow( arrA  [16,:,:,0] )
+    #plt.figure(); plt.imshow( ewfaux[16,:,:  ] )
     plt.legend()
     plt.show()
 

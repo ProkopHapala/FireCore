@@ -65,6 +65,8 @@ class OCLBuffer{
 
     inline OCLBuffer(){};
     inline OCLBuffer( char* name_, size_t n_, size_t typesize_, void * p_cpu_, cl_mem_flags flags_=CL_MEM_READ_WRITE ) :n(n_),typesize(typesize_),p_cpu(p_cpu_),flags(flags_),name(name_){};
+    inline int release(){ return clReleaseMemObject( p_gpu ); p_gpu=0; }
+    //inline ~OCLBuffer(){ if(p_gpu) release(); };   // This makes some problem with de-allocation
 };
 
 class OCLsystem{

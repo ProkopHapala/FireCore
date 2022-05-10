@@ -489,8 +489,8 @@ subroutine firecore_getpsi( l, m, theta, phi, in1,issh, n, x0, dx, ys )  bind(c,
         x = x0+dx*(i-1)
         call getpsi(in1,issh,x,psi,dpsi)
         call getYlm(l,rvec*x,Y,dY) 
-        ys(i) = psi  !*Y(m)
-        !write (*,*) "", in1,issh, i,x,psi,dpsi
+        ys(i) = psi  *Y(m)
+        !write (*,*) "", in1,issh,l,m, i,x,psi,Y(m)
     end do 
 end subroutine
 
