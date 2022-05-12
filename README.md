@@ -9,6 +9,8 @@ FireCore is an integrated simulation environment dedicated to on-surface chemist
 
 To achieve favourable compromise between speed and accuracy the code use combination of both ab-initio quantum methods and classical forcefield (QM/MM approach) and extensive GPU acceleartion.
 
+![Schematic illustration of different aspects of on-surface chemistry simulations, and methods used for their efficient description.](Software_Schematic.png?raw=true "Schematic illustration of different aspects of on-surface chemistry simulations, and methods used for their efficient description.")
+
 # Structure of the package
 
 FireCore consist of high-performance simulation modules written in Fortran, C/C++ & OpenCL integrated using common Python3 interface. The modules are based on modified version of other simulation packages.
@@ -44,6 +46,5 @@ We use GPU accleration using OpenCL kernells for most performance intensive step
 * Evaluation of gridFF by projection of comtributions from each atom of the sample - comprising van der Waals attraction and Pauli.
 * Evaluation of electrostatic potential and forcefield on grid from electron density (i.e. solution of Poisson equation) using Fast-Fourier-Trasfrom. We use library clFFT (https://github.com/clMathLibraries/clFFT) for the purpose.
 * Projection of wave-functions or electron density density form FireBall onto real space grid using FireBall numerical basiset. 
- 
 # WARRNING: FireCore is Work-in-progess stage of developement
 
