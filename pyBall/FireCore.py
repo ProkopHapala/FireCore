@@ -201,7 +201,7 @@ def getGridDens(imo0=0, imo1=1000, ewfaux=None, ngrid=None):
     return ewfaux 
 
 
-
+'''
 #"void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
 lib.firecore_getpsi.argtypes  = [c_int, c_int, c_double, c_double,  c_int, c_int, c_int, c_double, c_double, array1d ] 
 lib.firecore_getpsi.restype   =  None
@@ -209,6 +209,17 @@ def getpsi(in1=1, issh=1, n=50, dx=0.1, x0=0.0, ys=None, l=0, m=1, theta=0.0, ph
     if ys is None:
         ys = np.zeros(n)
     lib.firecore_getpsi(l,m,theta,phi,in1, issh, n, x0, dx, ys )
+    return ys
+'''
+
+#"void firecore_getpsi( int in1, int issh, int n, double* poss, double* ys )",
+lib.firecore_getpsi.argtypes  = [c_int, c_int, c_int, c_int,    c_int, array2d, array1d ] 
+lib.firecore_getpsi.restype   =  None
+def getpsi( poss, ys=None, in1=1, issh=1, l=0, m=1 ):
+    n = len(poss)
+    if ys is None:
+        ys = np.zeros(n)
+    lib.firecore_getpsi( l, m, in1, issh, n, poss, ys )
     return ys
 
 # ========= Python Functions

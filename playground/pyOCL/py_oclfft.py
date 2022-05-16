@@ -38,13 +38,13 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     void run_fft( int ibuff, bool fwd, float* data )
     void convolve ( int ibuffA, int ibuffB, int ibuff_result )
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result )
+    void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out )
     void setGridShape( float* pos0, float* dA, float* dB, float* dC ){
     int  initBasisTable( int nx, int ny, float* data );
     void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
     void loadWf(const char* fname, double* out){
     void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
     void saveToXsf(const char* fname, int ibuff){
-
     void initFireBall( int natoms, int* atypes, double* apos ){
 '''
 
@@ -116,6 +116,16 @@ lib.projectAtoms.restype   =  None
 def projectAtoms(atoms,coefs,iOut):
     lib.projectAtoms( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut )
 
+
+#void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out )
+lib.projectAtomPosTex.argtypes  = [ c_float_p, c_float_p, c_int, c_float_p, c_float_p ] 
+lib.projectAtomPosTex.restype   =  None
+def projectAtomPosTex(atoms,coefs,poss,out=None):
+    nPos=len(poss)
+    if(out is None):
+        out = np.zeros((nPos,2), dtype=np.float32)
+    lib.projectAtomPosTex( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),nPos, _np_as( poss, c_float_p ), _np_as( out, c_float_p ) )
+    return out
 
 #setGridShape( float* pos0, float* dA, float* dB, float* dC ){
 lib.setGridShape.argtypes  = [ c_float_p, c_float_p, c_float_p, c_float_p ] 
@@ -289,6 +299,59 @@ def Test_projectAtoms(n=64, natoms=1000):
     cleanup()
 
 
+
+def Test_projectAtomPosTex():
+    import matplotlib.pyplot as plt
+    import time
+    print( "# ========= Test_projectAtomPosTex  " )
+    
+    acs=[
+    [1,  [0.0,0.0,0.0,0.001],    [0.0,0.0,0.0,1.0]],  
+    #[6, [6.0,2.0,0.0,1.001],    [0.0,0.0,0.0,1.0]],
+    ]
+
+    atomType = np.array( [ a[0] for a in acs ], dtype=np.int32 )
+    atomPos  = np.array( [ a[1] for a in acs ] )
+    #apos     = np.array( [ a[1] for a in acs ], dtype=np.float32 )
+    #coefs    = np.array( [ a[2] for a in acs ], dtype=np.float32) 
+    
+    npos = 100   # must be multiple of local group size
+    xs = np.linspace(0.0,5.0,npos)
+    poss  = np.zeros((npos,3)                 ); poss [:,0]= xs
+    poss_ = np.zeros((npos,4),dtype=np.float32); poss_[:,0]= xs
+
+    # ============= CPU Fortran
+    fc.preinit()
+    fc.init( atomType, atomPos )
+    # =========== Electron Density
+    fc.assembleH( atomPos)
+    fc.solveH()
+    sigma=fc.updateCharges() ; print( sigma )
+    ngrid, dCell, lvs = fc.setupGrid()
+
+    ys = fc.getpsi( poss, in1=1, issh=1, l=0, m=1 )
+    print( "ys ", ys )
+
+
+    wfcoef = fc.firecore_get_wfcoef(norb=1)
+    print( "wfcoef: \n", wfcoef )
+    apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
+    # ========== GPU
+    init()                                   ;print("DEBUG py 2")
+    loadWfBasis( [1,6], Rcut=4.5 )           ;print("DEBUG py 3") 
+    initAtoms( len(apos_) )                  ;print("DEBUG py 4")
+    #initBasisTable( basis.shape[0], basis.shape[1], basis )
+    out = projectAtomPosTex(apos_,wfcoef_,poss_) ;print("DEBUG py 5")
+    plt.plot( poss_[:,0], out[:,0], label="GPU" ) 
+    plt.plot( poss [:,0], ys,       label="CPU" ) 
+    #plt.imshow( np.log( np.abs(arrA[10])) ) 
+    plt.legend()
+    plt.grid()
+    plt.show(); 
+    cleanup()
+
+
+
 def Test_fft2d(n=64):
     import matplotlib.pyplot as plt
     print( "# ========= TEST   runFFT()  " )
@@ -403,6 +466,11 @@ if __name__ == "__main__":
     
     import pyBall as pb
     from pyBall import FireCore as fc
+
+
+    Test_projectAtomPosTex()
+
+    exit()
 
     #atomType = np.random.randint(6, size=natoms).astype(np.int32)
     #atomPos  = np.random.random((3,natoms))

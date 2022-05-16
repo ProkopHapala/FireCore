@@ -69,6 +69,7 @@ typedef struct{
     size_t global[3];
     size_t local[3];
     //cl_int blocksize;
+    void fitlocal( ){  for(cl_uint i=0; i<dim; i++){ global[i]=((int)(global[i]/(1.0*local[i]))+1)*local[i]; };  }
 } KernelDims;
 
 class OCLfft : public OCLsystem { public:
@@ -200,34 +201,34 @@ class OCLfft : public OCLsystem { public:
     }
 
 
-    void projectAtomPosTex( int ibuffAtoms, int ibuffCoefs, int nPos, float* poss, float* out ){
+    void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
         KernelDims kdim;
         kdim.dim        = 1;
-        kdim.global[0]  = Ntot*2;
+        kdim.global[0]  = nPos;
         kdim.local [0]  = 16;
+        kdim.fitlocal( ); printf( "projectAtomPosTex %li \n", kdim.global[0] );
         cl_kernel kernel = kernels[iKernell_projectPos_tex]; 
-        /*
-            INTarg (nAtoms),        //1
-            BUFFarg(ibuffAtoms),    //2
-            BUFFarg(ibuffCoefs),    //3
-            INTarg (nPos),          //4
-            BUFFarg(ibuff_poss),    //5
-            BUFFarg(ibuff_out),     //6
-            BUFFarg(itex_basis),    //7
-        */
-        int ibuff_poss = newBuffer( "poss", nPos, sizeof(float4), poss, CL_MEM_READ_WRITE );
-        int ibuff_out  = newBuffer( "out" , nPos, sizeof(float2), out , CL_MEM_READ_WRITE );
+        for(int i=0; i<nPos; i++){ printf("projectAtomPosTex %i (%g,%g,%g)\n", i, poss[i].x, poss[i].y, poss[i].z  );  };
+
+        printf("DEBUG projectAtomPosTex() 0 \n");
+        int ibuff_poss = newBuffer( "poss", nPos, sizeof(float4), (float*)poss, CL_MEM_READ_WRITE );
+        int ibuff_out  = newBuffer( "out" , nPos, sizeof(float2), (float*)out , CL_MEM_READ_WRITE );
+        printf("DEBUG projectAtomPosTex() 1 \n");
         buffers[ibuff_poss].toGPU(commands);
+        upload(ibuff_atoms,atoms);
+        upload(ibuff_coefs,coefs);
+        printf("DEBUG projectAtomPosTex() 2 \n");
         //buffers[ibuff_out ].toGPU(commands);
         //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_poss].p_gpu, CL_TRUE, 0, sizeof(float4)*nPos, poss, 0, NULL, NULL );
         //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_out ].p_gpu, CL_TRUE, 0, sizeof(float2)*nPos, out,  0, NULL, NULL );
         err =  clSetKernelArg(kernel, 0, sizeof(int),    &nAtoms        );
-        err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[ibuffAtoms].p_gpu) );
-        err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &(buffers[ibuffCoefs].p_gpu) );
+        err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[ibuff_atoms].p_gpu) );
+        err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &(buffers[ibuff_coefs].p_gpu) );
         err =  clSetKernelArg(kernel, 3, sizeof(int),    &nPos          );
         err |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &(buffers[ibuff_poss].p_gpu) );
-        err |= clSetKernelArg(kernel, 5, sizeof(cl_mem), &(buffers[ibuff_out].p_gpu) );
+        err |= clSetKernelArg(kernel, 5, sizeof(cl_mem), &(buffers[ibuff_out ].p_gpu) );
         err |= clSetKernelArg(kernel, 6, sizeof(cl_mem), &(buffers[itex_basis].p_gpu) );
+        printf("DEBUG projectAtomPosTex() 3 \n");
         //checkError(err, "Setting kernel args");
         //double start_time = wtime();
         printf( "mul_buffs kdim: dim %i global %li local %li \n", kdim.dim, kdim.global[0], kdim.local[0] ); 
@@ -235,9 +236,11 @@ class OCLfft : public OCLsystem { public:
         OCL_checkError(err, "Enqueueing kernel");
         //buffers[ibuff_poss].fromGPU();
         buffers[ibuff_out ].fromGPU(commands);
+        printf("DEBUG projectAtomPosTex() 4 \n");
         clFinish(commands);
         buffers[ibuff_poss].release();
         buffers[ibuff_out ].release();
+        printf("DEBUG projectAtomPosTex() 5 \n");
         //err = clFinish(commands);
         //OCL_checkError(err, "Waiting for kernel to finish");
         //double run_time = wtime() - start_time;
@@ -290,21 +293,21 @@ class OCLfft : public OCLsystem { public:
         cltask_project_tex.print_arg_list();
     }
 
-/*
+    /*
     void initTask_projectPos_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_poss, int ibuff_out ){
         cltask_projectPos_tex.setup( this, iKernell_project_tex, 1, Ntot*2, 16 );
         cltask_projectPos_tex.args = { 
             INTarg (nAtoms),        //1
             BUFFarg(ibuffAtoms),    //2
             BUFFarg(ibuffCoefs),    //3
-            INTarg (nPos),        //4
-            BUFFarg(ibuff_poss),  //5
-            BUFFarg(ibuff_out),  //6
+            INTarg (nPos),          //4
+            BUFFarg(ibuff_poss),    //5
+            BUFFarg(ibuff_out),     //6
             BUFFarg(itex_basis),    //7
         };
         cltask_projectPos_tex.print_arg_list();
     }
-*/
+    */
 
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){
         //for(int i=0; i<nAtoms;i++){printf( "atom[%i] xyz|e(%g,%g,%g|%g) coefs(%g,%g,%g|%g)\n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  coefs[i].x,coefs[i].y,coefs[i].z,coefs[i].w  );}
@@ -451,6 +454,10 @@ extern "C" {
         //oclfft.mul_buffs( ibuffA, ibuffB, ibuff_result );
     }
     void projectAtoms( float* atoms, float* coefs, int ibuff_result ){ oclfft.projectAtoms( (float4*)atoms, (float4*)coefs, ibuff_result ); }
+
+    // void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
+    void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out ){ oclfft.projectAtomPosTex( (float4*)atoms, (float4*)coefs,  nPos, (float4*)poss, (float2*)out ); }
+
     void cleanup(){ oclfft.cleanup(); }
 
     void setGridShape( float* pos0, float* dA, float* dB, float* dC ){

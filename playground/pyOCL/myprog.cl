@@ -257,6 +257,9 @@ __kernel void projectWfAtPoints_tex(
     if(iG>nPos) return;
     float3 pos  = poss[iG].xyz;
     float2 wf   = (float2) (0.0f,0.0f);
+
+    printf( "projectWfAtPoints_tex %i (%g, %g,%g) \n", iG, poss[iG].x, poss[iG].y, poss[iG].z  );
+
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         // TODO : we can optimize it here - load just the atom which are close to center of the block !!!!!
