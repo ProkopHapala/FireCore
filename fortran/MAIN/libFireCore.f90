@@ -103,6 +103,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     !real(c_double), dimension(3,natoms), intent(in)        :: atomsPos
     integer(c_int), dimension(natoms_),   intent(in)        :: atomTypes
     real(c_double), dimension(3,natoms_), intent(in)        :: atomsPos
+    !integer(c_int),                      intent(out)        :: norb
     ! ====== global variables
     !real time_begin
     !real time_end
@@ -199,6 +200,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     call init_wfs(norbitals, nkpoints)
     !write(*,*) "DEBUG firecore_init END "
     write (*,*) ", norbitals ", norbitals
+    !norb = norbitals
     call write_to_xyz( "#DEBUG libFireCore::firecore_init() ", 1 )
     return
 end subroutine firecore_init

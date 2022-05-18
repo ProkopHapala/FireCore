@@ -78,7 +78,7 @@ lib.firecore_init.argtypes  = [c_int, array1i, array2d ]
 lib.firecore_init.restype   =  None
 def init(atomTypes, atomPos ):
     natoms = len(atomTypes)
-    return lib.firecore_init(natoms, atomTypes, atomPos )
+    return  lib.firecore_init(natoms, atomTypes, atomPos )
 
 #  subroutine firecore_evalForce( nmax_scf, forces_ )
 lib.firecore_evalForce.argtypes  = [c_int, array2d, array2d ] 

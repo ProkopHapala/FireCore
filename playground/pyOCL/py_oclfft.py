@@ -455,6 +455,9 @@ plt.show()
 
 sys.path.append("../../")
 
+def countOrbs(atypes):
+    norbs = [ 1 if (x == 1) else 4 for x in atypes ]
+    return np.cumsum(norbs)
 
 def convCoefs( atypes, oCs, oatoms, iMO=0 ):
     na = len( atypes)
@@ -462,7 +465,7 @@ def convCoefs( atypes, oCs, oatoms, iMO=0 ):
     norb = sum(norbs)
     atoms = np.zeros( (na,4), dtype=np.float32)
     coefs = np.zeros( (na,4), dtype=np.float32)
-    print( "atoms.shape ", atoms.shape, "oatoms.shape ", oatoms.shape  )
+    print( "atoms.shape ", atoms.shape, "oatoms.shape ", oatoms.shape, " oCs.shape ", oCs.shape  )
     atoms[:,:3] = oatoms[:,:3]
     atoms[:,3]=0.1
     j=0
@@ -484,13 +487,12 @@ if __name__ == "__main__":
     from pyBall import FireCore as fc
 
 
-    Test_projectAtomPosTex()
-
-    exit()
+    #Test_projectAtomPosTex()
+    #exit()
 
     #atomType = np.random.randint(6, size=natoms).astype(np.int32)
     #atomPos  = np.random.random((3,natoms))
-    '''
+    
     atomType = np.array([6,1,1,1,1]).astype(np.int32)
     atomPos  = np.array([
         [ 0.1,      0.0,     0.0],
@@ -499,20 +501,20 @@ if __name__ == "__main__":
         [-1.0,     -1.0,    +1.0],
         [+1.0,     +1.0,    +1.0],
     ])
-    '''
     
+    '''
     atomType = np.array([1]).astype(np.int32)
     atomPos  = np.array([
         [ 0.1,      0.0,     0.0],
     ])
-    
+    '''
 
     #initFireBall( atomType, atomPos )
 
     print ("atomType ", atomType)
     print ("atomPos  ", atomPos)
     fc.preinit()
-    fc.init( atomType, atomPos )
+    norb = fc.init( atomType, atomPos )
     
     # =========== Electron Density
     fc.assembleH( atomPos)
@@ -540,24 +542,46 @@ if __name__ == "__main__":
     
     sh = ewfaux.shape
     print( "ewfaux.shape ", ewfaux.shape )
-    #plt.figure(); plt.imshow( ewfaux[ sh[0]//2+5,:,: ] )
-    #plt.figure(); plt.imshow( ewfaux[ sh[0]//2  ,:,: ] )
-    #plt.figure(); plt.imshow( ewfaux[ sh[0]//2-5,:,: ] )
-    #plt.show()
 
-
-    wfcoef = fc.firecore_get_wfcoef(norb=1)
+    i0orb = countOrbs( atomType )   ;print("i0orb ", i0orb)  
+    wfcoef = fc.firecore_get_wfcoef(norb=i0orb[-1])
     print( "wfcoef: \n", wfcoef )
+    print("DEBUG 0 ")
     apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
 
-    init()                            ;print("DEBUG 0 ")
+    print("DEBUG 0.1 ")
+    init()                            ;print("DEBUG 0.2 ")
     Ns=(32,32,32)
     initFFT( Ns  )                    ;print("DEBUG 1 ")
-    loadWfBasis( [1,6], Rcut=4.5 )    ;print("DEBUG 2 ")
+    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    ;print("DEBUG 2 ")
     initAtoms( len(apos_) )           ;print("DEBUG 3 ")
+    
+    # SETGRID for 1 H-atom
     setGridShape( pos0=[-2.5812965+0.16133103125*1.5,-2.5812965+0.16133103125*1.5*0,-2.5812965+0.16133103125*1.5*0,0.],dA=[0.16133103125,0.,0.,0.],dB=[0.,0.16133103125,0.,0.],dC=[0.,0.,0.16133103125,0.0] )
+    
+
+    '''
+    print("ngrid \n", ngrid )
+    print("dCell \n", dCell )
+    print("lvs   \n", lvs   )
+    #exit()
+
+    setGridShape( 
+        pos0=[
+            lvs[0,0]*-0.5+dCell[0,0]*1.5,
+            lvs[1,1]*-0.5+dCell[1,1]*1.5,
+            lvs[2,2]*-0.5+dCell[2,2]*1.5,0.],
+        #dA=dCell[0,:],
+        #dB=dCell[1,:],
+        #dC=dCell[2,:]
+        dA=  [0.1627862, 0.       , 0.       ],
+        dB=  [0.       , 0.1627862, 0.       ],
+        dC=  [0.       , 0.       , 0.1627862]
+    )
+    '''
+
     projectAtoms( apos_, wfcoef_, 0 ) ;print("DEBUG 4 ") 
-    #saveToXsf( "test.xsf", 0 )
+    saveToXsf( "test.xsf", 0 )
     arrA = np.zeros(Ns+(2,),dtype=np.float32)  
     download(0,arrA)                  ;print("DEBUG 5 ")
 
