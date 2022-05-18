@@ -214,6 +214,7 @@ write(*,*) "read_wf()"
          end do
          mesh_wf (issh,ispec) = mesh
          rmax_wf (issh,ispec) = r
+         write(*,*)  "read_wf ispec ",ispec," issh ",issh, " mesh_wf, rmax_wf ", mesh_wf(issh,ispec), rmax_wf(issh,ispec), " Angstroem "
 
 ! Check normalization
          write (*,*) '      Checking normalization [NORM(l) should be 1]'
