@@ -13,19 +13,22 @@
 #include "FireCoreAPI.h"
 
 
-bool loadWf_(const char* fname, float* out){
+double const_Bohr_Radius = 0.529177210903;
+
+
+int loadWf_(const char* fname, float* out){
     const int nbuff = 1024;
     char buff[nbuff]; char* line;
-    printf( "loadWf %s \n", fname );
+    //printf( "loadWf %s \n", fname );
     FILE *pFile = fopen(fname, "r" );
-    if(pFile==0)return false;
+    if(pFile==0)return -1;
     //printf( "loadWf_ 0 \n" );
     line=fgets(buff,nbuff,pFile);
     line=fgets(buff,nbuff,pFile);
     line=fgets(buff,nbuff,pFile);
     line=fgets(buff,nbuff,pFile);
     line=fgets(buff,nbuff,pFile);
-    //printf( "loadWf_ 1 \n" );
+    printf( "loadWf_ 1 \n" );
     //double xs[4];
     int n=0;
     while(true){
@@ -42,18 +45,28 @@ bool loadWf_(const char* fname, float* out){
     fclose(pFile);
     out-=n;
     //for(int i=0; i<n; i++){ printf( "DEBUG[%i] %g \n", i, out[i] ); }
-    return true;
+    return n;
 }
 
-void resample1D(int nout, float x0to, float x0from, float dxTo, float dxFrom, float* from, float* to, int pitch, int off ){
-    float invdx = 1/dxFrom;
+void resample1D( int nin, float x0in, float x1in, float* from,   int nout, float x0out, float x1out, float* to,   int pitch, int off ){
+    float dx_in    = (x1in -x0in )/nin;
+    float dx_out   = (x1out-x0out)/nout;
+    float invdx_in = 1/dx_in;
+    //printf("resample1D  dx_in %f invdx_in %f x1in %f \n", dx_in, invdx_in, x1in );
+    //for(int i=0; i<nin;  i++){ printf( "[%i] %g \n", i, from[i] );  }
     for(int i=0; i<nout; i++){
-        float  x = ((x0to + i*dxTo)-x0from)*invdx;
-        int   ix = (int)x;
-        float  f = x-ix;
+        float  x = x0out + i*dx_out;
         int iout = i*pitch+off;
-        to[iout] =  from[ix]*(1-f)-from[ix+1]*f;  // lerp
-        //printf("resample1D %i : %g \n", i, to[iout] );
+        if( x>x1in ){
+            to[iout] =0;
+        }else{
+            float  u = (x-x0in)*invdx_in;
+            int   iu = (int)u;
+            float  f = u-iu;
+            to[iout] =  from[iu]*(1-f) + from[iu+1]*f;  // lerp
+            //printf("resample1D [%i] x %g y %g xu %g \n", i, x, to[iout], u );
+        }
+        //printf("resample1D [%i] x %g y %g x1out %g \n", i, x, to[iout], x1out );
     }
 }
 
@@ -208,16 +221,15 @@ class OCLfft : public OCLsystem { public:
         kdim.local [0]  = 16;
         kdim.fitlocal( ); printf( "projectAtomPosTex %li \n", kdim.global[0] );
         cl_kernel kernel = kernels[iKernell_projectPos_tex]; 
-        for(int i=0; i<nPos; i++){ printf("projectAtomPosTex %i (%g,%g,%g)\n", i, poss[i].x, poss[i].y, poss[i].z  );  };
-
-        printf("DEBUG projectAtomPosTex() 0 \n");
+        //for(int i=0; i<nPos; i++){ printf("projectAtomPosTex %i (%g,%g,%g)\n", i, poss[i].x, poss[i].y, poss[i].z  );  };
+        //printf("DEBUG projectAtomPosTex() 0 \n");
         int ibuff_poss = newBuffer( "poss", nPos, sizeof(float4), (float*)poss, CL_MEM_READ_WRITE );
         int ibuff_out  = newBuffer( "out" , nPos, sizeof(float2), (float*)out , CL_MEM_READ_WRITE );
-        printf("DEBUG projectAtomPosTex() 1 \n");
+        //printf("DEBUG projectAtomPosTex() 1 \n");
         buffers[ibuff_poss].toGPU(commands);
         upload(ibuff_atoms,atoms);
         upload(ibuff_coefs,coefs);
-        printf("DEBUG projectAtomPosTex() 2 \n");
+        //printf("DEBUG projectAtomPosTex() 2 \n");
         //buffers[ibuff_out ].toGPU(commands);
         //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_poss].p_gpu, CL_TRUE, 0, sizeof(float4)*nPos, poss, 0, NULL, NULL );
         //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_out ].p_gpu, CL_TRUE, 0, sizeof(float2)*nPos, out,  0, NULL, NULL );
@@ -228,19 +240,19 @@ class OCLfft : public OCLsystem { public:
         err |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &(buffers[ibuff_poss].p_gpu) );
         err |= clSetKernelArg(kernel, 5, sizeof(cl_mem), &(buffers[ibuff_out ].p_gpu) );
         err |= clSetKernelArg(kernel, 6, sizeof(cl_mem), &(buffers[itex_basis].p_gpu) );
-        printf("DEBUG projectAtomPosTex() 3 \n");
+        //printf("DEBUG projectAtomPosTex() 3 \n");
         //checkError(err, "Setting kernel args");
         //double start_time = wtime();
-        printf( "mul_buffs kdim: dim %i global %li local %li \n", kdim.dim, kdim.global[0], kdim.local[0] ); 
+        //printf( "mul_buffs kdim: dim %i global %li local %li \n", kdim.dim, kdim.global[0], kdim.local[0] ); 
         err = clEnqueueNDRangeKernel(  commands, kernel,   kdim.dim, NULL, kdim.global, kdim.local, 0, NULL, NULL);    
         OCL_checkError(err, "Enqueueing kernel");
         //buffers[ibuff_poss].fromGPU();
         buffers[ibuff_out ].fromGPU(commands);
-        printf("DEBUG projectAtomPosTex() 4 \n");
+        //printf("DEBUG projectAtomPosTex() 4 \n");
         clFinish(commands);
         buffers[ibuff_poss].release();
         buffers[ibuff_out ].release();
-        printf("DEBUG projectAtomPosTex() 5 \n");
+        //printf("DEBUG projectAtomPosTex() 5 \n");
         //err = clFinish(commands);
         //OCL_checkError(err, "Waiting for kernel to finish");
         //double run_time = wtime() - start_time;
@@ -374,21 +386,24 @@ class OCLfft : public OCLsystem { public:
     }
 */
 
-    void loadWfBasis( const char* path, float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
-        float* data     = new float[nsamp*2*nZ];
+    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){
         float* data_tmp = new float[ntmp      ];
+        float* data     = new float[nsamp*2*nZ];
         char fname[64];
-        float dxTmp =Rcut/ntmp;
-        float dxSamp=Rcut/nsamp;
-        printf( "loadWfBasis nsamp %i ntmp %i nZ %i Rcut %g \n", nsamp, ntmp, nZ, Rcut );
+        //float dxTmp =(Rcut*const_Bohr_Radius)/ntmp;
+        //float dxSamp=Rcut/nsamp;
+        //RcutSamp*=0.529177210903f;
+        printf( "loadWfBasis nsamp %i ntmp %i nZ %i RcutSamp %g [A]\n", nsamp, ntmp, nZ, RcutSamp );
         for(int i=0; i<nZ; i++){
             int iz=iZs[i];
-            sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Rcut*100), 1 );
-            loadWf_(fname, data_tmp );
-            resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,0 );
-            sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Rcut*100), 2 );
+            float Ri = Rcuts[i];
+            sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Ri*100), 1 );
+            int nin = loadWf_(fname, data_tmp );
+            //resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,0 );
+            resample1D( nin, 0.0, Ri*const_Bohr_Radius, data_tmp,   nsamp,0.0, RcutSamp, data+nsamp*(i*2),   2,0 );
+            sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Ri*100), 2 );
             if( loadWf_(fname, data_tmp ) ){
-                resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,1 );
+                resample1D( nin, 0.0, Ri*const_Bohr_Radius, data_tmp,   nsamp,0.0, RcutSamp, data+nsamp*(i*2),   2,1 );
             }else{
                 for(int j=0; j<nsamp; j++){ data[nsamp*(i*2)+2*j+1]=data[nsamp*(i*2)+2*j]; }
             }
@@ -508,7 +523,7 @@ extern "C" {
 
     void loadWf(const char* fname, float* out){ loadWf_(fname, out); };
 
-    void loadWfBasis( const char* path, float Rcut, int nsamp, int ntmp, int nZ, int* iZs ){ oclfft.loadWfBasis(path, Rcut,nsamp,ntmp,nZ,iZs ); }
+    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){ oclfft.loadWfBasis(path, RcutSamp,nsamp,ntmp,nZ,iZs,Rcuts ); }
 
     void saveToXsf(const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff); }
 
@@ -554,9 +569,10 @@ extern "C" {
         oclfft.init();
         oclfft.makeMyKernels();
         size_t Ns[3]{ (size_t)g.n.x, (size_t)g.n.y, (size_t)g.n.z };
-        int iZs[2]{1,6}; 
+        int   iZs[2]{1,6}; 
+        float Rcuts[2]{4.50,4.50}; 
         initFFT( 3, Ns );
-        oclfft.loadWfBasis( "Fdata/basis/", 4.50,100,1000, 2,iZs );
+        oclfft.loadWfBasis( "Fdata/basis/", 4.50,100,1000, 2,iZs, Rcuts );
         initAtoms( natoms );
         // ==== Convert Wave-Function coefs and project using OpenCL 
         float pos0[4]{ (float)g.cell.a.x*-0.5f, (float)g.cell.b.y*-0.5f, (float)g.cell.c.z*-0.5f, 0.0};

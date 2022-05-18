@@ -13,6 +13,8 @@ __constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_MIRRO
 __constant float pref_s = 0.28209479177; // sqrt(1.0f/(4.0f*M_PI));
 __constant float pref_p = 0.4886025119;  //sqrt(3.0f/(4.0f*M_PI));
 __constant float pref_d = 1.09254843059; //sqrt(15.0f/(4.0f*M_PI));
+__constant float wf_tiles_per_angstroem = 20.0f;
+
 
 /*
 float4 read_imagef_trilin( __read_only image3d_t imgIn, float4 coord ){
@@ -66,6 +68,7 @@ float2 lerp_basis( float x, float slot, __read_only image2d_t imgIn ){
     //float d = 0.01;
     float icoord;
     float fc     =  fract( x, &icoord );
+    //printf( "iG %i x %g | iu %f du %f \n", iG, x, icoord, fc );
     return read_imagef( imgIn, sampler_wrf, (float2){ icoord  , slot } ).xy*(1.f-fc)
         +  read_imagef( imgIn, sampler_wrf, (float2){ icoord+1, slot } ).xy*     fc ;
     //return read_imagef( imgIn, sampler_wrf, (float2){ x  , slot } )*(1.f-fc)
@@ -228,7 +231,7 @@ __kernel void projectAtomsToGrid_texture(
                 //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
                 //wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
                 //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
-                wf.x += sp3_tex( (pos-xyzq.xyz)*40.0f, cs, xyzq.w, imgIn );
+                wf.x += sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem, cs, xyzq.w, imgIn );
                 //if((ia==16)&&(ib==16)){ printf("DEBUG_GPU pos(%g,%g,%g) xyzq(%g,%g,%g,%g) cs(%g,%g,%g,%g) wf(%g,%g) \n", pos.x,pos.y,pos.z,  xyzq.x,xyzq.y,xyzq.z,xyzq.w, cs.x,cs.y,cs.z,cs.w, wf.x, wf.y ); }
             }
         }
@@ -257,9 +260,7 @@ __kernel void projectWfAtPoints_tex(
     if(iG>nPos) return;
     float3 pos  = poss[iG].xyz;
     float2 wf   = (float2) (0.0f,0.0f);
-
-    printf( "projectWfAtPoints_tex %i (%g, %g,%g) \n", iG, poss[iG].x, poss[iG].y, poss[iG].z  );
-
+    //printf( "projectWfAtPoints_tex %i (%g, %g,%g) \n", iG, poss[iG].x, poss[iG].y, poss[iG].z  );
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         // TODO : we can optimize it here - load just the atom which are close to center of the block !!!!!
@@ -274,7 +275,9 @@ __kernel void projectWfAtPoints_tex(
                 //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
                 //wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
                 //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
-                wf.x += sp3_tex( (pos-xyzq.xyz)*10.0f, cs, xyzq.w, imgIn );
+                float3 dp = (pos-xyzq.xyz)*wf_tiles_per_angstroem; ///0.529177210903f);
+                //printf( "iG %i x %g r %g \n", iG, pos.x, length(dp) );
+                wf.x += sp3_tex( dp, cs, xyzq.w, imgIn );
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);

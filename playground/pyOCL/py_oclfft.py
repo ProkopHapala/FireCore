@@ -21,6 +21,10 @@ def _np_as(arr,atype):
     else: 
         return arr.ctypes.data_as(atype)
 
+const_Bohr_Radius = 0.529177210903
+pref_s = 0.28209479177 # sqrt(1.0f/(4.0f*M_PI));
+pref_p = 0.4886025119 # sqrt(3.0f/(4.0f*M_PI));
+pref_d = 1.09254843059 # sqrt(15.0f/(4.0f*M_PI));
 
 array1ui = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='CONTIGUOUS')
 array1i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=1, flags='CONTIGUOUS')
@@ -189,14 +193,20 @@ def saveToXsf( fname, ibuff ):
     fname = fname.encode('utf-8')
     lib.saveToXsf( fname, ibuff )
 
-#void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
-lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p ] 
+#    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){
+lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p, c_float_p ] 
 lib.loadWfBasis.restype   =  None
-def loadWfBasis( iZs, nsamp=100, ntmp=1000, Rcut=4.5, path="Fdata/basis/" ):
+def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", Rcuts=None, RcutDef=4.5 ):
+    # NOTE : RcutSamp is in [Angstroem] while Rcuts and RcutDef are in [bohr_radius];    RcutSamp should not be changed without chaning "wf_tiles_per_angstroem" in myprog.cl
+
     nZ=len(iZs)
     iZs=np.array(iZs,dtype=np.int32)
     path = path.encode('utf-8')
-    return lib.loadWfBasis( path, Rcut, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ) )
+    if Rcuts is None:
+        Rcuts=np.ones(nZ,dtype=np.float32)*RcutDef
+    else:
+        Rcuts=np.array(Rcuts,dtype=np.float32)
+    return lib.loadWfBasis( path, RcutSamp, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ), _np_as( Rcuts, c_float_p ) )
 
 
 def projectAtoms__( atoms, acoefs):
@@ -209,7 +219,7 @@ def projectAtoms__( atoms, acoefs):
     init()
     Ns=(100,100,100)
     initFFT( Ns  )
-    loadWfBasis( [1,6], Rcut=4.5 )
+    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )
     initAtoms( len(atoms) )
     #initBasisTable( basis.shape[0], basis.shape[1], basis )
 
@@ -279,7 +289,7 @@ def Test_projectAtoms(n=64, natoms=1000):
     #Ns=(128,128,128)
     Ns=(100,100,100)
     initFFT( Ns  )
-    loadWfBasis( [1,6], Rcut=4.5 )
+    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )
     initAtoms( len(atoms) )
     #initBasisTable( basis.shape[0], basis.shape[1], basis )
 
@@ -305,6 +315,12 @@ def Test_projectAtomPosTex():
     import time
     print( "# ========= Test_projectAtomPosTex  " )
     
+    xref = np.linspace(0.0,4.50*const_Bohr_Radius,1000)
+    yref = loadWf_C( "Fdata/basis/001_450.wf1", n=1000 )
+    #exit()
+
+    # 4.5 * const_Bohr_Radius = 2.38129744906  #[A]
+
     acs=[
     [1,  [0.0,0.0,0.0,0.001],    [0.0,0.0,0.0,1.0]],  
     #[6, [6.0,2.0,0.0,1.001],    [0.0,0.0,0.0,1.0]],
@@ -330,20 +346,20 @@ def Test_projectAtomPosTex():
     ngrid, dCell, lvs = fc.setupGrid()
 
     ys = fc.getpsi( poss, in1=1, issh=1, l=0, m=1 )
-    print( "ys ", ys )
-
+    #print( "Test_projectAtomPosTex ys ", ys )
 
     wfcoef = fc.firecore_get_wfcoef(norb=1)
-    print( "wfcoef: \n", wfcoef )
+    #print( "Test_projectAtomPosTex wfcoef: \n", wfcoef )
     apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
     # ========== GPU
-    init()                                   ;print("DEBUG py 2")
-    loadWfBasis( [1,6], Rcut=4.5 )           ;print("DEBUG py 3") 
-    initAtoms( len(apos_) )                  ;print("DEBUG py 4")
+    init()                                   #;print("DEBUG py 2")
+    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )         #;print("DEBUG py 3") 
+    initAtoms( len(apos_) )                  #;print("DEBUG py 4")
     #initBasisTable( basis.shape[0], basis.shape[1], basis )
-    out = projectAtomPosTex(apos_,wfcoef_,poss_) ;print("DEBUG py 5")
+    out = projectAtomPosTex(apos_,wfcoef_,poss_) #;print("DEBUG py 5")
+    plt.plot( xref, yref*pref_s,    label="load" ) 
     plt.plot( poss_[:,0], out[:,0], label="GPU" ) 
-    plt.plot( poss [:,0], ys,       label="CPU" ) 
+    plt.plot( poss [:,0], ys,       label="CPU", ls="--" ) 
     #plt.imshow( np.log( np.abs(arrA[10])) ) 
     plt.legend()
     plt.grid()

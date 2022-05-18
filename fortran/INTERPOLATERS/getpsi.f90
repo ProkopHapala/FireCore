@@ -116,6 +116,9 @@
    nnum = mesh_wf(issh,ispec)
 ! get xmax of R(l)
    xmax = rmax_wf(issh,ispec)
+    !write(*,*)  "basis[",issh,ispec,"] nnum, rmax ", mesh_wf(issh,ispec), rmax_wf(issh,ispec)
+
+
 ! note : the points must be equally spaced and start at 0
    h = (xmax - xmin)/(nnum - 1)
 ! get distance
