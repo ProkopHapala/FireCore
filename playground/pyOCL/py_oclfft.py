@@ -144,6 +144,17 @@ def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,
     print( "dC ", dC);
     lib.setGridShape( _np_as( pos0, c_float_p ),_np_as( dA, c_float_p ), _np_as( dB, c_float_p ), _np_as( dC, c_float_p ) )
 
+def setGridShape_dCell( Ns, dCell ):
+    pos0=[  dCell[0,0]*(-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[1]//2),  0.0 ]
+    print( " setGridShape_dCell() pos0 ", pos0 )
+    setGridShape( 
+        pos0=pos0,
+        dA=dCell[0]+[0.0],
+        dB=dCell[1]+[0.0],
+        dC=dCell[2]+[0.0]
+    )
+
+
 '''
 # void run_fft( int ibuff, bool fwd, float* data )
 lib.runfft.argtypes  = [ c_int, c_bool, c_float_p ] 
@@ -192,6 +203,14 @@ lib.saveToXsf.restype   =  None
 def saveToXsf( fname, ibuff ):
     fname = fname.encode('utf-8')
     lib.saveToXsf( fname, ibuff )
+
+#void saveToXsfAtoms(const char* fname, int ibuff, int natoms, int* atypes, double* apos )
+lib.saveToXsfAtoms.argtypes  = [ c_char_p, c_int,  c_int,c_int_p,c_double_p ] 
+lib.saveToXsfAtoms.restype   =  None
+def saveToXsfAtoms( fname, ibuff, atypes, apos ):
+    fname = fname.encode('utf-8')
+    na = len(atypes)
+    lib.saveToXsfAtoms( fname, ibuff,   na, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
 
 #    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){
 lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p, c_float_p ] 
@@ -348,7 +367,7 @@ def Test_projectAtomPosTex():
     ys = fc.getpsi( poss, in1=1, issh=1, l=0, m=1 )
     #print( "Test_projectAtomPosTex ys ", ys )
 
-    wfcoef = fc.firecore_get_wfcoef(norb=1)
+    wfcoef = fc.get_wfcoef(norb=1)
     #print( "Test_projectAtomPosTex wfcoef: \n", wfcoef )
     apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
     # ========== GPU
@@ -412,49 +431,6 @@ def Test_Convolution2d( n=1024):
     plt.show(); 
     cleanup()
 
-'''
-n=256
-xs       = np.linspace(-2.0,2.0,n)
-Xs,Ys,Zs = np.meshgrid(xs,xs,xs)
-arrA      = np.sin(Xs*3)*np.cos(Ys*20)*np.cos(Zs*20)
-arrB      = 1/( 1 + Xs**2 + Ys**2 + Zs**2)
-'''
-
-#data = loadWf_C( "basis/001_450.wf1"  )
-#print( data )
-#exit()
-
-'''
-
-def loadWf( fname="basis/001_450.wf1" ):
-    txt = open( fname, 'r' ).readlines()
-    txt = [ l.replace('D','e') for l in txt ]
-    data = np.genfromtxt( txt, skip_header=5, skip_footer=1 )
-    data = data.flatten()
-    print( len(data) )
-    return data
-
-import matplotlib.pyplot as plt
-xs = np.linspace( 0.0,4.5,1000 )
-wf_Hs = loadWf( "basis/001_450.wf1" )  ;plt.plot( xs, wf_Hs, label="Hs" )
-wf_Cs = loadWf( "basis/006_450.wf1" )  ;plt.plot( xs, wf_Cs, label="Cs" )
-wf_Cp = loadWf( "basis/006_450.wf2" )  ;plt.plot( xs, wf_Cp, label="Cp" )
-
-approx( xs, wf_Hs, npoly=15 )
-#approx( xs, wf_Cs, npoly=15 )
-#approx( xs, wf_Cp, npoly=15 )
-
-plt.grid()
-plt.show()
-
-'''
-
-#Test_fft2d()
-#Test_Convolution2d()
-
-
-sys.path.append("../../")
-
 def countOrbs(atypes):
     norbs = [ 1 if (x == 1) else 4 for x in atypes ]
     return np.cumsum(norbs)
@@ -476,118 +452,70 @@ def convCoefs( atypes, oCs, oatoms, iMO=0 ):
             coefs[i,1]=oCs[iMO,j+1]
             coefs[i,2]=oCs[iMO,j+2]
             j+=3
+    '''
+    for i,no in enumerate(norbs):
+        coefs[i,3]=oCs[j,iMO]; j+=1
+        if(no>1):
+            coefs[i,0]=oCs[j+0,iMO]
+            coefs[i,1]=oCs[j+1,iMO]
+            coefs[i,2]=oCs[j+2,iMO]
+            j+=3
+    '''
     print( "atoms ", atoms )
     print( "coefs ", coefs )
     return atoms, coefs
 
-
-if __name__ == "__main__":
-    
+def Test_projectWf( ):
+    sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
-
-
-    #Test_projectAtomPosTex()
-    #exit()
-
-    #atomType = np.random.randint(6, size=natoms).astype(np.int32)
-    #atomPos  = np.random.random((3,natoms))
-    
+    # ----- Make CH4 molecule
     atomType = np.array([6,1,1,1,1]).astype(np.int32)
     atomPos  = np.array([
-        [ 0.1,      0.0,     0.0],
+        [ 0.01,     0.0,     0.0],
         [-1.0,     +1.0,    -1.0],
         [+1.0,     -1.0,    -1.0],
         [-1.0,     -1.0,    +1.0],
         [+1.0,     +1.0,    +1.0],
     ])
     
-    '''
-    atomType = np.array([1]).astype(np.int32)
-    atomPos  = np.array([
-        [ 0.1,      0.0,     0.0],
-    ])
-    '''
-
-    #initFireBall( atomType, atomPos )
-
+    print("# ======== FireCore Run " )
     print ("atomType ", atomType)
     print ("atomPos  ", atomPos)
     fc.preinit()
     norb = fc.init( atomType, atomPos )
-    
-    # =========== Electron Density
+    # --------- Electron Density
     fc.assembleH( atomPos)
     fc.solveH()
     sigma=fc.updateCharges() ; print( sigma )
     ngrid, dCell, lvs = fc.setupGrid()
+    ewfaux = fc.getGridMO( 1,ngrid=ngrid)   ;print( "ewfaux.min(),ewfaux.max() ", ewfaux.min(),ewfaux.max() )
+    sh = ewfaux.shape                       ;print( "ewfaux.shape ", sh )
+    fc.orb2xsf(1); #exit()
 
-    '''
-    pref_s = np.sqrt( 1.0/(4.0*np.pi))
-    pref_p = np.sqrt( 3.0/(4.0*np.pi))
-    pref_d = np.sqrt(15.0/(4.0*np.pi))
-    ys_2 = loadWf_C( "Fdata/basis/001_450.wf1" )*pref_s
-    ys = fc.getpsi(in1=1, issh=1, n=250, dx=0.01, x0=0.0, ys=None, theta=0.0, phi=0.0)
-    import matplotlib.pyplot as plt
-    plt.plot( np.linspace(0,3.5,len(ys)),   ys,   label="FireCore" )
-    plt.plot( np.linspace(0,3.5,len(ys_2)), ys_2, label="pyOCL" )
-    plt.legend()
-    plt.show()
-    exit(0)
-    '''
+    i0orb  = countOrbs( atomType )           ;print("i0orb ", i0orb)  
+    wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
-    ewfaux = fc.getGridMO( 1,ngrid=ngrid)
-    #ewfaux = fc.getGridDens( ngrid=ngrid )
-    print( ewfaux.min(),ewfaux.max() )
-    
-    sh = ewfaux.shape
-    print( "ewfaux.shape ", ewfaux.shape )
-
-    i0orb = countOrbs( atomType )   ;print("i0orb ", i0orb)  
-    wfcoef = fc.firecore_get_wfcoef(norb=i0orb[-1])
+    print("# ========= PyOCL Wave-Function Projection " )
+    #wfcoef = wfcoef[1,:]
     print( "wfcoef: \n", wfcoef )
-    print("DEBUG 0 ")
     apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
-
-    print("DEBUG 0.1 ")
-    init()                            ;print("DEBUG 0.2 ")
-    Ns=(32,32,32)
-    initFFT( Ns  )                    ;print("DEBUG 1 ")
-    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    ;print("DEBUG 2 ")
-    initAtoms( len(apos_) )           ;print("DEBUG 3 ")
-    
-    # SETGRID for 1 H-atom
-    setGridShape( pos0=[-2.5812965+0.16133103125*1.5,-2.5812965+0.16133103125*1.5*0,-2.5812965+0.16133103125*1.5*0,0.],dA=[0.16133103125,0.,0.,0.],dB=[0.,0.16133103125,0.,0.],dC=[0.,0.,0.16133103125,0.0] )
-    
-
-    '''
-    print("ngrid \n", ngrid )
-    print("dCell \n", dCell )
-    print("lvs   \n", lvs   )
-    #exit()
-
-    setGridShape( 
-        pos0=[
-            lvs[0,0]*-0.5+dCell[0,0]*1.5,
-            lvs[1,1]*-0.5+dCell[1,1]*1.5,
-            lvs[2,2]*-0.5+dCell[2,2]*1.5,0.],
-        #dA=dCell[0,:],
-        #dB=dCell[1,:],
-        #dC=dCell[2,:]
-        dA=  [0.1627862, 0.       , 0.       ],
-        dB=  [0.       , 0.1627862, 0.       ],
-        dC=  [0.       , 0.       , 0.1627862]
-    )
-    '''
-
-    projectAtoms( apos_, wfcoef_, 0 ) ;print("DEBUG 4 ") 
-    saveToXsf( "test.xsf", 0 )
+    #wfcoef_ = np.array( [ 0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0 ], dtype=np.float32)
+    init()                           
+    Ns = (ngrid[0],ngrid[1],ngrid[2])
+    initFFT( Ns  )                  
+    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    
+    initAtoms( len(apos_) )          
+    setGridShape_dCell( Ns, dCell )
+    projectAtoms( apos_, wfcoef_, 0 ) 
+    #saveToXsf( "test.xsf", 0 )
+    saveToXsfAtoms( "test.xsf", 0,    atomType, atomPos  )
     arrA = np.zeros(Ns+(2,),dtype=np.float32)  
-    download(0,arrA)                  ;print("DEBUG 5 ")
+    download(0,arrA)                  
 
-    print( arrA  [16,16,:,0] )
-    print( ewfaux[16,16,:] )
-
+    print("# ========= Plot GPU vs CPU comparison " )
+    #print( arrA  [16,16,:,0] )
+    #print( ewfaux[16,16,:] )
     import matplotlib.pyplot as plt
     plt.plot( arrA  [16,16,:,0], label="GPU" )
     plt.plot( ewfaux[16,16,:],   label="CPU" )
@@ -595,6 +523,10 @@ if __name__ == "__main__":
     #plt.figure(); plt.imshow( ewfaux[16,:,:  ] )
     plt.legend()
     plt.show()
+
+if __name__ == "__main__":
+    Test_projectWf( )
+
 
 
 
