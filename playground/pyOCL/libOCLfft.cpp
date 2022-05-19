@@ -425,17 +425,15 @@ class OCLfft : public OCLsystem { public:
         grid.printCell();
     }
 
-    void saveToXsf(const char* fname, int ibuff){
+    void saveToXsf(const char* fname, int ibuff, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
         update_GridShape();
-        printf("saveToXsf() 1 \n");
         float* cpu_data = new float[Ntot*2]; // complex 2*float
-        printf("saveToXsf() 2 %i \n", ibuff);
         download( ibuff,cpu_data);
-        printf("saveToXsf() 2.5 %i \n", ibuff);
         finishRaw();
-        printf("saveToXsf() 3 \n");
-        grid.saveXSF( fname, cpu_data, 2, 0 );
-        printf("saveToXsf() 4 \n");
+        //Vec3d pos0=grid.pos0;
+        //grid.pos0=Vec3dZero;
+        grid.saveXSF( fname, cpu_data, 2, 0,   natoms,atypes,apos );
+        //grid.pos0=pos0;
         delete [] cpu_data;
     }
 
@@ -525,7 +523,8 @@ extern "C" {
 
     void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){ oclfft.loadWfBasis(path, RcutSamp,nsamp,ntmp,nZ,iZs,Rcuts ); }
 
-    void saveToXsf(const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff); }
+    void saveToXsf     (const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff,0,0,0); }
+    void saveToXsfAtoms(const char* fname, int ibuff, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, natoms,atypes,(Vec3d*)apos); }
 
     void initFireBall( int natoms, int* atypes, double* apos ){
 

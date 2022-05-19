@@ -473,6 +473,35 @@ subroutine firecore_getGridDens( imo0, imo1, ewfaux )  bind(c, name='firecore_ge
     call project_dens( ewfaux )
 end subroutine
 
+subroutine firecore_orb2xsf( iMO )  bind(c, name='firecore_orb2xsf' )
+    use iso_c_binding
+    use options, only: icluster
+    use grid
+    implicit none
+ ! Local Parameters and Data Declaration
+ ! ===========================================================================
+    ! ========= Parameters
+   integer(c_int), value :: iMO
+    ! ========= Variables
+    real, dimension (:), allocatable :: ewfaux
+    !real, target, dimension (:), allocatable :: ewfaux
+    !real, dimension (:), pointer   :: pmat
+    character(40)   :: namewf
+    character(4)    :: name
+    character (len=30) mssg
+    integer i
+    ! ========= Body
+    allocate ( ewfaux(0:nrm-1))
+    call project_orb(iMO,ewfaux)
+    write (name,'(i4.4)') iMO
+    namewf = 'bandplot_'//name//'.xsf'
+    !pmat => ewfaux
+    mssg = 'density_3D'
+    !call writeout_xsf (namewf, mssg, pmat)
+    call writeout_xsf (namewf, mssg, ewfaux)
+    deallocate (ewfaux) 
+end subroutine firecore_orb2xsf
+ 
 subroutine firecore_getpsi( l, m, in1, issh, n, poss, ys )  bind(c, name='firecore_getpsi' )
     use iso_c_binding
     implicit none

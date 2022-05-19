@@ -55,30 +55,21 @@
 ! Program Declaration
 ! ===========================================================================
  subroutine writeout_xsf (xsfname, message, aa)
- 
    use configuration
    use grid
    use charges
    use interactions
    use options
    implicit none
- 
-! Argument Declaration and Description
-! ===========================================================================
-! Input
-
+! ====  Argument Declaration and Description  write (*,*) "DEBUG writeout_xsf 4 "
    !real, dimension (:), pointer, intent (in) :: aa
-   real, dimension (nrm), intent (in) :: aa
+   real, dimension (0:nrm), intent (in) :: aa
+   !real, dimension (nrm), intent (out) :: ewfaux
    character (len=40) xsfname
    character (len=30) message
    !character (:) xsfname
-   !character (:) message
- 
-! Local Parameters and Data Declaration
-! ===========================================================================
- 
-! Local Variable Declaration and Description
-! ===========================================================================
+   !character (:) message 
+! ==== Local Variable Declaration and Description
    integer iatom
    integer i
    integer j
@@ -87,43 +78,28 @@
    integer j0
    integer k0
    integer index
- 
-! Allocate Arrays
-! ===========================================================================
- 
-! Procedure
-! ===========================================================================
-! write out dden into *.xsf file (format of xcrysden visual code)
-!  for details see www.xcrysden.org
-
+! ==== Procedure
    write (*,*) '  Write out xsf file ',xsfname
    write (*,100)
-! ope file
    open ( unit = 302, file = xsfname, status = 'unknown' )
 ! print the list of atoms
 !   if (icluster .eq. 1) then
-
 !   write (302,*) 'ATOMS'
 !   do iatom = 1,natoms
 !    write (302,'(i2,3f14.8)') nzx(imass(iatom)),(ratom2g(i,iatom),i=1,3)
 !   enddo
-
 !  else
-
    write (302,*) 'CRYSTAL'
    write (302,*) 'PRIMVEC'
    write (302,*) (a1vec(i),i=1,3)
    write (302,*) (a2vec(i),i=1,3)
    write (302,*) (a3vec(i),i=1,3)
-
    write (302,*) 'PRIMCOORD'
    write (302,*) natoms,1
    do iatom = 1,natoms
     write (302,'(i2,3f14.8)') nzx(imass(iatom)),(ratom2g(i,iatom),i=1,3)
    enddo
-
 !  endif
-
   write (302,*)
   write (302,*) 'BEGIN_BLOCK_DATAGRID_3D'
   write (302,*) message
@@ -135,8 +111,6 @@
   write (302,*) (a1vec(i),i=1,3)
   write (302,*) (a2vec(i),i=1,3)
   write (302,*) (a3vec(i),i=1,3)
-
-! print values of the grid point
   do k = 0, rm3
     if (k .eq. rm3) then
      k0 = 0
@@ -155,24 +129,16 @@
         else
          i0 = i
         endif
-! mapping index within the regular mesh
-        index = i0 + rm1*j0 + rm1*rm2*k0
+        index = i0 + rm1*j0 + rm1*rm2*k0   ! mapping index within the regular mesh
         write (302,200) aa(index+1)
       enddo ! do i
     enddo ! do j
   enddo ! do k
   write (302,*) 'END_DATAGRID_3D'
   write (302,*) 'END_BLOCK_DATAGRID_3D'
-! close file
   close (302)
-! Deallocate Arrays
-! ===========================================================================
- 
-! Format Statements
-! ===========================================================================
 100     format (70('='))
 200     format (2e16.8) 
-
         return
       end subroutine writeout_xsf
 

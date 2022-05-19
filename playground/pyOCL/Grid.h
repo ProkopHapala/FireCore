@@ -229,11 +229,28 @@ class GridShape {
         fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
     }
 
-    void saveXSF( const char * fname, float* FF, int stride, int offset )const {
+    void atomsToZsf( FILE* fout,  int natoms, int* atyps, Vec3d* apos )const{
+        fprintf( fout, "CRYSTAL\n" );
+        fprintf( fout, "PRIMVEC\n" );
+        fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.a.x, cell.a.y, cell.a.z );
+        fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.b.x, cell.b.y, cell.b.z );
+        fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.c.x, cell.c.y, cell.c.z );
+        fprintf( fout, "PRIMCOORD\n" );
+        fprintf( fout, "    %i     1 \n", natoms );
+        //fprintf( fout, "ATOMS\n" );
+        for(int i=0; i<natoms; i++){
+            Vec3d p = apos[i] + pos0;
+            fprintf( fout, "%3i %9.6f %9.6f %9.6f \n", atyps[i], p.x,p.y,p.z );
+        }
+        fprintf( fout, "\n" );
+    }
+
+    void saveXSF( const char * fname, float* FF, int stride, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0  )const {
         printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");
         if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
+        if(natoms>0) atomsToZsf( fout,  natoms, atypes, apos );
         toXSF( fout, FF, stride, offset );
         fclose(fout);
     }

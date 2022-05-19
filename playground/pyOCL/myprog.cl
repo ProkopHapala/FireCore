@@ -208,7 +208,7 @@ __kernel void projectAtomsToGrid_texture(
     const int nMax = nab*nGrid.z;
     
     if(iG>nMax) return;
-    //if(iG==0) for(int ia=0; ia<nAtoms;ia++)printf( "DEBUG_GPU atoms[%i](%g,%g,%g,%g) coefs[0](%g,%g,%g,%g) \n", ia, atoms[ia].x,atoms[ia].y,atoms[ia].z,atoms[ia].w,  coefs[ia].x,coefs[ia].y,coefs[ia].z,coefs[ia].w  );
+    if(iG==0) for(int ia=0; ia<nAtoms;ia++)printf( "DEBUG_GPU atoms[%i](%g,%g,%g,%g) coefs[0](%g,%g,%g,%g) \n", ia, atoms[ia].x,atoms[ia].y,atoms[ia].z,atoms[ia].w,  coefs[ia].x,coefs[ia].y,coefs[ia].z,coefs[ia].w  );
     float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
 
     float2 wf   = (float2) (0.0f,0.0f);
@@ -261,6 +261,7 @@ __kernel void projectWfAtPoints_tex(
     float3 pos  = poss[iG].xyz;
     float2 wf   = (float2) (0.0f,0.0f);
     //printf( "projectWfAtPoints_tex %i (%g, %g,%g) \n", iG, poss[iG].x, poss[iG].y, poss[iG].z  );
+    //if(iG==0){ for(int i=0; i<nAtoms; i++){ printf( "atom[%i] atom(%g,%g,%g,%g) coefs(%g,%g,%g,%g)\n", i, atoms[i].x, atoms[i].y, atoms[i].z,atoms[i].w,  coefs[i].x, coefs[i].y, coefs[i].z,coefs[i].w ); }  }
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         // TODO : we can optimize it here - load just the atom which are close to center of the block !!!!!

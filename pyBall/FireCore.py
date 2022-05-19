@@ -42,6 +42,7 @@ header_strings = [
 "void firecore_getPointer_wfcoef( double* bbnkre )",
 "void firecore_get_wfcoef( int ikp, double* wfcoefs )",
 "void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
+"void firecore_MOtoXSF( int iMO )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -99,14 +100,17 @@ def getCharges(charges):
 #  "void firecore_getPointer_wfcoef( double* bbnkre )
 lib.firecore_getPointer_wfcoef.argtypes  = [array2d] 
 lib.firecore_getPointer_wfcoef.restype   =  None
-def firecore_getPointer_wfcoef(charges):
+def getPointer_wfcoef(charges):
     return lib.firecore_getPointer_wfcoef(charges) 
+
+
+
 
 "void firecore_get_wfcoef( int ikp, double* wfcoefs )",
 #  void getCharges( double* charges )
 lib.firecore_get_wfcoef.argtypes  = [c_int, array2d] 
 lib.firecore_get_wfcoef.restype   =  None
-def firecore_get_wfcoef(wfcoef=None,norb=None, ikp=1):
+def get_wfcoef(wfcoef=None,norb=None, ikp=1):
     if(wfcoef is None):
         wfcoef=np.zeros( (norb,norb) )
     lib.firecore_get_wfcoef(ikp,wfcoef) 
@@ -187,7 +191,14 @@ def getGridMO(iMO, ewfaux=None, ngrid=None):
     lib.firecore_getGridMO(iMO, ewfaux )
     return ewfaux
 
-
+#  void firecore_MOtoXSF( int iMO )
+lib.firecore_orb2xsf.argtypes  = [ c_int ] 
+lib.firecore_orb2xsf.restype   =  None
+def orb2xsf(iMO, ewfaux=None, ngrid=None):
+    if ewfaux is None:
+        ewfaux = np.zeros(ngrid)
+    lib.firecore_orb2xsf(iMO )
+    return ewfaux
 
 #  void getGridDens( int imo0, int imo1, double* ewfaux )
 lib.firecore_getGridDens.argtypes  = [c_int, c_int, array3d ] 
