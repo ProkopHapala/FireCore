@@ -41,8 +41,10 @@ header_strings = [
 "void getGridDens( int imo0, int imo1, double* ewfaux )",
 "void firecore_getPointer_wfcoef( double* bbnkre )",
 "void firecore_get_wfcoef( int ikp, double* wfcoefs )",
+"void firecore_set_wfcoef( int iMO, int ikp, double* wfcoefs )",
 "void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
 "void firecore_MOtoXSF( int iMO )",
+"void firecore_orb2points( int iband, int ikpoint, int npoints, double* points, double* ewfaux )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -106,7 +108,7 @@ def getPointer_wfcoef(charges):
 
 
 
-"void firecore_get_wfcoef( int ikp, double* wfcoefs )",
+#"void firecore_get_wfcoef( int ikp, double* wfcoefs )",
 #  void getCharges( double* charges )
 lib.firecore_get_wfcoef.argtypes  = [c_int, array2d] 
 lib.firecore_get_wfcoef.restype   =  None
@@ -115,6 +117,12 @@ def get_wfcoef(wfcoef=None,norb=None, ikp=1):
         wfcoef=np.zeros( (norb,norb) )
     lib.firecore_get_wfcoef(ikp,wfcoef) 
     return wfcoef
+
+#"void firecore_set_wfcoef( int iMO, int ikp, double* wfcoefs )",
+lib.firecore_set_wfcoef.argtypes  = [c_int,c_int, array1d] 
+lib.firecore_set_wfcoef.restype   =  None
+def set_wfcoef(wfcoef,iMO=1,ikp=1):
+    return lib.firecore_set_wfcoef(iMO,ikp,wfcoef)
 
 #  void preinit( ) 
 lib.firecore_preinit.argtypes  = [] 
@@ -231,6 +239,16 @@ def getpsi( poss, ys=None, in1=1, issh=1, l=0, m=1 ):
     if ys is None:
         ys = np.zeros(n)
     lib.firecore_getpsi( l, m, in1, issh, n, poss, ys )
+    return ys
+
+#void firecore_orb2points( int iband, int ikpoint, int npoints, double* points, double* ewfaux )
+lib.firecore_orb2points.argtypes  = [c_int, c_int, c_int, array2d, array1d ] 
+lib.firecore_orb2points.restype   =  None
+def orb2points( poss, ys=None, iMO=1,  ikpoint=1 ):
+    n = len(poss)
+    if ys is None:
+        ys = np.zeros(n)
+    lib.firecore_orb2points( iMO, ikpoint, n, poss, ys )
     return ys
 
 # ========= Python Functions

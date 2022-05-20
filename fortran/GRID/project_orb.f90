@@ -281,3 +281,100 @@
    return
  end subroutine project_orb
 
+
+
+
+subroutine project_orb_points(iband,ikpoint, npoints, points,ewfaux)
+    use configuration
+    use dimensions
+    use interactions
+    use neighbor_map
+    !use grid
+    use density
+    use charges
+    use kpoints
+    implicit none
+ ! ===========================================================================
+    integer iband
+    integer ikpoint
+    integer npoints
+    real, dimension (3,npoints), intent (out) :: points
+    real, dimension (  npoints), intent (out) :: ewfaux
+ ! Local Variable Declaration and Description
+ ! ===========================================================================
+    integer iatom, imesh
+    integer in1
+    integer imu
+    integer ind
+    integer lmu
+    integer issh
+    integer l
+    integer mmu
+    real distX
+    real dens
+    real, dimension (3) :: dXr
+ !   real, dimension (nspec_max):: rcutoff_max
+    real, dimension (numorb_max)   :: psi1
+    real, dimension (3,numorb_max) :: dpsi1
+    real :: psiR
+    real :: dpsiR
+    real, dimension (5)            :: psiL
+    real, dimension (3,5)          :: dpsiL
+  
+
+    do iatom = 1, natoms
+        in1    = imass(iatom)
+        imu = 1
+        write (*,'(A,i3,A)', advance='no') "iatom ",iatom,":"
+        do issh = 1,nssh(in1)
+            l = lssh(issh,in1)	
+            do lmu = 1, (2*l+1)
+                mmu = imu + degelec(iatom)
+                dens = bbnkre(mmu,iband,ikpoint)
+               ! write (*,*) "iatom,issh,lmu,coef ",i,""
+                write(*,'(F10.5)', advance='no')  dens
+                imu = imu + 1
+            enddo ! do lmu
+            write (*,'(A)', advance='no') " | "
+        enddo ! do issh
+        write (*,*) ""
+    end do ! do iatom
+
+
+
+    !write(*,*) "DEBUG project_orb_points()"
+ ! Procedure
+ ! ===========================================================================
+    ewfaux = 0.0d0
+ !$OMP PARALLEL PRIVATE (iatom,imesh, i,in1, issh, lmu, ikpoint, ind, dens, imu, mmu, psi1, l, psiR, dpsiR, psiL, dpsiL, dXr, distX )&
+ !$OMP & SHARED (nam,  nssh,  degelec, bbnkre, ewfaux )
+ !$OMP DO
+    do imesh = 1, npoints
+        dens = 0.0d0
+        do iatom = 1, natoms
+            in1    = imass(iatom)
+            dXr(:) = ratom(:,iatom) + points(:,imesh)
+            distX  = sqrt(dXr(1)**2 + dXr(2)**2 + dXr(3)**2)
+            imu = 1
+            do issh = 1,nssh(in1)
+                call getpsi(in1,issh,distX,psiR,dpsiR) 
+                l = lssh(issh,in1)	
+                call getYlm(l,dXr,psiL,dpsiL)
+                do lmu = 1, (2*l+1)
+                    psi1(imu) = psiR !* psiL(lmu)
+                    imu = imu + 1
+                enddo ! do lmu
+            enddo ! do issh
+            do imu = 1, num_orb(in1)
+                mmu = imu + degelec(iatom)
+                dens = dens + bbnkre(mmu,iband,ikpoint)*psi1(imu)
+            end do ! do imu
+        end do ! do iatom
+        !write(*,*) "DEBUG ", imesh," y= ", dens ," | pos", points(:,imesh)
+        ewfaux(imesh) = dens
+    end do ! do imesh
+ !$OMP END DO
+ !$OMP END PARALLEL
+     !write (*,*) "project_orb vmin, vmax ", vmin, vmax
+    return
+  end subroutine project_orb_points

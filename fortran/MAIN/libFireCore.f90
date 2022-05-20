@@ -414,6 +414,18 @@ subroutine firecore_get_wfcoef( ikp, wfcoefs )  bind(c, name='firecore_get_wfcoe
     wfcoefs(:,:) = bbnkre(:,:,ikp)
 end subroutine
 
+subroutine firecore_set_wfcoef( iMO, ikp, wfcoefs )  bind(c, name='firecore_set_wfcoef')
+    use iso_c_binding
+    use configuration
+    use interactions
+    use density
+    use options
+    integer(c_int)                , intent(in),value :: ikp, iMO
+    real(c_double), dimension(norbitals), intent(in) :: wfcoefs
+    write (*,*) "shape(bbnkre) ", shape(bbnkre), ikp, iMO
+    bbnkre(:,iMO,ikp) = wfcoefs(:)
+end subroutine
+
 subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_,    ngrid, dCell  )  bind(c, name='firecore_setupGrid' )
     use iso_c_binding
     use grid
@@ -501,7 +513,18 @@ subroutine firecore_orb2xsf( iMO )  bind(c, name='firecore_orb2xsf' )
     call writeout_xsf (namewf, mssg, ewfaux)
     deallocate (ewfaux) 
 end subroutine firecore_orb2xsf
- 
+
+subroutine firecore_orb2points( iband,ikpoint, npoints, points, ewfaux )  bind(c, name='firecore_orb2points' )
+    use iso_c_binding
+    use options, only: icluster
+    !use grid
+    implicit none
+    integer(c_int), value ::  iband, ikpoint, npoints
+    real(c_double), dimension (3,npoints), intent (out) :: points
+    real(c_double), dimension (  npoints), intent (out) :: ewfaux
+    call project_orb_points( iband, ikpoint, npoints, points, ewfaux )
+end subroutine firecore_orb2points
+
 subroutine firecore_getpsi( l, m, in1, issh, n, poss, ys )  bind(c, name='firecore_getpsi' )
     use iso_c_binding
     implicit none

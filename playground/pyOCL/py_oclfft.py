@@ -435,34 +435,26 @@ def countOrbs(atypes):
     norbs = [ 1 if (x == 1) else 4 for x in atypes ]
     return np.cumsum(norbs)
 
-def convCoefs( atypes, oCs, oatoms, iMO=0 ):
+def convCoefs( atypes, oCs, oatoms, typeDict ):
     na = len( atypes)
     norbs = [ 1 if (x == 1) else 4 for x in atypes ]
     norb = sum(norbs)
     atoms = np.zeros( (na,4), dtype=np.float32)
     coefs = np.zeros( (na,4), dtype=np.float32)
-    print( "atoms.shape ", atoms.shape, "oatoms.shape ", oatoms.shape, " oCs.shape ", oCs.shape  )
+    #print( "atoms.shape ", atoms.shape, "oatoms.shape ", oatoms.shape, " oCs.shape ", oCs.shape  )
     atoms[:,:3] = oatoms[:,:3]
     atoms[:,3]=0.1
     j=0
     for i,no in enumerate(norbs):
-        coefs[i,3]=oCs[iMO,j]; j+=1
+        coefs[i,3]=oCs[j]; j+=1
         if(no>1):
-            coefs[i,0]=oCs[iMO,j+0]
-            coefs[i,1]=oCs[iMO,j+1]
-            coefs[i,2]=oCs[iMO,j+2]
+            coefs[i,0]=oCs[j+0]
+            coefs[i,1]=oCs[j+1]
+            coefs[i,2]=oCs[j+2]
             j+=3
-    '''
-    for i,no in enumerate(norbs):
-        coefs[i,3]=oCs[j,iMO]; j+=1
-        if(no>1):
-            coefs[i,0]=oCs[j+0,iMO]
-            coefs[i,1]=oCs[j+1,iMO]
-            coefs[i,2]=oCs[j+2,iMO]
-            j+=3
-    '''
-    print( "atoms ", atoms )
-    print( "coefs ", coefs )
+        atoms[:,3] += typeDict[atypes[i]]
+    #print( "atoms ", atoms )
+    #print( "coefs ", coefs )
     return atoms, coefs
 
 def Test_projectWf( ):
@@ -497,9 +489,10 @@ def Test_projectWf( ):
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
     print("# ========= PyOCL Wave-Function Projection " )
+    iMO=0
     #wfcoef = wfcoef[1,:]
     print( "wfcoef: \n", wfcoef )
-    apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
+    apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO,:], atomPos )
     #wfcoef_ = np.array( [ 0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0 ], dtype=np.float32)
     init()                           
     Ns = (ngrid[0],ngrid[1],ngrid[2])
@@ -517,15 +510,96 @@ def Test_projectWf( ):
     #print( arrA  [16,16,:,0] )
     #print( ewfaux[16,16,:] )
     import matplotlib.pyplot as plt
-    plt.plot( arrA  [16,16,:,0], label="GPU" )
-    plt.plot( ewfaux[16,16,:],   label="CPU" )
-    #plt.figure(); plt.imshow( arrA  [16,:,:,0] )
-    #plt.figure(); plt.imshow( ewfaux[16,:,:  ] )
+    ix0=ngrid[0]//2
+    iy0=ngrid[1]//2
+    plt.plot( arrA  [ix0,iy0,:,0], label="GPU" )
+    plt.plot( ewfaux[ix0,iy0,:  ], label="CPU" )
+    print( "arrA  .shape ", arrA  .shape )
+    print( "ewfaux.shape ", ewfaux.shape )
+    #plt.figure(); plt.imshow( arrA  [ngrid[0]//2 ,:,:,0] ); plt.title("GPU")
+    #plt.figure(); plt.imshow( ewfaux[ngrid[0]//2 ,:,:  ] ); plt.title("CPU")
     plt.legend()
     plt.show()
 
+
+
+
+
+
+def Test_projectAtomPosTex2():
+    sys.path.append("../../")
+    import pyBall as pb
+    from pyBall import FireCore as fc
+    #atomType = np.array( [ a[0] for a in acs ], dtype=np.int32 )
+    #atomPos  = np.array( [ a[1] for a in acs ] )
+    #apos     = np.array( [ a[1] for a in acs ], dtype=np.float32 )
+    #coefs    = np.array( [ a[2] for a in acs ], dtype=np.float32) 
+    # ----- Sampling Points
+    npos = 100   # must be multiple of local group size
+    xs = np.linspace(0.0,5.0,npos)
+    poss  = np.zeros((npos,3)                 ); poss [:,0]= xs
+    poss_ = np.zeros((npos,4),dtype=np.float32); poss_[:,0]= xs
+
+    # ----- Make CH4 molecule
+    
+    atomType = np.array([6,1,1,1,1]).astype(np.int32)
+    atomPos  = np.array([
+        [ 0.01,     0.0,     0.0],
+        [-1.0,     +1.0,    -1.0],
+        [+1.0,     -1.0,    -1.0],
+        [-1.0,     -1.0,    +1.0],
+        [+1.0,     +1.0,    +1.0],
+    ])
+    
+    '''
+    # ----- Make H-atom
+    atomType = np.array([1]).astype(np.int32)
+    atomPos  = np.array([[ 0.01,     0.0,     0.0],])
+    '''
+    
+    print("# ======== FireCore Run " )
+    # ============= CPU Fortran
+    fc.preinit()
+    fc.init( atomType, atomPos )
+    # =========== Electron Density
+    fc.assembleH( atomPos)
+    fc.solveH()
+    sigma=fc.updateCharges() ; print( sigma )
+    ngrid, dCell, lvs = fc.setupGrid()
+
+    wfcoef = np.array( [ 1.0,0.0,0.0,0.0,  0.0,0.0,0.0,0.0 ] )
+    fc.set_wfcoef(wfcoef,iMO=1,ikp=1)
+
+    ys = fc.orb2points( poss, ys=None, iMO=1,  ikpoint=1 )     # ;print( " ys ", ys) 
+
+    print("# ========= PyOCL Wave-Function Projection " )
+    #i0orb  = countOrbs( atomType ) 
+    #wfcoef = fc.get_wfcoef( norb=i0orb[-1] )
+    typeDict={ 1:0, 6:1 }
+    apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos, typeDict )
+    init()                                   #;print("DEBUG py 2")
+    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )         #;print("DEBUG py 3") 
+    initAtoms( len(apos_) )                  #;print("DEBUG py 4")
+    out = projectAtomPosTex(apos_,wfcoef_,poss_) #;print("DEBUG py 5")
+
+    print("# ========= Plot GPU vs CPU comparison " )
+    import matplotlib.pyplot as plt
+    #plt.plot( xref, yref*pref_s,    label="load" ) 
+    plt.plot( poss_[:,0], out[:,0], label="GPU" ) 
+    plt.plot( poss [:,0], ys,       label="CPU", ls="--" ) 
+    plt.legend()
+    plt.grid()
+    plt.show(); 
+    cleanup()
+
+
+
+
+
+
 if __name__ == "__main__":
-    Test_projectWf( )
+    #Test_projectWf( )
+    Test_projectAtomPosTex2()
 
 
 
