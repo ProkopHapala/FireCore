@@ -108,9 +108,10 @@ float sp3_tex( float3 dp, float4 c, float slot, __read_only image2d_t imgIn ){
     float   r2  = ( dot(dp,dp) +  R2SAFE );
     float   r   = sqrt(r2);
     float   ir  = 1/r;
-    float4  fr  = lerp_basis( r, slot, imgIn ).xyyy;
+    float4  fr  = lerp_basis( r, slot, imgIn ).yyyx;
     //float4  fr  = read_imagef( imgIn, sampler_wrf, (float2){ r, slot } );
-    float4  v = (float4) ( dp*ir*pref_p, pref_s )*fr;
+    //float4  v = (float4) ( dp*ir*pref_p, pref_s )*fr;
+    float4  v = (float4) ( dp*ir, 1.0 )*fr;
     //float4  v = (float4) ( dp*ir, 0.0f )*fr;
     return  dot( v ,c );
     //return r;
@@ -208,7 +209,7 @@ __kernel void projectAtomsToGrid_texture(
     const int nMax = nab*nGrid.z;
     
     if(iG>nMax) return;
-    if(iG==0) for(int ia=0; ia<nAtoms;ia++)printf( "DEBUG_GPU atoms[%i](%g,%g,%g,%g) coefs[0](%g,%g,%g,%g) \n", ia, atoms[ia].x,atoms[ia].y,atoms[ia].z,atoms[ia].w,  coefs[ia].x,coefs[ia].y,coefs[ia].z,coefs[ia].w  );
+    //if(iG==0) for(int ia=0; ia<nAtoms;ia++)printf( "DEBUG_GPU atoms[%i](%g,%g,%g,%g) coefs[0](%g,%g,%g,%g) \n", ia, atoms[ia].x,atoms[ia].y,atoms[ia].z,atoms[ia].w,  coefs[ia].x,coefs[ia].y,coefs[ia].z,coefs[ia].w  );
     float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
 
     float2 wf   = (float2) (0.0f,0.0f);
@@ -262,6 +263,7 @@ __kernel void projectWfAtPoints_tex(
     float2 wf   = (float2) (0.0f,0.0f);
     //printf( "projectWfAtPoints_tex %i (%g, %g,%g) \n", iG, poss[iG].x, poss[iG].y, poss[iG].z  );
     //if(iG==0){ for(int i=0; i<nAtoms; i++){ printf( "atom[%i] atom(%g,%g,%g,%g) coefs(%g,%g,%g,%g)\n", i, atoms[i].x, atoms[i].y, atoms[i].z,atoms[i].w,  coefs[i].x, coefs[i].y, coefs[i].z,coefs[i].w ); }  }
+    //if(iG==0){ for(int i=0; i<30; i++){ float x=i*0.1; float2 xy=lerp_basis( x*wf_tiles_per_angstroem, 1.1, imgIn ); printf( "i %i x %g (%g,%g) \n",i, x, xy.x, xy.y ); } }
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         // TODO : we can optimize it here - load just the atom which are close to center of the block !!!!!

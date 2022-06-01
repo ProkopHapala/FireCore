@@ -444,17 +444,19 @@ def convCoefs( atypes, oCs, oatoms, typeDict ):
     #print( "atoms.shape ", atoms.shape, "oatoms.shape ", oatoms.shape, " oCs.shape ", oCs.shape  )
     atoms[:,:3] = oatoms[:,:3]
     atoms[:,3]=0.1
-    j=0
-    for i,no in enumerate(norbs):
-        coefs[i,3]=oCs[j]; j+=1
+    io=0
+    for ia,no in enumerate(norbs):
+        coefs[ia,3]=oCs[io]; io+=1
         if(no>1):
-            coefs[i,0]=oCs[j+0]
-            coefs[i,1]=oCs[j+1]
-            coefs[i,2]=oCs[j+2]
-            j+=3
-        atoms[:,3] += typeDict[atypes[i]]
+            coefs[ia,0]=oCs[io+0]
+            coefs[ia,1]=oCs[io+1]
+            coefs[ia,2]=oCs[io+2]
+            io+=3
+        atoms[ia,3] += typeDict[atypes[ia]] + 0.1
     #print( "atoms ", atoms )
     #print( "coefs ", coefs )
+    print( " atomTypes CPU ", atypes[ia]  )
+    print( " atomTypes GPU ", atoms[:,3]  )
     return atoms, coefs
 
 def Test_projectWf( ):
@@ -542,7 +544,8 @@ def Test_projectAtomPosTex2():
 
     # ----- Make CH4 molecule
     
-    atomType = np.array([6,1,1,1,1]).astype(np.int32)
+    atomType = np.array([6,1,1,1,1]).astype(np.int32)     # CH4
+    #atomType = np.array([1,1,1,1,1]).astype(np.int32)    # HH4
     atomPos  = np.array([
         [ 0.01,     0.0,     0.0],
         [-1.0,     +1.0,    -1.0],
@@ -567,7 +570,8 @@ def Test_projectAtomPosTex2():
     sigma=fc.updateCharges() ; print( sigma )
     ngrid, dCell, lvs = fc.setupGrid()
 
-    wfcoef = np.array( [ 1.0,0.0,0.0,0.0,  0.0,0.0,0.0,0.0 ] )
+    wfcoef = np.array( [ 1.0,0.0,0.0,0.0,  0.0,0.0,0.0,0.0 ] )  # CH4
+    #wfcoef = np.array( [ 1.0,  0.0,0.0,0.0,0.0 ] )             # HH4
     fc.set_wfcoef(wfcoef,iMO=1,ikp=1)
 
     ys = fc.orb2points( poss, ys=None, iMO=1,  ikpoint=1 )     # ;print( " ys ", ys) 
@@ -578,7 +582,7 @@ def Test_projectAtomPosTex2():
     typeDict={ 1:0, 6:1 }
     apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos, typeDict )
     init()                                   #;print("DEBUG py 2")
-    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )         #;print("DEBUG py 3") 
+    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    #;print("DEBUG py 3") 
     initAtoms( len(apos_) )                  #;print("DEBUG py 4")
     out = projectAtomPosTex(apos_,wfcoef_,poss_) #;print("DEBUG py 5")
 
