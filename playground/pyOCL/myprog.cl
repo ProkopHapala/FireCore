@@ -110,8 +110,8 @@ float sp3_tex( float3 dp, float4 c, float slot, __read_only image2d_t imgIn ){
     float   ir  = 1/r;
     float4  fr  = lerp_basis( r, slot, imgIn ).yyyx;
     //float4  fr  = read_imagef( imgIn, sampler_wrf, (float2){ r, slot } );
-    //float4  v = (float4) ( dp*ir*pref_p, pref_s )*fr;
-    float4  v = (float4) ( dp*ir, 1.0 )*fr;
+    float4  v = (float4) ( dp*ir*pref_p, pref_s )*fr;
+    //float4  v = (float4) ( dp*ir, 1.0 )*fr;
     //float4  v = (float4) ( dp*ir, 0.0f )*fr;
     return  dot( v ,c );
     //return r;
