@@ -145,8 +145,9 @@ def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,
     lib.setGridShape( _np_as( pos0, c_float_p ),_np_as( dA, c_float_p ), _np_as( dB, c_float_p ), _np_as( dC, c_float_p ) )
 
 def setGridShape_dCell( Ns, dCell ):
-    pos0=[  dCell[0,0]*(-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[1]//2),  0.0 ]
-    print( " setGridShape_dCell() pos0 ", pos0 )
+    #pos0=[  dCell[0,0]*(-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[1]//2),  0.0 ]
+    pos0=[  dCell[0,0]*(1-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[1]//2),  0.0 ]   # NOT sure why this fits best
+    #print( " setGridShape_dCell() pos0 ", pos0 )
     setGridShape( 
         pos0=pos0,
         dA=dCell[0]+[0.0],
@@ -448,9 +449,10 @@ def convCoefs( atypes, oCs, oatoms, typeDict ):
     for ia,no in enumerate(norbs):
         coefs[ia,3]=oCs[io]; io+=1
         if(no>1):
-            coefs[ia,0]=oCs[io+0]
-            coefs[ia,1]=oCs[io+1]
-            coefs[ia,2]=oCs[io+2]
+            # yzx : Fireball p-orbitals are in order  y,z,x;   see https://nanosurf.fzu.cz/wiki/doku.php?id=fireball
+            coefs[ia,0]=oCs[io+2]
+            coefs[ia,1]=oCs[io+0]
+            coefs[ia,2]=oCs[io+1]
             io+=3
         atoms[ia,3] += typeDict[atypes[ia]] + 0.1
     #print( "atoms ", atoms )
@@ -459,7 +461,7 @@ def convCoefs( atypes, oCs, oatoms, typeDict ):
     print( " atomTypes GPU ", atoms[:,3]  )
     return atoms, coefs
 
-def Test_projectWf( ):
+def Test_projectWf( iMO=1 ):
     sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
@@ -483,18 +485,20 @@ def Test_projectWf( ):
     fc.solveH()
     sigma=fc.updateCharges() ; print( sigma )
     ngrid, dCell, lvs = fc.setupGrid()
-    ewfaux = fc.getGridMO( 1,ngrid=ngrid)   ;print( "ewfaux.min(),ewfaux.max() ", ewfaux.min(),ewfaux.max() )
+    ewfaux = fc.getGridMO( iMO,ngrid=ngrid)   ;print( "ewfaux.min(),ewfaux.max() ", ewfaux.min(),ewfaux.max() )
     sh = ewfaux.shape                       ;print( "ewfaux.shape ", sh )
-    fc.orb2xsf(1); #exit()
+    fc.orb2xsf(iMO); #exit()
 
     i0orb  = countOrbs( atomType )           ;print("i0orb ", i0orb)  
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
     print("# ========= PyOCL Wave-Function Projection " )
-    iMO=0
     #wfcoef = wfcoef[1,:]
-    print( "wfcoef: \n", wfcoef )
-    apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO,:], atomPos )
+    #print( "wfcoef: \n", wfcoef )
+    print( "coefs for MO#%i " %iMO, wfcoef[iMO-1,:] )
+    typeDict={ 1:0, 6:1 }
+    #apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO,:], atomPos )
+    apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO-1,:], atomPos, typeDict )
     #wfcoef_ = np.array( [ 0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0 ], dtype=np.float32)
     init()                           
     Ns = (ngrid[0],ngrid[1],ngrid[2])
@@ -504,7 +508,7 @@ def Test_projectWf( ):
     setGridShape_dCell( Ns, dCell )
     projectAtoms( apos_, wfcoef_, 0 ) 
     #saveToXsf( "test.xsf", 0 )
-    saveToXsfAtoms( "test.xsf", 0,    atomType, atomPos  )
+    saveToXsfAtoms( "orb_%03i.xsf" %iMO, 0,    atomType, atomPos  )
     arrA = np.zeros(Ns+(2,),dtype=np.float32)  
     download(0,arrA)                  
 
@@ -602,8 +606,8 @@ def Test_projectAtomPosTex2():
 
 
 if __name__ == "__main__":
-    #Test_projectWf( )
-    Test_projectAtomPosTex2()
+    Test_projectWf( iMO=2 )
+    #Test_projectAtomPosTex2()
 
 
 
