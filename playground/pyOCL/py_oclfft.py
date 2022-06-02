@@ -100,8 +100,8 @@ def initFFT( Ns ):
 #void initFFT ( int ndim, int* Ns );
 lib.initAtoms.argtypes  = [ c_int ] 
 lib.initAtoms.restype   =  None
-def initAtoms( N ):
-    lib.initAtoms( N )
+def initAtoms( nAtoms, nOrbs=1 ):
+    lib.initAtoms( nAtoms, nOrbs )
 
 #int  initBasisTable( int nx, int ny, float* data );
 lib.initBasisTable.argtypes  = [ c_int, c_int, c_float_p ] 
@@ -120,6 +120,11 @@ lib.projectAtoms.restype   =  None
 def projectAtoms(atoms,coefs,iOut):
     lib.projectAtoms( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut )
 
+#projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2 )
+lib.projectAtomsDens.argtypes  = [ c_float_p, c_float_p, c_int, c_int, c_int ] 
+lib.projectAtomsDens.restype   =  None
+def projectAtomsDens(atoms,coefs,iOut, iorb0, iorb1 ):
+    lib.projectAtomsDens( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut, iorb0, iorb1 )
 
 #void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out )
 lib.projectAtomPosTex.argtypes  = [ c_float_p, c_float_p, c_int, c_float_p, c_float_p ] 
@@ -529,6 +534,73 @@ def Test_projectWf( iMO=1 ):
 
 
 
+
+def Test_projectDens( iMO=1 ):
+    sys.path.append("../../")
+    import pyBall as pb
+    from pyBall import FireCore as fc
+    # ----- Make CH4 molecule
+    atomType = np.array([6,1,1,1,1]).astype(np.int32)
+    atomPos  = np.array([
+        [ 0.01,     0.0,     0.0],
+        [-1.0,     +1.0,    -1.0],
+        [+1.0,     -1.0,    -1.0],
+        [-1.0,     -1.0,    +1.0],
+        [+1.0,     +1.0,    +1.0],
+    ])
+    
+    print("# ======== FireCore Run " )
+    print ("atomType ", atomType)
+    print ("atomPos  ", atomPos)
+    fc.preinit()
+    norb = fc.init( atomType, atomPos )
+    # --------- Electron Density
+    fc.assembleH( atomPos)
+    fc.solveH()
+    sigma=fc.updateCharges() ; print( sigma )
+    # ======== Project Grid using FireCore "
+    ngrid, dCell, lvs = fc.setupGrid()
+    #ewfaux = fc.getGridMO( iMO,ngrid=ngrid)   ;print( "ewfaux.min(),ewfaux.max() ", ewfaux.min(),ewfaux.max() )
+    #sh = ewfaux.shape                       ;print( "ewfaux.shape ", sh )
+    #fc.orb2xsf(iMO); #exit()
+
+    i0orb  = countOrbs( atomType )           ;print("i0orb ", i0orb)  
+    wfcoef = fc.get_wfcoef(norb=i0orb[-1])
+
+    print("# ========= PyOCL Wave-Function Projection " )
+    #wfcoef = wfcoef[1,:]
+    #print( "wfcoef: \n", wfcoef )
+    print( "coefs for MO#%i " %iMO, wfcoef[iMO-1,:] )
+    typeDict={ 1:0, 6:1 }
+    #apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO,:], atomPos )
+    apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO-1,:], atomPos, typeDict )
+    #wfcoef_ = np.array( [ 0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0 ], dtype=np.float32)
+    init()                           
+    Ns = (ngrid[0],ngrid[1],ngrid[2])
+    initFFT( Ns  )                  
+    loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    
+    initAtoms( len(apos_) )          
+    setGridShape_dCell( Ns, dCell )
+    projectAtomsDens( apos_, wfcoef_, 0 ) 
+    #saveToXsf( "test.xsf", 0 )
+    saveToXsfAtoms( "orb_%03i.xsf" %iMO, 0,    atomType, atomPos  )
+    arrA = np.zeros(Ns+(2,),dtype=np.float32)  
+    download(0,arrA)                  
+
+    print("# ========= Plot GPU vs CPU comparison " )
+    #print( arrA  [16,16,:,0] )
+    #print( ewfaux[16,16,:] )
+    import matplotlib.pyplot as plt
+    ix0=ngrid[0]//2
+    iy0=ngrid[1]//2
+    plt.plot( arrA  [ix0,iy0,:,0], label="GPU" )
+    #plt.plot( ewfaux[ix0,iy0,:  ], label="CPU" )
+    print( "arrA  .shape ", arrA  .shape )
+    print( "ewfaux.shape ", ewfaux.shape )
+    #plt.figure(); plt.imshow( arrA  [ngrid[0]//2 ,:,:,0] ); plt.title("GPU")
+    #plt.figure(); plt.imshow( ewfaux[ngrid[0]//2 ,:,:  ] ); plt.title("CPU")
+    plt.legend()
+    plt.show()
 
 
 

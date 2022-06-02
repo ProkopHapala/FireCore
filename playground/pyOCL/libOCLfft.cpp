@@ -108,6 +108,7 @@ class OCLfft : public OCLsystem { public:
     int iKernell_mull=-1;
     int iKernell_project=-1;
     int iKernell_project_tex=-1;
+    int iKernell_project_dens_tex=-1;
     int iKernell_projectPos_tex=1;
     OCLtask cltask_mul;
     OCLtask cltask_project;
@@ -115,11 +116,12 @@ class OCLfft : public OCLsystem { public:
     OCLtask cltask_projectPos_tex;
     int itex_basis=-1;
 
-    int    nAtoms;
-    int    nPos;
+    int    nAtoms=0;
+    int    nOrbs=0;
+    int    nPos=0;
     float4 pos0, dA, dB, dC;
     GridShape grid;
-    int ibuff_atoms,ibuff_coefs;
+    int ibuff_atoms=0,ibuff_coefs=0;
     //int ibuff_poss;
 
     void updateNtot(){
@@ -154,10 +156,12 @@ class OCLfft : public OCLsystem { public:
         return newBuffer( name, Ntot, sizeof(float2), 0, CL_MEM_READ_WRITE );
     }
 
-    int initAtoms( int nAtoms_ ){
+    int initAtoms( int nAtoms_, int nOrbs_ ){
         nAtoms=nAtoms_;
-        ibuff_atoms=newBuffer( "atoms", nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        ibuff_coefs=newBuffer( "coefs", nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        nOrbs  =nOrbs_;
+        ibuff_atoms   =newBuffer( "atoms",    nAtoms,       sizeof(float4), 0, CL_MEM_READ_ONLY );
+        ibuff_coefs   =newBuffer( "coefs",    nAtoms*nOrbs,       sizeof(float4), 0, CL_MEM_READ_ONLY );
+        //ibuff_coefsAll=newBuffer( "coefsAll", nAtoms*nOrbs, sizeof(float4), 0, CL_MEM_READ_ONLY );
         return ibuff_atoms;
     };
 
@@ -305,6 +309,28 @@ class OCLfft : public OCLsystem { public:
         cltask_project_tex.print_arg_list();
     }
 
+    void initTask_project_dens_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
+        printf("DEBUG initTask_project_dens_tex() \n");
+        Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
+        cltask_project_tex.setup( this, iKernell_project_dens_tex, 1, Ntot*2, 16 );
+        cltask_project_tex.args = { 
+            INTarg (nAtoms),        //1
+            INTarg (0),             //2
+            INTarg (0),             //3
+            BUFFarg(ibuffAtoms),    //4
+            BUFFarg(ibuffCoefs),    //5
+            BUFFarg(ibuff_result),  //6
+            BUFFarg(itex_basis),    //7
+            REFarg(Nvec),           //8
+            REFarg(pos0),           //9
+            REFarg(dA),           //10
+            REFarg(dB),           //11
+            REFarg(dC)            //12
+        };
+        cltask_project_tex.print_arg_list();
+    }
+
+
     /*
     void initTask_projectPos_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_poss, int ibuff_out ){
         cltask_projectPos_tex.setup( this, iKernell_project_tex, 1, Ntot*2, 16 );
@@ -340,6 +366,17 @@ class OCLfft : public OCLsystem { public:
         //cltask_mul.enque( );
         clFinish(commands); 
     }
+
+    void projectAtomsDens( float4* atoms, float4* coefs, int ibuff_result, int iorb1, int iorb2 ){
+        upload(ibuff_atoms,   atoms);
+        upload(ibuff_coefs,coefs);
+        clFinish(commands); 
+        initTask_project_dens_tex( ibuff_atoms, ibuff_coefs, ibuff_result );
+        cltask_project_tex.args[1]=iorb1;
+        cltask_project_tex.args[2]=iorb2;
+        cltask_project_tex.enque( );
+        clFinish(commands); 
+    }
     
     void convolution( int ibuffA, int ibuffB, int ibuff_result ){
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
@@ -364,10 +401,11 @@ class OCLfft : public OCLsystem { public:
     void makeMyKernels(){
         printf( "DEBUG makeMyKernels \n" );
         buildProgram( "myprog.cl" );
-        iKernell_mull    = newKernel( "mul" );
-        iKernell_project = newKernel( "projectAtomsToGrid" );
-        iKernell_project_tex    = newKernel( "projectAtomsToGrid_texture" );
-        iKernell_projectPos_tex = newKernel( "projectWfAtPoints_tex" );
+        iKernell_mull             = newKernel( "mul" );
+        iKernell_project          = newKernel( "projectAtomsToGrid" );
+        iKernell_project_tex      = newKernel( "projectAtomsToGrid_texture"  );
+        iKernell_project_dens_tex = newKernel( "projectOrbDenToGrid_texture" );
+        iKernell_projectPos_tex   = newKernel( "projectWfAtPoints_tex" );
         printf( "DEBUG makeMyKernels END \n" );
         //exit(0);
     };
@@ -437,6 +475,37 @@ class OCLfft : public OCLsystem { public:
         delete [] cpu_data;
     }
 
+    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1 ){
+        int ncoef=natoms*(iorb1-iorb0);
+        float4* atoms = new float4[ natoms ];
+        float4* coefs = new float4[ ncoef  ];
+        // --- Count orbitals
+        int norb=0;
+        for(int ia=0; ia<natoms; ia++){ if(iZs[ia]==1){ norb+=1; }else{ norb+=4; }; }
+        // --- trasnform positions
+        for(int ia=0; ia<natoms; ia++){
+            int i3=ia*3;
+            atoms[ia]=(float4){ (float)oatoms[i3],(float)oatoms[i3+1],(float)oatoms[i3+2], ityps[ia]+0.1f };
+        }
+        // --- trasnform coefs
+        int io=norb*iorb0;
+        for(int iorb=iorb0; iorb<iorb1; iorb++){
+            for(int ia=0; ia<natoms; ia++){
+                if(iZs[ia]==1){ 
+                    coefs[ia]=(float4){0.f,0.f,0.f, (float)ocoefs[io] };
+                    io+=1; 
+                }else{ 
+                    coefs[ia]=(float4){ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] };   //  Fireball order:   s,py,pz,px   see https://nanosurf.fzu.cz/wiki/doku.php?id=fireball
+                    io+=4; 
+                }
+            } // ia
+        } // iorb
+        upload(ibuff_atoms,atoms, natoms );
+        upload(ibuff_coefs,coefs, ncoef  );
+        delete [] atoms;
+        delete [] coefs;
+    };
+
 };
 
 OCLfft oclfft;
@@ -459,14 +528,15 @@ extern "C" {
         //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
 
-    int initAtoms( int nAtoms          ){  return oclfft.initAtoms( nAtoms ); };
-    void runfft( int ibuff, bool fwd   ){ oclfft.runFFT( ibuff,fwd,0);     };
+    int initAtoms( int nAtoms, int nOrbs ){  return oclfft.initAtoms( nAtoms, nOrbs ); };
+    void runfft( int ibuff, bool fwd     ){ oclfft.runFFT( ibuff,fwd,0);     };
     //void runfft( int ibuff, bool fwd, float* data ){ oclfft.runFFT( ibuff,fwd, data); };
     void convolve( int ibuffA, int ibuffB, int ibuff_result ){
         oclfft.convolution( ibuffA, ibuffB, ibuff_result  );
         //oclfft.mul_buffs( ibuffA, ibuffB, ibuff_result );
     }
-    void projectAtoms( float* atoms, float* coefs, int ibuff_result ){ oclfft.projectAtoms( (float4*)atoms, (float4*)coefs, ibuff_result ); }
+    void projectAtoms    ( float* atoms, float* coefs, int ibuff_result                       ){ oclfft.projectAtoms    ( (float4*)atoms, (float4*)coefs, ibuff_result ); }
+    void projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2 ){ oclfft.projectAtomsDens( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2 ); }
 
     // void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
     void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out ){ oclfft.projectAtomPosTex( (float4*)atoms, (float4*)coefs,  nPos, (float4*)poss, (float2*)out ); }
@@ -572,7 +642,7 @@ extern "C" {
         float Rcuts[2]{4.50,4.50}; 
         initFFT( 3, Ns );
         oclfft.loadWfBasis( "Fdata/basis/", 4.50,100,1000, 2,iZs, Rcuts );
-        initAtoms( natoms );
+        initAtoms( natoms, 1 );
         // ==== Convert Wave-Function coefs and project using OpenCL 
         float pos0[4]{ (float)g.cell.a.x*-0.5f, (float)g.cell.b.y*-0.5f, (float)g.cell.c.z*-0.5f, 0.0};
         //printf( "pos0 (%g,%g,%g) \n", pos0[0],pos0[1],pos0[2] ); exit(0);

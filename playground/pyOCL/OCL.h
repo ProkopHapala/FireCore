@@ -57,8 +57,8 @@ class OCLBuffer{
     inline int setAsArg( cl_kernel& kernel, int i   ){ return clSetKernelArg(kernel, i, sizeof(cl_mem), &p_gpu );  };
 
 
-    inline int fromGPU ( cl_command_queue& commands,       void* cpu_data ){ return clEnqueueReadBuffer ( commands, p_gpu, CL_TRUE, 0, byteSize(), cpu_data, 0, NULL, NULL );  }
-    inline int toGPU   ( cl_command_queue& commands, const void* cpu_data ){ return clEnqueueWriteBuffer( commands, p_gpu, CL_TRUE, 0, byteSize(), cpu_data, 0, NULL, NULL ); }
+    inline int fromGPU ( cl_command_queue& commands,       void* cpu_data, int n_=-1 ){ if(n_<0)n_=n; return clEnqueueReadBuffer ( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); }
+    inline int toGPU   ( cl_command_queue& commands, const void* cpu_data, int n_=-1 ){ if(n_<0)n_=n; return clEnqueueWriteBuffer( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); }
     inline int fromGPU ( cl_command_queue& commands ){ return fromGPU ( commands, p_cpu ); }
     inline int toGPU   ( cl_command_queue& commands ){ return toGPU   ( commands, p_cpu ); }
     //inline setImageParams(  );
@@ -175,8 +175,8 @@ class OCLsystem{
         return err;
     }
 
-    inline int upload  (int i, const void* cpu_data ){ return buffers[i].toGPU  (commands,cpu_data); };
-    inline int download(int i,       void* cpu_data ){ return buffers[i].fromGPU(commands,cpu_data); };
+    inline int upload  (int i, const void* cpu_data, int n=-1 ){ return buffers[i].toGPU  (commands,cpu_data,n); };
+    inline int download(int i,       void* cpu_data, int n=-1 ){ return buffers[i].fromGPU(commands,cpu_data,n); };
     //inline int upload  (int i, void* p_cpu ){ buffers[i].p_cpu=p_cpu; return buffers[i].toGPU  (commands); };
     //inline int download(int i, void* p_cpu ){ buffers[i].p_cpu=p_cpu; return buffers[i].fromGPU(commands); };
 
