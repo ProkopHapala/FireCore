@@ -243,6 +243,64 @@ __kernel void projectAtomsToGrid_texture(
 }
 
 
+
+
+__kernel void projectOrbDenToGrid_texture(
+    const int nAtoms,            //1
+    const int iorb0,            //2
+    const int iorb1,            //3
+    __global float4*  atoms,     //4
+    __global float4*  coefs,     //5
+    __global float2*  outGrid,   //6
+    __read_only image2d_t imgIn, //7 
+    int4   nGrid,                //8
+    float4 grid_p0,              //9
+    float4 grid_dA,              //10
+    float4 grid_dB,              //11
+    float4 grid_dC               //12
+){
+    __local float4 LATOMS[N_LOCAL];
+    __local float4 LCOEFS[N_LOCAL];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+   
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+    const int nMax = nab*nGrid.z;
+    
+    if(iG>nMax) return;
+    float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
+
+    float dens = 0.0;
+    // ToDo : Later we have to change the order of the loops
+    for(int iorb=iorb0; iorb<iorb1; iorb++){
+        int icoef0 = iorb*nAtoms;
+        float2 wf   = (float2) (0.0f,0.0f);
+        for (int i0=0; i0<nAtoms; i0+=nL ){
+            int i = i0 + iL;
+            LATOMS[iL] = atoms[i];
+            LCOEFS[iL] = coefs[i+icoef0];
+            barrier(CLK_LOCAL_MEM_FENCE);
+            for (int j=0; j<nL; j++){
+                if( (j+i0)<nAtoms ){ 
+                    float4 xyzq  = LATOMS[j];
+                    float4 cs    = LCOEFS[j];
+                    wf.x += sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem, cs, xyzq.w, imgIn );
+                }
+            } // j
+            barrier(CLK_LOCAL_MEM_FENCE);
+        } // i0
+        dens += wf.x*wf.x;
+    } // iorb
+    outGrid[iG] = (float2){dens,0.0f};
+}
+
+
+
+
 __kernel void projectWfAtPoints_tex(
     const int nAtoms,            //1
     __global float4*  atoms,     //2
