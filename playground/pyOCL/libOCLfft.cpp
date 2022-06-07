@@ -113,6 +113,7 @@ class OCLfft : public OCLsystem { public:
     OCLtask cltask_mul;
     OCLtask cltask_project;
     OCLtask cltask_project_tex;
+    OCLtask cltask_project_den_tex;
     OCLtask cltask_projectPos_tex;
     int itex_basis=-1;
 
@@ -159,8 +160,9 @@ class OCLfft : public OCLsystem { public:
     int initAtoms( int nAtoms_, int nOrbs_ ){
         nAtoms=nAtoms_;
         nOrbs  =nOrbs_;
+        //printf("DEBUG initAtoms nAtoms %i nOrbs %i \n", nAtoms, nOrbs );
         ibuff_atoms   =newBuffer( "atoms",    nAtoms,       sizeof(float4), 0, CL_MEM_READ_ONLY );
-        ibuff_coefs   =newBuffer( "coefs",    nAtoms*nOrbs,       sizeof(float4), 0, CL_MEM_READ_ONLY );
+        ibuff_coefs   =newBuffer( "coefs",    nAtoms*nOrbs, sizeof(float4), 0, CL_MEM_READ_ONLY );
         //ibuff_coefsAll=newBuffer( "coefsAll", nAtoms*nOrbs, sizeof(float4), 0, CL_MEM_READ_ONLY );
         return ibuff_atoms;
     };
@@ -312,8 +314,8 @@ class OCLfft : public OCLsystem { public:
     void initTask_project_dens_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
         printf("DEBUG initTask_project_dens_tex() \n");
         Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
-        cltask_project_tex.setup( this, iKernell_project_dens_tex, 1, Ntot*2, 16 );
-        cltask_project_tex.args = { 
+        cltask_project_den_tex.setup( this, iKernell_project_dens_tex, 1, Ntot*2, 16 );
+        cltask_project_den_tex.args = { 
             INTarg (nAtoms),        //1
             INTarg (0),             //2
             INTarg (0),             //3
@@ -327,7 +329,6 @@ class OCLfft : public OCLsystem { public:
             REFarg(dB),           //11
             REFarg(dC)            //12
         };
-        cltask_project_tex.print_arg_list();
     }
 
 
@@ -368,13 +369,17 @@ class OCLfft : public OCLsystem { public:
     }
 
     void projectAtomsDens( float4* atoms, float4* coefs, int ibuff_result, int iorb1, int iorb2 ){
-        upload(ibuff_atoms,   atoms);
-        upload(ibuff_coefs,coefs);
+        printf( "DEBUG projectAtomsDens() atoms %li long %li \n", (long)atoms, (long)coefs );
+        if( atoms ) upload(ibuff_atoms,atoms); 
+        if( coefs ) upload(ibuff_coefs,coefs);
         clFinish(commands); 
+        //initTask_project_dens_tex
         initTask_project_dens_tex( ibuff_atoms, ibuff_coefs, ibuff_result );
-        cltask_project_tex.args[1]=iorb1;
-        cltask_project_tex.args[2]=iorb2;
-        cltask_project_tex.enque( );
+        //cltask_project_den_tex
+        cltask_project_den_tex.args[1].i=iorb1;
+        cltask_project_den_tex.args[2].i=iorb2;
+        cltask_project_den_tex.print_arg_list();
+        cltask_project_den_tex.enque( );
         clFinish(commands); 
     }
     
@@ -404,6 +409,7 @@ class OCLfft : public OCLsystem { public:
         iKernell_mull             = newKernel( "mul" );
         iKernell_project          = newKernel( "projectAtomsToGrid" );
         iKernell_project_tex      = newKernel( "projectAtomsToGrid_texture"  );
+                                              //projectOrbDenToGrid_texture
         iKernell_project_dens_tex = newKernel( "projectOrbDenToGrid_texture" );
         iKernell_projectPos_tex   = newKernel( "projectWfAtPoints_tex" );
         printf( "DEBUG makeMyKernels END \n" );
@@ -464,10 +470,14 @@ class OCLfft : public OCLsystem { public:
     }
 
     void saveToXsf(const char* fname, int ibuff, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
+        printf("DEBUG saveToXsf 1 \n");
         update_GridShape();
+        printf("DEBUG saveToXsf 2 \n");
         float* cpu_data = new float[Ntot*2]; // complex 2*float
         download( ibuff,cpu_data);
+        printf("DEBUG saveToXsf 3 \n");
         finishRaw();
+        printf("DEBUG saveToXsf 4 \n");
         //Vec3d pos0=grid.pos0;
         //grid.pos0=Vec3dZero;
         grid.saveXSF( fname, cpu_data, 2, 0,   natoms,atypes,apos );
@@ -475,33 +485,71 @@ class OCLfft : public OCLsystem { public:
         delete [] cpu_data;
     }
 
-    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1 ){
-        int ncoef=natoms*(iorb1-iorb0);
-        float4* atoms = new float4[ natoms ];
-        float4* coefs = new float4[ ncoef  ];
+    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1, bool bInit=false ){
+        printf( "DEBUG convCoefs 1 \n" );
         // --- Count orbitals
         int norb=0;
+        printf( "DEBUG convCoefs 2 \n" );
         for(int ia=0; ia<natoms; ia++){ if(iZs[ia]==1){ norb+=1; }else{ norb+=4; }; }
+        printf( "DEBUG convCoefs 2.5 norb %i \n", norb );
+        //int ncoef=natoms*(iorb1-iorb0+1);
+        int ncoef=natoms*norb;
+        float4* atoms = new float4[ natoms ];
+        float4* coefs = new float4[ ncoef  ];
+
         // --- trasnform positions
         for(int ia=0; ia<natoms; ia++){
             int i3=ia*3;
             atoms[ia]=(float4){ (float)oatoms[i3],(float)oatoms[i3+1],(float)oatoms[i3+2], ityps[ia]+0.1f };
         }
+        printf( "DEBUG convCoefs 3 norb %i \n", norb );
         // --- trasnform coefs
-        int io=norb*iorb0;
-        for(int iorb=iorb0; iorb<iorb1; iorb++){
+        //int io=norb*iorb0;
+        //for(int iorb=iorb0; iorb<=iorb1; iorb++){
+        for(int iorb=0; iorb<=norb; iorb++){
+            int io =iorb*norb;
+            int ia0=iorb*natoms;
             for(int ia=0; ia<natoms; ia++){
+                int jo=ia+ia0;
                 if(iZs[ia]==1){ 
-                    coefs[ia]=(float4){0.f,0.f,0.f, (float)ocoefs[io] };
+                    coefs[jo]=(float4){0.f,0.f,0.f, (float)ocoefs[io] };
                     io+=1; 
                 }else{ 
-                    coefs[ia]=(float4){ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] };   //  Fireball order:   s,py,pz,px   see https://nanosurf.fzu.cz/wiki/doku.php?id=fireball
+                    coefs[jo]=(float4){ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] };   //  Fireball order:   s,py,pz,px   see https://nanosurf.fzu.cz/wiki/doku.php?id=fireball
                     io+=4; 
                 }
+                //printf( "CPU [%i,%i] coef(%g,%g,%g,%g)\n", iorb, ia, coefs[jo].x, coefs[jo].y, coefs[jo].z, coefs[jo].w );
             } // ia
         } // iorb
+        /*
+        printf( "DEBUG  print CPU ocoefs | norb %i  \n", norb );
+        for(int iorb=0; iorb<norb; iorb++){
+            printf( "ORB[%i] ", iorb );
+            for (int j=0; j<norb; j++ ){
+                int io = iorb*norb + j;
+                printf( " %g ", ocoefs[io] );
+            }
+            printf( "\n");
+        }
+        printf( "DEBUG  print CPU coefs iorb0,iorb1,nAtoms %i, %i, %i \n", iorb0,iorb1,natoms );
+        for(int iorb=iorb0; iorb<=iorb1; iorb++){
+            for (int ia=0; ia<natoms; ia++ ){
+                int io = iorb*natoms + ia;
+                printf( "CPU [%i,%i] atom(%g,%g,%g,,%g) coef(%g,%g,%g,%g)\n", iorb, ia,  atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,  coefs[io].x, coefs[io].y, coefs[io].z, coefs[io].w );
+            }
+        }
+        */
+        printf( "DEBUG convCoefs 4 \n" );
+        if( bInit ){
+            printf( "DEBUG convCoefs 5 \n" );
+            //nAtoms = natoms;
+            //nOrbs  =  norb;
+            initAtoms( natoms, norb );
+        }
+        printf( "DEBUG convCoefs 6 \n" );
         upload(ibuff_atoms,atoms, natoms );
         upload(ibuff_coefs,coefs, ncoef  );
+        printf( "DEBUG convCoefs 7 \n" );
         delete [] atoms;
         delete [] coefs;
     };
@@ -555,7 +603,7 @@ extern "C" {
 
     int initBasisTable( int nx, int ny, float* data ){  return oclfft.initBasisTable(nx,ny,data ); };
 
-
+    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1, bool bInit ){  oclfft.convCoefs( natoms, iZs, ityps, ocoefs, oatoms, iorb0, iorb1, bInit ); }
 
     void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
         //int npoints = 100;

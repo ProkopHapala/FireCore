@@ -271,12 +271,22 @@ __kernel void projectOrbDenToGrid_texture(
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
     
+    if(iG==0){ 
+        printf("projectOrbDenToGrid_texture 1 \n"); 
+        for(int iorb=iorb0; iorb<=iorb1; iorb++){
+            for (int ia=0; ia<nAtoms; ia++ ){
+                int io = iorb*nAtoms + ia;
+                printf( "GPU[%i,%i] atom(%g,%g,%g,,%g) coef(%g,%g,%g,%g)\n", iorb, ia,  atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,  coefs[io].x, coefs[io].y, coefs[io].z, coefs[io].w );
+            }
+        }
+    }
     if(iG>nMax) return;
+    
     float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
 
     float dens = 0.0;
     // ToDo : Later we have to change the order of the loops
-    for(int iorb=iorb0; iorb<iorb1; iorb++){
+    for(int iorb=iorb0; iorb<=iorb1; iorb++){
         int icoef0 = iorb*nAtoms;
         float2 wf   = (float2) (0.0f,0.0f);
         for (int i0=0; i0<nAtoms; i0+=nL ){
@@ -296,6 +306,7 @@ __kernel void projectOrbDenToGrid_texture(
         dens += wf.x*wf.x;
     } // iorb
     outGrid[iG] = (float2){dens,0.0f};
+    if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
 }
 
 
