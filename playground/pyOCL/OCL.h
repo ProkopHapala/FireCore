@@ -200,12 +200,12 @@ class OCLsystem{
     }
 
     int finishRaw(){
-        int err = clFinish(commands);   OCL_checkError(err, "Waiting for kernel to finish"); return err;
+        int err = clFinish(commands);   OCL_checkError(err, "finishRaw : clFinish"); return err;
     }
 
     int finish(){
         int err;
-        err = clFinish(commands);   OCL_checkError(err, "Waiting for kernel to finish");
+        err = clFinish(commands);   OCL_checkError(err, "finish : clFinish");
         err |= download();
         return err;
     }
@@ -286,7 +286,7 @@ class OCLtask{
     }
 
     inline int enque_raw(  ){
-        //printf("enque_raw %i %i (%i,%i,%i) (%i,%i,%i)\n", ikernel, dim, global[0],global[1],global[2], local[0],local[1],local[2] );
+        printf("enque_raw %li %li (%li,%li,%li) (%li,%li,%li)\n", ikernel, dim, global[0],global[1],global[2], local[0],local[1],local[2] );
         if(local[0]==0){ return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, global, NULL,  0, NULL, NULL );   }
         else{            return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, global, local, 0, NULL, NULL );   }
     }

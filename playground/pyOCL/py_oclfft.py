@@ -50,6 +50,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     void loadWfBasis( double Rcut, int nsamp, int ntmp, int nZ, int* iZs ){
     void saveToXsf(const char* fname, int ibuff){
     void initFireBall( int natoms, int* atypes, double* apos ){
+    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1 ){
 '''
 
 #mode=ct.RTLD_GLOBAL
@@ -123,7 +124,7 @@ def projectAtoms(atoms,coefs,iOut):
 #projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2 )
 lib.projectAtomsDens.argtypes  = [ c_float_p, c_float_p, c_int, c_int, c_int ] 
 lib.projectAtomsDens.restype   =  None
-def projectAtomsDens(atoms,coefs,iOut, iorb0, iorb1 ):
+def projectAtomsDens( iOut, atoms=None,coefs=None,  iorb0=1, iorb1=2 ):
     lib.projectAtomsDens( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut, iorb0, iorb1 )
 
 #void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out )
@@ -135,6 +136,15 @@ def projectAtomPosTex(atoms,coefs,poss,out=None):
         out = np.zeros((nPos,2), dtype=np.float32)
     lib.projectAtomPosTex( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),nPos, _np_as( poss, c_float_p ), _np_as( out, c_float_p ) )
     return out
+
+#void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1 ){
+lib.convCoefs.argtypes  = [ c_int, c_int_p, c_int_p, c_double_p, c_double_p, c_int, c_int, c_bool ] 
+lib.convCoefs.restype   =  None
+def convCoefsC( iZs, ityps, apos, wfcoefs,  iorb0=1, iorb1=2, bInit=False   ):
+    natoms=len(iZs)
+    iZs   = np.array(iZs,   dtype=np.int32)
+    ityps = np.array(ityps, dtype=np.int32)
+    lib.convCoefs( natoms, _np_as(iZs,c_int_p),_np_as(ityps,c_int_p), _np_as(wfcoefs,c_double_p), _np_as(apos,c_double_p), iorb0, iorb1, bInit )
 
 #setGridShape( float* pos0, float* dA, float* dB, float* dC ){
 lib.setGridShape.argtypes  = [ c_float_p, c_float_p, c_float_p, c_float_p ] 
@@ -532,10 +542,7 @@ def Test_projectWf( iMO=1 ):
     plt.legend()
     plt.show()
 
-
-
-
-def Test_projectDens( iMO=1 ):
+def Test_projectDens( iMO0=1, iMO1=2 ):
     sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
@@ -567,25 +574,27 @@ def Test_projectDens( iMO=1 ):
     i0orb  = countOrbs( atomType )           ;print("i0orb ", i0orb)  
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
-    print("# ========= PyOCL Wave-Function Projection " )
-    #wfcoef = wfcoef[1,:]
-    #print( "wfcoef: \n", wfcoef )
-    print( "coefs for MO#%i " %iMO, wfcoef[iMO-1,:] )
-    typeDict={ 1:0, 6:1 }
-    #apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO,:], atomPos )
-    apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO-1,:], atomPos, typeDict )
-    #wfcoef_ = np.array( [ 0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0 ], dtype=np.float32)
-    init()                           
+    
+    print("# ========= PyOCL Density-Function Projection " )
+    init()            
     Ns = (ngrid[0],ngrid[1],ngrid[2])
     initFFT( Ns  )                  
     loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    
-    initAtoms( len(apos_) )          
+    #initAtoms( len(apos_) )          
     setGridShape_dCell( Ns, dCell )
-    projectAtomsDens( apos_, wfcoef_, 0 ) 
-    #saveToXsf( "test.xsf", 0 )
-    saveToXsfAtoms( "orb_%03i.xsf" %iMO, 0,    atomType, atomPos  )
+    print( "wfcoef \n", wfcoef )
+    convCoefsC( atomType, [2,1,1,1,1], atomPos, wfcoef,  iorb0=iMO0, iorb1=iMO1 , bInit=True ) 
+    projectAtomsDens( 0 ) 
+
+    print( "DEBUG before saveToXsfAtoms " )
+    saveToXsfAtoms( "dens_%03i_%03i.xsf" %(iMO0,iMO1), 0,    atomType, atomPos  )
+
+    exit(0)
+
+    print( "DEBUG after saveToXsfAtoms " )
     arrA = np.zeros(Ns+(2,),dtype=np.float32)  
-    download(0,arrA)                  
+    download(0,arrA) 
+                     
 
     print("# ========= Plot GPU vs CPU comparison " )
     #print( arrA  [16,16,:,0] )
@@ -678,9 +687,9 @@ def Test_projectAtomPosTex2():
 
 
 if __name__ == "__main__":
-    Test_projectWf( iMO=2 )
+    #Test_projectWf( iMO=2 )
     #Test_projectAtomPosTex2()
-
+    Test_projectDens( )
 
 
 

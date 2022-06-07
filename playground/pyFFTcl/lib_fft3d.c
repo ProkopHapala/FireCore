@@ -222,12 +222,12 @@ int runKernel( int kind, KernelDims kdim ){
         err |= clSetKernelArg(kernel, 4, sizeof(float) * kdim.blocksize * kdim.blocksize, NULL);
         err |= clSetKernelArg(kernel, 5, sizeof(float) * kdim.blocksize * kdim.blocksize, NULL);
     }
-    checkError(err, "Setting kernel args");
+    checkError(err, "clSetKernelArg");
     double start_time = wtime();
     err = clEnqueueNDRangeKernel(  queue,   kernel,   kdim.dim, NULL, kdim.global, kdim.local, 0, NULL, NULL);    
-    checkError(err, "Enqueueing kernel");
+    checkError(err, "clEnqueueNDRangeKernel");
     err = clFinish(queue);
-    checkError(err, "Waiting for kernel to finish");
+    checkError(err, "clFinish");
     double run_time = wtime() - start_time;
 }
 
