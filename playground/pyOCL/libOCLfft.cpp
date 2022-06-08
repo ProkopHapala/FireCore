@@ -12,8 +12,21 @@
 
 #include "FireCoreAPI.h"
 
+#include "quaternion.h"
+
 
 double const_Bohr_Radius = 0.529177210903;
+
+
+inline static double dist2_PointBox( const Vec3d& p, const Vec3d& a, const Vec3d& b ){
+    // from here : http://stackoverflow.com/questions/4578967/cube-sphere-intersection-test
+    // assume C1 and C2 are element-wise sorted, if not, do that now
+    double dist2 = 0.0;
+    if (p.x < a.x){ dist2 += sq(p.x - a.x); }else if(p.x > b.x){ dist2 += sq(p.x - b.x); };
+    if (p.y < a.y){ dist2 += sq(p.y - a.y); }else if(p.y > b.y){ dist2 += sq(p.y - b.y); };
+    if (p.z < a.z){ dist2 += sq(p.z - a.z); }else if(p.z > b.z){ dist2 += sq(p.z - b.z); };
+    return dist2;
+}
 
 
 int loadWf_(const char* fname, float* out){
@@ -485,28 +498,43 @@ class OCLfft : public OCLsystem { public:
         delete [] cpu_data;
     }
 
+    void convOrbCoefs( int natoms, int* iZs, double* ocoefs, float4* coefs ){
+        int io=0;
+        for(int ia=0; ia<natoms; ia++){
+            if(iZs[ia]==1){ 
+                coefs[ia]=(float4){0.f,0.f,0.f, (float)ocoefs[io] };
+                io+=1; 
+            }else{ 
+                coefs[ia]=(float4){ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] };   //  Fireball order:   s,py,pz,px   see https://nanosurf.fzu.cz/wiki/doku.php?id=fireball
+                io+=4; 
+            }
+            //printf( "CPU [%i,%i] coef(%g,%g,%g,%g)\n", iorb, ia, coefs[jo].x, coefs[jo].y, coefs[jo].z, coefs[jo].w );
+        }
+    }
+
     void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1, bool bInit=false ){
-        printf( "DEBUG convCoefs 1 \n" );
+        //printf( "DEBUG convCoefs 1 \n" );
         // --- Count orbitals
         int norb=0;
-        printf( "DEBUG convCoefs 2 \n" );
+        //printf( "DEBUG convCoefs 2 \n" );
         for(int ia=0; ia<natoms; ia++){ if(iZs[ia]==1){ norb+=1; }else{ norb+=4; }; }
-        printf( "DEBUG convCoefs 2.5 norb %i \n", norb );
+        //printf( "DEBUG convCoefs 2.5 norb %i \n", norb );
         //int ncoef=natoms*(iorb1-iorb0+1);
         int ncoef=natoms*norb;
         float4* atoms = new float4[ natoms ];
         float4* coefs = new float4[ ncoef  ];
-
         // --- trasnform positions
         for(int ia=0; ia<natoms; ia++){
             int i3=ia*3;
             atoms[ia]=(float4){ (float)oatoms[i3],(float)oatoms[i3+1],(float)oatoms[i3+2], ityps[ia]+0.1f };
         }
-        printf( "DEBUG convCoefs 3 norb %i \n", norb );
+        //printf( "DEBUG convCoefs 3 norb %i \n", norb );
         // --- trasnform coefs
         //int io=norb*iorb0;
         //for(int iorb=iorb0; iorb<=iorb1; iorb++){
         for(int iorb=0; iorb<=norb; iorb++){
+            convOrbCoefs( natoms, iZs, ocoefs+iorb*norb, coefs+iorb*natoms );
+            /*
             int io =iorb*norb;
             int ia0=iorb*natoms;
             for(int ia=0; ia<natoms; ia++){
@@ -520,6 +548,7 @@ class OCLfft : public OCLsystem { public:
                 }
                 //printf( "CPU [%i,%i] coef(%g,%g,%g,%g)\n", iorb, ia, coefs[jo].x, coefs[jo].y, coefs[jo].z, coefs[jo].w );
             } // ia
+            */
         } // iorb
         /*
         printf( "DEBUG  print CPU ocoefs | norb %i  \n", norb );
@@ -539,20 +568,85 @@ class OCLfft : public OCLsystem { public:
             }
         }
         */
-        printf( "DEBUG convCoefs 4 \n" );
+        //printf( "DEBUG convCoefs 4 \n" );
         if( bInit ){
-            printf( "DEBUG convCoefs 5 \n" );
+            //printf( "DEBUG convCoefs 5 \n" );
             //nAtoms = natoms;
             //nOrbs  =  norb;
             initAtoms( natoms, norb );
         }
-        printf( "DEBUG convCoefs 6 \n" );
+        //printf( "DEBUG convCoefs 6 \n" );
         upload(ibuff_atoms,atoms, natoms );
         upload(ibuff_coefs,coefs, ncoef  );
-        printf( "DEBUG convCoefs 7 \n" );
+        //printf( "DEBUG convCoefs 7 \n" );
         delete [] atoms;
         delete [] coefs;
     };
+
+    void countOrbs( int natoms, int* iZs, int* offsets ){    
+        int io=0;
+        for(int i=0; i<natoms; i++){
+            if(iZs[i]==1){ io++; }else{ io+=4; }
+            offsets[i]=io;
+        }
+    }
+
+    void buildDenmat( int nsel, int* sel, int* iZs, int* i0Cs, double* ocoefs, int iorb0, int iorb1, Quat4f* rho ){
+        for(int i=0; i<(nsel*nsel*4); i++){ rho[i] = Quat4fZero; }
+        Quat4f lcoefs[nsel];
+        for(int iorb=iorb0; iorb<iorb1; iorb++ ){
+            for(int i=0; i<nsel; i++){
+                int ia = sel [i];
+                int io = i0Cs[ia];
+                if(iZs[ia]==1){ lcoefs[ia]=(Quat4f){0.f,0.f,0.f, (float)ocoefs[io] };}
+                else          { lcoefs[ia]=(Quat4f){ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] }; }
+            }
+            for(int i=0; i<nsel; i++){
+                Quat4f qi = lcoefs[i];
+                for(int j=0; j<nsel; j++){
+                    Quat4f qj = lcoefs[j];
+                    rho[i  ].add_mul( qj, qi.x);
+                    rho[i+1].add_mul( qj, qi.y);
+                    rho[i+2].add_mul( qj, qi.z);
+                    rho[i+4].add_mul( qj, qi.w);
+                }
+            } 
+        }
+    }
+
+    int atoms2box( Vec3d p0, Vec3d p1, double Rcut, int natoms, Vec3d* apos, int* sel ){
+        double R2=Rcut*Rcut;
+        //int sel[natoms];
+        int nsel=0;
+        for(int i=0; i<natoms; i++){
+            double r2 = dist2_PointBox( apos[i], p0,p1 );
+            if( r2<R2 ){ sel[nsel]=i; nsel++; } 
+        }
+        return nsel;
+    }
+
+    void projectDenmat( int natoms, int* iZs, int* ityps, double* ocoefs, double* apos, int iorb0, int iorb1, double Rcut, bool bInit=false ){
+        int sel [natoms];
+        int i0Cs[natoms];
+        countOrbs( natoms, iZs, i0Cs );
+
+        Vec3d lbox  = (Vec3d){3.0,3.0,3.0};
+        Vec3d cell  = (Vec3d){ grid.cell.a.x, grid.cell.b.y, grid.cell.c.z };
+        Vec3i nbox  = (Vec3i){ (int)(1+cell.x/lbox.x), (int)(1+cell.y/lbox.y), (int)(1+cell.z/lbox.z)  };
+        Vec3d dcell = (Vec3d){ cell.x/nbox.x, cell.y/nbox.y, cell.z/nbox.z, };
+        for(int ix=0; ix<nbox.x; ix++){
+            for(int iy=0; iy<nbox.y; iy++){
+                for(int iz=0; iz<nbox.z; iz++){
+                    Vec3d p0 = grid.pos0 + dcell*((Vec3d){(double)ix,(double)iy,(double)iz});
+                    Vec3d p1 = p0 + dcell;
+                    int nsel = atoms2box( p0, p1, Rcut, natoms, (Vec3d*)apos, sel );
+                    float* rho = new float[4*4*nsel*nsel];
+                    buildDenmat( nsel, sel, iZs, i0Cs, ocoefs, iorb0, iorb1, (Quat4f*)rho );
+                    delete [] rho;
+                }
+            }
+        }
+    }
 
 };
 

@@ -1,6 +1,9 @@
 ﻿#define R2SAFE          1e-4f
 #define COULOMB_CONST   14.399644f  // [eV*Ang/e^2]
 
+#define N_LOCAL  32
+#define NORB_MAX 64
+
 //__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 //__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_LINEAR;
 //__constant sampler_t sampler_wrf =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_LINEAR;
@@ -103,7 +106,7 @@ float sp3( float3 dp, float4 c, float beta ){
     return  dot( v ,c )*fr;
 }
 
-
+/*
 float sp3_tex( float3 dp, float4 c, float slot, __read_only image2d_t imgIn ){
     float   r2  = ( dot(dp,dp) +  R2SAFE );
     float   r   = sqrt(r2);
@@ -116,10 +119,15 @@ float sp3_tex( float3 dp, float4 c, float slot, __read_only image2d_t imgIn ){
     return  dot( v ,c );
     //return r;
 }
+*/
 
-
-
-#define N_LOCAL  32
+float4 sp3_tex( float3 dp, float slot, __read_only image2d_t imgIn ){
+    float   r2  = ( dot(dp,dp) +  R2SAFE );
+    float   r   = sqrt(r2);
+    float   ir  = 1/r;
+    float4  fr  = lerp_basis( r, slot, imgIn ).yyyx;
+    return (float4) ( dp*ir*pref_p, pref_s )*fr;
+}
 
 __kernel void projectAtomsToGrid(
     const int nAtoms,            //1
@@ -232,7 +240,8 @@ __kernel void projectAtomsToGrid_texture(
                 //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
                 //wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
                 //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
-                wf.x += sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem, cs, xyzq.w, imgIn );
+                //wf.x +=        sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem, cs, xyzq.w, imgIn );
+                wf.x += dot( cs, sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem,     xyzq.w, imgIn ) );
                 //if((ia==16)&&(ib==16)){ printf("DEBUG_GPU pos(%g,%g,%g) xyzq(%g,%g,%g,%g) cs(%g,%g,%g,%g) wf(%g,%g) \n", pos.x,pos.y,pos.z,  xyzq.x,xyzq.y,xyzq.z,xyzq.w, cs.x,cs.y,cs.z,cs.w, wf.x, wf.y ); }
             }
         }
@@ -270,7 +279,7 @@ __kernel void projectOrbDenToGrid_texture(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
-    
+    /*
     if(iG==0){ 
         printf("projectOrbDenToGrid_texture 1 \n"); 
         for(int iorb=iorb0; iorb<=iorb1; iorb++){
@@ -280,8 +289,9 @@ __kernel void projectOrbDenToGrid_texture(
             }
         }
     }
+    */
     if(iG>nMax) return;
-    
+
     float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
 
     float dens = 0.0;
@@ -298,7 +308,8 @@ __kernel void projectOrbDenToGrid_texture(
                 if( (j+i0)<nAtoms ){ 
                     float4 xyzq  = LATOMS[j];
                     float4 cs    = LCOEFS[j];
-                    wf.x += sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem, cs, xyzq.w, imgIn );
+                    //wf.x +=        sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem, cs, xyzq.w, imgIn );
+                    wf.x += dot( cs, sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem,     xyzq.w, imgIn ) );
                 }
             } // j
             barrier(CLK_LOCAL_MEM_FENCE);
@@ -309,6 +320,64 @@ __kernel void projectOrbDenToGrid_texture(
     if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
 }
 
+__kernel void projectOrbDenToGrid_texture_2(
+    const int nAtoms,            //1
+    const int nOrb,              //2
+    __global float4*  atoms,     //4
+    __global float4*  Cijs,      //5
+    __global float2*  outGrid,   //6
+    __read_only image2d_t imgIn, //7 
+    int4   nGrid,                //8
+    float4 grid_p0,              //9
+    float4 grid_dA,              //10
+    float4 grid_dB,              //11
+    float4 grid_dC               //12
+){
+    // NOTE: 
+    //  * each workgroup works on the same voxel
+    //  * 
+    //__local float4 LATOMS[N_LOCAL];
+    //__local float4 LCOEFS[N_LOCAL];
+    __local float4 LBAS[N_LOCAL];
+    __local float  LDEN[N_LOCAL];
+    //__local float4 LMOS[NORB_MAX];
+    const int iL = get_local_id(0);
+    if(iL>nAtoms) return;
+
+    // === evaluate grid position
+    const int iG = get_group_id(0);
+    //const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+    float3 pos    = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
+
+    // === evaluate basisfunctions of each atom
+    float4 xyzq  = atoms[iL];
+    float4 bas_i = sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem, xyzq.w, imgIn );
+    LBAS[iL]     = bas_i;    
+    barrier(CLK_LOCAL_MEM_FENCE);
+    // === sum density matrix
+    float dens_i = 0;
+    int k = iL*nAtoms*4;
+    for(int j=0; j<nAtoms; j++){
+        float4 bas_j = LBAS[iL];
+        dens_i += bas_i.x * dot( bas_j, Cijs[k  ] )
+               +  bas_i.y * dot( bas_j, Cijs[k+1] )
+               +  bas_i.z * dot( bas_j, Cijs[k+2] )
+               +  bas_i.w * dot( bas_j, Cijs[k+3] );
+        k+=4;
+    }
+    LDEN[iL]=dens_i;
+    barrier(CLK_LOCAL_MEM_FENCE);
+    // === REDUCE from local memory 
+    float dens=0;
+    if(iL==0){
+        for(int i=0; i<nAtoms; i++) dens+=LDEN[i];
+        outGrid[iG] = (float2){dens,0.0f};
+    }
+}
 
 
 
@@ -349,7 +418,8 @@ __kernel void projectWfAtPoints_tex(
                 //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
                 float3 dp = (pos-xyzq.xyz)*wf_tiles_per_angstroem; ///0.529177210903f);
                 //printf( "iG %i x %g r %g \n", iG, pos.x, length(dp) );
-                wf.x += sp3_tex( dp, cs, xyzq.w, imgIn );
+                //wf.x +=         sp3_tex( dp, cs, xyzq.w, imgIn );
+                wf.x += dot( cs,  sp3_tex( dp,     xyzq.w, imgIn ) );
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
