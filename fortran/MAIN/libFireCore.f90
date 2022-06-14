@@ -472,13 +472,13 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     call project_orb( iMO, ewfaux )
 end subroutine
 
-subroutine firecore_getGridDens( imo0, imo1, ewfaux )  bind(c, name='firecore_getGridDens' )
+subroutine firecore_getGridDens( ewfaux )  bind(c, name='firecore_getGridDens' )
     use iso_c_binding
     use grid
     use configuration
     implicit none
     ! ========= Parameters
-    integer(c_int), value :: imo0, imo1
+    !integer(c_int), value :: imo0, imo1
     real(c_double), dimension (nrm), intent(out) :: ewfaux
     ! ========= Body
     !write(*,*) "firecore_getGridDens "
@@ -513,6 +513,36 @@ subroutine firecore_orb2xsf( iMO )  bind(c, name='firecore_orb2xsf' )
     call writeout_xsf (namewf, mssg, ewfaux)
     deallocate (ewfaux) 
 end subroutine firecore_orb2xsf
+
+subroutine firecore_dens2xsf( )  bind(c, name='firecore_dens2xsf' )
+    use iso_c_binding
+    use options, only: icluster
+    use grid
+    implicit none
+ ! Local Parameters and Data Declaration
+ ! ===========================================================================
+    ! ========= Parameters
+    !integer(c_int), value :: iMO
+    ! ========= Variables
+    real, dimension (:), allocatable :: ewfaux
+    !real, target, dimension (:), allocatable :: ewfaux
+    !real, dimension (:), pointer   :: pmat
+    character(40)   :: namewf
+    character(4)    :: name
+    character (len=30) mssg
+    integer i
+    ! ========= Body
+    allocate ( ewfaux(0:nrm-1))
+    call project_dens( ewfaux )
+    !call project_orb(iMO,ewfaux)
+    !write (name,'(i4.4)') iMO
+    namewf = 'density.xsf'
+    !pmat => ewfaux
+    mssg = 'density_3D'
+    !call writeout_xsf (namewf, mssg, pmat)
+    call writeout_xsf (namewf, mssg, ewfaux)
+    deallocate (ewfaux) 
+end subroutine firecore_dens2xsf
 
 subroutine firecore_orb2points( iband,ikpoint, npoints, points, ewfaux )  bind(c, name='firecore_orb2points' )
     use iso_c_binding
