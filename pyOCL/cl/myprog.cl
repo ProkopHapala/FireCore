@@ -94,6 +94,34 @@ __kernel void mul(
     }
 };
 
+
+// https://github.com/ProkopHapala/ProbeParticleModel/blob/OpenCL_py3/pyProbeParticle/fieldFFT.py
+//
+//  E = np.real(np.fft.ifftn(convFFT * (dd[0]*dd[1]*dd[2]) / (detLmatInv) ) )
+//
+
+__kernel void poissonW(
+    const int   N,
+    const float4 dCell,
+    __global float* A,
+    __global float* out
+){
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    //const int iw = get_global_id(3);
+    const int nx = get_global_size(0);
+    const int ny = get_global_size(1);
+    //const int nz = get_global_size(2);
+    //const int nw = get_global_size(3);
+    int i = ix + nx*( iy + ny*iz );
+    float4 k = (float4){ dCell.x*ix, dCell.y*iy, dCell.z*iz, 0};
+    float  f = 1/dot( k, k ); 
+    if(i<N){ 
+        out[i] = A[i]*f; 
+    }
+};
+
 // Grid projection
 
 float sp3( float3 dp, float4 c, float beta ){

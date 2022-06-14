@@ -188,8 +188,6 @@ def setupGrid(Ecut=100, ifixg0=0, g0=None, ngrid=None, dCell=None):
     ngrid = ngrid[::-1].copy()
     return ngrid, dCell, lvs
 
-
-
 #  void getGridMO( int iMO, double* ewfaux )
 lib.firecore_getGridMO.argtypes  = [ c_int, array3d ] 
 lib.firecore_getGridMO.restype   =  None
@@ -199,26 +197,28 @@ def getGridMO(iMO, ewfaux=None, ngrid=None):
     lib.firecore_getGridMO(iMO, ewfaux )
     return ewfaux
 
-#  void firecore_MOtoXSF( int iMO )
-lib.firecore_orb2xsf.argtypes  = [ c_int ] 
-lib.firecore_orb2xsf.restype   =  None
-def orb2xsf(iMO, ewfaux=None, ngrid=None):
-    if ewfaux is None:
-        ewfaux = np.zeros(ngrid)
-    lib.firecore_orb2xsf(iMO )
-    return ewfaux
-
 #  void getGridDens( int imo0, int imo1, double* ewfaux )
-lib.firecore_getGridDens.argtypes  = [c_int, c_int, array3d ] 
+lib.firecore_getGridDens.argtypes  = [array3d ] 
 lib.firecore_getGridDens.restype   =  None
-def getGridDens(imo0=0, imo1=1000, ewfaux=None, ngrid=None):
+def getGridDens(ewfaux=None, ngrid=None):
     #ngrid=ngrid[::-1]
     print( ngrid ); #exit(0)
     if ewfaux is None:
         ewfaux = np.zeros(ngrid)
-    lib.firecore_getGridDens(imo0, imo1, ewfaux ) 
+    lib.firecore_getGridDens( ewfaux ) 
     return ewfaux 
 
+#  void firecore_MOtoXSF( int iMO )
+lib.firecore_orb2xsf.argtypes  = [ c_int ] 
+lib.firecore_orb2xsf.restype   =  None
+def orb2xsf(iMO):
+    lib.firecore_orb2xsf(iMO )
+
+#  void firecore_dens2xsf( int iMO )
+lib.firecore_dens2xsf.argtypes  = [ ] 
+lib.firecore_dens2xsf.restype   =  None
+def dens2xsf():
+    lib.firecore_dens2xsf()
 
 '''
 #"void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
@@ -250,6 +250,16 @@ def orb2points( poss, ys=None, iMO=1,  ikpoint=1 ):
         ys = np.zeros(n)
     lib.firecore_orb2points( iMO, ikpoint, n, poss, ys )
     return ys
+
+
+def run_nonSCF( atomType, atomPos ):
+    preinit()
+    norb = init( atomType, atomPos )
+    assembleH( atomPos)
+    solveH()
+    sigma=updateCharges(); #print( sigma )
+    return norb, sigma
+
 
 # ========= Python Functions
 

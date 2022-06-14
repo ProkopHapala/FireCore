@@ -273,15 +273,6 @@ def projectAtoms__( atoms, acoefs):
     plt.show(); 
     cleanup()
 
-
-
-
-
-
-
-
-
-
 def Test_projectAtoms(n=64, natoms=1000):
     import matplotlib.pyplot as plt
     import time
@@ -342,8 +333,6 @@ def Test_projectAtoms(n=64, natoms=1000):
     plt.grid()
     plt.show(); 
     cleanup()
-
-
 
 def Test_projectAtomPosTex():
     import matplotlib.pyplot as plt
@@ -680,11 +669,6 @@ def Test_projectAtomPosTex2():
     plt.grid()
     plt.show(); 
     cleanup()
-
-
-
-
-
 
 if __name__ == "__main__":
     #Test_projectWf( iMO=2 )
