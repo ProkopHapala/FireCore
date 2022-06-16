@@ -1,0 +1,170 @@
+/usr/local/cuda-10.1/lib64:/usr/local/cuda-10.1/lib64:/usr/local/cuda-10.1/lib64:/home/prokop/SW/intel/mkl/lib/intel64:/usr/local/lib/:/home/prokop/SW/intel/mkl/lib/intel64:/usr/local/lib/:/home/prokop/SW/intel/mkl/lib/intel64:/usr/local/lib/:/usr/local/lib64/:/home/prokop/git/FireCore/pyOCL/test_pentacene
+  ======================================================================
+ DEBUG firecore_preinit() icluster           1
+ DEBUG firecore_init() icluster           1
+ DEBUG natoms, natoms_          36          36
+ DEBUG shape(atomTypes,atomsPos)          36           3          36
+           1  -2.2999999999999998       -1.0000000000000000        0.0000000000000000     
+           1  -2.2999999999999998        1.0000000000000000        0.0000000000000000     
+           6  -1.2000000000000000      -0.80000000000000004        0.0000000000000000     
+           6  -1.2000000000000000       0.80000000000000004        0.0000000000000000     
+           6   0.0000000000000000       -1.3000000000000000        0.0000000000000000     
+           6   0.0000000000000000        1.3000000000000000        0.0000000000000000     
+           6   1.2000000000000000      -0.80000000000000004        0.0000000000000000     
+           6   1.2000000000000000       0.80000000000000004        0.0000000000000000     
+           1   0.0000000000000000       -2.5000000000000000        0.0000000000000000     
+           1   0.0000000000000000        2.5000000000000000        0.0000000000000000     
+           6   2.3999999999999999       -1.3000000000000000        0.0000000000000000     
+           6   2.3999999999999999        1.3000000000000000        0.0000000000000000     
+           6   3.5999999999999996      -0.80000000000000004        0.0000000000000000     
+           6   3.5999999999999996       0.80000000000000004        0.0000000000000000     
+           1   2.3999999999999999       -2.5000000000000000        0.0000000000000000     
+           1   2.3999999999999999        2.5000000000000000        0.0000000000000000     
+           6   4.7999999999999998       -1.3000000000000000        0.0000000000000000     
+           6   4.7999999999999998        1.3000000000000000        0.0000000000000000     
+           6   6.0000000000000000      -0.80000000000000004        0.0000000000000000     
+           6   6.0000000000000000       0.80000000000000004        0.0000000000000000     
+           1   4.7999999999999998       -2.5000000000000000        0.0000000000000000     
+           1   4.7999999999999998        2.5000000000000000        0.0000000000000000     
+           6   7.1999999999999993       -1.3000000000000000        0.0000000000000000     
+           6   7.1999999999999993        1.3000000000000000        0.0000000000000000     
+           6   8.4000000000000004      -0.80000000000000004        0.0000000000000000     
+           6   8.4000000000000004       0.80000000000000004        0.0000000000000000     
+           1   7.1999999999999993       -2.5000000000000000        0.0000000000000000     
+           1   7.1999999999999993        2.5000000000000000        0.0000000000000000     
+           6   9.5999999999999996       -1.3000000000000000        0.0000000000000000     
+           6   9.5999999999999996        1.3000000000000000        0.0000000000000000     
+           6   10.800000000000001      -0.80000000000000004        0.0000000000000000     
+           6   10.800000000000001       0.80000000000000004        0.0000000000000000     
+           1   9.5999999999999996       -2.5000000000000000        0.0000000000000000     
+           1   9.5999999999999996        2.5000000000000000        0.0000000000000000     
+           1   12.000000000000000       -1.0000000000000000        0.0000000000000000     
+           1   12.000000000000000        1.0000000000000000        0.0000000000000000     
+ icluster           1
+ a1vec   0.0000000000000000        0.0000000000000000        0.0000000000000000     
+ a3vec   0.0000000000000000        0.0000000000000000        0.0000000000000000     
+ a2vec   0.0000000000000000        0.0000000000000000        0.0000000000000000     
+ a2vec   0.0000000000000000        0.0000000000000000        0.0000000000000000     
+ rm1,rm2,rm3,nrm            0           0           0           0
+ em1,em2,em3,nem            0           0           0           0
+   
+  Now we are reading from the info.dat file. 
+
+Using OpenCL device: GeForce RTX 2060
+DEBUG makeMyKernels ../cl/myprog.cl 
+DEBUG makeMyKernels END 
+initFFT ndim 3 Ntot 262144 [128,64,32]
+planFFT fft_dim 3 N(128,64,32,0)  
+C initFFT 1 
+C initFFT 2 
+C initFFT 3 
+C initFFT 4 
+loadWfBasis nsamp 100 ntmp 1000 nZ 2 RcutSamp 5 [A]
+loadWf_ 1 
+loadWf_ 1 
+loadWf_ 1 
+ initOnGPUImage: clCreateImage2D 
+initOnGPUImage img_dims: 2 p_gpu: 94744512 
+
+Using OpenCL device: GeForce RTX 2060
+DEBUG makeMyKernels ../cl/myprog.cl 
+DEBUG makeMyKernels END 
+initFFT ndim 3 Ntot 262144 [128,64,32]
+planFFT fft_dim 3 N(128,64,32,0)  
+C initFFT 1 
+C initFFT 2 
+C initFFT 3 
+C initFFT 4 
+DEBUG convCoefs 1 
+DEBUG convCoefs 2 
+DEBUG convCoefs 3 norb 102 ncoef 3672 
+DEBUG convCoefs 4 
+DEBUG convCoefs 6 
+DEBUG convCoefs 7 
+DEBUG convCoefs END 
+DEBUG projectAtomsDens() atoms* 0 long* 0 
+DEBUG projectAtomsDens 1 
+DEBUG initTask_project_dens_tex() 
+DEBUG cltask_project_den_tex.args.size() 12  
+DEBUG initTask_project_dens_tex() END 
+DEBUG projectAtomsDens 2 
+DEBUG projectAtomsDens 3 
+DEBUG projectAtomsDens 4 
+DEBUG print_arg_list 
+kernel[narg=12]( 
+arg 0 
+[0]int 36, arg 1 
+[1]int 1, arg 2 
+[2]int 2, arg 3 
+[3]buff[7]:atoms, arg 4 
+[4]buff[8]:coefs, arg 5 
+[5]buff[0]:inputA, arg 6 
+[6]buff[3]:BasisTable, arg 7 
+[7]arg(type=5,val=571515376) arg 8 
+[8]arg(type=5,val=571516072) arg 9 
+[9]arg(type=5,val=571516088) arg 10 
+[10]arg(type=5,val=571516104) arg 11 
+[11]arg(type=5,val=571516120) )
+DEBUG projectAtomsDens 5 
+useArgs args[0].kind: 2
+useArgs args[1].kind: 2
+useArgs args[2].kind: 2
+useArgs args[3].kind: 1
+DEBUG buffArg args[3] ibuff 7 p_gpu 116961040 'atoms' 
+useArgs args[4].kind: 1
+DEBUG buffArg args[4] ibuff 8 p_gpu 116962848 'coefs' 
+useArgs args[5].kind: 1
+DEBUG buffArg args[5] ibuff 0 p_gpu 94739360 'inputA' 
+   
+ DEBUG natoms,natoms_           36          36
+ DEBUG shape(ratom)            3          36 DEBUG shape(atomsPos)            3          36
+   
+   
+  The Input Charges Are: 
+  ======================================================================
+   Atom #    Type    Shells   Charges 
+  ======================================================================
+       1       H       1      1.00
+       2       H       1      1.00
+       3       C       2      1.00  3.00
+       4       C       2      1.00  3.00
+       5       C       2      1.00  3.00
+       6       C       2      1.00  3.00
+       7       C       2      1.00  3.00
+       8       C       2      1.00  3.00
+       9       H       1      1.00
+      10       H       1      1.00
+      11       C       2      1.00  3.00
+      12       C       2      1.00  3.00
+      13       C       2      1.00  3.00
+      14       C       2      1.00  3.00
+      15       H       1      1.00
+      16       H       1      1.00
+      17       C       2      1.00  3.00
+      18       C       2      1.00  3.00
+      19       C       2      1.00  3.00
+      20       C       2      1.00  3.00
+      21       H       1      1.00
+      22       H       1      1.00
+      23       C       2      1.00  3.00
+      24       C       2      1.00  3.00
+      25       C       2      1.00  3.00
+      26       C       2      1.00  3.00
+      27       H       1      1.00
+      28       H       1      1.00
+      29       C       2      1.00  3.00
+      30       C       2      1.00  3.00
+      31       C       2      1.00  3.00
+      32       C       2      1.00  3.00
+      33       H       1      1.00
+      34       H       1      1.00
+      35       H       1      1.00
+      36       H       1      1.00
+  ======================================================================
+  Initiallizing arrays 
+  ======================================================================
+  READING DATA FROM DATA FILES IN FDATA DIRECTORY: 
+  ======================================================================
+  Running setterp_2d. Set up two-dimensional interpolator. 
+ , norbitals          102
+ shape(bbnkre)          102         102           1           1

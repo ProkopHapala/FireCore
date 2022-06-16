@@ -4,6 +4,7 @@ import numpy as np
 #import os
 import sys
 from . import oclfft as ocl
+from . import utils  as oclu
 
 def projectAtoms__( atoms, acoefs):
     import matplotlib.pyplot as plt
@@ -135,7 +136,7 @@ def Test_projectAtomPosTex():
 
     wfcoef = fc.get_wfcoef(norb=1)
     #print( "Test_projectAtomPosTex wfcoef: \n", wfcoef )
-    apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos )
+    apos_,wfcoef_ = oclu.convCoefs( atomType, wfcoef, atomPos )
     # ========== GPU
     ocl.init()                                   #;print("DEBUG py 2")
     ocl.loadWfBasis( [1,6], Rcuts=[4.5,4.5] )         #;print("DEBUG py 3") 
@@ -225,7 +226,7 @@ def Test_projectWf( iMO=1 ):
     sh = ewfaux.shape                       ;print( "ewfaux.shape ", sh )
     fc.orb2xsf(iMO); #exit()
 
-    i0orb  = countOrbs( atomType )           ;print("i0orb ", i0orb)  
+    i0orb  = oclu.countOrbs( atomType )           ;print("i0orb ", i0orb)  
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
     print("# ========= PyOCL Wave-Function Projection " )
@@ -234,7 +235,7 @@ def Test_projectWf( iMO=1 ):
     print( "coefs for MO#%i " %iMO, wfcoef[iMO-1,:] )
     typeDict={ 1:0, 6:1 }
     #apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO,:], atomPos )
-    apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO-1,:], atomPos, typeDict )
+    apos_,wfcoef_ = oclu.convCoefs( atomType, wfcoef[iMO-1,:], atomPos, typeDict )
     #wfcoef_ = np.array( [ 0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0,   0.0,0.0,0.0,1.0 ], dtype=np.float32)
     ocl.init()                           
     Ns = (ngrid[0],ngrid[1],ngrid[2])
@@ -292,10 +293,9 @@ def Test_projectDens( iMO0=1, iMO1=2 ):
     #sh = ewfaux.shape                       ;print( "ewfaux.shape ", sh )
     #fc.orb2xsf(iMO); #exit()
 
-    i0orb  = countOrbs( atomType )           ;print("i0orb ", i0orb)  
+    i0orb  = oclu.countOrbs( atomType )           ;print("i0orb ", i0orb)  
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
-    
     print("# ========= PyOCL Density-Function Projection " )
     ocl.init()            
     Ns = (ngrid[0],ngrid[1],ngrid[2])
@@ -386,7 +386,7 @@ def Test_projectAtomPosTex2():
     #i0orb  = countOrbs( atomType ) 
     #wfcoef = fc.get_wfcoef( norb=i0orb[-1] )
     typeDict={ 1:0, 6:1 }
-    apos_,wfcoef_ = convCoefs( atomType, wfcoef, atomPos, typeDict )
+    apos_,wfcoef_ = oclu.convCoefs( atomType, wfcoef, atomPos, typeDict )
     ocl.init()                                   #;print("DEBUG py 2")
     ocl.loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    #;print("DEBUG py 3") 
     ocl.initAtoms( len(apos_) )                  #;print("DEBUG py 4")

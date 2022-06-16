@@ -270,17 +270,18 @@ class OCLtask{
         cl_kernel kernel = cl->kernels[ikernel];
         for(size_t i=0; i<args.size(); i++){
             OCLarg& arg = args[i];
-            //printf( "useArgs args[%i].kind: %i\n", i, arg.kind );
+            printf( "useArgs args[%li].kind: %i\n", i, arg.kind );
             switch(arg.kind){
                 case OCL_BUFF:
-                    //printf( "buffArg args[%i] ibuff %i p_gpu %i \n", i, arg.i, cl->buffers[arg.i].p_gpu );
-                    err |= clSetKernelArg( kernel, i, sizeof(cl_mem), &(cl->buffers[arg.i].p_gpu) );             OCL_checkError(err, "setAsArg"); break;
-                //case OCL_BUFF:  err |= cl->buffers[arg.i].setAsArg( kernel, i );                               OCL_checkError(err, "setAsArg"); break;
-                case OCL_INT:   err |= clSetKernelArg( kernel, i, sizeof(int)  , &(arg.i) );                     OCL_checkError(err, "setAsArg"); break;
-                case OCL_FLOAT: err |= clSetKernelArg( kernel, i, sizeof(float), &(arg.f) );                     OCL_checkError(err, "setAsArg"); break;
-                case OCL_LBUFF: err |= clSetKernelArg( kernel, i, arg.i,          NULL    );                     OCL_checkError(err, "setAsArg"); break;
-                case OCL_PTR:   err |= clSetKernelArg( kernel, i, arg.nbytes,     arg.ptr );                     OCL_checkError(err, "setAsArg"); break;
+                    printf( "DEBUG buffArg args[%li] ibuff %i p_gpu %li '%s' \n", i, arg.i, (long)cl->buffers[arg.i].p_gpu, cl->buffers[arg.i].name );
+                    err |= clSetKernelArg( kernel, i, sizeof(cl_mem), &(cl->buffers[arg.i].p_gpu) );             break;
+                //case OCL_BUFF:  err |= cl->buffers[arg.i].setAsArg( kernel, i );                               break;
+                case OCL_INT:   err |= clSetKernelArg( kernel, i, sizeof(int)  , &(arg.i) );                     break;
+                case OCL_FLOAT: err |= clSetKernelArg( kernel, i, sizeof(float), &(arg.f) );                     break;
+                case OCL_LBUFF: err |= clSetKernelArg( kernel, i, arg.i,          NULL    );                     break;
+                case OCL_PTR:   err |= clSetKernelArg( kernel, i, arg.nbytes,     arg.ptr );                     break;
             }
+            OCL_checkError(err, "setAsArg");
         }
         return err;
     }
@@ -299,8 +300,10 @@ class OCLtask{
     }
 
     void print_arg_list(){
-        printf("kernel[narg=%li]( ", args.size() );
+        printf("DEBUG print_arg_list \n" );
+        printf("kernel[narg=%li]( \n", args.size() );
         for(size_t i=0; i<args.size(); i++){
+            printf( "arg %li \n", i );
             switch(args[i].kind){
                 case OCL_INT:   printf( "[%li]int %i, ",     i, args[i].i ); break;
                 case OCL_FLOAT: printf( "[%li]float %g, ",   i, args[i].f ); break;
@@ -311,6 +314,7 @@ class OCLtask{
         printf(")\n");
     }
 
+    inline void setup4( OCLsystem  * cl_, size_t ikernel_, size_t dim_, size_t4 global_, size_t4 local_ ){ cl=cl_; ikernel=ikernel_; dim=dim_;  global[0]=global_.x;global[1]=global_.x;global[2]=global_.z; local[0]=local_.x;local[1]=local_.y;local[2]=local_.z; };
     inline void setup( OCLsystem  * cl_, size_t ikernel_, size_t dim_, size_t global_, size_t local_ ){ cl=cl_; ikernel=ikernel_; dim=dim_;  global[0]=global_;global[1]=global_;global[2]=global_; local[0]=local_;local[1]=local_;local[2]=local_; };
     OCLtask          ( OCLsystem  * cl_, size_t ikernel_, size_t dim_, size_t global_, size_t local_ ): cl(cl_),ikernel(ikernel_),dim(dim_){ global[0]=global_;global[1]=global_;global[2]=global_; local[0]=local_;local[1]=local_;local[2]=local_; };
     OCLtask(){};
