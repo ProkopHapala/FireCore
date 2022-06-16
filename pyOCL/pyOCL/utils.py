@@ -3,7 +3,7 @@
 import numpy as np
 #import os
 import sys
-from . import oclfft as ocl
+#from . import oclfft as ocl
 
 def countOrbs(atypes):
     norbs = [ 1 if (x == 1) else 4 for x in atypes ]
@@ -33,53 +33,3 @@ def convCoefs( atypes, oCs, oatoms, typeDict ):
     print( " atomTypes CPU ", atypes[ia]  )
     print( " atomTypes GPU ", atoms[:,3]  )
     return atoms, coefs
-
-def convolve( A, B, C=None, iA=0, iB=1, iC=2 ):
-    ocl.tryInitFFT( A.shape )
-    if C is None:
-        C = np.empty(A.shape)
-        #C = np.zeros(A.shape)
-    ocl.upload ( iA, A )   # ;plt.figure(); plt.imshow( arrA.real )
-    ocl.upload ( iB, B )   # ;plt.figure(); plt.imshow( arrB.real )
-    ocl.convolve( iA,iB,iC )
-    ocl.download( iC, C)   # ;plt.figure(); plt.imshow( arrC.real )
-    return C
-
-def poisson( A, dcell, C=None, iA=0, iC=1 ):
-    ocl.tryInitFFT( A.shape )
-    if C is None:
-        C = np.empty(A.shape)
-        #C = np.zeros(A.shape)
-    ocl.upload (  iA, A )   # ;plt.figure(); plt.imshow( arrA.real )
-    ocl.poisson(  iA,iC, dcell )
-    ocl.download( iC, C)   # ;plt.figure(); plt.imshow( arrC.real )
-    return C
-
-def projectAtoms__( atoms, acoefs):
-    import matplotlib.pyplot as plt
-    import time
-    print( "# ========= TEST   projectAtoms__()  " )
-
-    #initFireBall( atypes, atoms )
-
-    ocl.init()
-    Ns=(100,100,100)
-    ocl.initFFT( Ns  )
-    ocl.loadWfBasis( [1,6], Rcuts=[4.5,4.5] )
-    ocl.initAtoms( len(atoms) )
-    #initBasisTable( basis.shape[0], basis.shape[1], basis )
-
-    ocl.setGridShape( )
-    t0 = time.clock()
-    ocl.projectAtoms( atoms, acoefs, 0 )
-    ocl.saveToXsf( "test.xsf", 0 )
-    arrA = np.zeros(Ns,dtype=np.csingle  )
-    ocl.download ( 0, arrA )    
-    t = time.clock()-t0; print( "projection time ", t )
-    plt.figure(); 
-    #print( arrA[10,10].real )
-    plt.imshow( arrA[10].real ) 
-    #plt.imshow( np.log( np.abs(arrA[10])) ) 
-    plt.grid()
-    plt.show(); 
-    ocl.cleanup()

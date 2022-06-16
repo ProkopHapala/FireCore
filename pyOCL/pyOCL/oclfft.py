@@ -5,6 +5,7 @@ from   ctypes import c_int, c_double, c_long, c_bool, c_float, c_char_p, c_bool,
 import ctypes as ct
 import os
 import sys
+#from . import utils as oclu
 #import pyopencl as cl
 
 # ========= Flags - These flags inform about state of the C/C++ library
@@ -86,22 +87,30 @@ def cleanup():
     lib.cleanup( )
 
 #void loadData( float* data_ );
-lib.upload.argtypes  = [ c_int, c_float_p ] 
-lib.upload.restype   =  c_int
-def loadData( i, data):
-    return lib.loadData( i, _np_as( data, c_float_p ) )
+#lib.upload.argtypes  = [ c_int, c_float_p ] 
+#lib.upload.restype   =  c_int
+#def loadData( i, data):
+#    return lib.loadData( i, _np_as( data, c_float_p ) )
 
 #void loadData( float* data_ );
 lib.download.argtypes  = [ c_int, c_float_p ] 
 lib.download.restype   =  c_int
-def download( i, data):
+def download( i, data=None, Ns=-1,dtype=np.csingle):
+    if data is None:
+        data = np.zeros(Ns,dtype=dtype)
     return lib.download( i, _np_as( data, c_float_p ) )
 
-#void loadData( float* data_ );
+#void upload( float* data_ );
 lib.upload.argtypes  = [ c_int, c_float_p ] 
 lib.upload.restype   =  None
 def upload( i, data):
     lib.upload( i, _np_as( data, c_float_p ) )
+
+#void upload( float* data_ );
+lib.upload_d.argtypes  = [ c_int, c_double_p, c_bool ] 
+lib.upload_d.restype   =  None
+def upload_d( i, data, bComplex=False ):
+    lib.upload_d( i, _np_as( data, c_double_p ), bComplex )
 
 #void initFFT ( int ndim, int* Ns );
 lib.initFFT.argtypes  = [ c_int, array1l ] 

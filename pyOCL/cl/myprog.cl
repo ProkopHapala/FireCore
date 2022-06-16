@@ -102,9 +102,9 @@ __kernel void mul(
 
 __kernel void poissonW(
     const int   N,
-    const float4 dCell,
-    __global float* A,
-    __global float* out
+    __global float2* A,
+    __global float2* out,
+    const float4 dCell
 ){
     const int ix = get_global_id(0);
     const int iy = get_global_id(1);
@@ -112,14 +112,16 @@ __kernel void poissonW(
     //const int iw = get_global_id(3);
     const int nx = get_global_size(0);
     const int ny = get_global_size(1);
-    //const int nz = get_global_size(2);
+    const int nz = get_global_size(2);
     //const int nw = get_global_size(3);
+    //if( (ix==0)&&(iy==0)&&(iz==0) ){ printf( "GPU poissonW size(%i,%i,%i) n %i dCell(%g,%g,%g)\n", nx,ny,nz, N, dCell.x,dCell.y,dCell.z  ); };
     int i = ix + nx*( iy + ny*iz );
     float4 k = (float4){ dCell.x*ix, dCell.y*iy, dCell.z*iz, 0};
     float  f = 1/dot( k, k ); 
     if(i<N){ 
-        out[i] = A[i]*f; 
+        out[i] = A[i]*f;
     }
+    if( (ix==(nx/2))&&(iy==(ny/2)) ){ printf( "GPU iz,i[%i,%i|%i] k %g A[i] %g out %g \n", iz, i, N, f, A[i].x, out[i].x ); };
 };
 
 // Grid projection
