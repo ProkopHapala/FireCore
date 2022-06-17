@@ -264,19 +264,20 @@ def Test_projectWf( iMO=1 ):
     plt.legend()
     plt.show()
 
-def Test_projectDens( iMO0=1, iMO1=2 ):
+def Test_projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None ):
     sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
     # ----- Make CH4 molecule
-    atomType = np.array([6,1,1,1,1]).astype(np.int32)
-    atomPos  = np.array([
-        [ 0.01,     0.0,     0.0],
-        [-1.0,     +1.0,    -1.0],
-        [+1.0,     -1.0,    -1.0],
-        [-1.0,     -1.0,    +1.0],
-        [+1.0,     +1.0,    +1.0],
-    ])
+    if atomType is None:
+        atomType = np.array([6,1,1,1,1]).astype(np.int32)
+        atomPos  = np.array([
+            [ 0.01,     0.0,     0.0],
+            [-1.0,     +1.0,    -1.0],
+            [+1.0,     -1.0,    -1.0],
+            [-1.0,     -1.0,    +1.0],
+            [+1.0,     +1.0,    +1.0],
+        ])
     
     print("# ======== FireCore Run " )
     print ("atomType ", atomType)

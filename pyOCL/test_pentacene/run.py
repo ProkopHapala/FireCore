@@ -16,6 +16,13 @@ from pyOCL import jobs
 from pyOCL import atomicUtils as au
 
 
+ocl.setErrorCheck( 0 )
+#xyzs,Zs,enames,qs = au.loadAtomsNP( "answer.xyz")
+xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+#xyzs,Zs,enames,qs = au.loadAtomsNP( "CH4.xyz")
+jobs.Test_projectDens( atomType=Zs, atomPos=xyzs )
+exit()
+
 
 #jobs.Test_fft2d(n=23)   # WORKS for non-2^N arrays
 #exit()
