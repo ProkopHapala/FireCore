@@ -160,10 +160,8 @@ class OCLfft : public OCLsystem { public:
         Ntot=1; for(int i=0; i<ndim;i++){  Ns[i]=Ns_[i];  Ntot*= Ns[i]; }
         printf( "initFFT ndim %i Ntot %li [%li,%li,%li]\n", ndim, Ntot, Ns[0],Ns[1],Ns[2] );
         clfftSetupData fftSetup;                //printf("initFFT 1 \n");
-        err  = clfftInitSetupData(&fftSetup);   //printf("initFFT 2 \n");
-        OCLfft_checkError(err, "clfftInitSetupData");
-        err  = clfftSetup        (&fftSetup);   //printf("initFFT 3 \n");
-        OCLfft_checkError(err, "clfftSetup" );
+        err  = clfftInitSetupData(&fftSetup);   OCLfft_checkError(err, "clfftInitSetupData");
+        err  = clfftSetup        (&fftSetup);   OCLfft_checkError(err, "clfftSetup" );
         //data_cl = clCreateBuffer( context, CL_MEM_READ_WRITE, buffer_size, NULL, &err );
         planFFT(  );                            //printf("initFFT 4 \n");
     }
@@ -686,6 +684,10 @@ class OCLfft : public OCLsystem { public:
 OCLfft oclfft;
 
 extern "C" {
+
+    void setErrorCheck(int ierr){
+        bOCLCheckError = ierr>0;
+    }
 
     void  init( const char* cl_src_dir ){
         oclfft.init();

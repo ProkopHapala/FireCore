@@ -123,6 +123,12 @@ def initFFT( Ns ):
     print( "DEBUG py: initFFT DONE" )
 
 #void initFFT ( int ndim, int* Ns );
+lib.setErrorCheck.argtypes  = [ c_int ] 
+lib.setErrorCheck.restype   =  None
+def setErrorCheck( ierr ):
+    lib.setErrorCheck( ierr )
+
+#void initFFT ( int ndim, int* Ns );
 lib.initAtoms.argtypes  = [ c_int ] 
 lib.initAtoms.restype   =  None
 def initAtoms( nAtoms, nOrbs=1 ):
