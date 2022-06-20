@@ -16,11 +16,15 @@ from pyOCL import jobs
 from pyOCL import atomicUtils as au
 
 
-ocl.setErrorCheck( 0 )
+#ocl.setErrorCheck( 0 )
+ocl.setErrorCheck( 1 )
+
 #xyzs,Zs,enames,qs = au.loadAtomsNP( "answer.xyz")
 xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
 #xyzs,Zs,enames,qs = au.loadAtomsNP( "CH4.xyz")
-jobs.Test_projectDens( atomType=Zs, atomPos=xyzs )
+#jobs.Test_projectDens( atomType=Zs, atomPos=xyzs )
+jobs.projectDens( atomType=Zs, atomPos=xyzs, iMO0=1, iMO1=102//2, ngrid=(128,64,32) )
+
 exit()
 
 
