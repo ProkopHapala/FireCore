@@ -265,7 +265,7 @@ def Test_projectWf( iMO=1 ):
     plt.show()
 
 
-def projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None ):
+def projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0 ):
     sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
@@ -303,10 +303,10 @@ def projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None, ngrid=(64,64,64), 
     print( "wfcoef \n", wfcoef )
     print( "!!!!!! iMO0 iMO1 %i,%i \n" %(iMO0,iMO1)  )
     ocl.convCoefsC( atomType, [2,1,1,1,1], atomPos, wfcoef,  iorb0=iMO0, iorb1=iMO1 , bInit=True ) 
-    ocl.projectAtomsDens( 0, iorb0=iMO0, iorb1=iMO1 ) 
+    ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1 ) 
 
     print( "DEBUG before saveToXsfAtoms " )
-    ocl.saveToXsfAtoms( "dens_%03i_%03i.xsf" %(iMO0,iMO1), 0,    atomType, atomPos  )
+    ocl.saveToXsfAtoms( "dens_%03i_%03i.xsf" %(iMO0,iMO1), iOutBuff,    atomType, atomPos  )
 
 
 
