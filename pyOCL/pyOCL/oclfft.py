@@ -196,16 +196,10 @@ def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,
     print( "dC ", dC);
     lib.setGridShape( _np_as( pos0, c_float_p ),_np_as( dA, c_float_p ), _np_as( dB, c_float_p ), _np_as( dC, c_float_p ) )
 
-def setGridShape_dCell( Ns, dCell ):
-    #pos0=[  dCell[0,0]*(-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[1]//2),  0.0 ]
-    pos0=[  dCell[0,0]*(1-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[1]//2),  0.0 ]   # NOT sure why this fits best
-    #print( " setGridShape_dCell() pos0 ", pos0 )
-    setGridShape( 
-        pos0=pos0,
-        dA=dCell[0]+[0.0],
-        dB=dCell[1]+[0.0],
-        dC=dCell[2]+[0.0]
-    )
+def setGridShape_dCell( Ns, dCell, pos0=None ):
+    if pos0 is None:
+        pos0=[  dCell[0,0]*(1-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[2]//2),  0.0 ]   # NOT sure why this fits best
+    setGridShape( pos0=pos0, dA=dCell[0]+[0.0], dB=dCell[1]+[0.0], dC=dCell[2]+[0.0] )
 
 #void initFireBall( int natoms, int* atypes, double* apos ){
 lib.initFireBall.argtypes  = [ c_int, array1i, array2d ] 

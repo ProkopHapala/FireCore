@@ -264,6 +264,52 @@ def Test_projectWf( iMO=1 ):
     plt.legend()
     plt.show()
 
+
+def projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None ):
+    sys.path.append("../../")
+    import pyBall as pb
+    from pyBall import FireCore as fc
+
+    print("# ======== FireCore Run " )
+    print ("atomType ", atomType)
+    print ("atomPos  ", atomPos)
+    fc.preinit()
+    norb = fc.init( atomType, atomPos )
+    # --------- Electron Density
+    fc.assembleH( atomPos)
+    fc.solveH()
+    sigma=fc.updateCharges() ; print( sigma )
+
+    # ======== Project Grid using FireCore "
+    #ngrid, dCell, lvs = fc.setupGrid()
+    #ewfaux = fc.getGridMO( iMO,ngrid=ngrid)   ;print( "ewfaux.min(),ewfaux.max() ", ewfaux.min(),ewfaux.max() )
+    #sh = ewfaux.shape                       ;print( "ewfaux.shape ", sh )
+    #fc.orb2xsf(iMO); #exit()
+
+    #ngrid=(128,64,32)     # we can only do multiples of 2^N
+    #dcell = [0.1,0.1,0.1,0.1]
+    dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
+
+    i0orb  = oclu.countOrbs( atomType )           ;print("i0orb ", i0orb)  
+    wfcoef = fc.get_wfcoef(norb=i0orb[-1])
+
+    print("# ========= PyOCL Density-Function Projection " )
+    ocl.init()            
+    Ns = (ngrid[0],ngrid[1],ngrid[2])
+    ocl.initFFT( Ns  )                  
+    ocl.loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    
+    #initAtoms( len(apos_) )          
+    ocl.setGridShape_dCell( Ns, dCell )
+    print( "wfcoef \n", wfcoef )
+    print( "!!!!!! iMO0 iMO1 %i,%i \n" %(iMO0,iMO1)  )
+    ocl.convCoefsC( atomType, [2,1,1,1,1], atomPos, wfcoef,  iorb0=iMO0, iorb1=iMO1 , bInit=True ) 
+    ocl.projectAtomsDens( 0, iorb0=iMO0, iorb1=iMO1 ) 
+
+    print( "DEBUG before saveToXsfAtoms " )
+    ocl.saveToXsfAtoms( "dens_%03i_%03i.xsf" %(iMO0,iMO1), 0,    atomType, atomPos  )
+
+
+
 def Test_projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None ):
     sys.path.append("../../")
     import pyBall as pb
