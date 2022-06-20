@@ -26,10 +26,15 @@ xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
 ngrid=(128,64,32)
 dcell = [0.2,0.2,0.2,0.2]
 iA=0; iC=1
-jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, iMO1=102//2, ngrid=ngrid, dcell=dcell )
+
 
 #ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
-#ocl.poisson   (  iA,iC, dcell )  ;print( "DEBUG poisson 3 " )
+
+jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, iMO1=102//2, ngrid=ngrid, dcell=dcell )
+#ocl.initFFT( ngrid )
+#ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
+#ocl.runfft (iA )
+ocl.poisson   (  iA,iC, dcell )  ;print( "DEBUG poisson 3 " )
 
 
 

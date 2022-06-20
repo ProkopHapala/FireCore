@@ -14,8 +14,12 @@ b_initFFT = False
 fft_shape = None
 
 def tryInitFFT( sh ):
-    if not b_Init: init()
+    print( "!!!!------------------------- tryInitFFT: b_Init, b_initFFT ", b_Init, b_initFFT )
+    if not b_Init: 
+        print( "!!!!------------------------- tryInitFFT: init() " )
+        init()
     if not b_initFFT:
+        print( "!!!!------------------------- initFFT: init() " )
         fft_shape = sh
         initFFT( fft_shape )
 
@@ -77,6 +81,7 @@ lib  = ct.CDLL(  "../cpp_build/libOCLfft.so",               mode )
 lib.init.argtypes  = [ c_char_p ] 
 lib.init.restype   =  None
 def init( cl_src_dir='../cl' ):
+    global b_Init
     b_Init = True
     cl_src_dir = cl_src_dir.encode('utf8')
     lib.init( cl_src_dir )
@@ -116,11 +121,12 @@ def upload_d( i, data, bComplex=False ):
 lib.initFFT.argtypes  = [ c_int, array1l ] 
 lib.initFFT.restype   =  None
 def initFFT( Ns ):
+    print( "!!!!!! ---------------- initFFT " )
+    global b_initFFT
     b_initFFT = True
     Ns=np.array(Ns,dtype=np.int64)
     ndim=len(Ns)
     lib.initFFT( ndim, Ns )
-    print( "DEBUG py: initFFT DONE" )
 
 #void initFFT ( int ndim, int* Ns );
 lib.setErrorCheck.argtypes  = [ c_int ] 

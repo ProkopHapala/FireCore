@@ -287,7 +287,7 @@ class OCLtask{
     }
 
     inline int enque_raw(  ){
-        printf("enque_raw %li %li (%li,%li,%li) (%li,%li,%li)\n", ikernel, dim, global[0],global[1],global[2], local[0],local[1],local[2] );
+        printf("enque_raw ikernel %li idim %li global(%li,%li,%li) local(%li,%li,%li)\n", ikernel, dim, global[0],global[1],global[2], local[0],local[1],local[2] );
         if(local[0]==0){ return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, global, NULL,  0, NULL, NULL );   }
         else{            return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, global, local, 0, NULL, NULL );   }
     }
@@ -314,7 +314,7 @@ class OCLtask{
         printf(")\n");
     }
 
-    inline void setup4( OCLsystem  * cl_, size_t ikernel_, size_t dim_, size_t4 global_, size_t4 local_ ){ cl=cl_; ikernel=ikernel_; dim=dim_;  global[0]=global_.x;global[1]=global_.x;global[2]=global_.z; local[0]=local_.x;local[1]=local_.y;local[2]=local_.z; };
+    inline void setup4( OCLsystem  * cl_, size_t ikernel_, size_t dim_, size_t4 global_, size_t4 local_ ){ cl=cl_; ikernel=ikernel_; dim=dim_;  global[0]=global_.x;global[1]=global_.y;global[2]=global_.z; local[0]=local_.x;local[1]=local_.y;local[2]=local_.z; };
     inline void setup( OCLsystem  * cl_, size_t ikernel_, size_t dim_, size_t global_, size_t local_ ){ cl=cl_; ikernel=ikernel_; dim=dim_;  global[0]=global_;global[1]=global_;global[2]=global_; local[0]=local_;local[1]=local_;local[2]=local_; };
     OCLtask          ( OCLsystem  * cl_, size_t ikernel_, size_t dim_, size_t global_, size_t local_ ): cl(cl_),ikernel(ikernel_),dim(dim_){ global[0]=global_;global[1]=global_;global[2]=global_; local[0]=local_;local[1]=local_;local[2]=local_; };
     OCLtask(){};

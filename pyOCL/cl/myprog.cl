@@ -100,6 +100,9 @@ __kernel void mul(
 //  E = np.real(np.fft.ifftn(convFFT * (dd[0]*dd[1]*dd[2]) / (detLmatInv) ) )
 //
 
+
+
+
 __kernel void poissonW(
     const int   N,
     __global float2* A,
@@ -116,10 +119,15 @@ __kernel void poissonW(
     //const int nw = get_global_size(3);
     //if( (ix==0)&&(iy==0)&&(iz==0) ){ printf( "GPU poissonW size(%i,%i,%i) n %i dCell(%g,%g,%g)\n", nx,ny,nz, N, dCell.x,dCell.y,dCell.z  ); };
     int i = ix + nx*( iy + ny*iz );
-    float4 k = (float4){ dCell.x*ix, dCell.y*iy, dCell.z*iz, 0};
+    //float4 k = (float4){ dCell.x*ix, dCell.y*iy, dCell.z*iz, 0};
+    float4 k = (float4){ ix/(0.5f*nx), iy/(0.5f*ny), iz/(0.5f*nz), 0};
+    k = 1.0f-fabs(k-1.0f);
     float  f = 1/dot( k, k ); 
+    if(i==0)f=0;
     if(i<N){ 
         out[i] = A[i]*f;
+        //out[i] = f;
+        //out[i] = k.x;
     }
     if( (ix==(nx/2))&&(iy==(ny/2)) ){ printf( "GPU iz,i[%i,%i|%i] k %g A[i] %g out %g \n", iz, i, N, f, A[i].x, out[i].x ); };
 };
