@@ -136,7 +136,7 @@ class OCLfft : public OCLsystem { public:
     //int ibuff_poss;
 
     void updateNtot(){
-        Ntot=1; for(int i=0; i<ndim; i++){ Ntot=Ns[i]; };
+        Ntot=1; for(int i=0; i<ndim; i++){ Ntot*=Ns[i]; };
     }
 
     void planFFT(){
@@ -158,7 +158,7 @@ class OCLfft : public OCLsystem { public:
         else if(ndim==3){ fft_dim=CLFFT_3D; };
         //buffer_size  = sizeof(float2);
         Ntot=1; for(int i=0; i<ndim;i++){  Ns[i]=Ns_[i];  Ntot*= Ns[i]; }
-        printf( "initFFT ndim %i Ntot %li [%li,%li,%li]\n", ndim, Ntot, Ns[0],Ns[1],Ns[2] );
+        printf( "initFFT ndim %i Ntot %li Ns[%li,%li,%li]\n", ndim, Ntot, Ns[0],Ns[1],Ns[2] );
         clfftSetupData fftSetup;                //printf("initFFT 1 \n");
         err  = clfftInitSetupData(&fftSetup);   OCLfft_checkError(err, "clfftInitSetupData");
         err  = clfftSetup        (&fftSetup);   OCLfft_checkError(err, "clfftSetup" );
@@ -203,10 +203,13 @@ class OCLfft : public OCLsystem { public:
             err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &data_cl, NULL, NULL);  // Execute the plan. -> Forward Transform
         }else{
             err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &data_cl, NULL, NULL);  // Execute the plan.  -> Backward Transform      
-        }                                                  
+        }
+        OCLfft_checkError(err, " clfftEnqueueTransform " );                                                  
         if(data){
             err = clEnqueueReadBuffer  ( commands, data_cl, CL_TRUE, 0, buffers[ibuff].byteSize(), data, 0, NULL, NULL ); // Fetch results of calculations. 
+            OCLfft_checkError(err, " clEnqueueReadBuffer " );
             err = clFinish(commands);    // Wait for calculations to be finished. 
+            OCLfft_checkError(err, " clFinish " );
         }
         //printData( data ); 
     }
@@ -429,22 +432,20 @@ class OCLfft : public OCLsystem { public:
     }
 
     void poisson( int ibuffA, int ibuff_result, float4* dcell=0 ){
-        printf( "BEGIN poisson \n" );
+        printf( "BEGIN poisson %i -> %i ( %s -> %s ) \n", ibuffA, ibuff_result, buffers[ibuffA].name, buffers[ibuff_result].name );
+        //err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
+        //OCLfft_checkError(err, " poisson::clfftEnqueueTransform " );
         if( dcell ){ dcell_poisson = *dcell; }
-        initTask_poissonW( ibuffA, ibuff_result );
-        finishRaw(); saveToXsf( "rho.xsf", ibuffA );
+        initTask_poissonW( ibuffA, ibuff_result );      printf( "DEBUG 1 ");
+        finishRaw(); saveToXsf( "rho.xsf", ibuffA );    printf( "DEBUG 2 ");
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
-        OCLfft_checkError(err, " poisson::clfftEnqueueTransform " )
-
-        exit(0);
-        finishRaw(); saveToXsf( "rho_w.xsf", ibuffA );
-        cltask_poissonW.enque( );
-        /*
-        finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );
+        OCLfft_checkError(err, " poisson::clfftEnqueueTransform " ); printf( "DEBUG 4 ");
+        finishRaw(); saveToXsf( "rho_w.xsf", ibuffA );               printf( "DEBUG 5 ");
+        cltask_poissonW.enque( );                                    printf( "DEBUG 6 ");
+        finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );            printf( "DEBUG 7 ");
         err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL);  
-        finishRaw(); saveToXsf( "V.xsf", ibuff_result );
+        finishRaw(); saveToXsf( "V.xsf", ibuff_result );             printf( "DEBUG 8 ");
         printf( "END poisson \n" );
-        */
     }
 
     void cleanup(){
