@@ -23,7 +23,22 @@ ocl.setErrorCheck( 1 )
 xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
 #xyzs,Zs,enames,qs = au.loadAtomsNP( "CH4.xyz")
 #jobs.Test_projectDens( atomType=Zs, atomPos=xyzs )
-jobs.projectDens( atomType=Zs, atomPos=xyzs, iMO0=1, iMO1=102//2, ngrid=(128,64,32) )
+ngrid=(128,64,32)
+dcell = [0.2,0.2,0.2,0.2]
+iA=0; iC=1
+jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, iMO1=102//2, ngrid=ngrid, dcell=dcell )
+
+ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
+ocl.poisson   (  iA,iC, dcell )  ;print( "DEBUG poisson 3 " )
+
+
+
+'''
+ocl.tryInitFFT( ngrid ) 
+V     = oclu.poisson( rho, dcell,  iA=0, iC=1 )
+#ocl.tryInitFFT( A.shape )     ;print( "DEBUG poisson 1 " )
+#print( "print Vmin Vmax ", np.min(V), np.max(V) )
+'''
 
 exit()
 

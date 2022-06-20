@@ -41,11 +41,14 @@ def convolve( A, B, C=None, iA=0, iB=1, iC=2 ):
     ocl.download( iC, C)   # ;plt.figure(); plt.imshow( arrC.real )
     return C
 
-def poisson( A, dcell, C=None, iA=0, iC=1 ):
-    ocl.tryInitFFT( A.shape )     ;print( "DEBUG poisson 1 " )
-    ocl.upload_d(  iA, A )        ;print( "DEBUG poisson 2 " )
-    ocl.poisson(  iA,iC, dcell )  ;print( "DEBUG poisson 3 " )
-    C = ocl.download( iC, C, Ns=A.shape ) ;print( "DEBUG poisson 4 " )
+def poisson( A=None, dcell=[0.1,0.1,0.1,0.1], C=None, iA=0, iC=1, bDownload=True ):
+    ocl.tryInitFFT( A.shape )        ;print( "DEBUG poisson 1 " )
+    if A is not None:
+        ocl.upload_d  (  iA, A )     ;print( "DEBUG poisson 2 " )
+    ocl.poisson   (  iA,iC, dcell )  ;print( "DEBUG poisson 3 " )
+    C=None
+    if bDownload:
+        C = ocl.download( iC, C, Ns=A.shape ) ;print( "DEBUG poisson 4 " )
     return C
 
 def projectAtoms__( atoms, acoefs):
