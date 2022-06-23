@@ -240,6 +240,20 @@ def loadWf_C( fname, n=1000 ):
     #print( data )
     return data
 
+#void saveToBin(const char* fname, int ibuff){
+lib.saveToBin.argtypes  = [ c_char_p, c_int ] 
+lib.saveToBin.restype   =  None
+def saveToBin( fname, ibuff ):
+    fname = fname.encode('utf-8')
+    lib.saveToBin( fname, ibuff )
+
+#void loadFromBin(const char* fname, int ibuff){
+lib.loadFromBin.argtypes  = [ c_char_p, c_int ] 
+lib.loadFromBin.restype   =  None
+def loadFromBin( fname, ibuff ):
+    fname = fname.encode('utf-8')
+    lib.loadFromBin( fname, ibuff )
+
 # void saveToXsf(const char* fname, int ibuff){
 lib.saveToXsf.argtypes  = [ c_char_p, c_int ] 
 lib.saveToXsf.restype   =  None

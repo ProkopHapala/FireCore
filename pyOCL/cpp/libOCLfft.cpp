@@ -7,6 +7,7 @@
 #include  "OCL.h"
 #include  "approximation.h"
 #include "Grid.h"
+#include "IO_utils.h"
 #include "FireCoreAPI.h"
 #include "quaternion.h"
 
@@ -543,6 +544,26 @@ class OCLfft : public OCLsystem { public:
         delete [] cpu_data;
     }
 
+    void saveToBin(const char* fname, int ibuff){
+        //update_GridShape();
+        float* cpu_data = new float[Ntot*2]; // complex 2*float
+        download( ibuff,cpu_data);
+        finishRaw();
+        saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
+        //inline int loadBin( fname, int n, char * data );
+        delete [] cpu_data;
+    }
+
+    void loadFromBin(const char* fname, int ibuff){
+        //update_GridShape();
+        float* cpu_data = new float[Ntot*2]; // complex 2*float
+        //saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
+        loadBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
+        upload( ibuff,cpu_data);
+        //finishRaw();
+        delete [] cpu_data;
+    }
+
     void convOrbCoefs( int natoms, int* iZs, double* ocoefs, float4* coefs ){
         int io=0;
         for(int ia=0; ia<natoms; ia++){
@@ -780,6 +801,9 @@ extern "C" {
     void loadWf(const char* fname, float* out){ loadWf_(fname, out); };
 
     void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){ oclfft.loadWfBasis(path, RcutSamp,nsamp,ntmp,nZ,iZs,Rcuts ); }
+
+    void saveToBin(const char* fname, int ibuff){ saveToBin(fname, ibuff); }
+    void loadFromBin(const char* fname, int ibuff){ loadFromBin(fname,ibuff); }
 
     void saveToXsf     (const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff,0,0,0); }
     void saveToXsfAtoms(const char* fname, int ibuff, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, natoms,atypes,(Vec3d*)apos); }
