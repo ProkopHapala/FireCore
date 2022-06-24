@@ -505,13 +505,14 @@ class OCLfft : public OCLsystem { public:
             //resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,0 );
             resample1D( nin, 0.0, Ri*const_Bohr_Radius, data_tmp,   nsamp,0.0, RcutSamp, data+nsamp*(i*2),   2,0 );
             sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Ri*100), 2 );
+            printf( "DEBUG loadWfBasis() %s \n", fname );
             if( loadWf_(fname, data_tmp ) ){
                 resample1D( nin, 0.0, Ri*const_Bohr_Radius, data_tmp,   nsamp,0.0, RcutSamp, data+nsamp*(i*2),   2,1 );
             }else{
                 for(int j=0; j<nsamp; j++){ data[nsamp*(i*2)+2*j+1]=data[nsamp*(i*2)+2*j]; }
             }
         }
-        //for(int i=0; i<nsamp; i++){ printf("basis [%i] (%f,%f)   (%f,%f) \n", i, data[i*2],data[i*2+1],data[i*2+2*nsamp],data[i*2+1+2*nsamp] );  }
+        for(int i=0; i<nsamp; i++){ printf("basis [%i] (%f,%f) (%f,%f) \n", i, data[i*2],data[i*2+1],data[i*2+2*nsamp],data[i*2+1+2*nsamp] );  }
         delete [] data_tmp;
         itex_basis = newBufferImage2D( "BasisTable", nsamp, nZ,  sizeof(float)*2,  data, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR , {CL_RG, CL_FLOAT} );
         delete [] data;
@@ -545,6 +546,7 @@ class OCLfft : public OCLsystem { public:
     }
 
     void saveToBin(const char* fname, int ibuff){
+        printf( "saveToBin( %i, %s ) \n", ibuff, fname );
         //update_GridShape();
         float* cpu_data = new float[Ntot*2]; // complex 2*float
         download( ibuff,cpu_data);
@@ -552,9 +554,11 @@ class OCLfft : public OCLsystem { public:
         saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
         //inline int loadBin( fname, int n, char * data );
         delete [] cpu_data;
+        printf( "saveToBin END \n" );
     }
 
     void loadFromBin(const char* fname, int ibuff){
+        printf( "loadFromBin( %i, %s ) \n", ibuff, fname );
         //update_GridShape();
         float* cpu_data = new float[Ntot*2]; // complex 2*float
         //saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
@@ -562,6 +566,7 @@ class OCLfft : public OCLsystem { public:
         upload( ibuff,cpu_data);
         //finishRaw();
         delete [] cpu_data;
+        printf( "loadFromBin END \n" );
     }
 
     void convOrbCoefs( int natoms, int* iZs, double* ocoefs, float4* coefs ){
@@ -802,8 +807,8 @@ extern "C" {
 
     void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){ oclfft.loadWfBasis(path, RcutSamp,nsamp,ntmp,nZ,iZs,Rcuts ); }
 
-    void saveToBin(const char* fname, int ibuff){ saveToBin(fname, ibuff); }
-    void loadFromBin(const char* fname, int ibuff){ loadFromBin(fname,ibuff); }
+    void saveToBin(const char* fname, int ibuff){ oclfft.saveToBin(fname, ibuff); }
+    void loadFromBin(const char* fname, int ibuff){ oclfft.loadFromBin(fname,ibuff); }
 
     void saveToXsf     (const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff,0,0,0); }
     void saveToXsfAtoms(const char* fname, int ibuff, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, natoms,atypes,(Vec3d*)apos); }

@@ -30,7 +30,7 @@ iA=0; iC=1
 
 #ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
 
-jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, iMO1=102//2, ngrid=ngrid, dcell=dcell )
+jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell )
 #ocl.initFFT( ngrid )
 #ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
 #ocl.runfft (iA )
