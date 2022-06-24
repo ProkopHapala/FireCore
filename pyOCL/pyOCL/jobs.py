@@ -264,11 +264,28 @@ def Test_projectWf( iMO=1 ):
     plt.legend()
     plt.show()
 
+def iZs2dict(iZs, dr="./Fdata/basis"):
+    import glob
+    s = { i for i in iZs }
+    elems = sorted( s )   ;print( "elems ", elems )
+    dct   = { k:(v+1) for v,k in enumerate(elems) }  ;print(   "dct ", dct )
+    ords  = [ dct[i] for i in iZs ]     ;print( "ords ", ords )
+    Rcuts = [ ]
+    for i in elems:
+        path = '%s/%03i_*.na0' %(dr,i) 
+        lstr = glob.glob( path )[0].split('_')[1]
+        rcut = float(lstr[:3])/100.0 
+        print( i, path,  lstr, rcut )
+        Rcuts.append( rcut )
+    print( "Rcuts ", Rcuts )
+    return elems, dct, ords, Rcuts
 
-def projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0 ):
+def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False ):
     sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
+
+    elems, dct, ords, Rcuts = iZs2dict(atomType);   #exit(0)
 
     print("# ======== FireCore Run " )
     print ("atomType ", atomType)
@@ -293,20 +310,27 @@ def projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None, ngrid=(64,64,64), 
     i0orb  = oclu.countOrbs( atomType )           ;print("i0orb ", i0orb)  
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
+    if iMO1 is None:
+        iMO1 = i0orb[-1]/2
+
     print("# ========= PyOCL Density-Function Projection " )
     ocl.init()            
     Ns = (ngrid[0],ngrid[1],ngrid[2])
     ocl.initFFT( Ns  )                  
-    ocl.loadWfBasis( [1,6], Rcuts=[4.5,4.5] )    
+    ocl.loadWfBasis( elems, Rcuts=Rcuts )    
     #initAtoms( len(apos_) )          
     ocl.setGridShape_dCell( Ns, dCell )
     print( "wfcoef \n", wfcoef )
     print( "!!!!!! iMO0 iMO1 %i,%i \n" %(iMO0,iMO1)  )
-    ocl.convCoefsC( atomType, [2,1,1,1,1], atomPos, wfcoef,  iorb0=iMO0, iorb1=iMO1 , bInit=True ) 
+    ocl.convCoefsC( atomType, ords, atomPos, wfcoef,  iorb0=iMO0, iorb1=iMO1 , bInit=True ) 
     ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1 ) 
 
-    print( "DEBUG before saveToXsfAtoms " )
-    ocl.saveToXsfAtoms( "dens_%03i_%03i.xsf" %(iMO0,iMO1), iOutBuff,    atomType, atomPos  )
+    if bSaveXsf:
+        print( "DEBUG before saveToXsfAtoms " )
+        ocl.saveToXsfAtoms( "dens_%03i_%03i.xsf" %(iMO0,iMO1), iOutBuff,    atomType, atomPos  )
+    if bSaveBin:
+        print( " bSaveBin ", bSaveBin )
+        ocl.saveToBin( "dens.bin", iOutBuff )
 
 
 

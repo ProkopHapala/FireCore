@@ -14,5 +14,6 @@
 *.log
 *.npy
 *.xsf
+*.bin
 
 build
