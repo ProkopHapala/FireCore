@@ -133,6 +133,36 @@ __kernel void poissonW(
     //if( (ix==(nx/2))&&(iy==(ny/2)) ){ printf( "GPU iz,i[%i,%i|%i] k %g A[i] %g out %g \n", iz, i, N, f, A[i].x, out[i].x ); };
 };
 
+#define ixyz(ix,iy,iz)  ix + nx*( iy + ny*iz )
+
+__kernel void gradient(
+    const int4       off,    
+    __global float2* A,
+    __global float4* out,
+    const float4     inv_d
+){
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    //const int iw = get_global_id(3);
+    const int nx = get_global_size(0);
+    const int ny = get_global_size(1);
+    const int nz = get_global_size(2);
+    //__local float4 LATOMS[64];    // ToDo - LATER use local memory ?
+    int i = ixyz(ix,iy,iz);
+    int jx = ix+off.x;
+    int jy = iy+off.y;
+    int jz = iz+off.z;
+    //int j = ixyz(ix,iy,iz);
+    out[ i ] = (float4){
+        (A[ ixyz(ix+1,iy  ,iz  ) ].x - A[ixyz(ix-1,iy  ,iz  )].x)*inv_d.x,
+        (A[ ixyz(ix  ,iy+1,iz  ) ].x - A[ixyz(ix  ,iy-1,iz  )].x)*inv_d.y,
+        (A[ ixyz(ix  ,iy  ,iz+1) ].x - A[ixyz(ix  ,iy  ,iz-1)].x)*inv_d.z,
+        A[ ixyz(ix,iy,iz) ].x
+    }; 
+};
+
+
 // Grid projection
 
 float sp3( float3 dp, float4 c, float beta ){

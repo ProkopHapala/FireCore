@@ -117,9 +117,11 @@ class OCLfft : public OCLsystem { public:
     int iKernell_project_dens_tex=-1;
     int iKernell_projectPos_tex=-1;
     int iKernell_poissonW=-1;
+    int iKernell_gradient=-1;
 
     OCLtask cltask_mul;
     OCLtask cltask_poissonW;
+    OCLtask cltask_gradient;
     OCLtask cltask_project;
     OCLtask cltask_project_tex;
     OCLtask cltask_project_den_tex;
@@ -130,6 +132,7 @@ class OCLfft : public OCLsystem { public:
     int    nOrbs=0;
     int    nPos=0;
     float4 dcell_poisson{1.f,1.f,1.f,1.f};
+    float4 dcell_gradient{1.f,1.f,1.f,1.f};
     float4 pos0, dA, dB, dC;
     GridShape grid;
     int ibuff_atoms=0,ibuff_coefs=0;
@@ -166,8 +169,8 @@ class OCLfft : public OCLsystem { public:
         planFFT(  );                            //printf("initFFT 4 \n");
     }
 
-    int newFFTbuffer( char* name ){
-        return newBuffer( name, Ntot, sizeof(float2), 0, CL_MEM_READ_WRITE );
+    int newFFTbuffer( char* name, int nfloat=2 ){
+        return newBuffer( name, Ntot, sizeof(float)*nfloat, 0, CL_MEM_READ_WRITE );
     }
 
     int initAtoms( int nAtoms_, int nOrbs_ ){
@@ -302,6 +305,19 @@ class OCLfft : public OCLsystem { public:
             REFarg(dcell_poisson)           
         };
         printf( "END initTask_poissonW \n" );
+    }
+
+    void initTask_gradient( int ibuffA, int ibuff_result ){
+        printf( "BEGIN initTask_gradient \n" );
+        //cltask_poissonW.setup( this, iKernell_poissonW, 1, Ntot, 1 );
+        cltask_poissonW.setup4( this, iKernell_gradient, 3, *(size_t4*)Ns, (size_t4){1,1,1,1} );
+        cltask_poissonW.args = { 
+            INTarg ((int)Ntot),
+            BUFFarg(ibuffA),
+            BUFFarg(ibuff_result),
+            REFarg(dcell_gradient)           
+        };
+        printf( "END initTask_gradient \n" );
     }
 
 
@@ -444,15 +460,23 @@ class OCLfft : public OCLsystem { public:
         //OCLfft_checkError(err, " poisson::clfftEnqueueTransform " );
         if( dcell ){ dcell_poisson = *dcell; }
         initTask_poissonW( ibuffA, ibuff_result );                   //printf( "DEBUG 1 ");
-        finishRaw(); saveToXsf( "rho.xsf", ibuffA );                 //printf( "DEBUG 2 ");
+        //finishRaw(); saveToXsf( "rho.xsf", ibuffA );                 //printf( "DEBUG 2 ");
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
         OCLfft_checkError(err, " poisson::clfftEnqueueTransform " ); //printf( "DEBUG 4 ");
-        finishRaw(); saveToXsf( "rho_w.xsf", ibuffA );               //printf( "DEBUG 5 ");
+        //finishRaw(); saveToXsf( "rho_w.xsf", ibuffA );               //printf( "DEBUG 5 ");
         cltask_poissonW.enque( );                                    //printf( "DEBUG 6 ");
-        finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );            //printf( "DEBUG 7 ");
+        //finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );            //printf( "DEBUG 7 ");
         err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL);  
-        finishRaw(); saveToXsf( "V.xsf", ibuff_result );             //printf( "DEBUG 8 ");
+        //finishRaw(); saveToXsf( "V.xsf", ibuff_result );             //printf( "DEBUG 8 ");
         //printf( "END poisson \n" );
+    }
+
+    void gradient( int ibuffA, int ibuff_result, float4* dcell=0 ){
+        printf( "BEGIN poisson %i -> %i ( %s -> %s ) \n", ibuffA, ibuff_result, buffers[ibuffA].name, buffers[ibuff_result].name );
+        if( dcell ){ dcell_gradient = *dcell; }
+        initTask_gradient( ibuffA, ibuff_result );                   //printf( "DEBUG 1 ");
+        cltask_gradient.enque( );                                    //printf( "DEBUG 6 ");
+        finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );            //printf( "DEBUG 7 ");
     }
 
     void cleanup(){
@@ -473,6 +497,7 @@ class OCLfft : public OCLsystem { public:
         buildProgram( srcpath );
         iKernell_mull             = newKernel( "mul" );
         iKernell_poissonW         = newKernel( "poissonW" );
+        iKernell_gradient         = newKernel( "gradient" );
         iKernell_project          = newKernel( "projectAtomsToGrid" );
         iKernell_project_tex      = newKernel( "projectAtomsToGrid_texture"  );
         iKernell_project_dens_tex = newKernel( "projectOrbDenToGrid_texture" );
@@ -746,13 +771,14 @@ extern "C" {
         //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
 
-    void newFFTbuffer( char* name ){ oclfft.newFFTbuffer( name ); }
+    void newFFTbuffer( char* name, int nfloat ){ oclfft.newFFTbuffer( name, nfloat ); }
 
     int initAtoms( int nAtoms, int nOrbs ){  return oclfft.initAtoms( nAtoms, nOrbs ); };
     void runfft( int ibuff, bool fwd     ){ oclfft.runFFT( ibuff,fwd,0);     };
     //void runfft( int ibuff, bool fwd, float* data ){ oclfft.runFFT( ibuff,fwd, data); };
     void convolve( int ibuffA, int ibuffB, int ibuff_result ){  oclfft.convolution( ibuffA, ibuffB, ibuff_result  );}
-    void poisson ( int ibuffA, int ibuff_result, float* dcell ){  oclfft.poisson( ibuffA, ibuff_result, (float4*)dcell );}
+    void poisson ( int ibuffA, int ibuff_result, float* dcell ){  oclfft.poisson ( ibuffA, ibuff_result, (float4*)dcell );}
+    void gradient( int ibuffA, int ibuff_result, float* dcell ){  oclfft.gradient( ibuffA, ibuff_result, (float4*)dcell );}
     void projectAtoms    ( float* atoms, float* coefs, int ibuff_result                       ){ oclfft.projectAtoms    ( (float4*)atoms, (float4*)coefs, ibuff_result ); }
     void projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2 ){ oclfft.projectAtomsDens( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2 ); }
 
