@@ -158,6 +158,13 @@ def poisson(iA,iOut, dcell):
     dcell=np.array(dcell, np.float32)
     lib.poisson( iA,iOut, _np_as( dcell, c_float_p )  )
 
+lib.gradient.argtypes  = [ c_int, c_int, c_float_p ] 
+lib.gradient.restype   =  None
+def gradient(iA,iOut, dcell):
+    #if len(dcell) < 4: dcell +=  
+    dcell=np.array(dcell, np.float32)
+    lib.gradient( iA,iOut, _np_as( dcell, c_float_p )  )
+
 #projectAtoms( float* atoms, float4* coefs, int ibuff_result )
 lib.projectAtoms.argtypes  = [ c_float_p, c_float_p, c_int ] 
 lib.projectAtoms.restype   =  None
@@ -233,11 +240,11 @@ def approx( xs, ys, ws=None, npoly=14 ):
     return lib.approx( n, npoly, _np_as( xs, c_double_p ),_np_as( ys, c_double_p ), _np_as( ws, c_double_p ) )
 
 #void newFFTbuffer( char* name ){ oclfft.newFFTbuffer( name ); }
-lib.newFFTbuffer.argtypes  = [ c_char_p ] 
+lib.newFFTbuffer.argtypes  = [ c_char_p, c_int ] 
 lib.newFFTbuffer.restype   =  c_int
-def newFFTbuffer( fname ):
+def newFFTbuffer( fname, nfloat=2 ):
     fname = fname.encode('utf-8')
-    return lib.newFFTbuffer( fname )
+    return lib.newFFTbuffer( fname, nfloat )
 
 # loadWf(const char* fname, double* out){
 lib.loadWf.argtypes  = [ c_char_p, c_float_p ] 
