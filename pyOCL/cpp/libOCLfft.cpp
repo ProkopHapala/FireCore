@@ -35,7 +35,6 @@ int loadWf_(const char* fname, float* out){
     line=fgets(buff,nbuff,pFile);
     line=fgets(buff,nbuff,pFile);
     line=fgets(buff,nbuff,pFile);
-    printf( "loadWf_ 1 \n" );
     //double xs[4];
     int n=0;
     while(true){
@@ -282,8 +281,8 @@ class OCLfft : public OCLsystem { public:
     }
 
     void initTask_mul( int ibuffA, int ibuffB, int ibuff_result ){
-        //cltask_mul.setup( this, iKernell_mull, 1, Ntot*2, 16 );
-        cltask_mul.setup( this, iKernell_mull, 1, 8, 1 ); printf( "WARRNING : initTask_mul() IS WRONG !!!! %i %i \n", ibuffA, ibuffB );
+        cltask_mul.setup( this, iKernell_mull, 1, Ntot*2, 16 );
+        //cltask_mul.setup( this, iKernell_mull, 1, 8, 1 ); printf( "WARRNING : initTask_mul() IS WRONG !!!! %i %i \n", ibuffA, ibuffB );
         cltask_mul.args = { 
             INTarg (cltask_mul.global[0]),
             BUFFarg(ibuffA),
@@ -339,11 +338,11 @@ class OCLfft : public OCLsystem { public:
             REFarg(dB),           //9
             REFarg(dC)            //10
         };
-        cltask_project_tex.print_arg_list();
+        //cltask_project_tex.print_arg_list();
     }
 
     void initTask_project_dens_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
-        printf("DEBUG initTask_project_dens_tex() \n");
+        //printf("DEBUG initTask_project_dens_tex() \n");
         Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
         cltask_project_den_tex.setup( this, iKernell_project_dens_tex, 1, Ntot*2, 16 );
         cltask_project_den_tex.args = { 
@@ -361,8 +360,8 @@ class OCLfft : public OCLsystem { public:
             REFarg(dB),           //11
             REFarg(dC)            //12
         };
-        printf("DEBUG cltask_project_den_tex.args.size() %li  \n", cltask_project_den_tex.args.size() );
-        printf("DEBUG initTask_project_dens_tex() END \n");
+        //printf("DEBUG cltask_project_den_tex.args.size() %li  \n", cltask_project_den_tex.args.size() );
+        //printf("DEBUG initTask_project_dens_tex() END \n");
     }
 
 
@@ -408,28 +407,35 @@ class OCLfft : public OCLsystem { public:
         if( coefs ) upload(ibuff_coefs,coefs);
         clFinish(commands); 
         //initTask_project_dens_tex
-        printf( "DEBUG projectAtomsDens 1 \n" );
+        //printf( "DEBUG projectAtomsDens 1 \n" );
         initTask_project_dens_tex( ibuff_atoms, ibuff_coefs, ibuff_result );
         //cltask_project_den_tex
-        printf( "DEBUG projectAtomsDens 2 \n" );
+        //printf( "DEBUG projectAtomsDens 2 \n" );
         cltask_project_den_tex.args[1].i=iorb1;
-        printf( "DEBUG projectAtomsDens 3 \n" );
+        //printf( "DEBUG projectAtomsDens 3 \n" );
         cltask_project_den_tex.args[2].i=iorb2;
-        printf( "DEBUG projectAtomsDens 4 \n" );
-        cltask_project_den_tex.print_arg_list();
-        printf( "DEBUG projectAtomsDens 5 \n" );
+        //printf( "DEBUG projectAtomsDens 4 \n" );
+        //cltask_project_den_tex.print_arg_list();
+        //printf( "DEBUG projectAtomsDens 5 \n" );
         cltask_project_den_tex.enque( );
-        printf( "cltask_project_den_tex.enque( ) END \n" );
+        //printf( "cltask_project_den_tex.enque( ) END \n" );
         clFinish(commands); 
     }
     
     void convolution( int ibuffA, int ibuffB, int ibuff_result ){
+        printf( "DEBUG convolution ibuffA,ibuffB,ibuff_result %i,%i,%i ", ibuffA,ibuffB,ibuff_result  );
+        //saveToXsf( "DEBUG_buffA_in.xsf", ibuffA );
+        //saveToXsf( "DEBUG_buffB_in.xsf", ibuffB );
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffB].p_gpu, NULL, NULL);  
+        //saveToXsf( "DEBUG_buffA_w.xsf", ibuffA );
+        //saveToXsf( "DEBUG_buffB_w.xsf", ibuffB );
         //mul_buffs( ibuffA, ibuffB, ibuff_result );
         initTask_mul( ibuffA, ibuffB, ibuff_result );  //cltask_mul.print_arg_list();
         cltask_mul.enque( );
+        //saveToXsf( "DEBUG_buffOut_w.xsf", ibuff_result );
         err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL);  
+        //saveToXsf( "DEBUG_buffOut_out.xsf", ibuff_result );
     }
 
     void poisson( int ibuffA, int ibuff_result, float4* dcell=0 ){
@@ -437,16 +443,16 @@ class OCLfft : public OCLsystem { public:
         //err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
         //OCLfft_checkError(err, " poisson::clfftEnqueueTransform " );
         if( dcell ){ dcell_poisson = *dcell; }
-        initTask_poissonW( ibuffA, ibuff_result );      printf( "DEBUG 1 ");
-        finishRaw(); saveToXsf( "rho.xsf", ibuffA );    printf( "DEBUG 2 ");
+        initTask_poissonW( ibuffA, ibuff_result );                   //printf( "DEBUG 1 ");
+        finishRaw(); saveToXsf( "rho.xsf", ibuffA );                 //printf( "DEBUG 2 ");
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
-        OCLfft_checkError(err, " poisson::clfftEnqueueTransform " ); printf( "DEBUG 4 ");
-        finishRaw(); saveToXsf( "rho_w.xsf", ibuffA );               printf( "DEBUG 5 ");
-        cltask_poissonW.enque( );                                    printf( "DEBUG 6 ");
-        finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );            printf( "DEBUG 7 ");
+        OCLfft_checkError(err, " poisson::clfftEnqueueTransform " ); //printf( "DEBUG 4 ");
+        finishRaw(); saveToXsf( "rho_w.xsf", ibuffA );               //printf( "DEBUG 5 ");
+        cltask_poissonW.enque( );                                    //printf( "DEBUG 6 ");
+        finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );            //printf( "DEBUG 7 ");
         err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL);  
-        finishRaw(); saveToXsf( "V.xsf", ibuff_result );             printf( "DEBUG 8 ");
-        printf( "END poisson \n" );
+        finishRaw(); saveToXsf( "V.xsf", ibuff_result );             //printf( "DEBUG 8 ");
+        //printf( "END poisson \n" );
     }
 
     void cleanup(){
@@ -512,32 +518,28 @@ class OCLfft : public OCLsystem { public:
                 for(int j=0; j<nsamp; j++){ data[nsamp*(i*2)+2*j+1]=data[nsamp*(i*2)+2*j]; }
             }
         }
-        for(int i=0; i<nsamp; i++){ printf("basis [%i] (%f,%f) (%f,%f) \n", i, data[i*2],data[i*2+1],data[i*2+2*nsamp],data[i*2+1+2*nsamp] );  }
+        //for(int i=0; i<nsamp; i++){ printf("basis [%i] (%f,%f) (%f,%f) \n", i, data[i*2],data[i*2+1],data[i*2+2*nsamp],data[i*2+1+2*nsamp] );  }
         delete [] data_tmp;
         itex_basis = newBufferImage2D( "BasisTable", nsamp, nZ,  sizeof(float)*2,  data, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR , {CL_RG, CL_FLOAT} );
         delete [] data;
     }
 
     void update_GridShape(){
-        printf("saveToXsf() %g %g %g \n", dC.x, dC.y, dC.z );
+        //printf("update_GridShape() %g %g %g \n", dC.x, dC.y, dC.z );
         grid.cell.a=(Vec3d)(*(Vec3f*)&dA)*Ns[0];
         grid.cell.b=(Vec3d)(*(Vec3f*)&dB)*Ns[1];
         grid.cell.c=(Vec3d)(*(Vec3f*)&dC)*Ns[2];
         grid.pos0  =(Vec3d)(*(Vec3f*)&pos0);
         grid.n = (Vec3i){(int)Ns[0],(int)Ns[1],(int)Ns[2]}; //Ntot;
         grid.updateCell();
-        grid.printCell();
+        //grid.printCell();
     }
 
     void saveToXsf(const char* fname, int ibuff, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
-        printf("DEBUG saveToXsf 1 \n");
         update_GridShape();
-        printf("DEBUG saveToXsf 2 \n");
         float* cpu_data = new float[Ntot*2]; // complex 2*float
         download( ibuff,cpu_data);
-        printf("DEBUG saveToXsf 3 \n");
         finishRaw();
-        printf("DEBUG saveToXsf 4 \n");
         //Vec3d pos0=grid.pos0;
         //grid.pos0=Vec3dZero;
         grid.saveXSF( fname, cpu_data, 2, 0,   natoms,atypes,apos );
@@ -554,7 +556,7 @@ class OCLfft : public OCLsystem { public:
         saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
         //inline int loadBin( fname, int n, char * data );
         delete [] cpu_data;
-        printf( "saveToBin END \n" );
+        //printf( "saveToBin END \n" );
     }
 
     void loadFromBin(const char* fname, int ibuff){
@@ -566,7 +568,7 @@ class OCLfft : public OCLsystem { public:
         upload( ibuff,cpu_data);
         //finishRaw();
         delete [] cpu_data;
-        printf( "loadFromBin END \n" );
+        //printf( "loadFromBin END \n" );
     }
 
     void convOrbCoefs( int natoms, int* iZs, double* ocoefs, float4* coefs ){
@@ -584,10 +586,10 @@ class OCLfft : public OCLsystem { public:
     }
 
     void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1, bool bInit=false ){
-        printf( "DEBUG convCoefs 1 \n" );
+        //printf( "DEBUG convCoefs 1 \n" );
         // --- Count orbitals
         int norb=0;
-        printf( "DEBUG convCoefs 2 \n" );
+        //printf( "DEBUG convCoefs 2 \n" );
         for(int ia=0; ia<natoms; ia++){ if(iZs[ia]==1){ norb+=1; }else{ norb+=4; }; }
         //printf( "DEBUG convCoefs 2.5 norb %i \n", norb );
         //int ncoef=natoms*(iorb1-iorb0+1);
@@ -599,7 +601,7 @@ class OCLfft : public OCLsystem { public:
             int i3=ia*3;
             atoms[ia]=(float4){ (float)oatoms[i3],(float)oatoms[i3+1],(float)oatoms[i3+2], ityps[ia]+0.1f };
         }
-        printf( "DEBUG convCoefs 3 norb %i ncoef %i \n", norb, ncoef );
+        //printf( "DEBUG convCoefs 3 norb %i ncoef %i \n", norb, ncoef );
         // --- trasnform coefs
         //int io=norb*iorb0;
         //for(int iorb=iorb0; iorb<=iorb1; iorb++){
@@ -625,20 +627,20 @@ class OCLfft : public OCLsystem { public:
             }
         }
         */
-        printf( "DEBUG convCoefs 4 \n" );
+        //printf( "DEBUG convCoefs 4 \n" );
         if( bInit ){
             //printf( "DEBUG convCoefs 5 \n" );
             //nAtoms = natoms;
             //nOrbs  =  norb;
             initAtoms( natoms, norb );
         }
-        printf( "DEBUG convCoefs 6 \n" );
+        //printf( "DEBUG convCoefs 6 \n" );
         upload(ibuff_atoms,atoms, natoms );
         upload(ibuff_coefs,coefs, ncoef  );
-        printf( "DEBUG convCoefs 7 \n" );
+        //printf( "DEBUG convCoefs 7 \n" );
         delete [] atoms;
         delete [] coefs;
-        printf( "DEBUG convCoefs END \n" );
+        //printf( "DEBUG convCoefs END \n" );
     };
 
     void countOrbs( int natoms, int* iZs, int* offsets ){    
@@ -737,12 +739,14 @@ extern "C" {
     }
 
     void initFFT( int ndim, size_t* Ns_ ){
-        oclfft.initFFT( ndim, Ns_ );      printf( "C initFFT 1 \n" );
-        oclfft.newFFTbuffer( "inputA" );  printf( "C initFFT 2 \n" );
-        oclfft.newFFTbuffer( "inputB" );  printf( "C initFFT 3 \n" );
-        oclfft.newFFTbuffer( "outputC" ); printf( "C initFFT 4 \n" );
+        oclfft.initFFT( ndim, Ns_ );      //printf( "C initFFT 1 \n" );
+        oclfft.newFFTbuffer( "inputA" );  //printf( "C initFFT 2 \n" );
+        oclfft.newFFTbuffer( "inputB" );  //printf( "C initFFT 3 \n" );
+        oclfft.newFFTbuffer( "outputC" ); //printf( "C initFFT 4 \n" );
         //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
+
+    void newFFTbuffer( char* name ){ oclfft.newFFTbuffer( name ); }
 
     int initAtoms( int nAtoms, int nOrbs ){  return oclfft.initAtoms( nAtoms, nOrbs ); };
     void runfft( int ibuff, bool fwd     ){ oclfft.runFFT( ibuff,fwd,0);     };

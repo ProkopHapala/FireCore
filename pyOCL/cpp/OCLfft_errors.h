@@ -90,9 +90,7 @@ void OCLfft_check_error(cl_int err, const char *operation, char *filename, int l
         fprintf(stderr, "in '%s' on line %d\n", filename, line);
         fprintf(stderr, "Error code was \"%s\" (%d)\n", OCLfft_err_code(err), err);
         exit(0);
-    }else{
-        fprintf(stderr, "CL_SUCCESS  in %s \n", operation);
-    }
+    }//else{fprintf(stderr, "CL_SUCCESS  in %s \n", operation);}
 }
 
 #define OCLfft_checkError(E, S) if(bOCLCheckError)OCLfft_check_error(E,S,__FILE__,__LINE__);

@@ -311,7 +311,7 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
     if iMO1 is None:
-        iMO1 = i0orb[-1]/2
+        iMO1 = i0orb[-1]//2
 
     print("# ========= PyOCL Density-Function Projection " )
     ocl.init()            
@@ -320,8 +320,8 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
     ocl.loadWfBasis( elems, Rcuts=Rcuts )    
     #initAtoms( len(apos_) )          
     ocl.setGridShape_dCell( Ns, dCell )
-    print( "wfcoef \n", wfcoef )
-    print( "!!!!!! iMO0 iMO1 %i,%i \n" %(iMO0,iMO1)  )
+    #print( "wfcoef \n", wfcoef )
+    print( "iMO0 iMO1 %i,%i \n" %(iMO0,iMO1)  )
     ocl.convCoefsC( atomType, ords, atomPos, wfcoef,  iorb0=iMO0, iorb1=iMO1 , bInit=True ) 
     ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1 ) 
 
