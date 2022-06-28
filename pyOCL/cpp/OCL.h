@@ -270,10 +270,10 @@ class OCLtask{
         cl_kernel kernel = cl->kernels[ikernel];
         for(size_t i=0; i<args.size(); i++){
             OCLarg& arg = args[i];
-            printf( "useArgs args[%li].kind: %i\n", i, arg.kind );
+            //printf( "useArgs args[%li].kind: %i\n", i, arg.kind );
             switch(arg.kind){
                 case OCL_BUFF:
-                    printf( "DEBUG buffArg args[%li] ibuff %i p_gpu %li '%s' \n", i, arg.i, (long)cl->buffers[arg.i].p_gpu, cl->buffers[arg.i].name );
+                    //printf( "DEBUG buffArg args[%li] ibuff %i p_gpu %li '%s' \n", i, arg.i, (long)cl->buffers[arg.i].p_gpu, cl->buffers[arg.i].name );
                     err |= clSetKernelArg( kernel, i, sizeof(cl_mem), &(cl->buffers[arg.i].p_gpu) );             break;
                 //case OCL_BUFF:  err |= cl->buffers[arg.i].setAsArg( kernel, i );                               break;
                 case OCL_INT:   err |= clSetKernelArg( kernel, i, sizeof(int)  , &(arg.i) );                     break;
@@ -287,7 +287,7 @@ class OCLtask{
     }
 
     inline int enque_raw(  ){
-        printf("enque_raw ikernel %li idim %li global(%li,%li,%li) local(%li,%li,%li)\n", ikernel, dim, global[0],global[1],global[2], local[0],local[1],local[2] );
+        //printf("enque_raw ikernel %li idim %li global(%li,%li,%li) local(%li,%li,%li)\n", ikernel, dim, global[0],global[1],global[2], local[0],local[1],local[2] );
         if(local[0]==0){ return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, global, NULL,  0, NULL, NULL );   }
         else{            return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, global, local, 0, NULL, NULL );   }
     }

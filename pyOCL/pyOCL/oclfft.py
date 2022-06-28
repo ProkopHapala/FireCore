@@ -187,6 +187,11 @@ def convCoefsC( iZs, ityps, apos, wfcoefs,  iorb0=1, iorb1=2, bInit=False   ):
     natoms=len(iZs)
     iZs   = np.array(iZs,   dtype=np.int32)
     ityps = np.array(ityps, dtype=np.int32)
+    #print( "DEBUG convCoefsC | iZs ", iZs )
+    #print( "DEBUG convCoefsC | ityps ", ityps )
+    #print( "DEBUG convCoefsC | apos ", apos )
+    #print( "DEBUG convCoefsC | wfcoefs ", wfcoefs )
+    #print( "DEBUG convCoefsC | iorb0 iorb1 bInit", iorb0, iorb1, bInit )
     lib.convCoefs( natoms, _np_as(iZs,c_int_p),_np_as(ityps,c_int_p), _np_as(wfcoefs,c_double_p), _np_as(apos,c_double_p), iorb0, iorb1, bInit )
 
 #setGridShape( float* pos0, float* dA, float* dB, float* dC ){
@@ -197,9 +202,7 @@ def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,
     dA=np.array(dA,dtype=np.float32)
     dB=np.array(dB,dtype=np.float32)
     dC=np.array(dC,dtype=np.float32)
-    print( "dA ", dA);
-    print( "dB ", dB);
-    print( "dC ", dC);
+    #print( "dA ", dA); print( "dB ", dB); print( "dC ", dC);
     lib.setGridShape( _np_as( pos0, c_float_p ),_np_as( dA, c_float_p ), _np_as( dB, c_float_p ), _np_as( dC, c_float_p ) )
 
 def setGridShape_dCell( Ns, dCell, pos0=None ):
@@ -229,6 +232,13 @@ def approx( xs, ys, ws=None, npoly=14 ):
         ws = np.ones(n)
     return lib.approx( n, npoly, _np_as( xs, c_double_p ),_np_as( ys, c_double_p ), _np_as( ws, c_double_p ) )
 
+#void newFFTbuffer( char* name ){ oclfft.newFFTbuffer( name ); }
+lib.newFFTbuffer.argtypes  = [ c_char_p ] 
+lib.newFFTbuffer.restype   =  c_int
+def newFFTbuffer( fname ):
+    fname = fname.encode('utf-8')
+    return lib.newFFTbuffer( fname )
+
 # loadWf(const char* fname, double* out){
 lib.loadWf.argtypes  = [ c_char_p, c_float_p ] 
 lib.loadWf.restype   =  None
@@ -252,6 +262,8 @@ lib.loadFromBin.argtypes  = [ c_char_p, c_int ]
 lib.loadFromBin.restype   =  None
 def loadFromBin( fname, ibuff ):
     fname = fname.encode('utf-8')
+    #print( "DEBUG loadFromBin | fname ", fname  )
+    #print( "DEBUG loadFromBin | ibuff ", ibuff  )
     lib.loadFromBin( fname, ibuff )
 
 # void saveToXsf(const char* fname, int ibuff){

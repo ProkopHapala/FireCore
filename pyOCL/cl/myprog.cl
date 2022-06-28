@@ -87,10 +87,11 @@ __kernel void mul(
     __global float* out
 ){
     const size_t i = get_global_id(0);
+    //if(i==0)printf( "DEBUG_GPU mul N %i \n", N );
     if(i<N){ 
-        //printf( "DEBUG_GPU mul[%i] A=%g B=%g \n", i, A[i], B[i] );
         out[i] = A[i] * B[i]; 
         //out[i] = sin( i*0.1 ); 
+        //if((i/100)<100)printf( "DEBUG_GPU mul[%i] A=%g B=%g out=%g \n", i, A[i], B[i], out[i] );
     }
 };
 
@@ -129,7 +130,7 @@ __kernel void poissonW(
         //out[i] = f;
         //out[i] = k.x;
     }
-    if( (ix==(nx/2))&&(iy==(ny/2)) ){ printf( "GPU iz,i[%i,%i|%i] k %g A[i] %g out %g \n", iz, i, N, f, A[i].x, out[i].x ); };
+    //if( (ix==(nx/2))&&(iy==(ny/2)) ){ printf( "GPU iz,i[%i,%i|%i] k %g A[i] %g out %g \n", iz, i, N, f, A[i].x, out[i].x ); };
 };
 
 // Grid projection
@@ -317,9 +318,8 @@ __kernel void projectOrbDenToGrid_texture(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
-    
+        /*    
     if(iG==0){ 
-        /*
         printf("projectOrbDenToGrid_texture 1 \n"); 
         for(int iorb=iorb0; iorb<=iorb1; iorb++){
             for (int ia=0; ia<nAtoms; ia++ ){
@@ -327,7 +327,6 @@ __kernel void projectOrbDenToGrid_texture(
                 printf( "GPU[%i,%i] atom(%g,%g,%g|%g) coef(%g,%g,%g,%g)\n", iorb, ia,  atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,  coefs[io].x, coefs[io].y, coefs[io].z, coefs[io].w );
             }
         }
-        */
         for(int i=0; i<100; i++){ 
             //float3 pos = (float3){0.0,0.0,0.1};
             float r=(i*0.1f)*wf_tiles_per_angstroem;
@@ -340,6 +339,7 @@ __kernel void projectOrbDenToGrid_texture(
             printf(  "GPU[%i] wf1(%g,%g) wf2(%g,%g) wf3(%g,%g) \n", i, wf1.x,wf1.y,  wf2.x,wf2.y, wf3.x,wf3.y );
          }
     }
+    */
     
     if(iG>nMax) return;
 
@@ -369,7 +369,7 @@ __kernel void projectOrbDenToGrid_texture(
         dens += wf.x*wf.x;
     } // iorb
     outGrid[iG] = (float2){dens,0.0f};
-    if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
+    //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
 }
 
 __kernel void projectOrbDenToGrid_texture_2(

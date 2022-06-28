@@ -29,12 +29,17 @@ iA=0; iC=1
 
 
 #ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
-
 jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell )
-#ocl.initFFT( ngrid )
-#ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
-#ocl.runfft (iA )
-ocl.poisson   (  iA,iC, dcell )  ;print( "DEBUG poisson 3 " )
+#ocl.poisson   (  iA,iC, dcell )  ;print( "DEBUG poisson 3 " )
+
+ibuff_MCOconv = 2
+ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
+ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
+ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
+ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
+ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
+
+
 
 
 
