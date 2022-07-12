@@ -12,7 +12,7 @@
 
 class MMFFsp3{ public:
     static constexpr const int nneigh_max = 4;
-    int  nDOFs=0,natoms=0, nbonds=0, nang=0, ncap0=0, npi=0;
+    int  nDOFs=0,natoms=0, nbonds=0, ncap=0,npi=0;
     bool bPBC=false;
     double Eb,Ea,Ep;
 
@@ -20,7 +20,7 @@ class MMFFsp3{ public:
     double * fDOFs = 0;   // forces
 
     bool doPi=0;
-    int ipi0=0;
+    int  ipi0=0;
     Vec3d * apos=0;
     Vec3d * fapos=0;
     Vec3d * pipos=0;
@@ -42,24 +42,28 @@ class MMFFsp3{ public:
     //double * lbond  = 0;   // bond lengths
     //Vec3d  * hbond  = 0;   // normalized bond unitary vectors
 
-void realloc( int natoms_, int nbonds_, int nang_, int pi ){
-    natoms=natoms_; nbonds=nbonds_; nang=nang_; //ntors=ntors_;
-    nDOFs = (natoms + npi)*3;
+void realloc( int natoms_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
+    natoms=natoms_; nbonds=nbonds_; npi=npi_; ncap=ncap_;
+    nDOFs = (natoms + ncap + npi)*3;
     _realloc( DOFs     , nDOFs );
     _realloc( fDOFs    , nDOFs );
-    ipi0=natoms;
-    apos  = (Vec3d*)DOFs ;
+    ipi0=natoms + ncap;
+    apos   = (Vec3d*)DOFs ;
     fapos  = (Vec3d*)fDOFs;
-    pipos = apos + ipi0;
+    pipos  = apos + ipi0;
     fpipos = apos + ipi0;
-
-
-    //_realloc( lbond     , nbonds );
-    //_realloc( hbond     , nbonds );
 
     _realloc( bond2atom , nbonds );
     _realloc( bond_l0   , nbonds );
     _realloc( bond_k    , nbonds );
+    //_realloc( lbond     , nbonds );
+    //_realloc( hbond     , nbonds );
+
+    if(bNeighs){
+        int nn = natoms*nneigh_max;
+        _realloc( aneighs, nn );
+        _realloc( Kneighs, nn );
+    }
 
 }
 
@@ -75,8 +79,6 @@ inline double evalPi( const Vec2i& at, int ipi, int jpi, double K ){  // interac
     // E = -K*<pi|pj>^2
     //Vec3d d = apos[at.a]-apos[at.b];
     double c = pipos[ipi].dot(  pipos[jpi] );
-
-
     return K * c*c;
 }
 
@@ -135,15 +137,15 @@ double eval_bond(int ib){
     // --- Pi Bonds
     double Epi = 0;
     if(doPi){ // interaction between pi-bonds of given atom
-        int i0=iat.a+1*nneigh_max;
-        int j0=iat.b+1*nneigh_max;
+        int i0=(iat.a+1)*nneigh_max;
+        int j0=(iat.b+1)*nneigh_max;
         for(int i=-1;i>=-2;i--){
             int ipi=aneighs[i0+i];
             if(ipi<ipi0) continue;
             for(int j=-1;j>=-2;j--){
                 int jpi=aneighs[j0+j];
                 if(jpi<ipi0) continue;
-                Epi += evalPi( iat, ipi,jpi, Kneighs[i0+i]*Kneighs[j0+j] );
+                Epi += evalPi( iat, ipi0-ipi,ipi0-jpi, Kneighs[i0+i]*Kneighs[j0+j] );
             }
         }
     }
@@ -182,14 +184,39 @@ double eval_neighs(){
 }
 
 double eval( bool bClean=true ){
-    if(bClean)cleanAtomForce();
-    Eb = eval_bonds();
-    Ea = eval_neighs();
+    printf( "DEBUG MMFFsp3.eval() 1 \n" );
+    if(bClean)cleanAtomForce();     printf( "DEBUG MMFFsp3.eval() 2 \n" );
+    Eb = eval_bonds();              printf( "DEBUG MMFFsp3.eval() 3 \n" );
+    Ea = eval_neighs();             printf( "DEBUG MMFFsp3.eval() 4 \n" );
     return Eb+Ea+Ep;
 };
 
 //double getFmax(){ double Fmax=0; for(int i=0; i<natoms;i++){ _max( Fmax, aforce[i].norm2() ); }; return Fmax; };
 //void moveGD(double dt){ for(int i=0; i<natoms;i++){ apos[i].add_mul( aforce[i],dt); } };
+
+inline bool insertNeigh( int i, int j ){
+    int off = i*nneigh_max;
+    int*   ngs   = aneighs + off;
+    //double* Kngs = Kneighs + off;
+    int ii;
+    for(ii=0; ii<nneigh_max; ii++){
+        if(ngs[ii]<0){ ngs[ii]=j; break; }
+    }
+    return ii<nneigh_max;
+}
+
+void bond2neighs(){
+    int nn=natoms*nneigh_max;
+    for(int i=0; i<nn; i++){ aneighs[i]=-1; };
+    for(int i=0; i<nbonds; i++){
+        Vec2i b = bond2atom[i];
+        if(b.i<natoms)insertNeigh( b.i, b.j );
+        if(b.j<natoms)insertNeigh( b.j, b.i );
+    }
+    int ipi=0;
+    for(int i=0; i<nn; i++){ if(aneighs[i]<0){ aneighs[i]=ipi; ipi++; }; };
+}
+
 
 };
 

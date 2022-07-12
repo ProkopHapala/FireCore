@@ -243,7 +243,7 @@ class Molecule{ public:
         for(int i=0; i<natoms; i++){
             cog.add(pos[i]);
         }
-        cog.mul(1.0d/natoms);
+        cog.mul(1.0/natoms);
         return cog;
     }
 
@@ -315,7 +315,7 @@ class Molecule{ public:
             auto it = atomTypeDict->find( at_name );
             if( it != atomTypeDict->end() ){
                 atomType[i] = it->second;
-                printf( " %s -> %i \n", at_name,  atomType[i] );
+                //printf( " %s -> %i \n", at_name,  atomType[i] );
                 if(1==it->second)REQs[i].x=1.0; // Hydrogen is smaller
             }else{
                 //atomType[i] = atomChar2int( at_name[0] );
@@ -385,8 +385,8 @@ class Molecule{ public:
         return natoms + nbonds;
     }
 
-    int load_xyz( const char * fname, bool bDebug=false ){
-        if(bDebug)printf( "Molecule.load_xyz(%s)\n", fname );
+    int load_xyz( const char * fname, int verbosity=0 ){
+        if(verbosity>0)printf( "Molecule.load_xyz(%s)\n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -398,7 +398,7 @@ class Molecule{ public:
         char buff[nbuf]; char* line;
         line = fgets( buff, nbuf, pFile ); // number of atoms
         sscanf( line, "%i", &natoms );
-        if(bDebug)printf( "natoms %i \n", natoms );
+        if(verbosity>0)printf( "natoms %i \n", natoms );
         line = fgets( buff, nbuf, pFile ); // comment, ignore
         //DEBUG
         allocate(natoms,0);
@@ -407,7 +407,7 @@ class Molecule{ public:
             Vec3d& p = pos[i];
             line     = fgets( buff, nbuf, pFile ); // comment, ignore
             int nret = sscanf( line,       "%s %lf %lf %lf %lf %i  ",    at_name, &p.x, &p.y, &p.z, &REQs[i].z, &npis[i]  );
-            if(bDebug)printf   (  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  p.x,  p.y,  p.z,  REQs[i].z,  npis[i]  );
+            if(verbosity>1)printf   (  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  p.x,  p.y,  p.z,  REQs[i].z,  npis[i]  );
             if( nret < 5 ){ REQs[i].z= 0; };
             if( nret < 6 ){ npis[i]  =-1; };
             assignAtomType(i, at_name );

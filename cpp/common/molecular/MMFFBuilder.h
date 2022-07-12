@@ -230,8 +230,8 @@ int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes 
 
 
 class Builder{  public:
-
-    bool bDEBUG = false;
+    int verbosity = 0;
+    //bool bDEBUG = false;
 
     std::unordered_set<int> selection;
 
@@ -466,44 +466,20 @@ class Builder{  public:
         bonds.push_back(bond);
         tryAddBondToAtomConf( ib, bond.atoms.i, false );
         tryAddBondToAtomConf( ib, bond.atoms.j, false );
-        /*
-        int ic = atoms[bond.atoms.i].iconf;
-        int jc = atoms[bond.atoms.j].iconf;
-        //if(ic>=0){ confs[ic].addBond(bond.atoms.j); }
-        //if(jc>=0){ confs[jc].addBond(bond.atoms.i); }
-        //printf( "insertBond %i(%i,%i) to c(%i,%i) l0 %g k %g\n", ib, bond.atoms.i,bond.atoms.j, ic, jc, bond.l0, bond.k );
-        if(ic>=0){
-            confs[ic].addBond(ib);
-            //printf( "   i.conf " ); println(confs[ic]);
-        }
-        if(jc>=0){
-            confs[jc].addBond(ib);
-            //printf( "   j.conf " ); println(confs[jc]);
-        }
-        */
     }
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
     void addCap(int ia,Vec3d& hdir, Atom* atomj ){
         int ja=atoms.size();
-        //capAtom;
         Atom atom_tmp;
         if(atomj==0){
             atom_tmp=capAtom;
             atomj=&atom_tmp;
         }
-        //if(btype<0) btype=capBond.type;
         atomj->pos = atoms[ia].pos + hdir;
-        //atoms.push_back( *atomj );
         insertAtom(*atomj);
-        //bonds.push_back( (Bond){btype,{ia,ja}} );
         capBond.atoms.set(ia,ja);
         insertBond( capBond );
-        //printf("addCap %i \n", ia );
-        //int ic = atoms[ia].iconf;
-        //confs[ic].addBond(ja);
-        //confs[ic].addBond(bonds.size());
-        //println(confs[ic]);
     }
 
     void makeConfGeom(int nb, int npi, Vec3d* hs){
@@ -628,6 +604,14 @@ class Builder{  public:
         return n;
     }
 
+    int countPi(){
+        int npi=0;
+        for(int i=0; i<confs.size();i++){
+            npi+=confs[i].npi;
+        }
+        return npi;
+    }
+
     // ============= Angles
 
     void addAnglesToBond( int ib, int n,const int* neighs, double a0, double k ){
@@ -661,7 +645,7 @@ class Builder{  public:
             ksigma   *=  Ks[iangType];
             //printf( "addAnglesToAtom[%i] ns %i npi %i a0,ks %g %g   {%g,%g,%g,%g} %g \n", ia, nsigma, conf->npi, a0, ksigma, a0s[0],a0s[1],a0s[2],a0s[3] , a0s[nsigma] );
             addAnglesUpToN( nsigma, conf->neighs, a0, ksigma );
-            if(bDEBUG){
+            if(verbosity>2){
                 printf("addAnglesToAtom[%i] ", ia); printAtomConf(ia);
                 printf( " Sigma(%i,a0[%i] %g, k %g)", ia,  nsigma,conf->npi, iangType,  a0*(180/M_PI), ksigma );
                 if(bDummyPi && (conf->npi>0) ){ printf( " Pi(n%i,a0 %g, k %g)", conf->npi,  M_PI_2*(180/M_PI), kpi ); }else{ puts(""); };
@@ -732,7 +716,7 @@ class Builder{  public:
             double R = (R0 + A.REQ.x)*Rfac;
             //printf( "[%i,%i] R %g \n", i0-1, i, dp.norm() );
             if(  dp.norm2() < (R*R) ){
-                printf( "[%i,%i] R %g \n", i0-1, i, dp.norm() );
+                if(verbosity>2)  printf( "[%i,%i] R %g \n", i0-1, i, dp.norm() );
                 found.push_back(i);
             }
         }
@@ -761,6 +745,7 @@ class Builder{  public:
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
+        if(verbosity>0)printf( "autoBondsPBC \n" );
         bPBC = true;
         // ToDo : periodic boundary conditions
         if(imax<0)imax=atoms.size();
@@ -772,7 +757,7 @@ class Builder{  public:
             const Atom& A = atoms[i];
             R = A.REQ.x;
             int ipbc=0;
-            printf( "#==== Atom[%i] R %g \n", i, R );
+            if(verbosity>1)printf( "#==== Atom[%i] R %g \n", i, R );
             for(int ix=-npbc.x;ix<=npbc.x;ix++){
                 for(int iy=-npbc.y;iy<=npbc.y;iy++){
                     for(int iz=-npbc.z;iz<=npbc.z;iz++){
@@ -783,7 +768,7 @@ class Builder{  public:
                         Vec3d p = A.pos - lvec.lincomb( ix, iy, iz );
                         found.clear();
                         touchingAtoms( j0, imax, p, R, Rfac, found );
-                        if(i==12)printf( "# pbc[%i,%i,%i][%i] nfound %i \n", ix,iy,iz, ipbc, found.size() );
+                        //if(i==12)printf( "# pbc[%i,%i,%i][%i] nfound %i \n", ix,iy,iz, ipbc, found.size() );
                         for(int j:found){
                             bondBrush.atoms={i,j};
                             insertBond( bondBrush );
@@ -1050,8 +1035,8 @@ class Builder{  public:
         return atoms.size() + bonds.size();
     }
 
-    int load_xyz( const char * fname, bool noH=false, bool bConf=true, bool bDebug=false ){
-        if(bDebug)printf( "MM::Builder.load_xyz(%s)\n", fname );
+    int load_xyz( const char * fname, bool noH=false, bool bConf=true ){
+        if(verbosity>0)printf( "MM::Builder.load_xyz(%s)\n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -1062,19 +1047,19 @@ class Builder{  public:
         char buff[nbuf]; char* line;
         line = fgets( buff, nbuf, pFile ); // number of atoms
         sscanf( line, "%i", &natoms );
-        if(bDebug)printf( "natoms %i \n", natoms );
+        if(verbosity>1)printf( "natoms %i \n", natoms );
         line = fgets( buff, nbuf, pFile ); // comment, ignore
         int n0 = atoms.size();
         for(int i=0; i<natoms; i++){
             line     = fgets( buff, nbuf, pFile ); // comment, ignore
             int nret = sscanf( line,       "%s %lf %lf %lf %lf %i  ",    at_name, &pos.x, &pos.y, &pos.z, &REQ.z, &npi );
-            if(bDebug)printf   (  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  pos.x,  pos.y,  pos.z,  REQ.z,  npi  );
+            if(verbosity>1)printf   (  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  pos.x,  pos.y,  pos.z,  REQ.z,  npi  );
             if( nret < 5 ){ REQ.z=0;  };
             if( nret < 6 ){ npi  =-1; };
             auto it = atomTypeDict->find( at_name );
             if( it != atomTypeDict->end() ){
                 int ityp=it->second;
-                printf( " %s -> %i \n", at_name, ityp );
+                if(verbosity>2)printf( " %s -> %i \n", at_name, ityp );
                 if(params){
                     params->assignRE( ityp, REQ );
                     ne = params->atypes[ityp].nepair();
@@ -1351,6 +1336,43 @@ void updatePBC( Vec3d* pbcShifts ){
         if( pbcShifts[i].norm2()>1 ){ printf( "PBC-bond[%i]  atoms(%i,%i)  pbcShift(%g,%g,%g) \n",  bonds[i].atoms.a, bonds[i].atoms.b, pbcShifts[i].x,pbcShifts[i].y,pbcShifts[i].z );  };  // DEBUG
     }
 }
+
+#ifdef MMFFsp3_h
+    void toMMFFsp3( MMFFsp3& ff, const MMFFparams* params ){
+        int npi   = countPi();
+        int nconf = confs.size();
+        int ncap  = atoms.size() - nconf;
+        printf(  "DEBUG MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i \n", nconf, ncap, npi  );
+        ff.realloc( nconf, bonds.size(), npi, ncap );
+        export_apos     ( ff.apos );
+        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k );
+        if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max );  } 
+        Vec3d hs[N_NEIGH_MAX];
+        int ipi=0;
+        //int ja=0;
+        for(int ia=0; ia<atoms.size(); ia++ ){
+            int ic = atoms[ia].iconf;
+            printf( "atom[%i] iconf %i \n", ia, ic  );
+            if(ic>=0){
+                AtomConf& conf = confs[ic];
+                makeConfGeom( conf.nbond, conf.npi, hs );
+                int* ngs = ff.aneighs + ia*N_NEIGH_MAX;
+                int jpi=0;
+                for(int k=0; k<N_NEIGH_MAX; k++){
+                    if( conf.neighs[k]>=0 ){
+                        ngs[k]=conf.neighs[k];
+                    }else if( conf.neighs[k]==(int)NeighType::pi ) {
+                        ff.pipos[ipi] = hs[N_NEIGH_MAX-jpi];
+                        jpi++;
+                        ipi++;
+                    //}else if( conf.neighs[k]==NeighType::epair ) {
+                    //}else if( conf.neighs[k]==NeighType::H ) {        
+                    }
+                }
+            }
+        }
+    }
+#endif // MMFFmini_h
 
 #ifdef MMFFmini_h
     void toMMFFmini( MMFFmini& ff, const MMFFparams* params ){
