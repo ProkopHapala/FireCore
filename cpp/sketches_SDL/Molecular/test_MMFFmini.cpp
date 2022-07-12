@@ -380,7 +380,7 @@ int TestAppMMFFmini::loadMoleculeXYZ( const char* fname, const char* fnameLvs, b
     params.loadAtomTypes( "common_resources/AtomTypes.dat" );
     params.loadBondTypes( "common_resources/BondTypes.dat" );
     builder.bindParams(&params);
-    int nheavy = builder.load_xyz( fname, bAutoH, true, true );
+    int nheavy = builder.load_xyz( fname, bAutoH, true );
     readMatrix( fnameLvs, 3, 3, (double*)&builder.lvec );
 
     //builder.printAtoms ();
@@ -389,7 +389,7 @@ int TestAppMMFFmini::loadMoleculeXYZ( const char* fname, const char* fnameLvs, b
     //exit(0);
     builder.export_atypes(atypes);
 
-    builder.bDEBUG = true;
+    builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
@@ -633,7 +633,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     //builder.printConfs ();
     builder.printAtomConfs();
     builder.export_atypes(atypes);
-    builder.bDEBUG = true;
+    builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
