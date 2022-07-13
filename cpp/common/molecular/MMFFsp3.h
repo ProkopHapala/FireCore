@@ -21,6 +21,7 @@ class MMFFsp3{ public:
 
     bool doPi=0;
     int  ipi0=0;
+    int   * atype=0;
     Vec3d * apos=0;
     Vec3d * fapos=0;
     Vec3d * pipos=0;
@@ -48,6 +49,7 @@ void realloc( int natoms_, int nbonds_, int npi_, int ncap_, bool bNeighs=true )
     _realloc( DOFs     , nDOFs );
     _realloc( fDOFs    , nDOFs );
     ipi0=natoms + ncap;
+    _realloc( atype, natoms+ncap );
     apos   = (Vec3d*)DOFs ;
     fapos  = (Vec3d*)fDOFs;
     pipos  = apos + ipi0;

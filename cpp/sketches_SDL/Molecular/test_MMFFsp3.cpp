@@ -37,6 +37,62 @@
 
 bool bPrint = true;
 
+
+// ================= Free Functions ==============
+
+void drawBonds( const MM::Builder& builder ){
+    //drawSystem( false, true, false );
+    glBegin( GL_LINES );
+    for(int ib=0; ib<builder.bonds.size(); ib++ ){
+        const MM::Bond& b = builder.bonds[ib]; 
+        //printf( "bond[%i] (%i,%i) \n)", ib, b.atoms.a, b.atoms.b );
+        //Draw3D::drawLine( builder.atoms[b.atoms.a].pos, builder.atoms[b.atoms.b].pos );
+        Draw3D::vertex(builder.atoms[b.atoms.a].pos);
+        Draw3D::vertex(builder.atoms[b.atoms.b].pos);
+    }
+    glEnd();
+}
+
+void drawNeighs( const MM::Builder& builder ){
+    glBegin( GL_LINES );
+    //printf( "DEBUG drawNeighs() \n" );
+    for(int ia=0; ia<builder.atoms.size(); ia++ ){
+        const MM::Atom& a = builder.atoms[ia];
+        if( a.iconf<0 ) continue;
+        //printf( "a.iconf %i \n", a.iconf );
+        Vec3d pa = builder.atoms[ia].pos;
+        MM::AtomConf c = builder.confs[a.iconf];
+        for(int j=0; j<N_NEIGH_MAX; j++ ){
+            int ib = c.neighs[j];
+            //printf( "neigh[%i] = %i \n", j, ib );
+            if( ib>=0 ){
+                int ja = builder.bonds[ib].getNeighborAtom(ia);
+                //Draw3D::drawLine( pa, builder.atoms[c.neighs[j]].pos  );
+                Draw3D::vertex(pa);
+                Draw3D::vertex(builder.atoms[ja].pos);
+            }
+        }
+    }
+    glEnd();
+}
+
+void drawNeighs( const MMFFsp3& ff ){
+    //drawSystem( false, true, false );
+    for(int ia=0; ia<ff.natoms; ia++ ){
+        //printf( "atom[%i]\n", ia );
+        int* ngs = ff.aneighs + ia*ff.nneigh_max;
+        for(int j=0; j<ff.nneigh_max; j++ ){
+            //printf( "atom[%i]neigh[%i]=%i \n", ia, j, ngs[j] );
+            if(ngs[j]>=0){
+                glColor3f(0.,0.,0.); Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]] );
+            }else{
+                int ipi = -ngs[j]-1;
+                glColor3f(1.,0.,0.); Draw3D::drawVecInPos( ff.pipos[ipi], ff.apos[ia] );
+            }
+        }
+    }
+}
+
 // ===========================================
 // ================= MAIN CLASS ==============
 // ===========================================
@@ -171,7 +227,7 @@ int TestAppMMFFsp3::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bo
 
     //bNonBonded = false;
     //exit(0);
-    builder.toMMFFsp3( ff, &params );
+    builder.toMMFFsp3( ff );
 
     builder.saveMol( "data/polymer.mol" );
 
@@ -205,7 +261,7 @@ int TestAppMMFFsp3::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoadT
         Vec3d cog = mol.getCOG_av();
         mol.addToPos( cog*-1.0 );
         builder.insertMolecule(&mol, Vec3dZero, Mat3dIdentity, false );
-        builder.toMMFFsp3( ff, &params );
+        builder.toMMFFsp3( ff );
     }
     //builder.sortAtomsOfBonds();
     builder.tryAddConfsToAtoms(0, nh);
@@ -225,7 +281,7 @@ int TestAppMMFFsp3::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoadT
     if(verbosity>2)builder.printBonds();
     if(verbosity>2)builder.printAngles();
     if(verbosity>2)builder.printConfs();
-    builder.toMMFFsp3( ff, &params );
+    builder.toMMFFsp3( ff );
     //Draw3D::shapeInPoss( ogl_sph, ff.natoms, ff.apos, 0 );
     return nheavy;
 }
@@ -261,7 +317,7 @@ int TestAppMMFFsp3::makeMoleculeInlineBuilder( bool bPBC ){
     builder.insertDihedralByAtom( {0,1,2,3}, brushDihedral );
     builder.trySortBonds();
 
-    builder.toMMFFsp3( ff, &params );
+    builder.toMMFFsp3( ff );
 
     builder.lvec.a = (Vec3d){  5.0,0.0,0.0 };
     builder.lvec.b = (Vec3d){  0.0,5.0,0.0 };
@@ -312,7 +368,11 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});   if(verbosity>1)builder.printBonds ();  // exit(0);
     //builder.autoAngles( 0.5, 0.5 );     if(verbosity>1)builder.printAngles();
     builder.autoAngles( 10.0, 10.0 );     if(verbosity>1)builder.printAngles();
-    builder.toMMFFsp3( ff, &params );
+
+    builder.sortConfAtomsFirst();
+    builder.makeAllConfsSP();
+    builder.printAtomConfs();
+    builder.toMMFFsp3( ff );
     builder.saveMol( "data/polymer.mol" );
 
     printf("DEBUG 4\n");
@@ -392,6 +452,11 @@ void TestAppMMFFsp3::draw(){
     //printf( "====== Frame # %i \n", frameCount );
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
 
+    //glColor3f(0.,0.,0.); drawBonds( builder );
+    //glColor3f(0.,0.,0.); drawNeighs( builder );
+    drawNeighs( ff );
+    //builder.toMMFFsp3( ff, false );
+
     if(frameCount==1){
         qCamera.pitch( M_PI );
         //ff.printAtomPos();
@@ -447,20 +512,9 @@ void TestAppMMFFsp3::draw(){
         }
     }
 
-    //drawSystem( false, true, false );
-    for(int ia=0; ia<ff.natoms; ia++ ){
-        //printf( "atom[%i]\n", ia );
-        int* ngs = ff.aneighs + ia*ff.nneigh_max;
-        for(int j=0; j<ff.nneigh_max; j++ ){
-            //printf( "atom[%i]neigh[%i]=%i \n", ia, j, ngs[j] );
-            if(ngs[j]>=0){
-                glColor3f(0.,0.,0.); Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]] );
-            }else{
-                //glColor3f(1.,0.,0.); Draw3D::drawVecInPos( ff.pipos[ia], ff.apos[ngs[j]] );
-            }
-        }
-    }
-
+    //glColor3f(0.,0.,0.); drawBonds( builder );
+    //glColor3f(0.,0.,0.); drawNeighs( builder );
+    //drawNeighs( ff );
 
     /*
     if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
