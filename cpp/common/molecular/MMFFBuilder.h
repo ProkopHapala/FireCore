@@ -272,7 +272,7 @@ class Builder{  public:
     Atom capAtomEpair = (Atom){ (int)NeighType::epair, -1,-1, {0,0,0}, {0,0,0} };
     Atom capAtomPi    = (Atom){ (int)NeighType::pi,    -1,-1, {0,0,0}, {0,0,0} };
     Bond capBond      = (Bond){ -1,  {-1,-1},  1.07, 100/const_eVA2_Nm };
-    Vec3d    capUp   = (Vec3d){0.0d,0.0d,1.0d};
+    Vec3d    capUp   = (Vec3d){0.0,0.0,1.0};
     bool bDummyPi    = false;
     bool bDummyEpair = false;
 
@@ -604,12 +604,14 @@ class Builder{  public:
         return n;
     }
 
-    int countPi(){
-        int npi=0;
+    int countPiE(int& npi){
+        int ne =0; 
+        npi=0;
         for(int i=0; i<confs.size();i++){
             npi+=confs[i].npi;
+            ne +=confs[i].ne;
         }
-        return npi;
+        return ne;
     }
 
     // ============= Angles
@@ -855,6 +857,33 @@ class Builder{  public:
         return true;
     }
 
+    void permutAtoms(int* permut){
+        for(Bond&     b: bonds){ b.atoms.a=permut[b.atoms.a];  b.atoms.b=permut[b.atoms.b]; }
+        // Confs are not re-shufled because they point to bonds, not atoms
+        //for(AtomConf& c: confs){ 
+        //    for(int j=0; j<N_NEIGH_MAX;j++){
+        //        int& ing= c.neighs[j];
+        //        if(ing>=0){ ing=permut[ing]; }
+        //    }
+        //}
+        std::vector<Atom> atoms_(atoms);
+        for(int i=0; i<atoms_.size(); i++){
+            atoms[permut[i]]=atoms_[i];
+        }
+    }
+
+    void sortConfAtomsFirst(){
+        int natom=atoms.size();
+        int permut[natom];
+        int j=0;
+        for(int i=0; i<natom; i++){ if( atoms[i].iconf>=0 ){ permut[i] = j; j++; } }
+        for(int i=0; i<natom; i++){ if( atoms[i].iconf< 0 ){ permut[i] = j; j++; } }
+        //for(int i=0; i<natom; i++){ printf( "atom %i->%i \n", i, permut[i] ); }
+        //printf( "natom %i \n", natom );
+        permutAtoms(permut);
+        //exit(0);
+    }
+
     void sortAtomsOfBonds(){
         for(int i=0; i<bonds.size(); i++){ bonds[i].atoms.order(); }
     }
@@ -985,7 +1014,8 @@ class Builder{  public:
         printf("atom[%i] T %i ic %i ", i, A.type, A.iconf);
         if(A.iconf>=0){
             const AtomConf& c = confs[A.iconf];
-            printf(" Conf[%i] n %i nb %i npi %i ne %i nH %i ", A.iconf, c.n, c.nbond, c.npi, c.ne, c.nH );
+            //printf(" Conf[%i] n %i nb %i npi %i ne %i nH %i ", A.iconf, c.n, c.nbond, c.npi, c.ne, c.nH );
+            c.print();
         }
     }
     void printAtomConfs(){
@@ -1338,39 +1368,62 @@ void updatePBC( Vec3d* pbcShifts ){
 }
 
 #ifdef MMFFsp3_h
-    void toMMFFsp3( MMFFsp3& ff, const MMFFparams* params ){
-        int npi   = countPi();
+
+    void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true){
+        int npi,ne; ne=countPiE( npi );
         int nconf = confs.size();
         int ncap  = atoms.size() - nconf;
-        printf(  "DEBUG MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i \n", nconf, ncap, npi  );
-        ff.realloc( nconf, bonds.size(), npi, ncap );
+        printf(  "DEBUG MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
+        if(bRealloc) ff.realloc( nconf, bonds.size(), npi, ncap+ne );
         export_apos     ( ff.apos );
+        export_atypes   ( ff.atype );
         export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k );
         if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max );  } 
         Vec3d hs[N_NEIGH_MAX];
         int ipi=0;
         //int ja=0;
+        int ie = nconf+ncap;
         for(int ia=0; ia<atoms.size(); ia++ ){
             int ic = atoms[ia].iconf;
-            printf( "atom[%i] iconf %i \n", ia, ic  );
+            //printf( "atom[%i] iconf %i \n", ia, ic,   );
             if(ic>=0){
                 AtomConf& conf = confs[ic];
-                makeConfGeom( conf.nbond, conf.npi, hs );
+                printf( "atom[%i] iconf %i n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
                 int* ngs = ff.aneighs + ia*N_NEIGH_MAX;
-                int jpi=0;
-                for(int k=0; k<N_NEIGH_MAX; k++){
-                    if( conf.neighs[k]>=0 ){
-                        ngs[k]=conf.neighs[k];
-                    }else if( conf.neighs[k]==(int)NeighType::pi ) {
-                        ff.pipos[ipi] = hs[N_NEIGH_MAX-jpi];
-                        jpi++;
-                        ipi++;
-                    //}else if( conf.neighs[k]==NeighType::epair ) {
-                    //}else if( conf.neighs[k]==NeighType::H ) {        
-                    }
+                // -- atoms
+                for(int k=0; k<conf.nbond; k++){
+                    int ib = conf.neighs[k];
+                    int ja = bonds[ib].getNeighborAtom(ia);
+                    hs[k]  = atoms[ja].pos - atoms[ia].pos;
+                    hs[k].normalize();
+                    ngs[k] = ja;
                 }
+                makeConfGeom( conf.nbond, conf.npi, hs );
+                for(int k=0; k<N_NEIGH_MAX; k++){
+                    if((N_NEIGH_MAX-k)<=conf.npi){ glColor3f(1.,0.,0.); }else{ glColor3f(1.,0.,0.); }
+                    Draw3D::drawVecInPos( hs[k], atoms[ia].pos );
+                }
+                // pi-bonds
+                for(int k=0; k<conf.npi; k++ ){
+                    int ik=N_NEIGH_MAX-1-k;
+                    ff.pipos[ipi] = hs[ik];
+                    ngs[ik] = -ipi-1;
+                    ipi++;
+                }
+                // e-cap
+                for(int k=conf.nbond; k<conf.nbond+conf.ne; k++ ){
+                    ff.apos[ie]=atoms[ia].pos + hs[k]*0.5;
+                    ff.atype[ie] = -1; // electon-pair type
+                    ngs[k] = ie;
+                    //ngs[k]=0;
+                    ie++;
+                }
+                for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }
+                printf( "] \n" );
             }
+            
         }
+        printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
     }
 #endif // MMFFmini_h
 
