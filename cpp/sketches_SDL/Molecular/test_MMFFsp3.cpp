@@ -76,18 +76,31 @@ void drawNeighs( const MM::Builder& builder ){
     glEnd();
 }
 
-void drawNeighs( const MMFFsp3& ff ){
+void drawBonds( const MMFFsp3& ff, double Fsc=0.0 ){
     //drawSystem( false, true, false );
-    for(int ia=0; ia<ff.natoms; ia++ ){
+    glBegin( GL_LINES );
+    for(int ib=0; ib<ff.nbonds; ib++ ){
+        const Vec2i& b = ff.bond2atom[ib]; 
+        Draw3D::vertex(ff.apos[b.i]);
+        Draw3D::vertex(ff.apos[b.j]);
+    }
+    glEnd();
+}
+
+void drawNeighs( const MMFFsp3& ff, double Fsc=0.0 ){
+    //drawSystem( false, true, false );
+    for(int ia=0; ia<ff.nnode; ia++ ){
         //printf( "atom[%i]\n", ia );
         int* ngs = ff.aneighs + ia*ff.nneigh_max;
         for(int j=0; j<ff.nneigh_max; j++ ){
             //printf( "atom[%i]neigh[%i]=%i \n", ia, j, ngs[j] );
             if(ngs[j]>=0){
                 glColor3f(0.,0.,0.); Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]] );
+                if(Fsc>0.0){ glColor3f(1.,0.,0.); Draw3D::drawVecInPos( ff.fapos[ia]*Fsc, ff.apos[ia] ); }
             }else{
                 int ipi = -ngs[j]-1;
-                glColor3f(1.,0.,0.); Draw3D::drawVecInPos( ff.pipos[ipi], ff.apos[ia] );
+                glColor3f(0.,0.5,0.); Draw3D::drawVecInPos( ff.pipos[ipi], ff.apos[ia] );
+                if(Fsc>0.0){ glColor3f(1.,0.5,0.); Draw3D::drawVecInPos( ff.fpipos[ipi]*Fsc, ff.apos[ia]+ff.pipos[ipi] ); }
             }
         }
     }
@@ -375,6 +388,8 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     builder.toMMFFsp3( ff );
     builder.saveMol( "data/polymer.mol" );
 
+    ff.printBonds();
+
     printf("DEBUG 4\n");
     bNonBonded = false;
     if(bNonBonded){   
@@ -390,7 +405,7 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
 
     printf("DEBUG 5\n");
 
-    opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.fapos, 0 );
+    opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
     //opt.setInvMass( 1.0 );
     opt.cleanVel( );
 
@@ -430,15 +445,16 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
 void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces ){
     if(bBonds){
         //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
-        glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
+        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
+        glColor3f(0.0f,0.0f,0.0f);Draw3D::bonds( ff.nbonds, ff.bond2atom, ff.apos ); // DEBUG
         //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
     }
     if(bForces){ glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0              ); }
     if(bAtoms){
         //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
-        //glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
+        glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, 0.01                     );                     //DEBUG
         //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
-        Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
+        //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
     }
@@ -454,7 +470,7 @@ void TestAppMMFFsp3::draw(){
 
     //glColor3f(0.,0.,0.); drawBonds( builder );
     //glColor3f(0.,0.,0.); drawNeighs( builder );
-    drawNeighs( ff );
+    //drawNeighs( ff );
     //builder.toMMFFsp3( ff, false );
 
     if(frameCount==1){
@@ -485,11 +501,12 @@ void TestAppMMFFsp3::draw(){
     //double Ftol = 1e-2;
 
     //ff.apos[0].set(-2.0,0.0,0.0);
-    //perFrame = 1;
+    perFrame = 1;
     //perFrame = 100;
-    perFrame = 20;
+    //perFrame = 20;
     //bRunRelax = false;
     bool makeScreenshot = false;
+
     if(bRunRelax){
         builder.lvec.a    = lvec_a0 + Vec3d{-1.0,0.0,0.0};
         for(int itr=0; itr<perFrame; itr++){
@@ -503,7 +520,9 @@ void TestAppMMFFsp3::draw(){
             for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
             
             // --- Move
-            double f2; opt.move_MD( 0.1, 0.005 );
+            double f2;
+            //opt.move_MD( 0.001, 0.005 );
+            opt.move_GD( 0.01 );
             //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
             if(f2<sq(Ftol)){
                 bConverged=true;
@@ -511,6 +530,11 @@ void TestAppMMFFsp3::draw(){
 
         }
     }
+
+    //drawSystem();
+    //glColor3f(0.,0.,0.); drawBonds( ff );
+    //drawSystem(true,true,false);
+    drawNeighs( ff, 0.0 );
 
     //glColor3f(0.,0.,0.); drawBonds( builder );
     //glColor3f(0.,0.,0.); drawNeighs( builder );
@@ -548,14 +572,15 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
     switch( event.type ){
         case SDL_KEYDOWN :
             switch( event.key.keysym.sym ){
-                case SDLK_KP_7: builder.lvec.a.x+=xstep; break;
-                case SDLK_KP_4: builder.lvec.a.x-=xstep; break;
+                //case SDLK_KP_7: builder.lvec.a.x+=xstep; break;
+                //case SDLK_KP_4: builder.lvec.a.x-=xstep; break;
+                //case SDLK_KP_8: builder.lvec.a.y+=xstep; break;
+                //case SDLK_KP_5: builder.lvec.a.y-=xstep; break;
+                //case SDLK_KP_9: builder.lvec.a.z+=xstep; break;
+                //case SDLK_KP_6: builder.lvec.a.z-=xstep; break;
 
-                case SDLK_KP_8: builder.lvec.a.y+=xstep; break;
-                case SDLK_KP_5: builder.lvec.a.y-=xstep; break;
-
-                case SDLK_KP_9: builder.lvec.a.z+=xstep; break;
-                case SDLK_KP_6: builder.lvec.a.z-=xstep; break;
+                case SDLK_KP_7: ff.iDEBUG_pick++; if(ff.iDEBUG_pick>=ff.iDEBUG_n)ff.iDEBUG_pick=0; break;
+                case SDLK_KP_4: ff.iDEBUG_pick--; if(ff.iDEBUG_pick<0           )ff.iDEBUG_pick=ff.iDEBUG_n-1; break;
 
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );

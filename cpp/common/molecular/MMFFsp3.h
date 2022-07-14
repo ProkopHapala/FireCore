@@ -12,7 +12,7 @@
 
 class MMFFsp3{ public:
     static constexpr const int nneigh_max = 4;
-    int  nDOFs=0,natoms=0, nbonds=0, ncap=0,npi=0;
+    int  nDOFs=0,natoms=0,nnode=0,ncap=0,nbonds=0,npi=0;
     bool bPBC=false;
     double Eb,Ea,Ep;
 
@@ -43,17 +43,22 @@ class MMFFsp3{ public:
     //double * lbond  = 0;   // bond lengths
     //Vec3d  * hbond  = 0;   // normalized bond unitary vectors
 
-void realloc( int natoms_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
-    natoms=natoms_; nbonds=nbonds_; npi=npi_; ncap=ncap_;
-    nDOFs = (natoms + ncap + npi)*3;
+    bool bDEBUG_plot=0;
+    int iDEBUG_n=0,iDEBUG_pick=0;
+
+void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
+    nnode=nnode_; ncap=ncap_; nbonds=nbonds_; npi=npi_; 
+    natoms=nnode_+ncap_; 
+    nDOFs = (natoms + npi)*3;
+    printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
     _realloc( DOFs     , nDOFs );
     _realloc( fDOFs    , nDOFs );
-    ipi0=natoms + ncap;
-    _realloc( atype, natoms+ncap );
+    ipi0=natoms;
+    _realloc( atype, natoms );
     apos   = (Vec3d*)DOFs ;
     fapos  = (Vec3d*)fDOFs;
-    pipos  = apos + ipi0;
-    fpipos = apos + ipi0;
+    pipos  = apos  + ipi0;
+    fpipos = fapos + ipi0;
 
     _realloc( bond2atom , nbonds );
     _realloc( bond_l0   , nbonds );
@@ -62,14 +67,16 @@ void realloc( int natoms_, int nbonds_, int npi_, int ncap_, bool bNeighs=true )
     //_realloc( hbond     , nbonds );
 
     if(bNeighs){
-        int nn = natoms*nneigh_max;
+        int nn = nnode*nneigh_max;
         _realloc( aneighs, nn );
         _realloc( Kneighs, nn );
     }
 
 }
 
-void cleanAtomForce(){ for(int i=0; i<natoms; i++){ fapos[i].set(0.0); } }
+void cleanAtomForce(){ for(int i=0; i<natoms; i++){ fapos [i].set(0.0); } }
+void cleanPiForce  (){ for(int i=0; i<npi;    i++){ fpipos[i].set(0.0); } }
+void normalizePi   (){ for(int i=0; i<npi;    i++){ pipos[i].normalize(); } }
 
 // ============== Evaluation
 
@@ -85,44 +92,107 @@ inline double evalPi( const Vec2i& at, int ipi, int jpi, double K ){  // interac
 }
 
 inline double evalAngle_dist( int ia, int ing, int jng, double K ){
+    //K = -1.0;
     //  E = -K*|pi-pj|
     // ToDo: This may be made more efficient if we store hbonds
-    Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
+    Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();  // j->i
     Vec3d hi = apos[ing] - apos[ia];    double ri  = hi.normalize();
     Vec3d hj = apos[jng] - apos[ia];    double rj  = hj.normalize();
     Vec3d fi  = d* K;
     Vec3d fj  = d*-K;
-    Vec3d fiT = hi* hi.dot(fi);   fi.sub(fiT);
-    Vec3d fjT = hj* hj.dot(fj);   fj.sub(fjT);
-    fapos[ia] .add(fiT);
-    fapos[ia] .add(fiT);
+    
+    //Vec3d fiT = hi* hi.dot(fi);   fi.sub(fiT);
+    //Vec3d fjT = hj* hj.dot(fj);   fj.sub(fjT);
+
+    //printf(  "ang[%i|%i,%i] c1 %g c2 %g \n", ia, ing, jng, hi.dot(fi), hj.dot(fj)  );
+    
+    glColor3f(1.,0.,0.);
+    Draw3D::drawVecInPos(  fi, apos[ing] );
+    Draw3D::drawVecInPos(  fj, apos[jng] );
+    //Draw3D::drawVecInPos(  fjT+fiT, apos[ia] );
+    
+    //fapos[ia] .add(fiT);
+    //fapos[ia] .add(fjT);
     fapos[ing].add(fi );
     fapos[jng].add(fj );
     return K*rij;
 }
 
-void evalAngle_cos(  int ia, int ing, int jng, double K ){
+inline double evalAngle_cos(  int ia, int ing, int jng, double K ){
     //Vec3d h1,h2;
     //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
     Vec3d h1 = apos[ing] - apos[ia];    double ir1  = 1/h1.normalize();
     Vec3d h2 = apos[jng] - apos[ia];    double ir2  = 1/h2.normalize();
-    double c = h1.dot(h2)*(ir1*ir2);
+    double c = h1.dot(h2);
     Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
     hf1 = h2 - h1*c;
     hf2 = h1 - h2*c;
-    double fang = -K/(1.02-c);
+    double c_ = c+1.0;
+    double E = K*c_*c_;
+    double fang = -K*c_*2;
     hf1.mul( fang*ir1 );
     hf2.mul( fang*ir2 );
+    
+    //if(bDEBUG_plot){
+    if(ia==7){
+        //printf( "evalAngle_cos [%i|%i,%i,%i] c(%g,%g) \n", iDEBUG_pick, ia, ing, jng, hf1.dot(h1), hf1.dot(h1)  );
+        //printf( "evalAngle_cos [%i|%i,%i,%i] c %g c_ %g fang_ %g E %g \n", iDEBUG_pick, ia, ing, jng, c, c_, fang, E );
+        //printf( "evalAngle_cos bDEBUG_plot [%i|%i,%i] iDEBUG_pick %i \n", ia, ing, jng, iDEBUG_pick );
+        glColor3f(1.,0.,0.);
+        Draw3D::drawVecInPos(  hf1, apos[ing] );
+        Draw3D::drawVecInPos(  hf2, apos[jng] );
+        Draw3D::drawVecInPos(  (hf1+hf2)*-1.0, apos[ia] );
+    }
+
     fapos[ing].add( hf1     );
     fapos[jng].add( hf2     );
     fapos[ia].sub( hf1+hf2 );
+    return E;
+}
+
+inline double evalSigmaPi( int ia, int ing, int ipi, double K ){
+    //Vec3d h1,h2;
+    //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
+    Vec3d h1 = apos[ing] - apos[ia];    double ir1  = 1/h1.normalize();
+    Vec3d h2 = pipos[ipi];              //double ir2  = 1/h2.normalize();
+    double c = h1.dot(h2);
+    Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
+    hf1 = h2 - h1*c;
+    hf2 = h1 - h2*c;
+    double E = K*c*c;
+    double fang = -K*c*2;
+    hf1.mul( fang*ir1 );
+    hf2.mul( fang     );
+    fapos[ing ].add( hf1 );
+    fpipos[ipi].add( hf2 );
+    fapos[ia].sub( hf1+hf2 );
+    return E;
+}
+
+inline double evalPiPi( int ia, int ipi, int jpi, double K ){
+    //Vec3d h1,h2;
+    //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
+    Vec3d h1 = pipos[ipi];   // double ir1  = 1/h1.normalize();
+    Vec3d h2 = pipos[jpi];   //double ir2  = 1/h2.normalize();
+    double c = h1.dot(h2);
+    Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
+    hf1 = h2 - h1*c;
+    hf2 = h1 - h2*c;
+    double E = K*c*c;
+    double fang = -K*c*2;
+    hf1.mul( fang );
+    hf2.mul( fang );
+    fapos [ipi].add( hf1 );
+    fpipos[jpi].add( hf2 );
+    fapos[ia].sub( hf1+hf2 );
+    return E;
 }
 
 double eval_bond(int ib){
     //printf( "bond %i\n", ib );
     Vec2i iat = bond2atom[ib];
     Vec3d f; f.set_sub( apos[iat.y], apos[iat.x] );
-    if(pbcShifts)f.add( pbcShifts[ib] );
+    //if(pbcShifts)f.add( pbcShifts[ib] );
     //printf( "bond[%i|%i,%i] (%g,%g,%g) (%g,%g,%g) \n", ib,iat.a,iat.b, apos[iat.x].x, apos[iat.x].y, apos[iat.x].z, apos[iat.y].x, apos[iat.y].y, apos[iat.y].z );
     double l = f.normalize();
     //printf( "bond[%i|%i,%i] (%g,%g,%g) %g \n", ib,iat.a,iat.b, f.x, f.y, f.z, l );
@@ -132,10 +202,15 @@ double eval_bond(int ib){
     const double k = bond_k[ib];
     double dl = (l-bond_l0[ib]);
     f.mul( dl*k*2 );
+
+    //glColor3f(1.,0.,0.);
+    //Draw3D::drawVecInPos(  f, apos[iat.x] );
+    //Draw3D::drawVecInPos(  f, apos[iat.y] );
+
     fapos[iat.x].add( f );
     fapos[iat.y].sub( f );
     double E = k*dl*dl;
-
+    /*
     // --- Pi Bonds
     double Epi = 0;
     if(doPi){ // interaction between pi-bonds of given atom
@@ -151,22 +226,33 @@ double eval_bond(int ib){
             }
         }
     }
-    Ep += Epi;
-    return E+Ep;
+    E += Epi;
+    */
+    return E;
 }
 
 double eval_neighs(int ia){
     double E=0;
+    int ioff = ia*nneigh_max;
+    //bool bDEBUG=(ia==7);
+    //if(bDEBUG)printf( "#-atom[%i] [%i,%i,%i,%i] \n", ia, aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3] );
     for(int i=0; i<nneigh_max; i++){
-        int    ing = aneighs[i];
-        double Ki  = Kneighs[i];
-        if( ing<0 ){ break; // empty
-        }else if( ing<ipi0 ){ // signa-bonds
-            for(int j=0; j<i; j++){
-                int jng  = aneighs[j];
-                //if( jng<0 ) break;
-                double K = Kneighs[j]*Ki;
-                evalAngle_cos( ia, ing, jng, K );
+        int    ing = aneighs[ioff+i];
+        double Ki  = Kneighs[ioff+i];
+        bool bipi=ing<0;
+        //if( ing<0 ){ break; // empty
+        //}else if( ing<ipi0 ){ // signa-bonds
+        for(int j=i+1; j<nneigh_max; j++){
+            int jng  = aneighs[ioff+j];
+            bool bjpi=jng<0;
+            double K = Kneighs[ioff+j]*Ki;
+            K = 1.0;
+            if( bipi ){
+                if(bjpi){ return evalPiPi     ( ia, -ing-1, -jng-1, K ); }
+                else    { return evalSigmaPi  ( ia, jng, -ing-1, K );    }  
+            }else{
+                if(bjpi){ return evalSigmaPi  ( ia, ing, -jng-1, K ); }
+                else    { return evalAngle_cos( ia, ing, jng, K );    }  
             }
         }
     }
@@ -181,15 +267,20 @@ double eval_bonds(){
 
 double eval_neighs(){
     double E=0;
-    for(int ia=0; ia<natoms; ia++){ E+=eval_neighs(ia); }
+    iDEBUG_n=0;
+    for(int ia=0; ia<nnode; ia++){ E+=eval_neighs(ia); }
     return E;
 }
 
 double eval( bool bClean=true ){
-    printf( "DEBUG MMFFsp3.eval() 1 \n" );
-    if(bClean)cleanAtomForce();     printf( "DEBUG MMFFsp3.eval() 2 \n" );
-    Eb = eval_bonds();              printf( "DEBUG MMFFsp3.eval() 3 \n" );
-    Ea = eval_neighs();             printf( "DEBUG MMFFsp3.eval() 4 \n" );
+    //printf( "DEBUG MMFFsp3.eval() 1 \n" );
+    if(bClean){
+        cleanAtomForce();   //printf( "DEBUG MMFFsp3.eval() 2 \n" );
+        cleanPiForce();     //printf( "DEBUG MMFFsp3.eval() 3 \n" );
+    }
+    normalizePi();
+    Eb = eval_bonds();              //printf( "DEBUG MMFFsp3.eval() 4 \n" );
+    Ea = eval_neighs();           //printf( "DEBUG MMFFsp3.eval() 4 \n" );
     return Eb+Ea+Ep;
 };
 
@@ -217,6 +308,12 @@ void bond2neighs(){
     }
     int ipi=0;
     for(int i=0; i<nn; i++){ if(aneighs[i]<0){ aneighs[i]=ipi; ipi++; }; };
+}
+
+void printBonds(){
+    for(int i=0;i<nbonds;i++){
+        printf( "bond[%i|%i,%i] l0 %g k %g \n", i, bond2atom[i].i,bond2atom[i].j, bond_l0[i], bond_k[i] );
+    }
 }
 
 
