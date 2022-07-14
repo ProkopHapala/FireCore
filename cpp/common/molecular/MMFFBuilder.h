@@ -1373,8 +1373,9 @@ void updatePBC( Vec3d* pbcShifts ){
         int npi,ne; ne=countPiE( npi );
         int nconf = confs.size();
         int ncap  = atoms.size() - nconf;
+        int nb = bonds.size();
         printf(  "DEBUG MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
-        if(bRealloc) ff.realloc( nconf, bonds.size(), npi, ncap+ne );
+        if(bRealloc) ff.realloc( nconf, nb+ne, npi, ncap+ne );
         export_apos     ( ff.apos );
         export_atypes   ( ff.atype );
         export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k );
@@ -1382,7 +1383,8 @@ void updatePBC( Vec3d* pbcShifts ){
         Vec3d hs[N_NEIGH_MAX];
         int ipi=0;
         //int ja=0;
-        int ie = nconf+ncap;
+        int ie0=nconf+ncap;
+        int iie = 0;
         for(int ia=0; ia<atoms.size(); ia++ ){
             int ic = atoms[ia].iconf;
             //printf( "atom[%i] iconf %i \n", ia, ic,   );
@@ -1412,11 +1414,16 @@ void updatePBC( Vec3d* pbcShifts ){
                 }
                 // e-cap
                 for(int k=conf.nbond; k<conf.nbond+conf.ne; k++ ){
+                    int ie=ie0+iie;
                     ff.apos[ie]=atoms[ia].pos + hs[k]*0.5;
                     ff.atype[ie] = -1; // electon-pair type
                     ngs[k] = ie;
+                    int ib=nb+iie;
+                    ff.bond2atom[ib]=(Vec2i){ia,ie};
+                    ff.bond_l0  [ib]=0.5;
+                    ff.bond_k   [ib]=defaultBond.k;
                     //ngs[k]=0;
-                    ie++;
+                    iie++;
                 }
                 for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }
                 printf( "] \n" );

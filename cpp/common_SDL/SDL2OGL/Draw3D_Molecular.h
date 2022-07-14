@@ -100,6 +100,13 @@ void atomPropertyLabel( int n, double* data, Vec3d* ps, int pitch, int offset, i
     }
 }
 
+void bonds( int n, const Vec2i* b2a, const Vec3d* apos){
+    for(int i=0; i<n; i++){
+        Vec2i b = b2a[i];
+        Draw3D::drawLine( apos[b.b], apos[b.a] );
+    }
+}
+
 void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, const Mat3d& lvec ){
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
