@@ -19,7 +19,7 @@ class MMFFsp3{ public:
     double * DOFs  = 0;   // degrees of freedom
     double * fDOFs = 0;   // forces
 
-    bool doPi=0;
+    bool doPi=1;
     int  ipi0=0;
     int   * atype=0;
     Vec3d * apos=0;
@@ -83,15 +83,7 @@ void normalizePi   (){ for(int i=0; i<npi;    i++){ pipos[i].normalize(); } }
 
 int i_DEBUG = 0;
 
-
-inline double evalPi( const Vec2i& at, int ipi, int jpi, double K ){  // interaction between two pi-bonds
-    // E = -K*<pi|pj>^2
-    //Vec3d d = apos[at.a]-apos[at.b];
-    double c = pipos[ipi].dot(  pipos[jpi] );
-    return K * c*c;
-}
-
-inline double evalAngle_dist( int ia, int ing, int jng, double K ){
+inline double evalSigmaSigma_dist( int ia, int ing, int jng, double K ){
     //K = -1.0;
     //  E = -K*|pi-pj|
     // ToDo: This may be made more efficient if we store hbonds
@@ -100,25 +92,21 @@ inline double evalAngle_dist( int ia, int ing, int jng, double K ){
     Vec3d hj = apos[jng] - apos[ia];    double rj  = hj.normalize();
     Vec3d fi  = d* K;
     Vec3d fj  = d*-K;
-    
-    //Vec3d fiT = hi* hi.dot(fi);   fi.sub(fiT);
-    //Vec3d fjT = hj* hj.dot(fj);   fj.sub(fjT);
-
+    Vec3d fiT = hi* hi.dot(fi);   fi.sub(fiT);
+    Vec3d fjT = hj* hj.dot(fj);   fj.sub(fjT);
     //printf(  "ang[%i|%i,%i] c1 %g c2 %g \n", ia, ing, jng, hi.dot(fi), hj.dot(fj)  );
-    
-    glColor3f(1.,0.,0.);
-    Draw3D::drawVecInPos(  fi, apos[ing] );
-    Draw3D::drawVecInPos(  fj, apos[jng] );
+    //glColor3f(1.,0.,0.);
+    //Draw3D::drawVecInPos(  fi, apos[ing] );
+    //Draw3D::drawVecInPos(  fj, apos[jng] );
     //Draw3D::drawVecInPos(  fjT+fiT, apos[ia] );
-    
-    //fapos[ia] .add(fiT);
-    //fapos[ia] .add(fjT);
+    fapos[ia] .add(fiT);
+    fapos[ia] .add(fjT);
     fapos[ing].add(fi );
     fapos[jng].add(fj );
     return K*rij;
 }
 
-inline double evalAngle_cos(  int ia, int ing, int jng, double K ){
+inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
     //Vec3d h1,h2;
     //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
     Vec3d h1 = apos[ing] - apos[ia];    double ir1  = 1/h1.normalize();
@@ -132,18 +120,16 @@ inline double evalAngle_cos(  int ia, int ing, int jng, double K ){
     double fang = -K*c_*2;
     hf1.mul( fang*ir1 );
     hf2.mul( fang*ir2 );
-    
     //if(bDEBUG_plot){
-    if(ia==7){
-        //printf( "evalAngle_cos [%i|%i,%i,%i] c(%g,%g) \n", iDEBUG_pick, ia, ing, jng, hf1.dot(h1), hf1.dot(h1)  );
-        //printf( "evalAngle_cos [%i|%i,%i,%i] c %g c_ %g fang_ %g E %g \n", iDEBUG_pick, ia, ing, jng, c, c_, fang, E );
-        //printf( "evalAngle_cos bDEBUG_plot [%i|%i,%i] iDEBUG_pick %i \n", ia, ing, jng, iDEBUG_pick );
-        glColor3f(1.,0.,0.);
-        Draw3D::drawVecInPos(  hf1, apos[ing] );
-        Draw3D::drawVecInPos(  hf2, apos[jng] );
-        Draw3D::drawVecInPos(  (hf1+hf2)*-1.0, apos[ia] );
-    }
-
+    // //if(ia==7){
+    //     //printf( "evalAngle_cos [%i|%i,%i,%i] c(%g,%g) \n", iDEBUG_pick, ia, ing, jng, hf1.dot(h1), hf1.dot(h1)  );
+    //     //printf( "evalAngle_cos [%i|%i,%i,%i] c %g c_ %g fang_ %g E %g \n", iDEBUG_pick, ia, ing, jng, c, c_, fang, E );
+    //     //printf( "evalAngle_cos bDEBUG_plot [%i|%i,%i] iDEBUG_pick %i \n", ia, ing, jng, iDEBUG_pick );
+    //     glColor3f(1.,0.,0.);
+    //     Draw3D::drawVecInPos(  hf1, apos[ing] );
+    //     Draw3D::drawVecInPos(  hf2, apos[jng] );
+    //     Draw3D::drawVecInPos(  (hf1+hf2)*-1.0, apos[ia] );
+    // }
     fapos[ing].add( hf1     );
     fapos[jng].add( hf2     );
     fapos[ia].sub( hf1+hf2 );
@@ -169,7 +155,7 @@ inline double evalSigmaPi( int ia, int ing, int ipi, double K ){
     return E;
 }
 
-inline double evalPiPi( int ia, int ipi, int jpi, double K ){
+inline double evalPiPi_T( int ia, int ipi, int jpi, double K ){
     //Vec3d h1,h2;
     //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
     Vec3d h1 = pipos[ipi];   // double ir1  = 1/h1.normalize();
@@ -182,11 +168,41 @@ inline double evalPiPi( int ia, int ipi, int jpi, double K ){
     double fang = -K*c*2;
     hf1.mul( fang );
     hf2.mul( fang );
-    fapos [ipi].add( hf1 );
+    fpipos[ipi].add( hf1 );
     fpipos[jpi].add( hf2 );
     fapos[ia].sub( hf1+hf2 );
     return E;
 }
+
+
+inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // interaction between two pi-bonds
+    // E = -K*<pi|pj>^2
+    //Vec3d d = apos[at.a]-apos[at.b];
+    Vec3d h1 = pipos[ipi];   // double ir1  = 1/h1.normalize();
+    Vec3d h2 = pipos[jpi];   //double ir2  = 1/h2.normalize();
+    double c = h1.dot(h2);
+    Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
+    hf1 = h2 - h1*c;
+    hf2 = h1 - h2*c;
+    double c_=c-1;
+    double c2=c*c;
+    double E    =  K*c2;
+    double fang = -K*c*4;
+    //double E    =  K*c2*c2;
+    //double fang = -K*c2*c*4;
+    hf1.mul( fang );
+    hf2.mul( fang );
+
+    glColor3f(1.,0.,0.);
+    Draw3D::drawVecInPos(  hf1*100.0, apos[at.x]+pipos[ipi] );
+    Draw3D::drawVecInPos(  hf2*100.0, apos[at.y]+pipos[jpi] );
+
+    fpipos[ipi].add( hf1 );
+    fpipos[jpi].add( hf2 );
+    //fapos[ia].sub( hf1+hf2 );
+    return E;
+}
+
 
 double eval_bond(int ib){
     //printf( "bond %i\n", ib );
@@ -210,24 +226,24 @@ double eval_bond(int ib){
     fapos[iat.x].add( f );
     fapos[iat.y].sub( f );
     double E = k*dl*dl;
-    /*
+    
     // --- Pi Bonds
     double Epi = 0;
     if(doPi){ // interaction between pi-bonds of given atom
-        int i0=(iat.a+1)*nneigh_max;
-        int j0=(iat.b+1)*nneigh_max;
-        for(int i=-1;i>=-2;i--){
+        int i0=iat.i*nneigh_max;
+        int j0=iat.j*nneigh_max;
+        for(int i=2;i<3;i++){
             int ipi=aneighs[i0+i];
-            if(ipi<ipi0) continue;
-            for(int j=-1;j>=-2;j--){
+            if(ipi>=0) continue;
+            for(int j=2;j<3;j++){
                 int jpi=aneighs[j0+j];
-                if(jpi<ipi0) continue;
-                Epi += evalPi( iat, ipi0-ipi,ipi0-jpi, Kneighs[i0+i]*Kneighs[j0+j] );
+                if(jpi>=0) continue;
+                Epi += evalPiPi_I( iat, -ipi-1,-jpi-1, Kneighs[i0+i]*Kneighs[j0+j] );
             }
         }
     }
     E += Epi;
-    */
+    
     return E;
 }
 
@@ -248,11 +264,14 @@ double eval_neighs(int ia){
             double K = Kneighs[ioff+j]*Ki;
             K = 1.0;
             if( bipi ){
-                if(bjpi){ return evalPiPi     ( ia, -ing-1, -jng-1, K ); }
-                else    { return evalSigmaPi  ( ia, jng, -ing-1, K );    }  
+                if(bjpi){ E+= evalPiPi_T   ( ia, -ing-1, -jng-1, K ); }
+                else    { E+= evalSigmaPi  ( ia, jng, -ing-1, K );    }  
             }else{
-                if(bjpi){ return evalSigmaPi  ( ia, ing, -jng-1, K ); }
-                else    { return evalAngle_cos( ia, ing, jng, K );    }  
+                if(bjpi){ E+= evalSigmaPi  ( ia, ing, -jng-1, K ); }
+                else    { 
+                    //E+= evalSigmaSigma_dist( ia, ing, jng, K );    
+                    E+= evalSigmaSigma_cos( ia, ing, jng, K );    
+                }  
             }
         }
     }
