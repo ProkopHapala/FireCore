@@ -514,7 +514,13 @@ void TestAppMMFFsp3::draw(){
 
             // --- Eval Forces
             ff.cleanAtomForce();
-            E += ff.eval(false);
+            E += ff.eval(true);
+
+            if( isnan( E) ){ 
+                printf("ERROR : E=ff.eval() is NaN  \n"); 
+                ff.checkNaNs();
+                exit(0); 
+            }
             if(bNonBonded){ E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} ); }
             if(ipicked>=0){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.fapos[ipicked].add( f ); };
             for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
@@ -533,7 +539,7 @@ void TestAppMMFFsp3::draw(){
 
     //drawSystem();
     //glColor3f(0.,0.,0.); drawBonds( ff );
-    //drawSystem(true,true,false);
+    drawSystem(true,true,false);
     drawNeighs( ff, 0.0 );
 
     //glColor3f(0.,0.,0.); drawBonds( builder );
@@ -601,6 +607,9 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ff.iDEBUG_pick=ipicked;
+                    printf( "ipicked %i \n", ipicked );
                     /*
                     ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
