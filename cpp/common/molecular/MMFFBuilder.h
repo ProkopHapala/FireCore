@@ -1428,7 +1428,7 @@ void updatePBC( Vec3d* pbcShifts ){
                 for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }
                 printf( "] \n" );
             }
-            
+            for(int i=0; i<ff.natoms; i++){ ff.Kneighs[i]=1.0; }
         }
         printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
     }

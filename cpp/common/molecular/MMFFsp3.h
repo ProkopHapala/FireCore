@@ -19,6 +19,7 @@ class MMFFsp3{ public:
     double * DOFs  = 0;   // degrees of freedom
     double * fDOFs = 0;   // forces
 
+    double Kpi = 0.1;
     bool doPi=1;
     int  ipi0=0;
     int   * atype=0;
@@ -168,11 +169,40 @@ inline double evalPiPi_T( int ia, int ipi, int jpi, double K ){
     double fang = -K*c*2;
     hf1.mul( fang );
     hf2.mul( fang );
+
+    if( (ia==iDEBUG_pick) ){
+        printf( "evalPiPi_I ia(%i) ipi,jpi(%i,%i) fang %g c %g \n", ia,  ipi,jpi, fang, c );
+        glColor3f(1.,0.,0.);
+        Draw3D::drawVecInPos(  hf1*100.0, apos[ia]+pipos[ipi] );
+        Draw3D::drawVecInPos(  hf2*100.0, apos[ia]+pipos[jpi] );
+    }
+
     fpipos[ipi].add( hf1 );
     fpipos[jpi].add( hf2 );
     fapos[ia].sub( hf1+hf2 );
     return E;
 }
+
+inline void orthogonalizePiPi( int ia, int ipi, int jpi ){
+    Vec3d hi = pipos[ipi];   // double ir1  = 1/h1.normalize();
+    Vec3d hj = pipos[jpi];   //double ir2  = 1/h2.normalize();
+    //double c = h1.dot(h2);
+    //double c = hi.dot( hj );
+    Vec3d ha = hi + hj; ha.normalize(); // ToDo : this can be done more efficiently
+    Vec3d hb = hi - hj; hb.normalize();
+    //double ca = sqrt( 0.5*(1+c) );
+    //double sa = sqrt( 0.5*(1-c) );
+    glColor3f(0.,0.,1.);
+    Draw3D::drawVecInPos(  ha, apos[ia]);
+    Draw3D::drawVecInPos(  hb, apos[ia] );
+    pipos[ipi] = ha*0.70710678118 + hb* 0.70710678118;
+    pipos[jpi] = ha*0.70710678118 + hb*-0.70710678118;
+
+    glColor3f(0.,0.7,1.);
+    Draw3D::drawVecInPos(  pipos[ipi], apos[ia] );
+    Draw3D::drawVecInPos(  pipos[jpi], apos[ia] );
+    
+};
 
 
 inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // interaction between two pi-bonds
@@ -184,19 +214,23 @@ inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // int
     Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
     hf1 = h2 - h1*c;
     hf2 = h1 - h2*c;
-    double c_=c-1;
+    //double c_=c-1;
     double c2=c*c;
-    double E    =  K*c2;
-    double fang = -K*c*4;
+    double E    =  K*(c2-1);
+    double fang =  K*c*4;
     //double E    =  K*c2*c2;
-    //double fang = -K*c2*c*4;
+    //double fang = -K*c2*c_*4;
     hf1.mul( fang );
     hf2.mul( fang );
 
-    glColor3f(1.,0.,0.);
-    Draw3D::drawVecInPos(  hf1*100.0, apos[at.x]+pipos[ipi] );
-    Draw3D::drawVecInPos(  hf2*100.0, apos[at.y]+pipos[jpi] );
-
+    /*
+    if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){
+        //printf( "evalPiPi_I at(%i,%i) ipi,jpi(%i,%i) fang %g c %g \n", at.i, at.j,  ipi,jpi, fang, c );
+        glColor3f(1.,0.,0.);
+        Draw3D::drawVecInPos(  hf1*100.0, apos[at.x]+pipos[ipi] );
+        Draw3D::drawVecInPos(  hf2*100.0, apos[at.y]+pipos[jpi] );
+    }
+    */
     fpipos[ipi].add( hf1 );
     fpipos[jpi].add( hf2 );
     //fapos[ia].sub( hf1+hf2 );
@@ -206,8 +240,8 @@ inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // int
 
 double eval_bond(int ib){
     //printf( "bond %i\n", ib );
-    Vec2i iat = bond2atom[ib];
-    Vec3d f; f.set_sub( apos[iat.y], apos[iat.x] );
+    Vec2i at = bond2atom[ib];
+    Vec3d f; f.set_sub( apos[at.y], apos[at.x] );
     //if(pbcShifts)f.add( pbcShifts[ib] );
     //printf( "bond[%i|%i,%i] (%g,%g,%g) (%g,%g,%g) \n", ib,iat.a,iat.b, apos[iat.x].x, apos[iat.x].y, apos[iat.x].z, apos[iat.y].x, apos[iat.y].y, apos[iat.y].z );
     double l = f.normalize();
@@ -217,28 +251,38 @@ double eval_bond(int ib){
     //if(bondMasked)if(bondMasked[ib])return 0;
     const double k = bond_k[ib];
     double dl = (l-bond_l0[ib]);
-    f.mul( dl*k*2 );
+    double fr = dl*k*2;
+    f.mul( fr );
+
+    if( isnan( fr ) ){ printf("ERROR : eval_bond(%i); f %i is NaN  \n", ib, fr ); }
 
     //glColor3f(1.,0.,0.);
     //Draw3D::drawVecInPos(  f, apos[iat.x] );
     //Draw3D::drawVecInPos(  f, apos[iat.y] );
 
-    fapos[iat.x].add( f );
-    fapos[iat.y].sub( f );
+    fapos[at.x].add( f );
+    fapos[at.y].sub( f );
     double E = k*dl*dl;
     
+    if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){ 
+        int i0=at.i*nneigh_max;
+        int j0=at.j*nneigh_max;
+        //printf( "eval_bond at(%i,%i) ai[%i,%i,%i,%i] aj[%i,%i,%i,%i] \n", at.i, at.j,  aneighs[i0+0],aneighs[i0+1],aneighs[i0+2],aneighs[i0+3],   aneighs[j0+0],aneighs[j0+1],aneighs[j0+2],aneighs[j0+3] );
+    }
     // --- Pi Bonds
     double Epi = 0;
     if(doPi){ // interaction between pi-bonds of given atom
-        int i0=iat.i*nneigh_max;
-        int j0=iat.j*nneigh_max;
-        for(int i=2;i<3;i++){
-            int ipi=aneighs[i0+i];
+        int i0=at.i*nneigh_max;
+        int j0=at.j*nneigh_max;
+        for(int i=2;i<nneigh_max;i++){
+            int ipi   = aneighs[i0+i];
+            double Ki = Kneighs[i0+i] * Kpi;
             if(ipi>=0) continue;
-            for(int j=2;j<3;j++){
+            for(int j=2;j<nneigh_max;j++){
                 int jpi=aneighs[j0+j];
                 if(jpi>=0) continue;
-                Epi += evalPiPi_I( iat, -ipi-1,-jpi-1, Kneighs[i0+i]*Kneighs[j0+j] );
+                //if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){  printf(" i,j[%i,%i]->ipi,jpi[%i,%i,] \n",  i,j, ipi,jpi ); };
+                Epi += evalPiPi_I( at, -ipi-1,-jpi-1, Ki*Kneighs[j0+j] );
             }
         }
     }
@@ -262,9 +306,11 @@ double eval_neighs(int ia){
             int jng  = aneighs[ioff+j];
             bool bjpi=jng<0;
             double K = Kneighs[ioff+j]*Ki;
-            K = 1.0;
             if( bipi ){
-                if(bjpi){ E+= evalPiPi_T   ( ia, -ing-1, -jng-1, K ); }
+                if(bjpi){ 
+                    //E+= evalPiPi_T   ( ia, -ing-1, -jng-1, K ); 
+                    orthogonalizePiPi( ia, -ing-1, -jng-1 );
+                }
                 else    { E+= evalSigmaPi  ( ia, jng, -ing-1, K );    }  
             }else{
                 if(bjpi){ E+= evalSigmaPi  ( ia, ing, -jng-1, K ); }
@@ -298,8 +344,11 @@ double eval( bool bClean=true ){
         cleanPiForce();     //printf( "DEBUG MMFFsp3.eval() 3 \n" );
     }
     normalizePi();
+
     Eb = eval_bonds();              //printf( "DEBUG MMFFsp3.eval() 4 \n" );
+    if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds(); is NaN  \n"); checkNaNs(); exit(0); }
     Ea = eval_neighs();           //printf( "DEBUG MMFFsp3.eval() 4 \n" );
+    if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     return Eb+Ea+Ep;
 };
 
@@ -328,6 +377,16 @@ void bond2neighs(){
     int ipi=0;
     for(int i=0; i<nn; i++){ if(aneighs[i]<0){ aneighs[i]=ipi; ipi++; }; };
 }
+
+void checkNaNs(){
+    for(int i=0; i<natoms; i++){
+        if( isnan(fapos[i].x) || isnan(fapos[i].x) || isnan(fapos[i].x) ){ printf( "fatoms[%i] is NaN (%g,%g,%g)\n", i, fapos[i].x,fapos[i].y,fapos[i].z ); };
+    }
+    for(int i=0; i<npi; i++){
+        if( isnan(fpipos[i].x) || isnan(fpipos[i].x) || isnan(fpipos[i].x) ){ printf( "fpipos[%i] is NaN (%g,%g,%g)\n", i, fpipos[i].x,fpipos[i].y,fpipos[i].z ); };
+    }
+}
+
 
 void printBonds(){
     for(int i=0;i<nbonds;i++){
