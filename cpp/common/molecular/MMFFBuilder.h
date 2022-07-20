@@ -1175,11 +1175,13 @@ class Builder{  public:
         }
     }
 
-    int loadMolTypeXYZ(const char* fname, const MMFFparams* params ){
+    int loadMolTypeXYZ(const char* fname, MMFFparams* params_=0 ){
+        if(params_!=0) params=params_;
         Molecule* mol = new Molecule();      //printf( "DEBUG 1.1.1 \n" );
         mol->atomTypeDict = &params->atomTypeDict; //printf( "DEBUG 1.1.2 \n" );
         //printf("mol->atypNames %i %i \n", mol->atypNames, &params->atypNames );
-        mol->loadXYZ( fname );             //printf( "DEBUG 1.1.3 \n" );
+        //mol->loadXYZ( fname );             //printf( "DEBUG 1.1.3 \n" );
+        mol->load_xyz( fname );
         if(params) params->assignREs( mol->natoms, mol->atomType, mol->REQs ); //printf( "DEBUG 1.1.4 \n" );
         int ityp = molTypes.size();
         mol2molType[(size_t)mol]=ityp;
@@ -1197,7 +1199,7 @@ class Builder{  public:
         return molTypes.size()-1;
     }
 
-    int loadMolType(const std::string& fname, const std::string& label, const MMFFparams* params ){
+    int loadMolType(const std::string& fname, const std::string& label, MMFFparams* params=0 ){
         //printf( "fname:`%s` label:`%s` \n", fname.c_str(), label.c_str()  );
         int itype = loadMolTypeXYZ( fname.c_str(), params );
         //printf( "fname:`%s` label:`%s` itype %i \n", fname.c_str(), label.c_str(), itype  );
@@ -1271,6 +1273,7 @@ class Builder{  public:
     }
 
     int insertRigidMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot ){
+        printf( "insertRigidMolecule() \n" );
         int natoms0 = atoms.size();
         Quat4d qrot; qrot.fromMatrix(rot);
         int ifrag = frags.size();
@@ -1307,14 +1310,11 @@ class Builder{  public:
         }
     }
 
-    int insertMolecule( int itype, const Vec3d& pos, const Mat3d& rot, bool rigid ){
-        return insertMolecule( molTypes[itype], pos, rot, rigid );
-    };
+    int insertMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, bool rigid ){ return insertMolecule( molTypes[itype]                 , pos, rot, rigid ); }
+    int insertMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, bool rigid ){ return insertMolecule( molTypes[ molTypeDict[molName] ], pos, rot, rigid ); }
 
-    int insertMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, bool rigid ){
-        //printf( "insertMolecule molName %s itype %i \n", molName.c_str(), molTypeDict[molName] );
-        return insertMolecule( molTypes[ molTypeDict[molName] ], pos, rot, rigid );
-    };
+    void insertFlexibleMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ insertFlexibleMolecule( molTypes[itype]                 , pos, rot, ignoreType ); }
+    void insertFlexibleMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ insertFlexibleMolecule( molTypes[ molTypeDict[molName] ], pos, rot, ignoreType ); }
 
 #endif // Molecule_h
 
@@ -1374,27 +1374,25 @@ void updatePBC( Vec3d* pbcShifts ){
         int nconf = confs.size();
         int ncap  = atoms.size() - nconf;
         int nb = bonds.size();
-        printf(  "DEBUG MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
+        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         if(bRealloc) ff.realloc( nconf, nb+ne, npi, ncap+ne );
-        export_apos     ( ff.apos );  printf(  "DEBUG toMMFFsp3() 1 \n"  );
-        export_atypes   ( ff.atype ); printf(  "DEBUG toMMFFsp3() 2 \n"  );
-        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k ); printf(  "DEBUG toMMFFsp3() 3 \n"  );
-        if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max );  } 
+        export_apos     ( ff.apos );  
+        export_atypes   ( ff.atype );
+        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k ); 
+        if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max ); exit(0); } 
         Vec3d hs[N_NEIGH_MAX];
         int ipi=0;
         //int ja=0;
         int ie0=nconf+ncap;
         int iie = 0;
-        printf(  "DEBUG toMMFFsp3() 4 \n"  );
         for(int i=0; i<ff.nnode*ff.nneigh_max; i++){ ff.Kneighs[i]=K_sigma; }
-        printf(  "DEBUG toMMFFsp3() 5 \n"  );
         for(int ia=0; ia<atoms.size(); ia++ ){
             //printf( "atom[%i] \n", ia  );
             int ic = atoms[ia].iconf;
             //printf( "atom[%i] iconf %i \n", ia, ic  );
             if(ic>=0){
                 AtomConf& conf = confs[ic];
-                printf( "atom[%i] iconf %i n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
+                if(verbosity>1)printf( "atom[%i] iconf %i n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
                 int*    ngs  = ff.aneighs + ia*N_NEIGH_MAX;
                 double* kngs = ff.Kneighs + ia*N_NEIGH_MAX;
                 // -- atoms
@@ -1433,11 +1431,11 @@ void updatePBC( Vec3d* pbcShifts ){
                     //ngs[k]=0;
                     iie++;
                 }
-                for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" );
+                if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
             }
         }
-        printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
-        printf(  "DEBUG MM:Builder::toMMFFsp3() DONE \n"  );
+        //printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
+        if(verbosity>0)printf(  "DEBUG MM:Builder::toMMFFsp3() DONE \n"  );
     }
 #endif // MMFFmini_h
 

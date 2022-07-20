@@ -386,7 +386,7 @@ class Molecule{ public:
     }
 
     int load_xyz( const char * fname, int verbosity=0 ){
-        if(verbosity>0)printf( "Molecule.load_xyz(%s)\n", fname );
+        if(verbosity>0)printf( "Molecule::load_xyz(%s)\n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -416,7 +416,8 @@ class Molecule{ public:
         return natoms;
     }
 
-    int loadXYZ(const char* fname ){
+    int loadXYZ(const char* fname, int verbosity=0 ){
+        if(verbosity>0)printf( "Molecule::loadXYZ(%s)\n", fname );
         // xxxxx.xxxxyyyyy.yyyyzzzzz.zzzz aaaddcccssshhhbbbvvvHHHrrriiimmmnnneee
         // http://www.daylight.com/meetings/mug05/Kappler/ctfile.pdf
         FILE * pFile = fopen(fname,"r");
@@ -424,24 +425,25 @@ class Molecule{ public:
             printf("cannot find %s\n", fname );
             return -1;
         }
-        char buff[1024];
+        const int nbuf=1024;
+        char buff[nbuf];
         char * line;
         int nl;
-        line = fgets( buff, 1024, pFile ); //printf("%s",line);
+        line = fgets( buff, nbuf, pFile ); //printf("%s",line);
         sscanf( line, "%i \n", &natoms );
         //printf("natoms %i \n", natoms );
         allocate(natoms,0);
         //allocate(natoms,nbonds);
-        line = fgets( buff, 1024, pFile ); // comment
+        line = fgets( buff, nbuf, pFile ); // comment
         for(int i=0; i<natoms; i++){
             //char ch;
             char at_name[8];
             double junk;
-            line = fgets( buff, 1024, pFile );  //printf("%s",line);
-            double Q;
-            int nret = sscanf( line, "%s %lf %lf %lf %lf\n", at_name, &pos[i].x, &pos[i].y, &pos[i].z, &Q );
-            if( nret >= 5 ){  REQs[i].z=Q; }else{ REQs[i].z=0; };
-            printf(       "mol[%i] %s %lf %lf %lf  %lf    *atomTypeDict %i\n", i,  at_name, pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z, atomTypeDict );
+            line = fgets( buff, nbuf, pFile );  //printf("%s",line);
+            int nret = sscanf( line, "%s %lf %lf %lf %lf\n", at_name, &pos[i].x, &pos[i].y, &pos[i].z, &REQs[i].z, &npis[i] );
+            if( nret < 5 ){ REQs[i].z= 0; };
+            if( nret < 6 ){ npis[i]  =-1; };
+            if(verbosity>1)printf(       "mol[%i] %s %lf %lf %lf  %lf    *atomTypeDict %i\n", i,  at_name, pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z, atomTypeDict );
             // atomType[i] = atomChar2int( ch );
             auto it = atomTypeDict->find( at_name );
             if( it != atomTypeDict->end() ){
