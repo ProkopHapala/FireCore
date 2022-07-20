@@ -264,7 +264,7 @@ inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // int
 double eval_bond(int ib){
     //printf( "eval_bond[%i/%i]\n", ib, nbonds );
     Vec2i at = bond2atom[ib];
-    printf( "eval_bond[%i/%i] at(%i,%i)\n", ib, nbonds, at.i, at.j );
+    //printf( "eval_bond[%i/%i] at(%i,%i)\n", ib, nbonds, at.i, at.j );
     Vec3d f; f.set_sub( apos[at.y], apos[at.x] );
     //if(pbcShifts)f.add( pbcShifts[ib] );
     //printf( "bond[%i|%i,%i] (%g,%g,%g) (%g,%g,%g) \n", ib,iat.a,iat.b, apos[iat.x].x, apos[iat.x].y, apos[iat.x].z, apos[iat.y].x, apos[iat.y].y, apos[iat.y].z );
@@ -367,15 +367,14 @@ double eval_neighs(){
 
 double eval( bool bClean=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
-    DEBUG
     if(bClean){
-        cleanAtomForce();  DEBUG //printf( "DEBUG MMFFsp3.eval() 2 \n" );
-        cleanPiForce();    DEBUG //printf( "DEBUG MMFFsp3.eval() 3 \n" );
+        cleanAtomForce();  //printf( "DEBUG MMFFsp3.eval() 2 \n" );
+        cleanPiForce();    //printf( "DEBUG MMFFsp3.eval() 3 \n" );
     }
-    normalizePi(); DEBUG
-    ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );  DEBUG
-    Eb = eval_bonds();   DEBUG if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds(); is NaN  \n"); checkNaNs(); exit(0); }
-    Ea = eval_neighs();  DEBUG if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
+    normalizePi(); 
+    ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
+    Eb = eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds(); is NaN  \n"); checkNaNs(); exit(0); }
+    Ea = eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     return Eb+Ea+Ep;
 };
 
