@@ -236,10 +236,13 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     //builder.insertFlexibleMolecule(  molecules[0], {0,0,0}           , Mat3dIdentity, -1 );
     //builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
     
-    builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" );
-    builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" );    
-    builder.insertFlexibleMolecule( "polymer", {0,0,0}            , Mat3dIdentity, -1 );
-    builder.insertFlexibleMolecule( "monomer", builder.lvec.a*1.2 , Mat3dIdentity, -1 );
+    //builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" );
+    //builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" );    
+    //builder.insertFlexibleMolecule( "polymer", {0,0,0}            , Mat3dIdentity, -1 );
+    //builder.insertFlexibleMolecule( "monomer", builder.lvec.a*1.2 , Mat3dIdentity, -1 );
+
+    builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" ), {0,0,0}            , Mat3dIdentity, -1 );
+    builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), builder.lvec.a*1.2 , Mat3dIdentity, -1 );
 
 
     builder.lvec.a.x *= 2.3;
