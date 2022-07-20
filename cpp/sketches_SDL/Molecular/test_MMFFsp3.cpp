@@ -241,9 +241,10 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     //builder.insertFlexibleMolecule( "polymer", {0,0,0}            , Mat3dIdentity, -1 );
     //builder.insertFlexibleMolecule( "monomer", builder.lvec.a*1.2 , Mat3dIdentity, -1 );
 
-    builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" ), {0,0,0}            , Mat3dIdentity, -1 );
-    builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), builder.lvec.a*1.2 , Mat3dIdentity, -1 );
+    //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" ), {0,0,0}            , Mat3dIdentity, -1 );
+    //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), builder.lvec.a*1.2 , Mat3dIdentity, -1 );
 
+    builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
 
     builder.lvec.a.x *= 2.3;
 
@@ -278,17 +279,19 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     }else{
         printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
     }
+    DEBUG
     opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
     //opt.setInvMass( 1.0 );
     opt.cleanVel( );
-
+    DEBUG
     // ======== Test before we run
     if(verbosity>1)nff.printAtomParams();
-
     ckeckNaN_d( ff.natoms, ff.nneigh_max, ff.Kneighs, "ff.Kneighs" );
     ckeckNaN_d( ff.nbonds,             1, ff.bond_k,  "ff.bond_k"  );
-
+    DEBUG
+    //ff.doPi = 0;
     double E = ff.eval(true); printf( "DEBUG ff.eval() E = %g \n", E );
+    DEBUG
     //exit(0);
     //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
@@ -390,8 +393,9 @@ void TestAppMMFFsp3::draw(){
             
             // --- Move
             double f2;
-            //opt.move_MD( 0.001, 0.005 );
-            opt.move_GD( 0.01 );
+            //opt.move_MD( 0.02, 0.005 );
+            opt.move_FIRE();
+            //opt.move_GD( 0.01 );
             //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
             if(f2<sq(Ftol)){
                 bConverged=true;
