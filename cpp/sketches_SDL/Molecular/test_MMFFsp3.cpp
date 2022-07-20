@@ -112,7 +112,7 @@ void drawNeighs( const MMFFsp3& ff, double Fsc=0.0 ){
 
 class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 
-    int verbosity = 0;
+    int verbosity = 2;
 
 	Molecule    mol;
 	MMFFparams  params;
@@ -216,7 +216,7 @@ void  TestAppMMFFsp3::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 
 TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
-    verbosity = 1;
+    verbosity = 2;
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
@@ -244,7 +244,8 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" ), {0,0,0}            , Mat3dIdentity, -1 );
     //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), builder.lvec.a*1.2 , Mat3dIdentity, -1 );
 
-    builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
+    //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
+    builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer-correct_pi.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
 
     builder.lvec.a.x *= 2.3;
 
@@ -267,6 +268,9 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
 
     if(verbosity>1)ff.printNeighs();
     if(verbosity>1)ff.printBonds();
+
+    //ff.printNeighs();
+    //ff.printBonds();
 
     bNonBonded = false;
     if(bNonBonded){   
