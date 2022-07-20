@@ -412,8 +412,12 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     printf("DEBUG 6\n");
     // ======== Test before we run
     if(verbosity>1)nff.printAtomParams();
-
+    ff.printNeighs();
+    
     printf("DEBUG 7 \n");
+    ckeckNaN_d( ff.natoms, ff.nneigh_max, ff.Kneighs, "ff.Kneighs" );
+    ckeckNaN_d( ff.nbonds,             1, ff.bond_k,  "ff.bond_k"  );
+
     double E = ff.eval(true);
     printf( "iter0 E = %g \n", E );
     printf("TestAppMMFFsp3.init() DONE \n");
@@ -515,12 +519,13 @@ void TestAppMMFFsp3::draw(){
             // --- Eval Forces
             ff.cleanAtomForce();
             E += ff.eval(true);
-
+            /*
             if( isnan( E) ){ 
                 printf("ERROR : E=ff.eval() is NaN  \n"); 
                 ff.checkNaNs();
                 exit(0); 
             }
+            */
             if(bNonBonded){ E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} ); }
             if(ipicked>=0){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.fapos[ipicked].add( f ); };
             for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }

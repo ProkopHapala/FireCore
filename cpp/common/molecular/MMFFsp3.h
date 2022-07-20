@@ -10,6 +10,28 @@
 // ====   MMFFsp3
 // ======================
 
+
+bool isnan(Vec3d& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
+
+void ckeckNaN_d(int n, int m, double* xs, const char* pre ){
+    for(int i=0; i<n;i++){
+        bool b=false;
+        for(int j=0; j<m;j++){
+            int ij=i*m+j;
+            b|=isnan( xs[ij] );
+        }
+        if(b){
+            printf("%s[%i](", pre, i );
+            for(int j=0; j<m;j++){
+                int ij=i*m+j;
+                printf("%g,", xs[ij] );
+            }
+            printf(")\n");
+        }
+    }
+}
+
+
 class MMFFsp3{ public:
     static constexpr const int nneigh_max = 4;
     int  nDOFs=0,natoms=0,nnode=0,ncap=0,nbonds=0,npi=0;
@@ -54,25 +76,26 @@ void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
     printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
     _realloc( DOFs     , nDOFs );
     _realloc( fDOFs    , nDOFs );
+    printf( "MMFFsp3::realloc() 1 \n" );
     ipi0=natoms;
     _realloc( atype, natoms );
     apos   = (Vec3d*)DOFs ;
     fapos  = (Vec3d*)fDOFs;
     pipos  = apos  + ipi0;
     fpipos = fapos + ipi0;
-
+    printf( "MMFFsp3::realloc() 2 \n" );
     _realloc( bond2atom , nbonds );
     _realloc( bond_l0   , nbonds );
     _realloc( bond_k    , nbonds );
     //_realloc( lbond     , nbonds );
     //_realloc( hbond     , nbonds );
-
+    printf( "MMFFsp3::realloc() 3 \n" );
     if(bNeighs){
         int nn = nnode*nneigh_max;
         _realloc( aneighs, nn );
         _realloc( Kneighs, nn );
     }
-
+    printf( "MMFFsp3::realloc() DONE \n" );
 }
 
 void cleanAtomForce(){ for(int i=0; i<natoms; i++){ fapos [i].set(0.0); } }
@@ -223,6 +246,8 @@ inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // int
     hf1.mul( fang );
     hf2.mul( fang );
 
+    if( isnan( hf1 )||isnan( hf1 ) ){ printf("ERROR : evalPiPi_I(%i,%i|%i,%i); hf1(%g,%g,%g) hf2(%g,%g,%g) is NaN c %g k %g \n", at.i,at.j, ipi,jpi,  hf1.x,hf1.y,hf1.z,  hf2.x,hf2.y,hf2.z,  c, K ); }
+
     /*
     if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){
         //printf( "evalPiPi_I at(%i,%i) ipi,jpi(%i,%i) fang %g c %g \n", at.i, at.j,  ipi,jpi, fang, c );
@@ -253,15 +278,14 @@ double eval_bond(int ib){
     double dl = (l-bond_l0[ib]);
     double fr = dl*k*2;
     f.mul( fr );
-
-    if( isnan( fr ) ){ printf("ERROR : eval_bond(%i); f %i is NaN  \n", ib, fr ); }
-
+    if( isnan( f ) ){ printf("ERROR : eval_bond(%i); f(%g,%g,%g) is NaN fr %g k %g l0 %g \n", ib, f.x,f.y,f.z, fr, k, bond_l0[ib] ); }
     //glColor3f(1.,0.,0.);
     //Draw3D::drawVecInPos(  f, apos[iat.x] );
     //Draw3D::drawVecInPos(  f, apos[iat.y] );
-
+    
     fapos[at.x].add( f );
     fapos[at.y].sub( f );
+
     double E = k*dl*dl;
     
     if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){ 
@@ -337,6 +361,9 @@ double eval_neighs(){
     return E;
 }
 
+
+
+
 double eval( bool bClean=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
     if(bClean){
@@ -344,11 +371,9 @@ double eval( bool bClean=true ){
         cleanPiForce();     //printf( "DEBUG MMFFsp3.eval() 3 \n" );
     }
     normalizePi();
-
-    Eb = eval_bonds();              //printf( "DEBUG MMFFsp3.eval() 4 \n" );
-    if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds(); is NaN  \n"); checkNaNs(); exit(0); }
-    Ea = eval_neighs();           //printf( "DEBUG MMFFsp3.eval() 4 \n" );
-    if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
+    ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
+    Eb = eval_bonds();    if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds(); is NaN  \n"); checkNaNs(); exit(0); }
+    Ea = eval_neighs();   if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     return Eb+Ea+Ep;
 };
 
@@ -379,14 +404,18 @@ void bond2neighs(){
 }
 
 void checkNaNs(){
-    for(int i=0; i<natoms; i++){
-        if( isnan(fapos[i].x) || isnan(fapos[i].x) || isnan(fapos[i].x) ){ printf( "fatoms[%i] is NaN (%g,%g,%g)\n", i, fapos[i].x,fapos[i].y,fapos[i].z ); };
-    }
-    for(int i=0; i<npi; i++){
-        if( isnan(fpipos[i].x) || isnan(fpipos[i].x) || isnan(fpipos[i].x) ){ printf( "fpipos[%i] is NaN (%g,%g,%g)\n", i, fpipos[i].x,fpipos[i].y,fpipos[i].z ); };
-    }
+    //printf( "checkNaNs\n" );
+    ckeckNaN_d(natoms, 3, (double*)apos,  "apos" );
+    ckeckNaN_d(natoms, 3, (double*)fapos, "fapos" );
+    ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
+    ckeckNaN_d(npi, 3, (double*)fpipos, "fpipos" );
+    //for(int i=0; i<natoms; i++){
+    //    if( isnan(fapos[i].x) || isnan(fapos[i].x) || isnan(fapos[i].x) ){ printf( "fatoms[%i] is NaN (%g,%g,%g)\n", i, fapos[i].x,fapos[i].y,fapos[i].z ); };
+    //}
+    //for(int i=0; i<npi; i++){
+    //    if( isnan(fpipos[i].x) || isnan(fpipos[i].x) || isnan(fpipos[i].x) ){ printf( "fpipos[%i] is NaN (%g,%g,%g)\n", i, fpipos[i].x,fpipos[i].y,fpipos[i].z ); };
+    //}
 }
-
 
 void printBonds(){
     for(int i=0;i<nbonds;i++){
@@ -394,6 +423,21 @@ void printBonds(){
     }
 }
 
+void printNeighs(){
+    for(int i=0;i<nnode;i++){
+        printf( "atom[%i] neighs[", i );
+        for(int j=0;j<nneigh_max;j++){
+            int ij=i*nneigh_max + j;
+            printf( "%i,", aneighs[ij] );
+        }
+        printf( "] K(", i );
+        for(int j=0;j<nneigh_max;j++){
+            int ij=i*nneigh_max + j;
+            printf( "%g,", Kneighs[ij] );
+        }
+        printf( ")\n");
+    }
+}
 
 };
 
