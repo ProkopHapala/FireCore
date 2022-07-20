@@ -73,29 +73,29 @@ void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
     nnode=nnode_; ncap=ncap_; nbonds=nbonds_; npi=npi_; 
     natoms=nnode_+ncap_; 
     nDOFs = (natoms + npi)*3;
-    printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
+    //printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
     _realloc( DOFs     , nDOFs );
     _realloc( fDOFs    , nDOFs );
-    printf( "MMFFsp3::realloc() 1 \n" );
+    //printf( "MMFFsp3::realloc() 1 \n" );
     ipi0=natoms;
     _realloc( atype, natoms );
     apos   = (Vec3d*)DOFs ;
     fapos  = (Vec3d*)fDOFs;
     pipos  = apos  + ipi0;
     fpipos = fapos + ipi0;
-    printf( "MMFFsp3::realloc() 2 \n" );
+    //printf( "MMFFsp3::realloc() 2 \n" );
     _realloc( bond2atom , nbonds );
     _realloc( bond_l0   , nbonds );
     _realloc( bond_k    , nbonds );
     //_realloc( lbond     , nbonds );
     //_realloc( hbond     , nbonds );
-    printf( "MMFFsp3::realloc() 3 \n" );
+    //printf( "MMFFsp3::realloc() 3 \n" );
     if(bNeighs){
         int nn = nnode*nneigh_max;
         _realloc( aneighs, nn );
         _realloc( Kneighs, nn );
     }
-    printf( "MMFFsp3::realloc() DONE \n" );
+    //printf( "MMFFsp3::realloc() DONE \n" );
 }
 
 void cleanAtomForce(){ for(int i=0; i<natoms; i++){ fapos [i].set(0.0); } }
@@ -418,12 +418,14 @@ void checkNaNs(){
 }
 
 void printBonds(){
+    printf( "MMFFsp3::printBonds() : \n" );
     for(int i=0;i<nbonds;i++){
         printf( "bond[%i|%i,%i] l0 %g k %g \n", i, bond2atom[i].i,bond2atom[i].j, bond_l0[i], bond_k[i] );
     }
 }
 
 void printNeighs(){
+    printf( "MMFFsp3::printNeighs() : \n" );
     for(int i=0;i<nnode;i++){
         printf( "atom[%i] neighs[", i );
         for(int j=0;j<nneigh_max;j++){

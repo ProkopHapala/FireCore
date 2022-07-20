@@ -124,8 +124,7 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
     int* atypes = 0;
 
     bool bNonBonded = true;
-
-    std::vector<Molecule*> molecules;
+    //std::vector<Molecule*> molecules;
 
     std::vector<int> selection;
     bool bDragging = false;
@@ -166,12 +165,6 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 	//virtual void keyStateHandling( const Uint8 *keys );
 
 	TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ );
-
-	int makeMoleculeInline();
-	int makeMoleculeInlineBuilder( bool bPBC );
-	int loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
-	//int loadMoleculeXYZ( const char* fname, bool bAutoH );
-	int loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
 
 	//void drawSystem( );
     void drawSystem( bool bAtoms=true, bool bBonds=true, bool bForces=false );
@@ -218,136 +211,12 @@ void  TestAppMMFFsp3::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 }
 
 
-int TestAppMMFFsp3::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH ){
-    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
-    params.loadBondTypes( "common_resources/BondTypes.dat" );
-    builder.bindParams(&params);
-    int nheavy = builder.load_xyz( fname, bAutoH, true );
-    readMatrix( fnameLvs, 3, 3, (double*)&builder.lvec );
-
-    //builder.printAtoms ();
-    //builder.printConfs ();
-    if(verbosity>2)builder.printAtomConfs();
-    //exit(0);
-    builder.export_atypes(atypes);
-
-    builder.verbosity = verbosity;
-    //builder.autoBonds ();             if(verbosity>2)builder.printBonds ();
-    builder.autoBondsPBC();             if(verbosity>2)builder.printBonds ();  // exit(0);
-    //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             if(verbosity>2)builder.printBonds ();  // exit(0);
-    //builder.autoAngles( 0.5, 0.5 );     if(verbosity>2)builder.printAngles();
-    builder.autoAngles( 10.0, 10.0 );     if(verbosity>2)builder.printAngles();
-
-    //bNonBonded = false;
-    //exit(0);
-    builder.toMMFFsp3( ff );
-
-    builder.saveMol( "data/polymer.mol" );
-
-    return nheavy;
-}
-
-
-int TestAppMMFFsp3::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoadTypes ){
-    if(bLoadTypes){
-        printf( "bLoadTypes==True : load atom and bond types from file \n" );
-        params.loadAtomTypes( "common_resources/AtomTypes.dat" );
-        params.loadBondTypes( "common_resources/BondTypes.dat");
-        //builder.params = &params;
-    }else{
-        printf( "bLoadTypes==False : make default Atom names dictionary \n" );
-        params.initDefaultAtomTypeDict( );
-    }
-    mol.bindParams(&params);
-    mol.loadMol( fname );
-    int iH = params.atomTypeDict["H"];
-    int nh     = mol.countAtomType(iH); printf( "nh %i\n", nh );
-    int nheavy = mol.natoms - nh;
-    if(bAutoH){
-        printf( "bAutoH==True : MMFFBuilder will re-calculate hydrogens, pi-orbitals and free electron pairs \n" );
-        builder.insertFlexibleMolecule_ignorH( &mol, Vec3dZero, Mat3dIdentity, iH );
-    }else{
-        printf( "bAutoH==False : Angles assigned by simple algorithm Molecule::autoAngles \n" );
-        //mol.bondsOfAtoms();
-        params.assignREs( mol.natoms, mol.atomType, mol.REQs );
-        mol.autoAngles(true);
-        Vec3d cog = mol.getCOG_av();
-        mol.addToPos( cog*-1.0 );
-        builder.insertMolecule(&mol, Vec3dZero, Mat3dIdentity, false );
-        builder.toMMFFsp3( ff );
-    }
-    //builder.sortAtomsOfBonds();
-    builder.tryAddConfsToAtoms(0, nh);
-    builder.tryAddBondsToConfs();
-    //for(int i=0; i<nh; i++){ builder.addConfToAtom(i); }
-    //builder.tryAddBondsToConfs();
-    //if(verbosity>2)mol.printAtomInfo();
-    //if(verbosity>2)mol.printAtom2Bond();
-    //if(verbosity>2)mol.printAngleInfo();
-    if(verbosity>2)builder.printAtoms();
-    //if(verbosity>2)builder.printBonds();
-    //if(verbosity>2)builder.printAngles();
-    //if(verbosity>2)builder.printConfs();
-    //bNonBonded = false;      // ToDo : WARRNING : this is just hack, because builder.sortBonds() does not seem to work, we have to switch off Non-Bonding interactions
-    builder.trySortBonds();
-    //builder.sortBonds();
-    if(verbosity>2)builder.printBonds();
-    if(verbosity>2)builder.printAngles();
-    if(verbosity>2)builder.printConfs();
-    builder.toMMFFsp3( ff );
-    //Draw3D::shapeInPoss( ogl_sph, ff.natoms, ff.apos, 0 );
-    return nheavy;
-}
-
-int TestAppMMFFsp3::makeMoleculeInlineBuilder( bool bPBC ){
-    //const int natom=4,nbond=3,nang=2,ntors=1;
-    //const int natom=4,nbond=3,nang=0,ntors=0;
-    const int natom=4,nbond=4;
-    Vec3d apos0[] = {
-        {-2.0,0.0,0.0},  // 0
-        {-1.0,2.0,0.0},  // 1
-        {+1.0,2.0,0.0},  // 2
-        {+2.0,0.0,1.0},  // 3
-    };
-    Vec2i bond2atom[] = {
-        {0,1},  // 0
-        {1,2},  // 1
-        {2,3},  // 2
-        {3,0},  // 3  // PBC
-    };
-    // ============ Build molecule
-    MM::Atom brushAtom        { -1, -1, -1 , Vec3dZero, MM::Atom::defaultREQ };
-    MM::Bond brushBond        { -1, {-1,-1}, 1.5,  25.0 };
-    builder.capBond = MM::Bond{ -1, {-1,-1}, 1.07, 15.0 };
-
-    builder.insertAtoms( natom, brushAtom,  apos0    );
-    builder.insertBonds( nbond, brushBond, bond2atom );
-    builder.setConfs   ( 0, 0 );
-    builder.autoAngles ( 2.5, 1.25 );
-
-    // instert aditional dihedral
-    MM::Dihedral brushDihedral{ -1,   {-1,-1,-1},    3, 0.5 };  println(brushDihedral);
-    builder.insertDihedralByAtom( {0,1,2,3}, brushDihedral );
-    builder.trySortBonds();
-
-    builder.toMMFFsp3( ff );
-
-    builder.lvec.a = (Vec3d){  5.0,0.0,0.0 };
-    builder.lvec.b = (Vec3d){  0.0,5.0,0.0 };
-    builder.lvec.c = (Vec3d){  0.0,0.0,5.0 };
-    //if(bPBC){    // --- Periodic Boundary Conditions
-    //    ff.initPBC();                 // as far as good, pbc-shifts are curenlty zero, so no change
-    //    ff.pbcShifts[1] = builder.lvec.a*-1.; // make bond 3 from nighboring cell
-    //    ff.printBondParams();
-    //}
-
-    return natom;
-}
-
 //void TestAppMMFFsp3::makeAtoms(){}
 //template<typename T> std::function<T(const T&,const T&         )> F2;
 
 TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
+
+    verbosity = 1;
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
@@ -355,20 +224,24 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     // >> This algorithm assumes all atoms with conf precede atoms without confs in the array
     // >>   ERROR in builder.sortBonds() => exit
 
-    printf("DEBUG 1\n");
     int nheavy = 0;
     params.loadAtomTypes( "common_resources/AtomTypes.dat" );
     params.loadBondTypes( "common_resources/BondTypes.dat" );
     builder.bindParams(&params);
+    builder.verbosity = verbosity;
 
-    printf("DEBUG 2\n");
     readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
-    molecules.push_back( new Molecule() ); molecules[0]->atomTypeDict = builder.atomTypeDict; molecules[0]->load_xyz("common_resources/polymer-2.xyz", verbosity );
-    molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", verbosity );
-    builder.insertFlexibleMolecule(  molecules[0], {0,0,0}       , Mat3dIdentity, -1 );
-    builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
+    //molecules.push_back( new Molecule() ); molecules[0]->atomTypeDict = builder.atomTypeDict; molecules[0]->load_xyz("common_resources/polymer-2.xyz",         verbosity );
+    //molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", verbosity );
+    //builder.insertFlexibleMolecule(  molecules[0], {0,0,0}           , Mat3dIdentity, -1 );
+    //builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
+    
+    builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" );
+    builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" );    
+    builder.insertFlexibleMolecule( "polymer", {0,0,0}            , Mat3dIdentity, -1 );
+    builder.insertFlexibleMolecule( "monomer", builder.lvec.a*1.2 , Mat3dIdentity, -1 );
 
-    printf("DEBUG 3\n");
+
     builder.lvec.a.x *= 2.3;
 
     //if(verbosity>1)builder.printAtoms ();
@@ -384,13 +257,13 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
 
     builder.sortConfAtomsFirst();
     builder.makeAllConfsSP();
-    builder.printAtomConfs();
+    if(verbosity>1)builder.printAtomConfs();
     builder.toMMFFsp3( ff );
     builder.saveMol( "data/polymer.mol" );
 
-    ff.printBonds();
+    if(verbosity>1)ff.printNeighs();
+    if(verbosity>1)ff.printBonds();
 
-    printf("DEBUG 4\n");
     bNonBonded = false;
     if(bNonBonded){   
         nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.fapos, 0, ff.bond2atom );
@@ -402,32 +275,21 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     }else{
         printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
     }
-
-    printf("DEBUG 5\n");
-
     opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
     //opt.setInvMass( 1.0 );
     opt.cleanVel( );
 
-    printf("DEBUG 6\n");
     // ======== Test before we run
     if(verbosity>1)nff.printAtomParams();
-    ff.printNeighs();
-    
-    printf("DEBUG 7 \n");
+
     ckeckNaN_d( ff.natoms, ff.nneigh_max, ff.Kneighs, "ff.Kneighs" );
     ckeckNaN_d( ff.nbonds,             1, ff.bond_k,  "ff.bond_k"  );
 
-    double E = ff.eval(true);
-    printf( "iter0 E = %g \n", E );
-    printf("TestAppMMFFsp3.init() DONE \n");
+    double E = ff.eval(true); printf( "DEBUG ff.eval() E = %g \n", E );
     //exit(0);
-
-    printf("DEBUG 8\n");
     //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
 
-    printf("DEBUG 9\n");
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
     //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
@@ -443,7 +305,7 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     //MM::splitGraphs( ff.nbonds, ff.bond2atom, 22, innodes );
     //for( int i : innodes ){ selection.push_back(i); }
 
-    printf("DEBUG 10\n");
+    printf("TestAppMMFFsp3() DONE \n");
 }
 
 void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces ){
@@ -519,13 +381,6 @@ void TestAppMMFFsp3::draw(){
             // --- Eval Forces
             ff.cleanAtomForce();
             E += ff.eval(true);
-            /*
-            if( isnan( E) ){ 
-                printf("ERROR : E=ff.eval() is NaN  \n"); 
-                ff.checkNaNs();
-                exit(0); 
-            }
-            */
             if(bNonBonded){ E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} ); }
             if(ipicked>=0){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.fapos[ipicked].add( f ); };
             for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
