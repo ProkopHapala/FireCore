@@ -1369,29 +1369,34 @@ void updatePBC( Vec3d* pbcShifts ){
 
 #ifdef MMFFsp3_h
 
-    void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true){
+    void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=0.5, double K_ecap=0.75){
         int npi,ne; ne=countPiE( npi );
         int nconf = confs.size();
         int ncap  = atoms.size() - nconf;
         int nb = bonds.size();
         printf(  "DEBUG MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         if(bRealloc) ff.realloc( nconf, nb+ne, npi, ncap+ne );
-        export_apos     ( ff.apos );
-        export_atypes   ( ff.atype );
-        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k );
+        export_apos     ( ff.apos );  printf(  "DEBUG toMMFFsp3() 1 \n"  );
+        export_atypes   ( ff.atype ); printf(  "DEBUG toMMFFsp3() 2 \n"  );
+        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k ); printf(  "DEBUG toMMFFsp3() 3 \n"  );
         if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max );  } 
         Vec3d hs[N_NEIGH_MAX];
         int ipi=0;
         //int ja=0;
         int ie0=nconf+ncap;
         int iie = 0;
+        printf(  "DEBUG toMMFFsp3() 4 \n"  );
+        for(int i=0; i<ff.nnode*ff.nneigh_max; i++){ ff.Kneighs[i]=K_sigma; }
+        printf(  "DEBUG toMMFFsp3() 5 \n"  );
         for(int ia=0; ia<atoms.size(); ia++ ){
+            //printf( "atom[%i] \n", ia  );
             int ic = atoms[ia].iconf;
-            //printf( "atom[%i] iconf %i \n", ia, ic,   );
+            //printf( "atom[%i] iconf %i \n", ia, ic  );
             if(ic>=0){
                 AtomConf& conf = confs[ic];
                 printf( "atom[%i] iconf %i n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
-                int* ngs = ff.aneighs + ia*N_NEIGH_MAX;
+                int*    ngs  = ff.aneighs + ia*N_NEIGH_MAX;
+                double* kngs = ff.Kneighs + ia*N_NEIGH_MAX;
                 // -- atoms
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
@@ -1399,6 +1404,7 @@ void updatePBC( Vec3d* pbcShifts ){
                     hs[k]  = atoms[ja].pos - atoms[ia].pos;
                     hs[k].normalize();
                     ngs[k] = ja;
+                    kngs[k]=K_sigma;
                 }
                 makeConfGeom( conf.nbond, conf.npi, hs );
                 for(int k=0; k<N_NEIGH_MAX; k++){
@@ -1410,6 +1416,7 @@ void updatePBC( Vec3d* pbcShifts ){
                     int ik=N_NEIGH_MAX-1-k;
                     ff.pipos[ipi] = hs[ik];
                     ngs[ik] = -ipi-1;
+                    kngs[ik]=K_pi;
                     ipi++;
                 }
                 // e-cap
@@ -1418,6 +1425,7 @@ void updatePBC( Vec3d* pbcShifts ){
                     ff.apos[ie]=atoms[ia].pos + hs[k]*0.5;
                     ff.atype[ie] = -1; // electon-pair type
                     ngs[k] = ie;
+                    kngs[k] = K_ecap;
                     int ib=nb+iie;
                     ff.bond2atom[ib]=(Vec2i){ia,ie};
                     ff.bond_l0  [ib]=0.5;
@@ -1425,12 +1433,11 @@ void updatePBC( Vec3d* pbcShifts ){
                     //ngs[k]=0;
                     iie++;
                 }
-                for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }
-                printf( "] \n" );
+                for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" );
             }
-            for(int i=0; i<ff.natoms; i++){ ff.Kneighs[i]=1.0; }
         }
         printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
+        printf(  "DEBUG MM:Builder::toMMFFsp3() DONE \n"  );
     }
 #endif // MMFFmini_h
 
