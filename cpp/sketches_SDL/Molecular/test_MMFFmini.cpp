@@ -106,9 +106,9 @@ inline void ddot_num(Vec3d h, Vec3d h2, Vec3d& f, double d){
 //inline double evalTorq(Vec3d& ha,Vec3d& hb,Vec3d& hab,   Vec3d& f1, Vec3d& f2, Vec3d& f2, Vec3d& f4 ){
 inline double evalTorq(Vec3d& ha,Vec3d& hb,Vec3d& hab,   Vec3d& fa, Vec3d& fb, Vec3d& fab ){
 
-    double invra  = 1.0d/ha .normalize();
-    double invrb  = 1.0d/hb .normalize();
-    double invrab = 1.0d/hab.normalize();
+    double invra  = 1.0/ha .normalize();
+    double invrb  = 1.0/hb .normalize();
+    double invrab = 1.0/hab.normalize();
 
     //double invra3 = invra*invra*invra;
     //double invrb3 = invrb*invrb*invrb;
@@ -316,7 +316,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 	//int loadMoleculeXYZ( const char* fname, bool bAutoH );
 	int loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
 
-	void drawSystem( );
+	void drawSystem( Vec3i ixyz  );
 
 	void selectShorterSegment( const Vec3d& ro, const Vec3d& rd );
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
@@ -730,7 +730,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
 }
 
-void TestAppMMFFmini::drawSystem( ){
+void TestAppMMFFmini::drawSystem( Vec3i ixyz ){
     //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
     glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
     //glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
@@ -938,9 +938,9 @@ void TestAppMMFFmini::draw(){
     if(builder.bPBC){
         //printf( "draw PBC \n" );
         //Draw3D::drawPBC( (Vec3i){1,1,0}, builder.lvec, [&](){drawSystem();} );
-        Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](){drawSystem();} );
+        Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} );
     }else{
-        drawSystem();
+        drawSystem({0,0,0});
     }
 
     for(int i=0; i<selection.size(); i++){

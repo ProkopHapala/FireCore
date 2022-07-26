@@ -328,7 +328,7 @@ Vec3d LerpQ(Quat4d p1, Quat4d p2, double value){
    return p1.f;
 }
 
-int MarchingCubesCross( const GridShape& gs, double minValue, double* data ){
+int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int renderType=3 ){
 	//this should be enough space, if not change 3 to 4
 	//TRIANGLE * triangles = new TRIANGLE[3*ncells.x*ncells.y*ncells.z];
 	//numTriangles = int(0);
@@ -336,7 +336,10 @@ int MarchingCubesCross( const GridShape& gs, double minValue, double* data ){
 	//go through all the points
     int ind=-1;
     gs.printCell();
-    glBegin( GL_TRIANGLES );
+    //if(bLines){ glBegin( GL_LINES ); }else{ glBegin( GL_TRIANGLES ); }
+    if     (renderType==0) { glBegin( GL_POINTS );    }
+    else if(renderType==1) { glBegin( GL_LINES  );    }
+    else                   { glBegin( GL_TRIANGLES ); }
     //glBegin( GL_LINES );
     //glBegin( GL_POINTS );
     int ntris=0;
@@ -400,12 +403,21 @@ int MarchingCubesCross( const GridShape& gs, double minValue, double* data ){
                     Vec3d p0=intVerts[triTable[cubeIndex][k+2]];
                     Vec3d p1=intVerts[triTable[cubeIndex][k+1]];
                     Vec3d p2=intVerts[triTable[cubeIndex][k+0]];
-                    Vec3d nr; nr.set_cross(p1-p0,p2-p0);
-                    nr.normalize();
-                    normal(nr);
-                    vertex(p0);
-                    vertex(p1);
-                    vertex(p2);
+                    if      (renderType==0) { // points
+                        vertex(p0);
+                    }else if(renderType==1) { // lines
+                        vertex(p0); vertex(p1);
+                        vertex(p1); vertex(p2);
+                        vertex(p2); vertex(p0);
+                    }else{                   // triangles
+                        Vec3d nr; nr.set_cross(p1-p0,p2-p0);
+                        nr.normalize();
+                        if(minValue>0){ nr.mul(-1); };
+                        normal(nr);
+                        vertex(p0);
+                        vertex(p1);
+                        vertex(p2);
+                    }
                     ntris++;
 				}
                 

@@ -295,7 +295,7 @@ inline void drawPBC( const Vec3i& npbc, const Mat3d& lvec, Func func ){
                 Vec3d shift = lvec.lincomb( ix, iy, iz );
                 glPushMatrix();
                 glTranslatef(  shift.x,  shift.y,  shift.z );
-                func( );
+                func( {ix,iy,iz} );
                 //glTranslatef( -shift.x, -shift.y, -shift.z );
                 glPopMatrix();
             }

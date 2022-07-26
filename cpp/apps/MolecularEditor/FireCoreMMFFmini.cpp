@@ -6,6 +6,7 @@
 #include <math.h>
 
 #include "testUtils.h"
+#include "IO_utils.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
@@ -34,7 +35,7 @@
 #include "FireCoreAPI.h"
 
 //#include "NBSRFF.h"
-#include "IO_utils.h"
+
 
 #include "MarchingCubes.h"
 #include "MolecularDraw.h"
@@ -87,6 +88,14 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     bool bConverged = false;
     bool bRunRelax  = false;
 
+    // Visualization params
+    int which_MO  = 7; 
+    double mm_Rsc =  0.25;
+    double mm_Rsub = 1.0;
+    bool   mm_bAtoms = false;
+    bool makeScreenshot = false;
+    bool renderType = 1;
+
     int  fontTex;
     int  ogl_sph=0;
     int  ogl_mol=0;
@@ -122,9 +131,10 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 	int  loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
 	//int loadMoleculeXYZ( const char* fname, bool bAutoH );
 	int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
+    void tryLoadGridFF();
     void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
 
-	void drawSystem( );
+	void drawSystem( Vec3d ixyz );
     void drawSystemQMMM();
     void renderOrbital(int i, double iso=0.1);
     void renderDensity(       double iso=0.1);
@@ -257,6 +267,8 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
 
 void TestAppMMFFmini::renderOrbital(int iMO, double iso ){
+    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    qmmm.evalQM( ff.apos, ff.aforce );
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
     fireCore.getGridMO( iMO, ewfaux );
@@ -265,24 +277,29 @@ void TestAppMMFFmini::renderOrbital(int iMO, double iso ){
     //MOgrid.pos0 = MOgrid.dCell.a*(-MOgrid.n.a/3) + MOgrid.dCell.b*(-MOgrid.n.b/2) + MOgrid.dCell.c*(-MOgrid.n.c/2);
     //MOgrid.pos0 = Vec3dZero; ewfaux[10*MOgrid.n.x*MOgrid.n.y + MOgrid.n.x*10 + 10 ] = 1.0;
     ogl_MO  = glGenLists(1);
+    Vec3d p=(Vec3d){0.4,2.5,0.0};
     glNewList(ogl_MO, GL_COMPILE);
-    //glColor3f(0.0,1.0,0.0);
-    //glTranslatef( -p.x, -p.y, -p.z );
-    int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux  );
+    glTranslatef( p.x, p.y, p.z );
+    int ntris=0;  
+    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, renderType  );
+    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, renderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
     //int ntris = Draw3D::Grid2Points( MOgrid, 0.1, ewfaux );
-    //glTranslatef( +p.x, +p.y, +p.z );
+    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    glTranslatef( -p.x, -p.y, -p.z );
     glEndList();
     delete [] ewfaux;
 }
 
 void TestAppMMFFmini::renderDensity(double iso){
+    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    qmmm.evalQM( ff.apos, ff.aforce );
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
     fireCore.getGridDens( 0, 0, ewfaux );
     ogl_MO  = glGenLists(1);
     glNewList(ogl_MO, GL_COMPILE);
-    int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux  );
+    int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux, renderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
     glEndList();
     delete [] ewfaux;
@@ -370,62 +387,55 @@ void TestAppMMFFmini::draw(){
     //if( ogl_mol ){ glCallList( ogl_mol ); return; }
     //printf( "builder.lvec: " ); builder.lvec.print();
 
-    if(frameCount==-1){
+    if(frameCount==1){
         qCamera.pitch( M_PI );
-        ff.printAtomPos();
-        ff.printBondParams();
-        ff.printAngleParams();
-        ff.printTorsionParams();
+        //ff.printAtomPos();
+        //ff.printBondParams();
+        //ff.printAngleParams();
+        //ff.printTorsionParams();
         //lvec_a0 = builder.lvec.a;
         //printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
     }
 
-
-
-	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
-	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
-    //ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*(HEIGHT-mouse_begin_y));
-    Draw3D::drawPointCross( ray0, 0.1 );
-    //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
-
-    bool makeScreenshot = false;
-    bDoQM=1; bDoMM=0;
+    //bDoQM=1; bDoMM=0;
     if(bRunRelax){ MDloop(); }
 
-    
+    // --- Mouse Interaction / Visualization
+    //ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
+	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+    //ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*(HEIGHT-mouse_begin_y));
+    Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
+    //Draw3D::drawVecInPos( camMat.c, ray0 );
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
-    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );
+    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+
+    // ---  Isosurface Rendering ( Molecular Orbital, Density ) 
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
-    { 
+    if(ogl_MO){ 
         glPushMatrix();
         Vec3d c = builder.lvec.a*-0.5 + builder.lvec.b*-0.5 + builder.lvec.c*-0.5;
         glTranslatef( c.x, c.y, c.z );
-        glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-        if(ogl_MO){ 
-
+          // Molecular Orbital ?
             glColor3f(1.0,1.0,1.0); 
             glCallList(ogl_MO); 
             //return; 
-        }
         glPopMatrix();
     }
     //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift );
 
-    
-
     //printf( "bDoQM %i bDoMM %i \n", bDoQM, bDoMM );
     if(bDoQM)drawSystemQMMM();
-    if(bDoMM)if(builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](){drawSystem();} ); } else { drawSystem(); }
+    if(bDoMM)if(builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); }
     for(int i=0; i<selection.size(); i++){ int ia = selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
     if(iangPicked>=0){
         glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
     }
-    if(makeScreenshot){ saveScreenshot( icell ); icell++; }
+    //if(makeScreenshot){ saveScreenshot( icell ); icell++; }
 };
 
 void TestAppMMFFmini::selectRect( const Vec3d& p0, const Vec3d& p1 ){
@@ -479,16 +489,7 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //world.gridFF.evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs );
     //bool recalcFF = true;
     //if( recalcFF ){
-    if( 0==fopen("data/FFelec.bin", "r") ){
-        gridFF.evalGridFFs( {1,1,1} );
-        if(gridFF.FFelec )  saveBin( "data/FFelec.bin",   gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFelec );
-        if(gridFF.FFPauli)  saveBin( "data/FFPauli.bin",  gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFPauli );
-        if(gridFF.FFLondon) saveBin( "data/FFLondon.bin", gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFLondon );
-    }else{
-        if(gridFF.FFelec )  loadBin( "data/FFelec.bin",   gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFelec );
-        if(gridFF.FFPauli)  loadBin( "data/FFPauli.bin",  gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFPauli );
-        if(gridFF.FFLondon) loadBin( "data/FFLondon.bin", gridFF.grid.getNtot()*sizeof(Vec3d), (char*)gridFF.FFLondon );
-    }
+    gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin" );
     gridFF.shift = (Vec3d){0.0,0.0,-8.0};
     if(bRenderGridFF){
         int iatom = 11;
@@ -622,17 +623,18 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
     return nheavy;
 }
 
-void TestAppMMFFmini::drawSystem( ){
+void TestAppMMFFmini::drawSystem( Vec3d ixyz ){
+    bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
     glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
+    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     ); }                     //DEBUG
     //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
     //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
     //glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
 }
 
 void TestAppMMFFmini::drawSystemQMMM(){
@@ -676,6 +678,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
     float xstep = 0.2;
     switch( event.type ){
         case SDL_KEYDOWN :
+            //printf( "key: %c \n", event.key.keysym.sym );
             switch( event.key.keysym.sym ){
                 //case SDLK_p:  first_person = !first_person; break;
                 //case SDLK_o:  perspective  = !perspective; break;
@@ -712,8 +715,14 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
-                case SDLK_m: renderOrbital( 1 ); break;
-                case SDLK_r: renderDensity(   ); break;
+                case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
+                case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
+                //case SDLK_LESS:    which_MO--; printf("which_MO %i \n"); break;
+                //case SDLK_GREATER: which_MO++; printf("which_MO %i \n"); break;
+
+                case SDLK_m: renderOrbital( which_MO ); break;
+                case SDLK_r: renderDensity(          ); break;
+                case SDLK_c: saveScreenshot( frameCount ); break;
 
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
