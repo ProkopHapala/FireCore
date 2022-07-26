@@ -153,7 +153,7 @@ class QMMM{ public:
             if(params==0){ printf( "ERROR: QMMM::applyCharges() substracting valence charge but *params==null \n"); exit(0); }
             for(int iq=0; iq<nqm; iq++){ 
                 const AtomType& at = params->atypes[ atype[iq] ];
-                printf( "charges[%i|ityp=%i] Q %g Q0 %i iZ %i name %s\n", iq, atype[iq], charges[iq], at.neval, at.iZ, at.name  );
+                //printf( "charges[%i|ityp=%i] Q %g Q0 %i iZ %i name %s\n", iq, atype[iq], charges[iq], at.neval, at.iZ, at.name  );
                 charges[iq]-=params->atypes[ atype[iq] ].neval; 
             }
         }

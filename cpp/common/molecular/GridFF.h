@@ -272,6 +272,27 @@ class GridFF{ public:
         delete [] pos; delete [] fs;
     }
 
+ #ifdef IO_utils_h
+    bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London ){
+        bool recalcFF = false;
+        { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        { FILE* f=fopen( fname_Pauli,  "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        { FILE* f=fopen( fname_London, "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        if( recalcFF ){
+            printf( "Building GridFF for substrate ... (please wait... )\n" );
+            evalGridFFs( {1,1,1} );
+            if(FFelec )  saveBin( fname_Coulomb,  grid.getNtot()*sizeof(Vec3d), (char*)FFelec   );
+            if(FFPauli)  saveBin( fname_Pauli,    grid.getNtot()*sizeof(Vec3d), (char*)FFPauli  );
+            if(FFLondon) saveBin( fname_London,   grid.getNtot()*sizeof(Vec3d), (char*)FFLondon );
+        }else{
+            if(FFelec )  loadBin( fname_Coulomb,  grid.getNtot()*sizeof(Vec3d), (char*)FFelec   );
+            if(FFPauli)  loadBin( fname_Pauli,    grid.getNtot()*sizeof(Vec3d), (char*)FFPauli  );
+            if(FFLondon) loadBin( fname_London,   grid.getNtot()*sizeof(Vec3d), (char*)FFLondon );
+        }
+        return recalcFF;
+    }
+#endif
+
 }; // RigidSubstrate
 
 

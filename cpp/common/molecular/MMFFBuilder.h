@@ -1205,7 +1205,7 @@ class Builder{  public:
         //printf( "fname:`%s` label:`%s` itype %i \n", fname.c_str(), label.c_str(), itype  );
         molTypeDict[label] = itype;
         return itype;
-    };
+    }
 
     void insertFlexibleMolecule_ignorH( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int iH = 1 ){
         int natom0  = atoms.size();
