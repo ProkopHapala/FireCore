@@ -124,7 +124,6 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
     int* atypes = 0;
 
     bool bNonBonded = true;
-    //std::vector<Molecule*> molecules;
 
     std::vector<int> selection;
     bool bDragging = false;
@@ -136,10 +135,6 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
     Vec3d lvec_a0;
     int icell = 0;
     int frameCountPrev=0;
-
-    //std::unordered_map<std::string,int> atomTypeDict;
-
-    //Mat3d lvec;
 
     bool bConverged = false;
     bool bRunRelax  = false;
@@ -160,9 +155,7 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 
 	virtual void draw   ();
 	virtual void drawHUD();
-	//virtual void mouseHandling( );
 	virtual void eventHandling   ( const SDL_Event& event  );
-	//virtual void keyStateHandling( const Uint8 *keys );
 
 	TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ );
 

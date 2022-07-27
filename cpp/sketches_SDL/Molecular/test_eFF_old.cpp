@@ -419,19 +419,11 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     std::function<void   (const Vec3d& p, Vec3d& f)>  FFfunc;
     std::function<double (const Vec3d& p)          >  Efunc ;
 
-    //double Emin,Emax;
-    //int     npoints;
-    //Vec3d*  points  =0;
-    //double* Energies=0;
-    //Vec3d * Forces  =0;
-
     int      fontTex;
 
     virtual void draw   ();
     virtual void drawHUD();
-    //virtual void mouseHandling( );
     virtual void eventHandling   ( const SDL_Event& event  );
-    //virtual void keyStateHandling( const Uint8 *keys );
 
     TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ );
 

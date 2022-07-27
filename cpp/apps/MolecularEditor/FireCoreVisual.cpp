@@ -85,6 +85,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     bool bDoMM=true,bDoQM=true;
     bool bConverged = false;
     bool bRunRelax  = false;
+    double cameraMoveSpeed = 1.0;
 
     GUI gui;
 
@@ -111,7 +112,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 	virtual void drawHUD();
 	//virtual void mouseHandling( );
 	virtual void eventHandling   ( const SDL_Event& event  );
-	//virtual void keyStateHandling( const Uint8 *keys );
+	virtual void keyStateHandling( const Uint8 *keys );
 
     void MDloop();
 
@@ -226,13 +227,28 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     //    ->addItem("Item_2");
     //gui.addPanel( &clipBox );
     //GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_, bool isButton_ ){
-    ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,10,5+100,10+fontSizeDef*2, true, true ) ))
+
+    GUI_stepper ylay;
+
+    ylay.step(6);
+    Table* tab1 = new Table( 9, sizeof(builder.lvec.a), (char*)&builder.lvec );
+    tab1->addColum( &(builder.lvec.a.x), 1, DataType::Double    );
+    tab1->addColum( &(builder.lvec.a.y), 1, DataType::Double    );
+    tab1->addColum( &(builder.lvec.a.z), 1, DataType::Double    );
+    gui.addPanel( new TableView( tab1, "lattice", 5, ylay.x0,  0, 0, 3, 3 ) );
+
+    ylay.step(2); 
+    ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,ylay.x0,5+100,ylay.x1, true, true ) ) )
         ->setRange(5.0,50.0)
         ->command = [&](double x){ zoom = x; return 0; };
-        //->command = &command_example;
 
-    Table* tab1 = new Table( 9, sizeof(double), (char*)&builder.lvec );
-    //gui.addPanel( new TableView( tab1, "lattice", 150.0, 250.0,  0, 0, 3, 3 ) );
+    ylay.step(2); 
+    ((DropDownList*)gui.addPanel( new DropDownList("DropList1",5,ylay.x0,5+100, 3 ) ) )
+        ->addItem("pick_atoms")
+        ->addItem("pick_bonds")
+        ->addItem("Item_angles");
+
+
 
 }
 
@@ -350,6 +366,11 @@ void TestAppFireCoreVisual::draw(){
         glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex3D );
     }
 };
+
+void TestAppFireCoreVisual::drawHUD(){
+    glDisable ( GL_LIGHTING );
+    gui.draw();
+}
 
 void TestAppFireCoreVisual::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;
@@ -534,6 +555,9 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
     float xstep = 0.2;
     gui.onEvent( mouseX, mouseY, event );
     switch( event.type ){
+        case SDL_MOUSEWHEEL:{
+            if     (event.wheel.y > 0){ zoom/=1.2; }
+            else if(event.wheel.y < 0){ zoom*=1.2; }}break;
         case SDL_KEYDOWN :
             //printf( "key: %c \n", event.key.keysym.sym );
             switch( event.key.keysym.sym ){
@@ -639,15 +663,41 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                     break;
             }
             break;
+        case SDL_WINDOWEVENT:
+            switch (event.window.event) {
+                case SDL_WINDOWEVENT_CLOSE:
+                    //SDL_Log("Window %d closed", event->window.windowID);
+                    printf( "window[%i] SDL_WINDOWEVENT_CLOSE \n", id );
+                    delete this;
+                    printf( "window[%i] delete this done \n", id );
+                    return;
+                    break;
+            } break;
     };
-    AppSDL2OGL::eventHandling( event );
+    //AppSDL2OGL::eventHandling( event );
     //STOP = false;
 }
 
-void TestAppFireCoreVisual::drawHUD(){
-    glDisable ( GL_LIGHTING );
-    gui.draw();
-}
+void  TestAppFireCoreVisual::keyStateHandling( const Uint8 *keys ){
+    double dstep=0.025;
+    //if( keys[ SDL_SCANCODE_X ] ){ cam.pos.z +=0.1; }
+    //if( keys[ SDL_SCANCODE_Z ] ){ cam.pos.z -=0.1; }
+    //if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.dyaw  (  keyRotSpeed ); }
+	//if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
+	//if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
+	//if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
+    //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
+    //AppSDL2OGL_3D::keyStateHandling( keys );
+};
 
 //void command_example(double x, void* caller){
 //    TestAppFireCoreVisual* app = (TestAppFireCoreVisual*)caller;

@@ -25,9 +25,6 @@
 #include "AppSDL2OGL_3D.h"
 #include "testUtils.h"
 
-//#include "MMFF.h"
-//#include "RRFF.h"
-
 #include "EOFF.h"
 
 #define R2SAFE  1.0e-8f
@@ -41,9 +38,7 @@ class TestAppEOFF: public AppSDL2OGL_3D {
 
 	virtual void draw   ();
 	virtual void drawHUD();
-	//virtual void mouseHandling( );
 	virtual void eventHandling   ( const SDL_Event& event  );
-	//virtual void keyStateHandling( const Uint8 *keys );
 
 	TestAppEOFF( int& id, int WIDTH_, int HEIGHT_ );
 
