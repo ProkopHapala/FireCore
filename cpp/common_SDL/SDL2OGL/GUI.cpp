@@ -39,11 +39,6 @@ void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){
 }
 
 void GUITextInput::viewHUD( const Vec2i& pos, int fontTex ){
-    //printf("DEBUG GUITextInput::viewHUD \n");
-    //Draw3D::drawText( inputText.c_str(), pos, fontTex, textSize, 0, 0 );
-    //glDisable    ( GL_LIGHTING   );
-    //glDisable    ( GL_DEPTH_TEST );
-    //glShadeModel ( GL_FLAT       );
     glPushMatrix();
         glTranslatef( pos.x, pos.y, 0.0 );
         //Draw::billboardCam();
@@ -188,9 +183,9 @@ void GUIPanel::render(){
     Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
     if(isSlider){
         Draw::setRGB(barColor);
-        //Draw2D::drawRectangle ( xmin, ymax-2 xmin+val2x(value), ymax, true );
+        Draw2D::drawRectangle ( xmin, ymin, xmin+val2x(value), ymax, true );
         //Draw2D::drawRectangle ( xmin, ymax-2*fontSizeDef, xmin+val2x(value), ymax, true );
-        Draw2D::drawRectangle ( xmin, ymin, xmin+val2x(value), ymax-2*fontSizeDef, true );
+        //Draw2D::drawRectangle ( xmin, ymin, xmin+val2x(value), ymax-2*fontSizeDef, true );
     }
     Draw  ::setRGB( textColor );
     int nch0 = caption.length();
@@ -199,8 +194,8 @@ void GUIPanel::render(){
     val2text();
     int nch = inputText.length();
     if( nch > 0 ){
-        Draw  ::setRGB( 0xFFFFFFFF );
-        Draw2D::drawRectangle( xmin+nch0*fontSizeDef, ymax-2*fontSizeDef, xmax, ymax, true );
+        //Draw  ::setRGB( 0xFFFFFFFF );
+        //Draw2D::drawRectangle( xmin+nch0*fontSizeDef, ymax-2*fontSizeDef, xmax, ymax, true );
         Draw  ::setRGB( textColor );
         Draw2D::drawText( inputText.c_str(), nch, {xmin+fontSizeDef*nch0, ymin}, 0.0, GUI_fontTex, fontSizeDef );
     }
@@ -278,7 +273,8 @@ GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& 
             }
             if(isButton && (event.button.button==SDL_BUTTON_LEFT ) ){
                 executed=true;
-                if (command!=NULL) command(value);
+                //if (command!=NULL) command(value,caller);
+                if (command) command(value);
             }
         }
     }
@@ -327,7 +323,7 @@ void ScisorBox::tryRender( ){
 };
 */
 
-GUIAbstractPanel* ScisorBox::onMouse( int x, int y, const SDL_Event&  event, GUI& gui ){
+GUIAbstractPanel* ScisorBox::onMouse( int x, int y, const SDL_Event&  event, GUI& gui){
     GUIAbstractPanel* active = NULL;
     if( check( x, y ) ){
         int ycut = ymax-fontSizeDef*2;

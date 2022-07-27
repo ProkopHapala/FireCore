@@ -99,7 +99,9 @@ class Table{ public:
         //}
     }
 
-
+    Table()=default;
+    Table(int n_, int itemsize_, char* data_){ n=n_;itemsize=itemsize_; data=data_;};
+    
     /*
     void loadCSV( char* fname, bool bRealloc=true ){
         if(bRealloc){
