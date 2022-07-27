@@ -72,9 +72,7 @@ class TestAppMultipoles : public AppSDL2OGL_3D {
 
 	virtual void draw   ();
 	virtual void drawHUD();
-	//virtual void mouseHandling( );
 	virtual void eventHandling   ( const SDL_Event& event  );
-	//virtual void keyStateHandling( const Uint8 *keys );
 
 	TestAppMultipoles( int& id, int WIDTH_, int HEIGHT_ );
 

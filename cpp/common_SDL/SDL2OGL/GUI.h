@@ -15,13 +15,17 @@
 #include <functional>
 
 /*
-
 TODO:
  - draw small glyph by simple language ... like:
     goto    100.0 100.0
     line    200.0 250.0
     ngon    6 16.5
 */
+
+class GUI_stepper{ public:
+    int x0=0,x1=0;
+    inline void step(int n){ x0=x1; x1=x0+n*fontSizeDef; }
+};
 
 struct Command{
     int id;
@@ -358,7 +362,7 @@ should look like this:
 //static const char* exampleDropDownListItems[3] = {"Item1","Item2","Item3"};
 
 class DropDownList : public GUIAbstractPanel { public:
-    bool bOpened = true;
+    bool bOpened = false;
     int nSlots=5;
     //int iSlot0=0;
 

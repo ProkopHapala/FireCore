@@ -594,7 +594,8 @@ GUIAbstractPanel* CommandList::onMouse  ( int x, int y, const SDL_Event& event, 
 
 void DropDownList::initList( const std::string& caption_, int xmin_, int ymin_, int xmax_, int nSlots_ ){
     caption=caption_;
-    nSlots=nSlots_,xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymin+2*fontSizeDef*(nSlots+1);
+    nSlots=nSlots_,xmin=xmin_,ymin=ymin_,xmax=xmax_;//ymax=ymin+2*fontSizeDef*(nSlots+1);
+    ymax=ymin+2*fontSizeDef;
     redraw = true;
 }
 
@@ -835,8 +836,9 @@ void GUI::draw(){
     glDisable(GL_LINE_SMOOTH);
     glDisable(GL_LIGHTING);
     glDisable(GL_DEPTH_TEST);
-    for(GUIAbstractPanel* panel: panels){ panel->draw(); }
+    for(GUIAbstractPanel* panel: panels){ if(focused!=panel)panel->draw(); }
     if(focused){
+        focused->draw();
         Draw::setRGB(focused->textColor);
         Draw2D::drawRectangle(focused->xmin,focused->ymin,focused->xmax,focused->ymax,false);
     }
