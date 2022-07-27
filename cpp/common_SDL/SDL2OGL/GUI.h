@@ -84,7 +84,7 @@ class GUITextInput{ public:
 
     bool     isNumber=true,checkRange=false;
 	float    vmin=0.0f, vmax=1.0f;
-	double   value=0.0d;
+	double   value=0.0;
 	SDL_Keycode num_op = 0;
 
 	bool     modified=true,entered=false;
@@ -164,12 +164,12 @@ class GUIPanel : public GUIAbstractPanel { public:
 	std::string inputText;
 
 	float    vmin=0.0f, vmax=1.0f;
-	double   value=0.0d;
+	double   value=0.0;
 	bool     isInt = false;
-
 	double* master=0;
 
-	void (*command)(double) = NULL;
+	//void (*command)(double,void*) = NULL;
+    std::function<void(double)> command =0; // = [] { return 0; }
 
     // ==== functions
 

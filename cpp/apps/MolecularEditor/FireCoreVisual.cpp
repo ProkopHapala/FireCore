@@ -46,6 +46,8 @@ int idebug=0;
 // ================= MAIN CLASS ==============
 // ===========================================
 
+//void command_example(double x, void* caller);
+
 class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     // ---- Simulations objects
 	Molecule    mol;
@@ -95,7 +97,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     Vec3d testREQ,testPLQ;
 
     // ---- Graphics objects
-    int  fontTex;
+    int  fontTex,fontTex3D;
     int  ogl_sph=0;
     int  ogl_mol=0;
     int  ogl_isosurf=0;
@@ -138,7 +140,8 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 
 TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
-    fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
+    fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
+    fontTex3D = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
     // ---- Load Atomic Type Parameters
     int nheavy = 0;
@@ -215,6 +218,22 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
 	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     printf( " # ==== SETUP DONE ==== \n" );
+
+
+    //gui.addPanel( new TableView( tab1, "tab1", 150.0, 250.0,  0, 0, 5, 3 ) );
+    //((DropDownList*)gui.addPanel( new DropDownList("DropList1",100.0,300.0,200.0,5) ))
+    //    ->addItem("Item_1")
+    //    ->addItem("Item_2");
+    //gui.addPanel( &clipBox );
+    //GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_, bool isButton_ ){
+    ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,10,5+100,10+fontSizeDef*2, true, true ) ))
+        ->setRange(5.0,50.0)
+        ->command = [&](double x){ zoom = x; return 0; };
+        //->command = &command_example;
+
+    Table* tab1 = new Table( 9, sizeof(double), (char*)&builder.lvec );
+    //gui.addPanel( new TableView( tab1, "lattice", 150.0, 250.0,  0, 0, 3, 3 ) );
+
 }
 
 void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
@@ -328,7 +347,7 @@ void TestAppFireCoreVisual::draw(){
     for(int i=0; i<selection.size(); i++){ int ia = selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
     if(iangPicked>=0){
-        glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
+        glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex3D );
     }
 };
 
@@ -408,7 +427,7 @@ int TestAppFireCoreVisual::loadMoleculeXYZ( const char* fname, const char* fname
 
     builder.verbosity = 5;
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
-    builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
+    builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
 
     builder.toMMFFmini( ff, &params );
 
@@ -472,7 +491,7 @@ int TestAppFireCoreVisual::loadMoleculeMol( const char* fname, bool bAutoH, bool
 void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     ); }                     //DEBUG
+    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                     //DEBUG
     Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
 }
 
@@ -490,7 +509,7 @@ void TestAppFireCoreVisual::drawSystemQMMM(){
         Draw3D::drawShape( ogl_sph, ff.apos[im], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
     }
     glColor3f(0.5f,0.0f,0.0f); 
-    Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex );
+    Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex3D );
 
 }
 
@@ -513,6 +532,7 @@ void TestAppFireCoreVisual::saveScreenshot( int i, const char* fname ){
 void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
     //printf( "NonInert_seats::eventHandling() \n" );
     float xstep = 0.2;
+    gui.onEvent( mouseX, mouseY, event );
     switch( event.type ){
         case SDL_KEYDOWN :
             //printf( "key: %c \n", event.key.keysym.sym );
@@ -626,8 +646,13 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
 
 void TestAppFireCoreVisual::drawHUD(){
     glDisable ( GL_LIGHTING );
-
+    gui.draw();
 }
+
+//void command_example(double x, void* caller){
+//    TestAppFireCoreVisual* app = (TestAppFireCoreVisual*)caller;
+//    app->zoom = x;
+//};
 
 // ===================== MAIN
 
