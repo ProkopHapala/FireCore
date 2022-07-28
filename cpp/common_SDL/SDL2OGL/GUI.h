@@ -198,6 +198,7 @@ class GUIPanel : public GUIAbstractPanel { public:
     inline void syncWrite(){ if(master)*master=value; }
 
 	inline GUIPanel* setRange(float vmin_, float vmax_){ vmin=vmin_; vmax=vmax_; return this; };
+    inline GUIPanel* setValue(float val_){ value=val_; return this; };
 
 };
 
