@@ -5,7 +5,8 @@
 #include "ScreenSDL2OGL_3D.h"
 
 void ScreenSDL2OGL_3D::camera(){
-    ((Quat4f)qCamera).toMatrix(cam.rot);
+    //((Quat4f)qCamera).toMatrix(cam.rot);
+    qCamera.toMatrix(cam.rot);
     cam.zoom   = zoom;
     cam.aspect = ASPECT_RATIO;
     //Cam::ortho( cam, true );

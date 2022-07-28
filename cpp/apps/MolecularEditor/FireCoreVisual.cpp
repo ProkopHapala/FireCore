@@ -37,9 +37,25 @@
 #include "MarchingCubes.h"
 #include "MolecularDraw.h"
 #include "GUI.h"
+#include "EditorGizmo.h"
 #include "AppSDL2OGL_3D.h"
 
 int idebug=0;
+
+
+// (-0.706981   ,-0.00550127,0.00597562,0.707185)     - Front
+// ( 0.000203297, 0.707127  ,0.707075  ,0.000491792)  - Back
+// Quat4f qTop   {1.f,0.f,0.f,0.f};                   - Top
+// (-0.000281836,-0.00182222,0.00382132,0.999988)     - Bottom
+// (-0.500708,0.49913,0.50088,0.499266)               - Left
+// (0.502989,0.497481,0.502217,-0.497277)             - Right
+
+Quat4f qFront {-M_SQRT1_2,      0.0f,     0.0f,M_SQRT1_2 };
+Quat4f qBack  {      0.0f, M_SQRT1_2,M_SQRT1_2,      0.0f };
+Quat4f qTop   { 1.0f, 0.0f, 0.0f, 0.0f};
+Quat4f qBottom{ 0.0f, 0.0f, 0.0f, 1.0f};
+Quat4f qLeft  {-0.5f, 0.5f, 0.5f, 0.5f};
+Quat4f qRight { 0.5f, 0.5f, 0.5f,-0.5f};
 
 
 // ===========================================
@@ -81,13 +97,16 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     int iangPicked = -1; // picket angle
     Vec3d* picked_lvec = 0;
     int perFrame =  1;
+    Quat4f qCamera0;
 
     bool bDoMM=true,bDoQM=true;
     bool bConverged = false;
     bool bRunRelax  = false;
     double cameraMoveSpeed = 1.0;
+    bool useGizmo=true;
 
     GUI gui;
+    EditorGizmo gizmo;
 
     // ---- Visualization params
     int which_MO  = 7; 
@@ -228,6 +247,17 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     //gui.addPanel( &clipBox );
     //GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_, bool isButton_ ){
 
+
+    // ========== Gizmo
+    cam.persp = false;
+    gizmo.cam = &cam;
+    gizmo.bindPoints(ff.natoms, ff.apos      );
+    gizmo.bindEdges (ff.nbonds, ff.bond2atom );
+    gizmo.pointSize = 0.5;
+    //gizmo.iDebug    = 2;
+
+    // ============ GUI
+
     GUI_stepper ylay;
 
     ylay.step(6);
@@ -240,7 +270,8 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     ylay.step(2); 
     ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,ylay.x0,5+100,ylay.x1, true, true ) ) )
         ->setRange(5.0,50.0)
-        ->command = [&](double x){ zoom = x; return 0; };
+        //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
+        ->setCommand( [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; } );
 
     ylay.step(2); 
     ((DropDownList*)gui.addPanel( new DropDownList("DropList1",5,ylay.x0,5+100, 3 ) ) )
@@ -248,6 +279,32 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
         ->addItem("pick_bonds")
         ->addItem("Item_angles");
 
+    ylay.step(2); 
+    ((DropDownList*)gui.addPanel( new DropDownList("DropList1",5,ylay.x0,5+100, 3 ) ) )
+        ->addItem("Top")
+        ->addItem("Botton")
+        ->addItem("Front")
+        ->addItem("Back")
+        ->addItem("Left")
+        ->addItem("Right")
+        ->setCommand( [&](GUIAbstractPanel* me_){ 
+            DropDownList& me = *(DropDownList*)me_;
+            printf( "old qCamera(%g,%g,%g,%g) -> %s \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w, me.labels[me.iSelected].c_str()  );
+            switch(me.iSelected){
+                case 0: qCamera=qTop;    break;
+                case 1: qCamera=qBottom; break;
+                case 2: qCamera=qFront;  break;
+                case 3: qCamera=qBack;   break;
+                case 4: qCamera=qLeft;   break;
+                case 5: qCamera=qRight;  break;
+            }
+            printf( "->new qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
+            qCamera.toMatrix(cam.rot);
+            printf( "cam: aspect %g zoom %g \n", cam.aspect, cam.zoom);
+            printMat((Mat3d)cam.rot);
+            }
+            
+        );
 
 
 }
@@ -338,7 +395,7 @@ void TestAppFireCoreVisual::draw(){
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
 
-    if(frameCount==1){ qCamera.pitch( M_PI ); }
+    if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
     if(bRunRelax){ MDloop(); }
 
     // --- Mouse Interaction / Visualization
@@ -364,6 +421,10 @@ void TestAppFireCoreVisual::draw(){
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
     if(iangPicked>=0){
         glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex3D );
+    }
+
+    if(useGizmo){
+        gizmo.draw();
     }
 };
 
@@ -554,6 +615,9 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
     //printf( "NonInert_seats::eventHandling() \n" );
     float xstep = 0.2;
     gui.onEvent( mouseX, mouseY, event );
+    Vec2f pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
+                          2*mouseY/float(HEIGHT) - 1              });// *(1/zoom);
+    if(useGizmo)gizmo.onEvent( pix, event );
     switch( event.type ){
         case SDL_MOUSEWHEEL:{
             if     (event.wheel.y > 0){ zoom/=1.2; }
@@ -593,6 +657,8 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
+                case SDLK_KP_0: qCamera = qCamera0; break;
+
                 case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
                 //case SDLK_LESS:    which_MO--; printf("which_MO %i \n"); break;
@@ -602,6 +668,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                 case SDLK_r: renderDensity(          ); break;
                 case SDLK_c: saveScreenshot( frameCount ); break;
 
+                case SDLK_g: useGizmo=!useGizmo; break;
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
                     selectShorterSegment( ray0, (Vec3d)cam.rot.c );
@@ -618,10 +685,10 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_SPACE: bRunRelax=!bRunRelax; break;
 
-                case SDLK_g: iangPicked=(iangPicked+1)%ff.nang;
-                    printf( "ang[%i] cs(%g,%g) k %g (%i,%i,%i)\n", iangPicked, ff.ang_cs0[iangPicked].x, ff.ang_cs0[iangPicked].y, ff.ang_k[iangPicked],
-                        ff.ang2atom[iangPicked].a,ff.ang2atom[iangPicked].b,ff.ang2atom[iangPicked].c );
-                    break;
+                //case SDLK_g: iangPicked=(iangPicked+1)%ff.nang;
+                //    printf( "ang[%i] cs(%g,%g) k %g (%i,%i,%i)\n", iangPicked, ff.ang_cs0[iangPicked].x, ff.ang_cs0[iangPicked].y, ff.ang_k[iangPicked],
+                //        ff.ang2atom[iangPicked].a,ff.ang2atom[iangPicked].b,ff.ang2atom[iangPicked].c );
+                //    break;
 
             }
             break;

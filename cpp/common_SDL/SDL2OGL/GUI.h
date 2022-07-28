@@ -121,6 +121,9 @@ class GUIAbstractPanel{ public:
 	//int      fontTex=0;
     //char*    caption=NULL;
     std::string caption;
+	//void (*command)(double,void*) = NULL;
+    //std::function<void(double)> command =0;
+    std::function<void(GUIAbstractPanel*)> command =0; // = [] { return 0; }
 
 	// ==== functions
 
@@ -151,7 +154,7 @@ class GUIAbstractPanel{ public:
         return (x>xmin)&&(x<xmax)&&(y>ymin)&&(y<ymax);
     }
 	inline void toRelative ( int& x, int& y ){ x-=xmin; y-=ymin; }
-
+    inline GUIAbstractPanel* setCommand( const std::function<void(GUIAbstractPanel* panel)>& command_ ){ command=command_; return this; }
 };
 
 // ==============================
@@ -171,9 +174,6 @@ class GUIPanel : public GUIAbstractPanel { public:
 	double   value=0.0;
 	bool     isInt = false;
 	double* master=0;
-
-	//void (*command)(double,void*) = NULL;
-    std::function<void(double)> command =0; // = [] { return 0; }
 
     // ==== functions
 
@@ -371,8 +371,7 @@ class DropDownList : public GUIAbstractPanel { public:
     //int nItems = 0;
     //char** labels = (char**)exampleDropDownListItems;
     std::vector<std::string> labels;
-
-    GUIEventCallback* onSelect = 0;
+    //GUIEventCallback* onSelect = 0;
 
     //int nsubs;
     //GUIPanel ** subs;

@@ -274,7 +274,7 @@ GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& 
             if(isButton && (event.button.button==SDL_BUTTON_LEFT ) ){
                 executed=true;
                 //if (command!=NULL) command(value,caller);
-                if (command) command(value);
+                if (command) command(this);
             }
         }
     }
@@ -685,7 +685,8 @@ GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, 
                         i=_min(i,(int)labels.size()-1);
                         i=_max(i,0);
                         iSelected = i;
-                        if(onSelect)onSelect->GUIcallback(this);
+                        //if(onSelect)onSelect->GUIcallback(this);
+                        if(command)command(this);
                         printf( "iSelected %i  iItem0 %i  labels.size() %i  \n", iSelected, iItem0, labels.size() );
                     }
                     close();
