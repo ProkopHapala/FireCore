@@ -70,6 +70,7 @@ class CameraT{ public:
     inline void pix2rayOrtho( const Vec2f& pix, Vec3T<T>& ro ) const {
         //T  resc = 1/zoom;
         T  resc = zoom;
+        //printf( "Camera::pix2rayOrtho() pix(%g,%g) rsc %g b(%g,%g,%g) a(%g,%g,%g)\n", pix.a,pix.b, resc,  rot.a.x,rot.a.y,rot.a.z,  rot.b.x,rot.b.y,rot.b.z );
         ro = rot.a*(pix.a*resc) + rot.b*(pix.b*resc);
     }
 
@@ -80,6 +81,7 @@ class CameraT{ public:
 
     //inline Vec3T<T> pix2ray( const Vec2f& pix, Vec3T<T>& rd, Vec3T<T>& ro ){
     inline void pix2ray( const Vec2f& pix, Vec3T<T>& rd, Vec3T<T>& ro ){
+        //printf(  "Camera::pix2ray() persp %i \n", persp);
         if(persp){
             ro = pos;
             pix2rayPersp( pix, rd );

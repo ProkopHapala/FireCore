@@ -57,6 +57,7 @@ int pickPoint(const Vec3d& ro,const Vec3d& rd, int n, Vec3d* points, double Rmax
         R*=R;
         double t;
         double r2 = rayPointDistance2( ro, rd, points[i], t );
+        //printf("DEBUG pickPoint[%i] r %g \n", i, sqrt(r2) );
         if( (r2<R)&&(t<tmin)  ){
             ibest=i;
             tmin=t;
@@ -94,17 +95,13 @@ inline Vec3d ray2screen( const Vec3d& v, const Vec3d& rd ){
     //return { rd.dot(rot.a) , rd.dot(rot.b) };
 }
 
-
-
-
-
 struct Pose3d{
     Vec3d pos;
     Mat3d rot;
 };
 
 class EditorGizmo{ public:
-
+    int iDebug = 0;
     //enum class MPick :char{ vertex='v', edge='e'               };
     //enum class MTrans:char{ move='m', rotate='r', scale='s';   };
     //enum class MOrig :char{ global='g', cluster='c', local='l' };
@@ -179,6 +176,14 @@ class EditorGizmo{ public:
         }
     }
     */
+
+   void bindPoints(int n, Vec3d* points_, double* pointSizes_=(double*)1 ){
+       npoint=n; points=points_; if(pointSizes_!=(double*)1)pointSizes_=pointSizes_;
+   }
+
+    void bindEdges(int n, Vec2i* edges_ ){
+       nedge=n; edges=edges_;
+   }
 
     void applyTranslation(const Vec3d& shift  ){
         int nsel=selection.size();
@@ -304,10 +309,12 @@ class EditorGizmo{ public:
     }
 
     void mousePick(){
+        //if(iDebug>1)printf("EditorGizmo::mousePick() ro(%g,%g,%g) rd(%g,%g,%g) cam.zoom %g \n", ro.x,ro.y,ro.z,  rd.x,rd.y,rd.z, cam->zoom  );
         switch(mPick){
             case 'v':{
                 //pickPoint(const Vec3d& ro,const Vec3d& rd, int n, Vec3d* points, double Rmax, double* Rs=0){
                 int ipick = pickPoint(ro,rd,npoint,points, pointSize, pointSizes);
+                //if(iDebug>1)printf("EditorGizmo::mousePick() ipick %i \n", ipick );
                 if(ipick<0) break;
                 //printf( " %i   // mouse pick vertex \n", ipick );
                 if     (mPickLogic='~'){ xorToSelection( ipick, groupBrush); } // Xor
@@ -315,10 +322,10 @@ class EditorGizmo{ public:
                 else if(mPickLogic='-'){ selection.erase(ipick); } // unset ()
                 }break;
             case 'r':{
-                printf("!!! WARRNING !!! EditorGizmo::mousePick: mode='r' edge picking not impelented Yet \n");
+                printf("!!! WARRNING !!! EditorGizmo::mousePick(): mode='r' edge picking not impelented Yet \n");
                 }break;
             case 'p':{
-                printf("!!! WARRNING !!! EditorGizmo::mousePick: mode='p' polygon picking not impelented Yet \n");
+                printf("!!! WARRNING !!! EditorGizmo::mousePick(): mode='p' polygon picking not impelented Yet \n");
                 // -- ToDo: Not sure how to do rotations yet
                 //void applyRotation(const Vec3d& uaxis, double phi );
                 }break;
@@ -335,8 +342,7 @@ class EditorGizmo{ public:
         Vec3f rd_,ro_;
         cam->pix2ray(pix,rd_,ro_);
         rd=(Vec3d)rd_; ro=(Vec3d)ro_;
-        //printf(  "pix  (%g,%g) ro(%g,%g,%g) rd(%g,%g,%g) | zoom %g persc %i \n", pix.x,pix.y, ro.x,ro.y,ro.z,   rd.x,rd.y,rd.z, cam->zoom, cam->persp );
-
+        //if(iDebug>1)printf(  "pix  (%g,%g) ro(%g,%g,%g) rd(%g,%g,%g) | zoom %g persc %i \n", pix.x,pix.y, ro.x,ro.y,ro.z,   rd.x,rd.y,rd.z, cam->zoom, cam->persp );
         switch( event.type ){
             case SDL_KEYDOWN:
                 //printf("gizmo key(%i) | %i\n", event.key.keysym.sym, bKeyboard );
