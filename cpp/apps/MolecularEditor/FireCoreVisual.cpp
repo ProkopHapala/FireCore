@@ -270,17 +270,18 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     ylay.step(2); 
     ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,ylay.x0,5+100,ylay.x1, true, true ) ) )
         ->setRange(5.0,50.0)
+        ->setValue(zoom)
         //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
         ->setCommand( [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; } );
 
     ylay.step(2); 
-    ((DropDownList*)gui.addPanel( new DropDownList("DropList1",5,ylay.x0,5+100, 3 ) ) )
+    ((DropDownList*)gui.addPanel( new DropDownList("Pick Mode:",5,ylay.x0,5+100, 3 ) ) )
         ->addItem("pick_atoms")
         ->addItem("pick_bonds")
         ->addItem("Item_angles");
 
-    ylay.step(2); 
-    ((DropDownList*)gui.addPanel( new DropDownList("DropList1",5,ylay.x0,5+100, 3 ) ) )
+    ylay.step(6); 
+    ((DropDownList*)gui.addPanel( new DropDownList("View Side",5,ylay.x0,5+100, 3 ) ) )
         ->addItem("Top")
         ->addItem("Botton")
         ->addItem("Front")
@@ -303,7 +304,6 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
             printf( "cam: aspect %g zoom %g \n", cam.aspect, cam.zoom);
             printMat((Mat3d)cam.rot);
             }
-            
         );
 
 
@@ -684,6 +684,14 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                     break;
 
                 case SDLK_SPACE: bRunRelax=!bRunRelax; break;
+
+                case SDLK_d: {
+                    printf("DEBUG Camera Matrix\n");
+                    printf( "DEBUG qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
+                    qCamera.toMatrix(cam.rot);
+                    printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
+                    printMat((Mat3d)cam.rot);
+                } break;
 
                 //case SDLK_g: iangPicked=(iangPicked+1)%ff.nang;
                 //    printf( "ang[%i] cs(%g,%g) k %g (%i,%i,%i)\n", iangPicked, ff.ang_cs0[iangPicked].x, ff.ang_cs0[iangPicked].y, ff.ang_k[iangPicked],
