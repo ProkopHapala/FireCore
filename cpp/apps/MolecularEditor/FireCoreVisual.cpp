@@ -58,6 +58,7 @@ Quat4f qBottom{ 0.0f, 0.0f, 0.0f, 1.0f};
 Quat4f qLeft  {-0.5f, 0.5f, 0.5f, 0.5f};
 Quat4f qRight { 0.5f, 0.5f, 0.5f,-0.5f};
 
+inline bool file_exist(const char* fname) { if (FILE *file = fopen(fname, "r")) { fclose(file); return true; } else { return false; } }
 
 // ===========================================
 // ================= MAIN CLASS ==============
@@ -106,6 +107,9 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     double cameraMoveSpeed = 1.0;
     bool useGizmo=true;
 
+    bool bPrepared_mm = false;
+    bool bPrepared_qm = false;
+
     GUI gui;
     EditorGizmo  gizmo;
     SimplexRuler ruler; // Helps paiting organic molecules
@@ -139,8 +143,8 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 
 	TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ );
 
-	int  loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
-	int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
+	//int  loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
+	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
     void tryLoadGridFF();
     void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
 
@@ -154,50 +158,16 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
 
+    void InitQMMM();
+    void loadGeom();
+    void initGUI();
 };
 
 //=================================================
 //                   INIT()
 //=================================================
 
-TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
-
-    fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
-    fontTex3D = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
-
-    // ---- Load Atomic Type Parameters
-    int nheavy = 0;
-    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
-    params.loadBondTypes( "common_resources/BondTypes.dat" );
-    builder.bindParams(&params);
-
-    // ---- Load & Build Molecular Structure
-    readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
-    builder.insertFlexibleMolecule(  builder.loadMolType( "common_resources/polymer-2.xyz", "polymer1" ), {0,0,0}, Mat3dIdentity, -1 );
-    //builder.lvec.a.x *= 2.3;
-    builder.printAtomConfs();
-    builder.export_atypes(atypes);
-    builder.verbosity = true;
-    builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
-    builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
-    builder.toMMFFmini( ff, &params );
-    builder.saveMol( "data/polymer.mol" );
-
-    // ----- Non-bonded interactions setup 
-    nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.aforce, 0, ff.bond2atom );
-    builder.export_REQs( nff.REQs );
-    if(bNonBonded){
-        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
-            printf( "ERROR: nff.pairMask is not sorted => exit \n" );
-            exit(0);
-        };
-    }else{
-        printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
-    }
-
-    // --- Build Substrate
-    makeGridFF();
-
+void TestAppFireCoreVisual::InitQMMM(){
     // ----- QMMM setup
     qmmm.init(6);
     qmmm.params=&params;
@@ -210,6 +180,7 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     qmmm.load_apos(ff.apos);
 
     // ----- FireCore setup
+
     fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
     fireCore.preinit( );
     fireCore.set_lvs( (double*)&(builder.lvec) );
@@ -218,48 +189,35 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     fireCore.setupGrid( 100.0, 0, tmp, (int*)&MOgrid.n, (double*)&MOgrid.dCell );
     MOgrid.printCell();
     qmmm.bindFireCoreLib( fireCore );
+}
 
-    // ----- Optimizer setup
-    opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.aforce, 0 );
-    opt.initOpt( 0.3, 0.95 );
-    opt.cleanVel( );
+void TestAppFireCoreVisual::loadGeom(){
+    // ---- Load & Build Molecular Structure
+    readMatrix( "cel.lvs", 3, 3, (double*)&builder.lvec );
+    builder.insertFlexibleMolecule(  builder.loadMolType( "mm.xyz", "polymer1" ), {0,0,0}, Mat3dIdentity, -1 );
+    //builder.lvec.a.x *= 2.3;
+    builder.printAtomConfs();
+    builder.export_atypes(atypes);
+    builder.verbosity = true;
+    builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
+    builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
+    builder.toMMFFmini( ff, &params );
+    builder.saveMol( "builder_output.mol" );
 
-    // ----- Test run before Visual Loop
-    double E = ff.eval(true);
-    printf( "iter0 ff.eval() E = %g \n", E );
-    printf("TestAppFireCoreVisual.init() DONE \n");
+    // ----- Non-bonded interactions setup 
+    nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.aforce, 0, ff.bond2atom );
+    builder.export_REQs( nff.REQs );
+    if(bNonBonded){
+        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
+            printf( "ERROR: nff.pairMask is not sorted => exit \n" );
+            exit(0);
+        };
+    }else{
+        printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
+    }
+}
 
-    picked_lvec = &builder.lvec.a;
-
-    // ---- Graphics setup
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
-    //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
-	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
-
-    printf( " # ==== SETUP DONE ==== \n" );
-
-
-    //gui.addPanel( new TableView( tab1, "tab1", 150.0, 250.0,  0, 0, 5, 3 ) );
-    //((DropDownList*)gui.addPanel( new DropDownList("DropList1",100.0,300.0,200.0,5) ))
-    //    ->addItem("Item_1")
-    //    ->addItem("Item_2");
-    //gui.addPanel( &clipBox );
-    //GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_, bool isButton_ ){
-
-
-    // ========== Gizmo
-    cam.persp = false;
-    gizmo.cam = &cam;
-    gizmo.bindPoints(ff.natoms, ff.apos      );
-    gizmo.bindEdges (ff.nbonds, ff.bond2atom );
-    gizmo.pointSize = 0.5;
-    //gizmo.iDebug    = 2;
-
-    ruler.setStep( 1.5 * sqrt(3) );
-
+void TestAppFireCoreVisual::initGUI(){
     // ============ GUI
 
     GUI_stepper ylay;
@@ -309,7 +267,56 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
             printMat((Mat3d)cam.rot);
             }
         );
+}
 
+
+TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
+
+    fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
+    fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
+
+    // ---- Load Atomic Type Parameters
+    int nheavy = 0;
+    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
+    params.loadBondTypes( "common_resources/BondTypes.dat" );
+    builder.bindParams(&params);
+
+    if( file_exist("cel.lvs")        ){ 
+        loadGeom(); 
+        makeGridFF();
+        // ----- Optimizer setup
+        opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.aforce, 0 );
+        opt.initOpt( 0.3, 0.95 );
+        opt.cleanVel( );
+        double E = ff.eval(true);
+        printf( "iter0 ff.eval() E = %g \n", E );
+        bPrepared_mm=true; 
+        printf("MM preparation DONE \n");
+    }
+    if( file_exist("Fdata/info.dat") ){ 
+        InitQMMM(); bPrepared_qm=true; 
+        printf("QM preparation DONE \n");
+    }
+
+    picked_lvec = &builder.lvec.a;
+
+    // ---- Graphics setup
+    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
+    //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
+	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
+    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+
+    // ========== Gizmo
+    cam.persp = false;
+    gizmo.cam = &cam;
+    gizmo.bindPoints(ff.natoms, ff.apos      );
+    gizmo.bindEdges (ff.nbonds, ff.bond2atom );
+    gizmo.pointSize = 0.5;
+    //gizmo.iDebug    = 2;
+
+    ruler.setStep( 1.5 * sqrt(3) );
 
 }
 
@@ -514,82 +521,6 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
         glEndList();
         delete [] FFtot;
     }
-}
-
-
-int TestAppFireCoreVisual::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH ){
-    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
-    params.loadBondTypes( "common_resources/BondTypes.dat" );
-    builder.bindParams(&params);
-    int nheavy = builder.load_xyz( fname, bAutoH, true );
-    readMatrix( fnameLvs, 3, 3, (double*)&builder.lvec );
-
-    //builder.printAtoms ();
-    //builder.printConfs ();
-    builder.printAtomConfs();
-    builder.export_atypes(atypes); // NOTE : these are not proton numbers !!!!
-
-    builder.verbosity = 5;
-    builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
-    builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
-
-    builder.toMMFFmini( ff, &params );
-
-    builder.saveMol( "data/polymer.mol" );
-
-    return nheavy;
-}
-
-int TestAppFireCoreVisual::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoadTypes ){
-
-    /// should look in   test_SoftMolecularDynamics.cpp
-
-    if(bLoadTypes){
-        printf( "bLoadTypes==True : load atom and bond types from file \n" );
-        params.loadAtomTypes( "common_resources/AtomTypes.dat" );
-        params.loadBondTypes( "common_resources/BondTypes.dat");
-        //builder.params = &params;
-    }else{
-        printf( "bLoadTypes==False : make default Atom names dictionary \n" );
-        params.initDefaultAtomTypeDict( );
-    }
-    mol.bindParams(&params);
-    mol.loadMol( fname );
-    int iH = params.atomTypeDict["H"];
-    int nh     = mol.countAtomType(iH); printf( "nh %i\n", nh );
-    int nheavy = mol.natoms - nh;
-    if(bAutoH){
-        printf( "bAutoH==True : MMFFBuilder will re-calculate hydrogens, pi-orbitals and free electron pairs \n" );
-        builder.insertFlexibleMolecule_ignorH( &mol, Vec3dZero, Mat3dIdentity, iH );
-    }else{
-        printf( "bAutoH==False : Angles assigned by simple algorithm Molecule::autoAngles \n" );
-        //mol.bondsOfAtoms();
-        params.assignREs( mol.natoms, mol.atomType, mol.REQs );
-        mol.autoAngles(true);
-        Vec3d cog = mol.getCOG_av();
-        mol.addToPos( cog*-1.0 );
-        builder.insertMolecule(&mol, Vec3dZero, Mat3dIdentity, false );
-        builder.toMMFFmini( ff, &params );
-    }
-    builder.tryAddConfsToAtoms(0, nh);
-    builder.tryAddBondsToConfs();
-
-    //mol.printAtomInfo();
-    //mol.printAtom2Bond();
-    //mol.printAngleInfo();
-    builder.printAtoms();
-    //builder.printBonds();
-    //builder.printAngles();
-    //builder.printConfs();
-
-    //bNonBonded = false;      // ToDo : WARRNING : this is just hack, because builder.sortBonds() does not seem to work, we have to switch off Non-Bonding interactions
-    builder.trySortBonds();
-    //builder.sortBonds();
-    builder.printBonds();
-    builder.printAngles();
-    builder.printConfs();
-    builder.toMMFFmini( ff, &params );
-    return nheavy;
 }
 
 void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
