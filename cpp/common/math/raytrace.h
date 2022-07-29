@@ -135,6 +135,10 @@ inline double rayPlane( const Vec3d& ray0, const Vec3d& hRay, const Vec3d& norma
 	return ( np - n0 ) / nh;
 }
 
+inline Vec3d rayPlane_hit( const Vec3d& ray0, const Vec3d& hRay, const Vec3d& normal, const Vec3d& point ){
+	return ray0 + hRay*rayPlane( ray0, hRay, normal, point );
+}
+
 // =========== Triangle
 
 inline bool pointInTriangleEdges( const Vec3d& pa, const Vec3d& pb, const Vec3d& ab, const Vec3d& bc, const Vec3d& ca ){

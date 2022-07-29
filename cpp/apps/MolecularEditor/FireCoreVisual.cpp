@@ -106,6 +106,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     bool bRunRelax  = false;
     double cameraMoveSpeed = 1.0;
     bool useGizmo=true;
+    bool bDrawHexGrid=true;
 
     bool bPrepared_mm = false;
     bool bPrepared_qm = false;
@@ -119,7 +120,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     double mm_Rsc =  0.25;
     double mm_Rsub = 1.0;
     bool   mm_bAtoms = false;
-    bool renderType = 1;
+    bool   isoSurfRenderType = 1;
     Vec3d testREQ,testPLQ;
 
     // ---- Graphics objects
@@ -161,6 +162,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     void InitQMMM();
     void loadGeom();
     void initGUI();
+    void drawingHex(double z0);
 };
 
 //=================================================
@@ -218,16 +220,14 @@ void TestAppFireCoreVisual::loadGeom(){
 }
 
 void TestAppFireCoreVisual::initGUI(){
-    // ============ GUI
-
     GUI_stepper ylay;
-
     ylay.step(6);
     Table* tab1 = new Table( 9, sizeof(builder.lvec.a), (char*)&builder.lvec );
     tab1->addColum( &(builder.lvec.a.x), 1, DataType::Double    );
     tab1->addColum( &(builder.lvec.a.y), 1, DataType::Double    );
     tab1->addColum( &(builder.lvec.a.z), 1, DataType::Double    );
-    gui.addPanel( new TableView( tab1, "lattice", 5, ylay.x0,  0, 0, 3, 3 ) );
+    
+    ((TableView*)gui.addPanel( new TableView( tab1, "lattice", 5, ylay.x0,  0, 0, 3, 3 ) ))->input = new GUITextInput();
 
     ylay.step(2); 
     ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,ylay.x0,5+100,ylay.x1, true, true ) ) )
@@ -318,6 +318,8 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
 
     ruler.setStep( 1.5 * sqrt(3) );
 
+    initGUI();
+
 }
 
 void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
@@ -331,8 +333,8 @@ void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
     glNewList(ogl_MO, GL_COMPILE);
     glTranslatef( p.x, p.y, p.z );
     int ntris=0;  
-    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, renderType  );
-    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, renderType  );
+    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType  );
+    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType  );
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     glTranslatef( -p.x, -p.y, -p.z );
     glEndList();
@@ -347,7 +349,7 @@ void TestAppFireCoreVisual::renderDensity(double iso){
     fireCore.getGridDens( 0, 0, ewfaux );
     ogl_MO  = glGenLists(1);
     glNewList(ogl_MO, GL_COMPILE);
-    int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux, renderType  );
+    int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux, isoSurfRenderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
     glEndList();
     delete [] ewfaux;
@@ -401,7 +403,7 @@ void TestAppFireCoreVisual::draw(){
     glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
-    glEnable(GL_LINE_SMOOTH);
+    //glEnable(GL_LINE_SMOOTH);
     glEnable(GL_BLEND);
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
@@ -437,30 +439,54 @@ void TestAppFireCoreVisual::draw(){
     if(useGizmo){
         gizmo.draw();
     }
+    drawingHex(5.0);
 
-    Vec2i ip; Vec2d dp;
-    Vec2d p{ray0.x,ray0.y};
-    double off=1000.0;
-    bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
-    //ruler.nodePoint( ip, p );    glColor3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
-    if(s){glColor3f(1.,0.2,1.);}else{glColor3f(0.2,1.0,1.);}
-    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross(  {p.x-off,p.y-off, 5.0}, 0.2 );
-    glBegin(GL_POINTS);
-    ruler.simplexIndex( (Vec2d){off,off}, ip, dp );
-    for(int ix=0;ix<10;ix++ ){
-        for(int iy=0;iy<10;iy++ ){
-            Vec2i ip_{ip.x+ix,ip.y+iy};
-            ruler.tilePoint( ip_, true,  p ); glColor3f(1.0,0.2,1.0); Draw3D::vertex((Vec3f){p.x-off,p.y-off,5.0});
-            ruler.tilePoint( ip_, false, p ); glColor3f(0.2,1.0,1.0); Draw3D::vertex((Vec3f){p.x-off,p.y-off,5.0});
-        }
-    }
-    glEnd();
 };
 
 void TestAppFireCoreVisual::drawHUD(){
     glDisable ( GL_LIGHTING );
     gui.draw();
 }
+
+void TestAppFireCoreVisual::drawingHex(double z0){
+    Vec2i ip; Vec2d dp;
+    //Vec2d p{ray0.x,ray0.y};
+    Vec3d p3 = rayPlane_hit( ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
+    Vec2d p{p3.x,p3.y};
+    //glColor3f(1.,0.0,1.);Draw3D::drawPointCross(p3, 0.2); p3.z=z0;
+    //glColor3f(0.,1.0,1.);Draw3D::drawPointCross(p3, 0.2);
+    double off=1000.0;
+    bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
+    //ruler.nodePoint( ip, p );    glColor3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
+    if(s){glColor3f(1.,0.2,1.);}else{glColor3f(0.2,1.0,1.);}
+    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross(  {p.x-off,p.y-off, z0}, 0.2 );
+    
+    bool bLine=true;
+    if(bDrawHexGrid){
+        if(bLine){glBegin(GL_LINES);}else{glBegin(GL_POINTS);}
+        ruler.simplexIndex( (Vec2d){off,off}, ip, dp );
+        double sc = ruler.step/sqrt(3.0);
+        for(int ix=0;ix<10;ix++ ){
+            for(int iy=0;iy<10;iy++ ){
+                Vec2i ip_{ip.x+ix,ip.y+iy};
+                ruler.tilePoint( ip_, true,  p ); 
+                p.sub(off,off);
+                if(bLine){
+                    glColor3f(1.0,0.2,1.0); 
+                    Vec2d p2;
+                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
+                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
+                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
+                }else{
+                    glColor3f(1.0,0.2,1.0); Draw3D::vertex((Vec3f){p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
+                    glColor3f(0.2,1.0,1.0); Draw3D::vertex((Vec3f){p.x,p.y,z0});
+                }
+            }
+        }
+        glEnd();
+    }
+}
+
 
 void TestAppFireCoreVisual::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;
@@ -577,7 +603,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
             else if(event.wheel.y < 0){ zoom*=1.2; }}break;
         case SDL_KEYDOWN :
             //printf( "key: %c \n", event.key.keysym.sym );
-            switch( event.key.keysym.sym ){
+            if(gui.bKeyEvents) switch( event.key.keysym.sym ){
                 //case SDLK_p:  first_person = !first_person; break;
                 //case SDLK_o:  perspective  = !perspective; break;
                 //case SDLK_r:  world.fireProjectile( warrior1 ); break;
@@ -639,7 +665,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                 case SDLK_SPACE: bRunRelax=!bRunRelax; break;
 
                 case SDLK_d: {
-                    printf("DEBUG Camera Matrix\n");
+                    printf( "DEBUG Camera Matrix\n");
                     printf( "DEBUG qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
                     qCamera.toMatrix(cam.rot);
                     printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
