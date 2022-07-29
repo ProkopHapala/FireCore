@@ -38,6 +38,7 @@
 #include "MolecularDraw.h"
 #include "GUI.h"
 #include "EditorGizmo.h"
+#include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
 int idebug=0;
@@ -106,7 +107,8 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     bool useGizmo=true;
 
     GUI gui;
-    EditorGizmo gizmo;
+    EditorGizmo  gizmo;
+    SimplexRuler ruler; // Helps paiting organic molecules
 
     // ---- Visualization params
     int which_MO  = 7; 
@@ -255,6 +257,8 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     gizmo.bindEdges (ff.nbonds, ff.bond2atom );
     gizmo.pointSize = 0.5;
     //gizmo.iDebug    = 2;
+
+    ruler.setStep( 1.5 * sqrt(3) );
 
     // ============ GUI
 
@@ -426,6 +430,24 @@ void TestAppFireCoreVisual::draw(){
     if(useGizmo){
         gizmo.draw();
     }
+
+    Vec2i ip; Vec2d dp;
+    Vec2d p{ray0.x,ray0.y};
+    double off=1000.0;
+    bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
+    //ruler.nodePoint( ip, p );    glColor3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
+    if(s){glColor3f(1.,0.2,1.);}else{glColor3f(0.2,1.0,1.);}
+    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross(  {p.x-off,p.y-off, 5.0}, 0.2 );
+    glBegin(GL_POINTS);
+    ruler.simplexIndex( (Vec2d){off,off}, ip, dp );
+    for(int ix=0;ix<10;ix++ ){
+        for(int iy=0;iy<10;iy++ ){
+            Vec2i ip_{ip.x+ix,ip.y+iy};
+            ruler.tilePoint( ip_, true,  p ); glColor3f(1.0,0.2,1.0); Draw3D::vertex((Vec3f){p.x-off,p.y-off,5.0});
+            ruler.tilePoint( ip_, false, p ); glColor3f(0.2,1.0,1.0); Draw3D::vertex((Vec3f){p.x-off,p.y-off,5.0});
+        }
+    }
+    glEnd();
 };
 
 void TestAppFireCoreVisual::drawHUD(){
