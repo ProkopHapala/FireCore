@@ -146,16 +146,36 @@ class Molecule{ public:
     }
     */
 
-    void findBonds_brute(double Rmax){
+#ifdef MMFFparams_h
+    void assignREQs( MMFFparams& params ){
+        for(int i=0; i<natoms; i++){
+            int ityp=atomType[i];
+            const AtomType& typ = params.atypes[ityp];
+            //printf( "assignREQs[%i] ityp %i RvdW %g REQs %li params.atypes %li \n", i, ityp, typ.RvdW, (long)REQs, (long)(params.atypes[0]) );
+            REQs[i].x=typ.RvdW;
+            REQs[i].y=typ.EvdW;
+        }
+    }
+#endif
+
+    void findBonds_brute(double Rmax=1.8, const bool bUseREQs=false){
         double R2max = sq(Rmax);
         std::vector<Vec2i> pairs;
         for(int i=0;i<natoms;i++){
             const Vec3d& pi = pos[i];
+            double Ri; if( bUseREQs ){ Ri=REQs[i].x; }
             for(int j=0;j<i;j++){
                 Vec3d d; d.set_sub(pos[j],pi);
                 double r2 = d.norm2();
+                double R2;
+                if( bUseREQs ){
+                    R2=(Ri+REQs[j].x)*Rmax;
+                    R2*=R2;
+                }else{
+                    R2=R2max;
+                }
                 //printf( "%i,%i %g %g  (%g,%g,%g)  (%g,%g,%g) \n", i, j, r2, R2max, pi.x,pi.y,pi.z,    pos[j].x,pos[j].y,pos[j].z );
-                if(r2<R2max){
+                if(r2<R2){
                     pairs.push_back({i,j});
                 }
             }
@@ -328,7 +348,7 @@ class Molecule{ public:
     }
 
 
-    int loadMol( const char* fname ){
+    int loadMol( const char* fname, int verbosity=0 ){
         // 0        10         20
         //   -13.0110  -15.2500   -0.0030 N   0  0  0  0  0  0  0  0  0  0  0  0
         // xxxxx.xxxxyyyyy.yyyyzzzzz.zzzz aaaddcccssshhhbbbvvvHHHrrriiimmmnnneee
@@ -338,9 +358,11 @@ class Molecule{ public:
             printf("cannot find %s\n", fname );
             return -1;
         }
+
         char buff[1024];
         char * line;
         int nl;
+        try {
         line = fgets( buff, 1024, pFile ); //printf("%s",line);
         line = fgets( buff, 1024, pFile ); //printf("%s",line);
         line = fgets( buff, 1024, pFile ); //printf("%s",line);
@@ -350,7 +372,7 @@ class Molecule{ public:
         //line = fgets( buff, 1024, pFile );
         natoms = getInt( line, 0, 3 );
         nbonds = getInt( line, 3, 6 );
-        printf("loadMol(%s):  natoms, nbonds %i %i \n", fname, natoms, nbonds );
+        //printf("loadMol(%s):  natoms, nbonds %i %i \n", fname, natoms, nbonds );
         //exit(0);
         //return 0;
         allocate(natoms,nbonds);
@@ -359,14 +381,13 @@ class Molecule{ public:
         int istr_z      =20;
         int istr_name   =25;
         int istr_charge =30;
-
         for(int i=0; i<natoms; i++){
             //char ch;
             double junk;
             char at_name[8];
             line = fgets( buff, 1024, pFile );  //printf("%s",line);
-            sscanf( line, "%lf %lf %lf %s %lf %lf\n", &pos[i].x, &pos[i].y, &pos[i].z,  at_name, &junk, &(REQs[i].z) );
-            printf(       "%lf %lf %lf %s %lf %lf\n",  pos[i].x,  pos[i].y,  pos[i].z,  at_name,  junk,   REQs[i].z   );
+            sscanf( line,               "%lf %lf %lf %s %lf %lf\n", &pos[i].x, &pos[i].y, &pos[i].z,  at_name, &junk, &(REQs[i].z) );
+            if(verbosity>1)printf( ".mol %lf %lf %lf %s %lf %lf\n",  pos[i].x,  pos[i].y,  pos[i].z,  at_name,  junk,   REQs[i].z   );
             REQs[i].x = 1.5; // [A]  van der Waals radius default
             REQs[i].y = 0;   // [eV] van der Waals binding energy default
             assignAtomType( i, at_name );
@@ -380,6 +401,11 @@ class Molecule{ public:
             //printf(       "%i %i %i\n",  bond2atom[i].x,  bond2atom[i].y,  bondType[i] );
             bond2atom[i].x--;
             bond2atom[i].y--;
+        }
+        }catch(...){
+            printf( "ERROR in loadMol(%s) \n", fname );
+            fclose(pFile);
+            return -1;
         }
         fclose(pFile);
         return natoms + nbonds;
@@ -443,7 +469,7 @@ class Molecule{ public:
             int nret = sscanf( line, "%s %lf %lf %lf %lf\n", at_name, &pos[i].x, &pos[i].y, &pos[i].z, &REQs[i].z, &npis[i] );
             if( nret < 5 ){ REQs[i].z= 0; };
             if( nret < 6 ){ npis[i]  =-1; };
-            if(verbosity>1)printf(       "mol[%i] %s %lf %lf %lf  %lf    *atomTypeDict %i\n", i,  at_name, pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z, atomTypeDict );
+            if(verbosity>1)printf(       ".xyz[%i] %s p(%lf,%lf,%lf) Q %lf \n", i,  at_name, pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z );
             // atomType[i] = atomChar2int( ch );
             auto it = atomTypeDict->find( at_name );
             if( it != atomTypeDict->end() ){
@@ -463,7 +489,7 @@ class Molecule{ public:
         return natoms;
     }
 
-    int loadXYZ_bas(const char* fname ){
+    int loadXYZ_bas(const char* fname, int verbosity ){
         // xxxxx.xxxxyyyyy.yyyyzzzzz.zzzz aaaddcccssshhhbbbvvvHHHrrriiimmmnnneee
         // http://www.daylight.com/meetings/mug05/Kappler/ctfile.pdf
         FILE * pFile = fopen(fname,"r");
@@ -489,7 +515,7 @@ class Molecule{ public:
             double Q;
             int nret = sscanf( line, "%i %lf %lf %lf %lf\n", &atomType[i], &pos[i].x, &pos[i].y, &pos[i].z, &Q );
             if( nret >= 5 ){  REQs[i].z=Q; }else{ REQs[i].z=0; };
-            printf(       "mol[%i] %i %lf %lf %lf  %lf    n", i,  atomType[i], pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z  );
+            if(verbosity>1)printf(       ".bas[%i] %i %lf %lf %lf  %lf    n", i,  atomType[i], pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z  );
             // atomType[i] = atomChar2int( ch );
         }
         fclose(pFile);
@@ -526,6 +552,16 @@ class Molecule{ public:
             double a0=0; if(ang0s)a0=ang0s[i];
             printf( "angle[%i|%i,%i] a0 %g[rad] \n", i, ang2bond[i].a, ang2bond[i].b, a0 );
         }
+    }
+
+    int loadByExt( const std::string&  fname, int verbosity=0 ){
+		int idot = fname.find_last_of("."); 
+		std::string ext = fname.substr( idot + 1);
+        printf("'%s' '%s'\n", fname.c_str(), ext.c_str());
+        if     (ext=="bas"){ return loadXYZ_bas(fname.c_str(),verbosity); }
+        else if(ext=="xyz"){ return loadXYZ    (fname.c_str(),verbosity); }
+        else if(ext=="mol"){ return loadMol    (fname.c_str(),verbosity); }
+        return -1;
     }
 
     void dealloc(){
