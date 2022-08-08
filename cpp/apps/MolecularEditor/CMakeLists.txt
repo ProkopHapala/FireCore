@@ -12,6 +12,15 @@ add_executable( ${NAME}_main
 )
 target_link_libraries( ${NAME}_main ${OpenGL_LIBRARIES} ${GLU_LIBRARY} ${SDL2_LIBRARY} )
 
+add_executable( MolecularBrowser
+    MolecularBrowser.cpp 
+	#$<TARGET_OBJECTS:MolecularEngine>  
+	$<TARGET_OBJECTS:DynamicOpt>
+	$<TARGET_OBJECTS:SDL2OGL>  
+)
+target_link_libraries( MolecularBrowser ${OpenGL_LIBRARIES} ${GLU_LIBRARY} ${SDL2_LIBRARY} )
+
+
 add_executable( FireCoreVisual
 	FireCoreVisual.cpp
 	$<TARGET_OBJECTS:DynamicOpt>
