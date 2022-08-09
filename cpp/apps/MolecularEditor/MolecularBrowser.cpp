@@ -235,6 +235,9 @@ void TestAppMolecularBrowser::renderThumbnails( int i0, int n, float zoom_, bool
         Draw3D::atoms( mol.natoms, mol.pos, mol.atomType, params, ogl_sph, 1.0, 0.5, 1.0 );
         glColor3f(0.0f,0.0f,0.0f);
         Draw3D::bonds( mol.nbonds, mol.bond2atom, mol.pos);
+        Draw3D::drawText( fileNames[i0+i].c_str(), (Vec3d){-9.0,+9.0,5.0}, fontTex, 0.07, 0);
+
+
         glColor3f(1.0f,1.0f,1.0f);
         glBindTexture(GL_TEXTURE_2D, tx );           // Bind To The Blur Texture
         //glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 0, 0, texture_size, texture_size, 0);  // Copy Our ViewPort To The Blur Texture (From 0,0 To 128,128... No Border)
@@ -323,7 +326,7 @@ void TestAppMolecularBrowser::drawHUD(){
     int imol=0;
     for(int iy=0; iy<nrow; iy++){
         for(int ix=0; ix<ncol; ix++){
-            if(imol<thumbnails.size())drawThumbnail( thumbnails[imol], {ix*dx,iy*dx}, (Vec2d){ix*dx+(dx-1),iy*dx+(dx-1)}, texture_size );
+            if(imol<thumbnails.size())drawThumbnail( thumbnails[imol], {ix*dx,iy*dx+(dx-1)}, (Vec2d){ix*dx+(dx-1),iy*dx}, texture_size );
             imol++;
         }
     }
