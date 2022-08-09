@@ -173,6 +173,12 @@ class Vec3T{
         return out;
 	}
 
+    inline void sort(){
+        if(x>y) _swap(x,y);
+        if(y>z) _swap(y,z);
+        if(x>y) _swap(x,y);
+    }
+
 
 	inline T normalize_taylor3(){
         // sqrt(1+x) ~= 1 + 0.5*x - 0.125*x*x
