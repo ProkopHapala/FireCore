@@ -516,16 +516,16 @@ class Mat3T{
 		else                { evec.set_mul( r1xr2, 1/sqrt(d2) ); }
 	}
 
-	void print() const {
+	inline void print() const {
         printf( " %f %f %f \n", ax, ay, az );
         printf( " %f %f %f \n", bx, by, bz );
         printf( " %f %f %f \n", cx, cy, cz );
     }
 
-    void printOrtho() const { printf( " %f %f %f   %e %e %e \n", a.norm2(),b.norm2(),c.norm2(),   a.dot(b),a.dot(c),b.dot(c) ); }
-    void printOrthoErr() const { printf( " %e %e %e   %e %e %e \n", a.norm()-1,b.norm()-1,c.norm()-1,   a.dot(b),a.dot(c),b.dot(c) ); }
+    inline void printOrtho() const { printf( " %f %f %f   %e %e %e \n", a.norm2(),b.norm2(),c.norm2(),   a.dot(b),a.dot(c),b.dot(c) ); }
+    inline void printOrthoErr() const { printf( " %e %e %e   %e %e %e \n", a.norm()-1,b.norm()-1,c.norm()-1,   a.dot(b),a.dot(c),b.dot(c) ); }
 
-    void transformVectors( int n, Vec3T<T>* v0s, Vec3T<T>* vs )const{
+    inline void transformVectors( int n, Vec3T<T>* v0s, Vec3T<T>* vs )const{
         for( int j=0; j<n; j++ ){
             Vec3T<T> v;
             //mrot.dot_to_T( h0s[j], h );
@@ -535,7 +535,7 @@ class Mat3T{
         }
     }
 
-    void transformPoints0( int n, Vec3T<T>* v0s, Vec3T<T>* ps, const Vec3T<T>& toPos )const{
+    inline void transformPoints0( int n, Vec3T<T>* v0s, Vec3T<T>* ps, const Vec3T<T>& toPos )const{
         for( int j=0; j<n; j++ ){
             Vec3T<T> v;
             //mrot.dot_to_T( apos0[j], v );
@@ -546,7 +546,7 @@ class Mat3T{
         }
     }
 
-    void transformPoints( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0 )const{
+    inline void transformPoints( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0 )const{
         for( int j=0; j<n; j++ ){
             Vec3T<T> v0,v;
             v0.set_sub( p0s[j], pos0 );
@@ -557,7 +557,7 @@ class Mat3T{
         }
     }
 
-    void scalePoint ( const Vec3T<T>& p0, Vec3T<T>& p, const Vec3T<T>& pos0, const Vec3T<T>& sc )const{
+    inline void scalePoint ( const Vec3T<T>& p0, Vec3T<T>& p, const Vec3T<T>& pos0, const Vec3T<T>& sc )const{
         Vec3T<T> v,v_;
         v.set_sub( p0, pos0 );
         dot_to   ( v, v_  );
@@ -566,12 +566,18 @@ class Mat3T{
         p.set_add( v, pos0);
     };
 
-    void scalePoints( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0, const Vec3T<T>& sc )const{
+    inline void scalePoints( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0, const Vec3T<T>& sc )const{
         for( int j=0; j<n; j++ ){ scalePoint( p0s[j], ps[j], pos0, sc ); }
     }
 
-    void scalePoints( int n, int* selection, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0, const Vec3T<T>& sc )const{
+    inline void scalePoints( int n, int* selection, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0, const Vec3T<T>& sc )const{
         for( int j=0; j<n; j++ ){ int i=selection[j]; scalePoint( p0s[i], ps[i], pos0, sc ); }
+    }
+
+    inline void addOuter( const VEC& v1, const VEC& v2, T f ){
+        xx+=v1.x*v2.x*f; xy+=v1.x*v2.y*f; xz+=v1.x*v2.z*f;
+        yx+=v1.y*v2.x*f; yy+=v1.y*v2.y*f; yz+=v1.y*v2.z*f;
+        zx+=v1.z*v2.x*f; zy+=v1.z*v2.y*f; zz+=v1.z*v2.z*f;
     }
 
 };

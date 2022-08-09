@@ -170,6 +170,7 @@ class Molecule{ public:
                 double R2;
                 if( bUseREQs ){
                     R2=(Ri+REQs[j].x)*Rmax;
+                    //printf( "bond[%i : %i] r %g R %g factor %g \n", i, j, sqrt(r2), R2, Rmax ) ;
                     R2*=R2;
                 }else{
                     R2=R2max;
@@ -267,7 +268,34 @@ class Molecule{ public:
         return cog;
     }
 
+    Vec3d getCOG_minmax()const{
+        Vec3d p0 = (Vec3d){ 1.e+300, 1.e+300, 1.e+300};
+        Vec3d p1 = (Vec3d){-1.e+300,-1.e+300,-1.e+300};
+        for(int i=0; i<natoms; i++){
+            p0.setIfLower  (pos[i]);
+            p1.setIfGreater(pos[i]);
+        }
+        //printf("getCOG_minmax pmin(%g,%g,%g) pmax(%g,%g,%g) \n", p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z );
+        return (p0+p1)*0.5;
+    }
+
     void addToPos( Vec3d dp ){ for(int i=0; i<natoms; i++){ pos[i].add(dp); } }
+
+    void FindRotation( Mat3d& rot){
+        Mat3d XX=Mat3dZero;
+        for(int i=0; i<natoms; i++){
+            XX.addOuter( pos[i], pos[i], 1.0 );
+        }
+        printf( "XX: " ); printMat(XX);
+        Vec3d evs;
+        XX.eigenvals(evs);
+        evs.sort();
+        printf(  "FindRotation evs(%g,%g,%g) \n", evs.x,evs.y,evs.z );
+        Vec3d c;
+        XX.eigenvec( evs.x, rot.a );
+        XX.eigenvec( evs.y, rot.b );
+        XX.eigenvec( evs.z, rot.c );
+    }
 
     void orient( Vec3d center, Vec3d dir, Vec3d up ){
         Mat3d rot; rot.fromDirUp( dir, up );
