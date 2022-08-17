@@ -153,7 +153,7 @@ def convolve(iA,iB,iOut):
 
 lib.poisson.argtypes  = [ c_int, c_int, c_float_p ] 
 lib.poisson.restype   =  None
-def poisson(iA,iOut, dcell):
+def poisson( iA, iOut, dcell):
     #if len(dcell) < 4: dcell +=  
     dcell=np.array(dcell, np.float32)
     lib.poisson( iA,iOut, _np_as( dcell, c_float_p )  )
