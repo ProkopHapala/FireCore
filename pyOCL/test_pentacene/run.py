@@ -7,6 +7,7 @@
 
 import sys
 import numpy as np
+import os
 
 sys.path.append("../")
 from pyOCL import oclfft as ocl
@@ -15,40 +16,52 @@ from pyOCL import high_level as oclh
 from pyOCL import jobs
 from pyOCL import atomicUtils as au
 
+def job_convolve_density_with_CO_orig( ):
+    ocl.setErrorCheck( 1 )
+    xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+    ngrid=(128,64,32)
+    dcell = [0.2,0.2,0.2,0.2]
+    iA=0; iC=1
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell )
+    ibuff_MCOconv = 2
+    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
+    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
+    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
+    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
+    ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
 
-#ocl.setErrorCheck( 0 )
-ocl.setErrorCheck( 1 )
+def project_or_load_density( ngrid, iBuff=0 ):
+    if not os.path.exists( "dens.bin" ):
+        print("!!!!! job_convolve_density_with_CO :  PROJECT+SAVE ./dens.bin ")
+        xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+        dcell = [0.2,0.2,0.2,0.2]
+        jobs.projectDens( iOutBuff=iBuff, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=True )
+    else:
+        print("!!!!! job_convolve_density_with_CO :  LOAD ./dens.bin ")
+        Ns = (ngrid[0],ngrid[1],ngrid[2])
+        ocl.initFFTgrid( Ns, dcell = [0.2,0.2,0.2,0.2] )
+        ocl.loadFromBin( "./dens.bin", iBuff )
 
-#xyzs,Zs,enames,qs = au.loadAtomsNP( "answer.xyz")
-xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
-#xyzs,Zs,enames,qs = au.loadAtomsNP( "CH4.xyz")
-#jobs.Test_projectDens( atomType=Zs, atomPos=xyzs )
-ngrid=(128,64,32)
-dcell = [0.2,0.2,0.2,0.2]
-iA=0; iC=1
+def job_convolve_density_with_CO( iA=0 ):
+    print( "JOB: convolve_density_with_CO() " )
+    ocl.setErrorCheck( 1 )
+    ngrid=(128,64,32)
+    project_or_load_density( ngrid, iBuff=iA )
+    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
+    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
+    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
+    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
+    ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
 
+def job_poisson_equation():
+    ocl.tryInitFFT( ngrid ) 
+    V     = oclu.poisson( rho, dcell,  iA=0, iC=1 )
+    #ocl.tryInitFFT( A.shape )     ;print( "DEBUG poisson 1 " )
+    #print( "print Vmin Vmax ", np.min(V), np.max(V) )
 
-#ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
-jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell )
-#ocl.poisson   (  iA,iC, dcell )  ;print( "DEBUG poisson 3 " )
+job_convolve_density_with_CO()
+#job_convolve_density_with_CO_orig()
 
-ibuff_MCOconv = 2
-ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
-ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
-ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
-ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
-ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
-
-
-
-
-
-'''
-ocl.tryInitFFT( ngrid ) 
-V     = oclu.poisson( rho, dcell,  iA=0, iC=1 )
-#ocl.tryInitFFT( A.shape )     ;print( "DEBUG poisson 1 " )
-#print( "print Vmin Vmax ", np.min(V), np.max(V) )
-'''
 
 exit()
 

@@ -302,3 +302,12 @@ def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", R
     else:
         Rcuts=np.array(Rcuts,dtype=np.float32)
     return lib.loadWfBasis( path, RcutSamp, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ), _np_as( Rcuts, c_float_p ) )
+
+# ===================== PYTHON
+
+def initFFTgrid( Ns, dcell = [0.2,0.2,0.2,0.2], dCell=None ):
+    init() 
+    initFFT( Ns  )
+    if dCell is None:
+        dCell = np.array([[dcell[0],0.,0.],[0.,dcell[1],0.],[0.,0.,dcell[2]]])
+    setGridShape_dCell( Ns, dCell )
