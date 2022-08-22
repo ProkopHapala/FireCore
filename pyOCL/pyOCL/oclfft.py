@@ -9,19 +9,10 @@ import sys
 #import pyopencl as cl
 
 # ========= Flags - These flags inform about state of the C/C++ library
-b_Init    = False
-b_initFFT = False
+b_Init        = False
+b_initFFT     = False
+b_basisLoaded = False
 fft_shape = None
-
-def tryInitFFT( sh ):
-    print( "!!!!------------------------- tryInitFFT: b_Init, b_initFFT ", b_Init, b_initFFT )
-    if not b_Init: 
-        print( "!!!!------------------------- tryInitFFT: init() " )
-        init()
-    if not b_initFFT:
-        print( "!!!!------------------------- initFFT: init() " )
-        fft_shape = sh
-        initFFT( fft_shape )
 
 c_float_p  = ct.POINTER(c_float)
 c_double_p = ct.POINTER(c_double)
@@ -81,8 +72,7 @@ lib  = ct.CDLL(  "../cpp_build/libOCLfft.so",               mode )
 lib.init.argtypes  = [ c_char_p ] 
 lib.init.restype   =  None
 def init( cl_src_dir='../cl' ):
-    global b_Init
-    b_Init = True
+    global b_Init; b_Init = True
     cl_src_dir = cl_src_dir.encode('utf8')
     lib.init( cl_src_dir )
 
@@ -121,9 +111,7 @@ def upload_d( i, data, bComplex=False ):
 lib.initFFT.argtypes  = [ c_int, array1l ] 
 lib.initFFT.restype   =  None
 def initFFT( Ns ):
-    print( "!!!!!! ---------------- initFFT " )
-    global b_initFFT
-    b_initFFT = True
+    global b_initFFT; b_initFFT = True
     Ns=np.array(Ns,dtype=np.int64)
     ndim=len(Ns)
     lib.initFFT( ndim, Ns )
@@ -172,10 +160,11 @@ def projectAtoms(atoms,coefs,iOut):
     lib.projectAtoms( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut )
 
 #projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2 )
-lib.projectAtomsDens.argtypes  = [ c_float_p, c_float_p, c_int, c_int, c_int ] 
+lib.projectAtomsDens.argtypes  = [ c_float_p, c_float_p, c_int, c_int, c_int, c_float_p ] 
 lib.projectAtomsDens.restype   =  None
-def projectAtomsDens( iOut, atoms=None,coefs=None,  iorb0=1, iorb1=2 ):
-    lib.projectAtomsDens( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut, iorb0, iorb1 )
+def projectAtomsDens( iOut, atoms=None,coefs=None,  iorb0=1, iorb1=2, acumCoef=[0.0,1.0] ):
+    acumCoef = np.array(acumCoef,dtype=np.float32)
+    lib.projectAtomsDens( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut, iorb0, iorb1, _np_as( acumCoef, c_float_p ) )
 
 #void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out )
 lib.projectAtomPosTex.argtypes  = [ c_float_p, c_float_p, c_int, c_float_p, c_float_p ] 
@@ -187,19 +176,23 @@ def projectAtomPosTex(atoms,coefs,poss,out=None):
     lib.projectAtomPosTex( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),nPos, _np_as( poss, c_float_p ), _np_as( out, c_float_p ) )
     return out
 
+#void setTypes( int* atype_nOrb_, float* atype_Qconfs_ ){
+lib.setTypes.argtypes  = [ c_int, c_int_p, c_float_p, c_bool ] 
+lib.setTypes.restype   =  None
+def setTypes( atype_nOrb, atype_Qconfs, bInternal=True ):
+    atype_nOrb  =np.array(atype_nOrb, dtype=np.int32)
+    atype_Qconfs=np.array(atype_Qconfs, dtype=np.float32)
+    ntyp = len(atype_nOrb)
+    lib.setTypes( ntyp, _np_as(atype_nOrb,c_int_p),_np_as(atype_Qconfs,c_float_p), bInternal )
+
 #void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1 ){
-lib.convCoefs.argtypes  = [ c_int, c_int_p, c_int_p, c_double_p, c_double_p, c_int, c_int, c_bool ] 
+lib.convCoefs.argtypes  = [ c_int, c_int_p, c_int_p, c_double_p, c_double_p, c_bool, c_bool ] 
 lib.convCoefs.restype   =  None
-def convCoefsC( iZs, ityps, apos, wfcoefs,  iorb0=1, iorb1=2, bInit=False   ):
+def convCoefsC( iZs, ityps, apos, wfcoefs, bInit=False, bDiagonal=False ):
     natoms=len(iZs)
     iZs   = np.array(iZs,   dtype=np.int32)
-    ityps = np.array(ityps, dtype=np.int32)
-    #print( "DEBUG convCoefsC | iZs ", iZs )
-    #print( "DEBUG convCoefsC | ityps ", ityps )
-    #print( "DEBUG convCoefsC | apos ", apos )
-    #print( "DEBUG convCoefsC | wfcoefs ", wfcoefs )
-    #print( "DEBUG convCoefsC | iorb0 iorb1 bInit", iorb0, iorb1, bInit )
-    lib.convCoefs( natoms, _np_as(iZs,c_int_p),_np_as(ityps,c_int_p), _np_as(wfcoefs,c_double_p), _np_as(apos,c_double_p), iorb0, iorb1, bInit )
+    ityps = np.array(ityps, dtype=np.int32)-1
+    lib.convCoefs( natoms, _np_as(iZs,c_int_p),_np_as(ityps,c_int_p), _np_as(wfcoefs,c_double_p), _np_as(apos,c_double_p), bInit, bDiagonal )
 
 #setGridShape( float* pos0, float* dA, float* dB, float* dC ){
 lib.setGridShape.argtypes  = [ c_float_p, c_float_p, c_float_p, c_float_p ] 
@@ -293,7 +286,7 @@ lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p, 
 lib.loadWfBasis.restype   =  None
 def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", Rcuts=None, RcutDef=4.5 ):
     # NOTE : RcutSamp is in [Angstroem] while Rcuts and RcutDef are in [bohr_radius];    RcutSamp should not be changed without chaning "wf_tiles_per_angstroem" in myprog.cl
-
+    global b_basisLoaded; b_basisLoaded=True; 
     nZ=len(iZs)
     iZs=np.array(iZs,dtype=np.int32)
     path = path.encode('utf-8')
@@ -303,7 +296,23 @@ def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", R
         Rcuts=np.array(Rcuts,dtype=np.float32)
     return lib.loadWfBasis( path, RcutSamp, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ), _np_as( Rcuts, c_float_p ) )
 
+
+
 # ===================== PYTHON
+
+def tryInitFFT( sh ):
+    print( "!!!!------------------------- tryInitFFT: b_Init, b_initFFT ", b_Init, b_initFFT )
+    if not b_Init: 
+        print( "!!!!------------------------- tryInitFFT: init() " )
+        init()
+    if not b_initFFT:
+        print( "!!!!------------------------- initFFT: init() " )
+        fft_shape = sh
+        initFFT( fft_shape )
+
+def tryLoadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", Rcuts=None, RcutDef=4.5 ):
+    if not b_basisLoaded:
+        loadWfBasis( iZs, nsamp=nsamp, ntmp=ntmp, RcutSamp=RcutSamp, path=path, Rcuts=Rcuts, RcutDef=RcutDef )
 
 def initFFTgrid( Ns, dcell = [0.2,0.2,0.2,0.2], dCell=None ):
     init() 

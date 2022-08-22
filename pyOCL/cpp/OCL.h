@@ -265,6 +265,13 @@ class OCLtask{
 
     std::vector<OCLarg> args;
 
+    int argCounter=0;
+
+    int useArg( cl_mem ibuff,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( cl->kernels[ikernel], i, sizeof(cl_mem), &(ibuff) ); };
+    int useArg( int    i_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( cl->kernels[ikernel], i, sizeof(int),    &(i_arg) ); };
+    int useArg( float  f_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( cl->kernels[ikernel], i, sizeof(float),  &(f_arg) ); };
+    int useArg( void*  buff ,  int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( cl->kernels[ikernel], i, nbytes,           buff   ); };
+
     int useArgs(){
         int err = CL_SUCCESS;
         cl_kernel kernel = cl->kernels[ikernel];
@@ -281,7 +288,8 @@ class OCLtask{
                 case OCL_LBUFF: err |= clSetKernelArg( kernel, i, arg.i,          NULL    );                     break;
                 case OCL_PTR:   err |= clSetKernelArg( kernel, i, arg.nbytes,     arg.ptr );                     break;
             }
-            OCL_checkError(err, "setAsArg");
+            //OCL_checkError(err, "setAsArg", i );
+            if(bOCLCheckError)OCL_check_error(err,"setAsArg",__FILE__,__LINE__,i);
         }
         return err;
     }
