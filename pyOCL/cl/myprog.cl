@@ -95,14 +95,23 @@ __kernel void mul(
     }
 };
 
+__kernel void lincomb(
+    const int N,
+    __global float* A,
+    __global float* B,
+    __global float* out,
+    const float2 coefs
+){
+    const size_t i = get_global_id(0);
+    if(i<N){ 
+        out[i] = A[i]*coefs.x + B[i]*coefs.y; 
+    }
+}
 
 // https://github.com/ProkopHapala/ProbeParticleModel/blob/OpenCL_py3/pyProbeParticle/fieldFFT.py
 //
 //  E = np.real(np.fft.ifftn(convFFT * (dd[0]*dd[1]*dd[2]) / (detLmatInv) ) )
 //
-
-
-
 
 __kernel void poissonW(
     const int   N,
@@ -174,21 +183,6 @@ float sp3( float3 dp, float4 c, float beta ){
     //v*=fr;
     return  dot( v ,c )*fr;
 }
-
-/*
-float sp3_tex( float3 dp, float4 c, float slot, __read_only image2d_t imgIn ){
-    float   r2  = ( dot(dp,dp) +  R2SAFE );
-    float   r   = sqrt(r2);
-    float   ir  = 1/r;
-    float4  fr  = lerp_basis( r, slot, imgIn ).yyyx;
-    //float4  fr  = read_imagef( imgIn, sampler_wrf, (float2){ r, slot } );
-    float4  v = (float4) ( dp*ir*pref_p, pref_s )*fr;
-    //float4  v = (float4) ( dp*ir, 1.0 )*fr;
-    //float4  v = (float4) ( dp*ir, 0.0f )*fr;
-    return  dot( v ,c );
-    //return r;
-}
-*/
 
 float4 sp3_tex( float3 dp, float slot, __read_only image2d_t imgIn ){
     float   r2  = ( dot(dp,dp) +  R2SAFE );
@@ -335,7 +329,8 @@ __kernel void projectOrbDenToGrid_texture(
     float4 grid_p0,              //9
     float4 grid_dA,              //10
     float4 grid_dB,              //11
-    float4 grid_dC               //12
+    float4 grid_dC,              //12
+    float2 acumCoef
 ){
     __local float4 LATOMS[N_LOCAL];
     __local float4 LCOEFS[N_LOCAL];
@@ -348,7 +343,8 @@ __kernel void projectOrbDenToGrid_texture(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
-        /*    
+    if(iG==0){  printf("!!!!!!!!!!!!!!!! projectOrbDenToGrid_texture acumCoef %g,%g \n", acumCoef.x, acumCoef.y ); }
+    /*    
     if(iG==0){ 
         printf("projectOrbDenToGrid_texture 1 \n"); 
         for(int iorb=iorb0; iorb<=iorb1; iorb++){
@@ -398,7 +394,12 @@ __kernel void projectOrbDenToGrid_texture(
         } // i0
         dens += wf.x*wf.x;
     } // iorb
-    outGrid[iG] = (float2){dens,0.0f};
+    //outGrid[iG] = (float2){dens,0.0f};
+    if(fabs(acumCoef.x)<1e-8){
+        outGrid[iG] = (float2){dens,0.0f};
+    }else{
+        outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
+    }
     //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
 }
 

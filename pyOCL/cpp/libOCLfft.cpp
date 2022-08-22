@@ -112,6 +112,7 @@ class OCLfft : public OCLsystem { public:
     //static cl_mem d_a, d_b, d_c;
 
     int iKernell_mull=-1;
+    int iKernell_lincomb=-1;
     int iKernell_project=-1;
     int iKernell_project_tex=-1;
     int iKernell_project_dens_tex=-1;
@@ -120,6 +121,7 @@ class OCLfft : public OCLsystem { public:
     int iKernell_gradient=-1;
 
     OCLtask cltask_mul;
+    OCLtask cltask_lincomb;
     OCLtask cltask_poissonW;
     OCLtask cltask_gradient;
     OCLtask cltask_project;
@@ -134,9 +136,14 @@ class OCLfft : public OCLsystem { public:
     float4 dcell_poisson{1.f,1.f,1.f,1.f};
     float4 dcell_gradient{1.f,1.f,1.f,1.f};
     float4 pos0, dA, dB, dC;
+    float2 acumCoef = (float2){0.0,1.0};
     GridShape grid;
     int ibuff_atoms=0,ibuff_coefs=0;
     //int ibuff_poss;
+
+    int     nAtype=0;
+    int*    atype_nOrb  =0; // number of orbitals per atomic type (hydrogen=1(s), carbon=4(s,px,py,pz))
+    float2* atype_Qconfs=0; //
 
     void updateNtot(){
         Ntot=1; for(int i=0; i<ndim; i++){ Ntot*=Ns[i]; };
@@ -290,7 +297,19 @@ class OCLfft : public OCLsystem { public:
             INTarg (cltask_mul.global[0]),
             BUFFarg(ibuffA),
             BUFFarg(ibuffB),
+            BUFFarg(ibuff_result)         
+        };
+    }
+
+    void initTask_lincomb( int ibuffA, int ibuffB, int ibuff_result ){
+        Vec2f coefs;
+        cltask_lincomb.setup( this, iKernell_lincomb, 1, Ntot*2, 16 );
+        cltask_lincomb.args = { 
+            INTarg (cltask_lincomb.global[0]),
+            BUFFarg(ibuffA),
+            BUFFarg(ibuffB),
             BUFFarg(ibuff_result),
+            REFarg(coefs)
         };
     }
 
@@ -319,7 +338,6 @@ class OCLfft : public OCLsystem { public:
         };
         printf( "END initTask_gradient \n" );
     }
-
 
     void initTask_project( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
         Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
@@ -374,28 +392,12 @@ class OCLfft : public OCLsystem { public:
             REFarg(pos0),           //9
             REFarg(dA),           //10
             REFarg(dB),           //11
-            REFarg(dC)            //12
+            REFarg(dC),           //12
+            REFarg(acumCoef)      //13
         };
         //printf("DEBUG cltask_project_den_tex.args.size() %li  \n", cltask_project_den_tex.args.size() );
         //printf("DEBUG initTask_project_dens_tex() END \n");
     }
-
-
-    /*
-    void initTask_projectPos_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_poss, int ibuff_out ){
-        cltask_projectPos_tex.setup( this, iKernell_project_tex, 1, Ntot*2, 16 );
-        cltask_projectPos_tex.args = { 
-            INTarg (nAtoms),        //1
-            BUFFarg(ibuffAtoms),    //2
-            BUFFarg(ibuffCoefs),    //3
-            INTarg (nPos),          //4
-            BUFFarg(ibuff_poss),    //5
-            BUFFarg(ibuff_out),     //6
-            BUFFarg(itex_basis),    //7
-        };
-        cltask_projectPos_tex.print_arg_list();
-    }
-    */
 
     void projectAtoms( float4* atoms, float4* coefs, int ibuff_result ){
         //for(int i=0; i<nAtoms;i++){printf( "atom[%i] xyz|e(%g,%g,%g|%g) coefs(%g,%g,%g|%g)\n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  coefs[i].x,coefs[i].y,coefs[i].z,coefs[i].w  );}
@@ -417,8 +419,10 @@ class OCLfft : public OCLsystem { public:
         clFinish(commands); 
     }
 
-    void projectAtomsDens( float4* atoms, float4* coefs, int ibuff_result, int iorb1, int iorb2 ){
-        printf( "DEBUG projectAtomsDens(%i,%i) | atoms* %li long* %li \n", iorb1, iorb2,  (long)atoms, (long)coefs );
+    void projectAtomsDens( float4* atoms, float4* coefs, int ibuff_result, int iorb1, int iorb2, float2 acumCoef_ ){
+        //printf( "DEBUG projectAtomsDens() \n"  );
+        printf( "DEBUG projectAtomsDens acumCoef_ (%g,%g) \n", acumCoef_.x, acumCoef_.y  );
+        //printf( "DEBUG projectAtomsDens(%i,%i) | atoms* %li long* %li \n", iorb1, iorb2,  (long)atoms, (long)coefs );
         if( atoms ) upload(ibuff_atoms,atoms); 
         if( coefs ) upload(ibuff_coefs,coefs);
         clFinish(commands); 
@@ -430,6 +434,7 @@ class OCLfft : public OCLsystem { public:
         cltask_project_den_tex.args[1].i=iorb1;
         //printf( "DEBUG projectAtomsDens 3 \n" );
         cltask_project_den_tex.args[2].i=iorb2;
+        acumCoef=acumCoef_;
         //printf( "DEBUG projectAtomsDens 4 \n" );
         //cltask_project_den_tex.print_arg_list();
         //printf( "DEBUG projectAtomsDens 5 \n" );
@@ -489,7 +494,6 @@ class OCLfft : public OCLsystem { public:
         release_OCL();
     }
 
-
     void makeMyKernels( const char*  cl_src_dir ){
         char srcpath[1024];
         sprintf( srcpath, "%s/myprog.cl", cl_src_dir );
@@ -505,20 +509,6 @@ class OCLfft : public OCLsystem { public:
         printf( "DEBUG makeMyKernels END \n" );
         //exit(0);
     };
-
-
-/*
-    void runAll( ){
-        //printf("DEBUG Ns[%li,%li,%li]\n", clLengths[0], clLengths[1], clLengths[2] );
-        makeData();  printData( data );    printf( "DEBUG 1 \n" );
-        initOCL();                         printf( "DEBUG 2 \n" );
-        //printf("DEBUG Ns[%li,%li,%li]\n", clLengths[0], clLengths[1], clLengths[2] );
-        initFFT( 3, clLengths );           printf( "DEBUG 3 \n" );
-        loadData( data );
-        runFFT();    printData(data );     printf( "DEBUG 5 \n" );
-        cleanup();                         printf( "DEBUG 6 \n" );
-    }
-*/
 
     void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){
         float* data_tmp = new float[ntmp      ];
@@ -610,7 +600,42 @@ class OCLfft : public OCLsystem { public:
         }
     }
 
-    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1, bool bInit=false ){
+    void assignDiagonalOrbCoefs( int norb, int natoms, int* ityps, float4* coefs ){
+        //printf( "DEBUG assignDiagonalOrbCoefs()\n" );
+        int ia_orb=0;
+        int io=0;
+        for(int iorb=0; iorb<norb; iorb++){
+            float4* cs = coefs+iorb*natoms;
+            //printf( "iorb[%i] \n", iorb );
+            int ityp = ityps[ia_orb];
+            int norb = atype_nOrb[ityp];
+            if(io>=norb){ io=0; ia_orb++; if(ia_orb>=natoms) break; }
+            //printf( "iorb[%i|%i,%i] norb %i ityp %i \n", iorb, ia_orb,io,  norb, ityp );
+            for(int ia=0; ia<natoms; ia++){ cs[ia]=(float4){0.f,0.f,0.f,0.f}; };
+            if(io>0){ 
+                double Q = atype_Qconfs[ityp].y/3.0; 
+                //printf( "p Q %g \n", Q );
+                ((float*)(cs+ia_orb))[io-1] = sqrt(Q);
+            }else{
+                double Q = atype_Qconfs[ityp].x;
+                //printf( "s Q %g \n", Q ); 
+                cs[ia_orb].w = sqrt(Q);
+            }
+            io++;
+        }
+        //printf( "DEBUG assignDiagonalOrbCoefs() PRINT OUT n" );
+        //for(int iorb=0; iorb<norb; iorb++){
+        //    printf( "DEBUG ORB[%i]\n", iorb );
+        //    float4* cs = coefs+iorb*natoms;
+        //    for(int ia=0; ia<natoms; ia++){ 
+        //        printf(  "(%g|%g,%g,%g)\n", cs[ia].w, cs[ia].x,cs[ia].y,cs[ia].z ); 
+        //    }
+        //}
+        printf( "DEBUG assignDiagonalOrbCoefs() DONE\n" );
+    }
+
+    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, bool bInit=false, bool bDiagonal=false ){
+        printf( "DEBUG convCoefs() ocoefs %li \n", (long)ocoefs );
         //printf( "DEBUG convCoefs 1 \n" );
         // --- Count orbitals
         int norb=0;
@@ -626,37 +651,13 @@ class OCLfft : public OCLsystem { public:
             int i3=ia*3;
             atoms[ia]=(float4){ (float)oatoms[i3],(float)oatoms[i3+1],(float)oatoms[i3+2], ityps[ia]+0.1f };
         }
-        //printf( "DEBUG convCoefs 3 norb %i ncoef %i \n", norb, ncoef );
-        // --- trasnform coefs
-        //int io=norb*iorb0;
-        //for(int iorb=iorb0; iorb<=iorb1; iorb++){
-        for(int iorb=0; iorb<norb; iorb++){
+        if(bDiagonal){
+            assignDiagonalOrbCoefs( norb, natoms, ityps, coefs );
+        }else for(int iorb=0; iorb<norb; iorb++){
             convOrbCoefs( natoms, iZs, ocoefs+iorb*norb, coefs+iorb*natoms );
         } // iorb
-        
-        /*
-        printf( "DEBUG  print CPU ocoefs | norb %i  \n", norb );
-        for(int iorb=0; iorb<norb; iorb++){
-            printf( "ORB[%i] ", iorb );
-            for (int j=0; j<norb; j++ ){
-                int io = iorb*norb + j;
-                printf( " %g ", ocoefs[io] );
-            }
-            printf( "\n");
-        }
-        printf( "DEBUG  print CPU coefs iorb0,iorb1,nAtoms %i, %i, %i \n", iorb0,iorb1,natoms );
-        for(int iorb=iorb0; iorb<=iorb1; iorb++){
-            for (int ia=0; ia<natoms; ia++ ){
-                int io = iorb*natoms + ia;
-                printf( "CPU [%i,%i] atom(%g,%g,%g,,%g) coef(%g,%g,%g,%g)\n", iorb, ia,  atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,  coefs[io].x, coefs[io].y, coefs[io].z, coefs[io].w );
-            }
-        }
-        */
         //printf( "DEBUG convCoefs 4 \n" );
         if( bInit ){
-            //printf( "DEBUG convCoefs 5 \n" );
-            //nAtoms = natoms;
-            //nOrbs  =  norb;
             initAtoms( natoms, norb );
         }
         //printf( "DEBUG convCoefs 6 \n" );
@@ -780,7 +781,7 @@ extern "C" {
     void poisson ( int ibuffA, int ibuff_result, float* dcell ){  oclfft.poisson ( ibuffA, ibuff_result, (float4*)dcell );}
     void gradient( int ibuffA, int ibuff_result, float* dcell ){  oclfft.gradient( ibuffA, ibuff_result, (float4*)dcell );}
     void projectAtoms    ( float* atoms, float* coefs, int ibuff_result                       ){ oclfft.projectAtoms    ( (float4*)atoms, (float4*)coefs, ibuff_result ); }
-    void projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2 ){ oclfft.projectAtomsDens( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2 ); }
+    void projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2, float* acumCoef ){  oclfft.projectAtomsDens( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef ); }
 
     // void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
     void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out ){ oclfft.projectAtomPosTex( (float4*)atoms, (float4*)coefs,  nPos, (float4*)poss, (float2*)out ); }
@@ -797,9 +798,26 @@ extern "C" {
         //printf( "setGridShape dC %g %g %g \n", oclfft.dC.x, oclfft.dC.y, oclfft.dC.z ); 
     }
 
+    void setTypes( int nAtype, int* atype_nOrb_, float* atype_Qconfs_, bool bInternal ){
+        oclfft.nAtype=nAtype;
+        if(bInternal){
+            _realloc(oclfft.atype_nOrb,   nAtype );
+            _realloc(oclfft.atype_Qconfs, nAtype );
+            for(int i=0; i<nAtype;i++){
+                oclfft.atype_nOrb[i]   =           atype_nOrb_   [i];
+                oclfft.atype_Qconfs[i] = ((float2*)atype_Qconfs_)[i];
+                printf( "setTypes()[%i] atype_nOrb %i atype_Qconfs (%g,%g) \n", i, oclfft.atype_nOrb[i], oclfft.atype_Qconfs[i].x, oclfft.atype_Qconfs[i].y );
+            }
+        }else{
+
+            oclfft.atype_nOrb  =         atype_nOrb_; // number of orbitals per atomic type (hydrogen=1(s), carbon=4(s,px,py,pz))
+            oclfft.atype_Qconfs=(float2*)atype_Qconfs_;
+        }
+    }
+
     int initBasisTable( int nx, int ny, float* data ){  return oclfft.initBasisTable(nx,ny,data ); };
 
-    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1, bool bInit ){  oclfft.convCoefs( natoms, iZs, ityps, ocoefs, oatoms, iorb0, iorb1, bInit ); }
+    void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, bool bInit, bool bDiagonal ){  oclfft.convCoefs( natoms, iZs, ityps, ocoefs, oatoms, bInit, bDiagonal ); }
 
     void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
         //int npoints = 100;
@@ -926,6 +944,8 @@ extern "C" {
         for(int i=0; i<44; i++){
             printf( "[%i] %g \n", i, cpu_data[ (i0+i)*2 ] );
         }
+
+
 
 
 
