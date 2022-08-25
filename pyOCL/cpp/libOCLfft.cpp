@@ -752,6 +752,8 @@ extern "C" {
     int   upload(int i, const float* cpu_data ){ return oclfft  .upload(i,cpu_data);                        };
     int download(int i,       float* cpu_data ){ return oclfft.download(i,cpu_data);  oclfft.finishRaw();   };
 
+    int copy( int iBufFrom, int iBufTo, int nbytes, int  src_offset, int  dst_offset ){ return oclfft.copy( iBufFrom, iBufTo, nbytes, src_offset, dst_offset ); }; 
+
     int   upload_d(int ibuf, const double* data, bool bComplex ){ 
         int n=oclfft.buffers[ibuf].n; 
         printf( "DEBUG upload_d ibuf %i bComplex %i  n %i \n", ibuf, bComplex, n );
@@ -944,11 +946,6 @@ extern "C" {
         for(int i=0; i<44; i++){
             printf( "[%i] %g \n", i, cpu_data[ (i0+i)*2 ] );
         }
-
-
-
-
-
 
         //exit(0);
         //firecore_assembleH( iforce_, Kscf_, positions_ )

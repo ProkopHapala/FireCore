@@ -81,6 +81,11 @@ class OCLsystem{
     std::vector<cl_kernel> kernels;
     std::vector<OCLBuffer> buffers;
 
+    int copy( int iBufFrom, int iBufTo, size_t nbytes=-1, size_t src_offset=0, size_t dst_offset=0){
+       if(nbytes<0){ nbytes=buffers[iBufFrom].byteSize(); } 
+       return clEnqueueCopyBuffer( commands, buffers[iBufFrom].p_gpu, buffers[iBufTo].p_gpu, src_offset, dst_offset, nbytes, 0, 0, 0);
+    }
+
     void check_programSet (){ if(program ==0){ printf("ERROR OCLsystem program  not set \n"); exit(-1); } }
     void check_contextSet (){ if(context ==0){ printf("ERROR OCLsystem context  not set \n"); exit(-1); } }
     void check_deviceSet  (){ if(device  ==0){ printf("ERROR OCLsystem device   not set \n"); exit(-1); } }
