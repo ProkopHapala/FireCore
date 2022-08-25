@@ -16,6 +16,40 @@ from pyOCL import high_level as oclh
 from pyOCL import jobs
 from pyOCL import atomicUtils as au
 
+def job_make_Eelec_Epauli():
+    ocl.setErrorCheck( 1 )
+    print( "# --- Preparation" )
+    apos,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+    ngrid=(128,64,32)
+    dcell = [0.2,0.2,0.2,0.2]
+    iA=0; iC=1
+    print( "# --- Allocations")
+
+    print( "# --- SCF density")
+    jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, saveName="dens_scf"  )
+    
+    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )  ;print( "DEBUG 0.1 " )
+    ibuff_ConvOut = ocl.newFFTbuffer( "MCOconv" )  ;print( "DEBUG 0.2 " )
+    ibuff_DensBak = ocl.newFFTbuffer( "DensBak" )  ;print( "DEBUG 0.3 " )
+
+    ocl.copy( iA, ibuff_DensBak )                      ;print( "DEBUG 0.5 " )
+    ocl.saveToXsf( "Dens_bak.xsf",  ibuff_DensBak )    ;print( "DEBUG 0.6 " )
+    ocl.saveToXsf( "Dens_orig.xsf", iA)                ;print( "DEBUG 0.7 " )
+
+    print( "# ==== E_Pauli ( density convolution )")
+    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )    ;print( "DEBUG 1.3 " )
+    ocl.convolve( iA,ibuff_densCO, ibuff_ConvOut ) ;print( "DEBUG 1.4 " )
+    ocl.saveToXsf( "Epaul.xsf",    ibuff_ConvOut )            ;print( "DEBUG 1.5 " )
+    print( "# === E_elec ( density and potential convolution )")
+    jobs.projectDens0( iOutBuff=ibuff_DensBak, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False,  bSaveBin=False, saveName="dens_diff" )
+    print( "# --- Poisson (rho->V)")
+    ocl.poisson( iA=ibuff_DensBak, iOut=iC, dcell=dcell )
+    ocl.saveToXsf( "Vout.xsf", iC )
+    print( "# --- E_elec = convolution( rho, V )  " )
+    ocl.loadFromBin( "../test_CO/dens_diff.bin", ibuff_densCO )
+    ocl.convolve( iC,ibuff_densCO, ibuff_ConvOut )
+    ocl.saveToXsf( "E_elec.xsf",   ibuff_ConvOut )
+
 def job_convolve_density_with_CO_orig( ):
     ocl.setErrorCheck( 1 )
     xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
@@ -63,8 +97,8 @@ def job_poisson_equation( iA=0, iC=1 ):
 
 #job_convolve_density_with_CO_orig()
 #job_convolve_density_with_CO()
-job_poisson_equation()
-
+#job_poisson_equation()
+job_make_Eelec_Epauli()
 
 exit()
 

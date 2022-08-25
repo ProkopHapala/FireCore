@@ -280,7 +280,7 @@ def iZs2dict(iZs, dr="./Fdata/basis"):
     print( "Rcuts ", Rcuts )
     return elems, dct, ords, Rcuts
 
-def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False ):
+def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens" ):
     print("# ========= projectDens() " )
     sys.path.append("../../")
     import pyBall as pb
@@ -321,16 +321,21 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
 
     if bSaveXsf:
         print( "DEBUG before saveToXsfAtoms " )
-        ocl.saveToXsfAtoms( "dens_%03i_%03i.xsf" %(iMO0,iMO1), iOutBuff,    atomType, atomPos  )
+        ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )
     if bSaveBin:
         print( " bSaveBin ", bSaveBin )
-        ocl.saveToBin( "dens.bin", iOutBuff )
+        ocl.saveToBin( saveName+".bin", iOutBuff )
 
-def projectDens0( iMO0=0, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False ):
+def projectDens0( iMO0=0, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0" ):
     print("# ========= projectDens0() " )
     sys.path.append("../../")
     import pyBall as pb
     #from pyBall import FireCore as fc
+
+    if iMO1 is None:
+        i0orb  = oclu.countOrbs( atomType ) 
+        iMO1 = i0orb[-1]//2
+
 
     elems, dct, ords, Rcuts = iZs2dict(atomType);
     #print("# ======== FireCore Run " )
@@ -354,10 +359,10 @@ def projectDens0( iMO0=0, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,6
 
     if bSaveXsf:
         print( "DEBUG before saveToXsfAtoms " )
-        ocl.saveToXsfAtoms( "dens0_%03i_%03i.xsf" %(iMO0,iMO1), iOutBuff,    atomType, atomPos  )
+        ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )
     if bSaveBin:
         print( " bSaveBin ", bSaveBin )
-        ocl.saveToBin( "dens0.bin", iOutBuff )
+        ocl.saveToBin( saveName+".bin", iOutBuff )
 
 def Test_projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None ):
     sys.path.append("../../")

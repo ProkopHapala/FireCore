@@ -107,6 +107,14 @@ lib.upload_d.restype   =  None
 def upload_d( i, data, bComplex=False ):
     lib.upload_d( i, _np_as( data, c_double_p ), bComplex )
 
+
+# int copy( int iBufFrom, int iBufTo )
+lib.copy.argtypes  = [ c_int, c_int,  c_int,  c_int,  c_int ] 
+lib.copy.restype   =  c_int
+def copy( iBufFrom, iBufTo, nbytes=-1, src_offset=0, dst_offset=0   ):
+    return lib.copy( iBufFrom, iBufTo, nbytes, src_offset, dst_offset )
+
+
 #void initFFT ( int ndim, int* Ns );
 lib.initFFT.argtypes  = [ c_int, array1l ] 
 lib.initFFT.restype   =  None
