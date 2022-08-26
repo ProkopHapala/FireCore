@@ -343,38 +343,17 @@ __kernel void projectOrbDenToGrid_texture(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
-    if(iG==0){  printf("!!!!!!!!!!!!!!!! projectOrbDenToGrid_texture acumCoef %g,%g \n", acumCoef.x, acumCoef.y ); }
-    /*    
-    if(iG==0){ 
-        printf("projectOrbDenToGrid_texture 1 \n"); 
-        for(int iorb=iorb0; iorb<=iorb1; iorb++){
-            for (int ia=0; ia<nAtoms; ia++ ){
-                int io = iorb*nAtoms + ia;
-                printf( "GPU[%i,%i] atom(%g,%g,%g|%g) coef(%g,%g,%g,%g)\n", iorb, ia,  atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,  coefs[io].x, coefs[io].y, coefs[io].z, coefs[io].w );
-            }
-        }
-        for(int i=0; i<100; i++){ 
-            //float3 pos = (float3){0.0,0.0,0.1};
-            float r=(i*0.1f)*wf_tiles_per_angstroem;
-            //float4 wf1 = sp3_tex( pos*wf_tiles_per_angstroem,   0.1, imgIn );
-            //float4 wf2 = sp3_tex( pos*wf_tiles_per_angstroem,   1.1, imgIn );
-            //printf(  "GPU[%i] wf1(%g,%g,%g,%g) wf2(%g,%g,%g,%g) \n", i, wf1.x,wf1.z,wf1.y,wf1.w,   wf2.x,wf2.z,wf2.y,wf2.w );
-            float2 wf1 = lerp_basis( r, 0.1, imgIn );
-            float2 wf2 = lerp_basis( r, 1.1, imgIn );
-            float2 wf3 = lerp_basis( r, 2.1, imgIn );
-            printf(  "GPU[%i] wf1(%g,%g) wf2(%g,%g) wf3(%g,%g) \n", i, wf1.x,wf1.y,  wf2.x,wf2.y, wf3.x,wf3.y );
-         }
-    }
-    */
-    
+    if(iG==0){  printf("!!!!!!!!!!!!!!!! projectOrbDenToGrid_texture acumCoef %g,%g nAtoms %i iorb(%i,%i)  nMax %i \n", acumCoef.x, acumCoef.y, nAtoms, iorb0, iorb1, nMax ); }
+
     if(iG>nMax) return;
 
     float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
 
     float dens = 0.0;
+    
     // ToDo : Later we have to change the order of the loops
     for(int iorb=iorb0; iorb<=iorb1; iorb++){
-        //if(iG==0){ printf( "GPU iorb %i \n", iorb ); }
+        if(iG==0){ printf( "GPU iorb %i \n", iorb ); }
         int icoef0 = iorb*nAtoms;
         float2 wf   = (float2) (0.0f,0.0f);
         for (int i0=0; i0<nAtoms; i0+=nL ){
@@ -394,14 +373,75 @@ __kernel void projectOrbDenToGrid_texture(
         } // i0
         dens += wf.x*wf.x;
     } // iorb
+    
+    if(iG==0){ printf( "GPU loop DONE ! \n" ); }
     //outGrid[iG] = (float2){dens,0.0f};
     if(fabs(acumCoef.x)<1e-8){
         outGrid[iG] = (float2){dens,0.0f};
     }else{
         outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
     }
+    if(iG==0){ printf( "GPU all DONE ! \n" ); }
     //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
 }
+
+__kernel void projectAtomDenToGrid_texture(
+    const int nAtoms,            //1
+    __global float4*  atoms,     //4
+    __global float4*  coefs,     //5
+    __global float2*  outGrid,   //6
+    __read_only image2d_t imgIn, //7 
+    int4   nGrid,                //8
+    float4 grid_p0,              //9
+    float4 grid_dA,              //10
+    float4 grid_dB,              //11
+    float4 grid_dC,              //12
+    float2 acumCoef
+){
+    __local float4 LATOMS[N_LOCAL];
+    __local float4 LCOEFS[N_LOCAL];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+   
+    const int nab  =  nGrid.x*nGrid.y;
+    const int ia   =  iG%nGrid.x; 
+    const int ib   = (iG%nab)/nGrid.x;
+    const int ic   =  iG/nab; 
+    const int nMax =  nab*nGrid.z;
+    if(iG==0){  printf("GPU_DEBUG projectAtomDenToGrid_texture() acumCoef %g,%g nAtoms %i nMax %i \n", acumCoef.x, acumCoef.y, nAtoms, nMax ); }
+    if(iG>nMax) return;
+
+    float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
+
+    float dens = 0.0;
+    for (int i0=0; i0<nAtoms; i0+=nL ){
+        int i = i0 + iL;
+        LATOMS[iL] = atoms[i];
+        LCOEFS[iL] = coefs[i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            if( (j+i0)<nAtoms ){ 
+                float4 xyzq  = LATOMS[j];
+                float4 cs    = LCOEFS[j];
+                float4 wfs = sp3_tex( (pos-xyzq.xyz)*wf_tiles_per_angstroem,     xyzq.w, imgIn );
+                wfs*=wfs;  
+                dens += dot( cs, wfs );
+            }
+        } // j
+        barrier(CLK_LOCAL_MEM_FENCE);
+    } // i0
+    if(iG==0){ printf( "GPU loop DONE ! \n" ); }
+    //outGrid[iG] = (float2){dens,0.0f};
+    if(fabs(acumCoef.x)<1e-8){
+        outGrid[iG] = (float2){dens,0.0f};
+    }else{
+        outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
+    }
+    if(iG==0){ printf( "GPU all DONE ! \n" ); }
+    //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
+}
+
 
 __kernel void projectOrbDenToGrid_texture_2(
     const int nAtoms,            //1

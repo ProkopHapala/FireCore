@@ -39,8 +39,8 @@ iA=0; iC=1
 #ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
 
 #jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=8, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True )
-jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=8, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=True, saveName="dens_scf"  )
-jobs.projectDens0( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=0, iMO1=8, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True,  saveName="dens_diff"  )
+jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=8, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True, saveName="dens_scf"  )
+jobs.projectDens0( iOutBuff=iA, atomType=Zs, atomPos=apos,                 ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True,  saveName="dens_diff"  )
 
 #jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=102//2, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=True )
 #ocl.initFFT( ngrid )

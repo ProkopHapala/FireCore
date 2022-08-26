@@ -81,9 +81,14 @@ class OCLsystem{
     std::vector<cl_kernel> kernels;
     std::vector<OCLBuffer> buffers;
 
-    int copy( int iBufFrom, int iBufTo, size_t nbytes=-1, size_t src_offset=0, size_t dst_offset=0){
-       if(nbytes<0){ nbytes=buffers[iBufFrom].byteSize(); } 
-       return clEnqueueCopyBuffer( commands, buffers[iBufFrom].p_gpu, buffers[iBufTo].p_gpu, src_offset, dst_offset, nbytes, 0, 0, 0);
+    int copy( int iBufFrom, int iBufTo, int nbytes=-1, int src_offset=0, int dst_offset=0){
+       if(nbytes<0){ nbytes=buffers[iBufFrom].byteSize(); int nbytes_=buffers[iBufTo].byteSize(); if(nbytes_<nbytes)nbytes=nbytes_;}
+       //printf( "nbytes(-1) -> %i min(%i|%i) \n", nbytes, (int)buffers[iBufFrom].byteSize(), nbytes_ ); } 
+       //printf( "OCLsystem::copy(%i[%i],%i[%i],n=%i)\n",iBufFrom,src_offset,iBufTo,dst_offset,nbytes  );
+       int e = clEnqueueCopyBuffer( commands, buffers[iBufFrom].p_gpu, buffers[iBufTo].p_gpu, src_offset, dst_offset, nbytes, 0, 0, 0);
+       OCL_checkError(e, "copy()");
+       //finishRaw();
+       return e;
     }
 
     void check_programSet (){ if(program ==0){ printf("ERROR OCLsystem program  not set \n"); exit(-1); } }
@@ -188,10 +193,8 @@ class OCLsystem{
     inline int upload  (int i){ return buffers[i].toGPU  (commands); };
     inline int download(int i){ return buffers[i].fromGPU(commands); };
 
-
-
-    inline int copy    (int from, int to, int from0, int to0, int n){ return clEnqueueCopyBuffer(commands,buffers[from].p_gpu,buffers[to].p_gpu,from0,to0,n,0,NULL,NULL); };
-    inline int copyBuff(int from, int to                           ){ int n=buffers[from].n; int n_=buffers[to].n; if(n_<n)n=n_; return clEnqueueCopyBuffer(commands,buffers[from].p_gpu,buffers[to].p_gpu,0,0,n,0,NULL,NULL); };
+    //inline int copy_raw    (int from, int to, int from0, int to0, int n){ return clEnqueueCopyBuffer(commands,buffers[from].p_gpu,buffers[to].p_gpu,from0,to0,n,0,NULL,NULL); };
+    //inline int copyBuff(int from, int to                           ){ int n=buffers[from].n; int n_=buffers[to].n; if(n_<n)n=n_; return clEnqueueCopyBuffer(commands,buffers[from].p_gpu,buffers[to].p_gpu,0,0,n,0,NULL,NULL); };
 
     int download(){
         int err = CL_SUCCESS;
