@@ -175,6 +175,15 @@ def projectAtomsDens( iOut, atoms=None,coefs=None,  iorb0=1, iorb1=2, acumCoef=[
     acumCoef = np.array(acumCoef,dtype=np.float32)
     lib.projectAtomsDens( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut, iorb0, iorb1, _np_as( acumCoef, c_float_p ) )
 
+#void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0 )
+lib.projectAtomsDens0.argtypes  = [ c_int, c_float_p, c_int, c_int_p, c_double_p ] 
+lib.projectAtomsDens0.restype   =  None
+def projectAtomsDens0( iOut, atypes=None, apos=None, acumCoef=[0.0,1.0] ):
+    natom=0
+    if atypes is not None: natom=len(atypes)
+    acumCoef = np.array(acumCoef,dtype=np.float32)
+    lib.projectAtomsDens0( iOut, _np_as( acumCoef, c_float_p ), natom, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
+
 #void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out )
 lib.projectAtomPosTex.argtypes  = [ c_float_p, c_float_p, c_int, c_float_p, c_float_p ] 
 lib.projectAtomPosTex.restype   =  None

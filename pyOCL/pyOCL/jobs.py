@@ -363,6 +363,31 @@ def projectDens0( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,
         print( " bSaveBin ", bSaveBin )
         ocl.saveToBin( saveName+".bin", iOutBuff )
 
+def projectDens0_new( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0" ):
+    print("# ========= projectDens0() " )
+    sys.path.append("../../")
+    import pyBall as pb
+    elems, dct, ords, Rcuts = iZs2dict(atomType);
+    #print("# ======== FireCore Run " )
+    print ("atomType ", atomType)
+    print ("atomPos  ", atomPos)
+    print ("ords  ", ords)
+    dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
+    Ns = (ngrid[0],ngrid[1],ngrid[2])    
+    ocl.tryInitFFT( Ns )
+    ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )
+    ocl.setGridShape_dCell( Ns, dCell )
+    ocl.setTypes( [4,4], [[1.0,3.0],[1.0,5.0]] )
+    ords=np.array( ords, dtype=np.int32)
+    ocl.projectAtomsDens0( iOutBuff, apos=atomPos, atypes=ords, acumCoef=[1.0,-1.0] ) 
+    if bSaveXsf:
+        print( "DEBUG before saveToXsfAtoms " )
+        ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )
+    if bSaveBin:
+        print( " bSaveBin ", bSaveBin )
+        ocl.saveToBin( saveName+".bin", iOutBuff )
+
+
 def Test_projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None ):
     sys.path.append("../../")
     import pyBall as pb
