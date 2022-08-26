@@ -46,7 +46,8 @@ def job_make_Eelec_Epauli():
     #ocl.saveToXsf( "dens_diff.xsf", ibuff_DensBak )         ;print( "DEBUG 2.2 " )
     
     iBuffDens0 = iA
-    jobs.projectDens0( iOutBuff=iBuffDens0, atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSaveXsf=False,  bSaveBin=False, saveName="dens_diff" )   ;print( "DEBUG 2.1 " )
+    #jobs.projectDens0( iOutBuff=iBuffDens0, atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSaveXsf=False,  bSaveBin=False, saveName="dens_diff" )   ;print( "DEBUG 2.1 " )
+    jobs.projectDens0_new( iOutBuff=iBuffDens0, atomPos=apos, atomType=Zs, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, saveName="dens_diff" )
     ocl.saveToXsf( "dens_diff.xsf", iBuffDens0 )         ;print( "DEBUG 2.2 " )
     print( "# --- Poisson (rho->V)")
     ocl.poisson( iA=iBuffDens0, iOut=iC, dcell=dcell )   ;print( "DEBUG 2.3 " )
