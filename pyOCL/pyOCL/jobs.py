@@ -326,16 +326,15 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
         print( " bSaveBin ", bSaveBin )
         ocl.saveToBin( saveName+".bin", iOutBuff )
 
-def projectDens0( iMO0=0, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0" ):
+def projectDens0( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0" ):
     print("# ========= projectDens0() " )
     sys.path.append("../../")
     import pyBall as pb
     #from pyBall import FireCore as fc
 
-    if iMO1 is None:
-        i0orb  = oclu.countOrbs( atomType ) 
-        iMO1 = i0orb[-1]//2
-
+    #if iMO1 is None:
+    #    i0orb  = oclu.countOrbs( atomType ) 
+    #    iMO1 = i0orb[-1]//2
 
     elems, dct, ords, Rcuts = iZs2dict(atomType);
     #print("# ======== FireCore Run " )
@@ -354,8 +353,8 @@ def projectDens0( iMO0=0, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,6
     ocl.setGridShape_dCell( Ns, dCell )
     #convCoefsC    ( iZs,      ityps, apos, wfcoefs, bInit=False, bDiagonal=False ):
     ocl.setTypes( [4,4], [[1.0,3.0],[1.0,5.0]] )
-    ocl.convCoefsC( atomType, ords, atomPos, None, bInit=True, bDiagonal=True ) 
-    ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1, acumCoef=[1.0,-1.0] ) 
+    norb = ocl.convCoefsC( atomType, ords, atomPos, None, bInit=True, bDiagonal=True ) 
+    ocl.projectAtomsDens( iOutBuff, iorb0=0, iorb1=norb, acumCoef=[1.0,-1.0] ) 
 
     if bSaveXsf:
         print( "DEBUG before saveToXsfAtoms " )

@@ -112,6 +112,7 @@ def upload_d( i, data, bComplex=False ):
 lib.copy.argtypes  = [ c_int, c_int,  c_int,  c_int,  c_int ] 
 lib.copy.restype   =  c_int
 def copy( iBufFrom, iBufTo, nbytes=-1, src_offset=0, dst_offset=0   ):
+    print( "!!!! ocl.copy()" )
     return lib.copy( iBufFrom, iBufTo, nbytes, src_offset, dst_offset )
 
 
@@ -195,12 +196,12 @@ def setTypes( atype_nOrb, atype_Qconfs, bInternal=True ):
 
 #void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1 ){
 lib.convCoefs.argtypes  = [ c_int, c_int_p, c_int_p, c_double_p, c_double_p, c_bool, c_bool ] 
-lib.convCoefs.restype   =  None
+lib.convCoefs.restype   =  c_int
 def convCoefsC( iZs, ityps, apos, wfcoefs, bInit=False, bDiagonal=False ):
     natoms=len(iZs)
     iZs   = np.array(iZs,   dtype=np.int32)
     ityps = np.array(ityps, dtype=np.int32)-1
-    lib.convCoefs( natoms, _np_as(iZs,c_int_p),_np_as(ityps,c_int_p), _np_as(wfcoefs,c_double_p), _np_as(apos,c_double_p), bInit, bDiagonal )
+    return lib.convCoefs( natoms, _np_as(iZs,c_int_p),_np_as(ityps,c_int_p), _np_as(wfcoefs,c_double_p), _np_as(apos,c_double_p), bInit, bDiagonal )
 
 #setGridShape( float* pos0, float* dA, float* dB, float* dC ){
 lib.setGridShape.argtypes  = [ c_float_p, c_float_p, c_float_p, c_float_p ] 
