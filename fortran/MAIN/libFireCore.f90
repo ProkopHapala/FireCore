@@ -3,6 +3,16 @@
 ! ============ subroutine firecore_init
 ! ==================================================
 
+subroutine firecore_setVerbosity( verbosity_, idebugWrite_ ) bind(c, name='firecore_setVerbosity')
+    use iso_c_binding
+    use options
+    implicit none
+    integer(c_int),intent(in), value :: verbosity_
+    integer(c_int),intent(in), value :: idebugWrite_
+    verbosity   = verbosity_
+    idebugWrite = idebugWrite_
+end subroutine
+
 ! see : https://stackoverflow.com/questions/29153501/when-i-pass-a-pointer-from-fortran-to-c-the-value-of-the-first-element-is-lost
 subroutine firecore_getPointer_ratom( ratom_ ) bind(c, name='firecore_getPointer_ratom')
     use iso_c_binding
@@ -293,8 +303,8 @@ subroutine firecore_SCF( nmax_scf, positions_, iforce_  )  bind(c, name='firecor
     real, dimension (3) :: k_temp
     ! ====== Body
     ratom(:,:) = positions_(:,:)
-    idebugWrite = 0
-    verbosity   = 0 
+    !idebugWrite = 0
+    !verbosity   = 0 
     iforce      = iforce_
     ikpoint = 1
     scf_achieved = .false.

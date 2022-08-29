@@ -211,10 +211,9 @@ def Test_projectWf( iMO=1 ):
         [-1.0,     -1.0,    +1.0],
         [+1.0,     +1.0,    +1.0],
     ])
-    
     print("# ======== FireCore Run " )
-    print ("atomType ", atomType)
-    print ("atomPos  ", atomPos)
+    #print ("atomType ", atomType)
+    #print ("atomPos  ", atomPos)
     fc.preinit()
     norb = fc.init( atomType, atomPos )
     # --------- Electron Density
@@ -222,17 +221,16 @@ def Test_projectWf( iMO=1 ):
     fc.solveH()
     sigma=fc.updateCharges() ; print( sigma )
     ngrid, dCell, lvs = fc.setupGrid()
-    ewfaux = fc.getGridMO( iMO,ngrid=ngrid)   ;print( "ewfaux.min(),ewfaux.max() ", ewfaux.min(),ewfaux.max() )
-    sh = ewfaux.shape                       ;print( "ewfaux.shape ", sh )
+    ewfaux = fc.getGridMO( iMO,ngrid=ngrid)   #;print( "ewfaux.min(),ewfaux.max() ", ewfaux.min(),ewfaux.max() )
+    sh = ewfaux.shape                         #;print( "ewfaux.shape ", sh )
     fc.orb2xsf(iMO); #exit()
 
-    i0orb  = oclu.countOrbs( atomType )           ;print("i0orb ", i0orb)  
+    i0orb  = oclu.countOrbs( atomType )       #;print("i0orb ", i0orb)  
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
-
     print("# ========= PyOCL Wave-Function Projection " )
     #wfcoef = wfcoef[1,:]
     #print( "wfcoef: \n", wfcoef )
-    print( "coefs for MO#%i " %iMO, wfcoef[iMO-1,:] )
+    #print( "coefs for MO#%i " %iMO, wfcoef[iMO-1,:] )
     typeDict={ 1:0, 6:1 }
     #apos_,wfcoef_ = convCoefs( atomType, wfcoef[iMO,:], atomPos )
     apos_,wfcoef_ = oclu.convCoefs( atomType, wfcoef[iMO-1,:], atomPos, typeDict )
@@ -257,8 +255,8 @@ def Test_projectWf( iMO=1 ):
     iy0=ngrid[1]//2
     plt.plot( arrA  [ix0,iy0,:,0], label="GPU" )
     plt.plot( ewfaux[ix0,iy0,:  ], label="CPU" )
-    print( "arrA  .shape ", arrA  .shape )
-    print( "ewfaux.shape ", ewfaux.shape )
+    #print( "arrA  .shape ", arrA  .shape )
+    #print( "ewfaux.shape ", ewfaux.shape )
     #plt.figure(); plt.imshow( arrA  [ngrid[0]//2 ,:,:,0] ); plt.title("GPU")
     #plt.figure(); plt.imshow( ewfaux[ngrid[0]//2 ,:,:  ] ); plt.title("CPU")
     plt.legend()
@@ -268,8 +266,8 @@ def iZs2dict(iZs, dr="./Fdata/basis"):
     import glob
     s = { i for i in iZs }
     elems = sorted( s )   ;print( "elems ", elems )
-    dct   = { k:(v+1) for v,k in enumerate(elems) }  ;print(   "dct ", dct )
-    ords  = [ dct[i] for i in iZs ]     ;print( "ords ", ords )
+    dct   = { k:(v+1) for v,k in enumerate(elems) }    
+    ords  = [ dct[i] for i in iZs ]                   
     Rcuts = [ ]
     for i in elems:
         path = '%s/%03i_*.na0' %(dr,i) 
@@ -277,11 +275,13 @@ def iZs2dict(iZs, dr="./Fdata/basis"):
         rcut = float(lstr[:3])/100.0 
         print( i, path,  lstr, rcut )
         Rcuts.append( rcut )
-    print( "Rcuts ", Rcuts )
+    #print(   "dct ", dct )
+    #print( "ords ", ords )
+    #print( "Rcuts ", Rcuts )
     return elems, dct, ords, Rcuts
 
-def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens" ):
-    print("# ========= projectDens() " )
+def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSCF=False, bSaveXsf=False, bSaveBin=False, saveName="dens" ):
+    print("# ========= projectDens() bSCF ", bSCF )
     sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
@@ -291,16 +291,21 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
     #print("# ======== FireCore Run " )
     #print ("atomType ", atomType)
     #print ("atomPos  ", atomPos)
+    fc.setVerbosity(verbosity=0)
     fc.preinit()
     norb = fc.init( atomType, atomPos )
     # --------- Electron Density
-    fc.assembleH( atomPos)
-    fc.solveH()
-    sigma=fc.updateCharges() ; print( sigma )
+    if bSCF:
+        fc.setVerbosity(verbosity=1)
+        fc.SCF( atomPos, iforce=0, nmax_scf=200 )
+    else:
+        fc.assembleH( atomPos)
+        fc.solveH()
+        sigma=fc.updateCharges() ; print( sigma )
 
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
 
-    i0orb  = oclu.countOrbs( atomType )           ;print("i0orb ", i0orb)  
+    i0orb  = oclu.countOrbs( atomType )              #;print("i0orb ", i0orb)  
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
     if iMO1 is None:
@@ -315,15 +320,13 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
     #initAtoms( len(apos_) )          
     ocl.setGridShape_dCell( Ns, dCell )
     #print( "wfcoef \n", wfcoef )
-    print( "iMO0 iMO1 %i,%i \n" %(iMO0,iMO1)  )
+    #print( "iMO0 iMO1 %i,%i \n" %(iMO0,iMO1)  )
     ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True ) 
     ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1 ) 
 
     if bSaveXsf:
-        print( "DEBUG before saveToXsfAtoms " )
         ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )
     if bSaveBin:
-        print( " bSaveBin ", bSaveBin )
         ocl.saveToBin( saveName+".bin", iOutBuff )
 
 def projectDens0( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0" ):
@@ -338,9 +341,9 @@ def projectDens0( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,
 
     elems, dct, ords, Rcuts = iZs2dict(atomType);
     #print("# ======== FireCore Run " )
-    print ("atomType ", atomType)
-    print ("atomPos  ", atomPos)
-    print ("ords  ", ords)
+    #print ("atomType ", atomType)
+    #print ("atomPos  ", atomPos)
+    #print ("ords  ", ords)
 
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
 
@@ -357,21 +360,19 @@ def projectDens0( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,
     ocl.projectAtomsDens( iOutBuff, iorb0=0, iorb1=norb, acumCoef=[1.0,-1.0] ) 
 
     if bSaveXsf:
-        print( "DEBUG before saveToXsfAtoms " )
         ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )
     if bSaveBin:
-        print( " bSaveBin ", bSaveBin )
         ocl.saveToBin( saveName+".bin", iOutBuff )
 
 def projectDens0_new( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0" ):
-    print("# ========= projectDens0() " )
+    print("# ========= projectDens0_new() " )
     sys.path.append("../../")
     import pyBall as pb
     elems, dct, ords, Rcuts = iZs2dict(atomType);
     #print("# ======== FireCore Run " )
-    print ("atomType ", atomType)
-    print ("atomPos  ", atomPos)
-    print ("ords  ", ords)
+    #print ("atomType ", atomType)
+    #print ("atomPos  ", atomPos)
+    #print ("ords  ", ords)
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
     Ns = (ngrid[0],ngrid[1],ngrid[2])    
     ocl.tryInitFFT( Ns )
@@ -381,10 +382,8 @@ def projectDens0_new( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,
     ords=np.array( ords, dtype=np.int32)
     ocl.projectAtomsDens0( iOutBuff, apos=atomPos, atypes=ords, acumCoef=[1.0,-1.0] ) 
     if bSaveXsf:
-        print( "DEBUG before saveToXsfAtoms " )
         ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )
     if bSaveBin:
-        print( " bSaveBin ", bSaveBin )
         ocl.saveToBin( saveName+".bin", iOutBuff )
 
 
@@ -418,7 +417,7 @@ def Test_projectDens( iMO0=1, iMO1=2, atomType=None, atomPos=None ):
     #sh = ewfaux.shape                       ;print( "ewfaux.shape ", sh )
     #fc.orb2xsf(iMO); #exit()
 
-    i0orb  = oclu.countOrbs( atomType )           ;print("i0orb ", i0orb)  
+    i0orb  = oclu.countOrbs( atomType )           #;print("i0orb ", i0orb)  
     wfcoef = fc.get_wfcoef(norb=i0orb[-1])
 
     print("# ========= PyOCL Density-Function Projection " )

@@ -75,6 +75,11 @@ array2d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=2, flags='CONTIGUOUS')
 array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ========= C functions
 
+#  void firecore_setVerbosity( int verbosity_, int idebugWrite_ )
+lib.firecore_setVerbosity.argtypes  = [c_int, c_int ] 
+lib.firecore_setVerbosity.restype   =  None
+def setVerbosity( verbosity=0, idebugWrite=0 ):
+    return lib.firecore_setVerbosity(verbosity, idebugWrite ) 
 
 #  subroutine firecore_init( natoms_, atomTypes, atomsPos )
 lib.firecore_init.argtypes  = [c_int, array1i, array2d ] 

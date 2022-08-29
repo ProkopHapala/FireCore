@@ -42,15 +42,15 @@ class OCLBuffer{
         //p_gpu = clCreateBuffer(context, flags, typesize * n, NULL,  &err);
         switch(img_dims){
             case 2:
-                printf( " initOnGPUImage: clCreateImage2D \n" );
+                //printf( " initOnGPUImage: clCreateImage2D \n" );
                 p_gpu = clCreateImage2D(context, flags, &imageFormat, nImg[0],nImg[1],          0,    p_cpu, &err);   // TODO: ??? nx=nImg[0] ny=nImg[1]  ???
                 break;
             case 3:
-                printf( " initOnGPUImage: clCreateImage3D \n" );
+                //printf( " initOnGPUImage: clCreateImage3D \n" );
                 p_gpu = clCreateImage3D(context, flags, &imageFormat, nImg[0],nImg[1], nImg[2], 0, 0, p_cpu, &err);   // TODO: ??? nx=nImg[0] ny=nImg[1]  ???
                 break;
         }
-        printf( "initOnGPUImage img_dims: %i p_gpu: %li \n", img_dims, (long)p_gpu );
+        //printf( "initOnGPUImage img_dims: %i p_gpu: %li \n", img_dims, (long)p_gpu );
         return err;
     }
 

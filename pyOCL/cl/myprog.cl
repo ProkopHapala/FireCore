@@ -343,7 +343,7 @@ __kernel void projectOrbDenToGrid_texture(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
-    if(iG==0){  printf("!!!!!!!!!!!!!!!! projectOrbDenToGrid_texture acumCoef %g,%g nAtoms %i iorb(%i,%i)  nMax %i \n", acumCoef.x, acumCoef.y, nAtoms, iorb0, iorb1, nMax ); }
+    //if(iG==0){  printf("!!!!!!!!!!!!!!!! projectOrbDenToGrid_texture acumCoef %g,%g nAtoms %i iorb(%i,%i)  nMax %i \n", acumCoef.x, acumCoef.y, nAtoms, iorb0, iorb1, nMax ); }
 
     if(iG>nMax) return;
 
@@ -353,7 +353,7 @@ __kernel void projectOrbDenToGrid_texture(
     
     // ToDo : Later we have to change the order of the loops
     for(int iorb=iorb0; iorb<=iorb1; iorb++){
-        if(iG==0){ printf( "GPU iorb %i \n", iorb ); }
+        //if(iG==0){ printf( "GPU iorb %i \n", iorb ); }
         int icoef0 = iorb*nAtoms;
         float2 wf   = (float2) (0.0f,0.0f);
         for (int i0=0; i0<nAtoms; i0+=nL ){
@@ -373,15 +373,14 @@ __kernel void projectOrbDenToGrid_texture(
         } // i0
         dens += wf.x*wf.x;
     } // iorb
-    
-    if(iG==0){ printf( "GPU loop DONE ! \n" ); }
+    //if(iG==0){ printf( "GPU loop DONE ! \n" ); }
     //outGrid[iG] = (float2){dens,0.0f};
     if(fabs(acumCoef.x)<1e-8){
         outGrid[iG] = (float2){dens,0.0f};
     }else{
         outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
     }
-    if(iG==0){ printf( "GPU all DONE ! \n" ); }
+    //if(iG==0){ printf( "GPU all DONE ! \n" ); }
     //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
 }
 
@@ -409,11 +408,9 @@ __kernel void projectAtomDenToGrid_texture(
     const int ib   = (iG%nab)/nGrid.x;
     const int ic   =  iG/nab; 
     const int nMax =  nab*nGrid.z;
-    if(iG==0){  printf("GPU_DEBUG projectAtomDenToGrid_texture() acumCoef %g,%g nAtoms %i nMax %i \n", acumCoef.x, acumCoef.y, nAtoms, nMax ); }
+    //if(iG==0){  printf("GPU_DEBUG projectAtomDenToGrid_texture() acumCoef %g,%g nAtoms %i nMax %i \n", acumCoef.x, acumCoef.y, nAtoms, nMax ); }
     if(iG>nMax) return;
-
     float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
-
     float dens = 0.0;
     for (int i0=0; i0<nAtoms; i0+=nL ){
         int i = i0 + iL;
@@ -431,14 +428,14 @@ __kernel void projectAtomDenToGrid_texture(
         } // j
         barrier(CLK_LOCAL_MEM_FENCE);
     } // i0
-    if(iG==0){ printf( "GPU loop DONE ! \n" ); }
+    //if(iG==0){ printf( "GPU loop DONE ! \n" ); }
     //outGrid[iG] = (float2){dens,0.0f};
     if(fabs(acumCoef.x)<1e-8){
         outGrid[iG] = (float2){dens,0.0f};
     }else{
         outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
     }
-    if(iG==0){ printf( "GPU all DONE ! \n" ); }
+    //if(iG==0){ printf( "GPU all DONE ! \n" ); }
     //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
 }
 
