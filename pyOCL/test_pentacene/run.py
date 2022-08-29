@@ -26,20 +26,20 @@ def job_make_Eelec_Epauli():
     print( "# --- Allocations")
 
     print( "# --- SCF density")
-    jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, saveName="dens_scf"  )
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, saveName="dens_scf", bSCF=True )
     
-    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )    ;print( "DEBUG 0.1 " )
-    ibuff_ConvOut = ocl.newFFTbuffer( "MCOconv" )    ;print( "DEBUG 0.2 " )
-    ibuff_DensBak = ocl.newFFTbuffer( "DensBak" )    ;print( "DEBUG 0.3 " )
+    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
+    ibuff_ConvOut = ocl.newFFTbuffer( "MCOconv" )
+    ibuff_DensBak = ocl.newFFTbuffer( "DensBak" )
 
-    ocl.copy( iA, ibuff_DensBak )                    ;print( "DEBUG 0.5 " )
-    ocl.saveToXsf( "Dens_bak.xsf",  ibuff_DensBak )  ;print( "DEBUG 0.6 " )
-    ocl.saveToXsf( "Dens_orig.xsf", iA)              ;print( "DEBUG 0.7 " )
+    ocl.copy( iA, ibuff_DensBak )
+    ocl.saveToXsf( "Dens_bak.xsf",  ibuff_DensBak )
+    ocl.saveToXsf( "Dens_orig.xsf", iA)
 
     print( "# ==== E_Pauli ( density convolution )")
-    ocl.loadFromBin( "../test_CO/dens_scf.bin", ibuff_densCO )  ;print( "DEBUG 1.3 " )
-    ocl.convolve( ibuff_DensBak,ibuff_densCO, ibuff_ConvOut )              ;print( "DEBUG 1.4 " )
-    ocl.saveToXsf( "Epaul.xsf",    ibuff_ConvOut )              ;print( "DEBUG 1.5 " )
+    ocl.loadFromBin( "../test_CO/dens_scf.bin", ibuff_densCO )
+    ocl.convolve( ibuff_DensBak,ibuff_densCO, ibuff_ConvOut )
+    ocl.saveToXsf( "Epaul.xsf",    ibuff_ConvOut )
 
     #print( "# === E_elec ( density and potential convolution )")
     #jobs.projectDens0( iOutBuff=ibuff_DensBak, atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSaveXsf=False,  bSaveBin=False, saveName="dens_diff" )   ;print( "DEBUG 2.1 " )
@@ -48,10 +48,10 @@ def job_make_Eelec_Epauli():
     iBuffDens0 = iA
     #jobs.projectDens0( iOutBuff=iBuffDens0, atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSaveXsf=False,  bSaveBin=False, saveName="dens_diff" )   ;print( "DEBUG 2.1 " )
     jobs.projectDens0_new( iOutBuff=iBuffDens0, atomPos=apos, atomType=Zs, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, saveName="dens_diff" )
-    ocl.saveToXsf( "dens_diff.xsf", iBuffDens0 )         ;print( "DEBUG 2.2 " )
+    ocl.saveToXsf( "dens_diff.xsf", iBuffDens0 )
     print( "# --- Poisson (rho->V)")
-    ocl.poisson( iA=iBuffDens0, iOut=iC, dcell=dcell )   ;print( "DEBUG 2.3 " )
-    ocl.saveToXsf( "Vout.xsf", iC )                      ;print( "DEBUG 2.4 " )
+    ocl.poisson( iA=iBuffDens0, iOut=iC, dcell=dcell )
+    ocl.saveToXsf( "Vout.xsf", iC )
 
     exit()
     print( "# --- E_elec = convolution( rho, V )  " )

@@ -107,14 +107,11 @@ lib.upload_d.restype   =  None
 def upload_d( i, data, bComplex=False ):
     lib.upload_d( i, _np_as( data, c_double_p ), bComplex )
 
-
 # int copy( int iBufFrom, int iBufTo )
 lib.copy.argtypes  = [ c_int, c_int,  c_int,  c_int,  c_int ] 
 lib.copy.restype   =  c_int
 def copy( iBufFrom, iBufTo, nbytes=-1, src_offset=0, dst_offset=0   ):
-    print( "!!!! ocl.copy()" )
     return lib.copy( iBufFrom, iBufTo, nbytes, src_offset, dst_offset )
-
 
 #void initFFT ( int ndim, int* Ns );
 lib.initFFT.argtypes  = [ c_int, array1l ] 
@@ -130,6 +127,12 @@ lib.setErrorCheck.argtypes  = [ c_int ]
 lib.setErrorCheck.restype   =  None
 def setErrorCheck( ierr ):
     lib.setErrorCheck( ierr )
+
+#void setVerbosity(int verbosity_ )
+lib.setVerbosity.argtypes  = [ c_int ] 
+lib.setVerbosity.restype   =  None
+def setVerbosity( verbosity ):
+    lib.setVerbosity( verbosity )
 
 #void initFFT ( int ndim, int* Ns );
 lib.initAtoms.argtypes  = [ c_int ] 
@@ -319,12 +322,12 @@ def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", R
 # ===================== PYTHON
 
 def tryInitFFT( sh ):
-    print( "!!!!------------------------- tryInitFFT: b_Init, b_initFFT ", b_Init, b_initFFT )
+    #print( "!!!!------------------------- tryInitFFT: b_Init, b_initFFT ", b_Init, b_initFFT )
     if not b_Init: 
-        print( "!!!!------------------------- tryInitFFT: init() " )
+        #print( "!!!!------------------------- tryInitFFT: init() " )
         init()
     if not b_initFFT:
-        print( "!!!!------------------------- initFFT: init() " )
+        #print( "!!!!------------------------- initFFT: init() " )
         fft_shape = sh
         initFFT( fft_shape )
 

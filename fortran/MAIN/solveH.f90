@@ -308,7 +308,7 @@ subroutine solveH( ikpoint, kpoint )
 ! zzzz = Unused
 ! yyyy = Hamiltonian eigenvectors in the MO basis
 
-    if (verbosity .gt. 0) write(*,*) "eigenvalues[k",ikpoint,"]", eigen(:)
+    if (verbosity .gt. 1) write(*,*) "eigenvalues[k",ikpoint,"]", eigen(:)
     eigen_k(1:norbitals,ikpoint) = eigen(:)
     if (iqout .ne. 2) blowre(:,:,ikpoint) = real(Hk(:,:))
     if (iqout .ne. 2 .and. icluster .ne. 1) blowim(:,:,ikpoint) = aimag(Hk(:,:))
