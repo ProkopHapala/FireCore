@@ -503,7 +503,7 @@ subroutine firecore_orb2xsf( iMO )  bind(c, name='firecore_orb2xsf' )
  ! Local Parameters and Data Declaration
  ! ===========================================================================
     ! ========= Parameters
-   integer(c_int), value :: iMO
+    integer(c_int), value :: iMO
     ! ========= Variables
     real, dimension (:), allocatable :: ewfaux
     !real, target, dimension (:), allocatable :: ewfaux
@@ -524,19 +524,15 @@ subroutine firecore_orb2xsf( iMO )  bind(c, name='firecore_orb2xsf' )
     deallocate (ewfaux) 
 end subroutine firecore_orb2xsf
 
-subroutine firecore_dens2xsf( )  bind(c, name='firecore_dens2xsf' )
+subroutine firecore_dens2xsf( f_den0 )  bind(c, name='firecore_dens2xsf' )
     use iso_c_binding
     use options, only: icluster
     use grid
     implicit none
  ! Local Parameters and Data Declaration
- ! ===========================================================================
-    ! ========= Parameters
-    !integer(c_int), value :: iMO
+    real(c_double), value :: f_den0
     ! ========= Variables
     real, dimension (:), allocatable :: ewfaux
-    !real, target, dimension (:), allocatable :: ewfaux
-    !real, dimension (:), pointer   :: pmat
     character(40)   :: namewf
     character(4)    :: name
     character (len=30) mssg
@@ -544,14 +540,13 @@ subroutine firecore_dens2xsf( )  bind(c, name='firecore_dens2xsf' )
     ! ========= Body
     allocate ( ewfaux(0:nrm-1))
     call project_dens( ewfaux )
-    !call project_orb(iMO,ewfaux)
-    !write (name,'(i4.4)') iMO
+    if( f_den0*f_den0 > 1.e-16 ) then
+        call project_dens0( f_den0, ewfaux )
+    end if 
     namewf = 'density.xsf'
-    !pmat => ewfaux
     mssg = 'density_3D'
-    !call writeout_xsf (namewf, mssg, pmat)
     call writeout_xsf (namewf, mssg, ewfaux)
-    deallocate (ewfaux) 
+    deallocate (ewfaux)
 end subroutine firecore_dens2xsf
 
 subroutine firecore_orb2points( iband,ikpoint, npoints, points, ewfaux )  bind(c, name='firecore_orb2points' )

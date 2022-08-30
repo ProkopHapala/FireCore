@@ -25,6 +25,11 @@ def job_make_Eelec_Epauli():
     iA=0; iC=1
     print( "# --- Allocations")
 
+    jobs.projectDensFireball( atomType=Zs, atomPos=apos, bSCF=True, saveXsf=1, f_den0=-1.0 )
+
+    exit(0)
+
+
     print( "# --- SCF density")
     jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, saveName="dens_scf", bSCF=True )
     
