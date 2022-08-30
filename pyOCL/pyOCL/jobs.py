@@ -280,17 +280,11 @@ def iZs2dict(iZs, dr="./Fdata/basis"):
     #print( "Rcuts ", Rcuts )
     return elems, dct, ords, Rcuts
 
-def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSCF=False, bSaveXsf=False, bSaveBin=False, saveName="dens" ):
-    print("# ========= projectDens() bSCF ", bSCF )
+def projectDensFireball(  atomType=None, atomPos=None, bSCF=False, saveXsf=None, f_den0=0.0 ):
     sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
-
-    elems, dct, ords, Rcuts = iZs2dict(atomType);   #exit(0)
-
-    #print("# ======== FireCore Run " )
-    #print ("atomType ", atomType)
-    #print ("atomPos  ", atomPos)
+    from pyBall import FireCore as fc
     fc.setVerbosity(verbosity=0)
     fc.preinit()
     norb = fc.init( atomType, atomPos )
@@ -302,6 +296,15 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
         fc.assembleH( atomPos)
         fc.solveH()
         sigma=fc.updateCharges() ; print( sigma )
+    
+    if saveXsf is not None:
+        fc.dens2xsf( f_den0 )
+
+def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSCF=False, bSaveXsf=False, bSaveBin=False, saveName="dens" ):
+    print("# ========= projectDens() bSCF ", bSCF )
+    elems, dct, ords, Rcuts = iZs2dict(atomType);   #exit(0)
+
+    projectDensFireball( atomType=atomType, atomPos=atomPos, bSCF=bSCF )
 
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
 
@@ -310,17 +313,10 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
 
     if iMO1 is None:
         iMO1 = i0orb[-1]//2
-
     Ns = (ngrid[0],ngrid[1],ngrid[2])
     ocl.tryInitFFT( Ns )
-    #ocl.init()            
-    #ocl.initFFT( Ns  )                  
-    #ocl.loadWfBasis( elems, Rcuts=Rcuts )    
-    ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )
-    #initAtoms( len(apos_) )          
+    ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )        
     ocl.setGridShape_dCell( Ns, dCell )
-    #print( "wfcoef \n", wfcoef )
-    #print( "iMO0 iMO1 %i,%i \n" %(iMO0,iMO1)  )
     ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True ) 
     ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1 ) 
 
@@ -333,17 +329,8 @@ def projectDens0( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,
     print("# ========= projectDens0() " )
     sys.path.append("../../")
     import pyBall as pb
-    #from pyBall import FireCore as fc
-
-    #if iMO1 is None:
-    #    i0orb  = oclu.countOrbs( atomType ) 
-    #    iMO1 = i0orb[-1]//2
 
     elems, dct, ords, Rcuts = iZs2dict(atomType);
-    #print("# ======== FireCore Run " )
-    #print ("atomType ", atomType)
-    #print ("atomPos  ", atomPos)
-    #print ("ords  ", ords)
 
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
 

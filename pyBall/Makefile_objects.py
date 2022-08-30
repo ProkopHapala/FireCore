@@ -225,6 +225,7 @@ GROUPS = {
     'initgrid',
     'allocate_grid',
     'project_dens',
+    'project_dens0',
     'project_orb',
     'project_orb_complex',
     'ew2mesh',

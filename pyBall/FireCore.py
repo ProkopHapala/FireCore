@@ -220,10 +220,12 @@ def orb2xsf(iMO):
     lib.firecore_orb2xsf(iMO )
 
 #  void firecore_dens2xsf( int iMO )
-lib.firecore_dens2xsf.argtypes  = [ ] 
+lib.firecore_dens2xsf.argtypes  = [ c_double ] 
 lib.firecore_dens2xsf.restype   =  None
-def dens2xsf():
-    lib.firecore_dens2xsf()
+def dens2xsf( f_den0=0.0 ):
+    print( "DEBUG FireCore.py:: dens2xsf()" )
+    lib.firecore_dens2xsf( f_den0 )
+    print( "DEBUG FireCore.py:: dens2xsf() END" )
 
 '''
 #"void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",

@@ -86,14 +86,10 @@
 
 ! Argument Declaration and Description
 ! ===========================================================================
-! Input
-
    !integer iband0,iband1
    !real, dimension (:), pointer, intent (out) :: ewfaux
    real, dimension (nrm), intent (out) :: ewfaux
    ! real, target, dimension (:), allocatable :: ewfaux
-
-!Output
 
 ! Local Variable Declaration and Description
 ! ===========================================================================

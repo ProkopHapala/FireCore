@@ -286,7 +286,7 @@ class Molecule{ public:
         for(int i=0; i<natoms; i++){
             XX.addOuter( pos[i], pos[i], 1.0 );
         }
-        printf( "XX: " ); printMat(XX);
+        //printf( "XX: " ); printMat(XX);
         Vec3d evs;
         XX.eigenvals(evs);
         evs.sort();
@@ -517,7 +517,7 @@ class Molecule{ public:
         return natoms;
     }
 
-    int loadXYZ_bas(const char* fname, int verbosity ){
+    int loadXYZ_bas(const char* fname, int verbosity=0 ){
         // xxxxx.xxxxyyyyy.yyyyzzzzz.zzzz aaaddcccssshhhbbbvvvHHHrrriiimmmnnneee
         // http://www.daylight.com/meetings/mug05/Kappler/ctfile.pdf
         FILE * pFile = fopen(fname,"r");
