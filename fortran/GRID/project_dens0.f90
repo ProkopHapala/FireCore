@@ -53,7 +53,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
- subroutine project_dens0( f_mul, ewfaux)
+ subroutine project_dens0( ewfaux, f_mul )
    use configuration
    use dimensions
    use interactions
@@ -69,9 +69,9 @@
 ! ===========================================================================
    !integer iband0,iband1
    !real, dimension (:), pointer, intent (out) :: ewfaux
-   real, intent (in) :: f_mul
    real, dimension (nrm), intent (out) :: ewfaux
    ! real, target, dimension (:), allocatable :: ewfaux
+   real, intent (in) :: f_mul
 
 ! Local Variable Declaration and Description
 ! ===========================================================================
@@ -151,6 +151,7 @@
    !rhoG0 = 0.0d0
    !vnaG = 0.0d0
    psi2 = 0.0d0
+   qtot = 0.0
 
 ! set nr(:)
    nr(1) = rm1
@@ -282,6 +283,7 @@
       psi2 = psi2 + psi1(imu)*psi1(imu)
      enddo ! do imu
 
+    qtot = qtot + dens*dvol
     !rhoG0(ind) = dens + rhoG0(ind)
     ewfaux(ind) = ewfaux(ind) + dens * f_mul 
 
@@ -291,6 +293,8 @@
 ! store variation of density at given point
     end do ! do imesh
    end do ! do iatom
+
+   write (*,*)   "Qtot ", qtot, "renorm ", renorm, "dvol ", dvol
    return
  end subroutine project_dens0
 
@@ -331,3 +335,58 @@
    enddo
    write (*,*) ' -- Total atomic density after renormalization =',dens
  end subroutine renorm_dens
+
+ subroutine initdenmat0( )
+    use density
+    use configuration
+    use neighbor_map
+    use interactions
+    use charges
+    !use options
+    !use grid
+    implicit none
+ 
+ ! ======= variables
+    integer imu
+    !integer inu
+    integer i
+    integer issh
+    integer iatom
+    integer jatom
+    integer mbeta
+    integer matom
+    integer in1
+    !integer in2
+    integer ineigh
+    !integer a1
+    !integer a2
+    !integer a3
+ 
+    real qmu
+    logical isfile
+ ! ========== Body
+    rhoA = 0.0d0
+ ! Loop over all atoms iatom in the unit cell
+    do iatom = 1, natoms
+       in1 = imass(iatom)
+ ! find atom intself in list of neighbors
+       matom = -99
+       do ineigh = 1, neighn(iatom)
+          mbeta = neigh_b(ineigh,iatom)
+          jatom = neigh_j(ineigh,iatom)
+          if (iatom .eq. jatom .and. mbeta .eq. 0) matom = ineigh
+       end do
+       imu = 1
+       do issh = 1, nssh(in1)
+ ! evaluate neutral charge per orbital
+          qmu = Qneutral(issh,in1) / real(2*lssh(issh,in1)+1)
+          do i = 1, (2*lssh(issh,in1)+1)
+ ! set diagonal part of density matrix
+             rhoA(imu,iatom) = qmu
+             !rho(imu,imu,matom,iatom) = qmu
+             imu = imu + 1
+          enddo ! do i
+       enddo ! do imu
+    end do ! do iatom
+    return
+  end subroutine initdenmat0

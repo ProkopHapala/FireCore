@@ -25,7 +25,8 @@ def job_make_Eelec_Epauli():
     iA=0; iC=1
     print( "# --- Allocations")
 
-    jobs.projectDensFireball( atomType=Zs, atomPos=apos, bSCF=True, saveXsf=1, f_den0=-1.0 )
+    #jobs.projectDensFireball( atomType=Zs, atomPos=apos, bSCF=True, saveXsf=1, f_den0=-1.0 )
+    jobs.check_density_projection( atomType=Zs, atomPos=apos, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=-1.0  )
 
     exit(0)
 
