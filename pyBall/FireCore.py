@@ -203,14 +203,14 @@ def getGridMO(iMO, ewfaux=None, ngrid=None):
     return ewfaux
 
 #  void getGridDens( int imo0, int imo1, double* ewfaux )
-lib.firecore_getGridDens.argtypes  = [array3d ] 
+lib.firecore_getGridDens.argtypes  = [ array3d, c_double, c_double ] 
 lib.firecore_getGridDens.restype   =  None
-def getGridDens(ewfaux=None, ngrid=None):
+def getGridDens(ewfaux=None, ngrid=None, Cden = 1.0, Cden0 = 0.0 ):
     #ngrid=ngrid[::-1]
     print( ngrid ); #exit(0)
     if ewfaux is None:
         ewfaux = np.zeros(ngrid)
-    lib.firecore_getGridDens( ewfaux ) 
+    lib.firecore_getGridDens( ewfaux, Cden, Cden0  ) 
     return ewfaux 
 
 #  void firecore_MOtoXSF( int iMO )

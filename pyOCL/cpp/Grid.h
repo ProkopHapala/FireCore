@@ -214,7 +214,8 @@ class GridShape {
         fclose(fout);
     }
 
-    void toXSF( FILE* fout, float* FF, int stride, int offset ) const {
+    template<typename T>
+    void toXSF( FILE* fout, T* FF, int stride, int offset ) const {
         headerToXsf( fout );
         int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
         for ( int ic=0; ic<nz; ic++ ){
@@ -245,7 +246,8 @@ class GridShape {
         fprintf( fout, "\n" );
     }
 
-    void saveXSF( const char * fname, float* FF, int stride, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0  )const {
+    template<typename T>
+    void saveXSF( const char * fname, T* FF, int stride, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0  )const {
         printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");

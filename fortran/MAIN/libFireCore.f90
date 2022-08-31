@@ -482,17 +482,26 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     call project_orb( iMO, ewfaux )
 end subroutine
 
-subroutine firecore_getGridDens( ewfaux )  bind(c, name='firecore_getGridDens' )
+subroutine firecore_getGridDens( ewfaux, f_den, f_den0 )  bind(c, name='firecore_getGridDens' )
     use iso_c_binding
     use grid
     use configuration
     implicit none
     ! ========= Parameters
     !integer(c_int), value :: imo0, imo1
+    real(c_double), value :: f_den
+    real(c_double), value :: f_den0
     real(c_double), dimension (nrm), intent(out) :: ewfaux
     ! ========= Body
-    !write(*,*) "firecore_getGridDens "
-    call project_dens( ewfaux )
+    write(*,*) "DEBUG firecore_getGridDens() ", f_den, f_den0
+    ewfaux = 0.0
+    if( f_den*f_den > 1.e-16 ) then
+        call project_dens( ewfaux, f_den )
+    end if 
+    if( f_den0*f_den0 > 1.e-16 ) then
+        call initdenmat0( )
+        call project_dens0( ewfaux, f_den0 )
+    end if 
 end subroutine
 
 subroutine firecore_orb2xsf( iMO )  bind(c, name='firecore_orb2xsf' )
@@ -537,13 +546,15 @@ subroutine firecore_dens2xsf( f_den0 )  bind(c, name='firecore_dens2xsf' )
     character(4)    :: name
     character (len=30) mssg
     integer i
-    ! ========= Body
+    ! ========= Body 
     allocate ( ewfaux(0:nrm-1))
-    call project_dens( ewfaux )
+    ewfaux = 0.0
+    call project_dens( ewfaux, 1.0 )
     if( f_den0*f_den0 > 1.e-16 ) then
-        call project_dens0( f_den0, ewfaux )
+        call initdenmat0( )
+        call project_dens0( ewfaux, f_den0 )
     end if 
-    namewf = 'density.xsf'
+    namewf = 'FC_density.xsf'
     mssg = 'density_3D'
     call writeout_xsf (namewf, mssg, ewfaux)
     deallocate (ewfaux)

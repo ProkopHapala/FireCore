@@ -72,7 +72,7 @@
 !
 ! Program Declaration
 ! ===========================================================================
- subroutine project_dens(ewfaux)
+ subroutine project_dens( ewfaux, f_mul )
 
    use configuration
    use dimensions
@@ -87,9 +87,9 @@
 ! Argument Declaration and Description
 ! ===========================================================================
    !integer iband0,iband1
-   !real, dimension (:), pointer, intent (out) :: ewfaux
    real, dimension (nrm), intent (out) :: ewfaux
    ! real, target, dimension (:), allocatable :: ewfaux
+   real, intent (in) :: f_mul
 
 ! Local Variable Declaration and Description
 ! ===========================================================================
@@ -138,7 +138,7 @@
 ! Procedure
 ! ===========================================================================
 
-    ewfaux = 0.0d0
+    !ewfaux = 0.0d0
 
     nr(1) = rm1
     nr(2) = rm2
@@ -252,7 +252,7 @@
               dens = dens + rho(inu,imu,ineigh,iatom)*psi1(inu)*psi2(imu)
              enddo ! do inu
             enddo ! do imu
-            ewfaux(ind) = ewfaux(ind)  + dens ! store variation of density at given point
+            ewfaux(ind) = ewfaux(ind) + dens * f_mul ! store variation of density at given point
            endif ! if (Rc_max)
           end do ! do imesh
         end do ! do ineigh

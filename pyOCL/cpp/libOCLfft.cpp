@@ -574,6 +574,15 @@ class OCLfft : public OCLsystem { public:
         //grid.printCell();
     }
 
+    void saveToXsfData(const char* fname, Vec3i ngrid, double* data, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
+        printf( "DEBUG C saveToXsfData() ngrid (%i,%i,%i) \n", ngrid.x,ngrid.y,ngrid.z );
+        //grid.n = ngrid;
+        //Ns[0]=ngrid.x; Ns[1]=ngrid.y; Ns[2]=ngrid.z;
+        Ns[0]=ngrid.z; Ns[1]=ngrid.y; Ns[2]=ngrid.x;
+        update_GridShape();
+        grid.saveXSF( fname, data, 1, 0, natoms, atypes,apos );
+    }
+
     void saveToXsf(const char* fname, int ibuff, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
         update_GridShape();
         float* cpu_data = new float[Ntot*2]; // complex 2*float
@@ -914,6 +923,7 @@ extern "C" {
 
     void saveToXsf     (const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff,0,0,0); }
     void saveToXsfAtoms(const char* fname, int ibuff, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, natoms,atypes,(Vec3d*)apos); }
+    void saveToXsfAtomsData(const char* fname, int* ngrid, double* data, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsfData(fname, *(Vec3i*)ngrid, data, natoms,atypes,(Vec3d*)apos); }
 
     void initFireBall( int natoms, int* atypes, double* apos ){
 

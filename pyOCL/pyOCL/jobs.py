@@ -281,9 +281,9 @@ def iZs2dict(iZs, dr="./Fdata/basis"):
     return elems, dct, ords, Rcuts
 
 def projectDensFireball(  atomType=None, atomPos=None, bSCF=False, saveXsf=None, f_den0=0.0 ):
+    print( "DEBUG projectDensFireball()" )
     sys.path.append("../../")
     import pyBall as pb
-    from pyBall import FireCore as fc
     from pyBall import FireCore as fc
     fc.setVerbosity(verbosity=0)
     fc.preinit()
@@ -298,7 +298,42 @@ def projectDensFireball(  atomType=None, atomPos=None, bSCF=False, saveXsf=None,
         sigma=fc.updateCharges() ; print( sigma )
     
     if saveXsf is not None:
+        ngrid, dCell, lvs = fc.setupGrid()
         fc.dens2xsf( f_den0 )
+    print( "DEBUG projectDensFireball() END" )
+
+
+def check_density_projection( atomType=None, atomPos=None, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=0.0 ):
+    print( "DEBUG check_density_projection()" )
+    sys.path.append("../../")
+    import pyBall as pb
+    from pyBall import FireCore as fc
+    fc.setVerbosity(verbosity=0)
+    fc.preinit()
+    norb = fc.init( atomType, atomPos )
+    # --------- Electron Density
+    if bSCF:
+        fc.setVerbosity(verbosity=1)
+        fc.SCF( atomPos, iforce=0, nmax_scf=200 )
+    else:
+        fc.assembleH( atomPos)
+        fc.solveH()
+        sigma=fc.updateCharges() ; print( sigma )
+    
+    if saveXsf is not None:
+        ngrid, dCell, lvs = fc.setupGrid()
+        #ewfaux = fc.getGridDens( ngrid=ngrid, Cden=1.0, Cden0=0.0 )
+        ewfaux = fc.getGridDens( ngrid=ngrid, Cden=Cden, Cden0=Cden0 )
+        Ns = (ngrid[0],ngrid[1],ngrid[2])
+        ocl.setGridShape_dCell( Ns, dCell, pos0=[0.0,0.0,0.0] )
+        pos0 = ocl.getCellHalf( Ns, dCell );   print( "!!!!!!!! pos0 ", pos0  )
+        atomPos[:,0]-=pos0[2]
+        atomPos[:,1]-=pos0[1]
+        atomPos[:,2]-=pos0[0]
+        ocl.saveToXsfAtomsData( saveXsf, ewfaux, atomType, atomPos )
+
+    print( "DEBUG check_density_projection() END" )
+
 
 def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSCF=False, bSaveXsf=False, bSaveBin=False, saveName="dens" ):
     print("# ========= projectDens() bSCF ", bSCF )

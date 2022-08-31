@@ -226,9 +226,12 @@ def setGridShape( pos0=[0.,0.,0.,0.],dA=[0.1,0.,0.,0.],dB=[0.,0.1,0.,0.],dC=[0.,
     #print( "dA ", dA); print( "dB ", dB); print( "dC ", dC);
     lib.setGridShape( _np_as( pos0, c_float_p ),_np_as( dA, c_float_p ), _np_as( dB, c_float_p ), _np_as( dC, c_float_p ) )
 
+def getCellHalf( Ns, dCell ):
+    return [  dCell[0,0]*(1-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[2]//2),  0.0 ]
+
 def setGridShape_dCell( Ns, dCell, pos0=None ):
     if pos0 is None:
-        pos0=[  dCell[0,0]*(1-Ns[0]//2),  dCell[1,1]*(-Ns[1]//2),  dCell[2,2]*(-Ns[2]//2),  0.0 ]   # NOT sure why this fits best
+        pos0 = getCellHalf( dCell )  # NOT sure why this fits best
     setGridShape( pos0=pos0, dA=dCell[0]+[0.0], dB=dCell[1]+[0.0], dC=dCell[2]+[0.0] )
 
 #void initFireBall( int natoms, int* atypes, double* apos ){
@@ -301,6 +304,16 @@ def saveToXsfAtoms( fname, ibuff, atypes, apos ):
     fname = fname.encode('utf-8')
     na = len(atypes)
     lib.saveToXsfAtoms( fname, ibuff,   na, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
+
+#void saveToXsfAtomsData(const char* fname, double* data, int natoms, int* atypes, double* apos )
+lib.saveToXsfAtomsData.argtypes  = [ c_char_p, c_int_p, c_double_p, c_int,c_int_p,c_double_p ] 
+lib.saveToXsfAtomsData.restype   =  None
+def saveToXsfAtomsData( fname, data, atypes, apos ):
+    fname = fname.encode('utf-8')
+    na = len(atypes)
+    ngrid = np.array( data.shape, dtype=np.int32 )
+    lib.saveToXsfAtomsData( fname, _np_as(ngrid, c_int_p ),  _np_as( data, c_double_p ),  na, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
+
 
 #    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){
 lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p, c_float_p ] 
