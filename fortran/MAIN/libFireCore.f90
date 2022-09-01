@@ -436,7 +436,7 @@ subroutine firecore_set_wfcoef( iMO, ikp, wfcoefs )  bind(c, name='firecore_set_
     bbnkre(:,iMO,ikp) = wfcoefs(:)
 end subroutine
 
-subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_,    ngrid_, dCell  )  bind(c, name='firecore_setupGrid' )
+subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_, ngrid_, dCell  )  bind(c, name='firecore_setupGrid' )
     use iso_c_binding
     use grid
     use configuration
@@ -448,25 +448,35 @@ subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_,    ngrid_, dCell  )  bind(c,
     real   (c_double)               ,intent(in),value :: Ecut_
     integer(c_int)                  ,intent(in),value :: ifixg0_
     real   (c_double), dimension (3),intent(in) :: g0_
-    integer(c_int),    dimension (3),intent  (out) :: ngrid_
-    real   (c_double), dimension (3,3),intent(out) :: dCell
+    integer(c_int),    dimension (3),intent  (inout) :: ngrid_
+    real   (c_double), dimension (3,3),intent(inout) :: dCell
     !call readgrid !(iwrtewf)
     ! Namelist /mesh/ Ecut, iewform, npbands, pbands, ewfewin_max, ewfewin_min, ifixg0, g0
+    ! ========= Variables
+    logical bAutoGridSize
     ! ========= Body
+    write(*,*) " !!!!!!!!!!!!!!! firecore_setupGrid() ngrid_(:) ", ngrid_
     Ecut   = Ecut_
     ifixg0 = ifixg0_
     g0(:)  = g0_(:)
     call allocate_grid !(natoms, nspecies)
     call read_wf ()
     call read_vna ()
-    ! np(i) = int (2 * sqrt(Ecut) / (cvec(i)*abohr) + 1)     
-    !call initgrid !(icluster)
-    call initgrid_new()
-    call write_grid_info()
+    bAutoGridSize = .False.
+    if( (ngrid_(1).le.0) .or. (ngrid_(2).le.0) .or. (ngrid_(3).le.0) ) bAutoGridSize = .True.
+    write(*,*) " !!!!!!!!!!!!!!! firecore_setupGrid() bAutoGridSize ", bAutoGridSize
+    if( .not. bAutoGridSize ) then
+        write (*,*) " bAutoGridSize == .False. "
+        elvec(:,:) = dCell(:,:)
+        ngrid(:)   = ngrid_(:)
+    endif
+    write(*,*) " !!!!!!!!!!!!!!! firecore_setupGrid() ngrid(:) ", ngrid(:)
+    call initgrid_new( bAutoGridSize )
     ngrid_(1)=rm1
     ngrid_(2)=rm2
     ngrid_(3)=rm3
     dCell(:,:) = elvec(:,:)
+    call write_grid_info()
 end subroutine
 
 subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' )
