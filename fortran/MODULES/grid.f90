@@ -52,9 +52,8 @@
 
 ! number of atomic mesh point within Rc_max
    integer, dimension (:), allocatable :: am2rc
-   real, dimension (:,:), allocatable :: ram2rc
-
-   real, dimension (:,:), allocatable :: ratom2g
+   real, dimension (:,:), allocatable  :: ram2rc
+   real, dimension (:,:), allocatable  :: ratom2g
 
 ! mesh for finite difference method
    integer :: mfd1

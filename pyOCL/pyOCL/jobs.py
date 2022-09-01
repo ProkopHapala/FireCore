@@ -280,7 +280,7 @@ def iZs2dict(iZs, dr="./Fdata/basis"):
     #print( "Rcuts ", Rcuts )
     return elems, dct, ords, Rcuts
 
-def density_from_firecore( atomType=None, atomPos=None, bSCF=False, bGetDens=True, Cden=1.0, Cden0=0.0, bGetGrid=False, bGetCoefs=False ):
+def density_from_firecore( atomType=None, atomPos=None, bSCF=False, Cden=1.0, Cden0=0.0, bGetGrid=False, bGetCoefs=False,  ngrid=None, dCell=None ):
     sys.path.append("../../")
     import pyBall as pb
     from pyBall import FireCore as fc
@@ -298,7 +298,7 @@ def density_from_firecore( atomType=None, atomPos=None, bSCF=False, bGetDens=Tru
 
     grid=None
     if bGetGrid:
-        ngrid, dCell, lvs = fc.setupGrid()
+        ngrid, dCell, lvs = fc.setupGrid( ngrid=ngrid, dCell=dCell )
         ewfaux = fc.getGridDens( ngrid=ngrid, Cden=Cden, Cden0=Cden0 )
         grid = ( ewfaux, ngrid, dCell, lvs )
 
@@ -311,8 +311,8 @@ def density_from_firecore( atomType=None, atomPos=None, bSCF=False, bGetDens=Tru
     return coefs, grid
 
 def density_from_firecore_to_xsf( atomType=None, atomPos=None, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=0.0 ):
-    print( "DEBUG check_density_projection()" )
-    _, (ewfaux,ngrid,dCell,lvs) = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, bGetDens=True, Cden=Cden, Cden0=Cden0, bGetGrid=True, bGetCoefs=False )
+    print( "DEBUG density_from_firecore_to_xsf()" )
+    _, (ewfaux,ngrid,dCell,lvs) = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, Cden=Cden, Cden0=Cden0, bGetGrid=True, bGetCoefs=False )
     if saveXsf is not None:
         #ngrid, dCell, lvs = fc.setupGrid()
         #ewfaux = fc.getGridDens( ngrid=ngrid, Cden=1.0, Cden0=0.0 )
@@ -327,20 +327,16 @@ def density_from_firecore_to_xsf( atomType=None, atomPos=None, bSCF=False, saveX
 
 def check_density_projection( atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], bSCF=False, iOutBuff=0, Cden=1.0, Cden0=-1.0 ):
     print( "DEBUG check_density_projection()" )
-    (wfcoef,i0orb), (ewfaux,ngrid,dCell,lvs) = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, bGetDens=True, Cden=Cden, Cden0=Cden0, bGetGrid=True, bGetCoefs=True )
-    print( "DEBUG check_density_projection() 1 " )
+    dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
+    (wfcoef,i0orb), (ewfaux,ngrid,dCell,lvs) = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, Cden=Cden, Cden0=Cden0, bGetGrid=True, bGetCoefs=True, ngrid=ngrid, dCell=dCell )
     data = project_dens_GPU( wfcoef, atomType=atomType, atomPos=atomPos, ngrid=ngrid, dcell=dcell, iOutBuff=iOutBuff, iMO0=0, iMO1=None, i0orb=i0orb, bDownalod=True )
-    print( "DEBUG check_density_projection() 2 " )
     error = ewfaux - data
-    print( "DEBUG check_density_projection() 3 " )
     Ns = (ngrid[0],ngrid[1],ngrid[2])
     ocl.setGridShape_dCell( Ns, dCell, pos0=[0.0,0.0,0.0] )
     pos0 = ocl.getCellHalf( Ns, dCell );   print( "!!!!!!!! pos0 ", pos0  )
-    print( "DEBUG check_density_projection() 4 " )
     atomPos[:,0]-=pos0[2]
     atomPos[:,1]-=pos0[1]
     atomPos[:,2]-=pos0[0]
-    print( "DEBUG check_density_projection() 5 " )
     ocl.saveToXsfAtomsData( "dens_CPU.xsf", ewfaux, atomType, atomPos )
     ocl.saveToXsfAtomsData( "dens_GPU.xsf", data  , atomType, atomPos )
     ocl.saveToXsfAtomsData( "dens_err.xsf", error , atomType, atomPos )
@@ -351,21 +347,23 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
         iMO1 = i0orb[-1]//2
     Ns = (ngrid[0],ngrid[1],ngrid[2])
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
-    elems, dct, ords, Rcuts = iZs2dict(atomType)          ;print("DEBUG 1", Ns)
-    ocl.tryInitFFT( Ns )                                  ;print("DEBUG 1")
-    ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )              ;print("DEBUG 2") 
-    ocl.setGridShape_dCell( Ns, dCell )                   ;print("DEBUG 3")  
-    ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True )   ;print("DEBUG 4")
-    ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1 )        ;print("DEBUG 5")
+    elems, dct, ords, Rcuts = iZs2dict(atomType)
+    ocl.tryInitFFT( Ns )
+    ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )
+    ocl.setGridShape_dCell( Ns, dCell )
+    ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True )
+    ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1 )
     if bDownalod:
-        print( "DEBUG project_dens_GPU() " )
+        print( "DEBUG project_dens_GPU() DOWNLOAD" )
         data = ocl.download( iOutBuff, data=None, Ns=Ns )
+        print( "data.shape ", data.shape )
+        print
         data = data.real.astype(np.float)
         return data
 
 def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSCF=False, bSaveXsf=False, bSaveBin=False, saveName="dens" ):
     print("# ========= projectDens() bSCF ", bSCF )
-    (wfcoef,i0orb),_ = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, bGetDens=True, Cden=1.0, Cden0=0.0, bGetGrid=False, bGetCoefs=True )
+    (wfcoef,i0orb),_ = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, Cden=1.0, Cden0=0.0, bGetGrid=False, bGetCoefs=True )
     project_dens_GPU( wfcoef, atomType=atomType, atomPos=atomPos, ngrid=ngrid, dcell=dcell, iOutBuff=iOutBuff, iMO0=iMO0, iMO1=iMO1, i0orb=i0orb )
     if bSaveXsf:
         ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )

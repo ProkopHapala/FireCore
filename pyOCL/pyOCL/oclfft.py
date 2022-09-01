@@ -93,7 +93,8 @@ lib.download.restype   =  c_int
 def download( i, data=None, Ns=-1,dtype=np.csingle):
     if data is None:
         data = np.zeros(Ns,dtype=dtype)
-    return lib.download( i, _np_as( data, c_float_p ) )
+    lib.download( i, _np_as( data, c_float_p ) )
+    return data
 
 #void upload( float* data_ );
 lib.upload.argtypes  = [ c_int, c_float_p ] 
@@ -314,7 +315,6 @@ def saveToXsfAtomsData( fname, data, atypes, apos ):
     ngrid = np.array( data.shape, dtype=np.int32 )
     lib.saveToXsfAtomsData( fname, _np_as(ngrid, c_int_p ),  _np_as( data, c_double_p ),  na, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
 
-
 #    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){
 lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p, c_float_p ] 
 lib.loadWfBasis.restype   =  None
@@ -329,8 +329,6 @@ def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", R
     else:
         Rcuts=np.array(Rcuts,dtype=np.float32)
     return lib.loadWfBasis( path, RcutSamp, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ), _np_as( Rcuts, c_float_p ) )
-
-
 
 # ===================== PYTHON
 
