@@ -231,7 +231,7 @@ def getCellHalf( Ns, dCell ):
 
 def setGridShape_dCell( Ns, dCell, pos0=None ):
     if pos0 is None:
-        pos0 = getCellHalf( dCell )  # NOT sure why this fits best
+        pos0 = getCellHalf( Ns, dCell )  # NOT sure why this fits best
     setGridShape( pos0=pos0, dA=dCell[0]+[0.0], dB=dCell[1]+[0.0], dC=dCell[2]+[0.0] )
 
 #void initFireBall( int natoms, int* atypes, double* apos ){

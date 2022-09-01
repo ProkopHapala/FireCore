@@ -5,9 +5,9 @@ set -e   # stop on error  ; see  https://stackoverflow.com/questions/3474526/sto
 dr=`pwd`
 
 
-cd cpp/Build
-make
-cd $dr
+#cd cpp/Build
+#make
+#cd $dr
 
 #python pyBall/gen_makefile.py VERY_OPT
 #python pyBall/gen_makefile.py OPT
