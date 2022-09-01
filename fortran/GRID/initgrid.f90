@@ -97,7 +97,7 @@
    real xmin
    real xmax
    real denom
-   real drmax
+   !real drmax
    real coxm
 
    real, dimension (3)       :: cmass

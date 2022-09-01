@@ -1,9 +1,7 @@
 #!/usr/bin/python
 
-
 # INTEROPERABLE GLOBAL VARIABLES
 # https://gcc.gnu.org/onlinedocs/gfortran/Interoperable-Global-Variables.html#Interoperable-Global-Variables
-
 
 import sys
 import numpy as np
@@ -26,7 +24,9 @@ def job_make_Eelec_Epauli():
     print( "# --- Allocations")
 
     #jobs.projectDensFireball( atomType=Zs, atomPos=apos, bSCF=True, saveXsf=1, f_den0=-1.0 )
-    jobs.check_density_projection( atomType=Zs, atomPos=apos, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=-1.0  )
+    #jobs.density_from_firecore_to_xsf( atomType=Zs, atomPos=apos, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=-1.0  )
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=False, saveName="dens_scf", bSCF=True )
+    #jobs.check_density_projection(  atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSCF=False, iOutBuff=0, Cden=1.0, Cden0=-1.0 )
 
     exit(0)
 

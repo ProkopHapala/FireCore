@@ -16,6 +16,7 @@
 ! Rc_max
    real :: Rc_max
 
+   integer, dimension(3) :: ngrid  ! Prokop
 ! the regular mesh (spread out over the unit cell)
    integer :: rm1
    integer :: rm2
@@ -102,10 +103,11 @@
    real :: dr12
    real :: dr22
    real :: dr32
-
+   real :: drmax
 
 
 ! elementary volume
+   real  :: volume
    real  :: dvol
 ! neutral atomic potential
    real, target, dimension (:), allocatable :: vnaG

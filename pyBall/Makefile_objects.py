@@ -223,6 +223,7 @@ GROUPS = {
     'read_vna',
     'readgrid',
     'initgrid',
+    'initgrid_new',
     'allocate_grid',
     'project_dens',
     'project_dens0',
