@@ -509,6 +509,7 @@ subroutine firecore_getGridDens( ewfaux, f_den, f_den0 )  bind(c, name='firecore
     ewfaux = 0.0
     if( f_den*f_den > 1.e-16 ) then
         call project_dens( ewfaux, f_den )
+        !call project_dens_new( ewfaux, f_den )
     end if 
     if( f_den0*f_den0 > 1.e-16 ) then
         call initdenmat0( )
