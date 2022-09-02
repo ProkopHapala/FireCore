@@ -352,7 +352,7 @@ __kernel void projectOrbDenToGrid_texture(
     float dens = 0.0;
     
     // ToDo : Later we have to change the order of the loops
-    for(int iorb=iorb0; iorb<=iorb1; iorb++){
+    for(int iorb=iorb0; iorb<iorb1; iorb++){
         //if(iG==0){ printf( "GPU iorb %i \n", iorb ); }
         int icoef0 = iorb*nAtoms;
         float2 wf   = (float2) (0.0f,0.0f);
