@@ -442,8 +442,7 @@ class OCLfft : public OCLsystem { public:
     }
     
     void projectAtomsDens0( int ibuff_result, float2 acumCoef_, int natoms_=0, int* ityps=0, Vec3d* oatoms=0 ){
-        //printf( "DEBUG projectAtomsDens() \n"  );
-        //printf( "DEBUG projectAtomsDens0 acumCoef_ (%g,%g) \n", acumCoef_.x, acumCoef_.y  );
+        //printf( "DEBUG projectAtomsDens0 acumCoef_ (%g,%g) natoms_ %i \n", acumCoef_.x, acumCoef_.y, natoms_ );
         if(natoms_>0){
             makeAtomDensCoefs( natoms_, ityps, oatoms, false );
             finishRaw();
@@ -626,11 +625,11 @@ class OCLfft : public OCLsystem { public:
     void assignAtomDensCoefs( int natoms, int* ityps, float4* coefs ){
         //printf( "DEBUG assignAtomDensCoefs() \n" );
         for(int ia=0; ia<natoms; ia++){
-            int ityp     = ityps[ia];
-            //int nOrbAtom = atype_nOrb[ityp];
+            int ityp     = ityps[ia]-1;
             float Qs = (float)(atype_Qconfs[ityp].x);
             float Qp = (float)(atype_Qconfs[ityp].y/3.0);
             coefs[ia]=(float4){ Qp,Qp,Qp, Qs };
+            //printf( "atom[%i] itip %i Qcoefs (%g,%g,%g,%g)\n", ia,ityp, coefs[ia].x,coefs[ia].y,coefs[ia].z,coefs[ia].w );
         }
         //for(int ia=0; ia<natoms; ia++){  printf(  "AtomQs[%i](%g|%g,%g,%g)\n", ia, coefs[ia].w, coefs[ia].x,coefs[ia].y,coefs[ia].z );  }
         //printf( "DEBUG assignAtomDensCoefs() DONE\n" );

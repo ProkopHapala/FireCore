@@ -343,8 +343,8 @@ __kernel void projectOrbDenToGrid_texture(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
-    //if(iG==0){  printf("!!!!!!!!!!!!!!!! projectOrbDenToGrid_texture acumCoef %g,%g nAtoms %i iorb(%i,%i)  nMax %i \n", acumCoef.x, acumCoef.y, nAtoms, iorb0, iorb1, nMax ); }
 
+    if(iG==0){  printf("!!!!!!!!!!!!!!!! projectOrbDenToGrid_texture acumCoef %g,%g nAtoms %i iorb(%i,%i)  nMax %i \n", acumCoef.x, acumCoef.y, nAtoms, iorb0, iorb1, nMax ); }
     if(iG>nMax) return;
 
     float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
@@ -376,7 +376,7 @@ __kernel void projectOrbDenToGrid_texture(
     //if(iG==0){ printf( "GPU loop DONE ! \n" ); }
     //outGrid[iG] = (float2){dens,0.0f};
     if(fabs(acumCoef.x)<1e-8){
-        outGrid[iG] = (float2){dens,0.0f};
+        outGrid[iG] = (float2){dens,0.0f}*acumCoef.y;
     }else{
         outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
     }

@@ -338,9 +338,10 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
     ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )
     ocl.setGridShape_dCell( Ns, dCell )
     ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True )
-    ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1 )
+    ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1, acumCoef=[0.0,2.0] )     #  2.0 electrions per atom
     if bDen0diff:
         ords=np.array( ords, dtype=np.int32)
+        ocl.setTypes( [1,4], [[1.0,0.0],[1.0,3.0]] )  ;print( "WARRNING: project_dens_GPU(): ocl.setTypes([4,4],[[1.0,3.0],[1.0,5.0]]) is works just for Hydrocarbons !!!!" )
         ocl.projectAtomsDens0( iOutBuff, apos=atomPos, atypes=ords, acumCoef=[1.0,-1.0] ) 
     if bDownalod:
         data = ocl.download( iOutBuff, data=None, Ns=Ns )
@@ -356,7 +357,6 @@ def check_density_projection( atomType=None, atomPos=None, ngrid=(64,64,64), dce
     (wfcoef,i0orb), (ewfaux,ngrid_,dCell,lvs) = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, Cden=Cden, Cden0=Cden0, bGetGrid=True, bGetCoefs=True, ngrid=ngrid, dCell=dCell, g0=g0 )
     data = project_dens_GPU( wfcoef, atomType=atomType, atomPos=atomPos, ngrid=ngrid, dcell=dcell, iOutBuff=iOutBuff, iMO0=0, iMO1=iMO1, i0orb=i0orb, bDownalod=True )
     #ocl.saveToXsfAtoms    ( "dens_GPU_.xsf", iOutBuff, atomType, atomPos )
-    data*=2.0
     Q_gpu = np.sum(data  )*dvol
     Q_cpu = np.sum(ewfaux)*dvol
     print( "Qtot gpu ",Q_gpu, "cpu", Q_cpu )

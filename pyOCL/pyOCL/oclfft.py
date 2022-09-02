@@ -186,9 +186,9 @@ def projectAtomsDens0( iOut, atypes=None, apos=None, acumCoef=[0.0,1.0] ):
     natom=0
     if atypes is not None: natom=len(atypes)
     acumCoef = np.array(acumCoef,dtype=np.float32)
-    print( "type(atypes)    ", type(atypes)   )
-    print( "type(apos)      ", type(apos)     )
-    print( "type(acumCoef)  ", type(acumCoef) )
+    #print( "type(atypes)    ", type(atypes)   )
+    #print( "type(apos)      ", type(apos)     )
+    #print( "type(acumCoef)  ", type(acumCoef) )
     lib.projectAtomsDens0( iOut, _np_as( acumCoef, c_float_p ), natom, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
 
 #void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out )
