@@ -565,11 +565,8 @@ class OCLfft : public OCLsystem { public:
     }
 
     void saveToXsfData(const char* fname, Vec3i ngrid, double* data, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
-        //grid.n = ngrid;
         Ns[0]=ngrid.x; Ns[1]=ngrid.y; Ns[2]=ngrid.z;
-        //Ns[0]=ngrid.z; Ns[1]=ngrid.y; Ns[2]=ngrid.x;
         update_GridShape();
-        printf( "CPP: saveToXsfData() grid.n (%i,%i,%i) \n", grid.n.x, grid.n.y, grid.n.z );
         grid.saveXSF( fname, data, 1, 0, natoms, atypes,apos );
     }
 
@@ -578,11 +575,7 @@ class OCLfft : public OCLsystem { public:
         float* cpu_data = new float[Ntot*2]; // complex 2*float
         download( ibuff,cpu_data);
         finishRaw();
-        //Vec3d pos0=grid.pos0;
-        //grid.pos0=Vec3dZero;
-        printf( "CPP: saveXSF() grid.n (%i,%i,%i) \n", grid.n.x, grid.n.y, grid.n.z );
         grid.saveXSF( fname, cpu_data, 2, 0,   natoms,atypes,apos );
-        //grid.pos0=pos0;
         delete [] cpu_data;
     }
 
@@ -593,21 +586,17 @@ class OCLfft : public OCLsystem { public:
         download( ibuff,cpu_data);
         finishRaw();
         saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
-        //inline int loadBin( fname, int n, char * data );
         delete [] cpu_data;
-        //printf( "saveToBin END \n" );
     }
 
     void loadFromBin(const char* fname, int ibuff){
         if(verbosity>0)printf( "loadFromBin( %i, %s ) \n", ibuff, fname );
         //update_GridShape();
         float* cpu_data = new float[Ntot*2]; // complex 2*float
-        //saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
         loadBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
         upload( ibuff,cpu_data);
-        //finishRaw();
+        finishRaw();
         delete [] cpu_data;
-        //printf( "loadFromBin END \n" );
     }
 
     void prepareAtomCoords(  int natoms, int* ityps, Vec3d* oatoms ){
