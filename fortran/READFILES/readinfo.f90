@@ -111,13 +111,9 @@
 ! Procedure
 ! ===========================================================================
 ! Initialize rcutoff array - we loop over all of it elsewhere
-		
-        write (*,*) '  '
-!       write (*,100)
-        write (*,*) ' Now we are reading from the info.dat file. '
-        write (*,*) '  '
+    
+       if(verbosity.gt.0) write (*,*) 'subroutine readinfo() ... Now we are reading from the info.dat file. '
 
- 
 ! Open the data file.
         open (unit = 12, file = trim(fdataLocation)//'/info.dat', status = 'old')
  

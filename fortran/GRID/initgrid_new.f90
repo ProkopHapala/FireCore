@@ -16,15 +16,15 @@ subroutine write_grid_info() !(icluster)
     write(*,*) "FDM      mesh size(:) ",   mfd1,mfd2,mfd3, " tot ", nmfd
     write(*,*) "dvol ", dvol, "dvol ", volume, " drmax ", drmax
     write(*,*) "g0 ", g0(:)
-    write(*,*) "   avec(:,:) "
+    write(*,*) "  Direct Cell vectors avec(:,:) "
     write(*,*) a1vec(:)
     write(*,*) a2vec(:)
     write(*,*) a3vec(:)
-    write(*,*) "   rlvec(:,:) "
+    write(*,*) " Deciprocal cell vectors rlvec(:,:) "
     write(*,*) rlvec(1,:)
     write(*,*) rlvec(2,:)
     write(*,*) rlvec(3,:)
-    write(*,*) "   elvec(:,:)    "
+    write(*,*) " Grid step vectors  elvec(:,:)    "
     write(*,*) elvec(1,:)
     write(*,*) elvec(2,:)
     write(*,*) elvec(3,:)
@@ -58,7 +58,7 @@ end subroutine
 ! ===================================================
 
 subroutine sizeGrid( bAutoGridSize ) !(icluster)
-    use options, only: icluster
+    use options, only: icluster, verbosity
     use grid
     use constants_fireball
     use interactions
@@ -76,13 +76,8 @@ subroutine sizeGrid( bAutoGridSize ) !(icluster)
     cvec(2)= a1vec(3)*a2vec(1) - a1vec(1)*a2vec(3)
     cvec(3)= a1vec(1)*a2vec(2) - a1vec(2)*a2vec(1)
     volume = abs (a3vec(1)*cvec(1) + a3vec(2)*cvec(2) + a3vec(3)*cvec(3))
-    write(*,*) "volume ", volume
-
-    write(*,*) " !!!!!!!!!!!!!!! sizeGrid() [1] ngrid(:) ", ngrid(:)
-
+    if(verbosity.gt.0)write(*,*) "volume ", volume
     call invertCell( a1vec,a2vec,a3vec, rlvec )
-
-    write(*,*) "DEBUG sizeGrid() bAutoGridSize ", bAutoGridSize
     rlvec(:,:) = rlvec(:,:)*(2.0d0*pi)
     do i = 1,3
         cvec(i)  = sqrt (rlvec(i,1)**2 + rlvec(i,2)**2 + rlvec(i,3)**2)        ! calc the size of the unit cell along the i-axis
@@ -100,21 +95,15 @@ subroutine sizeGrid( bAutoGridSize ) !(icluster)
     do i = 1,3
         if (drmax .gt. cvec(i)) drmax = cvec(i)
     enddo
-
-    write(*,*) " !!!!!!!!!!!!!!! sizeGrid() [2] ngrid(:) ", ngrid(:)
     ervec1(:) = ervec(1,:)
     ervec2(:) = ervec(2,:)
     ervec3(:) = ervec(3,:)
     call invertCell( ervec1,ervec2,ervec3, elvec )
     !call invertCell( ervec(1,:),ervec(2,:),ervec(3,:), elvec )
-
-    write(*,*) " !!!!!!!!!!!!!!! sizeGrid() [3] ngrid(:) ", ngrid(:)
-
     rm1 = ngrid(1)  ! store the division of the regular mesh along the axis
     rm2 = ngrid(2)
     rm3 = ngrid(3)
     nrm = rm1 * rm2 * rm3   ! total number of points on the regular mesh
-    write(*,*) "DEBUG sizeGrid() rm(:) ", rm1,rm2,rm3
     ! elementary volume
     dvol = abs(elvec(1,1)*(elvec(2,2)*elvec(3,3)-elvec(2,3)*elvec(3,2))    &
     &         +elvec(1,2)*(elvec(2,3)*elvec(3,1)-elvec(2,1)*elvec(3,3))    &
@@ -124,7 +113,28 @@ end subroutine
 ! ===================================================
 ! ===================================================
 
-subroutine center_cell !(icluster)
+
+subroutine find_Rc_max !(icluster)
+    !use options, only: icluster
+    use grid
+    use configuration
+    use interactions
+    !use constants_fireball
+    !use dimensions
+    implicit none
+    ! ======= Variables
+    integer i,ispec
+    ! ======= Body
+    Rc_max = 0.0d0
+    do ispec = 1, nspecies
+        do i = 1, nssh(ispec)
+            if (rcutoff(ispec,i) .gt. Rc_max) Rc_max = rcutoff(ispec,i)
+        end do
+    end do
+    !write(*,*) "Rc_max ", Rc_max
+end subroutine
+
+subroutine center_cell (bAutoGridSize) !(icluster)
     use options, only: icluster
     use grid
     use constants_fireball
@@ -132,6 +142,8 @@ subroutine center_cell !(icluster)
     use configuration
     use dimensions
     implicit none
+! ======= Arguments
+    logical, intent(in):: bAutoGridSize
 ! ======= Variables
    real, parameter :: droff = 0.2d0
    integer i,j,ix,iatom, ispec
@@ -140,16 +152,6 @@ subroutine center_cell !(icluster)
     real, dimension (3,3)     :: avec
     real, dimension (3)       :: cmass
 ! ======= Body
-
-    ! ---- find Rc_max
-    Rc_max = 0.0d0
-    do ispec = 1, nspecies
-    do i = 1, nssh(ispec)
-        if (rcutoff(ispec,i) .gt. Rc_max) Rc_max = rcutoff(ispec,i)
-    end do
-    end do
-    write(*,*) "Rc_max ", Rc_max
-
    if (icluster .eq. 1) then   !   non-periodic boundary conditions
     avec = 0.0d0
     do ix = 1,3   ! find max and min position of atom in ix-axis direction
@@ -162,6 +164,7 @@ subroutine center_cell !(icluster)
        avec(ix,ix) = xmax - xmin + 2*Rc_max + 2*droff     ! define lattice vector
        if (ifixg0 .eq. 0) g0(ix) = xmin - Rc_max - droff  ! define intial point
     enddo ! do ix
+    if( bAutoGridSize ) then
     a1vec(:) = 0.0d0        ! setup lattice vector
     a1vec(1) = avec(1,1)
     a2vec(:) = 0.0d0
@@ -169,11 +172,10 @@ subroutine center_cell !(icluster)
     a3vec(:) = 0.0d0
     a3vec(3) = avec(3,3)
     do i = 1,natoms    ! find center of mass of atoms in the unit cell
-       do j = 1,3
-          cmass(j) = cmass(j) + ratom(j,i)
-       enddo ! do j
+        cmass(:) = cmass(:) + ratom(:,i)
     enddo ! do i
     cmass(:) = cmass(:)/float(natoms)
+    endif ! bAutoGridSize
  else
     avec(1,:) = a1vec(:)
     avec(2,:) = a2vec(:)
@@ -218,19 +220,6 @@ subroutine init_extended_mesh
     em2 = np(2)
     em3 = np(3)
     nem = em1*em2*em3
-    !write (*,*) '  ---------  Begin mesh Info --------- '
-    !write (*,*) ''
-    !write (*,'(a,f8.6)') ' Rc_max = ',Rc_max
-    !write (*,300) Ecut
-    !write (*,380) (g0(i),i=1,3)
-    !write (*,'(a,4i9)') ' Regular mesh: ',rm1, rm2, rm3, nrm
-    !write (*,'(a,f16.8)') 'dVol :',dvol
-    !write (*,'(a,4i9)') ' Extended mesh: ',em1, em2, em3, nem
-    !write (*,*) ' Elementary grid lattice vector :'
-    !write (*,2000)  (elvec(1,i),i=1,3)
-    !write (*,2000)  (elvec(2,i),i=1,3)
-    !write (*,2000)  (elvec(3,i),i=1,3)
-    !write (*,*) '  ---------   End mesh Info --------- '
     ! =======   Map the Extended mesh to the Regular grid   ========
     allocate (e2r(nem))
     do k = 0, em3-1    ! Loops over each axis
@@ -251,7 +240,7 @@ subroutine init_extended_mesh
 end subroutine
 
 subroutine init_atomic_mesh
-    use options, only: icluster
+    use options, only: icluster,verbosity
     use grid
     use constants_fireball
     use interactions
@@ -293,7 +282,7 @@ subroutine init_atomic_mesh
             enddo ! do i
         enddo ! do j
     enddo ! do k
-    write (*,'(a,4i9)') ' Atomic mesh: ',2*emx1 + 1,2*emx2 + 1, 2*emx3 + 1, nam
+    if(verbosity.gt.0) write (*,'(a,4i9)') ' Atomic mesh: ',2*emx1 + 1,2*emx2 + 1, 2*emx3 + 1, nam
 end subroutine
 
 subroutine init_fdm_mesh
@@ -397,7 +386,12 @@ subroutine initgrid_new( bAutoGridSize ) !(icluster)
 ! ======= Variables
    logical, intent(in):: bAutoGridSize
 ! ======= Body
-    call center_cell() 
+    call find_Rc_max() 
+    if( bAutoGridSize ) then 
+        call center_cell(bAutoGridSize)
+    else 
+        if (ifixg0 .eq. 0) g0(:) = ( a1vec(:) + a2vec(:) + a3vec(:) )*(-0.5)
+    end if
     call sizeGrid( bAutoGridSize )
     call init_extended_mesh()
     call init_atomic_mesh()

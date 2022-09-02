@@ -175,7 +175,7 @@ def projectAtoms(atoms,coefs,iOut):
 #projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2 )
 lib.projectAtomsDens.argtypes  = [ c_float_p, c_float_p, c_int, c_int, c_int, c_float_p ] 
 lib.projectAtomsDens.restype   =  None
-def projectAtomsDens( iOut, atoms=None,coefs=None,  iorb0=1, iorb1=2, acumCoef=[0.0,1.0] ):
+def projectAtomsDens( iOut, atoms=None,coefs=None,  iorb0=0, iorb1=1, acumCoef=[0.0,1.0] ):
     acumCoef = np.array(acumCoef,dtype=np.float32)
     lib.projectAtomsDens( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut, iorb0, iorb1, _np_as( acumCoef, c_float_p ) )
 

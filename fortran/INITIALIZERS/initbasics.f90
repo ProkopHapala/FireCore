@@ -374,16 +374,13 @@ subroutine initbasics ()
         !if (iwrtewf .eq. 1) igrid = 1
         !if (iks     .eq. 1) igrid = 1
         !if (iwrtdipole .eq. 1) igrid = 1
-        write (*,*) "DEBUG initbasics() igrid  ", igrid 
+        !write (*,*) "DEBUG initbasics() igrid  ", igrid 
         if (igrid    .eq. 1) then
 !    call readgrid before initconstraints subroutine to avoid atom shift  when we fix the mesh position
           call readgrid !(iwrtewf)
           call allocate_grid !(natoms, nspecies)
-          write (*,*) ' call read_wf'
           call read_wf ()
-          write (*,*) ' call read_vna'
           call read_vna ()
-          write (*,*) ' initialize grid'
           call initgrid !(icluster)
          endif
 ! END_DEF_GRID
@@ -439,7 +436,7 @@ subroutine initbasics ()
 !        if (iensemble .eq. 2) call initNH(natoms,T_want)  ! IF_DEF_NH_END
 
 ! Allocate the stuff that depends on natoms, neigh_max, and numorb_max
-   write (*,*) ' Initiallizing arrays '
+   !if(verbosity.gt.0) write (*,*) 'initbasics() Initiallizing arrays '
    call allocate_neigh ! (nprocs, my_proc, iordern, icluster, ivdw, ifixneigh, iwrthampiece,  iwrtatom)
    call allocate_f ! (natoms, neigh_max, neighPP_max, numorb_max, nsh_max, itheory, itheory_xc, igauss, ivdw, iharmonic, ibias)
    call allocate_h ! (natoms, neigh_max, neighPP_max, itheory, itheory_xc, igauss, iwrtdos, iwrthop, iwrtatom)
@@ -468,7 +465,7 @@ subroutine initbasics ()
           !SFIRE  APRIL 2018
           call neighbors_pairs ! (icluster)
           !SFIRE  APRIL 2018
-          write (*,*) 'Initialize density matrix'
+          !write (*,*) 'Initialize density matrix'
           call initdenmat ! (natoms)
     end if
 ! END_DEF_GRID

@@ -181,10 +181,13 @@ def SCF( positions, iforce=0, nmax_scf=200 ):
 #  void setupGrid( double Ecut, int ifixg0, doube* g0,  int ngrid, double* dCell  )
 lib.firecore_setupGrid.argtypes  = [c_double, c_int, array1d, array1i, array2d ] 
 lib.firecore_setupGrid.restype   =  None
-def setupGrid(Ecut=100, ifixg0=0, g0=None, ngrid=None, dCell=None):
-    print( " !!!!!!!!!!!! Py: setupGrid ngrid ", ngrid )
+def setupGrid(Ecut=100, g0=None, ngrid=None, dCell=None):
     if g0 is None:
+        ifixg0=0
         g0=np.array([0.0,0.0,0.0])
+    else:
+        ifixg0=1
+        g0 = np.array( g0 )
     if ngrid is None:
         ngrid = np.zeros(3,dtype=np.int32); ngrid[:]=-1
     else:
@@ -193,7 +196,6 @@ def setupGrid(Ecut=100, ifixg0=0, g0=None, ngrid=None, dCell=None):
         dCell = np.zeros( (3,3) )
     else:
         dCell = np.array( dCell, dtype=np.float )
-    print( " !!!!!!!!!!!! Py: setupGrid ngrid ", ngrid )
     lib.firecore_setupGrid(Ecut, ifixg0, g0, ngrid, dCell )
     lvs = np.array( [ [0.0,0.0,0.0], dCell[0]*ngrid[0], dCell[1]*ngrid[1], dCell[2]*ngrid[2], ] )
     #ngrid = ngrid[::-1].copy()

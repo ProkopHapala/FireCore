@@ -59,6 +59,7 @@
         use dimensions
         use interactions
         use charges
+        use options, only: verbosity
         implicit none
  
 ! Argument Declaration and Description
@@ -163,9 +164,8 @@
          end do
          close (unit = 12)
         end if
- 
+    if (verbosity.gt.0) then
 ! Write out the input charges.
-        write (*,*) '  '
         write (*,*) '  '
         write (*,*) ' The Input Charges Are: '
         write (*,200)
@@ -173,10 +173,10 @@
         write (*,200)
         do iatom = 1, natoms
          in1 = imass(iatom)
-         write (*,202) iatom, symbol(iatom), nssh(in1),   &
-     &                 (Qin(issh,iatom), issh = 1, nssh(in1))
+         write (*,202) iatom, symbol(iatom), nssh(in1), (Qin(issh,iatom), issh = 1, nssh(in1))
         end do
         write (*,200)
+    endif
  
 ! Format Statements
 ! ===========================================================================

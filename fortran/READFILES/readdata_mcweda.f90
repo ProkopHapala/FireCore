@@ -118,11 +118,7 @@
 !                ioff - 3c average density OLSXC (spheric)
 ! ****************************************************************************
 
-
-        write (*,100)
-        write (*,*) ' READING DATA FROM DATA FILES IN FDATA DIRECTORY: '
-        write (*,100)
-
+        if(verbosity.gt.0) write (*,*) 'subroutine readdata_mcweda() '
 
 ! one-center
         if (verbosity .ge. 3) write (*,*) '  '

@@ -66,7 +66,7 @@
    use interactions
    use configuration 
    use integrals
-
+   use options, only: verbosity
    implicit none
  
 ! Argument Declaration and Description
@@ -113,9 +113,8 @@
 ! Procedure
 ! ===========================================================================
         
-! root string
+   if(verbosity.gt.0) write(*,*) "subroutine read_vna ()"
 
-! loop over species
    do ispec = 1,nspecies
 
 ! append filename
@@ -130,7 +129,7 @@
 
 
 ! open w.f. file
-      write (*,200) filename 
+      if(verbosity.gt.0) write (*,200) filename 
       open (unit = 15, file = filename, status = 'unknown')
 
 ! read file header
@@ -203,9 +202,7 @@
 !         write (ispec*10,*) r, psi
 !      end do
 !   enddo
-
-   write (*,*) '  '
-   write (*,*) ' *---------------------  END READ_VNA  ----------------------*'
+   if(verbosity.gt.0) write(*,*) "END subroutine read_vna ()"
 
 ! Deallocate Arrays
 ! ===========================================================================
