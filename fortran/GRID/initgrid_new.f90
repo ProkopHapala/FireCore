@@ -36,16 +36,12 @@ end subroutine
 subroutine invertCell( a1vec,a2vec,a3vec, rlvec ) !(icluster)
     implicit none
     ! ======= Parameters
-    real, dimension (3), intent(in) :: a1vec
-    real, dimension (3), intent(in) :: a2vec
-    real, dimension (3), intent(in) :: a3vec
-    real, dimension (3,3), intent(out) :: rlvec
+    real, dimension (3),  intent(in)  :: a1vec, a2vec, a3vec
+    real, dimension (3,3),intent(out) :: rlvec
     ! ======= Variables
     integer i
     real denom
-    real, dimension (3)     :: acrossb
-    real, dimension (3)     :: bcrossc
-    real, dimension (3)     :: ccrossa
+    real, dimension (3)     :: acrossb, bcrossc, ccrossa
     ! ======= Body
     call crossx(a2vec,a3vec,bcrossc)
     call crossx(a3vec,a1vec,ccrossa)
@@ -73,7 +69,7 @@ subroutine sizeGrid( bAutoGridSize ) !(icluster)
     logical, intent(in):: bAutoGridSize
 ! ======= Variables
     integer i
-    real, dimension (3)     :: cvec
+    real, dimension (3)     :: cvec, ervec1,ervec2,ervec3
 ! ======= Body
     ! calculate volume of elementar unit cell
     cvec(1)= a1vec(2)*a2vec(3) - a1vec(3)*a2vec(2)
@@ -106,8 +102,11 @@ subroutine sizeGrid( bAutoGridSize ) !(icluster)
     enddo
 
     write(*,*) " !!!!!!!!!!!!!!! sizeGrid() [2] ngrid(:) ", ngrid(:)
-
-    call invertCell( ervec(1,:),ervec(2,:),ervec(3,:), elvec )
+    ervec1(:) = ervec(1,:)
+    ervec2(:) = ervec(2,:)
+    ervec3(:) = ervec(3,:)
+    call invertCell( ervec1,ervec2,ervec3, elvec )
+    !call invertCell( ervec(1,:),ervec(2,:),ervec(3,:), elvec )
 
     write(*,*) " !!!!!!!!!!!!!!! sizeGrid() [3] ngrid(:) ", ngrid(:)
 

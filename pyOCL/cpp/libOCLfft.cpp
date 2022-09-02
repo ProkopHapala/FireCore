@@ -575,11 +575,11 @@ class OCLfft : public OCLsystem { public:
     }
 
     void saveToXsfData(const char* fname, Vec3i ngrid, double* data, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
-        printf( "DEBUG C saveToXsfData() ngrid (%i,%i,%i) \n", ngrid.x,ngrid.y,ngrid.z );
         //grid.n = ngrid;
-        //Ns[0]=ngrid.x; Ns[1]=ngrid.y; Ns[2]=ngrid.z;
-        Ns[0]=ngrid.z; Ns[1]=ngrid.y; Ns[2]=ngrid.x;
+        Ns[0]=ngrid.x; Ns[1]=ngrid.y; Ns[2]=ngrid.z;
+        //Ns[0]=ngrid.z; Ns[1]=ngrid.y; Ns[2]=ngrid.x;
         update_GridShape();
+        printf( "CPP: saveToXsfData() grid.n (%i,%i,%i) \n", grid.n.x, grid.n.y, grid.n.z );
         grid.saveXSF( fname, data, 1, 0, natoms, atypes,apos );
     }
 
@@ -590,6 +590,7 @@ class OCLfft : public OCLsystem { public:
         finishRaw();
         //Vec3d pos0=grid.pos0;
         //grid.pos0=Vec3dZero;
+        printf( "CPP: saveXSF() grid.n (%i,%i,%i) \n", grid.n.x, grid.n.y, grid.n.z );
         grid.saveXSF( fname, cpu_data, 2, 0,   natoms,atypes,apos );
         //grid.pos0=pos0;
         delete [] cpu_data;

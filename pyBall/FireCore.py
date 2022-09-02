@@ -196,7 +196,7 @@ def setupGrid(Ecut=100, ifixg0=0, g0=None, ngrid=None, dCell=None):
     print( " !!!!!!!!!!!! Py: setupGrid ngrid ", ngrid )
     lib.firecore_setupGrid(Ecut, ifixg0, g0, ngrid, dCell )
     lvs = np.array( [ [0.0,0.0,0.0], dCell[0]*ngrid[0], dCell[1]*ngrid[1], dCell[2]*ngrid[2], ] )
-    ngrid = ngrid[::-1].copy()
+    #ngrid = ngrid[::-1].copy()
     return ngrid, dCell, lvs
 
 #  void getGridMO( int iMO, double* ewfaux )
@@ -213,7 +213,7 @@ lib.firecore_getGridDens.argtypes  = [ array3d, c_double, c_double ]
 lib.firecore_getGridDens.restype   =  None
 def getGridDens(ewfaux=None, ngrid=None, Cden = 1.0, Cden0 = 0.0 ):
     #ngrid=ngrid[::-1]
-    print( ngrid ); #exit(0)
+    print( " getGridDens() ngrid ", ngrid ); #exit(0)
     if ewfaux is None:
         ewfaux = np.zeros(ngrid)
     lib.firecore_getGridDens( ewfaux, Cden, Cden0  ) 
