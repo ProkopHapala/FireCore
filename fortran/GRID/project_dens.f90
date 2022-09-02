@@ -194,13 +194,13 @@ subroutine project_dens( ewfaux, f_mul )
                distX = sqrt(dXr(1)**2 + dXr(2)**2 + dXr(3)**2)  ! distance between the mesh point and iatom
                call getAtomBasis( in1, distX, dXr, psi1 )
                call getAtomBasis( in2, distY, dYr, psi2 )
-               ind = e2r(index) - 1  ! map the point from the extended mesh into the normal mesh
                dens = 0.0d0
                do inu = 1, num_orb(in1)
                   do imu = 1, num_orb(in2)
                      dens = dens + rho(inu,imu,ineigh,iatom)*psi1(inu)*psi2(imu)
                   enddo ! do inu
                enddo ! do imu
+               ind = e2r(index) - 1  ! map the point from the extended mesh into the normal mesh
                ewfaux(ind) = ewfaux(ind) + dens * f_mul ! store variation of density at given point
             endif ! if (Rc_max)
          end do ! do imesh

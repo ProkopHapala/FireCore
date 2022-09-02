@@ -44,36 +44,12 @@ subroutine firecore_getPointer_charges( charges_ )  bind(c, name='firecore_getPo
     use options
     implicit none
     type(C_PTR),      intent(out) :: charges_
+    if(verbosity.gt.0)write(*,*) "firecore_getPointer_charges() "
     if (iqout .eq. 2) then
         charges_ = c_loc( QMulliken_TOT )
     else
         charges_ = c_loc( QLowdin_TOT   )
     end if
-    !write(*,*) "DEBUG firecore_getCharges END"
-end subroutine
-
-subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
-    use iso_c_binding
-    use options
-    use configuration
-    use kpoints
-    !use MD
-    use loops
-    use charges
-    !use barrier
-    !use nonadiabatic
-    use integrals !, only : fdataLocation
-    implicit none
-    ! ========= body
-    iparam_file = 0
-    call initconstants ! (sigma, sigmaold, scf_achieved)
-    scf_achieved = .true.
-    call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
-    !call readparam ()
-    call set_default_params ()
-    igrid = 1
-    call checksum_options ()
-    write(*,*) "DEBUG firecore_preinit() icluster", icluster
 end subroutine
 
 subroutine firecore_set_lvs( lvs_ )  bind(c, name='firecore_set_lvs')
@@ -82,21 +58,41 @@ subroutine firecore_set_lvs( lvs_ )  bind(c, name='firecore_set_lvs')
     use options
     implicit none
     real(c_double), dimension(3,3), intent(in) :: lvs_
+    ! ========= body
+    if(verbosity.gt.0)write(*,*) "firecore_set_lvs() "
     icluster = 0
     a1vec = lvs_(:,1)
     a2vec = lvs_(:,2)
     a3vec = lvs_(:,3)
-    write(*,*) "DEBUG firecore_set_lvs() icluster", icluster
+end subroutine
+
+subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
+    use iso_c_binding
+    use options
+    use configuration
+    use kpoints
+    use loops
+    use charges
+    use integrals !, only : fdataLocation
+    implicit none
+    ! ========= body
+    if(verbosity.gt.0)write(*,*) "firecore_preinit() "
+    iparam_file = 0
+    call initconstants ! (sigma, sigmaold, scf_achieved)
+    scf_achieved = .true.
+    call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
+    !call readparam ()
+    call set_default_params ()
+    igrid = 1
+    call checksum_options ()
+    !write(*,*) "DEBUG firecore_preinit() icluster", icluster
 end subroutine
 
 subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_init')
     use iso_c_binding
     use options
     use loops
-    !use fire
     use configuration
-    !use energy
-    !use forces
     use grid
     use interactions
     use integrals
@@ -104,52 +100,28 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     use kpoints
     use charges
     use FIRE, only: write_to_xyz
-    !use debug
     implicit none
-
     ! ====== Parameters
     integer(c_int),                      intent(in), value :: natoms_
-    !integer(c_int), dimension(natoms),   intent(in)        :: atomTypes
-    !real(c_double), dimension(3,natoms), intent(in)        :: atomsPos
     integer(c_int), dimension(natoms_),   intent(in)        :: atomTypes
     real(c_double), dimension(3,natoms_), intent(in)        :: atomsPos
-    !integer(c_int),                      intent(out)        :: norb
     ! ====== global variables
-    !real time_begin
-    !real time_end
     integer i, ispec, in1, iatom, numorbPP_max
     real distance
     real, dimension (3) :: vector
     logical zindata
     ! ====== Body
-    write(*,*) "DEBUG firecore_init() icluster", icluster
+    if(verbosity.gt.0)write(*,*) "firecore_init() "
     natoms = natoms_
-
-    write(*,*) "DEBUG natoms, natoms_", natoms, natoms_
-    write(*,*) "DEBUG shape(atomTypes,atomsPos)", shape(atomTypes), shape(atomsPos)
-    do i = 1,natoms_
-        write(*,*) atomTypes(i), atomsPos(:,i)
-    end do !
-
-    idebugWrite = 0
-    !call cpu_time (time_begin)
-
-    !call initbasics () 
-    ! >>> BEGIN INIT_BASICS
-    !call initconstants ! (sigma, sigmaold, scf_achieved)
-    !scf_achieved = .true.
-    !call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
-    !call readparam ()
-
-    write(*,*) "icluster", icluster
-    write(*,*) "a1vec", a1vec
-    write(*,*) "a3vec", a2vec
-    write(*,*) "a2vec", a3vec
-    write(*,*) "a2vec", a3vec
-    write(*,*) "rm1,rm2,rm3,nrm ", rm1,rm2,rm3, nrm
-    write(*,*) "em1,em2,em3,nem ", rm1,rm2,rm3, nem
-
-
+    if(verbosity.gt.0) then
+        write(*,*) "icluster", icluster
+        write(*,*) "a1vec", a1vec
+        write(*,*) "a3vec", a2vec
+        write(*,*) "a2vec", a3vec
+        write(*,*) "a2vec", a3vec
+        write(*,*) "rm1,rm2,rm3,nrm ", rm1,rm2,rm3, nrm
+        write(*,*) "em1,em2,em3,nem ", rm1,rm2,rm3, nem
+    endif ! verbosity
  ! Allocate more arrays.
     allocate (degelec (natoms))
     allocate (iatyp (natoms))
@@ -161,27 +133,13 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     allocate (symbol (natoms))
     allocate (xmass (natoms))
     allocate (ximage (3, natoms))
-    ! allocate (mask (3,natoms))      ! IF_DEF_OPT_END
-    ! mask = 1.0d0                    ! IF_DEF_OPT_END
     ximage = 0.0d0
-    !call readbasis (nzx, imass)
-    !write(*,*) "DEBUG shape(iatyp) ",shape(iatyp),"DEBUG shape(atomTypes) ", shape(atomTypes)
     iatyp(:) = atomTypes(:)
     ratom(:,:) = atomsPos(:,:)
-
- ! Read the info.dat file.  Allocate lsshPP, etc. inside!
-    call readinfo ()
-
-    write(*,*) "DEBUG natoms,natoms_ ", natoms,natoms_
-    write(*,*) "DEBUG shape(ratom) ",shape(ratom),"DEBUG shape(atomsPos) ", shape(atomsPos)
-    !imass(:)   = atomTypes(:)
-    
+    call readinfo ()   ! Read the info.dat file.  Allocate lsshPP, etc. inside!
     call cross (a2vec, a3vec, vector)
     Vouc=a1vec(1)*vector(1)+a1vec(2)*vector(2)+a1vec(3)*vector(3)
     call initboxes (1)
-
-    !write(*,*) "DEBUG nssh(:)", nssh(:)
-
  ! Call make_munu. This routine determines all of the non-zero matrix elements for the two- and three-center matrix elements.  These non-zero matrix elements are determined based on selection rules.
     call make_munu   (nspecies)
     call make_munuPP (nspecies)
@@ -195,22 +153,12 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     call initamat(nspecies)
     allocate (xdot (0:5, 3, natoms)) ! Initialized below
  ! Allocate the stuff that depends on natoms, neigh_max, and numorb_max
-    write (*,*) ' Initiallizing arrays '
     call allocate_neigh()
     call allocate_f() 
     call allocate_h() 
     call allocate_rho() 
-    !call allocate_dos() ! IF_DEF_GRID_DOS
-    !<<< END INIT_BASICS
-    !write(*,*) "DEBUG initbasics END "
-
-    !call readdata ()
     call readdata_mcweda ()
-    !write(*,*) "DEBUG readdata_mcweda END "
     call init_wfs(norbitals, nkpoints)
-    !write(*,*) "DEBUG firecore_init END "
-    write (*,*) ", norbitals ", norbitals
-    !norb = norbitals
     call write_to_xyz( "#DEBUG libFireCore::firecore_init() ", 1 )
     return
 end subroutine firecore_init
@@ -234,11 +182,12 @@ subroutine firecore_assembleH( iforce_, Kscf_, positions_ ) bind(c, name='fireco
     integer ikpoint
     real, dimension (3) :: k_temp
     ! ====== Body
+    if(verbosity.gt.0)write(*,*) "firecore_assembleH() "
     Kscf       = Kscf_
     iforce     = iforce_
     ratom(:,:) = positions_(:,:)
-    idebugWrite = 0
-    verbosity   = 0 
+    !idebugWrite = 0
+    !verbosity   = 0 
     call assemble_mcweda ()
     return
 end subroutine
@@ -254,6 +203,7 @@ subroutine firecore_solveH( k_temp, ikpoint ) bind(c, name='firecore_solveH')
     real(c_double), dimension(3),   intent(in)       :: k_temp
     ! ====== global variables
     ! ====== Body
+    if(verbosity.gt.0)write(*,*) "firecore_solveH() "
     call solveH ( ikpoint, k_temp )
     return
 end subroutine
@@ -271,6 +221,7 @@ subroutine firecore_updateCharges( sigmatol_, sigma_ ) bind(c, name='firecore_up
     real(c_double), intent(out)         :: sigma_
     ! ====== global variables
     ! ====== Body
+    if(verbosity.gt.0)write(*,*) "firecore_updateCharges() "
     sigmatol=sigmatol_
     call denmat ()
     sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
@@ -302,10 +253,11 @@ subroutine firecore_SCF( nmax_scf, positions_, iforce_  )  bind(c, name='firecor
     integer ikpoint, i
     real, dimension (3) :: k_temp
     ! ====== Body
+    if(verbosity.gt.0)write(*,*) "firecore_SCF() "
     ratom(:,:) = positions_(:,:)
     !idebugWrite = 0
     !verbosity   = 0 
-    iforce      = iforce_
+    iforce  = iforce_
     ikpoint = 1
     scf_achieved = .false.
     max_scf_iterations = nmax_scf
@@ -352,18 +304,16 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_ )  bind(c, name='fi
     !real time_begin
     !real time_end
     ! ====== Body
-
+    if(verbosity.gt.0)write(*,*) "firecore_evalForce() "
     ratom(:,:) = positions_(:,:)
     !idebugWrite = 1
     !idebugWrite = 0
     !call cpu_time (time_begin)
-
-    idebugWrite = 0
-    verbosity   = 0 
-    iforce      = 1
-
+    !idebugWrite = 0
+    !verbosity   = 0 
+    iforce    = 1
     ftot(:,:) = 0
-    ikpoint = 1
+    ikpoint   = 1
     scf_achieved = .false.
     max_scf_iterations = nmax_scf
     if(verbosity.gt.0)write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations, scf_achieved
@@ -403,6 +353,7 @@ subroutine firecore_getCharges( charges_ )  bind(c, name='firecore_getCharges')
     use charges
     use options
     real(c_double), dimension(natoms), intent(out) :: charges_
+    if(verbosity.gt.0)write(*,*) "firecore_getCharges() "
     !write(*,*) "DEBUG firecore_getCharges START"
     if (iqout .eq. 2) then
         charges_(:) = QMulliken_TOT(:)
@@ -420,7 +371,7 @@ subroutine firecore_get_wfcoef( ikp, wfcoefs )  bind(c, name='firecore_get_wfcoe
     use options
     integer(c_int)                                , intent(in),value :: ikp
     real(c_double), dimension(norbitals,norbitals), intent(out) :: wfcoefs
-    write (*,*) "shape(bbnkre) ", shape(bbnkre), ikp
+    if(verbosity.gt.0)write(*,*) "firecore_get_wfcoef() ", shape(bbnkre), ikp
     wfcoefs(:,:) = bbnkre(:,:,ikp)
 end subroutine
 
@@ -432,7 +383,8 @@ subroutine firecore_set_wfcoef( iMO, ikp, wfcoefs )  bind(c, name='firecore_set_
     use options
     integer(c_int)                , intent(in),value :: ikp, iMO
     real(c_double), dimension(norbitals), intent(in) :: wfcoefs
-    write (*,*) "shape(bbnkre) ", shape(bbnkre), ikp, iMO
+    if(verbosity.gt.0)write(*,*) "firecore_set_wfcoef() ", shape(bbnkre), ikp, iMO
+    !write (*,*) "shape(bbnkre) ", shape(bbnkre), ikp, iMO
     bbnkre(:,iMO,ikp) = wfcoefs(:)
 end subroutine
 
@@ -440,6 +392,7 @@ subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_, ngrid_, dCell  )  bind(c, na
     use iso_c_binding
     use grid
     use configuration
+    use options
     implicit none
     ! ========= Parameters
     !integer(c_int),                 intent(in),value :: nmax_scf
@@ -455,7 +408,7 @@ subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_, ngrid_, dCell  )  bind(c, na
     ! ========= Variables
     logical bAutoGridSize
     ! ========= Body
-    write(*,*) " !!!!!!!!!!!!!!! firecore_setupGrid() ngrid_(:) ", ngrid_
+    if(verbosity.gt.0)write(*,*) "firecore_setupGrid() "
     Ecut   = Ecut_
     ifixg0 = ifixg0_
     g0(:)  = g0_(:)
@@ -464,30 +417,31 @@ subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_, ngrid_, dCell  )  bind(c, na
     call read_vna ()
     bAutoGridSize = .False.
     if( (ngrid_(1).le.0) .or. (ngrid_(2).le.0) .or. (ngrid_(3).le.0) ) bAutoGridSize = .True.
-    write(*,*) " !!!!!!!!!!!!!!! firecore_setupGrid() bAutoGridSize ", bAutoGridSize
     if( .not. bAutoGridSize ) then
-        write (*,*) " bAutoGridSize == .False. "
-        elvec(:,:) = dCell(:,:)
+        a1vec(:) = dCell(:,1)*ngrid_(1)
+        a2vec(:) = dCell(:,2)*ngrid_(2)
+        a3vec(:) = dCell(:,3)*ngrid_(3)
         ngrid(:)   = ngrid_(:)
     endif
-    write(*,*) " !!!!!!!!!!!!!!! firecore_setupGrid() ngrid(:) ", ngrid(:)
     call initgrid_new( bAutoGridSize )
     ngrid_(1)=rm1
     ngrid_(2)=rm2
     ngrid_(3)=rm3
     dCell(:,:) = elvec(:,:)
-    call write_grid_info()
+    if(verbosity.gt.0)call write_grid_info()
 end subroutine
 
 subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' )
     use iso_c_binding
     use grid
     use configuration
+    !use options
     implicit none
     ! ========= Parameters
     integer(c_int), value :: iMO
     real(c_double), dimension (nrm), intent(out) :: ewfaux
     ! ========= Body
+    !if(verbosity.gt.0)write(*,*) "firecore_getGridMO() ", iMO
     !allocate   ( ewfaux(0:nrm-1))
     !pewf => ewfaux
     !write(*,*) "firecore_getGridMO ", iMO
@@ -505,7 +459,7 @@ subroutine firecore_getGridDens( ewfaux, f_den, f_den0 )  bind(c, name='firecore
     real(c_double), value :: f_den0
     real(c_double), dimension (nrm), intent(out) :: ewfaux
     ! ========= Body
-    write(*,*) "DEBUG firecore_getGridDens() ", f_den, f_den0
+    !if(verbosity.gt.0)write(*,*) "firecore_getGridDens() ", f_den, f_den0
     ewfaux = 0.0
     if( f_den*f_den > 1.e-16 ) then
         call project_dens( ewfaux, f_den )
@@ -522,8 +476,6 @@ subroutine firecore_orb2xsf( iMO )  bind(c, name='firecore_orb2xsf' )
     use options, only: icluster
     use grid
     implicit none
- ! Local Parameters and Data Declaration
- ! ===========================================================================
     ! ========= Parameters
     integer(c_int), value :: iMO
     ! ========= Variables
@@ -535,6 +487,7 @@ subroutine firecore_orb2xsf( iMO )  bind(c, name='firecore_orb2xsf' )
     character (len=30) mssg
     integer i
     ! ========= Body
+    !if(verbosity.gt.0)write(*,*) "firecore_orb2xsf() ", iMO
     allocate ( ewfaux(0:nrm-1))
     call project_orb(iMO,ewfaux)
     write (name,'(i4.4)') iMO
@@ -551,7 +504,7 @@ subroutine firecore_dens2xsf( f_den0 )  bind(c, name='firecore_dens2xsf' )
     use options, only: icluster
     use grid
     implicit none
- ! Local Parameters and Data Declaration
+    ! ======= Local Parameters and Data Declaration
     real(c_double), value :: f_den0
     ! ========= Variables
     real, dimension (:), allocatable :: ewfaux
@@ -560,6 +513,7 @@ subroutine firecore_dens2xsf( f_den0 )  bind(c, name='firecore_dens2xsf' )
     character (len=30) mssg
     integer i
     ! ========= Body 
+    !if(verbosity.gt.0)write(*,*) "firecore_dens2xsf() ", f_den0
     allocate ( ewfaux(0:nrm-1))
     ewfaux = 0.0
     call project_dens( ewfaux, 1.0 )
@@ -581,6 +535,7 @@ subroutine firecore_orb2points( iband,ikpoint, npoints, points, ewfaux )  bind(c
     integer(c_int), value ::  iband, ikpoint, npoints
     real(c_double), dimension (3,npoints), intent (out) :: points
     real(c_double), dimension (  npoints), intent (out) :: ewfaux
+    !if(verbosity.gt.0)write(*,*) "firecore_orb2points() "
     call project_orb_points( iband, ikpoint, npoints, points, ewfaux )
 end subroutine firecore_orb2points
 
@@ -595,6 +550,7 @@ subroutine firecore_getpsi( l, m, in1, issh, n, poss, ys )  bind(c, name='fireco
     real psi, dpsi !, x
     real, dimension (5)   :: Y      ! psi(x)
     real, dimension (3,5) :: dY     ! dpsi/dx
+    !if(verbosity.gt.0)write(*,*) "firecore_getpsi() "
     do i=1,n
         call getpsi(in1,issh,NORM2(poss(:,i)),psi,dpsi)
         call getYlm(l,poss(:,i),Y,dY) 
@@ -602,8 +558,3 @@ subroutine firecore_getpsi( l, m, in1, issh, n, poss, ys )  bind(c, name='fireco
         !write (*,*) "", in1,issh,l,m, i,x,psi,Y(m)
     end do 
 end subroutine
-
-! ==================================================
-! ============ subroutine init_wfs
-! ==================================================
-

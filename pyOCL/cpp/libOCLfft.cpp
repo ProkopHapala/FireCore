@@ -94,23 +94,13 @@ typedef struct{
 
 class OCLfft : public OCLsystem { public:
 
-
     clfftPlanHandle planHandle;
     clfftDim fft_dim = CLFFT_3D;
 
-    //const size_t N0 = 4, N1 = 4, N2 = 4;
     int ndim=0;
     size_t Ns[4]; // = {N0, N1, N2};
     size_t Ntot;
     int4   Nvec;
-    //size_t buffer_size;
-
-    //static cl_mem data_cl;
-    //static float *data;
-
-    //int N=0;
-    //int size = N * N;
-    //static cl_mem d_a, d_b, d_c;
 
     int iKernell_mull=-1;
     int iKernell_lincomb=-1;

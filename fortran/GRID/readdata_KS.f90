@@ -75,10 +75,8 @@
  
 ! Procedure
 ! ===========================================================================
-        write (*,*) '  '
-        write (*,100)
-        write (*,*) ' READING DATA FROM DATA FILES IN FDATA DIRECTORY: '
-        write (*,100)
+    if(verbosity.gt.0) write (*,*) 'subroutine readdata_KS() '
+
 
 ! interactions we need for the grid
 !  1 .. overlap

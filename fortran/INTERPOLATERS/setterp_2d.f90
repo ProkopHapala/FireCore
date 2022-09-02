@@ -57,6 +57,7 @@
         use dimensions
         use integrals
         use interactions
+        use options, only: verbosity
         implicit none
  
 ! Argument Declaration and Description
@@ -82,7 +83,7 @@
  
 ! Procedure
 ! ===========================================================================
-        write (*,*) ' Running setterp_2d. Set up two-dimensional interpolator. '
+        if(verbosity.gt.0) write (*,*) 'subroutine setterp_2d() : Set up two-dimensional interpolator. '
  
 ! Table some trivial things that otherwise get recomputed at every possible
 ! opportunity.

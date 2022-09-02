@@ -65,6 +65,7 @@
    use configuration
    use integrals
    use grid
+   use options, only : verbosity
    implicit none
  
 ! Argument Declaration and Description
@@ -116,7 +117,7 @@
 ! ===========================================================================
 ! Read wave function
 
-write(*,*) "read_wf()"
+if(verbosity.gt.0) write(*,*) "subroutine read_wf() "
 
 ! loop over species
    do ispec = 1,nspecies
@@ -126,7 +127,7 @@ write(*,*) "read_wf()"
 
 ! open w.f. file
          filename = trim(fdataLocation)//wavefxn(issh,ispec)
-         write (*,200) filename
+         if(verbosity.gt.0) write (*,*) "Read wave function from file:",filename
          open (unit = 17, file = filename, status = 'unknown')
 
 ! read header
@@ -205,7 +206,7 @@ write(*,*) "read_wf()"
 
 ! Set parameters 
          drr_wf(issh,ispec) = abohr*rcutoffwf/dfloat(mesh - 1)
-         write (*,500) issh,ispec,drr_wf(issh,ispec)
+         if(verbosity.gt.0) write (*,500) issh,ispec,drr_wf(issh,ispec)
          r = - drr_wf(issh,ispec)
          do ipoint = 1, mesh
             r = r + drr_wf(issh,ispec)
@@ -214,11 +215,9 @@ write(*,*) "read_wf()"
          end do
          mesh_wf (issh,ispec) = mesh
          rmax_wf (issh,ispec) = r
-         write(*,*)  "read_wf ispec ",ispec," issh ",issh, " mesh_wf, rmax_wf ", mesh_wf(issh,ispec), rmax_wf(issh,ispec), " Angstroem "
-
+         if(verbosity.gt.0) write(*,*) "read_wf ispec ",ispec," issh ",issh, " mesh_wf, rmax_wf ", mesh_wf(issh,ispec), rmax_wf(issh,ispec), " Angstroem "
 ! Check normalization
-         write (*,*) '      Checking normalization [NORM(l) should be 1]'
-
+         !write (*,*) '      Checking normalization [NORM(l) should be 1]'
          sum = 0.0d0
          do ipoint = 1, mesh
             if (ipoint .ne. 1 .or. ipoint .ne. mesh) then
@@ -227,15 +226,14 @@ write(*,*) "read_wf()"
                sum = sum + 0.5d0*drr_wf(issh,ispec)*  rr_wf(ipoint,issh,ispec)**2 * wf(ipoint,issh,ispec)**2
             end if
          end do ! do ipoint
-         write (*,400) issh, sum
-         write (*,*) '   --------------------------------------------------- ' 
+         if(verbosity.gt.0) write (*,*) " check shell #",issh, " norm= ",sum
 ! build spline 
          call buildspline2_1d (rr_wf(1,issh,ispec),wf(1,issh,ispec), mesh, &
                                wf_spline(1,issh,ispec))
 ! test orthogonalization with spline
          mesh = 40
          sum = 0.0d0
-         write (*,*) '  Checking normalization for mesh: ',mesh
+         !write (*,*) '  Checking normalization for mesh: ',mesh
          dr = abohr*rcutoffwf/dfloat(mesh - 1)
          r = -dr
          do ipoint = 1, mesh
@@ -247,9 +245,7 @@ write(*,*) "read_wf()"
                sum = sum + 0.5d0*dr*r**2 * psi**2        
             end if
          end do ! do ipoint
-         write (*,400) issh, sum
-         write (*,*) '   --------------------------------------------------- ' 
-         
+         if(verbosity.gt.0) write (*,*) " check shell #",issh, " norm= ",sum
       enddo ! do nssh
    enddo ! ispec
 
@@ -268,9 +264,7 @@ write(*,*) "read_wf()"
 !         end do
 !      enddo
 !   enddo
-
-   write (*,*) '  '
-   write (*,*) ' *---------------------  END READ_WF  ----------------------*'
+   if(verbosity.gt.0) write(*,*) "END subroutine read_wf ()"
 
 ! Deallocate Arrays
 ! ===========================================================================
