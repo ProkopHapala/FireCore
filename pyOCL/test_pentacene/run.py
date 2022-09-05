@@ -22,48 +22,47 @@ def job_make_Eelec_Epauli():
     dcell = [0.2,0.2,0.2,0.2]
     iA=0; iC=1
     print( "# --- Allocations")
-
     iMO1 = 51
     #jobs.projectDensFireball( atomType=Zs, atomPos=apos, bSCF=True, saveXsf=1, f_den0=-1.0 )
     #jobs.density_from_firecore_to_xsf( atomType=Zs, atomPos=apos, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=-1.0  )
     #jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=iMO1, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=False, saveName="dens_scf", bSCF=True, bDen0diff=False )
-    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=iMO1, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=False, saveName="dens_scf", bSCF=True, bDen0diff=True )
+    #jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=iMO1, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=False, saveName="dens_scf", bSCF=True, bDen0diff=True )
     #jobs.check_density_projection( atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSCF=False, iOutBuff=0, Cden=1.0, Cden0=0.0, iMO1=iMO1 )
     #dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
     #jobs.orbitals_from_firecore( orbitals=[50,51,52,53], atomType=Zs, atomPos=apos, ngrid=ngrid, dCell=dCell, g0=None )
-
-    exit(0)
-
+    #exit(0)
 
     print( "# --- SCF density")
-    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, saveName="dens_scf", bSCF=True )
-    
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, bSCF=True, bDen0diff=False )
     ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
     ibuff_ConvOut = ocl.newFFTbuffer( "MCOconv" )
     ibuff_DensBak = ocl.newFFTbuffer( "DensBak" )
-
     ocl.copy( iA, ibuff_DensBak )
+    ocl.roll( iA, ibuff_ConvOut, [ngrid[0]//2,ngrid[1]//2,ngrid[2]//2] )
     ocl.saveToXsf( "Dens_bak.xsf",  ibuff_DensBak )
     ocl.saveToXsf( "Dens_orig.xsf", iA)
+    ocl.saveToXsf( "Dens_roll.xsf", ibuff_ConvOut )
+
+    exit()
 
     print( "# ==== E_Pauli ( density convolution )")
     ocl.loadFromBin( "../test_CO/dens_scf.bin", ibuff_densCO )
     ocl.convolve( ibuff_DensBak,ibuff_densCO, ibuff_ConvOut )
     ocl.saveToXsf( "Epaul.xsf",    ibuff_ConvOut )
-
-    #print( "# === E_elec ( density and potential convolution )")
-    #jobs.projectDens0( iOutBuff=ibuff_DensBak, atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSaveXsf=False,  bSaveBin=False, saveName="dens_diff" )   ;print( "DEBUG 2.1 " )
-    #ocl.saveToXsf( "dens_diff.xsf", ibuff_DensBak )         ;print( "DEBUG 2.2 " )
     
+    print( "# ==== E_Electrostatic ( density convolution )")
     iBuffDens0 = iA
-    #jobs.projectDens0( iOutBuff=iBuffDens0, atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSaveXsf=False,  bSaveBin=False, saveName="dens_diff" )   ;print( "DEBUG 2.1 " )
-    jobs.projectDens0_new( iOutBuff=iBuffDens0, atomPos=apos, atomType=Zs, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, saveName="dens_diff" )
+    jobs.projectDens0_new( iOutBuff=iBuffDens0, atomPos=apos, atomType=Zs, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, acumCoef=[1.0,-1.0] )
+    Ns = (ngrid[0],ngrid[1],ngrid[2])
+    data = ocl.download( iBuffDens0, data=None, Ns=Ns )
+    dvol = dcell[0]*dcell[1]*dcell[2]
+    Q_diff = np.sum(data  )*dvol; print( "Q_diff ", Q_diff )
+    #ocl.saveToXsfAtomsData( "dens_diff.xsf",  data, Zs, apos )
     ocl.saveToXsf( "dens_diff.xsf", iBuffDens0 )
     print( "# --- Poisson (rho->V)")
     ocl.poisson( iA=iBuffDens0, iOut=iC, dcell=dcell )
     ocl.saveToXsf( "Vout.xsf", iC )
 
-    exit()
     print( "# --- E_elec = convolution( rho, V )  " )
     ocl.loadFromBin( "../test_CO/dens_diff.bin", ibuff_densCO )
     ocl.convolve( iC,ibuff_densCO, ibuff_ConvOut )

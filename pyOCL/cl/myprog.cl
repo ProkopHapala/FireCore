@@ -18,6 +18,7 @@ __constant float pref_p = 0.4886025119;  //sqrt(3.0f/(4.0f*M_PI));
 __constant float pref_d = 1.09254843059; //sqrt(15.0f/(4.0f*M_PI));
 __constant float wf_tiles_per_angstroem = 20.0f;
 
+int wrap( int i, int n ){ if(i<0)i+=n; if(i>=n)i-=n; return i; }
 
 /*
 float4 read_imagef_trilin( __read_only image3d_t imgIn, float4 coord ){
@@ -79,7 +80,6 @@ float2 lerp_basis( float x, float slot, __read_only image2d_t imgIn ){
     //return coord;
 }
 
-
 __kernel void mul(
     const int N,
     __global float* A,
@@ -94,6 +94,54 @@ __kernel void mul(
         //if((i/100)<100)printf( "DEBUG_GPU mul[%i] A=%g B=%g out=%g \n", i, A[i], B[i], out[i] );
     }
 };
+
+/*
+__kernel void roll(
+    __global float2*  InBuff,    //4
+    __global float2*  OutBuff,   //4
+    int4   shift,                //5
+    int4   nGrid                //6
+){
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+    const int nMax = nab*nGrid.z;
+    int ja = ia + shift.x; 
+    int jb = ib + shift.y;
+    int jc = ic + shift.z;
+    int jG = ia + nGrid.x*( ib + nGrid.y*ic);
+    OutBuff[iG] = InBuff[jG];
+}
+*/
+
+__kernel void roll(
+    __global float2*  InBuff,    //1
+    __global float2*  OutBuff,   //2
+    int4   shift,                //3
+    int4   nGrid                 //4
+){
+    const int ia  = get_global_id (0);
+    const int ib  = get_global_id (1);
+    const int ic  = get_global_id (2);
+    const int na  = get_global_size (0);
+    const int nb  = get_global_size (1);
+    const int nc  = get_global_size (2);
+    int iG = ia + nGrid.x*( ib + nGrid.y*ic);
+    if(iG==0){ printf( "GPU roll() size(%i,%i,%i) nGrid(%i,%i,%i) shift(%i,%i,%i)\n", na,nb,nc,   nGrid.x,nGrid.y,nGrid.z, shift.x,shift.y,shift.z );}
+    //OutBuff[iG] = InBuff[iG];
+    if( (ia<nGrid.x) && (ib<nGrid.y) && (ic<nGrid.z) ){
+        int ja = wrap( ia + shift.x, nGrid.x );
+        int jb = wrap( ib + shift.y, nGrid.y );
+        int jc = wrap( ic + shift.z, nGrid.z );
+        int iG = ia + nGrid.x*( ib + nGrid.y*ic);
+        int jG = ja + nGrid.x*( jb + nGrid.y*jc);
+        OutBuff[iG] = InBuff[jG];
+    }
+}
 
 __kernel void lincomb(
     const int N,

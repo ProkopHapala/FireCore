@@ -114,6 +114,13 @@ lib.copy.restype   =  c_int
 def copy( iBufFrom, iBufTo, nbytes=-1, src_offset=0, dst_offset=0   ):
     return lib.copy( iBufFrom, iBufTo, nbytes, src_offset, dst_offset )
 
+# void roll_buf( int ibuffA, int ibuffB, int* shift )
+lib.roll_buf.argtypes  = [ c_int, c_int, c_int_p ] 
+lib.roll_buf.restype   =  None
+def roll( iBufFrom, iBufTo, shift ):
+    shift = np.array( shift, np.int32 )
+    return lib.roll_buf( iBufFrom, iBufTo,  _np_as( shift, c_int_p )  )
+
 #void initFFT ( int ndim, int* Ns );
 lib.initFFT.argtypes  = [ c_int, array1l ] 
 lib.initFFT.restype   =  None
@@ -355,3 +362,28 @@ def initFFTgrid( Ns, dcell = [0.2,0.2,0.2,0.2], dCell=None ):
     if dCell is None:
         dCell = np.array([[dcell[0],0.,0.],[0.,dcell[1],0.],[0.,0.,dcell[2]]])
     setGridShape_dCell( Ns, dCell )
+
+default_AtomTypeConfs=[ 
+#  norb,   Qshell,   Name
+( 1, (1.0,0.0), "H"  ),
+( 4, (2.0,0.0), "He" ),
+( 4, (1.0,0.0), "Li" ),
+( 4, (1.0,1.0), "Be" ),
+( 4, (1.0,2.0), "B"  ),
+( 4, (1.0,3.0), "C"  ), 
+( 4, (2.0,3.0), "N"  ), 
+( 4, (2.0,4.0), "O"  ),
+( 4, (2.0,5.0), "F"  ), 
+]
+
+def setTypesZ( iZs, bInternal=True, AtomTypeConfs=default_AtomTypeConfs ):
+    atype_nOrb   = []
+    atype_Qconfs = []
+    if AtomTypeConfs is None:
+        AtomTypeConfs=default_AtomTypeConfs
+    for iZ in iZs:
+        typ=AtomTypeConfs[iZ-1]
+        print( "iZ, typ ", iZ, typ )
+        atype_nOrb  .append(typ[0])
+        atype_Qconfs.append(typ[1])
+    return setTypes( atype_nOrb, atype_Qconfs )
