@@ -6,6 +6,7 @@ import sys
 from . import oclfft as ocl
 from . import utils  as oclu
 
+
 def projectAtoms__( atoms, acoefs):
     import matplotlib.pyplot as plt
     import time
@@ -341,7 +342,8 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
     ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1, acumCoef=[0.0,2.0] )     #  2.0 electrions per atom
     if bDen0diff:
         ords=np.array( ords, dtype=np.int32)
-        ocl.setTypes( [1,4], [[1.0,0.0],[1.0,3.0]] )  ;print( "WARRNING: project_dens_GPU(): ocl.setTypes([4,4],[[1.0,3.0],[1.0,5.0]]) is works just for Hydrocarbons !!!!" )
+        #ocl.setTypes( [1,4], [[1.0,0.0],[1.0,3.0]] )  ;print( "WARRNING: project_dens_GPU(): ocl.setTypes([4,4],[[1.0,3.0],[1.0,5.0]]) is works just for Hydrocarbons !!!!" )
+        ocl.setTypesZ( sorted(list(set(atomType))) )
         ocl.projectAtomsDens0( iOutBuff, apos=atomPos, atypes=ords, acumCoef=[1.0,-1.0] ) 
     if bDownalod:
         data = ocl.download( iOutBuff, data=None, Ns=Ns )
@@ -375,14 +377,14 @@ def check_density_projection( atomType=None, atomPos=None, ngrid=(64,64,64), dce
 
 def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSCF=False, bSaveXsf=False, bSaveBin=False, saveName="dens", bDen0diff=False ):
     print("# ========= projectDens() bSCF ", bSCF )
-    (wfcoef,i0orb),_ = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, Cden=1.0, Cden0=0.0, bGetGrid=False, bGetCoefs=True )
+    (wfcoef,i0orb),_ = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, bGetGrid=False, bGetCoefs=True )
     project_dens_GPU( wfcoef, atomType=atomType, atomPos=atomPos, ngrid=ngrid, dcell=dcell, iOutBuff=iOutBuff, iMO0=iMO0, iMO1=iMO1, i0orb=i0orb, bDen0diff=bDen0diff )
     if bSaveXsf:
         ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )
     if bSaveBin:
         ocl.saveToBin(      saveName+".bin", iOutBuff )
 
-def projectDens0_new( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0" ):
+def projectDens0_new( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0", acumCoef=[1.0,-1.0]  ):
     print("# ========= projectDens0_new() " )
     sys.path.append("../../")
     import pyBall as pb
@@ -396,11 +398,12 @@ def projectDens0_new( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,
     ocl.tryInitFFT( Ns )
     ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )
     ocl.setGridShape_dCell( Ns, dCell )
-    ocl.setTypes( [4,4], [[1.0,3.0],[1.0,5.0]] )
+    #ocl.setTypes( [1,4], [[1.0,0.0],[1.0,3.0]] )
+    ocl.setTypesZ( sorted(list(set(atomType))) )
     ords=np.array( ords, dtype=np.int32)
-    ocl.projectAtomsDens0( iOutBuff, apos=atomPos, atypes=ords, acumCoef=[1.0,-1.0] ) 
+    ocl.projectAtomsDens0( iOutBuff, apos=atomPos, atypes=ords, acumCoef=acumCoef) 
     if bSaveXsf:
-        ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )
+        ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff, atomType, atomPos  )
     if bSaveBin:
         ocl.saveToBin( saveName+".bin", iOutBuff )
 

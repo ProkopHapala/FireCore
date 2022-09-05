@@ -84,13 +84,13 @@ FireCore::Lib fireCore;
 
 
 
-typedef struct{
+struct KernelDims{
     cl_uint  dim;
     size_t global[3];
-    size_t local[3];
+    size_t local [3];
     //cl_int blocksize;
     void fitlocal( ){  for(cl_uint i=0; i<dim; i++){ global[i]=((int)(global[i]/(1.0*local[i]))+1)*local[i]; };  }
-} KernelDims;
+};
 
 class OCLfft : public OCLsystem { public:
 
@@ -103,6 +103,7 @@ class OCLfft : public OCLsystem { public:
     int4   Nvec;
 
     int iKernell_mull=-1;
+    int iKernell_roll=-1;
     int iKernell_lincomb=-1;
     int iKernell_project=-1;
     int iKernell_project_tex=-1;
@@ -228,6 +229,51 @@ class OCLfft : public OCLsystem { public:
         //err = clFinish(commands);
         //OCL_checkError(err, "Waiting for kernel to finish");
         //double run_time = wtime() - start_time;
+    }
+
+/*
+    void mul_buffs( int ibuffA, int ibuffB, int ibuff_result ){
+        useKernel( iKernell_mull );
+        err |= useArg( (int)Ntot*2 );
+        err |= useArgBuff( 0 );
+        err |= useArgBuff( 1 );
+        err |= useArgBuff( 2 );
+        err = enque( 1, {Ntot*2,0,0,0}, {16,0,0,0} );    
+        OCL_checkError(err, "Enqueueing kernel");
+    }
+*/
+
+    void roll_buf( int ibuffA, int ibuffB, int4 shift ){
+        int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        /*
+        printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        useKernel( iKernell_roll );
+        err |= useArgBuff( ibuffA );
+        err |= useArgBuff( ibuffB );
+        //err |= _useArg( shift );
+        //err |= _useArg( ngrid );
+        err |= _useArg( ngrid_roll );
+        err |= _useArg( shift_roll );
+        OCL_checkError(err, "roll_bufs_1 ");
+        printf( "DEBUG roll_buf 2 []\n" );
+        //err = enque( 3, Ns ); 
+        //err = enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
+        size_t global[4]{128,64,32,0}; 
+        size_t local [4]{1,1,1,1};    
+        */
+        size_t global[4]{128,64,32,0}; 
+        size_t local [4]{1,1,1,1};   
+        //int global[4]{128,64,32,0}; 
+        //int local [4]{1,1,1,1};   
+        cl_kernel kernel = kernels[iKernell_roll];
+        err |= clSetKernelArg(kernel, 0, sizeof(cl_mem), &(buffers[ibuffA].p_gpu) );
+        err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[ibuffB].p_gpu) );
+        err |= clSetKernelArg(kernel, 2, sizeof(int)*4,  &shift );
+        err |= clSetKernelArg(kernel, 3, sizeof(int)*4,  &ngrid );
+        err = clEnqueueNDRangeKernel(  commands, kernel, 3, NULL, global, local, 0, NULL, NULL); 
+        OCL_checkError(err, "roll_bufs ");
+        err = clFinish(commands);
+        OCL_checkError(err, "roll_bufs ");
     }
 
     void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
@@ -512,6 +558,7 @@ class OCLfft : public OCLsystem { public:
         //printf( "DEBUG makeMyKernels %s \n", srcpath );
         buildProgram( srcpath );
         iKernell_mull             = newKernel( "mul" );
+        iKernell_roll             = newKernel( "roll" );
         iKernell_poissonW         = newKernel( "poissonW" );
         iKernell_gradient         = newKernel( "gradient" );
         iKernell_project          = newKernel( "projectAtomsToGrid" );
@@ -519,6 +566,7 @@ class OCLfft : public OCLsystem { public:
         iKernell_project_dens_tex = newKernel( "projectOrbDenToGrid_texture" );
         iKernell_project_atom_dens_tex = newKernel( "projectAtomDenToGrid_texture" );
         iKernell_projectPos_tex   = newKernel( "projectWfAtPoints_tex" );
+
         //printf( "DEBUG makeMyKernels END \n" );
         //exit(0);
     };
@@ -792,6 +840,8 @@ extern "C" {
     int download(int i,       float* cpu_data ){ return oclfft.download(i,cpu_data);  oclfft.finishRaw();   };
 
     int copy( int iBufFrom, int iBufTo, int nbytes, int  src_offset, int  dst_offset ){ return oclfft.copy( iBufFrom, iBufTo, nbytes, src_offset, dst_offset ); }; 
+
+    void roll_buf( int ibuffA, int ibuffB, int* shift ){ return oclfft.roll_buf( ibuffA, ibuffB, *(int4*)shift ); }
 
     int   upload_d(int ibuf, const double* data, bool bComplex ){ 
         int n=oclfft.buffers[ibuf].n; 

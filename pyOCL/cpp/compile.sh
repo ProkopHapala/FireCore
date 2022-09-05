@@ -11,7 +11,7 @@ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$LPATH
 wb="../cpp_build"
 wd=`pwd`
 
-FFLAGS="-Werror -Wno-write-strings -Wno-reorder -Wno-deprecated-declarations"
+FFLAGS="-Werror -Wno-write-strings -Wno-reorder -Wno-deprecated-declarations -Wno-unused-variable"
 g++ $FFLAGS -c -Wall -fpic -o $wb/libOCLfft.o libOCLfft.cpp
 
 cd $wb

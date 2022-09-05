@@ -81,6 +81,9 @@ class OCLsystem{
     std::vector<cl_kernel> kernels;
     std::vector<OCLBuffer> buffers;
 
+    cl_kernel current_kernel;
+    int argCounter;
+
     int copy( int iBufFrom, int iBufTo, int nbytes=-1, int src_offset=0, int dst_offset=0){
        if(nbytes<0){ nbytes=buffers[iBufFrom].byteSize(); int nbytes_=buffers[iBufTo].byteSize(); if(nbytes_<nbytes)nbytes=nbytes_;}
        //printf( "nbytes(-1) -> %i min(%i|%i) \n", nbytes, (int)buffers[iBufFrom].byteSize(), nbytes_ ); } 
@@ -196,6 +199,21 @@ class OCLsystem{
     //inline int copy_raw    (int from, int to, int from0, int to0, int n){ return clEnqueueCopyBuffer(commands,buffers[from].p_gpu,buffers[to].p_gpu,from0,to0,n,0,NULL,NULL); };
     //inline int copyBuff(int from, int to                           ){ int n=buffers[from].n; int n_=buffers[to].n; if(n_<n)n=n_; return clEnqueueCopyBuffer(commands,buffers[from].p_gpu,buffers[to].p_gpu,0,0,n,0,NULL,NULL); };
 
+    void useKernel( int ikernel){ current_kernel=kernels[ikernel]; argCounter=0; };
+    int  useArg( cl_mem ibuff,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(ibuff) ); };
+    int  useArg( int    i_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(int),    &(i_arg) ); };
+    int  useArg( float  f_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(float),  &(f_arg) ); };
+    int  useArg_( void*  buff , int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} printf( "arg#%i nbytes %i buff %li \n", i, nbytes, (long)buff ); return clSetKernelArg( current_kernel, i, nbytes,           buff   ); };
+    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff]) ); };
+    int enque( size_t dim, const size_t* global, const size_t* local, int ikernel=-1 ){ 
+        cl_kernel kernel;
+        if(ikernel<0){kernel=current_kernel;}else{ kernel = kernels[ikernel]; }; 
+        printf( "OCLsystem::enque() dim %li global[%li,%li,%li] local[%li,%li,%li] \n", dim, global[0],global[1],global[2], local[0],local[1],local[2] );
+        return clEnqueueNDRangeKernel( commands, kernel, dim, NULL, global, local, 0, NULL, NULL ); 
+    }
+    int enque( size_t dim, size_t4 global, size_t4 local, int ikernel=-1 ){  return enque(dim, (size_t*)&global, (size_t*)&local, ikernel); }
+    int enque( size_t dim, size_t4 global, int ikernel=-1 ){  return enque(dim, (size_t*)&global, NULL, ikernel); }
+
     int download(){
         int err = CL_SUCCESS;
         for(size_t i=0; i<buffers.size(); i++ ){
@@ -243,6 +261,8 @@ class OCLsystem{
 #define LBUFFarg(X) OCLarg( (int)X, OCL_LBUFF )
 #define PTRarg(X,n) OCLarg( (void*)X, OCL_PTR, n )
 #define REFarg(X)   OCLarg( (void*)&X, sizeof(X) )
+
+#define _useArg(X)  OCLsystem::useArg_( (void*)&X, sizeof(X) )
 
 class OCLarg{
     public:
