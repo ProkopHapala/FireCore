@@ -33,14 +33,33 @@ apos = np.array([
 
 ngrid=(128,64,32)
 dcell = [0.2,0.2,0.2,0.2]
-iA=0; iC=1
+
+def export_density_shifted():
+    shift = [ngrid[0]//2,ngrid[1]//2,ngrid[2]//2]
+    iA=0; iB=1
+    print( "# ---- total SCF density" )
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, bSCF=True, bDen0diff=False )
+    ocl.roll( iA, iB, shift )
+    ocl.saveToXsf( "dens_scf.xsf", iB )
+    ocl.saveToBin( "dens_scf.bin", iB )
+    
+    print( "# ---- density difference" )
+    jobs.projectDens0_new( iOutBuff=iA,  atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, acumCoef=[1.0,-1.0] )
+    ocl.roll( iA, iB, shift )
+    ocl.saveToXsf( "dens_diff.xsf", iB )
+    ocl.saveToBin( "dens_diff.bin", iB )
 
 
 #ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
 
 #jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=8, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True )
-jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=8, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True, saveName="dens_scf"  )
-jobs.projectDens0( iOutBuff=iA, atomType=Zs, atomPos=apos,                 ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True,  saveName="dens_diff"  )
+#jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=8, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True, saveName="dens_scf"  )
+#jobs.projectDens0( iOutBuff=iA, atomType=Zs, atomPos=apos,                 ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True, saveName="dens_diff"  )
+
+
+export_density_shifted()
+
+
 
 #jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=102//2, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=True )
 #ocl.initFFT( ngrid )
