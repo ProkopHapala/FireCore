@@ -204,7 +204,7 @@ class OCLsystem{
     int  useArg( int    i_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(int),    &(i_arg) ); };
     int  useArg( float  f_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(float),  &(f_arg) ); };
     int  useArg_( void*  buff , int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} printf( "arg#%i nbytes %i buff %li \n", i, nbytes, (long)buff ); return clSetKernelArg( current_kernel, i, nbytes,           buff   ); };
-    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff]) ); };
+    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} printf( "arg#%i ibuff %i \n", i, ibuff ); return clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff].p_gpu) ); };
     int enque( size_t dim, const size_t* global, const size_t* local, int ikernel=-1 ){ 
         cl_kernel kernel;
         if(ikernel<0){kernel=current_kernel;}else{ kernel = kernels[ikernel]; }; 
