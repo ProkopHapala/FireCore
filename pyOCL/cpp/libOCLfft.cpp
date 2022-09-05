@@ -245,35 +245,40 @@ class OCLfft : public OCLsystem { public:
 
     void roll_buf( int ibuffA, int ibuffB, int4 shift ){
         int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
-        /*
-        printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
         useKernel( iKernell_roll );
         err |= useArgBuff( ibuffA );
         err |= useArgBuff( ibuffB );
-        //err |= _useArg( shift );
-        //err |= _useArg( ngrid );
-        err |= _useArg( ngrid_roll );
-        err |= _useArg( shift_roll );
+        err |= _useArg( shift );
+        err |= _useArg( ngrid );
         OCL_checkError(err, "roll_bufs_1 ");
         printf( "DEBUG roll_buf 2 []\n" );
-        //err = enque( 3, Ns ); 
-        //err = enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
-        size_t global[4]{128,64,32,0}; 
-        size_t local [4]{1,1,1,1};    
-        */
+        //err = enque( 3, Ns, 0 ); 
+        err = enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
+        OCL_checkError(err, "roll_bufs_1 ");  
+        /*
         size_t global[4]{128,64,32,0}; 
         size_t local [4]{1,1,1,1};   
         //int global[4]{128,64,32,0}; 
         //int local [4]{1,1,1,1};   
         cl_kernel kernel = kernels[iKernell_roll];
+        useKernel( iKernell_roll );
+        //err |= clSetKernelArg(kernel, 0, sizeof(cl_mem), &(buffers[ibuffA].p_gpu) );
+        //err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[ibuffB].p_gpu) );
+        //err |= clSetKernelArg(kernel, 2, sizeof(int)*4,  &shift );
+        //err |= clSetKernelArg(kernel, 3, sizeof(int)*4,  &ngrid );
+        //argCounter+=2;
+        err |= useArgBuff( ibuffA );
+        err |= useArgBuff( ibuffB );
         err |= clSetKernelArg(kernel, 0, sizeof(cl_mem), &(buffers[ibuffA].p_gpu) );
         err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[ibuffB].p_gpu) );
-        err |= clSetKernelArg(kernel, 2, sizeof(int)*4,  &shift );
-        err |= clSetKernelArg(kernel, 3, sizeof(int)*4,  &ngrid );
+        err |= _useArg( shift );
+        err |= _useArg( ngrid );
         err = clEnqueueNDRangeKernel(  commands, kernel, 3, NULL, global, local, 0, NULL, NULL); 
         OCL_checkError(err, "roll_bufs ");
         err = clFinish(commands);
         OCL_checkError(err, "roll_bufs ");
+        */
     }
 
     void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
