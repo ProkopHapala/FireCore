@@ -38,12 +38,12 @@ def job_make_Eelec_Epauli():
     ibuff_ConvOut = ocl.newFFTbuffer( "MCOconv" )
     ibuff_DensBak = ocl.newFFTbuffer( "DensBak" )
     ocl.copy( iA, ibuff_DensBak )
-    ocl.roll( iA, ibuff_ConvOut, [ngrid[0]//2,ngrid[1]//2,ngrid[2]//2] )
-    ocl.saveToXsf( "Dens_bak.xsf",  ibuff_DensBak )
-    ocl.saveToXsf( "Dens_orig.xsf", iA)
-    ocl.saveToXsf( "Dens_roll.xsf", ibuff_ConvOut )
+    #ocl.roll( iA, ibuff_ConvOut, [ngrid[0]//2,ngrid[1]//2,ngrid[2]//2] )
+    #ocl.saveToXsf( "Dens_bak.xsf",  ibuff_DensBak )
+    #ocl.saveToXsf( "Dens_orig.xsf", iA)
+    #ocl.saveToXsf( "Dens_roll.xsf", ibuff_ConvOut )
 
-    exit()
+    #exit()
 
     print( "# ==== E_Pauli ( density convolution )")
     ocl.loadFromBin( "../test_CO/dens_scf.bin", ibuff_densCO )
