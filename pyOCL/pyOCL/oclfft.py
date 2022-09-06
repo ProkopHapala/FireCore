@@ -302,19 +302,19 @@ def loadFromBin( fname, ibuff ):
     lib.loadFromBin( fname, ibuff )
 
 # void saveToXsf(const char* fname, int ibuff){
-lib.saveToXsf.argtypes  = [ c_char_p, c_int ] 
+lib.saveToXsf.argtypes  = [ c_char_p, c_int, c_int, c_int ] 
 lib.saveToXsf.restype   =  None
-def saveToXsf( fname, ibuff ):
+def saveToXsf( fname, ibuff, stride=2, offset=0 ):
     fname = fname.encode('utf-8')
-    lib.saveToXsf( fname, ibuff )
+    lib.saveToXsf( fname, ibuff, stride, offset )
 
 #void saveToXsfAtoms(const char* fname, int ibuff, int natoms, int* atypes, double* apos )
-lib.saveToXsfAtoms.argtypes  = [ c_char_p, c_int,  c_int,c_int_p,c_double_p ] 
+lib.saveToXsfAtoms.argtypes  = [ c_char_p, c_int, c_int, c_int, c_int,c_int_p,c_double_p ] 
 lib.saveToXsfAtoms.restype   =  None
-def saveToXsfAtoms( fname, ibuff, atypes, apos ):
+def saveToXsfAtoms( fname, ibuff, atypes, apos, stride=2, offset=0 ):
     fname = fname.encode('utf-8')
     na = len(atypes)
-    lib.saveToXsfAtoms( fname, ibuff,   na, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
+    lib.saveToXsfAtoms( fname, ibuff, stride, offset,  na, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
 
 #void saveToXsfAtomsData(const char* fname, double* data, int natoms, int* atypes, double* apos )
 lib.saveToXsfAtomsData.argtypes  = [ c_char_p, c_int_p, c_double_p, c_int,c_int_p,c_double_p ] 

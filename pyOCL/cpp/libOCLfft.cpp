@@ -104,6 +104,7 @@ class OCLfft : public OCLsystem { public:
 
     int iKernell_mull=-1;
     int iKernell_roll=-1;
+    int iKernell_grad=-1;
     int iKernell_lincomb=-1;
     int iKernell_project=-1;
     int iKernell_project_tex=-1;
@@ -256,29 +257,19 @@ class OCLfft : public OCLsystem { public:
         //err = enque( 3, Ns, 0 ); 
         err = enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
         OCL_checkError(err, "roll_bufs_1 ");  
-        /*
-        size_t global[4]{128,64,32,0}; 
-        size_t local [4]{1,1,1,1};   
-        //int global[4]{128,64,32,0}; 
-        //int local [4]{1,1,1,1};   
-        cl_kernel kernel = kernels[iKernell_roll];
-        useKernel( iKernell_roll );
-        //err |= clSetKernelArg(kernel, 0, sizeof(cl_mem), &(buffers[ibuffA].p_gpu) );
-        //err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[ibuffB].p_gpu) );
-        //err |= clSetKernelArg(kernel, 2, sizeof(int)*4,  &shift );
-        //err |= clSetKernelArg(kernel, 3, sizeof(int)*4,  &ngrid );
-        //argCounter+=2;
+    }
+
+    void gradient( int ibuffA, int ibuffB, float4 mask ){
+        int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        useKernel( iKernell_grad );
         err |= useArgBuff( ibuffA );
         err |= useArgBuff( ibuffB );
-        err |= clSetKernelArg(kernel, 0, sizeof(cl_mem), &(buffers[ibuffA].p_gpu) );
-        err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[ibuffB].p_gpu) );
-        err |= _useArg( shift );
+        err |= _useArg( mask );
         err |= _useArg( ngrid );
-        err = clEnqueueNDRangeKernel(  commands, kernel, 3, NULL, global, local, 0, NULL, NULL); 
-        OCL_checkError(err, "roll_bufs ");
-        err = clFinish(commands);
-        OCL_checkError(err, "roll_bufs ");
-        */
+        OCL_checkError(err, "gradient 1 ");
+        err = enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
+        OCL_checkError(err, "gradient 2 ");  
     }
 
     void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
@@ -364,12 +355,13 @@ class OCLfft : public OCLsystem { public:
     void initTask_gradient( int ibuffA, int ibuff_result ){
         //printf( "BEGIN initTask_gradient \n" );
         //cltask_poissonW.setup( this, iKernell_poissonW, 1, Ntot, 1 );
-        cltask_poissonW.setup4( this, iKernell_gradient, 3, *(size_t4*)Ns, (size_t4){1,1,1,1} );
-        cltask_poissonW.args = { 
-            INTarg ((int)Ntot),
+        cltask_gradient.setup4( this, iKernell_gradient, 3, *(size_t4*)Ns, (size_t4){1,1,1,1} );
+        Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
+        cltask_gradient.args = { 
+            REFarg(Nvec),           //5
             BUFFarg(ibuffA),
             BUFFarg(ibuff_result),
-            REFarg(dcell_gradient)           
+            REFarg (dcell_gradient)        
         };
         //printf( "END initTask_gradient \n" );
     }
@@ -540,11 +532,11 @@ class OCLfft : public OCLsystem { public:
     }
 
     void gradient( int ibuffA, int ibuff_result, float4* dcell=0 ){
-        //printf( "BEGIN poisson %i -> %i ( %s -> %s ) \n", ibuffA, ibuff_result, buffers[ibuffA].name, buffers[ibuff_result].name );
+        //printf( "BEGIN gradient %i -> %i ( %s -> %s ) \n", ibuffA, ibuff_result, buffers[ibuffA].name.c_str(), buffers[ibuff_result].name.c_str() );
         if( dcell ){ dcell_gradient = *dcell; }
-        initTask_gradient( ibuffA, ibuff_result );                   //printf( "DEBUG 1 ");
-        cltask_gradient.enque( );                                    //printf( "DEBUG 6 ");
-        finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );            //printf( "DEBUG 7 ");
+        initTask_gradient( ibuffA, ibuff_result );
+        cltask_gradient.enque( );
+        finishRaw();
     }
 
     void cleanup(){
@@ -564,6 +556,7 @@ class OCLfft : public OCLsystem { public:
         buildProgram( srcpath );
         iKernell_mull             = newKernel( "mul" );
         iKernell_roll             = newKernel( "roll" );
+        iKernell_grad             = newKernel( "makeForceField" );
         iKernell_poissonW         = newKernel( "poissonW" );
         iKernell_gradient         = newKernel( "gradient" );
         iKernell_project          = newKernel( "projectAtomsToGrid" );
@@ -571,7 +564,6 @@ class OCLfft : public OCLsystem { public:
         iKernell_project_dens_tex = newKernel( "projectOrbDenToGrid_texture" );
         iKernell_project_atom_dens_tex = newKernel( "projectAtomDenToGrid_texture" );
         iKernell_projectPos_tex   = newKernel( "projectWfAtPoints_tex" );
-
         //printf( "DEBUG makeMyKernels END \n" );
         //exit(0);
     };
@@ -622,12 +614,12 @@ class OCLfft : public OCLsystem { public:
         grid.saveXSF( fname, data, 1, 0, natoms, atypes,apos );
     }
 
-    void saveToXsf(const char* fname, int ibuff, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
-        update_GridShape();
-        float* cpu_data = new float[Ntot*2]; // complex 2*float
+    void saveToXsf(const char* fname, int ibuff, int stride=2, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
+        update_GridShape();                   
+        float* cpu_data = new float[Ntot*stride]; // complex 2*float
         download( ibuff,cpu_data);
         finishRaw();
-        grid.saveXSF( fname, cpu_data, 2, 0,   natoms,atypes,apos );
+        grid.saveXSF( fname, cpu_data, stride, offset,   natoms, atypes,apos );
         delete [] cpu_data;
     }
 
@@ -955,8 +947,8 @@ extern "C" {
     void saveToBin(const char* fname, int ibuff){ oclfft.saveToBin(fname, ibuff); }
     void loadFromBin(const char* fname, int ibuff){ oclfft.loadFromBin(fname,ibuff); }
 
-    void saveToXsf     (const char* fname, int ibuff){ return oclfft.saveToXsf(fname, ibuff,0,0,0); }
-    void saveToXsfAtoms(const char* fname, int ibuff, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, natoms,atypes,(Vec3d*)apos); }
+    void saveToXsf     (const char* fname, int ibuff, int stride, int offset ){ return oclfft.saveToXsf(fname, ibuff,stride,offset,0,0,0); }
+    void saveToXsfAtoms(const char* fname, int ibuff, int stride, int offset, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, stride, offset, natoms,atypes,(Vec3d*)apos); }
     void saveToXsfAtomsData(const char* fname, int* ngrid, double* data, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsfData(fname, *(Vec3i*)ngrid, data, natoms,atypes,(Vec3d*)apos); }
 
     void initFireBall( int natoms, int* atypes, double* apos ){

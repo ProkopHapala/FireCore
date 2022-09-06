@@ -14,6 +14,25 @@ from pyOCL import high_level as oclh
 from pyOCL import jobs
 from pyOCL import atomicUtils as au
 
+def test_job_Density_Gradient():
+    ocl.setErrorCheck( 1 )
+    print( "# --- Preparation" )
+    apos,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+    ngrid=(128,64,32)
+    dcell = [0.2,0.2,0.2,0.2]
+    iA=0; iC=1
+
+    print( "# --- SCF density")
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, bSCF=True, bDen0diff=False )
+    ibuff_FE  = ocl.newFFTbuffer( "FE", 4 )
+    ocl.gradient( iA, ibuff_FE, dcell)
+    ocl.saveToXsf( "F_x.xsf", ibuff_FE, stride=4, offset=0 )
+    ocl.saveToXsf( "F_y.xsf", ibuff_FE, stride=4, offset=1 )
+    ocl.saveToXsf( "F_z.xsf", ibuff_FE, stride=4, offset=2 )
+    ocl.saveToXsf( "F_w.xsf", ibuff_FE, stride=4, offset=3 )
+    #ocl.ocl.saveToXsf( "test.xsf", ibuff_FE, stride=4, offset=0 )
+
+
 def job_make_Eelec_Epauli():
     ocl.setErrorCheck( 1 )
     print( "# --- Preparation" )
@@ -42,8 +61,6 @@ def job_make_Eelec_Epauli():
     #ocl.saveToXsf( "Dens_bak.xsf",  ibuff_DensBak )
     #ocl.saveToXsf( "Dens_orig.xsf", iA)
     #ocl.saveToXsf( "Dens_roll.xsf", ibuff_ConvOut )
-
-    #exit()
 
     print( "# ==== E_Pauli ( density convolution )")
     ocl.loadFromBin( "../test_CO/dens_scf.bin", ibuff_densCO )
@@ -116,7 +133,8 @@ def job_poisson_equation( iA=0, iC=1 ):
 #job_convolve_density_with_CO_orig()
 #job_convolve_density_with_CO()
 #job_poisson_equation()
-job_make_Eelec_Epauli()
+#job_make_Eelec_Epauli()
+test_job_Density_Gradient()
 
 exit()
 
