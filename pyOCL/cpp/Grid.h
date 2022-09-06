@@ -216,6 +216,7 @@ class GridShape {
 
     template<typename T>
     void toXSF( FILE* fout, T* FF, int stride, int offset ) const {
+        //printf( "DEBUG GridShale::toXSF() stride %i offset %i \n", stride, offset );
         headerToXsf( fout );
         int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
         for ( int ic=0; ic<nz; ic++ ){

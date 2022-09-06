@@ -1,6 +1,7 @@
 #ifndef  clUtils_h
 #define  clUtils_h
 
+#include <string>
 #include <vector>
 #include <CL/cl.h>
 
@@ -19,7 +20,8 @@ class OCLBuffer{
     size_t       typesize = 0;
     bool         read_on_finish = false;
     cl_mem_flags flags    = CL_MEM_READ_WRITE;
-    char       * name     = NULL;
+    //char       * name     = NULL;
+    std::string   name;
     // following is needed only for images
     int  img_dims = 0;
     int  nImg[3]  = {0,0,0};
@@ -343,7 +345,7 @@ class OCLtask{
             switch(args[i].kind){
                 case OCL_INT:   printf( "[%li]int %i, ",     i, args[i].i ); break;
                 case OCL_FLOAT: printf( "[%li]float %g, ",   i, args[i].f ); break;
-                case OCL_BUFF:  printf( "[%li]buff[%i]:%s, ",i, args[i].i, cl->buffers[args[i].i].name );   break;
+                case OCL_BUFF:  printf( "[%li]buff[%i]:%s, ",i, args[i].i, cl->buffers[args[i].i].name.c_str() );   break;
                 default:        printf( "[%li]arg(type=%i,val=%i) ",  i, args[i].kind, args[i].i );   break;
             }
         }

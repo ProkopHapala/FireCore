@@ -118,6 +118,7 @@ __kernel void roll(
 }
 */
 
+
 __kernel void roll(
     __global float2*  InBuff,    //1
     __global float2*  OutBuff,   //2
@@ -143,6 +144,67 @@ __kernel void roll(
     }
 }
 
+__kernel void makeForceField(
+    __global   float2*  InBuff,   //1
+    __global   float4*  OutBuff,  //2
+    //__write_only image3d_t imgOut,  // 2
+    float4  mask,                   //3
+    int4   nGrid                    //4
+){
+    const int ia  = get_global_id (0);
+    const int ib  = get_global_id (1);
+    const int ic  = get_global_id (2);
+    float4 FE=(float4){0.0f,0.0f,0.0f,0.0f};
+    int nab = nGrid.x*nGrid.y;
+    if( (ia<nGrid.x) && (ib<nGrid.y) && (ic<nGrid.z) ){
+        int i0; 
+        int i1 = nGrid.x*( ib + nGrid.y*ic);
+        FE.x =  mask.y * InBuff[ i0 + wrap( ia+2, nGrid.x) ].x
+             +  mask.x * InBuff[ i0 + wrap( ia+1, nGrid.x) ].x
+             -  mask.x * InBuff[ i0 + wrap( ia-1, nGrid.x) ].x
+             -  mask.y * InBuff[ i0 + wrap( ia-2, nGrid.x) ].x;
+        int i2 = ia + nab*ic;
+        FE.y =  mask.y * InBuff[ i0 + wrap( ib+2, nGrid.y)*nGrid.x ].x
+             +  mask.x * InBuff[ i0 + wrap( ib+1, nGrid.y)*nGrid.x ].x
+             -  mask.x * InBuff[ i0 + wrap( ib-1, nGrid.y)*nGrid.x ].x
+             -  mask.y * InBuff[ i0 + wrap( ib-2, nGrid.y)*nGrid.x ].x;
+        int i3 = ia + nGrid.x*ib;
+        FE.x =  mask.y * InBuff[ i0 + wrap( ic+2, nGrid.z)*nab ].x
+             +  mask.x * InBuff[ i0 + wrap( ic+1, nGrid.z)*nab ].x
+             -  mask.x * InBuff[ i0 + wrap( ic-1, nGrid.z)*nab ].x
+             -  mask.y * InBuff[ i0 + wrap( ic-2, nGrid.z)*nab ].x;
+        int iG = nGrid.x*( ib + nGrid.y*ic);
+        OutBuff[iG] = FE;
+        //write_imagef( imgOut, (int4){ia,ib,ic,0}, FE );
+    }
+}
+
+#define ixyz(ix,iy,iz)  (ix) + nx*( (iy) + ny*(iz) )
+
+__kernel void gradient(
+    const int4       nGrid,    
+    __global float2* A,
+    __global float4* out,
+    const float4     inv_d
+){
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    const int nx = nGrid.x;
+    const int ny = nGrid.y;
+    const int nz = nGrid.z;
+    //__local float4 LATOMS[64];    // ToDo - LATER use local memory ?
+    int i = ixyz(ix,iy,iz);
+    //if(i==0){ printf( "GPU gradient() nxyz(%i,%i,%i) \n", nx,ny,nz ); }
+    out[ i ] = (float4){
+        (A[ ixyz(ix+1,iy  ,iz  ) ].x - A[ixyz(ix-1,iy  ,iz  )].x)*inv_d.x,
+        (A[ ixyz(ix  ,iy+1,iz  ) ].x - A[ixyz(ix  ,iy-1,iz  )].x)*inv_d.y,
+        (A[ ixyz(ix  ,iy  ,iz+1) ].x - A[ixyz(ix  ,iy  ,iz-1)].x)*inv_d.z,
+        A[ i ].x
+    }; 
+    //if( (ix==60)&&(iy==32)&&(iz==15) ){ printf( "GPU out(%g,%g,%g,%g) iy(%i,%i) iz(%i,%i)\n", out[i].x,out[i].y,out[i].z,out[i].w,  ixyz(ix,iy+1,iz),ixyz(ix,iy-1,iz),   ixyz(ix,iy,iz+1),ixyz(ix,iy,iz-1)   ); }
+};
+
 __kernel void lincomb(
     const int N,
     __global float* A,
@@ -155,6 +217,17 @@ __kernel void lincomb(
         out[i] = A[i]*coefs.x + B[i]*coefs.y; 
     }
 }
+
+
+
+
+
+
+
+
+
+
+
 
 // https://github.com/ProkopHapala/ProbeParticleModel/blob/OpenCL_py3/pyProbeParticle/fieldFFT.py
 //
@@ -189,36 +262,6 @@ __kernel void poissonW(
     }
     //if( (ix==(nx/2))&&(iy==(ny/2)) ){ printf( "GPU iz,i[%i,%i|%i] k %g A[i] %g out %g \n", iz, i, N, f, A[i].x, out[i].x ); };
 };
-
-#define ixyz(ix,iy,iz)  ix + nx*( iy + ny*iz )
-
-__kernel void gradient(
-    const int4       off,    
-    __global float2* A,
-    __global float4* out,
-    const float4     inv_d
-){
-    const int ix = get_global_id(0);
-    const int iy = get_global_id(1);
-    const int iz = get_global_id(2);
-    //const int iw = get_global_id(3);
-    const int nx = get_global_size(0);
-    const int ny = get_global_size(1);
-    const int nz = get_global_size(2);
-    //__local float4 LATOMS[64];    // ToDo - LATER use local memory ?
-    int i = ixyz(ix,iy,iz);
-    int jx = ix+off.x;
-    int jy = iy+off.y;
-    int jz = iz+off.z;
-    //int j = ixyz(ix,iy,iz);
-    out[ i ] = (float4){
-        (A[ ixyz(ix+1,iy  ,iz  ) ].x - A[ixyz(ix-1,iy  ,iz  )].x)*inv_d.x,
-        (A[ ixyz(ix  ,iy+1,iz  ) ].x - A[ixyz(ix  ,iy-1,iz  )].x)*inv_d.y,
-        (A[ ixyz(ix  ,iy  ,iz+1) ].x - A[ixyz(ix  ,iy  ,iz-1)].x)*inv_d.z,
-        A[ ixyz(ix,iy,iz) ].x
-    }; 
-};
-
 
 // Grid projection
 
