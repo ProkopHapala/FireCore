@@ -114,6 +114,12 @@ lib.copy.restype   =  c_int
 def copy( iBufFrom, iBufTo, nbytes=-1, src_offset=0, dst_offset=0   ):
     return lib.copy( iBufFrom, iBufTo, nbytes, src_offset, dst_offset )
 
+#int copyBuffToImage( int iBuff, int itex, int nbytes=-1, int src_offset=0                   ){
+lib.copyBuffToImage.argtypes  = [ c_int, c_int,  c_int,  c_int, c_int ] 
+lib.copyBuffToImage.restype   =  c_int
+def copyBuffToImage( iBuff, itex, nx,ny,nz ):
+    return lib.copyBuffToImage( iBuff, itex, nx,ny,nz )
+
 # void roll_buf( int ibuffA, int ibuffB, int* shift )
 lib.roll_buf.argtypes  = [ c_int, c_int, c_int_p ] 
 lib.roll_buf.restype   =  None
@@ -245,34 +251,18 @@ def setGridShape_dCell( Ns, dCell, pos0=None ):
         pos0 = getCellHalf( Ns, dCell )  # NOT sure why this fits best
     setGridShape( pos0=pos0, dA=dCell[0]+[0.0], dB=dCell[1]+[0.0], dC=dCell[2]+[0.0] )
 
-#void initFireBall( int natoms, int* atypes, double* apos ){
-lib.initFireBall.argtypes  = [ c_int, array1i, array2d ] 
-lib.initFireBall.restype   =  None
-def initFireBall( atypes, apos ):
-    natoms = len(atypes)
-    lib.initFireBall( natoms, atypes, apos )
-
 # void run_fft( int ibuff, bool fwd, float* data )
 lib.runfft.argtypes  = [ c_int, c_bool ] 
 lib.runfft.restype   =  None
 def runfft(ibuff, fwd=True ):
     lib.runfft( ibuff, fwd )
 
-#void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
-lib.approx.argtypes  = [ c_int, c_int, c_double_p, c_double_p, c_double_p ] 
-lib.approx.restype   =  None
-def approx( xs, ys, ws=None, npoly=14 ):
-    n=len(xs)
-    if ws is None:
-        ws = np.ones(n)
-    return lib.approx( n, npoly, _np_as( xs, c_double_p ),_np_as( ys, c_double_p ), _np_as( ws, c_double_p ) )
-
 #void newFFTbuffer( char* name ){ oclfft.newFFTbuffer( name ); }
-lib.newFFTbuffer.argtypes  = [ c_char_p, c_int ] 
+lib.newFFTbuffer.argtypes  = [ c_char_p, c_int, c_int ] 
 lib.newFFTbuffer.restype   =  c_int
-def newFFTbuffer( fname, nfloat=2 ):
+def newFFTbuffer( fname, nfloat=2, ntot=-1 ):
     fname = fname.encode('utf-8')
-    return lib.newFFTbuffer( fname, nfloat )
+    return lib.newFFTbuffer( fname, nfloat, ntot )
 
 # loadWf(const char* fname, double* out){
 lib.loadWf.argtypes  = [ c_char_p, c_float_p ] 
@@ -339,6 +329,68 @@ def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", R
     else:
         Rcuts=np.array(Rcuts,dtype=np.float32)
     return lib.loadWfBasis( path, RcutSamp, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ), _np_as( Rcuts, c_float_p ) )
+
+# =================== OCL_PP
+
+#void initPP( const char* cl_src_dir, size_t* Ns_ ){
+lib.initPP.argtypes  = [ c_char_p , c_long_p ] 
+lib.initPP.restype   =  c_int
+def initPP( Ns, path='../cl' ):
+    global b_Init, b_initFFT
+    b_Init    = True
+    b_initFFT = True
+    path = path.encode('utf-8')
+    Ns=np.array(Ns,dtype=np.int64)
+    return lib.initPP(path, _np_as(Ns,c_long_p) )
+
+#void makeStartPointGrid( int nx, int ny, double* p0, double* da, double* db )
+lib.makeStartPointGrid.argtypes  = [ c_int,c_int, array1d,array1d,array1d ] 
+lib.makeStartPointGrid.restype   =  None
+def makeStartPointGrid( nx,ny, p0, da, db ):
+    p0=np.array(p0)
+    da=np.array(da)
+    db=np.array(db)
+    lib.makeStartPointGrid( nx,ny, p0,da,db )
+
+#void setGridShapePP    ( double* p0, double* dCell                          )
+lib.setGridShapePP.argtypes  = [ c_double_p, array2d ] 
+lib.setGridShapePP.restype   =  None
+def setGridShapePP( dCell, p0=None ):
+    dCell=np.array(dCell)
+    lib.setGridShapePP( _np_as(p0,c_double_p), dCell )
+
+#void relaxStrokesTilted( int ibuff_out, int np=0, float* points=0 )
+lib.relaxStrokesTilted.argtypes  = [ c_int, c_int, c_float_p ] 
+lib.relaxStrokesTilted.restype   =  None
+def relaxStrokesTilted( iBuffOut ):
+    lib.relaxStrokesTilted( iBuffOut, 0,None )
+
+#void getFEinStrokes    ( int ibuff_out, int np=0, float* points=0 )
+lib.getFEinStrokes.argtypes  = [ c_int,  c_int, array1d,  c_int, c_float_p ] 
+lib.getFEinStrokes.restype   =  None
+def getFEinStrokes( iBuffOut, nz=10, dTip=[0.0,0.0,-0.1] ):
+    dTip = np.array(dTip)
+    lib.getFEinStrokes( iBuffOut, nz, dTip,    0, None )
+
+'''
+# ===================== COMMENTED / DEPRECATED FUNCTIONS
+
+#void approx( int npoints, int npolys, double* xs, double* ys, double* ws ){
+lib.approx.argtypes  = [ c_int, c_int, c_double_p, c_double_p, c_double_p ] 
+lib.approx.restype   =  None
+def approx( xs, ys, ws=None, npoly=14 ):
+    n=len(xs)
+    if ws is None:
+        ws = np.ones(n)
+    return lib.approx( n, npoly, _np_as( xs, c_double_p ),_np_as( ys, c_double_p ), _np_as( ws, c_double_p ) )
+
+#void initFireBall( int natoms, int* atypes, double* apos ){
+lib.initFireBall.argtypes  = [ c_int, array1i, array2d ] 
+lib.initFireBall.restype   =  None
+def initFireBall( atypes, apos ):
+    natoms = len(atypes)
+    lib.initFireBall( natoms, atypes, apos )
+'''
 
 # ===================== PYTHON
 

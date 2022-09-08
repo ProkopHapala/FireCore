@@ -107,6 +107,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     double cameraMoveSpeed = 1.0;
     bool useGizmo=true;
     bool bDrawHexGrid=true;
+    bool bHexDrawing=false; 
 
     bool bPrepared_mm = false;
     bool bPrepared_qm = false;
@@ -439,8 +440,7 @@ void TestAppFireCoreVisual::draw(){
     if(useGizmo){
         gizmo.draw();
     }
-    drawingHex(5.0);
-
+    if(bHexDrawing)drawingHex(5.0);
 };
 
 void TestAppFireCoreVisual::drawHUD(){
@@ -450,11 +450,8 @@ void TestAppFireCoreVisual::drawHUD(){
 
 void TestAppFireCoreVisual::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
-    //Vec2d p{ray0.x,ray0.y};
     Vec3d p3 = rayPlane_hit( ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
     Vec2d p{p3.x,p3.y};
-    //glColor3f(1.,0.0,1.);Draw3D::drawPointCross(p3, 0.2); p3.z=z0;
-    //glColor3f(0.,1.0,1.);Draw3D::drawPointCross(p3, 0.2);
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
     //ruler.nodePoint( ip, p );    glColor3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
@@ -486,7 +483,6 @@ void TestAppFireCoreVisual::drawingHex(double z0){
         glEnd();
     }
 }
-
 
 void TestAppFireCoreVisual::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;

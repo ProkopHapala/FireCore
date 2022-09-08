@@ -517,9 +517,12 @@ inline Vec3T<T2> cast(const Vec3T<T1>& i){ Vec3T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y
 //inline void print(Vec3f p){printf("(%g,%g,%g)", p.x,p.y,p.z);};
 //inline void print(Vec3i p){printf("(%i,%i,%i)", p.x,p.y,p.z);};
 
-inline int print( const Vec3f&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
-inline int print( const Vec3d&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
-inline int print( const Vec3i&  v){ return printf( "%i %i %i", v.x, v.y, v.z ); };
+inline int print( const Vec3f&  v){ return printf( "(%g,%g,%g)", v.x, v.y, v.z ); };
+inline int print( const Vec3d&  v){ return printf( "(%g,%g,%g)", v.x, v.y, v.z ); };
+inline int print( const Vec3i&  v){ return printf( "(%i,%i,%i)", v.x, v.y, v.z ); };
+inline int println( const Vec3f&  v){ return printf( "(%g,%g,%g)\n", v.x, v.y, v.z ); };
+inline int println( const Vec3d&  v){ return printf( "(%g,%g,%g)\n", v.x, v.y, v.z ); };
+inline int println( const Vec3i&  v){ return printf( "(%i,%i,%i)\n", v.x, v.y, v.z ); };
 
 template<typename T>
 struct Mat3S{ // symmetric 3x3 matrix
