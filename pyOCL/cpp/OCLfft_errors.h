@@ -2,10 +2,12 @@
 #ifndef  OCLfft_errors_h
 #define  OCLfft_errors_h
 
+
 #include <cstdio>
 #include <CL/cl.h>
-#include "libOCLfft.h"
-#include "clFFT.h"
+//#include "libOCLfft.h"
+#include <clFFT.h>
+//#include "clFFT.h"
 
 const char *OCLfft_err_code (cl_int err_in){
     switch (err_in) {
