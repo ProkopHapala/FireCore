@@ -61,7 +61,7 @@ class OCLBuffer{
     inline int setAsArg( cl_kernel& kernel, int i   ){ return clSetKernelArg(kernel, i, sizeof(cl_mem), &p_gpu );  };
 
 
-    inline int fromGPU ( cl_command_queue& commands,       void* cpu_data, int n_=-1 ){ if(n_<0)n_=n; printf("fromGPU(%li)\n", n ); return clEnqueueReadBuffer ( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); }
+    inline int fromGPU ( cl_command_queue& commands,       void* cpu_data, int n_=-1 ){ if(n_<0)n_=n; return clEnqueueReadBuffer ( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); }
     inline int toGPU   ( cl_command_queue& commands, const void* cpu_data, int n_=-1 ){ if(n_<0)n_=n; return clEnqueueWriteBuffer( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); }
     inline int fromGPU ( cl_command_queue& commands ){ return fromGPU ( commands, p_cpu ); }
     inline int toGPU   ( cl_command_queue& commands ){ return toGPU   ( commands, p_cpu ); }
@@ -313,30 +313,27 @@ class OCLsystem{ public:
     }
 
     int buildProgram( char * fname, cl_program& program_ ){       // TODO : newProgram instead ?
-        printf("DEBUG buildProgram() 1 \n" );
-        char * kernelsource = getKernelSource( fname );       printf("DEBUG buildProgram() 2 \n" );
-        program_ = clCreateProgramWithSource(context, 1, (const char **) & kernelsource, NULL, &err); printf("DEBUG buildProgram() 3 \n" );
+        char * kernelsource = getKernelSource( fname );
+        program_ = clCreateProgramWithSource(context, 1, (const char **) & kernelsource, NULL, &err);
         char tmpstr[1024];
         sprintf(tmpstr,"Creating program with %s", fname);
         OCL_checkError(err, tmpstr);
         free(kernelsource);
-        err =      clBuildProgram(program_, 0,         NULL,      "-I. -cl-std=CL2.0", NULL, NULL);     printf("DEBUG buildProgram() 4 \n" );
+        err =      clBuildProgram(program_, 0,         NULL,      "-I. -cl-std=CL2.0", NULL, NULL);
         //free(kernelsource);     // Why it crashes ?
         if (err != CL_SUCCESS){
             printf( " ERROR in clBuildProgram %s \n", fname);
             OCL_buildProgramFailure( program_, device );
             return -1;
         }
-        printf("DEBUG buildProgram() 5 \n" );
         //delete [] kernelsource; // TODO ??????
         //free(kernelsource);     // Why it crashes ?
-        printf("DEBUG buildProgram() 6 \n" );
         return err;
     }
     int buildProgram( char * fname ){ return buildProgram( fname, program ); }
  
     inline int upload  (int i, const void* cpu_data, int n=-1 ){ return buffers[i].toGPU  (commands,cpu_data,n); };
-    inline int download(int i,       void* cpu_data, int n=-1 ){ printf("download(%i,n=%i)\n",i,n); return buffers[i].fromGPU(commands,cpu_data,n); };
+    inline int download(int i,       void* cpu_data, int n=-1 ){ return buffers[i].fromGPU(commands,cpu_data,n); };
     //inline int upload  (int i, void* p_cpu ){ buffers[i].p_cpu=p_cpu; return buffers[i].toGPU  (commands); };
     //inline int download(int i, void* p_cpu ){ buffers[i].p_cpu=p_cpu; return buffers[i].fromGPU(commands); };
 
@@ -350,8 +347,8 @@ class OCLsystem{ public:
     int  useArg( cl_mem ibuff,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(ibuff) ); };
     int  useArg( int    i_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(int),    &(i_arg) ); };
     int  useArg( float  f_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(float),  &(f_arg) ); };
-    int  useArg_( void*  buff , int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} printf( "arg#%i nbytes %i buff %li \n", i, nbytes, (long)buff ); return clSetKernelArg( current_kernel, i, nbytes,           buff   ); };
-    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} printf( "arg#%i ibuff %i \n", i, ibuff ); return clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff].p_gpu) ); };
+    int  useArg_( void*  buff , int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, nbytes,           buff   ); };
+    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} return clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff].p_gpu) ); };
     int enque( size_t dim, const size_t* global, const size_t* local, int ikernel=-1 ){ 
         cl_kernel kernel;
         if(ikernel<0){kernel=current_kernel;}else{ kernel = kernels[ikernel]; }; 
