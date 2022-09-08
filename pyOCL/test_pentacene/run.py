@@ -24,12 +24,12 @@ def test_PP_sampleFF():
     iA=0; iC=1
     Ns= (ngrid[0],ngrid[1],ngrid[2])
 
-    itex_FE = ocl.initPP( Ns )    ;print("DEBUG 1 itex_FE ", itex_FE )  
+    itex_FE = ocl.initPP( Ns )    #;print("DEBUG 1 itex_FE ", itex_FE )  
     
     print( "# --- SCF density")
-    ibuff_rho  = ocl.newFFTbuffer( "rho", 4 )   ;print("DEBUG 2 ")
-    ibuff_FE   = ocl.newFFTbuffer( "FE" , 4 )   ;print("DEBUG 3 ")
-    jobs.projectDens( iOutBuff=ibuff_rho, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, bSCF=True, bDen0diff=False )  ;print("DEBUG 5 ")
+    ibuff_rho  = ocl.newFFTbuffer( "rho", 4 )   #;print("DEBUG 2 ")
+    ibuff_FE   = ocl.newFFTbuffer( "FE" , 4 )   #;print("DEBUG 3 ")
+    jobs.projectDens( iOutBuff=ibuff_rho, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, bSCF=True, bDen0diff=False )
     ocl.gradient( ibuff_rho,  ibuff_FE, dcell)
     ocl.saveToXsf( "F_x.xsf", ibuff_FE, stride=4, offset=0 )
     ocl.saveToXsf( "F_y.xsf", ibuff_FE, stride=4, offset=1 )
@@ -37,19 +37,28 @@ def test_PP_sampleFF():
     ocl.saveToXsf( "F_w.xsf", ibuff_FE, stride=4, offset=3 )
     #ocl.ocl.saveToXsf( "test.xsf", ibuff_FE, stride=4, offset=0 )
 
-    nx=10;ny=10;nz=10
-    iBuffOut = ocl.newFFTbuffer( "OutFE", nfloat=2, ntot=nx*ny*nz )      ;print("DEBUG 6 ")
-    #ocl.copyBuffToImage( ibuff_FE, itex_FE, ngrid[0],ngrid[1],ngrid[2] ) ;print("DEBUG 7 ")
+    #nx=5;ny=5;nz=5
+    nx=100;ny=100;nz=5
+    iBuffOut = ocl.newFFTbuffer( "OutFE", nfloat=4, ntot=nx*ny*nz )      #;print("DEBUG 6 ")
+    ocl.copyBuffToImage( ibuff_FE, itex_FE, ngrid[0],ngrid[1],ngrid[2] ) #;print("DEBUG 7 ")
     #ocl.copyBuffToImage( ibuff_FE, itex_FE, ngrid[2],ngrid[1],ngrid[0] ) ;print("DEBUG 7 ")
-    ocl.setGridShapePP ( dCell, p0=None )                                ;print("DEBUG 8 ")    
+    ocl.setGridShapePP ( dCell, p0=None )                                #;print("DEBUG 8 ")    
     #ocl.makeStartPointGrid( nx, ny, [2.0,2.0,6.0], [0.1,0.0,0.0], [0.0,0.1,0.0] ) ;print("DEBUG 9 ")
-    ocl.makeStartPointGrid( nx, ny, [0.0,0.0,4.0], [0.1,0.0,0.0], [0.0,0.1,0.0] ) ;print("DEBUG 9 ")
-    #ocl.getFEinStrokes ( iBuffOut, nz )                                  ;print("DEBUG 10")
-    ocl.getFEinStrokes ( iBuffOut, nz, [0.0,0.0,0.1] )                                  ;print("DEBUG 10")
-    OutFE = ocl.download( iBuffOut, Ns=(nx,ny,nz,4), dtype=np.float )    ;print("DEBUG 11")
+    ocl.makeStartPointGrid( nx, ny, [0.0,0.0,4.0], [1.0/nx,0.0,0.0], [0.0,1.0/ny,0.0] ) #;print("DEBUG 9 ")
+    #ocl.getFEinStrokes ( iBuffOut, nz )                                  #;print("DEBUG 10")
+    ocl.getFEinStrokes ( iBuffOut, nz, [0.0,0.0,0.2] )                    #;print("DEBUG 10")
+    OutFE = ocl.download( iBuffOut, Ns=(nx,ny,nz,4), dtype=np.float32 )   #;print("DEBUG 11")
 
     import matplotlib.pyplot as plt
-    plt.imshow( OutFE[:,:,5,0] ); plt.colorbar()
+    #print( "OutFE[:,:,:,0] \n", OutFE[:,:,:,0] )
+    #print( "OutFE[:,:,:,1] \n", OutFE[:,:,:,1] )
+    #print( "OutFE[:,:,:,2] \n", OutFE[:,:,:,2] )
+    plt.figure(figsize=(5*4,4*nz))
+    for i in range(nz):
+        plt.subplot(5,4,i*4+1); plt.imshow( OutFE[:,:,i,0] ); plt.colorbar()
+        plt.subplot(5,4,i*4+2); plt.imshow( OutFE[:,:,i,1] ); plt.colorbar()
+        plt.subplot(5,4,i*4+3); plt.imshow( OutFE[:,:,i,2] ); plt.colorbar()
+        plt.subplot(5,4,i*4+4); plt.imshow( OutFE[:,:,i,3] ); plt.colorbar()
     plt.show()
 
 def test_job_Density_Gradient():

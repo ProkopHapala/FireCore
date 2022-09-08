@@ -64,14 +64,14 @@ extern "C" {
     // ================ PP
 
     int initPP( const char* cl_src_dir, size_t* Ns_ ){
-        oclfft.init();                             ;printf("C DEBUG 1 \n");
-        oclfft.makeMyKernels ( cl_src_dir );       ;printf("C DEBUG 2 \n");
-        oclfft.makeKrenels_PP( cl_src_dir );       ;printf("C DEBUG 3 \n"); 
-        oclfft.initFFT( 3, Ns_ );                  ;printf("C DEBUG 4 \n");
-        //oclfft.itex_FF = oclfft.newFFTimage( "FF" ); ;printf("C DEBUG 5 \n");
-        float4* data = oclfft.debug_gen_FE();      ;printf("C DEBUG 5 \n");
-        oclfft.itex_FF = oclfft.newFFTimage( "FF", data ); ;printf("C DEBUG 6 \n");
-        delete [] data; ;printf("C DEBUG 7 \n");
+        oclfft.init();
+        oclfft.makeMyKernels ( cl_src_dir );
+        oclfft.makeKrenels_PP( cl_src_dir );
+        oclfft.initFFT( 3, Ns_ );
+        oclfft.itex_FF = oclfft.newFFTimage( "FF" );
+        //float4* data = oclfft.debug_gen_FE();      ;printf("C DEBUG 5 \n");
+        //oclfft.itex_FF = oclfft.newFFTimage( "FF", data ); ;printf("C DEBUG 6 \n");
+        //delete [] data; ;printf("C DEBUG 7 \n");
         //oclfft.newFFTbuffer( "inputA" );  //printf( "C initFFT 2 \n" );
         //oclfft.newFFTbuffer( "inputB" );  //printf( "C initFFT 3 \n" );
         //oclfft.newFFTbuffer( "outputC" ); //printf( "C initFFT 4 \n" );

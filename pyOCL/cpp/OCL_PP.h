@@ -49,7 +49,7 @@ class OCL_PP: public OCL_DFT { public:
     }
 
     void makeStartPointGrid( Vec2i ns, Vec3d p0, Vec3d da, Vec3d db ){
-        printf( "makeStartPointGrid() nxy(%i,%i) p0(%g,%g,%g) da(%g,%g,%g) db(%g,%g,%g) \n", ns.x, ns.y,  p0.x,p0.y,p0.z,  da.x,da.y,da.z,  db.x,db.y,db.z );
+        //printf( "makeStartPointGrid() nxy(%i,%i) p0(%g,%g,%g) da(%g,%g,%g) db(%g,%g,%g) \n", ns.x, ns.y,  p0.x,p0.y,p0.z,  da.x,da.y,da.z,  db.x,db.y,db.z );
         n_start_point = ns.x*ns.y;
         float4* ps = new float4[n_start_point];
         for(int iy=0; iy<ns.y; iy++){
@@ -58,21 +58,21 @@ class OCL_PP: public OCL_DFT { public:
                 ps[ ix+ ns.x*iy] = (float4){ p.x,p.y,p.z,0.0f };
             }
         }
-        printf( "makeStartPointGrid() 1 \n" );
+        //printf( "makeStartPointGrid() 1 \n" );
         if(ibuff_start_point<0){ ibuff_start_point=newBuffer( "StartPoints", n_start_point, sizeof(float4) ); }
-        printf( "makeStartPointGrid() 2 \n" );
+        //printf( "makeStartPointGrid() 2 \n" );
         upload( ibuff_start_point, ps, n_start_point );
-        printf( "makeStartPointGrid() 2 \n" );
+        //printf( "makeStartPointGrid() 2 \n" );
         delete [] ps;
     }
 
     void makeKrenels_PP( const char*  cl_src_dir ){
         char srcpath[1024];
         sprintf( srcpath, "%s/relax.cl", cl_src_dir );       
-        printf( "DEBUG makeKrenels_PP() %s \n", srcpath ); printf("DEBUG makeKrenels_PP() 1 \n");
-        buildProgram( srcpath, program_relax );            printf("DEBUG makeKrenels_PP() 2 \n");
-        newTask( "getFEinStrokes"    ,1,{0,0,0,0},{1,0,0,0},program_relax); printf("DEBUG makeKrenels_PP() 3 \n");
-        newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax); printf("DEBUG makeKrenels_PP() 4 \n");
+        printf( "DEBUG makeKrenels_PP() %s \n", srcpath ); 
+        buildProgram( srcpath, program_relax );
+        newTask( "getFEinStrokes"    ,1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
     }
 
@@ -81,27 +81,31 @@ class OCL_PP: public OCL_DFT { public:
         itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[1], sizeof(float)*4, 0, CL_MEM_READ_ONLY, {CL_RGBA, CL_FLOAT} );
         return itex_FF;
     }
-
+/*
     float4* debug_gen_FE( ){ 
         float4* data = new float4[Ntot];
-        float d=0.1;
+        float d=0.02;
         printf( "Ns (%li,%li,%li) \n", Ns[0],Ns[1],Ns[2] );
         for(int ix=0; ix<(int)Ns[0]; ix++){
             //printf( "ix %i \n", ix );
             for(int iy=0; iy<(int)Ns[1]; iy++){
                 for(int iz=0; iz<(int)Ns[2]; iz++){
-                    float fx=sin(ix*d);
-                    float fy=sin(iy*d);
-                    float fz=sin(iz*d); 
-                    int i = iz+Ns[2]*(iy + Ns[1]*ix );
+                    //float fx=sin(ix*d);
+                    //float fy=sin(iy*d);
+                    //float fz=sin(iz*d); 
+                    float fx=ix;
+                    float fy=iy;
+                    float fz=iz; 
+                    //int i = iz+Ns[2]*(iy + Ns[1]*ix );
+                    int i = ix+Ns[0]*(iy + Ns[1]*iz );
                     if(i>(int)Ntot){ printf("i(%i)>Ntot(%li) \n", i, Ntot ); exit(0); }
-                    data[ i ] = (float4){fx,fy,fz, fz*fy*fz };
+                    data[ i ] = (float4){fx,fy,fz, sqrt( fabs(fx*fy*fz)) };
                 }
             }
         }
         return data;
     }
-
+*/
     void getFEinStrokes( int ibuff_out, int nz_, Vec3d dTip_, int np=0, float4* points_=0 ){
         nz=nz_;
         dTip=(float4){(float)dTip_.x, (float)dTip_.y, (float)dTip_.z,0};
@@ -121,8 +125,8 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( dTip  );                // 7
         err |= _useArg( dpos0 );                // 8
         err |= useArg( nz );                // 9
-        printf("DEBUG getFEinStrokes 1 dinvA(%g,%g,%g) dinvA(%g,%g,%g) dinvC(%g,%g,%g)\n",   dinv[0].x,dinv[0].y,dinv[0].z,   dinv[1].x,dinv[1].y,dinv[1].z,   dinv[2].x,dinv[2].y,dinv[2].z );
-        printf("DEBUG getFEinStrokes 1 (%g,%g,%g)\n", dTip.x,dTip.y,dTip.z );
+        //printf("DEBUG getFEinStrokes 1 dinvA(%g,%g,%g) dinvA(%g,%g,%g) dinvC(%g,%g,%g)\n",   dinv[0].x,dinv[0].y,dinv[0].z,   dinv[1].x,dinv[1].y,dinv[1].z,   dinv[2].x,dinv[2].y,dinv[2].z );
+        //printf("DEBUG getFEinStrokes 1 (%g,%g,%g)\n", dTip.x,dTip.y,dTip.z );
         OCL_checkError(err, "getFEinStrokes_1");
         err = task->enque();
         //err = task->enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
