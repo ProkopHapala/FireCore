@@ -13,6 +13,25 @@ from pyOCL import utils as oclu
 from pyOCL import high_level as oclh
 from pyOCL import jobs
 from pyOCL import atomicUtils as au
+from pyOCL import PP as pp
+
+def test_PP_makeFF_LJQ(iZPP=8):
+    ocl.setErrorCheck( 1 )
+    print( "# --- Preparation" )
+    apos,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+    ngrid=(128,64,32)
+    dcell = [0.2,0.2,0.2,0.2]
+    dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]] )
+    iA=0; iC=1
+    Ns= (ngrid[0],ngrid[1],ngrid[2])
+
+    itex_FE  = ocl.initPP( Ns )    #;print("DEBUG 1 itex_FE ", itex_FE )  
+    ibuff_FE = ocl.newFFTbuffer( "FE" , 4 )   #;print("DEBUG 3 ")
+
+    typeParams = pp.loadSpecies('atomtypes.ini')
+    cLJs       = pp.getAtomsLJ( iZPP, Zs, typeParams )
+    ocl.evalLJC_QZs( ibuff_FE, apos, cLJs, Qs=qs )
+    ocl.ocl.ocl.saveToXsf( "F_w.xsf", ibuff_FE, stride=4, offset=3 )
 
 def test_PP_sampleFF():
     ocl.setErrorCheck( 1 )
@@ -181,7 +200,8 @@ def job_poisson_equation( iA=0, iC=1 ):
 #job_poisson_equation()
 #job_make_Eelec_Epauli()
 #test_job_Density_Gradient()
-test_PP_sampleFF()
+#test_PP_sampleFF()
+test_PP_makeFF_LJQ()
 
 exit()
 
