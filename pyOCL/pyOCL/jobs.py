@@ -6,7 +6,6 @@ import sys
 from . import oclfft as ocl
 from . import utils  as oclu
 
-
 def projectAtoms__( atoms, acoefs):
     import matplotlib.pyplot as plt
     import time

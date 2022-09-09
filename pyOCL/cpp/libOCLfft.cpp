@@ -83,7 +83,8 @@ extern "C" {
 
     void relaxStrokesTilted( int ibuff_out, int np=0, float* points=0 ){ oclfft.relaxStrokesTilted( ibuff_out, np, (float4*)points ); };
     void getFEinStrokes    ( int ibuff_out, int nz, double* dTip, int np=0, float* points=0 ){ oclfft.getFEinStrokes    ( ibuff_out, nz, *(Vec3d*)dTip, np, (float4*)points ); };
-    
+    void evalLJC_QZs( int ibuff_out, int na=0, float* atoms=0, float* coefs=0 ){ oclfft.evalLJC_QZs( ibuff_out, na, (float4*)atoms, (float4*)coefs ); }
+
     // ================ END PP
 
     void newFFTbuffer( char* name, int nfloat, int ntot ){ oclfft.newFFTbuffer( name, nfloat, ntot ); }

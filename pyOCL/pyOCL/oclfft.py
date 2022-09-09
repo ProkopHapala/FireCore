@@ -372,6 +372,16 @@ def getFEinStrokes( iBuffOut, nz=10, dTip=[0.0,0.0,-0.1] ):
     dTip = np.array(dTip)
     lib.getFEinStrokes( iBuffOut, nz, dTip,    0, None )
 
+#void evalLJC_QZs( int ibuff_out, int na=0, float* atoms=0, float* coefs=0 ){
+lib.evalLJC_QZs.argtypes  = [ c_int, c_int, c_float_p, c_float_p ] 
+lib.evalLJC_QZs.restype   =  None
+def evalLJC_QZs( iBuffOut, apos, cLJs, Qs=None ):
+    na = len(apos)
+    atoms = np.zeros( (na,4), np.float32 ); atoms[:,:3] = apos[:,:]; atoms[:,3]=Qs;
+    coefs = np.zeros( (na,2), np.float32 ); coefs[:,:]  = cLJs[:,:]
+    lib.evalLJC_QZs( iBuffOut, na, _np_as(atoms,c_float_p), _np_as(coefs,c_float_p) )
+
+
 '''
 # ===================== COMMENTED / DEPRECATED FUNCTIONS
 

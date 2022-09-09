@@ -21,6 +21,10 @@ class OCL_PP: public OCL_DFT { public:
     //float4 dpos0{0.0f,0.0f, 0.0f,0.0f};      // shift of initial positions
     float4 relax_params{0.5f,0.1f,0.02f,0.5f};
     float4 surfFF;
+    //QZs             = [ 0.1,  0, -0.1, 0 ],
+    //Qs              = [ -10, 20,  -10, 0 ],
+    float4 tipQs {10.f,20.f,-10.f,0.0f};
+    float4 tipQZs{0.1f,0.0f, 0.1f,0.0f};
     int nz;
 
     int n_start_point = 0;
@@ -131,18 +135,6 @@ class OCL_PP: public OCL_DFT { public:
         err = task->enque();
         //err = task->enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
         OCL_checkError(err, "getFEinStrokes_2");  
-        /*
-        __kernel void getFEinStrokes(
-            __read_only image3d_t  imgIn,    // 1
-            __global  float4*      points,   // 2
-            __global  float4*      FEs,      // 3
-            float4 dinvA,                    // 4
-            float4 dinvB,                    // 5
-            float4 dinvC,                    // 6
-            float4 dTip,                     // 7
-            float4 dpos0,                    // 8
-            int nz                           // 9
-        */
     }
 
     void relaxStrokesTilted( int ibuff_out, int np=0, float4* points_=0 ){
@@ -171,22 +163,42 @@ class OCL_PP: public OCL_DFT { public:
         err = task->enque();
         //err = task->enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
         OCL_checkError(err, "getFEinStrokes");  
+    }
+
+    void evalLJC_QZs( int ibuff_out, int na=0, float4* atoms=0, float4* coefs=0 ){
+        OCLtask* task = tasks[ task_dict["relaxStrokesTilted"] ];
+        task->global.x = n_start_point;
+        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        if(atoms)upload( ibuff_atoms, atoms, na);
+        if(coefs)upload( ibuff_coefs, coefs, na);
+        useKernel( task->ikernel );
+        err |= useArg    ( nAtoms        );  // 1
+        err |= useArgBuff( ibuff_atoms   );  // 2
+        err |= useArgBuff( ibuff_coefs   );  // 3
+        err |= useArgBuff( ibuff_out     );  // 4
+        err |= useArg    ( (int)Ntot     );  // 5
+        err |= _useArg( pos0 );           // 6
+        err |= _useArg( dA );             // 7
+        err |= _useArg( dB );             // 8
+        err |= _useArg( dC );             // 9
+        err |= _useArg( tipQs );             // 10
+        err |= _useArg( tipQZs );            // 11
+        OCL_checkError(err, "getFEinStrokes");
+        err = task->enque();
+        OCL_checkError(err, "getFEinStrokes");  
         /*
-        __kernel void relaxStrokesTilted(
-            __read_only image3d_t  imgIn,   // 0
-            __global  float4*      points,  // 2
-            __global  float4*      FEs,     // 3
-            float4 dinvA,                   // 4
-            float4 dinvB,                   // 5
-            float4 dinvC,                   // 6
-            float4 tipA,                    // 7
-            float4 tipB,                    // 8
-            float4 tipC,                    // 9 
-            float4 stiffness,               // 10
-            float4 dpos0,                   // 11
-            float4 relax_params,            // 12
-            float4 surfFF,                  // 13
-            int nz                          // 14
+        __kernel void evalLJC_QZs(
+            const int nAtoms,        // 1
+            __global float4* atoms,  // 2
+            __global float2*  cLJs,  // 3
+            __global float4*    FE,  // 4
+            int4 nGrid,              // 5
+            float4 grid_p0,          // 6 
+            float4 grid_dA,          // 7
+            float4 grid_dB,          // 8
+            float4 grid_dC,          // 9
+            float4 Qs,               // 10
+            float4 QZs               // 11
         */
     }
 
