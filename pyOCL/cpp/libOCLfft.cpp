@@ -2,6 +2,9 @@
 
 // No need to explicitely include the OpenCL headers 
 //#include <clFFT.h>
+
+#define CL_TARGET_OPENCL_VERSION 200
+
 #include "OCLfft_errors.h"
 #include <clFFT.h>
 #include "OCL.h"

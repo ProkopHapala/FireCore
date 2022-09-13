@@ -714,8 +714,6 @@ __kernel void eval_GridFF(
     FE_Coul[iG] = fe_Coul;
 }
 
-
-
 __kernel void evalLJC_QZs(
     const int nAtoms,        // 1
     __global float4* atoms,  // 2
@@ -740,6 +738,8 @@ __kernel void evalLJC_QZs(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
+
+    if (  get_global_id(0)==0 ) { printf("GPU evalLJC_QZs \n" ); }
 
     if(iG>nMax) return;
     //if(iG==0) printf( " Qs (%g,%g,%g,%g) QZs (%g,%g,%g,%g) \n", Qs.x,Qs.y,Qs.z,Qs.w,   QZs.x,QZs.y,QZs.z,QZs.w   );
@@ -770,7 +770,7 @@ __kernel void evalLJC_QZs(
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-    //if ( (ia==75)&&(ib==75) ) { printf(" iz %i fe %g,%g,%g,%g \n", ic, fe.x, fe.y, fe.z, fe.w ); }
+    if ( (ia==nGrid.x/2)&&(ib==nGrid.y/2) ) { printf(" iz %i pos(%g,%g,%g) fe(%g,%g,%g|%g) \n", ic,  pos.x,pos.y,pos.z,  fe.x, fe.y, fe.z, fe.w ); }
 
     FE[iG] = fe;
 }
