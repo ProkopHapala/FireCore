@@ -3,6 +3,9 @@
 import sys
 import os
 
+import os
+script_path= os.path.dirname(os.path.abspath(__file__))
+
 CC_KINDS={
 'F90': ( '', '.f90', '$(FFLAGS)',   '$(INCLUDES)', '$(F90)' ),
 'F77': ( '', '.f',   '$(FFLAGS77)', '$(INCLUDES)', '$(F77)' ),
@@ -82,24 +85,24 @@ def pruneVariants(groups):
 def flatten_groups( group_dict, variants ):
     group_dict_flat = {}
     #print " flatten_groups : group_dict ", group_dict
-    for k,vs in group_dict.iteritems():
+    for k,vs in group_dict.items():
         group_dict_flat[k] = { o for var in variants for o in vs.get(var,[]) }
     return group_dict_flat
 
 def groups2files( group_dict, variants, pre="", post="" ):
     group_dict_flat = {}
-    for k,vs in group_dict.iteritems():
+    for k,vs in group_dict.items():
         group_dict_flat[k] = { pre+o+post for var in variants for o in vs.get(var,[]) }
     return group_dict_flat
 
 def groups2files_cc( group_dict, variants, pre="", cc_kinds=CC_KINDS, inv_SPECIAL_CC={}, default='F90' ):
     group_dict_flat = {}
-    for k,vs in group_dict.iteritems():
+    for k,vs in group_dict.items():
         group_dict_flat[k] = { pre+o+CC_KINDS[inv_SPECIAL_CC.get(o,default)][1] for var in variants for o in vs.get(var,[]) }
     return group_dict_flat
 
 def extractVariants( group_dict ):
-    return { v for k,vs in group_dict.iteritems() for v in vs }
+    return { v for k,vs in group_dict.items() for v in vs }
 
 def toMakefile_list( fout, name, lst, pre=" ", post=".o", nclmax=120 ):
     s   = name+" = "
@@ -129,7 +132,7 @@ def toMakefile_obj_groups( fout, group_dict, group_names, var_names, build_path=
             for var in var_names:
                 if var in varinants:
                     toMakefile_list( fout, name, varinants[var],    nclmax=nclmax )
-                    fout.write( "\n\n\n" )
+                    fout.write( "\n" )
                     break
         else:
             for var in var_names:
@@ -140,7 +143,7 @@ def toMakefile_obj_groups( fout, group_dict, group_names, var_names, build_path=
             for var in var_names:
                 if var in varinants:
                     fout.write( " $(%s_%s)" %(name,var) )
-            fout.write( "\n\n\n" )
+            fout.write( "\n" )
 
 def toMakefile_cc_obj( fout, o, pre="../", post=".f90", fflags="$(FFLAGS)", Iflags="$(INCLUDES)", compiler="$(F90)" ):
     src = pre+o+post
@@ -223,7 +226,7 @@ def toMakefile_list_vars( fout, name, lst, pre=" $(", post=") " ):
     fout.write( "\n" )
 
 def toMakefile_name( fout, name, val ):
-    fout.write( name + " = " + val + "\n\n" )
+    fout.write( name + " = " + val + "\n" )
 
 def toMakefile_tar_inline_target( fout, body ):
     fout.write( body+"\n\n" )
@@ -241,16 +244,12 @@ def toMakefile_target( fout, name, depend, objs, compiler="$(F90)", fflags="$(FF
 
 def checkFiles( path, names,  bRedudant=True, bMissing=True ):
     ls  = os.listdir(path)
-    #ls_    = set(ls)
-    #names_ = set(names)
     shared, dl, dn = diffTwoLists( ls, names )
-    if ( bMissing  and (len(dn)>0) ): print path," : missing  : " , dn #, "                checkFiles "
-    if ( bRedudant and (len(dl)>0) ): print path," : redudant : " , dl #, "                checkFiles "
+    if ( bMissing  and (len(dn)>0) ): print( path," : missing  : " , dn )#, "                checkFiles "
+    if ( bRedudant and (len(dl)>0) ): print( path," : redudant : " , dl )#, "                checkFiles "
     return shared, dl, dn
 
 def checkFilesInPaths( path_names, name_dct, pre="", bRedudant=True, bMissing=True ):
-    #print "checkFilesInPaths: path_names ", path_names
-    #print "checkFilesInPaths: name_dct ", name_dct
     for name in path_names:
         path = pre+name
         #print "-------------- ", path    #,"     (in checkFilesInPaths)"
@@ -262,6 +261,23 @@ def fomatLinkLog( fname_in, fname_out ):
     with open(fname_out,"w") as fout:
         for w in words:
             fout.write(w+"\n")
+
+def includeFile(fout,fname):
+    with open(fname,'r') as fin:
+        for line in fin:
+            fout.write(line)
+
+def includeMachineFile( fname_local="machinefile.sh", fname_bak="simple_ubuntu_2022.sh" ):
+    try:
+        fname=fname_local
+        fin=open(fname,'r')
+    except:
+        fname=script_path+"/Machinefiles/"+fname_bak
+        fin=open(fname,'r')
+    print( "MACHINE FILE : ", fname )
+    for line in fin:
+        fout.write(line)
+    fin.close()
 
 if __name__ == "__main__":
 
@@ -292,28 +308,19 @@ if __name__ == "__main__":
     from Makefile_objects  import *
     from Makefile_machines import *
 
-    #import inspect
-    #print [item for item in dir(Makefile_targets) if not item.startswith("__")]
-    #print dict(inspect.getmembers( Makefile_targets ))["f_globals"]
-    #print dir(Makefile_targets)
-    #print Makefile_targets["OBJECTS"]
-    #print "====================================="
-    #for g in Makefile_targets._gobals_:
-    #    print "\n ---------: "+g+" : \n", Makefile_targets._gobals_[g]
-    #print  Makefile_targets._gobals_
-    #exit()
 
-    variants_new = extractVariants( GROUPS ); print " variants_new ", variants_new 
+    variants_new = extractVariants( GROUPS ); print( " variants_new ", variants_new )
 
     # see Understanding nested list comprehension syntax in Python : https://spapas.github.io/2016/04/27/python-nested-list-comprehensions/
-    inv_SPECIAL_CC = { v:k for k,vs in SPECIAL_CC.iteritems() for v in vs }
-    print " inv_SPECIAL_CC : ",  inv_SPECIAL_CC
+    inv_SPECIAL_CC = { v:k for k,vs in SPECIAL_CC.items() for v in vs }
+    print( " inv_SPECIAL_CC : ",  inv_SPECIAL_CC )
 
     #build_path = "build/"
     #src_path_make  = "../SRC/"
     #src_path_check = "SRC/"
     src_path_make  = "../fortran/"
     src_path_check = "fortran/"
+
     #src_path = "SRC/"
     #MKL_PATH = "/home/prokop/SW/intel"
     #MKL_PATH = "/home/prokop/intel"
@@ -321,8 +328,8 @@ if __name__ == "__main__":
     MPI_PATH = "/usr/lib/x86_64-linux-gnu/openmpi"
     #FFLAGS, LFLAGS_, LPATHS = genFlags( ["OPT"], MKL_PATH=MKL_PATH, MPI_PATH=MPI_PATH )
     LFLAGS_, LPATHS   = genLFLAGS( MKL_PATH=MKL_PATH, MPI_PATH=MPI_PATH )
-    print "LFLAGS_ ", LFLAGS_
-    print "LPATH   ", LPATHS
+    print( "LFLAGS_ ", LFLAGS_ )
+    print( "LPATH   ", LPATHS )
 
     _FFLAGS = Makefile_machines._FFLAGS 
     #mode_opt = 'OPT'
@@ -330,69 +337,47 @@ if __name__ == "__main__":
     #mode_opt = 'DEBUGw'
     if len(sys.argv)>1: mode_opt=sys.argv[1]
 
-    #FFLAGS = _FFLAGS[mode_opt] + _FFLAGS['F90']
-    #FFLAGS = _FFLAGS[mode_opt] + _FFLAGS['F90']
-    #FFLAGS = _FFLAGS[mode_opt] + _FFLAGS['F90']
-
     INCLUDES = "-I/usr/include/mpich/"
-
-    #OPTIONAL_MODULES = [ 'NAC','QMMM','DFTD3','BIAS','TRANS','TDSE' ]
-
     my_variant_names = ['','DOUBLE','PROGRAM'] + all_optional_modules
     my_variant_names_set = set(my_variant_names)
-    #variant_names_ = ['','DOUBLE','GAMMA']
-    #variant_names_ = ['','DOUBLE','MPI-k','QMMM','ORDERN']
-    #variant_names_ = ['','DOUBLE','MPI-k','QMMM','ORDERN']
-
     my_group_names = select_obj_groups( GROUPS, all_group_names, my_variant_names_set )
-    print " === my_group_names ", my_group_names
-    #exit(-1)
-
-    #groups_flat = flatten_groups( GROUPS, variant_names )
-    #groups_flat = groups2files( GROUPS, variant_names, post=".f90" )
+    print( " === my_group_names ", my_group_names )
     groups_flat = groups2files_cc( GROUPS, all_variant_names, cc_kinds=CC_KINDS, inv_SPECIAL_CC=inv_SPECIAL_CC )
 
-    print "======= CHECK GROUP FOLDERs "; checkFiles       ( src_path_check,  all_group_names,                  bRedudant=True, bMissing=True )
-    print "======= CHECK GROUP FILEs   "; checkFilesInPaths( all_group_names, groups_flat, pre=src_path_check, bRedudant=True, bMissing=True )
+    print( "======= CHECK GROUP FOLDERs "); checkFiles       ( src_path_check,  all_group_names,                  bRedudant=True, bMissing=True )
+    print( "======= CHECK GROUP FILEs   "); checkFilesInPaths( all_group_names, groups_flat, pre=src_path_check, bRedudant=True, bMissing=True )
     
-    #print "======= CHECK GROUP FOLDERs "; checkFiles       ( src_path_check, all_group_names,                  bRedudant=False, bMissing=True )
-    #print "======= CHECK GROUP FILEs   "; checkFilesInPaths( all_group_names, groups_flat, pre=src_path_check, bRedudant=False, bMissing=True )
-
     with open("Makefile",'w') as fout:
-        toMakefile_obj_groups( fout, GROUPS, all_group_names, my_variant_names )
-        #toMakefile_list_vars( fout, "OBJECTS_SERVER", OBJECTS_SERVER, )
-        #toMakefile_list_vars( fout, "OBJECTS",        OBJECTS,        )
-        toMakefile_list_vars( fout, "OBJECTS", my_group_names )
-        #fout.write( "(OBJ)/%.o" + "\n\n" )
-        fout.write( "F90 = gfortran\n" )
-        #toMakefile_name( fout, "FFLAGS",   FFLAGS   )
-        #toMakefile_name( fout, "FFLAGS77", FFLAGS   )
-        #toMakefile_name( fout, "LFLAGS_",  LFLAGS_  )
-        toMakefile_name( fout, "FFLAGS",   "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['F90']  )
-        toMakefile_name( fout, "FFLAGS77", "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['F77']  )
-        toMakefile_name( fout, "FFLAGSC",  "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['CC' ]  )
+        
+        # ==== LIBRARIES & PATHS
+        '''
         toMakefile_name( fout, "LFLAGS_",  LFLAGS_  )
         toMakefile_name( fout, "LPATHS",   LPATHS   )
         toMakefile_name( fout, "INCLUDES", INCLUDES )
         #toMakefile_list_vars( fout, "LFLAGS", ["LPATHS","LFLAGS_"] )
         #LFLAGS = " -L/home/prokop/intel/mkl/lib/intel64 -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -L/home/prokop/intel/mkl/intel64 -I/home/prokop/intel/mkl/include/fftw -lfftw3xf_gnu -lm -Bdynamic -L/usr/lib/x86_64-linux-gnu/openmpi/lib -I/usr/lib/x86_64-linux-gnu/openmpi/include -lmpi "
         LFLAGS = " -L"+MKL_PATH+"/mkl/lib/intel64 -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -L/home/prokop/intel/mkl/intel64 -I/home/prokop/intel/mkl/include/fftw -lfftw3xf_gnu -lm -Bdynamic -L/usr/lib/x86_64-linux-gnu/openmpi/lib -I/usr/lib/x86_64-linux-gnu/openmpi/include -lmpi "
+	    toMakefile_name( fout, "LFLAGS", LFLAGS )
+        '''
+        #includeFile(fout,script_path+"/Machinefiles/simple_ubuntu_2022.sh")
+        includeMachineFile()
         
-	toMakefile_name( fout, "LFLAGS", LFLAGS )
-        #toMakefile_name( fout, "FFLAGS", FFLAGS )
-        #writeTarget( fout, "fireball.x"       , "$(OBJECTS)", [OBJECTS       ] )
-        #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", [OBJECTS_SERVER] )
+        # ==== FLAGS
+        fout.write( "F90 = gfortran\n" )
+        toMakefile_name( fout, "FFLAGS",   "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['F90']  )
+        toMakefile_name( fout, "FFLAGS77", "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['F77']  )
+        toMakefile_name( fout, "FFLAGSC",  "  -fPIC  "+ _FFLAGS[mode_opt] + _FFLAGS['CC' ]  )
+
+        # ==== OBJECTS
+        toMakefile_obj_groups( fout, GROUPS, all_group_names, my_variant_names )
+        toMakefile_list_vars( fout, "OBJECTS", my_group_names )
         for body in inline_targets :
-            #writeInlineTarget( fout, key, body )
             toMakefile_tar_inline_target( fout, body )
         toMakefile_target( fout, "fireball.x"    , "$(OBJECTS)", "$(OBJECTS)"        )
-        #toMakefile_target( fout, "libfireball.so", "$(OBJECTS)", "$(OBJECTS)", compiler="$(F90)", fflags=" -shared -fPIC $(FFLAGS)", lflags="$(LFLAGS)" )
         toMakefile_target( fout, "libFireCore.so", "$(OBJECTS)", "$(OBJECTS)", compiler="$(F90)", fflags=" -shared -fPIC $(FFLAGS)", lflags="$(LFLAGS)" )
-        #writeTarget( fout, "fireball_server.x", "$(OBJECTS)", "OBJECTS_SERVER" )
-        #toMakefile_cc_objs   ( fout, GROUPS, group_names, variant_names, special_cc=SPECIAL_CC, src_path=src_path_make )
         toMakefile_cc_objs   ( fout, GROUPS, all_group_names, my_variant_names, src_path=src_path_make, cc_kinds=CC_KINDS, inv_SPECIAL_CC=inv_SPECIAL_CC )
     
-    print " ==== gen_makefile.py DONE ==== "
+    print( " ==== gen_makefile.py DONE ==== " )
 
 
 
