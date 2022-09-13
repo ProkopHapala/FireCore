@@ -73,10 +73,10 @@ class OCL_PP: public OCL_DFT { public:
     void makeKrenels_PP( const char*  cl_src_dir ){
         char srcpath[1024];
         sprintf( srcpath, "%s/relax.cl", cl_src_dir );       
-        printf( "DEBUG makeKrenels_PP() %s \n", srcpath ); 
         buildProgram( srcpath, program_relax );
         newTask( "getFEinStrokes"    ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "evalLJC_QZs"       ,1,{0,0,0,0},{1,0,0,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
     }
 
@@ -159,33 +159,39 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( relax_params );         // 12
         err |= _useArg( surfFF );               // 13
         err |= useArg( nz );                    // 14
-        OCL_checkError(err, "getFEinStrokes");
+        OCL_checkError(err, "relaxStrokesTilted_1");
         err = task->enque();
         //err = task->enque( 3, *(size_t4*)&Ns, (size_t4){1,1,1,1} );
-        OCL_checkError(err, "getFEinStrokes");  
+        OCL_checkError(err, "relaxStrokesTilted_2");  
     }
 
     void evalLJC_QZs( int ibuff_out, int na=0, float4* atoms=0, float4* coefs=0 ){
-        OCLtask* task = tasks[ task_dict["relaxStrokesTilted"] ];
-        task->global.x = n_start_point;
+        OCLtask* task = tasks[ task_dict["evalLJC_QZs"] ];
+        task->global.x = Ntot;
+        //task->global.y = Ns[1];
+        //task->global.z = Ns[2];
         //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        if(ibuff_atoms<0)initAtoms( na, na );
         if(atoms)upload( ibuff_atoms, atoms, na);
         if(coefs)upload( ibuff_coefs, coefs, na);
         useKernel( task->ikernel );
-        err |= useArg    ( nAtoms        );  // 1
-        err |= useArgBuff( ibuff_atoms   );  // 2
-        err |= useArgBuff( ibuff_coefs   );  // 3
-        err |= useArgBuff( ibuff_out     );  // 4
-        err |= useArg    ( (int)Ntot     );  // 5
+        printf("ibuff_out %i \n", ibuff_out);
+        int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        err |= useArg    ( nAtoms        ); // 1
+        err |= useArgBuff( ibuff_atoms   ); // 2
+        err |= useArgBuff( ibuff_coefs   ); // 3
+        err |= useArgBuff( ibuff_out     ); // 4
+        //err |= useArg    ( (int)Ns     ); // 5
+        err |= _useArg( ngrid  );         // 5        
         err |= _useArg( pos0 );           // 6
         err |= _useArg( dA );             // 7
         err |= _useArg( dB );             // 8
         err |= _useArg( dC );             // 9
         err |= _useArg( tipQs );             // 10
         err |= _useArg( tipQZs );            // 11
-        OCL_checkError(err, "getFEinStrokes");
+        OCL_checkError(err, "evalLJC_QZs_1");
         err = task->enque();
-        OCL_checkError(err, "getFEinStrokes");  
+        OCL_checkError(err, "evalLJC_QZs_2");  
         /*
         __kernel void evalLJC_QZs(
             const int nAtoms,        // 1

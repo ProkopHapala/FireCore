@@ -92,9 +92,10 @@ void OCL_buildProgramFailure( cl_program program, cl_device_id device ){
     delete [] log;
 }
 
-void OCL_check_error(cl_int err, const char *operation, char *filename, int line, int i=0){
-    if (err != CL_SUCCESS){
-        fprintf(stderr, "Error during operation '%s', [%i]", operation, i);
+void OCL_check_error(cl_int err, const char *operation, char *filename, int line, int i=-999999){
+    if (err != CL_SUCCESS){        
+        if(i==-999999){ fprintf(stderr, "Error during operation '%s'",     operation   ); }
+        else   { fprintf(stderr, "Error during operation '%s'[%i]", operation, i); }
         fprintf(stderr, "in '%s' on line %d\n", filename, line);
         fprintf(stderr, "Error code was \"%s\" (%d)\n", OCL_err_code(err), err);
         exit(0);
@@ -102,5 +103,6 @@ void OCL_check_error(cl_int err, const char *operation, char *filename, int line
 }
 
 #define OCL_checkError(E, S) if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__);
+#define OCL_checkError_(E, S,I) if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__,I);
 
 #endif

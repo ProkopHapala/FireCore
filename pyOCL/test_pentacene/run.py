@@ -31,7 +31,7 @@ def test_PP_makeFF_LJQ(iZPP=8):
     typeParams = pp.loadSpecies('atomtypes.ini')
     cLJs       = pp.getAtomsLJ( iZPP, Zs, typeParams )
     ocl.evalLJC_QZs( ibuff_FE, apos, cLJs, Qs=qs )
-    ocl.ocl.ocl.saveToXsf( "F_w.xsf", ibuff_FE, stride=4, offset=3 )
+    ocl.saveToXsf( "FE_w.xsf", ibuff_FE, stride=4, offset=3 )
 
 def test_PP_sampleFF():
     ocl.setErrorCheck( 1 )
@@ -199,9 +199,9 @@ def job_poisson_equation( iA=0, iC=1 ):
 #job_convolve_density_with_CO()
 #job_poisson_equation()
 #job_make_Eelec_Epauli()
-test_job_Density_Gradient()
+#test_job_Density_Gradient()
 #test_PP_sampleFF()
-#test_PP_makeFF_LJQ()
+test_PP_makeFF_LJQ()
 
 exit()
 
