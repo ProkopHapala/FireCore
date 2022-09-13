@@ -199,9 +199,9 @@ def job_poisson_equation( iA=0, iC=1 ):
 #job_convolve_density_with_CO()
 #job_poisson_equation()
 #job_make_Eelec_Epauli()
-#test_job_Density_Gradient()
+test_job_Density_Gradient()
 #test_PP_sampleFF()
-test_PP_makeFF_LJQ()
+#test_PP_makeFF_LJQ()
 
 exit()
 
