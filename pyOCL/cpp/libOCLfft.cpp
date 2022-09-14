@@ -84,7 +84,7 @@ extern "C" {
     void makeStartPointGrid( int nx, int ny, double* p0, double* da, double* db ){ oclfft.makeStartPointGrid( (Vec2i){nx,ny}, *(Vec3d*)p0, *(Vec3d*)da, *(Vec3d*)db ); }
     void setGridShapePP    ( double* p0, double* dCell                          ){ if(p0)v2f4(*(Vec3d*)p0,oclfft.pos0); oclfft.setGridShape( *(Mat3d*)dCell ); }
 
-    void relaxStrokesTilted( int ibuff_out, int np=0, float* points=0 ){ oclfft.relaxStrokesTilted( ibuff_out, np, (float4*)points ); };
+    void relaxStrokesTilted( int ibuff_out, int nz, float dtip, int np=0, float* points=0 ){ oclfft.relaxStrokesTilted( ibuff_out, nz, dtip, np, (float4*)points ); };
     void getFEinStrokes    ( int ibuff_out, int nz, double* dTip, int np=0, float* points=0 ){ oclfft.getFEinStrokes    ( ibuff_out, nz, *(Vec3d*)dTip, np, (float4*)points ); };
     void evalLJC_QZs( int ibuff_out, int na=0, float* atoms=0, float* coefs=0 ){ oclfft.evalLJC_QZs( ibuff_out, na, (float4*)atoms, (float4*)coefs ); }
 

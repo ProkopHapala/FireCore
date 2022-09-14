@@ -15,6 +15,52 @@ from pyOCL import jobs
 from pyOCL import atomicUtils as au
 from pyOCL import PP as pp
 
+def test_PP_scan_LJQ(iZPP=8, nx=100, ny=50, nz=20, dtip=0.1):
+    ocl.setErrorCheck( 1 )
+    print( "# --- Preparation" )
+    apos,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+    ngrid=(128,64,64)
+    dcell = [0.2,0.2,0.2,0.2]
+    dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]] )
+    cell = [ngrid[0]*dcell[0],ngrid[1]*dcell[1],ngrid[2]*dcell[2]]
+    p0   = np.array([cell[0]*-0.5,cell[1]*-0.5,cell[2]*-0.5 + 3.0])
+    p0shift = p0*-1.; p0shift[2]+=7.0
+    iA=0; iC=1
+    Ns= (ngrid[0],ngrid[1],ngrid[2])
+
+    itex_FE  = ocl.initPP( Ns )
+    ibuff_FE = ocl.newFFTbuffer( "FE" , 4 )
+    iBuffOut = ocl.newFFTbuffer( "OutFE", nfloat=4, ntot=nx*ny*nz )
+
+    ocl.setGridShapePP ( dCell, p0=p0 )
+    #ocl.setGridShapePP ( dCell, p0=[.0,.0,.0] )
+    typeParams = pp.loadSpecies('atomtypes.ini')
+    cLJs       = pp.getAtomsLJ( iZPP, Zs, typeParams )
+    ocl.evalLJC_QZs( ibuff_FE, apos, cLJs, Qs=qs )
+    ocl.saveToXsf( "FE_w.xsf", ibuff_FE, stride=4, offset=3 )
+
+    ocl.copyBuffToImage( ibuff_FE, itex_FE, ngrid[0],ngrid[1],ngrid[2] )                ;print("DEBUG 8 ")
+    ocl.makeStartPointGrid( nx, ny, p0shift, [10.0/nx,0.0,0.0], [0.0,5.0/ny,0.0] ) ;print("DEBUG 9 ")
+    #ocl.getFEinStrokes ( iBuffOut, nz, [0.0,0.0,0.2] )                    ;print("DEBUG 10")
+    ocl.relaxStrokesTilted( iBuffOut )                                      ;print("DEBUG 10")
+    OutFE = ocl.download  ( iBuffOut, Ns=(nx,ny,nz,4), dtype=np.float32 )   ;print("DEBUG 11")
+    print( "OutFE.shape ", OutFE.shape )
+
+    import matplotlib.pyplot as plt
+    #print( "OutFE[:,:,:,0] \n", OutFE[:,:,:,0] )
+    #print( "OutFE[:,:,:,1] \n", OutFE[:,:,:,1] )
+    #print( "OutFE[:,:,:,2] \n", OutFE[:,:,:,2] )
+    nnz = 5
+    dnz = nz//nnz
+    plt.figure(figsize=(5*4,4*nnz))
+    for i in range(nnz):
+        iz = i*dnz
+        plt.subplot(5,4,i*4+1); plt.imshow( OutFE[:,:,iz,0] ); plt.colorbar() ;plt.title("iz=%i" %iz)
+        plt.subplot(5,4,i*4+2); plt.imshow( OutFE[:,:,iz,1] ); plt.colorbar()
+        plt.subplot(5,4,i*4+3); plt.imshow( OutFE[:,:,iz,2] ); plt.colorbar()
+        plt.subplot(5,4,i*4+4); plt.imshow( OutFE[:,:,iz,3] ); plt.colorbar()
+    plt.show()
+
 def test_PP_makeFF_LJQ(iZPP=8):
     ocl.setErrorCheck( 1 )
     print( "# --- Preparation" )
@@ -22,12 +68,14 @@ def test_PP_makeFF_LJQ(iZPP=8):
     ngrid=(128,64,32)
     dcell = [0.2,0.2,0.2,0.2]
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]] )
+    p0 = [ngrid[0]*dcell[0]*-0.5,ngrid[1]*dcell[1]*-0.5,ngrid[2]*dcell[2]*-0.5 + 3.0]
     iA=0; iC=1
     Ns= (ngrid[0],ngrid[1],ngrid[2])
 
     itex_FE  = ocl.initPP( Ns )    #;print("DEBUG 1 itex_FE ", itex_FE )  
     ibuff_FE = ocl.newFFTbuffer( "FE" , 4 )   #;print("DEBUG 3 ")
-
+    ocl.setGridShapePP ( dCell, p0=p0 )
+    #ocl.setGridShapePP ( dCell, p0=[.0,.0,.0] )
     typeParams = pp.loadSpecies('atomtypes.ini')
     cLJs       = pp.getAtomsLJ( iZPP, Zs, typeParams )
     ocl.evalLJC_QZs( ibuff_FE, apos, cLJs, Qs=qs )
@@ -201,7 +249,8 @@ def job_poisson_equation( iA=0, iC=1 ):
 #job_make_Eelec_Epauli()
 #test_job_Density_Gradient()
 #test_PP_sampleFF()
-test_PP_makeFF_LJQ()
+#test_PP_makeFF_LJQ()
+test_PP_scan_LJQ()
 
 exit()
 

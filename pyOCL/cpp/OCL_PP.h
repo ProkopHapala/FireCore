@@ -14,10 +14,11 @@ class OCL_PP: public OCL_DFT { public:
     cl_program program_relax=0;
 
     float4 dinv[3];    // grid step
-    float4 tipRot[3];  // tip rotation
+    float4 tipRot[3]={{1.,0.,0.,0.},{0.,1.,0.,0.},{0.,0.,1.,0.1}};  // tip rotation
+    //float4 tipRot[3]={{-1.,0.,0.,0.},{0.,-1.,0.,0.},{0.,0.,-1.,0.1}};  // tip rotation
     float4 stiffness { -0.03f,-0.03f,-0.03f,-1.00 };  // tip stiffness
     float4 dTip {0.0f,0.0f,-0.1f,0.0f};       // step of tip approch
-    float4 dpos0{0.0f,0.0f,-4.0f,0.0f};      // shift of initial positions
+    float4 dpos0{0.0f,0.0f,-4.0f, 4.0f};      // shift of initial positions
     //float4 dpos0{0.0f,0.0f, 0.0f,0.0f};      // shift of initial positions
     float4 relax_params{0.5f,0.1f,0.02f,0.5f};
     float4 surfFF;
@@ -38,9 +39,15 @@ class OCL_PP: public OCL_DFT { public:
         v2f4(grid.dCell.a,dA);
         v2f4(grid.dCell.b,dB);
         v2f4(grid.dCell.c,dC);
-        v2f4(grid.diCell.a,dinv[0]);
-        v2f4(grid.diCell.b,dinv[1]);
-        v2f4(grid.diCell.c,dinv[2]);
+        //v2f4(grid.diCell.a,dinv[0]);
+        //v2f4(grid.diCell.b,dinv[1]);
+        //v2f4(grid.diCell.c,dinv[2]);
+        v2f4(grid.diCell.a*(1./grid.n.x),dinv[0]);
+        v2f4(grid.diCell.b*(1./grid.n.y),dinv[1]);
+        v2f4(grid.diCell.c*(1./grid.n.z),dinv[2]);
+        //dinv[0].mul( 1/grid.n.x );
+        //dinv[1].mul( 1/grid.n.y );
+        //dinv[2].mul( 1/grid.n.z );
         //printf( "grid.diCell \n" );
         //println( grid.dCell.a );
         //println( grid.dCell.b );
@@ -56,10 +63,11 @@ class OCL_PP: public OCL_DFT { public:
         //printf( "makeStartPointGrid() nxy(%i,%i) p0(%g,%g,%g) da(%g,%g,%g) db(%g,%g,%g) \n", ns.x, ns.y,  p0.x,p0.y,p0.z,  da.x,da.y,da.z,  db.x,db.y,db.z );
         n_start_point = ns.x*ns.y;
         float4* ps = new float4[n_start_point];
-        for(int iy=0; iy<ns.y; iy++){
-            for(int ix=0; ix<ns.x; ix++){
+        for(int ix=0; ix<ns.x; ix++){
+            for(int iy=0; iy<ns.y; iy++){
                 Vec3f p = (Vec3f)(p0 + (da*ix) + (db*iy));
-                ps[ ix+ ns.x*iy] = (float4){ p.x,p.y,p.z,0.0f };
+                //ps[ ix+ ns.x*iy] = (float4){ p.x,p.y,p.z,0.0f };
+                ps[iy+ns.y*ix] = (float4){ p.x,p.y,p.z,0.0f };
             }
         }
         //printf( "makeStartPointGrid() 1 \n" );
@@ -137,8 +145,11 @@ class OCL_PP: public OCL_DFT { public:
         OCL_checkError(err, "getFEinStrokes_2");  
     }
 
-    void relaxStrokesTilted( int ibuff_out, int np=0, float4* points_=0 ){
+    void relaxStrokesTilted( int ibuff_out, int nz_, float dtip, int np=0, float4* points_=0 ){
+        nz=nz_;
+        tipRot[2].w = dtip;
         OCLtask* task = tasks[ task_dict["relaxStrokesTilted"] ];
+        printf( "relaxStrokesTilted() n_start_point %i \n", n_start_point );
         task->global.x = n_start_point;
         //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
         if( points_ != 0){

@@ -357,13 +357,15 @@ lib.setGridShapePP.argtypes  = [ c_double_p, array2d ]
 lib.setGridShapePP.restype   =  None
 def setGridShapePP( dCell, p0=None ):
     dCell=np.array(dCell)
+    if p0 is not None:
+        p0=np.array(p0)
     lib.setGridShapePP( _np_as(p0,c_double_p), dCell )
 
 #void relaxStrokesTilted( int ibuff_out, int np=0, float* points=0 )
-lib.relaxStrokesTilted.argtypes  = [ c_int, c_int, c_float_p ] 
+lib.relaxStrokesTilted.argtypes  = [ c_int, c_int, c_float, c_int, c_float_p ] 
 lib.relaxStrokesTilted.restype   =  None
-def relaxStrokesTilted( iBuffOut ):
-    lib.relaxStrokesTilted( iBuffOut, 0,None )
+def relaxStrokesTilted( iBuffOut, nz=20, dtip=-0.1 ):
+    lib.relaxStrokesTilted( iBuffOut, nz, dtip, 0,None )
 
 #void getFEinStrokes    ( int ibuff_out, int np=0, float* points=0 )
 lib.getFEinStrokes.argtypes  = [ c_int,  c_int, array1d,  c_int, c_float_p ] 

@@ -4,6 +4,7 @@
 // see https://gist.github.com/likr/3735779
 // https://www.khronos.org/registry/OpenCL/sdk/1.1/docs/man/xhtml/sampler_t.html
 __constant sampler_t sampler_1 =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
+//__constant sampler_t sampler_1 =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 //__constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST; // NOTE AMD-GPU seems to not accept CLK_NORMALIZED_COORDS_FALSE
 __constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST;
 //__constant sampler_t sampler_1 = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;
@@ -25,6 +26,10 @@ float3 tipForce( float3 dpos, float4 stiffness, float4 dpos0 ){
 
 inline float3 rotMat( float3 v, float3 a, float3 b, float3 c ){ return (float3)(dot(v,a),dot(v,b),dot(v,c)); }
 inline float3 rotMatT( float3 v,  float3 a, float3 b, float3 c  ){ return a*v.x + b*v.y + c*v.z; }
+
+void print  (__constant char* s,float4 v){ printf("%s(%g,%g,%g|%g) " ,s,v.x,v.y,v.z,v.w); };
+void println(__constant char* s,float4 v){ printf("%s(%g,%g,%g|%g)\n",s,v.x,v.y,v.z,v.w); };
+
 
 float3 tipForce( float3 dpos, float4 stiffness, float4 dpos0 ){
     float r = sqrt( dot( dpos,dpos) );
@@ -400,11 +405,25 @@ __kernel void relaxStrokesTilted(
     float dtmin = dtmax*0.1f;
     float damp0 = damp;
 
+    if( (get_global_id(0)==0) ){  
+        printf( " dt %g damp %g \n", dt, damp );
+        printf( " stiffness(%g,%g,%g|%g) dpos0(%g,%g,%g|%g) \n", stiffness.x,stiffness.y,stiffness.z,stiffness.w,  dpos0.x,dpos0.y,dpos0.z,dpos0.w  );
+        printf( " relax_params(%g,%g,%g|%g) surfFF(%g,%g,%g|%g) \n", relax_params.x,relax_params.y,relax_params.z,relax_params.w,  surfFF.x,surfFF.y,surfFF.z,surfFF.w  );
+        printf( " dinvA(%g,%g,%g|%g) tipA(%g,%g,%g|%g) \n", dinvA.x,dinvA.y,dinvA.z,dinvA.w,  tipA.x,tipA.y,tipA.z,tipA.w  );
+        printf( " dinvB(%g,%g,%g|%g) tipB(%g,%g,%g|%g) \n", dinvB.x,dinvB.y,dinvB.z,dinvB.w,  tipB.x,tipB.y,tipB.z,tipB.w  );
+        printf( " dinvc(%g,%g,%g|%g) tipC(%g,%g,%g|%g) \n", dinvC.x,dinvC.y,dinvC.z,dinvC.w,  tipC.x,tipC.y,tipC.z,tipC.w  );
+        int i1=get_global_size(0)-1; printf( "pos0(%3.3f,%3.3f,%3.3f) pos1(%3.3f,%3.3f,%3.3f)\n", points[0].x,points[0].y,points[0].z, points[i1].x,points[i1].y,points[i1].z );
+        //for(int i=0; i<get_global_size(0); i++ ){ printf( "pos[%i] (%3.3f,%3.3f,%3.3f)\n", i, points[i].x,points[i].y,points[i].z ); }
+        //print("dinvA",dinvA); println("tipA",tipA);
+        //print("dinvA",dinvB); println("tipA",tipB);
+        //print("dinvA",dinvC); println("tipA",tipC);
+    }
     //if( (get_global_id(0)==0) ){     float4 fe = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );  printf( " pos (%g,%g,%g) feImg(%g,%g,%g,%g) \n", pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );}
 
     for(int iz=0; iz<nz; iz++){
         float4 fe;
-        float3 v   = 0.0f;
+        float3 v   = (float3){0.f,0.f,0.f};
+        
         for(int i=0; i<N_RELAX_STEP_MAX; i++){
             fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
             float3 f      = fe.xyz;
@@ -428,6 +447,28 @@ __kernel void relaxStrokesTilted(
             if(dot(f,f)<F2CONV) break;
         }
         
+        /*
+        dt = 0.1;
+        stiffness=(float4){ -0.03,-0.03,-0.03, -1.0 };
+        for(int i=0; i<N_RELAX_STEP_MAX; i++){
+            fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            //fe            = (float4){0.f,0.f,0.f,0.f};
+            float3 f      = fe.xyz;
+            float3 dpos   = pos-tipPos;
+            float3 ftip   = tipForce( dpos, stiffness, dpos0 );
+            f            +=  ftip;
+            v        *=  0.8f;
+            v        += f * dt;
+            pos.xyz  += v * dt;
+
+           // if( (get_global_id(0)==0) ){  printf( "iz,iter[%i,%i] dpos(%g,%g,%g) \n", iz,i, dpos.x,dpos.y,dpos.z );}
+           if( (get_global_id(0)==0) && (iz==0) ){  printf( "iz,iter[%i,%i] dpos(%g,%g,%g) \n", i, dpos.x,dpos.y,dpos.z );}
+
+            if(dot(f,f)<F2CONV) break;
+        }        
+        */
+
+        fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
         if(1){ // output tip-rotated force
             float4 fe_  = fe;
             fe_.xyz = rotMat( fe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
@@ -439,6 +480,9 @@ __kernel void relaxStrokesTilted(
         }
         tipPos += dTip.xyz;
         pos    += dTip.xyz;
+        //if( (get_global_id(0)==0) ){ printf( "iz[%i] pos(%g,%g,%g) fe(%g,%g,%g|%g) \n", iz, pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w ); }
+        if( (get_global_id(0)==0) ){ printf( "iz[%i] pos(%g,%g,%g) tipPos(%g,%g,%g) \n", iz, pos.x,pos.y,pos.z, tipPos.x,tipPos.y,tipPos.z ); }
+
     }
 }
 
@@ -739,10 +783,10 @@ __kernel void evalLJC_QZs(
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
 
-    if (  get_global_id(0)==0 ) { printf("GPU evalLJC_QZs \n" ); }
-
-    if(iG>nMax) return;
+    //if (  get_global_id(0)==0 ) { printf("GPU evalLJC_QZs \n" ); }
     //if(iG==0) printf( " Qs (%g,%g,%g,%g) QZs (%g,%g,%g,%g) \n", Qs.x,Qs.y,Qs.z,Qs.w,   QZs.x,QZs.y,QZs.z,QZs.w   );
+    //if(iG==0) printf( " dA(%g,%g,%g) dB(%g,%g,%g) dC(%g,%g,%g) p0(%g,%g,%g)\n", grid_dA.x,grid_dA.y,grid_dA.z,   grid_dB.x,grid_dB.y,grid_dB.z,  grid_dC.x,grid_dC.y,grid_dC.z, grid_p0.x,grid_p0.y,grid_p0.z );
+    if(iG>nMax) return;
 
     float3 pos    = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
 
@@ -754,23 +798,27 @@ __kernel void evalLJC_QZs(
         int i = i0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
         LATOMS[iL] = atoms[i];
-        LCLJS [iL] = cLJs[i];
+        LCLJS [iL] = cLJs [i];
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
             if( (j+i0)<nAtoms ){ 
                 //fe += getLJC( LATOMS[j], LCLJS[j], pos );
                 float4 xyzq = LATOMS[j];
+                //if(iG==0) printf( "atom[%i](%g,%g,%g|%g) cLJ(%g,%g)\n", i, xyzq.x,xyzq.y,xyzq.z,  xyzq.w,   LCLJS[j].x, LCLJS[j].y );
                 fe += getLJ     ( xyzq.xyz, LCLJS[j], pos );
+                /*
+                // ToDo : Electrostatics seems to be too strong in original forcefeidl
                 fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.x) ) * Qs.x;
                 fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.y) ) * Qs.y;
                 fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.z) ) * Qs.z;
                 fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.w) ) * Qs.w;
+                */
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-
-    if ( (ia==nGrid.x/2)&&(ib==nGrid.y/2) ) { printf(" iz %i pos(%g,%g,%g) fe(%g,%g,%g|%g) \n", ic,  pos.x,pos.y,pos.z,  fe.x, fe.y, fe.z, fe.w ); }
-
+    float renorm = 100.0/fabs(fe.w);
+    if( renorm<1.f ){ fe*=renorm; }
+    //if ( (ia==nGrid.x/2)&&(ib==nGrid.y/2) ) { printf(" iz %i pos(%g,%g,%g) fe(%g,%g,%g|%g) \n", ic,  pos.x,pos.y,pos.z,  fe.x, fe.y, fe.z, fe.w ); }
     FE[iG] = fe;
 }
