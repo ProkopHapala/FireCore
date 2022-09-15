@@ -60,14 +60,23 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
     void convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, int iorb0, int iorb1 ){
 '''
 
-
+#mode=ct.RTLD_LAZY
+#mode=ct.RTLD_NOW
 #mode=ct.RTLD_GLOBAL
 mode=ct.RTLD_LOCAL
 
 #lib1 = ct.CDLL( name, ct.RTLD_GLOBAL )
 lib2 = ct.CDLL(  "/usr/lib/x86_64-linux-gnu/libOpenCL.so", mode )
 #lib2 = ct.CDLL(  "/usr/local/lib64/libclFFT.so", mode )
-lib  = ct.CDLL(  "../cpp_build/libOCLfft.so",               mode )
+
+bUseLocal = True
+#bUseLocal = False
+if bUseLocal:
+    lib  = ct.CDLL(  "../cpp_build/libOCLfft.so",                      mode )
+else:
+    lib  = ct.CDLL(  "../../cpp/Build_OCL/libs_OCL/libOCL_GridFF.so",  mode )
+
+
 
 lib.init.argtypes  = [ c_char_p ] 
 lib.init.restype   =  None
