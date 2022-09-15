@@ -481,7 +481,7 @@ __kernel void relaxStrokesTilted(
         tipPos += dTip.xyz;
         pos    += dTip.xyz;
         //if( (get_global_id(0)==0) ){ printf( "iz[%i] pos(%g,%g,%g) fe(%g,%g,%g|%g) \n", iz, pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w ); }
-        if( (get_global_id(0)==0) ){ printf( "iz[%i] pos(%g,%g,%g) tipPos(%g,%g,%g) \n", iz, pos.x,pos.y,pos.z, tipPos.x,tipPos.y,tipPos.z ); }
+        //if( (get_global_id(0)==0) ){ printf( "iz[%i] pos(%g,%g,%g) tipPos(%g,%g,%g) \n", iz, pos.x,pos.y,pos.z, tipPos.x,tipPos.y,tipPos.z ); }
 
     }
 }
@@ -784,7 +784,7 @@ __kernel void evalLJC_QZs(
     const int nMax = nab*nGrid.z;
 
     //if (  get_global_id(0)==0 ) { printf("GPU evalLJC_QZs \n" ); }
-    //if(iG==0) printf( " Qs (%g,%g,%g,%g) QZs (%g,%g,%g,%g) \n", Qs.x,Qs.y,Qs.z,Qs.w,   QZs.x,QZs.y,QZs.z,QZs.w   );
+    if(iG==0) printf( " Qs (%g,%g,%g,%g) QZs (%g,%g,%g,%g) \n", Qs.x,Qs.y,Qs.z,Qs.w,   QZs.x,QZs.y,QZs.z,QZs.w   );
     //if(iG==0) printf( " dA(%g,%g,%g) dB(%g,%g,%g) dC(%g,%g,%g) p0(%g,%g,%g)\n", grid_dA.x,grid_dA.y,grid_dA.z,   grid_dB.x,grid_dB.y,grid_dB.z,  grid_dC.x,grid_dC.y,grid_dC.z, grid_p0.x,grid_p0.y,grid_p0.z );
     if(iG>nMax) return;
 
@@ -806,13 +806,11 @@ __kernel void evalLJC_QZs(
                 float4 xyzq = LATOMS[j];
                 //if(iG==0) printf( "atom[%i](%g,%g,%g|%g) cLJ(%g,%g)\n", i, xyzq.x,xyzq.y,xyzq.z,  xyzq.w,   LCLJS[j].x, LCLJS[j].y );
                 fe += getLJ     ( xyzq.xyz, LCLJS[j], pos );
-                /*
                 // ToDo : Electrostatics seems to be too strong in original forcefeidl
                 fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.x) ) * Qs.x;
                 fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.y) ) * Qs.y;
                 fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.z) ) * Qs.z;
                 fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.w) ) * Qs.w;
-                */
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
