@@ -83,12 +83,16 @@ class OCL_PP: public OCL_DFT { public:
         newTask( "getFEinStrokes"    ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "evalLJC_QZs"       ,1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "evalLJC_QZs_toImg" ,1,{0,0,0,0},{1,0,0,0},program_relax);
+        //newTask( "write_toImg"       ,3,{0,0,0,0},{1,1,1,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
     }
 
     int initPP( const char*  cl_src_dir ){
         makeKrenels_PP( cl_src_dir );
-        itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[1], sizeof(float)*4, 0, CL_MEM_READ_ONLY, {CL_RGBA, CL_FLOAT} );
+        //itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[1], sizeof(float)*4, 0, CL_MEM_READ_ONLY, {CL_RGBA, CL_FLOAT} );
+        //printf( "DEBUG initPP() flags %i \n", CL_MEM_READ_WRITE );
+        itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[1], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         return itex_FF;
     }
 /*
@@ -147,7 +151,7 @@ class OCL_PP: public OCL_DFT { public:
         nz=nz_;
         tipRot[2].w = dtip;
         OCLtask* task = tasks[ task_dict["relaxStrokesTilted"] ];
-        printf( "relaxStrokesTilted() n_start_point %i \n", n_start_point );
+        //printf( "relaxStrokesTilted() n_start_point %i \n", n_start_point );
         task->global.x = n_start_point;
         //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
         if( points_ != 0){
@@ -207,6 +211,48 @@ class OCL_PP: public OCL_DFT { public:
             __global float4* atoms,  // 2
             __global float2*  cLJs,  // 3
             __global float4*    FE,  // 4
+            int4 nGrid,              // 5
+            float4 grid_p0,          // 6 
+            float4 grid_dA,          // 7
+            float4 grid_dB,          // 8
+            float4 grid_dC,          // 9
+            float4 Qs,               // 10
+            float4 QZs               // 11
+        */
+    }
+
+    void evalLJC_QZs_toImg( int na=0, float4* atoms=0, float4* coefs=0 ){        
+        OCLtask* task = tasks[ task_dict["evalLJC_QZs_toImg"] ];
+        task->global.x = Ntot;
+        //task->global.y = Ns[1];
+        //task->global.z = Ns[2];
+        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        if(ibuff_atoms<0)initAtoms( na, na );
+        if(atoms)upload( ibuff_atoms, atoms, na);
+        if(coefs)upload( ibuff_coefs, coefs, na);
+        useKernel( task->ikernel );
+        int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        err |= useArg    ( nAtoms        ); // 1
+        err |= useArgBuff( ibuff_atoms   ); // 2
+        err |= useArgBuff( ibuff_coefs   ); // 3
+        err |= useArgBuff( itex_FF       ); // 4
+        //err |= useArg    ( (int)Ns     ); // 5
+        err |= _useArg( ngrid  );          // 5        
+        err |= _useArg( pos0 );            // 6
+        err |= _useArg( dA );              // 7
+        err |= _useArg( dB );              // 8
+        err |= _useArg( dC );              // 9
+        err |= _useArg( tipQs );           // 10
+        err |= _useArg( tipQZs );          // 11
+        OCL_checkError(err, "evalLJC_QZs_toImg_1");
+        err = task->enque_raw();
+        OCL_checkError(err, "evalLJC_QZs_toImg_2");  
+        /*
+        __kernel void evalLJC_QZs(
+            const int nAtoms,        // 1
+            __global float4* atoms,  // 2
+            __global float2*  cLJs,  // 3
+            __write_only image3d_t  imgOut, // 4
             int4 nGrid,              // 5
             float4 grid_p0,          // 6 
             float4 grid_dA,          // 7
