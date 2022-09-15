@@ -10,7 +10,6 @@ class OCL_PP: public OCL_DFT { public:
     //DEFAULT_stiffness    = np.array( [-0.03,-0.03, -0.03,-1.0 ], dtype=np.float32 );
     //DEFAULT_dpos0        = np.array( [ 0.0 , 0.0 , -4.0 , 4.0 ], dtype=np.float32 );
     //DEFAULT_relax_params = np.array( [ 0.5 , 0.1 ,  0.02, 0.5 ], dtype=np.float32 );
-
     cl_program program_relax=0;
 
     float4 dinv[3];    // grid step
@@ -22,10 +21,9 @@ class OCL_PP: public OCL_DFT { public:
     //float4 dpos0{0.0f,0.0f, 0.0f,0.0f};      // shift of initial positions
     float4 relax_params{0.5f,0.1f,0.02f,0.5f};
     float4 surfFF;
-    //QZs             = [ 0.1,  0, -0.1, 0 ],
-    //Qs              = [ -10, 20,  -10, 0 ],
-    float4 tipQs {10.f,20.f,-10.f,0.0f};
-    float4 tipQZs{0.1f,0.0f, 0.1f,0.0f};
+    float4 tipQs {0.f,-0.05f,0.f,0.0f};
+    //float4 tipQs {-10.f,+20.f,-10.f,0.0f};
+    float4 tipQZs{0.1f, 0.0f,-0.1f,0.0f};
     int nz;
 
     int n_start_point = 0;
