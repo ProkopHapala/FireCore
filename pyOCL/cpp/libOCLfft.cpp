@@ -71,7 +71,8 @@ extern "C" {
         oclfft.makeMyKernels ( cl_src_dir );
         oclfft.makeKrenels_PP( cl_src_dir );
         oclfft.initFFT( 3, Ns_ );
-        oclfft.itex_FF = oclfft.newFFTimage( "FF" );
+        oclfft.itex_FF = oclfft.newFFTimage( "FF" );  // make writable texture (save some memory by not requiring temporary buffer)
+        oclfft.itex_FF = oclfft.newFFTimage( "FF", 0, CL_MEM_READ_WRITE );
         //float4* data = oclfft.debug_gen_FE();      ;printf("C DEBUG 5 \n");
         //oclfft.itex_FF = oclfft.newFFTimage( "FF", data ); ;printf("C DEBUG 6 \n");
         //delete [] data; ;printf("C DEBUG 7 \n");
@@ -86,7 +87,9 @@ extern "C" {
 
     void relaxStrokesTilted( int ibuff_out, int nz, float dtip, int np=0, float* points=0 ){ oclfft.relaxStrokesTilted( ibuff_out, nz, dtip, np, (float4*)points ); };
     void getFEinStrokes    ( int ibuff_out, int nz, double* dTip, int np=0, float* points=0 ){ oclfft.getFEinStrokes    ( ibuff_out, nz, *(Vec3d*)dTip, np, (float4*)points ); };
-    void evalLJC_QZs( int ibuff_out, int na=0, float* atoms=0, float* coefs=0 ){ oclfft.evalLJC_QZs( ibuff_out, na, (float4*)atoms, (float4*)coefs ); }
+    void evalLJC_QZs      ( int ibuff_out, int na=0, float* atoms=0, float* coefs=0 ){ oclfft.evalLJC_QZs( ibuff_out, na, (float4*)atoms, (float4*)coefs ); }
+    void evalLJC_QZs_toImg(                int na=0, float* atoms=0, float* coefs=0 ){ oclfft.evalLJC_QZs_toImg(      na, (float4*)atoms, (float4*)coefs ); }
+
 
     // ================ END PP
 

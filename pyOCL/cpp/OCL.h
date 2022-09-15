@@ -52,7 +52,8 @@ class OCLBuffer{
                 break;
             case 3:
                 //printf( " initOnGPUImage: clCreateImage3D \n" );
-                p_gpu = clCreateImage3D(context, flags, &imageFormat, nImg[0],nImg[1], nImg[2], 0, 0, p_cpu, &err);   // TODO: ??? nx=nImg[0] ny=nImg[1]  ???
+                p_gpu = clCreateImage3D(context, flags, &imageFormat, nImg[0],nImg[1],nImg[2], 0, 0, p_cpu, &err);   // TODO: ??? nx=nImg[0] ny=nImg[1]  ???
+                //printf( "initOnGPUImage( flags %li, imageFormat{%i,%i} nImg(%i,%i,%i) \n", flags, imageFormat.image_channel_data_type, imageFormat.image_channel_order, nImg[0],nImg[1],nImg[2] );
                 break;
         }
         //printf( "initOnGPUImage img_dims: %i p_gpu: %li \n", img_dims, (long)p_gpu );
@@ -291,6 +292,7 @@ class OCLsystem{ public:
         buffers[i].nImg[1]     = ny;
         buffers[i].nImg[2]     = nz;
         buffers[i].imageFormat = imageFormat;
+        //printf( "DEBUG newBufferImage2D() flags %li %li \n", flags, flags );
         //printf( "newBufferImage3D buffers[%i].img_dims %i \n", i, buffers[i].img_dims  );
         int err=buffers[i].initOnGPUImage(context); OCL_checkError(err, "newBufferImage3D" );
         return i;

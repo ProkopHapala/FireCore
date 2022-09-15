@@ -171,8 +171,8 @@ class OCL_DFT: public OCLsystem { public:
         return newBuffer( name, ntot, sizeof(float)*nfloat, 0, CL_MEM_READ_WRITE );
     }
 
-    int newFFTimage( char* name, void* data=0 ){
-        cl_int flags = CL_MEM_READ_ONLY; if(data) flags |= CL_MEM_COPY_HOST_PTR;
+    int newFFTimage( char* name, void* data=0, cl_int flags=CL_MEM_READ_ONLY ){
+        if(data) flags |= CL_MEM_COPY_HOST_PTR;
         return newBufferImage3D( name, Ns[0], Ns[1], Ns[2], sizeof(float)*4, data, flags, {CL_RGBA, CL_FLOAT} );
     }
 

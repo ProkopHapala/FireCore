@@ -15,7 +15,7 @@ from pyOCL import jobs
 from pyOCL import atomicUtils as au
 from pyOCL import PP as pp
 
-def test_PP_scan_LJQ(iZPP=8, nx=200, ny=100, nz=20, dtip=0.1):
+def test_PP_scan_LJQ(iZPP=8, nx=200, ny=100, nz=20, dtip=0.1, bUseBuffFE=False):
     ocl.setErrorCheck( 1 )
     print( "# --- Preparation" )
     apos,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
@@ -33,7 +33,6 @@ def test_PP_scan_LJQ(iZPP=8, nx=200, ny=100, nz=20, dtip=0.1):
 
     print( "#======= Allocate GPU memory " );
     itex_FE  = ocl.initPP( Ns )
-    ibuff_FE = ocl.newFFTbuffer( "FE" , 4 )
     iBuffOut = ocl.newFFTbuffer( "OutFE", nfloat=4, ntot=nx*ny*nz )
 
     print( "#======= Make Force-Field " );
@@ -41,16 +40,22 @@ def test_PP_scan_LJQ(iZPP=8, nx=200, ny=100, nz=20, dtip=0.1):
     #ocl.setGridShapePP ( dCell, p0=[.0,.0,.0] )
     typeParams = pp.loadSpecies('atomtypes.ini')
     cLJs       = pp.getAtomsLJ( iZPP, Zs, typeParams )
-    ocl.evalLJC_QZs( ibuff_FE, apos, cLJs, Qs=qs )
-    ocl.saveToXsf( "FE_w.xsf", ibuff_FE, stride=4, offset=3 )
-    ocl.copyBuffToImage( ibuff_FE, itex_FE, ngrid[0],ngrid[1],ngrid[2] )    ;print("DEBUG 8 ")
+    if bUseBuffFE:
+        ibuff_FE = ocl.newFFTbuffer( "FE" , 4 )
+        ocl.evalLJC_QZs( ibuff_FE, apos, cLJs, Qs=qs )
+        ocl.saveToXsf( "FE_w.xsf", ibuff_FE, stride=4, offset=3 )
+        ocl.copyBuffToImage( ibuff_FE, itex_FE, ngrid[0],ngrid[1],ngrid[2] )    #;print("DEBUG 8 ")
+    else:
+        ocl.evalLJC_QZs_toImg( apos, cLJs, Qs=qs )
+
 
     print( "#======= Relaxed Scan " );
-    ocl.makeStartPointGrid( nx, ny, p0shift, [0.1,0.0,0.0], [0.0,0.1,0.0] ) ;print("DEBUG 9 ")
-    #ocl.getFEinStrokes ( iBuffOut, nz, [0.0,0.0,0.2] )                     ;print("DEBUG 10")
-    ocl.relaxStrokesTilted( iBuffOut )                                      ;print("DEBUG 10")
-    OutFE = ocl.download  ( iBuffOut, Ns=(nx,ny,nz,4), dtype=np.float32 )   ;print("DEBUG 11")
-    print( "OutFE.shape ", OutFE.shape )
+    ocl.makeStartPointGrid( nx, ny, p0shift, [0.1,0.0,0.0], [0.0,0.1,0.0] ) #;print("DEBUG 9 ")
+    #ocl.getFEinStrokes ( iBuffOut, nz, [0.0,0.0,0.2] )                     #;print("DEBUG 10")
+    ocl.relaxStrokesTilted( iBuffOut )                                      #;print("DEBUG 10")
+    #ocl.getFEinStrokes ( iBuffOut, nz, [0.0,0.0,0.2] )                    #;print("DEBUG 10")
+    OutFE = ocl.download  ( iBuffOut, Ns=(nx,ny,nz,4), dtype=np.float32 )   #;print("DEBUG 11")
+    #print( "OutFE.shape ", OutFE.shape )
 
     print( "#======= Plot " );
     import matplotlib.pyplot as plt

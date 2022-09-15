@@ -383,6 +383,14 @@ def evalLJC_QZs( iBuffOut, apos, cLJs, Qs=None ):
     coefs = np.zeros( (na,2), np.float32 ); coefs[:,:]  = cLJs[:,:]
     lib.evalLJC_QZs( iBuffOut, na, _np_as(atoms,c_float_p), _np_as(coefs,c_float_p) )
 
+#void evalLJC_QZs_toImg(  int na=0, float* atoms=0, float* coefs=0 ){
+lib.evalLJC_QZs_toImg.argtypes  = [ c_int, c_float_p, c_float_p ] 
+lib.evalLJC_QZs_toImg.restype   =  None
+def evalLJC_QZs_toImg( apos, cLJs, Qs=None ):
+    na = len(apos)
+    atoms = np.zeros( (na,4), np.float32 ); atoms[:,:3] = apos[:,:]; atoms[:,3]=Qs;
+    coefs = np.zeros( (na,2), np.float32 ); coefs[:,:]  = cLJs[:,:]
+    lib.evalLJC_QZs_toImg( na, _np_as(atoms,c_float_p), _np_as(coefs,c_float_p) )
 
 '''
 # ===================== COMMENTED / DEPRECATED FUNCTIONS
