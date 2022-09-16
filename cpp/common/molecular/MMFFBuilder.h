@@ -14,6 +14,7 @@
 #include "Vec2.h"
 #include "Vec3.h"
 #include "quaternion.h"
+#include "raytrace.h"
 
 #include "molecular_utils.h"
 
@@ -1405,10 +1406,10 @@ void updatePBC( Vec3d* pbcShifts ){
                     kngs[k]=K_sigma;
                 }
                 makeConfGeom( conf.nbond, conf.npi, hs );
-                for(int k=0; k<N_NEIGH_MAX; k++){
-                    if((N_NEIGH_MAX-k)<=conf.npi){ glColor3f(1.,0.,0.); }else{ glColor3f(1.,0.,0.); }
-                    Draw3D::drawVecInPos( hs[k], atoms[ia].pos );
-                }
+                //for(int k=0; k<N_NEIGH_MAX; k++){
+                //    if((N_NEIGH_MAX-k)<=conf.npi){ glColor3f(1.,0.,0.); }else{ glColor3f(1.,0.,0.); }
+                //    Draw3D::drawVecInPos( hs[k], atoms[ia].pos );
+                //}
                 // pi-bonds
                 for(int k=0; k<conf.npi; k++ ){
                     int ik=N_NEIGH_MAX-1-k;

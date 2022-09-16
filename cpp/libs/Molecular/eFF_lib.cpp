@@ -15,6 +15,7 @@
 //#include "VecN.h"
 
 #include "testUtils.h"
+#include "libUtils.h"
 
 //#include "integration.h"
 //#include "AOIntegrals.h"
@@ -28,12 +29,11 @@ int i_DEBUG=0;
 #include "InteractionsGauss.h"
 #include "eFF.h"
 
+
+
 // ============ Global Variables
 
 EFF ff;
-
-std::unordered_map<std::string, double*>  buffers;
-std::unordered_map<std::string, int*>     ibuffers;
 
 extern "C"{
 // ========= Grid initialization
@@ -89,29 +89,6 @@ void info(){ ff.info(); }
 
 double* getEnergyPointer(){ return &ff.Ek; }
 int*    getDimPointer   (){ return &ff.ne; }
-
-double* getBuff(const char* name){ 
-    auto got = buffers.find( name );
-    if( got==buffers.end() ){ printf( "buffer[%s] NOT FOUNT !!! \n", name ); return 0;        }
-    else                    { return got->second; }
-}
-
-void setBuff(const char* name, double* buff){ 
-    buffers[name] = buff;
-}
-
-int* getIBuff(const char* name){ 
-    auto got = ibuffers.find( name );
-    if( got == ibuffers.end() ){ return 0;        }
-    else                    { return got->second; }
-}
-
-void setIBuff(const char* name, int* buff){ 
-    ibuffers[name] = buff;
-    //auto got = buffers.find( name );
-    //if( got==buffers.end() ){ return null;        }
-    //else                    { return got->second; }
-}
 
 //#define NEWBUFF(name,N)   double* name = new double[N]; buffers.insert( {#name, name} );
 
