@@ -248,10 +248,10 @@ inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // int
     //if( isnan( hf1 )||isnan( hf1 ) ){ printf("ERROR : evalPiPi_I(%i,%i|%i,%i); hf1(%g,%g,%g) hf2(%g,%g,%g) is NaN c %g k %g \n", at.i,at.j, ipi,jpi,  hf1.x,hf1.y,hf1.z,  hf2.x,hf2.y,hf2.z,  c, K ); }
     
     //if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){
-        //printf( "evalPiPi_I at(%i,%i) ipi,jpi(%i,%i) fang %g c %g \n", at.i, at.j,  ipi,jpi, fang, c );
-        glColor3f(1.,0.,0.);
-        Draw3D::drawVecInPos(  hf1*10.0, apos[at.i]+pipos[ipi] );
-        Draw3D::drawVecInPos(  hf2*10.0, apos[at.j]+pipos[jpi] );
+    //    //printf( "evalPiPi_I at(%i,%i) ipi,jpi(%i,%i) fang %g c %g \n", at.i, at.j,  ipi,jpi, fang, c );
+    //    glColor3f(1.,0.,0.);
+    //    Draw3D::drawVecInPos(  hf1*10.0, apos[at.i]+pipos[ipi] );
+    //    Draw3D::drawVecInPos(  hf2*10.0, apos[at.j]+pipos[jpi] );
     //}
     
     fpipos[ipi].add( hf1 );
