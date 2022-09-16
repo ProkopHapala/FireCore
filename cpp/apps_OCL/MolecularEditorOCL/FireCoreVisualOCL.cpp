@@ -5,6 +5,11 @@
 #include <vector>
 #include <math.h>
 
+#include "OCLfft_errors.h"
+#include <CL/cl.h>
+#include <clFFT.h>
+#include "OCL.h"
+
 #include "testUtils.h"
 #include "IO_utils.h"
 
@@ -17,6 +22,7 @@
 #include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
+#include "quaternion.h"
 
 #include "raytrace.h"
 #include "Forces.h"
@@ -30,6 +36,10 @@
 #include "DynamicOpt.h"
 #include "QEq.h"
 
+int verbosity = 0;
+#include "OCL_DFT.h"
+#include "OCL_PP.h"
+
 #include "Draw3D_Molecular.h"  // it needs to know MMFFparams
 #include "FireCoreAPI.h"
 //#include "NBSRFF.h"
@@ -41,9 +51,8 @@
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
+
 int idebug=0;
-
-
 // (-0.706981   ,-0.00550127,0.00597562,0.707185)     - Front
 // ( 0.000203297, 0.707127  ,0.707075  ,0.000491792)  - Back
 // Quat4f qTop   {1.f,0.f,0.f,0.f};                   - Top
@@ -73,6 +82,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     MMFFmini    ff;
     NBFF       nff;
     GridFF     gridFF;
+    OCL_PP     ocl;
     MM::Builder builder;
     FireCore::Lib  fireCore;
     FireCore::QMMM qmmm;
@@ -181,9 +191,7 @@ void TestAppFireCoreVisual::InitQMMM(){
     qmmm.maskMMFF(ff);
     qmmm.setAtypes( atypes);
     qmmm.load_apos(ff.apos);
-
     // ----- FireCore setup
-
     //fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
     fireCore.loadLib( "/home/prokophapala/git/FireCore/build/libFireCore.so" );
     fireCore.preinit( );
@@ -299,6 +307,8 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
         InitQMMM(); bPrepared_qm=true; 
         printf("QM preparation DONE \n");
     }
+
+    ocl.initPP( "common_resources/cl" );
 
     picked_lvec = &builder.lvec.a;
 

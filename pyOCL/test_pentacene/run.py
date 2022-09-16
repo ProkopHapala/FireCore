@@ -48,7 +48,6 @@ def test_PP_scan_LJQ(iZPP=8, nx=200, ny=100, nz=20, dtip=0.1, bUseBuffFE=False):
     else:
         ocl.evalLJC_QZs_toImg( apos, cLJs, Qs=qs )
 
-
     print( "#======= Relaxed Scan " );
     ocl.makeStartPointGrid( nx, ny, p0shift, [0.1,0.0,0.0], [0.0,0.1,0.0] ) #;print("DEBUG 9 ")
     #ocl.getFEinStrokes ( iBuffOut, nz, [0.0,0.0,0.2] )                     #;print("DEBUG 10")
