@@ -62,18 +62,21 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 
 #mode=ct.RTLD_LAZY
 #mode=ct.RTLD_NOW
-#mode=ct.RTLD_GLOBAL
 mode=ct.RTLD_LOCAL
 
 #lib1 = ct.CDLL( name, ct.RTLD_GLOBAL )
 lib2 = ct.CDLL(  "/usr/lib/x86_64-linux-gnu/libOpenCL.so", mode )
 #lib2 = ct.CDLL(  "/usr/local/lib64/libclFFT.so", mode )
 
-bUseLocal = True
-#bUseLocal = False
+#bUseLocal = True
+bUseLocal = False
 if bUseLocal:
     lib  = ct.CDLL(  "../cpp_build/libOCLfft.so",                      mode )
 else:
+    # === NOTE: if we don't compile in delendencies to libOCL_GridFF.so we need to load them before with RTLD_GLOBAL
+    #mode=ct.RTLD_GLOBAL
+    #lib1 = ct.CDLL(  "/usr/lib/x86_64-linux-gnu/libOpenCL.so",  mode )
+    #lib2 = ct.CDLL(  "/usr/lib/x86_64-linux-gnu/libclFFT.so",   mode )
     lib  = ct.CDLL(  "../../cpp/Build_OCL/libs_OCL/libOCL_GridFF.so",  mode )
 
 
