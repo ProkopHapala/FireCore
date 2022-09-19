@@ -42,7 +42,6 @@ class MMFFsp3{ public:
     double * fDOFs = 0;   // forces
 
     double Kpi = 0.1;
-    bool doPi=1;
     int  ipi0=0;
     int   * atype=0;
     Vec3d * apos=0;
@@ -65,6 +64,15 @@ class MMFFsp3{ public:
     // --- Axuliary variables
     //double * lbond  = 0;   // bond lengths
     //Vec3d  * hbond  = 0;   // normalized bond unitary vectors
+
+    bool doPiPiI  =true;
+    bool doPiPiT  =true;
+    bool doPiSigma=true;
+    bool doAngles =true;
+    int nevalPiPiI  =0;
+    int nevalPiPiT  =0;
+    int nevalPiSigma=0;
+    int nevalAngles =0;
 
     bool bDEBUG_plot=0;
     int iDEBUG_n=0,iDEBUG_pick=0;
@@ -108,6 +116,7 @@ void normalizePi   (){ for(int i=0; i<npi;    i++){ pipos[i].normalize(); } }
 int i_DEBUG = 0;
 
 inline double evalSigmaSigma_dist( int ia, int ing, int jng, double K ){
+    nevalAngles++;
     //K = -1.0;
     //  E = -K*|pi-pj|
     // ToDo: This may be made more efficient if we store hbonds
@@ -123,24 +132,30 @@ inline double evalSigmaSigma_dist( int ia, int ing, int jng, double K ){
     //Draw3D::drawVecInPos(  fi, apos[ing] );
     //Draw3D::drawVecInPos(  fj, apos[jng] );
     //Draw3D::drawVecInPos(  fjT+fiT, apos[ia] );
-    fapos[ia] .add(fiT);
-    fapos[ia] .add(fjT);
-    fapos[ing].add(fi );
-    fapos[jng].add(fj );
+    //fapos[ia] .add(fiT);
+    //fapos[ia] .add(fjT);
+    //fapos[ing].add(fi );   // Why not  fiT ?
+    //fapos[jng].add(fj );   // Why not  fjT ?
+
+    fapos[ia] .sub(fiT);
+    fapos[ia] .sub(fjT);
+    fapos[ing].add(fiT);
+    fapos[jng].add(fjT);
     return K*rij;
 }
 
 inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
+    nevalAngles++;
     //Vec3d h1,h2;
     //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
-    Vec3d h1 = apos[ing] - apos[ia];    double ir1  = 1/h1.normalize();
-    Vec3d h2 = apos[jng] - apos[ia];    double ir2  = 1/h2.normalize();
+    Vec3d h1 = apos[ing] - apos[ia];    double ir1 = 1/h1.normalize();
+    Vec3d h2 = apos[jng] - apos[ia];    double ir2 = 1/h2.normalize();
     double c = h1.dot(h2);
     Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
     hf1 = h2 - h1*c;
     hf2 = h1 - h2*c;
     double c_ = c+1.0;
-    double E = K*c_*c_;
+    double E    =  K*c_*c_;
     double fang = -K*c_*2;
     hf1.mul( fang*ir1 );
     hf2.mul( fang*ir2 );
@@ -161,6 +176,7 @@ inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
 }
 
 inline double evalSigmaPi( int ia, int ing, int ipi, double K ){
+    nevalPiSigma++;
     //Vec3d h1,h2;
     //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
     Vec3d h1 = apos[ing] - apos[ia];    double ir1  = 1/h1.normalize();
@@ -180,6 +196,7 @@ inline double evalSigmaPi( int ia, int ing, int ipi, double K ){
 }
 
 inline double evalPiPi_T( int ia, int ipi, int jpi, double K ){
+    nevalPiPiT++;
     //Vec3d h1,h2;
     //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
     Vec3d h1 = pipos[ipi];   // double ir1  = 1/h1.normalize();
@@ -207,6 +224,7 @@ inline double evalPiPi_T( int ia, int ipi, int jpi, double K ){
 }
 
 inline void orthogonalizePiPi( int ia, int ipi, int jpi ){
+    nevalPiPiT++;
     Vec3d hi = pipos[ipi];   // double ir1  = 1/h1.normalize();
     Vec3d hj = pipos[jpi];   //double ir2  = 1/h2.normalize();
     //double c = h1.dot(h2);
@@ -228,6 +246,7 @@ inline void orthogonalizePiPi( int ia, int ipi, int jpi ){
 
 
 inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // interaction between two pi-bonds
+    nevalPiPiI++;
     // E = -K*<pi|pj>^2
     //Vec3d d = apos[at.a]-apos[at.b];
     Vec3d h1 = pipos[ipi];   // double ir1  = 1/h1.normalize();
@@ -294,7 +313,7 @@ double eval_bond(int ib){
     */
     // --- Pi Bonds
     double Epi = 0;
-    if(doPi){ // interaction between pi-bonds of given atom
+    if(doPiPiI){ // interaction between pi-bonds of given atom
         if( (at.i<nnode) && (at.j<nnode) ){
             int i0=at.i*nneigh_max;
             int j0=at.j*nneigh_max;
@@ -321,6 +340,9 @@ double eval_neighs(int ia){
     int ioff = ia*nneigh_max;
     //bool bDEBUG=(ia==7);
     //if(bDEBUG)printf( "#-atom[%i] [%i,%i,%i,%i] \n", ia, aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3] );
+    const bool doPiPiT_   = doPiPiT; 
+    const bool doAngles_  = doAngles;
+    const bool doPiSigma_ = doPiSigma;
     for(int i=0; i<nneigh_max; i++){
         int    ing = aneighs[ioff+i];
         double Ki  = Kneighs[ioff+i];
@@ -333,15 +355,17 @@ double eval_neighs(int ia){
             double K = Kneighs[ioff+j]*Ki;
             if( bipi ){
                 if(bjpi){ 
+                    if(doPiPiT_)
                     //E+= evalPiPi_T   ( ia, -ing-1, -jng-1, K ); 
                     orthogonalizePiPi( ia, -ing-1, -jng-1 );
                 }
-                else    { E+= evalSigmaPi  ( ia, jng, -ing-1, K );    }  
+                else    { if(doPiSigma_) E+= evalSigmaPi  ( ia, jng, -ing-1, K ); }  
             }else{
-                if(bjpi){ E+= evalSigmaPi  ( ia, ing, -jng-1, K ); }
+                if(bjpi){ if(doPiSigma_) E+= evalSigmaPi  ( ia, ing, -jng-1, K ); }
                 else    { 
-                    //E+= evalSigmaSigma_dist( ia, ing, jng, K );    
-                    E+= evalSigmaSigma_cos( ia, ing, jng, K );    
+                    if(doAngles_)
+                    E+= evalSigmaSigma_dist( ia, ing, jng, K );    
+                    //E+= evalSigmaSigma_cos( ia, ing, jng, K );    
                 }  
             }
         }

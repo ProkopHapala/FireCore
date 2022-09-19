@@ -61,7 +61,7 @@ double DynamicOpt::move_GD_safe(double dt_loc){
 */
 
 void DynamicOpt::move_MD(double dt_loc,double damp){
-    double cdamp = 1 - damp;
+    double cdamp = 1 - damp; if(cdamp<0)cdamp=0;
     for ( int i=0; i<n; i++ ){
         vel[i]  = cdamp*vel[i] + force[i]*invMasses[i]*dt_loc;
         pos[i] += vel[i]*dt_loc;
@@ -131,6 +131,8 @@ double DynamicOpt::move_FIRE(){
 }
 
 */
+
+
 
 
 double DynamicOpt::move_FIRE(){
