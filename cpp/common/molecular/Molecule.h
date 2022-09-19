@@ -281,6 +281,8 @@ class Molecule{ public:
 
     void addToPos( Vec3d dp ){ for(int i=0; i<natoms; i++){ pos[i].add(dp); } }
 
+    void cogTo0(){ Vec3d cog = getCOG_minmax(); addToPos( cog*-1.0 ); };
+
     void FindRotation( Mat3d& rot){
         Mat3d XX=Mat3dZero;
         for(int i=0; i<natoms; i++){

@@ -16,6 +16,7 @@
 #include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
+#include "VecN.h"
 
 #include "raytrace.h"
 #include "Forces.h"
@@ -238,7 +239,10 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), builder.lvec.a*1.2 , Mat3dIdentity, -1 );
 
     //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
-    builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer-correct_pi.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
+    //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer-correct_pi.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
+    int iret=builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/Benzene_deriv.xyz", "Benezene_deriv",0, true ), {0,0,0}, Mat3dIdentity, -1 );
+
+    if(iret<0){ printf("ERROR: Molecule not loaded!!!\n" ); exit(0); }
 
     builder.lvec.a.x *= 2.3;
 
@@ -247,20 +251,29 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     if(verbosity>1)builder.printAtomConfs();
     builder.export_atypes(atypes);
     builder.verbosity = verbosity;
-    //builder.autoBonds ();             if(verbosity>1)builder.printBonds ();
-    builder.autoBondsPBC();             if(verbosity>1)builder.printBonds ();  // exit(0);
+    //builder.autoBonds ();            if(verbosity>1)builder.printBonds ();
+    builder.autoBondsPBC();            printf("//======== autoBondsPBC()\n"); //if(verbosity>1)builder.printBonds ();  // exit(0);
+    if(verbosity>1)builder.printAtomConfs();
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});   if(verbosity>1)builder.printBonds ();  // exit(0);
     //builder.autoAngles( 0.5, 0.5 );     if(verbosity>1)builder.printAngles();
-    builder.autoAngles( 10.0, 10.0 );     if(verbosity>1)builder.printAngles();
-
-    builder.sortConfAtomsFirst();
-    builder.makeAllConfsSP();
+    builder.autoAngles( 10.0, 10.0 );  printf("//======== autoAngles()\n"); //if(verbosity>1)builder.printAngles();
     if(verbosity>1)builder.printAtomConfs();
+    builder.sortConfAtomsFirst();      printf("//======== sortConfAtomsFirst()\n");
+    if(verbosity>1)builder.printAtomConfs();
+    builder.makeAllConfsSP();          printf("//======== makeAllConfsSP()\n");
+    if(verbosity>1)builder.printAtomConfs();
+
+    builder.assignAllBondParams( );
     builder.toMMFFsp3( ff );
     builder.saveMol( "data/polymer.mol" );
 
     if(verbosity>1)ff.printNeighs();
     if(verbosity>1)ff.printBonds();
+
+    ff.doPiPiI  =false;
+    ff.doPiPiT  =false;
+    ff.doPiSigma=false;
+    //ff.doAngles =false;
 
     //ff.printNeighs();
     //ff.printBonds();
@@ -376,11 +389,11 @@ void TestAppMMFFsp3::draw(){
     //bRunRelax = false;
     bool makeScreenshot = false;
 
+    double v_av =0;
     if(bRunRelax){
         builder.lvec.a    = lvec_a0 + Vec3d{-1.0,0.0,0.0};
         for(int itr=0; itr<perFrame; itr++){
             double E=0;
-
             // --- Eval Forces
             ff.cleanAtomForce();
             E += ff.eval(true);
@@ -390,8 +403,10 @@ void TestAppMMFFsp3::draw(){
             
             // --- Move
             double f2;
-            //opt.move_MD( 0.02, 0.005 );
-            opt.move_FIRE();
+
+            v_av = sqrt( VecN::norm2( opt.n, opt.vel )/opt.n*3 ); 
+            opt.move_MD( 0.05, 0.1*v_av );
+            //opt.move_FIRE();
             //opt.move_GD( 0.01 );
             //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
             if(f2<sq(Ftol)){
@@ -400,6 +415,7 @@ void TestAppMMFFsp3::draw(){
 
         }
     }
+    printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
 
     //drawSystem();
     //glColor3f(0.,0.,0.); drawBonds( ff );

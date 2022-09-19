@@ -103,7 +103,8 @@ struct AtomConf{
     inline void setNonBond(int npi_,int ne_){ npi=npi_; ne=ne_; n=nbond+npi+ne+nH;  }
     inline void init0(){ for(int i=0; i<N_NEIGH_MAX; i++)neighs[i]=-1; nbond=0; clearNonBond(); }
 
-    void print()const{ printf( " AtomConf{ ia %i, n %i nb %i np %i ne %i nH %i (%i,%i,%i,%i) }", iatom, n, nbond, npi, ne, nH , neighs[0],neighs[1],neighs[2],neighs[3] ); }
+    //void print()const{ printf( " AtomConf{ ia %i, n %i nb %i np %i ne %i nH %i (%i,%i,%i,%i) }", iatom, n, nbond, npi, ne, nH , neighs[0],neighs[1],neighs[2],neighs[3] ); }
+    void print()const{ printf( " AtomConf{ia %i, n,nb,np,ne,nH(%i,%i,%i,%i,%i) [%i,%i,%i,%i]}", iatom, n,nbond,npi,ne,nH, neighs[0],neighs[1],neighs[2],neighs[3] ); }
 
     AtomConf() = default;
     //AtomConf(int iatom_,int npi_)       :iatom(iatom_),npi(npi_),ne(0  ),nH(0),nbond(0),n(npi_    ){};
@@ -276,7 +277,8 @@ class Builder{  public:
     Vec3d    capUp   = (Vec3d){0.0,0.0,1.0};
     bool bDummyPi    = false;
     bool bDummyEpair = false;
-
+    bool bAddCaps    = true;
+    bool bAddECaps   = false;
 
     // =================== Functions =====================
 
@@ -469,8 +471,20 @@ class Builder{  public:
         tryAddBondToAtomConf( ib, bond.atoms.j, false );
     }
 
+    void assignBondParams( int ib ){
+        Bond& b = bonds[ib];
+        const Atom& ai = atoms[b.atoms.i];
+        const Atom& aj = atoms[b.atoms.j];
+        int order=1;
+        if( (ai.iconf>0)&&(aj.iconf>0) ){ order+=_min( confs[ai.iconf].npi, confs[aj.iconf].npi ); }
+        //getBondTypeId( ai.type, aj.type, uint8_t order );
+        params->getBondParams( ai.type, aj.type, order, b.l0, b.k );
+    }
+
+    void assignAllBondParams(){ for(int i=0;i<bonds.size();i++){ assignBondParams(i); } };
+
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
-    void addCap(int ia,Vec3d& hdir, Atom* atomj ){
+    void addCap(int ia,const Vec3d& hdir, Atom* atomj ){
         int ja=atoms.size();
         Atom atom_tmp;
         if(atomj==0){
@@ -545,25 +559,7 @@ class Builder{  public:
         }
     }
 
-    void makeSPConf(int ia,int npi,int ne){
-        //if(nH==0){ // ToDo : check reasonable limits npi, nh
-        int ic = atoms[ia].iconf;
-        AtomConf& conf = confs[ic];
-        conf.clearNonBond();
-        int nb   = conf.nbond;
-        int ncap = 4-nb-npi;   // number of possible caps
-        int nH   = ncap-ne;
-        //printf("-- "); println(conf);
-        //printf( "ia %i nb,npi %i,%i   n,nH,ne %i,%i,%i \n", ia,   nb,npi,  n,nH,ne );
-        //Mat3d m;
-        Vec3d hs[4];
-        for(int i=0;i<nb;i++){
-            int ib = conf.neighs[i];
-            int ja = bonds[ib].getNeighborAtom(ia);
-            hs[i]  = atoms[ja].pos - atoms[ia].pos;
-            hs[i].normalize();
-        }
-        makeConfGeom(conf.nbond, npi, hs);
+    void addCaps( int ia, int ncap, int ne, int nb, const Vec3d* hs ){
         bool Hmask[]{1,1,1,1};
         //if(nH!=ncap) Hmask[rand()%ncap]=0;
         //bool breverse = (nH==2)&&(ncap==3);
@@ -577,9 +573,33 @@ class Builder{  public:
         }
         //printf( "makeSPConf: atom[%i] ncap %i nH %i nb %i npi %i ne %i Hmask{%i,%i,%i,%i}  \n", ia, ncap, nH, nb,npi,ne,  (int)Hmask[0],(int)Hmask[1],(int)Hmask[2],(int)Hmask[3] );
         for(int i=0; i<ncap; i++){
-            if     (Hmask[i]!=breverse){ addCap(ia,hs[i+nb],&capAtom       ); }
-            else if(bDummyEpair       ){ addCap(ia,hs[i+nb],&capAtomEpair  ); }
+            if     (Hmask[i]!=breverse){ addCap(ia,hs[nb+i],&capAtom     ); }
+            else if(bDummyEpair       ){ addCap(ia,hs[nb+i],&capAtomEpair); }
         }
+    }
+
+
+    void makeSPConf(int ia,int npi,int ne){
+        //if(nH==0){ // ToDo : check reasonable limits npi, nh
+        int ic = atoms[ia].iconf;
+        AtomConf& conf = confs[ic];
+        conf.clearNonBond();
+        int nb   = conf.nbond;
+        int ncap = 4-nb-npi;   // number of possible caps
+        int nH   = ncap-ne;
+        if(!bAddECaps) ncap=nH;
+        //printf("-- "); println(conf);
+        if(verbosity>=2)printf( "makeSPConf[ia=%i] nb,npi(%i,%i) ncap,nH,ne(%i,%i,%i)\n", ia, nb,npi, ncap, nH,ne );
+        //Mat3d m;
+        Vec3d hs[4];
+        for(int i=0;i<nb;i++){
+            int ib = conf.neighs[i];
+            int ja = bonds[ib].getNeighborAtom(ia);
+            hs[i]  = atoms[ja].pos - atoms[ia].pos;
+            hs[i].normalize();
+        }
+        makeConfGeom(conf.nbond, npi, hs);
+        if(bAddCaps && (ncap>0) ) addCaps( ia, ncap, ne, nb, hs );
         if(bDummyPi){ for(int i=0; i<npi; i++){ addCap(ia,hs[i+ncap+nb],&capAtomPi); } }
         conf.npi=npi;
         conf.ne =ne;
@@ -748,7 +768,7 @@ class Builder{  public:
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
-        if(verbosity>0)printf( "autoBondsPBC \n" );
+        if(verbosity>0)printf( "autoBondsPBC() \n" );
         bPBC = true;
         // ToDo : periodic boundary conditions
         if(imax<0)imax=atoms.size();
@@ -760,7 +780,7 @@ class Builder{  public:
             const Atom& A = atoms[i];
             R = A.REQ.x;
             int ipbc=0;
-            if(verbosity>1)printf( "#==== Atom[%i] R %g \n", i, R );
+            if(verbosity>1)printf( "autoBondsPBC() Atom[%i] R %g \n", i, R );
             for(int ix=-npbc.x;ix<=npbc.x;ix++){
                 for(int iy=-npbc.y;iy<=npbc.y;iy++){
                     for(int iz=-npbc.z;iz<=npbc.z;iz++){
@@ -1019,9 +1039,9 @@ class Builder{  public:
             c.print();
         }
     }
-    void printAtomConfs(){
+    void printAtomConfs( bool bOmmitCap=true ){
         printf(" # MM::Builder.printAtomConfs() \n");
-        for(int i=0; i<atoms.size(); i++){ printAtomConf(i); puts(""); }
+        for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  printAtomConf(i); puts(""); }
     }
 
     int write2xyz( FILE* pfile, const char* comment="#comment" ){
@@ -1182,7 +1202,8 @@ class Builder{  public:
         mol->atomTypeDict = &params->atomTypeDict; //printf( "DEBUG 1.1.2 \n" );
         //printf("mol->atypNames %i %i \n", mol->atypNames, &params->atypNames );
         //mol->loadXYZ( fname );             //printf( "DEBUG 1.1.3 \n" );
-        mol->load_xyz( fname );
+        int iret = mol->load_xyz( fname ); 
+        if(iret<0)return iret;
         if(params) params->assignREs( mol->natoms, mol->atomType, mol->REQs ); //printf( "DEBUG 1.1.4 \n" );
         int ityp = molTypes.size();
         mol2molType[(size_t)mol]=ityp;
@@ -1200,9 +1221,12 @@ class Builder{  public:
         return molTypes.size()-1;
     }
 
-    int loadMolType(const std::string& fname, const std::string& label, MMFFparams* params=0 ){
+    int loadMolType(const std::string& fname, const std::string& label, MMFFparams* params=0, bool bCOG0=false ){
         //printf( "fname:`%s` label:`%s` \n", fname.c_str(), label.c_str()  );
         int itype = loadMolTypeXYZ( fname.c_str(), params );
+        if(itype<0) return itype;
+        //printf("bCOG0 %i \n", bCOG0 ); exit(0);
+        if(bCOG0) molTypes[itype]->cogTo0();
         //printf( "fname:`%s` label:`%s` itype %i \n", fname.c_str(), label.c_str(), itype  );
         molTypeDict[label] = itype;
         return itype;
@@ -1236,17 +1260,7 @@ class Builder{  public:
         printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
         int natom0  = atoms.size();
         int nbond0  = bonds.size();
-
-        //for(int i=0; i<5;i++){ printf( "params[%i] R %g E %g \n",i, params->atypes[i].RvdW, params->atypes[i].EvdW ); };
-
         for(int i=0; i<mol->natoms; i++){
-            ////Vec3d LJq = (Vec3d){0.0,0.0,0.0};  // TO DO : LJq can be set by type
-            ////Vec3d LJq = (Vec3d){1.0,0.03,0.0}; // TO DO : LJq can be set by type
-            //Vec3d  REQi = mol->REQs[i];   REQi.y = sqrt(REQi.y);
-            //Vec3d p; rot.dot_to(mol->pos[i],p); p.add( pos );
-            //printf( "insertAtom[%i] pos(%g,%g,%g) -> p(%g,%g,%g)\n", i, mol->pos[i].x, mol->pos[i].y, mol->pos[i].z, p.x,p.y,p.z );
-            //atoms.push_back( (Atom){mol->atomType[i], -1, -1, p, REQi } );
-            //printf( " %s -> %i \n", at_name, ityp );
             int ne=0;
             Vec3d REQ=mol->REQs[i];
             int ityp = mol->atomType[i];
@@ -1314,8 +1328,8 @@ class Builder{  public:
     int insertMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, bool rigid ){ return insertMolecule( molTypes[itype]                 , pos, rot, rigid ); }
     int insertMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, bool rigid ){ return insertMolecule( molTypes[ molTypeDict[molName] ], pos, rot, rigid ); }
 
-    void insertFlexibleMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ insertFlexibleMolecule( molTypes[itype]                 , pos, rot, ignoreType ); }
-    void insertFlexibleMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ insertFlexibleMolecule( molTypes[ molTypeDict[molName] ], pos, rot, ignoreType ); }
+    int insertFlexibleMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ if(itype<0) return itype; insertFlexibleMolecule( molTypes[itype], pos, rot, ignoreType ); return 0; }
+    int insertFlexibleMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ return insertFlexibleMolecule( molTypeDict[molName], pos, rot, ignoreType ); }
 
 #endif // Molecule_h
 
