@@ -17,7 +17,7 @@ add_executable( ${NAME}_main
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 
-target_link_libraries( ${NAME}_main ${OpenGL_LIBRARIES} ${GLU_LIBRARY} ${SDL2_LIBRARY} )
+target_link_libraries( ${NAME}_main ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
 add_custom_command(
     TARGET ${NAME}_main
