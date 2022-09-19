@@ -37,6 +37,9 @@ SET( AXULIARY_COMPILE_FLAGS "-g -Og -fPIC -fno-strict-aliasing ")
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
 message ( "CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} )
 
+# https://cmake.org/cmake/help/latest/policy/CMP0072.html
+#set(OpenGL_GL_PREFERENCE LEGACY)
+set(OpenGL_GL_PREFERENCE GLVND)
 # ==== DIRS
 
 SET( MY_SRC_DIR    "${CMAKE_SOURCE_DIR}" )

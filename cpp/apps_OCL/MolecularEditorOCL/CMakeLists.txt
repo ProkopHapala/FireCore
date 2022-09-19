@@ -12,7 +12,7 @@ FireCoreVisualOCL.cpp
 	$<TARGET_OBJECTS:DynamicOpt>
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
-target_link_libraries( FireCoreVisualOCL  ${OPENCL_LIBRARY} ${CLFFT_LIBRARIES} ${OpenGL_LIBRARIES} ${GLU_LIBRARY} ${SDL2_LIBRARY} -rdynamic -ldl -lm )
+target_link_libraries( FireCoreVisualOCL  ${OPENCL_LIBRARY} ${CLFFT_LIBRARIES} ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} -rdynamic -ldl -lm )
 
 #add_executable( ${NAME}_main
 #    ${NAME}_main.cpp 
@@ -20,7 +20,7 @@ target_link_libraries( FireCoreVisualOCL  ${OPENCL_LIBRARY} ${CLFFT_LIBRARIES} $
 #    $<TARGET_OBJECTS:DynamicOpt>
 #    $<TARGET_OBJECTS:SDL2OGL>
 #)
-#target_link_libraries( ${NAME}_main ${OpenCL_LIBRARY} ${OpenGL_LIBRARIES} ${GLU_LIBRARY} ${SDL2_LIBRARY} )
+#target_link_libraries( ${NAME}_main ${OpenCL_LIBRARY} ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
 #add_executable( ${NAME}_scanner
 #    ${NAME}_scanner.cpp 
@@ -28,12 +28,12 @@ target_link_libraries( FireCoreVisualOCL  ${OPENCL_LIBRARY} ${CLFFT_LIBRARIES} $
 #    $<TARGET_OBJECTS:DynamicOpt>
 #    $<TARGET_OBJECTS:SDL2OGL>
 #)
-#target_link_libraries( ${NAME}_scanner ${OpenCL_LIBRARY} ${OpenGL_LIBRARIES} ${GLU_LIBRARY} ${SDL2_LIBRARY} )
+#target_link_libraries( ${NAME}_scanner ${OpenCL_LIBRARY} ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
 #add_custom_target( ${NAME}_src_dep SOURCES ${MOLECULAR_EDITOR_SRCS} )
 
 add_custom_command(
-    TARGET ${NAME}
+    TARGET FireCoreVisualOCL
 #    TARGET ${NAME}_main ${NAME}_scanner
     COMMAND ${CMAKE_COMMAND} -E create_symlink ${MY_SRC_DIR}/common_resources  ${CMAKE_CURRENT_BINARY_DIR}/common_resources
     COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/cl  ${CMAKE_CURRENT_BINARY_DIR}/cl

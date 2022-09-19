@@ -13,5 +13,5 @@ export $LD_LIBRARY_PATH
 rm answer.bas answer.xyz params.dat CHARGES *.out
 
 #$fireball_cpp_2
-#$FireCoreVisual
-$FireCoreVisualOCL
+$FireCoreVisual
+#$FireCoreVisualOCL

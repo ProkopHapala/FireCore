@@ -2,7 +2,6 @@
 project(AppsOCL)
 
 find_package( OpenGL REQUIRED )
-find_package( GLU    REQUIRED )
 find_package( SDL2   REQUIRED )
 find_package( OpenCL REQUIRED )
 find_package( clFFT  REQUIRED )
