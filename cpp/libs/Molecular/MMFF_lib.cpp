@@ -9,6 +9,7 @@
 #include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
+#include "Vec3Utils.h"
 
 //#include "raytrace.h"
 #include "Forces.h"
@@ -102,5 +103,8 @@ void init( const char* fname_mol ){
 
     init_buffers();
 }
+
+void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi      ){ rotate( n, selection, ff.apos, *(Vec3d*)p0, *(Vec3d*)ax, phi ); };
+void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, ff.apos, ff.apos[ia0], (ff.apos[iax1]-ff.apos[iax0]).normalized(), phi ); };
 
 } // extern "C"
