@@ -257,10 +257,10 @@ ScreenSDL2OGL::ScreenSDL2OGL( int& id, int WIDTH_, int HEIGHT_, const char* name
 }
 
 ScreenSDL2OGL::~ScreenSDL2OGL(){
-    printf(" ScreenSDL2OGL::~ScreenSDL2OGL() \n");
+    //printf(" ScreenSDL2OGL::~ScreenSDL2OGL() \n");
     SDL_DestroyWindow(window);
     if(parent) parent->removeChild(this);
-    printf(" ScreenSDL2OGL::~ScreenSDL2OGL() DONE \n");
+    //printf(" ScreenSDL2OGL::~ScreenSDL2OGL() DONE \n");
 }
 
 void ScreenSDL2OGL::removeChild(ScreenSDL2OGL* child){};

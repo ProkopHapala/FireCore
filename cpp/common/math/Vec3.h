@@ -30,9 +30,6 @@ class Vec3T{
 	//constexpr Vec3T() = default;
 	//constexpr Vec3T(T x_, T y_, T z_ ): x(x_),y(y_),z(z_){};
 
-
-
-
 	// ===== methods
 
 	// Automatic conversion (works) but would be problematic
@@ -178,7 +175,6 @@ class Vec3T{
         if(y>z) _swap(y,z);
         if(x>y) _swap(x,y);
     }
-
 
 	inline T normalize_taylor3(){
         // sqrt(1+x) ~= 1 + 0.5*x - 0.125*x*x
@@ -440,32 +436,6 @@ class Vec3T{
         return *this;
     }
 
-    static inline VEC average( int n, VEC* vs ){
-        VEC v;
-        v.set(0.0);
-        for(int i=0; i<n; i++){ v.add(vs[i]); }
-        v.mul( 1/(T)n);
-        return v;
-    }
-
-    static inline VEC average( int n, int* selection, VEC* vs ){
-        VEC v;
-        v.set(0.0);
-        for(int i=0; i<n; i++){ v.add(vs[selection[i]]); }
-        v.mul( 1/(T)n );
-        return v;
-    }
-
-    static inline void move  (int n, VEC* ps, const VEC& shift                                ){ for(int i=0; i<n; i++)ps[i].add(shift); }
-    static inline void scale (int n, VEC* ps, const VEC& center, const VEC& sc                ){ for(int i=0; i<n; i++){ ps[i].scale     ( sc, center      ); };  }
-    static inline void rotate(int n, VEC* ps, const VEC& center, const VEC& uaxis, T ca, T sa ){ for(int i=0; i<n; i++){ ps[i].rotate_csa( ca, sa, uaxis, center   ); }; }
-    static inline void rotate(int n, VEC* ps, const VEC& center, const VEC&  axis, double phi ){ rotate( n,ps,center,axis.normalized(), cos(phi), sin(phi) ); }
-
-    static inline void move  (int n, int* selection, VEC* ps, const VEC& shift                                ){ for(int i =0;  i<n;  i++)  ps[selection[i]].add(shift);                        }
-    static inline void scale (int n, int* selection, VEC* ps, const VEC& center, const VEC& sc                ){ for(int ii=0; ii<n; ii++){ ps[selection[ii]].scale     ( sc, center ); }; }
-    static inline void rotate(int n, int* selection, VEC* ps,       VEC  center, const VEC& uaxis, T ca, T sa ){ for(int ii=0; ii<n; ii++){ ps[selection[ii]].rotate_csa( ca, sa, uaxis, center   ); }; }
-    static inline void rotate(int n, int* selection, VEC* ps, const VEC& center, const VEC&  axis, double phi ){ rotate( n,selection,ps,center,axis.normalized(), cos(phi), sin(phi) ); }
-
 };
 
 template<typename VEC> inline VEC cross( VEC a, VEC b ){ return (VEC){ a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x }; }
@@ -482,18 +452,24 @@ static constexpr Vec3d Vec3dOne  = (Vec3d){1.0,1.0,1.0};
 static constexpr Vec3d Vec3dX    = (Vec3d){1.0,0.0,0.0};
 static constexpr Vec3d Vec3dY    = (Vec3d){0.0,1.0,0.0};
 static constexpr Vec3d Vec3dZ    = (Vec3d){0.0,0.0,1.0};
+static constexpr Vec3d Vec3min   = (Vec3d){-1e+300,-1e+300,-1e+300};
+static constexpr Vec3d Vec3max   = (Vec3d){+1e+300,+1e+300,+1e+300};
 
 static constexpr Vec3f Vec3fZero = (Vec3f){0.0f,0.0f,0.0f};
 static constexpr Vec3f Vec3fOne  = (Vec3f){1.0f,1.0f,1.0f};
 static constexpr Vec3f Vec3fX    = (Vec3f){1.0f,0.0f,0.0f};
 static constexpr Vec3f Vec3fY    = (Vec3f){0.0f,1.0f,0.0f};
 static constexpr Vec3f Vec3fZ    = (Vec3f){0.0f,0.0f,1.0f};
+static constexpr Vec3f Vec3fmin  = (Vec3f){-1e+37,-1e+37,-1e+37};
+static constexpr Vec3f Vec3fmax  = (Vec3f){+1e+37,+1e+37,+1e+37};
 
-static constexpr Vec3i Vec3iZero = (Vec3i){0,0,0};
-static constexpr Vec3i Vec3iOne  = (Vec3i){1,1,1};
-static constexpr Vec3i Vec3iX    = (Vec3i){1,0,0};
-static constexpr Vec3i Vec3iY    = (Vec3i){0,1,0};
-static constexpr Vec3i Vec3iZ    = (Vec3i){0,0,1};
+static constexpr Vec3i Vec3iZero {0,0,0};
+static constexpr Vec3i Vec3iOne  {1,1,1};
+static constexpr Vec3i Vec3iX    {1,0,0};
+static constexpr Vec3i Vec3iY    {0,1,0};
+static constexpr Vec3i Vec3iZ    {0,0,1};
+static constexpr Vec3i Vec3imin  {-2147483647,-2147483647,-2147483647};
+static constexpr Vec3i Vec3imax  {+2147483647,+2147483647,+2147483647};
 
 inline uint64_t scalar_id  ( const Vec3i& v){ return ( v.x | (((uint64_t)v.y)<<16) | (((uint64_t)v.z)<<32) ); }
 inline Vec3i    from_id    ( uint64_t id   ){
@@ -524,98 +500,6 @@ inline Vec3T<T2> cast(const Vec3T<T1>& i){ Vec3T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y
 inline int print( const Vec3f&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
 inline int print( const Vec3d&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
 inline int print( const Vec3i&  v){ return printf( "%i %i %i", v.x, v.y, v.z ); };
-
-template<typename T>
-struct Mat3S{ // symmetric 3x3 matrix
-
-    // TODO : This should be good also for rotation matrix (?)
-
-    T xx,yy,zz;
-    union{
-        struct{ T yz,xz,xy; };
-        struct{ T zy,zx,yx; };
-    };
-
-    inline void set(T f){
-        xx=yy=zz=f;
-        xy=xz=yz=f;
-    }
-
-    inline void from_outer(const Vec3T<T>& h){
-        xy=h.x*h.y;
-        xz=h.x*h.z;
-        yz=h.y*h.z;
-        xx=h.x*h.x;
-        yy=h.y*h.y;
-        zz=h.z*h.z;
-    }
-
-    inline void add_outer(const Vec3T<T>& h){
-        xy+=h.x*h.y;
-        xz+=h.x*h.z;
-        yz+=h.y*h.z;
-        xx+=h.x*h.x;
-        yy+=h.y*h.y;
-        zz+=h.z*h.z;
-    }
-
-    inline void from_dhat(const Vec3T<T>& h){
-        // derivatives of normalized vector
-        //double ir  = irs[i];
-        T hxx = h.x*h.x;
-        T hyy = h.y*h.y;
-        T hzz = h.z*h.z;
-        xy=-h.x*h.y;
-        xz=-h.x*h.z;
-        yz=-h.y*h.z;
-        xx=(hyy+hzz);
-        yy=(hxx+hzz);
-        zz=(hxx+hyy);
-    }
-
-    inline void dhat_dot( const Vec3T<T>& h, Vec3T<T>& f )const{
-        f.x += h.x*xx + h.y*xy + h.z*xz;
-        f.y += h.x*xy + h.y*yy + h.z*yz;
-        f.z += h.x*xz + h.y*yz + h.z*zz;
-    }
-
-    inline void mad_ddot( const Vec3T<T>& h, Vec3T<T>& f, T k )const{
-        f.x += ( h.x*xx + h.y*xy + h.z*xz )*k;
-        f.y += ( h.x*xy + h.y*yy + h.z*yz )*k;
-        f.z += ( h.x*xz + h.y*yz + h.z*zz )*k;
-    }
-
-};
-
-using  Mat3Sf =  Mat3S<float>;
-using  Mat3Sd =  Mat3S<double>;
-
-
-template<typename T, typename Func>
-void numDeriv( Vec3d p, double d, Vec3d& f, Func func){
-    //double e0 = Efunc(p);
-    double d_=d*0.5;
-    p.x+=d_; f.x = func(p); p.x-=d; f.x-=func(p); p.x+=d_;
-    p.y+=d_; f.y = func(p); p.y-=d; f.y-=func(p); p.y+=d_;
-    p.z+=d_; f.z = func(p); p.z-=d; f.z-=func(p); p.z+=d_;
-    f.mul(1/d);
-}
-
-template<typename T>
-void makeSamples(const Vec2i& ns, const Vec3T<T>& p0, const Vec3T<T>& a, const Vec3T<T>& b, Vec3T<T> *ps ){
-    Vec3T<T> da=a*(1.0/ns.x);
-    Vec3T<T> db=b*(1.0/ns.y);
-    //printf( "da (%g,%g,%g)\n", da.x,da.y,da.z );
-    //printf( "db (%g,%g,%g)\n", db.x,db.y,db.z );
-    for(int ib=0; ib<ns.y; ib++){
-        Vec3T<T> p = p0+db*ib;
-        for(int ia=0; ia<ns.x; ia++){
-            *ps = p;
-            p.add(da);
-            ps++;
-        }
-    }
-}
 
 #endif
 

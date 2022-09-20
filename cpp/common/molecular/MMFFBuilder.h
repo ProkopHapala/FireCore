@@ -476,9 +476,13 @@ class Builder{  public:
         const Atom& ai = atoms[b.atoms.i];
         const Atom& aj = atoms[b.atoms.j];
         int order=1;
-        if( (ai.iconf>0)&&(aj.iconf>0) ){ order+=_min( confs[ai.iconf].npi, confs[aj.iconf].npi ); }
+        if( (ai.iconf>=0)&&(aj.iconf>=0) ){ 
+            order+=_min( confs[ai.iconf].npi, confs[aj.iconf].npi ); 
+            printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, confs[ai.iconf].npi, confs[aj.iconf].npi );
+        }
         //getBondTypeId( ai.type, aj.type, uint8_t order );
         params->getBondParams( ai.type, aj.type, order, b.l0, b.k );
+        //printf("assignBondParams[%i] (%i,%i|%i) -> l0 %g k %g \n", ib,  ai.type, aj.type, order,   b.l0, b.k );
     }
 
     void assignAllBondParams(){ for(int i=0;i<bonds.size();i++){ assignBondParams(i); } };
@@ -1018,6 +1022,13 @@ class Builder{  public:
             printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bondPBC[i].x,bondPBC[i].y,bondPBC[i].z); puts("");
         }
     }
+    void printBondParams(){
+        printf(" # MM::Builder.printBonds() \n");
+        for(int i=0; i<bonds.size(); i++){
+            const Bond& b = bonds[i];
+            printf("bond[%i]a(%i,%i)iZs(%i,%i)l0,k(%g,%g)\n",i, b.atoms.i,b.atoms.j, params->atypes[atoms[b.atoms.i].type].iZ, params->atypes[atoms[b.atoms.j].type].iZ, b.l0, b.k );
+        }
+    }
     void printAngles(){
         printf(" # MM::Builder.printAngles() \n");
         for(int i=0; i<angles.size(); i++){
@@ -1154,6 +1165,7 @@ class Builder{  public:
             b2a[i] = b.atoms;
             if(ks )ks [i] = b.k;
             if(l0s)l0s[i] = b.l0;
+            //printf( "export_bonds[%i] l0 %g k %g \n", i, b.l0, b.k );
         }
     }
 

@@ -16,6 +16,8 @@
 #include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
+#include "SMat3.h"
+#include "Vec3Utils.h"
 
 #include "raytrace.h"
 #include "Forces.h"
@@ -143,7 +145,8 @@ inline double evalTorq(Vec3d& ha,Vec3d& hb,Vec3d& hab,   Vec3d& fa, Vec3d& fb, V
     fb =Vec3dZero;
     fab=Vec3dZero;
 
-    Mat3Sd J;
+    //Mat3Sd J;
+    SMat3d J;
 
     J.from_dhat(ha);    // -- by ha
     J.mad_ddot(hab,fa, dca ); // dca /dha = d<ha|hab>/dha
@@ -785,15 +788,13 @@ void TestAppMMFFmini::draw(){
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
 
     if(frameCount==1){
-
         qCamera.pitch( M_PI );
         ff.printAtomPos();
         ff.printBondParams();
         ff.printAngleParams();
         ff.printTorsionParams();
-
         lvec_a0 = builder.lvec.a;
-        printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
+        //printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
     }
 
     //Draw3D::drawAxis(  10. );
@@ -1013,10 +1014,10 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                     break;
 
                 case SDLK_LEFTBRACKET:
-                    Vec3d::rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, +rotation_step );
+                    rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, +rotation_step );
                     break;
                 case SDLK_RIGHTBRACKET:
-                    Vec3d::rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, -rotation_step );
+                    rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, -rotation_step );
                     break;
 
                 case SDLK_SPACE: bRunRelax=!bRunRelax; break;

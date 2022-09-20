@@ -17,6 +17,7 @@
 #include "Vec3.h"
 #include "Mat3.h"
 #include "VecN.h"
+#include "Vec3Utils.h"
 
 #include "raytrace.h"
 #include "Forces.h"
@@ -37,7 +38,8 @@
 #include "AppSDL2OGL_3D.h"
 
 bool bPrint = true;
-
+constexpr int  ntmp_str=2048;
+char tmp_str[ntmp_str];
 
 // ================= Free Functions ==============
 
@@ -126,6 +128,9 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 
     bool bNonBonded = true;
 
+    Vec3d cog,vcog,fcog,tq;
+    double* bondLenghts=0;
+
     std::vector<int> selection;
     bool bDragging = false;
     Vec3d  ray0_start;
@@ -161,7 +166,7 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 	TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ );
 
 	//void drawSystem( );
-    void drawSystem( bool bAtoms=true, bool bBonds=true, bool bForces=false );
+    void drawSystem( bool bAtoms=true, bool bBonds=true, bool bForces=false, float texSize=0.007 );
 
 	void selectShorterSegment( const Vec3d& ro, const Vec3d& rd );
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
@@ -210,7 +215,7 @@ void  TestAppMMFFsp3::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 
 TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
-    verbosity = 2;
+    verbosity = 0;
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
@@ -252,27 +257,29 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     builder.export_atypes(atypes);
     builder.verbosity = verbosity;
     //builder.autoBonds ();            if(verbosity>1)builder.printBonds ();
-    builder.autoBondsPBC();            printf("//======== autoBondsPBC()\n"); //if(verbosity>1)builder.printBonds ();  // exit(0);
-    if(verbosity>1)builder.printAtomConfs();
+    builder.autoBondsPBC();            //printf("//======== autoBondsPBC()\n"); //if(verbosity>1)builder.printBonds ();  // exit(0);
+    //if(verbosity>1)builder.printAtomConfs();
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});   if(verbosity>1)builder.printBonds ();  // exit(0);
     //builder.autoAngles( 0.5, 0.5 );     if(verbosity>1)builder.printAngles();
-    builder.autoAngles( 10.0, 10.0 );  printf("//======== autoAngles()\n"); //if(verbosity>1)builder.printAngles();
-    if(verbosity>1)builder.printAtomConfs();
-    builder.sortConfAtomsFirst();      printf("//======== sortConfAtomsFirst()\n");
-    if(verbosity>1)builder.printAtomConfs();
-    builder.makeAllConfsSP();          printf("//======== makeAllConfsSP()\n");
+    builder.autoAngles( 10.0, 10.0 );  //printf("//======== autoAngles()\n"); //if(verbosity>1)builder.printAngles();
+    //if(verbosity>1)builder.printAtomConfs();
+    builder.sortConfAtomsFirst();      //printf("//======== sortConfAtomsFirst()\n");
+    //if(verbosity>1)builder.printAtomConfs();
+    builder.makeAllConfsSP();          //printf("//======== makeAllConfsSP()\n");
     if(verbosity>1)builder.printAtomConfs();
 
-    builder.assignAllBondParams( );
+    printf( "builder.atoms[0].iconf= %i \n", builder.atoms[0].iconf );
+
+    builder.assignAllBondParams( );   builder.printBondParams();
     builder.toMMFFsp3( ff );
     builder.saveMol( "data/polymer.mol" );
 
     if(verbosity>1)ff.printNeighs();
     if(verbosity>1)ff.printBonds();
 
-    ff.doPiPiI  =false;
-    ff.doPiPiT  =false;
-    ff.doPiSigma=false;
+    //ff.doPiPiI  =false;
+    //ff.doPiPiT  =false;
+    //ff.doPiSigma=false;
     //ff.doAngles =false;
 
     //ff.printNeighs();
@@ -289,19 +296,20 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     }else{
         printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
     }
-    DEBUG
+
     opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
     //opt.setInvMass( 1.0 );
     opt.cleanVel( );
-    DEBUG
+
     // ======== Test before we run
     if(verbosity>1)nff.printAtomParams();
     ckeckNaN_d( ff.natoms, ff.nneigh_max, ff.Kneighs, "ff.Kneighs" );
     ckeckNaN_d( ff.nbonds,             1, ff.bond_k,  "ff.bond_k"  );
-    DEBUG
+
     //ff.doPi = 0;
-    double E = ff.eval(true); printf( "DEBUG ff.eval() E = %g \n", E );
-    DEBUG
+    double E = ff.eval(true); printf( "ff.eval() E = %g \n", E );
+    ff.bDEBUG_plot=true;
+
     //exit(0);
     //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
@@ -320,21 +328,21 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     //innodes.insert(11);
     //MM::splitGraphs( ff.nbonds, ff.bond2atom, 22, innodes );
     //for( int i : innodes ){ selection.push_back(i); }
-
     printf("TestAppMMFFsp3() DONE \n");
 }
 
-void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces ){
+void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces, float texSize ){
     if(bBonds){
         //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
         //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
         glColor3f(0.0f,0.0f,0.0f);Draw3D::bonds( ff.nbonds, ff.bond2atom, ff.apos ); // DEBUG
         //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
+        if(bondLenghts) glColor3f(0.0f,0.0f,1.0f); Draw3D::bondPropertyLabel( ff.nbonds, bondLenghts, ff.bond2atom, ff.apos, 1,0, fontTex, texSize, "%4.2f\0" );
     }
     if(bForces){ glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0              ); }
     if(bAtoms){
         //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
-        glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, 0.01                     );                     //DEBUG
+        glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     //DEBUG
         //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
@@ -362,7 +370,7 @@ void TestAppMMFFsp3::draw(){
         //ff.printAngleParams();
         //ff.printTorsionParams();
         lvec_a0 = builder.lvec.a;
-        printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
+        //printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
     }
 
     //Draw3D::drawAxis(  10. );
@@ -388,6 +396,11 @@ void TestAppMMFFsp3::draw(){
     //perFrame = 20;
     //bRunRelax = false;
     bool makeScreenshot = false;
+    { // bondlengths
+        _allocIfNull( bondLenghts, ff.nbonds );
+        for(int i=0; i<ff.natoms; i++){ Vec2i b=ff.bond2atom[i]; bondLenghts[i]=ff.apos[b.i].dist(ff.apos[b.j]);  };
+    }
+
 
     double v_av =0;
     if(bRunRelax){
@@ -397,16 +410,25 @@ void TestAppMMFFsp3::draw(){
             // --- Eval Forces
             ff.cleanAtomForce();
             E += ff.eval(true);
-            if(bNonBonded){ E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} ); }
-            if(ipicked>=0){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.fapos[ipicked].add( f ); };
-            for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
-            
-            // --- Move
-            double f2;
 
+            //if(bNonBonded){ E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} ); }
+            //for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
+            if(ipicked>=0){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.fapos[ipicked].add( f ); };
+            
+            cog  = average( ff.natoms, ff.apos  );
+            vcog = sum    ( ff.natoms, (Vec3d*)opt.vel  );
+            fcog = sum    ( ff.natoms, ff.fapos );
+            //tq   = torq   ( ff.natoms, ff.apos, ff.fapos, cog );
+            tq   = torq   ( ff.natoms, ff.apos, ff.fapos, cog );
+            tq.add( ff.evalPiTorq() );
+
+            //printf(  "cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
+
+            // --- Move
             v_av = sqrt( VecN::norm2( opt.n, opt.vel )/opt.n*3 ); 
-            opt.move_MD( 0.05, 0.1*v_av );
-            //opt.move_FIRE();
+            double f2;
+            //opt.move_MD( 0.05, 0.1*v_av );
+            opt.move_FIRE();
             //opt.move_GD( 0.01 );
             //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
             if(f2<sq(Ftol)){
@@ -415,7 +437,8 @@ void TestAppMMFFsp3::draw(){
 
         }
     }
-    printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
+    //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
+    //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
 
     //drawSystem();
     //glColor3f(0.,0.,0.); drawBonds( ff );
@@ -465,6 +488,7 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_KP_9: builder.lvec.a.z+=xstep; break;
                 //case SDLK_KP_6: builder.lvec.a.z-=xstep; break;
 
+                case SDLK_p:    ff.bDEBUG_plot=!ff.bDEBUG_plot; break;
                 case SDLK_KP_7: ff.iDEBUG_pick++; if(ff.iDEBUG_pick>=ff.iDEBUG_n)ff.iDEBUG_pick=0; break;
                 case SDLK_KP_4: ff.iDEBUG_pick--; if(ff.iDEBUG_pick<0           )ff.iDEBUG_pick=ff.iDEBUG_n-1; break;
 
@@ -476,10 +500,10 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
                     break;
 
                 case SDLK_LEFTBRACKET:
-                    Vec3d::rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, +rotation_step );
+                    rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, +rotation_step );
                     break;
                 case SDLK_RIGHTBRACKET:
-                    Vec3d::rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, -rotation_step );
+                    rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, -rotation_step );
                     break;
                 case SDLK_SPACE: bRunRelax=!bRunRelax; break;
             }
@@ -532,6 +556,18 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
 
 void TestAppMMFFsp3::drawHUD(){
     glDisable ( GL_LIGHTING );
+
+    glTranslatef( 10.0,HEIGHT-20.0,0.0 );
+	glColor3f(0.5,0.0,0.3);
+	char* s=str;
+    //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
+    //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
+    s += sprintf(s, "eval:Ang,ps,ppT,ppI(%i|%i,%i,%i)\n",  ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0 );
+    s += sprintf(s, "cog (%g,%g,%g)\n", cog .x,cog .y,cog .z);
+    s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", vcog.x,vcog.y,vcog.z);
+    s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", fcog.x,fcog.y,fcog.z);
+    s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", tq  .x,tq  .y,tq  .z);
+    Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
 
 }
 

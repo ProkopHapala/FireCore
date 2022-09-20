@@ -21,6 +21,7 @@ Flexible Atom sp-hybridization forcefield
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "SMat3.h"
 //#include "quaternion.h"
 #include "Forces.h"
 
@@ -399,7 +400,8 @@ double evalPair( int ia, int ja, FlexiblePairType& type){
 
 
 
-    Mat3Sd Jbond;
+    //Mat3Sd Jbond;
+    SMat3d Jbond;
     Jbond.from_dhat(hij);
 
     const int ioff= ia*N_BOND_MAX;

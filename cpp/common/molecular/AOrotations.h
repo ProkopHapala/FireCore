@@ -5,6 +5,7 @@
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "SMat3.h"
 #include "Mat3.h"
 #include "quaternion.h"
 #include "Mat4.h"
@@ -83,7 +84,8 @@ struct AOPairType{
         Vec3d ha,hb;
         hdir.getSomeOrtho(ha,hb);
 
-        Mat3Sd Uc,Uab;
+        //Mat3Sd Uc,Uab;
+        SMat3d Uc,Uab;
         //Ua.from_outer(ha);
         //Ub.from_outer(hb);
         Uc .from_outer(hdir);

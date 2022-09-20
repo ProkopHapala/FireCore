@@ -108,7 +108,7 @@ void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
 
 void cleanAtomForce(){ for(int i=0; i<natoms; i++){ fapos [i].set(0.0); } }
 void cleanPiForce  (){ for(int i=0; i<npi;    i++){ fpipos[i].set(0.0); } }
-void normalizePi   (){ for(int i=0; i<npi;    i++){ pipos[i].normalize(); } }
+void normalizePi   (){ for(int i=0; i<npi;    i++){ pipos [i].normalize(); } }
 
 // ============== Evaluation
 
@@ -125,22 +125,25 @@ inline double evalSigmaSigma_dist( int ia, int ing, int jng, double K ){
     Vec3d hj = apos[jng] - apos[ia];    double rj  = hj.normalize();
     Vec3d fi  = d* K;
     Vec3d fj  = d*-K;
-    Vec3d fiT = hi* hi.dot(fi);   fi.sub(fiT);
-    Vec3d fjT = hj* hj.dot(fj);   fj.sub(fjT);
+    Vec3d fiI = hi* hi.dot(fi);   
+    Vec3d fjI = hj* hj.dot(fj);   
     //printf(  "ang[%i|%i,%i] c1 %g c2 %g \n", ia, ing, jng, hi.dot(fi), hj.dot(fj)  );
     //glColor3f(1.,0.,0.);
     //Draw3D::drawVecInPos(  fi, apos[ing] );
     //Draw3D::drawVecInPos(  fj, apos[jng] );
     //Draw3D::drawVecInPos(  fjT+fiT, apos[ia] );
-    //fapos[ia] .add(fiT);
-    //fapos[ia] .add(fjT);
-    //fapos[ing].add(fi );   // Why not  fiT ?
-    //fapos[jng].add(fj );   // Why not  fjT ?
+    //  force repel (ing,jng)
+    //  but it is constrained so that is does not affect bond (ia,ing), (ia,jng)
+    //  
+    fapos[ia] .add(fiI);
+    fapos[ia] .add(fjI);
+    fi.sub(fiI); fapos[ing].add(fi);   // Why not  fiT ?
+    fj.sub(fjI); fapos[jng].add(fj);   // Why not  fjT ?
 
-    fapos[ia] .sub(fiT);
-    fapos[ia] .sub(fjT);
-    fapos[ing].add(fiT);
-    fapos[jng].add(fjT);
+    //fapos[ia] .sub(fiT);
+    //fapos[ia] .sub(fjT);
+    //fapos[ing].add(fiT);
+    //fapos[jng].add(fjT);
     return K*rij;
 }
 
@@ -171,7 +174,7 @@ inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
     // }
     fapos[ing].add( hf1     );
     fapos[jng].add( hf2     );
-    fapos[ia].sub( hf1+hf2 );
+    fapos[ia ].sub( hf1+hf2 );
     return E;
 }
 
@@ -189,9 +192,24 @@ inline double evalSigmaPi( int ia, int ing, int ipi, double K ){
     double fang = -K*c*2;
     hf1.mul( fang*ir1 );
     hf2.mul( fang     );
-    fapos[ing ].add( hf1 );
+
+    if(bDEBUG_plot)
+    if(ipi==iDEBUG_pick)
+    {
+        float fsc=100.0;
+         //printf( "evalAngle_cos [%i|%i,%i,%i] c(%g,%g) \n", iDEBUG_pick, ia, ing, jng, hf1.dot(h1), hf1.dot(h1)  );
+         //printf( "evalAngle_cos [%i|%i,%i,%i] c %g c_ %g fang_ %g E %g \n", iDEBUG_pick, ia, ing, jng, c, c_, fang, E );
+         //printf( "evalAngle_cos bDEBUG_plot [%i|%i,%i] iDEBUG_pick %i \n", ia, ing, jng, iDEBUG_pick );
+         glColor3f(1.,0.,0.);
+         Draw3D::drawVecInPos(  hf1*fsc, apos [ing] );
+         Draw3D::drawVecInPos(  hf2*fsc, pipos[ipi]+apos[ia] );
+         Draw3D::drawVecInPos(  (hf1+hf2)*-fsc, apos[ia] );
+    }
+
+    fapos [ing].add( hf1 );
     fpipos[ipi].add( hf2 );
-    fapos[ia].sub( hf1+hf2 );
+    //fapos [ia ].sub( hf1+hf2 ); // NOTE: we should not apply recoil of pi-orbital here because it is in coordinates relative to  fulcrum
+    fapos [ia ].sub( hf1 );
     return E;
 }
 
@@ -199,7 +217,7 @@ inline double evalPiPi_T( int ia, int ipi, int jpi, double K ){
     nevalPiPiT++;
     //Vec3d h1,h2;
     //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
-    Vec3d h1 = pipos[ipi];   // double ir1  = 1/h1.normalize();
+    Vec3d h1 = pipos[ipi];   //double ir1  = 1/h1.normalize();
     Vec3d h2 = pipos[jpi];   //double ir2  = 1/h2.normalize();
     double c = h1.dot(h2);
     Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
@@ -209,17 +227,15 @@ inline double evalPiPi_T( int ia, int ipi, int jpi, double K ){
     double fang = -K*c*2;
     hf1.mul( fang );
     hf2.mul( fang );
-
     //if( (ia==iDEBUG_pick) ){
     //    printf( "evalPiPi_I ia(%i) ipi,jpi(%i,%i) fang %g c %g \n", ia,  ipi,jpi, fang, c );
     //    glColor3f(1.,0.,0.);
     //    Draw3D::drawVecInPos(  hf1*100.0, apos[ia]+pipos[ipi] );
     //    Draw3D::drawVecInPos(  hf2*100.0, apos[ia]+pipos[jpi] );
     //}
-
     fpipos[ipi].add( hf1 );
     fpipos[jpi].add( hf2 );
-    fapos[ia].sub( hf1+hf2 );
+    //fapos [ia ].sub( hf1+hf2 );  // NOTE! We should not apply recoil here, because pi-vectors are already attached to fulcrum
     return E;
 }
 
@@ -356,16 +372,16 @@ double eval_neighs(int ia){
             if( bipi ){
                 if(bjpi){ 
                     if(doPiPiT_)
-                    //E+= evalPiPi_T   ( ia, -ing-1, -jng-1, K ); 
-                    orthogonalizePiPi( ia, -ing-1, -jng-1 );
+                    E+= evalPiPi_T   ( ia, -ing-1, -jng-1, K ); 
+                    //orthogonalizePiPi( ia, -ing-1, -jng-1 );
                 }
-                else    { if(doPiSigma_) E+= evalSigmaPi  ( ia, jng, -ing-1, K ); }  
+                else    { if(doPiSigma_) E+= evalSigmaPi( ia, jng, -ing-1, K ); }  
             }else{
-                if(bjpi){ if(doPiSigma_) E+= evalSigmaPi  ( ia, ing, -jng-1, K ); }
+                if(bjpi){ if(doPiSigma_) E+= evalSigmaPi( ia, ing, -jng-1, K ); }
                 else    { 
                     if(doAngles_)
-                    E+= evalSigmaSigma_dist( ia, ing, jng, K );    
-                    //E+= evalSigmaSigma_cos( ia, ing, jng, K );    
+                    //E+= evalSigmaSigma_dist( ia, ing, jng, K );    
+                    E+= evalSigmaSigma_cos( ia, ing, jng, K );    
                 }  
             }
         }
@@ -375,7 +391,7 @@ double eval_neighs(int ia){
 
 double eval_bonds(){
     double E=0;
-    for(int ib=0; ib<nbonds; ib++){  E+=eval_bond(ib); }
+    for(int ib=0; ib<nbonds; ib++){ E+=eval_bond(ib); }
     return E;
 }
 
@@ -427,6 +443,24 @@ void bond2neighs(){
     int ipi=0;
     for(int i=0; i<nn; i++){ if(aneighs[i]<0){ aneighs[i]=ipi; ipi++; }; };
 }
+
+
+Vec3d evalPiTorq(){
+    Vec3d tq; tq.set(0.0);
+    for(int ia=0; ia<nnode; ia++){
+        int ioff = ia*nneigh_max;
+        for(int i=0; i<nneigh_max; i++){
+            int ing = aneighs[ioff+i];
+            if(ing<0){
+                int ipi=-ing-1;
+                tq.add_cross( apos[ia]+pipos[ipi], fpipos[ipi] );
+                //tq.add_cross( apos[ia], fpipos[ipi] );
+            };
+        }
+    }
+    return tq;
+}
+
 
 void checkNaNs(){
     //printf( "checkNaNs\n" );
