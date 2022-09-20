@@ -23,6 +23,7 @@ Flexible Atom sp-hybridization forcefield
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "SMat3.h"
 //#include "quaternion.h"
 #include "Forces.h"
 
@@ -108,7 +109,8 @@ struct FARFFAtom{
         double frb   =    type.bMorse*Eb;
         double E = Esr + EvdW;
         Vec3d force_; force_.set_mul( hij, fsr + fvdW );
-        Mat3Sd Jbond;
+        //Mat3Sd Jbond;
+        SMat3d Jbond;
         Jbond.from_dhat(hij);
         for(int ib=0; ib<nbi; ib++){
             const Vec3d& hi = opos  [ib];

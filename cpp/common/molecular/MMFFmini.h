@@ -5,6 +5,7 @@
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "SMat3.h"
 
 //#include "integerOps.h"
 
@@ -390,7 +391,8 @@ double eval_torsion(int it){
     fb =Vec3dZero;
     fab=Vec3dZero;
 
-    Mat3Sd J;
+    //Mat3Sd J;
+    SMat3d J;
 
     J.from_dhat(ha);    // -- by ha
     J.mad_ddot(hab,fa, dca ); // dca /dha = d<ha|hab>/dha

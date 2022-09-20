@@ -21,6 +21,7 @@ Flexible Atom sp-hybridization forcefield
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "SMat3.h"
 //#include "quaternion.h"
 //#include "Forces.h"
 
@@ -195,7 +196,8 @@ void evalAtom(int ia){
 
             if(conf.b<N_BOND_MAX){
                 Vec3d hi   = pi-pa;
-                Mat3Sd D;
+                //Mat3Sd D;
+                SMat3d D;
                 D.from_dhat(hi); // used only if pi-bond used
 
                 double ir2 = 1/(hi.norm2() + 1e-16);

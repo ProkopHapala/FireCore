@@ -21,12 +21,25 @@ class SMat3{
 	union{
 		struct{
 			T xx,yy,zz;
-			T yz,xz,xy;
+			//T yz,xz,xy;
+			union{
+			    struct{ T yz,xz,xy; };
+			    struct{ T zy,zx,yx; };
+			};
 		};
 		struct{	VEC diag,offd; };
 		T array[6];
 		VEC  vecs[2];
 	};
+
+
+  // TODO : This should be good also for rotation matrix (?)
+
+    //T xx,yy,zz;
+    //union{
+    //    struct{ T yz,xz,xy; };
+    //    struct{ T zy,zx,yx; };
+    //};
 
 	inline void setOne(     ){ xx=yy=zz=1; xy=xz=yz=0; };
 	inline void set   ( T f ){ xx=yy=zz=f; xy=xz=yz=0; };
@@ -66,6 +79,51 @@ class SMat3{
         yy=(xx_+zz_)   *sc;
         zz=(xx_+yy_)   *sc;
     }
+
+    inline void from_outer(const Vec3T<T>& h){
+        xy=h.x*h.y;
+        xz=h.x*h.z;
+        yz=h.y*h.z;
+        xx=h.x*h.x;
+        yy=h.y*h.y;
+        zz=h.z*h.z;
+    }
+
+    inline void add_outer(const Vec3T<T>& h){
+        xy+=h.x*h.y;
+        xz+=h.x*h.z;
+        yz+=h.y*h.z;
+        xx+=h.x*h.x;
+        yy+=h.y*h.y;
+        zz+=h.z*h.z;
+    }
+
+    inline void from_dhat(const Vec3T<T>& h){
+        // derivatives of normalized vector
+        //double ir  = irs[i];
+        T hxx = h.x*h.x;
+        T hyy = h.y*h.y;
+        T hzz = h.z*h.z;
+        xy=-h.x*h.y;
+        xz=-h.x*h.z;
+        yz=-h.y*h.z;
+        xx=(hyy+hzz);
+        yy=(hxx+hzz);
+        zz=(hxx+hyy);
+    }
+
+    inline void dhat_dot( const Vec3T<T>& h, Vec3T<T>& f )const{
+        f.x += h.x*xx + h.y*xy + h.z*xz;
+        f.y += h.x*xy + h.y*yy + h.z*yz;
+        f.z += h.x*xz + h.y*yz + h.z*zz;
+    }
+
+    inline void mad_ddot( const Vec3T<T>& h, Vec3T<T>& f, T k )const{
+        f.x += ( h.x*xx + h.y*xy + h.z*xz )*k;
+        f.y += ( h.x*xy + h.y*yy + h.z*yz )*k;
+        f.z += ( h.x*xz + h.y*yz + h.z*zz )*k;
+    }
+
 
 };
 

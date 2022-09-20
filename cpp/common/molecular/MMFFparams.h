@@ -65,6 +65,9 @@ class MMFFparams{ public:
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
 
+    bool reportIfMissing=true;
+    bool exitIfMissing  =true;
+
     void initDefaultAtomTypeDict(){
         makeDefaultAtomTypeDict( atomTypeNames, atomTypeDict );
     }
@@ -73,11 +76,12 @@ class MMFFparams{ public:
         for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atomTypeNames[i].c_str(), atomTypeDict[atomTypeNames[i]] ); };
     }
 
-    int loadAtomTypes(char * fname){
+    int loadAtomTypes(char * fname, bool exitIfFail=true){
         //printf( "loadAtomTypes %s \n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
             return -1;
         }
         char buff[1024];
@@ -125,11 +129,11 @@ class MMFFparams{ public:
         }
     }
 
-    int loadBondTypes(char * fname){
-
+    int loadBondTypes(char * fname, bool exitIfFail=true){
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
             return -1;
         }
         char buff[1024];
@@ -137,15 +141,15 @@ class MMFFparams{ public:
         BondType bt;
         //line = fgets( buff, 1024, pFile ); //printf("%s",line);
         //sscanf( line, "%i %i\n", &n );
-        int i;
-        for(int i; i<0xFFFF; i++){
+        int i=0;
+        for( i; i<1000; i++){
             line = fgets( buff, 1024, pFile );
             if(line==NULL) break;
             //printf("%s",line);
             sscanf(  line, "%i %i %i %lf %lf\n", &bt.at1, &bt.at2, &bt.order, &bt.length, &bt.stiffness );
             //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
             uint64_t id = getBondTypeId( bt.at1, bt.at2, bt.order );
-            //printf( ":: (%i,%i,%i) -> %i \n", bt.at1, bt.at2, bt.order, id );
+            //printf( "loadBondTypes[%i] iZ(%i,%i|%i) id=%i \n", i, bt.at1, bt.at2, bt.order, id );
             //bt.at1--; bt.at2--;
             bonds[id]=bt;
         }
@@ -157,8 +161,13 @@ class MMFFparams{ public:
         //printf( "(%i,%i,%i) -> %i \n", atypes[atyp1].iZ, atypes[atyp2].iZ, btyp, id );
         //uint64_t id  = getBondTypeId( atyp1, atyp2, btyp );
         auto it = bonds.find(id);
-        if   ( it == bonds.end() ){ l0=default_bond_length; k=default_bond_stiffness; return false;}
-        else                      { l0=it->second.length;   k=it->second.stiffness;   return true; }
+        if   ( it == bonds.end() ){ 
+            if(reportIfMissing){ printf("WARRNING!!! getBondParams() missing atype(%i,%i)iZs(%i,%i)o(%i)id(%i)=>l0 %g k %g \n", atyp1, atyp2, atypes[atyp1].iZ, atypes[atyp2].iZ, btyp, id, default_bond_length, default_bond_stiffness ); };
+            if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };
+            l0=default_bond_length; k=default_bond_stiffness; return false;
+        }else{ 
+            l0=it->second.length;   k=it->second.stiffness;   return true; 
+        }
     }
 
     void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){
