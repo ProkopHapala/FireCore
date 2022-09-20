@@ -193,18 +193,18 @@ inline double evalSigmaPi( int ia, int ing, int ipi, double K ){
     hf1.mul( fang*ir1 );
     hf2.mul( fang     );
 
-    if(bDEBUG_plot)
-    if(ipi==iDEBUG_pick)
-    {
-        float fsc=100.0;
-         //printf( "evalAngle_cos [%i|%i,%i,%i] c(%g,%g) \n", iDEBUG_pick, ia, ing, jng, hf1.dot(h1), hf1.dot(h1)  );
-         //printf( "evalAngle_cos [%i|%i,%i,%i] c %g c_ %g fang_ %g E %g \n", iDEBUG_pick, ia, ing, jng, c, c_, fang, E );
-         //printf( "evalAngle_cos bDEBUG_plot [%i|%i,%i] iDEBUG_pick %i \n", ia, ing, jng, iDEBUG_pick );
-         glColor3f(1.,0.,0.);
-         Draw3D::drawVecInPos(  hf1*fsc, apos [ing] );
-         Draw3D::drawVecInPos(  hf2*fsc, pipos[ipi]+apos[ia] );
-         Draw3D::drawVecInPos(  (hf1+hf2)*-fsc, apos[ia] );
-    }
+    // if(bDEBUG_plot)
+    // if(ipi==iDEBUG_pick)
+    // {
+    //     float fsc=100.0;
+    //      //printf( "evalAngle_cos [%i|%i,%i,%i] c(%g,%g) \n", iDEBUG_pick, ia, ing, jng, hf1.dot(h1), hf1.dot(h1)  );
+    //      //printf( "evalAngle_cos [%i|%i,%i,%i] c %g c_ %g fang_ %g E %g \n", iDEBUG_pick, ia, ing, jng, c, c_, fang, E );
+    //      //printf( "evalAngle_cos bDEBUG_plot [%i|%i,%i] iDEBUG_pick %i \n", ia, ing, jng, iDEBUG_pick );
+    //      glColor3f(1.,0.,0.);
+    //      Draw3D::drawVecInPos(  hf1*fsc, apos [ing] );
+    //      Draw3D::drawVecInPos(  hf2*fsc, pipos[ipi]+apos[ia] );
+    //      Draw3D::drawVecInPos(  (hf1+hf2)*-fsc, apos[ia] );
+    // }
 
     fapos [ing].add( hf1 );
     fpipos[ipi].add( hf2 );

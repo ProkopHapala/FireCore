@@ -35,8 +35,9 @@
 #include "Draw3D.h"
 #include "Camera.h"
 
-#include "Vec3.h"
 #include "Vec2.h"
+#include "Vec3.h"
+#include "Vec3Utils.h"
 #include "raytrace.h"
 
 //#include "Mesh.h"
@@ -191,7 +192,7 @@ class EditorGizmo{ public:
         int selgroup[nsel];
         int i=0; for( auto& s : selection ){ sel[i]=s.first; selgroup[i]=s.second; i++; }
         //if(mOrig=='g'){
-            Vec3d::move( nsel, sel, points, shift );
+            move( nsel, sel, points, shift );
         //}else{
         //    for(int ii=0; ii<nsel; ii++){ int i=sel[ii]; int ig=selgroup[ii]; groupPose[ig].rot.scalePoint( points[i], points[i], groupPose[ig].pos, sc ); }
         //}

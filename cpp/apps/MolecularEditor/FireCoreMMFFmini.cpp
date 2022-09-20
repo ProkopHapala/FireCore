@@ -17,6 +17,7 @@
 #include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
+#include "Vec3Utils.h"
 
 #include "raytrace.h"
 #include "Forces.h"
@@ -732,10 +733,10 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                     break;
 
                 case SDLK_LEFTBRACKET:
-                    Vec3d::rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, +rotation_step );
+                    rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, +rotation_step );
                     break;
                 case SDLK_RIGHTBRACKET:
-                    Vec3d::rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, -rotation_step );
+                    rotate( selection.size(), &selection[0], ff.apos, rotation_center, rotation_axis, -rotation_step );
                     break;
 
                 case SDLK_SPACE: bRunRelax=!bRunRelax; break;
