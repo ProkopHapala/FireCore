@@ -5,6 +5,7 @@
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "molecular_utils.h"
 
 // ======================
 // ====   MMFFsp3
@@ -106,6 +107,7 @@ void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
     //printf( "MMFFsp3::realloc() DONE \n" );
 }
 
+void cleanEnergy   (){ Etot=0;Eb=0;Ea=0;Eps=0;EppT=0;EppI=0; };
 void cleanAtomForce(){ for(int i=0; i<natoms; i++){ fapos [i].set(0.0); } }
 void cleanPiForce  (){ for(int i=0; i<npi;    i++){ fpipos[i].set(0.0); } }
 void normalizePi   (){ for(int i=0; i<npi;    i++){ pipos [i].normalize(); } }
@@ -409,6 +411,7 @@ double eval_neighs(){
 double eval( bool bClean=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
     if(bClean){
+        cleanEnergy();
         cleanAtomForce();  //printf( "DEBUG MMFFsp3.eval() 2 \n" );
         cleanPiForce();    //printf( "DEBUG MMFFsp3.eval() 3 \n" );
     }
