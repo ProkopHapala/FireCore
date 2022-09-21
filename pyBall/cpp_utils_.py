@@ -134,7 +134,8 @@ def writeFuncInterfaces( func_headers, debug=False ):
         if debug : print ("parsed :\n", parsed)
         sgen   = writeFuncInterface( parsed )
         print ("\n# ", s)
-        print (sgen,"\n\n")
+        #print (sgen,"\n\n")
+        print (sgen)
 
 
 

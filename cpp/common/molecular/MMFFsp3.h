@@ -34,9 +34,9 @@ void ckeckNaN_d(int n, int m, double* xs, const char* pre ){
 
 class MMFFsp3{ public:
     static constexpr const int nneigh_max = 4;
-    int  nDOFs=0,natoms=0,nnode=0,ncap=0,nbonds=0,npi=0;
+    int  nDOFs=0,natoms=0,nnode=0,ncap=0,npi=0,nbonds=0;
     bool bPBC=false;
-    double Eb,Ea,Ep;
+    double Etot,Eb,Ea, Eps,EppT,EppI;
 
     double * DOFs  = 0;   // degrees of freedom
     double * fDOFs = 0;   // forces
@@ -319,6 +319,7 @@ double eval_bond(int ib){
     fapos[at.x].add( f );
     fapos[at.y].sub( f );
     double E = k*dl*dl;
+    Eb+=E;
     
     /*
     if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){ 
@@ -328,8 +329,9 @@ double eval_bond(int ib){
     }
     */
     // --- Pi Bonds
-    double Epi = 0;
+
     if(doPiPiI){ // interaction between pi-bonds of given atom
+        double Epi = 0;
         if( (at.i<nnode) && (at.j<nnode) ){
             int i0=at.i*nneigh_max;
             int j0=at.j*nneigh_max;
@@ -345,9 +347,10 @@ double eval_bond(int ib){
                 }
             }
         }
+        EppI+=Epi;
+        E   +=Epi;
     }
-    E += Epi;
-    
+
     return E;
 }
 
@@ -370,19 +373,17 @@ double eval_neighs(int ia){
             bool bjpi=jng<0;
             double K = Kneighs[ioff+j]*Ki;
             if( bipi ){
-                if(bjpi){ 
-                    if(doPiPiT_)
-                    E+= evalPiPi_T   ( ia, -ing-1, -jng-1, K ); 
+                if(bjpi){ if(doPiPiT_){
+                    double e=evalPiPi_T   ( ia, -ing-1, -jng-1, K ); EppT+=e; E+=e;
                     //orthogonalizePiPi( ia, -ing-1, -jng-1 );
-                }
-                else    { if(doPiSigma_) E+= evalSigmaPi( ia, jng, -ing-1, K ); }  
+                }   }
+                else    { if(doPiSigma_){ double e=evalSigmaPi( ia, jng, -ing-1, K ); Eps+=e; E+=e; }  }
             }else{
-                if(bjpi){ if(doPiSigma_) E+= evalSigmaPi( ia, ing, -jng-1, K ); }
-                else    { 
-                    if(doAngles_)
-                    //E+= evalSigmaSigma_dist( ia, ing, jng, K );    
-                    E+= evalSigmaSigma_cos( ia, ing, jng, K );    
-                }  
+                if(bjpi){ if(doPiSigma_){ double e=evalSigmaPi( ia, ing, -jng-1, K ); Eps+=e; E+=e; } } 
+                else    {  if(doAngles_){
+                    //E+= evalSigmaSigma_dist( ia, ing, jng, K );    Eps+=e; E+=e; 
+                    double e= evalSigmaSigma_cos( ia, ing, jng, K );    Ea+=e; E+=e; 
+                }  }
             }
         }
     }
@@ -413,9 +414,10 @@ double eval( bool bClean=true ){
     }
     normalizePi(); 
     ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
-    Eb = eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds(); is NaN  \n"); checkNaNs(); exit(0); }
-    Ea = eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
-    return Eb+Ea+Ep;
+    eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
+    eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
+    Etot = Eb + Ea + Eps + EppT + EppI;
+    return Etot;
 };
 
 //double getFmax(){ double Fmax=0; for(int i=0; i<natoms;i++){ _max( Fmax, aforce[i].norm2() ); }; return Fmax; };

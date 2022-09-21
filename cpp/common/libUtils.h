@@ -11,9 +11,14 @@ std::unordered_map<std::string, int*>     ibuffers;
 
 extern "C"{
 
+void printBuffNames(){
+    printf( "#=== Buffers:  \n"); for (auto& it:  buffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
+    printf( "#=== IBuffers: \n"); for (auto& it: ibuffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
+}
+
 double* getBuff(const char* name){ 
     auto got = buffers.find( name );
-    if( got==buffers.end() ){ printf( "buffer[%s] NOT FOUNT !!! \n", name ); return 0;        }
+    if( got==buffers.end() ){ printf("ERROR: getBuff(%s) NOT FOUND\n", name); return 0;        }
     else                    { return got->second; }
 }
 
@@ -23,8 +28,8 @@ void setBuff(const char* name, double* buff){
 
 int* getIBuff(const char* name){ 
     auto got = ibuffers.find( name );
-    if( got == ibuffers.end() ){ return 0;        }
-    else                    { return got->second; }
+    if( got == ibuffers.end() ){ printf("ERROR: getIBuff(%s) NOT FOUND\n", name); return 0;        }
+    else                       { return got->second; }
 }
 
 void setIBuff(const char* name, int* buff){ 
