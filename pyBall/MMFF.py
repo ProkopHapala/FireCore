@@ -23,16 +23,18 @@ cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
 # ===== To generate Interfaces automatically from headers call:
 header_strings = [
-"void init_buffers()",
-"void init_params(char* fatomtypes, char* fbondtypes)",
-"void init_nonbond()",
-"void buildFF( bool bNonBonded_, bool bOptimizer_ )",
-"int loadmol( char* fname_mol )",
-"void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )",
-"void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )",
-"bool checkInvariants( double maxVcog, double maxFcog, double maxTg )",
-"double eval()",
-"bool relax( int niter, double Ftol )",
+#"void init_buffers()",
+#"void init_params(char* fatomtypes, char* fbondtypes)",
+#"void init_nonbond()",
+#"void buildFF( bool bNonBonded_, bool bOptimizer_ )",
+#"int loadmol( char* fname_mol )",
+#"void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )",
+#"void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )",
+#"bool checkInvariants( double maxVcog, double maxFcog, double maxTg )",
+#"double eval()",
+#"bool relax( int niter, double Ftol )",
+#"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){",
+#"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -169,10 +171,29 @@ def eval():
     return lib.eval()
 
 #  bool relax( int niter, double Ftol )
-lib.relax.argtypes  = [c_int, c_double] 
+lib.relax.argtypes  = [c_int, c_double, c_bool ] 
 lib.relax.restype   =  c_bool
-def relax(niter, Ftol):
-    return lib.relax(niter, Ftol)
+def relax(niter=100, Ftol=1e-6, bWriteTrj=False ):
+    return lib.relax(niter, Ftol, bWriteTrj )
+
+#  void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
+lib.scanRotation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double, c_int, c_double_p, c_bool] 
+lib.scanRotation_ax.restype   =  None
+def scanRotation_ax(selection, p0, ax, phi, nstep, Es=None, bWriteTrj=False):
+    n=len(selection)
+    selection=np.array(selection,np.int32)
+    lib.scanRotation_ax(n, _np_as(selection,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
+    return Es
+
+#  void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){
+lib.scanRotation.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double, c_int, c_double_p, c_bool] 
+lib.scanRotation.restype   =  None
+def scanRotation(selection, ia0, iax0, iax1, phi, nstep, Es=None, bWriteTrj=False):
+    n=len(selection)
+    selection=np.array(selection,np.int32)
+    if Es is None: Es=np.zeros(nstep)
+    lib.scanRotation(n, _np_as(selection,c_int_p), ia0, iax0, iax1, phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
+    return Es
 
 # ====================================
 # ========= Python Functions
