@@ -76,7 +76,7 @@ class MMFFparams{ public:
         for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atomTypeNames[i].c_str(), atomTypeDict[atomTypeNames[i]] ); };
     }
 
-    int loadAtomTypes(char * fname, bool exitIfFail=true){
+    int loadAtomTypes(const char * fname, bool exitIfFail=true){
         //printf( "loadAtomTypes %s \n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
@@ -129,7 +129,7 @@ class MMFFparams{ public:
         }
     }
 
-    int loadBondTypes(char * fname, bool exitIfFail=true){
+    int loadBondTypes(const char * fname, bool exitIfFail=true){
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
