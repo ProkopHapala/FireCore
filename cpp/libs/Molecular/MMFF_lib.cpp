@@ -110,11 +110,12 @@ void init_buffers(){
     ibuffers.insert( { "selection", manipulation_sel  } );
 }
 
-void init_params(char* fatomtypes, char* fbondtypes){
+void init_params(char* fatomtypes, char* fbondtypes, char* fagnletypes){
     //params.loadAtomTypes( "AtomTypes.dat" );
     //params.loadBondTypes( "BondTypes.dat" );
     params.loadAtomTypes( fatomtypes );
     params.loadBondTypes( fbondtypes );
+    params.loadAgnleType( fagnletypes );
     builder.bindParams(&params);
 }
 
@@ -152,7 +153,7 @@ int loadmol(char* fname_mol ){
 }
 
 void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ ){
-    init_params("data/AtomTypes.dat", "data/BondTypes.dat");
+    init_params("data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" );
     loadmol( fname_mol );
     buildFF( bNonBonded_, bOptimizer_ );
 }
