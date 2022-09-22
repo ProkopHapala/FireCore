@@ -48,6 +48,7 @@ void writeXYZ( FILE* pfile, int n, const int* atypes, const Vec3d* apos, const s
     fprintf(pfile, "%i\n", n );
     fprintf(pfile, "%s \n", comment );
     for(int i=0; i<n; i++){
+        //printf( "DEBUG writeXYZ()[%i] \n", i );
         int ityp   = atypes[i];
         const Vec3d&  pi = apos[i];
         //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, params->atypes[ityp].name );

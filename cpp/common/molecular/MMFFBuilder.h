@@ -230,6 +230,19 @@ int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes 
     return innodes.size();
 }
 
+int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, Vec3d& ax, Vec3d& p0 ){
+    const Vec2i& b = bond2atom[ib];
+    ax = (apos[b.b]-apos[b.a]).normalized();
+    std::unordered_set<int> innodes1; innodes1.insert( b.a );  std::unordered_set<int>* sel1;
+    std::unordered_set<int> innodes2; innodes2.insert( b.b );  std::unordered_set<int>* sel2;
+    MM::splitGraphs( nb, bond2atom, ib, innodes1 );
+    MM::splitGraphs( nb, bond2atom, ib, innodes2 );
+    if(innodes1.size()<innodes2.size()){ sel1=&innodes1; sel2=&innodes2; p0=apos[b.a]; }else{ sel1=&innodes2; sel2=&innodes1; ax.mul(-1.); p0=apos[b.b]; } 
+    int n=0;
+    for( int i:*sel1){ selection[n]=i; n++; };
+    for( int i:*sel2){ selection[n]=i; n++; };
+    return sel1->size();
+}
 
 class Builder{  public:
     int verbosity = 0;
@@ -478,7 +491,7 @@ class Builder{  public:
         int order=1;
         if( (ai.iconf>=0)&&(aj.iconf>=0) ){ 
             order+=_min( confs[ai.iconf].npi, confs[aj.iconf].npi ); 
-            printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, confs[ai.iconf].npi, confs[aj.iconf].npi );
+            //printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, confs[ai.iconf].npi, confs[aj.iconf].npi );
         }
         //getBondTypeId( ai.type, aj.type, uint8_t order );
         params->getBondParams( ai.type, aj.type, order, b.l0, b.k );
@@ -1269,7 +1282,7 @@ class Builder{  public:
     }
 
     void insertFlexibleMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){
-        printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
+        //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
         int natom0  = atoms.size();
         int nbond0  = bonds.size();
         for(int i=0; i<mol->natoms; i++){
@@ -1396,13 +1409,13 @@ void updatePBC( Vec3d* pbcShifts ){
 
 #ifdef MMFFsp3_h
 
-    void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=0.5, double K_ecap=0.75){
+    void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=0.5, double K_ecap=0.75, bool bATypes=true ){
         int npi,ne; ne=countPiE( npi );
         int nconf = confs.size();
         int ncap  = atoms.size() - nconf;
         int nb = bonds.size();
         if(verbosity>0)printf(  "MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
-        if(bRealloc) ff.realloc( nconf, nb+ne, npi, ncap+ne );
+        if(bRealloc)ff.realloc( nconf, nb+ne, npi, ncap+ne );
         export_apos     ( ff.apos );  
         export_atypes   ( ff.atype );
         export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k ); 
@@ -1445,10 +1458,11 @@ void updatePBC( Vec3d* pbcShifts ){
                     ipi++;
                 }
                 // e-cap
+                int etyp=-1;  if(params) etyp=params->atomTypeDict["E"];
                 for(int k=conf.nbond; k<conf.nbond+conf.ne; k++ ){
                     int ie=ie0+iie;
                     ff.apos[ie]=atoms[ia].pos + hs[k]*0.5;
-                    ff.atype[ie] = -1; // electon-pair type
+                    ff.atype[ie] = etyp; // electon-pair type
                     ngs[k] = ie;
                     kngs[k] = K_ecap;
                     int ib=nb+iie;

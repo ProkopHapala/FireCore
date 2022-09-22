@@ -405,9 +405,6 @@ double eval_neighs(){
     return E;
 }
 
-
-
-
 double eval( bool bClean=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
     if(bClean){
@@ -449,7 +446,6 @@ void bond2neighs(){
     for(int i=0; i<nn; i++){ if(aneighs[i]<0){ aneighs[i]=ipi; ipi++; }; };
 }
 
-
 Vec3d evalPiTorq(){
     Vec3d tq; tq.set(0.0);
     for(int ia=0; ia<nnode; ia++){
@@ -466,13 +462,44 @@ Vec3d evalPiTorq(){
     return tq;
 }
 
+int selectCaps(int n, int* sel, int* selout){
+    // this function finds cap-atoms (including e-pairs) attached to node atoms
+    int nout=0;
+    for(int i=0;i<n; i++){
+        int ia = sel[i];
+        if(ia>=nnode)continue;
+        int* ngs=aneighs + ia*nneigh_max; 
+        for(int j=0;j<nneigh_max;j++){
+            int ja = ngs[j];
+            if(ja>=0){ nout=ja; nout++; } // ignore pi-bonds
+        }
+    }
+    return nout;
+}
+
+void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
+    ax.normalize();
+    double ca=cos(phi);
+    double sa=sin(phi);
+    for(int i=0;i<n; i++){
+        int ia = sel[i];
+        if(ia>=nnode)continue;
+        apos[ia].rotate_csa( ca, sa, ax, p0 );
+        int* ngs=aneighs + ia*nneigh_max; 
+        for(int j=0;j<nneigh_max;j++){
+            int ja = ngs[j];
+            if(ja>=0){ if(ja>nnode) apos[ ja  ].rotate_csa( ca, sa, ax, p0 ); } // cap atoms
+            else     {             pipos[-ja-1].rotate_csa( ca, sa, ax     ); } // pi-bonds
+        }
+    }
+}
 
 void checkNaNs(){
     //printf( "checkNaNs\n" );
-    ckeckNaN_d(natoms, 3, (double*)apos,  "apos" );
+    ckeckNaN_d(natoms, 3, (double*)apos,  "apos"  );
     ckeckNaN_d(natoms, 3, (double*)fapos, "fapos" );
-    ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
-    ckeckNaN_d(npi, 3, (double*)fpipos, "fpipos" );
+    ckeckNaN_d(npi, 3, (double*)pipos,    "pipos" );
+    ckeckNaN_d(npi, 3, (double*)fpipos,   "fpipos");
     //for(int i=0; i<natoms; i++){
     //    if( isnan(fapos[i].x) || isnan(fapos[i].x) || isnan(fapos[i].x) ){ printf( "fatoms[%i] is NaN (%g,%g,%g)\n", i, fapos[i].x,fapos[i].y,fapos[i].z ); };
     //}
