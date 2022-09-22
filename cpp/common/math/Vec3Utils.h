@@ -32,11 +32,12 @@ template<class T> static inline Vec3T<T> average( int n, const Vec3T<T>* vs     
 template<class T> static inline Vec3T<T> average( int n, const Vec3T<T>* vs, int* selection ){ Vec3T<T> v=sum(n,vs,selection); v.mul( 1/(T)n ); return v; }
 
 template<class T>
-static inline Vec3T<T> torq( int n, const Vec3T<T>* ps,const Vec3T<T>* vs, const Vec3T<T>& p0 ){
+static inline Vec3T<T> torq( int n, const Vec3T<T>* ps,const Vec3T<T>* vs, const Vec3T<T>& p0, int* selection=0 ){
     Vec3T<T> v; v.set(0.0);
     for(int i=0; i<n; i++){ 
-        Vec3T<T> dp; dp.set_sub( ps[i], p0 );
-        v.add_cross( dp, vs[i] );
+        int ii=i; if(selection)ii=selection[i];
+        Vec3T<T> dp; dp.set_sub( ps[ii], p0 );
+        v.add_cross( dp, vs[ii] );
     }
     return v;
 }

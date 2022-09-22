@@ -30,6 +30,9 @@ int DEBUG_iter     = 0;
 int DEBUG_log_iter = 0;
 int i_DEBUG=0;
 
+constexpr int ntmpstr=2048;
+char tmpstr[ntmpstr];
+
 // ============ Global Variables
 
 Molecule    mol;
@@ -55,6 +58,11 @@ double  maxFcog = 1e-9;
 double  maxTg   = 1e-1;
 
 FILE* xyz_file=0;
+
+Vec3d manipulation_p0=Vec3dZero; 
+Vec3d manipulation_ax=Vec3dZ;
+int*  manipulation_sel=0;
+int   manipulation_nsel=0;
 
 //============================
 
@@ -99,6 +107,7 @@ void init_buffers(){
     buffers.insert( { "Kneighs",   (double*)ff.Kneighs   } );
     ibuffers.insert( { "bond2atom",    (int*)ff.bond2atom  } );
     ibuffers.insert( { "aneighs",      (int*)ff.aneighs  } );
+    ibuffers.insert( { "selection", manipulation_sel  } );
 }
 
 void init_params(char* fatomtypes, char* fbondtypes){
@@ -132,6 +141,7 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
         opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
         opt.cleanVel();
     }
+    _realloc( manipulation_sel, ff.natoms );
     init_buffers();
 }
 
@@ -171,10 +181,10 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
 //void open_xyzFile (const char* fname){ xyz_file=fopen( fname,"w" ); };
 //void close_xyzFile(){fclose(xyz_file)};
 
-int toXYZ(){
+int toXYZ(const char* comment="#comment"){
     if(xyz_file==0){ printf("ERROR no xyz file is open \n"); return -1; }
-    int* atypes = builder.molTypes[0]->atomType;
-    writeXYZ( xyz_file, ff.natoms, atypes, ff.apos, params.atomTypeNames );
+    //int* atypes = builder.molTypes[0]->atomType;
+    writeXYZ( xyz_file, ff.natoms, ff.atype, ff.apos, params.atomTypeNames, comment );
     return 0;
 }
 
@@ -191,10 +201,11 @@ bool relax( int niter, double Ftol, bool bWriteTrj ){
     bool bConverged=false; 
     if(bWriteTrj){ xyz_file=fopen( "relax_trj.xyz","w" ); }
     for(int itr=0; itr<niter; itr++){
-        Etot=eval();
+        Etot=eval();                                                  
         if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
         double f2 = opt.move_FIRE();
-        if(bWriteTrj){ toXYZ(); };
+        //if(bWriteTrj){ toXYZ(); ;printf("DEBUB[%i] 4 \n", itr); };
+        if(bWriteTrj){  sprintf(tmpstr,"# relax[%i] E=%g f2=%g", itr, Etot, sqrt(f2) );  toXYZ(tmpstr); };
         printf( "relax[%i] |F| %g (Ftol=%g) \n", itr, sqrt(f2), Ftol );
         if(f2<f2tol){ bConverged=true; break; }
     }
@@ -204,17 +215,47 @@ bool relax( int niter, double Ftol, bool bWriteTrj ){
 
 // ========= Manipulation with the molecule
 
+void shift_atoms_ax( int n, int* selection, double* d                  ){ move( n, selection, ff.apos, *(Vec3d*)d ); };
+void shift_atoms   ( int n, int* selection, int ia0, int ia1, double l ){ Vec3d d=(ff.apos[ia1]-ff.apos[ia0]).normalized()*l; move( n, selection, ff.apos, d); };
+
 void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi      ){ rotate( n, selection, ff.apos, *(Vec3d*)p0, *(Vec3d*)ax, phi ); };
 void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, ff.apos, ff.apos[ia0], (ff.apos[iax1]-ff.apos[iax0]).normalized(), phi ); };
 
-void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
-    double dphi=phi/nstep;
-    if(bWriteTrj){ xyz_file=fopen( "scan_rot_trj.xyz","w" ); }
+int splitAtBond( int ib, int* selection ){
+    if(selection==0){ selection=manipulation_sel; }
+    int n = MM::splitByBond( ib, ff.nbonds, ff.bond2atom, ff.apos, selection, manipulation_ax, manipulation_p0 );
+    if(selection==0){ manipulation_nsel=n; }
+    return n;
+}
+
+void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj ){
+    if(selection==0){ selection=manipulation_sel; n=manipulation_nsel; }
+    Vec3d d=(*(Vec3d*)(vec)); d.mul(1./nstep);
+    if(bWriteTrj){ xyz_file=fopen( "scan_trans_trj.xyz","w" ); }
     for(int i=0; i<nstep; i++){
         if(bWriteTrj){ toXYZ(); };
         double E = eval();
         if(Es)Es[i]=E;
-        rotate( n, selection, ff.apos, *(Vec3d*)p0, *(Vec3d*)ax, dphi );
+        move( n, selection, ff.apos, d);
+    }
+    if(bWriteTrj){ fclose(xyz_file); }
+}
+void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj ){ Vec3d d=(ff.apos[ia1]-ff.apos[ia0]).normalized()*l; scanTranslation_ax(n,selection, (double*)&d, nstep, Es, bWriteTrj ); };
+
+
+void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
+    if(p0==0) p0=(double*)&manipulation_p0;
+    if(ax==0) ax=(double*)&manipulation_ax;
+    if(selection==0){ selection=manipulation_sel; n=manipulation_nsel; }
+    double dphi=phi/nstep;
+    if(bWriteTrj){ xyz_file=fopen( "scan_rot_trj.xyz","w" ); }
+    for(int i=0; i<nstep; i++){
+        double E = eval();
+        Vec3d tq = torq( n, ff.apos, ff.fapos, *(Vec3d*)p0, selection );
+        if(bWriteTrj){  sprintf(tmpstr,"# rotScan[%i] E=%g tq=(%g,%g,%g)", i, E, tq.x,tq.y,tq.z );  toXYZ(tmpstr); };
+        if(Es)Es[i]=E;
+        //rotate( n, selection, ff.apos, *(Vec3d*)p0, *(Vec3d*)ax, dphi );
+        ff.rotateNodes(n, selection, *(Vec3d*)p0, *(Vec3d*)ax, dphi );
     }
     if(bWriteTrj){ fclose(xyz_file); }
 }

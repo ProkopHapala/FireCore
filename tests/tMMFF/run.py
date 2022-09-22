@@ -4,16 +4,44 @@ import os
 import matplotlib.pyplot as plt
 
 sys.path.append("../../")
+from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
-mmff.initWithMolFile( "C2H4.xyz", bNonBonded=False, bOptimizer=True)
+#======== Body
+
+'''
+# ======== Oritent Molecule
+xyzs,Zs,enames,qs = au.loadAtomsNP( "data/Benzene_deriv.xyz" )
+au.orient( 2, (5,2), (1,3), xyzs, bFlipXZ=True )
+au.saveXYZ( enames, xyzs, "data/Benzene_deriv_.xyz", qs=qs, Rs=None )
+plt.plot( xyzs[:,0],xyzs[:,1], "o" )
+plt.axis('equal')
+plt.show()
+exit()
+'''
+
+'''
+# ============== C2H4,xyz
+#mmff.initWithMolFile( "C2H4.xyz", bNonBonded=False, bOptimizer=True)
 #mmff.printBuffNames()
-mmff.getBuffs() #;print( mmff.ndims )
+#mmff.getBuffs() #;print( mmff.ndims )
 #mmff.eval()
 #mmff.relax(1000, bWriteTrj=True )
-Es=mmff.scanRotation( [1,4,5], 0, 0,1, np.pi*2, 100, bWriteTrj=True)   ;print("Es=", Es)
+#Es=mmff.scanRotation( [1,4,5], 0, 0,1, np.pi*2, 100, bWriteTrj=True)   ;print("Es=", Es)
+#plt.plot(Es)
+#print( "Es(Etot,Eb,Ea,Eps,EppT,EppI):", mmff.Es )
+#nsel = mmff.splitAtBond(6-1)  ;print( "split to:\n", mmff.selection[:nsel],"\n", mmff.selection[nsel:] )
+'''
 
-plt.plot(Es)
-print( "Es(Etot,Eb,Ea,Eps,EppT,EppI):", mmff.Es )
+# ============== Benzene_deriv.xyz
+mmff.initWithMolFile( "data/Benzene_deriv.xyz", bNonBonded=False, bOptimizer=True)
+mmff.getBuffs() #;print( mmff.ndims )
+#mmff.eval()
+#mmff.relax(1000, Ftol=1e-4, bWriteTrj=True )
+Es=mmff.scanRotation( 1, 1,11, np.pi*2, 100, sel=[11,13,14,20]+[29,30,31,32], bWriteTrj=True, _0=1) ;plt.plot(Es) ;print("Es=", Es)
+
+#mmff.plot(Es)
+#mmff.plot_selection( [1,2,3] )
+
 
 plt.show()

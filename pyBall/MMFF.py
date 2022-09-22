@@ -33,8 +33,15 @@ header_strings = [
 #"bool checkInvariants( double maxVcog, double maxFcog, double maxTg )",
 #"double eval()",
 #"bool relax( int niter, double Ftol )",
-#"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){",
-#"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){",
+"void shift_atoms_ax( int n, int* selection, double* d                  )",
+"void shift_atoms   ( int n, int* selection, int ia0, int ia1, double l )",
+"void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi      )",
+"void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double phi )",
+"int  splitAtBond( int ib, int* selection )",
+"void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj )",
+"void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )",
+#"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
+#"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -97,8 +104,8 @@ def getBuffs( NEIGH_MAX=4 ):
     global nDOFs,natoms,nnode,ncap,nbonds,npi,nvecs
     nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];npi=ndims[4];nbonds=ndims[5];
     nvecs=natoms+npi
-    print( "nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
-    global DOFs,fDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, Kneighs,bond2atom,aneighs
+    print( "getBuffs(): nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
+    global DOFs,fDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, Kneighs,bond2atom,aneighs,selection
     #Ebuf     = getEnergyTerms( )
     DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
     fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
@@ -111,6 +118,7 @@ def getBuffs( NEIGH_MAX=4 ):
     Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
     bond2atom = getIBuff( "bond2atom",(nbonds,2) )
     aneighs   = getIBuff( "aneighs",  (nnode,NEIGH_MAX) )
+    selection = getIBuff( "selection",  (natoms) )
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []
@@ -164,40 +172,141 @@ lib.checkInvariants.restype   =  c_bool
 def checkInvariants(maxVcog=1e-9, maxFcog=1e-9, maxTg=1e-1):
     return lib.checkInvariants(maxVcog, maxFcog, maxTg)
 
-#  double eval()
+#double eval()
 lib.eval.argtypes  = [] 
 lib.eval.restype   =  c_double
 def eval():
     return lib.eval()
 
-#  bool relax( int niter, double Ftol )
+#bool relax( int niter, double Ftol )
 lib.relax.argtypes  = [c_int, c_double, c_bool ] 
 lib.relax.restype   =  c_bool
 def relax(niter=100, Ftol=1e-6, bWriteTrj=False ):
     return lib.relax(niter, Ftol, bWriteTrj )
 
-#  void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
+# ============= Manipulation
+
+#void shift_atoms_ax( int n, int* sel, double* d                  )
+lib.shift_atoms_ax.argtypes  = [c_int, c_int_p, c_double_p] 
+lib.shift_atoms_ax.restype   =  None
+def shift_atoms_ax(d, sel=None):
+    n=0
+    if sel is not None:
+        n=len(sel)
+        sel=np.array(sel,np.int32)
+    if d is not None: d=np.array(d)
+    return lib.shift_atoms_ax(n, _np_as(sel,c_int_p), _np_as(d,c_double_p))
+
+#void shift_atoms( int n, int* sel, int ia0, int ia1, double l )
+lib.shift_atoms.argtypes  = [c_int, c_int_p, c_int, c_int, c_double] 
+lib.shift_atoms.restype   =  None
+def shift_atoms( ia0, ia1, l, sel=None):
+    n=0
+    if sel is not None:
+        n=len(sel)
+        sel=np.array(sel,np.int32)
+    return lib.shift_atoms(n, _np_as(sel,c_int_p), ia0, ia1, l)
+
+#  rotate_atoms_ax( int n, int* sel, double* p0, double* ax, double phi      )
+lib.rotate_atoms_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double] 
+lib.rotate_atoms_ax.restype   =  None
+def rotate_atoms_ax( phi, sel=None, p0=None, ax=None ):
+    n=0
+    if sel is not None:
+        n=len(sel)
+        sel=np.array(sel,np.int32)
+    if p0 is not None: p0=np.array(p0)
+    if ax is not None: ax=np.array(ax)
+    return lib.rotate_atoms_ax(n, _np_as(sel,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi)
+
+#  rotate_atoms( int n, int* sel, int ia0, int iax0, int iax1, double phi )
+lib.rotate_atoms_ax.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double] 
+lib.rotate_atoms_ax.restype   =  None
+def rotate_atoms_ax(ia0, iax0, iax1, phi, sel=None):
+    n=0
+    if sel is not None:
+        n=len(sel)
+        sel=np.array(sel,np.int32)
+    return lib.rotate_atoms_ax(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi)
+
+#  int splitAtBond( int ib, int* sel )
+lib.splitAtBond.argtypes  = [c_int, c_int_p] 
+lib.splitAtBond.restype   =  c_int
+def splitAtBond(ib, sel=None):
+    return lib.splitAtBond(ib, _np_as(sel,c_int_p))
+
+#  void scanTranslation_ax( int n, int* sel, double* vec, int nstep, double* Es, bool bWriteTrj )
+lib.scanTranslation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_int, c_double_p, c_bool] 
+lib.scanTranslation_ax.restype   =  None
+def scanTranslation_ax(nstep, Es, bWriteTrj, sel=None, vec=None, ):
+    n=0
+    if sel is not None:
+        n=len(sel)
+        sel=np.array(sel,np.int32)
+    if vec is not None: vec=np.array(vec)
+    return lib.scanTranslation_ax(n, _np_as(sel,c_int_p), _np_as(vec,c_double_p), nstep, _np_as(Es,c_double_p), bWriteTrj)
+
+#  void scanTranslation( int n, int* sel, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )
+lib.scanTranslation.argtypes  = [c_int, c_int_p, c_int, c_int, c_double, c_int, c_double_p, c_bool] 
+lib.scanTranslation.restype   =  None
+def scanTranslation( ia0, ia1, l, nstep, Es=None, sel=None, bWriteTrj=False):
+    if Es is None: Es=np.zeros(nstep)
+    return lib.scanTranslation(n, _np_as(sel,c_int_p), ia0, ia1, l, nstep, _np_as(Es,c_double_p), bWriteTrj)
+
+#  void scanRotation_ax( int n, int* sel, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
 lib.scanRotation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double, c_int, c_double_p, c_bool] 
 lib.scanRotation_ax.restype   =  None
-def scanRotation_ax(selection, p0, ax, phi, nstep, Es=None, bWriteTrj=False):
-    n=len(selection)
-    selection=np.array(selection,np.int32)
-    lib.scanRotation_ax(n, _np_as(selection,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
+def scanRotation_ax( phi, nstep, sel=0, p0=None, ax=None,  Es=None, bWriteTrj=False):
+    n=0
+    if sel is not None:
+        n=len(sel)
+        sel=np.array(sel,np.int32)
+    if p0 is not None: p0=np.array(p0)
+    if ax is not None: ax=np.array(ax)
+    lib.scanRotation_ax(n, _np_as(sel,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
     return Es
 
-#  void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){
+#  void scanRotation( int n, int* sel,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){
 lib.scanRotation.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double, c_int, c_double_p, c_bool] 
 lib.scanRotation.restype   =  None
-def scanRotation(selection, ia0, iax0, iax1, phi, nstep, Es=None, bWriteTrj=False):
-    n=len(selection)
-    selection=np.array(selection,np.int32)
+def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, bWriteTrj=False, _0=0):
+    n=0
+    if _0!=0: ia0 -=_0; iax0-=_0; iax1-=_0;
+    if sel is not None:
+        n=len(sel)
+        sel=np.array(sel,np.int32)
+        sel-=_0
     if Es is None: Es=np.zeros(nstep)
-    lib.scanRotation(n, _np_as(selection,c_int_p), ia0, iax0, iax1, phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
+    lib.scanRotation(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
     return Es
 
 # ====================================
 # ========= Python Functions
 # ====================================
+
+def plot(b2as=None,ax1=0,ax2=1,ps=None):
+    import matplotlib.pyplot as plt
+    from matplotlib import collections  as mc
+    if ps is None: ps=apos
+    if b2as  is None: b2as=bond2atom
+    lines = [  ((ps[b[0],ax1],ps[b[0],ax2]),(ps[b[1],ax1],ps[b[1],ax2])) for b in b2as ]
+    lc = mc.LineCollection(lines, colors='k', linewidths=2)
+    ax=plt.gca()
+    ax.add_collection(lc)
+    plt.plot( ps[:,ax1], ps[:,ax2],'ob')
+    for i,p in enumerate(ps):    ax.annotate( "%i"%i , (p[ax1],p[ax2]), color='b' )
+    for i,l in enumerate(lines): 
+        p= ((l[0][0]+l[1][0])*0.5,(l[0][1]+l[1][1])*0.5)
+        ax.annotate( "%i"%i , p, color='k')
+    plt.axis('equal')
+    plt.grid()
+
+def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
+    import matplotlib.pyplot as plt
+    if sel is None: sel=selection
+    if ps is None: ps=apos
+    asel=ps[sel]
+    plt.scatter( asel[:,ax1], asel[:,ax2], s=s, facecolors='none', edgecolors='r' )
 
 
 # ====================================
