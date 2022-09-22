@@ -6,6 +6,7 @@
 #include "Vec2.h"
 #include "Vec3.h"
 #include "SMat3.h"
+#include "quaternion.h"
 
 //#include "integerOps.h"
 
@@ -72,7 +73,7 @@ class MMFFmini{ public:
     Vec3d  * pbcShifts = 0;  // [A]
 
     Vec2i  * ang2bond  = 0;
-    Vec3i  * ang2atom  = 0;
+    Vec3i  * ang2atom  = 0; // a-b-c  or (lever1,fulcrum,lever2)
     //Vec2d  * ang_0   = 0; // alpha_0
     Vec2d  * ang_cs0   = 0; // cos(a),sin(a)
     double * ang_k     = 0; // [eV/A^2]

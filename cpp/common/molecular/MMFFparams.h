@@ -4,6 +4,7 @@
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "integerOps.h"
 
 #include "molecular_utils.h"
 
@@ -11,7 +12,7 @@
 #include <unordered_map>
 
 inline uint64_t getBondTypeId( uint16_t at1, uint16_t at2, uint8_t order ){
-    if (at1>at2){ SWAP(at1,at2,uint16_t); }
+    if (at1>at2){ _swap(at1,at2); }
     return pack64( at1, at2, order, 0 );
 }
 
@@ -20,6 +21,16 @@ class BondType{ public:
     double stiffness;
     uint16_t at1,at2;
     uint8_t  order;
+    inline void sort(){ if (at1>at2){ _swap(at1,at2); }  }
+    inline uint64_t getId(){ sort(); return pack64( at1, at2, order, 0 ); }
+};
+
+class AngleType{ public:
+    double angle0;
+    double stiffness;
+    Vec3i  atoms; // a-b-c  or (lever1,fulcrum,lever2)
+    inline void     sort(){ if (atoms.x>atoms.z){ _swap(atoms.x,atoms.z); }  }
+    inline uint64_t getId(){ sort(); return pack64( atoms.b,atoms.a,atoms.c, 0 ); }
 };
 
 class AtomType{ public:
@@ -31,6 +42,10 @@ class AtomType{ public:
     uint32_t  color;
     double    RvdW;
     double    EvdW;
+    // ==== additional
+    double    piStiff;
+    double    electroneg;
+    double    polarizability;
 
     char* toString( char * str ){
         sprintf( str, "%s %i %i %i %i %lf %lf %x", name,  iZ,   neval,  valence,   sym,    RvdW, EvdW,   color );
@@ -57,10 +72,11 @@ class AtomType{ public:
 class MMFFparams{ public:
 
     // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html
-    std::vector       <AtomType>          atypes;
-    std::vector       <std::string    >   atomTypeNames;
-    std::unordered_map<std::string,int>   atomTypeDict;
-    std::unordered_map<uint64_t,BondType> bonds;
+    std::vector       <AtomType>           atypes;
+    std::vector       <std::string    >    atomTypeNames;
+    std::unordered_map<std::string,int>    atomTypeDict;
+    std::unordered_map<uint64_t,BondType>  bonds;
+    std::unordered_map<uint64_t,AngleType> angles;
 
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
@@ -74,6 +90,12 @@ class MMFFparams{ public:
 
     void printAtomTypeDict(){
         for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atomTypeNames[i].c_str(), atomTypeDict[atomTypeNames[i]] ); };
+    }
+
+    int getAtomType(const char* s){
+        auto found = atomTypeDict.find(s);
+        if(found==atomTypeDict.end()){ return -1; }
+        return found->second;
     }
 
     int loadAtomTypes(const char * fname, bool exitIfFail=true){
@@ -98,7 +120,7 @@ class MMFFparams{ public:
             atyp.fromString( line );
             atypes.push_back(atyp);
             atomTypeNames.push_back( atyp.name );
-            atomTypeDict [atyp.name] = atypes.size()-1;
+            atomTypeDict[atyp.name] = atypes.size()-1;
 
             //char str[1000];
             //atyp.toString( str );
@@ -148,10 +170,43 @@ class MMFFparams{ public:
             //printf("%s",line);
             sscanf(  line, "%i %i %i %lf %lf\n", &bt.at1, &bt.at2, &bt.order, &bt.length, &bt.stiffness );
             //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
-            uint64_t id = getBondTypeId( bt.at1, bt.at2, bt.order );
+            uint64_t id = bt.getId();
+            //uint64_t id = getBondTypeId( bt.at1, bt.at2, bt.order );
             //printf( "loadBondTypes[%i] iZ(%i,%i|%i) id=%i \n", i, bt.at1, bt.at2, bt.order, id );
             //bt.at1--; bt.at2--;
             bonds[id]=bt;
+        }
+        return i;
+    }
+
+    void printAngle(const AngleType& at){
+        printf( "%s %s %s %g %g\n", atypes[at.atoms.a].name, atypes[at.atoms.b].name, atypes[at.atoms.c].name, at.angle0, at.stiffness );
+    }
+
+    int loadAgnleType(const char * fname, bool exitIfFail=true){
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
+            return -1;
+        }
+        char buff[1024];
+        char * line;
+        AngleType ang;
+        int i=0;
+        char name[3][8];
+        for( i; i<1000; i++){
+            line = fgets( buff, 1024, pFile );
+            if(line==NULL) break;
+            sscanf(  line,            "%s %s %s %lf %lf\n",  name[0], name[1], name[2], &ang.angle0, &ang.stiffness );
+            printf( "loadAgnleType[%i] %s %s %s %lf %lf\n",i,name[0], name[1], name[2],  ang.angle0,  ang.stiffness );
+            ang.atoms.a = getAtomType(name[0]);
+            ang.atoms.b = getAtomType(name[1]);
+            ang.atoms.c = getAtomType(name[2]);
+            uint64_t id = ang.getId();
+            auto found = angles.find(id);
+            if( found != angles.end() ){ printf( "WARRNIMG!!! loadAgnleType() angleType[%i] same as ", i); printAngle(found->second); };
+            angles[id]=ang;
         }
         return i;
     }
