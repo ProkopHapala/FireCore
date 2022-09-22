@@ -7,7 +7,10 @@ option(WITH_SDL    "Build test programs" OFF)
 option(RELEASE     "Build test programs" OFF)
 message("OPTIONS: SLD=${WITH_SDL} OPENCL=${WITH_OPENCL} RELEASE=${RELEASE}" )
 
+# ==============================
 # ==== FLAGS
+# ==============================
+
 if(RELEASE)
     set(CMAKE_BUILD_TYPE Release)
 else()
@@ -35,8 +38,9 @@ SET( WARRNING_TO_ERROR     "-Werror=return-type -Werror=init-self -Werror=uninit
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
 message ( ${CMAKE_CXX_FLAGS} )
 
-
+# ==============================
 # ==== DIRS
+# ==============================
 
 SET( MY_SRC_DIR    "${CMAKE_SOURCE_DIR}" )
 SET( MY_BIN_SHARE  "${MY_SRC_DIR}/Build"       )
@@ -91,6 +95,6 @@ endif()
 
 # ====== OpenCL + SDL@OpenGL
 
-#if ( WITH_OPENCL AND WITH_SDL )
-#    add_subdirectory( ${MY_SRC_DIR}/apps_OCL     )
-#endif()
+if ( WITH_OPENCL AND WITH_SDL )
+    add_subdirectory( ${MY_SRC_DIR}/apps_OCL     )
+endif()
