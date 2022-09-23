@@ -223,9 +223,10 @@ void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi 
 void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, ff.apos, ff.apos[ia0], (ff.apos[iax1]-ff.apos[iax0]).normalized(), phi ); };
 
 int splitAtBond( int ib, int* selection ){
-    if(selection==0){ selection=manipulation_sel; }
+    bool bGlob=(selection==0); 
+    if(bGlob){ selection=manipulation_sel; }
     int n = MM::splitByBond( ib, ff.nbonds, ff.bond2atom, ff.apos, selection, manipulation_ax, manipulation_p0 );
-    if(selection==0){ manipulation_nsel=n; }
+    if(bGlob){ manipulation_nsel=n; }
     return n;
 }
 
@@ -247,7 +248,7 @@ void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nst
 void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
     if(p0==0) p0=(double*)&manipulation_p0;
     if(ax==0) ax=(double*)&manipulation_ax;
-    if(selection==0){ selection=manipulation_sel; n=manipulation_nsel; }
+    if(selection==0){selection=manipulation_sel; n=manipulation_nsel; }
     double dphi=phi/nstep;
     if(bWriteTrj){ xyz_file=fopen( "scan_rot_trj.xyz","w" ); }
     for(int i=0; i<nstep; i++){

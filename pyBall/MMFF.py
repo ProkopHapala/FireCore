@@ -55,7 +55,7 @@ header_strings = [
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
-cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build_OCL/libs/Molecular' ) 
+cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' ) 
 lib = cpp_utils.loadLib('MMFF_lib', recompile=False)
 array1ui = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='CONTIGUOUS')
 array1i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=1, flags='CONTIGUOUS')
@@ -280,6 +280,12 @@ def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, bWriteTrj=Fals
     lib.scanRotation(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
     return Es
 
+def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False):
+    nsel = splitAtBond(ib) 
+    if bPrintSel: print( "split to:\n", selection[:nsel],"\n", selection[nsel:] )
+    ias = bond2atom[ib,:]
+    return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
+
 # ====================================
 # ========= Python Functions
 # ====================================
@@ -290,10 +296,10 @@ def plot(b2as=None,ax1=0,ax2=1,ps=None):
     if ps is None: ps=apos
     if b2as  is None: b2as=bond2atom
     lines = [  ((ps[b[0],ax1],ps[b[0],ax2]),(ps[b[1],ax1],ps[b[1],ax2])) for b in b2as ]
-    lc = mc.LineCollection(lines, colors='k', linewidths=2)
+    lc = mc.LineCollection(lines, colors='#808080', linewidths=2)
     ax=plt.gca()
     ax.add_collection(lc)
-    plt.plot( ps[:,ax1], ps[:,ax2],'ob')
+    plt.plot( ps[:,ax1], ps[:,ax2],'o', c='#8080FF' )
     for i,p in enumerate(ps):    ax.annotate( "%i"%i , (p[ax1],p[ax2]), color='b' )
     for i,l in enumerate(lines): 
         p= ((l[0][0]+l[1][0])*0.5,(l[0][1]+l[1][1])*0.5)

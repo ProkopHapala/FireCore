@@ -206,27 +206,28 @@ struct Fragment{
 
 //int splitGraphs( int nb, Vec2i* bonds, int a0, int b0 ){
 int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes ){
-    //printf( "splitGraphs \n" );
+    //printf( "# ======== splitGraphs() \n" );
     std::unordered_set<int> exbonds; // excluded bonds
-    //std::unordered_set<int> innodes;
     exbonds.insert(b0);
-    //innodes.insert(a0);
     int n0;
-    do{
+    do{ // Breadth-first search in bond graph with exclusion
         n0=innodes.size();
-        for( int ib=0; ib<nb; ib++ ){
+        //printf( "#### splitGraphs.n0= %i \n", n0 );
+        //printf("inodes: "); for(int i:innodes){ printf("%i ",i); } ;printf("\n");
+        for( int ib=0; ib<nb; ib++ ){                         // go over all bonds
             //printf( "ib %i n0 %i \n", ib, n0 );
-            if( exbonds.find(ib) != innodes.end() ) continue;
+            if( exbonds.find(ib) != innodes.end() ) continue; // if bond in excluded bonds, skip
             const Vec2i& b = bonds[ib];
             int ia=-1;
-            if     ( innodes.find(b.a) != innodes.end() ){ ia=b.b; }
-            else if( innodes.find(b.b) != innodes.end() ){ ia=b.a; }
+            if     ( innodes.find(b.a) != innodes.end() ){ ia=b.b; }   // if atom.a in nodes, add atom b
+            else if( innodes.find(b.b) != innodes.end() ){ ia=b.a; }   // if atom.b in nodes, add atom a
             if(ia>=0){
+                //printf( "splitGraphs.add(ib=%i,ia=%i)\n", ib, ia );
                 innodes.insert(ia);
                 exbonds.insert(ib);
             }
         }
-    }while( innodes.size()>n0 );
+    }while( innodes.size()>n0 ); // as long as new nodes are added
     return innodes.size();
 }
 
