@@ -71,6 +71,7 @@ end subroutine init_FIRE
 subroutine move_ions_FIRE( istep, iwrtxyz )
 	!use outputs, only: iwrtxyz
 	!use optimization
+	use options, only: verbosity
 	use configuration
 	use forces
 	!use fragments
@@ -93,12 +94,12 @@ subroutine move_ions_FIRE( istep, iwrtxyz )
     deltaFmax = 0.0d0
 	do iatom = 1, natoms
 		do k=1,3
-			!if ( fragxyz(k,iatom) .eq. 0 ) then 
+			if ( fragxyz(k,iatom) .eq. 0 ) then 
 				deltaFmax = max(deltaFmax, abs(ftot(k,iatom)))
 				ff = ff + ftot(k,iatom)**2
 				vv = vv + vatom(k,iatom)**2
 				vf = vf + vatom(k,iatom) * ftot(k,iatom)
-			!end if ! fragxyz(k,iatom)
+			end if ! fragxyz(k,iatom)
 		end do ! k
 	end do ! iatom
 	FIRE_Ftot = sqrt( ff )
@@ -115,9 +116,9 @@ subroutine move_ions_FIRE( istep, iwrtxyz )
 		cV           = 1 - FIRE_acoef
 		do iatom = 1, natoms
 			do k=1,3
-				!if ( fragxyz(k,iatom) .eq. 0 ) then 
+				if ( fragxyz(k,iatom) .eq. 0 ) then 
 					vatom(k,iatom) = cV * vatom(k,iatom)    +    cF *  ftot(k,iatom)
-				!end if ! fragxyz(k,iatom)
+				end if ! fragxyz(k,iatom)
 			end do ! k
 		end do ! iatom
 		FIRE_dt     = min( FIRE_dt * FIRE_finc, FIRE_dtmax ) 
@@ -132,15 +133,14 @@ subroutine move_ions_FIRE( istep, iwrtxyz )
 	end if
 	do iatom = 1, natoms
 		do k=1,3
-			!if ( fragxyz(k,iatom) .eq. 0 ) then 
+			if ( fragxyz(k,iatom) .eq. 0 ) then 
 				vatom(k,iatom) = vatom(k,iatom)   +  dtv     * ftot (k,iatom)
 				ratom(k,iatom) = ratom(k,iatom)   +  FIRE_dt * vatom(k,iatom)
-			!end if
+			end if
 		enddo
 	enddo
-
 	write ( xyz_headline, '(A, i6, 6f16.8)' ) " #### FIRE: i,Fmax,|F|,v,<v|f>,dt: ", istep, deltaFmax, FIRE_Ftot, vv, sqrt(vv), vf, FIRE_dt  
-	write ( *, '(A)' )  xyz_headline
+	if(verbosity.gt.0) write ( *, '(A)' )  xyz_headline
 	!write(*,*) "DEBGU move_ions_FIRE() : iwrtxyz ", iwrtxyz
 	if ( iwrtxyz .eq. 1 ) call write_to_xyz( xyz_headline, istep )
 

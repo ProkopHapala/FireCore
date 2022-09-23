@@ -27,18 +27,19 @@ cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
 # ===== To generate Interfaces automatically from headers call:
 header_strings = [
-"void getCharges( double* charges )",
-"void preinit( ) ",
-"void set_lvs( double* lvs )" ,
-"void init( int natoms, int* atomTypes, double* atomsPos )",
-"void assembleH( int iforce, int Kscf, double* positions )",
-"void solveH( double* k_temp, int ikpoint )",
-"void updateCharges( double sigmatol, double* sigma )",
-"void SCF( int nmax_scf, double* positions, int iforce  )",
-"void evalForce( int nmax_scf, double* positions_, double* forces )",
-"void setupGrid( double Ecut, it ifixg0, doube* g0,  int ngrid, double* dCell  )", 
-"void getGridMO( int iMO, double* ewfaux )",
-"void getGridDens( int imo0, int imo1, double* ewfaux )",
+"void firecore_getCharges( double* charges )",
+"void firecore_preinit( ) ",
+"void firecore_set_lvs( double* lvs )" ,
+"void firecore_init( int natoms, int* atomTypes, double* atomsPos )",
+"void firecore_assembleH( int iforce, int Kscf, double* positions )",
+"void firecore_solveH( double* k_temp, int ikpoint )",
+"void firecore_updateCharges( double sigmatol, double* sigma )",
+"void firecore_SCF( int nmax_scf, double* positions, int iforce  )",
+"void firecore_evalForce( int nmax_scf, double* positions_, double* forces_, double* energies )",
+"void firecore_relax( nmax_scf, positions_, forces_, fixPos, energies )",
+"void firecore_setupGrid( double Ecut, it ifixg0, doube* g0,  int ngrid, double* dCell  )", 
+"void firecore_getGridMO( int iMO, double* ewfaux )",
+"void firecore_getGridDens( int imo0, int imo1, double* ewfaux )",
 "void firecore_getPointer_wfcoef( double* bbnkre )",
 "void firecore_get_wfcoef( int ikp, double* wfcoefs )",
 "void firecore_set_wfcoef( int iMO, int ikp, double* wfcoefs )",
@@ -50,16 +51,12 @@ header_strings = [
 
 # LFLAGS   = " -lmkl_scalapack_lp64 -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lfftw3xf_gnu -lm -Bdynamic -lmpi "
 
-libs = {}
-def loadLib(name, dic=libs):
-    lib = ct.CDLL( name, ct.RTLD_GLOBAL )
-    dic[name] = lib
-    return lib
 
 mkldir = "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/"
 
 cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '/../build/' ) 
-lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_GLOBAL )
+#lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_GLOBAL )
+lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_LOCAL )
 
 '''
 loadLib( mkldir+"libmkl_def.so"        )
@@ -89,12 +86,37 @@ def init(atomTypes, atomPos ):
     return  lib.firecore_init(natoms, atomTypes, atomPos )
 
 #  subroutine firecore_evalForce( nmax_scf, forces_ )
-lib.firecore_evalForce.argtypes  = [c_int, array2d, array2d ] 
+lib.firecore_evalForce.argtypes  = [c_int, array2d, array2d, array1d, c_int ] 
 lib.firecore_evalForce.restype   =  None
-def evalForce( pos, forces=None, natom=5, nmax_scf=100 ):
+def evalForce( pos, forces=None, nmax_scf=100, Es=None, ixyz=-1 ):
+    if Es is None:
+        Es = np.zeros(8)
     if forces is None:
-        forces = np.zeros( (3,natom) )
-    lib.firecore_evalForce( nmax_scf, pos, forces )
+        forces = np.zeros( pos.shape )
+    lib.firecore_evalForce( nmax_scf, pos, forces, Es, ixyz )
+    return forces
+
+# "void firecore_relax( nmax_scf, positions_, forces_, fixPos, energies )",
+lib.firecore_relax.argtypes  = [c_int, c_int, array2d, array2d, array2i, array1d ] 
+lib.firecore_relax.restype   =  None
+def relax( pos, forces=None, fixPos=None, nstepf=1000, nmax_scf=100, Es=None, ):
+    if Es is None:
+        Es = np.zeros(8)
+    if forces is None:
+        forces = np.zeros( pos.shape )
+    if forces is None:
+        forces = np.zeros( pos.shape )
+    if fixPos is None:
+        fixPos=np.zeros(pos.shape,np.int32)
+    else:
+        if( isinstance(fixPos[0],int) ):
+            fixPos_=np.zeros(pos.shape,np.int32)
+            if(fixPos[0]>=0):
+                fixPos_[fixPos,:]=1; 
+            fixPos=fixPos_
+        else:
+            fixPos=np.array(fixPos, np.int32)
+    lib.firecore_relax( nstepf, nmax_scf, pos, forces, fixPos, Es )
     return forces
 
 #  void getCharges( double* charges )
@@ -275,8 +297,20 @@ def run_nonSCF( atomType, atomPos ):
     sigma=updateCharges(); #print( sigma )
     return norb, sigma
 
-
+#===================================
 # ========= Python Functions
+#===================================
+
+def initialize( atomType=None, atomPos=None, verbosity=0 ):
+    global norb
+    setVerbosity(verbosity=verbosity)
+    preinit()
+    norb = init( atomType, atomPos )
+    return norb
+
+#===================================
+# ========= Main
+#===================================
 
 if __name__ == "__main__":
 

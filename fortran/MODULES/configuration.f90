@@ -37,6 +37,7 @@ module configuration
         real :: rescal
         integer :: xyz2line
 ! Positions, velocities of the atoms
+        integer, dimension (:, :), allocatable :: fragxyz              ! IF_DEF_move_END
         real, dimension (:, :), allocatable :: vatom                   ! IF_DEF_move_END
         character (len = 2), dimension (:), allocatable :: symbolA
         character (len = 2), dimension (:), allocatable:: symbol

@@ -128,22 +128,34 @@
 !         print*,'enHarmonic',enHarmonic
 !         print*,'etotPerfectLattice',etotPerfectLattice
          if (wrtout) then
+
           write (*,*) ' ---------- T H E  T O T A L  E N E R G Y ----------- '
 !          if (itheory .ne. 0) write (*,500) itime_step, Kscf 
 !          if (itheory .eq. 0) write (*,501) itime_step
-          write (*,*) '  '
-          write (*,502) ebs
-          write (*,503) uiiuee
-          write (*,504) etotxc_1c
-          write (*,505) uxcdcc
-!          if (ivdw .eq. 1) write (*,506) vdw     IF_DEF_VDW_END
-          write (*,507) etot
-          write (*,508) etotper
-          write (*,509) atomic_energy
-          write (*,510) etot - atomic_energy
-          write (*,512) efermi
-          write (*,*) '  '
-          write (*,511) (etot - atomic_energy)/natoms
+!           write (*,*) '  '
+!           write (*,502) ebs
+!           write (*,503) uiiuee
+!           write (*,504) etotxc_1c
+!           write (*,505) uxcdcc
+! !          if (ivdw .eq. 1) write (*,506) vdw     IF_DEF_VDW_END
+!           write (*,507) etot
+!           write (*,508) etotper
+!           write (*,509) atomic_energy
+!           write (*,510) etot - atomic_energy
+!           write (*,512) efermi
+!           write (*,*) '  '
+!           write (*,511) (etot - atomic_energy)/natoms
+           write (*,*) "           ebs = ", ebs
+           write (*,*) "     uii - uee = ", uiiuee
+           write (*,*) "     etotxc_1c = ", etotxc_1c
+           write (*,*) "        uxcdcc = ", uxcdcc
+           write (*,*) " ---------------------------- "
+           write (*,*) "          ETOT = ", etot
+           write (*,*) " Atomic Energy = ", atomic_energy
+           write (*,*) "     CohesiveE = ", etot - atomic_energy
+           write (*,*) "   Fermi Level = ", efermi
+           write (*,*) "     Etot/atom = ", etotper
+           write (*,*) " Cohesive Energy per atom  = ", (etot - atomic_energy)/natoms
           write (*,*) ' ----------------------------------------------------- '
          end if
          etotold = etotnew
