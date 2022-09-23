@@ -11,6 +11,7 @@ subroutine firecore_setVerbosity( verbosity_, idebugWrite_ ) bind(c, name='firec
     integer(c_int),intent(in), value :: idebugWrite_
     verbosity   = verbosity_
     idebugWrite = idebugWrite_
+    write(*,*) "DEBUG firecore_setVerbosity() ", verbosity
 end subroutine
 
 ! see : https://stackoverflow.com/questions/29153501/when-i-pass-a-pointer-from-fortran-to-c-the-value-of-the-first-element-is-lost
@@ -76,6 +77,7 @@ subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     use integrals !, only : fdataLocation
     implicit none
     ! ========= body
+    write(*,*) "DEBUG firecore_preinit() verbosity=", verbosity
     if(verbosity.gt.0)write(*,*) "firecore_preinit() "
     iparam_file = 0
     call initconstants ! (sigma, sigmaold, scf_achieved)
@@ -102,7 +104,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     use FIRE, only: write_to_xyz
     implicit none
     ! ====== Parameters
-    integer(c_int),                      intent(in), value :: natoms_
+    integer(c_int),                      intent(in), value  :: natoms_
     integer(c_int), dimension(natoms_),   intent(in)        :: atomTypes
     real(c_double), dimension(3,natoms_), intent(in)        :: atomsPos
     ! ====== global variables
@@ -111,6 +113,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     real, dimension (3) :: vector
     logical zindata
     ! ====== Body
+    write(*,*) "DEBUG firecore_init() verbosity=", verbosity
     if(verbosity.gt.0)write(*,*) "firecore_init() "
     natoms = natoms_
     if(verbosity.gt.0) then
@@ -130,6 +133,8 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     allocate (nowMinusInitialPos (3, natoms))
     allocate (initialPosition (3, natoms))
     allocate (vatom (3, natoms))
+    allocate (fragxyz(3, natoms))
+    fragxyz(:,:) = 0
     allocate (symbol (natoms))
     allocate (xmass (natoms))
     allocate (ximage (3, natoms))
@@ -186,8 +191,6 @@ subroutine firecore_assembleH( iforce_, Kscf_, positions_ ) bind(c, name='fireco
     Kscf       = Kscf_
     iforce     = iforce_
     ratom(:,:) = positions_(:,:)
-    !idebugWrite = 0
-    !verbosity   = 0 
     call assemble_mcweda ()
     return
 end subroutine
@@ -255,8 +258,7 @@ subroutine firecore_SCF( nmax_scf, positions_, iforce_  )  bind(c, name='firecor
     ! ====== Body
     if(verbosity.gt.0)write(*,*) "firecore_SCF() "
     ratom(:,:) = positions_(:,:)
-    !idebugWrite = 0
-    !verbosity   = 0 
+
     iforce  = iforce_
     ikpoint = 1
     scf_achieved = .false.
@@ -276,9 +278,7 @@ subroutine firecore_SCF( nmax_scf, positions_, iforce_  )  bind(c, name='firecor
     return
 end subroutine firecore_SCF
 
-
-
-subroutine firecore_evalForce( nmax_scf, positions_, forces_ )  bind(c, name='firecore_evalForce')
+subroutine firecore_evalForce( nmax_scf, positions_, forces_, energies, ixyzfile )  bind(c, name='firecore_evalForce')
     use iso_c_binding
     use options
     use loops
@@ -295,22 +295,19 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_ )  bind(c, name='fi
     implicit none
     ! ====== Parameters
     integer(c_int),                 intent(in),value :: nmax_scf
-    !real(c_double), dimension(:,:), intent(out)      :: forces_
-    real(c_double), dimension(3,natoms), intent(in) :: positions_
+    real(c_double), dimension(3,natoms), intent(in)  :: positions_
     real(c_double), dimension(3,natoms), intent(out) :: forces_
+    real(c_double), dimension(8),        intent(out) :: energies
+    integer(c_int),                 intent(in),value :: ixyzfile
     ! ====== global variables
     integer ikpoint, i
     real, dimension (3) :: k_temp
     !real time_begin
     !real time_end
     ! ====== Body
+    !write(*,*) "DEBUG firecore_evalForce() verbosity=", verbosity
     if(verbosity.gt.0)write(*,*) "firecore_evalForce() "
     ratom(:,:) = positions_(:,:)
-    !idebugWrite = 1
-    !idebugWrite = 0
-    !call cpu_time (time_begin)
-    !idebugWrite = 0
-    !verbosity   = 0 
     iforce    = 1
     ftot(:,:) = 0
     ikpoint   = 1
@@ -318,7 +315,7 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_ )  bind(c, name='fi
     max_scf_iterations = nmax_scf
     if(verbosity.gt.0)write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations, scf_achieved
     do Kscf = 1, max_scf_iterations
-        if(idebugWrite.gt.0)write(*,*) "! ======== Kscf ", Kscf
+        !if(idebugWrite.gt.0)write(*,*) "! ======== Kscf ", Kscf
         call assemble_mcweda ()
         !call debug_writeBlockedMat( "S_mat.log", s_mat )
         !call debug_writeBlockedMat( "H_mat.log", h_mat )
@@ -331,21 +328,100 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_ )  bind(c, name='fi
         !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
         call mixer ()
     end do ! Kscf
-    !call postscf ()               ! optionally perform post-processing (DOS etc.)
-    !call getenergy (itime_step)    ! calculate the total energy
-    !call assemble_mcweda ()
     call getenergy_mcweda ()
     call getforces_mcweda ()
-    !do i = 1, natoms
-    !    write (*,*) "Force[",i,"] ", ftot(:,i)
-    !end do
-    !call getforces ()   ! Assemble forces
     forces_(:,:) = ftot(:,:)
+    energies(1) = etot    ! total energy
+    energies(2) = ebs     ! band structure energy
+    energies(3) = uiiuee     ! electrostatic
+    energies(4) = etotxc_1c  ! exchange correlation on site
+    energies(5) = uxcdcc     ! double counting correction ?
+    energies(6) = atomic_energy
+    energies(7) = efermi
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
+    if(ixyzfile .gt. 0) call write_to_xyz( "#firecore_evalForce() ", ixyzfile )
     if(verbosity.gt.0)write (*,*) '!!!! SCF LOOP DONE in ', Kscf, " iterations"
     return
 end subroutine firecore_evalForce
+
+
+subroutine firecore_relax( nstep, nmax_scf, positions_, forces_, fixPos, energies )  bind(c, name='firecore_relax')
+    use iso_c_binding
+    use options
+    use loops
+    use fire
+    use configuration
+    use energy
+    use forces
+    use interactions
+    use integrals
+    use density
+    use kpoints
+    use charges
+    use grid
+    use debug
+    use timing
+    implicit none
+    ! ====== Parameters
+    integer(c_int),                 intent(in),value :: nstep
+    integer(c_int),                 intent(in),value :: nmax_scf
+    real(c_double), dimension(3,natoms), intent(inout)  :: positions_
+    real(c_double), dimension(3,natoms), intent(out) :: forces_
+    integer(c_int), dimension(3,natoms), intent(out) :: fixPos
+    real(c_double), dimension(8),        intent(out) :: energies
+    !integer(c_int),                 intent(in),value :: ixyzfile
+    ! ====== global variables
+    integer i,j, in1
+    integer ikpoint
+    integer imu
+    real, dimension (3) :: k_temp
+    character (40) namewf
+    ! ====== Body
+    write(*,*) "DEBUG firecore_relax() verbosity=", verbosity
+    ikpoint = 1
+    fragxyz(:,:) = fixPos(:,:)
+    ratom(:,:)   = positions_(:,:) 
+    forces_(:,:) = 0.0
+    iparam_file = 1
+    idebugWrite = 0
+    iwrtxyz     = 1
+    call init_FIRE( )
+    call clean_ncall()
+    do itime_step = 1,nstep
+        iforce = 1
+        scf_achieved = .false.
+        do Kscf = 1, nmax_scf
+            call assemble_mcweda()
+            k_temp(:) = special_k(:,ikpoint)
+            call solveH ( ikpoint, k_temp )
+            call denmat ()
+            sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
+            if(verbosity.gt.1)write (*,*) "### SCF converged? ", scf_achieved, " Kscf ", Kscf, " |Qin-Oout| ",sigma," < tol ", sigmatol
+            if( scf_achieved ) exit
+            call mixer ()
+        end do ! Kscf
+        call getenergy_mcweda () 
+        call getforces_mcweda ()
+        call move_ions_FIRE (itime_step, iwrtxyz )   ! Move ions now
+        call write_bas()
+        !call write_to_xyz( "#firecore_evalForce() ", itime_step )
+        if(verbosity.gt.0)write (*,'(A,i6,A,i6,A,f16.8,A,f16.8)') " ###### Time Step", itime_step,"(of ",nstepf,") |Fmax| ",  deltaFmax , " > force_tol " , force_tol
+        if ( deltaFmax .lt. force_tol ) then
+            if(verbosity.gt.0) write (*,*) "####### Relaxation DONE"
+            exit
+        endif
+    end do ! istepf
+    forces_   (:,:) = ftot(:,:)
+    positions_(:,:) = ratom(:,:)
+    energies(1) = etot    ! total energy
+    energies(2) = ebs     ! band structure energy
+    energies(3) = uiiuee     ! electrostatic
+    energies(4) = etotxc_1c  ! exchange correlation on site
+    energies(5) = uxcdcc     ! double counting correction ?
+    energies(6) = atomic_energy
+    energies(7) = efermi
+end subroutine firecore_relax
 
 subroutine firecore_getCharges( charges_ )  bind(c, name='firecore_getCharges')
     use iso_c_binding
