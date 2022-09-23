@@ -199,7 +199,7 @@ class MMFFparams{ public:
             line = fgets( buff, 1024, pFile );
             if(line==NULL) break;
             sscanf(  line,            "%s %s %s %lf %lf\n",  name[0], name[1], name[2], &ang.angle0, &ang.stiffness );
-            printf( "loadAgnleType[%i] %s %s %s %lf %lf\n",i,name[0], name[1], name[2],  ang.angle0,  ang.stiffness );
+            //printf( "loadAgnleType[%i] %s %s %s %lf %lf\n",i,name[0], name[1], name[2],  ang.angle0,  ang.stiffness );
             ang.atoms.a = getAtomType(name[0]);
             ang.atoms.b = getAtomType(name[1]);
             ang.atoms.c = getAtomType(name[2]);

@@ -1,7 +1,8 @@
 #!/bin/bash
 
 wd=`pwd`
-cd ../../cpp/Build_OCL/libs/Molecular/
+cd ../../cpp/Build/libs/Molecular/
+
 pwd
 rm libMMFF_lib.so
 make MMFF_lib

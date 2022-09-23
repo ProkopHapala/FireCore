@@ -273,13 +273,16 @@ inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // int
     Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
     hf1 = h2 - h1*c;
     hf2 = h1 - h2*c;
-    //double c_=c-1;
-    double c2  = c*c;
-    double c2_ = c2-1; 
+    bool sign = c<0; if(sign) c=-c;
+    double E    = -K*c;
+    double fang =  K;
+    if(sign)fang=-fang;
+    //double c2  = c*c;
+    //double c2_ = c2-1; 
     //double E    =  K*c2_;
     //double fang =  K*c*4;
-    double E    =  K*c2_*c2_;
-    double fang = -K*c2_*c*4;
+    //double E    =  K*c2_*c2_;
+    //double fang = -K*c2_*c*4;
     hf1.mul( fang );
     hf2.mul( fang );
     //if( isnan( hf1 )||isnan( hf1 ) ){ printf("ERROR : evalPiPi_I(%i,%i|%i,%i); hf1(%g,%g,%g) hf2(%g,%g,%g) is NaN c %g k %g \n", at.i,at.j, ipi,jpi,  hf1.x,hf1.y,hf1.z,  hf2.x,hf2.y,hf2.z,  c, K ); }
