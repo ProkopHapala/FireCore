@@ -127,18 +127,26 @@ def init_buffers():
     return lib.init_buffers()
 
 #  void init_params(const char* fatomtypes, const char* fbondtypes)
-lib.init_params.argtypes  = [c_char_p, c_char_p] 
+lib.init_params.argtypes  = [c_char_p, c_char_p, c_char_p] 
 lib.init_params.restype   =  None
-def init_params(fatomtypes, fbondtypes):
+def init_params(fatomtypes, fbondtypes, fbondangles ):
     fatomtypes = fatomtypes.encode('utf8')
     fbondtypes = fbondtypes.encode('utf8')
-    return lib.init_params(fatomtypes,fbondtypes)
+    fbondangles = fbondangles.encode('utf8')
+    return lib.init_params(fatomtypes,fbondtypes,fbondangles)
 
 #  void init_nonbond()
 lib.init_nonbond.argtypes  = [] 
 lib.init_nonbond.restype   =  None
 def init_nonbond():
     return lib.init_nonbond()
+
+#  void insertSMILES(char* s)
+lib.insertSMILES.argtypes  = [c_char_p,c_bool] 
+lib.insertSMILES.restype   =  None
+def insertSMILES(s, bPrint=False, bCap=False ):
+    s = s.encode('utf8')
+    return lib.insertSMILES(s, bPrint, bCap )
 
 #  void buildFF( bool bNonBonded_, bool bOptimizer_ )
 lib.buildFF.argtypes  = [c_bool, c_bool] 
@@ -285,6 +293,10 @@ def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False)
     if bPrintSel: print( "split to:\n", selection[:nsel],"\n", selection[nsel:] )
     ias = bond2atom[ib,:]
     return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
+
+
+
+
 
 # ====================================
 # ========= Python Functions

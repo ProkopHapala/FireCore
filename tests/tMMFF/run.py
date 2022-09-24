@@ -9,6 +9,17 @@ from pyBall import MMFF as mmff
 
 #======== Body
 
+mmff.init_params( "data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" )
+#mmff.insertSMILES("CC");
+#mmff.insertSMILES("C=C");
+#mmff.insertSMILES("C#C");
+#mmff.insertSMILES("C#CCN=C", True );
+#mmff.insertSMILES("C1#CCN=C1", True );
+mmff.insertSMILES("C=C1NC#CC1CO", True, True );
+
+exit()
+
+
 '''
 # ======== Oritent Molecule
 xyzs,Zs,enames,qs = au.loadAtomsNP( "data/Benzene_deriv.xyz" )

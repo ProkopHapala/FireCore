@@ -29,6 +29,9 @@ namespace MM{
 
 static const double const_eVA2_Nm = 16.0217662;
 
+// ============================
+// ========= Atom
+// ============================
 struct Atom{
     constexpr const static Vec3d HcapREQ    = (Vec3d){ 1.4870, sqrt(0.000681    ), 0 };
     constexpr const static Vec3d defaultREQ = (Vec3d){ 1.7,    sqrt(0.0037292524), 0 };
@@ -63,6 +66,9 @@ enum class NeighType: int {
     H     = -4
 };
 
+// ============================
+// ========= AtomConf
+// ============================
 
 struct AtomConf{
 
@@ -113,6 +119,9 @@ struct AtomConf{
     //AtomConf(std::initializer_list<MMFFAtomConf>) {};
 };
 
+// ============================
+// ========= Bond
+// ============================
 struct Bond{
     // --- this breaks {<brace-enclosed initializer list>} in C++11
     int    type  = -1;
@@ -136,6 +145,9 @@ struct Bond{
     Bond(int type_, Vec2i atoms_, double l0_, double k_):type(type_),atoms(atoms_),l0(l0_),k(k_){};
 };
 
+// ============================
+// ========= Angle
+// ============================
 struct Angle{
 
     // --- this breaks {<brace-enclosed initializer list>} in C++11
@@ -156,7 +168,9 @@ struct Angle{
     Angle( int type_, Vec2i bonds_, double a0_, double k_):type(type_), bonds(bonds_),a0(a0_),k(k_){ };
 };
 
-
+// ============================
+// ========= Dihedral
+// ============================
 struct Dihedral{
 
     // --- this breaks {<brace-enclosed initializer list>} in C++11
@@ -179,10 +193,9 @@ struct Dihedral{
 };
 
 
-//struct Molecule{
-//    Molecule * mol ;
-//    Vec3i      i0  ;
-//};
+// ============================
+// ========= Fragment
+// ============================
 #ifdef Molecule_h
 struct Fragment{
     //int imolType;
@@ -203,6 +216,9 @@ struct Fragment{
 };
 #endif // Molecule_h
 
+// ============================
+// ========= splitByBond
+// ============================
 
 //int splitGraphs( int nb, Vec2i* bonds, int a0, int b0 ){
 int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes ){
@@ -245,6 +261,9 @@ int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, 
     return sel1->size();
 }
 
+// ============================
+// ========= Builder
+// ============================
 class Builder{  public:
     int verbosity = 0;
     //bool bDEBUG = false;
@@ -426,14 +445,22 @@ class Builder{  public:
         return n;
     }
 
-    AtomConf* insertAtom(const Atom& atom, AtomConf* conf ){
+    AtomConf* insertAtom(const Atom& atom, const AtomConf* conf ){
         atoms.push_back(atom);
         return addConfToAtom( atoms.size()-1, conf );
     }
-    void insertAtom(const Atom& atom ){ atoms.push_back(atom); }
+    int insertAtom(const Atom& atom ){ atoms.push_back(atom); return atoms.size()-1; }
 
-    void insertAtom( int ityp, const Vec3d& pos, Vec3d* REQ=0, int npi=-1, int ne=0 ){
-        if(REQ==0)REQ=&defaultREQ;
+    int insertAtom( int ityp, const Vec3d& pos, const Vec3d* REQ=0, int npi=-1, int ne=0 ){
+        Vec3d REQloc;
+        if(REQ==0)
+            if(params){ 
+                AtomType& at = params->atypes[ityp];
+                REQloc.x=at.RvdW;
+                REQloc.y=at.EvdW;
+                REQloc.z=0;
+                REQ=&REQloc;
+            }else{ REQ=&defaultREQ; }
         int iconf=-1;
         if(npi>=0){
             //printf( "insertAtom npi>0 => make Conf \n" );
@@ -441,6 +468,19 @@ class Builder{  public:
             confs.push_back( AtomConf(atoms.size(), npi, ne ) );
         }
         atoms.push_back( Atom    ( ityp,-1,iconf, pos, *REQ )  );
+        printf( "insertAtom[%i]", atoms.size() ); atoms.back().print(); puts("");
+        return atoms.size()-1;
+    }
+
+    int insertAtom( std::string name, const Vec3d* pos=0, const Vec3d* REQ=0, int npi=-1, int ne=0 ){
+        //printf( "Builder::insertAtom name=%s params=%li\n", name.c_str(), (long)params );
+        //for(const auto& t:params->atomTypeDict){ printf("%s:%i\n", t.first.c_str(), t.second); };
+        int ityp = params->atomTypeDict.at(name);
+        //printf( "Builder::insertAtom ityp=%i\n", ityp );
+        if(pos==0)pos=&Vec3dZero;
+        int ia = insertAtom( ityp, *pos, REQ, npi, ne );
+        addConfToAtom( ia, 0 );
+        return ia;
     }
 
     void removeAtom(int i, bool checkBrute=true){
@@ -463,6 +503,8 @@ class Builder{  public:
             }
             //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ADDED \n", ia, ib );
             confs[ic].addBond(ib);
+            int order = bonds[ib].type;
+            if(order>1){ for(int i=0; i<order-1; i++)confs[ic].addPi(); };
         }
     }
 
@@ -478,12 +520,24 @@ class Builder{  public:
         }
     }
 
-    void insertBond(const Bond& bond ){
+    int insertBond(const Bond& bond ){
         int ib = bonds.size();
         bonds.push_back(bond);
+        printf( "insertBond[%i]", bonds.size() ); bonds.back().print(); puts("");
         tryAddBondToAtomConf( ib, bond.atoms.i, false );
         tryAddBondToAtomConf( ib, bond.atoms.j, false );
+        return ib;
     }
+
+    int insertBond( Vec2i ias, int order ){
+        double k=0,l0=1.0;
+        if(params){
+            int iat=atoms[ias.i].type;
+            int jat=atoms[ias.j].type;
+            params->getBondParams( iat, jat, order, l0, k );
+        }
+        return insertBond( Bond(order, ias, l0, k) );
+    };
 
     void assignBondParams( int ib ){
         Bond& b = bonds[ib];
@@ -594,6 +648,27 @@ class Builder{  public:
             if     (Hmask[i]!=breverse){ addCap(ia,hs[nb+i],&capAtom     ); }
             else if(bDummyEpair       ){ addCap(ia,hs[nb+i],&capAtomEpair); }
         }
+    }
+
+    int addCapTopo(int ia){
+        int ic = atoms[ia].iconf;
+        if(ic<0) return -1;
+        AtomConf& conf = confs[ic];
+        int ncap = conf.n-conf.nbond;
+        AtomType&  typ = params->atypes[ atoms[ia].type ];
+        int ne   = typ.nepair();
+        int nH   = ncap-ne;
+        for(int i=0; i<ne; i++){ conf.addEpair(); };
+        for(int i=0; i<nH; i++){ addCap(ia,Vec3dZero,0); };
+        return nH;
+    }
+    int addAllCapTopo(){
+        int n=0,na=atoms.size();
+        for(int i=0;i<na;i++){
+            int nH = addCapTopo(i);
+            n+=nH;
+        }
+        return n;
     }
 
 
