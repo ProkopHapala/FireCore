@@ -19,6 +19,7 @@
 #include "Molecule.h"
 #include "MMFFparams.h"
 #include "MMFFBuilder.h"
+#include "SMILESparser.h"
 #include "DynamicOpt.h"
 
 //#include "QEq.h"
@@ -38,6 +39,7 @@ char tmpstr[ntmpstr];
 Molecule    mol;
 MMFFparams  params;
 MM::Builder builder;
+SMILESparser smiles;
 
 MMFFsp3      ff;
 NBFF        nff;
@@ -155,6 +157,25 @@ int loadmol(char* fname_mol ){
 void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ ){
     init_params("data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" );
     loadmol( fname_mol );
+    buildFF( bNonBonded_, bOptimizer_ );
+}
+
+void insertSMILES(char* s, bool bPrint, bool bCap){
+    smiles.builder=&builder;
+    smiles.parseString( 10000, s );
+    if(bCap)builder.addAllCapTopo();
+    if(bPrint){
+        printf("=============\n");
+        printf("%s\n", s);
+        builder.printAtoms();
+        builder.printBonds();
+        builder.printAtomConfs(true);
+    }
+}
+
+void initWithSMILES(char* s, bool bNonBonded_, bool bOptimizer_){
+    init_params("data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" );
+    insertSMILES( s , false, false );
     buildFF( bNonBonded_, bOptimizer_ );
 }
 
