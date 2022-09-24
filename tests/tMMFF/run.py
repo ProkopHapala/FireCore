@@ -9,13 +9,19 @@ from pyBall import MMFF as mmff
 
 #======== Body
 
-mmff.init_params( "data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" )
+#mmff.init_params( "data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" )
 #mmff.insertSMILES("CC");
 #mmff.insertSMILES("C=C");
 #mmff.insertSMILES("C#C");
 #mmff.insertSMILES("C#CCN=C", True );
 #mmff.insertSMILES("C1#CCN=C1", True );
-mmff.insertSMILES("C=C1NC#CC1CO", True, True );
+#mmff.insertSMILES("C=C1NC#CC1CO", True, True );
+
+mmff.initWithSMILES( "C=C1NC#CC1CO" )
+mmff.getBuffs()
+#mmff.relax(1000)
+mmff.plot()
+plt.show()
 
 exit()
 

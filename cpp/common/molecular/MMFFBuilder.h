@@ -303,6 +303,9 @@ class Builder{  public:
 
     Bond bondBrush = defaultBond;
 
+    int itypHcap  =-1;
+    int itypEpair =-1;
+
     Atom capAtom      = (Atom){ (int)NeighType::H,     -1,-1, {0,0,0}, Atom::HcapREQ };
     Atom capAtomEpair = (Atom){ (int)NeighType::epair, -1,-1, {0,0,0}, {0,0,0} };
     Atom capAtomPi    = (Atom){ (int)NeighType::pi,    -1,-1, {0,0,0}, {0,0,0} };
@@ -389,6 +392,8 @@ class Builder{  public:
         params = params_;
         atomTypeNames = &params->atomTypeNames;
         atomTypeDict  = &params->atomTypeDict;
+        itypHcap  = params->atomTypeDict.at("H");
+        itypEpair = params->atomTypeDict.at("E");
     }
 
     void initDefaultAtomTypeDict(){
@@ -472,15 +477,18 @@ class Builder{  public:
         return atoms.size()-1;
     }
 
-    int insertAtom( std::string name, const Vec3d* pos=0, const Vec3d* REQ=0, int npi=-1, int ne=0 ){
-        //printf( "Builder::insertAtom name=%s params=%li\n", name.c_str(), (long)params );
-        //for(const auto& t:params->atomTypeDict){ printf("%s:%i\n", t.first.c_str(), t.second); };
-        int ityp = params->atomTypeDict.at(name);
-        //printf( "Builder::insertAtom ityp=%i\n", ityp );
+    int insertAtom( int ityp, const Vec3d* pos=0, const Vec3d* REQ=0, int npi=-1, int ne=0 ){
         if(pos==0)pos=&Vec3dZero;
         int ia = insertAtom( ityp, *pos, REQ, npi, ne );
-        addConfToAtom( ia, 0 );
+        //if(bConf) addConfToAtom( ia, 0 );
         return ia;
+    }
+    int insertAtom( std::string name, const Vec3d* pos=0, const Vec3d* REQ=0, int npi=-1, int ne=0){ int ityp = params->atomTypeDict.at(name); return insertAtom(ityp,pos,REQ,npi,ne); };
+
+    void randomizeAtomPos(double R){
+        for(int i=0;i<atoms.size();i++){
+            atoms[i].pos.addRandomCube(R);
+        }
     }
 
     void removeAtom(int i, bool checkBrute=true){
@@ -569,6 +577,14 @@ class Builder{  public:
         insertBond( capBond );
     }
 
+    //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
+    void addBondedAtom(int ia, int ityp, bool bConf ){
+        int ja=atoms.size();
+        int npi=-1; if(bConf){npi=0;};
+        insertAtom( ityp, 0, 0, npi, 0 );
+        insertBond( {ia,ja}, 1 );
+    }
+
     void makeConfGeom(int nb, int npi, Vec3d* hs){
         Mat3d m;
         if(nb==3){ // defined by 3 sigma bonds
@@ -654,12 +670,12 @@ class Builder{  public:
         int ic = atoms[ia].iconf;
         if(ic<0) return -1;
         AtomConf& conf = confs[ic];
-        int ncap = conf.n-conf.nbond;
+        int ncap = N_NEIGH_MAX-conf.nbond;
         AtomType&  typ = params->atypes[ atoms[ia].type ];
         int ne   = typ.nepair();
         int nH   = ncap-ne;
-        for(int i=0; i<ne; i++){ conf.addEpair(); };
-        for(int i=0; i<nH; i++){ addCap(ia,Vec3dZero,0); };
+        for(int i=0; i<ne; i++){ addBondedAtom(ia,itypEpair,false); };
+        for(int i=0; i<nH; i++){ addBondedAtom(ia,itypHcap ,false); };
         return nH;
     }
     int addAllCapTopo(){

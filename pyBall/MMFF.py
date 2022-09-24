@@ -144,9 +144,9 @@ def init_nonbond():
 #  void insertSMILES(char* s)
 lib.insertSMILES.argtypes  = [c_char_p,c_bool] 
 lib.insertSMILES.restype   =  None
-def insertSMILES(s, bPrint=False, bCap=False ):
+def insertSMILES(s ):
     s = s.encode('utf8')
-    return lib.insertSMILES(s, bPrint, bCap )
+    return lib.insertSMILES(s)
 
 #  void buildFF( bool bNonBonded_, bool bOptimizer_ )
 lib.buildFF.argtypes  = [c_bool, c_bool] 
@@ -167,6 +167,13 @@ lib.initWithMolFile.restype   =  None
 def initWithMolFile(fname_mol, bNonBonded=True, bOptimizer=True):
     fname_mol = fname_mol.encode('utf8')
     return lib.initWithMolFile(fname_mol, bNonBonded, bOptimizer)
+
+#  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
+lib.initWithSMILES.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_bool] 
+lib.initWithSMILES.restype   =  None
+def initWithSMILES(fname_mol, bPrint=True, bCap=True, bNonBonded=True, bOptimizer=True):
+    fname_mol = fname_mol.encode('utf8')
+    return lib.initWithSMILES(fname_mol, bPrint, bCap, bNonBonded, bOptimizer)
 
 #  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
 lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
