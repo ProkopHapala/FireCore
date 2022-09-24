@@ -160,23 +160,33 @@ void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ ){
     buildFF( bNonBonded_, bOptimizer_ );
 }
 
-void insertSMILES(char* s, bool bPrint, bool bCap){
+void insertSMILES( char* s ){
     smiles.builder=&builder;
     smiles.parseString( 10000, s );
+}
+
+void initWithSMILES(char* s, bool bPrint, bool bCap, bool bNonBonded_, bool bOptimizer_ ){
+    init_params("data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" );
+    insertSMILES( s );
     if(bCap)builder.addAllCapTopo();
+    builder.autoAngles( 10.0, 10.0 );
+    builder.randomizeAtomPos(1.0);
     if(bPrint){
         printf("=============\n");
         printf("%s\n", s);
         builder.printAtoms();
         builder.printBonds();
         builder.printAtomConfs(true);
+        builder.printAngles();
     }
-}
-
-void initWithSMILES(char* s, bool bNonBonded_, bool bOptimizer_){
-    init_params("data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" );
-    insertSMILES( s , false, false );
-    buildFF( bNonBonded_, bOptimizer_ );
+    builder.toMMFFsp3( ff );
+    if(bNonBonded)init_nonbond();
+    if(bOptimizer){
+        opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
+        opt.cleanVel();
+    }
+    _realloc( manipulation_sel, ff.natoms );
+    init_buffers();
 }
 
 void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants ){

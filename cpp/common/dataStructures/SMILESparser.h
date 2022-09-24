@@ -57,7 +57,7 @@ class SMILESparser{ public:
     int insertAtom(int ia, char bond){
         tok[itok]='\0';
         printf("insertAtom ia=%i bond=%c tok=%s\n", ia, bond, tok );
-        int ia2 = builder->insertAtom( tok );
+        int ia2 = builder->insertAtom( tok, 0,0,0,0 );
         if(ia>=0){
             int order = getBondOrder( bond );
             builder->insertBond( {ia,ia2}, order );
