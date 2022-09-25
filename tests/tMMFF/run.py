@@ -17,9 +17,10 @@ from pyBall import MMFF as mmff
 #mmff.insertSMILES("C1#CCN=C1", True );
 #mmff.insertSMILES("C=C1NC#CC1CO", True, True );
 
-mmff.initWithSMILES( "C=C1NC#CC1CO" )
+#mmff.initWithSMILES( "C=C1NC#CC1CO" )
+mmff.initWithSMILES( "C=C" )
 mmff.getBuffs()
-#mmff.relax(1000)
+mmff.relax(1000)
 mmff.plot()
 plt.show()
 

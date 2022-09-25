@@ -5,7 +5,7 @@ project ( SimpleSimulationEngine )
 option(WITH_OPENCL "Build test programs" OFF)
 option(WITH_SDL    "Build test programs" OFF)
 option(RELEASE     "Build test programs" OFF)
-message("OPTIONS: SLD=${WITH_SDL} OPENCL=${WITH_OPENCL} RELEASE=${RELEASE}" )
+message("OPTIONS: WITH_SDL=${WITH_SDL} WITH_OPENCL=${WITH_OPENCL} RELEASE=${RELEASE}" )
 
 # ==============================
 # ==== FLAGS

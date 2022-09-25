@@ -19,7 +19,7 @@ class SMILESparser{ public:
 
     int ich,nch;
     int itok;
-    char * str;
+    const char * str;
 
     // params
     char cOPEN  = '(';
@@ -65,7 +65,7 @@ class SMILESparser{ public:
         return ia2;
     };   
 
-    void parseString( int nch_, char * str_ ){
+    void parseString( int nch_, const char * str_ ){
         str = str_;
         nch = nch_;
         ich = 0;
