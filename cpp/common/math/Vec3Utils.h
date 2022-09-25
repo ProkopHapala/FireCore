@@ -5,6 +5,9 @@
 #include "Vec3.h"
 #include "Mat3.h"
 
+
+template<class T> static inline void evalLenghs( int n, Vec2i* bonds, const Vec3T<T>* ps, T* lengths ){ for(int i=0; i<n; i++){ Vec2i b=bonds[i]; lengths[i]=ps[b.i].dist(ps[b.j]); } }
+
 template<class T> 
 static inline T getCOG( int n, const Vec3T<T>* vs, const T* ws, Vec3T<T>& cog ){
     cog.set(0.0);

@@ -29,6 +29,7 @@
 #include "MMFFBuilder.h"
 #include "DynamicOpt.h"
 #include "QEq.h"
+#include "SMILESparser.h"
 
 #include "Draw3D_Molecular.h"  // it needs to know MMFFparams
 
@@ -121,6 +122,7 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 	MMFFparams  params;
     MMFFsp3    ff;
     NBFF       nff;
+    SMILESparser smiles;
     MM::Builder builder;
     DynamicOpt  opt;
 
@@ -173,6 +175,9 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
 
+    void initFromXYZ   (const char* fname);
+    void initFromSMILES(const char* s, bool bCap=true);
+
 };
 
 void TestAppMMFFsp3::selectRect( const Vec3d& p0, const Vec3d& p1 ){
@@ -209,13 +214,56 @@ void  TestAppMMFFsp3::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
     for( int i:*sel){ selection.push_back(i); };
 }
 
+void TestAppMMFFsp3::initFromXYZ(const char* fname){
 
-//void TestAppMMFFsp3::makeAtoms(){}
-//template<typename T> std::function<T(const T&,const T&         )> F2;
+    int iret=builder.insertFlexibleMolecule( builder.loadMolType( fname, "mol1",0, true ), {0,0,0}, Mat3dIdentity, -1 );
+    if(iret<0){ printf("ERROR: Molecule not loaded!!!\n" ); exit(0); }
+
+    //if(verbosity>1)builder.printAtoms ();
+    //if(verbosity>1)builder.printConfs ();
+    if(verbosity>1)builder.printAtomConfs();
+    builder.export_atypes(atypes);
+    builder.autoBonds ();               if(verbosity>1)builder.printBonds ();
+    //builder.autoBondsPBC();            printf("//======== autoBondsPBC()\n"); //if(verbosity>1)builder.printBonds ();  // exit(0);
+    //if(verbosity>1)builder.printAtomConfs();
+    //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});   if(verbosity>1)builder.printBonds ();  // exit(0);
+    //builder.autoAngles( 0.5, 0.5 );     if(verbosity>1)builder.printAngles();
+    //builder.autoAngles( 10.0, 10.0 );  printf("//======== autoAngles()\n"); //if(verbosity>1)builder.printAngles();
+    //if(verbosity>1)builder.printAtomConfs();
+    //builder.sortConfAtomsFirst();      //printf("//======== sortConfAtomsFirst()\n");
+    //if(verbosity>1)builder.printAtomConfs();
+    //builder.makeAllConfsSP();          printf("//======== makeAllConfsSP()\n");
+    //if(verbosity>1)builder.printAtomConfs();
+
+    printf( "builder.atoms[0].iconf= %i \n", builder.atoms[0].iconf );
+
+    builder.assignAllBondParams( );   builder.printBondParams();
+
+}
+
+void TestAppMMFFsp3::initFromSMILES(const char* s, bool bCap){
+    smiles.builder=&builder;
+    smiles.parseString( 10000, s );     printf("DONE: smiles.parseString()     \n");
+    if(bCap){ builder.addAllCapTopo();  printf("DONE: builder.addAllCapTopo(); \n"); }
+    //builder.autoAngles( 10.0, 10.0 );   printf("DONE: builder.autoAngles();    \n");
+    //builder.randomizeAtomPos(1.0);
+    if(verbosity>1)builder.printAtomConfs();
+    //builder.export_atypes(atypes);
+    //builder.autoBonds ();               if(verbosity>1)builder.printBonds ();
+    //printf( "builder.atoms[0].iconf= %i \n", builder.atoms[0].iconf );
+    //builder.assignAllBondParams( );   builder.printBondParams();
+
+    builder.printBonds();
+
+    builder.randomizeAtomPos(1.0);
+
+}
+
+
 
 TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
-    verbosity = 0;
+    verbosity = 1;
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
@@ -230,50 +278,13 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     builder.verbosity = verbosity;
 
     readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
-    //molecules.push_back( new Molecule() ); molecules[0]->atomTypeDict = builder.atomTypeDict; molecules[0]->load_xyz("common_resources/polymer-2.xyz",         verbosity );
-    //molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", verbosity );
-    //builder.insertFlexibleMolecule(  molecules[0], {0,0,0}           , Mat3dIdentity, -1 );
-    //builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
-    
-    //builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" );
-    //builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" );    
-    //builder.insertFlexibleMolecule( "polymer", {0,0,0}            , Mat3dIdentity, -1 );
-    //builder.insertFlexibleMolecule( "monomer", builder.lvec.a*1.2 , Mat3dIdentity, -1 );
+    printf( "builder.lvec \n" ); builder.lvec.print();
+    //initFromXYZ("common_resources/Benzene_deriv.xyz");
+    initFromSMILES("C=C");
 
-    //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2.xyz"        , "polymer" ), {0,0,0}            , Mat3dIdentity, -1 );
-    //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), builder.lvec.a*1.2 , Mat3dIdentity, -1 );
-
-    //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
-    //builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/polymer-2-monomer-correct_pi.xyz", "monomer" ), {0,0,0}, Mat3dIdentity, -1 );
-    int iret=builder.insertFlexibleMolecule( builder.loadMolType( "common_resources/Benzene_deriv.xyz", "Benezene_deriv",0, true ), {0,0,0}, Mat3dIdentity, -1 );
-
-    if(iret<0){ printf("ERROR: Molecule not loaded!!!\n" ); exit(0); }
-
-    builder.lvec.a.x *= 2.3;
-
-    //if(verbosity>1)builder.printAtoms ();
-    //if(verbosity>1)builder.printConfs ();
-    if(verbosity>1)builder.printAtomConfs();
-    builder.export_atypes(atypes);
-    builder.verbosity = verbosity;
-    //builder.autoBonds ();            if(verbosity>1)builder.printBonds ();
-    builder.autoBondsPBC();            //printf("//======== autoBondsPBC()\n"); //if(verbosity>1)builder.printBonds ();  // exit(0);
-    //if(verbosity>1)builder.printAtomConfs();
-    //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});   if(verbosity>1)builder.printBonds ();  // exit(0);
-    //builder.autoAngles( 0.5, 0.5 );     if(verbosity>1)builder.printAngles();
-    builder.autoAngles( 10.0, 10.0 );  //printf("//======== autoAngles()\n"); //if(verbosity>1)builder.printAngles();
-    //if(verbosity>1)builder.printAtomConfs();
-    builder.sortConfAtomsFirst();      //printf("//======== sortConfAtomsFirst()\n");
-    //if(verbosity>1)builder.printAtomConfs();
-    builder.makeAllConfsSP();          //printf("//======== makeAllConfsSP()\n");
-    if(verbosity>1)builder.printAtomConfs();
-
-    printf( "builder.atoms[0].iconf= %i \n", builder.atoms[0].iconf );
-
-    builder.assignAllBondParams( );   builder.printBondParams();
+    builder.saveMol( "check.mol" );
     builder.toMMFFsp3( ff );
-    builder.saveMol( "data/polymer.mol" );
-
+    
     if(verbosity>1)ff.printNeighs();
     if(verbosity>1)ff.printBonds();
 
@@ -381,27 +392,29 @@ void TestAppMMFFsp3::draw(){
         //exit(0);
     }
 
+    /*
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
     ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
-
-    double Ftol = 1e-6;
-    //double Ftol = 1e-2;
+    */
 
     //ff.apos[0].set(-2.0,0.0,0.0);
-    perFrame = 1;
+    //perFrame = 1;
     //perFrame = 100;
     //perFrame = 20;
     //bRunRelax = false;
-    bool makeScreenshot = false;
+
     { // bondlengths
+        //printf(  "ff.nbonds %i ff.natoms %i \n", ff.nbonds, ff.natoms );
         _allocIfNull( bondLenghts, ff.nbonds );
-        for(int i=0; i<ff.natoms; i++){ Vec2i b=ff.bond2atom[i]; bondLenghts[i]=ff.apos[b.i].dist(ff.apos[b.j]);  };
+        evalLenghs(ff.nbonds,ff.bond2atom,ff.apos,bondLenghts);
+        //for(int i=0; i<ff.nbonds; i++){ Vec2i b=ff.bond2atom[i]; bondLenghts[i]=ff.apos[b.i].dist(ff.apos[b.j]); printf("bondLength[%i](%i,%i):%g\n", i, b.i,b.j, bondLenghts[i] ); };
     }
 
-
+    double Ftol = 1e-6;
+    //double Ftol = 1e-2;
     double v_av =0;
     if(bRunRelax){
         builder.lvec.a    = lvec_a0 + Vec3d{-1.0,0.0,0.0};

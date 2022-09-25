@@ -670,10 +670,11 @@ class Builder{  public:
         int ic = atoms[ia].iconf;
         if(ic<0) return -1;
         AtomConf& conf = confs[ic];
-        int ncap = N_NEIGH_MAX-conf.nbond;
+        int ncap = N_NEIGH_MAX-conf.nbond - conf.npi;
         AtomType&  typ = params->atypes[ atoms[ia].type ];
         int ne   = typ.nepair();
         int nH   = ncap-ne;
+        printf( "addCapTopo[%i] ne,nH(%i,%i) nb,npi(%i,%i) \n", ia, ne, nH, conf.nbond, conf.npi );
         for(int i=0; i<ne; i++){ addBondedAtom(ia,itypEpair,false); };
         for(int i=0; i<nH; i++){ addBondedAtom(ia,itypHcap ,false); };
         return nH;
@@ -846,9 +847,8 @@ class Builder{  public:
             const Atom& A = atoms[i];
             Vec3d dp = A.pos - p; // pbc here
             double R = (R0 + A.REQ.x)*Rfac;
-            //printf( "[%i,%i] R %g \n", i0-1, i, dp.norm() );
             if(  dp.norm2() < (R*R) ){
-                if(verbosity>2)  printf( "[%i,%i] R %g \n", i0-1, i, dp.norm() );
+                if(verbosity>2)  printf( "[%i,%i] r %g R %g \n", i0-1, i, dp.norm(), R );
                 found.push_back(i);
             }
         }
@@ -878,6 +878,7 @@ class Builder{  public:
 
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         if(verbosity>0)printf( "autoBondsPBC() \n" );
+        if(verbosity>1){ printf( "builder.lvec: \n" ); lvec.print(); };
         bPBC = true;
         // ToDo : periodic boundary conditions
         if(imax<0)imax=atoms.size();
@@ -1502,6 +1503,7 @@ void updatePBC( Vec3d* pbcShifts ){
 #ifdef MMFFsp3_h
 
     void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=0.5, double K_ecap=0.75, bool bATypes=true ){
+        printf("toMMFFsp3() verbosity %i \n", verbosity );
         int npi,ne; ne=countPiE( npi );
         int nconf = confs.size();
         int ncap  = atoms.size() - nconf;
