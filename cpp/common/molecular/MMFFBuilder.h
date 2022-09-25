@@ -473,7 +473,7 @@ class Builder{  public:
             confs.push_back( AtomConf(atoms.size(), npi, ne ) );
         }
         atoms.push_back( Atom    ( ityp,-1,iconf, pos, *REQ )  );
-        printf( "insertAtom[%i]", atoms.size() ); atoms.back().print(); puts("");
+        //printf( "insertAtom[%i]", atoms.size() ); atoms.back().print(); puts("");
         return atoms.size()-1;
     }
 
@@ -531,7 +531,7 @@ class Builder{  public:
     int insertBond(const Bond& bond ){
         int ib = bonds.size();
         bonds.push_back(bond);
-        printf( "insertBond[%i]", bonds.size() ); bonds.back().print(); puts("");
+        //printf( "insertBond[%i]", bonds.size() ); bonds.back().print(); puts("");
         tryAddBondToAtomConf( ib, bond.atoms.i, false );
         tryAddBondToAtomConf( ib, bond.atoms.j, false );
         return ib;
@@ -674,7 +674,7 @@ class Builder{  public:
         AtomType&  typ = params->atypes[ atoms[ia].type ];
         int ne   = typ.nepair();
         int nH   = ncap-ne;
-        printf( "addCapTopo[%i] ne,nH(%i,%i) nb,npi(%i,%i) \n", ia, ne, nH, conf.nbond, conf.npi );
+        //printf( "addCapTopo[%i] ne,nH(%i,%i) nb,npi(%i,%i) \n", ia, ne, nH, conf.nbond, conf.npi );
         for(int i=0; i<ne; i++){ addBondedAtom(ia,itypEpair,false); };
         for(int i=0; i<nH; i++){ addBondedAtom(ia,itypHcap ,false); };
         return nH;

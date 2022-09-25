@@ -157,6 +157,10 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
     int ipicked  = -1, ibpicked = -1, iangPicked = -1;
     int perFrame =  50;
 
+    bool bAtomsSpheres=true;
+    double mm_Rsc =  0.25;
+    double mm_Rsub = 1.0;
+    bool   mm_bAtoms = false;
 
     double drndv =  10.0;
     double drndp =  0.5;
@@ -215,10 +219,8 @@ void  TestAppMMFFsp3::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 }
 
 void TestAppMMFFsp3::initFromXYZ(const char* fname){
-
     int iret=builder.insertFlexibleMolecule( builder.loadMolType( fname, "mol1",0, true ), {0,0,0}, Mat3dIdentity, -1 );
     if(iret<0){ printf("ERROR: Molecule not loaded!!!\n" ); exit(0); }
-
     //if(verbosity>1)builder.printAtoms ();
     //if(verbosity>1)builder.printConfs ();
     if(verbosity>1)builder.printAtomConfs();
@@ -234,36 +236,22 @@ void TestAppMMFFsp3::initFromXYZ(const char* fname){
     //if(verbosity>1)builder.printAtomConfs();
     //builder.makeAllConfsSP();          printf("//======== makeAllConfsSP()\n");
     //if(verbosity>1)builder.printAtomConfs();
-
-    printf( "builder.atoms[0].iconf= %i \n", builder.atoms[0].iconf );
-
     builder.assignAllBondParams( );   builder.printBondParams();
-
 }
 
 void TestAppMMFFsp3::initFromSMILES(const char* s, bool bCap){
     smiles.builder=&builder;
-    smiles.parseString( 10000, s );     printf("DONE: smiles.parseString()     \n");
-    if(bCap){ builder.addAllCapTopo();  printf("DONE: builder.addAllCapTopo(); \n"); }
-    //builder.autoAngles( 10.0, 10.0 );   printf("DONE: builder.autoAngles();    \n");
-    //builder.randomizeAtomPos(1.0);
+    smiles.parseString( 10000, s );     //printf("DONE: smiles.parseString()     \n");
+    if(bCap) builder.addAllCapTopo();   //printf("DONE: builder.addAllCapTopo(); \n");
+    if(verbosity>1)builder.printBonds();
     if(verbosity>1)builder.printAtomConfs();
-    //builder.export_atypes(atypes);
-    //builder.autoBonds ();               if(verbosity>1)builder.printBonds ();
-    //printf( "builder.atoms[0].iconf= %i \n", builder.atoms[0].iconf );
-    //builder.assignAllBondParams( );   builder.printBondParams();
-
-    builder.printBonds();
-
+    builder.export_atypes(atypes);
     builder.randomizeAtomPos(1.0);
-
 }
-
-
 
 TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
-    verbosity = 1;
+    verbosity = 0;
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
@@ -280,7 +268,10 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
     printf( "builder.lvec \n" ); builder.lvec.print();
     //initFromXYZ("common_resources/Benzene_deriv.xyz");
-    initFromSMILES("C=C");
+    //initFromSMILES("C=C");
+    //initFromSMILES("C=N");
+    //initFromSMILES("C=O");
+    initFromSMILES("C=C1NC=CC1CO");
 
     builder.saveMol( "check.mol" );
     builder.toMMFFsp3( ff );
@@ -345,19 +336,20 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
 void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces, float texSize ){
     if(bBonds){
         //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-        glColor3f(0.0f,0.0f,0.0f);Draw3D::bonds( ff.nbonds, ff.bond2atom, ff.apos ); // DEBUG
-        //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
+        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec );
+        glColor3f(0.0f,0.0f,0.0f);Draw3D::bonds( ff.nbonds, ff.bond2atom, ff.apos ); 
+        //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     
         if(bondLenghts) glColor3f(0.0f,0.0f,1.0f); Draw3D::bondPropertyLabel( ff.nbonds, bondLenghts, ff.bond2atom, ff.apos, 1,0, fontTex, texSize, "%4.2f\0" );
     }
     if(bForces){ glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0              ); }
     if(bAtoms){
         //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
-        glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     //DEBUG
-        //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
-        //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
-        //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-        //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+        glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     
+        //if(bSpheres)Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
+        if(bAtomsSpheres)Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );  
+        //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );      
+        //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       
+        //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       
     }
 }
 
@@ -383,29 +375,6 @@ void TestAppMMFFsp3::draw(){
         lvec_a0 = builder.lvec.a;
         //printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
     }
-
-    //Draw3D::drawAxis(  10. );
-
-	if( ogl_mol ){
-        glCallList( ogl_mol );
-        return;
-        //exit(0);
-    }
-
-    /*
-	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
-    Draw3D::drawPointCross( ray0, 0.1 );
-    //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
-    */
-
-    //ff.apos[0].set(-2.0,0.0,0.0);
-    //perFrame = 1;
-    //perFrame = 100;
-    //perFrame = 20;
-    //bRunRelax = false;
-
     { // bondlengths
         //printf(  "ff.nbonds %i ff.natoms %i \n", ff.nbonds, ff.natoms );
         _allocIfNull( bondLenghts, ff.nbonds );
@@ -413,6 +382,18 @@ void TestAppMMFFsp3::draw(){
         //for(int i=0; i<ff.nbonds; i++){ Vec2i b=ff.bond2atom[i]; bondLenghts[i]=ff.apos[b.i].dist(ff.apos[b.j]); printf("bondLength[%i](%i,%i):%g\n", i, b.i,b.j, bondLenghts[i] ); };
     }
 
+    //Draw3D::drawAxis(  10. );
+
+	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
+    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    Draw3D::drawPointCross( ray0, 0.1 );
+    //Draw3D::drawVecInPos( camMat.c, ray0 );
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+
+    //perFrame = 1;
+    //perFrame = 100;
+    //perFrame = 20;
+    //bRunRelax = false;
     double Ftol = 1e-6;
     //double Ftol = 1e-2;
     double v_av =0;
@@ -500,6 +481,8 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_KP_5: builder.lvec.a.y-=xstep; break;
                 //case SDLK_KP_9: builder.lvec.a.z+=xstep; break;
                 //case SDLK_KP_6: builder.lvec.a.z-=xstep; break;
+                
+                case SDLK_o:    bAtomsSpheres=!bAtomsSpheres; break;
 
                 case SDLK_p:    ff.bDEBUG_plot=!ff.bDEBUG_plot; break;
                 case SDLK_KP_7: ff.iDEBUG_pick++; if(ff.iDEBUG_pick>=ff.iDEBUG_n)ff.iDEBUG_pick=0; break;
