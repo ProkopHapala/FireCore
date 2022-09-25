@@ -56,7 +56,7 @@ class SMILESparser{ public:
 
     int insertAtom(int ia, char bond){
         tok[itok]='\0';
-        printf("insertAtom ia=%i bond=%c tok=%s\n", ia, bond, tok );
+        //printf("insertAtom ia=%i bond=%c tok=%s\n", ia, bond, tok );
         int ia2 = builder->insertAtom( tok, 0,0,0,0 );
         if(ia>=0){
             int order = getBondOrder( bond );
@@ -78,18 +78,18 @@ class SMILESparser{ public:
         int ia      = -1; 
         char bond   = '-';
         //printf( "%s\n", str );
-        printf( "ich0 %i level %i \n", ich0, level );
+        //printf( "ich0 %i level %i \n", ich0, level );
         char tokType=' ';
         while( ich < nch ){
             char ch = str[ich];
-            printf( "parse[%i](%c)\n", ich, ch );
+            //printf( "parse[%i](%c)\n", ich, ch );
             if (ch==cOPEN) {  // start sub-chain
                 ich = parse( ich+1, level+1, ia );
             }else if (ch==cCLOSE) { // end sub-chain
                 return ich;
             }else{ // token
                 char t=charTypes[ch];
-                printf( "tokType(%c):t(%c)\n", tokType, t );
+                //printf( "tokType(%c):t(%c)\n", tokType, t );
                 // proces previous token
                 if(t!=tokType){ // close token
                     if      (tokType=='0'){ // anchor point
