@@ -102,10 +102,18 @@ def pairsNotShareNeigh( pairs, neighs ):
             pairs_.append( pair )
     return pairs_
 
+def makeRotMatAng( ang, ax1=0, ax2=1 ):
+    ca=np.cos(ang)
+    sa=np.sin(ang)
+    rot=np.eye(3)
+    rot[ax1,ax1]=ca;  rot[ax2,ax2]=ca
+    rot[ax1,ax2]=-sa; rot[ax2,ax1]=sa
+    return rot 
+
 def makeRotMat( fw, up ):
-    print("fw",fw)
-    print("up",up)
-    print("<fw|up>", np.dot(up,fw) )
+    #print("fw",fw)
+    #print("up",up)
+    #print("<fw|up>", np.dot(up,fw) )
     fw   = fw/np.linalg.norm(fw)
     up   = up - fw*np.dot(up,fw)
     up   = up/np.linalg.norm(up)
@@ -113,15 +121,19 @@ def makeRotMat( fw, up ):
     left = left/np.linalg.norm(left) 
     return np.array([left,up,fw])
 
-def orient( i0, ip1, ip2, apos, _0=1, bTranspose=False, bFlipXZ=False ):
+def orient( i0, ip1, ip2, apos, _0=1, trans=None, bFlipXZ=False, bCopy=True ):
+    if(bCopy): apos=apos.copy()
     p0  = apos[i0-_0]
     fw  = apos[ip1[1]-_0]-apos[ip1[0]-_0]
     up  = apos[ip2[1]-_0]-apos[ip2[0]-_0]
     rot = makeRotMat( fw, up )
-    if bTranspose: rot=rot.transpose()
-    if( bFlipXZ ): rot[(0,2),:]=rot[(2,0),:] 
+    if trans is not None: rot=rot[trans,:]
+    if( bFlipXZ ): rot[(0,2),:]=rot[(2,0),:]
+    #print( "orient() rot=\n", rot ) 
     apos[:,:]-=p0[None,:]
     for i in range(len(apos)): apos[i,:] = np.dot( rot, apos[i,:] )
+    #print( "orient() apos=\n", apos ) 
+    return apos
 
 def groupToPair( p1, p2, group, up, up_by_cog=False ):
     center = (p1+p2)*0.5
