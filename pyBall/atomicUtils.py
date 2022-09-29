@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from random import random
 import numpy as np
 from . import elements
 #import elements
@@ -110,30 +111,36 @@ def makeRotMatAng( ang, ax1=0, ax2=1 ):
     rot[ax1,ax2]=-sa; rot[ax2,ax1]=sa
     return rot 
 
-def makeRotMat( fw, up ):
-    #print("fw",fw)
-    #print("up",up)
-    #print("<fw|up>", np.dot(up,fw) )
+def makeRotMat( fw, up ):    
     fw   = fw/np.linalg.norm(fw)
     up   = up - fw*np.dot(up,fw)
-    up   = up/np.linalg.norm(up)
+    ru   = np.linalg.norm(up)
+    if ru<1e-4:  # if colinear
+        print("WARRNING: makeRotMat() up,fw are colinear => randomize up ")
+        up = np.random.rand(3)
+        up = up - fw*np.dot(up,fw)
+        ru = np.linalg.norm(up)
+    up   = up/ru
     left = np.cross(fw,up)
     left = left/np.linalg.norm(left) 
     return np.array([left,up,fw])
 
-def orient( i0, ip1, ip2, apos, _0=1, trans=None, bFlipXZ=False, bCopy=True ):
+def mulpos( ps, rot ):
+    for ia in range(len(ps)): ps[ia,:] = np.dot(rot, ps[ia,:])
+
+def orient_vs( p0, fw, up, apos, trans=None ):
+    rot = makeRotMat( fw, up )
+    if trans is not None: rot=rot[trans,:]   #;print( "orient() rot=\n", rot ) 
+    apos[:,:]-=p0[None,:]
+    mulpos( apos, rot )
+    return apos
+
+def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):
     if(bCopy): apos=apos.copy()
     p0  = apos[i0-_0]
     fw  = apos[ip1[1]-_0]-apos[ip1[0]-_0]
     up  = apos[ip2[1]-_0]-apos[ip2[0]-_0]
-    rot = makeRotMat( fw, up )
-    if trans is not None: rot=rot[trans,:]
-    if( bFlipXZ ): rot[(0,2),:]=rot[(2,0),:]
-    #print( "orient() rot=\n", rot ) 
-    apos[:,:]-=p0[None,:]
-    for i in range(len(apos)): apos[i,:] = np.dot( rot, apos[i,:] )
-    #print( "orient() apos=\n", apos ) 
-    return apos
+    return orient_vs( p0, fw, up, apos, trans=trans )
 
 def groupToPair( p1, p2, group, up, up_by_cog=False ):
     center = (p1+p2)*0.5
@@ -231,9 +238,9 @@ def saveAtoms( atoms, fname, xyz=True ):
             fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
 
-def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, commet="" ):
+def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="" ):
     fout.write("%i\n"  %len(xyzs) )
-    fout.write(commet+"\n")
+    fout.write(comment+"\n")
     if   (Rs is not None):
         for i,xyz in enumerate( xyzs ):
             fout.write("%s %f %f %f %f %f \n"  %( es[i], xyz[0], xyz[1], xyz[2], qs[i], Rs[i] ) )
@@ -254,35 +261,47 @@ def makeMovie( fname, n, es, func ):
     fout = open(fname, "w")
     for i in range(n):
         xyzs, qs = func(i)
-        writeToXYZ( fout, es, xyzs, qs, commet=("frame %i " %i) )
+        writeToXYZ( fout, es, xyzs, qs, comment=("frame %i " %i) )
     fout.close() 
 
-def loadAtomsNP(fname):
+def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
+    bClose=False
+    if fin is None: 
+        fin=open(fname, 'r')
+        bClose=True
     xyzs   = [] 
     Zs     = []
     enames = []
     qs     = []
-    with open(fname, 'r') as f:
-        for line in f:
-            wds = line.split()
+    ia=0
+    for line in fin:
+        #print( nmax, "^^^", line )
+        wds = line.split()
+        try:
+            xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )
             try:
-                xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )
-                try:
-                    iz    = int(wds[0]) 
-                    Zs    .append(iz)
-                    enames.append( elements.ELEMENTS[iz] )
-                except:
-                    ename = wds[0]
-                    enames.append( ename )
-                    Zs    .append( elements.ELEMENT_DICT[ename][0] )
-                try:
-                    q = float(wds[4])
-                except:
-                    q = 0
-                qs.append(q)
+                iz    = int(wds[0]) 
+                Zs    .append(iz)
+                enames.append( elements.ELEMENTS[iz] )
             except:
-                print("cannot interpet line: ", line)
-                continue
+                ename = wds[0]
+                enames.append( ename )
+                Zs    .append( elements.ELEMENT_DICT[ename][0] )
+            try:
+                q = float(wds[4])
+            except:
+                q = 0
+            qs.append(q)
+            ia+=1
+        except:
+            #print("cannot interpet line: ", line)
+            if bReadN and (ia==0):
+                try:
+                    nmax=int(wds[0])
+                except:
+                    pass
+        if(ia>=nmax): break
+    if(bClose): fin.close()
     xyzs = np.array( xyzs )
     Zs   = np.array( Zs, dtype=np.int32 )
     qs   = np.array(qs)
@@ -320,6 +339,28 @@ def loadAtoms( name ):
     f.close()
     return [ e,x,y,z,q ]
 
+
+def load_xyz_movie( fname ):
+    f = open(fname,"r")
+    il=0
+    imgs=[]
+    while True:
+        line = f.readline()
+        if il==0:
+            n=int(l.split()[0])
+        else:
+            apos=np.array((n,3))
+            es  =[]
+            for i in range(n):
+                line = f.readline()
+                words=line.split()
+                es.append( words[0] )
+                apos[i,0] = float(words[1])
+                apos[i,1] = float(words[1])
+                apos[i,2] = float(words[1])
+                il+=1
+            imgs.append( (apos,es) )
+    return imgs
 
 #def loadCoefs( characters=['s','px','py','pz'] ):
 def loadCoefs( characters=['s'] ):
