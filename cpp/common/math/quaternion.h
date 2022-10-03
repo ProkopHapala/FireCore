@@ -815,6 +815,15 @@ static constexpr Quat4d Quat4dBotton   = (Quat4d){ M_SQRT1_2,        0.0,       
 static constexpr Quat4d Quat4dLeft     = (Quat4d){       0.0,  M_SQRT1_2,       0.0, M_SQRT1_2 };
 static constexpr Quat4d Quat4dRight    = (Quat4d){       0.0, -M_SQRT1_2,       0.0, M_SQRT1_2 };
 
+// -------- this is used for camera
+static constexpr Quat4f qFront {-M_SQRT1_2,      0.0f,     0.0f,M_SQRT1_2 };
+static constexpr Quat4f qBack  {      0.0f, M_SQRT1_2,M_SQRT1_2,     0.0f };
+static constexpr Quat4f qTop   { 1.0f, 0.0f, 0.0f, 0.0f};
+static constexpr Quat4f qBottom{ 0.0f, 0.0f, 0.0f, 1.0f};
+static constexpr Quat4f qLeft  {-0.5f, 0.5f, 0.5f, 0.5f};
+static constexpr Quat4f qRight { 0.5f, 0.5f, 0.5f,-0.5f};
+
+
 inline void convert( const Quat4f& from, Quat4d& to ){ to.x=from.x;        to.y=from.y;        to.z=from.z;        to.w=from.w;        };
 inline void convert( const Quat4d& from, Quat4f& to ){ to.x=(float)from.x; to.y=(float)from.y; to.z=(float)from.z; to.w=(float)from.w; };
 

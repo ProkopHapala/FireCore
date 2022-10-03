@@ -28,6 +28,13 @@ add_executable( FireCoreVisual
 )
 target_link_libraries( FireCoreVisual ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} -rdynamic -ldl -lm )
 
+add_executable( MolGUIapp
+	MolGUIapp.cpp
+	$<TARGET_OBJECTS:DynamicOpt>
+	$<TARGET_OBJECTS:SDL2OGL>  
+)
+target_link_libraries( MolGUIapp ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+
 add_executable( FireCoreMMFFmini
 	FireCoreMMFFmini.cpp
 	$<TARGET_OBJECTS:DynamicOpt>

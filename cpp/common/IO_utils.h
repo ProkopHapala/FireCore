@@ -98,6 +98,8 @@ inline int sscan(char* sbuff, Quat4i& v){ int n; sscanf(sbuff, "%i %i %i %i%n", 
 #define _toDict( mp, tok ){ mp[#tok] = tok; }
 #define _fromDict( mp, tok ){ tok = mp[#tok]; }
 
+inline bool file_exist(const char* fname) { if (FILE *file = fopen(fname, "r")) { fclose(file); return true; } else { return false; } }
+
 inline char * fgetsNonComment(char * str, int num, FILE * stream, char commentChar, int nMaxTry = 100 ){
     char* s = nullptr;
     // no more than 100 comments expected, ensure we don't get stuck in infinite loop
