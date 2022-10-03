@@ -234,6 +234,12 @@ class MMFFparams{ public:
         }
     }
 
+    void init(const char* fatomtypes=0, const char* fbondtypes=0, const char* fagnletypes=0){
+        if(fatomtypes)loadAtomTypes( fatomtypes );
+        if(fbondtypes)loadBondTypes( fbondtypes );
+        if(fagnletypes)loadAgnleType( fagnletypes );
+    }
+
 };
 
 #endif

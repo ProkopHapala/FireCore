@@ -95,15 +95,6 @@ void drawThumbnail( int itex, Vec2d p0, Vec2d p1, float sz ){
 
 int idebug=0;
 
-Quat4f qFront {-M_SQRT1_2,      0.0f,     0.0f,M_SQRT1_2 };
-Quat4f qBack  {      0.0f, M_SQRT1_2,M_SQRT1_2,      0.0f };
-Quat4f qTop   { 1.0f, 0.0f, 0.0f, 0.0f};
-Quat4f qBottom{ 0.0f, 0.0f, 0.0f, 1.0f};
-Quat4f qLeft  {-0.5f, 0.5f, 0.5f, 0.5f};
-Quat4f qRight { 0.5f, 0.5f, 0.5f,-0.5f};
-
-inline bool file_exist(const char* fname) { if (FILE *file = fopen(fname, "r")) { fclose(file); return true; } else { return false; } }
-
 // ===========================================
 // ================= MAIN CLASS ==============
 // ===========================================

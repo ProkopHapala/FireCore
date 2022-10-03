@@ -52,6 +52,7 @@ int idebug=0;
 // (-0.500708,0.49913,0.50088,0.499266)               - Left
 // (0.502989,0.497481,0.502217,-0.497277)             - Right
 
+/*
 Quat4f qFront {-M_SQRT1_2,      0.0f,     0.0f,M_SQRT1_2 };
 Quat4f qBack  {      0.0f, M_SQRT1_2,M_SQRT1_2,      0.0f };
 Quat4f qTop   { 1.0f, 0.0f, 0.0f, 0.0f};
@@ -60,6 +61,7 @@ Quat4f qLeft  {-0.5f, 0.5f, 0.5f, 0.5f};
 Quat4f qRight { 0.5f, 0.5f, 0.5f,-0.5f};
 
 inline bool file_exist(const char* fname) { if (FILE *file = fopen(fname, "r")) { fclose(file); return true; } else { return false; } }
+*/
 
 // ===========================================
 // ================= MAIN CLASS ==============
@@ -680,12 +682,12 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    /*
+                    
                     ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
                     if(ipicked>=0){ selection.push_back(ipicked); };
                     printf( "picked atom %i \n", ipicked );
-                    */
+                    
                     ray0_start = ray0;
                     bDragging = true;
                     break;

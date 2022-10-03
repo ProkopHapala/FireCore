@@ -35,7 +35,7 @@ inline void combineREQ(const Vec3d& a, const Vec3d& b, Vec3d& out){
 
 inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ ){
     //Vec3f dp; dp.set_sub( p2, p1 );
-    const double COULOMB_CONST_ = 14.3996448915d;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
+    const double COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
     double ir2  = 1/( dp.norm2() + 1e-4 );
     double ir   = sqrt(ir2);
     double ir2_ = ir2*REQ.a*REQ.a;
@@ -102,8 +102,36 @@ inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, dou
     return 0;
 }
 
+class NBsystem{
+    int n;
+    Vec3d *REQs=0;
+    Vec3d *ps=0;
+    Vec3d *fs=0;
+
+    double evalLJQ( NBsystem& B, const bool bRecoil ){
+        double E=0;
+        //printf("DEBUG NBFF_AB.evalLJQ() n,m %i %i \n", n,m);
+        for(int i=0; i<n; i++){
+            Vec3d fi = Vec3dZero;
+            Vec3d Api = ps[i];
+            const Vec3d& AREQi = REQs[i];
+            for(int j=0; j<B.n; j++){    // atom-atom
+                Vec3d fij = Vec3dZero;
+                Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
+                //printf( "NBFF_AB::evalLJQ REQ[%i,%i] %g %g %g \n", i,j, REQij.x,REQij.y,REQij.z );
+                //printf( "REQ[%i,%i] (%g,%g,%g) (%g,%g,%g) \n", i,j, AREQi.x,AREQi.y,AREQi.z, B_REQs[j].x,B_REQs[j].y,B_REQs[j].z  );
+                E += addAtomicForceLJQ( B.ps[j]-Api, fij, REQij );
+                if(bRecoil) B.fs[j].sub(fij);
+                fi.add(fij);
+            }
+            fs[i].add(fi);
+        }
+        return E;
+    }
+};
 
 class NBFF_AB{ public:
+/// @brief NBFF_AB solves non-covalent interactions between two (or more in future?) disticient sub-systems
     int n=0,m=0;
     Vec3d *A_ps=0,*A_REQs=0,*A_fs=0;
     Vec3d *B_ps=0,*B_REQs=0,*B_fs=0;
@@ -133,12 +161,6 @@ class NBFF_AB{ public:
     }
 
 };
-
-
-
-
-
-
 
 class NBFF{ public:
 // non bonded forcefield

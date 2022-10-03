@@ -52,23 +52,7 @@ int verbosity = 0;
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
-
 int idebug=0;
-// (-0.706981   ,-0.00550127,0.00597562,0.707185)     - Front
-// ( 0.000203297, 0.707127  ,0.707075  ,0.000491792)  - Back
-// Quat4f qTop   {1.f,0.f,0.f,0.f};                   - Top
-// (-0.000281836,-0.00182222,0.00382132,0.999988)     - Bottom
-// (-0.500708,0.49913,0.50088,0.499266)               - Left
-// (0.502989,0.497481,0.502217,-0.497277)             - Right
-
-Quat4f qFront {-M_SQRT1_2,      0.0f,     0.0f,M_SQRT1_2 };
-Quat4f qBack  {      0.0f, M_SQRT1_2,M_SQRT1_2,      0.0f };
-Quat4f qTop   { 1.0f, 0.0f, 0.0f, 0.0f};
-Quat4f qBottom{ 0.0f, 0.0f, 0.0f, 1.0f};
-Quat4f qLeft  {-0.5f, 0.5f, 0.5f, 0.5f};
-Quat4f qRight { 0.5f, 0.5f, 0.5f,-0.5f};
-
-inline bool file_exist(const char* fname) { if (FILE *file = fopen(fname, "r")) { fclose(file); return true; } else { return false; } }
 
 // ===========================================
 // ================= MAIN CLASS ==============
