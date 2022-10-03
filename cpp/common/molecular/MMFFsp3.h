@@ -42,7 +42,7 @@ class MMFFsp3{ public:
     double * DOFs  = 0;   // degrees of freedom
     double * fDOFs = 0;   // forces
 
-    double Kpi = 0.1;
+    double Kpi = 0.5;
     int  ipi0=0;
     int   * atype=0;
     Vec3d * apos=0;
@@ -111,6 +111,12 @@ void cleanEnergy   (){ Etot=0;Eb=0;Ea=0;Eps=0;EppT=0;EppI=0; };
 void cleanAtomForce(){ for(int i=0; i<natoms; i++){ fapos [i].set(0.0); } }
 void cleanPiForce  (){ for(int i=0; i<npi;    i++){ fpipos[i].set(0.0); } }
 void normalizePi   (){ for(int i=0; i<npi;    i++){ pipos [i].normalize(); } }
+
+void cleanAll(){
+    cleanEnergy();
+    cleanAtomForce();
+    cleanPiForce();
+}
 
 // ============== Evaluation
 
@@ -410,13 +416,9 @@ double eval_neighs(){
 
 double eval( bool bClean=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
-    if(bClean){
-        cleanEnergy();
-        cleanAtomForce();  //printf( "DEBUG MMFFsp3.eval() 2 \n" );
-        cleanPiForce();    //printf( "DEBUG MMFFsp3.eval() 3 \n" );
-    }
+    if(bClean){ cleanAll(); }
     normalizePi(); 
-    //ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
+    ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
     eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
     eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     Etot = Eb + Ea + Eps + EppT + EppI;

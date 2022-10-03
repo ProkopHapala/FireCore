@@ -18,8 +18,8 @@
 
 #include "raytrace.h"
 #include "Draw3D_Molecular.h"  // it needs to know MMFFparams
-#include "MarchingCubes.h"
 #include "MolecularDraw.h"
+#include "MarchingCubes.h"
 #include "GUI.h"
 #include "EditorGizmo.h"
 #include "SimplexRuler.h"
@@ -245,7 +245,11 @@ void MolGUI::draw(){
 
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift );
     //if(bDoQM)drawSystemQMMM();
-    if(bDoMM)if(W->builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); }
+    if(bDoMM)if(W->builder.bPBC){ 
+        Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); 
+        Draw3D::drawNeighs( W->ff, 1.0 );    
+        Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
+    }
     for(int i=0; i<W->selection.size(); i++){ int ia = W->selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->ff.apos[ia] );     }
     //if(iangPicked>=0){
@@ -263,6 +267,20 @@ void MolGUI::draw(){
 void MolGUI::drawHUD(){
     glDisable ( GL_LIGHTING );
     gui.draw();
+
+    if(W->bCheckInvariants){
+        glTranslatef( 10.0,HEIGHT-20.0,0.0 );
+        glColor3f(0.5,0.0,0.3);
+        char* s=str;
+        //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
+        //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
+        s += sprintf(s, "eval:Ang,ps,ppT,ppI(%i|%i,%i,%i)\n",  W->ff.nevalAngles>0, W->ff.nevalPiSigma>0, W->ff.nevalPiPiT>0, W->ff.nevalPiPiI>0 );
+        s += sprintf(s, "cog (%g,%g,%g)\n", W->cog .x,W->cog .y,W->cog .z);
+        s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", W->vcog.x,W->vcog.y,W->vcog.z);
+        s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", W->fcog.x,W->fcog.y,W->fcog.z);
+        s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", W->tqcog.x,W->tqcog.y,W->tqcog.z);
+        Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+    }
 }
 
 void MolGUI::drawingHex(double z0){

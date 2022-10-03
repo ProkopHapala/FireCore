@@ -107,6 +107,25 @@ class NBsystem{ public:
     Vec3d *ps=0;
     Vec3d *fs=0;
 
+    double evalLJQs(){
+        const int N=n;
+        double E=0;
+        for(int i=0; i<N; i++){
+            Vec3d fi = Vec3dZero;
+            Vec3d pi = ps[i];
+            const Vec3d& REQi = REQs[i];
+            for(int j=i+1; j<N; j++){    // atom-atom
+                Vec3d fij = Vec3dZero;
+                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
+                fs[j].sub(fij);
+                fi   .add(fij);
+            }
+            fs[i].add(fi);
+        }
+        return E;
+    }
+
     double evalLJQ( NBsystem& B, const bool bRecoil ){
         double E=0;
         //printf("DEBUG NBFF_AB.evalLJQ() n,m %i %i \n", n,m);
@@ -144,11 +163,19 @@ class NBsystem{ public:
                 if(bRecoil) B.fs[j].sub(fij);
                 fi.add(fij);
             }
-            //printf( "fs[%i](%g,%g,%g)\n", i, fi.x,fi.y,fi.z );
+            //printf( "fs[%i]( %g | %g,%g,%g)  \n", i, fi.norm(),  fi.x,fi.y,fi.z );
             fs[i].add(fi);
             //fs[i].sub(fi);
         }
+        //printf( "EvdW %g \n", E );
         return E;
+    }
+
+    void print(){
+        printf("NBsystem:\n");
+        for(int i=0; i<n; i++){
+            printf("nb_atom[%i] REQ(%g,%g,%g) pos(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  ps[i].x,ps[i].y,ps[i].z );
+        }
     }
 
     void bindOrRealloc(int n_, Vec3d* ps_, Vec3d* fs_, Vec3d* REQs_ ){
@@ -160,45 +187,15 @@ class NBsystem{ public:
 
 };
 
-class NBFF_AB{ public:
-/// @brief NBFF_AB solves non-covalent interactions between two (or more in future?) disticient sub-systems
-    int n=0,m=0;
-    Vec3d *A_ps=0,*A_REQs=0,*A_fs=0;
-    Vec3d *B_ps=0,*B_REQs=0,*B_fs=0;
-
-    inline void bindA( int n_, Vec3d* A_ps_, Vec3d* A_REQs_, Vec3d* A_fs_ ){ n=n_; A_ps=A_ps_; A_REQs=A_REQs_; A_fs=A_fs_; }
-    inline void bindB( int m_, Vec3d* B_ps_, Vec3d* B_REQs_, Vec3d* B_fs_ ){ m=m_; B_ps=B_ps_; B_REQs=B_REQs_; B_fs=B_fs_; }
-
-    double evalLJQ( ){
-        double E=0;
-        //printf("DEBUG NBFF_AB.evalLJQ() n,m %i %i \n", n,m);
-        for(int i=0; i<n; i++){
-            Vec3d fi = Vec3dZero;
-            Vec3d Api = A_ps[i];
-            const Vec3d& AREQi = A_REQs[i];
-            for(int j=0; j<m; j++){    // atom-atom
-                //Vec3d fij = Vec3dZero;
-                Vec3d REQij; combineREQ( B_REQs[j], AREQi, REQij );
-                //printf( "NBFF_AB::evalLJQ REQ[%i,%i] %g %g %g \n", i,j, REQij.x,REQij.y,REQij.z );
-                //printf( "REQ[%i,%i] (%g,%g,%g) (%g,%g,%g) \n", i,j, AREQi.x,AREQi.y,AREQi.z, B_REQs[j].x,B_REQs[j].y,B_REQs[j].z  );
-                E += addAtomicForceLJQ( B_ps[j]-Api, fi, REQij );
-                //fs[j].sub(fij);
-                //fi   .add(fij);
-            }
-            A_fs[i].add(fi);
-        }
-        return E;
-    }
-
-};
-
-class NBFF{ public:
+class NBFF : public NBsystem{ public:
 // non bonded forcefield
-    int n       = 0;
+    //int n       = 0;
+    //Vec3d* REQs = 0;
+    //Vec3d* ps   = 0;
+    //Vec3d* fs   = 0;
+
     int nmask   = 0;
-    Vec3d* REQs = 0;
-    Vec3d* ps   = 0;
-    Vec3d* fs   = 0;
+
     Vec2i* pairMask = 0; // should be ordered ?
 
     double sr_w      = 0.1;
@@ -240,25 +237,6 @@ void printAtomParams(){
 
 void cleanForce(){
     for(int i=0; i<n; i++){ fs[i].set(0.); }
-}
-
-double evalLJQs(){
-    const int N=n;
-    double E=0;
-    for(int i=0; i<N; i++){
-        Vec3d fi = Vec3dZero;
-        Vec3d pi = ps[i];
-        const Vec3d& REQi = REQs[i];
-        for(int j=i+1; j<N; j++){    // atom-atom
-            Vec3d fij = Vec3dZero;
-            Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
-            E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
-            fs[j].sub(fij);
-            fi   .add(fij);
-        }
-        fs[i].add(fi);
-    }
-    return E;
 }
 
 double evalLJQ_sortedMask( const Vec3d& shift=Vec3dZero ){
