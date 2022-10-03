@@ -80,6 +80,8 @@ class MMFFparams{ public:
 
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
+    //Vec3d  default_REQ            = {1.487, 0.0006808, 0.0};  // Hydrogen
+    Vec3d  default_REQ              = {1.500, 0.0005000, 0.0};  // Hydrogen like
 
     bool reportIfMissing=true;
     bool exitIfMissing  =true;
@@ -239,6 +241,61 @@ class MMFFparams{ public:
         if(fbondtypes)loadBondTypes( fbondtypes );
         if(fagnletypes)loadAgnleType( fagnletypes );
     }
+
+
+    int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Vec3d** REQs_=0, int** atype_=0, int verbosity=0 )const{
+        //if(verbosity>0)printf( "loadXYZ(%s)\n", fname );
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            return -1;
+        }
+        const int nbuf=1024;
+        char buff[nbuf];
+        char * line;
+        int nl;
+        line = fgets( buff, nbuf, pFile );
+        sscanf( line, "%i \n", &natoms );
+
+        //printf( "DEBUG MMFFparams:loadXYZ() 1 \n");
+        //Vec3d* apos; if(apos_){  if((*apos_)==0) (*apos_)=new Vec3d[natoms]; apos=*apos_; };   
+        //Vec3d* REQs; if(REQs_){  if((*REQs_)==0) (*REQs_)=new Vec3d[natoms]; REQs=*REQs_; };   
+        //int* atype;  if(atype_){ if((*atype_)==0)(*atype_)=new int[natoms];  atype=*atype_; }; 
+        Vec3d* apos  =_allocPointer( apos_, natoms );
+        Vec3d* REQs  =_allocPointer( REQs_, natoms );
+        int*   atype =_allocPointer( atype_, natoms );
+        //printf( "DEBUG MMFFparams:loadXYZ() 1 \n");
+
+        line = fgets( buff, nbuf, pFile ); // comment
+        double Q;
+        for(int i=0; i<natoms; i++){
+            //printf( "DEBUG MMFFparams:loadXYZ() a[%i] \n", i );
+            //char ch;
+            char at_name[8];
+            double junk;
+            line = fgets( buff, nbuf, pFile );  //printf("%s",line);
+            int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q );
+            if( nret < 5 ){ Q=0; };
+            //if( nret < 6 ){ npis[i]  =-1; };
+            //if(verbosity>1)
+            //printf(       ".xyz[%i] %s p(%lf,%lf,%lf) Q %lf \n", i,  at_name, apos[i].x,  apos[i].y,  apos[i].z, Q );
+            // atomType[i] = atomChar2int( ch );
+            auto it = atomTypeDict.find( at_name );
+            if( it != atomTypeDict.end() ){
+                int ityp=it->second;
+                if(atype_)atype[i] = ityp;
+                if(REQs_){ assignRE( ityp, REQs[i] ); REQs[i].z=Q; 
+                //printf( "DEBUG MMFFparams:loadXYZ() a[%i] REQs(%g,%g,%g) \n", i, REQs[i].x, REQs[i].y, REQs[i].z );
+                }
+            }else{
+                if(atype_)atype[i] = -1;
+                if(REQs_)REQs[i]  = default_REQ;
+            }
+        }
+        fclose(pFile);
+        return natoms;
+    }
+
 
 };
 
