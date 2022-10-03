@@ -131,25 +131,16 @@ class MMFFparams{ public:
         return i;
     }
 
-    inline void assignRE( int ityp, Vec3d& REQ )const{
+    inline void assignRE( int ityp, Vec3d& REQ, bool bSqrtE=false )const{
         REQ.x = atypes[ityp].RvdW;
-        REQ.y = atypes[ityp].EvdW;
+        double e=atypes[ityp].EvdW;
+        if(bSqrtE) e=sqrt(e);
+        REQ.y = e;
     }
 
-    void assignREs( int n, int * itypes, Vec3d * REQs )const{
-        //printf( "assignREs %i   %i %i %i \n", n,  itypes, REQs, atypes );
+    void assignREs( int n, int * itypes, Vec3d * REQs, bool bSqrtE=false )const{
         for(int i=0; i<n; i++){
-            //mmff->aLJq [i]  = atoms[i].type;
-            //int ityp = atoms[i].type;
-            //printf( "i %i \n", i );
-            //int ityp = itypes[i];
-            //printf( "ityp %i \n", ityp );
-            //REQs[i].x = atypes[ityp].RvdW;
-            //REQs[i].y = atypes[ityp].EvdW;
-            assignRE( itypes[i], REQs[i] );
-            //printf( "assignREs i %i ityp %i RE  %g %g  \n", i, ityp, REQs.x, REQs.y );
-            //REQs.z = 0;
-            //atomTypes[i]  = atoms[i].type;
+            assignRE( itypes[i], REQs[i], bSqrtE );
         }
     }
 
@@ -244,7 +235,6 @@ class MMFFparams{ public:
 
 
     int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Vec3d** REQs_=0, int** atype_=0, int verbosity=0 )const{
-        //if(verbosity>0)printf( "loadXYZ(%s)\n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -256,37 +246,23 @@ class MMFFparams{ public:
         int nl;
         line = fgets( buff, nbuf, pFile );
         sscanf( line, "%i \n", &natoms );
-
-        //printf( "DEBUG MMFFparams:loadXYZ() 1 \n");
-        //Vec3d* apos; if(apos_){  if((*apos_)==0) (*apos_)=new Vec3d[natoms]; apos=*apos_; };   
-        //Vec3d* REQs; if(REQs_){  if((*REQs_)==0) (*REQs_)=new Vec3d[natoms]; REQs=*REQs_; };   
-        //int* atype;  if(atype_){ if((*atype_)==0)(*atype_)=new int[natoms];  atype=*atype_; }; 
         Vec3d* apos  =_allocPointer( apos_, natoms );
         Vec3d* REQs  =_allocPointer( REQs_, natoms );
         int*   atype =_allocPointer( atype_, natoms );
-        //printf( "DEBUG MMFFparams:loadXYZ() 1 \n");
-
         line = fgets( buff, nbuf, pFile ); // comment
         double Q;
         for(int i=0; i<natoms; i++){
-            //printf( "DEBUG MMFFparams:loadXYZ() a[%i] \n", i );
-            //char ch;
             char at_name[8];
             double junk;
             line = fgets( buff, nbuf, pFile );  //printf("%s",line);
             int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q );
             if( nret < 5 ){ Q=0; };
-            //if( nret < 6 ){ npis[i]  =-1; };
-            //if(verbosity>1)
-            //printf(       ".xyz[%i] %s p(%lf,%lf,%lf) Q %lf \n", i,  at_name, apos[i].x,  apos[i].y,  apos[i].z, Q );
-            // atomType[i] = atomChar2int( ch );
+
             auto it = atomTypeDict.find( at_name );
             if( it != atomTypeDict.end() ){
                 int ityp=it->second;
                 if(atype_)atype[i] = ityp;
-                if(REQs_){ assignRE( ityp, REQs[i] ); REQs[i].z=Q; 
-                //printf( "DEBUG MMFFparams:loadXYZ() a[%i] REQs(%g,%g,%g) \n", i, REQs[i].x, REQs[i].y, REQs[i].z );
-                }
+                if(REQs_){ assignRE( ityp, REQs[i], true ); REQs[i].z=Q; }
             }else{
                 if(atype_)atype[i] = -1;
                 if(REQs_)REQs[i]  = default_REQ;

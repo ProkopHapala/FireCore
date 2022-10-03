@@ -107,7 +107,9 @@ bool loadSurf(const char* fname){
 	int ret = params.loadXYZ( fname, surf.n, &surf.ps, &surf.REQs );
 	if(ret<0)return false;
 	nbmol.bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
-	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs  );
+	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true  );
+    surf .print();
+    nbmol.print();
 	bSurfAtoms=true;
 	return true;
 }
@@ -168,6 +170,7 @@ void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonB
     if(bNonBonded)init_nonbond();
     if(bOptimizer){
         opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
+        opt.initOpt( 0.05, 0.95 );
         opt.cleanVel();
     }
     _realloc( manipulation_sel, ff.natoms );
@@ -237,15 +240,20 @@ bool relax( int niter, double Ftol, bool bWriteTrj ){
 }
 
 void MDloop( int nIter, double Ftol = 1e-6 ){
+    //ff.doPiPiI  =false;
+    //ff.doPiPiT  =false;
+    //ff.doPiSigma=false;
+    //ff.doAngles =false;
+    ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         double E=0;
-        ff.cleanAtomForce();
-		E += ff.eval(false);
-		if(bNonBonded){
-			E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
-		}
+		E += ff.eval();
+        
+		if(bNonBonded){ E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} ); }
 		if(bSurfAtoms){ E+=nbmol.evalMorse(surf, false, Kmorse); };
 		if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
+        
+        if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
         // if(ipicked>=0){
         //     float K = -2.0;
         //     Vec3d f = getForceSpringRay( W->ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, K );
