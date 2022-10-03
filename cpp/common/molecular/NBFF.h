@@ -10,7 +10,7 @@ Non-Bonded Force-Field
 //#include "Vec2.h"
 #include "Vec3.h"
 
-//#include "Forces.h"
+#include "Forces.h"
 
 bool checkPairsSorted( int n, Vec2i* pairs ){
     int ia=-1,ja=-1;
@@ -25,7 +25,6 @@ bool checkPairsSorted( int n, Vec2i* pairs ){
     }
     return true;
 }
-
 
 inline void combineREQ(const Vec3d& a, const Vec3d& b, Vec3d& out){
     out.a=a.a+b.a; // radius
@@ -102,7 +101,7 @@ inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, dou
     return 0;
 }
 
-class NBsystem{
+class NBsystem{ public:
     int n;
     Vec3d *REQs=0;
     Vec3d *ps=0;
@@ -128,6 +127,37 @@ class NBsystem{
         }
         return E;
     }
+
+    double evalMorse( NBsystem& B, const bool bRecoil, double K=-1.0 ){
+        double E=0;
+        //printf("DEBUG evalMorse() n,B.n %i %i \n", n,B.n );
+        for(int i=0; i<n; i++){
+            Vec3d fi = Vec3dZero;
+            Vec3d Api = ps[i];
+            const Vec3d& AREQi = REQs[i];
+            for(int j=0; j<B.n; j++){    // atom-atom
+                Vec3d fij = Vec3dZero;
+                Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
+                //printf( "NBFF_AB::evalLJQ REQ[%i,%i] %g %g %g \n", i,j, REQij.x,REQij.y,REQij.z );
+                //printf( "REQ[%i,%i] (%g,%g,%g) (%g,%g,%g) \n", i,j, AREQi.x,AREQi.y,AREQi.z, B_REQs[j].x,B_REQs[j].y,B_REQs[j].z  );
+                E += addAtomicForceMorseQ( B.ps[j]-Api, fij, REQij.x, REQij.y, REQij.z, K );
+                if(bRecoil) B.fs[j].sub(fij);
+                fi.add(fij);
+            }
+            //printf( "fs[%i](%g,%g,%g)\n", i, fi.x,fi.y,fi.z );
+            fs[i].add(fi);
+            //fs[i].sub(fi);
+        }
+        return E;
+    }
+
+    void bindOrRealloc(int n_, Vec3d* ps_, Vec3d* fs_, Vec3d* REQs_ ){
+        n=n_;
+        _bindOrRealloc(n,ps_  ,ps  );
+        _bindOrRealloc(n,fs_  ,fs  );
+        _bindOrRealloc(n,REQs_,REQs);
+    }
+
 };
 
 class NBFF_AB{ public:

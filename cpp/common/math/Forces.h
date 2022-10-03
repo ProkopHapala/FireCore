@@ -63,7 +63,7 @@ inline double evalCos2_o(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj,
 
 inline double evalCosHalf(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj, double k, Vec2d cs ){
     Vec3d h; h.set_add( hi, hj );
-    double c2 = h.norm2()*0.25d;               // cos(a/2) = |ha+hb|
+    double c2 = h.norm2()*0.25;               // cos(a/2) = |ha+hb|
     double s2 = 1-c2;
     //printf( "ang[%i] (%g,%g,%g) (%g,%g,%g) (%g,%g,%g) c2 %g s2 %g \n", ig, ha.x,ha.y,ha.z,  hb.x,hb.y,hb.z,  h.x,h.y,h.z,   c2, s2 );
     double c = sqrt(c2);
@@ -108,16 +108,16 @@ inline void addAtomicForceMorse( const Vec3d& dp, Vec3d& f, double r0, double ep
     f.add_mul( dp, fr/r );
 }
 
-inline void addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double eps, double qq, double alpha ){
+inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double eps, double qq, double alpha ){
     //Vec3f dp; dp.set_sub( p2, p1 );
     const double R2ELEC = 1.0;
     double r     = sqrt( dp.norm2()+R2SAFE );
     double expar = exp( alpha*(r-r0));
-    //double E     = eps*( expar*expar - 2*expar );
     double fr    = eps*2*alpha*( expar*expar - expar ) + COULOMB_CONST*qq/( r*r + R2ELEC );
     //printf( " %g -> %g | (%g,%g,%g) %g\n" , r, fr,  r0, eps,  q, alpha );
     //printf( " r %g expar %g fr %g kqq %g a %g eps %g \n" , r, expar, fr, COULOMB_CONST*qq, alpha, eps );
     f.add_mul( dp, fr/r );
+    return eps*( expar*expar - 2*expar );
 }
 
 inline double addAtomicForceQ( const Vec3d& dp, Vec3d& f, double qq ){

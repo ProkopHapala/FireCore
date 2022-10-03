@@ -113,6 +113,9 @@ _inline_T void _realloc(T*& arr, int n){ if(arr){ delete [] arr; } arr=new T[n];
 _inline_T void _dealloc(T*& arr       ){ if(arr){ delete [] arr; } arr=0;        }
 _inline_T bool _bindOrRealloc(int n, T* from, T*& arr ){ if(from){ arr=from; return false; }else{ _realloc(arr,n); return true; } }
 
+
+_inline_T T* _allocPointer( T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; }; 
+
 _inline_T  bool _clone( int i0, int imax, T* from, T*& arr, int n){
     bool ret = _allocIfNull(arr,n);
     for(int i=i0; i<imax; i++){ arr[i]=from[i-i0]; } // use mem copy instead ?
