@@ -416,7 +416,7 @@ double eval( bool bClean=true ){
         cleanPiForce();    //printf( "DEBUG MMFFsp3.eval() 3 \n" );
     }
     normalizePi(); 
-    ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
+    //ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
     eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
     eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     Etot = Eb + Ea + Eps + EppT + EppI;
