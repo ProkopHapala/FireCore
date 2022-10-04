@@ -33,13 +33,14 @@ header_strings = [
 #"bool checkInvariants( double maxVcog, double maxFcog, double maxTg )",
 #"double eval()",
 #"bool relax( int niter, double Ftol )",
-"void shift_atoms_ax( int n, int* selection, double* d                  )",
-"void shift_atoms   ( int n, int* selection, int ia0, int ia1, double l )",
-"void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi      )",
-"void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double phi )",
-"int  splitAtBond( int ib, int* selection )",
-"void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj )",
-"void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )",
+#"void shift_atoms_ax( int n, int* selection, double* d                  )",
+#"void shift_atoms   ( int n, int* selection, int ia0, int ia1, double l )",
+#"void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi      )",
+#"void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double phi )",
+#"int  splitAtBond( int ib, int* selection )",
+#"void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj )",
+#"void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )",
+"void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){",
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 ]
@@ -67,6 +68,19 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ====================================
 # ========= C functions
 # ====================================
+
+#  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
+lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double] 
+lib.sampleNonBond.restype   =  None
+def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0):
+    n =len(rs)
+    if Es is None: Es=np.zeros(n)
+    if fs is None: fs=np.zeros(n)
+    rs=np.array(rs)
+    REQi=np.array(REQi)
+    REQj=np.array(REQj) 
+    lib.sampleNonBond(n, rs, Es, fs, kind, REQi, REQj, K)
+    return Es,fs
 
 #printBuffNames(){
 lib.printBuffNames.argtypes = []
@@ -126,6 +140,7 @@ lib.init_buffers.restype   =  None
 def init_buffers():
     return lib.init_buffers()
 
+'''
 #  void init_params(const char* fatomtypes, const char* fbondtypes)
 lib.init_params.argtypes  = [c_char_p, c_char_p, c_char_p] 
 lib.init_params.restype   =  None
@@ -134,12 +149,15 @@ def init_params(fatomtypes, fbondtypes, fbondangles ):
     fbondtypes = fbondtypes.encode('utf8')
     fbondangles = fbondangles.encode('utf8')
     return lib.init_params(fatomtypes,fbondtypes,fbondangles)
+'''
 
+'''
 #  void init_nonbond()
 lib.init_nonbond.argtypes  = [] 
 lib.init_nonbond.restype   =  None
 def init_nonbond():
     return lib.init_nonbond()
+'''
 
 #  void insertSMILES(char* s)
 lib.insertSMILES.argtypes  = [c_char_p,c_bool] 
@@ -148,11 +166,13 @@ def insertSMILES(s ):
     s = s.encode('utf8')
     return lib.insertSMILES(s)
 
+'''
 #  void buildFF( bool bNonBonded_, bool bOptimizer_ )
 lib.buildFF.argtypes  = [c_bool, c_bool] 
 lib.buildFF.restype   =  None
 def buildFF(bNonBonded=True, bOptimizer=True):
     return lib.buildFF(bNonBonded, bOptimizer)
+'''
 
 #  int loadmol( const char* fname_mol )
 lib.loadmol.argtypes  = [c_char_p] 

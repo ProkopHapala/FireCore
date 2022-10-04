@@ -21,7 +21,7 @@
 #include "MMFFsp3.h"
 #include "NBFF.h"
 #include "GridFF.h"
-//#include "QEq.h"
+#include "QEq.h"
 #include "molecular_utils.h"
 
 #include "Molecule.h"
@@ -42,6 +42,7 @@ class MolWorld_sp3{ public:
 	NBFF       nff;
 	NBsystem   surf, nbmol;
 	GridFF     gridFF;
+    QEq        qeq;
 	DynamicOpt  opt;
 
 	// state
@@ -85,6 +86,17 @@ void init_nonbond(){
     };
 }
 
+void autoCharges(){
+    printf("autoCharges() \n");
+    qeq.realloc( ff.natoms );
+    params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );
+    int iconstr = params.getAtomType("E");
+    printf("constrain type %i \n", iconstr );
+    qeq.constrainTypes( ff.atype, iconstr );
+    qeq.relaxChargeMD( ff.apos, 1000, 1e-2, 0.1, 0.1 );
+    copy( qeq.n, 1, 0, (double*)qeq.qs, 3, 2, (double*)nbmol.REQs );
+}
+
 void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     bOptimizer=bOptimizer_;
     bNonBonded=bNonBonded_;
@@ -106,6 +118,7 @@ bool loadSurf(const char* fname){
 	nbmol.bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
 	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true, true  );
     surf .print();
+    autoCharges(); 
     nbmol.print();
 	bSurfAtoms=true;
 	return true;
@@ -158,6 +171,9 @@ void setOptimizer(){
 
 void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+    //params.printAtomTypeDict();
+    params.printAtomTypes();
+    //params.printBond();
 	builder.bindParams(&params);
     insertSMILES( s );
     if(bCap)builder.addAllCapTopo();

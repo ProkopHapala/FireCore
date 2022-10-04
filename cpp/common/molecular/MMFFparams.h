@@ -42,23 +42,30 @@ class AtomType{ public:
     uint32_t  color;
     double    RvdW;
     double    EvdW;
+
+    // ---- charge equlibration
+    bool   bQEq;
+    double Eaff,Ehard,Ra,eta;
     // ==== additional
     double    piStiff;
-    double    electroneg;
-    double    polarizability;
+    //double    electroneg;
+    //double    polarizability;
 
     char* toString( char * str ){
         sprintf( str, "%s %i %i %i %i %lf %lf %x", name,  iZ,   neval,  valence,   sym,    RvdW, EvdW,   color );
         return str;
     }
 
+    void print(int i){ printf( "AtomType[%i] %s (%i,%i,%i,%i) vdW(R=%lf,E=%lf) clr %x Eaff,Ehard (%g,%g) \n", i, name,  iZ,   neval,  valence,   sym,    RvdW, EvdW,   color, Eaff,Ehard ); }
+
     inline uint8_t nepair(){ return (neval-valence)/2; };
 
     void fromString( char * str ){
         int iZ_, neval_, valence_, sym_;
-        //char sclr[6];
-        sscanf( str, " %s %i %i %i %i %lf %lf %x \n", name, &iZ_, &neval_, &valence_, &sym_,  &RvdW, &EvdW, &color );
+        //char sclr[6];                                                            1   2      3         4        5         6     7      8        9        10   11     12
+        int nret = sscanf( str, " %s %i %i %i %i %lf %lf %x %lf %lf %lf %lf\n", name, &iZ_, &neval_, &valence_, &sym_,  &RvdW, &EvdW, &color,   &Eaff, &Ehard, &Ra, &eta );
         iZ=iZ_; neval=neval_; valence=valence_; sym=sym_;
+        if(nret<10){ bQEq = false; }else{ bQEq=true; }
         //printf( "AtomType: %s iZ %i ne %i nb %i sym %i RE(%g,%g) %x \n", name,  iZ,   neval_,  valence,   sym,    RvdW, EvdW,   color );
         //char ss[256]; printf("%s\n", toString(ss) );
     }
@@ -114,7 +121,7 @@ class MMFFparams{ public:
 
         AtomType atyp;
         int i=0;
-        for(i=0; i<0xFFFF; i++){
+        for(i=0; i<10000; i++){
         //for(int i; i<0xFFFF; i++){
             //printf( "loadAtomTypes %i \n", i );
             line = fgets( buff, 1024, pFile );
@@ -142,6 +149,14 @@ class MMFFparams{ public:
         for(int i=0; i<n; i++){
             assignRE( itypes[i], REQs[i], bSqrtE );
             if(bQ0) REQs[i].z=0;
+        }
+    }
+
+    void assignQEq( int n, int* itypes, double* affins, double* hards ){
+        for(int i=0; i<n; i++){
+            int ityp = itypes[i];
+            affins[i]=atypes[ityp].Eaff;
+            hards [i]=atypes[ityp].Ehard;
         }
     }
 
@@ -175,6 +190,10 @@ class MMFFparams{ public:
 
     void printAngle(const AngleType& at){
         printf( "%s %s %s %g %g\n", atypes[at.atoms.a].name, atypes[at.atoms.b].name, atypes[at.atoms.c].name, at.angle0, at.stiffness );
+    }
+
+    void printAtomTypes(){
+        for(int i=0; i<atypes.size(); i++ ){ atypes[i].print(i); }
     }
 
     int loadAgnleType(const char * fname, bool exitIfFail=true){
@@ -211,7 +230,7 @@ class MMFFparams{ public:
         //uint64_t id  = getBondTypeId( atyp1, atyp2, btyp );
         auto it = bonds.find(id);
         if   ( it == bonds.end() ){ 
-            if(reportIfMissing){ printf("WARRNING!!! getBondParams() missing atype(%i,%i)iZs(%i,%i)o(%i)id(%i)=>l0 %g k %g \n", atyp1, atyp2, atypes[atyp1].iZ, atypes[atyp2].iZ, btyp, id, default_bond_length, default_bond_stiffness ); };
+            if(reportIfMissing){ printf("WARRNING!!! getBondParams() missing atyps(%i,%i) iZs(%i,%i) o(%i)id(%i)=>l0 %g k %g \n", atyp1, atyp2, atypes[atyp1].iZ, atypes[atyp2].iZ, btyp, id, default_bond_length, default_bond_stiffness ); };
             if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };
             l0=default_bond_length; k=default_bond_stiffness; return false;
         }else{ 

@@ -9,6 +9,17 @@ from pyBall import MMFF as mmff
 
 #======== Body
 
+sc=1.2
+rs = np.linspace(1.0,6.0,100)
+#Es,fs = mmff.sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,-0.1), REQj=(1.487,0.0006808,0.1), K=-1.0)    # H-H
+Es,fs = mmff.sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.908,0.0037292 ,-0.1), REQj=(1.908,0.0037292 ,0.1), K=-1.0)   # C-C
+Emin=Es.min()
+plt.figure(figsize=(5,10))
+plt.subplot(2,1,1); plt.plot(rs,Es)  ;plt.grid()  ;plt.ylim(Emin*sc,-Emin*sc)  
+plt.subplot(2,1,2); plt.plot(rs,fs)  ;plt.grid()  ;plt.ylim(Emin*sc,-Emin*sc)  
+plt.show()
+exit()
+
 #mmff.init_params( "data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" )
 #mmff.insertSMILES("CC");
 #mmff.insertSMILES("C=C");
@@ -16,6 +27,7 @@ from pyBall import MMFF as mmff
 #mmff.insertSMILES("C#CCN=C", True );
 #mmff.insertSMILES("C1#CCN=C1", True );
 #mmff.insertSMILES("C=C1NC#CC1CO", True, True );
+
 
 #mmff.initWithSMILES( "C=C1NC#CC1CO" )
 mmff.initWithSMILES( "C=C" )
