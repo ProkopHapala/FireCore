@@ -275,6 +275,28 @@ int splitAtBond( int ib, int* selection ){ return W.splitAtBond( ib, selection )
 //     return n;
 // }
 
+void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
+    Vec3d REQi = *(Vec3d*)REQi_;
+    Vec3d REQj = *(Vec3d*)REQj_;
+    Vec3d REQij; combineREQ( REQi, REQj, REQij );
+    REQij.y = sqrt(REQij.y);
+    Vec3d pi=Vec3dZero;
+    Vec3d pj=Vec3dZero;
+    for(int i=0; i<n; i++){
+        
+        double E;
+        Vec3d  f=Vec3dZero;
+        pj.x=rs[i];
+        switch(kind){
+            case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K );      break; 
+            case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                             break; 
+        }
+        printf( "i %i r %g E %g f %g \n", i, pj.x, E, f.x );
+        fs[i]=f.x;
+        Es[i]=E;
+    }
+}
+
 void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj ){
     if(selection==0){ selection=W.manipulation_sel; n=W.manipulation_nsel; }
     W.scanTranslation_ax( n, selection, *(Vec3d*)vec, nstep, Es, bWriteTrj );

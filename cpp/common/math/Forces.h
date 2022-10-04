@@ -117,7 +117,7 @@ inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double
     //printf( " %g -> %g | (%g,%g,%g) %g\n" , r, fr,  r0, eps,  q, alpha );
     //printf( " r %g expar %g fr %g kqq %g a %g eps %g \n" , r, expar, fr, COULOMB_CONST*qq, alpha, eps );
     f.add_mul( dp, fr/r );
-    return eps*( expar*expar - 2*expar );
+    return eps*( expar*expar - 2*expar ) + COULOMB_CONST*qq/r;
 }
 
 inline double addAtomicForceQ( const Vec3d& dp, Vec3d& f, double qq ){

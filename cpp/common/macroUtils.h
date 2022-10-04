@@ -128,4 +128,8 @@ _inline_T bool _set( int i0, int imax, const T& from, T*& arr, int n){
 }
 
 
+_inline_T void copy( int n, int pitch1, int offset1, T* from, int pitch2, int offset2, T* out ){
+    for(int i=0; i<n; i++ ){  out[pitch2*i+offset2] = from[pitch1*i+offset1]; }
+}
+
 #endif
