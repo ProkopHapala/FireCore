@@ -57,8 +57,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool bDrawHexGrid=true;
     bool bHexDrawing=false; 
 
-    bool bPrepared_mm = false;
-    bool bPrepared_qm = false;
+    bool bWriteOptimizerState = true;
+    //bool bPrepared_mm = false;
+    //bool bPrepared_qm = false;
 
     MolWorld_sp3* W=0;
 
@@ -90,8 +91,6 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	//virtual void mouseHandling( );
 	virtual void eventHandling   ( const SDL_Event& event  );
 	virtual void keyStateHandling( const Uint8 *keys );
-
-    void MDloop();
 
 	MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_, const char* ssmile );
 
@@ -180,7 +179,7 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_, const char* 
         W = new MolWorld_sp3();
         if(ssmile){
             printf("MolGUI() init_smile(%s)\n", ssmile);
-            W->initWithSMILES(ssmile);
+            W->initWithSMILES(ssmile, true);
         }else{
             W->ini_in_dir();
         }
@@ -225,6 +224,7 @@ void MolGUI::draw(){
 
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
     if(bRunRelax){ W->MDloop(perFrame); }
+    //if(bRunRelax){ W->relax( perFrame ); }
 
     // --- Mouse Interaction / Visualization
 	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
@@ -279,6 +279,17 @@ void MolGUI::drawHUD(){
         s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", W->vcog.x,W->vcog.y,W->vcog.z);
         s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", W->fcog.x,W->fcog.y,W->fcog.z);
         s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", W->tqcog.x,W->tqcog.y,W->tqcog.z);
+        Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+    }
+
+    if(bWriteOptimizerState){
+        glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
+        glColor3f(0.0,0.5,0.0);
+        char* s=str;
+        //dt 0.132482 damp 3.12175e-17 n+ 164 | cfv 0.501563 |f| 3.58409e-10 |v| 6.23391e-09
+        double v=sqrt(W->opt.vv);
+        double f=sqrt(W->opt.ff);
+        s += sprintf(s,"dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
     }
 }

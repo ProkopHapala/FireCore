@@ -62,6 +62,7 @@ double DynamicOpt::move_GD_safe(double dt_loc){
 
 void DynamicOpt::move_MD(double dt_loc,double damp){
     double cdamp = 1 - damp; if(cdamp<0)cdamp=0;
+    //printf( "DynamicOpt::move_MD() cdamp %g \n", cdamp );
     for ( int i=0; i<n; i++ ){
         vel[i]  = cdamp*vel[i] + force[i]*invMasses[i]*dt_loc;
         pos[i] += vel[i]*dt_loc;
@@ -136,7 +137,7 @@ double DynamicOpt::move_FIRE(){
 
 
 double DynamicOpt::move_FIRE(){
-	double ff=0,vv=0,vf=0;
+	ff=0,vv=0,vf=0;
 	//printf( "DEBUG 5.5.1: %i\n", n  );
 	for(int i=0; i<n; i++){
 		double fi = force[i];
@@ -208,6 +209,10 @@ double DynamicOpt::move_FIRE(){
     }
     */
     //printf( "DynamicOpt::move_FIRE dt %g \n", dt);
+
+    //if(verbosity>1) printf( "dt %g damp %g n+ %i | cfv %g |f| %g |v| %g \n", dt,damping, lastNeg, vf/sqrt(vv*ff), sqrt(ff), sqrt(vv) );
+    if(verbosity>1) printf( "dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", dt,damping, lastNeg, vf/sqrt(vv*ff), sqrt(ff), sqrt(vv) );
+    
     move_LeapFrog( dt_ );
 	//move_LeapFrog();
 	//move_LeapFrog_vlimit();  // this does not seem to help

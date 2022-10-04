@@ -42,7 +42,7 @@ class MMFFsp3{ public:
     double * DOFs  = 0;   // degrees of freedom
     double * fDOFs = 0;   // forces
 
-    double Kpi = 0.5;
+    double Kpipi = 1.0;
     int  ipi0=0;
     int   * atype=0;
     Vec3d * apos=0;
@@ -348,13 +348,15 @@ double eval_bond(int ib){
             int j0=at.j*nneigh_max;
             for(int i=2;i<nneigh_max;i++){
                 int ipi   = aneighs[i0+i];
-                double Ki = Kneighs[i0+i] * Kpi;
+                double Ki = Kneighs[i0+i] * Kpipi;
                 if(ipi>=0) continue;
                 for(int j=2;j<nneigh_max;j++){
                     int jpi=aneighs[j0+j];
                     if(jpi>=0) continue;
                     //if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){  printf(" i,j[%i,%i]->ipi,jpi[%i,%i,] \n",  i,j, ipi,jpi ); };
-                    Epi += evalPiPi_I( at, -ipi-1,-jpi-1, Ki*Kneighs[j0+j] );
+                    double Kij = Ki*Kneighs[j0+j];
+                    //printf( "bond[%i,] evalPiPi_I(%i,%i) Kij %g \n", ib, i,j, Kij );
+                    Epi += evalPiPi_I( at, -ipi-1,-jpi-1, Kij );
                 }
             }
         }
@@ -366,6 +368,7 @@ double eval_bond(int ib){
 }
 
 double eval_neighs(int ia){
+    //printf( "eval_neighs(%i) \n", ia ); printNeigh(ia);
     double E=0;
     int ioff = ia*nneigh_max;
     //bool bDEBUG=(ia==7);
@@ -383,12 +386,13 @@ double eval_neighs(int ia){
             int jng  = aneighs[ioff+j];
             bool bjpi=jng<0;
             double K = Kneighs[ioff+j]*Ki;
+            //printf( "eval_neighs[%i,%i] ing,jng(%i,%i) \n", i,j, ing,jng );
             if( bipi ){
                 if(bjpi){ if(doPiPiT_){
                     double e=evalPiPi_T   ( ia, -ing-1, -jng-1, K ); EppT+=e; E+=e;
                     //orthogonalizePiPi( ia, -ing-1, -jng-1 );
                 }   }
-                else    { if(doPiSigma_){ double e=evalSigmaPi( ia, jng, -ing-1, K ); Eps+=e; E+=e; }  }
+                else    { if(doPiSigma_){ double e=evalSigmaPi( ia, jng, -ing-1, K ); Eps+=e; E+=e; } }
             }else{
                 if(bjpi){ if(doPiSigma_){ double e=evalSigmaPi( ia, ing, -jng-1, K ); Eps+=e; E+=e; } } 
                 else    {  if(doAngles_){
@@ -513,29 +517,36 @@ void checkNaNs(){
     //}
 }
 
+void printBond(int i){ printf( "bond[%i|%i,%i] l0 %g k %g \n", i, bond2atom[i].i,bond2atom[i].j, bond_l0[i], bond_k[i] ); }
 void printBonds(){
     printf( "MMFFsp3::printBonds() : \n" );
-    for(int i=0;i<nbonds;i++){
-        printf( "bond[%i|%i,%i] l0 %g k %g \n", i, bond2atom[i].i,bond2atom[i].j, bond_l0[i], bond_k[i] );
-    }
+    for(int i=0;i<nbonds;i++){ printBond(i); }
 }
 
+void printNeigh(int ia){
+    printf( "atom[%i] neighs[", ia );
+    for(int j=0;j<nneigh_max;j++){
+        int ij=ia*nneigh_max + j;
+        printf( "%i,", aneighs[ij] );
+    }
+    printf( "] K(", ia );
+    for(int j=0;j<nneigh_max;j++){
+        int ij=ia*nneigh_max + j;
+        printf( "%g,", Kneighs[ij] );
+    }
+    printf( ")\n");
+}
 void printNeighs(){
     printf( "MMFFsp3::printNeighs() : \n" );
-    for(int i=0;i<nnode;i++){
-        printf( "atom[%i] neighs[", i );
-        for(int j=0;j<nneigh_max;j++){
-            int ij=i*nneigh_max + j;
-            printf( "%i,", aneighs[ij] );
-        }
-        printf( "] K(", i );
-        for(int j=0;j<nneigh_max;j++){
-            int ij=i*nneigh_max + j;
-            printf( "%g,", Kneighs[ij] );
-        }
-        printf( ")\n");
-    }
+    for(int i=0;i<nnode;i++){ printNeigh(i); }
 }
+
+double optimalTimeStep(double m=1.0){
+    double Kmax = 0.0;
+    for(int i=0; i<nbonds; i++){ Kmax=fmax(Kmax, bond_k[i] ); }
+    return M_PI*2.0*sqrt(m/Kmax)/10.0;  // dt=T/10;   T = 2*pi/omega = 2*pi*sqrt(m/k)
+}
+
 
 };
 

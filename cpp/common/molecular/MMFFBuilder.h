@@ -1502,7 +1502,7 @@ void updatePBC( Vec3d* pbcShifts ){
 
 #ifdef MMFFsp3_h
 
-    void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=0.5, double K_ecap=0.75, bool bATypes=true ){
+    void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
         printf("toMMFFsp3() verbosity %i \n", verbosity );
         int npi,ne; ne=countPiE( npi );
         int nconf = confs.size();
