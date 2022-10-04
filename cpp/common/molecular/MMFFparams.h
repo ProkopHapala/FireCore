@@ -138,9 +138,10 @@ class MMFFparams{ public:
         REQ.y = e;
     }
 
-    void assignREs( int n, int * itypes, Vec3d * REQs, bool bSqrtE=false )const{
+    void assignREs( int n, int * itypes, Vec3d * REQs, bool bSqrtE=false, bool bQ0=false )const{
         for(int i=0; i<n; i++){
             assignRE( itypes[i], REQs[i], bSqrtE );
+            if(bQ0) REQs[i].z=0;
         }
     }
 

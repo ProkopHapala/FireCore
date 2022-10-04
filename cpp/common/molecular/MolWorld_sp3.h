@@ -89,16 +89,13 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     bOptimizer=bOptimizer_;
     bNonBonded=bNonBonded_;
     builder.autoBonds();
-    builder.autoAngles( 10.0, 10.0 );
+    //builder.autoAngles( 10.0, 10.0 );
     builder.sortConfAtomsFirst();
     builder.makeAllConfsSP();
     builder.assignAllBondParams();
     builder.toMMFFsp3( ff );
     if(bNonBonded)init_nonbond();
-    if(bOptimizer){
-        opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
-        opt.cleanVel();
-    }
+    if(bOptimizer){ setOptimizer(); }
     _realloc( manipulation_sel, ff.natoms );
     //init_buffers();
 }
@@ -107,7 +104,7 @@ bool loadSurf(const char* fname){
 	int ret = params.loadXYZ( fname, surf.n, &surf.ps, &surf.REQs );
 	if(ret<0)return false;
 	nbmol.bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
-	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true  );
+	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true, true  );
     surf .print();
     nbmol.print();
 	bSurfAtoms=true;
@@ -123,10 +120,9 @@ void loadGeom(){ // TODO : overlaps with buildFF()
     //builder.export_atypes(atypes);
     builder.verbosity = true;
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
-    builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
+    //builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
     builder.toMMFFsp3( ff, &params );
     //builder.saveMol( "builder_output.mol" );
-
     // ----- Non-bonded interactions setup 
     if(bNonBonded){
 		nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.fapos, 0, ff.bond2atom );
@@ -151,6 +147,15 @@ void insertSMILES(const char* s){
     smiles.parseString( 10000, s );
 }
 
+void setOptimizer(){
+    opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
+    double dtopt=ff.optimalTimeStep(); 
+    printf("setOptimizer(): optimnal time step = %g \n", dtopt);
+    opt.initOpt( dtopt );
+    opt.cleanVel();
+    //opt.verbosity=2;
+}
+
 void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
 	builder.bindParams(&params);
@@ -158,21 +163,23 @@ void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonB
     if(bCap)builder.addAllCapTopo();
     //builder.autoAngles( 10.0, 10.0 );
     builder.randomizeAtomPos(1.0);
+    // if(bPrint){
+    //     printf("=============\n");
+    //     printf("%s\n", s);
+    //     builder.printAtoms();
+    //     builder.printBonds();
+    //     builder.printAtomConfs(true);
+    //     //builder.printAngles();
+    // }
+    builder.toMMFFsp3( ff );
     if(bPrint){
         printf("=============\n");
         printf("%s\n", s);
-        builder.printAtoms();
-        builder.printBonds();
-        builder.printAtomConfs(true);
-        builder.printAngles();
+        ff.printBonds();
+        ff.printNeighs();
     }
-    builder.toMMFFsp3( ff );
     if(bNonBonded)init_nonbond();
-    if(bOptimizer){
-        opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
-        opt.initOpt( 0.05, 0.95 );
-        opt.cleanVel();
-    }
+    if(bOptimizer){ setOptimizer(); }
     _realloc( manipulation_sel, ff.natoms );
 	printf( "MolWorld_sp3::initWithSMILES() DONE\n" );
 }
@@ -186,9 +193,7 @@ void ini_in_dir(){
         makeGridFF();
         // ----- Optimizer setup
         //opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.fapos, 0 );
-		opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
-        opt.initOpt( 0.3, 0.95 );
-        opt.cleanVel( );
+        setOptimizer();
         //double E = ff.eval(true);
     }else{
 		printf("WARNING: cel.lvs not found => molecular system not initialized in [MolWorld_sp3::ini_in_dir()] \n" );
@@ -221,7 +226,7 @@ double eval(){
     return E;
 }
 
-bool relax( int niter, double Ftol, bool bWriteTrj ){
+bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     Etot=0.0;
     double f2tol=Ftol*Ftol;
     bConverged=false; 

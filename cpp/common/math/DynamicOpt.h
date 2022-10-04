@@ -10,6 +10,7 @@ typedef void (*ForceFunction)( int n, double * xs, double * dfs );
 
 class DynamicOpt{ public:
     // variables
+    int verbosity = 0;
     int n=0;
     double * pos       = 0;
     double * vel       = 0;
@@ -20,6 +21,7 @@ class DynamicOpt{ public:
     double dt           = 0.1;
     double damping      = 0.2;
 
+    double fTminmax     = 0.1;
     double f_limit      = 10.0;
     double v_limit      = 10.0;
     //double l_limit      = 0.1;
@@ -29,14 +31,16 @@ class DynamicOpt{ public:
     double ff_safety    = 1e-32;
 
     // FIRE
-    int    minLastNeg   = 5;
+    //int    minLastNeg   = 5;  // Original paper
+    int    minLastNeg   = 3;
     double finc         = 1.1;
     double fdec         = 0.5;
-    double falpha       = 0.98;
+    //double falpha       = 0.98; // Original paper
+    double falpha       = 0.8;
     double kickStart    = 1.0;
 
     double dt_max       = dt;
-    double dt_min       = 0.1 * dt;
+    double dt_min       = dt*fTminmax;
     double damp_max     = damping;
 
     int    lastNeg      = 0;
@@ -45,6 +49,8 @@ class DynamicOpt{ public:
     int method    = 2;
     int stepsDone = 0;
     double t      = 0.0;
+
+    double ff=0,vv=0,vf=0;
 
     ForceFunction getForce = 0;
 
@@ -104,8 +110,8 @@ class DynamicOpt{ public:
     //inline double limit_dt_x2 (double xx,double xmax){ double sc=1.0; if( xx > (xmax*xmax) ){ sc= fmin( sc, xmax/sqrt(xx) ); }; return sc;       }
     inline double limit_dt_vf2(double ff, double vv ){ scale_dt=fmin(limit_dt_x2(ff,f_limit),limit_dt_x2(vv,v_limit));         return scale_dt; }
 
-    inline void initOpt( double dt_, double damp_ ){
-        dt      = dt_max   = dt_;  dt_min=0.1*dt_max;
+    inline void initOpt( double dt_, double damp_=0.1 ){
+        dt      = dt_max   = dt_;  dt_min=dt_max*fTminmax;
         damping = damp_max = damp_;
         cleanForce( );
         cleanVel  ( );
