@@ -7,18 +7,32 @@ sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
+def deriv( xs,Es ):
+    xs_ =(xs[2:]+xs[:-2])*0.5
+    dxs =(xs[2:]-xs[:-2])
+    dEs =(Es[2:]-Es[:-2])
+    return dEs/dxs,xs_
+
 #======== Body
 
+Q =-0.05; R=1.908; e=0.0037292; K=-1.0; kind=1; Rdamp=1.0
 sc=1.2
-rs = np.linspace(1.0,6.0,100)
-#Es,fs = mmff.sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,-0.1), REQj=(1.487,0.0006808,0.1), K=-1.0)    # H-H
-Es,fs = mmff.sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.908,0.0037292 ,-0.1), REQj=(1.908,0.0037292 ,0.1), K=-1.0)   # C-C
-Emin=Es.min()
+rs = np.linspace(0.0,10.0,100)
+EsM,fsM  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q*0), REQj=(R,e,abs(Q)), K=K, Rdamp=Rdamp)  
+EsC,fsC  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e*0,Q  ), REQj=(R,e,abs(Q)), K=K, Rdamp=Rdamp)   
+Es ,fs   = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q  ), REQj=(R,e,abs(Q)), K=K, Rdamp=Rdamp)  
+
+fnum,xfs = deriv( rs,Es )
+
+#Emin=Es.min()
+Emin=e*-3.0
 plt.figure(figsize=(5,10))
-plt.subplot(2,1,1); plt.plot(rs,Es)  ;plt.grid()  ;plt.ylim(Emin*sc,-Emin*sc)  
-plt.subplot(2,1,2); plt.plot(rs,fs)  ;plt.grid()  ;plt.ylim(Emin*sc,-Emin*sc)  
+plt.subplot(2,1,1); plt.plot(rs,Es,'k',label='PLQ'); plt.plot(rs,EsM,label="PL"); plt.plot(rs,EsC,label="Q")   ;plt.grid(); plt.axhline(0,c='k',ls='--'); plt.ylim(Emin*sc,-Emin*sc)  ;plt.legend()
+plt.subplot(2,1,2); plt.plot(rs,fs,    label='Fana'); plt.plot(xfs,fnum, ':r',label='Fnum')                    ;plt.grid(); plt.axhline(0,c='k',ls='--'); plt.ylim(Emin*sc,-Emin*sc)  ;plt.legend()
 plt.show()
 exit()
+
+
 
 #mmff.init_params( "data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" )
 #mmff.insertSMILES("CC");

@@ -275,23 +275,24 @@ int splitAtBond( int ib, int* selection ){ return W.splitAtBond( ib, selection )
 //     return n;
 // }
 
-void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
+void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K, double Rdamp ){
     Vec3d REQi = *(Vec3d*)REQi_;
     Vec3d REQj = *(Vec3d*)REQj_;
     Vec3d REQij; combineREQ( REQi, REQj, REQij );
     REQij.y = sqrt(REQij.y);
     Vec3d pi=Vec3dZero;
     Vec3d pj=Vec3dZero;
+    double R2damp=Rdamp*Rdamp;
     for(int i=0; i<n; i++){
-        
         double E;
         Vec3d  f=Vec3dZero;
         pj.x=rs[i];
         switch(kind){
-            case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K );      break; 
-            case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                             break; 
+            case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K, R2damp );      break;  // Morse
+            case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                                              break;  // Lenard Jones
+            case 3: double fr; E=erfx_e6( pj.x, K, fr ); f.x=fr; break;  // gauss damped electrostatics
         }
-        printf( "i %i r %g E %g f %g \n", i, pj.x, E, f.x );
+        //printf( "i %i r %g E %g f %g \n", i, pj.x, E, f.x );
         fs[i]=f.x;
         Es[i]=E;
     }

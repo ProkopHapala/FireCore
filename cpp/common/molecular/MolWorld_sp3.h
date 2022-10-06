@@ -117,9 +117,9 @@ bool loadSurf(const char* fname){
 	if(ret<0)return false;
 	nbmol.bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
 	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true, true  );
-    surf .print();
-    autoCharges(); 
-    nbmol.print();
+    //surf .print();
+    //autoCharges(); 
+    //nbmol.print();
 	bSurfAtoms=true;
 	return true;
 }

@@ -42,7 +42,7 @@ class MMFFsp3{ public:
     double * DOFs  = 0;   // degrees of freedom
     double * fDOFs = 0;   // forces
 
-    double Kpipi = 1.0;
+    double Kpipi = 0.25;
     int  ipi0=0;
     int   * atype=0;
     Vec3d * apos=0;
