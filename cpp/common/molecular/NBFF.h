@@ -149,7 +149,7 @@ class NBsystem{ public:
 
     double evalMorse( NBsystem& B, const bool bRecoil, double K=-1.0 ){
         double E=0;
-        printf("DEBUG evalMorse() n,B.n %i %i \n", n,B.n );
+        //printf("DEBUG evalMorse() n,B.n %i %i \n", n,B.n );
         for(int i=0; i<n; i++){
             Vec3d fi = Vec3dZero;
             Vec3d Api = ps[i];
@@ -159,8 +159,8 @@ class NBsystem{ public:
                 Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
                 //printf( "NBFF_AB::evalLJQ REQ[%i,%i] %g %g %g \n", i,j, REQij.x,REQij.y,REQij.z );
                 //printf( "REQ[%i,%i] (%g,%g,%g) (%g,%g,%g) \n", i,j, AREQi.x,AREQi.y,AREQi.z, B_REQs[j].x,B_REQs[j].y,B_REQs[j].z  );
-                if(j==0)printf( "nb[%i,%i]R(%g,%g) q %g(%g,%g) \n", i,j, AREQi.x, B.REQs[j].x, REQij.z, AREQi.z, B.REQs[j].z );
-                E += addAtomicForceMorseQ( B.ps[j]-Api, fij, REQij.x, REQij.y, REQij.z, K );
+                //if(j==0)printf( "nb[%i,%i]R(%g,%g) q %g(%g,%g) \n", i,j, AREQi.x, B.REQs[j].x, REQij.z, AREQi.z, B.REQs[j].z );
+                E += addAtomicForceMorseQ( B.ps[j]-Api, fij, REQij.x, REQij.y, REQij.z, K, sq(REQij.x*0.5) );
                 if(bRecoil) B.fs[j].sub(fij);
                 fi.add(fij);
             }

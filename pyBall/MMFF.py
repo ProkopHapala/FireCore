@@ -70,16 +70,16 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ====================================
 
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
-lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double] 
+lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ] 
 lib.sampleNonBond.restype   =  None
-def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0):
+def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
     n =len(rs)
     if Es is None: Es=np.zeros(n)
     if fs is None: fs=np.zeros(n)
     rs=np.array(rs)
     REQi=np.array(REQi)
     REQj=np.array(REQj) 
-    lib.sampleNonBond(n, rs, Es, fs, kind, REQi, REQj, K)
+    lib.sampleNonBond(n, rs, Es, fs, kind, REQi, REQj, K, Rdamp)
     return Es,fs
 
 #printBuffNames(){

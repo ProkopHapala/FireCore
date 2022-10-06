@@ -72,6 +72,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double mm_Rsc =  0.25;
     double mm_Rsub = 1.0;
     bool   mm_bAtoms = false;
+    bool   bViewMolCharges = true;
     bool   isoSurfRenderType = 1;
     Vec3d testREQ,testPLQ;
 
@@ -243,6 +244,7 @@ void MolGUI::draw(){
         glPopMatrix();
     }
 
+    if(W->bSurfAtoms)Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift );
     //if(bDoQM)drawSystemQMMM();
     if(bDoMM)if(W->builder.bPBC){ 
@@ -255,8 +257,6 @@ void MolGUI::draw(){
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
-
-    if(W->bSurfAtoms)Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
 
     if(useGizmo){
         gizmo.draw();
@@ -358,25 +358,27 @@ void MolGUI::renderGridFF(){
 }
 
 void MolGUI::drawSystem( Vec3d ixyz ){
+    glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
-    if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } // DEBUG
+    if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
     else               { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds   ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );                                          }
-    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( W->ff.natoms, W->ff.apos, fontTex3D                     ); }                     //DEBUG
-    Draw3D::atoms( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
+    Draw3D::atoms( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );      
+    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->ff.natoms, W->ff.apos, fontTex3D                     ); }                    
+    if(bViewMolCharges ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.007 ); }    
 }
 
 void MolGUI::saveScreenshot( int i, const char* fname ){
     char str[64];
-    sprintf( str, fname, i );               // DEBUG
+    sprintf( str, fname, i );               
     printf( "save to %s \n", str );
-    unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
-    glFlush();                                                      //DEBUG
-    glFinish();                                                     //DEBUG
+    unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  
+    glFlush();                                                      
+    glFinish();                                                     
     //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-    glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
-    //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
-    SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
-    SDL_SaveBMP(bitmap, str);    //DEBUG
+    glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);  
+    //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   
+    SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );  
+    SDL_SaveBMP(bitmap, str);   
     SDL_FreeSurface(bitmap);
     delete[] screenPixels;
 }
@@ -436,7 +438,8 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
 
                 //case SDLK_m: renderOrbital( which_MO ); break;
                 //case SDLK_r: renderDensity(          ); break;
-                case SDLK_c: saveScreenshot( frameCount ); break;
+                case SDLK_p: saveScreenshot( frameCount ); break;
+                case SDLK_c: W->autoCharges(); break;
 
                 case SDLK_g: useGizmo=!useGizmo; break;
                 case SDLK_f:
