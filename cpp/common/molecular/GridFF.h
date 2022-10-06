@@ -30,6 +30,9 @@ class GridFF{ public:
 
     double alpha    = -1.6;
 
+    void bindSystem(int natoms_, int* atypes_, Vec3d* apos_, Vec3d* aREQs_ ){
+        natoms=natoms_; atypes=atypes_; apos=apos_; aREQs=aREQs_;
+    }
 
     void allocateFFs(){
         int ntot = grid.getNtot();
@@ -38,66 +41,15 @@ class GridFF{ public:
         FFLondon = new Vec3d[ntot];
         FFelec   = new Vec3d[ntot];
     }
-
+    
     void allocateAtoms(int natoms_){
         natoms = natoms_;
-        atypes = new int  [natoms];
+        //atypes = new int  [natoms];
         apos   = new Vec3d[natoms];
         aREQs  = new Vec3d[natoms];
     }
 
-    int loadCell( char * fname ){
-        FILE * pFile = fopen(fname,"r");
-        if( pFile == NULL ){
-            printf("cannot find %s\n", fname );
-            return -1;
-        }
-        fscanf( pFile, "%lf %lf %lf", &grid.cell.a.x, &grid.cell.a.y, &grid.cell.a.z );
-        fscanf( pFile, "%lf %lf %lf", &grid.cell.b.x, &grid.cell.b.y, &grid.cell.b.z );
-        fscanf( pFile, "%lf %lf %lf", &grid.cell.c.x, &grid.cell.c.y, &grid.cell.c.z );
-        grid.updateCell();
-        return 0;
-    }
-
-    int loadXYZ( char * fname, MMFFparams& params ){
-        FILE * pFile = fopen(fname,"r");
-        if( pFile == NULL ){
-            printf("cannot find %s\n", fname );
-            return -1;
-        }
-        char buff[1024];
-        char * line;
-        int nl;
-        line = fgets( buff, 1024, pFile ); //printf("%s",line);
-        sscanf( line, "%i %i\n", &natoms );
-        //printf("%i \n", natoms );
-        allocateAtoms(natoms);
-        line = fgets( buff, 1024, pFile );
-        for(int i=0; i<natoms; i++){
-            char at_name[8];
-            line = fgets( buff, 1024, pFile );  //printf("%s",line);
-            double Q;
-            int nret = sscanf( line, "%s %lf %lf %lf %lf\n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q );
-            if( nret<5 ) Q = 0.0;
-            //printf(                  "%s %lf %lf %lf %lf\n", at_name,  apos[i].x,  apos[i].y,  apos[i].z,  Q );
-            aREQs[i].z = Q;
-            // atomType[i] = atomChar2int( ch );
-            auto it = params.atomTypeDict.find( at_name );
-            if( it != params.atomTypeDict.end() ){
-                atypes[i] = it->second;
-                aREQs[i].x = params.atypes[atypes[i]].RvdW;
-                //aLJq[i].y = params.atypes[atypes[i]].EvdW;
-                aREQs[i].y = sqrt( params.atypes[atypes[i]].EvdW );
-            }else{
-                //atomType[i] = atomChar2int( at_name[0] );
-                atypes[i] = -1;
-                //aLJq[i].x  = 0.0d;
-                //aLJq[i].x  = 0.0d;
-            }
-            //printf(  "%i : >>%s<< %i (%g,%g,%g) %i (%g,%g,%g)\n", i, at_name, atypes[i],  apos[i].x,  apos[i].y,  apos[i].z, atypes[i], aREQs[i].x, aREQs[i].y, aREQs[i].z );
-        }
-        return natoms;
-    }
+    int loadCell(const char * fname ){ return grid.loadCell(fname ); }
 
     inline void addForce( const Vec3d& pos, const Vec3d& PLQ, Vec3d& f ) const {
         Vec3d gpos;
@@ -274,10 +226,12 @@ class GridFF{ public:
 
  #ifdef IO_utils_h
     bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London ){
+        printf( "DEBUG GridFF::tryLoad() 0 \n" );
         bool recalcFF = false;
         { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_Pauli,  "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_London, "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        printf( "DEBUG GridFF::tryLoad() recalcFF %i \n", recalcFF );
         if( recalcFF ){
             printf( "Building GridFF for substrate ... (please wait... )\n" );
             evalGridFFs( {1,1,1} );

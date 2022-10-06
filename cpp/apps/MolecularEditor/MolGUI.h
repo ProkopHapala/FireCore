@@ -53,7 +53,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool bConverged = false;
     bool bRunRelax  = false;
     double cameraMoveSpeed = 1.0;
-    bool useGizmo=true;
+    //bool useGizmo=true;
+    bool useGizmo=false;
     bool bDrawHexGrid=true;
     bool bHexDrawing=false; 
 
@@ -178,6 +179,7 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_, const char* 
 
     if(W_==0){
         W = new MolWorld_sp3();
+        W->tmpstr=str;
         if(ssmile){
             printf("MolGUI() init_smile(%s)\n", ssmile);
             W->initWithSMILES(ssmile, true);
@@ -223,6 +225,8 @@ void MolGUI::draw(){
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
 
+    if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
+
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
     if(bRunRelax){ W->MDloop(perFrame); }
     //if(bRunRelax){ W->relax( perFrame ); }
@@ -250,7 +254,7 @@ void MolGUI::draw(){
     if(bDoMM)if(W->builder.bPBC){ 
         Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); 
         Draw3D::drawNeighs( W->ff, 1.0 );    
-        Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
+        //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
     for(int i=0; i<W->selection.size(); i++){ int ia = W->selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->ff.apos[ia] );     }
@@ -258,9 +262,7 @@ void MolGUI::draw(){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
 
-    if(useGizmo){
-        gizmo.draw();
-    }
+    if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
 };
 
@@ -340,11 +342,12 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 }
 
 void MolGUI::renderGridFF(){
-    int iatom = 11;
+    printf( "MolGUI::renderGridFF() \n" );
+    //int iatom = 11;
     testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );
     Vec3d * FFtot = new Vec3d[ W->gridFF.grid.getNtot() ];
-    W->gridFF.evalCombindGridFF            ( testREQ, FFtot );
+    W->gridFF.evalCombindGridFF ( testREQ, FFtot );
     if(idebug>1) saveXSF( "FFtot_z.xsf",  W->gridFF.grid, FFtot, 2, W->gridFF.natoms, W->gridFF.apos, W->gridFF.atypes );
     ogl_isosurf = glGenLists(1);
     glNewList(ogl_isosurf, GL_COMPILE);

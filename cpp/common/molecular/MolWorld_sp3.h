@@ -43,7 +43,7 @@ class MolWorld_sp3{ public:
 	NBsystem   surf, nbmol;
 	GridFF     gridFF;
     QEq        qeq;
-	DynamicOpt  opt;
+	DynamicOpt opt;
 
 	// state
 	bool bConverged = false;
@@ -57,6 +57,7 @@ class MolWorld_sp3{ public:
 	bool doBonded         = false;
 	bool bNonBonded       = false;
 	bool bSurfAtoms       = false;
+    bool bGridFF          = false;
 	bool bPlaneSurfForce  = false;
 	bool bOptimizer  = true; 
 	bool bPBC        = false;
@@ -113,7 +114,10 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
 }
 
 bool loadSurf(const char* fname){
-	int ret = params.loadXYZ( fname, surf.n, &surf.ps, &surf.REQs );
+    //printf("DEBUG loadSurf() 0 \n");
+    // ----- load surface geometry
+    sprintf(tmpstr, "%s.xyz", fname );
+	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs );
 	if(ret<0)return false;
 	nbmol.bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
 	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true, true  );
@@ -121,6 +125,18 @@ bool loadSurf(const char* fname){
     //autoCharges(); 
     //nbmol.print();
 	bSurfAtoms=true;
+    //printf("DEBUG loadSurf() 1 \n");
+    // ----- load surface lattice vector
+    sprintf(tmpstr, "%s.lvs", fname );
+    if( file_exist(tmpstr) ){ 
+        gridFF.grid.loadCell( tmpstr, 0.2 );
+        bGridFF=true;
+        //printf("DEBUG loadSurf() 2 \n");
+        makeGridFF();
+    }else{ 
+        bGridFF=false; 
+        printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
+    }
 	return true;
 }
 
@@ -206,7 +222,7 @@ void ini_in_dir(){
     int nheavy = 0;  // ---- Load Atomic Type Parameters
     if( file_exist("cel.lvs") ){ 
         loadGeom(); 
-        makeGridFF();
+        if(bGridFF)makeGridFF();
         // ----- Optimizer setup
         //opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.fapos, 0 );
         setOptimizer();
@@ -293,10 +309,11 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
 }
 
 void makeGridFF() {
-    gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
-    gridFF.grid.n    = (Vec3i){60,60,100};
-    gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
-    gridFF.loadCell ( "inputs/cel.lvs" );
+    gridFF.bindSystem(surf.n, 0, surf.ps, surf.REQs );
+    //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    //gridFF.grid.n    = (Vec3i){60,60,100};
+    //gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
+    //gridFF.grid.loadCell( "inputs/cel.lvs" );
     gridFF.grid.printCell();
     gridFF.allocateFFs();
     gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin" );
