@@ -32,7 +32,7 @@ int nearPow2(int i){ return ceil( log(i)/log(2) ); }
 // Force-Field namespace
 class GridShape {
 	public:
-	Vec3d   pos0;
+	Vec3d   pos0=Vec3dZero;
 	Mat3d   cell;       // lattice vector
 	Mat3d   dCell;      // basis vector of each voxel ( lattice vectors divided by number of points )
 	Mat3d   diCell;     // inversion of voxel basis vector
@@ -45,7 +45,14 @@ class GridShape {
 
     inline int ip2i(const Vec3i& ip){ return ip.a + ( n.a*( ip.b + n.b*ip.c) );  }
 
-	inline void updateCell(){
+    inline void autoN( double step){
+        n.a=(int)(cell.a.norm()/step)+1;
+        n.b=(int)(cell.b.norm()/step)+1;
+        n.c=(int)(cell.c.norm()/step)+1;
+    }
+
+	inline void updateCell( double step=-1.0 ){
+        if(step>0){ autoN(step); }
         dCell.a.set_mul( cell.a, 1.0/n.a );
 		dCell.b.set_mul( cell.b, 1.0/n.b );
 		dCell.c.set_mul( cell.c, 1.0/n.c );
@@ -109,6 +116,19 @@ class GridShape {
 		gpos.b = cpos.dot( diCell.b );
 		gpos.c = cpos.dot( diCell.c );
 	}
+
+    int loadCell(const char * fname, double step=-1.0 ){
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            return -1;
+        }
+        fscanf( pFile, "%lf %lf %lf", &cell.a.x, &cell.a.y, &cell.a.z );
+        fscanf( pFile, "%lf %lf %lf", &cell.b.x, &cell.b.y, &cell.b.z );
+        fscanf( pFile, "%lf %lf %lf", &cell.c.x, &cell.c.y, &cell.c.z );
+        updateCell(step);
+        return 0;
+    }
 
 	void printCell() const {
 	    printf( " n      %i %i %i \n", n.x,        n.y,       n.z        );

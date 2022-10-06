@@ -155,9 +155,6 @@ void renderSubstrate_( const GridShape& grid, Vec3d * FF, Vec3d * FFel, double i
     Vec3d * normals = new Vec3d[grid.n.x * grid.n.y];
     //printf( " -- DEBUG 1 \n" );
     getIsoSurfZ( grid, isoval, sign, FF, pos, normals );
-
-    //printf( " -- DEBUG 2 \n" );
-
     //glEnable(GL_LIGHTING);
     for ( int ib=1; ib<grid.n.y; ib++ ){
         glBegin(GL_TRIANGLE_STRIP);
@@ -167,17 +164,13 @@ void renderSubstrate_( const GridShape& grid, Vec3d * FF, Vec3d * FFel, double i
             //printf( "iba (%i,%i) pos (%g,%g,%g)\n", ib,ia, pos[ip1].x,pos[ip1].y,pos[ip1].z );
             //glColor3f(pos[ip1].z*5-2,1.0f,1.0f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f(pos[ip2].z*5-2,1.0f,1.0f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-
             Vec3d gpos,fel1,fel2;
             grid.cartesian2grid( pos[ip1], gpos); fel1 = interpolate3DvecWrap( FFel, grid.n, gpos );
             grid.cartesian2grid( pos[ip2], gpos); fel2 = interpolate3DvecWrap( FFel, grid.n, gpos );
-
             //glColor3f(0.7f,0.7f,0.7f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f(0.8f,0.7f,0.7f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-
             //glColor3f( fel1.x, fel1.y, fel1.z ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f( fel2.x, fel2.y, fel2.z ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-
             colorRB( fel1.z*sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             colorRB( fel2.z*sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
         }
