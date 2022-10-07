@@ -328,7 +328,8 @@ Vec3d LerpQ(Quat4d p1, Quat4d p2, double value){
    return p1.f;
 }
 
-int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int renderType=3 ){
+int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int renderType=3, int pitch=1, int offset=0 ){
+	#define IND(i) i*pitch+offset
 	//this should be enough space, if not change 3 to 4
 	//TRIANGLE * triangles = new TRIANGLE[3*ncells.x*ncells.y*ncells.z];
 	//numTriangles = int(0);
@@ -356,8 +357,8 @@ int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int 
 				//mp4Vector verts[8];
                 Quat4d verts[8];
 				//int ind = ni + nj + k;
-                vmax=fmax(vmax,data[ind]);
-                vmin=fmin(vmin,data[ind]);
+                vmax=fmax(vmax,data[IND(ind)]);
+                vmin=fmin(vmin,data[IND(ind)]);
                 Vec3d p0 = gs.pos0 + gs.dCell.a*ix + gs.dCell.b*iy + gs.dCell.c*iz;
 				//verts[1] = points[ind + YtimeZ                   ];
 				//verts[2] = points[ind + YtimeZ +               1 ];
@@ -366,14 +367,14 @@ int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int 
 				//verts[5] = points[ind + YtimeZ + (ncellsZ+1)     ];
 				//verts[6] = points[ind + YtimeZ + (ncellsZ+1) + 1 ];
 				//verts[7] = points[ind +          (ncellsZ+1) + 1 ];
-                verts[0].e = data[ind                    ];    verts[0].f = p0                                        ;
-				verts[1].e = data[ind + nxy              ];    verts[1].f = p0 + gs.dCell.c                           ;
-				verts[2].e = data[ind + nxy          + 1 ];    verts[2].f = p0 + gs.dCell.c               + gs.dCell.a;
-				verts[3].e = data[ind                + 1 ];    verts[3].f = p0                            + gs.dCell.a;
-				verts[4].e = data[ind +       gs.n.x     ];    verts[4].f = p0              + gs.dCell.b              ;
-				verts[5].e = data[ind + nxy + gs.n.x     ];    verts[5].f = p0 + gs.dCell.c + gs.dCell.b              ;
-				verts[6].e = data[ind + nxy + gs.n.x + 1 ];    verts[6].f = p0 + gs.dCell.c + gs.dCell.b  + gs.dCell.a;
-				verts[7].e = data[ind +       gs.n.x + 1 ];    verts[7].f = p0              + gs.dCell.b  + gs.dCell.a;
+                verts[0].e = data[IND(ind                    )];    verts[0].f = p0                                        ;
+				verts[1].e = data[IND(ind + nxy              )];    verts[1].f = p0 + gs.dCell.c                           ;
+				verts[2].e = data[IND(ind + nxy          + 1 )];    verts[2].f = p0 + gs.dCell.c               + gs.dCell.a;
+				verts[3].e = data[IND(ind                + 1 )];    verts[3].f = p0                            + gs.dCell.a;
+				verts[4].e = data[IND(ind +       gs.n.x     )];    verts[4].f = p0              + gs.dCell.b              ;
+				verts[5].e = data[IND(ind + nxy + gs.n.x     )];    verts[5].f = p0 + gs.dCell.c + gs.dCell.b              ;
+				verts[6].e = data[IND(ind + nxy + gs.n.x + 1 )];    verts[6].f = p0 + gs.dCell.c + gs.dCell.b  + gs.dCell.a;
+				verts[7].e = data[IND(ind +       gs.n.x + 1 )];    verts[7].f = p0              + gs.dCell.b  + gs.dCell.a;
 				//get the index
 				int cubeIndex = 0;
 				for(int iv=0; iv < 8; iv++){ 
@@ -427,6 +428,7 @@ int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int 
 	}	
     glEnd();
     printf( "MarchingCubesCross vmin, vmax %g %g \n", vmin, vmax );
+	#undef IND
     return ntris;
 }
 

@@ -316,8 +316,12 @@ void makeGridFF() {
     //gridFF.grid.loadCell( "inputs/cel.lvs" );
     gridFF.grid.printCell();
     gridFF.allocateFFs();
-    gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin" );
-    gridFF.shift = (Vec3d){0.0,0.0,-8.0};
+    double x0= ( gridFF.grid.cell.a.x + gridFF.grid.cell.b.x )*-0.5;
+    double y0= ( gridFF.grid.cell.a.y + gridFF.grid.cell.b.y )*-0.5;
+    gridFF.grid.pos0 = (Vec3d){ x0,y0,-8.0};
+    //gridFF.shift   = (Vec3d){0.0,0.0,-8.0};
+    //gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin", true, {0,0,0} );
+    gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin", false, {1,1,1} );
 }
 
 //inline int pickParticle( const Vec3d& ray0, const Vec3d& hRay, double R, int n, Vec3d * ps, bool* ignore=0 ){

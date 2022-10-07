@@ -100,7 +100,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
-    void renderGridFF();
+    void renderGridFF( double isoVal=0.01, int isoSurfRenderType=0 );
 
 	void drawSystem( Vec3d ixyz );
     //void drawSystemQMMM();
@@ -225,7 +225,7 @@ void MolGUI::draw(){
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
 
-    //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
+    if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
 
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
     if(bRunRelax){ W->MDloop(perFrame); }
@@ -249,7 +249,7 @@ void MolGUI::draw(){
     }
 
     if(W->bSurfAtoms)Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
-    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift );
+    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
     //if(bDoQM)drawSystemQMMM();
     if(bDoMM)if(W->builder.bPBC){ 
         Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); 
@@ -341,8 +341,8 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
     W->splitAtBond( ib, &(W->selection[0]) );
 }
 
-void MolGUI::renderGridFF(){
-    printf( "MolGUI::renderGridFF() \n" );
+void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
+    //printf( "MolGUI::renderGridFF() \n" );
     //int iatom = 11;
     testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );
@@ -355,8 +355,13 @@ void MolGUI::renderGridFF(){
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
-    renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, 0.01, true, 0.1);
-    Draw3D::drawAxis(1.0);
+    renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, isoVal, true, 0.1);
+    // ---- This seems still not work properly
+    //int ntris=0;
+    //glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
+    //glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid, -isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
+    glColor3f(0.,0.,1.); Draw3D::drawTriclinicBox( W->gridFF.grid.cell, (Vec3d){0.0, 0.0, 0.0}, (Vec3d){1.0, 1.0, 1.0} );
+    //Draw3D::drawAxis(1.0);
     glEndList();
     delete [] FFtot;
 }
