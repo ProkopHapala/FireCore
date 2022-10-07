@@ -132,6 +132,7 @@ class GridShape {
 
 	void printCell() const {
 	    printf( " n      %i %i %i \n", n.x,        n.y,       n.z        );
+        printf( " pos0   %f %f %f \n", pos0.x,     pos0.y,     pos0.z    );
 	    printf( " a      %f %f %f \n", cell.a.x,   cell.a.y,   cell.a.z  );
 	    printf( " b      %f %f %f \n", cell.b.x,   cell.b.y,   cell.b.z  );
 	    printf( " c      %f %f %f \n", cell.c.x,   cell.c.y,   cell.c.z  );
@@ -421,11 +422,12 @@ double evalOnGrid( const GridShape& grid, Func func ){
 //template< void FUNC( int ibuff, const Vec3d& pos_, void * args ) >
 template<typename FUNC>
 void interateGrid3D( const GridShape& grid, FUNC func ){
+    //printf( "interateGrid3D() pos0(%g,%g,%g) a(%g,%g,%g) b(%g,%g,%g) c(%g,%g,%g)\n", grid.pos0.x,grid.pos0.y,grid.pos0.z,  grid.dCell.a.x,grid.dCell.a.y,grid.dCell.a.z, grid.dCell.b.x,grid.dCell.b.y,grid.dCell.b.z, grid.dCell.c.x,grid.dCell.c.y,grid.dCell.c.z );
 	int nx  = grid.n.x; 	int ny  = grid.n.y; 	int nz  = grid.n.z;
 	//int nx  = n.z; 	int ny  = n.y; 	int nz  = n.x;
 	int nxy = ny * nx;
 	//printf( "interateGrid3D nx,y,z (%i,%i,%i) nxy %i\n", nx,ny,nz, nxy );
-	Vec3d pos;  pos.set( grid.pos0 );
+	Vec3d pos; // pos.set( grid.pos0 );
 	//printf(" interateGrid3D : args %i \n", args );
 	for ( int ic=0; ic<nz; ic++ ){
         //printf("ic %i \n", ic );
@@ -433,17 +435,17 @@ void interateGrid3D( const GridShape& grid, FUNC func ){
 	        for ( int ia=0; ia<nx; ia++ ){
 			    int ibuff = i3D( ia, ib, ic );
                 //FUNC( ibuff, {ia,ib,ic}, pos );
-                //pos = pos0 + dCell.c*ic + dCell.b*ib + dCell.a*ia;
+                pos = grid.pos0 + grid.dCell.c*ic + grid.dCell.b*ib + grid.dCell.a*ia;
                 func( ibuff, pos );
                 //printf("(%i,%i,%i)(%3.3f,%3.3f,%3.3f)\n",ia,ib,ic,pos.x,pos.y,pos.z);
-				pos.add( grid.dCell.a );
+				//pos.add( grid.dCell.a );
 			}
-			pos.add_mul( grid.dCell.a, -nx );
-			pos.add( grid.dCell.b );
+			//pos.add_mul( grid.dCell.a, -nx );
+			//pos.add( grid.dCell.b );
 		}
 		//exit(0);
-		pos.add_mul( grid.dCell.b, -ny );
-		pos.add( grid.dCell.c );
+		//pos.add_mul( grid.dCell.b, -ny );
+		//pos.add( grid.dCell.c );
 	}
     //printf ("\n");
 }

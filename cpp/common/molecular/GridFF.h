@@ -135,6 +135,10 @@ class GridFF{ public:
 
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs, Vec3i nPBC ){
         //interateGrid3D( (Vec3d){0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
+        //for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
+        //    printf("iPBC (%i,%i,%i) \n", ia,ib,ic );
+        //}}}
+        //int iend = grid.getNtot()-1;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Vec3d fp = (Vec3d){0.0,0.0,0.0};
             Vec3d fl = (Vec3d){0.0,0.0,0.0};
@@ -144,13 +148,16 @@ class GridFF{ public:
                 Vec3d REQi = aREQs[iat];
                 for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
                     Vec3d  dp = dp0 + grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
+                    //if( ((ibuff==0)||(ibuff==iend))&&(iat==26) ){
+                    //    printf( "dp(%g,%g,%g) p(%g,%g,%g) apos[%i](%g,%g,%g)\n", dp.x,dp.y,dp.z, p.x,p.y,p.z, iat, apos[iat].x,apos[iat].y,apos[iat].z );
+                    //}
                     double r      = dp.norm();
                     double ir     = 1/(r+RSAFE);
                     double expar  = exp( alpha*(r-REQi.x) );
                     double fexp   = alpha*expar*REQi.y*ir;
                     fp.add_mul( dp, -fexp*expar*2 );                    // repulsive part of Morse
                     fl.add_mul( dp, -fexp         );                    // attractive part of Morse
-                    fe.add_mul( dp, 14.3996448915d*REQi.z*ir*ir*ir ); // Coulomb
+                    fe.add_mul( dp, 14.3996448915*REQi.z*ir*ir*ir ); // Coulomb
                 }}}
             }
             if(FFPauli)  FFPauli [ibuff]=fp;
@@ -225,16 +232,15 @@ class GridFF{ public:
     }
 
  #ifdef IO_utils_h
-    bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London ){
-        printf( "DEBUG GridFF::tryLoad() 0 \n" );
-        bool recalcFF = false;
+    bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nimg={1,1,1} ){
+        //printf( "DEBUG GridFF::tryLoad() 0 \n" );
         { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_Pauli,  "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_London, "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
-        printf( "DEBUG GridFF::tryLoad() recalcFF %i \n", recalcFF );
+        //printf( "DEBUG GridFF::tryLoad() recalcFF %i \n", recalcFF );
         if( recalcFF ){
-            printf( "Building GridFF for substrate ... (please wait... )\n" );
-            evalGridFFs( {1,1,1} );
+            printf( "\nBuilding GridFF for substrate ... (please wait... )\n" );
+            evalGridFFs( nimg );
             if(FFelec )  saveBin( fname_Coulomb,  grid.getNtot()*sizeof(Vec3d), (char*)FFelec   );
             if(FFPauli)  saveBin( fname_Pauli,    grid.getNtot()*sizeof(Vec3d), (char*)FFPauli  );
             if(FFLondon) saveBin( fname_London,   grid.getNtot()*sizeof(Vec3d), (char*)FFLondon );

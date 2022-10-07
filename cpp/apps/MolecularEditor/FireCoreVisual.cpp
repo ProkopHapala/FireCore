@@ -338,8 +338,8 @@ void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
     glNewList(ogl_MO, GL_COMPILE);
     glTranslatef( p.x, p.y, p.z );
     int ntris=0;  
-    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType  );
-    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType  );
+    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType);
+    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType);
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     glTranslatef( -p.x, -p.y, -p.z );
     glEndList();
