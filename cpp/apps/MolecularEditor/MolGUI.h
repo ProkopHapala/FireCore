@@ -225,7 +225,7 @@ void MolGUI::draw(){
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
 
-    if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
+    //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
 
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
     if(bRunRelax){ W->MDloop(perFrame); }
@@ -348,7 +348,8 @@ void MolGUI::renderGridFF(){
     testPLQ = REQ2PLQ( testREQ, -1.6 );
     Vec3d * FFtot = new Vec3d[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
-    if(idebug>1) saveXSF( "FFtot_z.xsf",  W->gridFF.grid, FFtot, 2, W->gridFF.natoms, W->gridFF.apos, W->gridFF.atypes );
+    //if(idebug>1) 
+        saveXSF( "FFtot_z.xsf",  W->gridFF.grid, FFtot, 2, W->gridFF.natoms, W->gridFF.apos, W->gridFF.atypes );
     ogl_isosurf = glGenLists(1);
     glNewList(ogl_isosurf, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
