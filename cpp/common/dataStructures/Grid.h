@@ -144,38 +144,6 @@ class GridShape {
 	    printf( " inv_dc %f %f %f \n", diCell.c.x, diCell.c.y, diCell.c.z );
     }
 
-    /*
-    void saveXSF( char * fname, Vec3d * FF, int icomp ){
-        printf( "saving %s\n", fname );
-        FILE *fout;
-        fout = fopen(fname,"w");
-        fprintf( fout, "   ATOMS\n" );
-        fprintf( fout, "    1   0.0   0.0   0.0\n" );
-        fprintf( fout, "\n" );
-        fprintf( fout, "BEGIN_BLOCK_DATAGRID_3D\n" );
-        fprintf( fout, "   some_datagrid\n" );
-        fprintf( fout, "   BEGIN_DATAGRID_3D_whatever\n" );
-        fprintf( fout, "%i %i %i\n", n.x, n.y, n.z );
-        fprintf( fout, "%5.10f %5.10f %5.10f \n", pos0.x,   pos0.x,   pos0.x   );
-        fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.a.x, cell.a.y, cell.a.z );
-        fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.b.x, cell.b.y, cell.b.z );
-        fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.c.x, cell.c.y, cell.c.z );
-        int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
-        for ( int ic=0; ic<nz; ic++ ){
-            for ( int ib=0; ib<ny; ib++ ){
-                for ( int ia=0; ia<nx; ia++ ){
-                   int i = i3D( ia, ib, ic );
-                   fprintf( fout, "%6.5e\n", ((double*)(FF+i))[icomp] );
-                }
-            }
-        }
-        fprintf( fout, "   END_DATAGRID_3D\n" );
-        fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
-        fclose(fout);
-    }
-    */
-
-
     void headerToXsf( FILE* fout )const{
         fprintf( fout, "BEGIN_BLOCK_DATAGRID_3D\n" );
         fprintf( fout, "   some_datagrid\n" );
@@ -186,71 +154,6 @@ class GridShape {
         fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.a.x, cell.a.y, cell.a.z );
         fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.b.x, cell.b.y, cell.b.z );
         fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.c.x, cell.c.y, cell.c.z );
-    }
-
-    /*
-    void toXSF( FILE* fout, double * FF ) const {
-        headerToXsf(  FILE* fout );
-        int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
-        for ( int ic=0; ic<nz; ic++ ){
-            for ( int ib=0; ib<ny; ib++ ){
-                for ( int ia=0; ia<nx; ia++ ){
-                   int i = i3D( ia, ib, ic );
-                   fprintf( fout, "%6.5e\n", FF[i] );
-                }
-            }
-        }
-        fprintf( fout, "   END_DATAGRID_3D\n" );
-        fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
-    }
-    */
-
-    void toXSF( FILE* fout, double* FF, int icomp ) const {
-        headerToXsf( fout );
-        int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
-        for ( int ic=0; ic<nz; ic++ ){
-            //printf( "toXSF ic %i \n", ic );
-            for ( int ib=0; ib<ny; ib++ ){
-                for ( int ia=0; ia<nx; ia++ ){
-                   int i = i3D( ia, ib, ic );
-                   double val;
-                   if(icomp<0){ val =          FF [i];              }
-                   else       { val = ((Vec3d*)FF)[i].array[icomp]; }
-                   fprintf( fout, "%6.5e\n", val );
-                }
-            }
-        }
-        fprintf( fout, "   END_DATAGRID_3D\n" );
-        fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
-    }
-
-    void saveXSF( const char * fname, double* FF, int icomp=-1 )const {
-        printf( "saving %s\n", fname );
-        FILE *fout;
-        fout = fopen(fname,"w");
-        if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
-        //fprintf( fout, "   ATOMS\n" );
-        //fprintf( fout, "    1   0.0   0.0   0.0\n" );
-        //fprintf( fout, "\n" );
-        toXSF( fout, FF, icomp );
-        fclose(fout);
-    }
-
-    template<typename T>
-    void toXSF( FILE* fout, T* FF, int stride, int offset ) const {
-        //printf( "DEBUG GridShale::toXSF() stride %i offset %i \n", stride, offset );
-        headerToXsf( fout );
-        int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
-        for ( int ic=0; ic<nz; ic++ ){
-            for ( int ib=0; ib<ny; ib++ ){
-                for ( int ia=0; ia<nx; ia++ ){
-                   int i = i3D( ia, ib, ic );
-                   fprintf( fout, "%6.5e\n", FF[i*stride+offset] );
-                }
-            }
-        }
-        fprintf( fout, "   END_DATAGRID_3D\n" );
-        fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
     }
 
     void atomsToZsf( FILE* fout,  int natoms, int* atyps, Vec3d* apos )const{
@@ -270,13 +173,31 @@ class GridShape {
     }
 
     template<typename T>
-    void saveXSF( const char * fname, T* FF, int stride, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0  )const {
+    void toXSF( FILE* fout, const T* FF, int pitch, int offset ) const {
+        //printf( "DEBUG GridShale::toXSF() stride %i offset %i \n", pitch, offset );
+        headerToXsf( fout );
+        int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
+        for ( int ic=0; ic<nz; ic++ ){
+            //printf("toXSF[%i] pitch,offset(%i,%i)\n", ic, pitch, offset );
+            for ( int ib=0; ib<ny; ib++ ){
+                for ( int ia=0; ia<nx; ia++ ){
+                   int i = i3D( ia, ib, ic );
+                   fprintf( fout, "%6.5e\n", FF[i*pitch+offset] );
+                }
+            }
+        }
+        fprintf( fout, "   END_DATAGRID_3D\n" );
+        fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
+    }
+
+    template<typename T>
+    void saveXSF( const char * fname,const T* FF, int pitch, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0  )const {
         printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");
         if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
         if(natoms>0) atomsToZsf( fout,  natoms, atypes, apos );
-        toXSF( fout, FF, stride, offset );
+        toXSF( fout, FF, pitch, offset );
         fclose(fout);
     }
 
@@ -396,6 +317,20 @@ inline Vec3d interpolate3DvecWrap( Vec3d * grid, const Vec3i& n, const Vec3d& r 
 	return out;
 }
 
+inline Quat4f interpolate3DvecWrap( Quat4f * grid, const Vec3i& n, const Vec3d& r ){
+	int xoff = n.x<<3; int imx = r.x +xoff;	double tx = r.x - imx +xoff;	double mx = 1 - tx;		int itx = (imx+1)%n.x;  imx=imx%n.x;
+	int yoff = n.y<<3; int imy = r.y +yoff;	double ty = r.y - imy +yoff;	double my = 1 - ty;		int ity = (imy+1)%n.y;  imy=imy%n.y;
+	int zoff = n.z<<3; int imz = r.z +zoff;	double tz = r.z - imz +zoff;	double mz = 1 - tz;		int itz = (imz+1)%n.z;  imz=imz%n.z;
+	int nxy = n.x * n.y; int nx = n.x;
+	//printf( " %f %f %f   %i %i %i \n", r.x, r.y, r.z, imx, imy, imz );
+	double mymx = my*mx; double mytx = my*tx; double tymx = ty*mx; double tytx = ty*tx;
+	Quat4f out;
+	out.set_mul( grid[ i3D( imx, imy, imz ) ], mz*mymx );   out.add_mul( grid[ i3D( itx, imy, imz ) ], mz*mytx );
+	out.add_mul( grid[ i3D( imx, ity, imz ) ], mz*tymx );   out.add_mul( grid[ i3D( itx, ity, imz ) ], mz*tytx );
+	out.add_mul( grid[ i3D( imx, ity, itz ) ], tz*tymx );   out.add_mul( grid[ i3D( itx, ity, itz ) ], tz*tytx );
+	out.add_mul( grid[ i3D( imx, imy, itz ) ], tz*mymx );   out.add_mul( grid[ i3D( itx, imy, itz ) ], tz*mytx );
+	return out;
+}
 
 template<typename Func>
 double evalOnGrid( const GridShape& grid, Func func ){
@@ -493,8 +428,8 @@ void gridNumIntegral( int nint, double gStep, double Rmax, double Lmax, double* 
             if(DEBUG_f1) grid.cut1D( iv0, di, f1, DEBUG_f1 );
             if(DEBUG_f2) grid.cut1D( iv0, di, f2, DEBUG_f2 );
             if(bDebugXsf){ 
-                grid.saveXSF( DEBUG_saveFile1, f1, -1 );
-                grid.saveXSF( DEBUG_saveFile2, f2, -1 );
+                grid.saveXSF( DEBUG_saveFile1, f1, 1,0 );
+                grid.saveXSF( DEBUG_saveFile2, f2, 1,0 );
             }
         }
         //printf( "DEBUG 2 \n" );
@@ -510,7 +445,7 @@ void gridNumIntegral( int nint, double gStep, double Rmax, double Lmax, double* 
         if(bDebugXsf&&(i==iplot)){
             //for(int j=0; j<ng; j++) f2[j]*=f1[j];
             //for(int j=0; j<ng; j++) f2[j]*=0;
-            grid. saveXSF( DEBUG_saveFile12, f2, -1 );
+            grid. saveXSF( DEBUG_saveFile12, f2, 1,0 );
         }
         //printf( "DEBUG 4 \n" );
         //printf( "[i] Q %g |  CPUtime %g [Mticks]\n", i, Q, (getCPUticks()-timeStart)*1e-6  );
@@ -580,6 +515,8 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Vec3d  *FF, V
     }
 }
 
+/*
+
 void writePrimCoord( FILE* fout, Mat3d& cell, int natoms, Vec3d * apos, int * iZs ){
     fprintf( fout, "CRYSTAL\n" );
     fprintf( fout, "PRIMVEC\n" );
@@ -603,6 +540,7 @@ void writePrimCoord( FILE* fout, Mat3d& cell, int natoms, Vec3d * apos, int * iZ
     }
 }
 
+
 void saveXSF( char * fname, GridShape& grid, Vec3d * FF, int icomp, int natoms, Vec3d * apos, int * iZs ){
     printf( "saving %s\n", fname );
     FILE *fout;
@@ -620,6 +558,7 @@ void saveXSF( char * fname, GridShape& grid, double * FF, int natoms, Vec3d * ap
     grid.toXSF    ( fout, FF, -1 );
     fclose(fout);
 }
+*/
 
 #endif
 

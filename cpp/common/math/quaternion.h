@@ -98,6 +98,7 @@ class Quat4T {
     inline void sub        ( const QUAT& v                        ){ x-=v.x;          y-=v.y;         z-=v.z;         w-=v.w;          };
 	inline void set_add    ( const QUAT& a, const QUAT& b         ){ x =a.x+b.x;      y =a.y+b.y;     z =a.z+b.z;     w =a.w+b.w;      };
 	inline void set_sub    ( const QUAT& a, const QUAT& b         ){ x =a.x-b.x;      y =a.y-b.y;     z =a.z-b.z;     w =a.w-b.w;      };
+	inline void set_mul    ( const QUAT& a, T f                   ){ x =a.x*f;        y =a.y*f;       z =a.z*f;       w =a.w*f;        };
 	inline void set_mul    ( const QUAT& a, const QUAT& b         ){ x =a.x*b.x;      y =a.y*b.y;     z =a.z*b.z;     w =a.w*b.w;      };
 	inline void add_mul    ( const QUAT& a, T f                ){ x+=a.x*f;        y+=a.y*f;       z+=a.z*f;       w+=a.w*f;        };
 	inline void set_add_mul( const QUAT& a, const QUAT& b, T f ){ x =a.x + f*b.x;  y =a.y + f*b.y; z =a.z + f*b.z; w =a.w + f*b.w;  };
@@ -745,6 +746,9 @@ class Quat4i : public Quat4T< int,    Vec3i, Mat3i, Quat4i >{  };
 class Quat4f : public Quat4T< float,  Vec3f, Mat3f, Quat4f >{  };
 class QUAT : public Quat4T< T, VEC, MAT, QUAT >{  };
 */
+
+template<typename T1,typename T2>
+inline Quat4T<T2> cast(const Quat4T<T1>& i){ Quat4T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y; o.z=(T2)i.z; o.w=(T2)i.w; return o; };
 
 using Quat4i = Quat4T< int>;
 using Quat4f = Quat4T< float>;

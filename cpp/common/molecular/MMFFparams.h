@@ -147,6 +147,7 @@ class MMFFparams{ public:
 
     void assignREs( int n, int * itypes, Vec3d * REQs, bool bSqrtE=false, bool bQ0=false )const{
         for(int i=0; i<n; i++){
+            printf( " assignREs[%i] %i \n", i, itypes[i] );
             assignRE( itypes[i], REQs[i], bSqrtE );
             if(bQ0) REQs[i].z=0;
         }

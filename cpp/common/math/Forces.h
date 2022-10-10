@@ -156,8 +156,9 @@ inline Vec3d REQ2PLQ( const Vec3d& REQ, double alpha ){
     //double eps   = sqrt(REQ.y);  // this is expected to be already done
     double eps   = REQ.y;
     double expar = exp(-alpha*REQ.x);
-    double CP    =    eps*expar*expar;
-    double CL    = -2*eps*expar;
+    double CP    =  eps*expar*expar;
+    double CL    = -eps*expar;
+    //double CL    = -2*eps*expar;
     //printf( "REQ2PLQ: %g %g %g  ->  %g %g\n", REQ.x, eps, alpha,   CP, CL );
     return (Vec3d){ CP, CL, REQ.z };
 }

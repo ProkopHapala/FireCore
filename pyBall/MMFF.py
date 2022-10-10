@@ -40,7 +40,8 @@ header_strings = [
 #"int  splitAtBond( int ib, int* selection )",
 #"void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj )",
 #"void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )",
-"void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){",
+#"void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){",
+"#void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){",
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 ]
@@ -80,6 +81,19 @@ def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQ
     REQi=np.array(REQi)
     REQj=np.array(REQj) 
     lib.sampleNonBond(n, rs, Es, fs, kind, REQi, REQj, K, Rdamp)
+    return Es,fs
+
+# void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
+lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool, c_bool] 
+lib.sampleSurf.restype   =  None
+def sampleSurf( name, rs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bInit=True, bSave=False ):
+    name=name.encode('utf8')
+    n =len(rs)
+    if Es is None: Es=np.zeros(n)
+    if fs is None: fs=np.zeros(n)
+    rs=np.array(rs)
+    pos0=np.array(pos0)
+    lib.sampleSurf( name, n, rs, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bInit, bSave )
     return Es,fs
 
 #printBuffNames(){
@@ -158,6 +172,12 @@ lib.init_nonbond.restype   =  None
 def init_nonbond():
     return lib.init_nonbond()
 '''
+
+#  void init_nonbond()
+lib.init.argtypes  = [] 
+lib.init.restype   =  None
+def init():
+    return lib.init()
 
 #  void insertSMILES(char* s)
 lib.insertSMILES.argtypes  = [c_char_p,c_bool] 

@@ -346,7 +346,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
     //int iatom = 11;
     testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );
-    Vec3d * FFtot = new Vec3d[ W->gridFF.grid.getNtot() ];
+    Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
     //if(idebug>1) 
         saveXSF( "FFtot_z.xsf",  W->gridFF.grid, FFtot, 2, W->gridFF.natoms, W->gridFF.apos, W->gridFF.atypes );
