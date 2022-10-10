@@ -113,12 +113,13 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 
-bool loadSurf(const char* fname){
+bool loadSurf(const char* name, bool bSaveDebugXSFs=false ){
     //printf("DEBUG loadSurf() 0 \n");
     // ----- load surface geometry
-    sprintf(tmpstr, "%s.xyz", fname );
+    printf("loadSurf(%s)\n", name );
+    sprintf(tmpstr, "%s.xyz", name );
 	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs );
-	if(ret<0)return false;
+	if(ret<0)return false; 
 	nbmol.bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
 	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true, true  );
     //surf .print();
@@ -127,12 +128,12 @@ bool loadSurf(const char* fname){
 	bSurfAtoms=true;
     //printf("DEBUG loadSurf() 1 \n");
     // ----- load surface lattice vector
-    sprintf(tmpstr, "%s.lvs", fname );
+    sprintf(tmpstr, "%s.lvs", name );
     if( file_exist(tmpstr) ){ 
         gridFF.grid.loadCell( tmpstr, 0.2 );
         bGridFF=true;
         //printf("DEBUG loadSurf() 2 \n");
-        makeGridFF();
+        makeGridFF(bSaveDebugXSFs);
     }else{ 
         bGridFF=false; 
         printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
@@ -308,7 +309,7 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
     }
 }
 
-void makeGridFF() {
+void makeGridFF( bool bSaveDebugXSFs=false ) {
     gridFF.bindSystem(surf.n, 0, surf.ps, surf.REQs );
     //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
     //gridFF.grid.n    = (Vec3i){60,60,100};
@@ -321,7 +322,8 @@ void makeGridFF() {
     gridFF.grid.pos0 = (Vec3d){ x0,y0,-8.0};
     //gridFF.shift   = (Vec3d){0.0,0.0,-8.0};
     //gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin", true, {0,0,0} );
-    gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin", false, {1,1,1} );
+    //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,1} );
+    gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,1}, bSaveDebugXSFs );
 }
 
 //inline int pickParticle( const Vec3d& ray0, const Vec3d& hRay, double R, int n, Vec3d * ps, bool* ignore=0 ){

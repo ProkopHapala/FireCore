@@ -15,6 +15,32 @@ def deriv( xs,Es ):
 
 #======== Body
 
+mmff.init()
+# -------- Non-covalent Surace (GridFF)
+Q =1.00; K=-1.0; kind=1; Rdamp=1.0
+sc=1.2
+rs = np.linspace(-5.0,10.0,150)
+#EsM,fsM  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q*0), K=K, Rdamp=Rdamp)  
+#EsC,fsC  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e*0,Q  ), K=K, Rdamp=Rdamp)   
+#Es ,fs   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=kind, atyp=0, Q=Q, K=K, Rdamp=Rdamp)  
+Es,fs   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=12, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=(2.0,0.0,0.0), bSave=True)  
+
+print("Es \n", Es);
+
+fnum,xfs = deriv( rs,Es )
+
+#Emin=Es.min()
+Emax=Es.max()
+Emin=Es.min()
+plt.figure(figsize=(5,10))
+plt.subplot(2,1,1); plt.plot(rs,Es,'k',label='PLQ');  plt.grid(); plt.axhline(0,c='k',ls='--');                                           #plt.ylim(Emin*sc,Emax*sc)  ;plt.legend()
+plt.subplot(2,1,2); plt.plot(rs,fs,    label='Fana'); plt.plot(xfs,-fnum, ':r',label='Fnum')    ;plt.grid(); plt.axhline(0,c='k',ls='--'); #plt.ylim(Emin*sc,Emax*sc)  ;plt.legend()
+plt.show()
+exit()
+
+
+'''
+# -------- Non-covalent
 Q =-0.05; R=1.908; e=0.0037292; K=-1.0; kind=1; Rdamp=1.0
 sc=1.2
 rs = np.linspace(0.0,10.0,100)
@@ -31,7 +57,7 @@ plt.subplot(2,1,1); plt.plot(rs,Es,'k',label='PLQ'); plt.plot(rs,EsM,label="PL")
 plt.subplot(2,1,2); plt.plot(rs,fs,    label='Fana'); plt.plot(xfs,fnum, ':r',label='Fnum')                    ;plt.grid(); plt.axhline(0,c='k',ls='--'); plt.ylim(Emin*sc,-Emin*sc)  ;plt.legend()
 plt.show()
 exit()
-
+'''
 
 
 #mmff.init_params( "data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" )
