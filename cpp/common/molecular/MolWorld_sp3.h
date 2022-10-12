@@ -113,12 +113,12 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 
-bool loadSurf(const char* name, bool bSaveDebugXSFs=false ){
+bool loadSurf(const char* name, bool bSaveDebugXSFs=false, double z0=0.0, Vec3d cel0={0.5,0.5,0.0} ){
     //printf("DEBUG loadSurf() 0 \n");
     // ----- load surface geometry
     printf("loadSurf(%s)\n", name );
     sprintf(tmpstr, "%s.xyz", name );
-	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs );
+	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs, &surf.atypes );
 	if(ret<0)return false; 
 	nbmol.bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
 	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true, true  );
@@ -131,6 +131,8 @@ bool loadSurf(const char* name, bool bSaveDebugXSFs=false ){
     sprintf(tmpstr, "%s.lvs", name );
     if( file_exist(tmpstr) ){ 
         gridFF.grid.loadCell( tmpstr, 0.2 );
+        gridFF.grid.center_cell( cel0 );
+        gridFF.grid.pos0.z=z0;
         bGridFF=true;
         //printf("DEBUG loadSurf() 2 \n");
         makeGridFF(bSaveDebugXSFs);
@@ -309,21 +311,18 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
     }
 }
 
-void makeGridFF( bool bSaveDebugXSFs=false ) {
+void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
     gridFF.bindSystem(surf.n, 0, surf.ps, surf.REQs );
-    //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
-    //gridFF.grid.n    = (Vec3i){60,60,100};
-    //gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
-    //gridFF.grid.loadCell( "inputs/cel.lvs" );
+    //if(verbosity>1)
     gridFF.grid.printCell();
     gridFF.allocateFFs();
-    double x0= ( gridFF.grid.cell.a.x + gridFF.grid.cell.b.x )*-0.5;
-    double y0= ( gridFF.grid.cell.a.y + gridFF.grid.cell.b.y )*-0.5;
-    gridFF.grid.pos0 = (Vec3d){ x0,y0,-8.0};
+    //double x0= ( gridFF.grid.cell.a.x + gridFF.grid.cell.b.x )*-0.5;
+    //double y0= ( gridFF.grid.cell.a.y + gridFF.grid.cell.b.y )*-0.5;
+    //gridFF.grid.pos0 = (Vec3d){ x0,y0,-8.0};
     //gridFF.shift   = (Vec3d){0.0,0.0,-8.0};
     //gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin", true, {0,0,0} );
     //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,1} );
-    gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,1}, bSaveDebugXSFs );
+    gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
 }
 
 //inline int pickParticle( const Vec3d& ray0, const Vec3d& hRay, double R, int n, Vec3d * ps, bool* ignore=0 ){

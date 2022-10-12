@@ -25,7 +25,7 @@ rs = np.linspace(-5.0,10.0,150)
 #Es ,fs   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=kind, atyp=0, Q=Q, K=K, Rdamp=Rdamp)  
 Es,fs   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=12, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=(2.0,0.0,0.0), bSave=True)  
 
-print("Es \n", Es);
+#print("Es \n", Es);
 
 fnum,xfs = deriv( rs,Es )
 

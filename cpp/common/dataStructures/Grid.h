@@ -30,13 +30,14 @@ int nearPow2(int i){ return ceil( log(i)/log(2) ); }
 
 
 // Force-Field namespace
-class GridShape {
-	public:
-	Vec3d   pos0=Vec3dZero;
+class GridShape { public:
+	Vec3d   pos0;
 	Mat3d   cell;       // lattice vector
 	Mat3d   dCell;      // basis vector of each voxel ( lattice vectors divided by number of points )
 	Mat3d   diCell;     // inversion of voxel basis vector
 	Vec3i   n;          // number of pixels along each basis vector
+
+    void center_cell( Vec3d c ){ cell.dot_to_T( c, pos0 ); }
 
 	//inline Vec3d * allocateArray_Vec3d(){ return new Vec3d[n.x*n.y*n.z); }
 	inline int getNtot() const {return n.x*n.y*n.z ; }

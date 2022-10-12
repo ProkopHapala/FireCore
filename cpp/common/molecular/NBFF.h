@@ -103,6 +103,7 @@ inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, dou
 
 class NBsystem{ public:
     int n;
+    int   *atypes=0; // Not necessarily used
     Vec3d *REQs=0;
     Vec3d *ps=0;
     Vec3d *fs=0;

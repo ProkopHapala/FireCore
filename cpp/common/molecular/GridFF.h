@@ -8,7 +8,7 @@
 #include "Forces.h"
 #include "MMFFparams.h"
 
-class GridFF{ public:
+class GridFF{ public: 
     GridShape   grid;
     //Vec3d  *FFPauli    = NULL;
     //Vec3d  *FFLondon   = NULL;
@@ -136,6 +136,7 @@ class GridFF{ public:
 
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs ){
         //interateGrid3D( (Vec3d){0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
+        //printf( "GridFF::evalGridFFs() pos0(%g,%g,%g)\n", grid.pos0.x,grid.pos0.y,grid.pos0.z );
         double R2damp=Rdamp*Rdamp;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             //Vec3d fp = (Vec3d){0.0,0.0,0.0};
@@ -168,6 +169,7 @@ class GridFF{ public:
         //    printf("iPBC (%i,%i,%i) \n", ia,ib,ic );
         //}}}
         //int iend = grid.getNtot()-1;
+        printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
         double R2damp=Rdamp*Rdamp;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             //Vec3d fp = (Vec3d){0.0,0.0,0.0};
@@ -276,7 +278,7 @@ class GridFF{ public:
     */
 
  #ifdef IO_utils_h
-    bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nimg={1,1,1}, bool bSaveDebugXSFs=false ){
+    bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nPBC={1,1,0}, bool bSaveDebugXSFs=false ){
         //printf( "DEBUG GridFF::tryLoad() 0 \n" );
         { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_Pauli,  "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
@@ -286,7 +288,7 @@ class GridFF{ public:
         int nbyte= grid.getNtot()*sizeof(Quat4f);
         if( recalcFF ){
             printf( "\nBuilding GridFF for substrate ... (please wait... )\n" );
-            evalGridFFs( nimg );
+            evalGridFFs( nPBC );
             if(bSaveDebugXSFs){
                 if(FFelec )  grid.saveXSF( "FFPaul_E.xsf", (float*)FFPauli,  4,3  );
                 if(FFPauli)  grid.saveXSF( "FFLond_E.xsf", (float*)FFLondon, 4,3  );

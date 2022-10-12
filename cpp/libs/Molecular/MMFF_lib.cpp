@@ -152,14 +152,15 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
         W.ff.realloc( 1,0,0,0, true );
         W.ff.apos [0] = *(Vec3d*)pos0_;
         W.ff.atype[0] = atyp;
-        W.loadSurf( name, bSave );
+        W.loadSurf( name, bSave, -10 );
         W.nbmol.REQs[0].z = Q;
         if(bSave){
             Quat4f* FFtot = new Quat4f[W.gridFF.grid.getNtot()];
             W.gridFF.evalCombindGridFF ( W.nbmol.REQs[0], FFtot );
             //void saveXSF( const char * fname, T* FF, int pitch, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0  )const {
             //W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.gridFF.natoms, W.gridFF.atypes, W.gridFF.apos );
-            W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3 );
+            W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.surf.n, W.surf.atypes, W.surf.ps );
+            //W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3 );
             printf("save DONE \n");
             delete [] FFtot;
         }
