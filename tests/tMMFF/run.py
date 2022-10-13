@@ -17,24 +17,51 @@ def deriv( xs,Es ):
 
 mmff.init()
 # -------- Non-covalent Surace (GridFF)
-Q =1.00; K=-1.0; kind=1; Rdamp=1.0
+Q =-0.00; K=-1.0; kind=1; Rdamp=1.0; pos0=(0.0,0.0,0.0)
 sc=1.2
-rs = np.linspace(-5.0,10.0,150)
+
+nx=20
+xs=np.linspace(-5,5,nx);
+Xs,Ys=np.meshgrid(xs,xs)
+poss=np.zeros( (nx,nx,3) )
+poss[:,:,0]=Xs
+poss[:,:,1]=Ys
+poss[:,:,2]=0.5
+poss_=poss.reshape( (-1,3) );   print("poss_.shape ",poss_.shape)
+
+#Ea,fa   = mmff.sampleSurf_vecs( "data/NaCl_sym-center",  poss_, kind=1 , atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
+#Eg,fg   = mmff.sampleSurf_vecs( "data/H_atom",  poss_, kind=10, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
+#Ea,fa   = mmff.sampleSurf_vecs(  None,          poss_, kind=0 , atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
+
+Ea,fa   = mmff.sampleSurf_vecs( "data/H_atom",  poss_, kind=1, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
+Eg,fg   = mmff.sampleSurf_vecs( "data/H_atom",  poss_, kind=5, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
+
+plt.figure(figsize=(10,5))
+plt.subplot(1,2,1); plt.imshow( Ea.reshape((nx,nx)) )  ;plt.title("E_atoms") ;plt.colorbar()
+plt.subplot(1,2,2); plt.imshow( Eg.reshape((nx,nx)) )  ;plt.title("E_grid")  ;plt.colorbar()
+plt.show()
+exit()
+rs = np.linspace(-5.0,5.0,150)
 #EsM,fsM  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q*0), K=K, Rdamp=Rdamp)  
 #EsC,fsC  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e*0,Q  ), K=K, Rdamp=Rdamp)   
 #Es ,fs   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=kind, atyp=0, Q=Q, K=K, Rdamp=Rdamp)  
-Es,fs   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=12, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=(2.0,0.0,0.0), bSave=True)  
+Eg,fg   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=12, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
+Ea,fa   = mmff.sampleSurf( None,                   rs, kind=1 , atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
 
 #print("Es \n", Es);
-
-fnum,xfs = deriv( rs,Es )
+fg_,xfs = deriv( rs,Eg )
+fa_,xfs = deriv( rs,Ea )
 
 #Emin=Es.min()
-Emax=Es.max()
-Emin=Es.min()
-plt.figure(figsize=(5,10))
-plt.subplot(2,1,1); plt.plot(rs,Es,'k',label='PLQ');  plt.grid(); plt.axhline(0,c='k',ls='--');                                           #plt.ylim(Emin*sc,Emax*sc)  ;plt.legend()
-plt.subplot(2,1,2); plt.plot(rs,fs,    label='Fana'); plt.plot(xfs,-fnum, ':r',label='Fnum')    ;plt.grid(); plt.axhline(0,c='k',ls='--'); #plt.ylim(Emin*sc,Emax*sc)  ;plt.legend()
+#Emax=Es.max()
+#Emin=Es.min()
+#plt.figure(figsize=(5,10))
+#plt.subplot(2,1,1); 
+plt.plot(rs,Eg,label='Grid');  plt.plot(rs,Ea,"--",label='Atoms'); plt.grid(); plt.legend(); plt.axhline(0,c='k',ls='--');                 #plt.ylim(Emin*sc,Emax*sc)  
+#plt.subplot(2,1,2); 
+#plt.plot(rs,fg,'-r', label='Fg'); plt.plot(xfs,fg_, 'r:',label='Fg_num')    
+#plt.plot(rs,fa,'-b', label='Fa'); plt.plot(xfs,fa_, 'b:',label='Fa_num')   
+#plt.grid(); plt.axhline(0,c='k',ls='--'); plt.legend(); #plt.ylim(Emin*sc,Emax*sc)  
 plt.show()
 exit()
 

@@ -242,7 +242,8 @@ class GridShape { public:
         fprintf( fout, "    %i     1 \n", natoms );
         //fprintf( fout, "ATOMS\n" );
         for(int i=0; i<natoms; i++){
-            Vec3d p = apos[i] + pos0;
+            //Vec3d p = apos[i] + pos0;
+            Vec3d p = apos[i];
             fprintf( fout, "%3i %9.6f %9.6f %9.6f \n", atyps[i], p.x,p.y,p.z );
         }
         fprintf( fout, "\n" );

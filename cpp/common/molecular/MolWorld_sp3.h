@@ -113,7 +113,7 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 
-bool loadSurf(const char* name, bool bSaveDebugXSFs=false, double z0=0.0, Vec3d cel0={0.5,0.5,0.0} ){
+bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={0.5,0.5,0.0} ){
     //printf("DEBUG loadSurf() 0 \n");
     // ----- load surface geometry
     printf("loadSurf(%s)\n", name );
@@ -131,11 +131,19 @@ bool loadSurf(const char* name, bool bSaveDebugXSFs=false, double z0=0.0, Vec3d 
     sprintf(tmpstr, "%s.lvs", name );
     if( file_exist(tmpstr) ){ 
         gridFF.grid.loadCell( tmpstr, 0.2 );
-        gridFF.grid.center_cell( cel0 );
-        gridFF.grid.pos0.z=z0;
-        bGridFF=true;
-        //printf("DEBUG loadSurf() 2 \n");
-        makeGridFF(bSaveDebugXSFs);
+        if(bGrid){
+            gridFF.grid.center_cell( cel0 );
+            bGridFF=true;
+            gridFF.bindSystem(surf.n, 0, surf.ps, surf.REQs );
+            if(isnan(z0)){ z0=gridFF.findTop(); };
+            gridFF.grid.pos0.z=z0;
+            gridFF.grid.printCell();
+            gridFF.allocateFFs();
+            gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
+            //printf("DEBUG loadSurf() 2 \n");
+            //makeGridFF(bSaveDebugXSFs);
+            bGridFF=true; 
+        }
     }else{ 
         bGridFF=false; 
         printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
