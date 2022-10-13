@@ -84,16 +84,28 @@ def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQ
     return Es,fs
 
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
-lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool, c_bool] 
+lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
 lib.sampleSurf.restype   =  None
-def sampleSurf( name, rs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bInit=True, bSave=False ):
-    name=name.encode('utf8')
+def sampleSurf( name, rs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False ):
+    if name is not None: name=name.encode('utf8')
     n =len(rs)
     if Es is None: Es=np.zeros(n)
     if fs is None: fs=np.zeros(n)
     rs=np.array(rs)
     pos0=np.array(pos0)
-    lib.sampleSurf( name, n, rs, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bInit, bSave )
+    lib.sampleSurf( name, n, rs, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
+    return Es,fs
+
+# void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
+lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
+lib.sampleSurf_vecs.restype   =  None
+def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False ):
+    if name is not None: name=name.encode('utf8')
+    n =len(poss)
+    if Es is None: Es=np.zeros(n)
+    if fs is None: fs=np.zeros((n,3))
+    pos0=np.array(pos0)
+    lib.sampleSurf_vecs( name, n, poss, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
     return Es,fs
 
 #printBuffNames(){

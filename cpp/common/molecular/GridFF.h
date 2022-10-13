@@ -4,6 +4,7 @@
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "quaternion.h"
 #include "Grid.h"
 #include "Forces.h"
 #include "MMFFparams.h"
@@ -30,6 +31,10 @@ class GridFF{ public:
 
     double alpha  = -1.6;
     double Rdamp  = -1.6;
+
+    int iDebugEvalR = 0;
+
+    double findTop(){ double zmax=-1e+300; for(int i=0;i<natoms; i++){ double z=apos[i].z; if(z>zmax)zmax=z; }; printf("findTop() %i %g \n", natoms, zmax); return zmax; }
 
     void bindSystem(int natoms_, int* atypes_, Vec3d* apos_, Vec3d* aREQs_ ){
         natoms=natoms_; atypes=atypes_; apos=apos_; aREQs=aREQs_;
@@ -135,13 +140,8 @@ class GridFF{ public:
     }
 
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs ){
-        //interateGrid3D( (Vec3d){0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
-        //printf( "GridFF::evalGridFFs() pos0(%g,%g,%g)\n", grid.pos0.x,grid.pos0.y,grid.pos0.z );
         double R2damp=Rdamp*Rdamp;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            //Vec3d fp = (Vec3d){0.0,0.0,0.0};
-            //Vec3d fl = (Vec3d){0.0,0.0,0.0};
-            //Vec3d fe = (Vec3d){0.0,0.0,0.0};
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
@@ -164,17 +164,9 @@ class GridFF{ public:
     }
 
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs, Vec3i nPBC ){
-        //interateGrid3D( (Vec3d){0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
-        //for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
-        //    printf("iPBC (%i,%i,%i) \n", ia,ib,ic );
-        //}}}
-        //int iend = grid.getNtot()-1;
         printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
         double R2damp=Rdamp*Rdamp;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            //Vec3d fp = (Vec3d){0.0,0.0,0.0};
-            //Vec3d fl = (Vec3d){0.0,0.0,0.0};
-            //Vec3d fe = (Vec3d){0.0,0.0,0.0};
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
@@ -183,16 +175,6 @@ class GridFF{ public:
                 Vec3d REQi = aREQs[iat];
                 for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
                     Vec3d  dp = dp0 + grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
-                    //if( ((ibuff==0)||(ibuff==iend))&&(iat==26) ){
-                    //    printf( "dp(%g,%g,%g) p(%g,%g,%g) apos[%i](%g,%g,%g)\n", dp.x,dp.y,dp.z, p.x,p.y,p.z, iat, apos[iat].x,apos[iat].y,apos[iat].z );
-                    //}
-                    //double r      = dp.norm();
-                    //double ir     = 1/(r+RSAFE);
-                    //double expar  = exp( alpha*(r-REQi.x) );
-                    //double fexp   = alpha*expar*REQi.y*ir;
-                    //fp.add_mul( dp, -fexp*expar*2 );                    // repulsive part of Morse
-                    //fl.add_mul( dp, -fexp         );                    // attractive part of Morse
-                    //fe.add_mul( dp, 14.3996448915*REQi.z*ir*ir*ir ); // Coulomb
                     double r      = dp.norm();
                     double ir     = 1/(r+R2damp);
                     double expar  = exp( alpha*(r-REQi.x) );
@@ -210,12 +192,38 @@ class GridFF{ public:
         });
     }
 
+    void evalGridR(int natoms, Vec3d * apos, Vec3d * REQs, Vec3i nPBC ){
+        printf( "GridFF::evalGridR() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
+        double R2damp=Rdamp*Rdamp;
+        interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
+            Quat4d qp = Quat4dZero;
+            Quat4d ql = Quat4dZero;
+            Quat4d qe = Quat4dZero;
+            for(int iat=0; iat<natoms; iat++){
+                Vec3d dp0; dp0.set_sub( p, apos[iat] );
+                Vec3d REQi = aREQs[iat];
+                for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
+                    Vec3d  dp = dp0 + grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
+                    double r      = dp.norm();
+                    qp.e+=fmax(0, REQi.x-r);
+                    ql.e+=0;    
+                    qe.e+=0;      
+
+                }}}
+            }
+            if(FFPauli)  FFPauli [ibuff]=(Quat4f)qp;
+            if(FFLondon) FFLondon[ibuff]=(Quat4f)ql;
+            if(FFelec)   FFelec  [ibuff]=(Quat4f)qe;
+        });
+    }
+
     void evalGridFFs( Vec3i nPBC){
         //evalGridFFexp( natoms, apos, aREQs, alpha*2,  1, FFPauli  );
         //evalGridFFexp( natoms, apos, aREQs, alpha  , 1, FFLondon );  // -2.0 coef is in  REQ2PLQ
         //evalGridFFel ( natoms, apos, aREQs,              FFelec   );
         //evalGridFFs( natoms, apos, aREQs );
-        evalGridFFs( natoms, apos, aREQs, nPBC );
+        if(iDebugEvalR>0){ evalGridR  ( natoms, apos, aREQs, nPBC );}
+        else             { evalGridFFs( natoms, apos, aREQs, nPBC ); }
     }
 
     void evalCombindGridFF( Vec3d REQ, Quat4f * FF ){
@@ -280,9 +288,9 @@ class GridFF{ public:
  #ifdef IO_utils_h
     bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nPBC={1,1,0}, bool bSaveDebugXSFs=false ){
         //printf( "DEBUG GridFF::tryLoad() 0 \n" );
-        { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_Pauli,  "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_London, "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
         //printf( "DEBUG GridFF::tryLoad() recalcFF %i \n", recalcFF );
         //int nbyte= grid.getNtot()*sizeof(Vec3d);
         int nbyte= grid.getNtot()*sizeof(Quat4f);
@@ -290,17 +298,17 @@ class GridFF{ public:
             printf( "\nBuilding GridFF for substrate ... (please wait... )\n" );
             evalGridFFs( nPBC );
             if(bSaveDebugXSFs){
-                if(FFelec )  grid.saveXSF( "FFPaul_E.xsf", (float*)FFPauli,  4,3  );
                 if(FFPauli)  grid.saveXSF( "FFLond_E.xsf", (float*)FFLondon, 4,3  );
                 if(FFLondon) grid.saveXSF( "FFelec_E.xsf", (float*)FFelec,   4,3  );
+                if(FFelec )  grid.saveXSF( "FFPaul_E.xsf", (float*)FFPauli,  4,3  );
             }
-            if(FFelec )  saveBin( fname_Coulomb,  nbyte, (char*)FFelec   );
             if(FFPauli)  saveBin( fname_Pauli,    nbyte, (char*)FFPauli  );
             if(FFLondon) saveBin( fname_London,   nbyte, (char*)FFLondon );
+            if(FFelec )  saveBin( fname_Coulomb,  nbyte, (char*)FFelec   );
         }else{
-            if(FFelec )  loadBin( fname_Coulomb,  nbyte, (char*)FFelec   );
             if(FFPauli)  loadBin( fname_Pauli,    nbyte, (char*)FFPauli  );
             if(FFLondon) loadBin( fname_London,   nbyte, (char*)FFLondon );
+            if(FFelec )  loadBin( fname_Coulomb,  nbyte, (char*)FFelec   );
         }
         return recalcFF;
     }

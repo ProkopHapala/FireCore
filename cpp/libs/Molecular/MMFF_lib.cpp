@@ -147,21 +147,18 @@ void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*R
     }
 }
 
-void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, int atyp, double Q, double K, double Rdamp, double* pos0_, bool bInit, bool bSave){
-    if(bInit){
+void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, int atyp, double Q, double K, double Rdamp, double* pos0_, bool bSave){
+    if(name){
         W.ff.realloc( 1,0,0,0, true );
         W.ff.apos [0] = *(Vec3d*)pos0_;
         W.ff.atype[0] = atyp;
-        W.loadSurf( name, bSave, -10 );
+        bool bGrid=(kind>10);
+        W.loadSurf( name, bGrid, bSave );
         W.nbmol.REQs[0].z = Q;
         if(bSave){
             Quat4f* FFtot = new Quat4f[W.gridFF.grid.getNtot()];
             W.gridFF.evalCombindGridFF ( W.nbmol.REQs[0], FFtot );
-            //void saveXSF( const char * fname, T* FF, int pitch, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0  )const {
-            //W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.gridFF.natoms, W.gridFF.atypes, W.gridFF.apos );
             W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.surf.n, W.surf.atypes, W.surf.ps );
-            //W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3 );
-            printf("save DONE \n");
             delete [] FFtot;
         }
     }
@@ -179,6 +176,48 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
             //case 3: double fr; E=erfx_e6( pj.x, K, fr ); f.x=fr; break;  // gauss damped electrostatics
         }
         fs[i]=fe.z;
+        Es[i]=fe.e;
+    }
+}
+
+void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, int kind, int atyp, double Q, double K, double Rdamp, double* pos0_, bool bSave){
+    Vec3d* poss =(Vec3d*)poss_;
+    Vec3d* fs   =(Vec3d*)fs_;
+    if(name){
+        W.ff.realloc( 1,0,0,0, true );
+        W.ff.apos [0] = *(Vec3d*)pos0_;
+        W.ff.atype[0] = atyp;
+        bool bGrid=(kind>=10);
+        if( kind==10 ) W.gridFF.iDebugEvalR=1;
+        W.loadSurf( name, bGrid, bSave );
+        W.nbmol.REQs[0].z = Q;
+        if(bSave){
+            Quat4f* FFtot = new Quat4f[W.gridFF.grid.getNtot()];
+            W.gridFF.evalCombindGridFF ( W.nbmol.REQs[0], FFtot );
+            W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.surf.n, W.surf.atypes, W.surf.ps );
+            printf( "DEBUG saveXSF() DONE \n" );
+            delete [] FFtot;
+        }
+    }
+    printf( "DEBUG start sampling kind=%i \n", kind );
+    Vec3d PLQ = REQ2PLQ( W.nbmol.REQs[0], K );
+    //printf( "PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
+    double R2damp=Rdamp*Rdamp;
+    for(int i=0; i<n; i++){
+        Quat4f fe=Quat4fZero;
+        W.nbmol.ps[0]=poss[i];
+        //printf( "[%i] (%g,%g,%g)\n", i, W.nbmol.ps[0].x,W.nbmol.ps[0].y,W.nbmol.ps[0].z );
+        W.ff.cleanAtomForce();
+        switch(kind){
+            case  0: fe.e=   W.nbmol.evalR       (W.surf ); break; 
+            case  1: fe.e=   W.nbmol.evalMorse   (W.surf, false,   K); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
+            case  5: fe.e=   W.nbmol.evalMorsePLQ(W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},-1.0,1.0 ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
+
+            case 10:         W.gridFF.addForce_surf( W.nbmol.ps[0], {1.,0.,0.}, fe );  break;
+            //case 11:       W.gridFF.addForce_surf( W.nbmol.ps[0], PLQ, fe );  break;
+            case 12:         W.gridFF.addForce     ( W.nbmol.ps[0], PLQ, fe );  break;
+        }
+        fs[i]=(Vec3d)(fe.f);
         Es[i]=fe.e;
     }
 }

@@ -157,7 +157,7 @@ class GridShape { public:
         fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.c.x, cell.c.y, cell.c.z );
     }
 
-    void atomsToZsf( FILE* fout,  int natoms, int* atyps, Vec3d* apos )const{
+    void primcoordToXSF( FILE* fout,  int natoms, int* atyps, Vec3d* apos )const{
         fprintf( fout, "CRYSTAL\n" );
         fprintf( fout, "PRIMVEC\n" );
         fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.a.x, cell.a.y, cell.a.z );
@@ -167,7 +167,19 @@ class GridShape { public:
         fprintf( fout, "    %i     1 \n", natoms );
         //fprintf( fout, "ATOMS\n" );
         for(int i=0; i<natoms; i++){
-            Vec3d p = apos[i] + pos0;
+            //Vec3d p = apos[i] + pos0;
+            Vec3d p = apos[i] - pos0;
+            //Vec3d p = apos[i];
+            fprintf( fout, "%3i %9.6f %9.6f %9.6f \n", atyps[i], p.x,p.y,p.z );
+        }
+        fprintf( fout, "\n" );
+    }
+
+    void atomsToXSF( FILE* fout,  int natoms, int* atyps, Vec3d* apos )const{
+        fprintf( fout, "ATOMS\n" );
+        for(int i=0; i<natoms; i++){
+            //Vec3d p = apos[i] - pos0;
+            Vec3d p = apos[i];
             fprintf( fout, "%3i %9.6f %9.6f %9.6f \n", atyps[i], p.x,p.y,p.z );
         }
         fprintf( fout, "\n" );
@@ -192,12 +204,15 @@ class GridShape { public:
     }
 
     template<typename T>
-    void saveXSF( const char * fname,const T* FF, int pitch, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0  )const {
+    void saveXSF( const char * fname,const T* FF, int pitch, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
         printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");
         if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
-        if(natoms>0) atomsToZsf( fout,  natoms, atypes, apos );
+        if(natoms>0){
+            if (bPrimCoord){ primcoordToXSF( fout,  natoms, atypes, apos );  }
+            else           { atomsToXSF    ( fout,  natoms, atypes, apos );  }
+        } 
         toXSF( fout, FF, pitch, offset );
         fclose(fout);
     }
