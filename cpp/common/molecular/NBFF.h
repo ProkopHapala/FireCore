@@ -9,6 +9,7 @@ Non-Bonded Force-Field
 #include "fastmath.h"
 //#include "Vec2.h"
 #include "Vec3.h"
+#include "quaternion.h"
 
 #include "Forces.h"
 
@@ -137,8 +138,6 @@ class NBsystem{ public:
             for(int j=0; j<B.n; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
-                //printf( "NBFF_AB::evalLJQ REQ[%i,%i] %g %g %g \n", i,j, REQij.x,REQij.y,REQij.z );
-                //printf( "REQ[%i,%i] (%g,%g,%g) (%g,%g,%g) \n", i,j, AREQi.x,AREQi.y,AREQi.z, B_REQs[j].x,B_REQs[j].y,B_REQs[j].z  );
                 E += addAtomicForceLJQ( B.ps[j]-Api, fij, REQij );
                 if(bRecoil) B.fs[j].sub(fij);
                 fi.add(fij);
@@ -148,9 +147,10 @@ class NBsystem{ public:
         return E;
     }
 
-    double evalMorse( NBsystem& B, const bool bRecoil, double K=-1.0 ){
+    double evalMorse( NBsystem& B, const bool bRecoil, double K=-1.0, double RQ=1.0 ){
         double E=0;
         //printf("DEBUG evalMorse() n,B.n %i %i \n", n,B.n );
+        double R2Q=RQ*RQ;
         for(int i=0; i<n; i++){
             Vec3d fi = Vec3dZero;
             Vec3d Api = ps[i];
@@ -158,10 +158,7 @@ class NBsystem{ public:
             for(int j=0; j<B.n; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
-                //printf( "NBFF_AB::evalLJQ REQ[%i,%i] %g %g %g \n", i,j, REQij.x,REQij.y,REQij.z );
-                //printf( "REQ[%i,%i] (%g,%g,%g) (%g,%g,%g) \n", i,j, AREQi.x,AREQi.y,AREQi.z, B_REQs[j].x,B_REQs[j].y,B_REQs[j].z  );
-                //if(j==0)printf( "nb[%i,%i]R(%g,%g) q %g(%g,%g) \n", i,j, AREQi.x, B.REQs[j].x, REQij.z, AREQi.z, B.REQs[j].z );
-                E += addAtomicForceMorseQ( B.ps[j]-Api, fij, REQij.x, REQij.y, REQij.z, K, sq(REQij.x*0.5) );
+                E += addAtomicForceMorseQ( B.ps[j]-Api, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
                 if(bRecoil) B.fs[j].sub(fij);
                 fi.add(fij);
             }
@@ -190,18 +187,23 @@ class NBsystem{ public:
                 //for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
                 //    Vec3d  dp = dp0 + cell.a*ia + cell.b*ib + cell.c*ic;
                     Vec3d  dp     = dp0;
-                    double r      = dp.norm();
-                    //printf( "r %g dp(%g,%g,%g) pi(%g,%g,%g) pj(%g,%g,%g) \n", r, dp.x,dp.y,dp.z,  pi.x,pi.y,pi.z, ps[j].x,ps[j].y,ps[j].z );
-                    double ir     = 1/(r+R2damp);
-                    double expar  = exp( K*(r-REQj.x) );
-                    double fexp   = K*expar*REQj.y*ir*2;
-                    double eCoul  = -14.3996448915*REQj.z*ir;
-                    qp.e+=expar*expar; qp.f.add_mul( dp, fexp*expar  ); // repulsive part of Morse
-                    ql.e+=expar*2;     ql.f.add_mul( dp, fexp        ); // attractive part of Morse
-                    qe.e+=eCoul;       qe.f.add_mul( dp, eCoul*ir*ir ); // Coulomb
+                    double r2     = dp.norm2();
+                    double r      = sqrt(r2);
+                    // ----- Morse
+                    double e      = exp( K*(r-REQj.x) );
+                    double de     = K*e*REQj.y*-2/r;
+                    double eM     = e*REQj.y;
+                    // ---- Coulomb
+                    double ir2    = 1/(r2+R2damp);
+                    double ir     = sqrt(ir2);
+                    double eQ     = -14.3996448915*REQj.z*ir;
+                    qp.e+=eM*e; qp.f.add_mul( dp, de*e   ); // repulsive part of Morse
+                    ql.e+=eM*2; ql.f.add_mul( dp, de     ); // attractive part of Morse
+                    qe.e+=eQ;   qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
+                    //printf(  "evalMorsePLQ() k %g r %g e %g E0 %g E %g \n", K, r, e, REQj.y*plq.x/exp( K*(1.487)), qp.e*plq.x );
                 //}}}
             }
-            Quat4d fe = qp*plq.x + ql*plq.y + qe*plq.z*0;
+            Quat4d fe = qp*plq.x + ql*plq.y + qe*plq.z;
             fs[i].add(fe.f);
             E       +=fe.e;
         }

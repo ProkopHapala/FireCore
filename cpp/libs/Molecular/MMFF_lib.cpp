@@ -147,12 +147,13 @@ void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*R
     }
 }
 
-void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, int atyp, double Q, double K, double Rdamp, double* pos0_, bool bSave){
+void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, int atyp, double Q, double K, double RQ, double* pos0_, bool bSave){
     if(name){
         W.ff.realloc( 1,0,0,0, true );
         W.ff.apos [0] = *(Vec3d*)pos0_;
         W.ff.atype[0] = atyp;
         bool bGrid=(kind>10);
+        if( kind==10 ) W.gridFF.iDebugEvalR=1;
         W.loadSurf( name, bGrid, bSave );
         W.nbmol.REQs[0].z = Q;
         if(bSave){
@@ -162,25 +163,30 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
             delete [] FFtot;
         }
     }
-    Vec3d PLQ = REQ2PLQ( W.nbmol.REQs[0], K );
+    Vec3d REQ=W.nbmol.REQs[0];
+    Vec3d PLQ = REQ2PLQ( REQ, K );
+    printf( "REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
     printf( "PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
-    double R2damp=Rdamp*Rdamp;
+    //exit(0);
+    double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){
         Quat4f fe=Quat4fZero;
         W.nbmol.ps[0].z=rs[i];
         W.ff.cleanAtomForce();
         switch(kind){
-            case  1: fe.e=   W.nbmol.evalMorse(W.surf, false, K); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-            case 11:         W.gridFF.addForce_surf( W.nbmol.ps[0], PLQ, fe );  break; // printf( "sampleSurf[%i] r %g fe(%g,%g,%g|%g)\n", i, rs[i], fe.x,fe.y,fe.z, fe.e ); 
-            case 12:         W.gridFF.addForce     ( W.nbmol.ps[0], PLQ, fe );  break; // printf( "sampleSurf[%i] r %g fe(%g,%g,%g|%g)\n", i, rs[i], fe.x,fe.y,fe.z, fe.e ); 
-            //case 3: double fr; E=erfx_e6( pj.x, K, fr ); f.x=fr; break;  // gauss damped electrostatics
+            case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
+            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
+            case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
+            case 10:         W.gridFF.addForce_surf(W.nbmol.ps[0], {1.,0.,0.}, fe );  break;
+            case 11:         W.gridFF.addForce_surf(W.nbmol.ps[0], PLQ, fe );  break;
+            case 12:         W.gridFF.addForce     (W.nbmol.ps[0], PLQ, fe );  break;
         }
         fs[i]=fe.z;
         Es[i]=fe.e;
     }
 }
 
-void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, int kind, int atyp, double Q, double K, double Rdamp, double* pos0_, bool bSave){
+void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, int kind, int atyp, double Q, double K, double RQ, double* pos0_, bool bSave){
     Vec3d* poss =(Vec3d*)poss_;
     Vec3d* fs   =(Vec3d*)fs_;
     if(name){
@@ -202,20 +208,19 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
     printf( "DEBUG start sampling kind=%i \n", kind );
     Vec3d PLQ = REQ2PLQ( W.nbmol.REQs[0], K );
     //printf( "PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
-    double R2damp=Rdamp*Rdamp;
+    double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){
         Quat4f fe=Quat4fZero;
         W.nbmol.ps[0]=poss[i];
         //printf( "[%i] (%g,%g,%g)\n", i, W.nbmol.ps[0].x,W.nbmol.ps[0].y,W.nbmol.ps[0].z );
         W.ff.cleanAtomForce();
         switch(kind){
-            case  0: fe.e=   W.nbmol.evalR       (W.surf ); break; 
-            case  1: fe.e=   W.nbmol.evalMorse   (W.surf, false,   K); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-            case  5: fe.e=   W.nbmol.evalMorsePLQ(W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},-1.0,1.0 ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-
-            case 10:         W.gridFF.addForce_surf( W.nbmol.ps[0], {1.,0.,0.}, fe );  break;
-            //case 11:       W.gridFF.addForce_surf( W.nbmol.ps[0], PLQ, fe );  break;
-            case 12:         W.gridFF.addForce     ( W.nbmol.ps[0], PLQ, fe );  break;
+            case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
+            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
+            case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
+            case 10:         W.gridFF.addForce_surf(W.nbmol.ps[0], {1.,0.,0.}, fe );  break;
+            case 11:         W.gridFF.addForce_surf(W.nbmol.ps[0], PLQ, fe );  break;
+            case 12:         W.gridFF.addForce     (W.nbmol.ps[0], PLQ, fe );  break;
         }
         fs[i]=(Vec3d)(fe.f);
         Es[i]=fe.e;
