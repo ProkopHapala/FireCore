@@ -377,6 +377,20 @@ inline Vec3d interpolate3DvecWrap( Vec3d * grid, const Vec3i& n, const Vec3d& r 
 }
 
 
+// interpolation of vector force-field Vec3d[ix,iy,iz] in periodic boundary condition
+inline Vec3d interpolateIndexWarp( Vec3d * grid, const Vec3i& n, const Vec3d& r ){
+	int xoff = n.x<<3; int imx = r.x +xoff;	double tx = r.x - imx +xoff;	double mx = 1 - tx;		int itx = (imx+1)%n.x;  imx=imx%n.x;
+	int yoff = n.y<<3; int imy = r.y +yoff;	double ty = r.y - imy +yoff;	double my = 1 - ty;		int ity = (imy+1)%n.y;  imy=imy%n.y;
+	int zoff = n.z<<3; int imz = r.z +zoff;	double tz = r.z - imz +zoff;	double mz = 1 - tz;		int itz = (imz+1)%n.z;  imz=imz%n.z;
+	int nxy = n.x * n.y; int nx = n.x;
+	//printf( " %f %f %f   %i %i %i \n", r.x, r.y, r.z, imx, imy, imz );
+	double mymx = my*mx; double mytx = my*tx; double tymx = ty*mx; double tytx = ty*tx;
+	int i000= i3D( imx, imy, imz ); double f000= mz*mymx;   int i100=i3D( itx, imy, imz ); double f100=mz*mytx;
+	int i010= i3D( imx, ity, imz ); double f010= mz*tymx;   int i110=i3D( itx, ity, imz ); double f110=mz*tytx;
+	int i011= i3D( imx, ity, itz ); double f011= tz*tymx;   int i111=i3D( itx, ity, itz ); double f111=tz*tytx;
+	int i001= i3D( imx, imy, itz ); double f001= tz*mymx;   int i101=i3D( itx, imy, itz ); double f101=tz*mytx;
+}
+
 template<typename Func>
 double evalOnGrid( const GridShape& grid, Func func ){
     int nx  = grid.n.x;

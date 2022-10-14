@@ -113,7 +113,7 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 
-bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={0.5,0.5,0.0} ){
+bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
     //printf("DEBUG loadSurf() 0 \n");
     // ----- load surface geometry
     printf("loadSurf(%s)\n", name );
