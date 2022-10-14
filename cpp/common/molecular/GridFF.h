@@ -29,8 +29,8 @@ class GridFF{ public:
 
     Vec3d shift = Vec3dZero;
 
-    double alpha  = -1.6;
-    double Rdamp  = -1.6;
+    double alpha  = -1.5;
+    double Rdamp  =  1.0;
 
     int iDebugEvalR = 0;
 
@@ -81,13 +81,13 @@ class GridFF{ public:
     }
     */
 
-    inline void addForce( const Vec3d& pos, const Vec3d& PLQ, Quat4f& f ) const {
+    inline void addForce( const Vec3d& pos, const Vec3d& PLQ, Quat4f& fe ) const {
         Vec3d gpos;
         grid.cartesian2grid(pos, gpos);
         //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) \n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z );
-        f.add_mul( interpolate3DvecWrap( FFPauli,  grid.n, gpos ) , PLQ.x );
-        f.add_mul( interpolate3DvecWrap( FFLondon, grid.n, gpos ) , PLQ.y );
-        f.add_mul( interpolate3DvecWrap( FFelec,   grid.n, gpos ) , PLQ.z );
+        fe.add_mul( interpolate3DvecWrap( FFPauli,  grid.n, gpos ) , PLQ.x );
+        fe.add_mul( interpolate3DvecWrap( FFLondon, grid.n, gpos ) , PLQ.y );
+        fe.add_mul( interpolate3DvecWrap( FFelec,   grid.n, gpos ) , PLQ.z );
         //f = interpolate3DvecWrap( FFLondon,  grid.n, gpos );
         //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
     }
@@ -164,9 +164,11 @@ class GridFF{ public:
     }
 
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs, Vec3i nPBC ){
-        printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
-        double R2damp=Rdamp*Rdamp;
+        //printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
+        //printf( "GridFF nPBC(%i,%i,%i) K %g R %g R2Q %g \n", nPBC.x,nPBC.y,nPBC.z, alpha, Rdamp, Rdamp*Rdamp );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
+            double R2damp=Rdamp*Rdamp;    
+            double K=alpha;
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
@@ -175,14 +177,21 @@ class GridFF{ public:
                 Vec3d REQi = aREQs[iat];
                 for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
                     Vec3d  dp = dp0 + grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
-                    double r      = dp.norm();
-                    double ir     = 1/(r+R2damp);
-                    double expar  = exp( alpha*(r-REQi.x) );
-                    double fexp   = alpha*expar*REQi.y*ir*2;
-                    double eCoul  = COULOMB_CONST*REQi.z*ir;
-                    qp.e+=expar*expar; qp.f.add_mul( dp, fexp*expar  ); // repulsive part of Morse
-                    ql.e+=expar*2;     ql.f.add_mul( dp, fexp        ); // attractive part of Morse
-                    qe.e+=eCoul;       qe.f.add_mul( dp, eCoul*ir*ir ); // Coulomb
+                    //Vec3d  dp = dp0;
+                    double r2     = dp.norm2();
+                    double r      = sqrt(r2);
+                    // ----- Morse
+                    double e      = exp( K*(r-REQi.x) );
+                    double de     = K*e*REQi.y*-2/r;
+                    double eM     = e*REQi.y;
+                    // ---- Coulomb
+                    double ir2    = 1/(r2+R2damp);
+                    double ir     = sqrt(ir2);
+                    double eQ     = COULOMB_CONST*REQi.z*ir;
+                    // --- store
+                    qp.e+=eM*e; qp.f.add_mul( dp, de*e   ); // repulsive part of Morse
+                    ql.e+=eM*2; ql.f.add_mul( dp, de     ); // attractive part of Morse
+                    qe.e+=eQ;   qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
 
                 }}}
             }

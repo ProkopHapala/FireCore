@@ -17,9 +17,8 @@ def deriv( xs,Es ):
 
 mmff.init()
 # -------- Non-covalent Surace (GridFF)
-Q =-1.0; K=-1.6; kind=1; Rdamp=2.0; pos0=(0.0,0.0,0.0)
+Q =-0.01; K=-1.6; kind=1; Rdamp=2.0; pos0=(0.0,0.0,0.0)
 atyp=2
-sc=1.2
 
 
 '''
@@ -49,16 +48,19 @@ exit()
 
 # ------------------ 1D
 #rs = np.linspace(-5.0,5.0,150)
-rs = np.linspace(0.0,10.0,100)
-#rs = np.linspace(1.0,5.0,40)
+#rs = np.linspace(0.0,20.0,100)
+rs = np.linspace(2.2,10.0,78)
 #EsM,fsM  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q*0), K=K, Rdamp=Rdamp)  
 #EsC,fsC  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e*0,Q  ), K=K, Rdamp=Rdamp)   
 #Es ,fs   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=kind, atyp=0, Q=Q, K=K, Rdamp=Rdamp)  
 #Eg,fg   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=12, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
 #Ea,fa   = mmff.sampleSurf( None,                   rs, kind=1 , atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
 
-Ea,fa   = mmff.sampleSurf( "data/H_atom",  rs, kind=1, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
-Eg,fg   = mmff.sampleSurf( "data/H_atom",  rs, kind=5, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
+Eg,fg   = mmff.sampleSurf( "data/H_atom",  rs, kind=11, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
+#Eg,fg   = mmff.sampleSurf( "data/H_atom",  rs, kind=5, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
+#Ea,fa   = mmff.sampleSurf( None,           rs, kind=1, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
+Ea,fa   = mmff.sampleSurf( None,  rs, kind=5, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
+#Eg*=1.25
 
 #print("Es \n", Es);
 fg_,xfs = deriv( rs,Eg )
@@ -71,7 +73,7 @@ plt.figure(figsize=(5,10))
 plt.subplot(2,1,1); 
 plt.plot(rs,Eg,label='Grid');  plt.plot(rs,Ea,"--",label='Atoms'); plt.grid(); plt.legend(); plt.axhline(0,c='k',ls='--');                 #plt.ylim(Emin*sc,Emax*sc)  
 plt.subplot(2,1,2); 
-plt.plot(rs,-fg,'-r', label='Fg'); plt.plot(xfs,fg_, 'r--',label='Fg_num')    
+plt.plot(rs,-fg,'-r', label='Fg'); #plt.plot(xfs,fg_, 'r--',label='Fg_num')    
 plt.plot(rs,-fa,'-b', label='Fa'); plt.plot(xfs,fa_, 'b:',label='Fa_num')   
 plt.grid(); plt.axhline(0,c='k',ls='--'); plt.legend(); #plt.ylim(Emin*sc,Emax*sc)  
 plt.show()

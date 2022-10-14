@@ -154,6 +154,8 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
         W.ff.atype[0] = atyp;
         bool bGrid=(kind>10);
         if( kind==10 ) W.gridFF.iDebugEvalR=1;
+        W.gridFF.alpha = K;
+        W.gridFF.Rdamp = RQ;
         W.loadSurf( name, bGrid, bSave );
         W.nbmol.REQs[0].z = Q;
         if(bSave){
@@ -195,6 +197,8 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
         W.ff.atype[0] = atyp;
         bool bGrid=(kind>=10);
         if( kind==10 ) W.gridFF.iDebugEvalR=1;
+        W.gridFF.alpha = K;
+        W.gridFF.Rdamp = RQ;
         W.loadSurf( name, bGrid, bSave );
         W.nbmol.REQs[0].z = Q;
         if(bSave){

@@ -171,9 +171,10 @@ class NBsystem{ public:
     }
 
 
-    double evalMorsePLQ( NBsystem& B, Vec3d plq, Mat3d& cell, Vec3i nPBC, double K=-1.0, double R2damp=1.0 ){
+    double evalMorsePLQ( NBsystem& B, Vec3d plq, Mat3d& cell, Vec3i nPBC, double K=-1.0, double R2Q=1.0 ){
         // Compy from GridFF:: evalGridFFs()
         double E=0;
+        //printf( "NBFF nPBC(%i,%i,%i) K %g RQ %g R2Q %g plq.z %g \n", nPBC.x,nPBC.y,nPBC.z, K, sqrt(R2Q), R2Q, plq.z );
         for(int i=0; i<n; i++){
             Vec3d fi = Vec3dZero;
             Vec3d pi = ps[i];
@@ -184,9 +185,9 @@ class NBsystem{ public:
             for(int j=0; j<n; j++){
                 Vec3d dp0; dp0.set_sub( pi, B.ps[j] );
                 Vec3d REQj = B.REQs[j];
-                //for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
-                //    Vec3d  dp = dp0 + cell.a*ia + cell.b*ib + cell.c*ic;
-                    Vec3d  dp     = dp0;
+                for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
+                    Vec3d  dp = dp0 + cell.a*ia + cell.b*ib + cell.c*ic;
+                    //Vec3d  dp     = dp0;
                     double r2     = dp.norm2();
                     double r      = sqrt(r2);
                     // ----- Morse
@@ -194,14 +195,15 @@ class NBsystem{ public:
                     double de     = K*e*REQj.y*-2/r;
                     double eM     = e*REQj.y;
                     // ---- Coulomb
-                    double ir2    = 1/(r2+R2damp);
+                    double ir2    = 1/(r2+R2Q);
                     double ir     = sqrt(ir2);
                     double eQ     = COULOMB_CONST*REQj.z*ir;
+                    // --- store
                     qp.e+=eM*e; qp.f.add_mul( dp, de*e   ); // repulsive part of Morse
                     ql.e+=eM*2; ql.f.add_mul( dp, de     ); // attractive part of Morse
                     qe.e+=eQ;   qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
                     //printf(  "evalMorsePLQ() k %g r %g e %g E0 %g E %g \n", K, r, e, REQj.y*plq.x/exp( K*(1.487)), qp.e*plq.x );
-                //}}}
+                }}}
             }
             Quat4d fe = qp*plq.x + ql*plq.y + qe*plq.z;
             fs[i].add(fe.f);
