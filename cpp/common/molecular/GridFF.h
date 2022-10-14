@@ -152,7 +152,7 @@ class GridFF{ public:
                 double ir     = 1/(r+R2damp);
                 double expar  = exp( alpha*(r-REQi.x) );
                 double fexp   = alpha*expar*REQi.y*ir*2;
-                double eCoul  = -14.3996448915*REQi.z*ir;
+                double eCoul  = COULOMB_CONST*REQi.z*ir;
                 qp.e+=expar*expar; qp.f.add_mul( dp, fexp*expar  ); // repulsive part of Morse
                 ql.e+=expar*2;     ql.f.add_mul( dp, fexp        ); // attractive part of Morse
                 qe.e+=eCoul;       qe.f.add_mul( dp, eCoul*ir*ir ); // Coulomb
@@ -179,7 +179,7 @@ class GridFF{ public:
                     double ir     = 1/(r+R2damp);
                     double expar  = exp( alpha*(r-REQi.x) );
                     double fexp   = alpha*expar*REQi.y*ir*2;
-                    double eCoul  = -14.3996448915*REQi.z*ir;
+                    double eCoul  = COULOMB_CONST*REQi.z*ir;
                     qp.e+=expar*expar; qp.f.add_mul( dp, fexp*expar  ); // repulsive part of Morse
                     ql.e+=expar*2;     ql.f.add_mul( dp, fexp        ); // attractive part of Morse
                     qe.e+=eCoul;       qe.f.add_mul( dp, eCoul*ir*ir ); // Coulomb

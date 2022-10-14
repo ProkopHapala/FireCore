@@ -196,7 +196,7 @@ class NBsystem{ public:
                     // ---- Coulomb
                     double ir2    = 1/(r2+R2damp);
                     double ir     = sqrt(ir2);
-                    double eQ     = -14.3996448915*REQj.z*ir;
+                    double eQ     = COULOMB_CONST*REQj.z*ir;
                     qp.e+=eM*e; qp.f.add_mul( dp, de*e   ); // repulsive part of Morse
                     ql.e+=eM*2; ql.f.add_mul( dp, de     ); // attractive part of Morse
                     qe.e+=eQ;   qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
