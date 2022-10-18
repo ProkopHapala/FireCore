@@ -1248,7 +1248,9 @@ class Builder{  public:
     void export_REQs(Vec3d* REQs, int i0=0, int n=-1)const{
         natom_def(n,i0);
         //_allocIfNull(REQs,n);
-        for(int i=0; i<n; i++){ REQs[i]= atoms[i0+i].REQ; }
+        for(int i=0; i<n; i++){ 
+            //printf( "export_REQs[%i] REQ(%g,%g,%g)\n", i, atoms[i0+i].REQ.x,atoms[i0+i].REQ.y,atoms[i0+i].REQ.z  );
+            REQs[i]= atoms[i0+i].REQ; }
     }
 
     void export_apos(Vec3d* apos, int i0=0, int n=-1)const{

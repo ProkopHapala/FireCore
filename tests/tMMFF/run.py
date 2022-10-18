@@ -52,15 +52,16 @@ exit()
 rs = np.linspace(2.2,10.0,78)
 #EsM,fsM  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q*0), K=K, Rdamp=Rdamp)  
 #EsC,fsC  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e*0,Q  ), K=K, Rdamp=Rdamp)   
-#Es ,fs   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=kind, atyp=0, Q=Q, K=K, Rdamp=Rdamp)  
-#Eg,fg   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=12, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
-#Ea,fa   = mmff.sampleSurf( None,                   rs, kind=1 , atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
+Eg,fg   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=12, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
+Ea,fa   = mmff.sampleSurf( None,                   rs, kind=1 , atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
 
+'''
 Eg,fg   = mmff.sampleSurf( "data/H_atom",  rs, kind=11, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
 #Eg,fg   = mmff.sampleSurf( "data/H_atom",  rs, kind=5, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
 #Ea,fa   = mmff.sampleSurf( None,           rs, kind=1, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
 Ea,fa   = mmff.sampleSurf( None,  rs, kind=5, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
 #Eg*=1.25
+'''
 
 #print("Es \n", Es);
 fg_,xfs = deriv( rs,Eg )

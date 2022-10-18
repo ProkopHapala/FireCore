@@ -108,6 +108,15 @@ class NBsystem{ public:
     Vec3d *REQs=0;
     Vec3d *ps=0;
     Vec3d *fs=0;
+    Vec3d *PLQs=0;  // used only in combination with GridFF
+
+    void makePLQs(double K){
+        _realloc(PLQs,n);
+        for(int i=0; i<n; i++){
+            PLQs[i]=REQ2PLQ( REQs[i], K );
+            //printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
+        }
+    }
 
     double evalLJQs(){
         const int N=n;

@@ -84,7 +84,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
 
-    char str[256];
+    char str[2048];
 
     // --------- Functions 
 
@@ -94,7 +94,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	virtual void eventHandling   ( const SDL_Event& event  );
 	virtual void keyStateHandling( const Uint8 *keys );
 
-	MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_, const char* ssmile );
+	MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ );
+    void init();
 
 	//int  loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
@@ -172,23 +173,24 @@ void MolGUI::initGUI(){
         );
 }
 
-MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_, const char* ssmile ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
-
+MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
+    if(W_==0) W = new MolWorld_sp3();
+    W->tmpstr=str;
+    W->params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+	W->builder.bindParams(&W->params);
+    //params.printAtomTypeDict();
+    //params.printAtomTypes();
+    //params.printBond();
 
-    if(W_==0){
-        W = new MolWorld_sp3();
-        W->tmpstr=str;
-        if(ssmile){
-            printf("MolGUI() init_smile(%s)\n", ssmile);
-            W->initWithSMILES(ssmile, true);
-        }else{
-            W->ini_in_dir();
-        }
-        W->eval();
-        W->ff.checkNaNs();
-    }
+}
+
+void MolGUI::init(){
+
+    W->init( true );
+
+    printf( "MolGUI::init() 1 \n" );
 
     // ---- Graphics setup
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
@@ -198,6 +200,8 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_, const char* 
 	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
 	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
+    printf( "MolGUI::init() 2 \n" );
+
     // ---- Gizmo
     cam.persp = false;
     gizmo.cam = &cam;
@@ -206,8 +210,12 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_, const char* 
     gizmo.pointSize = 0.5;
     //gizmo.iDebug    = 2;
 
+    printf( "MolGUI::init() 3 \n" );
+
     ruler.setStep( 1.5 * sqrt(3) );
     initGUI();
+
+    printf( "MolGUI::init() 4 \n" );
 }
 
 
@@ -216,6 +224,7 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_, const char* 
 //=================================================
 
 void MolGUI::draw(){
+    //printf( "MolGUI::draw() 1 \n" );
     //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
     glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
@@ -225,12 +234,13 @@ void MolGUI::draw(){
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
 
+    //printf( "MolGUI::draw() 1 \n" );
     if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
-
+    //printf( "MolGUI::draw() 2 \n" );
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
     if(bRunRelax){ W->MDloop(perFrame); }
     //if(bRunRelax){ W->relax( perFrame ); }
-
+    //printf( "MolGUI::draw() 3 \n" );
     // --- Mouse Interaction / Visualization
 	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
@@ -238,7 +248,7 @@ void MolGUI::draw(){
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
-
+    //printf( "MolGUI::draw() 4 \n" );
     if(ogl_MO){ 
         glPushMatrix();
         Vec3d c = W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
@@ -247,21 +257,24 @@ void MolGUI::draw(){
             glCallList(ogl_MO); 
         glPopMatrix();
     }
-
+    //printf( "MolGUI::draw() 5 \n" );
     if(W->bSurfAtoms)Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
     //if(bDoQM)drawSystemQMMM();
-    if(bDoMM)if(W->builder.bPBC){ 
-        Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); 
-        Draw3D::drawNeighs( W->ff, 1.0 );    
+    //printf( "MolGUI::draw() 6  bPBC %i \n", W->builder.bPBC );
+    if(bDoMM){
+        if(W->builder.bPBC){  Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } 
+        else               { drawSystem({0,0,0}); }
+        //Draw3D::drawNeighs( W->ff, 1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
+    //printf( "MolGUI::draw() 7 \n" );
     for(int i=0; i<W->selection.size(); i++){ int ia = W->selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->ff.apos[ia] );     }
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
-
+    //printf( "MolGUI::draw() 8 \n" );
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
 };
@@ -342,14 +355,13 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 }
 
 void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
-    //printf( "MolGUI::renderGridFF() \n" );
     //int iatom = 11;
     testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );
     Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
     //if(idebug>1) 
-        saveXSF( "FFtot_z.xsf",  W->gridFF.grid, FFtot, 2, W->gridFF.natoms, W->gridFF.apos, W->gridFF.atypes );
+        W->gridFF.grid.saveXSF( "FFtot_z.xsf",  (float*)FFtot, 4, 2, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
     ogl_isosurf = glGenLists(1);
     glNewList(ogl_isosurf, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
@@ -373,7 +385,7 @@ void MolGUI::drawSystem( Vec3d ixyz ){
     else               { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds   ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );                                          }
     Draw3D::atoms( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );      
     if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->ff.natoms, W->ff.apos, fontTex3D                     ); }                    
-    if(bViewMolCharges ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.007 ); }    
+    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.007 ); }    
 }
 
 void MolGUI::saveScreenshot( int i, const char* fname ){

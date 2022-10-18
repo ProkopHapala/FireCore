@@ -153,10 +153,10 @@ inline void addAtomicForceExp( const Vec3d& dp, Vec3d& f, double r0, double eps,
     //f.add_mul( dp, 1/(dp.norm2()+R2SAFE) ); // WARRNING DEBUG !!!!
 }
 
-inline Vec3d REQ2PLQ( const Vec3d& REQ, double alpha ){
+inline Vec3d REQ2PLQ( const Vec3d& REQ, double K ){
     //double eps   = sqrt(REQ.y);  // this is expected to be already done
     double eps   = REQ.y;
-    double expar = exp(-alpha*REQ.x);
+    double expar = exp(-K*REQ.x);
     double CP    =  eps*expar*expar;
     double CL    = -eps*expar;
     //double CL    = -2*eps*expar;
