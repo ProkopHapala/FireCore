@@ -68,14 +68,15 @@ void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
 
 
 void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Vec3d PRQ ){
-    Vec3d vel = (Vec3d){0.0,0.0,0.0};
+    Vec3d vel = Vec3dZero;
     glBegin(GL_LINE_STRIP);
     for(int i=0; i<n; i++){
-        Vec3d f = (Vec3d){0.0,0.0,0.0};
-        gff.addForce( pos, PRQ, f);
+        //Vec3d f = Vec3dZero;
+        Quat4f fe = Quat4fZero;
+        gff.addForce( pos, PRQ, fe );
         vel.mul(damp);
-        vel.add_mul( f  , dt);
-        pos.add_mul( vel, dt );
+        vel.add_mul( (Vec3d)fe.f, dt);
+        pos.add_mul( vel        , dt );
         glVertex3f(pos.x,pos.y,pos.z);
         //printf( " %i (%g,%g,%g) (%g,%g,%g) \n", i, pos.x,pos.y,pos.z,  f.x,f.y,f.z );
     }
@@ -86,10 +87,11 @@ void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Vec3
 void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Vec3d PRQ, double fsc ){
     Vec3d pos = pos0;
 	for( int i=0; i<n; i++ ){
-        Vec3d f = (Vec3d){0.0,0.0,0.0};
-        gff.addForce( pos, PRQ, f);
+        //Vec3d f = (Vec3d){0.0,0.0,0.0};
+        Quat4f fe = Quat4fZero;
+        gff.addForce( pos, PRQ, fe);
         //printf( " %i (%g,%g,%g) (%g,%g,%g) \n", i, pos.x,pos.y,pos.z,  f.x,f.y,f.z );
-        Draw3D::drawVecInPos( f*fsc, pos );
+        Draw3D::drawVecInPos( (Vec3d)fe.f *fsc, pos );
         Draw3D::drawPointCross( pos, 0.1 );
         pos.add(dpos);
 	}
@@ -117,6 +119,8 @@ void renderSubstrate( int n, Vec3d * points, GLenum mode ){
 }
 */
 
+/*
+// =========== OLD ?
 void renderSubstrate_( const GridShape& grid, Vec3d * FF, double isoval, bool sign ){
     //printf( "iso_points.size() %i \n", iso_points.size() );
     int nxy = grid.n.x * grid.n.y;
@@ -148,8 +152,9 @@ void renderSubstrate_( const GridShape& grid, Vec3d * FF, double isoval, bool si
     delete [] normals;
     //exit(0);
 }
+*/
 
-void renderSubstrate_( const GridShape& grid, Vec3d * FF, Vec3d * FFel, double isoval, bool sign, float sclr=1.0 ){
+void renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double isoval, bool sign, float sclr=1.0 ){
     //printf( "iso_points.size() %i \n", iso_points.size() );
     Vec3d * pos     = new Vec3d[grid.n.x * grid.n.y];
     Vec3d * normals = new Vec3d[grid.n.x * grid.n.y];
@@ -164,7 +169,7 @@ void renderSubstrate_( const GridShape& grid, Vec3d * FF, Vec3d * FFel, double i
             //printf( "iba (%i,%i) pos (%g,%g,%g)\n", ib,ia, pos[ip1].x,pos[ip1].y,pos[ip1].z );
             //glColor3f(pos[ip1].z*5-2,1.0f,1.0f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f(pos[ip2].z*5-2,1.0f,1.0f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-            Vec3d gpos,fel1,fel2;
+            Vec3d gpos; Quat4f fel1,fel2;
             grid.cartesian2grid( pos[ip1], gpos); fel1 = interpolate3DvecWrap( FFel, grid.n, gpos );
             grid.cartesian2grid( pos[ip2], gpos); fel2 = interpolate3DvecWrap( FFel, grid.n, gpos );
             //glColor3f(0.7f,0.7f,0.7f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);

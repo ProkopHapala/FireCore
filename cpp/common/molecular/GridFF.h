@@ -98,6 +98,17 @@ class GridFF{ public:
         return addForce( pos, PLQ, f );
     }
 
+    inline double eval( int n, const Vec3d* ps, const Vec3d* PLQs, Vec3d* fs, bool bSurf=false ) const {
+        double E=0;
+        //printf("GridFF::eval() n %i ps %li PLQs %li \n", n,  (long)ps,  (long)PLQs );
+        if(bSurf){ for(int i=0; i<n; i++){ Quat4f fe; addForce_surf( ps[i], PLQs[i], fe );  fs[i]=(Vec3d)fe.f; E+=fe.e; } }
+        else     { for(int i=0; i<n; i++){ Quat4f fe; 
+            //printf("GridFF::eval[%i] p(%g,%g,%g) plq(%g,%g,%g)\n", i,  ps[i].x,ps[i].y,ps[i].z,   PLQs[i].x,PLQs[i].y,PLQs[i].z );
+            addForce     ( ps[i], PLQs[i], fe );  fs[i]=(Vec3d)fe.f; E+=fe.e; } 
+        }
+        return E;
+    }
+
     void init( Vec3i n, Mat3d cell, Vec3d pos0 ){
         grid.n     = n;
         grid.setCell(cell);

@@ -31,6 +31,12 @@
 #include "DynamicOpt.h"
 
 class MolWorld_sp3{ public:
+    const char* data_dir     = "common_resources";
+    const char* xyz_name     = "input";
+    const char* surf_name    = "surf";
+    //const char* lvs_name     ="input.lvs";
+    //const char* surflvs_name ="surf.lvs";
+    const char* smile_name   = 0;
 
 	// Building
 	MMFFparams   params;
@@ -113,28 +119,15 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 
-bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
-    //printf("DEBUG loadSurf() 0 \n");
-    // ----- load surface geometry
-    printf("loadSurf(%s)\n", name );
-    sprintf(tmpstr, "%s.xyz", name );
-	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs, &surf.atypes );
-	if(ret<0)return false; 
-	nbmol.bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
-	params.assignREs   ( ff.natoms, ff.atype, nbmol.REQs, true, true  );
-    //surf .print();
-    //autoCharges(); 
-    //nbmol.print();
-	bSurfAtoms=true;
-    //printf("DEBUG loadSurf() 1 \n");
-    // ----- load surface lattice vector
+
+void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
     sprintf(tmpstr, "%s.lvs", name );
     if( file_exist(tmpstr) ){ 
         gridFF.grid.loadCell( tmpstr, 0.2 );
         if(bGrid){
             gridFF.grid.center_cell( cel0 );
             bGridFF=true;
-            gridFF.bindSystem(surf.n, 0, surf.ps, surf.REQs );
+            gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
             if(isnan(z0)){ z0=gridFF.findTop(); };
             gridFF.grid.pos0.z=z0;
             gridFF.grid.printCell();
@@ -142,24 +135,52 @@ bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, doub
             gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
             //printf("DEBUG loadSurf() 2 \n");
             //makeGridFF(bSaveDebugXSFs);
-            bGridFF=true; 
+            bGridFF   =true; 
+            bSurfAtoms=false;
         }
     }else{ 
         bGridFF=false; 
         printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
     }
+}
+
+void initNBmol(){
+	nbmol .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
+	builder.export_REQs( nbmol.REQs );
+    params.assignREs    ( ff.natoms, ff.atype, nbmol.REQs, true, false  );
+    nbmol .makePLQs(gridFF.alpha);
+}
+
+bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
+    printf("loadSurf(%s)\n", name );
+    sprintf(tmpstr, "%s.xyz", name );
+	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs, &surf.atypes );
+    printf("loadSurf() 1 natoms %i apos %li atyps %li \n", surf.n, (long)surf.ps, (long)surf.atypes  );
+    //surf.print();
+	if(ret<0)return false; 
+	bSurfAtoms=true;
+    initGridFF( name,bGrid,bSaveDebugXSFs,z0,cel0 );
 	return true;
 }
 
-void loadGeom(){ // TODO : overlaps with buildFF()
-    // ---- Load & Build Molecular Structure
-    readMatrix( "cel.lvs", 3, 3, (double*)&builder.lvec );
-    builder.insertFlexibleMolecule(  builder.loadMolType( "mm.xyz", "polymer1" ), {0,0,0}, Mat3dIdentity, -1 );
-    //builder.lvec.a.x *= 2.3;
+void loadGeom( const char* name ){ // TODO : overlaps with buildFF()
+    printf("loadGeom(%s)\n",  name );
+    // ------ Load geometry
+    sprintf(tmpstr, "%s.xyz", name );
+    builder.insertFlexibleMolecule(  builder.loadMolType( tmpstr, name ), {0,0,0}, Mat3dIdentity, -1 );
     builder.printAtomConfs();
     //builder.export_atypes(atypes);
     builder.verbosity = true;
-    builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
+    // ------- Load lattice vectros
+    sprintf(tmpstr, "%s.lvs", name );
+    if( file_exist(tmpstr) ){
+        readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
+        bPBC=true;
+        builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
+    }else{
+        bPBC=false;
+        builder.autoBonds();             builder.printBonds ();  // exit(0);
+    }
     //builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
     builder.toMMFFsp3( ff, &params );
     //builder.saveMol( "builder_output.mol" );
@@ -232,7 +253,7 @@ void ini_in_dir(){
     builder.bindParams(&params);
     int nheavy = 0;  // ---- Load Atomic Type Parameters
     if( file_exist("cel.lvs") ){ 
-        loadGeom(); 
+        loadGeom( "mm" ); 
         if(bGridFF)makeGridFF();
         // ----- Optimizer setup
         //opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.fapos, 0 );
@@ -242,6 +263,41 @@ void ini_in_dir(){
 		printf("WARNING: cel.lvs not found => molecular system not initialized in [MolWorld_sp3::ini_in_dir()] \n" );
 	}
 }
+
+void init( bool bGrid ){
+    printf("\n#### MolWorld::init()\n");
+    if(smile_name   )printf("smile_name  (%s)\n", smile_name );
+    if(data_dir     )printf("data_dir    (%s)\n", data_dir );
+    if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
+    if(surf_name    )printf("surf_name   (%s)\n", surf_name );
+    //if(lvs_name     )printf("lvs_name    (%s)\n", lvs_name );
+    //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
+    printf("\n");
+
+    bool bGeom=false;
+    //printf( "DEBUG MolWorld::init() 1 \n");
+    if ( smile_name ){
+        insertSMILES( smile_name );
+        //if(bCap)
+        builder.addAllCapTopo();
+        builder.randomizeAtomPos(1.0);
+        bGeom=true;
+    }  else if ( xyz_name   ){
+        loadGeom( xyz_name );
+        bGeom=true;
+    }
+    //printf( "DEBUG MolWorld::init() 2 \n");
+    if(bGeom){
+        initNBmol();
+        if(bOptimizer){ setOptimizer(); }
+        _realloc( manipulation_sel, ff.natoms );
+    }
+    //printf( "DEBUG MolWorld::init() 3 \n");
+    if(surf_name )loadSurf( surf_name, bGrid, true );
+    printf( "DEBUG MolWorld::init() DONE \n");
+}
+
+
 
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
     cog   = average( ff.natoms, ff.apos  );
@@ -292,15 +348,21 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doPiPiT  =false;
     //ff.doPiSigma=false;
     //ff.doAngles =false;
+    //if(bGridFF && (nbmol.PLQs==0) ){ nbmol.makePLQs(gridFF.alpha); printf("nbmol.makePLQs(K=%g);\n", gridFF.alpha ); }
+
     ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         double E=0;
 		E += ff.eval();
+
+		//if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
+        //if(bSurfAtoms) 
+        //    E+= nbmol .evalMorse(surf, false, gridFF.alpha );
+        if(bGridFF   ){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); };
+		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
         
-		if(bNonBonded){ E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} ); }
-		if(bSurfAtoms){ E+=nbmol.evalMorse(surf, false, Kmorse); };
-		if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
-        
+       //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
+
         if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
         // if(ipicked>=0){
         //     float K = -2.0;
@@ -312,6 +374,7 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
         //opt.move_LeapFrog(0.01);
         //opt.move_MDquench();
         opt.move_FIRE();
+
         double f2=1;
         if(f2<sq(Ftol)){
             bConverged=true;

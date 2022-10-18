@@ -28,6 +28,9 @@
 
 int nearPow2(int i){ return ceil( log(i)/log(2) ); }
 
+// ================================
+// ======== class GridShape
+// ================================
 
 // Force-Field namespace
 class GridShape { public:
@@ -158,6 +161,7 @@ class GridShape { public:
     }
 
     void primcoordToXSF( FILE* fout,  int natoms, int* atyps, Vec3d* apos )const{
+        //printf("primcoordToXSF() 1 natoms %i apos %li atyps %li \n", natoms, (long)apos, (long)atyps );
         fprintf( fout, "CRYSTAL\n" );
         fprintf( fout, "PRIMVEC\n" );
         fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.a.x, cell.a.y, cell.a.z );
@@ -165,11 +169,8 @@ class GridShape { public:
         fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.c.x, cell.c.y, cell.c.z );
         fprintf( fout, "PRIMCOORD\n" );
         fprintf( fout, "    %i     1 \n", natoms );
-        //fprintf( fout, "ATOMS\n" );
         for(int i=0; i<natoms; i++){
-            //Vec3d p = apos[i] + pos0;
             Vec3d p = apos[i] - pos0;
-            //Vec3d p = apos[i];
             fprintf( fout, "%3i %9.6f %9.6f %9.6f \n", atyps[i], p.x,p.y,p.z );
         }
         fprintf( fout, "\n" );
@@ -209,11 +210,14 @@ class GridShape { public:
         FILE *fout;
         fout = fopen(fname,"w");
         if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
+        printf( "saveXSF 0 \n" );
         if(natoms>0){
             if (bPrimCoord){ primcoordToXSF( fout,  natoms, atypes, apos );  }
             else           { atomsToXSF    ( fout,  natoms, atypes, apos );  }
         } 
+        printf( "saveXSF 1 \n" );
         toXSF( fout, FF, pitch, offset );
+        printf( "saveXSF 2 \n" );
         fclose(fout);
     }
 
@@ -402,6 +406,11 @@ void interateGrid3D( const GridShape& grid, FUNC func ){
 }
 
 
+// ================================
+// ======== Free Functions
+// ================================
+
+
 char* DEBUG_saveFile1="temp/f1.xsf";
 char* DEBUG_saveFile2="temp/f2.xsf";
 char* DEBUG_saveFile12="temp/prod_f1_f2.xsf";
@@ -494,7 +503,7 @@ void getIsovalPoints_a( const GridShape& grid, double isoval, Vec3d  *FF, std::v
     }
 }
 
-void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Vec3d  *FF, Vec3d *pos, Vec3d * normal ){
+void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, Vec3d *pos, Vec3d * normal ){
     int nx  = grid.n.x; 	int ny  = grid.n.y; 	int nz  = grid.n.z; int nxy = ny * nx;
     int ii = 0;
     //printf("%i %i %i \n", nx,ny,nxy );
@@ -522,7 +531,7 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Vec3d  *FF, V
             pos   [ibxy] = grid.dCell.a*ia + grid.dCell.b*ib + grid.dCell.c*(ic+fc);
             //DEBUG
             //normal[ibxy] = FF[ibuff-1];
-            normal[ibxy] = FF[ibuff];
+            normal[ibxy] = (Vec3d)FF[ibuff].f;
             //DEBUG
             normal[ibxy].normalize();
             //normal[ibxy] = interpolate3DvecWrap( FF, grid.n, {ia,ib, ic+fc } );
@@ -530,51 +539,6 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Vec3d  *FF, V
         }
     }
 }
-
-/*
-
-void writePrimCoord( FILE* fout, Mat3d& cell, int natoms, Vec3d * apos, int * iZs ){
-    fprintf( fout, "CRYSTAL\n" );
-    fprintf( fout, "PRIMVEC\n" );
-    fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.a.x, cell.a.y, cell.a.z );
-    fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.b.x, cell.b.y, cell.b.z );
-    fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.c.x, cell.c.y, cell.c.z );
-    fprintf( fout, "CONVVEC\n" );
-    fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.a.x, cell.a.y, cell.a.z );
-    fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.b.x, cell.b.y, cell.b.z );
-    fprintf( fout, "%5.10f %5.10f %5.10f \n", cell.c.x, cell.c.y, cell.c.z );
-    fprintf( fout, "PRIMCOORD\n" );
-    fprintf( fout, "%i %i\n", natoms, 1 );
-    if(iZs){
-        for(int i=0; i<natoms; i++){
-            fprintf( fout, "%i %3.8f %3.8f %3.8f\n", iZs[i], apos[i].x, apos[i].y, apos[i].z );
-        }
-    }else{
-        for(int i=0; i<natoms; i++){
-            fprintf( fout, "%i %3.8f %3.8f %3.8f\n", 1, apos[i].x, apos[i].y, apos[i].z );
-        }
-    }
-}
-
-
-void saveXSF( char * fname, GridShape& grid, Vec3d * FF, int icomp, int natoms, Vec3d * apos, int * iZs ){
-    printf( "saving %s\n", fname );
-    FILE *fout;
-    fout = fopen(fname,"w");
-    writePrimCoord( fout, grid.cell, natoms, apos, iZs );
-    grid.toXSF    ( fout, (double*)FF, icomp );
-    fclose(fout);
-}
-
-void saveXSF( char * fname, GridShape& grid, double * FF, int natoms, Vec3d * apos, int * iZs ){
-    printf( "saving %s\n", fname );
-    FILE *fout;
-    fout = fopen(fname,"w");
-    writePrimCoord( fout, grid.cell, natoms, apos, iZs );
-    grid.toXSF    ( fout, FF, -1 );
-    fclose(fout);
-}
-*/
 
 #endif
 
