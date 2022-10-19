@@ -114,7 +114,7 @@ class NBsystem{ public:
         _realloc(PLQs,n);
         for(int i=0; i<n; i++){
             PLQs[i]=REQ2PLQ( REQs[i], K );
-            //printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
+            printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
         }
     }
 
@@ -167,6 +167,7 @@ class NBsystem{ public:
             for(int j=0; j<B.n; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
+
                 E += addAtomicForceMorseQ( B.ps[j]-Api, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
                 if(bRecoil) B.fs[j].sub(fij);
                 fi.add(fij);

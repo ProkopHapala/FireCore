@@ -85,9 +85,17 @@ class GridFF{ public:
         Vec3d gpos;
         grid.cartesian2grid(pos, gpos);
         //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) \n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z );
+
+        //Quat4f fp=interpolate3DvecWrap( FFPauli,   grid.n, gpos );   fe.add_mul( fp, PLQ.x );
+        //Quat4f fl=interpolate3DvecWrap( FFLondon,  grid.n, gpos );   fe.add_mul( fl, PLQ.y );
+        //Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, PLQ.z );
+        //printf( "fp(%g,%g,%g|%g)*(%g) + fl((%g,%g,%g|%g)*(%g) + fq(%g,%g,%g|%g)*(%g) \n", fp.x,fp.y,fp.z,fp.e, PLQ.x,  fl.x,fl.y,fl.z,fl.e, PLQ.y,  fq.x,fq.y,fq.z,fq.e, PLQ.z );
+        //printf( "E(%g,%g,%g) PLQ(%g,%g,%g)\n", fp.e,fl.e,fq.e, PLQ.x,PLQ.y,PLQ.z );
+
         fe.add_mul( interpolate3DvecWrap( FFPauli,  grid.n, gpos ) , PLQ.x );
         fe.add_mul( interpolate3DvecWrap( FFLondon, grid.n, gpos ) , PLQ.y );
         fe.add_mul( interpolate3DvecWrap( FFelec,   grid.n, gpos ) , PLQ.z );
+
         //f = interpolate3DvecWrap( FFLondon,  grid.n, gpos );
         //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
     }
@@ -101,11 +109,8 @@ class GridFF{ public:
     inline double eval( int n, const Vec3d* ps, const Vec3d* PLQs, Vec3d* fs, bool bSurf=false ) const {
         double E=0;
         //printf("GridFF::eval() n %i ps %li PLQs %li \n", n,  (long)ps,  (long)PLQs );
-        if(bSurf){ for(int i=0; i<n; i++){ Quat4f fe; addForce_surf( ps[i], PLQs[i], fe );  fs[i]=(Vec3d)fe.f; E+=fe.e; } }
-        else     { for(int i=0; i<n; i++){ Quat4f fe; 
-            //printf("GridFF::eval[%i] p(%g,%g,%g) plq(%g,%g,%g)\n", i,  ps[i].x,ps[i].y,ps[i].z,   PLQs[i].x,PLQs[i].y,PLQs[i].z );
-            addForce     ( ps[i], PLQs[i], fe );  fs[i]=(Vec3d)fe.f; E+=fe.e; } 
-        }
+        if(bSurf){ for(int i=0; i<n; i++){ Quat4f fe=Quat4fZero; addForce_surf( ps[i], PLQs[i], fe );  fs[i]=(Vec3d)fe.f; E+=fe.e; } }
+        else     { for(int i=0; i<n; i++){ Quat4f fe=Quat4fZero; addForce     ( ps[i], PLQs[i], fe );  fs[i]=(Vec3d)fe.f; E+=fe.e; } }
         return E;
     }
 

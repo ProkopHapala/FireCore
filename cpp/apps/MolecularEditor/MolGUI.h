@@ -62,6 +62,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //bool bPrepared_mm = false;
     //bool bPrepared_qm = false;
 
+    double z0_scan = 0.0;
+
     MolWorld_sp3* W=0;
 
     GUI gui;
@@ -111,6 +113,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
 
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
+    void scanFF( int n, Vec3d p0, Vec3d p1, double sc );
 
     //void InitQMMM();
     void initGUI();
@@ -238,6 +241,8 @@ void MolGUI::draw(){
     if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
     //printf( "MolGUI::draw() 2 \n" );
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
+
+    MolGUI::scanFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
     if(bRunRelax){ W->MDloop(perFrame); }
     //if(bRunRelax){ W->relax( perFrame ); }
     //printf( "MolGUI::draw() 3 \n" );
@@ -306,7 +311,12 @@ void MolGUI::drawHUD(){
         double f=sqrt(W->opt.ff);
         s += sprintf(s,"dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+        glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
+        sprintf(str,"bGridFF %i \n", W->bGridFF );
+        Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
     }
+
+
 }
 
 void MolGUI::drawingHex(double z0){
@@ -404,6 +414,29 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
     delete[] screenPixels;
 }
 
+
+
+void MolGUI::scanFF( int n, Vec3d p0, Vec3d p1, double sc ){
+    printf("========= MolGUI::scanFF\n");
+    sc=100.0;
+    //p0=(Vec3d){0.0,0.0,z0_scan}; p1=(Vec3d){0.0,5.0,z0_scan}; // Horizontal scan
+    p0=(Vec3d){0.0,z0_scan,0.0}; p1=(Vec3d){0.0,z0_scan,10.0,}; // Vertical scan
+    Vec3d dp=p1-p0; dp.mul(1./n);
+    glBegin(GL_LINES);
+    for(int i=0; i<n; i++){
+        W->nbmol.ps[0]=p0+dp*i;
+        W->nbmol.fs[0]=Vec3dZero;
+        double E=0;
+        if   (W->bGridFF){ E+= W->gridFF.eval     (1, W->nbmol.ps, W->nbmol.PLQs, W->nbmol.fs ); }
+        else             { E+= W->nbmol .evalMorse(W->surf, false, W->gridFF.alpha );       }
+        //Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+W->nbmol.fs[0]*sc );       // Force Vectro
+        //Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+((Vec3d){0.0,0.0,E})*sc  );  // Energy -> z
+        Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+((Vec3d){0.0,E,0.0})*sc  );  // Energy -> x
+    }
+    glEnd();
+}
+
+
 void MolGUI::eventHandling ( const SDL_Event& event  ){
     //printf( "NonInert_seats::eventHandling() \n" );
     float xstep = 0.2;
@@ -450,6 +483,11 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
+
+                case SDLK_KP_PLUS:  z0_scan = z0_scan+0.1; break;
+                case SDLK_KP_MINUS: z0_scan = z0_scan-0.1; break;
+                
+
                 case SDLK_KP_0: qCamera = qCamera0; break;
 
                 case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
@@ -462,7 +500,9 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_p: saveScreenshot( frameCount ); break;
                 case SDLK_c: W->autoCharges(); break;
 
-                case SDLK_g: useGizmo=!useGizmo; break;
+                //case SDLK_g: useGizmo=!useGizmo; break;
+                case SDLK_g: W->bGridFF=!W->bGridFF; break;
+
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
                     selectShorterSegment( ray0, (Vec3d)cam.rot.c );
