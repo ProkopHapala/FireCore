@@ -51,6 +51,9 @@ class MolWorld_sp3{ public:
     QEq        qeq;
 	DynamicOpt opt;
 
+    Vec3i nPBC{0,0,0};   // JUST DEBUG   
+    //Vec3i nPBC{1,1,0};
+
 	// state
 	bool bConverged = false;
 	double Etot=0;
@@ -132,9 +135,8 @@ void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, 
             gridFF.grid.pos0.z=z0;
             gridFF.grid.printCell();
             gridFF.allocateFFs();
-            gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
-            //printf("DEBUG loadSurf() 2 \n");
-            //makeGridFF(bSaveDebugXSFs);
+            //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
+            gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
             bGridFF   =true; 
             bSurfAtoms=false;
         }
@@ -354,11 +356,11 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
     for(int itr=0; itr<nIter; itr++){
         double E=0;
 		E += ff.eval();
-
 		//if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
-        //if(bSurfAtoms) 
-        //    E+= nbmol .evalMorse(surf, false, gridFF.alpha );
-        if(bGridFF   ){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); };
+        if(bSurfAtoms){ 
+            if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
+            else          { E+= nbmol .evalMorse(surf, false, gridFF.alpha );          }
+        }
 		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
         
        //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
