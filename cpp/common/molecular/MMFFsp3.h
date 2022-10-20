@@ -418,11 +418,11 @@ double eval_neighs(){
     return E;
 }
 
-double eval( bool bClean=true ){
+double eval( bool bClean=true, bool bCheck=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
     if(bClean){ cleanAll(); }
     normalizePi(); 
-    ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
+    if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
     eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
     eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     Etot = Eb + Ea + Eps + EppT + EppI;
@@ -540,6 +540,12 @@ void printNeighs(){
     printf( "MMFFsp3::printNeighs() : \n" );
     for(int i=0;i<nnode;i++){ printNeigh(i); }
 }
+
+void printPis(){
+    printf( "MMFFsp3::printPis(npi=%i) : \n" );
+    for(int i=0;i<npi;i++){ printf( "pipos[%i] (%g,%g,%g)\n", pipos[i].x,pipos[i].x,pipos[i].x ); }
+}
+
 
 double optimalTimeStep(double m=1.0){
     double Kmax = 1.0;

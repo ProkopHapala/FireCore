@@ -51,8 +51,8 @@ class MolWorld_sp3{ public:
     QEq        qeq;
 	DynamicOpt opt;
 
-    Vec3i nPBC{0,0,0};   // JUST DEBUG   
-    //Vec3i nPBC{1,1,0};
+    //Vec3i nPBC{0,0,0};   // JUST DEBUG   
+    Vec3i nPBC{1,1,0};
 
 	// state
 	bool bConverged = false;
@@ -133,12 +133,12 @@ void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, 
             gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
             if(isnan(z0)){ z0=gridFF.findTop(); };
             gridFF.grid.pos0.z=z0;
-            gridFF.grid.printCell();
+            if(verbosity>1)gridFF.grid.printCell();
             gridFF.allocateFFs();
             //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
             gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
             bGridFF   =true; 
-            bSurfAtoms=false;
+            //bSurfAtoms=false;
         }
     }else{ 
         bGridFF=false; 
@@ -147,17 +147,17 @@ void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, 
 }
 
 void initNBmol(){
-	nbmol .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
-	builder.export_REQs( nbmol.REQs );
-    params.assignREs    ( ff.natoms, ff.atype, nbmol.REQs, true, false  );
-    nbmol .makePLQs(gridFF.alpha);
+    if(verbosity>0)printf( "initNBmol() ff.natoms %i \n" );
+	nbmol  .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );              
+	builder.export_REQs  ( nbmol.REQs   );                                 
+    params .assignREs    ( ff.natoms, ff.atype, nbmol.REQs, true, false  ); 
+    nbmol  .makePLQs     ( gridFF.alpha );                                  
 }
 
 bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
-    printf("loadSurf(%s)\n", name );
     sprintf(tmpstr, "%s.xyz", name );
 	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs, &surf.atypes );
-    printf("loadSurf() 1 natoms %i apos %li atyps %li \n", surf.n, (long)surf.ps, (long)surf.atypes  );
+    if(verbosity>0)printf("loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.n, (long)surf.ps, (long)surf.atypes  );
     //surf.print();
 	if(ret<0)return false; 
 	bSurfAtoms=true;
@@ -166,11 +166,12 @@ bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, doub
 }
 
 void loadGeom( const char* name ){ // TODO : overlaps with buildFF()
-    printf("loadGeom(%s)\n",  name );
+    if(verbosity>0)printf("loadGeom(%s)\n",  name );
     // ------ Load geometry
     sprintf(tmpstr, "%s.xyz", name );
     builder.insertFlexibleMolecule(  builder.loadMolType( tmpstr, name ), {0,0,0}, Mat3dIdentity, -1 );
-    builder.printAtomConfs();
+    builder.tryAddConfsToAtoms( 0, -1, 1 );
+    builder.printAtomConfs(false);
     //builder.export_atypes(atypes);
     builder.verbosity = true;
     // ------- Load lattice vectros
@@ -178,25 +179,20 @@ void loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if( file_exist(tmpstr) ){
         readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
         bPBC=true;
-        builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
+        builder.autoBondsPBC();   builder.printBonds ();  // exit(0);
     }else{
         bPBC=false;
-        builder.autoBonds();             builder.printBonds ();  // exit(0);
+        builder.autoBonds();      builder.printBonds ();  // exit(0);
     }
+    builder.printAtomConfs(true);
+    //builder.autoAllConfEPi( );
+    builder.makeAllConfsSP(true);
+    builder.printAtomConfs(true);
+    builder.assignAllBondParams();
     //builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
-    builder.toMMFFsp3( ff, &params );
+    //builder.toMMFFsp3( ff, &params );
     //builder.saveMol( "builder_output.mol" );
-    // ----- Non-bonded interactions setup 
-    if(bNonBonded){
-		nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.fapos, 0, ff.bond2atom );
-    	builder.export_REQs( nff.REQs );
-        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
-            printf( "ERROR: nff.pairMask is not sorted => exit \n" );
-            exit(0);
-        };
-    }else{
-        printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
-    }
+    //if(bNonBonded){ init_nonbond(); }else{ printf( "WARRNING : we ignore non-bonded interactions !!!! \n" ); }
 }
 
 int loadmol(const char* fname_mol ){
@@ -278,28 +274,28 @@ void init( bool bGrid ){
 
     bool bGeom=false;
     //printf( "DEBUG MolWorld::init() 1 \n");
-    if ( smile_name ){
-        insertSMILES( smile_name );
-        //if(bCap)
-        builder.addAllCapTopo();
-        builder.randomizeAtomPos(1.0);
+    if ( smile_name ){                 
+        insertSMILES( smile_name );    
+        builder.addAllCapTopo();       
+        builder.randomizeAtomPos(1.0); 
         bGeom=true;
-    }  else if ( xyz_name   ){
+    }  else if  ( xyz_name ){
         loadGeom( xyz_name );
         bGeom=true;
     }
     //printf( "DEBUG MolWorld::init() 2 \n");
-    if(bGeom){
-        initNBmol();
-        if(bOptimizer){ setOptimizer(); }
-        _realloc( manipulation_sel, ff.natoms );
+    if(bGeom){                               
+        builder.toMMFFsp3( ff, &params );    
+        ff.printPis();
+        //ff.printNeighs(); // HeisenBug
+        initNBmol();                         
+        if(bOptimizer){ setOptimizer(); }    
+        _realloc( manipulation_sel, ff.natoms );  
     }
     //printf( "DEBUG MolWorld::init() 3 \n");
-    if(surf_name )loadSurf( surf_name, bGrid, true );
+    if(surf_name )loadSurf( surf_name, bGrid, true );   
     printf( "DEBUG MolWorld::init() DONE \n");
 }
-
-
 
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
     cog   = average( ff.natoms, ff.apos  );
@@ -313,12 +309,14 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
 //void open_xyzFile (const char* fname){ xyz_file=fopen( fname,"w" ); };
 //void close_xyzFile(){fclose(xyz_file)};
 
-int toXYZ(const char* comment="#comment"){
+int toXYZ(const char* comment="#comment", bool bNodeOnly=false){
     if(xyz_file==0){ printf("ERROR no xyz file is open \n"); return -1; }
-    //int* atypes = builder.molTypes[0]->atomType;
-    writeXYZ( xyz_file, ff.natoms, ff.atype, ff.apos, params.atomTypeNames, comment );
+    int n=ff.natoms; if(bNodeOnly){ n=ff.nnode; }
+    params.writeXYZ( xyz_file, n, ff.atype, ff.apos, comment );
     return 0;
 }
+
+int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment ); }
 
 double eval(){
     double E=0;
@@ -350,8 +348,6 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doPiPiT  =false;
     //ff.doPiSigma=false;
     //ff.doAngles =false;
-    //if(bGridFF && (nbmol.PLQs==0) ){ nbmol.makePLQs(gridFF.alpha); printf("nbmol.makePLQs(K=%g);\n", gridFF.alpha ); }
-
     ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         double E=0;
@@ -359,7 +355,8 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
 		//if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
         if(bSurfAtoms){ 
             if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
-            else          { E+= nbmol .evalMorse(surf, false, gridFF.alpha );          }
+            //else        { E+= nbmol .evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );  }
+            else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
         }
 		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
         

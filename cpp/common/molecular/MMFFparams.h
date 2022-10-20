@@ -147,7 +147,7 @@ class MMFFparams{ public:
 
     void assignREs( int n, int * itypes, Vec3d * REQs, bool bSqrtE=false, bool bQ0=false )const{
         for(int i=0; i<n; i++){
-            printf( " assignREs[%i] %i \n", i, itypes[i] );
+            //printf( " assignREs[%i] %i \n", i, itypes[i] );
             assignRE( itypes[i], REQs[i], bSqrtE );
             if(bQ0) REQs[i].z=0;
         }
@@ -293,6 +293,25 @@ class MMFFparams{ public:
         return natoms;
     }
 
+    void writeXYZ( FILE* pfile, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment" ){
+        fprintf(pfile, "%i\n", n );
+        fprintf(pfile, "%s \n", comment );
+        for(int i=0; i<n; i++){
+            //printf( "DEBUG writeXYZ()[%i] \n", i );
+            int ityp   = atypes[i];
+            const Vec3d&  pi = apos[i];
+            //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, params->atypes[ityp].name );
+            fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f \n", atomTypeNames[ityp].c_str(), pi.x,pi.y,pi.z );
+        };
+    }
+
+    int saveXYZ( const char * fname, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment"  ){
+        FILE* pfile = fopen(fname, "w");
+        if( pfile == NULL ) return -1;
+        writeXYZ( pfile, n, atypes, apos, comment );
+        fclose(pfile);
+        return n;
+    }
 
 };
 

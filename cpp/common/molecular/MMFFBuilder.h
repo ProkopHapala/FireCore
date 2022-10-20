@@ -437,12 +437,12 @@ class Builder{  public:
         confs.back().iatom=ia;
         return &confs.back();
     }
-    int tryAddConfsToAtoms( int i0=0, int imax=-1 ){
+    int tryAddConfsToAtoms( int i0=0, int imax=-1, int ignoreType=1 ){
         if(imax<0){ imax=atoms.size(); }
         int n=0;
         for(int ia=0;ia<imax;ia++){
-            int ic=atoms[ia].iconf;
-            if(ic<0){
+            if( ignoreType == atoms[ia].type) continue;
+            if( atoms[ia].iconf < 0 ){
                 addConfToAtom( ia, 0 );
                 n++;
             }
@@ -716,21 +716,43 @@ class Builder{  public:
         //printf("-> "); println(conf);
     }
 
-    bool tryMakeSPConf(int ia){
+    bool autoConfEPi(int ia){
+        int ic=atoms[ia].iconf;
+        if(ic<0)return false;
+        int ityp=atoms[ia].type;
+        //params->assignRE( ityp, REQ );
+        AtomConf& conf = confs[ic];
+        int ne  = params->atypes[ityp].nepair();
+        int npi = 4 - conf.nbond - ne;
+        printf( "autoConfEPi[%i] typ %i ne %i npi %i \n", ia, ityp, ne, npi );
+        for(int i=0; i<ne;  i++)conf.addEpair();
+        for(int i=0; i<npi; i++)conf.addPi();
+        return true;
+    }
+    int autoAllConfEPi( ){
+        int n=0,na=atoms.size();
+        for(int ia=0;ia<na;ia++){
+            if( autoConfEPi(ia) ){n++;}
+        }
+        return n;
+    }
+
+    bool tryMakeSPConf(int ia, bool bAutoEPi=false){
         const AtomConf* conf = getAtomConf(ia);
         //printf("tryMakeSPConf %i conf %li\n", ia, (long)conf  );
         if(conf){
             //printf("tryMakeSPConf: proceed !!! \n"  );
+            if(bAutoEPi)autoConfEPi(ia);
             makeSPConf(ia,conf->npi,conf->ne);
             return true;
         }
         return false;
     }
 
-    int makeAllConfsSP(){
+    int makeAllConfsSP( bool bAutoEPi=false ){
         int n=0,na=atoms.size();
         for(int i=0;i<na;i++){
-            if(tryMakeSPConf(i)){n++;}
+            if(tryMakeSPConf(i,bAutoEPi)){n++;}
         }
         return n;
     }
@@ -1117,32 +1139,32 @@ class Builder{  public:
     }
 
     void printAtoms(){
-        printf(" # MM::Builder.printAtoms() \n");
+        printf(" # MM::Builder.printAtoms(na=%i) \n", atoms.size() );
         for(int i=0; i<atoms.size(); i++){
             printf("atom[%i]",i); atoms[i].print(); puts("");
         }
     }
     void printBonds(){
-        printf(" # MM::Builder.printBonds() \n");
+        printf(" # MM::Builder.printBonds(nb=%i) \n", bonds.size() );
         for(int i=0; i<bonds.size(); i++){
             printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bondPBC[i].x,bondPBC[i].y,bondPBC[i].z); puts("");
         }
     }
     void printBondParams(){
-        printf(" # MM::Builder.printBonds() \n");
+        printf(" # MM::Builder.printBonds(nb=%i) \n", bonds.size() );
         for(int i=0; i<bonds.size(); i++){
             const Bond& b = bonds[i];
             printf("bond[%i]a(%i,%i)iZs(%i,%i)l0,k(%g,%g)\n",i, b.atoms.i,b.atoms.j, params->atypes[atoms[b.atoms.i].type].iZ, params->atypes[atoms[b.atoms.j].type].iZ, b.l0, b.k );
         }
     }
     void printAngles(){
-        printf(" # MM::Builder.printAngles() \n");
+        printf(" # MM::Builder.printAngles(ng=%i) \n", angles.size() );
         for(int i=0; i<angles.size(); i++){
             printf("angle[%i]", i); angles[i].print(); puts("");
         }
     }
     void printConfs(){
-        printf(" # MM::Builder.printConfs() \n");
+        printf(" # MM::Builder.printConfs(nc=%i) \n", confs.size());
         for(int i=0; i<confs.size(); i++){
             printf("conf[%i]", i); confs[i].print(); puts("");
         }
@@ -1157,7 +1179,7 @@ class Builder{  public:
         }
     }
     void printAtomConfs( bool bOmmitCap=true ){
-        printf(" # MM::Builder.printAtomConfs() \n");
+        printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
         for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  printAtomConf(i); puts(""); }
     }
 
