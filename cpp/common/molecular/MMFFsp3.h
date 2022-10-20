@@ -11,28 +11,6 @@
 // ====   MMFFsp3
 // ======================
 
-
-bool isnan(Vec3d& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
-
-void ckeckNaN_d(int n, int m, double* xs, const char* pre ){
-    for(int i=0; i<n;i++){
-        bool b=false;
-        for(int j=0; j<m;j++){
-            int ij=i*m+j;
-            b|=isnan( xs[ij] );
-        }
-        if(b){
-            printf("%s[%i](", pre, i );
-            for(int j=0; j<m;j++){
-                int ij=i*m+j;
-                printf("%g,", xs[ij] );
-            }
-            printf(")\n");
-        }
-    }
-}
-
-
 class MMFFsp3{ public:
     static constexpr const int nneigh_max = 4;
     int  nDOFs=0,natoms=0,nnode=0,ncap=0,npi=0,nbonds=0;
