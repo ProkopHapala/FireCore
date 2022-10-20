@@ -1,10 +1,11 @@
 
+int verbosity = 0;
+
 #include "MolGUI.h"
 #include "argparse.h"
 
 //MMFFsp3 W;
 MolGUI* app=0;
-
 LambdaDict funcs;
 
 int main(int argc, char *argv[]){
@@ -22,9 +23,9 @@ int main(int argc, char *argv[]){
 	
 	// --------- using argparse & LabdaDict;
 	app = new MolGUI( junk, DM.w-100, DM.h-100, NULL );
-	funcs["-s"]=[&](const char* s){ printf("Lambda[-s](%s)\n", s ); app->W->smile_name=s; }; // molecule
-	funcs["-x"]=[&](const char* s){ printf("Lambda[-x](%s)\n", s ); app->W->xyz_name=s;   }; // substrate
-	funcs["-g"]=[&](const char* s){ printf("Lambda[-g](%s)\n", s ); app->W->surf_name=s;  }; // substrate
+	funcs["-s"]=[&](const char* s){ app->W->smile_name=s; }; // molecule
+	funcs["-x"]=[&](const char* s){ app->W->xyz_name=s;   }; // substrate
+	funcs["-g"]=[&](const char* s){ app->W->surf_name=s;  }; // substrate
 	//funcs["-l"]=[&](const char* s){ app->W->lvs_name=s;   }; // substrate
 	process_args( argc, argv, funcs );
 

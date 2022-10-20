@@ -44,6 +44,7 @@ void makeDefaultAtomTypeDict( std::vector<std::string>*& names, std::unordered_m
     makeDefaultAtomTypeDict( *names, *dct );
 }
 
+/*
 void writeXYZ( FILE* pfile, int n, const int* atypes, const Vec3d* apos, const std::vector<std::string>& atomTypeNames, const char* comment="#comment" ){
     fprintf(pfile, "%i\n", n );
     fprintf(pfile, "%s \n", comment );
@@ -63,5 +64,6 @@ int saveXYZ( const char * fname, int n, const int* atypes, const Vec3d* apos, co
     fclose(pfile);
     return n;
 }
+*/
 
 #endif

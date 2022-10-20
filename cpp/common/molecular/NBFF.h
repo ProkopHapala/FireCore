@@ -111,10 +111,13 @@ class NBsystem{ public:
     Vec3d *PLQs=0;  // used only in combination with GridFF
 
     void makePLQs(double K){
+        //printf( "makePLQs() n %i K %g \n", n, K );
         _realloc(PLQs,n);
         for(int i=0; i<n; i++){
+            //printf( "makePLQs[%i] \n", i );
+            //printf( "makePLQs[%i] REQ(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z);
             PLQs[i]=REQ2PLQ( REQs[i], K );
-            printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
+            //printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
         }
     }
 
@@ -180,6 +183,27 @@ class NBsystem{ public:
         return E;
     }
 
+    double evalMorsePBC( NBsystem& B, const Mat3d& cell, Vec3i nPBC=(Vec3i){1,1,0}, double K=-1.0, double RQ=1.0 ){
+        double E=0;
+        //printf("DEBUG evalMorse() n,B.n %i %i \n", n,B.n );
+        double R2Q=RQ*RQ;
+        for(int i=0; i<n; i++){
+            Vec3d fi = Vec3dZero;
+            Vec3d pi_ = ps[i];
+            const Vec3d& AREQi = REQs[i];
+            for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
+                Vec3d  pi = pi_ + cell.a*ia + cell.b*ib + cell.c*ic;
+                for(int j=0; j<B.n; j++){    // atom-atom
+                    Vec3d fij = Vec3dZero;
+                    Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
+                    E += addAtomicForceMorseQ( B.ps[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
+                    fi.add(fij);
+                }
+            }}} // nPBC
+            fs[i].add(fi);
+        }
+        return E;
+    }
 
     double evalMorsePLQ( NBsystem& B, Vec3d plq, Mat3d& cell, Vec3i nPBC, double K=-1.0, double R2Q=1.0 ){
         // Compy from GridFF:: evalGridFFs()

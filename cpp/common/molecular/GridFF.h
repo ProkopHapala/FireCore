@@ -109,8 +109,8 @@ class GridFF{ public:
     inline double eval( int n, const Vec3d* ps, const Vec3d* PLQs, Vec3d* fs, bool bSurf=false ) const {
         double E=0;
         //printf("GridFF::eval() n %i ps %li PLQs %li \n", n,  (long)ps,  (long)PLQs );
-        if(bSurf){ for(int i=0; i<n; i++){ Quat4f fe=Quat4fZero; addForce_surf( ps[i], PLQs[i], fe );  fs[i]=(Vec3d)fe.f; E+=fe.e; } }
-        else     { for(int i=0; i<n; i++){ Quat4f fe=Quat4fZero; addForce     ( ps[i], PLQs[i], fe );  fs[i]=(Vec3d)fe.f; E+=fe.e; } }
+        if(bSurf){ for(int i=0; i<n; i++){ Quat4f fe=Quat4fZero; addForce_surf( ps[i], PLQs[i], fe );  fs[i].add( (Vec3d)fe.f ); E+=fe.e; } }
+        else     { for(int i=0; i<n; i++){ Quat4f fe=Quat4fZero; addForce     ( ps[i], PLQs[i], fe );  fs[i].add( (Vec3d)fe.f ); E+=fe.e; } }
         return E;
     }
 

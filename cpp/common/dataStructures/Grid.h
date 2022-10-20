@@ -210,14 +210,11 @@ class GridShape { public:
         FILE *fout;
         fout = fopen(fname,"w");
         if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
-        printf( "saveXSF 0 \n" );
         if(natoms>0){
             if (bPrimCoord){ primcoordToXSF( fout,  natoms, atypes, apos );  }
             else           { atomsToXSF    ( fout,  natoms, atypes, apos );  }
         } 
-        printf( "saveXSF 1 \n" );
         toXSF( fout, FF, pitch, offset );
-        printf( "saveXSF 2 \n" );
         fclose(fout);
     }
 
