@@ -21,6 +21,7 @@
 #include "MMFFsp3.h"
 #include "NBFF.h"
 #include "GridFF.h"
+#include "RigidBodyFF.h"
 #include "QEq.h"
 #include "molecular_utils.h"
 
@@ -44,12 +45,13 @@ class MolWorld_sp3{ public:
 	SMILESparser smiles;
 
 	// Force-Fields & Dynamics
-	MMFFsp3    ff;
-	NBFF       nff;
-	NBsystem   surf, nbmol;
-	GridFF     gridFF;
-    QEq        qeq;
-	DynamicOpt opt;
+	MMFFsp3      ff;
+	NBFF         nff;
+	NBsystem     surf, nbmol;
+	GridFF       gridFF;
+    RigidBodyFF  rbff;
+    QEq          qeq;
+	DynamicOpt   opt;
 
     //Vec3i nPBC{0,0,0};   // JUST DEBUG   
     Vec3i nPBC{1,1,0};
