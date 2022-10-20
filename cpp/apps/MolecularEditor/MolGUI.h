@@ -42,10 +42,10 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bDragging = false;
     Vec3d  ray0_start;
     Vec3d  ray0;
-    int ipicked    = -1; // picket atom 
-    int ibpicked   = -1; // picket bond
-    int iangPicked = -1; // picket angle
-    Vec3d* picked_lvec = 0;
+    //int ipicked    = -1; // picket atom 
+    //int ibpicked   = -1; // picket bond
+    //int iangPicked = -1; // picket angle
+    //Vec3d* picked_lvec = 0;
     int perFrame =  1;
     Quat4f qCamera0;
 
@@ -237,19 +237,22 @@ void MolGUI::draw(){
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
 
-    //printf( "MolGUI::draw() 1 \n" );
+    //printf( "MolGUI::draw() frame %i \n", frameCount );
     if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
     //printf( "MolGUI::draw() 2 \n" );
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
 
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
+
+    W->pick_hray = (Vec3d)cam.rot.c;
+    W->pick_ray0 = ray0;
     if(bRunRelax){ W->MDloop(perFrame); }
     //if(bRunRelax){ W->relax( perFrame ); }
     //printf( "MolGUI::draw() 3 \n" );
     // --- Mouse Interaction / Visualization
 	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
-    if(ipicked>=0) Draw3D::drawLine( W->ff.apos[ipicked], ray0); // Mouse Dragging Visualization
+    if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
@@ -469,6 +472,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_KP_7: builder.lvec.a.mul(   1.01); break;
                 //case SDLK_KP_4: builder.lvec.a.mul( 1/1.01); break;
 
+                /*
                 case SDLK_KP_1: picked_lvec = &W->builder.lvec.a; break;
                 case SDLK_KP_2: picked_lvec = &W->builder.lvec.b; break;
                 case SDLK_KP_3: picked_lvec = &W->builder.lvec.c; break;
@@ -481,6 +485,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
+                */
 
 
                 case SDLK_KP_PLUS:  z0_scan = z0_scan+0.1; break;
@@ -558,10 +563,10 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
+                        W->ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
                         W->selection.clear();
-                        if(ipicked>=0){ W->selection.push_back(ipicked); };
-                        printf( "picked atom %i \n", ipicked );
+                        if(W->ipicked>=0){ W->selection.push_back(W->ipicked); };
+                        printf( "picked atom %i \n", W->ipicked );
                     }else{
                         selectRect( ray0_start, ray0 );
                     }

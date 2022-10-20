@@ -72,6 +72,7 @@ class MolWorld_sp3{ public:
 	bool bPBC        = false;
 	bool bCheckInvariants = true;
 	Vec3d cog,vcog,fcog,tqcog;
+    int nloop=0;
 
 	// Selecteion & Manipulasion
 	std::vector<int> selection;
@@ -79,6 +80,12 @@ class MolWorld_sp3{ public:
 	Vec3d manipulation_ax=Vec3dZ;
 	int*  manipulation_sel=0;
 	int   manipulation_nsel=0;
+
+    int ipicked    = -1; // picket atom 
+    int ibpicked   = -1; // picket bond
+    int iangPicked = -1; // picket angle
+    Vec3d* picked_lvec = 0;
+    Vec3d pick_hray, pick_ray0;
 
 	// IO temp & aux
 	FILE* xyz_file=0;
@@ -149,9 +156,11 @@ void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, 
 void initNBmol(){
     if(verbosity>0)printf( "initNBmol() ff.natoms %i \n" );
 	nbmol  .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );              
-	builder.export_REQs  ( nbmol.REQs   );                                 
+	builder.export_REQs  ( nbmol.REQs   );   
+    for(int i=builder.atoms.size(); i<ff.natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
     params .assignREs    ( ff.natoms, ff.atype, nbmol.REQs, true, false  ); 
-    nbmol  .makePLQs     ( gridFF.alpha );                                  
+    nbmol  .makePLQs     ( gridFF.alpha );    
+    nbmol.print();                              
 }
 
 bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
@@ -286,7 +295,7 @@ void init( bool bGrid ){
     //printf( "DEBUG MolWorld::init() 2 \n");
     if(bGeom){                               
         builder.toMMFFsp3( ff, &params );    
-        ff.printPis();
+        //ff.printPis();
         //ff.printNeighs(); // HeisenBug
         initNBmol();                         
         if(bOptimizer){ setOptimizer(); }    
@@ -350,24 +359,26 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doAngles =false;
     ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
+        printf("#======= MDloop[%i] \n", nloop );
         double E=0;
 		E += ff.eval();
 		//if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
+        bGridFF=false;
         if(bSurfAtoms){ 
             if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
             //else        { E+= nbmol .evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );  }
             else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
         }
+        ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
 		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
         
-       //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
-
-        if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
-        // if(ipicked>=0){
-        //     float K = -2.0;
-        //     Vec3d f = getForceSpringRay( W->ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, K );
-        //     ff.aforce[ipicked].add( f );
-        // };
+        //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
+        //if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
+        if(ipicked>=0){
+             float K = -2.0;
+             Vec3d f = getForceSpringRay( ff.apos[ipicked], pick_hray, pick_ray0, K );
+             ff.fapos[ipicked].add( f );
+        };
         //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
@@ -378,6 +389,7 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
         if(f2<sq(Ftol)){
             bConverged=true;
         }
+        nloop++;
     }
 }
 

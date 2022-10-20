@@ -265,9 +265,10 @@ class NBsystem{ public:
     }
 
     void print(){
-        printf("NBsystem:\n");
+        printf("NBsystem(n=%i):\n");
         for(int i=0; i<n; i++){
-            printf("nb_atom[%i] REQ(%g,%g,%g) pos(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  ps[i].x,ps[i].y,ps[i].z );
+            if(atypes){ printf("nb_atom[%i] REQ(%g,%g,%g) pos(%g,%g,%g) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,  ps[i].x,ps[i].y,ps[i].z, atypes[i] ); }
+            else      { printf("nb_atom[%i] REQ(%g,%g,%g) pos(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z,  ps[i].x,ps[i].y,ps[i].z ); }
         }
     }
 
