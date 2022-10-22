@@ -196,25 +196,32 @@ struct Dihedral{
 // ============================
 // ========= Fragment
 // ============================
-#ifdef Molecule_h
+//#ifdef Molecule_h
 struct Fragment{
-    //int imolType;
+    int   imolType;
     Vec2i atomRange;
     Vec2i bondRange;
     Vec2i angRange;
     Vec2i dihRange;
+
     Vec3d  pos;
     Quat4d rot;
-    Molecule * mol;     // ToDo : we can replace this by MolID to leave dependence on Molecule_h
+    //Molecule * mol;     // ToDo : we can replace this by MolID to leave dependence on Molecule_h
     Vec3d    * pos0s;
 
+    void finish(int ia,int ib,int ig, int id){ atomRange.y=ia; bondRange.y=ib; angRange.y=ig; dihRange.y=id; };
+
     Fragment()=default;
-    Fragment(Molecule* mol_, Vec3d pos_, Quat4d rot_, Vec2i atomRange_ ):
+    Fragment( Vec2i atomRange_,Vec2i bondRange_,Vec2i angRange_,Vec2i dihRange_):atomRange(atomRange_),bondRange(bondRange_),angRange(angRange_),dihRange(dihRange_){};
+    Fragment( int ia,int ib,int ig, int id):atomRange{ia,ia},bondRange{ib,ib},angRange{ig,ig},dihRange{id,id}{};
+    //Fragment(Molecule* mol_, Vec3d pos_, Quat4d rot_, Vec2i atomRange_ ):
+    Fragment(int imolType_, Vec3d pos_, Quat4d rot_, Vec2i atomRange_, Vec3d* pos0s_ ):
+        imolType(imolType_),
         pos(pos_),rot(rot_),
-        atomRange{atomRange_},bondRange{0,0},angRange{0,0},dihRange{0,0},
-        mol{mol_},pos0s{mol_->pos}{};
+        atomRange{atomRange_},bondRange{0,0},angRange{0,0},dihRange{0,0}, //mol{mol_},
+        pos0s{pos0s_}{};
 };
-#endif // Molecule_h
+//#endif // Molecule_h
 
 // ============================
 // ========= splitByBond
@@ -275,9 +282,10 @@ class Builder{  public:
     std::vector<Bond>       bonds;
     std::vector<Angle>      angles;
     std::vector<Dihedral>   dihedrals;
-
     std::vector<AtomConf>  confs;
     //std::vector<int>  atom_neighs;
+
+
 
     bool bPBC=false;
     Mat3d lvec = Mat3dIdentity;  // lattice vectors for PBC (periodic boundary conditions)
@@ -287,9 +295,10 @@ class Builder{  public:
     std::vector       <std::string>*     atomTypeNames = 0;
     std::unordered_map<std::string,int>* atomTypeDict  = 0;
 
+    std::vector<Fragment>   frags;
+
 #ifdef Molecule_h
     //std::vector<Molecule> mols;
-    std::vector<Fragment>   frags;
     std::vector<Molecule*>              molTypes;
     std::unordered_map<std::string,int> molTypeDict;
     std::unordered_map<size_t,size_t> fragTypes;
@@ -1374,6 +1383,9 @@ class Builder{  public:
         return itype;
     }
 
+    void startFragment (){ frags.push_back( Fragment( atoms.size(), bonds.size(), angles.size(), dihedrals.size() ) ); }
+    void finishFragment(){ frags.back().finish      ( atoms.size(), bonds.size(), angles.size(), dihedrals.size() ); }
+
     void insertFlexibleMolecule_ignorH( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int iH = 1 ){
         int natom0  = atoms.size();
         int nbond0  = bonds.size();
@@ -1400,6 +1412,7 @@ class Builder{  public:
 
     void insertFlexibleMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){
         //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
+        startFragment();
         int natom0  = atoms.size();
         int nbond0  = bonds.size();
         for(int i=0; i<mol->natoms; i++){
@@ -1427,7 +1440,9 @@ class Builder{  public:
             angles.push_back( (Angle){ 1, mol->ang2bond[i] + ((Vec2i){nbond0,nbond0}), alfa0, defaultAngle.k } );
             //printf( "angle[%i|%i,%i] %g|%g %g \n", i, angles.back().bonds.a, angles.back().bonds.b, angles.back().a0, alfa0, angles.back().k );
         }
+        finishFragment();
     }
+
 
     int insertRigidMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot ){
         printf( "insertRigidMolecule() \n" );
@@ -1442,16 +1457,20 @@ class Builder{  public:
             Vec3d  p; rot.dot_to(mol->pos[i],p); p.add( pos );
             atoms.push_back( (Atom){mol->atomType[i], ifrag, -1, p, REQi } );
         }
+        //size_t mol_id = (size_t)(mol);
         //frags.push_back( (Fragment){natoms0, atoms.size()-natoms0, pos, qrot, mol}  );
-        frags.push_back( Fragment{ mol, pos, qrot,  {natoms0, atoms.size()-natoms0} } );
+        //frags.push_back( Fragment{ mol, pos, qrot,  {natoms0, atoms.size()-natoms0} } );
+        molTypes.push_back(mol);
+        size_t mol_id = molTypes.size()-1;
+        frags.push_back( Fragment{ mol_id, pos, qrot, {natoms0, atoms.size()-natoms0}, mol->pos } );
         //size_t mol_id = static_cast<size_t>(mol);
-        size_t mol_id = (size_t)(mol);
         auto got = fragTypes.find(mol_id);
         if ( got == fragTypes.end() ) {
             fragTypes[ mol_id ] = frags.size()-1; // WTF ?
         }else{}
         return ifrag;
     }
+
 
     int insertMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot, bool rigid, int noH=-1 ){
         //int natom0  = atoms .size();
@@ -1466,6 +1485,7 @@ class Builder{  public:
             return -1;
         }
     }
+
 
     int insertMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, bool rigid ){ return insertMolecule( molTypes[itype]                 , pos, rot, rigid ); }
     int insertMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, bool rigid ){ return insertMolecule( molTypes[ molTypeDict[molName] ], pos, rot, rigid ); }

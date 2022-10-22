@@ -52,6 +52,7 @@ class MolWorld_sp3{ public:
     RigidBodyFF  rbff;
     QEq          qeq;
 	DynamicOpt   opt;
+    DynamicOpt   optRB;  // rigid body optimizer
 
     //Vec3i nPBC{0,0,0};   // JUST DEBUG   
     Vec3i nPBC{1,1,0};
@@ -226,6 +227,27 @@ void setOptimizer(){
     //opt.verbosity=2;
 }
 
+void initRigid(){
+    int nrb = builder.frags.size();
+    printf("# --- initRigid() nrb=%i \n", nrb);
+    int n0rot=nrb*3;
+    optRB.bindOrAlloc( n0rot + nrb*4, 0, 0, 0, 0);
+    rbff.realloc( nrb, (Vec3d*)optRB.pos, (Quat4d*)(optRB.pos+n0rot), (Vec3d*)(optRB.force+n0rot), (Vec3d*)(optRB.vel+n0rot), 0, 0 );
+    int natom=0;
+    printf("# --- initRigid() rbff.n=%i \n", rbff.n );
+    for(int i=0; i<nrb; i++){
+        const MM::Fragment& frag = builder.frags[i]; // problem - some atoms are not in builder - e.g. Epair
+        int i0 = frag.atomRange.x;
+        int ni =  frag.atomRange.y - i0;
+        printf("# initRigid[%i] i0 %i ni %i \n", i, i0, ni );
+        nbmol.ps + i0;
+        rbff.mols[i].bindOrRealloc(ni, nbmol.ps+i0, nbmol.fs+i0, nbmol.REQs+i0 );
+        natom+=ni;
+    }
+    rbff.makePos0s();
+    printf("# --- initRigid() END \n"); //exit(0);
+}
+
 void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
     //params.printAtomTypeDict();
@@ -303,6 +325,8 @@ void init( bool bGrid ){
         if(bOptimizer){ setOptimizer(); }    
         _realloc( manipulation_sel, ff.natoms );  
     }
+    bool bRigid=true; 
+    if(bRigid)initRigid();
     //printf( "DEBUG MolWorld::init() 3 \n");
     if(surf_name )loadSurf( surf_name, bGrid, true );   
     printf( "DEBUG MolWorld::init() DONE \n");
