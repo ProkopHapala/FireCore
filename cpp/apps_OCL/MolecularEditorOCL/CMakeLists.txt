@@ -2,7 +2,7 @@
 set( NAME "MolecularEditorOCL" )
 
 #add_library( MolecularEngine OBJECT MolecularWorld.cpp MoleculeType.cpp AtomTypes.cpp  )
-SET( MOLECULAR_EDITOR_SRCS       ${MY_SRC_DIR}/apps_OCL/MolecularEditorOCL )
+SET( MOLECULAR_EDITOR_SRCS       ${MY_SRC_DIR}/apps/MolecularEditor )
 
 include_directories( ${COMMON_SRCS}/molecular ${MOLECULAR_EDITOR_SRCS} )
 #include_directories( ${COMMON_SRCS}/dynamics/Molecular ${MOLECULAR_EDITOR_SRCS} )
@@ -12,7 +12,14 @@ FireCoreVisualOCL.cpp
 	$<TARGET_OBJECTS:DynamicOpt>
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
-target_link_libraries( FireCoreVisualOCL  ${OPENCL_LIBRARY} ${CLFFT_LIBRARIES} ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} -rdynamic -ldl -lm )
+target_link_libraries( FireCoreVisualOCL  ${OPENCL_LIBRARY}  ${CLFFT_LIBRARIES} ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} -rdynamic -ldl -lm )
+
+add_executable( MolGUIapp_ocl
+        MolGUIapp_ocl.cpp
+        $<TARGET_OBJECTS:DynamicOpt>
+        $<TARGET_OBJECTS:SDL2OGL>  
+)
+target_link_libraries( MolGUIapp_ocl ${OPENGL_LIBRARIES} ${CLFFT_LIBRARIES} ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
 
 #add_executable( ${NAME}_main
 #    ${NAME}_main.cpp 
@@ -33,7 +40,7 @@ target_link_libraries( FireCoreVisualOCL  ${OPENCL_LIBRARY} ${CLFFT_LIBRARIES} $
 #add_custom_target( ${NAME}_src_dep SOURCES ${MOLECULAR_EDITOR_SRCS} )
 
 add_custom_command(
-    TARGET FireCoreVisualOCL
+    TARGET FireCoreVisualOCL MolGUIapp_ocl
 #    TARGET ${NAME}_main ${NAME}_scanner
     COMMAND ${CMAKE_COMMAND} -E create_symlink ${MY_SRC_DIR}/common_resources  ${CMAKE_CURRENT_BINARY_DIR}/common_resources
     COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_CURRENT_SOURCE_DIR}/cl  ${CMAKE_CURRENT_BINARY_DIR}/cl

@@ -249,12 +249,12 @@ void TestAppFireCoreVisual::initGUI(){
             DropDownList& me = *(DropDownList*)me_;
             printf( "old qCamera(%g,%g,%g,%g) -> %s \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w, me.labels[me.iSelected].c_str()  );
             switch(me.iSelected){
-                case 0: qCamera=qTop;    break;
-                case 1: qCamera=qBottom; break;
-                case 2: qCamera=qFront;  break;
-                case 3: qCamera=qBack;   break;
-                case 4: qCamera=qLeft;   break;
-                case 5: qCamera=qRight;  break;
+                case 0: qCamera=Quat4fTop;    break;
+                case 1: qCamera=Quat4fBotton; break;
+                case 2: qCamera=Quat4fFront;  break;
+                case 3: qCamera=Quat4fBack;   break;
+                case 4: qCamera=Quat4fLeft;   break;
+                case 5: qCamera=Quat4fRight;  break;
             }
             printf( "->new qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
             qCamera.toMatrix(cam.rot);
@@ -514,7 +514,8 @@ void  TestAppFireCoreVisual::selectShorterSegment( const Vec3d& ro, const Vec3d&
 }
 
 void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
-    gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    int ret = params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.aREQs, &gridFF.atypes );
     gridFF.grid.n    = (Vec3i){60,60,100};
     gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
     gridFF.loadCell ( "inputs/cel.lvs" );
@@ -526,9 +527,10 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
         int iatom = 11;
         testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
         testPLQ = REQ2PLQ( testREQ, -1.6 );
-        Vec3d * FFtot = new Vec3d[ gridFF.grid.getNtot() ];
+        Quat4f * FFtot = new Quat4f[ gridFF.grid.getNtot() ];
         gridFF.evalCombindGridFF            ( testREQ, FFtot );
-        if(idebug>1) saveXSF( "FFtot_z.xsf",  gridFF.grid, FFtot, 2, gridFF.natoms, gridFF.apos, gridFF.atypes );
+        //if(idebug>1) saveXSF( "FFtot_z.xsf",  gridFF.grid, FFtot, 2, gridFF.natoms, gridFF.apos, gridFF.atypes );
+        if(idebug>1)  gridFF.grid.saveXSF( "FFtot_E.xsf", (float*)FFtot, 4,3, gridFF.natoms, gridFF.atypes, gridFF.apos );
         ogl_isosurf = glGenLists(1);
         glNewList(ogl_isosurf, GL_COMPILE);
         glShadeModel( GL_SMOOTH );
