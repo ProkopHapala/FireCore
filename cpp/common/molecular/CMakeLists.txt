@@ -7,7 +7,7 @@ include_directories(
 )
 
 add_library( MoleculeWorld2D OBJECT MoleculeWorld2D.cpp )
-add_library( MolecularEngine OBJECT MolecularWorld.cpp MoleculeType.cpp AtomTypes.cpp  )
+add_library( MolecularEngine OBJECT MolecularWorld.cpp MoleculeType.cpp  )
 
 file(GLOB Molecular_HEADERS_ *.h )
 add_custom_target(Molecular_headers SOURCES ${Molecular_HEADERS_} )
