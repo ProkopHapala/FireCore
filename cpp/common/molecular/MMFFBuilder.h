@@ -733,7 +733,7 @@ class Builder{  public:
         AtomConf& conf = confs[ic];
         int ne  = params->atypes[ityp].nepair();
         int npi = 4 - conf.nbond - ne;
-        printf( "autoConfEPi[%i] typ %i ne %i npi %i \n", ia, ityp, ne, npi );
+        //printf( "autoConfEPi[%i] typ %i ne %i npi %i \n", ia, ityp, ne, npi );
         for(int i=0; i<ne;  i++)conf.addEpair();
         for(int i=0; i<npi; i++)conf.addPi();
         return true;
@@ -1015,7 +1015,7 @@ class Builder{  public:
             if(b.j<=ja){  if(iPrint>0){ printf("b.j<=ja  b[%i](%i,%i) ia,ja(%i,%i)\n", i,b.i,b.j,ia,ja); }; return false; }
             ja=b.j;
         }
-        if(iPrint>1)printf("checkBondsSorted DONE !\n");
+        if(iPrint>1)printf("... checkBondsSorted DONE !\n");
         return true;
     }
 
@@ -1280,7 +1280,7 @@ class Builder{  public:
         natom_def(n,i0);
         //_allocIfNull(REQs,n);
         for(int i=0; i<n; i++){ 
-            printf( "export_REQs[%i] REQ(%g,%g,%g)\n", i, atoms[i0+i].REQ.x,atoms[i0+i].REQ.y,atoms[i0+i].REQ.z  );
+            //printf( "export_REQs[%i] REQ(%g,%g,%g)\n", i, atoms[i0+i].REQ.x,atoms[i0+i].REQ.y,atoms[i0+i].REQ.z  );
             REQs[i]= atoms[i0+i].REQ; }
     }
 
@@ -1547,7 +1547,7 @@ void updatePBC( Vec3d* pbcShifts ){
 #ifdef MMFFsp3_h
 
     void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
-        printf("toMMFFsp3() verbosity %i \n", verbosity );
+        //printf("toMMFFsp3() verbosity %i \n", verbosity );
         int npi,ne; ne=countPiE( npi );
         int nconf = confs.size();
         int ncap  = atoms.size() - nconf;
@@ -1614,7 +1614,7 @@ void updatePBC( Vec3d* pbcShifts ){
             }
         }
         //printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
-        if(verbosity>0)printf(  "DEBUG MM:Builder::toMMFFsp3() DONE \n"  );
+        if(verbosity>0)printf(  "... MM:Builder::toMMFFsp3() DONE \n"  );
     }
 #endif // MMFFmini_h
 

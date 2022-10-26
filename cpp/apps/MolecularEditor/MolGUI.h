@@ -25,8 +25,6 @@
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
-int idebug=0;
-
 // ===========================================
 // ================= MAIN CLASS ==============
 // ===========================================
@@ -179,7 +177,7 @@ void MolGUI::initGUI(){
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
-    if(W_==0) W = new MolWorld_sp3();
+    if(W_==0){ W = new MolWorld_sp3(); }else{ W=W_; }
     W->tmpstr=str;
     W->params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
 	W->builder.bindParams(&W->params);
@@ -190,11 +188,8 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OG
 }
 
 void MolGUI::init(){
-
+    if(verbosity>0)printf("MolGUI::init() \n");
     W->init( true );
-
-    printf( "MolGUI::init() 1 \n" );
-
     // ---- Graphics setup
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
@@ -202,9 +197,6 @@ void MolGUI::init(){
     //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
 	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
 	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
-
-    printf( "MolGUI::init() 2 \n" );
-
     // ---- Gizmo
     cam.persp = false;
     gizmo.cam = &cam;
@@ -212,13 +204,9 @@ void MolGUI::init(){
     gizmo.bindEdges (W->ff.nbonds, W->ff.bond2atom );
     gizmo.pointSize = 0.5;
     //gizmo.iDebug    = 2;
-
-    printf( "MolGUI::init() 3 \n" );
-
     ruler.setStep( 1.5 * sqrt(3) );
     initGUI();
-
-    printf( "MolGUI::init() 4 \n" );
+    if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
 
 
@@ -368,13 +356,13 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 }
 
 void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
+    if(verbosity>0) printf( "MolGUI::renderGridFF()\n" );
     //int iatom = 11;
     testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );
     Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
-    //if(idebug>1) 
-        W->gridFF.grid.saveXSF( "FFtot_z.xsf",  (float*)FFtot, 4, 2, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
+    if(idebug>0) W->gridFF.grid.saveXSF( "FFtot_z.xsf",  (float*)FFtot, 4, 2, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
     ogl_isosurf = glGenLists(1);
     glNewList(ogl_isosurf, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
@@ -389,6 +377,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
     //Draw3D::drawAxis(1.0);
     glEndList();
     delete [] FFtot;
+    if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
 }
 
 void MolGUI::drawSystem( Vec3d ixyz ){
@@ -583,7 +572,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                     //SDL_Log("Window %d closed", event->window.windowID);
                     printf( "window[%i] SDL_WINDOWEVENT_CLOSE \n", id );
                     delete this;
-                    printf( "window[%i] delete this done \n", id );
+                    printf( "window[%i] delete *this DONE \n", id );
                     return;
                     break;
             } break;

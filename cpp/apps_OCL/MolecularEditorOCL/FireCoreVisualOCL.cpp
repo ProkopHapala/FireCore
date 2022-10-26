@@ -286,11 +286,11 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
         double E = ff.eval(true);
         printf( "iter0 ff.eval() E = %g \n", E );
         bPrepared_mm=true; 
-        printf("MM preparation DONE \n");
+        printf("... MM preparation DONE \n");
     }
     if( file_exist("Fdata/info.dat") ){ 
         InitQMMM(); bPrepared_qm=true; 
-        printf("QM preparation DONE \n");
+        printf("... QM preparation DONE \n");
     }
 
     ocl.initPP( "common_resources/cl" );
@@ -717,7 +717,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                     //SDL_Log("Window %d closed", event->window.windowID);
                     printf( "window[%i] SDL_WINDOWEVENT_CLOSE \n", id );
                     delete this;
-                    printf( "window[%i] delete this done \n", id );
+                    printf( "window[%i] delete *this DONE \n", id );
                     return;
                     break;
             } break;

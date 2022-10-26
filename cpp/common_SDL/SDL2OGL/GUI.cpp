@@ -800,7 +800,6 @@ void TableView::initTableView( Table* table_, const std::string& caption_, int x
     xmin=xmin_,ymin=ymin_,
     //xmax=xmax_,ymax=ymax_;
     i0=i0_; j0=j0_; imax=imax_; jmax=jmax_;
-
     int nch    = 8;
     int nchpix = nch*fontSizeDef;
     nchs.resize( table->columns.size() );
@@ -810,10 +809,8 @@ void TableView::initTableView( Table* table_, const std::string& caption_, int x
     for(int i=0; i<nchs.size(); i++){ nchs[i]=nch; x+=nchpix; xs[i+1]=x; }
     xmax = xmin + nchpix       *(jmax-j0);
     ymax = ymin + fontSizeDef*2*(imax-i0);
-
-    printf( " i (%i,%i) j (%i,%i) \n", i0, imax,    j0, jmax   );
-    printf( " x (%i,%i) y (%i,%i) \n", xmin, xmax,  ymin, ymax );
-
+    //printf( " i (%i,%i) j (%i,%i) \n", i0, imax,    j0, jmax   );
+    //printf( " x (%i,%i) y (%i,%i) \n", xmin, xmax,  ymin, ymax );
     redraw = true;
 }
 
@@ -829,7 +826,7 @@ void TableView::render(){
     glBegin(GL_LINES);
     glColor3f(0,0,0);
     int t=0;
-    printf(  "TableView Render %i %i %i %i \n", i0, j0, imax, jmax );
+    //printf(  "TableView Render %i %i %i %i \n", i0, j0, imax, jmax );
     t=ymin; for(int i=i0; i<imax;i++){ glVertex3f(xmin,t,0); glVertex3f(xmax,t,0); t+=fontSizeDef*2; }
     t=xmin; for(int j=j0; j<jmax;j++){ glVertex3f(t,ymin,0); glVertex3f(t,ymax,0); t+=fontSizeDef*nchs[j-j0]; }
     glEnd();

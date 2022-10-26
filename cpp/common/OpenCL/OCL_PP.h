@@ -30,6 +30,10 @@ class OCL_PP: public OCL_DFT { public:
     int ibuff_start_point=-1;
     int itex_FF=-1;
 
+    int itex_FE_Paul=-1;
+    int itex_FE_Lond=-1;
+    int itex_FE_Coul=-1;
+
     void setGridShape( const Mat3d& dCell ){
         grid.n = {(int)Ns[0],(int)Ns[1],(int)Ns[2]};
         grid.dCell = dCell;
@@ -84,6 +88,8 @@ class OCL_PP: public OCL_DFT { public:
         newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "evalLJC_QZs"       ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "evalLJC_QZs_toImg" ,1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "makeGridFF"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "getNonBondForce_GridFF",1,{0,0,0,0},{1,0,0,0},program_relax);
         //newTask( "write_toImg"       ,3,{0,0,0,0},{1,1,1,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
     }
@@ -92,9 +98,10 @@ class OCL_PP: public OCL_DFT { public:
         makeKrenels_PP( cl_src_dir );
         //itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[1], sizeof(float)*4, 0, CL_MEM_READ_ONLY, {CL_RGBA, CL_FLOAT} );
         //printf( "DEBUG initPP() flags %i \n", CL_MEM_READ_WRITE );
-        itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[1], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         return itex_FF;
     }
+
 /*
     float4* debug_gen_FE( ){ 
         float4* data = new float4[Ntot];
@@ -260,6 +267,96 @@ class OCL_PP: public OCL_DFT { public:
             float4 grid_dC,          // 9
             float4 Qs,               // 10
             float4 QZs               // 11
+        */
+    }
+
+    void makeGridFF( int na=0, float4* atoms=0, float4* coefs=0 ){
+        if(itex_FE_Paul<=0) itex_FE_Paul = newBufferImage3D( "FEPaul", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Lond<=0) itex_FE_Lond = newBufferImage3D( "FFLond", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Coul<=0) itex_FE_Coul = newBufferImage3D( "FFCoul", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        OCLtask* task = tasks[ task_dict["makeGridFF"] ];
+        task->global.x = Ntot;
+        //task->global.y = Ns[1];
+        //task->global.z = Ns[2];
+        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        if(ibuff_atoms<0)initAtoms( na, na );
+        if(atoms)upload( ibuff_atoms, atoms, na );
+        if(coefs)upload( ibuff_coefs, coefs, na );
+        useKernel( task->ikernel );
+        int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        err |= useArg    ( nAtoms       ); // 1
+        err |= useArgBuff( ibuff_atoms  ); // 2
+        err |= useArgBuff( ibuff_coefs  ); // 3
+        err |= useArgBuff( itex_FE_Paul ); // 4
+        err |= useArgBuff( itex_FE_Lond ); // 5
+        err |= useArgBuff( itex_FE_Coul ); // 6
+        err |= _useArg( ngrid  );          // 7        
+        err |= _useArg( pos0 );            // 8
+        err |= _useArg( dA );              // 9
+        err |= _useArg( dB );              // 10
+        err |= _useArg( dC );              // 11
+        OCL_checkError(err, "makeGridFF_1");
+        err = task->enque_raw();
+        OCL_checkError(err, "makeGridFF_2");  
+        /*
+            const int nAtoms,                // 1
+            __global float4*  atoms,         // 2
+            __global float4*  REKQs,         // 3
+            //__global float4*  FE_Paul,     // 4
+            //__global float4*  FE_Lond,     // 5
+            //__global float4*  FE_Coul,     // 6
+            __write_only image3d_t  FE_Paul, // 4
+            __write_only image3d_t  FE_Lond, // 5
+            __write_only image3d_t  FE_Coul, // 6
+            int4 nGrid,         // 7
+            float4 grid_p0,     // 8
+            float4 grid_dA,     // 9
+            float4 grid_dB,     // 10
+            float4 grid_dC      // 11
+        */
+    }
+
+    void getNonBondForce_GridFF( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0 ){
+        if(atoms  )upload( ibuff_atoms,   atoms, na); // Note - these are other atoms than used for makeGridFF()
+        if(coefs  )upload( ibuff_coefs,   coefs, na);
+        //if(aforces)upload( ibuff_aforces, aforces, na);
+        OCLtask* task = tasks[ task_dict["getNonBondForce_GridFF"] ];
+        task->global.x = Ntot;
+        //task->global.y = Ns[1];
+        //task->global.z = Ns[2];
+        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        if(ibuff_atoms<0)initAtoms( na, na );
+        if(atoms)upload( ibuff_atoms, atoms, na );
+        if(coefs)upload( ibuff_coefs, coefs, na );
+        useKernel( task->ikernel );
+        int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        err |= useArg    ( nAtoms       ); // 1
+        err |= useArgBuff( ibuff_atoms  ); // 2
+        err |= useArgBuff( ibuff_coefs  ); // 3
+        err |= useArgBuff( ibuff_aforces); // 4
+        err |= useArgBuff( itex_FE_Paul ); // 5
+        err |= useArgBuff( itex_FE_Lond ); // 6
+        err |= useArgBuff( itex_FE_Coul ); // 7     
+        err |= _useArg( pos0 );            // 8
+        err |= _useArg( dA );              // 9
+        err |= _useArg( dB );              // 10
+        err |= _useArg( dC );              // 11
+        OCL_checkError(err, "makeGridFF_1");
+        err = task->enque_raw();
+        OCL_checkError(err, "makeGridFF_2");  
+        if(aforces)download( ibuff_aforces, aforces, na);
+        /*
+            const int nAtoms,               // 1
+            __global float4*  atoms,        // 2
+            __global float4*  REKQs,        // 3
+            __global float4*  forces,       // 4
+            __read_only image3d_t  FE_Paul, // 5
+            __read_only image3d_t  FE_Lond, // 6
+            __read_only image3d_t  FE_Coul, // 7
+            float4 pos0,     // 8
+            float4 dinvA,    // 9
+            float4 dinvB,    // 10
+            float4 dinvC     // 11
         */
     }
 

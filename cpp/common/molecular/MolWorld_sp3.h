@@ -107,11 +107,10 @@ void init_nonbond(){
 }
 
 void autoCharges(){
-    printf("autoCharges() \n");
+    if(verbosity>0)printf("MolWorld_sp3::autoCharges() \n");
     qeq.realloc( ff.natoms );
     params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );
-    int iconstr = params.getAtomType("E");
-    printf("constrain type %i \n", iconstr );
+    int iconstr = params.getAtomType("E");    //printf("constrain type %i \n", iconstr );
     qeq.constrainTypes( ff.atype, iconstr );
     qeq.relaxChargeMD( ff.apos, 1000, 1e-2, 0.1, 0.1 );
     copy( qeq.n, 1, 0, (double*)qeq.qs, 3, 2, (double*)nbmol.REQs );
@@ -132,8 +131,8 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 
-
 void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
+    if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     sprintf(tmpstr, "%s.lvs", name );
     if( file_exist(tmpstr) ){ 
         gridFF.grid.loadCell( tmpstr, 0.2 );
@@ -141,7 +140,7 @@ void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, 
             gridFF.grid.center_cell( cel0 );
             bGridFF=true;
             gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
-            if(isnan(z0)){ z0=gridFF.findTop(); };
+            if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
             gridFF.grid.pos0.z=z0;
             if(verbosity>1)gridFF.grid.printCell();
             gridFF.allocateFFs();
@@ -157,19 +156,19 @@ void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, 
 }
 
 void initNBmol(){
-    if(verbosity>0)printf( "initNBmol() ff.natoms %i \n" );
+    if(verbosity>0)printf( "MolWorld_sp3::initNBmol() ff.natoms %i \n" );
 	nbmol  .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );              
 	builder.export_REQs  ( nbmol.REQs   );   
     for(int i=builder.atoms.size(); i<ff.natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
     params .assignREs    ( ff.natoms, ff.atype, nbmol.REQs, true, false  ); 
     nbmol  .makePLQs     ( gridFF.alpha );    
-    nbmol.print();                              
+    if(verbosity>1)nbmol.print();                              
 }
 
 bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
     sprintf(tmpstr, "%s.xyz", name );
 	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs, &surf.atypes );
-    if(verbosity>0)printf("loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.n, (long)surf.ps, (long)surf.atypes  );
+    if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.n, (long)surf.ps, (long)surf.atypes  );
     //surf.print();
 	if(ret<0)return false; 
 	bSurfAtoms=true;
@@ -178,29 +177,28 @@ bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, doub
 }
 
 void loadGeom( const char* name ){ // TODO : overlaps with buildFF()
-    if(verbosity>0)printf("loadGeom(%s)\n",  name );
+    if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
     sprintf(tmpstr, "%s.xyz", name );
-    builder.insertFlexibleMolecule(  builder.loadMolType( tmpstr, name ), {0,0,0}, Mat3dIdentity, -1 );
+    int iret = builder.insertFlexibleMolecule(  builder.loadMolType( tmpstr, name ), {0,0,0}, Mat3dIdentity, -1 );
+    if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
     builder.tryAddConfsToAtoms( 0, -1, 1 );
-    builder.printAtomConfs(false);
+    if(verbosity>2)builder.printAtomConfs(false);
     //builder.export_atypes(atypes);
-    builder.verbosity = true;
     // ------- Load lattice vectros
     sprintf(tmpstr, "%s.lvs", name );
     if( file_exist(tmpstr) ){
         readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
         bPBC=true;
-        builder.autoBondsPBC();   builder.printBonds ();  // exit(0);
+        builder.autoBondsPBC();   if(verbosity>2)builder.printBonds ();  // exit(0);
     }else{
         bPBC=false;
-        builder.autoBonds();      builder.printBonds ();  // exit(0);
+        builder.autoBonds();      if(verbosity>2)builder.printBonds ();  // exit(0);
     }
-    builder.printAtomConfs(true);
+    //builder.printAtomConfs(true);
     //builder.autoAllConfEPi( );
-    builder.makeAllConfsSP(true);
-    builder.printAtomConfs(true);
-    builder.assignAllBondParams();
+    builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
+    builder.assignAllBondParams();    if(verbosity>1)builder.printBonds    ();
     //builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
     //builder.toMMFFsp3( ff, &params );
     //builder.saveMol( "builder_output.mol" );
@@ -221,7 +219,7 @@ void insertSMILES(const char* s){
 void setOptimizer(){
     opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
     double dtopt=ff.optimalTimeStep(); 
-    printf("setOptimizer(): optimnal time step = %g \n", dtopt);
+    if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimnal time step = %g \n", dtopt);
     opt.initOpt( dtopt );
     opt.cleanVel();
     //opt.verbosity=2;
@@ -229,23 +227,23 @@ void setOptimizer(){
 
 void initRigid(){
     int nrb = builder.frags.size();
-    printf("# --- initRigid() nrb=%i \n", nrb);
+    //printf("# --- initRigid() nrb=%i \n", nrb);
     int n0rot=nrb*3;
     optRB.bindOrAlloc( n0rot + nrb*4, 0, 0, 0, 0);
     rbff.realloc( nrb, (Vec3d*)optRB.pos, (Quat4d*)(optRB.pos+n0rot), (Vec3d*)(optRB.force+n0rot), (Vec3d*)(optRB.vel+n0rot), 0, 0 );
     int natom=0;
-    printf("# --- initRigid() rbff.n=%i \n", rbff.n );
+    //printf("# --- initRigid() rbff.n=%i \n", rbff.n );
     for(int i=0; i<nrb; i++){
         const MM::Fragment& frag = builder.frags[i]; // problem - some atoms are not in builder - e.g. Epair
         int i0 = frag.atomRange.x;
         int ni =  frag.atomRange.y - i0;
-        printf("# initRigid[%i] i0 %i ni %i \n", i, i0, ni );
+        //printf("# initRigid[%i] i0 %i ni %i \n", i, i0, ni );
         nbmol.ps + i0;
         rbff.mols[i].bindOrRealloc(ni, nbmol.ps+i0, nbmol.fs+i0, nbmol.REQs+i0 );
         natom+=ni;
     }
     rbff.makePos0s();
-    printf("# --- initRigid() END \n"); //exit(0);
+    //printf("# --- initRigid() END \n"); //exit(0);
 }
 
 void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
@@ -258,25 +256,16 @@ void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonB
     if(bCap)builder.addAllCapTopo();
     //builder.autoAngles( 10.0, 10.0 );
     builder.randomizeAtomPos(1.0);
-    // if(bPrint){
-    //     printf("=============\n");
-    //     printf("%s\n", s);
-    //     builder.printAtoms();
-    //     builder.printBonds();
-    //     builder.printAtomConfs(true);
-    //     //builder.printAngles();
-    // }
     builder.toMMFFsp3( ff );
-    if(bPrint){
-        printf("=============\n");
-        printf("%s\n", s);
+    if(bPrint){   
+        printf("=============\n"); printf("%s\n", s);
         ff.printBonds();
         ff.printNeighs();
     }
     if(bNonBonded)init_nonbond();
     if(bOptimizer){ setOptimizer(); }
     _realloc( manipulation_sel, ff.natoms );
-	printf( "MolWorld_sp3::initWithSMILES() DONE\n" );
+	printf( "... MolWorld_sp3::initWithSMILES() DONE\n" );
 }
 
 void ini_in_dir(){
@@ -296,17 +285,18 @@ void ini_in_dir(){
 }
 
 void init( bool bGrid ){
-    printf("\n#### MolWorld::init()\n");
-    if(smile_name   )printf("smile_name  (%s)\n", smile_name );
-    if(data_dir     )printf("data_dir    (%s)\n", data_dir );
-    if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
-    if(surf_name    )printf("surf_name   (%s)\n", surf_name );
-    //if(lvs_name     )printf("lvs_name    (%s)\n", lvs_name );
-    //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
-    printf("\n");
-
+    builder.verbosity=verbosity;
+    if(verbosity>0){
+        printf("\n#### MolWorld_sp3::init()\n");
+        if(smile_name   )printf("smile_name  (%s)\n", smile_name );
+        if(data_dir     )printf("data_dir    (%s)\n", data_dir );
+        if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
+        if(surf_name    )printf("surf_name   (%s)\n", surf_name );
+        //if(lvs_name     )printf("lvs_name    (%s)\n", lvs_name );
+        //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
+        printf("\n");
+    }
     bool bGeom=false;
-    //printf( "DEBUG MolWorld::init() 1 \n");
     if ( smile_name ){                 
         insertSMILES( smile_name );    
         builder.addAllCapTopo();       
@@ -316,7 +306,6 @@ void init( bool bGrid ){
         loadGeom( xyz_name );
         bGeom=true;
     }
-    //printf( "DEBUG MolWorld::init() 2 \n");
     if(bGeom){                               
         builder.toMMFFsp3( ff, &params );    
         //ff.printPis();
@@ -327,9 +316,8 @@ void init( bool bGrid ){
     }
     bool bRigid=true; 
     if(bRigid)initRigid();
-    //printf( "DEBUG MolWorld::init() 3 \n");
     if(surf_name )loadSurf( surf_name, bGrid, true );   
-    printf( "DEBUG MolWorld::init() DONE \n");
+    if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
@@ -385,7 +373,7 @@ void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doAngles =false;
     ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
-        printf("#======= MDloop[%i] \n", nloop );
+        //printf("#======= MDloop[%i] \n", nloop );
         double E=0;
 		E += ff.eval();
 		//if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }

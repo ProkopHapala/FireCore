@@ -270,7 +270,7 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
-    int makeGridFF( int na=0, float4* atoms=0, float4* coefs=0 ){
+    void makeGridFF( int na=0, float4* atoms=0, float4* coefs=0 ){
         if(itex_FE_Paul<=0) itex_FE_Paul = newBufferImage3D( "FEPaul", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Lond<=0) itex_FE_Lond = newBufferImage3D( "FFLond", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Coul<=0) itex_FE_Coul = newBufferImage3D( "FFCoul", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
@@ -316,10 +316,10 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
-    int getNonBondForce_GridFF( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0 ){
+    void getNonBondForce_GridFF( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0 ){
         if(atoms  )upload( ibuff_atoms,   atoms, na); // Note - these are other atoms than used for makeGridFF()
         if(coefs  )upload( ibuff_coefs,   coefs, na);
-        if(aforces)upload( ibuff_aforces, coefs, na);
+        //if(aforces)upload( ibuff_aforces, aforces, na);
         OCLtask* task = tasks[ task_dict["getNonBondForce_GridFF"] ];
         task->global.x = Ntot;
         //task->global.y = Ns[1];
@@ -344,6 +344,7 @@ class OCL_PP: public OCL_DFT { public:
         OCL_checkError(err, "makeGridFF_1");
         err = task->enque_raw();
         OCL_checkError(err, "makeGridFF_2");  
+        if(aforces)download( ibuff_aforces, aforces, na);
         /*
             const int nAtoms,               // 1
             __global float4*  atoms,        // 2

@@ -34,7 +34,7 @@ class GridFF{ public:
 
     int iDebugEvalR = 0;
 
-    double findTop(){ double zmax=-1e+300; for(int i=0;i<natoms; i++){ double z=apos[i].z; if(z>zmax)zmax=z; }; printf("findTop() %i %g \n", natoms, zmax); return zmax; }
+    double findTop(){ double zmax=-1e+300; for(int i=0;i<natoms; i++){ double z=apos[i].z; if(z>zmax)zmax=z; }; return zmax; }
 
     void bindSystem(int natoms_, int* atypes_, Vec3d* apos_, Vec3d* aREQs_ ){
         natoms=natoms_; atypes=atypes_; apos=apos_; aREQs=aREQs_;
