@@ -61,14 +61,15 @@ class RigidBodyFF{ public:
 
     void makePos0s(int na=-1){
         if(na<0){ na=0; for(int i=0; i<n; i++){ na+=mols[i].n; } }
-        printf( "makePos0s(na=%i,n=%i)\n", na, n );
+        //printf( "RigidBodyFF::makePos0s() na=%i,n=%i \n", na, n );
         Vec3d* buff=new Vec3d[na];
         na=0;        
         for(int i=0; i<n; i++){
             Vec3d* ps0=buff+na;
             int ni=mols[i].n;
             Vec3d* ps=mols[i].ps;
-            for(int j=0; j<ni; j++){ ps0[j]=ps[j]; printf("# makePos0s[%i,%i] (%g,%g,%g) \n", i, j, ps0[j].x,ps0[j].y,ps0[j].z ); }
+            for(int j=0; j<ni; j++){ ps0[j]=ps[j]; }
+            //for(int j=0; j<ni; j++){ ps0[j]=ps[j]; printf("# makePos0s[%i,%i] (%g,%g,%g) \n", i, j, ps0[j].x,ps0[j].y,ps0[j].z ); }
             apos0[i]=ps0;
             na+=ni;
         }
