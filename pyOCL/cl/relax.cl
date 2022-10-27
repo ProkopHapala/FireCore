@@ -686,6 +686,8 @@ float getLorenz( float4 atom, float4 coefs, float3 pos ){
      //return 1.0/( dot(dp,dp) +  0.000 );
 }
 
+
+
 __kernel void evalLJC_QZs(
     const int nAtoms,        // 1
     __global float4* atoms,  // 2
@@ -748,6 +750,8 @@ __kernel void evalLJC_QZs(
     //if ( (ia==nGrid.x/2)&&(ib==nGrid.y/2) ) { printf(" iz %i pos(%g,%g,%g) fe(%g,%g,%g|%g) \n", ic,  pos.x,pos.y,pos.z,  fe.x, fe.y, fe.z, fe.w ); }
     FE[iG] = fe;
 }
+
+
 
 __kernel void evalLJC_QZs_toImg(
     const int nAtoms,        // 1

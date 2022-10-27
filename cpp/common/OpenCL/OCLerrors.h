@@ -102,7 +102,9 @@ void OCL_check_error(cl_int err, const char *operation, char *filename, int line
     }
 }
 
-#define OCL_checkError(E, S) if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__);
+#define OCLerr(E)    OCL_check_error(E,"",__FILE__,__LINE__);
+
+#define OCL_checkError(E, S)    if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__);
 #define OCL_checkError_(E, S,I) if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__,I);
 
 #endif

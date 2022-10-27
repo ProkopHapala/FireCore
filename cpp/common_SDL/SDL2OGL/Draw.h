@@ -2,6 +2,7 @@
 #ifndef  Draw_h
 #define  Draw_h
 
+#include "integerOps.h"
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"

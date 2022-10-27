@@ -654,6 +654,21 @@ float4 getMorse( float3 dp, float3 REA ){
     return (float4)(dp*(fr/r), E);
 }
 
+float4 getMorseQ( float3 dp, float4 REKQ ){
+    float  r2  = dot(dp,dp) +  R2SAFE;
+    float ir2  = 1/r2; 
+    float   r  = sqrt( r2 );
+    // ---- Electrostatic
+    float   E  = REKQ.w*sqrt(ir2);
+    float4 fe  = (float4)(dp*(E*ir2), E );
+    // ---- Morse ( Pauli + Dispersion )
+    float   expar = exp( REKQ.z*(r-REKQ.x) );
+    float   e     = REKQ.y*expar;
+    float4  fM    = (float4)(dp*(e*REKQ.z), e );
+    fe += fM*(expar-2.0f);
+    return fe; 
+}
+
 float8 getLJC( float4 atom, float2 cLJ, float3 pos ){
      float3  dp  =  pos - atom.xyz;
      float   ir2 = 1.0/( dot(dp,dp) +  R2SAFE );
@@ -671,66 +686,7 @@ float getLorenz( float4 atom, float4 coefs, float3 pos ){
      //return 1.0/( dot(dp,dp) +  0.000 );
 }
 
-__kernel void eval_GridFF(
-    const int nAtoms, 
-    __global float4*  atoms,
-    __global float4*  REKQs,
-    __global float4*  FE_Paul,
-    __global float4*  FE_Lond,
-    __global float4*  FE_Coul,
-    int4 nGrid,
-    float4 grid_p0,
-    float4 grid_dA,
-    float4 grid_dB,
-    float4 grid_dC
-){
-    __local float4 LATOMS[32];
-    __local float4 LCLJS [32];
-    const int iG = get_global_id (0);
-    const int iL = get_local_id  (0);
-    const int nL = get_local_size(0);
-    const int nab = nGrid.x*nGrid.y;
-    const int ia  = iG%nGrid.x; 
-    const int ib  = (iG%nab)/nGrid.x;
-    const int ic  = iG/nab; 
-    const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
-    float3 pos    = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
-    float4 fe_Paul = (float4) (0.0f, 0.0f, 0.0f, 0.0f);
-    float4 fe_Lond = (float4) (0.0f, 0.0f, 0.0f, 0.0f);
-    float4 fe_Coul = (float4) (0.0f, 0.0f, 0.0f, 0.0f);
-    for (int i0=0; i0<nAtoms; i0+= nL ){
-        int i = i0 + iL;
-        //if(i>=nAtoms) break;  // wrong !!!!
-        LATOMS[iL] = atoms[i];
-        LCLJS [iL] = REKQs[i];
-        barrier(CLK_LOCAL_MEM_FENCE);
-        for (int j=0; j<nL; j++){
-            if( (j+i0)<nAtoms ){ 
-                //fe += getLJC( LATOMS[j], LCLJS[j], pos );
-                float4 REKQ = REKQs[j];
-                float3 dp = pos - LATOMS[j].xyz;
-                float  r2  = dot(dp,dp) +  R2SAFE;
-                float ir2  = 1/r2; 
-                float   r  = sqrt( r2 );
-                // Electrostatic
-                float   E  = REKQ.w*sqrt(ir2);
-                fe_Coul   += (float4)(dp*(E*ir2), E );
 
-                float   expar = exp( REKQ.z*(r-REKQ.x) );
-                float   e     = REKQ.y*expar;
-                float4  fe    = (float4)(dp*(e*REKQ.z), e );
-
-                fe_Coul   += fe*2.0f;
-                fe_Paul   += fe*expar;
-            }
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
-    FE_Paul[iG] = fe_Paul;
-    FE_Lond[iG] = fe_Lond;
-    FE_Coul[iG] = fe_Coul;
-}
 
 __kernel void evalLJC_QZs(
     const int nAtoms,        // 1
@@ -872,4 +828,175 @@ __kernel void evalLJC_QZs_toImg(
     //fe  = (float4){sin(ia*0.1), sin(ia*0.1), sin(ib*0.1), cos(ia*0.1)*cos(ib*0.1)*cos(ic*0.1) };
     write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
     //write_imagef( imgOut, (int4){0,0,0,0}, (float4){0.0f,0.0f,0.0f,0.0f} );
+}
+
+// ========================== 
+//         GridFF
+// ==========================
+
+/*
+
+Theory:
+E(r,j) = Sum_i{ Aij* ( exp(-2k(r-Ri-Rj) - 2*exp(-k(r-Ri-Rj) }
+E(r,j) = Sum_i{ Aij  ( exp(2k*Rj)*exp(-2k(r-Ri) - 2*exp(k*Rj)*exp(-k(r-Ri) ) }
+E(r,j) = Aj*  exp(2k*Rj) * Sum_i{ Ai * exp(-2*k(r-Ri)) }  
+       - Aj*2*exp( k*Rj) * Sum_i{ Ai * exp(- *k(r-Ri)) }
+
+E = A * ( cP*vP + cL*vL )
+
+cP =  Aj*  exp(2*k*Rj)
+cL = -Aj*2*exp(  k*Rj)
+vP =   Sum_i{ Ai * exp(-2k(r-Ri)) }
+vL =   Sum_i{ Ai * exp(- k(r-Ri)) }
+
+ej = exp( k  *Rj )
+ei = exp(-k(r-Ri))
+
+cP =  Aj*  ej*ej
+cL = -Aj*2*ej
+vP =   Sum_i ei*ei
+vL =   Sum_i ei
+
+*/
+
+
+
+
+__kernel void make_GridFF(
+    const int nAtoms,                // 1
+    __global float4*  atoms,         // 2
+    __global float4*  REQKs,         // 3
+    __write_only image3d_t  FE_Paul, // 4
+    __write_only image3d_t  FE_Lond, // 5
+    __write_only image3d_t  FE_Coul, // 6
+    int4 nGrid,         // 7
+    float4 grid_p0,     // 8
+    float4 grid_dA,     // 9
+    float4 grid_dB,     // 10
+    float4 grid_dC      // 11
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+
+    const int nMax = nab*nGrid.z;
+    if(iG>nMax) return;
+
+    if(iG==0){
+        printf("GPU::make_GridFF(natoms=%i)\n", nAtoms);
+        for(int i=0; i<nAtoms; i++){ printf("atom[%i] apos(%g,%g,%g|%g) rekq(%g,%g,%g|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
+    }
+
+    float3 pos    = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
+    float4 fe_Paul = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    float4 fe_Lond = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    float4 fe_Coul = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    for (int i0=0; i0<nAtoms; i0+= nL ){
+        int i = i0 + iL;
+        //if(i>=nAtoms) break;  // wrong !!!!
+        LATOMS[iL] = atoms[i];
+        LCLJS [iL] = REQKs[i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            if( (j+i0)<nAtoms ){ 
+                //fe += getLJC( LATOMS[j], LCLJS[j], pos );
+                float4 REQK = LCLJS [j];
+                float4 atom = LATOMS[j];
+                float3 dp = pos - atom.xyz;
+                float  r2  = dot(dp,dp) + atom.w;
+                float ir2  = 1/r2; 
+                float   r  = sqrt( r2 );
+                // ---- Electrostatic
+                float   E  = REQK.z*sqrt(ir2);
+                fe_Coul   += (float4)(dp*(E*ir2), E );
+                // ---- Morse ( Pauli + Dispersion )
+                float   expar = exp( REQK.w*(r-REQK.x) );
+                float   e     = REQK.y*expar;
+                float4  fe    = (float4)(dp*(e*REQK.w), e );
+                fe_Lond += fe*2.0f;
+                fe_Paul += fe*expar;
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    //FE_Paul[iG] = fe_Paul;
+    //FE_Lond[iG] = fe_Lond;
+    //FE_Coul[iG] = fe_Coul;
+    int4 coord = (int4){ia,ib,ic,0};
+    write_imagef( FE_Paul, coord, fe_Paul );
+    write_imagef( FE_Lond, coord, fe_Lond );
+    write_imagef( FE_Coul, coord, fe_Coul );
+}
+
+__kernel void getNonBondForce_GridFF(
+    const int nAtoms,               // 1
+    __global float4*  atoms,        // 2
+    __global float4*  REQKs,        // 3
+    __global float4*  forces,       // 4
+    __read_only image3d_t  FE_Paul, // 5
+    __read_only image3d_t  FE_Lond, // 6
+    __read_only image3d_t  FE_Coul, // 7
+    float4 pos0,     // 8
+    float4 dinvA,    // 9
+    float4 dinvB,    // 10
+    float4 dinvC     // 11
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    if(iG==0){
+        printf("GPU::getNonBondForce_GridFF(natoms=%i)\n", nAtoms);
+        for(int i=0; i<nAtoms; i++){ printf("atom[%i] apos(%g,%g,%g|%g) rekq(%g,%g,%g|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
+    }
+
+    if(iG>nAtoms) return;
+
+    float4 atomi = atoms[iG];
+    float4 REKQi = REQKs[iG];
+    float3 posi  = atomi.xyz;
+
+    // ========== Interaction with grid
+    const float4 coord = (float4)( dot(posi,dinvA.xyz),dot(posi,dinvB.xyz),dot(posi,dinvC.xyz), 0.0f );
+    float4 fe_Paul = read_imagef( FE_Paul, sampler_1, coord );
+    float4 fe_Lond = read_imagef( FE_Lond, sampler_1, coord );
+    float4 fe_Coul = read_imagef( FE_Coul, sampler_1, coord );
+    //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
+    float ej   = exp( REKQi.w * REKQi.x );
+    float cP   = ej*ej*REKQi.y;
+    float cL   = -2*ej*REKQi.y;
+    float4 fe  =  fe_Coul*REKQi.z + fe_Paul*cP + fe_Lond*cL + fe;
+    
+    /*
+    // ========= Atom-to-Atom interaction ( N-body problem )
+    for (int i0=0; i0<nAtoms; i0+= nL ){
+        int i = i0 + iL;
+        //if(i>=nAtoms) break;  // wrong !!!!
+        LATOMS[iL] = atoms[i];
+        LCLJS [iL] = REQKs[i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            if( (j!=iG) && (j+i0)<nAtoms ){ 
+                float4 REQK = LCLJS[j];
+                REQK.x+=REKQi.x;
+                REQK.y*=REKQi.y;
+                //REKQ.z*=REKQi.z; // stiffness must be always the same
+                REQK.z*=REKQi.z;
+                float3 dp = posi - LATOMS[j].xyz;
+                fe += getMorseQ( dp, REQK );
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    */
+
+    forces[iG] = fe;
+    
 }
