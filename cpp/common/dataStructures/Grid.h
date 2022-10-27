@@ -9,7 +9,7 @@
 #include "Vec3.h"
 #include "Mat3.h"
 //#include <string.h>
-
+#include "quaternion.h"
 #include "VecN.h"
 
 #include <vector>

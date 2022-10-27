@@ -474,8 +474,8 @@ static constexpr Vec3i Vec3imax  {+2147483647,+2147483647,+2147483647};
 inline uint64_t scalar_id  ( const Vec3i& v){ return ( v.x | (((uint64_t)v.y)<<16) | (((uint64_t)v.z)<<32) ); }
 inline Vec3i    from_id    ( uint64_t id   ){
     Vec3i vi;
-    vi.x=( id & 0xFFFF ); id>>16;
-    vi.y=( id & 0xFFFF ); id>>16;
+    vi.x=( id & 0xFFFF ); id=id>>16;
+    vi.y=( id & 0xFFFF ); id=id>>16;
     vi.z=( id & 0xFFFF );
     return vi;
 }

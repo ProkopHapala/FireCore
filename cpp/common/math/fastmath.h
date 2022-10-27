@@ -12,7 +12,8 @@
 
 #include "macroUtils.h"
 
-#include "integerOps.h"
+//#include "integerOps.h"
+//#include "gonioApprox.h"
 
 #define GOLDEN_RATIO  1.61803398875
 #define DEG2RAD  0.0174533
@@ -20,13 +21,9 @@
 
 constexpr double M_TWO_PI = M_PI * 2;
 
-
-
 //#define sq(a) a*a
 template <class TYPE> inline TYPE sq   (TYPE a){ return a*a; }
 template <class TYPE> inline TYPE clip(TYPE x, TYPE xmin, TYPE xmax ){ if( x<xmin ) return xmin; if( x>xmax ) return xmax; return x; }
-
-
 
 
 typedef int (*Func1i)( int  );
@@ -84,7 +81,36 @@ inline int    fastFloor( double f         ){ int i=(int)f; if(f<0)i--; return i;
 inline double fastFract( double f         ){ return f-fastFloor(f);              }
 inline double fastModf ( double f, int& i ){ i=fastFloor(f); return f-i;         }
 
-#include "gonioApprox.h"
+
+// ========= Goniometric
+
+template <class TYPE>
+inline TYPE sin_taylor2( TYPE a ){
+	constexpr TYPE c3 = 1.0/6;
+	constexpr TYPE c5 = 1.0/120;
+	TYPE a2 = a*a;
+	return    a * ( 1 - a2*( c3 - c5*a2 ) );
+}
+
+template <class TYPE>
+inline TYPE cos_taylor2( TYPE a ){
+	constexpr TYPE c2 = 1.0/2;
+	constexpr TYPE c4 = 1.0/24;
+	TYPE a2 = a*a;
+	return    1 - a2*( c2 - c4*a2 );
+}
+
+template <class TYPE>
+inline void sincos_taylor2( TYPE a, TYPE& sa, TYPE& ca ){
+	constexpr TYPE c2 = 1.0/2;
+	constexpr TYPE c3 = 1.0/6;
+	constexpr TYPE c4 = 1.0/24;
+	constexpr TYPE c5 = 1.0/120;
+	TYPE a2 = a*a;
+	sa   = a * ( 1 - a2*( c3 - c5*a2 ) ) ;
+	ca   =       1 - a2*( c2 - c4*a2 )   ;
+}
+
 
 // https://en.wikipedia.org/wiki/Error_function#Approximation_with_elementary_functions
 
@@ -361,10 +387,6 @@ inline clamp( TYPE x, TYPE xmin, TYPE xmax ){
 const  float INV_RAND_MAX = 1.0f/RAND_MAX;
 inline float randf(){ return INV_RAND_MAX*rand(); }
 inline float randf( float min, float max ){ return randf()*( max - min ) + min; }
-
-inline double fhash_Wang( uint32_t h ){
-    return (hash_Wang( h )&(0xffff))/((double)(0xffff));
-}
 
 // there are some examples of hash functions
 // https://en.wikipedia.org/wiki/Linear_congruential_generator
