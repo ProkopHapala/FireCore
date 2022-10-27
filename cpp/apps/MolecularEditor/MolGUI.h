@@ -259,9 +259,9 @@ void MolGUI::draw(){
     //if(bDoQM)drawSystemQMMM();
     //printf( "MolGUI::draw() 6  bPBC %i \n", W->builder.bPBC );
     if(bDoMM){
-        if(W->builder.bPBC){  Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } 
+        if(W->builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } 
         else               { drawSystem({0,0,0}); }
-        Draw3D::drawNeighs( W->ff, 1.0 );    
+        //Draw3D::drawNeighs( W->ff, 1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
     //printf( "MolGUI::draw() 7 \n" );
@@ -302,9 +302,9 @@ void MolGUI::drawHUD(){
         double f=sqrt(W->opt.ff);
         s += sprintf(s,"dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
-        sprintf(str,"bGridFF %i \n", W->bGridFF );
-        Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+        Draw::drawText( W->info_str(str), fontTex, fontSizeDef, {100,20} );
     }
 
 
@@ -385,7 +385,8 @@ void MolGUI::drawSystem( Vec3d ixyz ){
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
     else               { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds   ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );                                          }
-    Draw3D::atoms( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );      
+    Draw3D::atoms( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
+    Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 100.0, 10000.0 );   
     if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->ff.natoms, W->ff.apos, fontTex3D                     ); }                    
     if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.007 ); }    
 }
@@ -495,7 +496,8 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_c: W->autoCharges(); break;
 
                 //case SDLK_g: useGizmo=!useGizmo; break;
-                case SDLK_g: W->bGridFF=!W->bGridFF; break;
+                //case SDLK_g: W->bGridFF=!W->bGridFF; break;
+                case SDLK_g: W->swith_gridFF(); break;
 
                 case SDLK_f:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );

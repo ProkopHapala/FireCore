@@ -151,6 +151,14 @@ class OCL_DFT: public OCLsystem { public:
         err = clfftBakePlan         (planHandle, 1, &commands, NULL, NULL);      OCLfft_checkError(err, "clfftBakePlan" );
     }
 
+    int setNs(int ndim, int* Ns_ ){
+        if     (ndim==1){ fft_dim=CLFFT_1D; }
+        else if(ndim==2){ fft_dim=CLFFT_2D; }
+        else if(ndim==3){ fft_dim=CLFFT_3D; };
+        Ntot=1; for(int i=0; i<ndim;i++){  Ns[i]=Ns_[i];  Ntot*= Ns[i]; }
+        return Ntot;
+    }
+
     void initFFT( int ndim, size_t* Ns_ ){
         //printf("DEBUG initFFT() ndim %i Ns[%li,%li,%li]\n", ndim, Ns[0], Ns[1], Ns[2] );
         if     (ndim==1){ fft_dim=CLFFT_1D; }

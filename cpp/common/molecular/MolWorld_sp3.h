@@ -97,6 +97,9 @@ class MolWorld_sp3{ public:
 
 // =================== Functions
 
+virtual void swith_gridFF(){ bGridFF=!bGridFF; };
+virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i \n", bGridFF ); return str; }
+
 void init_nonbond(){
     nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.fapos, 0, ff.bond2atom );
     builder.export_REQs( nff.REQs );
@@ -284,7 +287,7 @@ void ini_in_dir(){
 	}
 }
 
-void init( bool bGrid ){
+virtual void init( bool bGrid ){
     builder.verbosity=verbosity;
     if(verbosity>0){
         printf("\n#### MolWorld_sp3::init()\n");
@@ -366,7 +369,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     return bConverged;
 }
 
-void MDloop( int nIter, double Ftol = 1e-6 ){
+virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doPiPiI  =false;
     //ff.doPiPiT  =false;
     //ff.doPiSigma=false;

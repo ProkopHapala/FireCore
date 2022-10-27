@@ -81,23 +81,24 @@ class OCL_PP: public OCL_DFT { public:
     }
 
     void makeKrenels_PP( const char*  cl_src_dir ){
+        printf( "makeKrenels_PP() \n" );
         char srcpath[1024];
-        sprintf( srcpath, "%s/relax.cl", cl_src_dir );       
+        sprintf( srcpath, "%s/relax.cl", cl_src_dir );     
         buildProgram( srcpath, program_relax );
         newTask( "getFEinStrokes"    ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "evalLJC_QZs"       ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "evalLJC_QZs_toImg" ,1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "makeGridFF"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "make_GridFF"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "getNonBondForce_GridFF",1,{0,0,0,0},{1,0,0,0},program_relax);
         //newTask( "write_toImg"       ,3,{0,0,0,0},{1,1,1,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
+        printf( "... makeKrenels_PP() DONE \n" );
     }
 
     int initPP( const char*  cl_src_dir ){
         makeKrenels_PP( cl_src_dir );
-        //itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[1], sizeof(float)*4, 0, CL_MEM_READ_ONLY, {CL_RGBA, CL_FLOAT} );
-        //printf( "DEBUG initPP() flags %i \n", CL_MEM_READ_WRITE );
+        printf( "initPP() Ns(%li,%li,%li) \n", Ns[0], Ns[1], Ns[2] );
         itex_FF = newBufferImage3D( "FF", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         return itex_FF;
     }
@@ -191,7 +192,7 @@ class OCL_PP: public OCL_DFT { public:
         //task->global.y = Ns[1];
         //task->global.z = Ns[2];
         //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
-        if(ibuff_atoms<0)initAtoms( na, na );
+        //if(ibuff_atoms<0)initAtoms( na, na );
         if(atoms)upload( ibuff_atoms, atoms, na);
         if(coefs)upload( ibuff_coefs, coefs, na);
         useKernel( task->ikernel );
@@ -274,7 +275,8 @@ class OCL_PP: public OCL_DFT { public:
         if(itex_FE_Paul<=0) itex_FE_Paul = newBufferImage3D( "FEPaul", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Lond<=0) itex_FE_Lond = newBufferImage3D( "FFLond", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Coul<=0) itex_FE_Coul = newBufferImage3D( "FFCoul", Ns[0], Ns[1], Ns[2], sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
-        OCLtask* task = tasks[ task_dict["makeGridFF"] ];
+        //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
+        OCLtask* task = getTask("make_GridFF");
         task->global.x = Ntot;
         //task->global.y = Ns[1];
         //task->global.z = Ns[2];
@@ -316,20 +318,24 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
+    int initAtomsForces( int nAtoms_ ){
+        nAtoms=nAtoms_;
+        ibuff_atoms   =newBuffer( "atoms",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        ibuff_aforces =newBuffer( "aforces",  nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        return ibuff_atoms;
+    }
+
     void getNonBondForce_GridFF( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0 ){
+        printf("getNonBondForce_GridFF(na=%i) \n", na);
+        if(ibuff_atoms<0)initAtoms( na, 1 );
         if(atoms  )upload( ibuff_atoms,   atoms, na); // Note - these are other atoms than used for makeGridFF()
         if(coefs  )upload( ibuff_coefs,   coefs, na);
+        DEBUG
         //if(aforces)upload( ibuff_aforces, aforces, na);
-        OCLtask* task = tasks[ task_dict["getNonBondForce_GridFF"] ];
-        task->global.x = Ntot;
-        //task->global.y = Ns[1];
-        //task->global.z = Ns[2];
-        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
-        if(ibuff_atoms<0)initAtoms( na, na );
-        if(atoms)upload( ibuff_atoms, atoms, na );
-        if(coefs)upload( ibuff_coefs, coefs, na );
+        OCLtask* task = getTask("getNonBondForce_GridFF");
+        task->global.x = na;
         useKernel( task->ikernel );
-        int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
         err |= useArg    ( nAtoms       ); // 1
         err |= useArgBuff( ibuff_atoms  ); // 2
         err |= useArgBuff( ibuff_coefs  ); // 3
@@ -341,10 +347,11 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( dA );              // 9
         err |= _useArg( dB );              // 10
         err |= _useArg( dC );              // 11
-        OCL_checkError(err, "makeGridFF_1");
+        OCL_checkError(err, "getNonBondForce_GridFF_1");
         err = task->enque_raw();
-        OCL_checkError(err, "makeGridFF_2");  
-        if(aforces)download( ibuff_aforces, aforces, na);
+        OCL_checkError(err, "getNonBondForce_GridFF_2");  
+        if(aforces)err=download( ibuff_aforces, aforces, na);
+        OCL_checkError(err, "getNonBondForce_GridFF_3");  
         /*
             const int nAtoms,               // 1
             __global float4*  atoms,        // 2

@@ -62,9 +62,28 @@ class OCLBuffer{
 
     inline int setAsArg( cl_kernel& kernel, int i   ){ return clSetKernelArg(kernel, i, sizeof(cl_mem), &p_gpu );  };
 
+    inline int fromGPU ( cl_command_queue& commands,       void* cpu_data, int n_=-1 ){ 
+        if(img_dims==0){
+            if(n_<0)n_=n; 
+            return clEnqueueReadBuffer( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); 
+        }else{
+            size_t offset[4]{0,0,0,0};
+            size_t region[4]{nImg[0],nImg[1],nImg[2],0};
+            return clEnqueueReadImage ( commands, p_gpu, CL_TRUE, offset, region, 0,0,  cpu_data, 0, NULL, NULL ); 
+        }
+    }
 
-    inline int fromGPU ( cl_command_queue& commands,       void* cpu_data, int n_=-1 ){ if(n_<0)n_=n; return clEnqueueReadBuffer ( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); }
-    inline int toGPU   ( cl_command_queue& commands, const void* cpu_data, int n_=-1 ){ if(n_<0)n_=n; return clEnqueueWriteBuffer( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); }
+    inline int toGPU   ( cl_command_queue& commands, const void* cpu_data, int n_=-1 ){ 
+        if(img_dims==0){
+            if(n_<0)n_=n; 
+            return clEnqueueWriteBuffer( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL );
+        }else{
+            size_t offset[4]{0,0,0,0};
+            size_t region[4]{nImg[0],nImg[1],nImg[2],0};
+            return clEnqueueWriteImage ( commands, p_gpu, CL_TRUE, offset, region, 0,0,  cpu_data, 0, NULL, NULL ); 
+        }
+    }
+    
     inline int fromGPU ( cl_command_queue& commands ){ return fromGPU ( commands, p_cpu ); }
     inline int toGPU   ( cl_command_queue& commands ){ return toGPU   ( commands, p_cpu ); }
     //inline setImageParams(  );
@@ -170,6 +189,15 @@ class OCLsystem{ public:
     cl_kernel current_kernel;
     int argCounter;
 
+    OCLtask* getTask(const char* name){ 
+        auto it = task_dict.find(name);
+        if(it != task_dict.end() ){ 
+            return tasks[ it->second ];
+        }
+        printf( "OCL task %s not found \n", name );
+        return 0;
+    }    
+
     void cl_info(){
         printf( "sizeof(cl_mem    ) is %li bytes\n", sizeof(cl_mem) );
         printf( "sizeof(cl_kernel ) is %li bytes\n", sizeof(cl_kernel) );
@@ -195,15 +223,15 @@ class OCLsystem{ public:
     int copyBuffToImage( int iBuff, int itex, size_t4 region, int src_offset=0 ){
         /*
         cl_int clEnqueueCopyBufferToImage(
-        cl_command_queue command_queue,
-        cl_mem src_buffer,
-        cl_mem dst_image,
-        size_t src_offset,
-        const size_t* dst_origin,
-        const size_t* region,
-        cl_uint num_events_in_wait_list,
-        const cl_event* event_wait_list,
-        cl_event* event);
+            cl_command_queue command_queue,
+            cl_mem src_buffer,
+            cl_mem dst_image,
+            size_t src_offset,
+            const size_t* dst_origin,
+            const size_t* region,
+            cl_uint num_events_in_wait_list,
+            const cl_event* event_wait_list,
+            cl_event* event);
         */
         size_t offset[4]{0,0,0,0};
         //size_t region[4]{nx,ny,nz,0};
@@ -212,6 +240,15 @@ class OCLsystem{ public:
         OCL_checkError(err, "copyBuffToImage()");
         return err;
     }
+
+    /*
+    int copyImageToBuffer( int iBuff, int itex, size_t4 region, int src_offset=0 ){
+        printf( "copyBuffToImage() region(%li,%li,%li)\n", region.x, region.y, region.z  );
+        err = clEnqueueCopyBufferToImage( commands, buffers[iBuff].p_gpu, buffers[itex].p_gpu, src_offset, offset, (size_t*)&region, 0,0,0 );
+        OCL_checkError(err, "copyBuffToImage()");
+        return err;
+    }
+    */
 
     void check_programSet (){ if(program ==0){ printf("ERROR OCLsystem program  not set \n"); exit(-1); } }
     void check_contextSet (){ if(context ==0){ printf("ERROR OCLsystem context  not set \n"); exit(-1); } }
