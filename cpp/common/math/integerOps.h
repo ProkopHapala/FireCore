@@ -64,4 +64,8 @@ inline unsigned int hash_Knuth( unsigned int i ){
 	return ( i * 2654435761 >> 16 );
 }
 
+inline double fhash_Wang( uint32_t h ){
+    return (hash_Wang( h )&(0xffff))/((double)(0xffff));
+}
+
 #endif

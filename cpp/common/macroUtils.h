@@ -23,10 +23,6 @@
 
 //#define _realloc(TYPE,arr,n){ if(var) delete [] arr; arr=new TYPE[n]; }
 
-//#define BEGIN_WITH(x) { \
-//    auto &_ = x;
-//#define END_WITH() }
-
 // ============= sorting
 inline int selectMinHigher(int a0, int n, int* arr){
     int amin=0x7FFFFFFF; // 32 int max

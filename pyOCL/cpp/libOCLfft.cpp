@@ -18,8 +18,8 @@ int verbosity = 0;
 
 OCL_PP oclfft;
 
-#include "FireCoreAPI.h"
-#include "approximation.h"
+//#include "FireCoreAPI.h"
+//#include "approximation.h"
 
 //OCLsystem ocl;
 //Approx::AutoApprox aaprox;

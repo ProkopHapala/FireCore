@@ -6,35 +6,7 @@
 // https://stackoverflow.com/questions/345085/how-do-trigonometric-functions-work/345117#345117
 // http://lolengine.net/blog/2011/12/21/better-function-approximations
 
-
 // ========= Polar -> Cartesian ===========
-
-template <class TYPE>
-inline TYPE sin_taylor2( TYPE a ){
-	constexpr TYPE c3 = 1.0/6;
-	constexpr TYPE c5 = 1.0/120;
-	TYPE a2 = a*a;
-	return    a * ( 1 - a2*( c3 - c5*a2 ) );
-}
-
-template <class TYPE>
-inline TYPE cos_taylor2( TYPE a ){
-	constexpr TYPE c2 = 1.0/2;
-	constexpr TYPE c4 = 1.0/24;
-	TYPE a2 = a*a;
-	return    1 - a2*( c2 - c4*a2 );
-}
-
-template <class TYPE>
-inline void sincos_taylor2( TYPE a, TYPE& sa, TYPE& ca ){
-	constexpr TYPE c2 = 1.0/2;
-	constexpr TYPE c3 = 1.0/6;
-	constexpr TYPE c4 = 1.0/24;
-	constexpr TYPE c5 = 1.0/120;
-	TYPE a2 = a*a;
-	sa   = a * ( 1 - a2*( c3 - c5*a2 ) ) ;
-	ca   =       1 - a2*( c2 - c4*a2 )   ;
-}
 
 template <class TYPE>
 inline void sincosR2_taylor( TYPE r2, TYPE& sa, TYPE& ca ){

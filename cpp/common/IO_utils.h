@@ -39,9 +39,9 @@ inline int fprint(FILE* sbuff,       char*   v){ return fprintf(sbuff, "%s ", v 
 inline int fprint(FILE* sbuff,       float   v){ return fprintf(sbuff, "%g ", v ); };
 inline int fprint(FILE* sbuff,       double  v){ return fprintf(sbuff, "%g ", v ); };
 inline int fprint(FILE* sbuff,       int     v){ return fprintf(sbuff, "%i ", v ); };
-inline int fprint(FILE* sbuff, const Vec2f&  v){ return fprintf(sbuff, "%lg %g ", v.x, v.y ); };
-inline int fprint(FILE* sbuff, const Vec2d&  v){ return fprintf(sbuff, "%lg %g ", v.x, v.y ); };
-inline int fprint(FILE* sbuff, const Vec2i&  v){ return fprintf(sbuff, "%li %i ", v.x, v.y ); };
+inline int fprint(FILE* sbuff, const Vec2f&  v){ return fprintf(sbuff, "%g %g ", v.x, v.y ); };
+inline int fprint(FILE* sbuff, const Vec2d&  v){ return fprintf(sbuff, "%g %g ", v.x, v.y ); };
+inline int fprint(FILE* sbuff, const Vec2i&  v){ return fprintf(sbuff, "%i %i ", v.x, v.y ); };
 inline int fprint(FILE* sbuff, const Vec3f&  v){ return fprintf(sbuff, "%g %g %g ", v.x, v.y, v.z ); };
 inline int fprint(FILE* sbuff, const Vec3d&  v){ return fprintf(sbuff, "%g %g %g ", v.x, v.y, v.z ); };
 inline int fprint(FILE* sbuff, const Vec3i&  v){ return fprintf(sbuff, "%i %i %i ", v.x, v.y, v.z ); };
@@ -53,9 +53,9 @@ inline int sprint(char* sbuff,       char*   v){ return sprintf(sbuff, "%s ", v 
 inline int sprint(char* sbuff,       float   v){ return sprintf(sbuff, "%g ", v ); };
 inline int sprint(char* sbuff,       double  v){ return sprintf(sbuff, "%g ", v ); };
 inline int sprint(char* sbuff,       int     v){ return sprintf(sbuff, "%i ", v ); };
-inline int sprint(char* sbuff, const Vec2f&  v){ return sprintf(sbuff, "%lg %g ", v.x, v.y ); };
-inline int sprint(char* sbuff, const Vec2d&  v){ return sprintf(sbuff, "%lg %g ", v.x, v.y ); };
-inline int sprint(char* sbuff, const Vec2i&  v){ return sprintf(sbuff, "%li %i ", v.x, v.y ); };
+inline int sprint(char* sbuff, const Vec2f&  v){ return sprintf(sbuff, "%g %g ", v.x, v.y ); };
+inline int sprint(char* sbuff, const Vec2d&  v){ return sprintf(sbuff, "%g %g ", v.x, v.y ); };
+inline int sprint(char* sbuff, const Vec2i&  v){ return sprintf(sbuff, "%i %i ", v.x, v.y ); };
 inline int sprint(char* sbuff, const Vec3f&  v){ return sprintf(sbuff, "%g %g %g ", v.x, v.y, v.z ); };
 inline int sprint(char* sbuff, const Vec3d&  v){ return sprintf(sbuff, "%g %g %g ", v.x, v.y, v.z ); };
 inline int sprint(char* sbuff, const Vec3i&  v){ return sprintf(sbuff, "%i %i %i ", v.x, v.y, v.z ); };
@@ -63,10 +63,10 @@ inline int sprint(char* sbuff, const Quat4f& v){ return sprintf(sbuff, "%g %g %g
 inline int sprint(char* sbuff, const Quat4d& v){ return sprintf(sbuff, "%g %g %g %g ", v.x, v.y, v.z, v.w ); };
 inline int sprint(char* sbuff, const Quat4i& v){ return sprintf(sbuff, "%i %i %i %i ", v.x, v.y, v.z, v.w ); };
 
-inline int sscan(char* sbuff, char*&  v){ int n; sscanf(sbuff, "%s%n", &v, &n );                                  return n; };
-inline int sscan(char* sbuff, float&  v){ int n; sscanf(sbuff, "%f%n", &v , &n);                                  return n; };
-inline int sscan(char* sbuff, double& v){ int n; sscanf(sbuff, "%lf%n", &v , &n);                                 return n; };
-inline int sscan(char* sbuff, int&    v){ int n; sscanf(sbuff, "%i%n", &v , &n);                                  return n; };
+inline int sscan(char* sbuff, char*&  v){ int n; sscanf(sbuff, "%s%n",  v  , &n );                                return n; };
+inline int sscan(char* sbuff, float&  v){ int n; sscanf(sbuff, "%f%n",  &v , &n );                                return n; };
+inline int sscan(char* sbuff, double& v){ int n; sscanf(sbuff, "%lf%n", &v , &n );                                return n; };
+inline int sscan(char* sbuff, int&    v){ int n; sscanf(sbuff, "%i%n",  &v , &n );                                return n; };
 inline int sscan(char* sbuff, Vec2f&  v){ int n; sscanf(sbuff, "%f %f%n", &v.x, &v.y , &n);                       return n; };
 inline int sscan(char* sbuff, Vec2d&  v){ int n; sscanf(sbuff, "%lf %lf%n", &v.x, &v.y , &n);                     return n; };
 inline int sscan(char* sbuff, Vec2i&  v){ int n; sscanf(sbuff, "%i %i%n", &v.x, &v.y , &n);                       return n; };

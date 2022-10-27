@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <stdio.h>
 
-#include <fastmath.h>
+#include "fastmath.h"
 
 template<typename Func>
 void evalFunc1D(Func func, int n, double * xs, double * ys){
