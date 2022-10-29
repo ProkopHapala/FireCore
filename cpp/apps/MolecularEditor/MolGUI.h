@@ -73,7 +73,10 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double mm_Rsc =  0.25;
     double mm_Rsub = 1.0;
     bool   mm_bAtoms = false;
-    bool   bViewMolCharges = true;
+    bool   bViewMolCharges  = true;
+    bool   bViewAtomSpheres = true;
+    bool   bViewAtomForces  = true;
+    bool   bViewSubstrate   = true;
     bool   isoSurfRenderType = 1;
     Vec3d testREQ,testPLQ;
 
@@ -227,7 +230,7 @@ void MolGUI::draw(){
 
     //printf( "MolGUI::draw() frame %i \n", frameCount );
     if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
-    //printf( "MolGUI::draw() 2 \n" );
+
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
 
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
@@ -236,7 +239,7 @@ void MolGUI::draw(){
     W->pick_ray0 = ray0;
     if(bRunRelax){ W->MDloop(perFrame); }
     //if(bRunRelax){ W->relax( perFrame ); }
-    //printf( "MolGUI::draw() 3 \n" );
+
     // --- Mouse Interaction / Visualization
 	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
@@ -244,7 +247,6 @@ void MolGUI::draw(){
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
-    //printf( "MolGUI::draw() 4 \n" );
     if(ogl_MO){ 
         glPushMatrix();
         Vec3d c = W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
@@ -253,29 +255,31 @@ void MolGUI::draw(){
             glCallList(ogl_MO); 
         glPopMatrix();
     }
-    //printf( "MolGUI::draw() 5 \n" );
-    if(W->bSurfAtoms)Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
-    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
+
+    if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
+    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
     //if(bDoQM)drawSystemQMMM();
-    //printf( "MolGUI::draw() 6  bPBC %i \n", W->builder.bPBC );
+
     if(bDoMM){
         if(W->builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } 
         else               { drawSystem({0,0,0}); }
         //Draw3D::drawNeighs( W->ff, 1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
-    //printf( "MolGUI::draw() 7 \n" );
-    for(int i=0; i<W->selection.size(); i++){ int ia = W->selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->ff.apos[ia] );     }
+
+    for(int i=0; i<W->selection.size(); i++){ 
+        int ia = W->selection[i];
+        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.ps[ia] );     
+    }
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
-    //printf( "MolGUI::draw() 8 \n" );
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
 };
 
 void MolGUI::drawHUD(){
+
     glDisable ( GL_LIGHTING );
     gui.draw();
 
@@ -285,7 +289,7 @@ void MolGUI::drawHUD(){
         char* s=str;
         //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
         //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
-        s += sprintf(s, "eval:Ang,ps,ppT,ppI(%i|%i,%i,%i)\n",  W->ff.nevalAngles>0, W->ff.nevalPiSigma>0, W->ff.nevalPiPiT>0, W->ff.nevalPiPiI>0 );
+        if(W->bMMFF) s += sprintf(s, "eval:Ang,ps,ppT,ppI(%i|%i,%i,%i)\n",  W->ff.nevalAngles>0, W->ff.nevalPiSigma>0, W->ff.nevalPiPiT>0, W->ff.nevalPiPiI>0 );
         s += sprintf(s, "cog (%g,%g,%g)\n", W->cog .x,W->cog .y,W->cog .z);
         s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", W->vcog.x,W->vcog.y,W->vcog.z);
         s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", W->fcog.x,W->fcog.y,W->fcog.z);
@@ -383,12 +387,20 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
 void MolGUI::drawSystem( Vec3d ixyz ){
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
-    if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
-    else               { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds   ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );                                          }
-    Draw3D::atoms( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
-    Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 100.0, 10000.0 );   
-    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->ff.natoms, W->ff.apos, fontTex3D                     ); }                    
-    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.007 ); }    
+
+    if(W->bMMFF){
+        if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
+        else               { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds   ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );                                          }
+        //Draw3D::atoms          ( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
+        //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 100.0, 10000.0 );   
+        //if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->ff.natoms, W->ff.apos, fontTex3D                     ); }                    
+        //if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.007 ); }   
+    }
+    if(bViewAtomSpheres){ Draw3D::atoms          ( W->nbmol.n, W->nbmol.ps, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
+    if(bViewAtomForces ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, 100.0, 10000.0 );    }
+    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels ( W->nbmol.n, W->nbmol.ps, fontTex3D                     );      }            
+    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->nbmol.n,  (double*)W->nbmol.REQs,  W->nbmol.ps, 3, 2, fontTex3D, 0.007 ); }
+
 }
 
 void MolGUI::saveScreenshot( int i, const char* fname ){
@@ -493,13 +505,22 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_r: renderDensity(          ); break;
                 case SDLK_s: W->saveXYZ( "out.xyz", "#comment", false ); break;
                 case SDLK_p: saveScreenshot( frameCount ); break;
-                case SDLK_c: W->autoCharges(); break;
+                case SDLK_q: W->autoCharges(); break;
 
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
-                case SDLK_g: W->swith_gridFF(); break;
+                //case SDLK_g: W->swith_gridFF(); break;
+                //case SDLK_c: W->autoCharges(); break;
 
-                case SDLK_f:
+                case SDLK_g: W->bGridFF=!W->bGridFF; break;
+                case SDLK_c: W->bOcl=!W->bOcl; break;
+
+                case SDLK_a: bViewAtomSpheres=! bViewAtomSpheres; break;
+                //case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
+                case SDLK_f: bViewAtomForces =! bViewAtomForces;  break;
+                case SDLK_w: bViewSubstrate  =! bViewSubstrate;   break;
+
+                case SDLK_i:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
                     selectShorterSegment( ray0, (Vec3d)cam.rot.c );
                     //selection.erase();

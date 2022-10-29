@@ -38,7 +38,7 @@ class AtomType{ public:
     uint8_t   iZ;         // proton number
     uint8_t   neval;      // number of valence electrons
     uint8_t   valence;    // sum of bond orders of all bonds
-    uint8_t   sym;        // sp, sp2, sp3 ... tetrahedral, triangle, linear, kink, square, octahedral
+    uint8_t   sym;        // sp3=0,sp2=1, sp1=2,  ... tetrahedral, triangle, linear, kink, square, octahedral
     uint32_t  color;
     double    RvdW;
     double    EvdW;
@@ -59,6 +59,7 @@ class AtomType{ public:
     void print(int i){ printf( "AtomType[%i] %s (%i,%i,%i,%i) vdW(R=%lf,E=%lf) clr %x Eaff,Ehard (%g,%g) \n", i, name,  iZ,   neval,  valence,   sym,    RvdW, EvdW,   color, Eaff,Ehard ); }
 
     inline uint8_t nepair(){ return (neval-valence)/2; };
+    inline uint8_t npi   (){ return sym; };
 
     void fromString( char * str ){
         int iZ_, neval_, valence_, sym_;

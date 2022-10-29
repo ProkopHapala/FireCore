@@ -119,6 +119,7 @@ class NBsystem{ public:
             PLQs[i]=REQ2PLQ( REQs[i], K );
             //printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
         }
+        //printf("NBsystem::makePLQs() DONE => exit(0) \,"); exit(0);
     }
 
     void fromRigid( Vec3d* ps0, const Vec3d& p0, const Mat3d& rot ){ for(int i=0; i<n; i++){ rot.dot_to_T( ps0[i], ps[i] ); ps[i].add(p0); } }

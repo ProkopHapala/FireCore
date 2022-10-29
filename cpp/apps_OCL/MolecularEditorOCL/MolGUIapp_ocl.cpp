@@ -1,5 +1,5 @@
 
-int verbosity = 0;
+int verbosity = 1;
 int idebug    = 1;
 
 #include "MolGUI.h"
@@ -25,10 +25,10 @@ int main(int argc, char *argv[]){
 	MolWorld_sp3_ocl* W = new MolWorld_sp3_ocl();
 	// --------- using argparse & LabdaDict;
 	app = new MolGUI( junk, DM.w-100, DM.h-100, W );
-	funcs["-s"]=[&](const char* s){ app->W->smile_name=s; }; // molecule
-	funcs["-x"]=[&](const char* s){ app->W->xyz_name=s;   }; // substrate
-	funcs["-g"]=[&](const char* s){ app->W->surf_name=s;  }; // substrate
-	//funcs["-l"]=[&](const char* s){ app->W->lvs_name=s;   }; // substrate
+	funcs["-s"]={1,[&](const char** ss){ app->W->smile_name=ss[0]; }}; // molecule as SMILEs
+	funcs["-x"]={1,[&](const char** ss){ app->W->xyz_name  =ss[0]; }}; // molecule as .xyz
+	funcs["-g"]={1,[&](const char** ss){ app->W->surf_name =ss[0]; }}; // substrate as .xyz
+	funcs["-r"]={0,[&](const char** ss){ app->W->bMMFF=false;      }}; // rigid
 	process_args( argc, argv, funcs );
 	app->init();
 	app->loop( 1000000 );
