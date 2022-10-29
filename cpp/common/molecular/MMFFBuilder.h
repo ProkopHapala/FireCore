@@ -1443,6 +1443,23 @@ class Builder{  public:
         finishFragment();
     }
 
+    void insertAtoms( int n, int* atypes, Vec3d* apos, Vec3d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
+        //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
+        startFragment();
+        int natom0  = atoms.size();
+        int nbond0  = bonds.size();
+        for(int i=0; i<n; i++){
+            int ityp = atypes[i];
+            int npi,ne  = params->atypes[ityp].nepair();
+            double q=0; if(qs){ q=qs[i]; }
+            Vec3d p,REQ;
+            if(REQs){ REQ=REQs[i]; }else{ params->assignRE(ityp, REQ,true); REQ.z=q; };
+            if(npis){ npi=npis[i]; }else{ npi=params->atypes[ityp].npi();            };
+            rot.dot_to(apos[i],p); p.add( pos );
+            insertAtom( ityp, p, &REQ, npi, ne );
+        }
+        finishFragment();
+    }
 
     int insertRigidMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot ){
         printf( "insertRigidMolecule() \n" );

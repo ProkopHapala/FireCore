@@ -54,6 +54,9 @@ class MolWorld_sp3{ public:
 	DynamicOpt   opt;
     DynamicOpt   optRB;  // rigid body optimizer
 
+    bool bOcl=false; // used only in Ocl version
+
+
     //Vec3i nPBC{0,0,0};   // JUST DEBUG   
     Vec3i nPBC{1,1,0};
 
@@ -71,6 +74,8 @@ class MolWorld_sp3{ public:
 	bool bSurfAtoms       = false;
     bool bGridFF          = false;
 	bool bPlaneSurfForce  = false;
+    bool bMMFF            = true;
+    bool bRigid           = false;
 	bool bOptimizer  = true; 
 	bool bPBC        = false;
 	bool bCheckInvariants = true;
@@ -159,7 +164,7 @@ void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, 
 }
 
 void initNBmol(){
-    if(verbosity>0)printf( "MolWorld_sp3::initNBmol() ff.natoms %i \n" );
+    if(verbosity>0)printf( "MolWorld_sp3::initNBmol() ff.natoms %i \n", ff.natoms  );
 	nbmol  .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );              
 	builder.export_REQs  ( nbmol.REQs   );   
     for(int i=builder.atoms.size(); i<ff.natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
@@ -167,6 +172,16 @@ void initNBmol(){
     nbmol  .makePLQs     ( gridFF.alpha );    
     if(verbosity>1)nbmol.print();                              
 }
+
+void loadNBmol( const char* name){
+    if(verbosity>0)printf( "MolWorld_sp3::loadNBmol() \n" );
+	sprintf(tmpstr, "%s.xyz", name );
+    params.loadXYZ( tmpstr, nbmol.n, &nbmol.ps, &nbmol.REQs, &nbmol.atypes );
+    _realloc(nbmol.fs,nbmol.n);
+    nbmol  .makePLQs     ( gridFF.alpha );    
+    if(verbosity>1)nbmol.print();                              
+}
+
 
 bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
     sprintf(tmpstr, "%s.xyz", name );
@@ -297,29 +312,28 @@ virtual void init( bool bGrid ){
         if(surf_name    )printf("surf_name   (%s)\n", surf_name );
         //if(lvs_name     )printf("lvs_name    (%s)\n", lvs_name );
         //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
-        printf("\n");
+        printf("bMMFF %i bRigid %i \n", bMMFF, bRigid );
     }
-    bool bGeom=false;
     if ( smile_name ){                 
         insertSMILES( smile_name );    
         builder.addAllCapTopo();       
         builder.randomizeAtomPos(1.0); 
-        bGeom=true;
-    }  else if  ( xyz_name ){
-        loadGeom( xyz_name );
-        bGeom=true;
+        bMMFF=true;
+    }else if ( xyz_name ){
+        if( bMMFF ){ 
+            loadGeom( xyz_name );
+        }else{
+            loadNBmol( xyz_name ); 
+            if(bRigid)initRigid();
+        }
     }
-    if(bGeom){                               
-        builder.toMMFFsp3( ff, &params );    
-        //ff.printPis();
-        //ff.printNeighs(); // HeisenBug
-        initNBmol();                         
-        if(bOptimizer){ setOptimizer(); }    
+    if(bMMFF){                               
+        builder.toMMFFsp3( ff, &params );
+        initNBmol();
+        if(bOptimizer){ setOptimizer(); }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
-    bool bRigid=true; 
-    if(bRigid)initRigid();
-    if(surf_name )loadSurf( surf_name, bGrid, true );   
+    if(surf_name  )loadSurf( surf_name, bGrid, true );   
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 

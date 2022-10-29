@@ -39,7 +39,6 @@ void unpack(int n, Vec3d* fs, double* es, Quat4f* qs ){
 
 class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
   OCL_PP     ocl;
-  bool bOcl=false;
 
   Quat4f * q_ps=0;
   Quat4f * q_fs=0; 
@@ -117,23 +116,24 @@ virtual void init( bool bGrid ) override  {
 }
 
 double eval_gridFF_ocl( int n, Vec3d* ps,             Vec3d* fs ){ 
-    printf("eval_gridFF_ocl() \n");
-    pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );  DEBUG
-    ocl.getNonBondForce_GridFF( n, (float4*)q_ps, 0, (float4*)q_fs );  DEBUG
-    unpack( n, fs, q_fs );  DEBUG
+    //printf("eval_gridFF_ocl() \n");
+    pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
+    ocl.getNonBondForce_GridFF( n, (float4*)q_ps, 0, (float4*)q_fs );
+    unpack( n, fs, q_fs );
     double E=0;
     for(int i=0; i<n; i++){ E+=q_fs[i].e; }; // sum energy
     return E;
 }
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
-    printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i \n", nIter, bGridFF, bOcl );
-    ff.cleanAll();
+    //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
+    if(bMMFF)ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
+        
         //printf("#======= MDloop[%i] \n", nloop );
         double E=0;
-        ff.cleanAll();
-		    //E += ff.eval();
+        if(bMMFF){ E += ff.eval(); } 
+        else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
 		    //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
         //bGridFF=true;
         //bOcl   =true;
@@ -151,6 +151,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
              Vec3d f = getForceSpringRay( ff.apos[ipicked], pick_hray, pick_ray0, K );
              ff.fapos[ipicked].add( f );
         };
+        
         //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
@@ -162,6 +163,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         }
         nloop++;
     }
+    
 }
 
 
