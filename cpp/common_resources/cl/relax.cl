@@ -1056,3 +1056,104 @@ __kernel void getNonBondForce_GridFF(
     forces[iG] = fe;
     
 }
+
+
+
+
+float4 eval_bond( float3 d, float l0, float k, float4* fe_ ){
+    float l  = length(d);  // (*l_)=l;
+    float dl = l-l0;
+    d*=(1.f/l);
+    (*fe_) += (float4)( d*( 2.f*k*dl ),  k*dl*dl );
+    return (float4)( d, l );
+}
+
+
+__kernel void getMMFFsp3(
+    const int nAtoms,               // 1
+    __global float4*  atoms,        // 2
+    __global float4*  REQKs,        // 3
+    __global float4*  forces,       // 4
+    __global int4*    neighs,       // 5
+    __global float8*  bondLK,       //  
+    __global float2*  ang0K,        //  
+    __read_only image3d_t  FE_Paul, // 5
+    __read_only image3d_t  FE_Lond, // 6
+    __read_only image3d_t  FE_Coul, // 7
+    float4 pos0,     // 8
+    float4 dinvA,    // 9
+    float4 dinvB,    // 10
+    float4 dinvC     // 11
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    //__local int4   LNEIGH[32];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+
+    if(iG>nAtoms) return;
+
+    float4 ai    = atoms[iG];
+    float4 REQKi = REQKs[iG];
+    
+    // ========== Interaction with grid
+    float3 pi = ai.xyz-pos0.xyz;
+    const float4 coord = (float4)( dot(pi,dinvA.xyz),dot(pi,dinvB.xyz),dot(pi,dinvC.xyz), 0.0f );
+    float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
+    float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
+    float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+    //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
+    float ej   = exp( REQKi.w * -REQKi.x );
+    float cP   = ej*ej*REQKi.y;
+    float cL   = -  ej*REQKi.y;
+    float4 fe  =  fe_Paul*cP + fe_Lond*cL*0 +  fe_Coul*REQKi.z*0;
+    
+
+    // ========= Atom-to-Atom interaction ( N-body problem )
+
+    for (int i0=0; i0<nAtoms; i0+= nL ){
+        int i = i0 + iL;
+        //if(i>=nAtoms) break;  // wrong !!!!
+        LATOMS[iL] = atoms [i];
+        LCLJS [iL] = REQKs [i];
+        int4    ng = neighs[i];
+        float4  BL = bondLK[i].lo;  // ToDo: maybe it is better split like lk1,kl2,lk3,lk4
+        float4  BK = bondLK[i].hi;
+        float4  dls[4];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            int ji=j+i0;
+            if( (j!=iG) && (ji<nAtoms) ){
+                float4 aj=LATOMS[j];
+                float3 dp = ai.xyz - aj.xyz;
+                // ============= Bonds
+                if     ( ji== ng.x ){  dls[0] += eval_bond( dp, BL.x, BK.x, &fe );  }
+                else if( ji== ng.y ){  dls[1] += eval_bond( dp, BL.y, BK.y, &fe );  }
+                else if( ji== ng.z ){  dls[2] += eval_bond( dp, BL.z, BK.z, &fe );  }
+                else if( ji== ng.w ){  dls[3] += eval_bond( dp, BL.w, BK.w, &fe );  }
+                else{ 
+                // ============== Non-bonded
+                    float4 REQK = LCLJS[j];
+                    REQK.x+=REQKi.x;
+                    REQK.y*=REQKi.y;
+                    REQK.z*=REQKi.z;
+                    fe += getMorseQ( dp, REQK );
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+    //  ============== Angles 
+
+        float2  a0k = ang0K[i];
+
+        // ToDo in future
+        // PROBLEM : how to synchronize writing out forces on other atoms ?
+
+
+    }
+
+    forces[iG] = fe;
+    
+}
