@@ -1068,6 +1068,39 @@ float4 eval_bond( float3 d, float l0, float k, float4* fe_ ){
     return (float4)( d, l );
 }
 
+/*
+float4 evalAngle( __private float4* dls,  __private float4* fout, int ing, int jng, double K, double c0 ){
+    float3 h1 = dls[ing].xyz; float ir1 = dls[ing].w;
+    float3 h2 = dls[jng].xyz; float ir2 = dls[jng].w;
+    float  c = dot(h1,h2);
+    float3 hf1,hf2;
+    hf1 = h2 - h1*c;
+    hf2 = h1 - h2*c;
+    float E = K*c*c;
+    float fang = -K*c*2;
+    hf1 *= ( fang*ir1 );
+    hf2 *= ( fang*ir2 );
+    fout [ing].xyz += hf1;
+    fout [jng].xyz += hf2;
+    return (float4)( hf1+hf1 , -E );
+}
+*/
+
+float4 evalAngle( __private float4* fout, float4 dl1, float4 dl2, int ing, int jng, double K, double c0 ){
+    float3 h1 = dl1.xyz; float ir1 = dl1.w;
+    float3 h2 = dl2.xyz; float ir2 = dl2.w;
+    float  c = dot(h1,h2);
+    float3 hf1,hf2;
+    hf1 = h2 - h1*c;
+    hf2 = h1 - h2*c;
+    float E = K*c*c;
+    float fang = -K*c*2;
+    hf1 *= ( fang*ir1 );
+    hf2 *= ( fang*ir2 );
+    fout [ing].xyz += hf1;
+    fout [jng].xyz += hf2;
+    return (float4)( hf1+hf1 , -E );
+}
 
 __kernel void getMMFFsp3(
     const int nAtoms,               // 1
@@ -1077,6 +1110,7 @@ __kernel void getMMFFsp3(
     __global int4*    neighs,       // 5
     __global float8*  bondLK,       //  
     __global float2*  ang0K,        //  
+    __global float4*  neighForces,  // 4
     __read_only image3d_t  FE_Paul, // 5
     __read_only image3d_t  FE_Lond, // 6
     __read_only image3d_t  FE_Coul, // 7
@@ -1112,15 +1146,17 @@ __kernel void getMMFFsp3(
 
     // ========= Atom-to-Atom interaction ( N-body problem )
 
+    int4    ng = neighs[iG];
+    float4  BL = bondLK[iG].lo;  // ToDo: maybe it is better split like lk1,kl2,lk3,lk4
+    float4  BK = bondLK[iG].hi;
+    float4  dls[4];
+
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
         LATOMS[iL] = atoms [i];
         LCLJS [iL] = REQKs [i];
-        int4    ng = neighs[i];
-        float4  BL = bondLK[i].lo;  // ToDo: maybe it is better split like lk1,kl2,lk3,lk4
-        float4  BK = bondLK[i].hi;
-        float4  dls[4];
+        
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
             int ji=j+i0;
@@ -1143,7 +1179,7 @@ __kernel void getMMFFsp3(
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
-
+    }
     //  ============== Angles 
 
         float2  a0k = ang0K[i];
@@ -1151,7 +1187,48 @@ __kernel void getMMFFsp3(
         // ToDo in future
         // PROBLEM : how to synchronize writing out forces on other atoms ?
 
+    #define NNEIGH 4
+    #define CAP_PI -1
 
+    int*  ngs = (int*)&ng;
+
+    const bool bSS_  = true;
+    const bool bSP_  = true;
+    const bool bPPT_ = true;
+    const bool bPPI_ = true;
+
+    float4 ngForces[4];
+    float2 c0K = ang0K[iG];
+
+    for(int i=0; i<NNEIGH; i++){
+        int   ib = ngs[i];
+        bool bi=(ib!=CAP_PI);
+        float4 dli=dls[i];
+        for(int j=i+1; j<NNEIGH; j++){
+            int jb  = ngs[j];
+            bool bj=(jb!=CAP_PI);
+            float4 dlj=dls[j];
+            if(bi){ if( bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-sigma angle
+            //        else   { fe-=evalAngle( ing, jng, K ); Esp +=e; E+=e; } } // sigma-pi orthogonality
+            //}else{  if(!bj){ fe-=evalAngle( ing, jng, K ); EppT+=e; E+=e; } } // pi-pi orthogonality
+            //        else   {    
+            /*
+            if(bi){ if( bj){ if(bSS_ ){ double e=evalSS ( ia, ing, jng, K ); Ess +=e; E+=e; } } // sigma-sigma angle
+                    else   { if(bSP_ ){ double e=evalSP ( ia, ing, jng, K ); Esp +=e; E+=e; } } // sigma-pi orthogonality
+            }else{  if(!bj){ if(bPPT_){ double e=evalPPT( ia, ing, jng, K ); EppT+=e; E+=e; } } // pi-pi orthogonality
+                    else   { if(bPPI_){                                                         // pi-pi colinearity on neighbors
+                        int joff = (jb+1)*nneigh_max;   
+                        for(int ii=1; ii<3; ii++){
+                            int kng=joff-ii;
+                            int kb =neighs[kng];
+                            if(kb!=CAP_PI) continue;
+                            double e=evalPPI( ing, kng, K ); EppI  +=e; E+=e; 
+                        }
+                    }
+                }
+            }    
+            */
+        }
     }
 
     forces[iG] = fe;
