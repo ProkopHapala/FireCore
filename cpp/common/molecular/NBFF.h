@@ -125,6 +125,9 @@ class NBsystem{ public:
     void fromRigid( Vec3d* ps0, const Vec3d& p0, const Mat3d& rot ){ for(int i=0; i<n; i++){ rot.dot_to_T( ps0[i], ps[i] ); ps[i].add(p0); } }
     void torq     ( const Vec3d& p0, Vec3d& tq ){ for(int i=0; i<n; i++){ Vec3d d; d.set_sub(ps[i],p0); tq.add_cross(fs[i],d); } }
 
+    void shift( Vec3d d ){ for(int i=0; i<n; i++){  ps[i].add(d); } }
+
+
     double evalLJQs(){
         const int N=n;
         double E=0;

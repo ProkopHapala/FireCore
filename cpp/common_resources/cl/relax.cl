@@ -1182,8 +1182,6 @@ __kernel void getMMFFsp3(
     }
     //  ============== Angles 
 
-        float2  a0k = ang0K[i];
-
         // ToDo in future
         // PROBLEM : how to synchronize writing out forces on other atoms ?
 
@@ -1209,9 +1207,11 @@ __kernel void getMMFFsp3(
             bool bj=(jb!=CAP_PI);
             float4 dlj=dls[j];
             if(bi){ if( bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-sigma angle
-            //        else   { fe-=evalAngle( ing, jng, K ); Esp +=e; E+=e; } } // sigma-pi orthogonality
-            //}else{  if(!bj){ fe-=evalAngle( ing, jng, K ); EppT+=e; E+=e; } } // pi-pi orthogonality
-            //        else   {    
+                    else   { fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-pi orthogonality
+            }else{  if(!bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // pi-pi orthogonality
+                    else   {    
+                    }
+            }
             /*
             if(bi){ if( bj){ if(bSS_ ){ double e=evalSS ( ia, ing, jng, K ); Ess +=e; E+=e; } } // sigma-sigma angle
                     else   { if(bSP_ ){ double e=evalSP ( ia, ing, jng, K ); Esp +=e; E+=e; } } // sigma-pi orthogonality

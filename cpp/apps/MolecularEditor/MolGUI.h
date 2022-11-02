@@ -618,6 +618,14 @@ void MolGUI::keyStateHandling( const Uint8 *keys ){
 	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
     //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
 	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
+
+    if( keys[ SDL_SCANCODE_KP_4 ] ){ W->nbmol.shift( {-0.1,0.,0.} ); }
+    if( keys[ SDL_SCANCODE_KP_6 ] ){ W->nbmol.shift( {+0.1,0.,0.} ); }
+    if( keys[ SDL_SCANCODE_KP_8 ] ){ W->nbmol.shift( {0.,+0.1,0.} ); }
+    if( keys[ SDL_SCANCODE_KP_2 ] ){ W->nbmol.shift( {0.,-0.1,0.} ); }
+    if( keys[ SDL_SCANCODE_KP_7 ] ){ W->nbmol.shift( {0.,0.,+0.1} ); }
+    if( keys[ SDL_SCANCODE_KP_9 ] ){ W->nbmol.shift( {0.,0.,-0.1} ); }
+
     if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
 	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
     if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
