@@ -108,6 +108,7 @@ void init_ocl(){
 
 virtual void init( bool bGrid ) override  {
     MolWorld_sp3::init(bGrid);
+    gridFF.grid.printCell();
     ocl.setNs(3, gridFF.grid.n.array );
     v2f4( gridFF.grid.pos0,ocl.pos0); 
     ocl.setGridShape( gridFF.grid.dCell );
