@@ -166,7 +166,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
 
 void initNBmol(){
     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() ff.natoms %i \n", ff.natoms  );
-	nbmol  .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );              
+	nbmol  .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
+    nbmol.atypes = ff.atype;              
 	builder.export_REQs  ( nbmol.REQs   );   
     for(int i=builder.atoms.size(); i<ff.natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
     params .assignREs    ( ff.natoms, ff.atype, nbmol.REQs, true, false  ); 

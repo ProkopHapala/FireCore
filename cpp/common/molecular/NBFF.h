@@ -104,11 +104,12 @@ inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, dou
 
 class NBsystem{ public:
     int n;
-    int   *atypes=0; // Not necessarily used
-    Vec3d *REQs=0;
-    Vec3d *ps=0;
-    Vec3d *fs=0;
-    Vec3d *PLQs=0;  // used only in combination with GridFF
+    int    *atypes=0; // Not necessarily used
+    Vec3d  *REQs=0;
+    Vec3d  *ps=0;
+    Vec3d  *fs=0;
+    Vec3d  *PLQs=0;    // used only in combination with GridFF
+    Quat4i *neighs=0;  //
 
     void makePLQs(double K){
         //printf( "makePLQs() n %i K %g \n", n, K );
@@ -281,6 +282,35 @@ class NBsystem{ public:
                 //fi.add(fij);
             }
             //fs[i].add(fi);
+        }
+        return E;
+    }
+
+    double evalNeighs( double RQ=1.0, double K=-1.5 ){
+        double E=0;
+        double R2Q=RQ*RQ;
+        for(int i=0; i<n; i++){
+            Vec3d  fi = Vec3dZero;
+            Vec3d  pi = ps[i];
+            Quat4i ngi = {-1,-1,-1,-1};
+            if(neighs)ngi=neighs[i];
+            //pi.add( shift );
+            const Vec3d& REQi = REQs[i];
+            for(int j=i+1; j<n; j++){    // atom-atom
+                if( (j==ngi.x)||(j==ngi.y)||(j==ngi.z)||(j==ngi.w) ) continue;
+                Vec3d fij = Vec3dZero;
+                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                Vec3d dp=ps[j]-pi;
+                double ei = addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2Q );    E+=ei;
+                //E += addAtomicForceLJQ   ( ps[j]-pi, fij, REQij );
+                glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij      , pi );
+                glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij*-1.0f, ps[j] );
+                //glColor3f(1.0f,0.0f,1.0f); Draw3D::drawLine( pi, ps[j] );
+                if(i==0){ printf("CPU[0,%i] dp(%g,%g,%g) fe(%g,%g,%g|%g)\n", j,  dp.x,dp.y,dp.z,   fij.x,fij.y,fij.z,ei ); }
+                fs[j].sub(fij);
+                fi   .add(fij);
+            }
+            fs[i].add(fi);
         }
         return E;
     }

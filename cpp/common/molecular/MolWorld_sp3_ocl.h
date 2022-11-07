@@ -99,23 +99,58 @@ void init_ocl(){
     //surf2ocl( nPBC, true );
     surf2ocl( nPBC, false );
     printf( ">>time(surf2ocl): %g [s] \n", (getCPUticks()-T1)*tick2second  );
+    printf( "... init_ocl() END\n" );
+}
+
+void mol2ocl(){
     ocl.buffers[ocl.ibuff_atoms].release();
     ocl.buffers[ocl.ibuff_coefs].release();
     // ---- Prepare for sampling atoms
     ocl.initAtomsForces( nbmol.n );
-    printf( "buffs atoms, coefs, aforces: %i %i %i \n", ocl.ibuff_atoms, ocl.ibuff_coefs, ocl.ibuff_aforces );
+    printf( "buffs atoms, coefs, aforces, neighs: %i %i %i %i \n", ocl.ibuff_atoms, ocl.ibuff_coefs, ocl.ibuff_aforces, ocl.ibuff_neighs );
     q_ps= new Quat4f[nbmol.n];
     q_fs= new Quat4f[nbmol.n];
     // ---- nbmol coefs
     Quat4f* q_cs= new Quat4f[nbmol.n];
     pack  ( nbmol.n, nbmol.REQs, q_cs, gridFF.alpha );
-    ocl.upload( ocl.ibuff_coefs, q_cs );
+    ocl.upload( ocl.ibuff_coefs,  q_cs );    
+    makeOCLNeighs( );
     delete [] q_cs;
-    printf( "... init_ocl() END\n" );
 }
+
+void  makeOCLNeighs( ){
+    int n=nbmol.n;
+    int* aneighs=new int[n*4];
+    for(int i=0; i<n; i++){
+      int i4=i*4;
+      aneighs[i4+0]=-1; aneighs[i4+1]=-1; aneighs[i4+2]=-1; aneighs[i4+3]=-1;
+    }
+    if(bMMFF){
+      for(int i=0; i<ff.nnode; i++){
+        int i4=i*4;
+        for(int j=0; j<4; j++){
+          int ngi=ff.aneighs[i4+j];
+          aneighs[i4+j]=ngi;
+          if(ngi>ff.nnode){   // back-neighbor
+            aneighs[ngi*4+0]=i;
+          }
+        }
+      }
+    }
+    for(int i=0; i<n; i++){
+      printf( "neighs[%i] (%i,%i,%i,%i) \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3]);
+    }
+    ocl.upload( ocl.ibuff_neighs, aneighs );
+    nbmol.neighs = (Quat4i*)aneighs;
+    //delete [] aneighs;
+    //return aneighs;
+}
+
+
 
 virtual void init( bool bGrid ) override  {
     MolWorld_sp3::init(bGrid);
+    mol2ocl();
     /*
     gridFF.grid.printCell();
     ocl.setNs(3, gridFF.grid.n.array );
@@ -124,12 +159,15 @@ virtual void init( bool bGrid ) override  {
     init_ocl();
     printf( "... MolWorld::init() DONE \n");
     */
+
+    bGridFF=false;
+    bOcl   =false;
 }
 
 double eval_gridFF_ocl( int n, Vec3d* ps,             Vec3d* fs ){ 
     //printf("eval_gridFF_ocl() \n");
     pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
-    ocl.getNonBondForce_GridFF( n, (float4*)q_ps, 0, (float4*)q_fs );
+    ocl.getNonBondForce_GridFF( n, (float4*)q_ps, 0, (float4*)q_fs, 0 );
     unpack( n, fs, q_fs );
     double E=0;
     for(int i=0; i<n; i++){ E+=q_fs[i].e; }; // sum energy
@@ -138,12 +176,14 @@ double eval_gridFF_ocl( int n, Vec3d* ps,             Vec3d* fs ){
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
-    if(bMMFF)ff.cleanAll();
+    bool bMMFF_ = bMMFF;
+    bMMFF_=false;
+    if(bMMFF_)ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         
         //printf("#======= MDloop[%i] \n", nloop );
         double E=0;
-        if(bMMFF){ E += ff.eval(); } 
+        if(bMMFF_){ E += ff.eval();  } 
         else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
 		    //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
         //bGridFF=true;
@@ -152,10 +192,12 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
             if  (bGridFF){ 
               if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
               else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
+            }else { 
+              E+= nbmol.evalNeighs();
+            //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
+            //E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
+            //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
             }
-            //else    { E+= nbmol .evalMorse    (surf, false,                 gridFF.alpha, gridFF.Rdamp ); }
-            else    { E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); }
-            //else      { E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); }
         }
         ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
         if(ipicked>=0){

@@ -320,17 +320,19 @@ class OCL_PP: public OCL_DFT { public:
 
     int initAtomsForces( int nAtoms_ ){
         nAtoms=nAtoms_;
-        ibuff_atoms   =newBuffer( "atoms",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        ibuff_aforces =newBuffer( "aforces",  nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        ibuff_atoms   =newBuffer( "atoms",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_aforces =newBuffer( "aforces",  nAtoms, sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_neighs  =newBuffer( "neighs",   nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         return ibuff_atoms;
     }
 
-    void getNonBondForce_GridFF( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0 ){
+    void getNonBondForce_GridFF( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0, int4* neighs=0 ){
         //printf("getNonBondForce_GridFF(na=%i) \n", na);
         if(ibuff_atoms<0)initAtoms( na, 1 );
-        if(atoms  )upload( ibuff_atoms,   atoms, na); // Note - these are other atoms than used for makeGridFF()
-        if(coefs  )upload( ibuff_coefs,   coefs, na);
+        if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
+        if(coefs  )upload( ibuff_coefs,   coefs,  na);
+        if(coefs  )upload( ibuff_neighs,  neighs, na);
         //if(aforces)upload( ibuff_aforces, aforces, na);
         OCLtask* task = getTask("getNonBondForce_GridFF");
         task->global.x = na;
@@ -339,13 +341,14 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_atoms  ); // 2
         err |= useArgBuff( ibuff_coefs  ); // 3
         err |= useArgBuff( ibuff_aforces); // 4
-        err |= useArgBuff( itex_FE_Paul ); // 5
-        err |= useArgBuff( itex_FE_Lond ); // 6
-        err |= useArgBuff( itex_FE_Coul ); // 7     
-        err |= _useArg( pos0 );            // 8
-        err |= _useArg( dinv[0] );              // 9
-        err |= _useArg( dinv[1] );              // 10
-        err |= _useArg( dinv[2] );              // 11
+        err |= useArgBuff( ibuff_neighs ); // 5
+        err |= useArgBuff( itex_FE_Paul ); // 6
+        err |= useArgBuff( itex_FE_Lond ); // 7
+        err |= useArgBuff( itex_FE_Coul ); // 8     
+        err |= _useArg( pos0 );            // 9
+        err |= _useArg( dinv[0] );              // 10
+        err |= _useArg( dinv[1] );              // 11
+        err |= _useArg( dinv[2] );              // 12
         OCL_checkError(err, "getNonBondForce_GridFF_1");
         err = task->enque_raw();
         OCL_checkError(err, "getNonBondForce_GridFF_2");  
