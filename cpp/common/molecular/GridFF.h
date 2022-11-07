@@ -87,12 +87,11 @@ class GridFF{ public:
         Vec3d gpos;
         grid.cartesian2grid(pos, gpos);
         //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) \n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z );
-
-        Quat4f fp=interpolate3DvecWrap( FFPauli,   grid.n, gpos );   fe.add_mul( fp, PLQ.x*0 );
-        Quat4f fl=interpolate3DvecWrap( FFLondon,  grid.n, gpos );   fe.add_mul( fl, PLQ.y*0 );
-        //Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, PLQ.z );
-        Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, 1.0 );
-        if(bDebug__)printf( "CPU[0] apos(%g,%g,%g)  PLQ(%g,%g,%g)\n", pos.x,pos.y,pos.z, fp.w,fl.w,fq.w );
+        Quat4f fp=interpolate3DvecWrap( FFPauli,   grid.n, gpos );   fe.add_mul( fp, PLQ.x );
+        Quat4f fl=interpolate3DvecWrap( FFLondon,  grid.n, gpos );   fe.add_mul( fl, PLQ.y );
+        Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, PLQ.z );
+        //Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, 1.0 );
+        //if(bDebug__)printf( "CPU[0] apos(%g,%g,%g)  PLQ(%g,%g,%g)\n", pos.x,pos.y,pos.z, fp.w,fl.w,fq.w );
         //printf( "fp(%g,%g,%g|%g)*(%g) + fl((%g,%g,%g|%g)*(%g) + fq(%g,%g,%g|%g)*(%g) \n", fp.x,fp.y,fp.z,fp.e, PLQ.x,  fl.x,fl.y,fl.z,fl.e, PLQ.y,  fq.x,fq.y,fq.z,fq.e, PLQ.z );
         //printf( "E(%g,%g,%g) PLQ(%g,%g,%g)\n", fp.e,fl.e,fq.e, PLQ.x,PLQ.y,PLQ.z );
 

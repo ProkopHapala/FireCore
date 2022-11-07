@@ -32,7 +32,6 @@ void unpack(int n, Vec3d* fs, double* es, Quat4f* qs ){
   } 
 }
 
-
 // ======================================
 // class:        MolWorld_sp3_ocl
 // ======================================
@@ -50,6 +49,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
   int ncell = (nPBC.x*2+1) * (nPBC.y*2+1) * (nPBC.z*2+1); 
   int n = surf.n*ncell;
   printf( "surf2ocl() na(%i) = ncell(%i) * natom(%i)\n", n, ncell, surf.n );
+  long T0=getCPUticks();
   Quat4f* atoms = new Quat4f[n];
   Quat4f* coefs = new Quat4f[n];
   double R2damp = sq(gridFF.Rdamp);
@@ -65,14 +65,17 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
         ii++;
       }
   }}}
-
+  printf( ">>time(surf_to_GPU) %g \n", (getCPUticks()-T0)*tick2second );
+  long T1=getCPUticks();
   ocl.makeGridFF( n, (float4*)atoms, (float4*)coefs );
+  printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
+  ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli );  
+  ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
+  ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );
+  printf( ">>time(ocl.makeGridFF(); ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
   delete [] atoms;
   delete [] coefs;
   if(bSaveDebug){
-    ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli );  
-    ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
-    ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );
     gridFF.grid.saveXSF( "ocl_E_Paul.xsf", (float*)gridFF.FFPauli,  4, 3 );
     gridFF.grid.saveXSF( "ocl_E_Lond.xsf", (float*)gridFF.FFLondon, 4, 3 );
     gridFF.grid.saveXSF( "ocl_E_Coul.xsf", (float*)gridFF.FFelec,   4, 3 );
@@ -87,10 +90,15 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
 
 void init_ocl(){
     printf( "init_ocl() \n" );
+    long T0 = getCPUticks();
     ocl.init();
     ocl.initPP( "common_resources/cl" );
     // ---- Init Surface force-field grid
-    surf2ocl( nPBC, true );
+    printf( ">>time(ocl.init();ocl.initPP(): %g [s] \n", (getCPUticks()-T0)*tick2second  );
+    long T1 = getCPUticks();
+    //surf2ocl( nPBC, true );
+    surf2ocl( nPBC, false );
+    printf( ">>time(surf2ocl): %g [s] \n", (getCPUticks()-T1)*tick2second  );
     ocl.buffers[ocl.ibuff_atoms].release();
     ocl.buffers[ocl.ibuff_coefs].release();
     // ---- Prepare for sampling atoms
@@ -108,12 +116,14 @@ void init_ocl(){
 
 virtual void init( bool bGrid ) override  {
     MolWorld_sp3::init(bGrid);
+    /*
     gridFF.grid.printCell();
     ocl.setNs(3, gridFF.grid.n.array );
     v2f4( gridFF.grid.pos0,ocl.pos0); 
     ocl.setGridShape( gridFF.grid.dCell );
     init_ocl();
     printf( "... MolWorld::init() DONE \n");
+    */
 }
 
 double eval_gridFF_ocl( int n, Vec3d* ps,             Vec3d* fs ){ 
@@ -143,8 +153,9 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
               if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
               else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
             }
-            //else    { E+= nbmol .evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );  }
-            else      { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
+            //else    { E+= nbmol .evalMorse    (surf, false,                 gridFF.alpha, gridFF.Rdamp ); }
+            else    { E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); }
+            //else      { E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); }
         }
         ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
         if(ipicked>=0){
@@ -167,6 +178,41 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     
 }
 
+
+virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} )override{
+    printf( "MolWorld_sp3_ocl::initGridFF() \n");
+    if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
+    sprintf(tmpstr, "%s.lvs", name );
+    if( file_exist(tmpstr) ){ 
+        gridFF.grid.loadCell( tmpstr, gridStep );
+        if(bGrid){
+            gridFF.grid.center_cell( cel0 );
+            bGridFF=true;
+            gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
+            if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+            gridFF.grid.pos0.z=z0;
+            if(verbosity>1)gridFF.grid.printCell();
+            gridFF.allocateFFs();
+            //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
+            //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
+
+            long T0 = getCPUticks();
+            {// OpenCL-accelerated   GridFF initialization
+              gridFF.grid.printCell();
+              ocl.setNs(3, gridFF.grid.n.array );
+              v2f4( gridFF.grid.pos0,ocl.pos0); 
+              ocl.setGridShape( gridFF.grid.dCell );
+              init_ocl();
+            }
+            printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
+            bGridFF   =true; 
+            //bSurfAtoms=false;
+        }
+    }else{ 
+        bGridFF=false; 
+        printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
+    }
+}
 
 virtual void swith_gridFF()override   { bGridFF=!bGridFF; if(bGridFF){ bOcl=!bOcl; }; };
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i bOcl %i \n", bGridFF, bOcl ); return str; }

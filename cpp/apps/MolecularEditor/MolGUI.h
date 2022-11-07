@@ -179,6 +179,12 @@ void MolGUI::initGUI(){
 }
 
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
+
+    long T0=getCPUticks();
+    SDL_Delay(100);
+    tick2second =  0.1/(getCPUticks()-T0);
+    printf( ">>tick2second = %g ( %g GHz)\n", tick2second, 1.0e-9/tick2second );
+
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
     if(W_==0){ W = new MolWorld_sp3(); }else{ W=W_; }

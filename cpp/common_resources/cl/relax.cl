@@ -911,7 +911,7 @@ __kernel void make_GridFF(
     const int nMax = nab*nGrid.z;
     if(iG>nMax) return;
 
-    if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
+    //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
     //if(iG==0){
     //    printf("GPU::make_GridFF(natoms=%i)\n", nAtoms);
     //    for(int i=0; i<nAtoms; i++){ printf("atom[%i] apos(%g,%g,%g|%g) rekq(%g,%g,%g|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
@@ -937,9 +937,9 @@ __kernel void make_GridFF(
                 float  r   = sqrt(r2);
                 float ir2  = 1/(r2+atom.w); 
                 // ---- Electrostatic
-                //float   E  = REQK.z*sqrt(ir2);
-                //fe_Coul   += (float4)(dp*(E*ir2), E );
-                fe_Coul   += (float4)(dp*-1.f, length(dp) ); // DEBUG
+                float   E  = REQK.z*sqrt(ir2);
+                fe_Coul   += (float4)(dp*(E*ir2), E );
+                //fe_Coul   += (float4)(dp*-1.f, length(dp) ); // DEBUG
 
                 // ---- Morse ( Pauli + Dispersion )
                 float    e = exp( REQK.w*(r-REQK.x) );
@@ -1045,8 +1045,8 @@ __kernel void getNonBondForce_GridFF(
     //double CP    =  eps*expar*expar;
     //double CL    = -eps*expar;
 
-    //float4 fe  =  fe_Paul*cP + fe_Lond*cL +  fe_Coul*REQKi.z;
-    float4 fe  = fe_Coul;
+    float4 fe  =  fe_Paul*cP + fe_Lond*cL +  fe_Coul*REQKi.z;
+    //float4 fe  = fe_Coul;
     
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  fe_Paul.w,fe_Lond.w,fe_Coul.w ); }
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) RE(%g,%g) fe(%g,%g,%g|%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  cP,cL,REQKi.z,  REQKi.x,REQKi.y,  fe.x,fe.y,fe.z,fe.w ); }
