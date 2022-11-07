@@ -988,13 +988,14 @@ __kernel void getNonBondForce_GridFF(
     __global float4*  atoms,        // 2
     __global float4*  REQKs,        // 3
     __global float4*  forces,       // 4
-    __read_only image3d_t  FE_Paul, // 5
-    __read_only image3d_t  FE_Lond, // 6
-    __read_only image3d_t  FE_Coul, // 7
-    float4 pos0,     // 8
-    float4 dinvA,    // 9
-    float4 dinvB,    // 10
-    float4 dinvC     // 11
+    __global int4*    neighs,       // 5
+    __read_only image3d_t  FE_Paul, // 6
+    __read_only image3d_t  FE_Lond, // 7
+    __read_only image3d_t  FE_Coul, // 8
+    float4 pos0,     // 9
+    float4 dinvA,    // 10
+    float4 dinvB,    // 11
+    float4 dinvC     // 12
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -1002,10 +1003,11 @@ __kernel void getNonBondForce_GridFF(
     const int iL = get_local_id  (0);
     const int nL = get_local_size(0);
     if(iG==0){
-        //printf( "GPU::getNonBondForce_GridFF() \n" );
+        printf( "GPU::getNonBondForce_GridFF() nAtoms %i \n", nAtoms );
         //printf("GPU::(na=%i) apos[0](%g,%g,%g|%g) rekq[0](%g,%g,%g|%g) \n", nAtoms, atoms[0].x,atoms[0].y,atoms[0].z,atoms[0].w,   REQKs[0].x,REQKs[0].y,REQKs[0].z,REQKs[0].w );
         //printf("GPU::getNonBondForce_GridFF(natoms=%i)\n", nAtoms);
         //for(int i=0; i<nAtoms; i++){ printf("atom[%i] apos(%g,%g,%g|%g) rekq(%g,%g,%g|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
+        //for(int i=0; i<nAtoms; i++){ printf("GPU atom[%i] neighs(%i,%i,%i,%i) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w ); }
         //printf("dinvA.xyz (%g,%g,%g)\n", dinvA.x,dinvA.y,dinvA.z );
         //printf("dinvB.xyz (%g,%g,%g)\n", dinvB.x,dinvB.y,dinvB.z );
         //printf("dinvC.xyz (%g,%g,%g)\n", dinvC.x,dinvC.y,dinvC.z );
@@ -1019,27 +1021,28 @@ __kernel void getNonBondForce_GridFF(
 
     if(iG>nAtoms) return;
 
-    float4 atomi = atoms[iG];
-    float4 REQKi = REQKs[iG];
-    float3 posi  = atomi.xyz;
+    const float4 atomi = atoms[iG];
+    const float4 REQKi = REQKs[iG];
+    float3       posi  = atomi.xyz;
 
+    /*
     // ========== Interaction with grid
     posi -= pos0.xyz;
     const float4 coord = (float4)( dot(posi,dinvA.xyz)     ,dot(posi,dinvB.xyz)     ,dot(posi,dinvC.xyz)     , 0.0f );
     #if 0
         coord +=(float3){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
-        float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
-        float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
-        float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+        const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
+        const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
+        const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
     #else
-        float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
-        float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
-        float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
+        const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
+        const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
+        const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
     #endif
     //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
-    float ej   = exp( REQKi.w * -REQKi.x );
-    float cP   = ej*ej*REQKi.y;
-    float cL   = -  ej*REQKi.y;
+    const float ej   = exp( REQKi.w * -REQKi.x );
+    const float cP   = ej*ej*REQKi.y;
+    const float cL   = -  ej*REQKi.y;
 
     //double expar =  exp(-K*REQ.x);
     //double CP    =  eps*expar*expar;
@@ -1047,43 +1050,42 @@ __kernel void getNonBondForce_GridFF(
 
     float4 fe  =  fe_Paul*cP + fe_Lond*cL +  fe_Coul*REQKi.z;
     //float4 fe  = fe_Coul;
+    */
+
+    float4 fe  = (float4){0.0f,0.0f,0.0f,0.0f};
     
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  fe_Paul.w,fe_Lond.w,fe_Coul.w ); }
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) RE(%g,%g) fe(%g,%g,%g|%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  cP,cL,REQKi.z,  REQKi.x,REQKi.y,  fe.x,fe.y,fe.z,fe.w ); }
 
-    /*
     // ========= Atom-to-Atom interaction ( N-body problem )
-
-
-    TODO:
-    In the non-bonded interaction loop can be also bonded interactions
-
+    const int4    ng = neighs[iG];
     for (int i0=0; i0<nAtoms; i0+= nL ){
-        int i = i0 + iL;
+        const int i = i0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
-        LATOMS[iL] = atoms[i];
-        LCLJS [iL] = REQKs[i];
+        LATOMS[iL] = atoms [i];
+        LCLJS [iL] = REQKs [i];
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
-            if( (j!=iG) && (j+i0)<nAtoms ){ 
+            const int ji=j+i0;
+            //if(iG==0){ printf("GPU[0,ji=%i] j %i iG %i nAtoms \n", ji, j,iG,nAtoms); }
+            if( (ji!=iG) && (ji<nAtoms) ){
+                //if(iG==0){ printf("GPU[0,%i] ng(%i,%i,%i,%i)\n", ji, ng.x,ng.y,ng.z,ng.w ); }
+                if     ( (ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w) ) continue;
+                const float4 aj = LATOMS[j];
+                const float3 dp = aj.xyz - atomi.xyz;
+
                 float4 REQK = LCLJS[j];
-                REQK.x+=REKQi.x;
-                REQK.y*=REKQi.y;
-                //REKQ.z*=REKQi.z; // stiffness must be always the same
-                REQK.z*=REKQi.z;
-                float3 dp = posi - LATOMS[j].xyz;
+                REQK.x+=REQKi.x;
+                REQK.y*=REQKi.y;
+                REQK.z*=REQKi.z;
                 fe += getMorseQ( dp, REQK );
+
+                if(iG==0){ printf("GPU[0,%i] dp(%g,%g,%g) fe(%g,%g,%g|%g)\n", ji,  dp.x,dp.y,dp.z,   fe.x,fe.y,fe.z,fe.w ); }
+                //fe += getLJQ   ( dp, REQK );
             }
-
-            if(j== neigh[0] ){  BOND  }
-            if(j== neigh[1] ){  BOND }
-            if(j== neigh[2] ){  BOND }
-            if(j== neigh[3] ){  BOND }
-
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-    */
 
     forces[iG] = fe;
     

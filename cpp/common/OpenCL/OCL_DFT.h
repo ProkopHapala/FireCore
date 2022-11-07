@@ -128,7 +128,7 @@ class OCL_DFT: public OCLsystem { public:
     float4 pos0, dA, dB, dC;
     float2 acumCoef = (float2){0.0,1.0};
     GridShape grid;
-    int ibuff_atoms=-1,ibuff_coefs=-1,ibuff_aforces=-1;
+    int ibuff_atoms=-1,ibuff_coefs=-1,ibuff_aforces=-1,ibuff_neighs=-1;
     //int ibuff_poss;
 
     int     nAtype=0;

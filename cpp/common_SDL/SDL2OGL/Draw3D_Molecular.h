@@ -104,7 +104,7 @@ void atomPropertyLabel( int n, double* data, Vec3d* ps, int pitch, int offset, i
     }
 }
 
-void bondPropertyLabel( int n, double* data, const Vec2i* b2a,  Vec3d* ps, int pitch, int offset, int fontTex, float sz=0.02, const char* format="%4.2f\0" ){
+void bondPropertyLabel( int n, double* data, const Vec2i* b2a,  Vec3d* ps, int pitch, int offset, int fontTex, float sz=0.01, const char* format="%4.2f\0" ){
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         Vec3d p = (ps[b.i]+ps[b.j])*0.5;
@@ -120,6 +120,18 @@ void bonds( int n, const Vec2i* b2a, const Vec3d* apos){
         //Draw3D::drawLine( apos[b.b], apos[b.a] );
         Draw3D::vertex( apos[b.b] );
         Draw3D::vertex( apos[b.a] );
+    }
+    glEnd();
+}
+
+void bondsLengths( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float sz=0.01, const char* format="%4.2f\0" ){
+    glBegin(GL_LINES);
+    for(int i=0; i<n; i++){
+        Vec2i b = b2a[i];
+        const Vec3d& pi=apos[b.i];
+        const Vec3d& pj=apos[b.j];
+        double r = (pi-pj).norm();
+        drawDouble( (pi+pj)*0.5, r, fontTex, sz, format );
     }
     glEnd();
 }
