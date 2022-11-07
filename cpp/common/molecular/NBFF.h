@@ -191,6 +191,9 @@ class NBsystem{ public:
     }
 
     double evalMorsePBC( NBsystem& B, const Mat3d& cell, Vec3i nPBC=(Vec3i){1,1,0}, double K=-1.0, double RQ=1.0 ){
+        //nPBC = {0,0,0};
+        //printf( "NBsystem::evalMorsePBC() nPBC(%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
+        //printf( "cell.a(%g,%g,%g) cell.b(%g,%g,%g) cell.c(%g,%g,%g) \n", cell.a.x,cell.a.y,cell.a.z,   cell.b.x,cell.b.y,cell.b.z,   cell.c.x,cell.c.y,cell.c.z );
         double E=0;
         //printf("DEBUG evalMorse() n,B.n %i %i \n", n,B.n );
         double R2Q=RQ*RQ;
@@ -198,12 +201,18 @@ class NBsystem{ public:
             Vec3d fi = Vec3dZero;
             Vec3d pi_ = ps[i];
             const Vec3d& AREQi = REQs[i];
+            //if(i==0)printf("pi_(%g,%g,%g) \n",  pi_.x,pi_.y,pi_.z );
             for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
-                Vec3d  pi = pi_ + cell.a*ia + cell.b*ib + cell.c*ic;
+                Vec3d  pi = pi_ + (cell.a*ia) + (cell.b*ib) + (cell.c*ic);
+                //if(i==0)printf("pi[%2i,%2i,%2i] = (%g,%g,%g) \n", ia,ib,ic,   pi.x,pi.y,pi.z );
                 for(int j=0; j<B.n; j++){    // atom-atom
                     Vec3d fij = Vec3dZero;
                     Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
-                    E += addAtomicForceMorseQ( B.ps[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
+                    //E += addAtomicForceMorseQ( B.ps[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
+
+                    E=0; fij = B.ps[j]-pi;  // Test - dr
+                    //if(i==0)printf("fi(%g,%g,%g) \n",  fij.x,fij.y,fij.z );
+
                     fi.add(fij);
                 }
             }}} // nPBC

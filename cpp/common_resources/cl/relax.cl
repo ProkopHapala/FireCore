@@ -9,6 +9,7 @@ __constant sampler_t sampler_1 =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRR
 //__constant sampler_t sampler_1 =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 //__constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST; // NOTE AMD-GPU seems to not accept CLK_NORMALIZED_COORDS_FALSE
 __constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST;
+__constant sampler_t sampler_nearest =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST;
 //__constant sampler_t sampler_1 = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;
 
 
@@ -60,6 +61,25 @@ float4 read_imagef_trilin( __read_only image3d_t imgIn, float4 coord ){
       + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,0.0,d.z,0.0) ) * fc.x )*mc.y
      +( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0,d.y,d.z,0.0) ) * mc.x
       + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,d.y,d.z,0.0) ) * fc.x )*fc.y )*fc.z;
+}; 
+
+
+float4 read_imagef_trilin_( __read_only image3d_t imgIn, float4 coord ){
+    float4 icoord;
+    float4 fc     =  fract( coord, &icoord );
+    float4 mc     = (float4)(1.0,1.0,1.0,1.0) - fc;
+    // NOTE AMD-GPU seems to not accept CLK_NORMALIZED_COORDS_FALSE
+    //return read_imagef( imgIn, sampler_2, icoord );
+    //return read_imagef( imgIn, sampler_1, coord );
+    return  
+     (( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,0.0,0.0,0.0) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.0f,0.0,0.0,0.0) ) * fc.x )*mc.y
+     +( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,1.0f,0.0,0.0) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.0f,1.0f,0.0,0.0) ) * fc.x )*fc.y )*mc.z
+    +(( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,0.0,1.f,0.0) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.f,0.0,1.f,0.0) ) * fc.x )*mc.y
+     +( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,1.f,1.f,0.0) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.f,1.f,1.f,0.0) ) * fc.x )*fc.y )*fc.z;
 }; 
 
 
@@ -891,6 +911,7 @@ __kernel void make_GridFF(
     const int nMax = nab*nGrid.z;
     if(iG>nMax) return;
 
+    if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
     //if(iG==0){
     //    printf("GPU::make_GridFF(natoms=%i)\n", nAtoms);
     //    for(int i=0; i<nAtoms; i++){ printf("atom[%i] apos(%g,%g,%g|%g) rekq(%g,%g,%g|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
@@ -916,8 +937,10 @@ __kernel void make_GridFF(
                 float  r   = sqrt(r2);
                 float ir2  = 1/(r2+atom.w); 
                 // ---- Electrostatic
-                float   E  = REQK.z*sqrt(ir2);
-                fe_Coul   += (float4)(dp*(E*ir2), E );
+                //float   E  = REQK.z*sqrt(ir2);
+                //fe_Coul   += (float4)(dp*(E*ir2), E );
+                fe_Coul   += (float4)(dp*-1.f, length(dp) ); // DEBUG
+
                 // ---- Morse ( Pauli + Dispersion )
                 float    e = exp( REQK.w*(r-REQK.x) );
                 float   eM = REQK.y*e;
@@ -957,8 +980,8 @@ __kernel void make_GridFF(
 }
 
 
-//__constant sampler_t sampler_gff =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
-__constant sampler_t sampler_gff =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
+__constant sampler_t sampler_gff =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
+//__constant sampler_t sampler_gff =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 
 __kernel void getNonBondForce_GridFF(
     const int nAtoms,               // 1
@@ -979,6 +1002,7 @@ __kernel void getNonBondForce_GridFF(
     const int iL = get_local_id  (0);
     const int nL = get_local_size(0);
     if(iG==0){
+        //printf( "GPU::getNonBondForce_GridFF() \n" );
         //printf("GPU::(na=%i) apos[0](%g,%g,%g|%g) rekq[0](%g,%g,%g|%g) \n", nAtoms, atoms[0].x,atoms[0].y,atoms[0].z,atoms[0].w,   REQKs[0].x,REQKs[0].y,REQKs[0].z,REQKs[0].w );
         //printf("GPU::getNonBondForce_GridFF(natoms=%i)\n", nAtoms);
         //for(int i=0; i<nAtoms; i++){ printf("atom[%i] apos(%g,%g,%g|%g) rekq(%g,%g,%g|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
@@ -1001,10 +1025,17 @@ __kernel void getNonBondForce_GridFF(
 
     // ========== Interaction with grid
     posi -= pos0.xyz;
-    const float4 coord = (float4)( dot(posi,dinvA.xyz),dot(posi,dinvB.xyz),dot(posi,dinvC.xyz), 0.0f );
-    float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
-    float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
-    float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+    const float4 coord = (float4)( dot(posi,dinvA.xyz)     ,dot(posi,dinvB.xyz)     ,dot(posi,dinvC.xyz)     , 0.0f );
+    #if 0
+        coord +=(float3){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+        float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
+        float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
+        float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+    #else
+        float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
+        float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
+        float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
+    #endif
     //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
     float ej   = exp( REQKi.w * -REQKi.x );
     float cP   = ej*ej*REQKi.y;
@@ -1014,9 +1045,10 @@ __kernel void getNonBondForce_GridFF(
     //double CP    =  eps*expar*expar;
     //double CL    = -eps*expar;
 
-    float4 fe  =  fe_Paul*cP + fe_Lond*cL*0 +  fe_Coul*REQKi.z*0;
+    //float4 fe  =  fe_Paul*cP + fe_Lond*cL +  fe_Coul*REQKi.z;
+    float4 fe  = fe_Coul;
     
-    if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  fe_Paul.w,fe_Lond.w,fe_Coul.w ); }
+    //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  fe_Paul.w,fe_Lond.w,fe_Coul.w ); }
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) RE(%g,%g) fe(%g,%g,%g|%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  cP,cL,REQKi.z,  REQKi.x,REQKi.y,  fe.x,fe.y,fe.z,fe.w ); }
 
     /*
@@ -1133,7 +1165,8 @@ __kernel void getMMFFsp3(
     
     // ========== Interaction with grid
     float3 pi = ai.xyz-pos0.xyz;
-    const float4 coord = (float4)( dot(pi,dinvA.xyz),dot(pi,dinvB.xyz),dot(pi,dinvC.xyz), 0.0f );
+    //const float4 coord = (float4)( dot(pi,dinvA.xyz),dot(pi,dinvB.xyz),dot(pi,dinvC.xyz), 0.0f );
+    const float4 coord = (float4)( dot(pi,dinvA.xyz)+1.0f,dot(pi,dinvB.xyz)+1.0f,dot(pi,dinvC.xyz)+1.0f, 0.0f );
     float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
     float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
     float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );

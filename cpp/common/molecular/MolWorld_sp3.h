@@ -57,8 +57,8 @@ class MolWorld_sp3{ public:
     bool bOcl=false; // used only in Ocl version
 
 
-    //Vec3i nPBC{0,0,0};   // JUST DEBUG   
-    Vec3i nPBC{1,1,0};
+    Vec3i nPBC{0,0,0};   // JUST DEBUG   
+    //Vec3i nPBC{1,1,0};
 
 	// state
 	bool bConverged = false;
