@@ -677,7 +677,7 @@ float4 getMorse( float3 dp, float3 REA ){
     return (float4)(dp*(fr/r), E);
 }
 
-float4 getMorseQ( float3 dp, float4 REKQ ){
+float4 getMorseQ_bak( float3 dp, float4 REKQ ){
     float  r2  = dot(dp,dp) +  R2SAFE;
     float ir2  = 1/r2; 
     float   r  = sqrt( r2 );
@@ -691,6 +691,41 @@ float4 getMorseQ( float3 dp, float4 REKQ ){
     fe += fM*(expar-2.0f);
     return fe; 
 }
+
+float4 getMorseQ( float3 dp, float4 REQK, float R2damp ){
+    float  r2  = dot(dp,dp);
+    float ir2  = 1/( r2 +  R2damp); 
+    float   r  = sqrt( r2 );
+    float  ir  = sqrt( ir2 );
+    // ---- Electrostatic
+    float   E  = REQK.z*ir;
+    float4 fe  = (float4)(dp*(E*ir2), E );
+    // ---- Morse ( Pauli + Dispersion )
+    float   expar = exp( REQK.w*(r-REQK.x) );
+    float   e     = REQK.y*expar;
+    float4  fM    = (float4)(dp*(e*REQK.w), e );
+    fe += fM*(expar-2.0f);
+    return fe; 
+}
+
+/*
+inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double E0, double qq, double K=-1., double R2damp=1. ){
+    double r2    = dp.norm2();
+    double ir2_  = 1/(r2+R2damp);
+    double r     = sqrt( r2   );
+    double ir_   = sqrt( ir2_ );     // ToDo: we can save some cost if we approximate r^2 = r^2 + R2damp;
+    double e     = exp( K*(r-r0));
+    double e2    = e*e;
+    double fMors =  E0*  2*K*( e2 -   e ); // Morse
+    double EMors =  E0*      ( e2 - 2*e );
+    //printf(  "addAtomicForceMorseQ() k %g r %g e %g E0 %g E %g \n", K, r, e/exp( K*(1.487)), E0, EMors );
+    //fr          += COULOMB_CONST*qq/( r*r + R2ELEC );   // Comlomb cheal_damp : Problem - it would reqire asinh() to get energy
+    double Eel   = COULOMB_CONST*qq*ir_;
+    f.add_mul( dp, fMors/r - Eel*ir2_ );
+    //printf( "r %g E0 %g E %g  e2 %g -2*e %g  \n ", r, E0, EMors, e2, -2*e );
+    return EMors + Eel;
+}
+*/
 
 float8 getLJC( float4 atom, float2 cLJ, float3 pos ){
      float3  dp  =  pos - atom.xyz;
@@ -1059,6 +1094,7 @@ __kernel void getNonBondForce_GridFF(
 
     // ========= Atom-to-Atom interaction ( N-body problem )
     const int4    ng = neighs[iG];
+    float R2damp = atomi.w*atomi.w;
     for (int i0=0; i0<nAtoms; i0+= nL ){
         const int i = i0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
@@ -1078,7 +1114,7 @@ __kernel void getNonBondForce_GridFF(
                 REQK.x+=REQKi.x;
                 REQK.y*=REQKi.y;
                 REQK.z*=REQKi.z;
-                fe += getMorseQ( dp, REQK );
+                fe += getMorseQ( dp, REQK, R2damp );
 
                 if(iG==0){ printf("GPU[0,%i] dp(%g,%g,%g) fe(%g,%g,%g|%g)\n", ji,  dp.x,dp.y,dp.z,   fe.x,fe.y,fe.z,fe.w ); }
                 //fe += getLJQ   ( dp, REQK );
@@ -1185,7 +1221,7 @@ __kernel void getMMFFsp3(
     float4  BL = bondLK[iG].lo;  // ToDo: maybe it is better split like lk1,kl2,lk3,lk4
     float4  BK = bondLK[iG].hi;
     float4  dls[4];
-
+    float R2damp = ai.w*ai.w;
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
@@ -1209,7 +1245,7 @@ __kernel void getMMFFsp3(
                     REQK.x+=REQKi.x;
                     REQK.y*=REQKi.y;
                     REQK.z*=REQKi.z;
-                    fe += getMorseQ( dp, REQK );
+                    fe += getMorseQ( dp, REQK, R2damp );
                 }
             }
         }
