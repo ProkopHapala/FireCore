@@ -208,9 +208,9 @@ class NBsystem{ public:
                 for(int j=0; j<B.n; j++){    // atom-atom
                     Vec3d fij = Vec3dZero;
                     Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
-                    //E += addAtomicForceMorseQ( B.ps[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
+                    E += addAtomicForceMorseQ( B.ps[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
 
-                    E=0; fij = B.ps[j]-pi;  // Test - dr
+                    //E=0; fij = B.ps[j]-pi;  // Test - dr
                     //if(i==0)printf("fi(%g,%g,%g) \n",  fij.x,fij.y,fij.z );
 
                     fi.add(fij);
@@ -221,10 +221,11 @@ class NBsystem{ public:
         return E;
     }
 
-    double evalMorsePLQ( NBsystem& B, Vec3d plq, Mat3d& cell, Vec3i nPBC, double K=-1.0, double R2Q=1.0 ){
-        // Compy from GridFF:: evalGridFFs()
+    double evalMorsePLQ( NBsystem& B, Mat3d& cell, Vec3i nPBC, double K=-1.0, double RQ=1.0 ){
+        //printf( "NBsystem::evalMorsePLQ() PLQs %li \n", (long)PLQs, K, RQ );
         double E=0;
         //printf( "NBFF nPBC(%i,%i,%i) K %g RQ %g R2Q %g plq.z %g \n", nPBC.x,nPBC.y,nPBC.z, K, sqrt(R2Q), R2Q, plq.z );
+        double R2Q=RQ*RQ;
         for(int i=0; i<n; i++){
             Vec3d fi = Vec3dZero;
             Vec3d pi = ps[i];
@@ -232,7 +233,7 @@ class NBsystem{ public:
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
-            for(int j=0; j<n; j++){
+            for(int j=0; j<B.n; j++){
                 Vec3d dp0; dp0.set_sub( pi, B.ps[j] );
                 Vec3d REQj = B.REQs[j];
                 for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
@@ -248,13 +249,17 @@ class NBsystem{ public:
                     double ir2    = 1/(r2+R2Q);
                     double ir     = sqrt(ir2);
                     double eQ     = COULOMB_CONST*REQj.z*ir;
+                    //if((i==0)&&(j==0))printf("dp(%g,%g,%g) REQj(%g,%g,%g) r %g e %g de %g \n",  dp.x,dp.y,dp.z,  REQj.x,REQj.y,REQj.z, r, e, de );
                     // --- store
                     qp.e+=eM*e; qp.f.add_mul( dp, de*e   ); // repulsive part of Morse
                     ql.e+=eM*2; ql.f.add_mul( dp, de     ); // attractive part of Morse
                     qe.e+=eQ;   qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
                     //printf(  "evalMorsePLQ() k %g r %g e %g E0 %g E %g \n", K, r, e, REQj.y*plq.x/exp( K*(1.487)), qp.e*plq.x );
+                    //if(i==0)printf( "[%i] qp(%g,%g,%g)  ql(%g,%g,%g)  qe(%g,%g,%g)\n", j, qp.x,qp.y,qp.z,   ql.x,ql.y,ql.z,   qe.x,qe.y,qe.z );
                 }}}
             }
+            Vec3d plq = PLQs[i];
+            //if(i==0)printf( "plq[0](%g,%g,%g) qp(%g,%g,%g)  ql(%g,%g,%g)  qe(%g,%g,%g)\n", plq.x,plq.y,plq.z,  qp.x,qp.y,qp.z,   ql.x,ql.y,ql.z,   qe.x,qe.y,qe.z );
             Quat4d fe = qp*plq.x + ql*plq.y + qe*plq.z;
             fs[i].add(fe.f);
             E       +=fe.e;

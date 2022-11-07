@@ -1,6 +1,8 @@
 
 int verbosity = 1;
-int idebug    = 1;
+int idebug    = 0;
+
+double tick2second=1e-9;
 
 #include "MolGUI.h"
 #include "MolWorld_sp3_ocl.h"
