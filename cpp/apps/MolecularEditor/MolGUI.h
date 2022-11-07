@@ -70,8 +70,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     // ---- Visualization params
     int which_MO  = 7; 
-    double mm_Rsc =  0.25;
-    double mm_Rsub = 1.0;
+    double ForceViewScale = 1.0;
+    double mm_Rsc         = 0.25;
+    double mm_Rsub        = 1.0;
     bool   mm_bAtoms = false;
     bool   bViewMolCharges  = true;
     bool   bViewAtomSpheres = true;
@@ -256,8 +257,9 @@ void MolGUI::draw(){
         glPopMatrix();
     }
 
-    if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
-    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
+    if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 0.1, 0., true );
+    //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
+    //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
     //if(bDoQM)drawSystemQMMM();
 
     if(bDoMM){
@@ -397,7 +399,7 @@ void MolGUI::drawSystem( Vec3d ixyz ){
         //if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.007 ); }   
     }
     if(bViewAtomSpheres){ Draw3D::atoms          ( W->nbmol.n, W->nbmol.ps, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
-    if(bViewAtomForces ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, 100.0, 10000.0 );    }
+    if(bViewAtomForces ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );    }
     if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels ( W->nbmol.n, W->nbmol.ps, fontTex3D                     );      }            
     if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->nbmol.n,  (double*)W->nbmol.REQs,  W->nbmol.ps, 3, 2, fontTex3D, 0.007 ); }
 

@@ -41,12 +41,12 @@ class OCL_PP: public OCL_DFT { public:
         v2f4(grid.dCell.a,dA);
         v2f4(grid.dCell.b,dB);
         v2f4(grid.dCell.c,dC);
-        //v2f4(grid.diCell.a,dinv[0]);
-        //v2f4(grid.diCell.b,dinv[1]);
-        //v2f4(grid.diCell.c,dinv[2]);
-        v2f4(grid.diCell.a*(1./grid.n.x),dinv[0]);
-        v2f4(grid.diCell.b*(1./grid.n.y),dinv[1]);
-        v2f4(grid.diCell.c*(1./grid.n.z),dinv[2]);
+        v2f4(grid.diCell.a,dinv[0]);
+        v2f4(grid.diCell.b,dinv[1]);
+        v2f4(grid.diCell.c,dinv[2]);
+        //v2f4(grid.diCell.a*(1./grid.n.x),dinv[0]);
+        //v2f4(grid.diCell.b*(1./grid.n.y),dinv[1]);
+        //v2f4(grid.diCell.c*(1./grid.n.z),dinv[2]);
         //dinv[0].mul( 1/grid.n.x );
         //dinv[1].mul( 1/grid.n.y );
         //dinv[2].mul( 1/grid.n.z );
