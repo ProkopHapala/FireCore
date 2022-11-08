@@ -210,6 +210,8 @@ class NBsystem{ public:
                     Vec3d fij = Vec3dZero;
                     Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
                     E += addAtomicForceMorseQ( B.ps[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
+                    //E += addAtomicForceMorseQ( B.ps[j]-pi, fij, REQij.x, REQij.y, 0, K, R2Q );
+                    //E += addAtomicForceQ_R2  ( B.ps[j]-pi, fij, REQij.z, K, R2Q );
 
                     //E=0; fij = B.ps[j]-pi;  // Test - dr
                     //if(i==0)printf("fi(%g,%g,%g) \n",  fij.x,fij.y,fij.z );
@@ -217,6 +219,7 @@ class NBsystem{ public:
                     fi.add(fij);
                 }
             }}} // nPBC
+            //if(i==0){ printf( "CPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", i, fi.x,fi.y,fi.z,E, AREQi.z ); }
             fs[i].add(fi);
         }
         return E;
@@ -303,6 +306,7 @@ class NBsystem{ public:
                 Vec3d dp=ps[j]-pi;
                 //if(i==0){ idebug=1; }else{ idebug=0; };
                 double ei = addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2Q );    E+=ei;
+                //double ei = addAtomicForceQ_R2( dp, fij, REQij.z, K, R2Q );    E+=ei;
                 //E += addAtomicForceLJQ   ( ps[j]-pi, fij, REQij );
                 //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij      , pi );
                 //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij*-1.0f, ps[j] );

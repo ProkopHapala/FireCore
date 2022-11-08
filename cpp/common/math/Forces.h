@@ -129,6 +129,15 @@ inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double
     return EMors + Eel;
 }
 
+inline double addAtomicForceQ_R2( const Vec3d& dp, Vec3d& f, double qq, double K=-1., double R2damp=1. ){
+    double r2    = dp.norm2();
+    double ir2_  = 1/(r2+R2damp);
+    double ir_   = sqrt( ir2_ );     // ToDo: we can save some cost if we approximate r^2 = r^2 + R2damp;
+    double Eel   = COULOMB_CONST*qq*ir_;
+    f.add_mul( dp, -Eel*ir2_ );
+    return Eel;
+}
+
 inline double addAtomicForceQ( const Vec3d& dp, Vec3d& f, double qq ){
     //Vec3f dp; dp.set_sub( p2, p1 );
     double ir2  = 1/( dp.norm2() + R2SAFE );
