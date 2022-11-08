@@ -83,6 +83,7 @@ class MolWorld_sp3{ public:
 	bool bCheckInvariants = true;
 	Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
+    bool bChargeUpdated=false;
 
 	// Selecteion & Manipulasion
 	std::vector<int> selection;
@@ -122,8 +123,9 @@ void autoCharges(){
     params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );
     int iconstr = params.getAtomType("E");    //printf("constrain type %i \n", iconstr );
     qeq.constrainTypes( ff.atype, iconstr );
-    qeq.relaxChargeMD( ff.apos, 1000, 1e-2, 0.1, 0.1 );
+    qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.1 );
     copy( qeq.n, 1, 0, (double*)qeq.qs, 3, 2, (double*)nbmol.REQs );
+    bChargeUpdated=true;
 }
 
 void buildFF( bool bNonBonded_, bool bOptimizer_ ){
@@ -425,6 +427,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
         }
         nloop++;
     }
+    bChargeUpdated=false;
 }
 
 void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {

@@ -103,6 +103,13 @@ void init_ocl(){
     printf( "... init_ocl() END\n" );
 }
 
+void REQs2ocl(){
+    Quat4f* q_cs= new Quat4f[nbmol.n];
+    pack  ( nbmol.n, nbmol.REQs, q_cs, gridFF.alpha );
+    ocl.upload( ocl.ibuff_coefs, q_cs );    
+    delete [] q_cs;
+};
+
 void mol2ocl(){
     ocl.buffers[ocl.ibuff_atoms].release();
     ocl.buffers[ocl.ibuff_coefs].release();
@@ -112,12 +119,11 @@ void mol2ocl(){
     q_ps= new Quat4f[nbmol.n];
     q_fs= new Quat4f[nbmol.n];
     // ---- nbmol coefs
-    Quat4f* q_cs= new Quat4f[nbmol.n];
-    pack  ( nbmol.n, nbmol.REQs, q_cs, gridFF.alpha );
-    ocl.upload( ocl.ibuff_coefs,  q_cs );    
+    REQs2ocl();
     makeOCLNeighs( );
-    delete [] q_cs;
 }
+
+
 
 void  makeOCLNeighs( ){
     printf("makeOCLNeighs() n %i nnode %i \n", nbmol.n, ff.nnode );
@@ -181,6 +187,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     bool bMMFF_ = bMMFF;
     //bMMFF_=false;
     if(bMMFF_)ff.cleanAll();
+    if(bChargeUpdated){  REQs2ocl(); }
     for(int itr=0; itr<nIter; itr++){
         
         //printf("#======= MDloop[%i] \n", nloop );
@@ -197,7 +204,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
                         E+= nbmol.evalNeighs();
                       }
             }else { 
-              E+= nbmol.evalNeighs();
+            //E+= nbmol.evalNeighs();
             //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
               E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
             //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
@@ -222,7 +229,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         }
         nloop++;
     }
-    
+    bChargeUpdated=false;
 }
 
 
