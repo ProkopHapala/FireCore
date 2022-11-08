@@ -301,12 +301,13 @@ class NBsystem{ public:
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
                 Vec3d dp=ps[j]-pi;
+                //if(i==0){ idebug=1; }else{ idebug=0; };
                 double ei = addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2Q );    E+=ei;
                 //E += addAtomicForceLJQ   ( ps[j]-pi, fij, REQij );
-                glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij      , pi );
-                glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij*-1.0f, ps[j] );
+                //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij      , pi );
+                //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij*-1.0f, ps[j] );
                 //glColor3f(1.0f,0.0f,1.0f); Draw3D::drawLine( pi, ps[j] );
-                if(i==0){ printf("CPU[0,%i] dp(%g,%g,%g) fe(%g,%g,%g|%g)\n", j,  dp.x,dp.y,dp.z,   fij.x,fij.y,fij.z,ei ); }
+                //if(i==6){ printf("CPU[%i,%i] dp(%g,%g,%g) fe(%g,%g,%g|%g)\n", i,j,  dp.x,dp.y,dp.z,   fij.x,fij.y,fij.z,ei ); }
                 fs[j].sub(fij);
                 fi   .add(fij);
             }

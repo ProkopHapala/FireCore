@@ -525,6 +525,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl; break;
+                case SDLK_m: W->swith_method(); break;
 
                 case SDLK_a: bViewAtomSpheres=! bViewAtomSpheres; break;
                 //case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;

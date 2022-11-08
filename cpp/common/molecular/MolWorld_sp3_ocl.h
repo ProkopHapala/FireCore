@@ -9,6 +9,7 @@
 
 void pack  (int n, Vec3d* fs, Quat4f* qs, float K ){ for(int i=0; i<n; i++){ qs[i].f=(Vec3f)fs[i];  qs[i].e=K; } }
 void unpack(int n, Vec3d* fs, Quat4f* qs          ){ for(int i=0; i<n; i++){ fs[i]  =(Vec3d)qs[i].f;                 } }
+double unpack_add(int n, Vec3d* fs, Quat4f* qs          ){ double E=0; for(int i=0; i<n; i++){ fs[i].add( (Vec3d)qs[i].f ); E+=qs[i].e; }; return E; }
 
 void pack(int n, Vec3d* fs, double* es, Quat4f* qs ){
   for(int i=0; i<n; i++){ 
@@ -119,6 +120,7 @@ void mol2ocl(){
 }
 
 void  makeOCLNeighs( ){
+    printf("makeOCLNeighs() n %i nnode %i \n", nbmol.n, ff.nnode );
     int n=nbmol.n;
     int* aneighs=new int[n*4];
     for(int i=0; i<n; i++){
@@ -131,19 +133,18 @@ void  makeOCLNeighs( ){
         for(int j=0; j<4; j++){
           int ngi=ff.aneighs[i4+j];
           aneighs[i4+j]=ngi;
-          if(ngi>ff.nnode){   // back-neighbor
+          if(ngi>=ff.nnode){   // back-neighbor
             aneighs[ngi*4+0]=i;
           }
         }
       }
     }
-    for(int i=0; i<n; i++){
-      printf( "neighs[%i] (%i,%i,%i,%i) \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3]);
-    }
+    if(verbosity>1) for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
     ocl.upload( ocl.ibuff_neighs, aneighs );
     nbmol.neighs = (Quat4i*)aneighs;
     //delete [] aneighs;
     //return aneighs;
+    //exit(0);
 }
 
 
@@ -168,16 +169,17 @@ double eval_gridFF_ocl( int n, Vec3d* ps,             Vec3d* fs ){
     //printf("eval_gridFF_ocl() \n");
     pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     ocl.getNonBondForce_GridFF( n, (float4*)q_ps, 0, (float4*)q_fs, 0 );
-    unpack( n, fs, q_fs );
-    double E=0;
-    for(int i=0; i<n; i++){ E+=q_fs[i].e; }; // sum energy
+    double E=unpack_add( n, fs, q_fs );
+    //unpack( n, fs, q_fs );
+    //double E=0;
+    //for(int i=0; i<n; i++){ E+=q_fs[i].e; }; // sum energy
     return E;
 }
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     bool bMMFF_ = bMMFF;
-    bMMFF_=false;
+    //bMMFF_=false;
     if(bMMFF_)ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         
@@ -191,14 +193,17 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         if(bSurfAtoms){ 
             if  (bGridFF){ 
               if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
-              else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
+              else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); 
+                        E+= nbmol.evalNeighs();
+                      }
             }else { 
               E+= nbmol.evalNeighs();
             //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
-            //E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
+              E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
             //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
             }
         }
+        //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
         ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
         if(ipicked>=0){
              float K = -2.0;
@@ -210,7 +215,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
         //opt.move_MDquench();
-        //opt.move_FIRE();
+        opt.move_FIRE();
         double f2=1;
         if(f2<sq(Ftol)){
             bConverged=true;
@@ -256,7 +261,14 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     }
 }
 
-virtual void swith_gridFF()override   { bGridFF=!bGridFF; if(bGridFF){ bOcl=!bOcl; }; };
+virtual void swith_method()override{ 
+  imethod=(imethod+1)%2; 
+  switch (imethod){
+    case 0: bGridFF=0; bOcl=0; break;
+    case 1: bGridFF=1; bOcl=1; break;
+  }
+}
+
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i bOcl %i \n", bGridFF, bOcl ); return str; }
 
 }; // class MolWorld_sp3_ocl
