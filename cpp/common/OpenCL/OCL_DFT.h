@@ -129,7 +129,6 @@ class OCL_DFT: public OCLsystem { public:
     float2 acumCoef = (float2){0.0,1.0};
     GridShape grid;
     int ibuff_atoms=-1,ibuff_coefs=-1,ibuff_aforces=-1,ibuff_neighs=-1;
-    //int ibuff_poss;
 
     int     nAtype=0;
     int*    atype_nOrb  =0; // number of orbitals per atomic type (hydrogen=1(s), carbon=4(s,px,py,pz))

@@ -204,7 +204,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
                         E+= nbmol.evalNeighs();
                       }
             }else { 
-            //E+= nbmol.evalNeighs();
+              E+= nbmol.evalNeighs();
             //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
               E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
             //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 

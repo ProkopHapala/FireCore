@@ -594,7 +594,8 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        W->ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
+                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
+                        if( ipick == W->ipicked ){ W->ipicked=-1; }else{ W->ipicked = ipick; };  
                         W->selection.clear();
                         if(W->ipicked>=0){ W->selection.push_back(W->ipicked); };
                         printf( "picked atom %i \n", W->ipicked );

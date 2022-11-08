@@ -13,7 +13,7 @@ __constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_MIRRO
 __constant sampler_t sampler_nearest =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
 //__constant sampler_t sampler_1 = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;
 
-
+#define  float4Zero  (float4){0.f,0.f,0.f,0.f}
 
 
 /*
@@ -286,7 +286,7 @@ __kernel void getZisoFETilted(
         ofe      = fe;
     }
     zMap [get_global_id(0)] = -1;
-    feMap[get_global_id(0)] = (float4)(0.0f,0.0f,0.0f,0.0f);
+    feMap[get_global_id(0)] =  float4Zero;
 }
 
 __kernel void relaxPoints(
@@ -778,7 +778,7 @@ __kernel void evalLJC_QZs(
 
     float3 pos    = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
 
-    float4 fe  = (float4) (0.0f, 0.0f, 0.0f, 0.0f);
+    float4 fe  =  float4Zero;
     
     Qs *= COULOMB_CONST;
 
@@ -816,11 +816,11 @@ __kernel void evalLJC_QZs_toImg(
     __global float4* atoms,  // 2
     __global float2*  cLJs,  // 3
     __write_only image3d_t  imgOut, // 4
-    int4 nGrid,              // 5
-    float4 grid_p0,          // 6 
-    float4 grid_dA,          // 7
-    float4 grid_dB,          // 8
-    float4 grid_dC,          // 9
+    const int4 nGrid,              // 5
+    const float4 grid_p0,          // 6 
+    const float4 grid_dA,          // 7
+    const float4 grid_dB,          // 8
+    const float4 grid_dC,          // 9
     float4 Qs,               // 10
     float4 QZs               // 11
 ){
@@ -853,7 +853,7 @@ __kernel void evalLJC_QZs_toImg(
     // }
     if(iG>nMax) return;
 
-    float4 fe  = (float4) (0.0f, 0.0f, 0.0f, 0.0f);
+    float4 fe  =  float4Zero;
     float3 pos    = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
     
     Qs *= COULOMB_CONST;
@@ -885,7 +885,7 @@ __kernel void evalLJC_QZs_toImg(
     //imgOut[iG] = fe;
     //fe  = (float4){sin(ia*0.1), sin(ia*0.1), sin(ib*0.1), cos(ia*0.1)*cos(ib*0.1)*cos(ic*0.1) };
     write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
-    //write_imagef( imgOut, (int4){0,0,0,0}, (float4){0.0f,0.0f,0.0f,0.0f} );
+    //write_imagef( imgOut, (int4){0,0,0,0},  float4Zero );
 }
 
 // ========================== 
@@ -927,11 +927,11 @@ __kernel void make_GridFF(
     __write_only image3d_t  FE_Paul, // 4
     __write_only image3d_t  FE_Lond, // 5
     __write_only image3d_t  FE_Coul, // 6
-    int4 nGrid,         // 7
-    float4 grid_p0,     // 8
-    float4 grid_dA,     // 9
-    float4 grid_dB,     // 10
-    float4 grid_dC      // 11
+    const int4 nGrid,         // 7
+    const float4 grid_p0,     // 8
+    const float4 grid_dA,     // 9
+    const float4 grid_dB,     // 10
+    const float4 grid_dC      // 11
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -953,9 +953,9 @@ __kernel void make_GridFF(
     //}
 
     float3 pos    = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
-    float4 fe_Paul = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
-    float4 fe_Lond = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
-    float4 fe_Coul = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    float4 fe_Paul = float4Zero;
+    float4 fe_Lond = float4Zero;
+    float4 fe_Coul =  float4Zero;
     for (int i0=0; i0<nAtoms; i0+= nL ){
         int i = i0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
@@ -1009,10 +1009,10 @@ __kernel void getNonBondForce_GridFF(
     __read_only image3d_t  FE_Paul, // 6
     __read_only image3d_t  FE_Lond, // 7
     __read_only image3d_t  FE_Coul, // 8
-    float4 pos0,     // 9
-    float4 dinvA,    // 10
-    float4 dinvB,    // 11
-    float4 dinvC     // 12
+    const float4 pos0,     // 9
+    const float4 dinvA,    // 10
+    const float4 dinvB,    // 11
+    const float4 dinvC     // 12
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -1064,12 +1064,12 @@ __kernel void getNonBondForce_GridFF(
     //float4 fe  =  fe_Paul*cP + fe_Lond*cL;
     //float4 fe  =  fe_Coul*REQKi.z;
     //float4 fe  = fe_Coul;
-    //float4 fe  = (float4){0.0f,0.0f,0.0f,0.0f};
+    //float4 fe  =  float4Zero;
     
     //if(iG==0){ printf( "GPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", iG, fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w, REQKi.z ); }
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  fe_Paul.w,fe_Lond.w,fe_Coul.w ); }
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) RE(%g,%g) fe(%g,%g,%g|%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  cP,cL,REQKi.z,  REQKi.x,REQKi.y,  fe.x,fe.y,fe.z,fe.w ); }
-    /*
+    
     // ========= Atom-to-Atom interaction ( N-body problem )
     const int4    ng = neighs[iG];
     float R2damp = atomi.w*atomi.w;
@@ -1099,7 +1099,7 @@ __kernel void getNonBondForce_GridFF(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-    */
+    
     forces[iG] = fe;
     
 }
@@ -1161,10 +1161,10 @@ __kernel void getMMFFsp3(
     __read_only image3d_t  FE_Paul, // 5
     __read_only image3d_t  FE_Lond, // 6
     __read_only image3d_t  FE_Coul, // 7
-    float4 pos0,     // 8
-    float4 dinvA,    // 9
-    float4 dinvB,    // 10
-    float4 dinvC     // 11
+    const float4 pos0,     // 8
+    const float4 dinvA,    // 9
+    const float4 dinvB,    // 10
+    const float4 dinvC     // 11
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -1244,6 +1244,11 @@ __kernel void getMMFFsp3(
     const bool bPPI_ = true;
 
     float4 ngForces[4];
+    ngForces[0] = float4Zero;
+    ngForces[1] = float4Zero;
+    ngForces[2] = float4Zero;
+    ngForces[3] = float4Zero;
+
     float2 c0K = ang0K[iG];
 
     for(int i=0; i<NNEIGH; i++){
@@ -1279,6 +1284,47 @@ __kernel void getMMFFsp3(
         }
     }
 
+    const int i4=iG*4;
+    neighForces[i4  ] = ngForces[0];
+    neighForces[i4+1] = ngForces[1];
+    neighForces[i4+2] = ngForces[2];
+    neighForces[i4+3] = ngForces[3];
+
     forces[iG] = fe;
     
+}
+
+
+__kernel void gatherForceAndMove(
+    const float4      params,       // 1
+    const int         nAtoms,       // 2
+    __global float4*  apos,         // 3
+    __global float4*  avel,         // 4
+    __global float4*  aforce,       // 5
+    __global float4*  neighForces,  // 6
+    __global int4*    bkNeighs      // 7
+){
+    
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    if(iG>nAtoms) return;
+
+    // ------ Gather Forces from back-neighbors
+    float4 fe = aforce[iG]; 
+    int4 ngs  = bkNeighs[iG];
+    if(ngs.x>=0) fe += neighForces[ngs.x];
+    if(ngs.y>=0) fe += neighForces[ngs.y];
+    if(ngs.z>=0) fe += neighForces[ngs.z];
+    if(ngs.w>=0) fe += neighForces[ngs.w];
+
+    // ------ Move (Leap-Frog)
+    float4 ve = avel[iG];
+    float4 pe = apos[iG];
+    ve     *= params.y;
+    ve.xyz += fe.xyz*params.x;
+    pe.xyz += ve.xyz*params.x;
+    avel[iG] = ve;
+    apos[iG] = pe;
+
 }

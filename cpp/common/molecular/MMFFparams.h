@@ -294,7 +294,8 @@ class MMFFparams{ public:
         return natoms;
     }
 
-    void writeXYZ( FILE* pfile, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment" ){
+    void writeXYZ( FILE* pfile, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0 ){
+        printf( "MMFFparams::writeXYZ() n=%i REQs=%li \n", n, (long)REQs );
         fprintf(pfile, "%i\n", n );
         fprintf(pfile, "%s \n", comment );
         for(int i=0; i<n; i++){
@@ -302,14 +303,15 @@ class MMFFparams{ public:
             int ityp   = atypes[i];
             const Vec3d&  pi = apos[i];
             //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, params->atypes[ityp].name );
-            fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f \n", atomTypeNames[ityp].c_str(), pi.x,pi.y,pi.z );
+            if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", atomTypeNames[ityp].c_str(), pi.x,pi.y,pi.z, REQs[i].z ); }
+            else    { fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f \n"    , atomTypeNames[ityp].c_str(), pi.x,pi.y,pi.z            ); }
         };
     }
 
-    int saveXYZ( const char * fname, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment"  ){
+    int saveXYZ( const char * fname, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0 ){
         FILE* pfile = fopen(fname, "w");
         if( pfile == NULL ) return -1;
-        writeXYZ( pfile, n, atypes, apos, comment );
+        writeXYZ( pfile, n, atypes, apos, comment, REQs );
         fclose(pfile);
         return n;
     }
