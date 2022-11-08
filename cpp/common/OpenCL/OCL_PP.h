@@ -12,6 +12,7 @@ class OCL_PP: public OCL_DFT { public:
     //DEFAULT_relax_params = np.array( [ 0.5 , 0.1 ,  0.02, 0.5 ], dtype=np.float32 );
     cl_program program_relax=0;
 
+    float4 md_params;
     float4 dinv[3];    // grid step
     float4 tipRot[3]={{1.,0.,0.,0.},{0.,1.,0.,0.},{0.,0.,1.,0.1}};  // tip rotation
     //float4 tipRot[3]={{-1.,0.,0.,0.},{0.,-1.,0.,0.},{0.,0.,-1.,0.1}};  // tip rotation
@@ -28,6 +29,7 @@ class OCL_PP: public OCL_DFT { public:
 
     int n_start_point = 0;
     int ibuff_start_point=-1;
+    int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
     int itex_FF=-1;
 
     int itex_FE_Paul=-1;
@@ -91,6 +93,7 @@ class OCL_PP: public OCL_DFT { public:
         newTask( "evalLJC_QZs_toImg" ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "make_GridFF"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "getNonBondForce_GridFF",1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "gatherForceAndMove",1,{0,0,0,0},{1,0,0,0},program_relax);
         //newTask( "write_toImg"       ,3,{0,0,0,0},{1,1,1,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
         printf( "... makeKrenels_PP() DONE \n" );
@@ -368,6 +371,46 @@ class OCL_PP: public OCL_DFT { public:
             float4 dinvC     // 11
         */
     }
+
+
+
+
+    void gatherForceAndMove( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0, int4* neighs=0 ){
+        //printf("getNonBondForce_GridFF(na=%i) \n", na);
+        if(ibuff_atoms<0)initAtoms( na, 1 );
+        if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
+        if(coefs  )upload( ibuff_coefs,   coefs,  na);
+        if(coefs  )upload( ibuff_neighs,  neighs, na);
+        //if(aforces)upload( ibuff_aforces, aforces, na);
+        OCLtask* task = getTask("gatherForceAndMove");
+        task->global.x = na;
+        useKernel( task->ikernel );
+        err |= _useArg( md_params );           // 1
+        err |= useArg    ( nAtoms       );     // 2
+        err |= useArgBuff( ibuff_atoms  );     // 3
+        err |= useArgBuff( ibuff_avel   );     // 4
+        err |= useArgBuff( ibuff_aforces);     // 5
+        err |= useArgBuff( ibuff_neighForce ); // 6
+        err |= useArgBuff( ibuff_bkNeighs );   // 7
+        OCL_checkError(err, "gatherForceAndMove");
+        err = task->enque_raw();
+        OCL_checkError(err, "gatherForceAndMove");  
+        if(aforces)err=download( ibuff_aforces, aforces, na);
+        OCL_checkError(err, "gatherForceAndMove");  
+        /*
+            __kernel void gatherForceAndMove(
+                const float4      params,       // 1
+                const int         nAtoms,       // 2
+                __global float4*  apos,         // 3
+                __global float4*  avel,         // 4
+                __global float4*  aforce,       // 5
+                __global float4*  neighForces,  // 6
+                __global int4*    bkNeighs      // 7
+            ){
+        */
+    }
+
+
 
 };
 
