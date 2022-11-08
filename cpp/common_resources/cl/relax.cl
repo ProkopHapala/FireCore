@@ -693,19 +693,18 @@ float4 getMorseQ_bak( float3 dp, float4 REKQ ){
 }
 
 float4 getMorseQ( float3 dp, float4 REQK, float R2damp ){
-    float  r2  = dot(dp,dp);
-    float ir2  = 1/( r2 +  R2damp); 
-    float   r  = sqrt( r2 );
-    float  ir  = sqrt( ir2 );
+    float  r2   = dot(dp,dp);
+    float   r   = sqrt( r2 );
     // ---- Electrostatic
-    float   E  = REQK.z*ir;
-    float4 fe  = (float4)(dp*(E*ir2), E );
+    float ir2   = 1/  ( r2 +  R2damp); 
+    float  ir   = sqrt( ir2 );
+    float   Ec  = COULOMB_CONST*REQK.z*ir;
     // ---- Morse ( Pauli + Dispersion )
-    float   expar = exp( REQK.w*(r-REQK.x) );
-    float   e     = REQK.y*expar;
-    float4  fM    = (float4)(dp*(e*REQK.w), e );
-    fe += fM*(expar-2.0f);
-    return fe; 
+    float   e   =  exp( REQK.w*(r-REQK.x) );
+    float   Ae  =  REQK.y*e;
+    float fMors =  Ae * (e - 1.f)*2.f*REQK.w/r; // Morse
+    float EMors =  Ae * (e - 2.f);
+    return ((float4)( dp*( fMors - Ec*ir2 ), EMors + Ec )); 
 }
 
 /*
@@ -1037,8 +1036,8 @@ __kernel void getNonBondForce_GridFF(
     const int iG = get_global_id (0);
     const int iL = get_local_id  (0);
     const int nL = get_local_size(0);
-    if(iG==0){
-        printf( "GPU::getNonBondForce_GridFF() nAtoms %i \n", nAtoms );
+    if(iG==6){
+        //printf( "GPU::getNonBondForce_GridFF() nAtoms %i \n", nAtoms );
         //printf("GPU::(na=%i) apos[0](%g,%g,%g|%g) rekq[0](%g,%g,%g|%g) \n", nAtoms, atoms[0].x,atoms[0].y,atoms[0].z,atoms[0].w,   REQKs[0].x,REQKs[0].y,REQKs[0].z,REQKs[0].w );
         //printf("GPU::getNonBondForce_GridFF(natoms=%i)\n", nAtoms);
         //for(int i=0; i<nAtoms; i++){ printf("atom[%i] apos(%g,%g,%g|%g) rekq(%g,%g,%g|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
@@ -1060,7 +1059,6 @@ __kernel void getNonBondForce_GridFF(
     const float4 REQKi = REQKs[iG];
     float3       posi  = atomi.xyz;
 
-    /*
     // ========== Interaction with grid
     posi -= pos0.xyz;
     const float4 coord = (float4)( dot(posi,dinvA.xyz)     ,dot(posi,dinvB.xyz)     ,dot(posi,dinvC.xyz)     , 0.0f );
@@ -1078,16 +1076,9 @@ __kernel void getNonBondForce_GridFF(
     const float ej   = exp( REQKi.w * -REQKi.x );
     const float cP   = ej*ej*REQKi.y;
     const float cL   = -  ej*REQKi.y;
-
-    //double expar =  exp(-K*REQ.x);
-    //double CP    =  eps*expar*expar;
-    //double CL    = -eps*expar;
-
     float4 fe  =  fe_Paul*cP + fe_Lond*cL +  fe_Coul*REQKi.z;
     //float4 fe  = fe_Coul;
-    */
-
-    float4 fe  = (float4){0.0f,0.0f,0.0f,0.0f};
+    //float4 fe  = (float4){0.0f,0.0f,0.0f,0.0f};
     
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  fe_Paul.w,fe_Lond.w,fe_Coul.w ); }
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) RE(%g,%g) fe(%g,%g,%g|%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  cP,cL,REQKi.z,  REQKi.x,REQKi.y,  fe.x,fe.y,fe.z,fe.w ); }
@@ -1109,14 +1100,13 @@ __kernel void getNonBondForce_GridFF(
                 if     ( (ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w) ) continue;
                 const float4 aj = LATOMS[j];
                 const float3 dp = aj.xyz - atomi.xyz;
-
                 float4 REQK = LCLJS[j];
                 REQK.x+=REQKi.x;
                 REQK.y*=REQKi.y;
                 REQK.z*=REQKi.z;
-                fe += getMorseQ( dp, REQK, R2damp );
-
-                if(iG==0){ printf("GPU[0,%i] dp(%g,%g,%g) fe(%g,%g,%g|%g)\n", ji,  dp.x,dp.y,dp.z,   fe.x,fe.y,fe.z,fe.w ); }
+                //fe += getMorseQ( dp, REQK, R2damp );
+                float4 fe_ = getMorseQ( dp, REQK, R2damp );   fe+=fe_;
+                //if(iG==6){ printf("GPU[%i,%i] dp(%g,%g,%g) fe(%g,%g,%g|%g)\n", iG, ji,  dp.x,dp.y,dp.z, fe_.x,fe_.y,fe_.z,fe_.w ); }
                 //fe += getLJQ   ( dp, REQK );
             }
         }

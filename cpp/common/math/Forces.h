@@ -114,9 +114,13 @@ inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double
     double r     = sqrt( r2   );
     double ir_   = sqrt( ir2_ );     // ToDo: we can save some cost if we approximate r^2 = r^2 + R2damp;
     double e     = exp( K*(r-r0));
-    double e2    = e*e;
-    double fMors =  E0*  2*K*( e2 -   e ); // Morse
-    double EMors =  E0*      ( e2 - 2*e );
+    //double e2    = e*e;
+    //double fMors =  E0*  2*K*( e2 -   e ); // Morse
+    //double EMors =  E0*      ( e2 - 2*e );
+    float   Ae  =  E0*e;
+    double fMors =  Ae*  2*K*(e - 1); // Morse
+    double EMors =  Ae*      (e - 2);
+    //if(idebug>0) printf("CPU expar %g ", e  );
     //printf(  "addAtomicForceMorseQ() k %g r %g e %g E0 %g E %g \n", K, r, e/exp( K*(1.487)), E0, EMors );
     //fr          += COULOMB_CONST*qq/( r*r + R2ELEC );   // Comlomb cheal_damp : Problem - it would reqire asinh() to get energy
     double Eel   = COULOMB_CONST*qq*ir_;

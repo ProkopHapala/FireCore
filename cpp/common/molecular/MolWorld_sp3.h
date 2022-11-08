@@ -70,6 +70,7 @@ class MolWorld_sp3{ public:
 	double  Kmorse = -1.0;
 
 	// force-eval-switchefs
+    int  imethod=0;
 	bool doBonded         = false;
 	bool bNonBonded       = false;
 	bool bSurfAtoms       = false;
@@ -103,7 +104,7 @@ class MolWorld_sp3{ public:
 
 // =================== Functions
 
-virtual void swith_gridFF(){ bGridFF=!bGridFF; };
+virtual void swith_method(){ bGridFF=!bGridFF; };
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i \n", bGridFF ); return str; }
 
 void init_nonbond(){
