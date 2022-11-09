@@ -1677,7 +1677,7 @@ double evalAA(){
         double* buff = new double[ ng ];
         double Q = orb2grid( 0, grid, buff );
         //printf( "orb2xsf Q  %g \n", Q );
-        grid.saveXSF( fname, buff, -1 );
+        grid.saveXSF( fname, buff, 1,0 );
     }
 
     double rho2grid( int io, const GridShape& gridShape, double* buff )const{

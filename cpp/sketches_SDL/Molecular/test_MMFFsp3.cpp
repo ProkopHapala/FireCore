@@ -369,7 +369,7 @@ void TestAppMMFFsp3::draw(){
     //drawSystem();
     //glColor3f(0.,0.,0.); drawBonds( ff );
     drawSystem(true,true,false);
-    drawNeighs( ff, 0.0 );
+    Draw3D::drawNeighs( ff, 0.0 );
 
     //glColor3f(0.,0.,0.); drawBonds( builder );
     //glColor3f(0.,0.,0.); drawNeighs( builder );

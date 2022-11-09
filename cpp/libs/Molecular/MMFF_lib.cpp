@@ -37,6 +37,10 @@ int i_DEBUG=0;
 constexpr int ntmpstr=2048;
 char tmpstr[ntmpstr];
 
+int verbosity = 1;
+int idebug    = 0;
+//double tick2second=1e-9;
+
 #include "MolWorld_sp3.h"
 
 // ============ Global Variables
@@ -178,7 +182,7 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
         switch(kind){
             case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
             case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-            case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
+            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
             case 10:         W.gridFF.addForce_surf(W.nbmol.ps[0], {1.,0.,0.}, fe );  break;
             case 11:         W.gridFF.addForce_surf(W.nbmol.ps[0], PLQ, fe );  break;
             case 12:         W.gridFF.addForce     (W.nbmol.ps[0], PLQ, fe );  break;
@@ -221,7 +225,7 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
         switch(kind){
             case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
             case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-            case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
+            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
             case 10:         W.gridFF.addForce_surf(W.nbmol.ps[0], {1.,0.,0.}, fe );  break;
             case 11:         W.gridFF.addForce_surf(W.nbmol.ps[0], PLQ, fe );  break;
             case 12:         W.gridFF.addForce     (W.nbmol.ps[0], PLQ, fe );  break;

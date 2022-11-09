@@ -700,15 +700,16 @@ bool getCollosion( int i0, int n, double scR, const bool bFColPauli, Vec3d* poss
 
 double getCollisionGrid( int i0, int n, Vec3d* poss, Vec3d* forces ){
     double F2max=0;
-    Vec3d f,gpos;
+    Vec3d gpos;
+    Quat4f fe;
     for(int i=0; i<n; i++){
         //Vec3d , gridFF.addForce( apos[j], aPLQ[j], aforce[j] );
         gridFF.grid.cartesian2grid(poss[i],gpos);
-        f = interpolate3DvecWrap( gridFF.FFPauli, gridFF.grid.n, gpos );
-        f.mul( aPLQ[i0+i].x );
-        double fr2 = f.norm2();
+        fe = interpolate3DvecWrap( gridFF.FFPauli, gridFF.grid.n, gpos );
+        fe.mul( aPLQ[i0+i].x );
+        double fr2 = fe.f.norm2();
         if( fr2>F2max ) F2max=fr2;
-        if(forces){ forces[i].add( f ); }
+        if(forces){ forces[i].add( (Vec3d)fe.f ); }
     }
     return F2max;
 }
@@ -863,7 +864,9 @@ void eval_CoulombMirror_On2(const Vec3d& hdir, double c0 ){
 void eval_FFgrid(){
     //printf( "eval_FFgrid natoms %i \n", natoms );
     for(int i=0; i<natoms; i++){
-        gridFF.addForce( apos[i], aPLQ[i], aforce[i] );
+        Quat4f fe = Quat4fZero;
+        gridFF.addForce( apos[i], aPLQ[i], fe );
+        aforce[i].add( (Vec3d)fe.f );
         //printf( " aforce[%i] (%g,%g,%g) \n", i, aforce[i].x, aforce[i].y, aforce[i].z );
     }
 }
@@ -882,14 +885,17 @@ void printAtomInfo(){
     }
 }
 
+/*
 void write2xyz( FILE* pfile, const char* comment="#comment" )const{
     if(atomTypeNames==0){ printf( "ERROR in MMFF::write2xyz : atomTypeNames not initialized\n" ); exit(0); }
-    writeXYZ( pfile, natoms, atypes, apos, *atomTypeNames, comment );
+    //writeXYZ( pfile, natoms, atypes, apos, *atomTypeNames, comment );
+    return params.writeXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.ps, comment, nbmol.REQs );
 }
 
 int save2xyz( char * fname, const char* comment="#comment" )const{
     return saveXYZ( fname, natoms, atypes, apos, *atomTypeNames, comment );
 }
+*/
 
 }; // MMFF
 

@@ -724,9 +724,9 @@ double test_Poisson( CLCFGO& solver, int io, double Rmax, double gStep, double *
     }
     //printf( "C++ DEBUG 5 \n" );
     if(bSave){
-        gsh.saveXSF( "temp/rho.xsf",        buf_rho,  -1 );
-        gsh.saveXSF( "temp/V.xsf",          buf_V,    -1 );
-        gsh.saveXSF( "temp/rho_from_V.xsf", buf_rho_, -1 );
+        gsh.saveXSF( "temp/rho.xsf",        buf_rho  );
+        gsh.saveXSF( "temp/V.xsf",          buf_V    );
+        gsh.saveXSF( "temp/rho_from_V.xsf", buf_rho_ );
     }
     //printf( "C++ DEBUG 6 \n" );
     delete [] buf_rho;

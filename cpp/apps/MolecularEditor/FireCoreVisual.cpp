@@ -522,7 +522,8 @@ void  TestAppFireCoreVisual::selectShorterSegment( const Vec3d& ro, const Vec3d&
 }
 
 void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
-    gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.aREQs, &gridFF.atypes );
     gridFF.grid.n    = (Vec3i){60,60,100};
     gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
     gridFF.loadCell ( "inputs/cel.lvs" );
@@ -534,9 +535,9 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
         int iatom = 11;
         testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
         testPLQ = REQ2PLQ( testREQ, -1.6 );
-        Vec3d * FFtot = new Vec3d[ gridFF.grid.getNtot() ];
+        Quat4f * FFtot = new Quat4f[ gridFF.grid.getNtot() ];
         gridFF.evalCombindGridFF            ( testREQ, FFtot );
-        if(idebug>1) saveXSF( "FFtot_z.xsf",  gridFF.grid, FFtot, 2, gridFF.natoms, gridFF.apos, gridFF.atypes );
+        if(idebug>1)  gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4,3, gridFF.natoms, gridFF.atypes, gridFF.apos );
         ogl_isosurf = glGenLists(1);
         glNewList(ogl_isosurf, GL_COMPILE);
         glShadeModel( GL_SMOOTH );

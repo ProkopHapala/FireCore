@@ -2,6 +2,8 @@
 #ifndef  Noise_h
 #define  Noise_h
 
+#include <stdint.h>
+#include "integerOps.h"
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"

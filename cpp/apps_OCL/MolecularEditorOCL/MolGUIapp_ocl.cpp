@@ -1,14 +1,11 @@
 
 int verbosity = 1;
 int idebug    = 0;
-
 double tick2second=1e-9;
 
 #include "MolGUI.h"
 #include "MolWorld_sp3_ocl.h"
-
 #include "argparse.h"
-
 
 //MMFFsp3 W;
 MolGUI* app=0;
@@ -21,9 +18,7 @@ int main(int argc, char *argv[]){
 	int junk;
     SDL_DisplayMode DM;
     SDL_GetCurrentDisplayMode(0, &DM);
-    //char* ssmile = 0; if(argc>1){ ssmile=argv[1]; } // initialize with smiles ?
-	//app = new MolGUI( junk, DM.w-100, DM.h-100, NULL, ssmile );
-	//if(argc>2){ app->W->loadSurf( argv[2] ); }      // load surface
+
 	MolWorld_sp3_ocl* W = new MolWorld_sp3_ocl();
 	// --------- using argparse & LabdaDict;
 	app = new MolGUI( junk, DM.w-100, DM.h-100, W );
