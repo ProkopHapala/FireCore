@@ -475,7 +475,8 @@ void  TestAppMMFFmini::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 
 void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //world.substrate.grid.n    = (Vec3i){120,120,200};
-    gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
+    params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.aREQs, &gridFF.atypes );
     gridFF.grid.n    = (Vec3i){60,60,100};
     //world.substrate.grid.n    = (Vec3i){12,12,20};
     gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
@@ -498,11 +499,11 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
         testPLQ = REQ2PLQ( testREQ, -1.6 );
         //printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
         //printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, aREQ[iatom].x, aREQ[iatom].y, aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
-        Vec3d * FFtot = new Vec3d[ gridFF.grid.getNtot() ];
+        Quat4f* FFtot = new Quat4f[ gridFF.grid.getNtot() ];
         //world.gridFF.evalCombindGridFF_CheckInterp( (Vec3d){ 2.181, 0.0243442, 0.0}, FFtot );
         //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
         gridFF.evalCombindGridFF            ( testREQ, FFtot );
-        if(idebug>1) saveXSF( "FFtot_z.xsf",  gridFF.grid, FFtot, 2, gridFF.natoms, gridFF.apos, gridFF.atypes );
+        if(idebug>1) gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
         ogl_isosurf = glGenLists(1);
         glNewList(ogl_isosurf, GL_COMPILE);
         glShadeModel( GL_SMOOTH );

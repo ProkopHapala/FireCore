@@ -6,7 +6,6 @@ include_directories( ${COMMON_SRCS}/molecular )
 
 add_executable( ${NAME}_main
 	${NAME}_main.cpp 
-	#$<TARGET_OBJECTS:MolecularEngine>  
 	$<TARGET_OBJECTS:DynamicOpt>
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
@@ -14,7 +13,6 @@ target_link_libraries( ${NAME}_main ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
 
 add_executable( MolecularBrowser
     MolecularBrowser.cpp 
-	#$<TARGET_OBJECTS:MolecularEngine>  
 	$<TARGET_OBJECTS:DynamicOpt>
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
@@ -43,19 +41,18 @@ add_executable( FireCoreMMFFmini
 target_link_libraries( FireCoreMMFFmini ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} -rdynamic -ldl -lm )
 
 
-add_executable( ${NAME}_old_main
-	${NAME}_old_main.cpp 
-	#$<TARGET_OBJECTS:Body> 
-	$<TARGET_OBJECTS:MolecularEngine>  
-	$<TARGET_OBJECTS:DynamicOpt>
-	$<TARGET_OBJECTS:SDL2OGL>  
-)
-target_link_libraries( ${NAME}_old_main ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+#add_executable( ${NAME}_old_main
+#	${NAME}_old_main.cpp 
+#	#$<TARGET_OBJECTS:Body> 
+#	$<TARGET_OBJECTS:MolecularEngine>  
+#	$<TARGET_OBJECTS:DynamicOpt>
+#	$<TARGET_OBJECTS:SDL2OGL>  
+#)
+#target_link_libraries( ${NAME}_old_main ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
 
 
 add_executable( ConfSearch 
 	ConfSearch.cpp 
-	#$<TARGET_OBJECTS:MolecularEngine>  
 	$<TARGET_OBJECTS:DynamicOpt>
 	$<TARGET_OBJECTS:SDL2OGL>  
 )

@@ -7,9 +7,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#include <stdint.h>
-#include <stdint.h>
-
 #include "macroUtils.h"
 
 //#include "integerOps.h"
@@ -109,6 +106,18 @@ inline void sincos_taylor2( TYPE a, TYPE& sa, TYPE& ca ){
 	TYPE a2 = a*a;
 	sa   = a * ( 1 - a2*( c3 - c5*a2 ) ) ;
 	ca   =       1 - a2*( c2 - c4*a2 )   ;
+}
+
+template <class TYPE>
+inline void sincosR2_taylor( TYPE r2, TYPE& sa, TYPE& ca ){
+    constexpr TYPE c2 = -1.0/2;
+    constexpr TYPE c3 = -1.0/6;
+    constexpr TYPE c4 =  1.0/24;
+    constexpr TYPE c5 =  1.0/120;
+    constexpr TYPE c6 = -1.0/720;
+    //TYPE r2  = w.x*w.x + w.y*w.y + w.z*w.z;
+    sa  =   1 + r2*( c3 + c5*r2 );
+    ca  =  c2 + r2*( c4 + c6*r2 );
 }
 
 

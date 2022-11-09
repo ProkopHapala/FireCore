@@ -131,13 +131,14 @@ void AppMolecularEditor2::initRigidSubstrate(){
     //world.substrate.grid.n    = (Vec3i){120,120,200};
     world.gridFF.grid.n    = (Vec3i){60,60,100};
     //world.substrate.grid.n    = (Vec3i){12,12,20};
-    world.gridFF.grid.pos0 = (Vec3d){0.0d,0.0d,0.0d};
+    world.gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
     world.gridFF.loadCell ( "inputs/cel.lvs" );
     //world.gridFF.loadCell ( "inputs/cel_2.lvs" );
     world.gridFF.grid.printCell();
     //world.gridFF.loadXYZ  ( "inputs/answer_Na_L1.xyz", params );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
-    world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
+    //world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
+    params.loadXYZ( "inputs/NaCl_wo4.xyz", world.gridFF.natoms, &world.gridFF.apos, &world.gridFF.aREQs, &world.gridFF.atypes );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_sym_Na_add.xyz", params );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_sym_Cl_vac.xyz", params );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_sym_Na_vac.xyz", params );
@@ -174,13 +175,13 @@ void AppMolecularEditor2::initRigidSubstrate(){
 
    // exit(0);
 
-    Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
+    Quat4f * FFtot = new Quat4f[world.gridFF.grid.getNtot()];
 
     //world.gridFF.evalCombindGridFF_CheckInterp( (Vec3d){ 2.181, 0.0243442, 0.0}, FFtot );
     //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
 
     world.gridFF.evalCombindGridFF( testREQ, FFtot );
-    saveXSF( "FFtot_z.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
+    world.gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4,3, world.gridFF.natoms, world.gridFF.atypes, world.gridFF.apos );
 
     isoOgl = glGenLists(1);
     glNewList(isoOgl, GL_COMPILE);

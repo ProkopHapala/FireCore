@@ -1724,7 +1724,7 @@ void updatePBC( Vec3d* pbcShifts ){
                 MM::Fragment& fragi = frags[i];
                 mmff->frag2a  [i] = fragi.atomRange.x;
                 mmff->fragNa  [i] = fragi.atomRange.y;
-                mmff->fapos0s [i] = fragi.mol->pos;
+                //mmff->fapos0s [i] = fragi.mol->pos;
                 double * posi= (mmff->poses + i*8);
                 *(Vec3d *)(posi  )= fragi.pos;
                 *(Quat4d*)(posi+4)= fragi.rot;

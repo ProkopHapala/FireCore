@@ -47,10 +47,11 @@ void initRigidSubstrate(){
     printf( "params.atypNames:\n" );
     for(auto kv : params.atomTypeDict) { printf(" %s %i \n", kv.first.c_str(), kv.second ); }
     world.gridFF.grid.n    = (Vec3i){60,60,100};
-    world.gridFF.grid.pos0 = (Vec3d){0.0d,0.0d,0.0d};
+    world.gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
     world.gridFF.loadCell ( "inputs/cel.lvs" );
     world.gridFF.grid.printCell();
-    world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
+    //world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
+    params.loadXYZ( "inputs/NaCl_wo4.xyz", world.gridFF.natoms, &world.gridFF.apos, &world.gridFF.aREQs, &world.gridFF.atypes );
     world.translate( {0.0,0.0,4.5} );
 
     Vec3d testREQ,testPLQ;
@@ -72,9 +73,9 @@ void initRigidSubstrate(){
     int iatom = 11;
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
     printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.aREQ[iatom].x, world.aREQ[iatom].y, world.aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
-    Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
+    Quat4f * FFtot = new Quat4f[world.gridFF.grid.getNtot()];
     world.gridFF.evalCombindGridFF( testREQ, FFtot );
-    saveXSF( "FFtot_z.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
+    world.gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4,3, world.gridFF.natoms, world.gridFF.atypes,  world.gridFF.apos );
 
     //isoOgl = glGenLists(1);
     //glNewList(isoOgl, GL_COMPILE);

@@ -205,7 +205,7 @@ class GridShape { public:
     }
 
     template<typename T>
-    void saveXSF( const char * fname,const T* FF, int pitch, int offset, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
+    void saveXSF( const char * fname,const T* FF, int pitch=1, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
         printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");
