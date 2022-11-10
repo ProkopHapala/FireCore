@@ -344,7 +344,7 @@ class OCL_PP: public OCL_DFT { public:
         if(ibuff_atoms<0)initAtoms( na, 1 );
         if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
         if(coefs  )upload( ibuff_coefs,   coefs,  na);
-        if(coefs  )upload( ibuff_neighs,  neighs, na);
+        //if(coefs  )upload( ibuff_neighs,  neighs, na);
         //if(aforces)upload( ibuff_aforces, aforces, na);
         OCLtask* task = getTask("getNonBondForce_GridFF");
         task->global.x = na;
@@ -381,16 +381,13 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
-    void getMMFFsp3( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0, int4* neighs=0 ){
-        //printf("getNonBondForce_GridFF(na=%i) \n", na);
-        if(ibuff_atoms<0)initAtoms( na, 1 );
-        if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
-        if(coefs  )upload( ibuff_coefs,   coefs,  na);
-        if(coefs  )upload( ibuff_neighs,  neighs, na);
-        //if(aforces)upload( ibuff_aforces, aforces, na);
-        OCLtask* task = getTask("getMMFFsp3");
-        task->global.x = na;
+
+    OCLtask* setup_getMMFFsp3(OCLtask* task=0, int na=-1){
+        printf("setup_getMMFFsp3(na=%i) \n", na);
+        if(task==0) task = getTask("getMMFFsp3");
+        if(na>=0  ) task->global.x = na;
         useKernel( task->ikernel );
+        // ------- Maybe We do-not need to do this every frame ?
         err |= useArg    ( nAtoms       );     // 1
         err |= useArgBuff( ibuff_atoms  );     // 2
         err |= useArgBuff( ibuff_coefs  );     // 3
@@ -407,10 +404,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( dinv[1] );             // 14
         err |= _useArg( dinv[2] );             // 15
         OCL_checkError(err, "getMMFFsp3");
-        err = task->enque_raw();
-        OCL_checkError(err, "getMMFFsp3");  
-        if(aforces)err=download( ibuff_aforces, aforces, na);
-        OCL_checkError(err, "getMMFFsp3");  
+        return task;
         /*
         __kernel void getMMFFsp3(
             const int nAtoms,               // 1
@@ -431,16 +425,22 @@ class OCL_PP: public OCL_DFT { public:
         ){
         */
     }
+    //void run_getMMFFsp3(){
+    //    err = task->enque_raw();
+    //   OCL_checkError(err, "getMMFFsp3");  
+    //    //if(aforces)err=download( ibuff_aforces, aforces, na);
+    //    OCL_checkError(err, "getMMFFsp3");  
+    //}
 
-    void gatherForceAndMove( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0, int4* neighs=0 ){
-        //printf("getNonBondForce_GridFF(na=%i) \n", na);
-        if(ibuff_atoms<0)initAtoms( na, 1 );
-        if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
-        if(coefs  )upload( ibuff_coefs,   coefs,  na);
-        if(coefs  )upload( ibuff_neighs,  neighs, na);
+    OCLtask* setup_gatherForceAndMove( OCLtask* task=0, int na=-1){
+        printf("setup_gatherForceAndMove(na=%i) \n", na);
+        //if(ibuff_atoms<0)initAtoms( na, 1 );
+        //if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
+        //if(coefs  )upload( ibuff_coefs,   coefs,  na);
+        //if(coefs  )upload( ibuff_neighs,  neighs, na);
         //if(aforces)upload( ibuff_aforces, aforces, na);
-        OCLtask* task = getTask("gatherForceAndMove");
-        task->global.x = na;
+        if(task==0) task = getTask("gatherForceAndMove");
+        if(na>=0  ) task->global.x = na;
         useKernel( task->ikernel );
         err |= _useArg( md_params );           // 1
         err |= useArg    ( nAtoms       );     // 2
@@ -452,8 +452,9 @@ class OCL_PP: public OCL_DFT { public:
         OCL_checkError(err, "gatherForceAndMove");
         err = task->enque_raw();
         OCL_checkError(err, "gatherForceAndMove");  
-        if(aforces)err=download( ibuff_aforces, aforces, na);
-        OCL_checkError(err, "gatherForceAndMove");  
+        //if(aforces)err=download( ibuff_aforces, aforces, na);
+        //OCL_checkError(err, "gatherForceAndMove");  
+        return task;
         /*
             __kernel void gatherForceAndMove(
                 const float4      params,       // 1

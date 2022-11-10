@@ -65,9 +65,9 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 	Molecule    mol;
 	MMFFparams  params;
     MMFFmini    ff;
-    NBFF       nff;
-    GridFF     gridFF;
-    OCL_PP     ocl;
+    NBFF        nff;
+    GridFF      gridFF;
+    OCL_PP      ocl;
     MM::Builder builder;
     FireCore::Lib  fireCore;
     FireCore::QMMM qmmm;

@@ -1175,6 +1175,10 @@ __kernel void getMMFFsp3(
 
     if(iG>nAtoms) return;
 
+    if(iG==0){
+        printf( "GPU getMMFFsp3() \n" );
+    }
+
     float4 ai    = atoms[iG];
     float4 REQKi = REQKs[iG];
     
@@ -1309,6 +1313,12 @@ __kernel void gatherForceAndMove(
     const int iL = get_local_id  (0);
     const int nL = get_local_size(0);
     if(iG>nAtoms) return;
+
+
+    if(iG==0){
+        printf( "GPU gatherForceAndMove() \n" );
+        //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g) f(%g,%g,%g) v(%g,%g,%g)\n", i, apos[i].x,apos[i].y,apos[i].z,   aforce[i].x,aforce[i].y,aforce[i].z,   avel[i].x,avel[i].y,avel[i].z ); }
+    }
 
     // ------ Gather Forces from back-neighbors
     float4 fe = aforce[iG]; 

@@ -51,6 +51,7 @@ class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
 
   Quat4f * q_ps=0;
   Quat4f * q_fs=0; 
+  Quat4f * q_vs=0; 
   int* bkneighs=0;
 
   bool bGPU_MMFF = true;
@@ -135,7 +136,6 @@ void mol2ocl(){
     makeOCLNeighs( );
     if(bGPU_MMFF){
       makeBackNeighs( nbmol.n, nbmol.neighs );
-      
     }
 }
 
@@ -162,8 +162,6 @@ void  makeOCLNeighs( ){
     if(verbosity>1) for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
     ocl.upload( ocl.ibuff_neighs, aneighs );
     nbmol.neighs = (Quat4i*)aneighs;
-
-    
     //delete [] aneighs;
     //return aneighs;
     //exit(0);
@@ -213,34 +211,66 @@ double eval_gridFF_ocl( int n, Vec3d* ps,             Vec3d* fs ){
     return E;
 }
 
+double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){ 
+    printf( " ======= eval_MMFF_ocl() \n" );
+    //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
+    OCLtask* task_getF = ocl.getTask("getMMFFsp3");
+    OCLtask* task_move = ocl.getTask("gatherForceAndMove");
+    ocl.setup_gatherForceAndMove( task_move, n);
+    ocl.setup_getMMFFsp3        ( task_getF, n);
+    //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
+    //ocl.upload( ocl.ibuff_atoms,  (float4*)q_ps, n ); // Note - these are other atoms than used for makeGridFF()
+    //ocl.upload( ocl.ibuff_coefs,   coefs,  na);
+    for(int i=0; i<niter; i++){
+        task_getF->enque_raw();
+        task_move->enque_raw();
+    }
+    ocl.download( ocl.ibuff_aforces, q_ps, n );
+    ocl.download( ocl.ibuff_atoms,   q_fs, n );
+    ocl.finishRaw();
+    double O=unpack_add( n, ps, q_ps );
+    double E=unpack_add( n, fs, q_fs );
+    //unpack( n, fs, q_fs );
+    //double E=0;
+    //for(int i=0; i<n; i++){ E+=q_fs[i].e; }; // sum energy
+    return E;
+}
+
+void eval(){
+    //printf("#======= MDloop[%i] \n", nloop );
+    double E=0;
+    bGPU_MMFF=false;
+    if(bGPU_MMFF){
+        eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
+    }else{
+      if(bMMFF){ E += ff.eval();  } 
+      else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+      //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
+      //bGridFF=true;
+      //bOcl   =true;
+      if(bSurfAtoms){ 
+          if  (bGridFF){ 
+            if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
+            else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); 
+                      E+= nbmol.evalNeighs();
+                    }
+          }else { 
+            E+= nbmol.evalNeighs();
+          //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
+            E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
+          //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
+          }
+    }
+    }
+}
+
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
-    bool bMMFF_ = bMMFF;
-    //bMMFF_=false;
-    if(bMMFF_)ff.cleanAll();
+    //bMMFF=false;
+    if(bMMFF)ff.cleanAll();
     if(bChargeUpdated){  REQs2ocl(); }
     for(int itr=0; itr<nIter; itr++){
-        
-        //printf("#======= MDloop[%i] \n", nloop );
-        double E=0;
-        if(bMMFF_){ E += ff.eval();  } 
-        else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
-		    //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
-        //bGridFF=true;
-        //bOcl   =true;
-        if(bSurfAtoms){ 
-            if  (bGridFF){ 
-              if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
-              else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); 
-                        E+= nbmol.evalNeighs();
-                      }
-            }else { 
-              E+= nbmol.evalNeighs();
-            //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
-              E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
-            //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
-            }
-        }
+        eval();
         //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
         ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
         if(ipicked>=0){
@@ -248,7 +278,6 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
              Vec3d f = getForceSpringRay( ff.apos[ipicked], pick_hray, pick_ray0, K );
              ff.fapos[ipicked].add( f );
         };
-        
         //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
