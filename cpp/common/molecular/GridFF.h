@@ -318,10 +318,13 @@ class GridFF{ public:
  #ifdef IO_utils_h
     bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nPBC={1,1,0}, bool bSaveDebugXSFs=false ){
         //printf( "DEBUG GridFF::tryLoad() 0 \n" );
-        { FILE* f=fopen( fname_Pauli,  "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
-        { FILE* f=fopen( fname_London, "rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
-        { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        //printDir( "../" );
+        //printDir( "./" );
+        { FILE* f=fopen( fname_Pauli,  "rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Pauli );  recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        { FILE* f=fopen( fname_London, "rb"); if(0==f){ printf("File(%s) Not Found\n", fname_London);  recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Coulomb); recalcFF=true; }else{ fclose(f); };} // Test if file exist
         //printf( "DEBUG GridFF::tryLoad() recalcFF %i \n", recalcFF );
+        //printf( "fname_Pauli(%s) fname_London(%s) fname_Coulomb(%s) \n", fname_Pauli, fname_London, fname_Coulomb );
         //int nbyte= grid.getNtot()*sizeof(Vec3d);
         int nbyte= grid.getNtot()*sizeof(Quat4f);
         if( recalcFF ){

@@ -54,30 +54,59 @@ MolWorld_sp3 W;
 
 extern "C"{
 
+void setVerbosity( int verbosity_, int idebug_ ){
+    verbosity = verbosity_;
+    idebug    = idebug_;
+}
+
 void init_buffers(){
+    buffers .insert( { "apos",   (double*)W.nbmol.ps } );
+    buffers .insert( { "fapos",  (double*)W.nbmol.fs } );
+    if(W.bMMFF){
+        buffers .insert( { "DOFs",      W.ff.DOFs  } );
+        buffers .insert( { "fDOFs",     W.ff.fDOFs } );
+        //buffers .insert( { "apos",   (double*)W.ff.apos   } );
+        //buffers .insert( { "fapos",  (double*)W.ff.fapos } );
+        buffers .insert( { "apos",   (double*)W.nbmol.ps } );
+        buffers .insert( { "fapos",  (double*)W.nbmol.fs } );
+        buffers .insert( { "pipos",  (double*)W.ff.pipos   } );
+        buffers .insert( { "fpipos", (double*)W.ff.fpipos } );
+        buffers .insert( { "bond_l0",   (double*)W.ff.bond_l0   } );
+        buffers .insert( { "bond_k",    (double*)W.ff.bond_k    } );
+        buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
+        buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
+        ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
+        ibuffers.insert( { "aneighs",      (int*)W.ff.aneighs  } );
+    }else{
+        W.ff.natoms=W.nbmol.n;
+    }
     ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
-    buffers.insert( { "Es",        &W.ff.Etot  } );
-    buffers.insert( { "DOFs",    W.ff.DOFs } );
-    buffers.insert( { "fDOFs",   W.ff.fDOFs } );
-    buffers.insert( { "apos",   (double*)W.ff.apos   } );
-    buffers.insert( { "fapos",  (double*)W.ff.fapos } );
-    buffers.insert( { "pipos",  (double*)W.ff.pipos   } );
-    buffers.insert( { "fpipos", (double*)W.ff.fpipos } );
-    buffers.insert( { "bond_l0",   (double*)W.ff.bond_l0   } );
-    buffers.insert( { "bond_k",    (double*)W.ff.bond_k    } );
-    buffers.insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
-    buffers.insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
-    ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
-    ibuffers.insert( { "aneighs",      (int*)W.ff.aneighs  } );
+    buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
 }
 
 int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void init(){
+void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+	W.smile_name = smile_name;
+	W.xyz_name   = xyz_name;
+	W.surf_name  = surf_name;
+	W.bMMFF      = bMMFF;
+    W.gridStep   = gridStep;
+    W.nPBC       = *(Vec3i*)nPBC;
+    W.tmpstr=tmpstr;
+    W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
+	W.builder.bindParams(&W.params);
+    bool bGrid = gridStep>0;
+    W.init( bGrid );
+    init_buffers();
+}
+
+void init_old(){
     W.tmpstr=tmpstr;
     //sprintf("%s/AtomTypes.dat");
     W.params.init("data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" );
+	W.builder.bindParams(&W.params);
 }
 
 void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ ){

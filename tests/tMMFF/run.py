@@ -7,101 +7,24 @@ sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
-def deriv( xs,Es ):
-    xs_ =(xs[2:]+xs[:-2])*0.5
-    dxs =(xs[2:]-xs[:-2])
-    dEs =(Es[2:]-Es[:-2])
-    return dEs/dxs,xs_
 
 #======== Body
 
+mmff.setVerbosity( verbosity=1, idebug=0 )
+#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sum-center" )                             # all
+mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sym-center", bMMFF=False  )              # without MMFF
+#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sym-center", bMMFF=False, gridStep=-1 )  # without gridFF
+mmff.getBuffs()
+mmff.eval()
+#mmff.relax(1000)
+print( "FORCES:\n mmff.fapos:\n ", mmff.fapos )
+mmff.plot(bForce=True, Fscale=10.0 )
+plt.show()
+exit(0)
+
+
+'''
 mmff.init()
-# -------- Non-covalent Surace (GridFF)
-Q =-0.01; K=-1.6; kind=1; Rdamp=2.0; pos0=(0.0,0.0,0.0)
-atyp=2
-
-
-'''
-#-------------------- 2D
-nx=20
-xs=np.linspace(-5,5,nx);
-Xs,Ys=np.meshgrid(xs,xs)
-poss=np.zeros( (nx,nx,3) )
-poss[:,:,0]=Xs
-poss[:,:,1]=Ys
-poss[:,:,2]=0.5
-poss_=poss.reshape( (-1,3) );   print("poss_.shape ",poss_.shape)
-
-#Ea,fa   = mmff.sampleSurf_vecs( "data/NaCl_sym-center",  poss_, kind=1 , atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
-#Eg,fg   = mmff.sampleSurf_vecs( "data/H_atom",  poss_, kind=10, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
-#Ea,fa   = mmff.sampleSurf_vecs(  None,          poss_, kind=0 , atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
-
-Ea,fa   = mmff.sampleSurf_vecs( "data/H_atom",  poss_, kind=1, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
-Eg,fg   = mmff.sampleSurf_vecs( "data/H_atom",  poss_, kind=5, atyp=1, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
-
-plt.figure(figsize=(10,5))
-plt.subplot(1,2,1); plt.imshow( Ea.reshape((nx,nx)) )  ;plt.title("E_atoms") ;plt.colorbar()
-plt.subplot(1,2,2); plt.imshow( Eg.reshape((nx,nx)) )  ;plt.title("E_grid")  ;plt.colorbar()
-plt.show()
-exit()
-'''
-
-# ------------------ 1D
-#rs = np.linspace(-5.0,5.0,150)
-#rs = np.linspace(0.0,20.0,100)
-rs = np.linspace(2.2,10.0,78)
-#EsM,fsM  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q*0), K=K, Rdamp=Rdamp)  
-#EsC,fsC  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e*0,Q  ), K=K, Rdamp=Rdamp)   
-Eg,fg   = mmff.sampleSurf( "data/NaCl_sym-center", rs, kind=12, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
-Ea,fa   = mmff.sampleSurf( None,                   rs, kind=1 , atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
-
-'''
-Eg,fg   = mmff.sampleSurf( "data/H_atom",  rs, kind=11, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
-#Eg,fg   = mmff.sampleSurf( "data/H_atom",  rs, kind=5, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
-#Ea,fa   = mmff.sampleSurf( None,           rs, kind=1, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True)  
-Ea,fa   = mmff.sampleSurf( None,  rs, kind=5, atyp=atyp, Q=Q, K=K, Rdamp=Rdamp, pos0=pos0, bSave=True) 
-#Eg*=1.25
-'''
-
-#print("Es \n", Es);
-fg_,xfs = deriv( rs,Eg )
-fa_,xfs = deriv( rs,Ea )
-
-#Emin=Es.min()
-#Emax=Es.max()
-#Emin=Es.min()
-plt.figure(figsize=(5,10))
-plt.subplot(2,1,1); 
-plt.plot(rs,Eg,label='Grid');  plt.plot(rs,Ea,"--",label='Atoms'); plt.grid(); plt.legend(); plt.axhline(0,c='k',ls='--');                 #plt.ylim(Emin*sc,Emax*sc)  
-plt.subplot(2,1,2); 
-plt.plot(rs,-fg,'-r', label='Fg'); #plt.plot(xfs,fg_, 'r--',label='Fg_num')    
-plt.plot(rs,-fa,'-b', label='Fa'); plt.plot(xfs,fa_, 'b:',label='Fa_num')   
-plt.grid(); plt.axhline(0,c='k',ls='--'); plt.legend(); #plt.ylim(Emin*sc,Emax*sc)  
-plt.show()
-exit()
-
-
-'''
-# -------- Non-covalent
-Q =-0.05; R=1.908; e=0.0037292; K=-1.0; kind=1; Rdamp=1.0
-sc=1.2
-rs = np.linspace(0.0,10.0,100)
-EsM,fsM  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q*0), REQj=(R,e,abs(Q)), K=K, Rdamp=Rdamp)  
-EsC,fsC  = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e*0,Q  ), REQj=(R,e,abs(Q)), K=K, Rdamp=Rdamp)   
-Es ,fs   = mmff.sampleNonBond( rs, kind=kind, REQi=(R,e  ,Q  ), REQj=(R,e,abs(Q)), K=K, Rdamp=Rdamp)  
-
-fnum,xfs = deriv( rs,Es )
-
-#Emin=Es.min()
-Emin=e*-3.0
-plt.figure(figsize=(5,10))
-plt.subplot(2,1,1); plt.plot(rs,Es,'k',label='PLQ'); plt.plot(rs,EsM,label="PL"); plt.plot(rs,EsC,label="Q")   ;plt.grid(); plt.axhline(0,c='k',ls='--'); plt.ylim(Emin*sc,-Emin*sc)  ;plt.legend()
-plt.subplot(2,1,2); plt.plot(rs,fs,    label='Fana'); plt.plot(xfs,fnum, ':r',label='Fnum')                    ;plt.grid(); plt.axhline(0,c='k',ls='--'); plt.ylim(Emin*sc,-Emin*sc)  ;plt.legend()
-plt.show()
-exit()
-'''
-
-
 #mmff.init_params( "data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" )
 #mmff.insertSMILES("CC");
 #mmff.insertSMILES("C=C");
@@ -109,7 +32,6 @@ exit()
 #mmff.insertSMILES("C#CCN=C", True );
 #mmff.insertSMILES("C1#CCN=C1", True );
 #mmff.insertSMILES("C=C1NC#CC1CO", True, True );
-
 
 #mmff.initWithSMILES( "C=C1NC#CC1CO" )
 mmff.initWithSMILES( "C=C" )
@@ -119,7 +41,7 @@ mmff.plot()
 plt.show()
 
 exit()
-
+'''
 
 '''
 # ======== Oritent Molecule

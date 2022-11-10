@@ -18,7 +18,7 @@ void printBuffNames(){
 
 double* getBuff(const char* name){ 
     auto got = buffers.find( name );
-    if( got==buffers.end() ){ printf("ERROR: getBuff(%s) NOT FOUND\n", name); return 0;        }
+    if( got==buffers.end() ){ printf("ERROR: getBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
     else                    { return got->second; }
 }
 
@@ -28,7 +28,7 @@ void setBuff(const char* name, double* buff){
 
 int* getIBuff(const char* name){ 
     auto got = ibuffers.find( name );
-    if( got == ibuffers.end() ){ printf("ERROR: getIBuff(%s) NOT FOUND\n", name); return 0;        }
+    if( got == ibuffers.end() ){ printf("ERROR: getIBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
     else                       { return got->second; }
 }
 

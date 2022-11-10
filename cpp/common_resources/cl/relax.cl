@@ -1155,16 +1155,16 @@ __kernel void getMMFFsp3(
     __global float4*  REQKs,        // 3
     __global float4*  forces,       // 4
     __global int4*    neighs,       // 5
-    __global float8*  bondLK,       //  
-    __global float2*  ang0K,        //  
-    __global float4*  neighForces,  // 4
-    __read_only image3d_t  FE_Paul, // 5
-    __read_only image3d_t  FE_Lond, // 6
-    __read_only image3d_t  FE_Coul, // 7
-    const float4 pos0,     // 8
-    const float4 dinvA,    // 9
-    const float4 dinvB,    // 10
-    const float4 dinvC     // 11
+    __global float8*  bondLK,       // 6 
+    __global float2*  ang0K,        // 7
+    __global float4*  neighForces,  // 8
+    __read_only image3d_t  FE_Paul, // 9
+    __read_only image3d_t  FE_Lond, // 10
+    __read_only image3d_t  FE_Coul, // 11
+    const float4 pos0,     // 12
+    const float4 dinvA,    // 13
+    const float4 dinvB,    // 14
+    const float4 dinvC     // 15
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];

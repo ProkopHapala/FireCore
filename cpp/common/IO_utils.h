@@ -189,8 +189,25 @@ inline int fileExist(const char * fname ){
 
 //#include "Tree.h"
 
+bool printDir( char* dirName ){
+    // from : https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir (dirName)) != NULL) {
+        while ((ent = readdir (dir)) != NULL) {
+            printf ("%s\n", ent->d_name);
+        }
+        closedir(dir);
+        return true;
+    }else {
+        //perror ("");
+        return false;
+    }
+}
+
 // list files in directory
 //  https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
+
 
 inline int listDirContaining( char * dirName, char * fname_contains, std::vector<std::string>& fnames_found ){
     DIR *dir=NULL;

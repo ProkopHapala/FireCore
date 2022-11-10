@@ -8,6 +8,6 @@ rm libMMFF_lib.so
 make MMFF_lib
 cd $wd
 
-rm *.bin
+#rm *.bin
 
 python3 run.py

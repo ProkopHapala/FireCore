@@ -30,6 +30,7 @@ class OCL_PP: public OCL_DFT { public:
     int n_start_point = 0;
     int ibuff_start_point=-1;
     int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
+    int ibuff_bondLK=-1, ibuff_ang0K=-1;
     int itex_FF=-1;
 
     int itex_FE_Paul=-1;
@@ -93,6 +94,7 @@ class OCL_PP: public OCL_DFT { public:
         newTask( "evalLJC_QZs_toImg" ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "make_GridFF"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "getNonBondForce_GridFF",1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "getMMFFsp3"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "gatherForceAndMove",1,{0,0,0,0},{1,0,0,0},program_relax);
         //newTask( "write_toImg"       ,3,{0,0,0,0},{1,1,1,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
@@ -321,12 +323,19 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
-    int initAtomsForces( int nAtoms_ ){
+    int initAtomsForces( int nAtoms_, bool bFullMD=false ){
         nAtoms=nAtoms_;
         ibuff_atoms   =newBuffer( "atoms",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_aforces =newBuffer( "aforces",  nAtoms, sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_neighs  =newBuffer( "neighs",   nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_neighs  =newBuffer( "neighs",   nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        if(bFullMD){
+            ibuff_bkNeighs    =newBuffer( "bkNeighs",   nAtoms,   sizeof(int4),   0, CL_MEM_READ_WRITE );
+            ibuff_bondLK      =newBuffer( "bondLK ",    nAtoms,   sizeof(float8), 0, CL_MEM_READ_ONLY  );
+            ibuff_ang0K       =newBuffer( "ang0K",      nAtoms,   sizeof(float2), 0, CL_MEM_READ_ONLY  );
+            ibuff_neighForce  =newBuffer( "neighForce", nAtoms*4, sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_avel        =newBuffer( "avel",       nAtoms,   sizeof(float4), 0, CL_MEM_READ_WRITE );
+        }
         return ibuff_atoms;
     }
 
@@ -372,8 +381,56 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
-
-
+    void getMMFFsp3( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0, int4* neighs=0 ){
+        //printf("getNonBondForce_GridFF(na=%i) \n", na);
+        if(ibuff_atoms<0)initAtoms( na, 1 );
+        if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
+        if(coefs  )upload( ibuff_coefs,   coefs,  na);
+        if(coefs  )upload( ibuff_neighs,  neighs, na);
+        //if(aforces)upload( ibuff_aforces, aforces, na);
+        OCLtask* task = getTask("getMMFFsp3");
+        task->global.x = na;
+        useKernel( task->ikernel );
+        err |= useArg    ( nAtoms       );     // 1
+        err |= useArgBuff( ibuff_atoms  );     // 2
+        err |= useArgBuff( ibuff_coefs  );     // 3
+        err |= useArgBuff( ibuff_aforces);     // 4
+        err |= useArgBuff( ibuff_neighs );     // 5
+        err |= useArgBuff( ibuff_bondLK );     // 6
+        err |= useArgBuff( ibuff_ang0K  );     // 7
+        err |= useArgBuff( ibuff_neighForce ); // 8
+        err |= useArgBuff( itex_FE_Paul );     // 9
+        err |= useArgBuff( itex_FE_Lond );     // 10
+        err |= useArgBuff( itex_FE_Coul );     // 11    
+        err |= _useArg( pos0 );                // 12
+        err |= _useArg( dinv[0] );             // 13
+        err |= _useArg( dinv[1] );             // 14
+        err |= _useArg( dinv[2] );             // 15
+        OCL_checkError(err, "getMMFFsp3");
+        err = task->enque_raw();
+        OCL_checkError(err, "getMMFFsp3");  
+        if(aforces)err=download( ibuff_aforces, aforces, na);
+        OCL_checkError(err, "getMMFFsp3");  
+        /*
+        __kernel void getMMFFsp3(
+            const int nAtoms,               // 1
+            __global float4*  atoms,        // 2
+            __global float4*  REQKs,        // 3
+            __global float4*  forces,       // 4
+            __global int4*    neighs,       // 5
+            __global float8*  bondLK,       // 6 
+            __global float2*  ang0K,        // 7
+            __global float4*  neighForces,  // 8
+            __read_only image3d_t  FE_Paul, // 9
+            __read_only image3d_t  FE_Lond, // 10
+            __read_only image3d_t  FE_Coul, // 11
+            const float4 pos0,     // 12
+            const float4 dinvA,    // 13
+            const float4 dinvB,    // 14
+            const float4 dinvC     // 15
+        ){
+        */
+    }
 
     void gatherForceAndMove( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0, int4* neighs=0 ){
         //printf("getNonBondForce_GridFF(na=%i) \n", na);
