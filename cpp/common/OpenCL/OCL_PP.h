@@ -339,14 +339,9 @@ class OCL_PP: public OCL_DFT { public:
         return ibuff_atoms;
     }
 
-    void getNonBondForce_GridFF( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0, int4* neighs=0 ){
-        //printf("getNonBondForce_GridFF(na=%i) \n", na);
-        if(ibuff_atoms<0)initAtoms( na, 1 );
-        if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
-        if(coefs  )upload( ibuff_coefs,   coefs,  na);
-        //if(coefs  )upload( ibuff_neighs,  neighs, na);
-        //if(aforces)upload( ibuff_aforces, aforces, na);
-        OCLtask* task = getTask("getNonBondForce_GridFF");
+    OCLtask* setup_getNonBondForce_GridFF( OCLtask* task=0, int na=-1 ){
+        if(task==0) task = getTask("getNonBondForce_GridFF");
+        if(na>=0  ) task->global.x = na;
         task->global.x = na;
         useKernel( task->ikernel );
         err |= useArg    ( nAtoms       ); // 1
@@ -362,10 +357,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( dinv[1] );              // 11
         err |= _useArg( dinv[2] );              // 12
         OCL_checkError(err, "getNonBondForce_GridFF_1");
-        err = task->enque_raw();
-        OCL_checkError(err, "getNonBondForce_GridFF_2");  
-        if(aforces)err=download( ibuff_aforces, aforces, na);
-        OCL_checkError(err, "getNonBondForce_GridFF_3");  
+        return task;
         /*
             const int nAtoms,               // 1
             __global float4*  atoms,        // 2
@@ -379,6 +371,20 @@ class OCL_PP: public OCL_DFT { public:
             float4 dinvB,    // 10
             float4 dinvC     // 11
         */
+    }
+
+    void getNonBondForce_GridFF( int na=0, float4* atoms=0, float4* coefs=0, float4* aforces=0, int4* neighs=0 ){
+        //printf("getNonBondForce_GridFF(na=%i) \n", na);
+        if(ibuff_atoms<0)initAtoms( na, 1 );
+        if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
+        if(coefs  )upload( ibuff_coefs,   coefs,  na);
+        //if(coefs  )upload( ibuff_neighs,  neighs, na);
+        //if(aforces)upload( ibuff_aforces, aforces, na);
+        OCLtask* task = setup_getNonBondForce_GridFF( 0, na );
+        err = task->enque_raw();
+        OCL_checkError(err, "getNonBondForce_GridFF_2");  
+        if(aforces)err=download( ibuff_aforces, aforces, na);
+        OCL_checkError(err, "getNonBondForce_GridFF_3");  
     }
 
 
@@ -450,8 +456,8 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_neighForce ); // 6
         err |= useArgBuff( ibuff_bkNeighs );   // 7
         OCL_checkError(err, "gatherForceAndMove");
-        err = task->enque_raw();
-        OCL_checkError(err, "gatherForceAndMove");  
+        //err = task->enque_raw();
+        //OCL_checkError(err, "gatherForceAndMove");  
         //if(aforces)err=download( ibuff_aforces, aforces, na);
         //OCL_checkError(err, "gatherForceAndMove");  
         return task;

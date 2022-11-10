@@ -1177,27 +1177,49 @@ __kernel void getMMFFsp3(
 
     if(iG==0){
         printf( "GPU getMMFFsp3() \n" );
+        for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) REQKs(%g,%g,%g|%g) neighs(%i,%i,%i,%i) \n", i,   atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w,    neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w ); }
+        for(int i=0; i<nAtoms; i++){ float4 bL=bondLK[i].lo;float4 bK=bondLK[i].hi; printf( "GPU a[%i] ang0,K(%g,%g) bL(%g,%g,%g,%g) bK(%g,%g,%g,%g) \n", i,   ang0K[i].x,ang0K[i].y,   bL.x,bL.y,bL.z,bL.w,    bK.x,bK.y,bK.z,bK.w  ); }
     }
 
     float4 ai    = atoms[iG];
     float4 REQKi = REQKs[iG];
+    float3 posi  = ai.xyz;
+
     
     // ========== Interaction with grid
-    float3 pi = ai.xyz-pos0.xyz;
-    //const float4 coord = (float4)( dot(pi,dinvA.xyz),dot(pi,dinvB.xyz),dot(pi,dinvC.xyz), 0.0f );
-    const float4 coord = (float4)( dot(pi,dinvA.xyz)+1.0f,dot(pi,dinvB.xyz)+1.0f,dot(pi,dinvC.xyz)+1.0f, 0.0f );
-    float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
-    float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
-    float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+    posi -= pos0.xyz;
+    const float4 coord = (float4)( dot(posi,dinvA.xyz)     ,dot(posi,dinvB.xyz)     ,dot(posi,dinvC.xyz)     , 0.0f );
+    #if 0
+        coord +=(float3){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+        const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
+        const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
+        const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+    #else
+        const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
+        const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
+        const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
+    #endif
     //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
-    float ej   = exp( REQKi.w * -REQKi.x );
-    float cP   = ej*ej*REQKi.y;
-    float cL   = -  ej*REQKi.y;
-    float4 fe  =  fe_Paul*cP + fe_Lond*cL*0 +  fe_Coul*REQKi.z*0;
+    const float ej   = exp( REQKi.w * -REQKi.x );
+    const float cP   = ej*ej*REQKi.y;
+    const float cL   = -  ej*REQKi.y;
+    float4 fe  =  fe_Paul*cP     + fe_Lond*cL     +  fe_Coul*REQKi.z;
+    //float4 fe  =  fe_Paul*cP*0.f + fe_Lond*cL*0.f +  fe_Coul*REQKi.z;
+    //float4 fe  =  fe_Paul*cP + fe_Lond*cL;
+    //float4 fe  =  fe_Coul*REQKi.z;
+    //float4 fe  = fe_Coul;
     
-
+    //fe.w=(float)iG;
+    
+    //float4 fe  =  float4Zero;
+    //float4 fe  =  (float4){1.0f,2.0f,3.0f,(float)iG};
+    
+    //if(iG==0){ printf( "GPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", iG, fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w, REQKi.z ); }
+    //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  fe_Paul.w,fe_Lond.w,fe_Coul.w ); }
+    //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) RE(%g,%g) fe(%g,%g,%g|%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  cP,cL,REQKi.z,  REQKi.x,REQKi.y,  fe.x,fe.y,fe.z,fe.w ); }
+    
     // ========= Atom-to-Atom interaction ( N-body problem )
-
+    if(iG==0)printf( "GPU non-bond N^2 from getMMFFsp3() nAtoms %i \n", nAtoms );
     int4    ng = neighs[iG];
     float4  BL = bondLK[iG].lo;  // ToDo: maybe it is better split like lk1,kl2,lk3,lk4
     float4  BK = bondLK[iG].hi;
@@ -1208,11 +1230,10 @@ __kernel void getMMFFsp3(
         //if(i>=nAtoms) break;  // wrong !!!!
         LATOMS[iL] = atoms [i];
         LCLJS [iL] = REQKs [i];
-        
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
             int ji=j+i0;
-            if( (j!=iG) && (ji<nAtoms) ){
+            if( (ji!=iG) && (ji<nAtoms) ){
                 float4 aj=LATOMS[j];
                 float3 dp = ai.xyz - aj.xyz;
                 // ============= Bonds
@@ -1220,7 +1241,8 @@ __kernel void getMMFFsp3(
                 else if( ji== ng.y ){  dls[1] += eval_bond( dp, BL.y, BK.y, &fe );  }
                 else if( ji== ng.z ){  dls[2] += eval_bond( dp, BL.z, BK.z, &fe );  }
                 else if( ji== ng.w ){  dls[3] += eval_bond( dp, BL.w, BK.w, &fe );  }
-                else{ 
+                else{
+                //if (!( (ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w) ) ){ 
                 // ============== Non-bonded
                     float4 REQK = LCLJS[j];
                     REQK.x+=REQKi.x;
@@ -1232,6 +1254,8 @@ __kernel void getMMFFsp3(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
+    /*
     //  ============== Angles 
 
         // ToDo in future
@@ -1269,22 +1293,20 @@ __kernel void getMMFFsp3(
                     else   {    
                     }
             }
-            /*
-            if(bi){ if( bj){ if(bSS_ ){ double e=evalSS ( ia, ing, jng, K ); Ess +=e; E+=e; } } // sigma-sigma angle
-                    else   { if(bSP_ ){ double e=evalSP ( ia, ing, jng, K ); Esp +=e; E+=e; } } // sigma-pi orthogonality
-            }else{  if(!bj){ if(bPPT_){ double e=evalPPT( ia, ing, jng, K ); EppT+=e; E+=e; } } // pi-pi orthogonality
-                    else   { if(bPPI_){                                                         // pi-pi colinearity on neighbors
-                        int joff = (jb+1)*nneigh_max;   
-                        for(int ii=1; ii<3; ii++){
-                            int kng=joff-ii;
-                            int kb =neighs[kng];
-                            if(kb!=CAP_PI) continue;
-                            double e=evalPPI( ing, kng, K ); EppI  +=e; E+=e; 
-                        }
-                    }
-                }
-            }    
-            */
+            // if(bi){ if( bj){ if(bSS_ ){ double e=evalSS ( ia, ing, jng, K ); Ess +=e; E+=e; } } // sigma-sigma angle
+            //         else   { if(bSP_ ){ double e=evalSP ( ia, ing, jng, K ); Esp +=e; E+=e; } } // sigma-pi orthogonality
+            // }else{  if(!bj){ if(bPPT_){ double e=evalPPT( ia, ing, jng, K ); EppT+=e; E+=e; } } // pi-pi orthogonality
+            //         else   { if(bPPI_){                                                         // pi-pi colinearity on neighbors
+            //             int joff = (jb+1)*nneigh_max;   
+            //             for(int ii=1; ii<3; ii++){
+            //                 int kng=joff-ii;
+            //                 int kb =neighs[kng];
+            //                 if(kb!=CAP_PI) continue;
+            //                 double e=evalPPI( ing, kng, K ); EppI  +=e; E+=e; 
+            //             }
+            //         }
+            //     }
+            // }     
         }
     }
 
@@ -1293,6 +1315,7 @@ __kernel void getMMFFsp3(
     neighForces[i4+1] = ngForces[1];
     neighForces[i4+2] = ngForces[2];
     neighForces[i4+3] = ngForces[3];
+    */
 
     forces[iG] = fe;
     
@@ -1317,7 +1340,7 @@ __kernel void gatherForceAndMove(
 
     if(iG==0){
         printf( "GPU gatherForceAndMove() \n" );
-        //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g) f(%g,%g,%g) v(%g,%g,%g)\n", i, apos[i].x,apos[i].y,apos[i].z,   aforce[i].x,aforce[i].y,aforce[i].z,   avel[i].x,avel[i].y,avel[i].z ); }
+        for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) f(%g,%g,%g|%g) v(%g,%g,%g|%g)\n", i, apos[i].x,apos[i].y,apos[i].z,apos[i].w,   aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w,   avel[i].x,avel[i].y,avel[i].z,avel[i].w ); }
     }
 
     // ------ Gather Forces from back-neighbors

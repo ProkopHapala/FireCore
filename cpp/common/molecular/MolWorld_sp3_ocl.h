@@ -41,7 +41,6 @@ bool addFirstEmpty( int* arr, int n, int what, int empty=-1 ){
   return false;
 };
 
-
 // ======================================
 // class:        MolWorld_sp3_ocl
 // ======================================
@@ -123,19 +122,60 @@ void REQs2ocl(){
     delete [] q_cs;
 };
 
+
+int ithNeigh(int ia, int ja){
+    int* aneighs = (int*)nbmol.neighs;
+    int* ngs     = aneighs + ia*4;
+    for(int i=0; i<4; i++){
+        if(ngs[i]==ja) return i; 
+    }
+    return -1;
+}
+
+void MMFFparams2ocl(){
+    int n=nbmol.n;
+    float* blks= new float[n*8];
+    Vec2f* a0ks= new Vec2f[n  ];
+    for(int i=0; i<n*8; i++){ blks[i]=1000.0; }
+    for(int i=0; i<ff.nbonds; i++){
+        Vec2i b = ff.bond2atom[i];
+        double K  = ff.bond_k [i];
+        double l0 = ff.bond_l0[i];
+        int ii = ithNeigh( b.i, b.j );
+        int jj = ithNeigh( b.j, b.i );
+        printf( "bond[%i] (%i,%i)-(%i,%i) l0 %g K %g \n", i, b.i,ii,  b.j,jj,   l0, K );
+        if(ii>=0){ blks[b.i*8+ii] = l0; blks[b.i*8+ii+4] = K; }else{ printf("ii<0 \n"); exit(0); };
+        if(jj>=0){ blks[b.j*8+jj] = l0; blks[b.j*8+jj+4] = K; }else{ printf("jj<0 \n"); exit(0); };  
+    }
+    for(int i=0; i<n; i++){
+      a0ks[i]=(Vec2f){ ff.Kneighs[i], 0.5 };
+    }
+    ocl.upload( ocl.ibuff_bondLK, blks );  
+    ocl.upload( ocl.ibuff_ang0K,  a0ks );  
+    delete [] blks;
+    delete [] a0ks;
+}
+
 void mol2ocl(){
+    int n = nbmol.n;
     ocl.buffers[ocl.ibuff_atoms].release();
     ocl.buffers[ocl.ibuff_coefs].release();
     // ---- Prepare for sampling atoms
-    ocl.initAtomsForces( nbmol.n, bGPU_MMFF );
+    ocl.initAtomsForces( n, bGPU_MMFF );
     printf( "buffs atoms, coefs, aforces, neighs: %i %i %i %i \n", ocl.ibuff_atoms, ocl.ibuff_coefs, ocl.ibuff_aforces, ocl.ibuff_neighs );
-    q_ps= new Quat4f[nbmol.n];
-    q_fs= new Quat4f[nbmol.n];
+    q_ps= new Quat4f[n];
+    q_fs= new Quat4f[n];
     // ---- nbmol coefs
+    pack      ( nbmol.n, nbmol.ps, q_ps, sq(gridFF.Rdamp) );
+    ocl.upload( ocl.ibuff_atoms,   q_ps );  
     REQs2ocl();
     makeOCLNeighs( );
     if(bGPU_MMFF){
+      Quat4f* q_vs= new Quat4f[n];
+      for(int i=0; i<n; i++){ q_vs[i].set(0.); }
+      ocl.upload( ocl.ibuff_avel,   q_vs );  
       makeBackNeighs( nbmol.n, nbmol.neighs );
+      MMFFparams2ocl();
     }
 }
 
@@ -159,7 +199,8 @@ void  makeOCLNeighs( ){
         }
       }
     }
-    if(verbosity>1) for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
+    //if(verbosity>1) 
+    for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
     ocl.upload( ocl.ibuff_neighs, aneighs );
     nbmol.neighs = (Quat4i*)aneighs;
     //delete [] aneighs;
@@ -216,12 +257,14 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     OCLtask* task_getF = ocl.getTask("getMMFFsp3");
     OCLtask* task_move = ocl.getTask("gatherForceAndMove");
+    OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
     ocl.setup_gatherForceAndMove( task_move, n);
     ocl.setup_getMMFFsp3        ( task_getF, n);
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     //ocl.upload( ocl.ibuff_atoms,  (float4*)q_ps, n ); // Note - these are other atoms than used for makeGridFF()
     //ocl.upload( ocl.ibuff_coefs,   coefs,  na);
     for(int i=0; i<niter; i++){
+        //task_gff->enque_raw();
         task_getF->enque_raw();
         task_move->enque_raw();
     }
@@ -233,13 +276,15 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     //unpack( n, fs, q_fs );
     //double E=0;
     //for(int i=0; i<n; i++){ E+=q_fs[i].e; }; // sum energy
+
+    exit(0);
     return E;
 }
 
 void eval(){
     //printf("#======= MDloop[%i] \n", nloop );
     double E=0;
-    bGPU_MMFF=false;
+    //bGPU_MMFF=false;
     if(bGPU_MMFF){
         eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
     }else{
