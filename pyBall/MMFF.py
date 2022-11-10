@@ -41,7 +41,8 @@ header_strings = [
 #"void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj )",
 #"void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )",
 #"void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){",
-"#void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){",
+#"#void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){",
+#"void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){",
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 ]
@@ -65,6 +66,14 @@ array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
 array1d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=1, flags='CONTIGUOUS')
 array2d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=2, flags='CONTIGUOUS')
 array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
+
+
+# ====================================
+# ========= Globals
+# ====================================
+
+isInitialized = False
+glob_bMMFF    = True
 
 # ====================================
 # ========= C functions
@@ -123,7 +132,6 @@ def getIBuff(name,sh):
     ptr = lib.getIBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
-
 #double* getBuff(const char* name){ 
 lib.getBuff.argtypes = [c_char_p]
 lib.getBuff.restype  = c_double_p 
@@ -147,18 +155,19 @@ def getBuffs( NEIGH_MAX=4 ):
     print( "getBuffs(): nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
     global DOFs,fDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, Kneighs,bond2atom,aneighs,selection
     #Ebuf     = getEnergyTerms( )
-    DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
-    fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
-    pipos     = getBuff ( "pipos",    (npi,3)    )
-    fpipos    = getBuff ( "fpipos",   (npi,3)    )
-    bond_l0   = getBuff ( "bond_l0",  (nbonds)   )
-    bond_k    = getBuff ( "bond_k",   (nbonds)   )
-    Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
-    bond2atom = getIBuff( "bond2atom",(nbonds,2) )
-    aneighs   = getIBuff( "aneighs",  (nnode,NEIGH_MAX) )
-    selection = getIBuff( "selection",  (natoms) )
+    if glob_bMMFF:
+        DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
+        fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
+        pipos     = getBuff ( "pipos",    (npi,3)    )
+        fpipos    = getBuff ( "fpipos",   (npi,3)    )
+        bond_l0   = getBuff ( "bond_l0",  (nbonds)   )
+        bond_k    = getBuff ( "bond_k",   (nbonds)   )
+        Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
+        bond2atom = getIBuff( "bond2atom",(nbonds,2) )
+        aneighs   = getIBuff( "aneighs",  (nnode,NEIGH_MAX) )
+        selection = getIBuff( "selection",  (natoms) )
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []
@@ -186,10 +195,43 @@ def init_nonbond():
 '''
 
 #  void init_nonbond()
-lib.init.argtypes  = [] 
+#lib.init.argtypes  = [] 
+#lib.init.restype   =  None
+#def init():
+#    isInitialized = True
+#    lib.init()
+
+def cstr( s ):
+    if s is None: return None
+    return s.encode('utf8')
+
+#  void setVerbosity( int verbosity_, int idebug_ ){
+lib.setVerbosity.argtypes  = [c_int, c_int] 
+lib.setVerbosity.restype   =  None
+def setVerbosity( verbosity=1, idebug=0 ):
+    return lib.setVerbosity( verbosity, idebug )
+
+#  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p] 
 lib.init.restype   =  None
-def init():
-    return lib.init()
+def init(
+        xyz_name  ="input.xyz", 
+        surf_name ="surf.xyz", 
+        smile_name=None, 
+        sAtomTypes = "data/AtomTypes.dat", 
+        sBondTypes = "data/BondTypes.dat", 
+        sAngleTypes= "data/AngleTypes.dat",
+        bMMFF=True, nPBC=(1,1,0), gridStep=0.1 
+    ):
+    global glob_bMMFF
+    glob_bMMFF = bMMFF
+    nPBC=np.array(nPBC,dtype=np.int32)
+    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, nPBC, gridStep, cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+
+def tryInit():
+    if not isInitialized:
+        init()
+        #getBuffs( NEIGH_MAX=4 )
 
 #  void insertSMILES(char* s)
 lib.insertSMILES.argtypes  = [c_char_p,c_bool] 
@@ -361,20 +403,24 @@ def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False)
 # ========= Python Functions
 # ====================================
 
-def plot(b2as=None,ax1=0,ax2=1,ps=None):
+def plot(b2as=None,ax1=0,ax2=1,ps=None, fs=None, bForce=False, Fscale=1.0 ):
     import matplotlib.pyplot as plt
     from matplotlib import collections  as mc
     if ps is None: ps=apos
-    if b2as  is None: b2as=bond2atom
-    lines = [  ((ps[b[0],ax1],ps[b[0],ax2]),(ps[b[1],ax1],ps[b[1],ax2])) for b in b2as ]
-    lc = mc.LineCollection(lines, colors='#808080', linewidths=2)
-    ax=plt.gca()
-    ax.add_collection(lc)
+    if fs is None: fs=fapos
     plt.plot( ps[:,ax1], ps[:,ax2],'o', c='#8080FF' )
-    for i,p in enumerate(ps):    ax.annotate( "%i"%i , (p[ax1],p[ax2]), color='b' )
-    for i,l in enumerate(lines): 
-        p= ((l[0][0]+l[1][0])*0.5,(l[0][1]+l[1][1])*0.5)
-        ax.annotate( "%i"%i , p, color='k')
+    if(bForce): plt.quiver( ps[:,ax1], ps[:,ax2], fs[:,ax1], fs[:,ax2], scale = 1/Fscale )
+    if glob_bMMFF:
+        if b2as  is None: b2as=bond2atom
+        lines = [  ((ps[b[0],ax1],ps[b[0],ax2]),(ps[b[1],ax1],ps[b[1],ax2])) for b in b2as ]
+        lc = mc.LineCollection(lines, colors='#808080', linewidths=2)
+        ax=plt.gca()
+        ax.add_collection(lc)
+
+        for i,p in enumerate(ps):    ax.annotate( "%i"%i , (p[ax1],p[ax2]), color='b' )
+        for i,l in enumerate(lines): 
+            p= ((l[0][0]+l[1][0])*0.5,(l[0][1]+l[1][1])*0.5)
+            ax.annotate( "%i"%i , p, color='k')
     plt.axis('equal')
     plt.grid()
 
@@ -384,6 +430,20 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
     if ps is None: ps=apos
     asel=ps[sel]
     plt.scatter( asel[:,ax1], asel[:,ax2], s=s, facecolors='none', edgecolors='r' )
+
+
+
+# ====================================
+# ========= Test Functions
+# ====================================
+
+
+# ====================================
+# ========= Python Functions
+# ====================================
+
+
+
 
 
 # ====================================

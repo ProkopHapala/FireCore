@@ -33,6 +33,15 @@ void unpack(int n, Vec3d* fs, double* es, Quat4f* qs ){
   } 
 }
 
+//tempate<typename T> bool addFirstEmpty( T* arr, n, T what, T empty=-1 ){
+bool addFirstEmpty( int* arr, int n, int what, int empty=-1 ){
+  for(int i=0; i<n; i++){
+    if(arr[i]==empty){ arr[i]=what; return true; }
+  }
+  return false;
+};
+
+
 // ======================================
 // class:        MolWorld_sp3_ocl
 // ======================================
@@ -42,6 +51,9 @@ class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
 
   Quat4f * q_ps=0;
   Quat4f * q_fs=0; 
+  int* bkneighs=0;
+
+  bool bGPU_MMFF = true;
 
 
 // ======== Functions
@@ -114,16 +126,18 @@ void mol2ocl(){
     ocl.buffers[ocl.ibuff_atoms].release();
     ocl.buffers[ocl.ibuff_coefs].release();
     // ---- Prepare for sampling atoms
-    ocl.initAtomsForces( nbmol.n );
+    ocl.initAtomsForces( nbmol.n, bGPU_MMFF );
     printf( "buffs atoms, coefs, aforces, neighs: %i %i %i %i \n", ocl.ibuff_atoms, ocl.ibuff_coefs, ocl.ibuff_aforces, ocl.ibuff_neighs );
     q_ps= new Quat4f[nbmol.n];
     q_fs= new Quat4f[nbmol.n];
     // ---- nbmol coefs
     REQs2ocl();
     makeOCLNeighs( );
+    if(bGPU_MMFF){
+      makeBackNeighs( nbmol.n, nbmol.neighs );
+      
+    }
 }
-
-
 
 void  makeOCLNeighs( ){
     printf("makeOCLNeighs() n %i nnode %i \n", nbmol.n, ff.nnode );
@@ -148,11 +162,28 @@ void  makeOCLNeighs( ){
     if(verbosity>1) for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
     ocl.upload( ocl.ibuff_neighs, aneighs );
     nbmol.neighs = (Quat4i*)aneighs;
+
+    
     //delete [] aneighs;
     //return aneighs;
     //exit(0);
 }
 
+void makeBackNeighs( int n, Quat4i* aneighs ){
+    bkneighs=new int[n*4];
+    for(int i=0; i<n*4; i++){ bkneighs[i]=-1; };
+    for(int ia=0; ia<n; ia++){
+      for(int j=0; j<4; j++){   // 4 neighbors
+        int ja = aneighs[ia].array[j];
+        if( (ja<0)||(ja>=n) )continue;
+        bool ret = addFirstEmpty( bkneighs+ja*4, 4, ia, -1 );
+        if(!ret){ printf("ERROR in MolWorld_sp3_ocl::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
+      };
+    }
+    for(int i=0; i<n; i++){
+      printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i*4+0], bkneighs[i*4+1], bkneighs[i*4+2], bkneighs[i*4+3] ); 
+    }
+}
 
 
 virtual void init( bool bGrid ) override  {

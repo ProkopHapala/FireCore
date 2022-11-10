@@ -202,7 +202,7 @@ bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, doub
 void loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
-    sprintf(tmpstr, "%s.xyz", name );
+    sprintf(tmpstr, "%s.xyz", name ); printf("tmpstr=`%s`\n", tmpstr);
     int iret = builder.insertFlexibleMolecule(  builder.loadMolType( tmpstr, name ), {0,0,0}, Mat3dIdentity, -1 );
     if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
     builder.tryAddConfsToAtoms( 0, -1, 1 );
@@ -319,7 +319,7 @@ virtual void init( bool bGrid ){
         //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
         printf("bMMFF %i bRigid %i \n", bMMFF, bRigid );
     }
-    if ( smile_name ){                 
+    if ( smile_name ){               
         insertSMILES( smile_name );    
         builder.addAllCapTopo();       
         builder.randomizeAtomPos(1.0); 
@@ -338,7 +338,7 @@ virtual void init( bool bGrid ){
         if(bOptimizer){ setOptimizer(); }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
-    if(surf_name  )loadSurf( surf_name, bGrid, true );   
+    if(surf_name  )loadSurf( surf_name, bGrid, idebug>0 );   
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
@@ -364,13 +364,6 @@ int toXYZ(const char* comment="#comment", bool bNodeOnly=false){
 //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
 int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.ps, comment, nbmol.REQs ); }
 
-double eval(){
-    double E=0;
-    E+=ff.eval();
-    if(bNonBonded)E+= nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
-    return E;
-}
-
 bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     Etot=0.0;
     double f2tol=Ftol*Ftol;
@@ -389,6 +382,24 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     return bConverged;
 }
 
+double eval(){
+    double E=0;
+    if(bMMFF){ E += ff.eval();  }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+    if(bSurfAtoms){ 
+        if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
+        //else        { E+= nbmol .evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );  }
+        else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
+    }
+    //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
+    //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
+    return E;
+}
+
+void pullAtom( int ia, float K=-2.0 ){ 
+    Vec3d f = getForceSpringRay( ff.apos[ia], pick_hray, pick_ray0, K );
+    ff.fapos[ia].add( f );
+}
+
 virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doPiPiI  =false;
     //ff.doPiPiT  =false;
@@ -396,32 +407,17 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doAngles =false;
     ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
-        //printf("#======= MDloop[%i] \n", nloop );
-        double E=0;
-		E += ff.eval();
-		//if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
-        bGridFF=false;
-        if(bSurfAtoms){ 
-            if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
-            //else        { E+= nbmol .evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );  }
-            else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
-        }
+        eval();
         ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
 		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
-        
         //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
         //if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
-        if(ipicked>=0){
-             float K = -2.0;
-             Vec3d f = getForceSpringRay( ff.apos[ipicked], pick_hray, pick_ray0, K );
-             ff.fapos[ipicked].add( f );
-        };
+        if(ipicked>=0){ pullAtom( ipicked ); };
         //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
         //opt.move_MDquench();
         opt.move_FIRE();
-
         double f2=1;
         if(f2<sq(Ftol)){
             bConverged=true;
