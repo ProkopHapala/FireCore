@@ -161,6 +161,10 @@ inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
     //     Draw3D::drawVecInPos(  hf2, apos[jng] );
     //     Draw3D::drawVecInPos(  (hf1+hf2)*-1.0, apos[ia] );
     // }
+
+    //if(ia==0) printf( "CPU atom[%i|%i,%i] c %g h1(%g,%g,%g) | h2(%g,%g,%g) hf1(%g,%g,%g) hf2(%g,%g,%g) \n", ia, ing,jng, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z,   hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
+    if(ia==0) printf( "CPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) \n", ia, ing,jng, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z );
+
     fapos[ing].add( hf1     );
     fapos[jng].add( hf2     );
     fapos[ia ].sub( hf1+hf2 );
