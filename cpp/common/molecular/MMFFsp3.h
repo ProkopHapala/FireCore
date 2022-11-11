@@ -44,6 +44,8 @@ class MMFFsp3{ public:
     //double * lbond  = 0;   // bond lengths
     //Vec3d  * hbond  = 0;   // normalized bond unitary vectors
 
+    bool doBonds  =true;
+    bool doNeighs =true;
     bool doPiPiI  =true;
     bool doPiPiT  =true;
     bool doPiSigma=true;
@@ -52,6 +54,7 @@ class MMFFsp3{ public:
     int nevalPiPiT  =0;
     int nevalPiSigma=0;
     int nevalAngles =0;
+
 
     bool bDEBUG_plot=0;
     int iDEBUG_n=0,iDEBUG_pick=0;
@@ -401,8 +404,8 @@ double eval( bool bClean=true, bool bCheck=true ){
     if(bClean){ cleanAll(); }
     normalizePi(); 
     if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
-    eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
-    eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
+    if(doBonds )eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
+    if(doNeighs)eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 };

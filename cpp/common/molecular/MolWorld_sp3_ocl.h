@@ -12,33 +12,33 @@ void unpack(int n, Vec3d* fs, Quat4f* qs          ){ for(int i=0; i<n; i++){ fs[
 double unpack_add(int n, Vec3d* fs, Quat4f* qs          ){ double E=0; for(int i=0; i<n; i++){ fs[i].add( (Vec3d)qs[i].f ); E+=qs[i].e; }; return E; }
 
 void pack(int n, Vec3d* fs, double* es, Quat4f* qs ){
-  for(int i=0; i<n; i++){ 
-    float e; if(es){e=es[i];}else{e=0;}
-    //float e; if(es){e=es[i];}else{e=0;}
-    qs[i].f=(Vec3f)fs[i];
-    qs[i].e=e; 
-  } 
+    for(int i=0; i<n; i++){ 
+        float e; if(es){e=es[i];}else{e=0;}
+        //float e; if(es){e=es[i];}else{e=0;}
+        qs[i].f=(Vec3f)fs[i];
+        qs[i].e=e; 
+    } 
 }
 Quat4f* pack(int n, Vec3d* fs, double* es=0){
-  Quat4f* qs = new Quat4f[n];
-  pack( n, fs, es, qs );
-  return qs;
+    Quat4f* qs = new Quat4f[n];
+    pack( n, fs, es, qs );
+    return qs;
 }
 
 void unpack(int n, Vec3d* fs, double* es, Quat4f* qs ){
-  for(int i=0; i<n; i++){ 
-    const Quat4f& q= qs[i];
-    fs[i]      =(Vec3d)q.f;
-    if(es)es[i]=       q.e; 
-  } 
+    for(int i=0; i<n; i++){ 
+        const Quat4f& q= qs[i];
+        fs[i]      =(Vec3d)q.f;
+        if(es)es[i]=       q.e; 
+    } 
 }
 
 //tempate<typename T> bool addFirstEmpty( T* arr, n, T what, T empty=-1 ){
 bool addFirstEmpty( int* arr, int n, int what, int empty=-1 ){
-  for(int i=0; i<n; i++){
-    if(arr[i]==empty){ arr[i]=what; return true; }
-  }
-  return false;
+    for(int i=0; i<n; i++){
+        if(arr[i]==empty){ arr[i]=what; return true; }
+    }
+    return false;
 };
 
 // ======================================
@@ -46,59 +46,59 @@ bool addFirstEmpty( int* arr, int n, int what, int empty=-1 ){
 // ======================================
 
 class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
-  OCL_PP     ocl;
+    OCL_PP     ocl;
 
-  Quat4f * q_ps=0;
-  Quat4f * q_fs=0; 
-  Quat4f * q_vs=0; 
-  int* bkneighs=0;
+    Quat4f * q_ps=0;
+    Quat4f * q_fs=0; 
+    Quat4f * q_vs=0; 
+    int* bkneighs=0;
 
-  bool bGPU_MMFF = true;
+    bool bGPU_MMFF = true;
 
 
 // ======== Functions
 
 void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
-  int ncell = (nPBC.x*2+1) * (nPBC.y*2+1) * (nPBC.z*2+1); 
-  int n = surf.n*ncell;
-  printf( "surf2ocl() na(%i) = ncell(%i) * natom(%i)\n", n, ncell, surf.n );
-  long T0=getCPUticks();
-  Quat4f* atoms = new Quat4f[n];
-  Quat4f* coefs = new Quat4f[n];
-  double R2damp = sq(gridFF.Rdamp);
-  int ii=0;
-  for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
-      Vec3d  p0 = gridFF.grid.cell.a*ia + gridFF.grid.cell.b*ib + gridFF.grid.cell.c*ic;
-      for(int i=0; i<surf.n; i++){
-        //printf("ii %i i %i iabc(%i,%i,%i)\n", ii, i, ia,ib,ic);
-        atoms[ii].f=(Vec3f)(surf.ps[i]+p0);
-        atoms[ii].e=R2damp; 
-        coefs[ii].f=(Vec3f)surf.REQs[i];
-        coefs[ii].e=gridFF.alpha;
-        ii++;
-      }
-  }}}
-  printf( ">>time(surf_to_GPU) %g \n", (getCPUticks()-T0)*tick2second );
-  long T1=getCPUticks();
-  ocl.makeGridFF( n, (float4*)atoms, (float4*)coefs );
-  printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
-  ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli );  
-  ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
-  ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );
-  printf( ">>time(ocl.makeGridFF(); ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
-  delete [] atoms;
-  delete [] coefs;
-  if(bSaveDebug){
-    gridFF.grid.saveXSF( "ocl_E_Paul.xsf", (float*)gridFF.FFPauli,  4, 3 );
-    gridFF.grid.saveXSF( "ocl_E_Lond.xsf", (float*)gridFF.FFLondon, 4, 3 );
-    gridFF.grid.saveXSF( "ocl_E_Coul.xsf", (float*)gridFF.FFelec,   4, 3 );
-    // ---- Save combined forcefield
-    Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot() ];
-    Vec3d testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
-    gridFF.evalCombindGridFF ( testREQ, FFtot );
-    gridFF.grid.saveXSF( "ocl_E_H.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
-    delete [] FFtot;
-  }
+    int ncell = (nPBC.x*2+1) * (nPBC.y*2+1) * (nPBC.z*2+1); 
+    int n = surf.n*ncell;
+    printf( "surf2ocl() na(%i) = ncell(%i) * natom(%i)\n", n, ncell, surf.n );
+    long T0=getCPUticks();
+    Quat4f* atoms = new Quat4f[n];
+    Quat4f* coefs = new Quat4f[n];
+    double R2damp = sq(gridFF.Rdamp);
+    int ii=0;
+    for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
+        Vec3d  p0 = gridFF.grid.cell.a*ia + gridFF.grid.cell.b*ib + gridFF.grid.cell.c*ic;
+        for(int i=0; i<surf.n; i++){
+            //printf("ii %i i %i iabc(%i,%i,%i)\n", ii, i, ia,ib,ic);
+            atoms[ii].f=(Vec3f)(surf.ps[i]+p0);
+            atoms[ii].e=R2damp; 
+            coefs[ii].f=(Vec3f)surf.REQs[i];
+            coefs[ii].e=gridFF.alpha;
+            ii++;
+        }
+    }}}
+    printf( ">>time(surf_to_GPU) %g \n", (getCPUticks()-T0)*tick2second );
+    long T1=getCPUticks();
+    ocl.makeGridFF( n, (float4*)atoms, (float4*)coefs );
+    printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
+    ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli );  
+    ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
+    ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );
+    printf( ">>time(ocl.makeGridFF(); ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
+    delete [] atoms;
+    delete [] coefs;
+    if(bSaveDebug){
+        gridFF.grid.saveXSF( "ocl_E_Paul.xsf", (float*)gridFF.FFPauli,  4, 3 );
+        gridFF.grid.saveXSF( "ocl_E_Lond.xsf", (float*)gridFF.FFLondon, 4, 3 );
+        gridFF.grid.saveXSF( "ocl_E_Coul.xsf", (float*)gridFF.FFelec,   4, 3 );
+        // ---- Save combined forcefield
+        Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot() ];
+        Vec3d testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
+        gridFF.evalCombindGridFF ( testREQ, FFtot );
+        gridFF.grid.saveXSF( "ocl_E_H.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
+        delete [] FFtot;
+    }
 }
 
 void init_ocl(){
@@ -148,7 +148,7 @@ void MMFFparams2ocl(){
         if(jj>=0){ blks[b.j*8+jj] = l0; blks[b.j*8+jj+4] = K; }else{ printf("jj<0 \n"); exit(0); };  
     }
     for(int i=0; i<n; i++){
-      a0ks[i]=(Vec2f){ ff.Kneighs[i], 0.5 };
+        a0ks[i]=(Vec2f){ ff.Kneighs[i], 0.5 };
     }
     ocl.upload( ocl.ibuff_bondLK, blks );  
     ocl.upload( ocl.ibuff_ang0K,  a0ks );  
@@ -171,11 +171,12 @@ void mol2ocl(){
     REQs2ocl();
     makeOCLNeighs( );
     if(bGPU_MMFF){
-      Quat4f* q_vs= new Quat4f[n];
-      for(int i=0; i<n; i++){ q_vs[i].set(0.); }
-      ocl.upload( ocl.ibuff_avel,   q_vs );  
-      makeBackNeighs( nbmol.n, nbmol.neighs );
-      MMFFparams2ocl();
+        Quat4f* q_vs= new Quat4f[n];
+        for(int i=0; i<n; i++){ q_vs[i].set(0.); }
+        ocl.upload( ocl.ibuff_avel,   q_vs );  
+        makeBackNeighs( nbmol.n, nbmol.neighs );
+        ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
+        MMFFparams2ocl();
     }
 }
 
@@ -184,20 +185,20 @@ void  makeOCLNeighs( ){
     int n=nbmol.n;
     int* aneighs=new int[n*4];
     for(int i=0; i<n; i++){
-      int i4=i*4;
-      aneighs[i4+0]=-1; aneighs[i4+1]=-1; aneighs[i4+2]=-1; aneighs[i4+3]=-1;
+        int i4=i*4;
+        aneighs[i4+0]=-1; aneighs[i4+1]=-1; aneighs[i4+2]=-1; aneighs[i4+3]=-1;
     }
     if(bMMFF){
-      for(int i=0; i<ff.nnode; i++){
-        int i4=i*4;
-        for(int j=0; j<4; j++){
-          int ngi=ff.aneighs[i4+j];
-          aneighs[i4+j]=ngi;
-          if(ngi>=ff.nnode){   // back-neighbor
-            aneighs[ngi*4+0]=i;
-          }
+        for(int i=0; i<ff.nnode; i++){
+            int i4=i*4;
+            for(int j=0; j<4; j++){
+                int ngi=ff.aneighs[i4+j];
+                aneighs[i4+j]=ngi;
+                if(ngi>=ff.nnode){   // back-neighbor
+                    aneighs[ngi*4+0]=i;
+                }
+            }
         }
-      }
     }
     //if(verbosity>1) 
     for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
@@ -212,16 +213,47 @@ void makeBackNeighs( int n, Quat4i* aneighs ){
     bkneighs=new int[n*4];
     for(int i=0; i<n*4; i++){ bkneighs[i]=-1; };
     for(int ia=0; ia<n; ia++){
-      for(int j=0; j<4; j++){   // 4 neighbors
-        int ja = aneighs[ia].array[j];
-        if( (ja<0)||(ja>=n) )continue;
-        bool ret = addFirstEmpty( bkneighs+ja*4, 4, ia, -1 );
-        if(!ret){ printf("ERROR in MolWorld_sp3_ocl::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
-      };
+        for(int j=0; j<4; j++){   // 4 neighbors
+            int ja = aneighs[ia].array[j];
+            if( (ja<0)||(ja>=n) )continue;
+            bool ret = addFirstEmpty( bkneighs+ja*4, 4, ia*4+j, -1 );
+            if(!ret){ printf("ERROR in MolWorld_sp3_ocl::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
+        };
     }
     for(int i=0; i<n; i++){
-      printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i*4+0], bkneighs[i*4+1], bkneighs[i*4+2], bkneighs[i*4+3] ); 
+        printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i*4+0], bkneighs[i*4+1], bkneighs[i*4+2], bkneighs[i*4+3] ); 
     }
+    checkBkNeighCPU();
+}
+
+
+void checkBkNeighCPU(){
+    int n=nbmol.n;
+    Quat4f* neighForce = new Quat4f[n*4];
+    // ------ Write
+    for(int i=0; i<n*4; i++){ neighForce[i].w=-1; };
+    for(int i=0; i<n; i++){
+        Quat4i ngs = nbmol.neighs[i];
+        neighForce[i*4+0] = Quat4f{0,0,0,ngs.x+0.2f};
+        neighForce[i*4+1] = Quat4f{0,0,0,ngs.y+0.2f};
+        neighForce[i*4+2] = Quat4f{0,0,0,ngs.z+0.2f};
+        neighForce[i*4+3] = Quat4f{0,0,0,ngs.w+0.2f};
+    }
+    // ------- Read
+    bool miss=true;
+    Quat4i* bkngs = (Quat4i*)bkneighs;
+    for(int i=0; i<n; i++){
+        //float fi = i*1.f;
+        Quat4i ng = bkngs[i];
+        if(ng.x>0) miss &= ((int)neighForce[ng.x].w == i); 
+        if(ng.y>0) miss &= ((int)neighForce[ng.y].w == i); 
+        if(ng.z>0) miss &= ((int)neighForce[ng.z].w == i); 
+        if(ng.w>0) miss &= ((int)neighForce[ng.w].w == i);
+        printf( "atom[%i] bkneighs(%i,%i,%i,%i) forMe(%i,%i,%i,%i) \n", i, ng.x,ng.y,ng.z,ng.w,  (int)(neighForce[ng.x].w-0.1),(int)(neighForce[ng.y].w-0.1),(int)(neighForce[ng.z].w-0.1),(int)(neighForce[ng.w].w-0.1) );
+    }
+    printf( "!!! %i\n", (int)(0-0.1) );
+    if(!miss){ printf("ERROR in checkBkNeighCPU \n"); exit(0); }
+    exit(0);
 }
 
 
@@ -236,7 +268,6 @@ virtual void init( bool bGrid ) override  {
     init_ocl();
     printf( "... MolWorld::init() DONE \n");
     */
-
     bGridFF=false;
     bOcl   =false;
 }
@@ -268,16 +299,14 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
         task_getF->enque_raw();
         task_move->enque_raw();
     }
-    ocl.download( ocl.ibuff_aforces, q_ps, n );
-    ocl.download( ocl.ibuff_atoms,   q_fs, n );
+    ocl.download( ocl.ibuff_aforces, q_fs, n );
+    ocl.download( ocl.ibuff_atoms,   q_ps, n );
     ocl.finishRaw();
     double O=unpack_add( n, ps, q_ps );
     double E=unpack_add( n, fs, q_fs );
     //unpack( n, fs, q_fs );
     //double E=0;
     //for(int i=0; i<n; i++){ E+=q_fs[i].e; }; // sum energy
-
-    exit(0);
     return E;
 }
 
@@ -286,26 +315,36 @@ void eval(){
     double E=0;
     //bGPU_MMFF=false;
     if(bGPU_MMFF){
+        ff.doPiPiI  =false;
+        ff.doPiPiT  =false;
+        ff.doPiSigma=false;
+        //ff.doAngles =false;
+        ff.doNeighs = true;
+        ff.doBonds  = false;
+        E += ff.eval();
+        for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
+        for(int i=0; i<ff.natoms; i++){ printf("OCL atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
+        exit(0);
     }else{
-      if(bMMFF){ E += ff.eval();  } 
-      else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
-      //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
-      //bGridFF=true;
-      //bOcl   =true;
-      if(bSurfAtoms){ 
-          if  (bGridFF){ 
-            if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
-            else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); 
-                      E+= nbmol.evalNeighs();
+        if(bMMFF){ E += ff.eval();  } 
+        else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+        //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
+        //bGridFF=true;
+        //bOcl   =true;
+        if(bSurfAtoms){ 
+            if  (bGridFF){ 
+                if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
+                else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); 
+                        E+= nbmol.evalNeighs();
                     }
-          }else { 
-            E+= nbmol.evalNeighs();
-          //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
-            E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
-          //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
-          }
-    }
+            }else { 
+                E+= nbmol.evalNeighs();
+              //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
+                E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
+              //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
+            }
+        }
     }
 }
 
@@ -374,11 +413,11 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
 }
 
 virtual void swith_method()override{ 
-  imethod=(imethod+1)%2; 
-  switch (imethod){
-    case 0: bGridFF=0; bOcl=0; break;
-    case 1: bGridFF=1; bOcl=1; break;
-  }
+    imethod=(imethod+1)%2; 
+    switch (imethod){
+        case 0: bGridFF=0; bOcl=0; break;
+        case 1: bGridFF=1; bOcl=1; break;
+    }
 }
 
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i bOcl %i \n", bGridFF, bOcl ); return str; }
