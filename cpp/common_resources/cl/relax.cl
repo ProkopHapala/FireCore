@@ -1310,14 +1310,15 @@ __kernel void getMMFFsp3(
         }
     }
 
-    float fiG=(float)iG; ngForces[0].w=fiG; ngForces[1].w=fiG; ngForces[2].w=fiG; ngForces[3].w=fiG; // Debug - To check proper maping
+    //float fiG=(float)iG; ngForces[0].w=fiG; ngForces[1].w=fiG; ngForces[2].w=fiG; ngForces[3].w=fiG; // Debug - To check proper maping
+    ngForces[0].w=ngs[0]; ngForces[1].w=ngs[1]; ngForces[2].w=ngs[2]; ngForces[3].w=ngs[3];
 
     if(iG==0){
-        printf( "atom[%i] neigh(%i,%i,%i,%i)\n", iG, ngs[0], ngs[1],ngs[2],ngs[3] );
-        printf( "ngForces[0|%i|%i](%g,%g,%g|%g) \n", ngs[0], iG*4+0, ngForces[0].x,ngForces[0].y,ngForces[0].z,ngForces[0].w );
-        printf( "ngForces[1|%i|%i](%g,%g,%g|%g) \n", ngs[1], iG*4+1, ngForces[1].x,ngForces[1].y,ngForces[1].z,ngForces[1].w );
-        printf( "ngForces[2|%i|%i](%g,%g,%g|%g) \n", ngs[2], iG*4+2, ngForces[2].x,ngForces[2].y,ngForces[2].z,ngForces[2].w );
-        printf( "ngForces[3|%i|%i](%g,%g,%g|%g) \n", ngs[3], iG*4+3, ngForces[3].x,ngForces[3].y,ngForces[3].z,ngForces[3].w );  
+        printf( "!!!! atom[%i] neigh(%i,%i,%i,%i)\n", iG, ngs[0], ngs[1],ngs[2],ngs[3] );
+        //printf( "ngForces[0|%i|%i](%g,%g,%g|%g) \n", ngs[0], iG*4+0, ngForces[0].x,ngForces[0].y,ngForces[0].z,ngForces[0].w );
+        //printf( "ngForces[1|%i|%i](%g,%g,%g|%g) \n", ngs[1], iG*4+1, ngForces[1].x,ngForces[1].y,ngForces[1].z,ngForces[1].w );
+        //printf( "ngForces[2|%i|%i](%g,%g,%g|%g) \n", ngs[2], iG*4+2, ngForces[2].x,ngForces[2].y,ngForces[2].z,ngForces[2].w );
+        //printf( "ngForces[3|%i|%i](%g,%g,%g|%g) \n", ngs[3], iG*4+3, ngForces[3].x,ngForces[3].y,ngForces[3].z,ngForces[3].w );  
     };
 
     const int i4=iG*4;
@@ -1356,12 +1357,13 @@ __kernel void gatherForceAndMove(
     float4 fe = aforce[iG]; 
     int4 ngs  = bkNeighs[iG];
     if(iG==5){
-        printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w );  
-        if(ngs.x>=0)printf( "neighForce[0|%i](%g,%g,%g|%g) \n", ngs.x, neighForces[ngs.x].x,neighForces[ngs.x].y,neighForces[ngs.x].z,neighForces[ngs.x].w );
-        if(ngs.y>=0)printf( "neighForce[1|%i](%g,%g,%g|%g) \n", ngs.y, neighForces[ngs.y].x,neighForces[ngs.y].y,neighForces[ngs.y].z,neighForces[ngs.y].w );
-        if(ngs.z>=0)printf( "neighForce[2|%i](%g,%g,%g|%g) \n", ngs.z, neighForces[ngs.z].x,neighForces[ngs.z].y,neighForces[ngs.z].z,neighForces[ngs.z].w );
-        if(ngs.w>=0)printf( "neighForce[3|%i](%g,%g,%g|%g) \n", ngs.w, neighForces[ngs.w].x,neighForces[ngs.w].y,neighForces[ngs.w].z,neighForces[ngs.w].w );  
+        //printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w );  
+        //if(ngs.x>=0)printf( "neighForce[0|%i](%g,%g,%g|%g) \n", ngs.x, neighForces[ngs.x].x,neighForces[ngs.x].y,neighForces[ngs.x].z,neighForces[ngs.x].w );
+        //if(ngs.y>=0)printf( "neighForce[1|%i](%g,%g,%g|%g) \n", ngs.y, neighForces[ngs.y].x,neighForces[ngs.y].y,neighForces[ngs.y].z,neighForces[ngs.y].w );
+        //if(ngs.z>=0)printf( "neighForce[2|%i](%g,%g,%g|%g) \n", ngs.z, neighForces[ngs.z].x,neighForces[ngs.z].y,neighForces[ngs.z].z,neighForces[ngs.z].w );
+        //if(ngs.w>=0)printf( "neighForce[3|%i](%g,%g,%g|%g) \n", ngs.w, neighForces[ngs.w].x,neighForces[ngs.w].y,neighForces[ngs.w].z,neighForces[ngs.w].w );  
     };
+    printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w ); 
     if(ngs.x>=0) fe += neighForces[ngs.x];
     if(ngs.y>=0) fe += neighForces[ngs.y];
     if(ngs.z>=0) fe += neighForces[ngs.z];

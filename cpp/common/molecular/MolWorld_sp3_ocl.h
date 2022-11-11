@@ -226,7 +226,6 @@ void makeBackNeighs( int n, Quat4i* aneighs ){
     checkBkNeighCPU();
 }
 
-
 void checkBkNeighCPU(){
     int n=nbmol.n;
     Quat4f* neighForce = new Quat4f[n*4];
@@ -240,20 +239,20 @@ void checkBkNeighCPU(){
         neighForce[i*4+3] = Quat4f{0,0,0,ngs.w+0.2f};
     }
     // ------- Read
-    bool miss=true;
+    bool match=true;
     Quat4i* bkngs = (Quat4i*)bkneighs;
     for(int i=0; i<n; i++){
         //float fi = i*1.f;
         Quat4i ng = bkngs[i];
-        if(ng.x>0) miss &= ((int)neighForce[ng.x].w == i); 
-        if(ng.y>0) miss &= ((int)neighForce[ng.y].w == i); 
-        if(ng.z>0) miss &= ((int)neighForce[ng.z].w == i); 
-        if(ng.w>0) miss &= ((int)neighForce[ng.w].w == i);
+        if(ng.x>0) match &= ((int)neighForce[ng.x].w == i); 
+        if(ng.y>0) match &= ((int)neighForce[ng.y].w == i); 
+        if(ng.z>0) match &= ((int)neighForce[ng.z].w == i); 
+        if(ng.w>0) match &= ((int)neighForce[ng.w].w == i);
         printf( "atom[%i] bkneighs(%i,%i,%i,%i) forMe(%i,%i,%i,%i) \n", i, ng.x,ng.y,ng.z,ng.w,  (int)(neighForce[ng.x].w-0.1),(int)(neighForce[ng.y].w-0.1),(int)(neighForce[ng.z].w-0.1),(int)(neighForce[ng.w].w-0.1) );
     }
     printf( "!!! %i\n", (int)(0-0.1) );
-    if(!miss){ printf("ERROR in checkBkNeighCPU \n"); exit(0); }
-    exit(0);
+    if(!match){ printf("ERROR in checkBkNeighCPU \n"); exit(0); }
+    //exit(0);
 }
 
 
