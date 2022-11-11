@@ -1146,7 +1146,7 @@ float4 evalAngle( __private float4* fout, float4 dl1, float4 dl2, int ing, int j
     hf2 *= ( fang*ir2 );
     fout [ing].xyz += hf1;
     fout [jng].xyz += hf2;
-    return (float4)( hf1+hf1 , -E );
+    return (float4)( hf1+hf2, -E );
 }
 
 __kernel void getMMFFsp3(
@@ -1236,10 +1236,10 @@ __kernel void getMMFFsp3(
                 float4 aj=LATOMS[j];
                 float3 dp = aj.xyz - ai.xyz;
                 // ============= Bonds
-                if     ( ji== ng.x ){  dls[0] += eval_bond( dp, BL.x, BK.x, &fe );  }
-                else if( ji== ng.y ){  dls[1] += eval_bond( dp, BL.y, BK.y, &fe );  }
-                else if( ji== ng.z ){  dls[2] += eval_bond( dp, BL.z, BK.z, &fe );  }
-                else if( ji== ng.w ){  dls[3] += eval_bond( dp, BL.w, BK.w, &fe );  }
+                if     ( ji== ng.x ){  dls[0] = eval_bond( dp, BL.x, BK.x, &fe );  }
+                else if( ji== ng.y ){  dls[1] = eval_bond( dp, BL.y, BK.y, &fe );  }
+                else if( ji== ng.z ){  dls[2] = eval_bond( dp, BL.z, BK.z, &fe );  }
+                else if( ji== ng.w ){  dls[3] = eval_bond( dp, BL.w, BK.w, &fe );  }
                 else{
                 //if (!( (ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w) ) ){ 
                 // ============== Non-bonded
@@ -1287,7 +1287,28 @@ __kernel void getMMFFsp3(
             int jb  = ngs[j];
             bool bj=(jb!=CAP_PI);
             float4 dlj=dls[j];
-            if(bi){ if( bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-sigma angle
+            if(bi){ if( bj){ 
+                //fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y );
+                float K = c0K.x;
+                float3 h1 = dli.xyz; float ir1 = dli.w;
+                float3 h2 = dlj.xyz; float ir2 = dlj.w;
+                float  c = dot(h1,h2);
+                float3 hf1,hf2;
+                hf1 = h2 - h1*c;
+                hf2 = h1 - h2*c;
+                float E = K*c*c;
+                float fang = -K*c*2;
+                hf1 *= ( fang*ir1 );
+                hf2 *= ( fang*ir2 );
+                ngForces[i].xyz += hf1;
+                ngForces[j].xyz += hf2;
+                fe-=(float4)( hf1+hf2, -E );
+
+                //if(iG==0) printf( "atom[%i|%i,%i] c %g hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG, i,j, c,  hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
+                //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z,   hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
+                if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z );
+            
+            } // sigma-sigma angle
             //        else   { fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-pi orthogonality
             //}else{  if(!bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // pi-pi orthogonality
             //        else   {    
@@ -1313,13 +1334,13 @@ __kernel void getMMFFsp3(
     //float fiG=(float)iG; ngForces[0].w=fiG; ngForces[1].w=fiG; ngForces[2].w=fiG; ngForces[3].w=fiG; // Debug - To check proper maping
     ngForces[0].w=ngs[0]; ngForces[1].w=ngs[1]; ngForces[2].w=ngs[2]; ngForces[3].w=ngs[3];
 
-    if(iG==0){
-        printf( "!!!! atom[%i] neigh(%i,%i,%i,%i)\n", iG, ngs[0], ngs[1],ngs[2],ngs[3] );
-        //printf( "ngForces[0|%i|%i](%g,%g,%g|%g) \n", ngs[0], iG*4+0, ngForces[0].x,ngForces[0].y,ngForces[0].z,ngForces[0].w );
-        //printf( "ngForces[1|%i|%i](%g,%g,%g|%g) \n", ngs[1], iG*4+1, ngForces[1].x,ngForces[1].y,ngForces[1].z,ngForces[1].w );
-        //printf( "ngForces[2|%i|%i](%g,%g,%g|%g) \n", ngs[2], iG*4+2, ngForces[2].x,ngForces[2].y,ngForces[2].z,ngForces[2].w );
-        //printf( "ngForces[3|%i|%i](%g,%g,%g|%g) \n", ngs[3], iG*4+3, ngForces[3].x,ngForces[3].y,ngForces[3].z,ngForces[3].w );  
-    };
+    //if(iG==0){
+    //    printf( "!!!! atom[%i] neigh(%i,%i,%i,%i)\n", iG, ngs[0], ngs[1],ngs[2],ngs[3] );
+    //    //printf( "ngForces[0|%i|%i](%g,%g,%g|%g) \n", ngs[0], iG*4+0, ngForces[0].x,ngForces[0].y,ngForces[0].z,ngForces[0].w );
+    //    //printf( "ngForces[1|%i|%i](%g,%g,%g|%g) \n", ngs[1], iG*4+1, ngForces[1].x,ngForces[1].y,ngForces[1].z,ngForces[1].w );
+    //    //printf( "ngForces[2|%i|%i](%g,%g,%g|%g) \n", ngs[2], iG*4+2, ngForces[2].x,ngForces[2].y,ngForces[2].z,ngForces[2].w );
+    //    //printf( "ngForces[3|%i|%i](%g,%g,%g|%g) \n", ngs[3], iG*4+3, ngForces[3].x,ngForces[3].y,ngForces[3].z,ngForces[3].w );  
+    //};
 
     const int i4=iG*4;
     neighForces[i4  ] = ngForces[0];
@@ -1347,11 +1368,20 @@ __kernel void gatherForceAndMove(
     const int nL = get_local_size(0);
     if(iG>nAtoms) return;
 
-    //if(iG==0){
+    if(iG==0){
     //    printf( "GPU --- gatherForceAndMove() 0 \n" );
     //    //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) f(%g,%g,%g|%g) v(%g,%g,%g|%g)\n", i, apos[i].x,apos[i].y,apos[i].z,apos[i].w,   aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w,   avel[i].x,avel[i].y,avel[i].z,avel[i].w ); }
     //    for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] aforce(%g,%g,%g|%g)\n", i, aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w ); }
-    //}
+    
+    
+        for(int i=0; i<nAtoms; i++){
+            printf("atom[%i] nf1(%g,%g,%g) nf2(%g,%g,%g) nf3(%g,%g,%g) nf4(%g,%g,%g)\n", i,
+                neighForces[i*4+0].x,neighForces[i*4+0].y,neighForces[i*4+0].z,
+                neighForces[i*4+1].x,neighForces[i*4+1].y,neighForces[i*4+1].z,
+                neighForces[i*4+2].x,neighForces[i*4+2].y,neighForces[i*4+2].z,
+                neighForces[i*4+3].x,neighForces[i*4+3].y,neighForces[i*4+3].z );
+        }
+    }
 
     // ------ Gather Forces from back-neighbors
     float4 fe = aforce[iG]; 
