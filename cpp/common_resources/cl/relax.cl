@@ -1110,9 +1110,10 @@ __kernel void getNonBondForce_GridFF(
 float4 eval_bond( float3 d, float l0, float k, float4* fe_ ){
     float l  = length(d);  // (*l_)=l;
     float dl = l-l0;
-    d*=(1.f/l);
+    float inv_l = 1.f/l;
+    d*=inv_l;
     (*fe_) += (float4)( d*( 2.f*k*dl ),  k*dl*dl );
-    return (float4)( d, l );
+    return (float4)( d, inv_l );
 }
 
 /*
@@ -1289,24 +1290,27 @@ __kernel void getMMFFsp3(
             float4 dlj=dls[j];
             if(bi){ if( bj){ 
                 //fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y );
-                float K = c0K.x;
+                float K  = c0K.x;
+                //float c0 = c0K.y;
+                float c0 = 1.0;
                 float3 h1 = dli.xyz; float ir1 = dli.w;
                 float3 h2 = dlj.xyz; float ir2 = dlj.w;
                 float  c = dot(h1,h2);
                 float3 hf1,hf2;
                 hf1 = h2 - h1*c;
                 hf2 = h1 - h2*c;
-                float E = K*c*c;
-                float fang = -K*c*2;
+                float c_ = c+c0;
+                float E = K*c_*c_;
+                float fang = -K*c_*2;
                 hf1 *= ( fang*ir1 );
                 hf2 *= ( fang*ir2 );
                 ngForces[i].xyz += hf1;
                 ngForces[j].xyz += hf2;
                 fe-=(float4)( hf1+hf2, -E );
 
-                //if(iG==0) printf( "atom[%i|%i,%i] c %g hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG, i,j, c,  hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
+                if(iG==0) printf( "GPU atom[%i|%i,%i] c %g c_ %g E %g  hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG, i,j, c, c_, E,  hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
                 //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z,   hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
-                if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z );
+                //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z );
             
             } // sigma-sigma angle
             //        else   { fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-pi orthogonality
