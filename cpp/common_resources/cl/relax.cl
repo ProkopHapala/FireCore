@@ -392,7 +392,7 @@ __kernel void relaxStrokesTilted_debug(
     int nz
 ){
     const float3 dTip   = tipC.xyz * tipC.w;
-    const float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz , tipA.xyz, tipB.xyz, tipC.xyz );
+    float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz , tipA.xyz, tipB.xyz, tipC.xyz );
     float3 tipPos = points[get_global_id(0)].xyz;
     float3 pos    = tipPos.xyz + dpos0_.xyz; 
     for(int iz=0; iz<nz; iz++){
@@ -419,7 +419,7 @@ __kernel void relaxStrokesTilted(
 ){
 
     const float3 dTip   = tipC.xyz * tipC.w;
-    const float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz , tipA.xyz, tipB.xyz, tipC.xyz );
+    float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz , tipA.xyz, tipB.xyz, tipC.xyz );
 
     float3 tipPos = points[get_global_id(0)].xyz;
     float3 pos    = tipPos.xyz + dpos0_.xyz; 
@@ -510,7 +510,7 @@ __kernel void relaxStrokesTilted_convZ(
     __local float  WEIGHTS[64];
 
     const float3 dTip   = tipC.xyz * tipC.w;
-    const float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz , tipA.xyz, tipB.xyz, tipC.xyz );
+    float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz , tipA.xyz, tipB.xyz, tipC.xyz );
 
     float3 tipPos = points[get_global_id(0)].xyz;
     float3 pos    = tipPos.xyz + dpos0_.xyz; 
@@ -1177,15 +1177,15 @@ __kernel void getMMFFsp3(
 
     if(iG==0){
         printf( "GPU getMMFFsp3() \n" );
-        for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) REQKs(%g,%g,%g|%g) neighs(%i,%i,%i,%i) \n", i,   atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w,    neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w ); }
-        for(int i=0; i<nAtoms; i++){ float4 bL=bondLK[i].lo;float4 bK=bondLK[i].hi; printf( "GPU a[%i] ang0,K(%g,%g) bL(%g,%g,%g,%g) bK(%g,%g,%g,%g) \n", i,   ang0K[i].x,ang0K[i].y,   bL.x,bL.y,bL.z,bL.w,    bK.x,bK.y,bK.z,bK.w  ); }
+        //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) REQKs(%g,%g,%g|%g) neighs(%i,%i,%i,%i) \n", i,   atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w,    neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w ); }
+        //for(int i=0; i<nAtoms; i++){ float4 bL=bondLK[i].lo;float4 bK=bondLK[i].hi; printf( "GPU a[%i] ang0,K(%g,%g) bL(%g,%g,%g,%g) bK(%g,%g,%g,%g) \n", i,   ang0K[i].x,ang0K[i].y,   bL.x,bL.y,bL.z,bL.w,    bK.x,bK.y,bK.z,bK.w  ); }
     }
 
     float4 ai    = atoms[iG];
     float4 REQKi = REQKs[iG];
     float3 posi  = ai.xyz;
 
-    
+    /*
     // ========== Interaction with grid
     posi -= pos0.xyz;
     const float4 coord = (float4)( dot(posi,dinvA.xyz)     ,dot(posi,dinvB.xyz)     ,dot(posi,dinvC.xyz)     , 0.0f );
@@ -1208,10 +1208,9 @@ __kernel void getMMFFsp3(
     //float4 fe  =  fe_Paul*cP + fe_Lond*cL;
     //float4 fe  =  fe_Coul*REQKi.z;
     //float4 fe  = fe_Coul;
-    
     //fe.w=(float)iG;
-    
-    //float4 fe  =  float4Zero;
+    */
+    float4 fe  =  float4Zero;
     //float4 fe  =  (float4){1.0f,2.0f,3.0f,(float)iG};
     
     //if(iG==0){ printf( "GPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", iG, fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w, REQKi.z ); }
@@ -1235,7 +1234,7 @@ __kernel void getMMFFsp3(
             int ji=j+i0;
             if( (ji!=iG) && (ji<nAtoms) ){
                 float4 aj=LATOMS[j];
-                float3 dp = ai.xyz - aj.xyz;
+                float3 dp = aj.xyz - ai.xyz;
                 // ============= Bonds
                 if     ( ji== ng.x ){  dls[0] += eval_bond( dp, BL.x, BK.x, &fe );  }
                 else if( ji== ng.y ){  dls[1] += eval_bond( dp, BL.y, BK.y, &fe );  }
@@ -1248,14 +1247,15 @@ __kernel void getMMFFsp3(
                     REQK.x+=REQKi.x;
                     REQK.y*=REQKi.y;
                     REQK.z*=REQKi.z;
-                    fe += getMorseQ( dp, REQK, R2damp );
+                    //fe += getMorseQ( dp, REQK, R2damp );
                 }
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-    /*
+    fe = float4Zero; // DEBUG
+
     //  ============== Angles 
 
         // ToDo in future
@@ -1266,10 +1266,10 @@ __kernel void getMMFFsp3(
 
     int*  ngs = (int*)&ng;
 
-    const bool bSS_  = true;
-    const bool bSP_  = true;
-    const bool bPPT_ = true;
-    const bool bPPI_ = true;
+    //const bool bSS_  = true;
+    //const bool bSP_  = true;
+    //const bool bPPT_ = true;
+    //const bool bPPI_ = true;
 
     float4 ngForces[4];
     ngForces[0] = float4Zero;
@@ -1288,10 +1288,10 @@ __kernel void getMMFFsp3(
             bool bj=(jb!=CAP_PI);
             float4 dlj=dls[j];
             if(bi){ if( bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-sigma angle
-                    else   { fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-pi orthogonality
-            }else{  if(!bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // pi-pi orthogonality
-                    else   {    
-                    }
+            //        else   { fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-pi orthogonality
+            //}else{  if(!bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // pi-pi orthogonality
+            //        else   {    
+            //        }
             }
             // if(bi){ if( bj){ if(bSS_ ){ double e=evalSS ( ia, ing, jng, K ); Ess +=e; E+=e; } } // sigma-sigma angle
             //         else   { if(bSP_ ){ double e=evalSP ( ia, ing, jng, K ); Esp +=e; E+=e; } } // sigma-pi orthogonality
@@ -1310,12 +1310,21 @@ __kernel void getMMFFsp3(
         }
     }
 
+    float fiG=(float)iG; ngForces[0].w=fiG; ngForces[1].w=fiG; ngForces[2].w=fiG; ngForces[3].w=fiG; // Debug - To check proper maping
+
+    if(iG==0){
+        printf( "atom[%i] neigh(%i,%i,%i,%i)\n", iG, ngs[0], ngs[1],ngs[2],ngs[3] );
+        printf( "ngForces[0|%i|%i](%g,%g,%g|%g) \n", ngs[0], iG*4+0, ngForces[0].x,ngForces[0].y,ngForces[0].z,ngForces[0].w );
+        printf( "ngForces[1|%i|%i](%g,%g,%g|%g) \n", ngs[1], iG*4+1, ngForces[1].x,ngForces[1].y,ngForces[1].z,ngForces[1].w );
+        printf( "ngForces[2|%i|%i](%g,%g,%g|%g) \n", ngs[2], iG*4+2, ngForces[2].x,ngForces[2].y,ngForces[2].z,ngForces[2].w );
+        printf( "ngForces[3|%i|%i](%g,%g,%g|%g) \n", ngs[3], iG*4+3, ngForces[3].x,ngForces[3].y,ngForces[3].z,ngForces[3].w );  
+    };
+
     const int i4=iG*4;
     neighForces[i4  ] = ngForces[0];
     neighForces[i4+1] = ngForces[1];
     neighForces[i4+2] = ngForces[2];
     neighForces[i4+3] = ngForces[3];
-    */
 
     forces[iG] = fe;
     
@@ -1337,19 +1346,35 @@ __kernel void gatherForceAndMove(
     const int nL = get_local_size(0);
     if(iG>nAtoms) return;
 
-
-    if(iG==0){
-        printf( "GPU gatherForceAndMove() \n" );
-        for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) f(%g,%g,%g|%g) v(%g,%g,%g|%g)\n", i, apos[i].x,apos[i].y,apos[i].z,apos[i].w,   aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w,   avel[i].x,avel[i].y,avel[i].z,avel[i].w ); }
-    }
+    //if(iG==0){
+    //    printf( "GPU --- gatherForceAndMove() 0 \n" );
+    //    //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) f(%g,%g,%g|%g) v(%g,%g,%g|%g)\n", i, apos[i].x,apos[i].y,apos[i].z,apos[i].w,   aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w,   avel[i].x,avel[i].y,avel[i].z,avel[i].w ); }
+    //    for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] aforce(%g,%g,%g|%g)\n", i, aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w ); }
+    //}
 
     // ------ Gather Forces from back-neighbors
     float4 fe = aforce[iG]; 
     int4 ngs  = bkNeighs[iG];
+    if(iG==5){
+        printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w );  
+        if(ngs.x>=0)printf( "neighForce[0|%i](%g,%g,%g|%g) \n", ngs.x, neighForces[ngs.x].x,neighForces[ngs.x].y,neighForces[ngs.x].z,neighForces[ngs.x].w );
+        if(ngs.y>=0)printf( "neighForce[1|%i](%g,%g,%g|%g) \n", ngs.y, neighForces[ngs.y].x,neighForces[ngs.y].y,neighForces[ngs.y].z,neighForces[ngs.y].w );
+        if(ngs.z>=0)printf( "neighForce[2|%i](%g,%g,%g|%g) \n", ngs.z, neighForces[ngs.z].x,neighForces[ngs.z].y,neighForces[ngs.z].z,neighForces[ngs.z].w );
+        if(ngs.w>=0)printf( "neighForce[3|%i](%g,%g,%g|%g) \n", ngs.w, neighForces[ngs.w].x,neighForces[ngs.w].y,neighForces[ngs.w].z,neighForces[ngs.w].w );  
+    };
     if(ngs.x>=0) fe += neighForces[ngs.x];
     if(ngs.y>=0) fe += neighForces[ngs.y];
     if(ngs.z>=0) fe += neighForces[ngs.z];
     if(ngs.w>=0) fe += neighForces[ngs.w];
+
+    aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
+
+    //if(iG==0){
+    //    printf( "GPU --- gatherForceAndMove() 1 \n" );
+    //    //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", i, fe.x,fe.y,fe.z,fe.w ); }
+    //    for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", i, fe.x,fe.y,fe.z,fe.w ); }
+    //}
+    //printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", iG, fe.x,fe.y,fe.z,fe.w );
 
     // ------ Move (Leap-Frog)
     float4 ve = avel[iG];
