@@ -436,6 +436,14 @@ class OCLsystem{ public:
     ~OCLsystem(){ 
         release_OCL();
      }
+
+    void printBuffers(){
+        printf("OCLsystem::printBuffers()\n");
+        for(int i=0; i<buffers.size(); i++ ){
+            const OCLBuffer& b = buffers[i];
+            printf( "buffers[%i](%s) %li*%li img_dims %i\n", i, b.name.c_str(), b.n, b.typesize, b.img_dims );
+        } 
+    }
 }; // class OCLsystem
 
 //=======================================================================
