@@ -300,8 +300,8 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    ocl.setup_gatherForceAndMove( task_move, n);
-    ocl.setup_getMMFFsp3        ( task_getF, n);
+    ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move);
+    ocl.setup_getMMFFsp3        ( ff.natoms, ff.nnode,  task_getF );
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     //ocl.upload( ocl.ibuff_atoms,  (float4*)q_ps, n ); // Note - these are other atoms than used for makeGridFF()
     //ocl.upload( ocl.ibuff_coefs,   coefs,  na);
@@ -337,7 +337,7 @@ void eval(){
         */
         //for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
-        eval_MMFF_ocl( 1, ff.natoms+ff.npi, ff.apos, ff.fapos );
+        eval_MMFF_ocl( 10, ff.natoms+ff.npi, ff.apos, ff.fapos );
         //for(int i=0; i<ff.natoms; i++){ printf("OCL atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //exit(0);
     }else{
@@ -376,11 +376,13 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
              Vec3d f = getForceSpringRay( ff.apos[ipicked], pick_hray, pick_ray0, K );
              ff.fapos[ipicked].add( f );
         };
-        //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
-        //opt.move_GD(0.001);
-        //opt.move_LeapFrog(0.01);
-        //opt.move_MDquench();
-        //opt.move_FIRE();
+        if( !bGPU_MMFF){ // update atomic positions
+            //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
+            //opt.move_GD(0.001);
+            //opt.move_LeapFrog(0.01);
+            //opt.move_MDquench();
+            opt.move_FIRE();
+        }
         double f2=1;
         if(f2<sq(Ftol)){
             bConverged=true;

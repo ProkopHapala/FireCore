@@ -390,16 +390,17 @@ class OCL_PP: public OCL_DFT { public:
     }
 
 
-    OCLtask* setup_getMMFFsp3(OCLtask* task=0, int na=-1){
-        printf("setup_getMMFFsp3(na=%i) \n", na);
+    OCLtask* setup_getMMFFsp3( int na, int nNode, OCLtask* task=0){
+        printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFsp3");
-        if(na>=0  ) task->global.x = na;
+        //if(na>=0  ) 
+        task->global.x = na;
         useKernel( task->ikernel );
-        //nDOFs.x=nAtoms; 
-        //nDOFs.y=nNode; 
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
         // ------- Maybe We do-not need to do this every frame ?
-        //err |= useArg    ( nAtoms       );     // 1
-        err |= _useArg   ( nDOFs );               // 1
+        //err |= useArg    ( nAtoms       );   // 1
+        err |= _useArg   ( nDOFs );            // 1
         err |= useArgBuff( ibuff_atoms  );     // 2
         err |= useArgBuff( ibuff_coefs  );     // 3
         err |= useArgBuff( ibuff_aforces);     // 4
@@ -443,18 +444,21 @@ class OCL_PP: public OCL_DFT { public:
     //    OCL_checkError(err, "getMMFFsp3");  
     //}
 
-    OCLtask* setup_gatherForceAndMove( OCLtask* task=0, int na=-1){
-        printf("setup_gatherForceAndMove(na=%i) \n", na);
+    OCLtask* setup_gatherForceAndMove( int n, int natom,  OCLtask* task=0 ){
+        printf("setup_gatherForceAndMove(na=%i) \n", n);
         //if(ibuff_atoms<0)initAtoms( na, 1 );
         //if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
         //if(coefs  )upload( ibuff_coefs,   coefs,  na);
         //if(coefs  )upload( ibuff_neighs,  neighs, na);
         //if(aforces)upload( ibuff_aforces, aforces, na);
         if(task==0) task = getTask("gatherForceAndMove");
-        if(na>=0  ) task->global.x = na;
+        //if(n >=0  ) 
+        nDOFs.x=n; 
+        nDOFs.y=natom; 
+        task->global.x = n;
         useKernel( task->ikernel );
         err |= _useArg( md_params );           // 1
-        err |= useArg    ( nAtoms       );     // 2
+        err |= _useArg( nDOFs     );           // 2
         err |= useArgBuff( ibuff_atoms  );     // 3
         err |= useArgBuff( ibuff_avel   );     // 4
         err |= useArgBuff( ibuff_aforces);     // 5

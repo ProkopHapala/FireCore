@@ -1036,7 +1036,7 @@ __kernel void getNonBondForce_GridFF(
         //}
     }
 
-    if(iG>nAtoms) return;
+    if(iG>=nAtoms) return;
 
     const float4 atomi = atoms[iG];
     const float4 REQKi = REQKs[iG];
@@ -1177,7 +1177,7 @@ __kernel void getMMFFsp3(
     const int nAtoms=nDOFs.x;
     const int nnode =nDOFs.y;
 
-    if(iG>nAtoms) return;
+    if(iG>=nAtoms) return;
 
     // if(iG==0){
     //     printf( "GPU getMMFFsp3() \n" );
@@ -1332,7 +1332,7 @@ __kernel void getMMFFsp3(
                 hf2 *= ( fang     );
                 ngForces[i].xyz += hf1;
                 ngForces[j].xyz += hf2;
-                fe-=(float4)( hf1+hf2, -E );
+                fe-=(float4)( hf1, -E );
 
             }}
 
@@ -1378,7 +1378,7 @@ __kernel void getMMFFsp3(
 
 __kernel void gatherForceAndMove(
     const float4      params,       // 1
-    const int         nAtoms,       // 2
+    const int4        n,            // 2
     __global float4*  apos,         // 3
     __global float4*  avel,         // 4
     __global float4*  aforce,       // 5
@@ -1386,10 +1386,13 @@ __kernel void gatherForceAndMove(
     __global int4*    bkNeighs      // 7
 ){
     
+    const int natom=n.y;
+    const int nvecs=n.x;
+
     const int iG = get_global_id (0);
     const int iL = get_local_id  (0);
     const int nL = get_local_size(0);
-    if(iG>nAtoms) return;
+    if(iG>=nvecs) return;
 
 
     // if(iG==0){
@@ -1441,7 +1444,11 @@ __kernel void gatherForceAndMove(
     ve     *= params.y;
     ve.xyz += fe.xyz*params.x;
     pe.xyz += ve.xyz*params.x;
+    
+    if(iG>natom){ pe.xyz=normalize(pe.xyz); };
     avel[iG] = ve;
     apos[iG] = pe;
+
+
 
 }

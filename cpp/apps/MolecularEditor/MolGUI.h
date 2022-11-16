@@ -279,7 +279,7 @@ void MolGUI::draw(){
     if(bDoMM){
         if(W->builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } 
         else               { drawSystem({0,0,0}); }
-        //Draw3D::drawNeighs( W->ff, 1.0 );    
+        Draw3D::drawNeighs( W->ff, -1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
 
