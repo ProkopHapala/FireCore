@@ -1151,7 +1151,7 @@ float4 evalAngle( __private float4* fout, float4 dl1, float4 dl2, int ing, int j
 }
 
 __kernel void getMMFFsp3(
-    const int nAtoms,               // 1
+    const int4 nDOFs,               // 1
     __global float4*  atoms,        // 2
     __global float4*  REQKs,        // 3
     __global float4*  forces,       // 4
@@ -1174,19 +1174,21 @@ __kernel void getMMFFsp3(
     const int iL = get_local_id  (0);
     const int nL = get_local_size(0);
 
+    const int nAtoms=nDOFs.x;
+    const int nnode =nDOFs.y;
+
     if(iG>nAtoms) return;
 
-    if(iG==0){
-        printf( "GPU getMMFFsp3() \n" );
-        //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) REQKs(%g,%g,%g|%g) neighs(%i,%i,%i,%i) \n", i,   atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w,    neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w ); }
-        //for(int i=0; i<nAtoms; i++){ float4 bL=bondLK[i].lo;float4 bK=bondLK[i].hi; printf( "GPU a[%i] ang0,K(%g,%g) bL(%g,%g,%g,%g) bK(%g,%g,%g,%g) \n", i,   ang0K[i].x,ang0K[i].y,   bL.x,bL.y,bL.z,bL.w,    bK.x,bK.y,bK.z,bK.w  ); }
-    }
+    // if(iG==0){
+    //     printf( "GPU getMMFFsp3() \n" );
+    //     //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) REQKs(%g,%g,%g|%g) neighs(%i,%i,%i,%i) \n", i,   atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w,    neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w ); }
+    //     //for(int i=0; i<nAtoms; i++){ float4 bL=bondLK[i].lo;float4 bK=bondLK[i].hi; printf( "GPU a[%i] ang0,K(%g,%g) bL(%g,%g,%g,%g) bK(%g,%g,%g,%g) \n", i,   ang0K[i].x,ang0K[i].y,   bL.x,bL.y,bL.z,bL.w,    bK.x,bK.y,bK.z,bK.w  ); }
+    // }
 
     float4 ai    = atoms[iG];
     float4 REQKi = REQKs[iG];
     float3 posi  = ai.xyz;
 
-    /*
     // ========== Interaction with grid
     posi -= pos0.xyz;
     const float4 coord = (float4)( dot(posi,dinvA.xyz)     ,dot(posi,dinvB.xyz)     ,dot(posi,dinvC.xyz)     , 0.0f );
@@ -1210,8 +1212,8 @@ __kernel void getMMFFsp3(
     //float4 fe  =  fe_Coul*REQKi.z;
     //float4 fe  = fe_Coul;
     //fe.w=(float)iG;
-    */
-    float4 fe  =  float4Zero;
+    
+    //float4 fe  =  float4Zero;
     //float4 fe  =  (float4){1.0f,2.0f,3.0f,(float)iG};
     
     //if(iG==0){ printf( "GPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", iG, fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w, REQKi.z ); }
@@ -1219,7 +1221,7 @@ __kernel void getMMFFsp3(
     //if(iG==0){ printf("GPU[0] apos(%g,%g,%g) PLQ(%g,%g,%g) RE(%g,%g) fe(%g,%g,%g|%g) \n", atoms[0].x,atoms[0].y,atoms[0].z,  cP,cL,REQKi.z,  REQKi.x,REQKi.y,  fe.x,fe.y,fe.z,fe.w ); }
     
     // ========= Atom-to-Atom interaction ( N-body problem )
-    if(iG==0)printf( "GPU non-bond N^2 from getMMFFsp3() nAtoms %i \n", nAtoms );
+    //if(iG==0)printf( "GPU non-bond N^2 from getMMFFsp3() nAtoms %i \n", nAtoms );
     int4    ng = neighs[iG];
     float4  BL = bondLK[iG].lo;  // ToDo: maybe it is better split like lk1,kl2,lk3,lk4
     float4  BK = bondLK[iG].hi;
@@ -1255,7 +1257,8 @@ __kernel void getMMFFsp3(
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-    fe = float4Zero; // DEBUG
+    //fe = float4Zero; // DEBUG
+    if (iG<nnode){
 
     //  ============== Angles 
 
@@ -1263,7 +1266,7 @@ __kernel void getMMFFsp3(
         // PROBLEM : how to synchronize writing out forces on other atoms ?
 
     #define NNEIGH 4
-    #define CAP_PI -1
+    //#define CAP_PI -1
 
     int*  ngs = (int*)&ng;
 
@@ -1282,13 +1285,13 @@ __kernel void getMMFFsp3(
 
     for(int i=0; i<NNEIGH; i++){
         int   ib = ngs[i];
-        bool bi=(ib!=CAP_PI);
+        bool bi=   i<nAtoms;
         float4 dli=dls[i];
         for(int j=i+1; j<NNEIGH; j++){
             int jb  = ngs[j];
-            bool bj=(jb!=CAP_PI);
+            bool bj= j<nAtoms;
             float4 dlj=dls[j];
-            if(bi){ if( bj){ 
+            if(bi){ if( bj){  //   sigma-sigma , i.e. angle
                 //fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y );
                 float K  = c0K.x;
                 //float c0 = c0K.y;
@@ -1308,16 +1311,31 @@ __kernel void getMMFFsp3(
                 ngForces[j].xyz += hf2;
                 fe-=(float4)( hf1+hf2, -E );
 
-                if(iG==0) printf( "GPU atom[%i|%i,%i] c %g c_ %g E %g  hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG, i,j, c, c_, E,  hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
+                //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g c_ %g E %g  hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG, i,j, c, c_, E,  hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
                 //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z,   hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
                 //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z );
             
-            } // sigma-sigma angle
-            //        else   { fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // sigma-pi orthogonality
-            //}else{  if(!bj){ fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y ); } // pi-pi orthogonality
-            //        else   {    
-            //        }
-            }
+            } else{ // sigma - pi
+
+                float K  = c0K.x; // sigma-pi stiffness
+                float c0 = 0.0;   // sigma-pi zero angle
+                float3 h1 = dli.xyz; float ir1 = dli.w;
+                float3 h2 = atoms[jb].xyz;
+                float  c = dot(h1,h2);
+                float3 hf1,hf2;
+                hf1 = h2 - h1*c;
+                hf2 = h1 - h2*c;
+                float c_ = c+c0;
+                float E = K*c_*c_;
+                float fang = -K*c_*2;
+                hf1 *= ( fang*ir1 );
+                hf2 *= ( fang     );
+                ngForces[i].xyz += hf1;
+                ngForces[j].xyz += hf2;
+                fe-=(float4)( hf1+hf2, -E );
+
+            }}
+
             // if(bi){ if( bj){ if(bSS_ ){ double e=evalSS ( ia, ing, jng, K ); Ess +=e; E+=e; } } // sigma-sigma angle
             //         else   { if(bSP_ ){ double e=evalSP ( ia, ing, jng, K ); Esp +=e; E+=e; } } // sigma-pi orthogonality
             // }else{  if(!bj){ if(bPPT_){ double e=evalPPT( ia, ing, jng, K ); EppT+=e; E+=e; } } // pi-pi orthogonality
@@ -1351,6 +1369,7 @@ __kernel void getMMFFsp3(
     neighForces[i4+1] = ngForces[1];
     neighForces[i4+2] = ngForces[2];
     neighForces[i4+3] = ngForces[3];
+    } // if (iG< nnode)
 
     forces[iG] = fe;
     
@@ -1372,46 +1391,50 @@ __kernel void gatherForceAndMove(
     const int nL = get_local_size(0);
     if(iG>nAtoms) return;
 
-    if(iG==0){
-    //    printf( "GPU --- gatherForceAndMove() 0 \n" );
-    //    //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) f(%g,%g,%g|%g) v(%g,%g,%g|%g)\n", i, apos[i].x,apos[i].y,apos[i].z,apos[i].w,   aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w,   avel[i].x,avel[i].y,avel[i].z,avel[i].w ); }
-    //    for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] aforce(%g,%g,%g|%g)\n", i, aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w ); }
-    
-    
-        for(int i=0; i<nAtoms; i++){
-            printf("atom[%i] nf1(%g,%g,%g) nf2(%g,%g,%g) nf3(%g,%g,%g) nf4(%g,%g,%g)\n", i,
-                neighForces[i*4+0].x,neighForces[i*4+0].y,neighForces[i*4+0].z,
-                neighForces[i*4+1].x,neighForces[i*4+1].y,neighForces[i*4+1].z,
-                neighForces[i*4+2].x,neighForces[i*4+2].y,neighForces[i*4+2].z,
-                neighForces[i*4+3].x,neighForces[i*4+3].y,neighForces[i*4+3].z );
-        }
-    }
+
+    // if(iG==0){
+    // //    printf( "GPU --- gatherForceAndMove() 0 \n" );
+    // //    //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] p(%g,%g,%g|%g) f(%g,%g,%g|%g) v(%g,%g,%g|%g)\n", i, apos[i].x,apos[i].y,apos[i].z,apos[i].w,   aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w,   avel[i].x,avel[i].y,avel[i].z,avel[i].w ); }
+    // //    for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] aforce(%g,%g,%g|%g)\n", i, aforce[i].x,aforce[i].y,aforce[i].z,aforce[i].w ); }
+    //     for(int i=0; i<nAtoms; i++){
+    //         printf("atom[%i] nf1(%g,%g,%g) nf2(%g,%g,%g) nf3(%g,%g,%g) nf4(%g,%g,%g)\n", i,
+    //             neighForces[i*4+0].x,neighForces[i*4+0].y,neighForces[i*4+0].z,
+    //             neighForces[i*4+1].x,neighForces[i*4+1].y,neighForces[i*4+1].z,
+    //             neighForces[i*4+2].x,neighForces[i*4+2].y,neighForces[i*4+2].z,
+    //             neighForces[i*4+3].x,neighForces[i*4+3].y,neighForces[i*4+3].z );
+    //     }
+    // }
+
 
     // ------ Gather Forces from back-neighbors
     float4 fe = aforce[iG]; 
+
+    
     int4 ngs  = bkNeighs[iG];
-    if(iG==5){
-        //printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w );  
-        //if(ngs.x>=0)printf( "neighForce[0|%i](%g,%g,%g|%g) \n", ngs.x, neighForces[ngs.x].x,neighForces[ngs.x].y,neighForces[ngs.x].z,neighForces[ngs.x].w );
-        //if(ngs.y>=0)printf( "neighForce[1|%i](%g,%g,%g|%g) \n", ngs.y, neighForces[ngs.y].x,neighForces[ngs.y].y,neighForces[ngs.y].z,neighForces[ngs.y].w );
-        //if(ngs.z>=0)printf( "neighForce[2|%i](%g,%g,%g|%g) \n", ngs.z, neighForces[ngs.z].x,neighForces[ngs.z].y,neighForces[ngs.z].z,neighForces[ngs.z].w );
-        //if(ngs.w>=0)printf( "neighForce[3|%i](%g,%g,%g|%g) \n", ngs.w, neighForces[ngs.w].x,neighForces[ngs.w].y,neighForces[ngs.w].z,neighForces[ngs.w].w );  
-    };
-    printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w ); 
+    // if(iG==5){
+    //     //printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w );  
+    //     //if(ngs.x>=0)printf( "neighForce[0|%i](%g,%g,%g|%g) \n", ngs.x, neighForces[ngs.x].x,neighForces[ngs.x].y,neighForces[ngs.x].z,neighForces[ngs.x].w );
+    //     //if(ngs.y>=0)printf( "neighForce[1|%i](%g,%g,%g|%g) \n", ngs.y, neighForces[ngs.y].x,neighForces[ngs.y].y,neighForces[ngs.y].z,neighForces[ngs.y].w );
+    //     //if(ngs.z>=0)printf( "neighForce[2|%i](%g,%g,%g|%g) \n", ngs.z, neighForces[ngs.z].x,neighForces[ngs.z].y,neighForces[ngs.z].z,neighForces[ngs.z].w );
+    //     //if(ngs.w>=0)printf( "neighForce[3|%i](%g,%g,%g|%g) \n", ngs.w, neighForces[ngs.w].x,neighForces[ngs.w].y,neighForces[ngs.w].z,neighForces[ngs.w].w );  
+    // };
+    // printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w ); 
     if(ngs.x>=0) fe += neighForces[ngs.x];
     if(ngs.y>=0) fe += neighForces[ngs.y];
     if(ngs.z>=0) fe += neighForces[ngs.z];
     if(ngs.w>=0) fe += neighForces[ngs.w];
-
     aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
+    
 
-    //if(iG==0){
+    if(iG==0){
+    //    printf( "GPU dt %g damp %g \n", params.x, params.y );
     //    printf( "GPU --- gatherForceAndMove() 1 \n" );
     //    //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", i, fe.x,fe.y,fe.z,fe.w ); }
     //    for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", i, fe.x,fe.y,fe.z,fe.w ); }
-    //}
+        float4 pe=apos[iG]; float4 ve=avel[iG]; printf( "GPU a[%i] pe(%g,%g,%g|%g) fe(%g,%g,%g|%g) ve(%g,%g,%g|%g)\n", iG, pe.x,pe.y,pe.z,pe.w,  fe.x,fe.y,fe.z,fe.w,   ve.x,ve.y,ve.z,ve.w );
+    }
     //printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", iG, fe.x,fe.y,fe.z,fe.w );
-
+    
     // ------ Move (Leap-Frog)
     float4 ve = avel[iG];
     float4 pe = apos[iG];

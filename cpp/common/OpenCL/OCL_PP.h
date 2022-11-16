@@ -12,7 +12,8 @@ class OCL_PP: public OCL_DFT { public:
     //DEFAULT_relax_params = np.array( [ 0.5 , 0.1 ,  0.02, 0.5 ], dtype=np.float32 );
     cl_program program_relax=0;
 
-    float4 md_params;
+    int4   nDOFs    {0,0,0,0};
+    float4 md_params{0.05,0.99,0.0,0.0};
     float4 dinv[3];    // grid step
     float4 tipRot[3]={{1.,0.,0.,0.},{0.,1.,0.,0.},{0.,0.,1.,0.1}};  // tip rotation
     //float4 tipRot[3]={{-1.,0.,0.,0.},{0.,-1.,0.,0.},{0.,0.,-1.,0.1}};  // tip rotation
@@ -323,19 +324,20 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
-    int initAtomsForces( int nAtoms_, bool bFullMD=false ){
+    int initAtomsForces( int nAtoms_, int npi, int nnode, bool bFullMD=false ){
         nAtoms=nAtoms_;
-        ibuff_atoms   =newBuffer( "atoms",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        ibuff_aforces =newBuffer( "aforces",  nAtoms, sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_neighs  =newBuffer( "neighs",   nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        ibuff_atoms   =newBuffer( "atoms",    nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_aforces =newBuffer( "aforces",  nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_coefs   =newBuffer( "coefs",    nAtoms,     sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_neighs  =newBuffer( "neighs",   nAtoms,     sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         if(bFullMD){
-            ibuff_bkNeighs    =newBuffer( "bkNeighs",   nAtoms,   sizeof(int4),   0, CL_MEM_READ_WRITE );
-            ibuff_bondLK      =newBuffer( "bondLK ",    nAtoms,   sizeof(float8), 0, CL_MEM_READ_ONLY  );
-            ibuff_ang0K       =newBuffer( "ang0K",      nAtoms,   sizeof(float2), 0, CL_MEM_READ_ONLY  );
-            ibuff_neighForce  =newBuffer( "neighForce", nAtoms*4, sizeof(float4), 0, CL_MEM_READ_WRITE );
-            ibuff_avel        =newBuffer( "avel",       nAtoms,   sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_bkNeighs    =newBuffer( "bkNeighs",   nAtoms+npi, sizeof(int4),   0, CL_MEM_READ_WRITE );
+            ibuff_bondLK      =newBuffer( "bondLK ",    nAtoms,     sizeof(float8), 0, CL_MEM_READ_ONLY  );
+            ibuff_ang0K       =newBuffer( "ang0K",      nnode*4,    sizeof(float2), 0, CL_MEM_READ_ONLY  );
+            ibuff_neighForce  =newBuffer( "neighForce", nnode*4,    sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_avel        =newBuffer( "avel",       nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_WRITE );
         }
+        printBuffers();
         return ibuff_atoms;
     }
 
@@ -393,8 +395,11 @@ class OCL_PP: public OCL_DFT { public:
         if(task==0) task = getTask("getMMFFsp3");
         if(na>=0  ) task->global.x = na;
         useKernel( task->ikernel );
+        //nDOFs.x=nAtoms; 
+        //nDOFs.y=nNode; 
         // ------- Maybe We do-not need to do this every frame ?
-        err |= useArg    ( nAtoms       );     // 1
+        //err |= useArg    ( nAtoms       );     // 1
+        err |= _useArg   ( nDOFs );               // 1
         err |= useArgBuff( ibuff_atoms  );     // 2
         err |= useArgBuff( ibuff_coefs  );     // 3
         err |= useArgBuff( ibuff_aforces);     // 4

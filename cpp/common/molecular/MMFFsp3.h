@@ -13,7 +13,7 @@
 
 class MMFFsp3{ public:
     static constexpr const int nneigh_max = 4;
-    int  nDOFs=0,natoms=0,nnode=0,ncap=0,npi=0,nbonds=0;
+    int  nDOFs=0,natoms=0,nnode=0,ncap=0,npi=0,nbonds=0,nvecs=0;
     bool bPBC=false;
     double Etot,Eb,Ea, Eps,EppT,EppI;
 
@@ -62,7 +62,8 @@ class MMFFsp3{ public:
 void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
     nnode=nnode_; ncap=ncap_; nbonds=nbonds_; npi=npi_; 
     natoms=nnode_+ncap_; 
-    nDOFs = (natoms + npi)*3;
+    nvecs = natoms + npi;
+    nDOFs = nvecs*3;
     //printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
     _realloc( DOFs     , nDOFs );
     _realloc( fDOFs    , nDOFs );
@@ -164,7 +165,7 @@ inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
 
     //if(ia==0) printf( "CPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) | hf1(%g,%g,%g) hf2(%g,%g,%g) \n", ia, ing,jng, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z,   hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
     //if(ia==0) printf( "CPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) \n", ia, ing,jng, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z );
-    if(ia==0) printf( "CPU atom[%i|%i,%i] c %g c_ %g E %g hf1(%g,%g,%g) hf2(%g,%g,%g) \n", ia, ing,jng, c, c_, E, hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
+    //if(ia==0) printf( "CPU atom[%i|%i,%i] c %g c_ %g E %g hf1(%g,%g,%g) hf2(%g,%g,%g) \n", ia, ing,jng, c, c_, E, hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
 
     fapos[ing].add( hf1     );
     fapos[jng].add( hf2     );

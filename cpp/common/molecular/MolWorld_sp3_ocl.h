@@ -7,8 +7,8 @@
 #include "OCL_PP.h"
 
 
-void pack  (int n, Vec3d* fs, Quat4f* qs, float K ){ for(int i=0; i<n; i++){ qs[i].f=(Vec3f)fs[i];  qs[i].e=K; } }
-void unpack(int n, Vec3d* fs, Quat4f* qs          ){ for(int i=0; i<n; i++){ fs[i]  =(Vec3d)qs[i].f;                 } }
+void     pack    (int n, Vec3d* fs, Quat4f* qs, float K ){ for(int i=0; i<n; i++){ qs[i].f=(Vec3f)fs[i];  qs[i].e=K; } }
+void   unpack    (int n, Vec3d* fs, Quat4f* qs          ){ for(int i=0; i<n; i++){ fs[i]  =(Vec3d)qs[i].f;           } }
 double unpack_add(int n, Vec3d* fs, Quat4f* qs          ){ double E=0; for(int i=0; i<n; i++){ fs[i].add( (Vec3d)qs[i].f ); E+=qs[i].e; }; return E; }
 
 void pack(int n, Vec3d* fs, double* es, Quat4f* qs ){
@@ -99,6 +99,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
         gridFF.grid.saveXSF( "ocl_E_H.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
         delete [] FFtot;
     }
+    ocl.buffers[ocl.ibuff_atoms].release();
+    ocl.buffers[ocl.ibuff_coefs].release();
 }
 
 void init_ocl(){
@@ -122,7 +124,6 @@ void REQs2ocl(){
     delete [] q_cs;
 };
 
-
 int ithNeigh(int ia, int ja){
     int* aneighs = (int*)nbmol.neighs;
     int* ngs     = aneighs + ia*4;
@@ -133,7 +134,8 @@ int ithNeigh(int ia, int ja){
 }
 
 void MMFFparams2ocl(){
-    int n=nbmol.n;
+    //int n=nbmol.n;
+    int n=ff.natoms;
     float* blks= new float[n*8];
     Vec2f* a0ks= new Vec2f[n  ];
     for(int i=0; i<n*8; i++){ blks[i]=1000.0; }
@@ -157,26 +159,29 @@ void MMFFparams2ocl(){
 }
 
 void mol2ocl(){
-    int n = nbmol.n;
-    ocl.buffers[ocl.ibuff_atoms].release();
-    ocl.buffers[ocl.ibuff_coefs].release();
+    int n   = nbmol.n;
+    int npi = 0;
+    if(bGPU_MMFF){ npi=ff.npi; }
+    int n2 = n+npi; 
     // ---- Prepare for sampling atoms
-    ocl.initAtomsForces( n, bGPU_MMFF );
-    printf( "buffs atoms, coefs, aforces, neighs: %i %i %i %i \n", ocl.ibuff_atoms, ocl.ibuff_coefs, ocl.ibuff_aforces, ocl.ibuff_neighs );
-    q_ps= new Quat4f[n];
-    q_fs= new Quat4f[n];
+    ocl.initAtomsForces( n, npi, ff.nnode, bGPU_MMFF );
+    printf( "mol2ocl() n,pi(%i,%i) buffs atoms, coefs, aforces, neighs: %i %i %i %i \n", n,npi, ocl.ibuff_atoms, ocl.ibuff_coefs, ocl.ibuff_aforces, ocl.ibuff_neighs );
+    q_ps= new Quat4f[n2];
+    q_fs= new Quat4f[n2];
     // ---- nbmol coefs
-    pack      ( nbmol.n, nbmol.ps, q_ps, sq(gridFF.Rdamp) );
-    ocl.upload( ocl.ibuff_atoms,   q_ps );  
+    pack      ( n2, nbmol.ps, q_ps, sq(gridFF.Rdamp) );
+    ocl.upload( ocl.ibuff_atoms, q_ps );  
     REQs2ocl();
+    DEBUG
     makeOCLNeighs( );
+    DEBUG
     if(bGPU_MMFF){
-        Quat4f* q_vs= new Quat4f[n];
-        for(int i=0; i<n; i++){ q_vs[i].set(0.); }
-        ocl.upload( ocl.ibuff_avel,   q_vs );  
-        makeBackNeighs( nbmol.n, nbmol.neighs );
-        ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
-        MMFFparams2ocl();
+        Quat4f* q_vs= new Quat4f[n2];
+        for(int i=0; i<n2; i++){ q_vs[i].set(0.); }    DEBUG
+        ocl.upload( ocl.ibuff_avel,   q_vs );          DEBUG
+        makeBackNeighs( n, npi, nbmol.neighs );        DEBUG
+        ocl.upload( ocl.ibuff_bkNeighs, bkneighs );    DEBUG
+        MMFFparams2ocl();                              DEBUG
     }
 }
 
@@ -186,15 +191,19 @@ void  makeOCLNeighs( ){
     int* aneighs=new int[n*4];
     for(int i=0; i<n; i++){
         int i4=i*4;
-        aneighs[i4+0]=-1; aneighs[i4+1]=-1; aneighs[i4+2]=-1; aneighs[i4+3]=-1;
+        aneighs[i4+0]=-1; 
+        aneighs[i4+1]=-1; 
+        aneighs[i4+2]=-1; 
+        aneighs[i4+3]=-1;
     }
     if(bMMFF){
         for(int i=0; i<ff.nnode; i++){
             int i4=i*4;
             for(int j=0; j<4; j++){
                 int ngi=ff.aneighs[i4+j];
+                if(ngi<0){ ngi= n-ngi-1; }  // pi-bonds
                 aneighs[i4+j]=ngi;
-                if(ngi>=ff.nnode){   // back-neighbor
+                if( (ngi>=ff.nnode) &&  (ngi<ff.natoms) ){   // back-neighbor
                     aneighs[ngi*4+0]=i;
                 }
             }
@@ -209,13 +218,14 @@ void  makeOCLNeighs( ){
     //exit(0);
 }
 
-void makeBackNeighs( int n, Quat4i* aneighs ){
-    bkneighs=new int[n*4];
-    for(int i=0; i<n*4; i++){ bkneighs[i]=-1; };
+void makeBackNeighs( int n, int npi, Quat4i* aneighs ){
+    int nbk = n+npi;
+    bkneighs=new int[nbk*4];
+    for(int i=0; i<nbk*4; i++){ bkneighs[i]=-1; };
     for(int ia=0; ia<n; ia++){
         for(int j=0; j<4; j++){   // 4 neighbors
             int ja = aneighs[ia].array[j];
-            if( (ja<0)||(ja>=n) )continue;
+            if( ja<0 )continue;
             bool ret = addFirstEmpty( bkneighs+ja*4, 4, ia*4+j, -1 );
             if(!ret){ printf("ERROR in MolWorld_sp3_ocl::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
         };
@@ -227,7 +237,7 @@ void makeBackNeighs( int n, Quat4i* aneighs ){
 }
 
 void checkBkNeighCPU(){
-    int n=nbmol.n;
+    int n=ff.nvecs;
     Quat4f* neighForce = new Quat4f[n*4];
     // ------ Write
     for(int i=0; i<n*4; i++){ neighForce[i].w=-1; };
@@ -248,9 +258,9 @@ void checkBkNeighCPU(){
         if(ng.y>0) match &= ((int)neighForce[ng.y].w == i); 
         if(ng.z>0) match &= ((int)neighForce[ng.z].w == i); 
         if(ng.w>0) match &= ((int)neighForce[ng.w].w == i);
-        printf( "atom[%i] bkneighs(%i,%i,%i,%i) forMe(%i,%i,%i,%i) \n", i, ng.x,ng.y,ng.z,ng.w,  (int)(neighForce[ng.x].w-0.1),(int)(neighForce[ng.y].w-0.1),(int)(neighForce[ng.z].w-0.1),(int)(neighForce[ng.w].w-0.1) );
+        //printf( "atom[%i] bkneighs(%i,%i,%i,%i) forMe(%i,%i,%i,%i) \n", i, ng.x,ng.y,ng.z,ng.w,  (int)(neighForce[ng.x].w-0.1),(int)(neighForce[ng.y].w-0.1),(int)(neighForce[ng.z].w-0.1),(int)(neighForce[ng.w].w-0.1) );
     }
-    printf( "!!! %i\n", (int)(0-0.1) );
+    //printf( "!!! %i\n", (int)(0-0.1) );
     if(!match){ printf("ERROR in checkBkNeighCPU \n"); exit(0); }
     //exit(0);
 }
@@ -288,6 +298,8 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     OCLtask* task_getF = ocl.getTask("getMMFFsp3");
     OCLtask* task_move = ocl.getTask("gatherForceAndMove");
     OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
+    ocl.nDOFs.x=ff.natoms;
+    ocl.nDOFs.y=ff.nnode;
     ocl.setup_gatherForceAndMove( task_move, n);
     ocl.setup_getMMFFsp3        ( task_getF, n);
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
@@ -301,11 +313,11 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     ocl.download( ocl.ibuff_aforces, q_fs, n );
     ocl.download( ocl.ibuff_atoms,   q_ps, n );
     ocl.finishRaw();
-    double O=unpack_add( n, ps, q_ps );
+    unpack             ( n, ps, q_ps );
     double E=unpack_add( n, fs, q_fs );
     //unpack( n, fs, q_fs );
     //double E=0;
-    //for(int i=0; i<n; i++){ E+=q_fs[i].e; }; // sum energy
+    //for(int i=0; i<n; i++){  printf( "atom[%i] pos(%g,%g,%g) force(%g,%g,%g)\n",  i, ps[i].x,ps[i].y,ps[i].z,    fs[i].x,fs[i].y,fs[i].z ); }; // sum energy
     return E;
 }
 
@@ -314,6 +326,7 @@ void eval(){
     double E=0;
     //bGPU_MMFF=false;
     if(bGPU_MMFF){
+        /*
         ff.doPiPiI  =false;
         ff.doPiPiT  =false;
         ff.doPiSigma=false;
@@ -321,10 +334,12 @@ void eval(){
         ff.doNeighs = true;
         ff.doBonds  = false;
         E += ff.eval();
-        for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
-        eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
-        for(int i=0; i<ff.natoms; i++){ printf("OCL atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
-        exit(0);
+        */
+        //for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
+        //eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
+        eval_MMFF_ocl( 1, ff.natoms+ff.npi, ff.apos, ff.fapos );
+        //for(int i=0; i<ff.natoms; i++){ printf("OCL atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
+        //exit(0);
     }else{
         if(bMMFF){ E += ff.eval();  } 
         else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
@@ -365,7 +380,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
         //opt.move_MDquench();
-        opt.move_FIRE();
+        //opt.move_FIRE();
         double f2=1;
         if(f2<sq(Ftol)){
             bConverged=true;
