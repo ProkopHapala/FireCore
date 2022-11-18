@@ -1320,9 +1320,12 @@ __kernel void getMMFFsp3(
                 hf2 *= ( fang*ir2 );
                 ngForces[i].xyz += hf1;
                 ngForces[j].xyz += hf2;
-                fe+=(float4)( hf1+hf2, -E );
+                //fe-=(float4)( hf1+hf2, -E );
+                float4 fei = (float4)( hf1+hf2, -E ); fe-=fei;
+                
 
-                if(iG==5) printf( "GPU atom[%i|%i,%i] c %g f(%g,%g,%g) \n", iG, i,j, c, fe.x,fe.y,fe.z );
+                //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g f(%g,%g,%g) \n", iG, ib,jb, c, fe.x,fe.y,fe.z );
+                if(iG==0) printf( "GPU atom[%i|%i,%i] c %g c_ %g E %g  fei(%g,%g,%g) fe(%g,%g,%g) \n", iG, i,j, c, c_, E,  fei.x,fei.y,fei.z, fe.x,fe.y,fe.z );
                 //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g c_ %g E %g  hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG, i,j, c, c_, E,  hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
                 //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) hf1(%g,%g,%g) hf2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z,   hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
                 //if(iG==0) printf( "GPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) \n", iG,i,j, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z );
