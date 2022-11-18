@@ -1414,13 +1414,13 @@ __kernel void gatherForceAndMove(
 
     
     int4 ngs  = bkNeighs[iG];
-    // if(iG==5){
-    //     //printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w );  
-    //     //if(ngs.x>=0)printf( "neighForce[0|%i](%g,%g,%g|%g) \n", ngs.x, neighForces[ngs.x].x,neighForces[ngs.x].y,neighForces[ngs.x].z,neighForces[ngs.x].w );
-    //     //if(ngs.y>=0)printf( "neighForce[1|%i](%g,%g,%g|%g) \n", ngs.y, neighForces[ngs.y].x,neighForces[ngs.y].y,neighForces[ngs.y].z,neighForces[ngs.y].w );
-    //     //if(ngs.z>=0)printf( "neighForce[2|%i](%g,%g,%g|%g) \n", ngs.z, neighForces[ngs.z].x,neighForces[ngs.z].y,neighForces[ngs.z].z,neighForces[ngs.z].w );
-    //     //if(ngs.w>=0)printf( "neighForce[3|%i](%g,%g,%g|%g) \n", ngs.w, neighForces[ngs.w].x,neighForces[ngs.w].y,neighForces[ngs.w].z,neighForces[ngs.w].w );  
-    // };
+    if(iG==12){
+        printf( "dof[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w );  
+        if(ngs.x>=0)printf( "neighForce[0|%i](%g,%g,%g|%g) \n", ngs.x, neighForces[ngs.x].x,neighForces[ngs.x].y,neighForces[ngs.x].z,neighForces[ngs.x].w );
+        if(ngs.y>=0)printf( "neighForce[1|%i](%g,%g,%g|%g) \n", ngs.y, neighForces[ngs.y].x,neighForces[ngs.y].y,neighForces[ngs.y].z,neighForces[ngs.y].w );
+        if(ngs.z>=0)printf( "neighForce[2|%i](%g,%g,%g|%g) \n", ngs.z, neighForces[ngs.z].x,neighForces[ngs.z].y,neighForces[ngs.z].z,neighForces[ngs.z].w );
+        if(ngs.w>=0)printf( "neighForce[3|%i](%g,%g,%g|%g) \n", ngs.w, neighForces[ngs.w].x,neighForces[ngs.w].y,neighForces[ngs.w].z,neighForces[ngs.w].w );  
+    };
     // printf( "atom[%i] bkneigh(%i,%i,%i,%i) check[%i](%g,%g,%g,%g)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w,   iG,neighForces[ngs.x].w,neighForces[ngs.y].w,neighForces[ngs.z].w,neighForces[ngs.w].w ); 
     if(ngs.x>=0) fe += neighForces[ngs.x];
     if(ngs.y>=0) fe += neighForces[ngs.y];
