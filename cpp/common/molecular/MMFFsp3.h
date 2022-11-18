@@ -301,6 +301,12 @@ double eval_bond(int ib){
     Vec3d f; f.set_sub( apos[at.y], apos[at.x] );
     //if(pbcShifts)f.add( pbcShifts[ib] );
     //printf( "bond[%i|%i,%i] (%g,%g,%g) (%g,%g,%g) \n", ib,iat.a,iat.b, apos[iat.x].x, apos[iat.x].y, apos[iat.x].z, apos[iat.y].x, apos[iat.y].y, apos[iat.y].z );
+    
+    // int iG=6;
+    // if( (at.i==iG)||(at.j==6) ){
+    //     printf( "CPU bond[%i,%i] dp(%g,%g,%g) l,k(%g,%g) \n",  at.i,at.j,  f.x,f.y,f.z, bond_l0[ib], bond_k[ib] );
+    // }
+
     double l = f.normalize();
     //printf( "bond[%i|%i,%i] (%g,%g,%g) %g \n", ib,iat.a,iat.b, f.x, f.y, f.z, l );
     //lbond [ib] = l;
@@ -318,7 +324,7 @@ double eval_bond(int ib){
     fapos[at.y].sub( f );
     double E = k*dl*dl;
     Eb+=E;
-    
+
     /*
     if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){ 
         int i0=at.i*nneigh_max;
