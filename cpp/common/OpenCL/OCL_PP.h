@@ -391,7 +391,7 @@ class OCL_PP: public OCL_DFT { public:
 
 
     OCLtask* setup_getMMFFsp3( int na, int nNode, OCLtask* task=0){
-        printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
+        //printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFsp3");
         //if(na>=0  ) 
         task->global.x = na;
@@ -445,7 +445,7 @@ class OCL_PP: public OCL_DFT { public:
     //}
 
     OCLtask* setup_gatherForceAndMove( int n, int natom,  OCLtask* task=0 ){
-        printf("setup_gatherForceAndMove(na=%i) \n", n);
+        //printf("setup_gatherForceAndMove(na=%i) \n", n);
         //if(ibuff_atoms<0)initAtoms( na, 1 );
         //if(atoms  )upload( ibuff_atoms,   atoms,  na); // Note - these are other atoms than used for makeGridFF()
         //if(coefs  )upload( ibuff_coefs,   coefs,  na);

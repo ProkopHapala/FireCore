@@ -293,7 +293,7 @@ double eval_gridFF_ocl( int n, Vec3d* ps,             Vec3d* fs ){
 }
 
 double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){ 
-    printf( " ======= eval_MMFF_ocl() \n" );
+    //printf( " ======= eval_MMFF_ocl() \n" );
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     OCLtask* task_getF = ocl.getTask("getMMFFsp3");
     OCLtask* task_move = ocl.getTask("gatherForceAndMove");
@@ -322,25 +322,30 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
 }
 
 void eval(){
+    //SDL_Delay(500);
+    SDL_Delay(100);
     //printf("#======= MDloop[%i] \n", nloop );
     double E=0;
     //bGPU_MMFF=false;
+
+    ff.doBonds  = false;  
+    //ff.doNeighs =false;  
+    //ff.doAngles =false;
+    ff.doPiSigma=false;
+    ff.doPiPiI  =false;
+    ff.doPiPiT  =false;
+
+    //bSurfAtoms= false;
     if(bGPU_MMFF){
-        /*
-        ff.doPiPiI  =false;
-        ff.doPiPiT  =false;
-        ff.doPiSigma=false;
-        //ff.doAngles =false;
-        ff.doNeighs = true;
-        ff.doBonds  = false;
-        E += ff.eval();
-        */
+        printf( " ### GPU \n" );
+        //E += ff.eval();
         //for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
-        eval_MMFF_ocl( 10, ff.natoms+ff.npi, ff.apos, ff.fapos );
+        eval_MMFF_ocl( 1, ff.natoms+ff.npi, ff.apos, ff.fapos );
         //for(int i=0; i<ff.natoms; i++){ printf("OCL atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //exit(0);
     }else{
+        printf( " ### CPU \n" );
         if(bMMFF){ E += ff.eval();  } 
         else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
         //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
@@ -353,13 +358,15 @@ void eval(){
                         E+= nbmol.evalNeighs();
                     }
             }else { 
-                E+= nbmol.evalNeighs();
+              //E+= nbmol.evalNeighs();   // Non-bonded interactions between atoms within molecule
               //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
-                E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
+              //E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
               //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
             }
         }
     }
+    for(int i=0; i<ff.natoms; i++){ printf("atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x ,ff.fapos[i].y ,ff.fapos [i].z ); };
+    //for(int i=0; i<ff.npi   ; i++){ printf("pvec[%i] f(%g,%g,%g) \n", i, ff.fpipos[i].x,ff.fpipos[i].y,ff.fpipos[i].z ); };
 }
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
@@ -381,7 +388,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
             //opt.move_GD(0.001);
             //opt.move_LeapFrog(0.01);
             //opt.move_MDquench();
-            opt.move_FIRE();
+            //opt.move_FIRE();
         }
         double f2=1;
         if(f2<sq(Ftol)){
@@ -429,11 +436,14 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
 }
 
 virtual void swith_method()override{ 
+    bGPU_MMFF=!bGPU_MMFF;    bOcl=bGPU_MMFF;
+    /*
     imethod=(imethod+1)%2; 
     switch (imethod){
         case 0: bGridFF=0; bOcl=0; break;
         case 1: bGridFF=1; bOcl=1; break;
     }
+    */
 }
 
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i bOcl %i \n", bGridFF, bOcl ); return str; }
