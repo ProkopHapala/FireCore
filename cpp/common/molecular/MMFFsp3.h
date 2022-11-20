@@ -19,7 +19,9 @@ class MMFFsp3{ public:
 
     double * DOFs  = 0;   // degrees of freedom
     double * fDOFs = 0;   // forces
-
+    
+    //                           c0     Kss    Ksp    Kpp
+    Quat4d default_NeighParams{ -1.0,   1.0,   1.0,   0.25 };
     double Kpipi = 0.25;
     int  ipi0=0;
     int   * atype=0;
@@ -37,7 +39,8 @@ class MMFFsp3{ public:
     Vec3d  * pbcShifts = 0;  // [A]
 
     int*    aneighs = 0;  // [natom*nneigh_max] neigbors of atom
-    double* Kneighs = 0;  // [natom*nneigh_max] angular stiffness for given neighbor
+    //double* Kneighs = 0;  // [natom*nneigh_max] angular stiffness for given neighbor
+    Quat4d* NeighParams=0;
 
     // NOTE - For the moment we do not use temporary bonds - to keep things simple
     // --- Axuliary variables
@@ -84,7 +87,10 @@ void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
     if(bNeighs){
         int nn = nnode*nneigh_max;
         _realloc( aneighs, nn );
-        _realloc( Kneighs, nn );
+        //_realloc( Kneighs, nn );
+        _realloc( NeighParams, nnode );
+        for(int i=0; i<nnode; i++){ NeighParams[i]=default_NeighParams; }
+        //_realloc( Kpis       , nnode );
     }
     //printf( "MMFFsp3::realloc() DONE \n" );
 }
@@ -137,7 +143,7 @@ inline double evalSigmaSigma_dist( int ia, int ing, int jng, double K ){
     return K*rij;
 }
 
-inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
+inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K, double c0 ){
     nevalAngles++;
     //Vec3d h1,h2;
     //Vec3d d  = apos[ing] - apos[jng];   double rij = d .normalize();
@@ -147,7 +153,7 @@ inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
     Vec3d hf1,hf2; // unitary vectors of force - perpendicular to bonds
     hf1 = h2 - h1*c;
     hf2 = h1 - h2*c;
-    double c_ = c+1.0;
+    double c_ = c-c0;
     double E    =  K*c_*c_;
     double fang = -K*c_*2;
     hf1.mul( fang*ir1 );
@@ -169,7 +175,12 @@ inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K ){
     
     //if(ia==0) printf( "CPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) | hf1(%g,%g,%g) hf2(%g,%g,%g) \n", ia, ing,jng, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z,   hf1.x,hf1.y,hf1.z,   hf2.x,hf2.y,hf2.z );
     //if(ia==0) printf( "CPU atom[%i|%i,%i] c %g h1(%g,%g,%g) h2(%g,%g,%g) \n", ia, ing,jng, c, h1.x,h1.y,h1.z,  h2.x,h2.y,h2.z );
-    if(ia==0) printf( "CPU atom[%i|%i,%i] c %g c_ %g E %g fe(%g,%g,%g) fei(%g,%g,%g) \n", ia, ing,jng, c, c_, E, fei.x,fei.y,fei.z,   fapos[ia].x,fapos[ia].y,fapos[ia].z );
+    //if(ia==0) printf( "CPU atom[%i|%i,%i] c %g c_ %g E %g fe(%g,%g,%g) fei(%g,%g,%g) \n", ia, ing,jng, c, c_, E, fei.x,fei.y,fei.z,   fapos[ia].x,fapos[ia].y,fapos[ia].z );
+
+    
+    if( ing==0 ) printf( "ngFi[%i,%i,%i](%g,%g,%g) ir %g fang %g c %g c0 %g K %g \n", ia,ing,jng, hf1.x,hf2.y,hf2.z,  ir1, fang, c, c0, K );
+    //if( ing==0 ) printf( "neighForce_i[0|%i|%i](%g,%g,%g) invl %g \n", ia, ia*4, hf1.x, hf2.y, hf2.z,  ir1 );
+    //if( jng==0 ) printf( "neighForce_j[0|%i|%i](%g,%g,%g) invl %g \n", ia, ia*4, hf2.x, hf2.y, hf2.z,  ir2 );
 
 
     return E;
@@ -343,13 +354,14 @@ double eval_bond(int ib){
             int j0=at.j*nneigh_max;
             for(int i=2;i<nneigh_max;i++){
                 int ipi   = aneighs[i0+i];
-                double Ki = Kneighs[i0+i] * Kpipi;
+                //double Ki = Kneighs[i0+i] * Kpipi;
                 if(ipi>=0) continue;
                 for(int j=2;j<nneigh_max;j++){
                     int jpi=aneighs[j0+j];
                     if(jpi>=0) continue;
                     //if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){  printf(" i,j[%i,%i]->ipi,jpi[%i,%i,] \n",  i,j, ipi,jpi ); };
-                    double Kij = Ki*Kneighs[j0+j];
+                    //double Kij = Ki*Kneighs[j0+j];
+                    double Kij = Kpipi;
                     //printf( "bond[%i,] evalPiPi_I(%i,%i) Kij %g \n", ib, i,j, Kij );
                     Epi += evalPiPi_I( at, -ipi-1,-jpi-1, Kij );
                 }
@@ -371,28 +383,32 @@ double eval_neighs(int ia){
     const bool doPiPiT_   = doPiPiT; 
     const bool doAngles_  = doAngles;
     const bool doPiSigma_ = doPiSigma;
+    Quat4d params = NeighParams[ia]; 
+    double c0  = params.x;
+    double Kss = params.y;
+    double Ksp = params.z;
     for(int i=0; i<nneigh_max; i++){
         int    ing = aneighs[ioff+i];
-        double Ki  = Kneighs[ioff+i];
+        //double Ki  = Kneighs[ioff+i];
         bool bipi=ing<0;
         //if( ing<0 ){ break; // empty
         //}else if( ing<ipi0 ){ // signa-bonds
         for(int j=i+1; j<nneigh_max; j++){
             int jng  = aneighs[ioff+j];
             bool bjpi=jng<0;
-            double K = Kneighs[ioff+j]*Ki;
+            //double K = Kneighs[ioff+j]*Ki;
             //printf( "eval_neighs[%i,%i] ing,jng(%i,%i) \n", i,j, ing,jng );
             if( bipi ){
                 if(bjpi){ if(doPiPiT_){
-                    double e=evalPiPi_T   ( ia, -ing-1, -jng-1, K ); EppT+=e; E+=e;
+                    double e=evalPiPi_T   ( ia, -ing-1, -jng-1, Kpipi ); EppT+=e; E+=e;
                     //orthogonalizePiPi( ia, -ing-1, -jng-1 );
                 }   }
-                else    { if(doPiSigma_){ double e=evalSigmaPi( ia, jng, -ing-1, K ); Eps+=e; E+=e; } }
+                else    { if(doPiSigma_){ double e=evalSigmaPi( ia, jng, -ing-1, Ksp ); Eps+=e; E+=e; } }
             }else{
-                if(bjpi){ if(doPiSigma_){ double e=evalSigmaPi( ia, ing, -jng-1, K ); Eps+=e; E+=e; } } 
+                if(bjpi){ if(doPiSigma_){ double e=evalSigmaPi( ia, ing, -jng-1, Ksp ); Eps+=e; E+=e; } } 
                 else    {  if(doAngles_){
                     //E+= evalSigmaSigma_dist( ia, ing, jng, K );    Eps+=e; E+=e; 
-                    double e= evalSigmaSigma_cos( ia, ing, jng, K );    Ea+=e; E+=e; 
+                    double e= evalSigmaSigma_cos( ia, ing, jng, Kss, c0 );    Ea+=e; E+=e; 
                 }  }
             }
         }
@@ -524,11 +540,13 @@ void printNeigh(int ia){
         int ij=ia*nneigh_max + j;
         printf( "%i,", aneighs[ij] );
     }
-    printf( "] K(", ia );
+    /*
+    printf( "] K(" );
     for(int j=0;j<nneigh_max;j++){
         int ij=ia*nneigh_max + j;
         printf( "%g,", Kneighs[ij] );
     }
+    */
     printf( ")\n");
 }
 void printNeighs(){

@@ -1580,7 +1580,7 @@ void updatePBC( Vec3d* pbcShifts ){
         //int ja=0;
         int ie0=nconf+ncap;
         int iie = 0;
-        for(int i=0; i<ff.nnode*ff.nneigh_max; i++){ ff.Kneighs[i]=K_sigma; }
+        //for(int i=0; i<ff.nnode*ff.nneigh_max; i++){ ff.Kneighs[i]=K_sigma; }
         for(int ia=0; ia<atoms.size(); ia++ ){
             //printf( "atom[%i] \n", ia  );
             int ic = atoms[ia].iconf;
@@ -1589,7 +1589,7 @@ void updatePBC( Vec3d* pbcShifts ){
                 AtomConf& conf = confs[ic];
                 if(verbosity>1)printf( "atom[%i] iconf %i n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
                 int*    ngs  = ff.aneighs + ia*N_NEIGH_MAX;
-                double* kngs = ff.Kneighs + ia*N_NEIGH_MAX;
+                //double* kngs = ff.Kneighs + ia*N_NEIGH_MAX;
                 // -- atoms
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
@@ -1597,7 +1597,7 @@ void updatePBC( Vec3d* pbcShifts ){
                     hs[k]  = atoms[ja].pos - atoms[ia].pos;
                     hs[k].normalize();
                     ngs[k] = ja;
-                    kngs[k]=K_sigma;
+                    //kngs[k]=K_sigma;
                 }
                 makeConfGeom( conf.nbond, conf.npi, hs );
                 //for(int k=0; k<N_NEIGH_MAX; k++){
@@ -1609,7 +1609,7 @@ void updatePBC( Vec3d* pbcShifts ){
                     int ik=N_NEIGH_MAX-1-k;
                     ff.pipos[ipi] = hs[ik];
                     ngs[ik] = -ipi-1;
-                    kngs[ik]=K_pi;
+                    //kngs[ik]=K_pi;
                     ipi++;
                 }
                 // e-cap
@@ -1619,7 +1619,7 @@ void updatePBC( Vec3d* pbcShifts ){
                     ff.apos[ie]=atoms[ia].pos + hs[k]*0.5;
                     ff.atype[ie] = etyp; // electon-pair type
                     ngs[k] = ie;
-                    kngs[k] = K_ecap;
+                    //kngs[k] = K_ecap;
                     int ib=nb+iie;
                     ff.bond2atom[ib]=(Vec2i){ia,ie};
                     ff.bond_l0  [ib]=0.5;
