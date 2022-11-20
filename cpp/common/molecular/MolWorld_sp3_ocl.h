@@ -136,8 +136,8 @@ int ithNeigh(int ia, int ja){
 void MMFFparams2ocl(){
     //int n=nbmol.n;
     int n=ff.natoms;
-    float* blks= new float[n*8];
-    Vec2f* a0ks= new Vec2f[n  ];
+    float*  blks= new float[n*8];
+    Quat4f* a0ks= new Quat4f[ff.nnode];
     for(int i=0; i<n*8; i++){ blks[i]=1000.0; }
     for(int i=0; i<ff.nbonds; i++){
         Vec2i b = ff.bond2atom[i];
@@ -149,8 +149,8 @@ void MMFFparams2ocl(){
         if(ii>=0){ blks[b.i*8+ii] = l0; blks[b.i*8+ii+4] = K; }else{ printf("ii<0 \n"); exit(0); };
         if(jj>=0){ blks[b.j*8+jj] = l0; blks[b.j*8+jj+4] = K; }else{ printf("jj<0 \n"); exit(0); };  
     }
-    for(int i=0; i<n; i++){
-        a0ks[i]=(Vec2f){ ff.Kneighs[i], 0.5 };
+    for(int i=0; i<ff.nnode; i++){
+        a0ks[i]=(Quat4f)ff.NeighParams[i];
     }
     ocl.upload( ocl.ibuff_bondLK, blks );  
     ocl.upload( ocl.ibuff_ang0K,  a0ks );  
@@ -172,16 +172,14 @@ void mol2ocl(){
     pack      ( n2, nbmol.ps, q_ps, sq(gridFF.Rdamp) );
     ocl.upload( ocl.ibuff_atoms, q_ps );  
     REQs2ocl();
-    DEBUG
     makeOCLNeighs( );
-    DEBUG
     if(bGPU_MMFF){
         Quat4f* q_vs= new Quat4f[n2];
-        for(int i=0; i<n2; i++){ q_vs[i].set(0.); }    DEBUG
-        ocl.upload( ocl.ibuff_avel,   q_vs );          DEBUG
-        makeBackNeighs( n, npi, nbmol.neighs );        DEBUG
-        ocl.upload( ocl.ibuff_bkNeighs, bkneighs );    DEBUG
-        MMFFparams2ocl();                              DEBUG
+        for(int i=0; i<n2; i++){ q_vs[i].set(0.); }
+        ocl.upload( ocl.ibuff_avel,   q_vs );
+        makeBackNeighs( nbmol.neighs );
+        ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
+        MMFFparams2ocl();
     }
 }
 
@@ -218,19 +216,19 @@ void  makeOCLNeighs( ){
     //exit(0);
 }
 
-void makeBackNeighs( int n, int npi, Quat4i* aneighs ){
-    int nbk = n+npi;
-    bkneighs=new int[nbk*4];
-    for(int i=0; i<nbk*4; i++){ bkneighs[i]=-1; };
-    for(int ia=0; ia<n; ia++){
-        for(int j=0; j<4; j++){   // 4 neighbors
+void makeBackNeighs( Quat4i* aneighs ){
+    //int nbk = n+npi;
+    bkneighs=new int[ff.nvecs*4];
+    for(int i=0; i<ff.nvecs*4; i++){ bkneighs[i]=-1; };
+    for(int ia=0; ia<ff.nnode; ia++){
+        for(int j=0; j<4; j++){        // 4 neighbors
             int ja = aneighs[ia].array[j];
             if( ja<0 )continue;
             bool ret = addFirstEmpty( bkneighs+ja*4, 4, ia*4+j, -1 );
             if(!ret){ printf("ERROR in MolWorld_sp3_ocl::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
         };
     }
-    for(int i=0; i<n; i++){
+    for(int i=0; i<ff.nvecs; i++){
         printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i*4+0], bkneighs[i*4+1], bkneighs[i*4+2], bkneighs[i*4+3] ); 
     }
     checkBkNeighCPU();

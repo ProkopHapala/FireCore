@@ -332,8 +332,8 @@ class OCL_PP: public OCL_DFT { public:
         ibuff_neighs  =newBuffer( "neighs",   nAtoms,     sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         if(bFullMD){
             ibuff_bkNeighs    =newBuffer( "bkNeighs",   nAtoms+npi, sizeof(int4),   0, CL_MEM_READ_WRITE );
-            ibuff_bondLK      =newBuffer( "bondLK ",    nAtoms,     sizeof(float8), 0, CL_MEM_READ_ONLY  );
-            ibuff_ang0K       =newBuffer( "ang0K",      nnode*4,    sizeof(float2), 0, CL_MEM_READ_ONLY  );
+            ibuff_bondLK      =newBuffer( "bondLK ",    nAtoms ,    sizeof(float8), 0, CL_MEM_READ_ONLY  );
+            ibuff_ang0K       =newBuffer( "ang0K",      nnode  ,    sizeof(float4), 0, CL_MEM_READ_ONLY  );
             ibuff_neighForce  =newBuffer( "neighForce", nnode*4,    sizeof(float4), 0, CL_MEM_READ_WRITE );
             ibuff_avel        =newBuffer( "avel",       nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_WRITE );
         }
