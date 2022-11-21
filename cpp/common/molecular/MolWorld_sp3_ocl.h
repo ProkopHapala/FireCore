@@ -104,6 +104,9 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
 }
 
 void init_ocl(){
+    // WARRNING - DEBUG
+    for(int i=0; i<nbmol.n; i++){ nbmol.ps->addRandomCube(0.1); }; // DEBUG - displace atoms to test relaxation forces
+
     printf( "init_ocl() \n" );
     long T0 = getCPUticks();
     ocl.init();
@@ -326,10 +329,10 @@ void eval(){
     double E=0;
     //bGPU_MMFF=false;
 
-    ff.doBonds  = false;  
+    //ff.doBonds  = false;  
     //ff.doNeighs =false;  
     //ff.doAngles =false;
-    ff.doPiSigma=false;
+    //ff.doPiSigma=false;
     ff.doPiPiI  =false;
     ff.doPiPiT  =false;
 
@@ -356,9 +359,9 @@ void eval(){
                         E+= nbmol.evalNeighs();
                     }
             }else { 
-              //E+= nbmol.evalNeighs();   // Non-bonded interactions between atoms within molecule
+                E+= nbmol.evalNeighs();   // Non-bonded interactions between atoms within molecule
               //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
-              //E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
+                E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
               //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
             }
         }

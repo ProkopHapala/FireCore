@@ -178,7 +178,7 @@ inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K, double c0
     //if(ia==0) printf( "CPU atom[%i|%i,%i] c %g c_ %g E %g fe(%g,%g,%g) fei(%g,%g,%g) \n", ia, ing,jng, c, c_, E, fei.x,fei.y,fei.z,   fapos[ia].x,fapos[ia].y,fapos[ia].z );
 
     
-    if( ing==0 ) printf( "ngFi[%i,%i,%i](%g,%g,%g) ir %g fang %g c %g c0 %g K %g \n", ia,ing,jng, hf1.x,hf2.y,hf2.z,  ir1, fang, c, c0, K );
+    //if( ing==0 ) printf( "ngFi[%i,%i,%i](%g,%g,%g) ir %g fang %g c %g c0 %g K %g \n", ia,ing,jng, hf1.x,hf2.y,hf2.z,  ir1, fang, c, c0, K );
     //if( ing==0 ) printf( "neighForce_i[0|%i|%i](%g,%g,%g) invl %g \n", ia, ia*4, hf1.x, hf2.y, hf2.z,  ir1 );
     //if( jng==0 ) printf( "neighForce_j[0|%i|%i](%g,%g,%g) invl %g \n", ia, ia*4, hf2.x, hf2.y, hf2.z,  ir2 );
 
@@ -218,6 +218,8 @@ inline double evalSigmaPi( int ia, int ing, int ipi, double K ){
     fpipos[ipi].add( hf2 );
     //fapos [ia ].sub( hf1+hf2 ); // NOTE: we should not apply recoil of pi-orbital here because it is in coordinates relative to  fulcrum
     fapos [ia ].sub( hf1 );
+    //if( ing==0 ) printf( "ngFi[%i,%i,%i](%g,%g,%g) ir %g fang %g c %g c0 %g K %g \n", ia,ing,ipi+natoms, hf1.x,hf2.y,hf2.z,  ir1, fang, c, 0.0, K );
+
     return E;
 }
 
