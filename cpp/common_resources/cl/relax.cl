@@ -946,6 +946,7 @@ __kernel void make_GridFF(
     const int nMax = nab*nGrid.z;
     if(iG>nMax) return;
 
+    if(iG==0){printf("GPU::make_GridFF(nL=%i,nG=%i,nAtoms=%i)\n", nL, (int)get_global_size(0), nAtoms );}
     //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
     //if(iG==0){
     //    printf("GPU::make_GridFF(natoms=%i)\n", nAtoms);
@@ -1176,6 +1177,8 @@ __kernel void getMMFFsp3(
 
     const int nAtoms=nDOFs.x;
     const int nnode =nDOFs.y;
+
+    if(iG==0){printf("GPU::getMMFFsp3(nAtoms=%i,nnode=%i,nG=%i,nL=%i)\n", nAtoms, nnode, (int)get_global_size(0), (int)get_local_size(0) );}
 
     if(iG>=nAtoms) return;
 
@@ -1412,6 +1415,8 @@ __kernel void gatherForceAndMove(
     const int nL = get_local_size(0);
     if(iG>=nvecs) return;
 
+
+    if(iG==0){printf("GPU::gatherForceAndMove(natom=%i,nvecs=%i,nG=%i,nL=%i)\n", natom, nvecs, (int)get_global_size(0), (int)get_local_size(0) );}
 
     // if(iG==0){
     // //    printf( "GPU --- gatherForceAndMove() 0 \n" );

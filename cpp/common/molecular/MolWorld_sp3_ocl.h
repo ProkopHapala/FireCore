@@ -298,22 +298,23 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     OCLtask* task_getF = ocl.getTask("getMMFFsp3");
     OCLtask* task_move = ocl.getTask("gatherForceAndMove");
-    OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
+    //OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move);
-    ocl.setup_getMMFFsp3        ( ff.natoms, ff.nnode,  task_getF );
+    ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move);    DEBUG
+    ocl.setup_getMMFFsp3        ( ff.natoms, ff.nnode,  task_getF );    DEBUG
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     //ocl.upload( ocl.ibuff_atoms,  (float4*)q_ps, n ); // Note - these are other atoms than used for makeGridFF()
     //ocl.upload( ocl.ibuff_coefs,   coefs,  na);
     for(int i=0; i<niter; i++){
         //task_gff->enque_raw();
-        task_getF->enque_raw();
-        task_move->enque_raw();
+        task_getF->enque_raw();    ocl.finishRaw(); DEBUG
+        task_move->enque_raw();    ocl.finishRaw(); DEBUG
     }
-    ocl.download( ocl.ibuff_aforces, q_fs, n );
-    ocl.download( ocl.ibuff_atoms,   q_ps, n );
-    ocl.finishRaw();
+    printf( "ocl.download(n=%i) \n", n );
+    ocl.download( ocl.ibuff_aforces, q_fs, n );    DEBUG
+    ocl.download( ocl.ibuff_atoms,   q_ps, n );    DEBUG
+    ocl.finishRaw();    DEBUG
     unpack             ( n, ps, q_ps );
     double E=unpack_add( n, fs, q_fs );
     //unpack( n, fs, q_fs );
