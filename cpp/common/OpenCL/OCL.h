@@ -145,6 +145,15 @@ class OCLtask{ public:
     size_t4  local;
     std::vector<OCLarg> args;
 
+    void roundSizes(){  
+        size_t* global_=(size_t*)&global;
+        size_t* local_ =(size_t*)&local;
+        for(int i=0;i<dim;i++){
+            int nL=local_[i]; if(nL<1){nL==1;}
+            global_[i] = (((int)(global_[i]/nL))+1)*nL;
+            printf("OCLtask roundSizes[%li/%i] \n", global_[i], nL );
+        }
+    }
 
     int  useArgs();
     void print_arg_list();
@@ -197,6 +206,9 @@ class OCLsystem{ public:
         printf( "OCL task %s not found \n", name );
         return 0;
     }    
+
+
+    int roundUpSize( int n, int nL){ return (((int)(n/nL))+1)*nL; }
 
     void cl_info(){
         printf( "sizeof(cl_mem    ) is %li bytes\n", sizeof(cl_mem) );
@@ -450,7 +462,7 @@ class OCLsystem{ public:
 //=======================================================================
 
 int OCLtask::enque_raw(  ){
-    //printf("enque_raw ikernel %li idim %li global(%li,%li,%li) local(%li,%li,%li)\n", ikernel, dim, global[0],global[1],global[2], local[0],local[1],local[2] );
+    //printf("enque_raw ikernel %li idim %li global(%li,%li,%li) local(%li,%li,%li)\n", ikernel, dim, global.x,global.y,global.z, local.x,local.y,local.z );
     if(local.x==0){ return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, (size_t*)&global, NULL,         0, NULL, NULL );   }
     else{           return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, (size_t*)&global, (size_t*)&local, 0, NULL, NULL );   }
 }

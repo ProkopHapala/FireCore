@@ -284,6 +284,9 @@ class OCL_PP: public OCL_DFT { public:
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
         OCLtask* task = getTask("make_GridFF");
         task->global.x = Ntot;
+        //task->local.x  = 32;
+        //task->roundSizes();
+        //task->global.x = roundUpSize(Ntot,task->local.x);
         //task->global.y = Ns[1];
         //task->global.z = Ns[2];
         //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
@@ -393,8 +396,10 @@ class OCL_PP: public OCL_DFT { public:
     OCLtask* setup_getMMFFsp3( int na, int nNode, OCLtask* task=0){
         //printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFsp3");
-        //if(na>=0  ) 
         task->global.x = na;
+        //task->local .x = 1;
+        //task->roundSizes();
+        //if(na>=0  ) 
         useKernel( task->ikernel );
         nDOFs.x=na; 
         nDOFs.y=nNode; 
@@ -452,10 +457,12 @@ class OCL_PP: public OCL_DFT { public:
         //if(coefs  )upload( ibuff_neighs,  neighs, na);
         //if(aforces)upload( ibuff_aforces, aforces, na);
         if(task==0) task = getTask("gatherForceAndMove");
+        task->global.x = n;
+        //task->local .x = 1;
+        //task->roundSizes();
         //if(n >=0  ) 
         nDOFs.x=n; 
         nDOFs.y=natom; 
-        task->global.x = n;
         useKernel( task->ikernel );
         err |= _useArg( md_params );           // 1
         err |= _useArg( nDOFs     );           // 2
