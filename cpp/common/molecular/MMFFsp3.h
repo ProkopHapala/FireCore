@@ -31,6 +31,7 @@ class MMFFsp3{ public:
     Vec3d * fpipos=0;
     //Vec3d * cappos=0;
     //Vec3d * fcappos=0;
+    Quat4f* pi0s=0;
 
     // --- Parameters
     Vec2i  * bond2atom = 0;
@@ -441,6 +442,57 @@ double eval( bool bClean=true, bool bCheck=true ){
     Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 };
+
+
+void evalPi0s(){
+    for(int ia=0; ia<nnode; ia++){
+        int ioff = ia*nneigh_max;
+        int* ngs = aneighs+ioff;
+        int ipi  = ngs[3];
+        int nbond=0;
+        if(ipi<0){
+            Vec3d pi0=Vec3dZero;
+            for(int j=0; j<3; j++){
+                int ja  = ngs[j];
+                if( (ja>=0) && (ja<nnode) ){
+                    int jpi = aneighs[ja*nneigh_max+3];
+                    if(jpi<0){
+                        pi0.add( pipos[-jpi-1] );
+                        nbond++;
+                    }
+                }
+            }
+            //pi0.mul(1./nbond);
+            pi0.normalize();
+            pi0s[-ipi-1].f=(Vec3f)pi0;
+        }
+
+    }
+    
+};
+
+void makePiNeighs( int* pi_neighs ){
+    for(int ia=0; ia<nnode; ia++){
+        int ioff = ia*nneigh_max;
+        int* ngs = aneighs+ioff;
+        int ipi  = ngs[3];
+        if(ipi<0){
+            int ioff = (-ipi-1)*4;
+            int nbond=0;
+            for(int j=0; j<3; j++){
+                int ja  = ngs[j];
+                if( (ja>=0) && (ja<nnode) ){
+                    int jpi = aneighs[ja*nneigh_max+3];
+                    if(jpi<0){
+                        pi_neighs[ioff+nbond]=natoms-jpi-1;
+                        nbond++;
+                    }
+                }
+            }
+        }
+    }
+};
+
 
 //double getFmax(){ double Fmax=0; for(int i=0; i<natoms;i++){ _max( Fmax, aforce[i].norm2() ); }; return Fmax; };
 //void moveGD(double dt){ for(int i=0; i<natoms;i++){ apos[i].add_mul( aforce[i],dt); } };
