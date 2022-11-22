@@ -1151,6 +1151,23 @@ float4 evalAngle( __private float4* fout, float4 dl1, float4 dl2, int ing, int j
     return (float4)( hf1+hf2, -E );
 }
 
+float evaAngCos( float4 hr1, float4 hr2, float K, float c0, __private float3* f1, __private float3* f2 ){
+    float  c = dot(hr1.xyz,hr2.xyz);
+    float3 hf1,hf2;
+    hf1 = hr2.xyz - hr1.xyz*c;
+    hf2 = hr1.xyz - hr2.xyz*c;
+    float c_ = c+c0;
+    float E = K*c_*c_;
+    float fang = -K*c_*2;
+    hf1 *= ( fang*hr1.w );
+    hf2 *= ( fang*hr2.w );
+    *f1=hf1;
+    *f2=hf2;
+    return E;
+}
+
+
+
 __kernel void getMMFFsp3(
     const int4 nDOFs,               // 1
     __global float4*  atoms,        // 2
@@ -1309,6 +1326,7 @@ __kernel void getMMFFsp3(
             bool bj = jb<nAtoms;
             float4 dlj=dls[j];
             if(bi){ if( bj){  //   sigma-sigma , i.e. angle
+
                 //fe-=evalAngle( ngForces, dli, dlj, i, j, c0K.x, c0K.y );
                 float K  = c0K.y;
                 float c0 = c0K.x;
@@ -1404,7 +1422,8 @@ __kernel void gatherForceAndMove(
     __global float4*  avel,         // 4
     __global float4*  aforce,       // 5
     __global float4*  neighForces,  // 6
-    __global int4*    bkNeighs      // 7
+    __global int4*    bkNeighs,     // 7
+    __global float4*  pi0s          // 8
 ){
     
     const int natom=n.y;
@@ -1453,21 +1472,38 @@ __kernel void gatherForceAndMove(
     if(ngs.y>=0) fe += neighForces[ngs.y];
     if(ngs.z>=0) fe += neighForces[ngs.z];
     if(ngs.w>=0) fe += neighForces[ngs.w];
+
+    float4 pe = apos[iG];
+
+    /*
+    if(iG>natom){ // Pi bond alignment
+        float4 pi0 = pi0s[iG-natom];
+        float  K   = pi0.w;
+        float3 h1  = pe .xyz;
+        float3 h2  = pi0.xyz;
+        float  c = dot(h1,h2);
+        float3 hf1,hf2;
+        hf1 = h2 - h1*c;
+        //hf2 = h1 - h2*c;
+        float E    =  K*c*c;
+        float fang = -K*c*2;
+        fe        += (float4)( hf1*fang, E );
+    }
+    */
+
     aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
     
-
-    if(iG==0){
+    //if(iG==0){
     //    printf( "GPU dt %g damp %g \n", params.x, params.y );
     //    printf( "GPU --- gatherForceAndMove() 1 \n" );
     //    //for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", i, fe.x,fe.y,fe.z,fe.w ); }
     //    for(int i=0; i<nAtoms; i++){ printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", i, fe.x,fe.y,fe.z,fe.w ); }
     //    float4 pe=apos[iG]; float4 ve=avel[iG]; printf( "GPU a[%i] pe(%g,%g,%g|%g) fe(%g,%g,%g|%g) ve(%g,%g,%g|%g)\n", iG, pe.x,pe.y,pe.z,pe.w,  fe.x,fe.y,fe.z,fe.w,   ve.x,ve.y,ve.z,ve.w );
-    }
+    //}
     //printf( "GPU a[%i] fe(%g,%g,%g|%g)\n", iG, fe.x,fe.y,fe.z,fe.w );
     
     // ------ Move (Leap-Frog)
     float4 ve = avel[iG];
-    float4 pe = apos[iG];
     ve     *= params.y;
     ve.xyz += fe.xyz*params.x;
     pe.xyz += ve.xyz*params.x;
@@ -1475,5 +1511,28 @@ __kernel void gatherForceAndMove(
     // if(iG>natom){ pe.xyz=normalize(pe.xyz); };
     // avel[iG] = ve;
     // apos[iG] = pe;
+
+}
+
+
+__kernel void updatePiPos0(
+    const int4        n,        // 1
+    __global float4*  apos,     // 2
+    __global float4*  pi0s,     // 3
+    __global int4*    neighs    // 4
+){
+    const int natom=n.x;
+    const int npi  =n.y;
+
+    const int iG = get_global_id (0);
+    if(iG>=npi) return;
+
+    int4 ngs = neighs[natom+iG];
+    float4 pi0 = float4Zero;
+    if(ngs.x>=0){ pi0 += apos[ngs.x]; };
+    if(ngs.y>=0){ pi0 += apos[ngs.y]; };
+    if(ngs.z>=0){ pi0 += apos[ngs.z]; };
+    if(ngs.w>=0){ pi0 += apos[ngs.w]; }; 
+    pi0s[iG+natom] = pi0;
 
 }

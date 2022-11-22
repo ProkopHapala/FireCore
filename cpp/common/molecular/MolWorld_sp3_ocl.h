@@ -186,9 +186,16 @@ void mol2ocl(){
     }
 }
 
+void makePi0s(){
+    if(ff.pi0s==0){ ff.pi0s=new Quat4f[ff.npi]; };
+    ff.evalPi0s();
+    ocl.upload( ocl.ibuff_pi0s, ff.pi0s ); 
+}
+
 void  makeOCLNeighs( ){
     printf("makeOCLNeighs() n %i nnode %i \n", nbmol.n, ff.nnode );
-    int n=nbmol.n;
+    int natom=ff.natoms;
+    int n=ff.nvecs;
     int* aneighs=new int[n*4];
     for(int i=0; i<n; i++){
         int i4=i*4;
@@ -202,7 +209,7 @@ void  makeOCLNeighs( ){
             int i4=i*4;
             for(int j=0; j<4; j++){
                 int ngi=ff.aneighs[i4+j];
-                if(ngi<0){ ngi= n-ngi-1; }  // pi-bonds
+                if(ngi<0){ ngi= natom-ngi-1; }  // pi-bonds
                 aneighs[i4+j]=ngi;
                 if( (ngi>=ff.nnode) &&  (ngi<ff.natoms) ){   // back-neighbor
                     aneighs[ngi*4+0]=i;
@@ -210,6 +217,7 @@ void  makeOCLNeighs( ){
             }
         }
     }
+    ff.makePiNeighs( aneighs+ff.natoms*4 );
     //if(verbosity>1) 
     for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
     ocl.upload( ocl.ibuff_neighs, aneighs );
@@ -298,23 +306,26 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     OCLtask* task_getF = ocl.getTask("getMMFFsp3");
     OCLtask* task_move = ocl.getTask("gatherForceAndMove");
+    OCLtask* task_pi0s = ocl.getTask("updatePiPos0");
     //OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move);    DEBUG
-    ocl.setup_getMMFFsp3        ( ff.natoms, ff.nnode,  task_getF );    DEBUG
+    ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move );
+    ocl.setup_getMMFFsp3        ( ff.natoms, ff.nnode,  task_getF );
+    ocl.setup_updatePiPos0      ( ff.npi,    ff.natoms, task_pi0s );
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     //ocl.upload( ocl.ibuff_atoms,  (float4*)q_ps, n ); // Note - these are other atoms than used for makeGridFF()
     //ocl.upload( ocl.ibuff_coefs,   coefs,  na);
     for(int i=0; i<niter; i++){
         //task_gff->enque_raw();
-        task_getF->enque_raw();    ocl.finishRaw(); DEBUG
-        task_move->enque_raw();    ocl.finishRaw(); DEBUG
+        task_getF->enque_raw();
+        task_pi0s->enque_raw();
+        task_move->enque_raw();
     }
     printf( "ocl.download(n=%i) \n", n );
-    ocl.download( ocl.ibuff_aforces, q_fs, n );    DEBUG
-    ocl.download( ocl.ibuff_atoms,   q_ps, n );    DEBUG
-    ocl.finishRaw();    DEBUG
+    ocl.download( ocl.ibuff_aforces, q_fs, n );
+    ocl.download( ocl.ibuff_atoms,   q_ps, n );
+    ocl.finishRaw();
     unpack             ( n, ps, q_ps );
     double E=unpack_add( n, fs, q_fs );
     //unpack( n, fs, q_fs );

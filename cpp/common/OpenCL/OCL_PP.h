@@ -30,7 +30,7 @@ class OCL_PP: public OCL_DFT { public:
 
     int n_start_point = 0;
     int ibuff_start_point=-1;
-    int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
+    int ibuff_avel=-1, ibuff_pi0s=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
     int ibuff_bondLK=-1, ibuff_ang0K=-1;
     int itex_FF=-1;
 
@@ -97,6 +97,7 @@ class OCL_PP: public OCL_DFT { public:
         newTask( "getNonBondForce_GridFF",1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "getMMFFsp3"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "gatherForceAndMove",1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "updatePiPos0"      ,1,{0,0,0,0},{1,0,0,0},program_relax);
         //newTask( "write_toImg"       ,3,{0,0,0,0},{1,1,1,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
         printf( "... makeKrenels_PP() DONE \n" );
@@ -332,13 +333,14 @@ class OCL_PP: public OCL_DFT { public:
         ibuff_atoms   =newBuffer( "atoms",    nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_aforces =newBuffer( "aforces",  nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_coefs   =newBuffer( "coefs",    nAtoms,     sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        ibuff_neighs  =newBuffer( "neighs",   nAtoms,     sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        ibuff_neighs  =newBuffer( "neighs",   nAtoms+npi, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         if(bFullMD){
-            ibuff_bkNeighs    =newBuffer( "bkNeighs",   nAtoms+npi, sizeof(int4),   0, CL_MEM_READ_WRITE );
-            ibuff_bondLK      =newBuffer( "bondLK ",    nAtoms ,    sizeof(float8), 0, CL_MEM_READ_ONLY  );
-            ibuff_ang0K       =newBuffer( "ang0K",      nnode  ,    sizeof(float4), 0, CL_MEM_READ_ONLY  );
-            ibuff_neighForce  =newBuffer( "neighForce", nnode*4,    sizeof(float4), 0, CL_MEM_READ_WRITE );
-            ibuff_avel        =newBuffer( "avel",       nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_bkNeighs    = newBuffer( "bkNeighs",   nAtoms+npi, sizeof(int4),   0, CL_MEM_READ_WRITE );
+            ibuff_bondLK      = newBuffer( "bondLK ",    nAtoms ,    sizeof(float8), 0, CL_MEM_READ_ONLY  );
+            ibuff_ang0K       = newBuffer( "ang0K",      nnode  ,    sizeof(float4), 0, CL_MEM_READ_ONLY  );
+            ibuff_neighForce  = newBuffer( "neighForce", nnode*4,    sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_avel        = newBuffer( "avel",       nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_pi0s        = newBuffer( "pi0s",       npi,        sizeof(float4), 0, CL_MEM_READ_WRITE );
         }
         printBuffers();
         return ibuff_atoms;
@@ -470,7 +472,8 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_avel   );     // 4
         err |= useArgBuff( ibuff_aforces);     // 5
         err |= useArgBuff( ibuff_neighForce ); // 6
-        err |= useArgBuff( ibuff_bkNeighs );   // 7
+        err |= useArgBuff( ibuff_bkNeighs   );   // 7
+        err |= useArgBuff( ibuff_pi0s       );   // 8
         OCL_checkError(err, "gatherForceAndMove");
         //err = task->enque_raw();
         //OCL_checkError(err, "gatherForceAndMove");  
@@ -490,6 +493,31 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
+
+    OCLtask* setup_updatePiPos0( int natom, int npi, OCLtask* task=0 ){
+        if(task==0) task = getTask("updatePiPos0");
+        task->global.x = npi;
+        //task->local .x = 1;
+        //task->roundSizes();
+        //if(n >=0  ) 
+        nDOFs.x=natom; 
+        nDOFs.y=npi; 
+        useKernel( task->ikernel );
+        err |= _useArg( nDOFs     );            // 1
+        err |= useArgBuff( ibuff_atoms   );     // 2
+        err |= useArgBuff( ibuff_pi0s    );     // 3
+        err |= useArgBuff( ibuff_neighs  );     // 4
+        OCL_checkError(err, "updatePiPos0");
+        return task;
+        /*
+            __kernel void updatePiPos0(
+                const int4        n,           // 1
+                __global float4*  apos,        // 2
+                __global float4*  pi0s,        // 3
+                __global int4*    pi_neighs    // 4
+            ){
+        */
+    }
 
 
 };
