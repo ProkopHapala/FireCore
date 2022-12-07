@@ -1508,9 +1508,14 @@ __kernel void gatherForceAndMove(
     ve.xyz += fe.xyz*params.x;
     pe.xyz += ve.xyz*params.x;
     
-    // if(iG>natom){ pe.xyz=normalize(pe.xyz); };
-    // avel[iG] = ve;
-    // apos[iG] = pe;
+    // ------ Store global state
+    if(iG>natom){ pe.xyz=normalize(pe.xyz); };
+
+    //ve = float4Zero;
+    //pe = float4Zero;
+
+    //avel[iG] = ve;
+    //apos[iG] = pe;
 
 }
 
@@ -1525,14 +1530,75 @@ __kernel void updatePiPos0(
     const int npi  =n.y;
 
     const int iG = get_global_id (0);
+
+    if(iG==0){
+        printf("GPU::updatePiPos0(natom=%i,npi=%i)\n", natom, npi );
+    }
+
     if(iG>=npi) return;
 
     int4 ngs = neighs[natom+iG];
-    float4 pi0 = float4Zero;
-    if(ngs.x>=0){ pi0 += apos[ngs.x]; };
-    if(ngs.y>=0){ pi0 += apos[ngs.y]; };
-    if(ngs.z>=0){ pi0 += apos[ngs.z]; };
-    if(ngs.w>=0){ pi0 += apos[ngs.w]; }; 
-    pi0s[iG+natom] = pi0;
+    //float4 pi0 = float4Zero;
+    //float4 dpi = float4Zero;
+    //float c=0.0f; 
+    float4 pi0,dpi;
+    if(ngs.x>=natom){ pi0=apos[ngs.x]; };
+    //if(ngs.y>=natom){ dpi=apos[ngs.y]; c=dot(dpi.xyz,pi0.xyz); if( 0.0f>c )dpi*=-1.0f; pi0+=dpi; };
+    if(ngs.y>=natom){ dpi=apos[ngs.y]; if( 0.0f>dot(dpi.xyz,pi0.xyz) ) dpi*=-1.0f; pi0+=dpi; };
+    if(ngs.z>=natom){ dpi=apos[ngs.z]; if( 0.0f>dot(dpi.xyz,pi0.xyz) ) dpi*=-1.0f; pi0+=dpi; };
+    if(ngs.w>=natom){ dpi=apos[ngs.w]; if( 0.0f>dot(dpi.xyz,pi0.xyz) ) dpi*=-1.0f; pi0+=dpi; }; 
+    pi0 *= 1.0f/length(pi0.xyz);    //normalize
+    //pi0 = (float4){0.f,0.f,1.f,0.f};
+    //printf( "GPU pi_ngs[%i](%i,%i,%i,%i)\n", iG, ngs.x,ngs.y,ngs.z,ngs.w );
+    //printf( "GPU pi0[%i](%g,%g,%g,%g) ngs(%i,%i,%i,%i)   c=%g     dpi(%g,%g,%g,%g)\n", iG, pi0.x,pi0.y,pi0.z,pi0.w,   ngs.x,ngs.y,ngs.z,ngs.w,   c,    dpi.x,dpi.y,dpi.z,dpi.w );
+    //c=dot(dpi.xyz,pi0.xyz);
+    //printf( "GPU pi[%i] ngs(%i,%i)   c=%g  pi0(%g,%g,%g)   dpi(%g,%g,%g)    pi0[%i](%g,%g,%g)\n", iG,  ngs.x,ngs.y,   c,     pi0.x,pi0.y,pi0.z,    dpi.x,dpi.y,dpi.z,    ngs.x,apos[ngs.x].x,apos[ngs.x].y,apos[ngs.x].z );
+    //printf( "GPU pi0[%i](%g,%g,%g)  c=%g   pi0[%i](%g,%g,%g) pi1[%i](%g,%g,%g) \n", iG, pi0.x,pi0.y,pi0.z,   c,  ngs.x,apos[ngs.x].x,apos[ngs.x].y,apos[ngs.x].z,     ngs.y,apos[ngs.y].x,apos[ngs.y].y,apos[ngs.y].z );
+    pi0s[iG] = pi0;
 
+}
+
+
+
+
+__kernel void evalPiPi(
+    const int4        n,        // 1
+    __global float4*  apos,     // 2
+    __global float4*  aforce,   // 2
+    __global int4*    neighs    // 4
+){
+    const int natom=n.x;
+    const int npi  =n.y;
+
+    const int iG = get_global_id (0);
+
+    if(iG==0){
+        printf("GPU::evalPiPi(natom=%i,npi=%i)\n", natom, npi );
+    }
+
+    if(iG>=npi) return;
+    const int ip =  iG+natom;
+
+    int4 ngs_ = neighs[ip];
+    int* ngs  = (int*)&ngs_;
+
+    float4 fe = float4Zero;
+    float4 pe = apos[ip];
+
+    for(int j=0; j<4; j++){
+        int jp = ngs[j];
+        if(jp>=natom){ 
+            float  K   = -1.0f;
+            float3 h1  = pe.xyz;
+            float3 h2  = apos[jp].xyz;
+            float  c = dot(h1,h2);
+            float3 hf1 = h2 - h1*c;
+            //float3 hf2 = h1 - h2*c;
+            float E    =  K*c*c;
+            float fang = -K*c*2;
+            fe        += (float4)( hf1*fang, E );
+        }
+
+    }
+    aforce[ip] = fe;
 }
