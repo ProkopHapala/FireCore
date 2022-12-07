@@ -183,6 +183,7 @@ void mol2ocl(){
         makeBackNeighs( nbmol.neighs );
         ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
         MMFFparams2ocl();
+        makePi0s();
     }
 }
 
@@ -307,25 +308,30 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     OCLtask* task_getF = ocl.getTask("getMMFFsp3");
     OCLtask* task_move = ocl.getTask("gatherForceAndMove");
     OCLtask* task_pi0s = ocl.getTask("updatePiPos0");
+    OCLtask* task_pipi = ocl.getTask("evalPiPi");
     //OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
     ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move );
     ocl.setup_getMMFFsp3        ( ff.natoms, ff.nnode,  task_getF );
-    ocl.setup_updatePiPos0      ( ff.npi,    ff.natoms, task_pi0s );
+    ocl.setup_updatePiPos0      ( ff.natoms, ff.npi,    task_pi0s );
+    ocl.setup_evalPiPi          ( ff.natoms, ff.npi,    task_pipi );
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     //ocl.upload( ocl.ibuff_atoms,  (float4*)q_ps, n ); // Note - these are other atoms than used for makeGridFF()
     //ocl.upload( ocl.ibuff_coefs,   coefs,  na);
     for(int i=0; i<niter; i++){
         //task_gff->enque_raw();
         task_getF->enque_raw();
-        task_pi0s->enque_raw();
+        //task_pi0s->enque_raw();
+        task_pipi->enque_raw();
         task_move->enque_raw();
     }
     printf( "ocl.download(n=%i) \n", n );
-    ocl.download( ocl.ibuff_aforces, q_fs, n );
-    ocl.download( ocl.ibuff_atoms,   q_ps, n );
+    ocl.download( ocl.ibuff_aforces, q_fs,    n );
+    ocl.download( ocl.ibuff_atoms,   q_ps,    n );
+    ocl.download( ocl.ibuff_pi0s,    ff.pi0s, ff.npi );
     ocl.finishRaw();
+    printf( "*pi0s=%li\n", ff.pi0s ); for(int i=0; i<ff.npi; i++){printf( "CPU pi0s[%i](%g,%g,%g,%g)\n", i, ff.pi0s[i].x,ff.pi0s[i].y,ff.pi0s[i].z,ff.pi0s[i].w );}
     unpack             ( n, ps, q_ps );
     double E=unpack_add( n, fs, q_fs );
     //unpack( n, fs, q_fs );
@@ -336,7 +342,7 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
 
 void eval(){
     //SDL_Delay(500);
-    SDL_Delay(100);
+    //SDL_Delay(100);
     //printf("#======= MDloop[%i] \n", nloop );
     double E=0;
     //bGPU_MMFF=false;
@@ -378,7 +384,7 @@ void eval(){
             }
         }
     }
-    for(int i=0; i<ff.natoms; i++){ printf("atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x ,ff.fapos[i].y ,ff.fapos [i].z ); };
+    //for(int i=0; i<ff.natoms; i++){ printf("atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x ,ff.fapos[i].y ,ff.fapos [i].z ); };
     //for(int i=0; i<ff.npi   ; i++){ printf("pvec[%i] f(%g,%g,%g) \n", i, ff.fpipos[i].x,ff.fpipos[i].y,ff.fpipos[i].z ); };
 }
 
@@ -401,7 +407,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
             //opt.move_GD(0.001);
             //opt.move_LeapFrog(0.01);
             //opt.move_MDquench();
-            //opt.move_FIRE();
+            opt.move_FIRE();
         }
         double f2=1;
         if(f2<sq(Ftol)){

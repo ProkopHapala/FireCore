@@ -173,7 +173,9 @@ void drawMeshWireframe  ( const CMesh& msh );
 void drawMeshPolygons   ( const CMesh& msh );
 void drawMesh           ( const CMesh& msh, uint32_t cpoly, uint32_t cwire );
 
-void drawVectorArray(int n,const Vec3d* ps,const Vec3d* vs, double sc, double lmax );
+void drawVectorArray(int n,const Vec3d* ps,const Vec3d*  vs, double sc, double lmax );
+void drawVectorArray(int n,const Vec3d* ps,const Quat4f* qs, double sc, double lmax );
+
 void drawScalarArray(int n,const Vec3d* ps,const double* vs, double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 void drawScalarField(Vec2i ns,const Vec3d* ps,const double* data, double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 

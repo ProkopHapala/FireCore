@@ -113,6 +113,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void renderGridFF( double isoVal=0.01, int isoSurfRenderType=0 );
 
 	void drawSystem( Vec3d ixyz );
+    void drawPi0s( float sc );
     //void drawSystemQMMM();
     //void renderOrbital(int i, double iso=0.1);
     //void renderDensity(       double iso=0.1);
@@ -400,6 +401,24 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
 }
 
+void MolGUI::drawPi0s( float sc=1.0 ){
+    const MMFFsp3& ff = W->ff;
+    glBegin(GL_LINES);
+    for(int ia=0; ia<ff.nnode; ia++){
+        int* ngs = ff.aneighs + ia*ff.nneigh_max;
+        for(int j=0; j<ff.nneigh_max; j++){
+            int ing = ngs[j]; 
+            if(ing<0){
+                int ipi = -ing-1;
+                Vec3f p=(Vec3f)ff.apos[ia];      glVertex3f(p.x,p.y,p.z);
+                p.add_mul( ff.pi0s[ipi].f, sc);  glVertex3f(p.x,p.y,p.z);
+                //printf("drawPi0s[%i,%i|%i] (%g,%g,%g)\n", ia, j, ipi, ff.pi0s[ipi].f.z, ff.pi0s[ipi].f.y, ff.pi0s[ipi].f.z );
+            }
+        }
+    }
+    glEnd();
+}
+
 void MolGUI::drawSystem( Vec3d ixyz ){
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
@@ -415,9 +434,12 @@ void MolGUI::drawSystem( Vec3d ixyz ){
     }
     //W->nbmol.print();
     if(bViewAtomSpheres){ Draw3D::atoms          ( W->nbmol.n, W->nbmol.ps, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
-    if(bViewAtomForces ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );    }
-    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels ( W->nbmol.n, W->nbmol.ps, fontTex3D,        0.01              );      }
+    //if(bViewAtomP0s    ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );  }
+    if(bViewAtomForces ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );  }
+    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels ( W->nbmol.n, W->nbmol.ps, fontTex3D,        0.01              );       }
     if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->nbmol.n,  (double*)W->nbmol.REQs,  W->nbmol.ps, 3, 2, fontTex3D, 0.01 ); }
+
+    if(W->ff.pi0s){ glColor3f(0.0f,1.0f,1.0f);  drawPi0s(1.0); }
 
 }
 

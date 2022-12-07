@@ -98,6 +98,7 @@ class OCL_PP: public OCL_DFT { public:
         newTask( "getMMFFsp3"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "gatherForceAndMove",1,{0,0,0,0},{1,0,0,0},program_relax);
         newTask( "updatePiPos0"      ,1,{0,0,0,0},{1,0,0,0},program_relax);
+        newTask( "evalPiPi"          ,1,{0,0,0,0},{1,0,0,0},program_relax);
         //newTask( "write_toImg"       ,3,{0,0,0,0},{1,1,1,0},program_relax);
         //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
         printf( "... makeKrenels_PP() DONE \n" );
@@ -330,17 +331,18 @@ class OCL_PP: public OCL_DFT { public:
 
     int initAtomsForces( int nAtoms_, int npi, int nnode, bool bFullMD=false ){
         nAtoms=nAtoms_;
-        ibuff_atoms   =newBuffer( "atoms",    nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        ibuff_aforces =newBuffer( "aforces",  nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_coefs   =newBuffer( "coefs",    nAtoms,     sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        ibuff_neighs  =newBuffer( "neighs",   nAtoms+npi, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        int nvecs=nAtoms+npi;
+        ibuff_atoms   =newBuffer( "atoms",    nvecs,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_aforces =newBuffer( "aforces",  nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_neighs  =newBuffer( "neighs",   nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         if(bFullMD){
-            ibuff_bkNeighs    = newBuffer( "bkNeighs",   nAtoms+npi, sizeof(int4),   0, CL_MEM_READ_WRITE );
-            ibuff_bondLK      = newBuffer( "bondLK ",    nAtoms ,    sizeof(float8), 0, CL_MEM_READ_ONLY  );
-            ibuff_ang0K       = newBuffer( "ang0K",      nnode  ,    sizeof(float4), 0, CL_MEM_READ_ONLY  );
-            ibuff_neighForce  = newBuffer( "neighForce", nnode*4,    sizeof(float4), 0, CL_MEM_READ_WRITE );
-            ibuff_avel        = newBuffer( "avel",       nAtoms+npi, sizeof(float4), 0, CL_MEM_READ_WRITE );
-            ibuff_pi0s        = newBuffer( "pi0s",       npi,        sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_bkNeighs    = newBuffer( "bkNeighs",   nvecs,   sizeof(int4),   0, CL_MEM_READ_WRITE );
+            ibuff_bondLK      = newBuffer( "bondLK ",    nAtoms , sizeof(float8), 0, CL_MEM_READ_ONLY  );
+            ibuff_ang0K       = newBuffer( "ang0K",      nnode  , sizeof(float4), 0, CL_MEM_READ_ONLY  );
+            ibuff_neighForce  = newBuffer( "neighForce", nnode*4, sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_avel        = newBuffer( "avel",       nvecs,   sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_pi0s        = newBuffer( "pi0s",       npi,     sizeof(float4), 0, CL_MEM_READ_WRITE );
         }
         printBuffers();
         return ibuff_atoms;
@@ -502,6 +504,7 @@ class OCL_PP: public OCL_DFT { public:
         //if(n >=0  ) 
         nDOFs.x=natom; 
         nDOFs.y=npi; 
+        //printf("setup_updatePiPos0 nDOFs(natom=%i,npi=%i) \n", nDOFs.x,nDOFs.y );
         useKernel( task->ikernel );
         err |= _useArg( nDOFs     );            // 1
         err |= useArgBuff( ibuff_atoms   );     // 2
@@ -515,6 +518,33 @@ class OCL_PP: public OCL_DFT { public:
                 __global float4*  apos,        // 2
                 __global float4*  pi0s,        // 3
                 __global int4*    pi_neighs    // 4
+            ){
+        */
+    }
+
+
+    OCLtask* setup_evalPiPi( int natom, int npi, OCLtask* task=0 ){
+        if(task==0) task = getTask("evalPiPi");
+        task->global.x = npi;
+        //task->local .x = 1;
+        //task->roundSizes();
+        //if(n >=0  ) 
+        nDOFs.x=natom; 
+        nDOFs.y=npi; 
+        //printf("setup_updatePiPos0 nDOFs(natom=%i,npi=%i) \n", nDOFs.x,nDOFs.y );
+        useKernel( task->ikernel );
+        err |= _useArg( nDOFs     );            // 1
+        err |= useArgBuff( ibuff_atoms   );     // 2
+        err |= useArgBuff( ibuff_aforces );     // 3
+        err |= useArgBuff( ibuff_neighs  );     // 4
+        OCL_checkError(err, "evalPiPi");
+        return task;
+        /*
+            __kernel void evalPiPi(
+                const int4        n,        // 1
+                __global float4*  apos,     // 2
+                __global float4*  aforce,   // 2
+                __global int4*    neighs    // 4
             ){
         */
     }

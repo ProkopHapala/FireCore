@@ -1031,6 +1031,17 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         glEnd();
     }
 
+    void drawVectorArray(int n,const  Vec3d* ps,const  Quat4f* qs, double sc, double lmax ){
+        glBegin(GL_LINES);
+        double l2max=sq(lmax/sc);
+        for(int i=0; i<n; i++){
+            if(lmax>0){ if(qs[i].f.norm2()>l2max ) continue; }
+            Vec3f p=(Vec3f)ps[i];    glVertex3f(p.x,p.y,p.z);
+            p.add_mul( qs[i].f, sc); glVertex3f(p.x,p.y,p.z);
+        }
+        glEnd();
+    }
+
 
     void drawScalarArray(int n,const Vec3d* ps,const double* vs, double vmin, double vmax, const uint32_t * colors, int ncol ){
         glBegin(GL_POINTS);

@@ -472,25 +472,30 @@ void evalPi0s(){
 };
 
 void makePiNeighs( int* pi_neighs ){
+    printf( "makePiNeighs() \n" );
     for(int ia=0; ia<nnode; ia++){
-        int ioff = ia*nneigh_max;
-        int* ngs = aneighs+ioff;
+        int* ngs = aneighs+(ia*nneigh_max);
         int ipi  = ngs[3];
         if(ipi<0){
             int ioff = (-ipi-1)*4;
             int nbond=0;
+            printf( "ngs[%i](%i,%i,%i) ->", ia, ngs[0],ngs[1],ngs[2] );
             for(int j=0; j<3; j++){
                 int ja  = ngs[j];
                 if( (ja>=0) && (ja<nnode) ){
                     int jpi = aneighs[ja*nneigh_max+3];
+                    printf( " [%i](%i,%i,%i,%i) ", ja, aneighs[ja*nneigh_max+0],aneighs[ja*nneigh_max+1],aneighs[ja*nneigh_max+2],aneighs[ja*nneigh_max+3] ); 
                     if(jpi<0){
                         pi_neighs[ioff+nbond]=natoms-jpi-1;
                         nbond++;
                     }
                 }
             }
+            printf( "nbond=%i \n", nbond); 
         }
     }
+    for(int i=0; i<npi; i++){ printf("pi[%i] (%i,%i,%i,%i) \n", i, pi_neighs[i*4+0],pi_neighs[i*4+1],pi_neighs[i*4+2],pi_neighs[i*4+3] ); };
+    //exit(0);
 };
 
 
