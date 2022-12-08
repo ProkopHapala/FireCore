@@ -533,7 +533,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.y=npi; 
         //printf("setup_updatePiPos0 nDOFs(natom=%i,npi=%i) \n", nDOFs.x,nDOFs.y );
         useKernel( task->ikernel );
-        err |= _useArg( nDOFs     );            // 1
+        err |= _useArg( nDOFs    );             // 1
         err |= useArgBuff( ibuff_atoms   );     // 2
         err |= useArgBuff( ibuff_aforces );     // 3
         err |= useArgBuff( ibuff_neighs  );     // 4

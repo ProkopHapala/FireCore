@@ -1,4 +1,7 @@
 
+
+int verbosity = 0;
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -237,7 +240,7 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
 
     // ======== Test before we run
     if(verbosity>1)nff.printAtomParams();
-    ckeckNaN_d( ff.natoms, ff.nneigh_max, ff.Kneighs, "ff.Kneighs" );
+    //ckeckNaN_d( ff.natoms, ff.nneigh_max, ff.Kneighs, "ff.Kneighs" );
     ckeckNaN_d( ff.nbonds,             1, ff.bond_k,  "ff.bond_k"  );
 
     //ff.doPi = 0;
