@@ -74,7 +74,7 @@ void init_buffers(){
         buffers .insert( { "bond_l0",   (double*)W.ff.bond_l0   } );
         buffers .insert( { "bond_k",    (double*)W.ff.bond_k    } );
         buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
-        buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
+        //buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
         ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
         ibuffers.insert( { "aneighs",      (int*)W.ff.aneighs  } );
     }else{

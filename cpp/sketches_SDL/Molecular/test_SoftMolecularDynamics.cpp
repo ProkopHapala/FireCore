@@ -5,6 +5,9 @@
 #include <vector>
 #include <math.h>
 
+
+int verbosity = 0;
+
 // Non-Blocking terminal input : see https://stackoverflow.com/questions/6055702/using-fgets-as-non-blocking-function-c
 // Probably works only on Linux
 #include <fcntl.h>

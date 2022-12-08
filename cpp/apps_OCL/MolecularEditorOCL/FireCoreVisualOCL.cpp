@@ -1,3 +1,5 @@
+int verbosity = 0;
+int idebug=0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -37,7 +39,6 @@
 #include "DynamicOpt.h"
 #include "QEq.h"
 
-int verbosity = 0;
 #include "OCL_DFT.h"
 #include "OCL_PP.h"
 
@@ -52,7 +53,7 @@ int verbosity = 0;
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
-int idebug=0;
+
 
 // ===========================================
 // ================= MAIN CLASS ==============
