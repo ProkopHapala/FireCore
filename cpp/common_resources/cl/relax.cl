@@ -1514,8 +1514,8 @@ __kernel void gatherForceAndMove(
     //ve = float4Zero;
     //pe = float4Zero;
 
-    //avel[iG] = ve;
-    //apos[iG] = pe;
+    avel[iG] = ve;
+    apos[iG] = pe;
 
 }
 
