@@ -10,3 +10,6 @@ add_library(eFF_lib     SHARED eFF_lib.cpp    )
 add_library(MMFF_lib    SHARED MMFF_lib.cpp   $<TARGET_OBJECTS:DynamicOpt> )
 
 
+add_library(Kekule_lib  SHARED Kekule_lib.cpp )
+
+
