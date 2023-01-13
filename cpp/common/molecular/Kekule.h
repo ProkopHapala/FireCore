@@ -183,7 +183,7 @@ class Kekule{ public:
         double F2sum=0;
         for(int i=0; i<maxIter; i++){
             F2sum = update( dt, ialg );
-            if(verbosity>0){ printf("Iter %i Ea %g Eb %g F2sum %g ", i, Ea, Eb, F2sum); if(verbosity>1)printBondOrders(); }
+            if(verbosity>0){ printf("Iter %i Ea %g Eb %g F2sum %g ", i, Ea, Eb, F2sum); if(verbosity>1){printBondOrders();}else{ printf("\n"); } }
             if(F2sum<F2conv) break;
         }
         //printBondOrders();

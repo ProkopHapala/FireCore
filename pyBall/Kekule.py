@@ -158,6 +158,32 @@ def testBond( n=100, d=0.1, Eout=None, ib=0, val0=None ):
         xs[i]=bondOrder[ib]
     return Eout, xs
 
+def runSystem( AOs, b2a , bPrintResults=True):
+    AOs = np.array(AOs)
+    b2a = np.array(b2a,dtype=np.int32)
+    init( len(AOs), len(b2a), b2a, AOs, seed=np.random.randint(15454) )
+    init_buffers()
+    getBuffs()
+    setDefaultBondOrders()
+    #relax(maxIter=100, dt=0.5,  ialg=1)
+    #Ks[0]=1;   # Katom
+    #Ks[1]=1;   # Kbond
+    #Ks[2]=0.0;   # KatomInt
+    #Ks[3]=0.1;   # KbondInt
+    #kek.Ks[0]=0;   # Katom
+    #kek.Ks[1]=0;   # Kbond
+    #kek.Ks[2]=0;   # KatomInt
+    #kek.Ks[3]=0;   # KbondInt
+    relax(maxIter=200, dt=0.5,  ialg=1)
+    if(bPrintResults):
+        print("============= Relaxed: ")
+        print( "atomValence    ", atomValence    )
+        print( "atomValenceMin ", atomValenceMin )
+        print( "atomValenceMax ", atomValenceMax )
+        print( "bondOrder      ", bondOrder      )
+        print( "bondOrderMin   ", bondOrderMin   )
+        print( "bondOrderMax   ", bondOrderMax   )
+
 # ====================================
 # ========= MAIN
 # ====================================

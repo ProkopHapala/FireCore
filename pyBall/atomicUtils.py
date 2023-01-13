@@ -406,6 +406,107 @@ def histR( ps, dbin=None, Rmax=None, weights=None ):
     print(( rs.shape, weights.shape ))
     return np.histogram(rs, bins, weights=weights)
 
+# ================= Topology Builder
+
+def addGroup( base, group, links ):
+    A0s,B0s = base
+    A1s,B1s = group
+    n0 = len(A0s)
+    n1 = len(A1s)
+    As = A0s + A1s
+    Bs = B0s + []
+    for b in links:
+        b_ = (  b[0], b[1]+n0 )
+        Bs.append(b_)
+        As[b_[0]] += 1
+        As[b_[1]] += 1
+    for b in B1s:
+        b_ = (  b[0]+n0, b[1]+n0 )
+        Bs.append(b_)
+
+def addBond( base, link, bNew=True ):
+    As,Bs = base
+    if bNew:
+        As=As+[]
+        Bs=Bs+[]
+    As[link[0]] += 1
+    As[link[1]] += 1
+    Bs.append( link )
+    return (As,Bs)
 
 
+def disolveAtom( base, ia ):
+    A0s,B0s = base
+    Bs     = []
+    neighs = []
+    for b in B0s:
+        i=b[0]
+        j=b[1]
+        if(i>ia):
+            i-=1
+        if(j>ia):
+            j-=1
+        
+        if b[0]==ia:
+            #print("add ng ", b)
+            neighs.append(j)
+            continue
+        if b[1]==ia:
+            #print("add ng ", b)
+            neighs.append(i)
+            continue
+        
+        print( "add B ", (i,j), b )
+        Bs.append( (i,j) )
+    As = list(A0s) + []
+    nng = len(neighs)
     
+    if( nng ==2 ):
+        Bs.append( (neighs[0],neighs[1]) )
+    else:
+        print("ERROR: disolveAtoms applicable only for atom with 2 neighbors ( not %i )" %nng )
+        print( neighs )
+        exit()
+    
+    #for i in neighs:
+    #    As[i]-=1
+    #print(As)
+    old_i = list( range(len(As)) )
+    old_i.pop(ia)
+    As.pop(ia)
+    len( As )
+    print("old_i", old_i)
+    print( len(As), len(old_i) )
+    return (As,Bs), old_i
+
+def removeGroup( base, remove ):
+    remove = set(remove)
+    A0s,B0s = base
+    #left = []
+    As = []
+    new_i = [-1]*len(A0s)
+    old_i = []
+    j = 0
+    for i,a in enumerate(A0s):
+        if not (i in remove):
+            As   .append( a )
+            old_i.append( i )
+            new_i[i] = j
+            j+=1
+    Bs = []
+    for b in B0s:
+        ia=b[0]
+        ja=b[1]
+        bi=( ia in remove )
+        bj=( ja in remove )
+        ia_ = new_i[ia]
+        ja_ = new_i[ja]
+        if not( bi or bj ):
+            Bs.append( (ia_,ja_) )
+        elif bi != bj:
+            if bi:  # ja is in, ia not
+                As[ ja_ ] -=1
+            else :  # ia is in, ja not
+                As[ ia_ ] -=1
+    return (As,Bs), old_i
+
