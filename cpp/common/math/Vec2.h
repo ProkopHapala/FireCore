@@ -142,7 +142,7 @@ class Vec2T{
 	}
 
 	inline T angle( const VEC& a ){
-		T d = cdot ( a );
+		T d =  dot ( a );
 		T c = cross( a );
 		return atan2( d, c );
 	}
