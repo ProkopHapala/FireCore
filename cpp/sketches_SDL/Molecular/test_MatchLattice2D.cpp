@@ -69,7 +69,8 @@ TestAppLatticeMatch2D::TestAppLatticeMatch2D( int& id, int WIDTH_, int HEIGHT_ )
     p=LM.lat1[0]; glColor3f(0.0,0.5,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
     p=LM.lat1[1]; glColor3f(0.0,0.5,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
     Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, Rmax  );
-    LM.walk2D( Rmax );
+    //LM.walk2D( Rmax, 0.05 );
+    LM.walk2D( Rmax, 0.02 );
     glEndList();
 
 }

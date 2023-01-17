@@ -65,7 +65,7 @@ class LatticeMatch2D{ public:
             for(int ia=ia0-na-1; ia<ia0+na+2; ia++ ){
                 Vec2d p = vb + lat0[0]*ia;
 
-                glColor3f(0.5,0.5,0.5); Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.1 );
+                //glColor3f(0.5,0.5,0.5); Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.1 );
 
                 double rab = p.normalize();
                 if(rab>Rmax) continue;
