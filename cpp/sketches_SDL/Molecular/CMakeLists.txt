@@ -76,6 +76,9 @@ target_link_libraries( test_ESFF ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 add_executable       ( test_BondAdaptedMesh test_BondAdaptedMesh.cpp $<TARGET_OBJECTS:SDL2OGL>  )
 target_link_libraries( test_BondAdaptedMesh ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
+add_executable       ( test_MatchLattice2D test_MatchLattice2D.cpp $<TARGET_OBJECTS:SDL2OGL> )
+target_link_libraries( test_MatchLattice2D ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
+
 add_custom_target( ${PROJECT_NAME}_src_dep SOURCES ${_COMMON_SRCS_} ${_COMMON_SDL_SRCS_} )
 
 add_custom_command(
