@@ -44,8 +44,6 @@ typedef void   (*Func2d3)( double, double,         double&, double&, double& );
 typedef void   (*Func3d3)( double, double, double, double&, double&, double& );
 
 
-
-
 inline double x2grid( double x, double xstep, double invXstep, int& ix ){
     double x_=x*invXstep;
     ix=(int)x_;
@@ -54,8 +52,8 @@ inline double x2grid( double x, double xstep, double invXstep, int& ix ){
 }
 
 inline double dangle(double da){
-    if      (da> M_PI){ return da - 2*M_PI; }
-    else if (da<-M_PI){ return da + 2*M_PI; }
+    if      (da> M_PI){ return da - (2*M_PI); }
+    else if (da<-M_PI){ return da + (2*M_PI); }
     return da;
 }
 

@@ -8,6 +8,10 @@ struct int2   { int x,y; };
 struct int4   { int x,y,z,w; };
 struct int8   { int x,y,z,w,hx,hy,hz,hw; };
 
+struct double2 { double x,y; };
+struct double4 { double x,y,z,w; };
+struct double8 { double x,y,z,w,hx,hy,hz,hw; };
+
 struct size_t4 { size_t x,y,z,w; };
 
 //======= float
