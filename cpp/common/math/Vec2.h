@@ -144,7 +144,8 @@ class Vec2T{
 	inline T angle( const VEC& a ){
 		T d =  dot ( a );
 		T c = cross( a );
-		return atan2( d, c );
+		//printf( "angle: dot %g cross %g \n", d, c );
+		return atan2( c, d );
 	}
 
 	inline T totprod(){ return x*y; }

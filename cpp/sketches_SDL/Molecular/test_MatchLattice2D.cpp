@@ -32,6 +32,7 @@ class TestAppLatticeMatch2D: public AppSDL2OGL_3D { public:
     LatticeMatch2D LM;
     int      fontTex;
     int ogl1=-1;
+    int ipick=-1;
 
     
 
@@ -52,27 +53,52 @@ TestAppLatticeMatch2D::TestAppLatticeMatch2D( int& id, int WIDTH_, int HEIGHT_ )
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" );
     //plot1.fontTex=fontTex;
 
-
     LM.lat0[0].set(  1.3,  0.0 );
     LM.lat0[1].set( -0.5,  0.6 );
     LM.lat1[0].set(  0.3,  0.2 );
     LM.lat1[1].set( -0.13, 0.9 );
 
+/*
+    LM.lat0[0].set(  1.3,  0.0 );
+    LM.lat0[1].set( -0.5,  0.6 );
+    //LM.lat1[0].set(  0.3,  0.5 );
+    //LM.lat1[1].set(  0.5, -0.3 );
+    //LM.lat1[0].set(  0.5, -0.3 );
+    //LM.lat1[1].set(  0.3,  0.5 );
+*/  
+
     ogl1 = glGenLists (1);
 
     double Rmax = 10.0;
+    double dmax = 0.1;
+    double dang = 0.1;
 
     glNewList (ogl1, GL_COMPILE);
     Vec2d p;
-    p=LM.lat0[0]; glColor3f(1.0,0.0,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    p=LM.lat0[1]; glColor3f(0.0,0.0,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    p=LM.lat1[0]; glColor3f(0.0,0.5,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    p=LM.lat1[1]; glColor3f(0.0,0.5,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, Rmax  );
+    // p=LM.lat0[0]*5; glColor3f(1.0,0.0,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
+    // p=LM.lat0[1]*5; glColor3f(0.0,0.0,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
+    p=LM.lat1[0]*5; glColor3f(0.0,0.5,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
+    p=LM.lat1[1]*5; glColor3f(0.0,0.5,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
+    glColor3f(0.0,0.0,0.0); Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, Rmax  );
     //LM.walk2D( Rmax, 0.05 );
-    LM.walk2D( Rmax, 0.02 );
+    LM.walk2D( Rmax, dmax );
     glEndList();
 
+    LM.angleToRange();
+    LM.sort();
+    
+    //for(int i=0; i<LM.match_u.size(); i++){ printf( "match_u[%i] ang %g n,d(%i,%g) \n", i, LM.match_u[i].alpha, LM.match_u[i].n, LM.match_u[i].d ); }
+    //for(int i=0; i<LM.match_v.size(); i++){ printf( "match_v[%i] ang %g n,d(%i,%g) \n", i, LM.match_v[i].alpha, LM.match_v[i].n, LM.match_v[i].d ); }
+
+    int n = LM.matchAngles(dang);
+
+    printf( "matchAngles: nfound = %i\n", n );
+    for(int i=0; i<n; i++){
+        Vec2i m = LM.matches[i];
+        const Latmiss& Lu = LM.match_u[m.i];
+        const Latmiss& Lv = LM.match_v[m.j];
+        printf( "[%i][%i %i %i %i]\n", i, Lu.ia, Lu.ib, Lv.ia, Lv.ib );
+    }
 }
 
 void TestAppLatticeMatch2D::draw(){
@@ -82,6 +108,24 @@ void TestAppLatticeMatch2D::draw(){
     glDisable(GL_LIGHTING);
 
     glCallList(ogl1);
+
+    if(ipick>=0){
+        
+        Vec2d u,v;
+        
+        LM.makeMatch( LM.matches[ipick],u,v,true );
+        glColor3f(1.0,0.0,0.0);  Draw3D::drawLine( Vec3dZero,  {u.x,u.y,0.0} );
+        glColor3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+
+        LM.makeMatch( LM.matches[ipick],u,v,false );
+        glColor3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {u.x,u.y,0.0} );
+        glColor3f(0.0,0.7,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        
+        //v = LM.reproduce_grid( LM.match_u[ipick]                      );   glColor3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        //v = LM.reproduce_vec ( LM.match_u[ipick], LM.lat1[0], LM.angU );   glColor3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        //v = LM.reproduce_grid( LM.match_v[ipick]                      );   glColor3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        //v = LM.reproduce_vec ( LM.match_v[ipick], LM.lat1[1], LM.angV+LM.angUV );   glColor3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+    }
 };
 
 /*
@@ -95,29 +139,21 @@ void TestAppLatticeMatch2D::drawHUD(){
 
 void TestAppLatticeMatch2D::eventHandling ( const SDL_Event& event  ){
 
-/*
+    int npick = LM.matches.size();
+    //int npick = LM.match_u.size();
+    //int npick = LM.match_v.size();
     Vec3d pa0;
     switch( event.type ){
         case SDL_KEYDOWN :
             switch( event.key.keysym.sym ){
                 case SDLK_p:  first_person = !first_person; break;
                 case SDLK_o:  perspective  = !perspective; break;
-
-                case SDLK_i: ff.info(); break;
-                case SDLK_LEFTBRACKET :  Espread *= 1.2; ogl_fs=genFieldMap(ogl_fs, field_ns, field_ps, field_Es, E0-Espread, E0+Espread ); break;
-                case SDLK_RIGHTBRACKET:  Espread /= 1.2; ogl_fs=genFieldMap(ogl_fs, field_ns, field_ps, field_Es, E0-Espread, E0+Espread ); break;
-                case SDLK_e: bMapElectron=!bMapElectron; break;
-                case SDLK_f:{
-                    pa0 = ff.apos[ipicked];
-                    sampleScalarField( Efunc, field_ns, {-5.0,-5.0,+0.1}, {0.1,0.0,0.0}, {0.0,0.1,0.0}, field_ps, field_Es, Erange );
-                    E0 = field_Es[0];
-                    ogl_fs = genFieldMap( ogl_fs, field_ns, field_ps, field_Es, E0-Espread, E0+Espread );
-                    ff.apos[ipicked]= pa0;
-                    }break;
-                case SDLK_SPACE: bRun = !bRun; break;
+                case SDLK_LEFTBRACKET :  ipick--; if(ipick<0     )ipick=npick-1; break;
+                case SDLK_RIGHTBRACKET:  ipick++; if(ipick>=npick)ipick=0;       break;
                 //case SDLK_r:  world.fireProjectile( warrior1 ); break;
             }
             break;
+        /*
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
@@ -132,9 +168,10 @@ void TestAppLatticeMatch2D::eventHandling ( const SDL_Event& event  ){
                     //printf( "dist %i %i = ", ipicked, ibpicked );
                     break;
             }
+        */
             break;
     };
-    */
+    
     AppSDL2OGL::eventHandling( event );
 }
 
