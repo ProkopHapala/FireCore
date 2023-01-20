@@ -13,8 +13,10 @@ from pyBall import Lattice2D as lat
 #    LM.lat1[1].set( -0.13, 0.9 );
 
 lat0=np.array([
-    [ 1.3, 0.0 ],
-    [-0.5, 0.6 ]
+    #[ 1.3, 0.0 ],
+    #[-0.5, 0.6 ]
+    [ 1.5, 0.0 ],
+    [ 0.0, 1.1 ]
 ])
 
 lat1=np.array([
@@ -66,7 +68,7 @@ plt.plot( [lat1[0,0],0.0,lat1[1,0], lat1[1,0]+lat1[0,0], lat1[0,0] ],  [lat1[0,1
 
 
 # ----- Plot best found latticle matches
-for i in range(5):
+for i in range(2):
     u=lat0[0,:]*inds[i,0] + lat0[1,:]*inds[i,1] 
     v=lat0[0,:]*inds[i,2] + lat0[1,:]*inds[i,3]
     plt.plot( [u[0],0.,v[0]], [u[1],0.,v[1]]  )
