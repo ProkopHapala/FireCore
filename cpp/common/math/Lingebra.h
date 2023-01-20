@@ -106,7 +106,7 @@ namespace Lingebra{
 class LinSolver{ public:
     //static constexpr int       maxIters = 10;
     //static constexpr double    maxErr2  = 1e-5;
-    int n;
+    int n=0;
     // temp
     int    istep=0;
     double *  r=0;
@@ -146,11 +146,11 @@ class LinSolver{ public:
     }
 
     double step_GD(double dt){
-        dotFunc  ( n, x, r );
-        VecN::sub( n, b, r, r );
-        //VecN::add( n, b, r, r );
-        VecN::fma( n, x, r, dt, x );
-        return VecN::dot(n, r,r);
+        dotFunc  ( n, x, r );         //  r = A*x
+        VecN::sub( n, b, r, r );      //  f = b - r = b - A*x
+        //VecN::add( n, b, r, r );   
+        VecN::fma( n, x, r, dt, x );  //  x += r*dt
+        return VecN::dot(n, r,r);     //  E = <r|r>
     }
 
     double step_CG(){
@@ -181,6 +181,7 @@ class LinSolver{ public:
         VecN::fma( n, x, p ,  alpha,   x );   // x  = x - a*p
         VecN::fma( n, r, Ap, -alpha,   r2 );  // r2 = r - a*A|p>
         double err2 = VecN::dot(n, r2,r2);
+        //printf( "step_CG[%i] err %g \n", istep, sqrt(err2) );
         istep++;
         return err2;
         //printf( " iter: %i  err2: %f |  alpha %f \n", i, err2,     alpha );

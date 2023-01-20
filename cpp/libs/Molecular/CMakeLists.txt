@@ -10,6 +10,7 @@ add_library(eFF_lib     SHARED eFF_lib.cpp    )
 add_library(MMFF_lib    SHARED MMFF_lib.cpp   $<TARGET_OBJECTS:DynamicOpt> )
 
 
-add_library(Kekule_lib     SHARED Kekule_lib.cpp )
-add_library(Lattice2D_lib  SHARED Lattice2D_lib.cpp )
+add_library(Kekule_lib               SHARED Kekule_lib.cpp              )
+add_library(Lattice2D_lib            SHARED Lattice2D_lib.cpp           )
+add_library(SchroedingerGreen2D_lib  SHARED SchroedingerGreen2D_lib.cpp )
 

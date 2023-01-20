@@ -102,11 +102,10 @@ class LatticeMatch2D{ public:
             }
         }
 
-        // int nu = ((int)Rmax/lu0); glColor3f(1.0,0.0,0.0); 
-        // int nv = ((int)Rmax/lv0); glColor3f(0.0,0.0,1.0); 
-        // glColor3f(1.0,0.9,0.8); for( const Latmiss& l: match_u ){ Vec2d p = lat0[0]*l.ia + lat0[1]*l.ib; Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.2 ); } for(int i=0;i<(nu+1);i++){ Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, lu0*i  ); }
-        // glColor3f(0.8,0.9,1.0); for( const Latmiss& l: match_v ){ Vec2d p = lat0[0]*l.ia + lat0[1]*l.ib; Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.2 ); } for(int i=0;i<(nv+1);i++){ Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, lv0*i  ); }
-    
+        //int nu = ((int)Rmax/lu0); glColor3f(1.0,0.0,0.0); 
+        //int nv = ((int)Rmax/lv0); glColor3f(0.0,0.0,1.0); 
+        //glColor3f(1.0,0.9,0.8); for( const Latmiss& l: match_u ){ Vec2d p = lat0[0]*l.ia + lat0[1]*l.ib; Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.2 ); } for(int i=0;i<(nu+1);i++){ Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, lu0*i  ); }
+        //glColor3f(0.8,0.9,1.0); for( const Latmiss& l: match_v ){ Vec2d p = lat0[0]*l.ia + lat0[1]*l.ib; Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.2 ); } for(int i=0;i<(nv+1);i++){ Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, lv0*i  ); }
         printf( " walk2D nu %i nv %i Rmax %g dmax %g \n", match_u.size(), match_v.size(), Rmax, dmax );
         printf( " walk2D lat0 [(%g,%g)  (%g,%g)] \n", lat0[0].x,lat0[0].y,  lat0[1].x,lat0[1].y );
         printf( " walk2D lat1 [(%g,%g)  (%g,%g)] \n", lat1[0].x,lat1[0].y,  lat1[1].x,lat1[1].y );

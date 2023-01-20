@@ -203,7 +203,8 @@ void loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
     sprintf(tmpstr, "%s.xyz", name ); printf("tmpstr=`%s`\n", tmpstr);
-    int iret = builder.insertFlexibleMolecule(  builder.loadMolType( tmpstr, name ), {0,0,0}, Mat3dIdentity, -1 );
+    int imol = builder.loadMolType( tmpstr, name );
+    int iret = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
     if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
     builder.tryAddConfsToAtoms( 0, -1, 1 );
     if(verbosity>2)builder.printAtomConfs(false);
