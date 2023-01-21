@@ -15,6 +15,11 @@ SchroedingerGreen2D W;
 
 extern "C"{
 
+void setVerbosity( int verbosity_, int idebug_ ){
+    verbosity = verbosity_;
+    idebug    = idebug_;
+}
+
 void init_buffers(){
     // double*  V     = 0; // potential
     // double*  psi   = 0; // psi
@@ -27,9 +32,13 @@ void init_buffers(){
     buffers.insert( { "EQF",    &W.E      } );
 }
 
-void   init( int nx, int ny       ){ W.init(nx,ny); }
+double  init( int nx, int ny, double dstep, double m_Me ){ return W.init(nx,ny,dstep,m_Me); }
+
+double setStep   (double dstep, double m_Me){ return W.setStep( dstep, m_Me ); }
 double step      ( double E0, double dt ){ return W.step( E0, dt); };
 double step_Green(                      ){ return W.step_CG();     };
+
+int solve_Green( int maxIters, double maxErr ){ return W.solve_CG( maxIters, maxErr ); };
 
 //double sumE(){ W.sumE(); }
 //double sumF( double renorm1 ){ W.sumF(); }

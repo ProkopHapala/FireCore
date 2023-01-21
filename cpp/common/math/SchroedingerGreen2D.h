@@ -8,6 +8,35 @@
 
 #include "Lingebra.h"
 
+const double hbar_eVfs =  0.6582119569;  // [eV*fs]
+
+
+//const double hbar = 6.582119569e-16;   // [eV*s]
+//const double Me   = 9.1093837e-31;     // [kg]  
+
+
+// hbar = 6.582119569e-16  [eV*s] = 6.582119569e-16 = 0.6582119569 eV*fs
+// h    = 4.1356676966e-15 [eV*s] = 4.1356676966 eV*fs 
+
+
+// E = h*f = h*(1/t)
+// t = h/E  =>    eV = 4.135667696e-15 [s] = 4.135667696 [fs]    // fs = 1e-15 s
+
+// eV = 1.602176634e-19 [J]
+// eV = 1.602176634e-19 [kg*m^2/s^2] = 1.602176634e-19 * ( (1e-15)^2/((9.1093837e-31)*(1e-10)^2)   * [Me*A^2/fs^2]
+// eV = 17.5882001106   ((Me*A^2)/(fs^2))   
+
+
+// J  = kg*m^2/s^2
+
+
+// (J^2 * s^2)/(kg * m^2 ) =  J * (kg*m^2/s^2) * (s^2) / (kg * m^2) = J * 1 
+
+//   ( hbar**2)/(2*Me) =   0.6582119569^2    (eV^2 * fs^2) / ( 2*Me * A^2 ) =  0.6582119569^2 * 0.5 * (eV^2) * (fs^2/(Me*A^2)) =  0.6582119569^2 * 0.5 *    (eV^2)/(eV/17.5882001106)  =      3.80998211619   eV       
+
+//   
+
+
 /*
 
 E0 ... target energy
@@ -55,14 +84,9 @@ class SchroedingerGreen2D : public LinSolver{ public:
     double KnormForce=0.0;
 
 //void init(int nx_, int ny_, double* V_=0, double* source_=0, double* psi_=0, double* fpsi_=0){
-void init(int nx_, int ny_ ){
-
+double init(int nx_, int ny_, double dstep_=0.1, double m_Me=1.0 ){
     nx=nx_; ny=ny_; ntot=nx*ny;
-    dstep=1./nx;
     iter=0;
-    cL = 0.002 * -1/(dstep*dstep);
-    //cL = 0.0 * -1/(dstep*dstep);
-
     double* source_ = b;
     //fpsi_   = b;
     //_bindOrRealloc( ntot,    V_,    V );
@@ -75,7 +99,19 @@ void init(int nx_, int ny_ ){
     _realloc( fpsi,   ntot );                           // ToDo: Needed just for gradient descent
     _realloc( vpsi,   ntot ); VecN::set(ntot,0.0,vpsi); // ToDo: Needed just for MDdamp
     LinSolver::setLinearProblem(ntot, psi, source );
-    
+    return setStep( dstep_, m_Me );
+}
+
+double setStep( double dstep_, double m_Me=1.0 ){
+    // hbar = 6.582119569e-16  [eV*s] = 6.582119569e-16 = 0.6582119569 eV*fs
+    // h    = 4.1356676966e-15 [eV*s] = 4.1356676966 eV*fs 
+    // eV   = 17.5882001106    [(Me*A^2)/(fs^2)]  
+    //   (hbar**2)/(2*Me) =   0.6582119569^2    (eV^2 * fs^2) / ( 2*Me * A^2 ) =  0.6582119569^2 * 0.5 * (eV^2) * (fs^2/(Me*A^2)) =  0.6582119569^2 * 0.5 *    (eV^2)/(eV/17.5882001106)  =      3.80998211619   eV    
+    dstep = dstep_;
+    //cL    = -3.80998211619/(m_Me*dstep*dstep);
+    cL    = -3.8099821121133326/(m_Me*dstep*dstep);
+    printf( "setStep(): dstep %g m_Me %g cL %g \n", dstep, m_Me, cL );
+    return cL;
 }
 
 double sumE(){ // energy (hamiltonian)
@@ -173,6 +209,9 @@ virtual void dotFunc( int n, double * psi, double * Ax ) override {
             if((iy-1)>=0){ li+=psi[i-nx]; }
             li*=cL;
             // ---- Total energy
+            //if(verbosity>2){
+            //    printf( "[%i,%i] li %g vi*yi %g yi*E0 %g \n", ix,iy,  li, yi*vi, -yi*E0  );
+            //}
             double f  = (li + yi*(vi - E0))*-1;
             f        += KQ*yi;
             Ax[i]     = f;      //  (H-e0*I)*Y   = ( L + V -e0*I )*Y
