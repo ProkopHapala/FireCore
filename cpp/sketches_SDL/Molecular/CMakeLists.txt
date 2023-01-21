@@ -31,6 +31,9 @@ target_link_libraries( test_eFF ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 add_executable       ( test_eFF_old test_eFF_old.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
 target_link_libraries( test_eFF_old ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
+add_executable       ( test_eFF_MD test_eFF_MD.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
+target_link_libraries( test_eFF_MD ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
+
 add_executable       ( test_eFFMC test_eFFMC.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
 target_link_libraries( test_eFFMC ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
