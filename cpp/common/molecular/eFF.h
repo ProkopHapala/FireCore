@@ -180,6 +180,9 @@ constexpr static const Quat4d default_AtomParams[] = {
 { 7.,  0.1, 0.1, 2.0 }, // 9 F
 };
 
+//                                    H   Be     B      C     N     O      F
+constexpr static const double aMasses[7] = {  1.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
+
     bool bDealoc = false;
     //double dvmax = 0.1;
     //double dpmax = 0.1;
@@ -295,6 +298,17 @@ void realloc(int na_, int ne_){
 
 }
 
+void makeMasses(double*& invMasses){
+    //double atomic_mass   = 1.6605402e-27;
+    //double electron_mass = 9.1093837e-31; 
+    double au_Me         = 1822.88973073;
+    invMasses = new double[nDOFs];
+    int iszoff = ne*3+na;
+    for(int i=0; i<na;   i++){  invMasses[i]        = 1/( aMasses[ (int)(aPars[i].x-0.5) ] * au_Me );  } // assign atomic masses
+    for(int i=0; i<ne*3; i++){  invMasses[i+na]     = 1;          }                                      // assign electron masses
+    for(int i=0; i<ne;   i++){  invMasses[i+iszoff] = 1/( 0.5 );  }                                      // assign electron size massses ????
+}
+
 void dealloc(){
     delete [] pDOFs;
     delete [] fDOFs;
@@ -365,10 +379,10 @@ double evalEE(){
                 }else{
                     if( spini==espin[j] ){
                         //printf( "EeePaul[%i,%i] ", i, j );
-                        i_DEBUG=1;
+                        //i_DEBUG=1;
                         dEpaul = addDensOverlapGauss_S( dR, si*M_SQRT2, sj*M_SQRT2, KPauliOverlap, f, fsi, fsj );
                         //double dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, false, KRSrho ); EeePaul+=dEpaul;
-                        i_DEBUG=0;
+                        //i_DEBUG=0;
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     }
                 }
@@ -455,7 +469,7 @@ double evalAE(){
 
 /// evaluate Atom-Atom forces
 double evalAA(){
-    if( i_DEBUG>0 ) printf( "evalAA \n" );
+    //if( i_DEBUG>0 ) printf( "evalAA \n" );
     Eaa=0;
     //double invSaa = 1/(saa*saa);
     //double w2aa = waa*waa;
