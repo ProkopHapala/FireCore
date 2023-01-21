@@ -189,11 +189,16 @@ class LinSolver{ public:
         //if (err2 < maxErr2 ) break;
     }
 
-    void solve_CG( int maxIters, double maxErr2 ){
+   int solve_CG( int maxIters, double maxErr ){
+        double maxErr2=maxErr*maxErr;
         istep = 0;
-        for ( int i =0; i<maxIters; i++) {
-            if ( step_CG() > maxErr2 ) break;
+        double err2=0;
+        int itr;
+        for (itr=0; itr<maxIters; itr++) {
+            err2 = step_CG();
+            if ( err2 < maxErr2 ) break;
         }
+        return itr;
     }
 
 };

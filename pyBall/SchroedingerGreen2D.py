@@ -47,6 +47,12 @@ isInitialized = False
 # ========= C functions
 # ====================================
 
+#  void setVerbosity( int verbosity_, int idebug_ ){
+lib.setVerbosity.argtypes  = [c_int, c_int] 
+lib.setVerbosity.restype   =  None
+def setVerbosity(verbosity=0, idebug=0):
+    return lib.setVerbosity(verbosity, idebug)
+
 #double* getBuff(const char* name){ 
 lib.getBuff.argtypes = [c_char_p]
 lib.getBuff.restype  = c_double_p 
@@ -67,12 +73,23 @@ def getBuffs():
     fpsi   = getBuff( "fpsi",   (ny,nx) )
 
 #  void init(int nx_, int ny_){
-lib.init.argtypes  = [c_int, c_int] 
-lib.init.restype   =  None
-def init(nx_, ny_):
+lib.init.argtypes  = [c_int, c_int,c_double, c_double] 
+lib.init.restype   =  c_double
+def init(nx_, ny_,dstep=0.1, m_Me=1.0, L=None):
     global nx,ny
     nx=nx_;ny=ny_
-    return lib.init(nx, ny)
+    if L is not None:
+        dstep = L/nx
+        print("init(): L %g nx %i => dstep %g "  %(L,nx,dstep))
+    return lib.init(nx, ny, dstep, m_Me)
+
+#  double setStep( double dstep, double m_Me ){
+lib.setStep.argtypes  = [c_double, c_double] 
+lib.setStep.restype   =  c_double
+def setStep(dstep=0.1,m_Me=1.0, L=None):
+    if L is not None:
+        dstep = L/nx
+    return lib.setStep(dstep, m_Me)
 
 #  double step( double E0, double dt ){
 lib.step.argtypes  = [c_double, c_double] 
@@ -85,6 +102,12 @@ lib.step_Green.argtypes  = []
 lib.step_Green.restype   =  c_double
 def step_Green():
     return lib.step_Green()
+
+# double solve_Green( int maxIters, double maxErr ){
+lib.solve_Green.argtypes  = [c_int, c_double] 
+lib.solve_Green.restype   =  c_int
+def solve_Green( maxErr=1e-2, maxIters=1000 ):
+    return lib.solve_Green( maxIters, maxErr )
 
 # ====================================
 # ========= Test Functions
