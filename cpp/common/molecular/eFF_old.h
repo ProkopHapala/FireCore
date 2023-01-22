@@ -526,7 +526,7 @@ int Eterms2str(char* str){
 }
 
 int orb2str(char* str, int ie){
-    return sprintf( str, "e[%i] E %7.3f s %5.2f  p(%5.2f,%5.2f,%5.2f) \n", ie, eE[ie], esize[ie], epos[ie].x,epos[ie].y,epos[ie].z );
+    return sprintf( str, "e[%i] E %7.3f s %5.2f  p(%5.2f,%5.2f,%5.2f)  f(%5.2f,%5.2f,%5.2f) \n", ie, eE[ie], esize[ie], epos[ie].x,epos[ie].y,epos[ie].z,    vsize[ie],eforce[ie].x,eforce[ie].y,eforce[ie].z  );
 }
 char* orbs2str(char* str0){
     char* str=str0;

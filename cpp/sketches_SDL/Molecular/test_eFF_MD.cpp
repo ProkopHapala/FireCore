@@ -18,6 +18,7 @@ int verbosity = 0;
 #include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
+#include "Vec3Utils.h"
 #include "VecN.h"
 
 #include "AppSDL2OGL_3D.h"
@@ -42,7 +43,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     bool bRun = false;
     EFF  ff;
     DynamicOpt opt;
-    double dt_MD;
+    double dt_MD            = 1e-6;
     double* invMasses_Relax =0;
     double* invMasses_MD    =0;
 
@@ -50,6 +51,8 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     double F2conv = 1e-6;
     bool bRelaxed=false;
     bool bMD=true;
+
+    std::vector<int> ifixe;
 
     Vec2i field_ns;
     Vec2d Erange;
@@ -86,9 +89,11 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" );
     plot1.fontTex=fontTex;
 
+    DEBUG
     // ===== SETUP GEOM
     //char* fname = "data/H_eFF.xyz";
-    ff.loadFromFile_fgo( "data/H2O.fgo" );
+    //ff.loadFromFile_fgo( "data/H2O.fgo" );    ff.writeTo_fgo( "test.fgo", false ); //exit(0);
+    ff.loadFromFile_fgo( "data/H2O_shoot.fgo", true );  ifixe.push_back(ff.ne-1);      bMD=true; bRelaxed=true;
     //ff.loadFromFile_fgo( "data/C2H4.fgo" );
     //ff.loadFromFile_fgo( "data/C2H2.fgo" );
 
@@ -100,14 +105,16 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //ff.bEvalAA        = 0;
 
     // ==== Bind Optimizer
-    opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, 0, ff.fDOFs, 0 );
-    opt.cleanVel( );
-    opt.initOpt( 0.01, 0.2 );
-    opt.f_limit = 1000.0;
-
-
-    //invMasses_MD = new double[opt.n];
+    //opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, 0, ff.fDOFs, 0 );
+    opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, 0 );
     ff.makeMasses(invMasses_MD);
+    if(!bRelaxed){
+        opt.cleanVel( );
+        opt.initOpt( 0.01, 0.2 );
+        opt.f_limit = 1000.0;
+    }else{
+        opt.invMasses = invMasses_MD;
+    }    
 
     //ff.iPauliModel = 0; // dens overlap
     ff.iPauliModel = 1; // addPauliGauss   from the article using  KRSrho
@@ -164,10 +171,18 @@ void TestAppRARFF::draw(){
             ff.clearForce();
             Etot = ff.eval();
             if(bRelaxed){
-                if(bMD) opt.move_LeapFrog(dt_MD); // MD-step
+                if(bMD){ 
+                    opt.move_LeapFrog(dt_MD); // MD-step
+                    //ff.move_MD(dt_MD);          // MD-step
+                    double vemax = sqrt(maxR2( ff.ne, ((Vec3d*)opt.vel)+ff.na ));
+                    printf( "MD E= %g ve_max= %g  \n", Etot, vemax );
+                }
             }else{
-                F2 = opt.move_FIRE();             // relaxation step
-                if(F2<F2conv){                  // converged?
+                for(int ie: ifixe ){  ff.fixElectron(ie, opt.vel); }; // fix fixed electrons
+                F2 = opt.move_FIRE();                                 // relaxation step
+                printf( "Relax E= %g |F| = %g \n", Etot, sqrt(F2) );
+                if(F2<F2conv){                                        // converged?
+                    ff.writeTo_fgo( "relaxed.fgo", false );
                     bRelaxed=true; 
                     invMasses_Relax= opt.invMasses;
                     opt.invMasses  = invMasses_MD ;
