@@ -43,7 +43,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     bool bRun = false;
     EFF  ff;
     DynamicOpt opt;
-    double dt_MD            = 1e-6;
+    double dt_MD            = 1e-4;
     double* invMasses_Relax =0;
     double* invMasses_MD    =0;
 
@@ -161,7 +161,7 @@ void TestAppRARFF::draw(){
     //return;
     double vminOK = 1e-6;
     double vmaxOK = 1e+3;
-    //perFrame=10; // ToDo : why it does not work properly for  perFrame>1 ?
+    perFrame=10; // ToDo : why it does not work properly for  perFrame>1 ?
     //perFrame = 1;
     double sum = 0;
     if(bRun){
@@ -173,7 +173,6 @@ void TestAppRARFF::draw(){
             if(bRelaxed){
                 if(bMD){ 
                     opt.move_LeapFrog(dt_MD); // MD-step
-                    //ff.move_MD(dt_MD);          // MD-step
                     double vemax = sqrt(maxR2( ff.ne, ((Vec3d*)opt.vel)+ff.na ));
                     printf( "MD E= %g ve_max= %g  \n", Etot, vemax );
                 }
@@ -214,7 +213,7 @@ void TestAppRARFF::drawHUD(){
 	char* s=str;
 	s+=ff.Eterms2str(s);
 	ff.orbs2str(s);
-    Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+    Draw::drawText( str, fontTex, fontSizeDef, {120,20} );
 }
 
 /*

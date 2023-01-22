@@ -316,9 +316,9 @@ void makeMasses(double*& invMasses){
     invMasses = new double[nDOFs];
     int na3 =na*3;
     int ne3 =ne*3; 
-    double* buff=invMasses; for(int i=0; i<na;  i++){ double m = 0* eV_MeAfs/( aMasses[ (int)(aPars[i].x-0.5) ] * au_Me ); int i3=i*3; buff[i3]=m;buff[i3+1]=m;buff[i3+2]=m;  } // assign atomic masses   [Me] i.e. in units of electron mass
-    buff+=na3;              for(int i=0; i<ne3; i++){ buff[i]  =    eV_MeAfs;         }                                      // assign electron masses [Me] i.e. in units of electron mass
-    buff+=ne3;              for(int i=0; i<ne;  i++){ buff[i]  = 0* eV_MeAfs/( 0.5 ); }                                      // assign electron size massses ????  ToDo:  What should be this mass ?????
+    double* buff=invMasses; for(int i=0; i<na;  i++){ double m = eV_MeAfs/( aMasses[ (int)(aPars[i].x-0.5) ] * au_Me ); int i3=i*3; buff[i3]=m;buff[i3+1]=m;buff[i3+2]=m;  } // assign atomic masses   [Me] i.e. in units of electron mass
+    buff+=na3;              for(int i=0; i<ne3; i++){ buff[i]  = eV_MeAfs;         }                                      // assign electron masses [Me] i.e. in units of electron mass
+    buff+=ne3;              for(int i=0; i<ne;  i++){ buff[i]  = 0.01*eV_MeAfs/( 0.5 ); }                                      // assign electron size massses ????  ToDo:  What should be this mass ?????
     /*
     // Force units:  [eV/A]
     // Mass  units:  [eV/]
@@ -677,9 +677,9 @@ int Eterms2str(char* str){
 
 int orb2str(char* str, int ie){
     if(vDOFs){
-        return sprintf( str, "e[%i|%i] E %7.3f p(%5.2f,%5.2f,%5.2f|%5.2f)  f(%5.2f,%5.2f,%5.2f|%5.2f) v(%5.2f,%5.2f,%5.2f|%5.2f)\n", ie, espin[ie], eE[ie], epos[ie].x,epos[ie].y,epos[ie].z,esize[ie],    eforce[ie].x,eforce[ie].y,eforce[ie].z,fsize[ie],  evel[ie].x,evel[ie].y,evel[ie].z,vsize[ie]  );
+        return sprintf( str, "e[%i|%i] E %7.3f p(%5.2f,%5.2f,%5.2f|%5.2f) f(%5.2f,%5.2f,%5.2f|%5.2f) v(%5.2f,%5.2f,%5.2f|%5.2f)\n", ie, espin[ie], eE[ie], epos[ie].x,epos[ie].y,epos[ie].z,esize[ie],    eforce[ie].x,eforce[ie].y,eforce[ie].z,fsize[ie],  evel[ie].x,evel[ie].y,evel[ie].z,vsize[ie]  );
     }else{
-        return sprintf( str, "e[%i|%i] E %7.3f p(%5.2f,%5.2f,%5.2f|%5.2f)  f(%5.2f,%5.2f,%5.2f|%5.2f) \n", ie, espin[ie], eE[ie],   epos[ie].x,epos[ie].y,epos[ie].z,esize[ie],    eforce[ie].x,eforce[ie].y,eforce[ie].z,fsize[ie]  );
+        return sprintf( str, "e[%i|%i] E %7.3f p(%5.2f,%5.2f,%5.2f|%5.2f) f(%5.2f,%5.2f,%5.2f|%5.2f)\n", ie, espin[ie], eE[ie],   epos[ie].x,epos[ie].y,epos[ie].z,esize[ie],    eforce[ie].x,eforce[ie].y,eforce[ie].z,fsize[ie]  );
     }
     //return sprintf( str, "e[%i] E %7.3f s %5.2f  p(%5.2f,%5.2f,%5.2f) \n", ie, eE[ie], esize[ie], epos[ie].x,epos[ie].y,epos[ie].z );
 }
@@ -818,8 +818,8 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false ){
         int spin=0;
         fgets( buff, nbuff, pFile);  //printf( "fgets: >%s<\n", buff );
         //                                                               1    2   3    4   5   6        7    8    9   10
-        //int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z,  &s, &c, &spin,   &vx, &vy, &vz, &vs );
-        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
+        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z,  &s, &c, &spin,   &vx, &vy, &vz, &vs );
+        //int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
         epos [i]=(Vec3d){x,y,z};
         esize[i]=s;
         if(bVel){ 
