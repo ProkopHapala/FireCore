@@ -34,6 +34,16 @@ static inline Vec3T<T> sum( int n, const Vec3T<T>* vs, int* selection ){
 template<class T> static inline Vec3T<T> average( int n, const Vec3T<T>* vs                 ){ Vec3T<T> v=sum(n,vs          ); v.mul( 1/(T)n ); return v; }
 template<class T> static inline Vec3T<T> average( int n, const Vec3T<T>* vs, int* selection ){ Vec3T<T> v=sum(n,vs,selection); v.mul( 1/(T)n ); return v; }
 
+
+
+template<class T> 
+static inline T maxR2( int n, const Vec3T<T>* vs ){
+    T R2=0;
+    for(int i=0; i<n; i++){ double r2=vs[i].norm2(); if(r2>R2)R2=r2; }
+    return R2;
+}
+
+
 template<class T>
 static inline Vec3T<T> torq( int n, const Vec3T<T>* ps,const Vec3T<T>* vs, const Vec3T<T>& p0, int* selection=0 ){
     Vec3T<T> v; v.set(0.0);

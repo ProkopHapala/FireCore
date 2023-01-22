@@ -545,8 +545,7 @@ inline double addPauliGauss( const Vec3d& dR, double si, double sj, Vec3d& f, do
     //printf( "---------------------- \n" );
 
     //printf( " E %g T %g eS %g S %g ", T*eS, T, eS, S );
-
-    printf( "addPauliGauss() E %g T %g S %g | r %g anti %i \n", T*eS, T, S, sqrt(r2), (int)anti  );
+    //printf( "addPauliGauss() E %g T %g S %g | r %g anti %i \n", T*eS, T, S, sqrt(r2), (int)anti  );
 
     //return T * eS;
     //return eS;
