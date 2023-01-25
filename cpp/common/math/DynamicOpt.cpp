@@ -12,8 +12,10 @@ void DynamicOpt::move_LeapFrog(double dt_loc){
     //double dt_ = dt*fscale_safe;
     for ( int i=0; i<n; i++ ){
         //printf( "i %i v %g f %g p %g iM %g \n", i, vel[i],force[i],pos[i],invMasses[i]  );
-        vel[i] += force[i]*invMasses[i]*dt_loc;
-        pos[i] += vel[i]*dt_loc;
+        double v = vel[i];
+        v += force[i]*invMasses[i]*dt_loc;
+        pos[i]  += v*dt_loc;
+        vel[i]   = v;
     }
     stepsDone++;
     t += dt_loc;
@@ -60,15 +62,22 @@ double DynamicOpt::move_GD_safe(double dt_loc){
 }
 */
 
-void DynamicOpt::move_MD(double dt_loc,double damp){
+double DynamicOpt::move_MD(double dt_loc,double damp){
     double cdamp = 1 - damp; if(cdamp<0)cdamp=0;
     //printf( "DynamicOpt::move_MD() cdamp %g \n", cdamp );
+    double f2sum=0;
     for ( int i=0; i<n; i++ ){
-        vel[i]  = cdamp*vel[i] + force[i]*invMasses[i]*dt_loc;
-        pos[i] += vel[i]*dt_loc;
+        double f = force[i];
+        f2sum+=f*f;
+        double v = vel[i];
+        v*= cdamp;
+        v+= invMasses[i]*(f*dt_loc);
+        pos[i] += v*dt_loc;
+        vel[i]  = v;
     }
     stepsDone++;
     t += dt;
+    return f2sum;
 }
 
 /*

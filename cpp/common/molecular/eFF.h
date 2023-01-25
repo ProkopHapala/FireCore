@@ -256,6 +256,7 @@ constexpr static const double aMasses[7] = {  1.0, 9.0,  11.0,  12.0,  14.0, 16.
     double* pDOFs =0;  ///< buffer of degrees of freedom
     double* fDOFs =0;  ///< buffer of forces on degrees of freedom
     double* vDOFs =0;  ///< buffer of velocities on degrees of freedom
+    double* invMasses=0; ///< buffer of inverse masses [nDOFs] (both electrons and nuclei)
 
     double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; ///< different kinds of energy
 
@@ -292,11 +293,13 @@ void realloc(int na_, int ne_, bool bVel=false){
     fsize  =          fDOFs + na*3 + ne*3;
 
     if(bVel){
-        _realloc( vDOFs, nDOFs); // velocities
+        _realloc( vDOFs, nDOFs      ); // velocities
+        _realloc( invMasses, nDOFs  ); // velocities
         avel  = (Vec3d*)vDOFs;
         evel  = (Vec3d*)(vDOFs + na*3);
         vsize =          vDOFs + na*3 + ne*3;
-        for(int i=0; i<nDOFs; i++){ vDOFs[i]=0; }
+        for(int i=0; i<nDOFs; i++){ vDOFs[i]=0;     }
+        for(int i=0; i<nDOFs; i++){ invMasses[i]=1; }
     }
 
     //_realloc(apos  ,na );
@@ -313,7 +316,7 @@ void makeMasses(double*& invMasses){
     //double electron_mass = 9.1093837e-31; 
     double au_Me           = 1822.88973073;
     double eV_MeAfs        = 17.5882001106;   // [ Me*A^2/fs^2]  
-    invMasses = new double[nDOFs];
+    if(invMasses==0) invMasses = new double[nDOFs];
     int na3 =na*3;
     int ne3 =ne*3; 
     double* buff=invMasses; for(int i=0; i<na;  i++){ double m = eV_MeAfs/( aMasses[ (int)(aPars[i].x-0.5) ] * au_Me ); int i3=i*3; buff[i3]=m;buff[i3+1]=m;buff[i3+2]=m;  } // assign atomic masses   [Me] i.e. in units of electron mass
@@ -579,12 +582,14 @@ void clearForce_noAlias(){
     }
 }
 
-void move_GD(double dt){
-    double sum = 0;
+double move_GD(double dt){
+    double F2sum = 0;
     for(int i=0;i<nDOFs;i++){
-        sum += fDOFs[i];
-        pDOFs[i] += fDOFs[i] * dt;
+        double f  = fDOFs[i];
+        pDOFs[i] += f * dt;
+        F2sum+=f*f;
     }
+    return F2sum;
     //printf( "move_GD sum %g ", sum );
 }
 
@@ -698,25 +703,27 @@ void to_xyz( FILE* pFile ){
     fprintf( pFile, " %i \n", na+ne );
     fprintf( pFile, " %i %i \n", na,ne );
     for (int i=0; i<na; i++){
-        fprintf( pFile, "%3i %10.6f %10.6f %10.6f \n", (int)(aPars[i].y+2.5), apos[i].x, apos[i].y, apos[i].z );
+        int iZ = (int)(aPars[i].x+0.5);
+        if(iZ>1)iZ+=2;
+        fprintf( pFile, "%3i %10.6f %10.6f %10.6f \n", iZ, apos[i].x, apos[i].y, apos[i].z );
     }
     for (int i=0; i<ne; i++){
         int e = espin[i];
         if(e==1 ){e=92;}
-        if(e==-1){e=93;}
+        if(e==-1){e=109;} // see Jmol colors https://jmol.sourceforge.net/jscolors/
         fprintf( pFile, "%3i %10.6f %10.6f %10.6f 0 %10.6f \n", e, epos[i].x, epos[i].y, epos[i].z,  esize[i]*4.0 );
     }
 }
 
-void save_xyz( char const* filename ){
-    printf( "EFF::save_xyz(%s)\n", filename );
+void save_xyz( const char* filename, const char* mode="w" ){
+    //printf( "EFF::save_xyz(%s)\n", filename );
     FILE * pFile;
-    pFile = fopen (filename,"w");
+    pFile = fopen (filename,mode);
     to_xyz( pFile );
     fclose(pFile);
 }
 
-bool loadFromFile_xyz( char const* filename ){
+bool loadFromFile_xyz( const char* filename ){
     //printf(" filename: >>%s<< \n", filename );
     FILE * pFile;
     pFile = fopen (filename,"r");
@@ -800,7 +807,6 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false ){
         fgets( buff, nbuff, pFile);
         //                                                                 1   2  3   4    5     6    7        8    9    10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP,      &vx, &vy, &vz );
-        //printf( "atom[%i] p(%g,%g,%g) Q %g sQ %g sP %g cP %g \n", i, x, y, z,    Q, sQ, sP, cP );
         Q=-Q;
         apos  [i]=(Vec3d){x,y,z};
         aPars[i].set(Q,sQ,sP,cP);
@@ -823,7 +829,7 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false ){
         epos [i]=(Vec3d){x,y,z};
         esize[i]=s;
         if(bVel){ 
-            printf( "electron[%i] p(%g,%g,%g|%g) spin %i v(%g,%g,%g|%g) \n", i, x,y,z,s, spin,  vx,vy,vz,vs );
+            //if(verbosity>0)printf( "electron[%i] p(%g,%g,%g|%g) spin %i v(%g,%g,%g|%g) \n", i, x,y,z,s, spin,  vx,vy,vz,vs );
             if(nw>=9 )evel [i] = (Vec3d){vx,vy,vz};
             if(nw>=10)vsize[i] = vs;
         }
