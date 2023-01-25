@@ -60,7 +60,7 @@ class DynamicOpt{ public:
     //void   move_LeapFrog_vlimit();
     void   move_GD      ( double dt_loc );
     //double move_GD_safe ( double dt_loc );
-    void   move_MD( double dt_loc, double damp);
+    double move_MD( double dt_loc, double damp);
     //double move_MD_safe ( double dt_loc );
     void   move_MDquench(){move_MD(dt,damping);};
     double move_FIRE();
@@ -110,9 +110,12 @@ class DynamicOpt{ public:
     //inline double limit_dt_x2 (double xx,double xmax){ double sc=1.0; if( xx > (xmax*xmax) ){ sc= fmin( sc, xmax/sqrt(xx) ); }; return sc;       }
     inline double limit_dt_vf2(double ff, double vv ){ scale_dt=fmin(limit_dt_x2(ff,f_limit),limit_dt_x2(vv,v_limit));         return scale_dt; }
 
+    inline void setTimeSteps(double dt_  ){ dt = dt_max = dt_; dt_min=dt_max*fTminmax; }
+    inline void setDamping  (double damp_){ damping = damp_max = damp_; }
+
     inline void initOpt( double dt_, double damp_=0.1 ){
-        dt      = dt_max   = dt_;  dt_min=dt_max*fTminmax;
-        damping = damp_max = damp_;
+        setTimeSteps(dt_ );
+        setDamping  (damp_);
         cleanForce( );
         cleanVel  ( );
     }
