@@ -180,6 +180,9 @@ constexpr static const Quat4d default_AtomParams[] = {
 { 7.,  0.1, 0.1, 2.0 }, // 9 F
 };
 
+//                                    H   Be     B      C     N     O      F
+constexpr static const double aMasses[7] = {  1.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
+
     bool bDealoc = false;
     //double dvmax = 0.1;
     //double dpmax = 0.1;
@@ -233,6 +236,7 @@ constexpr static const Quat4d default_AtomParams[] = {
 
     Vec3d  * apos   =0; ///< atomic positions
     Vec3d  * aforce =0; ///< atomic forces
+    Vec3d  * avel   =0; ///< atomic velocities
 
     //double * aQ     =0; ///< atomic charges
     //Vec3d  * aAbWs  =0; ///< atomic   parameters (amplitude, decay, width)
@@ -243,22 +247,25 @@ constexpr static const Quat4d default_AtomParams[] = {
     int    * espin  =0; ///< electron spins
     Vec3d  * epos   =0; ///< electron positions
     Vec3d  * eforce =0; ///< electron forces
+    Vec3d  * evel   =0; ///< electron velocities
     double * esize  =0; ///< electron size
     double * fsize  =0; ///< electron force on size
-
+    double * vsize  =0; ///< electron velocity on size
     double * eE = 0;
 
     double* pDOFs =0;  ///< buffer of degrees of freedom
     double* fDOFs =0;  ///< buffer of forces on degrees of freedom
+    double* vDOFs =0;  ///< buffer of velocities on degrees of freedom
 
     double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; ///< different kinds of energy
 
-void realloc(int na_, int ne_){
+void realloc(int na_, int ne_, bool bVel=false){
     bDealoc = true;
     na=na_; ne=ne_;
     nDOFs=na*3+ne*3 + ne;
     _realloc( pDOFs, nDOFs);
     _realloc( fDOFs, nDOFs);
+    
 
     //_realloc( aQ  ,  na);
     //_realloc( aAbWs, na); // deprecated
@@ -284,7 +291,13 @@ void realloc(int na_, int ne_){
     esize  =          pDOFs + na*3 + ne*3;
     fsize  =          fDOFs + na*3 + ne*3;
 
-
+    if(bVel){
+        _realloc( vDOFs, nDOFs); // velocities
+        avel  = (Vec3d*)vDOFs;
+        evel  = (Vec3d*)(vDOFs + na*3);
+        vsize =          vDOFs + na*3 + ne*3;
+        for(int i=0; i<nDOFs; i++){ vDOFs[i]=0; }
+    }
 
     //_realloc(apos  ,na );
     //_realloc(aforce,na );
@@ -293,6 +306,39 @@ void realloc(int na_, int ne_){
     //_realloc(esize ,ne );
     //_realloc(fsize ,ne );
 
+}
+
+void makeMasses(double*& invMasses){
+    //double atomic_mass   = 1.6605402e-27;
+    //double electron_mass = 9.1093837e-31; 
+    double au_Me           = 1822.88973073;
+    double eV_MeAfs        = 17.5882001106;   // [ Me*A^2/fs^2]  
+    invMasses = new double[nDOFs];
+    int na3 =na*3;
+    int ne3 =ne*3; 
+    double* buff=invMasses; for(int i=0; i<na;  i++){ double m = eV_MeAfs/( aMasses[ (int)(aPars[i].x-0.5) ] * au_Me ); int i3=i*3; buff[i3]=m;buff[i3+1]=m;buff[i3+2]=m;  } // assign atomic masses   [Me] i.e. in units of electron mass
+    buff+=na3;              for(int i=0; i<ne3; i++){ buff[i]  = eV_MeAfs;         }                                      // assign electron masses [Me] i.e. in units of electron mass
+    buff+=ne3;              for(int i=0; i<ne;  i++){ buff[i]  = 0.01*eV_MeAfs/( 0.5 ); }                                      // assign electron size massses ????  ToDo:  What should be this mass ?????
+    /*
+    // Force units:  [eV/A]
+    // Mass  units:  [eV/]
+    time [fs]:   
+        Me = 9.1093837e-31;    // [kg]
+        eV = 1.602176634e-19;  // [J]
+        A  = 1e-10;            // [m]
+        fs = 1e-15;            // [s]
+
+        a        = F/m = (E/l)/m 
+        [m/s^2]  = [J/m]/[kg]
+        [A/fs^2] = [eV/A]/[C*Me]
+        [C*Me]/9.1093837e-31 = [eV*fs^2/A^2]/((1.602176634e-19)*(1.e-15/1.e-10)^2)
+        [C*Me]/9.1093837e-31 = [eV*fs^2/A^2]/1.602176634e-29
+        // C  = 17.5882001106 = 1/0.05685630102
+        // eV = 17.5882001106 [Me*A^2/fs^2]   
+
+        // Force of [eV/A] acting per one 1[fs] accelerates one electron (or other particle with mass 1[Me]) to speed 17.5882001106 [A/fs]  
+
+    */
 }
 
 void dealloc(){
@@ -306,6 +352,19 @@ void dealloc(){
     delete [] eE;
 }
 ~EFF(){ if(bDealoc)dealloc(); }
+
+void fixElectron(int ie, double* vs=0){
+    eforce[ie].set(0.);
+    fsize [ie]=0;
+    if(vs){  
+        int io=(na+ie)*3;
+        vs[io  ]=0; // epos.x velocity
+        vs[io+1]=0; // epos.y velocity
+        vs[io+2]=0; // epos.z velocity
+        vs[(na+ne)*3+ie]=0;  // size velocity
+    };
+}
+
 
 /// evaluate kinetic energy of each electron
 double evalKinetic(){
@@ -350,7 +409,7 @@ double evalEE(){
                 if( iPauliModel == 1 ){
                     //if( spini==espin[j] ){
                         //printf( "EeePaul_1[%i,%i]  ", i, j );
-                        printf( "evalEE() r %g pi (%g,%g,%g) pj (%g,%g,%g) \n", dR.norm(), epos[j].x,epos[j].y,epos[j].z, pi.x,pi.y,pi.z  );
+                        //printf( "evalEE() r %g pi (%g,%g,%g) pj (%g,%g,%g) \n", dR.norm(), epos[j].x,epos[j].y,epos[j].z, pi.x,pi.y,pi.z  );
                         dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
@@ -365,10 +424,10 @@ double evalEE(){
                 }else{
                     if( spini==espin[j] ){
                         //printf( "EeePaul[%i,%i] ", i, j );
-                        i_DEBUG=1;
+                        //i_DEBUG=1;
                         dEpaul = addDensOverlapGauss_S( dR, si*M_SQRT2, sj*M_SQRT2, KPauliOverlap, f, fsi, fsj );
                         //double dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, false, KRSrho ); EeePaul+=dEpaul;
-                        i_DEBUG=0;
+                        //i_DEBUG=0;
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     }
                 }
@@ -455,7 +514,7 @@ double evalAE(){
 
 /// evaluate Atom-Atom forces
 double evalAA(){
-    if( i_DEBUG>0 ) printf( "evalAA \n" );
+    //if( i_DEBUG>0 ) printf( "evalAA \n" );
     Eaa=0;
     //double invSaa = 1/(saa*saa);
     //double w2aa = waa*waa;
@@ -617,7 +676,12 @@ int Eterms2str(char* str){
 }
 
 int orb2str(char* str, int ie){
-    return sprintf( str, "e[%i] E %7.3f s %5.2f  p(%5.2f,%5.2f,%5.2f) \n", ie, eE[ie], esize[ie], epos[ie].x,epos[ie].y,epos[ie].z );
+    if(vDOFs){
+        return sprintf( str, "e[%i|%i] E %7.3f p(%5.2f,%5.2f,%5.2f|%5.2f) f(%5.2f,%5.2f,%5.2f|%5.2f) v(%5.2f,%5.2f,%5.2f|%5.2f)\n", ie, espin[ie], eE[ie], epos[ie].x,epos[ie].y,epos[ie].z,esize[ie],    eforce[ie].x,eforce[ie].y,eforce[ie].z,fsize[ie],  evel[ie].x,evel[ie].y,evel[ie].z,vsize[ie]  );
+    }else{
+        return sprintf( str, "e[%i|%i] E %7.3f p(%5.2f,%5.2f,%5.2f|%5.2f) f(%5.2f,%5.2f,%5.2f|%5.2f)\n", ie, espin[ie], eE[ie],   epos[ie].x,epos[ie].y,epos[ie].z,esize[ie],    eforce[ie].x,eforce[ie].y,eforce[ie].z,fsize[ie]  );
+    }
+    //return sprintf( str, "e[%i] E %7.3f s %5.2f  p(%5.2f,%5.2f,%5.2f) \n", ie, eE[ie], esize[ie], epos[ie].x,epos[ie].y,epos[ie].z );
 }
 
 char* orbs2str(char* str0){
@@ -625,6 +689,7 @@ char* orbs2str(char* str0){
     for(int i=0; i<ne; i++){
         //str+=sprintf(str,"\norb_%i E %g \n", i, oEs[i] );
         str+=orb2str(str, i);
+        
     }
     return str;
 }
@@ -706,7 +771,7 @@ bool loadFromFile_xyz( char const* filename ){
 }
 
 
-bool loadFromFile_fgo( char const* filename ){
+bool loadFromFile_fgo( char const* filename, bool bVel=false ){
     //printf(" filename: >>%s<< \n", filename );
     FILE * pFile;
     pFile = fopen (filename,"r");
@@ -725,29 +790,43 @@ bool loadFromFile_fgo( char const* filename ){
     //printf("na %i ne %i perORb %i \n", natom_, nOrb_, perOrb_ );
     if(perOrb_!=1){ printf("ERROR in eFF::loadFromFile_fgo(%s) : perOrb must be =1 ( found %i instead) !!! \n", filename, perOrb_ );};
     if(bClosedShell) nOrb_*=2;
-    realloc( natom_, nOrb_ );
+    realloc( natom_, nOrb_, bVel );
     double Qasum = 0.0;
     for(int i=0; i<na; i++){
         double x,y,z;
+        double vx,vy,vz;
         double Q,sQ,sP,cP;
+        //int bfix;
         fgets( buff, nbuff, pFile);
-        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP );
+        //                                                                 1   2  3   4    5     6    7        8    9    10
+        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP,      &vx, &vy, &vz );
         //printf( "atom[%i] p(%g,%g,%g) Q %g sQ %g sP %g cP %g \n", i, x, y, z,    Q, sQ, sP, cP );
         Q=-Q;
         apos  [i]=(Vec3d){x,y,z};
         aPars[i].set(Q,sQ,sP,cP);
+        if( (bVel)&&(nw>=10) ){ 
+            avel[i] = (Vec3d){vx,vy,vz};
+        }
         Qasum += Q;
     }
     int nBasRead = ne;
     if( bClosedShell ) nBasRead/=2;
     for(int i=0; i<nBasRead; i++){
         double x,y,z;
+        double vx,vy,vz,vs,vc;
         double s,c;
-        int spin;
-        fgets( buff, nbuff, pFile); // printf( "fgets: >%s<\n", buf );
-        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
+        int spin=0;
+        fgets( buff, nbuff, pFile);  //printf( "fgets: >%s<\n", buff );
+        //                                                               1    2   3    4   5   6        7    8    9   10
+        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z,  &s, &c, &spin,   &vx, &vy, &vz, &vs );
+        //int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
         epos [i]=(Vec3d){x,y,z};
         esize[i]=s;
+        if(bVel){ 
+            printf( "electron[%i] p(%g,%g,%g|%g) spin %i v(%g,%g,%g|%g) \n", i, x,y,z,s, spin,  vx,vy,vz,vs );
+            if(nw>=9 )evel [i] = (Vec3d){vx,vy,vz};
+            if(nw>=10)vsize[i] = vs;
+        }
         //ecoef[i]=c;
         //int io=i/perOrb;
         if( !bClosedShell ){ if(nw>5)espin[i]=spin; }else{ espin[i]=1; };
@@ -765,6 +844,23 @@ bool loadFromFile_fgo( char const* filename ){
     //printf( "Qtot = %g (%g - 2*%i) \n",  Qasum - nOrb, Qasum, nOrb );
     fclose (pFile);
     return 0;
+}
+
+
+void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w" ){
+    FILE * pFile = fopen (filename, fmode );
+    fprintf( pFile, "%i %i %i %i\n", na, ne, 1, 0 );
+    for(int i=0; i<na; i++){               
+                fprintf(pFile, "%f %f %f   %f %f %f %f ", apos[i].x, apos[i].y, apos[i].z,   -aPars[i].x, aPars[i].y, aPars[i].z, aPars[i].w );
+        if(bVel)fprintf(pFile, "%f %f %f", avel[i].x, avel[i].y, avel[i].z  );
+        fprintf(pFile,"\n");
+    }
+    for(int i=0; i<ne; i++){
+                fprintf(pFile, "%f %f %f %f %f  %i ", epos[i].x, epos[i].y, epos[i].z, esize[i], 1.0,  espin[i] );
+        if(bVel)fprintf(pFile, "%f %f %f",  evel[i].x, evel[i].y, evel[i].z, vsize[i], 0.0 );
+        fprintf(pFile,"\n");
+    }
+    fclose (pFile);
 }
 
 };
