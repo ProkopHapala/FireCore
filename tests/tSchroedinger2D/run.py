@@ -55,17 +55,41 @@ prepareFucntions( extent=extent, x0=10., y0=10. )      #;print( "V\n", V )
 
 #sch.V[:,:] = 0
 
-#sch.psi[:,:] = 1
-sch.psi[:,:] = 0
+sch.psi[:,:] = 1
+#sch.psi[:,:] = 0
 #sch.psi[:,:] = 0.01; sch.psi[nx//2,ny//2] = 1.
 #sch.source[:,:] = 0;   sch.source[nx//2,ny//2] = -1.
 
 
-
 #E0=0;
-E0=0.06;
+E0=0.1
 #sch.EQF[3] = 2.0   #   set Energy
 sch.EQF[3] = E0   #   set Energy
+
+
+
+nstep=20
+plt.figure(figsize=(5*nstep,3*5))
+Es=[]
+Fs=[]
+#perView = 50
+perView = 5
+for i in range(nstep):
+    for j in range(perView):
+        F2=sch.stepResonance( E0=E0, dt=0.5 )        #;print("F2 ",np.sqrt(F2) )       #;print( "fpsi \n", sch.fpsi ); 
+        Es.append(sch.EQF[0])
+        Fs.append(np.sqrt(F2))
+    ij = i*perView 
+    plt.subplot(3,nstep,i        +1); plt.imshow(sch.psi ); plt.title("Psi_%i" %(ij+1)     ); plt.colorbar()
+    plt.subplot(3,nstep,i+ nstep +1); plt.imshow(sch.Apsi); plt.title("APsi_%i" %(ij+1)    ); plt.colorbar()
+    plt.subplot(3,nstep,i+2*nstep+1); plt.imshow(sch.fpsi); plt.title("dPsi/dt_%i" %(ij+1) ); plt.colorbar()
+
+plt.figure(); plt.plot(Es,label="E");      plt.plot(Fs,label="|Ferr|"); plt.axhline(0,ls='--',c='k'); plt.legend(); plt.grid()
+#plt.figure(); plt.plot(Fs,label="|Ferr|"); plt.axhline(0,ls='--',c='k'); plt.yscale('log'); plt.legend(); plt.grid()
+plt.show()
+exit()
+
+
 
 '''
 nstep=20

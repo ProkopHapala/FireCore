@@ -66,11 +66,12 @@ def getBuffs():
     lib.init_buffers()
     global EQF
     EQF    = getBuff( "EQF",    (6,) ) # [ E,Q,F2sum; ]
-    global V,source,psi,fpsi
+    global V,source,psi,fpsi,Apsi
     V      = getBuff( "V",      (ny,nx) )
     source = getBuff( "source", (ny,nx) )
     psi    = getBuff( "psi",    (ny,nx) )
     fpsi   = getBuff( "fpsi",   (ny,nx) )
+    Apsi   = getBuff( "Apsi",   (ny,nx) )
 
 #  void init(int nx_, int ny_){
 lib.init.argtypes  = [c_int, c_int,c_double, c_double] 
@@ -108,6 +109,12 @@ lib.solve_Green.argtypes  = [c_int, c_double]
 lib.solve_Green.restype   =  c_int
 def solve_Green( maxErr=1e-2, maxIters=1000 ):
     return lib.solve_Green( maxIters, maxErr )
+
+# double solve_Green( int maxIters, double maxErr ){
+lib.stepResonance.argtypes  = [c_double, c_double] 
+lib.stepResonance.restype   =  c_double
+def stepResonance( E0=0.0, dt=0.1 ):
+    return lib.stepResonance( E0, dt );
 
 # ====================================
 # ========= Test Functions

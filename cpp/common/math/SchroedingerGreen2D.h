@@ -77,6 +77,7 @@ class SchroedingerGreen2D : public LinSolver{ public:
     double*  psi=0; // psi
     double* fpsi=0; // derivatives of
     double* vpsi=0; // velocity of psi change
+    double* Apsi=0;
     double* source=0;
     double E=0,Q=0,F2sum=0,E0=0.0,dstep=1.,cL=1.0;
 
@@ -96,6 +97,7 @@ double init(int nx_, int ny_, double dstep_=0.1, double m_Me=1.0 ){
     _realloc( V,      ntot );
     _realloc( source, ntot );
     _realloc( psi,    ntot ); 
+    _realloc( Apsi,   ntot ); 
     _realloc( fpsi,   ntot );                           // ToDo: Needed just for gradient descent
     _realloc( vpsi,   ntot ); VecN::set(ntot,0.0,vpsi); // ToDo: Needed just for MDdamp
     LinSolver::setLinearProblem(ntot, psi, source );
@@ -143,7 +145,7 @@ double sumE(){ // energy (hamiltonian)
         }
     }
     //printf( "sumE()  Q %g  E %g   E/Q  %g \n", Q_, E,  E/Q_, dstep );
-    printf( "iter[%i] sumE()  Q %g  E %g   E/Q  %g Lsum %g Vsum %g  cL %g dstep %g \n", iter, Q_, E,  E/Q_, Lsum_DEBUG/Q_, Vsum_DEBUG/Q_, cL, dstep );
+    //printf( "iter[%i] sumE()  Q %g  E %g   E/Q  %g Lsum %g Vsum %g  cL %g dstep %g \n", iter, Q_, E,  E/Q_, Lsum_DEBUG/Q_, Vsum_DEBUG/Q_, cL, dstep );
     E*=1/Q_;
     return E;
 }
@@ -181,6 +183,77 @@ void sumF( double factor, bool bQderiv=true ){ // derivatives of energy
         }
     }
 }
+
+double applyGreen( double* Yin, double* Yout, double factor=1.0 ){ // derivatives of energy
+    double Qo = 0;
+    for(int iy=0; iy<ny; iy++){
+        int i0y = iy*nx;
+        for(int ix=0; ix<nx; ix++){
+            int i = i0y+ix;
+            double yi  = psi[i];
+            double vi  = V  [i];
+            //---- Laplacian
+            // https://en.wikipedia.org/wiki/Discrete_Laplace_operator#Finite_differences
+            double li = -4*yi;
+            if((ix+1)<nx){ li+=psi[i+1 ]; }
+            if((ix-1)>=0){ li+=psi[i-1 ]; }
+            if((iy+1)<ny){ li+=psi[i+nx]; }
+            if((iy-1)>=0){ li+=psi[i-nx]; }
+            li*=cL;
+            double y_ = (li + (vi-E0)*yi)*factor;
+            Qo += y_*y_;
+            Yout[i] = y_;
+        }
+    }
+    return Qo;
+}
+
+
+void evalGreenDerivs( double factor, bool bQderiv=true ){ // derivatives of energy
+    /*
+    To solve equation (H-eI)Psi=0 we minimize residual min{r}: r = (H-eI)Y
+    d<r|r>/dyi    =  d<(H-eI)Y|(H-eI)Y>/dyi = 2*(H-eI)Y*d((H-eI)Y)dyi
+    d((H-eI)Y)dyi = d((L+V-eI)*Y)*dyi = dLY*dyi (off diagonal)  +  d(V-eI)Y*dyi (diagonal)
+
+    d( Ay**2 )/dy[0,0] = 2*Ay[0,0]*( dAy[0,0]/dy[0,0] ) +  2*Ay[1,0]*( dAy[1,0]/dy[0,0] ) +   2*Ay[0,1]*( dAy[0,1]/dy[0,0] ) ....
+    dAy[0,0]/dy[0,0]   = ( Ly[0,0]/dy[0,0] + ((V[0,0]-E0)*y[0,0])/dy[0,0] ) =  cL*(-4*y[0,0]- y[0,1] .... )/dy[0,0]   + (V[0,0]-E0) =    -4*cL + (V[0,0]-E0)
+    dAy[1,0]/dy[0,0]   = ( Ly[1,0]/dy[0,0] + ((V[1,0]-E0)*y[1,0])/dy[0,0] ) =  cL*(-4*y[1,0]- y[0,0] .... )/dy[0,0]                 =    +cL
+
+    d( Ay**2 )/dy[0,0] = 2*(Ay[0,0]* ( -4*cL + (V[0,0]-E0) ) +   (Ay[1,0]+Ay[-1,0]+Ay[0,+1]+Ay[0,-1])*( cL ) = 2*cL*( -4*Ay[0,0]+Ay[1,0]+Ay[-1,0]+Ay[0,+1]+Ay[0,-1])     + Ay[0,0]*(V[0,0]-E0)
+                       = 2*A(Ay)
+
+
+        The reason why this does not seem to work is that LLy and dy<Ly|Ly> have different prefactors 1/d^4 vs 1/d^3 therefore if we combine it with (V+e) it may need rescaling
+    */
+    //double cL = -1/(dstep*dstep);
+    for(int iy=0; iy<ny; iy++){
+        int i0y = iy*nx;
+        for(int ix=0; ix<nx; ix++){
+            int i = i0y+ix;
+            double yi  = psi[i];
+            double vi  = V  [i];
+            double vie = vi - E0;
+            //---- Laplacian
+            // https://en.wikipedia.org/wiki/Discrete_Laplace_operator#Finite_differences
+            double li = -4*yi;
+            if((ix+1)<nx){ li+=psi[i+1 ]; }
+            if((ix-1)>=0){ li+=psi[i-1 ]; }
+            if((iy+1)<ny){ li+=psi[i+nx]; }
+            if((iy-1)>=0){ li+=psi[i-nx]; }
+            li*=cL;
+            // ---- Total energy
+            //double Ay  =  li + vie*yi;
+            //double dAy =  4*cL + vie;
+            //double f = ( 4*cL + vie )*( li + vie*yi );           // d<Y|L-V|Y>/dyi
+            //dLy2 = 8*( li )
+            //fpsi[i] = f*factor;
+            //fpsi[i] = 0;
+        }
+    }
+}
+
+
+
 
 virtual void dotFunc( int n, double * psi, double * Ax ) override {
     // Operator is b = A*y = (H-e0*I)*Y   =    ( L + V -e0*I )*Y
@@ -233,7 +306,7 @@ double moveGD(double dt){
     }
     Q    /=ntot;
     F2sum/=ntot;
-    printf( "iter[%i] Q %g F2sum %g \n", iter, Q, F2sum );
+    //printf( "iter[%i] Q %g F2sum %g \n", iter, Q, F2sum );
     return F2sum;
 }
 
@@ -255,7 +328,7 @@ double moveMDdamp(double dt, double damping){
     }
     Q    /=ntot;
     F2sum/=ntot;
-    printf( "iter[%i] Q %g F2sum %g \n", iter, Q, F2sum );
+    //printf( "iter[%i] Q %g F2sum %g \n", iter, Q, F2sum );
     return F2sum;
 }
 
@@ -265,6 +338,24 @@ double step( double E0, double dt ){
     sumF( dE, true );
     //moveGD(dt);
     moveMDdamp(dt,0.1);
+    VecN::mul(ntot, 1./sqrt(Q), psi,psi );
+    iter++;
+    return F2sum;
+}
+
+
+double stepResonance( double E0_, double dt ){
+    /*
+        The reason why this does not seem to work is that LLy and dy<Ly|Ly> have different prefactors 1/d^4 vs 1/d^3 therefore if we combine it with (V+e) it may need rescaling
+
+    */
+    E0 = E0_;
+    double Q1 = applyGreen(  psi, Apsi,  1 );
+    double Q2 = applyGreen( Apsi, fpsi, -1 );
+    //moveMDdamp(dt,0.1);
+    moveGD(dt);
+    printf( "[%i] Q1 %g Q2 %g Q %g |F| %g \n", iter, Q1, Q2, Q, sqrt(F2sum) );
+    E=Q1;
     VecN::mul(ntot, 1./sqrt(Q), psi,psi );
     iter++;
     return F2sum;
