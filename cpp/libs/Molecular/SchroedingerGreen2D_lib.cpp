@@ -28,15 +28,18 @@ void init_buffers(){
     buffers.insert( { "V",       W.V      } );
     buffers.insert( { "psi",     W.psi    } );
     buffers.insert( { "fpsi",    W.fpsi   } );
+    buffers.insert( { "Apsi",    W.Apsi   } );
     buffers.insert( { "source",  W.source } );
     buffers.insert( { "EQF",    &W.E      } );
+    
 }
 
 double  init( int nx, int ny, double dstep, double m_Me ){ return W.init(nx,ny,dstep,m_Me); }
 
-double setStep   (double dstep, double m_Me){ return W.setStep( dstep, m_Me ); }
-double step      ( double E0, double dt ){ return W.step( E0, dt); };
-double step_Green(                      ){ return W.step_CG();     };
+double setStep      ( double dstep, double m_Me){ return W.setStep( dstep, m_Me ); }
+double step         ( double E0, double dt ){ return W.step( E0, dt); };
+double step_Green   (                      ){ return W.step_CG();     };
+double stepResonance( double E0, double dt ){ return W.stepResonance( E0, dt ); };
 
 int solve_Green( int maxIters, double maxErr ){ return W.solve_CG( maxIters, maxErr ); };
 
