@@ -7,6 +7,16 @@ import time
 sys.path.append("../../")
 from pyBall import eFF as eff
 
+
+
+eff.test_Hatom()
+
+exit()
+
+
+
+
+
 def relax_mol(name):
     eff.load_fgo("data/"+name+".fgo" )                 # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     eff.setVerbosity(verbosity=1, idebug=0)             # set verbosity of simulation (defualt verbosity=0)
@@ -39,5 +49,5 @@ def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, bBsize=False ):
 
 #relax_mol("H_eFF")
 #relax_mol("H2_eFF")
-relax_mol("H2O")
-#run_H2O_vs_ebullet()
+#relax_mol("H2O")
+run_H2O_vs_ebullet()

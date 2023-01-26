@@ -15,7 +15,7 @@ To achieve a favorable compromise between speed and accuracy the code use combin
 
 FireCore consists of high-performance simulation modules written in Fortran, C/C++ & OpenCL integrated using a common Python3 interface. The modules are based on a modified version of other simulation packages.
 
-## 1. quantum solution of electronic & geometric structure of molecules
+## 1. Quantum solution of electronic & geometric structure of molecules
 
 Striped down version of Fireball self-consistent local-orbital ab-initio tight-binding molecular dynamics code (https://github.com/fireball-QMD/progs) is used for the following tasks:
 
@@ -46,8 +46,7 @@ We use GPU acceleration using OpenCL kernels for most performance-intensive step
 * Evaluation of electrostatic potential and forcefield on the grid from electron density (i.e. solution of Poisson equation) using Fast-Fourier-Transform. We use library [clFFT](https://github.com/clMathLibraries/clFFT) for the purpose.
 Projection of wave-functions or electron density from FireBall onto real space grid using FireBall numerical basis. 
 
-
-# 3. Instalation (compile & run)
+# Instalation (compile & run)
 
 To install all library dependencies. On Ubuntu 22.04 this can be done by running:
 ```
