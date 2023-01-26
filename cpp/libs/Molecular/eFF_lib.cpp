@@ -41,6 +41,7 @@ DynamicOpt opt;
 bool opt_initialized=false;
 
 char* trj_fname = 0;
+int   savePerNsteps = 1;
 
 
 extern "C"{
@@ -80,11 +81,14 @@ void init_buffers(){
         buffers.insert( { "avel",      (double*)ff.avel   } );
         buffers.insert( { "evel",      (double*)ff.evel   } );
         buffers.insert( { "vsize",              ff.vsize  } );
-        buffers.insert( { "invMasses", (double*)ff.invMasses } );
+        buffers.insert( { "invMasses",          ff.invMasses           } );
+        buffers.insert( { "invAmass",           ff.invMasses           } );
+        buffers.insert( { "invEmass",          (ff.invMasses+ff.na*3)         } );
+        buffers.insert( { "invSmass",          (ff.invMasses+(ff.na+ff.ne)*3) } );
     }
 }
 
-void setTrjName( char* trj_fname_ ){ trj_fname=trj_fname_; printf( "setTrjName(%s)\n", trj_fname );  }
+void setTrjName( char* trj_fname_, int savePerNsteps_ ){ trj_fname=trj_fname_; printf( "setTrjName(%s)\n", trj_fname ); savePerNsteps=savePerNsteps_;  }
 
 bool load_xyz( const char* fname ){ 
     //printf( "load_xyz \n" );
@@ -111,8 +115,8 @@ void info(){ ff.info(); }
 double* getEnergyPointer(){ return &ff.Ek; }
 int*    getDimPointer   (){ return &ff.ne; }
 
-void initOpt( double dt, double damping, double f_limit ){
-    ff.makeMasses(ff.invMasses);
+void initOpt( double dt, double damping, double f_limit, bool bMass ){
+    if(ff.vDOFs){ if(bMass){ff.makeMasses(ff.invMasses);}else{ff.makeMasses(ff.invMasses,1.0);} }
     opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
     //opt.cleanVel( ); // this is already inside initOpt
     //opt.initOpt( dt, damping );
@@ -129,7 +133,9 @@ int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
     int itr=0;
     if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(0); };
     opt.setTimeSteps(dt);
+    //printf( "verbosity %i nstepMax %i Fconv %g dt %g \n", verbosity, nstepMax, Fconv, dt );
     //printf( "trj_fname %s \n", trj_fname );
+    if(ialg>0){ opt.cleanVel( ); }
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
@@ -137,15 +143,23 @@ int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
             case  0: ff .move_GD      (dt);      break;
             case -1: opt.move_LeapFrog(dt);      break;
             case  1: F2 = opt.move_MD (dt,opt.damping); break;
-            case  3: F2 = opt.move_FIRE();       break;
+            case  2: F2 = opt.move_FIRE();       break;
         }
+        if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
+            if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             break;
         }
-        if(trj_fname)  ff.save_xyz( trj_fname, "a" );
+        if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
     }
     return itr;
 }
+
+void save_fgo( char const* filename, bool bVel, bool bAppend ){ 
+    if(bAppend){ ff.writeTo_fgo( filename, bVel, "w" ); }
+    else       { ff.writeTo_fgo( filename, bVel, "a" ); } 
+};
+
 
 //#define NEWBUFF(name,N)   double* name = new double[N]; buffers.insert( {#name, name} );
 

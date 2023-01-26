@@ -311,17 +311,21 @@ void realloc(int na_, int ne_, bool bVel=false){
 
 }
 
-void makeMasses(double*& invMasses){
+void makeMasses(double*& invMasses, double m_const=-1){
     //double atomic_mass   = 1.6605402e-27;
     //double electron_mass = 9.1093837e-31; 
     double au_Me           = 1822.88973073;
     double eV_MeAfs        = 17.5882001106;   // [ Me*A^2/fs^2]  
     if(invMasses==0) invMasses = new double[nDOFs];
-    int na3 =na*3;
-    int ne3 =ne*3; 
-    double* buff=invMasses; for(int i=0; i<na;  i++){ double m = eV_MeAfs/( aMasses[ (int)(aPars[i].x-0.5) ] * au_Me ); int i3=i*3; buff[i3]=m;buff[i3+1]=m;buff[i3+2]=m;  } // assign atomic masses   [Me] i.e. in units of electron mass
-    buff+=na3;              for(int i=0; i<ne3; i++){ buff[i]  = eV_MeAfs;         }                                      // assign electron masses [Me] i.e. in units of electron mass
-    buff+=ne3;              for(int i=0; i<ne;  i++){ buff[i]  = 0.01*eV_MeAfs/( 0.5 ); }                                      // assign electron size massses ????  ToDo:  What should be this mass ?????
+    if(m_const>0){
+        for(int i=0; i<nDOFs; i++){ invMasses[i] = m_const; }  
+    }else{
+        int na3 =na*3;
+        int ne3 =ne*3; 
+        double* buff=invMasses; for(int i=0; i<na;  i++){ double m = eV_MeAfs/( aMasses[ (int)(aPars[i].x-0.5) ] * au_Me ); int i3=i*3; buff[i3]=m;buff[i3+1]=m;buff[i3+2]=m;  } // assign atomic masses   [Me] i.e. in units of electron mass
+        buff+=na3;              for(int i=0; i<ne3; i++){ buff[i]  = eV_MeAfs;         }                                      // assign electron masses [Me] i.e. in units of electron mass
+        buff+=ne3;              for(int i=0; i<ne;  i++){ buff[i]  = 0.01*eV_MeAfs/( 0.5 ); }                                      // assign electron size massses ????  ToDo:  What should be this mass ?????
+    }
     /*
     // Force units:  [eV/A]
     // Mass  units:  [eV/]
@@ -399,8 +403,7 @@ double evalEE(){
             const Vec3d  dR = epos [j] - pi;
             //const double sj = esize[j];
             const double sj = esize[j] * M_SQRT2;
-            double& fsj = fsize[j];
-
+            double&     fsj = fsize[j];
             double dEee=0,dEpaul=0;
             if(bEvalCoulomb){
                 dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, qq );
@@ -409,14 +412,14 @@ double evalEE(){
             }
             if(bEvalPauli){
                 //printf( "Eee[%i,%i]= %g(%g) r %g s(%g,%g) \n", i, j, dEee, Eee, dR.norm(), si,sj );
-                if( iPauliModel == 1 ){
+                if( iPauliModel == 1 ){ // Pauli repulsion form this eFF paper http://aip.scitation.org/doi/10.1063/1.3272671
                     //if( spini==espin[j] ){
                         //printf( "EeePaul_1[%i,%i]  ", i, j );
                         //printf( "evalEE() r %g pi (%g,%g,%g) pj (%g,%g,%g) \n", dR.norm(), epos[j].x,epos[j].y,epos[j].z, pi.x,pi.y,pi.z  );
                         dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
-                }else if( iPauliModel == 2 ){
+                }else if( iPauliModel == 2 ){ // iPauliModel==0 Pauli repulasion from Valence-Bond theory
                     if(spini==espin[j]){ // Pauli repulsion only for electrons with same spin
                         //printf( "EeePaul[%i,%i] >> ", i, j );
                         //double dEpaul = addPauliGaussVB( dR, si*M_SQRT2, sj*M_SQRT2, f, fsi, fsj ); EeePaul+=dEpaul;
@@ -424,7 +427,7 @@ double evalEE(){
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                         //printf( "<< dEpaul %g \n", dEpaul );
                     }
-                }else{
+                }else{   // iPauliModel==0 Pauli repulasion as overlap between same spin orbitals 
                     if( spini==espin[j] ){
                         //printf( "EeePaul[%i,%i] ", i, j );
                         //i_DEBUG=1;
@@ -701,7 +704,7 @@ char* orbs2str(char* str0){
 
 void to_xyz( FILE* pFile ){
     fprintf( pFile, " %i \n", na+ne );
-    fprintf( pFile, " %i %i \n", na,ne );
+    fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa );
     for (int i=0; i<na; i++){
         int iZ = (int)(aPars[i].x+0.5);
         if(iZ>1)iZ+=2;
