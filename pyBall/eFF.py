@@ -19,8 +19,8 @@ def _np_as(arr,atype):
 
 cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
-
-bVel = False
+dt_glob = 0.1
+bVel    = False
 
 # ===== To generate Interfaces automatically from headers call:
 header_strings = [
@@ -39,6 +39,7 @@ header_strings = [
 #"void setKPauli( double KPauli ){",
 #"void initOpt( double dt, double damping, double f_limit ){",
 #"int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){",
+#"void writeTo_fgo( char const* filename, bool bVel, bool bAppend ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -65,6 +66,12 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 def cstr( s ):
     if s is None: return None
     return s.encode('utf8')
+
+#  void setVerbosity( int verbosity_, int idebug_ ){
+lib.setVerbosity.argtypes  = [c_int, c_int] 
+lib.setVerbosity.restype   =  None
+def setVerbosity(verbosity=0, idebug=0):
+    return lib.setVerbosity(verbosity, idebug)
 
 #  void init_buffers(){
 lib.init_buffers.argtypes  = [] 
@@ -97,12 +104,15 @@ def getBuffs( ):
     aPars  = getBuff ( "aPars",   (na,4) )
     espin  = getIBuff( "espin",   ne )
     if(bVel):
-        global vDOFs, avel, evel, vsize, invMasses
-        vDOFs     = getBuff ( "vDOFs",     nDOFs  )
-        avel      = getBuff ( "avel",      (na,3) )
-        evel      = getBuff ( "evel",      (ne,3) )
-        vsize     = getBuff ( "vsize",      ne    )
-        invMasses = getBuff ( "invMasses", nDOFs  )
+        global vDOFs, avel, evel, vsize, invMasses, invAmass,invEmass,invSmass
+        vDOFs     = getBuff ( "vDOFs",    nDOFs  )
+        avel      = getBuff ( "avel",     (na,3) )
+        evel      = getBuff ( "evel",     (ne,3) )
+        vsize     = getBuff ( "vsize",     ne    )
+        invMasses = getBuff ( "invMasses",nDOFs  )
+        invAmass = getBuff ( "invAmass",  (na,3) )
+        invEmass = getBuff ( "invEmass",  (ne,3) )
+        invSmass = getBuff ( "invSmass",   ne    )
 
 #  void load_xyz( const char* fname ){
 lib.load_fgo.argtypes  = [c_char_p, c_bool] 
@@ -112,13 +122,20 @@ def load_fgo(fname, bVel_=False):
     bVel=bVel_
     return lib.load_fgo( cstr(fname), bVel)
 
+#  void save_fgo( char const* filename, bool bVel, bool bAppend ){
+lib.save_fgo.argtypes  = [c_char_p, c_bool, c_bool] 
+lib.save_fgo.restype   =  None
+def save_fgo(filename, bVel=False, bAppend=False):
+    return lib.save_fgo( cstr(filename), bVel, bAppend)
+
 #  void setTrjName( char* trj_fname_ ){ 
-lib.setTrjName.argtypes  = [c_char_p] 
+lib.setTrjName.argtypes  = [c_char_p, c_int ] 
 lib.setTrjName.restype   =  c_bool
-def setTrjName(trj_fname_="trj.xyz"):
+def setTrjName(trj_fname_="trj.xyz", savePerNsteps=1, bDel=True ):
+    if bDel: open(trj_fname_,"w").close()
     global trj_fname
     trj_fname=cstr(trj_fname_)
-    return lib.setTrjName( trj_fname )
+    return lib.setTrjName( trj_fname, savePerNsteps )
 
 #  void init( int na, int ne ){
 lib.init.argtypes  = [c_int, c_int] 
@@ -223,15 +240,18 @@ def setSwitches( kinetic=0, coulomb=0, pauli=0, AA=0, AE=0, AECoulomb=0, AEPauli
 
 
 #  void initOpt( double dt, double damping, double f_limit ){
-lib.initOpt.argtypes  = [c_double, c_double, c_double] 
+lib.initOpt.argtypes  = [c_double, c_double, c_double, c_bool ] 
 lib.initOpt.restype   =  None
-def initOpt(dt=0.1, damping=0.1, f_limit=1000.0):
-    return lib.initOpt(dt, damping, f_limit)
+def initOpt(dt=0.1, damping=0.1, f_limit=1000.0, bMass=False ):
+    global dt_glob
+    dt_glob = dt
+    return lib.initOpt(dt, damping, f_limit, bMass)
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
 lib. run.argtypes  = [c_int, c_double, c_double, c_int] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=0.001, Fconv=1e-6, ialg=0):
+def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0):
+    if dt is None: dt=dt_glob
     return lib.run(nstepMax, dt, Fconv, ialg)
 
 # ========= Python Functions
