@@ -67,10 +67,20 @@ const double const_Ke_eVA = const_K_eVA*1.5;
 // ================================================================
 
 inline double addKineticGauss( double s, double& fs ){
+    // WARRNING: NOT SURE THIS IS USED NOW
     double is  = 1/s;
     double is2 = is*is*(const_K_eVA*1.5);
-    //printf( "addKineticGauss s %g is %g is2 %g const_Ke_eVA %20.10f const_K_eVA %20.10f \n", s, is, is2, const_Ke_eVA, const_K_eVA );
     fs += 2.*is2*is;
+    //printf( "addKineticGauss s %g is %g is2 %g const_Ke_eVA %20.10f const_K_eVA %20.10f \n", s, is, is2, const_Ke_eVA, const_K_eVA );
+    return is2;
+}
+
+inline double addKineticGauss_eFF( double s, double& fs ){
+    // This is currently used in eFF
+    double is  = M_SQRT2/s;
+    double is2 = is*is*(const_K_eVA*1.5);
+    fs += is2*is*M_SQRT2;
+    //printf( "addKineticGauss s %g is %g is2 %g const_Ke_eVA %20.10f const_K_eVA %20.10f \n", s, is, is2, const_Ke_eVA, const_K_eVA );
     return is2;
 }
 
