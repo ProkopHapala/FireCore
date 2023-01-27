@@ -19,8 +19,9 @@ def _np_as(arr,atype):
 
 cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
-dt_glob = 0.1
-bVel    = False
+verbosity = 0
+dt_glob   = 0.1
+bVel      = False
 
 # ===== To generate Interfaces automatically from headers call:
 header_strings = [
@@ -70,7 +71,9 @@ def cstr( s ):
 #  void setVerbosity( int verbosity_, int idebug_ ){
 lib.setVerbosity.argtypes  = [c_int, c_int] 
 lib.setVerbosity.restype   =  None
-def setVerbosity(verbosity=0, idebug=0):
+def setVerbosity(verbosity_=0, idebug=0):
+    global verbosity
+    verbosity = 1
     return lib.setVerbosity(verbosity, idebug)
 
 #  void init_buffers(){
@@ -258,6 +261,47 @@ def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0):
 
 # =========  Tests
 
+
+def eval_mol(name ):
+    load_fgo("data/"+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    eval()
+
+def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1 ):
+    load_fgo("data/"+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    initOpt(dt=dt,damping=damping )                              # initialize optimizer/propagator
+    if(bTrj): setTrjName(name+"_relax.xyz", savePerNsteps=perN ) # setup output .xyz file to save trajectory of all atoms and electrons at each timespep (comment-out to ommit .xyz and improve performance ) 
+    run( 10000, Fconv=1e-3, ialg=2 )                             # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
+    if(bResult): 
+        result_name=name+"_relaxed.fgo"
+        if(verbosity>0): print("Optimized molecule saved to ", result_name)
+        save_fgo( result_name )                 # save final relaxed geometry to .fgo format (i.e. floating-gaussian-orbital).
+
+def printEs():
+    print( " Etot %g Ek %g Eee %g EeePaul %g Eae%g EaePaul %g Eaa %g [A]" %(Es[0],Es[1],Es[2],Es[3],Es[5],Es[6],Es[7]) )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+
+def printAtoms():
+    for i in range(na):
+        print( "atom[%i] Q %g apos(%g,%g,%g)" %(i, aPars[i,0], apos[i,0],apos[i,1],apos[i,2]) )
+
+def printElectrons():
+    for i in range(ne):
+        print( "electron[%i] apos(%g,%g,%g) size %g spin %i" %(i, epos[i,0],epos[i,1],epos[i,2], esize[i], espin[i]) )
+
+def check_H2(bRelax=True):
+    from pyBall import eFF_terms as effpy
+    if bRelax:
+        relax_mol("H2_eFF")
+    else:
+        eval_mol("H2_eFF")
+    getBuffs()
+    bond_length = np.sqrt( ( (apos[0,:] - apos[1,:])**2 ).sum() ) ; print("apos\n",apos)
+    Etot        = Es[0]
+    printAtoms()
+    printElectrons()
+    print(  "effpy.run_H2_molecule.__doc__:\n", effpy.run_H2_molecule.__doc__ )
+    print( "check_H2 E %g [eV] lbond %g [A]" %(Etot, bond_length) )
+    printEs()
+    
 def init_eff( natom_=0, nelec_=1, s=0.5,  aQ=1.0,aQs=0.0,aP=0.0,aPs=0.1 ):
     global natom,nelec
     natom=natom_; nelec=nelec_; 

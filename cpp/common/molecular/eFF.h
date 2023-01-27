@@ -372,13 +372,15 @@ void fixElectron(int ie, double* vs=0){
     };
 }
 
-
 /// evaluate kinetic energy of each electron
 double evalKinetic(){
     Ek=0;
     for(int i=0; i<ne; i++){
-        double dEk = addKineticGauss( esize[i], fsize[i] );
+        //double fs=0;
+        //double dEk = addKineticGauss( esize[i]*M_SQRT1_2, fs );
+        //fsize[i]+=fs*M_SQRT1_2;
         //if( i_DEBUG>0 ) printf( "evalKinetic[%i] s %g -> f %g Ek %g \n", i, esize[i], fsize[i], Ek );
+        double dEk = addKineticGauss_eFF( esize[i], fsize[i] );
         eE[i] =dEk;
         Ek   +=dEk;
     }
@@ -396,13 +398,13 @@ double evalEE(){
         //Vec3d&   fi  = eforce[i];
         const int8_t spini = espin[i];
         //const double   si  = esize[i];
-        const double   si  = esize[i] * M_SQRT2;
+        const double   si  = esize[i];
         double&       fsi  = fsize[i];
         for(int j=0; j<i; j++){
             Vec3d  f  = Vec3dZero;
             const Vec3d  dR = epos [j] - pi;
             //const double sj = esize[j];
-            const double sj = esize[j] * M_SQRT2;
+            const double sj = esize[j];
             double&     fsj = fsize[j];
             double dEee=0,dEpaul=0;
             if(bEvalCoulomb){
@@ -481,7 +483,6 @@ double evalAE(){
             Vec3d f=Vec3dZero;
             const Vec3d   dR  = epos [j] - pi;
             const double  sj  = esize[j];
-            //const double  sj  = esize[j] * M_SQRT2;
             double& fsj = fsize[j];
             double  fs_junk;
             //Eae += addPairEF_expQ( epos[j]-pi, f, abwi.z, qi*QE, abwi.y, abwi.x );

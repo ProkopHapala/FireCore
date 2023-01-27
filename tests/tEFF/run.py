@@ -7,26 +7,26 @@ import time
 sys.path.append("../../")
 from pyBall import eFF as eff
 
+from pyBall import eFF_terms as pyeff
 
 
-eff.test_Hatom()
+rho=0.3; r=1.2; si=0.3; sj=0.8
+rho=0.3; r=0.7; si=1.3; sj=0.15
+
+Eref,DTref, Sref = pyeff.pyeff_E_up_up ( rho, r, si, sj)
+E,DT, S          = pyeff.pyeff_E_up_up_( rho, r, si, sj )
+
+Eudref = pyeff.pyeff_E_up_down ( rho, r, si, sj)
+Eud    = pyeff.pyeff_E_up_down_( rho, r, si, sj )
+
+print( "Eupdown ", Eudref,  Eud  )
+print( "Eupup   ", Eref,  E  )
+print( "S       ", Sref,  S  )
+print( "DT      ", DTref, DT )
+
+
 
 exit()
-
-
-
-
-
-def relax_mol(name):
-    eff.load_fgo("data/"+name+".fgo" )                 # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
-    eff.setVerbosity(verbosity=1, idebug=0)             # set verbosity of simulation (defualt verbosity=0)
-    eff.initOpt(dt=0.03,damping=0.1 )                   # initialize optimizer/propagator
-    #eff.setPauliModel(1)                               # Pauli Repulsion model from eFF paper (http://aip.scitation.org/doi/10.1063/1.3272671) ... (Default)
-    #eff.setPauliModel(0);  eff.setKPauli(30.0);        # Pauli Repulsion model proportional to overlap    EPauli = KPauli*<psi|psi>^2 for same spin electrons (=0 for oposite sipns)
-    #eff.setPauliModel(2)                               # Pauli Repulsion model using only Valence-Bond theory (Eq.2 in  http://doi.wiley.com/10.1002/jcc.21637)
-    eff.setTrjName(name+"_relax.xyz", savePerNsteps=1 ) # setup output .xyz file to save trajectory of all atoms and electrons at each timespep (comment-out to ommit .xyz and improve performance ) 
-    eff.run( 10000, Fconv=1e-3, ialg=2 )                # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
-    eff.save_fgo(name+"_relaxed.fgo"  )                  # save final relaxed geometry to .fgo format (i.e. floating-gaussian-orbital).
 
 def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, bBsize=False ):
     eff.load_fgo("data/H2O_shoot.fgo", bVel_=True )    # load H2O moleule with electron-bullet in .fgo format (i.e. floating-gaussian-orbital) including initial velocities
@@ -47,7 +47,14 @@ def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, bBsize=False ):
     plt.axis('equal'); plt.grid()
     plt.show()
 
-#relax_mol("H_eFF")
-#relax_mol("H2_eFF")
-#relax_mol("H2O")
-run_H2O_vs_ebullet()
+eff.setVerbosity(1)
+
+#eff.test_Hatom()       ;exit()
+#eff.test_Hatom(True)   ;exit()
+eff.check_H2(False)     ;exit()
+#eff.check_H2()          ;exit()
+
+#eff.relax_mol("H_eFF")
+#eff.relax_mol("H2_eFF")
+#eff.relax_mol("H2O")
+#run_H2O_vs_ebullet()

@@ -88,7 +88,7 @@ void init_buffers(){
     }
 }
 
-void setTrjName( char* trj_fname_, int savePerNsteps_ ){ trj_fname=trj_fname_; printf( "setTrjName(%s)\n", trj_fname ); savePerNsteps=savePerNsteps_;  }
+void setTrjName( char* trj_fname_, int savePerNsteps_ ){ trj_fname=trj_fname_; if(verbosity>0)printf( "setTrjName(%s)\n", trj_fname ); savePerNsteps=savePerNsteps_;  }
 
 bool load_xyz( const char* fname ){ 
     //printf( "load_xyz \n" );

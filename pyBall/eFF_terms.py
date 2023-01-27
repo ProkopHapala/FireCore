@@ -198,6 +198,102 @@ def getExmin1D(Es,xs):
     return imin,Es[imin],xs[imin]
     #print("H-atom Rmin Emin(Ek,Eel) ", ys[imin], Etot[imin], Ek[imin], Eae[imin]) 
 
+    def S_ij(r, si, sj):
+        # energy
+        S_ij = ((2./((si/sj)+(sj/si)))**(3./2.)) * \
+            np.exp((-1.*(r**2))/(si**2+sj**2))
+        return S_ij
+
+def pyeff_E_up_up(rho, r, si, sj):
+    # from sympy calculations
+    E_up_up = (8.0*(-rho + 1.0)*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) + 8.0*(1/(si/sj + sj/si))**3.0 *
+                np.exp(-2.0*r**2/(si**2 + sj**2))/(-8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0))*(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)
+    DT = (3./2.)*((1./(si**2))+(1./(sj**2)))-2. * (3.*((si**2)+(sj**2))-2.*(r**2))/(((si**2)+(sj**2))**2)
+    S  = ((2./((si/sj)+(sj/si)))**(3./2.)) * np.exp((-1.*(r**2))/(si**2+sj**2))
+    # dE_up_updr = -1*1.125*r*(-8.0*si**2*sj**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(64.0*(si*sj/(si**2 + sj**2))**3.0 + 8.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 8.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2)*(32.0*(si*sj/(si**2 + sj**2))**3.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))
+    #                             ** 3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si*sj/(si**2 + sj**2))**3.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(256.0*(si*sj/(si**2 + sj**2))**3.0 - 32.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si*sj/(si**2 + sj**2))**6.0*(-256.0*rho + 256.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 - 256.0*(si*sj/(si**2 + sj**2))**6.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2))/(si**2*sj**2*(si**2 + sj**2)**3*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    # if np.isnan(dE_up_updr) == True:dE_up_updr = 0
+
+    # dE_up_upds1 = -1*0.9*(sj**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(12.0*si**4*(si**2 + sj**2) + si**4*(16.0*r**2 - 24.0*si**2 - 24.0*sj**2) + 3.0*(si**2 + sj**2)**3)*(64.0*(si*sj/(si**2 + sj**2))**3.0 + 8.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 8.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2)*(32.0*r**2*si**2*(si*sj/(si**2 + sj**2))**3.0*(-rho + 1)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) - 32.0*r**2*si**2*(si*sj/(si**2 + sj**2))**3.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))
+    #                         ** 2 + 24.0*(si*sj/(si**2 + sj**2))**3.0*(rho - 1.0)*(si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 24.0*(si*sj/(si**2 + sj**2))**3.0*(si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 + 8.0*(si*sj/(si**2 + sj**2))**6.0*(rho - 1.0)*(32.0*r**2*si**2 + 24.0*(-si**2 + sj**2)*(si**2 + sj**2))*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 + (si*sj/(si**2 + sj**2))**6.0*(256.0*r**2*si**2 + 192.0*(-si**2 + sj**2)*(si**2 + sj**2))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2))/(si**3*sj**2*(si**2 + sj**2)**4*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    # if np.isnan(dE_up_upds1) == True:dE_up_upds1 = 0
+
+    # dE_up_upds2 = -1*0.9*(si**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(12.0*sj**4*(si**2 + sj**2) + sj**4*(16.0*r**2 - 24.0*si**2 - 24.0*sj**2) + 3.0*(si**2 + sj**2)**3)*(64.0*(si*sj/(si**2 + sj**2))**3.0 + 8.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 8.0*np.exp(2.0*r**2/(si**2 + sj**2))) - (si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2)*(32.0*r**2*sj**2*(si*sj/(si**2 + sj**2))**3.0*(rho - 1)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 32.0*r**2*sj**2*(si*sj/(si**2 + sj**2))**3.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))
+    #                         ** 2 + 24.0*(si*sj/(si**2 + sj**2))**3.0*(rho - 1.0)*(si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 24.0*(si*sj/(si**2 + sj**2))**3.0*(si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 - 8.0*(si*sj/(si**2 + sj**2))**6.0*(rho - 1.0)*(32.0*r**2*sj**2 + 24.0*(si**2 - sj**2)*(si**2 + sj**2))*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 + (si*sj/(si**2 + sj**2))**6.0*(-256.0*r**2*sj**2 + 192.0*(-si**2 + sj**2)*(si**2 + sj**2))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2))/(si**2*sj**3*(si**2 + sj**2)**4*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    # if np.isnan(dE_up_upds2) == True: dE_up_upds2 = 0
+
+    return E_up_up, DT, S # dE_up_updr, dE_up_upds1, dE_up_upds2
+
+def pyeff_E_up_down(rho, r, si, sj):
+    # from sympy calculation
+    E_up_down = ( -8.0*rho*(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)*(1/(si/sj + sj/si))**3.0
+                 *np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) )
+    
+    # dE_up_downdr = -1*1.125*r*rho*(-64.0*si**2*sj**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 32.0*(si*sj/(si**2 + sj**2))**3.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(
+    #     si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2) + (si*sj/(si**2 + sj**2))**6.0*(si**2*sj**2*(-1024.0*r**2 + 1536.0*si**2 + 1536.0*sj**2) - 384.0*si**2*(si**2 + sj**2)**2 - 384.0*sj**2*(si**2 + sj**2)**2))/(si**2*sj**2*(si**2 + sj**2)**3*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    # if np.isnan(dE_up_downdr) == True: dE_up_downdr = 0
+
+    # dE_up_downds1 = -1*0.9*rho*(-32.0*r**2*si**2*(si*sj/(si**2 + sj**2))**3.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2) + 8.0*sj**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(12.0*si**4*(si**2 + sj**2) + si**4*(16.0*r**2 - 24.0*si**2 - 24.0*sj**2) + 3.0*(si**2 + sj**2)**3) + 24.0*(si*sj/(si**2 + sj**2))**3.0*(
+    #     si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2) + 8.0*(si*sj/(si**2 + sj**2))**6.0*(32.0*r**2*si**2 + 24.0*(-si**2 + sj**2)*(si**2 + sj**2))*(si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2))/(si**3*sj**2*(si**2 + sj**2)**4*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    # if np.isnan(dE_up_downds1) == True:  dE_up_downds1 = 0
+
+    # dE_up_downds2 = -1.0*0.9*rho*(-32.0*r**2*sj**2.0*(si*sj/(si**2.0 + sj**2.0))**3.0*(8.0*(si*sj/(si**2.0 + sj**2.0))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2) + 8.0*si**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(12.0*sj**4*(si**2 + sj**2) + sj**4*(16.0*r**2 - 24.0*si**2 - 24.0*sj**2) + 3.0*(si**2 + sj**2)**3) - 24.0*(si*sj/(si**2 + sj**2))**3.0*(
+    #     si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2) + 8.0*(si*sj/(si**2 + sj**2))**6.0*(32.0*r**2*sj**2 + 24.0*(si**2 - sj**2)*(si**2 + sj**2))*(si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2))/(si**2*sj**3*(si**2 + sj**2)**4*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    # if np.isnan(dE_up_downds2) == True: dE_up_downds2 = 0
+
+    return E_up_down #, dE_up_downdr, dE_up_downds1, dE_up_downds2
+    
+def pyeff_E_up_up_(rho, r, si, sj):
+
+    si2  = si**2
+    sj2  = sj**2
+    sij2 = si2 + sj2
+    denom_sij  = 1./(si/sj + sj/si)
+    denom_sij3 = denom_sij**3
+
+    expr  = np.exp(-1.0*r**2/sij2)
+    expr2 = expr**2
+
+    expr_denom3 = denom_sij3*expr2
+
+    #DT = (3./2.)*( (1./(si**2))+(1./(sj**2) ))-2. * (3.*((si**2)+(sj**2))-2.*(r**2))/(((si**2)+(sj**2))**2)
+    #DT = (3./2.)*( sij2/(si*sj)**2  )-2. * ( 3.*( sij2 )-2.*(r**2) )/(sij2)**2
+    DT = 1.5*( sij2/(si*sj)**2  )   -   ( 6.*sij2-4.*r**2 )/(sij2)**2
+    #DT = ( (3./2.)*sij2  -2. * ( 3.*( sij2 )-2.*(r**2) )      )/(sij2)**2
+    S  = ((2.*denom_sij)**(3./2.)) * expr
+    S2 = 4*expr_denom3
+    
+    #E_up_up = 8*expr_denom3 * (   (-rho + 1.0)/(  8.0*expr_denom3 + 1.0 )   -  1/(  8.0*expr_denom3 - 1.0 ) )*(-(-4.0*r**2 + 6.0*sij2 )/sij2**2 + 1.5/sj**2 + 1.5/si**2)
+    #E_up_up = 8*expr_denom3 *  ( -rho*(8.0*expr_denom3) + (rho - 2)  )/( (8.0*expr_denom3)**2 - 1  )*(-(-4.0*r**2 + 6.0*sij2 )/sij2**2 + 1.5/sj**2 + 1.5/si**2)
+    #E_up_up = 8*expr_denom3 *  ( -rho*(8.0*expr_denom3) + (rho - 2)  )/( (8.0*expr_denom3)**2 - 1  )*(-(-4*r**2 + 6*sij2 )/sij2**2 + 1.5*sij2/(sj*si)**2 )
+
+    #E_up_up = 8*expr_denom3 *  ( -rho*(8.0*expr_denom3) + (rho - 2)  )/( (8.0*expr_denom3)**2 - 1  )*DT
+
+    E_up_up = 2*S2 *  ( -rho*( 2*S2 ) + (rho - 2)  )/( (2*S2)**2 - 1  )*DT
+
+    return E_up_up, DT, S #, dE_up_updr, dE_up_upds1, dE_up_upds2
+
+    E_up_up = ( (  8.0*(-rho + 1.0)* (1/(si/sj + sj/si))**3.0* np.exp(-2.0*r**2/(si**2 + sj**2))/( 8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0  ) 
+                 + 8.0             * (1/(si/sj + sj/si))**3.0* np.exp(-2.0*r**2/(si**2 + sj**2))/(-8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0  )   )
+    *(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2) )
+
+def pyeff_E_up_down_(rho, r, si, sj):
+    si2  = si**2
+    sj2  = sj**2
+    sij2 = si2 + sj2
+    denom_sij  = 1./(si/sj + sj/si)
+    denom_sij3 = denom_sij**3
+    expr  = np.exp(-1.0*r**2/sij2)
+    expr2 = expr**2
+    expr_denom3 = denom_sij3*expr2
+
+    #E_up_down = ( -8*rho*(-(-4*r**2 + 6*si**2 + 6*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)*(1/(si/sj + sj/si))**3
+    #             *np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) )
+    
+    E_up_down = ( -8*rho*(-(-4*r**2 + 6*sij2)/sij2**2 + 1.5/sj**2 + 1.5/si**2)*  expr_denom3 / (8.0*expr_denom3  + 1.0) )
+
+    return E_up_down #, dE_up_downdr, dE_up_downds1, dE_up_downds2
+
 
 # ================== Composed functions
 
@@ -312,12 +408,15 @@ def run_H2_cation():
 
 
 def run_H2_molecule():
+    # article seem to be wrong 
+    #   original: bond_lenght(H-H): 1.47 [A] ( vs 1.4 [A] exact SE solution, 1.38 [A] HF solution )
+    #   they probably means bohr
     '''
     from http://aip.scitation.org/doi/10.1063/1.3272671
     s = 1.77 [bohr] =  0.9366437 [A]
-    bond_lenght(H-H): 1.47 [A] ( vs 1.4 [A] exact SE solution, 1.38 [A] HF solution )
+    bond_lenght(H-H): 1.47 [bohr] = 0.7778905 [A] ( vs 1.4 [bohr] exact SE solution, 1.38 [bohr] HF solution )
     binding energy: 67 [kcal/mol] = 2.91 [eV]  (vs. 109 [kcal/mol] exact 86 [kcal/mol] HF )
-        => Etot = 2*-11.5488764245607 + 2.91 = -20.1877528491 eV
+        => Etot = 2*-11.5488764245607 - 2.91 = -26.0077528491 eV
     '''
     # ============= H2-molecule
     Ek, Eae, Eaa, Eee, EPaul = H2molecule( Xs, Ys, cr=0.49 )
