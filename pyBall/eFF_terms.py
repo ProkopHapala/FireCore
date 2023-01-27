@@ -287,10 +287,16 @@ def pyeff_E_up_down_(rho, r, si, sj):
     expr2 = expr**2
     expr_denom3 = denom_sij3*expr2
 
+    S  = ((2.*denom_sij)**(3./2.)) * expr
+    S2 = 4*expr_denom3
+    DT = 1.5*( sij2/(si*sj)**2  )   -   ( 6.*sij2-4.*r**2 )/(sij2)**2
+
     #E_up_down = ( -8*rho*(-(-4*r**2 + 6*si**2 + 6*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)*(1/(si/sj + sj/si))**3
     #             *np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) )
     
-    E_up_down = ( -8*rho*(-(-4*r**2 + 6*sij2)/sij2**2 + 1.5/sj**2 + 1.5/si**2)*  expr_denom3 / (8.0*expr_denom3  + 1.0) )
+    #E_up_down = ( 8*rho*(   (-4*r**2 + 6*sij2)/sij2**2 - 1.5/sj**2 + 1.5/si**2 )*  expr_denom3 / (8.0*expr_denom3  + 1.0) )
+
+    E_up_down = ( -2*rho*DT*S2/ (2*S2  + 1) )
 
     return E_up_down #, dE_up_downdr, dE_up_downds1, dE_up_downds2
 
