@@ -90,8 +90,8 @@ def getBuffs( ):
     init_buffers()
     global ne,na,nDOFs, ndims, Es
     ndims = getIBuff( "ndims", (3,) ); 
-    Es    = getBuff ( "Es",    (3,) ) # [ Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0 ]
-    ne=ndims[0]; na=ndims[1]; nDOFs=ndims[2]     ;print("ne,na,nDOFs ", ne,na,nDOFs)
+    Es    = getBuff ( "Es",    (8,) ) # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+    ne=ndims[0]; na=ndims[1]; nDOFs=ndims[2]     #;print("ne,na,nDOFs ", ne,na,nDOFs)
     global pDOFs, fDOFs, apos, aforce, epos, eforce, esize, fsize, aPars, espin
     pDOFs  = getBuff ( "pDOFs",  nDOFs )
     fDOFs  = getBuff ( "fDOFs",  nDOFs )
@@ -279,34 +279,45 @@ def init_eff( natom_=0, nelec_=1, s=0.5,  aQ=1.0,aQs=0.0,aP=0.0,aPs=0.1 ):
     rhoQ [:,:  ]=1               + (np.random.rand(norb,nqOrb   )-0.5)*rnd_coef
     '''
 
-def test_Hatom():
+def scan_size( ss, ie0 ):
+    Escan = np.zeros(   (len(ss),len(Es)) )
+    for i,s in enumerate(ss):
+        esize[ie0] = s
+        lib.eval()
+        Escan[i,:] =  Es[:]
+    return Escan
+
+def test_Hatom( bDerivs=False ):
     from . import eFF_terms as effpy
     import matplotlib.pyplot as plt 
     init_eff( natom_=1, nelec_=1, s=0.5 )
-    ss = np.arange( 0.4,3.0, 0.05 )
-    Ek,Eae = effpy.Hatom( ss );  E_ref=Ek+Eae 
-    E,dE   = evalFuncDerivs(1,ss)
-    #E_lim  = np.sqrt(8/np.pi)* (1/ss)    ; plt.plot( ss, E_lim,         label="Elim"  )
-    #dE_lim = np.sqrt(8/np.pi)* (1/ss**2) ;     plt.plot( ss, dE_lim,        label="dElim" )
-    #print "ss    ", ss
-    #print "E     ", E
-    #print "E_ref ", E_ref
-    plt.plot( ss, E_ref,':',lw=3, label="E_ref" )
-    plt.plot( ss, Eae,  ':',     label="Eae_ref" )
-    plt.plot( ss, Ek,   ':',     label="Ek_ref" )
-    plt.plot( ss, E,    'k',lw=3,label="E"     )
+    ss = np.arange( 0.3,1.0, 0.01 )
+
+    print(  "effpy.run_Hatom.__doc__:\n", effpy.run_Hatom.__doc__ )
+    Ek_ref,Eae_ref = effpy.Hatom( ss );  E_ref=Ek_ref+Eae_ref 
+    if bDerivs:
+        E,dE   = evalFuncDerivs(1,ss)
+        xs=ss
+        plt.plot(xs      ,dE                               ,'-',label="F_ana")
+        plt.plot(xs[1:-1],(E[2:]-E[:-2])/(-2*(xs[1]-xs[0])),':',label="F_num")
+    else:
+        getBuffs()
+        Es = scan_size( ss, 0 );   E=Es[:,0]; Ek=Es[:,1]; Eae=Es[:,5]     # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+        plt.plot( ss, Eae,    '-r', label="Eae" )
+        plt.plot( ss, Ek,     '-b', label="Ek"  )     
+        plt.plot( ss, Eae_ref,':r', lw=2, label="Eae_ref" )
+        plt.plot( ss, Ek_ref, ':b', lw=2, label="Ek_ref"  )   
     
-    xs=ss
-    plt.plot(xs      ,dE                               ,'-',label="F_ana")
-    plt.plot(xs[1:-1],(E[2:]-E[:-2])/(-2*(xs[1]-xs[0])),':',label="F_num")
+    i0ref,E0ref,x0ref = effpy.getExmin1D(E_ref,ss) ; print( "Hatom opt Reference: E %g [eV] s %g [A]" %(E0ref,x0ref) )
+    i0   ,E0   ,x0    = effpy.getExmin1D(E    ,ss) ; print( "Hatom opt Numerical: E %g [eV] s %g [A]" %(E0   ,x0   ) )
+
+    plt.plot( ss, E_ref,':k',lw=3, label="E_ref" )
+    plt.plot( ss, E,    'grey'    ,lw=3,label="E"     )
 
     plt.xlabel('size [A]')
     plt.legend()
     plt.grid()
     plt.show()
-
-
-
 
 # ========= Python Functions
 

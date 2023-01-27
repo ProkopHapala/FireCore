@@ -53,20 +53,16 @@ const_El_eVA = const_El/( const_e*const_Angstroem )
 
 const_K_eVA  = (const_El_eVA**2)/(2*const_Ry_eV)
 
-print("const_El, const_El_eVA ", const_El, const_El_eVA)
-print("const_Ry const_Ry_eV ", const_Ry, const_Ry/const_eV)
-print("const_K, const_K_eVA ", const_K, const_K_eVA)
-
-#exit()
-
 #const_K  =   const_hbar**2/const_Me   #   [ eV * A^2 ]
 #const_K  = 0.1* 30.0824137226  # [eV*A^2] hbar[J.s]^2/(Me [kg])   /  (  eV[J]*A^2[m])    # (6.62607015e-34^2/9.10938356e-31)/1.602176620898e-19/10e-20
 #const_Ke =  1.5*const_K
 
 const_Ke_eVA = const_K_eVA*1.5
-print("const_Ke_eVA ", const_Ke_eVA)
 
-#const_El =  14. # 14 (1./((4*np.pi*const_eps0))
+#print("const_El, const_El_eVA ", const_El, const_El_eVA)
+#print("const_Ry  const_Ry_eV  ", const_Ry, const_Ry/const_eV)
+#print("const_K,  const_K_eVA  ", const_K, const_K_eVA)
+#print("const_Ke_eVA           ", const_Ke_eVA)
 
 sqrt2 = np.sqrt(2.)
 
@@ -194,6 +190,15 @@ def H2molecule( r, s, cr=0.5 ):
     EPaul =   EPauli( r*(1.-2.*cr), s, s, anti=True )   # Pauli repulsion electron_1 * electron_2
     return Ek, Eae, Eaa, Eee, EPaul
 
+
+
+
+def getExmin1D(Es,xs):
+    imin = np.argmin( Es )
+    return imin,Es[imin],xs[imin]
+    #print("H-atom Rmin Emin(Ek,Eel) ", ys[imin], Etot[imin], Ek[imin], Eae[imin]) 
+
+
 # ================== Composed functions
 
 def run_ee_onsite():
@@ -262,6 +267,11 @@ def run_ee_offsite():
 
 def run_Hatom():
     # ============= H-atom
+    '''
+    from http://aip.scitation.org/doi/10.1063/1.3272671
+    s = (3/2)*sqrt(pi/2)/Z =  1.87997120597 /Z   [bohr   ] =   0.9948379191595168 [A]
+    E = -(4/(3pi))Z^2      = -0.42441318157 *Z^2 [Hartree] = -11.5488764245607    [eV]
+    '''
     #Ek  = Kinetic( ys )
     #Eae = El_ae( 0.01, -1., ys )
     Ek,Eae = Hatom( ys )
@@ -302,6 +312,13 @@ def run_H2_cation():
 
 
 def run_H2_molecule():
+    '''
+    from http://aip.scitation.org/doi/10.1063/1.3272671
+    s = 1.77 [bohr] =  0.9366437 [A]
+    bond_lenght(H-H): 1.47 [A] ( vs 1.4 [A] exact SE solution, 1.38 [A] HF solution )
+    binding energy: 67 [kcal/mol] = 2.91 [eV]  (vs. 109 [kcal/mol] exact 86 [kcal/mol] HF )
+        => Etot = 2*-11.5488764245607 + 2.91 = -20.1877528491 eV
+    '''
     # ============= H2-molecule
     Ek, Eae, Eaa, Eee, EPaul = H2molecule( Xs, Ys, cr=0.49 )
     Etot = Ek + Eae + Eaa + Eee + EPaul
