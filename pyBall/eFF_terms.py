@@ -204,7 +204,7 @@ def getExmin1D(Es,xs):
             np.exp((-1.*(r**2))/(si**2+sj**2))
         return S_ij
 
-def pyeff_E_up_up(rho, r, si, sj):
+def pyeff_E_up_up( r, si, sj, rho=-0.2):
     # from sympy calculations
     E_up_up = (8.0*(-rho + 1.0)*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) + 8.0*(1/(si/sj + sj/si))**3.0 *
                 np.exp(-2.0*r**2/(si**2 + sj**2))/(-8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0))*(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)
@@ -224,7 +224,7 @@ def pyeff_E_up_up(rho, r, si, sj):
 
     return E_up_up, DT, S # dE_up_updr, dE_up_upds1, dE_up_upds2
 
-def pyeff_E_up_down(rho, r, si, sj):
+def pyeff_E_up_down( r, si, sj, rho=-0.2):
     # from sympy calculation
     E_up_down = ( -8.0*rho*(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)*(1/(si/sj + sj/si))**3.0
                  *np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) )
@@ -243,22 +243,24 @@ def pyeff_E_up_down(rho, r, si, sj):
 
     return E_up_down #, dE_up_downdr, dE_up_downds1, dE_up_downds2
     
-def pyeff_E_up_up_(rho, r, si, sj):
-
+def pyeff_E_up_up_( r, si, sj, rho=-0.2):
+    #print("pyeff_E_up_up_ !!!!!!!!!!!!!!!!!!!!")
     si2  = si**2
     sj2  = sj**2
-    sij2 = si2 + sj2
-    denom_sij  = 1./(si/sj + sj/si)
+    sij  = si*sj
+    si2sj2 = si2 + sj2
+    #denom_sij  = 1./(si/sj + sj/si)
+    denom_sij  = sij/si2sj2
     denom_sij3 = denom_sij**3
 
-    expr  = np.exp(-1.0*r**2/sij2)
+    expr  = np.exp(-1.0*r**2/si2sj2)
     expr2 = expr**2
 
     expr_denom3 = denom_sij3*expr2
 
     #DT = (3./2.)*( (1./(si**2))+(1./(sj**2) ))-2. * (3.*((si**2)+(sj**2))-2.*(r**2))/(((si**2)+(sj**2))**2)
     #DT = (3./2.)*( sij2/(si*sj)**2  )-2. * ( 3.*( sij2 )-2.*(r**2) )/(sij2)**2
-    DT = 1.5*( sij2/(si*sj)**2  )   -   ( 6.*sij2-4.*r**2 )/(sij2)**2
+    DT = 1.5*( si2sj2/sij**2  )   -   ( 6.*si2sj2-4.*r**2 )/(si2sj2)**2
     #DT = ( (3./2.)*sij2  -2. * ( 3.*( sij2 )-2.*(r**2) )      )/(sij2)**2
     S  = ((2.*denom_sij)**(3./2.)) * expr
     S2 = 4*expr_denom3
@@ -277,7 +279,7 @@ def pyeff_E_up_up_(rho, r, si, sj):
                  + 8.0             * (1/(si/sj + sj/si))**3.0* np.exp(-2.0*r**2/(si**2 + sj**2))/(-8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0  )   )
     *(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2) )
 
-def pyeff_E_up_down_(rho, r, si, sj):
+def pyeff_E_up_down_( r, si, sj, rho=-0.2 ):
     si2  = si**2
     sj2  = sj**2
     sij2 = si2 + sj2
@@ -299,6 +301,57 @@ def pyeff_E_up_down_(rho, r, si, sj):
     E_up_down = ( -2*rho*DT*S2/ (2*S2  + 1) )
 
     return E_up_down #, dE_up_downdr, dE_up_downds1, dE_up_downds2
+
+
+def pyeff_EPaul_(r, si, sj, rho=-0.2):
+    #print("pyeff_E_up_up_ !!!!!!!!!!!!!!!!!!!!")
+    si2    = si**2
+    sj2    = sj**2
+    sij    = si*sj
+    si2sj2 = si2 + sj2
+    denom_sij  = sij/si2sj2
+    denom_sij3 = denom_sij**3
+
+    expr  = np.exp(-r**2/si2sj2)
+    expr2 = expr**2
+
+    expr_denom3 = denom_sij3*expr2
+
+    DT = 1.5*( si2sj2/sij**2  )   -   ( 6.*si2sj2-4.*r**2 )/(si2sj2)**2
+    S  = ((2.*denom_sij)**(3./2.)) * expr
+    S2 = 4*expr_denom3
+    
+    E_up_up   = 2*S2 *  ( -rho*( 2*S2 ) + (rho - 2)  )/( (2*S2)**2 - 1  )*DT
+    E_up_down = ( -2*rho*DT*S2/ (2*S2  + 1) )
+
+    return E_up_up, E_up_down, DT, S
+
+def pyeff_EPaul( r, si, sj, rho=-0.2 ):
+    #print("pyeff_E_up_up_ !!!!!!!!!!!!!!!!!!!!")
+    r2     = r*r
+    si2    = si*si
+    sj2    = sj*sj
+    sij    = si*sj
+    si2sj2 = si2 + sj2
+    invsi2sj2 =  1/si2sj2
+    denom_sij  = sij*invsi2sj2
+    denom_sij3 = denom_sij*denom_sij*denom_sij
+
+    expr        = np.exp( -r2 * invsi2sj2 )
+    expr2       = expr**2
+
+    DT = 1.5*( si2sj2/(sij*sij)  )   -   ( 6.*si2sj2-4.*r**2 )*invsi2sj2*invsi2sj2
+    S  = ((2.*denom_sij)**(3./2.)) * expr
+    #S2 = 4*denom_sij3*expr2
+    S2_2 = 8*denom_sij3*expr2
+    
+    #E_up_up   = S2_2 *  ( -rho*S2_2 + (rho - 2)  )/( S2_2*S2_2 - 1  )*DT
+    E_up_up   = S2_2 * DT* ( -rho*S2_2 + (rho - 2)  )/( S2_2*S2_2 - 1  )
+    E_up_down = ( -rho*DT*S2_2/ ( S2_2  + 1) )
+
+    print( "si %g sj %g r2 %g rho %g \n" %( si, sj, r2, rho) )
+
+    return E_up_up, E_up_down, DT, S
 
 
 # ================== Composed functions

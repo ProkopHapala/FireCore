@@ -261,10 +261,19 @@ def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0):
 
 # =========  Tests
 
-
 def eval_mol(name ):
     load_fgo("data/"+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     eval()
+
+def eval_ee( r, si, sj, spin=-1 ):
+    init( 0, 2 )
+    getBuffs()
+    epos[:,:]=0; epos[0,0]=r
+    esize[0]=si; esize[1]=sj
+    espin[0]=1;  espin[1]=spin
+    #setSwitches( kinetic=0, coulomb=0, pauli=0 )
+    eval()
+    print( "Eee", Es[2], "Epaul", Es[3] )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
 
 def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1 ):
     load_fgo("data/"+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
