@@ -557,12 +557,78 @@ inline double addPauliGauss( const Vec3d& dR, double si, double sj, Vec3d& f, do
     //printf( " E %g T %g eS %g S %g ", T*eS, T, eS, S );
     //printf( "addPauliGauss() E %g T %g S %g | r %g anti %i \n", T*eS, T, S, sqrt(r2), (int)anti  );
 
+    double E = T * eS;
+
+    printf( "Epaul_ij %g T %g S %g r %g si %g sj %g \n",  E, T, S, r, si, sj  );
+
+    return E;
+
     //return T * eS;
     //return eS;
     //return S;
     //return eS*-3;
     //return T;
-    return T;
+    //return T;
+}
+
+inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj, bool anti, const Vec3d& KRSrho ){
+    double r2         = dR.norm2();
+    double si2        = si*si;
+    double sj2        = sj*sj;
+    double sij        = si*sj;
+    double si2sj2     = si2 + sj2;
+    double invsi2sj2  = 1/si2sj2;
+    double denom_sij  = sij*invsi2sj2;
+    double denom_sij3 = denom_sij*denom_sij*denom_sij;
+
+    double expr  = exp(-r2*invsi2sj2);
+    double expr2 = expr*expr;
+
+    // ------- Kinetic Energy Difference
+    double DT     = 1.5*( si2sj2/(sij*sij))  -  ( 6*si2sj2 - 4*r2 )*invsi2sj2*invsi2sj2;
+    double dDT_dsi = 0;
+    double dDT_dsj = 0;
+    double dDT_dr  = 0;
+
+    // ------- Overlap 
+    double S22  = 8*denom_sij3*expr2;                                                    // actually 2*S**2
+    double dS22_dsi = 0;
+    double dS22_dsj = 0;
+    double dS22_dr  = 0;
+
+    double rho = KRSrho.z;
+
+    // { // DEBUG
+    //     double S   = pow( 2*denom_sij, 1.5 ) * expr;
+    //     double Eud = -rho*DT*S2_2                         /( S2_2      + 1 );
+    //     double Euu =      DT*S2_2*( -rho*S2_2 + rho - 2  )/( S2_2*S2_2 - 1 );
+    //     printf( "si %g sj %g r2 %g rho %g \n", si, sj, r2, rho );
+    //     printf( "Euu %g Eud %g S %g DT %g S2_2 %g \n", Euu,Eud, S, DT, S2_2 );
+    // }
+
+    double E, dE_dDT, dE_dS22;
+    if( anti ){
+        double invS22m1 = 1/(S22+1);
+        E = -rho*DT*S22*invS22m1;
+        dE_dDT  = -(rho*S22)*invS22m1;
+        dE_dS22 = -(rho*DT )*invS22m1*invS22m1;
+
+    }else{
+        double invS222m1 = 1/( S22*S22-1 );
+        E        = S22 * DT * ( -rho*( S22 ) + (rho - 2)  )*invS222m1;
+        dE_dDT  = -(S22*(rho*S22-rho+2))*invS222m1;
+        dE_dS22 = -DT*(  S22*(rho*S22-2*S22-2*rho) + rho-2 )   *invS222m1*invS222m1;
+        //dE_dS22 = -((rho*S22^2-2*s22^2-2*rho*s22+rho-2)*t)*invS222m1*invS222m1;
+        //dE_dS22 = -((rho*S22*S22-2*s22*S22-2*rho*s22+rho-2)*t)*invS222m1*invS222m1;
+    }
+
+    fsi      +=   dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi;
+    fsj      +=   dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj;
+    double fr =   dE_dS22 * dS22_dr  + dE_dDT * dDT_dr;
+
+    f.add_mul( dR, fr/sqrt(r2 + 1e-16)  );
+
+    return E;
 }
 
 inline double addPauliGaussVB( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj ){

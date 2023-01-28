@@ -202,8 +202,8 @@ constexpr static const double aMasses[7] = {  1.0, 9.0,  11.0,  12.0,  14.0, 16.
     double KPauliKin     = 50.0; // ToDo : Not sure if we should use this - perhaps this model of pauli energy should work "ab inition"
 
     constexpr static const double default_esize = 0.5;
-    //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.2 }; ///< eFF universal parameters
-    constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.3 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
+    constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.2 }; ///< eFF universal parameters
+    //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.3 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -1.0 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
     //Vec3d KRSrho = { 1.125, 0.9, 0.2 };
 
@@ -418,7 +418,8 @@ double evalEE(){
                     //if( spini==espin[j] ){
                         //printf( "EeePaul_1[%i,%i]  ", i, j );
                         //printf( "evalEE() r %g pi (%g,%g,%g) pj (%g,%g,%g) \n", dR.norm(), epos[j].x,epos[j].y,epos[j].z, pi.x,pi.y,pi.z  );
-                        dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
+                        //dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
+                        dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
                 }else if( iPauliModel == 2 ){ // iPauliModel==0 Pauli repulasion from Valence-Bond theory

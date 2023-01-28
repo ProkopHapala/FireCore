@@ -10,19 +10,20 @@ from pyBall import eFF as eff
 from pyBall import eFF_terms as pyeff
 
 
-rho=0.3; r=1.2; si=0.3; sj=0.8
-rho=0.3; r=0.7; si=1.3; sj=0.15
+rho=-0.2; r=1.2; si=0.3; sj=0.8
+rho=-0.2; r=0.7; si=1.3; sj=0.15
 
-Eref,DTref, Sref = pyeff.pyeff_E_up_up ( rho, r, si, sj)
-E,DT, S          = pyeff.pyeff_E_up_up_( rho, r, si, sj )
-
-Eudref = pyeff.pyeff_E_up_down ( rho, r, si, sj)
-Eud    = pyeff.pyeff_E_up_down_( rho, r, si, sj )
+Euuref,DTref, Sref = pyeff.pyeff_E_up_up   ( r, si, sj, rho,)
+Eudref             = pyeff.pyeff_E_up_down ( r, si, sj, rho,)
+Euu,Eud, DT, S     = pyeff.pyeff_EPaul     ( r, si, sj, rho,)
 
 print( "Eupdown ", Eudref,  Eud  )
-print( "Eupup   ", Eref,  E  )
+print( "Eupup   ", Euuref,  Euu  )
 print( "S       ", Sref,  S  )
 print( "DT      ", DTref, DT )
+
+
+eff.eval_ee( r, si, sj )
 
 
 
