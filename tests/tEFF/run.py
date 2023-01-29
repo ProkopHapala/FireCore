@@ -10,6 +10,8 @@ from pyBall import eFF as eff
 from pyBall import eFF_terms as pyeff
 
 
+
+'''
 rho=-0.2; r=1.2; si=0.3; sj=0.8
 rho=-0.2; r=0.7; si=1.3; sj=0.15
 
@@ -22,10 +24,14 @@ print( "Eupup   ", Euuref,  Euu  )
 print( "S       ", Sref,  S  )
 print( "DT      ", DTref, DT )
 
-
 eff.eval_ee( r, si, sj )
+'''
 
 
+#eff.check_DerivsPauli( r0=0.0,r1=2.5,   s0=0.5,s1=0.5, n=100 , spin=1 )
+#eff.check_DerivsPauli( r0=0.0,r1=2.5,   s0=0.5,s1=0.5, n=100 , spin=-1 )
+#eff.check_DerivsPauli( r0=0.7,r1=0.7,   s0=0.2,s1=2.5,  sj=0.5, n=100 , spin=1)
+eff.check_DerivsPauli( r0=0.7,r1=0.7,   s0=0.2,s1=2.5,  sj=0.5, n=100 , spin=-1)
 
 exit()
 

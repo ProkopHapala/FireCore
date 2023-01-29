@@ -54,11 +54,17 @@ void setVerbosity( int verbosity_, int idebug_ ){
 
 double eval(){ return ff.eval(); };
 
-void evalFuncDerivs( int n, double* r, double* s, double* Es, double* Fs ){
+void evalFuncDerivs( int n, double* r, double* s, double* Es, double* Fr, double* Fs ){
     double fr,fs;
     for(int i=0; i<n; i++){
-        ff.esize[0] = s[i]; Es[i] = ff.eval(); Fs[i]=ff.fsize[0];
-        //printf( "[%i] %g \n", i, ff.fsize[0] );
+        ff.epos [0].x = r[i];
+        ff.esize[0]   = s[i]; 
+        //ff.esize[1]   = s[i]; 
+        Es[i]         = ff.eval();
+        Fr[i]         = ff.eforce[0].x; 
+        Fs[i]         = ff.fsize [0];
+        //Fs[i]         = ff.fsize [1];
+        //printf( "[%i] Es %g Fr %g Fs %g \n", i, Es[i], ff.eforce[0].x, ff.fsize[0] );
     }
 }
 

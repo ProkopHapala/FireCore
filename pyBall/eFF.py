@@ -154,17 +154,18 @@ lib.eval.restype   =  c_double
 def eval():
     return lib.eval() 
 
-#void evalFuncDerivs( int n, double* r, double* s, double* Es, double* Fs ){
-lib.evalFuncDerivs.argtypes = [ c_int, array1d, array1d, array1d, array1d ]
+#void evalFuncDerivs( int n, double* r, double* s, double* Es, double* Fr, double* Fs ){
+lib.evalFuncDerivs.argtypes = [ c_int, array1d, array1d, array1d, array1d, array1d ]
 lib.evalFuncDerivs.restype  = None
-def evalFuncDerivs( r, s, Es=None, Fs=None ):
+def evalFuncDerivs( r, s, Es=None, Fs=None, Fr=None ):
     r = r + s*0
     s = s + r*0
     n = len(r)
     if Es is None: Es=np.zeros(n)
+    if Fr is None: Fr=np.zeros(n)
     if Fs is None: Fs=np.zeros(n) 
-    lib.evalFuncDerivs( n, r, s, Es, Fs )
-    return Es,Fs
+    lib.evalFuncDerivs( n, r, s, Es, Fr, Fs )
+    return Es,Fr,Fs
 
 #  void info(){
 lib.info.argtypes  = [] 
@@ -274,6 +275,25 @@ def eval_ee( r, si, sj, spin=-1 ):
     #setSwitches( kinetic=0, coulomb=0, pauli=0 )
     eval()
     print( "Eee", Es[2], "Epaul", Es[3] )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+
+def check_DerivsPauli( r0=0.5,r1=1.5, s0=0.5,s1=0.5,   sj=1.0, n=10, spin=1 ):
+    init( 0, 2 )
+    setPauliModel(1)
+    setSwitches( kinetic=-1, coulomb=-1, pauli=1 )
+    getBuffs()
+    espin[0]=1;  espin[1]=spin
+    epos[:,:]=0; esize[:]=sj;
+    rs = np.linspace(r0,r1,n,endpoint=False); dr=rs[1]-rs[0]      #; print( "rs \n", rs, r0, r1 );
+    ss = np.linspace(s0,s1,n,endpoint=False); ds=ss[1]-ss[0]      #; print( "ss \n", ss, s0, s1 );
+    Es,Fr,Fs = evalFuncDerivs( rs, ss ); #print( Es, Fr, Fs )
+    dE   = (Es[2:]-Es[:-2])*0.5
+    #print( rs, ss, Es, Fr, Fs )
+    import matplotlib.pyplot as plt 
+    #F= Fr*dr + Fs*ds; plt.figure(); plt.plot( dE   ,':', label="dE" );   plt.plot( F,  label="F" );   plt.legend(); plt.grid()
+    plt.figure(); plt.plot( rs[1:-1], dE/dr,':',lw=2, label="dEdr" ); plt.plot( rs, Fr*-1, label="Fr" ); plt.legend(); plt.grid()
+    plt.figure(); plt.plot( ss[1:-1], dE/ds,':',lw=2, label="dEds" ); plt.plot( ss, Fs   , label="Fs" ); plt.legend(); plt.grid()
+    plt.show()
+    #return Es,Fr,Fs,
 
 def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1 ):
     load_fgo("data/"+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
