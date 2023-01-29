@@ -573,62 +573,73 @@ inline double addPauliGauss( const Vec3d& dR, double si, double sj, Vec3d& f, do
 
 inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj, bool anti, const Vec3d& KRSrho ){
     double r2         = dR.norm2();
+
+    double KR2=KRSrho.x*KRSrho.x;
+    r2*=KR2;  si*=KRSrho.y; sj*=KRSrho.y;
+
     double si2        = si*si;
     double sj2        = sj*sj;
-    double sij        = si*sj;
     double si2sj2     = si2 + sj2;
     double invsi2sj2  = 1/si2sj2;
-    double denom_sij  = sij*invsi2sj2;
-    double denom_sij3 = denom_sij*denom_sij*denom_sij;
+    double invsi2sj22 = invsi2sj2*invsi2sj2;
+    double invsi2sj23 = invsi2sj2*invsi2sj22;
+    double denom_sij  = si*sj*invsi2sj2;
+    double si4sj4     = si2*si2 - sj2*sj2; 
+    double invsj      = 1/sj;
+    double invsi      = 1/si; 
+    double invsj2     = invsj*invsj;
+    double invsi2     = invsi*invsi; 
 
-    double expr  = exp(-r2*invsi2sj2);
-    double expr2 = expr*expr;
+    //double r     = sqrt(r2 + 1e-16);
+    //double expr  = exp(-r2*invsi2sj2);
+    //double expr2 = expr*expr;
+    //double expr2  = exp(-2*r2*invsi2sj2);
+
+    double r2_4   =  4*r2;
 
     // ------- Kinetic Energy Difference
-    double DT     = 1.5*( si2sj2/(sij*sij))  -  ( 6*si2sj2 - 4*r2 )*invsi2sj2*invsi2sj2;
-    double dDT_dsi = 0;
-    double dDT_dsj = 0;
-    double dDT_dr  = 0;
+    double DT      = 1.5*si2sj2*invsi2*invsj2 -      (6*si2sj2 - r2_4)*invsi2sj22;
+    double dDT_dsi =  -3*invsi2*invsi         + 4*si*(3*si2sj2 - r2_4)*invsi2sj23;   // TESTED with eff.py .check_DerivsPauli()
+    double dDT_dsj =  -3*invsj2*invsj         + 4*sj*(3*si2sj2 - r2_4)*invsi2sj23;   // TESTED with eff.py .check_DerivsPauli() 
+    double dDT_dr  =   8*invsi2sj22;      // missing 'r' it is in |dR|               // TESTED with eff.py .check_DerivsPauli()
 
-    // ------- Overlap 
-    double S22  = 8*denom_sij3*expr2;                                                    // actually 2*S**2
-    double dS22_dsi = 0;
-    double dS22_dsj = 0;
-    double dS22_dr  = 0;
+    // ------- Overlap  ..... actually S22 = 2*S**2
+    double S22      = 8*denom_sij*denom_sij*denom_sij*exp(-2*r2*invsi2sj2);         
+    double dS22_dsi = S22*( -3*si4sj4 + r2_4*si2 )*invsi2sj22*invsi;                // TESTED with eff.py .check_DerivsPauli()
+    double dS22_dsj = S22*( +3*si4sj4 + r2_4*sj2 )*invsi2sj22*invsj;                // TESTED with eff.py .check_DerivsPauli()
+    double dS22_dr  = -4*S22*invsi2sj2;   // missing 'r' it is in |dR|              // TESTED with eff.py .check_DerivsPauli()
+
+    //printf( "r %g si %g sj %g DT %g S22 %g \n", sqrt(r2), si,sj, DT,S22 );
+    //fsi=dDT_dsi;    fsj=dDT_dsj;  f=dR*dDT_dr;   return DT;  
+    //fsi=dS22_dsi;   fsj=dS22_dsj; f=dR*dS22_dr;  return S22;
 
     double rho = KRSrho.z;
-
-    // { // DEBUG
-    //     double S   = pow( 2*denom_sij, 1.5 ) * expr;
-    //     double Eud = -rho*DT*S2_2                         /( S2_2      + 1 );
-    //     double Euu =      DT*S2_2*( -rho*S2_2 + rho - 2  )/( S2_2*S2_2 - 1 );
-    //     printf( "si %g sj %g r2 %g rho %g \n", si, sj, r2, rho );
-    //     printf( "Euu %g Eud %g S %g DT %g S2_2 %g \n", Euu,Eud, S, DT, S2_2 );
-    // }
 
     double E, dE_dDT, dE_dS22;
     if( anti ){
         double invS22m1 = 1/(S22+1);
-        E = -rho*DT*S22*invS22m1;
-        dE_dDT  = -(rho*S22)*invS22m1;
-        dE_dS22 = -(rho*DT )*invS22m1*invS22m1;
-
+        E       = - rho*DT*S22  *invS22m1;
+        dE_dDT  = -(rho*   S22 )*invS22m1;
+        dE_dS22 = -(rho*DT     )*invS22m1*invS22m1;
     }else{
         double invS222m1 = 1/( S22*S22-1 );
-        E        = S22 * DT * ( -rho*( S22 ) + (rho - 2)  )*invS222m1;
-        dE_dDT  = -(S22*(rho*S22-rho+2))*invS222m1;
-        dE_dS22 = -DT*(  S22*(rho*S22-2*S22-2*rho) + rho-2 )   *invS222m1*invS222m1;
-        //dE_dS22 = -((rho*S22^2-2*s22^2-2*rho*s22+rho-2)*t)*invS222m1*invS222m1;
-        //dE_dS22 = -((rho*S22*S22-2*s22*S22-2*rho*s22+rho-2)*t)*invS222m1*invS222m1;
+        E       =   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
+        dE_dDT  = - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
+        dE_dS22 =      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
     }
 
-    fsi      +=   dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi;
-    fsj      +=   dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj;
-    double fr =   dE_dS22 * dS22_dr  + dE_dDT * dDT_dr;
+    //fsi       += dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi;
+    //fsj       += dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj;
+    //double fr  = dE_dS22 * dS22_dr  + dE_dDT * dDT_dr;
 
-    f.add_mul( dR, fr/sqrt(r2 + 1e-16)  );
+    fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*KRSrho.y;
+    fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*KRSrho.y;
+    double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*KR2;
+
+    f.add_mul( dR, fr  );
 
     return E;
+    
 }
 
 inline double addPauliGaussVB( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj ){
