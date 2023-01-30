@@ -9,8 +9,6 @@ from pyBall import eFF as eff
 
 from pyBall import eFF_terms as pyeff
 
-
-
 '''
 rho=-0.2; r=1.2; si=0.3; sj=0.8
 rho=-0.2; r=0.7; si=1.3; sj=0.15
@@ -31,9 +29,8 @@ eff.eval_ee( r, si, sj )
 #eff.check_DerivsPauli( r0=0.0,r1=2.5,   s0=0.5,s1=0.5, n=100 , spin=1 )
 #eff.check_DerivsPauli( r0=0.0,r1=2.5,   s0=0.5,s1=0.5, n=100 , spin=-1 )
 #eff.check_DerivsPauli( r0=0.7,r1=0.7,   s0=0.2,s1=2.5,  sj=0.5, n=100 , spin=1)
-eff.check_DerivsPauli( r0=0.7,r1=0.7,   s0=0.2,s1=2.5,  sj=0.5, n=100 , spin=-1)
-
-exit()
+#eff.check_DerivsPauli( r0=0.7,r1=0.7,   s0=0.2,s1=2.5,  sj=0.5, n=100 , spin=-1)
+#exit()
 
 def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, bBsize=False ):
     eff.load_fgo("data/H2O_shoot.fgo", bVel_=True )    # load H2O moleule with electron-bullet in .fgo format (i.e. floating-gaussian-orbital) including initial velocities
@@ -56,10 +53,24 @@ def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, bBsize=False ):
 
 eff.setVerbosity(1)
 
-#eff.test_Hatom()       ;exit()
-#eff.test_Hatom(True)   ;exit()
-eff.check_H2(False)     ;exit()
+const_bohr = 0.5291772105638411
+
+
+#eff.test_Hatom()        ;exit()
+#eff.test_Hatom(True)    ;exit()
+#eff.check_H2(False)     ;exit()
 #eff.check_H2()          ;exit()
+
+# limit Euu(r=0,si=sj) = 1/s^2 = 1/1.7007535132532356^2 = 0.34571422244 [Hartree] = 9.407362451147032 [eV]
+#   !!! But this should be infinite ( two same-spin electrons cannot occupy same orbital !!!
+
+
+#Euu,_,_,_    = pyeff.E_up_up__( 1.125e-7, 1.7007535132532354, 1.7007535132532354, rho=-0.2 )  
+#Euu,DT,S    = pyeff.pyeff_E_up_up(  1.125e-7, 1.7007535132532354, 1.7007535132532354, rho=-0.2 ); print( "!!!!! pyeff_E_up_up(): Euu",Euu, "DT",DT, "S",S )
+#Euu,DT,S     = pyeff.pyeff_E_up_up(  1.125e-7, 0.9/const_bohr, 0.9/const_bohr, rho=-0.2 );     print( "!!!!! pyeff_E_up_up(): Euu",Euu, "DT",DT, "S",S )
+#Euu,Eud,DT,S = pyeff.pyeff_EPaul( 1e-5, 0.9/const_bohr, 0.9/const_bohr, rho=-0.2 );            print( "!!!!! pyeff_EPaul():   Euu",Euu, "Eud",Eud, "DT",DT, "S",S )
+
+eff.check_H2( False, "H2_eFF_upup")     ;exit()
 
 #eff.relax_mol("H_eFF")
 #eff.relax_mol("H2_eFF")
