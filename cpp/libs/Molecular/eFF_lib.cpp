@@ -69,6 +69,17 @@ void evalFuncDerivs( int ie, int n, double* r, double* s, double* Es, double* Fr
     }
 }
 
+void evalNumDerivs( double* Fnum, double d ){
+    double denom=1/(2.*d);
+    for(int i=0; i<ff.nDOFs; i++){
+        double o = ff.pDOFs[i];
+        ff.pDOFs[i]=o-d;  double E1=ff.eval();
+        ff.pDOFs[i]=o+d;  double E2=ff.eval();  
+        Fnum[i] = (E2-E1)*denom;
+        ff.pDOFs[i]=o;
+    }
+}
+
 void init_buffers(){
     // atoms (ions)
     buffers.insert( { "pDOFs",           ff.pDOFs  } );
