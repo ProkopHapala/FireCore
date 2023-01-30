@@ -39,7 +39,7 @@ eff.eval_ee( r, si, sj )
 #eff.check_Derivs_ie( "H2_eFF_asym", ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=100 )
 #eff.check_Derivs_ie( "H2_eFF_asym", ie=0, r0=1.0,r1=1.0, s0=0.5,s1=1.5, n=100 )
 
-eff.checkNumDerivs( "H2_eFF_asym"); exit()
+#eff.checkNumDerivs( "H2_eFF_asym"); exit()
 
 def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, bBsize=False ):
     eff.load_fgo("data/H2O_shoot.fgo", bVel_=True )    # load H2O moleule with electron-bullet in .fgo format (i.e. floating-gaussian-orbital) including initial velocities

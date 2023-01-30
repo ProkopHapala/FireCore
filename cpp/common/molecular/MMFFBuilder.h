@@ -82,6 +82,10 @@ struct AtomConf{
 
     //AtomConf() = default;
 
+    inline void rebase(int dib){
+        for(int i=0; i<N_NEIGH_MAX; i++){ neighs[i]+=dib; };
+    }
+
     inline int findNeigh(int ib){
         for(int i=0; i<N_NEIGH_MAX; i++){
             //printf( "MM:AtomConf.findNeigh()[%i] ng %i ja %i \n", i, neighs[i], ja );
@@ -285,8 +289,6 @@ class Builder{  public:
     std::vector<AtomConf>  confs;
     //std::vector<int>  atom_neighs;
 
-
-
     bool bPBC=false;
     Mat3d lvec = Mat3dIdentity;  // lattice vectors for PBC (periodic boundary conditions)
     std::vector<Vec3i> bondPBC;
@@ -305,6 +307,7 @@ class Builder{  public:
     std::unordered_map<size_t,size_t> mol2molType;
 #endif // Molecule_h
 
+    int ignoreType=-1;
     Vec3d defaultREQ  {  1.5, 0.0, 0.0 };
     Bond  defaultBond { -1, {-1,-1}, 1.5, 10.0 };
     //Angle defaultAngle{ -1, {-1,-1}, 0.0, 0.5 };
@@ -1328,14 +1331,7 @@ class Builder{  public:
             if(tn)tn[i] = d.n;
         }
     }
-
-#ifdef Molecule_h
-    void clearMolTypes( bool deep ){
-        if(deep){ for(Molecule* mol : molTypes ){ mol->dealloc(); delete mol; } }
-        molTypeDict.clear();
-        molTypes.clear();
-    }
-
+    
     void assignAtomREQs( const MMFFparams* params ){
         for(int i=0; i<atoms.size(); i++){
             //mmff->aLJq [i]  = atoms[i].type;
@@ -1345,6 +1341,91 @@ class Builder{  public:
             atoms[i].REQ.z = 0;
             //atomTypes[i]  = atoms[i].type;
         }
+    }
+
+    void startFragment (){ frags.push_back( Fragment( atoms.size(), bonds.size(), angles.size(), dihedrals.size() ) ); }
+    void finishFragment(){ frags.back().finish      ( atoms.size(), bonds.size(), angles.size(), dihedrals.size() ); }
+
+    void insertAtoms( int na, int* atypes, Vec3d* apos, Vec3d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
+        //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
+        //startFragment();
+        //int natom0  = atoms.size();
+        //int nbond0  = bonds.size();
+        for(int i=0; i<na; i++){
+            Vec3d p,REQ;
+            int ne=0,npi=0;
+            int ityp = atypes[i];
+            if( ityp==ignoreType ) continue;
+            double q=0; if(qs){ q=qs[i]; }
+            if(REQs  ){ REQ=REQs[i];                        }
+            else      { params->assignRE( ityp, REQ,true ); }
+            if(params){ ne = params->atypes[ityp].nepair(); npi=params->atypes[ityp].npi(); }
+            if(npis  ){npi=npis[i];}
+            REQ.z=q;
+            //printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, npi, ne  );
+            rot.dot_to( apos[i],p); p.add( pos );
+            insertAtom( ityp, p, &REQ, npi, ne );
+        }
+        //finishFragment();
+    }
+
+    void insertBonds( int nb, Vec2i* b2as, int* btypes ){
+        int natom0  = atoms.size();
+        for(int i=0; i<nb; i++){
+            int btyp = defaultBond.type;
+            if(btypes){ btyp=btypes[i]; }
+            bonds.push_back( Bond( btyp, b2as[i] + ((Vec2i){natom0,natom0}), defaultBond.l0, defaultBond.k ) );
+        }
+    }
+
+    int insertAtomsBonds( int nb, Vec2i* b2as, int* btypes, int na, int* atypes,  Vec3d* apos, Vec3d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
+        //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
+        startFragment();
+        insertAtoms( na, atypes, apos, REQs, qs, npis, pos,rot);
+        insertBonds( nb, b2as, btypes );
+        finishFragment();
+        return frags.size()-1;
+    }
+
+    void insertFrag( int ifrag, const Vec3d& pos0=Vec3dZero, const Vec3d& pos1=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
+        Vec2i atomRange = frags[ifrag].atomRange;
+        Vec2i bondRange = frags[ifrag].bondRange;
+        int ia0=atoms.size();
+        int ib0=bonds.size();
+        int dib=ib0-bondRange.a;
+        int dia=ia0-atomRange.a;
+        for(int i=atomRange.a; i<atomRange.b; i++){
+            Atom A = atoms[i];
+            rot.dot_to( A.pos-pos0,A.pos); A.pos.add(pos1);
+            if(A.iconf>=0){ 
+                AtomConf C = confs[A.iconf];
+                C.rebase(dib); 
+                C.iatom=atoms.size();
+                A.iconf=confs.size();
+                confs.push_back(C);
+            }; 
+            atoms.push_back(A);
+        }
+        for(int i=bondRange.a; i<bondRange.b; i++){
+            Bond B = bonds[i];
+            B.atoms.add(dia,dia);
+            bonds.push_back(B);
+        }
+    }
+
+    void multFragPBC( Vec3i nPBC, int ifrag, Mat3d lvs ){
+        for(int ic=0; ic<nPBC.c; ic++){ for(int ib=0; ib<nPBC.b; ib++){ for(int ia=0; ia<nPBC.a; ia++){
+            if( (ia==0)&&(ib==0)&&(ic==0) ) continue;
+            Vec3d pos0 = lvs.a*ia + lvs.b*ib + lvs.c*ic;
+            insertFrag( ifrag, Vec3dZero, pos0 );
+        }}}
+    }
+
+#ifdef Molecule_h
+    void clearMolTypes( bool deep ){
+        if(deep){ for(Molecule* mol : molTypes ){ mol->dealloc(); delete mol; } }
+        molTypeDict.clear();
+        molTypes.clear();
     }
 
     int loadMolTypeXYZ(const char* fname, MMFFparams* params_=0 ){
@@ -1382,9 +1463,6 @@ class Builder{  public:
         molTypeDict[label] = itype;
         return itype;
     }
-
-    void startFragment (){ frags.push_back( Fragment( atoms.size(), bonds.size(), angles.size(), dihedrals.size() ) ); }
-    void finishFragment(){ frags.back().finish      ( atoms.size(), bonds.size(), angles.size(), dihedrals.size() ); }
 
     void insertFlexibleMolecule_ignorH( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int iH = 1 ){
         int natom0  = atoms.size();
@@ -1439,24 +1517,6 @@ class Builder{  public:
             if( mol->ang0s ) alfa0 = mol->ang0s[i];
             angles.push_back( (Angle){ 1, mol->ang2bond[i] + ((Vec2i){nbond0,nbond0}), alfa0, defaultAngle.k } );
             //printf( "angle[%i|%i,%i] %g|%g %g \n", i, angles.back().bonds.a, angles.back().bonds.b, angles.back().a0, alfa0, angles.back().k );
-        }
-        finishFragment();
-    }
-
-    void insertAtoms( int n, int* atypes, Vec3d* apos, Vec3d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
-        //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
-        startFragment();
-        int natom0  = atoms.size();
-        int nbond0  = bonds.size();
-        for(int i=0; i<n; i++){
-            int ityp = atypes[i];
-            int npi,ne  = params->atypes[ityp].nepair();
-            double q=0; if(qs){ q=qs[i]; }
-            Vec3d p,REQ;
-            if(REQs){ REQ=REQs[i]; }else{ params->assignRE(ityp, REQ,true); REQ.z=q; };
-            if(npis){ npi=npis[i]; }else{ npi=params->atypes[ityp].npi();            };
-            rot.dot_to(apos[i],p); p.add( pos );
-            insertAtom( ityp, p, &REQ, npi, ne );
         }
         finishFragment();
     }
