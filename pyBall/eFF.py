@@ -154,17 +154,17 @@ lib.eval.restype   =  c_double
 def eval():
     return lib.eval() 
 
-#void evalFuncDerivs( int n, double* r, double* s, double* Es, double* Fr, double* Fs ){
-lib.evalFuncDerivs.argtypes = [ c_int, array1d, array1d, array1d, array1d, array1d ]
+#void evalFuncDerivs( int ie, int n, double* r, double* s, double* Es, double* Fr, double* Fs ){
+lib.evalFuncDerivs.argtypes = [ c_int, c_int, array1d, array1d, array1d, array1d, array1d ]
 lib.evalFuncDerivs.restype  = None
-def evalFuncDerivs( r, s, Es=None, Fs=None, Fr=None ):
+def evalFuncDerivs( r, s, Es=None, Fs=None, Fr=None, ie=0 ):
     r = r + s*0
     s = s + r*0
     n = len(r)
     if Es is None: Es=np.zeros(n)
     if Fr is None: Fr=np.zeros(n)
     if Fs is None: Fs=np.zeros(n) 
-    lib.evalFuncDerivs( n, r, s, Es, Fr, Fs )
+    lib.evalFuncDerivs( ie, n, r, s, Es, Fr, Fs )
     return Es,Fr,Fs
 
 #  void info(){
@@ -295,6 +295,22 @@ def check_DerivsPauli( r0=0.5,r1=1.5, s0=0.5,s1=0.5,   sj=1.0, n=10, spin=1 ):
     plt.show()
     #return Es,Fr,Fs,
 
+
+def check_Derivs_ie( name, ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=10 ):
+    load_fgo("data/"+name+".fgo" ) 
+    getBuffs()
+    rs = np.linspace(r0,r1,n,endpoint=False); dr=rs[1]-rs[0]      ; print( "rs \n", rs, r0, r1 );
+    ss = np.linspace(s0,s1,n,endpoint=False); ds=ss[1]-ss[0]      ; print( "ss \n", ss, s0, s1 );
+    Es,Fr,Fs = evalFuncDerivs( rs, ss,  ie=ie ); #print( Es, Fr, Fs )
+    dE   = (Es[2:]-Es[:-2])*0.5
+    #print( rs, ss, Es, Fr, Fs )
+    import matplotlib.pyplot as plt 
+    #F= Fr*dr + Fs*ds; plt.figure(); plt.plot( dE   ,':', label="dE" );   plt.plot( F,  label="F" );   plt.legend(); plt.grid()
+    plt.figure(); plt.plot( rs[1:-1], dE/dr,':',lw=2, label="dEdr" ); plt.plot( rs, Fr*-1, label="Fr" ); plt.legend(); plt.grid()
+    plt.figure(); plt.plot( ss[1:-1], dE/ds,':',lw=2, label="dEds" ); plt.plot( ss, Fs   , label="Fs" ); plt.legend(); plt.grid()
+    plt.show()
+
+
 def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1 ):
     load_fgo("data/"+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     initOpt(dt=dt,damping=damping )                              # initialize optimizer/propagator
@@ -331,6 +347,7 @@ def check_H2(bRelax=True, name="H2_eFF", bPyeff=True):
         initOpt(dt=0.03,damping=0.01 ) 
         run( 10000, Fconv=1e-3, ialg=2 )  
         bond_length = np.sqrt( ( (apos[0,:] - apos[1,:])**2 ).sum() ) ; print("apos\n",apos)
+        Etot        = Es[0]
         print( "check_H2 E %g [eV] lbond %g [A]" %(Etot, bond_length) )
     else:
         if bPyeff:
@@ -342,7 +359,6 @@ def check_H2(bRelax=True, name="H2_eFF", bPyeff=True):
         eval()
         #eval_mol(name)
         #eval_mol("H2_eFF_relaxed")
-    Etot        = Es[0]
     printAtoms()
     printElectrons()
     printEs()

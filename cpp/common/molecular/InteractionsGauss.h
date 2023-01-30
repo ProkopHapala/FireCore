@@ -576,12 +576,18 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
 
     constexpr const double Hartree2eV = 27.211386245988;
     constexpr const double A2bohr     = 1/0.5291772105638411;
+
+    /*
     r2*=(A2bohr*A2bohr);
     si*=A2bohr;
     sj*=A2bohr;
-
     double KR2=KRSrho.x*KRSrho.x;
     r2*=KR2;  si*=KRSrho.y; sj*=KRSrho.y;
+    */
+
+    double KR2=A2bohr*KRSrho.x; KR2*=KR2;
+    const double KS =A2bohr*KRSrho.y;
+    si*=KS; sj*=KS; r2*=KR2;
 
     double si2        = si*si;
     double sj2        = sj*sj;
@@ -638,14 +644,20 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     //fsj       += dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj;
     //double fr  = dE_dS22 * dS22_dr  + dE_dDT * dDT_dr;
 
+    // E         *= Hartree2eV;
+    // fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*A2bohr*KRSrho.y;
+    // fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*A2bohr*KRSrho.y;
+    // double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*A2bohr*A2bohr*KR2;
+
     E         *= Hartree2eV;
-    fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*KRSrho.y;
-    fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*KRSrho.y;
+    fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*KS;
+    fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*KS;
     double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*KR2;
+
 
     f.add_mul( dR, fr  );
 
-    printf( "r %g si %g sj %g DT %g S22 %g E %g anti(%i) \n", sqrt(r2), si,sj, DT,S22, E, anti );
+    //printf( "r %g si %g sj %g DT %g S22 %g E %g anti(%i) \n", sqrt(r2), si,sj, DT,S22, E, anti );
     return E;
     
 }
