@@ -259,6 +259,13 @@ def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0):
     return lib.run(nstepMax, dt, Fconv, ialg)
 
 
+# void evalNumDerivs( double* Fnum, double d ){
+lib. evalNumDerivs.argtypes  = [array1d, c_double] 
+lib. evalNumDerivs.restype   =  None
+def evalNumDerivs( Fnum=None, d=0.01):
+    if Fnum is None: Fnum=np.zeros(nDOFs)
+    lib.evalNumDerivs( Fnum, d )
+    return Fnum
 
 # =========  Tests
 
@@ -291,10 +298,43 @@ def check_DerivsPauli( r0=0.5,r1=1.5, s0=0.5,s1=0.5,   sj=1.0, n=10, spin=1 ):
     import matplotlib.pyplot as plt 
     #F= Fr*dr + Fs*ds; plt.figure(); plt.plot( dE   ,':', label="dE" );   plt.plot( F,  label="F" );   plt.legend(); plt.grid()
     plt.figure(); plt.plot( rs[1:-1], dE/dr,':',lw=2, label="dEdr" ); plt.plot( rs, Fr*-1, label="Fr" ); plt.legend(); plt.grid()
-    plt.figure(); plt.plot( ss[1:-1], dE/ds,':',lw=2, label="dEds" ); plt.plot( ss, Fs   , label="Fs" ); plt.legend(); plt.grid()
+    plt.figure(); plt.plot( ss[1:-1], dE/ds,':',lw=2, label="dEds" ); plt.plot( ss, Fs*-1, label="Fs" ); plt.legend(); plt.grid()
     plt.show()
     #return Es,Fr,Fs,
 
+
+def checkNumDerivs(name, d=0.001, bDetail=False, bPrint=True):
+    load_fgo("data/"+name+".fgo" )
+    getBuffs()
+    eval()
+    Fana = fDOFs.copy()
+    Fnum = evalNumDerivs( d=d)*-1
+    Ferr = Fnum-Fana
+    maxError    = np.max( np.abs(Ferr                     ) )
+    maxErrorRel = np.max( np.abs(Ferr)/(np.abs(Fana)+1e-8 ) )
+    if bDetail: print (Fnum); print( Fana); print( Ferr)
+    if bPrint:  print ( "maxError [eV/A]", maxError, " [%]", maxErrorRel*100. )
+    #for i in range(nDOFs):
+    #    print( Fnum )
+    return maxError, maxErrorRel
+
+'''
+def eval_Derivs( name, iderivs=None, d=0.01 ):
+    load_fgo("data/"+name+".fgo" )
+    if iderivs is None: iderivs = range(nDOFs)
+    n=len(iderivs)
+    Fana = np.zeros(n)
+    Fnum = np.zeros(n)
+    for i,id in enumerate(iderivs):
+        o=pDOFs[id]
+        pDOFs[id] = o-d; E1 = eval()
+        pDOFs[id] = o+d; E2 = eval()
+        Fnum[i]   = (E2-E1)/(2*d)
+        pDOFs[id] = o
+        eval()
+        Fana[i]   = fDOFs[id] 
+    return Fana,Fnum
+'''
 
 def check_Derivs_ie( name, ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=10 ):
     load_fgo("data/"+name+".fgo" ) 
@@ -307,7 +347,7 @@ def check_Derivs_ie( name, ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=10 ):
     import matplotlib.pyplot as plt 
     #F= Fr*dr + Fs*ds; plt.figure(); plt.plot( dE   ,':', label="dE" );   plt.plot( F,  label="F" );   plt.legend(); plt.grid()
     plt.figure(); plt.plot( rs[1:-1], dE/dr,':',lw=2, label="dEdr" ); plt.plot( rs, Fr*-1, label="Fr" ); plt.legend(); plt.grid()
-    plt.figure(); plt.plot( ss[1:-1], dE/ds,':',lw=2, label="dEds" ); plt.plot( ss, Fs   , label="Fs" ); plt.legend(); plt.grid()
+    plt.figure(); plt.plot( ss[1:-1], dE/ds,':',lw=2, label="dEds" ); plt.plot( ss, Fs*-1, label="Fs" ); plt.legend(); plt.grid()
     plt.show()
 
 
