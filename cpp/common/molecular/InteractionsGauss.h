@@ -572,7 +572,13 @@ inline double addPauliGauss( const Vec3d& dR, double si, double sj, Vec3d& f, do
 }
 
 inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj, bool anti, const Vec3d& KRSrho ){
-    double r2         = dR.norm2();
+    double r2         = dR.norm2() + 1e-8;  // for r=0 there are numercial instabilities
+
+    constexpr const double Hartree2eV = 27.211386245988;
+    constexpr const double A2bohr     = 1/0.5291772105638411;
+    r2*=(A2bohr*A2bohr);
+    si*=A2bohr;
+    sj*=A2bohr;
 
     double KR2=KRSrho.x*KRSrho.x;
     r2*=KR2;  si*=KRSrho.y; sj*=KRSrho.y;
@@ -609,7 +615,6 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     double dS22_dsj = S22*( +3*si4sj4 + r2_4*sj2 )*invsi2sj22*invsj;                // TESTED with eff.py .check_DerivsPauli()
     double dS22_dr  = -4*S22*invsi2sj2;   // missing 'r' it is in |dR|              // TESTED with eff.py .check_DerivsPauli()
 
-    //printf( "r %g si %g sj %g DT %g S22 %g \n", sqrt(r2), si,sj, DT,S22 );
     //fsi=dDT_dsi;    fsj=dDT_dsj;  f=dR*dDT_dr;   return DT;  
     //fsi=dS22_dsi;   fsj=dS22_dsj; f=dR*dS22_dr;  return S22;
 
@@ -623,6 +628,7 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
         dE_dS22 = -(rho*DT     )*invS22m1*invS22m1;
     }else{
         double invS222m1 = 1/( S22*S22-1 );
+        printf( "DEBUG S22*DT %g invS222m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS222m1, (-rho*S22+rho-2) );
         E       =   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
         dE_dDT  = - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
         dE_dS22 =      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
@@ -632,12 +638,14 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     //fsj       += dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj;
     //double fr  = dE_dS22 * dS22_dr  + dE_dDT * dDT_dr;
 
-    fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*KRSrho.y;
-    fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*KRSrho.y;
-    double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*KR2;
+    E         *= Hartree2eV;
+    fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*KRSrho.y;
+    fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*KRSrho.y;
+    double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*KR2;
 
     f.add_mul( dR, fr  );
 
+    printf( "r %g si %g sj %g DT %g S22 %g E %g anti(%i) \n", sqrt(r2), si,sj, DT,S22, E, anti );
     return E;
     
 }

@@ -306,7 +306,9 @@ def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1 ):
         save_fgo( result_name )                 # save final relaxed geometry to .fgo format (i.e. floating-gaussian-orbital).
 
 def printEs():
-    print( " Etot %g Ek %g Eee %g EeePaul %g Eae%g EaePaul %g Eaa %g [A]" %(Es[0],Es[1],Es[2],Es[3],Es[5],Es[6],Es[7]) )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+    #print( " Etot %g Ek %g Eee %g EeePaul %g Eae %g EaePaul %g Eaa %g [eV]" %(Es[0],Es[1],Es[2],Es[3],Es[5],Es[6],Es[7]) )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+    print( " Etot",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+
 
 def printAtoms():
     for i in range(na):
@@ -316,19 +318,33 @@ def printElectrons():
     for i in range(ne):
         print( "electron[%i] apos(%g,%g,%g) size %g spin %i" %(i, epos[i,0],epos[i,1],epos[i,2], esize[i], espin[i]) )
 
-def check_H2(bRelax=True):
-    from pyBall import eFF_terms as effpy
-    if bRelax:
-        relax_mol("H2_eFF")
-    else:
-        eval_mol("H2_eFF")
+def check_H2(bRelax=True, name="H2_eFF", bPyeff=True):
+    '''
+    # limit Euu(r=0,si=sj) = 1/s^2 = 1/1.7007535132532356^2 = 0.34571422244 [Hartree] = 9.407362451147032 [eV]
+    #   !!! But this should be infinite ( two same-spin electrons cannot occupy same orbital !!!
+    '''
+    print( "#======= check_H2(%s)" %name )
+    load_fgo("data/"+name+".fgo" )  
     getBuffs()
-    bond_length = np.sqrt( ( (apos[0,:] - apos[1,:])**2 ).sum() ) ; print("apos\n",apos)
+    if bRelax:
+        #relax_mol(name)
+        initOpt(dt=0.03,damping=0.01 ) 
+        run( 10000, Fconv=1e-3, ialg=2 )  
+        bond_length = np.sqrt( ( (apos[0,:] - apos[1,:])**2 ).sum() ) ; print("apos\n",apos)
+        print( "check_H2 E %g [eV] lbond %g [A]" %(Etot, bond_length) )
+    else:
+        if bPyeff:
+            from pyBall import eFF_terms as pyeff
+            print(  "effpy.run_H2_molecule.__doc__:\n", pyeff.run_H2_molecule.__doc__ )
+            r = np.sqrt(((epos[0]-epos[1])**2).sum())
+            pyeff.pyeff_E_up_up( 1.125*np.sqrt(r**2+1e-8)/0.5291772105638411, 0.9*esize[0]/0.5291772105638411, 0.9*esize[1]/0.5291772105638411, rho=-0.2)
+            Euu,Eud,DT,S = pyeff.pyeff_EPaul( r, esize[0], esize[1], rho=-0.2 );           # print( "!!!!! pyeff_EPaul():   Euu",Euu, "Eud",Eud, "DT",DT, "S",S )
+        eval()
+        #eval_mol(name)
+        #eval_mol("H2_eFF_relaxed")
     Etot        = Es[0]
     printAtoms()
     printElectrons()
-    print(  "effpy.run_H2_molecule.__doc__:\n", effpy.run_H2_molecule.__doc__ )
-    print( "check_H2 E %g [eV] lbond %g [A]" %(Etot, bond_length) )
     printEs()
     
 def init_eff( natom_=0, nelec_=1, s=0.5,  aQ=1.0,aQs=0.0,aP=0.0,aPs=0.1 ):

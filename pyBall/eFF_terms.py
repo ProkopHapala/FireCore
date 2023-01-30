@@ -37,6 +37,10 @@ https://en.wikipedia.org/wiki/Fine-structure_constant
 
 # see https://en.wikipedia.org/wiki/Fine-structure_constant
 
+const_bohr = 0.5291772105638411
+Hartree2eV = 27.211386245988
+A2bohr     = 1/0.5291772105638411
+
 const_hbar  = 1.054571817e-34 # [J.s]  #6.582119569e-16 # [eV/s]
 const_Me    = 9.10938356e-31  # [kg]
 const_e     = 1.602176620898e-19  # [Coulomb]
@@ -204,10 +208,46 @@ def getExmin1D(Es,xs):
             np.exp((-1.*(r**2))/(si**2+sj**2))
         return S_ij
 
-def pyeff_E_up_up( r, si, sj, rho=-0.2):
+
+def E_up_up__( r, si, sj, rho=-0.2):
     # from sympy calculations
+    print( "DEBUG rho",rho, "r",r, "si",si, "sj",sj )
     E_up_up = (8.0*(-rho + 1.0)*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) + 8.0*(1/(si/sj + sj/si))**3.0 *
                 np.exp(-2.0*r**2/(si**2 + sj**2))/(-8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0))*(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)
+    print( "DEBUG E_up_up [Ht]", E_up_up            , "rho",rho, "r[au]",r,           "si[au]",si,           "sj[au]",sj )
+    print( "DEBUG E_up_up [eV]", E_up_up*Hartree2eV , "rho",rho, "r[A]",r*const_bohr, "si[A]",si*const_bohr, "sj[A]",sj*const_bohr )
+    # from sympy calculations
+    dE_up_updr = -1*1.125*r*(-8.0*si**2*sj**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(64.0*(si*sj/(si**2 + sj**2))**3.0 + 8.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 8.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2)*(32.0*(si*sj/(si**2 + sj**2))**3.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))
+                                ** 3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si*sj/(si**2 + sj**2))**3.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(256.0*(si*sj/(si**2 + sj**2))**3.0 - 32.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si*sj/(si**2 + sj**2))**6.0*(-256.0*rho + 256.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 - 256.0*(si*sj/(si**2 + sj**2))**6.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2))/(si**2*sj**2*(si**2 + sj**2)**3*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    if np.isnan(dE_up_updr) == True:
+        dE_up_updr = 0
+
+    # from sympy calculations
+    dE_up_upds1 = -1*0.9*(sj**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(12.0*si**4*(si**2 + sj**2) + si**4*(16.0*r**2 - 24.0*si**2 - 24.0*sj**2) + 3.0*(si**2 + sj**2)**3)*(64.0*(si*sj/(si**2 + sj**2))**3.0 + 8.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 8.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2)*(32.0*r**2*si**2*(si*sj/(si**2 + sj**2))**3.0*(-rho + 1)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) - 32.0*r**2*si**2*(si*sj/(si**2 + sj**2))**3.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))
+                            ** 2 + 24.0*(si*sj/(si**2 + sj**2))**3.0*(rho - 1.0)*(si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 24.0*(si*sj/(si**2 + sj**2))**3.0*(si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 + 8.0*(si*sj/(si**2 + sj**2))**6.0*(rho - 1.0)*(32.0*r**2*si**2 + 24.0*(-si**2 + sj**2)*(si**2 + sj**2))*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 + (si*sj/(si**2 + sj**2))**6.0*(256.0*r**2*si**2 + 192.0*(-si**2 + sj**2)*(si**2 + sj**2))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2))/(si**3*sj**2*(si**2 + sj**2)**4*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    if np.isnan(dE_up_upds1) == True:
+        dE_up_upds1 = 0
+
+    # from sympy calculations
+    dE_up_upds2 = -1*0.9*(si**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(12.0*sj**4*(si**2 + sj**2) + sj**4*(16.0*r**2 - 24.0*si**2 - 24.0*sj**2) + 3.0*(si**2 + sj**2)**3)*(64.0*(si*sj/(si**2 + sj**2))**3.0 + 8.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 8.0*np.exp(2.0*r**2/(si**2 + sj**2))) - (si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2)*(32.0*r**2*sj**2*(si*sj/(si**2 + sj**2))**3.0*(rho - 1)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 32.0*r**2*sj**2*(si*sj/(si**2 + sj**2))**3.0*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))
+                            ** 2 + 24.0*(si*sj/(si**2 + sj**2))**3.0*(rho - 1.0)*(si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 24.0*(si*sj/(si**2 + sj**2))**3.0*(si**2 - sj**2)*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 - 8.0*(si*sj/(si**2 + sj**2))**6.0*(rho - 1.0)*(32.0*r**2*sj**2 + 24.0*(si**2 - sj**2)*(si**2 + sj**2))*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2 + (si*sj/(si**2 + sj**2))**6.0*(-256.0*r**2*sj**2 + 192.0*(-si**2 + sj**2)*(si**2 + sj**2))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2))/(si**2*sj**3*(si**2 + sj**2)**4*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2)
+    if np.isnan(dE_up_upds2) == True:
+        dE_up_upds2 = 0
+
+    return E_up_up, dE_up_updr, dE_up_upds1, dE_up_upds2
+
+def pyeff_E_up_up( r, si, sj, rho=-0.2):
+    if r<1.125e-7: r=1.125e-7
+    # from sympy calculations
+    #E_up_up = (8.0*(-rho + 1.0)*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) + 8.0*(1/(si/sj + sj/si))**3.0 *
+    #            np.exp(-2.0*r**2/(si**2 + sj**2))/(-8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0))*(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)
+    print( "DEBUG rho",rho, "r",r, "si",si, "sj",sj )
+    E_up_up = (8.0*(-rho + 1.0)*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2))/(8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0) + 8.0*(1/(si/sj + sj/si))**3.0 *
+                   np.exp(-2.0*r**2/(si**2 + sj**2))/(-8.0*(1/(si/sj + sj/si))**3.0*np.exp(-2.0*r**2/(si**2 + sj**2)) + 1.0))*(-(-4.0*r**2 + 6.0*si**2 + 6.0*sj**2)/(si**2 + sj**2)**2 + 1.5/sj**2 + 1.5/si**2)
+        
+    print( "DEBUG E_up_up [Ht]", E_up_up           , "rho",rho, "r[au]",r,           "si[au]",si,           "sj[au]",sj )
+    print( "DEBUG E_up_up [eV]", E_up_up*Hartree2eV, "rho",rho, "r[A]",r*const_bohr, "si[A]",si*const_bohr, "sj[A]",sj*const_bohr )
+    
     DT = (3./2.)*((1./(si**2))+(1./(sj**2)))-2. * (3.*((si**2)+(sj**2))-2.*(r**2))/(((si**2)+(sj**2))**2)
     S  = ((2./((si/sj)+(sj/si)))**(3./2.)) * np.exp((-1.*(r**2))/(si**2+sj**2))
     # dE_up_updr = -1*1.125*r*(-8.0*si**2*sj**2*(si*sj/(si**2 + sj**2))**3.0*(si**2 + sj**2)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(8.0*(si*sj/(si**2 + sj**2))**3.0 + 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))*(64.0*(si*sj/(si**2 + sj**2))**3.0 + 8.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2))) + 8.0*np.exp(2.0*r**2/(si**2 + sj**2))) + (si**2*sj**2*(4.0*r**2 - 6.0*si**2 - 6.0*sj**2) + 1.5*si**2*(si**2 + sj**2)**2 + 1.5*sj**2*(si**2 + sj**2)**2)*(32.0*(si*sj/(si**2 + sj**2))**3.0*(rho - 1.0)*(8.0*(si*sj/(si**2 + sj**2))**3.0 - 1.0*np.exp(2.0*r**2/(si**2 + sj**2)))**2*(8.0*(si*sj/(si**2 + sj**2))
@@ -326,32 +366,38 @@ def pyeff_EPaul_(r, si, sj, rho=-0.2):
 
     return E_up_up, E_up_down, DT, S
 
-def pyeff_EPaul( r, si, sj, rho=-0.2 ):
+def pyeff_EPaul( r, si, sj, rho=-0.2, kr=1.125, ks=0.9, bPrint=True ):
+
+    r *=A2bohr*kr
+    si*=A2bohr*ks
+    sj*=A2bohr*ks
+    r2     = r*r + 1e-8
+    
     #print("pyeff_E_up_up_ !!!!!!!!!!!!!!!!!!!!")
-    r2     = r*r
     si2    = si*si
     sj2    = sj*sj
     sij    = si*sj
     si2sj2 = si2 + sj2
-    invsi2sj2 =  1/si2sj2
+    invsi2sj2  =  1/si2sj2
     denom_sij  = sij*invsi2sj2
     denom_sij3 = denom_sij*denom_sij*denom_sij
 
-    expr        = np.exp( -r2 * invsi2sj2 )
-    expr2       = expr**2
+    expr       = np.exp( -r2 * invsi2sj2 )
+    expr2      = expr**2
 
-    DT = 1.5*( si2sj2/(sij*sij)  )   -   ( 6.*si2sj2-4.*r**2 )*invsi2sj2*invsi2sj2
+    DT = 1.5*( si2sj2/(sij*sij)  )   -   ( 6.*si2sj2-4.*r2 )*invsi2sj2*invsi2sj2
     S  = ((2.*denom_sij)**(3./2.)) * expr
     #S2 = 4*denom_sij3*expr2
-    S2_2 = 8*denom_sij3*expr2
+    S22 = 8*denom_sij3*expr2
     
-    #E_up_up   = S2_2 *  ( -rho*S2_2 + (rho - 2)  )/( S2_2*S2_2 - 1  )*DT
-    E_up_up   = S2_2 * DT* ( -rho*S2_2 + (rho - 2)  )/( S2_2*S2_2 - 1  )
-    E_up_down = ( -rho*DT*S2_2/ ( S2_2  + 1) )
+    Euu =       DT*S22*( -rho*S22 + (rho - 2)  )/( S22*S22 - 1 )
+    Eud =  -rho*DT*S22                          /( S22     + 1 )
 
-    print( "si %g sj %g r2 %g rho %g \n" %( si, sj, r2, rho) )
-
-    return E_up_up, E_up_down, DT, S
+    Euu *= Hartree2eV
+    Eud *= Hartree2eV
+    if bPrint:
+        print( "DEBUG pyeff_EPaul(): Euu",Euu, "Eud",Eud, "DT",DT, "S22",S22, "rho",rho, "r",np.sqrt(r2), "si",si, "sj",sj )
+    return Euu, Eud, DT, S
 
 
 # ================== Composed functions
