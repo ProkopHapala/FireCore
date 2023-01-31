@@ -196,6 +196,7 @@ constexpr static const double aMasses[7] = {  1.0, 9.0,  11.0,  12.0,  14.0, 16.
     */
 
     int iPauliModel = 1;
+    bool bCoreCoul  = true;
 
 
     double KPauliOverlap = 50.0; // ToDo : This is just "bulgarian constant" for now
@@ -383,6 +384,8 @@ double evalKinetic(){
         double dEk = addKineticGauss_eFF( esize[i], fsize[i] );
         eE[i] =dEk;
         Ek   +=dEk;
+
+        if(verbosity>2){ printf("%s e%i Ke %5.20f \n",prefix, i,dEk); }
     }
     return Ek;
 }
@@ -419,7 +422,8 @@ double evalEE(){
                         //printf( "EeePaul_1[%i,%i]  ", i, j );
                         //printf( "evalEE() r %g pi (%g,%g,%g) pj (%g,%g,%g) \n", dR.norm(), epos[j].x,epos[j].y,epos[j].z, pi.x,pi.y,pi.z  );
                         //dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
-                        dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
+                        //dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
+                        dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini*espin[j], KRSrho );
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
                 }else if( iPauliModel == 2 ){ // iPauliModel==0 Pauli repulasion from Valence-Bond theory
@@ -441,6 +445,7 @@ double evalEE(){
                     }
                 }
             }
+            if(verbosity>2){ printf("%s e%i-e%i Coul %5.20f \n",prefix,i,j,dEee); printf("%s e%i-e%i Paul %5.20f \n",prefix,i,j,dEpaul); }
             Eee    += dEee;
             EeePaul+= dEpaul;
             double dE = 0.5*( dEee + dEpaul );
@@ -495,12 +500,20 @@ double evalAE(){
             if( bEvalAEPauli && (aPar.w>1e-8) ){
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
-                double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-
+                //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
+                
+                dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.w       );    
+                if(bCoreCoul){
+                    dEae       = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            aPar.w*-2.0  );
+                }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );
             //printf( "evalAE[%i,%i] E %g r %g s(%g,%g) \n", i,j, Eae, dR.norm(), aPar.y, sj );
+            if(verbosity>2){ 
+                printf("%s a%i-e%i Coul %5.20f \n",prefix,i,j,dEae); 
+                //printf("%s a%i-e%i Paul %5.20f \n",prefix,i,j,dEaePaul); 
+            }
             Eae    +=dEae;
             EaePaul+=dEaePaul;
             eE[j]  +=dEae+dEaePaul;
@@ -540,7 +553,16 @@ double evalAA(){
             //if( (i_DEBUG>0) && (1==qi==aQ[j]) ){ printf( " abw(H-H): %i,%i A %g B %g w %g \n", i,j, abw.x, abw.y, abw.z ); }
             //Eaa += addPairEF_expQ( apos[j]-pi, f, abw.z, qi*aQ[j], abw.y, abw.x );
             //Eaa += addPairEF_expQ( apos[j]-pi, f, abw.z, qi*aQ[j], abw.y, abw.x );
-            Eaa +=  addAtomicForceQ( dR, f, aPari.x*aParj.x );
+            double qq;
+            if(bCoreCoul){
+                qq = (aPari.x-aPari.w*2)*(aParj.x-aParj.w*2);
+                //printf( "evalAA()[%i,%i] qq %g qi(%g,%g) qi(%g,%g)\n", i,j, qq, aPari.x, aPari.w, aParj.x, aParj.w );
+            }else{
+                qq = aPari.x*aParj.x;
+            }
+            double dEaa =  addAtomicForceQ( dR, f, qq );
+            if(verbosity>2){ printf("%s a%i-a%i Coul %5.20f \n",prefix,i,j,dEaa); }
+            Eaa+=dEaa;
             //printf( " Eaa[%i,%i]  Q %g(%g,%g) \n", i, j, aPari.x*aParj.x, aPari.x, aParj.x  );
             //   ToDo : Pauli Repulsion of core electrons ?????
             aforce[j].sub(f);
@@ -560,8 +582,30 @@ double evalAA(){
     return Eaa;
 }
 
+double evalCoreCorrection(){
+    double Ek_  =0;
+    double Eee_ =0;
+    double Eae_ =0;
+    for(int i=0; i<na; i++){
+        double fsi,fsj;
+        Vec3d  f;
+        const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
+        if(aPar.w<1e-8) continue;
+        double s = aPar.z;
+        double w = aPar.w;
+        Ek_       += addKineticGauss_eFF( s, fsi )*2.0*w;                                        // kineatic energy of core electrons
+      //EaePaul_  += addPauliGauss_New( Vec3dZero, s, s, f, fsi, fsj, -1, KRSrho, aPar.w );             // Pauli repulsion of core electrons
+        Eee_      += addCoulombGauss  ( Vec3dZero, s, s, f, fsi, fsj,            aPar.w );             // core electrons with each other
+        Eae_      += addCoulombGauss  ( Vec3dZero, aPar.y, s, f, fsi, fsj,       aPar.w*2.0*aPar.x ); // nuclie with core electrons
+    }
+    Ek+=Ek_; Eee+=Eee_; Eae+=Eae_;
+    return Ek_+Eee_+Eae_;
+}
+
+
 /// evaluate full Electron Forcefild
 double eval(){
+    //printf( "DEBUG eval() verbosity %i na %i ne %i \n", verbosity, na, ne );
     //clearForce();
     clearForce_noAlias();
     Etot = 0;
@@ -569,6 +613,8 @@ double eval(){
     if(bEvalEE     ) Etot+= evalEE();
     if(bEvalAE     ) Etot+= evalAE();
     if(bEvalAA     ) Etot+= evalAA();
+
+    evalCoreCorrection();
     return Etot;
 }
 
@@ -783,7 +829,7 @@ bool loadFromFile_xyz( const char* filename ){
 }
 
 
-bool loadFromFile_fgo( char const* filename, bool bVel=false ){
+bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. ){
     //printf(" filename: >>%s<< \n", filename );
     FILE * pFile;
     pFile = fopen (filename,"r");
@@ -813,10 +859,10 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false ){
         //                                                                 1   2  3   4    5     6    7        8    9    10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP,      &vx, &vy, &vz );
         Q=-Q;
-        apos  [i]=(Vec3d){x,y,z};
-        aPars[i].set(Q,sQ,sP,cP);
+        apos  [i]=(Vec3d){x*fUnits,y*fUnits,z*fUnits};
+        aPars[i].set(Q,sQ*fUnits,sP*fUnits,cP);
         if( (bVel)&&(nw>=10) ){ 
-            avel[i] = (Vec3d){vx,vy,vz};
+            avel[i] = (Vec3d){vx*fUnits,vy*fUnits,vz*fUnits};
         }
         Qasum += Q;
     }
@@ -831,12 +877,12 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false ){
         //                                                               1    2   3    4   5   6        7    8    9   10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z,  &s, &c, &spin,   &vx, &vy, &vz, &vs );
         //int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
-        epos [i]=(Vec3d){x,y,z};
-        esize[i]=s;
+        epos [i]=(Vec3d){x*fUnits,y*fUnits,z*fUnits};
+        esize[i]=s*fUnits;
         if(bVel){ 
             //if(verbosity>0)printf( "electron[%i] p(%g,%g,%g|%g) spin %i v(%g,%g,%g|%g) \n", i, x,y,z,s, spin,  vx,vy,vz,vs );
-            if(nw>=9 )evel [i] = (Vec3d){vx,vy,vz};
-            if(nw>=10)vsize[i] = vs;
+            if(nw>=9 )evel [i] = (Vec3d){vx*fUnits,vy*fUnits,vz*fUnits};
+            if(nw>=10)vsize[i] = vs*fUnits;
         }
         //ecoef[i]=c;
         //int io=i/perOrb;

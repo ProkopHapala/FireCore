@@ -38,7 +38,6 @@ eff.eval_ee( r, si, sj )
 #eff.check_Derivs_ie( "e2_1g_2o_triplet", ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=100 )
 #eff.check_Derivs_ie( "H2_eFF_asym", ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=100 )
 #eff.check_Derivs_ie( "H2_eFF_asym", ie=0, r0=1.0,r1=1.0, s0=0.5,s1=1.5, n=100 )
-
 #eff.checkNumDerivs( "H2_eFF_asym"); exit()
 
 def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, bBsize=False ):
@@ -82,9 +81,22 @@ const_bohr = 0.5291772105638411
 #eff.check_H2( False, "H2_eFF_upup")     ;exit()
 #eff.check_H2( False, "H2_eFF_asym")     ;exit()
 #eff.check_H2( False, "H2_eFF_sym")     ;exit()
-eff.check_H2( True, "H2_eFF")     ;exit()
+#eff.check_H2( True, "H2_eFF")     ;exit()
 
 #eff.relax_mol("H_eFF")
 #eff.relax_mol("H2_eFF")
 #eff.relax_mol("H2O")
+#eff.relax_mol("CH4")
+
+#eff.setVerbosity(3)
+#eff.eval_mol("CH4_lmps", fUnits=const_bohr)
+#eff.eval_mol("CH4_lmps_fixcore", fUnits=const_bohr)
+#exit()
+
+nmax=2000
+outE=np.zeros(nmax)
+eff.relax_mol("CH4_lmps", dt=0.005, nMaxIter=nmax, outE=outE )
+
+plt.plot(outE); plt.show()
+
 #run_H2O_vs_ebullet()

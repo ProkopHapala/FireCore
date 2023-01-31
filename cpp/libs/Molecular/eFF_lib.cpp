@@ -29,9 +29,12 @@ int i_DEBUG=0;
 int verbosity=0;
 int idebug   =0;
 
+const char* prefix = "#Epiece";
+
 #include "InteractionsGauss.h"
 #include "eFF.h"
 #include "DynamicOpt.h"
+#include "Vec3Utils.h"
 
 // ============ Global Variables
 
@@ -106,6 +109,15 @@ void init_buffers(){
     }
 }
 
+
+void printShortestBondLengths(){
+    for(int ia=0; ia<ff.na; ia++){
+        int ifound; double r2 = findNearest( ff.na, ff.apos, ff.apos[ia], ifound, ia );
+        printf( "bond[%i,%i] L=%g [A]\n", ia, ifound, sqrt(r2) ); 
+    }
+}
+
+
 void setTrjName( char* trj_fname_, int savePerNsteps_ ){ trj_fname=trj_fname_; if(verbosity>0)printf( "setTrjName(%s)\n", trj_fname ); savePerNsteps=savePerNsteps_;  }
 
 bool load_xyz( const char* fname ){ 
@@ -115,9 +127,9 @@ bool load_xyz( const char* fname ){
     return b; 
 }
 
-bool load_fgo( const char* fname, bool bVel=false ){ 
+bool load_fgo( const char* fname, bool bVel, double fUnits ){ 
     //printf( "load_xyz \n" );
-    bool b = ff.loadFromFile_fgo( fname, bVel );
+    bool b = ff.loadFromFile_fgo( fname, bVel, fUnits );
     init_buffers();
     return b; 
 }
@@ -144,7 +156,8 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
     opt_initialized=true;
 };
 
-int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){ 
+//int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
+int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){ 
     double F2conv=Fconv*Fconv;
     double F2 = 1.0;
     double Etot;
@@ -163,6 +176,8 @@ int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
             case  1: F2 = opt.move_MD (dt,opt.damping); break;
             case  2: F2 = opt.move_FIRE();       break;
         }
+        if(outE){ outE[itr]=Etot; }
+        if(outF){ outF[itr]=F2;   }
         if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
             if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
@@ -170,6 +185,7 @@ int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
     }
+    printShortestBondLengths();
     return itr;
 }
 

@@ -73,7 +73,7 @@ lib.setVerbosity.argtypes  = [c_int, c_int]
 lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity_=0, idebug=0):
     global verbosity
-    verbosity = 1
+    verbosity = verbosity_
     return lib.setVerbosity(verbosity, idebug)
 
 #  void init_buffers(){
@@ -118,12 +118,12 @@ def getBuffs( ):
         invSmass = getBuff ( "invSmass",   ne    )
 
 #  void load_xyz( const char* fname ){
-lib.load_fgo.argtypes  = [c_char_p, c_bool] 
+lib.load_fgo.argtypes  = [c_char_p, c_bool, c_double] 
 lib.load_fgo.restype   =  c_bool
-def load_fgo(fname, bVel_=False):
+def load_fgo(fname, bVel_=False, fUnits=1.):
     global bVel
     bVel=bVel_
-    return lib.load_fgo( cstr(fname), bVel)
+    return lib.load_fgo( cstr(fname), bVel, fUnits)
 
 #  void save_fgo( char const* filename, bool bVel, bool bAppend ){
 lib.save_fgo.argtypes  = [c_char_p, c_bool, c_bool] 
@@ -252,11 +252,11 @@ def initOpt(dt=0.1, damping=0.1, f_limit=1000.0, bMass=False ):
     return lib.initOpt(dt, damping, f_limit, bMass)
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-lib. run.argtypes  = [c_int, c_double, c_double, c_int] 
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0):
+def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0, outE=None, outF=None):
     if dt is None: dt=dt_glob
-    return lib.run(nstepMax, dt, Fconv, ialg)
+    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
 
 
 # void evalNumDerivs( double* Fnum, double d ){
@@ -269,9 +269,30 @@ def evalNumDerivs( Fnum=None, d=0.01):
 
 # =========  Tests
 
-def eval_mol(name ):
-    load_fgo("data/"+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+def getNearestAtom( p, apos, ino=-1 ):
+    r2s = np.sum( (apos[:,:]-p[None,:])**2, axis=1)
+    if ino >=0: r2s[ino]=1e+300
+    imin = np.argmin(r2s)
+    rmin = np.sqrt( r2s[imin] )
+    return imin,rmin
+
+def getNearestAtoms( apos, bPrint=False ):
+    n=len(apos)
+    imins=np.zeros(n,np.int32)
+    rmins=np.zeros(n)
+    for i in range(n):
+        imins[i],rmins[i] = getNearestAtom( apos[i,:], apos, ino=i )
+        if bPrint:
+            print( "bond[%i,%i] L=%g" %(i,imins[i],rmins[i]) )
+    return imins, rmins
+    
+def eval_mol(name, fUnits=1., bPrint=True ):
+    load_fgo("data/"+name+".fgo", False, fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     eval()
+    if bPrint:
+        getBuffs()
+        print("\n")
+        printEs()
 
 def eval_ee( r, si, sj, spin=-1 ):
     init( 0, 2 )
@@ -351,11 +372,15 @@ def check_Derivs_ie( name, ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=10 ):
     plt.show()
 
 
-def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1 ):
+def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrintLbonds=True, nMaxIter=10000, outE=None, outF=None ):
     load_fgo("data/"+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     initOpt(dt=dt,damping=damping )                              # initialize optimizer/propagator
     if(bTrj): setTrjName(name+"_relax.xyz", savePerNsteps=perN ) # setup output .xyz file to save trajectory of all atoms and electrons at each timespep (comment-out to ommit .xyz and improve performance ) 
-    run( 10000, Fconv=1e-3, ialg=2 )                             # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
+    run( nMaxIter, Fconv=1e-3, ialg=2, outE=outE, outF=outF )                             # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
+    getBuffs()
+    printEs()
+    if bPrintLbonds:
+        getNearestAtoms( apos, bPrint=True )
     if(bResult): 
         result_name=name+"_relaxed.fgo"
         if(verbosity>0): print("Optimized molecule saved to ", result_name)
