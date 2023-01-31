@@ -30,8 +30,9 @@ Fireball allows the fast solution of self-consistent electronic structure proble
 FireCore is currently integrated with homebrew classical-forcefields codes implemented in SimpleSimulationEngine (https://github.com/ProkopHapala/SimpleSimulationEngine). The main purpose is to reduce the computational cost required for the relaxation of organic molecules and the description of the interaction between organic molecules and substrate. These codes comprise:
 
 * **MMFF** - a simple homebrew classical molecular mechanics code with fixed boding topology (springs on bond length, angles and dihedrals)
-    *  Code includes utilities to automatically generate bonding topology from atomic coordinates and assign atomic charges by the charge-equilibration algorithm (depending on electronegativity and local polarization) **RFF** - simple homebrew reactive force-field to roughly simulate chemical interactins between organic species (H,C,O,N) including formation and breaking of new bonds and changes of bond-order
-**gridFF** - grid-based classical forcefield to describe the interaction of organic molecules with the rigid substrate or other rigid bodies (e.g. tip of AFM?). The code projects non-covalent forces from rigid objects (e.g. electrostatics, van der Waals attraction and Pauli repulsion) onto a real-space grid. Then during molecular-dynamics simulation, we read from the grid forces acting on each atom of the flexible (non-rigid) molecules deposited on the rigid substrate.
+    *  Code includes utilities to automatically generate bonding topology from atomic coordinates and assign atomic charges by the charge-equilibration algorithm (depending on electronegativity and local polarization) 
+* **RFF** - simple homebrew reactive force-field to roughly simulate chemical interactins between organic species (H,C,O,N) including formation and breaking of new bonds and changes of bond-order
+* **gridFF** - grid-based classical forcefield to describe the interaction of organic molecules with the rigid substrate or other rigid bodies (e.g. tip of AFM?). The code projects non-covalent forces from rigid objects (e.g. electrostatics, van der Waals attraction and Pauli repulsion) onto a real-space grid. Then during molecular-dynamics simulation, we read from the grid forces acting on each atom of the flexible (non-rigid) molecules deposited on the rigid substrate.
 
 In future we plan integration with state-of-the-art classical forcefield packages such as LAMMPS.
 
@@ -81,7 +82,7 @@ however individual parts can be installed independently. For example, it is poss
 3. Create a build directory in `cpp/Build` and navigate into it
 4. Configure cmake project: from inside `cpp/Build` 
 5. run     `cmake .. -DWITH_SDL=ON -DWITH_OPENCL=ON`
-    * options `-DWITH_SDL=ON` and `-DWITH_OPENCL=ON` can be eventually switched to reduce compilation time and/or limit library dependencies
+    * options `-DWITH_SDL=OFF` and `-DWITH_OPENCL=OFF` can be eventually switched to reduce compilation time and/or limit library dependencies
 6. compile by running `make` inside `cpp/Build` directory
 7. Run tests:
     * Forcefield with visual GUI go to `/home/prokophapala/git/FireCore/cpp/sketches_SDL/Molecular` and run e.g. `./test_MMFFsp3` or `test_RARFFarr` or `test_SoftMolecularDynamics`
