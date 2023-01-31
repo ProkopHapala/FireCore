@@ -32,12 +32,13 @@ eff.eval_ee( r, si, sj )
 #exit()
 
 #eff.setSwitches( pauli=1,   kinetic=-1, coulomb=-1, AA=-1, AE=-1, AECoulomb=-1, AEPauli=-1  )
-#eff.setSwitches( pauli=-1,   kinetic=1, coulomb=-1, AA=-1, AE=-1, AECoulomb=-1, AEPauli=-1  )
-#eff.setSwitches( pauli=-1,   kinetic=-1, coulomb=1, AA=1, AE=1, AECoulomb=1, AEPauli=1  )
+#eff.setSwitches( pauli=-1,   kinetic=1, coulomb=1, AA=1, AE=1, AECoulomb=1, AEPauli=1  )
+#eff.setSwitches( pauli=1,   kinetic=-1, coulomb=1, AA=1, AE=1, AECoulomb=-1, AEPauli=1  )
 
 #eff.check_Derivs_ie( "e2_1g_2o_triplet", ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=100 )
 #eff.check_Derivs_ie( "H2_eFF_asym", ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=100 )
 #eff.check_Derivs_ie( "H2_eFF_asym", ie=0, r0=1.0,r1=1.0, s0=0.5,s1=1.5, n=100 )
+#eff.checkNumDerivs( "H2_eFF_asym"); exit()
 
 def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, bBsize=False ):
     eff.load_fgo("data/H2O_shoot.fgo", bVel_=True )    # load H2O moleule with electron-bullet in .fgo format (i.e. floating-gaussian-orbital) including initial velocities
@@ -88,10 +89,9 @@ const_bohr = 0.5291772105638411
 #eff.relax_mol("CH4")
 
 #eff.setVerbosity(3)
-eff.eval_mol("CH4_lmps", fUnits=const_bohr)
+#eff.eval_mol("CH4_lmps", fUnits=const_bohr)
 #eff.eval_mol("CH4_lmps_fixcore", fUnits=const_bohr)
-
-exit()
+#exit()
 
 nmax=2000
 outE=np.zeros(nmax)
