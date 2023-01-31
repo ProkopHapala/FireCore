@@ -231,6 +231,7 @@ constexpr static const double aMasses[7] = {  1.0, 9.0,  11.0,  12.0,  14.0, 16.
     bool bEvalAECoulomb = true;
     bool bEvalAEPauli   = true;
     bool bEvalAA        = true;
+    bool bEvalCoreCorect = true;
 
     int ne=0,na=0,nDOFs=0; ///< number of electrons, atoms, degrees of freedom
     //int*   atype  =0;
@@ -475,6 +476,7 @@ double evalEE(){
 double evalAE(){
     Eae    =0;
     EaePaul=0;
+    double Eee_=0;
     //double see2 = see*see;
     //double saa2 = saa*saa;
     //double invSae = 1/( see*see + saa*saa );
@@ -493,7 +495,7 @@ double evalAE(){
             double  fs_junk;
             //Eae += addPairEF_expQ( epos[j]-pi, f, abwi.z, qi*QE, abwi.y, abwi.x );
             //Eae  += addCoulombGauss( dR,sj,      f, fsj,      qqi );     // correct
-            double dEae=0,dEaePaul=0;
+            double dEae=0,dEaePaul=0,dEee=0;
             if(bEvalAECoulomb){
                 dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qq );
             }
@@ -504,7 +506,7 @@ double evalAE(){
                 
                 dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.w       );    
                 if(bCoreCoul){
-                    dEae       = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            aPar.w*-2.0  );
+                    dEee       = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            aPar.w*2.0  );
                 }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
@@ -516,7 +518,8 @@ double evalAE(){
             }
             Eae    +=dEae;
             EaePaul+=dEaePaul;
-            eE[j]  +=dEae+dEaePaul;
+            Eee_   +=dEee;
+            eE[j]  +=dEae+dEaePaul+dEee;
             eforce[j].sub(f);
             aforce[i].add(f);
 
@@ -529,8 +532,9 @@ double evalAE(){
             //}
         }
     }
+    Eee+=Eee_;
     //if( i_DEBUG>0 )  for(int j=0; j<ne; j++){  printf( "evalAE: esize[%i] %g f %g \n", j, esize[j], fsize[j] ); }
-    return Eae+EaePaul;
+    return Eae+EaePaul+Eee_;
 }
 
 /// evaluate Atom-Atom forces
@@ -596,8 +600,10 @@ double evalCoreCorrection(){
         Ek_       += addKineticGauss_eFF( s, fsi )*2.0*w;                                        // kineatic energy of core electrons
       //EaePaul_  += addPauliGauss_New( Vec3dZero, s, s, f, fsi, fsj, -1, KRSrho, aPar.w );             // Pauli repulsion of core electrons
         Eee_      += addCoulombGauss  ( Vec3dZero, s, s, f, fsi, fsj,            aPar.w );             // core electrons with each other
-        Eae_      += addCoulombGauss  ( Vec3dZero, aPar.y, s, f, fsi, fsj,       aPar.w*2.0*aPar.x ); // nuclie with core electrons
+        Eae_      += addCoulombGauss  ( Vec3dZero, aPar.y, s, f, fsi, fsj,       aPar.w*-2.0*aPar.x ); // nuclie with core electrons
     }
+    //printf( "DEBUG evalCoreCorrection() Ek0 %g Eee0 %g Eae0 %g \n", Ek , Eee , Eae  );
+    //printf( "DEBUG evalCoreCorrection() Ek_ %g Eee_ %g Eae_ %g \n", Ek_, Eee_, Eae_ );
     Ek+=Ek_; Eee+=Eee_; Eae+=Eae_;
     return Ek_+Eee_+Eae_;
 }
@@ -609,12 +615,11 @@ double eval(){
     //clearForce();
     clearForce_noAlias();
     Etot = 0;
-    if(bEvalKinetic) Etot+= evalKinetic();
-    if(bEvalEE     ) Etot+= evalEE();
-    if(bEvalAE     ) Etot+= evalAE();
-    if(bEvalAA     ) Etot+= evalAA();
-
-    evalCoreCorrection();
+    if(bEvalKinetic    ) Etot+= evalKinetic();
+    if(bEvalEE         ) Etot+= evalEE();
+    if(bEvalAE         ) Etot+= evalAE();
+    if(bEvalAA         ) Etot+= evalAA();
+    if(bEvalCoreCorect ) Etot+=evalCoreCorrection();
     return Etot;
 }
 
