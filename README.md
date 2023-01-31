@@ -50,9 +50,16 @@ Projection of wave-functions or electron density from FireBall onto real space g
 
 To install all library dependencies. On Ubuntu 22.04 this can be done by running:
 ```
-sudo apt-get install cmake g++ gfortran intel-mkl libmkl_intel_lp64 libmkl_intel_thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev python3-numpy python3-matplotlib
+sudo apt-get install cmake g++ gfortran intel-mkl libmkl_intel_lp64 libmkl_intel_core libmkl_intel_thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev python3-numpy python3-matplotlib
 ```
-however individual parts can be installed independently. For example, it is possible to use DFT-Fireball without OpenCL or OpenGL. 
+however individual parts can be installed independently. For example, it is possible to use DFT-Fireball without OpenCL or OpenGL. Therefore dependencies can be split as follows:
+
+* C++ modules (Classical Force-fields & Molecular Manipulation tools): 
+    * (without SDL or OpenCL): `cmake g++`
+    * GUI 3D Graphics (SDL & OpenGL): `libsdl2-dev libsdl2-image-dev`
+    * GPU acceleration (OpenCL): `nvidia-opencl-dev libclfft-dev` 
+* Fortran (Fireball-DFT): `gfortran intel-mkl libmkl_intel_lp64 libmkl_intel_core libmkl_intel_thread`
+* Python API: `python3-numpy python3-matplotlib`
 
 ## Fortran modules (Fireball-DFT)
 
@@ -69,12 +76,14 @@ however individual parts can be installed independently. For example, it is poss
 
 1. install C/C++ compiler: `g++ cmake`
 2. install libraries:
-    * for GUI with SDL2+OpenGL install: `libsdl2-dev libsdl2-image-dev`
-    * for GPU accelerated calculation with OpenCL install: `nvidia-opencl-dev libclfft-dev`create a build directory in `cpp/Build` and navigate into it
-4. Configure cmake project: from inside `cpp/Build` run     `cmake .. -DWITH_SDL=ON -DWITH_OPENCL=ON`
+    * for GUI 3D Graphics (SDL & OpenGL): `libsdl2-dev libsdl2-image-dev`
+    * GPU acceleration (OpenCL): `nvidia-opencl-dev libclfft-dev` 
+3. Create a build directory in `cpp/Build` and navigate into it
+4. Configure cmake project: from inside `cpp/Build` 
+5. run     `cmake .. -DWITH_SDL=ON -DWITH_OPENCL=ON`
     * options `-DWITH_SDL=ON` and `-DWITH_OPENCL=ON` can be eventually switched to reduce compilation time and/or limit library dependencies
-5. compile by running `make` inside `cpp/Build` directory
-5. Run tests:
+6. compile by running `make` inside `cpp/Build` directory
+7. Run tests:
     * Forcefield with visual GUI go to `/home/prokophapala/git/FireCore/cpp/sketches_SDL/Molecular` and run e.g. `./test_MMFFsp3` or `test_RARFFarr` or `test_SoftMolecularDynamics`
     * to run Visual GUI for QMMM dynamics (assuming both C++ and Fortran modules are compiled) got to `FireCore/tests/tQMMM_diacetylene` and run `./run.sh`
 
