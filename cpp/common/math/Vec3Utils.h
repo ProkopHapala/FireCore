@@ -34,7 +34,13 @@ static inline Vec3T<T> sum( int n, const Vec3T<T>* vs, int* selection ){
 template<class T> static inline Vec3T<T> average( int n, const Vec3T<T>* vs                 ){ Vec3T<T> v=sum(n,vs          ); v.mul( 1/(T)n ); return v; }
 template<class T> static inline Vec3T<T> average( int n, const Vec3T<T>* vs, int* selection ){ Vec3T<T> v=sum(n,vs,selection); v.mul( 1/(T)n ); return v; }
 
-
+template<class T>
+static inline double findNearest( int n, const Vec3T<T>* ps, const Vec3d& p0, int& ifound, int ino=-1 ){
+    double r2min=1e+300; int imin=-1;
+    for(int i=0; i<n; i++){ if(i==ino)continue; Vec3d d; d.set_sub(ps[i],p0); double r2=d.norm2(); if(r2<r2min){r2min=r2;imin=i;} }
+    ifound=imin;
+    return r2min;
+}
 
 template<class T> 
 static inline T maxR2( int n, const Vec3T<T>* vs ){

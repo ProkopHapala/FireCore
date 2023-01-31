@@ -13,8 +13,8 @@ def work_dir( v__file__ ):
 PACKAGE_PATH = work_dir( __file__ )
 BUILD_PATH   = os.path.normpath( PACKAGE_PATH + '../../../cpp/Build/libs/CombatModels' )
 
-print (" PACKAGE_PATH : ", PACKAGE_PATH)
-print (" BUILD_PATH   : ", BUILD_PATH)
+#print (" PACKAGE_PATH : ", PACKAGE_PATH)
+#print (" BUILD_PATH   : ", BUILD_PATH)
 
 def compile_lib( name,
         #FFLAGS = "-std=c++11 -Og -g -Wall",
