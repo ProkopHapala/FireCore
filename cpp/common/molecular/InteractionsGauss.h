@@ -571,7 +571,8 @@ inline double addPauliGauss( const Vec3d& dR, double si, double sj, Vec3d& f, do
     //return T;
 }
 
-inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj, bool anti, const Vec3d& KRSrho ){
+//inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj, bool anti, const Vec3d& KRSrho ){
+inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj, int spin, const Vec3d& KRSrho, double sc=1.0 ){
     double r2         = dR.norm2() + 1e-8;  // for r=0 there are numercial instabilities
 
     constexpr const double Hartree2eV = 27.211386245988;
@@ -626,19 +627,34 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
 
     double rho = KRSrho.z;
 
-    double E, dE_dDT, dE_dS22;
-    if( anti ){
+    double E=0, dE_dDT=0, dE_dS22=0;
+    if(spin<=0){
         double invS22m1 = 1/(S22+1);
-        E       = - rho*DT*S22  *invS22m1;
-        dE_dDT  = -(rho*   S22 )*invS22m1;
-        dE_dS22 = -(rho*DT     )*invS22m1*invS22m1;
-    }else{
-        double invS222m1 = 1/( S22*S22-1 );
-        printf( "DEBUG S22*DT %g invS222m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS222m1, (-rho*S22+rho-2) );
-        E       =   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
-        dE_dDT  = - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
-        dE_dS22 =      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
+        E       += - rho*DT*S22  *invS22m1;
+        dE_dDT  += -(rho*   S22 )*invS22m1;
+        dE_dS22 += -(rho*DT     )*invS22m1*invS22m1;
     }
+    if(spin>=0){
+        double invS222m1 = 1/( S22*S22-1 );
+        //printf( "DEBUG S22*DT %g invS222m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS222m1, (-rho*S22+rho-2) );
+        E       +=   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
+        dE_dDT  += - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
+        dE_dS22 +=      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
+    }
+
+    // double E, dE_dDT, dE_dS22;
+    // if( anti ){
+    //     double invS22m1 = 1/(S22+1);
+    //     E       = - rho*DT*S22  *invS22m1;
+    //     dE_dDT  = -(rho*   S22 )*invS22m1;
+    //     dE_dS22 = -(rho*DT     )*invS22m1*invS22m1;
+    // }else{
+    //     double invS222m1 = 1/( S22*S22-1 );
+    //     //printf( "DEBUG S22*DT %g invS222m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS222m1, (-rho*S22+rho-2) );
+    //     E       =   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
+    //     dE_dDT  = - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
+    //     dE_dS22 =      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
+    // }
 
     //fsi       += dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi;
     //fsj       += dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj;
@@ -649,11 +665,10 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     // fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*A2bohr*KRSrho.y;
     // double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*A2bohr*A2bohr*KR2;
 
-    E         *= Hartree2eV;
-    fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*-KS;
-    fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*-KS;
-    double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*KR2;
-
+    E         *= Hartree2eV*sc;
+    fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*-KS *sc;
+    fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*-KS *sc;
+    double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*KR2*sc;
 
     f.add_mul( dR, fr  );
 
