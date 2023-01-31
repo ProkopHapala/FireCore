@@ -85,18 +85,23 @@ const_bohr = 0.5291772105638411
 
 #eff.relax_mol("H_eFF")
 #eff.relax_mol("H2_eFF")
-#eff.relax_mol("H2O")
+eff.relax_mol("H2O_fixcore")  ;exit()
 #eff.relax_mol("CH4")
 
 #eff.setVerbosity(3)
-#eff.eval_mol("CH4_lmps", fUnits=const_bohr)
-#eff.eval_mol("CH4_lmps_fixcore", fUnits=const_bohr)
-#exit()
+
+#eff.eval_mol("Li_eFF", fUnits=const_bohr)            ;exit()
+#eff.eval_mol("Li_eFF_fixcore", fUnits=const_bohr)    ;exit()
+
+#eff.eval_mol("CH4_lmps", fUnits=const_bohr)            ;exit()
+#eff.eval_mol("CH4_lmps_fixcore", fUnits=const_bohr)    ;exit()
+
 
 nmax=2000
 outE=np.zeros(nmax)
-eff.relax_mol("CH4_lmps", dt=0.005, nMaxIter=nmax, outE=outE )
+#nstep=eff.relax_mol("CH4_lmps",        dt=0.005, nMaxIter=nmax, outE=outE )
+nstep=eff.relax_mol("CH4_lmps_fixcore", dt=0.03, nMaxIter=nmax, outE=outE, fUnits=const_bohr )
 
-plt.plot(outE); plt.show()
+plt.plot(outE[:nstep]); plt.show()
 
 #run_H2O_vs_ebullet()
