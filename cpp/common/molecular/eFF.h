@@ -180,48 +180,25 @@ constexpr static const Quat4d default_AtomParams[] = {
 { 7.,  0.1, 0.1, 2.0 }, // 9 F
 };
 
-//                                    H   Be     B      C     N     O      F
-constexpr static const double aMasses[7] = {  1.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
+//                                              H   He  Li    Be      B      C     N     O      F
+constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
 
     bool bDealoc = false;
-    //double dvmax = 0.1;
-    //double dpmax = 0.1;
-    /*
-    double emass = 1.0;
-    double see   = 0.5;
-    double saa   = 0.1;
-    double sa2  = saa*saa;
-    double se2  = see*see;
-    double sea2 = see*see;
-    */
+
+    bool bNegativeSizes=false;
 
     int iPauliModel = 1;
     bool bCoreCoul  = true;
-
 
     double KPauliOverlap = 50.0; // ToDo : This is just "bulgarian constant" for now
     double KPauliKin     = 50.0; // ToDo : Not sure if we should use this - perhaps this model of pauli energy should work "ab inition"
 
     constexpr static const double default_esize = 0.5;
+    constexpr static const double min_esize     = 0.1;
     constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.2 }; ///< eFF universal parameters
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.3 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -1.0 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
     //Vec3d KRSrho = { 1.125, 0.9, 0.2 };
-
-    //double wee = 2.0;
-    //double wae = 1.0;
-    //double wee = 0.5;
-    //double wee = 0.5;
-    //double wae = 0.25;
-    //double waa = 0.25;
-
-    //double bEE     = -1.0;
-    //double aEE     =  2.0;
-    //double bEEpair = -1.0;
-    //double aEEpair =  0.1;
-
-    //double bAE = -6.0;
-    //double aAE = 100.0;
 
     bool bEvalKinetic   = true;
     bool bEvalEE        = true;
@@ -240,9 +217,6 @@ constexpr static const double aMasses[7] = {  1.0, 9.0,  11.0,  12.0,  14.0, 16.
     Vec3d  * aforce =0; ///< atomic forces
     Vec3d  * avel   =0; ///< atomic velocities
 
-    //double * aQ     =0; ///< atomic charges
-    //Vec3d  * aAbWs  =0; ///< atomic   parameters (amplitude, decay, width)
-    //Vec3d  * eAbWs  =0; ///< electron parameters (amplitude, decay, width)
     Quat4d * aPars = 0;   /// electron params { x=Q,y=sQ,z=sP,w=cP }
 
     //double * espin  =0;
@@ -268,22 +242,8 @@ void realloc(int na_, int ne_, bool bVel=false){
     nDOFs=na*3+ne*3 + ne;
     _realloc( pDOFs, nDOFs);
     _realloc( fDOFs, nDOFs);
-    
-
-    //_realloc( aQ  ,  na);
-    //_realloc( aAbWs, na); // deprecated
-    //_realloc( eAbWs, na); // deprecated
     _realloc( aPars, na);
-    //_realloc( apos,   na);
-    //_realloc( aforce, na);
-    //_realloc( avel,   na);
-    //_realloc( aorbs,  na);
-
     _realloc( espin, ne);
-    //_realloc( epos   ,ne);
-    //_realloc( eforce ,ne);
-    //_realloc( evel   ,ne);
-
     _realloc( eE, ne );
 
     apos   = (Vec3d*)pDOFs;
@@ -303,13 +263,6 @@ void realloc(int na_, int ne_, bool bVel=false){
         for(int i=0; i<nDOFs; i++){ vDOFs[i]=0;     }
         for(int i=0; i<nDOFs; i++){ invMasses[i]=1; }
     }
-
-    //_realloc(apos  ,na );
-    //_realloc(aforce,na );
-    //_realloc(epos  ,ne );
-    //_realloc(eforce,ne );
-    //_realloc(esize ,ne );
-    //_realloc(fsize ,ne );
 
 }
 
@@ -377,17 +330,21 @@ void fixElectron(int ie, double* vs=0){
 /// evaluate kinetic energy of each electron
 double evalKinetic(){
     Ek=0;
+    bNegativeSizes=false;
     for(int i=0; i<ne; i++){
         //double fs=0;
         //double dEk = addKineticGauss( esize[i]*M_SQRT1_2, fs );
         //fsize[i]+=fs*M_SQRT1_2;
         //if( i_DEBUG>0 ) printf( "evalKinetic[%i] s %g -> f %g Ek %g \n", i, esize[i], fsize[i], Ek );
+        double s = esize[i];
+        if(s<min_esize){ s=min_esize; esize[i]=s; bNegativeSizes=true; };
         double dEk = addKineticGauss_eFF( esize[i], fsize[i] );
         eE[i] =dEk;
         Ek   +=dEk;
 
         if(verbosity>2){ printf("%s e%i Ke %5.20f \n",prefix, i,dEk); }
     }
+    //if( bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes => perhaps decrease relaxation time step? \n" ); }
     return Ek;
 }
 
@@ -760,7 +717,7 @@ void to_xyz( FILE* pFile ){
     fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa );
     for (int i=0; i<na; i++){
         int iZ = (int)(aPars[i].x+0.5);
-        if(iZ>1)iZ+=2;
+        //if(iZ>1)iZ+=2;
         fprintf( pFile, "%3i %10.6f %10.6f %10.6f \n", iZ, apos[i].x, apos[i].y, apos[i].z );
     }
     for (int i=0; i<ne; i++){
@@ -910,6 +867,7 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
 
 
 void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w" ){
+    //printf(" writeTo_fgo(%s, %s) \n", filename, fmode);
     FILE * pFile = fopen (filename, fmode );
     fprintf( pFile, "%i %i %i %i\n", na, ne, 1, 0 );
     for(int i=0; i<na; i++){               
