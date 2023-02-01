@@ -170,6 +170,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
+        if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
         switch(ialg){
             case  0: ff .move_GD      (dt);      break;
             case -1: opt.move_LeapFrog(dt);      break;
@@ -185,13 +186,18 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
     }
-    printShortestBondLengths();
+    //printShortestBondLengths();
     return itr;
 }
 
 void save_fgo( char const* filename, bool bVel, bool bAppend ){ 
-    if(bAppend){ ff.writeTo_fgo( filename, bVel, "w" ); }
-    else       { ff.writeTo_fgo( filename, bVel, "a" ); } 
+    if(bAppend){ ff.writeTo_fgo( filename, bVel, "a" ); }
+    else       { ff.writeTo_fgo( filename, bVel, "w" ); } 
+};
+
+void save_xyz( char const* filename, bool bAppend ){ 
+    if(bAppend){ ff.save_xyz( filename, "a" ); }
+    else       { ff.save_xyz( filename, "w" ); } 
 };
 
 

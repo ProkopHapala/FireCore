@@ -131,6 +131,12 @@ lib.save_fgo.restype   =  None
 def save_fgo(filename, bVel=False, bAppend=False):
     return lib.save_fgo( cstr(filename), bVel, bAppend)
 
+#  void save_xyz( char const* filename, bool bVel, bool bAppend ){
+lib.save_xyz.argtypes  = [c_char_p, c_bool] 
+lib.save_xyz.restype   =  None
+def save_xyz(filename, bAppend=False):
+    return lib.save_xyz( cstr(filename), bAppend)
+
 #  void setTrjName( char* trj_fname_ ){ 
 lib.setTrjName.argtypes  = [c_char_p, c_int ] 
 lib.setTrjName.restype   =  c_bool
@@ -269,6 +275,18 @@ def evalNumDerivs( Fnum=None, d=0.01):
 
 # =========  Tests
 
+def printEs():
+    #print( " Etot %g Ek %g Eee %g EeePaul %g Eae %g EaePaul %g Eaa %g [eV]" %(Es[0],Es[1],Es[2],Es[3],Es[5],Es[6],Es[7]) )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+    print( " Etot",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+
+def printAtoms():
+    for i in range(na):
+        print( "atom[%i] Q %g apos(%g,%g,%g)" %(i, aPars[i,0], apos[i,0],apos[i,1],apos[i,2]) )
+
+def printElectrons():
+    for i in range(ne):
+        print( "electron[%i] apos(%g,%g,%g) size %g spin %i" %(i, epos[i,0],epos[i,1],epos[i,2], esize[i], espin[i]) )
+
 def getNearestAtom( p, apos, ino=-1 ):
     r2s = np.sum( (apos[:,:]-p[None,:])**2, axis=1)
     if ino >=0: r2s[ino]=1e+300
@@ -373,6 +391,7 @@ def check_Derivs_ie( name, ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=10 ):
 
 
 def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrintLbonds=True, nMaxIter=10000, outE=None, outF=None, fUnits=1. ):
+    if outE==True: outE=np.zeros(nMaxIter)
     load_fgo("data/"+name+".fgo", fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     initOpt(dt=dt,damping=damping )                              # initialize optimizer/propagator
     if(bTrj): setTrjName(name+"_relax.xyz", savePerNsteps=perN ) # setup output .xyz file to save trajectory of all atoms and electrons at each timespep (comment-out to ommit .xyz and improve performance ) 
@@ -385,20 +404,30 @@ def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrint
         result_name=name+"_relaxed.fgo"
         if(verbosity>0): print("Optimized molecule saved to ", result_name)
         save_fgo( result_name )                 # save final relaxed geometry to .fgo format (i.e. floating-gaussian-orbital).
-    return nstep
+    if outE is not None: 
+        return outE[:nstep]
+    else:
+        return nstep
 
-def printEs():
-    #print( " Etot %g Ek %g Eee %g EeePaul %g Eae %g EaePaul %g Eaa %g [eV]" %(Es[0],Es[1],Es[2],Es[3],Es[5],Es[6],Es[7]) )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
-    print( " Etot",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
-
-
-def printAtoms():
-    for i in range(na):
-        print( "atom[%i] Q %g apos(%g,%g,%g)" %(i, aPars[i,0], apos[i,0],apos[i,1],apos[i,2]) )
-
-def printElectrons():
-    for i in range(ne):
-        print( "electron[%i] apos(%g,%g,%g) size %g spin %i" %(i, epos[i,0],epos[i,1],epos[i,2], esize[i], espin[i]) )
+def scan_core_size( name, core_sizes, dt=0.03,damping=0.1, nMaxIter=10000, fUnits=1., ia=0 ):
+    load_fgo("data/"+name+".fgo", fUnits=fUnits )                  # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    initOpt(dt=dt,damping=damping )                                # initialize optimizer/propagator
+    getBuffs()
+    bondLengths = np.zeros(len(core_sizes));  bondLengths[:] = np.NaN
+    result_name= name+"_corescan.fgo" ; open(result_name,'w').close()
+    xyz_name   = name+"_corescan.xyz" ; open(xyz_name   ,'w').close()
+    setVerbosity(0)
+    for i,csize in enumerate(core_sizes): 
+        aPars[ia,2]=csize
+        nstep=run( nMaxIter, Fconv=1e-3, ialg=2 )    # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
+        if(nstep>=nMaxIter): 
+            print( "cannot coverge csize ", csize ); break;
+        imin,bondLengths[i] = getNearestAtom( apos[0,:], apos, ino=0 )
+        print(csize, bondLengths[i], Es[0], nstep, imin ); # eff.printEs()
+        save_fgo( result_name, bAppend=True )                 # save final relaxed geometry to .fgo format (i.e. floating-gaussian-orbital).
+        save_xyz( xyz_name, bAppend=True )
+    print( "bondLengths", bondLengths )
+    return bondLengths
 
 def check_H2(bRelax=True, name="H2_eFF", bPyeff=True):
     '''
