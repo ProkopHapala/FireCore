@@ -42,6 +42,7 @@ class Vec3T{
     inline explicit operator Vec3T<float >()const{ return (Vec3T<float >){(float)x,(float)y,(float)z}; }
 	inline explicit operator Vec3T<double>()const{ return (Vec3T<double>){(double)x,(double)y,(double)z}; }
 	inline explicit operator Vec3T<int   >()const{ return (Vec3T<int   >){(int)x,(int)y,(int)z}; }
+    inline explicit operator Vec3T<int8_t>()const{ return (Vec3T<int8_t>){(int8_t)x,(int8_t)y,(int8_t)z}; }
 
 	//inline operator (const char*)()const{ return (; }
 
@@ -375,6 +376,7 @@ class Vec3T{
     inline T dist ( const VEC& a ) const { VEC d; d.set( x-a.x, y-a.y, z-a.z ); return d.norm (); }
 
     inline T totprod()const{ return x*y*z; };
+    inline T sum    ()const{ return x+y+z; };
 
     inline void octDir( int iface ){
         // mix-weights for inverse mapping of octahedron

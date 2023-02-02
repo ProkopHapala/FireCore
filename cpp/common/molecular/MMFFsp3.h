@@ -587,6 +587,9 @@ void checkNaNs(){
     //}
 }
 
+
+void printSizes(){ printf( "MMFFsp3::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) npi(%i) nbonds(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,npi,nbonds,nvecs ); };
+
 void printBond(int i){ printf( "bond[%i|%i,%i] l0 %g k %g \n", i, bond2atom[i].i,bond2atom[i].j, bond_l0[i], bond_k[i] ); }
 void printBonds(){
     printf( "MMFFsp3::printBonds() : \n" );

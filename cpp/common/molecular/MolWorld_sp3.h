@@ -38,6 +38,7 @@ class MolWorld_sp3{ public:
     //const char* lvs_name     ="input.lvs";
     //const char* surflvs_name ="surf.lvs";
     const char* smile_name   = 0;
+    Vec3i nMulPBC = Vec3iZero; 
 
 	// Building
 	MMFFparams   params;
@@ -199,12 +200,13 @@ bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, doub
 	return true;
 }
 
-void loadGeom( const char* name ){ // TODO : overlaps with buildFF()
+int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
     sprintf(tmpstr, "%s.xyz", name ); printf("tmpstr=`%s`\n", tmpstr);
-    int imol = builder.loadMolType( tmpstr, name );
-    int iret = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
+    int imol  = builder.loadMolType( tmpstr, name );
+    int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
+    int ifrag = builder.frags.size()-1;
     if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
     builder.tryAddConfsToAtoms( 0, -1, 1 );
     if(verbosity>2)builder.printAtomConfs(false);
@@ -227,6 +229,8 @@ void loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     //builder.toMMFFsp3( ff, &params );
     //builder.saveMol( "builder_output.mol" );
     //if(bNonBonded){ init_nonbond(); }else{ printf( "WARRNING : we ignore non-bonded interactions !!!! \n" ); }
+    builder.finishFragment(ifrag);
+    return ifrag;
 }
 
 int loadmol(const char* fname_mol ){
@@ -327,19 +331,35 @@ virtual void init( bool bGrid ){
         bMMFF=true;
     }else if ( xyz_name ){
         if( bMMFF ){ 
-            loadGeom( xyz_name );
+            int ifrag = loadGeom( xyz_name );
+            if( nMulPBC.sum()>0 ){ 
+                builder.multFragPBC( ifrag, nMulPBC, builder.lvec );
+                builder.sortConfAtomsFirst(); 
+                builder.printAtomConfs();
+                //builder.printBonds();    
+                //exit(0);
+            };
+            //exit(0);
         }else{
             loadNBmol( xyz_name ); 
             if(bRigid)initRigid();
         }
     }
+    DEBUG
     if(bMMFF){                               
         builder.toMMFFsp3( ff, &params );
+        printf("!!!!! builder.toMMFFsp3() DONE \n");
+        ff.printSizes();
+        ff.printNeighs();
+        ff.printBonds();
+        exit(0);
         initNBmol();
         if(bOptimizer){ setOptimizer(); }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
-    if(surf_name  )loadSurf( surf_name, bGrid, idebug>0 );   
+    DEBUG
+    if(surf_name  )loadSurf( surf_name, bGrid, idebug>0 );
+    DEBUG   
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
