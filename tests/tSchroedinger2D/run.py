@@ -61,8 +61,8 @@ sch.psi[:,:] = 1
 #sch.source[:,:] = 0;   sch.source[nx//2,ny//2] = -1.
 
 
-#E0=0;
-E0=0.1
+#E0=0.0;
+E0=0.05
 #sch.EQF[3] = 2.0   #   set Energy
 sch.EQF[3] = E0   #   set Energy
 
@@ -73,10 +73,10 @@ plt.figure(figsize=(5*nstep,3*5))
 Es=[]
 Fs=[]
 #perView = 50
-perView = 5
+perView = 1
 for i in range(nstep):
     for j in range(perView):
-        F2=sch.stepResonance( E0=E0, dt=0.5 )        #;print("F2 ",np.sqrt(F2) )       #;print( "fpsi \n", sch.fpsi ); 
+        F2=sch.stepResonance( E0=E0, dt=10.1 )        #;print("F2 ",np.sqrt(F2) )       #;print( "fpsi \n", sch.fpsi ); 
         Es.append(sch.EQF[0])
         Fs.append(np.sqrt(F2))
     ij = i*perView 
