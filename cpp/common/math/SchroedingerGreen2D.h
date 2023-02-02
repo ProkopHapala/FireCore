@@ -208,6 +208,15 @@ double applyGreen( double* Yin, double* Yout, double factor=1.0 ){ // derivative
     return Qo;
 }
 
+/*
+double sub_dot( double* a, double* b, double factor ){
+    double c_ab = 0;
+    for(int i=0; i<ntot; i++){ c_ab += a[i]*b[i]; }
+    c_ab*=-factor;
+    for(int i=0; i<ntot; i++){ Y+=a[i]*c_ab; }
+}
+*/
+
 
 void evalGreenDerivs( double factor, bool bQderiv=true ){ // derivatives of energy
     /*
@@ -353,7 +362,16 @@ double stepResonance( double E0_, double dt ){
     double Q1 = applyGreen(  psi, Apsi,  1 );
     double Q2 = applyGreen( Apsi, fpsi, -1 );
     //moveMDdamp(dt,0.1);
-    moveGD(dt);
+    bool bSubstractNormChange=true;
+    if(bSubstractNormChange){
+        double c_ab = VecN::dot(ntot, psi, fpsi );
+        double Qpsi = VecN::dot(ntot, psi,  psi );
+        VecN::fma( ntot, fpsi, psi, -c_ab/sqrt(Qpsi), fpsi );
+    }
+    
+    //moveGD(dt);
+    moveMDdamp( dt, 0.1 );
+
     printf( "[%i] Q1 %g Q2 %g Q %g |F| %g \n", iter, Q1, Q2, Q, sqrt(F2sum) );
     E=Q1;
     VecN::mul(ntot, 1./sqrt(Q), psi,psi );
