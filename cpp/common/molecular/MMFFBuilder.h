@@ -83,7 +83,7 @@ struct AtomConf{
     //AtomConf() = default;
 
     inline void rebase(int dib){
-        for(int i=0; i<N_NEIGH_MAX; i++){ neighs[i]+=dib; };
+        for(int i=0; i<N_NEIGH_MAX; i++){ if(neighs[i]>=0)neighs[i]+=dib; };
     }
 
     inline int findNeigh(int ib){
@@ -131,7 +131,7 @@ struct Bond{
     int    type  = -1;
     Vec2i  atoms = (Vec2i){-1,-1};
     double l0=1,k=0;
-    //Vec3<int8_t> ipbc; // for periodic boundary conditions
+    Vec3i8 ipbc=Vec3i8{0,0,0}; // for periodic boundary conditions
 
     //int    type;
     //Vec2i  atoms;
@@ -146,7 +146,7 @@ struct Bond{
     void print()const{ printf( " Bond{t %i a(%i,%i) l0 %g k %g}", type, atoms.i, atoms.j, l0, k ); };
 
     Bond()=default;
-    Bond(int type_, Vec2i atoms_, double l0_, double k_):type(type_),atoms(atoms_),l0(l0_),k(k_){};
+    Bond(int type_, Vec2i atoms_, double l0_, double k_):type(type_),atoms(atoms_),l0(l0_),k(k_),ipbc{0,0,0}{};
 };
 
 // ============================
@@ -204,6 +204,7 @@ struct Dihedral{
 struct Fragment{
     int   imolType;
     Vec2i atomRange;
+    Vec2i confRange;
     Vec2i bondRange;
     Vec2i angRange;
     Vec2i dihRange;
@@ -213,11 +214,11 @@ struct Fragment{
     //Molecule * mol;     // ToDo : we can replace this by MolID to leave dependence on Molecule_h
     Vec3d    * pos0s;
 
-    void finish(int ia,int ib,int ig, int id){ atomRange.y=ia; bondRange.y=ib; angRange.y=ig; dihRange.y=id; };
+    void finish(int ia,int ic, int ib,int ig, int id){ atomRange.y=ia; confRange.y=ic; bondRange.y=ib; angRange.y=ig; dihRange.y=id; };
 
     Fragment()=default;
-    Fragment( Vec2i atomRange_,Vec2i bondRange_,Vec2i angRange_,Vec2i dihRange_):atomRange(atomRange_),bondRange(bondRange_),angRange(angRange_),dihRange(dihRange_){};
-    Fragment( int ia,int ib,int ig, int id):atomRange{ia,ia},bondRange{ib,ib},angRange{ig,ig},dihRange{id,id}{};
+    Fragment( Vec2i atomRange_, Vec2i confRange_, Vec2i bondRange_,Vec2i angRange_,Vec2i dihRange_):atomRange(atomRange_),confRange(confRange_),bondRange(bondRange_),angRange(angRange_),dihRange(dihRange_){};
+    Fragment( int ia,int ic,int ib,int ig, int id):atomRange{ia,ia},confRange{ic,ic},bondRange{ib,ib},angRange{ig,ig},dihRange{id,id}{};
     //Fragment(Molecule* mol_, Vec3d pos_, Quat4d rot_, Vec2i atomRange_ ):
     Fragment(int imolType_, Vec3d pos_, Quat4d rot_, Vec2i atomRange_, Vec3d* pos0s_ ):
         imolType(imolType_),
@@ -291,7 +292,7 @@ class Builder{  public:
 
     bool bPBC=false;
     Mat3d lvec = Mat3dIdentity;  // lattice vectors for PBC (periodic boundary conditions)
-    std::vector<Vec3i> bondPBC;
+    //std::vector<Vec3i> bondPBC;
 
     MMFFparams* params = 0;  // Each function which needs this can take it as parameter
     std::vector       <std::string>*     atomTypeNames = 0;
@@ -380,7 +381,7 @@ class Builder{  public:
     void clearBonds(){
         //atoms.clear();
         bonds.clear();
-        bondPBC.clear();
+        //bondPBC.clear();
         angles.clear();
         dihedrals.clear();
         confs.clear();
@@ -390,7 +391,7 @@ class Builder{  public:
     void clear(){
         atoms.clear(); //printf("DEBUG a.1 \n");
         bonds.clear(); //printf("DEBUG a.2 \n");
-        bondPBC.clear();
+        //bondPBC.clear();
         angles.clear();
         dihedrals.clear();
 #ifdef Molecule_h
@@ -769,12 +770,15 @@ class Builder{  public:
         return n;
     }
 
-    int countPiE(int& npi){
-        int ne =0; 
+    int countPiE(int& npi, int i0=0, int n=-1)const{
+        nconf_def(n,i0);
+        //printf("DEBUG countPiE() n %i i0 %i \n", n,i0);
+        int ne=0; 
         npi=0;
-        for(int i=0; i<confs.size();i++){
-            npi+=confs[i].npi;
-            ne +=confs[i].ne;
+        for(int i=0; i<n;i++){
+            const AtomConf& c = confs[i0+i]; 
+            npi+=c.npi;
+            ne +=c.ne;
         }
         return ne;
     }
@@ -937,9 +941,11 @@ class Builder{  public:
                         touchingAtoms( j0, imax, p, R, Rfac, found );
                         //if(i==12)printf( "# pbc[%i,%i,%i][%i] nfound %i \n", ix,iy,iz, ipbc, found.size() );
                         for(int j:found){
+                            //bondPBC.push_back( {ix,iy,iz} );
+                            bondBrush.ipbc=Vec3i8{ix,iy,iz};
                             bondBrush.atoms={i,j};
                             insertBond( bondBrush );
-                            bondPBC.push_back( {ix,iy,iz} );
+                            
                         }
                         ipbc++;
                     }
@@ -1022,7 +1028,7 @@ class Builder{  public:
         return true;
     }
 
-    void permutAtoms(int* permut){
+    void permutAtoms(int* permut, bool doBonds=false ){
         for(Bond&     b: bonds){ b.atoms.a=permut[b.atoms.a];  b.atoms.b=permut[b.atoms.b]; }
         // Confs are not re-shufled because they point to bonds, not atoms
         //for(AtomConf& c: confs){ 
@@ -1032,8 +1038,19 @@ class Builder{  public:
         //    }
         //}
         std::vector<Atom> atoms_(atoms);
-        for(int i=0; i<atoms_.size(); i++){
-            atoms[permut[i]]=atoms_[i];
+        for(int ia=0; ia<atoms_.size(); ia++){
+            int ja  = permut[ia];
+            Atom& A = atoms [ja];
+            A       = atoms_[ia];
+            if( A.iconf>=0 ){
+                confs[A.iconf].iatom = ja;
+            }
+        }
+        if(doBonds){
+            for(int i=0; i<bonds.size(); i++){
+                Bond& b = bonds[i];
+                b.atoms.set( permut[b.atoms.i], permut[b.atoms.j] );
+            }
         }
     }
 
@@ -1150,6 +1167,8 @@ class Builder{  public:
         return sorted;
     }
 
+    void printSizes(){ printf( "sizes: atoms(%i|%i) bonds(%i) angles(%i) dihedrals(%i) \n", atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ); };
+
     void printAtoms(){
         printf(" # MM::Builder.printAtoms(na=%i) \n", atoms.size() );
         for(int i=0; i<atoms.size(); i++){
@@ -1159,7 +1178,8 @@ class Builder{  public:
     void printBonds(){
         printf(" # MM::Builder.printBonds(nb=%i) \n", bonds.size() );
         for(int i=0; i<bonds.size(); i++){
-            printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bondPBC[i].x,bondPBC[i].y,bondPBC[i].z); puts("");
+            //printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bondPBC[i].x,bondPBC[i].y,bondPBC[i].z); puts("");
+            printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bonds[i].ipbc.x,bonds[i].ipbc.y,bonds[i].ipbc.z); puts("");
         }
     }
     void printBondParams(){
@@ -1273,8 +1293,8 @@ class Builder{  public:
         return atoms.size() - n0;
     }
 
-
     inline void natom_def(int& n,int i0)const{ if(n<0){ n=atoms .size()-i0; }; }
+    inline void nconf_def(int& n,int i0)const{ if(n<0){ n=confs .size()-i0; }; }
     inline void nbond_def(int& n,int i0)const{ if(n<0){ n=bonds .size()-i0; }; }
     inline void nang_def (int& n,int i0)const{ if(n<0){ n=angles.size()-i0; }; }
     inline void ndih_def (int& n,int i0)const{ if(n<0){ n=dihedrals.size()-i0; }; }
@@ -1343,8 +1363,8 @@ class Builder{  public:
         }
     }
 
-    void startFragment (){ frags.push_back( Fragment( atoms.size(), bonds.size(), angles.size(), dihedrals.size() ) ); }
-    void finishFragment(){ frags.back().finish      ( atoms.size(), bonds.size(), angles.size(), dihedrals.size() ); }
+    void startFragment (         ){                          frags.push_back( Fragment( atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ) ); }
+    void finishFragment(int i=-1 ){ if(i<0)i=frags.size()-1; frags[i].finish(           atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size()   ); }
 
     void insertAtoms( int na, int* atypes, Vec3d* apos, Vec3d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
         //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
@@ -1403,7 +1423,7 @@ class Builder{  public:
                 C.iatom=atoms.size();
                 A.iconf=confs.size();
                 confs.push_back(C);
-            }; 
+            };
             atoms.push_back(A);
         }
         for(int i=bondRange.a; i<bondRange.b; i++){
@@ -1413,12 +1433,16 @@ class Builder{  public:
         }
     }
 
-    void multFragPBC( Vec3i nPBC, int ifrag, Mat3d lvs ){
+    void multFragPBC( int ifrag, const Vec3i& nPBC, const Mat3d& lvs ){
+        printf( "multFragPBC() nPBC(%i,%i,%i) ifrag=%i ) \n", nPBC.x, nPBC.y, nPBC.z,  ifrag );
+        lvs.print();
+        printSizes();
         for(int ic=0; ic<nPBC.c; ic++){ for(int ib=0; ib<nPBC.b; ib++){ for(int ia=0; ia<nPBC.a; ia++){
             if( (ia==0)&&(ib==0)&&(ic==0) ) continue;
             Vec3d pos0 = lvs.a*ia + lvs.b*ib + lvs.c*ic;
             insertFrag( ifrag, Vec3dZero, pos0 );
         }}}
+        printSizes();
     }
 
 #ifdef Molecule_h
@@ -1616,7 +1640,8 @@ class Builder{  public:
 
 void updatePBC( Vec3d* pbcShifts ){
     for(int i=0; i<bonds.size(); i++){
-        pbcShifts[i] = pbcShift( bondPBC[i] );
+        //pbcShifts[i] = pbcShift( bondPBC[i] );
+        pbcShifts[i] = pbcShift( (Vec3i)bonds[i].ipbc );
         if( pbcShifts[i].norm2()>1 ){ printf( "PBC-bond[%i]  atoms(%i,%i)  pbcShift(%g,%g,%g) \n",  bonds[i].atoms.a, bonds[i].atoms.b, pbcShifts[i].x,pbcShifts[i].y,pbcShifts[i].z );  };  // DEBUG
     }
 }
@@ -1624,16 +1649,27 @@ void updatePBC( Vec3d* pbcShifts ){
 #ifdef MMFFsp3_h
 
     void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
+        int nAmax = atoms.size();
+        int nBmax = bonds.size();
+        int nCmax = confs.size();
+        // {
+        //     printf("!!!! WARRNING DEBUG HACK !!!! Builder::toMMFFsp3(): change array sizes \n");
+        //     printf("!!!! Before: nAmax %i nBmax %i \n", nAmax, nBmax);
+        //     nAmax = frags[0].atomRange.b;
+        //     nBmax = frags[0].bondRange.b;
+        //     nCmax = frags[0].confRange.b;
+        //     printf("!!!! After: nAmax %i nBmax %i \n", nAmax, nBmax);
+        // }
         //printf("toMMFFsp3() verbosity %i \n", verbosity );
-        int npi,ne; ne=countPiE( npi );
-        int nconf = confs.size();
-        int ncap  = atoms.size() - nconf;
-        int nb = bonds.size();
+        int npi,ne; ne=countPiE( npi, 0,nCmax );
+        int nconf = nCmax;
+        int ncap  = nAmax - nconf;
+        int nb   = bonds.size();
         if(verbosity>0)printf(  "MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         if(bRealloc)ff.realloc( nconf, nb+ne, npi, ncap+ne );
-        export_apos     ( ff.apos );  
-        export_atypes   ( ff.atype );
-        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k ); 
+        export_apos     ( ff.apos  ,0,nAmax);  
+        export_atypes   ( ff.atype ,0,nAmax);
+        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k,   0,nBmax); 
         if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max ); exit(0); } 
         Vec3d hs[N_NEIGH_MAX];
         int ipi=0;
@@ -1641,7 +1677,8 @@ void updatePBC( Vec3d* pbcShifts ){
         int ie0=nconf+ncap;
         int iie = 0;
         //for(int i=0; i<ff.nnode*ff.nneigh_max; i++){ ff.Kneighs[i]=K_sigma; }
-        for(int ia=0; ia<atoms.size(); ia++ ){
+        //for(int ia=0; ia<atoms.size(); ia++ ){
+        for(int ia=0; ia<nAmax; ia++ ){
             //printf( "atom[%i] \n", ia  );
             int ic = atoms[ia].iconf;
             //printf( "atom[%i] iconf %i \n", ia, ic  );

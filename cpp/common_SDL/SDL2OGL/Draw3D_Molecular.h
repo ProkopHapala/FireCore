@@ -136,6 +136,14 @@ void bondsLengths( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, floa
     glEnd();
 }
 
+void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d* pbc_shifts ){
+    for(int i=0; i<n; i++){
+        Vec2i b = b2a[i];
+        Draw3D::drawLine( apos[b.b], apos[b.a]- pbc_shifts[i] );
+        Draw3D::drawLine( apos[b.a], apos[b.b]+ pbc_shifts[i] );
+    }
+}
+
 void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, const Mat3d& lvec ){
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
