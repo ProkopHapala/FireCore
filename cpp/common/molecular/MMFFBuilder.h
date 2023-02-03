@@ -103,6 +103,14 @@ struct AtomConf{
         return true;
     };
 
+    inline bool replaceNeigh(int ib, int jb){
+        for(int i=0; i<N_NEIGH_MAX; i++){
+            if(neighs[i]==ib){ neighs[i]==jb; return true; };
+        }
+        return false;
+    }
+
+
     inline bool addBond (int i){ return addNeigh(i,nbond); };
     inline bool addH    (     ){ return addNeigh((int)NeighType::H    ,nH ); };
     inline bool addPi   (     ){ return addNeigh((int)NeighType::pi   ,npi); };
@@ -1433,16 +1441,96 @@ class Builder{  public:
         }
     }
 
-    void multFragPBC( int ifrag, const Vec3i& nPBC, const Mat3d& lvs ){
+    void multFragPBC( int ifrag, const Vec3i& nPBC, Mat3d lvs ){
         printf( "multFragPBC() nPBC(%i,%i,%i) ifrag=%i ) \n", nPBC.x, nPBC.y, nPBC.z,  ifrag );
         lvs.print();
         printSizes();
         for(int ic=0; ic<nPBC.c; ic++){ for(int ib=0; ib<nPBC.b; ib++){ for(int ia=0; ia<nPBC.a; ia++){
             if( (ia==0)&&(ib==0)&&(ic==0) ) continue;
             Vec3d pos0 = lvs.a*ia + lvs.b*ib + lvs.c*ic;
+            startFragment();
             insertFrag( ifrag, Vec3dZero, pos0 );
+            finishFragment();
         }}}
+        lvec.a.set_mul(lvs.a,nPBC.a);
+        lvec.b.set_mul(lvs.b,nPBC.b);
+        lvec.c.set_mul(lvs.c,nPBC.c);
         printSizes();
+    }
+
+    int findNearestBondPBC( int ib, int& ifrag0, int ifragMin, int ifragMax, Vec3i8 ipbc ){
+        int ia0  = frags[ifrag0].atomRange.a;
+        const Vec2i & b     = bonds[ib ].atoms;
+        const Vec3i8& ipbc0 = bonds[ib ].ipbc;
+        const Vec3d & pi = atoms[b.i].pos;
+        //Vec3d pj = atoms[b.j].pos;
+        int jfragMin=-1;
+        int jaMin   =-1;
+        double r20 = (atoms[b.j].pos-pi).norm2();
+        for(int jfrag=ifragMin; jfrag<ifragMax; jfrag++ ){
+            if(ifrag0==jfrag) continue;
+            int ja0  = frags[jfrag].atomRange.a;
+            int ja   =  b.j - ia0 + ja0;
+            double r2 = (atoms[ja].pos-pi).norm2();
+            if(r2<r20){
+                jfragMin=jfrag; jaMin=ja;
+                ipbc=Vec3i8{0,0,0};
+            }else{
+                r2 = (atoms[ja].pos-pi + lvec.a*ipbc0.a + lvec.b*ipbc0.b + lvec.c*ipbc0.c ).norm2();
+                if(r2<r20){
+                    jfragMin=jfrag; jaMin=ja;
+                    ipbc=ipbc0;
+                }
+            }
+        }
+        ifrag0=jfragMin;
+        return jaMin;
+    }
+
+    int removeBondFromConfs(int ib){
+        int ic,n=0;
+        const Vec2i& b  = bonds[ib].atoms;
+        ic=atoms[b.i].iconf; if(ic>=0) n+=confs[ic].replaceNeigh(ib,-1);
+        ic=atoms[b.j].iconf; if(ic>=0) n+=confs[ic].replaceNeigh(ib,-1);
+        //b.set(ia,ja);
+        return n;
+    }
+
+    int addBondToConfs(int ib){
+        int ic,n=0;
+        const Vec2i& b  = bonds[ib].atoms;
+        ic=atoms[b.i].iconf; if(ic>=0) n+=confs[ic].replaceNeigh( -1,b.i);
+        ic=atoms[b.j].iconf; if(ic>=0) n+=confs[ic].replaceNeigh( -1,b.j);
+        return n;
+    }
+
+    int correctPBCbonds( int ifragMin, int ifragMax ){
+        std::vector<int> ibs; ibs.reserve(100);
+        printf( "correctPBCbonds(ifragMin=%i, ifragMax=%i) \n", ifragMin, ifragMax );
+        for(int ifrag=ifragMin; ifrag<ifragMax; ifrag++ ){
+            printf( "correctPBCbonds[ifrag=%i] \n", ifrag );
+            const Vec2i& bondRange  = frags[ifrag].bondRange;
+            for(int ib=bondRange.a; ib<bondRange.b; ib++){
+                //printf( "correctPBCbonds[ib=%i] \n", ib );
+                Bond& b = bonds[ib ];
+                if( b.ipbc.allEqual(0) ) continue;
+                printf( "correctPBCbonds[ib=%i] (%i,%i) ipbc(%i,%i,%i)\n", ib,  b.atoms.i,b.atoms.j, b.ipbc.x,b.ipbc.y,b.ipbc.z );
+                int ifrag0 = ifrag; Vec3i8 ipbc;
+                int ja = findNearestBondPBC( ib, ifrag0, ifragMin, ifragMax, ipbc);
+                if(ja>=0){ // found?
+                    printf( "correctPBCbonds[%i] (%i,%i)->(%i,%i) \n", ib,  b.atoms.i,b.atoms.j,   b.atoms.i,ja );
+                    int nremove = removeBondFromConfs( ib );   if(nremove==0){ printf("!!!! bond[%i] not removed from any conf \n", ib); };
+                    b.atoms.set(b.atoms.i,ja);
+                    b.ipbc = ipbc;
+                    ibs.push_back(ib);
+                }  
+            }
+        }
+        for(int ib:ibs){
+            int nadd = addBondToConfs(ib);
+            if(nadd==0){ printf("!!!! bond[%i] not added to any conf \n", ib); };
+        }
+        return ibs.size();
     }
 
 #ifdef Molecule_h
@@ -1727,6 +1815,7 @@ void updatePBC( Vec3d* pbcShifts ){
                 if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
             }
         }
+        if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
         //printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
         if(verbosity>0)printf(  "... MM:Builder::toMMFFsp3() DONE \n"  );
     }

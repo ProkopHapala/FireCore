@@ -334,8 +334,10 @@ virtual void init( bool bGrid ){
             int ifrag = loadGeom( xyz_name );
             if( nMulPBC.sum()>0 ){ 
                 builder.multFragPBC( ifrag, nMulPBC, builder.lvec );
+                builder.correctPBCbonds( ifrag, builder.frags.size() ); // correct bonds for newly added fragments
+                //exit(0);
                 builder.sortConfAtomsFirst(); 
-                builder.printAtomConfs();
+                //builder.printAtomConfs();
                 //builder.printBonds();    
                 //exit(0);
             };
@@ -350,15 +352,16 @@ virtual void init( bool bGrid ){
         builder.toMMFFsp3( ff, &params );
         printf("!!!!! builder.toMMFFsp3() DONE \n");
         ff.printSizes();
-        ff.printNeighs();
-        ff.printBonds();
-        exit(0);
+        //ff.printNeighs();
+        //ff.printBonds();
+        ff.checkBonds( 1.5, true );
+        //exit(0);
         initNBmol();
-        if(bOptimizer){ setOptimizer(); }                         
-        _realloc( manipulation_sel, ff.natoms );  
+        //if(bOptimizer){ setOptimizer(); }                         
+        //_realloc( manipulation_sel, ff.natoms );  
     }
     DEBUG
-    if(surf_name  )loadSurf( surf_name, bGrid, idebug>0 );
+    //if(surf_name  )loadSurf( surf_name, bGrid, idebug>0 );
     DEBUG   
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
