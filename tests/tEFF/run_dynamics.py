@@ -14,12 +14,16 @@ def run_H2O_vs_ebullet( ie0 = -1, nsamp=100, nsubStep=10, bBsize=False ):
     if not bBsize: eff.invSmass[:] = 0                 # fix size of electrons by setting invMass=0 (mass=innfinity)  
     #print( "aPars\n", eff.aPars  )                    # print atom parameters (parameters of nuclei potential, charge, core electron pauli repulsion and radius)
     eff.setTrjName("trj_bullet_vs_H2O.xyz")            # setup output .xyz file to save trajectory of all atoms and electrons at each timespep (comment-out to ommit .xyz and improve performance ) 
-    print( 1/eff.invMasses )                           # print masses of electrons (for debugging)
+    #print( 1/eff.invMasses )                           # print masses of electrons (for debugging)
     trj_e0 = np.zeros( (nsamp,3) )                     # array to store electron bullet trajectory
     for i in range(nsamp):
         eff.run( nsubStep, ialg=-1 )                   # run eFF for 10 iterations, using leap-frog progrgator (ialg=-1) 
         trj_e0[i,:] = eff.epos[ie0,:]                  # store current position of electron bullet
-        print( "E[%i] %g [eV]" %(i,eff.Es[0]) )        # Print total energy
+
+        vmax = np.max( np.sqrt( np.sum(eff.evel[:,:]**2,axis=1)) );
+
+        #print(eff.evel[:,:])
+        print( "E[%i] %g [eV] vmax %g [A/fs]" %(i,eff.Es[0], vmax) )        # Print total energy
 
     # plot trajectroy of electron bullet
     plt.plot( trj_e0[:,1], trj_e0[:,2], '.-' )    

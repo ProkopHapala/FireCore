@@ -181,12 +181,10 @@ void deallocMask(){
     _dealloc( torsMasked );
 }
 
-
 void initPBC(){
     _realloc(  pbcShifts, nbonds );
     for(int i=0; i<nbonds; i++){ pbcShifts[i]=Vec3dZero; }
 }
-
 
 inline void setAngleParam(int i, double a0, double k){
     a0=a0*0.5; // we store half angle
