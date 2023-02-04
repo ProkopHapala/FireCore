@@ -448,7 +448,6 @@ class Molecule{ public:
             printf("cannot find %s\n", fname );
             return -1;
         }
-        //DEBUG
         int natoms; char at_name[8]; int npi,ne=0;
         const int nbuf=1024;
         char buff[nbuf]; char* line;
@@ -456,7 +455,6 @@ class Molecule{ public:
         sscanf( line, "%i", &natoms );
         if(verbosity>0)printf( "natoms %i \n", natoms );
         line = fgets( buff, nbuf, pFile ); // comment, ignore
-        //DEBUG
         allocate(natoms,0);
         for(int i=0; i<natoms; i++){
             //printf( "%i \n", i );
@@ -468,7 +466,6 @@ class Molecule{ public:
             if( nret < 6 ){ npis[i]  =-1; };
             assignAtomType(i, at_name );
         }
-        //DEBUG
         return natoms;
     }
 

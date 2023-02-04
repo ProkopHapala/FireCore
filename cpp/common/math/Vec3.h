@@ -289,6 +289,11 @@ class Vec3T{
         return *this;
     }
 
+    inline T getAngle(const VEC& b){
+        T c = dot(b)/sqrt( norm2()*b.norm2() );
+        return acos(c); 
+    }
+
 	// Rodrigues rotation formula: v' = cosa*v + sina*(uaxis X v) + (1-cosa)*(uaxis . v)*uaxis
 	inline VEC& rotate( T angle, const VEC& axis  ){
 		VEC uaxis;
@@ -378,6 +383,7 @@ class Vec3T{
     inline T totprod    ()const{ return x*y*z; };
     inline T sum        ()const{ return x+y+z; };
     inline bool allEqual(T f)const{ return (x==f)&&(y==f)&&(z==f);};
+    inline bool anyEqual(T f)const{ return (x==f)||(y==f)||(z==f);};
 
     inline void octDir( int iface ){
         // mix-weights for inverse mapping of octahedron

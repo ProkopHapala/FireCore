@@ -77,6 +77,16 @@ template<class T> inline void rotate(int n, const int* selection, Vec3T<T>* ps, 
 template<class T> inline void rotate(int n, const int* selection, Vec3T<T>* ps, const Vec3T<T>& center, const Vec3T<T>&  axis, T phi      ){ rotate( n,selection,ps,center,axis.normalized(), cos(phi), sin(phi) ); }
 
 template<class T>
+static inline void affineTransform( int n, const Vec3T<T>* vin, Vec3T<T>* vout, const Mat3T<T>& oM, const Mat3T<T>& newM, const Vec3T<T> oP=Vec3T<T>{0,0,0}, const Vec3T<T> newP=Vec3T<T>{0,0,0} ){
+    Mat3d M1,M; 
+    oM.invert_to( M1 );
+    M.set_mmul(newM,M1);
+    for(int i=0; i<n; i++){ 
+        Vec3d v; M.dot_to( vin[i]-oP, v ); v.add(newP); vout[i]=v;
+    }
+}
+
+template<class T>
 void orient( int n, Vec3T<T>* ps, const Vec3T<T>& p0, const Vec3T<T>& dir, const Vec3T<T>& up ){
     Mat3T<T> rot; rot.fromDirUp( dir, up );
     for(int i=0; i<n; i++){
