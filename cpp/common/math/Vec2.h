@@ -149,6 +149,8 @@ class Vec2T{
 	}
 
 	inline T totprod(){ return x*y; }
+	inline bool allEqual(T f)const{ return (x==f)&&(y==f);};
+    inline bool anyEqual(T f)const{ return (x==f)||(y==f);};
 
 	inline void fromLinearSolution( const VEC& va, const VEC& vb, const VEC& rhs ){
         T invD = 1/va .cross(vb);

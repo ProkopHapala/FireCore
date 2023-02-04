@@ -601,15 +601,15 @@ void printBonds(){
     for(int i=0;i<nbonds;i++){ printBond(i); }
 }
 
-void checkBonds( double factor=1.5, bool bPBC=false ){
+void checkBonds( double factor=1.5, bool bPrintPBC=false ){
     for(int ib=0;ib<nbonds;ib++){
         Vec2i b = bond2atom[ib];
         Vec3d d = apos[b.j] - apos[b.i]; 
         if( pbcShifts ){ d.add(pbcShifts[ib]); }
         double r2 = d.norm();
         double R  = bond_l0[ib]*factor;  
-        if( bPBC     ){ if(pbcShifts[ib].norm2()>0.1) printf( "PBC bond[%i(%i,%i)] r=%g > Lmax=%g pbcShifts(%g,%g,%g) \n", ib, b.i,b.j, sqrt(r2), R, pbcShifts[ib].x,pbcShifts[ib].y,pbcShifts[ib].z ); };
-        if( r2>(R*R) ){ printf( "ERROR bond[%i(%i,%i)] r=%g > Lmax=%g pbcShifts(%g,%g,%g) \n", ib, b.i,b.j, sqrt(r2), R, pbcShifts[ib].x,pbcShifts[ib].y,pbcShifts[ib].z ); }
+        if( bPrintPBC ){ if(pbcShifts[ib].norm2()>0.1) printf( "PBC bond[%i(%i,%i)] pbcShifts(%g,%g,%g) \n", ib, b.i,b.j, pbcShifts[ib].x,pbcShifts[ib].y,pbcShifts[ib].z ); };
+        if( r2>(R*R)    ){ printf( "ERROR bond[%i(%i,%i)] r=%g > Lmax=%g pbcShifts(%g,%g,%g) \n", ib, b.i,b.j, sqrt(r2), R, pbcShifts[ib].x,pbcShifts[ib].y,pbcShifts[ib].z ); }
     }
 }
 

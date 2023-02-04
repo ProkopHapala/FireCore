@@ -262,7 +262,7 @@ class Mat3T{
         return fDet;
     };
 
-	inline void invert_to( MAT& Mout ) {
+	inline void invert_to( MAT& Mout ) const{
         T idet = 1/determinant(); // we dont check det|M|=0
         Mout.xx = ( yy * zz - yz * zy ) * idet;
         Mout.xy = ( xz * zy - xy * zz ) * idet;
@@ -275,7 +275,7 @@ class Mat3T{
         Mout.zz = ( xx * yy - xy * yx ) * idet;
     };
 
-    inline void invert_T_to( MAT& Mout ) {
+    inline void invert_T_to( MAT& Mout ) const{
         T idet = 1/determinant(); // we dont check det|M|=0
         Mout.xx = ( yy * zz - yz * zy ) * idet;
         Mout.yx = ( xz * zy - xy * zz ) * idet;
@@ -288,7 +288,7 @@ class Mat3T{
         Mout.zz = ( xx * yy - xy * yx ) * idet;
     };
 
-    inline void adjoint_to( MAT& Mout ) {
+    inline void adjoint_to( MAT& Mout ) const{
         Mout.xx = yy * zz - yz * zy;
         Mout.xy = xz * zy - xy * zz;
         Mout.xz = xy * yz - xz * yy;

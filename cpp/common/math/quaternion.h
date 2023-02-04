@@ -88,6 +88,8 @@ class Quat4T {
 
 	inline QUAT get_inv(){ QUAT q; q.x=-x; q.y=-y; q.z=-z; q.w=w; return q; }
 
+    inline bool allEqual(T f)const{ return (x==f)&&(y==f)&&(z==f)&&(w==f);};
+    inline bool anyEqual(T f)const{ return (x==f)||(y==f)||(z==f)||(w==f);};
 
 // ====== basic aritmetic
 

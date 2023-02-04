@@ -440,7 +440,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( W->nbmol.n, W->nbmol.ps, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     //if(bViewAtomP0s                        ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );  }
     if(bViewAtomForces                       ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );  }
-    if(bOrig&&mm_bAtoms                      ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->nbmol.n, W->nbmol.ps, fontTex3D,        0.005              );       }
+    if(bOrig&&mm_bAtoms                      ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->nbmol.n, W->nbmol.ps, fontTex3D,        0.007              );       }
     if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->nbmol.n,  (double*)W->nbmol.REQs,  W->nbmol.ps, 3, 2, fontTex3D, 0.01 ); }
     if(W->ff.pi0s                            ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
 
@@ -563,6 +563,15 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
                 case SDLK_f: bViewAtomForces =! bViewAtomForces;  break;
                 case SDLK_w: bViewSubstrate  =! bViewSubstrate;   break;
+
+
+                case SDLK_t:{
+                            
+                            affineTransform( W->ff.natoms, W->ff.apos, W->ff.apos, W->builder.lvec, W->new_lvec );
+                            W->builder.updatePBC( W->ff.pbcShifts, &(W->new_lvec) );
+                            _swap( W->builder.lvec, W->new_lvec );
+
+                            }break;
 
                 case SDLK_i:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );

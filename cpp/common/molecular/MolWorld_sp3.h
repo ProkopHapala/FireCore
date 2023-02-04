@@ -40,6 +40,8 @@ class MolWorld_sp3{ public:
     const char* smile_name   = 0;
     Vec3i nMulPBC = Vec3iZero; 
 
+    Mat3d new_lvec=Mat3dIdentity;
+
 	// Building
 	MMFFparams   params;
 	MM::Builder  builder;
@@ -209,10 +211,12 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     int ifrag = builder.frags.size()-1;
     if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
     builder.tryAddConfsToAtoms( 0, -1, 1 );
+    builder.cleanPis();
     if(verbosity>2)builder.printAtomConfs(false);
     //builder.export_atypes(atypes);
     // ------- Load lattice vectros
     sprintf(tmpstr, "%s.lvs", name );
+    //builder.printAtomConfs(true);
     if( file_exist(tmpstr) ){
         readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
         bPBC=true;
@@ -222,8 +226,9 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
         builder.autoBonds();      if(verbosity>2)builder.printBonds ();  // exit(0);
     }
     //builder.printAtomConfs(true);
-    //builder.autoAllConfEPi( );
-    builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
+    builder.autoAllConfEPi( );          //builder.printAtomConfs(true);
+    //builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
+    //builder.printAtomConfs(true);
     builder.assignAllBondParams();    if(verbosity>1)builder.printBonds    ();
     //builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
     //builder.toMMFFsp3( ff, &params );
@@ -332,13 +337,16 @@ virtual void init( bool bGrid ){
     }else if ( xyz_name ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
-            if( nMulPBC.sum()>0 ){ 
+            if( nMulPBC.totprod()>1 ){ 
                 builder.multFragPBC( ifrag, nMulPBC, builder.lvec );
+
+                new_lvec.ax=builder.lvec.a.norm(); new_lvec.by=builder.lvec.b.norm(); new_lvec.cz=builder.lvec.c.norm();
+
                 builder.correctPBCbonds( ifrag, builder.frags.size() ); // correct bonds for newly added fragments
                 //exit(0);
                 builder.sortConfAtomsFirst(); 
                 //builder.printAtomConfs();
-                //builder.printBonds();    
+                builder.printBonds();    
                 //exit(0);
             };
             //exit(0);
