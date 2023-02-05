@@ -41,19 +41,31 @@ void init_buffers(){
 }
 */
 
-void init( char* str ){
+int init( char* str, int seed ){
     ff.insertString( str );
+    ff.try_realloc();
     ff.cleanVelocity();
+    if(seed>0){
+        srand(seed);
+        ff.setPosRandom(5.0);
+    }
+    return ff.atoms.size();
 }
 
 void toArrays( int* types, double* apos, int* neighs ){
     ff.toArrays( types, (Vec2d*)apos, (int4*)neighs );
 }
 
-int run( int n, double dt, double damp, double F2conv, bool bCleanForce){
+double step( double dt, double damp ){ return ff.step(dt,damp); }    
+
+int run( int n, double dt, double damp, double Fconv, bool bCleanForce){
+    printf( "Fconv %g\n", Fconv);
+    double F2conv=Fconv*Fconv;
+    ff.try_realloc();
     if(bCleanForce)ff.cleanVelocity();
     for(int itr=0; itr<n; itr++){
         double F2sum = ff.step( dt, damp);
+        printf( "run[%i] E %g |F| %g \n", itr, ff.Etot, sqrt(F2sum) );
         if(F2sum<F2conv)return itr;
     }
     return 0;
