@@ -342,7 +342,7 @@ double evalKinetic(){
         eE[i] =dEk;
         Ek   +=dEk;
 
-        if(verbosity>2){ printf("%s e%i Ke %5.20f \n",prefix, i,dEk); }
+        //if(verbosity>2){ printf("%s e%i Ke %5.20f \n",prefix, i,dEk); }
     }
     //if( bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes => perhaps decrease relaxation time step? \n" ); }
     return Ek;
@@ -403,7 +403,7 @@ double evalEE(){
                     }
                 }
             }
-            if(verbosity>2){ printf("%s e%i-e%i Coul %5.20f \n",prefix,i,j,dEee); printf("%s e%i-e%i Paul %5.20f \n",prefix,i,j,dEpaul); }
+            //if(verbosity>2){ printf("%s e%i-e%i Coul %5.20f \n",prefix,i,j,dEee); printf("%s e%i-e%i Paul %5.20f \n",prefix,i,j,dEpaul); }
             Eee    += dEee;
             EeePaul+= dEpaul;
             double dE = 0.5*( dEee + dEpaul );
@@ -470,7 +470,7 @@ double evalAE(){
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );
             //printf( "evalAE[%i,%i] E %g r %g s(%g,%g) \n", i,j, Eae, dR.norm(), aPar.y, sj );
             if(verbosity>2){ 
-                printf("%s a%i-e%i Coul %5.20f \n",prefix,i,j,dEae); 
+                //printf("%s a%i-e%i Coul %5.20f \n",prefix,i,j,dEae); 
                 //printf("%s a%i-e%i Paul %5.20f \n",prefix,i,j,dEaePaul); 
             }
             Eae    +=dEae;
@@ -522,7 +522,7 @@ double evalAA(){
                 qq = aPari.x*aParj.x;
             }
             double dEaa =  addAtomicForceQ( dR, f, qq );
-            if(verbosity>2){ printf("%s a%i-a%i Coul %5.20f \n",prefix,i,j,dEaa); }
+            //if(verbosity>2){ printf("%s a%i-a%i Coul %5.20f \n",prefix,i,j,dEaa); }
             Eaa+=dEaa;
             //printf( " Eaa[%i,%i]  Q %g(%g,%g) \n", i, j, aPari.x*aParj.x, aPari.x, aParj.x  );
             //   ToDo : Pauli Repulsion of core electrons ?????
