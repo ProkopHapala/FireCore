@@ -43,6 +43,9 @@ target_link_libraries( test_MMFFmini ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 add_executable       ( test_MMFFsp3 test_MMFFsp3.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
 target_link_libraries( test_MMFFsp3 ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
+add_executable       ( test_FF2D test_FF2D.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
+target_link_libraries( test_FF2D ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
+
 add_executable       ( test_DirectionStiffness test_DirectionStiffness.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
 target_link_libraries(test_DirectionStiffness  ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
