@@ -35,7 +35,7 @@ n = lat.match(lat0, lat1, Rmax=Rmax, dRmax=0.1, dAngMax=0.1  )    #;print("n", n
 print( "Time{lat.match} [ms]",  (time.time_ns()-t0)*1.e-6  ) 
 
 t0=time.time_ns()
-inds,errs,Ks = lat.getMatches(inds=None, errs=None, bSort=True, Ks=(1.,1.,1.,0.) )
+inds,ns,errs,Ks = lat.getMatches(inds=None, errs=None, bSort=True, Ks=(1.,1.,1.,0.) )
 print( "Time{lat.getMatches} [ms]",  (time.time_ns()-t0)*1.e-6  ) 
 
 

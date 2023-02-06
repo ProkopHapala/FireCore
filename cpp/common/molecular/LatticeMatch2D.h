@@ -39,6 +39,8 @@ class LatticeMatch2D{ public:
     double lu0;
     double lv0;
 
+    double dmax=0.1;
+
     std::vector<Latmiss> match_u;
     std::vector<Latmiss> match_v;
     std::vector<Vec2i>   matches;
@@ -52,8 +54,22 @@ class LatticeMatch2D{ public:
         lat1[1].udiv_cmplx(rot);
     }
 
-    void walk2D( double Rmax, double dmax=0.1 ){
+    int checkLengthMatch( std::vector<Latmiss>& out, int ia, int ib, double l0, double rab, double alpha ){
+        double d = rab/l0; int n=(int)d; d-=n; 
+        bool match=false;
+        Latmiss L;
+        if     (    d <dmax ){ L=Latmiss{n  ,ia,ib,d  ,alpha}; match=true; }
+        else if( (1-d)<dmax ){ L=Latmiss{n+1,ia,ib,d-1,alpha}; match=true; };
+        if(match){
+            //printf( "d %g\n", d );
+            out.push_back(L);
+            return n;
+        }
+        return -1;
+    }
 
+    void walk2D( double Rmax, double dmax_=0.1 ){
+        dmax=dmax_;
         //printf( " walk2D lat0 [(%g,%g)  (%g,%g)] \n", lat0[0].x,lat0[0].y,  lat0[1].x,lat0[1].y );
         //printf( " walk2D lat1 [(%g,%g)  (%g,%g)] \n", lat1[0].x,lat1[0].y,  lat1[1].x,lat1[1].y );
 
@@ -78,11 +94,15 @@ class LatticeMatch2D{ public:
 
         double k = lat0[1].x / lat0[0].x;
 
+        printf( "DEBUG walk2D u(%g,%g) v(%g,%g) \n", lat1[0].x,lat1[0].y,   lat1[1].x,lat1[1].y );
+        printf( "DEBUG walk2D k %g lat0.a(%g,%g), lat0.b(%g,%g) \n", lat0[0].x,lat0[0].y,   lat0[1].x,lat0[1].y );
+
         match_u.clear();
         match_v.clear();
 
         int na=(int)(Rmax/la);
         int nb=(int)(Rmax/lb);
+        printf( "DEBUG walk2D na,nb(%i,%i) Rmax,la,lb(%g,%g,%g) \n", na,nb, Rmax, la, lb );
         for(int ib=-nb-2; ib<nb+2; ib++ ){
             Vec2d vb = lat0[1]*ib;
             int ia0 = (int)(-k*ib);
@@ -94,13 +114,24 @@ class LatticeMatch2D{ public:
                 if((ia==0)&&(ib==0)) continue;
                 double alpha = atan2(p.y,p.x);
                 //printf("angle(%i,%i) %g  angUV %g \n", ib,ia, alpha, angUV );
+
+                /*
                 if(ib>=0){    
-                double du = rab/lu0; int nu=(int)du; du-=nu; if(du<dmax){ match_u.push_back({nu,ia,ib,du,alpha      }); }else if( (1-du)<dmax ){ match_u.push_back({nu+1,ia,ib,du-1,alpha      }); };
+                    double du = rab/lu0; int nu=(int)du; du-=nu; 
+                    bool match=false;
+                    if(du<dmax){ match_u.push_back({nu,ia,ib,du,alpha      }); match=true; }else if( (1-du)<dmax ){ match_u.push_back({nu+1,ia,ib,du-1,alpha      }); match=true; };
+                 if(match)printf("u[%i]: n,ia,ib(%i|%i,%i) rab %g d %0.5g/%0.5g  p(%g,%g) \n",match_u.size()-1, nu,ia,ib, rab,du,dmax,  p.x,p.y  );
                 }
                 double dv = rab/lv0; int nv=(int)dv; dv-=nv; if(dv<dmax){ match_v.push_back({nv,ia,ib,dv,alpha+angUV}); }else if( (1-dv)<dmax ){ match_v.push_back({nv+1,ia,ib,dv-1,alpha+angUV}); };
-                
+                */
+
+                int nu = checkLengthMatch( match_u, ia,ib, lu0, rab, alpha       );  //if(nu>0)printf("u[%i]: n,ia,ib(%i|%i,%i) rab %g   p(%g,%g) \n",match_u.size()-1, nu,ia,ib, rab, p.x*rab,p.y*rab  );
+                int nv = checkLengthMatch( match_v, ia,ib, lv0, rab, alpha+angUV );  if(nv>0)printf("v[%i]: n,ia,ib(%i|%i,%i) rab %g   p(%g,%g) \n",match_u.size()-1, nv,ia,ib, rab, p.x*rab,p.y*rab  );
             }
         }
+
+        for( int i=0;i<match_u.size();i++ ){ printf( "match_u[%i] n,a,b(%i|%i,%i)\n", i, match_u[i].n, match_u[i].ia, match_u[i].ib ); }
+        for( int i=0;i<match_v.size();i++ ){ printf( "match_v[%i] n,a,b(%i|%i,%i)\n", i, match_v[i].n, match_v[i].ia, match_v[i].ib ); }
 
         //int nu = ((int)Rmax/lu0); glColor3f(1.0,0.0,0.0); 
         //int nv = ((int)Rmax/lv0); glColor3f(0.0,0.0,1.0); 
@@ -144,6 +175,9 @@ class LatticeMatch2D{ public:
     }
 
     int matchAngles( double dangMax=0.1 ){
+        if( (match_u.size()==0) || (match_v.size()==0) ){ printf( "WARRNING LatticeMatch2D::matchAngles() no matches found (match_size(%i,%i)) \n", match_u.size(), match_v.size() ); return 0; }
+        //if( (match_u.size()==0) || (match_v.size()==0) ){ printf( "ERROR LatticeMatch2D::matchAngles() no matches found (match_size(%i,%i)) \n", match_u.size(), match_v.size() ); exit(0); }
+        //printf( "DEBUG matchAngles() match_size(%i,%i) \n", match_u.size(), match_v.size() );
         matches.clear();
         //  Walk 1
         // assumption is that both arrays are ordered by angle in range < 0 .. 2pi >
@@ -156,6 +190,7 @@ class LatticeMatch2D{ public:
         //printf( "match_v: n %i min %2.2f max %2.3f \n", match_v.size(),  match_v[0].alpha, match_v.back().alpha );
 
         for(int i=0; i<match_u.size(); i++){ 
+            //printf( "DEBUG matchAngles[%i] \n", i );
             Latmiss& mui = match_u[i];
             double amin=mui.alpha-dangMax;
             double amax=mui.alpha+dangMax;
@@ -178,13 +213,15 @@ class LatticeMatch2D{ public:
         return matches.size();
     }
 
-    void exportMatch( int4* inds, double4* errs=0, int* isorts=0, bool bSort=true, double4 K=(double4){1.,1.,1.,0.} ){
+    void exportMatch( int4* inds, int2* ns, double4* errs=0, int* isorts=0, bool bSort=true, double4 K=(double4){1.,1.,1.,0.} ){
         int n = matches.size();
         int4   * inds_ = inds;
+        int2   * ns_   = ns;
         double4* errs_ = errs;
         //printf("DEBUG  1 \n");
         if(bSort){
             if(inds)inds_= new int4   [n];
+            if(ns  )ns_  = new int2   [n];
             if(errs)errs_= new double4[n];
         }
         //printf("DEBUG  2 \n");
@@ -197,6 +234,10 @@ class LatticeMatch2D{ public:
                 inds_[i].y = Lu.ib;
                 inds_[i].z = Lv.ia;
                 inds_[i].w = Lv.ib;
+            }
+            if(ns){
+                ns_  [i].x=Lu.n;
+                ns_  [i].y=Lv.n;
             }
             //double ru0 = lat1[0].norm(); 
             //double ru0 = lat1[0].norm();
@@ -221,8 +262,9 @@ class LatticeMatch2D{ public:
             if(isorts) for(int i=0; i<n; i++) isorts[i]=ivals[i].i;
             //printf("DEBUG  4 \n");
             if(bSort){
-                if(inds){ for(int i=0; i<n; i++){ inds[i]=inds_[ ivals[i].i ];  }  delete [] inds_;   }
-                if(errs){ for(int i=0; i<n; i++){ errs[i]=errs_[ ivals[i].i ]; }  delete [] errs_;  }
+                if(inds){ for(int i=0; i<n; i++){ inds[i]=inds_[ ivals[i].i ]; }  delete [] inds_; }
+                if(errs){ for(int i=0; i<n; i++){ errs[i]=errs_[ ivals[i].i ]; }  delete [] errs_; }
+                if(ns  ){ for(int i=0; i<n; i++){ ns  [i]=ns_  [ ivals[i].i ]; }  delete [] ns_;   }
             }
         }
         //printf("DEBUG  5 \n");
