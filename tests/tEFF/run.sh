@@ -12,8 +12,8 @@ make eFF_lib
 cd $wd
 
 echo "#=========== RUN"
-#python3 run_tests.py
-python3 run_dynamics.py 
+python3 run_tests.py
+#python3 run_dynamics.py 
 
 #echo "#=========== compare_components.py"
 #python3  run_evalPieces.py | tee output.txt

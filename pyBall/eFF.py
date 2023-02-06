@@ -390,13 +390,16 @@ def check_Derivs_ie( name, ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=10 ):
     plt.show()
 
 
-def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrintLbonds=True, nMaxIter=10000, outE=None, outF=None, fUnits=1. ):
+def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrintLbonds=True, nMaxIter=10000, outE=None, outF=None, fUnits=1., bFixNuclei=False ):
     if outE==True: outE=np.zeros(nMaxIter)
-    load_fgo("data/"+name+".fgo", fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    load_fgo("data/"+name+".fgo", fUnits=fUnits , bVel_=bFixNuclei)                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     initOpt(dt=dt,damping=damping )                              # initialize optimizer/propagator
     if(bTrj): setTrjName(name+"_relax.xyz", savePerNsteps=perN ) # setup output .xyz file to save trajectory of all atoms and electrons at each timespep (comment-out to ommit .xyz and improve performance ) 
-    nstep=run( nMaxIter, Fconv=1e-3, ialg=2, outE=outE, outF=outF )                             # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
     getBuffs()
+    #print("invMasses", invMasses )
+    if(bFixNuclei): invAmass[:]=0 
+    #print("invMasses", invMasses )
+    nstep=run( nMaxIter, Fconv=1e-3, ialg=2, outE=outE, outF=outF )                             # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
     printEs()
     if bPrintLbonds:
         getNearestAtoms( apos, bPrint=True )
