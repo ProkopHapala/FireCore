@@ -213,7 +213,7 @@ def setVerbosity( verbosity=1, idebug=0 ):
 
 #  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
 lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p] 
-lib.init.restype   =  None
+lib.init.restype   =  c_void_p
 def init(
         xyz_name  ="input.xyz", 
         surf_name ="surf.xyz", 

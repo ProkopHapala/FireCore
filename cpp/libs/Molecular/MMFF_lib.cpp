@@ -87,7 +87,7 @@ void init_buffers(){
 
 int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
 	W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
@@ -100,6 +100,7 @@ void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, int* n
     bool bGrid = gridStep>0;
     W.init( bGrid );
     init_buffers();
+    return &W;
 }
 
 void init_old(){

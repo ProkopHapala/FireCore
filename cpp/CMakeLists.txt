@@ -54,7 +54,7 @@ include_directories(
         ${COMMON_SRCS}
         ${COMMON_SRCS}/math
         ${COMMON_SRCS}/OpenCL
-        ${COMMON_SRCS}/Molecular
+        ${COMMON_SRCS}/molecular
         ${COMMON_SRCS}/dataStructures
         ${COMMON_SDL_SRCS}
         ${COMMON_SDL_SRCS}/SDL2

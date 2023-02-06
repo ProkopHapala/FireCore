@@ -318,6 +318,12 @@ void ini_in_dir(){
 }
 
 virtual void init( bool bGrid ){
+    params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+	builder.bindParams(&params);
+    //params.printAtomTypeDict();
+    //params.printAtomTypes();
+    //params.printBond();
+
     builder.verbosity=verbosity;
     if(verbosity>0){
         printf("\n#### MolWorld_sp3::init()\n");

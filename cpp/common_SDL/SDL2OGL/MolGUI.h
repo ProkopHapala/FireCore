@@ -125,6 +125,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     //void InitQMMM();
     void initGUI();
+    void initWiggets();
     void drawingHex(double z0);
 };
 
@@ -133,7 +134,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 //=================================================
 
 
-void MolGUI::initGUI(){
+void MolGUI::initWiggets(){
 
     GUI_stepper ylay;
     ylay.step(6);
@@ -195,17 +196,10 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OG
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
     if(W_==0){ W = new MolWorld_sp3(); }else{ W=W_; }
     W->tmpstr=str;
-    W->params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
-	W->builder.bindParams(&W->params);
-    //params.printAtomTypeDict();
-    //params.printAtomTypes();
-    //params.printBond();
 
 }
 
-void MolGUI::init(){
-    if(verbosity>0)printf("MolGUI::init() \n");
-    W->init( true );
+void MolGUI::initGUI(){
     // ---- Graphics setup
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
@@ -221,6 +215,12 @@ void MolGUI::init(){
     gizmo.pointSize = 0.5;
     //gizmo.iDebug    = 2;
     ruler.setStep( 1.5 * sqrt(3) );
+    initWiggets();
+}
+
+void MolGUI::init(){
+    if(verbosity>0)printf("MolGUI::init() \n");
+    W->init( true );
     initGUI();
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
