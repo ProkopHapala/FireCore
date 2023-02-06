@@ -60,16 +60,16 @@ def match(lat0, lat1, Rmax=10.0, dRmax=0.1, dAngMax=0.1  ):
     return nfound
 
 #  void getMatches( int* inds, double* errs, bool bSort, double* Ks ){
-lib.getMatches.argtypes  = [c_int_p, c_double_p, c_bool, c_double_p] 
+lib.getMatches.argtypes  = [c_int_p, c_int_p, c_double_p, c_bool, c_double_p] 
 lib.getMatches.restype   =  None
-def getMatches(inds=None, errs=None, bSort=True, Ks=(1.,1.,1.,0.)):
+def getMatches(inds=None,ns=None, errs=None, bSort=True, Ks=(1.,1.,1.,0.)):
     Ks = np.array(Ks)
-    
     if inds is None: inds = np.zeros( (nfound,4), dtype=np.int32)
+    if ns   is None: ns   = np.zeros( (nfound,2), dtype=np.int32)
     if errs is None: errs = np.zeros( (nfound,4)                )
-    print( "getMatches nfound ", nfound, inds.shape, errs.shape )
-    lib.getMatches(_np_as(inds,c_int_p), _np_as(errs,c_double_p), bSort, _np_as(Ks,c_double_p))
-    return inds,errs, Ks
+    #print( "getMatches nfound ", nfound, inds.shape, ns.shape, errs.shape )
+    lib.getMatches(_np_as(inds,c_int_p), _np_as(inds,c_int_p), _np_as(errs,c_double_p), bSort, _np_as(Ks,c_double_p))
+    return inds,ns, errs, Ks
 
 # ====================================
 # ========= Test Functions
@@ -78,6 +78,16 @@ def getMatches(inds=None, errs=None, bSort=True, Ks=(1.,1.,1.,0.)):
 # ====================================
 # ========= Python Functions
 # ====================================
+
+def plotLattice(lat, plt, ls='k', label=None ):
+    plt.plot( [lat[0,0],0.0,lat[1,0], lat[1,0]+lat[0,0], lat[0,0] ],  [lat[0,1],0.0,lat[1,1],lat[1,1]+lat[0,1], lat[0,1]], ls, label=label )
+
+def plotSuperLattices( lat, inds, plt, n=2, ls=':' ):
+    # ----- Plot best found latticle matches
+    for i in range(n):
+        u=lat[0,:]*inds[i,0] + lat[1,:]*inds[i,1] 
+        v=lat[0,:]*inds[i,2] + lat[1,:]*inds[i,3]
+        plt.plot( [u[0],0.,v[0]], [u[1],0.,v[1]], ls, label="a(%i,%i) b(%i,%i)" %(inds[i,0],inds[i,1],inds[i,2],inds[i,3])  )
 
 # ====================================
 # ========= MAIN
