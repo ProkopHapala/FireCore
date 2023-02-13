@@ -16,6 +16,7 @@ void DynamicOpt::move_LeapFrog(double dt_loc){
         v += force[i]*invMasses[i]*dt_loc;
         pos[i]  += v*dt_loc;
         vel[i]   = v;
+        //printf("DynamicOpt::move_LeapFrog[%i] invM %g \n", i, invMasses[i] );
     }
     stepsDone++;
     t += dt_loc;
@@ -149,7 +150,8 @@ double DynamicOpt::move_FIRE(){
 	ff=0,vv=0,vf=0;
 	//printf( "DEBUG 5.5.1: %i\n", n  );
 	for(int i=0; i<n; i++){
-		double fi = force[i];
+        //double fi = force[i];
+		double fi = force[i]*invMasses[i];
 		double vi = vel[i];
 		ff += fi*fi;
 		vv += vi*vi;
@@ -172,7 +174,8 @@ double DynamicOpt::move_FIRE(){
 		//double cf     =     damping * sqrt(vv/ff);
 		double cv     = 1 - damping;
 		for(int i=0; i<n; i++){
-			vel[i]    = cv * vel[i]  + cf * force[i];
+            //vel[i]    = cv * vel[i]  + cf * force[i];
+			vel[i]    = cv * vel[i]  + cf * force[i]*invMasses[i];
 		}
 		if( lastNeg > minLastNeg ){
 			dt        = fmin( dt * finc, dt_max );
