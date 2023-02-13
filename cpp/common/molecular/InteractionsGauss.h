@@ -759,6 +759,86 @@ inline double addPauliGaussS( const Vec3d& dR, double si, double sj, Vec3d& f, d
 }
 */
 
+
+
+inline void PauliCoreElec_Orig(double rc, double re2, double *epauli, double *frc, double *fre2, double PAULI_CORE_A, double PAULI_CORE_B, double PAULI_CORE_C){
+    double E, dEdrc, dEdre2, rcsq, ssq;
+    rcsq = rc * rc;
+    ssq = re2 * re2;
+    // (eq.5) in http://dx.doi.org/10.1016/j.mechmat.2015.02.008
+    // A*exp( -B*r^2/(c+s^2)  )
+    E      =      PAULI_CORE_A *                             exp(-PAULI_CORE_B * rcsq / (ssq + PAULI_CORE_C));
+    dEdrc  = -2 * PAULI_CORE_A * PAULI_CORE_B * rc *         exp(-PAULI_CORE_B * rcsq / (ssq + PAULI_CORE_C)) /  (PAULI_CORE_C + ssq);
+    dEdre2 = 2 *  PAULI_CORE_A * PAULI_CORE_B * re2 * rcsq * exp(-PAULI_CORE_B * rcsq / (ssq + PAULI_CORE_C)) / ((PAULI_CORE_C + ssq)*(PAULI_CORE_C + ssq));
+    *epauli += E;
+    *frc -= dEdrc;
+    *fre2 -= dEdre2;
+}
+
+inline void PauliCoreElec(double r, double re2, double& epauli, double& frc, double& fre2, double A, double B, double C){
+    double rcsq   = rc * rc;
+    double ssq    = re2 * re2;
+    double invssC = 1/(ssq + C);
+    double expr   =  exp(-B * rcsq *invssC );
+    double ABr    = 2 * A * B * rc;
+    // (eq.5) in http://dx.doi.org/10.1016/j.mechmat.2015.02.008
+    // A*exp( -B*r^2/(c+s^2)  )
+    double E       =  A   *            expr;
+    double dE_drc  = -ABr *            expr * invssC;
+    double dE_dre2 =  ABr * rc * re2 * expr * invssC*invssC;
+    epauli += E;
+    frc    -= dE_drc;
+    fre2   -= dE_dre2;
+}
+
+inline void PauliCorePElec_Orig(double rc, double re2, double *epauli, double *frc, double *fre2, double PAULI_CORE_P_A, double PAULI_CORE_P_B, double PAULI_CORE_P_C, double PAULI_CORE_P_D, double PAULI_CORE_P_E) {
+    double E, dEdrc, dEdre2;
+
+    //(eq.5) in http://dx.doi.org/10.1016/j.mechmat.2015.02.008
+    // A * (2/(B/s + s/B) )^5 * (r-C*s)^2 *  exp( -D*(r-C*s)^2/(E+s^2) )          
+    E     = PAULI_CORE_P_A * pow((2.0 / (PAULI_CORE_P_B / re2 + re2 / PAULI_CORE_P_B)), 5.0) *   pow((rc - PAULI_CORE_P_C * re2), 2.0) * exp(-PAULI_CORE_P_D * pow((rc - PAULI_CORE_P_C * re2), 2.0) / (PAULI_CORE_P_E + re2 * re2));
+    dEdrc = PAULI_CORE_P_A * pow((2.0 / (PAULI_CORE_P_B / re2 + re2 / PAULI_CORE_P_B)), 5.0) *      (rc - PAULI_CORE_P_C * re2) * 2.0  * exp(-PAULI_CORE_P_D * pow((rc - PAULI_CORE_P_C * re2), 2.0) / (PAULI_CORE_P_E + re2 * re2))
+            + E *                                                                                   ((rc - PAULI_CORE_P_C * re2)* 2.0 *      -PAULI_CORE_P_D                                         / (PAULI_CORE_P_E + re2 * re2));
+
+    dEdre2 = E * (-5.0 / (PAULI_CORE_P_B / re2 + re2 / PAULI_CORE_P_B) * (-PAULI_CORE_P_B / (re2 * re2) + 1.0 / PAULI_CORE_P_B))
+            + PAULI_CORE_P_A *  pow((2.0 / (PAULI_CORE_P_B / re2 + re2 / PAULI_CORE_P_B)), 5.0) *2.0 * (rc - PAULI_CORE_P_C * re2) * (-PAULI_CORE_P_C) * exp(-PAULI_CORE_P_D * pow((rc - PAULI_CORE_P_C * re2), 2.0) / (PAULI_CORE_P_E + re2 * re2)) 
+            + E * (2.0 * PAULI_CORE_P_D * (rc - PAULI_CORE_P_C * re2) * (PAULI_CORE_P_C * PAULI_CORE_P_E + rc * re2) / pow((PAULI_CORE_P_E + re2 * re2), 2.0));
+
+    *epauli += E;
+    *frc -= dEdrc;
+    *fre2 -= dEdre2;
+}
+
+inline void PauliCorePElec(double rc, double re2, double& epauli, double& frc, double& fre2, double A, double B, double C, double D, double E_ ) {
+    double invBre  =  2.0 / (B / re2 + re2 / B);
+    double invBre2 = invBre*invBre;
+    double invBre5 = invBre2*invBre2*invBre; 
+    double rrC      = rc - C * re2;
+    double rrC2     = rrC*rrC;
+    double invErr   = 1/(E_ + re2 * re2);
+    double expArg   = -D * rrC2 * invErr;
+    double expr     = exp( expArg );
+
+    //(eq.5) in http://dx.doi.org/10.1016/j.mechmat.2015.02.008
+    // A * (2/(B/s + s/B) )^5 * (r-C*s)^2 *  exp( -D*(r-C*s)^2/(E+s^2) )          
+    //   double e       = A * invBre5 * rrC2 * expr;
+    //   double dE_drc  = A * invBre5 * 2.0 * rrC * expr   +    e * D * -2.0 * rrC * invErr ;
+    //   double dE_dre2 = e * (-2.5 * invBre *     ( 1.0/B - B/(re2*re2) )                                     // e * (-2.5 * invBre *     ((re2/B) - (B/re2)))   / re2
+    //                  + A * invBre5 * -2.0 * rrC * C * expr
+    //                  + e * (2.0 * D * rrC * (C * E + rc * re2) * invErr* invErr;
+
+    double erc     = A * invBre5 * rrC * expr;
+    double e       = erc*rrC;
+    double dE_drc  = 2.0 * erc * ( 1   + expArg  );
+    double dE_dre2 = erc * ( -2.0*C + rrC * ( -2.5 * invBre  * ( 1.0/B - B/(re2*re2) )                                     // e * (-2.5 * invBre *     ((re2/B) - (B/re2)))   / re2   
+                   +                  rrC * (  2.0 * D *  (C * E_ + rc * re2) * invErr* invErr ) ) );
+
+    epauli += e;
+    frc    -= dEdrc;
+    fre2   -= dEdre2;
+}
+
+
 ///  @}
 
 #endif

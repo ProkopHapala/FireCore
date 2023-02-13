@@ -49,6 +49,14 @@ nfound = -1
 # ========= C functions
 # ====================================
 
+#  int walk2D( double* lat0, double* lat1, double Rmax, double dRmax ){
+lib.walk2D.argtypes  = [c_double_p, c_double_p, c_double, c_double] 
+lib.walk2D.restype   =  None
+def walk2D(lat0, lat1, Rmax=10.0, dRmax=0.1 ):
+    lat0 = np.array(lat0)
+    lat1 = np.array(lat1)
+    lib.walk2D(_np_as(lat0,c_double_p), _np_as(lat1,c_double_p), Rmax, dRmax )
+
 #  int match( double* lat0, double* lat1, double Rmax, double dRmax, double dAngMax ){
 lib.match.argtypes  = [c_double_p, c_double_p, c_double, c_double, c_double] 
 lib.match.restype   =  c_int
@@ -59,6 +67,17 @@ def match(lat0, lat1, Rmax=10.0, dRmax=0.1, dAngMax=0.1  ):
     nfound = lib.match(_np_as(lat0,c_double_p), _np_as(lat1,c_double_p), Rmax, dRmax, dAngMax)
     return nfound
 
+#  int getVecMatch( int nmax, int* inds, int* ns, double* errs, bool bSort, bool bV ){
+lib.getVecMatch.argtypes  = [c_int, c_int_p, c_int_p, c_double_p, c_bool, c_bool, c_bool, c_bool ] 
+lib.getVecMatch.restype   =  c_int
+def getVecMatch(inds=None,ns=None, errs=None, bSort=True, bV=False, nmax=10, bCleans=True, bPrint=True ):
+    if inds is None: inds = np.zeros( (nmax,2), dtype=np.int32)
+    if ns   is None: ns   = np.zeros( (nmax),   dtype=np.int32)
+    if errs is None: errs = np.zeros( (nmax)                  )
+    #print( "getMatches nfound ", nfound, inds.shape, ns.shape, errs.shape )
+    n=lib.getVecMatch(nmax, _np_as(inds,c_int_p), _np_as(ns,c_int_p), _np_as(errs,c_double_p), bSort, bV, bCleans, bPrint )
+    return inds[:n,:],ns[:n],errs[:n]
+
 #  void getMatches( int* inds, double* errs, bool bSort, double* Ks ){
 lib.getMatches.argtypes  = [c_int_p, c_int_p, c_double_p, c_bool, c_double_p] 
 lib.getMatches.restype   =  None
@@ -68,7 +87,7 @@ def getMatches(inds=None,ns=None, errs=None, bSort=True, Ks=(1.,1.,1.,0.)):
     if ns   is None: ns   = np.zeros( (nfound,2), dtype=np.int32)
     if errs is None: errs = np.zeros( (nfound,4)                )
     #print( "getMatches nfound ", nfound, inds.shape, ns.shape, errs.shape )
-    lib.getMatches(_np_as(inds,c_int_p), _np_as(inds,c_int_p), _np_as(errs,c_double_p), bSort, _np_as(Ks,c_double_p))
+    lib.getMatches(_np_as(inds,c_int_p), _np_as(ns,c_int_p), _np_as(errs,c_double_p), bSort, _np_as(Ks,c_double_p))
     return inds,ns, errs, Ks
 
 # ====================================

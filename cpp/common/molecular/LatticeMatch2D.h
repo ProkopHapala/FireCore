@@ -17,11 +17,25 @@ void findLatticeR( double Rmin, double Rmax, Vec2d a, Vec2d b ){
 }
 */
 
+
+
+
+
+
 struct Latmiss{
     int n,ia,ib;
     double d;
     double alpha; 
 };
+
+typedef bool (*CompLatmiss)(const Latmiss& a, const Latmiss& b);
+
+bool isStame(const Latmiss& a, const Latmiss& b){
+    if( (a.n == b.n) && ( sq(a.d-b.d)<1e-6 ) ) return true;
+    return false;
+}
+
+
 
 struct IVal{
     int      i;
@@ -58,6 +72,7 @@ class LatticeMatch2D{ public:
         double d = rab/l0; int n=(int)d; d-=n; 
         bool match=false;
         Latmiss L;
+        //printf( "checkLengthMatch() l0 %g n %i d %g \n", l0, n, d );
         if     (    d <dmax ){ L=Latmiss{n  ,ia,ib,d  ,alpha}; match=true; }
         else if( (1-d)<dmax ){ L=Latmiss{n+1,ia,ib,d-1,alpha}; match=true; };
         if(match){
@@ -94,15 +109,15 @@ class LatticeMatch2D{ public:
 
         double k = lat0[1].x / lat0[0].x;
 
-        printf( "DEBUG walk2D u(%g,%g) v(%g,%g) \n", lat1[0].x,lat1[0].y,   lat1[1].x,lat1[1].y );
-        printf( "DEBUG walk2D k %g lat0.a(%g,%g), lat0.b(%g,%g) \n", lat0[0].x,lat0[0].y,   lat0[1].x,lat0[1].y );
+        //printf( "DEBUG walk2D u(%g,%g) v(%g,%g) \n", lat1[0].x,lat1[0].y,   lat1[1].x,lat1[1].y );
+        //printf( "DEBUG walk2D k %g lat0.a(%g,%g), lat0.b(%g,%g) \n", lat0[0].x,lat0[0].y,   lat0[1].x,lat0[1].y );
 
         match_u.clear();
         match_v.clear();
 
         int na=(int)(Rmax/la);
         int nb=(int)(Rmax/lb);
-        printf( "DEBUG walk2D na,nb(%i,%i) Rmax,la,lb(%g,%g,%g) \n", na,nb, Rmax, la, lb );
+        //printf( "DEBUG walk2D na,nb(%i,%i) Rmax,la,lb(%g,%g,%g) \n", na,nb, Rmax, la, lb );
         for(int ib=-nb-2; ib<nb+2; ib++ ){
             Vec2d vb = lat0[1]*ib;
             int ia0 = (int)(-k*ib);
@@ -114,24 +129,16 @@ class LatticeMatch2D{ public:
                 if((ia==0)&&(ib==0)) continue;
                 double alpha = atan2(p.y,p.x);
                 //printf("angle(%i,%i) %g  angUV %g \n", ib,ia, alpha, angUV );
-
-                /*
-                if(ib>=0){    
-                    double du = rab/lu0; int nu=(int)du; du-=nu; 
-                    bool match=false;
-                    if(du<dmax){ match_u.push_back({nu,ia,ib,du,alpha      }); match=true; }else if( (1-du)<dmax ){ match_u.push_back({nu+1,ia,ib,du-1,alpha      }); match=true; };
-                 if(match)printf("u[%i]: n,ia,ib(%i|%i,%i) rab %g d %0.5g/%0.5g  p(%g,%g) \n",match_u.size()-1, nu,ia,ib, rab,du,dmax,  p.x,p.y  );
-                }
-                double dv = rab/lv0; int nv=(int)dv; dv-=nv; if(dv<dmax){ match_v.push_back({nv,ia,ib,dv,alpha+angUV}); }else if( (1-dv)<dmax ){ match_v.push_back({nv+1,ia,ib,dv-1,alpha+angUV}); };
-                */
-
                 int nu = checkLengthMatch( match_u, ia,ib, lu0, rab, alpha       );  //if(nu>0)printf("u[%i]: n,ia,ib(%i|%i,%i) rab %g   p(%g,%g) \n",match_u.size()-1, nu,ia,ib, rab, p.x*rab,p.y*rab  );
-                int nv = checkLengthMatch( match_v, ia,ib, lv0, rab, alpha+angUV );  if(nv>0)printf("v[%i]: n,ia,ib(%i|%i,%i) rab %g   p(%g,%g) \n",match_u.size()-1, nv,ia,ib, rab, p.x*rab,p.y*rab  );
+                //int nv = checkLengthMatch( match_v, ia,ib, lv0, rab, alpha+angUV );  //if(nv>0)printf("v[%i]: n,ia,ib(%i|%i,%i) rab %g   p(%g,%g) \n",match_u.size()-1, nv,ia,ib, rab, p.x*rab,p.y*rab  );
             }
         }
 
-        for( int i=0;i<match_u.size();i++ ){ printf( "match_u[%i] n,a,b(%i|%i,%i)\n", i, match_u[i].n, match_u[i].ia, match_u[i].ib ); }
-        for( int i=0;i<match_v.size();i++ ){ printf( "match_v[%i] n,a,b(%i|%i,%i)\n", i, match_v[i].n, match_v[i].ia, match_v[i].ib ); }
+        //printVecs( match_u, 'u' );
+        //printVecs( match_u, 'v' );
+
+        //for( int i=0;i<match_u.size();i++ ){ printf( "match_u[%i] n,a,b(%i|%i,%i) d %g[%] alpha %g[/pi] \n", i, match_u[i].n, match_u[i].ia, match_u[i].ib, match_u[i].d*100, match_u[i].alpha/M_PI ); }
+        //for( int i=0;i<match_v.size();i++ ){ printf( "match_v[%i] n,a,b(%i|%i,%i) d %g[%] alpha %g[/pi] \n", i, match_v[i].n, match_v[i].ia, match_v[i].ib, match_v[i].d*100, match_v[i].alpha/M_PI ); }
 
         //int nu = ((int)Rmax/lu0); glColor3f(1.0,0.0,0.0); 
         //int nv = ((int)Rmax/lv0); glColor3f(0.0,0.0,1.0); 
@@ -142,6 +149,38 @@ class LatticeMatch2D{ public:
         printf( " walk2D lat1 [(%g,%g)  (%g,%g)] \n", lat1[0].x,lat1[0].y,  lat1[1].x,lat1[1].y );
 
     };
+
+    void printVecs( std::vector<Latmiss>& match, char c ){
+        for( int i=0;i<match.size();i++ ){ printf( "match_%c[%i] n,a,b(%i|%i,%i) d %g[%] alpha %g[/pi] \n", c, i, match[i].n, match[i].ia, match[i].ib, match[i].d*100, match[i].alpha/M_PI ); }
+    }
+
+    void cleansRedudat( std::vector<Latmiss>& match, CompLatmiss func=isStame ){
+        int n = match.size()-1;
+        //printf( "cleansRedudat nu %i nv %i \n", match_u.size(), match_v.size() );
+        //printf( "cleansRedudat() n=%i match.size()=%i \n", n, match.size() );
+        int i =1;
+        while(i<n){
+            const Latmiss& a = match[i];
+            bool found=false;
+            //printf( "cleansRedudat[%i] a.n=%i \n", i, a.n );
+            for(int j=0; j<i; j++){
+                bool hit = func(a, match[j]);
+                //printf( "hit[%i,%i]=%i  | i.n=%i j.n=%i \n", i,j, hit,  a.n, match[j].n );
+                if( hit ){ // are the same
+                    _swap( match[i], match[n] );
+                    found=true;
+                    break;
+                }
+            }
+            //printf( "cleansRedudat[%i<%i] a.n=%i found=%i \n", i, n, a.n, found );
+            if(found){
+                n--;
+            }else{
+                i++;
+            }
+        }
+        match.resize(n);
+    }
 
     Vec2d reproduce_vec( const Latmiss& L, Vec2d v, double ang0 ){
         v.rotate(L.alpha-ang0); v.mul(L.n);
@@ -213,18 +252,43 @@ class LatticeMatch2D{ public:
         return matches.size();
     }
 
+    int exportVecMatch( std::vector<Latmiss>& match, int nmax, int2* inds=0, int* ns=0, double* errs=0, int* isorts=0, bool bSort=true, bool bPrint=false ){
+        //printf( "exportVecMatch nu %i nv %i \n", match_u.size(), match_v.size() );
+        //printf( "exportVecMatch() match.size()=%i bSort=%i \n", match.size(), bSort );
+        int n   = match.size();
+        if(nmax>n)nmax=n;
+        //printf("DEBUG nmax %i \n", nmax);
+        std::vector<IVal> ivals{n};
+        if( (isorts!=0) || bSort){
+            for(int i=0; i<n; i++){ ivals[i].i=i; ivals[i].val=sq(match[i].d); };
+            std::sort( ivals.begin(),ivals.end() , [](IVal& a, IVal& b){ return a.val<b.val;} );
+            if(isorts) for(int i=0; i<n; i++) isorts[i]=ivals[i].i;
+        }
+        for(int i=0; i<nmax; i++){
+            int j=i;
+            if(bSort) j=ivals[i].i;
+            Latmiss& L = match[j];
+            if(inds){ inds[i]=(int2){L.ia,L.ib}; }
+            if(errs){ errs[i]=L.d; }
+            if(ns  ){ ns  [i]=L.n; }
+            if(bPrint){
+                Vec2d u = reproduce_grid( L );
+                printf( "[%i] (%i,%i|%i) err %g[%] L=%g[A] \n", i, inds[i].x, inds[i].y, ns[i], errs[i]*100.0, u.norm() );
+            }
+        }
+        return nmax;
+    }
+
     void exportMatch( int4* inds, int2* ns, double4* errs=0, int* isorts=0, bool bSort=true, double4 K=(double4){1.,1.,1.,0.} ){
         int n = matches.size();
         int4   * inds_ = inds;
         int2   * ns_   = ns;
         double4* errs_ = errs;
-        //printf("DEBUG  1 \n");
         if(bSort){
             if(inds)inds_= new int4   [n];
             if(ns  )ns_  = new int2   [n];
             if(errs)errs_= new double4[n];
         }
-        //printf("DEBUG  2 \n");
         for(int i=0; i<n; i++){
             Vec2i m = matches[i];
             const Latmiss& Lu = match_u[m.i];
@@ -253,7 +317,6 @@ class LatticeMatch2D{ public:
                 //printf(  "err[%i] %g %g %g %g  (%g,%i) (%g,%i) \n", i, errs_[i].x, errs_[i].y, errs_[i].z, errs_[i].w, lu0,Lu.n,  lv0,Lv.n );
             }
         }
-        //printf("DEBUG  3 \n");
         if( (isorts!=0) || bSort){
             std::vector<IVal> ivals{n};
             for(int i=0; i<n; i++){ ivals[i].i=i; double4 E=errs_[i]; ivals[i].val= sq(E.x*K.x)+sq(E.y*K.y)+sq(E.z*K.z)+sq(E.w*K.w); };

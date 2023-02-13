@@ -82,11 +82,18 @@ constexpr static const Vec3d default_aAbWs[] = {
 { 1.0, -5.0, 0.1},  // Q = 6 // O
 { 1.0, -5.0, 0.1},  // Q = 6 // F
 };
+// SEE
+// [2] http://dx.doi.org/10.1016/j.mechmat.2015.02.008
+// Non-adiabatic dynamics modeling framework for materials in extreme conditions
+// Hai Xiao, Andrés Jaramillo-Botero, Patrick L. Theofanis, William A. Goddard,
 
-constexpr static const  double default_EPCs[] = {
+constexpr static const  double default_EPCs_sp[] = {
 // s-core       a                b               c             d             e
  0.621427,   22.721015,       0.728733,      1.103199,     17.695345,    6.693621,  // C
+ 0.000000,   0.0000000,       0.000000,      0.000000,     0.0000000,    0.000000,  // N  // ToDo: Maybe we can try interpolate C and O ?
  0.167813,   25.080199,       0.331574,      1.276183,     12.910142,    3.189333,  // O
+};
+constexpr static const  double default_EPCs_ss[] = {
  1.660000,    0.486000,       1.049000,      0.207000,     -1       ,   -1       ,  // Al
  1.691398,    0.320852,       2.283269,      0.814857,     -1       ,  - 1       ,  // Si
 };
