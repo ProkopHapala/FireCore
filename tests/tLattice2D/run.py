@@ -12,6 +12,7 @@ from pyBall import Lattice2D as lat
 #    LM.lat1[0].set(  0.3,  0.2 );
 #    LM.lat1[1].set( -0.13, 0.9 );
 
+'''
 lat0=np.array([
     #[ 1.3, 0.0 ],
     #[-0.5, 0.6 ]
@@ -23,16 +24,40 @@ lat1=np.array([
     [ 0.30, 0.2 ],
     [-0.13, 0.9 ]
 ])
+'''
+
+# ========= Polymer @ NaCl
+lat0=np.array([
+    [ 5.64, 0   ],
+    [ 0.0, 5.64 ]
+])
+
+lat1=np.array([
+    [ 5.0,  0.0 ],
+    [ 0.0, 16.0 ]
+])
 
 print("lat0\n", lat0)
 print("lat1\n", lat1)
 
 #Rmax = 10.0
-Rmax = 5.0
+Rmax = 60.0
+
+n = lat.walk2D(lat0, lat1, Rmax=Rmax, dRmax=0.1 )    #;print("n", n)
+inds,ns,errs = lat.getVecMatch( nmax=10 );
+print("inds ", inds)
+print("ns   ", ns)
+print("errs ",np.abs(errs)*100.) 
+
+exit()
+#===================
+
 
 t0=time.time_ns()
 n = lat.match(lat0, lat1, Rmax=Rmax, dRmax=0.1, dAngMax=0.1  )    #;print("n", n)
 print( "Time{lat.match} [ms]",  (time.time_ns()-t0)*1.e-6  ) 
+
+
 
 t0=time.time_ns()
 inds,ns,errs,Ks = lat.getMatches(inds=None, errs=None, bSort=True, Ks=(1.,1.,1.,0.) )
