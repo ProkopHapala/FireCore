@@ -99,14 +99,14 @@ void orient( int n, Vec3T<T>* ps, const Vec3T<T>& p0, const Vec3T<T>& dir, const
 template<class T> 
 static inline void bbox( Vec3T<T>& pmin, Vec3T<T>& pmax, int n, const Vec3T<T>* ps, const int* selection=0, bool bInit=true ){
     if(bInit){
-        Vec3T<T>& pmin=(Vec3T<T>){-1e+37,-1e+37,-1e+37};
-        Vec3T<T>& pmax=(Vec3T<T>){+1e+37,+1e+37,+1e+37};
+        pmin=(Vec3T<T>){+1e+37,+1e+37,+1e+37};
+        pmax=(Vec3T<T>){-1e+37,-1e+37,-1e+37};
     }
     for(int i=0; i<n; i++){ 
         int ii=i;
         if(selection)ii=selection;
-        pmax.setIfLower  (ps[ii]);
-        pmin.setIfGreater(ps[ii]);
+        pmin.setIfLower  (ps[ii]);
+        pmax.setIfGreater(ps[ii]);
     }
 }
 

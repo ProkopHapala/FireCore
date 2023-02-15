@@ -146,7 +146,16 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 
-virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
+
+static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
+    if(nPBC.x!=0){ nPBC.x=(int)Lmin/cell.a.norm(); }
+    if(nPBC.y!=0){ nPBC.y=(int)Lmin/cell.b.norm(); }
+    if(nPBC.z!=0){ nPBC.z=(int)Lmin/cell.c.norm(); }
+    printf("DEBUG autoNPBC()->(%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
+}
+
+
+virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
     if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     sprintf(tmpstr, "%s.lvs", name );
     if( file_exist(tmpstr) ){ 
@@ -160,6 +169,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
             if(verbosity>1)gridFF.grid.printCell();
             gridFF.allocateFFs();
             //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
+            if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }
             gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
             bGridFF   =true; 
             //bSurfAtoms=false;
@@ -335,6 +345,9 @@ virtual void init( bool bGrid ){
         //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
         printf("bMMFF %i bRigid %i \n", bMMFF, bRigid );
     }
+    DEBUG
+    if(surf_name  )loadSurf( surf_name, bGrid, idebug>0 );
+    DEBUG   
     if ( smile_name ){               
         insertSMILES( smile_name );    
         builder.addAllCapTopo();       
@@ -344,15 +357,34 @@ virtual void init( bool bGrid ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
             if( nMulPBC.totprod()>1 ){ 
+
+                printf("surface  lattice:\n"); gridFF .grid.cell.print();
+                printf("molecule lattice:\n"); builder.lvec.print();
+                //exit(0);
                 builder.multFragPBC( ifrag, nMulPBC, builder.lvec );
+                printf("molecule lattice:\n"); builder.lvec.print();
+
+                builder.printAtoms();
 
                 new_lvec.ax=builder.lvec.a.norm(); new_lvec.by=builder.lvec.b.norm(); new_lvec.cz=builder.lvec.c.norm();
 
                 builder.correctPBCbonds( ifrag, builder.frags.size() ); // correct bonds for newly added fragments
                 //exit(0);
                 builder.sortConfAtomsFirst(); 
+                printf("molecule lattice:\n"); builder.lvec.print();
+
+                Mat3d lvs;
+                lvs.c=builder.lvec.c;
+                lvs.a=gridFF.grid.cell.a*2. + gridFF.grid.cell.b*3.; 
+                lvs.b=gridFF.grid.cell.a*2. + gridFF.grid.cell.b*-1.;
+                builder.changeCell( lvs );
+
+                //Vec3d pmin,pmax; builder.bbox(pmin,pmax); printf( "BBOX pmin(%g,%g,%g) pmax(%g,%g,%g)\n", pmin.x,pmin.y,pmin.z,  pmax.x,pmax.y,pmax.z ); builder.move_atoms(pmin*-1);
+                //builder.move_atoms( builder.atoms[0].pos*-1.);
+                builder.move_atoms( builder.atoms[2].pos*-1. + gridFF .grid.cell.a*0.5 + gridFF .grid.cell.b*-0.5 );
+
                 //builder.printAtomConfs();
-                builder.printBonds();    
+                //builder.printBonds();    
                 //exit(0);
             };
             //exit(0);
@@ -362,8 +394,10 @@ virtual void init( bool bGrid ){
         }
     }
     DEBUG
-    if(bMMFF){                               
+    if(bMMFF){       
+        builder.printAtoms();                        
         builder.toMMFFsp3( ff, &params );
+        ff.printAtoms();
         printf("!!!!! builder.toMMFFsp3() DONE \n");
         ff.printSizes();
         //ff.printNeighs();
@@ -375,8 +409,6 @@ virtual void init( bool bGrid ){
         //_realloc( manipulation_sel, ff.natoms );  
     }
     DEBUG
-    //if(surf_name  )loadSurf( surf_name, bGrid, idebug>0 );
-    DEBUG   
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 

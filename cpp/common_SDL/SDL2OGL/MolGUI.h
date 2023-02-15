@@ -270,16 +270,24 @@ void MolGUI::draw(){
         glPopMatrix();
     }
 
+    //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
+
     if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 0.1, 0., true );
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
-    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBox( W->gridFF.grid.cell, (Vec3d){0.0, 0.0, 0.0}, (Vec3d){1.0, 1.0, 1.0} ); }
-    if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBox( W->gridFF.grid.cell, (Vec3d){-0.5, -0.5, 0.0}, (Vec3d){0.5, 0.5, 1.0} ); }
-    //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 2, 2, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
+    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, (Vec3d){0.0, 0.0, 0.0}, (Vec3d){1.0, 1.0, 1.0} ); }
+    if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, (Vec3d){-0.5, -0.5, 0.0}, (Vec3d){0.5, 0.5, 1.0} ); }
+    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
+
+
     //if(bDoQM)drawSystemQMMM();
 
     if(bDoMM){
         //if(W->builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } 
         //else               { drawSystem(); }
+
+        //if( W->builder.bPBC ){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBox( W->builder.lvec, (Vec3d){-0.5, -0.5, 0.0}, (Vec3d){0.5, 0.5, 1.0} ); }
+        if( W->builder.bPBC ){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, (Vec3d){ 0.0, 0.0, 0.0}, (Vec3d){1.0, 1.0, 1.0} ); }
+
         drawSystem(); // DEBUG
         //Draw3D::drawNeighs( W->ff, -1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
@@ -390,7 +398,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
-    renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, isoVal, true, 0.1);
+    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, isoVal, true, 0.1);   printf("DEBUG renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
     // ---- This seems still not work properly
     //int ntris=0;
     //glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );

@@ -462,8 +462,8 @@ static constexpr Vec3d Vec3dOne  = (Vec3d){1.0,1.0,1.0};
 static constexpr Vec3d Vec3dX    = (Vec3d){1.0,0.0,0.0};
 static constexpr Vec3d Vec3dY    = (Vec3d){0.0,1.0,0.0};
 static constexpr Vec3d Vec3dZ    = (Vec3d){0.0,0.0,1.0};
-static constexpr Vec3d Vec3min   = (Vec3d){-1e+300,-1e+300,-1e+300};
-static constexpr Vec3d Vec3max   = (Vec3d){+1e+300,+1e+300,+1e+300};
+static constexpr Vec3d Vec3dmin   = (Vec3d){-1e+300,-1e+300,-1e+300};
+static constexpr Vec3d Vec3dmax   = (Vec3d){+1e+300,+1e+300,+1e+300};
 
 static constexpr Vec3f Vec3fZero = (Vec3f){0.0f,0.0f,0.0f};
 static constexpr Vec3f Vec3fOne  = (Vec3f){1.0f,1.0f,1.0f};
