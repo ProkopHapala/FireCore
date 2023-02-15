@@ -342,6 +342,9 @@ class Builder{  public:
 
     // =================== Functions =====================
 
+
+    // =================== Geometry Functions =====================
+
     Mat3d rotationFromAtoms( int i0, int i1, int i2 ){
         Mat3d rot;
         Vec3d center = atoms[i0].pos;
@@ -364,6 +367,34 @@ class Builder{  public:
         }
         return imin;
     }
+    void bbox( Vec3d& pmin, Vec3d& pmax, int i0=0, int n=-1, bool bInit=true){
+        natom_def(n,i0);
+        if(bInit){ pmin=Vec3dmax; pmax=Vec3dmin; }
+        for(int i=0; i<n; i++){ 
+            const Vec3d& p=atoms[i].pos;
+            pmin.setIfLower  (p);
+            pmax.setIfGreater(p);
+        }
+    }
+    void move_atoms     ( Vec3d dshift, int i0=0, int n=-1, bool bInit=true){ natom_def(n,i0); for(int i=0; i<n; i++){ atoms[i].pos.add(dshift); } }
+    void transform_atoms( Mat3d M, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1             ){ natom_def(n,i0);  for(int i=0; i<n; i++){ Vec3d p; M.dot_to( atoms[i].pos-orig_old, p); p.add(orig_new); atoms[i].pos=p; } }
+    void rotate_atoms   ( double angle, Vec3d axis=Vec3dZ, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1 ){ Mat3d M; M.fromRotation(angle,axis); transform_atoms( M,orig_old,orig_new,i0,n); }
+
+    void changeCell( const Mat3d& lvs, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1 ){
+        Mat3d M,MM; lvec.invert_to(M); 
+        //MM.set_mmul_TN(lvs,M);
+        MM.set_mmul(lvs,M);
+        printf("DEBUG changeCell()  lvec\n"); lvec .print();
+        printf("DEBUG changeCell()  lvs\n"); lvs   .print();
+        printf("DEBUG changeCell()  M (inv(lvs))\n"); M .print();
+        printf("DEBUG changeCell() MM\n"); MM.print(); //exit(0);
+        transform_atoms( MM,orig_old,orig_new,i0,n);
+        lvec=lvs;
+    }
+
+
+    // =================== Functions =====================
+
 
     /*
     void selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){

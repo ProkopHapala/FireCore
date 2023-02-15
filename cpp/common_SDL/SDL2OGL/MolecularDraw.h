@@ -154,13 +154,14 @@ void renderSubstrate_( const GridShape& grid, Vec3d * FF, double isoval, bool si
 }
 */
 
-void renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double isoval, bool sign, float sclr=1.0 ){
+int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double isoval, bool sign, float sclr=1.0 ){
     //printf( "iso_points.size() %i \n", iso_points.size() );
     Vec3d * pos     = new Vec3d[grid.n.x * grid.n.y];
     Vec3d * normals = new Vec3d[grid.n.x * grid.n.y];
     //printf( " -- DEBUG 1 \n" );
     getIsoSurfZ( grid, isoval, sign, FF, pos, normals );
     //glEnable(GL_LIGHTING);
+    int nvert = 0;
     for ( int ib=1; ib<grid.n.y; ib++ ){
         glBegin(GL_TRIANGLE_STRIP);
         for ( int ia=0; ia<grid.n.x; ia++ ){
@@ -176,8 +177,8 @@ void renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double
             //glColor3f(0.8f,0.7f,0.7f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
             //glColor3f( fel1.x, fel1.y, fel1.z ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f( fel2.x, fel2.y, fel2.z ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-            colorRB( fel1.z*sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
-            colorRB( fel2.z*sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
+            colorRB( fel1.z*sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
+            colorRB( fel2.z*sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
         }
         glEnd();
     }
@@ -185,6 +186,7 @@ void renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double
     delete [] pos;
     delete [] normals;
     //exit(0);
+    return nvert;
 }
 
 void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){

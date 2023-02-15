@@ -264,6 +264,7 @@ class Mat3T{
 
 	inline void invert_to( MAT& Mout ) const{
         T idet = 1/determinant(); // we dont check det|M|=0
+		printf("Mat3d::invert_to() idet = %g \n", idet);
         Mout.xx = ( yy * zz - yz * zy ) * idet;
         Mout.xy = ( xz * zy - xy * zz ) * idet;
         Mout.xz = ( xy * yz - xz * yy ) * idet;
@@ -345,6 +346,9 @@ class Mat3T{
     }
 
 	// ==== generation
+
+
+	inline void fromRotation( T angle, VEC axis ){ setOne(); rotate(angle,axis); };
 
 	inline void fromDirUp( const VEC& dir, const VEC& up ){
 		// make orthonormal rotation matrix c=dir; b=(up-<b|c>c)/|b|; a=(c x b)/|a|;

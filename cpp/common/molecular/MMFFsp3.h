@@ -595,11 +595,10 @@ void checkNaNs(){
 
 void printSizes(){ printf( "MMFFsp3::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) npi(%i) nbonds(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,npi,nbonds,nvecs ); };
 
+void printAtom(int i){ printf( "Atom[%i] pos(%g,%g,%g) \n", i, apos[i].x,apos[i].y,apos[i].z ); }
 void printBond(int i){ printf( "bond[%i|%i,%i] l0 %g k %g \n", i, bond2atom[i].i,bond2atom[i].j, bond_l0[i], bond_k[i] ); }
-void printBonds(){
-    printf( "MMFFsp3::printBonds() : \n" );
-    for(int i=0;i<nbonds;i++){ printBond(i); }
-}
+void printAtoms(){     printf( "MMFFsp3::printAtoms() : \n" ); for(int i=0;i<nbonds;i++){ printAtom(i); }}
+void printBonds(){     printf( "MMFFsp3::printBonds() : \n" ); for(int i=0;i<nbonds;i++){ printBond(i); }}
 
 void checkBonds( double factor=1.5, bool bPrintPBC=false ){
     for(int ib=0;ib<nbonds;ib++){
