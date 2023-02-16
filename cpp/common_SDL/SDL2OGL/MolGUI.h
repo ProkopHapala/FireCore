@@ -80,6 +80,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     bool   mm_bAtoms        = true;
     bool   bViewMolCharges  = false;
+    bool   bViewAtomLabels  = true;
     bool   bViewAtomSpheres = true;
     bool   bViewAtomForces  = false;
     bool   bViewSubstrate   = true;
@@ -431,6 +432,7 @@ void MolGUI::drawPi0s( float sc=1.0 ){
 void MolGUI::drawSystem( Vec3i ixyz ){
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
+    //printf( "DEBUG MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
     //printf("DEBUG MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
     if(W->bMMFF){
         //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
@@ -449,7 +451,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( W->nbmol.n, W->nbmol.ps, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     //if(bViewAtomP0s                        ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );  }
     if(bViewAtomForces                       ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );  }
-    if(bOrig&&mm_bAtoms                      ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->nbmol.n, W->nbmol.ps, fontTex3D,        0.007              );       }
+    if(bOrig&&mm_bAtoms&&bViewAtomLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->nbmol.n, W->nbmol.ps, fontTex3D,        0.007              );       }
     if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->nbmol.n,  (double*)W->nbmol.REQs,  W->nbmol.ps, 3, 2, fontTex3D, 0.01 ); }
     if(W->ff.pi0s                            ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
 
@@ -557,8 +559,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_r: renderDensity(          ); break;
                 case SDLK_s: W->saveXYZ( "out.xyz", "#comment", false ); break;
                 case SDLK_p: saveScreenshot( frameCount ); break;
-                case SDLK_q: W->autoCharges(); break;
-
+                
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;
@@ -569,7 +570,9 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_m: W->swith_method(); break;
 
                 case SDLK_a: bViewAtomSpheres=! bViewAtomSpheres; break;
-                //case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
+                case SDLK_l: bViewAtomLabels =! bViewAtomLabels; break;
+                //case SDLK_q: W->autoCharges(); break;
+                case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
                 case SDLK_f: bViewAtomForces =! bViewAtomForces;  break;
                 case SDLK_w: bViewSubstrate  =! bViewSubstrate;   break;
 

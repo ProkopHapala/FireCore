@@ -38,7 +38,12 @@ class MolWorld_sp3{ public:
     //const char* lvs_name     ="input.lvs";
     //const char* surflvs_name ="surf.lvs";
     const char* smile_name   = 0;
-    Vec3i nMulPBC = Vec3iZero; 
+    Vec3i nMulPBC  = Vec3iZero; 
+
+    bool bCellBySurf=false;
+    int   bySurf_ia0 =0;
+    Vec2d bySurf_c0=Vec2dZero;
+    Vec2d bySurf_lat[2];
 
     Mat3d new_lvec=Mat3dIdentity;
 
@@ -327,6 +332,41 @@ void ini_in_dir(){
 	}
 }
 
+void PBC_multiply( Vec3i& nMulPBC_, int ifrag ){
+    //printf("surface  lattice:\n"); gridFF .grid.cell.print();
+    //printf("molecule lattice:\n"); builder.lvec.print();
+    //exit(0);
+    builder.multFragPBC( ifrag, nMulPBC_, builder.lvec );
+    //printf("molecule lattice:\n"); builder.lvec.print();
+    //builder.printAtoms();
+    //new_lvec.ax=builder.lvec.a.norm(); new_lvec.by=builder.lvec.b.norm(); new_lvec.cz=builder.lvec.c.norm();
+    builder.correctPBCbonds( ifrag, builder.frags.size() ); // correct bonds for newly added fragments
+    //exit(0);
+    builder.sortConfAtomsFirst(); 
+    //printf("molecule lattice:\n"); builder.lvec.print();
+    //builder.printAtomConfs();
+    //builder.printBonds();    
+    //exit(0);
+}
+
+void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
+    printf( "DEBUG changeCellBySurf() a(%g,%g) b(%g,%g) \n", a.x,a.y, b.x,b.y  );
+    Mat3d lvs;
+    lvs.a=gridFF.grid.cell.a*a.a + gridFF.grid.cell.b*a.b;
+    lvs.b=gridFF.grid.cell.a*b.a + gridFF.grid.cell.b*b.b; 
+    lvs.c=builder.lvec.c;
+    builder.changeCell( lvs );
+    //Vec3d pmin,pmax; builder.bbox(pmin,pmax); printf( "BBOX pmin(%g,%g,%g) pmax(%g,%g,%g)\n", pmin.x,pmin.y,pmin.z,  pmax.x,pmax.y,pmax.z ); builder.move_atoms(pmin*-1);
+    //builder.move_atoms( builder.atoms[0].pos*-1.);
+    if(ia0>=0){
+        Vec3d shift =  builder.atoms[ia0].pos*-1 + gridFF .grid.cell.a*c0.a + gridFF .grid.cell.b*c0.b;
+        builder.move_atoms( shift );
+    }
+    //builder.printAtomConfs();
+    //builder.printBonds();    
+    //exit(0);
+}
+
 virtual void init( bool bGrid ){
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
 	builder.bindParams(&params);
@@ -356,37 +396,8 @@ virtual void init( bool bGrid ){
     }else if ( xyz_name ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
-            if( nMulPBC.totprod()>1 ){ 
-
-                printf("surface  lattice:\n"); gridFF .grid.cell.print();
-                printf("molecule lattice:\n"); builder.lvec.print();
-                //exit(0);
-                builder.multFragPBC( ifrag, nMulPBC, builder.lvec );
-                printf("molecule lattice:\n"); builder.lvec.print();
-
-                //builder.printAtoms();
-
-                new_lvec.ax=builder.lvec.a.norm(); new_lvec.by=builder.lvec.b.norm(); new_lvec.cz=builder.lvec.c.norm();
-
-                builder.correctPBCbonds( ifrag, builder.frags.size() ); // correct bonds for newly added fragments
-                //exit(0);
-                builder.sortConfAtomsFirst(); 
-                printf("molecule lattice:\n"); builder.lvec.print();
-
-                Mat3d lvs;
-                lvs.c=builder.lvec.c;
-                lvs.b=gridFF.grid.cell.a*2. + gridFF.grid.cell.b*3.; 
-                lvs.a=(gridFF.grid.cell.a*2. + gridFF.grid.cell.b*-1.)*2;
-                builder.changeCell( lvs );
-
-                //Vec3d pmin,pmax; builder.bbox(pmin,pmax); printf( "BBOX pmin(%g,%g,%g) pmax(%g,%g,%g)\n", pmin.x,pmin.y,pmin.z,  pmax.x,pmax.y,pmax.z ); builder.move_atoms(pmin*-1);
-                //builder.move_atoms( builder.atoms[0].pos*-1.);
-                builder.move_atoms( builder.atoms[2].pos*-1. + gridFF .grid.cell.a*0.5*0 + gridFF .grid.cell.b*-0.5*0 );
-
-                //builder.printAtomConfs();
-                //builder.printBonds();    
-                //exit(0);
-            };
+            if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
+            if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
             //exit(0);
         }else{
             loadNBmol( xyz_name ); 
@@ -398,15 +409,15 @@ virtual void init( bool bGrid ){
         //builder.printAtoms();                        
         builder.toMMFFsp3( ff, &params );
         //ff.printAtoms();
-        printf("!!!!! builder.toMMFFsp3() DONE \n");
-        ff.printSizes();
+        //printf("!!!!! builder.toMMFFsp3() DONE \n");
+        //ff.printSizes();
         //ff.printNeighs();
         //ff.printBonds();
-        ff.checkBonds( 1.5, true );
+        if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
         //exit(0);
         initNBmol();
-        //if(bOptimizer){ setOptimizer(); }                         
-        //_realloc( manipulation_sel, ff.natoms );  
+        if(bOptimizer){ setOptimizer(); }                         
+        _realloc( manipulation_sel, ff.natoms );  
     }
     DEBUG
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
@@ -455,13 +466,15 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
 double eval(){
     double E=0;
     if(bMMFF){ E += ff.eval();  }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+    /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
         //else        { E+= nbmol .evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );  }
         else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
     }
+    */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
-    //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
+    for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
     return E;
 }
 
@@ -477,7 +490,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doAngles =false;
     ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
-        eval();
+        double E = eval();
         ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
 		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
         //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
@@ -487,8 +500,9 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
         //opt.move_MDquench();
-        opt.move_FIRE();
-        double f2=1;
+        double f2=opt.move_FIRE();   
+        printf( "[%i] E= %g [eV] |F|= %g [eV/A]\n", nloop, E, sqrt(f2) );
+        //double f2=1;
         if(f2<sq(Ftol)){
             bConverged=true;
         }

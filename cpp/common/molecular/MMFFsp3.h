@@ -11,6 +11,18 @@
 // ====   MMFFsp3
 // ======================
 
+inline double evalAngleCos( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, double c0, Vec3d& f1, Vec3d& f2 ){
+    double c = h1.dot(h2);
+    f1 = h2 - h1*c;
+    f2 = h1 - h2*c;
+    double c_   = c-c0;
+    double E    =  K*c_*c_;
+    double fang = -K*c_*2;
+    f1.mul( fang*ir1 );
+    f2.mul( fang*ir2 );
+    return E;
+}
+
 class MMFFsp3{ public:
     static constexpr const int nneigh_max = 4;
     int  nDOFs=0,natoms=0,nnode=0,ncap=0,npi=0,nbonds=0,nvecs=0;
@@ -40,6 +52,7 @@ class MMFFsp3{ public:
     Vec3d  * pbcShifts = 0;  // [A]
 
     int*    aneighs = 0;  // [natom*nneigh_max] neigbors of atom
+    int*    abonds  = 0;  // [natom*nneigh_max] bonds    of atom
     //double* Kneighs = 0;  // [natom*nneigh_max] angular stiffness for given neighbor
     Quat4d* NeighParams=0;
 
@@ -88,6 +101,7 @@ void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
     if(bNeighs){
         int nn = nnode*nneigh_max;
         _realloc( aneighs, nn );
+        _realloc( abonds,  nn );
         //_realloc( Kneighs, nn );
         _realloc( NeighParams, nnode );
         for(int i=0; i<nnode; i++){ NeighParams[i]=default_NeighParams; }
@@ -206,26 +220,9 @@ inline double evalSigmaPi( int ia, int ing, int ipi, double K ){
     double fang = -K*c*2;
     hf1.mul( fang*ir1 );
     hf2.mul( fang     );
-
-    // if(bDEBUG_plot)
-    // if(ipi==iDEBUG_pick)
-    // {
-    //     float fsc=100.0;
-    //      //printf( "evalAngle_cos [%i|%i,%i,%i] c(%g,%g) \n", iDEBUG_pick, ia, ing, jng, hf1.dot(h1), hf1.dot(h1)  );
-    //      //printf( "evalAngle_cos [%i|%i,%i,%i] c %g c_ %g fang_ %g E %g \n", iDEBUG_pick, ia, ing, jng, c, c_, fang, E );
-    //      //printf( "evalAngle_cos bDEBUG_plot [%i|%i,%i] iDEBUG_pick %i \n", ia, ing, jng, iDEBUG_pick );
-    //      glColor3f(1.,0.,0.);
-    //      Draw3D::drawVecInPos(  hf1*fsc, apos [ing] );
-    //      Draw3D::drawVecInPos(  hf2*fsc, pipos[ipi]+apos[ia] );
-    //      Draw3D::drawVecInPos(  (hf1+hf2)*-fsc, apos[ia] );
-    // }
-
     fapos [ing].add( hf1 );
     fpipos[ipi].add( hf2 );
-    //fapos [ia ].sub( hf1+hf2 ); // NOTE: we should not apply recoil of pi-orbital here because it is in coordinates relative to  fulcrum
     fapos [ia ].sub( hf1 );
-    //if( ing==0 ) printf( "ngFi[%i,%i,%i](%g,%g,%g) ir %g fang %g c %g c0 %g K %g \n", ia,ing,ipi+natoms, hf1.x,hf2.y,hf2.z,  ir1, fang, c, 0.0, K );
-
     return E;
 }
 
@@ -243,12 +240,6 @@ inline double evalPiPi_T( int ia, int ipi, int jpi, double K ){
     double fang = -K*c*2;
     hf1.mul( fang );
     hf2.mul( fang );
-    //if( (ia==iDEBUG_pick) ){
-    //    printf( "evalPiPi_I ia(%i) ipi,jpi(%i,%i) fang %g c %g \n", ia,  ipi,jpi, fang, c );
-    //    glColor3f(1.,0.,0.);
-    //    Draw3D::drawVecInPos(  hf1*100.0, apos[ia]+pipos[ipi] );
-    //    Draw3D::drawVecInPos(  hf2*100.0, apos[ia]+pipos[jpi] );
-    //}
     fpipos[ipi].add( hf1 );
     fpipos[jpi].add( hf2 );
     //fapos [ia ].sub( hf1+hf2 );  // NOTE! We should not apply recoil here, because pi-vectors are already attached to fulcrum
@@ -259,22 +250,11 @@ inline void orthogonalizePiPi( int ia, int ipi, int jpi ){
     nevalPiPiT++;
     Vec3d hi = pipos[ipi];   // double ir1  = 1/h1.normalize();
     Vec3d hj = pipos[jpi];   //double ir2  = 1/h2.normalize();
-    //double c = h1.dot(h2);
-    //double c = hi.dot( hj );
     Vec3d ha = hi + hj; ha.normalize(); // ToDo : this can be done more efficiently
     Vec3d hb = hi - hj; hb.normalize();
-    //double ca = sqrt( 0.5*(1+c) );
-    //double sa = sqrt( 0.5*(1-c) );
-    //glColor3f(0.,0.,1.);
-    //Draw3D::drawVecInPos(  ha, apos[ia]);
-    //Draw3D::drawVecInPos(  hb, apos[ia] );
     pipos[ipi] = ha*0.70710678118 + hb* 0.70710678118;
-    pipos[jpi] = ha*0.70710678118 + hb*-0.70710678118;
-    //glColor3f(0.,0.7,1.);
-    //Draw3D::drawVecInPos(  pipos[ipi], apos[ia] );
-    //Draw3D::drawVecInPos(  pipos[jpi], apos[ia] );
-    
-};
+    pipos[jpi] = ha*0.70710678118 + hb*-0.70710678118;    
+}
 
 
 inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // interaction between two pi-bonds
@@ -291,23 +271,8 @@ inline double evalPiPi_I( const Vec2i& at, int ipi, int jpi, double K ){  // int
     double E    = -K*c;
     double fang =  K;
     if(sign)fang=-fang;
-    //double c2  = c*c;
-    //double c2_ = c2-1; 
-    //double E    =  K*c2_;
-    //double fang =  K*c*4;
-    //double E    =  K*c2_*c2_;
-    //double fang = -K*c2_*c*4;
     hf1.mul( fang );
-    hf2.mul( fang );
-    //if( isnan( hf1 )||isnan( hf1 ) ){ printf("ERROR : evalPiPi_I(%i,%i|%i,%i); hf1(%g,%g,%g) hf2(%g,%g,%g) is NaN c %g k %g \n", at.i,at.j, ipi,jpi,  hf1.x,hf1.y,hf1.z,  hf2.x,hf2.y,hf2.z,  c, K ); }
-    
-    //if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){
-    //    //printf( "evalPiPi_I at(%i,%i) ipi,jpi(%i,%i) fang %g c %g \n", at.i, at.j,  ipi,jpi, fang, c );
-    //    glColor3f(1.,0.,0.);
-    //    Draw3D::drawVecInPos(  hf1*10.0, apos[at.i]+pipos[ipi] );
-    //    Draw3D::drawVecInPos(  hf2*10.0, apos[at.j]+pipos[jpi] );
-    //}
-    
+    hf2.mul( fang );    
     fpipos[ipi].add( hf1 );
     fpipos[jpi].add( hf2 );
     //fapos[ia].sub( hf1+hf2 );
@@ -320,7 +285,7 @@ double eval_bond(int ib){
     Vec2i at = bond2atom[ib];
     //printf( "eval_bond[%i/%i] at(%i,%i)\n", ib, nbonds, at.i, at.j );
     Vec3d f; f.set_sub( apos[at.y], apos[at.x] );
-    //if(pbcShifts)f.add( pbcShifts[ib] );
+    if(pbcShifts)f.add( pbcShifts[ib] );
     //printf( "bond[%i|%i,%i] (%g,%g,%g) (%g,%g,%g) \n", ib,iat.a,iat.b, apos[iat.x].x, apos[iat.x].y, apos[iat.x].z, apos[iat.y].x, apos[iat.y].y, apos[iat.y].z );
     
     // int iG=6;
@@ -382,6 +347,38 @@ double eval_bond(int ib){
     return E;
 }
 
+double eval_bond_neigh(int ib, Vec3d h, double l){
+    double k  = bond_k[ib];
+    double dl = (l-bond_l0[ib]);
+    double fr = dl*k*2;
+    h.mul( fr );
+    Vec2i at = bond2atom[ib];
+    fapos[at.x].add( h );
+    fapos[at.y].sub( h );
+    double E = k*dl*dl;
+    Eb+=E;
+    if(doPiPiI){ // interaction between pi-bonds of given atom
+        double Epi = 0;
+        if( (at.i<nnode) && (at.j<nnode) ){
+            int i0=at.i*nneigh_max;
+            int j0=at.j*nneigh_max;
+            for(int i=2;i<nneigh_max;i++){
+                int ipi   = aneighs[i0+i];
+                if(ipi>=0) continue;
+                for(int j=2;j<nneigh_max;j++){
+                    int jpi=aneighs[j0+j];
+                    if(jpi>=0) continue;
+                    double Kij = Kpipi;
+                    Epi += evalPiPi_I( at, -ipi-1,-jpi-1, Kij );
+                }
+            }
+        }
+        EppI+=Epi;
+        E   +=Epi;
+    }
+    return E;
+}
+
 double eval_neighs(int ia){
     //printf( "eval_neighs(%i) \n", ia ); printNeigh(ia);
     double E=0;
@@ -424,6 +421,98 @@ double eval_neighs(int ia){
     return E;
 }
 
+
+double eval_neighs_new(int ia){
+
+    double E=0;
+    int ioff = ia*nneigh_max;
+    const bool doPiPiT_   = doPiPiT; 
+    const bool doAngles_  = doAngles;
+    const bool doPiSigma_ = doPiSigma;
+    Quat4d params = NeighParams[ia]; 
+    double c0  = params.x;
+    double Kss = params.y;
+    double Ksp = params.z;
+
+    const Vec3d pa = apos[ia]; 
+
+    Vec3d    hs[4];
+    double  ils[4];
+
+    // ToDo: there could be computed also the bonds (similarly as done in OpenCL)
+    for(int i=0; i<nneigh_max; i++){
+        int  ing = aneighs[ioff+i];
+        if(ing<0){
+            ils[i] = 1;
+            hs [i] = pipos[-ing-1];;
+        }else{
+            int  ib  = abonds[ ioff+i];
+            Vec3d h; h.set_sub( apos[ing], pa );
+            if(pbcShifts)h.add( pbcShifts[ib] );
+            double l = h.normalize();
+            ils[i] = 1/l;
+            hs [i] = h;
+            if(ia<ing) Eb += eval_bond_neigh(ib, h, l);
+        }
+        // ToDd: Compute bonds here
+    }
+
+    Vec3d f1,f2;
+    for(int i=0; i<nneigh_max; i++){
+        int    ing = aneighs[ioff+i];
+        bool bipi=ing<0;
+        for(int j=i+1; j<nneigh_max; j++){
+            int jng  = aneighs[ioff+j];
+            bool bjpi=jng<0;
+
+            if( bipi ){
+                if(bjpi){ 
+                    if(doPiPiT_){
+                        double e = evalAngleCos( hs[i], hs[j], ils[i], ils[j], Kpipi, 0, f1, f2 );    
+                        fpipos[-ing-1].add( f1     );
+                        fpipos[-jng-1].add( f2     );
+                        //double e=evalPiPi_T   ( ia, -ing-1, -jng-1, Kpipi ); EppT+=e; E+=e;
+                        EppT+=e; E+=e;
+                    }   
+                }else{ 
+                    if(doPiSigma_){ 
+                        double e = evalAngleCos( hs[i], hs[j], 1, ils[j], Ksp, 0, f1, f2 ); 
+                        fpipos[-ing-1].add( f1 );
+                        fapos [ jng  ].add( f2 );
+                        fapos [ ia   ].sub( f2 );
+                        //double e=evalSigmaPi( ia, jng, -ing-1, Ksp ); Eps+=e; E+=e; } 
+                        Eps+=e; E+=e;
+                    }
+                }
+            }else{
+                if(bjpi){ 
+                    if(doPiSigma_){ 
+                        double e = evalAngleCos( hs[i], hs[j], ils[i], 1, Ksp, 0, f1, f2 );  
+                        fapos [ ing  ].add( f1 );
+                        fpipos[-jng-1].add( f2 );
+                        fapos [ ia   ].sub( f1 );
+                        //double e=evalSigmaPi( ia, ing, -jng-1, Ksp ); Eps+=e; E+=e; 
+                        Eps+=e; E+=e; 
+                    } 
+                } else {  
+                    if(doAngles_){
+                        double e = evalAngleCos( hs[i], hs[j], ils[i], ils[j], Kss, c0, f1, f2 );  
+                        fapos[ing].add( f1     );
+                        fapos[jng].add( f2     );
+                        fapos[ia ].sub( f1+f2 );
+                        //double e= evalSigmaSigma_cos( ia, ing, jng, Kss, c0 );    Ea+=e; E+=e; 
+                        Ea+=e; E+=e;
+                    }  
+                }
+            }
+        }
+    }
+    return E;
+}
+
+//inline double evalAngle( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, double c0, Vec3d& f1, Vec3d& f2 );
+   
+
 double eval_bonds(){
     double E=0;
     for(int ib=0; ib<nbonds; ib++){ E+=eval_bond(ib); }
@@ -437,13 +526,23 @@ double eval_neighs(){
     return E;
 }
 
+double eval_neighs_new(){
+    double E=0;
+    iDEBUG_n=0;
+    for(int ia=0; ia<nnode; ia++){ E+=eval_neighs_new(ia); }
+    return E;
+}
+
 double eval( bool bClean=true, bool bCheck=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
     if(bClean){ cleanAll(); }
     normalizePi(); 
     if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
+    
     if(doBonds )eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
     if(doNeighs)eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
+    //eval_neighs_new();
+
     Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 };
@@ -474,7 +573,7 @@ void evalPi0s(){
 
     }
     
-};
+}
 
 void makePiNeighs( int* pi_neighs ){
     printf( "makePiNeighs() \n" );
@@ -501,7 +600,7 @@ void makePiNeighs( int* pi_neighs ){
     }
     for(int i=0; i<npi; i++){ printf("pi[%i] (%i,%i,%i,%i) \n", i, pi_neighs[i*4+0],pi_neighs[i*4+1],pi_neighs[i*4+2],pi_neighs[i*4+3] ); };
     //exit(0);
-};
+}
 
 
 //double getFmax(){ double Fmax=0; for(int i=0; i<natoms;i++){ _max( Fmax, aforce[i].norm2() ); }; return Fmax; };
@@ -600,7 +699,8 @@ void printBond(int i){ printf( "bond[%i|%i,%i] l0 %g k %g \n", i, bond2atom[i].i
 void printAtoms(){     printf( "MMFFsp3::printAtoms() : \n" ); for(int i=0;i<nbonds;i++){ printAtom(i); }}
 void printBonds(){     printf( "MMFFsp3::printBonds() : \n" ); for(int i=0;i<nbonds;i++){ printBond(i); }}
 
-void checkBonds( double factor=1.5, bool bPrintPBC=false ){
+bool checkBonds( double factor=1.5, bool bPrintPBC=false ){
+    bool bErr=false;
     for(int ib=0;ib<nbonds;ib++){
         Vec2i b = bond2atom[ib];
         Vec3d d = apos[b.j] - apos[b.i]; 
@@ -608,8 +708,9 @@ void checkBonds( double factor=1.5, bool bPrintPBC=false ){
         double r2 = d.norm();
         double R  = bond_l0[ib]*factor;  
         if( bPrintPBC ){ if(pbcShifts[ib].norm2()>0.1) printf( "PBC bond[%i(%i,%i)] pbcShifts(%g,%g,%g) \n", ib, b.i,b.j, pbcShifts[ib].x,pbcShifts[ib].y,pbcShifts[ib].z ); };
-        if( r2>(R*R)    ){ printf( "ERROR bond[%i(%i,%i)] r=%g > Lmax=%g pbcShifts(%g,%g,%g) \n", ib, b.i,b.j, sqrt(r2), R, pbcShifts[ib].x,pbcShifts[ib].y,pbcShifts[ib].z ); }
+        if( r2>(R*R)  ){ printf( "ERROR bond[%i(%i,%i)] r=%g > Lmax=%g pbcShifts(%g,%g,%g) \n", ib, b.i,b.j, sqrt(r2), R, pbcShifts[ib].x,pbcShifts[ib].y,pbcShifts[ib].z ); bErr=true; }
     }
+    return bErr;
 }
 
 void printNeigh(int ia){
