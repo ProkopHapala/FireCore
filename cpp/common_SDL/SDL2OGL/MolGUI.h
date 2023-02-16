@@ -435,8 +435,9 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     if(W->bMMFF){
         //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
         //glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );  // DEBUG
-        if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos,  W->ff.pbcShifts ); } 
-        else               { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );                                          
+        if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC          ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos,  W->ff.pbcShifts );  
+                             glColor3f(0.0f,0.0f,1.0f); Draw3D::pbcBondNeighLabels( W->ff.nbonds, W->ff.bond2atom, W->ff.apos,  W->ff.pbcShifts, fontTex3D,        0.007 );
+        }else               { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );                                          
                              glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, fontTex );                                
         }
         //Draw3D::atoms          ( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
