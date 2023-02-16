@@ -381,9 +381,14 @@ class Builder{  public:
     void rotate_atoms   ( double angle, Vec3d axis=Vec3dZ, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1 ){ Mat3d M; M.fromRotation(angle,axis); transform_atoms( M,orig_old,orig_new,i0,n); }
 
     void changeCell( const Mat3d& lvs, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1 ){
-        Mat3d M,MM; lvec.invert_to(M); 
-        //MM.set_mmul_TN(lvs,M);
-        MM.set_mmul(lvs,M);
+        Mat3d M,MM; 
+        //lvec.invert_to(M); 
+        lvec.invert_T_to(M); 
+        //MM.set_mmul_TN(lvec,M);
+        MM.set_mmul_TN(lvs,M);
+        //MM = M;
+        //MM.set_mmul(lvec,M);
+        //MM.set_mmul(lvs,M);
         printf("DEBUG changeCell()  lvec\n"); lvec .print();
         printf("DEBUG changeCell()  lvs\n"); lvs   .print();
         printf("DEBUG changeCell()  M (inv(lvs))\n"); M .print();

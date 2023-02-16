@@ -58,7 +58,6 @@ void makeSphereOgl( int& ogl, int nsub, float sz ){
     glEndList();
 }
 
-
 void atomsREQ( int n, Vec3d* ps, Vec3d* REQs, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false ){
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
@@ -135,6 +134,20 @@ void bondsLengths( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, floa
     }
     glEnd();
 }
+
+
+void pbcBondNeighLabels( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d* pbcShifts, int fontTex, float sz=0.01 ){
+    for(int ib=0; ib<n; ib++){
+        if (pbcShifts[ib].norm2()<0.1) continue;
+        Vec2i b = b2a[ib];
+        //Vec3d pa=apos[b.a]-pbcShifts[ib];
+        //Vec3d pb=apos[b.b]+pbcShifts[ib];
+        //printf( "Draw pbc_bond[%i](%i,%i) pa(%g,%g,%g) pb(%g,%g,%g) \n", ib, b.a, b.b, pa.x,pa.y,pa.z,   pb.x,pb.y,pb.z );
+        drawInt( apos[b.a]-pbcShifts[ib], b.a, fontTex, sz );
+        drawInt( apos[b.b]+pbcShifts[ib], b.b, fontTex, sz );
+    }
+}
+
 
 void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d* pbc_shifts ){
     //printf( "bondsPBC &b2a=%li &apos=%li &pbc_shifts=%li \n", (long)b2a, (long)apos, (long)pbc_shifts );

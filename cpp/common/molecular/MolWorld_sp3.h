@@ -364,7 +364,7 @@ virtual void init( bool bGrid ){
                 builder.multFragPBC( ifrag, nMulPBC, builder.lvec );
                 printf("molecule lattice:\n"); builder.lvec.print();
 
-                builder.printAtoms();
+                //builder.printAtoms();
 
                 new_lvec.ax=builder.lvec.a.norm(); new_lvec.by=builder.lvec.b.norm(); new_lvec.cz=builder.lvec.c.norm();
 
@@ -375,13 +375,13 @@ virtual void init( bool bGrid ){
 
                 Mat3d lvs;
                 lvs.c=builder.lvec.c;
-                lvs.a=gridFF.grid.cell.a*2. + gridFF.grid.cell.b*3.; 
-                lvs.b=gridFF.grid.cell.a*2. + gridFF.grid.cell.b*-1.;
+                lvs.b=gridFF.grid.cell.a*2. + gridFF.grid.cell.b*3.; 
+                lvs.a=(gridFF.grid.cell.a*2. + gridFF.grid.cell.b*-1.)*2;
                 builder.changeCell( lvs );
 
                 //Vec3d pmin,pmax; builder.bbox(pmin,pmax); printf( "BBOX pmin(%g,%g,%g) pmax(%g,%g,%g)\n", pmin.x,pmin.y,pmin.z,  pmax.x,pmax.y,pmax.z ); builder.move_atoms(pmin*-1);
                 //builder.move_atoms( builder.atoms[0].pos*-1.);
-                builder.move_atoms( builder.atoms[2].pos*-1. + gridFF .grid.cell.a*0.5 + gridFF .grid.cell.b*-0.5 );
+                builder.move_atoms( builder.atoms[2].pos*-1. + gridFF .grid.cell.a*0.5*0 + gridFF .grid.cell.b*-0.5*0 );
 
                 //builder.printAtomConfs();
                 //builder.printBonds();    
@@ -395,9 +395,9 @@ virtual void init( bool bGrid ){
     }
     DEBUG
     if(bMMFF){       
-        builder.printAtoms();                        
+        //builder.printAtoms();                        
         builder.toMMFFsp3( ff, &params );
-        ff.printAtoms();
+        //ff.printAtoms();
         printf("!!!!! builder.toMMFFsp3() DONE \n");
         ff.printSizes();
         //ff.printNeighs();

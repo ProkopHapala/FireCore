@@ -1317,6 +1317,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
 	void drawInt( const Vec3d& pos, int i, int fontTex, float sz, const char* format ){
         char str[16];
         sprintf(str,format,i);
+        //printf("%s\n", str);
         Draw3D::drawText(str, pos, fontTex, sz, 0);
     }
     void drawDouble( const Vec3d& pos, double f, int fontTex, float sz, const char* format ){
