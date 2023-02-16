@@ -440,6 +440,7 @@ double eval_neighs_new(int ia){
     double  ils[4];
 
     // ToDo: there could be computed also the bonds (similarly as done in OpenCL)
+    if(idebug>0)printf( "DEBUG eval_neighs_new() [%i] aneighs[%i,%i,%i,%i] abonds[%i,%i,%i,%i] \n", ia,  aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3],     abonds[ ioff+0],abonds[ ioff+1],abonds[ ioff+2],abonds[ ioff+3] );
     for(int i=0; i<nneigh_max; i++){
         int  ing = aneighs[ioff+i];
         if(ing<0){
@@ -448,11 +449,18 @@ double eval_neighs_new(int ia){
         }else{
             int  ib  = abonds[ ioff+i];
             Vec3d h; h.set_sub( apos[ing], pa );
-            if(pbcShifts)h.add( pbcShifts[ib] );
+            double c=1;
+            if(pbcShifts){
+                if( bond2atom[ib].a!=ia ){ c=-1; }; // bond should be inverted
+                h.add_mul( pbcShifts[ib], c );
+            }
             double l = h.normalize();
             ils[i] = 1/l;
             hs [i] = h;
-            if(ia<ing) Eb += eval_bond_neigh(ib, h, l);
+            if(ia<ing){
+                Eb += eval_bond_neigh(ib, h*c, l);
+                if(idebug>0)printf( "DEBUG bond[%i|%i,%i] l=%g \n", ib, ia, ing, l );
+            }
         }
         // ToDd: Compute bonds here
     }
@@ -539,9 +547,9 @@ double eval( bool bClean=true, bool bCheck=true ){
     normalizePi(); 
     if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
     
-    if(doBonds )eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
-    if(doNeighs)eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
-    //eval_neighs_new();
+    //if(doBonds )eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
+    //if(doNeighs)eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
+    eval_neighs_new();
 
     Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;

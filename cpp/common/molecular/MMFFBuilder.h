@@ -89,9 +89,9 @@ struct AtomConf{
         for(int i=0; i<N_NEIGH_MAX; i++){ if(neighs[i]>=0)neighs[i]+=dib; };
     }
 
-    inline int findNeigh(int ib){
+    inline int findNeigh(int ib)const{
         for(int i=0; i<N_NEIGH_MAX; i++){
-            //printf( "MM:AtomConf.findNeigh()[%i] ng %i ja %i \n", i, neighs[i], ja );
+            //printf( "MM:AtomConf.findNeigh()[%i] ng(%i)?=ib(%i) %i \n", i, neighs[i], ib, neighs[i]==ib );
             if(neighs[i]==ib) return i;
         }
         return -1;
@@ -108,7 +108,7 @@ struct AtomConf{
 
     inline bool replaceNeigh(int ib, int jb){
         for(int i=0; i<N_NEIGH_MAX; i++){
-            if(neighs[i]==ib){ neighs[i]==jb; return true; };
+            if(neighs[i]==ib){ neighs[i]=jb; return true; };
         }
         return false;
     }
@@ -1065,6 +1065,49 @@ class Builder{  public:
         return -1;
     }
 
+    bool checkBondOrdered( int ib )const{ const Vec2i& b=bonds[ib].atoms; return b.a<b.b; }
+    bool checkBondsOrdered( bool bOrder, bool bPrint ){ 
+        bool ret=false;
+        for(int ib=0; ib<bonds.size(); ib++){
+            if( !checkBondOrdered( ib ) ){
+                ret=true;
+                if(bPrint) printf( "WARRNING bond[%i] is not ordered atoms(%i,%i) \n", ib, bonds[ib].atoms.a, bonds[ib].atoms.b );
+                if(bOrder){ Vec2i& b=bonds[ib].atoms; _swap(b.a,b.b); bonds[ib].ipbc.mul(-1); }
+            }
+        }
+        return ret;
+    }
+
+    bool checkAtomHasBond(int ia, int ib, bool bDefault=true)const{
+        int ic = atoms[ia].iconf;
+        if(ic>=0){
+            int i = confs[ic].findNeigh(ib);
+            //printf( "DEBUG ia=%i neighs[%i]=%i \n", ia, i, ib );
+            return i>=0;
+        }
+        return bDefault;
+    }
+
+    bool checkBondInNeighs( int ib )const{ 
+        const Vec2i& b=bonds[ib].atoms; 
+        bool ba = checkAtomHasBond(b.a,ib);
+        bool bb = checkAtomHasBond(b.b,ib);
+        //if(! (ba && bb))printf( "DEBUG !bond[%i|%i,%i] %i %i\n", ib, b.a, b.b, ba, bb);
+        return ba && bb;
+    }
+
+    bool checkBondsInNeighs( bool bPrint ){
+        bool ret = false;
+        for(int ib=0; ib<bonds.size(); ib++ ){
+            //printf("\----bond[%i]\n", ib);
+            if( ! checkBondInNeighs( ib ) ){
+                if(bPrint){ Vec2i b=bonds[ib].atoms; printf("WARRNING bond[%i|%i,%i] is not in neighborhood \n", ib, b.a, b.b); printAtomConf(b.a); puts(""); printAtomConf(b.b); puts(""); }
+                ret=true;
+            }
+        }
+        return ret;
+    }
+
     bool checkBondsSorted( int iPrint=0 )const{
         int ia=-1,ja=-1;
         if(iPrint>1)printf("checkBondsSorted %li \n", bonds.size() );
@@ -1546,17 +1589,21 @@ class Builder{  public:
     int removeBondFromConfs(int ib){
         int ic,n=0;
         const Vec2i& b  = bonds[ib].atoms;
+        printf( "BEFORE removeBondFromConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
         ic=atoms[b.i].iconf; if(ic>=0) n+=confs[ic].replaceNeigh(ib,-1);
         ic=atoms[b.j].iconf; if(ic>=0) n+=confs[ic].replaceNeigh(ib,-1);
         //b.set(ia,ja);
+        printf( "AFTER removeBondFromConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
         return n;
     }
 
     int addBondToConfs(int ib){
         int ic,n=0;
         const Vec2i& b  = bonds[ib].atoms;
-        ic=atoms[b.i].iconf; if(ic>=0) n+=confs[ic].replaceNeigh( -1,b.i);
-        ic=atoms[b.j].iconf; if(ic>=0) n+=confs[ic].replaceNeigh( -1,b.j);
+        printf( "BEFORE addBondToConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
+        ic=atoms[b.i].iconf; if(ic>=0) n+=confs[ic].replaceNeigh( -1,ib);
+        ic=atoms[b.j].iconf; if(ic>=0) n+=confs[ic].replaceNeigh( -1,ib);
+        printf( "AFTER addBondToConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
         return n;
     }
 
@@ -1833,6 +1880,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                 AtomConf& conf = confs[ic];
                 if(verbosity>1)printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
                 int*    ngs  = ff.aneighs + ia*N_NEIGH_MAX;
+                int*    nbs  = ff.abonds  + ia*N_NEIGH_MAX;
                 //double* kngs = ff.Kneighs + ia*N_NEIGH_MAX;
                 // -- atoms
                 for(int k=0; k<conf.nbond; k++){
@@ -1841,8 +1889,10 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                     hs[k]  = atoms[ja].pos - atoms[ia].pos;
                     hs[k].normalize();
                     ngs[k] = ja;
+                    nbs[k] = ib;
                     //kngs[k]=K_sigma;
                 }
+                for(int k=conf.nbond; k<ff.nneigh_max; k++ ) { nbs[k] = -1; }
                 makeConfGeom( conf.nbond, conf.npi, hs );
                 //if( (conf.nbond==2) && (conf.npi==1) ){ printf( "atom[%i](nb=%i,npi=%i,ne=%i) angles(%g,%g,%g)\n", ia, conf.nbond,conf.npi,conf.ne, hs[3].getAngle(hs[0])/M_PI, hs[3].getAngle(hs[1])/M_PI, hs[3].getAngle(hs[2])/M_PI ); }
                 //for(int k=0; k<N_NEIGH_MAX; k++){

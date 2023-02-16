@@ -342,6 +342,7 @@ void PBC_multiply( Vec3i& nMulPBC_, int ifrag ){
     //new_lvec.ax=builder.lvec.a.norm(); new_lvec.by=builder.lvec.b.norm(); new_lvec.cz=builder.lvec.c.norm();
     builder.correctPBCbonds( ifrag, builder.frags.size() ); // correct bonds for newly added fragments
     //exit(0);
+    builder.checkBondsInNeighs(true); // DEBUG
     builder.sortConfAtomsFirst(); 
     //printf("molecule lattice:\n"); builder.lvec.print();
     //builder.printAtomConfs();
@@ -406,8 +407,21 @@ virtual void init( bool bGrid ){
     }
     DEBUG
     if(bMMFF){       
-        //builder.printAtoms();                        
+        //builder.printAtoms();          
+        //if( builder.checkBondsOrdered( false, true ) ) { printf("ERROR Bonds are not ordered => exit"); exit(0); };
+        if( builder.checkBondsInNeighs(true) ) { 
+            printf("ERROR some bonds are not in atom neighbors => exit"); 
+            exit(0); 
+        };
+        builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3( ff, &params );
+
+        builder.printBonds();
+        ff.printBonds();
+        idebug = 1;
+        ff.eval();        
+        idebug = 0;
+
         //ff.printAtoms();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         //ff.printSizes();
@@ -474,7 +488,7 @@ double eval(){
     }
     */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
-    for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
+    //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
     return E;
 }
 
@@ -501,7 +515,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
         //opt.move_LeapFrog(0.01);
         //opt.move_MDquench();
         double f2=opt.move_FIRE();   
-        printf( "[%i] E= %g [eV] |F|= %g [eV/A]\n", nloop, E, sqrt(f2) );
+        //printf( "[%i] E= %g [eV] |F|= %g [eV/A]\n", nloop, E, sqrt(f2) );
         //double f2=1;
         if(f2<sq(Ftol)){
             bConverged=true;
