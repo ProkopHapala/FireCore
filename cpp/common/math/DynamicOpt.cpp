@@ -156,9 +156,9 @@ double DynamicOpt::move_FIRE(){
 		ff += fi*fi;
 		vv += vi*vi;
 		vf += vi*fi;
-        printf( "move_FIRE %i f %g v %g p %g \n", i, force[i], vel[i], pos[i] );
+        //printf( "move_FIRE %i f %g v %g p %g \n", i, force[i], vel[i], pos[i] );
 	}
-    printf( "DEBUG move_FIRE %i |f| %g |v| %g <v|f> %g n %i\n", sqrt(ff), sqrt(vv), vf, n );
+    //printf( "DEBUG move_FIRE %i |f| %g |v| %g <v|f> %g n %i\n", sqrt(ff), sqrt(vv), vf, n );
 	//printf( "DEBUG 5.5.2 \n" );
 	if( vf < 0.0 ){
 	//if( (vf<0.0)||bOverLimit){
