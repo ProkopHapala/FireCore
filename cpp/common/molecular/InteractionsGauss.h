@@ -776,16 +776,16 @@ inline void PauliCoreElec_Orig(double rc, double re2, double *epauli, double *fr
 }
 
 inline void PauliCoreElec(double r, double re2, double& epauli, double& frc, double& fre2, double A, double B, double C){
-    double rcsq   = rc * rc;
+    double rcsq   = r * r;
     double ssq    = re2 * re2;
     double invssC = 1/(ssq + C);
     double expr   =  exp(-B * rcsq *invssC );
-    double ABr    = 2 * A * B * rc;
+    double ABr    = 2 * A * B * r;
     // (eq.5) in http://dx.doi.org/10.1016/j.mechmat.2015.02.008
     // A*exp( -B*r^2/(c+s^2)  )
-    double E       =  A   *            expr;
-    double dE_drc  = -ABr *            expr * invssC;
-    double dE_dre2 =  ABr * rc * re2 * expr * invssC*invssC;
+    double E       =  A   *           expr;
+    double dE_drc  = -ABr *           expr * invssC;
+    double dE_dre2 =  ABr * r * re2 * expr * invssC*invssC;
     epauli += E;
     frc    -= dE_drc;
     fre2   -= dE_dre2;
@@ -834,8 +834,8 @@ inline void PauliCorePElec(double rc, double re2, double& epauli, double& frc, d
                    +                  rrC * (  2.0 * D *  (C * E_ + rc * re2) * invErr* invErr ) ) );
 
     epauli += e;
-    frc    -= dEdrc;
-    fre2   -= dEdre2;
+    frc    -= dE_drc;
+    fre2   -= dE_dre2;
 }
 
 

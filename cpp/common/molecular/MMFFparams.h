@@ -327,6 +327,7 @@ class MMFFparams{ public:
 
     int saveXYZ( const char * fname, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0 ){
         FILE* pfile = fopen(fname, "w");
+        printf( "saveXYZ(%s) \n", fname );
         if( pfile == NULL ) return -1;
         writeXYZ( pfile, n, atypes, apos, comment, REQs );
         fclose(pfile);

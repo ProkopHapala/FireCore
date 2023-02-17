@@ -16,6 +16,10 @@
 #include "Mat3.h"
 #include "Vec3Utils.h"
 
+
+#include "MMFFparams.h"
+MMFFparams* params_glob;
+
 //#include "raytrace.h"
 #include "Forces.h"
 #include "MMFFsp3.h"
@@ -26,7 +30,6 @@
 #include "molecular_utils.h"
 
 #include "Molecule.h"
-#include "MMFFparams.h"
 #include "MMFFBuilder.h"
 #include "SMILESparser.h"
 #include "DynamicOpt.h"
@@ -178,9 +181,9 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         if(verbosity>1)gridFF.grid.printCell();
         gridFF.allocateFFs();
         //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
-        if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }
+        if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 20.0 ); }
         bSaveDebugXSFs=true;
-        gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
+        gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs, true );
         bGridFF   =true; 
         //bSurfAtoms=false;
     }
@@ -382,6 +385,8 @@ virtual void init( bool bGrid ){
     //params.printAtomTypeDict();
     //params.printAtomTypes();
     //params.printBond();
+
+    params_glob = &params;
 
     builder.verbosity=verbosity;
     if(verbosity>0){

@@ -440,7 +440,7 @@ double eval_neighs_new(int ia){
     double  ils[4];
 
     // ToDo: there could be computed also the bonds (similarly as done in OpenCL)
-    if(idebug>0)printf( "DEBUG eval_neighs_new() [%i] aneighs[%i,%i,%i,%i] abonds[%i,%i,%i,%i] \n", ia,  aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3],     abonds[ ioff+0],abonds[ ioff+1],abonds[ ioff+2],abonds[ ioff+3] );
+    //if(idebug>0)printf( "DEBUG eval_neighs_new() [%i] aneighs[%i,%i,%i,%i] abonds[%i,%i,%i,%i] \n", ia,  aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3],     abonds[ ioff+0],abonds[ ioff+1],abonds[ ioff+2],abonds[ ioff+3] );
     for(int i=0; i<nneigh_max; i++){
         int  ing = aneighs[ioff+i];
         if(ing<0){
