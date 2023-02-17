@@ -459,7 +459,7 @@ double eval_neighs_new(int ia){
             hs [i] = h;
             if(ia<ing){
                 Eb += eval_bond_neigh(ib, h*c, l);
-                if(idebug>0)printf( "DEBUG bond[%i|%i,%i] l=%g \n", ib, ia, ing, l );
+                //if(idebug>0)printf( "DEBUG bond[%i|%i,%i] l=%g \n", ib, ia, ing, l );
             }
         }
         // ToDd: Compute bonds here

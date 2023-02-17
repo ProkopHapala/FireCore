@@ -389,10 +389,10 @@ class Builder{  public:
         //MM = M;
         //MM.set_mmul(lvec,M);
         //MM.set_mmul(lvs,M);
-        printf("DEBUG changeCell()  lvec\n"); lvec .print();
-        printf("DEBUG changeCell()  lvs\n"); lvs   .print();
-        printf("DEBUG changeCell()  M (inv(lvs))\n"); M .print();
-        printf("DEBUG changeCell() MM\n"); MM.print(); //exit(0);
+        //printf("DEBUG changeCell()  lvec\n"); lvec .print();
+        //printf("DEBUG changeCell()  lvs\n"); lvs   .print();
+        //printf("DEBUG changeCell()  M (inv(lvs))\n"); M .print();
+        //printf("DEBUG changeCell() MM\n"); MM.print(); //exit(0);
         transform_atoms( MM,orig_old,orig_new,i0,n);
         lvec=lvs;
     }
@@ -1589,39 +1589,39 @@ class Builder{  public:
     int removeBondFromConfs(int ib){
         int ic,n=0;
         const Vec2i& b  = bonds[ib].atoms;
-        printf( "BEFORE removeBondFromConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
+        //printf( "BEFORE removeBondFromConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
         ic=atoms[b.i].iconf; if(ic>=0) n+=confs[ic].replaceNeigh(ib,-1);
         ic=atoms[b.j].iconf; if(ic>=0) n+=confs[ic].replaceNeigh(ib,-1);
         //b.set(ia,ja);
-        printf( "AFTER removeBondFromConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
+        //printf( "AFTER removeBondFromConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
         return n;
     }
 
     int addBondToConfs(int ib){
         int ic,n=0;
         const Vec2i& b  = bonds[ib].atoms;
-        printf( "BEFORE addBondToConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
+        //printf( "BEFORE addBondToConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
         ic=atoms[b.i].iconf; if(ic>=0) n+=confs[ic].replaceNeigh( -1,ib);
         ic=atoms[b.j].iconf; if(ic>=0) n+=confs[ic].replaceNeigh( -1,ib);
-        printf( "AFTER addBondToConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
+        //printf( "AFTER addBondToConfs[%i|%i,%i] \n", ib, b.i, b.j ); printAtomConf(b.i); puts(""); printAtomConf(b.j); puts("");
         return n;
     }
 
     int correctPBCbonds( int ifragMin, int ifragMax ){
         std::vector<int> ibs; ibs.reserve(100);
-        printf( "correctPBCbonds(ifragMin=%i, ifragMax=%i) \n", ifragMin, ifragMax );
+        //printf( "correctPBCbonds(ifragMin=%i, ifragMax=%i) \n", ifragMin, ifragMax );
         for(int ifrag=ifragMin; ifrag<ifragMax; ifrag++ ){
-            printf( "correctPBCbonds[ifrag=%i] \n", ifrag );
+            //printf( "correctPBCbonds[ifrag=%i] \n", ifrag );
             const Vec2i& bondRange  = frags[ifrag].bondRange;
             for(int ib=bondRange.a; ib<bondRange.b; ib++){
                 //printf( "correctPBCbonds[ib=%i] \n", ib );
                 Bond& b = bonds[ib ];
                 if( b.ipbc.allEqual(0) ) continue;
-                printf( "correctPBCbonds[ib=%i] (%i,%i) ipbc(%i,%i,%i)\n", ib,  b.atoms.i,b.atoms.j, b.ipbc.x,b.ipbc.y,b.ipbc.z );
+                //printf( "correctPBCbonds[ib=%i] (%i,%i) ipbc(%i,%i,%i)\n", ib,  b.atoms.i,b.atoms.j, b.ipbc.x,b.ipbc.y,b.ipbc.z );
                 int ifrag0 = ifrag; Vec3i8 ipbc;
                 int ja = findNearestBondPBC( ib, ifrag0, ifragMin, ifragMax, ipbc);
                 if(ja>=0){ // found?
-                    printf( "correctPBCbonds[%i] (%i,%i)->(%i,%i) \n", ib,  b.atoms.i,b.atoms.j,   b.atoms.i,ja );
+                    //printf( "correctPBCbonds[%i] (%i,%i)->(%i,%i) \n", ib,  b.atoms.i,b.atoms.j,   b.atoms.i,ja );
                     int nremove = removeBondFromConfs( ib );   if(nremove==0){ printf("!!!! bond[%i] not removed from any conf \n", ib); };
                     b.atoms.set(b.atoms.i,ja);
                     b.ipbc = ipbc;
@@ -1645,17 +1645,19 @@ class Builder{  public:
 
     int loadMolTypeXYZ(const char* fname, MMFFparams* params_=0 ){
         if(params_!=0) params=params_;
-        Molecule* mol = new Molecule();      //printf( "DEBUG 1.1.1 \n" );
-        mol->atomTypeDict = &params->atomTypeDict; //printf( "DEBUG 1.1.2 \n" );
+        Molecule* mol = new Molecule();
+        mol->atomTypeDict = &params->atomTypeDict;
         //printf("mol->atypNames %i %i \n", mol->atypNames, &params->atypNames );
-        //mol->loadXYZ( fname );             //printf( "DEBUG 1.1.3 \n" );
-        int iret = mol->load_xyz( fname ); 
+        //int iret = mol->load_xyz( fname ); 
+        int iret =  params->loadXYZ( fname, mol->natoms, &mol->pos, &mol->REQs, &mol->atomType, &mol->npis, &lvec );
+        //mol->printAtomInfo(); //exit(0);
+        if( iret>0 ){ bPBC=true; printf("lvec loaded from %s \n", fname); };
         if(iret<0)return iret;
-        if(params) params->assignREs( mol->natoms, mol->atomType, mol->REQs ); //printf( "DEBUG 1.1.4 \n" );
+        if(params) params->assignREs( mol->natoms, mol->atomType, mol->REQs );
         int ityp = molTypes.size();
         mol2molType[(size_t)mol]=ityp;
-        molTypes.push_back(mol);  //printf( "DEBUG 1.1.5 \n" );
-        return molTypes.size()-1; //printf( "DEBUG 1.1.6 \n" );
+        molTypes.push_back(mol);
+        return molTypes.size()-1;
     }
 
     int registerRigidMolType( int natoms, Vec3d* pos, Vec3d* REQs, int* atomType ){
@@ -1709,7 +1711,7 @@ class Builder{  public:
         int natom0  = atoms.size();
         int nbond0  = bonds.size();
         for(int i=0; i<mol->natoms; i++){
-            int ne=0;
+            int ne=0,npi=0;
             Vec3d REQ=mol->REQs[i];
             int ityp = mol->atomType[i];
             if( ityp==ignoreType ) continue;
@@ -1719,9 +1721,10 @@ class Builder{  public:
                 ne = params->atypes[ityp].nepair();
                 REQ.z=mol->REQs[i].z;
             }
+            if( mol->npis ) npi=mol->npis[i];
             //printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, mol->npis[i], ne  );
             Vec3d p; rot.dot_to(mol->pos[i],p); p.add( pos );
-            insertAtom( ityp, p, &REQ, mol->npis[i], ne );
+            insertAtom( ityp, p, &REQ, npi, ne );
         }
         for(int i=0; i<mol->nbonds; i++){
             //bonds.push_back( (Bond){mol->bondType[i], mol->bond2atom[i] + ((Vec2i){natom0,natom0}), defaultBond.l0, defaultBond.k } );

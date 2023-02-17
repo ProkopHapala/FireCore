@@ -39,6 +39,7 @@ class GridShape { public:
 	Mat3d   dCell;      // basis vector of each voxel ( lattice vectors divided by number of points )
 	Mat3d   diCell;     // inversion of voxel basis vector
 	Vec3i   n;          // number of pixels along each basis vector
+    //bool bCellSet=false;
 
     void center_cell( Vec3d c ){ cell.dot_to_T( c, pos0 ); }
 

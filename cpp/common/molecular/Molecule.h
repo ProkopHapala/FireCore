@@ -568,7 +568,9 @@ class Molecule{ public:
     void printAtomInfo()const{
         printf(" # Molecule.printAtomInfo() : \n" );
         for(int i=0; i<natoms; i++){
-            printf( "atom[%i] t %i pos(%g,%g,%g) REQs(%g,%g,%g) \n", i, atomType[i], pos[i].x,pos[i].y,pos[i].z, REQs[i].x, REQs[i].y, REQs[i].z );
+            int npi=0;
+            if(npis) npi=npis[i];
+            printf( "atom[%i] t %i pos(%g,%g,%g) REQs(%g,%g,%g) npi %i \n", i, atomType[i], pos[i].x,pos[i].y,pos[i].z, REQs[i].x, REQs[i].y, REQs[i].z, npi );
         }
     }
 
