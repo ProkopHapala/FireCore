@@ -418,39 +418,39 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     bChargeUpdated=false;
 }
 
-
-virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} )override{
+virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true )override{
     printf( "MolWorld_sp3_ocl::initGridFF() \n");
     if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     sprintf(tmpstr, "%s.lvs", name );
-    if( file_exist(tmpstr) ){ 
-        gridFF.grid.loadCell( tmpstr, gridStep );
-        if(bGrid){
-            gridFF.grid.center_cell( cel0 );
-            bGridFF=true;
-            gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
-            if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
-            gridFF.grid.pos0.z=z0;
-            if(verbosity>1)gridFF.grid.printCell();
-            gridFF.allocateFFs();
-            //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
-            //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
-
-            long T0 = getCPUticks();
-            {// OpenCL-accelerated   GridFF initialization
-              gridFF.grid.printCell();
-              ocl.setNs(3, gridFF.grid.n.array );
-              v2f4( gridFF.grid.pos0,ocl.pos0); 
-              ocl.setGridShape( gridFF.grid.dCell );
-              init_ocl();
-            }
-            printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
-            bGridFF   =true; 
-            //bSurfAtoms=false;
-        }
-    }else{ 
+    if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
+    if( !gridFF.bCellSet ){
         bGridFF=false; 
         printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
+        return;
+    }
+    if(bGrid){
+        gridFF.grid.center_cell( cel0 );
+        bGridFF=true;
+        gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
+        if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+        gridFF.grid.pos0.z=z0;
+        if(verbosity>1)gridFF.grid.printCell();
+        gridFF.allocateFFs();
+        //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
+        //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
+        if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }
+        
+        long T0 = getCPUticks();
+        {// OpenCL-accelerated   GridFF initialization
+            gridFF.grid.printCell();
+            ocl.setNs(3, gridFF.grid.n.array );
+            v2f4( gridFF.grid.pos0,ocl.pos0); 
+            ocl.setGridShape( gridFF.grid.dCell );
+            init_ocl();
+        }
+        printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
+        bGridFF   =true; 
+        //bSurfAtoms=false;
     }
 }
 
