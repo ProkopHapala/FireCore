@@ -35,6 +35,7 @@ class GridFF{ public:
     double Rdamp  =  1.0;
 
     int iDebugEvalR = 0;
+    bool bCellSet = false;
 
     double findTop(){ double zmax=-1e+300; for(int i=0;i<natoms; i++){ double z=apos[i].z; if(z>zmax)zmax=z; }; return zmax; }
 
@@ -185,7 +186,7 @@ class GridFF{ public:
     }
 
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs, Vec3i nPBC ){
-        //printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
+        printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
         //printf( "GridFF nPBC(%i,%i,%i) K %g R %g R2Q %g \n", nPBC.x,nPBC.y,nPBC.z, alpha, Rdamp, Rdamp*Rdamp );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             double R2damp=Rdamp*Rdamp;    

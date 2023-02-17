@@ -399,7 +399,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
-    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, isoVal, true, 0.1);   printf("DEBUG renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
+    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, isoVal, true, 5.0 );   printf("DEBUG renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
     // ---- This seems still not work properly
     //int ntris=0;
     //glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );

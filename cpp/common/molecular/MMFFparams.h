@@ -256,8 +256,19 @@ class MMFFparams{ public:
         if(fagnletypes)loadAgnleType( fagnletypes );
     }
 
+    bool cellFromString( char* s, Mat3d& lvec )const{
+        char c[3]; Mat3d M;
+        int n = sscanf( s, "%c%c%c %lf %lf %lf   %lf %lf %lf   %lf %lf %lf", c,c+1,c+2, &(M.a.x),&(M.a.y),&(M.a.z),   &(M.b.x),&(M.b.y),&(M.b.z),   &(M.c.x),&(M.c.y),&(M.c.z) );
+        //printf( "DEBUG cellFromString() n=%i %c%c%c (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n", n, c[0],c[1],c[2], M.a.x,M.a.y,M.a.z,   M.b.x,M.b.y,M.b.z,   M.c.x,M.c.y,M.c.z );
+        if( (n==12) && (c[0]=='l')&&(c[1]=='v')&&(c[2]=='s') ){
+            lvec=M;
+            //printf( "DEBUG cellFromString() lvec (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n",  lvec.a.x,lvec.a.y,lvec.a.z,   lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
+            return true;
+        }
+        return false;
+    }
 
-    int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Vec3d** REQs_=0, int** atype_=0, int verbosity=0 )const{
+    int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Vec3d** REQs_=0, int** atype_=0, int** npis_=0, Mat3d* lvec=0, int verbosity=0 )const{
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -269,18 +280,23 @@ class MMFFparams{ public:
         int nl;
         line = fgets( buff, nbuf, pFile );
         sscanf( line, "%i \n", &natoms );
-        Vec3d* apos  =_allocPointer( apos_, natoms );
-        Vec3d* REQs  =_allocPointer( REQs_, natoms );
+        Vec3d* apos  =_allocPointer( apos_,  natoms );
+        Vec3d* REQs  =_allocPointer( REQs_,  natoms );
         int*   atype =_allocPointer( atype_, natoms );
+        int*   npis  =_allocPointer( npis_,  natoms );
         line = fgets( buff, nbuf, pFile ); // comment
+        int ret=0;
+        if(lvec){ if( cellFromString( buff, *lvec ) ){ ret=1; }else{ printf("WARRNING: lvec not read from %s \n", fname ); } }
         double Q;
         for(int i=0; i<natoms; i++){
             char at_name[8];
-            double junk;
+            double junk; 
+            int npi;
             line = fgets( buff, nbuf, pFile );  //printf("%s",line);
-            int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q );
+            int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &npi );
             if( nret < 5 ){ Q=0; };
-
+            if( nret < 6 ){ npi=-1; };
+            if(npis){ npis[i] =npi; };
             auto it = atomTypeDict.find( at_name );
             if( it != atomTypeDict.end() ){
                 int ityp=it->second;
@@ -292,7 +308,7 @@ class MMFFparams{ public:
             }
         }
         fclose(pFile);
-        return natoms;
+        return ret;
     }
 
     void writeXYZ( FILE* pfile, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0 ){

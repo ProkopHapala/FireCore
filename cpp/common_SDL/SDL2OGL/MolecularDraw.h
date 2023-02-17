@@ -177,8 +177,12 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
             //glColor3f(0.8f,0.7f,0.7f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
             //glColor3f( fel1.x, fel1.y, fel1.z ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f( fel2.x, fel2.y, fel2.z ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-            colorRB( fel1.z*sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
-            colorRB( fel2.z*sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
+            //printf( "[%i,%i]fel1.z %g sclr %g \n", ib,ia, fel1.z, sclr );
+            //colorRB( fel1.z*sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
+            //colorRB( fel2.z*sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
+            //printf( "[%i,%i]fel1.e %g sclr %g \n", ib,ia, fel1.e, sclr );
+            colorRB( fel1.e*sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
+            colorRB( fel2.e*sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
         }
         glEnd();
     }

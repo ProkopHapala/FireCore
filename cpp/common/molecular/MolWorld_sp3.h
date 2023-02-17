@@ -66,7 +66,7 @@ class MolWorld_sp3{ public:
 
     double gridStep = 0.1; 
     //double gridStep = 0.2; 
-    //Vec3i nPBC{0,0,0};   // JUST DEBUG   
+    //Vec3i nPBC{0,0,0};   // just debug
     Vec3i nPBC{1,1,0};
 
 	// state
@@ -163,25 +163,26 @@ static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
 virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
     if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     sprintf(tmpstr, "%s.lvs", name );
-    if( file_exist(tmpstr) ){ 
-        gridFF.grid.loadCell( tmpstr, gridStep );
-        if(bGrid){
-            gridFF.grid.center_cell( cel0 );
-            bGridFF=true;
-            gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
-            if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
-            gridFF.grid.pos0.z=z0;
-            if(verbosity>1)gridFF.grid.printCell();
-            gridFF.allocateFFs();
-            //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
-            if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }
-            gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
-            bGridFF   =true; 
-            //bSurfAtoms=false;
-        }
-    }else{ 
+    if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
+    if( !gridFF.bCellSet ){
         bGridFF=false; 
         printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
+        return;
+    }
+    if(bGrid){
+        gridFF.grid.center_cell( cel0 );
+        bGridFF=true;
+        gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
+        if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+        gridFF.grid.pos0.z=z0;
+        if(verbosity>1)gridFF.grid.printCell();
+        gridFF.allocateFFs();
+        //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
+        if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }
+        bSaveDebugXSFs=true;
+        gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
+        bGridFF   =true; 
+        //bSurfAtoms=false;
     }
 }
 
@@ -208,7 +209,12 @@ void loadNBmol( const char* name){
 
 bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
     sprintf(tmpstr, "%s.xyz", name );
-	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs, &surf.atypes );
+	int ret = params.loadXYZ( tmpstr, surf.n, &surf.ps, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
+    if(ret>0){ 
+        gridFF.grid.updateCell(gridStep); gridFF.bCellSet=true;
+        //gridFF.grid.printCell(); 
+    };
+    //updateCell(step);
     if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.n, (long)surf.ps, (long)surf.atypes  );
     //surf.print();
 	if(ret<0)return false; 
@@ -233,18 +239,21 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     sprintf(tmpstr, "%s.lvs", name );
     //builder.printAtomConfs(true);
     if( file_exist(tmpstr) ){
+        builder.bPBC=true;
         readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
-        bPBC=true;
-        builder.autoBondsPBC();   if(verbosity>2)builder.printBonds ();  // exit(0);
+    }
+    bPBC=builder.bPBC;
+    if( bPBC ){
+        builder.autoBondsPBC();   if(verbosity>2)builder.printBonds ();
     }else{
-        bPBC=false;
-        builder.autoBonds();      if(verbosity>2)builder.printBonds ();  // exit(0);
+        builder.autoBonds();      if(verbosity>2)builder.printBonds ();
     }
     //builder.printAtomConfs(true);
     builder.autoAllConfEPi( );          //builder.printAtomConfs(true);
     //builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
     //builder.printAtomConfs(true);
-    builder.assignAllBondParams();    if(verbosity>1)builder.printBonds    ();
+    builder.assignAllBondParams();    //if(verbosity>1)
+    //builder.printBonds    ();
     //builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
     //builder.toMMFFsp3( ff, &params );
     //builder.saveMol( "builder_output.mol" );
@@ -291,7 +300,7 @@ void initRigid(){
         natom+=ni;
     }
     rbff.makePos0s();
-    //printf("# --- initRigid() END \n"); //exit(0);
+    //printf("# --- initRigid() END \n");
 }
 
 void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
@@ -335,23 +344,22 @@ void ini_in_dir(){
 void PBC_multiply( Vec3i& nMulPBC_, int ifrag ){
     //printf("surface  lattice:\n"); gridFF .grid.cell.print();
     //printf("molecule lattice:\n"); builder.lvec.print();
-    //exit(0);
     builder.multFragPBC( ifrag, nMulPBC_, builder.lvec );
     //printf("molecule lattice:\n"); builder.lvec.print();
     //builder.printAtoms();
     //new_lvec.ax=builder.lvec.a.norm(); new_lvec.by=builder.lvec.b.norm(); new_lvec.cz=builder.lvec.c.norm();
     builder.correctPBCbonds( ifrag, builder.frags.size() ); // correct bonds for newly added fragments
-    //exit(0);
     builder.checkBondsInNeighs(true); // DEBUG
     builder.sortConfAtomsFirst(); 
     //printf("molecule lattice:\n"); builder.lvec.print();
     //builder.printAtomConfs();
     //builder.printBonds();    
-    //exit(0);
 }
 
 void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
-    printf( "DEBUG changeCellBySurf() a(%g,%g) b(%g,%g) \n", a.x,a.y, b.x,b.y  );
+    //printf( "changeCellBySurf() a(%g,%g) b(%g,%g) \n", a.x,a.y, b.x,b.y  );
+    double la0=builder.lvec.a.norm();
+    double lb0=builder.lvec.b.norm();
     Mat3d lvs;
     lvs.a=gridFF.grid.cell.a*a.a + gridFF.grid.cell.b*a.b;
     lvs.b=gridFF.grid.cell.a*b.a + gridFF.grid.cell.b*b.b; 
@@ -363,9 +371,9 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
         Vec3d shift =  builder.atoms[ia0].pos*-1 + gridFF .grid.cell.a*c0.a + gridFF .grid.cell.b*c0.b;
         builder.move_atoms( shift );
     }
+    printf( "changeCellBySurf() DONE, |a,b|=%g,%g (old |a,b|=%g,%g) ", builder.lvec.a.norm(), builder.lvec.b.norm(), la0, lb0 );
     //builder.printAtomConfs();
     //builder.printBonds();    
-    //exit(0);
 }
 
 virtual void init( bool bGrid ){
@@ -386,9 +394,7 @@ virtual void init( bool bGrid ){
         //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
         printf("bMMFF %i bRigid %i \n", bMMFF, bRigid );
     }
-    DEBUG
-    if(surf_name  )loadSurf( surf_name, bGrid, idebug>0 );
-    DEBUG   
+    if(surf_name )loadSurf( surf_name, bGrid, idebug>0 );
     if ( smile_name ){               
         insertSMILES( smile_name );    
         builder.addAllCapTopo();       
@@ -399,13 +405,11 @@ virtual void init( bool bGrid ){
             int ifrag = loadGeom( xyz_name );
             if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
             if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
-            //exit(0);
         }else{
             loadNBmol( xyz_name ); 
             if(bRigid)initRigid();
         }
     }
-    DEBUG
     if(bMMFF){       
         //builder.printAtoms();          
         //if( builder.checkBondsOrdered( false, true ) ) { printf("ERROR Bonds are not ordered => exit"); exit(0); };
@@ -415,25 +419,21 @@ virtual void init( bool bGrid ){
         };
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3( ff, &params );
-
-        builder.printBonds();
-        ff.printBonds();
-        idebug = 1;
-        ff.eval();        
-        idebug = 0;
-
+        //builder.printBonds();
+        //ff.printBonds();
+        //idebug = 1;
+        //ff.eval();        
+        //idebug = 0;
         //ff.printAtoms();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         //ff.printSizes();
         //ff.printNeighs();
         //ff.printBonds();
         if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
-        //exit(0);
         initNBmol();
         if(bOptimizer){ setOptimizer(); }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
-    DEBUG
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
