@@ -400,6 +400,7 @@ void interateGrid3D( const GridShape& grid, FUNC func ){
 		//pos.add_mul( grid.dCell.b, -ny );
 		//pos.add( grid.dCell.c );
 	}
+    printf("!!!! DEBUG interateGrid3D pmin(%g,%g,%g) pmax(%g,%g,%g) \n",  grid.pos0.x, grid.pos0.y, grid.pos0.z,    pos.x, pos.y, pos.z );
     //printf ("\n");
 }
 

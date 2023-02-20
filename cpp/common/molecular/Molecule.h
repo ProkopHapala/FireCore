@@ -164,14 +164,14 @@ class Molecule{ public:
         for(int i=0;i<natoms;i++){
             const Vec3d& pi = pos[i];
             double Ri; if( bUseREQs ){ Ri=REQs[i].x; }
-            for(int j=0;j<i;j++){
+            for(int j=i+1;j<natoms;j++){
                 Vec3d d; d.set_sub(pos[j],pi);
                 double r2 = d.norm2();
                 double R2;
                 if( bUseREQs ){
                     R2=(Ri+REQs[j].x)*Rmax;
-                    //printf( "bond[%i : %i] r %g R %g factor %g \n", i, j, sqrt(r2), R2, Rmax ) ;
                     R2*=R2;
+                    //printf( "bond[%i : %i] r %g R %g factor %g Bonded=%i\n", i, j, sqrt(r2), sqrt(R2), Rmax, r2<R2 ) ;
                 }else{
                     R2=R2max;
                 }
@@ -182,8 +182,10 @@ class Molecule{ public:
             }
         }
         nbonds=pairs.size();
-        _realloc(bond2atom,nbonds);
-        for(int i=0;i<nbonds;i++){  bond2atom[i]=pairs[i]; }
+        _realloc( bond2atom , nbonds );
+        _realloc( bondType  , nbonds );
+        //printf("Molecule::findBonds_brute() bond2atom=%li \n", bond2atom);
+        for(int i=0;i<nbonds;i++){  bond2atom[i]=pairs[i]; bondType[i]=-1; }
     }
 
     void bindParams( const MMFFparams* params_ ){
@@ -478,6 +480,7 @@ class Molecule{ public:
             printf("cannot find %s\n", fname );
             return -1;
         }
+        if(params)atomTypeDict=&(params->atomTypeDict);
         const int nbuf=1024;
         char buff[nbuf];
         char * line;
@@ -492,11 +495,12 @@ class Molecule{ public:
             //char ch;
             char at_name[8];
             double junk;
-            line = fgets( buff, nbuf, pFile );  //printf("%s",line);
+            line = fgets( buff, nbuf, pFile );  //printf(">>%s<<",line);
             int nret = sscanf( line, "%s %lf %lf %lf %lf\n", at_name, &pos[i].x, &pos[i].y, &pos[i].z, &REQs[i].z, &npis[i] );
             if( nret < 5 ){ REQs[i].z= 0; };
             if( nret < 6 ){ npis[i]  =-1; };
-            if(verbosity>1)printf(       ".xyz[%i] %s p(%lf,%lf,%lf) Q %lf \n", i,  at_name, pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z );
+            //if(verbosity>1)
+            //printf(       ".xyz[%i] %s p(%lf,%lf,%lf) Q %lf    |nret(%i)\n", i,  at_name, pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z, nret );
             // atomType[i] = atomChar2int( ch );
             auto it = atomTypeDict->find( at_name );
             if( it != atomTypeDict->end() ){
@@ -564,6 +568,14 @@ class Molecule{ public:
             a2b+= NBMAX;
         }
     }
+    
+    void printBondsInfo()const{
+        if(bond2atom==0){ printf("# Molecule.printBondsInfo() bond2atom == NULL ; return \n"); return; };
+        printf("# Molecule.printBondsInfo()\n");
+        for(int i=0; i<nbonds; i++){
+            printf( "bond[%i] atoms(%i,%i) typs(%i,%i)\n" , i, bond2atom[i].a, bond2atom[i].b, atomType[bond2atom[i].a], atomType[bond2atom[i].b] );
+        }
+    }
 
     void printAtomInfo()const{
         printf(" # Molecule.printAtomInfo() : \n" );
@@ -607,6 +619,8 @@ class Molecule{ public:
     ~Molecule(){
         dealloc();
     };
+
+
 
 };
 

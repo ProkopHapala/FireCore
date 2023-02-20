@@ -178,10 +178,14 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
         if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
         gridFF.grid.pos0.z=z0;
+        //gridFF.grid.pos0.z=-5;  // DEBUG
         if(verbosity>1)gridFF.grid.printCell();
         gridFF.allocateFFs();
         //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
         if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 20.0 ); }
+        //nPBC = (Vec3i){0,0,0};
+        //nPBC = (Vec3i){1,1,0};
+        //nPBC = (Vec3i){10,10,0};
         bSaveDebugXSFs=true;
         gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs, true );
         bGridFF   =true; 
@@ -251,6 +255,35 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     }else{
         builder.autoBonds();      if(verbosity>2)builder.printBonds ();
     }
+
+    { // Substitute molecule
+        builder.printAtomConfs(false);
+        builder.printBonds();
+        printf( " ===================== Substitute molecule DONE !!! \n");
+        Molecule* mol = new Molecule();
+        mol->bindParams( &params );
+        //mol->atomTypeDict = params.atomTypeDict;
+        mol->loadXYZ( "common_resources/-COOH.xyz", 1 );
+        mol->assignREQs( params );
+        mol->printAtomInfo();
+        
+        mol->findBonds_brute(0.5,true);
+        mol->printBondsInfo();
+        
+        builder.substituteMolecule( mol, Vec3dZ, 4, 0, false );
+        builder.tryAddConfsToAtoms( 0, -1, 1 );
+        builder.sortConfAtomsFirst();
+
+        builder.tryAddBondsToConfs( );
+
+        builder.printAtomConfs(false);
+        //builder.printBonds();
+        builder.printBondParams();
+        printf( "====================== Substitute molecule DONE !!! \n");
+    }
+    
+
+
     //builder.printAtomConfs(true);
     builder.autoAllConfEPi( );          //builder.printAtomConfs(true);
     //builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
@@ -425,17 +458,21 @@ virtual void init( bool bGrid ){
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3( ff, &params );
         //builder.printBonds();
-        //ff.printBonds();
-        //idebug = 1;
-        //ff.eval();        
-        //idebug = 0;
-        //ff.printAtoms();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
-        //ff.printSizes();
-        //ff.printNeighs();
-        //ff.printBonds();
+        ff.printSizes();
+        ff.printAtoms();
+        ff.printNeighs();
+        ff.printBonds();
         if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
+        { // check MMFF
+            ff.eval();
+           // if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };
+        }
         initNBmol();
+        int etyp=-1; etyp=params.atomTypeDict["E"];
+        ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
+        nbmol.evalPLQs(gridFF.alpha);
+
         if(bOptimizer){ setOptimizer(); }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
@@ -485,13 +522,11 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
 double eval(){
     double E=0;
     if(bMMFF){ E += ff.eval();  }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
-    /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
         //else        { E+= nbmol .evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );  }
         else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
     }
-    */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
     //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
     return E;

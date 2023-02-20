@@ -188,15 +188,21 @@ class GridFF{ public:
     void evalGridFFs(int natoms_, Vec3d * apos_, Vec3d * REQs_, Vec3i nPBC ){
         printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
         //printf( "GridFF nPBC(%i,%i,%i) K %g R %g R2Q %g \n", nPBC.x,nPBC.y,nPBC.z, alpha, Rdamp, Rdamp*Rdamp );
+        //for(int i=0; i<natoms_; i++){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", i, apos_[i].x, apos_[i].y, apos_[i].z, REQs_[i].z ); }
+        //int Q=0; for(int i=0; i<natoms_; i++){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", i, apos_[i].x, apos_[i].y, apos_[i].z, REQs_[i].z ); Q+=REQs_[i].z; }; printf("evalGridFFs Qtot=%g \n", Q );
+        //Rdamp = 0.1; // WARRNIN DEBUG;
+        //Rdamp = 1.0; // WARRNIN DEBUG;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             double R2damp=Rdamp*Rdamp;    
             double K=alpha;
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
-            for(int iat=0; iat<natoms_; iat++){
-                Vec3d dp0; dp0.set_sub( p, apos_[iat] );
-                Vec3d REQi = REQs_[iat];
+            //if(ibuff<(grid.n.x*grid.n.y))printf( "evalGridFFs p(%g,%g,%g)\n", p.x,p.y,p.z );
+            for(int ia=0; ia<natoms_; ia++){
+                Vec3d dp0; dp0.set_sub( p, apos_[ia] );
+                Vec3d REQi = REQs_[ia];
+                if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }
                 for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
                     Vec3d  dp = dp0 + grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
                     //Vec3d  dp = dp0;
@@ -210,6 +216,7 @@ class GridFF{ public:
                     double ir2    = 1/(r2+R2damp);
                     double ir     = sqrt(ir2);
                     double eQ     = COULOMB_CONST*REQi.z*ir;
+                    
                     // --- store
                     qp.e+=eM*e; qp.f.add_mul( dp, de*e   ); // repulsive part of Morse
                     ql.e+=eM*2; ql.f.add_mul( dp, de     ); // attractive part of Morse
@@ -316,9 +323,11 @@ class GridFF{ public:
     }
     */
 
+/*
 void evalGridFFs_symetrized( Vec3i nPBC, double cmax=0.1 ){
+    printf( "DEBUG evalGridFFs_symetrized() \n" );
     double cmin=1-cmax;
-    std::vector<Vec3d> apos_  ;
+    std::vector<Vec3d> apos_  ;(%g,%g)
     std::vector<Vec3d> REQs_  ;
     std::vector<int>   atypes_;
     Mat3d M; grid.cell.invert_T_to( M );
@@ -365,6 +374,62 @@ void evalGridFFs_symetrized( Vec3i nPBC, double cmax=0.1 ){
     evalGridFFs( apos_.size(), &apos_[0], &REQs_[0], nPBC );
 
 }
+*/
+
+void evalGridFFs_symetrized( Vec3i nPBC, double d=0.1 ){
+    printf( "DEBUG evalGridFFs_symetrized() \n" );
+    double cmax =-0.5+d;
+    double cmin = 0.5-d;
+    std::vector<Vec3d> apos_  ;
+    std::vector<Vec3d> REQs_  ;
+    std::vector<int>   atypes_;
+    Mat3d M; grid.cell.invert_T_to( M );
+    const Vec3d& a = grid.cell.a;
+    const Vec3d& b = grid.cell.b;
+    printf( "DEBUG evalGridFFs_symetrized() cmin %g cmax %g \n", cmin, cmax );
+    for(int i=0; i<natoms; i++){
+        Vec3d p_;
+        int typ        = atypes[i];
+        Vec3d        Q = aREQs[i];
+        const Vec3d& p = apos[i];
+        M.dot_to( p,p_);
+        bool alo  = p_.a < cmax;
+        bool ahi  = p_.a > cmin;
+        bool blo  = p_.b < cmax;
+        bool bhi  = p_.b > cmin;
+        bool aa   = (alo||ahi);
+        bool bb   = (blo||ahi);
+
+        printf( "atom[%i](%g,%g) (%g,%g)\n", p.y,p.y, p_.a, p_.b );
+        double w = 1./( (1+aa) * (1+bb) ); // number of replicas ?
+        Q.z*=w; // Q
+        Q.y*=w; // E0
+        apos_.push_back(p);  REQs_.push_back(Q);   atypes_.push_back(typ); 
+        if(aa){
+            Vec3d p_=p;
+            if     ( alo ){ p_.add(a); }
+            else          { p_.sub(a); };
+            apos_.push_back(p_); REQs_.push_back(Q);   atypes_.push_back(typ); 
+        }
+        if(bb){
+            Vec3d p_=p;
+            if     ( alo ){ p_.add(b); }
+            else          { p_.sub(b); };
+            apos_.push_back(p_); REQs_.push_back(Q);   atypes_.push_back(typ); 
+            if(aa){
+                if     ( alo ){ p_.add(a); }
+                else          { p_.sub(a); };
+                apos_.push_back(p_); REQs_.push_back(Q);  atypes_.push_back(typ); 
+            }
+        }
+    }
+    
+    printf( "na %i | %i %i %i \n", natoms, apos_.size(), REQs_.size(), atypes_.size() );
+    params_glob->saveXYZ( "symtrized.xyz", apos_.size() , &atypes_[0] , &apos_[0], "#", &REQs_[0] );
+
+    evalGridFFs( apos_.size(), &apos_[0], &REQs_[0], nPBC );
+
+}
 
  #ifdef IO_utils_h
     bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nPBC={1,1,0}, bool bSaveDebugXSFs=false, bool bSymetrized=false ){
@@ -381,6 +446,7 @@ void evalGridFFs_symetrized( Vec3i nPBC, double cmax=0.1 ){
         int nbyte= grid.getNtot()*sizeof(Quat4f);
         if( recalcFF ){
             printf( "\nBuilding GridFF for substrate ... (please wait... )\n" );
+            printf("DEBUG tryLoad() bSymetrized %i \n", bSymetrized );
             if(bSymetrized){
                 evalGridFFs_symetrized( nPBC, 0.1 );
                 //evalGridFFs( natoms, apos, aREQs, nPBC );
@@ -391,6 +457,9 @@ void evalGridFFs_symetrized( Vec3i nPBC, double cmax=0.1 ){
                 if(FFPauli)  grid.saveXSF( "FFLond_E.xsf", (float*)FFLondon, 4,3  );
                 if(FFLondon) grid.saveXSF( "FFelec_E.xsf", (float*)FFelec,   4,3  );
                 if(FFelec )  grid.saveXSF( "FFPaul_E.xsf", (float*)FFPauli,  4,3  );
+                if(FFPauli)  grid.saveXSF( "FFLond_z.xsf", (float*)FFLondon, 4,2  );
+                if(FFLondon) grid.saveXSF( "FFelec_z.xsf", (float*)FFelec,   4,2  );
+                if(FFelec )  grid.saveXSF( "FFPaul_z.xsf", (float*)FFPauli,  4,2  );
             }
             if(FFPauli)  saveBin( fname_Pauli,    nbyte, (char*)FFPauli  );
             if(FFLondon) saveBin( fname_London,   nbyte, (char*)FFLondon );

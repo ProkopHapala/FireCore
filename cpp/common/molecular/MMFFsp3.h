@@ -459,6 +459,7 @@ double eval_neighs_new(int ia){
             hs [i] = h;
             if(ia<ing){
                 Eb += eval_bond_neigh(ib, h*c, l);
+                //if(ia==4)printf( "DEBUG atom[%i] neigh[%i|ib=%i] Eb=%g \n", ia, i, ib, Eb );
                 //if(idebug>0)printf( "DEBUG bond[%i|%i,%i] l=%g \n", ib, ia, ing, l );
             }
         }
@@ -515,6 +516,7 @@ double eval_neighs_new(int ia){
             }
         }
     }
+    //printf( "DEBUG atom[%i] E=%g \n", ia, E );
     return E;
 }
 
@@ -545,8 +547,7 @@ double eval( bool bClean=true, bool bCheck=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
     if(bClean){ cleanAll(); }
     normalizePi(); 
-    if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
-    
+    //if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
     //if(doBonds )eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
     //if(doNeighs)eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     eval_neighs_new();
@@ -582,6 +583,14 @@ void evalPi0s(){
     }
     
 }
+
+void chargeToEpairs( Vec3d* REQs, double cQ=-0.2, int etyp=-1 ){
+    for( int ib=0; ib<nbonds; ib++ ){
+        Vec2i b = bond2atom[ib];
+        if( atype[b.i]==etyp ){ REQs[b.i].z+=cQ; REQs[b.j].z-=cQ; }
+        if( atype[b.j]==etyp ){ REQs[b.j].z+=cQ; REQs[b.i].z-=cQ;  }
+    }
+};
 
 void makePiNeighs( int* pi_neighs ){
     printf( "makePiNeighs() \n" );
@@ -685,18 +694,20 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
     }
 }
 
-void checkNaNs(){
+bool checkNaNs(){
     //printf( "checkNaNs\n" );
-    ckeckNaN_d(natoms, 3, (double*)apos,  "apos"  );
-    ckeckNaN_d(natoms, 3, (double*)fapos, "fapos" );
-    ckeckNaN_d(npi, 3, (double*)pipos,    "pipos" );
-    ckeckNaN_d(npi, 3, (double*)fpipos,   "fpipos");
+    bool ret=false;
+    ret|= ckeckNaN_d(natoms, 3, (double*)apos,  "apos"  );
+    ret|= ckeckNaN_d(natoms, 3, (double*)fapos, "fapos" );
+    ret|= ckeckNaN_d(npi, 3, (double*)pipos,    "pipos" );
+    ret|= ckeckNaN_d(npi, 3, (double*)fpipos,   "fpipos");
     //for(int i=0; i<natoms; i++){
     //    if( isnan(fapos[i].x) || isnan(fapos[i].x) || isnan(fapos[i].x) ){ printf( "fatoms[%i] is NaN (%g,%g,%g)\n", i, fapos[i].x,fapos[i].y,fapos[i].z ); };
     //}
     //for(int i=0; i<npi; i++){
     //    if( isnan(fpipos[i].x) || isnan(fpipos[i].x) || isnan(fpipos[i].x) ){ printf( "fpipos[%i] is NaN (%g,%g,%g)\n", i, fpipos[i].x,fpipos[i].y,fpipos[i].z ); };
     //}
+    return ret;
 }
 
 
@@ -722,7 +733,7 @@ bool checkBonds( double factor=1.5, bool bPrintPBC=false ){
 }
 
 void printNeigh(int ia){
-    printf( "atom[%i] neighs[", ia );
+    printf( "atom[%i] neighs{", ia );
     for(int j=0;j<nneigh_max;j++){
         int ij=ia*nneigh_max + j;
         printf( "%i,", aneighs[ij] );
@@ -734,7 +745,7 @@ void printNeigh(int ia){
         printf( "%g,", Kneighs[ij] );
     }
     */
-    printf( ")\n");
+    printf( "}\n");
 }
 void printNeighs(){
     printf( "MMFFsp3::printNeighs() : \n" );
