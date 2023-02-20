@@ -1287,10 +1287,11 @@ class Builder{  public:
         for(int i=0; i<bonds.size(); i++){
             //printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bondPBC[i].x,bondPBC[i].y,bondPBC[i].z); puts("");
             printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bonds[i].ipbc.x,bonds[i].ipbc.y,bonds[i].ipbc.z); puts("");
+            //printf("typs(%i,%i)", atoms[bonds[i].atoms.i].type, atoms[bonds[i].atoms.j].type ); 
         }
     }
     void printBondParams(){
-        printf(" # MM::Builder.printBonds(nb=%i) \n", bonds.size() );
+        printf(" # MM::Builder.printBondParams(nb=%i) \n", bonds.size() );
         for(int i=0; i<bonds.size(); i++){
             const Bond& b = bonds[i];
             printf("bond[%i]a(%i,%i)iZs(%i,%i)l0,k(%g,%g)\n",i, b.atoms.i,b.atoms.j, params->atypes[atoms[b.atoms.i].type].iZ, params->atypes[atoms[b.atoms.j].type].iZ, b.l0, b.k );
@@ -1637,6 +1638,59 @@ class Builder{  public:
     }
 
 #ifdef Molecule_h
+
+    void substituteMolecule(Molecule* mol, Vec3d up, int ib, int ipivot=0, bool bSwapBond=false ){
+        Bond& b = bonds[ib];
+        int ia  = b.atoms.i;
+        int ja  = b.atoms.j;
+        if(bSwapBond) _swap(ia,ja);
+        printf( "substituteMolecule() ipivot=%i ja=%i \n", ipivot, ja  );
+        Atom& A = atoms[ja];
+        Vec3d dir  = A.pos-atoms[ia].pos; dir.normalize();
+        Mat3d rot; rot.fromDirUp( dir, up );
+        printf( "substituteMolecule() dir=(%g,%g,%g) \n", dir.x,dir.y,dir.z  );
+        printf( "substituteMolecule() up =(%g,%g,%g) \n", up.x,up.y,up.z  );
+        printf( "substituteMolecule() rot= \n" ); rot.print();
+        { // set pivot atom
+            int atyp = mol->atomType[ipivot];
+            A.type = atyp;
+            A.REQ  = mol->REQs[ipivot];
+            if(A.iconf>=0){ 
+                confs[A.iconf].init0(); confs[A.iconf].ne = params->atypes[atyp].nepair(); 
+                printf( "DEBUG pivot has conf ic=%i \n", A.iconf );
+            }else{ 
+                printf( "DEBUG pivot has NOT conf ic=%i \n", A.iconf );
+                //addConfToAtom(ia); 
+            } 
+        }
+        int natom0  = atoms.size();
+        for(int i=1; i<mol->natoms; i++){
+            int ne=0,npi=0;
+            Vec3d REQ=mol->REQs[i];
+            int ityp = mol->atomType[i];
+            if(params){
+                //printf( "params \n" );
+                params->assignRE( ityp, REQ );
+                ne = params->atypes[ityp].nepair();
+                REQ.z=mol->REQs[i].z;
+            }
+            if( mol->npis ) npi=mol->npis[i];
+            printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, mol->npis[i], ne  );
+            Vec3d p; rot.dot_to(mol->pos[i]-mol->pos[ipivot],p); p.add( A.pos );
+            insertAtom( ityp, p, &REQ, npi, ne );
+        }
+        printf( "natom0 = %i \n", natom0 );
+        for(int i=0; i<mol->nbonds; i++){
+            //bonds.push_back( (Bond){mol->bondType[i], mol->bond2atom[i] + ((Vec2i){natom0,natom0}), defaultBond.l0, defaultBond.k } );
+            Vec2i b = mol->bond2atom[i];
+            if(b.i==ipivot){ b.i=ja; }else{ b.i+=natom0; if(b.i>ipivot)b.i--; };
+            if(b.j==ipivot){ b.j=ja; }else{ b.j+=natom0; if(b.j>ipivot)b.j--; };
+            printf("add bond[%i] a(%i,%i) as a(%i,%i)\n", i,  mol->bond2atom[i].i,  mol->bond2atom[i].j,   b.i, b.j );
+            bonds.push_back( Bond(mol->bondType[i], b, defaultBond.l0, defaultBond.k ) );
+        }
+    }
+
+
     void clearMolTypes( bool deep ){
         if(deep){ for(Molecule* mol : molTypes ){ mol->dealloc(); delete mol; } }
         molTypeDict.clear();
@@ -1787,7 +1841,6 @@ class Builder{  public:
 
     int insertFlexibleMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ if(itype<0) return itype; insertFlexibleMolecule( molTypes[itype], pos, rot, ignoreType ); return 0; }
     int insertFlexibleMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ return insertFlexibleMolecule( molTypeDict[molName], pos, rot, ignoreType ); }
-
 #endif // Molecule_h
 
 
@@ -1864,9 +1917,9 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         int nb    = bonds.size();
         if(verbosity>0)printf(  "MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         if(bRealloc)ff.realloc( nconf, nb+ne, npi, ncap+ne );
-        export_apos     ( ff.apos  ,0,nAmax);  
+        export_apos     ( ff.apos  ,0,nAmax);
         export_atypes   ( ff.atype ,0,nAmax);
-        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k,   0,nBmax); 
+        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k,   0,nBmax);
         if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max ); exit(0); } 
         Vec3d hs[N_NEIGH_MAX];
         int ipi=0;
@@ -1881,7 +1934,8 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
             //printf( "atom[%i] iconf %i \n", ia, ic  );
             if(ic>=0){
                 AtomConf& conf = confs[ic];
-                if(verbosity>1)printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
+                //if(verbosity>1) printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
+                printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[ \n", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
                 int*    ngs  = ff.aneighs + ia*N_NEIGH_MAX;
                 int*    nbs  = ff.abonds  + ia*N_NEIGH_MAX;
                 //double* kngs = ff.Kneighs + ia*N_NEIGH_MAX;
@@ -1916,12 +1970,13 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                     int ie=ie0+iie;
                     ff.apos[ie]=atoms[ia].pos + hs[k]*0.5;
                     ff.atype[ie] = etyp; // electon-pair type
-                    ngs[k] = ie;
                     //kngs[k] = K_ecap;
                     int ib=nb+iie;
                     ff.bond2atom[ib]=(Vec2i){ia,ie};
                     ff.bond_l0  [ib]=0.5;
                     ff.bond_k   [ib]=defaultBond.k;
+                    ngs[k] = ie;
+                    nbs[k] = ib;
                     //ngs[k]=0;
                     iie++;
                 }

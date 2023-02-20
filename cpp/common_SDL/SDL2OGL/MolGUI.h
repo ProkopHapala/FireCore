@@ -81,6 +81,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   mm_bAtoms        = true;
     bool   bViewMolCharges  = false;
     bool   bViewAtomLabels  = true;
+    bool   bViewBondLabels  = false;
     bool   bViewAtomSpheres = true;
     bool   bViewAtomForces  = false;
     bool   bViewSubstrate   = true;
@@ -111,7 +112,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
-    void renderGridFF( double isoVal=0.01, int isoSurfRenderType=0 );
+    void renderGridFF( double isoVal=0.01, int isoSurfRenderType=0, double colorSclae = 30.0 );
 
 	void drawSystem( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
@@ -386,7 +387,7 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
     W->splitAtBond( ib, &(W->selection[0]) );
 }
 
-void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
+void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorSclae ){
     if(verbosity>0) printf( "MolGUI::renderGridFF()\n" );
     //int iatom = 11;
     testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
@@ -399,7 +400,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType ){
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
-    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, isoVal, true, 5.0 );   printf("DEBUG renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
+    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, isoVal, true, colorSclae );   printf("DEBUG renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
     // ---- This seems still not work properly
     //int ntris=0;
     //glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
@@ -446,6 +447,9 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 100.0, 10000.0 );   
         //if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->ff.natoms, W->ff.apos, fontTex3D                     ); }                    
         //if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.01 ); }   
+        //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float sz=0.02 ){
+        if(bOrig &&  bViewBondLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, fontTex3D,        0.007              );       }
+
     }
     //W->nbmol.print();
     if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( W->nbmol.n, W->nbmol.ps, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
@@ -571,6 +575,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_a: bViewAtomSpheres=! bViewAtomSpheres; break;
                 case SDLK_l: bViewAtomLabels =! bViewAtomLabels; break;
+                case SDLK_b: bViewBondLabels =! bViewBondLabels; break;
                 //case SDLK_q: W->autoCharges(); break;
                 case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
                 case SDLK_f: bViewAtomForces =! bViewAtomForces;  break;

@@ -111,9 +111,7 @@ class NBsystem{ public:
     Vec3d  *PLQs=0;    // used only in combination with GridFF
     Quat4i *neighs=0;  //
 
-    void makePLQs(double K){
-        //printf( "makePLQs() n %i K %g \n", n, K );
-        _realloc(PLQs,n);
+    void evalPLQs(double K){
         for(int i=0; i<n; i++){
             //printf( "makePLQs[%i] \n", i );
             //printf( "makePLQs[%i] REQ(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z);
@@ -121,6 +119,11 @@ class NBsystem{ public:
             //printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
         }
         //printf("NBsystem::makePLQs() DONE => exit(0) \,"); exit(0);
+    }
+
+    void makePLQs(double K){
+        _realloc(PLQs,n);
+        evalPLQs(K);
     }
 
     void fromRigid( Vec3d* ps0, const Vec3d& p0, const Mat3d& rot ){ for(int i=0; i<n; i++){ rot.dot_to_T( ps0[i], ps[i] ); ps[i].add(p0); } }

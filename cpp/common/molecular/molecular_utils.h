@@ -8,14 +8,16 @@
 
 bool isnan(Vec3d& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
 
-void ckeckNaN_d(int n, int m, double* xs, const char* pre ){
+bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
+    bool ret = false;
     for(int i=0; i<n;i++){
         bool b=false;
         for(int j=0; j<m;j++){
             int ij=i*m+j;
             b|=isnan( xs[ij] );
         }
-        if(b){
+        ret |= b;
+        if(b && bPrint ){
             printf("%s[%i](", pre, i );
             for(int j=0; j<m;j++){
                 int ij=i*m+j;
@@ -24,6 +26,7 @@ void ckeckNaN_d(int n, int m, double* xs, const char* pre ){
             printf(")\n");
         }
     }
+    return ret;
 }
 
 void nameList( std::vector<std::string>& names, const std::string& s ){
