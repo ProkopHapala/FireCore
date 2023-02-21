@@ -63,6 +63,9 @@ class Vec3T{
 	inline VEC zxy() const { return {z,x,y}; };
 	inline VEC zyx() const { return {z,y,x}; };
 
+    inline VEC swap   (const Vec3T<int>& inds          ) const{ return {array[inds.x],array[inds.y],array[inds.z]}; };
+    inline VEC swap_to(const Vec3T<int>& inds, VEC& out) const{ out.x=array[inds.x]; out.y=array[inds.y]; out.z=array[inds.z]; };
+
 	inline VEC& set( T f                    ) { x=f;   y=f;   z=f;   return *this; };
     inline VEC& set( T fx, T fy, T fz ) { x=fx;  y=fy;  z=fz;  return *this; };
     inline VEC& set( const VEC& v              ) { x=v.x; y=v.y; z=v.z; return *this; };

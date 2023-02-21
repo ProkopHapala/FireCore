@@ -1639,7 +1639,7 @@ class Builder{  public:
 
 #ifdef Molecule_h
 
-    void substituteMolecule(Molecule* mol, Vec3d up, int ib, int ipivot=0, bool bSwapBond=false ){
+    void substituteMolecule(Molecule* mol, Vec3d up, int ib, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0, Mat3d* rot_=0 ){
         Bond& b = bonds[ib];
         int ia  = b.atoms.i;
         int ja  = b.atoms.j;
@@ -1648,6 +1648,8 @@ class Builder{  public:
         Atom& A = atoms[ja];
         Vec3d dir  = A.pos-atoms[ia].pos; dir.normalize();
         Mat3d rot; rot.fromDirUp( dir, up );
+        if( axSwap ){ rot.swap_vecs(*axSwap); }
+        if(rot_){ *rot_=rot; }
         printf( "substituteMolecule() dir=(%g,%g,%g) \n", dir.x,dir.y,dir.z  );
         printf( "substituteMolecule() up =(%g,%g,%g) \n", up.x,up.y,up.z  );
         printf( "substituteMolecule() rot= \n" ); rot.print();
@@ -1676,7 +1678,7 @@ class Builder{  public:
             }
             if( mol->npis ) npi=mol->npis[i];
             printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, mol->npis[i], ne  );
-            Vec3d p; rot.dot_to(mol->pos[i]-mol->pos[ipivot],p); p.add( A.pos );
+            Vec3d p; rot.dot_to_T(mol->pos[i]-mol->pos[ipivot],p); p.add( A.pos );
             insertAtom( ityp, p, &REQ, npi, ne );
         }
         printf( "natom0 = %i \n", natom0 );
