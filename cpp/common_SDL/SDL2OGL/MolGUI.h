@@ -280,6 +280,7 @@ void MolGUI::draw(){
     if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, (Vec3d){-0.5, -0.5, 0.0}, (Vec3d){0.5, 0.5, 1.0} ); }
     if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
 
+    Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[4] ); // DEBUG  
 
     //if(bDoQM)drawSystemQMMM();
 

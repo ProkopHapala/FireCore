@@ -75,6 +75,9 @@ class Mat3T{
 	inline void  setColy( const VEC v ){ xy = v.x; yy = v.y; zy = v.z; };
 	inline void  setColz( const VEC v ){ xz = v.x; yz = v.y; zz = v.z; };
 
+	inline void swap_vecs( const Vec3i& inds ){ MAT M=*this; a=M.vecs[inds.a]; b=M.vecs[inds.b]; c=M.vecs[inds.c]; }
+	inline void swap_rows( const Vec3i& inds ){ a.swap(inds); b.swap(inds); c.swap(inds); }
+
 	// Don't need this, because we use union: use representation a,b,c
 	//inline VEC getRowx(){ VEC out; out.x = xx; out.y = xy; out.z = xz; return out; };
 	//inline VEC getRowy(){ VEC out; out.x = yx; out.y = yy; out.z = yz; return out; };

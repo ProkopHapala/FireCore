@@ -50,6 +50,8 @@ class MolWorld_sp3{ public:
 
     Mat3d new_lvec=Mat3dIdentity;
 
+    Mat3d debug_rot; // This was used for debuging molecular orientation
+
 	// Building
 	MMFFparams   params;
 	MM::Builder  builder;
@@ -270,7 +272,15 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
         mol->findBonds_brute(0.5,true);
         mol->printBondsInfo();
         
-        builder.substituteMolecule( mol, Vec3dZ, 4, 0, false );
+        //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false );
+
+        //Vec3i axSwap={2,1,0};
+        //Vec3i axSwap={2,0,1}; // THIS ONE
+        //Vec3i axSwap={0,1,2};
+        //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &axSwap, &debug_rot );
+        builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, 0, &debug_rot );
+        //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
+
         builder.tryAddConfsToAtoms( 0, -1, 1 );
         builder.sortConfAtomsFirst();
 
