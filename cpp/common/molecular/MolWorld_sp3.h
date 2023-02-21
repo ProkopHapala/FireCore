@@ -38,6 +38,7 @@ class MolWorld_sp3{ public:
     const char* data_dir     = "common_resources";
     const char* xyz_name     = "input";
     const char* surf_name    = "surf";
+    const char* substitute_name = 0;    int isubs;
     //const char* lvs_name     ="input.lvs";
     //const char* surflvs_name ="surf.lvs";
     const char* smile_name   = 0;
@@ -232,6 +233,28 @@ bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, doub
 	return true;
 }
 
+int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0 ){
+    builder.printAtomConfs(false);
+    builder.printBonds();
+    printf( " ===================== Substitute molecule START !!! \n");
+    Molecule* mol = new Molecule(); mol->init_xyz( fname, &params, true );
+    //Vec3i axSwap={2,1,0};
+    //Vec3i axSwap={2,0,1}; // THIS ONE
+    //Vec3i axSwap={0,1,2};
+    //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false );
+    //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &axSwap, &debug_rot );
+    int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0, &debug_rot );
+    //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
+    builder.tryAddConfsToAtoms( 0, -1, 1 );
+    builder.sortConfAtomsFirst();
+    builder.tryAddBondsToConfs( );
+    //builder.printAtomConfs(false);
+    //builder.printBonds();
+    //builder.printBondParams();
+    printf( "====================== Substitute molecule DONE !!! \n");
+    return ja;
+}
+
 int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
@@ -257,54 +280,6 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     }else{
         builder.autoBonds();      if(verbosity>2)builder.printBonds ();
     }
-
-    { // Substitute molecule
-        builder.printAtomConfs(false);
-        builder.printBonds();
-        printf( " ===================== Substitute molecule DONE !!! \n");
-        Molecule* mol = new Molecule();
-        mol->bindParams( &params );
-        //mol->atomTypeDict = params.atomTypeDict;
-        mol->loadXYZ( "common_resources/-COOH.xyz", 1 );
-        mol->assignREQs( params );
-        mol->printAtomInfo();
-        
-        mol->findBonds_brute(0.5,true);
-        mol->printBondsInfo();
-        
-        //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false );
-
-        //Vec3i axSwap={2,1,0};
-        //Vec3i axSwap={2,0,1}; // THIS ONE
-        //Vec3i axSwap={0,1,2};
-        //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &axSwap, &debug_rot );
-        builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, 0, &debug_rot );
-        //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
-
-        builder.tryAddConfsToAtoms( 0, -1, 1 );
-        builder.sortConfAtomsFirst();
-
-        builder.tryAddBondsToConfs( );
-
-        builder.printAtomConfs(false);
-        //builder.printBonds();
-        builder.printBondParams();
-        printf( "====================== Substitute molecule DONE !!! \n");
-    }
-    
-
-
-    //builder.printAtomConfs(true);
-    builder.autoAllConfEPi( );          //builder.printAtomConfs(true);
-    //builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
-    //builder.printAtomConfs(true);
-    builder.assignAllBondParams();    //if(verbosity>1)
-    //builder.printBonds    ();
-    //builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
-    //builder.toMMFFsp3( ff, &params );
-    //builder.saveMol( "builder_output.mol" );
-    //if(bNonBonded){ init_nonbond(); }else{ printf( "WARRNING : we ignore non-bonded interactions !!!! \n" ); }
-    builder.finishFragment(ifrag);
     return ifrag;
 }
 
@@ -438,6 +413,7 @@ virtual void init( bool bGrid ){
         if(data_dir     )printf("data_dir    (%s)\n", data_dir );
         if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
         if(surf_name    )printf("surf_name   (%s)\n", surf_name );
+        if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
         //if(lvs_name     )printf("lvs_name    (%s)\n", lvs_name );
         //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
         printf("bMMFF %i bRigid %i \n", bMMFF, bRigid );
@@ -451,6 +427,26 @@ virtual void init( bool bGrid ){
     }else if ( xyz_name ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
+
+            printf( "DEBUG substituteMolecule(%i,%s) \n", isubs, substitute_name );
+            if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+            //int substituteMolecule( const char fname,  int ib, Vec3d up, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0 ){
+
+            builder.printAtomConfs();
+            if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+
+            //builder.printAtomConfs(true);
+            builder.autoAllConfEPi( );          //builder.printAtomConfs(true);
+            //builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
+            //builder.printAtomConfs(true);
+            builder.assignAllBondParams();    //if(verbosity>1)
+            //builder.printBonds    ();
+            //builder.autoAngles( 10.0, 10.0 );   builder.printAngles();
+            //builder.toMMFFsp3( ff, &params );
+            //builder.saveMol( "builder_output.mol" );
+            //if(bNonBonded){ init_nonbond(); }else{ printf( "WARRNING : we ignore non-bonded interactions !!!! \n" ); }
+            builder.finishFragment(ifrag);
+
             if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
             if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
         }else{
@@ -470,13 +466,14 @@ virtual void init( bool bGrid ){
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         ff.printSizes();
-        ff.printAtoms();
+        //ff.printAtoms();
         ff.printNeighs();
-        ff.printBonds();
+        //ff.printBonds();
+        ff.printAtomPis();
         if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
         { // check MMFF
             ff.eval();
-           // if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };
+            if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };
         }
         initNBmol();
         int etyp=-1; etyp=params.atomTypeDict["E"];

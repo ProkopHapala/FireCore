@@ -51,6 +51,9 @@ class MMFFsp3{ public:
     double * bond_k    = 0;  // [eV/A] ?
     Vec3d  * pbcShifts = 0;  // [A]
 
+    bool    bPBCbyLvec=false;
+    Mat3d   invLvec, lvec;
+
     int*    aneighs = 0;  // [natom*nneigh_max] neigbors of atom
     int*    abonds  = 0;  // [natom*nneigh_max] bonds    of atom
     //double* Kneighs = 0;  // [natom*nneigh_max] angular stiffness for given neighbor
@@ -128,6 +131,10 @@ void cleanAll(){
 
 // ============== Evaluation
 
+void setLvec(const Mat3d& lvec_){
+    lvec=lvec_;
+    lvec.invert_to( invLvec );
+}
 
 int i_DEBUG = 0;
 
@@ -450,16 +457,28 @@ double eval_neighs_new(int ia){
             int  ib  = abonds[ ioff+i];
             Vec3d h; h.set_sub( apos[ing], pa );
             double c=1;
-            if(pbcShifts){
+            
+            if(bPBCbyLvec){ 
+                Vec3d hcell;
+                invLvec.dot_to( h, hcell );
+                //if(hcell.a>0.5){ h.sub( lvec.a ); }else{ h.add( lvec.a ); };
+                hcell.a=hcell.a-(int)(hcell.a+0.5);
+                hcell.b=hcell.b-(int)(hcell.b+0.5);
+                hcell.c=hcell.c-(int)(hcell.c+0.5);
+                lvec.dot_to_T( hcell, h );
+                //if(hcell.a>0.5){ h.sub( lvec.a ); }else{ h.add( lvec.a ); };
+            }else if(pbcShifts){
                 if( bond2atom[ib].a!=ia ){ c=-1; }; // bond should be inverted
                 h.add_mul( pbcShifts[ib], c );
             }
             double l = h.normalize();
             ils[i] = 1/l;
             hs [i] = h;
-            if(ia<ing){
-                Eb += eval_bond_neigh(ib, h*c, l);
-                //if(ia==4)printf( "DEBUG atom[%i] neigh[%i|ib=%i] Eb=%g \n", ia, i, ib, Eb );
+            if(ia<=ing){
+                //doPiPiI = false; // WARRNING BIG DEBUG
+                double  e= eval_bond_neigh(ib, h*c, l);
+                if( isnan(e) ){ printf( "DEBUG atom[%i] neigh[%i|ib=%i,ja=%i] Eb=%g h(%g,%g,%g) l=%g \n", ia, i, ib, ing, e, h.x,h.y,h.z, l );}
+                Eb+=e;
                 //if(idebug>0)printf( "DEBUG bond[%i|%i,%i] l=%g \n", ib, ia, ing, l );
             }
         }
@@ -717,6 +736,18 @@ void printAtom(int i){ printf( "Atom[%i] pos(%g,%g,%g) \n", i, apos[i].x,apos[i]
 void printBond(int i){ printf( "bond[%i|%i,%i] l0 %g k %g \n", i, bond2atom[i].i,bond2atom[i].j, bond_l0[i], bond_k[i] ); }
 void printAtoms(){     printf( "MMFFsp3::printAtoms() : \n" ); for(int i=0;i<nbonds;i++){ printAtom(i); }}
 void printBonds(){     printf( "MMFFsp3::printBonds() : \n" ); for(int i=0;i<nbonds;i++){ printBond(i); }}
+
+
+void printAtomPis(){ 
+    for(int ia=0; ia<nnode; ia++ ){
+        int* ngs = aneighs + ia*nneigh_max;
+        for(int j=0; j<nneigh_max; j++){
+            int ing = ngs[j];
+            if(ing<0){ int ipi=-ing-1; printf("PI atom[%i,%i] pi[%i] pos(%g,%g,%g) force(%g,%g,%g)\n", ia, j, ipi, pipos[ipi].x,pipos[ipi].y,pipos[ipi].z,   fpipos[ipi].x,fpipos[ipi].y,fpipos[ipi].z );  };
+        }
+    }
+
+}
 
 bool checkBonds( double factor=1.5, bool bPrintPBC=false ){
     bool bErr=false;

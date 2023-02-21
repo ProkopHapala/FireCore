@@ -127,6 +127,19 @@ struct AtomConf{
     //void print()const{ printf( " AtomConf{ ia %i, n %i nb %i np %i ne %i nH %i (%i,%i,%i,%i) }", iatom, n, nbond, npi, ne, nH , neighs[0],neighs[1],neighs[2],neighs[3] ); }
     void print()const{ printf( " AtomConf{ia %i, n,nb,np,ne,nH(%i,%i,%i,%i,%i) [%i,%i,%i,%i]}", iatom, n,nbond,npi,ne,nH, neighs[0],neighs[1],neighs[2],neighs[3] ); }
 
+
+    inline bool checkNeighsRepeat()const{
+        for(int i=0; i<N_NEIGH_MAX; i++){
+            int ib=neighs[i];
+            if(ib<0)continue; 
+            for(int j=i+1; j<N_NEIGH_MAX; j++){
+                if(neighs[i]==ib) return true;
+            }
+        }
+        return false;
+    };
+
+
     AtomConf() = default;
     //AtomConf(int iatom_,int npi_)       :iatom(iatom_),npi(npi_),ne(0  ),nH(0),nbond(0),n(npi_    ){};
     AtomConf(int iatom_,int npi_,int ne_):iatom{iatom_},npi{npi_},ne{ne_},nH{0},nbond{0},n{npi_+ne_}{ for(int i=0;i<N_NEIGH_MAX;i++)neighs[i]=-1; };
@@ -652,6 +665,7 @@ class Builder{  public:
         Mat3d m;
         if(nb==3){ // defined by 3 sigma bonds
             m.b.set_cross( hs[1]-hs[0], hs[2]-hs[0] );
+            printf( "nb,npi(%i,%i) m.b(%g,%g,%g) \n", nb, npi, m.b.x, m.b.y, m.b.z );
             m.b.mul( -1/m.b.norm() );
             if(npi==0){ // sp3 no-pi
                 if( 0 < m.b.dot( hs[0]+hs[1]+hs[2] ) ){ m.b.mul(-1.); }
@@ -1086,6 +1100,20 @@ class Builder{  public:
             return i>=0;
         }
         return bDefault;
+    }
+
+    bool checkNeighsRepeat( bool bPrint ){
+        bool ret = false;
+        for(int ia=0; ia<atoms.size(); ia++ ){
+            const Atom& A = atoms[ia];
+            if(A.iconf>=0){
+                const AtomConf& c = confs[A.iconf];
+                bool b = c.checkNeighsRepeat();
+                if(bPrint){ printf("WARRNING repeating neighbors on atom " ); printAtomConf(ia); puts(""); }
+                ret |=b;
+            }
+        }
+        return ret;
     }
 
     bool checkBondInNeighs( int ib )const{ 
@@ -1639,13 +1667,13 @@ class Builder{  public:
 
 #ifdef Molecule_h
 
-    void substituteMolecule(Molecule* mol, Vec3d up, int ib, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0, Mat3d* rot_=0 ){
+    int substituteMolecule(Molecule* mol, Vec3d up, int ib, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0, Mat3d* rot_=0 ){
         Bond& b = bonds[ib];
         int ia  = b.atoms.i;
         int ja  = b.atoms.j;
         if(bSwapBond) _swap(ia,ja);
-        printf( "substituteMolecule() ipivot=%i ja=%i \n", ipivot, ja  );
-        Atom& A = atoms[ja];
+        printf( "substituteMolecule() ib=%i ipivot=%i ja=%i \n", ib, ipivot, ja  );
+        Atom& A    = atoms[ja];
         Vec3d dir  = A.pos-atoms[ia].pos; dir.normalize();
         Mat3d rot; rot.fromDirUp( dir, up );
         if( axSwap ){ rot.swap_vecs(*axSwap); }
@@ -1690,6 +1718,7 @@ class Builder{  public:
             printf("add bond[%i] a(%i,%i) as a(%i,%i)\n", i,  mol->bond2atom[i].i,  mol->bond2atom[i].j,   b.i, b.j );
             bonds.push_back( Bond(mol->bondType[i], b, defaultBond.l0, defaultBond.k ) );
         }
+        return ja;
     }
 
 
@@ -1937,7 +1966,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
             if(ic>=0){
                 AtomConf& conf = confs[ic];
                 //if(verbosity>1) printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
-                printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[ \n", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
+                //printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[ \n", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
                 int*    ngs  = ff.aneighs + ia*N_NEIGH_MAX;
                 int*    nbs  = ff.abonds  + ia*N_NEIGH_MAX;
                 //double* kngs = ff.Kneighs + ia*N_NEIGH_MAX;
@@ -1953,6 +1982,8 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                 }
                 for(int k=conf.nbond; k<ff.nneigh_max; k++ ) { nbs[k] = -1; }
                 makeConfGeom( conf.nbond, conf.npi, hs );
+                printf( "atom[%i] nb,npi,ne(%i,%i,%i) ngs{%i,%i,%i,%i} h0(%g,%g,%g) h1(%g,%g,%g) h2(%g,%g,%g) h3(%g,%g,%g) \n",  ia, conf.nbond, conf.npi, conf.ne,  conf.neighs[0],conf.neighs[1],conf.neighs[2],conf.neighs[3],    hs[0].x,hs[0].y,hs[0].z,    hs[1].x,hs[1].y,hs[1].z,    hs[2].x,hs[2].y,hs[2].z,    hs[3].x,hs[3].y,hs[3].z   );
+
                 //if( (conf.nbond==2) && (conf.npi==1) ){ printf( "atom[%i](nb=%i,npi=%i,ne=%i) angles(%g,%g,%g)\n", ia, conf.nbond,conf.npi,conf.ne, hs[3].getAngle(hs[0])/M_PI, hs[3].getAngle(hs[1])/M_PI, hs[3].getAngle(hs[2])/M_PI ); }
                 //for(int k=0; k<N_NEIGH_MAX; k++){
                 //    if((N_NEIGH_MAX-k)<=conf.npi){ glColor3f(1.,0.,0.); }else{ glColor3f(1.,0.,0.); }
@@ -1964,6 +1995,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                     ff.pipos[ipi] = hs[ik];
                     ngs[ik] = -ipi-1;
                     //kngs[ik]=K_pi;
+                    //printf( "pi[%i] a[%i] ng[%i] h(%g,%g,%g) \n", ipi, ia, ngs[ik], ff.pipos[ipi].x,ff.pipos[ipi].y,ff.pipos[ipi].z   );
                     ipi++;
                 }
                 // e-cap

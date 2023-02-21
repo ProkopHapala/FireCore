@@ -621,6 +621,15 @@ class Molecule{ public:
     };
 
 
+    void init_xyz( const char* fname, MMFFparams* params_=0, bool bBonds=true ){
+        if(params_)bindParams( params_ );
+        //atomTypeDict = params.atomTypeDict;
+        loadXYZ( fname, 1 );
+        if(params_)assignREQs( *params_ );
+        //printAtomInfo();
+        findBonds_brute(0.5,true);
+        //printBondsInfo();
+    }
 
 };
 
