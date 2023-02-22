@@ -245,9 +245,9 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &axSwap, &debug_rot );
     int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0, &debug_rot );
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
-    builder.tryAddConfsToAtoms( 0, -1, 1 );
-    builder.sortConfAtomsFirst();
-    builder.tryAddBondsToConfs( );
+    builder.tryAddConfsToAtoms( 0, -1, 1 );    
+    builder.sortConfAtomsFirst();              
+    builder.tryAddBondsToConfs( );             
     //builder.printAtomConfs(false);
     //builder.printBonds();
     //builder.printBondParams();
@@ -428,7 +428,7 @@ virtual void init( bool bGrid ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
 
-            printf( "DEBUG substituteMolecule(%i,%s) \n", isubs, substitute_name );
+            //printf( "DEBUG substituteMolecule(%i,%s) \n", isubs, substitute_name );
             if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
             //int substituteMolecule( const char fname,  int ib, Vec3d up, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0 ){
 
@@ -465,11 +465,13 @@ virtual void init( bool bGrid ){
         builder.toMMFFsp3( ff, &params );
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
-        ff.printSizes();
-        //ff.printAtoms();
-        ff.printNeighs();
-        //ff.printBonds();
-        ff.printAtomPis();
+        if(verbosity>0){
+            ff.printSizes();
+            ff.printAtoms();
+            ff.printNeighs();
+            ff.printBonds();
+            ff.printAtomPis();
+        }
         if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
         { // check MMFF
             ff.eval();

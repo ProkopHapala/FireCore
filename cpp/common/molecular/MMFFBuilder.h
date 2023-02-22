@@ -130,10 +130,11 @@ struct AtomConf{
 
     inline bool checkNeighsRepeat()const{
         for(int i=0; i<N_NEIGH_MAX; i++){
-            int ib=neighs[i];
+            const int ib=neighs[i];
             if(ib<0)continue; 
             for(int j=i+1; j<N_NEIGH_MAX; j++){
-                if(neighs[i]==ib) return true;
+                //printf( "ib,jb %i %i \n", ib,neighs[j]);
+                if(ib==neighs[j]) return true;
             }
         }
         return false;
@@ -571,37 +572,40 @@ class Builder{  public:
     };
 
     bool tryAddBondToAtomConf( int ib, int ia, bool bCheck ){
-        bool ret=false;
         int ic = atoms[ia].iconf;
         //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ic %i \n", ia, ib, ic );
         if(ic>=0){
             if(bCheck){
                 int ing = confs[ic].findNeigh(ib);
-                //printf( "ing %i \n", ing );
-                if( 0<ing ){
+                //printf( "a[%i]ng[%i] ing %i Found? %i \n", ia,ib, ing, 0<=ing );
+                if( 0<=ing ){
                     //printf( " ia %i ib %i ing %i RETURN \n", ia, ib, ing );
-                    return ret; // neighbor already present in conf
+                    return true; // neighbor already present in conf
                 }
             }
             //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ADDED \n", ia, ib );
-            ret = confs[ic].addBond(ib);
-            if(!ret){printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); exit(0); }
+            bool success = confs[ic].addBond(ib);
+            if(!success){printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); exit(0); }
             //int order = bonds[ib].type;
             //if(order>1){ for(int i=0; i<order-1; i++)confs[ic].addPi(); };
         }
-        return ret;
+        return false; // some neighbor already present ?
     }
 
-    void addBondToConfs( int ib, bool bCheck ){
+    bool addBondToConfs( int ib, bool bCheck ){
+        bool ret=false;
         const Bond& bond = bonds[ib];
-        tryAddBondToAtomConf( ib, bond.atoms.i, bCheck );
-        tryAddBondToAtomConf( ib, bond.atoms.j, bCheck );
+        ret|=tryAddBondToAtomConf( ib, bond.atoms.i, bCheck );
+        ret|=tryAddBondToAtomConf( ib, bond.atoms.j, bCheck );
+        return ret; // some neighbor already present ?
     }
-    void tryAddBondsToConfs( int i0=0, int imax=-1 ){
+    bool tryAddBondsToConfs( int i0=0, int imax=-1, bool bCheck=true ){
+        bool ret=false;
         if(imax<0) imax=bonds.size();
         for(int ib=i0; ib<imax; ib++){
-            addBondToConfs( ib, true );
+            ret|=addBondToConfs( ib, true );
         }
+        return ret;  // some neighbor already present ?
     }
 
     int insertBond(const Bond& bond ){
@@ -665,7 +669,7 @@ class Builder{  public:
         Mat3d m;
         if(nb==3){ // defined by 3 sigma bonds
             m.b.set_cross( hs[1]-hs[0], hs[2]-hs[0] );
-            printf( "nb,npi(%i,%i) m.b(%g,%g,%g) \n", nb, npi, m.b.x, m.b.y, m.b.z );
+            //printf( "nb,npi(%i,%i) m.b(%g,%g,%g) \n", nb, npi, m.b.x, m.b.y, m.b.z );
             m.b.mul( -1/m.b.norm() );
             if(npi==0){ // sp3 no-pi
                 if( 0 < m.b.dot( hs[0]+hs[1]+hs[2] ) ){ m.b.mul(-1.); }
@@ -1102,14 +1106,14 @@ class Builder{  public:
         return bDefault;
     }
 
-    bool checkNeighsRepeat( bool bPrint ){
+    bool checkNeighsRepeat( bool bPrint=true ){
         bool ret = false;
         for(int ia=0; ia<atoms.size(); ia++ ){
             const Atom& A = atoms[ia];
             if(A.iconf>=0){
                 const AtomConf& c = confs[A.iconf];
                 bool b = c.checkNeighsRepeat();
-                if(bPrint){ printf("WARRNING repeating neighbors on atom " ); printAtomConf(ia); puts(""); }
+                if(b&bPrint){ printf("WARRNING repeating neighbors on atom " ); printAtomConf(ia); puts(""); }
                 ret |=b;
             }
         }
@@ -1124,7 +1128,7 @@ class Builder{  public:
         return ba && bb;
     }
 
-    bool checkBondsInNeighs( bool bPrint ){
+    bool checkBondsInNeighs( bool bPrint=true ){
         bool ret = false;
         for(int ib=0; ib<bonds.size(); ib++ ){
             //printf("\----bond[%i]\n", ib);
@@ -1982,7 +1986,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                 }
                 for(int k=conf.nbond; k<ff.nneigh_max; k++ ) { nbs[k] = -1; }
                 makeConfGeom( conf.nbond, conf.npi, hs );
-                printf( "atom[%i] nb,npi,ne(%i,%i,%i) ngs{%i,%i,%i,%i} h0(%g,%g,%g) h1(%g,%g,%g) h2(%g,%g,%g) h3(%g,%g,%g) \n",  ia, conf.nbond, conf.npi, conf.ne,  conf.neighs[0],conf.neighs[1],conf.neighs[2],conf.neighs[3],    hs[0].x,hs[0].y,hs[0].z,    hs[1].x,hs[1].y,hs[1].z,    hs[2].x,hs[2].y,hs[2].z,    hs[3].x,hs[3].y,hs[3].z   );
+                //printf( "atom[%i] nb,npi,ne(%i,%i,%i) ngs{%i,%i,%i,%i} h0(%g,%g,%g) h1(%g,%g,%g) h2(%g,%g,%g) h3(%g,%g,%g) \n",  ia, conf.nbond, conf.npi, conf.ne,  conf.neighs[0],conf.neighs[1],conf.neighs[2],conf.neighs[3],    hs[0].x,hs[0].y,hs[0].z,    hs[1].x,hs[1].y,hs[1].z,    hs[2].x,hs[2].y,hs[2].z,    hs[3].x,hs[3].y,hs[3].z   );
 
                 //if( (conf.nbond==2) && (conf.npi==1) ){ printf( "atom[%i](nb=%i,npi=%i,ne=%i) angles(%g,%g,%g)\n", ia, conf.nbond,conf.npi,conf.ne, hs[3].getAngle(hs[0])/M_PI, hs[3].getAngle(hs[1])/M_PI, hs[3].getAngle(hs[2])/M_PI ); }
                 //for(int k=0; k<N_NEIGH_MAX; k++){
