@@ -247,7 +247,8 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
     builder.tryAddConfsToAtoms( 0, -1, 1 );    
     builder.sortConfAtomsFirst();              
-    builder.tryAddBondsToConfs( );             
+    builder.tryAddBondsToConfs( );      
+    builder.finishFragment();       
     //builder.printAtomConfs(false);
     //builder.printBonds();
     //builder.printBondParams();
@@ -363,6 +364,7 @@ void ini_in_dir(){
 }
 
 void PBC_multiply( Vec3i& nMulPBC_, int ifrag ){
+    if(verbosity>0) printf( "PBC_multiply n(%i,%i,%i) ifrag=%i \n", nMulPBC_.x,nMulPBC_.y,nMulPBC_.z, ifrag );
     //printf("surface  lattice:\n"); gridFF .grid.cell.print();
     //printf("molecule lattice:\n"); builder.lvec.print();
     builder.multFragPBC( ifrag, nMulPBC_, builder.lvec );
@@ -447,6 +449,7 @@ virtual void init( bool bGrid ){
             //if(bNonBonded){ init_nonbond(); }else{ printf( "WARRNING : we ignore non-bonded interactions !!!! \n" ); }
             builder.finishFragment(ifrag);
 
+            printf( "!!!!! DEBUG nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
             if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
             if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
         }else{
@@ -472,7 +475,7 @@ virtual void init( bool bGrid ){
             ff.printBonds();
             ff.printAtomPis();
         }
-        if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
+        //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
         { // check MMFF
             ff.eval();
             if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };

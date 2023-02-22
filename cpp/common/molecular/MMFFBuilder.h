@@ -1676,24 +1676,24 @@ class Builder{  public:
         int ia  = b.atoms.i;
         int ja  = b.atoms.j;
         if(bSwapBond) _swap(ia,ja);
-        printf( "substituteMolecule() ib=%i ipivot=%i ja=%i \n", ib, ipivot, ja  );
+        if(verbosity>0)printf( "substituteMolecule() ib=%i ipivot=%i ja=%i \n", ib, ipivot, ja  );
         Atom& A    = atoms[ja];
         Vec3d dir  = A.pos-atoms[ia].pos; dir.normalize();
         Mat3d rot; rot.fromDirUp( dir, up );
         if( axSwap ){ rot.swap_vecs(*axSwap); }
         if(rot_){ *rot_=rot; }
-        printf( "substituteMolecule() dir=(%g,%g,%g) \n", dir.x,dir.y,dir.z  );
-        printf( "substituteMolecule() up =(%g,%g,%g) \n", up.x,up.y,up.z  );
-        printf( "substituteMolecule() rot= \n" ); rot.print();
+        //printf( "substituteMolecule() dir=(%g,%g,%g) \n", dir.x,dir.y,dir.z  );
+        //printf( "substituteMolecule() up =(%g,%g,%g) \n", up.x,up.y,up.z  );
+        //printf( "substituteMolecule() rot= \n" ); rot.print();
         { // set pivot atom
             int atyp = mol->atomType[ipivot];
             A.type = atyp;
             A.REQ  = mol->REQs[ipivot];
             if(A.iconf>=0){ 
                 confs[A.iconf].init0(); confs[A.iconf].ne = params->atypes[atyp].nepair(); 
-                printf( "DEBUG pivot has conf ic=%i \n", A.iconf );
+                //printf( "DEBUG pivot has conf ic=%i \n", A.iconf );
             }else{ 
-                printf( "DEBUG pivot has NOT conf ic=%i \n", A.iconf );
+                //printf( "DEBUG pivot has NOT conf ic=%i \n", A.iconf );
                 //addConfToAtom(ia); 
             } 
         }
@@ -1709,17 +1709,17 @@ class Builder{  public:
                 REQ.z=mol->REQs[i].z;
             }
             if( mol->npis ) npi=mol->npis[i];
-            printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, mol->npis[i], ne  );
+            //printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, mol->npis[i], ne  );
             Vec3d p; rot.dot_to_T(mol->pos[i]-mol->pos[ipivot],p); p.add( A.pos );
             insertAtom( ityp, p, &REQ, npi, ne );
         }
-        printf( "natom0 = %i \n", natom0 );
+        //printf( "natom0 = %i \n", natom0 );
         for(int i=0; i<mol->nbonds; i++){
             //bonds.push_back( (Bond){mol->bondType[i], mol->bond2atom[i] + ((Vec2i){natom0,natom0}), defaultBond.l0, defaultBond.k } );
             Vec2i b = mol->bond2atom[i];
             if(b.i==ipivot){ b.i=ja; }else{ b.i+=natom0; if(b.i>ipivot)b.i--; };
             if(b.j==ipivot){ b.j=ja; }else{ b.j+=natom0; if(b.j>ipivot)b.j--; };
-            printf("add bond[%i] a(%i,%i) as a(%i,%i)\n", i,  mol->bond2atom[i].i,  mol->bond2atom[i].j,   b.i, b.j );
+            //printf("add bond[%i] a(%i,%i) as a(%i,%i)\n", i,  mol->bond2atom[i].i,  mol->bond2atom[i].j,   b.i, b.j );
             bonds.push_back( Bond(mol->bondType[i], b, defaultBond.l0, defaultBond.k ) );
         }
         return ja;

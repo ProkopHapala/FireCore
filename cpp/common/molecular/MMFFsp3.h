@@ -739,11 +739,12 @@ void printBonds(){     printf( "MMFFsp3::printBonds() : \n" ); for(int i=0;i<nbo
 
 
 void printAtomPis(){ 
+    printf( "MMFFsp3::printAtomPis() : \n" );
     for(int ia=0; ia<nnode; ia++ ){
         int* ngs = aneighs + ia*nneigh_max;
         for(int j=0; j<nneigh_max; j++){
             int ing = ngs[j];
-            if(ing<0){ int ipi=-ing-1; printf("PI atom[%i,%i] pi[%i] pos(%g,%g,%g) force(%g,%g,%g)\n", ia, j, ipi, pipos[ipi].x,pipos[ipi].y,pipos[ipi].z,   fpipos[ipi].x,fpipos[ipi].y,fpipos[ipi].z );  };
+            if(ing<0){ int ipi=-ing-1; printf("pi[%i]atom[%i]ng[%i] pos(%g,%g,%g) force(%g,%g,%g)\n", ipi, ia, j, pipos[ipi].x,pipos[ipi].y,pipos[ipi].z,   fpipos[ipi].x,fpipos[ipi].y,fpipos[ipi].z );  };
         }
     }
 
