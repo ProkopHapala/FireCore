@@ -16,9 +16,8 @@
 #include "Mat3.h"
 #include "Vec3Utils.h"
 
-
 #include "MMFFparams.h"
-MMFFparams* params_glob;
+static MMFFparams* params_glob;
 
 //#include "raytrace.h"
 #include "Forces.h"
@@ -420,6 +419,7 @@ virtual void init( bool bGrid ){
         //if(lvs_name     )printf("lvs_name    (%s)\n", lvs_name );
         //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
         printf("bMMFF %i bRigid %i \n", bMMFF, bRigid );
+        //for(int i=0; i<10; i++){ float x = -1.0+i*0.2; printf( "x %g ix %i wx %g \n", x, (int)x, x+1-(int)(x+1.5) ); }; exit(0);
     }
     if(surf_name )loadSurf( surf_name, bGrid, idebug>0 );
     if ( smile_name ){               

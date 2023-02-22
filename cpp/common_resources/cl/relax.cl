@@ -1,6 +1,13 @@
 
 #pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
+
+typedef struct __attribute__ ((packed)){
+    float4 a;
+    float4 b;
+    float4 c;
+} cl_Mat3;
+
 // https://www.khronos.org/registry/OpenCL/sdk/1.1/docs/man/xhtml/sampler_t.html
 
 // see https://gist.github.com/likr/3735779
@@ -1105,9 +1112,6 @@ __kernel void getNonBondForce_GridFF(
     
 }
 
-
-
-
 float4 eval_bond( float3 d, float l0, float k, float4* fe_ ){
     float l  = length(d);  // (*l_)=l;
     float dl = l-l0;
@@ -1183,7 +1187,15 @@ __kernel void getMMFFsp3(
     const float4 pos0,     // 12
     const float4 dinvA,    // 13
     const float4 dinvB,    // 14
-    const float4 dinvC     // 15
+    const float4 dinvC,     // 15
+    const cl_Mat3 lvec,
+    const cl_Mat3 invLvec
+    //const float4 invLvecA,    // 13
+    //const float4 invLvecB,    // 14
+    //const float4 invLvecC     // 15
+    //const float4 LvecA,    // 13
+    //const float4 LvecB,    // 14
+    //const float4 LvecC     // 15
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -1194,6 +1206,10 @@ __kernel void getMMFFsp3(
 
     const int nAtoms=nDOFs.x;
     const int nnode =nDOFs.y;
+    if(iG==0){
+        printf("GPU:: bPBC %i lvec   (%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", nDOFs.w, lvec.a.x,lvec.a.y,lvec.a.z,            lvec.b.x,lvec.b.y,lvec.b.z,            lvec.c.x,lvec.c.y,lvec.c.z );
+        printf("GPU:: bPBC %i invLvec(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", nDOFs.w, invLvec.a.x,invLvec.a.y,invLvec.a.z,   invLvec.b.x,invLvec.b.y,invLvec.b.z,   invLvec.c.x,invLvec.c.y,invLvec.c.z );
+    }
 
     if(iG==0){printf("GPU::getMMFFsp3(nAtoms=%i,nnode=%i,nG=%i,nL=%i)\n", nAtoms, nnode, (int)get_global_size(0), (int)get_local_size(0) );}
 
@@ -1258,12 +1274,28 @@ __kernel void getMMFFsp3(
             if( (ji!=iG) && (ji<nAtoms) ){
                 float4 aj=LATOMS[j];
                 float3 dp = aj.xyz - ai.xyz;
+                if(nDOFs.w>0){ // PBC bond
+                    //dp = wrapBondVec( dp );
+                    float3 u;
+                    u.x = dot(invLvec.a.xyz,dp);
+                    u.y = dot(invLvec.b.xyz,dp);
+                    u.z = dot(invLvec.c.xyz,dp);
+                    u.x = u.x+1-(int)(u.x+1.5);
+                    u.y = u.y+1-(int)(u.y+1.5);
+                    u.z = u.z+1-(int)(u.z+1.5);
+                    //dp.x = dot(lvec.a.xyz,u); // Must Be transposed !!!!
+                    //dp.y = dot(lvec.a.xyz,u);
+                    //dp.z = dot(lvec.a.xyz,u);
+                    dp = lvec.a.xyz*u.x + lvec.b.xyz*u.y + lvec.c.xyz*u.z;
+                }
                 // ============= Bonds
                 if     ( ji== ng.x ){  dls[0] = eval_bond( dp, BL.x, BK.x, &fe );  }
                 else if( ji== ng.y ){  dls[1] = eval_bond( dp, BL.y, BK.y, &fe );  }
                 else if( ji== ng.z ){  dls[2] = eval_bond( dp, BL.z, BK.z, &fe );  }
                 else if( ji== ng.w ){  dls[3] = eval_bond( dp, BL.w, BK.w, &fe );  }
                 else{
+
+                // ToDo : implement PBC for non-bonded 
                 //if (!( (ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w) ) ){ 
                 // ============== Non-bonded
                     float4 REQK = LCLJS[j];
@@ -1271,6 +1303,20 @@ __kernel void getMMFFsp3(
                     REQK.y*=REQKi.y;
                     REQK.z*=REQKi.z;
                     fe += getMorseQ( dp, REQK, R2damp );
+
+                    if(nDOFs.w>0){ 
+                        fe += getMorseQ( dp+lvec.a.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp-lvec.a.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp+lvec.b.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp-lvec.b.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp+lvec.c.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp-lvec.c.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp-lvec.a.xyz+lvec.b.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp-lvec.a.xyz-lvec.b.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp+lvec.a.xyz+lvec.b.xyz, REQK, R2damp );
+                        fe += getMorseQ( dp+lvec.a.xyz-lvec.b.xyz, REQK, R2damp );
+                    }
+
                 }
                 // if( (iG==6)   && ( (ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w) ) ){ 
                 //     float K,l0; bool bprint=false;

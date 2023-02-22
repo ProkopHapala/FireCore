@@ -3,6 +3,22 @@
 
 #include "OCL_DFT.h"
 
+
+// see https://stackoverflow.com/questions/33119233/opencl-using-struct-as-kernel-argument
+typedef struct __attribute__ ((packed)) cl_Mat3{
+    cl_float4 a;
+    cl_float4 b;
+    cl_float4 c;
+}st_foo;
+
+
+void Mat3_to_cl( const Mat3d& m, cl_Mat3& clm ){ 
+    //v2f4( m.a, clm.a ); v2f4( m.b, clm.b ); v2f4( m.c, clm.c ); 
+    clm.a = cl_f4( m.a );
+    clm.b = cl_f4( m.b );
+    clm.c = cl_f4( m.c );
+}
+
 //=======================================================================
 //=======================================================================
 class OCL_PP: public OCL_DFT { public:
@@ -26,6 +42,10 @@ class OCL_PP: public OCL_DFT { public:
     float4 tipQs {0.f,-0.05f,0.f,0.0f};
     //float4 tipQs {-10.f,+20.f,-10.f,0.0f};
     float4 tipQZs{0.1f, 0.0f,-0.1f,0.0f};
+
+    cl_Mat3 cl_lvec;
+    cl_Mat3 cl_invLvec;
+
     int nz;
 
     int n_start_point = 0;
@@ -397,7 +417,7 @@ class OCL_PP: public OCL_DFT { public:
     }
 
 
-    OCLtask* setup_getMMFFsp3( int na, int nNode, OCLtask* task=0){
+    OCLtask* setup_getMMFFsp3( int na, int nNode, bool bPBC=false, OCLtask* task=0){
         //printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFsp3");
         task->global.x = na;
@@ -407,6 +427,8 @@ class OCL_PP: public OCL_DFT { public:
         useKernel( task->ikernel );
         nDOFs.x=na; 
         nDOFs.y=nNode; 
+        nDOFs.w=bPBC; 
+
         // ------- Maybe We do-not need to do this every frame ?
         //err |= useArg    ( nAtoms       );   // 1
         err |= _useArg   ( nDOFs );            // 1
@@ -424,6 +446,8 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( dinv[0] );             // 13
         err |= _useArg( dinv[1] );             // 14
         err |= _useArg( dinv[2] );             // 15
+        err |= _useArg( cl_lvec    );          // 16
+        err |= _useArg( cl_invLvec );          // 16
         OCL_checkError(err, "getMMFFsp3");
         return task;
         /*

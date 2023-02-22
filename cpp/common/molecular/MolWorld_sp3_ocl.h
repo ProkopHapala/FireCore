@@ -312,8 +312,14 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     //OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
+
     ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move );
-    ocl.setup_getMMFFsp3        ( ff.natoms, ff.nnode,  task_getF );
+    //printf( "CPU lvec    (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n", ff.lvecT.a.x,ff.lvecT.a.y,ff.lvecT.a.z,    ff.lvecT.b.x,ff.lvecT.b.y,ff.lvecT.b.z,   ff.lvecT.c.x,ff.lvecT.c.y,ff.lvecT.c.z  );
+    //printf( "CPU lvec    (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n", ff.lvec.a.x,ff.lvec.a.y,ff.lvec.a.z,    ff.lvec.b.x,ff.lvec.b.y,ff.lvec.b.z,   ff.lvec.c.x,ff.lvec.c.y,ff.lvec.c.z  );
+    //printf( "CPU cl_lvec (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n", ocl.cl_lvec.a.s[0],ocl.cl_lvec.a.s[1],ocl.cl_lvec.a.s[2],    ocl.cl_lvec.b.s[0],ocl.cl_lvec.b.s[1],ocl.cl_lvec.b.s[2],   ocl.cl_lvec.c.s[0],ocl.cl_lvec.c.s[1],ocl.cl_lvec.c.s[2]  );
+    Mat3_to_cl( ff.lvec   , ocl.cl_lvec    );
+    Mat3_to_cl( ff.invLvec, ocl.cl_invLvec );
+    ocl.setup_getMMFFsp3        ( ff.natoms, ff.nnode, bPBC, task_getF );     
     ocl.setup_updatePiPos0      ( ff.natoms, ff.npi,    task_pi0s );
     ocl.setup_evalPiPi          ( ff.natoms, ff.npi,    task_pipi );
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
@@ -326,12 +332,12 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
         task_pipi->enque_raw();
         task_move->enque_raw();
     }
-    printf( "ocl.download(n=%i) \n", n );
+    //printf( "ocl.download(n=%i) \n", n );
     ocl.download( ocl.ibuff_aforces, q_fs,    n );
     ocl.download( ocl.ibuff_atoms,   q_ps,    n );
     ocl.download( ocl.ibuff_pi0s,    ff.pi0s, ff.npi );
     ocl.finishRaw();
-    printf( "*pi0s=%li\n", ff.pi0s ); for(int i=0; i<ff.npi; i++){printf( "CPU pi0s[%i](%g,%g,%g,%g)\n", i, ff.pi0s[i].x,ff.pi0s[i].y,ff.pi0s[i].z,ff.pi0s[i].w );}
+    //printf( "*pi0s=%li\n", ff.pi0s ); for(int i=0; i<ff.npi; i++){printf( "CPU pi0s[%i](%g,%g,%g,%g)\n", i, ff.pi0s[i].x,ff.pi0s[i].y,ff.pi0s[i].z,ff.pi0s[i].w );}
     unpack             ( n, ps, q_ps );
     double E=unpack_add( n, fs, q_fs );
     //unpack( n, fs, q_fs );
