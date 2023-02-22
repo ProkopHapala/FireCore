@@ -132,8 +132,9 @@ void cleanAll(){
 // ============== Evaluation
 
 void setLvec(const Mat3d& lvec_){
-    lvec=lvec_;
-    lvec.invert_T_to( invLvec );
+    lvec=lvec_; lvec.invert_T_to( invLvec );
+    //lvecT.setT(lvec_);
+    //lvecT.invert_to( invLvec );
 }
 
 int i_DEBUG = 0;
@@ -432,10 +433,11 @@ void wrapBondVec( Vec3d& d ){
     Vec3d u;
     invLvec.dot_to( d, u );
     //if(hcell.a>0.5){ h.sub( lvec.a ); }else{ h.add( lvec.a ); };
-    u.a=u.a-(int)(u.a+0.5);
-    u.b=u.b-(int)(u.b+0.5);
-    u.c=u.c-(int)(u.c+0.5);
+    u.a=u.a+(1-(int)(u.a+1.5));
+    u.b=u.b+(1-(int)(u.b+1.5));
+    u.c=u.c+(1-(int)(u.c+1.5));
     lvec.dot_to_T( u, d );
+    //lvecT.dot_to( u, d );
 }
 
 double eval_neighs_new(int ia){
@@ -469,7 +471,7 @@ double eval_neighs_new(int ia){
             
             if(bPBCbyLvec){  
                 wrapBondVec( h );
-                glColor3f(1.,0.,1.); Draw3D::drawVecInPos( h, pa );
+                //glColor3f(1.,0.,1.); Draw3D::drawVecInPos( h, pa );
             }else if(pbcShifts){
                 if( bond2atom[ib].a!=ia ){ c=-1; }; // bond should be inverted
                 h.add_mul( pbcShifts[ib], c );

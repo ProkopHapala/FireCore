@@ -423,10 +423,8 @@ void evalGridFFs_symetrized( Vec3i nPBC, double d=0.1 ){
             }
         }
     }
-    
-    printf( "na %i | %i %i %i \n", natoms, apos_.size(), REQs_.size(), atypes_.size() );
-    params_glob->saveXYZ( "symtrized.xyz", apos_.size() , &atypes_[0] , &apos_[0], "#", &REQs_[0] );
-
+    //printf( "na %i | %i %i %i \n", natoms, apos_.size(), REQs_.size(), atypes_.size() );
+    //params_glob->saveXYZ( "symtrized.xyz", apos_.size() , &atypes_[0] , &apos_[0], "#", &REQs_[0] );
     evalGridFFs( apos_.size(), &apos_[0], &REQs_[0], nPBC );
 
 }

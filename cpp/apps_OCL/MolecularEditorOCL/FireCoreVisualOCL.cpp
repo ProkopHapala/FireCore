@@ -30,11 +30,13 @@ int idebug=0;
 #include "raytrace.h"
 #include "Forces.h"
 
+#include "MMFFparams.h"
+static MMFFparams* params_glob=0;
+
 #include "Molecule.h"
 #include "MMFFmini.h"
 #include "NBFF.h"
 #include "GridFF.h"
-#include "MMFFparams.h"
 #include "MMFFBuilder.h"
 #include "DynamicOpt.h"
 #include "QEq.h"
@@ -170,6 +172,7 @@ void TestAppFireCoreVisual::InitQMMM(){
     // ----- QMMM setup
     qmmm.init(6);
     qmmm.params=&params;
+    params_glob = &params;
     _vec2arr(qmmm.imms,  {4,5,10,11,    8,23} );
     _vec2arr(qmmm.isCap, {0,0, 0, 0,    1, 1} );
     ff.reallocMask();
