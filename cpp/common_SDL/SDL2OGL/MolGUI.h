@@ -65,6 +65,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     MolWorld_sp3* W=0;
 
     GUI gui;
+    GUIPanel* Qpanel;
     EditorGizmo  gizmo;
     SimplexRuler ruler; // Helps paiting organic molecules
 
@@ -139,6 +140,14 @@ class MolGUI : public AppSDL2OGL_3D { public:
 void MolGUI::initWiggets(){
 
     GUI_stepper ylay;
+    ylay.step(2);
+    Qpanel = new GUIPanel( "Q_pick: ", 5,ylay.x0,5+100,ylay.x1, true, true ); 
+    Qpanel->setRange(-1.0,1.0)
+          ->setValue(0.0)
+        //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
+          ->setCommand( [&](GUIAbstractPanel* p){ W->nbmol.REQs[W->ipicked].z = ((GUIPanel *)p)->value; return 0; } );
+    (GUIPanel*)gui.addPanel( Qpanel );
+
     ylay.step(6);
     Table* tab1 = new Table( 9, sizeof(W->builder.lvec.a), (char*)&W->builder.lvec );
     tab1->addColum( &(W->builder.lvec.a.x), 1, DataType::Double    );
@@ -647,9 +656,14 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
                         int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
-                        if( ipick == W->ipicked ){ W->ipicked=-1; }else{ W->ipicked = ipick; };  
+                        if( ipick == W->ipicked ){ W->ipicked=-1; }else{ W->ipicked = ipick; }; 
+
                         W->selection.clear();
-                        if(W->ipicked>=0){ W->selection.push_back(W->ipicked); };
+                        if(W->ipicked>=0){ 
+                            W->selection.push_back(W->ipicked); 
+                            Qpanel->value = W->nbmol.REQs[W->ipicked].z;
+                            Qpanel->redraw=true;
+                        };
                         printf( "picked atom %i \n", W->ipicked );
                     }else{
                         selectRect( ray0_start, ray0 );
