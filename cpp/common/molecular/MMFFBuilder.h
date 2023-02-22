@@ -1295,7 +1295,7 @@ class Builder{  public:
         return sorted;
     }
 
-    int findBondsToAtom(int ia, int* is=0, bool bPrint=false){
+    int findBondsToAtom(int ia, int* is=0, bool bPrint=false)const{
         int i=0;
         for(int ib=0; ib<bonds.size(); ib++){
             if( bonds[ib].atoms.anyEqual(ia) ){ 
@@ -1306,15 +1306,15 @@ class Builder{  public:
         return i;
     }
 
-    void printSizes(){ printf( "sizes: atoms(%i|%i) bonds(%i) angles(%i) dihedrals(%i) \n", atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ); };
+    void printSizes()const{ printf( "sizes: atoms(%i|%i) bonds(%i) angles(%i) dihedrals(%i) \n", atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ); };
 
-    void printAtoms(){
+    void printAtoms()const{
         printf(" # MM::Builder.printAtoms(na=%i) \n", atoms.size() );
         for(int i=0; i<atoms.size(); i++){
             printf("atom[%i]",i); atoms[i].print(); puts("");
         }
     }
-    void printBonds(){
+    void printBonds()const{
         printf(" # MM::Builder.printBonds(nb=%i) \n", bonds.size() );
         for(int i=0; i<bonds.size(); i++){
             //printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bondPBC[i].x,bondPBC[i].y,bondPBC[i].z); puts("");
@@ -1322,26 +1322,26 @@ class Builder{  public:
             //printf("typs(%i,%i)", atoms[bonds[i].atoms.i].type, atoms[bonds[i].atoms.j].type ); 
         }
     }
-    void printBondParams(){
+    void printBondParams()const{
         printf(" # MM::Builder.printBondParams(nb=%i) \n", bonds.size() );
         for(int i=0; i<bonds.size(); i++){
             const Bond& b = bonds[i];
             printf("bond[%i]a(%i,%i)iZs(%i,%i)l0,k(%g,%g)\n",i, b.atoms.i,b.atoms.j, params->atypes[atoms[b.atoms.i].type].iZ, params->atypes[atoms[b.atoms.j].type].iZ, b.l0, b.k );
         }
     }
-    void printAngles(){
+    void printAngles()const{
         printf(" # MM::Builder.printAngles(ng=%i) \n", angles.size() );
         for(int i=0; i<angles.size(); i++){
             printf("angle[%i]", i); angles[i].print(); puts("");
         }
     }
-    void printConfs(){
+    void printConfs()const{
         printf(" # MM::Builder.printConfs(nc=%i) \n", confs.size());
         for(int i=0; i<confs.size(); i++){
             printf("conf[%i]", i); confs[i].print(); puts("");
         }
     }
-    void printAtomConf(int i){
+    void printAtomConf(int i)const{
         const Atom& A = atoms[i];
         printf("atom[%i] T %i ic %i ", i, A.type, A.iconf);
         if(A.iconf>=0){
@@ -1350,12 +1350,42 @@ class Builder{  public:
             c.print();
         }
     }
-    void printAtomConfs( bool bOmmitCap=true ){
+    void printAtomConfs( bool bOmmitCap=true )const{
         printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
         for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  printAtomConf(i); puts(""); }
     }
 
-    int write2xyz( FILE* pfile, const char* comment="#comment" ){
+    void printAtomGroupType( int ityp )const{
+        //printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
+        for(int ia=0; ia<atoms.size(); ia++){ 
+            const Atom& A=atoms[ia];
+            if( (A.type!=ityp) || (A.iconf==-1) )continue; 
+            const AtomConf& conf = confs[A.iconf];
+            printf("atom(%i|%i):",ia,A.type);
+            for(int i=0; i<conf.nbond; i++){
+                int ib=conf.neighs[i];
+                //Vec2i = bonds[ib].atoms;
+                int ja = bonds[ib].getNeighborAtom(ia);
+                printf("(%i|%i)",ja,atoms[ja].type);
+            }
+            puts("");
+        }
+    }
+
+    void chargeByNeighbors( bool bClean, double factor=0.05 ){
+        printf("chargeByNeighbors() bClean=%i factor=%g \n", bClean, factor );
+        if(bClean)for(int ia=0; ia<atoms.size(); ia++){ atoms[ia].REQ.z = 0; }
+        for(const Bond& b: bonds){
+            Atom& A = atoms[b.atoms.i];
+            Atom& B = atoms[b.atoms.j];
+            double dQ = ( params->atypes[A.type].Eaff - params->atypes[B.type].Eaff ) * factor;
+            A.REQ.z += dQ;
+            B.REQ.z -= dQ;
+        }
+        for(int ia=0; ia<atoms.size(); ia++){ printf("atom[%i] Q=%g \n", ia, atoms[ia].REQ.z ); }; //exit(0);
+    }
+
+    int write2xyz( FILE* pfile, const char* comment="#comment" )const{
         //write2xyz( pfile, atoms.size(), int* atypes, Vec3d* pos, const std::unordered_map<std::string,int>& atomTypeDict, const char* comment="#comment" ){
         fprintf(pfile, "%i\n",  atoms.size() );
         fprintf(pfile, "%s \n", comment      );
@@ -1368,7 +1398,7 @@ class Builder{  public:
         return atoms.size();
     }
 
-    int save2xyz( const char * fname, const char* comment="#comment"  ){
+    int save2xyz( const char * fname, const char* comment="#comment"  )const{
         FILE* pfile = fopen(fname, "w");
         if( pfile == NULL ) return -1;
         int n = write2xyz(pfile, comment );
