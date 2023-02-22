@@ -43,6 +43,8 @@ class MolWorld_sp3{ public:
     const char* smile_name   = 0;
     Vec3i nMulPBC  = Vec3iZero; 
 
+    double fAutoCharges=-1;
+
     bool bCellBySurf=false;
     int   bySurf_ia0 =0;
     Vec2d bySurf_c0=Vec2dZero;
@@ -430,6 +432,10 @@ virtual void init( bool bGrid ){
     }else if ( xyz_name ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
+
+            if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges );
+            printf("Groups with Nitrigen\n"); builder.printAtomGroupType( params.atomTypeDict["N"] );
+            printf("Groups with Oxygen\n"  ); builder.printAtomGroupType( params.atomTypeDict["O"] );
 
             //printf( "DEBUG substituteMolecule(%i,%s) \n", isubs, substitute_name );
             if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
