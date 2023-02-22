@@ -394,7 +394,8 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
         Vec3d shift =  builder.atoms[ia0].pos*-1 + gridFF .grid.cell.a*c0.a + gridFF .grid.cell.b*c0.b;
         builder.move_atoms( shift );
     }
-    printf( "changeCellBySurf() DONE, |a,b|=%g,%g (old |a,b|=%g,%g) ", builder.lvec.a.norm(), builder.lvec.b.norm(), la0, lb0 );
+    printf( "changeCellBySurf() DONE, |a,b|=%g,%g (old |a,b|=%g,%g) \n", builder.lvec.a.norm(), builder.lvec.b.norm(), la0, lb0 );
+    //builder.lvec = lvs;
     //builder.printAtomConfs();
     //builder.printBonds();    
 }
@@ -452,6 +453,7 @@ virtual void init( bool bGrid ){
             printf( "!!!!! DEBUG nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
             if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
             if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
+            printf("builder.lvec\n");builder.lvec.print();
         }else{
             loadNBmol( xyz_name ); 
             if(bRigid)initRigid();
@@ -466,8 +468,12 @@ virtual void init( bool bGrid ){
         };
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3( ff, &params );
+        printf("builder.lvec\n");builder.lvec.print();
+        ff.setLvec(builder.lvec);
+        ff.bPBCbyLvec = true;
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
+        /*
         if(verbosity>0){
             ff.printSizes();
             ff.printAtoms();
@@ -475,6 +481,7 @@ virtual void init( bool bGrid ){
             ff.printBonds();
             ff.printAtomPis();
         }
+        */
         //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
         { // check MMFF
             ff.eval();
