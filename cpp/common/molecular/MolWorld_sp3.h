@@ -433,7 +433,7 @@ virtual void init( bool bGrid ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
 
-            if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges );
+            if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
             printf("Groups with Nitrigen\n"); builder.printAtomGroupType( params.atomTypeDict["N"] );
             printf("Groups with Oxygen\n"  ); builder.printAtomGroupType( params.atomTypeDict["O"] );
 
