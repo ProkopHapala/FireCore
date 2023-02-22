@@ -1372,15 +1372,18 @@ class Builder{  public:
         }
     }
 
-    void chargeByNeighbors( bool bClean, double factor=0.05 ){
+    void chargeByNeighbors( bool bClean, double factor=0.05, int niters=1, double damp=0.5 ){
         printf("chargeByNeighbors() bClean=%i factor=%g \n", bClean, factor );
         if(bClean)for(int ia=0; ia<atoms.size(); ia++){ atoms[ia].REQ.z = 0; }
-        for(const Bond& b: bonds){
-            Atom& A = atoms[b.atoms.i];
-            Atom& B = atoms[b.atoms.j];
-            double dQ = ( params->atypes[A.type].Eaff - params->atypes[B.type].Eaff ) * factor;
-            A.REQ.z += dQ;
-            B.REQ.z -= dQ;
+        for(int itr=0; itr<niters; itr++){
+            for(const Bond& b: bonds){
+                Atom& A = atoms[b.atoms.i];
+                Atom& B = atoms[b.atoms.j];
+                double dQ = ( params->atypes[A.type].Eaff - params->atypes[B.type].Eaff  ) * factor;
+                if(itr>0){  dQ += -A.REQ.z + B.REQ.z;  dQ*=damp; }
+                A.REQ.z += dQ;
+                B.REQ.z -= dQ;
+            }
         }
         for(int ia=0; ia<atoms.size(); ia++){ printf("atom[%i] Q=%g \n", ia, atoms[ia].REQ.z ); }; //exit(0);
     }
