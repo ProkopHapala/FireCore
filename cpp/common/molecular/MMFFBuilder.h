@@ -1350,9 +1350,28 @@ class Builder{  public:
             c.print();
         }
     }
-    void printAtomConfs( bool bOmmitCap=true )const{
+
+    void printAtomNeighs(int ia)const{
+        const Atom& A = atoms[ia];
+        printf("atom[%i,t%i,c%i] ", ia, A.type, A.iconf );
+        if(A.iconf>=0){
+            const AtomConf& c = confs[A.iconf];
+            printf("nBPEH(%i|%i,%i,%i,%i) ngs(", c.n,c.nbond,c.npi,c.ne,c.nH);
+            for(int i=0; i<N_NEIGH_MAX; i++){
+                int ib = c.neighs[i];
+                int ja=-2;
+                if(ib>=0){
+                    ja = bonds[ib].getNeighborAtom(ia);
+                }
+                printf("%i,", ja );
+            }
+            printf("]" );
+        }
+    }
+
+    void printAtomConfs( bool bOmmitCap=true, bool bNeighs=false )const{
         printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
-        for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  printAtomConf(i); puts(""); }
+        for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  if(bNeighs){printAtomNeighs(i);}else{printAtomConf(i);} puts(""); }
     }
 
     void printAtomGroupType( int ityp )const{

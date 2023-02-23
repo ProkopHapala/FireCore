@@ -441,7 +441,7 @@ virtual void init( bool bGrid ){
             if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
             //int substituteMolecule( const char fname,  int ib, Vec3d up, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0 ){
             DEBUG
-            builder.printAtomConfs();
+            //builder.printAtomConfs();
             if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
             DEBUG
             //builder.printAtomConfs(true);
@@ -474,6 +474,8 @@ virtual void init( bool bGrid ){
             exit(0); 
         };
         DEBUG
+        builder.sortConfAtomsFirst();
+        builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3( ff, &params );
         printf("builder.lvec\n");builder.lvec.print();
@@ -491,7 +493,7 @@ virtual void init( bool bGrid ){
         }
         
         DEBUG
-       /*
+        /*
         //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
         { // check MMFF
             ff.eval();
@@ -500,8 +502,12 @@ virtual void init( bool bGrid ){
         */
        DEBUG
         initNBmol();
-        int etyp=-1; etyp=params.atomTypeDict["E"];
-        ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
+        //bool bChargeToEpair=true;
+        bool bChargeToEpair=false;
+        if(bChargeToEpair){
+            int etyp=-1; etyp=params.atomTypeDict["E"];
+            ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
+        }
         nbmol.evalPLQs(gridFF.alpha);
         DEBUG
         if(bOptimizer){ setOptimizer(); }                         
@@ -555,7 +561,7 @@ double eval(){
     if(bMMFF){ E += ff.eval();  }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){
         E +=           nbmol.evalLJQs_ng4( ff.aneighs );           // atoms in cell ignoring bonds
-        if  (bPBC){ E+=nbmol.evalLJQs_PBC( ff.lvec, {1,1,0} ); }   // atoms outside cell
+        //if  (bPBC){ E+=nbmol.evalLJQs_PBC( ff.lvec, {1,1,0} ); }   // atoms outside cell
     }
     
     /*
