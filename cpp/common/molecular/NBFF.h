@@ -151,6 +151,57 @@ class NBsystem{ public:
         return E;
     }
 
+    double evalLJQs_ng4( const int* neighs ){
+        const int N=n;
+        double E=0;
+        for(int i=0; i<N; i++){
+            Vec3d fi = Vec3dZero;
+            Vec3d pi = ps[i];
+            const Vec3d& REQi = REQs[i];
+            const int* ngs = neighs+i*4;
+            for(int j=i+1; j<N; j++){    // atom-atom (no self interaction, no double-counting)
+                if( (ngs[0]==j)||(ngs[1]==j)||(ngs[2]==j)||(ngs[3]==j) ) continue;
+                Vec3d fij = Vec3dZero;
+                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
+                fs[j].sub(fij);
+                fi   .add(fij);
+            }
+            fs[i].add(fi);
+        }
+        return E;
+    }
+
+    double evalLJQs_PBC( const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1} ){
+        const int N=n;
+        double E=0;
+        int npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1) -1;
+        Vec3d shifts[npbc]; // temporary store for lattice shifts
+        int ipbc=0;
+        for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){ 
+            if((ia==0)&&(ib==0)&&(ic==0))continue; // skipp pbc0
+            shifts[ipbc] = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);   
+            ipbc++; 
+        }}}
+        for(int i=0; i<N; i++){
+            Vec3d fi = Vec3dZero;
+            Vec3d pi = ps[i];
+            const Vec3d& REQi = REQs[i];
+            for(int j=i; j<N; j++){    // atom-atom (yes self interaction, no double-counting)
+                Vec3d fij = Vec3dZero;
+                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                for(ipbc=0; ipbc<npbc; ipbc++){
+                    E += addAtomicForceLJQ( ps[j]-pi-shifts[ipbc], fij, REQij );
+                }
+                fs[j].sub(fij);
+                fi   .add(fij);
+            }
+            fs[i].add(fi);
+        }
+        printf( "npbc %i ipbc %i E %g \n", npbc, ipbc, E );
+        return E;
+    }
+
     double evalLJQ( NBsystem& B, const bool bRecoil ){
         double E=0;
         //printf("DEBUG NBFF_AB.evalLJQ() n,m %i %i \n", n,m);

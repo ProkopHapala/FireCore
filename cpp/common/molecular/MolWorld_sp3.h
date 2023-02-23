@@ -87,7 +87,7 @@ class MolWorld_sp3{ public:
 	// force-eval-switchefs
     int  imethod=0;
 	bool doBonded         = false;
-	bool bNonBonded       = false;
+	bool bNonBonded       = true;
 	bool bSurfAtoms       = false;
     bool bGridFF          = false;
 	bool bPlaneSurfForce  = false;
@@ -432,18 +432,18 @@ virtual void init( bool bGrid ){
     }else if ( xyz_name ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
-
+            DEBUG
             if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
             printf("Groups with Nitrigen\n"); builder.printAtomGroupType( params.atomTypeDict["N"] );
             printf("Groups with Oxygen\n"  ); builder.printAtomGroupType( params.atomTypeDict["O"] );
-
+            DEBUG
             //printf( "DEBUG substituteMolecule(%i,%s) \n", isubs, substitute_name );
             if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
             //int substituteMolecule( const char fname,  int ib, Vec3d up, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0 ){
-
+            DEBUG
             builder.printAtomConfs();
             if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-
+            DEBUG
             //builder.printAtomConfs(true);
             builder.autoAllConfEPi( );          //builder.printAtomConfs(true);
             //builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
@@ -455,7 +455,7 @@ virtual void init( bool bGrid ){
             //builder.saveMol( "builder_output.mol" );
             //if(bNonBonded){ init_nonbond(); }else{ printf( "WARRNING : we ignore non-bonded interactions !!!! \n" ); }
             builder.finishFragment(ifrag);
-
+            DEBUG
             printf( "!!!!! DEBUG nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
             if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
             if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
@@ -465,13 +465,15 @@ virtual void init( bool bGrid ){
             if(bRigid)initRigid();
         }
     }
-    if(bMMFF){       
+    if(bMMFF){      
+        DEBUG 
         //builder.printAtoms();          
         //if( builder.checkBondsOrdered( false, true ) ) { printf("ERROR Bonds are not ordered => exit"); exit(0); };
         if( builder.checkBondsInNeighs(true) ) { 
             printf("ERROR some bonds are not in atom neighbors => exit"); 
             exit(0); 
         };
+        DEBUG
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3( ff, &params );
         printf("builder.lvec\n");builder.lvec.print();
@@ -479,7 +481,7 @@ virtual void init( bool bGrid ){
         ff.bPBCbyLvec = true;
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
-        /*
+        
         if(verbosity>0){
             ff.printSizes();
             ff.printAtoms();
@@ -487,17 +489,21 @@ virtual void init( bool bGrid ){
             ff.printBonds();
             ff.printAtomPis();
         }
-        */
+        
+        DEBUG
+       /*
         //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
         { // check MMFF
             ff.eval();
             if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };
         }
+        */
+       DEBUG
         initNBmol();
         int etyp=-1; etyp=params.atomTypeDict["E"];
         ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
         nbmol.evalPLQs(gridFF.alpha);
-
+        DEBUG
         if(bOptimizer){ setOptimizer(); }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
@@ -547,11 +553,18 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
 double eval(){
     double E=0;
     if(bMMFF){ E += ff.eval();  }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+    if(bNonBonded){
+        E +=           nbmol.evalLJQs_ng4( ff.aneighs );           // atoms in cell ignoring bonds
+        if  (bPBC){ E+=nbmol.evalLJQs_PBC( ff.lvec, {1,1,0} ); }   // atoms outside cell
+    }
+    
+    /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
         //else        { E+= nbmol .evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );  }
         else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
     }
+    */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
     //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
     return E;
