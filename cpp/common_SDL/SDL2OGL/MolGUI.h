@@ -429,9 +429,9 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
 }
 
-
 void MolGUI::renderESP( Vec3d REQ){
-    printf( "DEBUG MolGUI::renderESP() \n" ); //exit(0);
+    printf( "DEBUG MolGUI::renderESP() %li \n", ogl_esp ); //exit(0);
+    ogl_esp = glGenLists(1);
     glNewList(ogl_esp, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
