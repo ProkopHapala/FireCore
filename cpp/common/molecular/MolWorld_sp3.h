@@ -478,6 +478,10 @@ virtual void init( bool bGrid ){
         builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3( ff, &params );
+        ff.printAtomParams();
+
+        
+
         printf("builder.lvec\n");builder.lvec.print();
         ff.setLvec(builder.lvec);
         ff.bPBCbyLvec = true;
@@ -493,17 +497,23 @@ virtual void init( bool bGrid ){
         }
         
         DEBUG
-        /*
+        
         //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
         { // check MMFF
+            idebug=1;
             ff.eval();
             if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };
+            idebug=0;
         }
-        */
-       DEBUG
+        
+        DEBUG
         initNBmol();
-        //bool bChargeToEpair=true;
-        bool bChargeToEpair=false;
+
+        ff.bSubtractAngleNonBond=true;
+        ff.REQs=nbmol.REQs;
+
+        bool bChargeToEpair=true;
+        //bool bChargeToEpair=false;
         if(bChargeToEpair){
             int etyp=-1; etyp=params.atomTypeDict["E"];
             ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
