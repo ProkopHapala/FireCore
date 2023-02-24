@@ -197,9 +197,9 @@ int drawESP( int na, Vec3d* apos, Vec3d* REQs, Vec3d REQ ){
     }
     int np=0;
     double fIn = 1.0;
-    printf("na %i npsh =%i \n", na, nsph );  
+    //printf("na %i npsh =%i \n", na, nsph );  
     for(int ia=0; ia<na; ia++){   
-        printf("ia=%i\n", ia );   
+        //printf("ia=%i\n", ia );   
         glPointSize(10.0);
         glBegin(GL_POINTS);  
         //glBegin(GL_LINE_STRIP); 
@@ -248,7 +248,7 @@ int drawESP( int na, Vec3d* apos, Vec3d* REQs, Vec3d REQ ){
         }
         glEnd();
     }
-    printf("drawESP np=%i \n", np); //exit(0);
+    //printf("drawESP np=%i \n", np); //exit(0);
     return np;
 }
 
