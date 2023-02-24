@@ -855,6 +855,38 @@ class Builder{  public:
         return ne;
     }
 
+    int getAtom_npi(int ia)const{
+        const Atom& A = atoms[ia];
+        if(A.iconf<0)return 0;
+        return confs[A.iconf].npi;
+    }
+
+    int getAtom_ne(int ia)const{
+        const Atom& A = atoms[ia];
+        if(A.iconf<0)return 0;
+        return confs[A.iconf].ne;
+    }
+
+    // int getAtom_nb(int ia){
+    //     const Atom& B = atoms[ja];
+    //     if(A.iconf<0)return 0;
+    //     return confs[A.iconf].npi;
+    // }
+
+
+    int countAtomPiNeighs(int ia)const{
+        int npi=0;
+        const Atom& A = atoms[ia];
+        if(A.iconf<0) return -1;
+        const AtomConf& c= confs[A.iconf];
+        for(int i=0; i<c.nbond; i++){
+            int ib = c.neighs[i];
+            int ja = bonds[ib].getNeighborAtom(ia);
+            if( getAtom_npi(ja)>0 ) npi++;
+        }
+        return npi;
+    }
+
     // ============= Angles
 
     void addAnglesToBond( int ib, int n,const int* neighs, double a0, double k ){
@@ -1512,13 +1544,28 @@ class Builder{  public:
         return atypes;
     }
 
-    void export_bonds(Vec2i* b2a, double* l0s=0, double* ks=0, int i0=0, int n=-1)const{
+    void export_bonds(Vec2i* b2a, double* l0s=0, double* ks=0, double* kPis=0, int i0=0, int n=-1)const{
         nbond_def(n,i0);
         for(int i=0; i<n; i++){
             const Bond& b  = bonds[i0+i];
             b2a[i] = b.atoms;
             if(ks )ks [i] = b.k;
             if(l0s)l0s[i] = b.l0;
+
+            if(kPis){
+                bool bi  = getAtom_npi( b.atoms.i )==1;
+                bool bei = getAtom_ne ( b.atoms.i )>0;
+                bool bj  = getAtom_npi( b.atoms.j )==1;
+                bool bej = getAtom_ne ( b.atoms.j )>0;
+                printf( "bond[%i|%i,%i]t(%i,%i) ipe(%i,%i) jpe(%i,%i) \n", i, b.atoms.i, b.atoms.j, atoms[b.atoms.i].type, atoms[b.atoms.j].type,    bi,bei,   bj, bej );
+                if( bi&&bj ){                   // pi vs pi
+                    kPis[i] =  0.25;
+                }else if( (bi&&bej) || (bj&&bei) ){  // pi vs e-pair
+                    kPis[i] = -0.25;
+                }else{
+                    kPis[i] = 0;                // other
+                }
+            }
             //printf( "export_bonds[%i] l0 %g k %g \n", i, b.l0, b.k );
         }
     }
@@ -1985,6 +2032,27 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
 
 #ifdef MMFFsp3_h
 
+    void assignSp3Params( int ityp, int nb, int npi, int ne, int npi_neigh, Quat4d& par ){
+        int iZ = params->atypes[ityp].iZ;
+
+        if(npi==0){
+            par.x=par.w=-0.3333333; // 108.5 deg
+        }else if(npi==1){
+            par.x=par.w=-0.5;       // 120 deg
+        }else if(npi==2){
+            par.x=par.w=-1.0;       // 180 deg
+        }
+
+        if( (npi_neigh>0)&&(npi==0) ){
+            par.w=-0.1; 
+            //par.w=0.0; 
+        }
+
+        //if(iZ=8){ // Oxygen
+        //    if(npi==0){ par.x=0.0; } // sp2
+        //}
+    }
+
     void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
         int nAmax = atoms.size();
         int nBmax = bonds.size();
@@ -2006,7 +2074,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         if(bRealloc)ff.realloc( nconf, nb+ne, npi, ncap+ne );
         export_apos     ( ff.apos  ,0,nAmax);
         export_atypes   ( ff.atype ,0,nAmax);
-        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k,   0,nBmax);
+        export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k, ff.bond_kPi,  0,nBmax);
         if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max ); exit(0); } 
         Vec3d hs[N_NEIGH_MAX];
         int ipi=0;
@@ -2039,6 +2107,9 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                 for(int k=conf.nbond; k<ff.nneigh_max; k++ ) { nbs[k] = -1; }
                 makeConfGeom( conf.nbond, conf.npi, hs );
                 //printf( "atom[%i] nb,npi,ne(%i,%i,%i) ngs{%i,%i,%i,%i} h0(%g,%g,%g) h1(%g,%g,%g) h2(%g,%g,%g) h3(%g,%g,%g) \n",  ia, conf.nbond, conf.npi, conf.ne,  conf.neighs[0],conf.neighs[1],conf.neighs[2],conf.neighs[3],    hs[0].x,hs[0].y,hs[0].z,    hs[1].x,hs[1].y,hs[1].z,    hs[2].x,hs[2].y,hs[2].z,    hs[3].x,hs[3].y,hs[3].z   );
+
+                int npi_neigh = countAtomPiNeighs(ia);
+                assignSp3Params( ff.atype[ia], conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
 
                 //if( (conf.nbond==2) && (conf.npi==1) ){ printf( "atom[%i](nb=%i,npi=%i,ne=%i) angles(%g,%g,%g)\n", ia, conf.nbond,conf.npi,conf.ne, hs[3].getAngle(hs[0])/M_PI, hs[3].getAngle(hs[1])/M_PI, hs[3].getAngle(hs[2])/M_PI ); }
                 //for(int k=0; k<N_NEIGH_MAX; k++){
@@ -2073,6 +2144,8 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                 if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
             }
         }
+        ff.ne =iie;
+        ff.ie0=ie0;
         if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
         //printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
         if(verbosity>0)printf(  "... MM:Builder::toMMFFsp3() DONE \n"  );

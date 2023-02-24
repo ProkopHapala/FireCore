@@ -84,7 +84,11 @@ inline double evalCosHalf(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj
     return E;
 }
 
-
+inline void combineREQ(const Vec3d& a, const Vec3d& b, Vec3d& out){
+    out.a=a.a+b.a; // radius
+    out.b=a.b*b.b; // epsilon
+    out.c=a.c*b.c; // q*q
+}
 
 inline void addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, double r0, double eps, double qq ){
     //Vec3f dp; dp.set_sub( p2, p1 );
@@ -94,6 +98,22 @@ inline void addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, double r0, double eps,
     double ir6  = ir2_*ir2_*ir2_;
     double fr   = ( ( 1 - ir6 )*ir6*12*eps + ir*qq*-COULOMB_CONST )*ir2;
     f.add_mul( dp, fr );
+}
+
+inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ ){
+    //Vec3f dp; dp.set_sub( p2, p1 );
+    const double COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
+    double ir2  = 1/( dp.norm2() + 1e-4 );
+    double ir   = sqrt(ir2);
+    double ir2_ = ir2*REQ.a*REQ.a;
+    double ir6  = ir2_*ir2_*ir2_;
+    //double fr   = ( ( 1 - ir6 )*ir6*12*REQ.b + ir*REQ.c*-COULOMB_CONST )*ir2;
+    double Eel  = ir*REQ.c*COULOMB_CONST_;
+    double vdW  = ir6*REQ.b;
+    double fr   = ( ( 1 - ir6 )*12*vdW - Eel )*ir2;
+    //printf( " (%g,%g,%g) r %g fr %g \n", dp.x,dp.y,dp.z, 1/ir, fr );
+    f.add_mul( dp, fr );
+    return  ( ir6 - 2 )*vdW + Eel;
 }
 
 inline void addAtomicForceMorse( const Vec3d& dp, Vec3d& f, double r0, double eps, double beta ){
@@ -214,6 +234,51 @@ inline Vec3d getForceSpringRay( const Vec3d& p, const Vec3d& hray, const Vec3d& 
     double cdot = hray.dot(dp);
     dp.add_mul(hray,-cdot);
     return dp*k;
+}
+
+inline double addForceR2( const Vec3d& dp, Vec3d& f, double R2, double K ){
+    double r2 = dp.norm2();
+    if(r2<R2){
+        double q  = R2-r2;
+        f.add_mul( dp, 4*K*q );
+        return K*q*q;
+    }
+    return 0;
+}
+
+inline double addForceR2inv( const Vec3d& dp, Vec3d& f, double R2, double K, double w2 ){
+    //  E =   K*(1-R2/r2)^2
+    //  f = 4*K*(1-R2/r2)*(R2/(r2*r2))*x
+    //  k = 4*    5R4/r6 - 3R2/r4
+    //  k(r=R) 4*(5      - 3 )/r2 = 8/R2
+    //  => K_ = K*R2/8
+    double r2 = dp.norm2();
+    if(r2<R2){
+        double R2_ = R2+w2;
+        double K_  = R2_*0.125;
+        double ir2 = 1/(r2+w2);
+        double q   = R2_*ir2-1;
+        f.add_mul( dp, K_*q*ir2 );
+        return K_*q*q;
+    }
+    return 0;
+}
+
+
+inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, double w2 ){
+    //  E =   K*(R2-r2)(1-R2/r2)
+    //  f = 2*K*(1-(R2/r2)^2)*x
+    //  k = 2*K*(3*R4/r4-1)
+    //  k(r=R) 4*K
+    double r2 = dp.norm2();
+    if(r2<R2){
+        double K_  = K*0.5;
+        double R2_ = R2+w2;
+        double q   = R2_/(r2+w2);
+        f.add_mul( dp, K_*(1-q*q) );
+        return K_*q*(R2-r2)*0.5;
+    }
+    return 0;
 }
 
 #endif
