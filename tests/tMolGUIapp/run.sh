@@ -27,7 +27,8 @@ ln -s $dir/$name .
 #./$name -x common_resources/polydiacetylene -g common_resources/NaCl_1x1_L2 -subs 4,common_resources/-COOH.xyz
 #./$name -x common_resources/polydiacetylene -g common_resources/NaCl_1x1_L2 -subs 4,common_resources/-COOH.xyz -n 141 -ng 2,-1,3,4 -q 0.05
 
-./$name -x common_resources/formic_dimer
+#./$name -x common_resources/formic_dimer
+./$name -x common_resources/HCOOH
 
 #./$name -x common_resources/oxalate -q 0.08
 #./$name -x common_resources/oxalate          -n 211

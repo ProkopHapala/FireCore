@@ -91,6 +91,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
+
+
+    int  ogl_esp=0;
     int  ogl_sph=0;
     int  ogl_mol=0;
     int  ogl_isosurf=0;
@@ -114,6 +117,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     void renderGridFF( double isoVal=0.01, int isoSurfRenderType=0, double colorSclae = 30.0 );
+    void renderESP( Vec3d REQ=Vec3d{1.487,0.0006808,1.0} );
 
 	void drawSystem( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
@@ -253,6 +257,7 @@ void MolGUI::draw(){
     glEnable(GL_DEPTH_TEST);
 
     if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
+    if( ogl_esp==0 ){ renderESP(); }
 
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
 
@@ -288,6 +293,8 @@ void MolGUI::draw(){
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, (Vec3d){0.0, 0.0, 0.0}, (Vec3d){1.0, 1.0, 1.0} ); }
     if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, (Vec3d){-0.5, -0.5, 0.0}, (Vec3d){0.5, 0.5, 1.0} ); }
     if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
+
+    if( ogl_esp ){ glCallList(ogl_esp);  }
 
     Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[4] ); // DEBUG  
 
@@ -421,6 +428,18 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     delete [] FFtot;
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
 }
+
+
+void MolGUI::renderESP( Vec3d REQ){
+    printf( "DEBUG MolGUI::renderESP() \n" ); //exit(0);
+    glNewList(ogl_esp, GL_COMPILE);
+    glShadeModel( GL_SMOOTH );
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    const NBsystem& nbmol = W->nbmol;
+    int nvert = Draw3D::drawESP( nbmol.n, nbmol.ps, nbmol.REQs, REQ );
+    glEndList();
+};
 
 void MolGUI::drawPi0s( float sc=1.0 ){
     const MMFFsp3& ff = W->ff;
