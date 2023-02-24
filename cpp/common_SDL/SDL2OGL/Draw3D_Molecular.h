@@ -173,6 +173,90 @@ void angle( const Vec3i& ang, const Vec2d& cs0, const Vec3d* apos, int fontTex )
     Draw3D::drawDouble( (apos[ang.a]+apos[ang.c])*0.5, atan2( cs0.y, cs0.x )*2*180/M_PI, fontTex );
 }
 
+
+
+int drawESP( int na, Vec3d* apos, Vec3d* REQs, Vec3d REQ ){
+    const int nsph=300;
+    Vec3d sph[nsph];
+
+    std::vector<int> selection;
+
+    // Fibonachi sampling : see here: http://extremelearning.com.au/how-to-evenly-distribute-points-on-a-sphere-more-effectively-than-the-canonical-fibonacci-lattice/
+    double goldenRatio = (1. + sqrt(5.))/2.;
+    for(int i=0; i<nsph; i++){
+        double theta = i*(2*M_PI/ goldenRatio);
+        double phi   = acos(1 - 2*(i+0.5)/nsph);
+        Vec2d cst; cst.fromAngle(theta); 
+        Vec2d csp; csp.fromAngle(phi); 
+        sph[i]=Vec3d{ 
+            cst.x * csp.y,
+            cst.y * csp.y,
+            csp.x           
+        };
+        //printf("sph[%i] p(%g,%g,%g) tp(%g,%g) cst(%g,%g) csp(%g,%g)\n", i, sph[i].x,sph[i].y,sph[i].z, theta, phi, cst.x,cst.y, csp.x,csp.y ); 
+    }
+    int np=0;
+    double fIn = 1.0;
+    printf("na %i npsh =%i \n", na, nsph );  
+    for(int ia=0; ia<na; ia++){   
+        printf("ia=%i\n", ia );   
+        glPointSize(10.0);
+        glBegin(GL_POINTS);  
+        //glBegin(GL_LINE_STRIP); 
+        
+
+        double Rsph = REQs[ia].x + REQ.x;
+        Vec3d pi    = apos[ia];
+        Vec3d REQi  = REQs[ia];
+
+        /*
+
+        /// NOTE : This optimization would work only for generating the points, we still need to calculate contribution form all atoms !!!!
+
+        // we select only those atoms which can possibly overlap - Optimization for large systems
+        selection.clear();
+        for(int ja=0; ja<na; ja++){ 
+            Vec3d dp=pi-apos[ja];
+            double R  = Rsph + (REQ.x +  REQs[ja].x)*fIn;
+            double r2 = dp.norm2(); 
+            if( r2<(R*R) ){
+                selection.push_back( ja );
+            }
+        }
+        */
+
+        // generate points on surface of atom sphere and filter-out those inside other atoms
+        for(int i=0; i<nsph; i++){
+            Vec3d p = apos[ia] + sph[i]*Rsph;
+            bool bValid=true;
+            double e=0;
+            Vec3d f;
+            for(int ja=0; ja<na; ja++){
+            //for(int ja : selection ){ 
+                Vec3d dp=p-apos[ja];
+                Vec3d REQij;
+                combineREQ( REQ, REQs[ja], REQij );
+                double r2 = dp.norm2();
+                if( (ja!=ia) && ( r2 < sq(REQij.x*fIn) ) ){ bValid=false; break; } // exclude point which is inside other atom
+                e += addAtomicForceLJQ( dp, f, REQij );
+            }
+            if(bValid){
+                glColor3f(1-fmax(0,-e),1-fmax(e,-e),1-fmax(0,+e));
+                glVertex3f(p.x,p.y,p.z);
+                np++;
+            }
+        }
+        glEnd();
+    }
+    printf("drawESP np=%i \n", np); //exit(0);
+    return np;
+}
+
+
+
+
+
+
 #ifdef MMFFparams_h
 void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0 ){
     glEnable(GL_LIGHTING);
