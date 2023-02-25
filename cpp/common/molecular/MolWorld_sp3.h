@@ -22,6 +22,7 @@ static MMFFparams* params_glob;
 //#include "raytrace.h"
 #include "Forces.h"
 #include "MMFFsp3.h"
+#include "MMFFf4.h"
 #include "NBFF.h"
 #include "GridFF.h"
 #include "RigidBodyFF.h"
@@ -61,6 +62,7 @@ class MolWorld_sp3{ public:
 
 	// Force-Fields & Dynamics
 	MMFFsp3      ff;
+    MMFFf4       ff4;
 	NBFF         nff;
 	NBsystem     surf, nbmol;
 	GridFF       gridFF;
