@@ -2152,6 +2152,93 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
     }
 #endif // MMFFmini_h
 
+#ifdef MMFFf4_h
+void toMMFFf4( MMFFf4& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
+
+        float Lepair    = 0.5;
+        float Kepair    = 1.0;
+        float Kepair_pi = 0.25;
+
+        float c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
+
+        int nAmax = atoms.size();
+        int nCmax = confs.size();
+        int npi,ne; ne=countPiE( npi, 0,nCmax );
+        int nconf = nCmax;
+        int ncap  = nAmax - nconf;
+        int nb    = bonds.size();
+        if(verbosity>0)printf(  "MM:Builder::toMMFFf4() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
+        if(bRealloc)ff.realloc( nconf, ncap+ne );
+        Vec3d hs[N_NEIGH_MAX];
+        int ie0=nconf+ncap;
+        int iie = 0;
+
+        std::vector<int> nings(nAmax,0);
+
+        for(int i=0; i<ff.natoms; i++){ ff.ineighs[i]=Quat4i{-1,-1,-1,-1}; }; // back neighbors
+
+        for(int ia=0; ia<nAmax; ia++ ){
+            const Atom& A =  atoms[ia];
+            ff.apos [ia].f  = (Vec3f)A.pos;
+            if(A.iconf>=0){
+
+                // Prepare params and orientation
+                AtomConf& conf = confs[A.iconf];
+                makeConfGeom( conf.nbond, conf.npi, hs );
+                int npi_neigh = countAtomPiNeighs(ia);
+                //assignSp3Params( A.type, conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
+
+                // setup atom (onsite)
+                ff.pipos[ia].f = (Vec3f)hs[N_NEIGH_MAX-1]; // Pi orientation
+                ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
+                ff.apars[ia].y = 0.5;              // ssK   // stiffness  for angles
+                ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
+
+                // setup ff neighbors
+                
+                int*    angs = ff.aneighs[ia].array;
+                //int*    ings = ff.aneighs[ia].array;
+                float*  bL   = ff.bLs[ia].array;
+                float*  bK   = ff.bKs[ia].array;
+                float*  Ksp  = ff.Ksp[ia].array;
+                float*  Kpp  = ff.Kpp[ia].array;
+                // -- atoms
+                int ns = conf.nbond+ne;
+                for(int k=0; k<conf.nbond; k++){
+                    if(k<conf.nbond){ // atoms
+                        int ib = conf.neighs[k];
+                        int ja = bonds[ib].getNeighborAtom(ia);
+                        hs[k] = atoms[ja].pos - A.pos;
+                        hs[k].normalize();
+                        angs[k] = ja;
+                        ff.ineighs[ja].array[nings[ja]] = ia;   // back neighbors
+                        nings[ja]++;
+                    }else if(k<ns){    // free electron pairs
+                        int ie=ie0+iie;
+                        angs  [ie] =-1;
+                        ff.ineighs[ie].array[0] = ia;
+                        ff.apos[ie].f= (Vec3f)( atoms[ia].pos + hs[k]*Lepair );
+                        bK [k]=Kepair;
+                        bL [k]=Lepair;
+                        Ksp[k]=0;
+                        Kpp[k]=(conf.npi>0)?0:Kepair_pi;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
+                        iie++;
+                    }else{
+                        angs[k] =-1;
+                        bK  [k]=0;
+                        bL  [k]=0;
+                        Ksp [k]=0;
+                        Kpp [k]=0;
+                    }
+                }
+                //if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
+            }
+        }
+        //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
+        if(verbosity>0)printf(  "... MM:Builder::toMMFFf4() DONE \n"  );
+    }
+#endif // MMFFf4_h
+
 #ifdef MMFFmini_h
     void toMMFFmini( MMFFmini& ff, const MMFFparams* params ){
         ff.realloc( atoms.size(), bonds.size(), angles.size(), dihedrals.size() );
