@@ -155,7 +155,7 @@ struct Bond{
     // --- this breaks {<brace-enclosed initializer list>} in C++11
     int    type  = -1;
     Vec2i  atoms = (Vec2i){-1,-1};
-    double l0=1,k=0;
+    double l0=1,k=0,kpp=0;
     Vec3i8 ipbc=Vec3i8{0,0,0}; // for periodic boundary conditions
 
     //int    type;
@@ -332,6 +332,14 @@ class Builder{  public:
     std::unordered_map<size_t,size_t> fragTypes;
     std::unordered_map<size_t,size_t> mol2molType;
 #endif // Molecule_h
+
+
+    //MMFF forcefield parametes
+    double Lepair        = 0.5; 
+    double Kepair        = 10.0;
+    double Ksp_default   = 1.0;
+    double Kpp_default   = 0.5;
+    double Kpp_e_default = 0.25;
 
     int ignoreType=-1;
     Vec3d defaultREQ  {  1.5, 0.0, 0.0 };
@@ -633,8 +641,17 @@ class Builder{  public:
         const Atom& aj = atoms[b.atoms.j];
         int order=1;
         if( (ai.iconf>=0)&&(aj.iconf>=0) ){ 
-            order+=_min( confs[ai.iconf].npi, confs[aj.iconf].npi ); 
+            const AtomConf& ci = confs[ai.iconf];
+            const AtomConf& cj = confs[aj.iconf];
+            order+=_min( ci.npi, cj.npi ); 
             //printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, confs[ai.iconf].npi, confs[aj.iconf].npi );
+
+            // Assign pi-pi allignment 
+            bool bpi=ci.npi>0;
+            bool bpj=cj.npi>0; 
+            if     ( bpi && bpj                       ){ b.kpp=Kpp_default;   }  // pi-pi alignement
+            else if( bpi&&(cj.ne>0) || bpj&&(ci.ne>0) ){ b.kpp=Kpp_e_default; }  // pi-epair alignment
+
         }
         //getBondTypeId( ai.type, aj.type, uint8_t order );
         params->getBondParams( ai.type, aj.type, order, b.l0, b.k );
@@ -2155,12 +2172,6 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
 #ifdef MMFFsp3_loc_h
 void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
 
-        double Lepair     = 0.5;
-        double Kepair     = 10.0;
-        double Kepair_pi  = 0.25;
-        double Ks_default = 0.25;
-        double Kp_default = 0.5;
-
         double c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
 
         int nAmax = atoms.size();
@@ -2214,17 +2225,27 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, dou
                         ngs[k] = ja;
                         bL [k]=B.l0;
                         bK [k]=B.k;
-                        Ksp[k]=Ks_default;
-                        if( (conf.npi>0) && (npi_neigh>0) ) Kpp[k]=Ks_default;
+                        if( (conf.npi>0)||(conf.ne>0) ){
+                            Ksp[k]=Ksp_default;
+                        }
+                        int nej  = getAtom_ne (ja);
+                        int npij = getAtom_npi(ja);
+                        Kpp[k]=B.kpp;
+                        /*
+                        if( (conf.npi>0) && ((nej>0)||(npij>0)) ){ 
+                            printf( "ia=%i(npi=%i,nej=%i)[%i] ja=%i(npi=%i,nej=%i) \n", ia,conf.npi,conf.ne, k,    ja,npij,nej );
+                            Kpp[k]=Kpp_default;
+                            for(int jk=0;jk<4;jk++){ if(ff.aneighs[ja].array[jk]==ia){ ff.Kpp[ja].array[jk]=Kpp_default; printf( "ia=%i ff.Kpp[%i].array[%i]=%g \n", ia, ja, jk, ff.Kpp[ja].array[jk] ); } }   // ToDo: we should do this per-bond ?
+                        }
+                        */
                     }else if(k<ns){    // free electron pairs
                         int ie=ie0+iie;
                         ngs  [k] =ie;
-                        printf( "atom[%i|%i] ie %i \n", ia, k, ie );
+                        //printf( "atom[%i|%i] ie %i \n", ia, k, ie );
                         ff.apos[ie] = atoms[ia].pos + hs[k]*Lepair;
                         bK [k]=Kepair;
                         bL [k]=Lepair;
-                        Ksp[k]=0;
-                        if( (conf.npi==0) && (npi_neigh>0) ) Kpp[k]=Kepair_pi;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
+                        if( conf.npi>0 ) Ksp[k]=Ksp_default;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
                         iie++;
                     }
                 }
