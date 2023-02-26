@@ -150,7 +150,7 @@ double eval_atom(const int ia){
         }
         */
     }
-    /*
+    
     // --------- Angle Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -167,7 +167,7 @@ double eval_atom(const int ia){
             // ToDo: subtract non-covalent interactions
         }
     }
-    */
+    
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia]=fa; 
