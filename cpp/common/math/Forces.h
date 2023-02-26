@@ -12,36 +12,43 @@
 #define R2SAFE  1.0e-8f
 #define F2MAX   10.0f
 
+// ================ Angular Forces (MMFF) 
 
-void sum(int n, Vec3d* ps, Vec3d& psum){ for(int i=0;i<n;i++){ psum.add(ps[i]); } };
-
-void sumTroq(int n, Vec3d* fs, Vec3d* ps, const Vec3d& cog, const Vec3d& fav, Vec3d& torq){
-    for(int i=0;i<n;i++){  torq.add_cross(ps[i]-cog,fs[i]-fav);  }
-    //for(int i=0;i<n;i++){  torq.add_cross(ps[i],fs[i]);  }
+inline double evalBond( const Vec3d& h, double dl, double k, Vec3d& f ){
+    double fr = dl*k;
+    f.set_mul ( h, fr );
+    //f1.add( h );
+    //f2.sub( h );
+    return fr*dl*0.5;
 }
 
-void checkForceInvariatns( int n, Vec3d* fs, Vec3d* ps, Vec3d& cog, Vec3d& fsum, Vec3d& torq ){
-    cog =Vec3dZero;
-    fsum=Vec3dZero;
-    torq=Vec3dZero;
-    double dw = 1./n;
-    sum(n, ps, cog ); cog.mul(dw);
-    sum(n, fs, fsum); //cog.mul(dw);
-    sumTroq(n, fs, ps, cog, fsum*dw, torq );
+inline double evalAngleCos( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, double c0, Vec3d& f1, Vec3d& f2 ){
+    double c = h1.dot(h2);
+    //f1 = h2 - h1*c;
+    //f2 = h1 - h2*c;
+    f1.set_add_mul( h2,h1,-c );
+    f2.set_add_mul( h1,h2,-c );
+    double c_   = c-c0;
+    double E    =  K*c_*c_;
+    double fang = -K*c_*2;
+    f1.mul( fang*ir1 );
+    f2.mul( fang*ir2 );
+    return E;
 }
 
-inline double boxForce1D(double x, double xmin, double xmax, double k){
-    double f=0;
-    if(k<0) return 0;
-    if(x>xmax){ f+=k*(xmax-x); }
-    if(x<xmin){ f+=k*(xmin-x); }
-    return f;
-}
-
-inline void boxForce(const Vec3d& p, Vec3d& f,const Vec3d& pmin, const Vec3d& pmax, const Vec3d& k){
-    f.x+=boxForce1D( p.x, pmin.x, pmax.x, k.x);
-    f.y+=boxForce1D( p.y, pmin.y, pmax.y, k.y);
-    f.z+=boxForce1D( p.z, pmin.z, pmax.z, k.z);
+inline double evalPiAling( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, Vec3d& f1, Vec3d& f2 ){  // interaction between two pi-bonds
+    double c = h1.dot(h2);
+    //f1 = h2 - h1*c;
+    //f2 = h1 - h2*c;
+    f1.set_add_mul( h2,h1,-c );
+    f2.set_add_mul( h1,h2,-c );
+    bool sign = c<0; if(sign) c=-c;
+    double E    = -K*c;
+    double fang =  K;
+    if(sign)fang=-fang;
+    f1.mul( fang );
+    f2.mul( fang );
+    return E;
 }
 
 inline double evalCos2(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj, double k, double c0){
@@ -83,6 +90,8 @@ inline double evalCosHalf(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj
     fj.set_lincomb( fr,h,  c2,hj );  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
     return E;
 }
+
+// ================ Non-Covalent Forces (Lenard-Jones, Morse, etc.)
 
 inline void combineREQ(const Vec3d& a, const Vec3d& b, Vec3d& out){
     out.a=a.a+b.a; // radius
@@ -201,10 +210,28 @@ inline Vec3d REnergyQ2PLQ( const Vec3d& REQ, double alpha ){
     return REQ2PLQ( {REQ.x, sqrt(REQ.y), REQ.z}, alpha );
 }
 
+// ================= Force Bounding Box, Plane etc.
+
+inline double boxForce1D(double x, double xmin, double xmax, double k){
+    double f=0;
+    if(k<0) return 0;
+    if(x>xmax){ f+=k*(xmax-x); }
+    if(x<xmin){ f+=k*(xmin-x); }
+    return f;
+}
+
+inline void boxForce(const Vec3d& p, Vec3d& f,const Vec3d& pmin, const Vec3d& pmax, const Vec3d& k){
+    f.x+=boxForce1D( p.x, pmin.x, pmax.x, k.x);
+    f.y+=boxForce1D( p.y, pmin.y, pmax.y, k.y);
+    f.z+=boxForce1D( p.z, pmin.z, pmax.z, k.z);
+}
+
 inline Vec3d getForceSpringPlane( const Vec3d& p, const Vec3d& normal, double c0, double k ){
     double cdot = normal.dot(p) - c0;
     return normal * (cdot * k);
 }
+
+// ================= Force from Surface & Plan
 
 inline Vec3d getForceHamakerPlane( const Vec3d& p, const Vec3d& normal, double z0, double amp, double R ){
     // https://en.wikipedia.org/wiki/Lennard-Jones_potential
@@ -229,6 +256,8 @@ inline Vec3d getForceMorsePlane( const Vec3d& p, const Vec3d& normal, double amp
     return normal * f;
 }
 
+// ================= Simple Radial Forces & Pulling
+
 inline Vec3d getForceSpringRay( const Vec3d& p, const Vec3d& hray, const Vec3d& ray0, double k ){
     Vec3d dp; dp.set_sub( p, ray0 );
     double cdot = hray.dot(dp);
@@ -239,9 +268,9 @@ inline Vec3d getForceSpringRay( const Vec3d& p, const Vec3d& hray, const Vec3d& 
 inline double addForceR2( const Vec3d& dp, Vec3d& f, double R2, double K ){
     double r2 = dp.norm2();
     if(r2<R2){
-        double q  = R2-r2;
-        f.add_mul( dp, 4*K*q );
-        return K*q*q;
+        double u  = R2-r2;
+        f.add_mul( dp, 4*K*u );
+        return K*u*u;
     }
     return 0;
 }
@@ -257,13 +286,12 @@ inline double addForceR2inv( const Vec3d& dp, Vec3d& f, double R2, double K, dou
         double R2_ = R2+w2;
         double K_  = R2_*0.125;
         double ir2 = 1/(r2+w2);
-        double q   = R2_*ir2-1;
-        f.add_mul( dp, K_*q*ir2 );
-        return K_*q*q;
+        double u   = R2_*ir2-1;
+        f.add_mul( dp, K_*u*ir2 );
+        return K_*u*u;
     }
     return 0;
 }
-
 
 inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, double w2 ){
     //  E =   K*(R2-r2)(1-R2/r2)
@@ -274,11 +302,30 @@ inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, dou
     if(r2<R2){
         double K_  = K*0.5;
         double R2_ = R2+w2;
-        double q   = R2_/(r2+w2);
-        f.add_mul( dp, K_*(1-q*q) );
-        return K_*q*(R2-r2)*0.5;
+        double u   = R2_/(r2+w2);
+        f.add_mul( dp, K_*(1-u*u) );
+        return K_*u*(R2-r2)*0.5;
     }
     return 0;
+}
+
+// =============== Force Checking
+
+void sum(int n, Vec3d* ps, Vec3d& psum){ for(int i=0;i<n;i++){ psum.add(ps[i]); } };
+
+void sumTroq(int n, Vec3d* fs, Vec3d* ps, const Vec3d& cog, const Vec3d& fav, Vec3d& torq){
+    for(int i=0;i<n;i++){  torq.add_cross(ps[i]-cog,fs[i]-fav);  }
+    //for(int i=0;i<n;i++){  torq.add_cross(ps[i],fs[i]);  }
+}
+
+void checkForceInvariatns( int n, Vec3d* fs, Vec3d* ps, Vec3d& cog, Vec3d& fsum, Vec3d& torq ){
+    cog =Vec3dZero;
+    fsum=Vec3dZero;
+    torq=Vec3dZero;
+    double dw = 1./n;
+    sum(n, ps, cog ); cog.mul(dw);
+    sum(n, fs, fsum); //cog.mul(dw);
+    sumTroq(n, fs, ps, cog, fsum*dw, torq );
 }
 
 #endif

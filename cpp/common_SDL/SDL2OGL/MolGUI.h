@@ -89,9 +89,18 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   isoSurfRenderType = 1;
     Vec3d testREQ,testPLQ;
 
+
+    // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
+    int    natoms=0, nbonds=0;
+    int*   atypes;
+    Vec2i* bond2atom=0; 
+    Vec3d* pbcShifts=0; 
+    Vec3d* apos     =0;
+    Vec3d* fapos    =0;
+    Vec3d* REQs     =0;
+
     // ---- Graphics objects
     int  fontTex,fontTex3D;
-
 
     int  ogl_esp=0;
     int  ogl_sph=0;
@@ -101,7 +110,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     char str[2048];
 
-    // --------- Functions 
+    // ======================= Functions 
 
 	virtual void draw   ();
 	virtual void drawHUD();
@@ -119,7 +128,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void renderGridFF( double isoVal=0.01, int isoSurfRenderType=0, double colorSclae = 30.0 );
     void renderESP( Vec3d REQ=Vec3d{1.487,0.0006808,1.0} );
 
-	void drawSystem( Vec3i ixyz=Vec3iZero );
+    void bindMolecule( int natoms_, int nbonds_,int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
+	void drawSystem    ( Vec3i ixyz=Vec3iZero );
+    void drawSystem_bak( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
     //void drawSystemQMMM();
     //void renderOrbital(int i, double iso=0.1);
@@ -225,8 +236,10 @@ void MolGUI::initGUI(){
     // ---- Gizmo
     cam.persp = false;
     gizmo.cam = &cam;
-    gizmo.bindPoints(W->ff.natoms, W->ff.apos      );
-    gizmo.bindEdges (W->ff.nbonds, W->ff.bond2atom );
+    //gizmo.bindPoints(W->ff.natoms, W->ff.apos      );
+    //gizmo.bindEdges (W->ff.nbonds, W->ff.bond2atom );
+    gizmo.bindPoints( natoms, apos      );
+    gizmo.bindEdges ( nbonds, bond2atom );
     gizmo.pointSize = 0.5;
     //gizmo.iDebug    = 2;
     ruler.setStep( 1.5 * sqrt(3) );
@@ -236,6 +249,8 @@ void MolGUI::initGUI(){
 void MolGUI::init(){
     if(verbosity>0)printf("MolGUI::init() \n");
     W->init( true );
+    //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
+    MolGUI::bindMolecule( W->nbmol.n, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs, W->ff.bond2atom, W->ff.pbcShifts );
     initGUI();
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
@@ -257,7 +272,7 @@ void MolGUI::draw(){
     glEnable(GL_DEPTH_TEST);
 
     if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
-    if( ogl_esp==0 ){ renderESP(); }
+    //if( ogl_esp==0 ){ renderESP(); }
 
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
 
@@ -272,7 +287,8 @@ void MolGUI::draw(){
     // --- Mouse Interaction / Visualization
 	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
-    if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
+    //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
+    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], ray0); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
@@ -459,7 +475,49 @@ void MolGUI::drawPi0s( float sc=1.0 ){
     glEnd();
 }
 
+void MolGUI::bindMolecule( int natoms_, int nbonds_,int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ ){
+    natoms=natoms_; nbonds=nbonds_;
+    if(atypes_)atypes=atypes_;
+    if(apos_  )apos  =apos_;
+    if(fapos_ )fapos =fapos_;
+    if(REQs_  )REQs  =REQs_;
+    if(bond2atom_)bond2atom=bond2atom_;
+    if(pbcShifts_)pbcShifts=pbcShifts_;
+}
+
 void MolGUI::drawSystem( Vec3i ixyz ){
+    glEnable(GL_DEPTH_TEST);
+    bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
+    //printf( "DEBUG MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
+    //printf("DEBUG MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
+    if( bond2atom ){
+        //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( nbonds, bond2atom, apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
+        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( nbonds,bond2atom,apos );  // DEBUG
+        if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); if(pbcShifts)Draw3D::bondsPBC          ( nbonds, bond2atom, apos,  pbcShifts                          );  
+                             glColor3f(0.0f,0.0f,1.0f); if(pbcShifts)Draw3D::pbcBondNeighLabels( nbonds, bond2atom, apos,  pbcShifts, fontTex3D,        0.007 );
+        }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
+                             glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex );                                
+        }
+        //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
+        //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
+        //if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D                     ); }                    
+        //if(bViewMolCharges && ( REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs, apos, 3, 2, fontTex3D, 0.01 ); }   
+        //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float sz=0.02 ){
+        if(bOrig &&  bViewBondLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,        0.007              );       }
+
+    }
+    //W->nbmol.print();
+    if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
+    //if(bViewAtomP0s     &&  fapos          ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
+    if(bViewAtomForces    &&  fapos          ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
+    if(bOrig&&mm_bAtoms&&bViewAtomLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D,        0.007              );       }
+    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 3, 2, fontTex3D, 0.01 ); }
+    //if(W->ff.pi0s                            ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
+
+}
+
+
+void MolGUI::drawSystem_bak( Vec3i ixyz ){
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     //printf( "DEBUG MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
@@ -467,10 +525,10 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     if(W->bMMFF){
         //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
         //glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );  // DEBUG
-        if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC          ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos,  W->ff.pbcShifts );  
+        if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC          ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos,  W->ff.pbcShifts                          );  
                              glColor3f(0.0f,0.0f,1.0f); Draw3D::pbcBondNeighLabels( W->ff.nbonds, W->ff.bond2atom, W->ff.apos,  W->ff.pbcShifts, fontTex3D,        0.007 );
-        }else               { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );                                          
-                             glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, fontTex );                                
+        }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos                                            );                                          
+                             glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, fontTex );                                
         }
         //Draw3D::atoms          ( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 100.0, 10000.0 );   
@@ -674,7 +732,8 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
+                        //int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
+                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.n, W->nbmol.ps );
                         if( ipick == W->ipicked ){ W->ipicked=-1; }else{ W->ipicked = ipick; }; 
 
                         W->selection.clear();

@@ -33,14 +33,6 @@ void unpack(int n, Vec3d* fs, double* es, Quat4f* qs ){
     } 
 }
 
-//tempate<typename T> bool addFirstEmpty( T* arr, n, T what, T empty=-1 ){
-bool addFirstEmpty( int* arr, int n, int what, int empty=-1 ){
-    for(int i=0; i<n; i++){
-        if(arr[i]==empty){ arr[i]=what; return true; }
-    }
-    return false;
-};
-
 // ======================================
 // class:        MolWorld_sp3_ocl
 // ======================================

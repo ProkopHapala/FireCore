@@ -33,6 +33,11 @@ inline void printQuat( const Quat4d& q ){	printf( " %f %f %f %f \n", q.x, q.y, q
 inline void printQuat( const Quat4f& q ){	printf( " %f %f %f %f \n", q.x, q.y, q.z, q.w ); }
 inline void printQuat( const Quat4i& q ){ 	printf( " %i %i %i %i \n", q.x, q.y, q.z, q.w ); }
 
+inline void printVecs( int n, const Vec3d * vs ){ 	for(int i=0; i<n;i++)printf( "[%i] (%g,%g,%g)\n",   i, vs[i].x, vs[i].y, vs[i].z ); }
+inline void printVecs( int n, const Vec3f * vs ){ 	for(int i=0; i<n;i++)printf( "[%i] (%g,%g,%g)\n",   i, vs[i].x, vs[i].y, vs[i].z ); }
+inline void printVecs( int n, const Quat4f* vs ){ 	for(int i=0; i<n;i++)printf( "[%i] (%g,%g,%g,%g)\n",i, vs[i].x, vs[i].y, vs[i].z, vs[i].w ); }
+
+
 inline void printMat( const Mat3d& mat  ){
 	printf( " %f %f %f \n", mat.ax, mat.ay, mat.az );
 	printf( " %f %f %f \n", mat.bx, mat.by, mat.bz );

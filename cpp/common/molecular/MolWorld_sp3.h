@@ -22,7 +22,9 @@ static MMFFparams* params_glob;
 //#include "raytrace.h"
 #include "Forces.h"
 #include "MMFFsp3.h"
+#include "MMFFsp3_loc.h"
 #include "MMFFf4.h"
+
 #include "NBFF.h"
 #include "GridFF.h"
 #include "RigidBodyFF.h"
@@ -62,6 +64,7 @@ class MolWorld_sp3{ public:
 
 	// Force-Fields & Dynamics
 	MMFFsp3      ff;
+    MMFFsp3_loc  ffl;
     MMFFf4       ff4;
 	NBFF         nff;
 	NBsystem     surf, nbmol;
@@ -199,13 +202,13 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     }
 }
 
-void initNBmol(){
+void initNBmol( int na, Vec3d* apos, Vec3d* fapos ){
     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() ff.natoms %i \n", ff.natoms  );
-	nbmol  .bindOrRealloc( ff.natoms, ff.apos,  ff.fapos, 0 );
+	nbmol  .bindOrRealloc( na, apos,  fapos, 0 );
     nbmol.atypes = ff.atype;              
 	builder.export_REQs  ( nbmol.REQs   );   
-    for(int i=builder.atoms.size(); i<ff.natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
-    params .assignREs    ( ff.natoms, ff.atype, nbmol.REQs, true, false  ); 
+    for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
+    params .assignREs    ( na, ff.atype, nbmol.REQs, true, false  ); 
     nbmol  .makePLQs     ( gridFF.alpha );    
     if(verbosity>1)nbmol.print();                              
 }
@@ -298,14 +301,16 @@ void insertSMILES(const char* s){
     smiles.parseString( 10000, s );
 }
 
-void setOptimizer(){
-    opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
+void setOptimizer( int n, double* ps, double* fs ){
+    //opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
+    opt.bindOrAlloc( n, ps, 0, fs, 0 );
     double dtopt=ff.optimalTimeStep(); 
     if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimnal time step = %g \n", dtopt);
     opt.initOpt( dtopt );
     opt.cleanVel();
     //opt.verbosity=2;
 }
+void setOptimizer(){ setOptimizer( ff.nDOFs, ff.DOFs, ff.fDOFs ); };
 
 void initRigid(){
     int nrb = builder.frags.size();
@@ -436,8 +441,8 @@ virtual void init( bool bGrid ){
             int ifrag = loadGeom( xyz_name );
             DEBUG
             if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
-            printf("Groups with Nitrigen\n"); builder.printAtomGroupType( params.atomTypeDict["N"] );
-            printf("Groups with Oxygen\n"  ); builder.printAtomGroupType( params.atomTypeDict["O"] );
+            //printf("Groups with Nitrigen\n"); builder.printAtomGroupType( params.atomTypeDict["N"] );
+            //printf("Groups with Oxygen\n"  ); builder.printAtomGroupType( params.atomTypeDict["O"] );
             DEBUG
             //printf( "DEBUG substituteMolecule(%i,%s) \n", isubs, substitute_name );
             if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
@@ -479,17 +484,18 @@ virtual void init( bool bGrid ){
         builder.sortConfAtomsFirst();
         builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
-        builder.toMMFFsp3( ff, &params );
-        ff.printAtomParams();
+        builder.toMMFFsp3    ( ff , &params );
+        builder.toMMFFsp3_loc( ffl, &params ); ffl.printAtomParams(); ffl.printBKneighs();
+        builder.toMMFFf4     ( ff4, &params );    
 
-        
-
+        //ff.printAtomParams();
         printf("builder.lvec\n");builder.lvec.print();
         ff.setLvec(builder.lvec);
         ff.bPBCbyLvec = true;
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         
+        /*
         if(verbosity>0){
             ff.printSizes();
             ff.printAtoms();
@@ -497,11 +503,27 @@ virtual void init( bool bGrid ){
             ff.printBonds();
             ff.printAtomPis();
         }
+        */
         
         DEBUG
         
+        { // check MMFFsp3_loc
+
+            printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
+            //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
+            idebug=1;
+            ffl.print_apos();
+            ffl.eval();
+            idebug=0;
+            printf("### ffl.fneih  :\n");  printVecs( ffl.nnode*4, ffl.fneih   );
+            printf("### ffl.fneihpi:\n");  printVecs( ffl.nnode*4, ffl.fneihpi );
+            printf("### ffl.fapos:\n");  printVecs( ffl.natoms, ffl.fapos  );
+            printf("### ffl.fpipos:\n"); printVecs( ffl.nnode,  ffl.fpipos );
+            if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fpipos,  "ffl.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
+        }
+
         //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
-        { // check MMFF
+        { // check MMFFsp3
             idebug=1;
             ff.eval();
             if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };
@@ -509,7 +531,9 @@ virtual void init( bool bGrid ){
         }
         
         DEBUG
-        initNBmol();
+        //initNBmol();
+        //initNBmol( ff.natoms,  ff.apos,  ff.fapos  );
+        initNBmol( ffl.natoms, ffl.apos, ffl.fapos );
 
         ff.bSubtractAngleNonBond=true;
         ff.REQs=nbmol.REQs;
@@ -522,7 +546,11 @@ virtual void init( bool bGrid ){
         }
         nbmol.evalPLQs(gridFF.alpha);
         DEBUG
-        if(bOptimizer){ setOptimizer(); }                         
+        if(bOptimizer){ 
+            //setOptimizer(); 
+            //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
+            setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
+        }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
@@ -570,9 +598,13 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
 
 double eval(){
     double E=0;
-    if(bMMFF){ E += ff.eval();  }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+    if(bMMFF){ 
+        //E += ff .eval();
+        E += ffl.eval();  
+        //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.ps[0].x,nbmol.ps[0].y,nbmol.ps[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
+    }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){
-        E +=           nbmol.evalLJQs_ng4( ff.aneighs );           // atoms in cell ignoring bonds
+        //E +=           nbmol.evalLJQs_ng4( ff.aneighs );           // atoms in cell ignoring bonds
         //if  (bPBC){ E+=nbmol.evalLJQs_PBC( ff.lvec, {1,1,0} ); }   // atoms outside cell
     }
     
@@ -589,8 +621,8 @@ double eval(){
 }
 
 void pullAtom( int ia, float K=-2.0 ){ 
-    Vec3d f = getForceSpringRay( ff.apos[ia], pick_hray, pick_ray0, K );
-    ff.fapos[ia].add( f );
+    //Vec3d f = getForceSpringRay( ff.apos[ia], pick_hray, pick_ray0, K ); ff.fapos[ia].add( f );
+    Vec3d f = getForceSpringRay( nbmol.ps[ia], pick_hray, pick_ray0, K ); nbmol.fs[ia].add( f );
 }
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ){
@@ -605,7 +637,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
 		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
         //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
         //if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
-        if(ipicked>=0){ pullAtom( ipicked ); };
+        if(ipicked>=0){ pullAtom( ipicked );  }; // printf( "pullAtom(%i) E=%g\n", ipicked, E ); };
         //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);

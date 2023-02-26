@@ -126,8 +126,10 @@ float eval_atom(int ia){
     const Vec3f pa  = apos [ia].f; 
     const Vec3f hpi = pipos[ia].f; 
 
-    Vec3f& fa  = fapos [ia].f; 
-    Vec3f& fpi = fpipos[ia].f; 
+    //Vec3f& fa  = fapos [ia].f; 
+    //Vec3f& fpi = fpipos[ia].f; 
+    Vec3f fa  = Vec3fZero; 
+    Vec3f fpi = Vec3fZero; 
     
     //--- array aliases
     const int*   ings = aneighs[ia].array;
@@ -183,10 +185,14 @@ float eval_atom(int ia){
             E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             fbs[i].f.add( f1     );
             fbs[j].f.add( f2     );
-            fa.    sub( f1+f2  );
+            fa.      sub( f1+f2  );
             // ToDo: subtract non-covalent interactions
         }
     }
+    //fapos [ia].add(fa ); 
+    //fpipos[ia].add(fpi);
+    fapos [ia].f=fa; 
+    fpipos[ia].f=fpi;
     return E;
 }
 

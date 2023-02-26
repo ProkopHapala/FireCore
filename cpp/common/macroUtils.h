@@ -73,6 +73,14 @@ struct Arr{
     }
 };
 
+//tempate<typename T> bool addFirstEmpty( T* arr, n, T what, T empty=-1 ){
+inline bool addFirstEmpty( int* arr, int n, int what, int empty=-1 ){
+    for(int i=0; i<n; i++){
+        if(arr[i]==empty){ arr[i]=what; return true; }
+    }
+    return false;
+};
+
 
 #define WITH(x) auto& _=x;
 
