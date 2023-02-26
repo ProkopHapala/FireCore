@@ -2182,7 +2182,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, dou
         int nb    = bonds.size();
         if(verbosity>0)printf(  "MM:Builder::toMMFFsp3_loc() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         if(bRealloc)ff.realloc( nconf, ncap+ne );
-        Vec3d hs[N_NEIGH_MAX];
+        Vec3d hs[4];
         int ie0=nconf+ncap;
         int iie = 0;
 
@@ -2195,12 +2195,10 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, dou
 
                 // Prepare params and orientation
                 AtomConf& conf = confs[A.iconf];
-                makeConfGeom( conf.nbond, conf.npi, hs );
                 int npi_neigh = countAtomPiNeighs(ia);
                 //assignSp3Params( A.type, conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
 
                 // setup atom (onsite)
-                ff.pipos[ia]   = hs[N_NEIGH_MAX-1]; // Pi orientation
                 ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
                 ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
                 ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
@@ -2212,44 +2210,43 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, dou
                 double*  bK   = ff.bKs[ia].array;
                 double*  Ksp  = ff.Ksp[ia].array;
                 double*  Kpp  = ff.Kpp[ia].array;
+                //printf( "BEFOR atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
+
                 // -- atoms
-                int ns = conf.nbond+conf.ne;
                 //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
-                for(int k=0; k<4; k++){
-                    if(k<conf.nbond){ // atoms
-                        int ib = conf.neighs[k];
-                        const Bond& B = bonds[ib];
-                        int ja = B.getNeighborAtom(ia);
-                        hs[k]  = atoms[ja].pos - A.pos;
-                        hs[k].normalize();
-                        ngs[k] = ja;
-                        bL [k]=B.l0;
-                        bK [k]=B.k;
-                        if( (conf.npi>0)||(conf.ne>0) ){
-                            Ksp[k]=Ksp_default;
-                        }
-                        int nej  = getAtom_ne (ja);
-                        int npij = getAtom_npi(ja);
-                        Kpp[k]=B.kpp;
-                        /*
-                        if( (conf.npi>0) && ((nej>0)||(npij>0)) ){ 
-                            printf( "ia=%i(npi=%i,nej=%i)[%i] ja=%i(npi=%i,nej=%i) \n", ia,conf.npi,conf.ne, k,    ja,npij,nej );
-                            Kpp[k]=Kpp_default;
-                            for(int jk=0;jk<4;jk++){ if(ff.aneighs[ja].array[jk]==ia){ ff.Kpp[ja].array[jk]=Kpp_default; printf( "ia=%i ff.Kpp[%i].array[%i]=%g \n", ia, ja, jk, ff.Kpp[ja].array[jk] ); } }   // ToDo: we should do this per-bond ?
-                        }
-                        */
-                    }else if(k<ns){    // free electron pairs
-                        int ie=ie0+iie;
-                        ngs  [k] =ie;
-                        //printf( "atom[%i|%i] ie %i \n", ia, k, ie );
-                        ff.apos[ie] = atoms[ia].pos + hs[k]*Lepair;
-                        bK [k]=Kepair;
-                        bL [k]=Lepair;
-                        if( conf.npi>0 ) Ksp[k]=Ksp_default;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
-                        iie++;
+                // --- Generate Bonds
+                for(int k=0; k<conf.nbond; k++){
+                    int ib = conf.neighs[k];
+                    const Bond& B = bonds[ib];
+                    int ja = B.getNeighborAtom(ia);
+                    hs[k]  = atoms[ja].pos - A.pos;
+                    hs[k].normalize();
+                    ngs[k] = ja;
+                    bL [k]=B.l0;
+                    bK [k]=B.k;
+                    if( (conf.npi>0)||(conf.ne>0) ){
+                        Ksp[k]=Ksp_default;
                     }
+                    int nej  = getAtom_ne (ja);
+                    int npij = getAtom_npi(ja);
+                    Kpp[k]=B.kpp;
                 }
+                // --- Generate electron pairs
+                makeConfGeom( conf.nbond, conf.npi, hs );
+                int ns = conf.nbond+conf.ne;
+                for(int k=conf.nbond; k<ns; k++){    
+                    int ie=ie0+iie;
+                    ngs [k] =ie;
+                    //printf( "atom[%i|%i] ie %i \n", ia, k, ie );
+                    ff.apos[ie] = atoms[ia].pos + hs[k]*Lepair;
+                    bK [k]=Kepair;
+                    bL [k]=Lepair;
+                    if( conf.npi>0 ) Ksp[k]=Ksp_default;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
+                    iie++;
+                }
+                ff.pipos[ia] = hs[3]; // Pi orientation
                 //if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
+                //printf( "AFTER atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
             }
         }
         ff.makeBackNeighs();
@@ -2260,10 +2257,6 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, dou
 
 #ifdef MMFFf4_h
 void toMMFFf4( MMFFf4& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
-
-        float Lepair    = 0.5;
-        float Kepair    = 1.0;
-        float Kepair_pi = 0.25;
 
         float c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
 
@@ -2279,68 +2272,71 @@ void toMMFFf4( MMFFf4& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1
         int ie0=nconf+ncap;
         int iie = 0;
 
-        std::vector<int> nings(nAmax,0);
-
-        for(int i=0; i<ff.natoms; i++){ ff.ineighs[i]=Quat4i{-1,-1,-1,-1}; }; // back neighbors
+        for(int i=0; i<ff.nnode;  i++){ ff.aneighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4fZero, ff.bKs[i]=Quat4fZero, ff.Ksp[i]=Quat4fZero, ff.Kpp[i]=Quat4fZero; }; // back neighbors
 
         for(int ia=0; ia<nAmax; ia++ ){
             const Atom& A =  atoms[ia];
-            ff.apos [ia].f  = (Vec3f)A.pos;
+            ff.apos[ia].f = (Vec3f) A.pos;
+            ff.apos[ia].e = 0;
             if(A.iconf>=0){
 
                 // Prepare params and orientation
                 AtomConf& conf = confs[A.iconf];
-                makeConfGeom( conf.nbond, conf.npi, hs );
                 int npi_neigh = countAtomPiNeighs(ia);
                 //assignSp3Params( A.type, conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
 
                 // setup atom (onsite)
-                ff.pipos[ia].f = (Vec3f)hs[N_NEIGH_MAX-1]; // Pi orientation
                 ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
-                ff.apars[ia].y = 0.5;              // ssK   // stiffness  for angles
+                ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
                 ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
 
                 // setup ff neighbors
                 
-                int*    angs = ff.aneighs[ia].array;
-                //int*    ings = ff.aneighs[ia].array;
+                int*    ngs  = ff.aneighs[ia].array;
                 float*  bL   = ff.bLs[ia].array;
                 float*  bK   = ff.bKs[ia].array;
                 float*  Ksp  = ff.Ksp[ia].array;
                 float*  Kpp  = ff.Kpp[ia].array;
                 // -- atoms
-                int ns = conf.nbond+ne;
+                //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
+                // --- Generate Bonds
                 for(int k=0; k<conf.nbond; k++){
-                    if(k<conf.nbond){ // atoms
-                        int ib = conf.neighs[k];
-                        int ja = bonds[ib].getNeighborAtom(ia);
-                        hs[k] = atoms[ja].pos - A.pos;
-                        hs[k].normalize();
-                        angs[k] = ja;
-                        ff.ineighs[ja].array[nings[ja]] = ia;   // back neighbors
-                        nings[ja]++;
-                    }else if(k<ns){    // free electron pairs
-                        int ie=ie0+iie;
-                        angs  [ie] =-1;
-                        ff.ineighs[ie].array[0] = ia;
-                        ff.apos[ie].f= (Vec3f)( atoms[ia].pos + hs[k]*Lepair );
-                        bK [k]=Kepair;
-                        bL [k]=Lepair;
-                        Ksp[k]=0;
-                        Kpp[k]=(conf.npi>0)?0:Kepair_pi;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
-                        iie++;
-                    }else{
-                        angs[k] =-1;
-                        bK  [k]=0;
-                        bL  [k]=0;
-                        Ksp [k]=0;
-                        Kpp [k]=0;
+                    int ib        = conf.neighs[k];
+                    const Bond& B = bonds[ib];
+                    int ja = B.getNeighborAtom(ia);
+                    hs[k] = atoms[ja].pos - A.pos;
+                    hs[k].normalize();
+                    ngs[k] = ja;
+                    bL [k]=B.l0;
+                    bK [k]=B.k;
+                    if( (conf.npi>0)||(conf.ne>0) ){
+                        Ksp[k]=Ksp_default;
                     }
+                    int nej  = getAtom_ne (ja);
+                    int npij = getAtom_npi(ja);
+                    Kpp[k]=B.kpp;
                 }
+                // --- Generate electron pairs
+                makeConfGeom( conf.nbond, conf.npi, hs );
+                int ns = conf.nbond+conf.ne;
+                for(int k=conf.nbond; k<ns; k++){    
+                    int ie=ie0+iie;
+                    ngs [k] =ie;
+                    //printf( "atom[%i|%i] ie %i \n", ia, k, ie );
+                    ff.apos[ie].f = (Vec3f)( atoms[ia].pos + hs[k]*Lepair );
+                    ff.apos[ie].e = 0;
+                    bK [k]=Kepair;
+                    bL [k]=Lepair;
+                    if( conf.npi>0 ) Ksp[k]=Ksp_default;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
+                    iie++;
+                }
+                ff.pipos[ia].f = (Vec3f)hs[N_NEIGH_MAX-1]; // Pi orientation
+                ff.pipos[ia].e = 0;
                 //if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
+                //printf( "AFTER atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
             }
         }
-        //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
+        ff.makeBackNeighs();
         if(verbosity>0)printf(  "... MM:Builder::toMMFFf4() DONE \n"  );
     }
 #endif // MMFFf4_h

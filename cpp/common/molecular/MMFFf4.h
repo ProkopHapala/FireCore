@@ -71,8 +71,8 @@ class MMFFf4{ public:
     Quat4f * fneihpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
 
     // Params
-    Quat4i*  aneighs=0; // [nnode*4]   index of neighboring atoms
-    Quat4i*  ineighs=0; // [natoms*4]  inverse neighbors
+    Quat4i*  aneighs =0; // [nnode*4]   index of neighboring atoms
+    Quat4i*  bkneighs=0; // [natoms*4]  inverse neighbors
 
     Quat4f*  apars=0;  // [nnode] per atom forcefield parametrs
     Quat4f*  REQs =0;  // [nnode] parameters of non-covalent interactions
@@ -107,8 +107,8 @@ void realloc( int nnode_, int ncap_ ){
     _realloc( fneih  , nnode*4 );
     _realloc( fneihpi, nnode*4 );
     // ----- Params [natom]
-    _realloc( aneighs, nnode );
-    _realloc( ineighs, natoms );
+    _realloc( aneighs , nnode  );
+    _realloc( bkneighs, natoms );
     _realloc( apars  , nnode );
     _realloc( bLs    , nnode );
     _realloc( bKs    , nnode );
@@ -159,18 +159,30 @@ float eval_atom(int ia){
         float l = h.f.normalize();
         h.e    = 1/l;
         hs [i] = h;
-        // bond length force
-        E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].f.set(f1);  fa.sub(f1);      // bond length force
-        // pi-force
-        if(bPi){    
-            double ksp = Kspi[i];
-            if(ksp>1e-6)  
-            E += evalAngleCos( hpi, h.f         , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fbs[i].f.add(f2);    //   pi-planarization (orthogonality)
+
+        if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
+            //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
+            E+= evalBond( h.f, l-bL[i], bK[i], f1 ); 
+            fbs[i].f.sub(f1);  
+            fa.add(f1);    
+            //if(idebug)printf( "bond[%i|%i=%i] l %g dl0,k(%g,%g) h(%g,%g,%g) f(%g,%g,%g)\n", ia,i,ing, l,bL[i], bK[i], h.f.x,h.f.y,h.f.z, f1.x,f1.y,f1.z  );
+
             double kpp = Kppi[i];
-            if(kpp>1e-6)
-            E += evalPiAling( hpi, pipos[ing].f, 1., 1,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].f.add(f2);    //   pi-alignment     (konjugation)
+            if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                E += evalPiAling( hpi, pipos[ing].f, 1., 1,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].f.add(f2);    //   pi-alignment     (konjugation)
+            }
             // ToDo: triple bonds ?
+        } 
+        
+        // pi-sigma 
+        //if(bPi){    
+        double ksp = Kspi[i];
+        if(ksp>1e-6){  
+            E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fbs[i].f.add(f2);    //   pi-planarization (orthogonality)
+            //if(idebug)printf( "pi-sigma[%i|%i=%i] ksp=%g e=%g \n", ia,i,ing, ksp, e  );
         }
+        //}
+
     }
 
     // --------- Angle Step
@@ -196,36 +208,74 @@ float eval_atom(int ia){
     return E;
 }
 
-float eval_atoms(){
-    float E=0;
+double eval_atoms(){
+    double E=0;
     for(int ia=0; ia<nnode; ia++){ E+=eval_atom(ia); }
     return E;
 }
 
+void normalizePis(){ 
+    for(int i=0; i<nnode; i++){ pipos[i].f.normalize(); } 
+}
+
+void cleanForce(){ 
+    for(int i=0; i<nDOFs; i++){ fDOFs[i]=0;  } 
+}
+
 void asseble_forces(){
-    for(int ia=0; ia<nnode; ia++){
-        int io=ia*4;
+    for(int ia=0; ia<natoms; ia++){
         Quat4f fa=Quat4fZero,fp=Quat4fZero;
-        const int* ings = ineighs[ia].array;
+        const int* ings = bkneighs[ia].array;
+        bool bpi = ia<nnode;
         for(int i=0; i<4; i++){
             int j = ings[i];
             if(j<0) break;
+            //if(j>=(nnode*4)){ printf("ERROR bkngs[%i|%i] %i>=4*nnode(%i)\n", ia, i, j, nnode*4 ); exit(0); }
             fa.add(fneih  [j]);
-            fp.add(fneihpi[j]);
+            if(bpi)fp.add(fneihpi[j]);
         }
         fapos [ia].add( fa ); 
-        fpipos[ia].add( fp );
+        if(bpi){
+            fpipos[ia].add( fp );
+            fpipos[ia].f.makeOrthoU( pipos[ia].f );  // subtract force component which change pi-vector size
+        }
     }
 }
 
 float eval( bool bClean=true, bool bCheck=true ){
     //if(bClean){ cleanAll(); }
-    //eval_atoms();
+    //printf( "print_apos() BEFORE\n" );print_apos();
+    cleanForce();
+    normalizePis();
+    //printf( "print_apos() AFTER \n" ); print_apos();
+    eval_atoms();
     asseble_forces();
     //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 }
 
+void makeBackNeighs( ){
+    for(int i=0; i<natoms; i++){ bkneighs[i]=Quat4i{-1,-1,-1,-1}; };
+    for(int ia=0; ia<nnode; ia++){
+        for(int j=0; j<4; j++){        // 4 neighbors
+            int ja = aneighs[ia].array[j];
+            if( ja<0 )continue;
+            //NOTE: We deliberately ignore back-neighbors from caping atoms 
+            bool ret = addFirstEmpty( bkneighs[ja].array, 4, ia*4+j, -1 );
+            if(!ret){ printf("ERROR in MMFFf4_loc::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
+        };
+    }
+}
+
+void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
+void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };
+
+void printBKneighs(int ia){ printf("atom[%i] bkngs{%3i,%3i,%3i,%3i} \n", ia, bkneighs[ia].x,bkneighs[ia].y,bkneighs[ia].z,bkneighs[ia].w ); };
+void printBKneighs(){for(int ia=0; ia<natoms; ia++){ printBKneighs(ia); }; };
+
+void print_apos(){
+    for(int ia=0;ia<natoms;ia++){ printf( "print_apos[%i](%g,%g,%g)\n", ia, apos[ia].x,apos[ia].y,apos[ia].z ); }
+}
 
 };
 
