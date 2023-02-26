@@ -7,7 +7,7 @@ wd=`pwd`
 cd $dir
 pwd
 rm $name
-make $name
+make -j4 $name
 cd $wd
 
 ln -s $dir/$name .

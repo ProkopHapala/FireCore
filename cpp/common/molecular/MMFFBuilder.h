@@ -2152,6 +2152,91 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
     }
 #endif // MMFFmini_h
 
+#ifdef MMFFsp3_loc_h
+void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
+
+        double Lepair     = 0.5;
+        double Kepair     = 10.0;
+        double Kepair_pi  = 0.25;
+        double Ks_default = 0.25;
+        double Kp_default = 0.5;
+
+        double c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
+
+        int nAmax = atoms.size();
+        int nCmax = confs.size();
+        int npi,ne; ne=countPiE( npi, 0,nCmax );
+        int nconf = nCmax;
+        int ncap  = nAmax - nconf;
+        int nb    = bonds.size();
+        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3_loc() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
+        if(bRealloc)ff.realloc( nconf, ncap+ne );
+        Vec3d hs[N_NEIGH_MAX];
+        int ie0=nconf+ncap;
+        int iie = 0;
+
+        for(int i=0; i<ff.nnode;  i++){ ff.aneighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4dZero, ff.bKs[i]=Quat4dZero, ff.Ksp[i]=Quat4dZero, ff.Kpp[i]=Quat4dZero; }; // back neighbors
+
+        for(int ia=0; ia<nAmax; ia++ ){
+            const Atom& A =  atoms[ia];
+            ff.apos [ia]  = A.pos;
+            if(A.iconf>=0){
+
+                // Prepare params and orientation
+                AtomConf& conf = confs[A.iconf];
+                makeConfGeom( conf.nbond, conf.npi, hs );
+                int npi_neigh = countAtomPiNeighs(ia);
+                //assignSp3Params( A.type, conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
+
+                // setup atom (onsite)
+                ff.pipos[ia]   = hs[N_NEIGH_MAX-1]; // Pi orientation
+                ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
+                ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
+                ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
+
+                // setup ff neighbors
+                
+                int*     ngs  = ff.aneighs[ia].array;
+                double*  bL   = ff.bLs[ia].array;
+                double*  bK   = ff.bKs[ia].array;
+                double*  Ksp  = ff.Ksp[ia].array;
+                double*  Kpp  = ff.Kpp[ia].array;
+                // -- atoms
+                int ns = conf.nbond+conf.ne;
+                //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
+                for(int k=0; k<4; k++){
+                    if(k<conf.nbond){ // atoms
+                        int ib = conf.neighs[k];
+                        const Bond& B = bonds[ib];
+                        int ja = B.getNeighborAtom(ia);
+                        hs[k]  = atoms[ja].pos - A.pos;
+                        hs[k].normalize();
+                        ngs[k] = ja;
+                        bL [k]=B.l0;
+                        bK [k]=B.k;
+                        Ksp[k]=Ks_default;
+                        if( (conf.npi>0) && (npi_neigh>0) ) Kpp[k]=Ks_default;
+                    }else if(k<ns){    // free electron pairs
+                        int ie=ie0+iie;
+                        ngs  [k] =ie;
+                        printf( "atom[%i|%i] ie %i \n", ia, k, ie );
+                        ff.apos[ie] = atoms[ia].pos + hs[k]*Lepair;
+                        bK [k]=Kepair;
+                        bL [k]=Lepair;
+                        Ksp[k]=0;
+                        if( (conf.npi==0) && (npi_neigh>0) ) Kpp[k]=Kepair_pi;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
+                        iie++;
+                    }
+                }
+                //if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
+            }
+        }
+        ff.makeBackNeighs();
+        //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
+        if(verbosity>0)printf(  "... MM:Builder::toMMFFsp3_loc() DONE \n"  );
+    }
+#endif // MMFFf4_h
+
 #ifdef MMFFf4_h
 void toMMFFf4( MMFFf4& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
 

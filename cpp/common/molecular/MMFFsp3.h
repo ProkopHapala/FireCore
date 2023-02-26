@@ -5,36 +5,12 @@
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "Forces.h"
 #include "molecular_utils.h"
 
 // ======================
 // ====   MMFFsp3
 // ======================
-
-inline double evalAngleCos( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, double c0, Vec3d& f1, Vec3d& f2 ){
-    double c = h1.dot(h2);
-    f1 = h2 - h1*c;
-    f2 = h1 - h2*c;
-    double c_   = c-c0;
-    double E    =  K*c_*c_;
-    double fang = -K*c_*2;
-    f1.mul( fang*ir1 );
-    f2.mul( fang*ir2 );
-    return E;
-}
-
-inline double evalPiAling( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, Vec3d& f1, Vec3d& f2 ){  // interaction between two pi-bonds
-    double c = h1.dot(h2);
-    f1 = h2 - h1*c;
-    f2 = h1 - h2*c;
-    bool sign = c<0; if(sign) c=-c;
-    double E    = -K*c;
-    double fang =  K;
-    if(sign)fang=-fang;
-    f1.mul( fang );
-    f2.mul( fang );
-    return E;
-}
 
 class MMFFsp3{ public:
     static constexpr const int nneigh_max = 4;
@@ -579,7 +555,7 @@ double eval_neighs_new(int ia){
                         double c0_;
                         if( (ing>=ie0)!=(jng>=ie0) ){  c0_=params.w; }else{ c0_=c0; } // special angle for electron pairs
                         if( (ing>=ie0)&&(jng>=ie0) ){  c0_=-1;       }                      // special angle for electron pairs
-                        if(idebug)printf( "atom[%i]ss[%i,%i] c0,K(%g,%g) \n", ia,ing,jng, c0_, Kss  );
+                        //if(idebug)printf( "atom[%i]ss[%i,%i] c0,K(%g,%g) \n", ia,ing,jng, c0_, Kss  );
                         double e = evalAngleCos( hs[i], hs[j], ils[i], ils[j], Kss, c0_, f1, f2 );  
 
                         if(bSubtractAngleNonBond){
