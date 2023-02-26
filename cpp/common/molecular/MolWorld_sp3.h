@@ -36,6 +36,8 @@ static MMFFparams* params_glob;
 #include "SMILESparser.h"
 #include "DynamicOpt.h"
 
+#include "datatypes_utils.h"
+
 class MolWorld_sp3{ public:
     const char* data_dir     = "common_resources";
     const char* xyz_name     = "input";
@@ -486,7 +488,7 @@ virtual void init( bool bGrid ){
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3    ( ff , &params );
         builder.toMMFFsp3_loc( ffl, &params ); ffl.printAtomParams(); ffl.printBKneighs();  
-        builder.toMMFFf4     ( ff4, &params );    
+        builder.toMMFFf4     ( ff4, &params ); ff4.printAtomParams(); ff4.printBKneighs();     
 
         //ff.printAtomParams();
         printf("builder.lvec\n");builder.lvec.print();
@@ -507,17 +509,42 @@ virtual void init( bool bGrid ){
         
         DEBUG
         
-        { // check MMFFsp3_loc
+        {  printf(" ============ check MMFFsp3_loc START\n " );
             //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
             //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
             idebug=1;
             ffl.eval();
             idebug=0;
-            //printf("### ffl.fneih  :\n");  printVecs( ffl.nnode*4, ffl.fneih   );
-            //printf("### ffl.fneihpi:\n");  printVecs( ffl.nnode*4, ffl.fneihpi );
-            //printf("### ffl.fapos:\n");  printVecs( ffl.natoms, ffl.fapos  );
-            //printf("### ffl.fpipos:\n"); printVecs( ffl.nnode,  ffl.fpipos );
+            //printf("### ffl.fneigh  :\n"); printVecs( ffl.nnode*4, ffl.fneigh   );
+            //printf("### ffl.fneighpi:\n"); printVecs( ffl.nnode*4, ffl.fneighpi );
+            //printf("### ffl.fapos:\n");   printVecs( ffl.natoms, ffl.fapos  );
+            //printf("### ffl.fpipos:\n");  printVecs( ffl.nnode,  ffl.fpipos );
             if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fpipos,  "ffl.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
+            printf(" ============ check MMFFsp3_loc DONE\n " );
+        }
+
+
+        { printf(" ============ check MMFFf4 START\n " );
+            //printf("### ff4.apos:\n");  printVecs( ff4.natoms, ff4.apos  );
+            //printf("### ff4.pipos:\n"); printVecs( ff4.nnode , ff4.pipos );
+            idebug=1;
+            ff4.eval();
+            idebug=0;
+            //printf("### ff4.fneigh  :\n"); printVecs( ff4.nnode*4, ff4.fneigh   );
+            //printf("### ff4.fneighpi:\n"); printVecs( ff4.nnode*4, ff4.fneighpi );
+            //printf("### ff4.fapos:\n");   printVecs( ff4.natoms,  ff4.fapos  );
+            //printf("### ff4.fpipos:\n");  printVecs( ff4.nnode,   ff4.fpipos );
+
+            if( ckeckNaN_f( ffl.natoms, 4, (float*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_f( ffl.natoms, 4, (float*)ffl.fpipos,  "ffl.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
+            bool ret=false;
+            printf("### Compare ffl.apos,   ff4.apos    \n"); ret |= compareVecs( ff4.natoms, ffl.apos,   ff4.apos,   1e-4, true );
+            printf("### Compare ffl.pipos,  ff4.pipos   \n"); ret |= compareVecs( ff4.nnode,  ffl.pipos,  ff4.pipos,  1e-4, true );
+            printf("### Compare ffl.fneigh, ff4.fneigh  \n"); ret |= compareVecs( ff4.nnode*4,ffl.fneigh, ff4.fneigh, 1e-4, true );
+            printf("### Compare ffl.fapos,  ff4.fapos   \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
+            printf("### Compare ffl.fpipos, ff4.fpipos, \n"); ret |= compareVecs( ff4.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
+            if(ret){ printf("ERROR: ff4.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }
+
+            printf(" ============ check MMFFf4 DONE\n " );
         }
 
         //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
@@ -594,11 +621,24 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     return bConverged;
 }
 
+double eval_f4(){
+    pack( ff4.natoms, ffl.apos , ff4.apos  );
+    pack( ff4.nnode,  ffl.pipos, ff4.pipos );
+    double E = ff4.eval();
+    //ff4.move_GD( 0.01);
+    //unpack( ff4.natoms, ffl. apos, ff4. apos  );
+    unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
+    //unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
+    unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
+    return E;   
+};
+
 double eval(){
     double E=0;
     if(bMMFF){ 
         //E += ff .eval();
-        E += ffl.eval();  
+        //E += ffl.eval();  
+        E += eval_f4();
         //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.ps[0].x,nbmol.ps[0].y,nbmol.ps[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
     }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){

@@ -29,6 +29,27 @@ bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
     return ret;
 }
 
+bool ckeckNaN_f(int n, int m, float* xs, const char* pre, bool bPrint=true ){
+    bool ret = false;
+    for(int i=0; i<n;i++){
+        bool b=false;
+        for(int j=0; j<m;j++){
+            int ij=i*m+j;
+            b|=isnan( xs[ij] );
+        }
+        ret |= b;
+        if(b && bPrint ){
+            printf("%s[%i](", pre, i );
+            for(int j=0; j<m;j++){
+                int ij=i*m+j;
+                printf("%g,", xs[ij] );
+            }
+            printf(")\n");
+        }
+    }
+    return ret;
+}
+
 void nameList( std::vector<std::string>& names, const std::string& s ){
     size_t pos = 0;
     while ( (pos = s.find(' ', pos) ) != std::string::npos ){

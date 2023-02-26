@@ -31,8 +31,8 @@ class MMFFsp3_loc{ public:
     Vec3d *  pipos=0;   // [nnode]
     Vec3d * fpipos=0;   // [nnode]
     // Aux Dynamil
-    Vec3d * fneih  =0;  // [nnode*4]     temporary store of forces on atoms form neighbors (before assembling step)
-    Vec3d * fneihpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
+    Vec3d * fneigh  =0;  // [nnode*4]     temporary store of forces on atoms form neighbors (before assembling step)
+    Vec3d * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
 
     // Params
     Quat4i*  aneighs =0; // [nnode*4]   index of neighboring atoms
@@ -66,8 +66,8 @@ void realloc( int nnode_, int ncap_ ){
     pipos  = apos  + ipi0;
     fpipos = fapos + ipi0;
     // ---- Aux
-    _realloc( fneih  , nnode*4 );
-    _realloc( fneihpi, nnode*4 );
+    _realloc( fneigh  , nnode*4 );
+    _realloc( fneighpi, nnode*4 );
     // ----- Params [natom]
     _realloc( aneighs , nnode );
     _realloc( bkneighs, natoms );
@@ -102,8 +102,8 @@ double eval_atom(const int ia){
     const double* bL   = bLs    [ia].array;
     const double* Kspi = Ksp    [ia].array;
     const double* Kppi = Kpp    [ia].array;
-    Vec3d* fbs  = fneih   +ia*4;
-    Vec3d* fps  = fneihpi +ia*4;
+    Vec3d* fbs  = fneigh   +ia*4;
+    Vec3d* fps  = fneighpi +ia*4;
 
     // --- settings
     double  ssC0 = apars[ia].x;
@@ -131,31 +131,32 @@ double eval_atom(const int ia){
         hs [i] = h;
         // bond length force
         //continue; 
+        
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
-            E+= evalBond( h.f, l-bL[i], bK[i], f1 ); 
-            fbs[i].sub(f1);  
-            fa.add(f1);    
+            E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].sub(f1);   fa.add(f1);    
             //if(idebug)printf( "bond[%i|%i=%i] l %g dl0,k(%g,%g) h(%g,%g,%g) f(%g,%g,%g)\n", ia,i,ing, l,bL[i], bK[i], h.f.x,h.f.y,h.f.z, f1.x,f1.y,f1.z  );
 
             double kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
-                E += evalPiAling( hpi, pipos[ing], 1., 1,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+                E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+                if(idebug)printf( "pi-pi[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, kpp, hpi.dot(pipos[ing]),1.,1., f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             }
             // ToDo: triple bonds ?
+
         } 
-        
+
         // pi-sigma 
         //if(bPi){    
         double ksp = Kspi[i];
         if(ksp>1e-6){  
             E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fbs[i].add(f2);    //   pi-planarization (orthogonality)
-            //if(idebug)printf( "pi-sigma[%i|%i=%i] ksp=%g e=%g \n", ia,i,ing, ksp, e  );
+            if(idebug)printf( "pi-sigma[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, ksp, hpi.dot(h.f),1.,h.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
         }
         //}
-        
+     
     }
-    
+
     // --------- Angle Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -166,13 +167,14 @@ double eval_atom(const int ia){
             if(jng<0) break;
             const Quat4d& hj = hs[j];
             E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+            //if(idebug)printf( "ang[%i|%i,%i] kss=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing,jng, ssK, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             fa    .sub( f1+f2  );
             // ToDo: subtract non-covalent interactions
         }
     }
-    
+ 
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia]=fa; 
@@ -205,8 +207,8 @@ void asseble_forces(){
             int j = ings[i];
             if(j<0) break;
             //if(j>=(nnode*4)){ printf("ERROR bkngs[%i|%i] %i>=4*nnode(%i)\n", ia, i, j, nnode*4 ); exit(0); }
-            fa.add(fneih  [j]);
-            if(bpi)fp.add(fneihpi[j]);
+            fa.add(fneigh  [j]);
+            if(bpi)fp.add(fneighpi[j]);
         }
         fapos [ia].add( fa ); 
         if(bpi){

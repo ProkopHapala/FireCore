@@ -38,6 +38,19 @@ inline void printVecs( int n, const Vec3f * vs ){ 	for(int i=0; i<n;i++)printf( 
 inline void printVecs( int n, const Quat4f* vs ){ 	for(int i=0; i<n;i++)printf( "[%i] (%g,%g,%g,%g)\n",i, vs[i].x, vs[i].y, vs[i].z, vs[i].w ); }
 
 
+inline bool compareVecs( int n, const Vec3d* vs, const Quat4f* qs, double Rmax, bool bPrint=true ){
+    bool ret=false;
+    double R2max=Rmax*Rmax; 
+    for(int i=0; i<n;i++){
+        double r2 = (vs[i]-(Vec3d)qs[i].f).norm2();
+        if(r2>R2max){
+            if(bPrint)printf( "compareVecs[%i] v(%g,%g,%g) q.f(%g,%g,%g)\n", i,  vs[i].x,vs[i].y,vs[i].z,   qs[i].x,qs[i].y,qs[i].z );
+            ret=true;
+        }
+    } 
+    return ret;
+}
+
 inline void printMat( const Mat3d& mat  ){
 	printf( " %f %f %f \n", mat.ax, mat.ay, mat.az );
 	printf( " %f %f %f \n", mat.bx, mat.by, mat.bz );
