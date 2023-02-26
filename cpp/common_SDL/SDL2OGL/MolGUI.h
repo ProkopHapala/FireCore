@@ -85,18 +85,21 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewBondLabels  = false;
     bool   bViewAtomSpheres = true;
     bool   bViewAtomForces  = false;
+    bool   bViewPis         = true;
     bool   bViewSubstrate   = true;
     bool   isoSurfRenderType = 1;
     Vec3d testREQ,testPLQ;
 
 
     // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
-    int    natoms=0, nbonds=0;
+    int    natoms=0,nnode=0,nbonds=0;
     int*   atypes;
     Vec2i* bond2atom=0; 
     Vec3d* pbcShifts=0; 
     Vec3d* apos     =0;
     Vec3d* fapos    =0;
+    Vec3d* pipos    =0;
+    Vec3d* fpipos   =0;
     Vec3d* REQs     =0;
 
     // ---- Graphics objects
@@ -128,10 +131,11 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void renderGridFF( double isoVal=0.01, int isoSurfRenderType=0, double colorSclae = 30.0 );
     void renderESP( Vec3d REQ=Vec3d{1.487,0.0006808,1.0} );
 
-    void bindMolecule( int natoms_, int nbonds_,int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
+    void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
 	void drawSystem    ( Vec3i ixyz=Vec3iZero );
     void drawSystem_bak( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
+    void flipPis( Vec3d ax );
     //void drawSystemQMMM();
     //void renderOrbital(int i, double iso=0.1);
     //void renderDensity(       double iso=0.1);
@@ -250,7 +254,8 @@ void MolGUI::init(){
     if(verbosity>0)printf("MolGUI::init() \n");
     W->init( true );
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
-    MolGUI::bindMolecule( W->nbmol.n, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs, W->ff.bond2atom, W->ff.pbcShifts );
+    //MolGUI::bindMolecule( W->nbmol.n, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
+    MolGUI::bindMolecule( W->nbmol.n, W->ff.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
     initGUI();
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
@@ -475,12 +480,21 @@ void MolGUI::drawPi0s( float sc=1.0 ){
     glEnd();
 }
 
-void MolGUI::bindMolecule( int natoms_, int nbonds_,int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ ){
-    natoms=natoms_; nbonds=nbonds_;
+void MolGUI::flipPis( Vec3d ax ){
+    for(int i=0; i<nnode; i++){
+        double c = pipos[i].dot(ax);
+        if( c<0 ){ pipos[i].mul(-1); } 
+    }
+}
+
+void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_ ){
+    natoms=natoms_; nnode=nnode_; nbonds=nbonds_;
     if(atypes_)atypes=atypes_;
     if(apos_  )apos  =apos_;
     if(fapos_ )fapos =fapos_;
     if(REQs_  )REQs  =REQs_;
+    if(pipos_ )pipos =pipos_;
+    if(fpipos_)fpipos=fpipos_;
     if(bond2atom_)bond2atom=bond2atom_;
     if(pbcShifts_)pbcShifts=pbcShifts_;
 }
@@ -498,6 +512,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
                              glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex );                                
         }
+        if(bViewPis &&  fpipos ){ flipPis(Vec3dZ); glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );  }
         //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
         //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
         //if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D                     ); }                    

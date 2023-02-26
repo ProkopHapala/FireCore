@@ -485,7 +485,7 @@ virtual void init( bool bGrid ){
         builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3    ( ff , &params );
-        builder.toMMFFsp3_loc( ffl, &params ); ffl.printAtomParams(); ffl.printBKneighs();
+        builder.toMMFFsp3_loc( ffl, &params ); ffl.printAtomParams(); ffl.printBKneighs();  
         builder.toMMFFf4     ( ff4, &params );    
 
         //ff.printAtomParams();
@@ -508,17 +508,15 @@ virtual void init( bool bGrid ){
         DEBUG
         
         { // check MMFFsp3_loc
-
-            printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
+            //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
             //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
             idebug=1;
-            ffl.print_apos();
             ffl.eval();
             idebug=0;
-            printf("### ffl.fneih  :\n");  printVecs( ffl.nnode*4, ffl.fneih   );
-            printf("### ffl.fneihpi:\n");  printVecs( ffl.nnode*4, ffl.fneihpi );
-            printf("### ffl.fapos:\n");  printVecs( ffl.natoms, ffl.fapos  );
-            printf("### ffl.fpipos:\n"); printVecs( ffl.nnode,  ffl.fpipos );
+            //printf("### ffl.fneih  :\n");  printVecs( ffl.nnode*4, ffl.fneih   );
+            //printf("### ffl.fneihpi:\n");  printVecs( ffl.nnode*4, ffl.fneihpi );
+            //printf("### ffl.fapos:\n");  printVecs( ffl.natoms, ffl.fapos  );
+            //printf("### ffl.fpipos:\n"); printVecs( ffl.nnode,  ffl.fpipos );
             if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fpipos,  "ffl.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
         }
 

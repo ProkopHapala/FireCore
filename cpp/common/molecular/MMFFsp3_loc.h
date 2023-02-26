@@ -100,8 +100,8 @@ double eval_atom(const int ia){
     const int*    ings = aneighs[ia].array;
     const double* bK   = bKs    [ia].array;
     const double* bL   = bLs    [ia].array;
-    const double* Kppi = Ksp    [ia].array;
-    const double* Kspi = Kpp    [ia].array;
+    const double* Kspi = Ksp    [ia].array;
+    const double* Kppi = Kpp    [ia].array;
     Vec3d* fbs  = fneih   +ia*4;
     Vec3d* fps  = fneihpi +ia*4;
 
@@ -109,12 +109,13 @@ double eval_atom(const int ia){
     double  ssC0 = apars[ia].x;
     double  ssK  = apars[ia].y;
     double  piC0 = apars[ia].z;
-    bool    bPi  = ings[3]<0;
+    //bool    bPi  = ings[3]<0;   we distinguish this by Ksp, otherwise it would be difficult for electron pairs e.g. (-O-C=)
 
     //--- Aux Variables 
     Quat4d  hs[4];
     Vec3d   f1,f2;
 
+    //if(idebug)printf( "atom[%i] Ksp{%5.3f,%5.3f,%5.3f,%5.3f} \n", ia, Kspi[0],Kspi[1],Kspi[2],Kspi[3] );
     // --------- Bonds Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -136,19 +137,23 @@ double eval_atom(const int ia){
             fbs[i].sub(f1);  
             fa.add(f1);    
             //if(idebug)printf( "bond[%i|%i=%i] l %g dl0,k(%g,%g) h(%g,%g,%g) f(%g,%g,%g)\n", ia,i,ing, l,bL[i], bK[i], h.f.x,h.f.y,h.f.z, f1.x,f1.y,f1.z  );
-        } 
-        /*
-        // pi-force
-        if(bPi){    
-            double ksp = Kspi[i];
-            if(ksp>1e-6)  
-            E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fbs[i].add(f2);    //   pi-planarization (orthogonality)
+
             double kpp = Kppi[i];
-            if(kpp>1e-6)
-            E += evalPiAling( hpi, pipos[ing], 1., 1,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+            if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                E += evalPiAling( hpi, pipos[ing], 1., 1,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+            }
             // ToDo: triple bonds ?
+        } 
+        
+        // pi-sigma 
+        //if(bPi){    
+        double ksp = Kspi[i];
+        if(ksp>1e-6){  
+            E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fbs[i].add(f2);    //   pi-planarization (orthogonality)
+            //if(idebug)printf( "pi-sigma[%i|%i=%i] ksp=%g e=%g \n", ia,i,ing, ksp, e  );
         }
-        */
+        //}
+        
     }
     
     // --------- Angle Step
@@ -181,6 +186,10 @@ double eval_atoms(){
     return E;
 }
 
+void normalizePis(){ 
+    for(int i=0; i<nnode; i++){ pipos[i].normalize(); } 
+}
+
 void cleanForce(){ 
     //for(int i=0; i<natoms; i++){ fapos [i].set(0.0);  } 
     //for(int i=0; i<nnode;  i++){ fpipos[i].set(0.0);  } 
@@ -189,17 +198,21 @@ void cleanForce(){
 
 void asseble_forces(){
     for(int ia=0; ia<natoms; ia++){
-        int io=ia*4;
         Vec3d fa=Vec3dZero,fp=Vec3dZero;
         const int* ings = bkneighs[ia].array;
+        bool bpi = ia<nnode;
         for(int i=0; i<4; i++){
             int j = ings[i];
             if(j<0) break;
+            //if(j>=(nnode*4)){ printf("ERROR bkngs[%i|%i] %i>=4*nnode(%i)\n", ia, i, j, nnode*4 ); exit(0); }
             fa.add(fneih  [j]);
-            //fp.add(fneihpi[j]);
+            if(bpi)fp.add(fneihpi[j]);
         }
         fapos [ia].add( fa ); 
-        //fpipos[ia].add( fp );
+        if(bpi){
+            fpipos[ia].add( fp );
+            fpipos[ia].makeOrthoU( pipos[ia] );  // subtract force component which change pi-vector size
+        }
     }
 }
 
@@ -207,6 +220,7 @@ double eval( bool bClean=true, bool bCheck=true ){
     //if(bClean){ cleanAll(); }
     //printf( "print_apos() BEFORE\n" );print_apos();
     cleanForce();
+    normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     eval_atoms();
     asseble_forces();
