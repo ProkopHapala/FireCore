@@ -531,7 +531,6 @@ void MolGUI::drawSystem( Vec3i ixyz ){
 
 }
 
-
 void MolGUI::drawSystem_bak( Vec3i ixyz ){
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
