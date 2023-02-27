@@ -511,7 +511,7 @@ virtual void init( bool bGrid ){
         
         {  printf(" ============ check MMFFsp3_loc START\n " );
             //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
-            //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
+            printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
             idebug=1;
             ffl.eval();
             idebug=0;
@@ -519,7 +519,7 @@ virtual void init( bool bGrid ){
             //printf("### ffl.fneighpi:\n"); printVecs( ffl.nnode*4, ffl.fneighpi );
             //printf("### ffl.fapos:\n");   printVecs( ffl.natoms, ffl.fapos  );
             //printf("### ffl.fpipos:\n");  printVecs( ffl.nnode,  ffl.fpipos );
-            if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fpipos,  "ffl.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
+            if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.nnode, 3, (double*)ffl.fpipos,  "ffl.fpipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
             printf(" ============ check MMFFsp3_loc DONE\n " );
         }
 
@@ -535,7 +535,7 @@ virtual void init( bool bGrid ){
             //printf("### ff4.fapos:\n");   printVecs( ff4.natoms,  ff4.fapos  );
             //printf("### ff4.fpipos:\n");  printVecs( ff4.nnode,   ff4.fpipos );
 
-            if( ckeckNaN_f( ffl.natoms, 4, (float*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_f( ffl.natoms, 4, (float*)ffl.fpipos,  "ffl.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
+            if( ckeckNaN_f( ff4.natoms, 4, (float*)ff4.fapos,  "ff4.apos"  ) || ckeckNaN_f( ff4.nnode, 4, (float*)ff4.fpipos,  "ff4.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFf4.eval() => exit() \n"); exit(0); };
             bool ret=false;
             printf("### Compare ffl.apos,   ff4.apos    \n"); ret |= compareVecs( ff4.natoms, ffl.apos,   ff4.apos,   1e-4, true );
             printf("### Compare ffl.pipos,  ff4.pipos   \n"); ret |= compareVecs( ff4.nnode,  ffl.pipos,  ff4.pipos,  1e-4, true );
@@ -626,10 +626,11 @@ double eval_f4(){
     pack( ff4.nnode,  ffl.pipos, ff4.pipos );
     double E = ff4.eval();
     //ff4.move_GD( 0.01);
-    //unpack( ff4.natoms, ffl. apos, ff4. apos  );
+    unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
-    //unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
+    unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
     unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
+    //for(int i=0; i<ff4.nnode; i++) printf("pi[%i] <fpi,pi> %g |pi| %g \n", i, ffl.fpipos[i].dot( ffl.pipos[i] ), ffl.pipos[i].norm() );
     return E;   
 };
 

@@ -53,6 +53,7 @@ class OCL_PP: public OCL_DFT { public:
     int ibuff_avel=-1, ibuff_pi0s=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
     int ibuff_bondLK=-1, ibuff_ang0K=-1;
     int itex_FF=-1;
+    int ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
 
     int itex_FE_Paul=-1;
     int itex_FE_Lond=-1;
@@ -349,20 +350,31 @@ class OCL_PP: public OCL_DFT { public:
         */
     }
 
-    int initAtomsForces( int nAtoms_, int npi, int nnode, bool bFullMD=false ){
+    int initAtomsForces( int nAtoms_, int npi, int nnode, bool bMMFFsp3=false, bool bMMFFf4=false ){
         nAtoms=nAtoms_;
         int nvecs=nAtoms+npi;
-        ibuff_atoms   =newBuffer( "atoms",    nvecs,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        int nneigh=nnode*4;
+        if(bMMFFf4)nneigh*=2;
+        ibuff_atoms   =newBuffer( "atoms",    nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_aforces =newBuffer( "aforces",  nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_neighs  =newBuffer( "neighs",   nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
-        if(bFullMD){
-            ibuff_bkNeighs    = newBuffer( "bkNeighs",   nvecs,   sizeof(int4),   0, CL_MEM_READ_WRITE );
-            ibuff_bondLK      = newBuffer( "bondLK ",    nAtoms , sizeof(float8), 0, CL_MEM_READ_ONLY  );
-            ibuff_ang0K       = newBuffer( "ang0K",      nnode  , sizeof(float4), 0, CL_MEM_READ_ONLY  );
-            ibuff_neighForce  = newBuffer( "neighForce", nnode*4, sizeof(float4), 0, CL_MEM_READ_WRITE );
-            ibuff_avel        = newBuffer( "avel",       nvecs,   sizeof(float4), 0, CL_MEM_READ_WRITE );
-            ibuff_pi0s        = newBuffer( "pi0s",       npi,     sizeof(float4), 0, CL_MEM_READ_WRITE );
+        if(bMMFFsp3 || bMMFFf4){
+            ibuff_bkNeighs    = newBuffer( "bkNeighs",   nvecs,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
+            ibuff_avel        = newBuffer( "avel",       nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
+            ibuff_neighForce  = newBuffer( "neighForce", nneigh, sizeof(float4), 0, CL_MEM_READ_WRITE );
+            if(bMMFFsp3){
+                ibuff_bondLK      = newBuffer( "bondLK ",    nAtoms   , sizeof(float8), 0, CL_MEM_READ_ONLY  );
+                ibuff_ang0K       = newBuffer( "ang0K",      nnode    , sizeof(float4), 0, CL_MEM_READ_ONLY  );
+                ibuff_pi0s        = newBuffer( "pi0s",       npi      , sizeof(float4), 0, CL_MEM_READ_WRITE );
+            }
+            if(bMMFFf4){ // int ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
+                ibuff_MMpars = newBuffer( "MMpars", nnode, sizeof(int4),   0, CL_MEM_READ_ONLY );
+                ibuff_BLs    = newBuffer( "BLs",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+                ibuff_BKs    = newBuffer( "BKs",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+                ibuff_Ksp    = newBuffer( "Ksp",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY );
+                ibuff_Kpp    = newBuffer( "Kpp",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY );
+            }
         }
         printBuffers();
         return ibuff_atoms;
@@ -470,12 +482,53 @@ class OCL_PP: public OCL_DFT { public:
         ){
         */
     }
-    //void run_getMMFFsp3(){
-    //    err = task->enque_raw();
-    //   OCL_checkError(err, "getMMFFsp3");  
-    //    //if(aforces)err=download( ibuff_aforces, aforces, na);
-    //    OCL_checkError(err, "getMMFFsp3");  
-    //}
+
+    OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
+        //printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
+        if(task==0) task = getTask("getMMFFf4");
+        task->global.x = na;
+        useKernel( task->ikernel );
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
+        nDOFs.w=bPBC; 
+        // ------- Maybe We do-not need to do this every frame ?
+        err |= _useArg   ( nDOFs );            // 1
+        // Dynamical
+        err |= useArgBuff( ibuff_atoms  );     // 2
+        err |= useArgBuff( ibuff_aforces);     // 3
+        err |= useArgBuff( ibuff_neighForce ); // 4
+        // parameters
+        err |= useArgBuff( ibuff_neighs );     // 5
+        err |= useArgBuff( ibuff_coefs  );     // 6
+        err |= useArgBuff( ibuff_MMpars );     // 7
+        err |= useArgBuff( ibuff_BLs    );     // 8
+        err |= useArgBuff( ibuff_BKs    );     // 9
+        err |= useArgBuff( ibuff_Ksp    );     // 10
+        err |= useArgBuff( ibuff_Kpp    );     // 11
+        err |= _useArg( cl_lvec    );          // 12
+        err |= _useArg( cl_invLvec );          // 13
+        OCL_checkError(err, "getMMFFf4");
+        return task;
+        /*
+        __kernel void getMMFFf4(
+            const int4 nDOFs,              // 1   (nAtoms,nnode)
+            // Dynamical
+            __global float4*  apos,        // 2    [natoms]
+            __global float4*  fapos,       // 3    [natoms]     
+            __global float4*  fneigh,      // 4    [nnode*4]
+            // parameters
+            __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+            __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} 
+            __global float4*  apars,        // 7 [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+            __global float4*  bLs,          // 8 [nnode]  bond lengths  for each neighbor
+            __global float4*  bKs,          // 9 [nnode]  bond stiffness for each neighbor
+            __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
+            __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
+            const cl_Mat3 lvec,             // 12
+            const cl_Mat3 invLvec           // 13
+        ){
+    */
+    }
 
     OCLtask* setup_gatherForceAndMove( int n, int natom,  OCLtask* task=0 ){
         //printf("setup_gatherForceAndMove(na=%i) \n", n);
