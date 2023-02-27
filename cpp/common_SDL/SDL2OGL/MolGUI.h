@@ -512,7 +512,9 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
                              glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex );                                
         }
-        if(bViewPis &&  fpipos ){ flipPis(Vec3dZ); glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );  }
+        if(bViewPis &&  fpipos ){ flipPis(Vec3dZ); glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );  
+            //for(int i=0; i<nnode; i++) printf("pi[%i] |r| %g \n", i, pipos[i].norm() );
+        }
         //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
         //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
         //if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D                     ); }                    

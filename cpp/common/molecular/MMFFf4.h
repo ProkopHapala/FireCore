@@ -154,7 +154,7 @@ float eval_atom(int ia){
 
     // --------- Bonds Step
     for(int i=0; i<4; i++){
- int ing = ings[i];
+        int ing = ings[i];
         //printf( "bond[%i|%i=%i]\n", ia,i,ing );
         //fbs[i]=Quat4fOnes; fps[i]=Quat4fOnes;
         fbs[i]=Quat4fZero; fps[i]=Quat4fZero;
@@ -171,7 +171,7 @@ float eval_atom(int ia){
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
             E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
 
-            double kpp = Kppi[i];
+            float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing].f, 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].f.add(f2);    //   pi-alignment     (konjugation)
                 if(idebug)printf( "pi-pi[%i|%i] kpp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, kpp, hpi.dot(pipos[ing].f),1.,1., f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
@@ -182,7 +182,7 @@ float eval_atom(int ia){
 
         // pi-sigma 
         //if(bPi){    
-        double ksp = Kspi[i];
+        float ksp = Kspi[i];
         if(ksp>1e-6){  
             E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fbs[i].f.add(f2);    //   pi-planarization (orthogonality)
             if(idebug)printf( "pi-sigma[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, ksp, hpi.dot(h.f),1.,h.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
@@ -216,14 +216,14 @@ float eval_atom(int ia){
     return E;
 }
 
-double eval_atoms(){
-    double E=0;
+float eval_atoms(){
+    float E=0;
     for(int ia=0; ia<nnode; ia++){ E+=eval_atom(ia); }
     return E;
 }
 
 void normalizePis(){ 
-    for(int i=0; i<nnode; i++){ pipos[i].f.normalize(); } 
+    for(int i=0; i<nnode; i++){ pipos[i].f.normalize(); pipos[i].e=0; } 
 }
 
 void cleanForce(){ 
@@ -245,8 +245,10 @@ void asseble_forces(){
         fa.e=0;
         fp.e=0;
         fapos [ia].add( fa ); 
+        fapos [ia].e=0; 
         if(bpi){
             fpipos[ia].add( fp );
+            fpipos[ia].e=0;
             fpipos[ia].f.makeOrthoU( pipos[ia].f );  // subtract force component which change pi-vector size
         }
     }

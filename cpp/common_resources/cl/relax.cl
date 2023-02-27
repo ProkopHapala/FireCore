@@ -21,6 +21,8 @@ __constant sampler_t sampler_nearest =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRES
 //__constant sampler_t sampler_1 = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;
 
 #define  float4Zero  (float4){0.f,0.f,0.f,0.f}
+#define  float3Zero  (float3){0.f,0.f,0.f}
+#define  float2Zero  (float3){0.f,0.f,0.f}
 
 
 /*
@@ -1121,24 +1123,6 @@ float4 eval_bond( float3 d, float l0, float k, float4* fe_ ){
     return (float4)( d, inv_l );
 }
 
-/*
-float4 evalAngle( __private float4* dls,  __private float4* fout, int ing, int jng, double K, double c0 ){
-    float3 h1 = dls[ing].xyz; float ir1 = dls[ing].w;
-    float3 h2 = dls[jng].xyz; float ir2 = dls[jng].w;
-    float  c = dot(h1,h2);
-    float3 hf1,hf2;
-    hf1 = h2 - h1*c;
-    hf2 = h1 - h2*c;
-    float E = K*c*c;
-    float fang = -K*c*2;
-    hf1 *= ( fang*ir1 );
-    hf2 *= ( fang*ir2 );
-    fout [ing].xyz += hf1;
-    fout [jng].xyz += hf2;
-    return (float4)( hf1+hf1 , -E );
-}
-*/
-
 float4 evalAngle( __private float4* fout, float4 dl1, float4 dl2, int ing, int jng, double K, double c0 ){
     float3 h1 = dl1.xyz; float ir1 = dl1.w;
     float3 h2 = dl2.xyz; float ir2 = dl2.w;
@@ -1155,7 +1139,7 @@ float4 evalAngle( __private float4* fout, float4 dl1, float4 dl2, int ing, int j
     return (float4)( hf1+hf2, -E );
 }
 
-float evaAngCos( float4 hr1, float4 hr2, float K, float c0, __private float3* f1, __private float3* f2 ){
+float evalAngCos( const float4 hr1, const float4 hr2, float K, float c0, __private float3* f1, __private float3* f2 ){
     float  c = dot(hr1.xyz,hr2.xyz);
     float3 hf1,hf2;
     hf1 = hr2.xyz - hr1.xyz*c;
@@ -1169,6 +1153,29 @@ float evaAngCos( float4 hr1, float4 hr2, float K, float c0, __private float3* f1
     *f2=hf2;
     return E;
 }
+
+inline float evalPiAling( const float3 h1, const float3 h2,  float K, __private float3* f1, __private float3* f2 ){  // interaction between two pi-bonds
+    float  c = dot(h1,h2);
+    float3 hf1,hf2;
+    hf1 = h2 - h1*c;
+    hf2 = h1 - h2*c;
+    bool sign = c<0; if(sign) c=-c;
+    float E    = -K*c;
+    float fang =  K;
+    if(sign)fang=-fang;
+    hf1 *= fang;
+    hf2 *= fang;
+    *f1=hf1;
+    *f2=hf2;
+    return E;
+}
+
+inline float evalBond( float3 h, float dl, float k, __private float3* f ){
+    float fr = dl*k;
+    *f = h * fr;
+    return fr*dl*0.5;
+}
+
 
 
 
@@ -1457,6 +1464,129 @@ __kernel void getMMFFsp3(
     } // if (iG< nnode)
 
     forces[iG] = fe;
+    
+}
+
+
+__kernel void getMMFFf4(
+    const int4 nDOFs,              // 1   (nAtoms,nnode)
+    // Dynamical
+    __global float4*  apos,        // 2    [natoms]
+    __global float4*  fapos,       // 3    [natoms]     
+    __global float4*  fneigh,      // 4    [nnode*4]
+    //__global float4*  pipos,       //  [nnode]    - Stored in apos
+    //__global float4*  fpipos,      //  [nnode]    - Stored in fapos
+    //__global float4*  fneighpi,    //  [nnode*4]  - stored fneigh
+    // parameters
+    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} 
+    __global float4*  apars,        // 7 [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+    __global float4*  bLs,          // 8 [nnode]  bond lengths  for each neighbor
+    __global float4*  bKs,          // 9 [nnode]  bond stiffness for each neighbor
+    __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
+    __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
+    const cl_Mat3 lvec,             // 12
+    const cl_Mat3 invLvec           // 13
+){
+
+    const int ia = get_global_id (0);
+    //const int iL = get_local_id  (0);
+    //const int nL = get_local_size(0);
+    const int nAtoms=nDOFs.x;
+    const int nnode =nDOFs.y;
+
+    #define NNEIGH 4
+
+    // ========= Private Memory
+
+    // ---- Dynamical
+    float4  hs [4];              // direction vectors of bonds
+    //float4  fbs[4];            // force on neighbor sigma
+    //float4  fps[4];            // force on neighbor pi
+
+    float3  fbs[3];              // force on neighbor sigma
+    float3  fps[3];              // force on neighbor pi
+    float3  fa  = float3Zero;    // force on center position 
+    float3  fpi = float3Zero;    // force on pi orbital
+    float E=0;
+
+    // ---- Params
+    const int4   ng  = neighs[ia];    
+    const float3 pa  = apos [ia].xyz;
+    //const float3 hpi = pipos[ia].xyz; 
+    const float3 hpi = apos[ia+nAtoms].xyz; 
+    const float4 par = apars[ia];     
+    const float4 vbL = bLs[ia];       
+    const float4 vbK = bKs[ia];       
+    const float4 vKs = Ksp[ia];       
+    const float4 vKp = Ksp[ia];       
+
+    // Temp Arrays
+    const int*   ings  = (int*  )&ng; 
+    const float* bL    = (float*)&vbL; 
+    const float* bK    = (float*)&vbK;
+    const float* Kppi  = (float*)&vKs; 
+    const float* Kspi  = (float*)&vKp;  
+
+    // ========= Evaluate Bonds
+
+    float3 f1,f2;         // temporary forces
+    for(int i=0; i<NNEIGH; i++){
+        float4 h;
+        fbs[i]=float3Zero;
+        fps[i]=float3Zero;
+        int ing = ings[i];
+        if(ing<0) break;
+        h.xyz    = apos[ing].xyz - pa;
+        float  l = length(h.xyz);
+        h.w      = 1./l;
+        hs[i]    = h;
+        if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
+            E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;    
+            float kpp = Kppi[i];
+            if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                //E += evalPiAling( hpi, pipos[ing].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
+                E += evalPiAling( hpi, apos[ing+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
+            }
+            // ToDo: triple bonds ?
+        } 
+        // pi-sigma 
+        float ksp = Kspi[i];
+        if(ksp>1.e-6){  
+            E += evalAngCos( (float4){hpi,1.}, h, ksp, par.z, &f1, &f2 );   fpi+=f1;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
+        }
+    }
+
+    //  ============== Angles 
+
+    for(int i=0; i<NNEIGH; i++){
+        int ing = ings[i];
+        if(ing<0) break;
+        const float4 hi = hs[i];
+        for(int j=i+1; j<NNEIGH; j++){
+            int jng  = ings[j];
+            if(jng<0) break;
+            const float4 hj = hs[j];
+            E += evalAngCos( hi, hj, par.y, par.x, &f1, &f2 );     // angles between sigma bonds
+            fbs[i]+= f1;
+            fbs[j]+= f2;
+            fa    -= f1+f2;
+            // ToDo: subtract non-covalent interactions
+        }
+    }
+
+    // ========= Save results
+
+    const int i4 =ia*4;
+    const int i4p=i4+nAtoms*4;
+    for(int i=0; i<NNEIGH; i++){
+        fneigh[i4 +i] = (float4){fbs[i],0};
+        fneigh[i4p+i] = (float4){fps[i],0};
+        //fneighpi[i4+i] = (float4){fps[i],0};
+    }
+    fapos[ia       ] = (float4){fa ,0};
+    fapos[ia+nAtoms] = (float4){fpi,0};
+    //fpipos[ia] = (float4){fpi,0};
     
 }
 
