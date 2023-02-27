@@ -20,6 +20,8 @@
 //#include "Mesh.h"
 #include "Draw3D.h"
 
+#include "Forces.h"
+
 //#include "MMFFParams.h"
 
 //#include <SDL2/SDL_opengl.h>
