@@ -21,6 +21,10 @@ class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
 
     bool bGPU_MMFF = true;
 
+    OCLtask* task_getF=0; //ocl.getTask("getMMFFf4");
+    OCLtask* task_move=0; //ocl.getTask("gatherForceAndMove");
+    OCLtask* task_pi0s=0; //ocl.getTask("updatePiPos0");
+    OCLtask* task_pipi=0; //ocl.getTask("evalPiPi");
 
 // ======== Functions
 
@@ -268,17 +272,16 @@ double eval_gridFF_ocl( int n, Vec3d* ps,             Vec3d* fs ){
     return E;
 }
 
-double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){ 
+void setup_MMFFsp3_ocl( ){
     //printf( " ======= eval_MMFF_ocl() \n" );
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
-    OCLtask* task_getF = ocl.getTask("getMMFFsp3");
-    OCLtask* task_move = ocl.getTask("gatherForceAndMove");
-    OCLtask* task_pi0s = ocl.getTask("updatePiPos0");
-    OCLtask* task_pipi = ocl.getTask("evalPiPi");
+    task_getF = ocl.getTask("getMMFFsp3");
+    task_move = ocl.getTask("gatherForceAndMove");
+    task_pi0s = ocl.getTask("updatePiPos0");
+    task_pipi = ocl.getTask("evalPiPi");
     //OCLtask* task_gff  = ocl.setup_getNonBondForce_GridFF( 0, n);
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-
     ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move );
     //printf( "CPU lvec    (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n", ff.lvecT.a.x,ff.lvecT.a.y,ff.lvecT.a.z,    ff.lvecT.b.x,ff.lvecT.b.y,ff.lvecT.b.z,   ff.lvecT.c.x,ff.lvecT.c.y,ff.lvecT.c.z  );
     //printf( "CPU lvec    (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n", ff.lvec.a.x,ff.lvec.a.y,ff.lvec.a.z,    ff.lvec.b.x,ff.lvec.b.y,ff.lvec.b.z,   ff.lvec.c.x,ff.lvec.c.y,ff.lvec.c.z  );
@@ -291,6 +294,10 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     //pack  ( n, ps, q_ps, sq(gridFF.Rdamp) );
     //ocl.upload( ocl.ibuff_atoms,  (float4*)q_ps, n ); // Note - these are other atoms than used for makeGridFF()
     //ocl.upload( ocl.ibuff_coefs,   coefs,  na);
+} 
+
+double eval_MMFFsp3_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){ 
+    if( task_getF==0 )setup_MMFFsp3_ocl();
     for(int i=0; i<niter; i++){
         //task_gff->enque_raw();
         task_getF->enque_raw();
@@ -310,6 +317,35 @@ double eval_MMFF_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
     //double E=0;
     //for(int i=0; i<n; i++){  printf( "atom[%i] pos(%g,%g,%g) force(%g,%g,%g)\n",  i, ps[i].x,ps[i].y,ps[i].z,    fs[i].x,fs[i].y,fs[i].z ); }; // sum energy
     return E;
+}
+
+void setup_MMFFf4_ocl(){
+    task_getF = ocl.getTask("getMMFFf4");
+    task_move = ocl.getTask("gatherForceAndMove");
+    ocl.nDOFs.x=ff.natoms;
+    ocl.nDOFs.y=ff.nnode;
+    ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move );
+    Mat3_to_cl( ff.lvec   , ocl.cl_lvec    );
+    Mat3_to_cl( ff.invLvec, ocl.cl_invLvec );
+    ocl.setup_getMMFFf4        ( ff.natoms, ff.nnode, bPBC, task_getF );  
+}
+
+double eval_MMFFf4_ocl( int niter ){ 
+    //printf( " ======= eval_MMFF_ocl() \n" );
+    if( task_getF==0 )setup_MMFFf4_ocl();
+    for(int i=0; i<niter; i++){
+        task_getF->enque_raw();
+        task_move->enque_raw();
+    }
+    //printf( "ocl.download(n=%i) \n", n );
+    ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
+    ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
+    ocl.finishRaw();
+    unpack( ff4.natoms, ffl. apos, ff4. apos  );
+    unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
+    unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
+    unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
+    return 0;
 }
 
 void eval(){
@@ -332,7 +368,8 @@ void eval(){
         //E += ff.eval();
         //for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
-        eval_MMFF_ocl( 1, ff.natoms+ff.npi, ff.apos, ff.fapos );
+        //eval_MMFFsp3_ocl( 1, ff.natoms+ff.npi, ff.apos, ff.fapos );
+        eval_MMFFf4_ocl ( 1 );
         //for(int i=0; i<ff.natoms; i++){ printf("OCL atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //exit(0);
     }else{

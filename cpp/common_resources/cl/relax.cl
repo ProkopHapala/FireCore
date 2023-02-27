@@ -1591,6 +1591,62 @@ __kernel void getMMFFf4(
 }
 
 
+
+
+
+__kernel void updateAtomsMMFFf4(
+    const float4      MDpars,       // 1
+    const int4        n,            // 2
+    __global float4*  apos,         // 3
+    __global float4*  avel,         // 4
+    __global float4*  aforce,       // 5
+    __global float4*  fneigh,  // 6
+    __global int4*    bkNeighs,     // 7
+){
+    
+    const int natom=n.y;
+    const int nvecs=n.x;
+    const int ia = get_global_id (0);
+
+    if(ia>=natom) return;
+
+    // ------ Gather Forces from back-neighbors
+    
+    const int4 ngs  = bkNeighs[ia];
+
+    float4 fe = aforce  [ia]; 
+    if(ngs.x>=0) fe += fneigh[ngs.x];
+    if(ngs.y>=0) fe += fneigh[ngs.y];
+    if(ngs.z>=0) fe += fneigh[ngs.z];
+    if(ngs.w>=0) fe += fneigh[ngs.w];
+
+    int ip0 = natoms*4;
+    float4 fp = aforce  [ia+natoms]; 
+    if(ngs.x>=0) fe += fneigh[ip0+ngs.x];
+    if(ngs.y>=0) fe += fneigh[ip0+ngs.y];
+    if(ngs.z>=0) fe += fneigh[ip0+ngs.z];
+    if(ngs.w>=0) fe += fneigh[ip0+ngs.w];
+    
+
+    //aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
+
+    // ------ Move (Leap-Frog)
+    float4 pe = apos[iG];
+    float4 ve = avel[iG];
+    ve     *= MDpars.y;
+    ve.xyz += fe.xyz*MDpars.x;
+    pe.xyz += ve.xyz*MDpars.x;
+    
+    // ------ Store global state
+    if(iG>natom){ pe.xyz=normalize(pe.xyz); };
+    avel[iG] = ve;
+    apos[iG] = pe;
+
+}
+
+
+
+
 __kernel void gatherForceAndMove(
     const float4      params,       // 1
     const int4        n,            // 2
