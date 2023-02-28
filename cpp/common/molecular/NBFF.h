@@ -35,7 +35,19 @@ bool checkPairsSorted( int n, Vec2i* pairs ){
 //   ((R2/r2)-1)^2
 //   (((R2+w2)/(r2+w2))-1)^2
 
-class NBsystem{ public:
+class AtomicSystem{ public:
+    int      n;
+    int*     types; // non-equivalent atoms, pointer to particular atom in fitting parameters
+    Vec3d*   ps;
+    //Vec3d* fs;
+    //double E;
+    AtomicSystem (      ){ n=0;  types=0;            ps=0;               }
+    AtomicSystem (int n_){ n=n_; types=new int  [n]; ps   =new Vec3d[n]; }
+    ~AtomicSystem(      ){ if(types)delete [] types; if(ps)delete [] ps; }
+};
+
+//class NBsystem : AtomicSystem { public: // Can be Child of 
+class NBsystem{ public: // Can be Child of 
     int n;
     int    *atypes=0; // Not necessarily used
     Vec3d  *REQs=0;

@@ -459,6 +459,7 @@ using Vec3f = Vec3T<float>;
 using Vec3d = Vec3T<double>;
 using Vec3i8  = Vec3T<int8_t>;
 using Vec3ui8 = Vec3T<uint8_t>;
+using Vec3b   = Vec3T<bool>;
 
 static constexpr Vec3d Vec3dZero = (Vec3d){0.0,0.0,0.0};
 static constexpr Vec3d Vec3dOne  = (Vec3d){1.0,1.0,1.0};
