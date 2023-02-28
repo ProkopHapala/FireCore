@@ -9,6 +9,7 @@ rm lib$name
 make -j4 $name
 cd $wd
 
+> FitREQ_debug.xyz
 python3 run.py
 
 

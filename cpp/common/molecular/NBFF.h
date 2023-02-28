@@ -44,6 +44,12 @@ class AtomicSystem{ public:
     AtomicSystem (      ){ n=0;  types=0;            ps=0;               }
     AtomicSystem (int n_){ n=n_; types=new int  [n]; ps   =new Vec3d[n]; }
     ~AtomicSystem(      ){ if(types)delete [] types; if(ps)delete [] ps; }
+
+    void atomsToXYZ(FILE* fout){
+        for(int i=0; i<n; i++){
+            fprintf( fout, "%i %20.10f %20.10f %20.10f\n", types[i], ps[i].x,ps[i].y,ps[i].z );
+        }
+    }
 };
 
 //class NBsystem : AtomicSystem { public: // Can be Child of 
