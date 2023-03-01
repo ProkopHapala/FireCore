@@ -29,7 +29,7 @@ class OCL_PP: public OCL_DFT { public:
     cl_program program_relax=0;
 
     int4   nDOFs    {0,0,0,0};
-    float4 md_params{0.05,0.99,0.0,0.0};
+    float4 md_params{0.05,0.9,0.0,0.0};
     float4 dinv[3];    // grid step
     float4 tipRot[3]={{1.,0.,0.,0.},{0.,1.,0.,0.},{0.,0.,1.,0.1}};  // tip rotation
     //float4 tipRot[3]={{-1.,0.,0.,0.},{0.,-1.,0.,0.},{0.,0.,-1.,0.1}};  // tip rotation
@@ -537,7 +537,7 @@ class OCL_PP: public OCL_DFT { public:
 
     OCLtask* setup_updateAtomsMMFFf4( int na, int nNode,  OCLtask* task=0 ){
         if(task==0) task = getTask("updateAtomsMMFFf4");
-        task->global.x = na;
+        task->global.x = na+nNode;
         //task->local .x = 1;
         //task->roundSizes();
         //if(n >=0  ) 

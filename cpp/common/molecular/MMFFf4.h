@@ -170,16 +170,16 @@ float eval_atom(int ia){
 
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
             E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
-
+            /*
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing].f, 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].f.add(f2);    //   pi-alignment     (konjugation)
                 //if(idebug)printf( "pi-pi[%i|%i] kpp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, kpp, hpi.dot(pipos[ing].f),1.,1., f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             }
             // ToDo: triple bonds ?
-
+            */
         } 
-
+        /*
         // pi-sigma 
         //if(bPi){    
         float ksp = Kspi[i];
@@ -188,9 +188,9 @@ float eval_atom(int ia){
             //if(idebug)printf( "pi-sigma[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, ksp, hpi.dot(h.f),1.,h.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
         }
         //}
-
+        */
     }
-
+    /*
     // --------- Angle Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -208,7 +208,7 @@ float eval_atom(int ia){
             // ToDo: subtract non-covalent interactions
         }
     }
-
+    */
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia].f=fa; 
@@ -297,6 +297,34 @@ void printBKneighs(){for(int ia=0; ia<natoms; ia++){ printBKneighs(ia); }; };
 
 void print_apos(){
     for(int ia=0;ia<natoms;ia++){ printf( "print_apos[%i](%g,%g,%g)\n", ia, apos[ia].x,apos[ia].y,apos[ia].z ); }
+}
+
+void printDEBUG(){
+    printf( "MMFFf4::printDEBUG() \n" );
+    for(int i=0; i<natoms; i++){
+        printf( "CPU[%i] ", i );
+        //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
+        printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", fapos[i].x, fapos[i].y, fapos[i].z, fapos[i].w );
+        //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i].x, avel[i].y, avel[i].z, avel[i].w );
+        printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i].x, apos[i].y, apos[i].z, apos[i].w );
+        printf( "\n" );
+    }
+    for(int i=0; i<nnode; i++){
+        int i1=i+natoms;
+        printf( "CPU[%i] ", i1 );
+        printf(  "fpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", fapos[i1].x, fapos[i1].y, fapos[i1].z, fapos[i1].w );
+        //printf(  "vpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i1].x, avel[i1].y, avel[i1].z, avel[i1].w );
+        printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
+        printf( "\n" );
+    }
+    for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
+        int i1=i*4+j;
+        int i2=(i+natoms)*4+j;
+        printf( "CPU[%i,%i] ", i, j );
+        printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i1].x, fneigh[i1].y, fneigh[i1].z, fneigh[i1].w );
+        printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i2].x, fneigh[i2].y, fneigh[i2].z, fneigh[i2].w );
+        printf( "\n" );
+    }}
 }
 
 };
