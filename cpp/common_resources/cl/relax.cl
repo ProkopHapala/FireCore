@@ -1638,6 +1638,9 @@ __kernel void updateAtomsMMFFf4(
     const int nnode =n.y;
     const int ia = get_global_id (0);
 
+    printf( "updateAtomsMMFFf4[%i]\n", ia );
+    return;
+
     if(ia==0){ printf( "GPU::updateAtomsMMFFf4() dt=%g damp=%g \n", MDpars.x, MDpars.y ); }
     if(ia==0)for(int i=0; i<nAtoms; i++){
         printf( "GPU[%i] ", i );
@@ -1668,10 +1671,9 @@ __kernel void updateAtomsMMFFf4(
     // ------ Gather Forces from back-neighbors
     
     const int4 ngs  = bkNeighs[ia];
-
-    float4 fe = aforce[ia]; 
-    float4 fp = aforce[ia+nAtoms]; 
-    int ip0 = nAtoms*4;
+    const int  ip0  = nAtoms*4;
+    float4 fe       = aforce[ia]; 
+    float4 fp       = aforce[ia+nAtoms];
     if(ngs.x>=0){ fe += fneigh[ngs.x]; fp += fneigh[ip0+ngs.x]; }
     if(ngs.y>=0){ fe += fneigh[ngs.y]; fp += fneigh[ip0+ngs.y]; }
     if(ngs.z>=0){ fe += fneigh[ngs.z]; fp += fneigh[ip0+ngs.z]; }
@@ -1684,6 +1686,8 @@ __kernel void updateAtomsMMFFf4(
     float4 ve = avel[ia];
     ve     *= MDpars.y;
     ve.xyz += fe.xyz*MDpars.x;
+    pe.xyz += ve.xyz*MDpars.x;
+        ve.xyz += fe.xyz*MDpars.x;
     pe.xyz += ve.xyz*MDpars.x;
     
     // ------ Store global state
