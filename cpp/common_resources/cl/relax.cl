@@ -1563,29 +1563,29 @@ __kernel void getMMFFf4(
         //printf( "[%i|%i] l %g h(%g,%g,%g) \n", ia,i, l, h.x,h.y,h.z ); 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;    
-
+/*
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 //E += evalPiAling( hpi, pipos[ing].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;        //   pi-alignment     (konjugation)
                 epp += evalPiAling( hpi, apos[ing+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
                 E+=epp;
-
-                printf( "GPU[%i|%i] hpi(%g,%g,%g) hpj(%g,%g,%g) \n", ia,ing, hpi.x,hpi.y,hpi.z, apos[ing+nAtoms].x,apos[ing+nAtoms].y,apos[ing+nAtoms].z );
+                //printf( "GPU[%i|%i] hpi(%g,%g,%g) hpj(%g,%g,%g) \n", ia,ing, hpi.x,hpi.y,hpi.z, apos[ing+nAtoms].x,apos[ing+nAtoms].y,apos[ing+nAtoms].z );
+*/
             }
             // ToDo: triple bonds ?
         } 
-        
+/*        
         // pi-sigma 
         float ksp = Kspi[i];
         if(ksp>1.e-6){  
             esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.z, &f1, &f2 );   fpi+=f1;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
             E+=epp;
         }
-
+*/
         //printf( "GPU[%i|%i] esp=%g epp=%g \n", esp, epp );
         
     }
-
+/*
     //  ============== Angles 
     for(int i=0; i<NNEIGH; i++){
         int ing = ings[i];
@@ -1603,7 +1603,7 @@ __kernel void getMMFFf4(
             // ToDo: subtract non-covalent interactions
         }
     }
-
+*/
     // ========= Save results
 
     const int i4 =ia*4;
