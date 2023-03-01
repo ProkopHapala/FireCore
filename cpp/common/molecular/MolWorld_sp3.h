@@ -412,6 +412,7 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
 
 virtual void init( bool bGrid ){
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+    params.printAtomTypes();
 	builder.bindParams(&params);
     //params.printAtomTypeDict();
     //params.printAtomTypes();
