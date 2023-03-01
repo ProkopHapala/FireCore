@@ -537,6 +537,8 @@ virtual void init( bool bGrid ){
             //printf("### ff4.fpipos:\n");  printVecs( ff4.nnode,   ff4.fpipos );
 
             if( ckeckNaN_f( ff4.natoms, 4, (float*)ff4.fapos,  "ff4.apos"  ) || ckeckNaN_f( ff4.nnode, 4, (float*)ff4.fpipos,  "ff4.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFf4.eval() => exit() \n"); exit(0); };
+            /*
+            // -------    compate MMFFf4 to MMFFsp3_loc
             bool ret=false;
             printf("### Compare ffl.apos,   ff4.apos    \n"); ret |= compareVecs( ff4.natoms, ffl.apos,   ff4.apos,   1e-4, true );
             printf("### Compare ffl.pipos,  ff4.pipos   \n"); ret |= compareVecs( ff4.nnode,  ffl.pipos,  ff4.pipos,  1e-4, true );
@@ -544,7 +546,9 @@ virtual void init( bool bGrid ){
             printf("### Compare ffl.fapos,  ff4.fapos   \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
             printf("### Compare ffl.fpipos, ff4.fpipos, \n"); ret |= compareVecs( ff4.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
             if(ret){ printf("ERROR: ff4.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }
+            */
 
+            ff4.printDEBUG();
             printf(" ============ check MMFFf4 DONE\n " );
         }
 
