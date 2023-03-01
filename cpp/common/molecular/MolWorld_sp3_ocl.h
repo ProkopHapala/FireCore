@@ -372,7 +372,6 @@ double eval_MMFFf4_ocl( int niter ){
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
     //for(int i=0; i<ff4.natoms; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z ); }
     ocl.finishRaw();                              //DEBUG
-    exit(0);
     unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     unpack( ff4.nnode,  ffl. pipos,ff4. pipos );

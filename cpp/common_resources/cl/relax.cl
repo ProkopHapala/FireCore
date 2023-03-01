@@ -1518,9 +1518,8 @@ __kernel void getMMFFf4(
     float4  hs [4];              // direction vectors of bonds
     //float4  fbs[4];            // force on neighbor sigma
     //float4  fps[4];            // force on neighbor pi
-
-    float3  fbs[3];              // force on neighbor sigma
-    float3  fps[3];              // force on neighbor pi
+    float3  fbs[4];              // force on neighbor sigma
+    float3  fps[4];              // force on neighbor pi
     float3  fa  = float3Zero;    // force on center position 
     float3  fpi = float3Zero;    // force on pi orbital
     float E=0;
@@ -1534,14 +1533,14 @@ __kernel void getMMFFf4(
     const float4 vbL = bLs[ia];       
     const float4 vbK = bKs[ia];       
     const float4 vKs = Ksp[ia];       
-    const float4 vKp = Ksp[ia];       
+    const float4 vKp = Kpp[ia];       
 
     // Temp Arrays
     const int*   ings  = (int*  )&ng; 
     const float* bL    = (float*)&vbL; 
     const float* bK    = (float*)&vbK;
-    const float* Kppi  = (float*)&vKs; 
-    const float* Kspi  = (float*)&vKp;  
+    const float* Kspi  = (float*)&vKs;  
+    const float* Kppi  = (float*)&vKp; 
 
     // ========= Evaluate Bonds
 
@@ -1550,8 +1549,8 @@ __kernel void getMMFFf4(
         float4 h;
         fbs[i]=float3Zero;
         fps[i]=float3Zero;
-        fbs[i]=(float3){1,0,1};
-        fps[i]=(float3){1,2,1};
+        //fbs[i]=(float3){1,2,3};
+        //fps[i]=(float3){4,5,6};
         int ing = ings[i];
         if(ing<0) break;
         h.xyz    = apos[ing].xyz - pa;    //printf( "[%i|%i] ing=%i h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z,  pa.x,pa.y,pa.z ); 
@@ -1566,22 +1565,22 @@ __kernel void getMMFFf4(
 
         //printf( "[%i|%i] l %g h(%g,%g,%g) \n", ia,i, l, h.x,h.y,h.z ); 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
-            //E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
+            E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
             //if(ia==0)printf( "GPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
 
-            /*
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 //E += evalPiAling( hpi, pipos[ing].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;        //   pi-alignment     (konjugation)
                 epp += evalPiAling( hpi, apos[ing+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
+                //if(ia==9)
+                printf( "GPU:pipi[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, dot(hpi,apos[ing+nAtoms].xyz), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
                 E+=epp;
                 //printf( "GPU[%i|%i] hpi(%g,%g,%g) hpj(%g,%g,%g) \n", ia,ing, hpi.x,hpi.y,hpi.z, apos[ing+nAtoms].x,apos[ing+nAtoms].y,apos[ing+nAtoms].z );
             }
-            */
+
             // ToDo: triple bonds ?
         } 
         
-        /*
         // DEBUG: ERROR: uncomenting this couse drift
         // pi-sigma 
         float ksp = Kspi[i];
@@ -1589,12 +1588,11 @@ __kernel void getMMFFf4(
             esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.z, &f1, &f2 );   fpi+=f1;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
             E+=epp;
         }
-        */
+
         //printf( "GPU[%i|%i] esp=%g epp=%g \n", esp, epp );
         
     }
 
-    /*
     // DEBUG: ERROR: uncomenting this blows things up
     //  ============== Angles 
     for(int i=0; i<NNEIGH; i++){
@@ -1615,15 +1613,16 @@ __kernel void getMMFFf4(
             // ToDo: subtract non-covalent interactions
         }
     }
-    */
     
     // ========= Save results
 
     const int i4 =ia*4;
-    const int i4p=i4+nAtoms*4;
+    const int i4p=i4+nnode*4;
     for(int i=0; i<NNEIGH; i++){
         fneigh[i4 +i] = (float4){fbs[i],0};
         fneigh[i4p+i] = (float4){fps[i],0};
+        //fneigh[i4 +i] = (float4){fbs[i],ia};
+        //fneigh[i4p+i] = (float4){fps[i],ia};
         //fneighpi[i4+i] = (float4){fps[i],0};
     }
     fapos[ia       ] = (float4){fa ,0};
@@ -1674,12 +1673,19 @@ __kernel void updateAtomsMMFFf4(
     }
     if(iG==0)for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
         int i1=i*4+j;
-        int i2=(i+natoms)*4+j;
+        int i2=i1+nnode*4;
         printf( "GPU[%i,%i] ", i, j );
         printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i1].x, fneigh[i1].y, fneigh[i1].z, fneigh[i1].w );
         printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i2].x, fneigh[i2].y, fneigh[i2].z, fneigh[i2].w );
         printf( "\n" );
     }}
+    /*
+    if(iG==0)for(int i=0; i<nnode*4*2; i++){
+        printf( "GPU[%i,%i,%i] ", i/4, i%4, i>=(nnode*4) );
+        printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i].x, fneigh[i].y, fneigh[i].z, fneigh[i].w );
+        printf( "\n" );
+    }
+    */
 
     if(iG>=(natoms+nnode)) return;
 
@@ -1688,7 +1694,7 @@ __kernel void updateAtomsMMFFf4(
     // ------ Gather Forces from back-neighbors
     int4 ngs;  
     if( bPi ){  // pis 
-        const int ip0  = natoms*4;
+        const int ip0  = nnode*4;
         ngs            = bkNeighs[iG+natoms];
         ngs           += (int4){ip0,ip0,ip0,ip0};
     }else{     // atoms  
@@ -1718,8 +1724,8 @@ __kernel void updateAtomsMMFFf4(
     }
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     // ------ Store global state
-    //avel[iG] = ve;
-    //apos[iG] = pe;
+    avel[iG] = ve;
+    apos[iG] = pe;
     if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
 
 }
