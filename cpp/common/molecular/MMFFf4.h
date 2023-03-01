@@ -156,8 +156,9 @@ float eval_atom(int ia){
     for(int i=0; i<4; i++){
         int ing = ings[i];
         //printf( "bond[%i|%i=%i]\n", ia,i,ing );
-        //fbs[i]=Quat4fOnes; fps[i]=Quat4fOnes;
         fbs[i]=Quat4fZero; fps[i]=Quat4fZero;
+        //fbs[i]=Quat4fOnes; fps[i]=Quat4fOnes;
+        //fbs[i]=Quat4f{1,0,1,0}; fps[i]=Quat4f{1,2,1,2};
         if(ing<0) break;
         Quat4f h; 
         h.f.set_sub( apos[ing].f, pa );
@@ -169,18 +170,20 @@ float eval_atom(int ia){
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
 
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
-            //E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
+            E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
             //if(ia==0)printf( "CPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
-            /*
+            
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing].f, 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].f.add(f2);    //   pi-alignment     (konjugation)
+                //if(ia==9)
+                //printf( "CPU:pipi[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, hpi.dot(pipos[ing].f), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
                 //if(idebug)printf( "pi-pi[%i|%i] kpp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, kpp, hpi.dot(pipos[ing].f),1.,1., f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             }
             // ToDo: triple bonds ?
-            */
+            
         } 
-        /*
+        
         // pi-sigma 
         //if(bPi){    
         float ksp = Kspi[i];
@@ -189,7 +192,7 @@ float eval_atom(int ia){
             //if(idebug)printf( "pi-sigma[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, ksp, hpi.dot(h.f),1.,h.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
         }
         //}
-        */
+        
     }
     
     // --------- Angle Step
