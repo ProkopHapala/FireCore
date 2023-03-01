@@ -380,7 +380,7 @@ class OCL_PP: public OCL_DFT { public:
                 ibuff_Kpp    = newBuffer( "Kpp",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY );
             }
         }
-        printBuffers();
+        //printBuffers();
         //exit(0);
         return ibuff_atoms;
     }
