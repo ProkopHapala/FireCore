@@ -6,8 +6,15 @@ import time
 
 sys.path.append("../../")
 from pyBall import FitREQ as fit
+from pyBall import atomicUtils as au
 
 # ============== Setup
+
+h2o = au.AtomiSystem( "common_resources/H2O.xyz")
+h2o.print()
+h2o.findBonds()
+h2o.printBonds()
+exit()
 
 # fit Q
 #typeMask = np.array([ [0,0,0], [0,0,1], ], dtype=np.int32 )

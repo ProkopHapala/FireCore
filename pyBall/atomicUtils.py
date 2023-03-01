@@ -25,7 +25,29 @@ def findAllBonds( atoms, Rcut=3.0, RvdwCut=0.7 ):
                 bonds.append( (i,j) )
                 bondsVecs.append( ( rij, dp[j]/rij ) )
     return bonds, bondsVecs
-    
+
+def getRvdWs( atypes, eparams=elements.ELEMENTS ):
+    return [ eparams[ ei ][7] for ei in atypes ]
+
+def getRvdWsNP( atypes, eparams=elements.ELEMENTS ):
+    return np.array( getRvdWs( atypes, eparams ), dtype=np.int32 ) 
+
+def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.7, RvdWs=None, byRvdW=True ):
+    bonds  = []
+    iatoms = np.arange( len(apos), dtype=int )
+    Rcut2  = Rcut*Rcut
+    if byRvdW:
+        if  RvdWs is None:
+            RvdWs = getRvdWsNP( atypes, eparams=elements.ELEMENTS )
+    else:
+        RvdWs = np.ones(len(apos))*Rcut
+    for i,pi in enumerate(apos):
+        j0=i+1
+        rs   = np.sqrt( np.sum( (apos[j0:,:] - pi[None,:] )**2, axis=1 ) )
+        maks = rs[:] < ( RvdWs[j0:]+RvdWs[i] )*RvdwCut
+        bonds += [ (i,j) for j in iatoms[j0:][maks] ]
+    return np.array( bonds, dtype=np.int32 )
+
 def neighs( natoms, bonds ):
     neighs = [{} for i in range(natoms) ]
     for ib, b in enumerate(bonds):
@@ -238,9 +260,10 @@ def saveAtoms( atoms, fname, xyz=True ):
             fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
 
-def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="" ):
-    fout.write("%i\n"  %len(xyzs) )
-    fout.write(comment+"\n")
+def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="", bHeader=True ):
+    if(bHeader):
+        fout.write("%i\n"  %len(xyzs) )
+        fout.write(comment+"\n")
     if   (Rs is not None):
         for i,xyz in enumerate( xyzs ):
             fout.write("%s %f %f %f %f %f \n"  %( es[i], xyz[0], xyz[1], xyz[2], qs[i], Rs[i] ) )
@@ -510,3 +533,40 @@ def removeGroup( base, remove ):
                 As[ ia_ ] -=1
     return (As,Bs), old_i
 
+# ========================== Class Geom
+
+class AtomiSystem():
+
+    def __init__(self,fname=None) -> None:
+        self.apos    = None
+        self.atypes  = None
+        self.enames  = None
+        self.qs      = None
+        self.Rs      = None
+        self.bonds   = None
+        if fname is not None:
+            self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname)
+
+    def saveXYZ(self, fname ):
+        saveXYZ( self.enames, self.xyzs, fname, qs=self.qs, Rs=self.Rs )
+    
+    def toXYZ(self, fout ):
+        writeToXYZ( fout, self.enames, self.xyzs, qs=self.qs, Rs=self.Rs, bHeader=False )
+
+    def print(self):
+        for i in range(len(self.apos)):
+            print( "[%i] %i=%s p(%10.5f,%10.5f,%10.5f)" %( i, self.atypes[i],self.enames[i], self.apos[i,0], self.apos[i,1], self.apos[i,2] ) )
+
+    def printBonds(self):
+        #print(self.bonds)
+        for i in range(len(self.bonds)):
+            print( "[%i] (%i,%i) (%s,%s)" %( i, self.bonds[i,0],self.bonds[i,1],  self.enames[self.bonds[i,0]], self.enames[self.bonds[i,1]] ) )
+
+    def findBonds(self, Rcut=3.0, RvdwCut=0.7, RvdWs=None, byRvdW=True ):
+        self.bonds = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
+
+    def findCOG(self, apos, byBox=False ):
+        return findCOG( apos, byBox=byBox )
+
+    #def orient_vs( p0, fw, up, apos, trans=None, bool bCopy ):
+    #def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):

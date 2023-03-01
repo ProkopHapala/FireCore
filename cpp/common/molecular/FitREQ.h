@@ -37,20 +37,19 @@ class FitREQ{ public:
     //NBsystem* nbff;
     int nDOFs=0,ntype=0,nbatch=0,n0=0,n1=0;
     Vec3d*    typeREQs =0;   // [ntype] parameters for each type
-    Vec3d*    typeREQsMin=0; // equlibirum value of parameters for regularization 
-    Vec3d*    typeREQsMax=0; // equlibirum value of parameters for regularization 
-    Vec3d*    typeREQs0=0;   // equlibirum value of parameters for regularization 
-    Vec3d*    typeKreg =0;   // regulatization stiffness
+    Vec3d*    typeREQsMin=0; // [ntype] equlibirum value of parameters for regularization 
+    Vec3d*    typeREQsMax=0; // [ntype] equlibirum value of parameters for regularization 
+    Vec3d*    typeREQs0=0;   // [ntype] equlibirum value of parameters for regularization 
+    Vec3d*    typeKreg =0;   // [ntype] regulatization stiffness
     Vec3i*    typToREQ =0;   // [ntype] map each unique atom type to place in DOFs;
+    
     double*   DOFs =0;       // [nDOFs]
     double*   fDOFs=0;       // [nDOFs]
     double*   vDOFs=0;       // [nDOFs]
 
-    Vec3d*   REQs0=0;  // equlibirum value of parameters for regularization 
-    Vec3d*   Kreg =0;  // regulatization stiffness
-
+    double  Kneutral = 1.0;
     //double max_step=-1.;
-    double max_step=0.01345;
+    double  max_step=0.01345;
 
     //double* Rs =0,Es =0,Qs =0;
     //double* fRs=0,fEs=0,fQs=0;
@@ -181,11 +180,13 @@ double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
     int*   jtyp =system0->types;
     Vec3d* jpos =system0->ps;
     double Etot=0;
+    double Qtot=0;
     for(int i=0; i<n; i++){
         int   ti          = types[i];
         const Vec3d& REQi = typeREQs[ti];
         const Vec3d& pi   = ps[i]; 
         Vec3d fsi         = Vec3dZero;
+        Qtot+=REQi.z;
         for(int j=0; j<nj; j++){
             int tj              = jtyp[i];
             const Vec3d& REQj   = typeREQs[tj];
@@ -221,7 +222,20 @@ double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
         }
         fs[i].add(fsi);
     }
+
     return Etot;
+}
+
+double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
+    // Qtot = Sum_i * Q_i
+    // E = K*Qtot^2
+    // d E^2 / dqi = K*Qtot*(  )
+    double fQ = -Kneutral*Qtot;
+    for(int i=0; i<n; i++){
+        //int   ti          = types[i];
+        //const Vec3d& REQi = typeREQs[ti]; 
+        fs[i].z += fQ;
+    }
 }
 
 void DOFsToTypes(){
@@ -278,6 +292,13 @@ void limit_params(){
         if(tt.y>=0){ fDOFs[tt.y]=_clamp(fDOFs[tt.y],REQmin.y,REQmax.y ); }
         if(tt.z>=0){ fDOFs[tt.z]=_clamp(fDOFs[tt.z],REQmin.z,REQmax.z ); }
     }
+}
+
+void renormWeights(double R){
+    double s=0; 
+    for(int i=0; i<nbatch; i++){ s+=weights[i]; }
+    s=R/s; 
+    for(int i=0; i<nbatch; i++){ weights[i]*=s; }
 }
 
 void clean_fs(int n){
