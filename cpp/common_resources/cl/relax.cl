@@ -1638,7 +1638,7 @@ __kernel void updateAtomsMMFFf4(
     const int nnode =n.y;
     const int ia = get_global_id (0);
 
-    printf( "updateAtomsMMFFf4[%i]\n", ia );
+    printf( "updateAtomsMMFFf4[size=%i]\n", get_global_size(0) );
     return;
 
     if(ia==0){ printf( "GPU::updateAtomsMMFFf4() dt=%g damp=%g \n", MDpars.x, MDpars.y ); }
