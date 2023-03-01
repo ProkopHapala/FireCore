@@ -2,6 +2,8 @@
 #ifndef  OCLerrors_h
 #define  OCLerrors_h
 
+#define     OCL_DEBUG      1
+//#define     OCL_DEBUG        0
 static bool bOCLCheckError = true;
 
 //----------------------------------------------------------------------------
@@ -102,9 +104,14 @@ void OCL_check_error(cl_int err, const char *operation, char *filename, int line
     }
 }
 
-#define OCLerr(E)    OCL_check_error(E,"",__FILE__,__LINE__);
-
+#if OCL_DEBUG
+#define OCLerr(E)                                 OCL_check_error(E,"",__FILE__,__LINE__);
 #define OCL_checkError(E, S)    if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__);
 #define OCL_checkError_(E, S,I) if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__,I);
+#else
+#define OCLerr(E)               {}
+#define OCL_checkError(E, S)    {}
+#define OCL_checkError_(E, S,I) {}
+#endif
 
 #endif

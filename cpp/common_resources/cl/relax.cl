@@ -1497,6 +1497,20 @@ __kernel void getMMFFf4(
 
     #define NNEIGH 4
 
+    if(ia==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i \n", nnode, nAtoms ); }
+
+    if(ia==0)for(int i=0; i<nnode; i++){
+        printf( "GPU[%i] ", i );
+        printf( "ngs{%i,%i,%i,%i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
+        printf( "apar{%6.3f,%6.3f,%6.3f,%6.3f} ", apars[i].x, apars[i].y, apars[i].z, apars[i].w );
+        printf(  "BL{%6.3f,%6.3f,%6.3f,%6.3f} ", bLs[i].x, bLs[i].y, bLs[i].z, bLs[i].w );
+        printf(  "BK{%6.3f,%6.3f,%6.3f,%6.3f} ", bKs[i].x, bKs[i].y, bKs[i].z, bKs[i].w );
+        printf( "Ksp{%6.3f,%6.3f,%6.3f,%6.3f} ", Ksp[i].x, Ksp[i].y, Ksp[i].z, Ksp[i].w );
+        printf( "Kpp{%6.3f,%6.3f,%6.3f,%6.3f} ", Kpp[i].x, Kpp[i].y, Kpp[i].z, Kpp[i].w );
+        printf( "\n" );
+    }
+
+    
     // ========= Private Memory
 
     // ---- Dynamical
@@ -1527,6 +1541,8 @@ __kernel void getMMFFf4(
     const float* bK    = (float*)&vbK;
     const float* Kppi  = (float*)&vKs; 
     const float* Kspi  = (float*)&vKp;  
+
+    /*
 
     // ========= Evaluate Bonds
 
@@ -1587,11 +1603,12 @@ __kernel void getMMFFf4(
     fapos[ia       ] = (float4){fa ,0};
     fapos[ia+nAtoms] = (float4){fpi,0};
     //fpipos[ia] = (float4){fpi,0};
+
+    */
+
+    if(ia==0){ printf( "GPU::getMMFFf4() DONE\n" ); }
     
 }
-
-
-
 
 
 __kernel void updateAtomsMMFFf4(
@@ -1600,13 +1617,15 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  apos,         // 3
     __global float4*  avel,         // 4
     __global float4*  aforce,       // 5
-    __global float4*  fneigh,  // 6
-    __global int4*    bkNeighs,     // 7
+    __global float4*  fneigh,       // 6
+    __global int4*    bkNeighs      // 7
 ){
     
     const int natom=n.y;
     const int nvecs=n.x;
     const int ia = get_global_id (0);
+
+    if(ia==0){ printf( "GPU::updateAtomsMMFFf4()\n" ); }
 
     if(ia>=natom) return;
 
@@ -1620,8 +1639,8 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0) fe += fneigh[ngs.z];
     if(ngs.w>=0) fe += fneigh[ngs.w];
 
-    int ip0 = natoms*4;
-    float4 fp = aforce  [ia+natoms]; 
+    int ip0 = natom*4;
+    float4 fp = aforce  [ia+natom]; 
     if(ngs.x>=0) fe += fneigh[ip0+ngs.x];
     if(ngs.y>=0) fe += fneigh[ip0+ngs.y];
     if(ngs.z>=0) fe += fneigh[ip0+ngs.z];
@@ -1631,16 +1650,18 @@ __kernel void updateAtomsMMFFf4(
     //aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
 
     // ------ Move (Leap-Frog)
-    float4 pe = apos[iG];
-    float4 ve = avel[iG];
+    float4 pe = apos[ia];
+    float4 ve = avel[ia];
     ve     *= MDpars.y;
     ve.xyz += fe.xyz*MDpars.x;
     pe.xyz += ve.xyz*MDpars.x;
     
     // ------ Store global state
-    if(iG>natom){ pe.xyz=normalize(pe.xyz); };
-    avel[iG] = ve;
-    apos[iG] = pe;
+    if(ia>natom){ pe.xyz=normalize(pe.xyz); };
+    avel[ia] = ve;
+    apos[ia] = pe;
+
+    if(ia==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
 
 }
 

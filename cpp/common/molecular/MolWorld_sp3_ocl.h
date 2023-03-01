@@ -19,7 +19,11 @@ class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
     Quat4f * q_vs=0; 
     int* bkneighs=0;
 
-    bool bGPU_MMFF = true;
+    bool bGPU_MMFF    = true;
+    //bool bGPU_MMFFsp3 = true;
+    bool bGPU_MMFFsp3 = false;
+    bool bGPU_MMFFf4  = true;
+    //bool bGPU_MMFFf4  = false;
 
     OCLtask* task_getF=0; //ocl.getTask("getMMFFf4");
     OCLtask* task_move=0; //ocl.getTask("gatherForceAndMove");
@@ -73,22 +77,20 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     ocl.buffers[ocl.ibuff_coefs].release();
 }
 
+/*
 void init_ocl(){
-    // WARRNING - DEBUG
-    for(int i=0; i<nbmol.n; i++){ nbmol.ps->addRandomCube(0.1); }; // DEBUG - displace atoms to test relaxation forces
-
-    printf( "init_ocl() \n" );
+    //  ToDo : This is probably wrong
+    printf( "MolWorld_sp3_ocl::init_ocl()\n" );
+    //for(int i=0; i<nbmol.n; i++){ nbmol.ps->addRandomCube(0.1); }; // DEBUG - displace atoms to test relaxation forces
     long T0 = getCPUticks();
-    ocl.init();
-    ocl.initPP( "common_resources/cl" );
+    //ocl.initPP( "common_resources/cl" );    DEBUG
     // ---- Init Surface force-field grid
-    printf( ">>time(ocl.init();ocl.initPP(): %g [s] \n", (getCPUticks()-T0)*tick2second  );
-    long T1 = getCPUticks();
     //surf2ocl( nPBC, true );
-    surf2ocl( nPBC, false );
+    surf2ocl( nPBC, false );                DEBUG
     printf( ">>time(surf2ocl): %g [s] \n", (getCPUticks()-T1)*tick2second  );
-    printf( "... init_ocl() END\n" );
+    printf( "MolWorld_sp3_ocl::init_ocl() END\n" );
 }
+*/
 
 void REQs2ocl(){
     Quat4f* q_cs= new Quat4f[nbmol.n];
@@ -106,7 +108,7 @@ int ithNeigh(int ia, int ja){
     return -1;
 }
 
-void MMFFparams2ocl(){
+void MMFFsp3_to_ocl(){
     //int n=nbmol.n;
     int n=ff.natoms;
     float*  blks= new float[n*8];
@@ -134,10 +136,10 @@ void MMFFparams2ocl(){
 void mol2ocl(){
     int n   = nbmol.n;
     int npi = 0;
-    if(bGPU_MMFF){ npi=ff.npi; }
+    if(bGPU_MMFFsp3){ npi=ff.npi; }
     int n2 = n+npi; 
     // ---- Prepare for sampling atoms
-    ocl.initAtomsForces( n, npi, ff.nnode, bGPU_MMFF );
+    ocl.initAtomsForces( n, npi, ff.nnode, bGPU_MMFFsp3, bGPU_MMFFf4 );
     printf( "mol2ocl() n,pi(%i,%i) buffs atoms, coefs, aforces, neighs: %i %i %i %i \n", n,npi, ocl.ibuff_atoms, ocl.ibuff_coefs, ocl.ibuff_aforces, ocl.ibuff_neighs );
     q_ps= new Quat4f[n2];
     q_fs= new Quat4f[n2];
@@ -146,14 +148,23 @@ void mol2ocl(){
     ocl.upload( ocl.ibuff_atoms, q_ps );  
     REQs2ocl();
     makeOCLNeighs( );
-    if(bGPU_MMFF){
-        Quat4f* q_vs= new Quat4f[n2];
+    if(bGPU_MMFFsp3 || bGPU_MMFFf4 ){
+        Quat4f* q_vs = new Quat4f[n2];
         for(int i=0; i<n2; i++){ q_vs[i].set(0.); }
         ocl.upload( ocl.ibuff_avel,   q_vs );
         makeBackNeighs( nbmol.neighs );
         ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
-        MMFFparams2ocl();
-        makePi0s();
+        if( bGPU_MMFFsp3 ){
+            MMFFsp3_to_ocl();
+            makePi0s();
+        }
+        if( bGPU_MMFFf4 ){
+            ocl.upload( ocl.ibuff_MMpars , ff4.apars );  
+            ocl.upload( ocl.ibuff_BLs    , ff4.bLs   ); 
+            ocl.upload( ocl.ibuff_BKs    , ff4.bKs   ); 
+            ocl.upload( ocl.ibuff_Ksp    , ff4.Ksp   ); 
+            ocl.upload( ocl.ibuff_Kpp    , ff4.Kpp   ); 
+        }
     }
 }
 
@@ -210,9 +221,7 @@ void makeBackNeighs( Quat4i* aneighs ){
             if(!ret){ printf("ERROR in MolWorld_sp3_ocl::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
         };
     }
-    for(int i=0; i<ff.nvecs; i++){
-        printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i*4+0], bkneighs[i*4+1], bkneighs[i*4+2], bkneighs[i*4+3] ); 
-    }
+    //for(int i=0; i<ff.nvecs; i++){ printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i*4+0], bkneighs[i*4+1], bkneighs[i*4+2], bkneighs[i*4+3] ); }
     checkBkNeighCPU();
 }
 
@@ -247,16 +256,10 @@ void checkBkNeighCPU(){
 
 
 virtual void init( bool bGrid ) override  {
+    ocl.init();
+    ocl.makeKrenels_PP("common_resources/cl" );
     MolWorld_sp3::init(bGrid);
     mol2ocl();
-    /*
-    gridFF.grid.printCell();
-    ocl.setNs(3, gridFF.grid.n.array );
-    v2f4( gridFF.grid.pos0,ocl.pos0); 
-    ocl.setGridShape( gridFF.grid.dCell );
-    init_ocl();
-    printf( "... MolWorld::init() DONE \n");
-    */
     bGridFF=false;
     bOcl   =false;
 }
@@ -321,26 +324,27 @@ double eval_MMFFsp3_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
 
 void setup_MMFFf4_ocl(){
     task_getF = ocl.getTask("getMMFFf4");
-    task_move = ocl.getTask("gatherForceAndMove");
+    task_move = ocl.getTask("updateAtomsMMFFf4");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    ocl.setup_gatherForceAndMove( ff.nvecs,  ff.natoms, task_move );
     Mat3_to_cl( ff.lvec   , ocl.cl_lvec    );
     Mat3_to_cl( ff.invLvec, ocl.cl_invLvec );
-    ocl.setup_getMMFFf4        ( ff.natoms, ff.nnode, bPBC, task_getF );  
+    DEBUG
+    ocl.setup_updateAtomsMMFFf4( ff.nvecs,  ff.natoms, task_move );       DEBUG   
+    ocl.setup_getMMFFf4        ( ff.natoms, ff.nnode, bPBC, task_getF );  DEBUG
 }
 
 double eval_MMFFf4_ocl( int niter ){ 
-    //printf( " ======= eval_MMFF_ocl() \n" );
-    if( task_getF==0 )setup_MMFFf4_ocl();
+    printf( " ======= eval_MMFFf4_ocl() \n" );
+    if( task_getF==0 )setup_MMFFf4_ocl(); DEBUG
     for(int i=0; i<niter; i++){
-        task_getF->enque_raw();
-        task_move->enque_raw();
+        task_getF->enque_raw(); DEBUG
+        task_move->enque_raw(); DEBUG
     }
     //printf( "ocl.download(n=%i) \n", n );
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
-    ocl.finishRaw();
+    ocl.finishRaw();                              DEBUG
     unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
@@ -455,7 +459,9 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
             ocl.setNs(3, gridFF.grid.n.array );
             v2f4( gridFF.grid.pos0,ocl.pos0); 
             ocl.setGridShape( gridFF.grid.dCell );
-            init_ocl();
+            //init_ocl();
+            surf2ocl( nPBC, bSaveDebugXSFs );
+            //surf2ocl( nPBC, false );
         }
         printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
         bGridFF   =true; 
