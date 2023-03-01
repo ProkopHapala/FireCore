@@ -110,18 +110,19 @@ class OCL_PP: public OCL_DFT { public:
         char srcpath[1024];
         sprintf( srcpath, "%s/relax.cl", cl_src_dir );     
         buildProgram( srcpath, program_relax );
-        newTask( "getFEinStrokes"    ,1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "evalLJC_QZs"       ,1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "evalLJC_QZs_toImg" ,1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "make_GridFF"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "getNonBondForce_GridFF",1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "getMMFFsp3"        ,1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "gatherForceAndMove",1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "updatePiPos0"      ,1,{0,0,0,0},{1,0,0,0},program_relax);
-        newTask( "evalPiPi"          ,1,{0,0,0,0},{1,0,0,0},program_relax);
-        //newTask( "write_toImg"       ,3,{0,0,0,0},{1,1,1,0},program_relax);
-        //tasks[ newTask( "relaxStrokesTilted",1,{0,0,0,0},{1,0,0,0},program_relax) ]->args={}; 
+        newTask( "getFEinStrokes"         ,program_relax);
+        newTask( "relaxStrokesTilted"     ,program_relax);
+        newTask( "evalLJC_QZs"            ,program_relax);
+        newTask( "evalLJC_QZs_toImg"      ,program_relax);
+        newTask( "make_GridFF"            ,program_relax);
+        newTask( "getNonBondForce_GridFF" ,program_relax);
+        newTask( "getMMFFsp3"             ,program_relax);
+        newTask( "getMMFFf4"              ,program_relax);
+        newTask( "updateAtomsMMFFf4"      ,program_relax);
+        newTask( "gatherForceAndMove"     ,program_relax);
+        newTask( "updatePiPos0"           ,program_relax);
+        newTask( "evalPiPi"               ,program_relax);
+        //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_PP() DONE \n" );
     }
 
@@ -364,11 +365,13 @@ class OCL_PP: public OCL_DFT { public:
             ibuff_avel        = newBuffer( "avel",       nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
             ibuff_neighForce  = newBuffer( "neighForce", nneigh, sizeof(float4), 0, CL_MEM_READ_WRITE );
             if(bMMFFsp3){
+                printf( "initAtomsForces bMMFFsp3==true\n" );
                 ibuff_bondLK      = newBuffer( "bondLK ",    nAtoms   , sizeof(float8), 0, CL_MEM_READ_ONLY  );
                 ibuff_ang0K       = newBuffer( "ang0K",      nnode    , sizeof(float4), 0, CL_MEM_READ_ONLY  );
                 ibuff_pi0s        = newBuffer( "pi0s",       npi      , sizeof(float4), 0, CL_MEM_READ_WRITE );
             }
             if(bMMFFf4){ // int ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
+                printf( "initAtomsForces bMMFFf4==true\n" );
                 ibuff_MMpars = newBuffer( "MMpars", nnode, sizeof(int4),   0, CL_MEM_READ_ONLY );
                 ibuff_BLs    = newBuffer( "BLs",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY  );
                 ibuff_BKs    = newBuffer( "BKs",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -377,6 +380,7 @@ class OCL_PP: public OCL_DFT { public:
             }
         }
         printBuffers();
+        //exit(0);
         return ibuff_atoms;
     }
 
@@ -528,6 +532,35 @@ class OCL_PP: public OCL_DFT { public:
             const cl_Mat3 invLvec           // 13
         ){
     */
+    }
+
+    OCLtask* setup_updateAtomsMMFFf4( int n, int natom,  OCLtask* task=0 ){
+        if(task==0) task = getTask("updateAtomsMMFFf4");
+        task->global.x = n;
+        //task->local .x = 1;
+        //task->roundSizes();
+        //if(n >=0  ) 
+        nDOFs.x=n; 
+        nDOFs.y=natom; 
+        useKernel( task->ikernel );
+        err |= _useArg( md_params );           // 1
+        err |= _useArg( nDOFs     );           // 2
+        err |= useArgBuff( ibuff_atoms      ); // 3
+        err |= useArgBuff( ibuff_avel       ); // 4
+        err |= useArgBuff( ibuff_aforces    ); // 5
+        err |= useArgBuff( ibuff_neighForce ); // 6
+        err |= useArgBuff( ibuff_bkNeighs   ); // 7
+        OCL_checkError(err, "updateAtomsMMFFf4");
+        return task;
+        /*
+            const float4      MDpars,       // 1
+            const int4        n,            // 2
+            __global float4*  apos,         // 3
+            __global float4*  avel,         // 4
+            __global float4*  aforce,       // 5
+            __global float4*  fneigh,       // 6
+            __global int4*    bkNeighs      // 7
+        */
     }
 
     OCLtask* setup_gatherForceAndMove( int n, int natom,  OCLtask* task=0 ){

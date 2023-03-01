@@ -488,8 +488,8 @@ virtual void init( bool bGrid ){
         builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
         builder.toMMFFsp3    ( ff , &params );
-        builder.toMMFFsp3_loc( ffl, &params ); ffl.printAtomParams(); ffl.printBKneighs();  
-        builder.toMMFFf4     ( ff4, &params ); ff4.printAtomParams(); ff4.printBKneighs();     
+        builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs();  
+        builder.toMMFFf4     ( ff4, &params ); //ff4.printAtomParams(); ff4.printBKneighs();     
 
         //ff.printAtomParams();
         printf("builder.lvec\n");builder.lvec.print();

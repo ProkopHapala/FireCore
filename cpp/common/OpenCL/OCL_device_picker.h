@@ -18,25 +18,24 @@
 #define MAX_INFO_STRING 256
 
 unsigned getDeviceList(cl_device_id devices[MAX_DEVICES]){
-  cl_int err;
+cl_int err;
 
-  // Get list of platforms
-  cl_uint numPlatforms = 0;
-  cl_platform_id platforms[MAX_PLATFORMS];
-  err = clGetPlatformIDs(MAX_PLATFORMS, platforms, &numPlatforms);
-  OCL_checkError(err, "getting platforms");
+// Get list of platforms
+cl_uint numPlatforms = 0;
+cl_platform_id platforms[MAX_PLATFORMS];
+err = clGetPlatformIDs(MAX_PLATFORMS, platforms, &numPlatforms);
+OCL_checkError(err, "getting platforms");
 
-  // Enumerate devices
-  unsigned numDevices = 0;
-  for (size_t i = 0; i < numPlatforms; i++){
-    cl_uint num = 0;
-    err = clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL,
-                         MAX_DEVICES-numDevices, devices+numDevices, &num);
-    OCL_checkError(err, "getting deviceS");
-    numDevices += num;
-  }
+// Enumerate devices
+unsigned numDevices = 0;
+for (size_t i = 0; i < numPlatforms; i++){
+  cl_uint num = 0;
+  err = clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, MAX_DEVICES-numDevices, devices+numDevices, &num);
+  OCL_checkError(err, "getting deviceS");
+  numDevices += num;
+}
 
-  return numDevices;
+return numDevices;
 }
 
 void getDeviceName(cl_device_id device, char name[MAX_INFO_STRING]){
