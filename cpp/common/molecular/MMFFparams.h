@@ -33,6 +33,31 @@ class AngleType{ public:
     inline uint64_t getId(){ sort(); return pack64( atoms.b,atoms.a,atoms.c, 0 ); }
 };
 
+/*
+class ElementType{ public:
+    char      name[8];
+    uint8_t   iZ;         // proton number
+    uint8_t   neval;      // number of valence electrons
+    uint8_t   valence;    // sum of bond orders of all bonds
+    uint32_t  color;
+    //double  RvdW;
+    //double  EvdW;
+}
+
+class AtomType_{ public:
+    char      name[8];
+    uint8_t   iZ;         // proton number
+    uint8_t   neval;      // number of valence electrons
+    uint8_t   valence;    // sum of bond orders of all bonds
+    uint32_t  color;
+    double  RvdW;
+    double  EvdW;
+    double  Q;
+    double Eaff,Ehard,Ra,eta;  // Charge Equilibration Params
+}
+*/
+
+
 class AtomType{ public:
     char      name[8];
     uint8_t   iZ;         // proton number
@@ -42,7 +67,16 @@ class AtomType{ public:
     uint32_t  color;
     double    RvdW;
     double    EvdW;
+    Vec3i     subTypes=Vec3iZero;  // sp1 sp2 sp3    // Q1 Q2 Q3 (polarized)
 
+    // ---- MMFF
+    bool bMMFF;
+    double  Ass,Asp, Kss,Ksp,Kep,Kpp;
+
+    // ---- Epairs
+    int ne=0;                // number of electron pairs
+    double  eRvdW,eEvdW,eQ;  // electron pair REQ parameters
+ 
     // ---- charge equlibration
     bool   bQEq;
     double Eaff,Ehard,Ra,eta;
@@ -56,17 +90,22 @@ class AtomType{ public:
         return str;
     }
 
-    void print(int i){ printf( "AtomType[%i] %s (%i,%i,%i,%i) vdW(R=%lf,E=%lf) clr %x Eaff,Ehard (%g,%g) \n", i, name,  iZ,   neval,  valence,   sym,    RvdW, EvdW,   color, Eaff,Ehard ); }
+    //void print(int i){ printf( "AtomType[%i] %s (%i,%i,%i,%i) vdW(R=%lf,E=%lf) clr %x Eaff,Ehard (%g,%g) \n", i, name,  iZ,   neval,  valence,   sym,    RvdW, EvdW,   color, Eaff,Ehard ); }
+    void print(int i){ printf( "AtomType[%i] %s (%i,%i,%i,%i) LJ(%g,E=%g) QEq(%g,%g) MMMFF(%g,%g|%g,%g,%g,%g) Epair(%i,%g,%g,%g)\n", i, name,  iZ,   neval,valence,sym,    RvdW,EvdW,   Eaff,Ehard,   Ass,Asp,Kss,Ksp,Kep,Kpp,   ne,eRvdW,eEvdW,eQ  ); }
 
     inline uint8_t nepair(){ return (neval-valence)/2; };
     inline uint8_t npi   (){ return sym; };
 
     void fromString( char * str ){
         int iZ_, neval_, valence_, sym_;
-        //char sclr[6];                                                            1   2      3         4        5         6     7      8        9        10   11     12
-        int nret = sscanf( str, " %s %i %i %i %i %lf %lf %x %lf %lf %lf %lf\n", name, &iZ_, &neval_, &valence_, &sym_,  &RvdW, &EvdW, &color,   &Eaff, &Ehard, &Ra, &eta );
+        //char sclr[6];           1   2       3         4        5         6     7      8        9        10   11     12     13   14   15    16   17   18   19  20   21    22
+        int nret = sscanf( str, " %s    %i    %i       %i        %i      %lf    %lf    %x        %lf    %lf     %lf   %lf    %lf  %lf   %lf   %lf  %lf   %lf  %i   %lf   %lf    %lf ", 
+                                 name, &iZ_, &neval_, &valence_, &sym_,  &RvdW, &EvdW, &color,   &Eaff, &Ehard, &Ra, &eta,   &Ass,&Asp, &Kss,&Ksp,&Kep,&Kpp, &ne,&eRvdW,&eEvdW,&eQ );
         iZ=iZ_; neval=neval_; valence=valence_; sym=sym_;
-        if(nret<10){ bQEq = false; }else{ bQEq=true; }
+        if(nret<10){ bQEq  = false; Eaff=0;Ehard=0;Ra=0;eta=0;           }else{ bQEq  = true; }
+        if(nret<18){ bMMFF = false; Ass=0;Asp=0;Kss=0;Ksp=0;Kep=0;Kpp=0; }else{ bMMFF = true; }
+        if(nret<22){ ne=-1,eRvdW=0,eEvdW=0,eQ=0; }
+        subTypes=Vec3iZero;
         //printf( "AtomType: %s iZ %i ne %i nb %i sym %i RE(%g,%g) %x \n", name,  iZ,   neval_,  valence,   sym,    RvdW, EvdW,   color );
         //char ss[256]; printf("%s\n", toString(ss) );
     }
@@ -126,17 +165,40 @@ class MMFFparams{ public:
         //for(int i; i<0xFFFF; i++){
             //printf( "loadAtomTypes %i \n", i );
             line = fgets( buff, 1024, pFile );
-            if(line==NULL) break;
+            if(line==NULL)  break;
+            //printf( "loadAtomTypes[%i] line=%s", i, line );
+            if(line[0]=='#')continue;
             atyp.fromString( line );
             atypes.push_back(atyp);
             atomTypeNames.push_back( atyp.name );
             atomTypeDict[atyp.name] = atypes.size()-1;
-
             //char str[1000];
             //atyp.toString( str );
             //printf( "%i %s %i %s \n", i, atyp.name, atypNames[atyp.name], str );
         }
         return i;
+    }
+
+    inline void assignSubTypes( AtomType& t ){
+        //printf( "assignSubTypes %s(iZ=%i)\n", t.name, t.iZ );
+        char tmp_name[8];
+        const char* ssub[3]{"sp3","sp1","sp2"};
+        for(int i=0;i<3;i++){
+            sprintf( tmp_name, "%s_%s", t.name, ssub[i] );
+            int it = getAtomType(tmp_name);
+            //printf( "assignSubTypes %s(iZ=%i)[%i] %s=%i\n", t.name, t.iZ, i, tmp_name, it );
+            if(it<0)continue;
+            t.subTypes.array[i] = it;
+            //printf( "assignSubTypes %s(iZ=%i)[%i] %s=%i\n", t.name, t.iZ, tmp_name, it );
+        }
+    }
+    inline void assignAllSubTypes(){
+        int n=atypes.size();
+        std::vector<bool> doIt(n,true); 
+        for(int i=0;i<n;i++){
+            AtomType& t = atypes[i];
+            if(doIt[t.iZ]){ assignSubTypes(t); doIt[t.iZ]=false; }
+        }
     }
 
     inline void assignRE( int ityp, Vec3d& REQ, bool bSqrtE=false )const{
@@ -250,8 +312,12 @@ class MMFFparams{ public:
     }
 
     void init(const char* fatomtypes=0, const char* fbondtypes=0, const char* fagnletypes=0){
-        if(verbosity>0) printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
-        if(fatomtypes )loadAtomTypes( fatomtypes );
+        //if(verbosity>0) 
+        printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
+        if(fatomtypes ){
+            loadAtomTypes( fatomtypes );
+            assignAllSubTypes();
+        }
         if(fbondtypes )loadBondTypes( fbondtypes );
         if(fagnletypes)loadAgnleType( fagnletypes );
     }

@@ -746,6 +746,51 @@ class Builder{  public:
         //if( (nb==2) && (npi=1) ){ printf( "hs angles %g %g %g \n", hs[0].getAngle(hs[1])/M_PI, hs[0].getAngle(hs[2])/M_PI, hs[0].getAngle(hs[3])/M_PI ); }
     }
 
+
+    void assignSp3Params( int ityp, int nb, int npi, int ne, int npi_neigh, Quat4d& par ){
+        int iZ = params->atypes[ityp].iZ;
+        if(npi==0){
+            par.x=par.w=-0.3333333; // 108.5 deg
+        }else if(npi==1){
+            par.x=par.w=-0.5;       // 120 deg
+        }else if(npi==2){
+            par.x=par.w=-1.0;       // 180 deg
+        }
+
+        if( (npi_neigh>0)&&(npi==0) ){
+            par.w=-0.1; 
+            //par.w=0.0; 
+        }
+        //if(iZ=8){ // Oxygen
+        //    if(npi==0){ par.x=0.0; } // sp2
+        //}
+    }
+
+
+    void assignSp3Conf( int ityp, int nb, int npi, int ne, int npi_neigh ){
+        //  SMILE conf  example   nb   npi  ne   ntot       Ass  Asp   Kpp
+        // ----- Carbon
+        // -CH2- sp3       CH4        4    0    0    4      108   -     0
+        // =CH-  sp2       CH2=CH2    3    1    0    4      120   -     1
+        // #CH   sp1       HC#CH      2    2    0    4      180   -     0
+        // ----- Nitrogen
+        // -NH-  sp3       NH3        3    0    1    4      108   110   1
+        // =N-   sp2       CH2=NH     2    1    1    4      120   90    1
+        // #N    sp1       HCN        1    2    1    4      180   90    0
+        // ----- Oxygen
+        // -O-   sp3       H2O        2    0    2    4      108   90    1
+        // =O    sp2       CH2=O      1    1    2    4      120   90    1
+        // #O    sp1       CO         1    2    1    4      180   -     0
+        // ----- Fuorine
+        // -F    sp3/sp1   HF         1    0    1    2      180   -     0
+        int iZ = params->atypes[ityp].iZ;
+
+    }
+
+
+
+
+
     void addCaps( int ia, int ncap, int ne, int nb, const Vec3d* hs ){
         bool Hmask[]{1,1,1,1};
         //if(nH!=ncap) Hmask[rand()%ncap]=0;
@@ -2048,28 +2093,6 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
 }
 
 #ifdef MMFFsp3_h
-
-    void assignSp3Params( int ityp, int nb, int npi, int ne, int npi_neigh, Quat4d& par ){
-        int iZ = params->atypes[ityp].iZ;
-
-        if(npi==0){
-            par.x=par.w=-0.3333333; // 108.5 deg
-        }else if(npi==1){
-            par.x=par.w=-0.5;       // 120 deg
-        }else if(npi==2){
-            par.x=par.w=-1.0;       // 180 deg
-        }
-
-        if( (npi_neigh>0)&&(npi==0) ){
-            par.w=-0.1; 
-            //par.w=0.0; 
-        }
-
-        //if(iZ=8){ // Oxygen
-        //    if(npi==0){ par.x=0.0; } // sp2
-        //}
-    }
-
     void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){
         int nAmax = atoms.size();
         int nBmax = bonds.size();
