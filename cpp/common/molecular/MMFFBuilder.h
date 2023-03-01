@@ -2312,6 +2312,7 @@ void toMMFFf4( MMFFf4& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1
                 ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
                 ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
                 ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
+                ff.apars[ia].w = 0.0; 
 
                 // setup ff neighbors
                 

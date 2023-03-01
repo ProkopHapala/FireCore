@@ -1501,7 +1501,7 @@ __kernel void getMMFFf4(
 
     if(ia==0)for(int i=0; i<nnode; i++){
         printf( "GPU[%i] ", i );
-        printf( "ngs{%i,%i,%i,%i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
+        printf( "ngs{%2i,%2i,%2i,%2i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
         printf( "apar{%6.3f,%6.3f,%6.3f,%6.3f} ", apars[i].x, apars[i].y, apars[i].z, apars[i].w );
         printf(  "BL{%6.3f,%6.3f,%6.3f,%6.3f} ", bLs[i].x, bLs[i].y, bLs[i].z, bLs[i].w );
         printf(  "BK{%6.3f,%6.3f,%6.3f,%6.3f} ", bKs[i].x, bKs[i].y, bKs[i].z, bKs[i].w );
@@ -1542,8 +1542,6 @@ __kernel void getMMFFf4(
     const float* Kppi  = (float*)&vKs; 
     const float* Kspi  = (float*)&vKp;  
 
-    /*
-
     // ========= Evaluate Bonds
 
     float3 f1,f2;         // temporary forces
@@ -1553,28 +1551,42 @@ __kernel void getMMFFf4(
         fps[i]=float3Zero;
         int ing = ings[i];
         if(ing<0) break;
-        h.xyz    = apos[ing].xyz - pa;
+        h.xyz    = apos[ing].xyz - pa;    //printf( "[%i|%i] ing=%i h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z,  pa.x,pa.y,pa.z ); 
         float  l = length(h.xyz);
         h.w      = 1./l;
         hs[i]    = h;
+
+
+        float epp = 0;
+        float esp = 0;
+
+        //printf( "[%i|%i] l %g h(%g,%g,%g) \n", ia,i, l, h.x,h.y,h.z ); 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;    
+
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
-                //E += evalPiAling( hpi, pipos[ing].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
-                E += evalPiAling( hpi, apos[ing+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
+                //E += evalPiAling( hpi, pipos[ing].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;        //   pi-alignment     (konjugation)
+                epp += evalPiAling( hpi, apos[ing+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
+                E+=epp;
+
+                printf( "GPU[%i|%i] hpi(%g,%g,%g) hpj(%g,%g,%g) \n", ia,ing, hpi.x,hpi.y,hpi.z, apos[ing+nAtoms].x,apos[ing+nAtoms].y,apos[ing+nAtoms].z );
             }
             // ToDo: triple bonds ?
         } 
+        
         // pi-sigma 
         float ksp = Kspi[i];
         if(ksp>1.e-6){  
-            E += evalAngCos( (float4){hpi,1.}, h, ksp, par.z, &f1, &f2 );   fpi+=f1;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
+            esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.z, &f1, &f2 );   fpi+=f1;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
+            E+=epp;
         }
+
+        //printf( "GPU[%i|%i] esp=%g epp=%g \n", esp, epp );
+        
     }
 
     //  ============== Angles 
-
     for(int i=0; i<NNEIGH; i++){
         int ing = ings[i];
         if(ing<0) break;
@@ -1583,6 +1595,7 @@ __kernel void getMMFFf4(
             int jng  = ings[j];
             if(jng<0) break;
             const float4 hj = hs[j];
+            //printf( "[%i|%i,%i] hi(%g,%g,%g) hj(%g,%g,%g)\n", ia, i,j, hi.x,hi.y,hi.z,   hj.x,hj.y,hj.z );
             E += evalAngCos( hi, hj, par.y, par.x, &f1, &f2 );     // angles between sigma bonds
             fbs[i]+= f1;
             fbs[j]+= f2;
@@ -1604,7 +1617,7 @@ __kernel void getMMFFf4(
     fapos[ia+nAtoms] = (float4){fpi,0};
     //fpipos[ia] = (float4){fpi,0};
 
-    */
+    printf( "GPU[%i] fa(%g,%g,%g) fpi(%g,%g,%g)\n", ia, fa.x,fa.y,fa.z, fpi.x,fpi.y,fpi.z );
 
     if(ia==0){ printf( "GPU::getMMFFf4() DONE\n" ); }
     
@@ -1621,13 +1634,36 @@ __kernel void updateAtomsMMFFf4(
     __global int4*    bkNeighs      // 7
 ){
     
-    const int natom=n.y;
-    const int nvecs=n.x;
+    const int nAtoms=n.x;
+    const int nnode =n.y;
     const int ia = get_global_id (0);
 
-    if(ia==0){ printf( "GPU::updateAtomsMMFFf4()\n" ); }
+    if(ia==0){ printf( "GPU::updateAtomsMMFFf4() dt=%g damp=%g \n", MDpars.x, MDpars.y ); }
+    if(ia==0)for(int i=0; i<nAtoms; i++){
+        printf( "GPU[%i] ", i );
+        printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
+        printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i].x, aforce[i].y, aforce[i].z, aforce[i].w );
+        printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i].x, avel[i].y, avel[i].z, avel[i].w );
+        printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i].x, apos[i].y, apos[i].z, apos[i].w );
+        printf( "\n" );
+    }
+    if(ia==0)for(int i=0; i<nnode; i++){
+        int i1=i+nAtoms;
+        printf(  "fpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i1].x, aforce[i1].y, aforce[i1].z, aforce[i1].w );
+        printf(  "vpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i1].x, avel[i1].y, avel[i1].z, avel[i1].w );
+        printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
+        printf( "\n" );
+    }
+    if(ia==0)for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
+        int i1=i*4+j;
+        int i2=(i+nAtoms)*4+j;
+        printf( "GPU[%i,%i] ", i, j );
+        printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i1].x, fneigh[i1].y, fneigh[i1].z, fneigh[i1].w );
+        printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i2].x, fneigh[i2].y, fneigh[i2].z, fneigh[i2].w );
+        printf( "\n" );
+    }}
 
-    if(ia>=natom) return;
+    if(ia>=nAtoms) return;
 
     // ------ Gather Forces from back-neighbors
     
@@ -1639,8 +1675,8 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0) fe += fneigh[ngs.z];
     if(ngs.w>=0) fe += fneigh[ngs.w];
 
-    int ip0 = natom*4;
-    float4 fp = aforce  [ia+natom]; 
+    int ip0 = nAtoms*4;
+    float4 fp = aforce  [ia+nAtoms]; 
     if(ngs.x>=0) fe += fneigh[ip0+ngs.x];
     if(ngs.y>=0) fe += fneigh[ip0+ngs.y];
     if(ngs.z>=0) fe += fneigh[ip0+ngs.z];
@@ -1657,7 +1693,7 @@ __kernel void updateAtomsMMFFf4(
     pe.xyz += ve.xyz*MDpars.x;
     
     // ------ Store global state
-    if(ia>natom){ pe.xyz=normalize(pe.xyz); };
+    if(ia>nAtoms){ pe.xyz=normalize(pe.xyz); };
     avel[ia] = ve;
     apos[ia] = pe;
 

@@ -136,7 +136,8 @@ void MMFFsp3_to_ocl(){
 void mol2ocl(){
     int n   = nbmol.n;
     int npi = 0;
-    if(bGPU_MMFFsp3){ npi=ff.npi; }
+    if(bGPU_MMFFsp3){ npi=ff.npi;    }
+    if(bGPU_MMFFf4 ){ npi=ff4.nnode; }
     int n2 = n+npi; 
     // ---- Prepare for sampling atoms
     ocl.initAtomsForces( n, npi, ff.nnode, bGPU_MMFFsp3, bGPU_MMFFf4 );
@@ -144,26 +145,53 @@ void mol2ocl(){
     q_ps= new Quat4f[n2];
     q_fs= new Quat4f[n2];
     // ---- nbmol coefs
-    pack      ( n2, nbmol.ps, q_ps, sq(gridFF.Rdamp) );
+    pack      ( n2, nbmol.ps,    q_ps, sq(gridFF.Rdamp) );
     ocl.upload( ocl.ibuff_atoms, q_ps );  
     REQs2ocl();
-    makeOCLNeighs( );
     if(bGPU_MMFFsp3 || bGPU_MMFFf4 ){
         Quat4f* q_vs = new Quat4f[n2];
         for(int i=0; i<n2; i++){ q_vs[i].set(0.); }
         ocl.upload( ocl.ibuff_avel,   q_vs );
-        makeBackNeighs( nbmol.neighs );
-        ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
         if( bGPU_MMFFsp3 ){
+            makeOCLNeighs( );
+            makeBackNeighs( nbmol.neighs );
+            ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
             MMFFsp3_to_ocl();
             makePi0s();
         }
         if( bGPU_MMFFf4 ){
-            ocl.upload( ocl.ibuff_MMpars , ff4.apars );  
-            ocl.upload( ocl.ibuff_BLs    , ff4.bLs   ); 
-            ocl.upload( ocl.ibuff_BKs    , ff4.bKs   ); 
-            ocl.upload( ocl.ibuff_Ksp    , ff4.Ksp   ); 
-            ocl.upload( ocl.ibuff_Kpp    , ff4.Kpp   ); 
+
+
+
+
+            makeOCLNeighs( );
+            //makeBackNeighs( nbmol.neighs );
+            //ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
+
+            //ocl.upload( ocl.ibuff_neighs  , ff4.aneighs  );
+            ocl.upload( ocl.ibuff_bkNeighs, ff4.bkneighs );
+
+            ocl.upload( ocl.ibuff_MMpars  , ff4.apars );  
+            ocl.upload( ocl.ibuff_BLs     , ff4.bLs   ); 
+            ocl.upload( ocl.ibuff_BKs     , ff4.bKs   ); 
+            ocl.upload( ocl.ibuff_Ksp     , ff4.Ksp   ); 
+            ocl.upload( ocl.ibuff_Kpp     , ff4.Kpp   ); 
+/*
+    const int4 nDOFs,               // 1   (nAtoms,nnode)
+    // Dynamical
+    __global float4*  apos,         // 2    [natoms]
+    __global float4*  fapos,        // 3    [natoms]     
+    __global float4*  fneigh,       // 4    [nnode*4]
+    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} 
+    __global float4*  apars,        // 7  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+    __global float4*  bLs,          // 8  [nnode]  bond lengths  for each neighbor
+    __global float4*  bKs,          // 9  [nnode]  bond stiffness for each neighbor
+    __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
+    __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
+    const cl_Mat3 lvec,             // 12
+    const cl_Mat3 invLvec           // 13
+*/
         }
     }
 }
@@ -329,22 +357,23 @@ void setup_MMFFf4_ocl(){
     ocl.nDOFs.y=ff.nnode;
     Mat3_to_cl( ff.lvec   , ocl.cl_lvec    );
     Mat3_to_cl( ff.invLvec, ocl.cl_invLvec );
-    DEBUG
-    ocl.setup_updateAtomsMMFFf4( ff.nvecs,  ff.natoms, task_move );       DEBUG   
-    ocl.setup_getMMFFf4        ( ff.natoms, ff.nnode, bPBC, task_getF );  DEBUG
+    //DEBUG
+    ocl.setup_updateAtomsMMFFf4( ff.natoms, ff.nnode, task_move       );  //DEBUG   
+    ocl.setup_getMMFFf4        ( ff.natoms, ff.nnode, bPBC, task_getF );  //DEBUG
 }
 
 double eval_MMFFf4_ocl( int niter ){ 
     printf( " ======= eval_MMFFf4_ocl() \n" );
-    if( task_getF==0 )setup_MMFFf4_ocl(); DEBUG
+    if( task_getF==0 )setup_MMFFf4_ocl(); //DEBUG
     for(int i=0; i<niter; i++){
-        task_getF->enque_raw(); DEBUG
-        task_move->enque_raw(); DEBUG
+        task_getF->enque_raw(); //DEBUG
+        task_move->enque_raw(); //DEBUG
     }
     //printf( "ocl.download(n=%i) \n", n );
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
-    ocl.finishRaw();                              DEBUG
+    //for(int i=0; i<ff4.natoms; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z ); }
+    ocl.finishRaw();                              //DEBUG
     unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     unpack( ff4.nnode,  ffl. pipos,ff4. pipos );

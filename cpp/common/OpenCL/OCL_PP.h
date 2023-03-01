@@ -359,19 +359,20 @@ class OCL_PP: public OCL_DFT { public:
         ibuff_atoms   =newBuffer( "atoms",    nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_aforces =newBuffer( "aforces",  nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        ibuff_neighs  =newBuffer( "neighs",   nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         if(bMMFFsp3 || bMMFFf4){
             ibuff_bkNeighs    = newBuffer( "bkNeighs",   nvecs,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
             ibuff_avel        = newBuffer( "avel",       nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
             ibuff_neighForce  = newBuffer( "neighForce", nneigh, sizeof(float4), 0, CL_MEM_READ_WRITE );
             if(bMMFFsp3){
                 printf( "initAtomsForces bMMFFsp3==true\n" );
+                ibuff_neighs      = newBuffer( "neighs",     nAtoms   , sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
                 ibuff_bondLK      = newBuffer( "bondLK ",    nAtoms   , sizeof(float8), 0, CL_MEM_READ_ONLY  );
                 ibuff_ang0K       = newBuffer( "ang0K",      nnode    , sizeof(float4), 0, CL_MEM_READ_ONLY  );
                 ibuff_pi0s        = newBuffer( "pi0s",       npi      , sizeof(float4), 0, CL_MEM_READ_WRITE );
             }
             if(bMMFFf4){ // int ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
                 printf( "initAtomsForces bMMFFf4==true\n" );
+                ibuff_neighs = newBuffer( "neighs", nnode, sizeof(int4),   0, CL_MEM_READ_ONLY  );
                 ibuff_MMpars = newBuffer( "MMpars", nnode, sizeof(int4),   0, CL_MEM_READ_ONLY );
                 ibuff_BLs    = newBuffer( "BLs",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY  );
                 ibuff_BKs    = newBuffer( "BKs",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -490,7 +491,7 @@ class OCL_PP: public OCL_DFT { public:
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
         //printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFf4");
-        task->global.x = na;
+        task->global.x = nNode;
         useKernel( task->ikernel );
         nDOFs.x=na; 
         nDOFs.y=nNode; 
@@ -534,14 +535,14 @@ class OCL_PP: public OCL_DFT { public:
     */
     }
 
-    OCLtask* setup_updateAtomsMMFFf4( int n, int natom,  OCLtask* task=0 ){
+    OCLtask* setup_updateAtomsMMFFf4( int na, int nNode,  OCLtask* task=0 ){
         if(task==0) task = getTask("updateAtomsMMFFf4");
-        task->global.x = n;
+        task->global.x = na;
         //task->local .x = 1;
         //task->roundSizes();
         //if(n >=0  ) 
-        nDOFs.x=n; 
-        nDOFs.y=natom; 
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
         useKernel( task->ikernel );
         err |= _useArg( md_params );           // 1
         err |= _useArg( nDOFs     );           // 2
