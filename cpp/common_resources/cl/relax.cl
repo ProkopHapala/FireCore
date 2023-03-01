@@ -1570,8 +1570,8 @@ __kernel void getMMFFf4(
                 epp += evalPiAling( hpi, apos[ing+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
                 E+=epp;
                 //printf( "GPU[%i|%i] hpi(%g,%g,%g) hpj(%g,%g,%g) \n", ia,ing, hpi.x,hpi.y,hpi.z, apos[ing+nAtoms].x,apos[ing+nAtoms].y,apos[ing+nAtoms].z );
-*/
             }
+*/
             // ToDo: triple bonds ?
         } 
 /*        
@@ -1610,11 +1610,11 @@ __kernel void getMMFFf4(
     const int i4p=i4+nAtoms*4;
     for(int i=0; i<NNEIGH; i++){
         fneigh[i4 +i] = (float4){fbs[i],0};
-        fneigh[i4p+i] = (float4){fps[i],0};
+        //fneigh[i4p+i] = (float4){fps[i],0};
         //fneighpi[i4+i] = (float4){fps[i],0};
     }
     fapos[ia       ] = (float4){fa ,0};
-    fapos[ia+nAtoms] = (float4){fpi,0};
+    //fapos[ia+nAtoms] = (float4){fpi,0};
     //fpipos[ia] = (float4){fpi,0};
 
     printf( "GPU[%i] fa(%g,%g,%g) fpi(%g,%g,%g)\n", ia, fa.x,fa.y,fa.z, fpi.x,fpi.y,fpi.z );
@@ -1669,19 +1669,13 @@ __kernel void updateAtomsMMFFf4(
     
     const int4 ngs  = bkNeighs[ia];
 
-    float4 fe = aforce  [ia]; 
-    if(ngs.x>=0) fe += fneigh[ngs.x];
-    if(ngs.y>=0) fe += fneigh[ngs.y];
-    if(ngs.z>=0) fe += fneigh[ngs.z];
-    if(ngs.w>=0) fe += fneigh[ngs.w];
-
+    float4 fe = aforce[ia]; 
+    float4 fp = aforce[ia+nAtoms]; 
     int ip0 = nAtoms*4;
-    float4 fp = aforce  [ia+nAtoms]; 
-    if(ngs.x>=0) fe += fneigh[ip0+ngs.x];
-    if(ngs.y>=0) fe += fneigh[ip0+ngs.y];
-    if(ngs.z>=0) fe += fneigh[ip0+ngs.z];
-    if(ngs.w>=0) fe += fneigh[ip0+ngs.w];
-    
+    if(ngs.x>=0){ fe += fneigh[ngs.x]; fp += fneigh[ip0+ngs.x]; }
+    if(ngs.y>=0){ fe += fneigh[ngs.y]; fp += fneigh[ip0+ngs.y]; }
+    if(ngs.z>=0){ fe += fneigh[ngs.z]; fp += fneigh[ip0+ngs.z]; }
+    if(ngs.w>=0){ fe += fneigh[ngs.w]; fp += fneigh[ip0+ngs.w]; }
 
     //aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
 
