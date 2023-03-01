@@ -161,14 +161,11 @@ void mol2ocl(){
         }
         if( bGPU_MMFFf4 ){
 
-
-
-
-            makeOCLNeighs( );
+            //makeOCLNeighs( );
             //makeBackNeighs( nbmol.neighs );
             //ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
 
-            //ocl.upload( ocl.ibuff_neighs  , ff4.aneighs  );
+            ocl.upload( ocl.ibuff_neighs  , ff4.aneighs  );
             ocl.upload( ocl.ibuff_bkNeighs, ff4.bkneighs );
 
             ocl.upload( ocl.ibuff_MMpars  , ff4.apars );  

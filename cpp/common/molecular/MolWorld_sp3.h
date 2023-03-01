@@ -547,8 +547,6 @@ virtual void init( bool bGrid ){
             printf("### Compare ffl.fpipos, ff4.fpipos, \n"); ret |= compareVecs( ff4.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
             if(ret){ printf("ERROR: ff4.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }
             */
-
-            ff4.printDEBUG();
             printf(" ============ check MMFFf4 DONE\n " );
         }
 

@@ -169,7 +169,8 @@ float eval_atom(int ia){
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
 
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
-            E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
+            //E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
+            //if(ia==0)printf( "CPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             /*
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
@@ -190,7 +191,7 @@ float eval_atom(int ia){
         //}
         */
     }
-    /*
+    
     // --------- Angle Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -202,13 +203,15 @@ float eval_atom(int ia){
             const Quat4f& hj = hs[j];
             E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             //if(idebug)printf( "ang[%i|%i,%i] kss=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            if(ia==0)printf( "CPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fbs[i].f.add( f1     );
             fbs[j].f.add( f2     );
             fa.      sub( f1+f2  );
+            if(ia==0)printf( "GPU:fa[%i](%g,%g,%g)\n", ia, fa.x,fa.y,fa.z  );
             // ToDo: subtract non-covalent interactions
         }
     }
-    */
+    
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia].f=fa; 
@@ -261,6 +264,7 @@ float eval( bool bClean=true, bool bCheck=true ){
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     eval_atoms();
+    printDEBUG();  //DEBUG
     asseble_forces();
     //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
@@ -319,10 +323,10 @@ void printDEBUG(){
     }
     for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
         int i1=i*4+j;
-        int i2=(i+natoms)*4+j;
+        //int i2=(i+natoms)*4+j;
         printf( "CPU[%i,%i] ", i, j );
-        printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i1].x, fneigh[i1].y, fneigh[i1].z, fneigh[i1].w );
-        printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i2].x, fneigh[i2].y, fneigh[i2].z, fneigh[i2].w );
+        printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh  [i1].x, fneigh  [i1].y, fneigh  [i1].z, fneigh  [i1].w );
+        printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneighpi[i1].x, fneighpi[i1].y, fneighpi[i1].z, fneighpi[i1].w );
         printf( "\n" );
     }}
 }

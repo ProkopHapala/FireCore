@@ -1144,11 +1144,11 @@ float evalAngCos( const float4 hr1, const float4 hr2, float K, float c0, __priva
     float3 hf1,hf2;
     hf1 = hr2.xyz - hr1.xyz*c;
     hf2 = hr1.xyz - hr2.xyz*c;
-    float c_ = c+c0;
-    float E = K*c_*c_;
+    float c_   = c-c0;
+    float E    = K*c_*c_;
     float fang = -K*c_*2;
-    hf1 *= ( fang*hr1.w );
-    hf2 *= ( fang*hr2.w );
+    hf1 *= fang*hr1.w;
+    hf2 *= fang*hr2.w;
     *f1=hf1;
     *f2=hf2;
     return E;
@@ -1499,7 +1499,7 @@ __kernel void getMMFFf4(
     #define NNEIGH 4
 
     if(ia==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i size=%i \n", nnode, nAtoms, nG ); }
-    /*
+    
     if(ia==0)for(int i=0; i<nnode; i++){
         printf( "GPU[%i] ", i );
         printf( "ngs{%2i,%2i,%2i,%2i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
@@ -1510,7 +1510,7 @@ __kernel void getMMFFf4(
         printf( "Kpp{%6.3f,%6.3f,%6.3f,%6.3f} ", Kpp[i].x, Kpp[i].y, Kpp[i].z, Kpp[i].w );
         printf( "\n" );
     }
-    */
+    
 
     // ========= Private Memory
 
@@ -1550,11 +1550,14 @@ __kernel void getMMFFf4(
         float4 h;
         fbs[i]=float3Zero;
         fps[i]=float3Zero;
+        fbs[i]=(float3){1,0,1};
+        fps[i]=(float3){1,2,1};
         int ing = ings[i];
         if(ing<0) break;
         h.xyz    = apos[ing].xyz - pa;    //printf( "[%i|%i] ing=%i h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z,  pa.x,pa.y,pa.z ); 
-        float  l = length(h.xyz);
+        float  l = length(h.xyz); 
         h.w      = 1./l;
+        h.xyz   *= h.w;
         hs[i]    = h;
 
 
@@ -1563,7 +1566,9 @@ __kernel void getMMFFf4(
 
         //printf( "[%i|%i] l %g h(%g,%g,%g) \n", ia,i, l, h.x,h.y,h.z ); 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
-            E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;    
+            //E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
+            //if(ia==0)printf( "GPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
+
             /*
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
@@ -1585,7 +1590,6 @@ __kernel void getMMFFf4(
             E+=epp;
         }
         */
-
         //printf( "GPU[%i|%i] esp=%g epp=%g \n", esp, epp );
         
     }
@@ -1603,27 +1607,30 @@ __kernel void getMMFFf4(
             const float4 hj = hs[j];
             //printf( "[%i|%i,%i] hi(%g,%g,%g) hj(%g,%g,%g)\n", ia, i,j, hi.x,hi.y,hi.z,   hj.x,hj.y,hj.z );
             E += evalAngCos( hi, hj, par.y, par.x, &f1, &f2 );     // angles between sigma bonds
+            if(ia==0)printf( "GPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, par.y, par.x, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fbs[i]+= f1;
             fbs[j]+= f2;
             fa    -= f1+f2;
+            if(ia==0)printf( "GPU:fa[%i](%g,%g,%g)\n", ia, fa.x,fa.y,fa.z  );
             // ToDo: subtract non-covalent interactions
         }
     }
     */
+    
     // ========= Save results
 
     const int i4 =ia*4;
     const int i4p=i4+nAtoms*4;
     for(int i=0; i<NNEIGH; i++){
         fneigh[i4 +i] = (float4){fbs[i],0};
-        //fneigh[i4p+i] = (float4){fps[i],0};
+        fneigh[i4p+i] = (float4){fps[i],0};
         //fneighpi[i4+i] = (float4){fps[i],0};
     }
     fapos[ia       ] = (float4){fa ,0};
-    //fapos[ia+nAtoms] = (float4){fpi,0};
+    fapos[ia+nAtoms] = (float4){fpi,0};
     //fpipos[ia] = (float4){fpi,0};
 
-    printf( "GPU[%i] fa(%g,%g,%g) fpi(%g,%g,%g)\n", ia, fa.x,fa.y,fa.z, fpi.x,fpi.y,fpi.z );
+    //printf( "GPU[%i] fa(%g,%g,%g) fpi(%g,%g,%g)\n", ia, fa.x,fa.y,fa.z, fpi.x,fpi.y,fpi.z );
 
     if(ia==0){ printf( "GPU::getMMFFf4() DONE\n" ); }
     
