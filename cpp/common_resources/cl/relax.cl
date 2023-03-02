@@ -1606,8 +1606,8 @@ __kernel void getMMFFf4(
 
     #define NNEIGH 4
 
+    /*
     if(ia==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i size=%i \n", nnode, nAtoms, nG ); }
-    
     if(ia==0)for(int i=0; i<nnode; i++){
         printf( "GPU[%i] ", i );
         printf( "ngs{%2i,%2i,%2i,%2i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
@@ -1618,6 +1618,7 @@ __kernel void getMMFFf4(
         printf( "Kpp{%6.3f,%6.3f,%6.3f,%6.3f} ", Kpp[i].x, Kpp[i].y, Kpp[i].z, Kpp[i].w );
         printf( "\n" );
     }
+    */
     
 
     // ========= Private Memory
@@ -1675,20 +1676,19 @@ __kernel void getMMFFf4(
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
             //if(ia==0)printf( "GPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
-            /*
+            
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 //E += evalPiAling( hpi, pipos[ing].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;        //   pi-alignment     (konjugation)
                 epp += evalPiAling( hpi, apos[ing+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
-                //if(ia==9)
-                printf( "GPU:pipi[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, dot(hpi,apos[ing+nAtoms].xyz), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+                //printf( "GPU:pipi[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, dot(hpi,apos[ing+nAtoms].xyz), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
                 E+=epp;
                 //printf( "GPU[%i|%i] hpi(%g,%g,%g) hpj(%g,%g,%g) \n", ia,ing, hpi.x,hpi.y,hpi.z, apos[ing+nAtoms].x,apos[ing+nAtoms].y,apos[ing+nAtoms].z );
             }
-            */
+            
             // ToDo: triple bonds ?
         } 
-        /*
+        
         // DEBUG: ERROR: uncomenting this couse drift
         // pi-sigma 
         float ksp = Kspi[i];
@@ -1696,11 +1696,11 @@ __kernel void getMMFFf4(
             esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.z, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
             E+=epp;
         }
-        */
+        
         //printf( "GPU[%i|%i] esp=%g epp=%g \n", esp, epp );
         
     }
-    /*
+    
     //  ============== Angles 
     for(int i=0; i<NNEIGH; i++){
         int ing = ings[i];
@@ -1712,15 +1712,15 @@ __kernel void getMMFFf4(
             const float4 hj = hs[j];
             //printf( "[%i|%i,%i] hi(%g,%g,%g) hj(%g,%g,%g)\n", ia, i,j, hi.x,hi.y,hi.z,   hj.x,hj.y,hj.z );
             E += evalAngCos( hi, hj, par.y, par.x, &f1, &f2 );     // angles between sigma bonds
-            if(ia==0)printf( "GPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, par.y, par.x, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            //if(ia==0)printf( "GPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, par.y, par.x, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fbs[i]+= f1;
             fbs[j]+= f2;
             fa    -= f1+f2;
-            if(ia==0)printf( "GPU:fa[%i](%g,%g,%g)\n", ia, fa.x,fa.y,fa.z  );
+            //if(ia==0)printf( "GPU:fa[%i](%g,%g,%g)\n", ia, fa.x,fa.y,fa.z  );
             // ToDo: subtract non-covalent interactions
         }
     }
-    */
+    
     // ========= Save results
 
     const int i4 =ia*4;
@@ -1738,7 +1738,9 @@ __kernel void getMMFFf4(
 
     //printf( "GPU[%i] fa(%g,%g,%g) fpi(%g,%g,%g)\n", ia, fa.x,fa.y,fa.z, fpi.x,fpi.y,fpi.z );
 
-    if(ia==0){ printf( "GPU::getMMFFf4() DONE\n" ); }
+    //fapos[ia]=(float4){1,2,3,ia};
+
+    //if(ia==0){ printf( "GPU::getMMFFf4() DONE\n" ); }
     
 }
 
@@ -1752,15 +1754,13 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  fneigh,       // 6
     __global int4*    bkNeighs      // 7
 ){
-    
     const int natoms=n.x;
     const int nnode =n.y;
     const int iG = get_global_id (0);
     const int nG = get_global_size(0);
 
+    /*
     if(iG==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i \n", natoms,nnode, natoms+nnode, nG );
-
-    
     if(iG==0){ printf( "GPU::updateAtomsMMFFf4() dt=%g damp=%g \n", MDpars.x, MDpars.y ); }
     if(iG==0)for(int i=0; i<natoms; i++){
         printf( "GPU[%i] ", i );
@@ -1786,7 +1786,6 @@ __kernel void updateAtomsMMFFf4(
         printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i2].x, fneigh[i2].y, fneigh[i2].z, fneigh[i2].w );
         printf( "\n" );
     }}
-    /*
     if(iG==0)for(int i=0; i<nnode*4*2; i++){
         printf( "GPU[%i,%i,%i] ", i/4, i%4, i>=(nnode*4) );
         printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i].x, fneigh[i].y, fneigh[i].z, fneigh[i].w );
@@ -1814,8 +1813,6 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
-    //aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
-
     // ------ Move (Leap-Frog)
     float4 pe = apos[iG];
     float4 ve = avel[iG];
@@ -1833,7 +1830,32 @@ __kernel void updateAtomsMMFFf4(
     // ------ Store global state
     avel[iG] = ve;
     apos[iG] = pe;
-    if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
+    aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
+    //aforce[iG] = 0;  // ToDo:  this allows to ommit  updateAtomsMMFFf4() !!!! 
+    //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
+
+}
+
+
+__kernel void cleanForceMMFFf4(
+    const int4        n,           // 2
+    __global float4*  aforce,      // 5
+    __global float4*  fneigh       // 6
+){
+    const int natoms=n.x;
+    const int nnode =n.y;
+    const int iG = get_global_id (0);
+    if(iG>=(natoms+nnode)) return;
+    aforce[iG]=float4Zero;
+    
+    //if(iG==0){ for(int i=0;i<(natoms+nnode);i++ ){printf("cleanForceMMFFf4[%i](%g,%g,%g)\n",i,aforce[i].x,aforce[i].y,aforce[i].z);} }
+    if(iG<nnode){ 
+        fneigh[iG*4+0]=float4Zero;
+        fneigh[iG*4+1]=float4Zero;
+        fneigh[iG*4+2]=float4Zero;
+        fneigh[iG*4+3]=float4Zero;
+    }
+    //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
 
 }
 

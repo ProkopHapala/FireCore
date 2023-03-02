@@ -272,7 +272,7 @@ float eval( bool bClean=true, bool bCheck=true ){
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     eval_atoms();
-    printDEBUG();  //DEBUG
+    printf("CPU BEFORE assemble() \n"); printDEBUG(false,false);  //DEBUG
     asseble_forces();
     //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;

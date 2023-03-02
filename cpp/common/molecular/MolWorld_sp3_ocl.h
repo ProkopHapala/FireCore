@@ -25,6 +25,7 @@ class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
     bool bGPU_MMFFf4  = true;
     //bool bGPU_MMFFf4  = false;
 
+    OCLtask* task_cleanF=0;
     OCLtask* task_getF=0; //ocl.getTask("getMMFFf4");
     OCLtask* task_move=0; //ocl.getTask("gatherForceAndMove");
     OCLtask* task_pi0s=0; //ocl.getTask("updatePiPos0");
@@ -349,8 +350,9 @@ double eval_MMFFsp3_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
 }
 
 void setup_MMFFf4_ocl(){
-    task_getF = ocl.getTask("getMMFFf4");
-    task_move = ocl.getTask("updateAtomsMMFFf4");
+    task_getF   = ocl.getTask("getMMFFf4");
+    task_move   = ocl.getTask("updateAtomsMMFFf4");
+    task_cleanF = ocl.getTask("cleanForceMMFFf4");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
     Mat3_to_cl( ff.lvec   , ocl.cl_lvec    );
@@ -359,27 +361,37 @@ void setup_MMFFf4_ocl(){
     printf( "na %i nnode %i \n", ff4.natoms, ff4.nnode );
     ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode, task_move       );  //DEBUG   
     ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC, task_getF );  //DEBUG
+    ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode );
 }
 
 double eval_MMFFf4_ocl( int niter ){ 
-    printf( " ======= eval_MMFFf4() DEBUG \n" );
-
-    
+    //printf( " ======= eval_MMFFf4() DEBUG \n" );
+    /*
+    // ========= To Compare CPU and GPU forces
     ff4.eval();
-    printf("CPU AFTER asseble_forces() \n"); ff4.printDEBUG(  false,false );
+    printf("CPU AFTER assemble() \n"); ff4.printDEBUG(  false,false );
     unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     // ---- Check Invariatns
-    fcog  = sum( ffl.natoms, ffl.fapos   );
+    fcog  = sum ( ffl.natoms, ffl.fapos   );
     tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
     if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4 |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }else{ printf("DEBUG eval_MMFFf4 |fcog| OK\n"); }
     //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4 |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }  // NOTE: torq is non-zero because pi-orbs have inertia
-    
-
-    printf( " ======= eval_MMFFf4_ocl() \n" );
-    if( task_getF==0 )setup_MMFFf4_ocl(); //DEBUG
+    */
+    //printf( " ======= eval_MMFFf4_ocl() \n" );
+    if( task_getF==0 )setup_MMFFf4_ocl();
     for(int i=0; i<niter; i++){
-        task_getF->enque_raw(); //DEBUG
+        task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
+        task_getF->enque_raw();
+        /*
+        { // DEBUG
+        ocl.download( ocl.ibuff_aforces,    ff4.fapos , ff4.nvecs );
+        ocl.download( ocl.ibuff_atoms,      ff4.apos  , ff4.nvecs );
+        ocl.download( ocl.ibuff_neighForce, ff4.fneigh, ff4.nvecs );
+        ocl.finishRaw();   
+        printf("GPU BEFORE assemble() \n"); ff4.printDEBUG( false,false );
+        }
+        */
         task_move->enque_raw(); //DEBUG
     }
     //printf( "ocl.download(n=%i) \n", n );
@@ -387,19 +399,17 @@ double eval_MMFFf4_ocl( int niter ){
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
     //for(int i=0; i<ff4.natoms; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z ); }
     ocl.finishRaw();                              //DEBUG
-    printf("GPU AFTER asseble_forces() \n"); ff4.printDEBUG( false,false );
+    //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
     unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
     unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
 
-    
     // ---- Check Invariatns
     fcog  = sum ( ffl.natoms, ffl.fapos   );
     tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
     if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
-
 
     return 0;
 }
@@ -420,7 +430,7 @@ void eval(){
 
     //bSurfAtoms= false;
     if(bGPU_MMFF){
-        printf( " ### GPU \n" );
+        //printf( " ### GPU \n" );
         //E += ff.eval();
         //for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
@@ -429,7 +439,7 @@ void eval(){
         //for(int i=0; i<ff.natoms; i++){ printf("OCL atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //exit(0);
     }else{
-        printf( " ### CPU \n" );
+        //printf( " ### CPU \n" );
         if(bMMFF){ E += ff.eval();  } 
         else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
         //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
