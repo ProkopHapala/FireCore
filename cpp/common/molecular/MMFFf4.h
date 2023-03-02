@@ -72,8 +72,9 @@ class MMFFf4{ public:
     Quat4f * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
 
     // Params
-    Quat4i*  aneighs =0; // [nnode*4]   index of neighboring atoms
-    Quat4i*  bkneighs=0; // [natoms*4]  inverse neighbors
+    Quat4i*  aneighs     =0; // [nnode*4]   index of neighboring atoms
+    Quat4i*  aneighCell  =0; // [nnode*4]   index of neighboring atoms
+    Quat4i*  bkneighs    =0; // [natoms*4]  inverse neighbors
 
     Quat4f*  apars=0;  // [nnode] per atom forcefield parametrs
     Quat4f*  REQs =0;  // [nnode] parameters of non-covalent interactions
@@ -109,7 +110,9 @@ void realloc( int nnode_, int ncap_ ){
     _realloc( fneigh  , nnode*4 );
     _realloc( fneighpi, nnode*4 );
     // ----- Params [natom]
-    _realloc( aneighs , nnode  );
+    //_realloc( aneighs , nnode  );   // We need neighs for all atoms because of Non-Bonded
+    _realloc( aneighs ,   natoms );   // We need neighs for all atoms because of Non-Bonded
+    _realloc( aneighCell, natoms );   // We need neighs for all atoms because of Non-Bonded
     _realloc( bkneighs, natoms );
     _realloc( apars  , nnode );
     _realloc( bLs    , nnode );
@@ -283,7 +286,7 @@ void move_GD(float dt){
     }
 }
 
-void makeBackNeighs( ){
+void makeBackNeighs( bool bCapNeighs=true ){
     for(int i=0; i<natoms; i++){ bkneighs[i]=Quat4i{-1,-1,-1,-1}; };
     for(int ia=0; ia<nnode; ia++){
         for(int j=0; j<4; j++){        // 4 neighbors
@@ -294,7 +297,34 @@ void makeBackNeighs( ){
             if(!ret){ printf("ERROR in MMFFf4_loc::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
         };
     }
+    if(bCapNeighs){   // set neighbors for capping atoms
+        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia].x = bkneighs[ia].x/4;  }
+    }
 }
+
+void makeNeighCells( const Vec3i nPBC ){ 
+    for(int ia=0; ia<natoms; ia++){
+        for(int j=0; j<4; j++){
+            int ja = aneighs[ia].array[j];
+            if( ja<0 )continue;
+            Vec3f d = apos[ja].f - apos[ia].f;
+            int ipbc=0;
+            int imin=0;
+            float r2min = 1e+300;
+            for(int ia=-nPBC.x; ia<=nPBC.x; ia++){ for(int ib=-nPBC.y; ib<=nPBC.y; ib++){ for(int ic=-nPBC.z; ic<=nPBC.z; ic++){ 
+                Vec3f shift= (Vec3f)( (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic) ); 
+                shift.add(d);
+                double r2 = d.norm();
+                if(r2<r2min){   // find nearest distance
+                    r2min=r2;
+                    imin=ipbc;
+                }
+                ipbc++; 
+            }}}
+            aneighCell[ia].array[j] = imin;
+        }
+    }
+};
 
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };

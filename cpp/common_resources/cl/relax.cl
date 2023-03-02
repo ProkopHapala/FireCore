@@ -717,6 +717,20 @@ float4 getMorseQ( float3 dp, float4 REQK, float R2damp ){
     return ((float4)( dp*( fMors - Ec*ir2 ), EMors + Ec )); 
 }
 
+float4 getLJQ( float3 dp, float3 REQ, float R2damp ){
+    // ---- Electrostatic
+    float   ir2 = 1/( dot(dp,dp) +  R2damp);
+    float   ir  = sqrt(ir2);
+    float   Ec  = COULOMB_CONST*REQ.z*ir;
+    // --- LJ 
+    float  u2  = ir2*REQ.x*REQ.x;
+    float  u6  = u2*u2*u2;
+    float vdW  = u6*REQ.y;
+    float E    =           (u6-2.)*vdW + Ec  ;
+    float fr   = -ir2*( 12*(u6-1.)*vdW + Ec );
+    return  (float4){ dp*fr, E };
+}
+
 /*
 inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double E0, double qq, double K=-1., double R2damp=1. ){
     double r2    = dp.norm2();
@@ -1005,6 +1019,100 @@ __kernel void make_GridFF(
     write_imagef( FE_Coul, coord, fe_Coul );
 }
 
+
+__kernel void getNonBond(
+    const int4 ns,                  // 1
+    // Dynamical
+    __global float4*  atoms,        // 2
+    __global float4*  forces,       // 3
+    // Parameters
+    __global float4*  REQKs,        // 4
+    __global int4*    neighs,       // 5
+    __global int4*    neighCell,    // 6
+    const int4 nPBC,                // 7
+    const cl_Mat3 lvec,             // 8
+    float R2damp                    // 9
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+
+    const int natoms=ns.x;
+    const int nnode =ns.y;
+
+    if(iG==0){
+        printf( "GPU::getNonBond() natoms %i nnode %i \n", natoms,nnode );
+    }
+
+    if(iG>=natoms) return;
+    //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
+    const bool   bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;
+    const int4   ng    = neighs   [iG];
+    const int4   ngC   = neighCell[iG];
+    const float4 REQKi = REQKs [iG];
+    const float3 posi  = atoms [iG].xyz;
+    float4 fe          = float4Zero;
+
+    // ========= Atom-to-Atom interaction ( N-body problem )    
+    for (int i0=0; i0<natoms; i0+= nL ){
+        const int i = i0 + iL;
+        //if(i>=nAtoms) break;  // wrong !!!!
+        LATOMS[iL] = atoms [i];
+        LCLJS [iL] = REQKs [i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            const int ji=j+i0;
+            if( (ji!=iG) && (ji<natoms) ){   // ToDo: Should interact withhimself in PBC ?
+                const float4 aj = LATOMS[j];
+                const float3 dp = aj.xyz - posi;
+                float4 REQK = LCLJS[j];
+                REQK.x+=REQKi.x;
+                REQK.yz*=REQKi.yz;
+
+                const bool bBonded = ((ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w));
+
+                if(bPBC){
+                    // ToDo: it may be more effcient not construct pbc_shift on-the-fly
+                    int ipbc=0;
+                    float3 shifts=lvec.a.xyz*-nPBC.x;
+                    for(int ia=-nPBC.x; ia<=nPBC.x; ia++){
+                        shifts+=lvec.b.xyz*-nPBC.y;
+                        for(int ib=-nPBC.y; ib<=nPBC.y; ib++){
+                            shifts+=lvec.c.xyz*-nPBC.z;
+                            for(int ic=-nPBC.z; ic<=nPBC.z; ic++){     
+                                if(bBonded){
+                                    if(
+                                         ((ji==ng.x)&&(ipbc==ngC.x))
+                                       ||((ji==ng.y)&&(ipbc==ngC.y))
+                                       ||((ji==ng.z)&&(ipbc==ngC.z))
+                                       ||((ji==ng.w)&&(ipbc==ngC.w))
+                                    )continue; // skipp pbc0
+                                }
+                                //fe += getMorseQ( dp, REQK, R2damp );
+                                fe += getLJQ( dp, REQK.xyz, R2damp );
+                                ipbc++; 
+                                shifts+=lvec.c.xyz;
+                            }
+                            shifts+=lvec.b.xyz;
+                        }
+                        shifts+=lvec.a.xyz;
+                    }
+                }else{
+                    if(bBonded) continue;  // Bonded ?
+                     // ToDo : what if bond is not within this cell ?????
+                    //fe += getMorseQ( dp, REQK, R2damp );
+                    fe += getLJQ( dp, REQK.xyz, R2damp );
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    
+    forces[iG] = fe;
+    
+}
 
 //__constant sampler_t sampler_gff =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 __constant sampler_t sampler_gff =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;

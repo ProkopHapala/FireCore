@@ -230,7 +230,7 @@ double eval( bool bClean=true, bool bCheck=true ){
     return Etot;
 }
 
-void makeBackNeighs( ){
+void makeBackNeighs( bool bCapNeighs=true ){
     for(int i=0; i<natoms; i++){ bkneighs[i]=Quat4i{-1,-1,-1,-1}; };
     for(int ia=0; ia<nnode; ia++){
         for(int j=0; j<4; j++){        // 4 neighbors
@@ -243,6 +243,9 @@ void makeBackNeighs( ){
     }
     //for(int i=0; i<natoms; i++){printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i].x, bkneighs[i].y, bkneighs[i].z, bkneighs[i].w );}
     //checkBkNeighCPU();
+    if(bCapNeighs){   // set neighbors for capping atoms
+        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia].x = bkneighs[ia].x/4;  }
+    }
 }
 
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
