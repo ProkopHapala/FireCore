@@ -122,6 +122,7 @@ class OCL_PP: public OCL_DFT { public:
         newTask( "getNonBondForce_GridFF" ,program_relax);
         newTask( "getMMFFsp3"             ,program_relax);
         newTask( "getMMFFf4"              ,program_relax);
+        newTask( "cleanForceMMFFf4"       ,program_relax);
         newTask( "updateAtomsMMFFf4"      ,program_relax);
         newTask( "gatherForceAndMove"     ,program_relax);
         newTask( "updatePiPos0"           ,program_relax);
@@ -613,6 +614,24 @@ class OCL_PP: public OCL_DFT { public:
             __global float4*  aforce,       // 5
             __global float4*  fneigh,       // 6
             __global int4*    bkNeighs      // 7
+        */
+    }
+
+    OCLtask* setup_cleanForceMMFFf4( int na, int nNode,  OCLtask* task=0 ){
+        if(task==0) task = getTask("cleanForceMMFFf4");
+        task->global.x = na+nNode;
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
+        useKernel( task->ikernel );
+        err |= _useArg( nDOFs     );           // 1
+        err |= useArgBuff( ibuff_aforces    ); // 2
+        err |= useArgBuff( ibuff_neighForce ); // 3
+        OCL_checkError(err, "setup_cleanForceMMFFf4");
+        return task;
+        /*
+            const int4        n,           // 2
+            __global float4*  aforce,      // 5
+            __global float4*  fneigh       // 6
         */
     }
 
