@@ -72,9 +72,9 @@ class MMFFf4{ public:
     Quat4f * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
 
     // Params
-    Quat4i*  aneighs     =0; // [nnode*4]   index of neighboring atoms
-    Quat4i*  aneighCell  =0; // [nnode*4]   index of neighboring atoms
-    Quat4i*  bkneighs    =0; // [natoms*4]  inverse neighbors
+    Quat4i*  aneighs     =0; // [natoms]   index of neighboring atoms
+    Quat4i*  aneighCell  =0; // [natoms]   index of neighboring atoms
+    Quat4i*  bkneighs    =0; // [natoms]  inverse neighbors
 
     Quat4f*  apars=0;  // [nnode] per atom forcefield parametrs
     Quat4f*  REQs =0;  // [nnode] parameters of non-covalent interactions
@@ -86,7 +86,7 @@ class MMFFf4{ public:
 
     bool    bSubtractAngleNonBond=false;
     bool    bPBCbyLvec  =false;
-    Mat3d   invLvec, lvec;
+    Mat3f   invLvec, lvec;
 
 // =========================== Functions
 
@@ -111,9 +111,9 @@ void realloc( int nnode_, int ncap_ ){
     _realloc( fneighpi, nnode*4 );
     // ----- Params [natom]
     //_realloc( aneighs , nnode  );   // We need neighs for all atoms because of Non-Bonded
-    _realloc( aneighs ,   natoms );   // We need neighs for all atoms because of Non-Bonded
+    _realloc( aneighs   , natoms );   // We need neighs for all atoms because of Non-Bonded
     _realloc( aneighCell, natoms );   // We need neighs for all atoms because of Non-Bonded
-    _realloc( bkneighs, natoms );
+    _realloc( bkneighs  , natoms );
     _realloc( apars  , nnode );
     _realloc( bLs    , nnode );
     _realloc( bKs    , nnode );
@@ -122,6 +122,8 @@ void realloc( int nnode_, int ncap_ ){
 
 
 }
+
+void setLvec(const Mat3f& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
 
 // ============== Evaluation
 
@@ -191,7 +193,7 @@ float eval_atom(int ia){
         //if(bPi){    
         float ksp = Kspi[i];
         if(ksp>1e-6){  
-            E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fbs[i].f.add(f2);    //   pi-planarization (orthogonality)
+            E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fa.sub(f2); fbs[i].f.add(f2);    //   pi-planarization (orthogonality)
             //if(idebug)printf( "pi-sigma[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, ksp, hpi.dot(h.f),1.,h.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
         }
         //}
@@ -298,32 +300,37 @@ void makeBackNeighs( bool bCapNeighs=true ){
         };
     }
     if(bCapNeighs){   // set neighbors for capping atoms
-        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia].x = bkneighs[ia].x/4;  }
+        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia]=Quat4iOnes; aneighs[ia].x = bkneighs[ia].x/4;  }
     }
 }
 
 void makeNeighCells( const Vec3i nPBC ){ 
     for(int ia=0; ia<natoms; ia++){
         for(int j=0; j<4; j++){
+            //printf("ngcell[%i,j=%i] \n", ia, j);
             int ja = aneighs[ia].array[j];
+            //printf("ngcell[%i,ja=%i] \n", ia, ja);
             if( ja<0 )continue;
             Vec3f d = apos[ja].f - apos[ia].f;
             int ipbc=0;
-            int imin=0;
+            int imin=-1;
             float r2min = 1e+300;
             for(int ia=-nPBC.x; ia<=nPBC.x; ia++){ for(int ib=-nPBC.y; ib<=nPBC.y; ib++){ for(int ic=-nPBC.z; ic<=nPBC.z; ic++){ 
                 Vec3f shift= (Vec3f)( (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic) ); 
                 shift.add(d);
-                double r2 = d.norm();
+                double r2 = shift.norm();
                 if(r2<r2min){   // find nearest distance
                     r2min=r2;
                     imin=ipbc;
                 }
                 ipbc++; 
             }}}
+            //printf("ngcell[%i,%i] imin=%i \n", ia, ja, imin);
             aneighCell[ia].array[j] = imin;
+            //printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
         }
     }
+    //printf("makeNeighCells() DONE \n");
 };
 
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
