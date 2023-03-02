@@ -362,6 +362,20 @@ void setup_MMFFf4_ocl(){
 }
 
 double eval_MMFFf4_ocl( int niter ){ 
+    printf( " ======= eval_MMFFf4() DEBUG \n" );
+
+    
+    ff4.eval();
+    ff4.printDEBUG();
+    unpack( ff4.natoms, ffl. apos, ff4. apos  );
+    unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
+    // ---- Check Invariatns
+    fcog  = sum( ffl.natoms, ffl.fapos   );
+    tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
+    if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4 |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }else{ printf("DEBUG eval_MMFFf4 |fcog| OK\n"); }
+    //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4 |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }  // NOTE: torq is non-zero because pi-orbs have inertia
+    
+
     printf( " ======= eval_MMFFf4_ocl() \n" );
     if( task_getF==0 )setup_MMFFf4_ocl(); //DEBUG
     for(int i=0; i<niter; i++){
@@ -377,6 +391,15 @@ double eval_MMFFf4_ocl( int niter ){
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
     unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
+
+    
+    // ---- Check Invariatns
+    fcog  = sum ( ffl.natoms, ffl.fapos   );
+    tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
+    if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+    //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
+
+
     return 0;
 }
 

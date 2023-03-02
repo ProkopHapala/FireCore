@@ -490,16 +490,17 @@ virtual void init( bool bGrid ){
         builder.toMMFFsp3    ( ff , &params );
         builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs();  
         builder.toMMFFf4     ( ff4, &params ); //ff4.printAtomParams(); ff4.printBKneighs(); 
-
-        ff4.makeNeighCells( nPBC );    
-
+        DEBUG 
         //ff.printAtomParams();
-        printf("builder.lvec\n");builder.lvec.print();
-        ff.setLvec(builder.lvec);
+        ff.setLvec(builder.lvec);     printf("builder.lvec\n");builder.lvec.print();
         ff.bPBCbyLvec = true;
+        ffl.setLvec(       builder.lvec);
+        ff4.setLvec((Mat3f)builder.lvec);
+        DEBUG
+        ff4.makeNeighCells( nPBC );   
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
-        
+        DEBUG
         /*
         if(verbosity>0){
             ff.printSizes();

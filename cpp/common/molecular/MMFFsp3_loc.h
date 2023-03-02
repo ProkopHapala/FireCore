@@ -80,6 +80,8 @@ void realloc( int nnode_, int ncap_ ){
 
 }
 
+void setLvec(const Mat3d& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
+
 // ============== Evaluation
 
 double eval_atom(const int ia){
@@ -150,7 +152,7 @@ double eval_atom(const int ia){
         //if(bPi){    
         double ksp = Kspi[i];
         if(ksp>1e-6){  
-            E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1);  fbs[i].add(f2);    //   pi-planarization (orthogonality)
+            E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);    //   pi-planarization (orthogonality)
             //if(idebug)printf( "pi-sigma[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, ksp, hpi.dot(h.f),1.,h.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
         }
         //}
