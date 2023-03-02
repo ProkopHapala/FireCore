@@ -366,7 +366,7 @@ double eval_MMFFf4_ocl( int niter ){
 
     
     ff4.eval();
-    ff4.printDEBUG();
+    printf("CPU AFTER asseble_forces() \n"); ff4.printDEBUG(  false,false );
     unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     // ---- Check Invariatns
@@ -387,6 +387,7 @@ double eval_MMFFf4_ocl( int niter ){
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
     //for(int i=0; i<ff4.natoms; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z ); }
     ocl.finishRaw();                              //DEBUG
+    printf("GPU AFTER asseble_forces() \n"); ff4.printDEBUG( false,false );
     unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
