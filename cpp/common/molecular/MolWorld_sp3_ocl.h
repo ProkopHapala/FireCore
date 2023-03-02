@@ -165,8 +165,9 @@ void mol2ocl(){
             //makeBackNeighs( nbmol.neighs );
             //ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
 
-            ocl.upload( ocl.ibuff_neighs  , ff4.aneighs  );
-            ocl.upload( ocl.ibuff_bkNeighs, ff4.bkneighs );
+            ocl.upload( ocl.ibuff_neighs   , ff4.aneighs    );
+            ocl.upload( ocl.ibuff_neighCell, ff4.aneighCell );
+            ocl.upload( ocl.ibuff_bkNeighs , ff4.bkneighs   );
 
             ocl.upload( ocl.ibuff_MMpars  , ff4.apars );  
             ocl.upload( ocl.ibuff_BLs     , ff4.bLs   ); 

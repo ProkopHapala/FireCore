@@ -230,12 +230,15 @@ double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
     // Qtot = Sum_i * Q_i
     // E = K*Qtot^2
     // d E^2 / dqi = K*Qtot*(  )
+    double E = 0;
     double fQ = -Kneutral*Qtot;
     for(int i=0; i<n; i++){
         //int   ti          = types[i];
         //const Vec3d& REQi = typeREQs[ti]; 
         fs[i].z += fQ;
+        E       += Kneutral*Qtot*Qtot;
     }
+    return  E;
 }
 
 void DOFsToTypes(){

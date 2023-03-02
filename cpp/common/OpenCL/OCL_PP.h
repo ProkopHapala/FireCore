@@ -29,6 +29,7 @@ class OCL_PP: public OCL_DFT { public:
     cl_program program_relax=0;
 
     int4   nDOFs    {0,0,0,0};
+    int4   nPBC     {0,0,0,0};
     float4 md_params{0.05,0.9,0.0,0.0};
     float4 dinv[3];    // grid step
     float4 tipRot[3]={{1.,0.,0.,0.},{0.,1.,0.,0.},{0.,0.,1.,0.1}};  // tip rotation
@@ -42,6 +43,8 @@ class OCL_PP: public OCL_DFT { public:
     float4 tipQs {0.f,-0.05f,0.f,0.0f};
     //float4 tipQs {-10.f,+20.f,-10.f,0.0f};
     float4 tipQZs{0.1f, 0.0f,-0.1f,0.0f};
+    float Rdamp  = 1e-4;
+    float R2damp = Rdamp*Rdamp;
 
     cl_Mat3 cl_lvec;
     cl_Mat3 cl_invLvec;
@@ -115,6 +118,7 @@ class OCL_PP: public OCL_DFT { public:
         newTask( "evalLJC_QZs"            ,program_relax);
         newTask( "evalLJC_QZs_toImg"      ,program_relax);
         newTask( "make_GridFF"            ,program_relax);
+        newTask( "getNonBond"             ,program_relax);
         newTask( "getNonBondForce_GridFF" ,program_relax);
         newTask( "getMMFFsp3"             ,program_relax);
         newTask( "getMMFFf4"              ,program_relax);
@@ -356,23 +360,23 @@ class OCL_PP: public OCL_DFT { public:
         int nvecs=nAtoms+npi;
         int nneigh=nnode*4;
         if(bMMFFf4)nneigh*=2;
-        ibuff_atoms   =newBuffer( "atoms",    nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_aforces =newBuffer( "aforces",  nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_coefs   =newBuffer( "coefs",    nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_atoms     =newBuffer( "atoms",     nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_aforces   =newBuffer( "aforces",   nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_coefs     =newBuffer( "coefs",     nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_neighs    =newBuffer( "neighs",    nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  ); // need neihgs for all atoms because of Non-Bonded
+        ibuff_neighCell =newBuffer( "neighCell" ,nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         if(bMMFFsp3 || bMMFFf4){
-            ibuff_bkNeighs    = newBuffer( "bkNeighs",   nvecs,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
+            ibuff_bkNeighs    = newBuffer( "bkNeighs",   nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
             ibuff_avel        = newBuffer( "avel",       nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
             ibuff_neighForce  = newBuffer( "neighForce", nneigh, sizeof(float4), 0, CL_MEM_READ_WRITE );
             if(bMMFFsp3){
                 printf( "initAtomsForces bMMFFsp3==true\n" );
-                ibuff_neighs      = newBuffer( "neighs",     nAtoms   , sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
                 ibuff_bondLK      = newBuffer( "bondLK ",    nAtoms   , sizeof(float8), 0, CL_MEM_READ_ONLY  );
                 ibuff_ang0K       = newBuffer( "ang0K",      nnode    , sizeof(float4), 0, CL_MEM_READ_ONLY  );
                 ibuff_pi0s        = newBuffer( "pi0s",       npi      , sizeof(float4), 0, CL_MEM_READ_WRITE );
             }
             if(bMMFFf4){ // int ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
                 printf( "initAtomsForces bMMFFf4==true\n" );
-                ibuff_neighs = newBuffer( "neighs", nnode, sizeof(int4),   0, CL_MEM_READ_ONLY  );
                 ibuff_MMpars = newBuffer( "MMpars", nnode, sizeof(int4),   0, CL_MEM_READ_ONLY );
                 ibuff_BLs    = newBuffer( "BLs",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY  );
                 ibuff_BKs    = newBuffer( "BKs",    nnode, sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -384,6 +388,50 @@ class OCL_PP: public OCL_DFT { public:
         //exit(0);
         return ibuff_atoms;
     }
+
+
+    OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
+        //printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
+        if(task==0) task = getTask("getNonBond");
+        task->global.x = na;
+        useKernel( task->ikernel );
+        nDOFs.x=na; 
+        nDOFs.x=nNode; 
+        //nDOFs.x=bPBC; 
+        nPBC.x = nPBC_.x;
+        nPBC.y = nPBC_.y;
+        nPBC.z = nPBC_.z;
+        // ------- Maybe We do-not need to do this every frame ?
+        err |= _useArg   ( nDOFs );               // 1
+        // Dynamical
+        err |= useArgBuff( ibuff_atoms      ); // 2
+        err |= useArgBuff( ibuff_aforces    ); // 3
+        // parameters
+        err |= useArgBuff( ibuff_coefs     );  // 4
+        err |= useArgBuff( ibuff_neighs    );  // 5
+        err |= useArgBuff( ibuff_neighCell );  // 6
+        err |= _useArg( nPBC               );  // 7
+        err |= _useArg( cl_lvec            );  // 8
+        err |= _useArg( R2damp             );  // 9
+        OCL_checkError(err, "setup_getNonBond");
+        return task;
+        /*
+        __kernel void getNonBond(
+            const int4 ns,                  // 1
+            // Dynamical
+            __global float4*  atoms,        // 2
+            __global float4*  forces,       // 3
+            // Parameters
+            __global float4*  REQKs,        // 4
+            __global int4*    neighs,       // 5
+            __global int4*    neighCell,    // 6
+            const int4 nPBC,                // 7
+            const cl_Mat3 lvec,             // 8
+            float R2damp                    // 9
+        ){
+        */
+    }
+
 
     OCLtask* setup_getNonBondForce_GridFF( OCLtask* task=0, int na=-1 ){
         if(task==0) task = getTask("getNonBondForce_GridFF");
@@ -402,7 +450,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( dinv[0] );              // 10
         err |= _useArg( dinv[1] );              // 11
         err |= _useArg( dinv[2] );              // 12
-        OCL_checkError(err, "getNonBondForce_GridFF_1");
+        OCL_checkError(err, "setup_getNonBondForce_GridFF");
         return task;
         /*
             const int nAtoms,               // 1
@@ -432,6 +480,10 @@ class OCL_PP: public OCL_DFT { public:
         if(aforces)err=download( ibuff_aforces, aforces, na);
         OCL_checkError(err, "getNonBondForce_GridFF_3");  
     }
+
+    
+
+
 
 
     OCLtask* setup_getMMFFsp3( int na, int nNode, bool bPBC=false, OCLtask* task=0){
@@ -465,7 +517,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( dinv[2] );             // 15
         err |= _useArg( cl_lvec    );          // 16
         err |= _useArg( cl_invLvec );          // 16
-        OCL_checkError(err, "getMMFFsp3");
+        OCL_checkError(err, "setup_getMMFFsp3");
         return task;
         /*
         __kernel void getMMFFsp3(
@@ -512,7 +564,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_Kpp    );     // 11
         err |= _useArg( cl_lvec    );          // 12
         err |= _useArg( cl_invLvec );          // 13
-        OCL_checkError(err, "getMMFFf4");
+        OCL_checkError(err, "setup_getMMFFf4");
         return task;
         /*
         __kernel void getMMFFf4(
@@ -551,7 +603,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_aforces    ); // 5
         err |= useArgBuff( ibuff_neighForce ); // 6
         err |= useArgBuff( ibuff_bkNeighs   ); // 7
-        OCL_checkError(err, "updateAtomsMMFFf4");
+        OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         /*
             const float4      MDpars,       // 1
@@ -587,7 +639,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_neighForce ); // 6
         err |= useArgBuff( ibuff_bkNeighs   );   // 7
         err |= useArgBuff( ibuff_pi0s       );   // 8
-        OCL_checkError(err, "gatherForceAndMove");
+        OCL_checkError(err, "setup_gatherForceAndMove");
         //err = task->enque_raw();
         //OCL_checkError(err, "gatherForceAndMove");  
         //if(aforces)err=download( ibuff_aforces, aforces, na);
@@ -621,7 +673,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_atoms   );     // 2
         err |= useArgBuff( ibuff_pi0s    );     // 3
         err |= useArgBuff( ibuff_neighs  );     // 4
-        OCL_checkError(err, "updatePiPos0");
+        OCL_checkError(err, "setup_updatePiPos0");
         return task;
         /*
             __kernel void updatePiPos0(
@@ -648,7 +700,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_atoms   );     // 2
         err |= useArgBuff( ibuff_aforces );     // 3
         err |= useArgBuff( ibuff_neighs  );     // 4
-        OCL_checkError(err, "evalPiPi");
+        OCL_checkError(err, "setup_evalPiPi");
         return task;
         /*
             __kernel void evalPiPi(
