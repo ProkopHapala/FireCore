@@ -247,17 +247,18 @@ void makeBackNeighs( bool bCapNeighs=true ){
     //for(int i=0; i<natoms; i++){printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i].x, bkneighs[i].y, bkneighs[i].z, bkneighs[i].w );}
     //checkBkNeighCPU();
     if(bCapNeighs){   // set neighbors for capping atoms
-        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia]=Quat4iOnes;  aneighs[ia].x = bkneighs[ia].x/4;  }
+        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia]=Quat4i{-1,-1,-1,-1};  aneighs[ia].x = bkneighs[ia].x/4;  }
     }
 }
 
 void makeNeighCells( const Vec3i nPBC_ ){ 
     nPBC=nPBC_;
     for(int ia=0; ia<natoms; ia++){
+        aneighCell[ia]=Quat4i{0,0,0,0};
         for(int j=0; j<4; j++){
-            printf("ngcell[%i,j=%i] \n", ia, j);
+            //printf("ngcell[%i,j=%i] \n", ia, j);
             int ja = aneighs[ia].array[j];
-            printf("ngcell[%i,ja=%i] \n", ia, ja);
+            //printf("ngcell[%i,ja=%i] \n", ia, ja);
             if( ja<0 )continue;
             Vec3d d = apos[ja] - apos[ia];
             int ipbc=0;
@@ -273,12 +274,12 @@ void makeNeighCells( const Vec3i nPBC_ ){
                 }
                 ipbc++; 
             }}}
-            printf("ngcell[%i,%i] imin=%i \n", ia, ja, imin);
+            //printf("ngcell[%i,%i] imin=%i \n", ia, ja, imin);
             aneighCell[ia].array[j] = imin;
-            printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
+            //printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
         }
     }
-    printf("MMFFsp3_loc::makeNeighCells() DONE \n");
+    //printf("MMFFsp3_loc::makeNeighCells() DONE \n");
 }
 
 

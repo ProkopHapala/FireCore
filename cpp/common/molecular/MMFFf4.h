@@ -300,7 +300,7 @@ void makeBackNeighs( bool bCapNeighs=true ){
         };
     }
     if(bCapNeighs){   // set neighbors for capping atoms
-        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia]=Quat4iOnes; aneighs[ia].x = bkneighs[ia].x/4;  }
+        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia]=Quat4i{-1,-1,-1,-1}; aneighs[ia].x = bkneighs[ia].x/4;  }
     }
 }
 

@@ -1101,12 +1101,12 @@ __kernel void getNonBond(
                     }
                 }else{
                     if(bBonded) continue;  // Bonded ?
-                     // ToDo : what if bond is not within this cell ?????
+                    // ToDo : what if bond is not within this cell ?????
                     //fe += getMorseQ( dp, REQK, R2damp );
                     //fe += getLJQ( dp, REQK.xyz, R2damp );
                     float4 fij = getLJQ( dp, REQK.xyz, R2damp );
                     fe += fij;
-                    if(iG==4){ printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n", iG,ji,0, fij.x,fij.y,fij.z); } 
+                    //if(iG==4){ printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n", iG,ji,0, fij.x,fij.y,fij.z); } 
                 }
             }
         }
@@ -1114,6 +1114,7 @@ __kernel void getNonBond(
     }
     
     forces[iG] = fe;
+    //forces[iG] = fe*(-1.f);
     
 }
 
@@ -1762,6 +1763,7 @@ __kernel void updateAtomsMMFFf4(
     const int iG = get_global_id (0);
     const int nG = get_global_size(0);
 
+    /*
     if(iG==0){
     printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i \n", natoms,nnode, natoms+nnode, nG );
     printf( "GPU::updateAtomsMMFFf4() dt=%g damp=%g \n", MDpars.x, MDpars.y );
@@ -1773,7 +1775,6 @@ __kernel void updateAtomsMMFFf4(
         printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i].x, apos[i].y, apos[i].z, apos[i].w );
         printf( "\n" );
     }
-    /*
     for(int i=0; i<nnode; i++){
         int i1=i+natoms;
         printf( "GPU[%i] ", i1 );
@@ -1795,8 +1796,8 @@ __kernel void updateAtomsMMFFf4(
         printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i].x, fneigh[i].y, fneigh[i].z, fneigh[i].w );
         printf( "\n" );
     }
-    */
     }
+    */
 
     if(iG>=(natoms+nnode)) return;
 

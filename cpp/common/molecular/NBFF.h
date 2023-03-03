@@ -172,13 +172,15 @@ class NBsystem{ public: // Can be Child of
             const Quat4i ng   = neighs   [i];
             const Quat4i ngC  = neighCell[i];
             //for (int j=i+1; j<n; j++){
-            if(i==4){ printf( "CPU_LJQ[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) npbc=%i\n", i, ng.x,ng.y,ng.z,ng.w,   ngC.x,ngC.y,ngC.z,ngC.w, npbc ); } 
+            //if(i==4){ printf( "CPU_LJQ[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) npbc=%i\n", i, ng.x,ng.y,ng.z,ng.w,   ngC.x,ngC.y,ngC.z,ngC.w, npbc ); } 
+            //printf( "CPU_LJQ[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) npbc=%i\n", i, ng.x,ng.y,ng.z,ng.w,   ngC.x,ngC.y,ngC.z,ngC.w, npbc );
             for (int j=0; j<n; j++){  // DO ALL TO ALL (to be consistent with GPU)
                 if(i==j)continue;
                 const Vec3d dp = ps[j]-pi;
                 Vec3d fij=Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
                 const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
+                //const bool bBonded = false;
                 for(ipbc=0; ipbc<npbc; ipbc++){
                     if(bBonded){
                         if(
@@ -194,7 +196,8 @@ class NBsystem{ public: // Can be Child of
                     //E += addAtomicForceLJQ( dp + shifts[ipbc], fij, REQij );
                     Vec3f fij_; E+=getLJQ( (Vec3f)(dp+shifts[ipbc]), (Vec3f)REQij, 0.0, fij_ );
                     fij.add((Vec3d)fij_);
-                    if(i==4){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z ); } 
+                    //if(i==4){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z ); } 
+                    //printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z );
                 }
                 //if(i==4){ printf( "CPU_LJQ[%i,%i]   fj(%g,%g,%g) bBonded %i \n" , i,j, fij.x,fij.y,fij.z, bBonded ); } 
                 //fs[j].sub(fij);
