@@ -340,6 +340,7 @@ void setup_MMFFf4_ocl(){
     */
     task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );   
     task_MMFF   = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
+    task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
     task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode       );
 }
 
@@ -412,7 +413,8 @@ double eval_MMFFf4_ocl( int niter ){
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     for(int i=0; i<niter; i++){
         task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
-        task_MMFF->enque_raw();
+        task_MMFF  ->enque_raw();
+        //task_NBFF  ->enque_raw();
         /*
         { // DEBUG
         ocl.download( ocl.ibuff_aforces,    ff4.fapos , ff4.nvecs );
@@ -532,8 +534,8 @@ void eval(){
         //for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
         //eval_MMFFsp3_ocl( 1, ff.natoms+ff.npi, ff.apos, ff.fapos );
-        //eval_MMFFf4_ocl( 1 );
-        eval_NBFF_ocl  ( 1 );
+        eval_MMFFf4_ocl( 1 );
+        //eval_NBFF_ocl  ( 1 );
         //for(int i=0; i<ff.natoms; i++){ printf("OCL atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
         //exit(0);
     }else{
