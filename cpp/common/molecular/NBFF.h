@@ -153,6 +153,58 @@ class NBsystem{ public: // Can be Child of
         return E;
     }
 
+    double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1} ){
+        double E=0;    
+        int        npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+        const bool bPBC = npbc>0;
+        Vec3d shifts[npbc]; // temporary store for lattice shifts
+        int ipbc=0;
+        if(bPBC>1){
+            for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){ 
+                shifts[ipbc] = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);   
+                ipbc++; 
+            }}}
+        }
+        for (int i=0; i<n; i++ ){
+            Vec3d fi = Vec3dZero;
+            Vec3d pi = ps[i];
+            const Vec3d& REQi = REQs     [i];
+            const Quat4i ng   = neighs   [i];
+            const Quat4i ngC  = neighCell[i];
+            //for (int j=i+1; j<n; j++){
+            if(i==4){ printf( "CPU_LJQ[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) npbc=%i\n", i, ng.x,ng.y,ng.z,ng.w,   ngC.x,ngC.y,ngC.z,ngC.w, npbc ); } 
+            for (int j=0; j<n; j++){  // DO ALL TO ALL (to be consistent with GPU)
+                if(i==j)continue;
+                const Vec3d dp = ps[j]-pi;
+                Vec3d fij=Vec3dZero;
+                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
+                for(ipbc=0; ipbc<npbc; ipbc++){
+                    if(bBonded){
+                        if(
+                              ((j==ng.x)&&(ipbc==ngC.x))
+                            ||((j==ng.y)&&(ipbc==ngC.y))
+                            ||((j==ng.z)&&(ipbc==ngC.z))
+                            ||((j==ng.w)&&(ipbc==ngC.w))
+                        ){
+                            //printf("skip[%i,%i]ipbc=%i\n", i, j, ipbc );
+                            continue; // skipp pbc0
+                        }
+                    }
+                    //E += addAtomicForceLJQ( dp + shifts[ipbc], fij, REQij );
+                    Vec3f fij_; E+=getLJQ( (Vec3f)(dp+shifts[ipbc]), (Vec3f)REQij, 0.0, fij_ );
+                    fij.add((Vec3d)fij_);
+                    if(i==4){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z ); } 
+                }
+                //if(i==4){ printf( "CPU_LJQ[%i,%i]   fj(%g,%g,%g) bBonded %i \n" , i,j, fij.x,fij.y,fij.z, bBonded ); } 
+                //fs[j].sub(fij);
+                fi   .add(fij);
+            }
+            fs[i].add(fi);
+        }
+        return E;
+    }
+
     double evalLJQ( NBsystem& B, const bool bRecoil ){
         double E=0;
         //printf("DEBUG NBFF_AB.evalLJQ() n,m %i %i \n", n,m);

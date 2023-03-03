@@ -719,15 +719,15 @@ float4 getMorseQ( float3 dp, float4 REQK, float R2damp ){
 
 float4 getLJQ( float3 dp, float3 REQ, float R2damp ){
     // ---- Electrostatic
-    float   ir2 = 1/( dot(dp,dp) +  R2damp);
+    float   ir2 = 1./( dot(dp,dp) +  R2damp);
     float   ir  = sqrt(ir2);
     float   Ec  = COULOMB_CONST*REQ.z*ir;
     // --- LJ 
     float  u2  = ir2*REQ.x*REQ.x;
     float  u6  = u2*u2*u2;
     float vdW  = u6*REQ.y;
-    float E    =           (u6-2.)*vdW + Ec  ;
-    float fr   = -ir2*( 12*(u6-1.)*vdW + Ec );
+    float E    =            (u6-2.)*vdW + Ec  ;
+    float fr   = -ir2*( 12.*(u6-1.)*vdW + Ec );
     return  (float4){ dp*fr, E };
 }
 
@@ -1035,16 +1035,15 @@ __kernel void getNonBond(
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
-    const int iG = get_global_id (0);
-    const int iL = get_local_id  (0);
-    const int nL = get_local_size(0);
+    const int iG = get_global_id  (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
 
     const int natoms=ns.x;
     const int nnode =ns.y;
 
-    if(iG==0){
-        printf( "GPU::getNonBond() natoms %i nnode %i \n", natoms,nnode );
-    }
+    //if(iG==0){ printf( "GPU::getNonBond() natoms %i nnode %i nG %i nL %i \n", natoms,nnode,nG,nL ); }
 
     if(iG>=natoms) return;
     //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
@@ -1083,6 +1082,7 @@ __kernel void getNonBond(
                             shifts+=lvec.c.xyz*-nPBC.z;
                             for(int ic=-nPBC.z; ic<=nPBC.z; ic++){     
                                 if(bBonded){
+                                    // Maybe We can avoid this by using Damped LJ or Buckingham potential which we can safely subtract in bond-evaluation ?
                                     if(
                                          ((ji==ng.x)&&(ipbc==ngC.x))
                                        ||((ji==ng.y)&&(ipbc==ngC.y))
@@ -1103,7 +1103,10 @@ __kernel void getNonBond(
                     if(bBonded) continue;  // Bonded ?
                      // ToDo : what if bond is not within this cell ?????
                     //fe += getMorseQ( dp, REQK, R2damp );
-                    fe += getLJQ( dp, REQK.xyz, R2damp );
+                    //fe += getLJQ( dp, REQK.xyz, R2damp );
+                    float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                    fe += fij;
+                    if(iG==4){ printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n", iG,ji,0, fij.x,fij.y,fij.z); } 
                 }
             }
         }
@@ -1759,10 +1762,10 @@ __kernel void updateAtomsMMFFf4(
     const int iG = get_global_id (0);
     const int nG = get_global_size(0);
 
-    /*
-    if(iG==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i \n", natoms,nnode, natoms+nnode, nG );
-    if(iG==0){ printf( "GPU::updateAtomsMMFFf4() dt=%g damp=%g \n", MDpars.x, MDpars.y ); }
-    if(iG==0)for(int i=0; i<natoms; i++){
+    if(iG==0){
+    printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i \n", natoms,nnode, natoms+nnode, nG );
+    printf( "GPU::updateAtomsMMFFf4() dt=%g damp=%g \n", MDpars.x, MDpars.y );
+    for(int i=0; i<natoms; i++){
         printf( "GPU[%i] ", i );
         //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
         printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i].x, aforce[i].y, aforce[i].z, aforce[i].w );
@@ -1770,7 +1773,8 @@ __kernel void updateAtomsMMFFf4(
         printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i].x, apos[i].y, apos[i].z, apos[i].w );
         printf( "\n" );
     }
-    if(iG==0)for(int i=0; i<nnode; i++){
+    /*
+    for(int i=0; i<nnode; i++){
         int i1=i+natoms;
         printf( "GPU[%i] ", i1 );
         printf(  "fpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i1].x, aforce[i1].y, aforce[i1].z, aforce[i1].w );
@@ -1778,7 +1782,7 @@ __kernel void updateAtomsMMFFf4(
         printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
         printf( "\n" );
     }
-    if(iG==0)for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
+    for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
         int i1=i*4+j;
         int i2=i1+nnode*4;
         printf( "GPU[%i,%i] ", i, j );
@@ -1786,12 +1790,13 @@ __kernel void updateAtomsMMFFf4(
         printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i2].x, fneigh[i2].y, fneigh[i2].z, fneigh[i2].w );
         printf( "\n" );
     }}
-    if(iG==0)for(int i=0; i<nnode*4*2; i++){
+    for(int i=0; i<nnode*4*2; i++){
         printf( "GPU[%i,%i,%i] ", i/4, i%4, i>=(nnode*4) );
         printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i].x, fneigh[i].y, fneigh[i].z, fneigh[i].w );
         printf( "\n" );
     }
     */
+    }
 
     if(iG>=(natoms+nnode)) return;
 
@@ -1847,7 +1852,6 @@ __kernel void cleanForceMMFFf4(
     const int iG = get_global_id (0);
     if(iG>=(natoms+nnode)) return;
     aforce[iG]=float4Zero;
-    
     //if(iG==0){ for(int i=0;i<(natoms+nnode);i++ ){printf("cleanForceMMFFf4[%i](%g,%g,%g)\n",i,aforce[i].x,aforce[i].y,aforce[i].z);} }
     if(iG<nnode){ 
         fneigh[iG*4+0]=float4Zero;

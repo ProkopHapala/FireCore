@@ -207,6 +207,15 @@ class OCLsystem{ public:
         return 0;
     }    
 
+    OCLtask* getOrMakeTask(const char* name){ 
+        auto it = task_dict.find(name);
+        if(it != task_dict.end() ){ 
+            return tasks[ it->second ];
+        }
+        
+        //printf( "OCL task %s not found \n", name );
+        return 0;
+    }
 
     int roundUpSize( int n, int nL){ return (((int)(n/nL))+1)*nL; }
 

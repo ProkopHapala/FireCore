@@ -43,7 +43,8 @@ class OCL_PP: public OCL_DFT { public:
     float4 tipQs {0.f,-0.05f,0.f,0.0f};
     //float4 tipQs {-10.f,+20.f,-10.f,0.0f};
     float4 tipQZs{0.1f, 0.0f,-0.1f,0.0f};
-    float Rdamp  = 1e-4;
+    //float Rdamp  = 1e-4;
+    float Rdamp  = 0.;
     float R2damp = Rdamp*Rdamp;
 
     cl_Mat3 cl_lvec;
@@ -392,12 +393,12 @@ class OCL_PP: public OCL_DFT { public:
 
 
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
-        //printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
+        printf("!!!!! setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
         task->global.x = na;
         useKernel( task->ikernel );
         nDOFs.x=na; 
-        nDOFs.x=nNode; 
+        nDOFs.y=nNode; 
         //nDOFs.x=bPBC; 
         nPBC.x = nPBC_.x;
         nPBC.y = nPBC_.y;

@@ -87,7 +87,7 @@ class MMFFf4{ public:
     bool    bSubtractAngleNonBond=false;
     bool    bPBCbyLvec  =false;
     Mat3f   invLvec, lvec;
-
+    Vec3i   nPBC;
 // =========================== Functions
 
 void realloc( int nnode_, int ncap_ ){
@@ -304,7 +304,8 @@ void makeBackNeighs( bool bCapNeighs=true ){
     }
 }
 
-void makeNeighCells( const Vec3i nPBC ){ 
+void makeNeighCells( const Vec3i nPBC_ ){ 
+    nPBC=nPBC_;
     for(int ia=0; ia<natoms; ia++){
         for(int j=0; j<4; j++){
             //printf("ngcell[%i,j=%i] \n", ia, j);
@@ -316,9 +317,9 @@ void makeNeighCells( const Vec3i nPBC ){
             int imin=-1;
             float r2min = 1e+300;
             for(int ia=-nPBC.x; ia<=nPBC.x; ia++){ for(int ib=-nPBC.y; ib<=nPBC.y; ib++){ for(int ic=-nPBC.z; ic<=nPBC.z; ic++){ 
-                Vec3f shift= (Vec3f)( (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic) ); 
+                Vec3f shift= (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic); 
                 shift.add(d);
-                double r2 = shift.norm();
+                float r2 = shift.norm();
                 if(r2<r2min){   // find nearest distance
                     r2min=r2;
                     imin=ipbc;
