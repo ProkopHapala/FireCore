@@ -153,7 +153,8 @@ class NBsystem{ public: // Can be Child of
         return E;
     }
 
-    double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1} ){
+    double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
+        double R2damp = Rdamp*Rdamp;
         double E=0;    
         int        npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
         const bool bPBC = npbc>0;
@@ -165,6 +166,7 @@ class NBsystem{ public: // Can be Child of
                 ipbc++; 
             }}}
         }
+        //for(int i=0; i<n; i++)printf( "CPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQs[i].x,REQs[i].y,REQs[i].z );
         for (int i=0; i<n; i++ ){
             Vec3d fi = Vec3dZero;
             Vec3d pi = ps[i];
@@ -194,9 +196,9 @@ class NBsystem{ public: // Can be Child of
                         }
                     }
                     //E += addAtomicForceLJQ( dp + shifts[ipbc], fij, REQij );
-                    Vec3f fij_; E+=getLJQ( (Vec3f)(dp+shifts[ipbc]), (Vec3f)REQij, 0.0, fij_ );
+                    Vec3f fij_; E+=getLJQ( (Vec3f)(dp+shifts[ipbc]), (Vec3f)REQij, R2damp, fij_ );
                     fij.add((Vec3d)fij_);
-                    //if(i==4){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z ); } 
+                    //if(i==4){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z, R2damp, REQij.x,REQij.y,REQij.z, dp.norm() ); } 
                     //printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z );
                 }
                 //if(i==4){ printf( "CPU_LJQ[%i,%i]   fj(%g,%g,%g) bBonded %i \n" , i,j, fij.x,fij.y,fij.z, bBonded ); } 

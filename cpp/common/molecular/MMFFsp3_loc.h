@@ -233,6 +233,16 @@ double eval( bool bClean=true, bool bCheck=true ){
     return Etot;
 }
 
+void move_GD(float dt, double Flim=100.0 ){
+    double F2lim=Flim*Flim;
+    for(int i=0; i<nvecs; i++){
+        Vec3d  f   = fapos[i];
+        double fr2 = f.norm2();
+        if(fr2>F2lim){ f.mul(Flim/sqrt(fr2)); };
+        apos[i].add_mul( f, dt ); 
+    }
+}
+
 void makeBackNeighs( bool bCapNeighs=true ){
     for(int i=0; i<natoms; i++){ bkneighs[i]=Quat4i{-1,-1,-1,-1}; };
     for(int ia=0; ia<nnode; ia++){

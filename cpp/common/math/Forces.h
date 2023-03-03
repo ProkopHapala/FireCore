@@ -127,15 +127,16 @@ inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ ){
 
 float getLJQ( Vec3f dp, Vec3f REQ, float R2damp, Vec3f& f ){
     // ---- Electrostatic
-    float   ir2 = 1./( dp.norm2() +  R2damp );
-    float   ir  = sqrt(ir2);
-    float   Ec  = COULOMB_CONST*REQ.z*ir;
+    float   r2   = dp.norm2();
+    float   ir2_ = 1/( r2 + R2damp  );
+    float   Ec   = COULOMB_CONST*REQ.z*sqrt( ir2_ );
     // --- LJ 
-    float  u2  = ir2*REQ.x*REQ.x;
+    float  ir2 = 1/r2;
+    float  u2  = REQ.x*REQ.x*ir2;
     float  u6  = u2*u2*u2;
     float vdW  = u6*REQ.y;
-    float E    =            (u6-2.)*vdW + Ec  ;
-    float fr   = -ir2*( 12.*(u6-1.)*vdW + Ec );
+    float E    =      (u6-2.)*vdW     + Ec      ;
+    float fr   = -12.*(u6-1.)*vdW*ir2 - Ec*ir2_ ;
     f.set_mul( dp, fr );
     return E;
 }
