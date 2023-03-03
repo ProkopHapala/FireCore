@@ -1714,6 +1714,7 @@ __kernel void getMMFFf4(
         int ing = ings[i];
         if(ing<0) break;
         const float4 hi = hs[i];
+
         for(int j=i+1; j<NNEIGH; j++){
             int jng  = ings[j];
             if(jng<0) break;
@@ -1721,6 +1722,18 @@ __kernel void getMMFFf4(
             //printf( "[%i|%i,%i] hi(%g,%g,%g) hj(%g,%g,%g)\n", ia, i,j, hi.x,hi.y,hi.z,   hj.x,hj.y,hj.z );
             E += evalAngCos( hi, hj, par.y, par.x, &f1, &f2 );     // angles between sigma bonds
             //if(ia==0)printf( "GPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, par.y, par.x, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            { // Remove vdW
+                float4 REQKi=REQKs[ing];   // ToDo: can be optimized
+                float4 REQKj=REQKs[jng];
+                float4 REQKij;
+                REQKij.x  = REQKi.x  + REQKj.x;
+                REQKij.yz = REQKi.yz * REQKj.yz; 
+                float3 dp = (hi.xyz/hi.w) - (hj.xyz/hj.w); 
+                float4 fij = getLJQ( dp, REQKij.xyz, 1.0f );
+                //float4 fij = getLJQ( apos[ing].xyz-apos[jng].xyz, REQKij.xyz, 1.0f );
+                f1 -=  fij.xyz;
+                f2 +=  fij.xyz;
+            }
             fbs[i]+= f1;
             fbs[j]+= f2;
             fa    -= f1+f2;
@@ -1767,7 +1780,7 @@ __kernel void updateAtomsMMFFf4(
     const int iG = get_global_id (0);
     const int nG = get_global_size(0);
 
-    if(iG==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i dt=%g damp=%g Flimit=%g \n", natoms,nnode, natoms+nnode, nG, MDpars.x, MDpars.y, MDpars.z );
+    //if(iG==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i dt=%g damp=%g Flimit=%g \n", natoms,nnode, natoms+nnode, nG, MDpars.x, MDpars.y, MDpars.z );
     /*
     if(iG==0){
     for(int i=0; i<natoms; i++){
@@ -1805,7 +1818,7 @@ __kernel void updateAtomsMMFFf4(
     if(iG>=(natoms+nnode)) return;
     float4 fe      = aforce[iG]; 
     const bool bPi = iG>=natoms;
-    /*
+    
     // ------ Gather Forces from back-neighbors
     int4 ngs;  
     if( bPi ){  // pis 
@@ -1819,7 +1832,6 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.y>=0){ fe += fneigh[ngs.y]; }
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
-    */
 
     aforce[iG] = fe; // store force before limit
     // ---- Limit Forces
