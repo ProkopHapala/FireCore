@@ -30,7 +30,7 @@ class OCL_PP: public OCL_DFT { public:
 
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
-    float4 md_params{0.05,0.9,0.0,0.0};
+    float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
     float4 dinv[3];    // grid step
     float4 tipRot[3]={{1.,0.,0.,0.},{0.,1.,0.,0.},{0.,0.,1.,0.1}};  // tip rotation
     //float4 tipRot[3]={{-1.,0.,0.,0.},{0.,-1.,0.,0.},{0.,0.,-1.,0.1}};  // tip rotation
@@ -44,8 +44,8 @@ class OCL_PP: public OCL_DFT { public:
     //float4 tipQs {-10.f,+20.f,-10.f,0.0f};
     float4 tipQZs{0.1f, 0.0f,-0.1f,0.0f};
     //float Rdamp  = 1e-4;
-    float Rdamp  = 0.;
-    float R2damp = Rdamp*Rdamp;
+    float Rdamp  = 1.;
+    //float R2damp = Rdamp*Rdamp;
 
     cl_Mat3 cl_lvec;
     cl_Mat3 cl_invLvec;
@@ -392,7 +392,7 @@ class OCL_PP: public OCL_DFT { public:
     }
 
 
-    OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
+    OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
         printf("!!!!! setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
         task->global.x = na;
@@ -400,6 +400,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.x=na; 
         nDOFs.y=nNode; 
         //nDOFs.x=bPBC; 
+        Rdamp = Rdamp_;
         nPBC.x = nPBC_.x;
         nPBC.y = nPBC_.y;
         nPBC.z = nPBC_.z;
@@ -414,7 +415,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_neighCell );  // 6
         err |= _useArg( nPBC               );  // 7
         err |= _useArg( cl_lvec            );  // 8
-        err |= _useArg( R2damp             );  // 9
+        err |= _useArg( Rdamp              );  // 9
         OCL_checkError(err, "setup_getNonBond");
         return task;
         /*

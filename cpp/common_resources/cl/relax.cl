@@ -719,15 +719,16 @@ float4 getMorseQ( float3 dp, float4 REQK, float R2damp ){
 
 float4 getLJQ( float3 dp, float3 REQ, float R2damp ){
     // ---- Electrostatic
-    float   ir2 = 1./( dot(dp,dp) +  R2damp);
-    float   ir  = sqrt(ir2);
-    float   Ec  = COULOMB_CONST*REQ.z*ir;
+    float   r2    = dot(dp,dp);
+    float   ir2_  = 1.f/(  r2 +  R2damp);
+    float   Ec    =  COULOMB_CONST*REQ.z*sqrt( ir2_ );
     // --- LJ 
-    float  u2  = ir2*REQ.x*REQ.x;
+    float  ir2 = 1.f/r2;
+    float  u2  = REQ.x*REQ.x*ir2;
     float  u6  = u2*u2*u2;
     float vdW  = u6*REQ.y;
-    float E    =            (u6-2.)*vdW + Ec  ;
-    float fr   = -ir2*( 12.*(u6-1.)*vdW + Ec );
+    float E    =       (u6-2.f)*vdW     + Ec  ;
+    float fr   = -12.f*(u6-1.f)*vdW*ir2 - Ec*ir2_;
     return  (float4){ dp*fr, E };
 }
 
@@ -1031,7 +1032,7 @@ __kernel void getNonBond(
     __global int4*    neighCell,    // 6
     const int4 nPBC,                // 7
     const cl_Mat3 lvec,             // 8
-    float R2damp                    // 9
+    const float Rdamp               // 9
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -1052,7 +1053,10 @@ __kernel void getNonBond(
     const int4   ngC   = neighCell[iG];
     const float4 REQKi = REQKs [iG];
     const float3 posi  = atoms [iG].xyz;
+    const float  R2damp = Rdamp*Rdamp;
     float4 fe          = float4Zero;
+
+    //if(iG==0){ for(int i=0; i<natoms; i++)printf( "GPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z ); }
 
     // ========= Atom-to-Atom interaction ( N-body problem )    
     for (int i0=0; i0<natoms; i0+= nL ){
@@ -1106,7 +1110,7 @@ __kernel void getNonBond(
                     //fe += getLJQ( dp, REQK.xyz, R2damp );
                     float4 fij = getLJQ( dp, REQK.xyz, R2damp );
                     fe += fij;
-                    //if(iG==4){ printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n", iG,ji,0, fij.x,fij.y,fij.z); } 
+                    //if(iG==4){ printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,0, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); } 
                 }
             }
         }
@@ -1763,10 +1767,9 @@ __kernel void updateAtomsMMFFf4(
     const int iG = get_global_id (0);
     const int nG = get_global_size(0);
 
+    if(iG==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i dt=%g damp=%g Flimit=%g \n", natoms,nnode, natoms+nnode, nG, MDpars.x, MDpars.y, MDpars.z );
     /*
     if(iG==0){
-    printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i \n", natoms,nnode, natoms+nnode, nG );
-    printf( "GPU::updateAtomsMMFFf4() dt=%g damp=%g \n", MDpars.x, MDpars.y );
     for(int i=0; i<natoms; i++){
         printf( "GPU[%i] ", i );
         //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
@@ -1800,9 +1803,9 @@ __kernel void updateAtomsMMFFf4(
     */
 
     if(iG>=(natoms+nnode)) return;
-
+    float4 fe      = aforce[iG]; 
     const bool bPi = iG>=natoms;
-
+    /*
     // ------ Gather Forces from back-neighbors
     int4 ngs;  
     if( bPi ){  // pis 
@@ -1812,12 +1815,18 @@ __kernel void updateAtomsMMFFf4(
     }else{     // atoms  
         ngs            = bkNeighs[iG];
     }
-    
-    float4 fe         = aforce[iG]; 
     if(ngs.x>=0){ fe += fneigh[ngs.x]; }
     if(ngs.y>=0){ fe += fneigh[ngs.y]; }
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
+    */
+
+    aforce[iG] = fe; // store force before limit
+    // ---- Limit Forces
+    float fr2 = dot(fe.xyz,fe.xyz);
+    if( fr2 > (MDpars.z*MDpars.z) ){
+        fe.xyz*=(MDpars.z/sqrt(fr2));
+    } 
 
     // ------ Move (Leap-Frog)
     float4 pe = apos[iG];
@@ -1833,10 +1842,21 @@ __kernel void updateAtomsMMFFf4(
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
     }
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
-    // ------ Store global state
     avel[iG] = ve;
     apos[iG] = pe;
-    aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
+    
+    // ------ Move Gradient-Descent
+    /*
+    float4 pe = apos[iG];
+    //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
+    pe.xyz += fe.xyz*MDpars.x*0.1f;
+    //if(bPi){ pe.xyz=normalize(pe.xyz); }
+    pe.w=0;  // This seems to be needed, not sure why ?????
+    apos[iG] = pe;
+    */
+
+    // ------ Store Force DEBUG
+    //aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
     //aforce[iG] = 0;  // ToDo:  this allows to ommit  updateAtomsMMFFf4() !!!! 
     //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
 

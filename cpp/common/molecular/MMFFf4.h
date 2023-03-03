@@ -279,12 +279,16 @@ float eval( bool bClean=true, bool bCheck=true ){
 }
 
 
-void move_GD(float dt){
+void move_GD(float dt, double Flim=100.0 ){
     //for(int i=0; i<0; i++){}
     //Quat4f vs = (Quat4f*) vDOFs; 
+    double F2lim=Flim*Flim;
     for(int i=0; i<nvecs; i++){
         //vs[i].f.mul( f, dt );
-        apos[i].f.add_mul( fapos[i].f, dt ); 
+        Vec3f f = fapos[i].f;
+        float fr2 = f.norm2();
+        if(fr2>F2lim){ f.mul(Flim/sqrt(fr2)); };
+        apos[i].f.add_mul( f, dt ); 
     }
 }
 
