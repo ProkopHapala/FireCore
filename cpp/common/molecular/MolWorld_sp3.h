@@ -494,10 +494,12 @@ virtual void init( bool bGrid ){
         //ff.printAtomParams();
         ff.setLvec(builder.lvec);     printf("builder.lvec\n");builder.lvec.print();
         ff.bPBCbyLvec = true;
-        ffl.setLvec(       builder.lvec);
-        ff4.setLvec((Mat3f)builder.lvec);
+        ffl.setLvec(       builder.lvec);   DEBUG
+        ff4.setLvec((Mat3f)builder.lvec);   DEBUG
         DEBUG
-        ff4.makeNeighCells( nPBC );   
+        nPBC=Vec3i{0,0,0}; // DEBUG
+        ff4.makeNeighCells( nPBC );       DEBUG
+        ffl.makeNeighCells( nPBC );       DEBUG
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         DEBUG

@@ -35,8 +35,9 @@ class MMFFsp3_loc{ public:
     Vec3d * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
 
     // Params
-    Quat4i*  aneighs =0; // [nnode*4]   index of neighboring atoms
-    Quat4i*  bkneighs=0; // [natoms*4]  inverse neighbors
+    Quat4i*  aneighs =0;   // [natoms]  index of neighboring atoms
+    Quat4i*  bkneighs=0;   // [natoms]  inverse neighbors
+    Quat4i*  aneighCell=0; // [natoms]  cell index for neighbors
 
     Quat4d*  apars=0;  // [nnode] per atom forcefield parametrs
     Quat4d*  bLs  =0;  // [nnode] bond lengths
@@ -47,6 +48,7 @@ class MMFFsp3_loc{ public:
 
     bool    bSubtractAngleNonBond=false;
     Mat3d   invLvec, lvec;
+    Vec3i   nPBC;
 
 // =========================== Functions
 
@@ -69,15 +71,14 @@ void realloc( int nnode_, int ncap_ ){
     _realloc( fneigh  , nnode*4 );
     _realloc( fneighpi, nnode*4 );
     // ----- Params [natom]
-    _realloc( aneighs , nnode );
-    _realloc( bkneighs, natoms );
+    _realloc( aneighs   ,natoms );
+    _realloc( aneighCell,natoms );
+    _realloc( bkneighs  ,natoms );
     _realloc( apars   , nnode );
     _realloc( bLs     , nnode );
     _realloc( bKs     , nnode );
     _realloc( Ksp     , nnode );
     _realloc( Kpp     , nnode );
-
-
 }
 
 void setLvec(const Mat3d& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
@@ -246,9 +247,40 @@ void makeBackNeighs( bool bCapNeighs=true ){
     //for(int i=0; i<natoms; i++){printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i].x, bkneighs[i].y, bkneighs[i].z, bkneighs[i].w );}
     //checkBkNeighCPU();
     if(bCapNeighs){   // set neighbors for capping atoms
-        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia].x = bkneighs[ia].x/4;  }
+        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia]=Quat4iOnes;  aneighs[ia].x = bkneighs[ia].x/4;  }
     }
 }
+
+void makeNeighCells( const Vec3i nPBC_ ){ 
+    nPBC=nPBC_;
+    for(int ia=0; ia<natoms; ia++){
+        for(int j=0; j<4; j++){
+            printf("ngcell[%i,j=%i] \n", ia, j);
+            int ja = aneighs[ia].array[j];
+            printf("ngcell[%i,ja=%i] \n", ia, ja);
+            if( ja<0 )continue;
+            Vec3d d = apos[ja] - apos[ia];
+            int ipbc=0;
+            int imin=-1;
+            double r2min = 1e+300;
+            for(int ia=-nPBC.x; ia<=nPBC.x; ia++){ for(int ib=-nPBC.y; ib<=nPBC.y; ib++){ for(int ic=-nPBC.z; ic<=nPBC.z; ic++){ 
+                Vec3d shift= (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic); 
+                shift.add(d);
+                double r2 = shift.norm();
+                if(r2<r2min){   // find nearest distance
+                    r2min=r2;
+                    imin=ipbc;
+                }
+                ipbc++; 
+            }}}
+            printf("ngcell[%i,%i] imin=%i \n", ia, ja, imin);
+            aneighCell[ia].array[j] = imin;
+            printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
+        }
+    }
+    printf("MMFFsp3_loc::makeNeighCells() DONE \n");
+}
+
 
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };
@@ -259,6 +291,34 @@ void printBKneighs(){for(int ia=0; ia<natoms; ia++){ printBKneighs(ia); }; };
 
 void print_apos(){
     for(int ia=0;ia<natoms;ia++){ printf( "print_apos[%i](%g,%g,%g)\n", ia, apos[ia].x,apos[ia].y,apos[ia].z ); }
+}
+
+void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
+    printf( "MMFFsp3_loc::printDEBUG() \n" );
+    if(bA)for(int i=0; i<natoms; i++){
+        printf( "CPU[%i] ", i );
+        //printf( "bkngs{%2i,%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
+        printf( "fapos{%6.3f,%6.3f,%6.3f} ", fapos[i].x, fapos[i].y, fapos[i].z );
+        //printf(  "avel{%6.3f,%6.3f,%6.3f} ", avel[i].x, avel[i].y, avel[i].z);
+        printf(  "apos{%6.3f,%6.3f,%6.3f} ", apos[i].x, apos[i].y, apos[i].z );
+        printf( "\n" );
+    }
+    if(bPi)for(int i=0; i<nnode; i++){
+        int i1=i+natoms;
+        printf( "CPU[%i] ", i1 );
+        printf(  "fpipos{%6.3f,%6.3f,%6.3f} ", fapos[i1].x, fapos[i1].y, fapos[i1].z );
+        //printf(  "vpipos{%6.3f,%6.3f,%6.3f} ", avel[i1].x, avel[i1].y, avel[i1].z );
+        printf(   "pipos{%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z );
+        printf( "\n" );
+    }
+    if(bNg)for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
+        int i1=i*4+j;
+        //int i2=(i+natoms)*4+j;
+        printf( "CPU[%i,%i] ", i, j );
+        printf( "fneigh  {%6.3f,%6.3f,%6.3f} ", fneigh  [i1].x, fneigh  [i1].y, fneigh  [i1].z );
+        printf( "fneighpi{%6.3f,%6.3f,%6.3f} ", fneighpi[i1].x, fneighpi[i1].y, fneighpi[i1].z );
+        printf( "\n" );
+    }}
 }
 
 };
