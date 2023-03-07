@@ -767,7 +767,7 @@ class Builder{  public:
     }
 
 
-    void assignSp3Conf( int ityp, int nb, int npi, int ne, int npi_neigh ){
+    int assignSp3Type( int ityp_old, int nb, int npi, int ne, int npi_neigh ){
         //  SMILE conf  example   nb   npi  ne   ntot       Ass  Asp   Kpp
         // ----- Carbon
         // -CH2- sp3       CH4        4    0    0    4      108   -     0
@@ -783,13 +783,122 @@ class Builder{  public:
         // #O    sp1       CO         1    2    1    4      180   -     0
         // ----- Fuorine
         // -F    sp3/sp1   HF         1    0    1    2      180   -     0
-        int iZ = params->atypes[ityp].iZ;
-
+        const AtomType& t = params->atypes[ityp_old];
+        int iZ            = t.iZ;
+        int ityp          = t.subTypes.array[npi];
+        return ityp;
     }
 
+    int getNeighType( int ia, int j, int* aneighs ){
+        int ja = aneighs[ ia*4 + j];
+        if(ja>atoms.size()) return -1;
+        return atoms[ ja ].type;
+    }
 
+    bool hasNeighborOfType( int ia, int n, const int* its, bool* bls, int* aneighs ){
+        int ic = atoms[ia].iconf;
+        for(int j=0; j<n; j++){ bls[j]=false; };
+        if(ic<=0) return false;
+        const AtomConf& c = confs[ic];
+        for(int i=0; i<4; i++){
+            int ja = aneighs[i];
+            int jt = atoms[ja].type;
+            for(int j=0; j<n; j++){
+                if( jt==its[j] ) bls[j]=true;
+            }
+        }
+        return true;
+    }
 
+    int assignSpecialTypes( int* aneighs ){
+        // ------ C
+        const int it_C_sp3 = params->getAtomType("C_sp3");
+        const int it_C_sp2 = params->getAtomType("C_sp2");
+        const int it_C_sp1 = params->getAtomType("C_sp1");
+        const int it_C_CA  = params->getAtomType("C_CA" );
+        const int it_C_ene = params->getAtomType("C_ene");
+        const int it_C_yne = params->getAtomType("C_yne");
+        const int it_C_CH3 = params->getAtomType("C_CH3");
+        const int it_C_ald = params->getAtomType("C_ald");
+        const int it_C_COO = params->getAtomType("C_COO");
+        // ------ O
+        const int it_O_sp3 = params->getAtomType("O_sp3");
+        const int it_O_sp2 = params->getAtomType("O_sp2");
+        const int it_O_sp1 = params->getAtomType("O_sp1");
+        const int it_O_OH  = params->getAtomType("O_OOH");
+        const int it_O_COO = params->getAtomType("O_OOH");
+        const int it_O_O   = params->getAtomType("O_OOH");
+        // ------ N
+        const int it_N_sp3 = params->getAtomType("N_sp3");
+        const int it_N_sp2 = params->getAtomType("N_sp2");
+        const int it_N_sp1 = params->getAtomType("N_sp1");
+        const int it_N_NH2 = params->getAtomType("N_NH2");
+        // ------- H
+        const int it_H_OH  = params->getAtomType("H_OH");
+        const int it_H_OOC = params->getAtomType("H_OOC");
+        const int it_H_NH2 = params->getAtomType("H_NH2");
+        const int it_H_CH3 = params->getAtomType("H_CH3");
+        const int it_H_ene = params->getAtomType("H_ene");
+        const int it_H_yne = params->getAtomType("H_yne");
+        const int it_H_ald = params->getAtomType("H_ald");
+        //  C                    0        1        2        3
+        static int its_C  [4]{it_O_sp3,it_O_sp2,it_C_sp2,it_C_CA};
+        //  N                  0        1
+        static int its_N[2]{it_C_sp2,it_C_CA};
+        //  O                    0        1        2
+        static int  its_O [3]{it_C_COO,it_C_sp2,it_C_CA};
+        int na=atoms.size();
+        bool bls[8];
+        int nnew=0;
+        for(int ia=0; ia<na; ia++){
+            int* ngs = aneighs+ia*4;
+            int itnew=-1;
+            const Atom& A     = atoms[ia];
+            const AtomType& t = params->atypes[A.type];
+            int iZ            = t.iZ;
+            switch (iZ){
+                case 1: {  // H
+                    int ingt =  getNeighType( ia, 0, ngs );
+                    if     ( ingt==it_O_OH  ){ itnew=it_H_OH;  }
+                    if     ( ingt==it_O_COO ){ itnew=it_H_OOC; }
+                    else if( ingt==it_N_NH2 ){ itnew=it_H_NH2; }
+                    else if( ingt==it_C_CH3 ){ itnew=it_H_CH3; }
+                    else if( ingt==it_C_ene ){ itnew=it_H_ene; }
+                    else if( ingt==it_C_yne ){ itnew=it_H_yne; }
+                    else if( ingt==it_C_ald ){ itnew=it_H_ald; }
+                }break;
+                case 6: { // C
+                    hasNeighborOfType( ia,4, its_C, bls, ngs  );
+                    if( bls[0] && bls[1] ){ // COOH
+                        itnew = it_C_COO;
+                    }else if( bls[2] || bls[3] ){ // Conjugated
+                        itnew = it_C_CA;
+                    }
+                }break;
+                case 7: { // N
+                    //hasNeighborOfType( ia,2, its_N, bls, ngs );
+                }break;
+                case 8: { // O
+                    hasNeighborOfType( ia,3, its_O, bls, ngs );
+                    if( bls[0] ){ // COOH
+                        itnew=it_O_COO;
+                    }
+                }break;
+            }
+            if(itnew>=0){ nnew++; };
+        }
+        return nnew;
+    }
 
+    int assignSpecialTypesLoop( int nmax, int* aneighs ){
+        int nnew=0;
+        for(int itr=0; itr<nmax; itr++){
+            int ni = assignSpecialTypes( aneighs ); 
+            nnew+=ni; 
+            if( ni==0 ){ return nnew; }
+        }
+        printf("ERROR: assignSpecialTypesLoop not converged in %i iterations\n"); exit(0);
+    }
 
     void addCaps( int ia, int ncap, int ne, int nb, const Vec3d* hs ){
         bool Hmask[]{1,1,1,1};
