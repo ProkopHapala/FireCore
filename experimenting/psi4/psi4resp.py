@@ -26,14 +26,14 @@ methods=[
     'mp2'
 ]
 basises=[
-    # 'sto-3g',
-    # '6-31+G',
-    # '6-311+G*',
-    # '6-311++G**',
-    # '6-311++G(3df,3pd)',
-     'cc-pvdz',
-    # 'aug-cc-pvtz',
-    # 'def2-QZVPPD',
+    'sto-3g',
+    '6-31+G',
+    '6-311+G*',
+    '6-311++G**',
+    '6-311++G(3df,3pd)',
+    'cc-pvdz',
+    'aug-cc-pvtz',
+    'def2-QZVPPD',
 ]
 
 
@@ -60,13 +60,13 @@ names=[
 # ---- Minimal
 #"HF",
 #"HCCH",
-#"HCN",
+"HCN",
 #"NH3",
 #"H2O",
 #"oxalate",
 #"F-COOH",
 #"NC-COOH",
-"HCOOH",
+#"HCOOH",
 #"OCH2",
 #"formaldimine",
 # ------- Other
