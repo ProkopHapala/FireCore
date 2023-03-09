@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 
 # ============= Setup
 
-
 # ============ MAIN
 
 mol = scfu.preparemol(fname='relax.xyz')

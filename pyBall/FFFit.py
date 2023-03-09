@@ -8,6 +8,9 @@ from . import atomicUtils as au
 
 verbosity=0
 
+def exprange( xmax, n=10 ):
+    return ((1.+xmax)**(1./(n-1)))**np.arange(0,n)-1.0
+
 def makeLinearScan_firecore( nstep, selection, d, apos, nmax_scf=200 ):
     forces = np.zeros(apos.shape)
     Etemp  = np.zeros(8)
@@ -60,10 +63,28 @@ def linearScan( molFix, molMov, xs, dir=(1.,0,0), xyz_file="scan.xyz", Eout_file
         if callback is not None: Es[i] = callback( (apos,es) )
         #print( " out.mol._atom  \n", out.mol._atom )
         if xyz_file is not None:
-            au.writeToXYZ( fout, es, apos, commet=(" x %10.5f E_tot %20.10f " %(x,Es[i]) ) )
+            au.writeToXYZ( fout, es, apos, comment=(" x %10.5f E_tot %20.10f " %(x,Es[i]) ) )
     if xyz_file  is not None: fout.close()
     if Eout_file is not None: np.savetxt( Eout_file, np.array( [xs, Es] ).transpose() )
     return Es
+
+def linearScan_1mol( mol, selection, xs, dir=(1.,0,0), xyz_file="scan.xyz", Eout_file=None, callback=None ):
+    dir=np.array(dir); dir/=np.linalg.norm(dir)
+    if xyz_file is not None: fout = open(xyz_file,'w')
+    Es = np.zeros(xs.shape)
+    apos,es=mol
+    apos0 = apos.copy()
+    na=len(es)
+    for i,x in enumerate(xs):
+        apos[:,:] = apos0 
+        apos[selection,:] += dir[None,:]*x
+        if callback is not None: Es[i] = callback( (apos,es) )
+        if xyz_file is not None:
+            au.writeToXYZ( fout, es, apos, comment=(" x %10.5f E_tot %20.10f " %(x,Es[i]) ) )
+    if xyz_file  is not None: fout.close()
+    if Eout_file is not None: np.savetxt( Eout_file, np.array( [xs, Es] ).transpose() )
+    return Es
+
 
 def angularScan( n, dang, molFix, molMov, ang0=None, drot=None, ax1=0,ax2=1, xyz_file="scan.xyz", Eout_file=None, callback=None ):
     if xyz_file is not None: fout = open(xyz_file,'w')
@@ -87,26 +108,27 @@ def angularScan( n, dang, molFix, molMov, ang0=None, drot=None, ax1=0,ax2=1, xyz
         if callback is not None: Es[i] = callback( (apos,es) )
         #print( " out.mol._atom  \n", out.mol._atom )
         if xyz_file is not None:
-            au.writeToXYZ( fout, es, apos, commet=(" ang %10.5f E_tot %20.10f " %(angs[i],Es[i]) ) )
+            au.writeToXYZ( fout, es, apos, comment=(" ang %10.5f E_tot %20.10f " %(angs[i],Es[i]) ) )
         au.mulpos(apos_,drot)
     if xyz_file is not None: fout.close()
     if Eout_file is not None: np.savetxt( Eout_file, np.array( [angs, Es] ).transpose() )
     return Es,angs
 
-def scan_xyz( fxyzin, fxyzout="out.xyz", Eout=None, callback=None ):
+def scan_xyz( fxyzin, fxyzout="out.xyz", Eout=None, callback=None, params=None, xs=None ):
     fin =open(fxyzin,'r')
     if fxyzout is not None: fout=open(fxyzout,'w')
     Es=[]
     i=0
+    if xs is None: xs=range(i)
     while True:
         apos,Zs,es,qs = au.loadAtomsNP( fin=fin, bReadN=True )   #;print(apos) ;print(es)
         if(len(es)==0): break
-        if callback is not None: Es.append(  callback((apos,es)) )
-        comment =  "i %i E_tot %20.10f " %( i, Es[i] )
+        if callback is not None: Es.append(  callback((apos,es), params=params ) )
+        comment =  "i %i E_tot %20.10f x %g " %( i, Es[i], xs[i] )
         if verbosity>0: print(comment)
         if fxyzout is not None:
             au.writeToXYZ( fout, es, apos, comment=comment )
         i+=1
     if fxyzout  is not None: fout.close()
     if Eout     is not None: np.savetxt( Eout, np.array( [i, Es] ).transpose() )
-    return Es, range(len(Es))
+    return Es, xs

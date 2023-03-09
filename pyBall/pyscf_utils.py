@@ -53,7 +53,7 @@ def preparemol(fname='relaxed.xyz', conv_params=None, atoms='O 0 0 0; H 1 0 0; H
         saveAtoms(fname,mol._atom)
     return mol 
 
-def evalHf(inp):
+def evalHf(inp, params=None):
     apos,es = inp            #;print( apos, es )
     m = pack_mol( apos, es)  #;print( m )
     mol=pyscf.M( atom=pack_mol( apos, es) )   #;print( " mol._atom \n", mol.atom )

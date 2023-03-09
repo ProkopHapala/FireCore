@@ -298,7 +298,6 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
     qs     = []
     ia=0
     for line in fin:
-        #print( nmax, "^^^", line )
         wds = line.split()
         try:
             xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )
