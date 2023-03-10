@@ -13,22 +13,22 @@ from pyBall  import atomicUtils as au
 indir="./input/"
 #outdir="./output/"
 
-#bRelax=True
-bRelax=False
+bRelax=True
+#bRelax=False
 
 methods=[
-#    'scf',
-    'pbe',
+    'scf',
+#    'pbe',
 #    'b3lyp',
 #    'mp2'
 ]
 basises=[
-#    'sto-3g',
+    'sto-3g',
 #    '6-31+G',
 #    '6-311+G*',
 #    '6-311++G**',
 #    '6-311++G(3df,3pd)',
-    'cc-pvdz',
+#    'cc-pvdz',
 #    'aug-cc-pvtz',
 #    'def2-QZVPPD',
 ]
@@ -61,9 +61,8 @@ def try_make_dirs( dname ):
 
 #psi4.core.be_quiet()
 
-#names = [ f.split('.')[0] for f in os.listdir(indir) ]
-
-names =["hexa_hb3_donor"]
+names = [ f.split('.')[0] for f in os.listdir(indir) ]
+#names =["hexa_hb3_donor"]
 print(names)
 
 for method in methods:

@@ -53,7 +53,7 @@ class AtomicSystem{ public:
 };
 
 //class NBsystem : AtomicSystem { public: // Can be Child of 
-class NBsystem{ public: // Can be Child of 
+class NBsystem{ public: // Can be Child of AtomicSystem
     int n;
     int    *atypes=0; // Not necessarily used
     Vec3d  *REQs=0;
@@ -390,11 +390,21 @@ class NBsystem{ public: // Can be Child of
         }
     }
 
-    void bindOrRealloc(int n_, Vec3d* ps_, Vec3d* fs_, Vec3d* REQs_ ){
+    void bindOrRealloc(int n_, Vec3d* ps_, Vec3d* fs_, Vec3d* REQs_, int* atypes_ ){
         n=n_;
-        _bindOrRealloc(n,ps_  ,ps  );
-        _bindOrRealloc(n,fs_  ,fs  );
-        _bindOrRealloc(n,REQs_,REQs);
+        _bindOrRealloc(n,ps_    ,ps  );
+        _bindOrRealloc(n,fs_    ,fs  );
+        _bindOrRealloc(n,REQs_  ,REQs);
+        _bindOrRealloc(n,atypes_,atypes);
+    }
+
+    void dealloc(){
+        n=0;
+        _dealloc(ps  );
+        _dealloc(fs  );
+        _dealloc(REQs);
+        _dealloc(atypes);
+        _dealloc(neighs);
     }
 
 };

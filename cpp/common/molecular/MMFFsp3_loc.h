@@ -21,6 +21,14 @@ class MMFFsp3_loc{ public:
 
     double *  DOFs = 0;   // degrees of freedom
     double * fDOFs = 0;   // forces
+
+    bool doBonds  =true;
+    bool doNeighs =true;
+    bool doPiPiI  =true;
+    bool doPiPiT  =true;
+    bool doPiSigma=true;
+    bool doAngles =true;
+    bool doEpi    =true; 
     
     //                           c0     Kss    Ksp    c0_e
     Quat4d default_NeighParams{ -1.0,   1.0,   1.0,   -1.0 };
@@ -35,6 +43,7 @@ class MMFFsp3_loc{ public:
     Vec3d * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
 
     // Params
+    int   *  atypes  =0;
     Quat4i*  aneighs =0;   // [natoms]  index of neighboring atoms
     Quat4i*  bkneighs=0;   // [natoms]  inverse neighbors
     Quat4i*  aneighCell=0; // [natoms]  cell index for neighbors
@@ -71,17 +80,47 @@ void realloc( int nnode_, int ncap_ ){
     _realloc( fneigh  , nnode*4 );
     _realloc( fneighpi, nnode*4 );
     // ----- Params [natom]
-    _realloc( aneighs   ,natoms );
-    _realloc( aneighCell,natoms );
-    _realloc( bkneighs  ,natoms );
-    _realloc( apars   , nnode );
-    _realloc( bLs     , nnode );
-    _realloc( bKs     , nnode );
-    _realloc( Ksp     , nnode );
-    _realloc( Kpp     , nnode );
+    _realloc( atypes    , natoms );
+    _realloc( aneighs   , natoms );
+    _realloc( aneighCell, natoms );
+    _realloc( bkneighs  , natoms );
+    _realloc( apars     , nnode );
+    _realloc( bLs       , nnode );
+    _realloc( bKs       , nnode );
+    _realloc( Ksp       , nnode );
+    _realloc( Kpp       , nnode );
+}
+
+void dealloc(){
+    _dealloc(DOFs );
+    _dealloc(fDOFs);
+    apos   = 0;
+    fapos  = 0;
+    pipos  = 0;
+    fpipos = 0;
+    _dealloc(atypes);
+    _dealloc(aneighs);
+    _dealloc(aneighCell);
+    _dealloc(bkneighs);
+    _dealloc(apars);
+    _dealloc(bLs);
+    _dealloc(bKs);
+    _dealloc(Ksp);
+    _dealloc(Kpp);
 }
 
 void setLvec(const Mat3d& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
+
+double optimalTimeStep(double m=1.0){
+    double Kmax = 1.0;
+    for(int i=0; i<nnode; i++){ 
+        Kmax=fmax(Kmax, bKs[i].x ); 
+        Kmax=fmax(Kmax, bKs[i].y ); 
+        Kmax=fmax(Kmax, bKs[i].z ); 
+        Kmax=fmax(Kmax, bKs[i].w ); 
+    }
+    return M_PI*2.0*sqrt(m/Kmax)/10.0;  // dt=T/10;   T = 2*pi/omega = 2*pi*sqrt(m/k)
+}
 
 // ============== Evaluation
 
@@ -330,6 +369,33 @@ void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
         printf( "fneighpi{%6.3f,%6.3f,%6.3f} ", fneighpi[i1].x, fneighpi[i1].y, fneighpi[i1].z );
         printf( "\n" );
     }}
+}
+
+void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
+    ax.normalize();
+    double ca=cos(phi);
+    double sa=sin(phi);
+    for(int i=0;i<n; i++){
+        int ia = sel[i];
+        if(ia>=nnode)continue;
+        apos [ia].rotate_csa( ca, sa, ax, p0 );
+        pipos[ia].rotate_csa( ca, sa, ax     );
+        int* ngs=aneighs[ia].array; 
+        for(int j=0;j<4;j++){
+            int ja = ngs[j];
+            if(ja>=0){ if(ja>nnode) apos[ ja  ].rotate_csa( ca, sa, ax, p0 ); }
+        }
+    }
+}
+
+void chargeToEpairs( Vec3d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
+    for( int ia=0; ia<nnode; ia++ ){
+        int* ngs=aneighs[ia].array; 
+        for( int j=0; j<4; j++ ){
+            int ja = ngs[j]; 
+            if( atypes[ja]==etyp ){ REQs[ja].z+=cQ; REQs[ia].z-=cQ; };
+        }
+    }
 }
 
 };

@@ -202,13 +202,14 @@ class MMFFparams{ public:
     }
 
     inline void assignRE( int ityp, Vec3d& REQ, bool bSqrtE=false )const{
-        REQ.x = atypes[ityp].RvdW;
-        double e=atypes[ityp].EvdW;
+        REQ.x    = atypes[ityp].RvdW;
+        double e = atypes[ityp].EvdW;
         if(bSqrtE) e=sqrt(e);
         REQ.y = e;
     }
 
     void assignREs( int n, int * itypes, Vec3d * REQs, bool bSqrtE=false, bool bQ0=false )const{
+        //printf( "assignREs(%i) %li \n", n, itypes );
         for(int i=0; i<n; i++){
             //printf( " assignREs[%i] %i \n", i, itypes[i] );
             assignRE( itypes[i], REQs[i], bSqrtE );
@@ -378,7 +379,7 @@ class MMFFparams{ public:
     }
 
     void writeXYZ( FILE* pfile, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0 ){
-        printf( "MMFFparams::writeXYZ() n=%i REQs=%li \n", n, (long)REQs );
+        //printf( "MMFFparams::writeXYZ() n=%i REQs=%li \n", n, (long)REQs );
         fprintf(pfile, "%i\n", n );
         fprintf(pfile, "%s \n", comment );
         for(int i=0; i<n; i++){
@@ -391,9 +392,9 @@ class MMFFparams{ public:
         };
     }
 
-    int saveXYZ( const char * fname, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0 ){
-        FILE* pfile = fopen(fname, "w");
-        printf( "saveXYZ(%s) \n", fname );
+    int saveXYZ( const char * fname, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0, const char* mode="w" ){
+        FILE* pfile = fopen(fname, mode );
+        //printf( "saveXYZ(%s) \n", fname );
         if( pfile == NULL ) return -1;
         writeXYZ( pfile, n, atypes, apos, comment, REQs );
         fclose(pfile);
