@@ -72,6 +72,7 @@ void init_buffers(){
     ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
     buffers .insert( { "Es",       &W.ffl.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
+    //for( auto c : buffers ){ printf("buff>>%s<<\n", c.first.c_str() ); }
 }
 
 void* init( char* xyz_name, char* smile_name, int* nPBC, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
@@ -83,9 +84,14 @@ void* init( char* xyz_name, char* smile_name, int* nPBC, char* sAtomTypes, char*
     W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
 	W.builder.bindParams(&W.params);
     W.init();
-    init_buffers();
+    //init_buffers();
     return &W;
 }
+
+void initParams       ( const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){ W.tmpstr=tmpstr; W.initParams(sAtomTypes,sBondTypes,sAngleTypes ); }
+int  buildMolecule_xyz( const char* xyz_name ){ return W.buildMolecule_xyz( xyz_name );  }
+void makeFFs          ( ){ W.makeFFs(); }
+void clear            ( ){ W.clear();   }
 
 void setTrjName( char* trj_fname_, int savePerNsteps_ ){ W.trj_fname=trj_fname_; W.savePerNsteps=savePerNsteps_; if(verbosity>0)printf( "setTrjName(%s)\n", W.trj_fname ); }
 

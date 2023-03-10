@@ -766,7 +766,6 @@ class Builder{  public:
         //}
     }
 
-
     int assignSp3Type( int ityp_old, int nb, int npi, int ne, int npi_neigh ){
         //  SMILE conf  example   nb   npi  ne   ntot       Ass  Asp   Kpp
         // ----- Carbon
@@ -787,6 +786,22 @@ class Builder{  public:
         int iZ            = t.iZ;
         int ityp          = t.subTypes.array[npi];
         return ityp;
+    }
+
+    int assignSp3Type_pi( int ityp_old, int npi )const{
+        const AtomType& t = params->atypes[ityp_old];
+        int ityp          = t.subTypes.array[npi];
+        return ityp;
+    }
+
+    void assignAllSp3Types(){
+        for(int i=0; i<atoms.size(); i++){
+            Atom& A = atoms[i];
+            if( A.iconf>=0 ){
+                int npi = confs[A.iconf].npi;
+                A.type = assignSp3Type_pi( A.type, npi );
+            }
+        }
     }
 
     int getNeighType( int ia, int j, int* aneighs ){
@@ -825,9 +840,9 @@ class Builder{  public:
         const int it_O_sp3 = params->getAtomType("O_sp3");
         const int it_O_sp2 = params->getAtomType("O_sp2");
         const int it_O_sp1 = params->getAtomType("O_sp1");
-        const int it_O_OH  = params->getAtomType("O_OOH");
-        const int it_O_COO = params->getAtomType("O_OOH");
-        const int it_O_O   = params->getAtomType("O_OOH");
+        const int it_O_OH  = params->getAtomType("O_OH");
+        const int it_O_COO = params->getAtomType("O_COO");
+        //const int it_O_O   = params->getAtomType("O_");
         // ------ N
         const int it_N_sp3 = params->getAtomType("N_sp3");
         const int it_N_sp2 = params->getAtomType("N_sp2");
@@ -850,22 +865,25 @@ class Builder{  public:
         int na=atoms.size();
         bool bls[8];
         int nnew=0;
+        DEBUG
         for(int ia=0; ia<na; ia++){
-            int* ngs = aneighs+ia*4;
-            int itnew=-1;
-            const Atom& A     = atoms[ia];
+            int* ngs  = aneighs+ia*4;
+            int itnew =-1;
+            Atom& A   = atoms[ia];
             const AtomType& t = params->atypes[A.type];
             int iZ            = t.iZ;
             switch (iZ){
                 case 1: {  // H
-                    int ingt =  getNeighType( ia, 0, ngs );
-                    if     ( ingt==it_O_OH  ){ itnew=it_H_OH;  }
-                    if     ( ingt==it_O_COO ){ itnew=it_H_OOC; }
-                    else if( ingt==it_N_NH2 ){ itnew=it_H_NH2; }
-                    else if( ingt==it_C_CH3 ){ itnew=it_H_CH3; }
-                    else if( ingt==it_C_ene ){ itnew=it_H_ene; }
-                    else if( ingt==it_C_yne ){ itnew=it_H_yne; }
-                    else if( ingt==it_C_ald ){ itnew=it_H_ald; }
+                    int ingt =  getNeighType( ia, 0, ngs );       // if(ingt>-1)printf( "H[%i]-(%i|%s)\n", ia, ingt, params->atypes[ingt].name );
+                    if(ingt>=0){
+                        if     ( ingt==it_O_OH  ){ itnew=it_H_OH;  }
+                        else if( ingt==it_O_COO ){ itnew=it_H_OOC; }
+                        else if( ingt==it_N_NH2 ){ itnew=it_H_NH2; }
+                        else if( ingt==it_C_CH3 ){ itnew=it_H_CH3; }
+                        else if( ingt==it_C_ene ){ itnew=it_H_ene; }
+                        else if( ingt==it_C_yne ){ itnew=it_H_yne; }
+                        else if( ingt==it_C_ald ){ itnew=it_H_ald; }
+                    }
                 }break;
                 case 6: { // C
                     hasNeighborOfType( ia,4, its_C, bls, ngs  );
@@ -885,7 +903,11 @@ class Builder{  public:
                     }
                 }break;
             }
-            if(itnew>=0){ nnew++; };
+            if( (itnew>=0) && (itnew!=A.type) ){ 
+                printf( "atom[%i] type %i -> %i (%s) \n", ia, A.type, itnew, params->atypes[itnew].name );
+                A.type = itnew;
+                nnew++; 
+            }
         }
         return nnew;
     }
@@ -893,6 +915,7 @@ class Builder{  public:
     int assignSpecialTypesLoop( int nmax, int* aneighs ){
         int nnew=0;
         for(int itr=0; itr<nmax; itr++){
+            printf( "assignSpecialTypesLoop[%i] \n", itr );
             int ni = assignSpecialTypes( aneighs ); 
             nnew+=ni; 
             if( ni==0 ){ return nnew; }
@@ -2300,6 +2323,30 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         if(verbosity>0)printf(  "... MM:Builder::toMMFFsp3() DONE \n"  );
     }
 #endif // MMFFmini_h
+
+void makeNeighs( int*& aneighs, int perAtom ){
+    int na = atoms.size();
+    _allocIfNull( aneighs, na );
+    int ntot= na*perAtom;
+    for(int i=0;i<ntot; i++){ aneighs[i]=-1; }; // back neighbors
+    for(int ia=0; ia<na; ia++ ){
+        const Atom& A =  atoms[ia];
+        if(A.iconf>=0){
+            const AtomConf& conf = confs[A.iconf];
+            for(int k=0; k<conf.nbond; k++){
+                int ib        = conf.neighs[k];
+                if(ib<0) continue;
+                const Bond& B = bonds[ib];
+                int ja        = B.getNeighborAtom(ia);
+                aneighs[ ia*perAtom + k ] = ja;
+                int jc = atoms[ja].iconf;
+                printf( "a[%i|%i] ja %i jc %i \n", ia, k, ja, jc );
+                if( jc==-1 ){ aneighs[ ja*perAtom ]=ia; }
+            }
+        }
+    }
+    for(int ia=0; ia<na; ia++){ printf( "aneigh[%i](%i,%i,%i,%i)\n", ia, aneighs[ia*perAtom],aneighs[ia*perAtom+1],aneighs[ia*perAtom+2],aneighs[ia*perAtom+3] ); };
+}
 
 #ifdef MMFFsp3_loc_h
 void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){

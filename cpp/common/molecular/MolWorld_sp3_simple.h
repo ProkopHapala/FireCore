@@ -39,7 +39,7 @@ static MMFFparams* params_glob;
 #include "datatypes_utils.h"
 
 class MolWorld_sp3{ public:
-    const char* data_dir     = "common_resources";
+    //const char* data_dir     = "common_resources";
     const char* xyz_name     = "input";
     const char* substitute_name = 0;    int isubs;
     const char* smile_name   = 0;
@@ -160,23 +160,101 @@ void setOptimizer( int n, double* ps, double* fs ){
 }
 void setOptimizer(){ setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs ); };
 
+void initParams( const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){
+    params.init( sAtomTypes, sBondTypes, sAngleTypes );
+    builder.bindParams(&params);
+    params_glob = &params;
+    //params.printAtomTypeDict();
+    //params.printAtomTypes();
+    //params.printBond();
+}
+
+int buildMolecule_xyz( const char* xyz_name ){
+    int ifrag = loadGeom( xyz_name );
+    if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
+    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+    if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+    builder.autoAllConfEPi( );        //builder.printAtomConfs(true);
+
+    builder.assignAllBondParams();    //if(verbosity>1)
+    builder.finishFragment(ifrag);    
+    //printf( "!!!!! DEBUG nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
+    //if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
+    //if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
+    //printf("builder.lvec\n");builder.lvec.print();
+    return ifrag;
+}
+
+void makeMMFF(){
+    //builder.printAtoms();          
+    //if( builder.checkBondsOrdered( false, true ) ) { printf("ERROR Bonds are not ordered => exit"); exit(0); };
+    if( builder.checkBondsInNeighs(true) ) { 
+        printf("ERROR some bonds are not in atom neighbors => exit"); 
+        exit(0); 
+    };
+    builder.sortConfAtomsFirst();
+    //builder.printAtomConfs(false,true);
+    builder.checkBondsOrdered( true, false );
+    { // advanced atom-type assignement
+        builder.assignAllSp3Types();
+        //std::vector<int> aneighs( builder.atoms.size() );
+        int* aneighs;
+        builder.makeNeighs( aneighs, 4 );
+        builder.assignSpecialTypesLoop( 10, aneighs );
+        delete [] aneighs;
+    }
+
+    builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs(); 
+
+    ffl.setLvec(       builder.lvec);
+    nPBC=Vec3i{0,0,0};
+    ffl.makeNeighCells( nPBC );  
+    //builder.printBonds();
+    //printf("!!!!! builder.toMMFFsp3() DONE \n");
+    {   //printf(" ============ check MMFFsp3_loc START\n " );
+        //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
+        //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
+        idebug=1;
+        ffl.eval();
+        idebug=0;
+        //printf("### ffl.fneigh  :\n"); printVecs( ffl.nnode*4, ffl.fneigh   );
+        //printf("### ffl.fneighpi:\n"); printVecs( ffl.nnode*4, ffl.fneighpi );
+        //printf("### ffl.fapos:\n");   printVecs( ffl.natoms, ffl.fapos  );
+        //printf("### ffl.fpipos:\n");  printVecs( ffl.nnode,  ffl.fpipos );
+        if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.nnode, 3, (double*)ffl.fpipos,  "ffl.fpipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
+        //printf(" ============ check MMFFsp3_loc DONE\n " );
+    }
+}
+
+void makeFFs(){
+    makeMMFF();
+    initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
+    ffl.bSubtractAngleNonBond=true;
+    //ff.REQs=nbmol.REQs;
+    bool bChargeToEpair=true;
+    //bool bChargeToEpair=false;                     
+    if(bChargeToEpair){
+        int etyp=-1; etyp=params.atomTypeDict["E"];
+        ffl.chargeToEpairs( nbmol.REQs, nbmol.atypes, -0.2, etyp );  
+    }
+    //nbmol.evalPLQs(gridFF.alpha);
+    if(bOptimizer){ 
+        setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
+    }
+    _realloc( manipulation_sel, nbmol.n );  
+}
+
 virtual void init( bool bGrid=false ){
     if( params.atypes.size() == 0 ){
-        params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
-        params.printAtomTypes();
-        builder.bindParams(&params);
-        params_glob = &params;
-        //params.printAtomTypeDict();
-        //params.printAtomTypes();
-        //params.printBond();
+        initParams( "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
     }
     if( nbmol.n>0 ){ clear(); } // re-initialization
     builder.verbosity=verbosity;
     if(verbosity>0){
         printf("\n#### MolWorld_sp3::init()\n");
         if(smile_name   )printf("smile_name  (%s)\n", smile_name );
-        if(data_dir     )printf("data_dir    (%s)\n", data_dir );
         if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
+        //if(data_dir     )printf("data_dir    (%s)\n", data_dir );
         //if(surf_name    )printf("surf_name   (%s)\n", surf_name );
         //if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
     }
@@ -186,67 +264,13 @@ virtual void init( bool bGrid=false ){
         builder.randomizeAtomPos(1.0); 
         bMMFF=true;
     }else if ( xyz_name ){
-        int ifrag = loadGeom( xyz_name );
-        if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
-        //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
-        if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-        builder.autoAllConfEPi( );          //builder.printAtomConfs(true);
-        builder.assignAllBondParams();    //if(verbosity>1)
-        builder.finishFragment(ifrag);
-        //printf( "!!!!! DEBUG nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
-        //if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
-        //if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
-        //printf("builder.lvec\n");builder.lvec.print();
+        buildMolecule_xyz( xyz_name );
     }
-    if(bMMFF){       
-        //builder.printAtoms();          
-        //if( builder.checkBondsOrdered( false, true ) ) { printf("ERROR Bonds are not ordered => exit"); exit(0); };
-        if( builder.checkBondsInNeighs(true) ) { 
-            printf("ERROR some bonds are not in atom neighbors => exit"); 
-            exit(0); 
-        };
-        builder.sortConfAtomsFirst();
-        //builder.printAtomConfs(false,true);
-        builder.checkBondsOrdered( true, false );
-        builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs(); 
- 
-        ffl.setLvec(       builder.lvec);
-        nPBC=Vec3i{0,0,0};
-        ffl.makeNeighCells( nPBC );  
-        //builder.printBonds();
-        //printf("!!!!! builder.toMMFFsp3() DONE \n");
-        {   //printf(" ============ check MMFFsp3_loc START\n " );
-            //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
-            //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
-            idebug=1;
-            ffl.eval();
-            idebug=0;
-            //printf("### ffl.fneigh  :\n"); printVecs( ffl.nnode*4, ffl.fneigh   );
-            //printf("### ffl.fneighpi:\n"); printVecs( ffl.nnode*4, ffl.fneighpi );
-            //printf("### ffl.fapos:\n");   printVecs( ffl.natoms, ffl.fapos  );
-            //printf("### ffl.fpipos:\n");  printVecs( ffl.nnode,  ffl.fpipos );
-            if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.nnode, 3, (double*)ffl.fpipos,  "ffl.fpipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
-            //printf(" ============ check MMFFsp3_loc DONE\n " );
-        }
-        initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
-        ffl.bSubtractAngleNonBond=true;
-        //ff.REQs=nbmol.REQs;
-        bool bChargeToEpair=true;
-        //bool bChargeToEpair=false;                     
-        if(bChargeToEpair){
-            int etyp=-1; etyp=params.atomTypeDict["E"];
-            ffl.chargeToEpairs( nbmol.REQs, nbmol.atypes, -0.2, etyp );  
-        }
-        //nbmol.evalPLQs(gridFF.alpha);
-        if(bOptimizer){ 
-            setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
-        }
-        _realloc( manipulation_sel, nbmol.n );  
-    }
+    if(bMMFF){ makeFFs(); }
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
-void clear(){
+virtual void clear(){
     builder.clear();
     ffl.dealloc();
     // --- nbmol

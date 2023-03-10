@@ -13,10 +13,17 @@ from pyBall import MMFFsp3     as mmff
 #mmff.setVerbosity( verbosity=1, idebug=0 )
 mmff.setVerbosity( verbosity=0, idebug=0 )
 #mmff.init( xyz_name="data/pyridine"  ) 
-mmff.init( xyz_name="data/HCOOH"  ) 
+
+#------ Short Initialization
+#mmff.init( xyz_name="data/HCOOH"  ) 
+
+#------ Long Initialization
+mmff.initParams()
+mmff.buildMolecule_xyz( xyz_name="data/HCOOH"  )
+mmff.makeFFs()
 
 '''
-mmff.getBuffs()                            
+mmff.getBuffs()   # this has only sense with   makeFFs()                         
 mmff.eval()                                   
 mmff.setTrjName("relax.xyz",1)
 mmff.run(1000)                               

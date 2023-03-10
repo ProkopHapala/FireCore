@@ -26,6 +26,9 @@ header_strings = [
 #"void init_buffers()",
 #"void init_params(char* fatomtypes, char* fbondtypes)",
 #"void init_nonbond()",
+#"void initParams       ( const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes )",
+#"int  buildMolecule_xyz( const char* xyz_name )",
+#"void makeMMFF         (                      )",
 #"void buildFF( bool bNonBonded_, bool bOptimizer_ )",
 #"int loadmol( char* fname_mol )",
 #"void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )",
@@ -101,8 +104,8 @@ lib.getIBuff.argtypes = [c_char_p]
 lib.getIBuff.restype  = c_int_p
 def getIBuff(name,sh):
     if not isinstance(sh, tuple): sh=(sh,)
-    name=name.encode('utf8')
-    ptr = lib.getIBuff(name)
+    ptr = lib.getIBuff( cstr(name) )
+    #print(name," : ",ptr)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
 #double* getBuff(const char* name){ 
@@ -110,12 +113,13 @@ lib.getBuff.argtypes = [c_char_p]
 lib.getBuff.restype  = c_double_p 
 def getBuff(name,sh):
     if not isinstance(sh, tuple): sh=(sh,)
-    name=name.encode('utf8')
-    ptr = lib.getBuff(name)
+    ptr = lib.getBuff( cstr(name) )
+    #print(name," : ",ptr)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
+    init_buffers()
     #natom=nnode+ncap
     #nvecs=natom+npi
     #nDOFs=nvecs*3
@@ -167,9 +171,9 @@ lib.init.restype   =  c_void_p
 def init(
         xyz_name  ="input.xyz", 
         smile_name=None, 
-        sAtomTypes = "data/AtomTypes.dat", 
-        sBondTypes = "data/BondTypes.dat", 
-        sAngleTypes= "data/AngleTypes.dat",
+        sAtomTypes = "common_resources/AtomTypes.dat", 
+        sBondTypes = "common_resources/BondTypes.dat", 
+        sAngleTypes= "common_resources/AngleTypes.dat",
         nPBC=(1,1,0)
     ):
     nPBC=np.array(nPBC,dtype=np.int32)
@@ -179,6 +183,30 @@ def tryInit():
     if not isInitialized:
         init()
         #getBuffs( NEIGH_MAX=4 )
+
+#  void initParams       ( const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes )
+lib.initParams.argtypes  = [c_char_p, c_char_p, c_char_p] 
+lib.initParams.restype   =  None
+def initParams( sAtomTypes="common_resources/AtomTypes.dat", sBondTypes = "common_resources/BondTypes.dat", sAngleTypes= "common_resources/AngleTypes.dat",):
+    return lib.initParams( cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+
+#  int  buildMolecule_xyz( const char* xyz_name )
+lib. buildMolecule_xyz.argtypes  = [c_char_p] 
+lib. buildMolecule_xyz.restype   =  c_int
+def  buildMolecule_xyz(xyz_name):
+    return lib.buildMolecule_xyz( cstr(xyz_name) )
+
+#  void makeFFs         (                      )
+lib.makeFFs.argtypes  = [] 
+lib.makeFFs.restype   =  None
+def makeFFs():
+    return lib.makeFFs()
+
+#  void clear         (                      )
+lib.clear.argtypes  = [] 
+lib.clear.restype   =  None
+def clear():
+    return lib.clear()
 
 #  void insertSMILES(char* s)
 lib.insertSMILES.argtypes  = [c_char_p,c_bool] 

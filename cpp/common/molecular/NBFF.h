@@ -149,7 +149,7 @@ class NBsystem{ public: // Can be Child of AtomicSystem
             }
             fs[i].add(fi);
         }
-        printf( "npbc %i ipbc %i E %g \n", npbc, ipbc, E );
+        //printf( "npbc %i ipbc %i E %g \n", npbc, ipbc, E );
         return E;
     }
 
