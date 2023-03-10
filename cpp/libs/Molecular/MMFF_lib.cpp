@@ -145,9 +145,8 @@ int toXYZ(const char* comment="#comment"){ return W.toXYZ(comment); }
 
 double eval(){ return W.eval(); };
 
-bool relax( int niter, double Ftol, bool bWriteTrj ){
-    return W.relax( niter, Ftol, bWriteTrj );
-}
+bool relax( int niter, double Ftol, bool bWriteTrj ){ return W.relax( niter, Ftol, bWriteTrj );}
+
 
 // ========= Manipulation with the molecule
 
@@ -156,7 +155,7 @@ void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi 
 void shift_atoms    ( int n, int* selection, int ia0, int ia1, double l              ){ W.shift_atoms ( n, selection, ia0, ia1, l ); };
 void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ W.rotate_atoms( n, selection, ia0, iax0, iax1, phi ); };
 
-int splitAtBond( int ib, int* selection ){ return W.splitAtBond( ib, selection ); }
+//int splitAtBond( int ib, int* selection ){ return W.splitAtBond( ib, selection ); }
 
 void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K, double Rdamp ){
     Vec3d REQi = *(Vec3d*)REQi_;

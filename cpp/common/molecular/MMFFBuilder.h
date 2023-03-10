@@ -2318,11 +2318,13 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, dou
         int ie0=nconf+ncap;
         int iie = 0;
 
+        //params->printAtomTypeDict();
+        int etyp=-1;  if(params) etyp=params->atomTypeDict["E"];
         for(int i=0; i<ff.nnode;  i++){ ff.aneighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4dZero, ff.bKs[i]=Quat4dZero, ff.Ksp[i]=Quat4dZero, ff.Kpp[i]=Quat4dZero; }; // back neighbors
-
         for(int ia=0; ia<nAmax; ia++ ){
             const Atom& A =  atoms[ia];
-            ff.apos [ia]  = A.pos;
+            ff.apos  [ia] = A.pos;
+            ff.atypes[ia] = A.type;
             if(A.iconf>=0){
 
                 // Prepare params and orientation
@@ -2370,7 +2372,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, double K_sigma=1.0, dou
                     int ie=ie0+iie;
                     ngs [k] =ie;
                     //printf( "atom[%i|%i] ie %i \n", ia, k, ie );
-                    ff.apos[ie] = atoms[ia].pos + hs[k]*Lepair;
+                    ff.apos  [ie] = atoms[ia].pos + hs[k]*Lepair;
+                    ff.atypes[ie] = etyp;
                     bK [k]=Kepair;
                     bL [k]=Lepair;
                     if( conf.npi>0 ) Ksp[k]=Ksp_default;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms

@@ -5,10 +5,10 @@ include_directories( ${COMMON_SRCS}/molecular )
 #add_library(RigidMol    SHARED RigidMol.cpp   $<TARGET_OBJECTS:MolecularEngine> $<TARGET_OBJECTS:DynamicOpt> )
 add_library(ReactiveFF  SHARED ReactiveFF.cpp )
 
-add_library(CLCFGO_lib  SHARED CLCFGO_lib.cpp )
-add_library(eFF_lib     SHARED eFF_lib.cpp    $<TARGET_OBJECTS:DynamicOpt> )
-add_library(MMFF_lib    SHARED MMFF_lib.cpp   $<TARGET_OBJECTS:DynamicOpt> )
-
+add_library(CLCFGO_lib   SHARED CLCFGO_lib.cpp )
+add_library(eFF_lib      SHARED eFF_lib.cpp      $<TARGET_OBJECTS:DynamicOpt> )
+add_library(MMFF_lib     SHARED MMFF_lib.cpp     $<TARGET_OBJECTS:DynamicOpt> )
+add_library(MMFFsp3_lib  SHARED MMFFsp3_lib.cpp  $<TARGET_OBJECTS:DynamicOpt> )
 
 add_library(FF2D_lib                 SHARED FF2D_lib.cpp                    )
 add_library(Kekule_lib               SHARED Kekule_lib.cpp              )
