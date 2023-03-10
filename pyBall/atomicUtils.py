@@ -32,7 +32,7 @@ def getRvdWs( atypes, eparams=elements.ELEMENTS ):
 def getRvdWsNP( atypes, eparams=elements.ELEMENTS ):
     return np.array( getRvdWs( atypes, eparams ), dtype=np.int32 ) 
 
-def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.7, RvdWs=None, byRvdW=True ):
+def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.8, RvdWs=None, byRvdW=True ):
     bonds  = []
     iatoms = np.arange( len(apos), dtype=int )
     Rcut2  = Rcut*Rcut
