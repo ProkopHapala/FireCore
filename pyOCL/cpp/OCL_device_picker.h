@@ -1,1 +1,0 @@
-../../cpp/common/OpenCL/OCL_device_picker.h
