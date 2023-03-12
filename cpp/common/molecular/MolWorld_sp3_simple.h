@@ -165,7 +165,7 @@ void initParams( const char* sAtomTypes, const char* sBondTypes, const char* sAn
     builder.bindParams(&params);
     params_glob = &params;
     //params.printAtomTypeDict();
-    //params.printAtomTypes();
+    params.printAtomTypes();
     //params.printBond();
 }
 
@@ -192,25 +192,32 @@ void makeMMFF(){
         printf("ERROR some bonds are not in atom neighbors => exit"); 
         exit(0); 
     };
+    DEBUG
     builder.sortConfAtomsFirst();
     //builder.printAtomConfs(false,true);
     builder.checkBondsOrdered( true, false );
+    DEBUG
     { // advanced atom-type assignement
+        //params.printAtomTypes();
         builder.assignAllSp3Types();
+        //builder.printAtomConfs(false);
         //std::vector<int> aneighs( builder.atoms.size() );
         int* aneighs;
         builder.makeNeighs( aneighs, 4 );
         builder.assignSpecialTypesLoop( 10, aneighs );
+        builder.printAtomConfs(false);
         delete [] aneighs;
     }
-
+    DEBUG
     builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs(); 
-
+    DEBUG
     ffl.setLvec(       builder.lvec);
     nPBC=Vec3i{0,0,0};
+    DEBUG
     ffl.makeNeighCells( nPBC );  
     //builder.printBonds();
     //printf("!!!!! builder.toMMFFsp3() DONE \n");
+    DEBUG
     {   //printf(" ============ check MMFFsp3_loc START\n " );
         //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
         //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
@@ -224,6 +231,7 @@ void makeMMFF(){
         if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.nnode, 3, (double*)ffl.fpipos,  "ffl.fpipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
         //printf(" ============ check MMFFsp3_loc DONE\n " );
     }
+    DEBUG
 }
 
 void makeFFs(){
@@ -271,12 +279,14 @@ virtual void init( bool bGrid=false ){
 }
 
 virtual void clear(){
+    printf("MolWorld_sp3_simple.clear() \n");
     builder.clear();
     ffl.dealloc();
     // --- nbmol
     nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
     nbmol.ps=0;  
     nbmol.fs=0;  
+    nbmol.atypes=0;
     nbmol.dealloc();
     // --- opt
     opt.pos = 0;

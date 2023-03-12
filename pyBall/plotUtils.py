@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import collections  as mc
 
-def plotAtoms( apos=None, es=None, atoms=None, ax1=0, ax2=1, bNumbers=False, labels=None, sizes=100., colors='k', marker='o' ):
+def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, sizes=100., colors='#808080', marker='o', axes=(0,1) ):
+    ax1,ax2=axes
     if apos is None: apos = np.array([ a[1] for a in atoms ])  #;print(apos)
     plt.scatter( apos[:,ax1],apos[:,ax2], marker=marker, c=colors, s=sizes, cmap='seismic' ); plt.axis('equal'); #plt.grid()
     bLabels = labels is not None
@@ -12,7 +13,7 @@ def plotAtoms( apos=None, es=None, atoms=None, ax1=0, ax2=1, bNumbers=False, lab
             labels = range(na)
         ax= plt.gca()
         for i in range(na):
-            ax.annotate( str(labels[i]), (apos[i,0], apos[i,1]))
+            ax.annotate( str(labels[i]), (apos[i,ax1], apos[i,ax2]))
 
 
 def plotBonds( lps=None, links=None, ps=None, lws=None, ax1=0, ax2=1 ):

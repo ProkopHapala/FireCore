@@ -124,12 +124,12 @@ def getBuffs( NEIGH_MAX=4 ):
     #nvecs=natom+npi
     #nDOFs=nvecs*3
     global ndims,Es
-    ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
+    ndims = getIBuff( "ndims", (5,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
-    global nDOFs,natoms,nnode,ncap,nbonds,npi,nvecs
-    nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];npi=ndims[4];nbonds=ndims[5];
-    nvecs=natoms+npi
-    print( "getBuffs(): nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
+    global nDOFs,natoms,nnode,ncap,nvecs
+    #nDOFs=0,natoms=0,nnode=0,ncap=0,nvecs=0;
+    nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];nvecs=ndims[4];
+    print( "getBuffs(): natoms %i nnode %i ncap %i nvecs %i"  %(natoms,nnode,ncap,nvecs) )
     global DOFs,fDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, Kneighs,bond2atom,aneighs,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
@@ -137,8 +137,8 @@ def getBuffs( NEIGH_MAX=4 ):
     if glob_bMMFF:
         DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
         fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
-        pipos     = getBuff ( "pipos",    (npi,3)    )
-        fpipos    = getBuff ( "fpipos",   (npi,3)    )
+        pipos     = getBuff ( "pipos",    (natoms,3)    )
+        fpipos    = getBuff ( "fpipos",   (natoms,3)    )
         aneighs   = getIBuff( "aneighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
 
@@ -243,6 +243,15 @@ def setTrjName(trj_fname_="trj.xyz", savePerNsteps=1, bDel=True ):
     global trj_fname
     trj_fname=cstr(trj_fname_)
     return lib.setTrjName( trj_fname, savePerNsteps )
+
+
+# char* getType( int ia, bool fromFF){
+lib.getType.argtypes  = [c_int, c_bool ] 
+lib.getType.restype   =  c_char_p
+def getType( ia, fromFF=True ):
+    s = lib.getType( ia, fromFF )
+    ss = s.decode()
+    return ss 
 
 #double eval()
 lib.eval.argtypes  = [] 
