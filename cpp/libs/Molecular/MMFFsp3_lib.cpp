@@ -102,6 +102,14 @@ void initWithSMILES(char* s, bool bPrint, bool bCap, bool bNonBonded_, bool bOpt
     init_buffers();
 }
 
+const char* getType( int ia, bool fromFF){
+    int it;
+    if(fromFF){ if(ia>=W.nbmol.n)                return "?"; it = W.nbmol.atypes[ia];       }
+    else      { if(ia>=W.builder.atoms.size())   return "?"; it = W.builder.atoms[ia].type; }
+    if( (it<0) || (it>=W.params.atypes.size()) ) return "?";
+    return W.params.atypes[it].name;
+}
+
 void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.ffl.doAngles , doAngles  );

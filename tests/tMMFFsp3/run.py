@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 sys.path.append("../../")
 from pyBall import atomicUtils as au
+from pyBall import plotUtils   as plu
 from pyBall import MMFFsp3     as mmff
 
 
@@ -19,7 +20,24 @@ mmff.setVerbosity( verbosity=0, idebug=0 )
 
 #------ Long Initialization
 mmff.initParams()
+print("=========== HCOOH ")
 mmff.buildMolecule_xyz( xyz_name="data/HCOOH"  )
+mmff.makeFFs()
+
+mmff.getBuffs() 
+labels = [ mmff.getType(i) for i in range(mmff.natoms) ]   ;print( labels ); print( mmff.apos )
+plu.plotAtoms( mmff.apos, labels=labels, axes=(0,2) )
+plt.show()
+
+print("=========== pyridine ")
+mmff.clear()
+#mmff.buildMolecule_xyz( xyz_name="data/HCOOH"   )
+mmff.buildMolecule_xyz( xyz_name="data/pyridine"  )
+mmff.makeFFs()
+print("=========== HCOOH ")
+mmff.clear()
+#mmff.buildMolecule_xyz( xyz_name="data/HCOOH"   )
+mmff.buildMolecule_xyz( xyz_name="data/pyridine"  )
 mmff.makeFFs()
 
 '''

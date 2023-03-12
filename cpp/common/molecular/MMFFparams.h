@@ -141,9 +141,12 @@ class MMFFparams{ public:
         for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atomTypeNames[i].c_str(), atomTypeDict[atomTypeNames[i]] ); };
     }
 
-    int getAtomType(const char* s){
+    int getAtomType(const char* s, bool bErr=false){
         auto found = atomTypeDict.find(s);
-        if(found==atomTypeDict.end()){ return -1; }
+        if(found==atomTypeDict.end()){ 
+            if(bErr){ printf( "ERORRO: AtomType[%s] not found !!! => exit() \n", s ); exit(0); }
+            return -1; 
+        }
         return found->second;
     }
 
@@ -182,7 +185,7 @@ class MMFFparams{ public:
     inline void assignSubTypes( AtomType& t ){
         //printf( "assignSubTypes %s(iZ=%i)\n", t.name, t.iZ );
         char tmp_name[8];
-        const char* ssub[3]{"sp3","sp1","sp2"};
+        const char* ssub[3]{"sp3","sp2","sp1"};
         for(int i=0;i<3;i++){
             sprintf( tmp_name, "%s_%s", t.name, ssub[i] );
             int it = getAtomType(tmp_name);

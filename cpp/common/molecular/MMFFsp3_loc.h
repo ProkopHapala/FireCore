@@ -250,7 +250,10 @@ void asseble_forces(){
             if(j<0) break;
             //if(j>=(nnode*4)){ printf("ERROR bkngs[%i|%i] %i>=4*nnode(%i)\n", ia, i, j, nnode*4 ); exit(0); }
             fa.add(fneigh  [j]);
-            if(bpi)fp.add(fneighpi[j]);
+            if(bpi){
+                //printf( "assemble[%i,%i|%i] pi(%g,%g,%g) fp(%g,%g,%g) fpng(%g,%g,%g) \n", ia,i,j, pipos[ia].x,pipos[ia].y,pipos[ia].z, fpipos[ia].x,fpipos[ia].y,fpipos[ia].z, fneighpi[j].x,fneighpi[j].y,fneighpi[j].z );
+                fp.add(fneighpi[j]);
+            }
         }
         fapos [ia].add( fa ); 
         if(bpi){
