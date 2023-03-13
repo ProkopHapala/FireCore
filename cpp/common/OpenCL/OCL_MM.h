@@ -20,8 +20,12 @@ void Mat3_to_cl( const Mat3d& m, cl_Mat3& clm ){
 
 //=======================================================================
 //=======================================================================
-class OCL_MM: public OCL_DFT { public:
+//class OCL_MM: public OCL_DFT { public:
+class OCL_MM: public OCLsystem { public:
     cl_program program_relax=0;
+
+    int nAtoms=0;
+    int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0;
 
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
@@ -33,18 +37,9 @@ class OCL_MM: public OCL_DFT { public:
     cl_Mat3 cl_lvec;
     cl_Mat3 cl_invLvec;
 
-    int nz;
-
-    int n_start_point = 0;
-    int ibuff_start_point=-1;
-    int ibuff_avel=-1, ibuff_pi0s=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
-    int ibuff_bondLK=-1, ibuff_ang0K=-1;
-    int itex_FF=-1;
-    int ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
-
-    int itex_FE_Paul=-1;
-    int itex_FE_Lond=-1;
-    int itex_FE_Coul=-1;
+    int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
+    int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
+    int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
 
     void makeKrenels_MM( const char*  cl_src_dir ){
         printf( "makeKrenels_MM() \n" );
@@ -59,33 +54,27 @@ class OCL_MM: public OCL_DFT { public:
         printf( "... makeKrenels_MM() DONE \n" );
     }
 
-    int initMM( const char*  cl_src_dir ){
-        makeKrenels_MM( cl_src_dir );
-        printf( "initMM() Ns(%li,%li,%li) \n", Ns[0], Ns[1], Ns[2] );
-        return itex_FF;
-    }
-
-    int initAtomsForces( int nSystems, int nAtoms_, int nnode ){
-        nAtoms=nAtoms_;
-        int npi=nnode;
-        int nvecs=nAtoms+npi;
-        int nneigh=nnode*4*2;
+    int initAtomsForces( int nSystems_, int nAtoms_, int nnode_ ){
+        nnode  = nnode_;
+        nAtoms = nAtoms_;
+        npi    = nnode_;
+        nvecs  = nAtoms+npi;
+        nneigh = nnode*4*2;
         ibuff_atoms      = newBuffer( "atoms",      nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_aforces    = newBuffer( "aforces",    nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_coefs      = newBuffer( "coefs",      nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        ibuff_neighs     = newBuffer( "neighs",     nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  ); // need neihgs for all atoms because of Non-Bonded
+        ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_neighs     = newBuffer( "neighs",     nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_neighCell  = newBuffer( "neighCell" , nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
 
         ibuff_bkNeighs   = newBuffer( "bkNeighs",   nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_neighForce = newBuffer( "neighForce", nSystems*nneigh, sizeof(float4), 0, CL_MEM_READ_WRITE );
 
-        ibuff_MMpars     = newBuffer( "MMpars",     nSystems*nnode,  sizeof(int4),   0, CL_MEM_READ_ONLY );
+        ibuff_MMpars     = newBuffer( "MMpars",     nSystems*nnode,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
         ibuff_BLs        = newBuffer( "BLs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_BKs        = newBuffer( "BKs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        ibuff_Ksp        = newBuffer( "Ksp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY );
-        ibuff_Kpp        = newBuffer( "Kpp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY );
-
+        ibuff_Ksp        = newBuffer( "Ksp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_Kpp        = newBuffer( "Kpp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         return ibuff_atoms;
     }
 
@@ -108,7 +97,7 @@ class OCL_MM: public OCL_DFT { public:
         err |= useArgBuff( ibuff_atoms      ); // 2
         err |= useArgBuff( ibuff_aforces    ); // 3
         // parameters
-        err |= useArgBuff( ibuff_coefs     );  // 4
+        err |= useArgBuff( ibuff_REQs      );  // 4
         err |= useArgBuff( ibuff_neighs    );  // 5
         err |= useArgBuff( ibuff_neighCell );  // 6
         err |= _useArg( nPBC               );  // 7
@@ -149,7 +138,7 @@ class OCL_MM: public OCL_DFT { public:
         err |= useArgBuff( ibuff_neighForce ); // 4
         // parameters
         err |= useArgBuff( ibuff_neighs );     // 5
-        err |= useArgBuff( ibuff_coefs  );     // 6
+        err |= useArgBuff( ibuff_REQs   );     // 6
         err |= useArgBuff( ibuff_MMpars );     // 7
         err |= useArgBuff( ibuff_BLs    );     // 8
         err |= useArgBuff( ibuff_BKs    );     // 9
