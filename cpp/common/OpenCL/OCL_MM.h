@@ -65,7 +65,7 @@ class OCL_MM: public OCL_DFT { public:
         return itex_FF;
     }
 
-    int initAtomsForces( int nSystems, int nAtoms_, int nnode, bool bMMFFsp3=false, bool bMMFFf4=false ){
+    int initAtomsForces( int nSystems, int nAtoms_, int nnode ){
         nAtoms=nAtoms_;
         int npi=nnode;
         int nvecs=nAtoms+npi;
