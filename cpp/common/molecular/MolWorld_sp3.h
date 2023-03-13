@@ -204,14 +204,27 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     }
 }
 
-void initNBmol( int na, Vec3d* apos, Vec3d* fapos ){
+/*
+void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes ){
     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() ff.natoms %i \n", ff.natoms  );
-	nbmol  .bindOrRealloc( na, apos,  fapos, 0 );
+	nbmol  .bindOrRealloc( na, apos,  fapos, 0,  );
     nbmol.atypes = ff.atype;              
 	builder.export_REQs  ( nbmol.REQs   );   
     for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
     params .assignREs    ( na, ff.atype, nbmol.REQs, true, false  ); 
     nbmol  .makePLQs     ( gridFF.alpha );    
+    if(verbosity>1)nbmol.print();                              
+}
+*/
+
+void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
+    if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
+	nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
+    //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
+    //builder.export_atypes( nbmol.atypes );     
+	builder.export_REQs( nbmol.REQs  );    
+    if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
+    params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
     if(verbosity>1)nbmol.print();                              
 }
 
@@ -328,7 +341,7 @@ void initRigid(){
         int ni =  frag.atomRange.y - i0;
         //printf("# initRigid[%i] i0 %i ni %i \n", i, i0, ni );
         nbmol.ps + i0;
-        rbff.mols[i].bindOrRealloc(ni, nbmol.ps+i0, nbmol.fs+i0, nbmol.REQs+i0 );
+        rbff.mols[i].bindOrRealloc(ni, nbmol.ps+i0, nbmol.fs+i0, nbmol.REQs+i0, nbmol.atypes+i0 );
         natom+=ni;
     }
     rbff.makePos0s();
@@ -565,7 +578,8 @@ virtual void init( bool bGrid ){
         DEBUG
         //initNBmol();
         //initNBmol( ff.natoms,  ff.apos,  ff.fapos  );
-        initNBmol( ffl.natoms, ffl.apos, ffl.fapos );
+        //initNBmol( ffl.natoms, ffl.apos, ffl.fapos );
+        initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
 
         ff.bSubtractAngleNonBond=true;
         ff.REQs=nbmol.REQs;
