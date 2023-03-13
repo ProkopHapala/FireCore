@@ -15,4 +15,4 @@ ln -s $dir/$name .
 #rm *.bin *.xsf
 
 #./$name -x common_resources/formic_dimer
-./$name -x common_resources/HCOOH
+./$name -x common_resources/HCOOH -n 10

@@ -329,6 +329,47 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
     qs   = np.array(qs)
     return xyzs,Zs,enames,qs
 
+def readAtomsXYZ( fin, na ):
+    apos=[]
+    es  =[] 
+    for i in range(na):
+        ws = fin.readline().split()
+        apos.append( [ float(ws[1]),float(ws[2]),float(ws[3]) ] )
+        es  .append( ws[0] )
+    return np.array(apos), es
+
+def readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None ):
+    bClose=False
+    if fin is None: 
+        fin=open(fname, 'r')
+        bClose=True
+    trj  = []
+    isys = 0
+    while True:
+        line = fin.readline()
+        if not line: break
+        if( len(line)>=5 ):
+            if(line[:5]=="ITEM:"):
+                wds = line.split()
+                if wds[1]=='NUMBER':
+                    na = int(fin.readline())
+                    isys+=1
+                    #print("isys=", isys )
+                elif( isys in selection ):
+                    if wds[1]=='BOX':
+                        lvec = np.array([
+                            [ float(w) for w in fin.readline().split() ],
+                            [ float(w) for w in fin.readline().split() ],
+                            [ float(w) for w in fin.readline().split() ],
+                        ])
+                        #print( "isys=",isys," na=",na," lvec=", lvec )
+                    elif wds[1]=='ATOMS':
+                        apos,es = readAtomsXYZ( fin, na )
+                        #print( apos )
+                        S = AtomiSystem( lvec=lvec, enames=es, apos=apos)
+                        trj.append( S )
+    return trj
+
 def loadAtoms( name ):
     f = open(name,"r")
     n=0;
@@ -536,13 +577,14 @@ def removeGroup( base, remove ):
 
 class AtomiSystem():
 
-    def __init__(self,fname=None) -> None:
-        self.apos    = None
-        self.atypes  = None
-        self.enames  = None
-        self.qs      = None
-        self.Rs      = None
-        self.bonds   = None
+    def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None ) -> None:
+        self.apos    = apos
+        self.atypes  = atypes
+        self.enames  = enames
+        self.qs      = qs
+        self.Rs      = Rs
+        self.bonds   = bonds
+        self.lvec    = lvec 
         if fname is not None:
             self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname)
 
@@ -562,6 +604,8 @@ class AtomiSystem():
             print( "[%i] (%i,%i) (%s,%s)" %( i, self.bonds[i,0],self.bonds[i,1],  self.enames[self.bonds[i,0]], self.enames[self.bonds[i,1]] ) )
 
     def findBonds(self, Rcut=3.0, RvdwCut=0.7, RvdWs=None, byRvdW=True ):
+        if self.atypes is None:
+            self.atypes = [ elements.ELEMENT_DICT[e][0] for e in self.enames ]
         self.bonds = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
 
     def findCOG(self, apos, byBox=False ):
