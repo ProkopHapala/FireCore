@@ -293,7 +293,7 @@ class OCLsystem{ public:
         return err;
     }
     
-    int newTask( char * name, cl_program program_=0, size_t dim=1, size_t4 global=size_t4{0,0,0,0}, size_t4 local={1,0,0,0} ){
+    int newTask( char * name, cl_program program_=0, size_t dim=1, size_t4 global=size_t4{0,0,0,0}, size_t4 local={1,1,1,1} ){
         if(program_==0){ 
             check_programSet();
             program_=program;

@@ -178,12 +178,18 @@ void setup_MMFFf4_ocl(){
 double eval_MMFFf4_ocl( int niter ){ 
     printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() \n");
     if( task_MMFF==0 )setup_MMFFf4_ocl();
+    int err=0;
     for(int i=0; i<niter; i++){
-        task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
-        task_MMFF  ->enque_raw();
-        //task_NBFF  ->enque_raw();
-        task_move->enque_raw(); //DEBUG
+        err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
+        err |= task_MMFF  ->enque_raw();
+        //err |= task_NBFF  ->enque_raw();
+        err |= task_move->enque_raw(); //DEBUG
+        OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
+    err |= ocl.finishRaw();
+    OCL_checkError(err, "eval_MMFFf4_ocl_2");
+
+    /*
     //printf( "ocl.download(n=%i) \n", n );
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
@@ -200,7 +206,7 @@ double eval_MMFFf4_ocl( int niter ){
     tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
     if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
-
+    */
     return 0;
 }
 

@@ -90,8 +90,8 @@ __kernel void getMMFFf4(
 
     const int iG = get_global_id (0);   // intex of atom
     const int iS = get_global_id (1);   // index of system
-    //const int nG = get_global_size(0);
-    //const int nS = get_global_size(1);  // number of systems
+    const int nG = get_global_size(0);
+    const int nS = get_global_size(1);  // number of systems
     //const int iL = get_local_id  (0);
     //const int nL = get_local_size(0);
     const int nAtoms=nDOFs.x;
@@ -104,19 +104,18 @@ __kernel void getMMFFf4(
 
     #define NNEIGH 4
 
-    /*
-    if(ia==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i size=%i \n", nnode, nAtoms, nG ); }
-    if(ia==0)for(int i=0; i<nnode; i++){
-        printf( "GPU[%i] ", i );
-        printf( "ngs{%2i,%2i,%2i,%2i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
-        printf( "apar{%6.3f,%6.3f,%6.3f,%6.3f} ", apars[i].x, apars[i].y, apars[i].z, apars[i].w );
-        printf(  "BL{%6.3f,%6.3f,%6.3f,%6.3f} ", bLs[i].x, bLs[i].y, bLs[i].z, bLs[i].w );
-        printf(  "BK{%6.3f,%6.3f,%6.3f,%6.3f} ", bKs[i].x, bKs[i].y, bKs[i].z, bKs[i].w );
-        printf( "Ksp{%6.3f,%6.3f,%6.3f,%6.3f} ", Ksp[i].x, Ksp[i].y, Ksp[i].z, Ksp[i].w );
-        printf( "Kpp{%6.3f,%6.3f,%6.3f,%6.3f} ", Kpp[i].x, Kpp[i].y, Kpp[i].z, Kpp[i].w );
-        printf( "\n" );
-    }
-    */
+    if(iG==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i iS %i nG %i nS %i \n", nnode, nAtoms, iS, nG, nS ); }
+    
+    // if(ia==0)for(int i=0; i<nnode; i++){
+    //     printf( "GPU[%i] ", i );
+    //     printf( "ngs{%2i,%2i,%2i,%2i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
+    //     printf( "apar{%6.3f,%6.3f,%6.3f,%6.3f} ", apars[i].x, apars[i].y, apars[i].z, apars[i].w );
+    //     printf(  "BL{%6.3f,%6.3f,%6.3f,%6.3f} ", bLs[i].x, bLs[i].y, bLs[i].z, bLs[i].w );
+    //     printf(  "BK{%6.3f,%6.3f,%6.3f,%6.3f} ", bKs[i].x, bKs[i].y, bKs[i].z, bKs[i].w );
+    //     printf( "Ksp{%6.3f,%6.3f,%6.3f,%6.3f} ", Ksp[i].x, Ksp[i].y, Ksp[i].z, Ksp[i].w );
+    //     printf( "Kpp{%6.3f,%6.3f,%6.3f,%6.3f} ", Kpp[i].x, Kpp[i].y, Kpp[i].z, Kpp[i].w );
+    //     printf( "\n" );
+    // }
     
     // ========= Private Memory
     const cl_Mat3 lvec    = lvecs [iS];
@@ -124,8 +123,6 @@ __kernel void getMMFFf4(
 
     // ---- Dynamical
     float4  hs [4];              // direction vectors of bonds
-    //float4  fbs[4];            // force on neighbor sigma
-    //float4  fps[4];            // force on neighbor pi
     float3  fbs[4];              // force on neighbor sigma
     float3  fps[4];              // force on neighbor pi
     float3  fa  = float3Zero;    // force on center position 
@@ -270,10 +267,13 @@ __kernel void updateAtomsMMFFf4(
 ){
     const int natoms=n.x;
     const int nnode =n.y;
-    const int iG = get_global_id (0);
+    const int nvec  = natoms+nnode;
+    const int iG = get_global_id  (0);
+    const int iS = get_global_id  (1);
     const int nG = get_global_size(0);
+    const int nS = get_global_size(1);
 
-    //if(iG==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i natoms+nnode=%i size=%i dt=%g damp=%g Flimit=%g \n", natoms,nnode, natoms+nnode, nG, MDpars.x, MDpars.y, MDpars.z );
+    if(iG==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i iS %i nG %i nS %i dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
     /*
     if(iG==0){
     for(int i=0; i<natoms; i++){
@@ -308,34 +308,45 @@ __kernel void updateAtomsMMFFf4(
     }
     */
 
+    
+    //const int iaa = iG + iS*natoms; 
+    //const int ian = iG + iS*nnode; 
+    const int iav = iG + iS*nvec;
+
     if(iG>=(natoms+nnode)) return;
-    float4 fe      = aforce[iG]; 
+
+    float4 fe      = aforce[iav]; 
     const bool bPi = iG>=natoms;
     
     // ------ Gather Forces from back-neighbors
     int4 ngs;  
     if( bPi ){  // pis 
         const int ip0  = nnode*4;
-        ngs            = bkNeighs[iG+natoms];
+        ngs            = bkNeighs[iav+natoms];
         ngs           += (int4){ip0,ip0,ip0,ip0};
     }else{     // atoms  
-        ngs            = bkNeighs[iG];
+        ngs            = bkNeighs[iav];
     }
+    // WARRNING : bkNeighs must be properly shifted on CPU !!!!!!!!!!!!!!
     if(ngs.x>=0){ fe += fneigh[ngs.x]; }
     if(ngs.y>=0){ fe += fneigh[ngs.y]; }
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
-    aforce[iG] = fe; // store force before limit
+    // !!!!! Error code was "CL_INVALID_COMMAND_QUEUE" (-36)  is HERE !!!!!!
+    aforce[iav] = fe; // store force before limit
+
+    /*
     // ---- Limit Forces
     float fr2 = dot(fe.xyz,fe.xyz);
     if( fr2 > (MDpars.z*MDpars.z) ){
         fe.xyz*=(MDpars.z/sqrt(fr2));
     } 
 
+    /*
     // ------ Move (Leap-Frog)
-    float4 pe = apos[iG];
-    float4 ve = avel[iG];
+    float4 pe = apos[iav];
+    float4 ve = avel[iav];
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
@@ -347,24 +358,23 @@ __kernel void updateAtomsMMFFf4(
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
     }
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
-    avel[iG] = ve;
-    apos[iG] = pe;
+    avel[iav] = ve;
+    apos[iav] = pe;
     
     // ------ Move Gradient-Descent
-    /*
-    float4 pe = apos[iG];
-    //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
-    pe.xyz += fe.xyz*MDpars.x*0.1f;
-    //if(bPi){ pe.xyz=normalize(pe.xyz); }
-    pe.w=0;  // This seems to be needed, not sure why ?????
-    apos[iG] = pe;
-    */
+    // float4 pe = apos[iav];
+    // //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
+    // pe.xyz += fe.xyz*MDpars.x*0.1f;
+    // //if(bPi){ pe.xyz=normalize(pe.xyz); }
+    // pe.w=0;  // This seems to be needed, not sure why ?????
+    // apos[iav] = pe;
+    
 
     // ------ Store Force DEBUG
-    //aforce[iG] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
-    //aforce[iG] = 0;  // ToDo:  this allows to ommit  updateAtomsMMFFf4() !!!! 
+    //aforce[iav] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
+    //aforce[iav] = 0;  // ToDo:  this allows to ommit  updateAtomsMMFFf4() !!!! 
     //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
-
+    */
 }
 
 __kernel void cleanForceMMFFf4(
@@ -375,17 +385,25 @@ __kernel void cleanForceMMFFf4(
     const int natoms=n.x;
     const int nnode =n.y;
     const int iG = get_global_id (0);
-    if(iG>=(natoms+nnode)) return;
-    aforce[iG]=float4Zero;
+    const int iS = get_global_id (1);
+    const int nG = get_global_size(0);
+    const int nS = get_global_size(1);
+
+    const int iaa = iS*natoms + iG;
+    const int ian = iS*nnode  + iG;
+
+    aforce[iaa]=float4Zero;
+
+    if(iG==0){ printf("GPU::cleanForceMMFFf4() iS %i nG %i nS %i \n", iS, nG, nS );}
     //if(iG==0){ for(int i=0;i<(natoms+nnode);i++ ){printf("cleanForceMMFFf4[%i](%g,%g,%g)\n",i,aforce[i].x,aforce[i].y,aforce[i].z);} }
     if(iG<nnode){ 
-        fneigh[iG*4+0]=float4Zero;
-        fneigh[iG*4+1]=float4Zero;
-        fneigh[iG*4+2]=float4Zero;
-        fneigh[iG*4+3]=float4Zero;
+        const int i4 = ian*4;
+        fneigh[i4+0]=float4Zero;
+        fneigh[i4+1]=float4Zero;
+        fneigh[i4+2]=float4Zero;
+        fneigh[i4+3]=float4Zero;
     }
     //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
-
 }
 
 // ======================================================================
