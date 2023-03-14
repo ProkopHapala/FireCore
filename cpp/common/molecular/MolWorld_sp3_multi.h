@@ -68,6 +68,10 @@ void realloc( int nSystems_ ){
     _realloc( BKs,       ocl.nnode*nSystems  );
     _realloc( Ksp,       ocl.nnode*nSystems  );
     _realloc( Kpp,       ocl.nnode*nSystems  );
+
+    _realloc( lvecs,     nSystems  );
+    _realloc( ilvecs,    nSystems  );
+
     // ToDo : it may be good to bind buffer directly in p_cpu buffer inside   OCLsystem::newBuffer()
 }
 
@@ -110,7 +114,7 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0 ){
 }
 
 void upload(  bool bParams=0, bool bForces=0 ){
-    printf("MolWorld_sp3_multi::upload() \n", isys);
+    printf("MolWorld_sp3_multi::upload() \n");
     ocl.upload( ocl.ibuff_atoms, atoms );
     if(bForces){
         ocl.upload( ocl.ibuff_aforces, aforces );
@@ -131,7 +135,7 @@ void upload(  bool bParams=0, bool bForces=0 ){
 }
 
 void download( bool bForces=0  ){
-    printf("MolWorld_sp3_multi::download() \n", isys);
+    printf("MolWorld_sp3_multi::download() \n");
     ocl.download( ocl.ibuff_atoms, atoms );
     if(bForces){
         ocl.download( ocl.ibuff_aforces, aforces );
@@ -140,7 +144,7 @@ void download( bool bForces=0  ){
 }
 
 virtual void init( bool bGrid ) override {
-    printf("# ========== MolWorld_sp3_multi::init() START\n", isys);
+    printf("# ========== MolWorld_sp3_multi::init() START\n");
     ocl.init();
     ocl.makeKrenels_MM("common_resources/cl" );
     MolWorld_sp3::init(bGrid);
@@ -153,16 +157,16 @@ virtual void init( bool bGrid ) override {
     upload( true, false );
     bGridFF=false;
     bOcl   =false;
-    printf("# ========== MolWorld_sp3_multi::init() DONE\n", isys);
+    setup_MMFFf4_ocl();
+    printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
 
 // ======================== SETUP OCL KERNEL functions
 
 void setup_MMFFf4_ocl(){
+    printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() \n");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    Mat3_to_cl( ff.lvec   , ocl.cl_lvec    );
-    Mat3_to_cl( ff.invLvec, ocl.cl_invLvec );
     task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );   
     task_MMFF   = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
     task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
@@ -172,8 +176,7 @@ void setup_MMFFf4_ocl(){
 // ======================== EVAL OCL KERNEL functions
 
 double eval_MMFFf4_ocl( int niter ){ 
-
-    //printf( " ======= eval_MMFFf4_ocl() \n" );
+    printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() \n");
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     for(int i=0; i<niter; i++){
         task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();

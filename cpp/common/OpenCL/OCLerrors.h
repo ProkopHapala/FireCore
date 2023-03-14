@@ -104,11 +104,20 @@ void OCL_check_error(cl_int err, const char *operation, char *filename, int line
     }
 }
 
+void OCL_error_warn(cl_int err, const char *operation, int i=-999999 ){
+    if (err != CL_SUCCESS){        
+        if(i==-999999){ fprintf(stderr, "WARRNING: Error in '%s'     \"%s\" (%d)\n", operation   , OCL_err_code(err), err ); }
+        else          { fprintf(stderr, "WARRNING: Error in '%s'[%i] \"%s\" (%d)\n", operation, i, OCL_err_code(err), err ); }
+    }
+}
+
 #if OCL_DEBUG
 #define OCLerr(E)                                       OCL_check_error(E,"",__FILE__,__LINE__);
 #define OCL_checkError(E, S)          if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__);
 #define OCL_checkError_(E, S,I)       if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__,I);
 #define OCL_checkError__(E, S,I,name) if(bOCLCheckError)OCL_check_error(E,S,__FILE__,__LINE__,I,name);
+#define OCL_error_warn_(E,S,I)        if(bOCLCheckError)OCL_error_warn(E,S,I);
+
 #else
 #define OCLerr(E)               {}
 #define OCL_checkError(E, S)    {}
