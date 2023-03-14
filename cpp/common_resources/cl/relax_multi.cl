@@ -71,20 +71,17 @@ float4 getLJQ( float3 dp, float3 REQ, float R2damp ){
 // ======================================================================
 
 __kernel void getMMFFf4(
-    const int4 nDOFs,              // 1   (nAtoms,nnode)
+    const int4 nDOFs,               // 1   (nAtoms,nnode)
     // Dynamical
-    __global float4*  apos,        // 2    [natoms]
-    __global float4*  fapos,       // 3    [natoms]     
-    __global float4*  fneigh,      // 4    [nnode*4]
-    //__global float4*  pipos,       //  [nnode]    - Stored in apos
-    //__global float4*  fpipos,      //  [nnode]    - Stored in fapos
-    //__global float4*  fneighpi,    //  [nnode*4]  - stored fneigh
+    __global float4*  apos,         // 2  [natoms]
+    __global float4*  fapos,        // 3  [natoms]     
+    __global float4*  fneigh,       // 4  [nnode*4]
     // parameters
     __global int4*    neighs,       // 5  [nnode]  neighboring atoms
     __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} 
-    __global float4*  apars,        // 7 [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
-    __global float4*  bLs,          // 8 [nnode]  bond lengths  for each neighbor
-    __global float4*  bKs,          // 9 [nnode]  bond stiffness for each neighbor
+    __global float4*  apars,        // 7  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+    __global float4*  bLs,          // 8  [nnode]  bond lengths  for each neighbor
+    __global float4*  bKs,          // 9  [nnode]  bond stiffness for each neighbor
     __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
     __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
     __global cl_Mat3* lvec,         // 12

@@ -22,7 +22,7 @@ int main(int argc, char *argv[]){
 	MolWorld_sp3_multi* W = new MolWorld_sp3_multi();
 	// --------- using argparse & LabdaDict;
 	app = new MolGUI( junk, DM.w-100, DM.h-100, W );
-	funcs["-n"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &W->nSystems ); }}; // number of systems
+	funcs["-m"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &W->nSystems );   printf(  "!!!!!!!!!!!!!!! DEBUG MolGUIapp_multi: W->nSystems %i \n", W->nSystems ); }}; // number of systems
 	funcs["-s"]={1,[&](const char** ss){ W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz
 	funcs["-g"]={1,[&](const char** ss){ W->surf_name =ss[0]; }}; // substrate as .xyz

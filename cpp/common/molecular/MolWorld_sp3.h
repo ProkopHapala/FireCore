@@ -351,7 +351,7 @@ void initRigid(){
 void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
     //params.printAtomTypeDict();
-    params.printAtomTypes();
+    //params.printAtomTypes();
     //params.printBond();
 	builder.bindParams(&params);
     insertSMILES( s );
@@ -425,7 +425,6 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
 
 virtual void init( bool bGrid ){
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
-    params.printAtomTypes();
 	builder.bindParams(&params);
     //params.printAtomTypeDict();
     //params.printAtomTypes();
@@ -580,16 +579,18 @@ virtual void init( bool bGrid ){
         //initNBmol( ff.natoms,  ff.apos,  ff.fapos  );
         //initNBmol( ffl.natoms, ffl.apos, ffl.fapos );
         initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
-
+        DEBUG
         ff.bSubtractAngleNonBond=true;
         ff.REQs=nbmol.REQs;
 
+        DEBUG
         bool bChargeToEpair=true;
         //bool bChargeToEpair=false;
         if(bChargeToEpair){
             int etyp=-1; etyp=params.atomTypeDict["E"];
             ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
         }
+        DEBUG
         nbmol.evalPLQs(gridFF.alpha);
         DEBUG
         if(bOptimizer){ 

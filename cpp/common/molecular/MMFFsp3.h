@@ -645,6 +645,7 @@ void evalPi0s(){
 }
 
 void chargeToEpairs( Vec3d* REQs, double cQ=-0.2, int etyp=-1 ){
+    printf( "chargeToEpairs() \n" );
     for( int ib=0; ib<nbonds; ib++ ){
         Vec2i b = bond2atom[ib];
         if( atype[b.i]==etyp ){ REQs[b.i].z+=cQ; REQs[b.j].z-=cQ; }

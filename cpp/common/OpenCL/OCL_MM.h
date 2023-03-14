@@ -40,6 +40,7 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
     int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
+    int ibuff_lvecs=-1, ibuff_ilvecs=-1; 
 
     void makeKrenels_MM( const char*  cl_src_dir ){
         printf( "makeKrenels_MM() \n" );
@@ -55,11 +56,13 @@ class OCL_MM: public OCLsystem { public:
     }
 
     int initAtomsForces( int nSystems_, int nAtoms_, int nnode_ ){
+        nSystems=nSystems_;
         nnode  = nnode_;
         nAtoms = nAtoms_;
         npi    = nnode_;
         nvecs  = nAtoms+npi;
         nneigh = nnode*4*2;
+        printf( "initAtomsForces() nSystems*nvecs %i nSystems %i nvecs %i natoms %i nnode %i npi %i \n", nSystems*nvecs, nSystems, nvecs, nAtoms, nnode, npi );
         ibuff_atoms      = newBuffer( "atoms",      nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_aforces    = newBuffer( "aforces",    nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -75,6 +78,10 @@ class OCL_MM: public OCLsystem { public:
         ibuff_BKs        = newBuffer( "BKs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Ksp        = newBuffer( "Ksp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Kpp        = newBuffer( "Kpp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
+
+        ibuff_lvecs      = newBuffer( "lvecs",      nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
+        ibuff_ilvecs     = newBuffer( "ilvecs",     nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
+
         return ibuff_atoms;
     }
 
