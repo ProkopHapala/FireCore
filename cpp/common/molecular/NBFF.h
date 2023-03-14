@@ -63,6 +63,7 @@ class NBsystem{ public: // Can be Child of AtomicSystem
     Quat4i *neighs=0;  //
 
     void evalPLQs(double K){
+        if(PLQs==0){ _realloc(PLQs,n);  }
         for(int i=0; i<n; i++){
             //printf( "makePLQs[%i] \n", i );
             //printf( "makePLQs[%i] REQ(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z);

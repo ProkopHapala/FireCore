@@ -15,7 +15,7 @@
 class MolWorld_sp3_multi : public MolWorld_sp3 { public:
     OCL_MM     ocl;
 
-    int nSystems    = 0;
+    int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
     bool bGPU_MMFF = true;
 
@@ -35,6 +35,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3 { public:
     Quat4f* Ksp        =0;
     Quat4f* Kpp        =0;
 
+    cl_Mat3*  lvecs    =0;
+    cl_Mat3* ilvecs    =0;
+
     OCLtask* task_cleanF=0;
     OCLtask* task_NBFF=0;
     OCLtask* task_MMFF=0;
@@ -43,9 +46,11 @@ class MolWorld_sp3_multi : public MolWorld_sp3 { public:
 // ======== Functions
 
 void realloc( int nSystems_ ){
+    printf("MolWorld_sp3_multi::realloc() \n");
     nSystems=nSystems_;
+    printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
     ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode );
-    printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i nvecs %i \n", nSystems, ocl.nAtoms, ocl.nnode, ocl.nvecs );
+    //printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i nvecs %i \n", nSystems, ocl.nAtoms, ocl.nnode, ocl.nvecs );
     // --- dynamical
     _realloc( atoms,     ocl.nvecs*nSystems  );
     _realloc( aforces,   ocl.nvecs*nSystems  );
@@ -67,6 +72,7 @@ void realloc( int nSystems_ ){
 }
 
 void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
+    printf("MolWorld_sp3_multi::pack_system(%i) \n", isys);
     //ocl.nvecs;
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
@@ -77,6 +83,8 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
         //pack( f.nvecs, ff.avel, avel+i0v );
     }
     if(bParams){
+        Mat3_to_cl( ff.   lvec,  lvecs[isys] );
+        Mat3_to_cl( ff.invLvec, ilvecs[isys] );
         copy( ff.natoms, ff.aneighs,      neighs   +i0a );
         copy( ff.natoms, ff.aneighCell,   neighCell+i0a );
         copy( ff.natoms, ff.bkneighs,     bkNeighs +i0a );
@@ -90,6 +98,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
 }
 
 void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0 ){
+    printf("MolWorld_sp3_multi::unpack_system(%i) \n", isys);
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
@@ -101,6 +110,7 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0 ){
 }
 
 void upload(  bool bParams=0, bool bForces=0 ){
+    printf("MolWorld_sp3_multi::upload() \n", isys);
     ocl.upload( ocl.ibuff_atoms, atoms );
     if(bForces){
         ocl.upload( ocl.ibuff_aforces, aforces );
@@ -121,6 +131,7 @@ void upload(  bool bParams=0, bool bForces=0 ){
 }
 
 void download( bool bForces=0  ){
+    printf("MolWorld_sp3_multi::download() \n", isys);
     ocl.download( ocl.ibuff_atoms, atoms );
     if(bForces){
         ocl.download( ocl.ibuff_aforces, aforces );
@@ -128,13 +139,8 @@ void download( bool bForces=0  ){
     }
 }
 
-void mol2ocl(int nSystems_ ){
-    //printf( "mol2ocl() n,pi(%i,%i) buffs atoms, coefs, aforces, neighs: %i %i %i %i \n", n,npi, ocl.ibuff_atoms, ocl.ibuff_coefs, ocl.ibuff_aforces, ocl.ibuff_neighs );
-    //ocl.initAtomsForces( n, npi, ff.nnode );
-
-}
-
-virtual void init( bool bGrid ) override  {
+virtual void init( bool bGrid ) override {
+    printf("# ========== MolWorld_sp3_multi::init() START\n", isys);
     ocl.init();
     ocl.makeKrenels_MM("common_resources/cl" );
     MolWorld_sp3::init(bGrid);
@@ -147,6 +153,7 @@ virtual void init( bool bGrid ) override  {
     upload( true, false );
     bGridFF=false;
     bOcl   =false;
+    printf("# ========== MolWorld_sp3_multi::init() DONE\n", isys);
 }
 
 // ======================== SETUP OCL KERNEL functions
