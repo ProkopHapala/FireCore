@@ -47,10 +47,10 @@ class OCL_MM: public OCLsystem { public:
         char srcpath[1024];
         sprintf( srcpath, "%s/relax_multi.cl", cl_src_dir );     
         buildProgram( srcpath, program_relax );
-        newTask( "getNonBond"             ,program_relax);
-        newTask( "getMMFFf4"              ,program_relax);
-        newTask( "cleanForceMMFFf4"       ,program_relax);
-        newTask( "updateAtomsMMFFf4"      ,program_relax);
+        newTask( "getNonBond"             ,program_relax, 2);
+        newTask( "getMMFFf4"              ,program_relax, 2);
+        newTask( "cleanForceMMFFf4"       ,program_relax, 2);
+        newTask( "updateAtomsMMFFf4"      ,program_relax, 2);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }
@@ -85,11 +85,11 @@ class OCL_MM: public OCLsystem { public:
         return ibuff_atoms;
     }
 
-
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
         task->global.x = na;
+        task->global.y = nSystems;
         useKernel( task->ikernel );
         nDOFs.x=na; 
         nDOFs.y=nNode; 
@@ -134,6 +134,7 @@ class OCL_MM: public OCLsystem { public:
         printf("setup_getMMFFf4(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFf4");
         task->global.x = nNode;
+        task->global.y = nSystems;
         useKernel( task->ikernel );
         nDOFs.x=na; 
         nDOFs.y=nNode; 
@@ -183,6 +184,7 @@ class OCL_MM: public OCLsystem { public:
         printf( "setup_updateAtomsMMFFf4() \n" );
         if(task==0) task = getTask("updateAtomsMMFFf4");
         task->global.x = na+nNode;
+        task->global.y = nSystems;
         //task->local .x = 1;
         //task->roundSizes();
         //if(n >=0  ) 
@@ -213,6 +215,7 @@ class OCL_MM: public OCLsystem { public:
         printf( "setup_cleanForceMMFFf4() \n" );
         if(task==0) task = getTask("cleanForceMMFFf4");
         task->global.x = na+nNode;
+        task->global.y = nSystems;
         nDOFs.x=na; 
         nDOFs.y=nNode; 
         useKernel( task->ikernel );
