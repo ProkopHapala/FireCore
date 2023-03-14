@@ -87,7 +87,7 @@ class OCL_MM: public OCLsystem { public:
 
 
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
-        printf("!!!!! setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
+        printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
         task->global.x = na;
         useKernel( task->ikernel );
@@ -107,8 +107,9 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_REQs      );  // 4
         err |= useArgBuff( ibuff_neighs    );  // 5
         err |= useArgBuff( ibuff_neighCell );  // 6
-        err |= _useArg( nPBC               );  // 7
-        err |= _useArg( cl_lvec            );  // 8
+        err |= useArgBuff( ibuff_lvecs     );  // 7
+        //err |= _useArg( cl_lvec          );  // 7
+        err |= _useArg( nPBC               );  // 8
         err |= _useArg( Rdamp              );  // 9
         OCL_checkError(err, "setup_getNonBond");
         return task;
@@ -130,7 +131,7 @@ class OCL_MM: public OCLsystem { public:
     }
 
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
-        //printf("setup_getMMFFsp3(na=%i,nnode=%i) \n", na, nNode);
+        printf("setup_getMMFFf4(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFf4");
         task->global.x = nNode;
         useKernel( task->ikernel );
@@ -151,8 +152,10 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_BKs    );     // 9
         err |= useArgBuff( ibuff_Ksp    );     // 10
         err |= useArgBuff( ibuff_Kpp    );     // 11
-        err |= _useArg( cl_lvec    );          // 12
-        err |= _useArg( cl_invLvec );          // 13
+        err |= useArgBuff( ibuff_lvecs  );     // 12
+        err |= useArgBuff( ibuff_ilvecs );     // 13
+        //err |= _useArg( cl_lvec    );          // 12
+        //err |= _useArg( cl_invLvec );          // 13
         OCL_checkError(err, "setup_getMMFFf4");
         return task;
         /*
@@ -177,6 +180,7 @@ class OCL_MM: public OCLsystem { public:
     }
 
     OCLtask* setup_updateAtomsMMFFf4( int na, int nNode,  OCLtask* task=0 ){
+        printf( "setup_updateAtomsMMFFf4() \n" );
         if(task==0) task = getTask("updateAtomsMMFFf4");
         task->global.x = na+nNode;
         //task->local .x = 1;
@@ -184,7 +188,7 @@ class OCL_MM: public OCLsystem { public:
         //if(n >=0  ) 
         nDOFs.x=na; 
         nDOFs.y=nNode; 
-        useKernel( task->ikernel );
+        useKernel( task->ikernel  );
         err |= _useArg( md_params );           // 1
         err |= _useArg( nDOFs     );           // 2
         err |= useArgBuff( ibuff_atoms      ); // 3
@@ -206,6 +210,7 @@ class OCL_MM: public OCLsystem { public:
     }
 
     OCLtask* setup_cleanForceMMFFf4( int na, int nNode,  OCLtask* task=0 ){
+        printf( "setup_cleanForceMMFFf4() \n" );
         if(task==0) task = getTask("cleanForceMMFFf4");
         task->global.x = na+nNode;
         nDOFs.x=na; 

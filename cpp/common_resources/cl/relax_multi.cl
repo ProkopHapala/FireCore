@@ -84,8 +84,8 @@ __kernel void getMMFFf4(
     __global float4*  bKs,          // 9  [nnode]  bond stiffness for each neighbor
     __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
     __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
-    __global cl_Mat3* lvec,         // 12
-    __global cl_Mat3* invLvec       // 13
+    __global cl_Mat3* lvecs,        // 12
+    __global cl_Mat3* ilvecs        // 13
 ){
 
     const int iG = get_global_id (0);   // intex of atom
@@ -118,8 +118,9 @@ __kernel void getMMFFf4(
     }
     */
     
-
     // ========= Private Memory
+    const cl_Mat3 lvec    = lvecs [iS];
+    const cl_Mat3 invLvec = ilvecs[iS];
 
     // ---- Dynamical
     float4  hs [4];              // direction vectors of bonds
@@ -400,13 +401,14 @@ __kernel void getNonBond(
     __global float4*  REQKs,        // 4
     __global int4*    neighs,       // 5
     __global int4*    neighCell,    // 6
-    const int4 nPBC,                // 7
-    const cl_Mat3 lvec,             // 8
+    __global cl_Mat3* lvecs,         // 7
+    const int4 nPBC,                // 8
     const float Rdamp               // 9
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
     const int iG = get_global_id  (0);
+    const int iS = get_global_id  (1);
     const int nG = get_global_size(0);
     const int iL = get_local_id   (0);
     const int nL = get_local_size (0);
@@ -425,6 +427,8 @@ __kernel void getNonBond(
     const float3 posi  = atoms [iG].xyz;
     const float  R2damp = Rdamp*Rdamp;
     float4 fe          = float4Zero;
+
+    const cl_Mat3 lvec = lvecs[iS];
 
     //if(iG==0){ for(int i=0; i<natoms; i++)printf( "GPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z ); }
 

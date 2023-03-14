@@ -196,6 +196,7 @@ class OCLsystem{ public:
     std::unordered_map<std::string,int> task_dict;
 
     cl_kernel current_kernel;
+    OCLtask* currentTask=0;
     int argCounter;
 
     OCLtask* getTask(const char* name){ 
@@ -405,11 +406,19 @@ class OCLsystem{ public:
     //inline int copyBuff(int from, int to                           ){ int n=buffers[from].n; int n_=buffers[to].n; if(n_<n)n=n_; return clEnqueueCopyBuffer(commands,buffers[from].p_gpu,buffers[to].p_gpu,0,0,n,0,NULL,NULL); };
 
     void useKernel( int ikernel){ current_kernel=kernels[ikernel]; argCounter=0; };
+    void useTask( OCLtask* task ){ useKernel( task->ikernel );  currentTask=task; };
+
+    // void errArg(cl_int err){ currentTask 
+    //     if (err != CL_SUCCESS){ 
+    //         OCL_checkError_(err,"useArg",i,currentTask->n); 
+    //     }
+    // }
+
     //int  useArg( cl_mem ibuff,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(ibuff) ); printf("useArg[%i]\n",i); OCL_checkError_(err,"useArg",i); return err; };
-    int  useArg( int    i_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(int),    &(i_arg) ); OCL_checkError_(err,"useArg",i); return err; };
-    int  useArg( float  f_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(float),  &(f_arg) ); OCL_checkError_(err,"useArg",i); return err; };
-    int  useArg_( void*  buff , int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, nbytes,           buff   ); OCL_checkError_(err,"useArg_",i); return err; };
-    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff].p_gpu) ); OCL_checkError_(err,"useArgBuff",i); return err; };
+    int  useArg( int    i_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(int),    &(i_arg) );                OCL_error_warn_(err,"useArg",i);     return err; };
+    int  useArg( float  f_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(float),  &(f_arg) );                OCL_error_warn_(err,"useArg",i);     return err; };
+    int  useArg_( void*  buff , int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, nbytes,           buff   );                OCL_error_warn_(err,"useArg_",i);    return err; };
+    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff].p_gpu) ); OCL_error_warn_(err,"useArgBuff",i); return err; };
     int enque( size_t dim, const size_t* global, const size_t* local, int ikernel=-1 ){ 
         cl_kernel kernel;
         if(ikernel<0){kernel=current_kernel;}else{ kernel = kernels[ikernel]; }; 
