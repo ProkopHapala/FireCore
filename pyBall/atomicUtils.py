@@ -27,18 +27,20 @@ def findAllBonds( atoms, Rcut=3.0, RvdwCut=0.7 ):
     return bonds, bondsVecs
 
 def getRvdWs( atypes, eparams=elements.ELEMENTS ):
+    #print( eparams[ 6 ][7], eparams[ 6 ] )
     return [ eparams[ ei ][7] for ei in atypes ]
 
 def getRvdWsNP( atypes, eparams=elements.ELEMENTS ):
-    return np.array( getRvdWs( atypes, eparams ), dtype=np.int32 ) 
+    return np.array( getRvdWs( atypes, eparams ) ) 
 
-def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.8, RvdWs=None, byRvdW=True ):
+def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
     bonds  = []
     iatoms = np.arange( len(apos), dtype=int )
     Rcut2  = Rcut*Rcut
     if byRvdW:
         if  RvdWs is None:
             RvdWs = getRvdWsNP( atypes, eparams=elements.ELEMENTS )
+            #print( RvdWs )
     else:
         RvdWs = np.ones(len(apos))*Rcut
     for i,pi in enumerate(apos):
@@ -172,11 +174,8 @@ def groupToPair( p1, p2, group, up, up_by_cog=False ):
     rotmat = makeRotMat( fw, up )
     ps  = group[:,1:]
     #ps_ = ps
-    #print( "ps=", ps )
-    #print ( rotmat )
     #ps_ = np.transpose( np.dot( rotmat, np.transpose(ps) ) )
     ps_ = np.dot( ps, rotmat ) 
-    #print( "ps_=", ps_ )
     group[:,1:] = ps_ + center
     return group
     
@@ -195,7 +194,6 @@ def replacePairs( pairs, atoms, group, up_vec=(np.array((0.0,0.0,0.0)),1) ):
         atoms_.append(atom)
     for pair in pairs:
         group_ = groupToPair( atoms[pair[0],1:], atoms[pair[1],1:], group.copy(), up_vec[0], up_vec[1] )
-        #print( "group = ", group )
         for atom in group_:
             atoms_.append( atom )
         #break
@@ -253,14 +251,13 @@ def saveAtoms( atoms, fname, xyz=True ):
     fout.write("%i\n"  %len(atoms) )
     if xyz==True : fout.write("\n") 
     for i,atom in enumerate( atoms ):
-        #print( i, atom )
         if isinstance( atom[0], str ):
             fout.write("%s %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
         else:
             fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
 
-def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="", bHeader=True ):
+def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True ):
     if(bHeader):
         fout.write("%i\n"  %len(xyzs) )
         fout.write(comment+"\n")
@@ -274,10 +271,9 @@ def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="", bHeader=True ):
         for i,xyz in enumerate( xyzs ):
             fout.write("%s %f %f %f\n"  %( es[i], xyz[0], xyz[1], xyz[2] ) )
 
-def saveXYZ( es, xyzs, fname, qs=None, Rs=None ):
-    print(">>>>>",fname,"<<<<<")
-    fout = open(fname, "w")
-    writeToXYZ( fout, es, xyzs, qs, Rs=Rs )
+def saveXYZ( es, xyzs, fname, qs=None, Rs=None, mode="w", comment="#comment" ):
+    fout = open(fname, mode )
+    writeToXYZ( fout, es, xyzs, qs, Rs=Rs, comment=comment )
     fout.close() 
 
 def makeMovie( fname, n, es, func ):
@@ -338,7 +334,23 @@ def readAtomsXYZ( fin, na ):
         es  .append( ws[0] )
     return np.array(apos), es
 
+def read_lammps_lvec( fin ):
+    '''
+    https://docs.lammps.org/Howto_triclinic.html
+    a = (xhi-xlo,0,0); b = (xy,yhi-ylo,0); c = (xz,yz,zhi-zlo). 
+    '''
+    xlo_bound,xhi_bound,xy = ( float(w) for w in fin.readline().split() )
+    ylo_bound,yhi_bound,xz = ( float(w) for w in fin.readline().split() )
+    zlo,zhi,yz             = ( float(w) for w in fin.readline().split() )
+    xlo = xlo_bound - np.min( [0.0,xy,xz,xy+xz] )
+    xhi = xhi_bound - np.max( [0.0,xy,xz,xy+xz] )
+    ylo = ylo_bound - min(0.0,yz)
+    yhi = yhi_bound - max(0.0,yz)
+    return np.array( ( (xhi-xlo,0.,0.), (xy,yhi-ylo,0.), (xz,yz,zhi-zlo) ) )
+
+
 def readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None ):
+
     bClose=False
     if fin is None: 
         fin=open(fname, 'r')
@@ -354,18 +366,11 @@ def readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None )
                 if wds[1]=='NUMBER':
                     na = int(fin.readline())
                     isys+=1
-                    #print("isys=", isys )
                 elif( isys in selection ):
                     if wds[1]=='BOX':
-                        lvec = np.array([
-                            [ float(w) for w in fin.readline().split() ],
-                            [ float(w) for w in fin.readline().split() ],
-                            [ float(w) for w in fin.readline().split() ],
-                        ])
-                        #print( "isys=",isys," na=",na," lvec=", lvec )
+                        lvec = read_lammps_lvec( fin )
                     elif wds[1]=='ATOMS':
                         apos,es = readAtomsXYZ( fin, na )
-                        #print( apos )
                         S = AtomiSystem( lvec=lvec, enames=es, apos=apos)
                         trj.append( S )
     return trj
@@ -431,12 +436,10 @@ def loadCoefs( characters=['s'] ):
     coefs = []
     for char in characters:
         fname  = 'phi_0000_%s.dat' %char
-        print( fname )
         raw = np.genfromtxt(fname,skip_header=1)
         Es  = raw[:,0]
         cs  = raw[:,1:]
         sh  = cs.shape
-        print(( "shape : ", sh ))
         cs  = cs.reshape(sh[0],sh[1]//2,2)
         d   = cs[:,:,0]**2 + cs[:,:,1]**2
         coefs.append( cs[:,:,0] + 1j*cs[:,:,1] )
@@ -466,7 +469,6 @@ def histR( ps, dbin=None, Rmax=None, weights=None ):
         if Rmax is None:
             Rmax = rs.max()+0.5
         bins = np.linspace( 0,Rmax, int(Rmax/(dbin))+1 )
-    print(( rs.shape, weights.shape ))
     return np.histogram(rs, bins, weights=weights)
 
 # ================= Topology Builder
@@ -511,14 +513,11 @@ def disolveAtom( base, ia ):
             j-=1
         
         if b[0]==ia:
-            #print("add ng ", b)
             neighs.append(j)
             continue
         if b[1]==ia:
-            #print("add ng ", b)
             neighs.append(i)
             continue
-        
         print( "add B ", (i,j), b )
         Bs.append( (i,j) )
     As = list(A0s) + []
@@ -533,7 +532,6 @@ def disolveAtom( base, ia ):
     
     #for i in neighs:
     #    As[i]-=1
-    #print(As)
     old_i = list( range(len(As)) )
     old_i.pop(ia)
     As.pop(ia)
@@ -588,18 +586,19 @@ class AtomiSystem():
         if fname is not None:
             self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname)
 
-    def saveXYZ(self, fname ):
-        saveXYZ( self.enames, self.xyzs, fname, qs=self.qs, Rs=self.Rs )
+    def saveXYZ(self, fname, mode="w", blvec=True, comment="#comment" ):
+        if blvec and (self.lvec is not None ):
+            comment="lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   )
+        saveXYZ( self.enames, self.apos, fname, qs=self.qs, Rs=self.Rs, mode=mode, comment=comment )
     
     def toXYZ(self, fout ):
-        writeToXYZ( fout, self.enames, self.xyzs, qs=self.qs, Rs=self.Rs, bHeader=False )
+        writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=False )
 
     def print(self):
         for i in range(len(self.apos)):
             print( "[%i] %i=%s p(%10.5f,%10.5f,%10.5f)" %( i, self.atypes[i],self.enames[i], self.apos[i,0], self.apos[i,1], self.apos[i,2] ) )
 
     def printBonds(self):
-        #print(self.bonds)
         for i in range(len(self.bonds)):
             print( "[%i] (%i,%i) (%s,%s)" %( i, self.bonds[i,0],self.bonds[i,1],  self.enames[self.bonds[i,0]], self.enames[self.bonds[i,1]] ) )
 
@@ -610,6 +609,41 @@ class AtomiSystem():
 
     def findCOG(self, apos, byBox=False ):
         return findCOG( apos, byBox=byBox )
+    
+    def clonePBC(self,nPBC=(1,1,1) ):
+        nx,ny,nz= nPBC
+        nxyz=nx*ny*nz
+        na = len(self.apos)
+        apos   = np.zeros((na*nxyz,3))
+
+        if self.atypes is not None: 
+            atypes = np.zeros(na*nxyz,np.int32)
+        else:
+            atypes = None
+
+        if self.enames is not None: 
+            enames = []
+        else:
+            enames = None
+
+        if self.qs is not None: 
+            qs = np.zeros(na*nxyz) 
+        else:
+            qs = None
+
+        lvec   = np.array([ self.lvec[0,:]*nx,self.lvec[1,:]*ny,self.lvec[2,:]*nz ]) 
+        i0=0
+        for iz in range(nz):
+            for iy in range(ny):
+                for ix in range(nx):
+                    shift = self.lvec[0,:]*ix  + self.lvec[1,:]*iy + self.lvec[2,:]*iz
+                    apos  [i0:i0+na,:] = self.apos[:,:] + shift[None,:]
+                    if atypes is not None: atypes[i0:i0+na  ] = self.atypes.copy()
+                    if qs     is not None: qs    [i0:i0+na  ] = self.qs    .copy()
+                    if enames is not None: enames += self.enames
+                    i0+=na
+        return AtomiSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
+
 
     #def orient_vs( p0, fw, up, apos, trans=None, bool bCopy ):
     #def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):

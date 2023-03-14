@@ -5,25 +5,22 @@ from pyBall import atomicUtils as au
 from pyBall import plotUtils   as plu
 
 #selection=[1,2,3,4]
-
 selection=range(100)
+
+# ---- read trajectory
 trj = au.readLammpsTrj( fname="traj.lammpstrj", nmax=100, selection=set(selection) )
-print( len(trj) )
 
-for i,sys in enumerate(trj):
-    print("plot # ", i)
-    fig = plt.figure(figsize=(5,5))
-    #plu.plotAtoms( apos=sys.apos, es=sys.enames, sizes=100., colors='#808080', marker='o', axes=(0,1) )
-    #sys.findBonds( Rcut=3.0, RvdwCut=0.8 )
-    sys.findBonds( Rcut=3.0, RvdwCut=0.9 )
-    colors = [ au.elements.ELEMENT_DICT[e][8]     for e in sys.enames ]
-    sizes  = [ au.elements.ELEMENT_DICT[e][6]*50. for e in sys.enames ]
-    plu.plotBonds( links=sys.bonds, ps=sys.apos, axes=(0,1) )
-    plu.plotAtoms( apos=sys.apos, es=sys.enames, sizes=sizes, colors=colors, marker='o', axes=(0,1) )
+# ---- multiply trajectroy in periodic boundary conditions (PBC)
+trj_221 = [ sys.clonePBC( (2,2,1) ) for sys in trj  ]
 
-    plt.xlim(-10.0,10.0)
-    plt.ylim( 0.0,20.0)
-    plt.savefig( "mol_%03i.png" %selection[i], bbox_inches='tight' )
-    plt.close(fig)
+# ---- save PBC-mutiplicated trajcetory
+#open("trj.xyz"    ,"w").close(); 
+#for i,sys in enumerate(trj): sys.saveXYZ( "trj.xyz", mode="a" )
+open("trj_221.xyz","w").close(); 
+for i,sys in enumerate(trj_221): sys.saveXYZ( "trj_221.xyz", mode="a" )
 
-#plt.show()
+'''
+# ---- save trajectroy to PBC
+#plu.plotTrj( trj, bBonds=True, sz=50., numbers=None, axes=(0,1), extent=None, prefix="mol_" )
+plu.plotTrj( trj_221, bBonds=True, sz=50., numbers=selection, axes=(0,1), prefix="mol_", extent=(-10.,10.,0.0,20.) )
+'''
