@@ -104,7 +104,7 @@ __kernel void getMMFFf4(
 
     #define NNEIGH 4
 
-    if(iG==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i iS %i nG %i nS %i \n", nnode, nAtoms, iS, nG, nS ); }
+    if(iav==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i iS %i nG %i nS %i \n", nnode, nAtoms, iS, nG, nS ); }
     
     // if(ia==0)for(int i=0; i<nnode; i++){
     //     printf( "GPU[%i] ", i );
@@ -273,7 +273,11 @@ __kernel void updateAtomsMMFFf4(
     const int nG = get_global_size(0);
     const int nS = get_global_size(1);
 
-    if(iG==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i iS %i nG %i nS %i dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
+    //const int ian = iG + iS*nnode; 
+    const int iaa = iG + iS*natoms; 
+    const int iav = iG + iS*nvec;
+
+    if(iav==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i iS %i nG %i nS %i  iav_max %i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS,  (nG-1)+(nS-1)*nvec, MDpars.x, MDpars.y, MDpars.z );
     /*
     if(iG==0){
     for(int i=0; i<natoms; i++){
@@ -308,25 +312,30 @@ __kernel void updateAtomsMMFFf4(
     }
     */
 
-    
-    //const int iaa = iG + iS*natoms; 
-    //const int ian = iG + iS*nnode; 
-    const int iav = iG + iS*nvec;
-
     if(iG>=(natoms+nnode)) return;
+
+    //aforce[iav] = float4Zero;
 
     float4 fe      = aforce[iav]; 
     const bool bPi = iG>=natoms;
     
     // ------ Gather Forces from back-neighbors
+
+    /*
     int4 ngs;  
+    int ip0  = iS*nnode*8;
     if( bPi ){  // pis 
-        const int ip0  = nnode*4;
-        ngs            = bkNeighs[iav+natoms];
-        ngs           += (int4){ip0,ip0,ip0,ip0};
+        ngs   = bkNeighs[iaa-natoms];
+        //ip0  += nnode*4;   // this cause problems that ngs=-1 are not -1 anymore !!!!! 
     }else{     // atoms  
-        ngs            = bkNeighs[iav];
+        ngs   = bkNeighs[iaa];
     }
+    ngs      += (int4){ip0,ip0,ip0,ip0};
+    */
+    int4 ngs = bkNeighs[ iav ];
+
+    //if(iS==5)printf( "iG,iS %i %i ngs %i,%i,%i,%i \n", iG, iS, ngs.x,ngs.y,ngs.z,ngs.w );
+
     // WARRNING : bkNeighs must be properly shifted on CPU !!!!!!!!!!!!!!
     if(ngs.x>=0){ fe += fneigh[ngs.x]; }
     if(ngs.y>=0){ fe += fneigh[ngs.y]; }
@@ -336,13 +345,11 @@ __kernel void updateAtomsMMFFf4(
     // !!!!! Error code was "CL_INVALID_COMMAND_QUEUE" (-36)  is HERE !!!!!!
     aforce[iav] = fe; // store force before limit
 
-    
     // ---- Limit Forces
     float fr2 = dot(fe.xyz,fe.xyz);
     if( fr2 > (MDpars.z*MDpars.z) ){
         fe.xyz*=(MDpars.z/sqrt(fr2));
     } 
-
 
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
     float4 pe = apos[iav];
@@ -396,7 +403,6 @@ __kernel void updateAtomsMMFFf4(
     // pe.w=0;  // This seems to be needed, not sure why ?????
     // apos[iav] = pe;
     
-
     // ------ Store Force DEBUG
     //aforce[iav] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
     //aforce[iav] = 0;  // ToDo:  this allows to ommit  updateAtomsMMFFf4() !!!! 
@@ -421,7 +427,7 @@ __kernel void cleanForceMMFFf4(
 
     aforce[iaa]=float4Zero;
 
-    if(iG==0){ printf("GPU::cleanForceMMFFf4() iS %i nG %i nS %i \n", iS, nG, nS );}
+    if(iaa==0){ printf("GPU::cleanForceMMFFf4() iS %i nG %i nS %i \n", iS, nG, nS );}
     //if(iG==0){ for(int i=0;i<(natoms+nnode);i++ ){printf("cleanForceMMFFf4[%i](%g,%g,%g)\n",i,aforce[i].x,aforce[i].y,aforce[i].z);} }
     if(iG<nnode){ 
         const int i4 = ian*4;

@@ -6,6 +6,18 @@
 #include "Vec3.h"
 #include "quaternion.h"
 
+inline int add_except(int i,int di,int ino){ return (i==ino)?i:i+di; }
+inline Quat4i add_except(Quat4i q, int di, int ino=-1){
+    return (Quat4i){ 
+        add_except(q.x,di,ino), 
+        add_except(q.y,di,ino),
+        add_except(q.z,di,ino),
+        add_except(q.w,di,ino)
+    };
+};
+
+void     copy_add(int n, Quat4i* from, Quat4i* to, int i0, int ino=-1 ){ for(int i=0; i<n; i++){ to[i]= add_except( from[i],i0,ino); } }
+
 void     copy    (int n, Quat4i* from, Quat4i* to){ for(int i=0; i<n; i++){ to[i]=from[i]; } }
 void     copy    (int n, Quat4f* from, Quat4f* to){ for(int i=0; i<n; i++){ to[i]=from[i]; } }
 
