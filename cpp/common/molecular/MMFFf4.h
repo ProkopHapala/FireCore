@@ -157,6 +157,11 @@ float eval_atom(int ia){
     Quat4f hs[4];
     Vec3f  f1,f2;
 
+    //const int iG_DBG = 0;
+    const int ia_DBG = 2;
+
+    if(ia==ia_DBG)printf( "CPU[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
+
     // --------- Bonds Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -176,19 +181,18 @@ float eval_atom(int ia){
 
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
             E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
-            //if(ia==0)printf( "CPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
-            /*
+            if(ia==ia_DBG)printf( "CPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
+            
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing].f, 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].f.add(f2);    //   pi-alignment     (konjugation)
-                //if(ia==9)
-                //printf( "CPU:pipi[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, hpi.dot(pipos[ing].f), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+                //if(ia==ia_DBG)printf( "CPU:pipi[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, hpi.dot(pipos[ing].f), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
                 //if(idebug)printf( "pi-pi[%i|%i] kpp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, kpp, hpi.dot(pipos[ing].f),1.,1., f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             }
             // ToDo: triple bonds ?
-            */
+            
         } 
-        /*
+        
         // pi-sigma 
         //if(bPi){    
         float ksp = Kspi[i];
@@ -197,9 +201,9 @@ float eval_atom(int ia){
             //if(idebug)printf( "pi-sigma[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, ksp, hpi.dot(h.f),1.,h.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
         }
         //}
-        */
+        
     }
-    /*
+    
     // --------- Angle Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -211,15 +215,14 @@ float eval_atom(int ia){
             const Quat4f& hj = hs[j];
             E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             //if(idebug)printf( "ang[%i|%i,%i] kss=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
-            if(ia==0)printf( "CPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            if(ia==ia_DBG)printf( "CPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fbs[i].f.add( f1     );
             fbs[j].f.add( f2     );
             fa.      sub( f1+f2  );
-            if(ia==0)printf( "GPU:fa[%i](%g,%g,%g)\n", ia, fa.x,fa.y,fa.z  );
             // ToDo: subtract non-covalent interactions
         }
     }
-    */
+    
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia].f=fa; 
@@ -272,7 +275,7 @@ float eval( bool bClean=true, bool bCheck=true ){
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     eval_atoms();
-    printf("CPU BEFORE assemble() \n"); printDEBUG(false,false);  //DEBUG
+    printf("CPU BEFORE assemble() \n"); printDEBUG();  //DEBUG
     asseble_forces();
     //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
@@ -355,7 +358,7 @@ void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
         //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
         printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", fapos[i].x, fapos[i].y, fapos[i].z, fapos[i].w );
         //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i].x, avel[i].y, avel[i].z, avel[i].w );
-        printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i].x, apos[i].y, apos[i].z, apos[i].w );
+        //printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i].x, apos[i].y, apos[i].z, apos[i].w );
         printf( "\n" );
     }
     if(bPi)for(int i=0; i<nnode; i++){
@@ -363,9 +366,10 @@ void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
         printf( "CPU[%i] ", i1 );
         printf(  "fpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", fapos[i1].x, fapos[i1].y, fapos[i1].z, fapos[i1].w );
         //printf(  "vpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i1].x, avel[i1].y, avel[i1].z, avel[i1].w );
-        printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
+        //printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
         printf( "\n" );
     }
+    /*
     if(bNg)for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
         int i1=i*4+j;
         //int i2=(i+natoms)*4+j;
@@ -374,6 +378,7 @@ void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
         printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneighpi[i1].x, fneighpi[i1].y, fneighpi[i1].z, fneighpi[i1].w );
         printf( "\n" );
     }}
+    */
 }
 
 };
