@@ -90,22 +90,22 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
     if(bParams){
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
-        copy    ( ff.natoms, ff.aneighCell,   neighCell+i0a                   );
-        copy_add( ff.natoms, ff.aneighs,      neighs   +i0a,           i0a    );
-        copy_add( ff.natoms, ff.bkneighs,     bkNeighs +i0v,           i0n*8  );
-        copy_add( ff.nnode , ff.bkneighs,     bkNeighs +i0v+ff.natoms, i0n*8 + 4*ff.nnode );
-        pack( nbmol.n,  nbmol.REQs,       REQs     +i0a );
-        pack( ff.nnode, ff.apars, MMpars+i0n );
-        pack( ff.nnode, ff.bLs,   BLs   +i0n );
-        pack( ff.nnode, ff.bKs,   BKs   +i0n );
-        pack( ff.nnode, ff.Ksp,   Ksp   +i0n );
-        pack( ff.nnode, ff.Kpp,   Kpp   +i0n );
+        copy    ( ff.natoms, ff.aneighCell, neighCell+i0a                   );
+        copy_add( ff.natoms, ff.aneighs,    neighs   +i0a,           i0v    );
+        copy_add( ff.natoms, ff.bkneighs,   bkNeighs +i0v,           i0n*8  );
+        copy_add( ff.nnode , ff.bkneighs,   bkNeighs +i0v+ff.natoms, i0n*8 + 4*ff.nnode );
+        pack    ( ff.nnode , ff.apars,      MMpars   +i0n );
+        pack    ( ff.nnode , ff.bLs,        BLs      +i0n );
+        pack    ( ff.nnode , ff.bKs,        BKs      +i0n );
+        pack    ( ff.nnode , ff.Ksp,        Ksp      +i0n );
+        pack    ( ff.nnode , ff.Kpp,        Kpp      +i0n );
+        pack    ( nbmol.n  , nbmol.REQs, REQs        +i0a );
     }
 
-    // for(int i=0; i<ocl.nvecs; i++){
-    //     Quat4i bkng = bkNeighs[i0v+i]; printf( "bkng[%04i] (%4i,%4i,%4i,%4i) pi %i\n", i, bkng.x,bkng.y,bkng.z,bkng.w, i>=ocl.nAtoms );
-    // }
-
+    if(isys==0){
+        for(int i=0; i<ocl.nAtoms; i++){ Quat4i ng = neighs[i0a+i]; printf( "ngs[%4i] (%4i,%4i,%4i,%4i) pi %i\n", i, ng.x,ng.y,ng.z,ng.w, i>=ocl.nAtoms ); }
+        //if(isys==0)for(int i=0; i<ocl.nvecs; i++){Quat4i bkng = bkNeighs[i0v+i]; printf( "bkng[%4i] (%4i,%4i,%4i,%4i) pi %i\n", i, bkng.x,bkng.y,bkng.z,bkng.w, i>=ocl.nAtoms ); }
+    }
 }
 
 void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0 ){
@@ -186,6 +186,12 @@ double eval_MMFFf4_ocl( int niter ){
     printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() \n");
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     int err=0;
+
+    idebug=1;
+    ff4.eval();
+    idebug=0;
+    for(int i=0; i<ff4.nvecs; i++){  printf("CPU/CPU[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,   ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+
     for(int i=0; i<niter; i++){
         err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
         err |= task_MMFF  ->enque_raw();
@@ -196,14 +202,22 @@ double eval_MMFFf4_ocl( int niter ){
     //err |= ocl.finishRaw();
     //OCL_checkError(err, "eval_MMFFf4_ocl_2");
 
-    
     //printf( "ocl.download(n=%i) \n", n );
     //ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
     //ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
-    //for(int i=0; i<ff4.natoms; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z ); }
-    ocl.finishRaw();                              //DEBUG
+    //for(int i=0; i<ff4.nvecs; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) pi %i \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z, i>=ff4.natoms ); }
+    for(int i=0; i<ff4.nvecs; i++){  printf("CPU/GPU[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+    err |= ocl.finishRaw();
+    OCL_checkError(err, "eval_MMFFf4_ocl_2");
+
+    ffl.eval();
+    bool ret=false;
+    printf("### Compare ffl.fapos,  GPU.fapos  \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
+    printf("### Compare ffl.fpipos, GPU.fpipos \n"); ret |= compareVecs( ff4.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
+    if(ret){ printf("ERROR: GPU.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }
+
     //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
     unpack( ff4.natoms, ffl. fapos, ff4. fapos );
@@ -216,6 +230,8 @@ double eval_MMFFf4_ocl( int niter ){
     if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
     
+    exit(0);
+
     return 0;
 }
 

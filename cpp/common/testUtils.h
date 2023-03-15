@@ -43,10 +43,10 @@ inline bool compareVecs( int n, const Vec3d* vs, const Quat4f* qs, double Rmax, 
     double R2max=Rmax*Rmax; 
     for(int i=0; i<n;i++){
         //double r2 = (vs[i]-(Vec3d)qs[i].f).norm2();
-        double r2 = ((Vec3f)vs[i]-qs[i].f).norm2();
+        double r2 = ( ((Vec3f)vs[i]) - qs[i].f ).norm2();
         r2/=( vs[i].norm2() + qs[i].f.norm2() + 1. );
         if(r2>R2max){
-            if(bPrint)printf( "compareVecs[%i] v(%20.10f,%20.10f,%20.10f) q.f(%20.10f,%20.10f,%20.10f)\n", i,  vs[i].x,vs[i].y,vs[i].z,   qs[i].x,qs[i].y,qs[i].z );
+            if(bPrint)printf( "compareVecs[%i] v(%20.10f,%20.10f,%20.10f) q.f(%20.10f,%20.10f,%20.10f) r2 %f \n", i,  vs[i].x,vs[i].y,vs[i].z,   qs[i].x,qs[i].y,qs[i].z, r2 );
             ret=true;
         }
     } 

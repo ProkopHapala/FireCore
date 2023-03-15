@@ -146,8 +146,19 @@ __kernel void getMMFFf4(
     const float* Kspi  = (float*)&vKs;  
     const float* Kppi  = (float*)&vKp; 
 
-    // ========= Evaluate Bonds
+    const int iS_DBG = 0;
+    //const int iG_DBG = 0;
+    const int iG_DBG = 2;
 
+
+    if((iG==iG_DBG)&&(iS==iG_DBG)){
+        for(int i=0; i<nAtoms; i++){ int4 ng = neighs[i+iS*nAtoms];  printf( "GPU[%i|%i] neighs(%i,%i,%i,%i) \n", i, iS, ng.x,ng.y,ng.z,ng.w ); }; 
+        //for(int i=0; i<nvec*nS; i++){ int iv=i%nvec; float4 p = apos[i]; if(iv==0)printf("----\n"); printf( "%3i [%2i,%2i,%i,%i] p(%10.5f,%10.5f,%10.5f)  \n", i, i/nvec, iv,iv<=nnode,iv<=nAtoms, p.x,p.y,p.z );  }; 
+    }
+
+    if((iG==iG_DBG)&&(iS==iG_DBG))printf( "GPU[%i] neighs(%i,%i,%i,%i) \n", iaa, ings[0],ings[1],ings[2],ings[3] );
+
+    // ========= Evaluate Bonds
     float3 f1,f2;         // temporary forces
     for(int i=0; i<NNEIGH; i++){
         float4 h;
@@ -167,10 +178,14 @@ __kernel void getMMFFf4(
         float epp = 0;
         float esp = 0;
 
-        //printf( "[%i|%i] l %g h(%g,%g,%g) \n", ia,i, l, h.x,h.y,h.z ); 
-        if(iG<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
+        const int iS_DBG = 0;
+        //const int iG_DBG = 0;
+        const int iG_DBG = 2;
+
+        if((iG==iG_DBG)&&(iS==iG_DBG)) printf( "GPU[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", iaa,i,ing, l, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z, pa.x,pa.y,pa.z ); 
+        if(iaa<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
-            //if(ia==0)printf( "GPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
+            //if((iG==iG_DBG)&&(iS==iG_DBG))printf( "GPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", iG,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
@@ -208,7 +223,8 @@ __kernel void getMMFFf4(
             const float4 hj = hs[j];
             //printf( "[%i|%i,%i] hi(%g,%g,%g) hj(%g,%g,%g)\n", ia, i,j, hi.x,hi.y,hi.z,   hj.x,hj.y,hj.z );
             E += evalAngCos( hi, hj, par.y, par.x, &f1, &f2 );     // angles between sigma bonds
-            //if(ia==0)printf( "GPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, par.y, par.x, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            if((iG==iG_DBG)&&(iS==iG_DBG))printf( "GPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", iG,ing,jng, par.y, par.x, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            /*
             { // Remove vdW
                 float4 REQKi=REQKs[ing];   // ToDo: can be optimized
                 float4 REQKj=REQKs[jng];
@@ -221,6 +237,7 @@ __kernel void getMMFFf4(
                 f1 -=  fij.xyz;
                 f2 +=  fij.xyz;
             }
+            */
             fbs[i]+= f1;
             fbs[j]+= f2;
             fa    -= f1+f2;
@@ -231,7 +248,7 @@ __kernel void getMMFFf4(
     
     // ========= Save results
 
-    const int i4 =iG*4;
+    const int i4 =(iG + iS*nnode*2 )*4;
     const int i4p=i4+nnode*4;
     for(int i=0; i<NNEIGH; i++){
         fneigh[i4 +i] = (float4){fbs[i],0};
@@ -278,24 +295,27 @@ __kernel void updateAtomsMMFFf4(
     const int iav = iG + iS*nvec;
 
     if(iav==0)printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i iS %i nG %i nS %i  iav_max %i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS,  (nG-1)+(nS-1)*nvec, MDpars.x, MDpars.y, MDpars.z );
-    /*
-    if(iG==0){
+    
+    if(iaa==0){
+        int isys=0;
     for(int i=0; i<natoms; i++){
+        int ia=i + isys*nvec;
         printf( "GPU[%i] ", i );
-        //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
-        printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i].x, aforce[i].y, aforce[i].z, aforce[i].w );
-        //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i].x, avel[i].y, avel[i].z, avel[i].w );
-        printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i].x, apos[i].y, apos[i].z, apos[i].w );
+        //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[ia].x, bkNeighs[ia].y, bkNeighs[ia].z, bkNeighs[ia].w );
+        printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[ia].x, aforce[ia].y, aforce[ia].z, aforce[ia].w );
+        //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[ia].x, avel[ia].y, avel[ia].z, avel[ia].w );
+        //printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[ia].x, apos[ia].y, apos[ia].z, apos[ia].w );
         printf( "\n" );
     }
     for(int i=0; i<nnode; i++){
-        int i1=i+natoms;
+        int i1=i+natoms + isys*nvec;
         printf( "GPU[%i] ", i1 );
         printf(  "fpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i1].x, aforce[i1].y, aforce[i1].z, aforce[i1].w );
         //printf(  "vpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i1].x, avel[i1].y, avel[i1].z, avel[i1].w );
-        printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
+        //printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
         printf( "\n" );
     }
+    /*
     for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
         int i1=i*4+j;
         int i2=i1+nnode*4;
@@ -309,8 +329,9 @@ __kernel void updateAtomsMMFFf4(
         printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i].x, fneigh[i].y, fneigh[i].z, fneigh[i].w );
         printf( "\n" );
     }
-    }
     */
+    }
+    
 
     if(iG>=(natoms+nnode)) return;
 
