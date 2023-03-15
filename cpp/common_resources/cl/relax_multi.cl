@@ -336,23 +336,33 @@ __kernel void updateAtomsMMFFf4(
     // !!!!! Error code was "CL_INVALID_COMMAND_QUEUE" (-36)  is HERE !!!!!!
     aforce[iav] = fe; // store force before limit
 
-    /*
+    
     // ---- Limit Forces
     float fr2 = dot(fe.xyz,fe.xyz);
     if( fr2 > (MDpars.z*MDpars.z) ){
         fe.xyz*=(MDpars.z/sqrt(fr2));
     } 
 
-    /*
-    // ------ Move (Leap-Frog)
+
+    // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
     float4 pe = apos[iav];
     float4 ve = avel[iav];
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
     }
-    ve     *= MDpars.y;
-    ve.xyz += fe.xyz*MDpars.x;
+    ve.xyz += fe.xyz*MDpars.x;                       // according to LAMMPS implementation we should update the velocity by force first ... see https://github.com/lammps/lammps/blob/730e5d2e64106f3e5357fd739b44c7eec19c7d2a/src/min_fire.cpp#L393
+    float ff = dot(fe.xyz,fe.xyz);
+	float vv = dot(ve.xyz,ve.xyz);
+    float vf = dot(ve.xyz,fe.xyz);
+    #define ff_safety 1e-8
+	if( vf < 0.0f ){
+		ve.xyz=float3Zero;
+	}else{
+		float cf  =    MDpars.y * sqrt(vv/(ff+ff_safety));
+		float cv  = 1.f - MDpars.y;
+		ve.xyz    = cv * ve.xyz  + cf * fe.xyz;
+	}
     pe.xyz += ve.xyz*MDpars.x;
     if(bPi){ 
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
@@ -360,6 +370,23 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
+
+    // // ------ Move (Leap-Frog)
+    // float4 pe = apos[iav];
+    // float4 ve = avel[iav];
+    // if(bPi){ 
+    //     fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
+    //     ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
+    // }
+    // ve     *= MDpars.y;
+    // ve.xyz += fe.xyz*MDpars.x;
+    // pe.xyz += ve.xyz*MDpars.x;
+    // if(bPi){ 
+    //     pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
+    // }
+    // pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
+    // avel[iav] = ve;
+    // apos[iav] = pe;
     
     // ------ Move Gradient-Descent
     // float4 pe = apos[iav];
@@ -374,7 +401,7 @@ __kernel void updateAtomsMMFFf4(
     //aforce[iav] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
     //aforce[iav] = 0;  // ToDo:  this allows to ommit  updateAtomsMMFFf4() !!!! 
     //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
-    */
+    
 }
 
 __kernel void cleanForceMMFFf4(
