@@ -58,7 +58,8 @@ void realloc( int nSystems_ ){
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
     _realloc( neighCell, ocl.nAtoms*nSystems );
-    _realloc( bkNeighs,  ocl.nAtoms*nSystems );
+    //_realloc( bkNeighs,  ocl.nAtoms*nSystems );
+    _realloc( bkNeighs,  ocl.nvecs*nSystems );
     _realloc( atoms,     ocl.nvecs*nSystems  );
     _realloc( atoms,     ocl.nvecs*nSystems  );
     _realloc( atoms,     ocl.nvecs*nSystems  );
@@ -89,9 +90,10 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
     if(bParams){
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
-        copy( ff.natoms, ff.aneighs,      neighs   +i0a );
-        copy( ff.natoms, ff.aneighCell,   neighCell+i0a );
-        copy( ff.natoms, ff.bkneighs,     bkNeighs +i0a );
+        copy    ( ff.natoms, ff.aneighCell,   neighCell+i0a                   );
+        copy_add( ff.natoms, ff.aneighs,      neighs   +i0a,           i0a    );
+        copy_add( ff.natoms, ff.bkneighs,     bkNeighs +i0v,           i0n*8  );
+        copy_add( ff.nnode , ff.bkneighs,     bkNeighs +i0v+ff.natoms, i0n*8 + 4*ff.nnode );
         pack( nbmol.n,  nbmol.REQs,       REQs     +i0a );
         pack( ff.nnode, ff.apars, MMpars+i0n );
         pack( ff.nnode, ff.bLs,   BLs   +i0n );
@@ -99,6 +101,11 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
         pack( ff.nnode, ff.Ksp,   Ksp   +i0n );
         pack( ff.nnode, ff.Kpp,   Kpp   +i0n );
     }
+
+    // for(int i=0; i<ocl.nvecs; i++){
+    //     Quat4i bkng = bkNeighs[i0v+i]; printf( "bkng[%04i] (%4i,%4i,%4i,%4i) pi %i\n", i, bkng.x,bkng.y,bkng.z,bkng.w, i>=ocl.nAtoms );
+    // }
+
 }
 
 void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0 ){
@@ -186,13 +193,15 @@ double eval_MMFFf4_ocl( int niter ){
         err |= task_move->enque_raw(); //DEBUG
         OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
-    err |= ocl.finishRaw();
-    OCL_checkError(err, "eval_MMFFf4_ocl_2");
+    //err |= ocl.finishRaw();
+    //OCL_checkError(err, "eval_MMFFf4_ocl_2");
 
-    /*
+    
     //printf( "ocl.download(n=%i) \n", n );
-    ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
-    ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
+    //ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
+    //ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
+    ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
+    ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     //for(int i=0; i<ff4.natoms; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z ); }
     ocl.finishRaw();                              //DEBUG
     //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
@@ -206,7 +215,7 @@ double eval_MMFFf4_ocl( int niter ){
     tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
     if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
-    */
+    
     return 0;
 }
 

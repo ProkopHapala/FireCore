@@ -62,14 +62,16 @@ class OCL_MM: public OCLsystem { public:
         npi    = nnode_;
         nvecs  = nAtoms+npi;
         nneigh = nnode*4*2;
-        printf( "initAtomsForces() nSystems*nvecs %i nSystems %i nvecs %i natoms %i nnode %i npi %i \n", nSystems*nvecs, nSystems, nvecs, nAtoms, nnode, npi );
+        printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i npi %i \n", nSystems, nvecs, nAtoms, nnode, npi );
+        printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode );
         ibuff_atoms      = newBuffer( "atoms",      nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_aforces    = newBuffer( "aforces",    nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_neighs     = newBuffer( "neighs",     nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_neighCell  = newBuffer( "neighCell" , nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
 
-        ibuff_bkNeighs   = newBuffer( "bkNeighs",   nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        ibuff_bkNeighs   = newBuffer( "bkNeighs",   nSystems*nvecs , sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        //ibuff_bkNeighs = newBuffer( "bkNeighs",   nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_neighForce = newBuffer( "neighForce", nSystems*nneigh, sizeof(float4), 0, CL_MEM_READ_WRITE );
 
