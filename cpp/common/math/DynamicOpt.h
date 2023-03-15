@@ -21,6 +21,9 @@ class DynamicOpt{ public:
     double dt           = 0.1;
     double damping      = 0.2;
 
+    double cvf_min = -0.5;  // minimum cosine for velocity damping in  move_FIRE_smooth()
+    double cvf_max = +0.5;  // maximum cosine for velocity damping in  move_FIRE_smooth()
+
     double fTminmax     = 0.1;
     double f_limit      = 10.0;
     double v_limit      = 10.0;
@@ -64,6 +67,8 @@ class DynamicOpt{ public:
     //double move_MD_safe ( double dt_loc );
     void   move_MDquench(){move_MD(dt,damping);};
     double move_FIRE();
+    double move_FIRE_smooth();
+    double damp_func( double c, double& cv );
     double optStep();
     bool   optimize( double convF, int nMaxSteps );
 

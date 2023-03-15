@@ -147,6 +147,10 @@ double DynamicOpt::move_FIRE(){
 
 
 double DynamicOpt::move_FIRE(){
+
+    // ToDo: according to FIRE implementation in LAMMPS we should update velocity by force first !!!!
+    // see:   https://github.com/lammps/lammps/blob/730e5d2e64106f3e5357fd739b44c7eec19c7d2a/src/min_fire.cpp#L393
+
 	ff=0,vv=0,vf=0;
 	//printf( "DEBUG 5.5.1: %i\n", n  );
 	for(int i=0; i<n; i++){
@@ -232,6 +236,56 @@ double DynamicOpt::move_FIRE(){
 
 	//printf( " %i f v vf  %f %f %f   dt damp  %f %f \n",  stepsDone,   sqrt(ff), sqrt(vv), vf/sqrt(vv*ff),   dt_var, damp_var  );
 	//stepsDone++;
+	return ff;
+}
+
+double DynamicOpt::damp_func( double c, double& cv ){
+    double cf;
+    if      (c < cvf_min){
+        cv = 0.;
+        cf = 2.*cv*(1-cv);
+    }else if(c > cvf_max){
+        cv = 1.;
+    }else{  // cos(v,f) from [ cvf_min .. cvf_max ]
+        cv = (c-cvf_min)/(cvf_min-cvf_max);
+        cf = 0.;
+    }
+    return cf;
+}
+
+double DynamicOpt::move_FIRE_smooth(){
+	ff=0,vv=0,vf=0;
+	for(int i=0; i<n; i++){
+		double fi = force[i]*invMasses[i];
+		double vi = vel[i];
+		ff += fi*fi;
+		vv += vi*vi;
+		vf += vi*fi;
+	}
+    double c   = vf*sqrt(vv*ff); 
+	double cv;
+    double cf  =    sqrt(vv/(ff+ff_safety)) * damp_func( c, cv );
+    for(int i=0; i<n; i++){
+        vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;
+    }
+	if( c < 0.0 ){
+        dt       = fmax( dt * fdec, dt_min );
+		lastNeg  = 0;
+        damping  = damp_max;
+	}else{
+		if( lastNeg > minLastNeg ){
+			dt        = fmin( dt * finc, dt_max );
+			damping   = damping  * falpha;
+		}
+		lastNeg++;
+	}
+	double dt_=dt;
+    if( ff>(f_limit*f_limit) ){
+        double f = sqrt(ff);
+        dt_*=sqrt( f_limit/f );
+    };
+    if(verbosity>1) printf( "dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", dt,damping, lastNeg, vf/sqrt(vv*ff), sqrt(ff), sqrt(vv) );
+    move_LeapFrog( dt_ );
 	return ff;
 }
 
