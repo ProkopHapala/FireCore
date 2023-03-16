@@ -25,6 +25,9 @@ target_link_libraries( test_Multipoles ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 add_executable       ( test_SoftMolecularDynamics test_SoftMolecularDynamics.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
 target_link_libraries( test_SoftMolecularDynamics ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
+add_executable       ( test_FIRE test_FIRE.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
+target_link_libraries( test_FIRE ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
+
 add_executable       ( test_eFF test_eFF.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )
 target_link_libraries( test_eFF ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )
 
