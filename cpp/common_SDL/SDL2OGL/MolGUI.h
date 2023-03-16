@@ -135,7 +135,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void drawSystem    ( Vec3i ixyz=Vec3iZero );
     void drawSystem_bak( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
-    void flipPis( Vec3d ax );
+    //void flipPis( Vec3d ax );
     //void drawSystemQMMM();
     //void renderOrbital(int i, double iso=0.1);
     //void renderDensity(       double iso=0.1);
@@ -480,12 +480,14 @@ void MolGUI::drawPi0s( float sc=1.0 ){
     glEnd();
 }
 
+/*
 void MolGUI::flipPis( Vec3d ax ){
     for(int i=0; i<nnode; i++){
         double c = pipos[i].dot(ax);
         if( c<0 ){ pipos[i].mul(-1); } 
     }
 }
+*/
 
 void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_ ){
     natoms=natoms_; nnode=nnode_; nbonds=nbonds_;
@@ -512,9 +514,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
                              glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex );                                
         }
-        if(bViewPis &&  fpipos ){ flipPis(Vec3dZ); glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );  
-            //for(int i=0; i<nnode; i++) printf("pi[%i] |r| %g \n", i, pipos[i].norm() );
-        }
+        if(bViewPis &&  fpipos ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );  }
         //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
         //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
         //if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D                     ); }                    

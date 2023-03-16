@@ -502,6 +502,8 @@ virtual void init( bool bGrid ){
         builder.toMMFFsp3    ( ff , &params );
         builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs();  
         builder.toMMFFf4     ( ff4, &params ); //ff4.printAtomParams(); ff4.printBKneighs(); 
+        ffl.flipPis( Vec3dZ );
+        ff4.flipPis( Vec3fZ );
         DEBUG 
         //ff.printAtomParams();
         ff.setLvec(builder.lvec);     printf("builder.lvec\n");builder.lvec.print();

@@ -156,8 +156,10 @@ double eval_atom(const int ia){
     //--- Aux Variables 
     Quat4d  hs[4];
     Vec3d   f1,f2;
+    
+    const int ia_DBG = 1;
+    //if(ia==ia_DBG)printf( "ffl[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
 
-    //if(idebug)printf( "atom[%i] Ksp{%5.3f,%5.3f,%5.3f,%5.3f} \n", ia, Kspi[0],Kspi[1],Kspi[2],Kspi[3] );
     // --------- Bonds Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -174,15 +176,17 @@ double eval_atom(const int ia){
         // bond length force
         //continue; 
         
+        //if(ia==ia_DBG) printf( "ffl:h[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, l, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z, pa.x,pa.y,pa.z );
+
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
             E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].sub(f1);   fa.add(f1);    
-            //if(idebug)printf( "bond[%i|%i=%i] l %g dl0,k(%g,%g) h(%g,%g,%g) f(%g,%g,%g)\n", ia,i,ing, l,bL[i], bK[i], h.f.x,h.f.y,h.f.z, f1.x,f1.y,f1.z  );
+            //if(ia==ia_DBG)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
 
             double kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
-                //if(idebug)printf( "pi-pi[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, kpp, hpi.dot(pipos[ing]),1.,1., f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+                //if(ia==ia_DBG)printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             }
             // ToDo: triple bonds ?
 
@@ -193,7 +197,8 @@ double eval_atom(const int ia){
         double ksp = Kspi[i];
         if(ksp>1e-6){  
             E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);    //   pi-planarization (orthogonality)
-            //if(idebug)printf( "pi-sigma[%i|%i] ksp=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing, ksp, hpi.dot(h.f),1.,h.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            //if(ia==ia_DBG)printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g hp(%g,%g,%g) h(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z  );
+            //if(ia==ia_DBG)printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
         }
         //}
      
@@ -209,7 +214,7 @@ double eval_atom(const int ia){
             if(jng<0) break;
             const Quat4d& hj = hs[j];
             E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
-            //if(idebug)printf( "ang[%i|%i,%i] kss=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) \n", ia,ing,jng, ssK, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             fa    .sub( f1+f2  );
@@ -270,10 +275,19 @@ double eval( bool bClean=true, bool bCheck=true ){
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     eval_atoms();
+    printDEBUG( false );
     asseble_forces();
     //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 }
+
+void flipPis( Vec3d ax ){
+    for(int i=0; i<nnode; i++){
+        double c = pipos[i].dot(ax);
+        if( c<0 ){ pipos[i].mul(-1); } 
+    }
+}
+
 
 void move_GD(float dt, double Flim=100.0 ){
     double F2lim=Flim*Flim;
@@ -333,7 +347,6 @@ void makeNeighCells( const Vec3i nPBC_ ){
     }
     //printf("MMFFsp3_loc::makeNeighCells() DONE \n");
 }
-
 
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };

@@ -614,7 +614,7 @@ double eval( bool bClean=true, bool bCheck=true ){
 
     Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
-};
+}
 
 
 void evalPi0s(){
@@ -639,9 +639,7 @@ void evalPi0s(){
             pi0.normalize();
             pi0s[-ipi-1].f=(Vec3f)pi0;
         }
-
     }
-    
 }
 
 void chargeToEpairs( Vec3d* REQs, double cQ=-0.2, int etyp=-1 ){
@@ -651,7 +649,7 @@ void chargeToEpairs( Vec3d* REQs, double cQ=-0.2, int etyp=-1 ){
         if( atype[b.i]==etyp ){ REQs[b.i].z+=cQ; REQs[b.j].z-=cQ; }
         if( atype[b.j]==etyp ){ REQs[b.j].z+=cQ; REQs[b.i].z-=cQ;  }
     }
-};
+}
 
 void makePiNeighs( int* pi_neighs ){
     printf( "makePiNeighs() \n" );
