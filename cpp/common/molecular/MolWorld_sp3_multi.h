@@ -16,7 +16,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3 { public:
     OCL_MM     ocl;
 
     int nSystems    = 1;
-    int iSystemCur  = 0;    // currently selected system replica
+    //int iSystemCur  = 0;    // currently selected system replica
+    int iSystemCur  = 5;    // currently selected system replica
+    //int iSystemCur  = 8;    // currently selected system replica
     bool bGPU_MMFF = true;
 
     Quat4f* atoms      =0;
@@ -42,6 +44,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3 { public:
     OCLtask* task_NBFF=0;
     OCLtask* task_MMFF=0;
     OCLtask* task_move=0;
+    OCLtask* task_print=0;
 
 // ======== Functions
 
@@ -76,13 +79,21 @@ void realloc( int nSystems_ ){
     // ToDo : it may be good to bind buffer directly in p_cpu buffer inside   OCLsystem::newBuffer()
 }
 
-void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
+void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 , float l_rnd=-1 ){
     printf("MolWorld_sp3_multi::pack_system(%i) \n", isys);
     //ocl.nvecs;
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
     pack( ff.nvecs, ff.apos, atoms+i0v );
+    if(l_rnd>0){ 
+        printf("WARRNING: random noise added to apos \n");
+        for(int i=0; i<ff.nvecs; i++){ 
+            atoms[i+i0v].f.addRandomCube(l_rnd); 
+            if(i>=ff.natoms){ atoms[i+i0v].f.normalize(); } // normalize pi-bonds 
+        } 
+        atoms[0+i0v].x=isys;
+    }
     if(bForces){
         pack( ff.nvecs, ff.fapos, aforces+i0v );
         //pack( f.nvecs, ff.avel, avel+i0v );
@@ -90,8 +101,9 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
     if(bParams){
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
-        copy    ( ff.natoms, ff.aneighCell, neighCell+i0a                   );
-        copy_add( ff.natoms, ff.aneighs,    neighs   +i0a,           i0v    );
+        copy    ( ff.natoms, ff.aneighCell, neighCell+i0a );
+        copy    ( ff.natoms, ff.aneighs,    neighs   +i0a );
+        //copy_add( ff.natoms, ff.aneighs,    neighs   +i0a,           0      );
         copy_add( ff.natoms, ff.bkneighs,   bkNeighs +i0v,           i0n*8  );
         copy_add( ff.nnode , ff.bkneighs,   bkNeighs +i0v+ff.natoms, i0n*8 + 4*ff.nnode );
         pack    ( ff.nnode , ff.apars,      MMpars   +i0n );
@@ -102,8 +114,10 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 ){
         pack    ( nbmol.n  , nbmol.REQs, REQs        +i0a );
     }
 
-    if(isys==0){
-        for(int i=0; i<ocl.nAtoms; i++){ Quat4i ng = neighs[i0a+i]; printf( "ngs[%4i] (%4i,%4i,%4i,%4i) pi %i\n", i, ng.x,ng.y,ng.z,ng.w, i>=ocl.nAtoms ); }
+    //if(isys==5)
+    {
+        //for(int i=0; i<ocl.nAtoms; i++){ Quat4i ng = neighs[i0a+i]; printf( "ngs[%4i] (%4i,%4i,%4i,%4i) \n", i, ng.x,ng.y,ng.z,ng.w ); }
+        //for(int i=0; i<ocl.nvecs; i++){ Quat4f p = atoms[i0v+i]; printf( "apos[%4i] (%5.3f,%5.3f,%5.3f) pi %i \n", i, p.x,p.y,p.z, i>=ocl.nAtoms ); }
         //if(isys==0)for(int i=0; i<ocl.nvecs; i++){Quat4i bkng = bkNeighs[i0v+i]; printf( "bkng[%4i] (%4i,%4i,%4i,%4i) pi %i\n", i, bkng.x,bkng.y,bkng.z,bkng.w, i>=ocl.nAtoms ); }
     }
 }
@@ -113,7 +127,7 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0 ){
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
-    unpack( ff.nvecs, ff.fapos, atoms+i0v );
+    unpack( ff.nvecs, ff.apos, atoms+i0v );
     if(bForces){
         unpack( ff.nvecs, ff.fapos, aforces+i0v );
         //unpack( ff.nvecs, ff.fapos, avel+i0v );
@@ -158,8 +172,9 @@ virtual void init( bool bGrid ) override {
 
     // ----- init systems
     realloc( nSystems );
+    float random_init = 0.5;
     for(int i=0; i<nSystems; i++){
-        pack_system( i, ffl, true, false );
+        pack_system( i, ffl, true, false, random_init );
     }
     upload( true, false );
     bGridFF=false;
@@ -174,7 +189,8 @@ void setup_MMFFf4_ocl(){
     printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() \n");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );   
+    task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );
+    task_print  = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );    /// Print on GPU 
     task_MMFF   = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
     task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
     task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode       );
@@ -188,15 +204,17 @@ double eval_MMFFf4_ocl( int niter ){
     int err=0;
 
     idebug=1;
-    ff4.eval();
+    unpack_system( iSystemCur, ffl );
+    ffl.eval(); for(int i=0; i<ffl.nvecs; i++){  printf("ffl[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ffl.fapos[i].x,ffl.fapos[i].y,ffl.fapos[i].z,   ffl.apos[i].x,ffl.apos[i].y,ffl.apos[i].z,  i>=ffl.natoms ); }
+    //ff4.eval(); for(int i=0; i<ff4.nvecs; i++){  printf("ff4[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,   ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
     idebug=0;
-    for(int i=0; i<ff4.nvecs; i++){  printf("CPU/CPU[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,   ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
-
+    
     for(int i=0; i<niter; i++){
         err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
         err |= task_MMFF  ->enque_raw();
         //err |= task_NBFF  ->enque_raw();
-        err |= task_move->enque_raw(); //DEBUG
+        err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
+        err |= task_move  ->enque_raw(); 
         OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
     //err |= ocl.finishRaw();
@@ -208,11 +226,11 @@ double eval_MMFFf4_ocl( int niter ){
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     //for(int i=0; i<ff4.nvecs; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) pi %i \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z, i>=ff4.natoms ); }
-    for(int i=0; i<ff4.nvecs; i++){  printf("CPU/GPU[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+    for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
     err |= ocl.finishRaw();
     OCL_checkError(err, "eval_MMFFf4_ocl_2");
 
-    ffl.eval();
+    //ffl.eval();   // We already computed this above
     bool ret=false;
     printf("### Compare ffl.fapos,  GPU.fapos  \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
     printf("### Compare ffl.fpipos, GPU.fpipos \n"); ret |= compareVecs( ff4.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 

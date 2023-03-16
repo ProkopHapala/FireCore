@@ -158,9 +158,8 @@ float eval_atom(int ia){
     Vec3f  f1,f2;
 
     //const int iG_DBG = 0;
-    const int ia_DBG = 2;
-
-    if(ia==ia_DBG)printf( "CPU[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
+    const int ia_DBG = 1;
+    //if(ia==ia_DBG)printf( "CPU[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
 
     // --------- Bonds Step
     for(int i=0; i<4; i++){
@@ -181,7 +180,7 @@ float eval_atom(int ia){
 
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
             E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
-            if(ia==ia_DBG)printf( "CPU bond[%i|%i] kpp=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
+            if(ia==ia_DBG)printf( "CPU bond[%i|%i] kpb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
@@ -215,7 +214,7 @@ float eval_atom(int ia){
             const Quat4f& hj = hs[j];
             E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             //if(idebug)printf( "ang[%i|%i,%i] kss=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
-            if(ia==ia_DBG)printf( "CPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            //if(ia==ia_DBG)printf( "CPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fbs[i].f.add( f1     );
             fbs[j].f.add( f2     );
             fa.      sub( f1+f2  );
@@ -281,6 +280,12 @@ float eval( bool bClean=true, bool bCheck=true ){
     return Etot;
 }
 
+void flipPis( Vec3f ax ){
+    for(int i=0; i<nnode; i++){
+        double c = pipos[i].f.dot(ax);
+        if( c<0 ){ pipos[i].mul(-1); } 
+    }
+}
 
 void move_GD(float dt, double Flim=100.0 ){
     //for(int i=0; i<0; i++){}
@@ -339,7 +344,7 @@ void makeNeighCells( const Vec3i nPBC_ ){
         }
     }
     //printf("makeNeighCells() DONE \n");
-};
+}
 
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };

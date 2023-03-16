@@ -25,7 +25,7 @@ class OCL_MM: public OCLsystem { public:
     cl_program program_relax=0;
 
     int nAtoms=0;
-    int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0;
+    int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0, nbkng=0;
 
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
@@ -51,6 +51,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "getMMFFf4"              ,program_relax, 2);
         newTask( "cleanForceMMFFf4"       ,program_relax, 2);
         newTask( "updateAtomsMMFFf4"      ,program_relax, 2);
+        newTask( "printOnGPU"             ,program_relax, 2);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }
@@ -61,9 +62,9 @@ class OCL_MM: public OCLsystem { public:
         nAtoms = nAtoms_;
         npi    = nnode_;
         nvecs  = nAtoms+npi;
-        nneigh = nnode*4*2;
-        printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i npi %i \n", nSystems, nvecs, nAtoms, nnode, npi );
-        printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode );
+        nbkng  = nnode*4*2;
+        printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i nbkng %i \n", nSystems, nvecs, nAtoms, nnode, nbkng );
+        printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i nS*nbkng %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode, nSystems*nbkng );
         ibuff_atoms      = newBuffer( "atoms",      nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_aforces    = newBuffer( "aforces",    nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -73,7 +74,7 @@ class OCL_MM: public OCLsystem { public:
         ibuff_bkNeighs   = newBuffer( "bkNeighs",   nSystems*nvecs , sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         //ibuff_bkNeighs = newBuffer( "bkNeighs",   nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_neighForce = newBuffer( "neighForce", nSystems*nneigh, sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_neighForce = newBuffer( "neighForce", nSystems*nbkng,  sizeof(float4), 0, CL_MEM_READ_WRITE );
 
         ibuff_MMpars     = newBuffer( "MMpars",     nSystems*nnode,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
         ibuff_BLs        = newBuffer( "BLs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -210,6 +211,32 @@ class OCL_MM: public OCLsystem { public:
             __global float4*  aforce,       // 5
             __global float4*  fneigh,       // 6
             __global int4*    bkNeighs      // 7
+        */
+    }
+
+    OCLtask* setup_printOnGPU( int na, int nNode,  OCLtask* task=0 ){
+        printf( "setup_printOnGPU() \n" );
+        if(task==0) task = getTask("printOnGPU");
+        task->global.x = na+nNode;
+        task->global.y = nSystems;
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
+        useKernel( task->ikernel  );
+        err |= _useArg( nDOFs     );           // 1
+        err |= useArgBuff( ibuff_atoms      ); // 2
+        err |= useArgBuff( ibuff_avel       ); // 3
+        err |= useArgBuff( ibuff_aforces    ); // 4
+        err |= useArgBuff( ibuff_neighForce ); // 5
+        err |= useArgBuff( ibuff_bkNeighs   ); // 6
+        OCL_checkError(err, "setup_printOnGPU");
+        return task;
+        /*
+            const int4        n,            // 1
+            __global float4*  apos,         // 2
+            __global float4*  avel,         // 3
+            __global float4*  aforce,       // 4
+            __global float4*  fneigh,       // 5
+            __global int4*    bkNeighs      // 6
         */
     }
 
