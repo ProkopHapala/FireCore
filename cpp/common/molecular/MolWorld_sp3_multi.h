@@ -293,7 +293,7 @@ double eval_NBFF_ocl( int niter ){
         err |= task_cleanF->enque_raw(); // DEBUG: this should be solved inside  task_move->enque_raw();
         err |= task_NBFF  ->enque_raw();
         err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
-        err |= task_move  ->enque_raw(); // DEBUG
+        err |= task_move  ->enque_raw();
         
     }
     
