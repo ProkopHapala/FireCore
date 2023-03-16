@@ -522,7 +522,7 @@ __kernel void getNonBond(
     __global float4*  REQKs,        // 4
     __global int4*    neighs,       // 5
     __global int4*    neighCell,    // 6
-    __global cl_Mat3* lvecs,         // 7
+    __global cl_Mat3* lvecs,        // 7
     const int4 nPBC,                // 8
     const float Rdamp               // 9
 ){
@@ -530,22 +530,45 @@ __kernel void getNonBond(
     __local float4 LCLJS [32];
     const int iG = get_global_id  (0);
     const int iS = get_global_id  (1);
-    const int nG = get_global_size(0);
     const int iL = get_local_id   (0);
+    const int nG = get_global_size(0);
+    const int nS = get_global_size(1);
     const int nL = get_local_size (0);
 
     const int natoms=ns.x;
     const int nnode =ns.y;
+    const int nvec  =natoms+nnode;
 
-    //if(iG==0){ printf( "GPU::getNonBond() natoms %i nnode %i nG %i nL %i \n", natoms,nnode,nG,nL ); }
+    //const int i0n = iS*nnode; 
+    const int i0a = iS*natoms; 
+    const int i0v = iS*nvec;
+    //const int ian = iG + i0n;
+    const int iaa = iG + i0a;
+    const int iav = iG + i0v;
+    
+    const int iS_DBG = 5;
+    const int iG_DBG = 0;
+
+    if((iG==iG_DBG)&&(iS==iS_DBG)){ 
+        printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
+        for(int i=0; i<nS*nG; i++){
+            int ia = i%nS;
+            int is = i/nS;
+            if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
+            //printf( "GPU[%i,%i] \n", is,ia,  );        
+        }
+    }
+
+
 
     if(iG>=natoms) return;
+
     //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
     const bool   bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;
-    const int4   ng    = neighs   [iG];
-    const int4   ngC   = neighCell[iG];
-    const float4 REQKi = REQKs [iG];
-    const float3 posi  = atoms [iG].xyz;
+    const int4   ng    = neighs   [iaa];
+    const int4   ngC   = neighCell[iaa];
+    const float4 REQKi = REQKs    [iaa];
+    const float3 posi  = atoms    [iav].xyz;
     const float  R2damp = Rdamp*Rdamp;
     float4 fe          = float4Zero;
 
@@ -557,8 +580,8 @@ __kernel void getNonBond(
     for (int i0=0; i0<natoms; i0+= nL ){
         const int i = i0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
-        LATOMS[iL] = atoms [i];
-        LCLJS [iL] = REQKs [i];
+        LATOMS[iL] = atoms [i+i0v];
+        LCLJS [iL] = REQKs [i+i0a];
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
             const int ji=j+i0;
@@ -612,7 +635,7 @@ __kernel void getNonBond(
         barrier(CLK_LOCAL_MEM_FENCE);
     }
     
-    forces[iG] = fe;
-    //forces[iG] = fe*(-1.f);
+    forces[iav] = fe;
+    //forces[iav] = fe*(-1.f);
     
 }

@@ -147,6 +147,8 @@ void upload(  bool bParams=0, bool bForces=0 ){
         //ocl.upload( ocl.ibuff_avel,    avel    );
     }
     if(bParams){
+        ocl.upload( ocl.ibuff_lvecs,   lvecs );
+        ocl.upload( ocl.ibuff_ilvecs,  lvecs );
         ocl.upload( ocl.ibuff_neighs,     neighs    );
         ocl.upload( ocl.ibuff_neighCell,  neighCell );
         ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
@@ -255,7 +257,7 @@ double eval_MMFFf4_ocl( int niter ){
     bool ret=false;
     printf("### Compare ffl.fapos,  GPU.fapos  \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
     printf("### Compare ffl.fpipos, GPU.fpipos \n"); ret |= compareVecs( ff4.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
-    if(ret){ printf("ERROR: GPU.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }
+    if(ret){ printf("ERROR: GPU.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }else{ printf("CHECKED: GPU task_MMFF.eval() == CPU ffl.eval() \n"); }
 
     //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
