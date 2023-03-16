@@ -239,19 +239,60 @@ double DynamicOpt::move_FIRE(){
 	return ff;
 }
 
+/*
 double DynamicOpt::damp_func( double c, double& cv ){
     double cf;
     if      (c < cvf_min){
         cv = 0.;
-        cf = 2.*cv*(1-cv);
+        cf = 0.;
     }else if(c > cvf_max){
         cv = 1.;
+        cf = 0.;
     }else{  // cos(v,f) from [ cvf_min .. cvf_max ]
-        cv = (c-cvf_min)/(cvf_min-cvf_max);
+        cv = (c-cvf_min)/(cvf_max-cvf_min);
+        cf = 2.*cv*(1-cv);
+
+        printf( "\n", cv );
+    }
+    return cf;
+}
+*/
+
+double DynamicOpt::damp_func( double c, double& cv ){
+    double cf;
+    if      (c < cvf_min){
+        cv = 0.;
+        cf = 0.;
+    }else if(c > cvf_max){
+        cv = 1-damping;
+        cf = damping;
+    }else{  // cos(v,f) from [ cvf_min .. cvf_max ]
+        // This is quite importaint  - in many-dimensional space statistically two vectors are almost always roughly orthogonal
+        double f = 1 - (c-cvf_min)/(cvf_max-cvf_min);
+        cv = (1-damping *f );
+        cf =    damping *f;       //   +     0.0*f*(1.-f);
+        //cv = 1-damping;
+        //cf = damping;
+        printf( " c=%g f=%g cv=%g cf=%g damping=%g stepsDone %i \n", c, f, cv, cf, damping, stepsDone  );
+    }
+    return cf;
+}
+
+/*
+double DynamicOpt::damp_func( double c, double& cv ){ // Original FIRE damping
+    double cf;
+    if( c < 0.0 ){
+        cv = 0.;
+        cf = 0.;
+    }else{  
+        //cv = 1-damping;
+        //cf = damping;
+        cv = 1.;
         cf = 0.;
     }
     return cf;
 }
+*/
 
 double DynamicOpt::move_FIRE_smooth(){
 	ff=0,vv=0,vf=0;
