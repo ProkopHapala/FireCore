@@ -288,7 +288,8 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  avel,         // 4
     __global float4*  aforce,       // 5
     __global float4*  fneigh,       // 6
-    __global int4*    bkNeighs      // 7
+    __global int4*    bkNeighs,     // 7
+    __global float4*  constr        // 8
 ){
     const int natoms=n.x;
     const int nnode =n.y;
@@ -327,6 +328,15 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
+    // constrains
+    float4 pe = apos[iav];
+    if(iG<natoms){ 
+       float4 cons = constr[ iaa ];
+       if( cons.w>0 ){
+            fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
+       }
+    }
+
     // !!!!! Error code was "CL_INVALID_COMMAND_QUEUE" (-36)  is HERE !!!!!!
     aforce[iav] = fe; // store force before limit
 
@@ -338,7 +348,7 @@ __kernel void updateAtomsMMFFf4(
 
     /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
-    float4 pe = apos[iav];
+    
     float4 ve = avel[iav];
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -409,7 +419,8 @@ __kernel void printOnGPU(
     __global float4*  avel,         // 4
     __global float4*  aforce,       // 5
     __global float4*  fneigh,       // 6
-    __global int4*    bkNeighs      // 7
+    __global int4*    bkNeighs,     // 7
+    __global float4*  constr        // 8
 ){
     const int natoms=n.x;
     const int nnode =n.y;
@@ -437,6 +448,7 @@ __kernel void printOnGPU(
         printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[ia].x, aforce[ia].y, aforce[ia].z, aforce[ia].w );
         //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[ia].x, avel[ia].y, avel[ia].z, avel[ia].w );
         printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[ia].x, apos[ia].y, apos[ia].z, apos[ia].w );
+        printf(  "constr{%6.3f,%6.3f,%6.3f,%6.3f} ", constr[ia].x, constr[ia].y, constr[ia].z, constr[ia].w );
         printf( "\n" );
     }
     for(int i=0; i<nnode; i++){

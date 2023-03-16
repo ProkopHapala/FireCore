@@ -41,6 +41,7 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
     int ibuff_lvecs=-1, ibuff_ilvecs=-1; 
+    int ibuff_constr=-1;
 
     void makeKrenels_MM( const char*  cl_src_dir ){
         printf( "makeKrenels_MM() \n" );
@@ -70,6 +71,10 @@ class OCL_MM: public OCLsystem { public:
         ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_neighs     = newBuffer( "neighs",     nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_neighCell  = newBuffer( "neighCell" , nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+
+        ibuff_constr     = newBuffer( "constr",    nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
+        //ibuff_constr0    = newBuffer( "constr0",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
+        //ibuff_constrK    = newBuffer( "constrK",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
 
         ibuff_bkNeighs   = newBuffer( "bkNeighs",   nSystems*nvecs , sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         //ibuff_bkNeighs = newBuffer( "bkNeighs",   nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
@@ -201,6 +206,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_aforces    ); // 5
         err |= useArgBuff( ibuff_neighForce ); // 6
         err |= useArgBuff( ibuff_bkNeighs   ); // 7
+        err |= useArgBuff( ibuff_constr     ); // 8
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         /*
@@ -228,6 +234,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_aforces    ); // 4
         err |= useArgBuff( ibuff_neighForce ); // 5
         err |= useArgBuff( ibuff_bkNeighs   ); // 6
+        err |= useArgBuff( ibuff_constr     ); // 7
         OCL_checkError(err, "setup_printOnGPU");
         return task;
         /*
