@@ -70,7 +70,7 @@ class TestAppFIRE : public AppSDL2OGL_3D {
 
     double Fmax = 1.e-6;
     bool   bRun = false;
-    int    ialg = 0  , ialg_max=1;
+    int    ialg = 1  , ialg_max=1;
 
 
     DynamicOpt  opt;
