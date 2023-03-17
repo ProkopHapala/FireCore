@@ -115,6 +115,18 @@ class AtomType{ public:
 // ======================
 // ====   MMFFparams
 // ======================
+static const int z2typ0[]{ 
+    0, //0
+    1, //H
+    -1, //He
+    -1, //Li
+    -1, //Be
+    -1, //B
+    2, //C
+    3, //N
+    4, //O
+    5  //F 
+};
 
 class MMFFparams{ public:
 
@@ -124,6 +136,7 @@ class MMFFparams{ public:
     std::unordered_map<std::string,int>    atomTypeDict;
     std::unordered_map<uint64_t,BondType>  bonds;
     std::unordered_map<uint64_t,AngleType> angles;
+
 
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
@@ -381,25 +394,37 @@ class MMFFparams{ public:
         return ret;
     }
 
-    void writeXYZ( FILE* pfile, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0 ){
+    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0, bool just_Element=true ){
         //printf( "MMFFparams::writeXYZ() n=%i REQs=%li \n", n, (long)REQs );
         fprintf(pfile, "%i\n", n );
         fprintf(pfile, "%s \n", comment );
         for(int i=0; i<n; i++){
             //printf( "DEBUG writeXYZ()[%i] \n", i );
-            int ityp   = atypes[i];
+            int ityp   = atyps[i];
             const Vec3d&  pi = apos[i];
+            const char* symbol; 
+            bool byName = true;
+            if(just_Element){ 
+                int iZ = atypes[ityp].iZ;
+                if( iZ<=11 ){
+                    int it = z2typ0[iZ];
+                    symbol = atomTypeNames[it].c_str();
+                    //printf( "atom[%i] ityp %i iZ %i it %i `%s` \n", i, ityp, iZ, it, symbol );
+                    byName = false;
+                }
+            }
+            if(byName){ symbol = atomTypeNames[ityp].c_str(); }
             //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, params->atypes[ityp].name );
-            if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", atomTypeNames[ityp].c_str(), pi.x,pi.y,pi.z, REQs[i].z ); }
-            else    { fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f \n"    , atomTypeNames[ityp].c_str(), pi.x,pi.y,pi.z            ); }
+            if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", symbol, pi.x,pi.y,pi.z, REQs[i].z ); }
+            else    { fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f \n"          , symbol, pi.x,pi.y,pi.z            ); }
         };
     }
 
-    int saveXYZ( const char * fname, int n, const int* atypes, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0, const char* mode="w" ){
+    int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0, const char* mode="w", bool just_Element=true ){
         FILE* pfile = fopen(fname, mode );
         //printf( "saveXYZ(%s) \n", fname );
         if( pfile == NULL ) return -1;
-        writeXYZ( pfile, n, atypes, apos, comment, REQs );
+        writeXYZ( pfile, n, atyps, apos, comment, REQs, just_Element );
         fclose(pfile);
         return n;
     }

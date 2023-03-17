@@ -8,6 +8,26 @@
 
 typedef void (*ForceFunction)( int n, double * xs, double * dfs );
 
+class OptLog { public:
+    int n=0;
+    double* cos  = 0;
+    double* f    = 0;
+    double* v    = 0;
+    double* dt   = 0;
+    double* damp = 0;
+
+    void set(int i, double ci, double fi, double vi, double dti, double Di ){
+        i = i%n;
+        if(cos )cos [i] = ci;
+        if(v   )v   [i] = vi;
+        if(f   )f   [i] = fi;
+        if(dt  )dt  [i] = dti;
+        if(damp)damp[i] = Di;
+    }
+
+};
+
+
 class DynamicOpt{ public:
     // variables
     int verbosity = 0;
@@ -67,6 +87,12 @@ class DynamicOpt{ public:
 
     double ff=0,vv=0,vf=0;
 
+    double f_len      = 0;
+    double v_len      = 0;
+    double cos_vf     = 0;
+    double renorm_vf  = 0;
+
+
     ForceFunction getForce = 0;
 
     // ==== function declarations
@@ -88,6 +114,27 @@ class DynamicOpt{ public:
     double getFsqSum( );
 
     // ==== inline functions
+
+    inline void project_vf(){
+        ff=0,vv=0,vf=0;
+        for(int i=0; i<n; i++){
+            //double fi = force[i];
+            double fi = force[i]*invMasses[i];
+            double vi = vel[i];
+            ff += fi*fi;
+            vv += vi*vi;
+            vf += vi*fi;
+            //printf( "move_FIRE %i f %g v %g p %g \n", i, force[i], vel[i], pos[i] );
+        } 
+    }
+
+    inline void eval_cos_vf(){
+        project_vf();
+        f_len      = sqrt(ff);
+        v_len      = sqrt(vv);
+        cos_vf     = vf    / ( f_len*v_len + ff_safety );
+        renorm_vf  = v_len / ( f_len       + ff_safety );
+    }
 
     inline void setInvMass(double invM){  if(invMasses==0){ _realloc(invMasses,n);}  for(int i=0;i<n;i++){invMasses[i]=invM;} };
 

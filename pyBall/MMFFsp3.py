@@ -47,6 +47,7 @@ header_strings = [
 #"void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){",
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
+#"void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -117,8 +118,7 @@ def getBuff(name,sh):
     #print(name," : ",ptr)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
-#def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
-def getBuffs( NEIGH_MAX=4 ):
+def getBuffs( ):
     init_buffers()
     #natom=nnode+ncap
     #nvecs=natom+npi
@@ -130,17 +130,17 @@ def getBuffs( NEIGH_MAX=4 ):
     #nDOFs=0,natoms=0,nnode=0,ncap=0,nvecs=0;
     nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];nvecs=ndims[4];
     print( "getBuffs(): natoms %i nnode %i ncap %i nvecs %i"  %(natoms,nnode,ncap,nvecs) )
-    global DOFs,fDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, Kneighs,bond2atom,aneighs,selection
+    global DOFs,fDOFs,apos,fapos,pipos,fpipos, aneighs #,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
     if glob_bMMFF:
         DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
         fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
-        pipos     = getBuff ( "pipos",    (natoms,3)    )
-        fpipos    = getBuff ( "fpipos",   (natoms,3)    )
-        aneighs   = getIBuff( "aneighs",  (nnode,NEIGH_MAX) )
-        selection = getIBuff( "selection",  (natoms) )
+        pipos     = getBuff ( "pipos",    (nnode,3)  )
+        fpipos    = getBuff ( "fpipos",   (nnode,3)  )
+        aneighs   = getIBuff( "aneighs",  (natoms,4) )
+        #selection = getIBuff( "selection",  (natoms) )
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []
@@ -234,6 +234,17 @@ lib.checkInvariants.restype   =  c_bool
 def checkInvariants(maxVcog=1e-9, maxFcog=1e-9, maxTg=1e-1):
     return lib.checkInvariants(maxVcog, maxFcog, maxTg)
 
+#  void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){
+lib.setOptLog.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p] 
+lib.setOptLog.restype   =  None
+def setOptLog( n ):
+    cos  = np.zeros(n) 
+    f    = np.zeros(n) 
+    v    = np.zeros(n) 
+    dt   = np.zeros(n) 
+    damp = np.zeros(n)
+    lib.setOptLog(n, _np_as(cos,c_double_p), _np_as(f,c_double_p), _np_as(v,c_double_p), _np_as(dt,c_double_p), _np_as(damp,c_double_p))
+    return cos,f,v,dt,damp
 
 #  void setTrjName( char* trj_fname_ ){ 
 lib.setTrjName.argtypes  = [c_char_p, c_int ] 

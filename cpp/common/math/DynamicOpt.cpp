@@ -91,79 +91,11 @@ double DynamicOpt::move_MD_safe(double dt_loc){
 }
 */
 
-
-/*
 double DynamicOpt::move_FIRE(){
-    double ff=0,vv=0,vf=0;
-    for(int i=0; i<n; i++){
-        double fi = force[i];
-        double vi = vel[i];
-        ff += fi*fi;
-        vv += vi*vi;
-        vf += vi*fi;
-    }
-
-    bool bOverLimit = ff>(f_limit*f_limit);
-    if( (vf<0.0)||bOverLimit){
-        //dt       = dt * fdec;
-        dt       = fmax( dt * fdec, dt_min );
-        damping  = damp_max;
-        lastNeg  = 0;
-        cleanVel();
-        //move_GD (dt*scale_dt*scale_dt);
-        //for(int i=0; i<n; i++){ vel[i] = kickStart*dt*force[i]; }
-        //for(int i=0; i<n; i++){ vel[i] = dmax*force[i]*sqrt(1/ff)/dt_var; }
-    }else{
-        double cf  =      damping * sqrt(vv/(ff+ff_safety));
-        //double cf     =     damping * sqrt(vv/ff);
-        double cv     = 1 - damping;
-        for(int i=0; i<n; i++){
-            vel[i]    = cv * vel[i]  + cf * force[i];
-        }
-        if( lastNeg > minLastNeg ){
-            dt        = fmin( dt * finc, dt_max );
-            damping   = damping  * falpha;
-        }
-        lastNeg++;
-    }
-
-    if(bOverLimit){
-        move_GD (dt_min*sqrt(f_limit*f_limit/ff));
-    }else{
-        move_LeapFrog( dt*scale_dt );
-    }
-
-    //move_LeapFrog( dt*limit_dt_vf2(ff,vv) );
-    //move_LeapFrog();
-    //move_LeapFrog_vlimit();  // this does not seem to help
-    //printf( " %i f v vf  %f %f %f   dt damp  %f %f \n",  stepsDone,   sqrt(ff), sqrt(vv), vf/sqrt(vv*ff),   dt_var, damp_var  );
-    //stepsDone++;
-    return ff;
-}
-
-*/
-
-
-
-
-double DynamicOpt::move_FIRE(){
-
     // ToDo: according to FIRE implementation in LAMMPS we should update velocity by force first !!!!
     // see:   https://github.com/lammps/lammps/blob/730e5d2e64106f3e5357fd739b44c7eec19c7d2a/src/min_fire.cpp#L393
-
-	ff=0,vv=0,vf=0;
-	//printf( "DEBUG 5.5.1: %i\n", n  );
-	for(int i=0; i<n; i++){
-        //double fi = force[i];
-		double fi = force[i]*invMasses[i];
-		double vi = vel[i];
-		ff += fi*fi;
-		vv += vi*vi;
-		vf += vi*fi;
-        //printf( "move_FIRE %i f %g v %g p %g \n", i, force[i], vel[i], pos[i] );
-	}
+    project_vf();
     //printf( "DEBUG move_FIRE %i |f| %g |v| %g <v|f> %g n %i\n", sqrt(ff), sqrt(vv), vf, n );
-	//printf( "DEBUG 5.5.2 \n" );
 	if( vf < 0.0 ){
 	//if( (vf<0.0)||bOverLimit){
 		//dt       = dt * fdec;
@@ -273,16 +205,11 @@ double DynamicOpt::damp_func( double c, double& cv ){
         cf =   damping;
     }else{  // cos(v,f) from [ cvf_min .. cvf_max ]
         double f = (c-cvf_min)/(cvf_max-cvf_min);
-        //cv = (1-damping *f );
-        //cf =    damping *f;       //   +     0.0*f*(1.-f);
         cv = (1.-damping)*f;
-        cf =     damping*f;
+        cf =     damping *f;
         //cf +=  damping*f*(1.-f);
-        printf( " c=%g f=%g cv=%g cf=%g damping=%g stepsDone %i cvf_max %g cvf_min %g \n", c, f, cv, cf, damping, stepsDone, cvf_max,cvf_min  );
-        if( isnan(f) ){ printf("ERROR DynamicOpt::damp_func()  f is NaN => ecit()"); exit(0); }
-        //cv = (1.-damping);
-        //cf = damping;
-
+        //printf( " c=%g f=%g cv=%g cf=%g damping=%g stepsDone %i cvf_max %g cvf_min %g \n", c, f, cv, cf, damping, stepsDone, cvf_max,cvf_min  );
+        //if( isnan(f) ){ printf("ERROR DynamicOpt::damp_func()  f is NaN => ecit()"); exit(0); }
     }
     return cf;
 }
@@ -305,21 +232,11 @@ double DynamicOpt::damp_func( double c, double& cv ){ // Original FIRE damping
 */
 
 double DynamicOpt::move_FIRE_smooth(){
-	ff=0,vv=0,vf=0;
-	for(int i=0; i<n; i++){
-		double fi = force[i]*invMasses[i];
-		double vi = vel[i];
-		ff += fi*fi;
-		vv += vi*vi;
-		vf += vi*fi;
-	}
-    double c   = vf/sqrt(vv*ff + ff_safety ); 
+    eval_cos_vf();
 	double cv;
-    double cf  =    sqrt(vv/(ff+ff_safety)) * damp_func( c, cv );
-    for(int i=0; i<n; i++){
-        vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;
-    }
-	if( c < 0.0 ){
+    double cf  = renorm_vf * damp_func( cos_vf, cv );
+    for(int i=0; i<n; i++){ vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;  }
+	if( cos_vf < 0.0 ){
         dt       = fmax( dt * fdec, dt_min );
 		lastNeg  = 0;
         damping  = damp_max;
