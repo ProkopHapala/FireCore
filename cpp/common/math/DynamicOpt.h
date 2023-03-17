@@ -27,8 +27,11 @@ class DynamicOpt{ public:
     double cvf_min = -0.1;  // minimum cosine for velocity damping in  move_FIRE_smooth()
     double cvf_max = +0.1;  // maximum cosine for velocity damping in  move_FIRE_smooth()
 
-    //double cvf_min = -0.1;  // minimum cosine for velocity damping in  move_FIRE_smooth()
-    //double cvf_max =  0.0;  // maximum cosine for velocity damping in  move_FIRE_smooth()
+    //double cvf_min = -0.30;  // minimum cosine for velocity damping in  move_FIRE_smooth()
+    //double cvf_max =  0.05;  // maximum cosine for velocity damping in  move_FIRE_smooth()
+
+    //double cvf_min = -0.0;  // minimum cosine for velocity damping in  move_FIRE_smooth()
+    //double cvf_max =  0.1;  // maximum cosine for velocity damping in  move_FIRE_smooth()
 
     //double cvf_min = -0.01;  // minimum cosine for velocity damping in  move_FIRE_smooth()
     //double cvf_max = +0.01;  // maximum cosine for velocity damping in  move_FIRE_smooth()

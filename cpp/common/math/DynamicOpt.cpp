@@ -249,10 +249,14 @@ double DynamicOpt::damp_func( double c, double& cv ){
         cv = 1.;
         cf = 0.;
     }else{  // cos(v,f) from [ cvf_min .. cvf_max ]
-        cv = (c-cvf_min)/(cvf_max-cvf_min);
-        cf = 2.*cv*(1-cv);
+        double f = (c-cvf_min)/(cvf_max-cvf_min);
+        cv = f;
+        cf = 4.*f*(1-f);
+        printf( " c=%g f=%g cv=%g cf=%g damping=%g stepsDone %i cvf_max %g cvf_min %g \n", c, f, cv, cf, damping, stepsDone, cvf_max,cvf_min  );
+        if( isnan(f) ){ printf("ERROR DynamicOpt::damp_func()  f is NaN => ecit()"); exit(0); }
+        //cv = (1.-damping);
+        //cf = damping;
 
-        printf( "\n", cv );
     }
     return cf;
 }
@@ -266,13 +270,14 @@ double DynamicOpt::damp_func( double c, double& cv ){
         cf = 0.;
     }else if(c > cvf_max){
         cv = 1-damping;
-        cf = damping;
+        cf =   damping;
     }else{  // cos(v,f) from [ cvf_min .. cvf_max ]
         double f = (c-cvf_min)/(cvf_max-cvf_min);
         //cv = (1-damping *f );
         //cf =    damping *f;       //   +     0.0*f*(1.-f);
         cv = (1.-damping)*f;
-        cf =     damping*f*0;
+        cf =     damping*f;
+        //cf +=  damping*f*(1.-f);
         printf( " c=%g f=%g cv=%g cf=%g damping=%g stepsDone %i cvf_max %g cvf_min %g \n", c, f, cv, cf, damping, stepsDone, cvf_max,cvf_min  );
         if( isnan(f) ){ printf("ERROR DynamicOpt::damp_func()  f is NaN => ecit()"); exit(0); }
         //cv = (1.-damping);
@@ -308,7 +313,7 @@ double DynamicOpt::move_FIRE_smooth(){
 		vv += vi*vi;
 		vf += vi*fi;
 	}
-    double c   = vf/sqrt(vv*ff); 
+    double c   = vf/sqrt(vv*ff + ff_safety ); 
 	double cv;
     double cf  =    sqrt(vv/(ff+ff_safety)) * damp_func( c, cv );
     for(int i=0; i<n; i++){
