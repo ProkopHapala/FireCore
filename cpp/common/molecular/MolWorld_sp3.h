@@ -705,7 +705,8 @@ virtual int run( int niter, double dt_=-1, double Ftol=1e-6, int ialg=2, double*
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
-    printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
+    //printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
+    printf( "opt.damp_max %g opt.damping %g \n", opt.damp_max, opt.damping );
     double F2conv=Fconv*Fconv;
     double F2 = 1.0;
     double Etot=0;
@@ -730,7 +731,7 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
             sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
             saveXYZ( trj_fname, tmpstr, false, "a" );
         }
-        if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
+        if(verbosity>1){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
             bConverged=true;
             if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
