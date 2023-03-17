@@ -149,6 +149,11 @@ def makeRotMat( fw, up ):
     left = left/np.linalg.norm(left) 
     return np.array([left,up,fw])
 
+def rotmat_from_points( ps, ifw=None, iup=None,  fw=None, up=None, _0=1 ):
+    if fw is None: fw  = ps[ifw[1]-_0]-ps[ifw[0]-_0]
+    if up is None: up  = ps[iup[1]-_0]-ps[iup[0]-_0]
+    return makeRotMat( fw, up )
+
 def mulpos( ps, rot ):
     for ia in range(len(ps)): ps[ia,:] = np.dot(rot, ps[ia,:])
 
@@ -371,7 +376,7 @@ def readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None )
                         lvec = read_lammps_lvec( fin )
                     elif wds[1]=='ATOMS':
                         apos,es = readAtomsXYZ( fin, na )
-                        S = AtomiSystem( lvec=lvec, enames=es, apos=apos)
+                        S = AtomicSystem( lvec=lvec, enames=es, apos=apos)
                         trj.append( S )
     return trj
 
@@ -573,7 +578,7 @@ def removeGroup( base, remove ):
 
 # ========================== Class Geom
 
-class AtomiSystem():
+class AtomicSystem():
 
     def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None ) -> None:
         self.apos    = apos
@@ -609,7 +614,7 @@ class AtomiSystem():
 
     def findCOG(self, apos, byBox=False ):
         return findCOG( apos, byBox=byBox )
-    
+        
     def clonePBC(self,nPBC=(1,1,1) ):
         nx,ny,nz= nPBC
         nxyz=nx*ny*nz
@@ -642,8 +647,55 @@ class AtomiSystem():
                     if qs     is not None: qs    [i0:i0+na  ] = self.qs    .copy()
                     if enames is not None: enames += self.enames
                     i0+=na
-        return AtomiSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
+        return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
 
+    def orient_mat(self, rot, p0=None, bCopy=False ):
+        apos=self.apos  
+        if(bCopy): apos=apos.copy()
+        if p0 is not None: apos[:,:]-=p0[None,:]
+        mulpos( apos, rot )
+        return apos
+
+    def orient_vs(self, fw, up, p0=None, trans=None, bCopy=False ):
+        rot = makeRotMat( fw, up )
+        if trans is not None: rot=rot[trans,:]
+        return self.orient_mat( rot, p0, bCopy )
+
+    def orient( self, i0, ip1, ip2, _0=1, trans=None, bCopy=False ):
+        p0  = self.apos[i0-_0]
+        fw  = self.apos[ip1[1]-_0]-self.apos[ip1[0]-_0]
+        up  = self.apos[ip2[1]-_0]-self.apos[ip2[0]-_0]
+        return self.orient_vs( fw, up, p0, trans=trans, bCopy=bCopy )
+
+    def delete_atoms(self, lst ):
+        if( self.apos   is not None ): self.apos   =  np.delete( self.apos,   lst, axis=0 )
+        if( self.atypes is not None ): self.atypes =  np.delete( self.atypes, lst )
+        if( self.qs     is not None ): self.qs     =  np.delete( self.qs,     lst )
+        if( self.Rs     is not None ): self.Rs     =  np.delete( self.Rs,     lst )
+        if( self.enames is not None ): self.enames =  np.delete( self.enames, lst )
+
+    def append_atoms(self, B ):
+        if( self.apos   is not None ): self.apos   =  np.append( self.apos,   B.apos, axis=0 )
+        if( self.atypes is not None ): self.atypes =  np.append( self.atypes, B.atypes )
+        if( self.qs     is not None ): self.qs     =  np.append( self.qs,     B.qs )
+        if( self.Rs     is not None ): self.Rs     =  np.append( self.Rs,     B.Rs )
+        if( self.enames is not None ): self.enames =  np.append( self.enames, B.enames )
+        #print( type(self.enames),   type(B.enames),   )
+        #print( "self.enames ", self.enames, "B.enames ", B.enames )
+        #if( self.enames is not None ): self.enames += B.enames
+
+
+    def attach_group( self, G,  i0, i1, iup,   bond,  up=(0.,0.,1.),  _0=1  ): 
+        up  = np.array( up )
+        rot = rotmat_from_points( self.apos, ifw=bond, up=up, _0=1 );   
+        rot = rot.transpose()
+        p0  = self.apos[bond[0]-_0]
+
+        G.orient( i0,(i0,i1),iup, _0=_0 )
+        G.orient_mat( rot ); 
+        G.apos[:,:]+=p0[None,:]
+        G.delete_atoms( [i1-_0] )
+        self.append_atoms( G )
 
     #def orient_vs( p0, fw, up, apos, trans=None, bool bCopy ):
     #def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):

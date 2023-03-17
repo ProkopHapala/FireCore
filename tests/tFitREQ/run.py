@@ -10,7 +10,7 @@ from pyBall import atomicUtils as au
 
 # ============== Setup
 
-h2o = au.AtomiSystem( "common_resources/H2O.xyz")
+h2o = au.AtomicSystem( "common_resources/H2O.xyz")
 h2o.print()
 h2o.findBonds()
 h2o.printBonds()
