@@ -621,70 +621,6 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
 //void open_xyzFile (const char* fname){ xyz_file=fopen( fname,"w" ); };
 //void close_xyzFile(){fclose(xyz_file)};
 
-int toXYZ(const char* comment="#comment", bool bNodeOnly=false){
-    if(xyz_file==0){ printf("ERROR no xyz file is open \n"); return -1; }
-    int n=ff.natoms; if(bNodeOnly){ n=ff.nnode; }
-    params.writeXYZ( xyz_file, n, ff.atype, ff.apos, comment );
-    return 0;
-}
-
-
-
-bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
-    Etot=0.0;
-    double f2tol=Ftol*Ftol;
-    bConverged=false; 
-    if(bWriteTrj){ xyz_file=fopen( "relax_trj.xyz","w" ); }
-    for(int itr=0; itr<niter; itr++){
-        Etot=eval();                                                  
-        if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
-        double f2 = opt.move_FIRE();
-        //if(bWriteTrj){ toXYZ(); ;printf("DEBUB[%i] 4 \n", itr); };
-        if(bWriteTrj){  sprintf(tmpstr,"# relax[%i] E=%g f2=%g", itr, Etot, sqrt(f2) );  toXYZ(tmpstr); };
-        printf( "relax[%i] |F| %g (Ftol=%g) \n", itr, sqrt(f2), Ftol );
-        if(f2<f2tol){ bConverged=true; break; }
-    }
-    if(bWriteTrj){ fclose(xyz_file); }
-    return bConverged;
-}
-
-
-//int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
-virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
-    double F2conv=Fconv*Fconv;
-    double F2 = 1.0;
-    double Etot;
-    int itr=0;
-    //if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(0); };
-    if(dt>0){ opt.setTimeSteps(dt); }
-    if(ialg>0){ opt.cleanVel( ); }
-    for(itr=0; itr<nstepMax; itr++ ){
-        //ff.clearForce();
-        Etot = eval();
-        switch(ialg){
-            case  0: ffl.move_GD      (opt.dt);      break;
-            case -1: opt.move_LeapFrog(opt.dt);      break;
-            case  1: F2 = opt.move_MD (opt.dt,opt.damping); break;
-            case  2: F2 = opt.move_FIRE();          break;
-            case  3: F2 = opt.move_FIRE_smooth();   break;
-        }
-        opt_log.set(itr, opt.cos_vf, opt.f_len, opt.v_len, opt.dt, opt.damping );
-        if(outE){ outE[itr]=Etot; }
-        if(outF){ outF[itr]=F2;   }
-        if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
-        if(F2<F2conv){
-            if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
-            break;
-        }
-        if( (trj_fname) && (itr%savePerNsteps==0) ){
-            sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
-            saveXYZ( trj_fname, tmpstr, false, "a" );
-        }
-    }
-    //printShortestBondLengths();
-    return itr;
-}
-
 double eval_f4(){
     pack( ff4.natoms, ffl.apos , ff4.apos  );
     pack( ff4.nnode,  ffl.pipos, ff4.pipos );
@@ -702,12 +638,12 @@ double eval(){
     double E=0;
     if(bMMFF){ 
         //E += ff .eval();
-        //E += ffl.eval();  
-        E += eval_f4();
+        E += ffl.eval();  
+        //E += eval_f4();
         //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.ps[0].x,nbmol.ps[0].y,nbmol.ps[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
     }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){
-        //E +=           nbmol.evalLJQs_ng4( ff.aneighs );           // atoms in cell ignoring bonds
+        E +=           nbmol.evalLJQs_ng4( ff.aneighs );           // atoms in cell ignoring bonds
         //if  (bPBC){ E+=nbmol.evalLJQs_PBC( ff.lvec, {1,1,0} ); }   // atoms outside cell
     }
     
@@ -722,6 +658,89 @@ double eval(){
     //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
     return E;
 }
+
+
+bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
+    printf( "MolWorld_sp3::relax() niter %i Ftol %g ialg %g bWriteTrj %i \n", niter,  Ftol, bWriteTrj );
+    Etot=0.0;
+    double f2tol=Ftol*Ftol;
+    bConverged=false; 
+    if(bWriteTrj){ xyz_file=fopen( "relax_trj.xyz","w" ); }
+    for(int itr=0; itr<niter; itr++){
+        Etot=eval();                                                  
+        if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
+        double f2 = opt.move_FIRE();
+        //if(bWriteTrj){ toXYZ(); ;printf("DEBUB[%i] 4 \n", itr); };
+        if(bWriteTrj){  sprintf(tmpstr,"# relax[%i] E=%g f2=%g", itr, Etot, sqrt(f2) );  toXYZ(tmpstr); };
+        printf( "relax[%i] |F| %g (Ftol=%g)  Etot %g \n", itr, sqrt(f2), Ftol, Etot );
+        if(f2<f2tol){ bConverged=true; break; }
+    }
+    if(bWriteTrj){ fclose(xyz_file); }
+    return bConverged;
+}
+
+/*
+virtual int run( int niter, double dt_=-1, double Ftol=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
+//int run( int niter, double dt_=-1, double Ftol=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
+//int run( int niter, double dt_=-1, double Ftol=1e-6, int ialg=2 ){
+    bool bWriteTrj=true;
+    Etot=0.0;
+    double f2tol=Ftol*Ftol;
+    bConverged=false; 
+    if(bWriteTrj){ xyz_file=fopen( "relax_trj.xyz","w" ); }
+    for(int itr=0; itr<niter; itr++){
+        Etot=eval();                                                  
+        if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
+        double f2 = opt.move_FIRE();
+        //if(bWriteTrj){ toXYZ(); ;printf("DEBUB[%i] 4 \n", itr); };
+        if(bWriteTrj){  sprintf(tmpstr,"# relax[%i] E=%g f2=%g", itr, Etot, sqrt(f2) );  toXYZ(tmpstr); };
+        printf( "relax[%i] |F| %g (Ftol=%g)  Etot %g \n", itr, sqrt(f2), Ftol, Etot );
+        if(f2<f2tol){ bConverged=true; break; }
+    }
+    if(bWriteTrj){ fclose(xyz_file); }
+    return bConverged;
+}
+*/
+
+
+//int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
+virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
+    printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
+    double F2conv=Fconv*Fconv;
+    double F2 = 1.0;
+    double Etot=0;
+    int itr=0;
+    //if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(0); };
+    //if(dt>0){ opt.setTimeSteps(dt); }
+    //if(ialg>0){ opt.cleanVel( ); }
+    for(itr=0; itr<nstepMax; itr++ ){
+        //ff.clearForce();
+        Etot = eval();
+        switch(ialg){
+            case  0: ffl.move_GD      (opt.dt);      break;
+            case -1: opt.move_LeapFrog(opt.dt);      break;
+            case  1: F2 = opt.move_MD (opt.dt,opt.damping); break;
+            case  2: F2 = opt.move_FIRE();          break;
+            case  3: F2 = opt.move_FIRE_smooth();   break;
+        }
+        opt_log.set(itr, opt.cos_vf, opt.f_len, opt.v_len, opt.dt, opt.damping );
+        //if(outE){ outE[itr]=Etot; }
+        //if(outF){ outF[itr]=F2;   }
+        if( (trj_fname) && (itr%savePerNsteps==0) ){
+            sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
+            saveXYZ( trj_fname, tmpstr, false, "a" );
+        }
+        if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
+        if(F2<F2conv){
+            bConverged=true;
+            if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+            break;
+        }
+    }
+    //printShortestBondLengths();
+    return itr;
+}
+
 
 void pullAtom( int ia, float K=-2.0 ){ 
     //Vec3d f = getForceSpringRay( ff.apos[ia], pick_hray, pick_ray0, K ); ff.fapos[ia].add( f );
@@ -773,6 +792,11 @@ void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
 //inline int pickParticle( const Vec3d& ray0, const Vec3d& hRay, double R, int n, Vec3d * ps, bool* ignore=0 ){
 //int pickParticle( Vec3d ray0, Vec3d hray, double R=0.5 ){ return pickParticle( ray0, hray, R, ff.natoms, ff.apos ); }
 
+int toXYZ(const char* comment="#comment", bool bNodeOnly=false){
+    if(xyz_file==0){ printf("ERROR no xyz file is open \n"); return -1; }
+    params.writeXYZ( xyz_file, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.ps, comment );
+    return 0;
+}
 
 int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w" ){ return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.ps, comment, nbmol.REQs, mode ); }
 //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }

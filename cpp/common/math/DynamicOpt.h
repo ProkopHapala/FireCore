@@ -17,6 +17,7 @@ class OptLog { public:
     double* damp = 0;
 
     void set(int i, double ci, double fi, double vi, double dti, double Di ){
+        if(n==0)return;
         i = i%n;
         if(cos )cos [i] = ci;
         if(v   )v   [i] = vi;
@@ -105,8 +106,10 @@ class DynamicOpt{ public:
     //double move_MD_safe ( double dt_loc );
     inline double move_MDquench(){ return move_MD(dt,damping);};
     double move_FIRE();
+    double move_FIRE_bak();
     double move_FIRE_smooth();
-    double damp_func( double c, double& cv );
+    double damp_func     ( double c, double& cv );
+    double damp_func_FIRE( double c, double& cv );
     double optStep();
     bool   optimize( double convF, int nMaxSteps );
 
