@@ -124,7 +124,6 @@ void initWithSMILES(char* s, bool bPrint, bool bCap, bool bNonBonded_, bool bOpt
     init_buffers();
 }
 
-
 void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.ff.doAngles , doAngles  );
@@ -137,15 +136,27 @@ void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int do
     #undef _setbool
 }
 
+void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){
+    W.opt_log.n    = n;
+    W.opt_log.cos  = cos;
+    W.opt_log.f    = f;
+    W.opt_log.v    = v;
+    W.opt_log.dt   = dt;
+    W.opt_log.damp = damp;
+}
+
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){ return W.checkInvariants( maxVcog, maxFcog, maxTg ); }
 //void open_xyzFile (const char* fname){ xyz_file=fopen( fname,"w" ); };
 //void close_xyzFile(){fclose(xyz_file)};
+
+void setTrjName( char* trj_fname_, int savePerNsteps_ ){ W.trj_fname=trj_fname_; W.savePerNsteps=savePerNsteps_; if(verbosity>0)printf( "setTrjName(%s)\n", W.trj_fname ); }
 
 int toXYZ(const char* comment="#comment"){ return W.toXYZ(comment); }
 
 double eval(){ return W.eval(); };
 
 bool relax( int niter, double Ftol, bool bWriteTrj ){ return W.relax( niter, Ftol, bWriteTrj );}
+int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  }
 
 
 // ========= Manipulation with the molecule

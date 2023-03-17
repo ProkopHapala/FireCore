@@ -180,7 +180,7 @@ float eval_atom(int ia){
 
             //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
             E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
-            if(ia==ia_DBG)printf( "CPU bond[%i|%i] kpb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
+            //if(ia==ia_DBG)printf( "CPU bond[%i|%i] kpb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction

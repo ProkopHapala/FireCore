@@ -153,7 +153,7 @@ def getBuffs( NEIGH_MAX=4 ):
     nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];npi=ndims[4];nbonds=ndims[5];
     nvecs=natoms+npi
     print( "getBuffs(): nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
-    global DOFs,fDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, Kneighs,bond2atom,aneighs,selection
+    global DOFs,fDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,aneighs,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
@@ -164,7 +164,7 @@ def getBuffs( NEIGH_MAX=4 ):
         fpipos    = getBuff ( "fpipos",   (npi,3)    )
         bond_l0   = getBuff ( "bond_l0",  (nbonds)   )
         bond_k    = getBuff ( "bond_k",   (nbonds)   )
-        Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
+        #Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
         bond2atom = getIBuff( "bond2atom",(nbonds,2) )
         aneighs   = getIBuff( "aneighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
@@ -281,6 +281,27 @@ lib.checkInvariants.restype   =  c_bool
 def checkInvariants(maxVcog=1e-9, maxFcog=1e-9, maxTg=1e-1):
     return lib.checkInvariants(maxVcog, maxFcog, maxTg)
 
+#  void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){
+lib.setOptLog.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p] 
+lib.setOptLog.restype   =  None
+def setOptLog( n ):
+    cos  = np.zeros(n) 
+    f    = np.zeros(n) 
+    v    = np.zeros(n) 
+    dt   = np.zeros(n) 
+    damp = np.zeros(n)
+    lib.setOptLog(n, _np_as(cos,c_double_p), _np_as(f,c_double_p), _np_as(v,c_double_p), _np_as(dt,c_double_p), _np_as(damp,c_double_p))
+    return cos,f,v,dt,damp
+
+#  void setTrjName( char* trj_fname_ ){ 
+lib.setTrjName.argtypes  = [c_char_p, c_int ] 
+lib.setTrjName.restype   =  c_bool
+def setTrjName(trj_fname_="trj.xyz", savePerNsteps=1, bDel=True ):
+    if bDel: open(trj_fname_,"w").close()
+    global trj_fname
+    trj_fname=cstr(trj_fname_)
+    return lib.setTrjName( trj_fname, savePerNsteps )
+
 #double eval()
 lib.eval.argtypes  = [] 
 lib.eval.restype   =  c_double
@@ -292,6 +313,12 @@ lib.relax.argtypes  = [c_int, c_double, c_bool ]
 lib.relax.restype   =  c_bool
 def relax(niter=100, Ftol=1e-6, bWriteTrj=False ):
     return lib.relax(niter, Ftol, bWriteTrj )
+
+#  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p] 
+lib. run.restype   =  c_int
+def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None):
+    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
 
 # ============= Manipulation
 
@@ -338,11 +365,11 @@ def rotate_atoms_ax(ia0, iax0, iax1, phi, sel=None):
         sel=np.array(sel,np.int32)
     return lib.rotate_atoms_ax(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi)
 
-#  int splitAtBond( int ib, int* sel )
-lib.splitAtBond.argtypes  = [c_int, c_int_p] 
-lib.splitAtBond.restype   =  c_int
-def splitAtBond(ib, sel=None):
-    return lib.splitAtBond(ib, _np_as(sel,c_int_p))
+# #  int splitAtBond( int ib, int* sel )
+# lib.splitAtBond.argtypes  = [c_int, c_int_p] 
+# lib.splitAtBond.restype   =  c_int
+# def splitAtBond(ib, sel=None):
+#     return lib.splitAtBond(ib, _np_as(sel,c_int_p))
 
 #  void scanTranslation_ax( int n, int* sel, double* vec, int nstep, double* Es, bool bWriteTrj )
 lib.scanTranslation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_int, c_double_p, c_bool] 

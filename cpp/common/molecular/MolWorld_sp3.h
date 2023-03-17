@@ -48,6 +48,10 @@ class MolWorld_sp3{ public:
     const char* smile_name   = 0;
     Vec3i nMulPBC  = Vec3iZero; 
 
+    const char* trj_fname    = "trj.xyz";
+    int savePerNsteps = 1;
+    OptLog opt_log;
+
     double fAutoCharges=-1;
 
     bool bCellBySurf=false;
@@ -624,8 +628,7 @@ int toXYZ(const char* comment="#comment", bool bNodeOnly=false){
     return 0;
 }
 
-//int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
-int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.ps, comment, nbmol.REQs ); }
+
 
 bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     Etot=0.0;
@@ -643,6 +646,43 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     }
     if(bWriteTrj){ fclose(xyz_file); }
     return bConverged;
+}
+
+
+//int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
+virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
+    double F2conv=Fconv*Fconv;
+    double F2 = 1.0;
+    double Etot;
+    int itr=0;
+    //if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(0); };
+    if(dt>0){ opt.setTimeSteps(dt); }
+    if(ialg>0){ opt.cleanVel( ); }
+    for(itr=0; itr<nstepMax; itr++ ){
+        //ff.clearForce();
+        Etot = eval();
+        switch(ialg){
+            case  0: ffl.move_GD      (opt.dt);      break;
+            case -1: opt.move_LeapFrog(opt.dt);      break;
+            case  1: F2 = opt.move_MD (opt.dt,opt.damping); break;
+            case  2: F2 = opt.move_FIRE();          break;
+            case  3: F2 = opt.move_FIRE_smooth();   break;
+        }
+        opt_log.set(itr, opt.cos_vf, opt.f_len, opt.v_len, opt.dt, opt.damping );
+        if(outE){ outE[itr]=Etot; }
+        if(outF){ outF[itr]=F2;   }
+        if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
+        if(F2<F2conv){
+            if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+            break;
+        }
+        if( (trj_fname) && (itr%savePerNsteps==0) ){
+            sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
+            saveXYZ( trj_fname, tmpstr, false, "a" );
+        }
+    }
+    //printShortestBondLengths();
+    return itr;
 }
 
 double eval_f4(){
@@ -732,6 +772,11 @@ void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
 
 //inline int pickParticle( const Vec3d& ray0, const Vec3d& hRay, double R, int n, Vec3d * ps, bool* ignore=0 ){
 //int pickParticle( Vec3d ray0, Vec3d hray, double R=0.5 ){ return pickParticle( ray0, hray, R, ff.natoms, ff.apos ); }
+
+
+int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w" ){ return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.ps, comment, nbmol.REQs, mode ); }
+//int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
+//int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.ps, comment, nbmol.REQs ); }
 
 // ========= Manipulation with the molecule
 
