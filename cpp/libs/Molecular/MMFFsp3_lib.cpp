@@ -137,7 +137,7 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){ return W.c
 
 int toXYZ(const char* comment="#comment"){ return W.toXYZ(comment); }
 double eval(){ return W.eval(); };
-int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  }
+int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){ return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  }
 
 // ========= Manipulation with the molecule
 

@@ -157,6 +157,8 @@ double eval(){ return W.eval(); };
 
 bool relax( int niter, double Ftol, bool bWriteTrj ){ return W.relax( niter, Ftol, bWriteTrj );}
 int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  }
+//int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2){ return W.run(nstepMax,dt,Fconv,ialg);  }
+//int run( int nstepMax, double dt, double Fconv, int ialg ){ return W.run(nstepMax,dt,Fconv,ialg);  }
 
 
 // ========= Manipulation with the molecule
