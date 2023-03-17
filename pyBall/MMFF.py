@@ -45,6 +45,7 @@ header_strings = [
 #"void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){",
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
+#"void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -153,19 +154,20 @@ def getBuffs( NEIGH_MAX=4 ):
     nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];npi=ndims[4];nbonds=ndims[5];
     nvecs=natoms+npi
     print( "getBuffs(): nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
-    global DOFs,fDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,aneighs,selection
+    global DOFs,fDOFs,vDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,aneighs,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
     if glob_bMMFF:
         DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
         fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
+        vDOFs     = getBuff ( "vDOFs",    (nvecs,3)  ) 
         pipos     = getBuff ( "pipos",    (npi,3)    )
         fpipos    = getBuff ( "fpipos",   (npi,3)    )
-        bond_l0   = getBuff ( "bond_l0",  (nbonds)   )
-        bond_k    = getBuff ( "bond_k",   (nbonds)   )
+        #bond_l0   = getBuff ( "bond_l0",  (nbonds)   )
+        #bond_k    = getBuff ( "bond_k",   (nbonds)   )
         #Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
-        bond2atom = getIBuff( "bond2atom",(nbonds,2) )
+        #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
         aneighs   = getIBuff( "aneighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
 
@@ -280,6 +282,12 @@ lib.checkInvariants.argtypes  = [c_double, c_double, c_double]
 lib.checkInvariants.restype   =  c_bool
 def checkInvariants(maxVcog=1e-9, maxFcog=1e-9, maxTg=1e-1):
     return lib.checkInvariants(maxVcog, maxFcog, maxTg)
+
+#  void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){
+lib.set_opt.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_double, c_int, c_double, c_double] 
+lib.set_opt.restype   =  None
+def set_opt( dt_max=0.1, dt_min=0.02, damp_max=0.2, finc=1.1, fdec=0.5, falpha=0.8, minLastNeg=5, cvf_min=-0.1, cvf_max=+0.1 ):
+    return lib.set_opt(dt_max, dt_min, damp_max, finc, fdec, falpha, minLastNeg, cvf_min, cvf_max)
 
 #  void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){
 lib.setOptLog.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p] 

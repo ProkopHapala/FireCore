@@ -8,8 +8,9 @@ from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
 
+# =========== Setting
 
-
+nmaxiter = 10000
 xyz_name = "butandiol-2"
 
 #ialg  = 2
@@ -25,7 +26,26 @@ mmff.init( xyz_name="data/"+xyz_name, bMMFF=True  )
 mmff.getBuffs()
 mmff.eval()
 
-nmaxiter = 10000
+apos_bak = mmff.DOFs.copy()
+
+damp_maxs = np.linspace( 0.05,0.3,50 )
+ns = np.zeros( len(damp_maxs) )
+
+for i,damp_max in enumerate(damp_maxs):
+    mmff.DOFs [:,:] = apos_bak[:,:]
+    mmff.vDOFs[:,:] = 0
+    #mmff.set_opt( dt_max=0.1, dt_min=0.02, damp_max=0.2, finc=1.1, fdec=0.5, falpha=0.8, minLastNeg=5, cvf_min=-0.1, cvf_max=+0.1 )
+    mmff.set_opt( damp_max=damp_max )
+    ns[i] = mmff.run(nmaxiter, ialg=ialg )
+
+plt.plot( damp_maxs, ns, '.-' )
+plt.show()
+
+
+'''
+
+# ---------- Plot
+
 cos,f,v,dt,damp = mmff.setOptLog( nmaxiter )
 mmff.setTrjName(xyz_name+"."+alg_name+".xyz",1)
 
@@ -47,6 +67,7 @@ plt.savefig(xyz_name+"."+alg_name+".png", bbox_inches='tight')
 plt.show()
 
 #print(f,v,damp,cos,dt)
+'''
 
 print("ALL DONE")
 #plt.show()

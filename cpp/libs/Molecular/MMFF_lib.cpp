@@ -63,20 +63,21 @@ void init_buffers(){
     buffers .insert( { "apos",   (double*)W.nbmol.ps } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fs } );
     if(W.bMMFF){
-        buffers .insert( { "DOFs",      W.ff.DOFs  } );
-        buffers .insert( { "fDOFs",     W.ff.fDOFs } );
+        buffers .insert( { "DOFs",      W.ffl.DOFs  } );
+        buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
+        buffers .insert( { "vDOFs",     W.opt.vel  } );
         //buffers .insert( { "apos",   (double*)W.ff.apos   } );
         //buffers .insert( { "fapos",  (double*)W.ff.fapos } );
         buffers .insert( { "apos",   (double*)W.nbmol.ps } );
         buffers .insert( { "fapos",  (double*)W.nbmol.fs } );
-        buffers .insert( { "pipos",  (double*)W.ff.pipos   } );
-        buffers .insert( { "fpipos", (double*)W.ff.fpipos } );
-        buffers .insert( { "bond_l0",   (double*)W.ff.bond_l0   } );
-        buffers .insert( { "bond_k",    (double*)W.ff.bond_k    } );
-        buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
+        buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
+        buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
+        //buffers .insert( { "bond_l0",   (double*)W.ffl.bond_l0   } );
+        //buffers .insert( { "bond_k",    (double*)W.ffl.bond_k    } );
+        //buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
         //buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
-        ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
-        ibuffers.insert( { "aneighs",      (int*)W.ff.aneighs  } );
+        //ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
+        ibuffers.insert( { "aneighs",      (int*)W.ffl.aneighs  } );
     }else{
         W.ff.natoms=W.nbmol.n;
     }
@@ -123,6 +124,34 @@ void initWithSMILES(char* s, bool bPrint, bool bCap, bool bNonBonded_, bool bOpt
     initWithSMILES(s,bPrint,bCap,bNonBonded_,bOptimizer_ );
     init_buffers();
 }
+
+void set_opt( 
+        double dt_max,  double dt_min, double damp_max, 
+        double finc,    double fdec,   double falpha, int minLastNeg,
+        double cvf_min, double cvf_max
+    ){
+
+    W.opt.dt_max  = dt_max;
+    W.opt.dt_min  = dt_min;
+    W.opt.dt      = dt_max;
+
+    W.opt.damp_max   = damp_max;
+    W.opt.damping    = damp_max;
+
+    W.opt.cvf_min    = cvf_min;
+    W.opt.cvf_max    = cvf_max;
+
+    W.opt.minLastNeg =  minLastNeg;
+    W.opt.finc       =  finc;
+    W.opt.fdec       =  fdec;
+    W.opt.falpha     =  falpha;
+    
+    //W.opt.f_limit  =  f_limit  ;
+    //W.opt.v_limit  =  v_limit  ;
+    //W.opt.dr_limit =  dr_limit ;
+
+}
+
 
 void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
