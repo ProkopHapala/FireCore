@@ -71,7 +71,7 @@ void init_buffers(){
     }
     ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
     buffers .insert( { "Es",       &W.ffl.Etot  } );
-    ibuffers.insert( { "selection", W.manipulation_sel  } );
+    //ibuffers.insert( { "selection", W.manipulation_sel  } );
     //for( auto c : buffers ){ printf("buff>>%s<<\n", c.first.c_str() ); }
 }
 
@@ -120,6 +120,15 @@ void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int do
     _setbool( W.bPBC        , PBC );
     _setbool( W.bCheckInvariants, CheckInvariants  );
     #undef _setbool
+}
+
+void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){
+    W.opt_log.n    = n;
+    W.opt_log.cos  = cos;
+    W.opt_log.f    = f;
+    W.opt_log.v    = v;
+    W.opt_log.dt   = dt;
+    W.opt_log.damp = damp;
 }
 
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){ return W.checkInvariants( maxVcog, maxFcog, maxTg ); }

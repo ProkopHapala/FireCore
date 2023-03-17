@@ -47,6 +47,8 @@ class MolWorld_sp3{ public:
     int savePerNsteps = 1;
     double fAutoCharges=-1;
 
+    OptLog opt_log;
+
 	// Building
 	MMFFparams   params;
 	MM::Builder  builder;
@@ -348,8 +350,10 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
             case  0: ffl.move_GD      (opt.dt);      break;
             case -1: opt.move_LeapFrog(opt.dt);      break;
             case  1: F2 = opt.move_MD (opt.dt,opt.damping); break;
-            case  2: F2 = opt.move_FIRE();       break;
+            case  2: F2 = opt.move_FIRE();          break;
+            case  3: F2 = opt.move_FIRE_smooth();   break;
         }
+        opt_log.set(itr, opt.cos_vf, opt.f_len, opt.v_len, opt.dt, opt.damping );
         if(outE){ outE[itr]=Etot; }
         if(outF){ outF[itr]=F2;   }
         if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
