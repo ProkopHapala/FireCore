@@ -8,6 +8,8 @@
 #include "OCL_MM.h"
 #include "datatypes_utils.h"
 
+#include "Confs.h"
+
 // ======================================
 // class:        MolWorld_sp3_ocl
 // ======================================

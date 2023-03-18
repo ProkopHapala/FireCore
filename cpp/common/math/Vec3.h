@@ -151,6 +151,9 @@ class Vec3T{
         return v;
     }
 
+    inline T cos( const VEC& b ){ return dot(b)/sqrt( norm2() * b.norm2() ); }
+
+
     inline bool tryNormalize(double errMax){
         double r2 = norm2();
         if( fabs(r2-1.0)>errMax ){
