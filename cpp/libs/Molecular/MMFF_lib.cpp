@@ -189,8 +189,18 @@ int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE
 //int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2){ return W.run(nstepMax,dt,Fconv,ialg);  }
 //int run( int nstepMax, double dt, double Fconv, int ialg ){ return W.run(nstepMax,dt,Fconv,ialg);  }
 
+void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){
+    W.constrs.bonds.push_back( DistConstr{ {i0,i1}, {lmax,lmin}, {kmax,kmin}, flim } );
+}
+
+void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){
+    W.constrs.angles.push_back( AngleConstr{ {i0,i1,i2}, {cos(ang0/2.),sin(ang0/2.)}, k, } );
+}
 
 // ========= Manipulation with the molecule
+
+
+
 
 void shift_atoms_ax ( int n, int* selection, double* d                               ){ W.shift_atoms ( n, selection,*(Vec3d*)d); };
 void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi      ){ W.rotate_atoms( n, selection,*(Vec3d*)p0, *(Vec3d*)ax, phi ); };
@@ -212,14 +222,26 @@ void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, doub
     }
 }
 
-
-void sample_evalAngleCos( double k, double c0, int n, double* angles, double* Es, double* Fs ){
+void sample_evalAngleCos( double k, double ang0, double r1, double r2, int n, double* angles, double* Es, double* Fs ){
     Vec3d h1={1,0,0};
     Vec3d f1,f2;
+    double c0 = cos(ang0);
     for(int i=0; i<n; i++ ){
         double a = angles[i];
         Vec3d h2={cos(a),sin(a),0.0};
-        Es[i] = evalAngleCos( h1, h2, 1., 1., k, c0, f1, f2 );
+        Es[i] = evalAngleCos( h1, h2, 1./r1, 1./r2, k, c0, f1, f2 );
+        Fs[i] = f1.y;
+    }
+}
+
+void sample_evalAngleCosHalf( double k, double ang0, double r1, double r2, int n, double* angles, double* Es, double* Fs ){
+    Vec3d h1={1,0,0};
+    Vec3d f1,f2;
+    Vec2d cs0; cs0.fromAngle( ang0/2. );
+    for(int i=0; i<n; i++ ){
+        double a = angles[i];
+        Vec3d h2={cos(a),sin(a),0.0};
+        Es[i] = evalAngleCosHalf( h1, h2, 1./r1, 1./r2, cs0, k, f1, f2 );
         Fs[i] = f1.y;
     }
 }

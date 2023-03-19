@@ -47,7 +47,9 @@ header_strings = [
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){",
 #"void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){",
-#"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){"
+#"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){",
+#"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
+#"void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -93,13 +95,23 @@ def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None,
     return Es,Fs
 
 #  void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){
-lib.sample_evalAngleCos.argtypes  = [c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalAngleCos.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
 lib.sample_evalAngleCos.restype   =  None
-def sample_evalAngleCos( angles, K=1.0, c0=0.0, Es=None, Fs=None):
+def sample_evalAngleCos( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
     n = len(angles)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
-    lib.sample_evalAngleCos(K, c0, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    lib.sample_evalAngleCos(K, ang0, r1, r2, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+#  void sample_evalAngleCosHalf( double K, double c0, int n, double* angles, double* Es, double* Fs ){
+lib.sample_evalAngleCosHalf.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalAngleCosHalf.restype   =  None
+def sample_evalAngleCosHalf( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
+    n = len(angles)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalAngleCosHalf(K, ang0, r1, r2, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
     return Es,Fs
 
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
@@ -355,6 +367,22 @@ lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p ]
 lib. run.restype   =  c_int
 def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None):
     return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+
+#  void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){
+lib.addDistConstrain.argtypes  = [c_int, c_int, c_double, c_double, c_double, c_double, c_double, c_double] 
+lib.addDistConstrain.restype   =  None
+def addDistConstrain( i0, i1, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, l=None, k=None ):
+    if l is not None: 
+        lmin=l; lmax=l
+    if k is not None: 
+        kmin=k; kmax=k
+    return lib.addDistConstrain(i0, i1, lmin, lmax, kmin, kmax, flim, k)
+
+#  void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){
+lib.addAngConstrain.argtypes  = [c_int, c_int, c_int, c_double, c_double] 
+lib.addAngConstrain.restype   =  None
+def addAngConstrain(i0, i1, i2, ang0=0.0, k=1.0):
+    return lib.addAngConstrain(i0, i1, i2, ang0, k)
 
 # ============= Manipulation
 

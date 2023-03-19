@@ -22,6 +22,53 @@ inline double evalBond( const Vec3d& h, double dl, double k, Vec3d& f ){
     return fr*dl*0.5;
 }
 
+inline double spring( double l, Vec2d ls, Vec2d ks, double flim, double& f ){
+    double E;
+    if  (l>ls.x){
+        double dl=l-ls.x;
+        f=dl*ks.x;
+        if(f>flim){
+            f=flim;
+            double dlim = flim/ks.x;
+            E = (0.5*dlim*dlim)*ks.x + (dl-dlim)*flim;
+        }else{
+            E = 0.5*dl*dl*ks.x; 
+        }
+    }else if(l<ls.y){
+        double dl=l-ls.y;
+        f=dl*ks.y;
+        if(f<-flim){
+            f=-flim;
+            double dlim = -flim/ks.y;
+            E = (0.5*dlim*dlim)*ks.y - (dl-dlim)*flim;
+        }else{
+            E = 0.5*dl*dl*ks.y; 
+        }
+    }
+    return E;
+}
+
+double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, const Vec2d& cs0, double k, Vec3d& f1, Vec3d& f2 ){
+    //printf( " ir1 %g ir2 %g \n", ir1, ir2 );
+    // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
+    Vec3d h; h.set_add( h1, h2 );
+    double c2 = h.norm2()*0.25;               // cos(a/2) = |ha+hb|
+    double s2 = 1-c2;
+    double c  = sqrt(c2);
+    double s  = sqrt(s2);
+    Vec2d cs  = cs0;
+    cs.udiv_cmplx({c,s});
+    double E         =  k*( 1 - cs.x );  // just for debug ?
+    double fr        = -k*(     cs.y );
+    c2 *=-2;
+    fr /= 4*c*s;   //    |h - 2*c2*a| =  1/(2*s*c) = 1/sin(a)
+    double fr1    = fr*ir1;
+    double fr2    = fr*ir2;
+    f1.set_lincomb( fr1, h,  fr1*c2, h1 );  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
+    f2.set_lincomb( fr2, h,  fr2*c2, h2 );  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
+    return E;
+}
+
 inline double evalAngleCos( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, double c0, Vec3d& f1, Vec3d& f2 ){
     double c = h1.dot(h2);
     //f1 = h2 - h1*c;
@@ -68,28 +115,7 @@ inline double evalCos2_o(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj,
     return k*c*c;
 }
 
-inline double evalCosHalf(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj, double k, Vec2d cs ){
-    Vec3d h; h.set_add( hi, hj );
-    double c2 = h.norm2()*0.25;               // cos(a/2) = |ha+hb|
-    double s2 = 1-c2;
-    //printf( "ang[%i] (%g,%g,%g) (%g,%g,%g) (%g,%g,%g) c2 %g s2 %g \n", ig, ha.x,ha.y,ha.z,  hb.x,hb.y,hb.z,  h.x,h.y,h.z,   c2, s2 );
-    double c = sqrt(c2);
-    double s = sqrt(s2);
-    cs.udiv_cmplx({c,s});
-    double E         =  k*( 1 - cs.x );  // just for debug ?
-    double fr        = -k*(     cs.y );
-    // project to per leaver
-    //c2 *=-2;
-    //double lw     = 2*s*c;       //    |h - 2*c2*a| =  1/(2*s*c) = 1/sin(a)
-    //double fra    = fr/(lbond[ib.a]*lw);
-    //double frb    = fr/(lbond[ib.b]*lw);
-    fr /= 2*c*s;  // 1/sin(2a)
-    c2 *=-2*fr;
-    Vec3d fa,fb;
-    fi.set_lincomb( fr,h,  c2,hi );  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
-    fj.set_lincomb( fr,h,  c2,hj );  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
-    return E;
-}
+
 
 // ================ Non-Covalent Forces (Lenard-Jones, Morse, etc.)
 
