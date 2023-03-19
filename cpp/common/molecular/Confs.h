@@ -4,6 +4,43 @@
 
 #include "quaternion.h"
 
+
+/*
+
+F_i = d_( L - L0 ) / d_xi
+
+L^2 = Sum_ig{   Kc*| cg1_ig - cg2_ig |^2  +    Ku* ( 1-cos(u1_ig,u2_ig) )  + Kv*( 1 - cos(u1_ig,u2_ig) }
+
+
+cos(u1,u2) =  <u1|u2>/(|u1||u2|)
+
+
+cg1 = Sum_i{ p_i * wc_i  } / Sum_i{ wc_i }
+
+d{c1_ig}/d{p_i} =  wc_i / Sum_i{ wc_i  }
+
+u1 = Sum_i{ p_i * wu_i  } - cg1 * Sum_i{wu_i}
+
+d{u1}/d{x1i} =    wu_i -   wc_i  Sum_i{wu_i}/Sum_i{wc_i}   =   Wu_i     .... just constant (renormalized)
+d{u1}/d{x1i} =    wu_i -   wc_i   ... if vec{wu} and vec{wc} are normalized 
+
+d{ cos(u1,u2) }/dx1i = d{ <u1|u2>/(|u1|*|u2|) }/dx1i =     1/(|u1||u2|)  *  d{ <u1|u2> }/dx1i     +   <u1|u2>/|u2|  *  d{ 1/|u1| }/dx1i 
+d{ <u1|u2> }/dx1i = x2i
+d{ 1/|u1|  }/dx1i = -1/|u1|^3 * x1i
+d{ cos(u1,u2) }/dx1_i =  x2_i /(|u1||u2|)  -  x1_i / <u1|u2>/( |u1|^3 * |u2| )
+
+d{ cos(u1,u2) }/dx1_i =  x2_i * ilu1*ilu2  -  x1_i * cos(u1,u2) * ilu1*ilu1 =  Wui * ilu1*( x2_i*ilu2  -  x1_i*ilu1* cos(u1,u2) )   
+
+
+=> need to store 
+ilu1 = 1/|u1| 
+ilu2 = 1/|u2|
+ilv1 = 1s/|v1|
+ilv2 = 1/|v2| 
+
+*/
+
+
 class Group{ public:
     int     n = 0;   // number of atoms
     int*    iatoms;  // atom indexes belonging to the group
