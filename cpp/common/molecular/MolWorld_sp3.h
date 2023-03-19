@@ -74,7 +74,8 @@ class MolWorld_sp3{ public:
     MMFFsp3_loc  ffl;
     MMFFf4       ff4;
 	NBFF         nff;
-	NBsystem     surf, nbmol;
+	Constrains   constrs;
+    NBsystem     surf, nbmol;
 	GridFF       gridFF;
     RigidBodyFF  rbff;
     QEq          qeq;
@@ -100,6 +101,7 @@ class MolWorld_sp3{ public:
     int  imethod=0;
 	bool doBonded         = false;
 	bool bNonBonded       = true;
+    bool bConstrains      = false;
 	bool bSurfAtoms       = false;
     bool bGridFF          = false;
 	bool bPlaneSurfForce  = false;
@@ -642,12 +644,13 @@ double eval(){
         E += ffl.eval();  
         //E += eval_f4();
         //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.ps[0].x,nbmol.ps[0].y,nbmol.ps[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
+        
     }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){
         E +=           nbmol.evalLJQs_ng4( ff.aneighs );           // atoms in cell ignoring bonds
         //if  (bPBC){ E+=nbmol.evalLJQs_PBC( ff.lvec, {1,1,0} ); }   // atoms outside cell
     }
-    
+    if(bConstrains)constrs.apply( nbmol.ps, nbmol.fs );
     /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); }
