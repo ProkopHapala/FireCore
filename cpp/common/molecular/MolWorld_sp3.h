@@ -29,6 +29,7 @@ static MMFFparams* params_glob;
 #include "GridFF.h"
 #include "RigidBodyFF.h"
 #include "QEq.h"
+#include "constrains.h"
 #include "molecular_utils.h"
 
 #include "Molecule.h"
