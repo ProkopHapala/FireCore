@@ -46,6 +46,8 @@ header_strings = [
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){",
+#"void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){",
+#"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){"
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -80,17 +82,37 @@ glob_bMMFF    = True
 # ========= C functions
 # ====================================
 
+#  void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
+lib.sample_DistConstr.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_DistConstr.restype   =  None
+def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_DistConstr(lmin, lmax, kmin, kmax, flim, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+#  void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){
+lib.sample_evalAngleCos.argtypes  = [c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalAngleCos.restype   =  None
+def sample_evalAngleCos( angles, K=1.0, c0=0.0, Es=None, Fs=None):
+    n = len(angles)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalAngleCos(K, c0, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
 lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ] 
 lib.sampleNonBond.restype   =  None
 def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
     n =len(rs)
     if Es is None: Es=np.zeros(n)
-    if fs is None: fs=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
     rs=np.array(rs)
     REQi=np.array(REQi)
     REQj=np.array(REQj) 
-    lib.sampleNonBond(n, rs, Es, fs, kind, REQi, REQj, K, Rdamp)
+    lib.sampleNonBond(n, rs, Es, Fs, kind, REQi, REQj, K, Rdamp)
     return Es,fs
 
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){

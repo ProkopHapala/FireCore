@@ -199,6 +199,31 @@ void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double
 
 //int splitAtBond( int ib, int* selection ){ return W.splitAtBond( ib, selection ); }
 
+void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
+    DistConstr C( {0,1}, {lmax,lmin}, {kmax,kmin}, flim );
+    Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};
+    Vec3d fs[2];
+    for(int i=0; i<n; i++ ){
+        ps[1]={xs[i],0.0,0.0};
+        fs[0]=Vec3dZero;
+        fs[1]=Vec3dZero;
+        Es[i] = C.apply( ps, fs );
+        Fs[i] = fs[0].x;
+    }
+}
+
+
+void sample_evalAngleCos( double k, double c0, int n, double* angles, double* Es, double* Fs ){
+    Vec3d h1={1,0,0};
+    Vec3d f1,f2;
+    for(int i=0; i<n; i++ ){
+        double a = angles[i];
+        Vec3d h2={cos(a),sin(a),0.0};
+        Es[i] = evalAngleCos( h1, h2, 1., 1., k, c0, f1, f2 );
+        Fs[i] = f1.y;
+    }
+}
+
 void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K, double Rdamp ){
     Vec3d REQi = *(Vec3d*)REQi_;
     Vec3d REQj = *(Vec3d*)REQj_;
