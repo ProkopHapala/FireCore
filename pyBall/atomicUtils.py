@@ -636,17 +636,26 @@ class AtomicSystem():
         else:
             qs = None
 
-        lvec   = np.array([ self.lvec[0,:]*nx,self.lvec[1,:]*ny,self.lvec[2,:]*nz ]) 
-        i0=0
-        for iz in range(nz):
-            for iy in range(ny):
-                for ix in range(nx):
-                    shift = self.lvec[0,:]*ix  + self.lvec[1,:]*iy + self.lvec[2,:]*iz
-                    apos  [i0:i0+na,:] = self.apos[:,:] + shift[None,:]
-                    if atypes is not None: atypes[i0:i0+na  ] = self.atypes.copy()
-                    if qs     is not None: qs    [i0:i0+na  ] = self.qs    .copy()
-                    if enames is not None: enames += self.enames
-                    i0+=na
+        if( nxyz > 1 ):
+            lvec   = np.array([ self.lvec[0,:]*nx,self.lvec[1,:]*ny,self.lvec[2,:]*nz ]) 
+            i0=0
+            for iz in range(nz):
+                for iy in range(ny):
+                    for ix in range(nx):
+                        shift = self.lvec[0,:]*ix  + self.lvec[1,:]*iy + self.lvec[2,:]*iz
+                        apos  [i0:i0+na,:] = self.apos[:,:] + shift[None,:]
+                        if atypes is not None: atypes[i0:i0+na  ] = self.atypes
+                        if qs     is not None: qs    [i0:i0+na  ] = self.qs    
+                        if enames is not None: enames[i0:i0+na  ] += self.enames
+                        #if enames is not None: enames += self.enames
+                        i0+=na
+        else:
+            lvec=self.lvec
+            apos  [:,:] = self.apos[:,:]
+            if atypes is not None: atypes[:] = self.atypes[:]
+            if qs     is not None: qs    [:] = self.qs    [:]  
+            if enames is not None: enames[:] = self.enames[:]
+
         return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
 
     def orient_mat(self, rot, p0=None, bCopy=False ):

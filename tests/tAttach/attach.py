@@ -16,6 +16,76 @@ import matplotlib.pyplot as plt
 # T - H-N(11-3)    up=(12,8)
 # backbone  F-C(1-2)    Cl-C(17-9)
 
+# =============== SETUP ==================
+
+#       name                   attachment         H-Bonds           
+#                             C/N  H    Up
+groups = [                        
+( "penta_hb3_acceptor2",  ( ( 10, 11, (11, 8) ),  ( 8, 6,14 ) ) ),
+( "penta_hb3_acceptor" ,  ( ( 10, 11, (11, 8) ),  ( 8, 6, 7 ) ) ),
+( "penta_hb3_donor"    ,  ( ( 13, 16, (13, 8) ),  (12, 9,14 ) ) ),
+
+( "adenine_mod"        ,  ( (  4,  7, ( 5, 8) ),  (11, 9    ) ) ),
+( "uracil_mod"         ,  ( (  3, 12, ( 5, 1) ),  ( 8,10    ) ) ), 
+
+( "adenine"            ,  ( (  1, 12, ( 1,10) ),  (15, 7    ) ) ),
+( "thymine"            ,  ( (  3, 11, (12, 8) ),  ( 9,12    ) ) ),
+( "uracil"             ,  ( (  3, 10, ( 7, 8) ),  ( 8,11    ) ) ),     # = hexa_hb3_acceptor
+
+( "hexa_hb3_donor"     ,  ( (  3, 15, (12, 8) ),  (11, 9,14 ) ) ),
+( "uracil"             ,  ( (  3, 10, ( 7, 8) ),  ( 8,11, 7 ) ) ),     # = hexa_hb3_acceptor
+
+( "guanine"            ,  ( (  3, 13, (11,10) ),  (10,14,16 ) ) ),
+( "citosine"           ,  ( (  3, 13, ( 7, 8) ),  ( 9, 5, 7 ) ) ),
+
+( "penta_hb2_acceptor" ,  ( (  3,  9, ( 7, 8) ),  ( 8, 6    ) ) ),     # other attachments  (3,9), (5,7), (2,4)
+( "penta_hb2_donor"    ,  ( (  3,  4, ( 7, 8) ),  (12, 9    ) ) ),     # other attachments  (3,4), (5,7), (2,10)
+
+( "naphta_hb2_acceptor",  ( ( 16, 10, (15, 1) ),  ( 9,13    ) ) ),     # other attachments  (16,10), (14,8), (4,7), (2,6), 
+( "naphta_hb2_donor"   ,  ( (  2,  6, ( 1,12) ),  (14, 7    ) ) ),     # other attachments  (2,6),   (4,16), (10,13), 
+]
+
+pairs = [
+("penta_hb3_acceptor2","penta_hb3_donor"),
+("penta_hb3_acceptor" ,"penta_hb3_donor"),
+("adenine_mod"        ,"uracil_mod"),
+("adenine"            ,"uracil"),
+("hexa_hb3_donor"     ,"uracil"),
+("guanine"            ,"citosine"),
+("penta_hb2_acceptor" ,"penta_hb2_donor"),
+("naphta_hb2_acceptor","naphta_hb2_donor"),
+]
+
+# =============== MAIN ==================
+
+group_dict = dict(groups)
+
+B = AtomicSystem(fname='backbone.xyz' )
+
+for pair in pairs:
+    BB = B.clonePBC()
+    name1,name2 = pair
+    G1 = AtomicSystem(fname="endgroups/"+name1+".xyz"  )
+    G2 = AtomicSystem(fname="endgroups/"+name2+".xyz"  )
+    inds1 = group_dict[name1][0]
+    inds2 = group_dict[name2][0]
+    BB.attach_group( G1, inds1[0], inds1[1], inds1[2], (1 ,2), up=(0.,0.,1.), _0=1  )
+    BB.attach_group( G2, inds2[0], inds2[1], inds2[2], (17,9), up=(0.,0.,1.), _0=1  )
+    BB.delete_atoms( [1-1,17-1] )
+    BB.saveXYZ( "BB."+name1+"."+name2+".xyz" )
+
+
+
+
+
+
+
+
+
+
+
+
+
 '''
 # -------- A-T pair
 BB = AtomicSystem(fname='backbone.xyz' )
@@ -27,6 +97,7 @@ BB.delete_atoms( [1-1,17-1] )
 BB.saveXYZ( "BB_A_T.xyz" )
 '''
 
+'''
 # -------- A-T pair
 BB = AtomicSystem(fname='backbone.xyz' )
 G1 = AtomicSystem(fname='endgroups/penta_hb3_acceptor2.xyz'  )
@@ -35,5 +106,8 @@ BB.attach_group( G1, 10, 11, (11,8),   (1 ,2),  up=(0.,0.,1.),  _0=1  )
 BB.attach_group( G2, 13, 16, (13,8),   (17,9),  up=(0.,0.,1.),  _0=1  )
 BB.delete_atoms( [1-1,17-1] )
 BB.saveXYZ( "BB_G1_G2.xyz" )
+'''
+
+
 
 
