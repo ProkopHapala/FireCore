@@ -189,11 +189,11 @@ int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE
 //int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2){ return W.run(nstepMax,dt,Fconv,ialg);  }
 //int run( int nstepMax, double dt, double Fconv, int ialg ){ return W.run(nstepMax,dt,Fconv,ialg);  }
 
-void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){
-    W.constrs.bonds.push_back( DistConstr{ {i0,i1}, {lmax,lmin}, {kmax,kmin}, flim } );
+void addDistConstrain( int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double* shift ){
+    W.constrs.bonds.push_back( DistConstr{ {i0,i1}, {lmax,lmin}, {kmax,kmin}, flim, *(Vec3d*)shift } );
 }
 
-void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){
+void addAngConstrain( int i0,int i1,int i2, double ang0, double k ){
     W.constrs.angles.push_back( AngleConstr{ {i0,i1,i2}, {cos(ang0/2.),sin(ang0/2.)}, k, } );
 }
 
@@ -210,7 +210,7 @@ void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double
 //int splitAtBond( int ib, int* selection ){ return W.splitAtBond( ib, selection ); }
 
 void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
-    DistConstr C( {0,1}, {lmax,lmin}, {kmax,kmin}, flim );
+    DistConstr C( {0,1}, {lmax,lmin}, {kmax,kmin}, flim  );
     Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};
     Vec3d fs[2];
     for(int i=0; i<n; i++ ){
