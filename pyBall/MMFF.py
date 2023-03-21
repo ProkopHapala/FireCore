@@ -368,15 +368,16 @@ lib. run.restype   =  c_int
 def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None):
     return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
 
-#  void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){
-lib.addDistConstrain.argtypes  = [c_int, c_int, c_double, c_double, c_double, c_double, c_double, c_double] 
+#  void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k, double* shift ){
+lib.addDistConstrain.argtypes  = [c_int, c_int, c_double, c_double, c_double, c_double, c_double, c_double_p ] 
 lib.addDistConstrain.restype   =  None
-def addDistConstrain( i0, i1, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, l=None, k=None ):
+def addDistConstrain( i0, i1, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, l=None, k=None, shift=(0.,0.,0.) ):
     if l is not None: 
         lmin=l; lmax=l
     if k is not None: 
         kmin=k; kmax=k
-    return lib.addDistConstrain(i0, i1, lmin, lmax, kmin, kmax, flim, k)
+    shift=np.array(shift)
+    return lib.addDistConstrain(i0, i1, lmin, lmax, kmin, kmax, flim, shift )
 
 #  void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){
 lib.addAngConstrain.argtypes  = [c_int, c_int, c_int, c_double, c_double] 

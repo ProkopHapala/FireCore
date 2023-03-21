@@ -14,40 +14,19 @@ struct DistConstr{
     Vec2i ias;
     Vec2d  ls;
     Vec2d  ks;
+    Vec3d  shift;   // like PBC_shift
     double flim;
     bool active;
 
+
     DistConstr()=default;
-    DistConstr( Vec2i ias_, Vec2d ls_, Vec2d ks_, double flim_=1e+300 ):ias(ias_),ls(ls_),ks(ks_),flim(flim_),active(true){ };
+    DistConstr( Vec2i ias_, Vec2d ls_, Vec2d ks_, double flim_=1e+300, Vec3d shift_=Vec3dZero ):ias(ias_),ls(ls_),ks(ks_),flim(flim_),shift(shift_),active(true){ };
 
     inline double apply( Vec3d* ps, Vec3d* fs )const{
-        Vec3d d   = ps[ias.b] -ps[ias.a];
+        Vec3d d   = ps[ias.b] -ps[ias.a] + shift;
         double l  = d.norm(); 
         double f,E;
         E = spring( l, ls, ks, flim, f );
-        /*
-        if    (l>ls.x){
-            double dl=l-ls.x;
-            f=dl*ks.x;
-            if(f>flim){
-                f=flim;
-                double dlim = flim/ks.x;
-                E = (0.5*dlim*dlim)*ks.x + (dl-dlim)*flim;
-            }else{
-                E = 0.5*dl*dl*ks.x; 
-            }
-        }else if(l<ls.y){
-            double dl=l-ls.y;
-            f=dl*ks.y;
-            if(f<-flim){
-                f=-flim;
-                double dlim = -flim/ks.y;
-                E = (0.5*dlim*dlim)*ks.y - (dl-dlim)*flim;
-            }else{
-                E = 0.5*dl*dl*ks.y; 
-            }
-        };
-        */
         d.mul(f/l);
         fs[ias.b].sub(d);
         fs[ias.a].add(d);
