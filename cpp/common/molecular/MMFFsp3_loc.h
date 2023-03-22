@@ -159,7 +159,7 @@ double eval_atom(const int ia){
     const Quat4d& apar  = apars[ia];
     const double  ssK  = apar.z;
     const double  piC0 = apar.w;
-    const Vec2d cs0_ss = Vec2d{apar.z,apar.z};
+    const Vec2d cs0_ss = Vec2d{apar.x,apar.y};
     const double  ssC0 = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
     //--- Aux Variables 
@@ -223,14 +223,26 @@ double eval_atom(const int ia){
             if(jng<0) break;
             const Quat4d& hj = hs[j];    
             #if ANG_HALF_COS
+                //double cdot = hi.f.dot( hj.f); printf( "DEBUG angle %g angle0 %g \n", acos(cdot)*180./M_PI, acos(cs0_ss.x)*2.*180./M_PI );
                 E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
             #else             
                 E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             #endif
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            fa    .sub( f1+f2  );
+            
+            if(bSubtractAngleNonBond){
+                Vec3d fij=Vec3dZero;
+                Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+                Vec3d dij; dij.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
+                //Vec3d dij = apos[jng] - apos[ing];                          // method with    reading from global buffer
+                E -= addAtomicForceLJQ( dij, fij, REQij );
+                f1.sub(fij);
+                f2.add(fij);
+            }
+            
             fbs[i].add( f1     );
             fbs[j].add( f2     );
-            fa    .sub( f1+f2  );
             // ToDo: subtract non-covalent interactions
         }
     }

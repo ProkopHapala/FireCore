@@ -58,6 +58,8 @@ double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, double ir
     double s  = sqrt(s2);
     Vec2d cs  = cs0;
     cs.udiv_cmplx({c,s});
+    //Vec2d cs{c,s};
+    //cs.mul_cmplx(cs0);
     double E         =  k*( 1 - cs.x );  // just for debug ?
     double fr        = -k*(     cs.y );
     c2 *=-2;

@@ -643,9 +643,16 @@ double eval_f4(){
 
 double eval(){
     double E=0;
+
+    // ----- Make sure ffl subtracts non-covalent interction for angles
+    ffl.bSubtractAngleNonBond = bNonBonded;
+    if(ffl.bSubtractAngleNonBond){
+        ffl.REQs = nbmol.REQs;
+    }
+
     if(bMMFF){ 
         //E += ff .eval();
-        E += ffl.eval();  
+        E += ffl.eval();
         //E += eval_f4();
         //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.ps[0].x,nbmol.ps[0].y,nbmol.ps[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
         

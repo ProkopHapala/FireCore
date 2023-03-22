@@ -495,7 +495,7 @@ double eval_neighs_new(int ia){
             int  ib  = abonds[ ioff+i];
             Vec3d h; h.set_sub( apos[ing], pa );
             double c=1;
-            /*
+            
             if(bPBCbyLvec){  
                 wrapBondVec( h );
                 //glColor3f(1.,0.,1.); Draw3D::drawVecInPos( h, pa );
@@ -503,11 +503,11 @@ double eval_neighs_new(int ia){
                 if( bond2atom[ib].a!=ia ){ c=-1; }; // bond should be inverted
                 h.add_mul( pbcShifts[ib], c );
             }
-            */
+            
             double l = h.normalize();
             ils[i] = 1/l;
             hs [i] = h;
-            printf( "eval_h ia(%i)[%i] h(%g,%g,%g|l=%g)\n", ia, i, h.x,h.y,h.z,  ils[i] );
+            //printf( "eval_h ia(%i)[%i] h(%g,%g,%g|l=%g)\n", ia, i, h.x,h.y,h.z,  ils[i] );
             if(ia<=ing){
                 //doPiPiI = false; // WARRNING BIG DEBUG
                 double  e= eval_bond_neigh(ib, h*c, l);
@@ -535,7 +535,7 @@ double eval_neighs_new(int ia){
                         fpipos[-ing-2].add( f1     );
                         fpipos[-jng-2].add( f2     );
                         //double e=evalPiPi_T   ( ia, -ing-2, -jng-2, Kpipi ); EppT+=e; E+=e;
-                        printf( "eval_PPT ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
+                        //printf( "eval_PPT ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                         EppT+=e; E+=e;
                     }   
                 }else{ 
@@ -545,7 +545,7 @@ double eval_neighs_new(int ia){
                         fapos [ jng  ].add( f2 );
                         fapos [ ia   ].sub( f2 );
                         //double e=evalSigmaPi( ia, jng, -ing-2, Ksp ); Eps+=e; E+=e; } 
-                        printf( "eval_PS ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
+                        //printf( "eval_PS ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                         Eps+=e; E+=e;
                     }
                 }
@@ -557,7 +557,7 @@ double eval_neighs_new(int ia){
                         fpipos[-jng-2].add( f2 );
                         fapos [ ia   ].sub( f1 );
                         //double e=evalSigmaPi( ia, ing, -jng-2, Ksp ); Eps+=e; E+=e; 
-                        printf( "eval_SP ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
+                        //printf( "eval_SP ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                         Eps+=e; E+=e; 
                     } 
                 } else {  
@@ -566,9 +566,8 @@ double eval_neighs_new(int ia){
                         if( (ing>=ie0)!=(jng>=ie0) ){  c0_=params.w; }else{ c0_=c0; } // special angle for electron pairs
                         if( (ing>=ie0)&&(jng>=ie0) ){  c0_=-1;       }                      // special angle for electron pairs
                         //if(idebug)printf( "atom[%i]ss[%i,%i] c0,K(%g,%g) \n", ia,ing,jng, c0_, Kss  );
-                        printf( "eval_SS ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
+                        //printf( "eval_SS ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                         double e = evalAngleCos( hs[i], hs[j], ils[i], ils[j], Kss, c0_, f1, f2 );  
-                        /*
                         if(bSubtractAngleNonBond){
                             Vec3d fij=Vec3dZero;
                             Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
@@ -576,7 +575,6 @@ double eval_neighs_new(int ia){
                             f1.add(fij);
                             f2.sub(fij);
                         }
-                        */
                         fapos[ing].add( f1     );
                         fapos[jng].add( f2     );
                         fapos[ia ].sub( f1+f2 );
