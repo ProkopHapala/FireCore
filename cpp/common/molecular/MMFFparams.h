@@ -210,9 +210,11 @@ class MMFFparams{ public:
     }
     inline void assignAllSubTypes(){
         int n=atypes.size();
-        std::vector<bool> doIt(n,true); 
+        std::vector<bool> doIt(256,true); // Warrning : we assume maximum proton number 256
         for(int i=0;i<n;i++){
             AtomType& t = atypes[i];
+            //printf( "DEBUG assignAllSubTypes() t.iZ %i doIt.size()= %i \n", t.iZ, doIt.size() );
+            //if( t.iZ>=doIt.size() ){ printf("ERROR: atype[%i] t.iZ(%i) > =doIt.size(%i) \n", i, t.iZ, doIt.size()  ); }
             if(doIt[t.iZ]){ assignSubTypes(t); doIt[t.iZ]=false; }
         }
     }

@@ -470,7 +470,7 @@ void MolGUI::drawPi0s( float sc=1.0 ){
         for(int j=0; j<ff.nneigh_max; j++){
             int ing = ngs[j]; 
             if(ing<0){
-                int ipi = -ing-1;
+                int ipi = -ing-2;
                 Vec3f p=(Vec3f)ff.apos[ia];      glVertex3f(p.x,p.y,p.z);
                 p.add_mul( ff.pi0s[ipi].f, sc);  glVertex3f(p.x,p.y,p.z);
                 //printf("drawPi0s[%i,%i|%i] (%g,%g,%g)\n", ia, j, ipi, ff.pi0s[ipi].f.z, ff.pi0s[ipi].f.y, ff.pi0s[ipi].f.z );

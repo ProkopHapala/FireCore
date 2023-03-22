@@ -330,6 +330,39 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
     qs   = np.array(qs)
     return xyzs,Zs,enames,qs
 
+def loadMol(fname=None, fin=None, bReadN=False, nmax=10000 ):
+    bClose=False
+    if fin is None: 
+        fin=open(fname, 'r')
+        bClose=True
+    xyzs   = [] 
+    Zs     = []
+    enames = []
+    qs     = []
+    bonds  = []
+    ia=0
+    na=0
+    nb=0
+    for il,line in enumerate(fin):
+        wds = line.split()
+        if (il>4) and ((il-4)<na):
+            xyzs.append( ( float(wds[0]), float(wds[1]), float(wds[2]) ) )
+            ename = wds[0]
+            enames.append( ename )
+            Zs    .append( elements.ELEMENT_DICT[ename][0] )
+            ia+=1
+        if (il>(4+na) ) and ((il-4-na)<nb):
+            bonds.append( wds[1],wds[2] )  # ignoring bond order
+        elif(il==4):
+            na=int(wds[0])
+            nb=int(wds[2])
+    if(bClose): fin.close()
+    xyzs  = np.array( xyzs )
+    Zs    = np.array( Zs, dtype=np.int32 )
+    qs    = np.array(qs)
+    bonds = np.array( bonds, dtype=np.int32 )
+    return xyzs,Zs,enames,qs,bonds
+
 def readAtomsXYZ( fin, na ):
     apos=[]
     es  =[] 
@@ -589,7 +622,10 @@ class AtomicSystem():
         self.bonds   = bonds
         self.lvec    = lvec 
         if fname is not None:
-            self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname)
+            if( '.mol' == fname.split('.')[0] ):
+                self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname )
+            else:
+                self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname)
 
     def saveXYZ(self, fname, mode="w", blvec=True, comment="#comment" ):
         if blvec and (self.lvec is not None ):
@@ -636,6 +672,7 @@ class AtomicSystem():
         else:
             qs = None
 
+        #print( nxyz, na, apos.shape, atypes.shape )
         if( nxyz > 1 ):
             lvec   = np.array([ self.lvec[0,:]*nx,self.lvec[1,:]*ny,self.lvec[2,:]*nz ]) 
             i0=0
@@ -671,6 +708,7 @@ class AtomicSystem():
         return self.orient_mat( rot, p0, bCopy )
 
     def orient( self, i0, ip1, ip2, _0=1, trans=None, bCopy=False ):
+        #print( "orient i0 ", i0, " ip1 ", ip1, " ip2 ",ip2 )
         p0  = self.apos[i0-_0]
         fw  = self.apos[ip1[1]-_0]-self.apos[ip1[0]-_0]
         up  = self.apos[ip2[1]-_0]-self.apos[ip2[0]-_0]

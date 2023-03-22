@@ -4,6 +4,7 @@ import sys
 import os
 
 sys.path.append('../../')
+from pyBall             import plotUtils   as plu
 from pyBall             import atomicUtils as au
 from pyBall.atomicUtils import AtomicSystem
 
@@ -21,28 +22,28 @@ import matplotlib.pyplot as plt
 #       name                   attachment         H-Bonds           
 #                             C/N  H    Up
 groups = [                        
-( "penta_hb3_acceptor2",  ( ( 10, 11, (11, 8) ),  ( 8, 6,14 ) ) ),
-( "penta_hb3_acceptor" ,  ( ( 10, 11, (11, 8) ),  ( 8, 6, 7 ) ) ),
-( "penta_hb3_donor"    ,  ( ( 13, 16, (13, 8) ),  (12, 9,14 ) ) ),
+( "penta_hb3_acceptor2",  ( ( 10, 11, (14, 8) ),  [ 8, 6,14 ] ) ),
+( "penta_hb3_acceptor" ,  ( ( 10, 11, ( 7, 8) ),  [ 8, 6, 7 ] ) ),
+( "penta_hb3_donor"    ,  ( ( 13, 16, (13, 8) ),  [12, 9,14 ] ) ),
 
-( "adenine_mod"        ,  ( (  4,  7, ( 5, 8) ),  (11, 9    ) ) ),
-( "uracil_mod"         ,  ( (  3, 12, ( 5, 1) ),  ( 8,10    ) ) ), 
+( "adenine_mod"        ,  ( (  4,  7, (13, 8) ),  [11, 9    ] ) ),
+( "uracil_mod"         ,  ( (  3, 12, ( 5, 1) ),  [ 8,10    ] ) ), 
 
-( "adenine"            ,  ( (  1, 12, ( 1,10) ),  (15, 7    ) ) ),
-( "thymine"            ,  ( (  3, 11, (12, 8) ),  ( 9,12    ) ) ),
-( "uracil"             ,  ( (  3, 10, ( 7, 8) ),  ( 8,11    ) ) ),     # = hexa_hb3_acceptor
+( "adenine"            ,  ( (  1, 12, (10,11) ),  [15, 7    ] ) ),
+( "thymine"            ,  ( (  3, 11, (12, 8) ),  [ 9,12    ] ) ),
+( "uracil"             ,  ( (  3, 10, ( 7, 8) ),  [ 8,11    ] ) ),     # = hexa_hb3_acceptor
 
-( "hexa_hb3_donor"     ,  ( (  3, 15, (12, 8) ),  (11, 9,14 ) ) ),
-( "uracil"             ,  ( (  3, 10, ( 7, 8) ),  ( 8,11, 7 ) ) ),     # = hexa_hb3_acceptor
+( "hexa_hb3_donor"     ,  ( (  3, 15, (12, 8) ),  [11, 9,14 ] ) ),
+( "uracil"             ,  ( (  3, 10, ( 7, 8) ),  [ 8,11, 7 ] ) ),     # = hexa_hb3_acceptor
 
-( "guanine"            ,  ( (  3, 13, (11,10) ),  (10,14,16 ) ) ),
-( "citosine"           ,  ( (  3, 13, ( 7, 8) ),  ( 9, 5, 7 ) ) ),
+( "guanine"            ,  ( (  3, 13, (11,10) ),  [10,14,16 ] ) ),
+( "citosine"           ,  ( (  3, 13, ( 7, 8) ),  [ 9, 5, 7 ] ) ),
 
-( "penta_hb2_acceptor" ,  ( (  3,  9, ( 7, 8) ),  ( 8, 6    ) ) ),     # other attachments  (3,9), (5,7), (2,4)
-( "penta_hb2_donor"    ,  ( (  3,  4, ( 7, 8) ),  (12, 9    ) ) ),     # other attachments  (3,4), (5,7), (2,10)
+( "penta_hb2_acceptor" ,  ( (  3,  9, ( 6, 8) ),  [ 8, 6    ] ) ),     # other attachments  (3,9), (5,7), (2,4)
+( "penta_hb2_donor"    ,  ( (  3,  4, ( 7, 8) ),  [12, 9    ] ) ),     # other attachments  (3,4), (5,7), (2,10)
 
-( "naphta_hb2_acceptor",  ( ( 16, 10, (15, 1) ),  ( 9,13    ) ) ),     # other attachments  (16,10), (14,8), (4,7), (2,6), 
-( "naphta_hb2_donor"   ,  ( (  2,  6, ( 1,12) ),  (14, 7    ) ) ),     # other attachments  (2,6),   (4,16), (10,13), 
+( "naphta_hb2_acceptor",  ( ( 16, 10, (15, 1) ),  [ 9,13    ] ) ),     # other attachments  (16,10), (14,8), (4,7), (2,6), 
+( "naphta_hb2_donor"   ,  ( (  2,  6, ( 1,12) ),  [14, 7    ] ) ),     # other attachments  (2,6),   (4,16), (10,13), 
 ]
 
 pairs = [
@@ -56,13 +57,27 @@ pairs = [
 ("naphta_hb2_acceptor","naphta_hb2_donor"),
 ]
 
+# =============== Functions ==================
+
+def plotGroup( G, inds, bFlip=False ):
+    iis,his = inds
+    his     = np.array(his)-1
+    G.orient( iis[0], iis[2], (iis[0],iis[1]), trans=(1,2,0) )  
+    if(bFlip): G.apos[:,0]*=-1
+    plu.plotSystem( G, sz=1000. );  
+    ps=G.apos[his];                 plt.scatter(ps[:,0],ps[:,1],color='k',zorder=5);  
+    ps=G.apos[[iis[0]-1,iis[1]-1]]; plt.scatter(ps[:,0],ps[:,1],color=['b','g'],zorder=5);  
+    #plt.title(name1)
+
 # =============== MAIN ==================
 
 group_dict = dict(groups)
 
-B = AtomicSystem(fname='backbone.xyz' )
 
+# ------- Group attachent
+B = AtomicSystem(fname='backbone.xyz' )
 for pair in pairs:
+    print(pair)
     BB = B.clonePBC()
     name1,name2 = pair
     G1 = AtomicSystem(fname="endgroups/"+name1+".xyz"  )
@@ -76,6 +91,22 @@ for pair in pairs:
 
 
 
+
+'''
+# ------- Plotting
+for pair in pairs:
+    name1,name2 = pair
+    G1 = AtomicSystem(fname="endgroups/"+name1+".xyz"  )
+    G2 = AtomicSystem(fname="endgroups/"+name2+".xyz"  )
+    fig = plt.figure(figsize=(10.0,5.0))
+    plt.subplot(1,2,1); plotGroup( G1, group_dict[name1], bFlip=True  ); plt.title(name1) 
+    plt.subplot(1,2,2); plotGroup( G2, group_dict[name2], bFlip=False ); plt.title(name2)
+    
+    plt.savefig( name1+"."+name2+".png", bbox_inches='tight', )
+    plt.close(fig)
+    #G2 = AtomicSystem(fname="endgroups/"+name2+".xyz"  )
+    #inds1 = group_dict[name1][0]
+'''
 
 
 

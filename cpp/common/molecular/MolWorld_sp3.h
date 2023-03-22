@@ -345,7 +345,7 @@ void initRigid(){
     for(int i=0; i<nrb; i++){
         const MM::Fragment& frag = builder.frags[i]; // problem - some atoms are not in builder - e.g. Epair
         int i0 = frag.atomRange.x;
-        int ni =  frag.atomRange.y - i0;
+        int ni = frag.atomRange.y - i0;
         //printf("# initRigid[%i] i0 %i ni %i \n", i, i0, ni );
         nbmol.ps + i0;
         rbff.mols[i].bindOrRealloc(ni, nbmol.ps+i0, nbmol.fs+i0, nbmol.REQs+i0, nbmol.atypes+i0 );
@@ -506,8 +506,8 @@ virtual void init( bool bGrid ){
         builder.sortConfAtomsFirst();
         builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
-        bool bEpair = true;
-        //bool bEpair = false;
+        //bool bEpair = true;
+        bool bEpair = false;
         builder.toMMFFsp3    ( ff , true, bEpair );
         builder.toMMFFsp3_loc( ffl, true, bEpair );  // without electron pairs
         builder.toMMFFf4     ( ff4, true, bEpair );  //ff4.printAtomParams(); ff4.printBKneighs(); 
@@ -578,12 +578,14 @@ virtual void init( bool bGrid ){
         }
 
         //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
-        { // check MMFFsp3
+        { printf(" ============ check MMFFsp3 START\n " );
             idebug=1;
             ff.eval();
+            DEBUG
             if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };
             idebug=0;
-        }
+            printf(" ============ check MMFFsp3 DONE\n " );
+        } 
         
         DEBUG
         //initNBmol();

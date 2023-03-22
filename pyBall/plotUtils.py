@@ -6,7 +6,7 @@ from . import elements
 def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, sizes=100., colors='#808080', marker='o', axes=(0,1) ):
     ax1,ax2=axes
     if apos is None: apos = np.array([ a[1] for a in atoms ])  #;print(apos)
-    plt.scatter( apos[:,ax1],apos[:,ax2], marker=marker, c=colors, s=sizes, cmap='seismic' ); plt.axis('equal'); #plt.grid()
+    plt.scatter( apos[:,ax1],apos[:,ax2], marker=marker, c=colors, s=sizes, cmap='seismic', zorder=2 ); plt.axis('equal'); #plt.grid()
     bLabels = labels is not None
     if bNumbers or bLabels:
         na = len(apos)
@@ -34,6 +34,22 @@ def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1) ):
     ax.add_collection(lc)
     #ax.autoscale()
     #ax.margins(0.1)
+
+
+def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=(0,1), bLabels=True, labels=None, _0=1 ):    
+    if( bBonds ):
+        if sys.bonds is None:
+            sys.findBonds( Rcut=3.0, RvdwCut=RvdwCut )
+        plotBonds( links=sys.bonds, ps=sys.apos, axes=axes )
+    
+    if(colors is None): colors = [ elements.ELEMENT_DICT[e][8]    for e in sys.enames ]
+    if(sizes  is None): sizes  = [ elements.ELEMENT_DICT[e][6]*sz for e in sys.enames ]
+    if((labels is None) and bLabels): labels=[ "%s%i" %(e,i+_0) for i,e in enumerate(sys.enames) ]
+    plotAtoms( apos=sys.apos, es=sys.enames, sizes=sizes, colors=colors, marker='o', axes=axes, labels=labels )
+
+    if extent is not None:
+        plt.xlim(extent[0],extent[1])
+        plt.ylim(extent[2],extent[3]) 
 
 
 def plotTrj( trj, bBonds=True, sz=50., numbers=None, axes=(0,1), extent=None, prefix="mol_", RvdwCut=0.5, figsize=(5,5) ):
