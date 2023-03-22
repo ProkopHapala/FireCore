@@ -2,6 +2,9 @@
 #ifndef MMFFsp3_loc_h
 #define MMFFsp3_loc_h
 
+#define ANG_HALF_COS  1
+
+
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
@@ -147,11 +150,17 @@ double eval_atom(const int ia){
     Vec3d* fbs  = fneigh   +ia*4;
     Vec3d* fps  = fneighpi +ia*4;
 
-    // --- settings
-    double  ssC0 = apars[ia].x;
-    double  ssK  = apars[ia].y;
-    double  piC0 = apars[ia].z;
-    //bool    bPi  = ings[3]<0;   we distinguish this by Ksp, otherwise it would be difficult for electron pairs e.g. (-O-C=)
+    // // --- settings
+    // double  ssC0 = apars[ia].x;
+    // double  ssK  = apars[ia].y;
+    // double  piC0 = apars[ia].z;
+    // //bool    bPi  = ings[3]<0;   we distinguish this by Ksp, otherwise it would be difficult for electron pairs e.g. (-O-C=)
+
+    const Quat4d& apar  = apars[ia];
+    const double  ssK  = apar.z;
+    const double  piC0 = apar.w;
+    const Vec2d cs0_ss = Vec2d{apar.z,apar.z};
+    const double  ssC0 = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
     //--- Aux Variables 
     Quat4d  hs[4];
@@ -212,8 +221,12 @@ double eval_atom(const int ia){
         for(int j=i+1; j<4; j++){
             int jng  = ings[j];
             if(jng<0) break;
-            const Quat4d& hj = hs[j];
-            E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+            const Quat4d& hj = hs[j];    
+            #if ANG_HALF_COS
+                E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
+            #else             
+                E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+            #endif
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fbs[i].add( f1     );
             fbs[j].add( f2     );
