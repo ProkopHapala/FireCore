@@ -506,9 +506,11 @@ virtual void init( bool bGrid ){
         builder.sortConfAtomsFirst();
         builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
-        builder.toMMFFsp3    ( ff , &params );
-        builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs();  
-        builder.toMMFFf4     ( ff4, &params ); //ff4.printAtomParams(); ff4.printBKneighs(); 
+        bool bEpair = true;
+        //bool bEpair = false;
+        builder.toMMFFsp3    ( ff , true, bEpair );
+        builder.toMMFFsp3_loc( ffl, true, bEpair );  // without electron pairs
+        builder.toMMFFf4     ( ff4, true, bEpair );  //ff4.printAtomParams(); ff4.printBKneighs(); 
         ffl.flipPis( Vec3dZ );
         ff4.flipPis( Vec3fZ );
         DEBUG 

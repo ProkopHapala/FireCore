@@ -14,7 +14,27 @@ typedef struct __attribute__ ((packed)){
 #define R2SAFE          1e-4f
 #define COULOMB_CONST   14.399644f  // [eV*Ang/e^2]
 
-float evalAngCos( const float4 hr1, const float4 hr2, float K, float c0, __private float3* f1, __private float3* f2 ){
+inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*b.y,  a.y*b.x - b.x*b.y }; }
+
+inline double evalAngleCosHalf( const float4 h1, const float4 h2, double ir1, double ir2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
+    // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
+    float3 h  = h1.xyz + h2.xyz;
+    float  c2 = dot(h,h)*0.25f;              // cos(a/2) = |ha+hb|
+    float  s2 = 1.f-c2;
+    float2 cso = (float2){ sqrt(c2), sqrt(s2) };
+    float2 cs = udiv_cmplx( cs0, cso );
+    float  E         =  k*( 1 - cs.x );  // just for debug ?
+    float  fr        = -k*(     cs.y );
+    c2 *= -2.f;
+    fr /=  4.f*cso.x*cso.y;   //    |h - 2*c2*a| =  1/(2*s*c) = 1/sin(a)
+    float  fr1    = fr*ir1;
+    float  fr2    = fr*ir2;
+    *f1 =  h*fr1  + h1.xyz*(fr1*c2);  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
+    *f2 =  h*fr2  + h2.xyz*(fr2*c2);  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
+    return E;
+}
+
+inline float evalAngCos( const float4 hr1, const float4 hr2, float K, float c0, __private float3* f1, __private float3* f2 ){
     float  c = dot(hr1.xyz,hr2.xyz);
     float3 hf1,hf2;
     hf1 = hr2.xyz - hr1.xyz*c;
@@ -51,7 +71,7 @@ inline float evalBond( float3 h, float dl, float k, __private float3* f ){
     return fr*dl*0.5;
 }
 
-float4 getLJQ( float3 dp, float3 REQ, float R2damp ){
+inline float4 getLJQ( float3 dp, float3 REQ, float R2damp ){
     // ---- Electrostatic
     float   r2    = dot(dp,dp);
     float   ir2_  = 1.f/(  r2 +  R2damp);

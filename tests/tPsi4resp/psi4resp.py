@@ -13,17 +13,17 @@ from pyBall  import atomicUtils as au
 indir="./input/"
 #outdir="./output/"
 
-bRelax=True
-#bRelax=False
+#bRelax=True
+bRelax=False
 
 methods=[
-    'scf',
+#    'scf',
 #    'pbe',
 #    'b3lyp',
 #    'mp2'
 ]
 basises=[
-    'sto-3g',
+#    'sto-3g',
 #    '6-31+G',
 #    '6-311+G*',
 #    '6-311++G**',
@@ -32,6 +32,11 @@ basises=[
 #    'aug-cc-pvtz',
 #    'def2-QZVPPD',
 ]
+
+method_bas_pairs = [
+('scf','sto-3g'), ('pbe','cc-pvdz')
+]
+
 
 resp_options = {
 'VDW_SCALE_FACTORS'  : [1.4, 1.6, 1.8, 2.0],
@@ -61,21 +66,28 @@ def try_make_dirs( dname ):
 
 #psi4.core.be_quiet()
 
-names = [ f.split('.')[0] for f in os.listdir(indir) ]
+#names = [ f.split('.')[0] for f in os.listdir(indir) ]
+
+names = [ "backbone_pasivated-H", "backbone_pasivated-R" ]
 #names =["hexa_hb3_donor"]
 print(names)
 
-for method in methods:
-    for basis in basises:
-        outdir = method+"/"+basis+"/"
-        try_make_dirs( method )
-        try_make_dirs( outdir )
-        for name in names:
-            print( "# ======= Molecule: ", name, method, basis )
-            psi4.core.set_output_file(outdir+name+'.log', False)
-            t0 = time.time_ns()
-            try:
-                psi4u.psi4resp( name, bRelax=bRelax, method=method, basis=basis, indir=indir, outdir=outdir, psi4_options=psi4_options, resp_options=resp_options )
-            except Exception as e: 
-                print(e)
-            t = time.time_ns() - t0; print( "time: ", t*1e-9, "[s]" )
+# method_bas_pair = []
+# for method in methods:
+#     for basis in basises:
+#         method_bas_pairs.append( (method,basis) )
+
+for method_bas in method_bas_pairs:
+    method,basis = method_bas
+    outdir = method+"/"+basis+"/"
+    try_make_dirs( method )
+    try_make_dirs( outdir )
+    for name in names:
+        print( "# ======= Molecule: ", name, method, basis )
+        psi4.core.set_output_file(outdir+name+'.log', False)
+        t0 = time.time_ns()
+        try:
+            psi4u.psi4resp( name, bRelax=bRelax, method=method, basis=basis, indir=indir, outdir=outdir, psi4_options=psi4_options, resp_options=resp_options )
+        except Exception as e: 
+            print(e)
+        t = time.time_ns() - t0; print( "time: ", t*1e-9, "[s]" )

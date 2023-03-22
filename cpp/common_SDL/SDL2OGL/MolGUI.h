@@ -255,7 +255,7 @@ void MolGUI::init(){
     W->init( true );
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
     //MolGUI::bindMolecule( W->nbmol.n, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
-    MolGUI::bindMolecule( W->nbmol.n, W->ff.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+    MolGUI::bindMolecule( W->nbmol.n, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
     initGUI();
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
