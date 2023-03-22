@@ -2413,10 +2413,14 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 // ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
 
                 double ang0 = ang0s[conf.npi];
-                ff.apars[ia].x = cos(ang0/2.);    // ssC0  // cos(angle) for angles (sigma-siamg)
-                ff.apars[ia].y = sin(ang0/2.);
+                ang0 *= 0.5;
+                //ang0 =  0.5*109.5  * M_PI/180.0;
+                
+                ff.apars[ia].x = cos(ang0);    // ssC0  // cos(angle) for angles (sigma-siamg)
+                ff.apars[ia].y = sin(ang0);
                 ff.apars[ia].z = 1.0;              // ssK   // stiffness  for angles
                 ff.apars[ia].w = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
+                printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 
                 // setup ff neighbors
                 
