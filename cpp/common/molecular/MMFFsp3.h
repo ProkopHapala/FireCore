@@ -339,7 +339,7 @@ double eval_bond(int ib){
                     //double Kij = Ki*Kneighs[j0+j];
                     double Kij = Kpipi;
                     //printf( "bond[%i,] evalPiPi_I(%i,%i) Kij %g \n", ib, i,j, Kij );
-                    Epi += evalPiPi_I( at, -ipi-1,-jpi-1, Kij );
+                    Epi += evalPiPi_I( at, -ipi-2,-jpi-2, Kij );
                 }
             }
         }
@@ -375,29 +375,29 @@ double eval_bond_neigh(int ib, Vec3d h, double l){
                 const int ing   = aneighs[i0+i];
                 const bool  bi = ing<0;
                 Vec3d hi; double il1;
-                if(bi){ hi=pipos[-ing-1];            il1=1;              }
+                if(bi){ hi=pipos[-ing-2];            il1=1;              }
                 else  { hi=apos [ ing  ]-apos[B.i];  il1=hi.normalize(); }
                 for(int j=2;j<nneigh_max;j++){
                     const int jng=aneighs[j0+j];
                     const bool  bj = jng<0;
                     
                     Vec3d hj; double il2;
-                    if(bj){ hj=pipos[-jng-1];            il2=1;              }
+                    if(bj){ hj=pipos[-jng-2];            il2=1;              }
                     else  { hj=apos [ jng  ]-apos[B.j];  il2=hi.normalize(); }
                     Vec3d f1,f2;
                     Epi += evalPiAling( hi, hj, il1, il2, Kij, f1, f2 );  
                     if(bi&&bj){ // Pi-Pi
-                        //Epi += evalPiPi_I( at, -ipi-1,-jpi-1, Kij );
-                        fpipos[-ing-1].add( f1 );
-                        fpipos[-jng-1].add( f2 );
+                        //Epi += evalPiPi_I( at, -ipi-2,-jpi-2, Kij );
+                        fpipos[-ing-2].add( f1 );
+                        fpipos[-jng-2].add( f2 );
                     }
                     else if( bPiEp ){
                         if      ( bi && (jng>=ie0) ){   
-                            fpipos[-ing-1].add( f1 );
+                            fpipos[-ing-2].add( f1 );
                             fapos [ jng  ].add( f2 );
                             fapos [ B.j  ].sub( f2 );
                         }else if( bj && (ing>=ie0) ){   
-                            fpipos[-jng-1].add( f2 );
+                            fpipos[-jng-2].add( f2 );
                             fapos [ ing  ].add( f1 );
                             fapos [ B.i  ].sub( f1 );
                         }
@@ -437,12 +437,12 @@ double eval_neighs(int ia){
             //printf( "eval_neighs[%i,%i] ing,jng(%i,%i) \n", i,j, ing,jng );
             if( bipi ){
                 if(bjpi){ if(doPiPiT_){
-                    double e=evalPiPi_T   ( ia, -ing-1, -jng-1, Kpipi ); EppT+=e; E+=e;
-                    //orthogonalizePiPi( ia, -ing-1, -jng-1 );
+                    double e=evalPiPi_T   ( ia, -ing-2, -jng-2, Kpipi ); EppT+=e; E+=e;
+                    //orthogonalizePiPi( ia, -ing-2, -jng-2 );
                 }   }
-                else    { if(doPiSigma_){ double e=evalSigmaPi( ia, jng, -ing-1, Ksp ); Eps+=e; E+=e; } }
+                else    { if(doPiSigma_){ double e=evalSigmaPi( ia, jng, -ing-2, Ksp ); Eps+=e; E+=e; } }
             }else{
-                if(bjpi){ if(doPiSigma_){ double e=evalSigmaPi( ia, ing, -jng-1, Ksp ); Eps+=e; E+=e; } } 
+                if(bjpi){ if(doPiSigma_){ double e=evalSigmaPi( ia, ing, -jng-2, Ksp ); Eps+=e; E+=e; } } 
                 else    {  if(doAngles_){
                     //E+= evalSigmaSigma_dist( ia, ing, jng, K );    Eps+=e; E+=e; 
                     double e= evalSigmaSigma_cos( ia, ing, jng, Kss, c0 );    Ea+=e; E+=e; 
@@ -466,6 +466,8 @@ void wrapBondVec( Vec3d& d ){
 
 double eval_neighs_new(int ia){
 
+    printf( "MMFFsp3::eval_neighs_new(%i) \n", ia );
+
     double E=0;
     int ioff = ia*nneigh_max;
     const bool doPiPiT_   = doPiPiT; 
@@ -480,19 +482,20 @@ double eval_neighs_new(int ia){
 
     Vec3d    hs[4];
     double  ils[4];
-
+    DEBUG
     // ToDo: there could be computed also the bonds (similarly as done in OpenCL)
     //if(idebug>0)printf( "DEBUG eval_neighs_new() [%i] aneighs[%i,%i,%i,%i] abonds[%i,%i,%i,%i] \n", ia,  aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3],     abonds[ ioff+0],abonds[ ioff+1],abonds[ ioff+2],abonds[ ioff+3] );
     for(int i=0; i<nneigh_max; i++){
         int  ing = aneighs[ioff+i];
+        if(ing==-1)continue;
         if(ing<0){
             ils[i] = 1;
-            hs [i] = pipos[-ing-1];;
+            hs [i] = pipos[-ing-2];;
         }else{
             int  ib  = abonds[ ioff+i];
             Vec3d h; h.set_sub( apos[ing], pa );
             double c=1;
-            
+            /*
             if(bPBCbyLvec){  
                 wrapBondVec( h );
                 //glColor3f(1.,0.,1.); Draw3D::drawVecInPos( h, pa );
@@ -500,9 +503,11 @@ double eval_neighs_new(int ia){
                 if( bond2atom[ib].a!=ia ){ c=-1; }; // bond should be inverted
                 h.add_mul( pbcShifts[ib], c );
             }
+            */
             double l = h.normalize();
             ils[i] = 1/l;
             hs [i] = h;
+            printf( "eval_h ia(%i)[%i] h(%g,%g,%g|l=%g)\n", ia, i, h.x,h.y,h.z,  ils[i] );
             if(ia<=ing){
                 //doPiPiI = false; // WARRNING BIG DEBUG
                 double  e= eval_bond_neigh(ib, h*c, l);
@@ -513,30 +518,34 @@ double eval_neighs_new(int ia){
         }
         // ToDd: Compute bonds here
     }
-
     Vec3d f1,f2;
     for(int i=0; i<nneigh_max; i++){
         int    ing = aneighs[ioff+i];
+        if(ing==-1)continue;
         bool bipi=ing<0;
         for(int j=i+1; j<nneigh_max; j++){
             int jng  = aneighs[ioff+j];
+            if(jng==-1)continue;
             bool bjpi=jng<0;
+            //printf( "DEBUG angle[%i,%i] bpi(%i,%i)\n", i, j, bipi, bjpi );
             if( bipi ){
                 if(bjpi){ 
                     if(doPiPiT_){ // Pi and Pi should be orthogonal
                         double e = evalAngleCos( hs[i], hs[j], ils[i], ils[j], Kpipi, 0, f1, f2 );    
-                        fpipos[-ing-1].add( f1     );
-                        fpipos[-jng-1].add( f2     );
-                        //double e=evalPiPi_T   ( ia, -ing-1, -jng-1, Kpipi ); EppT+=e; E+=e;
+                        fpipos[-ing-2].add( f1     );
+                        fpipos[-jng-2].add( f2     );
+                        //double e=evalPiPi_T   ( ia, -ing-2, -jng-2, Kpipi ); EppT+=e; E+=e;
+                        printf( "eval_PPT ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                         EppT+=e; E+=e;
                     }   
                 }else{ 
                     if(doPiSigma_){  // Pi and Sigma should be orthogonal
                         double e = evalAngleCos( hs[i], hs[j], 1, ils[j], Ksp, 0, f1, f2 ); 
-                        fpipos[-ing-1].add( f1 );
+                        fpipos[-ing-2].add( f1 );
                         fapos [ jng  ].add( f2 );
                         fapos [ ia   ].sub( f2 );
-                        //double e=evalSigmaPi( ia, jng, -ing-1, Ksp ); Eps+=e; E+=e; } 
+                        //double e=evalSigmaPi( ia, jng, -ing-2, Ksp ); Eps+=e; E+=e; } 
+                        printf( "eval_PS ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                         Eps+=e; E+=e;
                     }
                 }
@@ -545,9 +554,10 @@ double eval_neighs_new(int ia){
                     if(doPiSigma_){ // Pi and Sigma should be orthogonal
                         double e = evalAngleCos( hs[i], hs[j], ils[i], 1, Ksp, 0, f1, f2 );  
                         fapos [ ing  ].add( f1 );
-                        fpipos[-jng-1].add( f2 );
+                        fpipos[-jng-2].add( f2 );
                         fapos [ ia   ].sub( f1 );
-                        //double e=evalSigmaPi( ia, ing, -jng-1, Ksp ); Eps+=e; E+=e; 
+                        //double e=evalSigmaPi( ia, ing, -jng-2, Ksp ); Eps+=e; E+=e; 
+                        printf( "eval_SP ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                         Eps+=e; E+=e; 
                     } 
                 } else {  
@@ -556,8 +566,9 @@ double eval_neighs_new(int ia){
                         if( (ing>=ie0)!=(jng>=ie0) ){  c0_=params.w; }else{ c0_=c0; } // special angle for electron pairs
                         if( (ing>=ie0)&&(jng>=ie0) ){  c0_=-1;       }                      // special angle for electron pairs
                         //if(idebug)printf( "atom[%i]ss[%i,%i] c0,K(%g,%g) \n", ia,ing,jng, c0_, Kss  );
+                        printf( "eval_SS ia(%i)[%i,%i] f1(%g,%g,%g)f2(%g,%g,%g)\n", ia, i,j, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                         double e = evalAngleCos( hs[i], hs[j], ils[i], ils[j], Kss, c0_, f1, f2 );  
-
+                        /*
                         if(bSubtractAngleNonBond){
                             Vec3d fij=Vec3dZero;
                             Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
@@ -565,7 +576,7 @@ double eval_neighs_new(int ia){
                             f1.add(fij);
                             f2.sub(fij);
                         }
-
+                        */
                         fapos[ing].add( f1     );
                         fapos[jng].add( f2     );
                         fapos[ia ].sub( f1+f2 );
@@ -577,6 +588,7 @@ double eval_neighs_new(int ia){
         }
     }
     //printf( "DEBUG atom[%i] E=%g \n", ia, E );
+    printf( "MMFFsp3::eval_neighs_new(%i) DONE \n", ia );
     return E;
 }
 
@@ -591,27 +603,26 @@ double eval_bonds(){
 
 double eval_neighs(){
     double E=0;
-    iDEBUG_n=0;
     for(int ia=0; ia<nnode; ia++){ E+=eval_neighs(ia); }
     return E;
 }
 
 double eval_neighs_new(){
     double E=0;
-    iDEBUG_n=0;
     for(int ia=0; ia<nnode; ia++){ E+=eval_neighs_new(ia); }
     return E;
 }
 
 double eval( bool bClean=true, bool bCheck=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
+    printf( "MMFFsp3::eval( nnode %i natoms %i nvecs %i ) \n", nnode, natoms, nvecs );
     if(bClean){ cleanAll(); }
     normalizePi(); 
-    //if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
+    if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
     //if(doBonds )eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
     //if(doNeighs)eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     eval_neighs_new();
-
+    DEBUG
     Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 }
@@ -630,14 +641,14 @@ void evalPi0s(){
                 if( (ja>=0) && (ja<nnode) ){
                     int jpi = aneighs[ja*nneigh_max+3];
                     if(jpi<0){
-                        pi0.add( pipos[-jpi-1] );
+                        pi0.add( pipos[-jpi-2] );
                         nbond++;
                     }
                 }
             }
             //pi0.mul(1./nbond);
             pi0.normalize();
-            pi0s[-ipi-1].f=(Vec3f)pi0;
+            pi0s[-ipi-2].f=(Vec3f)pi0;
         }
     }
 }
@@ -657,7 +668,7 @@ void makePiNeighs( int* pi_neighs ){
         int* ngs = aneighs+(ia*nneigh_max);
         int ipi  = ngs[3];
         if(ipi<0){
-            int ioff = (-ipi-1)*4;
+            int ioff = (-ipi-2)*4;
             int nbond=0;
             printf( "ngs[%i](%i,%i,%i) ->", ia, ngs[0],ngs[1],ngs[2] );
             for(int j=0; j<3; j++){
@@ -666,7 +677,7 @@ void makePiNeighs( int* pi_neighs ){
                     int jpi = aneighs[ja*nneigh_max+3];
                     printf( " [%i](%i,%i,%i,%i) ", ja, aneighs[ja*nneigh_max+0],aneighs[ja*nneigh_max+1],aneighs[ja*nneigh_max+2],aneighs[ja*nneigh_max+3] ); 
                     if(jpi<0){
-                        pi_neighs[ioff+nbond]=natoms-jpi-1;
+                        pi_neighs[ioff+nbond]=natoms-jpi-2;
                         nbond++;
                     }
                 }
@@ -712,7 +723,7 @@ Vec3d evalPiTorq(){
         for(int i=0; i<nneigh_max; i++){
             int ing = aneighs[ioff+i];
             if(ing<0){
-                int ipi=-ing-1;
+                int ipi=-ing-2;
                 tq.add_cross( apos[ia]+pipos[ipi], fpipos[ipi] );
                 //tq.add_cross( apos[ia], fpipos[ipi] );
             };
@@ -760,12 +771,6 @@ bool checkNaNs(){
     ret|= ckeckNaN_d(natoms, 3, (double*)fapos, "fapos" );
     ret|= ckeckNaN_d(npi, 3, (double*)pipos,    "pipos" );
     ret|= ckeckNaN_d(npi, 3, (double*)fpipos,   "fpipos");
-    //for(int i=0; i<natoms; i++){
-    //    if( isnan(fapos[i].x) || isnan(fapos[i].x) || isnan(fapos[i].x) ){ printf( "fatoms[%i] is NaN (%g,%g,%g)\n", i, fapos[i].x,fapos[i].y,fapos[i].z ); };
-    //}
-    //for(int i=0; i<npi; i++){
-    //    if( isnan(fpipos[i].x) || isnan(fpipos[i].x) || isnan(fpipos[i].x) ){ printf( "fpipos[%i] is NaN (%g,%g,%g)\n", i, fpipos[i].x,fpipos[i].y,fpipos[i].z ); };
-    //}
     return ret;
 }
 
@@ -787,7 +792,7 @@ void printAtomPis(){
         int* ngs = aneighs + ia*nneigh_max;
         for(int j=0; j<nneigh_max; j++){
             int ing = ngs[j];
-            if(ing<0){ int ipi=-ing-1; printf("pi[%i]atom[%i]ng[%i] pos(%g,%g,%g) force(%g,%g,%g)\n", ipi, ia, j, pipos[ipi].x,pipos[ipi].y,pipos[ipi].z,   fpipos[ipi].x,fpipos[ipi].y,fpipos[ipi].z );  };
+            if(ing<0){ int ipi=-ing-2; printf("pi[%i]atom[%i]ng[%i] pos(%g,%g,%g) force(%g,%g,%g)\n", ipi, ia, j, pipos[ipi].x,pipos[ipi].y,pipos[ipi].z,   fpipos[ipi].x,fpipos[ipi].y,fpipos[ipi].z );  };
         }
     }
 

@@ -2273,6 +2273,9 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         //int ja=0;
         int ie0=nconf+ncap;
         int iie = 0;
+
+        for(int i=0; i<ff.nnode*4;  i++){ ff.aneighs[i]=-1; };
+
         //for(int i=0; i<ff.nnode*ff.nneigh_max; i++){ ff.Kneighs[i]=K_sigma; }
         //for(int ia=0; ia<atoms.size(); ia++ ){  
         for(int ia=0; ia<nAmax; ia++ ){
@@ -2312,7 +2315,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                 for(int k=0; k<conf.npi; k++ ){
                     int ik=N_NEIGH_MAX-1-k;
                     ff.pipos[ipi] = hs[ik];
-                    ngs[ik] = -ipi-1;
+                    ngs[ik] = -ipi-2;
                     //kngs[ik]=K_pi;
                     //printf( "pi[%i] a[%i] ng[%i] h(%g,%g,%g) \n", ipi, ia, ngs[ik], ff.pipos[ipi].x,ff.pipos[ipi].y,ff.pipos[ipi].z   );
                     ipi++;
@@ -2443,9 +2446,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                     int npij = getAtom_npi(ja);
                     Kpp[k]=B.kpp;
                 }
-                if(bEPairs){
-                    // --- Generate electron pairs
-                    makeConfGeom( conf.nbond, conf.npi, hs );
+                makeConfGeom( conf.nbond, conf.npi, hs );
+                if(bEPairs){ // --- Generate electron pairs
                     int ns = conf.nbond+conf.ne;
                     for(int k=conf.nbond; k<ns; k++){    
                         int ie=ie0+iie;
@@ -2459,10 +2461,10 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                         iie++;
                     }
                 }
-                ff.pipos[ia] = hs[3]; // Pi orientation
+                ff.pipos[ia] = hs[N_NEIGH_MAX-1]; // Pi orientation
                 //if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
                 //printf( "AFTER atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
-            }
+            } // if(A.iconf>=0){
         }
         ff.makeBackNeighs();
         //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
@@ -2533,9 +2535,8 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
                     int npij = getAtom_npi(ja);
                     Kpp[k]=B.kpp;
                 }
-                if(bEPairs){
-                    // --- Generate electron pairs
-                    makeConfGeom( conf.nbond, conf.npi, hs );
+                makeConfGeom( conf.nbond, conf.npi, hs );
+                if(bEPairs){  // --- Generate electron pairs
                     int ns = conf.nbond+conf.ne;
                     for(int k=conf.nbond; k<ns; k++){    
                         int ie=ie0+iie;
@@ -2553,7 +2554,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
                 ff.pipos[ia].e = 0;
                 //if(verbosity>1){ for(int k=0; k<N_NEIGH_MAX; k++ ){ printf( " %i,", ngs[k] ); }; printf( "] \n" ); }
                 //printf( "AFTER atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
-            }
+            } // if(A.iconf>=0){
         }
         ff.makeBackNeighs();
         if(verbosity>0)printf(  "... MM:Builder::toMMFFf4() DONE \n"  );

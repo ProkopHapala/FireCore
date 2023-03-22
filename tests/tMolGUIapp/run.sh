@@ -29,7 +29,11 @@ ln -s $dir/$name .
 
 #./$name -x common_resources/formic_dimer
 #./$name -x common_resources/HCOOH
-./$name -x common_resources/propandiol
+#./$name -x common_resources/propandiol
+#./$name -x common_resources/H2O
+valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
+
+
 
 
 #./$name -x common_resources/oxalate -q 0.08
