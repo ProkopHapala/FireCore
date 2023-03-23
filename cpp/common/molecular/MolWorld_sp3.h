@@ -135,7 +135,7 @@ class MolWorld_sp3{ public:
 // =================== Functions
 
 virtual void swith_method(){ bGridFF=!bGridFF; };
-virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i \n", bGridFF ); return str; }
+virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i ffl.bAngleCosHalf %i \n", bGridFF, ffl.bAngleCosHalf ); return str; }
 
 void init_nonbond(){
     nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.fapos, 0, ff.bond2atom );
@@ -641,15 +641,21 @@ double eval_f4(){
     return E;   
 };
 
-double eval(){
-    double E=0;
-
-    // ----- Make sure ffl subtracts non-covalent interction for angles
+void setNonBond( bool bNonBonded ){
     ffl.bSubtractAngleNonBond = bNonBonded;
-    if(ffl.bSubtractAngleNonBond){
+    ff4.bSubtractAngleNonBond = bNonBonded;
+    if(bNonBonded){
         ffl.REQs = nbmol.REQs;
+        if(ff4.REQs==0){
+            ff4.REQs = new Quat4f[nbmol.n];
+            for(int i=0; i<nbmol.n; i++ ){ ff4.REQs[i].f = (Vec3f)nbmol.REQs[i]; };
+        }
     }
+}
 
+double eval( ){
+    double E=0;
+    setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
     if(bMMFF){ 
         //E += ff .eval();
         E += ffl.eval();
