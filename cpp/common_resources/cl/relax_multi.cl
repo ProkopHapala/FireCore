@@ -16,9 +16,9 @@ typedef struct __attribute__ ((packed)){
 
 inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*b.y,  a.y*b.x - b.x*b.y }; }
 
-inline double evalAngleCosHalf( const float4 h1, const float4 h2, double ir1, double ir2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
+inline double evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
-    float3 h  = h1.xyz + h2.xyz;
+    float3 h  = hr1.xyz + hr2.xyz;
     float  c2 = dot(h,h)*0.25f;              // cos(a/2) = |ha+hb|
     float  s2 = 1.f-c2;
     float2 cso = (float2){ sqrt(c2), sqrt(s2) };
@@ -27,10 +27,10 @@ inline double evalAngleCosHalf( const float4 h1, const float4 h2, double ir1, do
     float  fr        = -k*(     cs.y );
     c2 *= -2.f;
     fr /=  4.f*cso.x*cso.y;   //    |h - 2*c2*a| =  1/(2*s*c) = 1/sin(a)
-    float  fr1    = fr*ir1;
-    float  fr2    = fr*ir2;
-    *f1 =  h*fr1  + h1.xyz*(fr1*c2);  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
-    *f2 =  h*fr2  + h2.xyz*(fr2*c2);  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
+    float  fr1    = fr*hr1.w;
+    float  fr2    = fr*hr2.w;
+    *f1 =  h*fr1  + hr1.xyz*(fr1*c2);  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
+    *f2 =  h*fr2  + hr2.xyz*(fr2*c2);  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
     return E;
 }
 
@@ -157,7 +157,7 @@ __kernel void getMMFFf4(
     const int4   ng  = neighs[iaa];    
     const float3 pa  = apos[iav].xyz;
     const float3 hpi = apos[iav+nAtoms].xyz; 
-    const float4 par = apars[ian];     
+    const float4 par = apars[ian];    //     (xy=s0_ss,z=ssK,w=piC0 )
     const float4 vbL = bLs[ian];       
     const float4 vbK = bKs[ian];       
     const float4 vKs = Ksp[ian];       
@@ -174,6 +174,7 @@ __kernel void getMMFFf4(
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
 
+    const float   ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
     if((iG==iG_DBG)&&(iS==iS_DBG)){
         //for(int i=0; i<nAtoms; i++){ int4 ng_ = neighs[i+iS*nAtoms];  printf( "GPU[%i|%i] neighs(%i,%i,%i,%i) \n", i, iS, ng_.x,ng_.y,ng_.z,ng_.w ); }; 
@@ -226,7 +227,7 @@ __kernel void getMMFFf4(
         // pi-sigma 
         float ksp = Kspi[i];
         if(ksp>1.e-6){  
-            esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.z, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
+            esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:sp:h[%i|%i] ksp=%g piC0=%g c=%g hp(%g,%g,%g) h(%g,%g,%g)\n", iaa,ing, ksp,par.z, dot(hpi,h.xyz), hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z  );
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:sp[%i|%i] ksp=%g piC0=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", iaa,ing, ksp,par.z, dot(hpi,h.xyz), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             E+=epp;
@@ -250,9 +251,11 @@ __kernel void getMMFFf4(
             const int jnga = jng+i0a;
             const float4 hj = hs[j];
             //printf( "[%i|%i,%i] hi(%g,%g,%g) hj(%g,%g,%g)\n", ia, i,j, hi.x,hi.y,hi.z,   hj.x,hj.y,hj.z );
-            E += evalAngCos( hi, hj, par.y, par.x, &f1, &f2 );     // angles between sigma bonds
+            
+            E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );
+            E += evalAngCos      ( hi, hj, par.z,  ssC0,  &f1, &f2 );     // angles between sigma bonds
+
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", iG,ing,jng, par.y, par.x, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
-            /*
             { // Remove vdW
                 float4 REQKi=REQKs[ing];   // ToDo: can be optimized
                 float4 REQKj=REQKs[jng];
@@ -265,7 +268,6 @@ __kernel void getMMFFf4(
                 f1 -=  fij.xyz;
                 f2 +=  fij.xyz;
             }
-            */
             fbs[i]+= f1;
             fbs[j]+= f2;
             fa    -= f1+f2;

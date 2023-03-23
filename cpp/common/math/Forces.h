@@ -48,7 +48,7 @@ inline double spring( double l, Vec2d ls, Vec2d ks, double flim, double& f ){
     return E;
 }
 
-double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, const Vec2d& cs0, double k, Vec3d& f1, Vec3d& f2 ){
+inline double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, const Vec2d& cs0, double k, Vec3d& f1, Vec3d& f2 ){
     //printf( " ir1 %g ir2 %g \n", ir1, ir2 );
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
     Vec3d h; h.set_add( h1, h2 );
@@ -153,7 +153,7 @@ inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ ){
     return  ( ir6 - 2 )*vdW + Eel;
 }
 
-float getLJQ( Vec3f dp, Vec3f REQ, float R2damp, Vec3f& f ){
+inline float getLJQ( Vec3f dp, Vec3f REQ, float R2damp, Vec3f& f ){
     // ---- Electrostatic
     float   r2   = dp.norm2();
     float   ir2_ = 1/( r2 + R2damp  );
@@ -355,14 +355,14 @@ inline double addForceR2mix( const Vec3d& dp, Vec3d& f, double R2, double K, dou
 
 // =============== Force Checking
 
-void sum(int n, Vec3d* ps, Vec3d& psum){ for(int i=0;i<n;i++){ psum.add(ps[i]); } };
+inline void sum(int n, Vec3d* ps, Vec3d& psum){ for(int i=0;i<n;i++){ psum.add(ps[i]); } };
 
-void sumTroq(int n, Vec3d* fs, Vec3d* ps, const Vec3d& cog, const Vec3d& fav, Vec3d& torq){
+inline void sumTroq(int n, Vec3d* fs, Vec3d* ps, const Vec3d& cog, const Vec3d& fav, Vec3d& torq){
     for(int i=0;i<n;i++){  torq.add_cross(ps[i]-cog,fs[i]-fav);  }
     //for(int i=0;i<n;i++){  torq.add_cross(ps[i],fs[i]);  }
 }
 
-void checkForceInvariatns( int n, Vec3d* fs, Vec3d* ps, Vec3d& cog, Vec3d& fsum, Vec3d& torq ){
+inline void checkForceInvariatns( int n, Vec3d* fs, Vec3d* ps, Vec3d& cog, Vec3d& fsum, Vec3d& torq ){
     cog =Vec3dZero;
     fsum=Vec3dZero;
     torq=Vec3dZero;

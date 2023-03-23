@@ -58,7 +58,8 @@ class MMFFsp3_loc{ public:
     Quat4d*  Kpp  =0;  // [nnode] stiffness of pi-planarization
     Vec3d*  REQs =0;   // [nnode] parameters of non-covalent interactions
 
-    bool    bSubtractAngleNonBond=false;
+    bool    bAngleCosHalf         = true;
+    bool    bSubtractAngleNonBond = false;
     Mat3d   invLvec, lvec;
     Vec3i   nPBC;
 
@@ -222,12 +223,18 @@ double eval_atom(const int ia){
             int jng  = ings[j];
             if(jng<0) break;
             const Quat4d& hj = hs[j];    
-            #if ANG_HALF_COS
-                //double cdot = hi.f.dot( hj.f); printf( "DEBUG angle %g angle0 %g \n", acos(cdot)*180./M_PI, acos(cs0_ss.x)*2.*180./M_PI );
+            // #if ANG_HALF_COS
+            //     E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
+            // #else             
+            //     E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+            // #endif
+
+            if( bAngleCosHalf ){
                 E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
-            #else             
+            }else{             
                 E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
-            #endif
+            }
+
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fa    .sub( f1+f2  );
             

@@ -2414,13 +2414,11 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
 
                 double ang0 = ang0s[conf.npi];
                 ang0 *= 0.5;
-                //ang0 =  0.5*109.5  * M_PI/180.0;
-                
                 ff.apars[ia].x = cos(ang0);    // ssC0  // cos(angle) for angles (sigma-siamg)
                 ff.apars[ia].y = sin(ang0);
                 ff.apars[ia].z = 1.0;              // ssK   // stiffness  for angles
                 ff.apars[ia].w = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
-                printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
+                //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 
                 // setup ff neighbors
                 
@@ -2479,7 +2477,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
 #ifdef MMFFf4_h
 void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
 
-        float c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
+        //float c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
+        float ang0s[3]{ 109.5 *M_PI/180.0, 120.0*M_PI/180.0, 180.0*M_PI/180.0 }; // cos(angle)   sp1 sp2 sp3
 
         int nAmax = atoms.size();
         int nCmax = confs.size();
@@ -2508,10 +2507,18 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
                 //assignSp3Params( A.type, conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
 
                 // setup atom (onsite)
-                ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
-                ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
-                ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
-                ff.apars[ia].w = 0.0; 
+                // ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
+                // ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
+                // ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
+                // ff.apars[ia].w = 0.0; 
+
+                double ang0 = ang0s[conf.npi];
+                ang0 *= 0.5;
+                ff.apars[ia].x = cos(ang0);    // ssCos0  // cos(angle) for angles (sigma-siamg)
+                ff.apars[ia].y = sin(ang0);    // ssSin0
+                ff.apars[ia].z = 1.0;          // ssK     // stiffness  for angles
+                ff.apars[ia].w = 0.0;          // piCos0  // stiffness  for orthogonalization sigma-pi 
+                //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 
                 // setup ff neighbors
                 

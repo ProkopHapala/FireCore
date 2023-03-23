@@ -675,6 +675,8 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl; break;
                 case SDLK_m: W->swith_method(); break;
+                case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
+                case SDLK_v: 
 
                 case SDLK_a: bViewAtomSpheres=! bViewAtomSpheres; break;
                 case SDLK_l: bViewAtomLabels =! bViewAtomLabels; break;
@@ -683,7 +685,6 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
                 case SDLK_f: bViewAtomForces =! bViewAtomForces;  break;
                 case SDLK_w: bViewSubstrate  =! bViewSubstrate;   break;
-
 
                 case SDLK_t:{
                             

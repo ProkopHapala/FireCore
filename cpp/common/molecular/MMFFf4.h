@@ -49,6 +49,56 @@ inline float evalPiAling( const Vec3f& h1, const Vec3f& h2, float ir1, float ir2
     return E;
 }
 
+inline void combineREQ(const Quat4f& a, const Quat4f& b, Quat4f& out){
+    out.x=a.x+b.x; // radius
+    out.y=a.y*b.y; // epsilon
+    out.z=a.z*b.z; // q*q
+    out.w=0.0;
+}
+
+inline float evalAngleCosHalf( const Vec3f& h1, const Vec3f& h2, float ir1, float ir2, const Vec2f& cs0, float k, Vec3f& f1, Vec3f& f2 ){
+    //printf( " ir1 %g ir2 %g \n", ir1, ir2 );
+    // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
+    Vec3f h; h.set_add( h1, h2 );
+    float c2 = h.norm2()*0.25;               // cos(a/2) = |ha+hb|
+    float s2 = 1-c2;
+    float c  = sqrt(c2);
+    float s  = sqrt(s2);
+    Vec2f cs  = cs0;
+    cs.udiv_cmplx({c,s});
+    //Vec2f cs{c,s};
+    //cs.mul_cmplx(cs0);
+    float E         =  k*( 1 - cs.x );  // just for debug ?
+    float fr        = -k*(     cs.y );
+    c2 *=-2;
+    fr /= 4*c*s;   //    |h - 2*c2*a| =  1/(2*s*c) = 1/sin(a)
+    float fr1    = fr*ir1;
+    float fr2    = fr*ir2;
+    f1.set_lincomb( fr1, h,  fr1*c2, h1 );  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
+    f2.set_lincomb( fr2, h,  fr2*c2, h2 );  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
+    return E;
+}
+
+inline float addAtomicForceLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ ){
+    //Vec3f dp; dp.set_sub( p2, p1 );
+    const float COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
+    float ir2  = 1/( dp.norm2() + 1e-4 );
+    float ir   = sqrt(ir2);
+    float ir2_ = ir2*REQ.a*REQ.a;
+    float ir6  = ir2_*ir2_*ir2_;
+    //float fr   = ( ( 1 - ir6 )*ir6*12*REQ.b + ir*REQ.c*-COULOMB_CONST )*ir2;
+    float Eel  = ir*REQ.c*COULOMB_CONST_;
+    float vdW  = ir6*REQ.b;
+    float fr   = ( ( 1 - ir6 )*12*vdW - Eel )*ir2;
+    //printf( " (%g,%g,%g) r %g fr %g \n", dp.x,dp.y,dp.z, 1/ir, fr );
+    f.add_mul( dp, fr );
+    return  ( ir6 - 2 )*vdW + Eel;
+}
+
+//==================================================================
+//    class      MMFFf4
+///================================================================
+
 class MMFFf4{ public:
     static constexpr const int nneigh_max = 4;
     int  nDOFs=0,natoms=0,nnode=0,ncap=0,nvecs=0;
@@ -59,8 +109,8 @@ class MMFFf4{ public:
     float * fDOFs = 0;   // forces
     float * vDOFs = 0;   // velocities
     
-    //                           c0     Kss    Ksp    c0_e
-    Quat4d default_NeighParams{ -1.0,   1.0,   1.0,   -1.0 };
+    //                            c0     Kss    Ksp     c0_e
+    Quat4f default_NeighParams{ -1.0f,   1.0f,   1.0f, -1.0f };
 
     // Dynamical Varaibles;
     Quat4f *   apos=0;   // [natom]
@@ -83,8 +133,8 @@ class MMFFf4{ public:
     Quat4f*  Ksp  =0;  // [nnode] stiffness of pi-alignment
     Quat4f*  Kpp  =0;  // [nnode] stiffness of pi-planarization
 
-
-    bool    bSubtractAngleNonBond=false;
+    bool    bAngleCosHalf         = true;
+    bool    bSubtractAngleNonBond = false;
     bool    bPBCbyLvec  =false;
     Mat3f   invLvec, lvec;
     Vec3i   nPBC;
@@ -148,9 +198,16 @@ float eval_atom(int ia){
     Quat4f* fps  = fneighpi +ia*4;
 
     // --- settings
-    float  ssC0 = apars[ia].x;
-    float  ssK  = apars[ia].y;
-    float  piC0 = apars[ia].z;
+    // float  ssC0 = apars[ia].x;
+    // float  ssK  = apars[ia].y;
+    // float  piC0 = apars[ia].z;
+
+    const Quat4f& apar   = apars[ia];
+    const float   ssK    = apar.z;
+    const float   piC0   = apar.w;
+    const Vec2f   cs0_ss = Vec2f{apar.x,apar.y};
+    const float   ssC0   = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
+
     bool   bPi  = ings[3]<0;
 
     //--- Aux Variables 
@@ -212,12 +269,26 @@ float eval_atom(int ia){
             int jng  = ings[j];
             if(jng<0) break;
             const Quat4f& hj = hs[j];
-            E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+            if( bAngleCosHalf ){
+                E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
+            }else{             
+                E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+            }
             //if(idebug)printf( "ang[%i|%i,%i] kss=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             //if(ia==ia_DBG)printf( "CPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.e,hj.e, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            fa.sub( f1+f2  );
+            if(bSubtractAngleNonBond){
+                Vec3f fij=Vec3fZero;
+                Quat4f REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+                Vec3f dij; dij.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
+                //Vec3f dij = apos[jng] - apos[ing];                          // method with    reading from global buffer
+                E -= addAtomicForceLJQ( dij, fij, REQij.f );
+                f1.sub(fij);
+                f2.add(fij);
+            }
             fbs[i].f.add( f1     );
             fbs[j].f.add( f2     );
-            fa.      sub( f1+f2  );
+            
             // ToDo: subtract non-covalent interactions
         }
     }
@@ -282,15 +353,15 @@ float eval( bool bClean=true, bool bCheck=true ){
 
 void flipPis( Vec3f ax ){
     for(int i=0; i<nnode; i++){
-        double c = pipos[i].f.dot(ax);
+        float c = pipos[i].f.dot(ax);
         if( c<0 ){ pipos[i].mul(-1); } 
     }
 }
 
-void move_GD(float dt, double Flim=100.0 ){
+void move_GD(float dt, float Flim=100.0 ){
     //for(int i=0; i<0; i++){}
     //Quat4f vs = (Quat4f*) vDOFs; 
-    double F2lim=Flim*Flim;
+    float F2lim=Flim*Flim;
     for(int i=0; i<nvecs; i++){
         //vs[i].f.mul( f, dt );
         Vec3f f = fapos[i].f;
