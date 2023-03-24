@@ -221,17 +221,28 @@ double eval_MMFFf4_ocl( int niter ){
     printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() \n");
     int err=0;
     if( task_MMFF==0 )setup_MMFFf4_ocl();
-
+    
     {  // DEBUG --- evaluate on CPU
-        idebug=1;
         unpack_system( iSystemCur, ffl );
-        ffl.eval(); for(int i=0; i<ffl.nvecs; i++){  printf("ffl[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ffl.fapos[i].x,ffl.fapos[i].y,ffl.fapos[i].z,   ffl.apos[i].x,ffl.apos[i].y,ffl.apos[i].z,  i>=ffl.natoms ); }
-        //ff4.eval(); for(int i=0; i<ff4.nvecs; i++){  printf("ff4[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,   ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
-        idebug=0;
+        ffl.Rdamp = gridFF.Rdamp;
+        //ffl  .cleanForce();
+        ffl.eval();    //for(int i=0; i<ffl.nvecs; i++){  printf("ffl[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ffl.fapos[i].x,ffl.fapos[i].y,ffl.fapos[i].z,   ffl.apos[i].x,ffl.apos[i].y,ffl.apos[i].z,  i>=ffl.natoms ); }
+        nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.cleanForce() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.eval() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     }
+    /*
+    { // DEBUG --- evaluate on CPU
+        unpack_system( iSystemCur, ffl );
+        ffl  .cleanForce();
+        nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
+        fcog  = sum ( ffl.natoms, ffl.fapos   );
+        tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.evalLJQs_ng4_PBC() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+    }
+    */
+
     // evaluate on GPU
     for(int i=0; i<niter; i++){
         err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
@@ -290,7 +301,7 @@ double eval_NBFF_ocl( int niter ){
         nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.cleanForce() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.evalLJQs_ng4_PBC() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     }
     // evaluate on GPU
     for(int i=0; i<niter; i++){
