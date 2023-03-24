@@ -662,7 +662,8 @@ __kernel void getNonBond(
         barrier(CLK_LOCAL_MEM_FENCE);
     }
     
-    forces[iav] = fe;
+    //forces[iav] = fe;
+    forces[iav] += fe;
     //forces[iav] = fe*(-1.f);
     
 }
