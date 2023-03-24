@@ -6,7 +6,7 @@
 #include "Vec2.h"
 #include "Vec3.h"
 
-#define COULOMB_CONST  14.3996448915
+#define COULOMB_CONST         14.3996448915
 
 #define RSAFE   1.0e-4f
 #define R2SAFE  1.0e-8f
@@ -68,7 +68,7 @@ inline double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, do
     double fr2    = fr*ir2;
     f1.set_lincomb( fr1, h,  fr1*c2, h1 );  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
     f2.set_lincomb( fr2, h,  fr2*c2, h2 );  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
-    printf( "evalAngleCosHalf fr=%g cs2(%g,%g) cso(%g,%g) cs(%g,%g) cs0(%g,%g) \n", fr, c2,s2,  c,s,  cs.x,cs.y, cs0.x,cs0.y );
+    //printf( "evalAngleCosHalf fr=%g cs2(%g,%g) cso(%g,%g) cs(%g,%g) cs0(%g,%g) \n", fr, c2,s2,  c,s,  cs.x,cs.y, cs0.x,cs0.y );
 
     return E;
 }
@@ -141,13 +141,12 @@ inline void addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, double r0, double eps,
 
 inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ ){
     //Vec3f dp; dp.set_sub( p2, p1 );
-    const double COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
     double ir2  = 1/( dp.norm2() + 1e-4 );
     double ir   = sqrt(ir2);
     double ir2_ = ir2*REQ.a*REQ.a;
     double ir6  = ir2_*ir2_*ir2_;
     //double fr   = ( ( 1 - ir6 )*ir6*12*REQ.b + ir*REQ.c*-COULOMB_CONST )*ir2;
-    double Eel  = ir*REQ.c*COULOMB_CONST_;
+    double Eel  = ir*REQ.c*COULOMB_CONST;
     double vdW  = ir6*REQ.b;
     double fr   = ( ( 1 - ir6 )*12*vdW - Eel )*ir2;
     //printf( " (%g,%g,%g) r %g fr %g \n", dp.x,dp.y,dp.z, 1/ir, fr );
@@ -167,6 +166,22 @@ inline float getLJQ( Vec3f dp, Vec3f REQ, float R2damp, Vec3f& f ){
     float vdW  = u6*REQ.y;
     float E    =      (u6-2.)*vdW     + Ec      ;
     float fr   = -12.*(u6-1.)*vdW*ir2 - Ec*ir2_ ;
+    f.set_mul( dp, fr );
+    return E;
+}
+
+inline double getLJQ( Vec3d dp, Vec3d REQ, double R2damp, Vec3d& f ){
+    // ---- Electrostatic
+    double   r2   = dp.norm2();
+    double   ir2_ = 1/( r2 + R2damp  );
+    double   Ec   = COULOMB_CONST*REQ.z*sqrt( ir2_ );
+    // --- LJ 
+    double  ir2 = 1/r2;
+    double  u2  = REQ.x*REQ.x*ir2;
+    double  u6  = u2*u2*u2;
+    double vdW  = u6*REQ.y;
+    double E    =      (u6-2.)*vdW     + Ec      ;
+    double fr   = -12.*(u6-1.)*vdW*ir2 - Ec*ir2_ ;
     f.set_mul( dp, fr );
     return E;
 }
@@ -214,7 +229,6 @@ inline double addAtomicForceQ_R2( const Vec3d& dp, Vec3d& f, double qq, double K
 }
 
 inline double addAtomicForceQ( const Vec3d& dp, Vec3d& f, double qq ){
-    //Vec3f dp; dp.set_sub( p2, p1 );
     double ir2  = 1/( dp.norm2() + R2SAFE );
     double ir   = sqrt(ir2);
     double E    = COULOMB_CONST*qq*ir;
@@ -224,7 +238,6 @@ inline double addAtomicForceQ( const Vec3d& dp, Vec3d& f, double qq ){
 }
 
 inline void addAtomicForceLJ( const Vec3d& dp, Vec3d& f, double r0, double eps ){
-    //Vec3f dp; dp.set_sub( p2, p1 );
     double ir2  = 1/( dp.norm2() + R2SAFE );
     double ir2_ = ir2*r0*r0;
     double ir6  = ir2_*ir2_*ir2_;
@@ -233,7 +246,6 @@ inline void addAtomicForceLJ( const Vec3d& dp, Vec3d& f, double r0, double eps )
 }
 
 inline void addAtomicForceExp( const Vec3d& dp, Vec3d& f, double r0, double eps, double alpha ){
-    //Vec3f dp; dp.set_sub( p2, p1 );
     double r    = sqrt(dp.norm2() + R2SAFE );
     double E    = eps*exp( alpha*(r-r0) );
     double fr   = alpha*E/r;

@@ -336,7 +336,7 @@ double eval_NBFF_ocl( int niter ){
 void eval(){
     //printf("#======= MDloop[%i] \n", nloop );
     double E=0;
-    //bSurfAtoms= false;
+    setNonBond( bNonBonded );
     if(bGPU_MMFF){
         eval_MMFFf4_ocl( 1 );
         //eval_NBFF_ocl  ( 1 ); 
