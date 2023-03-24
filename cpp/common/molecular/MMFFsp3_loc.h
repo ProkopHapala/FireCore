@@ -60,6 +60,7 @@ class MMFFsp3_loc{ public:
 
     bool    bAngleCosHalf         = true;
     bool    bSubtractAngleNonBond = false;
+    double  Rdamp  = 1.0;
     Mat3d   invLvec, lvec;
     Vec3i   nPBC;
 
@@ -264,6 +265,7 @@ double eval_atom(const int ia){
 
     
     // --------- Angle Step
+    const double R2damp=Rdamp*Rdamp;
     for(int i=0; i<4; i++){
         int ing = ings[i];
         if(ing<0) break;
@@ -283,22 +285,23 @@ double eval_atom(const int ia){
             }else{             
                 E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             }
-            if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
 
             fa    .sub( f1+f2  );
-            /*
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
-                Vec3d dij; dij.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
-                //Vec3d dij = apos[jng] - apos[ing];                          // method with    reading from global buffer
-                E -= addAtomicForceLJQ( dij, fij, REQij );
+                Vec3d dp; dp.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
+                //Vec3d dp = apos[jng] - apos[ing];                          // method with    reading from global buffer
+                //E -= addAtomicForceLJQ( dp, fij, REQij );
+                E -= getLJQ( dp, REQij, R2damp, fij );
+                //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
                 f1.sub(fij);
                 f2.add(fij);
             }
-            */
             fbs[i].add( f1     );
             fbs[j].add( f2     );
+            //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
             // ToDo: subtract non-covalent interactions
         }
     }

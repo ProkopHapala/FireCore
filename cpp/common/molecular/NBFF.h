@@ -83,8 +83,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
 
     void shift( Vec3d d ){ for(int i=0; i<n; i++){  ps[i].add(d); } }
 
-
-    double evalLJQs(){
+    double evalLJQs( double Rdamp=1.0 ){
+        double R2damp = Rdamp*Rdamp;
         const int N=n;
         double E=0;
         for(int i=0; i<N; i++){
@@ -94,7 +94,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
             for(int j=i+1; j<N; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
-                E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
+                //E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
+                E += getLJQ( ps[j]-pi, REQij, R2damp, fij );
                 fs[j].sub(fij);
                 fi   .add(fij);
             }
@@ -103,7 +104,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
         return E;
     }
 
-    double evalLJQs_ng4( const int* neighs ){
+    double evalLJQs_ng4( const int* neighs, double Rdamp=1.0 ){
+        double R2damp = Rdamp*Rdamp;
         const int N=n;
         double E=0;
         for(int i=0; i<N; i++){
@@ -115,7 +117,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
                 if( (ngs[0]==j)||(ngs[1]==j)||(ngs[2]==j)||(ngs[3]==j) ) continue;
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
-                E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
+                //E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
+                E +=getLJQ( ps[j]-pi, REQij, R2damp, fij );
                 fs[j].sub(fij);
                 fi   .add(fij);
             }
@@ -124,7 +127,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
         return E;
     }
 
-    double evalLJQs_PBC( const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1} ){
+    double evalLJQs_PBC( const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
+        double R2damp = Rdamp*Rdamp;
         const int N=n;
         double E=0;
         int npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1) -1;
@@ -143,7 +147,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
                 for(ipbc=0; ipbc<npbc; ipbc++){
-                    E += addAtomicForceLJQ( ps[j]-pi-shifts[ipbc], fij, REQij );
+                    //E += addAtomicForceLJQ( ps[j]-pi-shifts[ipbc], fij, REQij );
+                    E +=getLJQ( ps[j]-pi-shifts[ipbc], REQij, R2damp, fij );
                 }
                 fs[j].sub(fij);
                 fi   .add(fij);
@@ -197,8 +202,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
                         }
                     }
                     //E += addAtomicForceLJQ( dp + shifts[ipbc], fij, REQij );
-                    Vec3f fij_; E+=getLJQ( (Vec3f)(dp+shifts[ipbc]), (Vec3f)REQij, R2damp, fij_ );
-                    fij.add((Vec3d)fij_);
+                    E+=getLJQ( dp+shifts[ipbc], REQij, R2damp, fij );
+                    //Vec3f fij_; E+=getLJQ( (Vec3f)(dp+shifts[ipbc]), (Vec3f)REQij, R2damp, fij_ ); fij.add((Vec3d)fij_);
                     //if(i==4){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z, R2damp, REQij.x,REQij.y,REQij.z, dp.norm() ); } 
                     //printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z );
                 }
@@ -211,7 +216,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
         return E;
     }
 
-    double evalLJQ( NBsystem& B, const bool bRecoil ){
+    double evalLJQ( NBsystem& B, const bool bRecoil, double Rdamp=1.0 ){
+        double R2damp = Rdamp*Rdamp;
         double E=0;
         //printf("DEBUG NBFF_AB.evalLJQ() n,m %i %i \n", n,m);
         for(int i=0; i<n; i++){
@@ -221,7 +227,8 @@ class NBsystem{ public: // Can be Child of AtomicSystem
             for(int j=0; j<B.n; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
-                E += addAtomicForceLJQ( B.ps[j]-Api, fij, REQij );
+                //E += addAtomicForceLJQ( B.ps[j]-Api, fij, REQij );
+                E+=getLJQ( B.ps[j]-Api, REQij, R2damp, fij );
                 if(bRecoil) B.fs[j].sub(fij);
                 fi.add(fij);
             }
@@ -241,7 +248,6 @@ class NBsystem{ public: // Can be Child of AtomicSystem
             for(int j=0; j<B.n; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
-
                 E += addAtomicForceMorseQ( B.ps[j]-Api, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
                 if(bRecoil) B.fs[j].sub(fij);
                 fi.add(fij);
