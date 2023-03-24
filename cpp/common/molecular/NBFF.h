@@ -160,10 +160,25 @@ class NBsystem{ public: // Can be Child of AtomicSystem
     }
 
     double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
+
+        int ia_DBG = 0;
+        printf( "evalLJQs_ng4_PBC() n=%i nPBC(%i,%i,%i) Rdamp %g \n lvec\n", n, nPBC.x,nPBC.y,nPBC.z, Rdamp );
+        printMat(lvec);
+        for(int i=0; i<n; i++){
+            printf("evalLJQs[%i] ", i);
+            printf("neighs(%i,%i,%i,%i) "   , neighs[i].x   ,neighs[i].y   ,neighs[i].z   ,neighs[i].w    );
+            printf("neighCell(%i,%i,%i,%i) ", neighCell[i].x,neighCell[i].y,neighCell[i].z,neighCell[i].w );
+            printf("apos(%6.3f,%6.3f,%6.3f) ",  ps[i].x,ps[i].y,ps[i].z );
+            printf("fapos(%6.3f,%6.3f,%6.3f) ", fs[i].x,fs[i].y,fs[i].z );
+            printf("REQ(%6.3f,%6.3f,%6.3f) ",   REQs[i].x,REQs[i].y,REQs[i].z );
+            printf("\n"); 
+        }
+
+
         double R2damp = Rdamp*Rdamp;
         double E=0;    
         int        npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
-        const bool bPBC = npbc>0;
+        const bool bPBC = npbc>1;
         Vec3d shifts[npbc]; // temporary store for lattice shifts
         int ipbc=0;
         if(bPBC>1){
@@ -183,34 +198,40 @@ class NBsystem{ public: // Can be Child of AtomicSystem
             //if(i==4){ printf( "CPU_LJQ[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) npbc=%i\n", i, ng.x,ng.y,ng.z,ng.w,   ngC.x,ngC.y,ngC.z,ngC.w, npbc ); } 
             //printf( "CPU_LJQ[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) npbc=%i\n", i, ng.x,ng.y,ng.z,ng.w,   ngC.x,ngC.y,ngC.z,ngC.w, npbc );
             for (int j=0; j<n; j++){  // DO ALL TO ALL (to be consistent with GPU)
-                if(i==j)continue;
+                if(i>=j)continue;
                 const Vec3d dp = ps[j]-pi;
                 Vec3d fij=Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
                 const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
                 //const bool bBonded = false;
-                for(ipbc=0; ipbc<npbc; ipbc++){
-                    if(bBonded){
-                        if(
-                              ((j==ng.x)&&(ipbc==ngC.x))
-                            ||((j==ng.y)&&(ipbc==ngC.y))
-                            ||((j==ng.z)&&(ipbc==ngC.z))
-                            ||((j==ng.w)&&(ipbc==ngC.w))
-                        ){
-                            //printf("skip[%i,%i]ipbc=%i\n", i, j, ipbc );
-                            continue; // skipp pbc0
+                if(bPBC){
+                    for(ipbc=0; ipbc<npbc; ipbc++){
+                        if(bBonded){
+                            if(
+                                ((j==ng.x)&&(ipbc==ngC.x))
+                                ||((j==ng.y)&&(ipbc==ngC.y))
+                                ||((j==ng.z)&&(ipbc==ngC.z))
+                                ||((j==ng.w)&&(ipbc==ngC.w))
+                            ){
+                                //printf("skip[%i,%i]ipbc=%i\n", i, j, ipbc );
+                                continue; // skipp pbc0
+                            }
                         }
+                        Vec3d dpc = dp+shifts[ipbc];
+                        //E += addAtomicForceLJQ( dp + shifts[ipbc], fij, REQij );
+                        E+=getLJQ( dpc, REQij, R2damp, fij );
+                        //Vec3f fij_; E+=getLJQ( (Vec3f)(dp+shifts[ipbc]), (Vec3f)REQij, R2damp, fij_ ); fij.add((Vec3d)fij_);
+                        if(i==ia_DBG){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g pbc_shift(%g,%g,%g)\n" , i,j, ipbc, fij.x,fij.y,fij.z, R2damp, REQij.x,REQij.y,REQij.z, dpc.norm(), shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z ); } 
                     }
-                    //E += addAtomicForceLJQ( dp + shifts[ipbc], fij, REQij );
-                    E+=getLJQ( dp+shifts[ipbc], REQij, R2damp, fij );
-                    //Vec3f fij_; E+=getLJQ( (Vec3f)(dp+shifts[ipbc]), (Vec3f)REQij, R2damp, fij_ ); fij.add((Vec3d)fij_);
-                    //if(i==4){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z, R2damp, REQij.x,REQij.y,REQij.z, dp.norm() ); } 
-                    //printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g)\n" , i,j, ipbc, fij_.x,fij_.y,fij_.z );
+                }else{
+                    if(bBonded) continue;  // Bonded ?
+                    E+=getLJQ( dp, REQij, R2damp, fij );
+                    if(i==ia_DBG){ printf( "CPU_LJQ[%i,%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n" , i,j, fij.x,fij.y,fij.z, R2damp, REQij.x,REQij.y,REQij.z, dp.norm() ); } 
                 }
-                //if(i==4){ printf( "CPU_LJQ[%i,%i]   fj(%g,%g,%g) bBonded %i \n" , i,j, fij.x,fij.y,fij.z, bBonded ); } 
-                //fs[j].sub(fij);
+                fs[j].sub(fij);
                 fi   .add(fij);
             }
+            //if(i==ia_DBG){ printf( "CPU_LJQ[%i] fs(%g,%g,%g) += fi(%g,%g,%g) \n" , i, fs[i].x,fs[i].y,fs[i].z, fi.x,fi.y,fi.z ); } 
             fs[i].add(fi);
         }
         return E;

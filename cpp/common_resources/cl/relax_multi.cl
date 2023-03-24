@@ -586,8 +586,6 @@ __kernel void getNonBond(
         }
     }
 
-
-
     if(iG>=natoms) return;
 
     //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
@@ -624,11 +622,11 @@ __kernel void getNonBond(
                 if(bPBC){
                     // ToDo: it may be more effcient not construct pbc_shift on-the-fly
                     int ipbc=0;
-                    float3 shifts=lvec.a.xyz*-nPBC.x;
+                    float3 shift=lvec.a.xyz*-nPBC.x;
                     for(int ia=-nPBC.x; ia<=nPBC.x; ia++){
-                        shifts+=lvec.b.xyz*-nPBC.y;
+                        shift+=lvec.b.xyz*-nPBC.y;
                         for(int ib=-nPBC.y; ib<=nPBC.y; ib++){
-                            shifts+=lvec.c.xyz*-nPBC.z;
+                            shift+=lvec.c.xyz*-nPBC.z;
                             for(int ic=-nPBC.z; ic<=nPBC.z; ic++){     
                                 if(bBonded){
                                     // Maybe We can avoid this by using Damped LJ or Buckingham potential which we can safely subtract in bond-evaluation ?
@@ -639,14 +637,16 @@ __kernel void getNonBond(
                                        ||((ji==ng.w)&&(ipbc==ngC.w))
                                     )continue; // skipp pbc0
                                 }
-                                //fe += getMorseQ( dp, REQK, R2damp );
-                                fe += getLJQ( dp, REQK.xyz, R2damp );
+                                //fe += getMorseQ( dp+shifts, REQK, R2damp );
+                                float4 fij = getLJQ( dp+shift, REQK.xyz, R2damp );
+                                if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
+                                fe += fij;
                                 ipbc++; 
-                                shifts+=lvec.c.xyz;
+                                shift+=lvec.c.xyz;
                             }
-                            shifts+=lvec.b.xyz;
+                            shift+=lvec.b.xyz;
                         }
-                        shifts+=lvec.a.xyz;
+                        shift+=lvec.a.xyz;
                     }
                 }else{
                     if(bBonded) continue;  // Bonded ?
@@ -655,7 +655,7 @@ __kernel void getNonBond(
                     //fe += getLJQ( dp, REQK.xyz, R2damp );
                     float4 fij = getLJQ( dp, REQK.xyz, R2damp );
                     fe += fij;
-                    //if(iG==4){ printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,0, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); } 
+                    if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); } 
                 }
             }
         }
