@@ -6,7 +6,12 @@
 #include <vector>
 #include <unordered_map>
 
-bool isnan(Vec3d& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
+bool isnan(Vec3d&  v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
+bool isnan(Vec3f&  v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
+bool isnan(Quat4d& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)||isnan(v.w)); }
+bool isnan(Quat4f& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)||isnan(v.w)); }
+
+#define _printIfNan(var)    if(isnan(var)){printf("_printIfNan(%s)= ",#var);print(var);puts("");} 
 
 bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
     bool ret = false;

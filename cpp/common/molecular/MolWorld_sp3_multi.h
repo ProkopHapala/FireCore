@@ -338,8 +338,8 @@ void eval(){
     double E=0;
     //bSurfAtoms= false;
     if(bGPU_MMFF){
-        //eval_MMFFf4_ocl( 1 );
-        eval_NBFF_ocl  ( 1 ); 
+        eval_MMFFf4_ocl( 1 );
+        //eval_NBFF_ocl  ( 1 ); 
     }else{
         //printf( " ### CPU \n" );
         if(bMMFF){ E += ff.eval();  } 

@@ -758,20 +758,23 @@ using Quat4d = Quat4T< double >;
 
 static constexpr Quat4i Quat4iZero = (Quat4i){0,0,0,0};
 static constexpr Quat4i Quat4iOnes = (Quat4i){1,1,1,1};
+static constexpr Quat4i Quat4iMinusOnes = (Quat4i){-1,-1,-1,-1};
 
+static constexpr Quat4d Quat4dNAN = (Quat4d){NAN,NAN,NAN,NAN};
 static constexpr Quat4d Quat4dZero = (Quat4d){0.0,0.0,0.0,0.0};
 static constexpr Quat4d Quat4dOnes = (Quat4d){1.0,1.0,1.0,1.0};
 static constexpr Quat4d Quat4dW  = (Quat4d){0.0,0.0,0.0,1.0};
-//static constexpr Quat4d Quat4dX    = (Quat4d){1.0,0.0,0.0,0.0};
-//static constexpr Quat4d Quat4dY    = (Quat4d){0.0,1.0,0.0,0.0};
-//static constexpr Quat4d Quat4dZ    = (Quat4d){0.0,0.0,1.0,0.0};
+static constexpr Quat4d Quat4dX    = (Quat4d){1.0,0.0,0.0,0.0};
+static constexpr Quat4d Quat4dY    = (Quat4d){0.0,1.0,0.0,0.0};
+static constexpr Quat4d Quat4dZ    = (Quat4d){0.0,0.0,1.0,0.0};
 
+static constexpr Quat4f Quat4fNAN = (Quat4f){NAN,NAN,NAN,NAN};
 static constexpr Quat4f Quat4fZero = (Quat4f){0.0f,0.0f,0.0f,0.0f};
 static constexpr Quat4f Quat4fOnes = (Quat4f){1.0f,1.0f,1.0f,1.0f};
 static constexpr Quat4f Quat4fW    = (Quat4f){0.0f,0.0f,0.0f,1.0f};
-//static constexpr Quat4f Quat4fX   = (Quat4f){1.0f,0.0f,0.0f,0.0f};
-//static constexpr Quat4f Quat4fY   = (Quat4f){0.0f,1.0f,0.0f,0.0f};
-//static constexpr Quat4f Quat4fZ   = (Quat4f){0.0f,0.0f,1.0f,0.0f};
+static constexpr Quat4f Quat4fX   = (Quat4f){1.0f,0.0f,0.0f,0.0f};
+static constexpr Quat4f Quat4fY   = (Quat4f){0.0f,1.0f,0.0f,0.0f};
+static constexpr Quat4f Quat4fZ   = (Quat4f){0.0f,0.0f,1.0f,0.0f};
 
 
 
