@@ -531,7 +531,7 @@ virtual void init( bool bGrid ){
         ff4.eval_check();
         ff .eval_check();
         idebug=0;
-        exit(0);
+        //exit(0);
         DEBUG
         //initNBmol();
         //initNBmol( ff.natoms,  ff.apos,  ff.fapos  );

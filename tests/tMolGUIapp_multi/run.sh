@@ -16,8 +16,8 @@ rm valgrind.log
 #rm *.bin *.xsf
 
 #./$name -x common_resources/formic_dimer
-#./$name -x common_resources/HCOOH -m 10
-valgrind --leak-check=yes --log-file="valgrind.log" ./$name -x common_resources/HCOOH -m 10
+./$name -x common_resources/HCOOH -m 10
+#valgrind --leak-check=yes --log-file="valgrind.log" ./$name -x common_resources/HCOOH -m 10
 #valgrind --leak-check=yes --track-origins=yes  --log-file="valgrind.log" ./$name -x common_resources/HCOOH -m 10
 
 

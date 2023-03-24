@@ -68,6 +68,8 @@ inline double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, do
     double fr2    = fr*ir2;
     f1.set_lincomb( fr1, h,  fr1*c2, h1 );  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
     f2.set_lincomb( fr2, h,  fr2*c2, h2 );  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
+    printf( "evalAngleCosHalf fr=%g cs2(%g,%g) cso(%g,%g) cs(%g,%g) cs0(%g,%g) \n", fr, c2,s2,  c,s,  cs.x,cs.y, cs0.x,cs0.y );
+
     return E;
 }
 
