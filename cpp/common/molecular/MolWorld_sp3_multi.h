@@ -92,6 +92,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 , fl
     int i0v = isys * ocl.nvecs;
     pack( ff.nvecs, ff.apos, atoms+i0v );
     for(int i=0; i<ocl.nAtoms; i++){ Quat4f a=atoms[i+i0v]; a.w=-1.0; constr[i+i0a] = a; }  // contrains
+    /*
     if(l_rnd>0){ 
         printf("WARRNING: random noise added to apos \n");
         for(int i=0; i<ff.nvecs; i++){ 
@@ -100,6 +101,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 , fl
         } 
         atoms[0+i0v].x=isys;
     }
+    */
     if(bForces){
         pack( ff.nvecs, ff.fapos, aforces+i0v );
         //pack( f.nvecs, ff.avel, avel+i0v );
@@ -223,15 +225,18 @@ double eval_MMFFf4_ocl( int niter ){
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     
     {  // DEBUG --- evaluate on CPU
+        //bool bEval_ffl = false;
+        bool bEval_ffl = true;
         unpack_system( iSystemCur, ffl );
         ffl.Rdamp = gridFF.Rdamp;
-        //ffl  .cleanForce();
+        ffl.cleanForce();
         ffl.eval();    //for(int i=0; i<ffl.nvecs; i++){  printf("ffl[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ffl.fapos[i].x,ffl.fapos[i].y,ffl.fapos[i].z,   ffl.apos[i].x,ffl.apos[i].y,ffl.apos[i].z,  i>=ffl.natoms ); }
         nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.eval() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.eval_MMFFf4_ocl() CPU |fcog| =%g; fcog=(%g,%g,%g) bEval_ffl %i \n", bEval_ffl, fcog.norm(),  fcog.x, fcog.y, fcog.z, bEval_ffl ); exit(0); }
     }
+    
     /*
     { // DEBUG --- evaluate on CPU
         unpack_system( iSystemCur, ffl );
@@ -239,7 +244,7 @@ double eval_MMFFf4_ocl( int niter ){
         nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.evalLJQs_ng4_PBC() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.eval_MMFFf4_ocl() CPU |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     }
     */
 
@@ -247,7 +252,7 @@ double eval_MMFFf4_ocl( int niter ){
     for(int i=0; i<niter; i++){
         err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
         err |= task_MMFF  ->enque_raw();
-        //err |= task_NBFF  ->enque_raw();
+        err |= task_NBFF  ->enque_raw();
         err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
         err |= task_move  ->enque_raw(); 
         OCL_checkError(err, "eval_MMFFf4_ocl_1");
@@ -301,7 +306,7 @@ double eval_NBFF_ocl( int niter ){
         nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.evalLJQs_ng4_PBC() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_NBFF_ocl() CPU |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     }
     // evaluate on GPU
     for(int i=0; i<niter; i++){
