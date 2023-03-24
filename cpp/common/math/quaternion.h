@@ -756,25 +756,25 @@ using Quat4i = Quat4T< int>;
 using Quat4f = Quat4T< float>;
 using Quat4d = Quat4T< double >;
 
-static constexpr Quat4i Quat4iZero = (Quat4i){0,0,0,0};
-static constexpr Quat4i Quat4iOnes = (Quat4i){1,1,1,1};
-static constexpr Quat4i Quat4iMinusOnes = (Quat4i){-1,-1,-1,-1};
+static constexpr Quat4i Quat4iZero      {0,0,0,0};
+static constexpr Quat4i Quat4iOnes      {1,1,1,1};
+static constexpr Quat4i Quat4iMinusOnes {-1,-1,-1,-1};
 
-static constexpr Quat4d Quat4dNAN = (Quat4d){NAN,NAN,NAN,NAN};
-static constexpr Quat4d Quat4dZero = (Quat4d){0.0,0.0,0.0,0.0};
-static constexpr Quat4d Quat4dOnes = (Quat4d){1.0,1.0,1.0,1.0};
-static constexpr Quat4d Quat4dW  = (Quat4d){0.0,0.0,0.0,1.0};
-static constexpr Quat4d Quat4dX    = (Quat4d){1.0,0.0,0.0,0.0};
-static constexpr Quat4d Quat4dY    = (Quat4d){0.0,1.0,0.0,0.0};
-static constexpr Quat4d Quat4dZ    = (Quat4d){0.0,0.0,1.0,0.0};
+static constexpr Quat4d Quat4dNAN  {NAN,NAN,NAN,NAN};
+static constexpr Quat4d Quat4dZero {0.0,0.0,0.0,0.0};
+static constexpr Quat4d Quat4dOnes {1.0,1.0,1.0,1.0};
+static constexpr Quat4d Quat4dW    {0.0,0.0,0.0,1.0};
+static constexpr Quat4d Quat4dX    {1.0,0.0,0.0,0.0};
+static constexpr Quat4d Quat4dY    {0.0,1.0,0.0,0.0};
+static constexpr Quat4d Quat4dZ    {0.0,0.0,1.0,0.0};
 
-static constexpr Quat4f Quat4fNAN = (Quat4f){NAN,NAN,NAN,NAN};
-static constexpr Quat4f Quat4fZero = (Quat4f){0.0f,0.0f,0.0f,0.0f};
-static constexpr Quat4f Quat4fOnes = (Quat4f){1.0f,1.0f,1.0f,1.0f};
-static constexpr Quat4f Quat4fW    = (Quat4f){0.0f,0.0f,0.0f,1.0f};
-static constexpr Quat4f Quat4fX   = (Quat4f){1.0f,0.0f,0.0f,0.0f};
-static constexpr Quat4f Quat4fY   = (Quat4f){0.0f,1.0f,0.0f,0.0f};
-static constexpr Quat4f Quat4fZ   = (Quat4f){0.0f,0.0f,1.0f,0.0f};
+static constexpr Quat4f Quat4fNAN  {NAN,NAN,NAN,NAN};
+static constexpr Quat4f Quat4fZero {0.0f,0.0f,0.0f,0.0f};
+static constexpr Quat4f Quat4fOnes {1.0f,1.0f,1.0f,1.0f};
+static constexpr Quat4f Quat4fW    {0.0f,0.0f,0.0f,1.0f};
+static constexpr Quat4f Quat4fX    {1.0f,0.0f,0.0f,0.0f};
+static constexpr Quat4f Quat4fY    {0.0f,1.0f,0.0f,0.0f};
+static constexpr Quat4f Quat4fZ    {0.0f,0.0f,1.0f,0.0f};
 
 
 
@@ -808,26 +808,24 @@ static constexpr Quat4f Quat4fZ   = (Quat4f){0.0f,0.0f,1.0f,0.0f};
 //static constexpr Quat4f Quat4fLeft     = Quat4fmZYX;
 //static constexpr Quat4f Quat4fRight    = Quat4fZYmX;
 
-static constexpr Quat4f Quat4fIdentity = (Quat4f){       0.0,        0.0,       0.0,       1.0 };
+static constexpr Quat4f Quat4fIdentity {       0.f,       0.f,       0.f,       1.f };
+static constexpr Quat4f Quat4fBack     {       0.f,       0.f,       0.f,       1.f };
+static constexpr Quat4f Quat4fFront    {       0.f,       1.f,       0.f,       0.f };
+static constexpr Quat4f Quat4fTop      {-M_SQRT1_2,       0.f,       0.f, M_SQRT1_2 };
+static constexpr Quat4f Quat4fBotton   { M_SQRT1_2,       0.f,       0.f, M_SQRT1_2 };
+static constexpr Quat4f Quat4fLeft     {       0.f,  M_SQRT1_2,       0.f, M_SQRT1_2 };
+static constexpr Quat4f Quat4fRight    {       0.f, -M_SQRT1_2,       0.f, M_SQRT1_2 };
 
-static constexpr Quat4f Quat4fBack     = (Quat4f){       0.0,        0.0,       0.0,       1.0 };
-static constexpr Quat4f Quat4fFront    = (Quat4f){       0.0,        1.0,       0.0,       0.0 };
-static constexpr Quat4f Quat4fTop      = (Quat4f){-M_SQRT1_2,        0.0,       0.0, M_SQRT1_2 };
-static constexpr Quat4f Quat4fBotton   = (Quat4f){ M_SQRT1_2,        0.0,       0.0, M_SQRT1_2 };
-static constexpr Quat4f Quat4fLeft     = (Quat4f){       0.0,  M_SQRT1_2,       0.0, M_SQRT1_2 };
-static constexpr Quat4f Quat4fRight    = (Quat4f){       0.0, -M_SQRT1_2,       0.0, M_SQRT1_2 };
-
-static constexpr Quat4d Quat4dIdentity = (Quat4d){       0.0,        0.0,       0.0,       1.0 };
-
-static constexpr Quat4d Quat4dBack     = (Quat4d){       0.0,        0.0,       0.0,       1.0 };
-static constexpr Quat4d Quat4dFront    = (Quat4d){       0.0,        1.0,       0.0,       0.0 };
-static constexpr Quat4d Quat4dTop      = (Quat4d){-M_SQRT1_2,        0.0,       0.0, M_SQRT1_2 };
-static constexpr Quat4d Quat4dBotton   = (Quat4d){ M_SQRT1_2,        0.0,       0.0, M_SQRT1_2 };
-static constexpr Quat4d Quat4dLeft     = (Quat4d){       0.0,  M_SQRT1_2,       0.0, M_SQRT1_2 };
-static constexpr Quat4d Quat4dRight    = (Quat4d){       0.0, -M_SQRT1_2,       0.0, M_SQRT1_2 };
+static constexpr Quat4d Quat4dIdentity {       0.,        0.,       0.,       1.  };
+static constexpr Quat4d Quat4dBack     {       0.,        0.,       0.,       1.  };
+static constexpr Quat4d Quat4dFront    {       0.,        1.,       0.,       0.  };
+static constexpr Quat4d Quat4dTop      {-M_SQRT1_2,       0.,       0., M_SQRT1_2 };
+static constexpr Quat4d Quat4dBotton   { M_SQRT1_2,       0.,       0., M_SQRT1_2 };
+static constexpr Quat4d Quat4dLeft     {       0.,  M_SQRT1_2,      0., M_SQRT1_2 };
+static constexpr Quat4d Quat4dRight    {       0., -M_SQRT1_2,      0., M_SQRT1_2 };
 
 // -------- this is used for camera
-static constexpr Quat4f qFront {-M_SQRT1_2,      0.0f,     0.0f,M_SQRT1_2 };
+static constexpr Quat4f qFront {-M_SQRT1_2,      0.f,     0.f,M_SQRT1_2 };
 static constexpr Quat4f qBack  {      0.0f, M_SQRT1_2,M_SQRT1_2,     0.0f };
 static constexpr Quat4f qTop   { 1.0f, 0.0f, 0.0f, 0.0f};
 static constexpr Quat4f qBottom{ 0.0f, 0.0f, 0.0f, 1.0f};

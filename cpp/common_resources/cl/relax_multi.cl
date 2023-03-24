@@ -14,7 +14,8 @@ typedef struct __attribute__ ((packed)){
 #define R2SAFE          1e-4f
 #define COULOMB_CONST   14.399644f  // [eV*Ang/e^2]
 
-inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*b.y,  a.y*b.x - b.x*b.y }; }
+inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*b.y,  a.y*b.x - a.x*b.y }; }
+//inline void     udiv_cmplx(               const VEC& b ){                            T x_ =    x*b.x +   y*b.y;         y =    y*b.x -   x*b.y;       x=x_;  }
 
 inline double evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
@@ -172,7 +173,7 @@ __kernel void getMMFFf4(
 
     const int iS_DBG = 5;
     //const int iG_DBG = 0;
-    const int iG_DBG = 1;
+    const int iG_DBG = 0;
 
     const float   ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
@@ -183,14 +184,12 @@ __kernel void getMMFFf4(
     }
     //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU[%i=%i|%i] neighs(%i,%i,%i,%i) \n", iG, iaa, iS, ings[0],ings[1],ings[2],ings[3] );
 
+    for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }
+
     // ========= Evaluate Bonds
     float3 f1,f2;         // temporary forces
     for(int i=0; i<NNEIGH; i++){
         float4 h;
-        fbs[i]=float3Zero;
-        fps[i]=float3Zero;
-        //fbs[i]=(float3){1,2,3};
-        //fps[i]=(float3){4,5,6};
         const int ing  = ings[i];
         const int ingv = ing+i0v;
         const int inga = ing+i0a;
@@ -253,9 +252,12 @@ __kernel void getMMFFf4(
             //printf( "[%i|%i,%i] hi(%g,%g,%g) hj(%g,%g,%g)\n", ia, i,j, hi.x,hi.y,hi.z,   hj.x,hj.y,hj.z );
             
             E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );
-            E += evalAngCos      ( hi, hj, par.z,  ssC0,  &f1, &f2 );     // angles between sigma bonds
-
-            //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", iG,ing,jng, par.y, par.x, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            //E += evalAngCos      ( hi, hj, par.z,  ssC0,  &f1, &f2 );     // angles between sigma bonds
+            
+            if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", iG,ing,jng, par.z, par.x,par.y, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            
+            fa    -= f1+f2;
+            /*
             { // Remove vdW
                 float4 REQKi=REQKs[ing];   // ToDo: can be optimized
                 float4 REQKj=REQKs[jng];
@@ -268,9 +270,9 @@ __kernel void getMMFFf4(
                 f1 -=  fij.xyz;
                 f2 +=  fij.xyz;
             }
+            */
             fbs[i]+= f1;
             fbs[j]+= f2;
-            fa    -= f1+f2;
             //if(ia==0)printf( "GPU:fa[%i](%g,%g,%g)\n", ia, fa.x,fa.y,fa.z  );
             // ToDo: subtract non-covalent interactions
         }

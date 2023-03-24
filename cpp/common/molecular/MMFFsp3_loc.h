@@ -213,7 +213,7 @@ double eval_atom(const int ia){
     Quat4d  hs[4];
     Vec3d   f1,f2;
     
-    const int ia_DBG = 1;
+    const int ia_DBG = 0;
     //if(ia==ia_DBG)printf( "ffl[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
 
     //for(int i=0; i<4; i++){ fneigh[ia*4+i]=Vec3dZero; fneighpi[ia*4+i]=Vec3dZero; }
@@ -234,11 +234,6 @@ double eval_atom(const int ia){
         hs [i] = h;
         // bond length force
         //continue; 
-        
-        //double uninitalized_var=NAN;   _printIfNan( uninitalized_var );
-        //_printIfNan(h);
-        //_printIfNan(bL[i]);
-        //_printIfNan(bK[i]);
 
         //if(ia==ia_DBG) printf( "ffl:h[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, l, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z, pa.x,pa.y,pa.z );
 
@@ -252,7 +247,7 @@ double eval_atom(const int ia){
                 //if(ia==ia_DBG)printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             }
             // ToDo: triple bonds ?
-
+            
         } 
         
         // pi-sigma 
@@ -288,10 +283,10 @@ double eval_atom(const int ia){
             }else{             
                 E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             }
+            if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
 
-            //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g c0=%g c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, ssC0, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             fa    .sub( f1+f2  );
-            
+            /*
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
@@ -301,13 +296,13 @@ double eval_atom(const int ia){
                 f1.sub(fij);
                 f2.add(fij);
             }
-            
+            */
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             // ToDo: subtract non-covalent interactions
         }
     }
-
+    
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia]=fa; 
