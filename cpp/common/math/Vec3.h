@@ -464,21 +464,23 @@ using Vec3i8  = Vec3T<int8_t>;
 using Vec3ui8 = Vec3T<uint8_t>;
 using Vec3b   = Vec3T<bool>;
 
-static constexpr Vec3d Vec3dZero = (Vec3d){0.0,0.0,0.0};
-static constexpr Vec3d Vec3dOne  = (Vec3d){1.0,1.0,1.0};
-static constexpr Vec3d Vec3dX    = (Vec3d){1.0,0.0,0.0};
-static constexpr Vec3d Vec3dY    = (Vec3d){0.0,1.0,0.0};
-static constexpr Vec3d Vec3dZ    = (Vec3d){0.0,0.0,1.0};
-static constexpr Vec3d Vec3dmin   = (Vec3d){-1e+300,-1e+300,-1e+300};
-static constexpr Vec3d Vec3dmax   = (Vec3d){+1e+300,+1e+300,+1e+300};
+static constexpr Vec3d Vec3dNAN {NAN,NAN,NAN};
+static constexpr Vec3d Vec3dZero{0.0,0.0,0.0};
+static constexpr Vec3d Vec3dOne {1.0,1.0,1.0};
+static constexpr Vec3d Vec3dX   {1.0,0.0,0.0};
+static constexpr Vec3d Vec3dY   {0.0,1.0,0.0};
+static constexpr Vec3d Vec3dZ   {0.0,0.0,1.0};
+static constexpr Vec3d Vec3dmin {-1e+300,-1e+300,-1e+300};
+static constexpr Vec3d Vec3dmax {+1e+300,+1e+300,+1e+300};
 
-static constexpr Vec3f Vec3fZero = (Vec3f){0.0f,0.0f,0.0f};
-static constexpr Vec3f Vec3fOne  = (Vec3f){1.0f,1.0f,1.0f};
-static constexpr Vec3f Vec3fX    = (Vec3f){1.0f,0.0f,0.0f};
-static constexpr Vec3f Vec3fY    = (Vec3f){0.0f,1.0f,0.0f};
-static constexpr Vec3f Vec3fZ    = (Vec3f){0.0f,0.0f,1.0f};
-static constexpr Vec3f Vec3fmin  = (Vec3f){-1e+37,-1e+37,-1e+37};
-static constexpr Vec3f Vec3fmax  = (Vec3f){+1e+37,+1e+37,+1e+37};
+static constexpr Vec3f Vec3fNAN {NAN,NAN,NAN};
+static constexpr Vec3f Vec3fZero{0.0f,0.0f,0.0f};
+static constexpr Vec3f Vec3fOne {1.0f,1.0f,1.0f};
+static constexpr Vec3f Vec3fX   {1.0f,0.0f,0.0f};
+static constexpr Vec3f Vec3fY   {0.0f,1.0f,0.0f};
+static constexpr Vec3f Vec3fZ   {0.0f,0.0f,1.0f};
+static constexpr Vec3f Vec3fmin {-1e+37,-1e+37,-1e+37};
+static constexpr Vec3f Vec3fmax {+1e+37,+1e+37,+1e+37};
 
 static constexpr Vec3i Vec3iZero {0,0,0};
 static constexpr Vec3i Vec3iOne  {1,1,1};

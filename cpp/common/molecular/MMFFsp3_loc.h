@@ -73,6 +73,7 @@ void realloc( int nnode_, int ncap_ ){
     //printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
     int ipi0=natoms;
 
+    /*
     // ----- Dynamical
     _realloc(  DOFs    , nDOFs );
     _realloc( fDOFs    , nDOFs );
@@ -93,6 +94,51 @@ void realloc( int nnode_, int ncap_ ){
     _realloc( bKs       , nnode );
     _realloc( Ksp       , nnode );
     _realloc( Kpp       , nnode );
+    */
+    
+    
+    /*
+    _realloc0(  DOFs    , nDOFs , 0. );
+    _realloc0( fDOFs    , nDOFs , 0. );
+    apos   = (Vec3d*) DOFs ;
+    fapos  = (Vec3d*)fDOFs;
+    pipos  = apos  + ipi0;
+    fpipos = fapos + ipi0;
+    // ---- Aux
+    _realloc0( fneigh  , nnode*4, Vec3dZero );
+    _realloc0( fneighpi, nnode*4, Vec3dZero );
+    // ----- Params [natom]
+    _realloc0( atypes    , natoms, -1 );
+    _realloc0( aneighs   , natoms, Quat4iMinusOnes );
+    _realloc0( aneighCell, natoms, Quat4iMinusOnes );
+    _realloc0( bkneighs  , natoms, Quat4iMinusOnes);
+    _realloc0( apars     , nnode, Quat4dZero );
+    _realloc0( bLs       , nnode, Quat4dZero );
+    _realloc0( bKs       , nnode, Quat4dZero );
+    _realloc0( Ksp       , nnode, Quat4dZero );
+    _realloc0( Kpp       , nnode, Quat4dZero );
+    */
+    
+    _realloc0(  DOFs    , nDOFs , (double)NAN );
+    _realloc0( fDOFs    , nDOFs , (double)NAN );
+    apos   = (Vec3d*) DOFs ;
+    fapos  = (Vec3d*)fDOFs;
+    pipos  = apos  + ipi0;
+    fpipos = fapos + ipi0;
+    // ---- Aux
+    _realloc0( fneigh  , nnode*4, Vec3dNAN );
+    _realloc0( fneighpi, nnode*4, Vec3dNAN );
+    // ----- Params [natom]
+    _realloc0( atypes    , natoms, -1 );
+    _realloc0( aneighs   , natoms, Quat4iMinusOnes );
+    _realloc0( aneighCell, natoms, Quat4iMinusOnes );
+    _realloc0( bkneighs  , natoms, Quat4iMinusOnes);
+    _realloc0( apars     , nnode, Quat4dNAN );
+    _realloc0( bLs       , nnode, Quat4dNAN );
+    _realloc0( bKs       , nnode, Quat4dNAN );
+    _realloc0( Ksp       , nnode, Quat4dNAN );
+    _realloc0( Kpp       , nnode, Quat4dNAN );
+
 }
 
 void dealloc(){
@@ -170,12 +216,15 @@ double eval_atom(const int ia){
     const int ia_DBG = 1;
     //if(ia==ia_DBG)printf( "ffl[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
 
+    //for(int i=0; i<4; i++){ fneigh[ia*4+i]=Vec3dZero; fneighpi[ia*4+i]=Vec3dZero; }
+    for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
+
     // --------- Bonds Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
         //printf( "bond[%i|%i=%i]\n", ia,i,ing );
         //fbs[i]=Vec3dOne; fps[i]=Vec3dOne;
-        fbs[i]=Vec3dZero; fps[i]=Vec3dZero;
+        //fbs[i]=Vec3dZero; fps[i]=Vec3dZero; // NOTE: wee need to initialize it before, because of the break
         if(ing<0) break;
         Quat4d h; 
         h.f.set_sub( apos[ing], pa );
@@ -186,13 +235,17 @@ double eval_atom(const int ia){
         // bond length force
         //continue; 
         
+        //double uninitalized_var=NAN;   _printIfNan( uninitalized_var );
+        //_printIfNan(h);
+        //_printIfNan(bL[i]);
+        //_printIfNan(bK[i]);
+
         //if(ia==ia_DBG) printf( "ffl:h[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, l, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z, pa.x,pa.y,pa.z );
 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
-            //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
-            E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].sub(f1);   fa.add(f1);    
+            E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);    
             //if(ia==ia_DBG)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
-
+            
             double kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
@@ -201,7 +254,7 @@ double eval_atom(const int ia){
             // ToDo: triple bonds ?
 
         } 
-
+        
         // pi-sigma 
         //if(bPi){    
         double ksp = Kspi[i];
@@ -211,9 +264,10 @@ double eval_atom(const int ia){
             //if(ia==ia_DBG)printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
         }
         //}
-     
+        
     }
 
+    
     // --------- Angle Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -253,7 +307,7 @@ double eval_atom(const int ia){
             // ToDo: subtract non-covalent interactions
         }
     }
- 
+
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia]=fa; 
@@ -275,6 +329,7 @@ void cleanForce(){
     //for(int i=0; i<natoms; i++){ fapos [i].set(0.0);  } 
     //for(int i=0; i<nnode;  i++){ fpipos[i].set(0.0);  } 
     for(int i=0; i<nDOFs; i++){ fDOFs[i]=0;  } 
+    // NOTE: We do not need clean fneigh,fneighpi because they are set in eval_atoms 
 }
 
 void asseble_forces(){
@@ -307,9 +362,18 @@ double eval( bool bClean=true, bool bCheck=true ){
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     eval_atoms();
-    if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
+    //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
     asseble_forces();
     //Etot = Eb + Ea + Eps + EppT + EppI;
+    return Etot;
+}
+
+double eval_check(){
+    printf(" ============ check MMFFsp3_loc START\n " );
+    printSizes();
+    eval();
+    checkNans();
+    printf(" ============ check MMFFsp3_loc DONE\n " );
     return Etot;
 }
 
@@ -380,6 +444,7 @@ void makeNeighCells( const Vec3i nPBC_ ){
     //printf("MMFFsp3_loc::makeNeighCells() DONE \n");
 }
 
+void printSizes(){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };
 
@@ -417,6 +482,18 @@ void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
         printf( "fneighpi{%6.3f,%6.3f,%6.3f} ", fneighpi[i1].x, fneighpi[i1].y, fneighpi[i1].z );
         printf( "\n" );
     }}
+}
+
+bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
+    bool ret = false;
+    if(bA)  ret |= ckeckNaN_d(natoms,  3, (double*) apos,   "apos"  );
+    if(bA)  ret |= ckeckNaN_d(natoms,  3, (double*)fapos,  "fapos"  );
+    if(bPi) ret |= ckeckNaN_d(nnode,   3, (double*) pipos,  "pipos" );
+    if(bPi) ret |= ckeckNaN_d(nnode,   3, (double*)fpipos, "fpipos" );
+    if(bNg) ret |= ckeckNaN_d(nnode*4, 3, (double*)fneigh,  "fneigh"   );
+    if(bNg) ret |= ckeckNaN_d(nnode*4, 3, (double*)fneighpi,"fneighpi" );
+    if(bExit&&ret){ printf("ERROR: NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); exit(0); };
+    return ret;
 }
 
 void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){

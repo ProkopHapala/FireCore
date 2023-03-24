@@ -526,67 +526,12 @@ virtual void init( bool bGrid ){
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         DEBUG
-        /*
-        if(verbosity>0){
-            ff.printSizes();
-            ff.printAtoms();
-            ff.printNeighs();
-            ff.printBonds();
-            ff.printAtomPis();
-        }
-        */
-        
-        DEBUG
-        
-        {  printf(" ============ check MMFFsp3_loc START\n " );
-            //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
-            printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
-            idebug=1;
-            ffl.eval();
-            idebug=0;
-            //printf("### ffl.fneigh  :\n"); printVecs( ffl.nnode*4, ffl.fneigh   );
-            //printf("### ffl.fneighpi:\n"); printVecs( ffl.nnode*4, ffl.fneighpi );
-            //printf("### ffl.fapos:\n");   printVecs( ffl.natoms, ffl.fapos  );
-            //printf("### ffl.fpipos:\n");  printVecs( ffl.nnode,  ffl.fpipos );
-            if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.nnode, 3, (double*)ffl.fpipos,  "ffl.fpipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
-            printf(" ============ check MMFFsp3_loc DONE\n " );
-        }
-
-
-        { printf(" ============ check MMFFf4 START\n " );
-            //printf("### ff4.apos:\n");  printVecs( ff4.natoms, ff4.apos  );
-            //printf("### ff4.pipos:\n"); printVecs( ff4.nnode , ff4.pipos );
-            idebug=1;
-            ff4.eval();
-            idebug=0;
-            //printf("### ff4.fneigh  :\n"); printVecs( ff4.nnode*4, ff4.fneigh   );
-            //printf("### ff4.fneighpi:\n"); printVecs( ff4.nnode*4, ff4.fneighpi );
-            //printf("### ff4.fapos:\n");   printVecs( ff4.natoms,  ff4.fapos  );
-            //printf("### ff4.fpipos:\n");  printVecs( ff4.nnode,   ff4.fpipos );
-            if( ckeckNaN_f( ff4.natoms, 4, (float*)ff4.fapos,  "ff4.apos"  ) || ckeckNaN_f( ff4.nnode, 4, (float*)ff4.fpipos,  "ff4.pipos"  ) ) { printf("ERROR: NaNs produced in MMFFf4.eval() => exit() \n"); exit(0); };
-            /*
-            // -------    compate MMFFf4 to MMFFsp3_loc
-            bool ret=false;
-            printf("### Compare ffl.apos,   ff4.apos    \n"); ret |= compareVecs( ff4.natoms, ffl.apos,   ff4.apos,   1e-4, true );
-            printf("### Compare ffl.pipos,  ff4.pipos   \n"); ret |= compareVecs( ff4.nnode,  ffl.pipos,  ff4.pipos,  1e-4, true );
-            printf("### Compare ffl.fneigh, ff4.fneigh  \n"); ret |= compareVecs( ff4.nnode*4,ffl.fneigh, ff4.fneigh, 1e-4, true );
-            printf("### Compare ffl.fapos,  ff4.fapos   \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
-            printf("### Compare ffl.fpipos, ff4.fpipos, \n"); ret |= compareVecs( ff4.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
-            if(ret){ printf("ERROR: ff4.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }
-            */
-            printf(" ============ check MMFFf4 DONE\n " );
-        }
-
-        //if( ff.checkBonds( 1.5, true ) ){ printf("ERROR Bonds are corupted => exit"); exit(0); };
-        { printf(" ============ check MMFFsp3 START\n " );
-            idebug=1;
-            ff.eval();
-            DEBUG
-            if(ff.checkNaNs()){ printf("ERROR: NaNs produced in MMFFsp3.eval() => exit() \n"); exit(0); };
-            idebug=0;
-            printf(" ============ check MMFFsp3 DONE\n " );
-        } 
-        
+        idebug=1;
+        ffl.eval_check();
+        ff4.eval_check();
+        ff .eval_check();
+        idebug=0;
+        exit(0);
         DEBUG
         //initNBmol();
         //initNBmol( ff.natoms,  ff.apos,  ff.fapos  );

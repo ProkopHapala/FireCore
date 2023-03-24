@@ -465,9 +465,7 @@ void wrapBondVec( Vec3d& d ){
 }
 
 double eval_neighs_new(int ia){
-
-    printf( "MMFFsp3::eval_neighs_new(%i) \n", ia );
-
+    //printf( "MMFFsp3::eval_neighs_new(%i) \n", ia );
     double E=0;
     int ioff = ia*nneigh_max;
     const bool doPiPiT_   = doPiPiT; 
@@ -482,7 +480,7 @@ double eval_neighs_new(int ia){
 
     Vec3d    hs[4];
     double  ils[4];
-    DEBUG
+    
     // ToDo: there could be computed also the bonds (similarly as done in OpenCL)
     //if(idebug>0)printf( "DEBUG eval_neighs_new() [%i] aneighs[%i,%i,%i,%i] abonds[%i,%i,%i,%i] \n", ia,  aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3],     abonds[ ioff+0],abonds[ ioff+1],abonds[ ioff+2],abonds[ ioff+3] );
     for(int i=0; i<nneigh_max; i++){
@@ -586,7 +584,7 @@ double eval_neighs_new(int ia){
         }
     }
     //printf( "DEBUG atom[%i] E=%g \n", ia, E );
-    printf( "MMFFsp3::eval_neighs_new(%i) DONE \n", ia );
+    //printf( "MMFFsp3::eval_neighs_new(%i) DONE \n", ia );
     return E;
 }
 
@@ -613,18 +611,25 @@ double eval_neighs_new(){
 
 double eval( bool bClean=true, bool bCheck=true ){
     //printf( "DEBUG MMFFsp3.eval() 1 \n" );
-    printf( "MMFFsp3::eval( nnode %i natoms %i nvecs %i ) \n", nnode, natoms, nvecs );
+    //printf( "MMFFsp3::eval( nnode %i natoms %i nvecs %i ) \n", nnode, natoms, nvecs );
     if(bClean){ cleanAll(); }
     normalizePi(); 
     if(bCheck)ckeckNaN_d(npi, 3, (double*)pipos, "pipos" );
     //if(doBonds )eval_bonds();   if( isnan( Eb) ){ printf("ERROR : Eb = eval_bonds();  is NaN  \n"); checkNaNs(); exit(0); }
     //if(doNeighs)eval_neighs();  if( isnan( Ea) ){ printf("ERROR : Ea = eval_neighs(); is NaN  \n"); checkNaNs(); exit(0); }
     eval_neighs_new();
-    DEBUG
     Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 }
 
+double eval_check(){
+    printf(" ============ check MMFFsp3 START\n " );
+    printSizes();
+    eval();
+    checkNans();
+    printf(" ============ check MMFFsp3 DONE\n " );
+    return Etot;
+} 
 
 void evalPi0s(){
     for(int ia=0; ia<nnode; ia++){
@@ -762,16 +767,15 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
     }
 }
 
-bool checkNaNs(){
-    //printf( "checkNaNs\n" );
-    bool ret=false;
-    ret|= ckeckNaN_d(natoms, 3, (double*)apos,  "apos"  );
-    ret|= ckeckNaN_d(natoms, 3, (double*)fapos, "fapos" );
-    ret|= ckeckNaN_d(npi, 3, (double*)pipos,    "pipos" );
-    ret|= ckeckNaN_d(npi, 3, (double*)fpipos,   "fpipos");
+bool checkNans( bool bExit=true, bool bPi=true, bool bA=true ){
+    bool ret = false;
+    if(bA)  ret |= ckeckNaN_d(natoms,  3, (double*)  apos,   "apos" );
+    if(bA)  ret |= ckeckNaN_d(natoms,  3, (double*) fapos,  "fapos" );
+    if(bPi) ret |= ckeckNaN_d(npi,     3, (double*) pipos,  "pipos" );
+    if(bPi) ret |= ckeckNaN_d(npi,     3, (double*)fpipos, "fpipos" );
+    if(bExit&&ret){ printf("ERROR: NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); exit(0); };
     return ret;
 }
-
 
 void printSizes(){ printf( "MMFFsp3::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) npi(%i) nbonds(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,npi,nbonds,nvecs ); };
 

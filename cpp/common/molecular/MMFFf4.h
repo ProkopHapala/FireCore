@@ -170,7 +170,6 @@ void realloc( int nnode_, int ncap_ ){
     _realloc( Ksp    , nnode );
     _realloc( Kpp    , nnode );
 
-
 }
 
 void setLvec(const Mat3f& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
@@ -218,6 +217,8 @@ float eval_atom(int ia){
     const int ia_DBG = 1;
     //if(ia==ia_DBG)printf( "CPU[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
 
+    for(int i=0; i<4; i++){ fbs[i]=Quat4fZero; fps[i]=Quat4fZero; } // we initialize it here because of the break
+
     // --------- Bonds Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -234,8 +235,6 @@ float eval_atom(int ia){
         hs [i]   = h;
 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
-
-            //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].add(f1);  fa.sub(f1);    // bond length force
             E+= evalBond( h.f, l-bL[i], bK[i], f1 );  fbs[i].f.sub(f1);  fa.add(f1);    
             //if(ia==ia_DBG)printf( "CPU bond[%i|%i] kpb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             
@@ -345,9 +344,18 @@ float eval( bool bClean=true, bool bCheck=true ){
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     eval_atoms();
-    if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
+    //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
     asseble_forces();
     //Etot = Eb + Ea + Eps + EppT + EppI;
+    return Etot;
+}
+
+double eval_check(){
+    printf(" ============ check MMFFf4 START\n " );
+    printSizes();
+    eval();
+    checkNans();
+    printf(" ============ check MMFFf4 DONE\n " );
     return Etot;
 }
 
@@ -417,6 +425,7 @@ void makeNeighCells( const Vec3i nPBC_ ){
     //printf("makeNeighCells() DONE \n");
 }
 
+void printSizes(){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };
 
@@ -425,6 +434,18 @@ void printBKneighs(){for(int ia=0; ia<natoms; ia++){ printBKneighs(ia); }; };
 
 void print_apos(){
     for(int ia=0;ia<natoms;ia++){ printf( "print_apos[%i](%g,%g,%g)\n", ia, apos[ia].x,apos[ia].y,apos[ia].z ); }
+}
+
+bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
+    bool ret = false;
+    if(bA)  ret |= ckeckNaN_f(natoms,  4, (float*)  apos,   "apos"    );
+    if(bA)  ret |= ckeckNaN_f(natoms,  4, (float*) fapos,  "fapos"    );
+    if(bPi) ret |= ckeckNaN_f(nnode,   4, (float*) pipos,  "pipos"    );
+    if(bPi) ret |= ckeckNaN_f(nnode,   4, (float*)fpipos, "fpipos"    );
+    if(bNg) ret |= ckeckNaN_f(nnode*4, 4, (float*)fneigh,  "fneigh"   );
+    if(bNg) ret |= ckeckNaN_f(nnode*4, 4, (float*)fneighpi,"fneighpi" );
+    if(bExit&&ret){ printf("ERROR: NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); exit(0); };
+    return ret;
 }
 
 void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
@@ -445,7 +466,6 @@ void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
         //printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
         printf( "\n" );
     }
-    /*
     if(bNg)for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
         int i1=i*4+j;
         //int i2=(i+natoms)*4+j;
@@ -454,7 +474,6 @@ void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
         printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneighpi[i1].x, fneighpi[i1].y, fneighpi[i1].z, fneighpi[i1].w );
         printf( "\n" );
     }}
-    */
 }
 
 };
