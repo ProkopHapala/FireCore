@@ -160,21 +160,20 @@ class NBsystem{ public: // Can be Child of AtomicSystem
     }
 
     double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
-
+        
         int ia_DBG = 0;
-        printf( "evalLJQs_ng4_PBC() n=%i nPBC(%i,%i,%i) Rdamp %g \n lvec\n", n, nPBC.x,nPBC.y,nPBC.z, Rdamp );
-        printMat(lvec);
-        for(int i=0; i<n; i++){
-            printf("evalLJQs[%i] ", i);
-            printf("neighs(%i,%i,%i,%i) "   , neighs[i].x   ,neighs[i].y   ,neighs[i].z   ,neighs[i].w    );
-            printf("neighCell(%i,%i,%i,%i) ", neighCell[i].x,neighCell[i].y,neighCell[i].z,neighCell[i].w );
-            printf("apos(%6.3f,%6.3f,%6.3f) ",  ps[i].x,ps[i].y,ps[i].z );
-            printf("fapos(%6.3f,%6.3f,%6.3f) ", fs[i].x,fs[i].y,fs[i].z );
-            printf("REQ(%6.3f,%6.3f,%6.3f) ",   REQs[i].x,REQs[i].y,REQs[i].z );
-            printf("\n"); 
-        }
-
-
+        // printf( "evalLJQs_ng4_PBC() n=%i nPBC(%i,%i,%i) Rdamp %g \n lvec\n", n, nPBC.x,nPBC.y,nPBC.z, Rdamp );
+        // printMat(lvec);
+        // for(int i=0; i<n; i++){
+        //     printf("evalLJQs[%i] ", i);
+        //     printf("neighs(%i,%i,%i,%i) "   , neighs[i].x   ,neighs[i].y   ,neighs[i].z   ,neighs[i].w    );
+        //     printf("neighCell(%i,%i,%i,%i) ", neighCell[i].x,neighCell[i].y,neighCell[i].z,neighCell[i].w );
+        //     printf("apos(%6.3f,%6.3f,%6.3f) ",  ps[i].x,ps[i].y,ps[i].z );
+        //     printf("fapos(%6.3f,%6.3f,%6.3f) ", fs[i].x,fs[i].y,fs[i].z );
+        //     printf("REQ(%6.3f,%6.3f,%6.3f) ",   REQs[i].x,REQs[i].y,REQs[i].z );
+        //     printf("\n"); 
+        // }
+        
         double R2damp = Rdamp*Rdamp;
         double E=0;    
         int        npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
@@ -411,7 +410,7 @@ class NBsystem{ public: // Can be Child of AtomicSystem
     }
 
     void print(){
-        printf("NBsystem(n=%i):\n");
+        printf("NBsystem(n=%i):\n", n );
         for(int i=0; i<n; i++){
             if(atypes){ printf("nb_atom[%i] REQ(%g,%g,%g) pos(%g,%g,%g) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,  ps[i].x,ps[i].y,ps[i].z, atypes[i] ); }
             else      { printf("nb_atom[%i] REQ(%g,%g,%g) pos(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z,  ps[i].x,ps[i].y,ps[i].z ); }

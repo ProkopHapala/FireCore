@@ -120,7 +120,7 @@ class QMMM{ public:
             if(params)Z=params->atypes[ ityp ].iZ;
             atypeZ[i]= isCap[i] ? 1 : Z;   
             atype [i]= isCap[i] ? 0 : ityp;
-            printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypeZ[i] );
+            //printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypeZ[i], iZ );
         }  // NOTE : This is just temporary hack
     }
 

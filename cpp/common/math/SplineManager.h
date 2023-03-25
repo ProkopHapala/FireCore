@@ -17,7 +17,7 @@ class SplineManager{
 
     void allocate( int m_, int n_, bool derivs = false){
         n=n_; m=m_;
-        ts =new double[n];
+        ts  =new double[n];
         CPs =new double*[m];  for(int i=0;i<m;i++){  CPs[i]=new double[n];  }
         dCPs=new double*[n];  for(int i=0;i<m;i++){ if(derivs){ dCPs[i]=new double[n];}else{ dCPs[i]=NULL; } }
     }
@@ -27,9 +27,9 @@ class SplineManager{
             if( CPs[i]) delete  CPs[i];
             if(dCPs[i]) delete dCPs[i];
         }
-        if(ts) delete ts;
-        delete  CPs;
-        delete dCPs;
+        if(ts)   delete [] ts;
+        if(CPs)  delete [] CPs;
+        if(dCPs) delete [] dCPs;
     }
 
     inline double inferDeriv( int ip, int im ){

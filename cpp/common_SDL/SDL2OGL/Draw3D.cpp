@@ -1385,7 +1385,7 @@ void drawBBox( const Vec3f& p0, const Vec3f& p1 ){
 	glEnd();
 }
 
-void drawBBox( const Vec3f& p, float r ){ drawBBox( (Vec3f){p.x-r,p.y-r,p.z-r}, (Vec3f){p.x+r,p.y+r,p.z+r} ); };
+void drawBBox( const Vec3f& p, float r ){ drawBBox( Vec3f{p.x-r,p.y-r,p.z-r}, Vec3f{p.x+r,p.y+r,p.z+r} ); };
 
 void drawTriclinicBox( const Mat3f& lvec, const Vec3f& c0, const Vec3f& c1 ){
     Vec3f p0,p1;

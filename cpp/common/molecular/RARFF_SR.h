@@ -782,7 +782,7 @@ class RARFF_SR{ public:
         int nl,nba,na;
         line = fgets( buff, 1024, pFile ); printf("%s",line);
         sscanf( line, "%i %i \n", &na, &nba ); printf( "na %i nba %i \n", na, nba );
-        if(nba!=N_BOND_MAX){ printf("ERROR RARFFarr::load() nba(%i)!=N_BOND_MAX(%i)\n", nba, N_BOND_MAX ); return -1; }
+        if(nba!=N_BOND_MAX){ printf("ERROR RARFFarr::load() nba(%i)!=N_BOND_MAX(%i)\n", nba, N_BOND_MAX ); fclose(pFile); return -1; }
         //allocate(natoms,nbonds);
         if(natom<na)resize( na );
         //resize( na );

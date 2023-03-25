@@ -86,15 +86,15 @@ TestAppSp3Space::TestAppSp3Space( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
     double beta1=1.0,beta2=2.0;
 
-    p1 = (Vec3d ){-1.00,0.50,-0.25};
-    p2 = (Vec3d ){ 1.00,-0.25,0.52};  // position of atoms 1,2
-    psi1=(Quat4d){ 4.00,-2.00,-3.00, 0.};
-    psi2=(Quat4d){ 4.00,3.10,2.01, 0.};
+    p1 = Vec3d {-1.00,0.50,-0.25};
+    p2 = Vec3d { 1.00,-0.25,0.52};  // position of atoms 1,2
+    psi1=Quat4d{ 4.00,-2.00,-3.00, 0.};
+    psi2=Quat4d{ 4.00,3.10,2.01, 0.};
 
     psi1.normalize();
     psi2.normalize();
 
-    Vec3d H = (Vec3d){1,1,1};
+    Vec3d H = Vec3d{1,1,1};
 
     Vec3d  h = p1-p2;
     double r = h.normalize();
@@ -133,14 +133,14 @@ TestAppSp3Space::TestAppSp3Space( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
     // ===== Check Numerical Integral
     beta1=1.8; beta2=1.8;
-    p1 = (Vec3d ){ 0.0,0.0,0.0};
-    p2 = (Vec3d ){ 0.0,0.0,0.0};  // position of atoms 1,2
-    //psi1=(Quat4d){ 0.0, 0.0, 0.0, 1.0 };
-    //psi2=(Quat4d){ 0.0, 0.0, 0.0, 1.0 };
-    //psi1=(Quat4d){ 0.0, 0.0, 1.0, 0.0 };
-    //psi2=(Quat4d){ 0.0, 0.0, 1.0, 0.0 };
-    psi1=(Quat4d){ 0.0, 1.0, 0.0, 0.0 };
-    psi2=(Quat4d){ 0.0, 1.0, 0.0, 0.0 };
+    p1 = Vec3d{ 0.0,0.0,0.0};
+    p2 = Vec3d{ 0.0,0.0,0.0};  // position of atoms 1,2
+    //psi1=Quat4d{ 0.0, 0.0, 0.0, 1.0 };
+    //psi2=Quat4d{ 0.0, 0.0, 0.0, 1.0 };
+    //psi1=Quat4d{ 0.0, 0.0, 1.0, 0.0 };
+    //psi2=Quat4d{ 0.0, 0.0, 1.0, 0.0 };
+    psi1=Quat4d{ 0.0, 1.0, 0.0, 0.0 };
+    psi2=Quat4d{ 0.0, 1.0, 0.0, 0.0 };
 
     double* IsRef = new double[n];
     double* Is2D  = new double[n];
@@ -273,7 +273,7 @@ TestAppSp3Space::TestAppSp3Space( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     Approx ::polyFit ( lsz->n,   npoly, lsz->xs,   lsz->ys,   coefs );
     Approx ::polyeval( lpoly->n, npoly, lpoly->xs, lpoly->ys, coefs );
     //polyfit( n, 5, xs, double* ys, double* BB, double* By );
-    for(int i=0; i<lpoly->n; i++){ printf( "lpoly[%i] %g -> %g =?= %g err %g ( %g% )\n", i, lpoly->xs[i], lpoly->ys[i], lsz->ys[i], fabs( lpoly->ys[i] - lsz->ys[i] ), fabs( lpoly->ys[i] - lsz->ys[i] )/lsz->ys[i] ); }
+    for(int i=0; i<lpoly->n; i++){ printf( "lpoly[%i] %g -> %g =?= %g err %g(%g)\n", i, lpoly->xs[i], lpoly->ys[i], lsz->ys[i], fabs( lpoly->ys[i] - lsz->ys[i] ), fabs( lpoly->ys[i] - lsz->ys[i] )/lsz->ys[i] ); }
     for(int i=0; i<npoly;    i++){ printf( "poly[%i] %g \n", i, coefs[i] ); }
 
 

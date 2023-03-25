@@ -20,34 +20,34 @@ Vec3f getUVFuncNormal( Vec2f uv, float eps,  UVfunc func ){
 inline Vec3f ConeUVfunc( Vec2f p, float R1, float R2, float L ){
     Vec2f csb; csb.fromAngle(p.b);
     float R = (1-p.a)*R1 + p.a*R2;
-    return (Vec3f){csb.a*R,csb.b*R,L*p.a };
+    return Vec3f{csb.a*R,csb.b*R,L*p.a };
 }
 
 inline Vec3f SphereUVfunc( Vec2f p, float R ){
     Vec2f csa; csa.fromAngle(p.a);
     Vec2f csb; csb.fromAngle(p.b);
-    return (Vec3f){csa.a*csb.a*R,csa.a*csb.b*R,csa.b*R };
+    return Vec3f{csa.a*csb.a*R,csa.a*csb.b*R,csa.b*R };
 }
 
 inline Vec3f ParabolaUVfunc( Vec2f p, float K ){
     Vec2f csb; csb.fromAngle(p.b);
     float r = p.a;
     float l = p.a*p.a*K;
-    return (Vec3f){csb.a*r,csb.b*r,l };
+    return Vec3f{csb.a*r,csb.b*r,l };
 }
 
 inline Vec3f HyperbolaRUVfunc( Vec2f p, float R, float K ){
     Vec2f csb; csb.fromAngle(p.b);
     float r = p.a;
     float l = K*sqrt( p.a*p.a + R*R); // - K*R;
-    return (Vec3f){csb.a*r,csb.b*r,l };
+    return Vec3f{csb.a*r,csb.b*r,l };
 }
 
 inline Vec3f HyperbolaLUVfunc( Vec2f p, float R, float K ){
     Vec2f csb; csb.fromAngle(p.b);
     float l = p.a;
     float r = K*sqrt( p.a*p.a + R*R);
-    return (Vec3f){csb.a*r,csb.b*r,l };
+    return Vec3f{csb.a*r,csb.b*r,l };
 }
 
 
@@ -57,7 +57,7 @@ inline Vec3f HyperbolaLUVfunc( Vec2f p, float R, float K ){
 inline Vec3f TorusUVfunc( Vec2f p, float r, float R ){
     Vec2f csa; csa.fromAngle(p.a);
     Vec2f csb; csb.fromAngle(p.b);
-    return (Vec3f){csb.a*(R+r*csa.a),csb.b*(R+r*csa.a),r*csa.b};
+    return Vec3f{csb.a*(R+r*csa.a),csb.b*(R+r*csa.a),r*csa.b};
 }
 
 inline Vec3f TeardropUVfunc( Vec2f p, float R1, float R2, float L ){
@@ -65,14 +65,14 @@ inline Vec3f TeardropUVfunc( Vec2f p, float R1, float R2, float L ){
     Vec2f csb; csb.fromAngle(p.b);
     float f =  0.5-csa.b*0.5;
     float R = (1-f)*R1 + f*R2;
-    return (Vec3f){csa.a*csb.a*R,csa.a*csb.b*R,csa.b*R-L*f };
+    return Vec3f{csa.a*csb.a*R,csa.a*csb.b*R,csa.b*R-L*f };
 }
 
 inline Vec3f HarmonicTubeUVfunc( Vec2f p, float R1, float R2, float L, float freq, float amp ){
     Vec2f csb; csb.fromAngle(p.b);
     float R = ((1-p.a)*R1 + p.a*R2)*(1.0+amp*cos(freq*p.a));
     //float R = (1-p.a)*R1 + p.a*R2;
-    return (Vec3f){ csb.a*R, csb.b*R, L*p.a };
+    return Vec3f{ csb.a*R, csb.b*R, L*p.a };
 }
 
 
@@ -100,8 +100,8 @@ Vec3f NACA4digitUVfunc( Vec2f p, float *coefs1, float *coefs2, float L ){
     Vec2f p1= naca4digit( p.a, coefs1 );
     Vec2f p2= naca4digit( p.a, coefs2 );
     float m = 1-p.b;
-    //return (Vec3f){ m*p1.x+p.b*p2.x, m*p1.y+p.b*p2.y, L*p.b };
-    return (Vec3f){ L*p.b, m*p1.y+p.b*p2.y, -(m*p1.x+p.b*p2.x)  };
+    //return Vec3f{ m*p1.x+p.b*p2.x, m*p1.y+p.b*p2.y, L*p.b };
+    return Vec3f{ L*p.b, m*p1.y+p.b*p2.y, -(m*p1.x+p.b*p2.x)  };
 }
 
 

@@ -456,7 +456,7 @@ double evalAE(){
             const Vec3d   dR  = epos [j] - pi;
             const double  sj  = esize[j];
             double& fsj = fsize[j];
-            double  fs_junk;
+            double  fs_junk=0;
             //Eae += addPairEF_expQ( epos[j]-pi, f, abwi.z, qi*QE, abwi.y, abwi.x );
             //Eae  += addCoulombGauss( dR,sj,      f, fsj,      qqi );     // correct
             double dEae=0,dEaePaul=0,dEee=0;
@@ -555,8 +555,8 @@ double evalCoreCorrection(){
     double Eee_ =0;
     double Eae_ =0;
     for(int i=0; i<na; i++){
-        double fsi,fsj;
-        Vec3d  f;
+        double fsi=0,fsj=0;
+        Vec3d  f=Vec3dZero;
         const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
         if(aPar.w<1e-8) continue;
         double s = aPar.z;
@@ -565,6 +565,7 @@ double evalCoreCorrection(){
       //EaePaul_  += addPauliGauss_New( Vec3dZero, s, s, f, fsi, fsj, -1, KRSrho, aPar.w );             // Pauli repulsion of core electrons
         Eee_      += addCoulombGauss  ( Vec3dZero, s, s, f, fsi, fsj,            aPar.w );             // core electrons with each other
         Eae_      += addCoulombGauss  ( Vec3dZero, aPar.y, s, f, fsi, fsj,       aPar.w*-2.0*aPar.x ); // nuclie with core electrons
+        // WARRNING :  This does not apply any forces ????
     }
     //printf( "DEBUG evalCoreCorrection() Ek0 %g Eee0 %g Eae0 %g \n", Ek , Eee , Eae  );
     //printf( "DEBUG evalCoreCorrection() Ek_ %g Eee_ %g Eae_ %g \n", Ek_, Eee_, Eae_ );
@@ -648,8 +649,8 @@ double atomsPotAtPoint( const Vec3d& pos, double s, double Q )const{
         const Vec3d  dR   = pos-apos[i];
         const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
         const double qq   = aPar.x*Q;
-        Vec3d  f;
-        double fsi,fsj;
+        Vec3d  f=Vec3dZero;
+        double fsi=0,fsj=0;
         //addCoulombGauss      ( const Vec3d& dR, double si, double sj,             Vec3d& f, double& fsi, double& fsj, double qq ){
         //addDensOverlapGauss_S( const Vec3d& dR, double si, double sj, double amp, Vec3d& f, double& fsi, double& fsj            ){
         Eae  += addCoulombGauss              ( dR, s, aPar.y,         f, fsi, fsj, qq );
@@ -751,7 +752,7 @@ bool loadFromFile_xyz( const char* filename ){
     int ntot;
     fscanf (pFile, " %i \n", &ntot );
     fscanf (pFile, " %i %i\n", &na, &ne );
-    if((ne+na)!=ntot){ printf("ERROR ne(%i)+na(%i) != ntot(%i) >>%s<< \n", ne, na, ntot, filename ); return true; }
+    if((ne+na)!=ntot){ printf("ERROR ne(%i)+na(%i) != ntot(%i) >>%s<< \n", ne, na, ntot, filename ); fclose(pFile); return true; }
     //printf("na %i ne %i ntot %i \n", na, ne, ntot );
     realloc( na, ne );
     char buf[1024];
@@ -770,7 +771,7 @@ bool loadFromFile_xyz( const char* filename ){
         //printf( "buf[%i]  >>%s<< \n", ie, buf );
         int nw = sscanf (buf, " %i %lf %lf %lf %lf", &e, &x, &y, &z, &s );
         if( e<0){
-            epos[ie]=(Vec3d){x,y,z};
+            epos[ie]=Vec3d{x,y,z};
             if     (e==-1){ espin[ie]= 1; }
             else if(e==-2){ espin[ie]=-1; }
             if( nw>4 ){ esize[ie]=s; }else{ esize[ie]=default_esize; }
@@ -780,7 +781,7 @@ bool loadFromFile_xyz( const char* filename ){
             //printf( " e[%i] pos(%g,%g,%g) spin %i size %g | nw %i \n", ie, epos[ie].x, epos[ie].y, epos[ie].z, espin[ie], esize[ie], nw );
             ie++;
         }else{
-            apos[ia]=(Vec3d){x,y,z};
+            apos[ia]=Vec3d{x,y,z};
             //aQ  [ia]=e;  // change this later
             //aAbws[ia] = default_aAbWs[e];
             //eAbws[ia] = default_eAbWs[e];
@@ -828,10 +829,10 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
         //                                                                 1   2  3   4    5     6    7        8    9    10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP,      &vx, &vy, &vz );
         Q=-Q;
-        apos  [i]=(Vec3d){x*fUnits,y*fUnits,z*fUnits};
+        apos  [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         aPars[i].set(Q,sQ*fUnits,sP*fUnits,cP);
         if( (bVel)&&(nw>=10) ){ 
-            avel[i] = (Vec3d){vx*fUnits,vy*fUnits,vz*fUnits};
+            avel[i] = Vec3d{vx*fUnits,vy*fUnits,vz*fUnits};
         }
         Qasum += Q;
     }
@@ -846,11 +847,11 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
         //                                                               1    2   3    4   5   6        7    8    9   10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z,  &s, &c, &spin,   &vx, &vy, &vz, &vs );
         //int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
-        epos [i]=(Vec3d){x*fUnits,y*fUnits,z*fUnits};
+        epos [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         esize[i]=s*fUnits;
         if(bVel){ 
             //if(verbosity>0)printf( "electron[%i] p(%g,%g,%g|%g) spin %i v(%g,%g,%g|%g) \n", i, x,y,z,s, spin,  vx,vy,vz,vs );
-            if(nw>=9 )evel [i] = (Vec3d){vx*fUnits,vy*fUnits,vz*fUnits};
+            if(nw>=9 )evel [i] = Vec3d{vx*fUnits,vy*fUnits,vz*fUnits};
             if(nw>=10)vsize[i] = vs*fUnits;
         }
         //ecoef[i]=c;

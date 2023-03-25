@@ -262,7 +262,7 @@ class Molecule{ public:
     }
 
     Vec3d getCOG_av()const{
-        Vec3d cog = (Vec3d){0.0,0.0,0.0};
+        Vec3d cog =  Vec3dZero;
         for(int i=0; i<natoms; i++){
             cog.add(pos[i]);
         }
@@ -271,8 +271,8 @@ class Molecule{ public:
     }
 
     Vec3d getCOG_minmax()const{
-        Vec3d p0 = (Vec3d){ 1.e+300, 1.e+300, 1.e+300};
-        Vec3d p1 = (Vec3d){-1.e+300,-1.e+300,-1.e+300};
+        Vec3d p0 = Vec3dmax;
+        Vec3d p1 = Vec3dmin;
         for(int i=0; i<natoms; i++){
             p0.setIfLower  (pos[i]);
             p1.setIfGreater(pos[i]);

@@ -452,7 +452,7 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
     plot1.render();
 
     oglSph=Draw::list(oglSph);
-    Draw3D::drawSphere_oct(4,1.0d,(Vec3d){0.,0.,0.});
+    Draw3D::drawSphere_oct(4,1.0d,Vec3d{0.,0.,0.});
     glEndList();
 
     bRun = false;
@@ -522,7 +522,7 @@ void TestAppCLCFSF::draw(){
     //opt.se
     if(bRun){
 
-        double F2;
+        double F2=1.;
         for(int itr=0; itr<perFrame; itr++){
             //testColorOfHash();
             ff.eval();
@@ -673,11 +673,11 @@ void TestAppCLCFSF::drawHUD(){
 }
 
 void TestAppCLCFSF::viewPlots(){
-        plotAtomsPot( ff, plot1.lines[0],    (Vec3d){0.0,0.0,0.0}, (Vec3d){1.0,0.0,0.0}, 1.0, 0.1 );
-        //plotAtomsPot( ff, plot1.lines[0],    (Vec3d){0.0,0.0,0.0}, (Vec3d){1.0,0.0,0.0}, 1.0, ff.esize[0]*M_SQRT1_2 );
+        plotAtomsPot( ff, plot1.lines[0],    Vec3d{0.0,0.0,0.0}, Vec3d{1.0,0.0,0.0}, 1.0, 0.1 );
+        //plotAtomsPot( ff, plot1.lines[0],    Vec3d{0.0,0.0,0.0}, Vec3d{1.0,0.0,0.0}, 1.0, ff.esize[0]*M_SQRT1_2 );
         for(int io=0; io<nOrbPlot; io++){
             //plot1.add( new DataLine2D( 100, -3.0, 0.1, orbColor(io)|0xFF000000, str ) );
-            //plotOrb     ( ff, plot1.lines[io+1], io, (Vec3d){0.0,0.0,0.0}, (Vec3d){1.0,0.0,0.0}, 30.0, false );
+            //plotOrb     ( ff, plot1.lines[io+1], io, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,0.0,0.0}, 30.0, false );
             int i0=ff.getOrbOffset(io);
             Vec3d dir = ff.epos[i0+1] - ff.epos[i0]; dir.normalize();
             plotOrb     ( ff, plot1.lines[io+1], io, ff.epos[i0], dir, 20.0,  bPlotDens, true );
@@ -685,8 +685,8 @@ void TestAppCLCFSF::viewPlots(){
 
         }
         //Draw3D::drawLine(  );
-        //plotOrb     ( ff, plot1.lines[1], 0, (Vec3d){0.0,0.0,0.0}, (Vec3d){1.0,0.0,0.0}, 100.0 );
-        //plotOrb     ( ff, plot1.lines[2], 1, (Vec3d){0.0,0.0,0.0}, (Vec3d){1.0,0.0,0.0}, 100.0 );
+        //plotOrb     ( ff, plot1.lines[1], 0, Vec3d){0.0,0.0,0.0}, Vec3d{1.0,0.0,0.0}, 100.0 );
+        //plotOrb     ( ff, plot1.lines[2], 1, Vec3d){0.0,0.0,0.0}, Vec3d{1.0,0.0,0.0}, 100.0 );
         //testDerivsTotal( 0, 0, 0, ff, plot1, 0 );
         plot1.bGrid=false;
         //plot1.bAxes=false;
@@ -757,12 +757,12 @@ void TestAppCLCFSF::initff(){
     ff.setRcut( 4.0 );
     ff.setDefaultValues();
     {CLCFGO& _=ff;
-        _.setAtom( 0,   1,  (Vec3d){  2.0, 0.,0.} );
-        _.setAtom( 0,   1,  (Vec3d){ -2.5, 0.,0.} );
-        _.setElectron( 0,0, (Vec3d){  0.0, +0.2, 0.}, 1.0, -0.3 );
-        _.setElectron( 0,1, (Vec3d){  1.0, -0.2, 0.}, 1.0,  0.7 );
-        _.setElectron( 1,0, (Vec3d){ -2.0, -1.0, 0.}, 1.0,  1.0 );
-        _.setElectron( 1,1, (Vec3d){ -2.0, +1.0, 0.}, 1.0,  1.0 );
+        _.setAtom( 0,   1,  Vec3d{  2.0, 0.,0.} );
+        _.setAtom( 0,   1,  Vec3d{ -2.5, 0.,0.} );
+        _.setElectron( 0,0, Vec3d{  0.0, +0.2, 0.}, 1.0, -0.3 );
+        _.setElectron( 0,1, Vec3d{  1.0, -0.2, 0.}, 1.0,  0.7 );
+        _.setElectron( 1,0, Vec3d{ -2.0, -1.0, 0.}, 1.0,  1.0 );
+        _.setElectron( 1,1, Vec3d{ -2.0, +1.0, 0.}, 1.0,  1.0 );
     }
     */
 
@@ -773,10 +773,10 @@ void TestAppCLCFSF::initff(){
     ff.setRcut( 4.0 );
     ff.setDefaultValues();
     {CLCFGO& _=ff;
-        //_.setAtom( 0,   1,  (Vec3d){  0.0, 0.0, 0.0 } );
-        //_.setAtom    ( 0,   (Vec3d){  0.0, 0.0, 0.0 }, 4.0, 0.5, 0.2, 1000 );
-        _.setAtom    ( 0,   (Vec3d){  0.0, 0.0, 0.0 }, 1.0,  0.1, 1.0, 0. );
-        _.setElectron( 0,0, (Vec3d){  1.0, 0.0, 0.0 }, 0.25, 1.0 );
+        //_.setAtom( 0,   1,  Vec3d{  0.0, 0.0, 0.0 } );
+        //_.setAtom    ( 0,   Vec3d{  0.0, 0.0, 0.0 }, 4.0, 0.5, 0.2, 1000 );
+        _.setAtom    ( 0,   Vec3d{  0.0, 0.0, 0.0 }, 1.0,  0.1, 1.0, 0. );
+        _.setElectron( 0,0, Vec3d{  1.0, 0.0, 0.0 }, 0.25, 1.0 );
     }
     dt = 0.001;
     */
@@ -788,9 +788,9 @@ void TestAppCLCFSF::initff(){
     ff.setRcut( 4.0 );
     ff.setDefaultValues();
     {CLCFGO& _=ff;
-        _.setAtom    ( 0,   (Vec3d){   0.0, 0.0, 0.0 }, 1.0,  0.9, 1.0, 0. );
-        _.setElectron( 0,0, (Vec3d){  +1.0, 0.0, 0.0 }, 0.5, +1.0 );
-        _.setElectron( 0,1, (Vec3d){  -1.0, 0.0, 0.0 }, 0.5, -1.0 );
+        _.setAtom    ( 0,   Vec3d{   0.0, 0.0, 0.0 }, 1.0,  0.9, 1.0, 0. );
+        _.setElectron( 0,0, Vec3d{  +1.0, 0.0, 0.0 }, 0.5, +1.0 );
+        _.setElectron( 0,1, Vec3d{  -1.0, 0.0, 0.0 }, 0.5, -1.0 );
     }
     dt = 0.001;
     */
@@ -802,13 +802,13 @@ void TestAppCLCFSF::initff(){
     ff.setRcut( 4.0 );
     ff.setDefaultValues();
     {CLCFGO& _=ff;
-        //_.setAtom( 0,   1,  (Vec3d){  0.0, 0.0, 0.0 } );
-        //_.setAtom    ( 0,   (Vec3d){  0.0, 0.0, 0.0 }, 4.0, 0.5, 0.2, 1000 );
-        _.setAtom    ( 0,   (Vec3d){  +1.0, 0.0, 0.0 }, 1.0,  0.9, 1.0, 0. );
-        _.setAtom    ( 1,   (Vec3d){  -1.0, 0.0, 0.0 }, 1.0,  0.9, 1.0, 0. );
-        _.setElectron( 0,0, (Vec3d){  +0.7, 0.0, 0.0 }, 0.5, +1.0 );
-        //_.setElectron( 0,1, (Vec3d){  -0.7, 0.0, 0.0 }, 0.5, +1.0 );
-        _.setElectron( 0,1, (Vec3d){  -0.7, 0.0, 0.0 }, 0.5, -1.0 );
+        //_.setAtom( 0,   1,  Vec3d{  0.0, 0.0, 0.0 } );
+        //_.setAtom    ( 0,   Vec3d{  0.0, 0.0, 0.0 }, 4.0, 0.5, 0.2, 1000 );
+        _.setAtom    ( 0,   Vec3d{  +1.0, 0.0, 0.0 }, 1.0,  0.9, 1.0, 0. );
+        _.setAtom    ( 1,   Vec3d{  -1.0, 0.0, 0.0 }, 1.0,  0.9, 1.0, 0. );
+        _.setElectron( 0,0, Vec3d{  +0.7, 0.0, 0.0 }, 0.5, +1.0 );
+        //_.setElectron( 0,1, Vec3d{  -0.7, 0.0, 0.0 }, 0.5, +1.0 );
+        _.setElectron( 0,1, Vec3d{  -0.7, 0.0, 0.0 }, 0.5, -1.0 );
     }
     dt = 0.001;
     */
@@ -820,9 +820,9 @@ void TestAppCLCFSF::initff(){
     ff.setRcut( 4.0 );
     ff.setDefaultValues();
     {CLCFGO& _=ff;
-        _.setElectron( 0,0, (Vec3d){  +0.7, 0.0, 0.0 }, 0.5, +1.0 );
-        //_.setElectron( 0,1, (Vec3d){  -0.7, 0.0, 0.0 }, 0.5, +1.0 );
-        _.setElectron( 0,1, (Vec3d){  -0.7, 0.0, 0.0 }, 0.5, -1.0 );
+        _.setElectron( 0,0, Vec3d{  +0.7, 0.0, 0.0 }, 0.5, +1.0 );
+        //_.setElectron( 0,1, Vec3d{  -0.7, 0.0, 0.0 }, 0.5, +1.0 );
+        _.setElectron( 0,1, Vec3d{  -0.7, 0.0, 0.0 }, 0.5, -1.0 );
     }
     dt = 0.001;
     */
@@ -834,8 +834,8 @@ void TestAppCLCFSF::initff(){
     ff.setRcut( 4.0 );
     ff.setDefaultValues();
     {CLCFGO& _=ff;
-        _.setElectron( 0,0, (Vec3d){  +0.3, 0.0, 0.0 }, 0.5, +1.0 );
-        _.setElectron( 1,0, (Vec3d){  -0.3, 0.0, 0.0 }, 0.5, +1.0 );
+        _.setElectron( 0,0, Vec3d{  +0.3, 0.0, 0.0 }, 0.5, +1.0 );
+        _.setElectron( 1,0, Vec3d{  -0.3, 0.0, 0.0 }, 0.5, +1.0 );
     }
     dt = 0.001;
     */
@@ -847,9 +847,9 @@ void TestAppCLCFSF::initff(){
     ff.setRcut( 4.0 );
     ff.setDefaultValues();
     {CLCFGO& _=ff;
-        _.setAtom    ( 0,   (Vec3d){  0.0, 0.0, 0.0 }, 1.0,  0.1, 1.0, 0. );
-        _.setElectron( 0,0, (Vec3d){  +0.3, 0.0, 0.0 }, 0.5, +1.0 );
-        _.setElectron( 1,0, (Vec3d){  -0.3, 0.0, 0.0 }, 0.5, +1.0 );
+        _.setAtom    ( 0,   Vec3d{  0.0, 0.0, 0.0 }, 1.0,  0.1, 1.0, 0. );
+        _.setElectron( 0,0, Vec3d{  +0.3, 0.0, 0.0 }, 0.5, +1.0 );
+        _.setElectron( 1,0, Vec3d{  -0.3, 0.0, 0.0 }, 0.5, +1.0 );
     }
     dt = 0.001;
     */

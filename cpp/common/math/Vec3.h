@@ -39,10 +39,10 @@ class Vec3T{
 	//inline operator Vec3T<int   >()const{ return (Vec3T<int   >){(int)x,(int)y,(int)z}; }
 
 	// Explicit conversion
-    inline explicit operator Vec3T<float >()const{ return (Vec3T<float >){(float)x,(float)y,(float)z}; }
-	inline explicit operator Vec3T<double>()const{ return (Vec3T<double>){(double)x,(double)y,(double)z}; }
-	inline explicit operator Vec3T<int   >()const{ return (Vec3T<int   >){(int)x,(int)y,(int)z}; }
-    inline explicit operator Vec3T<int8_t>()const{ return (Vec3T<int8_t>){(int8_t)x,(int8_t)y,(int8_t)z}; }
+	inline explicit operator Vec3T<double>()const{ return Vec3T<double>{(double)x,(double)y,(double)z}; }
+    inline explicit operator Vec3T<float >()const{ return Vec3T<float >{(float )x,(float )y,(float )z}; }
+	inline explicit operator Vec3T<int   >()const{ return Vec3T<int   >{(int   )x,(int   )y,(int   )z}; }
+    inline explicit operator Vec3T<int8_t>()const{ return Vec3T<int8_t>{(int8_t)x,(int8_t)y,(int8_t)z}; }
 
 	//inline operator (const char*)()const{ return (; }
 
@@ -63,8 +63,8 @@ class Vec3T{
 	inline VEC zxy() const { return {z,x,y}; };
 	inline VEC zyx() const { return {z,y,x}; };
 
-    inline VEC swap   (const Vec3T<int>& inds          ) const{ return {array[inds.x],array[inds.y],array[inds.z]}; };
-    inline VEC swap_to(const Vec3T<int>& inds, VEC& out) const{ out.x=array[inds.x]; out.y=array[inds.y]; out.z=array[inds.z]; };
+    inline VEC  swap   (const Vec3T<int>& inds          ) const{ return {array[inds.x],array[inds.y],array[inds.z]}; };
+    inline void swap_to(const Vec3T<int>& inds, VEC& out) const{ out.x=array[inds.x]; out.y=array[inds.y]; out.z=array[inds.z]; };
 
 	inline VEC& set( T f                    ) { x=f;   y=f;   z=f;   return *this; };
     inline VEC& set( T fx, T fy, T fz ) { x=fx;  y=fy;  z=fz;  return *this; };
@@ -151,7 +151,7 @@ class Vec3T{
         return v;
     }
 
-    inline T cos( const VEC& b ){ return dot(b)/sqrt( norm2() * b.norm2() ); }
+    inline T cos_v( const VEC& b ){ return dot(b)/sqrt( norm2() * b.norm2() ); }
 
 
     inline bool tryNormalize(double errMax){
@@ -197,7 +197,7 @@ class Vec3T{
         return invr;
 	}
 
-	inline T fixSphere( const VEC& pc, T r){ sub(pc); T l=norm(); mul(r/l); add(pc); }
+	inline T fixSphere( const VEC& pc, T r){ sub(pc); T l=norm(); mul(r/l); add(pc); return l; }
 
 	inline T fixSphere_taylor3( const VEC& pc, T r){
         x-=pc.x; y-=pc.y; z-=pc.z;
@@ -206,6 +206,7 @@ class Vec3T{
         x=x*invr+pc.x;
         y=y*invr+pc.y;
         z=z*invr+pc.z;
+        return invr;
     }
 
 
@@ -378,6 +379,13 @@ class Vec3T{
 
     inline VEC& setIfLower  (const VEC& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y;if(a.z<z)z=a.z; return *this; }
     inline VEC& setIfGreater(const VEC& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y;if(a.z>z)z=a.z; return *this; }
+    inline VEC& update_bounds(VEC& pmin,VEC& pmax)const{ 
+        if ( x < pmin.x ){ pmin.x=x; } else if ( x > pmax.x ){ pmax.x=x; };
+        if ( y < pmin.y ){ pmin.y=y; } else if ( y > pmax.y ){ pmax.y=y; };
+        if ( z < pmin.z ){ pmin.z=z; } else if ( z > pmax.z ){ pmax.z=z; };
+        return *this;
+    }
+
     //inline VEC min(VEC a){ return {fmin(x,a.x),fmin(y,a.y),fmin(z,a.z)}; };
     //inline VEC max(VEC a){ return {fmax(x,a.x),fmax(y,a.y),fmax(z,a.z)}; };
     //inline VEC set_min(VEC a,VEC b){ return {fmin(x,a.x),fmin(y,a.y),fmin(z,a.z)}; };
@@ -508,7 +516,7 @@ inline Vec3T<T2> cast(const Vec3T<T1>& i){ Vec3T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y
 
 //inline void convert( const Vec3f& from, Vec3d& to ){ to.x=from.x;        to.y=from.y;        to.z=from.z; };
 //inline void convert( const Vec3d& from, Vec3f& to ){ to.x=(float)from.x; to.y=(float)from.y; to.z=(float)from.z; };
-//inline Vec3f toFloat( const Vec3d& from){ return (Vec3f){(float)from.x,(float)from.y,(float)from.z}; }
+//inline Vec3f toFloat( const Vec3d& from){ return Vec3f{(float)from.x,(float)from.y,(float)from.z}; }
 
 //inline void print(Vec3d p){printf("(%.16g,%.16g,%.16g)", p.x,p.y,p.z);};
 //inline void print(Vec3f p){printf("(%.8g,%.8g,%.8g)", p.x,p.y,p.z);};

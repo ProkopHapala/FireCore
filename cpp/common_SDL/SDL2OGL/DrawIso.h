@@ -58,7 +58,7 @@ void drawIso( Func func, Vec3i n, Vec3d pmin, Mat3d dcell, double iso ){
                 for(int i=0; i<nt; i++){
                     Quat4i ti = tis[i];
                     pps[0]=ps+ti.x; pps[1]=ps+ti.y; pps[2]=ps+ti.z; pps[3]=ps+ti.w;
-                    Draw3D::drawTetraIso( pps, (Quat4d){vals[ti.x],vals[ti.y],vals[ti.z],vals[ti.w]} );
+                    Draw3D::drawTetraIso( pps, Quat4d{vals[ti.x],vals[ti.y],vals[ti.z],vals[ti.w]} );
 
                 }
             }

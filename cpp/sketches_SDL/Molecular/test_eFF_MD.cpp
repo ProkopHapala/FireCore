@@ -125,7 +125,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
      ff.printEnergies();
 
     oglSph=Draw::list(oglSph);
-    Draw3D::drawSphere_oct(3,1.0d,(Vec3d){0.,0.,0.});
+    Draw3D::drawSphere_oct(3,1.0d,Vec3d{0.,0.,0.});
     glEndList();
 
 }

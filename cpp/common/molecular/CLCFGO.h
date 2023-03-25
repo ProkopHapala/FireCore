@@ -2251,7 +2251,7 @@ bool loadFromFile( char const* filename ){
         fgets( buff, nbuff, pFile); //printf( "fgets: >%s<\n", buf );
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf", &x, &y, &z,    &Q, &sQ, &sP, &cP );
         //printf( "atom[%i] p(%g,%g,%g) Q %g sQ %g sP %g cP %g \n", i, x, y, z,    Q, sQ, sP, cP );
-        apos  [i]=(Vec3d){x,y,z};
+        apos  [i]=Vec3d{x,y,z};
         //aQs   [i]=Q;
         //aQsize[i]=sQ;
         //aPsize[i]=sP;
@@ -2268,7 +2268,7 @@ bool loadFromFile( char const* filename ){
         fgets( buff, nbuff, pFile); // printf( "fgets: >%s<\n", buf );
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
         //printf( "bas[%i|%i,%i] p(%g,%g,%g) s %g c %g spin %i \n", i, i/perOrb, i%perOrb, x, y, z,    s, c, spin );
-        epos [i]=(Vec3d){x,y,z};
+        epos [i]=Vec3d{x,y,z};
         esize[i]=s;
         ecoef[i]=c;
         int io=i/perOrb;

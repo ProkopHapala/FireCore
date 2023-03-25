@@ -59,8 +59,8 @@ class AtomicManipulator{ public:
     bool   newPerAtom = false;
 
     bool  bRelative = false;
-    Vec3d goalSpan  = (Vec3d){1.0,1.0,1.0};
-    Vec3d anizo     = (Vec3d){1.0,1.0,1.0};
+    Vec3d goalSpan  = Vec3d{1.0,1.0,1.0};
+    Vec3d anizo     = Vec3d{1.0,1.0,1.0};
 
     int   nenabled=0;
     int *  enabled=0;
@@ -83,7 +83,7 @@ class AtomicManipulator{ public:
         int iatom;
         if( enabled ){ iatom = enabled[rand()%nenabled]; }else{ iatom  = rand()%natoms; };
         picked [i] = iatom;
-        Vec3d p = (Vec3d){ randf(-goalSpan.x,goalSpan.x), randf(-goalSpan.y,goalSpan.y), randf(-goalSpan.z,goalSpan.z) };
+        Vec3d p = Vec3d{ randf(-goalSpan.x,goalSpan.x), randf(-goalSpan.y,goalSpan.y), randf(-goalSpan.z,goalSpan.z) };
         if(bRelative) p.add( goalPos[i] );
         goalPos[i] = p;
         counts [i] = 0;
@@ -192,7 +192,7 @@ class MMFF{ public:
     //RigidSubstrate substrate;
     GridFF gridFF;
 
-    Box    Collision_box   = (Box){(Vec3d){0.0,0.0,0.0},(Vec3d){10.0,10.0,10.0}};
+    Box    Collision_box   = Box{Vec3d{0.0,0.0,0.0},Vec3d{10.0,10.0,10.0}};
     double Collision_Rsc   = 0.5;
     double Collision_F2max = 1.0;
 

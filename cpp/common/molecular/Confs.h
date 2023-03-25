@@ -121,7 +121,7 @@ class Confs{ public:
             //Vec3f L = pose_distance( ps1, ps2 );
             Vec3f cog1, u1, v1; G.pose( atoms+i1, cog1, u1, v1 );
             Vec3f cog2, u2, v2; G.pose( atoms+i2, cog2, u2, v2 );
-            Vec3f L2 = Vec3f{ cog1.dist2(cog2), 1-u1.cos(u2), 1-v1.cos(v2) };
+            Vec3f L2 = Vec3f{ cog1.dist2(cog2), 1-u1.cos_v(u2), 1-v1.cos_v(v2) };
             l2     += L2.dot( KL );
         }
         return l2;
@@ -139,7 +139,7 @@ class Confs{ public:
             //Vec3f L = pose_distance( ps1, ps2 );
             Vec3f cog1, u1, v1; G.pose( atoms+i1, cog1, u1, v1 );
             Vec3f cog2, u2, v2; G.pose( atoms+i2, cog2, u2, v2 );
-            Vec3f L2 = Vec3f{ cog1.dist2(cog2), 1-u1.cos(u2), 1-v1.cos(v2) };
+            Vec3f L2 = Vec3f{ cog1.dist2(cog2), 1-u1.cos_v(u2), 1-v1.cos_v(v2) };
             Ls[ig].set_mul(L2,KL); 
             l2      += L2.dot( KL );
 

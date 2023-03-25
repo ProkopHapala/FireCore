@@ -195,7 +195,7 @@ void TestAppMolecularBrowser::readMoleculess( bool bOrientFlat ){
                     mol->orient( {0,0,0}, rot.a, rot.b );
                 }
                 //mol->addToPos( mol->getCOG_av()*-1.0 );
-                //mol->addToPos( (Vec3d){-5.0,0.0,-5.0} );
+                //mol->addToPos( Vec3d{-5.0,0.0,-5.0} );
                 mol->assignREQs( params );         //printf("DEBUG 2 \n");
                 if(mol->nbonds==0)mol->findBonds_brute( 0.5, true ); //printf("DEBUG 3 \n");
                 molecules.push_back(mol);
@@ -229,7 +229,7 @@ void TestAppMolecularBrowser::renderThumbnails( int i0, int n, float zoom_, bool
         Draw3D::atoms( mol.natoms, mol.pos, mol.atomType, params, ogl_sph, 1.0, 0.5, 1.0 );
         glColor3f(0.0f,0.0f,0.0f);
         Draw3D::bonds( mol.nbonds, mol.bond2atom, mol.pos);
-        Draw3D::drawText( fileNames[i0+i].c_str(), (Vec3d){-9.0,+9.0,5.0}, fontTex, 0.07, 0);
+        Draw3D::drawText( fileNames[i0+i].c_str(), Vec3d{-9.0,+9.0,5.0}, fontTex, 0.07, 0);
 
 
         glColor3f(1.0f,1.0f,1.0f);
@@ -371,12 +371,11 @@ void TestAppMolecularBrowser::eventHandling ( const SDL_Event& event  ){
                     break;
             }
             break;
-        case SDL_WINDOWEVENT:
+        case SDL_WINDOWEVENT:{
             switch (event.window.event) {
-                case SDL_WINDOWEVENT_CLOSE:
-                    quit();
-                    break;
+                case SDL_WINDOWEVENT_CLOSE:{ quit(); } break;
             } break;
+        } break;
     };
     AppSDL2OGL::eventHandling( event );
     //STOP = false;

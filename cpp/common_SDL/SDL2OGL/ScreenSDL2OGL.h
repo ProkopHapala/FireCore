@@ -16,8 +16,7 @@ const float	VIEW_MOVE_STEP     = 0.2f;
 void setLightingRGB();
 void setLightingNormal();
 
-class ScreenSDL2OGL{
-	public:
+class ScreenSDL2OGL{ public:
 	// World2D* scene;   // TODO
 	int   id;
 	ScreenSDL2OGL* parent = 0;

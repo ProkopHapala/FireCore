@@ -33,8 +33,8 @@ static const double const_eVA2_Nm = 16.0217662;
 // ========= Atom
 // ============================
 struct Atom{
-    constexpr const static Vec3d HcapREQ    = (Vec3d){ 1.4870, sqrt(0.000681    ), 0 };
-    constexpr const static Vec3d defaultREQ = (Vec3d){ 1.7,    sqrt(0.0037292524), 0 };
+    constexpr const static Vec3d HcapREQ    = Vec3d{ 1.4870, sqrt(0.000681    ), 0 };
+    constexpr const static Vec3d defaultREQ = Vec3d{ 1.7,    sqrt(0.0037292524), 0 };
 
     // this breaks {<brace-enclosed initializer list>} in C++11
     //int type  = -1;
@@ -269,7 +269,7 @@ int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes 
         //printf("inodes: "); for(int i:innodes){ printf("%i ",i); } ;printf("\n");
         for( int ib=0; ib<nb; ib++ ){                         // go over all bonds
             //printf( "ib %i n0 %i \n", ib, n0 );
-            if( exbonds.find(ib) != innodes.end() ) continue; // if bond in excluded bonds, skip
+            if( exbonds.find(ib) != exbonds.end() ) continue; // if bond in excluded bonds, skip
             const Vec2i& b = bonds[ib];
             int ia=-1;
             if     ( innodes.find(b.a) != innodes.end() ){ ia=b.b; }   // if atom.a in nodes, add atom b
@@ -352,11 +352,11 @@ class Builder{  public:
     int itypHcap  =-1;
     int itypEpair =-1;
 
-    Atom capAtom      = (Atom){ (int)NeighType::H,     -1,-1, {0,0,0}, Atom::HcapREQ };
-    Atom capAtomEpair = (Atom){ (int)NeighType::epair, -1,-1, {0,0,0}, {0,0,0} };
-    Atom capAtomPi    = (Atom){ (int)NeighType::pi,    -1,-1, {0,0,0}, {0,0,0} };
-    Bond capBond      = (Bond){ -1,  {-1,-1},  1.07, 100/const_eVA2_Nm };
-    Vec3d    capUp   = (Vec3d){0.0,0.0,1.0};
+    Atom capAtom      = Atom{ (int)NeighType::H,     -1,-1, {0,0,0}, Atom::HcapREQ };
+    Atom capAtomEpair = Atom{ (int)NeighType::epair, -1,-1, {0,0,0}, {0,0,0} };
+    Atom capAtomPi    = Atom{ (int)NeighType::pi,    -1,-1, {0,0,0}, {0,0,0} };
+    Bond capBond      = Bond{ -1,  {-1,-1},  1.07, 100/const_eVA2_Nm };
+    Vec3d    capUp   = Vec3d{0.0,0.0,1.0};
     bool bDummyPi    = false;
     bool bDummyEpair = false;
     bool bAddCaps    = true;
@@ -932,13 +932,15 @@ class Builder{  public:
 
     int assignSpecialTypesLoop( int nmax, int* aneighs ){
         int nnew=0;
-        for(int itr=0; itr<nmax; itr++){
+        int itr=0;
+        for(itr=0; itr<nmax; itr++){
             printf( "# --- assignSpecialTypesLoop[%i] \n", itr );
             int ni = assignSpecialTypes( aneighs ); 
             nnew+=ni; 
-            if( ni==0 ){ return nnew; }
+            if( ni==0 )break; 
         }
-        printf("ERROR: assignSpecialTypesLoop not converged in %i iterations\n"); exit(0);
+        printf("ERROR: assignSpecialTypesLoop not converged in %i iterations\n", itr ); exit(0);
+        return nnew;
     }
 
     void addCaps( int ia, int ncap, int ne, int nb, const Vec3d* hs ){
@@ -2146,7 +2148,7 @@ class Builder{  public:
         int ifrag = frags.size();
         //printf( "insertMolecule mol->natoms %i \n", mol->natoms );
         for(int i=0; i<mol->natoms; i++){
-            //Vec3d REQi = (Vec3d){1.0,0.03,mol->}; // TO DO : LJq can be set by type
+            //Vec3d REQi = Vec3d{1.0,0.03,mol->}; // TO DO : LJq can be set by type
             //atoms.push_back( (Atom){mol->atomType[i],mol->pos[i], LJq } );
             Vec3d  REQi = mol->REQs[i];   REQi.y = sqrt(REQi.y); // REQi.z = 0.0;
             Vec3d  p; rot.dot_to(mol->pos[i],p); p.add( pos );

@@ -152,9 +152,9 @@ void checkDerivs( Vec3d KRSrho ){
         //double e = CoulombGauss( r0, x, fr, f, qqee );           f*=x;
         //double e = getDeltaTGauss( r0*r0, x, sj0, fr, f, fsj );
         //double e = getOverlapSGauss( r0*r0, x, sj0, fr, f, fsj );
-        //double e = addPauliGauss( (Vec3d){0.0,0.0,r0}, x, sj0, fvec, f, fsj, true, KRSrho );
-        //double e = addDensOverlapGauss_S( (Vec3d){0.0,0.0,r0}, x, sj0, 1.0, fvec, f, fsj );
-        double e = addDensOverlapGauss_P( (Vec3d){0.0,0.0,r0}, x, sj0, 1.0, fvec, f, fsj );
+        //double e = addPauliGauss( Vec3d{0.0,0.0,r0}, x, sj0, fvec, f, fsj, true, KRSrho );
+        //double e = addDensOverlapGauss_S( Vec3d{0.0,0.0,r0}, x, sj0, 1.0, fvec, f, fsj );
+        double e = addDensOverlapGauss_P( Vec3d{0.0,0.0,r0}, x, sj0, 1.0, fvec, f, fsj );
         return e;
     };
 
@@ -168,8 +168,8 @@ void checkDerivs( Vec3d KRSrho ){
         //double e = PauliSGauss_anti( x, f, 0.2 );
         //double e = PauliSGauss_syn ( x, f, 0.2 );
         //double e = addPauliGauss( {0.0,0.0,x}, si0, sj0, fvec, f, fsj, true, KRSrho ); f=fvec.z;
-        //double e = addDensOverlapGauss_S( (Vec3d){0.0,0.0,x}, si0, sj0, 1.0, fvec, fsi, fsj ); f=fvec.z;
-        double e = addDensOverlapGauss_P( (Vec3d){0.0,0.0,x}, si0, sj0, 1.0, fvec, fsi, fsj ); f=fvec.z;
+        //double e = addDensOverlapGauss_S( Vec3d{0.0,0.0,x}, si0, sj0, 1.0, fvec, fsi, fsj ); f=fvec.z;
+        double e = addDensOverlapGauss_P( Vec3d{0.0,0.0,x}, si0, sj0, 1.0, fvec, fsi, fsj ); f=fvec.z;
         return e;
     };
 
@@ -273,9 +273,9 @@ void makePlots( Plot2D& plot, EFF& ff ){
     DataLine2D *l;
     double si = 1.0;
     double sj = 1.0;
-    l=plot.lines[0]; l->clr=0xFFFF0000; l->label="EDens"; evalLine( *l, [&](double x){ double fsi,fsj,E; Vec3d f; E=addDensOverlapGauss_S( {0,0,x}, si, sj, 1.0, f, fsi, fsj );                     return E; } );
-    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="EPaul"; evalLine( *l, [&](double x){ double fsi,fsj,E; Vec3d f; E=addPauliGauss        ( {0,0,x}, si, sj,      f, fsi, fsj, true,  EFF::KRSrho ); return E; } );
-    l=plot.lines[2]; l->clr=0xFF0080FF; l->label="EPaul"; evalLine( *l, [&](double x){ double fsi,fsj,E; Vec3d f; E=addPauliGauss        ( {0,0,x}, si, sj,      f, fsi, fsj, false, EFF::KRSrho ); return E; } );
+    l=plot.lines[0]; l->clr=0xFFFF0000; l->label="EDens"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f; E=addDensOverlapGauss_S( {0,0,x}, si, sj, 1.0, f, fsi, fsj );                     return E; } );
+    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="EPaul"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f; E=addPauliGauss        ( {0,0,x}, si, sj,      f, fsi, fsj, true,  EFF::KRSrho ); return E; } );
+    l=plot.lines[2]; l->clr=0xFF0080FF; l->label="EPaul"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f; E=addPauliGauss        ( {0,0,x}, si, sj,      f, fsi, fsj, false, EFF::KRSrho ); return E; } );
 
 
     /*
@@ -285,9 +285,9 @@ void makePlots( Plot2D& plot, EFF& ff ){
     double si = 1.25;
     double sj = 0.8;
 
-    l=plot.lines[0]; l->clr=0xFFFFFFFF; l->label="EDens"; evalLine( *l, [&](double x){ double fsi,fsj,E; Vec3d f=Vec3dZero; E=addDensOverlapGauss_S( {0,0,x}, si, sj, 1.0, f, fsi, fsj ); return E; } );
-    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="F1";    evalLine( *l, [&](double x){ double fsi,fsj,E; Vec3d f=Vec3dZero; E=addDensOverlapGauss_S( {0,0,x}, si, sj, 1.0, f, fsi, fsj ); return f.z; } );
-    l=plot.lines[2]; l->clr=0xFF0080FF; l->label="FeeNum"; evalLine( *l, [&](double x){ double fsi,fsj,E1,E2,dx=0.001; Vec3d f=Vec3dZero;
+    l=plot.lines[0]; l->clr=0xFFFFFFFF; l->label="EDens"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f=Vec3dZero; E=addDensOverlapGauss_S( {0,0,x}, si, sj, 1.0, f, fsi, fsj ); return E; } );
+    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="F1";    evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f=Vec3dZero; E=addDensOverlapGauss_S( {0,0,x}, si, sj, 1.0, f, fsi, fsj ); return f.z; } );
+    l=plot.lines[2]; l->clr=0xFF0080FF; l->label="FeeNum"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E1,E2,dx=0.001; Vec3d f=Vec3dZero;
         E1=addDensOverlapGauss_S( {0,0,x-dx}, si, sj, 1.0, f, fsi, fsj );
         E2=addDensOverlapGauss_S( {0,0,x+dx}, si, sj, 1.0, f, fsi, fsj );
         return (E2-E1)/(2*dx);
@@ -299,9 +299,9 @@ void makePlots( Plot2D& plot, EFF& ff ){
     plot.xsharingLines( 3, np, 0.25, 0.05 );
     DataLine2D *l;
     double sj = 1.0;
-    l=plot.lines[0]; l->clr=0xFFFFFFFF; l->label="EDens";  evalLine( *l, [&](double x){ double fsi,fsj,E; Vec3d f=Vec3dZero; E=addDensOverlapGauss_S( {0,0,1}, x, sj, 1.0, f, fsi, fsj ); return E; } );
-    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="F1";     evalLine( *l, [&](double x){ double fsi,fsj,E; Vec3d f=Vec3dZero; E=addDensOverlapGauss_S( {0,0,1}, x, sj, 1.0, f, fsi, fsj ); return fsi; } );
-    l=plot.lines[2]; l->clr=0xFF0080FF; l->label="FeeNum"; evalLine( *l, [&](double x){ double fsi,fsj,E1,E2,dx=0.001; Vec3d f=Vec3dZero;
+    l=plot.lines[0]; l->clr=0xFFFFFFFF; l->label="EDens";  evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f=Vec3dZero; E=addDensOverlapGauss_S( {0,0,1}, x, sj, 1.0, f, fsi, fsj ); return E; } );
+    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="F1";     evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f=Vec3dZero; E=addDensOverlapGauss_S( {0,0,1}, x, sj, 1.0, f, fsi, fsj ); return fsi; } );
+    l=plot.lines[2]; l->clr=0xFF0080FF; l->label="FeeNum"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E1,E2,dx=0.001; Vec3d f=Vec3dZero;
         E1=addDensOverlapGauss_S( {0,0,1}, x-dx, sj, 1.0, f, fsi, fsj );
         E2=addDensOverlapGauss_S( {0,0,1}, x+dx, sj, 1.0, f, fsi, fsj );
         return (E2-E1)/(2*dx);
@@ -317,9 +317,9 @@ void makePlots( Plot2D& plot, EFF& ff ){
     /*
     plot.xsharingLines( 3, np, 0.0, 0.05 );
     DataLine2D *l;
-    l=plot.lines[0]; l->clr=0xFFFF0000; l->label="Eee";    evalLine( *l, [&](double x){ double fs,fr,E; E=CoulombGauss( x, 2.0, fr, fs, 1.0 ); return E;    } );
-    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="Fee";    evalLine( *l, [&](double x){ double fs,fr,E; E=CoulombGauss( x, 2.0, fr, fs, 1.0 ); return fr*x; } );
-    l=plot.lines[2]; l->clr=0xFFFF00FF; l->label="FeeNum"; evalLine( *l, [&](double x){ double fs,fr,E1,E2,s=2.0,dx=0.001;
+    l=plot.lines[0]; l->clr=0xFFFF0000; l->label="Eee";    evalLine( *l, [&](double x){ double fs=0,fr=0,E; E=CoulombGauss( x, 2.0, fr, fs, 1.0 ); return E;    } );
+    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="Fee";    evalLine( *l, [&](double x){ double fs=0,fr=0,E; E=CoulombGauss( x, 2.0, fr, fs, 1.0 ); return fr*x; } );
+    l=plot.lines[2]; l->clr=0xFFFF00FF; l->label="FeeNum"; evalLine( *l, [&](double x){ double fs=0,fr=0,E1,E2,s=2.0,dx=0.001;
         E1=CoulombGauss( x-dx, s, fr, fs, 1.0 );
         E2=CoulombGauss( x+dx, s, fr, fs, 1.0 );
         return (E2-E1)/(2*dx);
@@ -328,9 +328,9 @@ void makePlots( Plot2D& plot, EFF& ff ){
 
 
 
-    //l=plot.lines[2]; l->clr=0xFFFF00FF; l->label="Eae";  evalLine( *l, [&](double x){ Vec3d f;  return addPairEF_expQ( {x,0,0}, f, eAbw.z, QQae, eAbw.y,  eAbw.x     ); } );
-    //l=plot.lines[3]; l->clr=0xFF0000FF; l->label="Eaa";  evalLine( *l, [&](double x){ Vec3d f;  return addPairEF_expQ( {x,0,0}, f, aAbw.z, QQaa, aAbw.y,  aAbw.x     ); } );
-    //l=plot.lines[3]; l->clr=0xFF0080FF; l->label="Faa"; evalLine( *l, [&](double x){ Vec3d f;  return addPairEF_expQ( {x,0,0}, f, w2aa, qaa, 0,      0           ); } );
+    //l=plot.lines[2]; l->clr=0xFFFF00FF; l->label="Eae";  evalLine( *l, [&](double x){ Vec3d f=Vec3dZero;  return addPairEF_expQ( {x,0,0}, f, eAbw.z, QQae, eAbw.y,  eAbw.x     ); } );
+    //l=plot.lines[3]; l->clr=0xFF0000FF; l->label="Eaa";  evalLine( *l, [&](double x){ Vec3d f=Vec3dZero;  return addPairEF_expQ( {x,0,0}, f, aAbw.z, QQaa, aAbw.y,  aAbw.x     ); } );
+    //l=plot.lines[3]; l->clr=0xFF0080FF; l->label="Faa"; evalLine( *l, [&](double x){ Vec3d f=Vec3dZero;  return addPairEF_expQ( {x,0,0}, f, w2aa, qaa, 0,      0           ); } );
     //l=plot.lines[2]; l->clr=0xFFFF8000; l->label="Fee"; evalLine( *l, [&](double x){ Vec3d f=Vec3dZero;  addPairEF_expQ( {x,0,0}, f, w2ee, +1.0, bEE, aEE  ); return -f.x; } );
     //l=plot.lines[3]; l->clr=0xFFFF80FF; l->label="Fae"; evalLine( *l, [&](double x){ Vec3d f=Vec3dZero;  addPairEF_expQ( {x,0,0}, f, w2ae, qae,  bAE, aAE  ); return -f.x; } );
     //l=plot.lines[2]; l->clr=0xFF0000FF; l->label="Eaa"; evalLine( *l, [&](double x){ Vec3d f=Vec3dZero;  addPairEF_expQ( {x,0,0}, f, w2aa, qaa, 0,      0           ); return f.x; } );

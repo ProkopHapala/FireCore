@@ -203,12 +203,12 @@ class EditorGizmo{ public:
         int sel     [nsel];
         int selgroup[nsel];
         int i=0; for( auto& s : selection ){ sel[i]=s.first; sel[i]=s.second; i++; }
-        if(mOrig=='g'){
+        //if(mOrig=='g'){
             //Vec3d::scale ( n, selection, points, center, sc         );
             pose.rot.scalePoints( nsel, sel, points, points, pose.pos, sc );
-        }else{
-            for(int ii=0; ii<nsel; ii++){ int i=sel[ii]; int ig=selgroup[ii]; groupPose[ig].rot.scalePoint( points[i], points[i], groupPose[ig].pos, sc ); }
-        }
+        // }else{
+        //     for(int ii=0; ii<nsel; ii++){ int i=sel[ii]; int ig=selgroup[ii]; groupPose[ig].rot.scalePoint( points[i], points[i], groupPose[ig].pos, sc ); }
+        // }
     };
 
     void applyRotation   (const Vec3d& uaxis, double phi ){

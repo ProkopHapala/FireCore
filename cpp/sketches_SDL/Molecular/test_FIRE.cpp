@@ -108,7 +108,7 @@ void moveAtoms( int n, Vec3d* ps, Vec3d shift ){
 TestAppFIRE::TestAppFIRE( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
     REPL::init();
-    repl.functions["move\n"] = [this]{ moveAtoms(world.natoms, world.apos, (Vec3d){1.0,0.0,0.0}); };
+    repl.functions["move\n"] = [this]{ moveAtoms(world.natoms, world.apos, Vec3d{1.0,0.0,0.0}); };
 
 
     fontTexPix = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" );
@@ -244,7 +244,7 @@ void TestAppFIRE::draw(){
     }
 
 
-    glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     glColor3f(0.0f,0.0f,0.0f);
     Draw3D::drawLines ( world.nbonds, (int*)world.bond2atom, world.apos );
     Draw3D::bondLabels( world.nbonds,       world.bond2atom, world.apos, fontTex, 0.02 );
@@ -325,7 +325,7 @@ void TestAppFIRE::drawHUD(){
     char str[1024];
     commands.curInfo( str );
     //sprintf( str, );
-    //Draw3D::drawText( str, (Vec3f){10.,10.,0.0}, fontTexPix, 20, 0 );
+    //Draw3D::drawText( str, Vec3f{10.,10.,0.0}, fontTexPix, 20, 0 );
     glTranslatef( 10 ,HEIGHT-20 ,0 );
     Draw::drawText( str, fontTexPix, 7, {100,50} );
 

@@ -48,8 +48,8 @@ void initRigidSubstrate(){
     // ---- Rigid Substrate
     printf( "params.atypNames:\n" );
     for(auto kv : params.atomTypeDict) { printf(" %s %i \n", kv.first.c_str(), kv.second ); }
-    world.gridFF.grid.n    = (Vec3i){60,60,100};
-    world.gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
+    world.gridFF.grid.n    = Vec3i{60,60,100};
+    world.gridFF.grid.pos0 = Vec3d{0.0,0.0,0.0};
     world.gridFF.loadCell ( "inputs/cel.lvs" );
     world.gridFF.grid.printCell();
     //world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
@@ -57,7 +57,7 @@ void initRigidSubstrate(){
     world.translate( {0.0,0.0,4.5} );
 
     Vec3d testREQ,testPLQ;
-    testREQ = (Vec3d){ 1.487, sqrt(0.0006808), 0.0}; // H
+    testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );//
     world.genPLQ();
     world.gridFF.allocateFFs();
@@ -161,7 +161,7 @@ int main(){
     printf( "// =========== System 1 \n" );
     builder.clear();
     itype = builder.loadMolTypeXYZ( "inputs/water_T5_ax.xyz", &params );
-    builder.insertMolecule( itype, (Vec3d){5.78, 6.7, 12.24}, rot0, true );
+    builder.insertMolecule( itype, Vec3d{5.78, 6.7, 12.24}, rot0, true );
     bakeMMFF();
     prepareOpt();
     print("DEBUG prepareOpt() -> relaxNsteps \n");
@@ -171,7 +171,7 @@ int main(){
     printf( "// =========== System 2 \n" );
     builder.clear();
     itype = builder.loadMolTypeXYZ( "inputs/Campher.xyz", &params );
-    builder.insertMolecule( itype, (Vec3d){5.78, 6.7, 12.24}, rot0, true );
+    builder.insertMolecule( itype, Vec3d{5.78, 6.7, 12.24}, rot0, true );
     bakeMMFF();
     prepareOpt();
     relaxNsteps( 3, 0.0 );

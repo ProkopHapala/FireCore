@@ -235,7 +235,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //printf( " test_eFF exits ... \n" ); exit(0);
 
     oglSph=Draw::list(oglSph);
-    Draw3D::drawSphere_oct(3,1.0d,(Vec3d){0.,0.,0.});
+    Draw3D::drawSphere_oct(3,1.0d,Vec3d{0.,0.,0.});
     glEndList();
 
     plot1.init();
@@ -303,7 +303,7 @@ void TestAppRARFF::draw(){
             //printf( "frame[%i] E %g lHH %g lH1e1 %g se1 %g \n", frameCount, E, (ff.apos[0]-ff.apos[1]).norm(),   (ff.apos[0]-ff.epos[0]).norm(), ff.esize[0] );
 
             //printf( "frame[%i,%i] E %g | Ek %g Eee %g EeePaul %g Eaa %g Eae %g EaePaul %g \n", frameCount, itr, Etot, ff.Ek, ff.Eee, ff.EeePaul, ff.Eaa, ff.Eae, ff.EaePaul );
-            printf( "frame[%i,%i] " );  ff.printEnergies();
+            printf( "frame[%i,%i] ", frameCount, itr );  ff.printEnergies();
             //printf( "E %g | Ek %g Eee %g EeePaul %g Eaa %g Eae %g EaePaul %g \n", E, ff.Ek, ff.Eee, ff.EeePaul, ff.Eaa, ff.Eae, ff.EaePaul );
             //printf( "=== %i %i frame[%i][%i] |F| %g \n", ff.na, ff.ne, frameCount, itr, sqrt(F2) );
         }
@@ -321,7 +321,7 @@ void TestAppRARFF::draw(){
     drawEFF( ff, oglSph, 1.0, 0.1, 0.1, 1.5 );
 
     if(bDrawPlots){
-        plotAtomsPot( ff, plot1.lines[0], (Vec3d){0.0,0.0,0.0}, (Vec3d){1.0,0.0,0.0}, -0.2, 0.1 );
+        plotAtomsPot( ff, plot1.lines[0], Vec3d{0.0,0.0,0.0}, Vec3d{1.0,0.0,0.0}, -0.2, 0.1 );
         plot1.bGrid=false;
         plot1.bAxes=false;
         plot1.bTicks=false;
@@ -445,7 +445,7 @@ void TestAppRARFF::init2DMap( int n, double dx ){
 
     int ipicked = 1;
 
-    FFfunc = [&](const Vec3d& p, Vec3d& f)->void{
+    FFfunc = [&,ipicked](const Vec3d& p, Vec3d& f)->void{
         if(bMapElectron){ ff.epos[ipicked] = p; }else{ ff.apos[ipicked] = p; }
          // force on one electron
         ff.clearForce();
@@ -453,7 +453,7 @@ void TestAppRARFF::init2DMap( int n, double dx ){
         if(bMapElectron){ f = ff.eforce[ipicked]; }else{ f = ff.aforce[ipicked]; }
     };
 
-    Efunc = [&](const Vec3d& p)->double{
+    Efunc = [&,ipicked](const Vec3d& p)->double{
         //ff.apos[ipicked] = p; // force on one electron
         if(bMapElectron){ ff.epos[ipicked] = p; }else{ ff.apos[ipicked] = p; }
         ff.clearForce();

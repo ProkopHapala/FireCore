@@ -311,13 +311,13 @@ void MolGUI::draw(){
 
     if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 0.1, 0., true );
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
-    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, (Vec3d){0.0, 0.0, 0.0}, (Vec3d){1.0, 1.0, 1.0} ); }
-    if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, (Vec3d){-0.5, -0.5, 0.0}, (Vec3d){0.5, 0.5, 1.0} ); }
+    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
+    if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
     if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
 
     if( ogl_esp ){ glCallList(ogl_esp);  }
 
-    Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[4] ); // DEBUG  
+    //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // DEBUG  
 
     //if(bDoQM)drawSystemQMMM();
 
@@ -325,8 +325,8 @@ void MolGUI::draw(){
         //if(W->builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } 
         //else               { drawSystem(); }
 
-        //if( W->builder.bPBC ){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBox( W->builder.lvec, (Vec3d){-0.5, -0.5, 0.0}, (Vec3d){0.5, 0.5, 1.0} ); }
-        if( W->builder.bPBC ){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, (Vec3d){ 0.0, 0.0, 0.0}, (Vec3d){1.0, 1.0, 1.0} ); }
+        //if( W->builder.bPBC ){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBox( W->builder.lvec, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
+        if( W->builder.bPBC ){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{ 0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
 
         drawSystem(); // DEBUG
         //Draw3D::drawNeighs( W->ff, -1.0 );    
@@ -345,7 +345,6 @@ void MolGUI::draw(){
 };
 
 void MolGUI::drawHUD(){
-
     glDisable ( GL_LIGHTING );
     gui.draw();
 
@@ -403,12 +402,12 @@ void MolGUI::drawingHex(double z0){
                 if(bLine){
                     glColor3f(1.0,0.2,1.0); 
                     Vec2d p2;
-                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
-                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
-                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
+                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
+                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
+                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                 }else{
-                    glColor3f(1.0,0.2,1.0); Draw3D::vertex((Vec3f){p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
-                    glColor3f(0.2,1.0,1.0); Draw3D::vertex((Vec3f){p.x,p.y,z0});
+                    glColor3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
+                    glColor3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
                 }
             }
         }
@@ -428,7 +427,7 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorSclae ){
     if(verbosity>0) printf( "MolGUI::renderGridFF()\n" );
     //int iatom = 11;
-    testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
+    testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );
     Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
@@ -443,7 +442,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     //int ntris=0;
     //glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
     //glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid, -isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
-    //glColor3f(0.,0.,1.); Draw3D::drawTriclinicBox( W->gridFF.grid.cell, (Vec3d){0.0, 0.0, 0.0}, (Vec3d){1.0, 1.0, 1.0} );
+    //glColor3f(0.,0.,1.); Draw3D::drawTriclinicBox( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} );
     //Draw3D::drawAxis(1.0);
     glEndList();
     delete [] FFtot;
@@ -583,9 +582,9 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
 void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, double sc ){
     //printf("========= MolGUI::scanFF\n");
     sc=10.0;
-    //p0=(Vec3d){0.0,0.0,z0_scan}; p1=(Vec3d){5.0,5.0,z0_scan}; // Horizontal scan
-    p0=(Vec3d){0.0,0.0,z0_scan}; p1=(Vec3d){0.0,5.0,z0_scan}; // Horizontal scan
-    //p0=(Vec3d){0.0,z0_scan,0.0}; p1=(Vec3d){0.0,z0_scan,10.0,}; // Vertical scan
+    //p0=Vec3d{0.0,0.0,z0_scan}; p1=Vec3d{5.0,5.0,z0_scan}; // Horizontal scan
+    p0=Vec3d{0.0,0.0,z0_scan}; p1=Vec3d{0.0,5.0,z0_scan}; // Horizontal scan
+    //p0=Vec3d{0.0,z0_scan,0.0}; p1=Vec3d{0.0,z0_scan,10.0,}; // Vertical scan
     Vec3d dp=p1-p0; dp.mul(1./n);
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){
@@ -596,8 +595,8 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, double sc ){
         //else           { E+= W->nbmol .evalMorse   (W->surf, false,                        W->gridFF.alpha, W->gridFF.Rdamp ); }
         else             { E+= W->nbmol .evalMorsePBC(W->surf, W->gridFF.grid.cell, W->nPBC, W->gridFF.alpha, W->gridFF.Rdamp ); }
         Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+W->nbmol.fs[0]*sc );       // Force Vectro
-        //Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+((Vec3d){0.0,0.0,E})*sc  );  // Energy -> z
-        //Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+((Vec3d){0.0,E,0.0})*sc  );  // Energy -> x
+        //Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+(Vec3d{0.0,0.0,E})*sc  );  // Energy -> z
+        //Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+(Vec3d{0.0,E,0.0})*sc  );  // Energy -> x
     }
     glEnd();
 }
@@ -770,17 +769,11 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                     break;
             }
             break;
-        case SDL_WINDOWEVENT:
+        case SDL_WINDOWEVENT:{
             switch (event.window.event) {
-                case SDL_WINDOWEVENT_CLOSE:
-                    //SDL_Log("Window %d closed", event->window.windowID);
-                    printf( "window[%i] SDL_WINDOWEVENT_CLOSE \n", id );
-                    delete this;
-                    printf( "window[%i] delete *this DONE \n", id );
-                    return;
-                    break;
-            } break;
-    };
+                case SDL_WINDOWEVENT_CLOSE:{ quit(); }break;
+            } } break;
+    } // switch( event.type ){
     //AppSDL2OGL::eventHandling( event );
     //STOP = false;
 }

@@ -94,10 +94,10 @@ TestAppMultipoles::TestAppMultipoles( int& id, int WIDTH_, int HEIGHT_ ) : AppSD
 
     // Test PBCsystem
     //system1.lvec.set( {1.0,0.5,0.0},{0.0,1.0,0.5},{0.5,0.0,1.0} );
-    //system1.setCell( (Mat3d){ 1.0,0.5,0.0,  0.0,1.0,0.5,   0.5,0.0,1.0 } );
-    //system1.setCell( (Mat3d){ 1.0,randf(-0.5,0.5),randf(-0.5,0.5),  randf(-0.5,0.5),1.0,randf(-0.5,0.5),   randf(-0.5,0.5),randf(-0.5,0.5),1.0 } );
+    //system1.setCell( Mat3d{ 1.0,0.5,0.0,  0.0,1.0,0.5,   0.5,0.0,1.0 } );
+    //system1.setCell( Mat3d{ 1.0,randf(-0.5,0.5),randf(-0.5,0.5),  randf(-0.5,0.5),1.0,randf(-0.5,0.5),   randf(-0.5,0.5),randf(-0.5,0.5),1.0 } );
 
-    Mat3d lvec = (Mat3d){ 1.0,randf(-0.5,0.5),randf(-0.5,0.5),  randf(-0.5,0.5),1.0,randf(-0.5,0.5),   randf(-0.5,0.5),randf(-0.5,0.5),1.0 };
+    Mat3d lvec = Mat3d{ 1.0,randf(-0.5,0.5),randf(-0.5,0.5),  randf(-0.5,0.5),1.0,randf(-0.5,0.5),   randf(-0.5,0.5),randf(-0.5,0.5),1.0 };
     lvec.mul(15.0);
     system1.setCell( lvec );
 
@@ -128,7 +128,7 @@ void TestAppMultipoles::draw(){
 
         Vec3i ip;
         grid.ruler.i2ixyz( grid.atom2cell[i], ip );
-        Draw3D::drawLine( pos[i], grid.ruler.box2pos( ip, (Vec3d){4.0,4.0,4.0} ) );
+        Draw3D::drawLine( pos[i], grid.ruler.box2pos( ip, Vec3d{4.0,4.0,4.0} ) );
         //Draw3D::drawLine( ,  )
 	}
 	*/
@@ -186,7 +186,7 @@ void TestAppMultipoles::draw(){
         Vec3i ip; system1.ruler.i2ixyz( icell, ip );
         Vec3d p = system1.ruler.box2pos( ip, {0.0,0.0,0.0} );
         double d = system1.ruler.step;
-        Draw3D::drawBBox( p, p+(Vec3d){d,d,d} );
+        Draw3D::drawBBox( p, p+Vec3d{d,d,d} );
     }
 
 	glColor3f(0.0,0.0,1.0); Draw3D::drawBBox( system1.ruler.pos0, system1.ruler.pmax );

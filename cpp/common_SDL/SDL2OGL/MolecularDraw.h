@@ -32,7 +32,7 @@ void drawMapedPoints( const FastAtomicMetric& D, int itest ){
                 Vec3i ip;  D.ruler.i2ixyz ( ic, ip );
                 Vec3d  p = D.ruler.box2pos( ip, {0.0,0.0,0.0} );
                 double d = D.ruler.step;
-                Draw3D::drawBBox( p, p+(Vec3d){d,d,d} );
+                Draw3D::drawBBox( p, p+Vec3d{d,d,d} );
             }
             j++;
         }
@@ -48,7 +48,7 @@ void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
         Vec3i ip = D.ruler.ipcell( pos );
         Vec3d  p = D.ruler.box2pos( ip, {0.0,0.0,0.0} );
         double d = D.ruler.step;
-        Draw3D::drawBBox( p, p+(Vec3d){d,d,d} );
+        Draw3D::drawBBox( p, p+Vec3d{d,d,d} );
     }
     //printf( "DEBUG 2 \n" );
     if( Box::pointIn( pos, D.ruler.pos0, D.ruler.pmax) ){
@@ -87,7 +87,7 @@ void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Vec3
 void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Vec3d PRQ, double fsc ){
     Vec3d pos = pos0;
 	for( int i=0; i<n; i++ ){
-        //Vec3d f = (Vec3d){0.0,0.0,0.0};
+        //Vec3d f = Vec3dZero;
         Quat4f fe = Quat4fZero;
         gff.addForce( pos, PRQ, fe);
         //printf( " %i (%g,%g,%g) (%g,%g,%g) \n", i, pos.x,pos.y,pos.z,  f.x,f.y,f.z );

@@ -443,11 +443,11 @@ class RigidMolecularWorldOCL{ public:
                 //printf( "CPU fgrid: imol %i ia %i ", imol, ia );
 
                 Vec3d fd = Vec3dZero;
-                gridFF.addForce( (Vec3d)aposi, (Vec3d){CP,CL,REQi.z}, fd );
+                gridFF.addForce( (Vec3d)aposi, Vec3d{CP,CL,REQi.z}, fd );
                 Vec3f f = (Vec3f)fd;
 
                 //printf( "CPU fgrid: imol %i ia %i p(%5.5e,%5.5e,%5.5e) PLQ(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", imol, ia, aposi.x, aposi.y, aposi.z, CP,CL,REQi.z, f.x, f.y, f.z );
-                //f = (Vec3f){0.1,0.0,0.0};
+                //f = Vec3f{0.1,0.0,0.0};
 
                 if(fatoms){
                     fatomi[ia] = f ;

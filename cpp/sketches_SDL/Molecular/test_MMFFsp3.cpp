@@ -356,9 +356,9 @@ void TestAppMMFFsp3::draw(){
 
             // --- Move
             v_av = sqrt( VecN::norm2( opt.n, opt.vel )/opt.n*3 ); 
-            double f2;
+            double f2=1.0;
             //opt.move_MD( 0.05, 0.1*v_av );
-            opt.move_FIRE();
+            f2 = opt.move_FIRE();
             //opt.move_GD( 0.01 );
             //printf( "E %g |F| %g |Ftol %g \n", E, sqrt(f2), Ftol );
             if(f2<sq(Ftol)){
@@ -383,8 +383,8 @@ void TestAppMMFFsp3::draw(){
     if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     if(builder.bPBC){
         //printf( "draw PBC \n" );
         //Draw3D::drawPBC( (Vec3i){1,1,0}, builder.lvec, [&](){drawSystem();} );

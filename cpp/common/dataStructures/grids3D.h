@@ -104,14 +104,14 @@ class CubeGridRuler : public GridRulerInterface { public:
     //inline int   icell ( const Vec3d& pos ) const { return ixyz2i({ (int)(pos.x-pos0.x)*invStep, (int)(pos.y-pos0.y)*invStep, (int)(pos.z-pos0.z)*invStep } ); }
 
     inline Vec3d box2pos( const Vec3i& ipos, const Vec3d& dpos ) const {
-        return (Vec3d){
+        return Vec3d{
             step*ipos.x + pos0.x + dpos.x,
             step*ipos.y + pos0.y + dpos.y,
             step*ipos.z + pos0.z + dpos.z };
     }
 
     inline Vec3d box2pos2( const Vec3i& ipos, const Vec3d& dpos ) const {
-        return (Vec3d){
+        return Vec3d{
             step*(ipos.x+dpos.x) + pos0.x,
             step*(ipos.y+dpos.y) + pos0.y,
             step*(ipos.z+dpos.z) + pos0.z };

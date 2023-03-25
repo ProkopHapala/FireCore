@@ -58,7 +58,7 @@ TO DO:
 std::vector<Vec3d> iso_points;
 int isoOgl;
 
-Vec3d PPpos0 = (Vec3d){1.3,1.7, 1.5};
+Vec3d PPpos0 = Vec3d{1.3,1.7, 1.5};
 
 Vec3d testREQ,testPLQ;
 
@@ -166,7 +166,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //params.fillBondParams( world.nbonds, world.bond2atom, mol.bondType, mol.atomType, world.bond_0, world.bond_k );
     */
 
-    //Vec3d pos = (Vec3d){0.0,0.0,0.0};
+    //Vec3d pos = Vec3d{0.0,0.0,0.0};
     Mat3d rot; rot.setOne();
     //builder.insertMolecule (&mol, {0.0,0.0,0.0}, rot, false );
     //builder.insertMolecule (&mol, {5.0,0.0,0.0}, rot, false );
@@ -223,24 +223,24 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //exit(0);
 
     /*
-    world.grid.n    = (Vec3i){100,100,100};
-    world.grid.pos0 = (Vec3d){-5.0,-5.0,-5.0};
-    world.grid.setCell( (Mat3d){ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f } );
+    world.grid.n    = Vec3i{100,100,100};
+    world.grid.pos0 = Vec3d{-5.0,-5.0,-5.0};
+    world.grid.setCell( Mat3d{ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f } );
 
     Vec3d * FF     = new Vec3d[world.grid.getNtot()];
     world.FFPauli  = new Vec3d[world.grid.getNtot()];
     world.FFLondon = new Vec3d[world.grid.getNtot()];
     */
-    //world.substrate.init( (Vec3i){100,100,100}, (Mat3d){ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f }, (Vec3d){-5.0,-5.0,-5.0} );
+    //world.substrate.init( Vec3i{100,100,100}, Mat3d{ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f }, Vec3d{-5.0,-5.0,-5.0} );
 
     printf( "params.atypNames:\n" );
     for(auto kv : params.atomTypeDict) { printf(" %s %i \n", kv.first.c_str(), kv.second ); }
     DEBUG
 
-    //world.substrate.grid.n    = (Vec3i){120,120,200};
-    world.gridFF.grid.n    = (Vec3i){60,60,100};
+    //world.substrate.grid.n    = Vec3i{120,120,200};
+    world.gridFF.grid.n    = Vec3i{60,60,100};
     //world.substrate.grid.n    = (Vec3i){12,12,20};
-    world.gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
+    world.gridFF.grid.pos0 = Vec3d{0.0,0.0,0.0};
     world.gridFF.loadCell ( "inputs/cel.lvs" );
     //world.gridFF.loadCell ( "inputs/cel_2.lvs" );
     world.gridFF.grid.printCell();
@@ -255,14 +255,14 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     world.translate( {0.0,0.0,2.5} );
 
 
-    //testREQ = (Vec3d){ 2.181, 0.0243442, 0.0}; // Xe
-    testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
+    //testREQ = Vec3d{ 2.181, 0.0243442, 0.0}; // Xe
+    testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );
 
     /*
-    //world.substrate.evalFFlineToFile( 100, (Vec3d){0.000000, 4.005760, 0.900000}, (Vec3d){0.000000, 14.005760, 0.900000}, (Vec3d){ 1.66, 0.009, 0.0}, -1.5,  "force.dat" );
-    world.gridFF.evalFFlineToFile( 100, (Vec3d){0.000000, 0.00000, 10.000000}, (Vec3d){0.000000, 0.00000, 0.000000}, (Vec3d){ 1.487, 0.0006808, 0.0}, "force_H.dat" );
-    world.gridFF.evalFFlineToFile( 100, (Vec3d){0.000000, 0.00000, 10.000000}, (Vec3d){0.000000, 0.00000, 0.000000}, (Vec3d){ 2.181, 0.0243442, 0.0}, "force_Xe.dat" );
+    //world.substrate.evalFFlineToFile( 100, Vec3d{0.000000, 4.005760, 0.900000}, Vec3d{0.000000, 14.005760, 0.900000}, Vec3d{ 1.66, 0.009, 0.0}, -1.5,  "force.dat" );
+    world.gridFF.evalFFlineToFile( 100, Vec3d{0.000000, 0.00000, 10.000000}, Vec3d{0.000000, 0.00000, 0.000000}, Vec3d{ 1.487, 0.0006808, 0.0}, "force_H.dat" );
+    world.gridFF.evalFFlineToFile( 100, Vec3d{0.000000, 0.00000, 10.000000}, Vec3d{0.000000, 0.00000, 0.000000}, Vec3d{ 2.181, 0.0243442, 0.0}, "force_Xe.dat" );
     */
 
     world.genPLQ();
@@ -294,7 +294,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
     Quat4f * FFtot = new Quat4f[world.gridFF.grid.getNtot()];
 
-    //world.gridFF.evalCombindGridFF_CheckInterp( (Vec3d){ 2.181, 0.0243442, 0.0}, FFtot );
+    //world.gridFF.evalCombindGridFF_CheckInterp( Vec3d{ 2.181, 0.0243442, 0.0}, FFtot );
     //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
 
     DEBUG
@@ -396,8 +396,8 @@ void AppMolecularEditor2::draw(){
 
     }
 
-    glColor3f(0.6f,0.6f,0.6f); plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //Draw3D::drawVecInPos( (Vec3d){0.0,0.0,1.0},  (Vec3d){0.0,0.0,0.0} );
+    glColor3f(0.6f,0.6f,0.6f); plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //Draw3D::drawVecInPos( Vec3d{0.0,0.0,1.0},  Vec3d{0.0,0.0,0.0} );
 
     //printf( "==== frameCount %i  |F| %g \n", frameCount, sqrt(F2) );
 

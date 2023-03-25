@@ -136,18 +136,18 @@ class GridFF{ public:
     }
 
     void evalGridFFel(int natoms, Vec3d * apos, Vec3d * aREQs, Vec3d * FF ){
-        //interateGrid3D( (Vec3d){0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p)->void{
+        //interateGrid3D( Vec3d{0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p)->void{
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            Vec3d f = (Vec3d){0.0,0.0,0.0};
+            Vec3d f = Vec3dZero;
             for(int ia=0; ia<natoms; ia++){ addAtomicForceQ( p-apos[ia], f, aREQs[ia].z ); }
             FF[ibuff]=f;
         });
     }
 
     void evalGridFFexp(int natoms, Vec3d * apos, Vec3d * aREQs, double alpha, double A, Vec3d * FF ){
-        //interateGrid3D( (Vec3d){0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
+        //interateGrid3D(  Vec3dZero, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            Vec3d f = (Vec3d){0.0,0.0,0.0};
+            Vec3d f =  Vec3dZero;
             for(int ia=0; ia<natoms; ia++){
                 //printf( " %i (%g,%g,%g) (%g,%g)\n", ia, apos[ia].x, apos[ia].y, apos[ia].z,  aLJq[ia].x, aLJq[ia].y  );
                 addAtomicForceExp( p-apos[ia], f, aREQs[ia].x, aREQs[ia].y,    alpha );
@@ -267,7 +267,7 @@ class GridFF{ public:
     void evalCombindGridFF( Vec3d REQ, Quat4f * FF ){
         Vec3d PLQ = REQ2PLQ( REQ, alpha );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            //Vec3d f = (Vec3d){0.0,0.0,0.0};
+            //Vec3d f =  Vec3dZero;
             Quat4f f = Quat4fZero;
             if(FFPauli ) f.add_mul( FFPauli [ibuff], PLQ.x );
             if(FFLondon) f.add_mul( FFLondon[ibuff], PLQ.y );
@@ -280,7 +280,7 @@ class GridFF{ public:
         Vec3d PLQ = REQ2PLQ( REQ, alpha );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Quat4f f = Quat4fZero;
-            addForce( p+(Vec3d){0.1,0.1,0.1}, PLQ, f );
+            addForce( p+Vec3d{0.1,0.1,0.1}, PLQ, f );
             FF[ibuff] = f;
         });
     }
@@ -291,9 +291,9 @@ class GridFF{ public:
         Vec3d  p = p0;
         for(int i=0; i<n; i++){
             if(fs ){
-                Vec3d fp = (Vec3d){0.0,0.0,0.0};
-                Vec3d fl = (Vec3d){0.0,0.0,0.0};
-                Vec3d fq = (Vec3d){0.0,0.0,0.0};
+                Vec3d fp =  Vec3dZero;
+                Vec3d fl =  Vec3dZero;
+                Vec3d fq =  Vec3dZero;
                 for(int ia=0; ia<natoms; ia++){
                     Vec3d d = p-apos[ia];
                     addAtomicForceExp( d, fp, aREQs[ia].x, aREQs[ia].y, 2*alpha );
@@ -400,7 +400,7 @@ void evalGridFFs_symetrized( Vec3i nPBC, double d=0.1 ){
         bool aa   = (alo||ahi);
         bool bb   = (blo||ahi);
 
-        printf( "atom[%i](%g,%g) (%g,%g)\n", p.y,p.y, p_.a, p_.b );
+        printf( "atom[%i](%g,%g) (%g,%g)\n", i, p.y,p.y, p_.a, p_.b );
         double w = 1./( (1+aa) * (1+bb) ); // number of replicas ?
         Q.z*=w; // Q
         Q.y*=w; // E0

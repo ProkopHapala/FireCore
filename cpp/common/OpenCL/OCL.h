@@ -422,7 +422,7 @@ class OCLsystem{ public:
     int enque( size_t dim, const size_t* global, const size_t* local, int ikernel=-1 ){ 
         cl_kernel kernel;
         if(ikernel<0){kernel=current_kernel;}else{ kernel = kernels[ikernel]; }; 
-        printf( "OCLsystem::enque() dim %li global[%li,%li,%li] local[%li,%li,%li] \n", dim, global[0],global[1],global[2], local[0],local[1],local[2] );
+        //printf( "OCLsystem::enque() dim %li global[%li,%li,%li] local[%li,%li,%li] \n", dim, global[0],global[1],global[2], local[0],local[1],local[2] );
         return clEnqueueNDRangeKernel( commands, kernel, dim, NULL, global, local, 0, NULL, NULL ); 
     }
 

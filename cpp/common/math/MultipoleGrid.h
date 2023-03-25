@@ -42,7 +42,7 @@ class MultipoleGrid{ public:
     }
 
     void projectPointCharges( int n, Vec3d * ps, double * Qs ){
-        Vec3d poff = (Vec3d){ruler.step*0.5,ruler.step*0.5,ruler.step*0.5};
+        Vec3d poff = Vec3d{ruler.step*0.5,ruler.step*0.5,ruler.step*0.5};
         for(int i=0; i<n; i++){
             Vec3d dpos,pos = ps[i];
             Vec3i ipos;
@@ -55,7 +55,7 @@ class MultipoleGrid{ public:
     //void getForce( const Vec3d& pos, double Q, Vec3d& force ){}
 
     void atomsToCells( int n, Vec3d * ps, double * Qs ){
-        Vec3d poff = (Vec3d){ruler.step*0.5,ruler.step*0.5,ruler.step*0.5};
+        Vec3d poff = Vec3d{ruler.step*0.5,ruler.step*0.5,ruler.step*0.5};
         printf("DEBUG 1 \n");
         for(int i=0; i<ruler.ntot; i++){ cellNs[i] = 0; }
         printf("DEBUG 2 \n");

@@ -830,13 +830,13 @@ void printNeigh(int ia){
     printf( "}\n");
 }
 void printNeighs(){
-    printf( "MMFFsp3::printNeighs() : \n" );
+    printf( "MMFFsp3::printNeighs(): nnode=%i \n", nnode );
     for(int i=0;i<nnode;i++){ printNeigh(i); }
 }
 
 void printPis(){
-    printf( "MMFFsp3::printPis(npi=%i) : \n" );
-    for(int i=0;i<npi;i++){ printf( "pipos[%i] (%g,%g,%g)\n", pipos[i].x,pipos[i].x,pipos[i].x ); }
+    printf( "MMFFsp3::printPis(): npi=%i \n", npi );
+    for(int i=0;i<npi;i++){ printf( "pipos[%i] (%g,%g,%g)\n", i, pipos[i].x,pipos[i].x,pipos[i].x ); }
 }
 
 

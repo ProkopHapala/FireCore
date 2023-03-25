@@ -69,7 +69,7 @@ int     fontTex;
 std::vector<Vec3d> iso_points;
 int isoOgl;
 
-Vec3d PPpos0 = (Vec3d){1.3,1.7, 1.5};
+Vec3d PPpos0 = Vec3d{1.3,1.7, 1.5};
 
 Vec3d testREQ,testPLQ;
 
@@ -97,7 +97,7 @@ void drawAtomsF8( int n, float8 * atoms, float sc, int oglSphere ){
         float r = atomi[4]*sc;
         float q = atomi[6];
         glColor3f( 0.5+q, 0.5, 0.5-q );
-        Draw3D::drawShape( *(Vec3f*)atomi, {0.0,0.0,0.0,1.0}, (Vec3f){r,r,r}, oglSphere );
+        Draw3D::drawShape( *(Vec3f*)atomi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
     }
 }
 
@@ -124,7 +124,7 @@ void drawRigidMolAtomForce( const Vec3f& pos, const Quat4f& qrot, const Vec3f& f
         f.set_cross(torq,Mp);
         f.add(fpos);
 
-        //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, (Vec3f){r,r,r}, oglSphere );
+        //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
         Draw3D::drawPointCross( Mp, rsc   );
         Draw3D::drawVecInPos  ( f*fsc, Mp );
     }
@@ -137,7 +137,7 @@ void drawRigidMolAtomCOG( const Vec3f& pos, const Quat4f& qrot, int n, const flo
         //p = *((Vec3f*)(atom0s+j));
         mrot.dot_to( *((Vec3f*)(atom0s+i)), Mp );
         Mp.add( pos );
-        //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, (Vec3f){r,r,r}, oglSphere );
+        //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
         Draw3D::drawPointCross( Mp, rsc   );
         Draw3D::drawLine      ( Mp, pos   );
     }
@@ -203,7 +203,7 @@ class AppMolecularEditorOCL : public AppSDL2OGL_3D { public:
     int ipicked  = -1, ibpicked = -1;
     int perFrame =  50;
 
-    Vec3d cursor3D=(Vec3d){0.0,0.0,0.0};
+    Vec3d cursor3D=Vec3d{0.0,0.0,0.0};
 
     double drndv =  10.0;
     double drndp =  0.5;
@@ -248,8 +248,8 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
 
     printf( "params.atypNames:\n" );
     for(auto kv : params.atypNames) { printf(" %s %i \n", kv.first.c_str(), kv.second ); }
-    world.gridFF.grid.n    = (Vec3i){60,60,100};
-    world.gridFF.grid.pos0 = (Vec3d){0.0d,0.0d,0.0d};
+    world.gridFF.grid.n    = Vec3i{60,60,100};
+    world.gridFF.grid.pos0 = Vec3d{0.0d,0.0d,0.0d};
     world.gridFF.loadCell ( "inputs/Cu111_6x6.lvs" );
     //world.gridFF.loadCell ( "inputs/cel_2.lvs" );
     world.gridFF.grid.printCell();
@@ -263,7 +263,7 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
     gridFFocl.evalGridFFs(world.gridFF, {1,1,1} ); DEBUG
 
     int iatom = 11;
-    testREQ = (Vec3d){ 1.487, sqrt(0.0006808), 0.0 };
+    testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0 };
     testPLQ = REQ2PLQ( testREQ, world.gridFF.alpha );//
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
     printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.aREQ[iatom].x, world.aREQ[iatom].y, world.aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
@@ -389,7 +389,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     clworld.prepareBuffers( nSystems, nMols, world.gridFF );
 
 
-    //testREQ = (Vec3d){ 1.487, sqrt(0.0006808), 0.0 };
+    //testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0 };
     { printf( "// ======== CHECK GPU FORCE GRID INTERPOLATION \n" );
 
         FILE* fout;
@@ -409,8 +409,8 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
             clworld.PLQs[i].f = (Vec3f)testPLQ;
         }
 
-        Vec3f p0 = (Vec3f){4.10676,3.82665,3.86912+1.0};
-        Vec3f p1 = (Vec3f){4.10676,3.82665,3.86912-1.0};
+        Vec3f p0 = Vec3f{4.10676,3.82665,3.86912+1.0};
+        Vec3f p1 = Vec3f{4.10676,3.82665,3.86912-1.0};
 
         for(int i=0; i<nPoss; i++ ){
             float f = i/(float)nPoss;
@@ -601,7 +601,7 @@ void AppMolecularEditorOCL::stepCPU( double& F2, bool randomConf ){
     world.cleanAtomForce();
 
     if( randomConf ){
-        Vec3d d=(Vec3d){1.0,1.0,1.0};
+        Vec3d d=Vec3d{1.0,1.0,1.0};
         Vec3d shift = world.Collision_box.genRandomSample();
         Quat4d qrot;  qrot.fromUniformS3( {randf(),randf(),randf()} );
         world.tryFragPose( 0, false, shift, qrot );

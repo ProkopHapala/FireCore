@@ -84,19 +84,17 @@ TestAppSp3Space::TestAppSp3Space( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     double s = 0.81649658092;
     double c = 0.57735026919;
 
-    //orbs.vecs[0] = (Quat4d){.0,-s,+c,1.0d};
-    //orbs.vecs[1] = (Quat4d){.0,+s,+c,1.0d};
-    //orbs.vecs[2] = (Quat4d){-s,.0,-c,1.0d};
-    //orbs.vecs[3] = (Quat4d){+s,.0,-c,1.0d};
+    //orbs.vecs[0] = Quat4d{.0,-s,+c,1.0d};
+    //orbs.vecs[1] = Quat4d{.0,+s,+c,1.0d};
+    //orbs.vecs[2] = Quat4d{-s,.0,-c,1.0d};
+    //orbs.vecs[3] = Quat4d{+s,.0,-c,1.0d};
 
-
-    double sqrt3 = sqrt(3.0); // normalization of spherical harmonsi
-    double invsqrt3 = 1/invsqrt3;
-    orbs.vecs[0] = (Quat4d){-1,-1,+1,1};
-    orbs.vecs[1] = (Quat4d){+1,+1,+1,1};
-    orbs.vecs[2] = (Quat4d){+1,-1,-1,1};
-    orbs.vecs[3] = (Quat4d){-1,+1,-1,1};
-
+    double sqrt3    = sqrt(3.0); // normalization of spherical harmonsi
+    double invsqrt3 = 1/sqrt3;
+    orbs.vecs[0] = Quat4d{-1,-1,+1,1};
+    orbs.vecs[1] = Quat4d{+1,+1,+1,1};
+    orbs.vecs[2] = Quat4d{+1,-1,-1,1};
+    orbs.vecs[3] = Quat4d{-1,+1,-1,1};
     orbs.normalize();
 
     /*

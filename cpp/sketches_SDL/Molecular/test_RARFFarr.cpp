@@ -213,7 +213,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     ff.realloc(nat);
     for(int i=0; i<nat; i++){
         if(randf()>0.5){ ff.types[i]=&type1;  }else{ ff.types[i]=&type2; }
-        ff.apos [i].fromRandomBox((Vec3d){-5.0,-5.0,-1.0},(Vec3d){5.0,5.0,1.0});
+        ff.apos [i].fromRandomBox(Vec3d{-5.0,-5.0,-1.0},Vec3d{5.0,5.0,1.0});
         ff.qrots[i].setRandomRotation();
     }
     ff.cleanAux();
@@ -233,7 +233,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     for(int i=0; i<1; i++){
         //if(randf()>0.5){ ff.types[i]=&type1;  }else{ ff.types[i]=&type2; }
         ff.types[i]=curType;
-        ff.apos [i].fromRandomBox((Vec3d){-5.0,-5.0,-1.0},(Vec3d){5.0,5.0,1.0});
+        ff.apos [i].fromRandomBox(Vec3d{-5.0,-5.0,-1.0},Vec3d{5.0,5.0,1.0});
         ff.qrots[i].setRandomRotation();
     }
     ff.apos [0]=Vec3dZero;
@@ -248,8 +248,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     /*
     ogl_sph = glGenLists(1);
     glNewList(ogl_sph, GL_COMPILE);
-        //Draw3D::drawSphere_oct( 3, 1.0, (Vec3d){0.0,0.0,0.0} );
-        Draw3D::drawSphere_oct( 3, 0.2, (Vec3d){0.0,0.0,0.0} );
+        //Draw3D::drawSphere_oct( 3, 1.0, Vec3d{0.0,0.0,0.0} );
+        Draw3D::drawSphere_oct( 3, 0.2, Vec3d{0.0,0.0,0.0} );
     glEndList();
     */
 

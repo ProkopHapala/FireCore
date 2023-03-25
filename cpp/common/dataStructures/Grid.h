@@ -91,7 +91,7 @@ class GridShape { public:
     }
 
 	int init(double R, double step, bool bPow2=false){
-        cell = (Mat3d){ (2*R),0.0,0.0,  0.0,(2*R),0.0,  0.0,0.0,(2*R) };
+        cell = Mat3d{ (2*R),0.0,0.0,  0.0,(2*R),0.0,  0.0,0.0,(2*R) };
         int ngx   = (2*R)/step;
         int mpow = -1;
         if(bPow2){
@@ -101,7 +101,7 @@ class GridShape { public:
             printf( "-> n %i | mpow %i \n", ngx, mpow );
         }
         n    = {ngx,ngx,ngx};
-        pos0 = (Vec3d){-R,-R,-R};
+        pos0 = Vec3d{-R,-R,-R};
         updateCell();
         return mpow;
 	}
@@ -131,6 +131,7 @@ class GridShape { public:
         fscanf( pFile, "%lf %lf %lf", &cell.a.x, &cell.a.y, &cell.a.z );
         fscanf( pFile, "%lf %lf %lf", &cell.b.x, &cell.b.y, &cell.b.z );
         fscanf( pFile, "%lf %lf %lf", &cell.c.x, &cell.c.y, &cell.c.z );
+        fclose(pFile);
         updateCell(step);
         return 0;
     }
@@ -292,7 +293,7 @@ class GridShape { public:
         double dV = voxelVolume();
         for(int i=0; i<nint; i++){
             double x = x0+dx*i;
-            double Q = dV * integrateProductShifted( (Vec3d){x,0,0}, f1, f2 );
+            double Q = dV * integrateProductShifted( Vec3d{x,0,0}, f1, f2 );
             ys[i] = Q;
         }
     }
@@ -362,7 +363,7 @@ double evalOnGrid( const GridShape& grid, Func func ){
         for ( int ib=0; ib<ny; ib++ ){
             for ( int ia=0; ia<nx; ia++ ){
                 Vec3d pos;
-                grid.grid2cartesian( (Vec3d){ia,ib,ic}, pos );
+                grid.grid2cartesian( Vec3d{ia,ib,ic}, pos );
                 func( ii, pos, res );
                 ii++;
             }
@@ -419,12 +420,12 @@ double* DEBUG_f2=0;
 template<typename Func1, typename Func2>
 void gridNumIntegral( int nint, double gStep, double Rmax, double Lmax, double* ys, Func1 func1, Func2 func2, bool bDebugXsf = false ){
     GridShape grid;
-    //grid.cell = (Mat3d){ (Rmax+Lmax),0.0,0.0,  0.0,Rmax,0.0,  0.0,0.0,Rmax };
+    //grid.cell = Mat3d{ (Rmax+Lmax),0.0,0.0,  0.0,Rmax,0.0,  0.0,0.0,Rmax };
     //grid.n    = {(int)((2*Rmax+Lmax)/gStep)+1,(int)(2*Rmax/gStep)+1,(int)(2*Rmax/gStep)+1};
-    grid.cell = (Mat3d){ (2*Rmax+Lmax),0.0,0.0,  0.0,(2*Rmax),0.0,  0.0,0.0,(2*Rmax) };
+    grid.cell = Mat3d{ (2*Rmax+Lmax),0.0,0.0,  0.0,(2*Rmax),0.0,  0.0,0.0,(2*Rmax) };
     int ngx = (2*Rmax)/gStep;
     grid.n    = {(2*Rmax+Lmax)/gStep,ngx,ngx};  //printf( "gridNumIntegral grid.n.x %i \n", grid.n.x);
-    grid.pos0 = (Vec3d){-Rmax,-Rmax,-Rmax};
+    grid.pos0 = Vec3d{-Rmax,-Rmax,-Rmax};
     grid.updateCell();
     int ng = grid.n.totprod();
     double  dV = grid.voxelVolume(); //printf( "dV %e \n", dV );
@@ -508,9 +509,9 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, 
     //printf("%i %i %i \n", nx,ny,nxy );
     for ( int ib=0; ib<ny; ib++ ){
         for ( int ia=0; ia<nx; ia++ ){
-            int ibuff = i3D( ia, ib,  0 );
+            int ibuff  = i3D( ia, ib,  0 );
             double ofz = FF[ibuff].x;
-            double fz;
+            double fz  = 0;
             int ic;
             //printf( "iba (%i,%i)\n", ib,ia );
             for ( ic=nz-1; ic>1; ic-- ){

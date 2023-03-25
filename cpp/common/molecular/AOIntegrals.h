@@ -169,7 +169,7 @@ void projectFrLaplace( int nr, int nz, int nrf, double dz, double frStep, double
     printf( "DEBUG projectFrLaplace: Rmax %g  frStep %g rs_scale %g \n", sqrt(r2max), frStep, rs_scale );
     double zmax = dz*nz;
     double V    = M_PI*rs_scale*rs_scale*zmax;
-    printf( "DEBUG Cylinder R %g Z %g Volume projectFrLaplace: nz,nr,nrf %i %i %i \n", rs_scale, zmax, V );
+    printf( "DEBUG Cylinder R %g Z %g Volume %g projectFrLaplace: nz,nr,nrf %i %i %i \n", rs_scale, zmax, V, nz,nr,nrf );
 
     for(int ir=0; ir<nr; ir++){
         double rxy = rs[ir]*rs_scale;

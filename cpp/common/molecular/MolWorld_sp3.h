@@ -609,7 +609,7 @@ double eval( ){
         
     }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){
-        E +=           nbmol.evalLJQs_ng4( ff.aneighs );           // atoms in cell ignoring bonds
+        E +=           nbmol.evalLJQs_ng4( (int*)ffl.aneighs );           // atoms in cell ignoring bonds
         //if  (bPBC){ E+=nbmol.evalLJQs_PBC( ff.lvec, {1,1,0} ); }   // atoms outside cell
     }
     if(bConstrains)constrs.apply( nbmol.ps, nbmol.fs );
@@ -627,7 +627,7 @@ double eval( ){
 
 
 bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
-    printf( "MolWorld_sp3::relax() niter %i Ftol %g ialg %g bWriteTrj %i \n", niter,  Ftol, bWriteTrj );
+    printf( "MolWorld_sp3::relax() niter %i Ftol %g bWriteTrj %i \n", niter, Ftol, bWriteTrj );
     Etot=0.0;
     double f2tol=Ftol*Ftol;
     bConverged=false; 
@@ -644,30 +644,6 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     if(bWriteTrj){ fclose(xyz_file); }
     return bConverged;
 }
-
-/*
-virtual int run( int niter, double dt_=-1, double Ftol=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
-//int run( int niter, double dt_=-1, double Ftol=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
-//int run( int niter, double dt_=-1, double Ftol=1e-6, int ialg=2 ){
-    bool bWriteTrj=true;
-    Etot=0.0;
-    double f2tol=Ftol*Ftol;
-    bConverged=false; 
-    if(bWriteTrj){ xyz_file=fopen( "relax_trj.xyz","w" ); }
-    for(int itr=0; itr<niter; itr++){
-        Etot=eval();                                                  
-        if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
-        double f2 = opt.move_FIRE();
-        //if(bWriteTrj){ toXYZ(); ;printf("DEBUB[%i] 4 \n", itr); };
-        if(bWriteTrj){  sprintf(tmpstr,"# relax[%i] E=%g f2=%g", itr, Etot, sqrt(f2) );  toXYZ(tmpstr); };
-        printf( "relax[%i] |F| %g (Ftol=%g)  Etot %g \n", itr, sqrt(f2), Ftol, Etot );
-        if(f2<f2tol){ bConverged=true; break; }
-    }
-    if(bWriteTrj){ fclose(xyz_file); }
-    return bConverged;
-}
-*/
-
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
@@ -749,8 +725,8 @@ void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
     gridFF.allocateFFs();
     //double x0= ( gridFF.grid.cell.a.x + gridFF.grid.cell.b.x )*-0.5;
     //double y0= ( gridFF.grid.cell.a.y + gridFF.grid.cell.b.y )*-0.5;
-    //gridFF.grid.pos0 = (Vec3d){ x0,y0,-8.0};
-    //gridFF.shift   = (Vec3d){0.0,0.0,-8.0};
+    //gridFF.grid.pos0 = Vec3d{ x0,y0,-8.0};
+    //gridFF.shift   = Vec3d{0.0,0.0,-8.0};
     //gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin", true, {0,0,0} );
     //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,1} );
     gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
