@@ -63,7 +63,7 @@ TO DO:
 std::vector<Vec3d> iso_points;
 int isoOgl;
 
-Vec3d PPpos0 = (Vec3d){1.3,1.7, 1.5};
+Vec3d PPpos0 = Vec3d{1.3,1.7, 1.5};
 
 Vec3d testREQ,testPLQ;
 
@@ -95,7 +95,7 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
     int ipicked  = -1, ibpicked = -1;
     int perFrame =  50;
 
-    Vec3d cursor3D=(Vec3d){0.0,0.0,0.0};
+    Vec3d cursor3D=Vec3d{0.0,0.0,0.0};
 
     double drndv =  10.0;
     double drndp =  0.5;
@@ -125,15 +125,15 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
 void AppMolecularEditor2::initRigidSubstrate(){
 
     // ---- Rigid Substrate
-    //world.substrate.init( (Vec3i){100,100,100}, (Mat3d){ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f }, (Vec3d){-5.0,-5.0,-5.0} );
+    //world.substrate.init( Vec3i{100,100,100}, Mat3d{ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f }, Vec3d{-5.0,-5.0,-5.0} );
 
     printf( "params.atypNames:\n" );
     for(auto kv : params.atomTypeDict) { printf(" %s %i \n", kv.first.c_str(), kv.second ); }
     //exit(0);
-    //world.substrate.grid.n    = (Vec3i){120,120,200};
-    world.gridFF.grid.n    = (Vec3i){60,60,100};
+    //world.substrate.grid.n    = Vec3i{120,120,200};
+    world.gridFF.grid.n    = Vec3i{60,60,100};
     //world.substrate.grid.n    = (Vec3i){12,12,20};
-    world.gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
+    world.gridFF.grid.pos0 = Vec3d{0.0,0.0,0.0};
     world.gridFF.loadCell ( "inputs/cel.lvs" );
     //world.gridFF.loadCell ( "inputs/cel_2.lvs" );
     world.gridFF.grid.printCell();
@@ -148,8 +148,8 @@ void AppMolecularEditor2::initRigidSubstrate(){
     //world.gridFF.loadXYZ( "inputs/Cl.xyz", params );
     world.translate( {0.0,0.0,4.5} );
 
-    //testREQ = (Vec3d){ 2.181, 0.0243442, 0.0}; // Xe
-    testREQ = (Vec3d){ 1.487, sqrt(0.0006808), 0.0}; // H
+    //testREQ = Vec3d{ 2.181, 0.0243442, 0.0}; // Xe
+    testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );//
 
     world.genPLQ();
@@ -179,7 +179,7 @@ void AppMolecularEditor2::initRigidSubstrate(){
 
     Quat4f * FFtot = new Quat4f[world.gridFF.grid.getNtot()];
 
-    //world.gridFF.evalCombindGridFF_CheckInterp( (Vec3d){ 2.181, 0.0243442, 0.0}, FFtot );
+    //world.gridFF.evalCombindGridFF_CheckInterp( Vec3d{ 2.181, 0.0243442, 0.0}, FFtot );
     //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
 
     world.gridFF.evalCombindGridFF( testREQ, FFtot );
@@ -344,7 +344,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
     DEBUG
 
-    atomdist.initRuler( world.Collision_box.a+(Vec3d){-2.0,-2.0,-2.0}, world.Collision_box.b+(Vec3d){3.0,3.0,3.0}, 2.0 );
+    atomdist.initRuler( world.Collision_box.a+Vec3d{-2.0,-2.0,-2.0}, world.Collision_box.b+Vec3d{3.0,3.0,3.0}, 2.0 );
     printf( "atomdist.ruler: %i (%i,%i,%i)\n ", atomdist.ruler.ntot, atomdist.ruler.n.x, atomdist.ruler.n.y, atomdist.ruler.n.z );
 
     //atomdist.toCells( 0.5 );
@@ -355,7 +355,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
     conf1.pos[0].add(0.1,0.0,0.0);
 
-    for(int i=0; i<5; i++){ printf( "== %i %i(%f,%f,%f) | %i %i(%f,%f,%f)\n", i, world.atypes[i], world.apos[i].x,world.apos[i].y,world.apos[i].z,
+    for(int i=0; i<5; i++){ printf( "== %i %i(%f,%f,%f) | %i(%f,%f,%f)\n", i, world.atypes[i], world.apos[i].x,world.apos[i].y,world.apos[i].z,
                                                                               atomdist.types[i],  atomdist.pos[i].x, atomdist.pos[i].y, atomdist.pos[i].z  ); }
     double rTrue =((AtomicConfiguration)atomdist).dist(conf1);
     double rFast = atomdist.dist( conf1 );
@@ -407,7 +407,7 @@ void AppMolecularEditor2::draw(){
         Vec3i ip;  atomdist.ruler.i2ixyz ( icell, ip );
         Vec3d  p = atomdist.ruler.box2pos( ip, {0.0,0.0,0.0} );
         double d = atomdist.ruler.step;
-        Draw3D::drawBBox( p, p+(Vec3d){d,d,d} );
+        Draw3D::drawBBox( p, p+Vec3d{d,d,d} );
     }
     */
 
@@ -456,10 +456,10 @@ void AppMolecularEditor2::draw(){
 
         world.cleanAtomForce();
 
-        Vec3d d=(Vec3d){1.0,1.0,1.0};
+        Vec3d d=Vec3d{1.0,1.0,1.0};
         Vec3d shift = world.Collision_box.genRandomSample();
-        //Vec3d shift = (Vec3d){ randf(-d.x,d.x),randf(-d.y,d.y),randf(-d.z,d.z) };
-        //Vec3d shift = (Vec3d){ randf(0,d.x),randf(0,d.y),randf(0,d.z) };
+        //Vec3d shift = Vec3d{ randf(-d.x,d.x),randf(-d.y,d.y),randf(-d.z,d.z) };
+        //Vec3d shift = Vec3d{ randf(0,d.x),randf(0,d.y),randf(0,d.z) };
         Quat4d qrot;  qrot.fromUniformS3( {randf(),randf(),randf()} );
         //Mat3d rot; qrot.toMatrix(rot);
         //rot.setOne();
@@ -525,8 +525,8 @@ void AppMolecularEditor2::draw(){
     //glColor3f(0.0f,0.6f,0.0f); Draw3D::drawBBox ( world.Collision_box.a, world.Collision_box.b );
     //printf( "Box (%f,%f,%f)  (%f,%f,%f) \n", world.Try_box.a.x, world.Try_box.a.y, world.Try_box.a.z,    world.Try_box.b.x, world.Try_box.b.y, world.Try_box.b.z  );
 
-    glColor3f(0.6f,0.6f,0.6f); plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //Draw3D::drawVecInPos( (Vec3d){0.0,0.0,1.0},  (Vec3d){0.0,0.0,0.0} );
+    glColor3f(0.6f,0.6f,0.6f); plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //Draw3D::drawVecInPos( Vec3d{0.0,0.0,1.0},  Vec3d{0.0,0.0,0.0} );
 
     //printf( "==== frameCount %i  |F| %g \n", frameCount, sqrt(F2) );
 

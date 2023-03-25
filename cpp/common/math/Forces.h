@@ -23,7 +23,8 @@ inline double evalBond( const Vec3d& h, double dl, double k, Vec3d& f ){
 }
 
 inline double spring( double l, Vec2d ls, Vec2d ks, double flim, double& f ){
-    double E;
+    double E=0;
+    f       =0;
     if  (l>ls.x){
         double dl=l-ls.x;
         f=dl*ks.x;
@@ -44,7 +45,7 @@ inline double spring( double l, Vec2d ls, Vec2d ks, double flim, double& f ){
         }else{
             E = 0.5*dl*dl*ks.y; 
         }
-    }
+    } 
     return E;
 }
 
@@ -261,7 +262,7 @@ inline Vec3d REQ2PLQ( const Vec3d& REQ, double K ){
     double CL    = -eps*expar;
     //double CL    = -2*eps*expar;
     //printf( "REQ2PLQ: %g %g %g  ->  %g %g\n", REQ.x, eps, K,   CP, CL );
-    return (Vec3d){ CP, CL, REQ.z };
+    return Vec3d{ CP, CL, REQ.z };
 }
 
 inline Vec3d REnergyQ2PLQ( const Vec3d& REQ, double alpha ){

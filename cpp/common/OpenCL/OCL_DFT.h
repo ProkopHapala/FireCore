@@ -768,8 +768,8 @@ class OCL_DFT: public OCLsystem { public:
             for(int i=0; i<nsel; i++){
                 int ia = sel [i];
                 int io = i0Cs[ia];
-                if(iZs[ia]==1){ lcoefs[ia]=(Quat4f){0.f,0.f,0.f, (float)ocoefs[io] };}
-                else          { lcoefs[ia]=(Quat4f){ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] }; }
+                if(iZs[ia]==1){ lcoefs[ia]=Quat4f{0.f,0.f,0.f, (float)ocoefs[io] };}
+                else          { lcoefs[ia]=Quat4f{ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] }; }
             }
             for(int i=0; i<nsel; i++){
                 Quat4f qi = lcoefs[i];
@@ -800,14 +800,14 @@ class OCL_DFT: public OCLsystem { public:
         int i0Cs[natoms];
         countOrbs( natoms, iZs, i0Cs );
 
-        Vec3d lbox  = (Vec3d){3.0,3.0,3.0};
-        Vec3d cell  = (Vec3d){ grid.cell.a.x, grid.cell.b.y, grid.cell.c.z };
-        Vec3i nbox  = (Vec3i){ (int)(1+cell.x/lbox.x), (int)(1+cell.y/lbox.y), (int)(1+cell.z/lbox.z)  };
-        Vec3d dcell = (Vec3d){ cell.x/nbox.x, cell.y/nbox.y, cell.z/nbox.z, };
+        Vec3d lbox  = Vec3d{3.0,3.0,3.0};
+        Vec3d cell  = Vec3d{ grid.cell.a.x, grid.cell.b.y, grid.cell.c.z };
+        Vec3i nbox  = Vec3i{ (int)(1+cell.x/lbox.x), (int)(1+cell.y/lbox.y), (int)(1+cell.z/lbox.z)  };
+        Vec3d dcell = Vec3d{ cell.x/nbox.x, cell.y/nbox.y, cell.z/nbox.z, };
         for(int ix=0; ix<nbox.x; ix++){
             for(int iy=0; iy<nbox.y; iy++){
                 for(int iz=0; iz<nbox.z; iz++){
-                    Vec3d p0 = grid.pos0 + dcell*((Vec3d){(double)ix,(double)iy,(double)iz});
+                    Vec3d p0 = grid.pos0 + dcell*(Vec3d{(double)ix,(double)iy,(double)iz});
                     Vec3d p1 = p0 + dcell;
                     int nsel = atoms2box( p0, p1, Rcut, natoms, (Vec3d*)apos, sel );
                     float* rho = new float[4*4*nsel*nsel];

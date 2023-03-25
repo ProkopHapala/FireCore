@@ -336,7 +336,7 @@ void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
     double* ewfaux = new double[ ntot ];
     fireCore.getGridMO( iMO, ewfaux );
     ogl_MO  = glGenLists(1);
-    Vec3d p=(Vec3d){0.4,2.5,0.0};
+    Vec3d p=Vec3d{0.4,2.5,0.0};
     glNewList(ogl_MO, GL_COMPILE);
     glTranslatef( p.x, p.y, p.z );
     int ntris=0;  
@@ -477,12 +477,12 @@ void TestAppFireCoreVisual::drawingHex(double z0){
                 if(bLine){
                     glColor3f(1.0,0.2,1.0); 
                     Vec2d p2;
-                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
-                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
-                    Draw3D::vertex((Vec3f){p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex((Vec3f){p2.x,p2.y,z0});
+                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
+                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
+                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                 }else{
-                    glColor3f(1.0,0.2,1.0); Draw3D::vertex((Vec3f){p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
-                    glColor3f(0.2,1.0,1.0); Draw3D::vertex((Vec3f){p.x,p.y,z0});
+                    glColor3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
+                    glColor3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
                 }
             }
         }
@@ -526,16 +526,16 @@ void  TestAppFireCoreVisual::selectShorterSegment( const Vec3d& ro, const Vec3d&
 void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
     params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.aREQs, &gridFF.atypes );
-    gridFF.grid.n    = (Vec3i){60,60,100};
-    gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
+    gridFF.grid.n    = Vec3i{60,60,100};
+    gridFF.grid.pos0 = Vec3d{0.0,0.0,0.0};
     gridFF.loadCell ( "inputs/cel.lvs" );
     gridFF.grid.printCell();
     gridFF.allocateFFs();
     gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin" );
-    gridFF.shift = (Vec3d){0.0,0.0,-8.0};
+    gridFF.shift = Vec3d{0.0,0.0,-8.0};
     if(bRenderGridFF){
         int iatom = 11;
-        testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
+        testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
         testPLQ = REQ2PLQ( testREQ, -1.6 );
         Quat4f * FFtot = new Quat4f[ gridFF.grid.getNtot() ];
         gridFF.evalCombindGridFF            ( testREQ, FFtot );
@@ -721,17 +721,11 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                     break;
             }
             break;
-        case SDL_WINDOWEVENT:
+        case SDL_WINDOWEVENT:{
             switch (event.window.event) {
-                case SDL_WINDOWEVENT_CLOSE:
-                    //SDL_Log("Window %d closed", event->window.windowID);
-                    printf( "window[%i] SDL_WINDOWEVENT_CLOSE \n", id );
-                    delete this;
-                    printf( "window[%i] delete this done \n", id );
-                    return;
-                    break;
-            } break;
-    };
+                case SDL_WINDOWEVENT_CLOSE:{  quit(); }break;
+            }   } break;
+    } // switch( event.type ){
     //AppSDL2OGL::eventHandling( event );
     //STOP = false;
 }

@@ -203,7 +203,7 @@ class RARFF2{ public:
         double dyy=(xx+zz)*ir3;
         double dzz=(xx+yy)*ir3;
 
-        //Vec3d dhij = (Vec3d){ (yy+zz)*ir3, (xx+zz)*ir3, (xx+yy)*ir3 };
+        //Vec3d dhij = Vec3d{ (yy+zz)*ir3, (xx+zz)*ir3, (xx+yy)*ir3 };
 
         //type.bcore  = -1.8;
         //type.acore  =  1.0;
@@ -254,7 +254,7 @@ class RARFF2{ public:
         for(int ib=0; ib<nbi; ib++){
         //for(int ib=0; ib<1; ib++){
             const Vec3d& hi = his[ib];
-            //Vec3d hi = (Vec3d){0.0,1.0,0.0};
+            //Vec3d hi = Vec3d{0.0,1.0,0.0};
             Vec3d& fi       = fis[ib];
             double ci       = hij.dot( hi );   // ci = <hi|hij>
             //printf( "ci  %g \n", ci );
@@ -263,7 +263,7 @@ class RARFF2{ public:
             for(int jb=0; jb<nbj; jb++){
             //for(int jb=0; jb<1; jb++){
                 const Vec3d& hj = hjs[jb];
-                //Vec3d hj = (Vec3d){0.0,-1.0,0.0};
+                //Vec3d hj = Vec3d{0.0,-1.0,0.0};
                 double cj       = hij.dot( hj );  // cj  = <hj|hij>
                 double cij      = hi .dot( hj );  // cij = <hj|hi>
 

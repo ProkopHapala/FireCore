@@ -156,10 +156,10 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     /*
     ff.realloc(4);
     for(int i=0; i<ff.natom; i++){ ff.atoms[i].type=&type1; };
-    ff.atoms[0].setPose( (Vec3d){0.0,0.0,0.0}, Quat4dIdentity );
-    ff.atoms[1].setPose( (Vec3d){1.0,1.5,0.0}, Quat4dIdentity );
-    ff.atoms[2].setPose( (Vec3d){1.0,0.0,0.0}, Quat4dIdentity );
-    ff.atoms[3].setPose( (Vec3d){0.0,1.0,0.0}, Quat4dIdentity );
+    ff.atoms[0].setPose( Vec3d{0.0,0.0,0.0}, Quat4dIdentity );
+    ff.atoms[1].setPose( Vec3d{1.0,1.5,0.0}, Quat4dIdentity );
+    ff.atoms[2].setPose( Vec3d{1.0,0.0,0.0}, Quat4dIdentity );
+    ff.atoms[3].setPose( Vec3d{0.0,1.0,0.0}, Quat4dIdentity );
     */
 
 
@@ -178,14 +178,14 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
         double sa_=sin(ang*0.5);
         double ca_=cos(ang*0.5);
         //ff.atoms[i].type=&type1;
-        ff.atoms[i].pos  = (Vec3d ){ca,sa,0};
-        ff.atoms[i].qrot = (Quat4d){0.0,0.0,-sa_,ca_};
+        ff.atoms[i].pos  = Vec3d {ca,sa,0};
+        ff.atoms[i].qrot = Quat4d{0.0,0.0,-sa_,ca_};
     }
 
-    ff.atoms[6].setPose( (Vec3d){2.0,0.0,0.0}, Quat4dIdentity );  ff.atoms[6].type=&type2;     ff.atoms[7].qrot.dRot_exact(1.0, (Vec3d){0.0,0.0,1.0} );
-    //ff.atoms[7].setPose( (Vec3d){0.0,2.0,0.0}, Quat4dIdentity );  ff.atoms[7].type=&type2;
-    ff.atoms[7].setPose( (Vec3d){-1.0,2.0,0.0}, Quat4dIdentity );  ff.atoms[7].type=&type2;
-    ff.atoms[8].setPose( (Vec3d){0.0,0.0,-2.0}, Quat4dIdentity );  ff.atoms[7].type=&type2;
+    ff.atoms[6].setPose( Vec3d{2.0,0.0,0.0}, Quat4dIdentity );  ff.atoms[6].type=&type2;     ff.atoms[7].qrot.dRot_exact(1.0, Vec3d{0.0,0.0,1.0} );
+    //ff.atoms[7].setPose( Vec3d{0.0,2.0,0.0}, Quat4dIdentity );  ff.atoms[7].type=&type2;
+    ff.atoms[7].setPose( Vec3d{-1.0,2.0,0.0}, Quat4dIdentity );  ff.atoms[7].type=&type2;
+    ff.atoms[8].setPose( Vec3d{0.0,0.0,-2.0}, Quat4dIdentity );  ff.atoms[7].type=&type2;
 */
 
 
@@ -196,7 +196,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     ff.realloc(nat);
     for(int i=0; i<nat; i++){
         if(randf()>0.5){ ff.atoms[i].type=&type1;  }else{ ff.atoms[i].type=&type2; }
-        ff.atoms[i].pos.fromRandomBox((Vec3d){-5.0,-5.0,-1.0},(Vec3d){5.0,5.0,1.0});
+        ff.atoms[i].pos.fromRandomBox(Vec3d{-5.0,-5.0,-1.0},Vec3d{5.0,5.0,1.0});
         ff.atoms[i].qrot.setRandomRotation();
         ff.atoms[i].cleanAux();
     }
@@ -204,12 +204,12 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
 
     //ff.realloc(2);
-    //ff.atoms[0].setPose( (Vec3d){1.0,0.0, -1.0}, Quat4dIdentity ); ff.atoms[0].type=&type2;
-    //ff.atoms[1].setPose( (Vec3d){0.0,1.0, -1.0}, Quat4dIdentity ); ff.atoms[1].type=&type2;
+    //ff.atoms[0].setPose( Vec3d{1.0,0.0, -1.0}, Quat4dIdentity ); ff.atoms[0].type=&type2;
+    //ff.atoms[1].setPose( Vec3d{0.0,1.0, -1.0}, Quat4dIdentity ); ff.atoms[1].type=&type2;
 
     //ff.realloc(2);
-    //ff.atoms[0].setPose( (Vec3d){0.2,1.0, -1.0}, Quat4dIdentity ); ff.atoms[0].type=&type1;
-    //ff.atoms[1].setPose( (Vec3d){1.0,0.0, -1.0}, Quat4dFront    ); ff.atoms[1].type=&type1;
+    //ff.atoms[0].setPose( Vec3d{0.2,1.0, -1.0}, Quat4dIdentity ); ff.atoms[0].type=&type1;
+    //ff.atoms[1].setPose( Vec3d{1.0,0.0, -1.0}, Quat4dFront    ); ff.atoms[1].type=&type1;
 
 
     atom1.type = &type1;
@@ -271,8 +271,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     plot1.lines.push_back( line_Frn );
     plot1.render();
 
-    Vec3d p0 = (Vec3d){0.0,0.0,0.0};
-    Vec3d dp = (Vec3d){1.0,0.0,0.0};   dp.normalize();
+    Vec3d p0 = Vec3d{0.0,0.0,0.0};
+    Vec3d dp = Vec3d{1.0,0.0,0.0};   dp.normalize();
 
     for(int i=0; i<line_Er->n; i++){
         Vec3d f,fnum,torq;
@@ -325,7 +325,7 @@ void TestAppRARFF::draw(){
     }
 
     //Vec3d bhs[N_BOND_MAX];
-    //atom1.torq = (Vec3d){0.1,0.0,0.0};
+    //atom1.torq = Vec3d{0.1,0.0,0.0};
     //atom1.moveRotGD(0.8);
     //printf( "qrot (%g,%g,%g,%g)\n", atom1.qrot.x, atom1.qrot.y, atom1.qrot.z, atom1.qrot.w );
 

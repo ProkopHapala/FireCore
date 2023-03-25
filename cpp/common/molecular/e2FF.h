@@ -262,11 +262,11 @@ class E2FF{ public:
             fgets( buf, 256, pFile); //printf( ">%s<\n", buf );
             int nw = sscanf (buf, " %i %lf %lf %lf", &e, &x, &y, &z );
             if( e==0){
-                epos[ie]=(Vec3d){x,y,z};
+                epos[ie]=Vec3d{x,y,z};
                 ie++;
                 printf( " e[%i] ", ie );
             }else{
-                apos[ia]=(Vec3d){x,y,z};
+                apos[ia]=Vec3d{x,y,z};
                 aQ  [ia]=e;  // change this later
                 Qasum += e;
                 ia++;

@@ -643,17 +643,15 @@ void subdivHull( const Vec3i& tri, int n, int *selection, Vec3d * from_points ){
 void findHull_oct( int npoints, Vec3d * from_points ){
     // find initial octaedra
     int * selection = new int[3*npoints];
-    int        imx,ipx,ipy,imy,imz,ipz;
+    int        imx=0,ipx=0,ipy=0,imy=0,imz=0,ipz=0;
     double     mx, px, py, my, mz, pz;
+    Vec3d pmin=Vec3dmax,pmax=Vec3dmin;
     for( int i=0; i<npoints; i++ ){
         selection[i] = i;
         Vec3d p = from_points[i];
-        if      ( p.x < mx ){ imx=i; mx=p.x; }
-        else if ( p.x > px ){ ipx=i; px=p.x; };
-        if      ( p.y < my ){ imy=i; my=p.y; }
-        else if ( p.y > py ){ ipy=i; py=p.y; };
-        if      ( p.z < mz ){ imz=i; mz=p.z; }
-        else if ( p.z > pz ){ ipz=i; pz=p.z; };
+        if ( p.x < pmin.x ){ imx=i; pmin.x=p.x; } else if ( p.x > pmax.x ){ ipx=i; pmax.x=p.x; };
+        if ( p.y < pmin.y ){ imy=i; pmin.y=p.y; } else if ( p.y > pmax.y ){ ipy=i; pmax.y=p.y; };
+        if ( p.z < pmin.z ){ imz=i; pmin.z=p.z; } else if ( p.z > pmax.z ){ ipz=i; pmax.z=p.z; };
     }
     subdivHull( {imx,imy,imz},  npoints, selection, from_points );
     subdivHull( {ipx,imy,imz},  npoints, selection, from_points );

@@ -253,19 +253,19 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
 
     // --- Make Geometry
     // initialize atomic positions
-    solver.apos[0]=(Vec3d){-1.0,0.0,0.0};
-    solver.apos[1]=(Vec3d){+1.0,0.0,0.0};
+    solver.apos[0]=Vec3d{-1.0,0.0,0.0};
+    solver.apos[1]=Vec3d{+1.0,0.0,0.0};
     // initialize electron positions
     double dy = 0.5;
-    //solver.epos[0]=(Vec3d){-0.5,-dy,0.0};  // e[0][0]
-    //solver.epos[1]=(Vec3d){-0.5 ,+dy,0.0};  // e[0][1]
-    //solver.epos[2]=(Vec3d){+0.5,-dy,0.0};  // e[1][0]
-    //solver.epos[3]=(Vec3d){+0.5,+dy,0.0};  // e[1][1]
+    //solver.epos[0]=Vec3d{-0.5,-dy,0.0};  // e[0][0]
+    //solver.epos[1]=Vec3d{-0.5 ,+dy,0.0};  // e[0][1]
+    //solver.epos[2]=Vec3d{+0.5,-dy,0.0};  // e[1][0]
+    //solver.epos[3]=Vec3d{+0.5,+dy,0.0};  // e[1][1]
 
-    solver.epos[0]=(Vec3d){-2.0,-3,0.0};  // e[0][0]
-    solver.epos[1]=(Vec3d){-2.0,+3,0.0};  // e[0][1]
-    solver.epos[2]=(Vec3d){+2.0,-3,0.0};  // e[1][0]
-    solver.epos[3]=(Vec3d){+2.0,+3,0.0};  // e[1][1]
+    solver.epos[0]=Vec3d{-2.0,-3,0.0};  // e[0][0]
+    solver.epos[1]=Vec3d{-2.0,+3,0.0};  // e[0][1]
+    solver.epos[2]=Vec3d{+2.0,-3,0.0};  // e[1][0]
+    solver.epos[3]=Vec3d{+2.0,+3,0.0};  // e[1][1]
 
 
     for(int i=0; i<solver.nBas; i++){
@@ -389,15 +389,15 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
     GridShape grid;
     //grid.n    = {5,5,5};
     grid.n    = {400,100,100};
-    grid.cell = (Mat3d){ 40.0,0.0,0.0,  0.0,10.0,0.0,  0.0,0.0,10.0 };
-    grid.pos0 = (Vec3d){ 0.0 ,0.0 ,0.0 };
+    grid.cell = Mat3d{ 40.0,0.0,0.0,  0.0,10.0,0.0,  0.0,0.0,10.0 };
+    grid.pos0 = Vec3d{ 0.0 ,0.0 ,0.0 };
     grid.updateCell();
 
 
     solver.ecoefs[0] = 1.0;
     solver.ecoefs[1] = 0;
-    solver.epos  [0] = (Vec3d){10.0,5.0,5.0};
-    solver.epos  [1] = (Vec3d){15.0,5.0,5.0};
+    solver.epos  [0] = Vec3d{10.0,5.0,5.0};
+    solver.epos  [1] = Vec3d{15.0,5.0,5.0};
     int ng = grid.n.totprod();
     double * orbOnGrid  = new double[ ng ];
     double * orbOnGrid_ = new double[ ng ];
@@ -438,9 +438,9 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
     GridShape grid;
     //grid.n    = {5,5,5};
     grid.n    = {100,100,100};
-    grid.cell = (Mat3d){   10.0,0.0,0.0,     0.0,10.0,0.0,    0.0,0.0,10.0 };
-    //grid.pos0 = (Vec3d){-5.0 ,-5.0 ,-5.0  };
-    grid.pos0 = (Vec3d){-5.0 ,-5.0 ,-5.0  };
+    grid.cell = Mat3d{   10.0,0.0,0.0,     0.0,10.0,0.0,    0.0,0.0,10.0 };
+    //grid.pos0 = Vec3d{-5.0 ,-5.0 ,-5.0  };
+    grid.pos0 = Vec3d{-5.0 ,-5.0 ,-5.0  };
     grid.updateCell();
 
     DEBUG

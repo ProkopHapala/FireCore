@@ -119,7 +119,6 @@ inline int readMatrix( const char* fname, int nrow, int ncol, double* buff, bool
     FILE *file = fopen(fname, "r");
     if ( file==0 ){
         printf( "ERROR in readMatrix(%s): no such file \n", fname );
-        fclose(file);
         return -1;
     }
     int di=ncol,dj=1;
@@ -139,7 +138,7 @@ inline int readMatrix( const char* fname, int nrow, int ncol, double* buff, bool
 //  TODO:
 // Universal data loading idea:
 //  - load all data to std::map<string,string> "craft.velocity"->"0.0 1.0 3.0"
-//  - pull named tokens from map and parse them to data   "0.0 1.0 3.0" - > (Vec3d){0.0,1.0,30.}
+//  - pull named tokens from map and parse them to data   "0.0 1.0 3.0" - > Vec3d{0.0,1.0,30.}
 
 // TODO: GUI should have also such macros
 //       - bind pointers &float to data item to GUI sliders
@@ -513,6 +512,7 @@ inline  int loadColumns( char const  *fname, char const *format, void **buffs ){
     line = fgets( buff, 1024, pFile );
     if(line==NULL){
         printf("read nl line NULL \n");
+        fclose(pFile);
         return -1;
     }
     sscanf( buff,"%i", &nl );

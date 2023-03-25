@@ -349,7 +349,7 @@ double evalAE(){
             const Vec3d   dR  = epos [j] - pi;
             const double  sj  = esize[j];
             double& fsj = fsize[j];
-            double  fs_junk;
+            double  fs_junk=0;
             double dEae=0,dEaePaul=0;
             //Eae += addPairEF_expQ( epos[j]-pi, f, abwi.z, qi*QE, abwi.y, abwi.x );
             if(bEvalAECoulomb){
@@ -485,8 +485,8 @@ double atomsPotAtPoint( const Vec3d& pos, double s, double Q )const{
         const Vec3d  dR   = pos-apos[i];
         const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
         const double qq   = aPar.x*Q;
-        Vec3d  f;
-        double fsi,fsj;
+        Vec3d  f=Vec3dZero;
+        double fsi=0,fsj=0;
         //addCoulombGauss      ( const Vec3d& dR, double si, double sj,             Vec3d& f, double& fsi, double& fsj, double qq ){
         //addDensOverlapGauss_S( const Vec3d& dR, double si, double sj, double amp, Vec3d& f, double& fsi, double& fsj            ){
         Eae  += addCoulombGauss              ( dR, s, aPar.y,         f, fsi, fsj, qq );
@@ -562,7 +562,7 @@ bool loadFromFile_xyz( char const* filename ){
         fgets( buf, 256, pFile); //printf( ">%s<\n", buf );
         int nw = sscanf (buf, " %i %lf %lf %lf", &e, &x, &y, &z, &s );
         if( e<0){
-            epos[ie]=(Vec3d){x,y,z};
+            epos[ie]=Vec3d{x,y,z};
             if     (e==-1){ espin[ie]= 1; }
             else if(e==-2){ espin[ie]=-1; }
             if( nw>4 ){ esize[ie]=s; }else{ esize[ie]=default_esize; }
@@ -572,7 +572,7 @@ bool loadFromFile_xyz( char const* filename ){
             ie++;
             //printf( " e[%i] ", ie );
         }else{
-            apos[ia]=(Vec3d){x,y,z};
+            apos[ia]=Vec3d{x,y,z};
             aQ  [ia]=e;  // change this later
             //aAbws[ia] = default_aAbWs[e];
             //eAbws[ia] = default_eAbWs[e];
@@ -617,7 +617,7 @@ bool loadFromFile_fgo( char const* filename ){
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP );
         //printf( "atom[%i] p(%g,%g,%g) Q %g sQ %g sP %g cP %g \n", i, x, y, z,    Q, sQ, sP, cP );
         Q=-Q;
-        apos  [i]=(Vec3d){x,y,z};
+        apos  [i]=Vec3d{x,y,z};
         //aPars[i].set(Q,sQ,sP,cP);
         aQ  [i]=Q;
 
@@ -631,7 +631,7 @@ bool loadFromFile_fgo( char const* filename ){
         int spin;
         fgets( buff, nbuff, pFile); // printf( "fgets: >%s<\n", buf );
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
-        epos [i]=(Vec3d){x,y,z};
+        epos [i]=Vec3d{x,y,z};
         esize[i]=s;
         //ecoef[i]=c;
         //int io=i/perOrb;

@@ -79,7 +79,7 @@ TestAppFARFF::TestAppFARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
     ff.realloc(nat);
     for(int ia=0; ia<nat; ia++){
-        ff.apos[ia].fromRandomBox( (Vec3d){-sz,-sz,-szH},(Vec3d){sz,sz,szH} );
+        ff.apos[ia].fromRandomBox( Vec3d{-sz,-sz,-szH},Vec3d{sz,sz,szH} );
         ff.aconf[ia].set(4,4,4);
         //double rnd=randf(); if(rnd>0.7){ if(rnd<0.9){ ff.aconf[ia].a=3; }else{ ff.aconf[ia].a=2; }  }
 
@@ -209,7 +209,7 @@ void TestAppFARFF::draw(){
     }
 
     //Vec3d bhs[N_BOND_MAX];
-    //atom1.torq = (Vec3d){0.1,0.0,0.0};
+    //atom1.torq = Vec3d{0.1,0.0,0.0};
     //atom1.moveRotGD(0.8);
     //printf( "qrot (%g,%g,%g,%g)\n", atom1.qrot.x, atom1.qrot.y, atom1.qrot.z, atom1.qrot.w );
 

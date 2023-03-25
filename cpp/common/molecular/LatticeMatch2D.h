@@ -70,16 +70,8 @@ class LatticeMatch2D{ public:
 
     int checkLengthMatch( std::vector<Latmiss>& out, int ia, int ib, double l0, double rab, double alpha ){
         double d = rab/l0; int n=(int)d; d-=n; 
-        bool match=false;
-        Latmiss L;
-        //printf( "checkLengthMatch() l0 %g n %i d %g \n", l0, n, d );
-        if     (    d <dmax ){ L=Latmiss{n  ,ia,ib,d  ,alpha}; match=true; }
-        else if( (1-d)<dmax ){ L=Latmiss{n+1,ia,ib,d-1,alpha}; match=true; };
-        if(match){
-            //printf( "d %g\n", d );
-            out.push_back(L);
-            return n;
-        }
+        if     (    d <dmax ){ out.push_back(Latmiss{n  ,ia,ib,d  ,alpha}); return n; }
+        else if( (1-d)<dmax ){ out.push_back(Latmiss{n+1,ia,ib,d-1,alpha}); return n; }
         return -1;
     }
 
@@ -151,7 +143,7 @@ class LatticeMatch2D{ public:
     };
 
     void printVecs( std::vector<Latmiss>& match, char c ){
-        for( int i=0;i<match.size();i++ ){ printf( "match_%c[%i] n,a,b(%i|%i,%i) d %g[%] alpha %g[/pi] \n", c, i, match[i].n, match[i].ia, match[i].ib, match[i].d*100, match[i].alpha/M_PI ); }
+        for( int i=0;i<match.size();i++ ){ printf( "match_%c[%i] n,a,b(%i|%i,%i) d %g[0.01] alpha %g[/pi] \n", c, i, match[i].n, match[i].ia, match[i].ib, match[i].d*100, match[i].alpha/M_PI ); }
     }
 
     void cleansRedudat( std::vector<Latmiss>& match, CompLatmiss func=isStame ){
@@ -273,7 +265,7 @@ class LatticeMatch2D{ public:
             if(ns  ){ ns  [i]=L.n; }
             if(bPrint){
                 Vec2d u = reproduce_grid( L );
-                printf( "[%i] (%i,%i|%i) err %g[%] L=%g[A] \n", i, inds[i].x, inds[i].y, ns[i], errs[i]*100.0, u.norm() );
+                printf( "[%i] (%i,%i|%i) err %g[0.01] L=%g[A] \n", i, inds[i].x, inds[i].y, ns[i], errs[i]*100.0, u.norm() );
             }
         }
         return nmax;

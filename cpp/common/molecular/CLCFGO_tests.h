@@ -195,10 +195,10 @@ void initTestElectrons( CLCFGO& solver ){
         _.ecoef[1] =   1.0;
         _.ecoef[2] =  -0.5;
         _.ecoef[3] =   1.0;
-        _.epos [0] = (Vec3d){ 0.0, 0.0,0.0};
-        _.epos [1] = (Vec3d){ 0.0, 0.0,0.0};
-        _.epos [2] = (Vec3d){-3.0,-0.1,0.0};
-        _.epos [3] = (Vec3d){-3.0,+1.5,0.0};
+        _.epos [0] = Vec3d{ 0.0, 0.0,0.0};
+        _.epos [1] = Vec3d{ 0.0, 0.0,0.0};
+        _.epos [2] = Vec3d{-3.0,-0.1,0.0};
+        _.epos [3] = Vec3d{-3.0,+1.5,0.0};
         //_.ecoef[3] = +0.3;
     }
     */
@@ -213,10 +213,10 @@ void initTestElectrons( CLCFGO& solver ){
         _.esize[2] =   1.0;
         _.esize[3] =   1.0;
 
-        _.epos [0] = (Vec3d){ 0.0, 0.0,0.0};
-        _.epos [1] = (Vec3d){ 0.0, 0.0,0.0};
-        _.epos [2] = (Vec3d){-1.5, 0.0,0.0};
-        _.epos [3] = (Vec3d){ 0.0, 0.0,0.0};
+        _.epos [0] = Vec3d{ 0.0, 0.0,0.0};
+        _.epos [1] = Vec3d{ 0.0, 0.0,0.0};
+        _.epos [2] = Vec3d{-1.5, 0.0,0.0};
+        _.epos [3] = Vec3d{ 0.0, 0.0,0.0};
         //_.ecoef[3] = +0.3;
     }
 }
@@ -383,8 +383,8 @@ void testDerivs_Coulomb_model_S( int n, double x0, double dx, CLCFGO& solver, Pl
     //DataLine2D* line_dQi_ana = new DataLine2D( n, x0, dx, 0xFFFF0000, "dQi_ana" ); plot1.add(line_dQi_ana );
 
     DataLine2D* line_Qi      = new DataLine2D( n, x0, dx, 0xFF008800, "Qi" ); plot1.add(line_Qi );
-    DataLine2D* line_aij     = new DataLine2D( n, x0, dx, 0xFF888800, "aij" );   //plot1.add(line_aij );
-    DataLine2D* line_Qaij    = new DataLine2D( n, x0, dx, 0xFF008888, "Q/aij" ); //plot1.add(line_Qaij );
+    //DataLine2D* line_aij     = new DataLine2D( n, x0, dx, 0xFF888800, "aij" );   //plot1.add(line_aij );
+    //DataLine2D* line_Qaij    = new DataLine2D( n, x0, dx, 0xFF008888, "Q/aij" ); //plot1.add(line_Qaij );
 
     solver.toRho(0,1,0);
     solver.toRho(2,3,1);
@@ -408,8 +408,8 @@ void testDerivs_Coulomb_model_S( int n, double x0, double dx, CLCFGO& solver, Pl
         //Vec3d dQdp =  solver.fromRho(0,1,0);
 
         line_Qi     ->ys[i] = Q;
-        line_aij    ->ys[i] = aij;
-        line_Qaij   ->ys[i] = Q/aij;
+        //line_aij    ->ys[i] = aij;
+        //line_Qaij   ->ys[i] = Q/aij;
         //printf( "Q/aij %g  \n", Q/aij );
 
         //line_dQi_ana->ys[i] = dCsi*(Q/aij); // ToDo : this works but there should be better way (using only cij, without overlap sij)
@@ -590,7 +590,7 @@ void test_ProjectDensity( CLCFGO& solver, Plot2D& plot1 ){
     std::vector<double> dgrho(ng,0.0);
     for(int i=0; i<solver.nBas; i++){ solver.ecoef[i]=0; solver.epos[i]=Vec3dZero;  }
     solver.esize[0] = 1.2; solver.ecoef[0] =  1.0; solver.epos[0]=Vec3dZero;
-    //solver.esize[1] = 0.7; solver.ecoef[1] = -0.7; solver.epos[1]=(Vec3d){1.0,0.0,0.0};
+    //solver.esize[1] = 0.7; solver.ecoef[1] = -0.7; solver.epos[1]=Vec3d{1.0,0.0,0.0};
     Vec3d dip;
     //solver.bNormalize = false;
     //solver.projectOrb( 0, dip );
@@ -670,9 +670,9 @@ double test_Poisson( CLCFGO& solver, int io, double Rmax, double gStep, double *
     // --- define grid shape
     GridShape gsh;
     int ng = (2*Rmax)/gStep;
-    gsh.cell = (Mat3d){ (2*Rmax),0.0,0.0,  0.0,(2*Rmax),0.0,  0.0,0.0,(2*Rmax) };
-    gsh.n    = {ng,ng,ng};
-    gsh.pos0 = (Vec3d){-Rmax,-Rmax,-Rmax};
+    gsh.cell = Mat3d{ (2*Rmax),0.0,0.0,  0.0,(2*Rmax),0.0,  0.0,0.0,(2*Rmax) };
+    gsh.n    = Vec3i{ng,ng,ng};
+    gsh.pos0 = Vec3d{-Rmax,-Rmax,-Rmax};
     gsh.updateCell();
     double  dV = gsh.voxelVolume();
     //printf( "C++ DEBUG 0 \n" );
@@ -800,9 +800,9 @@ void test_ElectroStaticsBrute( CLCFGO& solver, Plot2D& plot1 ){
     double Rmax  = 4.0;
     double gStep = 0.15;
     int ng = (2*Rmax)/gStep;
-    gsh.cell = (Mat3d){ (2*Rmax),0.0,0.0,  0.0,(2*Rmax),0.0,  0.0,0.0,(2*Rmax) };
-    gsh.n    = {ng,ng,ng};
-    gsh.pos0 = (Vec3d){-Rmax,-Rmax,-Rmax};
+    gsh.cell = Mat3d{ (2*Rmax),0.0,0.0,  0.0,(2*Rmax),0.0,  0.0,0.0,(2*Rmax) };
+    gsh.n    = Vec3i{ng,ng,ng};
+    gsh.pos0 = Vec3d{-Rmax,-Rmax,-Rmax};
     gsh.updateCell();
     double  dV = gsh.voxelVolume();
 

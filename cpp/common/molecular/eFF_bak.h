@@ -586,13 +586,13 @@ bool loadFromFile_xyz( char const* filename ){
         fgets( buf, 256, pFile); //printf( ">%s<\n", buf );
         int nw = sscanf (buf, " %i %lf %lf %lf", &e, &x, &y, &z );
         if( e<0){
-            epos[ie]=(Vec3d){x,y,z};
+            epos[ie]=Vec3d{x,y,z};
             if     (e==-1){ espin[ie]= 1; }
             else if(e==-2){ espin[ie]=-1; }
             ie++;
             printf( " e[%i] ", ie );
         }else{
-            apos[ia]=(Vec3d){x,y,z};
+            apos[ia]=Vec3d{x,y,z};
             aQ  [ia]=e;  // change this later
             //aAbws[ia] = default_aAbWs[e];
             //eAbws[ia] = default_eAbWs[e];

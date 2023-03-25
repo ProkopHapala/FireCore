@@ -191,7 +191,7 @@ double integrateMidpoint3D( Func func, double h, Vec3d pmin, Vec3d pmax ){
     for(int ix=0; ix<n.x; ix++){
         for(int iy=0; iy<n.y; iy++){
             for(int iz=0; iz<n.z; iz++){
-                Vec3d p = pmin + (Vec3d){d.x*ix,d.y*iy,d.z*iz};
+                Vec3d p = pmin + Vec3d{d.x*ix,d.y*iy,d.z*iz};
                 sum +=  func(p);
             }
         }

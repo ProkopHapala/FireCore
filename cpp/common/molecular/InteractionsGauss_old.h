@@ -275,7 +275,6 @@ inline double addDensOverlapGauss_S( const Vec3d& dR, double si, double sj, doub
     //double amp_ = amp * const_K_eVA * ( 3.3*s2/(si2*sj2) - 10.78*is2 );
     //double amp_ = amp * const_K_eVA * ( 3.3*s2*s2 - 10.78*si2*sj2 )/(si2*sj2*is2)  );
 
-
     double fr,fi,fj;
     //double E = DensOverlapGauss_S( r2,amp,si,sj,    fr,fi,fj, si2, sj2, is2, is4 );
     double E = DensOverlapGauss_Snorm( r2,amp,si,sj,    fr,fi,fj, si2, sj2, is2, is4 );

@@ -70,7 +70,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
         gridFF.grid.saveXSF( "ocl_E_Coul.xsf", (float*)gridFF.FFelec,   4, 3 );
         // ---- Save combined forcefield
         Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot() ];
-        Vec3d testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
+        Vec3d testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
         gridFF.evalCombindGridFF ( testREQ, FFtot );
         gridFF.grid.saveXSF( "ocl_E_H.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
         delete [] FFtot;

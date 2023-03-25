@@ -280,7 +280,7 @@ void TestAppMMFFmini::renderOrbital(int iMO, double iso ){
     //MOgrid.pos0 = MOgrid.dCell.a*(-MOgrid.n.a/3) + MOgrid.dCell.b*(-MOgrid.n.b/2) + MOgrid.dCell.c*(-MOgrid.n.c/2);
     //MOgrid.pos0 = Vec3dZero; ewfaux[10*MOgrid.n.x*MOgrid.n.y + MOgrid.n.x*10 + 10 ] = 1.0;
     ogl_MO  = glGenLists(1);
-    Vec3d p=(Vec3d){0.4,2.5,0.0};
+    Vec3d p=Vec3d{0.4,2.5,0.0};
     glNewList(ogl_MO, GL_COMPILE);
     glTranslatef( p.x, p.y, p.z );
     int ntris=0;  
@@ -426,8 +426,8 @@ void TestAppMMFFmini::draw(){
             //return; 
         glPopMatrix();
     }
-    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift );
 
     //printf( "bDoQM %i bDoMM %i \n", bDoQM, bDoMM );
@@ -481,11 +481,11 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.aREQs, &gridFF.atypes );
     gridFF.grid.n    = (Vec3i){60,60,100};
     //world.substrate.grid.n    = (Vec3i){12,12,20};
-    gridFF.grid.pos0 = (Vec3d){0.0,0.0,0.0};
+    gridFF.grid.pos0 = Vec3d{0.0,0.0,0.0};
     gridFF.loadCell ( "inputs/cel.lvs" );
     //world.gridFF.loadCell ( "inputs/cel_2.lvs" );
     gridFF.grid.printCell();
-    //testREQ = (Vec3d){ 2.181, 0.0243442, 0.0}; // Xe
+    //testREQ = Vec3d{ 2.181, 0.0243442, 0.0}; // Xe
     //genPLQ();
     gridFF.allocateFFs();
     //world.gridFF.evalGridFFs( {0,0,0} );
@@ -494,15 +494,15 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //bool recalcFF = true;
     //if( recalcFF ){
     gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin" );
-    gridFF.shift = (Vec3d){0.0,0.0,-8.0};
+    gridFF.shift = Vec3d{0.0,0.0,-8.0};
     if(bRenderGridFF){
         int iatom = 11;
-        testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
+        testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
         testPLQ = REQ2PLQ( testREQ, -1.6 );
         //printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
         //printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, aREQ[iatom].x, aREQ[iatom].y, aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
         Quat4f* FFtot = new Quat4f[ gridFF.grid.getNtot() ];
-        //world.gridFF.evalCombindGridFF_CheckInterp( (Vec3d){ 2.181, 0.0243442, 0.0}, FFtot );
+        //world.gridFF.evalCombindGridFF_CheckInterp( Vec3d{ 2.181, 0.0243442, 0.0}, FFtot );
         //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
         gridFF.evalCombindGridFF            ( testREQ, FFtot );
         if(idebug>1) gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );

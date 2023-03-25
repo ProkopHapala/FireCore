@@ -69,7 +69,7 @@ int     fontTex;
 std::vector<Vec3d> iso_points;
 int isoOgl;
 
-Vec3d PPpos0 = (Vec3d){1.3,1.7, 1.5};
+Vec3d PPpos0 = Vec3d{1.3,1.7, 1.5};
 
 Vec3d testREQ,testPLQ;
 
@@ -97,7 +97,7 @@ void drawAtomsF8( int n, float8 * atoms, float sc, int oglSphere ){
         float r = atomi[4]*sc;
         float q = atomi[6];
         glColor3f( 0.5+q, 0.5, 0.5-q );
-        Draw3D::drawShape( *(Vec3f*)atomi, {0.0,0.0,0.0,1.0}, (Vec3f){r,r,r}, oglSphere );
+        Draw3D::drawShape( *(Vec3f*)atomi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
     }
 }
 
@@ -124,7 +124,7 @@ void drawRigidMolAtomForce( const Vec3f& pos, const Quat4f& qrot, const Vec3f& f
         f.set_cross(torq,Mp);
         f.add(fpos);
 
-        //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, (Vec3f){r,r,r}, oglSphere );
+        //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
         Draw3D::drawPointCross( Mp, rsc   );
         Draw3D::drawVecInPos  ( f*fsc, Mp );
     }
@@ -137,7 +137,7 @@ void drawRigidMolAtomCOG( const Vec3f& pos, const Quat4f& qrot, int n, const flo
         //p = *((Vec3f*)(atom0s+j));
         mrot.dot_to( *((Vec3f*)(atom0s+i)), Mp );
         Mp.add( pos );
-        //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, (Vec3f){r,r,r}, oglSphere );
+        //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
         Draw3D::drawPointCross( Mp, rsc   );
         Draw3D::drawLine      ( Mp, pos   );
     }
@@ -206,7 +206,7 @@ class AppMolecularEditorOCL : public AppSDL2OGL_3D { public:
     int ipicked  = -1, ibpicked = -1;
     int perFrame =  50;
 
-    Vec3d cursor3D=(Vec3d){0.0,0.0,0.0};
+    Vec3d cursor3D=Vec3d{0.0,0.0,0.0};
 
     double drndv =  10.0;
     double drndp =  0.5;
@@ -250,15 +250,15 @@ class AppMolecularEditorOCL : public AppSDL2OGL_3D { public:
 void AppMolecularEditorOCL::initRigidSubstrate(){
 
     // ---- Rigid Substrate
-    //world.substrate.init( (Vec3i){100,100,100}, (Mat3d){ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f }, (Vec3d){-5.0,-5.0,-5.0} );
+    //world.substrate.init( Vec3i{100,100,100}, Mat3d{ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f }, Vec3d{-5.0,-5.0,-5.0} );
 
     printf( "params.atypNames:\n" );
     for(auto kv : params.atypNames) { printf(" %s %i \n", kv.first.c_str(), kv.second ); }
     //exit(0);
-    //world.substrate.grid.n    = (Vec3i){120,120,200};
-    world.gridFF.grid.n    = (Vec3i){60,60,100};
-    //world.substrate.grid.n    = (Vec3i){12,12,20};
-    world.gridFF.grid.pos0 = (Vec3d){0.0d,0.0d,0.0d};
+    //world.substrate.grid.n    = Vec3i{120,120,200};
+    world.gridFF.grid.n    = Vec3i{60,60,100};
+    //world.substrate.grid.n    = Vec3i{12,12,20};
+    world.gridFF.grid.pos0 = Vec3d{0.0d,0.0d,0.0d};
     world.gridFF.loadCell ( "inputs/cel.lvs" );
     //world.gridFF.loadCell ( "inputs/cel_2.lvs" );
     world.gridFF.grid.printCell();
@@ -299,9 +299,9 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
     */
 
     int iatom = 11;
-    //testREQ = (Vec3d){ 2.181, 0.0243442, 0.0}; // Xe
-    //testREQ = (Vec3d){ 1.487, 0.0006808, 0.0}; // H
-    testREQ = (Vec3d){ 1.487, sqrt(0.0006808), 0.0 };
+    //testREQ = Vec3d{ 2.181, 0.0243442, 0.0}; // Xe
+    //testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
+    testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0 };
     testPLQ = REQ2PLQ( testREQ, world.gridFF.alpha );//
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
     printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.aREQ[iatom].x, world.aREQ[iatom].y, world.aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
@@ -442,7 +442,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     */
 
 
-    //testREQ = (Vec3d){ 1.487, sqrt(0.0006808), 0.0 };
+    //testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0 };
     { printf( "// ======== CHECK GPU FORCE GRID INTERPOLATION \n" );
 
         FILE* fout;
@@ -463,13 +463,13 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
         }
 
 
-        Vec3f p0 = (Vec3f){4.10676,3.82665,3.86912+1.0};
-        Vec3f p1 = (Vec3f){4.10676,3.82665,3.86912-1.0};
+        Vec3f p0 = Vec3f{4.10676,3.82665,3.86912+1.0};
+        Vec3f p1 = Vec3f{4.10676,3.82665,3.86912-1.0};
 
-        //Vec3f p0 = (Vec3f){0.5,0.5,12.0};
-        //Vec3f p1 = (Vec3f){0.5,0.5,2.0};
-        //Vec3f p0 = (Vec3f){0.5,0.5,4.0};
-        //Vec3f p1 = (Vec3f){5.5,5.5,4.0};
+        //Vec3f p0 = Vec3f{0.5,0.5,12.0};
+        //Vec3f p1 = Vec3f{0.5,0.5,2.0};
+        //Vec3f p0 = Vec3f{0.5,0.5,4.0};
+        //Vec3f p1 = Vec3f{5.5,5.5,4.0};
 
         for(int i=0; i<nPoss; i++ ){
             float f = i/(float)nPoss;
@@ -628,7 +628,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     /// =========== Configurtions
     conf1.bind( 5, world.atypes, world.apos );
     atomdist.copyOf(conf1);
-    atomdist.initRuler( world.Collision_box.a+(Vec3d){-2.0,-2.0,-2.0}, world.Collision_box.b+(Vec3d){3.0,3.0,3.0}, 2.0 );
+    atomdist.initRuler( world.Collision_box.a+Vec3d{-2.0,-2.0,-2.0}, world.Collision_box.b+Vec3d{3.0,3.0,3.0}, 2.0 );
     printf( "atomdist.ruler: %i (%i,%i,%i)\n ", atomdist.ruler.ntot, atomdist.ruler.n.x, atomdist.ruler.n.y, atomdist.ruler.n.z );
 
     //atomdist.toCells( 0.5 );
@@ -660,8 +660,8 @@ void AppMolecularEditorOCL::draw(){
 
     /*
     Vec3f p;
-    Vec3f p0    = (Vec3f){ 1.0, -0.5, 0.3 };
-    Vec3f force = (Vec3f){ 1.0, 0.3, 2.0 };
+    Vec3f p0    = Vec3f{ 1.0, -0.5, 0.3 };
+    Vec3f force = Vec3f{ 1.0, 0.3, 2.0 };
 
     Mat3f mrot; qrot.toMatrix(mrot);
     //Mat3f mrot; qrot.toMatrix_T(mrot);
@@ -784,7 +784,7 @@ void AppMolecularEditorOCL::stepCPU( double& F2, bool randomConf ){
     world.cleanAtomForce();
 
     if( randomConf ){
-        Vec3d d=(Vec3d){1.0,1.0,1.0};
+        Vec3d d=Vec3d{1.0,1.0,1.0};
         Vec3d shift = world.Collision_box.genRandomSample();
         Quat4d qrot;  qrot.fromUniformS3( {randf(),randf(),randf()} );
         world.tryFragPose( 0, false, shift, qrot );
@@ -795,7 +795,7 @@ void AppMolecularEditorOCL::stepCPU( double& F2, bool randomConf ){
     world.eval_MorseQ_On2_fragAware();
 
     if(ipicked>=0){
-        Vec3d f = getForceSpringRay( world.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+        Vec3d f = getForceSpringRay( world.apos[ipicked], Vec3dcam.rot.c, ray0, -1.0 );
         world.aforce[ipicked].add( f );
     }
 

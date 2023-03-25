@@ -37,13 +37,9 @@ class Mat3T{
 
 // ====== initialization
 
-	inline explicit operator Mat3T<double>()const{ return (Mat3T<double>){ (double)xx,(double)xy,(double)xz, (double)yx,(double)yy,(double)yz, (double)zx,(double)zy,(double)zz }; }
-	inline explicit operator Mat3T<float >()const{ return (Mat3T<float >){ (float)xx,(float)xy,(float)xz,    (float)yx,(float)yy,(float)yz,    (float)zx,(float)zy,(float)zz }; }
-	inline explicit operator Mat3T<int >()  const{ return (Mat3T<int   >){ (int)xx,(int)xy,(int)xz,          (int)yx,(int)yy,(int)yz,          (int)zx,(int)zy,(int)zz }; }
-
-	//inline Mat3T<double> toDouble()const{ return (Mat3T<double>){ (double)xx,(double)xy,(double)xz, (double)yx,(double)yy,(double)yz, (double)zx,(double)zy,(double)zz }; }
-	//inline Mat3T<float > toFloat ()const{ return (Mat3T<float >){ (float)xx,(float)xy,(float)xz,    (float)yx,(float)yy,(float)yz,    (float)zx,(float)zy,(float)zz }; }
-	//inline Mat3T<int >   toInt   ()const{ return (Mat3T<int   >){ (int)xx,(int)xy,(int)xz,          (int)yx,(int)yy,(int)yz,          (int)zx,(int)zy,(int)zz }; }
+	inline explicit operator Mat3T<double>()const{ return Mat3T<double>{ (double)xx,(double)xy,(double)xz, (double)yx,(double)yy,(double)yz, (double)zx,(double)zy,(double)zz }; }
+	inline explicit operator Mat3T<float >()const{ return Mat3T<float >{ (float )xx,(float )xy,(float )xz, (float )yx,(float )yy,(float )yz, (float )zx,(float )zy,(float )zz }; }
+	inline explicit operator Mat3T<int   >()const{ return Mat3T<int   >{ (int   )xx,(int   )xy,(int   )xz, (int   )yx,(int   )yy,(int   )yz, (int   )zx,(int   )zy,(int   )zz }; }
 
 	inline void setOne(        ){ xx=yy=zz=1; xy=xz=yx=yz=zx=zy=0; };
 	inline void set   ( T f ){ xx=yy=zz=f; xy=xz=yx=yz=zx=zy=0; };
@@ -604,11 +600,11 @@ using Mat3i = Mat3T< int   >;
 using Mat3f = Mat3T< float >;
 using Mat3d = Mat3T< double>;
 
-static constexpr Mat3d Mat3dIdentity = (Mat3d){1.0,0.0,0.0, 0.0,1.0,0.0,  0.0,0.0,1.0};
-static constexpr Mat3d Mat3dZero     = (Mat3d){0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0};
+static constexpr Mat3d Mat3dIdentity = Mat3d{1.0,0.0,0.0, 0.0,1.0,0.0,  0.0,0.0,1.0};
+static constexpr Mat3d Mat3dZero     = Mat3d{0.0,0.0,0.0, 0.0,0.0,0.0,  0.0,0.0,0.0};
 
-static constexpr Mat3f Mat3fIdentity = (Mat3f){1.0f,0.0f,0.0f, 0.0f,1.0f,0.0f,  0.0f,0.0f,1.0f};
-static constexpr Mat3f Mat3fZero     = (Mat3f){0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f,  0.0f,0.0f,0.0f};
+static constexpr Mat3f Mat3fIdentity = Mat3f{1.0f,0.0f,0.0f, 0.0f,1.0f,0.0f,  0.0f,0.0f,1.0f};
+static constexpr Mat3f Mat3fZero     = Mat3f{0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f,  0.0f,0.0f,0.0f};
 
 inline void convert( const Mat3f& from, Mat3d& to ){ convert( from.a, to.a ); convert( from.b, to.b ); convert( from.c, to.c ); };
 inline void convert( const Mat3d& from, Mat3f& to ){ convert( from.a, to.a ); convert( from.b, to.b ); convert( from.c, to.c ); };

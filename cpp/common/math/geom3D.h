@@ -326,7 +326,7 @@ class Box{ public:
         xdir = hdir.dot( {b.x,b.y,b.z} ); _setmin(span.x,xdir); _setmax(span.y,xdir);
     }
 
-    inline Vec3d genRandomSample() const { return (Vec3d){randf(a.x,b.x),randf(a.y,b.y),randf(a.z,b.z)}; }
+    inline Vec3d genRandomSample() const { return Vec3d{randf(a.x,b.x),randf(a.y,b.y),randf(a.z,b.z)}; }
 
     inline double ray   ( const Vec3d& ray0, const Vec3d& hRay, Vec3d& hitPos, Vec3d& normal ) const { return rayBox( ray0, hRay, a, b, hitPos, normal ); }
     inline double rayRot( Vec3d ray0, Vec3d hRay, const Mat3d& rot, Vec3d& hitPos, Vec3d& normal )const {

@@ -213,9 +213,9 @@ inline double evalTorq(Vec3d& ha,Vec3d& hb,Vec3d& hab,   Vec3d& fa, Vec3d& fb, V
 
 
 void doChecks(){
-    Vec3d ha      =(Vec3d){1.0, 1.0,-0.2};
-    Vec3d hb      =(Vec3d){1.0,-1.0,+0.3};
-    Vec3d hab     =(Vec3d){0.1, 0.2, 1.0};
+    Vec3d ha      =Vec3d{1.0, 1.0,-0.2};
+    Vec3d hb      =Vec3d{1.0,-1.0,+0.3};
+    Vec3d hab     =Vec3d{0.1, 0.2, 1.0};
     //ha.normalize();
     //hb.normalize();
     //hab.normalize();
@@ -517,9 +517,9 @@ int TestAppMMFFmini::makeMoleculeInlineBuilder( bool bPBC ){
 
     builder.toMMFFmini( ff, &params );
 
-    builder.lvec.a = (Vec3d){  5.0,0.0,0.0 };
-    builder.lvec.b = (Vec3d){  0.0,5.0,0.0 };
-    builder.lvec.c = (Vec3d){  0.0,0.0,5.0 };
+    builder.lvec.a = Vec3d{  5.0,0.0,0.0 };
+    builder.lvec.b = Vec3d{  0.0,5.0,0.0 };
+    builder.lvec.c = Vec3d{  0.0,0.0,5.0 };
     if(bPBC){    // --- Periodic Boundary Conditions
         ff.initPBC();                 // as far as good, pbc-shifts are curenlty zero, so no change
         ff.pbcShifts[1] = builder.lvec.a*-1.; // make bond 3 from nighboring cell
@@ -909,7 +909,7 @@ void TestAppMMFFmini::draw(){
             float d = 0.05;
             for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
 
-            double f2; opt.move_MD( 0.1, 0.005 );
+            double f2=1.0; opt.move_MD( 0.1, 0.005 );
 
 
             //exit(0);
@@ -934,8 +934,8 @@ void TestAppMMFFmini::draw(){
     if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( (Vec3d){0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
 
     if(builder.bPBC){
         //printf( "draw PBC \n" );

@@ -159,13 +159,10 @@ void ScreenSDL2OGL::eventHandling( const SDL_Event& event ){
             } break;
         case SDL_WINDOWEVENT:
             switch (event.window.event) {
-                case SDL_WINDOWEVENT_CLOSE:
-                    //SDL_Log("Window %d closed", event->window.windowID);
+                case SDL_WINDOWEVENT_CLOSE:{
                     printf( "window[%i] SDL_WINDOWEVENT_CLOSE \n", id );
                     delete this;
-                    printf( "window[%i] delete this done \n", id );
-                    return;
-                    break;
+				} break;
             } break;
         //case SDL_QUIT: quit(); break;
     };

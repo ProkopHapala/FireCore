@@ -518,9 +518,9 @@ int TestAppDirectionStiffness::makeMoleculeInlineBuilder( bool bPBC ){
 
     builder.toMMFFmini( ff, &params );
 
-    builder.lvec.a = (Vec3d){  5.0,0.0,0.0 };
-    builder.lvec.b = (Vec3d){  0.0,5.0,0.0 };
-    builder.lvec.c = (Vec3d){  0.0,0.0,5.0 };
+    builder.lvec.a = Vec3d{  5.0,0.0,0.0 };
+    builder.lvec.b = Vec3d{  0.0,5.0,0.0 };
+    builder.lvec.c = Vec3d{  0.0,0.0,5.0 };
     if(bPBC){    // --- Periodic Boundary Conditions
         ff.initPBC();                 // as far as good, pbc-shifts are curenlty zero, so no change
         ff.pbcShifts[1] = builder.lvec.a*-1.; // make bond 3 from nighboring cell

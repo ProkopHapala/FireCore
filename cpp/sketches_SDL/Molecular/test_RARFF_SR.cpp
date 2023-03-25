@@ -82,7 +82,7 @@ void testEF( RARFF_SR& ff, double rmin, double rmax, int n, double* Eout=0, doub
     //printf( "DEBUG testEF 2 \n" );
     for(int i=0; i<n; i++){
         double x = rmin+dx*i;
-        ff.apos[i2]=(Vec3d){ x, 0.0,0.0 };
+        ff.apos[i2]=Vec3d{ x, 0.0,0.0 };
         pairType.combine( *ff.types[i1], *ff.types[i2] );
         ff.aforce[i2] = Vec3dZero;
         //printf( "testEF[%i] x %g -> ", i, x );
@@ -380,7 +380,7 @@ void TestAppRARFF::generate_atoms( int natom, double xspan, double step  ){
     //Vec3d pmin={-5.,-5.,-1.0};
     //Vec3d pmin={-5.,-5.,-1.0};
     //printf("DEBUG 1 \n");
-    ff.map.setup_Buckets3D( (Vec3d){-xspan,-xspan,-step}, (Vec3d){xspan,xspan,step}, step );
+    ff.map.setup_Buckets3D( Vec3d{-xspan,-xspan,-step}, Vec3d{xspan,xspan,step}, step );
     //printf("DEBUG 2 \n");
     int nat=natom;
     //int nat=2;

@@ -35,8 +35,8 @@ struct BodyQ{
 // ========================
 
 class KinematicBody{ public:
-	Vec3d lpos = (Vec3d){0.0,0.0,0.0};
-	Mat3d lrot = (Mat3d){ 1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0};
+	Vec3d lpos = Vec3d{0.0,0.0,0.0};
+	Mat3d lrot = Mat3d{ 1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0};
 	inline void globalPosT( const Vec3d& pos0, const Mat3d& rot0, Vec3d& gpos ){ rot0.dot_to     ( lpos, gpos ); gpos.add( pos0 ); }
 	inline void globalRot (                    const Mat3d& rot0, Mat3d& grot ){ grot.set_mmul   ( lrot, rot0 );                   }
     inline void globalPos ( const Vec3d& pos0, const Mat3d& rot0, Vec3d& gpos ){ rot0.dot_to_T   ( lpos, gpos ); gpos.add( pos0 ); }
@@ -73,10 +73,10 @@ class PointBody{ public:
 	// auxiliary parameters
 	double	invMass = 1.0;
 	// State variables
-	Vec3d pos = (Vec3d){0.0,0.0,0.0};
-	Vec3d vel = (Vec3d){0.0,0.0,0.0};
+	Vec3d pos = Vec3d{0.0,0.0,0.0};
+	Vec3d vel = Vec3d{0.0,0.0,0.0};
 	// auxiliary variables
-	Vec3d force = (Vec3d){0.0,0.0,0.0};
+	Vec3d force = Vec3d{0.0,0.0,0.0};
 
 	// ==== function declarations
 
