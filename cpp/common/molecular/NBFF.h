@@ -104,17 +104,22 @@ class NBsystem{ public: // Can be Child of AtomicSystem
         return E;
     }
 
-    double evalLJQs_ng4( const int* neighs, double Rdamp=1.0 ){
+    double evalLJQs_ng4( const Quat4i* neighs, double Rdamp=1.0 ){
         double R2damp = Rdamp*Rdamp;
         const int N=n;
         double E=0;
+        //printf( "NBsystem::evalLJQs_ng4() neighs=%li \n", neighs );
         for(int i=0; i<N; i++){
             Vec3d fi = Vec3dZero;
             Vec3d pi = ps[i];
             const Vec3d& REQi = REQs[i];
-            const int* ngs = neighs+i*4;
+            //const int*   ngs = neighs+i*4;
+            const Quat4i& ngs  = neighs[i];
+            //printf( "NBsystem::evalLJQs_ng4()[%i] ngs(%i,%i,%i,%i) \n", i, ngs.x,ngs.y,ngs.z,ngs.w );
             for(int j=i+1; j<N; j++){    // atom-atom (no self interaction, no double-counting)
-                if( (ngs[0]==j)||(ngs[1]==j)||(ngs[2]==j)||(ngs[3]==j) ) continue;
+                //printf( "NBsystem::evalLJQs_ng4()[%i,%j] neighs=%li \n", neighs );
+                //if( (ngs[0]==j)||(ngs[1]==j)||(ngs[2]==j)||(ngs[3]==j) ) continue;
+                if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) continue;
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
                 //E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );

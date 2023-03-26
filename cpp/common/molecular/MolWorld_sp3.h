@@ -273,7 +273,8 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &axSwap, &debug_rot );
     int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0, &debug_rot );
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
-    builder.tryAddConfsToAtoms( 0, -1, 1 );    
+    builder.addCappingTypesByIz(1);
+    builder.tryAddConfsToAtoms( 0, -1 );    
     builder.sortConfAtomsFirst();              
     builder.tryAddBondsToConfs( );      
     builder.finishFragment();       
@@ -292,7 +293,9 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
     int ifrag = builder.frags.size()-1;
     if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
-    builder.tryAddConfsToAtoms( 0, -1, 1 );
+    builder.addCappingTypesByIz(1);
+    for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
+    builder.tryAddConfsToAtoms( 0, -1 );
     builder.cleanPis();
     if(verbosity>2)builder.printAtomConfs(false);
     //builder.export_atypes(atypes);
@@ -449,7 +452,7 @@ virtual void init( bool bGrid ){
         if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
         //if(lvs_name     )printf("lvs_name    (%s)\n", lvs_name );
         //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
-        printf("bMMFF %i bRigid %i \n", bMMFF, bRigid );
+        printf( "MolWorld_sp3::init() bMMFF %i bRigid %i \n", bMMFF, bRigid );
         //for(int i=0; i<10; i++){ float x = -1.0+i*0.2; printf( "x %g ix %i wx %g \n", x, (int)x, x+1-(int)(x+1.5) ); }; exit(0);
     }
     if(surf_name )loadSurf( surf_name, bGrid, idebug>0 );
@@ -558,6 +561,7 @@ virtual void init( bool bGrid ){
         }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
+    printf( "MolWorld_sp3::init() ffl.aneighs=%li ffl.aneighCell-%li \n", ffl.aneighs, ffl.aneighCell );
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
@@ -609,8 +613,13 @@ double eval( ){
         
     }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){
-        E +=           nbmol.evalLJQs_ng4( (int*)ffl.aneighs );           // atoms in cell ignoring bonds
-        //if  (bPBC){ E+=nbmol.evalLJQs_PBC( ff.lvec, {1,1,0} ); }   // atoms outside cell
+        if(bMMFF){    
+            if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ff.lvec, {1,1,0} ); }   // atoms outside cell
+            else      { E += nbmol.evalLJQs_ng4    ( ffl.aneighs );                                   }   // atoms in cell ignoring bondede neighbors       
+        }else{
+            if  (bPBC){ E += nbmol.evalLJQs_PBC    ( ff.lvec, {1,1,0} ); }   // atoms outside cell
+            else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
+        }
     }
     if(bConstrains)constrs.apply( nbmol.ps, nbmol.fs );
     /*

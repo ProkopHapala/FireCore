@@ -45,7 +45,7 @@ int idebug    = 0;
 
 // ============ Global Variables
 
-MolWorld_sp3 W;
+MolWorld_sp3_simple W;
 
 //============================
 

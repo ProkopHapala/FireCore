@@ -22,5 +22,10 @@ LD_LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:$LD_LIBRARY_PATH
 
 #/usr/lib/gcc/x86_64-linux-gnu/11/libgfortran.so
 
+# ------- asan (Memory Sanitizer)
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
+
 echo "#=========== RUN"
 python3 run.py

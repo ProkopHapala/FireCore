@@ -38,7 +38,7 @@ static MMFFparams* params_glob;
 
 #include "datatypes_utils.h"
 
-class MolWorld_sp3{ public:
+class MolWorld_sp3_simple{ public:
     //const char* data_dir     = "common_resources";
     const char* xyz_name     = "input";
     const char* substitute_name = 0;    int isubs;
@@ -126,7 +126,8 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
     int ifrag = builder.frags.size()-1;
     if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
-    builder.tryAddConfsToAtoms( 0, -1, 1 );
+    builder.addCappingTypesByIz(1);
+    builder.tryAddConfsToAtoms( 0, -1 );
     builder.cleanPis();
     if(verbosity>2)builder.printAtomConfs(false);
     //builder.export_atypes(atypes);
@@ -204,7 +205,7 @@ void makeMMFF(){
         builder.assignAllSp3Types();
         //builder.printAtomConfs(false);
         //std::vector<int> aneighs( builder.atoms.size() );
-        int* aneighs;
+        int* aneighs=0;
         builder.makeNeighs( aneighs, 4 );
         builder.assignSpecialTypesLoop( 10, aneighs );
         builder.printAtomConfs(false);
@@ -240,7 +241,10 @@ void makeFFs(){
     makeMMFF();
     initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
     ffl.bSubtractAngleNonBond=true;
-    //ff.REQs=nbmol.REQs;
+    if(ffl.bSubtractAngleNonBond){
+        ffl.REQs = nbmol.REQs;
+        //ff.REQs=nbmol.REQs;
+    }
     bool bChargeToEpair=true;
     //bool bChargeToEpair=false;                     
     if(bChargeToEpair){
@@ -306,8 +310,8 @@ double eval(){
         E += ffl.eval();  
     }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){
-        E +=           nbmol.evalLJQs_ng4( (int*)ffl.aneighs );           // atoms in cell ignoring bonds
-        if  (bPBC){ E+=nbmol.evalLJQs_PBC( ffl.lvec, {1,1,0} ); }   // atoms outside cell
+        if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, {1,1,0} ); }
+        else      { E += nbmol.evalLJQs_ng4    ( ffl.aneighs );                                    }
     }
     return E;
 }
@@ -410,7 +414,8 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     //int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0, &debug_rot );
     int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0 );
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
-    builder.tryAddConfsToAtoms( 0, -1, 1 );    
+    builder.addCappingTypesByIz(1);
+    builder.tryAddConfsToAtoms( 0, -1 );    
     builder.sortConfAtomsFirst();              
     builder.tryAddBondsToConfs( );      
     builder.finishFragment();       
