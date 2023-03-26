@@ -452,6 +452,7 @@ int TestAppDirectionStiffness::loadMoleculeMol( const char* fname, bool bAutoH, 
     }
 
     //builder.sortAtomsOfBonds();
+    builder.addCappingTypesByIz(1);
     builder.tryAddConfsToAtoms(0, nh);
     builder.tryAddBondsToConfs();
     //for(int i=0; i<nh; i++){ builder.addConfToAtom(i); }

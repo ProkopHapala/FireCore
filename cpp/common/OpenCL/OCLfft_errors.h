@@ -4,6 +4,7 @@
 
 
 #include <cstdio>
+#define CL_TARGET_OPENCL_VERSION 200
 #include <CL/cl.h>
 //#include "libOCLfft.h"
 #include <clFFT.h>

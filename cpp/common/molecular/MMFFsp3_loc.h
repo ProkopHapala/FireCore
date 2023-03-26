@@ -290,6 +290,8 @@ double eval_atom(const int ia){
             fa    .sub( f1+f2  );
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
+                //printf( "non-bond[%i|%i=%i,%i,=%i] REQs=%li \n", ia, i,ing,j,jng, REQs  );
+                //printf( "non-bond[%i|%i=%i,%i,=%i] REQi(%g,%g,%g) REQj(%g,%g,%g) \n", ia, i,ing,j,jng, REQs[ing].x,REQs[ing].y,REQs[ing].z,   REQs[jng].x,REQs[jng].y,REQs[jng].z  );
                 Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
                 Vec3d dp; dp.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
                 //Vec3d dp = apos[jng] - apos[ing];                          // method with    reading from global buffer
@@ -516,6 +518,7 @@ void chargeToEpairs( Vec3d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
         int* ngs=aneighs[ia].array; 
         for( int j=0; j<4; j++ ){
             int ja = ngs[j]; 
+            if(ja<0) continue;
             if( atypes[ja]==etyp ){ REQs[ja].z+=cQ; REQs[ia].z-=cQ; };
         }
     }

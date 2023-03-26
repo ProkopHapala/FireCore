@@ -323,6 +323,8 @@ class Builder{  public:
     std::vector       <std::string>*     atomTypeNames = 0;
     std::unordered_map<std::string,int>* atomTypeDict  = 0;
 
+    std::unordered_set<int> capping_types;
+
     std::vector<Fragment>   frags;
 
 #ifdef Molecule_h
@@ -364,6 +366,9 @@ class Builder{  public:
 
     // =================== Functions =====================
 
+    int addCappingTypesByIz( int iZ ){
+        int n=0; for( int i=0; i<params->atypes.size(); i++ ){ if(params->atypes[i].iZ==iZ) capping_types.insert(i); n++; }; return n; 
+    }
 
     // =================== Geometry Functions =====================
 
@@ -521,11 +526,15 @@ class Builder{  public:
         confs.back().iatom=ia;
         return &confs.back();
     }
-    int tryAddConfsToAtoms( int i0=0, int imax=-1, int ignoreType=1 ){
+    int tryAddConfsToAtoms( int i0=0, int imax=-1 ){
         if(imax<0){ imax=atoms.size(); }
         int n=0;
         for(int ia=0;ia<imax;ia++){
-            if( ignoreType == atoms[ia].type) continue;
+            //if( ignoreType == atoms[ia].type) continue;
+            int t  = atoms[ia].type;
+            if( capping_types.contains( t ) ) continue;
+            //int iZ = params.atypes[t].iZ;
+            //if( capping_iZs  .contains( iZ ) ) continue;
             if( atoms[ia].iconf < 0 ){
                 addConfToAtom( ia, 0 );
                 n++;
@@ -823,6 +832,7 @@ class Builder{  public:
         const AtomConf& c = confs[ic];
         for(int i=0; i<4; i++){
             int ja = aneighs[i];
+            if(ja<0) continue;
             int jt = atoms[ja].type;
             for(int j=0; j<n; j++){
                 if( jt==its[j] ) bls[j]=true;
@@ -937,7 +947,7 @@ class Builder{  public:
             printf( "# --- assignSpecialTypesLoop[%i] \n", itr );
             int ni = assignSpecialTypes( aneighs ); 
             nnew+=ni; 
-            if( ni==0 )break; 
+            if( ni==0 ){ return nnew; } 
         }
         printf("ERROR: assignSpecialTypesLoop not converged in %i iterations\n", itr ); exit(0);
         return nnew;
@@ -2353,10 +2363,13 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
 
 void makeNeighs( int*& aneighs, int perAtom ){
     int na = atoms.size();
-    _allocIfNull( aneighs, na );
     int ntot= na*perAtom;
+    _allocIfNull( aneighs, ntot );
+    //printf( "MM::Builder::makeNeighs() ntot=%i  ^aneighs=%li \n", ntot, aneighs );
     for(int i=0;i<ntot; i++){ aneighs[i]=-1; }; // back neighbors
+    DEBUG
     for(int ia=0; ia<na; ia++ ){
+        //printf( "MM::Builder::makeNeighs()[%i] \n", ia );
         const Atom& A =  atoms[ia];
         if(A.iconf>=0){
             const AtomConf& conf = confs[A.iconf];
@@ -2413,7 +2426,9 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 // ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
                 // ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
                 // ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
+                //printf( "MM::Builder::toMMFFsp3_loc()[%i] conf.npi=%i \n", ia, conf.npi );
 
+                if( conf.npi>2 ){ printf("ERROR in MM:Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
                 double ang0 = ang0s[conf.npi];
                 ang0 *= 0.5;
                 ff.apars[ia].x = cos(ang0);    // ssC0  // cos(angle) for angles (sigma-siamg)
@@ -2513,7 +2528,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
                 // ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
                 // ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
                 // ff.apars[ia].w = 0.0; 
-
+                if( conf.npi>2 ){ printf("ERROR in MM:Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
                 double ang0 = ang0s[conf.npi];
                 ang0 *= 0.5;
                 ff.apars[ia].x = cos(ang0);    // ssCos0  // cos(angle) for angles (sigma-siamg)

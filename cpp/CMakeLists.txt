@@ -2,10 +2,11 @@ cmake_minimum_required ( VERSION 2.8 )
 
 project ( SimpleSimulationEngine )
 
-option(WITH_OPENCL "Build test programs" OFF)
-option(WITH_SDL    "Build test programs" OFF)
-option(RELEASE     "Build test programs" OFF)
-message("OPTIONS: WITH_SDL=${WITH_SDL} WITH_OPENCL=${WITH_OPENCL} RELEASE=${RELEASE}" )
+option(WITH_OPENCL "build with OpenCL GPU acceleration? (can accelare >100x some forcefields and grids  )" OFF)
+option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                                    OFF)
+option(RELEASE     "build optimized release (-O3 -Ofast) rather than debug? (-g -Og)"               OFF)
+option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and leaks?"              OFF)
+message("OPTIONS: WITH_SDL=${WITH_SDL} WITH_OPENCL=${WITH_OPENCL} RELEASE=${RELEASE} WITH_ASAN=${WITH_ASAN}" )
 
 # ==============================
 # ==== FLAGS
@@ -23,9 +24,13 @@ endif()
 # https://stackoverflow.com/questions/7724569/debug-vs-release-in-cmake
 message ( "CMAKE_BUILD_TYPE "   ${CMAKE_BUILD_TYPE} )
 if (  CMAKE_BUILD_TYPE MATCHES Debug )
-    #SET( AXULIARY_COMPILE_FLAGS "-Wall -g -Og")
-    #SET( AXULIARY_COMPILE_FLAGS "-g -Og")
-    SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer")
+    if ( WITH_ASAN )
+        SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer")
+        #SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer -static-libasan") # static-asan does not work see https://github.com/google/sanitizers/issues/796
+    else()
+        #SET( AXULIARY_COMPILE_FLAGS "-Wall -g -Og")
+        SET( AXULIARY_COMPILE_FLAGS "-g -Og")
+    endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
     message("DEBUG BUILD FFLAGS : " )
 else()
@@ -33,11 +38,11 @@ else()
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native")
-    message("RELEASE BUILD FFLAGS : " )
 endif()
 SET( IGNORE_WARRNING_FLAGS "-Wno-int-to-pointer-cast -Wno-switch -Wno-reorder -Wno-deprecated -Wno-maybe-uninitialized -Wno-char-subscripts -Wno-write-strings -Wno-format -Wno-parentheses -Wno-unused-but-set-variable  -Wno-narrowing -Wno-unused-result  -Wno-sign-compare -Wno-strict-aliasing -Wno-unused-variable -Wno-unused-value -Wno-comment -Wno-misleading-indentation " )
 SET( WARRNING_TO_ERROR     "-Werror=return-type -Werror=init-self -Werror=uninitialized -Werror=implicit-fallthrough -Werror=tautological-compare -Werror=delete-non-virtual-dtor")
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
+message("RELEASE BUILD FFLAGS : " )
 message ( ${CMAKE_CXX_FLAGS} )
 
 # ==============================

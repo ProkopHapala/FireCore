@@ -13,4 +13,11 @@ cd $wd
 
 #rm *.bin
 
+
+# ------- asan (Memory Sanitizer)
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
+
+
 python3 run.py

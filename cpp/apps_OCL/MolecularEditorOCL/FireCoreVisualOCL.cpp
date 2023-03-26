@@ -7,11 +7,6 @@ int idebug=0;
 #include <vector>
 #include <math.h>
 
-#include "OCLfft_errors.h"
-#include <CL/cl.h>
-#include <clFFT.h>
-#include "OCL.h"
-
 #include "testUtils.h"
 #include "IO_utils.h"
 

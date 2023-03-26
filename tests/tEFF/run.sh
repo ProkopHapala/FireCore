@@ -11,6 +11,11 @@ rm libeFF_lib.so
 make eFF_lib
 cd $wd
 
+# ------- asan (Memory Sanitizer)
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
+
 echo "#=========== RUN"
 python3 run_tests.py
 #python3 run_dynamics.py 
