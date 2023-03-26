@@ -13,6 +13,7 @@
 
 #include "datatypes.h"
 
+
 //=======================================================================
 //=======================================================================
 
@@ -249,6 +250,49 @@ class OCLsystem{ public:
         printf( "sizeof(OCLBuffer ) is %li bytes\n", sizeof(OCLBuffer) );
         //exit(0);
     }
+
+    void print_devices(){
+        int i, j;
+        char*           value;
+        size_t          valueSize;
+        cl_uint         platformCount;
+        cl_platform_id* platforms;
+        cl_uint         deviceCount;
+        cl_device_id*   devices;
+        cl_uint         maxComputeUnits;
+        // get all platforms
+        clGetPlatformIDs(0, NULL, &platformCount);
+        platforms = (cl_platform_id*) malloc(sizeof(cl_platform_id) * platformCount);
+        clGetPlatformIDs(platformCount, platforms, NULL);
+        printf( "OpenCL platform count %i \n", platformCount );
+        const int nstrmax=1024;
+        char     str[nstrmax];
+        cl_uint  ui;
+        cl_ulong ul;
+        for (i = 0; i < platformCount; i++) {
+            clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, 0, NULL, &deviceCount);
+            devices = (cl_device_id*) malloc(sizeof(cl_device_id) * deviceCount);
+            clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, deviceCount, devices, NULL);
+            for (j = 0; j < deviceCount; j++) {
+                clGetDeviceInfo(devices[j], CL_DEVICE_NAME,                nstrmax,      str, NULL);   printf("DEVICE[%i,%i]: %s\n", i,j, str);
+                clGetDeviceInfo(devices[j], CL_DEVICE_VENDOR,              nstrmax,      str, NULL);   printf("\tVENDOR:         %s\n", str);
+                clGetDeviceInfo(devices[j], CL_DEVICE_VERSION,             nstrmax,      str, NULL);   printf("\tDEVICE_VERSION: %s\n", str);
+                clGetDeviceInfo(devices[j], CL_DRIVER_VERSION,             nstrmax,      str, NULL);   printf("\tDRIVER_VERSION: %s\n", str);
+                clGetDeviceInfo(devices[j], CL_DEVICE_OPENCL_C_VERSION,    nstrmax,      str, NULL);   printf("\tC_VERSION:      %s\n", str);
+                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_COMPUTE_UNITS,   sizeof(uint),  &ui, NULL);  printf("\tMAX_COMPUTE_UNITS:   %d\n", ui  );
+                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(uint),  &ui, NULL);  printf("\tMAX_CLOCK_FREQUENCY: %d\n", ui  );
+                clGetDeviceInfo(devices[j], CL_DEVICE_LOCAL_MEM_SIZE,      sizeof(ulong), &ul, NULL);  printf("\tLOCAL_MEM_SIZE:      %lu\n", ul );
+                clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_SIZE,     sizeof(ulong), &ul, NULL);  printf("\tGLOBAL_MEM_SIZE:     %lu\n", ul );
+                clGetDeviceInfo(devices[j], CL_DEVICE_EXTENSIONS,          nstrmax,      str, NULL);   printf("\tEXTENSIONS:       %s\n", str);
+                printf("\n");
+            }
+            free(devices);
+        }
+        free(platforms);
+        //return 0;
+    }
+
+
 
     int copy( int iBufFrom, int iBufTo, int nbytes=-1, int src_offset=0, int dst_offset=0){
        if(nbytes<0){ nbytes=buffers[iBufFrom].byteSize(); int nbytes_=buffers[iBufTo].byteSize(); if(nbytes_<nbytes)nbytes=nbytes_;}

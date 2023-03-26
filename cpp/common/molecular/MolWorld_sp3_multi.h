@@ -3,7 +3,7 @@
 #define MolWorld_sp3_ocl_h
 
 #include "MolWorld_sp3.h"
-#include "OCL_DFT.h"
+//#include "OCL_DFT.h"
 //#include "OCL_PP.h"
 #include "OCL_MM.h"
 #include "datatypes_utils.h"
@@ -177,6 +177,7 @@ void download( bool bForces=0  ){
 
 virtual void init( bool bGrid ) override {
     printf("# ========== MolWorld_sp3_multi::init() START\n");
+    ocl.print_devices();
     ocl.init();
     ocl.makeKrenels_MM("common_resources/cl" );
     MolWorld_sp3::init(bGrid);

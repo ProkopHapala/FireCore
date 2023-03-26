@@ -1,7 +1,12 @@
 #ifndef  OCL_MM_h
 #define  OCL_MM_h
 
-#include "OCL_DFT.h"
+//#include "OCL_DFT.h"
+#include "OCL.h"
+
+void v2f4( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
+//void v2f4( const Vec3d& v, cl_float4& f4 ){ f4.s[0]=(cl_float)v.x; f4.s[1]=(cl_float)v.y; f4.s[2]=(cl_float)v.z; };
+cl_float4 cl_f4( const Vec3d& v ){ return (cl_float4){(cl_float)v.x,(cl_float)v.y,(cl_float)v.z,0.f}; };
 
 // see https://stackoverflow.com/questions/33119233/opencl-using-struct-as-kernel-argument
 typedef struct __attribute__ ((packed)) cl_Mat3{
@@ -43,6 +48,30 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_lvecs=-1, ibuff_ilvecs=-1; 
     int ibuff_constr=-1;
 
+    // ------- Grid
+    //size_t Ns[4]; // = {N0, N1, N2};
+    //size_t Ntot;
+    int4    grid_n;
+    float4 grid_p0{0.f,0.f,0.f,0.f};
+    cl_Mat3 cl_dGrid;
+    cl_Mat3 cl_diGrid;
+
+    int ibuff_atoms_surf=-1;
+    int ibuff_REQs_surf =-1;
+    int itex_FE_Paul=-1;
+    int itex_FE_Lond=-1;
+    int itex_FE_Coul=-1;
+
+    // ====================== Functions
+
+    //void setGridShape( const Mat3d& dCell ){
+    void setGridShape( GridShape grid ){
+        grid_n={grid.n.x,grid.n.y,grid.n.z,0};
+        v2f4(grid.pos0,grid_p0);
+        Mat3_to_cl( grid.dCell,  cl_dGrid  );
+        Mat3_to_cl( grid.diCell, cl_diGrid );
+    }
+
     void makeKrenels_MM( const char*  cl_src_dir ){
         printf( "makeKrenels_MM() \n" );
         char srcpath[1024];
@@ -53,6 +82,8 @@ class OCL_MM: public OCLsystem { public:
         newTask( "cleanForceMMFFf4"       ,program_relax, 2);
         newTask( "updateAtomsMMFFf4"      ,program_relax, 2);
         newTask( "printOnGPU"             ,program_relax, 2);
+        newTask( "getNonBond_GridFF"      ,program_relax, 2);
+        newTask( "make_GridFF"            ,program_relax, 2);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }
@@ -138,6 +169,60 @@ class OCL_MM: public OCLsystem { public:
         */
     }
 
+    OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
+        printf("setup_getNonBond_GridFF(na=%i,nnode=%i) \n", na, nNode);
+        if(task==0) task = getTask("getNonBond_GridFF");
+        task->global.x = na;
+        task->global.y = nSystems;
+        useKernel( task->ikernel );
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
+        //nDOFs.x=bPBC; 
+        Rdamp = Rdamp_;
+        nPBC.x = nPBC_.x;
+        nPBC.y = nPBC_.y;
+        nPBC.z = nPBC_.z;
+        // ------- Maybe We do-not need to do this every frame ?
+        err |= _useArg   ( nDOFs );               // 1
+        // Dynamical
+        err |= useArgBuff( ibuff_atoms     ); // 2
+        err |= useArgBuff( ibuff_aforces   ); // 3
+        // parameters
+        err |= useArgBuff( ibuff_REQs      );  // 4
+        err |= useArgBuff( ibuff_neighs    );  // 5
+        err |= useArgBuff( ibuff_neighCell );  // 6
+        err |= useArgBuff( ibuff_lvecs     );  // 7
+        //err |= _useArg( cl_lvec          );  // 7
+        err |= _useArg( nPBC               );  // 8
+        err |= _useArg( Rdamp              );  // 9
+        err |= useArgBuff( itex_FE_Paul    );  // 10
+        err |= useArgBuff( itex_FE_Lond    );  // 11
+        err |= useArgBuff( itex_FE_Coul    );  // 12    
+        err |= _useArg( grid_p0            );  // 13
+        err |= _useArg( cl_diGrid          );  // 14
+        OCL_checkError(err, "setup_getNonBond_GridFF");
+        return task;
+        /*
+            const int4 ns,                  // 1
+            // Dynamical
+            __global float4*  atoms,        // 2
+            __global float4*  forces,       // 3
+            // Parameters
+            __global float4*  REQKs,        // 4
+            __global int4*    neighs,       // 5
+            __global int4*    neighCell,    // 6
+            __global cl_Mat3* lvecs,        // 7
+            const int4 nPBC,                // 8
+            const float Rdamp,              // 9
+            // GridFF
+            __read_only image3d_t  FE_Paul, // 10
+            __read_only image3d_t  FE_Lond, // 11
+            __read_only image3d_t  FE_Coul, // 12
+            const cl_Mat3  grid_invd,       // 13
+            const float4   grid_p0          // 14
+        */
+    }
+
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
         printf("setup_getMMFFf4(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFf4");
@@ -163,8 +248,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_Kpp    );     // 11
         err |= useArgBuff( ibuff_lvecs  );     // 12
         err |= useArgBuff( ibuff_ilvecs );     // 13
-        //err |= _useArg( cl_lvec    );          // 12
-        //err |= _useArg( cl_invLvec );          // 13
+        //err |= _useArg( cl_lvec    );        // 12
+        //err |= _useArg( cl_invLvec );        // 13
         OCL_checkError(err, "setup_getMMFFf4");
         return task;
         /*
@@ -264,6 +349,49 @@ class OCL_MM: public OCLsystem { public:
             const int4        n,           // 2
             __global float4*  aforce,      // 5
             __global float4*  fneigh       // 6
+        */
+    }
+
+    OCLtask* setup_makeGridFF( int na=0, float4* atoms=0, float4* coefs=0, OCLtask* task=0 ){
+        if(itex_FE_Paul<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(itex_FE_Paul<=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(itex_FE_Paul<=0) itex_FE_Paul = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Lond<=0) itex_FE_Lond = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Coul<=0) itex_FE_Coul = newBufferImage3D( "FFCoul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
+        if(task==0) OCLtask* task = getTask("make_GridFF");
+        task->global.x = grid_n.x*grid_n.y*grid_n.z;
+        //task->local.x  = 32;
+        //task->roundSizes();
+        //task->global.x = roundUpSize(Ntot,task->local.x);
+        //task->global.y = Ns[1];
+        //task->global.z = Ns[2];
+        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
+        if(atoms)upload( ibuff_atoms_surf, atoms, na );
+        if(coefs)upload( ibuff_REQs_surf , coefs, na );
+        useKernel( task->ikernel );
+        int4 ngrid{ grid_n.x, grid_n.y, grid_n.z,0 };
+        err |= useArg    ( nAtoms       );     // 1
+        err |= useArgBuff( ibuff_atoms_surf ); // 2
+        err |= useArgBuff( ibuff_REQs_surf  ); // 3
+        err |= useArgBuff( itex_FE_Paul );     // 4
+        err |= useArgBuff( itex_FE_Lond );     // 5
+        err |= useArgBuff( itex_FE_Coul );     // 6
+        err |= _useArg( ngrid     );           // 7        
+        err |= _useArg( grid_p0   );           // 8
+        err |= _useArg( cl_dGrid  );           // 9
+        OCL_checkError(err, "setup_cleanForceMMFFf4");
+        return task;
+        /*
+            const int nAtoms,                // 1
+            __global float4*  atoms,         // 2
+            __global float4*  REQKs,         // 3
+            __write_only image3d_t  FE_Paul, // 4
+            __write_only image3d_t  FE_Lond, // 5
+            __write_only image3d_t  FE_Coul, // 6
+            const int4 nGrid,                // 7
+            const cl_Mat3  grid_d,           // 13
+            const float4   grid_p0           // 14
         */
     }
 

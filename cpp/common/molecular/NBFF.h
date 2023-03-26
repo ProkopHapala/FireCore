@@ -211,8 +211,7 @@ class NBsystem{ public: // Can be Child of AtomicSystem
                 if(bPBC){
                     for(ipbc=0; ipbc<npbc; ipbc++){
                         if(bBonded){
-                            if(
-                                ((j==ng.x)&&(ipbc==ngC.x))
+                            if(   ((j==ng.x)&&(ipbc==ngC.x))
                                 ||((j==ng.y)&&(ipbc==ngC.y))
                                 ||((j==ng.z)&&(ipbc==ngC.z))
                                 ||((j==ng.w)&&(ipbc==ngC.w))
