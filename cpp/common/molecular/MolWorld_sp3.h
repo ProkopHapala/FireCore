@@ -172,7 +172,6 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 
-
 static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
     if(nPBC.x!=0){ nPBC.x=(int)Lmin/cell.a.norm(); }
     if(nPBC.y!=0){ nPBC.y=(int)Lmin/cell.b.norm(); }
@@ -180,6 +179,25 @@ static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
     printf("DEBUG autoNPBC()->(%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
 }
 
+void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Vec3d testREQ=Vec3d{ 1.487, 0.0006808, 0.0} ){
+    if(bE){
+        if(gridFF.FFPauli)  gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLondon, 4,3  );
+        if(gridFF.FFLondon) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec,   4,3  );
+        if(gridFF.FFelec )  gridFF.grid.saveXSF( "FFPaul_E.xsf", (float*)gridFF.FFPauli,  4,3  );
+    }
+    if(bFz){
+        if(gridFF.FFPauli)  gridFF.grid.saveXSF( "FFLond_z.xsf", (float*)gridFF.FFLondon, 4,2  );
+        if(gridFF.FFLondon) gridFF.grid.saveXSF( "FFelec_z.xsf", (float*)gridFF.FFelec,   4,2  );
+        if(gridFF.FFelec )  gridFF.grid.saveXSF( "FFPaul_z.xsf", (float*)gridFF.FFPauli,  4,2  );
+    }
+    // ---- Save combined forcefield
+    if(bComb){
+        Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot()];
+        gridFF.evalCombindGridFF ( testREQ, FFtot );
+        gridFF.grid.saveXSF( "ocl_E_H.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
+        delete [] FFtot;
+    }
+}
 
 virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
     if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
@@ -205,7 +223,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         //nPBC = (Vec3i){1,1,0};
         //nPBC = (Vec3i){10,10,0};
         bSaveDebugXSFs=true;
-        gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs, true );
+        gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, true );
+        if(bSaveDebugXSFs)saveGridXsfDebug();
         bGridFF   =true; 
         //bSurfAtoms=false;
     }
