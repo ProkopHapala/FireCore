@@ -429,7 +429,7 @@ virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGr
 
 void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     int err=0;
-    printf( "surf2ocl() na(%i) = ncell(%i) * natom(%i)\n", gridFF.natoms, nPBC );
+    printf( "surf2ocl() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );
     long T0=getCPUticks();
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
     Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
@@ -437,20 +437,20 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     int ii=0;
     pack    ( gridFF.natoms, gridFF.apos,  atoms_surf );
     pack    ( gridFF.natoms, gridFF.aREQs, REQs_surf  );
-    printf( ">>time(surf_to_GPU) %g \n", (getCPUticks()-T0)*tick2second );
     long T1=getCPUticks();
-    ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms, (float4*)REQs, true );
+    ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
     printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
     delete [] atoms_surf;
     delete [] REQs_surf;
+    bSaveDebug=true;
     if(bSaveDebug){
         gridFF.allocateFFs();
         ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli  );  
         ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
         ocl.download( ocl.itex_FE_Coul, gridFF.FFelec   );
         err =  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
-        printf( ">>time(ocl.surf2ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
+        printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
         saveGridXsfDebug();
     }
     ocl.buffers[ocl.ibuff_atoms_surf].release();

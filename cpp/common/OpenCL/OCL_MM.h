@@ -340,32 +340,38 @@ class OCL_MM: public OCLsystem { public:
         Mat3_to_cl( grid.cell   , cl_grid_lvec );
     }
 
-    OCLtask* makeGridFF( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* coefs=0, bool bRun=true, OCLtask* task=0 ){
+    OCLtask* makeGridFF( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, bool bRun=true, OCLtask* task=0 ){
         setGridShape( grid );
         v2i4( nPBC_, nPBC );
         if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        if(itex_FE_Paul<=0) itex_FE_Paul     = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
-        if(itex_FE_Lond<=0) itex_FE_Lond     = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
-        if(itex_FE_Coul<=0) itex_FE_Coul     = newBufferImage3D( "FFCoul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Paul<=0) itex_FE_Paul         = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Lond<=0) itex_FE_Lond         = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Coul<=0) itex_FE_Coul         = newBufferImage3D( "FFCoul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        err |= finishRaw();       OCL_checkError(err, "makeGridFF().imgAlloc" );
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
-        if(task==0) OCLtask* task = getTask("make_GridFF");
+        if(task==0) task = getTask("make_GridFF");
+        DEBUG
         task->global.x = grid_n.x*grid_n.y*grid_n.z;
-        if(atoms)upload( ibuff_atoms_surf, atoms, na );
-        if(coefs)upload( ibuff_REQs_surf , coefs, na );
+        DEBUG
+        printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
+        if(atoms){ err = upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); }
+        if(REQs ){ err = upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "makeGridFF().upload(REQs )" ); }
+        DEBUG
         useKernel( task->ikernel );
-        int4 ngrid{ grid_n.x, grid_n.y, grid_n.z,0 };
+        DEBUG
         err |= useArg    ( nAtoms           ); // 1
         err |= useArgBuff( ibuff_atoms_surf ); // 2
         err |= useArgBuff( ibuff_REQs_surf  ); // 3
         err |= useArgBuff( itex_FE_Paul );     // 4
         err |= useArgBuff( itex_FE_Lond );     // 5
         err |= useArgBuff( itex_FE_Coul );     // 6
-        err |= _useArg( nPBC        );         // 7     
-        err |= _useArg( ngrid        );        // 8      
-        err |= _useArg( grid_p0      );        // 9
-        err |= _useArg( cl_grid_lvec );        // 10
+        err |= _useArg( nPBC            );     // 7     
+        err |= _useArg( grid_n          );     // 8      
+        err |= _useArg( cl_grid_lvec    );     // 9
+        err |= _useArg( grid_p0         );     // 10
         OCL_checkError(err, "makeGridFF().setup");
+        DEBUG
         if(bRun){
             err |= task->enque_raw(); OCL_checkError(err, "makeGridFF().enque"  );
             err |= finishRaw();       OCL_checkError(err, "makeGridFF().finish" );
@@ -390,7 +396,7 @@ class OCL_MM: public OCLsystem { public:
         if(ibuff_dipole_ps<=0) ibuff_dipole_ps = newBuffer( "dipole_ps", n, sizeof(float4), 0, CL_MEM_READ_ONLY );
         if(ibuff_dipoles  <=0) ibuff_dipoles   = newBuffer( "dipoles",   n, sizeof(float4), 0, CL_MEM_READ_ONLY );        
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
-        if(task==0) OCLtask* task = getTask("addDipoleField");
+        if(task==0) task = getTask("addDipoleField");
         task->global.x = grid_n.x*grid_n.y*grid_n.z;
         if(dipole_ps)upload( ibuff_dipole_ps, dipole_ps, n );
         if(dipoles  )upload( ibuff_dipoles  , dipoles  , n );
