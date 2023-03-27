@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import time
 
 sys.path.append("../../")
 from pyBall import atomicUtils as au
@@ -11,7 +12,9 @@ from pyBall import MMFF as mmff
 # =========== Setting
 
 nmaxiter = 10000
-xyz_name = "butandiol-2"
+#xyz_name = "butandiol-2"
+xyz_name = "propandiol"
+
 
 #ialg  = 2
 ialg  = 3
@@ -31,12 +34,15 @@ apos_bak = mmff.DOFs.copy()
 damp_maxs = np.linspace( 0.05,0.3,50 )
 ns = np.zeros( len(damp_maxs) )
 
+T0 = time.time_ns()
 for i,damp_max in enumerate(damp_maxs):
+    #mmff.setTrjName("trj_%03i.xyz" %i ,100)
     mmff.DOFs [:,:] = apos_bak[:,:]
     mmff.vDOFs[:,:] = 0
     #mmff.set_opt( dt_max=0.1, dt_min=0.02, damp_max=0.2, finc=1.1, fdec=0.5, falpha=0.8, minLastNeg=5, cvf_min=-0.1, cvf_max=+0.1 )
     mmff.set_opt( damp_max=damp_max )
     ns[i] = mmff.run(nmaxiter, ialg=ialg )
+T=time.time_ns()-T0; print(  "Time ", T*1.e-9, "[s]" )
 
 plt.plot( damp_maxs, ns, '.-' )
 plt.show()

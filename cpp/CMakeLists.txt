@@ -6,7 +6,8 @@ option(WITH_OPENCL "build with OpenCL GPU acceleration? (can accelare >100x some
 option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                                    OFF)
 option(RELEASE     "build optimized release (-O3 -Ofast) rather than debug? (-g -Og)"               OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and leaks?"              OFF)
-message("OPTIONS: WITH_SDL=${WITH_SDL} WITH_OPENCL=${WITH_OPENCL} RELEASE=${RELEASE} WITH_ASAN=${WITH_ASAN}" )
+option(WITH_OMP    "use OpenMP paralelization"                                                      OFF)
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_OPENCL=${WITH_OPENCL} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DWITH_OMP=${WITH_OMP}" )
 
 # ==============================
 # ==== FLAGS
@@ -39,6 +40,14 @@ else()
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native")
 endif()
+if ( WITH_OMP )
+    find_package(OpenMP)
+    #if(OpenMP_CXX_FOUND)
+    #    target_link_libraries(MyTarget PUBLIC OpenMP::OpenMP_CXX)
+    #endif()
+    SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fopenmp" )
+endif()
+
 SET( IGNORE_WARRNING_FLAGS "-Wno-int-to-pointer-cast -Wno-switch -Wno-reorder -Wno-deprecated -Wno-maybe-uninitialized -Wno-char-subscripts -Wno-write-strings -Wno-format -Wno-parentheses -Wno-unused-but-set-variable  -Wno-narrowing -Wno-unused-result  -Wno-sign-compare -Wno-strict-aliasing -Wno-unused-variable -Wno-unused-value -Wno-comment -Wno-misleading-indentation " )
 SET( WARRNING_TO_ERROR     "-Werror=return-type -Werror=init-self -Werror=uninitialized -Werror=implicit-fallthrough -Werror=tautological-compare -Werror=delete-non-virtual-dtor")
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
