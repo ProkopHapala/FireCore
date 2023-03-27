@@ -57,23 +57,17 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     printf( ">>time(surf_to_GPU) %g \n", (getCPUticks()-T0)*tick2second );
     long T1=getCPUticks();
     ocl.makeGridFF( n, (float4*)atoms, (float4*)coefs );
+    err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.finish");
     printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
-    ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli );  
-    ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
-    ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );
-    printf( ">>time(ocl.makeGridFF(); ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
     delete [] atoms;
     delete [] coefs;
     if(bSaveDebug){
-        gridFF.grid.saveXSF( "ocl_E_Paul.xsf", (float*)gridFF.FFPauli,  4, 3 );
-        gridFF.grid.saveXSF( "ocl_E_Lond.xsf", (float*)gridFF.FFLondon, 4, 3 );
-        gridFF.grid.saveXSF( "ocl_E_Coul.xsf", (float*)gridFF.FFelec,   4, 3 );
-        // ---- Save combined forcefield
-        Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot() ];
-        Vec3d testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
-        gridFF.evalCombindGridFF ( testREQ, FFtot );
-        gridFF.grid.saveXSF( "ocl_E_H.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
-        delete [] FFtot;
+        ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli );  
+        ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
+        ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );
+        err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
+        printf( ">>time(ocl.makeGridFF(); ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
+        saveGridXsfDebug();
     }
     ocl.buffers[ocl.ibuff_atoms].release();
     ocl.buffers[ocl.ibuff_coefs].release();
@@ -597,38 +591,39 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     printf( "MolWorld_sp3_ocl::initGridFF() \n");
     if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     sprintf(tmpstr, "%s.lvs", name );
-    if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
-    if( !gridFF.bCellSet ){
-        bGridFF=false; 
-        printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
-        return;
+    // if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
+    // if( !gridFF.bCellSet ){
+    //     bGridFF=false; 
+    //     printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
+    //     return;
+    // }
+    gridFF.grid.center_cell( cel0 );
+    bGridFF=true;
+    gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
+    if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+    gridFF.grid.pos0.z=z0;
+    if(verbosity>1)gridFF.grid.printCell();
+    gridFF.allocateFFs();
+    //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
+    //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
+    if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }
+    
+    long T0 = getCPUticks();
+    {// OpenCL-accelerated   GridFF initialization
+        gridFF.grid.printCell();
+        ocl.setNs(3, gridFF.grid.n.array );
+        v2f4( gridFF.grid.pos0,ocl.pos0); 
+        ocl.setGridShape( gridFF.grid.dCell );
+        //init_ocl();
+        surf2ocl( nPBC );
+
+        if(bSaveDebugXSFs)saveGridXsfDebug();
+
+        //surf2ocl( nPBC, false );
     }
-    if(bGrid){
-        gridFF.grid.center_cell( cel0 );
-        bGridFF=true;
-        gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
-        if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
-        gridFF.grid.pos0.z=z0;
-        if(verbosity>1)gridFF.grid.printCell();
-        gridFF.allocateFFs();
-        //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
-        //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
-        if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }
-        
-        long T0 = getCPUticks();
-        {// OpenCL-accelerated   GridFF initialization
-            gridFF.grid.printCell();
-            ocl.setNs(3, gridFF.grid.n.array );
-            v2f4( gridFF.grid.pos0,ocl.pos0); 
-            ocl.setGridShape( gridFF.grid.dCell );
-            //init_ocl();
-            surf2ocl( nPBC, bSaveDebugXSFs );
-            //surf2ocl( nPBC, false );
-        }
-        printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
-        bGridFF   =true; 
-        //bSurfAtoms=false;
-    }
+    printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
+    bGridFF   =true; 
+    //bSurfAtoms=false;
 }
 
 virtual void swith_method()override{ 

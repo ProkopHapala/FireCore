@@ -336,9 +336,9 @@ class OCL_PP: public OCL_DFT { public:
         err |= _useArg( dA );              // 9
         err |= _useArg( dB );              // 10
         err |= _useArg( dC );              // 11
-        OCL_checkError(err, "makeGridFF_1");
-        err = task->enque_raw();
-        OCL_checkError(err, "makeGridFF_2");  
+        OCL_checkError(err, "makeGridFF.setup");
+        err |= task->enque_raw(); OCL_checkError(err, "makeGridFF.enque");
+        err |= finishRaw();       OCL_checkError(err, "makeGridFF.finish");
         /*
             const int nAtoms,                // 1
             __global float4*  atoms,         // 2

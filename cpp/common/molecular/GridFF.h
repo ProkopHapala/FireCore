@@ -29,6 +29,10 @@ class GridFF{ public:
     Vec3d  * aREQs  = NULL;
     //Vec3d  * aPLQ = NULL;
 
+    std::vector<Vec3d> apos_  ;
+    std::vector<Vec3d> aREQs_ ;
+    std::vector<int>   atypes_;
+
     Vec3d shift = Vec3dZero;
 
     double alpha  = -1.5;
@@ -285,104 +289,13 @@ class GridFF{ public:
         });
     }
 
-    /*
-    void evalFFline( int n, Vec3d p0, Vec3d p1, Vec3d PLQ, Vec3d * pos, Vec3d * fs ){
-        Vec3d dp = p1-p0; dp.mul(1.0/(n-1));
-        Vec3d  p = p0;
-        for(int i=0; i<n; i++){
-            if(fs ){
-                Vec3d fp =  Vec3dZero;
-                Vec3d fl =  Vec3dZero;
-                Vec3d fq =  Vec3dZero;
-                for(int ia=0; ia<natoms; ia++){
-                    Vec3d d = p-apos[ia];
-                    addAtomicForceExp( d, fp, aREQs[ia].x, aREQs[ia].y, 2*alpha );
-                    addAtomicForceExp( d, fl, aREQs[ia].x, aREQs[ia].y,   alpha );
-                    //addAtomicForceQ  ( d, fq, aLJq[ia].z );
-                    //printf( "%i %i %g  (%g,%g)   %g \n", i, ia, d.z, aLJq[ia].x, aLJq[ia].y, alpha  );
-                }
-                fs[i] = fp*PLQ.x + fl*PLQ.y + fq*PLQ.z;
-            }
-            if(pos)pos[i]=p;
-            //printf("%i %20.10f %20.10f %20.10f    %20.10e %20.10e %20.10e\n" , i, pos[i].x, pos[i].y, pos[i].z, fs[i].x, fs[i].y, fs[i].z );
-            p.add(dp);
-        }
-    }
-
-    void evalFFlineToFile( int n, Vec3d p0, Vec3d p1, Vec3d REQ, const char * fname ){
-        Vec3d * pos = new Vec3d[n];
-        Vec3d * fs  = new Vec3d[n];
-        evalFFline( n, p0, p1, REQ2PLQ(REQ, alpha), pos, fs );
-        FILE* pfile;
-        pfile = fopen(fname, "w" );
-        for(int i=0; i<n; i++){
-            fprintf( pfile, "%i %20.10f %20.10f %20.10f    %20.10e %20.10e %20.10e\n", i, pos[i].x, pos[i].y, pos[i].z, fs[i].x, fs[i].y, fs[i].z);
-        }
-        fclose(pfile);
-        delete [] pos; delete [] fs;
-    }
-    */
-
-/*
-void evalGridFFs_symetrized( Vec3i nPBC, double cmax=0.1 ){
-    printf( "DEBUG evalGridFFs_symetrized() \n" );
-    double cmin=1-cmax;
-    std::vector<Vec3d> apos_  ;(%g,%g)
-    std::vector<Vec3d> REQs_  ;
-    std::vector<int>   atypes_;
-    Mat3d M; grid.cell.invert_T_to( M );
-    const Vec3d& a = grid.cell.a;
-    const Vec3d& b = grid.cell.b;
-    for(int i=0; i<natoms; i++){
-        Vec3d p_;
-        int typ        = atypes[i];
-        Vec3d        Q = aREQs[i];
-        const Vec3d& p = apos[i];
-        M.dot_to( p,p_);
-        bool alo  = p_.a < cmax;
-        bool ahi  = p_.a > cmin;
-        bool blo  = p_.b < cmax;
-        bool bhi  = p_.b > cmin;
-        bool aa   = (alo||ahi);
-        bool bb   = (blo||ahi);
-        double w = 1./( (1+aa) * (1+bb) ); // number of replicas ?
-        Q.z*=w; // Q
-        Q.y*=w; // E0
-        apos_.push_back(p);  REQs_.push_back(Q);   atypes_.push_back(typ); 
-        if(aa){
-            Vec3d p_=p;
-            if     ( alo ){ p_.add(a); }
-            else          { p_.sub(a); };
-            apos_.push_back(p_); REQs_.push_back(Q);   atypes_.push_back(typ); 
-        }
-        if(bb){
-            Vec3d p_=p;
-            if     ( alo ){ p_.add(b); }
-            else          { p_.sub(b); };
-            apos_.push_back(p_); REQs_.push_back(Q);   atypes_.push_back(typ); 
-            if(aa){
-                if     ( alo ){ p_.add(a); }
-                else          { p_.sub(a); };
-                apos_.push_back(p_); REQs_.push_back(Q);  atypes_.push_back(typ); 
-            }
-        }
-    }
-    
-    printf( "na %i | %i %i %i \n", natoms, apos_.size(), REQs_.size(), atypes_.size() );
-    params_glob->saveXYZ( "symtrized.xyz", apos_.size() , &atypes_[0] , &apos_[0], "#", &REQs_[0] );
-
-    evalGridFFs( apos_.size(), &apos_[0], &REQs_[0], nPBC );
-
-}
-*/
-
-void evalGridFFs_symetrized( Vec3i nPBC, double d=0.1 ){
+void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Vec3d* aREQs, double d=0.1 ){
     printf( "DEBUG evalGridFFs_symetrized() \n" );
     double cmax =-0.5+d;
     double cmin = 0.5-d;
-    std::vector<Vec3d> apos_  ;
-    std::vector<Vec3d> REQs_  ;
-    std::vector<int>   atypes_;
+    apos_  .clear();
+    aREQs_ .clear();
+    atypes_.clear();
     Mat3d M; grid.cell.invert_T_to( M );
     const Vec3d& a = grid.cell.a;
     const Vec3d& b = grid.cell.b;
@@ -390,8 +303,8 @@ void evalGridFFs_symetrized( Vec3i nPBC, double d=0.1 ){
     for(int i=0; i<natoms; i++){
         Vec3d p_;
         int typ        = atypes[i];
-        Vec3d        Q = aREQs[i];
-        const Vec3d& p = apos[i];
+        Vec3d        Q = aREQs [i];
+        const Vec3d& p = apos  [i];
         M.dot_to( p,p_);
         bool alo  = p_.a < cmax;
         bool ahi  = p_.a > cmin;
@@ -404,33 +317,39 @@ void evalGridFFs_symetrized( Vec3i nPBC, double d=0.1 ){
         double w = 1./( (1+aa) * (1+bb) ); // number of replicas ?
         Q.z*=w; // Q
         Q.y*=w; // E0
-        apos_.push_back(p);  REQs_.push_back(Q);   atypes_.push_back(typ); 
+        apos_.push_back(p);  aREQs_.push_back(Q);   atypes_.push_back(typ); 
         if(aa){
             Vec3d p_=p;
             if     ( alo ){ p_.add(a); }
             else          { p_.sub(a); };
-            apos_.push_back(p_); REQs_.push_back(Q);   atypes_.push_back(typ); 
+            apos_.push_back(p_); aREQs_.push_back(Q);   atypes_.push_back(typ); 
         }
         if(bb){
             Vec3d p_=p;
             if     ( alo ){ p_.add(b); }
             else          { p_.sub(b); };
-            apos_.push_back(p_); REQs_.push_back(Q);   atypes_.push_back(typ); 
+            apos_.push_back(p_); aREQs_.push_back(Q);   atypes_.push_back(typ); 
             if(aa){
                 if     ( alo ){ p_.add(a); }
                 else          { p_.sub(a); };
-                apos_.push_back(p_); REQs_.push_back(Q);  atypes_.push_back(typ); 
+                apos_.push_back(p_); aREQs_.push_back(Q);  atypes_.push_back(typ); 
             }
         }
     }
+    bindSystem( atypes_.size(), &atypes_[0], &apos_[0], &aREQs_[0] );
+}
+
+
+void evalGridFFs_symetrized( Vec3i nPBC, double d=0.1 ){
+    setAtomsSymetrized( natoms, atypes, apos, aREQs, d );
     //printf( "na %i | %i %i %i \n", natoms, apos_.size(), REQs_.size(), atypes_.size() );
     //params_glob->saveXYZ( "symtrized.xyz", apos_.size() , &atypes_[0] , &apos_[0], "#", &REQs_[0] );
-    evalGridFFs( apos_.size(), &apos_[0], &REQs_[0], nPBC );
+    evalGridFFs( apos_.size(), &apos_[0], &aREQs_[0], nPBC );
 
 }
 
  #ifdef IO_utils_h
-    bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nPBC={1,1,0}, bool bSaveDebugXSFs=false, bool bSymetrized=false ){
+    bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nPBC={1,1,0}, bool bSymetrized=false ){
         //printf( "DEBUG GridFF::tryLoad() 0 \n" );
         //printf( "DEBUG GridFF::tryLoad() fname_Pauli >>%s<< fname_London >>%s<< fname_Coulomb >>%s<< \n", fname_Pauli, fname_London, fname_Coulomb );
         //printDir( "../" );
@@ -450,14 +369,6 @@ void evalGridFFs_symetrized( Vec3i nPBC, double d=0.1 ){
                 //evalGridFFs( natoms, apos, aREQs, nPBC );
             }else{
                 evalGridFFs( nPBC );
-            }
-            if(bSaveDebugXSFs){
-                if(FFPauli)  grid.saveXSF( "FFLond_E.xsf", (float*)FFLondon, 4,3  );
-                if(FFLondon) grid.saveXSF( "FFelec_E.xsf", (float*)FFelec,   4,3  );
-                if(FFelec )  grid.saveXSF( "FFPaul_E.xsf", (float*)FFPauli,  4,3  );
-                if(FFPauli)  grid.saveXSF( "FFLond_z.xsf", (float*)FFLondon, 4,2  );
-                if(FFLondon) grid.saveXSF( "FFelec_z.xsf", (float*)FFelec,   4,2  );
-                if(FFelec )  grid.saveXSF( "FFPaul_z.xsf", (float*)FFPauli,  4,2  );
             }
             if(FFPauli)  saveBin( fname_Pauli,    nbyte, (char*)FFPauli  );
             if(FFLondon) saveBin( fname_London,   nbyte, (char*)FFLondon );

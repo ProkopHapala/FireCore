@@ -251,7 +251,7 @@ class OCLsystem{ public:
         //exit(0);
     }
 
-    void print_devices(){
+    void print_devices( bool bDetails=false){
         int i, j;
         char*           value;
         size_t          valueSize;
@@ -269,21 +269,44 @@ class OCLsystem{ public:
         char     str[nstrmax];
         cl_uint  ui;
         cl_ulong ul;
+        size_t   sz;
+        size_t   szs[4];
         for (i = 0; i < platformCount; i++) {
             clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, 0, NULL, &deviceCount);
             devices = (cl_device_id*) malloc(sizeof(cl_device_id) * deviceCount);
             clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, deviceCount, devices, NULL);
             for (j = 0; j < deviceCount; j++) {
                 clGetDeviceInfo(devices[j], CL_DEVICE_NAME,                nstrmax,      str, NULL);   printf("DEVICE[%i,%i]: %s\n", i,j, str);
-                clGetDeviceInfo(devices[j], CL_DEVICE_VENDOR,              nstrmax,      str, NULL);   printf("\tVENDOR:         %s\n", str);
+                //clGetDeviceInfo(devices[j], CL_DEVICE_VENDOR,              nstrmax,      str, NULL);   printf("\tVENDOR:      %s\n", str);
+                printf("\t## VERSIONS: \n");
                 clGetDeviceInfo(devices[j], CL_DEVICE_VERSION,             nstrmax,      str, NULL);   printf("\tDEVICE_VERSION: %s\n", str);
                 clGetDeviceInfo(devices[j], CL_DRIVER_VERSION,             nstrmax,      str, NULL);   printf("\tDRIVER_VERSION: %s\n", str);
                 clGetDeviceInfo(devices[j], CL_DEVICE_OPENCL_C_VERSION,    nstrmax,      str, NULL);   printf("\tC_VERSION:      %s\n", str);
-                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_COMPUTE_UNITS,   sizeof(uint),  &ui, NULL);  printf("\tMAX_COMPUTE_UNITS:   %d\n", ui  );
-                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(uint),  &ui, NULL);  printf("\tMAX_CLOCK_FREQUENCY: %d\n", ui  );
-                clGetDeviceInfo(devices[j], CL_DEVICE_LOCAL_MEM_SIZE,      sizeof(ulong), &ul, NULL);  printf("\tLOCAL_MEM_SIZE:      %lu\n", ul );
-                clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_SIZE,     sizeof(ulong), &ul, NULL);  printf("\tGLOBAL_MEM_SIZE:     %lu\n", ul );
-                clGetDeviceInfo(devices[j], CL_DEVICE_EXTENSIONS,          nstrmax,      str, NULL);   printf("\tEXTENSIONS:       %s\n", str);
+                printf("\t## PERFORMANCE: \n");
+                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_COMPUTE_UNITS,        sizeof(uint),  &ui, NULL);  printf("\tMAX_COMPUTE_UNITS:    %d\n", ui  );
+                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_CLOCK_FREQUENCY,      sizeof(uint),  &ui, NULL);  printf("\tMAX_CLOCK_FREQUENCY:  %d  MHz \n", ui   );
+                clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_SIZE,          sizeof(ulong), &ul, NULL);  printf("\tGLOBAL_MEM_SIZE:      %lu MB  \n", (ul/1024)/1024 );
+                clGetDeviceInfo(devices[j], CL_DEVICE_LOCAL_MEM_SIZE,           sizeof(ulong), &ul, NULL);  printf("\tLOCAL_MEM_SIZE:       %lu kB  \n", ul/1024 );
+                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE, sizeof(ulong), &ul, NULL);  printf("\tCONSTANT_BUFFER_SIZE: %lu kB  \n", ul/1024 );
+                clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_CACHE_SIZE,    sizeof(ulong),  &ul, NULL); printf("\tGLOBAL_MEM_CACHE_SIZE:     %lu kB \n", (ul/1024) );
+                clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE,sizeof(ulong),  &ul, NULL); printf("\tGLOBAL_MEM_CACHELINE_SIZE: %lu \n", ul );
+                if(!bDetails) continue;
+                printf("\t## DETAILS: \n");
+                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS,      sizeof(uint),    &ui, NULL); printf("\tMAX_WORK_ITEM_DIMENSIONS: %d  \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_WORK_GROUP_SIZE,           sizeof(size_t),  &sz, NULL); printf("\tMAX_WORK_GROUP_SIZE:      %lu \n", sz );
+                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_WORK_ITEM_SIZES,           sizeof(size_t)*4,szs, NULL); printf("\tMAX_WORK_ITEM_SIZES:      [%li,%li,%li] \n", szs[0],szs[1],szs[1] );
+                clGetDeviceInfo(devices[j], CL_DEVICE_MIN_DATA_TYPE_ALIGN_SIZE,      sizeof(uint),    &ui, NULL); printf("\tMIN_DATA_TYPE_ALIGN_SIZE: %d  \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_IMAGE_MAX_BUFFER_SIZE,         sizeof(size_t),  &sz, NULL); printf("\tIMAGE_MAX_BUFFER_SIZE:    %d Mpix \n", sz/1024/1024 );
+                clGetDeviceInfo(devices[j], CL_DEVICE_IMAGE_MAX_ARRAY_SIZE,          sizeof(size_t),  &sz, NULL); printf("\tIMAGE_MAX_ARRAY_SIZE:     %d  \n", sz );
+                clGetDeviceInfo(devices[j], CL_DEVICE_QUEUE_ON_DEVICE_MAX_SIZE,      sizeof(uint),    &ui, NULL); printf("\tQUEUE_ON_DEVICE_MAX_SIZE:      %d   \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_QUEUE_ON_DEVICE_PREFERRED_SIZE,sizeof(uint),    &ui, NULL); printf("\tPREFERRED_QUEUE_SIZE:          %d \n", ui  );
+                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR,   sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_CHAR:   %d \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT,  sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_SHORT:  %d \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT,    sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_INT:    %d \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG,   sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_LONG:   %d \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,  sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_FLOAT:  %d \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE, sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_DOUBLE: %d \n", ui );
+                clGetDeviceInfo(devices[j], CL_DEVICE_EXTENSIONS,               nstrmax,       str, NULL);  printf("\tEXTENSIONS: %s\n", str);
                 printf("\n");
             }
             free(devices);

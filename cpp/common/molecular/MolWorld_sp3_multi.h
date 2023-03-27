@@ -177,7 +177,7 @@ void download( bool bForces=0  ){
 
 virtual void init( bool bGrid ) override {
     printf("# ========== MolWorld_sp3_multi::init() START\n");
-    ocl.print_devices();
+    ocl.print_devices(true);
     ocl.init();
     ocl.makeKrenels_MM("common_resources/cl" );
     MolWorld_sp3::init(bGrid);
@@ -217,6 +217,13 @@ void setup_NBFF_ocl(){
     if(!task_print  )task_print  = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode        );    /// Print on GPU 
     if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
 }
+
+
+void evaluateSubstrate(){
+
+}
+
+
 
 // ======================== EVAL OCL KERNEL functions
 
@@ -415,6 +422,58 @@ virtual void swith_method()override{
 }
 
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i bOcl %i \n", bGridFF, bOcl ); return str; }
+
+// ==================================
+//       Grid evaluation
+// ==================================
+
+void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
+    int err=0;
+    printf( "surf2ocl() na(%i) = ncell(%i) * natom(%i)\n", gridFF.natoms, nPBC );
+    long T0=getCPUticks();
+    Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
+    Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
+    double R2damp = sq(gridFF.Rdamp);
+    int ii=0;
+    pack    ( gridFF.natoms, gridFF.apos,  atoms_surf );
+    pack    ( gridFF.natoms, gridFF.aREQs, REQs_surf  );
+    printf( ">>time(surf_to_GPU) %g \n", (getCPUticks()-T0)*tick2second );
+    long T1=getCPUticks();
+    ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms, (float4*)REQs, true );
+    //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
+    printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
+    delete [] atoms_surf;
+    delete [] REQs_surf;
+    if(bSaveDebug){
+        gridFF.allocateFFs();
+        ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli  );  
+        ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
+        ocl.download( ocl.itex_FE_Coul, gridFF.FFelec   );
+        err =  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
+        printf( ">>time(ocl.surf2ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
+        saveGridXsfDebug();
+    }
+    ocl.buffers[ocl.ibuff_atoms_surf].release();
+    ocl.buffers[ocl.ibuff_REQs_surf ].release();
+}
+
+virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true )override{
+    printf( "MolWorld_sp3_multi::initGridFF() \n");
+    if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
+    gridFF.grid.center_cell( cel0 );
+    bGridFF=true;
+    //gridFF.bindSystem      (surf.n, surf.atypes, surf.ps, surf.REQs );
+    gridFF.setAtomsSymetrized(surf.n, surf.atypes, surf.ps, surf.REQs );
+    if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+    gridFF.grid.pos0.z=z0;
+    if(verbosity>1)gridFF.grid.printCell();
+    if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }    
+    long T0 = getCPUticks();
+    surf2ocl( nPBC, bSaveDebugXSFs );
+    printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
+    bGridFF   =true; 
+    //bSurfAtoms=false;
+}
 
 }; // class MolWorld_sp3_ocl
 

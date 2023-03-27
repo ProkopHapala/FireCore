@@ -5,6 +5,7 @@
 #include "OCL.h"
 
 void v2f4( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
+void v2i4( const Vec3i& v, int4& f4   ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
 //void v2f4( const Vec3d& v, cl_float4& f4 ){ f4.s[0]=(cl_float)v.x; f4.s[1]=(cl_float)v.y; f4.s[2]=(cl_float)v.z; };
 cl_float4 cl_f4( const Vec3d& v ){ return (cl_float4){(cl_float)v.x,(cl_float)v.y,(cl_float)v.z,0.f}; };
 
@@ -52,25 +53,22 @@ class OCL_MM: public OCLsystem { public:
     //size_t Ns[4]; // = {N0, N1, N2};
     //size_t Ntot;
     int4    grid_n;
-    float4 grid_p0{0.f,0.f,0.f,0.f};
+    float4  grid_p0{0.f,0.f,0.f,0.f};
     cl_Mat3 cl_dGrid;
     cl_Mat3 cl_diGrid;
+    cl_Mat3 cl_grid_lvec;
 
-    int ibuff_atoms_surf=-1;
-    int ibuff_REQs_surf =-1;
+
     int itex_FE_Paul=-1;
     int itex_FE_Lond=-1;
     int itex_FE_Coul=-1;
+    int ibuff_atoms_surf=-1;
+    int ibuff_REQs_surf =-1;
+    int ibuff_dipole_ps=-1;
+    int ibuff_dipoles  =-1;
 
     // ====================== Functions
 
-    //void setGridShape( const Mat3d& dCell ){
-    void setGridShape( GridShape grid ){
-        grid_n={grid.n.x,grid.n.y,grid.n.z,0};
-        v2f4(grid.pos0,grid_p0);
-        Mat3_to_cl( grid.dCell,  cl_dGrid  );
-        Mat3_to_cl( grid.diCell, cl_diGrid );
-    }
 
     void makeKrenels_MM( const char*  cl_src_dir ){
         printf( "makeKrenels_MM() \n" );
@@ -84,6 +82,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "printOnGPU"             ,program_relax, 2);
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
         newTask( "make_GridFF"            ,program_relax, 2);
+        newTask( "addDipoleField"         ,program_relax, 2);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }
@@ -134,9 +133,7 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.y=nNode; 
         //nDOFs.x=bPBC; 
         Rdamp = Rdamp_;
-        nPBC.x = nPBC_.x;
-        nPBC.y = nPBC_.y;
-        nPBC.z = nPBC_.z;
+        v2i4( nPBC_, nPBC );
         // ------- Maybe We do-not need to do this every frame ?
         err |= _useArg   ( nDOFs );               // 1
         // Dynamical
@@ -152,21 +149,17 @@ class OCL_MM: public OCLsystem { public:
         err |= _useArg( Rdamp              );  // 9
         OCL_checkError(err, "setup_getNonBond");
         return task;
-        /*
-        __kernel void getNonBond(
-            const int4 ns,                  // 1
-            // Dynamical
-            __global float4*  atoms,        // 2
-            __global float4*  forces,       // 3
-            // Parameters
-            __global float4*  REQKs,        // 4
-            __global int4*    neighs,       // 5
-            __global int4*    neighCell,    // 6
-            const int4 nPBC,                // 7
-            const cl_Mat3 lvec,             // 8
-            float R2damp                    // 9
-        ){
-        */
+        // const int4 ns,                  // 1
+        // // Dynamical
+        // __global float4*  atoms,        // 2
+        // __global float4*  forces,       // 3
+        // // Parameters
+        // __global float4*  REQKs,        // 4
+        // __global int4*    neighs,       // 5
+        // __global int4*    neighCell,    // 6
+        // const int4 nPBC,                // 7
+        // const cl_Mat3 lvec,             // 8
+        // float R2damp                    // 9
     }
 
     OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
@@ -179,9 +172,7 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.y=nNode; 
         //nDOFs.x=bPBC; 
         Rdamp = Rdamp_;
-        nPBC.x = nPBC_.x;
-        nPBC.y = nPBC_.y;
-        nPBC.z = nPBC_.z;
+        v2i4( nPBC_, nPBC );
         // ------- Maybe We do-not need to do this every frame ?
         err |= _useArg   ( nDOFs );               // 1
         // Dynamical
@@ -202,25 +193,23 @@ class OCL_MM: public OCLsystem { public:
         err |= _useArg( cl_diGrid          );  // 14
         OCL_checkError(err, "setup_getNonBond_GridFF");
         return task;
-        /*
-            const int4 ns,                  // 1
-            // Dynamical
-            __global float4*  atoms,        // 2
-            __global float4*  forces,       // 3
-            // Parameters
-            __global float4*  REQKs,        // 4
-            __global int4*    neighs,       // 5
-            __global int4*    neighCell,    // 6
-            __global cl_Mat3* lvecs,        // 7
-            const int4 nPBC,                // 8
-            const float Rdamp,              // 9
-            // GridFF
-            __read_only image3d_t  FE_Paul, // 10
-            __read_only image3d_t  FE_Lond, // 11
-            __read_only image3d_t  FE_Coul, // 12
-            const cl_Mat3  grid_invd,       // 13
-            const float4   grid_p0          // 14
-        */
+        // const int4 ns,                  // 1
+        // // Dynamical
+        // __global float4*  atoms,        // 2
+        // __global float4*  forces,       // 3
+        // // Parameters
+        // __global float4*  REQKs,        // 4
+        // __global int4*    neighs,       // 5
+        // __global int4*    neighCell,    // 6
+        // __global cl_Mat3* lvecs,        // 7
+        // const int4 nPBC,                // 8
+        // const float Rdamp,              // 9
+        // // GridFF
+        // __read_only image3d_t  FE_Paul, // 10
+        // __read_only image3d_t  FE_Lond, // 11
+        // __read_only image3d_t  FE_Coul, // 12
+        // const cl_Mat3  grid_invd,       // 13
+        // const float4   grid_p0          // 14
     }
 
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
@@ -252,25 +241,21 @@ class OCL_MM: public OCLsystem { public:
         //err |= _useArg( cl_invLvec );        // 13
         OCL_checkError(err, "setup_getMMFFf4");
         return task;
-        /*
-        __kernel void getMMFFf4(
-            const int4 nDOFs,              // 1   (nAtoms,nnode)
-            // Dynamical
-            __global float4*  apos,        // 2    [natoms]
-            __global float4*  fapos,       // 3    [natoms]     
-            __global float4*  fneigh,      // 4    [nnode*4]
-            // parameters
-            __global int4*    neighs,       // 5  [nnode]  neighboring atoms
-            __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} 
-            __global float4*  apars,        // 7 [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
-            __global float4*  bLs,          // 8 [nnode]  bond lengths  for each neighbor
-            __global float4*  bKs,          // 9 [nnode]  bond stiffness for each neighbor
-            __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
-            __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
-            const cl_Mat3 lvec,             // 12
-            const cl_Mat3 invLvec           // 13
-        ){
-    */
+        // const int4 nDOFs,              // 1   (nAtoms,nnode)
+        // // Dynamical
+        // __global float4*  apos,        // 2    [natoms]
+        // __global float4*  fapos,       // 3    [natoms]     
+        // __global float4*  fneigh,      // 4    [nnode*4]
+        // // parameters
+        // __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+        // __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} 
+        // __global float4*  apars,        // 7 [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+        // __global float4*  bLs,          // 8 [nnode]  bond lengths  for each neighbor
+        // __global float4*  bKs,          // 9 [nnode]  bond stiffness for each neighbor
+        // __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
+        // __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
+        // const cl_Mat3 lvec,             // 12
+        // const cl_Mat3 invLvec           // 13
     }
 
     OCLtask* setup_updateAtomsMMFFf4( int na, int nNode,  OCLtask* task=0 ){
@@ -294,15 +279,13 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_constr     ); // 8
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
-        /*
-            const float4      MDpars,       // 1
-            const int4        n,            // 2
-            __global float4*  apos,         // 3
-            __global float4*  avel,         // 4
-            __global float4*  aforce,       // 5
-            __global float4*  fneigh,       // 6
-            __global int4*    bkNeighs      // 7
-        */
+        // const float4      MDpars,       // 1
+        // const int4        n,            // 2
+        // __global float4*  apos,         // 3
+        // __global float4*  avel,         // 4
+        // __global float4*  aforce,       // 5
+        // __global float4*  fneigh,       // 6
+        // __global int4*    bkNeighs      // 7
     }
 
     OCLtask* setup_printOnGPU( int na, int nNode,  OCLtask* task=0 ){
@@ -322,14 +305,12 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_constr     ); // 7
         OCL_checkError(err, "setup_printOnGPU");
         return task;
-        /*
-            const int4        n,            // 1
-            __global float4*  apos,         // 2
-            __global float4*  avel,         // 3
-            __global float4*  aforce,       // 4
-            __global float4*  fneigh,       // 5
-            __global int4*    bkNeighs      // 6
-        */
+        // const int4        n,            // 1
+        // __global float4*  apos,         // 2
+        // __global float4*  avel,         // 3
+        // __global float4*  aforce,       // 4
+        // __global float4*  fneigh,       // 5
+        // __global int4*    bkNeighs      // 6
     }
 
     OCLtask* setup_cleanForceMMFFf4( int na, int nNode,  OCLtask* task=0 ){
@@ -345,54 +326,96 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_neighForce ); // 3
         OCL_checkError(err, "setup_cleanForceMMFFf4");
         return task;
-        /*
-            const int4        n,           // 2
-            __global float4*  aforce,      // 5
-            __global float4*  fneigh       // 6
-        */
+        // const int4        n,           // 2
+        // __global float4*  aforce,      // 5
+        // __global float4*  fneigh       // 6
     }
 
-    OCLtask* setup_makeGridFF( int na=0, float4* atoms=0, float4* coefs=0, OCLtask* task=0 ){
-        if(itex_FE_Paul<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        if(itex_FE_Paul<=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        if(itex_FE_Paul<=0) itex_FE_Paul = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
-        if(itex_FE_Lond<=0) itex_FE_Lond = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
-        if(itex_FE_Coul<=0) itex_FE_Coul = newBufferImage3D( "FFCoul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+    //void setGridShape( const Mat3d& dCell ){
+    void setGridShape( const GridShape& grid ){
+        v2i4      ( grid.n      , grid_n       );
+        v2f4      ( grid.pos0   , grid_p0      );
+        Mat3_to_cl( grid.dCell  , cl_dGrid     );
+        Mat3_to_cl( grid.diCell , cl_diGrid    );
+        Mat3_to_cl( grid.cell   , cl_grid_lvec );
+    }
+
+    OCLtask* makeGridFF( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* coefs=0, bool bRun=true, OCLtask* task=0 ){
+        setGridShape( grid );
+        v2i4( nPBC_, nPBC );
+        if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(itex_FE_Paul<=0) itex_FE_Paul     = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Lond<=0) itex_FE_Lond     = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        if(itex_FE_Coul<=0) itex_FE_Coul     = newBufferImage3D( "FFCoul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
         if(task==0) OCLtask* task = getTask("make_GridFF");
         task->global.x = grid_n.x*grid_n.y*grid_n.z;
-        //task->local.x  = 32;
-        //task->roundSizes();
-        //task->global.x = roundUpSize(Ntot,task->local.x);
-        //task->global.y = Ns[1];
-        //task->global.z = Ns[2];
-        //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
         if(atoms)upload( ibuff_atoms_surf, atoms, na );
         if(coefs)upload( ibuff_REQs_surf , coefs, na );
         useKernel( task->ikernel );
         int4 ngrid{ grid_n.x, grid_n.y, grid_n.z,0 };
-        err |= useArg    ( nAtoms       );     // 1
+        err |= useArg    ( nAtoms           ); // 1
         err |= useArgBuff( ibuff_atoms_surf ); // 2
         err |= useArgBuff( ibuff_REQs_surf  ); // 3
         err |= useArgBuff( itex_FE_Paul );     // 4
         err |= useArgBuff( itex_FE_Lond );     // 5
         err |= useArgBuff( itex_FE_Coul );     // 6
-        err |= _useArg( ngrid     );           // 7        
-        err |= _useArg( grid_p0   );           // 8
-        err |= _useArg( cl_dGrid  );           // 9
-        OCL_checkError(err, "setup_cleanForceMMFFf4");
+        err |= _useArg( nPBC        );         // 7     
+        err |= _useArg( ngrid        );        // 8      
+        err |= _useArg( grid_p0      );        // 9
+        err |= _useArg( cl_grid_lvec );        // 10
+        OCL_checkError(err, "makeGridFF().setup");
+        if(bRun){
+            err |= task->enque_raw(); OCL_checkError(err, "makeGridFF().enque"  );
+            err |= finishRaw();       OCL_checkError(err, "makeGridFF().finish" );
+        }
         return task;
-        /*
-            const int nAtoms,                // 1
-            __global float4*  atoms,         // 2
-            __global float4*  REQKs,         // 3
-            __write_only image3d_t  FE_Paul, // 4
-            __write_only image3d_t  FE_Lond, // 5
-            __write_only image3d_t  FE_Coul, // 6
-            const int4 nGrid,                // 7
-            const cl_Mat3  grid_d,           // 13
-            const float4   grid_p0           // 14
-        */
+        // const int nAtoms,                // 1
+        // __global float4*  atoms,         // 2
+        // __global float4*  REQKs,         // 3
+        // __write_only image3d_t  FE_Paul, // 4
+        // __write_only image3d_t  FE_Lond, // 5
+        // __write_only image3d_t  FE_Coul, // 6
+        // const int4     nPBC,             // 7
+        // const int4     nGrid,            // 8
+        // const cl_Mat3  lvec,             // 9
+        // const float4   grid_p0           // 10
+
+    }
+
+    OCLtask* addDipoleField( const GridShape& grid, Vec3i nPBC_, int n=0, float4* dipole_ps=0, float4* dipoles=0, bool bRun=true, OCLtask* task=0 ){
+        setGridShape( grid );
+        v2i4( nPBC_, nPBC );
+        if(ibuff_dipole_ps<=0) ibuff_dipole_ps = newBuffer( "dipole_ps", n, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_dipoles  <=0) ibuff_dipoles   = newBuffer( "dipoles",   n, sizeof(float4), 0, CL_MEM_READ_ONLY );        
+        //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
+        if(task==0) OCLtask* task = getTask("addDipoleField");
+        task->global.x = grid_n.x*grid_n.y*grid_n.z;
+        if(dipole_ps)upload( ibuff_dipole_ps, dipole_ps, n );
+        if(dipoles  )upload( ibuff_dipoles  , dipoles  , n );
+        useKernel( task->ikernel );
+        int4 ngrid{ grid_n.x, grid_n.y, grid_n.z,0 };
+        err |= useArg    ( n               ); // 1
+        err |= useArgBuff( ibuff_dipole_ps ); // 2
+        err |= useArgBuff( ibuff_dipoles   ); // 3
+        err |= useArgBuff( itex_FE_Coul    ); // 6   
+        err |= _useArg( ngrid        );        // 8      
+        err |= _useArg( grid_p0      );        // 9
+        err |= _useArg( cl_dGrid     );        // 10
+        OCL_checkError(err, "addDipoleField().setup");
+        if(bRun){
+            err |= task->enque_raw(); OCL_checkError(err, "addDipoleField().enque"  );
+            err |= finishRaw();       OCL_checkError(err, "addDipoleField().finish" );
+        }
+        return task;
+        // const int n,                     // 1
+        // __global float4*  ps,            // 2
+        // __global float4*  dipols,        // 3
+        // __write_only image3d_t  FE_Coul, // 4
+        // const int4     nGrid,            // 5
+        // const cl_Mat3  dGrid,            // 6
+        // const float4   grid_p0           // 7
     }
 
 };
