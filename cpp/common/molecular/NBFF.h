@@ -104,12 +104,50 @@ class NBsystem{ public: // Can be Child of AtomicSystem
         return E;
     }
 
+    double evalLJQs_ng4_atom( int i, const Quat4i* neighs, double R2damp ){
+        Vec3d fi = Vec3dZero;
+        Vec3d pi = ps[i];
+        const Vec3d& REQi = REQs[i];
+        const Quat4i& ngs  = neighs[i];
+        double E =0;
+        //printf( "NBsystem::evalLJQs_ng4()[%i] ngs(%i,%i,%i,%i) \n", i, ngs.x,ngs.y,ngs.z,ngs.w );
+        for(int j=0; j<n; j++){    // atom-atom (no self interaction, no double-counting)
+            if(i==j) continue;
+            //printf( "NBsystem::evalLJQs_ng4()[%i,%j] neighs=%li \n", neighs );
+            //if( (ngs[0]==j)||(ngs[1]==j)||(ngs[2]==j)||(ngs[3]==j) ) continue;
+            if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) continue;
+            Vec3d fij = Vec3dZero;
+            Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+            //E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
+            E += getLJQ( ps[j]-pi, REQij, R2damp, fij );
+            //fs[j].sub(fij);
+            fi   .add(fij);
+        }
+        fs[i].add(fi);
+        return E;
+    }
+
+    double evalLJQs_ng4_omp( const Quat4i* neighs, double Rdamp=1.0 ){
+        //printf( "evalLJQs_ng4_omp() \n" );
+        double R2damp = Rdamp*Rdamp;
+        double E =0;
+        int i    =0;
+        //#pragma omp parallel for shared(E,n,R2damp,neighs) private(i)
+        for(i=0; i<n; i++){
+           E += evalLJQs_ng4_atom( i, neighs, R2damp );
+        }
+        return E;
+    }
+
     double evalLJQs_ng4( const Quat4i* neighs, double Rdamp=1.0 ){
+        //printf( "evalLJQs_ng4() \n" );
         double R2damp = Rdamp*Rdamp;
         const int N=n;
-        double E=0;
+        double E   =0;
+        int i=0;
         //printf( "NBsystem::evalLJQs_ng4() neighs=%li \n", neighs );
-        for(int i=0; i<N; i++){
+        #pragma omp parallel for shared(E,N,R2damp) private(i)
+        for(i=0; i<N; i++){
             Vec3d fi = Vec3dZero;
             Vec3d pi = ps[i];
             const Vec3d& REQi = REQs[i];
@@ -165,7 +203,7 @@ class NBsystem{ public: // Can be Child of AtomicSystem
     }
 
     double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
-        
+        //printf( "evalLJQs_ng4_PBC() \n" );
         int ia_DBG = 0;
         // printf( "evalLJQs_ng4_PBC() n=%i nPBC(%i,%i,%i) Rdamp %g \n lvec\n", n, nPBC.x,nPBC.y,nPBC.z, Rdamp );
         // printMat(lvec);

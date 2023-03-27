@@ -35,6 +35,7 @@ class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
 // ======== Functions
 
 void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
+    int err=0;
     int ncell = (nPBC.x*2+1) * (nPBC.y*2+1) * (nPBC.z*2+1); 
     int n = surf.n*ncell;
     printf( "surf2ocl() na(%i) = ncell(%i) * natom(%i)\n", n, ncell, surf.n );

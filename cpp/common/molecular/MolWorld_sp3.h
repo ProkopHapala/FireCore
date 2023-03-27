@@ -49,7 +49,8 @@ class MolWorld_sp3{ public:
     const char* smile_name   = 0;
     Vec3i nMulPBC  = Vec3iZero; 
 
-    const char* trj_fname    = "trj.xyz";
+    //const char* trj_fname    = "trj.xyz";
+    const char* trj_fname    = 0;
     int savePerNsteps = 1;
     OptLog opt_log;
 
@@ -634,7 +635,8 @@ double eval( ){
     if(bNonBonded){
         if(bMMFF){    
             if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ff.lvec, {1,1,0} ); }   // atoms outside cell
-            else      { E += nbmol.evalLJQs_ng4    ( ffl.aneighs );                                   }   // atoms in cell ignoring bondede neighbors       
+            //else      { E += nbmol.evalLJQs_ng4    ( ffl.aneighs );                                   }   // atoms in cell ignoring bondede neighbors       
+            else      { E += nbmol.evalLJQs_ng4_omp( ffl.aneighs );                                   }   // atoms in cell ignoring bondede neighbors  
         }else{
             if  (bPBC){ E += nbmol.evalLJQs_PBC    ( ff.lvec, {1,1,0} ); }   // atoms outside cell
             else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
@@ -676,7 +678,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
     //printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
-    printf( "opt.damp_max %g opt.damping %g \n", opt.damp_max, opt.damping );
+    //printf( "opt.damp_max %g opt.damping %g \n", opt.damp_max, opt.damping );
     double F2conv=Fconv*Fconv;
     double F2 = 1.0;
     double Etot=0;
@@ -705,6 +707,10 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
         if(F2<F2conv){
             bConverged=true;
             if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+            if( trj_fname ){
+                sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
+                saveXYZ( trj_fname, tmpstr, false, "a" );
+            }
             break;
         }
     }

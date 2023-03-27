@@ -4,6 +4,7 @@
 
 #define ANG_HALF_COS  1
 
+#include <omp.h>
 
 #include "fastmath.h"
 #include "Vec2.h"
@@ -317,7 +318,15 @@ double eval_atom(const int ia){
 
 double eval_atoms(){
     double E=0;
-    for(int ia=0; ia<nnode; ia++){ E+=eval_atom(ia); }
+    int ia=0;
+    // https://stackoverflow.com/questions/11773115/parallel-for-loop-in-openmp
+    // pragma omp parallel private(ia) shared(E)
+    // pragma omp for reduction(+:E)
+    //#pragma omp parallel for private(ia) shared(E) 
+    for(ia=0; ia<nnode; ia++){ 
+        //printf("eval_atoms(%i) @cpu[%d/%d]\n", ia, omp_get_thread_num(), omp_get_num_threads() );
+        E+=eval_atom(ia); 
+    }
     return E;
 }
 
