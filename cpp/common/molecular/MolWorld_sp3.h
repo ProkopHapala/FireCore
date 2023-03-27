@@ -194,7 +194,7 @@ void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Vec3d testR
     if(bComb){
         Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot()];
         gridFF.evalCombindGridFF ( testREQ, FFtot );
-        gridFF.grid.saveXSF( "ocl_E_H.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
+        gridFF.grid.saveXSF( "E_PLQ.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
         delete [] FFtot;
     }
 }

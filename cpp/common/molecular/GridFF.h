@@ -300,7 +300,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Vec3d* aREQs, double d
     const Vec3d& a = grid.cell.a;
     const Vec3d& b = grid.cell.b;
     printf( "DEBUG evalGridFFs_symetrized() cmin %g cmax %g \n", cmin, cmax );
-    for(int i=0; i<natoms; i++){
+    for(int i=0; i<n; i++){
         Vec3d p_;
         int typ        = atypes[i];
         Vec3d        Q = aREQs [i];
@@ -336,6 +336,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Vec3d* aREQs, double d
             }
         }
     }
+    printf( "setAtomsSymetrized() END na_new=%i na_old=%i \n", atypes_.size(), n );
     bindSystem( atypes_.size(), &atypes_[0], &apos_[0], &aREQs_[0] );
 }
 

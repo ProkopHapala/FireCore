@@ -53,28 +53,30 @@ class OCLBuffer{
         img.image_slice_pitch = 0;
         img.num_mip_levels    = 0;
         img.num_samples       = 0;
+        img.buffer            = 0; // cl_mem :  From Buffer ?
+
         switch(img_dims){
             case 2:
-                //printf( " initOnGPUImage: clCreateImage2D \n" );
+                printf( " initOnGPUImage: clCreateImage2D \n" );
                 img.image_type  = CL_MEM_OBJECT_IMAGE2D;
                 img.image_width  = nImg[0];
                 img.image_height = nImg[1];
                 img.image_depth  = 0;
-                //p_gpu = clCreateImage  (context, flags, &imageFormat, &img,                          p_cpu, &err);
+                p_gpu = clCreateImage  (context, flags, &imageFormat, &img,  p_cpu, &err);
                 //p_gpu = clCreateImage2D(context, flags, &imageFormat, nImg[0],nImg[1],          0,    p_cpu, &err);   // TODO: ??? nx=nImg[0] ny=nImg[1]  ???
                 break;
             case 3:
+                //printf( " initOnGPUImage: clCreateImage3D \n" );
                 img.image_type  = CL_MEM_OBJECT_IMAGE3D;
                 img.image_width  = nImg[0];
                 img.image_height = nImg[1];
                 img.image_depth  = nImg[2];
-                //printf( " initOnGPUImage: clCreateImage3D \n" );
-                //p_gpu = clCreateImage  (context, flags, &imageFormat, &img,                          p_cpu, &err);
+                p_gpu = clCreateImage  (context, flags, &imageFormat, &img,   p_cpu, &err);
                 //p_gpu = clCreateImage3D(context, flags, &imageFormat, nImg[0],nImg[1],nImg[2], 0, 0, p_cpu, &err);   // TODO: ??? nx=nImg[0] ny=nImg[1]  ???
                 //printf( "initOnGPUImage( flags %li, imageFormat{%i,%i} nImg(%i,%i,%i) \n", flags, imageFormat.image_channel_data_type, imageFormat.image_channel_order, nImg[0],nImg[1],nImg[2] );
                 break;
         }
-        p_gpu = clCreateImage  (context, flags, &imageFormat, &img,                          p_cpu, &err);
+        //p_gpu = clCreateImage  (context, flags, &imageFormat, &img,                          p_cpu, &err);
         //printf( "initOnGPUImage img_dims: %i p_gpu: %li \n", img_dims, (long)p_gpu );
         return err;
     }
