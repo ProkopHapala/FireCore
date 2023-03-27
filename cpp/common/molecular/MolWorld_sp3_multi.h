@@ -433,10 +433,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     long T0=getCPUticks();
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
     Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
-    double R2damp = sq(gridFF.Rdamp);
-    int ii=0;
-    pack    ( gridFF.natoms, gridFF.apos,  atoms_surf );
-    pack    ( gridFF.natoms, gridFF.aREQs, REQs_surf  );
+    pack( gridFF.natoms, gridFF.apos,  atoms_surf, sq(gridFF.Rdamp)  );
+    pack( gridFF.natoms, gridFF.aREQs, REQs_surf , gridFF.alpha      );
     long T1=getCPUticks();
     ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
@@ -455,6 +453,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     }
     ocl.buffers[ocl.ibuff_atoms_surf].release();
     ocl.buffers[ocl.ibuff_REQs_surf ].release();
+    exit(0);
 }
 
 virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true )override{

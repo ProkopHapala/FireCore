@@ -376,7 +376,7 @@ double evalOnGrid( const GridShape& grid, Func func ){
 //template< void FUNC( int ibuff, const Vec3d& pos_, void * args ) >
 template<typename FUNC>
 void interateGrid3D( const GridShape& grid, FUNC func ){
-    //printf( "interateGrid3D() pos0(%g,%g,%g) a(%g,%g,%g) b(%g,%g,%g) c(%g,%g,%g)\n", grid.pos0.x,grid.pos0.y,grid.pos0.z,  grid.dCell.a.x,grid.dCell.a.y,grid.dCell.a.z, grid.dCell.b.x,grid.dCell.b.y,grid.dCell.b.z, grid.dCell.c.x,grid.dCell.c.y,grid.dCell.c.z );
+    printf( "interateGrid3D() pos0(%g,%g,%g) a(%g,%g,%g) b(%g,%g,%g) c(%g,%g,%g)\n", grid.pos0.x,grid.pos0.y,grid.pos0.z,  grid.dCell.a.x,grid.dCell.a.y,grid.dCell.a.z, grid.dCell.b.x,grid.dCell.b.y,grid.dCell.b.z, grid.dCell.c.x,grid.dCell.c.y,grid.dCell.c.z );
 	int nx  = grid.n.x; 	int ny  = grid.n.y; 	int nz  = grid.n.z;
 	//int nx  = n.z; 	int ny  = n.y; 	int nz  = n.x;
 	int nxy = ny * nx;

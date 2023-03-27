@@ -52,6 +52,7 @@ class OCL_MM: public OCLsystem { public:
     // ------- Grid
     //size_t Ns[4]; // = {N0, N1, N2};
     //size_t Ntot;
+    int natom_surf=0;
     int4    grid_n;
     float4  grid_p0{0.f,0.f,0.f,0.f};
     cl_Mat3 cl_dGrid;
@@ -81,8 +82,8 @@ class OCL_MM: public OCLsystem { public:
         newTask( "updateAtomsMMFFf4"      ,program_relax, 2);
         newTask( "printOnGPU"             ,program_relax, 2);
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
-        newTask( "make_GridFF"            ,program_relax, 2);
-        newTask( "addDipoleField"         ,program_relax, 2);
+        newTask( "make_GridFF"            ,program_relax, 1);
+        newTask( "addDipoleField"         ,program_relax, 1);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }
@@ -353,14 +354,16 @@ class OCL_MM: public OCLsystem { public:
         if(task==0) task = getTask("make_GridFF");
         DEBUG
         task->global.x = grid_n.x*grid_n.y*grid_n.z;
+
+        printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
         DEBUG
         printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
-        if(atoms){ err = upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); }
+        if(atoms){ err = upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }
         if(REQs ){ err = upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "makeGridFF().upload(REQs )" ); }
         DEBUG
         useKernel( task->ikernel );
         DEBUG
-        err |= useArg    ( nAtoms           ); // 1
+        err |= useArg    ( natom_surf       ); // 1
         err |= useArgBuff( ibuff_atoms_surf ); // 2
         err |= useArgBuff( ibuff_REQs_surf  ); // 3
         err |= useArgBuff( itex_FE_Paul );     // 4

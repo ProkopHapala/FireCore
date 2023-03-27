@@ -913,15 +913,16 @@ __kernel void make_GridFF(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
 
+    if(iG==0){printf("GPU:make_GridFF(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z );}
+
+    //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
+    if(iG==0){
+        printf("GPU:make_GridFF(natoms=%i)\n", nAtoms);
+        for(int i=0; i<nAtoms; i++){ printf("GPU:atom[%i] apos(%6.3f,%6.3f,%6.3f|%g) rekq(%6.3f,%10.7f,%6.3f|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
+    }
+
     const int nMax = nab*nGrid.z;
     if(iG>nMax) return;
-
-    if(iG==0){printf("GPU::make_GridFF(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z );}
-    //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
-    //if(iG==0){
-    //    printf("GPU::make_GridFF(natoms=%i)\n", nAtoms);
-    //    for(int i=0; i<nAtoms; i++){ printf("atom[%i] apos(%g,%g,%g|%g) rekq(%g,%g,%g|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
-    //}
 
     float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
     float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
@@ -939,20 +940,24 @@ __kernel void make_GridFF(
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
             if( (j+i0)<nAtoms ){ 
-                float4 REQK = LCLJS [j];
-                float4 atom = LATOMS[j];
+                float4 REQK   = LCLJS [j];
+                //float4 atom = LATOMS[j];
+                float3 dp0    = pos - LATOMS[j].xyz;
+                float  R2damp = 1.0;
+                float3 shift=float3Zero;
                 //int ipbc=0;
-                float3 shift=lvec.a.xyz*-nPBC.x;
-                for(int ia=-nPBC.x; ia<=nPBC.x; ia++){
-                    shift+=lvec.b.xyz*-nPBC.y;
-                    for(int ib=-nPBC.y; ib<=nPBC.y; ib++){
-                        shift+=lvec.c.xyz*-nPBC.z;
-                        for(int ic=-nPBC.z; ic<=nPBC.z; ic++){     
+                // float3 shift=lvec.a.xyz*-nPBC.x;
+                // for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                //     shift+=lvec.b.xyz*-nPBC.y;
+                //     for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                //         shift+=lvec.c.xyz*-nPBC.z;
+                //         for(int iz=-nPBC.z; iz<=nPBC.z; iz++){     
 
-                            float3 dp = pos - atom.xyz;
+                            //float3 dp = pos - atom.xyz;
+                            float3 dp  = dp0+shift;
                             float  r2  = dot(dp,dp);
                             float  r   = sqrt(r2);
-                            float ir2  = 1/(r2+atom.w); 
+                            float ir2  = 1/(r2+R2damp); 
                             // ---- Electrostatic
                             float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
                             fe_Coul   += (float4)(dp*(E*ir2), E );
@@ -964,14 +969,13 @@ __kernel void make_GridFF(
                             fe_Paul += fe * e;
                             fe_Lond += fe * (float4)( 1.0f,1.0f,1.0f, -2.0f );
 
-                            //ipbc++; 
-                            shift+=lvec.c.xyz;
-                        }
-                        shift+=lvec.b.xyz;
-                    }
-                    shift+=lvec.a.xyz;
-                }
-                //fe += getLJC( LATOMS[j], LCLJS[j], pos );
+                    //         //ipbc++; 
+                    //         shift+=lvec.c.xyz;
+                    //     }
+                    //     shift+=lvec.b.xyz;
+                    // }
+                    // shift+=lvec.a.xyz;
+                //}
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
