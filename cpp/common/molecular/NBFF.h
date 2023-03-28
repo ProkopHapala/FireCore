@@ -104,26 +104,23 @@ class NBsystem{ public: // Can be Child of AtomicSystem
         return E;
     }
 
-    double evalLJQs_ng4_atom( int i, const Quat4i* neighs, double R2damp ){
-        Vec3d fi = Vec3dZero;
-        Vec3d pi = ps[i];
-        const Vec3d& REQi = REQs[i];
-        const Quat4i& ngs  = neighs[i];
-        double E =0;
-        //printf( "NBsystem::evalLJQs_ng4()[%i] ngs(%i,%i,%i,%i) \n", i, ngs.x,ngs.y,ngs.z,ngs.w );
-        for(int j=0; j<n; j++){    // atom-atom (no self interaction, no double-counting)
-            if(i==j) continue;
-            //printf( "NBsystem::evalLJQs_ng4()[%i,%j] neighs=%li \n", neighs );
-            //if( (ngs[0]==j)||(ngs[1]==j)||(ngs[2]==j)||(ngs[3]==j) ) continue;
+    double evalLJQs_ng4_atom( int ia, const Quat4i* neighs, double R2damp ){
+        Vec3d        fi   = Vec3dZero;
+        Vec3d        pi   = ps    [ia];           // global read   ps    [ia]
+        const Vec3d  REQi = REQs  [ia];           // global read   REQs  [ia]
+        const Quat4i ngs  = neighs[ia];           // global read   neighs[ia]
+        double         E  = 0;
+        for(int j=0; j<n; j++){
+            if(ia==j) continue;
             if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) continue;
-            Vec3d fij = Vec3dZero;
-            Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
-            //E += addAtomicForceLJQ( ps[j]-pi, fij, REQij );
-            E += getLJQ( ps[j]-pi, REQij, R2damp, fij );
-            //fs[j].sub(fij);
-            fi   .add(fij);
+            Vec3d fij   = Vec3dZero;
+            const Vec3d pj    = ps  [j];                        // global read   ps  [j]
+            const Vec3d REQj  = REQs[j];                        // global read   REQs[j]
+            Vec3d REQij; combineREQ( REQj, REQi, REQij );       // pure function (no globals)
+            E          += getLJQ( pj-pi, REQij, R2damp, fij );  // pure function (no globals)
+            fi.add(fij);
         }
-        fs[i].add(fi);
+        fs[ia].add(fi);           // global write fs[ia]
         return E;
     }
 
@@ -131,9 +128,13 @@ class NBsystem{ public: // Can be Child of AtomicSystem
         //printf( "evalLJQs_ng4_omp() \n" );
         double R2damp = Rdamp*Rdamp;
         double E =0;
-        int i    =0;
+        //int i    =0;
         //#pragma omp parallel for shared(E,n,R2damp,neighs) private(i)
-        for(i=0; i<n; i++){
+        //#pragma omp for shared(E,n,R2damp,neighs) private(i)
+        //#pragma omp for reduction(+:Esum)
+        //#pragma omp parallel for shared(E,n,R2damp,neighs) schedule(dynamic, 1)
+        #pragma omp parallel for shared(E,n,R2damp,neighs) schedule(static, 1)
+        for(int i=0; i<n; i++){
            E += evalLJQs_ng4_atom( i, neighs, R2damp );
         }
         return E;
