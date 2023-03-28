@@ -1,3 +1,50 @@
+/*
+
+// ============= For automatic generation of interfaces
+
+int nnode
+int natom
+int nvec = nnode+natom
+
+//------- Dynamical
+
+_RW float4*  apos      [ nSys* nvec ]
+_RW float4*  aforce    [ nSys* nvec ]     
+_RW float4*  avel      [ nSys* nvec ]    
+_RW float4*  fneigh    [ nSys* nnode*2*4 ]
+
+//------- parameters
+
+_R  int4*    neighs    [ nSys* natom ]    
+_R  int4*    bkNeighs  [ nSys* natom ]    
+_R  int4*    neighCell [ nSys* natom ]    
+_R  float4*  REQKs     [ nSys* natom ]
+_R  float4*  apars,    [ nSys* nnode ] 
+_R  float4*  bLs,      [ nSys* nnode ] 
+_R  float4*  bKs,      [ nSys* nnode ] 
+_R  float4*  Ksp,      [ nSys* nnode ]
+_R  float4*  Kpp,      [ nSys* nnode ]
+_R  cl_Mat3* lvecs,    [ nSys ]
+_R  cl_Mat3* ilvecs    [ nSys ]
+
+_R float4*  apos_surf   [ natom_surf ]
+_R float4*  aforce_surf [ natom_surf ]  
+
+_R float4*  ps,         [ ndipol ]    
+_R float4*  dipols,     [ ndipol ]
+
+_RW image3d_t  FE_Paul[ ng.x, ng.y, ng.z ]
+_RW image3d_t  FE_Lond[ ng.x, ng.y, ng.z ]
+_RW image3d_t  FE_Coul[ ng.x, ng.y, ng.z ]
+
+const float4   MDpars
+const int4     nGrid
+const cl_Mat3  dGrid
+const float4   grid_p0 
+
+*/
+
+
 
 #pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
@@ -913,12 +960,67 @@ __kernel void make_GridFF(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
 
+
+    float  R2damp = 1.0;
+
     if(iG==0){printf("GPU:make_GridFF(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z );}
 
     //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
     if(iG==0){
         printf("GPU:make_GridFF(natoms=%i)\n", nAtoms);
         for(int i=0; i<nAtoms; i++){ printf("GPU:atom[%i] apos(%6.3f,%6.3f,%6.3f|%g) rekq(%6.3f,%10.7f,%6.3f|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
+
+        
+
+
+        int ia0 = 0;
+        float4 REQK = REQKs[ia0];
+        int np  = 20;
+        float dx      = 0.1;
+        float x0      = REQK.x*2.f - np*dx/2;
+        
+        //         expr = np.exp( b*Rj )
+        // cP    = Ej*expr*expr
+        // cL    = Ej*expr
+
+        const float ej   = exp( REQK.w * REQK.x );
+        const float cL   =    ej*REQK.y;
+        const float cP   = ej*cL;
+
+        printf(  "GPU  ej %g  cP,cL,Q %g %g %g Ri %g Ei %i beta %g \n", ej, cP,cL,REQK.z,  REQK.x, REQK.y, REQK.w );
+        printf(  "#i  r.x   E_LJ E_Paul E_Lond, E_Coul  Fx_LJ Fx_Paul Fx_Lond, Fx_Coul  \n" );
+        for(int i=0; i<np; i++){
+            float4 fe_Paul = float4Zero;
+            float4 fe_Lond = float4Zero;
+            float4 fe_Coul = float4Zero;
+            
+            float3 dp  = (float3){ x0 + dx*i, 0.f, 0.f  };
+            float  r2  = dot(dp,dp);
+            float  r   = sqrt(r2);
+            float ir2  = 1/(r2+R2damp); 
+            // ---- Electrostatic
+            float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
+            fe_Coul   += (float4)(dp*(E*ir2), E );
+            // ---- Morse ( Pauli + Dispersion )
+            // expr = np.exp( -b*( x - Ri ) )
+            // EP    =      (Ei*expr)*expr
+            // FP    = -2*b*(Ei*expr)*expr 
+            // EL    =   -2*(Ei*expr)
+            // FL    =  2*b*(Ei*expr)
+            float    e = exp( REQK.w*(r-REQK.x) );
+            float   eM = REQK.y*e;
+            float   de = eM*REQK.w*-2.f/r;
+            float4  fe = (float4)( dp*de, eM );
+            fe_Paul += fe * e;
+            fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, 2.0f );
+
+            float4 fetot  = fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQK.z;
+
+            //printf(  "FE(RvdW[%i]) Paul(%g,%g,%g|%g) Lond(%g,%g,%g|%g) Coul(%g,%g,%g|%g)  \n", ia0, fe_Paul.x,fe_Paul.y,fe_Paul.z,fe_Paul.w,   fe_Lond.x,fe_Lond.y,fe_Lond.z,fe_Lond.w,    fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w  );
+            //printf(  "%i %8.3f  %g %g    %g %g    %g %g  \n", ia0, dp.x, fe_Paul.x,fe_Paul.w,   fe_Lond.x,fe_Lond.w,    fe_Coul.x,fe_Coul.w  );
+            printf(  "%i %8.3f  %g %g %g %g   %g %g %g %g  \n", ia0, dp.x,  fetot.w, fe_Paul.w,fe_Lond.w,fe_Coul.w,   fetot.x, fe_Paul.x,fe_Lond.x,fe_Coul.x  );
+
+        }
     }
 
     const int nMax = nab*nGrid.z;
@@ -943,7 +1045,7 @@ __kernel void make_GridFF(
                 float4 REQK   = LCLJS [j];
                 //float4 atom = LATOMS[j];
                 float3 dp0    = pos - LATOMS[j].xyz;
-                float  R2damp = 1.0;
+                
                 float3 shift=float3Zero;
                 //int ipbc=0;
                 // float3 shift=lvec.a.xyz*-nPBC.x;

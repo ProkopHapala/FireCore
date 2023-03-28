@@ -17,6 +17,10 @@ rm libMolGUIlib.so
 make MolGUIlib
 cd $wd
 
+
+OMP_NUM_THREADS=2
+export OMP_NUM_THREADS
+
 #rm *.bin
 
 # ------- asan (Memory Sanitizer)
