@@ -125,18 +125,15 @@ class NBsystem{ public: // Can be Child of AtomicSystem
     }
 
     double evalLJQs_ng4_omp( const Quat4i* neighs, double Rdamp=1.0 ){
-        //printf( "evalLJQs_ng4_omp() \n" );
         double R2damp = Rdamp*Rdamp;
         double E =0;
-        //int i    =0;
-        //#pragma omp parallel for shared(E,n,R2damp,neighs) private(i)
-        //#pragma omp for shared(E,n,R2damp,neighs) private(i)
-        //#pragma omp for reduction(+:Esum)
-        //#pragma omp parallel for shared(E,n,R2damp,neighs) schedule(dynamic, 1)
-        #pragma omp parallel for shared(E,n,R2damp,neighs) schedule(static, 1)
+        //#pragma omp parallel for reduction(+:E) shared(neighs,R2damp) schedule(dynamic,1)
         for(int i=0; i<n; i++){
+           //printf("omp_get_num_threads=%i\n", omp_get_num_threads() );
+           //printf("eval_atoms(%i) @cpu[%d/%d]\n", i, omp_get_thread_num(), omp_get_num_threads() );
            E += evalLJQs_ng4_atom( i, neighs, R2damp );
         }
+
         return E;
     }
 
@@ -147,7 +144,6 @@ class NBsystem{ public: // Can be Child of AtomicSystem
         double E   =0;
         int i=0;
         //printf( "NBsystem::evalLJQs_ng4() neighs=%li \n", neighs );
-        #pragma omp parallel for shared(E,N,R2damp) private(i)
         for(i=0; i<N; i++){
             Vec3d fi = Vec3dZero;
             Vec3d pi = ps[i];

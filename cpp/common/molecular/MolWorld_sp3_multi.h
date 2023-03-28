@@ -433,8 +433,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     long T0=getCPUticks();
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
     Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
-    pack( gridFF.natoms, gridFF.apos,  atoms_surf, sq(gridFF.Rdamp)  );
-    pack( gridFF.natoms, gridFF.aREQs, REQs_surf , gridFF.alpha      );
+    pack( gridFF.natoms, gridFF.apos,  atoms_surf,   sq(gridFF.Rdamp) );
+    pack( gridFF.natoms, gridFF.aREQs, REQs_surf , fabs(gridFF.alpha) );
     long T1=getCPUticks();
     ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
