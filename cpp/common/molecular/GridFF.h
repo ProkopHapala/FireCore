@@ -11,11 +11,49 @@
 
 static bool bDebug__ = 0;
 
+
+inline double evalDipole( int n, Vec3d* ps, Vec3d* REQs, Vec3d& Dout, Vec3d& p0out ){
+    // we want to approximate charge distribution by charge `Q` and dipole `D` around center `C`
+    // we choose center `c` so that it minimizes size of dipole `|d|^2`
+    // D = sum_i{ ( p_i - C ) * q_i }
+    // |D|^2       = Dx^2 + Dy^2 + Dz^2
+    // minimize   |D|^2 with respocet of position of center C
+    // d|D|^2/dCx  = 2*Dx * d{sum_i{(x_i-Cx)*qi}}/dCx   = 0
+    //             = -2*Dx *   sum_i{ qi } = 0
+    //             = -2*Dx * Q = 0     ( if Q=0 it does not matter)
+    //   if Q is not =0
+    //  sum_i{ ( p_i - C ) * q_i } = 0
+    //  sum_i{ p_i*q_i } = Q*C
+    //  C = sum_i{ p_i * q_i } / Q
+    Vec3d  D  = Vec3dZero;
+    Vec3d  p0 = Vec3dZero;
+    double Q  = 0;
+    doyble W  = 0; 
+    double Qsafe   = 1e-4;
+    double Q2safe  = Qsafe*Qsafe;
+    double Wscale  = 1e-4; 
+    for(int i=0; i<n; i++){
+        const Vec3d& p  = ps  [i];
+        double       qi = REQs[i].z;
+        //double wi = (Q2safe + qi*qi)*Wscale;  // Q2safe is just for case when all charges are zero
+        double wi = Q2safe;
+        Q += qi;
+        W += wi;
+        D .add_mul( p, qi );  // dipome
+        p0.add_mul( p, wi );  // this p0 is used only if Q~=0
+    }
+    double denom = W*W + Q*Q;     // if 
+    p0.mul    (      W*denom );   // if Q~=0 this term dominates
+    p0.set_mu (  D,  Q*denom );   // if Q!=0 this term dominates
+    D .add_mul( p0, -Q ); 
+    Dout  = D;
+    p0out = p0;
+    return Q;
+}
+
+
 class GridFF{ public: 
     GridShape   grid;
-    //Vec3d  *FFPauli    = NULL;
-    //Vec3d  *FFLondon   = NULL;
-    //Vec3d  *FFelec     = NULL;
 
     Quat4f *FFPauli  = NULL;
     Quat4f *FFLondon = NULL;
@@ -23,6 +61,7 @@ class GridFF{ public:
 
     //Vec3d  *FFtot    = NULL; // total FF is not used since each atom-type has different linear combination
 
+    // ------ ToDo: this should be put inside NBsystem
     int  natoms     = 0;
     int    * atypes = NULL;
     Vec3d  * apos   = NULL;   // atomic position
@@ -34,6 +73,11 @@ class GridFF{ public:
     std::vector<int>   atypes_;
 
     Vec3d shift = Vec3dZero;
+
+    // dipole approximation
+    Vec3d dip_p0;
+    Vec3d dip;
+    double Q;
 
     double alpha  = -1.5;
     double Rdamp  =  1.0;
@@ -49,11 +93,6 @@ class GridFF{ public:
 
     void allocateFFs(){
         int ntot = grid.getNtot();
-        //FFtot    = new Vec3d[ntot];
-        //FFPauli  = new Vec3d[ntot];
-        //FFLondon = new Vec3d[ntot];
-        //FFelec   = new Vec3d[ntot];
-        
         FFPauli  = new Quat4f[ntot];
         FFLondon = new Quat4f[ntot];
         FFelec   = new Quat4f[ntot];
@@ -61,12 +100,17 @@ class GridFF{ public:
     
     void allocateAtoms(int natoms_){
         natoms = natoms_;
-        //atypes = new int  [natoms];
+        //atypes = new int[natoms];
         apos   = new Vec3d[natoms];
         aREQs  = new Vec3d[natoms];
     }
 
     int loadCell(const char * fname ){ return grid.loadCell(fname ); }
+
+    void evalDipole(){
+        Q = evalDipole( natoms, apos, aREQs, dip, dip_p0 );
+        printf( "GridFF::evalDipole(): D(%g,%g,%g|%g) p0(%g,%g,%g) \n", dip.x,dip.y,dip.z,Q,   dip_p0.x,dip_p0.y,dip_p0.z );
+    }
 
     /*
     inline void addForce( const Vec3d& pos, const Vec3d& PLQ, Vec3d& f ) const {
