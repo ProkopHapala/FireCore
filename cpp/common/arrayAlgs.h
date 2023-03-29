@@ -94,6 +94,24 @@ inline int objects2cells( int nobj, int ncell, int* obj2cell, I0n* cells, int* p
     return nmax;
 }
 
+template<typename T>
+int insertSort( int n, T* data ){
+    //https://en.wikipedia.org/wiki/Insertion_sort
+    int niter=0;
+    int i=1;
+    for(int i=1; i<n; i++){
+        const T x = data[i];
+        int j=i-1;
+        while( data[j] > x.val && (j>=0) ){
+            data[j+1] = data[j];
+            j=j-1; // backward iteration is not that great, but we already have it in cache
+            niter++;
+        }
+        niter++;
+        data[j+1] = x;
+    }
+    return niter;
+}
 
 template<typename T>
 int insertSort( int n, int* permut, T* data ){
