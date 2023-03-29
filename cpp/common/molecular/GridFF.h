@@ -11,7 +11,6 @@
 
 static bool bDebug__ = 0;
 
-
 inline double evalDipole( int n, Vec3d* ps, Vec3d* REQs, Vec3d& Dout, Vec3d& p0out ){
     // we want to approximate charge distribution by charge `Q` and dipole `D` around center `C`
     // we choose center `c` so that it minimizes size of dipole `|d|^2`
@@ -28,7 +27,7 @@ inline double evalDipole( int n, Vec3d* ps, Vec3d* REQs, Vec3d& Dout, Vec3d& p0o
     Vec3d  D  = Vec3dZero;
     Vec3d  p0 = Vec3dZero;
     double Q  = 0;
-    doyble W  = 0; 
+    double W  = 0; 
     double Qsafe   = 1e-4;
     double Q2safe  = Qsafe*Qsafe;
     double Wscale  = 1e-4; 
@@ -44,13 +43,12 @@ inline double evalDipole( int n, Vec3d* ps, Vec3d* REQs, Vec3d& Dout, Vec3d& p0o
     }
     double denom = W*W + Q*Q;     // if 
     p0.mul    (      W*denom );   // if Q~=0 this term dominates
-    p0.set_mu (  D,  Q*denom );   // if Q!=0 this term dominates
+    p0.set_mul(  D,  Q*denom );   // if Q!=0 this term dominates
     D .add_mul( p0, -Q ); 
     Dout  = D;
     p0out = p0;
     return Q;
 }
-
 
 class GridFF{ public: 
     GridShape   grid;
@@ -79,7 +77,7 @@ class GridFF{ public:
     Vec3d dip;
     double Q;
 
-    double alpha  = -1.5;
+    double alpha  =  1.5;
     double Rdamp  =  1.0;
 
     int iDebugEvalR = 0;
@@ -107,7 +105,7 @@ class GridFF{ public:
 
     int loadCell(const char * fname ){ return grid.loadCell(fname ); }
 
-    void evalDipole(){
+    void evalCellDipole(){
         Q = evalDipole( natoms, apos, aREQs, dip, dip_p0 );
         printf( "GridFF::evalDipole(): D(%g,%g,%g|%g) p0(%g,%g,%g) \n", dip.x,dip.y,dip.z,Q,   dip_p0.x,dip_p0.y,dip_p0.z );
     }
@@ -210,7 +208,8 @@ class GridFF{ public:
     }
 
     void evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs ){
-        double R2damp=Rdamp*Rdamp;
+        const double R2damp=Rdamp*Rdamp;
+        const double K=-alpha;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
@@ -218,14 +217,19 @@ class GridFF{ public:
             for(int ia=0; ia<natoms; ia++){
                 Vec3d dp; dp.set_sub( p, apos[ia] );
                 Vec3d REQi = aREQs[ia];
-                double r      = dp.norm();
-                double ir     = 1/(r+R2damp);
-                double expar  = exp( alpha*(r-REQi.x) );
-                double fexp   = alpha*expar*REQi.y*ir*2;
-                double eCoul  = COULOMB_CONST*REQi.z*ir;
-                qp.e+=expar*expar; qp.f.add_mul( dp, fexp*expar  ); // repulsive part of Morse
-                ql.e+=expar*2;     ql.f.add_mul( dp, fexp        ); // attractive part of Morse
-                qe.e+=eCoul;       qe.f.add_mul( dp, eCoul*ir*ir ); // Coulomb
+                    double r2     = dp.norm2();
+                    double r      = sqrt(r2);
+                    // ---- Coulomb
+                    double ir2    = 1/(r2+R2damp);
+                    double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
+                    // ----- Morse
+                    double e      = exp( K*(r-REQi.x) );
+                    double eM     = e*REQi.y;
+                    double de     = 2*K*eM/r;                    
+                    // --- store
+                    qp.e+=eM*e;  qp.f.add_mul( dp,  de*e  ); // repulsive part of Morse
+                    ql.e+=eM*-2; ql.f.add_mul( dp, -de    ); // attractive part of Morse
+                    qe.e+=eQ;    qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
             }
             if(FFPauli)  FFPauli [ibuff]=(Quat4f)qp;
             if(FFLondon) FFLondon[ibuff]=(Quat4f)ql;
@@ -241,8 +245,8 @@ class GridFF{ public:
         //Rdamp = 0.1; // WARRNIN DEBUG;
         //Rdamp = 1.0; // WARRNIN DEBUG;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            double R2damp=Rdamp*Rdamp;    
-            double K=alpha;
+            const double R2damp=Rdamp*Rdamp;    
+            const double K=-alpha;
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
@@ -256,19 +260,17 @@ class GridFF{ public:
                     //Vec3d  dp = dp0;
                     double r2     = dp.norm2();
                     double r      = sqrt(r2);
+                    // ---- Coulomb
+                    double ir2    = 1/(r2+R2damp);
+                    double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
                     // ----- Morse
                     double e      = exp( K*(r-REQi.x) );
                     double eM     = e*REQi.y;
-                    double de     = K*eM*-2/r;
-                    // ---- Coulomb
-                    double ir2    = 1/(r2+R2damp);
-                    double ir     = sqrt(ir2);
-                    double eQ     = COULOMB_CONST*REQi.z*ir;
-                    
+                    double de     = 2*K*eM/r;                    
                     // --- store
-                    qp.e+=eM*e; qp.f.add_mul( dp, de*e   ); // repulsive part of Morse
-                    ql.e+=eM*2; ql.f.add_mul( dp, de     ); // attractive part of Morse
-                    qe.e+=eQ;   qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
+                    qp.e+=eM*e;  qp.f.add_mul( dp,  de*e  ); // repulsive part of Morse
+                    ql.e+=eM*-2; ql.f.add_mul( dp, -de    ); // attractive part of Morse
+                    qe.e+=eQ;    qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
 
                 }}}
             }

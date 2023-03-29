@@ -119,7 +119,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 , fl
         pack    ( ff.nnode , ff.bKs,        BKs      +i0n );
         pack    ( ff.nnode , ff.Ksp,        Ksp      +i0n );
         pack    ( ff.nnode , ff.Kpp,        Kpp      +i0n );
-        pack    ( nbmol.n  , nbmol.REQs, REQs        +i0a );
+        pack    ( nbmol.n  , nbmol.REQs, REQs        +i0a, fabs(gridFF.alpha) );
     }
 
     //if(isys==5)
@@ -204,7 +204,8 @@ void setup_MMFFf4_ocl(){
     if(!task_move  )task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );
     if(!task_print )task_print  = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );    /// Print on GPU 
     if(!task_MMFF  )task_MMFF   = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
-    if(!task_NBFF  )task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
+    //if(!task_NBFF  )task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
+    if(!task_NBFF  )task_NBFF   = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
     if(!task_cleanF)task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode       );
 }
 
@@ -302,7 +303,6 @@ double eval_MMFFf4_ocl( int niter ){
     return 0;
 }
 
-
 double eval_NBFF_ocl( int niter ){ 
     printf("MolWorld_sp3_multi::eval_NBFF_ocl() \n");
     int err=0;
@@ -322,7 +322,6 @@ double eval_NBFF_ocl( int niter ){
         err |= task_NBFF  ->enque_raw();
         err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
         err |= task_move  ->enque_raw();
-        
     }
     
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
@@ -453,7 +452,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     }
     ocl.buffers[ocl.ibuff_atoms_surf].release();
     ocl.buffers[ocl.ibuff_REQs_surf ].release();
-    exit(0);
+    //exit(0);
 }
 
 virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true )override{
@@ -463,7 +462,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     bGridFF=true;
     //gridFF.bindSystem      (surf.n, surf.atypes, surf.ps, surf.REQs );
     gridFF.setAtomsSymetrized(surf.n, surf.atypes, surf.ps, surf.REQs );
-    gridFF.evalDipole();
+    gridFF.evalCellDipole();
     if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
     gridFF.grid.pos0.z=z0;
     if(verbosity>1)gridFF.grid.printCell();

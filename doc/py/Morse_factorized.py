@@ -21,6 +21,7 @@ def getMorse( x, Eij=0.01, Rij=1.6+1.6, b=1.0 ):
     F    = -2*b*Eij*( expr*expr -   expr ) 
     return V,F
 
+'''
 def getMorse_Half( x, Ei=Ei, Ri=Ri, b=1.0 ):
     expr = np.exp( -b*( x - Ri ) )
     EP    =      Ei*expr*expr
@@ -28,6 +29,29 @@ def getMorse_Half( x, Ei=Ei, Ri=Ri, b=1.0 ):
     EL    =  -2*Ei*expr
     FL    = 2*b*Ei*expr
     return EP,FP,EL,FL
+'''
+
+'''
+def getMorse_Half( x, Ei=Ei, Ri=Ri, b=1.0 ):
+    expr = np.exp( -b*( x - Ri ) )
+    eM    = Ei*expr
+    EP    =      eM*expr
+    FP    = -2*b*eM*expr 
+    EL    = -2*  eM
+    FL    =  2*b*eM
+    return EP,FP,EL,FL
+'''
+
+def getMorse_Half( x, Ei=Ei, Ri=Ri, b=1.0 ):
+    expr = np.exp( -b*( x - Ri ) )
+    eM    = Ei*expr
+    de    = -2*b*eM
+    EP    =    eM*expr
+    FP    =    de*expr 
+    EL    = -2*eM
+    FL    =   -de
+    return EP,FP,EL,FL
+
 
 def getMorse_Coefs( x, Ej=Ej, Rj=Rj, b=1.0 ):
     expr = np.exp( b*Rj )

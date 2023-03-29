@@ -180,7 +180,10 @@ static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
     printf("DEBUG autoNPBC()->(%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
 }
 
-void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Vec3d testREQ=Vec3d{ 1.487, 0.0006808, 0.0} ){
+void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Vec3d testREQ=Vec3d{ 1.487, 0.02609214441, 0.0} ){
+    // not testREQ.y [eV^0.5] = sqrt(Eii), 
+    // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
+    // e.g. for Carbon   0.06106717612 ev^0.5 = sqrt( 0.0037292 eV )
     if(bE){
         if(gridFF.FFPauli)  gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLondon, 4,3  );
         if(gridFF.FFLondon) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec,   4,3  );

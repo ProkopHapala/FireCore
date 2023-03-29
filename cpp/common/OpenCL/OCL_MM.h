@@ -184,14 +184,13 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_neighs    );  // 5
         err |= useArgBuff( ibuff_neighCell );  // 6
         err |= useArgBuff( ibuff_lvecs     );  // 7
-        //err |= _useArg( cl_lvec          );  // 7
         err |= _useArg( nPBC               );  // 8
         err |= _useArg( Rdamp              );  // 9
         err |= useArgBuff( itex_FE_Paul    );  // 10
         err |= useArgBuff( itex_FE_Lond    );  // 11
         err |= useArgBuff( itex_FE_Coul    );  // 12    
-        err |= _useArg( grid_p0            );  // 13
-        err |= _useArg( cl_diGrid          );  // 14
+        err |= _useArg( cl_diGrid          );  // 13
+        err |= _useArg( grid_p0            );  // 14
         OCL_checkError(err, "setup_getNonBond_GridFF");
         return task;
         // const int4 ns,                  // 1
@@ -354,7 +353,6 @@ class OCL_MM: public OCLsystem { public:
         if(task==0) task = getTask("make_GridFF");
         DEBUG
         task->global.x = grid_n.x*grid_n.y*grid_n.z;
-
         printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
         DEBUG
         printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
