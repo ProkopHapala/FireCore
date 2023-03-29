@@ -237,7 +237,7 @@ void evaluateSubstrate(){
 //           eval @GPU 
 // ==================================
 
-double eval_MMFFf4_ocl( int niter ){ 
+double eval_MMFFf4_ocl( int niter, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() \n");
     int err=0;
     if( task_MMFF==0 )setup_MMFFf4_ocl();
@@ -250,23 +250,25 @@ double eval_MMFFf4_ocl( int niter ){
         err |= task_move  ->enque_raw(); 
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
-    //ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
+    if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     err |= ocl.finishRaw();
     OCL_checkError(err, "eval_MMFFf4_ocl_2");
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
     unpack( ff4.nnode,  ffl. pipos, ff4. pipos );
-    //unpack( ff4.natoms, ffl. fapos, ff4. fapos );
-    //unpack( ff4.nnode,  ffl.fpipos, ff4.fpipos );
-    // ---- Check Invariatns
-    fcog  = sum ( ffl.natoms, ffl.fapos   );
-    tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-    if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
-    //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
+    if(bForce){
+        unpack( ff4.natoms, ffl. fapos, ff4. fapos );
+        unpack( ff4.nnode,  ffl.fpipos, ff4.fpipos );
+        // ---- Check Invariatns   - this works only if we unpack forces
+        fcog  = sum ( ffl.natoms, ffl.fapos   );
+        tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
+    }
     return 0;
 }
 
-double eval_NBFF_ocl( int niter ){ 
+double eval_NBFF_ocl( int niter, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_NBFF_ocl() \n");
     int err=0;
     if( task_NBFF==0 ){ setup_NBFF_ocl(); }
@@ -278,17 +280,18 @@ double eval_NBFF_ocl( int niter ){
         err |= task_move  ->enque_raw();
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
-    //ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
+    if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     err |=  ocl.finishRaw();                              //DEBUG
     OCL_checkError(err, "eval_MMFFf4_ocl_2");
-
-    unpack( ff4.natoms, ffl.  apos, ff4.  apos );
-    unpack( ff4.natoms, ffl. fapos, ff4. fapos );
-    fcog  = sum ( ffl.natoms, ffl.fapos   );
-    tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-    if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
-    //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
+    if(bForce){
+        unpack( ff4.natoms, ffl.  apos, ff4.  apos );
+        unpack( ff4.natoms, ffl. fapos, ff4. fapos );
+        fcog  = sum ( ffl.natoms, ffl.fapos   );
+        tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
+    }
     return 0;
 }
 
