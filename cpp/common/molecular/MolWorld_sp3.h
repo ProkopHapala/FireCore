@@ -177,7 +177,7 @@ static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
     if(nPBC.x!=0){ nPBC.x=(int)Lmin/cell.a.norm(); }
     if(nPBC.y!=0){ nPBC.y=(int)Lmin/cell.b.norm(); }
     if(nPBC.z!=0){ nPBC.z=(int)Lmin/cell.c.norm(); }
-    printf("DEBUG autoNPBC()->(%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
+    printf("autoNPBC(): (%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
 }
 
 void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Vec3d testREQ=Vec3d{ 1.487, 0.02609214441, 0.0} ){

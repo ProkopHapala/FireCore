@@ -846,6 +846,10 @@ __kernel void getNonBond_GridFF(
 
     //if(iG==0){ for(int i=0; i<natoms; i++)printf( "GPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z ); }
 
+    const float3 shift0  = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;
+    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+
     // ========= Atom-to-Atom interaction ( N-body problem )    
     for (int i0=0; i0<natoms; i0+= nL ){
         const int i = i0 + iL;
@@ -857,22 +861,18 @@ __kernel void getNonBond_GridFF(
             const int ji=j+i0;
             if( (ji!=iG) && (ji<natoms) ){   // ToDo: Should interact withhimself in PBC ?
                 const float4 aj = LATOMS[j];
-                const float3 dp = aj.xyz - posi;
+                float3 dp   = aj.xyz - posi;
                 float4 REQK = LCLJS[j];
-                REQK.x+=REQKi.x;
-                REQK.yz*=REQKi.yz;
-
+                REQK.x  +=REQKi.x;
+                REQK.yz *=REQKi.yz;
                 const bool bBonded = ((ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w));
-
                 if(bPBC){
-                    // ToDo: it may be more effcient not construct pbc_shift on-the-fly
                     int ipbc=0;
-                    float3 shift=lvec.a.xyz*-nPBC.x;
-                    for(int ia=-nPBC.x; ia<=nPBC.x; ia++){
-                        shift+=lvec.b.xyz*-nPBC.y;
-                        for(int ib=-nPBC.y; ib<=nPBC.y; ib++){
-                            shift+=lvec.c.xyz*-nPBC.z;
-                            for(int ic=-nPBC.z; ic<=nPBC.z; ic++){     
+                    //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                    dp -= shift0;
+                    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                        for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                            for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
                                 if(bBonded){
                                     // Maybe We can avoid this by using Damped LJ or Buckingham potential which we can safely subtract in bond-evaluation ?
                                     if(
@@ -883,15 +883,17 @@ __kernel void getNonBond_GridFF(
                                     )continue; // skipp pbc0
                                 }
                                 //fe += getMorseQ( dp+shifts, REQK, R2damp );
-                                float4 fij = getLJQ( dp+shift, REQK.xyz, R2damp );
+                                float4 fij = getLJQ( dp, REQK.xyz, R2damp );
                                 //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
                                 fe += fij;
                                 ipbc++; 
-                                shift+=lvec.c.xyz;
+                                dp+=lvec.a.xyz;
                             }
-                            shift+=lvec.b.xyz;
+                            dp+=shift_a;
+                            //dp+=lvec.b.xyz;
                         }
-                        shift+=lvec.a.xyz;
+                        dp+=shift_b;
+                        //dp+=lvec.c.xyz;
                     }
                 }else{
                     if(bBonded) continue;  // Bonded ?
@@ -926,6 +928,7 @@ __kernel void getNonBond_GridFF(
     const float cP   = ej*cL;
     fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQKi.z;
     
+    /*
     if((iG==0)&&(iS==0)){
         printf("GPU:getNonBond_GridFF(natoms=%i)\n", natoms);
         for(int i=0; i<natoms; i++){ printf("GPU:atom[%i] apos(%6.3f,%6.3f,%6.3f|%g) rekq(%6.3f,%10.7f,%6.3f|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
@@ -939,24 +942,28 @@ __kernel void getNonBond_GridFF(
         const float cL   = ej*REQK.y;
         const float cP   = ej*cL;
 
+        printf(  "GPU: grid_p0(%g,%g,%g) \n", grid_p0.x,grid_p0.y,grid_p0.z );
         printf(  "GPU: REQK Ri %g Ei %g Q %g beta %g \n", REQK.x, REQK.y, REQK.z, REQK.w );
         printf(  "GPU: ej %g  cP %g cL %g \n", ej, cP, cL );
         printf(  "#i  r.x  E_LJ E_Paul E_Lond, E_Coul  Fx_LJ Fx_Paul Fx_Lond, Fx_Coul  \n" );
         for(int i=0; i<np; i++){
 
-            float3 pos  = (float3){  0.f, 0.f, 0.f + dx*i  };  // NOTE: p=(0.0f, 0.0f, 0.0f) is lateral center of the bottom of the cell,  x0,y0
+            float3 pos  = (float3){  0.f, 0.f, 0.f + dx*i  };  // NOTE: p=(0.0f, 0.0f, 0.0f) is lateral center of            at the bottom of the cell
+            //float3 pos  = (float3){  2.f, 2.f, 0.f + dx*i  };  // NOTE: p=(2.0f, 2.0f, 0.0f) is lateral conrer of 4x4 A cell at the bottom of the cell
 
-            const float3 posg  = pos - grid_p0.xyz;
+            //const float3 posg  = pos - grid_p0.xyz;
+            const float3 posg  = pos;
             const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
             const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
             const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
             const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
             const float4 fetot   = fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQKi.z;
 
-            printf(  "%i %8.3f  %g %g %g %g   %g %g %g %g \n", ia0, pos.z,   fetot.w, fe_Paul.w*cP, fe_Lond.w*cL, fe_Coul.w*REQK.z,      fetot.x, fe_Paul.x*cP, fe_Lond.x*cL, fe_Coul.x*REQK.z  );
+            printf(  "%i %8.3f  %g %g %g %g   %g %g %g %g \n", ia0, pos.z,   fetot.w, fe_Paul.w*cP, fe_Lond.w*cL, fe_Coul.w*REQK.z,      fetot.z, fe_Paul.z*cP, fe_Lond.z*cL, fe_Coul.z*REQK.z  );
 
         }
     }
+    */
 
     //forces[iav] = fe;
     forces[iav] += fe;
@@ -994,7 +1001,7 @@ __kernel void make_GridFF(
 
 
     float  R2damp = 1.0;
-
+    /*
     if(iG==0){printf("GPU:make_GridFF(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z );}
     //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
     if(iG==0){
@@ -1051,41 +1058,41 @@ __kernel void make_GridFF(
 
         }
     }
+    */
     
     const int nMax = nab*nGrid.z;
     if(iG>nMax) return;
 
-    float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
-    float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
-    float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
+    const float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
+    const float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
+    const float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
 
-    float3 pos     = grid_p0.xyz + dGrid_a.xyz*ia + dGrid_b.xyz*ib  + dGrid_c.xyz*ic;
+    const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
+                                       +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
     float4 fe_Paul = float4Zero;
     float4 fe_Lond = float4Zero;
     float4 fe_Coul = float4Zero;
     for (int i0=0; i0<nAtoms; i0+= nL ){
-        int i = i0 + iL;
+        const int i = i0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
         LATOMS[iL] = atoms[i];
         LCLJS [iL] = REQKs[i];
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
             if( (j+i0)<nAtoms ){ 
-                float4 REQK   = LCLJS [j];
-                //float4 atom = LATOMS[j];
-                float3 dp0    = pos - LATOMS[j].xyz;
-                
-                float3 shift=float3Zero;
-                //int ipbc=0;
-                // float3 shift=lvec.a.xyz*-nPBC.x;
-                // for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
-                //     shift+=lvec.b.xyz*-nPBC.y;
-                //     for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
-                //         shift+=lvec.c.xyz*-nPBC.z;
-                //         for(int iz=-nPBC.z; iz<=nPBC.z; iz++){     
+                const float4 REQK   = LCLJS [j];
+                float3 dp    = pos - LATOMS[j].xyz;
+            
+                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
 
-                            //float3 dp = pos - atom.xyz;
-                            float3 dp  = dp0+shift;
+                            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
                             float  r2  = dot(dp,dp);
                             float  r   = sqrt(r2);
                             float ir2  = 1/(r2+R2damp); 
@@ -1100,14 +1107,19 @@ __kernel void make_GridFF(
                             fe_Paul += fe * e;
                             fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );
 
+                            //ipbc++; 
+                            
+                            dp+=lvec.a.xyz;
+                        }
+                        dp+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp+=shift_c;
+                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
+                    //dp+=lvec.c.xyz;
+                }
 
-                    //         //ipbc++; 
-                    //         shift+=lvec.c.xyz;
-                    //     }
-                    //     shift+=lvec.b.xyz;
-                    // }
-                    // shift+=lvec.a.xyz;
-                //}
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);

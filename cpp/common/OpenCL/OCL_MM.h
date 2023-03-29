@@ -351,16 +351,12 @@ class OCL_MM: public OCLsystem { public:
         err |= finishRaw();       OCL_checkError(err, "makeGridFF().imgAlloc" );
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
         if(task==0) task = getTask("make_GridFF");
-        DEBUG
         task->global.x = grid_n.x*grid_n.y*grid_n.z;
-        printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
-        DEBUG
-        printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
+        //printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
+        //printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
         if(atoms){ err = upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }
         if(REQs ){ err = upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "makeGridFF().upload(REQs )" ); }
-        DEBUG
         useKernel( task->ikernel );
-        DEBUG
         err |= useArg    ( natom_surf       ); // 1
         err |= useArgBuff( ibuff_atoms_surf ); // 2
         err |= useArgBuff( ibuff_REQs_surf  ); // 3
@@ -372,7 +368,6 @@ class OCL_MM: public OCLsystem { public:
         err |= _useArg( cl_grid_lvec    );     // 9
         err |= _useArg( grid_p0         );     // 10
         OCL_checkError(err, "makeGridFF().setup");
-        DEBUG
         if(bRun){
             err |= task->enque_raw(); OCL_checkError(err, "makeGridFF().enque"  );
             err |= finishRaw();       OCL_checkError(err, "makeGridFF().finish" );
