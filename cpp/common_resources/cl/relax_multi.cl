@@ -254,6 +254,7 @@ __kernel void getMMFFf4(
             E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU bond[%i=%i|%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", iG,iaa,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             
+            
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 //E += evalPiAling( hpi, pipos[ing].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;        //   pi-alignment     (konjugation)
@@ -281,6 +282,7 @@ __kernel void getMMFFf4(
         
     }
     
+    
     //  ============== Angles 
     for(int i=0; i<NNEIGH; i++){
         int ing = ings[i];
@@ -303,6 +305,7 @@ __kernel void getMMFFf4(
             
             fa    -= f1+f2;
             
+            /*
             { // Remove vdW
                 float4 REQi=REQKs[ing];   // ToDo: can be optimized
                 float4 REQj=REQKs[jng];
@@ -318,6 +321,8 @@ __kernel void getMMFFf4(
                 //f2.add(fij);
                 //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", iG,ing,jng, length(dp), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
             }
+            */
+
             fbs[i]+= f1;
             fbs[j]+= f2;
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", iG,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
@@ -326,6 +331,7 @@ __kernel void getMMFFf4(
         }
     }
     
+
     // ========= Save results
     
     const int i4 =(iG + iS*nnode*2 )*4;
@@ -379,7 +385,7 @@ __kernel void updateAtomsMMFFf4(
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
 
-    //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i iS %i nG %i nS %i  iav_max %i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS,  (nG-1)+(nS-1)*nvec, MDpars.x, MDpars.y, MDpars.z );
+    if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
     
     if(iG>=(natoms+nnode)) return;
 
@@ -400,27 +406,32 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
+    
     // constrains
     float4 pe = apos[iav];
+    /*
     if(iG<natoms){ 
        float4 cons = constr[ iaa ];
        if( cons.w>0 ){
             fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
        }
     }
+    */
 
     // !!!!! Error code was "CL_INVALID_COMMAND_QUEUE" (-36)  is HERE !!!!!!
     aforce[iav] = fe; // store force before limit
 
+
+    /*
     // ---- Limit Forces
     float fr2 = dot(fe.xyz,fe.xyz);
     if( fr2 > (MDpars.z*MDpars.z) ){
         fe.xyz*=(MDpars.z/sqrt(fr2));
     } 
+    */
 
     /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
-    
     float4 ve = avel[iav];
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -447,8 +458,8 @@ __kernel void updateAtomsMMFFf4(
     apos[iav] = pe;
     */
 
-    // // ------ Move (Leap-Frog)
-    //float4 pe = apos[iav];
+    
+    // ------ Move (Leap-Frog)
     float4 ve = avel[iav];
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -464,17 +475,14 @@ __kernel void updateAtomsMMFFf4(
     avel[iav] = ve;
     apos[iav] = pe;
     
+    
     // ------ Move Gradient-Descent
-    // float4 pe = apos[iav];
     // //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
-    // pe.xyz += fe.xyz*MDpars.x*0.1f;
+    // pe.xyz += fe.xyz*MDpars.x*0.01f;
     // //if(bPi){ pe.xyz=normalize(pe.xyz); }
     // pe.w=0;  // This seems to be needed, not sure why ?????
     // apos[iav] = pe;
     
-    // ------ Store Force DEBUG
-    //aforce[iav] = fe; // DEBUG - we do not have to save it, just to print it out on CPU
-    //aforce[iav] = 0;  // ToDo:  this allows to ommit  updateAtomsMMFFf4() !!!! 
     //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
     
 }
