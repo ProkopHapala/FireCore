@@ -63,12 +63,11 @@ void realloc( int nSystems_ ){
     // --- dynamical
     _realloc( atoms,     ocl.nvecs*nSystems  );
     _realloc( aforces,   ocl.nvecs*nSystems  );
-    //_realloc( avel,    ocl.nvecs*nSystems  );
-    _realloc( constr,    ocl.nAtoms*nSystems  );
+    _realloc( avel,      ocl.nvecs*nSystems  );    for(int i=0; i<ocl.nvecs*nSystems; i++){ avel[i]=Quat4fZero; }  
+    _realloc( constr,    ocl.nAtoms*nSystems );
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
     _realloc( neighCell, ocl.nAtoms*nSystems );
-    //_realloc( bkNeighs,  ocl.nAtoms*nSystems );
     _realloc( bkNeighs,  ocl.nvecs*nSystems );
     _realloc( atoms,     ocl.nvecs*nSystems  );
     _realloc( atoms,     ocl.nvecs*nSystems  );
@@ -110,7 +109,7 @@ virtual void init( bool bGrid ) override {
 //         GPU <-> CPU I/O
 // ==================================
 
-void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 , float l_rnd=-1 ){
+void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, bool bVel=false, float l_rnd=-1 ){
     printf("MolWorld_sp3_multi::pack_system(%i) \n", isys);
     //ocl.nvecs;
     int i0n = isys * ocl.nnode;
@@ -128,10 +127,8 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 , fl
         atoms[0+i0v].x=isys;
     }
     */
-    if(bForces){
-        pack( ff.nvecs, ff.fapos, aforces+i0v );
-        //pack( f.nvecs, ff.avel, avel+i0v );
-    }
+    if(bForces){ pack( ff.nvecs, ff.fapos, aforces+i0v ); }
+    //if(bVel   ){ pack( ff.nvecs, opt.vel,  avel   +i0v ); }
     if(bParams){
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
@@ -156,26 +153,22 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0 , fl
     }
 }
 
-void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0 ){
+void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0, bool bVel=false ){
     printf("MolWorld_sp3_multi::unpack_system(%i) \n", isys);
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
     unpack( ff.nvecs, ff.apos, atoms+i0v );
-    if(bForces){
-        unpack( ff.nvecs, ff.fapos, aforces+i0v );
-        //unpack( ff.nvecs, ff.fapos, avel+i0v );
-    }
+    if(bForces){ unpack( ff.nvecs, ff.fapos, aforces+i0v ); }
+    if(bVel   ){ unpack( ff.nvecs, ff.fapos, avel   +i0v ); }
 }
 
-void upload(  bool bParams=0, bool bForces=0 ){
+void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
     printf("MolWorld_sp3_multi::upload() \n");
     ocl.upload( ocl.ibuff_atoms,  atoms  );
     ocl.upload( ocl.ibuff_constr, constr );
-    if(bForces){
-        ocl.upload( ocl.ibuff_aforces, aforces );
-        //ocl.upload( ocl.ibuff_avel,    avel    );
-    }
+    if(bForces){ ocl.upload( ocl.ibuff_aforces, aforces ); }
+    if(bVel   ){ ocl.upload( ocl.ibuff_avel,    avel    ); }
     if(bParams){
         ocl.upload( ocl.ibuff_lvecs,   lvecs );
         ocl.upload( ocl.ibuff_ilvecs,  lvecs );
@@ -192,13 +185,11 @@ void upload(  bool bParams=0, bool bForces=0 ){
     }
 }
 
-void download( bool bForces=0  ){
+void download( bool bForces=0, bool bVel=false ){
     printf("MolWorld_sp3_multi::download() \n");
     ocl.download( ocl.ibuff_atoms, atoms );
-    if(bForces){
-        ocl.download( ocl.ibuff_aforces, aforces );
-        //ocl.download( ocl.ibuff_avel,    avel    );
-    }
+    if(bForces){ ocl.download( ocl.ibuff_aforces, aforces ); }
+    if(bVel   ){ ocl.download( ocl.ibuff_avel,    avel    ); }
 }
 
 // ==================================
@@ -243,9 +234,9 @@ double eval_MMFFf4_ocl( int niter, bool bForce=false ){
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     // evaluate on GPU
     for(int i=0; i<niter; i++){
-        //err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
+        err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
         err |= task_MMFF  ->enque_raw();
-        err |= task_NBFF  ->enque_raw();
+        //err |= task_NBFF  ->enque_raw();
         //err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
         err |= task_move  ->enque_raw(); 
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
