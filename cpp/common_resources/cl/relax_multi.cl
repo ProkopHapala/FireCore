@@ -305,23 +305,21 @@ __kernel void getMMFFf4(
             
             fa    -= f1+f2;
             
-            /*
+            
             { // Remove vdW
-                float4 REQi=REQKs[ing];   // ToDo: can be optimized
-                float4 REQj=REQKs[jng];
+                float4 REQi=REQKs[inga];   // ToDo: can be optimized
+                float4 REQj=REQKs[jnga];
                 float4 REQij;
                 REQij.x  = REQi.x  + REQj.x;
                 REQij.yz = REQi.yz * REQj.yz; 
                 float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w); 
                 float4 fij = getLJQ( dp, REQij.xyz, 1.0f );
-                //float4 fij = getLJQ( apos[ing].xyz-apos[jng].xyz, REQKij.xyz, 1.0f );
+                //float4 fij = getLJQ( apos[ingv].xyz-apos[jngv].xyz, REQKij.xyz, 1.0f );
                 f1 -=  fij.xyz;
                 f2 +=  fij.xyz;
-                //f1.sub(fij);
-                //f2.add(fij);
                 //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", iG,ing,jng, length(dp), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
             }
-            */
+            
 
             fbs[i]+= f1;
             fbs[j]+= f2;
