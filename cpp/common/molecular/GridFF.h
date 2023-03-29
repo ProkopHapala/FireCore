@@ -40,11 +40,16 @@ inline double evalDipole( int n, Vec3d* ps, Vec3d* REQs, Vec3d& Dout, Vec3d& p0o
         W += wi;
         D .add_mul( p, qi );  // dipome
         p0.add_mul( p, wi );  // this p0 is used only if Q~=0
+        //printf( "evalDipole[%i] q %g p(%g,%g,%g)\n", i, qi, p.x,p.y,p.z );
     }
-    double denom = W*W + Q*Q;     // if 
+    double denom = 1./( W*W + Q*Q );     // if 
     p0.mul    (      W*denom );   // if Q~=0 this term dominates
-    p0.set_mul(  D,  Q*denom );   // if Q!=0 this term dominates
+    //printf( "denom %g Q %g W %g \n", denom, Q, W );
+    //printf( "p0W(%g,%g,%g)\n", p0.x,p0.y,p0.z );
+    p0.add_mul(  D,  Q*denom );   // if Q!=0 this term dominates
     D .add_mul( p0, -Q ); 
+    //printf( "p0Q(%g,%g,%g)\n", D.x*Q*denom, D.y*Q*denom, D.z*Q*denom );
+    //printf( "p0 (%g,%g,%g)\n", p0.x,p0.y,p0.z );
     Dout  = D;
     p0out = p0;
     return Q;
@@ -107,7 +112,7 @@ class GridFF{ public:
 
     void evalCellDipole(){
         Q = evalDipole( natoms, apos, aREQs, dip, dip_p0 );
-        printf( "GridFF::evalDipole(): D(%g,%g,%g|%g) p0(%g,%g,%g) \n", dip.x,dip.y,dip.z,Q,   dip_p0.x,dip_p0.y,dip_p0.z );
+        printf( "GridFF::evalDipole(na=%i): D(%g,%g,%g|%g) p0(%g,%g,%g) \n", natoms, dip.x,dip.y,dip.z,Q,   dip_p0.x,dip_p0.y,dip_p0.z );
     }
 
     /*
@@ -336,7 +341,7 @@ class GridFF{ public:
     }
 
 void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Vec3d* aREQs, double d=0.1 ){
-    printf( "DEBUG evalGridFFs_symetrized() \n" );
+    //printf( "evalGridFFs_symetrized() \n" );
     double cmax =-0.5+d;
     double cmin = 0.5-d;
     apos_  .clear();
@@ -345,7 +350,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Vec3d* aREQs, double d
     Mat3d M; grid.cell.invert_T_to( M );
     const Vec3d& a = grid.cell.a;
     const Vec3d& b = grid.cell.b;
-    printf( "DEBUG evalGridFFs_symetrized() cmin %g cmax %g \n", cmin, cmax );
+    //printf( "evalGridFFs_symetrized() cmin %g cmax %g \n", cmin, cmax );
     for(int i=0; i<n; i++){
         Vec3d p_;
         int typ        = atypes[i];
@@ -358,8 +363,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Vec3d* aREQs, double d
         bool bhi  = p_.b > cmin;
         bool aa   = (alo||ahi);
         bool bb   = (blo||ahi);
-
-        printf( "atom[%i](%g,%g) (%g,%g)\n", i, p.y,p.y, p_.a, p_.b );
+        //printf( "atom[%i](%g,%g) (%g,%g)\n", i, p.y,p.y, p_.a, p_.b );
         double w = 1./( (1+aa) * (1+bb) ); // number of replicas ?
         Q.z*=w; // Q
         Q.y*=w; // E0
