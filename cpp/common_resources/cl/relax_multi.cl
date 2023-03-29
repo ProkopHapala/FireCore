@@ -448,21 +448,21 @@ __kernel void updateAtomsMMFFf4(
     */
 
     // // ------ Move (Leap-Frog)
-    // float4 pe = apos[iav];
-    // float4 ve = avel[iav];
-    // if(bPi){ 
-    //     fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
-    //     ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
-    // }
-    // ve     *= MDpars.y;
-    // ve.xyz += fe.xyz*MDpars.x;
-    // pe.xyz += ve.xyz*MDpars.x;
-    // if(bPi){ 
-    //     pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
-    // }
-    // pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
-    // avel[iav] = ve;
-    // apos[iav] = pe;
+    //float4 pe = apos[iav];
+    float4 ve = avel[iav];
+    if(bPi){ 
+        fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
+        ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
+    }
+    ve     *= MDpars.y;
+    ve.xyz += fe.xyz*MDpars.x;
+    pe.xyz += ve.xyz*MDpars.x;
+    if(bPi){ 
+        pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
+    }
+    pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
+    avel[iav] = ve;
+    apos[iav] = pe;
     
     // ------ Move Gradient-Descent
     // float4 pe = apos[iav];
