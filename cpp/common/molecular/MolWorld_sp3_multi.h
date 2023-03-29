@@ -463,6 +463,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     bGridFF=true;
     //gridFF.bindSystem      (surf.n, surf.atypes, surf.ps, surf.REQs );
     gridFF.setAtomsSymetrized(surf.n, surf.atypes, surf.ps, surf.REQs );
+    gridFF.evalDipole();
     if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
     gridFF.grid.pos0.z=z0;
     if(verbosity>1)gridFF.grid.printCell();
