@@ -653,6 +653,10 @@ __kernel void getNonBond(
 
     //if(iG==0){ for(int i=0; i<natoms; i++)printf( "GPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z ); }
 
+    const float3 shift0  = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;
+    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+
     // ========= Atom-to-Atom interaction ( N-body problem )    
     for (int i0=0; i0<natoms; i0+= nL ){
         const int i = i0 + iL;
@@ -664,22 +668,18 @@ __kernel void getNonBond(
             const int ji=j+i0;
             if( (ji!=iG) && (ji<natoms) ){   // ToDo: Should interact withhimself in PBC ?
                 const float4 aj = LATOMS[j];
-                const float3 dp = aj.xyz - posi;
+                float3 dp   = aj.xyz - posi;
                 float4 REQK = LCLJS[j];
-                REQK.x+=REQKi.x;
-                REQK.yz*=REQKi.yz;
-
+                REQK.x  +=REQKi.x;
+                REQK.yz *=REQKi.yz;
                 const bool bBonded = ((ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w));
-
                 if(bPBC){
-                    // ToDo: it may be more effcient not construct pbc_shift on-the-fly
                     int ipbc=0;
-                    float3 shift=lvec.a.xyz*-nPBC.x;
-                    for(int ia=-nPBC.x; ia<=nPBC.x; ia++){
-                        shift+=lvec.b.xyz*-nPBC.y;
-                        for(int ib=-nPBC.y; ib<=nPBC.y; ib++){
-                            shift+=lvec.c.xyz*-nPBC.z;
-                            for(int ic=-nPBC.z; ic<=nPBC.z; ic++){     
+                    //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                    dp -= shift0;
+                    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                        for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                            for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
                                 if(bBonded){
                                     // Maybe We can avoid this by using Damped LJ or Buckingham potential which we can safely subtract in bond-evaluation ?
                                     if(
@@ -690,15 +690,17 @@ __kernel void getNonBond(
                                     )continue; // skipp pbc0
                                 }
                                 //fe += getMorseQ( dp+shifts, REQK, R2damp );
-                                float4 fij = getLJQ( dp+shift, REQK.xyz, R2damp );
+                                float4 fij = getLJQ( dp, REQK.xyz, R2damp );
                                 //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
                                 fe += fij;
                                 ipbc++; 
-                                shift+=lvec.c.xyz;
+                                dp+=lvec.a.xyz;
                             }
-                            shift+=lvec.b.xyz;
+                            dp+=shift_a;
+                            //dp+=lvec.b.xyz;
                         }
-                        shift+=lvec.a.xyz;
+                        dp+=shift_b;
+                        //dp+=lvec.c.xyz;
                     }
                 }else{
                     if(bBonded) continue;  // Bonded ?
@@ -830,10 +832,13 @@ __kernel void getNonBond_GridFF(
     const int iaa = iG + i0a;
     const int iav = iG + i0v;
     
-    // const int iS_DBG = 5;
-    // const int iG_DBG = 0;
+    const cl_Mat3 lvec = lvecs[iS];
+
+    const int iS_DBG = 5;
+    const int iG_DBG = 0;
+    if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "getNonBond_GridFF() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){ 
-    //     printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
+    //     printf( "GPU::getNonBond_GridFF() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
     //     for(int i=0; i<nS*nG; i++){
     //         int ia = i%nS;
     //         int is = i/nS;
@@ -852,8 +857,6 @@ __kernel void getNonBond_GridFF(
     const float3 posi  = atoms    [iav].xyz;
     const float  R2damp = Rdamp*Rdamp;
     float4 fe          = float4Zero;
-
-    const cl_Mat3 lvec = lvecs[iS];
 
     //if(iG==0){ for(int i=0; i<natoms; i++)printf( "GPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z ); }
 

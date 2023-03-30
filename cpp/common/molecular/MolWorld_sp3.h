@@ -548,7 +548,7 @@ virtual void init( bool bGrid ){
         ffl.setLvec(       builder.lvec);   DEBUG
         ff4.setLvec((Mat3f)builder.lvec);   DEBUG
         DEBUG
-        nPBC=Vec3i{0,0,0}; // DEBUG
+        //nPBC=Vec3i{0,0,0}; // DEBUG
         ff4.makeNeighCells( nPBC );       DEBUG
         ffl.makeNeighCells( nPBC );       DEBUG
         //builder.printBonds();
@@ -637,16 +637,18 @@ double eval( ){
         //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.apos[0].x,nbmol.apos[0].y,nbmol.apos[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
         
     }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
+    //bPBC=false;
     if(bNonBonded){
         if(bMMFF){    
             if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ff.lvec, {1,1,0} ); }   // atoms outside cell
-            //else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors       
-            else      { E += nbmol.evalLJQs_ng4_omp( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors  
+            else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors       
+            //else      { E += nbmol.evalLJQs_ng4_omp( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors  
         }else{
             if  (bPBC){ E += nbmol.evalLJQs_PBC    ( ff.lvec, {1,1,0} ); }   // atoms outside cell
             else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
         }
     }
+    
     if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
     /*
     if(bSurfAtoms){ 

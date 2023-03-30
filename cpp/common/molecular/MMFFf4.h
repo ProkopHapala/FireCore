@@ -396,6 +396,7 @@ void makeBackNeighs( bool bCapNeighs=true ){
 }
 
 void makeNeighCells( const Vec3i nPBC_ ){ 
+    //printf( "makeNeighCells() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     nPBC=nPBC_;
     for(int ia=0; ia<natoms; ia++){
         for(int j=0; j<4; j++){
@@ -406,11 +407,11 @@ void makeNeighCells( const Vec3i nPBC_ ){
             Vec3f d = apos[ja].f - apos[ia].f;
             int ipbc=0;
             int imin=-1;
-            float r2min = 1e+300;
-            for(int ia=-nPBC.x; ia<=nPBC.x; ia++){ for(int ib=-nPBC.y; ib<=nPBC.y; ib++){ for(int ic=-nPBC.z; ic<=nPBC.z; ic++){ 
+            float r2min = 1e+30;
+            for(int ic=-nPBC.z; ic<=nPBC.z; ic++){ for(int ib=-nPBC.y; ib<=nPBC.y; ib++){ for(int ia=-nPBC.x; ia<=nPBC.x; ia++){   
                 Vec3f shift= (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic); 
                 shift.add(d);
-                float r2 = shift.norm();
+                float r2 = shift.norm2();
                 if(r2<r2min){   // find nearest distance
                     r2min=r2;
                     imin=ipbc;
@@ -422,7 +423,6 @@ void makeNeighCells( const Vec3i nPBC_ ){
             //printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
         }
     }
-    //printf("makeNeighCells() DONE \n");
 }
 
 void printSizes(){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
