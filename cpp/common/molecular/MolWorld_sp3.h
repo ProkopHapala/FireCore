@@ -140,32 +140,6 @@ class MolWorld_sp3{ public:
 virtual void swith_method(){ bGridFF=!bGridFF; };
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i ffl.bAngleCosHalf %i \n", bGridFF, ffl.bAngleCosHalf ); return str; }
 
-/*
-void init_nonbond(){
-    nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.fapos, 0, ff.bond2atom );
-    builder.export_REQs( nff.REQs );
-    if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
-        printf( "ERROR: nff.pairMask is not sorted => exit \n" );
-        exit(0);
-    };
-}
-
-void buildFF( bool bNonBonded_, bool bOptimizer_ ){
-    bOptimizer=bOptimizer_;
-    bNonBonded=bNonBonded_;
-    builder.autoBonds();
-    //builder.autoAngles( 10.0, 10.0 );
-    builder.sortConfAtomsFirst();
-    builder.makeAllConfsSP();
-    builder.assignAllBondParams();
-    builder.toMMFFsp3( ff );
-    if(bNonBonded)init_nonbond();
-    if(bOptimizer){ setOptimizer(); }
-    _realloc( manipulation_sel, ff.natoms );
-    //init_buffers();
-}
-*/
-
 int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
     npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
     pbc_shifts = new Vec3d[npbc];
@@ -249,19 +223,6 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         //bSurfAtoms=false;
     }
 }
-
-/*
-void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes ){
-    if(verbosity>0)printf( "MolWorld_sp3::initNBmol() ff.natoms %i \n", ff.natoms  );
-	nbmol  .bindOrRealloc( na, apos,  fapos, 0,  );
-    nbmol.atypes = ff.atype;              
-	builder.export_REQs  ( nbmol.REQs   );   
-    for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
-    params .assignREs    ( na, ff.atype, nbmol.REQs, true, false  ); 
-    nbmol  .makePLQs     ( gridFF.alpha );    
-    if(verbosity>1)nbmol.print();                              
-}
-*/
 
 void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
@@ -563,8 +524,8 @@ virtual void init( bool bGrid ){
         DEBUG
         //nPBC=Vec3i{0,0,0}; // DEBUG
         npbc = makePBCshifts( nPBC, builder.lvec );
-        ff4.makeNeighCells( nPBC );       DEBUG
-        ffl.makeNeighCells( nPBC );       DEBUG
+        ff4.makeNeighCells  ( nPBC );       DEBUG
+        ffl.makeNeighCells  ( nPBC );       DEBUG
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         DEBUG
@@ -646,7 +607,11 @@ double eval( ){
     setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
     if(bMMFF){ 
         //E += ff .eval();
-        E += ffl.eval();
+        E += ffl.eval(); 
+        
+        //printf( "ffl.lvec\n" );    printMat( ffl.lvec    );
+        //printf( "ffl.invLvec\n" ); printMat( ffl.invLvec );
+        //exit(0);
         //E += eval_f4();
         //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.apos[0].x,nbmol.apos[0].y,nbmol.apos[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
         
@@ -655,7 +620,7 @@ double eval( ){
     /*
     if(bNonBonded){
         if(bMMFF){    
-            if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ff.lvec, {1,1,0} ); }   // atoms outside cell
+            if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); }   // atoms outside cell
             else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors       
             //else      { E += nbmol.evalLJQs_ng4_omp( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors  
         }else{
@@ -664,6 +629,7 @@ double eval( ){
         }
     }
     */
+    
     if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
     /*
     if(bSurfAtoms){ 
