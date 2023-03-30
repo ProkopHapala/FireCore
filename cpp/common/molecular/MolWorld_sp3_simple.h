@@ -181,7 +181,7 @@ int buildMolecule_xyz( const char* xyz_name ){
 
     builder.assignAllBondParams();    //if(verbosity>1)
     builder.finishFragment(ifrag);    
-    //printf( "!!!!! DEBUG nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
+    //printf( "buildMolecule_xyz: nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
     //if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
     //if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
     //printf("builder.lvec\n");builder.lvec.print();

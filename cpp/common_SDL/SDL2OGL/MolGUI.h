@@ -102,6 +102,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Vec3d* fpipos   =0;
     Vec3d* REQs     =0;
 
+    Quat4i* neighs    = 0;
+    Quat4i* neighCell = 0;
+
     // ---- Graphics objects
     int  fontTex,fontTex3D;
 
@@ -256,6 +259,8 @@ void MolGUI::init(){
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
     //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
     MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+    neighs    = W->ffl.neighs;
+    neighCell = W->ffl.neighCell;
     initGUI();
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
@@ -508,11 +513,14 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     if( bond2atom ){
         //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( nbonds, bond2atom, apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
         //glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( nbonds,bond2atom,apos );  // DEBUG
+        /*
         if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); if(pbcShifts)Draw3D::bondsPBC          ( nbonds, bond2atom, apos,  pbcShifts                          );  
                              glColor3f(0.0f,0.0f,1.0f); if(pbcShifts)Draw3D::pbcBondNeighLabels( nbonds, bond2atom, apos,  pbcShifts, fontTex3D,        0.007 );
         }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
                              glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex );                                
         }
+        */
+    
         if(bViewPis &&  fpipos ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );  }
         //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
         //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
@@ -522,6 +530,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         if(bOrig &&  bViewBondLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,        0.007              );       }
 
     }
+    if( neighs ){  glColor3f(0.0f,0.0f,0.0f);   Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts );   }
     //W->nbmol.print();
     if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     //if(bViewAtomP0s     &&  fapos          ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }

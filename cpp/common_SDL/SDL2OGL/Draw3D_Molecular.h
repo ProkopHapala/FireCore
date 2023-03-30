@@ -170,6 +170,29 @@ void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, con
     }
 }
 
+void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
+    int* ngs = neighs   +ia*perAtom;
+    int* ngC = neighCell+ia*perAtom;
+    Vec3d pi = apos[ia];
+    //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3], pi.x,pi.y,pi.z );
+    glBegin( GL_LINES );
+    for(int i=0; i<perAtom; i++){
+        int ja = ngs[i];
+        if(ja<0) continue;
+        Draw3D::vertex( pi );
+        Vec3d pj = apos[ja];
+        if(shifts) pj.add(shifts[ngC[i]]);
+        Draw3D::vertex( pj );
+    }
+    glEnd();
+}
+
+void neighs( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
+    for(int ia=0; ia<na; ia++){
+        atomNeighs( ia, perAtom, neighs, neighCell, apos, shifts );
+    }
+}
+
 void angle( const Vec3i& ang, const Vec2d& cs0, const Vec3d* apos, int fontTex ){
     Draw3D::drawTriangle( apos[ang.a], apos[ang.b], apos[ang.c], true );
     Draw3D::drawDouble( (apos[ang.a]+apos[ang.c])*0.5, atan2( cs0.y, cs0.x )*2*180/M_PI, fontTex );
