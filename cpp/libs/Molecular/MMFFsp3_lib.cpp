@@ -60,8 +60,8 @@ void setVerbosity( int verbosity_, int idebug_ ){
 }
 
 void init_buffers(){
-    buffers .insert( { "apos",   (double*)W.nbmol.ps } );
-    buffers .insert( { "fapos",  (double*)W.nbmol.fs } );
+    buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
+    buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
     if(W.bMMFF){
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
@@ -104,7 +104,7 @@ void initWithSMILES(char* s, bool bPrint, bool bCap, bool bNonBonded_, bool bOpt
 
 const char* getType( int ia, bool fromFF){
     int it;
-    if(fromFF){ if(ia>=W.nbmol.n)                return "?"; it = W.nbmol.atypes[ia];       }
+    if(fromFF){ if(ia>=W.nbmol.natoms)                return "?"; it = W.nbmol.atypes[ia];       }
     else      { if(ia>=W.builder.atoms.size())   return "?"; it = W.builder.atoms[ia].type; }
     if( (it<0) || (it>=W.params.atypes.size()) ) return "?";
     return W.params.atypes[it].name;

@@ -142,7 +142,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
         pack    ( ff.nnode , ff.bKs,        BKs      +i0n );
         pack    ( ff.nnode , ff.Ksp,        Ksp      +i0n );
         pack    ( ff.nnode , ff.Kpp,        Kpp      +i0n );
-        pack    ( nbmol.n  , nbmol.REQs, REQs        +i0a, fabs(gridFF.alpha) );
+        pack    ( nbmol.natoms, nbmol.REQs, REQs        +i0a, fabs(gridFF.alpha) );
     }
 
     //if(isys==5)
@@ -300,13 +300,13 @@ void eval(){
     }else{
         //printf( " ### CPU \n" );
         if(bMMFF){ E += ff.eval();  } 
-        else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+        else     { VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
         if(bSurfAtoms){ 
             if  (bGridFF){ 
-                //if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
+                //if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.apos,             nbmol.fapos ); } 
                 //else 
                 { 
-                    E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); 
+                    E+= gridFF.eval    (nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); 
                     E+= nbmol.evalNeighs();
                 }
             }else { 
@@ -331,8 +331,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     if(bMMFF)ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         eval();
-        //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
-        ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
+        //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }
+        ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
         if(ipicked>=0){
              float K = -2.0;
              Vec3d f = getForceSpringRay( ff.apos[ipicked], pick_hray, pick_ray0, K );
@@ -398,8 +398,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     gridFF.grid.center_cell( cel0 );
     bGridFF=true;
-    gridFF.bindSystem      (surf.n, surf.atypes, surf.ps, surf.REQs );
-    //gridFF.setAtomsSymetrized(surf.n, surf.atypes, surf.ps, surf.REQs );
+    gridFF.bindSystem      (surf.natoms, surf.atypes, surf.apos, surf.REQs );
+    //gridFF.setAtomsSymetrized(surf.natoms, surf.atypes, surf.apos, surf.REQs );
     gridFF.evalCellDipole();
     if( ( fabs(gridFF.Q)>1e-6 ) || (gridFF.dip.norm2()>1e-8) ){ printf("ERROR: GridFF has dipole and dipole correction not yet implemented => exit() \n"); exit(0); }
     if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };

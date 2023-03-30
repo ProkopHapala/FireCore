@@ -409,7 +409,7 @@ def readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None )
                         lvec = read_lammps_lvec( fin )
                     elif wds[1]=='ATOMS':
                         apos,es = readAtomsXYZ( fin, na )
-                        S = AtomicSystem( lvec=lvec, enames=es, apos=apos)
+                        S = Atoms( lvec=lvec, enames=es, apos=apos)
                         trj.append( S )
     return trj
 

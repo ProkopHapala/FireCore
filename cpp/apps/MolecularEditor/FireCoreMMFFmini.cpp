@@ -26,7 +26,7 @@ int verbosity = 0;
 
 #include "Molecule.h"
 #include "MMFFmini.h"
-#include "NBFF.h"
+#include "NBFF_old.h"
 #include "GridFF.h"
 #include "MMFFparams.h"
 #include "MMFFBuilder.h"
@@ -56,7 +56,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
 	Molecule    mol;
 	MMFFparams  params;
     MMFFmini    ff;
-    NBFF       nff;
+    NBFF_old    nff;
     GridFF     gridFF;
     MM::Builder builder;
     DynamicOpt  opt;

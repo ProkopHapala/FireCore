@@ -889,7 +889,7 @@ void printAtomInfo(){
 void write2xyz( FILE* pfile, const char* comment="#comment" )const{
     if(atomTypeNames==0){ printf( "ERROR in MMFF::write2xyz : atomTypeNames not initialized\n" ); exit(0); }
     //writeXYZ( pfile, natoms, atypes, apos, *atomTypeNames, comment );
-    return params.writeXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.ps, comment, nbmol.REQs );
+    return params.writeXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs );
 }
 
 int save2xyz( char * fname, const char* comment="#comment" )const{

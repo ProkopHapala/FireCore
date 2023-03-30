@@ -60,16 +60,16 @@ void setVerbosity( int verbosity_, int idebug_ ){
 }
 
 void init_buffers(){
-    buffers .insert( { "apos",   (double*)W.nbmol.ps } );
-    buffers .insert( { "fapos",  (double*)W.nbmol.fs } );
+    buffers .insert( { "apos",   (double*)W.nbmol.apos } );
+    buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
     if(W.bMMFF){
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
         buffers .insert( { "vDOFs",     W.opt.vel  } );
         //buffers .insert( { "apos",   (double*)W.ff.apos   } );
         //buffers .insert( { "fapos",  (double*)W.ff.fapos } );
-        buffers .insert( { "apos",   (double*)W.nbmol.ps } );
-        buffers .insert( { "fapos",  (double*)W.nbmol.fs } );
+        buffers .insert( { "apos",   (double*)W.nbmol.apos } );
+        buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
         buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
         buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
         //buffers .insert( { "bond_l0",   (double*)W.ffl.bond_l0   } );
@@ -79,7 +79,7 @@ void init_buffers(){
         //ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
         ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
     }else{
-        W.ff.natoms=W.nbmol.n;
+        W.ff.natoms=W.nbmol.natoms;
     }
     ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
     buffers .insert( { "Es",       &W.ff.Etot  } );
@@ -111,12 +111,14 @@ void init_old(){
 	W.builder.bindParams(&W.params);
 }
 
+/*
 void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ ){
     W.tmpstr=tmpstr;
     W.params.init("data/AtomTypes.dat", "data/BondTypes.dat", "data/AngleTypes.dat" );
     loadmol( fname_mol );
     W.buildFF( bNonBonded_, bOptimizer_ );
 }
+*/
 
 void insertSMILES( char* s ){  W.insertSMILES(s); };
 
@@ -283,7 +285,7 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
         if(bSave){
             Quat4f* FFtot = new Quat4f[W.gridFF.grid.getNtot()];
             W.gridFF.evalCombindGridFF ( W.nbmol.REQs[0], FFtot );
-            W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.surf.n, W.surf.atypes, W.surf.ps );
+            W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.surf.natoms, W.surf.atypes, W.surf.apos );
             delete [] FFtot;
         }
     }
@@ -295,15 +297,15 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
     double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){
         Quat4f fe=Quat4fZero;
-        W.nbmol.ps[0].z=rs[i];
+        W.nbmol.apos[0].z=rs[i];
         W.ff.cleanAtomForce();
         switch(kind){
             case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
-            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-            case 10:         W.gridFF.addForce_surf(W.nbmol.ps[0], {1.,0.,0.}, fe );  break;
-            case 11:         W.gridFF.addForce_surf(W.nbmol.ps[0], PLQ, fe );  break;
-            case 12:         W.gridFF.addForce     (W.nbmol.ps[0], PLQ, fe );  break;
+            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
+            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
+            case 10:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
+            case 11:         W.gridFF.addForce_surf(W.nbmol.apos[0], PLQ, fe );  break;
+            case 12:         W.gridFF.addForce     (W.nbmol.apos[0], PLQ, fe );  break;
         }
         fs[i]=fe.z;
         Es[i]=fe.e;
@@ -326,7 +328,7 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
         if(bSave){
             Quat4f* FFtot = new Quat4f[W.gridFF.grid.getNtot()];
             W.gridFF.evalCombindGridFF ( W.nbmol.REQs[0], FFtot );
-            W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.surf.n, W.surf.atypes, W.surf.ps );
+            W.gridFF.grid.saveXSF<float>( "FFtot_E.xsf", (float*)FFtot, 4, 3, W.surf.natoms, W.surf.atypes, W.surf.apos );
             printf( "DEBUG saveXSF() DONE \n" );
             delete [] FFtot;
         }
@@ -337,16 +339,16 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
     double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){
         Quat4f fe=Quat4fZero;
-        W.nbmol.ps[0]=poss[i];
-        //printf( "[%i] (%g,%g,%g)\n", i, W.nbmol.ps[0].x,W.nbmol.ps[0].y,W.nbmol.ps[0].z );
+        W.nbmol.apos[0]=poss[i];
+        //printf( "[%i] (%g,%g,%g)\n", i, W.nbmol.apos[0].x,W.nbmol.apos[0].y,W.nbmol.apos[0].z );
         W.ff.cleanAtomForce();
         switch(kind){
             case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
-            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fs[0]; break; 
-            case 10:         W.gridFF.addForce_surf(W.nbmol.ps[0], {1.,0.,0.}, fe );  break;
-            case 11:         W.gridFF.addForce_surf(W.nbmol.ps[0], PLQ, fe );  break;
-            case 12:         W.gridFF.addForce     (W.nbmol.ps[0], PLQ, fe );  break;
+            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
+            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
+            case 10:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
+            case 11:         W.gridFF.addForce_surf(W.nbmol.apos[0], PLQ, fe );  break;
+            case 12:         W.gridFF.addForce     (W.nbmol.apos[0], PLQ, fe );  break;
         }
         fs[i]=(Vec3d)(fe.f);
         Es[i]=fe.e;

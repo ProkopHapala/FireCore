@@ -2,6 +2,7 @@
 #ifndef AtomicConfiguration_h
 #define AtomicConfiguration_h
 
+#include <stdio.h>
 #include "Vec3.h"
 #include "PBCsystem.h"
 

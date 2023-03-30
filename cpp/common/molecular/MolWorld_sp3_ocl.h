@@ -37,8 +37,8 @@ class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
 void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     int err=0;
     int ncell = (nPBC.x*2+1) * (nPBC.y*2+1) * (nPBC.z*2+1); 
-    int n = surf.n*ncell;
-    printf( "surf2ocl() na(%i) = ncell(%i) * natom(%i)\n", n, ncell, surf.n );
+    int n = surf.natoms*ncell;
+    printf( "surf2ocl() na(%i) = ncell(%i) * natom(%i)\n", n, ncell, surf.natoms );
     long T0=getCPUticks();
     Quat4f* atoms = new Quat4f[n];
     Quat4f* coefs = new Quat4f[n];
@@ -46,9 +46,9 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     int ii=0;
     for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
         Vec3d  p0 = gridFF.grid.cell.a*ia + gridFF.grid.cell.b*ib + gridFF.grid.cell.c*ic;
-        for(int i=0; i<surf.n; i++){
+        for(int i=0; i<surf.natoms; i++){
             //printf("ii %i i %i iabc(%i,%i,%i)\n", ii, i, ia,ib,ic);
-            atoms[ii].f=(Vec3f)(surf.ps[i]+p0);
+            atoms[ii].f=(Vec3f)(surf.apos[i]+p0);
             atoms[ii].e=R2damp; 
             coefs[ii].f=(Vec3f)surf.REQs[i];
             coefs[ii].e=gridFF.alpha;
@@ -78,7 +78,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
 void init_ocl(){
     //  ToDo : This is probably wrong
     printf( "MolWorld_sp3_ocl::init_ocl()\n" );
-    //for(int i=0; i<nbmol.n; i++){ nbmol.ps->addRandomCube(0.1); }; // DEBUG - displace atoms to test relaxation forces
+    //for(int i=0; i<nbmol.natoms; i++){ nbmol.apos->addRandomCube(0.1); }; // DEBUG - displace atoms to test relaxation forces
     long T0 = getCPUticks();
     //ocl.initPP( "common_resources/cl" );    DEBUG
     // ---- Init Surface force-field grid
@@ -90,8 +90,8 @@ void init_ocl(){
 */
 
 void REQs2ocl(){
-    Quat4f* q_cs= new Quat4f[nbmol.n];
-    pack  ( nbmol.n, nbmol.REQs, q_cs, gridFF.alpha );
+    Quat4f* q_cs= new Quat4f[nbmol.natoms];
+    pack  ( nbmol.natoms, nbmol.REQs, q_cs, gridFF.alpha );
     ocl.upload( ocl.ibuff_coefs, q_cs );    
     delete [] q_cs;
 };
@@ -106,7 +106,7 @@ int ithNeigh(int ia, int ja){
 }
 
 void MMFFsp3_to_ocl(){
-    //int n=nbmol.n;
+    //int n=nbmol.natoms;
     int n=ff.natoms;
     float*  blks= new float[n*8];
     Quat4f* a0ks= new Quat4f[ff.nnode];
@@ -131,7 +131,7 @@ void MMFFsp3_to_ocl(){
 }
 
 void mol2ocl(){
-    int n   = nbmol.n;
+    int n   = nbmol.natoms;
     int npi = 0;
     if(bGPU_MMFFsp3){ npi=ff.npi;    }
     if(bGPU_MMFFf4 ){ npi=ff4.nnode; }
@@ -142,7 +142,7 @@ void mol2ocl(){
     q_ps= new Quat4f[n2];
     q_fs= new Quat4f[n2];
     // ---- nbmol coefs
-    pack      ( n2, nbmol.ps,    q_ps, sq(gridFF.Rdamp) );
+    pack      ( n2, nbmol.apos,  q_ps, sq(gridFF.Rdamp) );
     ocl.upload( ocl.ibuff_atoms, q_ps );  
     REQs2ocl();
     if(bGPU_MMFFsp3 || bGPU_MMFFf4 ){
@@ -198,7 +198,7 @@ void makePi0s(){
 }
 
 void  makeOCLNeighs( ){
-    printf("makeOCLNeighs() n %i nnode %i \n", nbmol.n, ff.nnode );
+    printf("makeOCLNeighs() n %i nnode %i \n", nbmol.natoms, ff.nnode );
     int natom=ff.natoms;
     int n=ff.nvecs;
     int* neighs=new int[n*4];
@@ -527,7 +527,7 @@ void eval(){
         //printf( " ### GPU \n" );
         //E += ff.eval();
         //for(int i=0; i<ff.natoms; i++){ printf("CPU atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x,ff.fapos[i].y,ff.fapos[i].z ); };
-        //eval_MMFF_ocl( 1, nbmol.n, nbmol.ps, nbmol.fs );
+        //eval_MMFF_ocl( 1, nbmol.natoms, nbmol.apos, nbmol.fapps );
         //eval_MMFFsp3_ocl( 1, ff.natoms+ff.npi, ff.apos, ff.fapos );
         eval_MMFFf4_ocl( 1 );
         //eval_NBFF_ocl  ( 1 );
@@ -536,14 +536,14 @@ void eval(){
     }else{
         //printf( " ### CPU \n" );
         if(bMMFF){ E += ff.eval();  } 
-        else     { VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+        else     { VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
         //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
         //bGridFF=true;
         //bOcl   =true;
         if(bSurfAtoms){ 
             if  (bGridFF){ 
-                if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.ps,             nbmol.fs ); } 
-                else    { E+= gridFF.eval    (nbmol.n, nbmol.ps, nbmol.PLQs, nbmol.fs ); 
+                if(bOcl){ E+= eval_gridFF_ocl(nbmol.natoms, nbmol.apos,             nbmol.fapos ); } 
+                else    { E+= gridFF.eval    (nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); 
                         E+= nbmol.evalNeighs();
                     }
             }else { 
@@ -566,7 +566,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     for(int itr=0; itr<nIter; itr++){
         eval();
         //for(int i=0; i<nbmol.n; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fs[i].x,nbmol.fs[i].y,nbmol.fs[i].z ); }
-        ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
+        ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fs" );
         if(ipicked>=0){
              float K = -2.0;
              Vec3d f = getForceSpringRay( ff.apos[ipicked], pick_hray, pick_ray0, K );
@@ -600,7 +600,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     // }
     gridFF.grid.center_cell( cel0 );
     bGridFF=true;
-    gridFF.bindSystem(surf.n, surf.atypes, surf.ps, surf.REQs );
+    gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
     if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
     gridFF.grid.pos0.z=z0;
     if(verbosity>1)gridFF.grid.printCell();

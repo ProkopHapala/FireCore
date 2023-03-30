@@ -33,7 +33,7 @@
 //#include "RARFF.h"
 //#include "RspFF.h"
 //#include "FspFF.h"
-#include "NBFF.h"
+#include "NBFF_old.h"
 #include "FspFFclean.h"
 
 #include "DynamicOpt.h"
@@ -44,8 +44,8 @@
 
 class TestAppRARFF: public AppSDL2OGL_3D { public:
 
-    NBFF  nff; // non-bonded forcefield
-    FspFF ff;  // flexible atom sp-bonding forcefield
+    NBFF_old nff; // non-bonded forcefield
+    FspFF    ff;  // flexible atom sp-bonding forcefield
     DynamicOpt opt;
 
     int      fontTex;
@@ -113,8 +113,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     }
 
     nff.realloc( ff.natom + ff.ncap, ff.nbond+ff.ncap );
-    nff.setREQs(0       ,ff.natom,{1.9080,sqrt(0.003729),0});
-    nff.setREQs(ff.natom,nff.n   ,{1.4870,sqrt(0.000681),0});
+    nff.setREQs(0       ,ff.natom ,{1.9080,sqrt(0.003729),0});
+    nff.setREQs(ff.natom,nff.natoms,{1.4870,sqrt(0.000681),0});
     int npair = ff.outputParticleBonds( nff.pairMask );
     printf("found %i bond pairs\n", npair);
     for(int i=0; i<npair; i++){ printf("pair[%i]: (%i,%i) \n", i, nff.pairMask[i].a, nff.pairMask[i].b ); };
@@ -165,11 +165,11 @@ void TestAppRARFF::draw(){
             //ff.transferBondForce();
             //for(int i=0;i<ff.natom;i++){ ff.aforce[i].set(0.); };
 
-            int np1 = ff.outputParticlePositions(nff.ps);
+            int np1 = ff.outputParticlePositions(nff.apos);
             nff.cleanForce();
             nff.evalLJQ_sortedMask();
-            int np2 = ff.inputParticleForces(nff.fs);
-            //printf( "%i %i %i \n", nff.n, np1, np2 );
+            int np2 = ff.inputParticleForces(nff.fapos);
+            //printf( "%i %i %i \n", nff.natoms, np1, np2 );
 
             // --- check force
             Vec3d cog,fsum,tqsum;
@@ -203,16 +203,16 @@ void TestAppRARFF::draw(){
     }
 
     glColor3f(1.,1.,1.);
-    for(int ia=0; ia<nff.n; ia++){
-        Draw3D::drawPointCross( nff.ps[ia], 0.1 );
+    for(int ia=0; ia<nff.natoms; ia++){
+        Draw3D::drawPointCross( nff.apos[ia], 0.1 );
     }
     glColor3f(0.,0.,0.);
     for(int ib=0; ib<nff.nmask; ib++){
-        //Draw3D::drawLine( nff.ps[nff.pairMask[ib].a], nff.ps[nff.pairMask[ib].b] );
+        //Draw3D::drawLine( nff.apos[nff.pairMask[ib].a], nff.apos[nff.pairMask[ib].b] );
     }
     glColor3f(1.,0.,0.);
-    for(int ia=0; ia<nff.n; ia++){
-        //Draw3D::drawVecInPos( nff.fs[ia], nff.ps[ia] );
+    for(int ia=0; ia<nff.natoms; ia++){
+        //Draw3D::drawVecInPos( nff.fs[ia], nff.apos[ia] );
     }
 
     //return;
