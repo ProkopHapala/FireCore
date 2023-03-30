@@ -354,26 +354,30 @@ void cleanForce(){
     // NOTE: We do not need clean fneigh,fneighpi because they are set in eval_atoms 
 }
 
+void assemble_atom(int ia){
+    Vec3d fa=Vec3dZero,fp=Vec3dZero;
+    const int* ings = bkneighs[ia].array;
+    bool bpi = ia<nnode;
+    for(int i=0; i<4; i++){
+        int j = ings[i];
+        if(j<0) break;
+        //if(j>=(nnode*4)){ printf("ERROR bkngs[%i|%i] %i>=4*nnode(%i)\n", ia, i, j, nnode*4 ); exit(0); }
+        fa.add(fneigh  [j]);
+        if(bpi){
+            //printf( "assemble[%i,%i|%i] pi(%g,%g,%g) fp(%g,%g,%g) fpng(%g,%g,%g) \n", ia,i,j, pipos[ia].x,pipos[ia].y,pipos[ia].z, fpipos[ia].x,fpipos[ia].y,fpipos[ia].z, fneighpi[j].x,fneighpi[j].y,fneighpi[j].z );
+            fp.add(fneighpi[j]);
+        }
+    }
+    fapos [ia].add( fa ); 
+    if(bpi){
+        fpipos[ia].add( fp );
+        fpipos[ia].makeOrthoU( pipos[ia] );  // subtract force component which change pi-vector size
+    }
+}
+
 void asseble_forces(){
     for(int ia=0; ia<natoms; ia++){
-        Vec3d fa=Vec3dZero,fp=Vec3dZero;
-        const int* ings = bkneighs[ia].array;
-        bool bpi = ia<nnode;
-        for(int i=0; i<4; i++){
-            int j = ings[i];
-            if(j<0) break;
-            //if(j>=(nnode*4)){ printf("ERROR bkngs[%i|%i] %i>=4*nnode(%i)\n", ia, i, j, nnode*4 ); exit(0); }
-            fa.add(fneigh  [j]);
-            if(bpi){
-                //printf( "assemble[%i,%i|%i] pi(%g,%g,%g) fp(%g,%g,%g) fpng(%g,%g,%g) \n", ia,i,j, pipos[ia].x,pipos[ia].y,pipos[ia].z, fpipos[ia].x,fpipos[ia].y,fpipos[ia].z, fneighpi[j].x,fneighpi[j].y,fneighpi[j].z );
-                fp.add(fneighpi[j]);
-            }
-        }
-        fapos [ia].add( fa ); 
-        if(bpi){
-            fpipos[ia].add( fp );
-            fpipos[ia].makeOrthoU( pipos[ia] );  // subtract force component which change pi-vector size
-        }
+        assemble_atom(ia);
     }
 }
 
@@ -399,6 +403,40 @@ double eval_check(){
     return Etot;
 }
 
+// ToDo: OpenMP paraelization atempt
+int run_omp( int niter, double dt, double Fconv, double Flim ){
+    int itr=0;
+    double F2conv = Fconv*Fconv;
+    double R2damp = Rdamp*Rdamp;
+    for(int itr=0; itr<niter; itr++){
+        double E=0;
+        // ------ eval MMFF
+        //#pragma omp parallel for reduction(+:E)
+        for(int ia=0; ia<nnode; ia++){ 
+            E+=eval_atom(ia); 
+        }
+        // ------ eval non-bond
+        //#pragma omp parallel for reduction(+:E)
+        for(int ia=0; ia<natoms; ia++){
+           E += evalLJQs_ng4_atom( ia, neighs, R2damp );
+        }
+        // ---- assemble (we need to wait when all atoms are evaluated)
+        //#pragma omp parallel for
+        for(int ia=0; ia<natoms; ia++){
+            assemble_atom( ia );
+        }
+        // ------ move
+        double F2=0;
+        //#pragma omp parallel for reduction(+:F2)
+        for(int i=0; i<nvecs; i++){
+            F2 += move_atom_GD( i, dt, Flim );
+        }
+        if(F2<F2conv)break;
+    }
+    return itr;
+}
+
+
 void flipPis( Vec3d ax ){
     for(int i=0; i<nnode; i++){
         double c = pipos[i].dot(ax);
@@ -406,16 +444,22 @@ void flipPis( Vec3d ax ){
     }
 }
 
-
-void move_GD(float dt, double Flim=100.0 ){
-    double F2lim=Flim*Flim;
-    for(int i=0; i<nvecs; i++){
-        Vec3d  f   = fapos[i];
-        double fr2 = f.norm2();
-        if(fr2>F2lim){ f.mul(Flim/sqrt(fr2)); };
-        apos[i].add_mul( f, dt ); 
-    }
+inline double move_atom_GD(int i, float dt, double Flim){
+    Vec3d  f   = fapos[i];
+    double fr2 = f.norm2();
+    if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
+    apos[i].add_mul( f, dt );
+    return fr2;
 }
+
+double move_GD(float dt, double Flim=100.0 ){
+    double F2sum=0;
+    for(int i=0; i<nvecs; i++){
+        F2sum += move_atom_GD(i, dt, Flim);
+    }
+    return F2sum;
+}
+
 
 void makeBackNeighs( bool bCapNeighs=true ){
     for(int i=0; i<natoms; i++){ bkneighs[i]=Quat4i{-1,-1,-1,-1}; };
