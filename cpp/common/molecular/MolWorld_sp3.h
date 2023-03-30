@@ -132,6 +132,8 @@ class MolWorld_sp3{ public:
 	FILE* xyz_file=0;
 	char* tmpstr;
 
+    int    npbc       = 0;
+    Vec3d* pbc_shifts = 0;
 
 // =================== Functions
 
@@ -163,6 +165,18 @@ void buildFF( bool bNonBonded_, bool bOptimizer_ ){
     //init_buffers();
 }
 */
+
+int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
+    npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+    pbc_shifts = new Vec3d[npbc];
+    int ipbc=0;
+    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+        pbc_shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+        //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
+        ipbc++; 
+    }}}
+    return npbc;
+}
 
 void autoCharges(){
     if(verbosity>0)printf("MolWorld_sp3::autoCharges() \n");
@@ -319,7 +333,7 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     int ifrag = builder.frags.size()-1;
     if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
     builder.addCappingTypesByIz(1);
-    for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
+    //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
     builder.tryAddConfsToAtoms( 0, -1 );
     builder.cleanPis();
     if(verbosity>2)builder.printAtomConfs(false);
@@ -513,7 +527,6 @@ virtual void init( bool bGrid ){
             //if(bNonBonded){ init_nonbond(); }else{ printf( "WARRNING : we ignore non-bonded interactions !!!! \n" ); }
             builder.finishFragment(ifrag);
             DEBUG
-            printf( "!!!!! DEBUG nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
             if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
             if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
             printf("builder.lvec\n");builder.lvec.print();
@@ -549,6 +562,7 @@ virtual void init( bool bGrid ){
         ff4.setLvec((Mat3f)builder.lvec);   DEBUG
         DEBUG
         //nPBC=Vec3i{0,0,0}; // DEBUG
+        npbc = makePBCshifts( nPBC, builder.lvec );
         ff4.makeNeighCells( nPBC );       DEBUG
         ffl.makeNeighCells( nPBC );       DEBUG
         //builder.printBonds();
@@ -638,6 +652,7 @@ double eval( ){
         
     }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
     //bPBC=false;
+    /*
     if(bNonBonded){
         if(bMMFF){    
             if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ff.lvec, {1,1,0} ); }   // atoms outside cell
@@ -648,7 +663,7 @@ double eval( ){
             else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
         }
     }
-    
+    */
     if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
     /*
     if(bSurfAtoms){ 

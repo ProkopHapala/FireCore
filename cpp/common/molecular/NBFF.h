@@ -170,10 +170,11 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
-    double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
+    //double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
+    double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, int npbc, const Vec3d* shifts, double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs_ng4_PBC() \n" );
         //printf( "evalLJQs_ng4_PBC() nPBC(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
-        int ia_DBG = 0;
+        //int ia_DBG = 0;
         // printf( "evalLJQs_ng4_PBC() n=%i nPBC(%i,%i,%i) Rdamp %g \n lvec\n", n, nPBC.x,nPBC.y,nPBC.z, Rdamp );
         // printMat(lvec);
         // for(int i=0; i<n; i++){
@@ -186,21 +187,24 @@ class NBFF: public Atoms{ public:
         //     printf("\n"); 
         // }
         
+        
         const double R2damp = Rdamp*Rdamp;
-        const int  n    = natoms;
-        const int  npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
-        const bool bPBC = npbc>1;
-        //const bool bPBC = 0;
-        double E=0;    
-        Vec3d shifts[npbc]; // temporary store for lattice shifts
+        const int    n      = natoms;
+
+        // const int  npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+        // const bool bPBC = npbc>1;
+        // Vec3d shifts[npbc]; // temporary store for lattice shifts
+        // int ipbc=0;
+        // if(bPBC){
+        //     for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+        //         shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+        //         //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
+        //         ipbc++; 
+        //     }}}
+        // }
+
         int ipbc=0;
-        if(bPBC){
-            for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
-                shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
-                //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
-                ipbc++; 
-            }}}
-        }
+        double E=0;
         //for(int i=0; i<n; i++)printf( "CPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQs[i].x,REQs[i].y,REQs[i].z );
         for (int i=0; i<n; i++ ){
             Vec3d fi = Vec3dZero;
