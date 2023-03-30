@@ -78,12 +78,12 @@ void init_buffers(){
     buffers .insert( { "Es",               W.Es       } );
     buffers .insert( { "poses",   (double*)W.poses    } );
 
-    buffers .insert( { "ps1",    (double*)W.system0    ->ps  } );
-    buffers .insert( { "ps2",    (double*)W.systemTest0->ps  } );
-    buffers .insert( { "ps3",    (double*)W.systemTest ->ps  } );
-    ibuffers.insert( { "types1", (int*)W.system0    ->types } );
-    ibuffers.insert( { "types2", (int*)W.systemTest0->types } );
-    ibuffers.insert( { "types3", (int*)W.systemTest ->types } );
+    buffers .insert( { "ps1",    (double*)W.system0    ->apos  } );
+    buffers .insert( { "ps2",    (double*)W.systemTest0->apos  } );
+    buffers .insert( { "ps3",    (double*)W.systemTest ->apos  } );
+    ibuffers.insert( { "types1", (int*)W.system0    ->atypes } );
+    ibuffers.insert( { "types2", (int*)W.systemTest0->atypes } );
+    ibuffers.insert( { "types3", (int*)W.systemTest ->atypes } );
 }
 
 } // extern "C"

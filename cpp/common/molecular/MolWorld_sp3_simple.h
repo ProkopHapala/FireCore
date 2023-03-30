@@ -56,7 +56,7 @@ class MolWorld_sp3_simple{ public:
 
 	// Force-Fields & Dynamics
     MMFFsp3_loc  ffl;
-	NBsystem     nbmol;
+	NBFF     nbmol;
     //QEq          qeq;
 	DynamicOpt   opt;
 
@@ -255,14 +255,14 @@ void makeFFs(){
     if(bOptimizer){ 
         setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
     }
-    _realloc( manipulation_sel, nbmol.n );  
+    _realloc( manipulation_sel, nbmol.natoms );  
 }
 
 virtual void init( bool bGrid=false ){
     if( params.atypes.size() == 0 ){
         initParams( "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
     }
-    if( nbmol.n>0 ){ clear(); } // re-initialization
+    if( nbmol.natoms>0 ){ clear(); } // re-initialization
     builder.verbosity=verbosity;
     if(verbosity>0){
         printf("\n#### MolWorld_sp3::init()\n");
@@ -290,8 +290,8 @@ virtual void clear(){
     ffl.dealloc();
     // --- nbmol
     nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
-    nbmol.ps=0;  
-    nbmol.fs=0;  
+    nbmol.apos=0;  
+    nbmol.fapos=0;  
     nbmol.atypes=0;
     nbmol.dealloc();
     // --- opt
@@ -308,7 +308,7 @@ double eval(){
     double E=0;
     if(bMMFF){ 
         E += ffl.eval();  
-    }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
+    }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
     if(bNonBonded){
         if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, {1,1,0} ); }
         else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                    }
@@ -317,13 +317,13 @@ double eval(){
 }
 
 void pullAtom( int ia, float K=-2.0 ){ 
-    Vec3d f = getForceSpringRay( nbmol.ps[ia], pick_hray, pick_ray0, K ); nbmol.fs[ia].add( f );
+    Vec3d f = getForceSpringRay( nbmol.apos[ia], pick_hray, pick_ray0, K ); nbmol.fapos[ia].add( f );
 }
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     for(int itr=0; itr<nIter; itr++){
         double E = eval();
-        //ckeckNaN_d( nbmol.n, 3, (double*)nbmol.fs, "nbmol.fs" );
+        //ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
         if(ipicked>=0){ pullAtom( ipicked );  }; // printf( "pullAtom(%i) E=%g\n", ipicked, E ); };
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
@@ -391,11 +391,11 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
 int toXYZ(const char* comment="#comment", bool bNodeOnly=false){
     if(xyz_file==0){ printf("ERROR no xyz file is open \n"); return -1; }
     int n=ffl.natoms; if(bNodeOnly){ n=ffl.nnode; }
-    params.writeXYZ( xyz_file, n, nbmol.atypes, nbmol.ps, comment );
+    params.writeXYZ( xyz_file, n, nbmol.atypes, nbmol.apos, comment );
     return 0;
 }
 
-int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w" ){ return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.ps, comment, nbmol.REQs, mode ); }
+int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w" ){ return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs, mode ); }
 
 // ==============================================================
 // ========= Edit molecule (add/remove atoms, change topology)
@@ -430,10 +430,10 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
 // ========= Manipulation & Scan
 // ======================================
 
-void shift_atoms ( int n, int* selection, Vec3d d                                  ){ move  ( n, selection, nbmol.ps, d           ); };
-void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi          ){ rotate( n, selection, nbmol.ps, p0, ax, phi ); };
-void shift_atoms ( int n, int* selection, int ia0, int ia1, double l              ){ Vec3d d=(nbmol.ps[ia1]-nbmol.ps[ia0]).normalized()*l; move( n, selection, nbmol.ps, d); };
-void rotate_atoms( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, nbmol.ps, nbmol.ps[ia0], (nbmol.ps[iax1]-nbmol.ps[iax0]).normalized(), phi ); };
+void shift_atoms ( int n, int* selection, Vec3d d                                  ){ move  ( n, selection, nbmol.apos, d           ); };
+void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi          ){ rotate( n, selection, nbmol.apos, p0, ax, phi ); };
+void shift_atoms ( int n, int* selection, int ia0, int ia1, double l              ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; move( n, selection, nbmol.apos, d); };
+void rotate_atoms( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, nbmol.apos, nbmol.apos[ia0], (nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(), phi ); };
 
 /*
 int splitAtBond( int ib, int* selection ){
@@ -455,8 +455,8 @@ void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
     Tp0.z=-1e+300;
     Tp1.z=+1e+300;
     selection.clear();
-    for(int i=0; i<nbmol.n; i++ ){
-        rot.dot_to(nbmol.ps[i],Tp);
+    for(int i=0; i<nbmol.natoms; i++ ){
+        rot.dot_to(nbmol.apos[i],Tp);
         if( Tp.isBetween(Tp0,Tp1) ){
             selection.push_back( i );
         }
@@ -472,11 +472,11 @@ void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es, 
         if(bWriteTrj){ toXYZ(); };
         double E = eval();
         if(Es)Es[i]=E;
-        move( n, selection, nbmol.ps, d);
+        move( n, selection, nbmol.apos, d);
     }
     if(bWriteTrj){ fclose(xyz_file); }
 }
-void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj ){ Vec3d d=(nbmol.ps[ia1]-nbmol.ps[ia0]).normalized()*l; scanTranslation_ax(n,selection, d, nstep, Es, bWriteTrj ); };
+void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; scanTranslation_ax(n,selection, d, nstep, Es, bWriteTrj ); };
 
 
 void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, bool bWriteTrj ){
@@ -487,14 +487,14 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
     if(bWriteTrj){ xyz_file=fopen( "scan_rot_trj.xyz","w" ); }
     for(int i=0; i<nstep; i++){
         double E = eval();
-        Vec3d tq = torq( n, nbmol.ps, nbmol.fs, p0, selection );
+        Vec3d tq = torq( n, nbmol.apos, nbmol.fapos, p0, selection );
         if(bWriteTrj){  sprintf(tmpstr,"# rotScan[%i] E=%g tq=(%g,%g,%g)", i, E, tq.x,tq.y,tq.z );  toXYZ(tmpstr); };
         if(Es)Es[i]=E;
         ffl.rotateNodes(n, selection, p0, ax, dphi );
     }
     if(bWriteTrj){ fclose(xyz_file); }
 }
-void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){ Vec3d ax=(nbmol.ps[iax1]-nbmol.ps[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.ps[ia0], ax, phi, nstep, Es, bWriteTrj ); };
+void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, bWriteTrj ); };
 
 };
 

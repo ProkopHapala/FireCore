@@ -4,14 +4,16 @@
 
 //#include <vector>
 #include "Vec3.h"
-#include "NBFF.h"
+//#include "NBFF.h"
+#include "Atoms.h"
 
-void savexyz(const char* fname, AtomicSystem* A, AtomicSystem* B, const char* comment=0, const char* mode="w" ){
+
+void savexyz(const char* fname, Atoms* A, Atoms* B, const char* comment=0, const char* mode="w" ){
     FILE* fout = fopen( fname, mode);
     if(fout==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     int n=0;
-    if(A)n+=A->n;
-    if(B)n+=B->n;
+    if(A)n+=A->natoms;
+    if(B)n+=B->natoms;
     fprintf(fout,"%i\n", n);
     if(comment){ fprintf(fout,"%s\n", comment ); }else{ fprintf(fout, "comment\n", n); };
     if(A)A->atomsToXYZ(fout);
@@ -34,7 +36,7 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
 }
 
 class FitREQ{ public:
-    //NBsystem* nbff;
+    //NBFF* nbff;
     int nDOFs=0,ntype=0,nbatch=0,n0=0,n1=0;
     Vec3d*    typeREQs =0;   // [ntype] parameters for each type
     Vec3d*    typeREQsMin=0; // [ntype] equlibirum value of parameters for regularization 
@@ -54,18 +56,18 @@ class FitREQ{ public:
     //double* Rs =0,Es =0,Qs =0;
     //double* fRs=0,fEs=0,fQs=0;
 
-    //std::vector(AtomicSystem) examples; // Training examples
-    AtomicSystem* batch=0;     // [nbatch] 
+    //std::vector(Atoms) examples; // Training examples
+    Atoms* batch=0;     // [nbatch] 
     double*       weights = 0; // [nbatch] scaling importaince of parameters
     double*       Es      = 0; 
     Mat3d*        poses   = 0; // [nbatch]
    
     // for rigid fitting
-    AtomicSystem* systemTest0=0; //[1]
-    AtomicSystem* systemTest =0; //[1]
+    Atoms* systemTest0=0; //[1]
+    Atoms* systemTest =0; //[1]
     
     // system 0
-    AtomicSystem* system0=0;   // [1]
+    Atoms* system0=0;   // [1]
     //Vec3d* REQ0=0;    // [system0.n] REQparams for system0
     //Vec3i* jnds =0;   // [system0.n] typToREQ  for system0
     //Vec3d* fs0  =0;   // [system0.n] typToREQ  for system0
@@ -88,13 +90,13 @@ void realloc( int nDOFs_ ){
 
 void tryRealocTemp(){
     int n=nmax;
-    for(int i=0; i<nbatch; i++){ int ni = batch[i].n; if(ni>n){ n=ni;} }
+    for(int i=0; i<nbatch; i++){ int ni = batch[i].natoms; if(ni>n){ n=ni;} }
     if(n>nmax){ _realloc( fs, n );  nmax=n; };
 }
 
 void tryRealocTemp_rigid(){
-    if(nmax<systemTest0->n){
-        nmax=systemTest0->n;
+    if(nmax<systemTest0->natoms){
+        nmax=systemTest0->natoms;
         _realloc( fs, nmax );
     }
 }
@@ -141,22 +143,22 @@ int init_types( int ntype_, Vec3i* typeMask, Vec3d* tREQs=0, bool bCopy=false ){
 
 void setSystem( int isys, int na, int* types, Vec3d* ps, bool bCopy=false ){
     printf( "setSystem(%i) \n", isys );
-    AtomicSystem** pS;
-    AtomicSystem*  S;
+    Atoms** pS;
+    Atoms*  S;
     if(isys<0){
         if     (isys==-3){ pS=&systemTest;  n1=na; }
         else if(isys==-2){ pS=&systemTest0; n1=na; }
         else if(isys==-1){ pS=&system0;     n0=na; }
-        if(*pS==0   ){ *pS = new AtomicSystem(na); }
+        if(*pS==0   ){ *pS = new Atoms(na); }
         S=*pS;
     }else             { S=&batch[isys]; }
     if(bCopy){
-        if(S->n!=na){ printf("ERORRO FitREQ.setSystem() na(%i)!=S.n(%i) \n", na, S->n ); exit(0); }
-        for(int i=0; i<na; i++){ S->types[i]=types[i]; S->ps[i]=ps[i]; }
+        if(S->natoms!=na){ printf("ERORRO FitREQ.setSystem() na(%i)!=S.n(%i) \n", na, S->natoms ); exit(0); }
+        for(int i=0; i<na; i++){ S->atypes[i]=types[i]; S->apos[i]=ps[i]; }
     }else{
-        S->n     =na;
-        S->types =types;
-        S->ps    =ps;
+        S->natoms =na;
+        S->atypes =types;
+        S->apos   =ps;
     }
 }
 
@@ -176,9 +178,9 @@ void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy=false, bool 
 
 double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
     const double COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
-    int    nj   =system0->n;
-    int*   jtyp =system0->types;
-    Vec3d* jpos =system0->ps;
+    int    nj   =system0->natoms;
+    int*   jtyp =system0->atypes;
+    Vec3d* jpos =system0->apos;
     double Etot=0;
     double Qtot=0;
     for(int i=0; i<n; i++){
@@ -312,19 +314,19 @@ double evalDerivs( double* Eout=0 ){
     tryRealocTemp();
     double Error = 0;
     for(int i=0; i<nbatch; i++){
-        const AtomicSystem& C = batch[i];
+        const Atoms& C = batch[i];
         double Eref=Es[i];
         double wi = 1; 
         if(weights) wi = weights[i];
         // switch(ikind){ case ikind_LJQ:
-        clean_fs(C.n);
-        double E  = evalExampleDerivs_LJQ(C.n, C.types, C.ps );  // Forward pass
+        clean_fs(C.natoms);
+        double E  = evalExampleDerivs_LJQ(C.natoms, C.atypes, C.apos );  // Forward pass
         if(Eout){ Eout[i]=E; };
         double dE = (E - Eref)*wi;
         Error += dE;
-        acumDerivs(C.n, C.types, dE );
+        acumDerivs(C.natoms, C.atypes, dE );
         //double dE = C.E - E;
-        //double E_ = evalExampleDerivs_LJQ(C.n, C.types, C.ps, dE*wi );  // Backward pass
+        //double E_ = evalExampleDerivs_LJQ(C.n, C.atypes, C.apos, dE*wi );  // Backward pass
     }
     return Error;
 }
@@ -332,24 +334,24 @@ double evalDerivs( double* Eout=0 ){
 double evalDerivsRigid( double* Eout=0 ){
     //printf( "evalDerivsRigid() \n" );
     tryRealocTemp_rigid();
-    const AtomicSystem& C0 = *systemTest0;
-    const AtomicSystem& C  = *systemTest;
+    const Atoms& C0 = *systemTest0;
+    const Atoms& C  = *systemTest;
     double Error = 0; 
     for(int i=0; i<nbatch; i++){
         double Eref=Es[i]; 
-        rigid_transform( poses[i].a, 0, poses[i].c, poses[i].b, C.n, C0.ps, C.ps );
+        rigid_transform( poses[i].a, 0, poses[i].c, poses[i].b, C.natoms, C0.apos, C.apos );
         //savexyz("FitREQ_debug.xyz", system0, systemTest,0, "a" );
-        clean_fs(C.n);
-        double E  = evalExampleDerivs_LJQ( C.n, C.types, C.ps );  // Forward pass
+        clean_fs(C.natoms);
+        double E  = evalExampleDerivs_LJQ( C.natoms, C.atypes, C.apos );  // Forward pass
         if(Eout){ Eout[i]=E; };
         double wi = 1;
         if(weights) wi = weights[i];
         //if(bLimitForce){ };
         double dE = -(E - Eref)*wi;
         Error += dE*dE;
-        acumDerivs(C.n, C.types, dE );
+        acumDerivs(C.natoms, C.atypes, dE );
         //printf( "[%i] x %g E %g Eref %g ", i, poses[i].a.x, E, Eref );printf("}\n");
-        //printf("fs={");for(int j=0;j<C.n;j++){ printf("(%g,%g,%g)",fs[j].x,fs[j].y,fs[j].z); };//printf("}\n");
+        //printf("fs={");for(int j=0;j<C.natoms;j++){ printf("(%g,%g,%g)",fs[j].x,fs[j].y,fs[j].z); };//printf("}\n");
         //printf("fDOFs={");for(int j=0;j<nDOFs;j++){ printf("%g,",fDOFs[j]); };printf("}\n");
     }
     //printf("fDOFs={");for(int j=0;j<nDOFs;j++){ printf("%g,",fDOFs[j]); };printf("}\n");

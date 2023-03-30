@@ -64,7 +64,7 @@ class GridFF{ public:
 
     //Vec3d  *FFtot    = NULL; // total FF is not used since each atom-type has different linear combination
 
-    // ------ ToDo: this should be put inside NBsystem
+    // ------ ToDo: this should be put inside NBFF
     int  natoms     = 0;
     int    * atypes = NULL;
     Vec3d  * apos   = NULL;   // atomic position

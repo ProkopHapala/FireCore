@@ -407,35 +407,6 @@ void  TestAppMolecularBrowser::keyStateHandling( const Uint8 *keys ){
 //    app->zoom = x;
 //};
 
-
-/*
-void TestAppMolecularBrowser::loadGeom(){
-    // ---- Load & Build Molecular Structure
-    readMatrix( "cel.lvs", 3, 3, (double*)&builder.lvec );
-    builder.insertFlexibleMolecule(  builder.loadMolType( "mm.xyz", "polymer1" ), {0,0,0}, Mat3dIdentity, -1 );
-    //builder.lvec.a.x *= 2.3;
-    builder.printAtomConfs();
-    builder.export_atypes(atypes);
-    builder.verbosity = true;
-    builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
-    builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
-    builder.toMMFFmini( ff, &params );
-    builder.saveMol( "builder_output.mol" );
-
-    // ----- Non-bonded interactions setup 
-    nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.aforce, 0, ff.bond2atom );
-    builder.export_REQs( nff.REQs );
-    if(bNonBonded){
-        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
-            printf( "ERROR: nff.pairMask is not sorted => exit \n" );
-            exit(0);
-        };
-    }else{
-        printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
-    }
-}
-*/
-
 // ===================== MAIN
 
 TestAppMolecularBrowser * thisApp;

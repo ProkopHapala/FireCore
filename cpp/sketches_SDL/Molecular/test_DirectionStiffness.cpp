@@ -26,7 +26,7 @@ int verbosity = 0;
 #include "Molecule.h"
 #include "MMFFmini.h"
 #include "MMFFsp3.h"
-#include "NBFF.h"
+#include "NBFF_old.h"
 #include "MMFFparams.h"
 #include "MMFFBuilder.h"
 #include "DynamicOpt.h"
@@ -80,7 +80,7 @@ class TestAppDirectionStiffness : public AppSDL2OGL_3D { public:
 	Molecule    mol;
 	MMFFparams  params;
     MMFFmini    ff;
-    NBFF       nff;
+    NBFF_old    nff;
     MM::Builder builder;
     DynamicOpt  opt;
 

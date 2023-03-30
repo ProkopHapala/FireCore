@@ -27,7 +27,7 @@ int verbosity = 0;
 
 #include "Molecule.h"
 #include "MMFFsp3.h"
-#include "NBFF.h"
+#include "NBFF_old.h"
 #include "MMFFparams.h"
 #include "MMFFBuilder.h"
 #include "DynamicOpt.h"
@@ -56,7 +56,7 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 	Molecule    mol;
 	MMFFparams  params;
     MMFFsp3    ff;
-    NBFF       nff;
+    NBFF_old   nff;
     SMILESparser smiles;
     MM::Builder builder;
     DynamicOpt  opt;

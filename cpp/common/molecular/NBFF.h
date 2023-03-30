@@ -14,7 +14,7 @@ Non-Bonded Force-Field
 
 #include "Forces.h"
 
-class NBFF: public Atoms{ public: // Can be Child of AtomicSystem
+class NBFF: public Atoms{ public:
     //int     n      =0; // from Atoms
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
