@@ -77,7 +77,7 @@ void init_buffers(){
         //buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
         //buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
         //ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
-        ibuffers.insert( { "aneighs",      (int*)W.ffl.aneighs  } );
+        ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
     }else{
         W.ff.natoms=W.nbmol.n;
     }

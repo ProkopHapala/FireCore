@@ -67,7 +67,7 @@ void init_buffers(){
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
         buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
         buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-        ibuffers.insert( { "aneighs",   (int*)W.ffl.aneighs  } );
+        ibuffers.insert( { "neighs",   (int*)W.ffl.neighs  } );
     }
     ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
     buffers .insert( { "Es",       &W.ffl.Etot  } );

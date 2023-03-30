@@ -586,7 +586,7 @@ virtual void init( bool bGrid ){
         }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
-    printf( "MolWorld_sp3::init() ffl.aneighs=%li ffl.aneighCell-%li \n", ffl.aneighs, ffl.aneighCell );
+    printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
@@ -639,9 +639,9 @@ double eval( ){
     }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
     if(bNonBonded){
         if(bMMFF){    
-            if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ff.lvec, {1,1,0} ); }   // atoms outside cell
-            //else      { E += nbmol.evalLJQs_ng4    ( ffl.aneighs );                                   }   // atoms in cell ignoring bondede neighbors       
-            else      { E += nbmol.evalLJQs_ng4_omp( ffl.aneighs );                                   }   // atoms in cell ignoring bondede neighbors  
+            if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ff.lvec, {1,1,0} ); }   // atoms outside cell
+            //else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors       
+            else      { E += nbmol.evalLJQs_ng4_omp( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors  
         }else{
             if  (bPBC){ E += nbmol.evalLJQs_PBC    ( ff.lvec, {1,1,0} ); }   // atoms outside cell
             else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    

@@ -188,7 +188,7 @@ def getBuffs( NEIGH_MAX=4 ):
     nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];npi=ndims[4];nbonds=ndims[5];
     nvecs=natoms+npi
     print( "getBuffs(): nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
-    global DOFs,fDOFs,vDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,aneighs,selection
+    global DOFs,fDOFs,vDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
@@ -202,7 +202,7 @@ def getBuffs( NEIGH_MAX=4 ):
         #bond_k    = getBuff ( "bond_k",   (nbonds)   )
         #Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
         #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
-        aneighs   = getIBuff( "aneighs",  (nnode,NEIGH_MAX) )
+        neighs   = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
 
 #  void init_buffers()

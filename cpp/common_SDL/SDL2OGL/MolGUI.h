@@ -465,7 +465,7 @@ void MolGUI::drawPi0s( float sc=1.0 ){
     const MMFFsp3& ff = W->ff;
     glBegin(GL_LINES);
     for(int ia=0; ia<ff.nnode; ia++){
-        int* ngs = ff.aneighs + ia*ff.nneigh_max;
+        int* ngs = ff.neighs + ia*ff.nneigh_max;
         for(int j=0; j<ff.nneigh_max; j++){
             int ing = ngs[j]; 
             if(ing<0){

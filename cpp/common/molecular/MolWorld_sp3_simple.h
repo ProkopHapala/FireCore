@@ -204,12 +204,12 @@ void makeMMFF(){
         //params.printAtomTypes();
         builder.assignAllSp3Types();
         //builder.printAtomConfs(false);
-        //std::vector<int> aneighs( builder.atoms.size() );
-        int* aneighs=0;
-        builder.makeNeighs( aneighs, 4 );
-        builder.assignSpecialTypesLoop( 10, aneighs );
+        //std::vector<int> neighs( builder.atoms.size() );
+        int* neighs=0;
+        builder.makeNeighs( neighs, 4 );
+        builder.assignSpecialTypesLoop( 10, neighs );
         builder.printAtomConfs(false);
-        delete [] aneighs;
+        delete [] neighs;
     }
     DEBUG
     builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs(); 
@@ -310,8 +310,8 @@ double eval(){
         E += ffl.eval();  
     }else{ VecN::set( nbmol.n*3, 0.0, (double*)nbmol.fs );  }
     if(bNonBonded){
-        if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, {1,1,0} ); }
-        else      { E += nbmol.evalLJQs_ng4    ( ffl.aneighs );                                    }
+        if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, {1,1,0} ); }
+        else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                    }
     }
     return E;
 }

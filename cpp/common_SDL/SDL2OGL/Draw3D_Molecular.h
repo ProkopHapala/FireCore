@@ -328,7 +328,7 @@ void drawNeighs( const MMFFsp3& ff, double Fsc=0.0 ){
     //drawSystem( false, true, false );
     for(int ia=0; ia<ff.nnode; ia++ ){
         //printf( "atom[%i]\n", ia );
-        int* ngs = ff.aneighs + ia*ff.nneigh_max;
+        int* ngs = ff.neighs + ia*ff.nneigh_max;
         for(int j=0; j<ff.nneigh_max; j++ ){
             //printf( "atom[%i]neigh[%i]=%i \n", ia, j, ngs[j] );
             if(ngs[j]>=0){

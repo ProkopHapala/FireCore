@@ -21,6 +21,13 @@ class NBFF: public Atoms{ public: // Can be Child of AtomicSystem
     Vec3d    *fapos  =0;
     Vec3d    *REQs   =0;
     Quat4i   *neighs =0;
+    Quat4i   *neighCell=0;
+
+    double  Rdamp  = 1.0;
+    Mat3d   lvec;
+    Vec3i   nPBC;
+    bool    bPBC=false;
+
     Vec3d    *PLQs   =0;  // used only in combination with GridFF
 
     void torq     ( const Vec3d& p0,  Vec3d& tq                   ){ for(int i=0; i<natoms; i++){ Vec3d d; d.set_sub(apos[i],p0); tq.add_cross(fapos[i],d); } }

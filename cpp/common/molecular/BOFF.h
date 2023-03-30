@@ -21,11 +21,11 @@ class BOFF{ public:
     Vec3d*  aforce  =0;
     double* aO      =0;  // atoms bond order
     int*    atype   =0;
-    Quat4i* aneighs =0;  // indexes of 4 most bonded atoms 
+    Quat4i* neighs  =0;  // indexes of 4 most bonded atoms 
     Quat4i* Oneighs =0;  // bond order contribution of 4 most bonded atoms
 
 
-bool insertSorted( int ja, double Oij, int* aneighs, double* Oneighs ){
+bool insertSorted( int ja, double Oij, int* neighs, double* Oneighs ){
     return false;
 };
 
@@ -55,7 +55,7 @@ struct BObond{
 double eval_atom(const int ia){
     Vec3d   pi    = apos   [ia];
     int     ti    = atype  [ia];
-    //int*    ngs   = (int*   )(aneighs + ia); // do we need this ?
+    //int*    ngs   = (int*   )(neighs + ia); // do we need this ?
     //double* ngOs  = (double*)(Oneighs + ia);
     //int ngs   = Quat4i{-1,-1,-,1,-1};
 
