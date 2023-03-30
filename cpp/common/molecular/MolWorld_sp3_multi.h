@@ -219,10 +219,24 @@ void setup_NBFF_ocl(){
 }
 
 
-void evaluateSubstrate(){
-
+void picked2GPU( int ipick,  double K ){
+    //printf( "picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
+    int i0a = ocl.nAtoms*iSystemCur;
+    Quat4f& acon = constr[i0a + ipick];
+    if(ipick>=0){
+        Vec3f hray = (Vec3f)pick_hray;
+        Vec3f ray0 = (Vec3f)pick_ray0;
+        int i0v = ocl.nvecs *iSystemCur;
+        const Quat4f& atom = atoms [i0v + ipick];
+        float c = hray.dot( atom.f ) - hray.dot( ray0 );
+        acon.f = ray0 + hray*c;
+        acon.w = K;
+    }else{
+        acon.w = -1;
+    }
+    //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
+    ocl.upload( ocl.ibuff_constr, constr );   // ToDo: instead of updating the whole buffer we may update just relevant part?
 }
-
 
 // ==================================
 //           eval @GPU 
@@ -230,6 +244,7 @@ void evaluateSubstrate(){
 
 double eval_MMFFf4_ocl( int niter, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() \n");
+    picked2GPU( ipicked,  1.0 );
     int err=0;
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     // evaluate on GPU
