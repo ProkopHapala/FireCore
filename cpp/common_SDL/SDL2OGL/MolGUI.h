@@ -254,8 +254,8 @@ void MolGUI::init(){
     if(verbosity>0)printf("MolGUI::init() \n");
     W->init( true );
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
-    //MolGUI::bindMolecule( W->nbmol.n, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
-    MolGUI::bindMolecule( W->nbmol.n, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.ps, W->nbmol.fs, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+    //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
+    MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
     initGUI();
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
@@ -309,8 +309,8 @@ void MolGUI::draw(){
 
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
 
-    if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 0.1, 0., true );
-    //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.n, W->surf.ps, W->surf.REQs, ogl_sph, 1., 1., 0. );
+    if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true );
+    //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
     if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
     if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
@@ -335,7 +335,7 @@ void MolGUI::draw(){
 
     for(int i=0; i<W->selection.size(); i++){ 
         int ia = W->selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.ps[ia] );     
+        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.apos[ia] );     
     }
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
@@ -456,8 +456,8 @@ void MolGUI::renderESP( Vec3d REQ){
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
-    const NBsystem& nbmol = W->nbmol;
-    int nvert = Draw3D::drawESP( nbmol.n, nbmol.ps, nbmol.REQs, REQ );
+    const NBFF& nbmol = W->nbmol;
+    int nvert = Draw3D::drawESP( nbmol.natoms, nbmol.apos, nbmol.REQs, REQ );
     glEndList();
 };
 
@@ -554,11 +554,11 @@ void MolGUI::drawSystem_bak( Vec3i ixyz ){
 
     }
     //W->nbmol.print();
-    if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( W->nbmol.n, W->nbmol.ps, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
-    //if(bViewAtomP0s                        ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );  }
-    if(bViewAtomForces                       ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( W->nbmol.n, W->nbmol.ps, W->nbmol.fs, ForceViewScale, 10000.0 );  }
-    if(bOrig&&mm_bAtoms&&bViewAtomLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->nbmol.n, W->nbmol.ps, fontTex3D,        0.007              );       }
-    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->nbmol.n,  (double*)W->nbmol.REQs,  W->nbmol.ps, 3, 2, fontTex3D, 0.01 ); }
+    if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( W->nbmol.natoms, W->nbmol.apos, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
+    //if(bViewAtomP0s                        ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( W->nbmol.natoms, W->nbmol.apos, W->nbmol.fapos, ForceViewScale, 10000.0 );  }
+    if(bViewAtomForces                       ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( W->nbmol.natoms, W->nbmol.apos, W->nbmol.fapos, ForceViewScale, 10000.0 );  }
+    if(bOrig&&mm_bAtoms&&bViewAtomLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->nbmol.natoms, W->nbmol.apos, fontTex3D,        0.007              );       }
+    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->nbmol.natoms,  (double*)W->nbmol.REQs,  W->nbmol.apos, 3, 2, fontTex3D, 0.01 ); }
     if(W->ff.pi0s                            ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
 
 }
@@ -588,15 +588,15 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, double sc ){
     Vec3d dp=p1-p0; dp.mul(1./n);
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){
-        W->nbmol.ps[0]=p0+dp*i;
-        W->nbmol.fs[0]=Vec3dZero;
+        W->nbmol.apos [0]=p0+dp*i;
+        W->nbmol.fapos[0]=Vec3dZero;
         double E=0;
-        if   (W->bGridFF){ E+= W->gridFF.eval     (1, W->nbmol.ps, W->nbmol.PLQs,  W->nbmol.fs );      }
+        if   (W->bGridFF){ E+= W->gridFF.eval        (1, W->nbmol.apos, W->nbmol.PLQs,  W->nbmol.fapos );                        }
         //else           { E+= W->nbmol .evalMorse   (W->surf, false,                        W->gridFF.alpha, W->gridFF.Rdamp ); }
         else             { E+= W->nbmol .evalMorsePBC(W->surf, W->gridFF.grid.cell, W->nPBC, W->gridFF.alpha, W->gridFF.Rdamp ); }
-        Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+W->nbmol.fs[0]*sc );       // Force Vectro
-        //Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+(Vec3d{0.0,0.0,E})*sc  );  // Energy -> z
-        //Draw3D::vertex( W->nbmol.ps[0] ); Draw3D::vertex( W->nbmol.ps[0]+(Vec3d{0.0,E,0.0})*sc  );  // Energy -> x
+        Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+W->nbmol.fapos[0]*sc );       // Force Vectro
+        //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+(Vec3d{0.0,0.0,E})*sc  );  // Energy -> z
+        //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+(Vec3d{0.0,E,0.0})*sc  );  // Energy -> x
     }
     glEnd();
 }
@@ -749,7 +749,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
                         //int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
-                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.n, W->nbmol.ps );
+                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
                         if( ipick == W->ipicked ){ W->ipicked=-1; }else{ W->ipicked = ipick; }; 
 
                         W->selection.clear();
