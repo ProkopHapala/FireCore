@@ -13,11 +13,15 @@
 #include "quaternion.h"
 #include "molecular_utils.h"
 
+#include "NBFF.h"
+
 // ======================
 // ====   MMFFsp3
 // ======================
 
-class MMFFsp3_loc{ public:
+//class MMFFsp3_loc: public NBFF { public:
+
+class MMFFsp3_loc { public:
     static constexpr const int nneigh_max = 4;
     int  nDOFs=0,natoms=0,nnode=0,ncap=0,nvecs=0;
     bool bPBC=false;
