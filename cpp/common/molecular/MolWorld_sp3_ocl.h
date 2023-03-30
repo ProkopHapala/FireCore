@@ -540,14 +540,15 @@ void eval(){
         //if(bNonBonded){ E+= nff   .evalLJQ_pbc( builder.lvec, {1,1,1} ); }
         //bGridFF=true;
         //bOcl   =true;
+
         if(bSurfAtoms){ 
             if  (bGridFF){ 
                 if(bOcl){ E+= eval_gridFF_ocl(nbmol.natoms, nbmol.apos,             nbmol.fapos ); } 
                 else    { E+= gridFF.eval    (nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); 
-                        E+= nbmol.evalNeighs();
+                        E += nbmol.evalLJQs_ng4( ffl.neighs );
                     }
             }else { 
-                E+= nbmol.evalNeighs();   // Non-bonded interactions between atoms within molecule
+                E += nbmol.evalLJQs_ng4( ffl.neighs );  // Non-bonded interactions between atoms within molecule
               //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
                 E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
               //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 

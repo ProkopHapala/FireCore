@@ -259,7 +259,7 @@ double eval_MMFFf4_ocl( int niter, bool bForce=false ){
     if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     err |= ocl.finishRaw();
-    OCL_checkError(err, "eval_MMFFf4_ocl_2");
+    OCL_checkError(err, "eval_MMFFf4_ocl");
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
     unpack( ff4.nnode,  ffl. pipos, ff4. pipos );
     if(bForce){
@@ -289,13 +289,13 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
     if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     err |=  ocl.finishRaw();                              //DEBUG
-    OCL_checkError(err, "eval_MMFFf4_ocl_2");
+    OCL_checkError(err, "eval_NBFF_ocl");
     if(bForce){
         unpack( ff4.natoms, ffl.  apos, ff4.  apos );
         unpack( ff4.natoms, ffl. fapos, ff4. fapos );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_NBFF_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
         //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
     }
     return 0;
@@ -305,35 +305,36 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
 //                 eval
 // ==================================
 
-void eval(){
-    //printf("#======= MDloop[%i] \n", nloop );
+double eval( ){
     double E=0;
-    setNonBond( bNonBonded );
-    if(bGPU_MMFF){
-        eval_MMFFf4_ocl( 1 );
-        //eval_NBFF_ocl  ( 1 ); 
-    }else{
-        //printf( " ### CPU \n" );
-        if(bMMFF){ E += ff.eval();  } 
-        else     { VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
-        if(bSurfAtoms){ 
-            if  (bGridFF){ 
-                //if(bOcl){ E+= eval_gridFF_ocl(nbmol.n, nbmol.apos,             nbmol.fapos ); } 
-                //else 
-                { 
-                    E+= gridFF.eval    (nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); 
-                    E+= nbmol.evalNeighs();
-                }
-            }else { 
-                E+= nbmol.evalNeighs();   // Non-bonded interactions between atoms within molecule
-              //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
-                E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
-              //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
-            }
+    setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
+    if(bMMFF){ 
+        //E += ff .eval();
+        E += ffl.eval();
+        //E += eval_f4();
+        //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.apos[0].x,nbmol.apos[0].y,nbmol.apos[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
+        
+    }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
+    if(bNonBonded){
+        if(bMMFF){    
+            if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ff.lvec, {1,1,0} ); }   // atoms outside cell
+            else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors       
+        }else{
+            if  (bPBC){ E += nbmol.evalLJQs_PBC    ( ff.lvec, {1,1,0} ); }   // atoms outside cell
+            else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
         }
     }
-    //for(int i=0; i<ff.natoms; i++){ printf("atom[%i] f(%g,%g,%g) \n", i, ff.fapos[i].x ,ff.fapos[i].y ,ff.fapos [i].z ); };
-    //for(int i=0; i<ff.npi   ; i++){ printf("pvec[%i] f(%g,%g,%g) \n", i, ff.fpipos[i].x,ff.fpipos[i].y,ff.fpipos[i].z ); };
+    if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
+    /*
+    if(bSurfAtoms){ 
+        if   (bGridFF){ E+= gridFF.eval(nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); }
+        //else        { E+= nbmol .evalMorse   ( surf, false,                  gridFF.alpha, gridFF.Rdamp );  }
+        else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
+    }
+    */
+    //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
+    //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }
+    return E;
 }
 
 // ==================================
@@ -343,28 +344,30 @@ void eval(){
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     //bMMFF=false;
-    if(bMMFF)ff.cleanAll();
-    for(int itr=0; itr<nIter; itr++){
-        eval();
-        //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }
-        ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
-        if(ipicked>=0){
-             float K = -2.0;
-             Vec3d f = getForceSpringRay( ff.apos[ipicked], pick_hray, pick_ray0, K );
-             ff.fapos[ipicked].add( f );
-        };
-        if( !bGPU_MMFF){ // update atomic positions
+    if( bOcl ){
+        eval_MMFFf4_ocl( nIter );
+        //eval_NBFF_ocl  ( 1 ); 
+    }else{
+        for(int itr=0; itr<nIter; itr++){
+            //double E = eval();
+            double E = MolWorld_sp3::eval();
+            ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
+            //if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
+            //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
+            //if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
+            if(ipicked>=0){ pullAtom( ipicked );  }; // printf( "pullAtom(%i) E=%g\n", ipicked, E ); };
             //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
             //opt.move_GD(0.001);
             //opt.move_LeapFrog(0.01);
             //opt.move_MDquench();
-            opt.move_FIRE();
+            double f2=opt.move_FIRE();   
+            //printf( "[%i] E= %g [eV] |F|= %g [eV/A]\n", nloop, E, sqrt(f2) );
+            //double f2=1;
+            if(f2<sq(Ftol)){
+                bConverged=true;
+            }
+            nloop++;
         }
-        double f2=1;
-        if(f2<sq(Ftol)){
-            bConverged=true;
-        }
-        nloop++;
     }
     bChargeUpdated=false;
 }
@@ -440,7 +443,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
 // ==============================================================
 
 double eval_MMFFf4_ocl_debug( int niter ){ 
-    printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() \n");
+    printf("MolWorld_sp3_multi::eval_MMFFf4_ocl_debug() \n");
     int err=0;
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     
@@ -454,7 +457,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
         nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.eval_MMFFf4_ocl() CPU |fcog| =%g; fcog=(%g,%g,%g) bEval_ffl %i \n", bEval_ffl, fcog.norm(),  fcog.x, fcog.y, fcog.z, bEval_ffl ); exit(0); }
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.eval_MMFFf4_ocl_debug() CPU |fcog| =%g; fcog=(%g,%g,%g) bEval_ffl %i \n", bEval_ffl, fcog.norm(),  fcog.x, fcog.y, fcog.z, bEval_ffl ); exit(0); }
     }
     
     /*
@@ -475,7 +478,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
         err |= task_NBFF  ->enque_raw();
         err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
         err |= task_move  ->enque_raw(); 
-        OCL_checkError(err, "eval_MMFFf4_ocl_1");
+        OCL_checkError(err, "eval_MMFFf4_ocl_debug.1");
     }
     //err |= ocl.finishRaw();
     //OCL_checkError(err, "eval_MMFFf4_ocl_2");
@@ -487,7 +490,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     //for(int i=0; i<ff4.nvecs; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) pi %i \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z, i>=ff4.natoms ); }
     err |= ocl.finishRaw();
-    OCL_checkError(err, "eval_MMFFf4_ocl_2");
+    OCL_checkError(err, "eval_MMFFf4_ocl_debug.2");
 
     for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
 
@@ -519,7 +522,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
 // ==============================================================
 
 double eval_NBFF_ocl_debug( int niter ){ 
-    printf("MolWorld_sp3_multi::eval_NBFF_ocl() \n");
+    printf("MolWorld_sp3_multi::eval_NBFF_ocl_debug() \n");
     int err=0;
     if( task_NBFF==0 ){ setup_NBFF_ocl(); }
 
@@ -529,7 +532,7 @@ double eval_NBFF_ocl_debug( int niter ){
         nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_NBFF_ocl() CPU |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_NBFF_ocl_debug() CPU |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     }
     // evaluate on GPU
     for(int i=0; i<niter; i++){
@@ -542,7 +545,7 @@ double eval_NBFF_ocl_debug( int niter ){
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     err |=  ocl.finishRaw();                              //DEBUG
-    OCL_checkError(err, "eval_MMFFf4_ocl_2");
+    OCL_checkError(err, "eval_NBFF_ocl_debug");
 
     for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
 
@@ -562,7 +565,7 @@ double eval_NBFF_ocl_debug( int niter ){
     // ---- Check Invariatns
     fcog  = sum ( ffl.natoms, ffl.fapos   );
     tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-    if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+    if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_NBFF_ocl_debug |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
     
     exit(0);

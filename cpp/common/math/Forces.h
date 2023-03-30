@@ -73,7 +73,25 @@ inline double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, do
 
     return E;
 }
-
+/*
+inline double evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
+    // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
+    float3 h  = hr1.xyz + hr2.xyz;
+    float  c2 = dot(h,h)*0.25f;              // cos(a/2) = |ha+hb|
+    float  s2 = 1.f-c2;
+    float2 cso = (float2){ sqrt(c2), sqrt(s2) };
+    float2 cs = udiv_cmplx( cs0, cso );
+    float  E         =  k*( 1.f - cs.x );  // just for debug ?
+    float  fr        = -k*(       cs.y );
+    c2 *= -2.f;
+    fr /=  4.f*cso.x*cso.y;   //    |h - 2*c2*a| =  1/(2*s*c) = 1/sin(a)
+    float  fr1    = fr*hr1.w;
+    float  fr2    = fr*hr2.w;
+    *f1 =  h*fr1  + hr1.xyz*(fr1*c2);  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
+    *f2 =  h*fr2  + hr2.xyz*(fr2*c2);  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
+    return E;
+}
+*/
 inline double evalAngleCos( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, double c0, Vec3d& f1, Vec3d& f2 ){
     double c = h1.dot(h2);
     //f1 = h2 - h1*c;

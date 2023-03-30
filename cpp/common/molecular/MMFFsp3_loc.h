@@ -255,6 +255,7 @@ double eval_atom(const int ia){
             E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);    
             //if(ia==ia_DBG)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             
+            
             double kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
@@ -274,9 +275,10 @@ double eval_atom(const int ia){
         }
         //}
         
+        
     }
 
-    
+    //printf( "MMFF_atom[%i] cs(%6.3f,%6.3f) ang=%g [deg]\n", ia, cs0_ss.x, cs0_ss.y, atan2(cs0_ss.y,cs0_ss.x)*180./M_PI );
     // --------- Angle Step
     const double R2damp=Rdamp*Rdamp;
     for(int i=0; i<4; i++){
@@ -287,12 +289,8 @@ double eval_atom(const int ia){
             int jng  = ings[j];
             if(jng<0) break;
             const Quat4d& hj = hs[j];    
-            // #if ANG_HALF_COS
-            //     E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
-            // #else             
-            //     E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
-            // #endif
 
+            //bAngleCosHalf = false;
             if( bAngleCosHalf ){
                 E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
             }else{             
@@ -301,6 +299,7 @@ double eval_atom(const int ia){
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
 
             fa    .sub( f1+f2  );
+            
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
                 //printf( "non-bond[%i|%i=%i,%i,=%i] REQs=%li \n", ia, i,ing,j,jng, REQs  );
@@ -314,12 +313,14 @@ double eval_atom(const int ia){
                 f1.sub(fij);
                 f2.add(fij);
             }
+            
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
             // ToDo: subtract non-covalent interactions
         }
     }
+    
     
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
@@ -330,14 +331,7 @@ double eval_atom(const int ia){
 
 double eval_atoms(){
     double E=0;
-    //int ia=0;
-    // https://stackoverflow.com/questions/11773115/parallel-for-loop-in-openmp
-    //#pragma omp parallel for shared(E) 
-    //#pragma omp parallel for shared(E) schedule(dynamic, 1)
-    //#pragma omp parallel for shared(E) schedule(static, 1)
-    //#pragma omp parallel for reduction(+:E)
     for(int ia=0; ia<nnode; ia++){ 
-        //printf("eval_atoms(%i) @cpu[%d/%d]\n", ia, omp_get_thread_num(), omp_get_num_threads() );
         E+=eval_atom(ia); 
     }
     return E;
@@ -482,41 +476,43 @@ void makeBackNeighs( bool bCapNeighs=true ){
 
 void makeNeighCells( const Vec3i nPBC_ ){ 
     nPBC=nPBC_;
+    //printf( "makeNeighCells() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     for(int ia=0; ia<natoms; ia++){
-        neighCell[ia]=Quat4i{0,0,0,0};
+        Quat4i ngC = Quat4i{-1,-1,-1,-1};
         for(int j=0; j<4; j++){
-            //printf("ngcell[%i,j=%i] \n", ia, j);
-            int ja = neighs[ia].array[j];
-            //printf("ngcell[%i,ja=%i] \n", ia, ja);
+            const int ja = neighs[ia].array[j];
             if( ja<0 )continue;
-            Vec3d d = apos[ja] - apos[ia];
-            int ipbc=0;
-            int imin=-1;
+            const Vec3d d0 = apos[ja] - apos[ia];
+            int ipbc =  0;
+            int imin = -1;
             double r2min = 1e+300;
-            for(int ia=-nPBC.x; ia<=nPBC.x; ia++){ for(int ib=-nPBC.y; ib<=nPBC.y; ib++){ for(int ic=-nPBC.z; ic<=nPBC.z; ic++){ 
-                Vec3d shift= (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic); 
-                shift.add(d);
-                double r2 = shift.norm();
+            for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){   
+                Vec3d d = d0 + (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz); 
+                double r2 = d.norm2();
+                //printf( "[%i,%i][%i,%i,%i] %g   (%g,%g,%g)\n", ia,ja, ix,iy,iz, sqrt(r2), d.x,d.y,d.z );
                 if(r2<r2min){   // find nearest distance
-                    r2min=r2;
-                    imin=ipbc;
+                    r2min = r2;
+                    imin  = ipbc;
                 }
                 ipbc++; 
             }}}
+            ngC.array[j] = imin;
             //printf("ngcell[%i,%i] imin=%i \n", ia, ja, imin);
-            neighCell[ia].array[j] = imin;
-            //printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
         }
+        //printf("\n", ngC.x,ngC.y,ngC.z,ngC.w);
+        neighCell[ia]=ngC;
     }
-    //printf("MMFFsp3_loc::makeNeighCells() DONE \n");
+    printNeighs();
 }
 
 void printSizes(){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };
 
+void printNeighs  (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); };
 void printBKneighs(int ia){ printf("atom[%i] bkngs{%3i,%3i,%3i,%3i} \n", ia, bkneighs[ia].x,bkneighs[ia].y,bkneighs[ia].z,bkneighs[ia].w ); };
-void printBKneighs(){for(int ia=0; ia<natoms; ia++){ printBKneighs(ia); }; };
+void printNeighs  (      ){for(int ia=0; ia<natoms; ia++){ printNeighs(ia); }; };
+void printBKneighs(      ){for(int ia=0; ia<natoms; ia++){ printBKneighs(ia); }; };
 
 
 void print_apos(){
