@@ -132,9 +132,9 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
     if(bParams){
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
-        copy    ( ff.natoms, ff.aneighCell, neighCell+i0a );
-        copy    ( ff.natoms, ff.aneighs,    neighs   +i0a );
-        //copy_add( ff.natoms, ff.aneighs,    neighs   +i0a,           0      );
+        copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
+        copy    ( ff.natoms, ff.neighs,    neighs   +i0a );
+        //copy_add( ff.natoms, ff.neighs,    neighs   +i0a,           0      );
         copy_add( ff.natoms, ff.bkneighs,   bkNeighs +i0v,           i0n*8  );
         copy_add( ff.nnode , ff.bkneighs,   bkNeighs +i0v+ff.natoms, i0n*8 + 4*ff.nnode );
         pack    ( ff.nnode , ff.apars,      MMpars   +i0n );
@@ -436,7 +436,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
         ffl.Rdamp = gridFF.Rdamp;
         ffl.cleanForce();
         ffl.eval();    //for(int i=0; i<ffl.nvecs; i++){  printf("ffl[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i,  ffl.fapos[i].x,ffl.fapos[i].y,ffl.fapos[i].z,   ffl.apos[i].x,ffl.apos[i].y,ffl.apos[i].z,  i>=ffl.natoms ); }
-        nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
+        nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
         if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.eval_MMFFf4_ocl() CPU |fcog| =%g; fcog=(%g,%g,%g) bEval_ffl %i \n", bEval_ffl, fcog.norm(),  fcog.x, fcog.y, fcog.z, bEval_ffl ); exit(0); }
@@ -446,7 +446,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
     { // DEBUG --- evaluate on CPU
         unpack_system( iSystemCur, ffl );
         ffl  .cleanForce();
-        nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
+        nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
         if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.eval_MMFFf4_ocl() CPU |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
@@ -511,7 +511,7 @@ double eval_NBFF_ocl_debug( int niter ){
     { // DEBUG --- evaluate on CPU
         unpack_system( iSystemCur, ffl );
         ffl  .cleanForce();
-        nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
+        nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
         if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_NBFF_ocl() CPU |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }

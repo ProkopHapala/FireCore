@@ -47,7 +47,7 @@ class MMFFsp3{ public:
     bool    bPBCbyLvec  =false;
     Mat3d   invLvec, lvec;
 
-    int*    aneighs = 0;  // [natom*nneigh_max] neigbors of atom
+    int*    neighs = 0;  // [natom*nneigh_max] neigbors of atom
     int*    abonds  = 0;  // [natom*nneigh_max] bonds    of atom
     //double* Kneighs = 0;  // [natom*nneigh_max] angular stiffness for given neighbor
     Quat4d* NeighParams=0;
@@ -98,7 +98,7 @@ void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
     //printf( "MMFFsp3::realloc() 3 \n" );
     if(bNeighs){
         int nn = nnode*nneigh_max;
-        _realloc( aneighs, nn );
+        _realloc( neighs, nn );
         _realloc( abonds,  nn );
         //_realloc( Kneighs, nn );
         _realloc( NeighParams, nnode );
@@ -318,7 +318,7 @@ double eval_bond(int ib){
     if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){ 
         int i0=at.i*nneigh_max;
         int j0=at.j*nneigh_max;
-        //printf( "eval_bond at(%i,%i) ai[%i,%i,%i,%i] aj[%i,%i,%i,%i] \n", at.i, at.j,  aneighs[i0+0],aneighs[i0+1],aneighs[i0+2],aneighs[i0+3],   aneighs[j0+0],aneighs[j0+1],aneighs[j0+2],aneighs[j0+3] );
+        //printf( "eval_bond at(%i,%i) ai[%i,%i,%i,%i] aj[%i,%i,%i,%i] \n", at.i, at.j,  neighs[i0+0],neighs[i0+1],neighs[i0+2],neighs[i0+3],   neighs[j0+0],neighs[j0+1],neighs[j0+2],neighs[j0+3] );
     }
     */
     // --- Pi Bonds
@@ -329,11 +329,11 @@ double eval_bond(int ib){
             int i0=at.i*nneigh_max;
             int j0=at.j*nneigh_max;
             for(int i=2;i<nneigh_max;i++){
-                int ipi   = aneighs[i0+i];
+                int ipi   = neighs[i0+i];
                 //double Ki = Kneighs[i0+i] * Kpipi;
                 if(ipi>=0) continue;
                 for(int j=2;j<nneigh_max;j++){
-                    int jpi=aneighs[j0+j];
+                    int jpi=neighs[j0+j];
                     if(jpi>=0) continue;
                     //if( (at.i==iDEBUG_pick)||(at.j==iDEBUG_pick) ){  printf(" i,j[%i,%i]->ipi,jpi[%i,%i,] \n",  i,j, ipi,jpi ); };
                     //double Kij = Ki*Kneighs[j0+j];
@@ -372,13 +372,13 @@ double eval_bond_neigh(int ib, Vec3d h, double l){
             const int i0=B.i*nneigh_max;
             const int j0=B.j*nneigh_max;
             for(int i=2;i<nneigh_max;i++){
-                const int ing   = aneighs[i0+i];
+                const int ing   = neighs[i0+i];
                 const bool  bi = ing<0;
                 Vec3d hi; double il1;
                 if(bi){ hi=pipos[-ing-2];            il1=1;              }
                 else  { hi=apos [ ing  ]-apos[B.i];  il1=hi.normalize(); }
                 for(int j=2;j<nneigh_max;j++){
-                    const int jng=aneighs[j0+j];
+                    const int jng=neighs[j0+j];
                     const bool  bj = jng<0;
                     
                     Vec3d hj; double il2;
@@ -416,7 +416,7 @@ double eval_neighs(int ia){
     double E=0;
     int ioff = ia*nneigh_max;
     //bool bDEBUG=(ia==7);
-    //if(bDEBUG)printf( "#-atom[%i] [%i,%i,%i,%i] \n", ia, aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3] );
+    //if(bDEBUG)printf( "#-atom[%i] [%i,%i,%i,%i] \n", ia, neighs[ioff+0],neighs[ioff+1],neighs[ioff+2],neighs[ioff+3] );
     const bool doPiPiT_   = doPiPiT; 
     const bool doAngles_  = doAngles;
     const bool doPiSigma_ = doPiSigma;
@@ -425,13 +425,13 @@ double eval_neighs(int ia){
     double Kss = params.y;
     double Ksp = params.z;
     for(int i=0; i<nneigh_max; i++){
-        int    ing = aneighs[ioff+i];
+        int    ing = neighs[ioff+i];
         //double Ki  = Kneighs[ioff+i];
         bool bipi=ing<0;
         //if( ing<0 ){ break; // empty
         //}else if( ing<ipi0 ){ // signa-bonds
         for(int j=i+1; j<nneigh_max; j++){
-            int jng  = aneighs[ioff+j];
+            int jng  = neighs[ioff+j];
             bool bjpi=jng<0;
             //double K = Kneighs[ioff+j]*Ki;
             //printf( "eval_neighs[%i,%i] ing,jng(%i,%i) \n", i,j, ing,jng );
@@ -482,9 +482,9 @@ double eval_neighs_new(int ia){
     double  ils[4];
     
     // ToDo: there could be computed also the bonds (similarly as done in OpenCL)
-    //if(idebug>0)printf( "DEBUG eval_neighs_new() [%i] aneighs[%i,%i,%i,%i] abonds[%i,%i,%i,%i] \n", ia,  aneighs[ioff+0],aneighs[ioff+1],aneighs[ioff+2],aneighs[ioff+3],     abonds[ ioff+0],abonds[ ioff+1],abonds[ ioff+2],abonds[ ioff+3] );
+    //if(idebug>0)printf( "DEBUG eval_neighs_new() [%i] neighs[%i,%i,%i,%i] abonds[%i,%i,%i,%i] \n", ia,  neighs[ioff+0],neighs[ioff+1],neighs[ioff+2],neighs[ioff+3],     abonds[ ioff+0],abonds[ ioff+1],abonds[ ioff+2],abonds[ ioff+3] );
     for(int i=0; i<nneigh_max; i++){
-        int  ing = aneighs[ioff+i];
+        int  ing = neighs[ioff+i];
         if(ing==-1)continue;
         if(ing<0){
             ils[i] = 1;
@@ -518,11 +518,11 @@ double eval_neighs_new(int ia){
     }
     Vec3d f1,f2;
     for(int i=0; i<nneigh_max; i++){
-        int    ing = aneighs[ioff+i];
+        int    ing = neighs[ioff+i];
         if(ing==-1)continue;
         bool bipi=ing<0;
         for(int j=i+1; j<nneigh_max; j++){
-            int jng  = aneighs[ioff+j];
+            int jng  = neighs[ioff+j];
             if(jng==-1)continue;
             bool bjpi=jng<0;
             //printf( "DEBUG angle[%i,%i] bpi(%i,%i)\n", i, j, bipi, bjpi );
@@ -634,7 +634,7 @@ double eval_check(){
 void evalPi0s(){
     for(int ia=0; ia<nnode; ia++){
         int ioff = ia*nneigh_max;
-        int* ngs = aneighs+ioff;
+        int* ngs = neighs+ioff;
         int ipi  = ngs[3];
         int nbond=0;
         if(ipi<0){
@@ -642,7 +642,7 @@ void evalPi0s(){
             for(int j=0; j<3; j++){
                 int ja  = ngs[j];
                 if( (ja>=0) && (ja<nnode) ){
-                    int jpi = aneighs[ja*nneigh_max+3];
+                    int jpi = neighs[ja*nneigh_max+3];
                     if(jpi<0){
                         pi0.add( pipos[-jpi-2] );
                         nbond++;
@@ -668,7 +668,7 @@ void chargeToEpairs( Vec3d* REQs, double cQ=-0.2, int etyp=-1 ){
 void makePiNeighs( int* pi_neighs ){
     printf( "makePiNeighs() \n" );
     for(int ia=0; ia<nnode; ia++){
-        int* ngs = aneighs+(ia*nneigh_max);
+        int* ngs = neighs+(ia*nneigh_max);
         int ipi  = ngs[3];
         if(ipi<0){
             int ioff = (-ipi-2)*4;
@@ -677,8 +677,8 @@ void makePiNeighs( int* pi_neighs ){
             for(int j=0; j<3; j++){
                 int ja  = ngs[j];
                 if( (ja>=0) && (ja<nnode) ){
-                    int jpi = aneighs[ja*nneigh_max+3];
-                    printf( " [%i](%i,%i,%i,%i) ", ja, aneighs[ja*nneigh_max+0],aneighs[ja*nneigh_max+1],aneighs[ja*nneigh_max+2],aneighs[ja*nneigh_max+3] ); 
+                    int jpi = neighs[ja*nneigh_max+3];
+                    printf( " [%i](%i,%i,%i,%i) ", ja, neighs[ja*nneigh_max+0],neighs[ja*nneigh_max+1],neighs[ja*nneigh_max+2],neighs[ja*nneigh_max+3] ); 
                     if(jpi<0){
                         pi_neighs[ioff+nbond]=natoms-jpi-2;
                         nbond++;
@@ -698,7 +698,7 @@ void makePiNeighs( int* pi_neighs ){
 
 inline bool insertNeigh( int i, int j ){
     int off = i*nneigh_max;
-    int*   ngs   = aneighs + off;
+    int*   ngs   = neighs + off;
     //double* Kngs = Kneighs + off;
     int ii;
     for(ii=0; ii<nneigh_max; ii++){
@@ -709,14 +709,14 @@ inline bool insertNeigh( int i, int j ){
 
 void bond2neighs(){
     int nn=natoms*nneigh_max;
-    for(int i=0; i<nn; i++){ aneighs[i]=-1; };
+    for(int i=0; i<nn; i++){ neighs[i]=-1; };
     for(int i=0; i<nbonds; i++){
         Vec2i b = bond2atom[i];
         if(b.i<natoms)insertNeigh( b.i, b.j );
         if(b.j<natoms)insertNeigh( b.j, b.i );
     }
     int ipi=0;
-    for(int i=0; i<nn; i++){ if(aneighs[i]<0){ aneighs[i]=ipi; ipi++; }; };
+    for(int i=0; i<nn; i++){ if(neighs[i]<0){ neighs[i]=ipi; ipi++; }; };
 }
 
 Vec3d evalPiTorq(){
@@ -724,7 +724,7 @@ Vec3d evalPiTorq(){
     for(int ia=0; ia<nnode; ia++){
         int ioff = ia*nneigh_max;
         for(int i=0; i<nneigh_max; i++){
-            int ing = aneighs[ioff+i];
+            int ing = neighs[ioff+i];
             if(ing<0){
                 int ipi=-ing-2;
                 tq.add_cross( apos[ia]+pipos[ipi], fpipos[ipi] );
@@ -741,7 +741,7 @@ int selectCaps(int n, int* sel, int* selout){
     for(int i=0;i<n; i++){
         int ia = sel[i];
         if(ia>=nnode)continue;
-        int* ngs=aneighs + ia*nneigh_max; 
+        int* ngs=neighs + ia*nneigh_max; 
         for(int j=0;j<nneigh_max;j++){
             int ja = ngs[j];
             if(ja>=0){ nout=ja; nout++; } // ignore pi-bonds
@@ -758,7 +758,7 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
         int ia = sel[i];
         if(ia>=nnode)continue;
         apos[ia].rotate_csa( ca, sa, ax, p0 );
-        int* ngs=aneighs + ia*nneigh_max; 
+        int* ngs=neighs + ia*nneigh_max; 
         for(int j=0;j<nneigh_max;j++){
             int ja = ngs[j];
             if(ja>=0){ if(ja>nnode) apos[ ja  ].rotate_csa( ca, sa, ax, p0 ); } // cap atoms
@@ -791,7 +791,7 @@ void printBonds     (){     printf( "MMFFsp3::printBonds() : \n" ); for(int i=0;
 void printAtomPis(){ 
     printf( "MMFFsp3::printAtomPis() : \n" );
     for(int ia=0; ia<nnode; ia++ ){
-        int* ngs = aneighs + ia*nneigh_max;
+        int* ngs = neighs + ia*nneigh_max;
         for(int j=0; j<nneigh_max; j++){
             int ing = ngs[j];
             if(ing<0){ int ipi=-ing-2; printf("pi[%i]atom[%i]ng[%i] pos(%g,%g,%g) force(%g,%g,%g)\n", ipi, ia, j, pipos[ipi].x,pipos[ipi].y,pipos[ipi].z,   fpipos[ipi].x,fpipos[ipi].y,fpipos[ipi].z );  };
@@ -818,7 +818,7 @@ void printNeigh(int ia){
     printf( "atom[%i] neighs{", ia );
     for(int j=0;j<nneigh_max;j++){
         int ij=ia*nneigh_max + j;
-        printf( "%i,", aneighs[ij] );
+        printf( "%i,", neighs[ij] );
     }
     /*
     printf( "] K(" );

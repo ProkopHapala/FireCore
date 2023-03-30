@@ -816,8 +816,8 @@ class Builder{  public:
         }
     }
 
-    int getNeighType( int ia, int j, int* aneighs ){
-        int ja = aneighs[ ia*4 + j];
+    int getNeighType( int ia, int j, int* neighs ){
+        int ja = neighs[ ia*4 + j];
         //printf( "getNeighType() ia %i j %i ja %i\n", ia, j, ja );
         if( (ja<0)||(ja>atoms.size()) ) return -1;
         return atoms[ ja ].type;
@@ -825,13 +825,13 @@ class Builder{  public:
 
     const char* getAtomTypeName(int ia){ return params->atypes[atoms[ia].type].name; };
 
-    bool hasNeighborOfType( int ia, int n, const int* its, bool* bls, int* aneighs ){
+    bool hasNeighborOfType( int ia, int n, const int* its, bool* bls, int* neighs ){
         int ic = atoms[ia].iconf;
         for(int j=0; j<n; j++){ bls[j]=false; };
         if(ic<0) return false;
         const AtomConf& c = confs[ic];
         for(int i=0; i<4; i++){
-            int ja = aneighs[i];
+            int ja = neighs[i];
             if(ja<0) continue;
             int jt = atoms[ja].type;
             for(int j=0; j<n; j++){
@@ -844,7 +844,7 @@ class Builder{  public:
         return true;
     }
 
-    int assignSpecialTypes( int* aneighs ){
+    int assignSpecialTypes( int* neighs ){
         //printf("#===========assignSpecialTypes() \n");
         // ------ C
         const int it_C_sp3 = params->getAtomType("C_sp3",true);
@@ -887,9 +887,9 @@ class Builder{  public:
         int na=atoms.size();
         bool bls[8];
         int nnew=0;
-        //for(int i=0; i<na;i++){ printf("aneigs[%i]{%i,%i,%i,%i}\n", i, aneighs[i*4+0],aneighs[i*4+1],aneighs[i*4+2],aneighs[i*4+3]); }
+        //for(int i=0; i<na;i++){ printf("aneigs[%i]{%i,%i,%i,%i}\n", i, neighs[i*4+0],neighs[i*4+1],neighs[i*4+2],neighs[i*4+3]); }
         for(int ia=0; ia<na; ia++){
-            int* ngs  = aneighs+ia*4;
+            int* ngs  = neighs+ia*4;
             int itnew =-1;
             Atom& A   = atoms[ia];
             const AtomType& t = params->atypes[A.type];
@@ -940,12 +940,12 @@ class Builder{  public:
         return nnew;
     }
 
-    int assignSpecialTypesLoop( int nmax, int* aneighs ){
+    int assignSpecialTypesLoop( int nmax, int* neighs ){
         int nnew=0;
         int itr=0;
         for(itr=0; itr<nmax; itr++){
             printf( "# --- assignSpecialTypesLoop[%i] \n", itr );
-            int ni = assignSpecialTypes( aneighs ); 
+            int ni = assignSpecialTypes( neighs ); 
             nnew+=ni; 
             if( ni==0 ){ return nnew; } 
         }
@@ -2286,7 +2286,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         int ie0=nconf+ncap;
         int iie = 0;
 
-        for(int i=0; i<ff.nnode*4;  i++){ ff.aneighs[i]=-1; };
+        for(int i=0; i<ff.nnode*4;  i++){ ff.neighs[i]=-1; };
 
         //for(int i=0; i<ff.nnode*ff.nneigh_max; i++){ ff.Kneighs[i]=K_sigma; }
         //for(int ia=0; ia<atoms.size(); ia++ ){  
@@ -2298,7 +2298,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
                 AtomConf& conf = confs[ic];
                 //if(verbosity>1) printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
                 //printf( "atom[%i] conf[%i] n,nb,npi,ne(%i,%i,%i,%i)[ \n", ia, ic, conf.n,conf.nbond,conf.npi,conf.ne  );
-                int*    ngs  = ff.aneighs + ia*N_NEIGH_MAX;
+                int*    ngs  = ff.neighs + ia*N_NEIGH_MAX;
                 int*    nbs  = ff.abonds  + ia*N_NEIGH_MAX;
                 //double* kngs = ff.Kneighs + ia*N_NEIGH_MAX;
                 // -- atoms
@@ -2361,12 +2361,12 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
     }
 #endif // MMFFmini_h
 
-void makeNeighs( int*& aneighs, int perAtom ){
+void makeNeighs( int*& neighs, int perAtom ){
     int na = atoms.size();
     int ntot= na*perAtom;
-    _allocIfNull( aneighs, ntot );
-    //printf( "MM::Builder::makeNeighs() ntot=%i  ^aneighs=%li \n", ntot, aneighs );
-    for(int i=0;i<ntot; i++){ aneighs[i]=-1; }; // back neighbors
+    _allocIfNull( neighs, ntot );
+    //printf( "MM::Builder::makeNeighs() ntot=%i  ^neighs=%li \n", ntot, neighs );
+    for(int i=0;i<ntot; i++){ neighs[i]=-1; }; // back neighbors
     DEBUG
     for(int ia=0; ia<na; ia++ ){
         //printf( "MM::Builder::makeNeighs()[%i] \n", ia );
@@ -2378,14 +2378,14 @@ void makeNeighs( int*& aneighs, int perAtom ){
                 if(ib<0) continue;
                 const Bond& B = bonds[ib];
                 int ja        = B.getNeighborAtom(ia);
-                aneighs[ ia*perAtom + k ] = ja;
+                neighs[ ia*perAtom + k ] = ja;
                 int jc = atoms[ja].iconf;
                 //printf( "makeNeighs[%i|%i] ja %i jc %i \n", ia, k, ja, jc );
-                if( jc==-1 ){ aneighs[ ja*perAtom ]=ia; }
+                if( jc==-1 ){ neighs[ ja*perAtom ]=ia; }
             }
         }
     }
-    //for(int ia=0; ia<na; ia++){ printf( "aneigh[%i](%i,%i,%i,%i)\n", ia, aneighs[ia*perAtom],aneighs[ia*perAtom+1],aneighs[ia*perAtom+2],aneighs[ia*perAtom+3] ); };
+    //for(int ia=0; ia<na; ia++){ printf( "neigh[%i](%i,%i,%i,%i)\n", ia, neighs[ia*perAtom],neighs[ia*perAtom+1],neighs[ia*perAtom+2],neighs[ia*perAtom+3] ); };
 }
 
 #ifdef MMFFsp3_loc_h
@@ -2410,7 +2410,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
 
         //params->printAtomTypeDict();
         int etyp=-1;  if(params) etyp=params->atomTypeDict["E"];
-        for(int i=0; i<ff.nnode;  i++){ ff.aneighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4dZero, ff.bKs[i]=Quat4dZero, ff.Ksp[i]=Quat4dZero, ff.Kpp[i]=Quat4dZero; }; // back neighbors
+        for(int i=0; i<ff.nnode;  i++){ ff.neighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4dZero, ff.bKs[i]=Quat4dZero, ff.Ksp[i]=Quat4dZero, ff.Kpp[i]=Quat4dZero; }; // back neighbors
         for(int ia=0; ia<nAmax; ia++ ){
             const Atom& A =  atoms[ia];
             ff.apos  [ia] = A.pos;
@@ -2439,7 +2439,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
 
                 // setup ff neighbors
                 
-                int*     ngs  = ff.aneighs[ia].array;
+                int*     ngs  = ff.neighs[ia].array;
                 double*  bL   = ff.bLs[ia].array;
                 double*  bK   = ff.bKs[ia].array;
                 double*  Ksp  = ff.Ksp[ia].array;
@@ -2510,7 +2510,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         int ie0=nconf+ncap;
         int iie = 0;
 
-        for(int i=0; i<ff.nnode;  i++){ ff.aneighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4fZero, ff.bKs[i]=Quat4fZero, ff.Ksp[i]=Quat4fZero, ff.Kpp[i]=Quat4fZero; }; // back neighbors
+        for(int i=0; i<ff.nnode;  i++){ ff.neighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4fZero, ff.bKs[i]=Quat4fZero, ff.Ksp[i]=Quat4fZero, ff.Kpp[i]=Quat4fZero; }; // back neighbors
 
         for(int ia=0; ia<nAmax; ia++ ){
             const Atom& A =  atoms[ia];
@@ -2539,7 +2539,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
 
                 // setup ff neighbors
                 
-                int*    ngs  = ff.aneighs[ia].array;
+                int*    ngs  = ff.neighs[ia].array;
                 float*  bL   = ff.bLs[ia].array;
                 float*  bK   = ff.bKs[ia].array;
                 float*  Ksp  = ff.Ksp[ia].array;

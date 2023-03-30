@@ -21,10 +21,20 @@
 
 //class MMFFsp3_loc: public NBFF { public:
 
-class MMFFsp3_loc { public:
+class MMFFsp3_loc : public NBFF { public:
     static constexpr const int nneigh_max = 4;
-    int  nDOFs=0,natoms=0,nnode=0,ncap=0,nvecs=0;
-    bool bPBC=false;
+    // int natoms=0;         // [natoms] // from Atoms
+    //Vec3d *   apos  =0;    // [natoms] // from Atoms
+    //Vec3d *  fapos  =0;    // [natoms] // from NBFF
+    //Quat4i*  neighs =0;    // [natoms] // from NBFF
+    //Quat4i*  neighCell=0; // [natoms] // from NBFF
+    //Vec3d*  REQs =0;       // [nnode]  // from NBFF
+    //bool bPBC=false;       // from NBFF
+    //Vec3i   nPBC;          // from NBFF 
+    //Mat3d   lvec;          // from NBFF
+    //double  Rdamp  = 1.0;  // from NBFF
+
+    int  nDOFs=0,nnode=0,ncap=0,nvecs=0;
     double Etot,Eb,Ea, Eps,EppT,EppI;
 
     double *  DOFs = 0;   // degrees of freedom
@@ -42,8 +52,8 @@ class MMFFsp3_loc { public:
     Quat4d default_NeighParams{ -1.0,   1.0,   1.0,   -1.0 };
 
     // Dynamical Varaibles;
-    Vec3d *   apos=0;   // [natom]
-    Vec3d *  fapos=0;   // [natom]
+    //Vec3d *   apos=0;   // [natom]
+    //Vec3d *  fapos=0;   // [natom]
     Vec3d *  pipos=0;   // [nnode]
     Vec3d * fpipos=0;   // [nnode]
     // Aux Dynamil
@@ -52,22 +62,20 @@ class MMFFsp3_loc { public:
 
     // Params
     int   *  atypes  =0;
-    Quat4i*  aneighs =0;   // [natoms]  index of neighboring atoms
-    Quat4i*  bkneighs=0;   // [natoms]  inverse neighbors
-    Quat4i*  aneighCell=0; // [natoms]  cell index for neighbors
 
+    //Quat4i*  neighs =0;   // [natoms] // from NBFF
+    Quat4i*  bkneighs=0;   // [natoms]  inverse neighbors
+    
     Quat4d*  apars=0;  // [nnode] per atom forcefield parametrs
     Quat4d*  bLs  =0;  // [nnode] bond lengths
     Quat4d*  bKs  =0;  // [nnode] bond stiffness
     Quat4d*  Ksp  =0;  // [nnode] stiffness of pi-alignment
     Quat4d*  Kpp  =0;  // [nnode] stiffness of pi-planarization
-    Vec3d*  REQs =0;   // [nnode] parameters of non-covalent interactions
 
     bool    bAngleCosHalf         = true;
     bool    bSubtractAngleNonBond = false;
-    double  Rdamp  = 1.0;
-    Mat3d   invLvec, lvec;
-    Vec3i   nPBC;
+    Mat3d   invLvec;
+
 
 // =========================== Functions
 
@@ -92,8 +100,8 @@ void realloc( int nnode_, int ncap_ ){
     _realloc( fneighpi, nnode*4 );
     // ----- Params [natom]
     _realloc( atypes    , natoms );
-    _realloc( aneighs   , natoms );
-    _realloc( aneighCell, natoms );
+    _realloc( neighs    , natoms );
+    _realloc( neighCell , natoms );
     _realloc( bkneighs  , natoms );
     _realloc( apars     , nnode );
     _realloc( bLs       , nnode );
@@ -115,8 +123,8 @@ void realloc( int nnode_, int ncap_ ){
     _realloc0( fneighpi, nnode*4, Vec3dZero );
     // ----- Params [natom]
     _realloc0( atypes    , natoms, -1 );
-    _realloc0( aneighs   , natoms, Quat4iMinusOnes );
-    _realloc0( aneighCell, natoms, Quat4iMinusOnes );
+    _realloc0( neighs    , natoms, Quat4iMinusOnes );
+    _realloc0( neighCell , natoms, Quat4iMinusOnes );
     _realloc0( bkneighs  , natoms, Quat4iMinusOnes);
     _realloc0( apars     , nnode, Quat4dZero );
     _realloc0( bLs       , nnode, Quat4dZero );
@@ -136,8 +144,8 @@ void realloc( int nnode_, int ncap_ ){
     _realloc0( fneighpi, nnode*4, Vec3dNAN );
     // ----- Params [natom]
     _realloc0( atypes    , natoms, -1 );
-    _realloc0( aneighs   , natoms, Quat4iMinusOnes );
-    _realloc0( aneighCell, natoms, Quat4iMinusOnes );
+    _realloc0( neighs    , natoms, Quat4iMinusOnes );
+    _realloc0( neighCell , natoms, Quat4iMinusOnes );
     _realloc0( bkneighs  , natoms, Quat4iMinusOnes);
     _realloc0( apars     , nnode, Quat4dNAN );
     _realloc0( bLs       , nnode, Quat4dNAN );
@@ -155,8 +163,8 @@ void dealloc(){
     pipos  = 0;
     fpipos = 0;
     _dealloc(atypes);
-    _dealloc(aneighs);
-    _dealloc(aneighCell);
+    _dealloc(neighs);
+    _dealloc(neighCell);
     _dealloc(bkneighs);
     _dealloc(apars);
     _dealloc(bLs);
@@ -195,7 +203,7 @@ double eval_atom(const int ia){
     Vec3d fpi  = Vec3dZero; 
     
     //--- array aliases
-    const int*    ings = aneighs[ia].array;
+    const int*    ings = neighs[ia].array;
     const double* bK   = bKs    [ia].array;
     const double* bL   = bLs    [ia].array;
     const double* Kspi = Ksp    [ia].array;
@@ -413,7 +421,7 @@ void makeBackNeighs( bool bCapNeighs=true ){
     for(int i=0; i<natoms; i++){ bkneighs[i]=Quat4i{-1,-1,-1,-1}; };
     for(int ia=0; ia<nnode; ia++){
         for(int j=0; j<4; j++){        // 4 neighbors
-            int ja = aneighs[ia].array[j];
+            int ja = neighs[ia].array[j];
             if( ja<0 )continue;
             //NOTE: We deliberately ignore back-neighbors from caping atoms 
             bool ret = addFirstEmpty( bkneighs[ja].array, 4, ia*4+j, -1 );
@@ -423,17 +431,17 @@ void makeBackNeighs( bool bCapNeighs=true ){
     //for(int i=0; i<natoms; i++){printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i].x, bkneighs[i].y, bkneighs[i].z, bkneighs[i].w );}
     //checkBkNeighCPU();
     if(bCapNeighs){   // set neighbors for capping atoms
-        for(int ia=nnode; ia<natoms; ia++){ aneighs[ia]=Quat4i{-1,-1,-1,-1};  aneighs[ia].x = bkneighs[ia].x/4;  }
+        for(int ia=nnode; ia<natoms; ia++){ neighs[ia]=Quat4i{-1,-1,-1,-1};  neighs[ia].x = bkneighs[ia].x/4;  }
     }
 }
 
 void makeNeighCells( const Vec3i nPBC_ ){ 
     nPBC=nPBC_;
     for(int ia=0; ia<natoms; ia++){
-        aneighCell[ia]=Quat4i{0,0,0,0};
+        neighCell[ia]=Quat4i{0,0,0,0};
         for(int j=0; j<4; j++){
             //printf("ngcell[%i,j=%i] \n", ia, j);
-            int ja = aneighs[ia].array[j];
+            int ja = neighs[ia].array[j];
             //printf("ngcell[%i,ja=%i] \n", ia, ja);
             if( ja<0 )continue;
             Vec3d d = apos[ja] - apos[ia];
@@ -451,7 +459,7 @@ void makeNeighCells( const Vec3i nPBC_ ){
                 ipbc++; 
             }}}
             //printf("ngcell[%i,%i] imin=%i \n", ia, ja, imin);
-            aneighCell[ia].array[j] = imin;
+            neighCell[ia].array[j] = imin;
             //printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
         }
     }
@@ -459,7 +467,7 @@ void makeNeighCells( const Vec3i nPBC_ ){
 }
 
 void printSizes(){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
-void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, aneighs[ia].x,aneighs[ia].y,aneighs[ia].z,aneighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
+void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };
 
 void printBKneighs(int ia){ printf("atom[%i] bkngs{%3i,%3i,%3i,%3i} \n", ia, bkneighs[ia].x,bkneighs[ia].y,bkneighs[ia].z,bkneighs[ia].w ); };
@@ -519,7 +527,7 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
         if(ia>=nnode)continue;
         apos [ia].rotate_csa( ca, sa, ax, p0 );
         pipos[ia].rotate_csa( ca, sa, ax     );
-        int* ngs=aneighs[ia].array; 
+        int* ngs=neighs[ia].array; 
         for(int j=0;j<4;j++){
             int ja = ngs[j];
             if(ja>=0){ if(ja>nnode) apos[ ja  ].rotate_csa( ca, sa, ax, p0 ); }
@@ -529,7 +537,7 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
 
 void chargeToEpairs( Vec3d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
     for( int ia=0; ia<nnode; ia++ ){
-        int* ngs=aneighs[ia].array; 
+        int* ngs=neighs[ia].array; 
         for( int j=0; j<4; j++ ){
             int ja = ngs[j]; 
             if(ja<0) continue;

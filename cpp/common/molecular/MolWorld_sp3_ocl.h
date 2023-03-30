@@ -97,8 +97,8 @@ void REQs2ocl(){
 };
 
 int ithNeigh(int ia, int ja){
-    int* aneighs = (int*)nbmol.neighs;
-    int* ngs     = aneighs + ia*4;
+    int* neighs = (int*)nbmol.neighs;
+    int* ngs     = neighs + ia*4;
     for(int i=0; i<4; i++){
         if(ngs[i]==ja) return i; 
     }
@@ -162,8 +162,8 @@ void mol2ocl(){
             //makeBackNeighs( nbmol.neighs );
             //ocl.upload( ocl.ibuff_bkNeighs, bkneighs );
 
-            ocl.upload( ocl.ibuff_neighs   , ff4.aneighs    );
-            ocl.upload( ocl.ibuff_neighCell, ff4.aneighCell );
+            ocl.upload( ocl.ibuff_neighs   , ff4.neighs    );
+            ocl.upload( ocl.ibuff_neighCell, ff4.neighCell );
             ocl.upload( ocl.ibuff_bkNeighs , ff4.bkneighs   );
 
             ocl.upload( ocl.ibuff_MMpars  , ff4.apars );  
@@ -201,44 +201,44 @@ void  makeOCLNeighs( ){
     printf("makeOCLNeighs() n %i nnode %i \n", nbmol.n, ff.nnode );
     int natom=ff.natoms;
     int n=ff.nvecs;
-    int* aneighs=new int[n*4];
+    int* neighs=new int[n*4];
     for(int i=0; i<n; i++){
         int i4=i*4;
-        aneighs[i4+0]=-1; 
-        aneighs[i4+1]=-1; 
-        aneighs[i4+2]=-1; 
-        aneighs[i4+3]=-1;
+        neighs[i4+0]=-1; 
+        neighs[i4+1]=-1; 
+        neighs[i4+2]=-1; 
+        neighs[i4+3]=-1;
     }
     if(bMMFF){
         for(int i=0; i<ff.nnode; i++){
             int i4=i*4;
             for(int j=0; j<4; j++){
-                int ngi=ff.aneighs[i4+j];
+                int ngi=ff.neighs[i4+j];
                 if(ngi<0){ ngi= natom-ngi-1; }  // pi-bonds
-                aneighs[i4+j]=ngi;
+                neighs[i4+j]=ngi;
                 if( (ngi>=ff.nnode) &&  (ngi<ff.natoms) ){   // back-neighbor
-                    aneighs[ngi*4+0]=i;
+                    neighs[ngi*4+0]=i;
                 }
             }
         }
     }
-    ff.makePiNeighs( aneighs+ff.natoms*4 );
+    ff.makePiNeighs( neighs+ff.natoms*4 );
     //if(verbosity>1) 
-    for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, aneighs[i*4+0],aneighs[i*4+1], aneighs[i*4+2],aneighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
-    ocl.upload( ocl.ibuff_neighs, aneighs );
-    nbmol.neighs = (Quat4i*)aneighs;
-    //delete [] aneighs;
-    //return aneighs;
+    for(int i=0; i<n; i++){ printf( "neighs[%i] (%i,%i,%i,%i) atyp %i R %g \n", i, neighs[i*4+0],neighs[i*4+1], neighs[i*4+2],neighs[i*4+3], nbmol.atypes[i], nbmol.REQs[i].x ); }
+    ocl.upload( ocl.ibuff_neighs, neighs );
+    nbmol.neighs = (Quat4i*)neighs;
+    //delete [] neighs;
+    //return neighs;
     //exit(0);
 }
 
-void makeBackNeighs( Quat4i* aneighs ){
+void makeBackNeighs( Quat4i* neighs ){
     //int nbk = n+npi;
     bkneighs=new int[ff.nvecs*4];
     for(int i=0; i<ff.nvecs*4; i++){ bkneighs[i]=-1; };
     for(int ia=0; ia<ff.nnode; ia++){
         for(int j=0; j<4; j++){        // 4 neighbors
-            int ja = aneighs[ia].array[j];
+            int ja = neighs[ia].array[j];
             if( ja<0 )continue;
             bool ret = addFirstEmpty( bkneighs+ja*4, 4, ia*4+j, -1 );
             if(!ret){ printf("ERROR in MolWorld_sp3_ocl::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
@@ -447,10 +447,10 @@ double eval_NBFF_ocl( int niter ){
     if( task_NBFF==0 ){
         /*
         for(int i=0; i<ff4.natoms; i++){
-            ff4.aneighs[i] = Quat4i{-1,-1,-1,-1};
-            ffl.aneighs[i] = Quat4i{-1,-1,-1,-1};
+            ff4.neighs[i] = Quat4i{-1,-1,-1,-1};
+            ffl.neighs[i] = Quat4i{-1,-1,-1,-1};
         }
-        ocl.upload( ocl.ibuff_neighs,  ff4.aneighs, ff4.natoms );
+        ocl.upload( ocl.ibuff_neighs,  ff4.neighs, ff4.natoms );
         */
         setup_NBFF_ocl();
     }
@@ -460,7 +460,7 @@ double eval_NBFF_ocl( int niter ){
 
         { // DEBUG
             ffl  .cleanForce();
-            nbmol.evalLJQs_ng4_PBC( ffl.aneighs, ffl.aneighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
+            nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
             //ffl.printDEBUG( false, false );
             fcog  = sum ( ffl.natoms, ffl.fapos   );
             tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
