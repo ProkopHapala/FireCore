@@ -243,7 +243,14 @@ double eval_atom(const int ia){
         Quat4d h; 
         h.f.set_sub( apos[ing], pa );
         //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
+        
+
+        //Vec3d h_bak = h.f;
+        wrapBondVec( h.f, lvec, invLvec );
+        //wrapBondVec( h.f );
+        //printf( "h[%i,%i] r_old %g r_new %g \n", ia, ing, h_bak.norm(), h.f.norm() );
         double l = h.f.normalize();
+
         h.e    = 1/l;
         hs [i] = h;
         // bond length force
@@ -255,7 +262,6 @@ double eval_atom(const int ia){
             E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);    
             //if(ia==ia_DBG)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             
-            
             double kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
@@ -264,7 +270,7 @@ double eval_atom(const int ia){
             // ToDo: triple bonds ?
             
         } 
-        
+
         // pi-sigma 
         //if(bPi){    
         double ksp = Kspi[i];
@@ -275,9 +281,9 @@ double eval_atom(const int ia){
         }
         //}
         
-        
     }
 
+    
     //printf( "MMFF_atom[%i] cs(%6.3f,%6.3f) ang=%g [deg]\n", ia, cs0_ss.x, cs0_ss.y, atan2(cs0_ss.y,cs0_ss.x)*180./M_PI );
     // --------- Angle Step
     const double R2damp=Rdamp*Rdamp;

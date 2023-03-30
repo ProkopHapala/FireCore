@@ -586,9 +586,15 @@ class Mat3T{
 
 };
 
-
-
-
+template<typename T>
+inline void wrapBondVec( Vec3T<T>& d, const Mat3T<T>& lvec, const Mat3T<T>& invLvec ){
+    Vec3T<T> u;
+    invLvec.dot_to( d, u );
+    u.a=u.a+(1-(int)(u.a+1.5));
+    u.b=u.b+(1-(int)(u.b+1.5));
+    u.c=u.c+(1-(int)(u.c+1.5));
+    lvec.dot_to_T( u, d );
+}
 
 /*
 class Mat3i : public Mat3T< int   , Vec3i, Mat3i >{};

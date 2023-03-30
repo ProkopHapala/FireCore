@@ -457,10 +457,12 @@ void wrapBondVec( Vec3d& d ){
     Vec3d u;
     invLvec.dot_to( d, u );
     //if(hcell.a>0.5){ h.sub( lvec.a ); }else{ h.add( lvec.a ); };
+    //printf( "before wrap u=(%g,%g,%g) d=(%g,%g,%g) \n", u.x,u.y,u.z, d.x,d.y,d.z );
     u.a=u.a+(1-(int)(u.a+1.5));
     u.b=u.b+(1-(int)(u.b+1.5));
     u.c=u.c+(1-(int)(u.c+1.5));
     lvec.dot_to_T( u, d );
+    //printf( "after  wrap u=(%g,%g,%g) d=(%g,%g,%g) \n", u.x,u.y,u.z, d.x,d.y,d.z );
     //lvecT.dot_to( u, d );
 }
 
