@@ -408,26 +408,27 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
     int itr=0;
     double F2conv = Fconv*Fconv;
     double R2damp = Rdamp*Rdamp;
+    #pragma omp parallel default(shared)
     for(int itr=0; itr<niter; itr++){
         double E=0;
         // ------ eval MMFF
-        //#pragma omp parallel for reduction(+:E)
+        #pragma omp for reduction(+:E)
         for(int ia=0; ia<nnode; ia++){ 
             E+=eval_atom(ia); 
         }
         // ------ eval non-bond
-        //#pragma omp parallel for reduction(+:E)
+        #pragma omp for reduction(+:E)
         for(int ia=0; ia<natoms; ia++){
            E += evalLJQs_ng4_atom( ia, neighs, R2damp );
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
-        //#pragma omp parallel for
+        #pragma omp for
         for(int ia=0; ia<natoms; ia++){
             assemble_atom( ia );
         }
         // ------ move
         double F2=0;
-        //#pragma omp parallel for reduction(+:F2)
+        #pragma omp for reduction(+:F2)
         for(int i=0; i<nvecs; i++){
             F2 += move_atom_GD( i, dt, Flim );
         }

@@ -383,7 +383,13 @@ __kernel void updateAtomsMMFFf4(
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
 
-    if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
+    //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
+    // if((iG==iG_DBG)&&(iS==iS_DBG)){
+    //     int i0a = iS*natoms;
+    //     for(int i=0; i<natoms; i++){
+    //         printf( "GPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   );
+    //     }
+    // }
     
     if(iG>=(natoms+nnode)) return;
 
@@ -404,21 +410,8 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
-    
-    // constrains
-    float4 pe = apos[iav];
-    /*
-    if(iG<natoms){ 
-       float4 cons = constr[ iaa ];
-       if( cons.w>0 ){
-            fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
-       }
-    }
-    */
-
-    // !!!!! Error code was "CL_INVALID_COMMAND_QUEUE" (-36)  is HERE !!!!!!
+    // =============== FORCE DONE
     aforce[iav] = fe; // store force before limit
-
 
     /*
     // ---- Limit Forces
@@ -428,9 +421,21 @@ __kernel void updateAtomsMMFFf4(
     } 
     */
 
+    // =============== DYNAMICS
+
+    float4 ve = avel[iav];
+    float4 pe = apos[iav];
+
+    // -------constrains
+    if(iG<natoms){ 
+       float4 cons = constr[ iaa ];
+       if( cons.w>0 ){
+            fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
+       }
+    }
+    
     /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
-    float4 ve = avel[iav];
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
@@ -455,10 +460,9 @@ __kernel void updateAtomsMMFFf4(
     avel[iav] = ve;
     apos[iav] = pe;
     */
-
     
+
     // ------ Move (Leap-Frog)
-    float4 ve = avel[iav];
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
@@ -472,14 +476,15 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
-    
-    
-    // ------ Move Gradient-Descent
-    // //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
-    // pe.xyz += fe.xyz*MDpars.x*0.01f;
-    // //if(bPi){ pe.xyz=normalize(pe.xyz); }
-    // pe.w=0;  // This seems to be needed, not sure why ?????
-    // apos[iav] = pe;
+
+    /*
+    //------ Move Gradient-Descent
+    //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
+    pe.xyz += fe.xyz*MDpars.x*0.01f;
+    //if(bPi){ pe.xyz=normalize(pe.xyz); }
+    pe.w=0;  // This seems to be needed, not sure why ?????
+    apos[iav] = pe;
+    */
     
     //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
     
