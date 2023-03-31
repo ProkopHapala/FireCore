@@ -184,13 +184,13 @@ double eval_atom(const int ia){
     Vec3d   apbc[4];
     Vec3d   f1,f2;
     
-    //const int ia_DBG = 0;
+    const int ia_DBG = 0;
     //if(ia==ia_DBG)printf( "ffl[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
 
     //for(int i=0; i<4; i++){ fneigh[ia*4+i]=Vec3dZero; fneighpi[ia*4+i]=Vec3dZero; }
     for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
 
-    //printf("lvec\n"); printMat(lvec);
+    //printf("lvec %i %i \n", ia, ia_DBG ); // printMat(lvec);
 
     // --------- Bonds Step
     for(int i=0; i<4; i++){
@@ -199,19 +199,25 @@ double eval_atom(const int ia){
         //fbs[i]=Vec3dOne; fps[i]=Vec3dOne;
         //fbs[i]=Vec3dZero; fps[i]=Vec3dZero; // NOTE: wee need to initialize it before, because of the break
         if(ing<0) break;
+
+        //printf("ia %i ing %i \n", ia, ing ); 
         Vec3d  pi = apos[ing];
         Quat4d h; 
         h.f.set_sub( pi, pa );
         //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
         
         //Vec3d h_bak = h.f;    
-        //pbc_shifts=0;    
+        pbc_shifts=0;    
         if(pbc_shifts){
             int ipbc = ingC[i]; 
             //Vec3d sh = pbc_shifts[ipbc]; //apbc[i]  = pi + sh;
             h.f.add( pbc_shifts[ipbc] );
         }else{
             Vec3i g  = invLvec.nearestCell( h.f );
+            // if(ia==ia_DBG){
+            //     Vec3d u; invLvec.dot_to(h.f,u);
+            //     printf( "CPU:bond[%i,%i] u(%6.3f,%6.3f,%6.3f) shi(%6.3f,%6.3f,%6.3f) \n", ia, ing, u.x,u.y,u.z,   (float)g.x,(float)g.y,(float)g.z );
+            // }
             Vec3d sh = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
             h.f.add( sh );
             //apbc[i] = pi + sh;

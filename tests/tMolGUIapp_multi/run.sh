@@ -18,7 +18,7 @@ rm valgrind.log
 #./$name -x common_resources/formic_dimer
 #./$name -x common_resources/HCOOH -m 10
 
-./$name -x common_resources/polydiacetylene_OH
+./$name -x common_resources/polydiacetylene_OH -m 10
 
 
 #./$name -x common_resources/HCOOH -m 10 -g common_resources/H_1x1_L1
