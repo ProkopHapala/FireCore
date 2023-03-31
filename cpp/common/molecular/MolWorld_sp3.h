@@ -89,7 +89,9 @@ class MolWorld_sp3{ public:
     //double gridStep = 0.2; 
     //Vec3i nPBC{0,0,0};   // just debug
     Vec3i nPBC{1,1,0};
-
+    int    npbc       = 0;
+    Vec3d* pbc_shifts = 0;
+    
 	// state
 	bool bConverged = false;
 	double Etot=0;
@@ -132,8 +134,7 @@ class MolWorld_sp3{ public:
 	FILE* xyz_file=0;
 	char* tmpstr;
 
-    int    npbc       = 0;
-    Vec3d* pbc_shifts = 0;
+
 
 // =================== Functions
 
