@@ -584,17 +584,33 @@ class Mat3T{
         zx+=v1.z*v2.x*f; zy+=v1.z*v2.y*f; zz+=v1.z*v2.z*f;
     }
 
+	inline Vec3T<int> nearestCell( const VEC& d, const int ncellMax=1 ){
+		VEC u;
+		T off = ncellMax + 0.5;
+		dot_to( d, u );
+		return Vec3T<int>{
+			ncellMax - (int)(u.a+off),
+			ncellMax - (int)(u.b+off),
+			ncellMax - (int)(u.c+off)
+		};
+	}
+
+	/*
+	template<typename T>
+	inline Vec3i nearestCell( const Mat3T<T>& invLvec, const Vec3T<T>& d ){
+		Vec3T<T> u;
+		invLvec.dot_to( d, u );
+		return Vec3i{
+			1 -(int)(u.a+1.5),
+			1 -(int)(u.b+1.5),
+			1 -(int)(u.c+1.5)
+		};
+	}
+	*/
+
 };
 
-template<typename T>
-inline void wrapBondVec( Vec3T<T>& d, const Mat3T<T>& lvec, const Mat3T<T>& invLvec ){
-    Vec3T<T> u;
-    invLvec.dot_to( d, u );
-    u.a=u.a+(1-(int)(u.a+1.5));
-    u.b=u.b+(1-(int)(u.b+1.5));
-    u.c=u.c+(1-(int)(u.c+1.5));
-    lvec.dot_to_T( u, d );
-}
+
 
 /*
 class Mat3i : public Mat3T< int   , Vec3i, Mat3i >{};
@@ -616,6 +632,16 @@ inline void convert( const Mat3f& from, Mat3d& to ){ convert( from.a, to.a ); co
 inline void convert( const Mat3d& from, Mat3f& to ){ convert( from.a, to.a ); convert( from.b, to.b ); convert( from.c, to.c ); };
 
 inline Mat3f toFloat( const Mat3d& from){ Mat3f to; convert( from.a, to.a ); convert( from.b, to.b ); convert( from.c, to.c ); return to; }
+
+template<typename T>
+inline void wrapBondVec( Vec3T<T>& d, const Mat3T<T>& lvec, const Mat3T<T>& invLvec ){
+    Vec3T<T> u;
+    invLvec.dot_to( d, u );
+    u.a=u.a+(1-(int)(u.a+1.5));
+    u.b=u.b+(1-(int)(u.b+1.5));
+    u.c=u.c+(1-(int)(u.c+1.5));
+    lvec.dot_to_T( u, d );
+}
 
 #endif
 

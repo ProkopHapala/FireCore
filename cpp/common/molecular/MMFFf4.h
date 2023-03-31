@@ -425,6 +425,32 @@ void makeNeighCells( const Vec3i nPBC_ ){
     }
 }
 
+void makeNeighCells( int npbc, Vec3d* pbc_shifts ){ 
+    for(int ia=0; ia<natoms; ia++){
+        for(int j=0; j<4; j++){
+            //printf("ngcell[%i,j=%i] \n", ia, j);
+            int ja = neighs[ia].array[j];
+            //printf("ngcell[%i,ja=%i] \n", ia, ja);
+            if( ja<0 )continue;
+            Vec3f d = apos[ja].f - apos[ia].f;
+            int imin=-1;
+            float r2min = 1e+30;
+            for( int ipbc=0; ipbc<npbc; ipbc++ ){   
+                Vec3f shift= (Vec3f)pbc_shifts[ipbc]; 
+                shift.add(d);
+                float r2 = shift.norm2();
+                if(r2<r2min){   // find nearest distance
+                    r2min=r2;
+                    imin=ipbc;
+                }
+            }
+            //printf("ngcell[%i,%i] imin=%i \n", ia, ja, imin);
+            neighCell[ia].array[j] = imin;
+            //printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
+        }
+    }
+}
+
 void printSizes(){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };
