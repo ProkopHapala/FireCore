@@ -200,9 +200,42 @@ inline double getLJQ( Vec3d dp, Vec3d REQ, double R2damp, Vec3d& f ){
     double  u6  = u2*u2*u2;
     double vdW  = u6*REQ.y;
     double E    =      (u6-2.)*vdW     + Ec      ;
-    double fr   = -12.*(u6-1.)*vdW*ir2 - Ec*ir2_ ;
-    f.set_mul( dp, fr );
+    double fr   =  12.*(u6-1.)*vdW*ir2 + Ec*ir2_ ;
+    f.set_mul( dp, -fr );
     return E;
+}
+
+inline double getLJQH( Vec3d dp, Quat4d REQH, double R2damp, Vec3d& f ){
+    double   r2   = dp.norm2();
+    // --- Coulomb
+    double   ir2_ = 1/( r2 + R2damp  );
+    double   Ec   = COULOMB_CONST*REQH.z*sqrt( ir2_ );
+    // --- LJH 
+    double  ir2 = 1/r2;
+    double  u2  = REQH.x*REQH.x*ir2;
+    double  u6  = u2*u2*u2;
+    double vdW  = u6*REQH.y;
+    double   H  = u6*REQH.w;
+    double E    =       (u6-2.)*vdW + H         + Ec     ;
+    double fr   = (12.*(u6-1.)*vdW + H*6. )*ir2 + Ec*ir2_;
+    f.set_mul( dp, -fr );
+    return E;
+}
+
+inline double getMorseQH( const Vec3d& dp, Vec3d& f, double r0, double E0, double qq, double H, double K=-1., double R2damp=1. ){
+    double r2    = dp.norm2();
+    // --- Coulomb
+    double ir2_  = 1/(r2+R2damp);
+    double Ec    = COULOMB_CONST*qq*sqrt( ir2_ );
+    // --- Morse
+    double  r  = sqrt( r2   );
+    double  e  = exp( K*(r-r0) );
+    double  Ae = E0*e;
+    double  He = H *e; // Hydrogen bond correction
+    double EM  =  Ae*(e - 2)   + He;
+    double FM  = (Ae*(e - 1)*2 + He)*K/r;
+    f.set_mul( dp, FM  - Ec*ir2_ );
+    return EM + Ec;
 }
 
 inline void addAtomicForceMorse( const Vec3d& dp, Vec3d& f, double r0, double eps, double beta ){

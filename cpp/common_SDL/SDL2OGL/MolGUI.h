@@ -327,13 +327,13 @@ void MolGUI::draw(){
     //if(bDoQM)drawSystemQMMM();
 
     if(bDoMM){
-        //if(W->builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } 
-        //else               { drawSystem(); }
+        if(W->builder.bPBC){ 
+            //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
+        }else{ drawSystem(); }
 
-        //if( W->builder.bPBC ){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBox( W->builder.lvec, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
-        if( W->builder.bPBC ){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{ 0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
-
-        drawSystem(); // DEBUG
+        //drawSystem(); // DEBUG
         //Draw3D::drawNeighs( W->ff, -1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }

@@ -2,6 +2,7 @@
 #ifndef DynamicOpt_h
 #define DynamicOpt_h
 
+#include <cstdio>// DEBUG
 //#include <cstddef>
 #include <math.h>
 #include "macroUtils.h"
@@ -38,7 +39,8 @@ class DynamicOpt{ public:
     double * force     = 0;
     double * invMasses = 0;
 
-    double * spreads = 0;
+    double * avs =0;
+    double * avs2=0;
 
 
     // parameters
@@ -50,6 +52,7 @@ class DynamicOpt{ public:
 
     double cvf_min = -0.1;  // minimum cosine for velocity damping in  move_FIRE_smooth()
     double cvf_max = +0.1;  // maximum cosine for velocity damping in  move_FIRE_smooth()
+    double cv_kill =  0.0;
 
     //double cvf_min = -0.30;  // minimum cosine for velocity damping in  move_FIRE_smooth()
     //double cvf_max =  0.05;  // maximum cosine for velocity damping in  move_FIRE_smooth()
@@ -156,6 +159,10 @@ class DynamicOpt{ public:
         if(force_==0){ _realloc(force,n); }else{ force = force_; };
         if(invMasses_==0) { _realloc(invMasses,n); setInvMass(1.0); }else{ invMasses=invMasses_; }
         //if(invMasses_==0) setInvMass(1.0);
+
+        _realloc(avs  ,n);
+        _realloc(avs2 ,n);
+        cleanAV   ( );
     }
 
     inline void realloc( int n_ ){
@@ -164,6 +171,9 @@ class DynamicOpt{ public:
         _realloc(vel    ,n);
         _realloc(force  ,n);
         _realloc(invMasses,n);
+
+        _realloc(avs  ,n);
+        _realloc(avs2 ,n);
     }
 
     inline void dealloc( ){
@@ -175,6 +185,7 @@ class DynamicOpt{ public:
 
     inline void cleanForce( ){  for(int i=0; i<n; i++){ force[i]=0; } }
     inline void cleanVel  ( ){  for(int i=0; i<n; i++){ vel  [i]=0; } }
+    inline void cleanAV   ( ){  for(int i=0; i<n; i++){ avs[i]=0; avs2[i]=0; } }
 
     // f ~ sqrt(k/m)    dpos ~ f*dt*dt
     inline double limit_dt_x2 (double xx,double xmax){ double sc=1.0; if( xx > (xmax*xmax) ){ sc= fmin( sc, sqrt(xmax/sqrt(xx)) ); }; return sc;       }
@@ -189,6 +200,20 @@ class DynamicOpt{ public:
         setDamping  (damp_);
         cleanForce( );
         cleanVel  ( );
+    }
+
+    inline double spreadDamp( int i, double v, double beta ){
+        double mb = 1-beta;
+        double v2   = v*v;
+        double av   = avs [i]*mb + v   * beta;
+        double av2  = avs2[i]*mb + v*v * beta;
+        double cdamp = 1;
+        //if(i==1)printf(  "spreadDamp[%i] %g ratio %g av(%g,%g) v(%g,%g) \n", i, cdamp,   av*av/(av2+1e-32), av,av2, v,v2  );
+        //if(i==1)printf(  "%i   %15.10f    %15.10f %15.10f     %15.10f %15.10f \n", i, av*av/(av2+1e-32), av,av2, v,v2  );
+        if(i==1)printf(  "%i   %15.10f    %15.10f %15.10f     %15.10f \n", i, av*av/(av2+1e-32), av*av,av2, v  );
+        avs [i]     = av;
+        avs2[i]     = av2;
+        return cdamp;
     }
 
 };
