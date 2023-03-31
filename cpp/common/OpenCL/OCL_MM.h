@@ -33,6 +33,7 @@ class OCL_MM: public OCLsystem { public:
     int nAtoms=0;
     int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0, nbkng=0;
 
+    int4   print_mask{1,1,1,1};
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
     float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
@@ -288,21 +289,49 @@ class OCL_MM: public OCLsystem { public:
         // __global int4*    bkNeighs      // 7
     }
 
+    void printOnGPU( int isys, int4 mask=int4{1,1,1,1}, OCLtask* task=0 ){
+        printf( "printOnGPU() \n" );
+        if(task==0) task = getTask("printOnGPU");
+        printf(  "task %li \n", task  );
+        //task->global.x = na+nNode;
+        //task->global.y = nSystems;
+        task->global.x = 1;
+        task->global.y = 1;                 
+        nDOFs.x=nAtoms; 
+        nDOFs.y=nnode;
+        nDOFs.z=isys;                      
+        print_mask=mask;
+        useKernel( task->ikernel  );       
+        err |= _useArg( nDOFs     );       
+        err |= _useArg( mask      );       
+        OCL_checkError(err, "printOnGPU().setup");    
+        err |= task->enque_raw();                      
+        OCL_checkError(err, "printOnGPU().enque"  );  
+        err |= finishRaw();                           
+        OCL_checkError(err, "printOnGPU().finish" );  
+    }
+
+
     OCLtask* setup_printOnGPU( int na, int nNode,  OCLtask* task=0 ){
         printf( "setup_printOnGPU() \n" );
         if(task==0) task = getTask("printOnGPU");
-        task->global.x = na+nNode;
-        task->global.y = nSystems;
+        //task->global.x = na+nNode;
+        //task->global.y = nSystems;
+        task->global.x = 1;
+        task->global.y = 1;
         nDOFs.x=na; 
         nDOFs.y=nNode; 
+        nDOFs.z=0; 
+        print_mask=int4{1,1,1,1};
         useKernel( task->ikernel  );
-        err |= _useArg( nDOFs     );           // 1
-        err |= useArgBuff( ibuff_atoms      ); // 2
-        err |= useArgBuff( ibuff_avel       ); // 3
-        err |= useArgBuff( ibuff_aforces    ); // 4
-        err |= useArgBuff( ibuff_neighForce ); // 5
-        err |= useArgBuff( ibuff_bkNeighs   ); // 6
-        err |= useArgBuff( ibuff_constr     ); // 7
+        err |= _useArg( nDOFs          );      // 1
+        err |= _useArg( print_mask     );      // 2
+        err |= useArgBuff( ibuff_atoms      ); // 3
+        err |= useArgBuff( ibuff_avel       ); // 4
+        err |= useArgBuff( ibuff_aforces    ); // 5
+        err |= useArgBuff( ibuff_neighForce ); // 6
+        err |= useArgBuff( ibuff_bkNeighs   ); // 7
+        err |= useArgBuff( ibuff_constr     ); // 8
         OCL_checkError(err, "setup_printOnGPU");
         return task;
         // const int4        n,            // 1
