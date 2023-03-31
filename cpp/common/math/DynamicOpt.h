@@ -38,6 +38,9 @@ class DynamicOpt{ public:
     double * force     = 0;
     double * invMasses = 0;
 
+    double * spreads = 0;
+
+
     // parameters
     double dt           = 0.1;
     double damping      = 0.2;
@@ -103,6 +106,7 @@ class DynamicOpt{ public:
     void   move_GD      ( double dt_loc );
     //double move_GD_safe ( double dt_loc );
     double move_MD( double dt_loc, double damp);
+    double move_VSpread(double dt_loc,double damp, double beta );
     //double move_MD_safe ( double dt_loc );
     inline double move_MDquench(){ return move_MD(dt,damping);};
     double move_FIRE();

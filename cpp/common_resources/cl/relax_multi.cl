@@ -382,7 +382,6 @@ float2 KvaziFIREdamp( double c, float damping, float2 clim ){
     return cvf;
 }
 
-
 __kernel void updateAtomsMMFFf4(
     const float4      MDpars,       // 1
     const int4        n,            // 2

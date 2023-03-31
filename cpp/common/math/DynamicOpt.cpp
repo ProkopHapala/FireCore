@@ -81,6 +81,31 @@ double DynamicOpt::move_MD(double dt_loc,double damp){
     return f2sum;
 }
 
+
+double DynamicOpt::move_VSpread(double dt_loc,double damp, double beta ){
+    //   damping should be higher when     Sum_i{ |v_i|^2 } >> |Sum{v_i}|^2 
+    double f2sum=0;
+    for ( int i=0; i<n; i++ ){
+        double f = force[i];
+        f2sum+=f*f;
+        double v = vel[i];
+
+        double v2 = v*v;
+        double sprd = spreads[i];
+        double s    = beta*sprd;
+        double cdamp = 1./( 1 + s*s/v2 );     // if spead much bigger than velocity, velocity should be damped
+        v*=  cdamp;     
+        spreads[i] = ( spreads[i]*(1-beta) + v2*beta ) * cdamp;
+        v+= invMasses[i]*(f*dt_loc);
+        pos[i] += v*dt_loc;
+        vel[i]  = v;
+    }
+    stepsDone++;
+    t += dt;
+    return f2sum;
+}
+
+
 /*
 double DynamicOpt::move_MD_safe(double dt_loc){
     double fmax = VecN::absmax(n,force);
