@@ -108,10 +108,9 @@ virtual void init( bool bGrid ) override {
     //OCL_checkError(err, "init().printOnGPU()");      DEBUG
     //ocl.finishRaw();                                 DEBUG
     int4 mask{1,1,0,0};
-    ocl.printOnGPU( 0,mask );
-    ocl.printOnGPU( 1,mask );
-    ocl.printOnGPU( 2,mask );
-    exit(0);
+    //ocl.printOnGPU( 0,mask );
+    //ocl.printOnGPU( 1,mask );
+    //ocl.printOnGPU( 2,mask );
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
 
@@ -181,7 +180,7 @@ void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
     if(bVel   ){ ocl.upload( ocl.ibuff_avel,    avel    ); }
     if(bParams){
         ocl.upload( ocl.ibuff_lvecs,   lvecs );
-        ocl.upload( ocl.ibuff_ilvecs,  lvecs );
+        ocl.upload( ocl.ibuff_ilvecs, ilvecs );
         ocl.upload( ocl.ibuff_neighs,     neighs    );
         ocl.upload( ocl.ibuff_neighCell,  neighCell );
         ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
@@ -233,17 +232,17 @@ void setup_NBFF_ocl(){
 void picked2GPU( int ipick,  double K ){
     //printf( "picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
     int i0a = ocl.nAtoms*iSystemCur;
-    Quat4f& acon = constr[i0a + ipick];
+    int i0v = ocl.nvecs *iSystemCur;
     if(ipick>=0){
-        Vec3f hray = (Vec3f)pick_hray;
-        Vec3f ray0 = (Vec3f)pick_ray0;
-        int i0v = ocl.nvecs *iSystemCur;
+        Quat4f& acon = constr[i0a + ipick];
+        Vec3f hray   = (Vec3f)pick_hray;
+        Vec3f ray0   = (Vec3f)pick_ray0;
         const Quat4f& atom = atoms [i0v + ipick];
         float c = hray.dot( atom.f ) - hray.dot( ray0 );
         acon.f = ray0 + hray*c;
         acon.w = K;
     }else{
-        acon.w = -1;
+        for(int i=0; i<ocl.nAtoms; i++){   constr[i0a + i].w=-1.0;  };
     }
     //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
     ocl.upload( ocl.ibuff_constr, constr );   // ToDo: instead of updating the whole buffer we may update just relevant part?
@@ -254,7 +253,7 @@ void picked2GPU( int ipick,  double K ){
 // ==================================
 
 double eval_MMFFf4_ocl( int niter, bool bForce=false ){ 
-    printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
+    //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
     picked2GPU( ipicked,  1.0 );
     int err=0;
     if( task_MMFF==0 )setup_MMFFf4_ocl();
@@ -263,13 +262,13 @@ double eval_MMFFf4_ocl( int niter, bool bForce=false ){
         err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
         err |= task_MMFF  ->enque_raw();
         err |= task_NBFF  ->enque_raw();
-        err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
+        //err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
         err |= task_move  ->enque_raw(); 
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
     if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl          .download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
-    for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+    //for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
 
     err |= ocl.finishRaw();
     OCL_checkError(err, "eval_MMFFf4_ocl");
@@ -360,13 +359,14 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //bMMFF=false;
     if( bOcl ){
         printf( "GPU frame[%i] -- \n", nIter );
+        if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
         eval_MMFFf4_ocl( nIter );
         //eval_NBFF_ocl  ( 1 ); 
     }else{
         printf( "CPU frame[%i] \n", nIter );
         for(int itr=0; itr<nIter; itr++){
-            //double E = eval();
-            double E = MolWorld_sp3::eval();
+            double E = eval();
+            //double E = MolWorld_sp3::eval();
             ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
             //if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
             //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );

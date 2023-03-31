@@ -219,9 +219,9 @@ __kernel void getMMFFf4(
 
     const float   ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
-    // const int iS_DBG = 5;
+    const int iS_DBG = 5;
     // //const int iG_DBG = 0;
-    // const int iG_DBG = 0;
+    const int iG_DBG = 0;
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
     //     //for(int i=0; i<nAtoms; i++){ int4 ng_ = neighs[i+iS*nAtoms];  printf( "GPU[%i|%i] neighs(%i,%i,%i,%i) \n", i, iS, ng_.x,ng_.y,ng_.z,ng_.w ); }; 
     //     //for(int i=0; i<nAtoms*nS; i++){ int iv=i%nAtoms; int4 ng_ = neighs[i]; if(iv==0)printf("----\n"); printf( "%3i [%2i,%2i,%i] neighs(%i,%i,%i,%i) \n", i, i/nAtoms, iv, iv<=nAtoms, ng_.x,ng_.y,ng_.z,ng_.w );  }; 
@@ -240,11 +240,22 @@ __kernel void getMMFFf4(
         const int inga = ing+i0a;
         if(ing<0) break;
         h.xyz    = apos[ingv].xyz - pa;    //printf( "[%i|%i] ing=%i h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z,  pa.x,pa.y,pa.z ); 
+        
+        { // PBC bond vector correction
+            float3 u  = (float3){ dot( invLvec.a.xyz, h.xyz ), dot( invLvec.b.xyz, h.xyz ), dot( invLvec.c.xyz, h.xyz ) };
+            h.xyz   += lvec.a.xyz*(1.f-(int)(u.x+1.5f))
+                     + lvec.b.xyz*(1.f-(int)(u.y+1.5f))
+                     + lvec.c.xyz*(1.f-(int)(u.z+1.5f));
+            // if((iG==iG_DBG)&&(iS==iS_DBG)){
+            //     float3 shi =  (float3){(1.f-(int)(u.x+1.5f)),  (1.f-(int)(u.y+1.5f)), (1.f-(int)(u.z+1.5f)) };
+            //     printf( "GPU:bond[%i,%i] u(%6.3f,%6.3f,%6.3f) shi(%6.3f,%6.3f,%6.3f) \n", iG, ing, u.x,u.y,u.z,   shi.x,shi.y,shi.z );
+            // }
+        }
+        
         float  l = length(h.xyz); 
         h.w      = 1./l;
         h.xyz   *= h.w;
         hs[i]    = h;
-
 
         float epp = 0;
         float esp = 0;
@@ -253,8 +264,7 @@ __kernel void getMMFFf4(
         if(iG<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU bond[%i=%i|%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", iG,iaa,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
-            
-            
+                        
             float kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 //E += evalPiAling( hpi, pipos[ing].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;        //   pi-alignment     (konjugation)
@@ -267,6 +277,7 @@ __kernel void getMMFFf4(
             
             // ToDo: triple bonds ?
         } 
+        
         
         // DEBUG: ERROR: uncomenting this couse drift
         // pi-sigma 
@@ -305,7 +316,6 @@ __kernel void getMMFFf4(
             
             fa    -= f1+f2;
             
-            
             { // Remove vdW
                 float4 REQi=REQKs[inga];   // ToDo: can be optimized
                 float4 REQj=REQKs[jnga];
@@ -319,7 +329,6 @@ __kernel void getMMFFf4(
                 f2 +=  fij.xyz;
                 //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", iG,ing,jng, length(dp), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
             }
-            
 
             fbs[i]+= f1;
             fbs[j]+= f2;
@@ -357,6 +366,23 @@ __kernel void getMMFFf4(
 //                     updateAtomsMMFFf4()
 // ======================================================================
 
+float2 KvaziFIREdamp( double c, float damping, float2 clim ){
+    float2 cvf;
+    if      (c < clim.x ){
+        cvf.x = 0.f;
+        cvf.y = 0.f;
+    }else if(c > clim.y ){
+        cvf.x = 1-damping;
+        cvf.y =   damping;
+    }else{  // cos(v,f) from [ cvf_min .. cvf_max ]
+        double f = (c-clim.x )/( clim.y - clim.x  );
+        cvf.x = (1.-damping)*f;
+        cvf.y =     damping *f;
+    }
+    return cvf;
+}
+
+
 __kernel void updateAtomsMMFFf4(
     const float4      MDpars,       // 1
     const int4        n,            // 2
@@ -383,7 +409,7 @@ __kernel void updateAtomsMMFFf4(
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
 
-    if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
+    //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
     //     int i0a = iS*natoms;
     //     for(int i=0; i<natoms; i++){
@@ -434,24 +460,22 @@ __kernel void updateAtomsMMFFf4(
        }
     }
     
-    /*
+
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
     }
-    ve.xyz += fe.xyz*MDpars.x;                       // according to LAMMPS implementation we should update the velocity by force first ... see https://github.com/lammps/lammps/blob/730e5d2e64106f3e5357fd739b44c7eec19c7d2a/src/min_fire.cpp#L393
     float ff = dot(fe.xyz,fe.xyz);
 	float vv = dot(ve.xyz,ve.xyz);
     float vf = dot(ve.xyz,fe.xyz);
     #define ff_safety 1e-8
-	if( vf < 0.0f ){
-		ve.xyz=float3Zero;
-	}else{
-		float cf  =    MDpars.y * sqrt(vv/(ff+ff_safety));
-		float cv  = 1.f - MDpars.y;
-		ve.xyz    = cv * ve.xyz  + cf * fe.xyz;
-	}
+    float  c          = vf/sqrt( ff*vv + 1e-8 ); 
+    float  renorm_vf  = sqrt( vv/(ff + 1e-8) );
+    //float2 cvf = KvaziFIREdamp( c, MDpars.y*0.f, (float2){-0.2f,0.2f} );
+    float2 cvf = KvaziFIREdamp( c, MDpars.y*0.f, (float2){-0.9f,-0.5f} );
+    ve.xyz = ve.xyz*cvf.x  + fe.xyz*cvf.y*renorm_vf;
+    ve.xyz  += fe.xyz*MDpars.x;  
     pe.xyz += ve.xyz*MDpars.x;
     if(bPi){ 
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
@@ -459,7 +483,7 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
-    */
+    
     
     /*
     // ------ Move (Leap-Frog)
@@ -475,13 +499,13 @@ __kernel void updateAtomsMMFFf4(
     }
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
-    //apos[iav] = pe;
-    apos[iav] = float4Zero;
+    apos[iav] = pe;
     */
 
     /*
     //------ Move Gradient-Descent
     //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
+    //pe.xyz += fe.xyz*MDpars.x*0.01f;
     pe.xyz += fe.xyz*MDpars.x*0.01f;
     //if(bPi){ pe.xyz=normalize(pe.xyz); }
     pe.w=0;  // This seems to be needed, not sure why ?????
