@@ -181,7 +181,7 @@ double eval_atom(const int ia){
 
     //--- Aux Variables 
     Quat4d  hs[4];
-    Vec3d   d_pbc[4];
+    Vec3d   apbc[4];
     Vec3d   f1,f2;
     
     //const int ia_DBG = 0;
@@ -199,39 +199,22 @@ double eval_atom(const int ia){
         //fbs[i]=Vec3dOne; fps[i]=Vec3dOne;
         //fbs[i]=Vec3dZero; fps[i]=Vec3dZero; // NOTE: wee need to initialize it before, because of the break
         if(ing<0) break;
+        Vec3d  pi = apos[ing];
         Quat4d h; 
-        h.f.set_sub( apos[ing], pa );
+        h.f.set_sub( pi, pa );
         //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
         
         //Vec3d h_bak = h.f;    
         //pbc_shifts=0;    
         if(pbc_shifts){
-            { //DEBUG
-                Vec3d u;
-                invLvec.dot_to( h.f, u );
-                int ix = (int)(u.x+1.5)-1;
-                int iy = (int)(u.y+1.5)-1;
-                int iz = (int)(u.z+1.5)-1;
-                Vec3d dpbc = lvec.a*ix + lvec.b*iy + lvec.c*iz;
-                printf( "bond[%i,%i] pbc_shift(%6.3f,%6.3f,%6.3f) dpbc(%6.3f,%6.3f,%6.3f) iabc(%2i,%2i,%2i) u(%6.3f,%6.3f,%6.3f)\n", ia, ing, d_pbc[i].x,d_pbc[i].y,d_pbc[i].z,  dpbc.x,dpbc.y,dpbc.z, ix,iy,iz, u.x,u.y,u.z  );
-            }
-
             int ipbc = ingC[i]; 
+            //Vec3d sh = pbc_shifts[ipbc]; //apbc[i]  = pi + sh;
             h.f.add( pbc_shifts[ipbc] );
-            d_pbc[i] = pbc_shifts[ipbc];
-
         }else{
-            //wrapBondVec( h.f, lvec, invLvec );
-            Vec3d u;
-            invLvec.dot_to( h.f, u );
-            int ix = (int)(u.x+1.5)-1;  u.x = u.x+ix;
-            int iy = (int)(u.y+1.5)-1;  u.y = u.y+iy;
-            int iz = (int)(u.z+1.5)-1;  u.z = u.z+iz;
-            d_pbc[i] = lvec.a*ix + lvec.b*iy + lvec.c*iz;
-            lvec.dot_to_T( u, h.f );
-
-
-            // ToDO :  check if these   d_pbc[i] are the same as   pbc_shifts[ingC[i]]
+            Vec3i g  = invLvec.nearestCell( h.f );
+            Vec3d sh = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
+            h.f.add( sh );
+            //apbc[i] = pi + sh;
         }
 
         //wrapBondVec( h.f );
@@ -290,26 +273,14 @@ double eval_atom(const int ia){
                 E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             }
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
-
             fa    .sub( f1+f2  );
             
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
-                //printf( "non-bond[%i|%i=%i,%i,=%i] REQs=%li \n", ia, i,ing,j,jng, REQs  );
-                //printf( "non-bond[%i|%i=%i,%i,=%i] REQi(%g,%g,%g) REQj(%g,%g,%g) \n", ia, i,ing,j,jng, REQs[ing].x,REQs[ing].y,REQs[ing].z,   REQs[jng].x,REQs[jng].y,REQs[jng].z  );
                 Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
-                //Vec3d dp; dp.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
-                //Vec3d dp = apos[jng] - apos[ing];                                            // method with    reading from global buffer, without PBC
-                //Vec3d dp = apos[jng] - apos[ing] + pbc_shifts[ingC[j]] - pbc_shifts[ingC[i]];  // method with    reading from global buffer, with    PBC
-                //Vec3d dp = apos[jng] - apos[ing] - pbc_shifts[ingC[j]] + pbc_shifts[ingC[i]];  // method with    reading from global buffer, with    PBC
-                Vec3d dp   = apos[jng] - apos[ing] - d_pbc[j] + d_pbc[i];
-                // if( (ia==0)&&(ing==3)&&(jng==1) ){ 
-                // //if( (ia==0) ){     
-                //     Vec3d shpi = apos[ing] + pbc_shifts[ingC[j]];
-                //     Vec3d shpj = apos[jng] + pbc_shifts[ingC[i]];  
-                //     printf( "ang(%i,%i,%i)  ic %i jc %i shpi(%g,%g,%g)  shpj(%g,%g,%g)\n", ing, ia, jng,    ingC[j], ingC[i], shpi.x,shpi.y,shpi.z,    shpj.x,shpj.y,shpj.z   );  
-                // }
-                //E -= addAtomicForceLJQ( dp, fij, REQij );
+                Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
+                //Vec3d dp   = hj.f*(1./hj.w) - hi.f*(1./hi.w);
+                //Vec3d dp   = apbc[j] - apbc[i];
                 E -= getLJQ( dp, REQij, R2damp, fij );
                 //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
                 f1.sub(fij);
@@ -506,6 +477,48 @@ void makeNeighCells( const Vec3i nPBC_ ){
         neighCell[ia]=ngC;
     }
     printNeighs();
+}
+
+void makeNeighCells( int npbc, Vec3d* pbc_shifts ){ 
+    for(int ia=0; ia<natoms; ia++){
+        for(int j=0; j<4; j++){
+            //printf("ngcell[%i,j=%i] \n", ia, j);
+            int ja = neighs[ia].array[j];
+            //printf("ngcell[%i,ja=%i] \n", ia, ja);
+            if( ja<0 )continue;
+            const Vec3d d = apos[ja] - apos[ia];
+
+            // ------- Brute Force method
+            int imin=-1;
+            float r2min = 1.e+300;
+            for( int ipbc=0; ipbc<npbc; ipbc++ ){   
+                Vec3d shift = pbc_shifts[ipbc]; 
+                shift.add(d);
+                float r2 = shift.norm2();
+                if(r2<r2min){   // find nearest distance
+                    r2min=r2;
+                    imin=ipbc;
+                }
+            }
+
+            /*
+            // -------- Fast method
+            { //DEBUG
+                Vec3d u;
+                invLvec.dot_to( d, u );
+                int ix = 1-(int)(u.x+1.5);
+                int iy = 1-(int)(u.y+1.5);
+                int iz = 1-(int)(u.z+1.5);
+                Vec3d dpbc = lvec.a*ix + lvec.b*iy + lvec.c*iz;
+                printf( "NeighCell[%i,%i] ipbc %i pbc_shift(%6.3f,%6.3f,%6.3f) dpbc(%6.3f,%6.3f,%6.3f) iabc(%2i,%2i,%2i) u(%6.3f,%6.3f,%6.3f)\n", ia, ja, imin, pbc_shifts[imin].x,pbc_shifts[imin].y,pbc_shifts[imin].z,  dpbc.x,dpbc.y,dpbc.z, ix,iy,iz, u.x,u.y,u.z  );
+            }
+            */
+
+            //printf("ngcell[%i,%i] imin=%i \n", ia, ja, imin);
+            neighCell[ia].array[j] = imin;
+            //printf("ngcell[%i,%i] imin=%i ---- \n", ia, ja, imin);
+        }
+    }
 }
 
 void printSizes(){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };

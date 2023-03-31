@@ -527,7 +527,8 @@ virtual void init( bool bGrid ){
         npbc = makePBCshifts( nPBC, builder.lvec );
         ffl.pbc_shifts = pbc_shifts;
         ff4.makeNeighCells  ( nPBC );       DEBUG
-        ffl.makeNeighCells  ( nPBC );       DEBUG
+        //ffl.makeNeighCells  ( nPBC );       DEBUG
+        ffl.makeNeighCells( npbc, pbc_shifts );  DEBUG 
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         DEBUG
