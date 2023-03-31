@@ -460,7 +460,8 @@ double eval_NBFF_ocl( int niter ){
 
         { // DEBUG
             ffl  .cleanForce();
-            nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
+            // nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
+            nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp );
             //ffl.printDEBUG( false, false );
             fcog  = sum ( ffl.natoms, ffl.fapos   );
             tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );

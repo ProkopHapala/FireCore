@@ -61,6 +61,10 @@ class MolWorld_sp3_simple{ public:
 	DynamicOpt   opt;
 
     Vec3i nPBC{1,1,0};
+    int    npbc       = 0;
+    Vec3d* pbc_shifts = 0;
+    double RdampCoul = 1.0;
+
 
 	// state
 	bool    bConverged = false;
@@ -106,6 +110,18 @@ class MolWorld_sp3_simple{ public:
 // ======================================
 // ========= Initialization
 // ======================================
+
+int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
+    npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+    pbc_shifts = new Vec3d[npbc];
+    int ipbc=0;
+    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+        pbc_shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+        //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
+        ipbc++; 
+    }}}
+    return npbc;
+}
 
 void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
@@ -310,8 +326,9 @@ double eval(){
         E += ffl.eval();  
     }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
     if(bNonBonded){
-        if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, {1,1,0} ); }
-        else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                    }
+        //if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, {1,1,0} ); }
+        if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, RdampCoul ); } 
+        else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                                }
     }
     return E;
 }
