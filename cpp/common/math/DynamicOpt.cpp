@@ -69,8 +69,8 @@ double DynamicOpt::move_MD(double dt_loc,double damp){
     double f2sum=0;
     for ( int i=0; i<n; i++ ){
         double f = force[i];
-        f2sum+=f*f;
         double v = vel[i];
+        f2sum+=f*f;
         v*= cdamp;
         v+= invMasses[i]*(f*dt_loc);
         pos[i] += v*dt_loc;
@@ -82,20 +82,15 @@ double DynamicOpt::move_MD(double dt_loc,double damp){
 }
 
 
+
 double DynamicOpt::move_VSpread(double dt_loc,double damp, double beta ){
     //   damping should be higher when     Sum_i{ |v_i|^2 } >> |Sum{v_i}|^2 
     double f2sum=0;
     for ( int i=0; i<n; i++ ){
         double f = force[i];
+        double v = vel  [i];
         f2sum+=f*f;
-        double v = vel[i];
-
-        double v2 = v*v;
-        double sprd = spreads[i];
-        double s    = beta*sprd;
-        double cdamp = 1./( 1 + s*s/v2 );     // if spead much bigger than velocity, velocity should be damped
-        v*=  cdamp;     
-        spreads[i] = ( spreads[i]*(1-beta) + v2*beta ) * cdamp;
+        v*= 1. - damp*spreadDamp( i, v, beta ); 
         v+= invMasses[i]*(f*dt_loc);
         pos[i] += v*dt_loc;
         vel[i]  = v;
@@ -215,7 +210,7 @@ double DynamicOpt::damp_func( double c, double& cv ){
 double DynamicOpt::damp_func_FIRE( double c, double& cv ){ // Original FIRE damping
     double cf;
     if( c < 0.0 ){
-        cv = 0.;
+        cv = cv_kill;
         cf = 0.;
     }else{  
         cv = 1-damping;

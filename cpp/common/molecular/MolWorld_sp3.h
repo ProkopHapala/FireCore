@@ -509,8 +509,8 @@ virtual void init( bool bGrid ){
         builder.sortConfAtomsFirst();
         builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
-        //bool bEpair = true;
-        bool bEpair = false;
+        bool bEpair = true;
+        //bool bEpair = false;
         builder.toMMFFsp3    ( ff , true, bEpair );
         builder.toMMFFsp3_loc( ffl, true, bEpair );  // without electron pairs
         builder.toMMFFf4     ( ff4, true, bEpair );  //ff4.printAtomParams(); ff4.printBKneighs(); 
@@ -731,8 +731,12 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
         //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
         //opt.move_GD(0.001);
         //opt.move_LeapFrog(0.01);
-        //opt.move_MDquench();
-        double f2=opt.move_FIRE();   
+        //double f2=opt.move_MDquench();
+
+        //opt.damp_max = 0.0;
+        //opt.cv_kill  = 0.5;
+        double f2=opt.move_FIRE();  
+        //double f2=opt.move_VSpread( 0.1,  0.01, 0.05 ); 
         //printf( "[%i] E= %g [eV] |F|= %g [eV/A]\n", nloop, E, sqrt(f2) );
         //double f2=1;
         if(f2<sq(Ftol)){

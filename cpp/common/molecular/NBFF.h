@@ -172,7 +172,7 @@ class NBFF: public Atoms{ public:
 
     //double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
     double evalLJQs_ng4_PBC( Quat4i* neighs, Quat4i* neighCell, int npbc, const Vec3d* shifts, double Rdamp=1.0 ){
-        //printf( "NBFF::evalLJQs_ng4_PBC() \n" );
+        printf( "NBFF::evalLJQs_ng4_PBC() \n" );
         //printf( "evalLJQs_ng4_PBC() nPBC(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
         //int ia_DBG = 0;
         // printf( "evalLJQs_ng4_PBC() n=%i nPBC(%i,%i,%i) Rdamp %g \n lvec\n", n, nPBC.x,nPBC.y,nPBC.z, Rdamp );
@@ -228,8 +228,18 @@ class NBFF: public Atoms{ public:
                         //     printf( "LJ(%i,%i)  ic %i shpi(%g,%g,%g) \n", i,j, ipbc,  shpi.x,shpi.y,shpi.z  );  
                         // }
 
-                        E+=getLJQ( dpc, REQij, R2damp, fij );
-                        //if(i==ia_DBG){ printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g pbc_shift(%g,%g,%g)\n" , i,j, ipbc, fij.x,fij.y,fij.z, R2damp, REQij.x,REQij.y,REQij.z, dpc.norm(), shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z ); } 
+                        double eij = getLJQ( dpc, REQij, R2damp, fij );
+                        //if( (i==36)&&(j==35) )
+                        //if( (i==36)&&(j==18) )
+                        if( eij<-0.3 )
+                        { 
+                            double r = dpc.norm();
+                            printf( "CPU_LJQ[%i,%i|%i] r,e,fr(%6.3f,%10.7f,%10.7f)    REQ(%6.3f,%10.7f,%4.2f) pbc_shift(%6.3f,%6.3f,%6.3f)\n" , i,j,ipbc, r, eij, dpc.dot(fij)/r,    REQij.x,REQij.y,REQij.z, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
+                            //printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g pbc_shift(%g,%g,%g)\n" , i,j, ipbc, fij.x,fij.y,fij.z, R2damp, REQij.x,REQij.y,REQij.z, dpc.norm(), shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z ); 
+                            
+                        } 
+                        if( eij<-0.2 ){ Draw3D::drawVecInPos( dpc, pi ); };
+                        E+=eij;
                         fi.add(fij);
                     }
                 }else{
