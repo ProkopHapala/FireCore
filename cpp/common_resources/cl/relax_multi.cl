@@ -383,7 +383,7 @@ __kernel void updateAtomsMMFFf4(
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
 
-    //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
+    if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
     //     int i0a = iS*natoms;
     //     for(int i=0; i<natoms; i++){
@@ -461,7 +461,7 @@ __kernel void updateAtomsMMFFf4(
     apos[iav] = pe;
     */
     
-
+    /*
     // ------ Move (Leap-Frog)
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -475,7 +475,9 @@ __kernel void updateAtomsMMFFf4(
     }
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
-    apos[iav] = pe;
+    //apos[iav] = pe;
+    apos[iav] = float4Zero;
+    */
 
     /*
     //------ Move Gradient-Descent
@@ -497,7 +499,8 @@ __kernel void updateAtomsMMFFf4(
 // ======================================================================
 
 __kernel void printOnGPU(
-    const int4        n,            // 2
+    const int4        n,            // 1
+    const int4        mask,         // 2
     __global float4*  apos,         // 3
     __global float4*  avel,         // 4
     __global float4*  aforce,       // 5
@@ -507,54 +510,52 @@ __kernel void printOnGPU(
 ){
     const int natoms=n.x;
     const int nnode =n.y;
+    const int isys  =n.z; 
     const int nvec  = natoms+nnode;
     const int iG = get_global_id  (0);
     const int iS = get_global_id  (1);
     const int nG = get_global_size(0);
     const int nS = get_global_size(1);
-
     //const int ian = iG + iS*nnode; 
     const int iaa = iG + iS*natoms; 
     const int iav = iG + iS*nvec;
-
-    const int iS_DBG = 5;
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
+    printf( "#### GPU::printOnGPU(isys=%i) natoms=%i nnode=%i nG,nS(%i,%i) \n", isys,  natoms,nnode,   nS,nG );
+    if(mask.x){
+        for(int i=0; i<natoms; i++){
+            int ia=i + isys*nvec;
+            printf( "GPU[%i=%i] ", i, ia );
+            //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[ia].x, bkNeighs[ia].y, bkNeighs[ia].z, bkNeighs[ia].w );
+            printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[ia].x, aforce[ia].y, aforce[ia].z, aforce[ia].w );
+            //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[ia].x, avel[ia].y, avel[ia].z, avel[ia].w );
+            printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[ia].x, apos[ia].y, apos[ia].z, apos[ia].w );
+            printf(  "constr{%6.3f,%6.3f,%6.3f,%6.3f} ", constr[ia].x, constr[ia].y, constr[ia].z, constr[ia].w );
+            printf( "\n" );
+        }
+    }
+    if(mask.y){
+        for(int i=0; i<nnode; i++){
+            int i1=i+natoms + isys*nvec;
+            printf( "GPU[%i=%i] ", i, i1 );
+            printf(  "fpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i1].x, aforce[i1].y, aforce[i1].z, aforce[i1].w );
+            //printf(  "vpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i1].x, avel[i1].y, avel[i1].z, avel[i1].w );
+            printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
+            printf( "\n" );
+        }
+    }
+    if(mask.z){
+        for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
+            int i0 = isys*nvec*8;
+            int i1=i0 + i*4+j;
+            int i2=i0 + i1 + nnode*4;
+            printf( "GPU[%i,%i] ", i, j );
+            printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i1].x, fneigh[i1].y, fneigh[i1].z, fneigh[i1].w );
+            printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i2].x, fneigh[i2].y, fneigh[i2].z, fneigh[i2].w );
+            printf( "\n" );
+        }}
+    }
 
-    // if((iG==iG_DBG)&&(iS==iS_DBG))printf( "printOnGPU() natoms=%i nnode=%i nvec=%i iS %i nG %i nS %i  iav_max %i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS,  (nG-1)+(nS-1)*nvec );
-    // if((iG==iG_DBG)&&(iS==iS_DBG)){
-    //     for(int i=0; i<natoms; i++){
-    //         int ia=i + iS*nvec;
-    //         printf( "GPU[%i=%i] ", i, ia );
-    //         //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[ia].x, bkNeighs[ia].y, bkNeighs[ia].z, bkNeighs[ia].w );
-    //         printf( "fapos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[ia].x, aforce[ia].y, aforce[ia].z, aforce[ia].w );
-    //         //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[ia].x, avel[ia].y, avel[ia].z, avel[ia].w );
-    //         printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[ia].x, apos[ia].y, apos[ia].z, apos[ia].w );
-    //         printf(  "constr{%6.3f,%6.3f,%6.3f,%6.3f} ", constr[ia].x, constr[ia].y, constr[ia].z, constr[ia].w );
-    //         printf( "\n" );
-    //     }
-    //     for(int i=0; i<nnode; i++){
-    //         int i1=i+natoms + iS*nvec;
-    //         printf( "GPU[%i=%i] ", i, i1 );
-    //         printf(  "fpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i1].x, aforce[i1].y, aforce[i1].z, aforce[i1].w );
-    //         //printf(  "vpipos{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i1].x, avel[i1].y, avel[i1].z, avel[i1].w );
-    //         printf(   "pipos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i1].x, apos[i1].y, apos[i1].z, apos[i1].w );
-    //         printf( "\n" );
-    //     }
-    //     for(int i=0; i<nnode; i++){ for(int j=0; j<4; j++){
-    //         int i1=i*4+j;
-    //         int i2=i1+nnode*4;
-    //         printf( "GPU[%i,%i] ", i, j );
-    //         printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i1].x, fneigh[i1].y, fneigh[i1].z, fneigh[i1].w );
-    //         printf( "fneighpi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i2].x, fneigh[i2].y, fneigh[i2].z, fneigh[i2].w );
-    //         printf( "\n" );
-    //     }}
-    //     for(int i=0; i<nnode*4*2; i++){
-    //         printf( "GPU[%i,%i,%i] ", i/4, i%4, i>=(nnode*4) );
-    //         printf( "fneigh  {%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[i].x, fneigh[i].y, fneigh[i].z, fneigh[i].w );
-    //         printf( "\n" );
-    //     }
-    // }
 }
 
 __kernel void cleanForceMMFFf4(

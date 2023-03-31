@@ -86,6 +86,7 @@ void realloc( int nSystems_ ){
 }
 
 virtual void init( bool bGrid ) override {
+    int err = 0;
     printf("# ========== MolWorld_sp3_multi::init() START\n");
     ocl.print_devices(true);
     ocl.init();
@@ -100,8 +101,17 @@ virtual void init( bool bGrid ) override {
     }
     upload( true, false );
     bGridFF=false;
-    bOcl   =false;
+    //bOcl   =false;
+    bOcl   =true;
     setup_MMFFf4_ocl();
+    //err |= task_print->enque_raw();                  DEBUG
+    //OCL_checkError(err, "init().printOnGPU()");      DEBUG
+    //ocl.finishRaw();                                 DEBUG
+    int4 mask{1,1,0,0};
+    ocl.printOnGPU( 0,mask );
+    ocl.printOnGPU( 1,mask );
+    ocl.printOnGPU( 2,mask );
+    exit(0);
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
 
@@ -200,11 +210,13 @@ void setup_MMFFf4_ocl(){
     printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() \n");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    if(!task_move  )task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );
-    if(!task_print )task_print  = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );    /// Print on GPU 
-    if(!task_MMFF  )task_MMFF   = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
-    //if(!task_NBFF  )task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
-    if(!task_NBFF  )task_NBFF   = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
+    if(!task_move  )   task_move  = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );
+    if(!task_print )   task_print = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );
+    if(!task_MMFF  )   task_MMFF  = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
+    if(!task_NBFF  ) { 
+        if( bGridFF ){ task_NBFF  = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
+        else         { task_NBFF  = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); }
+    }
     if(!task_cleanF)task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode       );
 }
 
@@ -214,10 +226,9 @@ void setup_NBFF_ocl(){
     ocl.nDOFs.y=ff.nnode;
     if(!task_cleanF )task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode        );
     if(!task_move   )task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode        ); 
-    if(!task_print  )task_print  = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode        );    /// Print on GPU 
+    if(!task_print  )task_print  = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode        );
     if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
 }
-
 
 void picked2GPU( int ipick,  double K ){
     //printf( "picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
@@ -243,7 +254,7 @@ void picked2GPU( int ipick,  double K ){
 // ==================================
 
 double eval_MMFFf4_ocl( int niter, bool bForce=false ){ 
-    //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() \n");
+    printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
     picked2GPU( ipicked,  1.0 );
     int err=0;
     if( task_MMFF==0 )setup_MMFFf4_ocl();
@@ -252,12 +263,14 @@ double eval_MMFFf4_ocl( int niter, bool bForce=false ){
         err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
         err |= task_MMFF  ->enque_raw();
         err |= task_NBFF  ->enque_raw();
-        //err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
+        err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
         err |= task_move  ->enque_raw(); 
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
     if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
-    ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
+    ocl          .download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
+    for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+
     err |= ocl.finishRaw();
     OCL_checkError(err, "eval_MMFFf4_ocl");
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
@@ -284,12 +297,12 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
         err |= task_NBFF  ->enque_raw();
         //err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
         err |= task_move  ->enque_raw();
-        //OCL_checkError(err, "eval_MMFFf4_ocl_1");
+        //OCL_checkError(err, "eval_NBFF_ocl.1");
     }
     if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     err |=  ocl.finishRaw();                              //DEBUG
-    OCL_checkError(err, "eval_NBFF_ocl");
+    OCL_checkError(err, "eval_NBFF_ocl.2");
     if(bForce){
         unpack( ff4.natoms, ffl.  apos, ff4.  apos );
         unpack( ff4.natoms, ffl. fapos, ff4. fapos );
@@ -346,9 +359,11 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     //bMMFF=false;
     if( bOcl ){
+        printf( "GPU frame[%i] -- \n", nIter );
         eval_MMFFf4_ocl( nIter );
         //eval_NBFF_ocl  ( 1 ); 
     }else{
+        printf( "CPU frame[%i] \n", nIter );
         for(int itr=0; itr<nIter; itr++){
             //double E = eval();
             double E = MolWorld_sp3::eval();
