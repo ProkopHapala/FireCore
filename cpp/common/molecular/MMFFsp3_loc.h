@@ -76,6 +76,7 @@ class MMFFsp3_loc : public NBFF { public:
     bool    bSubtractAngleNonBond = false;
     Mat3d   invLvec;
 
+    Vec3d* pbc_shifts=0;
 
 // =========================== Functions
 
@@ -86,52 +87,6 @@ void realloc( int nnode_, int ncap_ ){
     nDOFs = nvecs*3;
     //printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
     int ipi0=natoms;
-
-    /*
-    // ----- Dynamical
-    _realloc(  DOFs    , nDOFs );
-    _realloc( fDOFs    , nDOFs );
-    apos   = (Vec3d*) DOFs ;
-    fapos  = (Vec3d*)fDOFs;
-    pipos  = apos  + ipi0;
-    fpipos = fapos + ipi0;
-    // ---- Aux
-    _realloc( fneigh  , nnode*4 );
-    _realloc( fneighpi, nnode*4 );
-    // ----- Params [natom]
-    _realloc( atypes    , natoms );
-    _realloc( neighs    , natoms );
-    _realloc( neighCell , natoms );
-    _realloc( bkneighs  , natoms );
-    _realloc( apars     , nnode );
-    _realloc( bLs       , nnode );
-    _realloc( bKs       , nnode );
-    _realloc( Ksp       , nnode );
-    _realloc( Kpp       , nnode );
-    */
-    
-    
-    /*
-    _realloc0(  DOFs    , nDOFs , 0. );
-    _realloc0( fDOFs    , nDOFs , 0. );
-    apos   = (Vec3d*) DOFs ;
-    fapos  = (Vec3d*)fDOFs;
-    pipos  = apos  + ipi0;
-    fpipos = fapos + ipi0;
-    // ---- Aux
-    _realloc0( fneigh  , nnode*4, Vec3dZero );
-    _realloc0( fneighpi, nnode*4, Vec3dZero );
-    // ----- Params [natom]
-    _realloc0( atypes    , natoms, -1 );
-    _realloc0( neighs    , natoms, Quat4iMinusOnes );
-    _realloc0( neighCell , natoms, Quat4iMinusOnes );
-    _realloc0( bkneighs  , natoms, Quat4iMinusOnes);
-    _realloc0( apars     , nnode, Quat4dZero );
-    _realloc0( bLs       , nnode, Quat4dZero );
-    _realloc0( bKs       , nnode, Quat4dZero );
-    _realloc0( Ksp       , nnode, Quat4dZero );
-    _realloc0( Kpp       , nnode, Quat4dZero );
-    */
     
     _realloc0(  DOFs    , nDOFs , (double)NAN );
     _realloc0( fDOFs    , nDOFs , (double)NAN );
@@ -203,7 +158,8 @@ double eval_atom(const int ia){
     Vec3d fpi  = Vec3dZero; 
     
     //--- array aliases
-    const int*    ings = neighs[ia].array;
+    const int*    ings = neighs   [ia].array;
+    const int*    ingC = neighCell[ia].array;
     const double* bK   = bKs    [ia].array;
     const double* bL   = bLs    [ia].array;
     const double* Kspi = Ksp    [ia].array;
@@ -225,13 +181,16 @@ double eval_atom(const int ia){
 
     //--- Aux Variables 
     Quat4d  hs[4];
+    Vec3d   d_pbc[4];
     Vec3d   f1,f2;
     
-    const int ia_DBG = 0;
+    //const int ia_DBG = 0;
     //if(ia==ia_DBG)printf( "ffl[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
 
     //for(int i=0; i<4; i++){ fneigh[ia*4+i]=Vec3dZero; fneighpi[ia*4+i]=Vec3dZero; }
     for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
+
+    //printf("lvec\n"); printMat(lvec);
 
     // --------- Bonds Step
     for(int i=0; i<4; i++){
@@ -244,9 +203,37 @@ double eval_atom(const int ia){
         h.f.set_sub( apos[ing], pa );
         //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
         
+        //Vec3d h_bak = h.f;    
+        //pbc_shifts=0;    
+        if(pbc_shifts){
+            { //DEBUG
+                Vec3d u;
+                invLvec.dot_to( h.f, u );
+                int ix = (int)(u.x+1.5)-1;
+                int iy = (int)(u.y+1.5)-1;
+                int iz = (int)(u.z+1.5)-1;
+                Vec3d dpbc = lvec.a*ix + lvec.b*iy + lvec.c*iz;
+                printf( "bond[%i,%i] pbc_shift(%6.3f,%6.3f,%6.3f) dpbc(%6.3f,%6.3f,%6.3f) iabc(%2i,%2i,%2i) u(%6.3f,%6.3f,%6.3f)\n", ia, ing, d_pbc[i].x,d_pbc[i].y,d_pbc[i].z,  dpbc.x,dpbc.y,dpbc.z, ix,iy,iz, u.x,u.y,u.z  );
+            }
 
-        //Vec3d h_bak = h.f;
-        wrapBondVec( h.f, lvec, invLvec );
+            int ipbc = ingC[i]; 
+            h.f.add( pbc_shifts[ipbc] );
+            d_pbc[i] = pbc_shifts[ipbc];
+
+        }else{
+            //wrapBondVec( h.f, lvec, invLvec );
+            Vec3d u;
+            invLvec.dot_to( h.f, u );
+            int ix = (int)(u.x+1.5)-1;  u.x = u.x+ix;
+            int iy = (int)(u.y+1.5)-1;  u.y = u.y+iy;
+            int iz = (int)(u.z+1.5)-1;  u.z = u.z+iz;
+            d_pbc[i] = lvec.a*ix + lvec.b*iy + lvec.c*iz;
+            lvec.dot_to_T( u, h.f );
+
+
+            // ToDO :  check if these   d_pbc[i] are the same as   pbc_shifts[ingC[i]]
+        }
+
         //wrapBondVec( h.f );
         //printf( "h[%i,%i] r_old %g r_new %g \n", ia, ing, h_bak.norm(), h.f.norm() );
         double l = h.f.normalize();
@@ -305,21 +292,30 @@ double eval_atom(const int ia){
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
 
             fa    .sub( f1+f2  );
-            /*
+            
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
                 //printf( "non-bond[%i|%i=%i,%i,=%i] REQs=%li \n", ia, i,ing,j,jng, REQs  );
                 //printf( "non-bond[%i|%i=%i,%i,=%i] REQi(%g,%g,%g) REQj(%g,%g,%g) \n", ia, i,ing,j,jng, REQs[ing].x,REQs[ing].y,REQs[ing].z,   REQs[jng].x,REQs[jng].y,REQs[jng].z  );
                 Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
-                Vec3d dp; dp.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
-                //Vec3d dp = apos[jng] - apos[ing];                          // method with    reading from global buffer
+                //Vec3d dp; dp.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
+                //Vec3d dp = apos[jng] - apos[ing];                                            // method with    reading from global buffer, without PBC
+                //Vec3d dp = apos[jng] - apos[ing] + pbc_shifts[ingC[j]] - pbc_shifts[ingC[i]];  // method with    reading from global buffer, with    PBC
+                //Vec3d dp = apos[jng] - apos[ing] - pbc_shifts[ingC[j]] + pbc_shifts[ingC[i]];  // method with    reading from global buffer, with    PBC
+                Vec3d dp   = apos[jng] - apos[ing] - d_pbc[j] + d_pbc[i];
+                // if( (ia==0)&&(ing==3)&&(jng==1) ){ 
+                // //if( (ia==0) ){     
+                //     Vec3d shpi = apos[ing] + pbc_shifts[ingC[j]];
+                //     Vec3d shpj = apos[jng] + pbc_shifts[ingC[i]];  
+                //     printf( "ang(%i,%i,%i)  ic %i jc %i shpi(%g,%g,%g)  shpj(%g,%g,%g)\n", ing, ia, jng,    ingC[j], ingC[i], shpi.x,shpi.y,shpi.z,    shpj.x,shpj.y,shpj.z   );  
+                // }
                 //E -= addAtomicForceLJQ( dp, fij, REQij );
                 E -= getLJQ( dp, REQij, R2damp, fij );
                 //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
                 f1.sub(fij);
                 f2.add(fij);
             }
-            */
+            
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );

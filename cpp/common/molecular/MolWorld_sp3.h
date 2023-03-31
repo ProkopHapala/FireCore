@@ -91,7 +91,7 @@ class MolWorld_sp3{ public:
     Vec3i nPBC{1,1,0};
     int    npbc       = 0;
     Vec3d* pbc_shifts = 0;
-    
+
 	// state
 	bool bConverged = false;
 	double Etot=0;
@@ -525,6 +525,7 @@ virtual void init( bool bGrid ){
         DEBUG
         //nPBC=Vec3i{0,0,0}; // DEBUG
         npbc = makePBCshifts( nPBC, builder.lvec );
+        ffl.pbc_shifts = pbc_shifts;
         ff4.makeNeighCells  ( nPBC );       DEBUG
         ffl.makeNeighCells  ( nPBC );       DEBUG
         //builder.printBonds();
@@ -618,7 +619,7 @@ double eval( ){
         
     }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
     //bPBC=false;
-    /*
+    
     if(bNonBonded){
         if(bMMFF){    
             if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); }   // atoms outside cell
@@ -629,7 +630,7 @@ double eval( ){
             else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
         }
     }
-    */
+    
     
     if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
     /*
