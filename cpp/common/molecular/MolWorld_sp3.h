@@ -8,6 +8,8 @@
 #include <vector>
 #include <math.h>
 
+#include <omp.h>
+
 #include "IO_utils.h"
 
 //#include "testUtils.h"
@@ -755,44 +757,46 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     }
     */
     
-    //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
-    run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    verbosity = 0;
+    //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
+    //run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    //run_omp( 100, 0.05, 1e-6, 1000.0 );
+    run_omp( 100, 0.05, 1e-6, 1000.0 );
+    //run_omp( 500, 0.05, 1e-6, 1000.0 );
     bChargeUpdated=false;
 }
 
 int run_omp( int niter, double dt, double Fconv, double Flim ){
-    double F2conv = Fconv*Fconv;
-    double E,F2;
-    int    itr;
-    //#pragma omp parallel shared(E,F2,itr)
+    double E=0,F2=0;
+    int itr=0;
+    #pragma omp parallel shared(E,F2) private(itr)
     for(itr=0; itr<niter; itr++){
-        E=0;
+         #pragma omp single
+        {E=0;F2=0;}
         // ------ eval MMFF
-        //#pragma omp for reduction(+:E)
+        #pragma omp for reduction(+:E)
         for(int ia=0; ia<ffl.natoms; ia++){ 
-            if(ia<ffl.nnode)E += ffl.eval_atom(ia);
-            E += ffl.evalLJQs_ng4_PBC_atom( ia ); 
+            if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+            if(ia<ffl.nnode) E+=ffl.eval_atom(ia);
+            //E+=ffl.evalLJQs_ng4_PBC_atom( ia ); 
+            E+=ffl.evalLJQs_ng4_PBC_atom_( ia ); 
             if(ipicked==ia){ 
                 const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0, -2.0 ); 
                 ffl.fapos[ia].add( f );
             }
         }
-        //for(int ia=0; ia<nnode;  ia++){ E += eval_atom(ia);                }
-        //for(int ia=0; ia<natoms; ia++){ E += evalLJQs_ng4_PBC_atom( ia );  }
         // ---- assemble (we need to wait when all atoms are evaluated)
-        //#pragma omp for
+        #pragma omp for
         for(int ia=0; ia<ffl.natoms; ia++){
             ffl.assemble_atom( ia );
         }
         // ------ move
-        F2=0;
-        //#pragma omp for reduction(+:F2)
+        #pragma omp for reduction(+:F2)
         for(int i=0; i<ffl.nvecs; i++){
-            //F2 += ffl.move_atom_GD( i, dt, Flim );
-            F2 += ffl.move_atom_MD( i, dt, Flim, 0.9 );
-            //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
+            F2+=ffl.move_atom_MD( i, dt, Flim, 0.9 );
         }
-        if(F2<F2conv)break;
+        #pragma omp single
+        if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
     }
     return itr;
 }

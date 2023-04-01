@@ -13,6 +13,30 @@ bool isnan(Quat4f& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)||isnan(v.w)); 
 
 #define _printIfNan(var)    if(isnan(var)){printf("_printIfNan(%s)= ",#var);print(var);puts("");} 
 
+template<typename T,typename Func>
+bool ckeckNaN(int n, int m, T* xs, Func func, bool bPrint=true ){
+    bool ret = false;
+    for(int i=0; i<n;i++){
+        bool b=false;
+        for(int j=0; j<m;j++){
+            int ij=i*m+j;
+            b|=isnan( xs[ij] );
+            b|=isinf( xs[ij] );
+        }
+        ret |= b;
+        if(b  && bPrint ){
+            func();
+            printf("[%i](", i );
+            for(int j=0; j<m;j++){
+                int ij=i*m+j;
+                printf("%g,", xs[ij] );
+            }
+            printf(")\n");
+        }
+    }
+    return ret;
+}
+
 bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
     bool ret = false;
     for(int i=0; i<n;i++){
@@ -20,6 +44,7 @@ bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
         for(int j=0; j<m;j++){
             int ij=i*m+j;
             b|=isnan( xs[ij] );
+            b|=isinf( xs[ij] );
         }
         ret |= b;
         if(b && bPrint ){
@@ -41,6 +66,7 @@ bool ckeckNaN_f(int n, int m, float* xs, const char* pre, bool bPrint=true ){
         for(int j=0; j<m;j++){
             int ij=i*m+j;
             b|=isnan( xs[ij] );
+            b|=isinf( xs[ij] );
         }
         ret |= b;
         if(b && bPrint ){

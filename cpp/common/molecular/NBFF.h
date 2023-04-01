@@ -175,6 +175,51 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+
+    double evalLJQs_ng4_PBC_atom_( int ia ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi   = apos     [ia];
+        const Vec3d  REQi = REQs     [ia];
+        const Quat4i ng   = neighs   [ia];
+        const Quat4i ngC  = neighCell[ia];
+        Vec3d fi = Vec3dZero;
+        double E=0,fx=0,fy=0,fz=0;
+
+        //#pragma omp simd collapse(2) reduction(+:E,fx,fy,fz)
+        #pragma omp simd reduction(+:E,fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            if(ia==j)continue;
+            const Vec3d& REQj  = REQs[j];
+            const Vec3d  REQij = Vec3d{ REQi.x+REQj.x, REQi.y*REQj.y, REQi.z*REQj.z }; 
+            const Vec3d dp     = apos[j]-pi;
+            Vec3d fij          = Vec3dZero;
+            const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
+            for(int ipbc=0; ipbc<npbc; ipbc++){
+                // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
+                const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
+                double eij      = getLJQ( dpc, fij, REQij, R2damp );
+                // --- If atoms are bonded we don't use the computed non-bonding interaction energy and force
+                if(bBonded){
+                    if(   ((j==ng.x)&&(ipbc==ngC.x))
+                        ||((j==ng.y)&&(ipbc==ngC.y))
+                        ||((j==ng.z)&&(ipbc==ngC.z))
+                        ||((j==ng.w)&&(ipbc==ngC.w))
+                    ){ continue;}
+                }
+                E +=eij;
+                fx+=fij.x;
+                fy+=fij.y;
+                fz+=fij.z;
+                //fi+=fij;
+            }
+        }
+
+        fapos[ia].add( Vec3d{fx,fy,fz} );
+        return E;
+    }
+
+
     double evalLJQs_ng4_PBC_atom( int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;

@@ -53,8 +53,8 @@ inline double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, do
     //printf( " ir1 %g ir2 %g \n", ir1, ir2 );
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
     Vec3d h; h.set_add( h1, h2 );
-    double c2 = h.norm2()*0.25;               // cos(a/2) = |ha+hb|
-    double s2 = 1-c2;
+    double c2 = h.norm2()*0.25;   // cos(a/2) = |ha+hb|
+    double s2 = 1-c2 + 1e-14;      // s2 must be positive number !!!
     double c  = sqrt(c2);
     double s  = sqrt(s2);
     Vec2d cs  = cs0;
@@ -67,31 +67,18 @@ inline double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, do
     fr /= 4*c*s;   //    |h - 2*c2*a| =  1/(2*s*c) = 1/sin(a)
     double fr1    = fr*ir1;
     double fr2    = fr*ir2;
+
+
+    double _nan = E+fr+fr1+fr2;
+    ckeckNaN( 1,1, &_nan, [&]{ printf("evalAngleCosHalf{ E %g fr %g fr1 %g fr2 %g c %g s %g c2 %g s2 %g }", E, fr, fr1, fr2, c, s, c2, s2 ); } );
+
     f1.set_lincomb( fr1, h,  fr1*c2, h1 );  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
     f2.set_lincomb( fr2, h,  fr2*c2, h2 );  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
     //printf( "evalAngleCosHalf fr=%g cs2(%g,%g) cso(%g,%g) cs(%g,%g) cs0(%g,%g) \n", fr, c2,s2,  c,s,  cs.x,cs.y, cs0.x,cs0.y );
 
     return E;
 }
-/*
-inline double evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
-    // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
-    float3 h  = hr1.xyz + hr2.xyz;
-    float  c2 = dot(h,h)*0.25f;              // cos(a/2) = |ha+hb|
-    float  s2 = 1.f-c2;
-    float2 cso = (float2){ sqrt(c2), sqrt(s2) };
-    float2 cs = udiv_cmplx( cs0, cso );
-    float  E         =  k*( 1.f - cs.x );  // just for debug ?
-    float  fr        = -k*(       cs.y );
-    c2 *= -2.f;
-    fr /=  4.f*cso.x*cso.y;   //    |h - 2*c2*a| =  1/(2*s*c) = 1/sin(a)
-    float  fr1    = fr*hr1.w;
-    float  fr2    = fr*hr2.w;
-    *f1 =  h*fr1  + hr1.xyz*(fr1*c2);  //fa = (h - 2*c2*a)*fr / ( la* |h - 2*c2*a| );
-    *f2 =  h*fr2  + hr2.xyz*(fr2*c2);  //fb = (h - 2*c2*b)*fr / ( lb* |h - 2*c2*b| );
-    return E;
-}
-*/
+
 inline double evalAngleCos( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, double c0, Vec3d& f1, Vec3d& f2 ){
     double c = h1.dot(h2);
     //f1 = h2 - h1*c;

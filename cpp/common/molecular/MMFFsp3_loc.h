@@ -95,6 +95,8 @@ class MMFFsp3_loc : public NBFF { public:
 
     Vec3d * vapos = 0;
 
+    //int itr_DBG=0;
+
 // =========================== Functions
 
 void realloc( int nnode_, int ncap_ ){
@@ -201,13 +203,12 @@ double eval_atom(const int ia){
     Vec3d   apbc[4];
     Vec3d   f1,f2;
     
-    const int ia_DBG = 0;
+    //bool bErr=0;
+    //const int ia_DBG = 0;
     //if(ia==ia_DBG)printf( "ffl[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
-
-    //for(int i=0; i<4; i++){ fneigh[ia*4+i]=Vec3dZero; fneighpi[ia*4+i]=Vec3dZero; }
-    for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
-
     //printf("lvec %i %i \n", ia, ia_DBG ); // printMat(lvec);
+
+    for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
 
     // --------- Bonds Step
     for(int i=0; i<4; i++){
@@ -246,6 +247,8 @@ double eval_atom(const int ia){
 
         h.e    = 1/l;
         hs [i] = h;
+
+        //bErr|=ckeckNaN( 1,4, (double*)(hs+i), [&]{ printf("atom[%i]hs[%i]",ia,i); } );
         // bond length force
         //continue; 
 
@@ -254,11 +257,14 @@ double eval_atom(const int ia){
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);    
             //if(ia==ia_DBG)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
-            
+            //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fbond[%i]",ia,i); } );
+
             double kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
                 //if(ia==ia_DBG)printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+                //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fpp1[%i]",ia,i); } );
+                //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fpp2[%i]",ia,i); } );
             }
             // ToDo: triple bonds ?
             
@@ -271,6 +277,8 @@ double eval_atom(const int ia){
             E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);    //   pi-planarization (orthogonality)
             //if(ia==ia_DBG)printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g hp(%g,%g,%g) h(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z  );
             //if(ia==ia_DBG)printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fsp1[%i]",ia,i); } );
+            //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fsp2[%i]",ia,i); } );
         }
         //}
         
@@ -296,8 +304,10 @@ double eval_atom(const int ia){
                 E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
             }
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fss1[%i,%i]",ia,i,j); } );
+            //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fss2[%i,%i]",ia,i,j); } );
+
             fa    .sub( f1+f2  );
-            
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
@@ -306,19 +316,19 @@ double eval_atom(const int ia){
                 //Vec3d dp   = apbc[j] - apbc[i];
                 E -= getLJQ( dp, fij, REQij, R2damp );
                 //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
+                //bErr|=ckeckNaN( 1,3, (double*)&fij, [&]{ printf("atom[%i]fLJ2[%i,%i]",ia,i,j); } );
                 f1.sub(fij);
                 f2.add(fij);
             }
-            
+    
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
             // ToDo: subtract non-covalent interactions
         }
-    }
-    
-    
-    
+    }    
+    //if(bErr){ printf("ERROR in ffl.eval_atom[%i] => Exit() \n", ia ); exit(0); }
+
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia]=fa; 
@@ -357,12 +367,16 @@ void assemble_atom(int ia){
         if(bpi){
             //printf( "assemble[%i,%i|%i] pi(%g,%g,%g) fp(%g,%g,%g) fpng(%g,%g,%g) \n", ia,i,j, pipos[ia].x,pipos[ia].y,pipos[ia].z, fpipos[ia].x,fpipos[ia].y,fpipos[ia].z, fneighpi[j].x,fneighpi[j].y,fneighpi[j].z );
             fp.add(fneighpi[j]);
+            //ckeckNaN( 1,3, (double*)(fneighpi+j), [&]{ printf("assemble.fneighpi[%i]",j); } );
         }
     }
     fapos [ia].add( fa ); 
+
     if(bpi){
+        //if( pipos[ia].norm2()>1.5 ){ printf("pipos[%i](%g,%g,%g) not normalized !!! (assemble.iteration=%i) => Exit() \n", ia, pipos[ia].x,pipos[ia].y,pipos[ia].z, itr_DBG ); exit(0); };
         fpipos[ia].add( fp );
         fpipos[ia].makeOrthoU( pipos[ia] );  // subtract force component which change pi-vector size
+        //ckeckNaN( 1,3, (double*)(fpipos+ia), [&]{ printf("assemble.makeOrthoU[%i] c %g pipos(%g,%g,%g) fpipos(%g,%g,%g)",ia,  pi.dot(fi),   pi.x,pi.y,pi.z, fi.x,fi.y,fi.z  ); } );
     }
 }
 
@@ -388,6 +402,7 @@ double eval( bool bClean=true, bool bCheck=true ){
 double eval_check(){
     printf(" ============ check MMFFsp3_loc START\n " );
     printSizes();
+    print_pipos();
     eval();
     checkNans();
     printf(" ============ check MMFFsp3_loc DONE\n " );
@@ -395,35 +410,69 @@ double eval_check(){
 }
 
 // ToDo: OpenMP paraelization atempt
-int run_omp( int niter, double dt, double Fconv, double Flim ){
+int run( int niter, double dt, double Fconv, double Flim ){
     double F2conv = Fconv*Fconv;
     double E,F2;
     int    itr;
-    //#pragma omp parallel shared(E,F2,itr)
+    //if(itr_DBG==0)print_pipos();
+    //bool bErr=0;
     for(itr=0; itr<niter; itr++){
         E=0;
         // ------ eval MMFF
-        //#pragma omp for reduction(+:E)
         for(int ia=0; ia<natoms; ia++){ 
             if(ia<nnode)E += eval_atom(ia);
+            //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.MMFF[%i]",ia); } );
             E += evalLJQs_ng4_PBC_atom( ia ); 
+            //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.NBFF[%i]",ia); } );
         }
-        //for(int ia=0; ia<nnode;  ia++){ E += eval_atom(ia);                }
-        //for(int ia=0; ia<natoms; ia++){ E += evalLJQs_ng4_PBC_atom( ia );  }
         // ---- assemble (we need to wait when all atoms are evaluated)
-        //#pragma omp for
+        for(int ia=0; ia<natoms; ia++){
+            assemble_atom( ia );
+            //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("assemble[%i]",ia); } );
+        }
+        // ------ move
+        F2=0;
+        for(int i=0; i<nvecs; i++){
+            //F2 += move_atom_GD( i, dt, Flim );
+            //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
+            F2 += move_atom_MD( i, dt, Flim, 0.99 );
+            //F2 += move_atom_kvaziFIRE( i, dt, Flim );
+        }
+        if(F2<F2conv)break;
+        //itr_DBG++;
+    }
+    return itr;
+}
+
+int run_omp( int niter, double dt, double Fconv, double Flim ){
+    double F2conv = Fconv*Fconv;
+    double E=0,F2=0;
+    int    itr=0;
+    #pragma omp parallel shared(E,F2) private(itr)
+    for(itr=0; itr<niter; itr++){
+        // This {} should be done just by one of the processors
+        #pragma omp single
+        {E=0;F2=0;}
+        // ------ eval MMFF
+        #pragma omp for reduction(+:E)
+        for(int ia=0; ia<natoms; ia++){ 
+            if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+            if(ia<nnode)E += eval_atom(ia);
+            //E += evalLJQs_ng4_PBC_atom( ia ); 
+            E += evalLJQs_ng4_PBC_atom_( ia ); 
+        }
+        // ---- assemble (we need to wait when all atoms are evaluated)
+        #pragma omp for
         for(int ia=0; ia<natoms; ia++){
             assemble_atom( ia );
         }
         // ------ move
-        F2=0;
-        //#pragma omp for reduction(+:F2)
+        #pragma omp for reduction(+:F2)
         for(int i=0; i<nvecs; i++){
-            //F2 += move_atom_GD( i, dt, Flim );
-            F2 += move_atom_MD( i, dt, Flim, 0.9 );
-            //F2 += move_atom_kvaziFIRE( i, dt, Flim );
+            F2 += move_atom_MD( i, dt, Flim, 0.99 );
         }
-        if(F2<F2conv)break;
+        #pragma omp single
+        if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
     }
     return itr;
 }
@@ -440,9 +489,10 @@ inline double move_atom_GD(int i, float dt, double Flim){
     Vec3d  p = apos [i];
     double fr2 = f.norm2();
     if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
-    const bool bPi = i>natoms;
+    const bool bPi = i>=natoms;
     if(bPi){ f.add_mul( p, -p.dot(f) ); }
     p.add_mul( f, dt );
+    if(bPi)p.normalize();
     apos [i] = p;
     fapos[i] = Vec3dZero;
     return fr2;
@@ -454,13 +504,22 @@ inline double move_atom_MD( int i, const float dt, const double Flim, const doub
     Vec3d  p = apos [i];
     const double fr2 = f.norm2();
     //if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
-    const bool bPi = i>natoms;
-    if(bPi)f.add_mul( p, -p.dot(f) );
+    const bool bPi = i>=natoms;
+    // bool b=false;
+    // b|=ckeckNaN_d( 1,3, (double*)&p, "p.1" );
+    // b|=ckeckNaN_d( 1,3, (double*)&v, "v.1" );
+    // b|=ckeckNaN_d( 1,3, (double*)&f, "f.1" );
+    if(bPi)f.add_mul( p, -p.dot(f) );           //b|=ckeckNaN_d( 1,3, (double*)&f, "f.2" );
     v.mul    ( cdamp );
-    v.add_mul( f, dt );
-    if(bPi)v.add_mul( p, -p.dot(v) );
+    v.add_mul( f, dt );                         //b|=ckeckNaN_d( 1,3, (double*)&v, "v.2" );
+    if(bPi)v.add_mul( p, -p.dot(v) );           //b|=ckeckNaN_d( 1,3, (double*)&v, "v.3" );
     p.add_mul( v, dt );
     if(bPi)p.normalize();
+    // if( bPi &&( p.norm2()>1.5 )){ printf("pipos[%i/%i](%g,%g,%g) not normalized !!! (move.iteration=%i) => Exit() \n", i, natoms, p.x,p.y,p.z, itr_DBG ); exit(0); };
+    // b|=ckeckNaN_d( 1,3, (double*)&p, "p.4" );
+    // b|=ckeckNaN_d( 1,3, (double*)&v, "v.4" );
+    // b|=ckeckNaN_d( 1,3, (double*)&f, "f.4" );
+    // if(b){ printf("ERROR NaNs in move_atom_MD[%i] => Exit() \n", i ); exit(0);}
     apos [i] = p;
     vapos[i] = v;
     fapos[i] = Vec3dZero;
@@ -473,7 +532,7 @@ inline double move_atom_kvaziFIRE( int i, float dt, double Flim ){
     Vec3d        p   = apos [i];
     double fr2 = f.norm2();
     if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
-    const bool bPi = i>natoms;
+    const bool bPi = i>=natoms;
     if(bPi)f.add_mul( p, -p.dot(f) ); 
     double vv  = v.norm2();
     double ff  = f.norm2();
@@ -601,6 +660,9 @@ void printBKneighs(int ia){ printf("atom[%i] bkngs{%3i,%3i,%3i,%3i} \n", ia, bkn
 void printNeighs  (      ){for(int ia=0; ia<natoms; ia++){ printNeighs(ia); }; };
 void printBKneighs(      ){for(int ia=0; ia<natoms; ia++){ printBKneighs(ia); }; };
 
+void print_pipos(){
+    for(int i=0; i<nnode; i++){ printf(  "pipos[%i]r=%g(%g,%g,%g)\n", i, pipos[i].norm(), pipos[i].x,pipos[i].y,pipos[i].z ); };
+}
 
 void print_apos(){
     for(int ia=0;ia<natoms;ia++){ printf( "print_apos[%i](%g,%g,%g)\n", ia, apos[ia].x,apos[ia].y,apos[ia].z ); }
