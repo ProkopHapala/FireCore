@@ -176,7 +176,7 @@ class NBFF: public Atoms{ public:
     }
 
     double evalLJQs_ng4_PBC_atom( int ia ){
-        printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         const bool   bPBC = npbc>1;
         const Vec3d  pi   = apos     [ia];

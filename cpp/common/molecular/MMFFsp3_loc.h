@@ -399,29 +399,29 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
     double F2conv = Fconv*Fconv;
     double E,F2;
     int    itr;
-    #pragma omp parallel shared(E,F2,itr)
+    //#pragma omp parallel shared(E,F2,itr)
     for(itr=0; itr<niter; itr++){
         E=0;
         // ------ eval MMFF
-        #pragma omp for reduction(+:E)
+        //#pragma omp for reduction(+:E)
         for(int ia=0; ia<natoms; ia++){ 
-            DEBUG
             if(ia<nnode)E += eval_atom(ia);
-            DEBUG
             E += evalLJQs_ng4_PBC_atom( ia ); 
         }
+        //for(int ia=0; ia<nnode;  ia++){ E += eval_atom(ia);                }
+        //for(int ia=0; ia<natoms; ia++){ E += evalLJQs_ng4_PBC_atom( ia );  }
         // ---- assemble (we need to wait when all atoms are evaluated)
-        #pragma omp for
+        //#pragma omp for
         for(int ia=0; ia<natoms; ia++){
-            DEBUG
             assemble_atom( ia );
         }
         // ------ move
         F2=0;
-        #pragma omp for reduction(+:F2)
+        //#pragma omp for reduction(+:F2)
         for(int i=0; i<nvecs; i++){
-            DEBUG
-            F2 += move_atom_GD( i, dt, Flim );
+            //F2 += move_atom_GD( i, dt, Flim );
+            F2 += move_atom_MD( i, dt, Flim, 0.9 );
+            //F2 += move_atom_kvaziFIRE( i, dt, Flim );
         }
         if(F2<F2conv)break;
     }
@@ -437,9 +437,33 @@ void flipPis( Vec3d ax ){
 
 inline double move_atom_GD(int i, float dt, double Flim){
     Vec3d  f   = fapos[i];
+    Vec3d  p = apos [i];
     double fr2 = f.norm2();
     if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
-    apos[i].add_mul( f, dt );
+    const bool bPi = i>natoms;
+    if(bPi){ f.add_mul( p, -p.dot(f) ); }
+    p.add_mul( f, dt );
+    apos [i] = p;
+    fapos[i] = Vec3dZero;
+    return fr2;
+}
+
+inline double move_atom_MD( int i, const float dt, const double Flim, const double cdamp=0.9 ){
+    Vec3d  f = fapos[i];
+    Vec3d  v = vapos[i];
+    Vec3d  p = apos [i];
+    const double fr2 = f.norm2();
+    //if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
+    const bool bPi = i>natoms;
+    if(bPi)f.add_mul( p, -p.dot(f) );
+    v.mul    ( cdamp );
+    v.add_mul( f, dt );
+    if(bPi)v.add_mul( p, -p.dot(v) );
+    p.add_mul( v, dt );
+    if(bPi)p.normalize();
+    apos [i] = p;
+    vapos[i] = v;
+    fapos[i] = Vec3dZero;
     return fr2;
 }
 
@@ -449,19 +473,20 @@ inline double move_atom_kvaziFIRE( int i, float dt, double Flim ){
     Vec3d        p   = apos [i];
     double fr2 = f.norm2();
     if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
-    
+    const bool bPi = i>natoms;
+    if(bPi)f.add_mul( p, -p.dot(f) ); 
     double vv  = v.norm2();
     double ff  = f.norm2();
     double vf  = v.dot(f);
     double c   = vf/sqrt( vv*ff + 1.e-16    );
     double v_f =    sqrt( vv/( ff + 1.e-8)  );
-
     double cv;
     double cf = cos_damp_lin( c, cv, 0.01, -0.7,0.0 );
-
     v.mul(                 cv );
     v.add_mul( f, dt + v_f*cf );
+    if(bPi) v.add_mul( p, -p.dot(v) );
     p.add_mul( v, dt );
+    if(bPi)  p.normalize();
     apos [i] = p;
     vapos[i] = v;
     return fr2;
