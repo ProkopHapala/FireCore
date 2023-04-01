@@ -761,7 +761,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
-    run_omp( 100, 0.05, 1e-6, 1000.0 );
+    run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     bChargeUpdated=false;
 }
@@ -895,6 +895,46 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
 }
 void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){ Vec3d ax=(ff.apos[iax1]-ff.apos[iax0]).normalized(); scanRotation_ax(n,selection, ff.apos[ia0], ax, phi, nstep, Es, bWriteTrj ); };
 
+void autoCharges(int natoms, int* atypes, Vec3d* REQs, Quat4i* neighs, int nMaxIter=10, double K=1.0, double K0=1.0, double Q0=0.0, double dt=0.1, double damping=0.1, double Fconv=1e-6 ){
+    std::vector<double> fs(natoms);
+    std::vector<double> vs(natoms,0.);
+    for(int i=0; i<nMaxIter; i++){
+        // --- eval charge forces
+        double Qtot  = 0;
+        for(int ia=0; ia<natoms; ia++ ){
+            int* ng            = neighs[i].array;
+            int  it            = atypes[i];
+            const AtomType& ti = params.atypes[it];
+            double qi   = REQs[ia].z;
+            double Qtot = qi;
+            double f    = ti.Eaff + ti.Ehard*qi;
+            for(int j=0;j<4;j++){
+                int ja             = ng[j];
+                if(ja<0) continue;
+                f           = REQs[ja].z * K;
+            }
+            //nsum++;
+            fs[ia] =f;
+        }
+        double fQ = K0*(Q0-Qtot);
+        // --- move
+        double cdamp = 1-damping;
+        double f2=0;
+        for(int ia=0; ia<natoms; ia++ ){
+            double qi = REQs[ia].z;
+            float f   = fs[ia] + fQ*qi;
+            float v   = vs[ia];
+            f2+=f*f;
+            v*=cdamp;
+            v+=f;
+            qi        += v*dt;
+            vs  [ia]   = v;
+            REQs[ia].z = qi;
+            
+        }
+        if(f2<(Fconv*Fconv)){ break; }
+    }
+}
 
 };
 

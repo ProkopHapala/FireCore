@@ -3,14 +3,24 @@ dir=../../cpp/Build/apps/MolecularEditor
 ln -s ../../cpp/common_resources data
 ln -s ../../cpp/common_resources common_resources 
 
+# ---- Multiprocesing
+ncpu=`nproc`
+ncpu=$(($ncpu - 1))     # let one CPU free for user interaction
+echo "compile using ncpu="$ncpu
+OMP_NUM_THREADS=$ncpu
+export OMP_NUM_THREADS
+
+# ---- Compilation
 wd=`pwd`
 cd $dir
 pwd
 rm $name
-make -j4 $name
+make -j$ncpu $name 2>$wd/compile_err.log
 cd $wd
 
 ln -s $dir/$name .
+
+# ---- Run
 
 #rm *.bin *.xsf
 
