@@ -525,9 +525,9 @@ virtual void init( bool bGrid ){
         DEBUG
         //nPBC=Vec3i{0,0,0}; // DEBUG
         npbc = makePBCshifts( nPBC, builder.lvec );
-        ffl.pbc_shifts = pbc_shifts;
+        ffl.bindShifts(npbc,pbc_shifts);
         ff4.makeNeighCells  ( nPBC );       DEBUG
-        //ffl.makeNeighCells  ( nPBC );       DEBUG
+        //ffl.makeNeighCells( nPBC );       DEBUG
         ffl.makeNeighCells( npbc, pbc_shifts );  DEBUG 
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
@@ -545,8 +545,8 @@ virtual void init( bool bGrid ){
         initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
         DEBUG
         ff.bSubtractAngleNonBond=true;
-        ff.REQs=nbmol.REQs;
-
+        ff .REQs=nbmol.REQs;
+        ffl.REQs=nbmol.REQs;
         DEBUG
         bool bChargeToEpair=true;
         //bool bChargeToEpair=false;
@@ -720,6 +720,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doPiPiT  =false;
     //ff.doPiSigma=false;
     //ff.doAngles =false;
+
+    /*
     ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         double E = eval();
@@ -744,6 +746,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
         }
         nloop++;
     }
+    */
+    ffl.run_omp( nIter, 0.1, 1e-6, 1000.0 );
     bChargeUpdated=false;
 }
 
