@@ -283,14 +283,14 @@ class NBFF: public Atoms{ public:
                         double eij = getLJQ( dpc, fij, REQij, R2damp );
                         //if( (i==36)&&(j==35) )
                         //if( (i==36)&&(j==18) )
-                        if( eij<-0.3 )
-                        { 
-                            double r = dpc.norm();
-                            printf( "CPU_LJQ[%i,%i|%i] r,e,fr(%6.3f,%10.7f,%10.7f)    REQ(%6.3f,%10.7f,%4.2f) pbc_shift(%6.3f,%6.3f,%6.3f)\n" , i,j,ipbc, r, eij, dpc.dot(fij)/r,    REQij.x,REQij.y,REQij.z, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
-                            //printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g pbc_shift(%g,%g,%g)\n" , i,j, ipbc, fij.x,fij.y,fij.z, R2damp, REQij.x,REQij.y,REQij.z, dpc.norm(), shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z ); 
+                        // if( eij<-0.3 )
+                        // { 
+                        //     double r = dpc.norm();
+                        //     printf( "CPU_LJQ[%i,%i|%i] r,e,fr(%6.3f,%10.7f,%10.7f)    REQ(%6.3f,%10.7f,%4.2f) pbc_shift(%6.3f,%6.3f,%6.3f)\n" , i,j,ipbc, r, eij, dpc.dot(fij)/r,    REQij.x,REQij.y,REQij.z, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
+                        //     //printf( "CPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g pbc_shift(%g,%g,%g)\n" , i,j, ipbc, fij.x,fij.y,fij.z, R2damp, REQij.x,REQij.y,REQij.z, dpc.norm(), shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z ); 
                             
-                        } 
-                        if( eij<-0.2 ){ Draw3D::drawVecInPos( dpc, pi ); };
+                        // } 
+                        // if( eij<-0.2 ){ Draw3D::drawVecInPos( dpc, pi ); };
                         E+=eij;
                         fi.add(fij);
                     }
