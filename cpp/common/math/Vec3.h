@@ -125,6 +125,9 @@ class Vec3T{
 	T makeOrthoU( const VEC& a ){ T c = dot(a);           add_mul(a, -c); return c; }
 	T makeOrtho ( const VEC& a ){ T c = dot(a)/a.norm2(); add_mul(a, -c); return c; }
 
+	inline void operator+=( const VEC& v ){ x+=v.x; y+=v.y; z=z+v.z; };
+    inline void operator*=( const VEC& v ){ x*=v.x; y*=v.y; z=z*v.z; };
+
     inline VEC operator+ ( T f   ) const { VEC vo; vo.x=x+f; vo.y=y+f; vo.z=z+f; return vo; };
     inline VEC operator* ( T f   ) const { VEC vo; vo.x=x*f; vo.y=y*f; vo.z=z*f; return vo; };
 

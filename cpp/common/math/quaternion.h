@@ -95,7 +95,7 @@ class Quat4T {
 
 // ============== Basic Math
 
-    inline void mul        ( T f                               ){ x*=f;            y*=f;           z*=f;           w*=f;            };
+    inline void mul        ( T f                                  ){ x*=f;            y*=f;           z*=f;           w*=f;            };
     inline void add        ( const QUAT& v                        ){ x+=v.x;          y+=v.y;         z+=v.z;         w+=v.w;          };
     inline void sub        ( const QUAT& v                        ){ x-=v.x;          y-=v.y;         z-=v.z;         w-=v.w;          };
 	inline void set_add    ( const QUAT& a, const QUAT& b         ){ x =a.x+b.x;      y =a.y+b.y;     z =a.z+b.z;     w =a.w+b.w;      };

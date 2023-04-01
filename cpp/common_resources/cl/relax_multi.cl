@@ -67,8 +67,8 @@ inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*
 inline double evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
     float3 h  = hr1.xyz + hr2.xyz;
-    float  c2 = dot(h,h)*0.25f;              // cos(a/2) = |ha+hb|
-    float  s2 = 1.f-c2;
+    float  c2 = dot(h,h)*0.25f;     // cos(a/2) = |ha+hb|
+    float  s2 = 1.f-c2 + 1e-7;      // s2 must be positive
     float2 cso = (float2){ sqrt(c2), sqrt(s2) };
     float2 cs = udiv_cmplx( cs0, cso );
     float  E         =  k*( 1 - cs.x );  // just for debug ?

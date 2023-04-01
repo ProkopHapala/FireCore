@@ -60,8 +60,8 @@ inline float evalAngleCosHalf( const Vec3f& h1, const Vec3f& h2, float ir1, floa
     //printf( " ir1 %g ir2 %g \n", ir1, ir2 );
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
     Vec3f h; h.set_add( h1, h2 );
-    float c2 = h.norm2()*0.25;               // cos(a/2) = |ha+hb|
-    float s2 = 1-c2;
+    float c2 = h.norm2()*0.25;     // cos(a/2) = |ha+hb|
+    float s2 = 1-c2 + 1e-7;        // s2 must be positive number
     float c  = sqrt(c2);
     float s  = sqrt(s2);
     Vec2f cs  = cs0;
