@@ -304,7 +304,7 @@ double eval_atom(const int ia){
                 Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
                 //Vec3d dp   = hj.f*(1./hj.w) - hi.f*(1./hi.w);
                 //Vec3d dp   = apbc[j] - apbc[i];
-                E -= getLJQ( dp, REQij, R2damp, fij );
+                E -= getLJQ( dp, fij, REQij, R2damp );
                 //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
                 f1.sub(fij);
                 f2.add(fij);

@@ -173,69 +173,96 @@ inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ ){
     return  ( ir6 - 2 )*vdW + Eel;
 }
 
-inline float getLJQ( Vec3f dp, Vec3f REQ, float R2damp, Vec3f& f ){
-    // ---- Electrostatic
-    float   r2   = dp.norm2();
-    float   ir2_ = 1/( r2 + R2damp  );
-    float   Ec   = COULOMB_CONST*REQ.z*sqrt( ir2_ );
+inline float getLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ, const float R2damp ){
+    const float   r2   = dp.norm2();
+    // ---- Coulomb
+    const float   ir2_ = 1/( r2 + R2damp  );
+    float E = COULOMB_CONST*REQ.z*sqrt( ir2_ );
+    float F = E*ir2_ ;
     // --- LJ 
-    float  ir2 = 1/r2;
-    float  u2  = REQ.x*REQ.x*ir2;
-    float  u6  = u2*u2*u2;
-    float vdW  = u6*REQ.y;
-    float E    =      (u6-2.)*vdW     + Ec      ;
-    float fr   = -12.*(u6-1.)*vdW*ir2 - Ec*ir2_ ;
-    f.set_mul( dp, fr );
+    const float  ir2 = 1/r2;
+    const float  u2  = REQ.x*REQ.x*ir2;
+    const float  u6  = u2*u2*u2;
+    const float vdW  = u6*REQ.y;
+    E    =      (u6-2.)*vdW     ;
+    F    =  12.*(u6-1.)*vdW*ir2 ;
+    f.set_mul( dp, -F );
     return E;
 }
 
-inline double getLJQ( Vec3d dp, Vec3d REQ, double R2damp, Vec3d& f ){
-    // ---- Electrostatic
-    double   r2   = dp.norm2();
-    double   ir2_ = 1/( r2 + R2damp  );
-    double   Ec   = COULOMB_CONST*REQ.z*sqrt( ir2_ );
+inline double getLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ, const double R2damp ){
+    const double   r2   = dp.norm2();
+    // ---- Coulomb
+    const double  ir2_ = 1/( r2 + R2damp  );
+    double E = COULOMB_CONST*REQ.z*sqrt( ir2_ );
+    double F = E*ir2_ ;
     // --- LJ 
-    double  ir2 = 1/r2;
-    double  u2  = REQ.x*REQ.x*ir2;
-    double  u6  = u2*u2*u2;
-    double vdW  = u6*REQ.y;
-    double E    =      (u6-2.)*vdW     + Ec      ;
-    double fr   =  12.*(u6-1.)*vdW*ir2 + Ec*ir2_ ;
-    f.set_mul( dp, -fr );
+    const double  ir2 = 1/r2;
+    const double  u2  = REQ.x*REQ.x*ir2;
+    const double  u6  = u2*u2*u2;
+    const double vdW  = u6*REQ.y;
+    E    =      (u6-2.)*vdW     ;
+    F    =  12.*(u6-1.)*vdW*ir2 ;
+    f.set_mul( dp, -F );
     return E;
 }
 
-inline double getLJQH( Vec3d dp, Quat4d REQH, double R2damp, Vec3d& f ){
-    double   r2   = dp.norm2();
-    // --- Coulomb
-    double   ir2_ = 1/( r2 + R2damp  );
-    double   Ec   = COULOMB_CONST*REQH.z*sqrt( ir2_ );
-    // --- LJH 
-    double  ir2 = 1/r2;
-    double  u2  = REQH.x*REQH.x*ir2;
-    double  u6  = u2*u2*u2;
-    double vdW  = u6*REQH.y;
-    double   H  = u6*REQH.w;
-    double E    =       (u6-2.)*vdW + H         + Ec     ;
-    double fr   = (12.*(u6-1.)*vdW + H*6. )*ir2 + Ec*ir2_;
-    f.set_mul( dp, -fr );
+inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double R2damp, const double Cr2_cut, const double LJr2_cut ){
+    // E_cut = e_max * (R/r_cut)^6
+    // u2_cut = (e_max/E_cut)^(1/6)
+    // u     = R/r
+    // if( u2 < u2_cut ){ E=0 }
+    const double  r2  = dp.norm2();
+    double E,F;
+    // ---- Electrostatic
+    if( r2 > Cr2_cut ){
+        const double ir2_ = 1/( r2 + R2damp  );
+        E =  COULOMB_CONST*REQH.z*sqrt( ir2_ );
+        F =  E*ir2_ ;
+    }else{ E=0; F=0; };
+    // --- LJ 
+    if( r2 > LJr2_cut  ){
+        const double  ir2 = 1/r2;
+        const double  u2  = REQH.x*REQH.x*ir2;
+        const double  u6  = u2*u2*u2;
+        const double vdW  = u6*REQH.y;
+        const double   H  = u6*REQH.w;  // H-bond correction
+        E   +=       (u6-2.)*vdW            ;
+        F   +=  (12.*(u6-1.)*vdW + H*6.)*ir2;
+    }
+    f.set_mul( dp, -F );
     return E;
 }
 
-inline double getMorseQH( const Vec3d& dp, Vec3d& f, double r0, double E0, double qq, double H, double K=-1., double R2damp=1. ){
-    double r2    = dp.norm2();
+inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double K, double R2damp, const double Cr2_cut, const double Mr2_cut ){
+    // Morse Cutoff:
+    // E_cut                  = e0*exp( -K * r_cut )
+    // ln(E_cut/e0)           = -K * r_cut
+    // ln(e0_max/E_cut)/K     = r_cut
+    // (ln(e0_max/E_cut)/K)^2 = r2_cut
+    //
+    // Coulomb Cutoff:
+    // E_cut = COULOMB_CONST*Q_max/r_cut
+    // r2_cut = (E_cut/(COULOMB_CONST*Q_max))^2
+    const double r2    = dp.norm2();
+    double E,F;
     // --- Coulomb
-    double ir2_  = 1/(r2+R2damp);
-    double Ec    = COULOMB_CONST*qq*sqrt( ir2_ );
+    if( r2 > Cr2_cut ){
+        const double ir2_  = 1/( r2 + R2damp );
+        E = COULOMB_CONST*REQH.z*sqrt( ir2_ );
+        F = E*ir2_ ;
+    }else{ E=0; F=0; };
     // --- Morse
-    double  r  = sqrt( r2   );
-    double  e  = exp( K*(r-r0) );
-    double  Ae = E0*e;
-    double  He = H *e; // Hydrogen bond correction
-    double EM  =  Ae*(e - 2)   + He;
-    double FM  = (Ae*(e - 1)*2 + He)*K/r;
-    f.set_mul( dp, FM  - Ec*ir2_ );
-    return EM + Ec;
+    if( r2 > Mr2_cut ){
+        const double  r  = sqrt( r2   );
+        const double  e  = exp( -K*(r-REQH.x) );
+        const double  Ae = REQH.y*e;
+        const double  He = REQH.w*e; // H-bond correction
+        E +=  Ae*(e - 2)   + He;
+        F += (Ae*(e - 1)*2 + He)*K/r;
+    }
+    f.set_mul( dp, F );
+    return E;
 }
 
 inline void addAtomicForceMorse( const Vec3d& dp, Vec3d& f, double r0, double eps, double beta ){
