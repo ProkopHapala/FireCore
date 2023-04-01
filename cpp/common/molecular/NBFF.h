@@ -28,9 +28,16 @@ class NBFF: public Atoms{ public:
     Vec3i   nPBC;
     bool    bPBC=false;
 
+    int    npbc=0;
+    Vec3d* shifts=0;
+
     Vec3d    *PLQs   =0;  // used only in combination with GridFF
 
+    // ==================== Functions
+
     void torq     ( const Vec3d& p0,  Vec3d& tq                   ){ for(int i=0; i<natoms; i++){ Vec3d d; d.set_sub(apos[i],p0); tq.add_cross(fapos[i],d); } }
+
+    void bindShifts(int npbc_, Vec3d* shifts_ ){ npbc=npbc_; shifts=shifts_; }
 
     void evalPLQs(double K){
         //printf( "NBFF::evalPLQs() \n" );
@@ -103,17 +110,17 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
-    double evalLJQs_ng4_atom( int ia, const Quat4i* neighs, double R2damp ){
-        //printf( "NBFF::evalLJQs_ng4_atom() \n" );
-        Vec3d        fi   = Vec3dZero;
-        Vec3d        pi   = apos  [ia];           // global read   apos  [ia]
+    double evalLJQs_ng4_atom( int ia ){
+        //printf( "NBFF::evalLJQs_ng4_atom() %li %li \n" );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi   = apos  [ia];           // global read   apos  [ia]
         const Vec3d  REQi = REQs  [ia];           // global read   REQs  [ia]
-        const Quat4i ngs  = neighs[ia];           // global read   neighs[ia]
+        const Quat4i ng   = neighs[ia];           // global read   neighs[ia]
         double       E    = 0;
-        const int n=natoms;
-        for(int j=0; j<n; j++){
+        Vec3d        fi   = Vec3dZero;
+        for(int j=0; j<natoms; j++){
             if(ia==j) continue;
-            if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) continue;
+            if( (ng.x==j)||(ng.y==j)||(ng.z==j)||(ng.w==j) ) continue;
             Vec3d fij   = Vec3dZero;
             const Vec3d pj    = apos[j];                        // global read   apos[j]
             const Vec3d REQj  = REQs[j];                        // global read   REQs[j]
@@ -125,16 +132,14 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
-    double evalLJQs_ng4_omp( const Quat4i* neighs, double Rdamp=1.0 ){
+    double evalLJQs_ng4_omp( ){
         //printf( "NBFF::evalLJQs_ng4_omp() \n" );
-        double R2damp = Rdamp*Rdamp;
         double E =0;
-        const int n=natoms;
         //#pragma omp parallel for reduction(+:E) shared(neighs,R2damp) schedule(dynamic,1)
-        for(int i=0; i<n; i++){
+        for(int ia=0; ia<natoms; ia++){
            //printf("omp_get_num_threads=%i\n", omp_get_num_threads() );
            //printf("eval_atoms(%i) @cpu[%d/%d]\n", i, omp_get_thread_num(), omp_get_num_threads() );
-           E += evalLJQs_ng4_atom( i, neighs, R2damp );
+           E += evalLJQs_ng4_atom( ia );
         }
 
         return E;
@@ -166,6 +171,53 @@ class NBFF: public Atoms{ public:
                 fi   .add(fij);
             }
             fapos[i].add(fi);
+        }
+        return E;
+    }
+
+    double evalLJQs_ng4_PBC_atom( int ia ){
+        printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const bool   bPBC = npbc>1;
+        const Vec3d  pi   = apos     [ia];
+        const Vec3d& REQi = REQs     [ia];
+        const Quat4i ng   = neighs   [ia];
+        const Quat4i ngC  = neighCell[ia];
+        Vec3d fi = Vec3dZero;
+        double E =0 ;
+        for (int j=0; j<natoms; j++){ if(ia==j)continue;  // all-to-all makes it easier to paralelize 
+            const Vec3d dp = apos[j]-pi;
+            Vec3d fij      = Vec3dZero;
+            Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+            const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
+            if(bPBC){
+                for(int ipbc=0; ipbc<npbc; ipbc++){
+                    if(bBonded){
+                        if(   ((j==ng.x)&&(ipbc==ngC.x))
+                            ||((j==ng.y)&&(ipbc==ngC.y))
+                            ||((j==ng.z)&&(ipbc==ngC.z))
+                            ||((j==ng.w)&&(ipbc==ngC.w))
+                        ){ continue;}
+                    }
+                    const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
+                    double eij = getLJQ( dpc, REQij, R2damp, fij );
+                    E+=eij;
+                    fi.add(fij);
+                }
+            }else{
+                if(bBonded) continue;  // Bonded ?
+                E+=getLJQ( dp, REQij, R2damp, fij );
+                fi.add(fij);
+            }
+        }
+        fapos[ia].add(fi);
+        return E;
+    }
+
+    double evalLJQs_ng4_PBC_omp(){
+        double E=0;
+        for (int ia=0; ia<natoms; ia++ ){ 
+            evalLJQs_ng4_PBC_atom( ia ); 
         }
         return E;
     }
@@ -255,6 +307,11 @@ class NBFF: public Atoms{ public:
         }
         return E;
     }
+
+
+
+
+
 
     double evalLJQ( NBFF& B, const bool bRecoil, double Rdamp=1.0 ){
         //printf( "evalLJQ() \n" );

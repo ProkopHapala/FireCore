@@ -15,6 +15,22 @@
 
 #include "NBFF.h"
 
+inline double cos_damp_lin( double c, double& cv, double D, double cmin, double cmax  ){
+    double cf;
+    if      (c < cmin){
+        cv = 0.;
+        cf = 0.;
+    }else if(c > cmax){
+        cv = 1-D;
+        cf =   D;
+    }else{  // cos(v,f) from [ cmin .. cmax ]
+        double u = (c-cmin)/(cmax-cmin);
+        cv = (1.-D)*u;
+        cf =     D *u;
+    }
+    return cf;
+}
+
 // ======================
 // ====   MMFFsp3
 // ======================
@@ -56,6 +72,7 @@ class MMFFsp3_loc : public NBFF { public:
     //Vec3d *  fapos=0;   // [natom]
     Vec3d *  pipos=0;   // [nnode]
     Vec3d * fpipos=0;   // [nnode]
+
     // Aux Dynamil
     Vec3d * fneigh  =0;  // [nnode*4]     temporary store of forces on atoms form neighbors (before assembling step)
     Vec3d * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
@@ -76,7 +93,7 @@ class MMFFsp3_loc : public NBFF { public:
     bool    bSubtractAngleNonBond = false;
     Mat3d   invLvec;
 
-    Vec3d* pbc_shifts=0;
+    Vec3d * vapos = 0;
 
 // =========================== Functions
 
@@ -207,11 +224,11 @@ double eval_atom(const int ia){
         //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
         
         //Vec3d h_bak = h.f;    
-        pbc_shifts=0;    
-        if(pbc_shifts){
+        //shifts=0;    
+        if(shifts){
             int ipbc = ingC[i]; 
-            //Vec3d sh = pbc_shifts[ipbc]; //apbc[i]  = pi + sh;
-            h.f.add( pbc_shifts[ipbc] );
+            //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
+            h.f.add( shifts[ipbc] );
         }else{
             Vec3i g  = invLvec.nearestCell( h.f );
             // if(ia==ia_DBG){
@@ -379,38 +396,37 @@ double eval_check(){
 
 // ToDo: OpenMP paraelization atempt
 int run_omp( int niter, double dt, double Fconv, double Flim ){
-    int itr=0;
     double F2conv = Fconv*Fconv;
-    double R2damp = Rdamp*Rdamp;
-    #pragma omp parallel default(shared)
-    for(int itr=0; itr<niter; itr++){
-        double E=0;
+    double E,F2;
+    int    itr;
+    #pragma omp parallel shared(E,F2,itr)
+    for(itr=0; itr<niter; itr++){
+        E=0;
         // ------ eval MMFF
         #pragma omp for reduction(+:E)
-        for(int ia=0; ia<nnode; ia++){ 
-            E+=eval_atom(ia); 
-        }
-        // ------ eval non-bond
-        #pragma omp for reduction(+:E)
-        for(int ia=0; ia<natoms; ia++){
-           E += evalLJQs_ng4_atom( ia, neighs, R2damp );
+        for(int ia=0; ia<natoms; ia++){ 
+            DEBUG
+            if(ia<nnode)E += eval_atom(ia);
+            DEBUG
+            E += evalLJQs_ng4_PBC_atom( ia ); 
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
         #pragma omp for
         for(int ia=0; ia<natoms; ia++){
+            DEBUG
             assemble_atom( ia );
         }
         // ------ move
-        double F2=0;
+        F2=0;
         #pragma omp for reduction(+:F2)
         for(int i=0; i<nvecs; i++){
+            DEBUG
             F2 += move_atom_GD( i, dt, Flim );
         }
         if(F2<F2conv)break;
     }
     return itr;
 }
-
 
 void flipPis( Vec3d ax ){
     for(int i=0; i<nnode; i++){
@@ -424,6 +440,30 @@ inline double move_atom_GD(int i, float dt, double Flim){
     double fr2 = f.norm2();
     if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
     apos[i].add_mul( f, dt );
+    return fr2;
+}
+
+inline double move_atom_kvaziFIRE( int i, float dt, double Flim ){
+    Vec3d  f   = fapos[i];
+    Vec3d        v   = vapos[i];
+    Vec3d        p   = apos [i];
+    double fr2 = f.norm2();
+    if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
+    
+    double vv  = v.norm2();
+    double ff  = f.norm2();
+    double vf  = v.dot(f);
+    double c   = vf/sqrt( vv*ff + 1.e-16    );
+    double v_f =    sqrt( vv/( ff + 1.e-8)  );
+
+    double cv;
+    double cf = cos_damp_lin( c, cv, 0.01, -0.7,0.0 );
+
+    v.mul(                 cv );
+    v.add_mul( f, dt + v_f*cf );
+    p.add_mul( v, dt );
+    apos [i] = p;
+    vapos[i] = v;
     return fr2;
 }
 
