@@ -545,8 +545,9 @@ virtual void init( bool bGrid ){
         initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
         DEBUG
         ff.bSubtractAngleNonBond=true;
-        ff .REQs=nbmol.REQs;
-        ffl.REQs=nbmol.REQs;
+        //ff .REQs=nbmol.REQs;
+        //ffl.REQs=nbmol.REQs;
+        setNonBond( bNonBonded );
         DEBUG
         bool bChargeToEpair=true;
         //bool bChargeToEpair=false;
@@ -561,6 +562,7 @@ virtual void init( bool bGrid ){
             //setOptimizer(); 
             //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
             setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
+            ffl.vapos = (Vec3d*)opt.vel;
         }                         
         _realloc( manipulation_sel, ff.natoms );  
     }
@@ -598,6 +600,7 @@ void setNonBond( bool bNonBonded ){
     ff4.bSubtractAngleNonBond = bNonBonded;
     if(bNonBonded){
         ffl.REQs = nbmol.REQs;
+        ff .REQs = nbmol.REQs;
         if(ff4.REQs==0){
             ff4.REQs = new Quat4f[nbmol.natoms];
             for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i].f = (Vec3f)nbmol.REQs[i]; };
@@ -607,7 +610,7 @@ void setNonBond( bool bNonBonded ){
 
 double eval( ){
     double E=0;
-    setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
+    //setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
     if(bMMFF){ 
         //E += ff .eval();
         E += ffl.eval(); 
@@ -622,6 +625,9 @@ double eval( ){
     //bPBC=false;
     
     if(bNonBonded){
+        //E += nbmol.evalLJQs_ng4_PBC_omp( );
+        E += ffl  .evalLJQs_ng4_PBC_omp( );
+        /*
         if(bMMFF){    
             if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); }   // atoms outside cell
             else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors       
@@ -630,10 +636,9 @@ double eval( ){
             if  (bPBC){ E += nbmol.evalLJQs_PBC    ( ff.lvec, {1,1,0} ); }   // atoms outside cell
             else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
         }
+        */
     }
-    
-    
-    if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
+    //if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
     /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); }
@@ -721,11 +726,11 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doPiSigma=false;
     //ff.doAngles =false;
 
-    
-    ff.cleanAll();
+    /*
+    //ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         double E = eval();
-        ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
+        //ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
 		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
         //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
         //if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
@@ -735,9 +740,11 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
         //opt.move_LeapFrog(0.01);
         //double f2=opt.move_MDquench();
 
+        double f2=0;
         //opt.damp_max = 0.0;
         //opt.cv_kill  = 0.5;
-        double f2=opt.move_FIRE();  
+        //double f2=opt.move_FIRE();
+        for(int i=0; i<ffl.nvecs; i++){ f2+=ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 ); } 
         //double f2=opt.move_VSpread( 0.1,  0.01, 0.05 ); 
         //printf( "[%i] E= %g [eV] |F|= %g [eV/A]\n", nloop, E, sqrt(f2) );
         //double f2=1;
@@ -746,9 +753,47 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
         }
         nloop++;
     }
+    */
     
-    //ffl.run_omp( nIter, 0.1, 1e-6, 1000.0 );
+    ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    //run_omp( nIter, 0.05, 1e-6, 1000.0 );
     bChargeUpdated=false;
+}
+
+int run_omp( int niter, double dt, double Fconv, double Flim ){
+    double F2conv = Fconv*Fconv;
+    double E,F2;
+    int    itr;
+    //#pragma omp parallel shared(E,F2,itr)
+    for(itr=0; itr<niter; itr++){
+        E=0;
+        // ------ eval MMFF
+        //#pragma omp for reduction(+:E)
+        for(int ia=0; ia<ffl.natoms; ia++){ 
+            if(ia<ffl.nnode)E += ffl.eval_atom(ia);
+            E += ffl.evalLJQs_ng4_PBC_atom( ia ); 
+            // if(ipicked==ia){ 
+            //     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0, K ); 
+            //     ffl.fapos[ia].add( f );
+            // }
+        }
+        //for(int ia=0; ia<nnode;  ia++){ E += eval_atom(ia);                }
+        //for(int ia=0; ia<natoms; ia++){ E += evalLJQs_ng4_PBC_atom( ia );  }
+        // ---- assemble (we need to wait when all atoms are evaluated)
+        //#pragma omp for
+        for(int ia=0; ia<ffl.natoms; ia++){
+            ffl.assemble_atom( ia );
+        }
+        // ------ move
+        F2=0;
+        //#pragma omp for reduction(+:F2)
+        for(int i=0; i<ffl.nvecs; i++){
+            //F2 += ffl.move_atom_GD( i, dt, Flim );
+            F2 += ffl.move_atom_MD( i, dt, Flim, 0.9 );
+            //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
+        }
+        if(F2<F2conv)break;
+    }
 }
 
 void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
