@@ -755,8 +755,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     }
     */
     
-    ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
-    //run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    run_omp( nIter, 0.05, 1e-6, 1000.0 );
     bChargeUpdated=false;
 }
 
@@ -772,10 +772,10 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         for(int ia=0; ia<ffl.natoms; ia++){ 
             if(ia<ffl.nnode)E += ffl.eval_atom(ia);
             E += ffl.evalLJQs_ng4_PBC_atom( ia ); 
-            // if(ipicked==ia){ 
-            //     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0, K ); 
-            //     ffl.fapos[ia].add( f );
-            // }
+            if(ipicked==ia){ 
+                const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0, -2.0 ); 
+                ffl.fapos[ia].add( f );
+            }
         }
         //for(int ia=0; ia<nnode;  ia++){ E += eval_atom(ia);                }
         //for(int ia=0; ia<natoms; ia++){ E += evalLJQs_ng4_PBC_atom( ia );  }
@@ -794,6 +794,7 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         }
         if(F2<F2conv)break;
     }
+    return itr;
 }
 
 void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
