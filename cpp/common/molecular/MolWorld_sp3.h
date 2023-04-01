@@ -721,7 +721,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ff.doPiSigma=false;
     //ff.doAngles =false;
 
-    /*
+    
     ff.cleanAll();
     for(int itr=0; itr<nIter; itr++){
         double E = eval();
@@ -746,8 +746,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
         }
         nloop++;
     }
-    */
-    ffl.run_omp( nIter, 0.1, 1e-6, 1000.0 );
+    
+    //ffl.run_omp( nIter, 0.1, 1e-6, 1000.0 );
     bChargeUpdated=false;
 }
 

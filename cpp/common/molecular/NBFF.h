@@ -68,7 +68,7 @@ class NBFF: public Atoms{ public:
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
                 //E += addAtomicForceLJQ( apos[j]-pi, fij, REQij );
-                E += getLJQ( apos[j]-pi, REQij, R2damp, fij );
+                E += getLJQ( apos[j]-pi, fij, REQij, R2damp );
                 fapos[j].sub(fij);
                 fi   .add(fij);
             }
@@ -99,7 +99,7 @@ class NBFF: public Atoms{ public:
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
                 for(ipbc=0; ipbc<npbc; ipbc++){
                     //E += addAtomicForceLJQ( apos[j]-pi-shifts[ipbc], fij, REQij );
-                    E +=getLJQ( apos[j]-pi-shifts[ipbc], REQij, R2damp, fij );
+                    E +=getLJQ( apos[j]-pi-shifts[ipbc], fij, REQij, R2damp );
                 }
                 fapos[j].sub(fij);
                 fi   .add(fij);
@@ -125,7 +125,7 @@ class NBFF: public Atoms{ public:
             const Vec3d pj    = apos[j];                        // global read   apos[j]
             const Vec3d REQj  = REQs[j];                        // global read   REQs[j]
             Vec3d REQij; combineREQ( REQj, REQi, REQij );       // pure function (no globals)
-            E          += getLJQ( pj-pi, REQij, R2damp, fij );  // pure function (no globals)
+            E          += getLJQ( pj-pi, fij, REQij, R2damp );  // pure function (no globals)
             fi.add(fij);
         }
         fapos[ia].add(fi);           // global write fapos[ia]
@@ -166,7 +166,7 @@ class NBFF: public Atoms{ public:
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
                 //E += addAtomicForceLJQ( apos[j]-pi, fij, REQij );
-                E +=getLJQ( apos[j]-pi, REQij, R2damp, fij );
+                E +=getLJQ( apos[j]-pi, fij, REQij, R2damp );
                 fapos[j].sub(fij);
                 fi   .add(fij);
             }
@@ -200,13 +200,13 @@ class NBFF: public Atoms{ public:
                         ){ continue;}
                     }
                     const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
-                    double eij = getLJQ( dpc, REQij, R2damp, fij );
+                    double eij = getLJQ( dpc, fij, REQij, R2damp );
                     E+=eij;
                     fi.add(fij);
                 }
             }else{
                 if(bBonded) continue;  // Bonded ?
-                E+=getLJQ( dp, REQij, R2damp, fij );
+                E+=getLJQ( dp, fij, REQij, R2damp );
                 fi.add(fij);
             }
         }
@@ -280,7 +280,7 @@ class NBFF: public Atoms{ public:
                         //     printf( "LJ(%i,%i)  ic %i shpi(%g,%g,%g) \n", i,j, ipbc,  shpi.x,shpi.y,shpi.z  );  
                         // }
 
-                        double eij = getLJQ( dpc, REQij, R2damp, fij );
+                        double eij = getLJQ( dpc, fij, REQij, R2damp );
                         //if( (i==36)&&(j==35) )
                         //if( (i==36)&&(j==18) )
                         if( eij<-0.3 )
@@ -296,7 +296,7 @@ class NBFF: public Atoms{ public:
                     }
                 }else{
                     if(bBonded) continue;  // Bonded ?
-                    E+=getLJQ( dp, REQij, R2damp, fij );
+                    E+=getLJQ( dp, fij, REQij, R2damp );
                     //if(i==ia_DBG){ printf( "CPU_LJQ[%i,%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n" , i,j, fij.x,fij.y,fij.z, R2damp, REQij.x,REQij.y,REQij.z, dp.norm() ); } 
                     fi.add(fij);
                 }
@@ -328,7 +328,7 @@ class NBFF: public Atoms{ public:
                 Vec3d fij = Vec3dZero;
                 Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
                 //E += addAtomicForceLJQ( B.apos[j]-Api, fij, REQij );
-                E+=getLJQ ( B.apos [j]-Api, REQij, R2damp, fij );
+                E+=getLJQ ( B.apos [j]-Api, fij, REQij, R2damp );
                 if(bRecoil) B.fapos[j].sub(fij);
                 fi.add(fij);
             }
