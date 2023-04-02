@@ -22,7 +22,7 @@ MMFFparams params;
 extern "C"{
 
 void init_types(int ntyp, int* typeMask, double* typREQs, bool bCopy ){
-    W.init_types( ntyp, (Vec3i*)typeMask, (Vec3d*)typREQs, bCopy );
+    W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
 }
 
 void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
