@@ -111,7 +111,14 @@ def eval( geom, params=None ):
 
     return E
 
-def relax( geom, params=None ):
+def relax( geom=None, params=None, fname=None ):
+    if  geom is not None:
+        apos,es = geom
+        mol     = pack_mol( apos, es )
+    elif fname is not None:
+        smol = xyz2str( fname ) 
+        mol  = psi4.geometry( smol )
+    
     pars = params.copy()
     method = pars['method']
     basis  = pars['basis']
@@ -120,8 +127,7 @@ def relax( geom, params=None ):
     #print( method, basis  )
     method_basis=method+"/"+basis
     # ------ load geometry
-    apos,es = geom
-    mol = pack_mol( apos, es )
+
     mol.update_geometry()
     mol.symmetrize(1e-3)   # this heps prevent problems with symmetry : https://github.com/psi4/psi4webmo/issues/4
     psi4.set_options( pars )
