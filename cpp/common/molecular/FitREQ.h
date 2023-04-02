@@ -4,6 +4,7 @@
 
 #include <vector>
 #include "Vec3.h"
+#include "quaternion.h"
 //#include "NBFF.h"
 #include "Atoms.h"
 #include "MMFFparams.h"
@@ -38,12 +39,12 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
 class FitREQ{ public:
     //NBFF* nbff;
     int nDOFs=0,ntype=0,nbatch=0,n0=0,n1=0;
-    Vec3d*    typeREQs =0;   // [ntype] parameters for each type
-    Vec3d*    typeREQsMin=0; // [ntype] equlibirum value of parameters for regularization 
-    Vec3d*    typeREQsMax=0; // [ntype] equlibirum value of parameters for regularization 
-    Vec3d*    typeREQs0=0;   // [ntype] equlibirum value of parameters for regularization 
-    Vec3d*    typeKreg =0;   // [ntype] regulatization stiffness
-    Vec3i*    typToREQ =0;   // [ntype] map each unique atom type to place in DOFs;
+    Quat4d*    typeREQs =0;   // [ntype] parameters for each type
+    Quat4d*    typeREQsMin=0; // [ntype] equlibirum value of parameters for regularization 
+    Quat4d*    typeREQsMax=0; // [ntype] equlibirum value of parameters for regularization 
+    Quat4d*    typeREQs0=0;   // [ntype] equlibirum value of parameters for regularization 
+    Quat4d*    typeKreg =0;   // [ntype] regulatization stiffness
+    Quat4i*    typToREQ =0;   // [ntype] map each unique atom type to place in DOFs;
     
     double*   DOFs =0;       // [nDOFs]
     double*   fDOFs=0;       // [nDOFs]
@@ -68,13 +69,10 @@ class FitREQ{ public:
     
     // system 0
     Atoms* system0=0;   // [1]
-    //Vec3d* REQ0=0;    // [system0.n] REQparams for system0
-    //Vec3i* jnds =0;   // [system0.n] typToREQ  for system0
-    //Vec3d* fs0  =0;   // [system0.n] typToREQ  for system0
 
     // Temporary array for accumulation of derivs
     int     nmax = 0;
-    Vec3d * fs   = 0; //[nmax]
+    Quat4d* fs   = 0; //[nmax]
     //std::vector<Vec3d> fs;
 
     std::vector<Atoms> batch_vec;    // ToDo: would be more convenient to store Atoms* rather than Atoms
@@ -105,20 +103,18 @@ void tryRealocTemp_rigid(){
     }
 }
 
-int init_types( int ntype_, Vec3i* typeMask, Vec3d* tREQs=0, bool bCopy=false ){
-    printf( "FitREQ::init_types(%i) \n", ntype_ );
+int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false ){
+    printf( "FitREQ::init_types() ntype_=%i ntype=%i \n", ntype_, ntype );
     int nDOFs=0;
-    typToREQ = new Vec3i[ntype];
-    //tREQs    = new Vec3d[ntyp];
+    typToREQ = new Quat4i[ntype_];
     for(int i=0; i<ntype_; i++){
-        const Vec3i& tm=typeMask[i];
-        Vec3i&       tt=typToREQ[i];
-        for(int j=0; j<3; j++){
+        const Quat4i& tm=typeMask[i];
+        Quat4i&       tt=typToREQ[i];
+        for(int j=0; j<4; j++){
             if(tm.array[j]){
                 tt.array[j]=nDOFs;
                 nDOFs++;
-            }
-            else{
+            }else{
                 tt.array[j]=-1;
             }
         }
@@ -132,13 +128,12 @@ int init_types( int ntype_, Vec3i* typeMask, Vec3d* tREQs=0, bool bCopy=false ){
     if(tREQs){
         ntype = ntype_; 
         if(bCopy){
-            typeREQs    = new Vec3d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = tREQs[i]; }
-            typeREQsMin = new Vec3d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Vec3dmin; }
-            typeREQsMax = new Vec3d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Vec3dmax; }
-            typeREQs0   = new Vec3d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = tREQs[i]; }
-            typeKreg    = new Vec3d[ntype];  for(int i=0; i<ntype; i++){ typeKreg[i]   = Vec3dZero; }
+            typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = tREQs[i]; }
+            typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4dmin; }
+            typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4dmax; }
+            typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = tREQs[i]; }
+            typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero; }
         }else{ typeREQs = tREQs; }
-
         DOFsFromTypes(); 
     }
     //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
@@ -189,26 +184,27 @@ double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
     double Qtot=0;
     for(int i=0; i<n; i++){
         int   ti          = types[i];
-        const Vec3d& REQi = typeREQs[ti];
-        const Vec3d& pi   = ps[i]; 
-        Vec3d fsi         = Vec3dZero;
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
         Qtot+=REQi.z;
         for(int j=0; j<nj; j++){
             int tj              = jtyp[j];
-            const Vec3d& REQj   = typeREQs[tj];
+            const Quat4d& REQj  = typeREQs[tj];
             //const Vec3d& REQj = REQ0[j]; // optimization
             Vec3d d             = jpos[j] - pi;
             double R  = REQi.x+REQj.x;
             double E0 = REQi.y*REQj.y;
             double Q  = REQi.z*REQj.z;
+            double H  = REQi.w*REQj.w;
 
-            printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,   REQi.x,REQi.y,REQi.z,   REQj.x,REQj.y,REQj.z );
+            //printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
 
             // --- Eectrostatic
             double ir2     = 1/( d.norm2() + 1e-4 );
             double ir      = sqrt(ir2);
-            double dEel_dQ = ir * COULOMB_CONST_;
-            double Eel     = Q*dEel_dQ;
+            double dE_dQ   = ir * COULOMB_CONST_;
+            double Eel     = Q*dE_dQ;
             // --- Lenard-Jones
             double u2   = ir2*(R*R);
             double u4   = u2*u2;
@@ -216,15 +212,18 @@ double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
 
             // ELJ      = E0*( (R/r)^12 - 2*(R/r)^6 )
             // dELJ/dR  = E0*( 12*(R/r)^11/r - 12*(R/r)^5/r    )
-            double dELJ_dE = u6   *( u6 - 2 );
-            double ELJ     = E0*dELJ_dE;
-            // ---- Total E
+
+            double dE_dE = u6   *( u6 - 2 );
+            double dE_dH = u6;
+            double dE_dR = E0*12*ir*( u6*u4 - u4 );
+            double ELJ   = E0*dE_dE + H*dE_dH;
+
             Etot  += ELJ + Eel;
 
-            double dELJ_dR =  E0*12*ir*( u6*u4 - u4 );
-            fsi.x += dELJ_dR;         // dEtot/dRi
-            fsi.y += dELJ_dE*REQj.y;  // dEtot/dEi
-            fsi.z += dEel_dQ*REQj.z;  // dEtot/dQi
+            fsi.x += dE_dR;        // dEtot/dRi
+            fsi.y += dE_dE*REQj.y; // dEtot/dEi
+            fsi.z += dE_dQ*REQj.z; // dEtot/dQi
+            fsi.w += dE_dH*REQj.w; // dEtot/dHi
         }
         fs[i].add(fsi);
     }
@@ -249,57 +248,62 @@ double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
 
 void DOFsToTypes(){
     for(int i=0; i<ntype; i++ ){
-        const Vec3i& tt= typToREQ[i];
-        Vec3d& REQ     = typeREQs[i];
+        const Quat4i& tt= typToREQ[i];
+        Quat4d& REQ    = typeREQs[i];
         if(tt.x>=0)REQ.x = DOFs[tt.x];
         if(tt.y>=0)REQ.y = DOFs[tt.y];
         if(tt.z>=0)REQ.z = DOFs[tt.z];
+        if(tt.w>=0)REQ.w = DOFs[tt.w];
     }
 }
 
 void DOFsFromTypes(){
     for(int i=0; i<ntype; i++ ){
-        const Vec3i& tt  = typToREQ[i];
-        const Vec3d& REQ = typeREQs[i];
+        const Quat4i& tt  = typToREQ[i];
+        const Quat4d& REQ = typeREQs[i];
         if(tt.x>=0)DOFs[tt.x] = REQ.x;
         if(tt.y>=0)DOFs[tt.y] = REQ.y;
         if(tt.z>=0)DOFs[tt.z] = REQ.z;
+        if(tt.w>=0)DOFs[tt.w] = REQ.w;
     }
 }
 
 void acumDerivs( int n, int* types, double dE){
     for(int i=0; i<n; i++){
-        int t           = types[i];
-        const Vec3i& tt = typToREQ[t];
-        const Vec3d  f  = fs[i];
+        int t            = types[i];
+        const Quat4i& tt = typToREQ[t];
+        const Quat4d  f  = fs[i];
         //printf( "acumDerivs[%i] t %i tt(%i,%i,%i) f(%g,%g,%g)\n", i, t, tt.x,tt.y,tt.z,  f.x,f.y,f.z );
         if(tt.x>=0)fDOFs[tt.x]+=f.x*dE;
         if(tt.y>=0)fDOFs[tt.y]+=f.y*dE;
         if(tt.z>=0)fDOFs[tt.z]+=f.z*dE;
+        if(tt.w>=0)fDOFs[tt.w]+=f.w*dE;
     }
 }
 
 void regularization_force(){
     for(int i=0; i<ntype; i++ ){
-        const Vec3i& tt   = typToREQ[i];
-        const Vec3d& REQ  = typeREQs [i];
-        const Vec3d& REQ0 = typeREQs0[i];
-        const Vec3d& K    = typeKreg [i];
+        const Quat4i& tt   = typToREQ [i];
+        const Quat4d& REQ  = typeREQs [i];
+        const Quat4d& REQ0 = typeREQs0[i];
+        const Quat4d& K    = typeKreg [i];
         if(tt.x>=0)fDOFs[tt.x] = (REQ0.x-REQ.x)*K.x;
         if(tt.y>=0)fDOFs[tt.y] = (REQ0.y-REQ.y)*K.y;
         if(tt.z>=0)fDOFs[tt.z] = (REQ0.z-REQ.z)*K.z;
+        if(tt.w>=0)fDOFs[tt.w] = (REQ0.w-REQ.w)*K.w;
     }
 }
 
 void limit_params(){
     for(int i=0; i<ntype; i++ ){
-        const Vec3i& tt     = typToREQ[i];
-        const Vec3d& REQ    = typeREQs [i];
-        const Vec3d& REQmin = typeREQsMin[i];
-        const Vec3d& REQmax = typeREQsMax[i];
+        const Quat4i& tt     = typToREQ[i];
+        const Quat4d& REQ    = typeREQs [i];
+        const Quat4d& REQmin = typeREQsMin[i];
+        const Quat4d& REQmax = typeREQsMax[i];
         if(tt.x>=0){ fDOFs[tt.x]=_clamp(fDOFs[tt.x],REQmin.x,REQmax.x ); }
         if(tt.y>=0){ fDOFs[tt.y]=_clamp(fDOFs[tt.y],REQmin.y,REQmax.y ); }
         if(tt.z>=0){ fDOFs[tt.z]=_clamp(fDOFs[tt.z],REQmin.z,REQmax.z ); }
+        if(tt.w>=0){ fDOFs[tt.w]=_clamp(fDOFs[tt.w],REQmin.w,REQmax.w ); }
     }
 }
 
@@ -311,7 +315,7 @@ void renormWeights(double R){
 }
 
 void clean_fs(int n){
-    for(int i=0; i<n; i++){ fs[i]=Vec3dZero; }
+    for(int i=0; i<n; i++){ fs[i]=Quat4dZero; }
 }
 
 double evalDerivs( double* Eout=0 ){
@@ -321,7 +325,7 @@ double evalDerivs( double* Eout=0 ){
     for(int i=0; i<nbatch; i++){
         //printf("evalDerivs[%i]\n", i );
         const Atoms& C = batch[i];
-        C.print();
+        //C.print();
         double Eref=Es[i];
         double wi = 1; 
         if(weights) wi = weights[i];

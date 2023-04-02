@@ -767,15 +767,18 @@ static constexpr Quat4d Quat4dW    {0.0,0.0,0.0,1.0};
 static constexpr Quat4d Quat4dX    {1.0,0.0,0.0,0.0};
 static constexpr Quat4d Quat4dY    {0.0,1.0,0.0,0.0};
 static constexpr Quat4d Quat4dZ    {0.0,0.0,1.0,0.0};
+static constexpr Quat4d Quat4dmin  {-1.e-300,-1.e-300,-1.e-300,-1.e-300};
+static constexpr Quat4d Quat4dmax  {+1.e-300,+1.e-300,+1.e-300,+1.e-300};
 
 static constexpr Quat4f Quat4fNAN  {NAN,NAN,NAN,NAN};
 static constexpr Quat4f Quat4fZero {0.0f,0.0f,0.0f,0.0f};
 static constexpr Quat4f Quat4fOnes {1.0f,1.0f,1.0f,1.0f};
 static constexpr Quat4f Quat4fW    {0.0f,0.0f,0.0f,1.0f};
 static constexpr Quat4f Quat4fX    {1.0f,0.0f,0.0f,0.0f};
-static constexpr Quat4f Quat4fY    {0.0f,1.0f,0.0f,0.0f};
+static constexpr Quat4f Quat4fY    {0.0f,1.0f,0.0f,0.0f};  
 static constexpr Quat4f Quat4fZ    {0.0f,0.0f,1.0f,0.0f};
-
+static constexpr Quat4d Quat4fmin  {-1.e+37,-1.e+37,-1.e+37,-1.e+37};
+static constexpr Quat4d Quat4fmax  {+1.e+37,+1.e+37,+1.e+37,+1.e+37};
 
 
 // default quaternion poses
