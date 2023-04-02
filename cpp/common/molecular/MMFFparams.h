@@ -157,7 +157,7 @@ class MMFFparams{ public:
     int getAtomType(const char* s, bool bErr=true){
         auto found = atomTypeDict.find(s);
         if(found==atomTypeDict.end()){ 
-            if(bErr){ printf( "ERROR: MMFFparams::getAtomType(%s) not found !!! => exit() \n", s ); exit(0); }
+            if(bErr){ printf( "ERROR: MMFFparams::getAtomType(%s) not found !!! => exit() \n", s ); printAtomTypeDict(); exit(0); }
             return -1; 
         }
         return found->second;
@@ -201,7 +201,8 @@ class MMFFparams{ public:
         const char* ssub[3]{"sp3","sp2","sp1"};
         for(int i=0;i<3;i++){
             sprintf( tmp_name, "%s_%s", t.name, ssub[i] );
-            int it = getAtomType(tmp_name);
+            //printf( "assignSubTypes `%s`(iZ=%i)[%i] %s\n", t.name, t.iZ, i, tmp_name );
+            int it = getAtomType(tmp_name, false);
             //printf( "assignSubTypes %s(iZ=%i)[%i] %s=%i\n", t.name, t.iZ, i, tmp_name, it );
             if(it<0)continue;
             t.subTypes.array[i] = it;
@@ -335,10 +336,12 @@ class MMFFparams{ public:
         printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
         if(fatomtypes ){
             loadAtomTypes( fatomtypes );
+            DEBUG
             assignAllSubTypes();
         }
-        if(fbondtypes )loadBondTypes( fbondtypes );
-        if(fagnletypes)loadAgnleType( fagnletypes );
+        DEBUG
+        if(fbondtypes )loadBondTypes( fbondtypes ); DEBUG
+        if(fagnletypes)loadAgnleType( fagnletypes ); DEBUG
     }
 
     bool cellFromString( char* s, Mat3d& lvec )const{

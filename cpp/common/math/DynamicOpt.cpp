@@ -247,6 +247,25 @@ double DynamicOpt::move_FIRE_smooth(){
 	return ff;
 }
 
+void DynamicOpt::FIRE_update_params(){
+    f_len      = sqrt(ff);
+    v_len      = sqrt(vv);
+    cos_vf     = vf    / ( f_len*v_len + ff_safety );
+    renorm_vf  = v_len / ( f_len       + ff_safety );
+    cf  = renorm_vf * damp_func_FIRE( cos_vf, cv );
+    if( cos_vf < 0.0 ){
+        dt       = fmax( dt * fdec, dt_min );
+		lastNeg  = 0;
+        damping  = damp_max;
+	}else{
+		if( lastNeg > minLastNeg ){
+			dt        = fmin( dt * finc, dt_max );
+			damping   = damping  * falpha;
+		}
+		lastNeg++;
+	}
+}
+
 double DynamicOpt::move_FIRE(){
     eval_cos_vf();
 	double cv;
