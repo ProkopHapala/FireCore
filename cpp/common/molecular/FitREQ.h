@@ -39,6 +39,7 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
 class FitREQ{ public:
     //NBFF* nbff;
     int nDOFs=0,ntype=0,nbatch=0,n0=0,n1=0;
+    int imodel=1;
     Quat4d*    typeREQs =0;   // [ntype] parameters for each type
     Quat4d*    typeREQsMin=0; // [ntype] equlibirum value of parameters for regularization 
     Quat4d*    typeREQsMax=0; // [ntype] equlibirum value of parameters for regularization 
@@ -175,7 +176,7 @@ void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy=false, bool 
     }
 }
 
-double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
+double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
     const double COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
     int    nj   =system0->natoms;
     int*   jtyp =system0->atypes;
@@ -231,6 +232,66 @@ double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
     return Etot;
 }
 
+double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
+    const double COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
+    int    nj   =system0->natoms;
+    int*   jtyp =system0->atypes;
+    Vec3d* jpos =system0->apos;
+    double Etot=0;
+    double Qtot=0;
+    for(int i=0; i<n; i++){
+        int   ti          = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        Qtot+=REQi.z;
+        for(int j=0; j<nj; j++){
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            //const Vec3d& REQj = REQ0[j]; // optimization
+            Vec3d d             = jpos[j] - pi;
+            double R  = REQi.x+REQj.x;
+            double E0 = REQi.y*REQj.y;
+            double Q  = REQi.z*REQj.z;
+            double H  = REQi.w*REQj.w;
+
+            if(H>0) H=0;
+
+            //printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
+
+            // --- Eectrostatic
+            double ir2     = 1/( d.norm2() + 1e-4 );
+            double ir      = sqrt(ir2);
+            double dE_dQ   = ir * COULOMB_CONST_;
+            double Eel     = Q*dE_dQ;
+            // --- Lenard-Jones
+            double u2   = ir2*(R*R);
+            double u4   = u2*u2;
+            double u6   = u4*u2;
+
+            // ELJ      = E0*( (R/r)^12 - 2*(R/r)^6 )
+            // dELJ/dR  = E0*( 12*(R/r)^11/r - 12*(R/r)^5/r    )
+
+            double dE_dE = u6   *( u6 - 2 );
+            double dE_dH = u6*u6;
+            double dE_dR = E0*12*ir*( u6*u4 - u4 );
+            double ELJ   = E0*dE_dE + H*dE_dH;
+
+            //printf( "ij[%i=%i,%i=%i] EH %g EPaul %g EvdW %g Eel %g REQij(%6.3f,%10.7f,%6.3f,%6.3f) \n", i,ti, j,tj,  H*u6*u6, E0*u6*u6, E0*u6*-2, Q*dE_dQ,  R,E0,Q,H  );
+
+            Etot  += ELJ + Eel;
+
+            fsi.x += dE_dR;        // dEtot/dRi
+            fsi.y += dE_dE*REQj.y; // dEtot/dEi
+            fsi.z += dE_dQ*REQj.z; // dEtot/dQi
+            fsi.w += dE_dH*REQj.w; // dEtot/dHi
+        }
+        fs[i].add(fsi);
+    }
+
+    return Etot;
+}
+
 double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
     // Qtot = Sum_i * Q_i
     // E = K*Qtot^2
@@ -246,27 +307,28 @@ double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
     return  E;
 }
 
-void DOFsToTypes(){
-    for(int i=0; i<ntype; i++ ){
-        const Quat4i& tt= typToREQ[i];
-        Quat4d& REQ    = typeREQs[i];
-        if(tt.x>=0)REQ.x = DOFs[tt.x];
-        if(tt.y>=0)REQ.y = DOFs[tt.y];
-        if(tt.z>=0)REQ.z = DOFs[tt.z];
-        if(tt.w>=0)REQ.w = DOFs[tt.w];
-    }
+inline void DOFsToType(int i){
+    const Quat4i& tt = typToREQ[i];
+    Quat4d& REQ      = typeREQs[i];
+    if(tt.x>=0)REQ.x = DOFs[tt.x];
+    if(tt.y>=0)REQ.y = DOFs[tt.y];
+    if(tt.z>=0)REQ.z = DOFs[tt.z];
+    if(tt.w>=0)REQ.w = DOFs[tt.w];
 }
+void DOFsToTypes(){ for(int i=0; i<ntype; i++ ){ DOFsToType(i); } }
+void getType(int i, Quat4d& REQ ){ typeREQs[i]=REQ; DOFsToType(i); }
 
-void DOFsFromTypes(){
-    for(int i=0; i<ntype; i++ ){
-        const Quat4i& tt  = typToREQ[i];
-        const Quat4d& REQ = typeREQs[i];
-        if(tt.x>=0)DOFs[tt.x] = REQ.x;
-        if(tt.y>=0)DOFs[tt.y] = REQ.y;
-        if(tt.z>=0)DOFs[tt.z] = REQ.z;
-        if(tt.w>=0)DOFs[tt.w] = REQ.w;
-    }
+
+inline void DOFsFromType(int i){
+    const Quat4i& tt  = typToREQ[i];
+    const Quat4d& REQ = typeREQs[i];
+    if(tt.x>=0)DOFs[tt.x] = REQ.x;
+    if(tt.y>=0)DOFs[tt.y] = REQ.y;
+    if(tt.z>=0)DOFs[tt.z] = REQ.z;
+    if(tt.w>=0)DOFs[tt.w] = REQ.w;
 }
+void DOFsFromTypes(){ for(int i=0; i<ntype; i++ ){ DOFsFromType(i); } }
+void setType(int i, Quat4d REQ ){ typeREQs[i]=REQ; DOFsFromType(i); }
 
 void acumDerivs( int n, int* types, double dE){
     for(int i=0; i<n; i++){
@@ -331,7 +393,11 @@ double evalDerivs( double* Eout=0 ){
         if(weights) wi = weights[i];
         // switch(ikind){ case ikind_LJQ:
         clean_fs(C.natoms);
-        double E  = evalExampleDerivs_LJQ(C.natoms, C.atypes, C.apos );  // Forward pass
+        double E=0;
+        switch (imodel){
+            case 1: E = evalExampleDerivs_LJQH (C.natoms, C.atypes, C.apos ); break;
+            case 2: E = evalExampleDerivs_LJQH2(C.natoms, C.atypes, C.apos ); break;
+        }
         if(Eout){ Eout[i]=E; };
         double dE = (E - Eref)*wi;
         Error += dE;
@@ -353,7 +419,11 @@ double evalDerivsRigid( double* Eout=0 ){
         rigid_transform( poses[i].a, 0, poses[i].c, poses[i].b, C.natoms, C0.apos, C.apos );
         //savexyz("FitREQ_debug.xyz", system0, systemTest,0, "a" );
         clean_fs(C.natoms);
-        double E  = evalExampleDerivs_LJQ( C.natoms, C.atypes, C.apos );  // Forward pass
+        double E =0;
+        switch (imodel){
+            case 1: E = evalExampleDerivs_LJQH (C.natoms, C.atypes, C.apos ); break;
+            case 2: E = evalExampleDerivs_LJQH2(C.natoms, C.atypes, C.apos ); break;
+        }
         if(Eout){ Eout[i]=E; };
         double wi = 1;
         if(weights) wi = weights[i];

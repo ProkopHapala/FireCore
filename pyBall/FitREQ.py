@@ -29,6 +29,8 @@ header_strings = [
 "double run( int nstep, double ErrMax, double dt, bool bRigid ){",
 "void getEs( double* Es, bool bRigid ){",
 "double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0=0, int testtypes=0 ){",
+"void setType(int i, double* REQ )",
+"void getType(int i, double* REQ )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -79,17 +81,17 @@ def setRigidSamples(Es, poses, bCopy=False, bAlloc=False):
     return lib.setRigidSamples(n, _np_as(Es,c_double_p), _np_as(poses,c_double_p), bCopy, bAlloc)
 
 #  double run( int nstep, double ErrMax, double dt, bool bRigid ){
-lib.run.argtypes  = [c_int, c_double, c_double, c_bool, c_int, c_bool ] 
+lib.run.argtypes  = [c_int, c_int, c_double, c_double, c_bool, c_int, c_bool ] 
 lib.run.restype   =  c_double
-def run(nstep, ErrMax, dt, bRigid, ialg=1, bRegularize=False, bClamp=False ):
-    return lib.run(nstep, ErrMax, dt, bRigid, ialg, bRegularize )
+def run( nstep, ErrMax=1e-6, dt=0.1, bRigid=False, imodel=1, ialg=1, bRegularize=False, bClamp=False ):
+    return lib.run(imodel, nstep, ErrMax, dt, bRigid, ialg, bRegularize )
 
 #void getEs( double* Es, bool bRigid ){
-lib.getEs.argtypes  = [c_double_p,  c_bool] 
+lib.getEs.argtypes  = [ c_int, c_double_p,  c_bool] 
 lib.getEs.restype   =  c_double
-def getEs( Es=None, bRigid=True):
+def getEs( imodel=1, Es=None, bRigid=True):
     if Es is None: Es = np.zeros( nbatch )
-    Eerr = lib.getEs( _np_as(Es,c_double_p), bRigid)
+    Eerr = lib.getEs( imodel, _np_as(Es,c_double_p), bRigid)
     return Es
 
 #  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
@@ -105,6 +107,22 @@ def loadXYZ( fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="
     if(testtypes is not None): testtypes = np.array(testtypes,np.int32)
     nbatch = lib.loadXYZ( cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes) )
     return nbatch
+
+
+#  void setType(int i, double* REQ )
+lib.setType.argtypes  = [c_int, c_double_p] 
+lib.setType.restype   =  None
+def setType(i, REQ):
+    REQ=np.array(REQ)
+    return lib.setType(i, _np_as(REQ,c_double_p))
+
+#  void getType(int i, double* REQ )
+lib.getType.argtypes  = [c_int, c_double_p] 
+lib.getType.restype   =  None
+def getType(i, REQ=None):
+    if(REQ is None): REQ=np.zeros(4)
+    lib.getType(i, _np_as(REQ,c_double_p))
+    return REQ
 
 # =============== Buffers
 

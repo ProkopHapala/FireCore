@@ -19,30 +19,49 @@ Eref,xs=fit.EnergyFromXYZ(fname)
 xs+=r0
 Eref*=Hartree2eV
 
+#Hfactor = 0.99
+#Hfactor = 0.9
+Hfactor = 0.95
+#Hfactor = 0.99
+#Hfactor = 1.0
+
 typeMask = np.array([ [0,0,0,0], [0,1,1,1], ], dtype=np.int32 )
 typREQs  = np.array([ 
-    [ 1.487 , np.sqrt(0.0006808), +0.35, +0.22 ],    # H
-    [ 1.661 , np.sqrt(0.0091063), -0.7 , -0.22 ],    # O
+    # ---- imodel=1
+    #[ 1.487 , np.sqrt(0.0006808), +0.35, +0.22 ],    # H
+    #[ 1.661 , np.sqrt(0.0091063), -0.7 , -0.22 ],    # O
+    # ---- imodel=2
+    [ 1.487 , np.sqrt(0.0006808), +0.35, +np.sqrt(0.0006808)*Hfactor ],    # H
+    [ 1.661 , np.sqrt(0.0091063), -0.7 , -np.sqrt(0.0091063)*Hfactor ],    # O
 ])   
-print("DEBUG.1")
 fit.init_types( typeMask, typREQs, bCopy=True ) 
-print("DEBUG.2")
 #fit.loadXYZ( "scan_H2O_b3lyp_cc-pvdz.xyz", [0,1,2], [3,4,5] )
-print("DEBUG.3")
 fit.loadXYZ( "scan_H2O_b3lyp_cc-pvdz.xyz", [3,4,5], [0,1,2], types0=[0,1,0], testtypes=[0,1,0]  )
-print("DEBUG.4")
-Es = fit.getEs(bRigid=False)
-print("DEBUG.5")
+
+
+
+
+Es     = fit.getEs( imodel=2, bRigid=False)
+
+typREQs[0,3] = 0.0
+fit.setType(0, typREQs[0,:] )
+fit.setType(1, typREQs[1,:] )
+
+Es_noH = fit.getEs( imodel=1, bRigid=False)
+
 print( Es )
-print("DEBUG.6")
 
 Emin = Eref.min()
-plt.plot(xs,Es  , label="E_fit" )
-plt.plot(xs,Eref, label="E_ref" )
+plt.plot(xs,Eref  , '-',  label="E_ref", lw=3, c='grey' )
+plt.plot(xs,Es_noH, '-r', label="E_noH" )
+plt.plot(xs,Es    , '-g', label="E_fit" )
 plt.ylim( Emin*1.2, -Emin )
-plt.legend()
-plt.grid()
+
+plt.xlabel("r(O-H) [A]"); plt.ylabel("E[eV]");
+plt.legend(); plt.grid()
 plt.show()
+
+
 
 exit(0);
 
