@@ -1,4 +1,4 @@
-0   0   0 0  0    1.0     0.0         0x000000
+N/A   0   0 0  0    1.0     0.0         0x000000
 #   Z  nv nb np   RvdW    EvdW        color      QEq(Eaff,  Ehard,   Ra,      eta)   MMFF( Ass, Asp, Kss, Ksp, Kep, Kpp)    Epair( ne, eRvdW, eEvdW, eQ) 
 H   1   1 1 -1    1.487   0.0006808   0xFFFFFF      -4.528	13.8904	0.371	1.0698
 C   6   4 4 -1    1.908   0.0037292   0x909090      -5.343	10.126	0.759	0.8563

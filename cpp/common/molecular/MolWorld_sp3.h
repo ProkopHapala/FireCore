@@ -437,14 +437,16 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
 }
 
 virtual void init( bool bGrid ){
+    DEBUG
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+    DEBUG
 	builder.bindParams(&params);
     //params.printAtomTypeDict();
     //params.printAtomTypes();
     //params.printBond();
 
     params_glob = &params;
-
+    DEBUG
     builder.verbosity=verbosity;
     if(verbosity>0){
         printf("\n#### MolWorld_sp3::init()\n");
@@ -458,7 +460,9 @@ virtual void init( bool bGrid ){
         printf( "MolWorld_sp3::init() bMMFF %i bRigid %i \n", bMMFF, bRigid );
         //for(int i=0; i<10; i++){ float x = -1.0+i*0.2; printf( "x %g ix %i wx %g \n", x, (int)x, x+1-(int)(x+1.5) ); }; exit(0);
     }
+    DEBUG
     if(surf_name )loadSurf( surf_name, bGrid, idebug>0 );
+    DEBUG
     if ( smile_name ){               
         insertSMILES( smile_name );    
         builder.addAllCapTopo();       
@@ -466,6 +470,7 @@ virtual void init( bool bGrid ){
         bMMFF=true;
     }else if ( xyz_name ){
         if( bMMFF ){ 
+            DEBUG
             int ifrag = loadGeom( xyz_name );
             DEBUG
             if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
@@ -499,6 +504,7 @@ virtual void init( bool bGrid ){
             if(bRigid)initRigid();
         }
     }
+    DEBUG
     if(bMMFF){      
         DEBUG 
         //builder.printAtoms();          
@@ -761,22 +767,24 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
-    run_omp( 500, 0.05, 1e-6, 1000.0 );
+    run_omp( 100, opt.dt, 1e-6, 1000.0 );
+    //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     bChargeUpdated=false;
 }
 
 int run_omp( int niter, double dt, double Fconv, double Flim ){
     double E=0,F2=0;
+    double ff=0,vv=0,vf=0;
     int itr=0;
     #pragma omp parallel shared(E,F2) private(itr)
     for(itr=0; itr<niter; itr++){
-         #pragma omp single
-        {E=0;F2=0;}
+        #pragma omp single
+        {E=0;F2=0;ff=0;vv=0;vf=0;}
         // ------ eval MMFF
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<ffl.natoms; ia++){ 
-            if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+            //if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
             if(ia<ffl.nnode) E+=ffl.eval_atom(ia);
             //E+=ffl.evalLJQs_ng4_PBC_atom( ia ); 
             E+=ffl.evalLJQs_ng4_PBC_atom_( ia ); 
@@ -790,13 +798,33 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         for(int ia=0; ia<ffl.natoms; ia++){
             ffl.assemble_atom( ia );
         }
-        // ------ move
-        #pragma omp for reduction(+:F2)
-        for(int i=0; i<ffl.nvecs; i++){
-            F2+=ffl.move_atom_MD( i, dt, Flim, 0.9 );
+        
+        // #pragma omp for reduction(+:F2)
+        // for(int i=0; i<ffl.nvecs; i++){
+        //     F2 += ffl.move_atom_MD     ( i, dt, Flim, 0.99 );
+        //     //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
+        // }
+        
+        { //  ==== FIRE
+            #pragma omp for reduction(+:vf,vv,ff)
+            for(int i=0; i<opt.n; i++){
+                double v=opt.vel  [i];
+                double f=opt.force[i];
+                vv+=v*v; ff+=f*f; vf+=v*f;
+            }
+            #pragma omp single
+            { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); }
+            // ------ move
+            #pragma omp for
+            for(int i=0; i<ffl.nvecs; i++){
+                ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+                //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+            }
         }
-        #pragma omp single
-        if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
+        
+        //#pragma omp single
+        //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
+        //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
     }
     return itr;
 }

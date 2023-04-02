@@ -98,6 +98,7 @@ class DynamicOpt{ public:
     double v_len      = 0;
     double cos_vf     = 0;
     double renorm_vf  = 0;
+    double cv,cf;
 
 
     ForceFunction getForce = 0;
@@ -117,6 +118,7 @@ class DynamicOpt{ public:
     double move_FIRE_smooth();
     double damp_func     ( double c, double& cv );
     double damp_func_FIRE( double c, double& cv );
+    void   FIRE_update_params();
     double optStep();
     bool   optimize( double convF, int nMaxSteps );
 

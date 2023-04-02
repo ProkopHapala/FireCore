@@ -15,7 +15,7 @@ wd=`pwd`
 cd $dir
 pwd
 rm $name
-make -j$ncpu $name 2>$wd/compile_err.log
+make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
 
 ln -s $dir/$name .
