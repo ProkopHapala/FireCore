@@ -10,11 +10,36 @@ from pyBall import atomicUtils as au
 
 # ============== Setup
 
-h2o = au.AtomicSystem( "common_resources/H2O.xyz")
-h2o.print()
-h2o.findBonds()
-h2o.printBonds()
-exit()
+Hartree2eV   = 27.2114079527
+
+fname = "scan_H2O_b3lyp_cc-pvdz.xyz"
+r0 = 1.91
+
+Eref,xs=fit.EnergyFromXYZ(fname)
+xs+=r0
+Eref*=Hartree2eV
+
+typeMask = np.array([ [0,0,0], [0,1,1], ], dtype=np.int32 )
+typREQs  = np.array([ 
+    [ 1.487 , np.sqrt(0.0006808), +0.35 ],    # H
+    [ 1.661 , np.sqrt(0.0091063), -0.7 ],    # O
+])   
+fit.init_types( typeMask, typREQs, bCopy=True ) 
+#fit.loadXYZ( "scan_H2O_b3lyp_cc-pvdz.xyz", [0,1,2], [3,4,5] )
+fit.loadXYZ(  "scan_H2O_b3lyp_cc-pvdz.xyz", [3,4,5], [0,1,2], types0=[0,1,0], testtypes=[0,1,0]  )
+Es = fit.getEs(bRigid=False)
+print( Es )
+
+
+Emin = Eref.min()
+plt.plot(xs,Es  , label="E_fit" )
+plt.plot(xs,Eref, label="E_ref" )
+plt.ylim( Emin*1.2, -Emin )
+plt.legend()
+plt.grid()
+plt.show()
+
+exit(0);
 
 # fit Q
 #typeMask = np.array([ [0,0,0], [0,0,1], ], dtype=np.int32 )
