@@ -39,7 +39,8 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
     return W.loadXYZ( fname, n0, i0s, ntest, itests, types0, testtypes );
 }
 
-double run( int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bRegularize, bool bClamp){
+double run( int imodel,  int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bRegularize, bool bClamp){
+    W.imodel=imodel;
     double Err=0;
     printf( "run( nstep %i Fmax %g dt %g bRigid %i )\n", nstep, Fmax, dt, bRigid  );
     double F2max=Fmax*Fmax;
@@ -63,7 +64,11 @@ double run( int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bReg
     return Err;
 }
 
-double getEs( double* Es, bool bRigid ){
+void setType(int i, double* REQ ){ W.setType( i, *(Quat4d*)REQ ); }
+void getType(int i, double* REQ ){ W.getType( i, *(Quat4d*)REQ ); }
+
+double getEs( int imodel, double* Es, bool bRigid ){
+    W.imodel=imodel;
     if(bRigid){ return W.evalDerivsRigid( Es ); }
     else      { return W.evalDerivs     ( Es ); }
 }
