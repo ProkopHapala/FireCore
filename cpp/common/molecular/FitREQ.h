@@ -2,11 +2,11 @@
 #ifndef FitREQ_h
 #define FitREQ_h
 
-//#include <vector>
+#include <vector>
 #include "Vec3.h"
 //#include "NBFF.h"
 #include "Atoms.h"
-
+#include "MMFFparams.h"
 
 void savexyz(const char* fname, Atoms* A, Atoms* B, const char* comment=0, const char* mode="w" ){
     FILE* fout = fopen( fname, mode);
@@ -57,10 +57,10 @@ class FitREQ{ public:
     //double* fRs=0,fEs=0,fQs=0;
 
     //std::vector(Atoms) examples; // Training examples
-    Atoms* batch=0;     // [nbatch] 
-    double*       weights = 0; // [nbatch] scaling importaince of parameters
-    double*       Es      = 0; 
-    Mat3d*        poses   = 0; // [nbatch]
+    Atoms*   batch=0;     // [nbatch]  // ToDo: would be more convenient to store Atoms* rather than Atoms
+    double*  weights = 0; // [nbatch] scaling importaince of parameters
+    double*  Es      = 0; 
+    Mat3d*   poses   = 0; // [nbatch]
    
     // for rigid fitting
     Atoms* systemTest0=0; //[1]
@@ -76,6 +76,10 @@ class FitREQ{ public:
     int     nmax = 0;
     Vec3d * fs   = 0; //[nmax]
     //std::vector<Vec3d> fs;
+
+    std::vector<Atoms> batch_vec;    // ToDo: would be more convenient to store Atoms* rather than Atoms
+
+    MMFFparams* params=0; 
 
 //void realoc( int nR=0, int nE=0, int nQ=0 ){
 void realloc( int nDOFs_ ){
@@ -102,7 +106,7 @@ void tryRealocTemp_rigid(){
 }
 
 int init_types( int ntype_, Vec3i* typeMask, Vec3d* tREQs=0, bool bCopy=false ){
-    printf( "init_types(%i) \n", ntype_ );
+    printf( "FitREQ::init_types(%i) \n", ntype_ );
     int nDOFs=0;
     typToREQ = new Vec3i[ntype];
     //tREQs    = new Vec3d[ntyp];
@@ -142,7 +146,7 @@ int init_types( int ntype_, Vec3i* typeMask, Vec3d* tREQs=0, bool bCopy=false ){
 }
 
 void setSystem( int isys, int na, int* types, Vec3d* ps, bool bCopy=false ){
-    printf( "setSystem(%i) \n", isys );
+    printf( "FitREQ::setSystem(%i) \n", isys );
     Atoms** pS;
     Atoms*  S;
     if(isys<0){
@@ -163,7 +167,7 @@ void setSystem( int isys, int na, int* types, Vec3d* ps, bool bCopy=false ){
 }
 
 void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy=false, bool bAlloc=false ){
-    printf( "setRigidSamples() \n" );
+    printf( "FitREQ::setRigidSamples() \n" );
     nbatch = n; 
     if(bCopy){
         if(Es_   ){Es    = new double[nbatch]; }
@@ -190,7 +194,7 @@ double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
         Vec3d fsi         = Vec3dZero;
         Qtot+=REQi.z;
         for(int j=0; j<nj; j++){
-            int tj              = jtyp[i];
+            int tj              = jtyp[j];
             const Vec3d& REQj   = typeREQs[tj];
             //const Vec3d& REQj = REQ0[j]; // optimization
             Vec3d d             = jpos[j] - pi;
@@ -198,7 +202,7 @@ double evalExampleDerivs_LJQ(int n, int* types, Vec3d* ps ){
             double E0 = REQi.y*REQj.y;
             double Q  = REQi.z*REQj.z;
 
-            //printf( "ij[%i,%i] REQij(%g,%g,%g) REQi(%g,%g,%g) REQj(%g,%g,%g)\n", i,j,  R,E0,Q,   REQi.x,REQi.y,REQi.z,   REQj.x,REQj.y,REQj.z );
+            printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,   REQi.x,REQi.y,REQi.z,   REQj.x,REQj.y,REQj.z );
 
             // --- Eectrostatic
             double ir2     = 1/( d.norm2() + 1e-4 );
@@ -311,10 +315,13 @@ void clean_fs(int n){
 }
 
 double evalDerivs( double* Eout=0 ){
+    printf( "FitREQ::evalDerivs() \n" );
     tryRealocTemp();
     double Error = 0;
     for(int i=0; i<nbatch; i++){
+        //printf("evalDerivs[%i]\n", i );
         const Atoms& C = batch[i];
+        C.print();
         double Eref=Es[i];
         double wi = 1; 
         if(weights) wi = weights[i];
@@ -332,7 +339,7 @@ double evalDerivs( double* Eout=0 ){
 }
 
 double evalDerivsRigid( double* Eout=0 ){
-    //printf( "evalDerivsRigid() \n" );
+    //printf( "FitREQ::evalDerivsRigid() \n" );
     tryRealocTemp_rigid();
     const Atoms& C0 = *systemTest0;
     const Atoms& C  = *systemTest;
@@ -358,6 +365,64 @@ double evalDerivsRigid( double* Eout=0 ){
     //printf("vDOFs={");for(int j=0;j<nDOFs;j++){ printf("%g,",vDOFs[j]); };printf("}\n");
     return Error;
 }
+
+int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* types0=0, int* testtypes=0 ){
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    char at_name[8];
+    int isys = 0;
+    int il   = 0;
+    int na   = 0; 
+    Atoms atoms;
+    if(!system0){ system0=new Atoms(n0); }else { system0->realloc( n0); }
+    Atoms S         ( ntest );
+    bool bReadTypes = !(types0 && testtypes);
+    printf( "FitREQ::loadXYZ() n0 %i ntest %i \n", n0, ntest );
+    while( fgets(line, nline, fin) ){
+        //printf( ">>%s<<\n", line );
+        //printf( "il %i isys %i na %i \n", il, isys, na, ntest,  );
+        if      ( il==0 ){
+            sscanf( line, "%i", &na );
+            if( (na>0)&&(na<10000) ){
+                if(isys==0){
+                    atoms.allocNew(na);
+                }
+                S.allocNew(ntest);
+            }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
+        }else if( il==1 ){
+            // comment - ToDo : Here we can read the reference Energy directly from .xyz 
+        }else if( il<na+2 ){
+            double x,y,z,q;
+            //printf( ">>%s<<\n", line );
+            int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
+            if(nret<5){q=0;}
+            int i=il-2;
+            //printf( "[%i] `%s` (%g,%g,%g) q %g \n", i, at_name, x, y, z, q );
+            atoms.apos  [i].set(x,y,z);
+            if(bReadTypes){ atoms.atypes[i]=params->getAtomType(at_name); }else{ atoms.atypes[i]=-1; }
+        }
+        il++;
+        if( il >= na+2 ){ 
+            //printf( "===== FitREQ::loadXYZ() isys %i na %i n0 %i ntest %i \n", isys, na, system0->natoms, S.natoms  );
+            //printf( "atoms " ); atoms.print();
+            if(isys==0)for(int i=0; i<n0;    i++ ){ int ia=i0s   [i];  system0->apos[i]=atoms.apos[ia]; int t; if(types0   ){ t=types0   [i]; }else{ t=atoms.atypes[ia]; }; system0->atypes[i]=t; } // store to system0
+            {          for(int i=0; i<ntest; i++ ){ int ia=itests[i];         S.apos[i]=atoms.apos[ia]; int t; if(testtypes){ t=testtypes[i]; }else{ t=atoms.atypes[ia]; };  S      .atypes[i]=t; } // store to batch[isys]
+            //printf( "system0 " ); system0->print();
+            //printf( "stests  " ); S       .print();
+            batch_vec.push_back( S ); }
+            il=0; isys++; 
+        }
+    }
+    nbatch =  batch_vec.size();
+    batch  = &batch_vec[0];
+    _realloc(Es,nbatch);
+    atoms.dealloc();
+    fclose(fin);
+    return nbatch;
+}
+
 
 void clean_derivs(){
     for(int i=0; i<nDOFs; i++){ fDOFs[i]=0; }

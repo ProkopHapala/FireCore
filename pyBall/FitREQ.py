@@ -28,6 +28,7 @@ header_strings = [
 "void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy ){",
 "double run( int nstep, double ErrMax, double dt, bool bRigid ){",
 "void getEs( double* Es, bool bRigid ){",
+"double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0=0, int testtypes=0 ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -51,6 +52,9 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ========= C functions
 # ====================================
 
+def cstr( s ):
+    if s is None: return None
+    return s.encode('utf8')
 
 #  void init_types(int ntyp, int* typeMask, double* typREQs ){
 lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool ] 
@@ -82,11 +86,25 @@ def run(nstep, ErrMax, dt, bRigid, ialg=1, bRegularize=False, bClamp=False ):
 
 #void getEs( double* Es, bool bRigid ){
 lib.getEs.argtypes  = [c_double_p,  c_bool] 
-lib.getEs.restype   =  None
+lib.getEs.restype   =  c_double
 def getEs( Es=None, bRigid=True):
     if Es is None: Es = np.zeros( nbatch )
-    lib.getEs( _np_as(Es,c_double_p), bRigid)
+    Eerr = lib.getEs( _np_as(Es,c_double_p), bRigid)
     return Es
+
+#  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
+lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p ] 
+lib.loadXYZ.restype   =  c_int
+def loadXYZ( fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="data/AtomTypes.dat" ):
+    global nbatch
+    n0     = len( i0s    )
+    ntest  = len( itests )
+    i0s    = np.array(i0s   ,np.int32)
+    itests = np.array(itests,np.int32)
+    if(types0    is not None): types0    = np.array(types0   ,np.int32)
+    if(testtypes is not None): testtypes = np.array(testtypes,np.int32)
+    nbatch = lib.loadXYZ( cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes) )
+    return nbatch
 
 # =============== Buffers
 
@@ -144,3 +162,26 @@ lib.init_buffers.argtypes  = []
 lib.init_buffers.restype   =  None
 def init_buffers():
     return lib.init_buffers()
+
+################## Python ###############
+
+def EnergyFromXYZ(fname):
+    fin = open(fname,'r')
+    il=0
+    nl=0
+    Es = []
+    xs = []
+    for line in fin:
+        if(il==0):
+            nl=2+int(line.split()[0])
+        else:
+            if( il%nl==1 ):
+                ws = line.split()
+                Es.append(float(ws[3]))
+                xs.append(float(ws[5]))
+        il+=1
+    Es = np.array(Es)
+    xs = np.array(xs)
+    return Es,xs
+
+

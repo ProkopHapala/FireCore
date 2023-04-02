@@ -12,6 +12,8 @@
 
 FitREQ W;
 
+MMFFparams params;
+
 //============================
 
 //const std::vector<std::string>* atomTypeNames = 0;
@@ -29,6 +31,12 @@ void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
 
 void setRigidSamples( int n, double* Es_, double* poses_, bool bCopy, bool bAlloc ){
     W.setRigidSamples( n, Es_, (Mat3d*)poses_, bCopy );
+}
+
+int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int* testtypes, const char* fname_AtomTypes  ){
+    bool bReadTypes = !(types0 && testtypes);
+    if( bReadTypes && !W.params ){ params.loadAtomTypes( fname_AtomTypes ); W.params=&params; }
+    return W.loadXYZ( fname, n0, i0s, ntest, itests, types0, testtypes );
 }
 
 double run( int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bRegularize, bool bClamp){
@@ -55,9 +63,9 @@ double run( int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bReg
     return Err;
 }
 
-void getEs( double* Es, bool bRigid ){
-    if(bRigid){ W.evalDerivsRigid( Es ); }
-    else      { W.evalDerivs     ( Es ); }
+double getEs( double* Es, bool bRigid ){
+    if(bRigid){ return W.evalDerivsRigid( Es ); }
+    else      { return W.evalDerivs     ( Es ); }
 }
 
 void init_buffers(){

@@ -154,10 +154,10 @@ class MMFFparams{ public:
         for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atomTypeNames[i].c_str(), atomTypeDict[atomTypeNames[i]] ); };
     }
 
-    int getAtomType(const char* s, bool bErr=false){
+    int getAtomType(const char* s, bool bErr=true){
         auto found = atomTypeDict.find(s);
         if(found==atomTypeDict.end()){ 
-            if(bErr){ printf( "ERORRO: AtomType[%s] not found !!! => exit() \n", s ); exit(0); }
+            if(bErr){ printf( "ERROR: MMFFparams::getAtomType(%s) not found !!! => exit() \n", s ); exit(0); }
             return -1; 
         }
         return found->second;
