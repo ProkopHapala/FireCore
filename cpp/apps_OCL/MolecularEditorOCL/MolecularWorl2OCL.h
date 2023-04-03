@@ -83,12 +83,12 @@ class RigidMolecularWorldOCL{ public:
     Quat4f * FEs       = 0;
     Quat4f * PLQs      = 0;
 
-    //cl_mem img_FFPauli;   //  = -1;
-    //cl_mem img_FFLondon;  //  = -1;
-    //cl_mem img_FFelec;    //  = -1;
+    //cl_mem img_FFPaul;  //  = -1;
+    //cl_mem img_FFLond;  //  = -1;
+    //cl_mem img_FFelec;  //  = -1;
 
-    int id_FFPauli;   //  = -1;
-    int id_FFLondon;  //  = -1;
+    int id_FFPaul;   //  = -1;
+    int id_FFLond;  //  = -1;
     int id_FFelec;    //  = -1;
 
     int id_mol2atoms    = -1;
@@ -166,7 +166,7 @@ class RigidMolecularWorldOCL{ public:
         id_PLQs = cl->newBuffer( "PLQs", nAtoms, sizeof(Quat4f), NULL, CL_MEM_READ_WRITE  ); DEBUG;
     };
 
-    void prepareBuffers( int nSystems_, int nMols_, Vec3i nGrid, float* FFpauli, float* FFlondon, float* FFelec ){
+    void prepareBuffers( int nSystems_, int nMols_, Vec3i nGrid, float* FFpaul, float* FFlond, float* FFelec ){
         int err;
         nMols    = nMols_;
         nSystems = nSystems_;
@@ -188,16 +188,16 @@ class RigidMolecularWorldOCL{ public:
         id_invMasses    = cl->newBuffer( "invMasses",    nMolInstances, sizeof(float2), NULL, CL_MEM_READ_WRITE  ); DEBUG;
 
         cl_image_format imgFormat = (cl_image_format){CL_RGBA,CL_FLOAT};
-        id_FFPauli  = cl->newBufferImage3D( "FFPauli",  nGrid.x, nGrid.y, nGrid.z, sizeof(float), FFpauli,  CL_MEM_READ_ONLY  | CL_MEM_COPY_HOST_PTR , {CL_RGBA, CL_FLOAT} );
-        id_FFLondon = cl->newBufferImage3D( "FFLondon", nGrid.x, nGrid.y, nGrid.z, sizeof(float), FFlondon, CL_MEM_READ_ONLY  | CL_MEM_COPY_HOST_PTR , {CL_RGBA, CL_FLOAT} );
-        id_FFelec   = cl->newBufferImage3D( "FFelec",   nGrid.x, nGrid.y, nGrid.z, sizeof(float), FFelec,   CL_MEM_READ_ONLY  | CL_MEM_COPY_HOST_PTR , {CL_RGBA, CL_FLOAT} );
+        id_FFPaul = cl->newBufferImage3D( "FFPaul", nGrid.x, nGrid.y, nGrid.z, sizeof(float), FFpaul, CL_MEM_READ_ONLY  | CL_MEM_COPY_HOST_PTR , {CL_RGBA, CL_FLOAT} );
+        id_FFLond = cl->newBufferImage3D( "FFLond", nGrid.x, nGrid.y, nGrid.z, sizeof(float), FFlond, CL_MEM_READ_ONLY  | CL_MEM_COPY_HOST_PTR , {CL_RGBA, CL_FLOAT} );
+        id_FFelec = cl->newBufferImage3D( "FFelec", nGrid.x, nGrid.y, nGrid.z, sizeof(float), FFelec, CL_MEM_READ_ONLY  | CL_MEM_COPY_HOST_PTR , {CL_RGBA, CL_FLOAT} );
 
-        printf( " id_FFPauli, id_FFLondon, id_FFelec %i %i %i  | sizeof(cl_mem) %i \n ", id_FFPauli, id_FFLondon, id_FFelec , sizeof(cl_mem) );
+        printf( " id_FFPaul, id_FFLond, id_FFelec %i %i %i  | sizeof(cl_mem) %i \n ", id_FFPaul, id_FFLond, id_FFelec , sizeof(cl_mem) );
 
     }
 
     void prepareBuffers( int nSystems_, int nMols_, GridFF& gridFF ){
-        prepareBuffers( nSystems_, nMols_, gridFF.grid.n, (float*)gridFF.FFPauli_f, (float*)gridFF.FFLondon_f, (float*)gridFF.FFelec_f );
+        prepareBuffers( nSystems_, nMols_, gridFF.grid.n, (float*)gridFF.FFPaul_f, (float*)gridFF.FFLond_f, (float*)gridFF.FFelec_f );
     }
 
     void upload_mol2atoms(){ cl->upload  ( id_mol2atoms,  mol2atoms ); }
@@ -256,8 +256,8 @@ class RigidMolecularWorldOCL{ public:
         dC.f   = (Vec3f)grid.diCell.c;
 
         task_getFEgrid->args = {
-            BUFFarg(id_FFPauli),
-            BUFFarg(id_FFLondon),
+            BUFFarg(id_FFPaul),
+            BUFFarg(id_FFLond),
             BUFFarg(id_FFelec),
 
             BUFFarg(id_PLQs),
@@ -309,8 +309,8 @@ class RigidMolecularWorldOCL{ public:
         dC  .setXYZ( (Vec3f)grid.diCell.c );
         alpha = alpha_;
         task_getForceRigidSystemSurfGrid->args = {
-            BUFFarg(id_FFPauli),       // 0
-            BUFFarg(id_FFLondon),      // 1
+            BUFFarg(id_FFPaul),       // 0
+            BUFFarg(id_FFLond),      // 1
             BUFFarg(id_FFelec),        // 2
             BUFFarg(id_mol2atoms),     // 3
             BUFFarg(id_atomsInTypes),  // 4
@@ -590,8 +590,8 @@ class GridFF_OCL{ public:
     int nAtoms    = 0;
     int nGridTot  = 0;
 
-    int id_FFPauli    = -1;
-    int id_FFLondon   = -1;
+    int id_FFPaul     = -1;
+    int id_FFLond     = -1;
     int id_FFelec     = -1;
     int id_gridPoints = -1;
     int id_atoms      = -1;
@@ -603,37 +603,38 @@ class GridFF_OCL{ public:
         int err = cl->buildProgram( fname );
         OCL_checkError(err, "cl.buildProgram");
 
-        int id_evalPLE = cl->newKernel("evalPLE"); DEBUG
-        task_FFPLE = new OCLtask( cl, id_evalPLE, 1, -1, 32 ); DEBUG;
+        int id_evalPLE = cl->newKernel("evalPLE"); 
+        task_FFPLE = new OCLtask( cl, id_evalPLE, 1, -1, 32 );
     }
 
     void prepareBuffers( int nAtoms_, int nGrid_ ){
         nAtoms = nAtoms_;
         nGridTot  = nGrid_;
+
         DEBUG
 
-        id_atoms      = cl->newBuffer( "atoms",      nAtoms*8, sizeof(float), NULL, CL_MEM_READ_ONLY  ); DEBUG
-        id_gridPoints = cl->newBuffer( "gridPoints", nGridTot*4,  sizeof(float), NULL, CL_MEM_READ_ONLY );     DEBUG
-        //id_FFPauli    = cl->newBuffer( "FFPauli",    nGridTot*4, sizeof(float), NULL, CL_MEM_READ_WRITE );
-        //id_FFLondon   = cl->newBuffer( "FFLondon",   nGridTot*4, sizeof(float), NULL, CL_MEM_READ_WRITE );
-        //id_FFelec     = cl->newBuffer( "FFelec",     nGridTot*4, sizeof(float), NULL, CL_MEM_READ_WRITE );
-        id_FFPauli    = cl->newBuffer( "FFPauli",    nGridTot*4, sizeof(float), NULL, CL_MEM_WRITE_ONLY ); DEBUG
-        id_FFLondon   = cl->newBuffer( "FFLondon",   nGridTot*4, sizeof(float), NULL, CL_MEM_WRITE_ONLY ); DEBUG
-        id_FFelec     = cl->newBuffer( "FFelec",     nGridTot*4, sizeof(float), NULL, CL_MEM_WRITE_ONLY ); DEBUG
+        id_atoms      = cl->newBuffer( "atoms",      nAtoms*8, sizeof(float), NULL, CL_MEM_READ_ONLY  );
+        id_gridPoints = cl->newBuffer( "gridPoints", nGridTot*4,  sizeof(float), NULL, CL_MEM_READ_ONLY ); 
+        //id_FFPaul   = cl->newBuffer( "FFPaul",     nGridTot*4, sizeof(float), NULL, CL_MEM_READ_WRITE );
+        //id_FFLond   = cl->newBuffer( "FFLond",     nGridTot*4, sizeof(float), NULL, CL_MEM_READ_WRITE );
+        //id_FFelec   = cl->newBuffer( "FFelec",     nGridTot*4, sizeof(float), NULL, CL_MEM_READ_WRITE );
+        id_FFPaul     = cl->newBuffer( "FFPaul",     nGridTot*4, sizeof(float), NULL, CL_MEM_WRITE_ONLY );
+        id_FFLond     = cl->newBuffer( "FFLond",     nGridTot*4, sizeof(float), NULL, CL_MEM_WRITE_ONLY );
+        id_FFelec     = cl->newBuffer( "FFelec",     nGridTot*4, sizeof(float), NULL, CL_MEM_WRITE_ONLY )
 
-        DEBUG;
+        DEBUG
 
         //task_FFPLE->global[0] = nGrid;
-        //task_FFPLE->args = { INTarg(nAtoms), BUFFarg(id_atoms), BUFFarg(id_gridPoints), BUFFarg(id_FFPauli), BUFFarg(id_FFLondon), BUFFarg(id_FFelec) };
+        //task_FFPLE->args = { INTarg(nAtoms), BUFFarg(id_atoms), BUFFarg(id_gridPoints), BUFFarg(id_FFPaul), BUFFarg(id_FFLond), BUFFarg(id_FFelec) };
         //task_FFPLE->print_arg_list();
 
-        DEBUG;
+        DEBUG
     }
 
     void setupKernel( GridFF& gridFF ){
 
         task_FFPLE->global[0] = nGridTot;
-        //task_FFPLE->args = { INTarg(nAtoms), BUFFarg(id_atoms), BUFFarg(id_gridPoints), BUFFarg(id_FFPauli), BUFFarg(id_FFLondon), BUFFarg(id_FFelec) };
+        //task_FFPLE->args = { INTarg(nAtoms), BUFFarg(id_atoms), BUFFarg(id_gridPoints), BUFFarg(id_FFPaul), BUFFarg(id_FFLond), BUFFarg(id_FFelec) };
         //task_FFPLE->print_arg_list();
         //__kernel void evalPLE(
         //    const int   nAtoms,
@@ -645,8 +646,8 @@ class GridFF_OCL{ public:
         //    const float4 dC,
         //    const float alpha,
         //    __global float8*   atoms,
-        //    __global float4*   FFPauli,
-        //    __global float4*   FFLondon,
+        //    __global float4*   FFPaul,
+        //    __global float4*   FFLond,
         //    __global float4*   FFelec
         //){
 
@@ -669,8 +670,8 @@ class GridFF_OCL{ public:
             FLOATarg(alpha),
             BUFFarg(id_atoms),
             //BUFFarg(id_gridPoints),
-            BUFFarg(id_FFPauli),
-            BUFFarg(id_FFLondon),
+            BUFFarg(id_FFPaul),
+            BUFFarg(id_FFLond),
             BUFFarg(id_FFelec)
         };
     }
@@ -703,12 +704,12 @@ class GridFF_OCL{ public:
         delete [] buff;
     }
 
-    void downloadFF(int n, Vec3d* FFPauli, Vec3d* FFLondon, Vec3d* FFelec ){
+    void downloadFF(int n, Vec3d* FFPaul, Vec3d* FFLond, Vec3d* FFelec ){
         if( nGridTot!=n ){ printf("ERROR: GridFF_OCL::downloadFF() Wrong number of grid points: n(%i) != nGrid(%i) \n, ", n, nGridTot ); exit(0); }
         float * buff = new float[n*4];
-        if(FFPauli ){  cl->download( id_FFPauli,  buff ); float4ToVec3d( n, buff, FFPauli  ); printf("FFPauli  downloaded\n"); }
-        if(FFLondon){  cl->download( id_FFLondon, buff ); float4ToVec3d( n, buff, FFLondon ); printf("FFLondon downloaded\n"); }
-        if(FFelec  ){  cl->download( id_FFelec ,  buff ); float4ToVec3d( n, buff, FFelec   ); printf("FFelec   downloaded\n"); }
+        if(FFPaul){  cl->download( id_FFPaul, buff ); float4ToVec3d( n, buff, FFPaul ); printf("FFPaul downloaded\n"); }
+        if(FFLond){  cl->download( id_FFLond, buff ); float4ToVec3d( n, buff, FFLond ); printf("FFLond downloaded\n"); }
+        if(FFelec){  cl->download( id_FFelec, buff ); float4ToVec3d( n, buff, FFelec ); printf("FFelec downloaded\n"); }
         delete [] buff;
     }
 
@@ -716,15 +717,15 @@ class GridFF_OCL{ public:
         int n = gridFF.grid.getNtot();
         if( nGridTot!=n){ printf("ERROR: GridFF_OCL::downloadFF() Wrong number of grid points: n(%i) != nGrid(%i) \n, ", n, nGridTot ); exit(0); }
 
-        gridFF.FFPauli_f  = new Quat4f[nGridTot];
-        gridFF.FFLondon_f = new Quat4f[nGridTot];
-        gridFF.FFelec_f   = new Quat4f[nGridTot];
+        gridFF.FFPaul_f = new Quat4f[nGridTot];
+        gridFF.FFLond_f = new Quat4f[nGridTot];
+        gridFF.FFelec_f = new Quat4f[nGridTot];
 
         bool copyToDouble = true;
 
-        if(gridFF.FFPauli_f ){  cl->download( id_FFPauli,  (float*)gridFF.FFPauli_f  ); if(copyToDouble ) float4ToVec3d( n, (float*)gridFF.FFPauli_f,  gridFF.FFPauli  ); printf("FFPauli  downloaded\n"); }
-        if(gridFF.FFLondon_f){  cl->download( id_FFLondon, (float*)gridFF.FFLondon_f ); if(copyToDouble ) float4ToVec3d( n, (float*)gridFF.FFLondon_f, gridFF.FFLondon ); printf("FFLondon downloaded\n"); }
-        if(gridFF.FFelec_f  ){  cl->download( id_FFelec ,  (float*)gridFF.FFelec_f   ); if(copyToDouble ) float4ToVec3d( n, (float*)gridFF.FFelec_f ,  gridFF.FFelec   ); printf("FFelec   downloaded\n"); }
+        if(gridFF.FFPaul_f ){ cl->download( id_FFPaul, (float*)gridFF.FFPaul_f  ); if(copyToDouble ) float4ToVec3d( n, (float*)gridFF.FFPaul_f, gridFF.FFPaul ); printf("FFPaul downloaded\n"); }
+        if(gridFF.FFLond_f ){ cl->download( id_FFLond, (float*)gridFF.FFLond_f  ); if(copyToDouble ) float4ToVec3d( n, (float*)gridFF.FFLond_f, gridFF.FFLond ); printf("FFLond downloaded\n"); }
+        if(gridFF.FFelec_f ){ cl->download( id_FFelec, (float*)gridFF.FFelec_f  ); if(copyToDouble ) float4ToVec3d( n, (float*)gridFF.FFelec_f, gridFF.FFelec ); printf("FFelec downloaded\n"); }
     }
 
     int evalGridFFs( GridFF& gridFF, const Vec3i& nPBC ){
@@ -733,7 +734,7 @@ class GridFF_OCL{ public:
         setupKernel( gridFF );
         uploadAtoms( gridFF.natoms, gridFF.apos, gridFF.REQs ); DEBUG
         task_FFPLE->enque(); DEBUG
-        //downloadFF( gridFF.grid.getNtot(), gridFF.FFPauli, gridFF.FFLondon, gridFF.FFelec ); DEBUG;
+        //downloadFF( gridFF.grid.getNtot(), gridFF.FFPaul, gridFF.FFLond, gridFF.FFelec ); DEBUG;
         downloadFF( gridFF );
         return clFinish(cl->commands); DEBUG;
     }

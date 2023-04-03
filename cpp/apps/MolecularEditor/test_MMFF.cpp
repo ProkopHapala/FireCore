@@ -65,13 +65,13 @@ void initRigidSubstrate(){
     bool recalcFF = false;
     if( recalcFF ){
         world.gridFF.evalGridFFs( {1,1,1} );
-        if(world.gridFF.FFelec )  saveBin( "data/FFelec.bin",   world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
-        if(world.gridFF.FFPauli)  saveBin( "data/FFPauli.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPauli );
-        if(world.gridFF.FFLondon) saveBin( "data/FFLondon.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLondon );
+        if(world.gridFF.FFelec) saveBin( "data/FFelec.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
+        if(world.gridFF.FFPaul) saveBin( "data/FFPaul.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPaul );
+        if(world.gridFF.FFLond) saveBin( "data/FFLond.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );
     }else{
-        if(world.gridFF.FFelec )  loadBin( "data/FFelec.bin",   world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
-        if(world.gridFF.FFPauli)  loadBin( "data/FFPauli.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPauli );
-        if(world.gridFF.FFLondon) loadBin( "data/FFLondon.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLondon );
+        if(world.gridFF.FFelec) loadBin( "data/FFelec.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
+        if(world.gridFF.FFPaul) loadBin( "data/FFPaul.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPaul );
+        if(world.gridFF.FFLond) loadBin( "data/FFLond.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );
     }
     int iatom = 11;
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
@@ -130,7 +130,7 @@ double relaxNsteps( int nsteps, double F2conf ){
         //printf( "===== relaxNsteps itr %i \n", itr );
         world.cleanAtomForce();
         world.frags2atoms();
-        if( world.gridFF.FFPauli ) world.eval_FFgrid();
+        if( world.gridFF.FFPaul ) world.eval_FFgrid();
         world.eval_MorseQ_On2_fragAware();
 
         world.cleanPoseTemps();
@@ -143,7 +143,7 @@ double relaxNsteps( int nsteps, double F2conf ){
         world.checkPoseUnitary();
         world.fromDym();
         //DEBUG
-        printf( ">> itr %i F2 %g dt %g qrot (%g,%g,%g,%g) int %li \n", itr, F2, opt.dt, world.poses[4], world.poses[5], world.poses[6], world.poses[7], world.gridFF.FFPauli );
+        printf( ">> itr %i F2 %g dt %g qrot (%g,%g,%g,%g) int %li \n", itr, F2, opt.dt, world.poses[4], world.poses[5], world.poses[6], world.poses[7], world.gridFF.FFPaul );
         //printf( ">> itr %i F2 %g dt %g poses (%g,%g,%g,%g, %g,%g,%g,%g) \n", itr, F2, world.poses[0], world.poses[1], world.poses[2], world.poses[3], world.poses[4], world.poses[5], world.poses[6], world.poses[7] );
     }
     return F2;

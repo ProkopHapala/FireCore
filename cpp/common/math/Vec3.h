@@ -100,8 +100,8 @@ class Vec3T{
 	inline VEC& set_div( const VEC& a, const VEC& b ){ x=a.x/b.x; y=a.y/b.y; z=a.z/b.z; return *this; };
 
 	inline VEC& add_mul( const VEC& a, T f                ){ x+=a.x*f;     y+=a.y*f;     z+=a.z*f;   return *this;};
-	inline VEC& add_mul( const VEC& a, const VEC& b          ){ x+=a.x*b.x;   y+=a.y*b.y;   z+=a.z*b.z; return *this;};
-	inline VEC& sub_mul( const VEC& a, const VEC& b          ){ x-=a.x*b.x;   y-=a.y*b.y;   z-=a.z*b.z; return *this;};
+	inline VEC& add_mul( const VEC& a, const VEC& b       ){ x+=a.x*b.x;   y+=a.y*b.y;   z+=a.z*b.z; return *this;};
+	inline VEC& sub_mul( const VEC& a, const VEC& b       ){ x-=a.x*b.x;   y-=a.y*b.y;   z-=a.z*b.z; return *this;};
 	inline VEC& add_mul( const VEC& a, const VEC& b, T f  ){ x+=a.x*b.x*f; y+=a.y*b.y*f; z+=a.z*b.z*f;   return *this;};
 
 
@@ -128,13 +128,13 @@ class Vec3T{
 	inline void operator+=( const VEC& v ){ x+=v.x; y+=v.y; z=z+v.z; };
     inline void operator*=( const VEC& v ){ x*=v.x; y*=v.y; z=z*v.z; };
 
-    inline VEC operator+ ( T f   ) const { VEC vo; vo.x=x+f; vo.y=y+f; vo.z=z+f; return vo; };
-    inline VEC operator* ( T f   ) const { VEC vo; vo.x=x*f; vo.y=y*f; vo.z=z*f; return vo; };
+    //inline VEC operator+ ( T f   ) const { return VEC{ x+f, y+f, z+f }; };
+    inline VEC operator* ( T f   ) const { return VEC{ x*f, y*f, z*f }; };
 
-    inline VEC operator+ ( const VEC& vi ) const { VEC vo; vo.x=x+vi.x; vo.y=y+vi.y; vo.z=z+vi.z; return vo;  };
-    inline VEC operator- ( const VEC& vi ) const { VEC vo; vo.x=x-vi.x; vo.y=y-vi.y; vo.z=z-vi.z; return vo; };
-    inline VEC operator* ( const VEC& vi ) const { VEC vo; vo.x=x*vi.x; vo.y=y*vi.y; vo.z=z*vi.z; return vo; };
-    inline VEC operator/ ( const VEC& vi ) const { VEC vo; vo.x=x/vi.x; vo.y=y/vi.y; vo.z=z/vi.z; return vo; };
+    inline VEC operator+ ( const VEC& vi ) const { return VEC{ x+vi.x, y+vi.y, z+vi.z }; };
+    inline VEC operator- ( const VEC& vi ) const { return VEC{ x-vi.x, y-vi.y, z-vi.z }; };
+    inline VEC operator* ( const VEC& vi ) const { return VEC{ x*vi.x, y*vi.y, z*vi.z }; };
+    inline VEC operator/ ( const VEC& vi ) const { return VEC{ x/vi.x, y/vi.y, z/vi.z }; };
 
     inline T bidot  ( const VEC& a, const VEC& b ) const { return x*a.x*b.x + y*a.y*b.y + z*a.z*b.z;  };
     inline T antidot( const VEC& a, const VEC& b ) const { return x*a.y*b.z + y*a.z*b.x + z*a.x*b.y;  };

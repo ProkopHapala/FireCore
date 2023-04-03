@@ -161,19 +161,19 @@ void AppMolecularEditor2::initRigidSubstrate(){
     //bool recalcFF = true;
     if( recalcFF ){
         world.gridFF.evalGridFFs( {1,1,1} );
-        if(world.gridFF.FFelec )  saveBin( "data/FFelec.bin",   world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
-        if(world.gridFF.FFPauli)  saveBin( "data/FFPauli.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPauli );
-        if(world.gridFF.FFLondon) saveBin( "data/FFLondon.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLondon );
+        if(world.gridFF.FFelec) saveBin("data/FFelec.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
+        if(world.gridFF.FFPaul) saveBin("data/FFPaul.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPaul );
+        if(world.gridFF.FFLond) saveBin( "data/FFLond.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );
     }else{
-        if(world.gridFF.FFelec )  loadBin( "data/FFelec.bin",   world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
-        if(world.gridFF.FFPauli)  loadBin( "data/FFPauli.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPauli );
-        if(world.gridFF.FFLondon) loadBin( "data/FFLondon.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLondon );
+        if(world.gridFF.FFelec) loadBin( "data/FFelec.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
+        if(world.gridFF.FFPaul) loadBin( "data/FFPaul.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPaul );
+        if(world.gridFF.FFLond) loadBin( "data/FFLond.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );
     }
 
     //world.gridFF.evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs );
 
     int iatom = 11;
-    printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
+    printf( "testREQ  (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
     printf( "REQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.REQ[iatom].x, world.REQ[iatom].y, world.REQ[iatom].z, world.PLQ[iatom].x, world.PLQ[iatom].y, world.PLQ[iatom].z );
 
    // exit(0);

@@ -276,7 +276,7 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
         //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
         //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
         renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.1, true );
-        //renderSubstrate_( world.gridFF.grid, world.gridFF.FFPauli, world.gridFF.FFelec, 0.01, true );
+        //renderSubstrate_( world.gridFF.grid, world.gridFF.FFPaul, world.gridFF.FFelec, 0.01, true );
         Draw3D::drawAxis(1.0);
     glEndList();
 
@@ -385,7 +385,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     int nSystems = 100;
     //int nSystems = 2;
 
-    //clworld.prepareBuffers( nSystems, nMols, world.gridFF.grid.n, world.gridFF.FFPauli_f, world.gridFF.FFLondon_f, world.gridFF.FFelec_f );
+    //clworld.prepareBuffers( nSystems, nMols, world.gridFF.grid.n, world.gridFF.FFPaul_f, world.gridFF.FFLond_f, world.gridFF.FFelec_f );
     clworld.alpha = world.gridFF.alpha;
     clworld.prepareBuffers( nSystems, nMols, world.gridFF );
 

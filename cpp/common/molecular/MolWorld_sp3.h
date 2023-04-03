@@ -180,14 +180,14 @@ void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d test
     // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
     // e.g. for Carbon   0.06106717612 ev^0.5 = sqrt( 0.0037292 eV )
     if(bE){
-        if(gridFF.FFPauli)  gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLondon, 4,3  );
-        if(gridFF.FFLondon) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec,   4,3  );
-        if(gridFF.FFelec )  gridFF.grid.saveXSF( "FFPaul_E.xsf", (float*)gridFF.FFPauli,  4,3  );
+        if(gridFF.FFPaul)  gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLond, 4,3  );
+        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec,   4,3  );
+        if(gridFF.FFelec )  gridFF.grid.saveXSF( "FFPaul_E.xsf", (float*)gridFF.FFPaul,  4,3  );
     }
     if(bFz){
-        if(gridFF.FFPauli)  gridFF.grid.saveXSF( "FFLond_z.xsf", (float*)gridFF.FFLondon, 4,2  );
-        if(gridFF.FFLondon) gridFF.grid.saveXSF( "FFelec_z.xsf", (float*)gridFF.FFelec,   4,2  );
-        if(gridFF.FFelec )  gridFF.grid.saveXSF( "FFPaul_z.xsf", (float*)gridFF.FFPauli,  4,2  );
+        if(gridFF.FFPaul)  gridFF.grid.saveXSF( "FFLond_z.xsf", (float*)gridFF.FFLond, 4,2  );
+        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_z.xsf", (float*)gridFF.FFelec,   4,2  );
+        if(gridFF.FFelec )  gridFF.grid.saveXSF( "FFPaul_z.xsf", (float*)gridFF.FFPaul,  4,2  );
     }
     // ---- Save combined forcefield
     if(bComb){
@@ -216,13 +216,13 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         //gridFF.grid.pos0.z=-5;  // DEBUG
         if(verbosity>1)gridFF.grid.printCell();
         gridFF.allocateFFs();
-        //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
+        //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
         if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
         //gridFF.nPBC = (Vec3i){0,0,0};
         //gridFF.nPBC = (Vec3i){1,1,0};
         //gridFF.nPBC = (Vec3i){10,10,0};
         bSaveDebugXSFs=true;
-        gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, gridFF.nPBC, true );
+        gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, gridFF.nPBC, true );
         if(bSaveDebugXSFs)saveGridXsfDebug();
         bGridFF   =true; 
         //bSurfAtoms=false;
@@ -844,9 +844,9 @@ void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
     //double y0= ( gridFF.grid.cell.a.y + gridFF.grid.cell.b.y )*-0.5;
     //gridFF.grid.pos0 = Vec3d{ x0,y0,-8.0};
     //gridFF.shift   = Vec3d{0.0,0.0,-8.0};
-    //gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin", true, {0,0,0} );
-    //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,1} );
-    gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
+    //gridFF.tryLoad( "data/FFelec.bin", "data/FFPaul.bin", "data/FFLond.bin", true, {0,0,0} );
+    //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,1} );
+    gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, nPBC, bSaveDebugXSFs );
 }
 
 //inline int pickParticle( const Vec3d& ray0, const Vec3d& hRay, double R, int n, Vec3d * ps, bool* ignore=0 ){

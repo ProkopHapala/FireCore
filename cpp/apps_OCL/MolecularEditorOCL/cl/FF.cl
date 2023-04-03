@@ -174,8 +174,8 @@ __kernel void evalPLE(
     const float4 dC,
     const float alpha,
     __global float8*   atoms,
-    __global float4*   FFPauli,
-    __global float4*   FFLondon,
+    __global float4*   FFPaul,
+    __global float4*   FFLond,
     __global float4*   FFelec 
 ){
     __local float8 lATOMs[32];
@@ -199,8 +199,8 @@ __kernel void evalPLE(
     float4 fl  = (float4) (0.0f, 0.0f, 0.0f, 0.0f);
     float4 fe  = (float4) (0.0f, 0.0f, 0.0f, 0.0f);
 
-    //FFPauli [iG] = (float4)(iG,iG,iG,iG);
-    //FFLondon[iG] = (float4)(iG,iG,iG,iG);
+    //FFPaul [iG] = (float4)(iG,iG,iG,iG);
+    //FFLond[iG] = (float4)(iG,iG,iG,iG);
     //FFelec  [iG] = (float4)(iG,iG,iG,iG);
     //if( (iG%100) == 0 ) printf("ig %i \n", iG);
 
@@ -285,8 +285,8 @@ __kernel void evalPLE(
 
     //if( (iG%100) == 0 ) printf("fp[%i] (%f,%f,%f,%f) \n", fp.x, fp.y, fp.z, fp.w);
 
-    FFPauli [iG] = fp;
-    FFLondon[iG] = fl;
+    FFPaul [iG] = fp;
+    FFLond[iG] = fl;
     FFelec  [iG] = fe;
 
 }

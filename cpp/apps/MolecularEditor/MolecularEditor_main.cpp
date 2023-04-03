@@ -228,9 +228,9 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     world.grid.pos0 = Vec3d{-5.0,-5.0,-5.0};
     world.grid.setCell( Mat3d{ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f } );
 
-    Vec3d * FF     = new Vec3d[world.grid.getNtot()];
-    world.FFPauli  = new Vec3d[world.grid.getNtot()];
-    world.FFLondon = new Vec3d[world.grid.getNtot()];
+    Vec3d * FF   = new Vec3d[world.grid.getNtot()];
+    world.FFPaul = new Vec3d[world.grid.getNtot()];
+    world.FFLond = new Vec3d[world.grid.getNtot()];
     */
     //world.substrate.init( Vec3i{100,100,100}, Mat3d{ 10.0,0.0f,0.0f,  0.0,10.0f,0.0f,  0.0,0.0f,10.0f }, Vec3d{-5.0,-5.0,-5.0} );
 
@@ -276,19 +276,19 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //bool recalcFF = true;
     if( recalcFF ){
         world.gridFF.evalGridFFs( {1,1,1} );
-        if(world.gridFF.FFelec )  saveBin( "data/FFelec-.bin",   world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
-        if(world.gridFF.FFPauli)  saveBin( "data/FFPauli-.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPauli );
-        if(world.gridFF.FFLondon) saveBin( "data/FFLondon-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLondon );
+        if(world.gridFF.FFelec) saveBin( "data/FFelec-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
+        if(world.gridFF.FFPaul) saveBin( "data/FFPaul-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPaul );
+        if(world.gridFF.FFLond) saveBin( "data/FFLond-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );
     }else{
-        if(world.gridFF.FFelec )  loadBin( "data/FFelec-.bin",   world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
-        if(world.gridFF.FFPauli)  loadBin( "data/FFPauli-.bin",  world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPauli );
-        if(world.gridFF.FFLondon) loadBin( "data/FFLondon-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLondon );
+        if(world.gridFF.FFelec) loadBin( "data/FFelec-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
+        if(world.gridFF.FFPaul) loadBin( "data/FFPaul-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPaul );
+        if(world.gridFF.FFLond) loadBin( "data/FFLond-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );
     }
 
     DEBUG
     int iatom = 11;
-    printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
-    printf( "REQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.REQ[iatom].x, world.REQ[iatom].y, world.REQ[iatom].z, world.PLQ[iatom].x, world.PLQ[iatom].y, world.PLQ[iatom].z );
+    printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n", testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
+    printf( "REQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n",  iatom, world.REQ[iatom].x, world.REQ[iatom].y, world.REQ[iatom].z, world.PLQ[iatom].x, world.PLQ[iatom].y, world.PLQ[iatom].z );
 
    // exit(0);
 

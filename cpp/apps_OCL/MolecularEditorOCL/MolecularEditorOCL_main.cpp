@@ -282,22 +282,22 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
 
     gridFFocl.evalGridFFs(world.gridFF, {1,1,1} ); DEBUG
 
-    /*
-    world.gridFF.grid.saveXSF( "FFPauli_x.xsf",  world.gridFF.FFPauli, 0 );
-    world.gridFF.grid.saveXSF( "FFPauli_y.xsf",  world.gridFF.FFPauli, 1 );
-    world.gridFF.grid.saveXSF( "FFPauli_z.xsf",  world.gridFF.FFPauli, 2 );
-    //world.gridFF.grid.saveXSF( "FFPauli_e.xsf",  world.gridFF.FFPauli, 3 );
+    
+    //world.gridFF.grid.saveXSF( "FFPaul_x.xsf", world.gridFF.FFPaul, 0 );
+    //world.gridFF.grid.saveXSF( "FFPaul_y.xsf", world.gridFF.FFPaul, 1 );
+    //world.gridFF.grid.saveXSF( "FFPaul_z.xsf", world.gridFF.FFPaul, 2 );
+    //world.gridFF.grid.saveXSF( "FFPaul_e.xsf", world.gridFF.FFPaul, 3 );
 
-    world.gridFF.grid.saveXSF( "FFLondon_x.xsf", world.gridFF.FFLondon, 0 );
-    world.gridFF.grid.saveXSF( "FFLondon_y.xsf", world.gridFF.FFLondon, 1 );
-    world.gridFF.grid.saveXSF( "FFLondon_z.xsf", world.gridFF.FFLondon, 2 );
-    //world.gridFF.grid.saveXSF( "FFLondon_e.xsf", world.gridFF.FFLondon, 3 );
+    //world.gridFF.grid.saveXSF( "FFLond_x.xsf", world.gridFF.FFLond, 0 );
+    //world.gridFF.grid.saveXSF( "FFLond_y.xsf", world.gridFF.FFLond, 1 );
+    //world.gridFF.grid.saveXSF( "FFLond_z.xsf", world.gridFF.FFLond, 2 );
+    //world.gridFF.grid.saveXSF( "FFLond_e.xsf", world.gridFF.FFLond, 3 );
 
-    world.gridFF.grid.saveXSF( "FFelec_x.xsf",   world.gridFF.FFelec, 0 );
-    world.gridFF.grid.saveXSF( "FFelec_y.xsf",   world.gridFF.FFelec, 1 );
-    world.gridFF.grid.saveXSF( "FFelec_z.xsf",   world.gridFF.FFelec, 2 );
-    //world.gridFF.grid.saveXSF( "FFelec_e.xsf",   world.gridFF.FFelec, 3 );
-    */
+    //world.gridFF.grid.saveXSF( "FFelec_x.xsf", world.gridFF.FFelec, 0 );
+    //world.gridFF.grid.saveXSF( "FFelec_y.xsf", world.gridFF.FFelec, 1 );
+    //world.gridFF.grid.saveXSF( "FFelec_z.xsf", world.gridFF.FFelec, 2 );
+    //world.gridFF.grid.saveXSF( "FFelec_e.xsf", world.gridFF.FFelec, 3 );
+    
 
     int iatom = 11;
     //testREQ = Vec3d{ 2.181, 0.0243442, 0.0}; // Xe
@@ -320,7 +320,7 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
         //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
         //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
         renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.1, true );
-        //renderSubstrate_( world.gridFF.grid, world.gridFF.FFPauli, world.gridFF.FFelec, 0.01, true );
+        //renderSubstrate_( world.gridFF.grid, world.gridFF.FFPaul, world.gridFF.FFelec, 0.01, true );
         Draw3D::drawAxis(1.0);
     glEndList();
 
@@ -426,7 +426,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     int nSystems = 1000;
     //int nSystems = 2;
 
-    //clworld.prepareBuffers( nSystems, nMols, world.gridFF.grid.n, world.gridFF.FFPauli_f, world.gridFF.FFLondon_f, world.gridFF.FFelec_f );
+    //clworld.prepareBuffers( nSystems, nMols, world.gridFF.grid.n, world.gridFF.FFPaul_f, world.gridFF.FFLond_f, world.gridFF.FFelec_f );
     clworld.alpha = world.gridFF.alpha;
     clworld.prepareBuffers( nSystems, nMols, world.gridFF );
 
