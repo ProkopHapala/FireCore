@@ -27,13 +27,15 @@ class Atoms{ public:
         memcpy( apos,   p.apos,   sizeof(Vec3d)*natoms );
     }
 
-    Atoms(){};
+    Atoms() = default;
     Atoms(int n){  realloc( n ); };
     Atoms(const Atoms& As, bool bCopy=true){ if(bCopy){ copyOf(As); }else{  bind(As.natoms,As.atypes,As.apos); } };
 
 
     void fromRigid( Vec3d* ps0, const Vec3d& p0, const Mat3d& rot ){ for(int i=0; i<natoms; i++){ rot.dot_to_T( ps0[i], apos[i] ); apos[i].add(p0);         } }
     void shift    ( Vec3d d                                       ){ for(int i=0; i<natoms; i++){ apos[i].add(d); } }
+
+    void print()const{ printf("Atoms::print() natom=%i\n", natoms); for(int i=0; i<natoms; i++){ printf( "[%i] atype %i apos(%6.3f,%6.3f,%6.3f)\n", i, atypes[i], apos[i].x, apos[i].y, apos[i].z ); } }
 
     void atomsToXYZ(FILE* fout){
         for(int i=0; i<natoms; i++){
