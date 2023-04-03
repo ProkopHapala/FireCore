@@ -205,9 +205,9 @@ inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const doub
     const double  u2  = REQH.x*REQH.x*ir2;
     const double  u6  = u2*u2*u2;
     const double vdW  = u6*REQH.y;
-    const double   H  = u6*REQH.w;  // H-bond correction
-    E   +=       (u6-2.)*vdW            ;
-    F   +=  (12.*(u6-1.)*vdW + H*6.)*ir2;
+    const double   H  = u6*u6* ((REQH.w<0) ? REQH.w : 0.0);  // H-bond correction
+    E   +=  (u6-2.)*vdW + H             ;
+    F   += ((u6-1.)*vdW + H )*ir2*12 ;
     f.set_mul( dp, -F );
     return E;
 }

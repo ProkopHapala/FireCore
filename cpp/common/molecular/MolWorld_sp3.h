@@ -517,8 +517,8 @@ virtual void init( bool bGrid ){
         builder.sortConfAtomsFirst();
         builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
-        bool bEpair = true;
-        //bool bEpair = false;
+        //bool bEpair = true;
+        bool bEpair = false;
         builder.toMMFFsp3    ( ff , true, bEpair );
         builder.toMMFFsp3_loc( ffl, true, bEpair );  // without electron pairs
         builder.toMMFFf4     ( ff4, true, bEpair );  //ff4.printAtomParams(); ff4.printBKneighs(); 
