@@ -16,7 +16,7 @@ LD_PRELOAD=$(g++ -print-file-name=libasan.so)
 echo   $LD_PRELOAD
 export LD_PRELOAD
 
-> FitREQ_debug.xyz
+#> FitREQ_debug.xyz
 python3 run.py
 
 
