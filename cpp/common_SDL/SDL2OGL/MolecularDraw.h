@@ -67,7 +67,7 @@ void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
 }
 
 
-void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Quat4d PRQ ){
+void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Quat4f PRQ ){
     Vec3d vel = Vec3dZero;
     glBegin(GL_LINE_STRIP);
     for(int i=0; i<n; i++){
@@ -84,7 +84,7 @@ void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Quat
     //exit(0);
 }
 
-void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4d PRQ, double fsc ){
+void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4f PRQ, double fsc ){
     Vec3d pos = pos0;
 	for( int i=0; i<n; i++ ){
         //Vec3d f = Vec3dZero;
@@ -170,7 +170,7 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
             //printf( "iba (%i,%i) pos (%g,%g,%g)\n", ib,ia, pos[ip1].x,pos[ip1].y,pos[ip1].z );
             //glColor3f(pos[ip1].z*5-2,1.0f,1.0f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f(pos[ip2].z*5-2,1.0f,1.0f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-            Vec3d gpos; Quat4f fel1,fel2;
+            Vec3f gpos; Quat4f fel1,fel2;
             grid.cartesian2grid( pos[ip1], gpos); fel1 = interpolate3DvecWrap( FFel, grid.n, gpos );
             grid.cartesian2grid( pos[ip2], gpos); fel2 = interpolate3DvecWrap( FFel, grid.n, gpos );
             //glColor3f(0.7f,0.7f,0.7f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);

@@ -88,7 +88,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewPis         = true;
     bool   bViewSubstrate   = true;
     bool   isoSurfRenderType = 1;
-    Quat4d testREQ,testPLQ;
+    Quat4d testREQ;
+    Quat4f testPLQ;
 
 
     // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
@@ -140,9 +141,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
 	void drawSystem    ( Vec3i ixyz=Vec3iZero );
-    void drawSystem_bak( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
-    Vec3d showNonCovalentInteraction( char* s, Vec2i b, bool bDraw=true );
+    void  showAtomGrid( char* s, int ia, bool bDraw=true );
+    Vec3d showNonBond ( char* s, Vec2i b, bool bDraw=true );
     void  showBonds();
     //void flipPis( Vec3d ax );
     //void drawSystemQMMM();
@@ -346,6 +347,14 @@ void MolGUI::draw(){
 
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
+
+    if(W->ipicked>-1){ 
+        Vec3d p = W->ffl.apos[W->ipicked];
+        Vec3d f = getForceSpringRay( W->ffl.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
+        glColor3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
+    }
+
+
     for(int i=0; i<W->selection.size(); i++){ 
         int ia = W->selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.apos[ia] );     
@@ -376,9 +385,36 @@ void MolGUI::showBonds(  ){
     glEnd();
 }
 
-Vec3d MolGUI::showNonCovalentInteraction( char* s, Vec2i b, bool bDraw ){
+void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){
+    if( (ia>=W->ffl.natoms) ){ printf( "ERROR showAtomGrid(%i) out of atom range [0 .. %i] \n", ia, W->ffl.natoms ); }
+    const GridShape& grid = W->gridFF.grid;
+
+    Vec3d  pi  = W->ffl.apos[ia];
+    Quat4f PLQ = W->ffl.PLQs[ia];
+
+    Vec3d p = pi + W->gridFF.shift;
+    if     ( p.z > grid.cell.c.z ){ p.z = grid.dCell.c.z*-0.1 + grid.cell.c.z; }
+    else if( p.z < 0             ){ p.z = grid.dCell.c.z* 0.1;                 }
+    Vec3f gpos; grid.cartesian2grid(p, gpos);
+    Quat4f fp=interpolate3DvecWrap( W->gridFF.FFPauli,  grid.n, gpos );
+    Quat4f fl=interpolate3DvecWrap( W->gridFF.FFLondon, grid.n, gpos );
+    Quat4f fq=interpolate3DvecWrap( W->gridFF.FFelec,   grid.n, gpos );
+    Quat4f fe= fp*PLQ.x + fl*PLQ.y + fq*PLQ.z;
+
+
+    Quat4f fe_ref = Quat4fZero;  W->gridFF.addForce_surf( p, PLQ, fe_ref );
+
+    s += sprintf(s, "GridFF(ia=%i) Etot %15.10f Epaul %15.10f; EvdW %15.10f EH %15.10f Eel %15.10f p(%7.3f,%7.3f,%7.3f) \n", ia,   fe.e, fp.e, fl.e, fq.e,  p.x,p.y,p.z  );
+    if( fabs(fe.e-fe_ref.e)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", fe_ref.e ); }
+    if( fe.e>0 ){ glColor3f(0.7f,0.f,0.f); }else{ glColor3f(0.f,0.f,1.f); }
+    Draw::drawText( str, fontTex, fontSizeDef, {150,20} );
+    glTranslatef( 0.0,fontSizeDef*2,0.0 );
+    
+}
+
+Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
     int na = W->ffl.natoms ;
-    if( (b.i>na)||(b.j>na) ){ printf( "ERROR showNonCovalentInteraction(%i,%i) out of atom range [0 .. %i] \n", b.i,b.j, W->ffl.natoms ); }
+    if( (b.i>=na)||(b.j>=na) ){ printf( "ERROR showNonBond(%i,%i) out of atom range [0 .. %i] \n", b.i,b.j, W->ffl.natoms ); }
     Quat4d* REQs = W->ffl.REQs;
     Vec3d * ps   = W->ffl.apos;
     Mat3d& lvec  = W->ffl.lvec;
@@ -447,12 +483,12 @@ void MolGUI::drawHUD(){
         double f=sqrt(W->opt.ff);
         s += sprintf(s,"dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
-
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         Draw::drawText( W->info_str(str), fontTex, fontSizeDef, {100,20} );
 
     }
 
+    /*
     glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
     if( !bondsToShow_shifts ){
         bondsToShow.push_back( {18,36} );
@@ -465,10 +501,11 @@ void MolGUI::drawHUD(){
         REQs[35].w = +0.7 * REQs[35].y;
         REQs[7 ].w = -0.7 * REQs[7 ].y;
     }
+    DEBUG
     for(int i=0; i<bondsToShow.size(); i++ ){
-        bondsToShow_shifts[i] =  MolGUI::showNonCovalentInteraction( str, bondsToShow[i] );
+        bondsToShow_shifts[i] =  MolGUI::showNonBond( str, bondsToShow[i] );
     }
-
+    */
 
 }
 
@@ -596,6 +633,7 @@ void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Ve
 void MolGUI::drawSystem( Vec3i ixyz ){
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
+    //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
     //printf( "DEBUG MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
     //printf("DEBUG MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
     if( bond2atom ){
@@ -608,55 +646,26 @@ void MolGUI::drawSystem( Vec3i ixyz ){
                              glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex );                                
         }
         */
-    
-        if(bViewPis &&  fpipos ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );  }
-        //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
-        //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
-        //if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D                     ); }                    
-        //if(bViewMolCharges && ( REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs, apos, 3, 2, fontTex3D, 0.01 ); }   
-        //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float sz=0.02 ){
-        if(bOrig &&  bViewBondLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,        0.007              );       }
+        if(bOrig){
+            if(bViewPis &&  fpipos ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );          }
+            //if(mm_bAtoms         ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D               ); }                    
+            if( bViewBondLabels    ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,  0.007   ); }
+            //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float sz=0.02 );
+            //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );
+            //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
+        }
 
     }
     if( neighs ){  glColor3f(0.0f,0.0f,0.0f);   Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts );   }
     //W->nbmol.print();
-    if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
-    //if(bViewAtomP0s     &&  fapos          ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
-    if(bViewAtomForces    &&  fapos          ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
-    if(bOrig&&mm_bAtoms&&bViewAtomLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D,        0.007              );       }
-    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2, fontTex3D, 0.01 ); }
-    //if(W->ff.pi0s                            ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
-
-}
-
-void MolGUI::drawSystem_bak( Vec3i ixyz ){
-    glEnable(GL_DEPTH_TEST);
-    bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
-    //printf( "DEBUG MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
-    //printf("DEBUG MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
-    if(W->bMMFF){
-        //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos );  // DEBUG
-        if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC          ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos,  W->ff.pbcShifts                          );  
-                             glColor3f(0.0f,0.0f,1.0f); Draw3D::pbcBondNeighLabels( W->ff.nbonds, W->ff.bond2atom, W->ff.apos,  W->ff.pbcShifts, fontTex3D,        0.007 );
-        }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos                                            );                                          
-                             glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, fontTex );                                
-        }
-        //Draw3D::atoms          ( W->ff.natoms, W->ff.apos, W->ff.atype, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );   
-        //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 100.0, 10000.0 );   
-        //if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->ff.natoms, W->ff.apos, fontTex3D                     ); }                    
-        //if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->ff.natoms,  (double*)W->nbmol.REQs, W->ff.apos, 3, 2, fontTex3D, 0.01 ); }   
-        //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float sz=0.02 ){
-        if(bOrig &&  bViewBondLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, fontTex3D,        0.007              );       }
-
+    if(bViewAtomSpheres&&mm_bAtoms                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
+    if(bOrig){
+        //if(bViewAtomP0s     &&  fapos           ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
+        if(bViewAtomForces    &&  fapos           ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
+        if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D,        0.007              );       }
+        if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2, fontTex3D, 0.01 ); }
+        //if(W->ff.pi0s                           ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
     }
-    //W->nbmol.print();
-    if(bViewAtomSpheres&&mm_bAtoms           ){                            Draw3D::atoms            ( W->nbmol.natoms, W->nbmol.apos, W->nbmol.atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
-    //if(bViewAtomP0s                        ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( W->nbmol.natoms, W->nbmol.apos, W->nbmol.fapos, ForceViewScale, 10000.0 );  }
-    if(bViewAtomForces                       ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( W->nbmol.natoms, W->nbmol.apos, W->nbmol.fapos, ForceViewScale, 10000.0 );  }
-    if(bOrig&&mm_bAtoms&&bViewAtomLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( W->nbmol.natoms, W->nbmol.apos, fontTex3D,        0.007              );       }
-    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( W->nbmol.natoms,  (double*)W->nbmol.REQs,  W->nbmol.apos, 3, 2, fontTex3D, 0.01 ); }
-    if(W->ff.pi0s                            ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
 
 }
 

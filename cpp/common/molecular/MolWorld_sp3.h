@@ -136,6 +136,8 @@ class MolWorld_sp3{ public:
 	FILE* xyz_file=0;
 	char* tmpstr;
 
+    double Kpick = -2.0;
+
 
 
 // =================== Functions
@@ -215,12 +217,12 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         if(verbosity>1)gridFF.grid.printCell();
         gridFF.allocateFFs();
         //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
-        if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 20.0 ); }
-        //nPBC = (Vec3i){0,0,0};
-        //nPBC = (Vec3i){1,1,0};
-        //nPBC = (Vec3i){10,10,0};
+        if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
+        //gridFF.nPBC = (Vec3i){0,0,0};
+        //gridFF.nPBC = (Vec3i){1,1,0};
+        //gridFF.nPBC = (Vec3i){10,10,0};
         bSaveDebugXSFs=true;
-        gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, true );
+        gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, gridFF.nPBC, true );
         if(bSaveDebugXSFs)saveGridXsfDebug();
         bGridFF   =true; 
         //bSurfAtoms=false;
@@ -233,6 +235,8 @@ void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharg
     //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
     //builder.export_atypes( nbmol.atypes );     
 	builder.export_REQs( nbmol.REQs  );    
+    nbmol  .makePLQs     ( gridFF.alpha );  
+    ffl.PLQs=nbmol.PLQs; 
     if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
     params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
     if(verbosity>1)nbmol.print();                              
@@ -243,7 +247,8 @@ void loadNBmol( const char* name){
 	sprintf(tmpstr, "%s.xyz", name );
     params.loadXYZ( tmpstr, nbmol.natoms, &nbmol.apos, &nbmol.REQs, &nbmol.atypes );
     _realloc(nbmol.fapos,nbmol.natoms);
-    nbmol  .makePLQs     ( gridFF.alpha );    
+    nbmol  .makePLQs     ( gridFF.alpha );  
+    ffl.PLQs=nbmol.PLQs; 
     if(verbosity>1)nbmol.print();                              
 }
 
@@ -522,8 +527,8 @@ virtual void init( bool bGrid ){
         builder.toMMFFsp3    ( ff , true, bEpair );
         builder.toMMFFsp3_loc( ffl, true, bEpair );  // without electron pairs
         builder.toMMFFf4     ( ff4, true, bEpair );  //ff4.printAtomParams(); ff4.printBKneighs(); 
-        ffl.flipPis( Vec3dZ );
-        ff4.flipPis( Vec3fZ );
+        ffl.flipPis( Vec3dOne );
+        ff4.flipPis( Vec3fOne );
         DEBUG 
         //ff.printAtomParams();
         ff.setLvec(builder.lvec);     printf("builder.lvec\n");builder.lvec.print();
@@ -784,27 +789,28 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         // ------ eval MMFF
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<ffl.natoms; ia++){ 
+            ffl.fapos[ia] = Vec3dZero;  if(ia<ffl.nnode) ffl.fapos[ia+ffl.nnode] = Vec3dZero; 
             //if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
             if(ia<ffl.nnode) E+=ffl.eval_atom(ia);
             //E+=ffl.evalLJQs_ng4_PBC_atom( ia ); 
             E+=ffl.evalLJQs_ng4_PBC_atom_( ia ); 
             if(ipicked==ia){ 
-                const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0, -2.0 ); 
+                const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                 ffl.fapos[ia].add( f );
             }
+            //printf( "DEBUG ffl.apos %li ffl.PLQs %li \n", ffl.apos, ffl.PLQs );
+            if   (bGridFF){ Quat4f fe=Quat4fZero; Quat4f PLQ = ffl.PLQs[ia];   PLQ.z=0.0; gridFF.addForce_surf( ffl.apos[ia], PLQ, fe ); ffl.fapos[ia].add( (Vec3d)fe.f ); E+=fe.e;  }
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
         #pragma omp for
         for(int ia=0; ia<ffl.natoms; ia++){
             ffl.assemble_atom( ia );
         }
-        
         // #pragma omp for reduction(+:F2)
         // for(int i=0; i<ffl.nvecs; i++){
         //     F2 += ffl.move_atom_MD     ( i, dt, Flim, 0.99 );
         //     //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
         // }
-        
         { //  ==== FIRE
             #pragma omp for reduction(+:vf,vv,ff)
             for(int i=0; i<opt.n; i++){

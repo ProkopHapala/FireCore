@@ -355,17 +355,28 @@ inline void addAtomicForceExp( const Vec3d& dp, Vec3d& f, double r0, double eps,
     //f.add_mul( dp, 1/(dp.norm2()+R2SAFE) ); // WARRNING DEBUG !!!!
 }
 
-inline Quat4d REQ2PLQ( const Quat4d& REQ, double K ){
-    double e   = exp(K*REQ.x);
-    double cL  = e*REQ.y;
-    double cP  = e*cL;
-    double cH  = e*e*REQ.w;
+inline Quat4f REQ2PLQ( const Quat4d& REQ, double K ){
+    float e  = (float) exp(K*REQ.x);
+    float cL = (float) e*REQ.y;
+    float cP = (float) e*cL;
+    float cH = (float) e*e*REQ.w;
+    return Quat4f{ cP, cL, REQ.z, cH };
+}
+
+inline Quat4d REQ2PLQ_d( const Quat4d& REQ, double K ){
+    double e  = exp(K*REQ.x);
+    double cL = e*REQ.y;
+    double cP = e*cL;
+    double cH = e*e*REQ.w;
     return Quat4d{ cP, cL, REQ.z, cH };
 }
 
-inline Quat4d REnergyQ2PLQ( const Quat4d& REQ, double alpha ){
+inline Quat4f REnergyQ2PLQ( const Quat4d& REQ, double alpha ){
     return REQ2PLQ( Quat4d{REQ.x, sqrt(REQ.y), REQ.z, REQ.w}, alpha );
 }
+// inline Quat4d REnergyQ2PLQ( const Quat4d& REQ, double alpha ){
+//     return REQ2PLQ( Quat4d{REQ.x, sqrt(REQ.y), REQ.z, REQ.w}, alpha );
+// }
 
 // ================= Force Bounding Box, Plane etc.
 

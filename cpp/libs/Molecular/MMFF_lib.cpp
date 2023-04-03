@@ -290,7 +290,7 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
         }
     }
     Quat4d REQ=W.nbmol.REQs[0];
-    Quat4d PLQ = REQ2PLQ( REQ, K );
+    Quat4f PLQ = REQ2PLQ( REQ, K );
     printf( "REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
     printf( "PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
     //exit(0);
@@ -334,7 +334,7 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
         }
     }
     printf( "DEBUG start sampling kind=%i \n", kind );
-    Quat4d PLQ = REQ2PLQ( W.nbmol.REQs[0], K );
+    Quat4f PLQ = REQ2PLQ( W.nbmol.REQs[0], K );
     //printf( "PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
     double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){

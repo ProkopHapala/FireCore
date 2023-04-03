@@ -60,7 +60,8 @@ int isoOgl;
 
 Vec3d PPpos0 = Vec3d{1.3,1.7, 1.5};
 
-Quat4d testREQ,testPLQ;
+Quat4d testREQ;
+Quat4f testPLQ;
 
 // ==========================
 // AppMolecularEditor2

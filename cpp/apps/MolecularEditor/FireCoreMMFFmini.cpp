@@ -115,7 +115,8 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     double drndv =  10.0;
     double drndp =  0.5;
 
-    Quat4d testREQ,testPLQ;
+    Quat4d testREQ;
+    Quat4f testPLQ;
 
 
 
