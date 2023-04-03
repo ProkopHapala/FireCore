@@ -675,7 +675,7 @@ class GridFF_OCL{ public:
         };
     }
 
-    void uploadAtoms(int n, Vec3d* apos, Vec3d* REQs ){
+    void uploadAtoms(int n, Vec3d* apos, Quat4d* REQs ){
         if( nAtoms!=n ){ printf("ERROR: GridFF_OCL::uploadAtoms() Wrong Number  of Atoms: n(%i) != nAtoms(%i) \n, ", n, nAtoms ); exit(0); }
         float * buff = new float[n*8];
         Vec3dTofloat8( n, apos, REQs, buff );

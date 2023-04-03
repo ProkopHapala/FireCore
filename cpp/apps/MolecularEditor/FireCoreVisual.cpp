@@ -127,7 +127,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     double mm_Rsub = 1.0;
     bool   mm_bAtoms = false;
     bool   isoSurfRenderType = 1;
-    Vec3d testREQ,testPLQ;
+    Quat4d testREQ,testPLQ;
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
@@ -535,7 +535,7 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     gridFF.shift = Vec3d{0.0,0.0,-8.0};
     if(bRenderGridFF){
         int iatom = 11;
-        testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
+        testREQ = Quat4d{ 1.487, 0.0006808, 0., 0.}; // H
         testPLQ = REQ2PLQ( testREQ, -1.6 );
         Quat4f * FFtot = new Quat4f[ gridFF.grid.getNtot() ];
         gridFF.evalCombindGridFF            ( testREQ, FFtot );

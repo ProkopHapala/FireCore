@@ -88,7 +88,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewPis         = true;
     bool   bViewSubstrate   = true;
     bool   isoSurfRenderType = 1;
-    Vec3d testREQ,testPLQ;
+    Quat4d testREQ,testPLQ;
 
 
     // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
@@ -100,7 +100,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Vec3d* fapos    =0;
     Vec3d* pipos    =0;
     Vec3d* fpipos   =0;
-    Vec3d* REQs     =0;
+    Quat4d* REQs     =0;
 
     Quat4i* neighs    = 0;
     Quat4i* neighCell = 0;
@@ -132,9 +132,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     void renderGridFF( double isoVal=0.01, int isoSurfRenderType=0, double colorSclae = 30.0 );
-    void renderESP( Vec3d REQ=Vec3d{1.487,0.0006808,1.0} );
+    void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.0006808, 1., 0.} );
 
-    void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
+    void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
 	void drawSystem    ( Vec3i ixyz=Vec3iZero );
     void drawSystem_bak( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
@@ -256,7 +256,7 @@ void MolGUI::initGUI(){
 void MolGUI::init(){
     if(verbosity>0)printf("MolGUI::init() \n");
     W->init( true );
-    //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Vec3d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
+    //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Quat4d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
     //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
     MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
     neighs    = W->ffl.neighs;
@@ -432,7 +432,7 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorSclae ){
     if(verbosity>0) printf( "MolGUI::renderGridFF()\n" );
     //int iatom = 11;
-    testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
+    testREQ = Quat4d{ 1.487, 0.0006808, 0., 0.}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );
     Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
@@ -454,7 +454,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
 }
 
-void MolGUI::renderESP( Vec3d REQ){
+void MolGUI::renderESP( Quat4d REQ){
     printf( "DEBUG MolGUI::renderESP() %li \n", ogl_esp ); //exit(0);
     ogl_esp = glGenLists(1);
     glNewList(ogl_esp, GL_COMPILE);
@@ -493,7 +493,7 @@ void MolGUI::flipPis( Vec3d ax ){
 }
 */
 
-void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Vec3d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_ ){
+void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_ ){
     natoms=natoms_; nnode=nnode_; nbonds=nbonds_;
     if(atypes_)atypes=atypes_;
     if(apos_  )apos  =apos_;

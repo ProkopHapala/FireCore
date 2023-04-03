@@ -123,14 +123,16 @@ inline double evalCos2_o(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj,
 }
 
 
-
 // ================ Non-Covalent Forces (Lenard-Jones, Morse, etc.)
 
-inline void combineREQ(const Vec3d& a, const Vec3d& b, Vec3d& out){
-    out.a=a.a+b.a; // radius
-    out.b=a.b*b.b; // epsilon
-    out.c=a.c*b.c; // q*q
+inline void combineREQ(const Quat4d& a, const Quat4d& b, Quat4d& out){
+    out.x=a.x+b.x; // radius
+    out.y=a.y*b.y; // epsilon
+    out.z=a.z*b.z; // q*q
+    out.w=a.w*b.w;
 }
+
+#define _mixREQ(A,B)    Quat4d{ A.x+B.x, A.y*B.y, A.z*B.z, A.w*B.w }
 
 inline void addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, double r0, double eps, double qq ){
     //Vec3f dp; dp.set_sub( p2, p1 );
@@ -142,15 +144,15 @@ inline void addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, double r0, double eps,
     f.add_mul( dp, fr );
 }
 
-inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ ){
+inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ ){
     //Vec3f dp; dp.set_sub( p2, p1 );
     double ir2  = 1/( dp.norm2() + 1e-4 );
     double ir   = sqrt(ir2);
-    double ir2_ = ir2*REQ.a*REQ.a;
+    double ir2_ = ir2*REQ.x*REQ.x;
     double ir6  = ir2_*ir2_*ir2_;
     //double fr   = ( ( 1 - ir6 )*ir6*12*REQ.b + ir*REQ.c*-COULOMB_CONST )*ir2;
-    double Eel  = ir*REQ.c*COULOMB_CONST;
-    double vdW  = ir6*REQ.b;
+    double Eel  = ir*REQ.x*COULOMB_CONST;
+    double vdW  = ir6*REQ.y;
     double fr   = ( ( 1 - ir6 )*12*vdW - Eel )*ir2;
     //printf( " (%g,%g,%g) r %g fr %g \n", dp.x,dp.y,dp.z, 1/ir, fr );
     f.add_mul( dp, fr );
@@ -174,7 +176,7 @@ inline float getLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ, const float R2
     return E;
 }
 
-inline double getLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ, const double R2damp ){
+inline double getLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ, const double R2damp ){
     const double   r2   = dp.norm2();
     // ---- Coulomb
     const double  ir2_ = 1/( r2 + R2damp  );
@@ -191,7 +193,44 @@ inline double getLJQ( const Vec3d& dp, Vec3d& f, const Vec3d& REQ, const double 
     return E;
 }
 
-inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double R2damp, const double Cr2_cut, const double LJr2_cut ){
+inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double R2damp ){
+    const double  r2  = dp.norm2();
+    double E,F;
+    // ---- Electrostatic
+    const double ir2_ = 1/( r2 + R2damp  );
+    E =  COULOMB_CONST*REQH.z*sqrt( ir2_ );
+    F =  E*ir2_ ;
+    // --- LJ 
+    const double  ir2 = 1/r2;
+    const double  u2  = REQH.x*REQH.x*ir2;
+    const double  u6  = u2*u2*u2;
+    const double vdW  = u6*REQH.y;
+    const double   H  = u6*REQH.w;  // H-bond correction
+    E   +=       (u6-2.)*vdW            ;
+    F   +=  (12.*(u6-1.)*vdW + H*6.)*ir2;
+    f.set_mul( dp, -F );
+    return E;
+}
+
+inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double K, double R2damp ){
+    const double r2    = dp.norm2();
+    double E,F;
+    // --- Coulomb
+    const double ir2_  = 1/( r2 + R2damp );
+    E = COULOMB_CONST*REQH.z*sqrt( ir2_ );
+        F = E*ir2_ ;
+    // --- Morse
+    const double  r  = sqrt( r2   );
+    const double  e  = exp( -K*(r-REQH.x) );
+    const double  Ae = REQH.y*e;
+    const double  He = REQH.w*e; // H-bond correction
+    E +=  Ae*(e - 2)   + He;
+    F += (Ae*(e - 1)*2 + He)*K/r;
+    f.set_mul( dp, F );
+    return E;
+}
+
+inline double getLJQH_cut( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double R2damp, const double Cr2_cut, const double LJr2_cut ){
     // E_cut = e_max * (R/r_cut)^6
     // u2_cut = (e_max/E_cut)^(1/6)
     // u     = R/r
@@ -218,7 +257,7 @@ inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const doub
     return E;
 }
 
-inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double K, double R2damp, const double Cr2_cut, const double Mr2_cut ){
+inline double getMorseQH_cut( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double K, double R2damp, const double Cr2_cut, const double Mr2_cut ){
     // Morse Cutoff:
     // E_cut                  = e0*exp( -K * r_cut )
     // ln(E_cut/e0)           = -K * r_cut
@@ -316,15 +355,16 @@ inline void addAtomicForceExp( const Vec3d& dp, Vec3d& f, double r0, double eps,
     //f.add_mul( dp, 1/(dp.norm2()+R2SAFE) ); // WARRNING DEBUG !!!!
 }
 
-inline Vec3d REQ2PLQ( const Vec3d& REQ, double K ){
+inline Quat4d REQ2PLQ( const Quat4d& REQ, double K ){
     double e   = exp(K*REQ.x);
     double cL  = e*REQ.y;
     double cP  = e*cL;
-    return Vec3d{ cP, cL, REQ.z };
+    double cH  = e*e*REQ.w;
+    return Quat4d{ cP, cL, REQ.z, cH };
 }
 
-inline Vec3d REnergyQ2PLQ( const Vec3d& REQ, double alpha ){
-    return REQ2PLQ( {REQ.x, sqrt(REQ.y), REQ.z}, alpha );
+inline Quat4d REnergyQ2PLQ( const Quat4d& REQ, double alpha ){
+    return REQ2PLQ( Quat4d{REQ.x, sqrt(REQ.y), REQ.z, REQ.w}, alpha );
 }
 
 // ================= Force Bounding Box, Plane etc.

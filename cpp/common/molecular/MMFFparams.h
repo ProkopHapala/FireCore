@@ -140,8 +140,8 @@ class MMFFparams{ public:
 
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
-    //Vec3d  default_REQ            = {1.487, 0.0006808, 0.0};  // Hydrogen
-    Vec3d  default_REQ              = {1.500, 0.0005000, 0.0};  // Hydrogen like
+    //Quat4d  default_REQ            = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen
+    Quat4d  default_REQ              = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen like
 
     bool reportIfMissing=true;
     bool exitIfMissing  =true;
@@ -220,14 +220,14 @@ class MMFFparams{ public:
         }
     }
 
-    inline void assignRE( int ityp, Vec3d& REQ, bool bSqrtE=false )const{
+    inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false )const{
         REQ.x    = atypes[ityp].RvdW;
         double e = atypes[ityp].EvdW;
         if(bSqrtE) e=sqrt(e);
         REQ.y = e;
     }
 
-    void assignREs( int n, int * itypes, Vec3d * REQs, bool bSqrtE=false, bool bQ0=false )const{
+    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=false, bool bQ0=false )const{
         //printf( "assignREs(%i) %li \n", n, itypes );
         for(int i=0; i<n; i++){
             //printf( " assignREs[%i] %i \n", i, itypes[i] );
@@ -354,7 +354,7 @@ class MMFFparams{ public:
         return false;
     }
 
-    int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Vec3d** REQs_=0, int** atype_=0, int** npis_=0, Mat3d* lvec=0, int verbosity=0 )const{
+    int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Quat4d** REQs_=0, int** atype_=0, int** npis_=0, Mat3d* lvec=0, int verbosity=0 )const{
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -367,7 +367,7 @@ class MMFFparams{ public:
         line = fgets( buff, nbuf, pFile );
         sscanf( line, "%i \n", &natoms );
         Vec3d* apos  =_allocPointer( apos_,  natoms );
-        Vec3d* REQs  =_allocPointer( REQs_,  natoms );
+        Quat4d* REQs =_allocPointer( REQs_,  natoms );
         int*   atype =_allocPointer( atype_, natoms );
         int*   npis  =_allocPointer( npis_,  natoms );
         line = fgets( buff, nbuf, pFile ); // comment
@@ -397,7 +397,7 @@ class MMFFparams{ public:
         return ret;
     }
 
-    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0, bool just_Element=true ){
+    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true ){
         //printf( "MMFFparams::writeXYZ() n=%i REQs=%li \n", n, (long)REQs );
         fprintf(pfile, "%i\n", n );
         fprintf(pfile, "%s \n", comment );
@@ -423,7 +423,7 @@ class MMFFparams{ public:
         };
     }
 
-    int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Vec3d* REQs=0, const char* mode="w", bool just_Element=true ){
+    int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true ){
         FILE* pfile = fopen(fname, mode );
         //printf( "saveXYZ(%s) \n", fname );
         if( pfile == NULL ) return -1;

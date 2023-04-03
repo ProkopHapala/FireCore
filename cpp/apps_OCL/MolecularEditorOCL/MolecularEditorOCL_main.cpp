@@ -757,7 +757,7 @@ void AppMolecularEditorOCL::draw(){
 	for( int ia=0; ia<world.natoms; ia++ ){
         Vec3d& p  =world.apos  [ia];
         Vec3d& f  =world.aforce[ia];
-        Vec3d& req=world.aREQ  [ia];
+        Quat4d& req=world.aREQ  [ia];
         //printf( "world %i p(%g,%g,%g) f(%g,%g,%g) req(%g,%g,%g) \n", ia, p.x,p.y,p.z,  f.x,f.y,f.z,  req.x,req.y,req.z );
         //printf( "  world %i p(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) req(%5.5e,%5.5e,%5.5e) \n", ia, p.x,p.y,p.z,  f.x,f.y,f.z,  req.x,req.y,req.z );
 

@@ -249,9 +249,9 @@ void sample_evalAngleCosHalf( double k, double ang0, double r1, double r2, int n
 }
 
 void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K, double Rdamp ){
-    Vec3d REQi = *(Vec3d*)REQi_;
-    Vec3d REQj = *(Vec3d*)REQj_;
-    Vec3d REQij; combineREQ( REQi, REQj, REQij );
+    Quat4d REQi = *(Quat4d*)REQi_;
+    Quat4d REQj = *(Quat4d*)REQj_;
+    Quat4d REQij; combineREQ( REQi, REQj, REQij );
     REQij.y = sqrt(REQij.y);
     Vec3d pi=Vec3dZero;
     Vec3d pj=Vec3dZero;
@@ -289,8 +289,8 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
             delete [] FFtot;
         }
     }
-    Vec3d REQ=W.nbmol.REQs[0];
-    Vec3d PLQ = REQ2PLQ( REQ, K );
+    Quat4d REQ=W.nbmol.REQs[0];
+    Quat4d PLQ = REQ2PLQ( REQ, K );
     printf( "REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
     printf( "PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
     //exit(0);
@@ -334,7 +334,7 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
         }
     }
     printf( "DEBUG start sampling kind=%i \n", kind );
-    Vec3d PLQ = REQ2PLQ( W.nbmol.REQs[0], K );
+    Quat4d PLQ = REQ2PLQ( W.nbmol.REQs[0], K );
     //printf( "PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
     double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){

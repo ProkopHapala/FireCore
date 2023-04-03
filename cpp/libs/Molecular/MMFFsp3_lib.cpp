@@ -149,9 +149,9 @@ void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double
 //int splitAtBond( int ib, int* selection ){ return W.splitAtBond( ib, selection ); }
 
 void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K, double Rdamp ){
-    Vec3d REQi = *(Vec3d*)REQi_;
-    Vec3d REQj = *(Vec3d*)REQj_;
-    Vec3d REQij; combineREQ( REQi, REQj, REQij );
+    Quat4d REQi = *(Quat4d*)REQi_;
+    Quat4d REQj = *(Quat4d*)REQj_;
+    Quat4d REQij; combineREQ( REQi, REQj, REQij );
     REQij.y = sqrt(REQij.y);
     Vec3d pi=Vec3dZero;
     Vec3d pj=Vec3dZero;

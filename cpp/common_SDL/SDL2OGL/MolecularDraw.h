@@ -67,7 +67,7 @@ void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
 }
 
 
-void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Vec3d PRQ ){
+void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Quat4d PRQ ){
     Vec3d vel = Vec3dZero;
     glBegin(GL_LINE_STRIP);
     for(int i=0; i<n; i++){
@@ -84,7 +84,7 @@ void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Vec3
     //exit(0);
 }
 
-void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Vec3d PRQ, double fsc ){
+void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4d PRQ, double fsc ){
     Vec3d pos = pos0;
 	for( int i=0; i<n; i++ ){
         //Vec3d f = Vec3dZero;

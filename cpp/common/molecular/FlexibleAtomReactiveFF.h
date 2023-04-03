@@ -138,8 +138,8 @@ class FARFF{ public:
     double * aenergy = 0;
 
     //Vec3d  * capREQs = 0;
-    //Vec3d  * aREQs   = 0;
-    //Vec3i  * aconf   = 0;     // nH, nsigna,nt=(nsigna+ne)     npi = (4 - vt)=(4 - (nsigma+ne))
+    //Quat4d  * aREQs   = 0;
+    //Quat4d  * aconf   = 0;     // nH, nsigna,nt=(nsigna+ne)     npi = (4 - vt)=(4 - (nsigma+ne))
     Vec3ui8  * aconf   = 0;
 
     //Quat4i * atom2bond = 0; // atom to bond map

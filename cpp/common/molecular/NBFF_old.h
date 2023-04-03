@@ -40,9 +40,9 @@ bool checkPairsSorted( int n, Vec2i* pairs ){
 class NBFF_old : public NBFF{ public:
 // non bonded forcefield
     //int n        = 0;
-    //Vec3d* REQs  = 0;
-    //Vec3d* apos  = 0;
-    //Vec3d* fapos = 0;
+    //Quat4d* REQs  = 0;
+    //Vec3d*  apos  = 0;
+    //Vec3d*  fapos = 0;
 
     int nmask   = 0;
 
@@ -64,7 +64,7 @@ void realloc(int n_, int nmask_){
     _realloc(pairMask,nmask);
 }
 
-void bindOrRealloc(int n_, int nmask_, Vec3d* apos_, Vec3d* fapos_, Vec3d* REQs_, Vec2i* pairMask_ ){
+void bindOrRealloc(int n_, int nmask_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, Vec2i* pairMask_ ){
     natoms=n_;
     nmask=nmask_;
     _bindOrRealloc(natoms, apos_  ,apos  );
@@ -73,7 +73,7 @@ void bindOrRealloc(int n_, int nmask_, Vec3d* apos_, Vec3d* fapos_, Vec3d* REQs_
     _bindOrRealloc(nmask,pairMask_,pairMask);
 }
 
-void setREQs(int i0,int i1, const Vec3d& REQ){
+void setREQs(int i0,int i1, const Quat4d& REQ){
     for(int i=i0;i<i1;i++){ REQs[i]=REQ; }
 }
 
@@ -97,14 +97,14 @@ double evalLJQ_sortedMask( const Vec3d& shift=Vec3dZero ){
         Vec3d fi = Vec3dZero;
         Vec3d pi = apos[i];
         pi.add( shift );
-        const Vec3d& REQi = REQs[i];
+        const Quat4d& REQi = REQs[i];
         for(int j=i+1; j<N; j++){    // atom-atom
             // --- mask some atom pairs (e.g. those which are bonded), as long as atoms are sorted we can do it efficiently
             if( (im<nmask)&&(i==pairMask[im].i)&&(j==pairMask[im].j) ){
                 im++; continue;
             }
             Vec3d fij = Vec3dZero;
-            Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+            Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
             double E = addAtomicForceLJQ( apos[j]-pi, fij, REQij );
 
             /*
@@ -163,7 +163,7 @@ void makeSRList(){
         const Vec3d& pi = apos[i];
         psBack[i]=pi;
         double Ri = REQs[i].x;
-        const Vec3d& REQi = REQs[i];
+        const Quat4d& REQi = REQs[i];
         for(int j=i+1; j<N; j++){    // atom-atom
             if( (im<nmask)&&(i==pairMask[im].i)&&(j==pairMask[im].j) ){
                 im++; continue;

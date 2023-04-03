@@ -33,21 +33,14 @@ static const double const_eVA2_Nm = 16.0217662;
 // ========= Atom
 // ============================
 struct Atom{
-    constexpr const static Vec3d HcapREQ    = Vec3d{ 1.4870, sqrt(0.000681    ), 0 };
-    constexpr const static Vec3d defaultREQ = Vec3d{ 1.7,    sqrt(0.0037292524), 0 };
-
-    // this breaks {<brace-enclosed initializer list>} in C++11
-    //int type  = -1;
-    //int frag  = -1;
-    //int iconf = -1;
-    //Vec3d pos;
-    //Vec3d REQ = defaultREQ;   // constexpr Vec3d{1.7,sqrt(0.0037292524),0}
+    constexpr const static Quat4d HcapREQ    = Quat4d{ 1.4870, sqrt(0.000681    ), 0., 0. };
+    constexpr const static Quat4d defaultREQ = Quat4d{ 1.7,    sqrt(0.0037292524), 0., 0. };
 
     int type;
     int frag;
     int iconf;
-    Vec3d pos;
-    Vec3d REQ;   // constexpr Vec3d{1.7,sqrt(0.0037292524),0}
+    Vec3d  pos;
+    Quat4d REQ;   // constexpr Vec3d{1.7,sqrt(0.0037292524),0}
 
     //Atom() = default;
 
@@ -55,8 +48,8 @@ struct Atom{
 
     Atom() = default;
     Atom(const Vec3d& pos_):type(0),frag(-1),iconf(-1),REQ(defaultREQ),pos(pos_){};
-    Atom(const Vec3d& pos_,const Vec3d& REQ_):type(0),frag(-1),iconf(-1),REQ(REQ_),pos(pos_){};
-    Atom(int type_,int frag_,int iconf_,const Vec3d& pos_,const Vec3d& REQ_):type(type_),frag(frag_),iconf(iconf_),REQ(REQ_),pos(pos_){};
+    Atom(const Vec3d& pos_,const Quat4d& REQ_):type(0),frag(-1),iconf(-1),REQ(REQ_),pos(pos_){};
+    Atom(int type_,int frag_,int iconf_,const Vec3d& pos_,const Quat4d& REQ_):type(type_),frag(frag_),iconf(iconf_),REQ(REQ_),pos(pos_){};
 };
 
 #define N_NEIGH_MAX 4
@@ -344,10 +337,10 @@ class Builder{  public:
     double Kpp_e_default = 0.25;
 
     int ignoreType=-1;
-    Vec3d defaultREQ  {  1.5, 0.0, 0.0 };
-    Bond  defaultBond { -1, {-1,-1}, 1.5, 10.0 };
+    Quat4d defaultREQ  {  1.5, 0.0, 0.0, 0.0    };
+    Bond   defaultBond { -1, {-1,-1}, 1.5, 10.0 };
+    Angle defaultAngle { -1, {-1,-1}, M_PI, 0.5 };
     //Angle defaultAngle{ -1, {-1,-1}, 0.0, 0.5 };
-    Angle defaultAngle{ -1, {-1,-1}, M_PI, 0.5 };
 
     Bond bondBrush = defaultBond;
 
@@ -549,8 +542,8 @@ class Builder{  public:
     }
     int insertAtom(const Atom& atom ){ atoms.push_back(atom); return atoms.size()-1; }
 
-    int insertAtom( int ityp, const Vec3d& pos, const Vec3d* REQ=0, int npi=-1, int ne=0 ){
-        Vec3d REQloc;
+    int insertAtom( int ityp, const Vec3d& pos, const Quat4d* REQ=0, int npi=-1, int ne=0 ){
+        Quat4d REQloc;
         if(REQ==0)
             if(params){ 
                 AtomType& at = params->atypes[ityp];
@@ -570,13 +563,13 @@ class Builder{  public:
         return atoms.size()-1;
     }
 
-    int insertAtom( int ityp, const Vec3d* pos=0, const Vec3d* REQ=0, int npi=-1, int ne=0 ){
+    int insertAtom( int ityp, const Vec3d* pos=0, const Quat4d* REQ=0, int npi=-1, int ne=0 ){
         if(pos==0)pos=&Vec3dZero;
         int ia = insertAtom( ityp, *pos, REQ, npi, ne );
         //if(bConf) addConfToAtom( ia, 0 );
         return ia;
     }
-    int insertAtom( std::string name, const Vec3d* pos=0, const Vec3d* REQ=0, int npi=-1, int ne=0){ int ityp = params->atomTypeDict.at(name); return insertAtom(ityp,pos,REQ,npi,ne); };
+    int insertAtom( std::string name, const Vec3d* pos=0, const Quat4d* REQ=0, int npi=-1, int ne=0){ int ityp = params->atomTypeDict.at(name); return insertAtom(ityp,pos,REQ,npi,ne); };
 
     void randomizeAtomPos(double R){
         for(int i=0;i<atoms.size();i++){
@@ -1712,7 +1705,10 @@ class Builder{  public:
             printf("cannot find %s\n", fname );
             return -1;
         }
-        int natoms; Vec3d pos,REQ=defaultREQ; char at_name[8]; int npi,ne=0;
+        int natoms; Vec3d pos;
+        Quat4d REQ=defaultREQ; 
+        char at_name[8]; 
+        int npi,ne=0;
         const int nbuf=1024;
         char buff[nbuf]; char* line;
         line = fgets( buff, nbuf, pFile ); // number of atoms
@@ -1747,7 +1743,7 @@ class Builder{  public:
     inline void nang_def (int& n,int i0)const{ if(n<0){ n=angles.size()-i0; }; }
     inline void ndih_def (int& n,int i0)const{ if(n<0){ n=dihedrals.size()-i0; }; }
 
-    void export_REQs(Vec3d* REQs, int i0=0, int n=-1)const{
+    void export_REQs(Quat4d* REQs, int i0=0, int n=-1)const{
         natom_def(n,i0);
         //_allocIfNull(REQs,n);
         for(int i=0; i<n; i++){ 
@@ -1829,13 +1825,14 @@ class Builder{  public:
     void startFragment (         ){                          frags.push_back( Fragment( atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ) ); }
     void finishFragment(int i=-1 ){ if(i<0)i=frags.size()-1; frags[i].finish(           atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size()   ); }
 
-    void insertAtoms( int na, int* atypes, Vec3d* apos, Vec3d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
+    void insertAtoms( int na, int* atypes, Vec3d* apos, Quat4d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
         //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
         //startFragment();
         //int natom0  = atoms.size();
         //int nbond0  = bonds.size();
         for(int i=0; i<na; i++){
-            Vec3d p,REQ;
+            Vec3d p;
+            Quat4d REQ;
             int ne=0,npi=0;
             int ityp = atypes[i];
             if( ityp==ignoreType ) continue;
@@ -1861,7 +1858,7 @@ class Builder{  public:
         }
     }
 
-    int insertAtomsBonds( int nb, Vec2i* b2as, int* btypes, int na, int* atypes,  Vec3d* apos, Vec3d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
+    int insertAtomsBonds( int nb, Vec2i* b2as, int* btypes, int na, int* atypes,  Vec3d* apos, Quat4d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
         //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
         startFragment();
         insertAtoms( na, atypes, apos, REQs, qs, npis, pos,rot);
@@ -2023,7 +2020,7 @@ class Builder{  public:
         int natom0  = atoms.size();
         for(int i=1; i<mol->natoms; i++){
             int ne=0,npi=0;
-            Vec3d REQ=mol->REQs[i];
+            Quat4d REQ=mol->REQs[i];
             int ityp = mol->atomType[i];
             if(params){
                 //printf( "params \n" );
@@ -2072,7 +2069,7 @@ class Builder{  public:
         return molTypes.size()-1;
     }
 
-    int registerRigidMolType( int natoms, Vec3d* pos, Vec3d* REQs, int* atomType ){
+    int registerRigidMolType( int natoms, Vec3d* pos, Quat4d* REQs, int* atomType ){
         Molecule* mol = new Molecule();
         mol->allocate( natoms, 0 );
         for(int i=0; i<mol->natoms; i++){ mol->pos[i]=pos[i]; mol->REQs[i]=REQs[i]; mol->atomType[i]=atomType[i]; }
@@ -2101,7 +2098,7 @@ class Builder{  public:
         for(int i=0; i<mol->natoms; i++){
             if( mol->atomType[i]==iH ) continue;
             atomInds[i] = atoms.size();
-            Vec3d  REQi = mol->REQs[i];   REQi.y = sqrt(REQi.y);
+            Quat4d  REQi = mol->REQs[i];   REQi.y = sqrt(REQi.y);
             Vec3d p; rot.dot_to(mol->pos[i],p); p.add( pos );
             atoms.push_back( (Atom){mol->atomType[i], -1, -1, p, REQi } );
         }
@@ -2124,7 +2121,7 @@ class Builder{  public:
         int nbond0  = bonds.size();
         for(int i=0; i<mol->natoms; i++){
             int ne=0,npi=0;
-            Vec3d REQ=mol->REQs[i];
+            Quat4d REQ=mol->REQs[i];
             int ityp = mol->atomType[i];
             if( ityp==ignoreType ) continue;
             if(params){
@@ -2158,9 +2155,9 @@ class Builder{  public:
         int ifrag = frags.size();
         //printf( "insertMolecule mol->natoms %i \n", mol->natoms );
         for(int i=0; i<mol->natoms; i++){
-            //Vec3d REQi = Vec3d{1.0,0.03,mol->}; // TO DO : LJq can be set by type
+            //Quat4d REQi = Vec3d{1.0,0.03,mol->}; // TO DO : LJq can be set by type
             //atoms.push_back( (Atom){mol->atomType[i],mol->pos[i], LJq } );
-            Vec3d  REQi = mol->REQs[i];   REQi.y = sqrt(REQi.y); // REQi.z = 0.0;
+            Quat4d  REQi = mol->REQs[i];   REQi.y = sqrt(REQi.y); // REQi.z = 0.0;
             Vec3d  p; rot.dot_to(mol->pos[i],p); p.add( pos );
             atoms.push_back( (Atom){mol->atomType[i], ifrag, -1, p, REQi } );
         }

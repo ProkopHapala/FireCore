@@ -63,7 +63,7 @@ class Molecule{ public:
     Vec3d  * pos       = NULL;
     Vec2i  * bond2atom = NULL;
     //double * charges   = NULL;
-    Vec3d  * REQs      = NULL;
+    Quat4d * REQs      = NULL;
     int    * atomType  = NULL;
     int    * bondType  = NULL;
     int    * npis      = NULL;

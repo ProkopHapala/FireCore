@@ -50,8 +50,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
             //printf("ii %i i %i iabc(%i,%i,%i)\n", ii, i, ia,ib,ic);
             atoms[ii].f=(Vec3f)(surf.apos[i]+p0);
             atoms[ii].e=R2damp; 
-            coefs[ii].f=(Vec3f)surf.REQs[i];
-            coefs[ii].e=gridFF.alpha;
+            coefs[ii]  =(Quat4f)surf.REQs[i];
+            //coefs[ii].e=gridFF.alpha;
             ii++;
         }
     }}}

@@ -42,7 +42,7 @@ class MMFFsp3{ public:
     Vec3d  * pbcShifts = 0;  // [A]
 
     bool    bSubtractAngleNonBond=false;
-    Vec3d*  REQs=0;  // this is used only when bSubtractAngleNonBond==true
+    Quat4d*  REQs=0;  // this is used only when bSubtractAngleNonBond==true
 
     bool    bPBCbyLvec  =false;
     Mat3d   invLvec, lvec;
@@ -570,7 +570,7 @@ double eval_neighs_new(int ia){
                         double e = evalAngleCos( hs[i], hs[j], ils[i], ils[j], Kss, c0_, f1, f2 );  
                         if(bSubtractAngleNonBond){
                             Vec3d fij=Vec3dZero;
-                            Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+                            Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
                             e += addAtomicForceLJQ( apos[ing]-apos[jng], fij, REQij );
                             f1.add(fij);
                             f2.sub(fij);
@@ -658,7 +658,7 @@ void evalPi0s(){
     }
 }
 
-void chargeToEpairs( Vec3d* REQs, double cQ=-0.2, int etyp=-1 ){
+void chargeToEpairs( Quat4d* REQs, double cQ=-0.2, int etyp=-1 ){
     printf( "chargeToEpairs() \n" );
     for( int ib=0; ib<nbonds; ib++ ){
         Vec2i b = bond2atom[ib];

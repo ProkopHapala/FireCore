@@ -95,8 +95,8 @@ class RARFF2arr{ public:
     // atom properties
     //RigidAtomType** types = 0;
 
-    int   * types   = 0;
-    Vec3d * aREQs   = 0;
+    int    * types   = 0;
+    Quat4d * aREQs   = 0;
 
     Vec2i  * b2a    = 0;
     Vec2d  * bLKs   = 0;
@@ -274,12 +274,12 @@ class RARFF2arr{ public:
 
     void eval_LJq_On2(){
         for(int i=0; i<natoms; i++){
-            const Vec3d& ljq_i = aREQ[i];
+            const Quat4d& ljq_i = aREQ[i];
             const Vec3d& pi    = apos[i];
             Vec3d f; f.set(0.0);
             for(int j=0; j<natoms; j++){
                 if(i!=j){ //  ToDo : can be up to twice faster if we do not do all pairs
-                    const Vec3d& ljq_j = aREQ[j];
+                    const Quat4d& ljq_j = aREQ[j];
                     double rij = ljq_i.x+ljq_j.x;
                     double eij = ljq_i.y*ljq_j.y;
                     double qq  = ljq_i.z*ljq_j.z;

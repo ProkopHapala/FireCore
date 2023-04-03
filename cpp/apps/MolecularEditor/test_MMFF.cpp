@@ -56,8 +56,8 @@ void initRigidSubstrate(){
     params.loadXYZ( "inputs/NaCl_wo4.xyz", world.gridFF.natoms, &world.gridFF.apos, &world.gridFF.aREQs, &world.gridFF.atypes );
     world.translate( {0.0,0.0,4.5} );
 
-    Vec3d testREQ,testPLQ;
-    testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0}; // H
+    Quat4d testREQ,testPLQ;
+    testREQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );//
     world.genPLQ();
     world.gridFF.allocateFFs();
