@@ -100,13 +100,10 @@ virtual void init( bool bGrid ) override {
         pack_system( i, ffl, true, false, random_init );
     }
     upload( true, false );
-    bGridFF=false;
+    //bGridFF=false;
     //bOcl   =false;
     bOcl   =true;
     setup_MMFFf4_ocl();
-    //err |= task_print->enque_raw();                  DEBUG
-    //OCL_checkError(err, "init().printOnGPU()");      DEBUG
-    //ocl.finishRaw();                                 DEBUG
     int4 mask{1,1,0,0};
     //ocl.printOnGPU( 0,mask );
     //ocl.printOnGPU( 1,mask );
@@ -358,7 +355,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     //bMMFF=false;
     if( bOcl ){
-        printf( "GPU frame[%i] -- \n", nIter );
+        //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
         eval_MMFFf4_ocl( nIter );
         //eval_NBFF_ocl  ( 1 ); 
@@ -424,7 +421,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     }
     ocl.buffers[ocl.ibuff_atoms_surf].release();
     ocl.buffers[ocl.ibuff_REQs_surf ].release();
-    //exit(0);
+    exit(0);
 }
 
 virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true )override{

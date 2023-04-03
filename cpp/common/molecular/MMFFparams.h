@@ -336,12 +336,10 @@ class MMFFparams{ public:
         printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
         if(fatomtypes ){
             loadAtomTypes( fatomtypes );
-            DEBUG
             assignAllSubTypes();
         }
-        DEBUG
-        if(fbondtypes )loadBondTypes( fbondtypes ); DEBUG
-        if(fagnletypes)loadAgnleType( fagnletypes ); DEBUG
+        if(fbondtypes )loadBondTypes( fbondtypes  );
+        if(fagnletypes)loadAgnleType( fagnletypes );
     }
 
     bool cellFromString( char* s, Mat3d& lvec )const{
