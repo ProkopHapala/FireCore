@@ -65,7 +65,7 @@ int isoOgl;
 
 Vec3d PPpos0 = Vec3d{1.3,1.7, 1.5};
 
-Vec3d testREQ,testPLQ;
+Quat4d testREQ,testPLQ;
 
 // ==========================
 // AppMolecularEditor2
@@ -148,8 +148,8 @@ void AppMolecularEditor2::initRigidSubstrate(){
     //world.gridFF.loadXYZ( "inputs/Cl.xyz", params );
     world.translate( {0.0,0.0,4.5} );
 
-    //testREQ = Vec3d{ 2.181, 0.0243442, 0.0}; // Xe
-    testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0}; // H
+    //testREQ = Quat4d{ 2.181, 0.0243442, 0., 0.}; // Xe
+    testREQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.}; // H
     testPLQ = REQ2PLQ( testREQ, -1.6 );//
 
     world.genPLQ();

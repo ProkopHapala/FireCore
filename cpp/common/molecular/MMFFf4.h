@@ -53,7 +53,7 @@ inline void combineREQ(const Quat4f& a, const Quat4f& b, Quat4f& out){
     out.x=a.x+b.x; // radius
     out.y=a.y*b.y; // epsilon
     out.z=a.z*b.z; // q*q
-    out.w=0.0;
+    out.w=out.w*out.w;
 }
 
 inline float evalAngleCosHalf( const Vec3f& h1, const Vec3f& h2, float ir1, float ir2, const Vec2f& cs0, float k, Vec3f& f1, Vec3f& f2 ){
@@ -79,16 +79,16 @@ inline float evalAngleCosHalf( const Vec3f& h1, const Vec3f& h2, float ir1, floa
     return E;
 }
 
-inline float addAtomicForceLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ ){
+inline float addAtomicForceLJQ( const Vec3f& dp, Vec3f& f, const Quat4f& REQ ){
     //Vec3f dp; dp.set_sub( p2, p1 );
     const float COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
     float ir2  = 1/( dp.norm2() + 1e-4 );
     float ir   = sqrt(ir2);
-    float ir2_ = ir2*REQ.a*REQ.a;
+    float ir2_ = ir2*REQ.x*REQ.x;
     float ir6  = ir2_*ir2_*ir2_;
     //float fr   = ( ( 1 - ir6 )*ir6*12*REQ.b + ir*REQ.c*-COULOMB_CONST )*ir2;
-    float Eel  = ir*REQ.c*COULOMB_CONST_;
-    float vdW  = ir6*REQ.b;
+    float Eel  = ir*REQ.z*COULOMB_CONST_;
+    float vdW  = ir6*REQ.y;
     float fr   = ( ( 1 - ir6 )*12*vdW - Eel )*ir2;
     //printf( " (%g,%g,%g) r %g fr %g \n", dp.x,dp.y,dp.z, 1/ir, fr );
     f.add_mul( dp, fr );
@@ -281,7 +281,7 @@ float eval_atom(int ia){
                 Quat4f REQij; combineREQ( REQs[ing],REQs[jng], REQij );
                 Vec3f dij; dij.set_lincomb( -1./hi.e, hi.f, 1./hj.e, hj.f );  // method without reading from global buffer
                 //Vec3f dij = apos[jng] - apos[ing];                          // method with    reading from global buffer
-                E -= addAtomicForceLJQ( dij, fij, REQij.f );
+                E -= addAtomicForceLJQ( dij, fij, REQij );
                 f1.sub(fij);
                 f2.add(fij);
             }

@@ -101,7 +101,7 @@ class FspFF{ public:
     Vec3d  * aforce = 0;      // atomic forces   // ALIAS
 
     Vec3d  * capREQs = 0;
-    Vec3d  * aREQs   = 0;
+    Quat4d * aREQs   = 0;
     Vec3i  * aconf   = 0;     // nH, nsigna,nt=(nsigna+ne)     npi = (4 - vt)=(4 - (nsigma+ne))
     //Quat4i * atom2bond = 0; // atom to bond map
 
@@ -353,13 +353,13 @@ inline void evalAtoms       (){ for(int i=0; i<natom; i++){ evalAtom(i);        
 
 void evalLJQs(){
     for(int i=0; i<natom; i++){
-        const Vec3d& REQi = aREQs[i];
+        const Quat4d& REQi = aREQs[i];
         const Vec3d& pi   = apos[i];
         Vec3d fi; fi.set(0.0);
         /*
         for(int j=0; j<natoms; j++){
             if(i!=j){
-                Vec3d& ljq_j = aREQ[j];
+                Quat4d& ljq_j = aREQ[j];
                 double rij = ljq_i.x+ljq_j.x;
                 double eij = ljq_i.y*ljq_j.y;
                 double qq  = ljq_i.z*ljq_j.z;
@@ -370,7 +370,7 @@ void evalLJQs(){
         */
         for(int j=0; j<i; j++){
             Vec3d  fij;fij.set(0.);
-            Vec3d& REQj = aREQs[j];
+            Quat4d& REQj = aREQs[j];
             addAtomicForceLJQ( pi-apos[j], fij, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z );
             aforce[j].sub(fij);
             aforce[j].add(fij);
@@ -380,10 +380,10 @@ void evalLJQs(){
     }
 }
 
-void evalLJQs(int n, const Vec3d* REQs, const Vec3d* ps, Vec3d* fs, const Vec3d& REQi, const Vec3d& pi, Vec3d& fi){
+void evalLJQs(int n, const Quat4d* REQs, const Vec3d* ps, Vec3d* fs, const Quat4d& REQi, const Vec3d& pi, Vec3d& fi){
     for(int j=0; j<n; j++){    // atom-atom
         Vec3d  fij; fij.set(0.);
-        const Vec3d& REQj = REQs[j];
+        const Quat4d& REQj = REQs[j];
         addAtomicForceLJQ( pi-ps[j], fij, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z );
         aforce[j].sub(fij);
         fi       .add(fij);

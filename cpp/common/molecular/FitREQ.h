@@ -192,7 +192,7 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
         for(int j=0; j<nj; j++){
             int tj              = jtyp[j];
             const Quat4d& REQj  = typeREQs[tj];
-            //const Vec3d& REQj = REQ0[j]; // optimization
+            //const Quat4d& REQj = REQ0[j]; // optimization
             Vec3d d             = jpos[j] - pi;
             double R  = REQi.x+REQj.x;
             double E0 = REQi.y*REQj.y;
@@ -248,7 +248,7 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
         for(int j=0; j<nj; j++){
             int tj              = jtyp[j];
             const Quat4d& REQj  = typeREQs[tj];
-            //const Vec3d& REQj = REQ0[j]; // optimization
+            //const Quat4d& REQj = REQ0[j]; // optimization
             Vec3d d             = jpos[j] - pi;
             double R  = REQi.x+REQj.x;
             double E0 = REQi.y*REQj.y;
@@ -300,7 +300,7 @@ double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
     double fQ = -Kneutral*Qtot;
     for(int i=0; i<n; i++){
         //int   ti          = types[i];
-        //const Vec3d& REQi = typeREQs[ti]; 
+        //const Quat4d& REQi = typeREQs[ti]; 
         fs[i].z += fQ;
         E       += Kneutral*Qtot*Qtot;
     }

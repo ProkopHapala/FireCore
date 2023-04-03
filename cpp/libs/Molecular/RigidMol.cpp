@@ -118,7 +118,7 @@ void loadGridFF(){
 
 void debugSaveGridFF( char* fname, double* testREQ ){
     Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
-    world.gridFF.evalCombindGridFF( *(Vec3d*)testREQ, FFtot );
+    world.gridFF.evalCombindGridFF( *(Quat4d*)testREQ, FFtot );
     saveXSF( fname, world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
     delete [] FFtot;
 }
@@ -134,7 +134,7 @@ void initParams( char* fname_atomTypes, char* fname_bondTypes ){
     //printf("initParams done! \n");
 }
 
-int registerRigidMolType( int natom, Vec3d* apos, Vec3d* REQs, int* atomType ){ return builder.registerRigidMolType( natom, (Vec3d*)apos, (Vec3d*)REQs, atomType ); };
+int registerRigidMolType( int natom, Vec3d* apos, Quat4d* REQs, int* atomType ){ return builder.registerRigidMolType( natom, (Vec3d*)apos, (Vec3d*)REQs, atomType ); };
 int loadMolType   ( char* fname ){ return builder.loadMolTypeXYZ( fname, &params ); };
 int insertMolecule( int itype, double* pos, double* rot, bool rigid ){ return builder.insertMolecule( itype, *(Vec3d*)pos, *(Mat3d*)rot, rigid ); };
 

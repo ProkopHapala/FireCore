@@ -60,7 +60,7 @@ void makeSphereOgl( int& ogl, int nsub, float sz ){
     glEndList();
 }
 
-void atomsREQ( int n, Vec3d* ps, Vec3d* REQs, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false ){
+void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false ){
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     glShadeModel(GL_SMOOTH);
@@ -200,7 +200,7 @@ void angle( const Vec3i& ang, const Vec2d& cs0, const Vec3d* apos, int fontTex )
 
 
 
-int drawESP( int na, Vec3d* apos, Vec3d* REQs, Vec3d REQ ){
+int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
     const int nsph=300;
     Vec3d sph[nsph];
 
@@ -232,7 +232,7 @@ int drawESP( int na, Vec3d* apos, Vec3d* REQs, Vec3d REQ ){
 
         double Rsph = REQs[ia].x + REQ.x;
         Vec3d pi    = apos[ia];
-        Vec3d REQi  = REQs[ia];
+        Quat4d REQi  = REQs[ia];
 
         /*
 
@@ -259,7 +259,7 @@ int drawESP( int na, Vec3d* apos, Vec3d* REQs, Vec3d REQ ){
             for(int ja=0; ja<na; ja++){
             //for(int ja : selection ){ 
                 Vec3d dp=p-apos[ja];
-                Vec3d REQij;
+                Quat4d REQij;
                 combineREQ( REQ, REQs[ja], REQij );
                 double r2 = dp.norm2();
                 if( (ja!=ia) && ( r2 < sq(REQij.x*fIn) ) ){ bValid=false; break; } // exclude point which is inside other atom

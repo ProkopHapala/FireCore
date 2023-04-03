@@ -44,7 +44,7 @@ class MMFFsp3_loc : public NBFF { public:
     //Vec3d *  fapos  =0;    // [natoms] // from NBFF
     //Quat4i*  neighs =0;    // [natoms] // from NBFF
     //Quat4i*  neighCell=0; // [natoms] // from NBFF
-    //Vec3d*  REQs =0;       // [nnode]  // from NBFF
+    //Quat4d*  REQs =0;       // [nnode]  // from NBFF
     //bool bPBC=false;       // from NBFF
     //Vec3i   nPBC;          // from NBFF 
     //Mat3d   lvec;          // from NBFF
@@ -310,11 +310,11 @@ double eval_atom(const int ia){
             fa    .sub( f1+f2  );
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
-                Vec3d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+                Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
                 Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
                 //Vec3d dp   = hj.f*(1./hj.w) - hi.f*(1./hi.w);
                 //Vec3d dp   = apbc[j] - apbc[i];
-                E -= getLJQ( dp, fij, REQij, R2damp );
+                E -= getLJQH( dp, fij, REQij, R2damp );
                 //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
                 //bErr|=ckeckNaN( 1,3, (double*)&fij, [&]{ printf("atom[%i]fLJ2[%i,%i]",ia,i,j); } );
                 f1.sub(fij);
@@ -749,7 +749,7 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
     }
 }
 
-void chargeToEpairs( Vec3d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
+void chargeToEpairs( Quat4d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
     for( int ia=0; ia<nnode; ia++ ){
         int* ngs=neighs[ia].array; 
         for( int j=0; j<4; j++ ){

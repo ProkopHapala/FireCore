@@ -115,7 +115,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     double drndv =  10.0;
     double drndp =  0.5;
 
-    Vec3d testREQ,testPLQ;
+    Quat4d testREQ,testPLQ;
 
 
 
@@ -497,7 +497,7 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     gridFF.shift = Vec3d{0.0,0.0,-8.0};
     if(bRenderGridFF){
         int iatom = 11;
-        testREQ = Vec3d{ 1.487, 0.0006808, 0.0}; // H
+        testREQ = Quat4d{ 1.487, 0.0006808, 0., 0. }; // H
         testPLQ = REQ2PLQ( testREQ, -1.6 );
         //printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
         //printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, aREQ[iatom].x, aREQ[iatom].y, aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );

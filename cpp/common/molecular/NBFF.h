@@ -19,7 +19,7 @@ class NBFF: public Atoms{ public:
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
     Vec3d    *fapos  =0;
-    Vec3d    *REQs   =0;
+    Quat4d   *REQs   =0;
     Quat4i   *neighs =0;
     Quat4i   *neighCell=0;
 
@@ -31,7 +31,7 @@ class NBFF: public Atoms{ public:
     int    npbc=0;
     Vec3d* shifts=0;
 
-    Vec3d    *PLQs   =0;  // used only in combination with GridFF
+    Quat4d *PLQs   =0;  // used only in combination with GridFF
 
     // ==================== Functions
 
@@ -63,12 +63,12 @@ class NBFF: public Atoms{ public:
         for(int i=0; i<N; i++){
             Vec3d fi = Vec3dZero;
             const Vec3d pi = apos[i];
-            const Vec3d& REQi = REQs[i];
+            const Quat4d& REQi = REQs[i];
             for(int j=i+1; j<N; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
-                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
                 //E += addAtomicForceLJQ( apos[j]-pi, fij, REQij );
-                E += getLJQ( apos[j]-pi, fij, REQij, R2damp );
+                E += getLJQH( apos[j]-pi, fij, REQij, R2damp );
                 fapos[j].sub(fij);
                 fi   .add(fij);
             }
@@ -92,14 +92,14 @@ class NBFF: public Atoms{ public:
         }}}
         for(int i=0; i<N; i++){
             Vec3d fi = Vec3dZero;
-            const Vec3d pi = apos[i];
-            const Vec3d& REQi = REQs[i];
+            const Vec3d     pi = apos[i];
+            const Quat4d& REQi = REQs[i];
             for(int j=i; j<N; j++){    // atom-atom (yes self interaction, no double-counting)
                 Vec3d fij = Vec3dZero;
-                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
                 for(ipbc=0; ipbc<npbc; ipbc++){
                     //E += addAtomicForceLJQ( apos[j]-pi-shifts[ipbc], fij, REQij );
-                    E +=getLJQ( apos[j]-pi-shifts[ipbc], fij, REQij, R2damp );
+                    E +=getLJQH( apos[j]-pi-shifts[ipbc], fij, REQij, R2damp );
                 }
                 fapos[j].sub(fij);
                 fi   .add(fij);
@@ -114,7 +114,7 @@ class NBFF: public Atoms{ public:
         //printf( "NBFF::evalLJQs_ng4_atom() %li %li \n" );
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi   = apos  [ia];           // global read   apos  [ia]
-        const Vec3d  REQi = REQs  [ia];           // global read   REQs  [ia]
+        const Quat4d  REQi = REQs  [ia];           // global read   REQs  [ia]
         const Quat4i ng   = neighs[ia];           // global read   neighs[ia]
         double       E    = 0;
         Vec3d        fi   = Vec3dZero;
@@ -122,10 +122,10 @@ class NBFF: public Atoms{ public:
             if(ia==j) continue;
             if( (ng.x==j)||(ng.y==j)||(ng.z==j)||(ng.w==j) ) continue;
             Vec3d fij   = Vec3dZero;
-            const Vec3d pj    = apos[j];                        // global read   apos[j]
-            const Vec3d REQj  = REQs[j];                        // global read   REQs[j]
-            Vec3d REQij; combineREQ( REQj, REQi, REQij );       // pure function (no globals)
-            E          += getLJQ( pj-pi, fij, REQij, R2damp );  // pure function (no globals)
+            const Vec3d pj     = apos[j];                       // global read   apos[j]
+            const Quat4d REQj  = REQs[j];                       // global read   REQs[j]
+            Quat4d REQij; combineREQ( REQj, REQi, REQij );      // pure function (no globals)
+            E          += getLJQH( pj-pi, fij, REQij, R2damp );  // pure function (no globals)
             fi.add(fij);
         }
         fapos[ia].add(fi);           // global write fapos[ia]
@@ -155,7 +155,7 @@ class NBFF: public Atoms{ public:
         for(i=0; i<N; i++){
             Vec3d fi = Vec3dZero;
             const Vec3d  pi = apos[i];
-            const Vec3d& REQi = REQs[i];
+            const Quat4d& REQi = REQs[i];
             //const int*   ngs = neighs+i*4;
             const Quat4i& ngs  = neighs[i];
             //printf( "NBFF::evalLJQs_ng4()[%i] ngs(%i,%i,%i,%i) \n", i, ngs.x,ngs.y,ngs.z,ngs.w );
@@ -164,9 +164,9 @@ class NBFF: public Atoms{ public:
                 //if( (ngs[0]==j)||(ngs[1]==j)||(ngs[2]==j)||(ngs[3]==j) ) continue;
                 if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) continue;
                 Vec3d fij = Vec3dZero;
-                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
                 //E += addAtomicForceLJQ( apos[j]-pi, fij, REQij );
-                E +=getLJQ( apos[j]-pi, fij, REQij, R2damp );
+                E +=getLJQH( apos[j]-pi, fij, REQij, R2damp );
                 fapos[j].sub(fij);
                 fi   .add(fij);
             }
@@ -180,7 +180,7 @@ class NBFF: public Atoms{ public:
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi   = apos     [ia];
-        const Vec3d  REQi = REQs     [ia];
+        const Quat4d  REQi = REQs     [ia];
         const Quat4i ng   = neighs   [ia];
         const Quat4i ngC  = neighCell[ia];
         Vec3d fi = Vec3dZero;
@@ -190,15 +190,15 @@ class NBFF: public Atoms{ public:
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             if(ia==j)continue;
-            const Vec3d& REQj  = REQs[j];
-            const Vec3d  REQij = Vec3d{ REQi.x+REQj.x, REQi.y*REQj.y, REQi.z*REQj.z }; 
+            const Quat4d& REQj  = REQs[j];
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp     = apos[j]-pi;
             Vec3d fij          = Vec3dZero;
             const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
             for(int ipbc=0; ipbc<npbc; ipbc++){
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
-                double eij      = getLJQ( dpc, fij, REQij, R2damp );
+                double eij      = getLJQH( dpc, fij, REQij, R2damp );
                 // --- If atoms are bonded we don't use the computed non-bonding interaction energy and force
                 if(bBonded){
                     if(   ((j==ng.x)&&(ipbc==ngC.x))
@@ -225,7 +225,7 @@ class NBFF: public Atoms{ public:
         const double R2damp = Rdamp*Rdamp;
         const bool   bPBC = npbc>1;
         const Vec3d  pi   = apos     [ia];
-        const Vec3d& REQi = REQs     [ia];
+        const Quat4d& REQi = REQs     [ia];
         const Quat4i ng   = neighs   [ia];
         const Quat4i ngC  = neighCell[ia];
         Vec3d fi = Vec3dZero;
@@ -233,7 +233,7 @@ class NBFF: public Atoms{ public:
         for (int j=0; j<natoms; j++){ if(ia==j)continue;  // all-to-all makes it easier to paralelize 
             const Vec3d dp = apos[j]-pi;
             Vec3d fij      = Vec3dZero;
-            Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+            Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
             const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
             if(bPBC){
                 for(int ipbc=0; ipbc<npbc; ipbc++){
@@ -245,13 +245,13 @@ class NBFF: public Atoms{ public:
                         ){ continue;}
                     }
                     const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
-                    double eij = getLJQ( dpc, fij, REQij, R2damp );
+                    double eij = getLJQH( dpc, fij, REQij, R2damp );
                     E+=eij;
                     fi.add(fij);
                 }
             }else{
                 if(bBonded) continue;  // Bonded ?
-                E+=getLJQ( dp, fij, REQij, R2damp );
+                E+=getLJQH( dp, fij, REQij, R2damp );
                 fi.add(fij);
             }
         }
@@ -293,7 +293,7 @@ class NBFF: public Atoms{ public:
         for (int i=0; i<n; i++ ){
             Vec3d fi = Vec3dZero;
             const Vec3d pi = apos[i];
-            const Vec3d& REQi = REQs     [i];
+            const Quat4d& REQi = REQs     [i];
             const Quat4i ng   = neighs   [i];
             const Quat4i ngC  = neighCell[i];
             //for (int j=i+1; j<n; j++){
@@ -303,7 +303,7 @@ class NBFF: public Atoms{ public:
             //for (int j=i+1; j<n; j++){
                 const Vec3d dp = apos[j]-pi;
                 Vec3d fij      = Vec3dZero;
-                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
                 const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
                 //const bool bBonded = false;
                 if(bPBC){
@@ -325,7 +325,7 @@ class NBFF: public Atoms{ public:
                         //     printf( "LJ(%i,%i)  ic %i shpi(%g,%g,%g) \n", i,j, ipbc,  shpi.x,shpi.y,shpi.z  );  
                         // }
 
-                        double eij = getLJQ( dpc, fij, REQij, R2damp );
+                        double eij = getLJQH( dpc, fij, REQij, R2damp );
                         //if( (i==36)&&(j==35) )
                         //if( (i==36)&&(j==18) )
                         // if( eij<-0.3 )
@@ -341,7 +341,7 @@ class NBFF: public Atoms{ public:
                     }
                 }else{
                     if(bBonded) continue;  // Bonded ?
-                    E+=getLJQ( dp, fij, REQij, R2damp );
+                    E+=getLJQH( dp, fij, REQij, R2damp );
                     //if(i==ia_DBG){ printf( "CPU_LJQ[%i,%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n" , i,j, fij.x,fij.y,fij.z, R2damp, REQij.x,REQij.y,REQij.z, dp.norm() ); } 
                     fi.add(fij);
                 }
@@ -368,12 +368,12 @@ class NBFF: public Atoms{ public:
         for(int i=0; i<n; i++){
             Vec3d fi = Vec3dZero;
             const Vec3d Api = apos[i];
-            const Vec3d& AREQi = REQs[i];
+            const Quat4d& REQi = REQs[i];
             for(int j=0; j<nb; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
-                Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
+                Quat4d REQij = _mixREQ( B.REQs[j], REQi );
                 //E += addAtomicForceLJQ( B.apos[j]-Api, fij, REQij );
-                E+=getLJQ ( B.apos [j]-Api, fij, REQij, R2damp );
+                E+=getLJQH( B.apos [j]-Api, fij, REQij, R2damp );
                 if(bRecoil) B.fapos[j].sub(fij);
                 fi.add(fij);
             }
@@ -391,12 +391,12 @@ class NBFF: public Atoms{ public:
         //printf("evalMorse() n,B.n %i %i \n", n,B.n );
         for(int i=0; i<n; i++){
             Vec3d fi = Vec3dZero;
-            const Vec3d Api = apos[i];
-            const Vec3d& AREQi = REQs[i];
+            const Vec3d   pi   = apos[i];
+            const Quat4d& REQi = REQs[i];
             for(int j=0; j<nb; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
-                Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
-                E += addAtomicForceMorseQ( B.apos[j]-Api, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
+                Quat4d REQij; combineREQ( B.REQs[j], REQi, REQij );
+                E += addAtomicForceMorseQ( B.apos[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
                 if(bRecoil) B.fapos[j].sub(fij);
                 fi.add(fij);
             }
@@ -421,14 +421,14 @@ class NBFF: public Atoms{ public:
         for(int i=0; i<n; i++){
             Vec3d fi  = Vec3dZero;
             const Vec3d pi_ = apos[i];
-            const Vec3d& AREQi = REQs[i];
+            const Quat4d& REQi = REQs[i];
             //if(i==0)printf("pi_(%g,%g,%g) \n",  pi_.x,pi_.y,pi_.z );
             for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
                 const Vec3d  pi = pi_ + (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);
                 //if(i==0)printf("pi[%2i,%2i,%2i] = (%g,%g,%g) \n", ia,ib,ic,   pi.x,pi.y,pi.z );
                 for(int j=0; j<nb; j++){    // atom-atom
                     Vec3d fij = Vec3dZero;
-                    Vec3d REQij; combineREQ( B.REQs[j], AREQi, REQij );
+                    Quat4d REQij; combineREQ( B.REQs[j], REQi, REQij );
                     E += addAtomicForceMorseQ( B.apos[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2Q );
                     //E += addAtomicForceMorseQ( B.apos[j]-pi, fij, REQij.x, REQij.y, 0, K, R2Q );
                     //E += addAtomicForceQ_R2  ( B.apos[j]-pi, fij, REQij.z, K, R2Q );
@@ -437,7 +437,7 @@ class NBFF: public Atoms{ public:
                     fi.add(fij);
                 }
             }}} // nPBC
-            //if(i==0){ printf( "CPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", i, fi.x,fi.y,fi.z,E, AREQi.z ); }
+            //if(i==0){ printf( "CPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", i, fi.x,fi.y,fi.z,E, REQi.z ); }
             fapos[i].add(fi);
         }
         return E;
@@ -452,13 +452,13 @@ class NBFF: public Atoms{ public:
         for(int i=0; i<n; i++){
             Vec3d fi = Vec3dZero;
             Vec3d pi = apos[i];
-            //const Vec3d& REQi = REQs[i];
+            //const Quat4d& REQi = REQs[i];
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
             for(int j=0; j<B.n; j++){
                 Vec3d dp0; dp0.set_sub( pi, B.apos[j] );
-                Vec3d REQj = B.REQs[j];
+                Quat4d REQj = B.REQs[j];
                 for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
                     Vec3d  dp = dp0 + cell.a*ia + cell.b*ib + cell.c*ic;
                     //Vec3d  dp     = dp0;
@@ -481,7 +481,7 @@ class NBFF: public Atoms{ public:
                     //if(i==0)printf( "[%i] qp(%g,%g,%g)  ql(%g,%g,%g)  qe(%g,%g,%g)\n", j, qp.x,qp.y,qp.z,   ql.x,ql.y,ql.z,   qe.x,qe.y,qe.z );
                 }}}
             }
-            Vec3d plq = PLQs[i];
+            Quat4d plq = PLQs[i];
             //if(i==0)printf( "plq[0](%g,%g,%g) qp(%g,%g,%g)  ql(%g,%g,%g)  qe(%g,%g,%g)\n", plq.x,plq.y,plq.z,  qp.x,qp.y,qp.z,   ql.x,ql.y,ql.z,   qe.x,qe.y,qe.z );
             Quat4d fe = qp*plq.x + ql*plq.y + qe*plq.z;
             fapos[i].add(fe.f);
@@ -522,11 +522,11 @@ class NBFF: public Atoms{ public:
             Quat4i ngi = {-1,-1,-1,-1};
             if(neighs)ngi=neighs[i];
             //pi.add( shift );
-            const Vec3d& REQi = REQs[i];
+            const Quat4d& REQi = REQs[i];
             for(int j=i+1; j<n; j++){    // atom-atom
                 if( (j==ngi.x)||(j==ngi.y)||(j==ngi.z)||(j==ngi.w) ) continue;
                 Vec3d fij = Vec3dZero;
-                Vec3d REQij; combineREQ( REQs[j], REQi, REQij );
+                Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
                 const Vec3d dp=apos[j]-pi;
                 //if(i==0){ idebug=1; }else{ idebug=0; };
                 double ei = addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2Q );    E+=ei;
@@ -552,7 +552,7 @@ class NBFF: public Atoms{ public:
         }
     }
 
-    void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Vec3d* REQs_, int* atypes_ ){
+    void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
         natoms=n_;
         _bindOrRealloc(natoms, apos_  , apos   );
         _bindOrRealloc(natoms, fapos_ , fapos  );

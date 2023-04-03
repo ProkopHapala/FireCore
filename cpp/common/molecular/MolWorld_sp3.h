@@ -173,7 +173,7 @@ static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
     printf("autoNPBC(): (%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
 }
 
-void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Vec3d testREQ=Vec3d{ 1.487, 0.02609214441, 0.0} ){
+void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d testREQ=Quat4d{ 1.487, 0.02609214441, 0., 0.} ){
     // not testREQ.y [eV^0.5] = sqrt(Eii), 
     // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
     // e.g. for Carbon   0.06106717612 ev^0.5 = sqrt( 0.0037292 eV )
@@ -611,7 +611,7 @@ void setNonBond( bool bNonBonded ){
         ff .REQs = nbmol.REQs;
         if(ff4.REQs==0){
             ff4.REQs = new Quat4f[nbmol.natoms];
-            for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i].f = (Vec3f)nbmol.REQs[i]; };
+            for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
         }
     }
 }
@@ -923,7 +923,7 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
 }
 void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){ Vec3d ax=(ff.apos[iax1]-ff.apos[iax0]).normalized(); scanRotation_ax(n,selection, ff.apos[ia0], ax, phi, nstep, Es, bWriteTrj ); };
 
-void autoCharges(int natoms, int* atypes, Vec3d* REQs, Quat4i* neighs, int nMaxIter=10, double K=1.0, double K0=1.0, double Q0=0.0, double dt=0.1, double damping=0.1, double Fconv=1e-6 ){
+void autoCharges(int natoms, int* atypes, Quat4d* REQs, Quat4i* neighs, int nMaxIter=10, double K=1.0, double K0=1.0, double Q0=0.0, double dt=0.1, double damping=0.1, double Fconv=1e-6 ){
     std::vector<double> fs(natoms);
     std::vector<double> vs(natoms,0.);
     for(int i=0; i<nMaxIter; i++){
