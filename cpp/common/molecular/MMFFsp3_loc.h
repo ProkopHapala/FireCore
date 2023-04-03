@@ -494,7 +494,7 @@ inline double move_atom_GD(int i, float dt, double Flim){
     p.add_mul( f, dt );
     if(bPi)p.normalize();
     apos [i] = p;
-    fapos[i] = Vec3dZero;
+    //fapos[i] = Vec3dZero;
     return fr2;
 }
 
@@ -522,7 +522,7 @@ inline double move_atom_MD( int i, const float dt, const double Flim, const doub
     // if(b){ printf("ERROR NaNs in move_atom_MD[%i] => Exit() \n", i ); exit(0);}
     apos [i] = p;
     vapos[i] = v;
-    fapos[i] = Vec3dZero;
+    //fapos[i] = Vec3dZero;
     return fr2;
 }
 
@@ -541,7 +541,7 @@ inline double move_atom_FIRE( int i, float dt, double Flim, double cv, double cf
     if(bPi)  p.normalize();
     apos [i] = p;
     vapos[i] = v;
-    fapos[i] = Vec3dZero;
+    //fapos[i] = Vec3dZero;
     return fr2;
 }
 
@@ -568,7 +568,7 @@ inline double move_atom_kvaziFIRE( int i, float dt, double Flim ){
     if(bPi)  p.normalize();
     apos [i] = p;
     vapos[i] = v;
-    fapos[i] = Vec3dZero;
+    //fapos[i] = Vec3dZero;
     return fr2;
 }
 

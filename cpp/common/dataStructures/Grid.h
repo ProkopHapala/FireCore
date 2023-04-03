@@ -122,6 +122,13 @@ class GridShape { public:
 		gpos.c = cpos.dot( diCell.c );
 	}
 
+    inline void cartesian2grid( Vec3d cpos, Vec3f& gpos ) const {
+        cpos.sub( pos0 );
+		gpos.a = (float)cpos.dot( diCell.a );
+		gpos.b = (float)cpos.dot( diCell.b );
+		gpos.c = (float)cpos.dot( diCell.c );
+	}
+
     int loadCell(const char * fname, double step=-1.0 ){
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
@@ -336,13 +343,13 @@ inline Vec3d interpolate3DvecWrap( Vec3d * grid, const Vec3i& n, const Vec3d& r 
 	return out;
 }
 
-inline Quat4f interpolate3DvecWrap( Quat4f * grid, const Vec3i& n, const Vec3d& r ){
-	int xoff = n.x<<3; int imx = r.x +xoff;	double tx = r.x - imx +xoff;	double mx = 1 - tx;		int itx = (imx+1)%n.x;  imx=imx%n.x;
-	int yoff = n.y<<3; int imy = r.y +yoff;	double ty = r.y - imy +yoff;	double my = 1 - ty;		int ity = (imy+1)%n.y;  imy=imy%n.y;
-	int zoff = n.z<<3; int imz = r.z +zoff;	double tz = r.z - imz +zoff;	double mz = 1 - tz;		int itz = (imz+1)%n.z;  imz=imz%n.z;
+inline Quat4f interpolate3DvecWrap( Quat4f * grid, const Vec3i& n, const Vec3f& r ){
+	int xoff = n.x<<3; int imx = r.x +xoff;	float tx = r.x - imx +xoff;	float mx = 1 - tx;		int itx = (imx+1)%n.x;  imx=imx%n.x;
+	int yoff = n.y<<3; int imy = r.y +yoff;	float ty = r.y - imy +yoff;	float my = 1 - ty;		int ity = (imy+1)%n.y;  imy=imy%n.y;
+	int zoff = n.z<<3; int imz = r.z +zoff;	float tz = r.z - imz +zoff;	float mz = 1 - tz;		int itz = (imz+1)%n.z;  imz=imz%n.z;
 	int nxy = n.x * n.y; int nx = n.x;
 	//printf( " %f %f %f   %i %i %i \n", r.x, r.y, r.z, imx, imy, imz );
-	double mymx = my*mx; double mytx = my*tx; double tymx = ty*mx; double tytx = ty*tx;
+	float mymx = my*mx; float mytx = my*tx; float tymx = ty*mx; float tytx = ty*tx;
 	Quat4f out;
 	out.set_mul( grid[ i3D( imx, imy, imz ) ], mz*mymx );   out.add_mul( grid[ i3D( itx, imy, imz ) ], mz*mytx );
 	out.add_mul( grid[ i3D( imx, ity, imz ) ], mz*tymx );   out.add_mul( grid[ i3D( itx, ity, imz ) ], mz*tytx );

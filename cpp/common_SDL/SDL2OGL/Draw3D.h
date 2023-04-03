@@ -307,11 +307,13 @@ inline void drawPBC( const Vec3i& npbc, const Mat3d& lvec, Func func ){
 
 template<typename Func>
 inline void drawShifts( int n, Vec3d* shifts, int i0, Func func ){
+    //printf( "drawShifts() n=%i \n", n );
     for(int i=0; i<n; i++){
         const Vec3d shift = shifts[i];
+        //printf( "shifts[%i] (%7.3g,%7.3g,%7.3g) \n", i, shift.x,shift.y,shift.z );
         glPushMatrix();
         glTranslatef(  shift.x,  shift.y,  shift.z );
-        Vec3i ixyz{1,1,1};
+        Vec3i ixyz{i,1,1};
         if(i==i0)ixyz=Vec3iZero;
         func( ixyz  );
         //glTranslatef( -shift.x, -shift.y, -shift.z );

@@ -31,7 +31,7 @@ class NBFF: public Atoms{ public:
     int    npbc=0;
     Vec3d* shifts=0;
 
-    Quat4d *PLQs   =0;  // used only in combination with GridFF
+    Quat4f *PLQs   =0;  // used only in combination with GridFF
 
     // ==================== Functions
 
@@ -481,7 +481,7 @@ class NBFF: public Atoms{ public:
                     //if(i==0)printf( "[%i] qp(%g,%g,%g)  ql(%g,%g,%g)  qe(%g,%g,%g)\n", j, qp.x,qp.y,qp.z,   ql.x,ql.y,ql.z,   qe.x,qe.y,qe.z );
                 }}}
             }
-            Quat4d plq = PLQs[i];
+            Quat4f plq = PLQs[i];
             //if(i==0)printf( "plq[0](%g,%g,%g) qp(%g,%g,%g)  ql(%g,%g,%g)  qe(%g,%g,%g)\n", plq.x,plq.y,plq.z,  qp.x,qp.y,qp.z,   ql.x,ql.y,ql.z,   qe.x,qe.y,qe.z );
             Quat4d fe = qp*plq.x + ql*plq.y + qe*plq.z;
             fapos[i].add(fe.f);
