@@ -36,6 +36,7 @@ int nearPow2(int i){ return ceil( log(i)/log(2) ); }
 class GridShape { public:
 	Vec3d   pos0;
 	Mat3d   cell;       // lattice vector
+    Mat3d   iCell;      // inverse lattice vector
 	Mat3d   dCell;      // basis vector of each voxel ( lattice vectors divided by number of points )
 	Mat3d   diCell;     // inversion of voxel basis vector
 	Vec3i   n;          // number of pixels along each basis vector
@@ -62,6 +63,7 @@ class GridShape { public:
 		dCell.b.set_mul( cell.b, 1.0/n.b );
 		dCell.c.set_mul( cell.c, 1.0/n.c );
 		dCell.invert_T_to( diCell );
+        cell .invert_T_to( iCell  );
 	}
 
     inline void updateCell_2(){
@@ -69,6 +71,7 @@ class GridShape { public:
 		cell.b.set_mul( dCell.b, n.b );
 		cell.c.set_mul( dCell.c, n.c );
 		dCell.invert_T_to( diCell );
+        cell .invert_T_to( iCell  );
 	}
 
 	inline void setCell( const Mat3d& cell_ ){
@@ -343,19 +346,34 @@ inline Vec3d interpolate3DvecWrap( Vec3d * grid, const Vec3i& n, const Vec3d& r 
 	return out;
 }
 
-inline Quat4f interpolate3DvecWrap( Quat4f * grid, const Vec3i& n, const Vec3f& r ){
-	int xoff = n.x<<3; int imx = r.x +xoff;	float tx = r.x - imx +xoff;	float mx = 1 - tx;		int itx = (imx+1)%n.x;  imx=imx%n.x;
-	int yoff = n.y<<3; int imy = r.y +yoff;	float ty = r.y - imy +yoff;	float my = 1 - ty;		int ity = (imy+1)%n.y;  imy=imy%n.y;
-	int zoff = n.z<<3; int imz = r.z +zoff;	float tz = r.z - imz +zoff;	float mz = 1 - tz;		int itz = (imz+1)%n.z;  imz=imz%n.z;
-	int nxy = n.x * n.y; int nx = n.x;
+inline Quat4f interpolate3DvecWrap( Quat4f * grid, const Vec3i& n, Vec3f r, const float off=1000.f ){
+    r.add(off,off,off);
+    //r.add(n.x<<3,n.y<<3,n.z<<3);
+    // if( (r.x<0)||(r.y<0)||(r.x<0) ){ printf("ERROR in interpolate3DvecWrap() r(%g,%g,%g)\n",r.x,r.y,r.z); exit(0); }
+	int         imx = (int)r.x   , imy = (int)r.y   , imz = (int)r.z  ;
+    const float tx  = r.x - imx  , ty  = r.y - imy  , tz  = r.z - imz ;
+    const float mx  = 1-tx       , my  = 1-ty       , mz  = 1-tz      ;
+
+    //int itx = (imx+1)%n.x;
+    //int ity = (imy+1)%n.y;
+    //int itz = (imz+1)%n.z;
+
+    imx = imx%n.x    ; imy = imy%n.y    ; imz = imz%n.z   ;
+
+    int itx = imx+1; itx=(itx<n.x)?itx:0;
+    int ity = imy+1; ity=(ity<n.y)?ity:0;
+    int itz = imz+1; itz=(itz<n.z)?itz:0;
+
 	//printf( " %f %f %f   %i %i %i \n", r.x, r.y, r.z, imx, imy, imz );
 	float mymx = my*mx; float mytx = my*tx; float tymx = ty*mx; float tytx = ty*tx;
-	Quat4f out;
-	out.set_mul( grid[ i3D( imx, imy, imz ) ], mz*mymx );   out.add_mul( grid[ i3D( itx, imy, imz ) ], mz*mytx );
-	out.add_mul( grid[ i3D( imx, ity, imz ) ], mz*tymx );   out.add_mul( grid[ i3D( itx, ity, imz ) ], mz*tytx );
-	out.add_mul( grid[ i3D( imx, ity, itz ) ], tz*tymx );   out.add_mul( grid[ i3D( itx, ity, itz ) ], tz*tytx );
-	out.add_mul( grid[ i3D( imx, imy, itz ) ], tz*mymx );   out.add_mul( grid[ i3D( itx, imy, itz ) ], tz*mytx );
-	return out;
+    const int imymz  = n.x*(imy + n.y*imz);
+    const int itymz  = n.x*(ity + n.y*imz);
+    const int itytz  = n.x*(ity + n.y*itz);
+    const int imytz  = n.x*(imy + n.y*itz);
+	return (grid[ imx + imymz  ]*(mz*mymx)) + (grid[ itx + imymz ]*(mz*mytx))
+        +  (grid[ imx + itymz  ]*(mz*tymx)) + (grid[ itx + itymz ]*(mz*tytx))  
+        +  (grid[ imx + itytz  ]*(tz*tymx)) + (grid[ itx + itytz ]*(tz*tytx))
+        +  (grid[ imx + imytz  ]*(tz*mymx)) + (grid[ itx + imytz ]*(tz*mytx)); 
 }
 
 template<typename Func>

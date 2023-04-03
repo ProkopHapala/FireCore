@@ -356,7 +356,9 @@ void MolGUI::draw(){
 
     { // --- GridFF debug_scanSurfFF()
         Vec3d p0=W->gridFF.grid.pos0; 
-        if(W->ipicked>-1) p0.z = W->ffl.apos[W->ipicked].z; 
+        if(W->ipicked>-1){ p0.z = W->ffl.apos[W->ipicked].z; }{
+            p0.z = W->ffl.apos[0].z;
+        } 
         //printf( "p0.x %g \n", p0.z );
         int nx=W->gridFF.grid.n.x;
         int ny=W->gridFF.grid.n.y;
@@ -410,9 +412,9 @@ void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){
     if     ( p.z > grid.cell.c.z ){ p.z = grid.dCell.c.z*-0.1 + grid.cell.c.z; }
     else if( p.z < 0             ){ p.z = grid.dCell.c.z* 0.1;                 }
     Vec3f gpos; grid.cartesian2grid(p, gpos);
-    Quat4f fp=interpolate3DvecWrap( W->gridFF.FFPauli,  grid.n, gpos );
-    Quat4f fl=interpolate3DvecWrap( W->gridFF.FFLondon, grid.n, gpos );
-    Quat4f fq=interpolate3DvecWrap( W->gridFF.FFelec,   grid.n, gpos );
+    Quat4f fp=interpolate3DvecWrap( W->gridFF.FFPaul, grid.n, gpos );
+    Quat4f fl=interpolate3DvecWrap( W->gridFF.FFLond, grid.n, gpos );
+    Quat4f fq=interpolate3DvecWrap( W->gridFF.FFelec, grid.n, gpos );
     Quat4f fe= fp*PLQ.x + fl*PLQ.y + fq*PLQ.z;
 
 
@@ -715,8 +717,9 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){
         Vec3d  p  = p0 + dp*i;
-        Quat4f fe = Quat4fZero;
-        W->gridFF.addForce_surf( p, PLQ, fe );
+        //Quat4f fe = Quat4fZero; W->gridFF.addForce_surf( p, PLQ, fe );
+        Quat4f fe = W->gridFF.getForce( p, PLQ, true );
+        //printf( "debug_scanSurfFF[%i] p(%6.3f,%6.3f,%6.3f) fe(%g,%g,%g|%g)\n", i,  p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w );
         Draw3D::vertex( p ); Draw3D::vertex(p + dp                );
         Draw3D::vertex( p ); Draw3D::vertex(p + ((Vec3d)fe.f)*sc  );
 

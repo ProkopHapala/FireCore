@@ -57,19 +57,18 @@ class Quat4T {
 		T array[4];
 	};
 
-    inline explicit operator Quat4T<double>()const{ return (Quat4T<double>){ (double)x,(double)y,(double)z, (double)w }; }
-    inline explicit operator Quat4T<float> ()const{ return (Quat4T<float>){ (float)x,(float)y,(float)z, (float)w }; }
-    inline explicit operator Quat4T<int>   ()const{ return (Quat4T<int>)  { (int)x,(int)y,(int)z, (int)w }; }
+    inline explicit operator Quat4T<double>()const{ return (Quat4T<double>){ (double)x, (double)y, (double)z, (double)w }; }
+    inline explicit operator Quat4T<float> ()const{ return (Quat4T<float>) { (float )x, (float )y, (float )z, (float )w }; }
+    inline explicit operator Quat4T<int>   ()const{ return (Quat4T<int>)   { (int   )x, (int   )y, (int   )z, (int   )w }; }
 
     //inline       T& operator[](int i){ return array[i]; }
     //inline const T& operator[](int i){ return array[i]; }
 
-
-    inline void set   ( T f                             ){ x=f;   y=f;   z=f;   w=f;   };
-	inline void set   ( const  QUAT& q                     ){ x=q.x; y=q.y; z=q.z; w=q.w; };
-	inline void set   ( T fx, T fy, T fz, T fw ){ x=fx;  y=fy;  z=fz;  w=fw;  };
-	inline void setOne(  ){ x=y=z=0; w=1; };
-	inline void setXYZ( const VEC& v){ x=v.x; y=v.y; z=v.z; };
+    inline void set   ( T f                     ){ x=f   ; y=f   ; z=f   ; w=f   ; }
+	inline void set   ( const  QUAT& q          ){ x=q.x ; y=q.y ; z=q.z ; w=q.w ; }
+	inline void set   ( T fx, T fy, T fz, T fw  ){ x=fx  ; y=fy  ; z=fz  ; w=fw  ; }
+	inline void setXYZ( const VEC& v            ){ x=v.x ; y=v.y ; z=v.z ;         }
+	inline void setOne(                         ){ x=y=z=0; w=1;                   }
 
 
     inline void setView_XY (){set(1.0,0.0,0.0,0.0);}    // top view  x=x, y=-y,
@@ -250,13 +249,13 @@ class Quat4T {
 		}
     };
 
-    inline QUAT operator+ ( T f   ) const { QUAT vo; vo.x=x+f; vo.y=y+f; vo.z=z+f; vo.w=w+f; return vo; };
-    inline QUAT operator* ( T f   ) const { QUAT vo; vo.x=x*f; vo.y=y*f; vo.z=z*f; vo.w=w*f; return vo; };
+    //inline QUAT operator+ ( T f   ) const { return QUAT{ x+f, y+f, z+f, w+f }; };
+    inline QUAT operator* ( T f   ) const { return QUAT{ x*f, y*f, z*f, w*f }; };
 
-    inline QUAT operator+ ( const QUAT& vi ) const { QUAT vo; vo.x=x+vi.x; vo.y=y+vi.y; vo.z=z+vi.z; vo.w=w+vi.w; return vo;  };
-    inline QUAT operator- ( const QUAT& vi ) const { QUAT vo; vo.x=x-vi.x; vo.y=y-vi.y; vo.z=z-vi.z; vo.w=w-vi.w; return vo; };
-    inline QUAT operator* ( const QUAT& vi ) const { QUAT vo; vo.x=x*vi.x; vo.y=y*vi.y; vo.z=z*vi.z; vo.w=w*vi.w; return vo; };
-    inline QUAT operator/ ( const QUAT& vi ) const { QUAT vo; vo.x=x/vi.x; vo.y=y/vi.y; vo.z=z/vi.z; vo.w=w/vi.w; return vo; };
+    inline QUAT operator+ ( const QUAT& vi ) const { return QUAT{ x+vi.x, y+vi.y, z+vi.z, w+vi.w }; };
+    inline QUAT operator- ( const QUAT& vi ) const { return QUAT{ x-vi.x, y-vi.y, z-vi.z, w-vi.w }; };
+    inline QUAT operator* ( const QUAT& vi ) const { return QUAT{ x*vi.x, y*vi.y, z*vi.z, w*vi.w }; };
+    inline QUAT operator/ ( const QUAT& vi ) const { return QUAT{ x/vi.x, y/vi.y, z/vi.z, w/vi.w }; };
 
 // ======= metric
     // https://fgiesen.wordpress.com/2013/01/07/small-note-on-quaternion-distance-metrics/

@@ -58,9 +58,9 @@ inline double evalDipole( int n, Vec3d* ps, Quat4d* REQs, Vec3d& Dout, Vec3d& p0
 class GridFF{ public: 
     GridShape   grid;
 
-    Quat4f *FFPauli  = 0;
-    Quat4f *FFLondon = 0;
-    Quat4f *FFelec   = 0;
+    Quat4f *FFPaul = 0;
+    Quat4f *FFLond = 0;
+    Quat4f *FFelec = 0;
 
     //Vec3d  *FFtot    = NULL; // total FF is not used since each atom-type has different linear combination
 
@@ -97,8 +97,8 @@ class GridFF{ public:
 
     void allocateFFs(){
         int ntot = grid.getNtot();
-        _realloc( FFPauli , ntot );
-        _realloc( FFLondon, ntot );
+        _realloc( FFPaul , ntot );
+        _realloc( FFLond, ntot );
         _realloc( FFelec  , ntot );
     }
     
@@ -116,42 +116,91 @@ class GridFF{ public:
         printf( "GridFF::evalDipole(na=%i): D(%g,%g,%g|%g) p0(%g,%g,%g) \n", natoms, dip.x,dip.y,dip.z,Q,   dip_p0.x,dip_p0.y,dip_p0.z );
     }
 
-    /*
-    inline void addForce( const Vec3d& pos, const Quat4d& PLQ, Vec3d& f ) const {
-        Vec3d gpos;
-        grid.cartesian2grid(pos, gpos);
-        //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) \n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z );
-        f.add_mul( interpolate3DvecWrap( FFPauli,  grid.n, gpos ) , PLQ.x );
-        f.add_mul( interpolate3DvecWrap( FFLondon, grid.n, gpos ) , PLQ.y );
-        f.add_mul( interpolate3DvecWrap( FFelec,   grid.n, gpos ) , PLQ.z );
-        //f = interpolate3DvecWrap( FFLondon,  grid.n, gpos );
-        //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
-    }
+inline Quat4f getForce( const Vec3d& p, const Quat4f& PLQ, bool bSurf=true, double off=10. ) const {
+    Vec3d u;
+    grid.iCell.dot_to( p - grid.pos0, u );
+    Vec3i n = grid.n;
+    //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
+    if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz+0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } }
+    u.add(off);
+    u.x=(u.x-(int)u.x)*n.x;
+    u.y=(u.y-(int)u.y)*n.y;
+    u.z=(u.z-(int)u.z)*n.z;
 
-    inline void addForce_surf( Vec3d pos, const Quat4d& PLQ, Vec3d& f ) const {
-        pos.add( shift );
-        if     ( pos.z > grid.cell.c.z ){ pos.z = grid.dCell.c.z*-0.1 + grid.cell.c.z; }
-        else if( pos.z < 0             ){ pos.z = grid.dCell.c.z* 0.1;                 }
-        return addForce( pos, PLQ, f );
+    //printf( " u(%g,%g,%g) \n", u.x,u.y,u.z );
+
+    // -----
+	const int   ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const float tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const float mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+    //------
+    int jx = ix+1; jx=(jx<n.x)?jx:0;
+    int jy = iy+1; jy=(jy<n.y)?jy:0;
+    int jz = iz+1; jz=(jz<n.z)?jz:0;
+	//------
+	const float f00 = my*mx; 
+    const float f01 = my*tx; 
+    const float f10 = ty*mx; 
+    const float f11 = ty*tx;
+    const int   i00 = n.x*(iy + n.y*iz);
+    const int   i10 = n.x*(jy + n.y*iz);
+    const int   i11 = n.x*(jy + n.y*jz);
+    const int   i01 = n.x*(iy + n.y*jz);
+    const int 
+        i000=ix+i00, i100=jx+i00,
+        i010=ix+i10, i110=jx+i10,
+        i011=ix+i11, i111=jx+i11,
+        i001=ix+i01, i101=jx+i01;
+    const float 
+        f000=mx*f00, f100=tx*f00,
+        f010=mx*f10, f110=tx*f10,
+        f011=mx*f11, f111=tx*f11,
+        f001=mx*f01, f101=tx*f01;
+
+    { // DEBUG
+        Quat4f fDBG = FFPaul[ i000 ];
+        /*
+         ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
+        + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
+        + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
+        + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101));
+        */
+        printf( " u(%g,%g,%g) fe(%g,%g,%g|%g) p0(%g,%g,%g) \n", u.x,u.y,u.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z );
     }
-    */
+	return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
+         ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
+        + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
+        + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
+        + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101))*PLQ.x
+
+        +((FFLond[ i000 ]*f000) + (FFLond[ i100 ]*f100)
+        + (FFLond[ i010 ]*f010) + (FFLond[ i110 ]*f110)  
+        + (FFLond[ i011 ]*f011) + (FFLond[ i111 ]*f111)
+        + (FFLond[ i001 ]*f001) + (FFLond[ i101 ]*f101))*PLQ.y
+
+        +((FFelec[ i000 ]*f000) + (FFelec[ i100 ]*f100)
+        + (FFelec[ i010 ]*f010) + (FFelec[ i110 ]*f110)  
+        + (FFelec[ i011 ]*f011) + (FFelec[ i101 ]*f111)
+        + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*PLQ.z;
+}
+
 
     inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         //printf( "GridFF::addForce() \n" );
-        //printf( "GridFF::addForce() pointers(%li,%li,%li)\n", FFPauli, FFLondon, FFelec );
+        //printf( "GridFF::addForce() pointers(%li,%li,%li)\n", FFPaul, FFLond, FFelec );
         Vec3f gpos; grid.cartesian2grid(pos, gpos);
-        //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) pointers(%li,%li,%li)\n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z, FFPauli, FFLondon, FFelec );
-        Quat4f fp=interpolate3DvecWrap( FFPauli,   grid.n, gpos );   fe.add_mul( fp, PLQ.x );
-        Quat4f fl=interpolate3DvecWrap( FFLondon,  grid.n, gpos );   fe.add_mul( fl, PLQ.y );
+        //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) pointers(%li,%li,%li)\n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z, FFPaul, FFLond, FFelec );
+        Quat4f fp=interpolate3DvecWrap( FFPaul,   grid.n, gpos );   fe.add_mul( fp, PLQ.x );
+        Quat4f fl=interpolate3DvecWrap( FFLond,  grid.n, gpos );   fe.add_mul( fl, PLQ.y );
         Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, PLQ.z );
         //Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, 1.0 );
         //if(bDebug__)printf( "CPU[0] apos(%g,%g,%g)  PLQ(%g,%g,%g)\n", pos.x,pos.y,pos.z, fp.w,fl.w,fq.w );
         //printf( "fp(%g,%g,%g|%g)*(%g) + fl((%g,%g,%g|%g)*(%g) + fq(%g,%g,%g|%g)*(%g) \n", fp.x,fp.y,fp.z,fp.e, PLQ.x,  fl.x,fl.y,fl.z,fl.e, PLQ.y,  fq.x,fq.y,fq.z,fq.e, PLQ.z );
         //printf( "E(%g,%g,%g) PLQ(%g,%g,%g)\n", fp.e,fl.e,fq.e, PLQ.x,PLQ.y,PLQ.z );
-        //fe.add_mul( interpolate3DvecWrap( FFPauli,  grid.n, gpos ) , PLQ.x );
-        //fe.add_mul( interpolate3DvecWrap( FFLondon, grid.n, gpos ) , PLQ.y );
+        //fe.add_mul( interpolate3DvecWrap( FFPaul,  grid.n, gpos ) , PLQ.x );
+        //fe.add_mul( interpolate3DvecWrap( FFLond, grid.n, gpos ) , PLQ.y );
         //fe.add_mul( interpolate3DvecWrap( FFelec,   grid.n, gpos ) , PLQ.z );
-        //f = interpolate3DvecWrap( FFLondon,  grid.n, gpos );
+        //f = interpolate3DvecWrap( FFLond,  grid.n, gpos );
         //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
     }
     inline void addForce_surf( Vec3d pos, const Quat4f PLQ, Quat4f& f ) const {
@@ -249,8 +298,8 @@ class GridFF{ public:
 
                 }}}
             }
-            if(FFPauli)  FFPauli [ibuff]=(Quat4f)qp;
-            if(FFLondon) FFLondon[ibuff]=(Quat4f)ql;
+            if(FFPaul)  FFPaul [ibuff]=(Quat4f)qp;
+            if(FFLond) FFLond[ibuff]=(Quat4f)ql;
             if(FFelec)   FFelec  [ibuff]=(Quat4f)qe;
         });
     }
@@ -305,8 +354,8 @@ class GridFF{ public:
                         }
                     }
                     const int   ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
-                    FFPauli [ibuff]=(Quat4f)qp;
-                    FFLondon[ibuff]=(Quat4f)ql;
+                    FFPaul [ibuff]=(Quat4f)qp;
+                    FFLond[ibuff]=(Quat4f)ql;
                     FFelec  [ibuff]=(Quat4f)qe;
                 }
             }
@@ -332,16 +381,16 @@ class GridFF{ public:
                     qe.e+=0;      
                 }}}
             }
-            if(FFPauli)  FFPauli [ibuff]=(Quat4f)qp;
-            if(FFLondon) FFLondon[ibuff]=(Quat4f)ql;
+            if(FFPaul)  FFPaul [ibuff]=(Quat4f)qp;
+            if(FFLond) FFLond[ibuff]=(Quat4f)ql;
             if(FFelec)   FFelec  [ibuff]=(Quat4f)qe;
         });
     }
 
     void evalGridFFs( Vec3i nPBC_=Vec3i{-1,-1,-1} ){
         if(nPBC_.x>=0) nPBC=nPBC_;
-        //evalGridFFexp( natoms, apos, REQs, alpha*2,  1, FFPauli  );
-        //evalGridFFexp( natoms, apos, REQs, alpha  , 1, FFLondon );  // -2.0 coef is in  REQ2PLQ
+        //evalGridFFexp( natoms, apos, REQs, alpha*2,  1, FFPaul  );
+        //evalGridFFexp( natoms, apos, REQs, alpha  , 1, FFLond );  // -2.0 coef is in  REQ2PLQ
         //evalGridFFel ( natoms, apos, REQs,              FFelec   );
         //evalGridFFs( natoms, apos, REQs );
         if(iDebugEvalR>0){ evalGridR  ( natoms, apos, REQs );}
@@ -352,8 +401,8 @@ class GridFF{ public:
         Quat4f PLQ = REQ2PLQ( REQ, alpha );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Quat4f f = Quat4fZero;
-            if(FFPauli ) f.add_mul( FFPauli [ibuff], PLQ.x );
-            if(FFLondon) f.add_mul( FFLondon[ibuff], PLQ.y );
+            if(FFPaul ) f.add_mul( FFPaul [ibuff], PLQ.x );
+            if(FFLond) f.add_mul( FFLond[ibuff], PLQ.y );
             if(FFelec  ) f.add_mul( FFelec  [ibuff], PLQ.z );
             FF[ibuff] =  f;
         });
@@ -451,12 +500,12 @@ void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){
             }else{
                 evalGridFFs( nPBC );
             }
-            if(FFPauli)  saveBin( fname_Pauli,    nbyte, (char*)FFPauli  );
-            if(FFLondon) saveBin( fname_London,   nbyte, (char*)FFLondon );
+            if(FFPaul)  saveBin( fname_Pauli,    nbyte, (char*)FFPaul  );
+            if(FFLond) saveBin( fname_London,   nbyte, (char*)FFLond );
             if(FFelec )  saveBin( fname_Coulomb,  nbyte, (char*)FFelec   );
         }else{
-            if(FFPauli)  loadBin( fname_Pauli,    nbyte, (char*)FFPauli  );
-            if(FFLondon) loadBin( fname_London,   nbyte, (char*)FFLondon );
+            if(FFPaul)  loadBin( fname_Pauli,    nbyte, (char*)FFPaul  );
+            if(FFLond) loadBin( fname_London,   nbyte, (char*)FFLond );
             if(FFelec )  loadBin( fname_Coulomb,  nbyte, (char*)FFelec   );
         }
         return recalcFF;

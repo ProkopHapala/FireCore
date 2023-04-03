@@ -532,7 +532,7 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     gridFF.loadCell ( "inputs/cel.lvs" );
     gridFF.grid.printCell();
     gridFF.allocateFFs();
-    gridFF.tryLoad( "data/FFelec.bin", "data/FFPauli.bin", "data/FFLondon.bin" );
+    gridFF.tryLoad( "data/FFelec.bin", "data/FFPaul.bin", "data/FFLond.bin" );
     gridFF.shift = Vec3d{0.0,0.0,-8.0};
     if(bRenderGridFF){
         int iatom = 11;

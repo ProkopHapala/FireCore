@@ -412,8 +412,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     bSaveDebug=true;
     if(bSaveDebug){
         gridFF.allocateFFs();
-        ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli  );  
-        ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
+        ocl.download( ocl.itex_FE_Paul, gridFF.FFPaul  );  
+        ocl.download( ocl.itex_FE_Lond, gridFF.FFLond );
         ocl.download( ocl.itex_FE_Coul, gridFF.FFelec   );
         err =  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
         printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T1)*tick2second );

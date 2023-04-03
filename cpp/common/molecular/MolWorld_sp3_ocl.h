@@ -63,8 +63,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     delete [] atoms;
     delete [] coefs;
     if(bSaveDebug){
-        ocl.download( ocl.itex_FE_Paul, gridFF.FFPauli );  
-        ocl.download( ocl.itex_FE_Lond, gridFF.FFLondon );
+        ocl.download( ocl.itex_FE_Paul, gridFF.FFPaul );  
+        ocl.download( ocl.itex_FE_Lond, gridFF.FFLond );
         ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );
         err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
         printf( ">>time(ocl.makeGridFF(); ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
@@ -607,8 +607,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     gridFF.grid.pos0.z=z0;
     if(verbosity>1)gridFF.grid.printCell();
     gridFF.allocateFFs();
-    //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, {1,1,0}, bSaveDebugXSFs );
-    //gridFF.tryLoad( "FFelec.bin", "FFPauli.bin", "FFLondon.bin", false, nPBC, bSaveDebugXSFs );
+    //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
+    //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, nPBC, bSaveDebugXSFs );
     if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }
     
     long T0 = getCPUticks();

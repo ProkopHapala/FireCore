@@ -705,7 +705,7 @@ double getCollisionGrid( int i0, int n, Vec3d* poss, Vec3d* forces ){
     for(int i=0; i<n; i++){
         //Vec3d , gridFF.addForce( apos[j], PLQ[j], aforce[j] );
         gridFF.grid.cartesian2grid(poss[i],gpos);
-        fe = interpolate3DvecWrap( gridFF.FFPauli, gridFF.grid.n, gpos );
+        fe = interpolate3DvecWrap( gridFF.FFPaul, gridFF.grid.n, gpos );
         fe.mul( PLQ[i0+i].x );
         double fr2 = fe.f.norm2();
         if( fr2>F2max ) F2max=fr2;
