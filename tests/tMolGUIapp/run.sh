@@ -20,6 +20,14 @@ cd $wd
 
 ln -s $dir/$name .
 
+
+
+# ------- asan (Memory Sanitizer)
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
+
+
 # ---- Run
 
 #rm *.bin *.xsf

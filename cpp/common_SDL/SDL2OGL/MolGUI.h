@@ -116,6 +116,10 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     char str[2048];
 
+
+    std::vector<Vec2i> bondsToShow;
+    Vec3d * bondsToShow_shifts = 0; 
+
     // ======================= Functions 
 
 	virtual void draw   ();
@@ -138,6 +142,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void drawSystem    ( Vec3i ixyz=Vec3iZero );
     void drawSystem_bak( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
+    Vec3d showNonCovalentInteraction( char* s, Vec2i b, bool bDraw=true );
+    void  showBonds();
     //void flipPis( Vec3d ax );
     //void drawSystemQMMM();
     //void renderOrbital(int i, double iso=0.1);
@@ -338,6 +344,8 @@ void MolGUI::draw(){
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
 
+    glColor3f(0.0f,0.5f,0.0f); showBonds();
+
     for(int i=0; i<W->selection.size(); i++){ 
         int ia = W->selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.apos[ia] );     
@@ -348,6 +356,69 @@ void MolGUI::draw(){
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
 };
+
+
+void MolGUI::showBonds(  ){
+    Vec3d* ps = W->ffl.apos;
+    glBegin(GL_LINES);
+    for(int i=0; i<bondsToShow.size(); i++ ){
+        Vec2i b  = bondsToShow       [i];
+        Vec3d d  = bondsToShow_shifts[i];
+        Vec3d pi = ps[b.i];
+        Vec3d pj = ps[b.j];
+        printf( "b[%i,%i] pi(%7.3f,%7.3f,%7.3f) pj(%7.3f,%7.3f,%7.3f) d(%7.3f,%7.3f,%7.3f) \n", pi.x,pi.y,pi.z,    pj.x,pj.y,pj.z,  d.x,d.y,d.z );
+        Draw3D::vertex(pi-d);
+        Draw3D::vertex(pj);
+
+        Draw3D::vertex(pi);
+        Draw3D::vertex(pj+d);
+    }
+    glEnd();
+}
+
+Vec3d MolGUI::showNonCovalentInteraction( char* s, Vec2i b, bool bDraw ){
+    int na = W->ffl.natoms ;
+    if( (b.i>na)||(b.j>na) ){ printf( "ERROR showNonCovalentInteraction(%i,%i) out of atom range [0 .. %i] \n", b.i,b.j, W->ffl.natoms ); }
+    Quat4d* REQs = W->ffl.REQs;
+    Vec3d * ps   = W->ffl.apos;
+    Mat3d& lvec  = W->ffl.lvec;
+    Quat4d REQH  = _mixREQ( REQs[b.i], REQs[b.j] );
+    Vec3d pi     = ps[b.i];
+    Vec3d pj     = ps[b.j];
+    Vec3d d      = pj-pi;
+    // --- PBC
+    
+    Vec3i g      = W->ffl.invLvec.nearestCell( d );
+    Vec3d shift  = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
+    d.add( shift );
+
+    // --- Reference
+    double R2damp = W->gridFF.Rdamp;
+    Vec3d f;
+    double Eref  = getLJQH( d, f, REQH, R2damp );
+    // --- Decomposed
+    double  r2  = d.norm2();
+    // ---- Electrostatic
+    double ir2_ = 1/( r2 + R2damp  );
+    double Eel =  COULOMB_CONST*REQH.z*sqrt( ir2_ );
+    double Fel =  Eel*ir2_ ;
+    // --- LJ 
+    double  ir2   = 1/r2;
+    double  u2    = REQH.x*REQH.x*ir2;
+    double  u6    = u2*u2*u2;
+    double vdW    = u6*REQH.y;
+    double EvdW   = -2.  *vdW;
+    double Epaul  = u6   *vdW;
+    double EH     = u6*u6* ((REQH.w<0) ? REQH.w : 0.0);  // H-bond correction
+    double Etot   = Epaul + EvdW + EH + Eel;
+    //F      +=  (12.*(u6-1.)*vdW + H*6.)*ir2;
+    s += sprintf(s, "PLQH[%i,%i] r=%6.3f Etot %15.10f Epaul %15.10f; EvdW %15.10f EH %15.10f Eel %15.10f\n", b.i,b.j, sqrt(r2), Etot, Epaul, EvdW, EH, Eel );
+    if( fabs(Etot-Eref)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", Eref ); }
+    if( Etot>0 ){ glColor3f(0.7f,0.f,0.f); }else{ glColor3f(0.f,0.f,1.f); }
+    Draw::drawText( str, fontTex, fontSizeDef, {150,20} );
+    glTranslatef( 0.0,fontSizeDef*2,0.0 );
+    return shift;
+}
 
 void MolGUI::drawHUD(){
     glDisable ( GL_LIGHTING );
@@ -379,6 +450,23 @@ void MolGUI::drawHUD(){
 
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         Draw::drawText( W->info_str(str), fontTex, fontSizeDef, {100,20} );
+
+    }
+
+    glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
+    if( !bondsToShow_shifts ){
+        bondsToShow.push_back( {18,36} );
+        bondsToShow.push_back( {35,7}  );
+        _alloc( bondsToShow_shifts, bondsToShow.size() );
+        // ---- Setup H-bond corrections
+        Quat4d* REQs = W->ffl.REQs;
+        REQs[18].w = -0.7 * REQs[18].y;
+        REQs[36].w = +0.7 * REQs[36].y;
+        REQs[35].w = +0.7 * REQs[35].y;
+        REQs[7 ].w = -0.7 * REQs[7 ].y;
+    }
+    for(int i=0; i<bondsToShow.size(); i++ ){
+        bondsToShow_shifts[i] =  MolGUI::showNonCovalentInteraction( str, bondsToShow[i] );
     }
 
 
@@ -536,7 +624,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //if(bViewAtomP0s     &&  fapos          ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
     if(bViewAtomForces    &&  fapos          ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
     if(bOrig&&mm_bAtoms&&bViewAtomLabels     ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D,        0.007              );       }
-    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 3, 2, fontTex3D, 0.01 ); }
+    if(bViewMolCharges && (W->nbmol.REQs!=0) ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2, fontTex3D, 0.01 ); }
     //if(W->ff.pi0s                            ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
 
 }
