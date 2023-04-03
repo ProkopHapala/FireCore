@@ -101,7 +101,7 @@ class FspFF{ public:
     Vec3d  * aforce = 0;      // atomic forces   // ALIAS
 
     Vec3d  * capREQs = 0;
-    Quat4d * aREQs   = 0;
+    Quat4d * REQs   = 0;
     Vec3i  * aconf   = 0;     // nH, nsigna,nt=(nsigna+ne)     npi = (4 - vt)=(4 - (nsigma+ne))
     //Quat4i * atom2bond = 0; // atom to bond map
 
@@ -123,7 +123,7 @@ class FspFF{ public:
         nDOF =natom + norb;
         //_realloc(atoms,natom   );
         _realloc(aconf  ,natom);
-        _realloc(aREQs  ,natom);
+        _realloc(REQs  ,natom);
 
         _realloc(bondIs ,nbond);
         _realloc(bLKs   ,nbond);
@@ -207,8 +207,8 @@ void evalBond(int ibond){
 
     /*
     if( substract_LJq ){
-        addAtomicForceLJQ( dp, f, aREQs[ia].x+aREQs[ja].x, -aREQs[ia].y*aREQs[ja].y, aREQs[ia].z*aREQs[ja].z );
-        //addAtomicForceMorseQ( dp, f, aREQ[iat.x].x+aREQ[iat.y].x, -aREQ[iat.x].y*aREQ[iat.y].y, aREQ[iat.x].z*aREQ[iat.y].z, gridFF.alpha );
+        addAtomicForceLJQ( dp, f, REQs[ia].x+REQs[ja].x, -REQs[ia].y*REQs[ja].y, REQs[ia].z*REQs[ja].z );
+        //addAtomicForceMorseQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z, gridFF.alpha );
     }
     */
 
@@ -353,13 +353,13 @@ inline void evalAtoms       (){ for(int i=0; i<natom; i++){ evalAtom(i);        
 
 void evalLJQs(){
     for(int i=0; i<natom; i++){
-        const Quat4d& REQi = aREQs[i];
+        const Quat4d& REQi = REQs[i];
         const Vec3d& pi   = apos[i];
         Vec3d fi; fi.set(0.0);
         /*
         for(int j=0; j<natoms; j++){
             if(i!=j){
-                Quat4d& ljq_j = aREQ[j];
+                Quat4d& ljq_j = REQ[j];
                 double rij = ljq_i.x+ljq_j.x;
                 double eij = ljq_i.y*ljq_j.y;
                 double qq  = ljq_i.z*ljq_j.z;
@@ -370,7 +370,7 @@ void evalLJQs(){
         */
         for(int j=0; j<i; j++){
             Vec3d  fij;fij.set(0.);
-            Quat4d& REQj = aREQs[j];
+            Quat4d& REQj = REQs[j];
             addAtomicForceLJQ( pi-apos[j], fij, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z );
             aforce[j].sub(fij);
             aforce[j].add(fij);
@@ -392,8 +392,8 @@ void evalLJQs(int n, const Quat4d* REQs, const Vec3d* ps, Vec3d* fs, const Quat4
 }
 
 void evalLJQs_H(){
-    for(int i=0; i<natom; i++){ evalLJQs( natom,   aREQs,   apos,   aforce,  aREQs  [i],   apos[i],   aforce[i] ); }
-    for(int i=0; i<natom; i++){ evalLJQs( ncap,  capREQs, capPos, capForce,  aREQs  [i], capPos[i], capForce[i] ); }
+    for(int i=0; i<natom; i++){ evalLJQs( natom,   REQs,   apos,   aforce,   REQs  [i],    apos[i],   aforce[i] ); }
+    for(int i=0; i<natom; i++){ evalLJQs( ncap,  capREQs, capPos, capForce,  REQs  [i],  capPos[i], capForce[i] ); }
     for(int i=0; i<ncap;  i++){ evalLJQs( ncap,  capREQs, capPos, capForce,  capREQs[i], capPos[i], capForce[i] ); }
 }
 

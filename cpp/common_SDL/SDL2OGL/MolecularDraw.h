@@ -2,6 +2,7 @@
 #define MolecularDraw_h
 
 #include "AtomicConfiguration.h"
+#include "molecular_utils.h"
 
 void colorRB( float f ){ glColor3f( 0.5+f, 0.5, 0.5-f ); }
 
@@ -178,6 +179,8 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
             //glColor3f( fel1.x, fel1.y, fel1.z ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f( fel2.x, fel2.y, fel2.z ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
             //printf( "[%i,%i]fel1.z %g sclr %g \n", ib,ia, fel1.z, sclr );
+            if( ckeckNaN_d(1, 3, (double*)(pos+ip1), "p2" ) || ckeckNaN_d(1, 3, (double*)(pos+ip2), "p1" ) ){ printf("ERROR in renderSubstrate()[%i,%i]: ip(%i,%i) NaNs Found !!! => Exit() \n",ia,ib, ip1,ip2  );  exit(0); };
+            //printf( "renderSubstrate[%i,%i] p1(%g,%g,%g) p2(%g,%g,%g) \n", ia,ib, pos[ip1].x,pos[ip1].y,pos[ip1].z, pos[ip2].x,pos[ip2].y,pos[ip2].z );
             colorRB( fel1.z*-sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
             colorRB( fel2.z*-sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
             //printf( "[%i,%i]fel1.e %g sclr %g \n", ib,ia, fel1.e, sclr );

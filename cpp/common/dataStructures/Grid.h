@@ -383,7 +383,7 @@ double evalOnGrid( const GridShape& grid, Func func ){
 //template< void FUNC( int ibuff, const Vec3d& pos_, void * args ) >
 template<typename FUNC>
 void interateGrid3D( const GridShape& grid, FUNC func ){
-    printf( "interateGrid3D() pos0(%g,%g,%g) a(%g,%g,%g) b(%g,%g,%g) c(%g,%g,%g)\n", grid.pos0.x,grid.pos0.y,grid.pos0.z,  grid.dCell.a.x,grid.dCell.a.y,grid.dCell.a.z, grid.dCell.b.x,grid.dCell.b.y,grid.dCell.b.z, grid.dCell.c.x,grid.dCell.c.y,grid.dCell.c.z );
+    //printf( "interateGrid3D() pos0(%g,%g,%g) a(%g,%g,%g) b(%g,%g,%g) c(%g,%g,%g)\n", grid.pos0.x,grid.pos0.y,grid.pos0.z,  grid.dCell.a.x,grid.dCell.a.y,grid.dCell.a.z, grid.dCell.b.x,grid.dCell.b.y,grid.dCell.b.z, grid.dCell.c.x,grid.dCell.c.y,grid.dCell.c.z );
 	int nx  = grid.n.x; 	int ny  = grid.n.y; 	int nz  = grid.n.z;
 	//int nx  = n.z; 	int ny  = n.y; 	int nz  = n.x;
 	int nxy = ny * nx;
@@ -398,15 +398,8 @@ void interateGrid3D( const GridShape& grid, FUNC func ){
                 //FUNC( ibuff, {ia,ib,ic}, pos );
                 pos = grid.pos0 + grid.dCell.c*ic + grid.dCell.b*ib + grid.dCell.a*ia;
                 func( ibuff, pos );
-                //printf("(%i,%i,%i)(%3.3f,%3.3f,%3.3f)\n",ia,ib,ic,pos.x,pos.y,pos.z);
-				//pos.add( grid.dCell.a );
 			}
-			//pos.add_mul( grid.dCell.a, -nx );
-			//pos.add( grid.dCell.b );
 		}
-		//exit(0);
-		//pos.add_mul( grid.dCell.b, -ny );
-		//pos.add( grid.dCell.c );
 	}
     printf("!!!! DEBUG interateGrid3D pmin(%g,%g,%g) pmax(%g,%g,%g) \n",  grid.pos0.x, grid.pos0.y, grid.pos0.z,    pos.x, pos.y, pos.z );
     //printf ("\n");
@@ -524,14 +517,17 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, 
             for ( ic=nz-1; ic>1; ic-- ){
                 int ibuff_ = ibuff + nxy*ic;
                 fz = FF[ibuff_].z;
+                //if( isnan(fz)||isinf(fz) ){ printf("ERROR in getIsoSurfZ()[%i,%i,%i] fz=%g \n", ia,ib,ic, fz ); exit(0); }
                 if( (fz>isoval)==sign ){
                     ibuff = ibuff_;
                     break;
                 }
                 ofz = fz;
             }
-            //double fc = (ofz-isoval)/(ofz-fz);
-            double fc = 1-((ofz-isoval)/(ofz-fz));
+            
+            double fc = 0.0;
+            if( fabs(ofz-fz)>1.e-8 ){  fc = 1-((ofz-isoval)/(ofz-fz)); }
+            if( isnan(fc)||isinf(fc) ){ printf("ERROR in getIsoSurfZ()[%i,%i] fc=%g fz=%g ofz=%g isoval=%g \n", ia,ib,ic, fc, fz, ofz, isoval ); exit(0); }
             //double fc = 0;
             int ibxy  = ib*nx + ia;
             //printf( "ibxy %i %i \n", ibxy, ibuff );

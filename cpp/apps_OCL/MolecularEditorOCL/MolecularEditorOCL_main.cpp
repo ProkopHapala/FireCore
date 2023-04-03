@@ -305,7 +305,7 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
     testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0 };
     testPLQ = REQ2PLQ( testREQ, world.gridFF.alpha );//
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
-    printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.aREQ[iatom].x, world.aREQ[iatom].y, world.aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
+    printf( "REQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.REQ[iatom].x, world.REQ[iatom].y, world.REQ[iatom].z, world.PLQ[iatom].x, world.PLQ[iatom].y, world.PLQ[iatom].z );
     Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
     world.gridFF.evalCombindGridFF( testREQ, FFtot );
 
@@ -758,7 +758,7 @@ void AppMolecularEditorOCL::draw(){
 	for( int ia=0; ia<world.natoms; ia++ ){
         Vec3d& p  =world.apos  [ia];
         Vec3d& f  =world.aforce[ia];
-        Quat4d& req=world.aREQ  [ia];
+        Quat4d& req=world.REQ  [ia];
         //printf( "world %i p(%g,%g,%g) f(%g,%g,%g) req(%g,%g,%g) \n", ia, p.x,p.y,p.z,  f.x,f.y,f.z,  req.x,req.y,req.z );
         //printf( "  world %i p(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) req(%5.5e,%5.5e,%5.5e) \n", ia, p.x,p.y,p.z,  f.x,f.y,f.z,  req.x,req.y,req.z );
 

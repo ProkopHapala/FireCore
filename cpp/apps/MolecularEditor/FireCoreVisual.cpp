@@ -526,7 +526,7 @@ void  TestAppFireCoreVisual::selectShorterSegment( const Vec3d& ro, const Vec3d&
 
 void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
-    params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.aREQs, &gridFF.atypes );
+    params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.REQs, &gridFF.atypes );
     gridFF.grid.n    = Vec3i{60,60,100};
     gridFF.grid.pos0 = Vec3d{0.0,0.0,0.0};
     gridFF.loadCell ( "inputs/cel.lvs" );

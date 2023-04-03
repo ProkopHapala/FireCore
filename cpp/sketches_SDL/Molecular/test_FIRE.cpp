@@ -250,7 +250,7 @@ void TestAppFIRE::draw(){
     Draw3D::bondLabels( world.nbonds,       world.bond2atom, world.apos, fontTex, 0.02 );
     glColor3f(1.0f,0.0f,0.0f);
     Draw3D::vecsInPoss( world.natoms, world.aforce, world.apos, 300.0              );
-    Draw3D::atomsREQ  ( world.natoms, world.apos,   world.aREQ, ogl_sph, 1.0, 0.25 );
+    Draw3D::atomsREQ  ( world.natoms, world.apos,   world.REQ, ogl_sph, 1.0, 0.25 );
 
     //printf("==========\n");
     //for(int i=0; i<world.natoms; i++){

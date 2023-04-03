@@ -59,6 +59,7 @@ plt.ylim( Emin*1.2, -Emin )
 
 plt.xlabel("r(O-H) [A]"); plt.ylabel("E[eV]");
 plt.legend(); plt.grid()
+plt.savefig("Hbond_correction.png", bbox_inches='tight')
 plt.show()
 
 

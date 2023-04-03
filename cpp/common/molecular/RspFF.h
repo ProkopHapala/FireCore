@@ -96,7 +96,7 @@ class RARFF2arr{ public:
     //RigidAtomType** types = 0;
 
     int    * types   = 0;
-    Quat4d * aREQs   = 0;
+    Quat4d * REQs   = 0;
 
     Vec2i  * b2a    = 0;
     Vec2d  * bLKs   = 0;
@@ -121,7 +121,7 @@ class RARFF2arr{ public:
         natom=natom_;
         //_realloc(atoms,natom   );
         _realloc(types  ,natom);
-        _realloc(aREQs  ,natom);
+        _realloc(REQs  ,natom);
 
         _realloc(bLKs   ,nbond);
         _realloc(b2a    ,nbond);
@@ -142,7 +142,7 @@ class RARFF2arr{ public:
     void dealloc(){
 
         _dealloc(types  );
-        _dealloc(aREQs  );
+        _dealloc(REQs  );
 
         _dealloc(bLKs   );
         _dealloc(b2a    );
@@ -182,8 +182,8 @@ class RARFF2arr{ public:
         Vec3d force=hij*fr;
 
         if( substract_LJq ){
-            addAtomicForceLJQ( dp, f, aREQ[iat.x].x+aREQ[iat.y].x, -aREQ[iat.x].y*aREQ[iat.y].y, aREQ[iat.x].z*aREQ[iat.y].z );
-            //addAtomicForceMorseQ( dp, f, aREQ[iat.x].x+aREQ[iat.y].x, -aREQ[iat.x].y*aREQ[iat.y].y, aREQ[iat.x].z*aREQ[iat.y].z, gridFF.alpha );
+            addAtomicForceLJQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z );
+            //addAtomicForceMorseQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z, gridFF.alpha );
         }
 
         const Vec3d& hi = hbonds[ib];
@@ -274,12 +274,12 @@ class RARFF2arr{ public:
 
     void eval_LJq_On2(){
         for(int i=0; i<natoms; i++){
-            const Quat4d& ljq_i = aREQ[i];
+            const Quat4d& ljq_i = REQ[i];
             const Vec3d& pi    = apos[i];
             Vec3d f; f.set(0.0);
             for(int j=0; j<natoms; j++){
                 if(i!=j){ //  ToDo : can be up to twice faster if we do not do all pairs
-                    const Quat4d& ljq_j = aREQ[j];
+                    const Quat4d& ljq_j = REQ[j];
                     double rij = ljq_i.x+ljq_j.x;
                     double eij = ljq_i.y*ljq_j.y;
                     double qq  = ljq_i.z*ljq_j.z;

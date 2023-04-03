@@ -2654,7 +2654,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             mmff->atypes[i] = atoms[i].type;
             mmff->atom2frag[i] = atoms[i].frag;
             mmff->apos [i]  = atoms[i].pos;
-            mmff->aREQ [i]  = atoms[i].REQ;
+            mmff->REQ  [i]  = atoms[i].REQ;
             //atomTypes[i]  = atoms[i].type;
             //printf( "iatom %i atype %i ifrag %i pos (%g,%g,%g) REQ (%g,%g,%g) \n", i, atoms[i].type, atoms[i].frag, atoms[i].pos.x,atoms[i].pos.y,atoms[i].pos.z, atoms[i].REQ.x,atoms[i].REQ.y,atoms[i].REQ.z );
         }
