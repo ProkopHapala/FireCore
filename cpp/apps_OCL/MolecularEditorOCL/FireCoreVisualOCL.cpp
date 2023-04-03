@@ -115,7 +115,8 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
     double mm_Rsub = 1.0;
     bool   mm_bAtoms = false;
     bool   isoSurfRenderType = 1;
-    Quat4d testREQ,testPLQ;
+    Quat4d testREQ;
+    Quat4f testPLQ;
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
@@ -514,7 +515,7 @@ void  TestAppFireCoreVisual::selectShorterSegment( const Vec3d& ro, const Vec3d&
 
 void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
-    int ret = params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.aREQs, &gridFF.atypes );
+    int ret = params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.REQs, &gridFF.atypes );
     gridFF.grid.n    = Vec3i{60,60,100};
     gridFF.grid.pos0 = Vec3d{0.0,0.0,0.0};
     gridFF.loadCell ( "inputs/cel.lvs" );

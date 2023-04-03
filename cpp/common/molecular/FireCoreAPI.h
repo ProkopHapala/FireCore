@@ -147,7 +147,7 @@ class QMMM{ public:
         }
     }
 
-    void applyCharges( Quat4d* aREQs, bool bDiff=false ){
+    void applyCharges( Quat4d* REQs, bool bDiff=false ){
         p_getCharges( charges );
         if( bDiff ){
             if(params==0){ printf( "ERROR: QMMM::applyCharges() substracting valence charge but *params==null \n"); exit(0); }
@@ -160,7 +160,7 @@ class QMMM{ public:
         for(int iq=0; iq<nqm; iq++){
             int im      = imms[iq];
             if(params)
-            aREQs[im].z = charges[iq];
+            REQs[im].z = charges[iq];
         }
 
     }

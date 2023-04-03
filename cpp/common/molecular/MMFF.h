@@ -164,8 +164,8 @@ class MMFF{ public:
     int    * atom2frag = NULL; // [natom], inverted frag2a
     Vec3d  * apos      = NULL;   // atomic position
     //Vec3d  * aLJq    = NULL;
-    Quat4d  * aREQ      = NULL;
-    Quat4d  * aPLQ      = NULL;   // this is used for grid-accelerated factorized potential
+    Quat4d * REQ      = NULL;
+    Quat4f * PLQ      = NULL;   // this is used for grid-accelerated factorized potential
     double * lbond     = NULL;   // bond lengths
     Vec3d  * hbond     = NULL;   // normalized bond unitary vectors
     Vec3d  * aforce    = NULL;
@@ -218,8 +218,8 @@ void allocate( int natoms_, int nbonds_, int nang_, int ntors_ ){
     _realloc( atypes, natoms );
     _realloc( apos      , natoms );
     _realloc( aforce    , natoms );
-    _realloc( aREQ      , natoms );
-    _realloc( aPLQ      , natoms );
+    _realloc( REQ       , natoms );
+    _realloc( PLQ       , natoms );
     _realloc( atom2frag , natoms );
     _realloc( lbond     , nbonds );
     _realloc( hbond     , nbonds );
@@ -259,13 +259,13 @@ void allocateDyn(){
 }
 
 void deallocate(){
-    _dealloc( apos );     _dealloc( aforce );   _dealloc( aREQ );      _dealloc( aPLQ );
+    _dealloc( apos );     _dealloc( aforce );   _dealloc( REQ );       _dealloc( PLQ );
     _dealloc( lbond );    _dealloc( hbond );    _dealloc( bond2atom ); _dealloc( bond_0 );  _dealloc( bond_k );
     _dealloc( ang2bond ); _dealloc( ang2atom ); _dealloc( ang_0 );     _dealloc( ang_k );
-    //delete [] apos;     delete [] aforce;   delete [] aREQ;      delete [] aPLQ;
+    //delete [] apos;     delete [] aforce;   delete [] REQ;      delete [] PLQ;
     //delete [] lbond;    delete [] hbond;    delete [] bond2atom; delete [] bond_0; delete [] bond_k;
     //delete [] ang2bond; delete [] ang2atom; delete [] ang_0;     delete [] ang_k;
-    //if(aPLQ) delete [] aPLQ;
+    //if(PLQ) delete [] PLQ;
 }
 
 void deallocFragment( int nFrag_ ){
@@ -302,10 +302,10 @@ int pickBond( const Vec3d& ray0, const Vec3d& hRay, double R ){
 }
 
 void genPLQ(){
-    //if(aPLQ==NULL) aPLQ = new Vec3d[natoms];
+    //if(PLQ==NULL) PLQ = new Vec3d[natoms];
     for(int i=0; i<natoms; i++){
-        aPLQ[i] = REQ2PLQ( aREQ[i], gridFF.alpha );
-        //printf( "genPLQ %i (%g,%g,%g)->(%g,%g,%g) \n", i, aREQ[i].x, aREQ[i].y, aREQ[i].z,   aPLQ[i].x, aPLQ[i].y, aPLQ[i].z );
+        PLQ[i] = REQ2PLQ( REQ[i], gridFF.alpha );
+        //printf( "genPLQ %i (%g,%g,%g)->(%g,%g,%g) \n", i, REQ[i].x, REQ[i].y, REQ[i].z,   PLQ[i].x, PLQ[i].y, PLQ[i].z );
     }
     //exit(0);
 }
@@ -446,7 +446,7 @@ void RBodyForce(){
         Vec3d * m_apos = fapos0s[ifrag];
         for(int iatom=0; iatom<ni; iatom++){
             int    ig   = ifrag+iatom;
-            Quat4d REQi = aREQ[ig];
+            Quat4d REQi = REQ[ig];
             Vec3d  pi   = apos[ig];
             Vec3d  f; f.set(0.0f);
             for(int jfrag=0; jfrag<nFrag; jfrag++){
@@ -456,7 +456,7 @@ void RBodyForce(){
                 if(jfrag==ifrag){ continue; }
                 for(int jatom=0; jatom<nj; jatom++){
                     int jg = jfrag+jatom;
-                    Quat4d REQj = aREQ[jg];
+                    Quat4d REQj = REQ[jg];
                     Vec3d  pj   = apos[jg];
                     addAtomicForceLJQ( pj-pi, f, REQi.x+REQj.x, REQi.y*REQj.y, REQi.z*REQj.z );
                 }
@@ -503,8 +503,8 @@ void eval_bonds( const bool substract_LJq ){
         f.mul( (l-bond_0[ib])*bond_k[ib] );
 
         if( substract_LJq ){
-            //addAtomicForceLJQ( dp, f, aREQ[iat.x].x+aREQ[iat.y].x, -aREQ[iat.x].y*aREQ[iat.y].y, aREQ[iat.x].z*aREQ[iat.y].z );
-            addAtomicForceMorseQ( dp, f, aREQ[iat.x].x+aREQ[iat.y].x, -aREQ[iat.x].y*aREQ[iat.y].y, aREQ[iat.x].z*aREQ[iat.y].z, gridFF.alpha );
+            //addAtomicForceLJQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z );
+            addAtomicForceMorseQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z, gridFF.alpha );
         }
 
         aforce[iat.x].add( f );
@@ -646,12 +646,12 @@ void eval_torsion(){
 
 void eval_LJq_On2(){
     for(int i=0; i<natoms; i++){
-        Quat4d ljq_i = aREQ[i];
+        Quat4d ljq_i = REQ[i];
         Vec3d  pi    = apos[i];
         Vec3d  f; f.set(0.0);
         for(int j=0; j<natoms; j++){
             if(i!=j){
-                Quat4d& ljq_j = aREQ[j];
+                Quat4d& ljq_j = REQ[j];
                 double rij = ljq_i.x+ljq_j.x;
                 double eij = ljq_i.y*ljq_j.y;
                 double qq  = ljq_i.z*ljq_j.z;
@@ -671,13 +671,13 @@ bool getCollosion( int i0, int n, double scR, const bool bFColPauli, Vec3d* poss
     if(R2mins)   for(int i=0; i<n; i++){ R2mins[i]=1e+300; };
     for( int i=0; i<natoms; i++ ){
         Vec3d  pi = apos[i];
-        //double ri  = aREQ[i].x;
-        Quat4d REQi =  aREQ[i];
+        //double ri  = REQ[i].x;
+        Quat4d REQi =  REQ[i];
         if( (i>=i0)&&(i<i1) ) continue;
         for(int j=0; j<n; j++){
             Vec3d  d  = poss[j] - pi;
             double r2 = d.norm2();
-            Quat4d&  REQj = aREQ[i0+j];
+            Quat4d&  REQj = REQ[i0+j];
             double R  = ( REQj.x + REQi.x )*scR;
             double R2 = R*R;
             if( r2 < R2 ){
@@ -700,13 +700,13 @@ bool getCollosion( int i0, int n, double scR, const bool bFColPauli, Vec3d* poss
 
 double getCollisionGrid( int i0, int n, Vec3d* poss, Vec3d* forces ){
     double F2max=0;
-    Vec3d gpos;
+    Vec3f gpos;
     Quat4f fe;
     for(int i=0; i<n; i++){
-        //Vec3d , gridFF.addForce( apos[j], aPLQ[j], aforce[j] );
+        //Vec3d , gridFF.addForce( apos[j], PLQ[j], aforce[j] );
         gridFF.grid.cartesian2grid(poss[i],gpos);
         fe = interpolate3DvecWrap( gridFF.FFPauli, gridFF.grid.n, gpos );
-        fe.mul( aPLQ[i0+i].x );
+        fe.mul( PLQ[i0+i].x );
         double fr2 = fe.f.norm2();
         if( fr2>F2max ) F2max=fr2;
         if(forces){ forces[i].add( (Vec3d)fe.f ); }
@@ -766,12 +766,12 @@ bool tryFragPose( int ifrag, bool bRel, Vec3d pos, Quat4d qrot ){
 
 void eval_MorseQ_On2(){
     for(int i=0; i<natoms; i++){
-        Quat4d REQi = aREQ[i];
+        Quat4d REQi = REQ[i];
         Vec3d pi   = apos[i];
         Vec3d f; f.set(0.0);
         for(int j=0; j<natoms; j++){
             if(i!=j){
-                Quat4d& REQj = aREQ[j];
+                Quat4d& REQj = REQ[j];
                 //printf("(%i,%i)", i, j );
                 addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alpha );
             }
@@ -784,7 +784,7 @@ void eval_MorseQ_On2(){
 void eval_MorseQ_On2_fragAware(){
     //printf("eval_MorseQ_On2_fragAware natoms %i \n", natoms );
     for(int i=0; i<natoms; i++){
-        Quat4d REQi = aREQ[i];
+        Quat4d REQi = REQ[i];
         Vec3d pi    = apos[i];
         Vec3d f; f.set(0.0);
         int ifrag = atom2frag[i];
@@ -794,7 +794,7 @@ void eval_MorseQ_On2_fragAware(){
                 continue;
             }
             if(i!=j){
-                Quat4d& REQj = aREQ[j];
+                Quat4d& REQj = REQ[j];
                 //printf("(%i,%i) (%i,%i)", ifrag, i, atom2frag[j], j );
                 addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alpha );
             }
@@ -812,7 +812,7 @@ void eval_MorseQ_Frags(){
         int ia = frag2a[ifrag];
         int na = ia+fragNa[ifrag];
         for( int i=ia; i<na; i++ ){
-            Quat4d REQi = aREQ[i];
+            Quat4d REQi = REQ[i];
             Vec3d pi    = apos[i];
             Vec3d f; f.set(0.0);
             //printf( " (%i,%i) (%g,%g,%g)  \n",  ifrag, i, REQi.x, REQi.y, REQi.z );
@@ -821,7 +821,7 @@ void eval_MorseQ_Frags(){
                 int ja = frag2a[jfrag];
                 int ma = ja+fragNa[jfrag];
                 for( int j=ja; j<ma; j++ ){
-                    Quat4d& REQj = aREQ[j];
+                    Quat4d& REQj = REQ[j];
                     //printf( " (%i,%i) (%i,%i) ()  \n",  ifrag jfrag i j );
                     //addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, 0, gridFF.alpha );
                     addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alpha );
@@ -837,13 +837,13 @@ void eval_MorseQ_Frags(){
 void eval_CoulombMirror_On2(const Vec3d& hdir, double c0 ){
     //printf("eval_CoulombMirror_On2 (%g,%g,%g) %g \n", hdir.x,hdir.y,hdir.z, c0);
     for(int i=0; i<natoms; i++){
-        Quat4d REQi = aREQ[i];
+        Quat4d REQi = REQ[i];
         Vec3d pi    = apos[i];
         //double c = hdir.dot(pi) - c0;
         //pi.add_mul( hdir, 2*c0 );
         Vec3d f; f.set(0.0);
         for(int j=0; j<natoms; j++){
-            Quat4d& REQj = aREQ[j];
+            Quat4d& REQj = REQ[j];
             //addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alpha );
             Vec3d pj = apos[j];
             double c = hdir.dot(pj) - c0;
@@ -865,7 +865,7 @@ void eval_FFgrid(){
     //printf( "eval_FFgrid natoms %i \n", natoms );
     for(int i=0; i<natoms; i++){
         Quat4f fe = Quat4fZero;
-        gridFF.addForce( apos[i], aPLQ[i], fe );
+        gridFF.addForce( apos[i], PLQ[i], fe );
         aforce[i].add( (Vec3d)fe.f );
         //printf( " aforce[%i] (%g,%g,%g) \n", i, aforce[i].x, aforce[i].y, aforce[i].z );
     }
@@ -880,8 +880,8 @@ void printBondParams(){
 void printAtomInfo(){
     printf("MMFF::printAtomInfo : \n" );
     for(int i=0; i<natoms; i++){
-        printf( "atom[%i] frag %i typ %i REQ(%g,%g,%g) pos(%g,%g,%g) \n", i, atom2frag[i], atypes[i], aREQ[i].x, aREQ[i].y, aREQ[i].z, apos[i].x,apos[i].y,apos[i].z );
-        //printf( "%i %i %i %f %f %f \n", i, atom2frag[i], atypes[i], aREQ[i].x, aREQ[i].y, aREQ[i].z );
+        printf( "atom[%i] frag %i typ %i REQ(%g,%g,%g) pos(%g,%g,%g) \n", i, atom2frag[i], atypes[i], REQ[i].x, REQ[i].y, REQ[i].z, apos[i].x,apos[i].y,apos[i].z );
+        //printf( "%i %i %i %f %f %f \n", i, atom2frag[i], atypes[i], REQ[i].x, REQ[i].y, REQ[i].z );
     }
 }
 

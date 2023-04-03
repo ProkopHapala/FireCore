@@ -53,7 +53,7 @@ void initRigidSubstrate(){
     world.gridFF.loadCell ( "inputs/cel.lvs" );
     world.gridFF.grid.printCell();
     //world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
-    params.loadXYZ( "inputs/NaCl_wo4.xyz", world.gridFF.natoms, &world.gridFF.apos, &world.gridFF.aREQs, &world.gridFF.atypes );
+    params.loadXYZ( "inputs/NaCl_wo4.xyz", world.gridFF.natoms, &world.gridFF.apos, &world.gridFF.REQs, &world.gridFF.atypes );
     world.translate( {0.0,0.0,4.5} );
 
     Quat4d testREQ;
@@ -75,7 +75,7 @@ void initRigidSubstrate(){
     }
     int iatom = 11;
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
-    printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.aREQ[iatom].x, world.aREQ[iatom].y, world.aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
+    printf( "REQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.REQ[iatom].x, world.REQ[iatom].y, world.REQ[iatom].z, world.PLQ[iatom].x, world.PLQ[iatom].y, world.PLQ[iatom].z );
     Quat4f * FFtot = new Quat4f[world.gridFF.grid.getNtot()];
     world.gridFF.evalCombindGridFF( testREQ, FFtot );
     world.gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4,3, world.gridFF.natoms, world.gridFF.atypes,  world.gridFF.apos );

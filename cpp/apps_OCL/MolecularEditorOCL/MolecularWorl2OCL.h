@@ -731,7 +731,7 @@ class GridFF_OCL{ public:
         printf( "gridFF.natoms %i \n", gridFF.natoms );
         prepareBuffers( gridFF.natoms, gridFF.grid.getNtot() ); DEBUG
         setupKernel( gridFF );
-        uploadAtoms( gridFF.natoms, gridFF.apos, gridFF.aREQs ); DEBUG
+        uploadAtoms( gridFF.natoms, gridFF.apos, gridFF.REQs ); DEBUG
         task_FFPLE->enque(); DEBUG
         //downloadFF( gridFF.grid.getNtot(), gridFF.FFPauli, gridFF.FFLondon, gridFF.FFelec ); DEBUG;
         downloadFF( gridFF );

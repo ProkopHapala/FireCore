@@ -141,7 +141,7 @@ void AppMolecularEditor2::initRigidSubstrate(){
     //world.gridFF.loadXYZ  ( "inputs/answer_Na_L1.xyz", params );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_wo4.xyz", params );
-    params.loadXYZ( "inputs/NaCl_wo4.xyz", world.gridFF.natoms, &world.gridFF.apos, &world.gridFF.aREQs, &world.gridFF.atypes );
+    params.loadXYZ( "inputs/NaCl_wo4.xyz", world.gridFF.natoms, &world.gridFF.apos, &world.gridFF.REQs, &world.gridFF.atypes );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_sym_Na_add.xyz", params );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_sym_Cl_vac.xyz", params );
     //world.gridFF.loadXYZ  ( "inputs/NaCl_sym_Na_vac.xyz", params );
@@ -174,7 +174,7 @@ void AppMolecularEditor2::initRigidSubstrate(){
 
     int iatom = 11;
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
-    printf( "aREQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.aREQ[iatom].x, world.aREQ[iatom].y, world.aREQ[iatom].z, world.aPLQ[iatom].x, world.aPLQ[iatom].y, world.aPLQ[iatom].z );
+    printf( "REQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.REQ[iatom].x, world.REQ[iatom].y, world.REQ[iatom].z, world.PLQ[iatom].x, world.PLQ[iatom].y, world.PLQ[iatom].z );
 
    // exit(0);
 
