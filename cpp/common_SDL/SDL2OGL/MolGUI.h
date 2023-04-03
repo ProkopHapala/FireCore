@@ -137,7 +137,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 200. );
-    void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.0006808, 1., 0.} );
+    void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
 	void drawSystem    ( Vec3i ixyz=Vec3iZero );
@@ -153,7 +153,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
 
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
-    void debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, double sc );
+    void debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 0., 0.}, double sc=NAN );
 
     //void InitQMMM();
     void initGUI();
@@ -354,11 +354,25 @@ void MolGUI::draw(){
         glColor3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
     }
 
+    { // --- GridFF debug_scanSurfFF()
+        Vec3d p0=W->gridFF.grid.pos0; 
+        if(W->ipicked>-1) p0.z = W->ffl.apos[W->ipicked].z; 
+        //printf( "p0.x %g \n", p0.z );
+        int nx=W->gridFF.grid.n.x;
+        int ny=W->gridFF.grid.n.y;
+        Vec3d a = W->gridFF.grid.cell.a;
+        Vec3d b = W->gridFF.grid.cell.b;
+        debug_scanSurfFF( nx, p0, p0+a);
+        debug_scanSurfFF( ny, p0, p0+b );
+        debug_scanSurfFF( nx, p0+b*0.5, p0+a+b*0.5 );
+        debug_scanSurfFF( ny, p0+a*0.5, p0+b+a*0.5 );
+    }
 
     for(int i=0; i<W->selection.size(); i++){ 
         int ia = W->selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.apos[ia] );     
     }
+
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
@@ -557,8 +571,8 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
 void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorSclae ){
     if(verbosity>0) printf( "MolGUI::renderGridFF()\n" );
     //int iatom = 11;
-    testREQ = Quat4d{ 1.487, 0.0006808, 0., 0.}; // H
-    testPLQ = REQ2PLQ( testREQ, -1.6 );
+    testREQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.}; // H
+    testPLQ = REQ2PLQ( testREQ, W->gridFF.alpha );
     Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
     W->gridFF.grid.saveXSF( "E_renderGridFF.xsf",  (float*)FFtot, 4, 3, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
@@ -688,22 +702,29 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
     delete[] screenPixels;
 }
 
-void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, double sc ){
+void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc ){
+    if(isnan(sc)){ sc=ForceViewScale; }
     //printf("========= MolGUI::scanFF\n");
-    sc=10.0;
+    //sc=10.0;
     //p0=Vec3d{0.0,0.0,z0_scan}; p1=Vec3d{5.0,5.0,z0_scan}; // Horizontal scan
-    p0=Vec3d{0.0,0.0,z0_scan}; p1=Vec3d{0.0,5.0,z0_scan}; // Horizontal scan
+    //p0=Vec3d{0.0,0.0,z0_scan}; p1=Vec3d{0.0,5.0,z0_scan}; // Horizontal scan
     //p0=Vec3d{0.0,z0_scan,0.0}; p1=Vec3d{0.0,z0_scan,10.0,}; // Vertical scan
     Vec3d dp=p1-p0; dp.mul(1./n);
+    Quat4f PLQ = REQ2PLQ( REQ, W->gridFF.alpha );
+    printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){
-        W->nbmol.apos [0]=p0+dp*i;
-        W->nbmol.fapos[0]=Vec3dZero;
-        double E=0;
-        if   (W->bGridFF){ E+= W->gridFF.eval        (1, W->nbmol.apos, W->nbmol.PLQs,  W->nbmol.fapos );                        }
+        Vec3d  p  = p0 + dp*i;
+        Quat4f fe = Quat4fZero;
+        W->gridFF.addForce_surf( p, PLQ, fe );
+        Draw3D::vertex( p ); Draw3D::vertex(p + dp                );
+        Draw3D::vertex( p ); Draw3D::vertex(p + ((Vec3d)fe.f)*sc  );
+
+        //double E=0;
+        //if   (W->bGridFF){ E+= W->gridFF.eval        (1, W->nbmol.apos, W->nbmol.PLQs,  W->nbmol.fapos );                        }
         //else           { E+= W->nbmol .evalMorse   (W->surf, false,                        W->gridFF.alpha, W->gridFF.Rdamp ); }
-        else             { E+= W->nbmol .evalMorsePBC(W->surf, W->gridFF.grid.cell, W->nPBC, W->gridFF.alpha, W->gridFF.Rdamp ); }
-        Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+W->nbmol.fapos[0]*sc );       // Force Vectro
+        //else             { E+= W->nbmol .evalMorsePBC(W->surf, W->gridFF.grid.cell, W->nPBC, W->gridFF.alpha, W->gridFF.Rdamp ); }
+        //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+W->nbmol.fapos[0]*sc );       // Force Vectro
         //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+(Vec3d{0.0,0.0,E})*sc  );  // Energy -> z
         //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+(Vec3d{0.0,E,0.0})*sc  );  // Energy -> x
     }
