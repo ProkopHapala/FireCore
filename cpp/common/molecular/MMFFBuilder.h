@@ -308,8 +308,9 @@ class Builder{  public:
     std::vector<AtomConf>  confs;
     //std::vector<int>  atom_neighs;
 
-    bool bPBC=false;
-    Mat3d lvec = Mat3dIdentity;  // lattice vectors for PBC (periodic boundary conditions)
+    bool bPBC  = false;
+    Mat3d lvec = Mat3dIdentity;
+    //Mat3d lvec = Mat3dIdentity*1000.0;  // lattice vectors for PBC (periodic boundary conditions)
     //std::vector<Vec3i> bondPBC;
 
     MMFFparams* params = 0;  // Each function which needs this can take it as parameter
@@ -1214,10 +1215,10 @@ class Builder{  public:
     }
 
     void autoBonds( double R=-0.5, int i0=0, int imax=-1 ){
-        // ToDo : periodic boundary conditions
+        printf( "MM::Builder::autoBonds() \n" );
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
-        double Rfac=-R;
+        double Rfac   = -R;
         //if( byParams && (params==0) ){ printf("ERROR in MM::Builder.autoBonds() byParams(R<0) but params==NULL \n"); exit(0); }
         for(int i=i0; i<imax; i++){
             const Atom& A = atoms[i];
@@ -1226,6 +1227,7 @@ class Builder{  public:
                 Vec3d dp = B.pos - A.pos; // pbc here
                 if(byParams){ R = (B.REQ.x + A.REQ.x)*Rfac; }
                 if(  dp.norm2() < (R*R) ){
+                    bondBrush.ipbc=Vec3i8{0,0,0};
                     bondBrush.atoms={i,j};
                     insertBond( bondBrush );
                 }
@@ -1236,13 +1238,12 @@ class Builder{  public:
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
-        if(verbosity>0)printf( "autoBondsPBC() \n" );
-        if(verbosity>1){ printf( "builder.lvec: \n" ); lvec.print(); };
-        bPBC = true;
-        // ToDo : periodic boundary conditions
+        printf( "MM::Builder::autoBondsPBC() \n" );
+        if(verbosity>0)printf( "MM::Builder::autoBondsPBC() \n" );
+        if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
-        double Rfac=-R;
+        double Rfac   = -R;
         //if( byParams && (params==0) ){ printf("ERROR in MM::Builder.autoBonds() byParams(R<0) but params==NULL \n"); exit(0); }
         std::vector<int> found;
         for(int i=i0; i<imax; i++){
@@ -1602,17 +1603,17 @@ class Builder{  public:
 
     void printAtomNeighs(int ia)const{
         const Atom& A = atoms[ia];
-        printf("atom[%i,t%i,c%i] ", ia, A.type, A.iconf );
+        printf("atom[%i] t%i c%i ", ia, A.type, A.iconf );
         if(A.iconf>=0){
             const AtomConf& c = confs[A.iconf];
-            printf("nBPEH(%i|%i,%i,%i,%i) ngs(", c.n,c.nbond,c.npi,c.ne,c.nH);
+            printf("nbpeH(%i|%i,%i,%i,%i) neighs(", c.n,c.nbond,c.npi,c.ne,c.nH);
             for(int i=0; i<N_NEIGH_MAX; i++){
                 int ib = c.neighs[i];
                 int ja=-2;
                 if(ib>=0){
                     ja = bonds[ib].getNeighborAtom(ia);
                 }
-                printf("%i,", ja );
+                printf("%3i,", ja );
             }
             printf("]" );
         }
@@ -1774,13 +1775,12 @@ class Builder{  public:
             b2a[i] = b.atoms;
             if(ks )ks [i] = b.k;
             if(l0s)l0s[i] = b.l0;
-
             if(kPis){
                 bool bi  = getAtom_npi( b.atoms.i )==1;
                 bool bei = getAtom_ne ( b.atoms.i )>0;
                 bool bj  = getAtom_npi( b.atoms.j )==1;
                 bool bej = getAtom_ne ( b.atoms.j )>0;
-                printf( "bond[%i|%i,%i]t(%i,%i) ipe(%i,%i) jpe(%i,%i) \n", i, b.atoms.i, b.atoms.j, atoms[b.atoms.i].type, atoms[b.atoms.j].type,    bi,bei,   bj, bej );
+                //printf( "export_bonds[%i|%i,%i]t(%i,%i) ipe(%i,%i) jpe(%i,%i) \n", i, b.atoms.i, b.atoms.j, atoms[b.atoms.i].type, atoms[b.atoms.j].type,    bi,bei,   bj, bej );
                 if( bi&&bj ){                   // pi vs pi
                     kPis[i] =  0.25;
                 }else if( (bi&&bej) || (bj&&bei) ){  // pi vs e-pair
@@ -2063,8 +2063,10 @@ class Builder{  public:
         //int iret = mol->load_xyz( fname ); 
         int iret =  params->loadXYZ( fname, mol->natoms, &mol->pos, &mol->REQs, &mol->atomType, &mol->npis, &lvec );
         //mol->printAtomInfo(); //exit(0);
-        if( iret>0 ){ bPBC=true; printf("lvec loaded from %s \n", fname); };
-        if(iret<0)return iret;
+        if     ( iret<0  ){ return iret; }
+        else if( iret==0 ){ bPBC=false;  }
+        else if( iret>0  ){ bPBC=true;   }
+        printf("MM::Builder::loadMolTypeXYZ(%s) bPBC=%i \n", fname, bPBC );
         if(params) params->assignREs( mol->natoms, mol->atomType, mol->REQs );
         int ityp = molTypes.size();
         mol2molType[(size_t)mol]=ityp;
@@ -2357,7 +2359,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         ff.ie0=ie0;
         if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
         //printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
-        if(verbosity>0)printf(  "... MM:Builder::toMMFFsp3() DONE \n"  );
+        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3() DONE \n"  );
     }
 #endif // MMFFmini_h
 
@@ -2485,9 +2487,10 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 //printf( "AFTER atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
             } // if(A.iconf>=0){
         }
+        ff.bPBC = bPBC;
         ff.makeBackNeighs();
         //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
-        if(verbosity>0)printf(  "... MM:Builder::toMMFFsp3_loc() DONE \n"  );
+        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3_loc() DONE \n"  );
     }
 #endif // MMFFf4_h
 
@@ -2585,7 +2588,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             } // if(A.iconf>=0){
         }
         ff.makeBackNeighs();
-        if(verbosity>0)printf(  "... MM:Builder::toMMFFf4() DONE \n"  );
+        if(verbosity>0)printf(  "MM:Builder::toMMFFf4() DONE \n"  );
     }
 #endif // MMFFf4_h
 
