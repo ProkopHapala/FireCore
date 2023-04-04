@@ -259,7 +259,7 @@ double eval_atom(const int ia){
             E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);    
             //if(ia==ia_DBG)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
             //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fbond[%i]",ia,i); } );
-
+            
             double kpp = Kppi[i];
             if( (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
@@ -270,7 +270,7 @@ double eval_atom(const int ia){
             // ToDo: triple bonds ?
             
         } 
-
+        
         // pi-sigma 
         //if(bPi){    
         double ksp = Kspi[i];
@@ -307,11 +307,13 @@ double eval_atom(const int ia){
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fss1[%i,%i]",ia,i,j); } );
             //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fss2[%i,%i]",ia,i,j); } );
-
             fa    .sub( f1+f2  );
+            
+            // ----- Error is HERE
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
-                Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+                //Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+                Quat4d REQij = _mixREQ(REQs[ing],REQs[jng]);
                 Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
                 //Vec3d dp   = hj.f*(1./hj.w) - hi.f*(1./hi.w);
                 //Vec3d dp   = apbc[j] - apbc[i];
@@ -321,7 +323,7 @@ double eval_atom(const int ia){
                 f1.sub(fij);
                 f2.add(fij);
             }
-    
+            
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
@@ -329,6 +331,7 @@ double eval_atom(const int ia){
         }
     }    
     //if(bErr){ printf("ERROR in ffl.eval_atom[%i] => Exit() \n", ia ); exit(0); }
+
 
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
