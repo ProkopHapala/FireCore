@@ -1,5 +1,5 @@
 name=MolGUIapp
-dir=../../cpp/Build/apps/MolecularEditor
+dir=../../cpp/Build-asan/apps/MolecularEditor
 ln -s ../../cpp/common_resources data
 ln -s ../../cpp/common_resources common_resources 
 
@@ -23,9 +23,9 @@ ln -s $dir/$name .
 
 
 # ------- asan (Memory Sanitizer)
-#LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-#echo   $LD_PRELOAD
-#export LD_PRELOAD
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
 
 
 # ---- Run
