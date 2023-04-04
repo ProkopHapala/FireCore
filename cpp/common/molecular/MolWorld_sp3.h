@@ -571,6 +571,7 @@ virtual void init( bool bGrid ){
         DEBUG
         nbmol.evalPLQs(gridFF.alpha);
         DEBUG
+        ffl.print_nonbonded(); exit(0);
         if(bOptimizer){ 
             //setOptimizer(); 
             //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
@@ -799,7 +800,7 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
                 ffl.fapos[ia].add( f );
             }
             //printf( "DEBUG ffl.apos %li ffl.PLQs %li \n", ffl.apos, ffl.PLQs );
-            if   (bGridFF){ Quat4f fe=Quat4fZero; Quat4f PLQ = ffl.PLQs[ia];   PLQ.z=0.0; gridFF.addForce_surf( ffl.apos[ia], PLQ, fe ); ffl.fapos[ia].add( (Vec3d)fe.f ); E+=fe.e;  }
+            //if   (bGridFF){ Quat4f fe=Quat4fZero; Quat4f PLQ = ffl.PLQs[ia];   PLQ.z=0.0; gridFF.addForce_surf( ffl.apos[ia], PLQ, fe ); ffl.fapos[ia].add( (Vec3d)fe.f ); E+=fe.e;  }
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
         #pragma omp for

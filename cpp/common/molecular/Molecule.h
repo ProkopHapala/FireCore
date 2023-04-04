@@ -462,10 +462,13 @@ class Molecule{ public:
             //printf( "%i \n", i );
             Vec3d& p = pos[i];
             line     = fgets( buff, nbuf, pFile ); // comment, ignore
-            int nret = sscanf( line,       "%s %lf %lf %lf %lf %i  ",    at_name, &p.x, &p.y, &p.z, &REQs[i].z, &npis[i]  );
-            if(verbosity>1)printf   (  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  p.x,  p.y,  p.z,  REQs[i].z,  npis[i]  );
-            if( nret < 5 ){ REQs[i].z= 0; };
-            if( nret < 6 ){ npis[i]  =-1; };
+            //int nret = sscanf( line,            "%s %lf %lf %lf %lf %i  ",    at_name, &p.x, &p.y, &p.z, &REQs[i].z, &npis[i]  );
+            //if(verbosity>1)printf   (  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  p.x,  p.y,  p.z,  REQs[i].z,  npis[i]  );
+            int nret     = sscanf( line,            "%s %lf %lf %lf %lf %i  ",    at_name, &p.x, &p.y, &p.z, &REQs[i].z, &REQs[i].w, &npis[i] );
+            if(verbosity>1)printf(  ".xyz[%i] %s %lf %lf %lf %lf %i\n",        i, at_name,  p.x,  p.y,  p.z,  REQs[i].z,  REQs[i].w,  npis[i] );
+            if( nret < 5 ){ REQs[i].z = 0; };
+            if( nret < 6 ){ REQs[i].w = 0; };
+            if( nret < 7 ){ npis[i]  =-1; };
             assignAtomType(i, at_name );
         }
         return natoms;
@@ -496,9 +499,10 @@ class Molecule{ public:
             char at_name[8];
             double junk;
             line = fgets( buff, nbuf, pFile );  //printf(">>%s<<",line);
-            int nret = sscanf( line, "%s %lf %lf %lf %lf\n", at_name, &pos[i].x, &pos[i].y, &pos[i].z, &REQs[i].z, &npis[i] );
+            int nret = sscanf( line, "%s %lf %lf %lf %lf\n", at_name, &pos[i].x, &pos[i].y, &pos[i].z, &REQs[i].z, &REQs[i].w, &npis[i] );
             if( nret < 5 ){ REQs[i].z= 0; };
-            if( nret < 6 ){ npis[i]  =-1; };
+            if( nret < 6 ){ REQs[i].w= 0; };
+            if( nret < 7 ){ npis[i]  =-1; };
             //if(verbosity>1)
             //printf(       ".xyz[%i] %s p(%lf,%lf,%lf) Q %lf    |nret(%i)\n", i,  at_name, pos[i].x,  pos[i].y,  pos[i].z,   REQs[i].z, nret );
             // atomType[i] = atomChar2int( ch );

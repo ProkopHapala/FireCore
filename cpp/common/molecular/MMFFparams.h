@@ -373,21 +373,23 @@ class MMFFparams{ public:
         line = fgets( buff, nbuf, pFile ); // comment
         int ret=0;
         if(lvec){ if( cellFromString( buff, *lvec ) ){ ret=1; }else{ printf("WARRNING: lvec not read from %s \n", fname ); } }
-        double Q;
+        double Q,H;
         for(int i=0; i<natoms; i++){
             char at_name[8];
             double junk; 
             int npi;
             line = fgets( buff, nbuf, pFile );  //printf("%s",line);
-            int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &npi );
+            //int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &npi );
+            int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &H, &npi  );
             if( nret < 5 ){ Q=0; };
-            if( nret < 6 ){ npi=-1; };
+            if( nret < 6 ){ H=0; };
+            if( nret < 7 ){ npi=-1; };
             if(npis){ npis[i] =npi; };
             auto it = atomTypeDict.find( at_name );
             if( it != atomTypeDict.end() ){
                 int ityp=it->second;
                 if(atype_)atype[i] = ityp;
-                if(REQs_){ assignRE( ityp, REQs[i], true ); REQs[i].z=Q; }
+                if(REQs_){ assignRE( ityp, REQs[i], true ); REQs[i].z=Q; REQs[i].w=H; }
             }else{
                 if(atype_)atype[i] = -1;
                 if(REQs_)REQs[i]  = default_REQ;

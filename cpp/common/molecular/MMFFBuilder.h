@@ -1718,10 +1718,13 @@ class Builder{  public:
         int n0 = atoms.size();
         for(int i=0; i<natoms; i++){
             line     = fgets( buff, nbuf, pFile ); // comment, ignore
-            int nret = sscanf( line,       "%s %lf %lf %lf %lf %i  ",    at_name, &pos.x, &pos.y, &pos.z, &REQ.z, &npi );
-            if(verbosity>1)printf   (  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  pos.x,  pos.y,  pos.z,  REQ.z,  npi  );
+            //int nret     = sscanf( line,     "%s %lf %lf %lf %lf %i  ",    at_name, &pos.x, &pos.y, &pos.z, &REQ.z, &npi );
+            //if(verbosity>1)printf(  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  pos.x,  pos.y,  pos.z,  REQ.z,  npi  );
+            int nret     = sscanf( line,     "%s %lf %lf %lf %lf %i  ",    at_name, &pos.x, &pos.y, &pos.z, &REQ.z, &REQ.w, &npi );
+            if(verbosity>1)printf(  ".xyz[%i] %s %lf %lf %lf %lf %i\n", i, at_name,  pos.x,  pos.y,  pos.z,  REQ.z,  REQ.w,  npi );
             if( nret < 5 ){ REQ.z=0;  };
-            if( nret < 6 ){ npi  =-1; };
+            if( nret < 6 ){ REQ.w=0;  };
+            if( nret < 7 ){ npi  =-1; };
             auto it = atomTypeDict->find( at_name );
             if( it != atomTypeDict->end() ){
                 int ityp=it->second;

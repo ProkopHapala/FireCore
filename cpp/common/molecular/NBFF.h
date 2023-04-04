@@ -544,11 +544,11 @@ class NBFF: public Atoms{ public:
         return E;
     }
 */
-    void print(){
-        printf("NBFF(n=%i):\n", natoms );
+    void print_nonbonded(){
+        printf("NBFF::print_nonbonded(n=%i)\n", natoms );
         for(int i=0; i<natoms; i++){
-            if(atypes){ printf("nb_atom[%i] REQ(%g,%g,%g) pos(%g,%g,%g) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,  apos[i].x,apos[i].y,apos[i].z, atypes[i] ); }
-            else      { printf("nb_atom[%i] REQ(%g,%g,%g) pos(%g,%g,%g) \n",         i, REQs[i].x,REQs[i].y,REQs[i].z,  apos[i].x,apos[i].y,apos[i].z            ); }
+            if(atypes){ printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,   apos[i].x,apos[i].y,apos[i].z, atypes[i] ); }
+            else      { printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) \n",         i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,   apos[i].x,apos[i].y,apos[i].z            ); }
         }
     }
 
