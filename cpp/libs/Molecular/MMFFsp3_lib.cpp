@@ -39,7 +39,7 @@ char tmpstr[ntmpstr];
 
 int verbosity = 1;
 int idebug    = 0;
-//double tick2second=1e-9;
+double tick2second=1e-9;
 
 #include "MolWorld_sp3_simple.h"
 
