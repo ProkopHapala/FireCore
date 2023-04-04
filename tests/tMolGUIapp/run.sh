@@ -41,9 +41,9 @@ export LD_PRELOAD
 #./$name -x common_resources/polydiacetylene -n 141 -g common_resources/NaCl_564 -ng 2,-1,2,3
 #./$name -x common_resources/polydiacetylene -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,3,4
 #./$name -x common_resources/polydiacetylene_OH -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,3,4
-./$name -x common_resources/polydiacetylene_OH -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/polydiacetylene_OH -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/polydiacetylene_OH
-#./$name -x common_resources/polymer-2_new
+./$name -x common_resources/polymer-2_new
 
 #./$name -x common_resources/polydiacetylene_OH -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/polydiacetylene -g common_resources/NaCl_1x1_L2 -subs 4,common_resources/-COOH.xyz
