@@ -84,7 +84,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewAtomLabels  = true;
     bool   bViewBondLabels  = false;
     bool   bViewAtomSpheres = true;
-    bool   bViewAtomForces  = false;
+    bool   bViewAtomForces  = true;
     bool   bViewPis         = true;
     bool   bViewSubstrate   = true;
     bool   isoSurfRenderType = 1;

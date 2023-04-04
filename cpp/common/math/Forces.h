@@ -129,7 +129,7 @@ inline void combineREQ(const Quat4d& a, const Quat4d& b, Quat4d& out){
     out.x=a.x+b.x; // radius
     out.y=a.y*b.y; // epsilon
     out.z=a.z*b.z; // q*q
-    out.w=a.w*b.w;
+    out.w=a.w*b.w; // Hbond
 }
 
 #define _mixREQ(A,B)    Quat4d{ A.x+B.x, A.y*B.y, A.z*B.z, A.w*B.w }

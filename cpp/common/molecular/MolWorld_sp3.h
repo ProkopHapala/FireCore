@@ -752,30 +752,42 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
-    run_omp( 1, opt.dt, 1e-6, 1000.0 );
-    //run_omp( 100, opt.dt, 1e-6, 1000.0 );
+    //run_omp( 2, opt.dt, 1e-6, 1000.0 );
+    run_omp( 100, opt.dt, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     bChargeUpdated=false;
 }
 
 int run_omp( int niter, double dt, double Fconv, double Flim ){
+
+    long T0 = getCPUticks();
     double E=0,F2=0;
     double ff=0,vv=0,vf=0;
     int itr=0;
-    #pragma omp parallel shared(E,F2) private(itr)
-    for(itr=0; itr<niter; itr++){
+    //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
+    #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0)
+    //for(itr=0; itr<niter; itr++){
+    while(itr<niter){
+        if(itr<niter){
+        //#pragma omp barrier
         #pragma omp single
         {E=0;F2=0;ff=0;vv=0;vf=0;}
-        // ------ eval MMFF
+        //------ clean forces
+        //#pragma omp barrier
+        #pragma omp for 
+        for(int ia=0; ia<ffl.natoms; ia++){   // NOTE: for some reason this cannot be inside eval_forces loop  (or OpenMP start to give jumpy forces) .... WHY ?????
+            {                 ffl.fapos[ia          ] = Vec3dZero; } 
+            if(ia<ffl.nnode){ ffl.fapos[ia+ffl.nnode] = Vec3dZero; }
+        }
+        //------ eval forces
+        //#pragma omp barrier
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<ffl.natoms; ia++){ 
-            //if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
-            ffl.fapos[ia] = Vec3dZero;  
-            if(ia<ffl.nnode){
-                ffl.fapos[ia+ffl.nnode] = Vec3dZero; // clean pi-forces
-                E+=ffl.eval_atom(ia);
-            }
+            //if(verbosity>3)
+            //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+            if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+            // ----- Error is HERE
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
             else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
             if(ipicked==ia){ 
@@ -784,17 +796,23 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
             }
             //printf( "ffl.apos %li ffl.PLQs %li \n", ffl.apos, ffl.PLQs );
             //if   (bGridFF){ Quat4f fe=Quat4fZero; Quat4f PLQ = ffl.PLQs[ia];   PLQ.z=0.0; gridFF.addForce_surf( ffl.apos[ia], PLQ, fe ); ffl.fapos[ia].add( (Vec3d)fe.f ); E+=fe.e;  }
+            
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
+        //#pragma omp barrier
         #pragma omp for
         for(int ia=0; ia<ffl.natoms; ia++){
             ffl.assemble_atom( ia );
         }
+        // #pragma omp barrier
         // #pragma omp for reduction(+:F2)
         // for(int i=0; i<ffl.nvecs; i++){
-        //     F2 += ffl.move_atom_MD     ( i, dt, Flim, 0.99 );
+        //     F2 += ffl.move_atom_MD     ( i, dt, Flim, 0.95 );
         //     //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
         // }
+        //#pragma omp barrier
+
+        //#pragma omp barrier
         { //  ==== FIRE
             #pragma omp for reduction(+:vf,vv,ff)
             for(int i=0; i<opt.n; i++){
@@ -811,11 +829,26 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
                 //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
             }
         }
-        
-        //#pragma omp single
-        //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
-        //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
+        }
+        //#pragma omp barrier
+        #pragma omp single
+        { 
+            itr++; 
+            double t = (getCPUticks() - T0)*tick2second;
+            if(t>0.02){ 
+                niter=0; 
+                //printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
+            }
+            if(F2<Fconv){ 
+                niter=0; 
+                //printf( "run_omp() converged in %i nsteps \n", itr );
+            }   
+            //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() ); 
+            //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
+            //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
+        }
     }
+    
     return itr;
 }
 

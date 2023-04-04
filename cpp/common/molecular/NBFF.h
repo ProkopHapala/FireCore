@@ -200,7 +200,7 @@ class NBFF: public Atoms{ public:
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi   = apos     [ia];
-        const Quat4d  REQi = REQs     [ia];
+        const Quat4d  REQi = REQs    [ia];
         const Quat4i ng   = neighs   [ia];
         const Quat4i ngC  = neighCell[ia];
         Vec3d fi = Vec3dZero;
