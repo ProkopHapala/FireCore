@@ -1,5 +1,5 @@
 name=MolGUIapp
-dir=../../cpp/Build/apps/MolecularEditor
+dir=../../cpp/Build-asan/apps/MolecularEditor
 ln -s ../../cpp/common_resources data
 ln -s ../../cpp/common_resources common_resources 
 
