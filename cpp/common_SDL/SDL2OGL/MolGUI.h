@@ -228,9 +228,10 @@ void MolGUI::initWiggets(){
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
     long T0=getCPUticks();
-    SDL_Delay(100);
-    tick2second =  0.1/(getCPUticks()-T0);
-    printf( ">>tick2second = %g ( %g GHz)\n", tick2second, 1.0e-9/tick2second );
+    float nseconds = 0.1;
+    SDL_Delay( (int)(1000*0.1) );
+    tick2second = nseconds/(getCPUticks()-T0);
+    printf( "CPU speed calibration: tick=%g [s] ( %g GHz)\n", tick2second, 1.0e-9/tick2second );
 
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
@@ -713,7 +714,7 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
     //p0=Vec3d{0.0,z0_scan,0.0}; p1=Vec3d{0.0,z0_scan,10.0,}; // Vertical scan
     Vec3d dp=p1-p0; dp.mul(1./n);
     Quat4f PLQ = REQ2PLQ( REQ, W->gridFF.alpha );
-    printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
+    //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){
         Vec3d  p  = p0 + dp*i;

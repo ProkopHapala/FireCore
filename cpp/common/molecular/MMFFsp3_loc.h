@@ -179,10 +179,10 @@ double eval_atom(const int ia){
     //--- array aliases
     const int*    ings = neighs   [ia].array;
     const int*    ingC = neighCell[ia].array;
-    const double* bK   = bKs    [ia].array;
-    const double* bL   = bLs    [ia].array;
-    const double* Kspi = Ksp    [ia].array;
-    const double* Kppi = Kpp    [ia].array;
+    const double* bK   = bKs      [ia].array;
+    const double* bL   = bLs      [ia].array;
+    const double* Kspi = Ksp      [ia].array;
+    const double* Kppi = Kpp      [ia].array;
     Vec3d* fbs  = fneigh   +ia*4;
     Vec3d* fps  = fneighpi +ia*4;
 
@@ -200,7 +200,6 @@ double eval_atom(const int ia){
 
     //--- Aux Variables 
     Quat4d  hs[4];
-    Vec3d   apbc[4];
     Vec3d   f1,f2;
     
     //bool bErr=0;
@@ -225,20 +224,22 @@ double eval_atom(const int ia){
         //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
         
         //Vec3d h_bak = h.f;    
-        //shifts=0;    
-        if(shifts){
-            int ipbc = ingC[i]; 
-            //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
-            h.f.add( shifts[ipbc] );
-        }else{
-            Vec3i g  = invLvec.nearestCell( h.f );
-            // if(ia==ia_DBG){
-            //     Vec3d u; invLvec.dot_to(h.f,u);
-            //     printf( "CPU:bond[%i,%i] u(%6.3f,%6.3f,%6.3f) shi(%6.3f,%6.3f,%6.3f) \n", ia, ing, u.x,u.y,u.z,   (float)g.x,(float)g.y,(float)g.z );
-            // }
-            Vec3d sh = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
-            h.f.add( sh );
-            //apbc[i] = pi + sh;
+        //shifts=0; 
+        if(bPBC){   
+            if(shifts){
+                int ipbc = ingC[i]; 
+                //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
+                h.f.add( shifts[ipbc] );
+            }else{
+                Vec3i g  = invLvec.nearestCell( h.f );
+                // if(ia==ia_DBG){
+                //     Vec3d u; invLvec.dot_to(h.f,u);
+                //     printf( "CPU:bond[%i,%i] u(%6.3f,%6.3f,%6.3f) shi(%6.3f,%6.3f,%6.3f) \n", ia, ing, u.x,u.y,u.z,   (float)g.x,(float)g.y,(float)g.z );
+                // }
+                Vec3d sh = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
+                h.f.add( sh );
+                //apbc[i] = pi + sh;
+            }
         }
 
         //wrapBondVec( h.f );
@@ -402,7 +403,7 @@ double eval( bool bClean=true, bool bCheck=true ){
 double eval_check(){
     printf(" ============ check MMFFsp3_loc START\n " );
     printSizes();
-    print_pipos();
+    //print_pipos();
     eval();
     checkNans();
     printf(" ============ check MMFFsp3_loc DONE\n " );
@@ -459,7 +460,7 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
             if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
             if(ia<nnode)E += eval_atom(ia);
             //E += evalLJQs_ng4_PBC_atom( ia ); 
-            E += evalLJQs_ng4_PBC_atom_( ia ); 
+            E += evalLJQs_ng4_PBC_atom_omp( ia ); 
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
         #pragma omp for
@@ -675,25 +676,18 @@ void makeNeighCells( int npbc, Vec3d* pbc_shifts ){
     }
 }
 
-void printSizes(){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
+void printSizes     (      ){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
-void printAtomParams(){for(int ia=0; ia<nnode; ia++){ printAtomParams(ia); }; };
-
-void printNeighs  (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); };
-void printBKneighs(int ia){ printf("atom[%i] bkngs{%3i,%3i,%3i,%3i} \n", ia, bkneighs[ia].x,bkneighs[ia].y,bkneighs[ia].z,bkneighs[ia].w ); };
-void printNeighs  (      ){for(int ia=0; ia<natoms; ia++){ printNeighs(ia); }; };
-void printBKneighs(      ){for(int ia=0; ia<natoms; ia++){ printBKneighs(ia); }; };
-
-void print_pipos(){
-    for(int i=0; i<nnode; i++){ printf(  "pipos[%i]r=%g(%g,%g,%g)\n", i, pipos[i].norm(), pipos[i].x,pipos[i].y,pipos[i].z ); };
-}
-
-void print_apos(){
-    for(int ia=0;ia<natoms;ia++){ printf( "print_apos[%i](%g,%g,%g)\n", ia, apos[ia].x,apos[ia].y,apos[ia].z ); }
-}
+void printNeighs    (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); };
+void printBKneighs  (int ia){ printf("atom[%i] bkngs{%3i,%3i,%3i,%3i} \n", ia, bkneighs[ia].x,bkneighs[ia].y,bkneighs[ia].z,bkneighs[ia].w ); };
+void printAtomParams(      ){ printf("MMFFsp3_loc::printAtomParams()\n" ); for(int i=0; i<nnode;  i++){ printAtomParams(i); }; };
+void printNeighs    (      ){ printf("MMFFsp3_loc::printNeighs()\n"     ); for(int i=0; i<natoms; i++){ printNeighs    (i);     }; };
+void printBKneighs  (      ){ printf("MMFFsp3_loc::printBKneighs()\n"   ); for(int i=0; i<natoms; i++){ printBKneighs  (i);   }; };
+void print_pipos    (      ){ printf("MMFFsp3_loc::print_pipos()\n"     ); for(int i=0; i<nnode;  i++){ printf( "pipos[%i](%g,%g,%g) r=%g\n", i, pipos[i].x,pipos[i].y,pipos[i].z, pipos[i].norm() ); } }
+void print_apos     (      ){ printf("MMFFsp3_loc::print_apos()\n"      ); for(int i=0; i<natoms; i++){ printf( "apos [%i](%g,%g,%g)\n",      i, apos[i].x ,apos[i].y ,apos[i].z                   ); } }
 
 void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
-    printf( "MMFFsp3_loc::printDEBUG() \n" );
+    printf( "MMFFsp3_loc::printDEBUG()\n" );
     if(bA)for(int i=0; i<natoms; i++){
         printf( "CPU[%i] ", i );
         //printf( "bkngs{%2i,%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );

@@ -14,6 +14,27 @@ Non-Bonded Force-Field
 
 #include "Forces.h"
 
+
+bool checkLimits( int n, int m, const double* vals, const double* vmin, const double* vmax, const char* message, bool bPrint=true ){
+    //for(int j=0; j<m; j++){ printf( "checkLimits[%i] [%g,%g]\n", j, vmin[j], vmax[j] ); }
+    bool b=false;
+    for(int i=0; i<n; i++){
+        const double* vali = vals+i*m;
+        for(int j=0; j<m; j++){
+            double v = vali[j];
+            if( v<vmin[j] || v>vmax[j] ){  
+                b=true; 
+                if(bPrint){
+                    printf( "%s[%i/%i,%i/%i] %g out of limits [%g,%g] \n", message, i,n, j,m,   v, vmin[j], vmax[j]  );
+                }
+            }
+        }
+    }
+    return b;
+}
+
+
+
 class NBFF: public Atoms{ public:
     //int     n      =0; // from Atoms
     //int    *atypes =0; // from Atoms
@@ -161,7 +182,6 @@ class NBFF: public Atoms{ public:
             //printf( "NBFF::evalLJQs_ng4()[%i] ngs(%i,%i,%i,%i) \n", i, ngs.x,ngs.y,ngs.z,ngs.w );
             for(int j=i+1; j<N; j++){    // atom-atom (no self interaction, no double-counting)
                 //printf( "NBFF::evalLJQs_ng4()[%i,%j] neighs=%li \n", neighs );
-                //if( (ngs[0]==j)||(ngs[1]==j)||(ngs[2]==j)||(ngs[3]==j) ) continue;
                 if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) continue;
                 Vec3d fij = Vec3dZero;
                 Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
@@ -176,7 +196,7 @@ class NBFF: public Atoms{ public:
     }
 
 
-    double evalLJQs_ng4_PBC_atom_( int ia ){
+    double evalLJQs_ng4_PBC_atom_omp(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi   = apos     [ia];
@@ -214,13 +234,39 @@ class NBFF: public Atoms{ public:
                 //fi+=fij;
             }
         }
-
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
 
+    double evalLJQs_ng4_atom_omp( const int ia ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi   = apos     [ia];
+        const Quat4d  REQi = REQs     [ia];
+        const Quat4i ng   = neighs   [ia];
+        const Quat4i ngC  = neighCell[ia];
+        Vec3d fi = Vec3dZero;
+        double E=0,fx=0,fy=0,fz=0;
 
-    double evalLJQs_ng4_PBC_atom( int ia ){
+        #pragma omp simd reduction(+:E,fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) continue;
+            const Quat4d& REQj  = REQs[j];
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Vec3d dp      = apos[j]-pi;
+            Vec3d fij           = Vec3dZero;
+            double eij = getLJQH( dp, fij, REQij, R2damp );
+            E +=eij;
+            fx+=fij.x;
+            fy+=fij.y;
+            fz+=fij.z;
+            //fi+=fij; 
+        }
+        fapos[ia].add( Vec3d{fx,fy,fz} );
+        return E;
+    }
+
+    double evalLJQs_ng4_PBC_atom(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         const bool   bPBC = npbc>1;
@@ -544,11 +590,18 @@ class NBFF: public Atoms{ public:
         return E;
     }
 */
+
     void print_nonbonded(){
         printf("NBFF::print_nonbonded(n=%i)\n", natoms );
         for(int i=0; i<natoms; i++){
             if(atypes){ printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,   apos[i].x,apos[i].y,apos[i].z, atypes[i] ); }
             else      { printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) \n",         i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,   apos[i].x,apos[i].y,apos[i].z            ); }
+        }
+    }
+
+    void checkREQlimits( const Quat4d vmin=Quat4d{ 1.0,0.0,-1.,-1e-8}, const Quat4d vmax=Quat4d{ 3.0,0.2,+1.,+1e-8}  ){
+        if( checkLimits( natoms, 4, (double*)REQs, (double*)&vmin, (double*)&vmax, "REQs" ) ){
+            printf("ERROR NBFF::checkREQlimits(): REQs are out of range (%g,%g,%g,%g) .. (%g,%g,%g,%g) => Exit() \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w ); print_nonbonded(); exit(0);
         }
     }
 
