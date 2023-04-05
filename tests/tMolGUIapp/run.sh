@@ -45,11 +45,11 @@ ln -s $dir/$name .
 #./$name -x common_resources/polydiacetylene
 #./$name -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -x common_resources/polydiacetylene_OH
-./$name -x common_resources/polymer-2_new
+#./$name -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 
-#./$name -x common_resources/pyridine -n     -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/pyridine -n     -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
 # ====== Polymers On Substrate

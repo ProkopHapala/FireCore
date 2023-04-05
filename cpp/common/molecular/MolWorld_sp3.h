@@ -180,14 +180,14 @@ void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d test
     // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
     // e.g. for Carbon   0.06106717612 ev^0.5 = sqrt( 0.0037292 eV )
     if(bE){
-        if(gridFF.FFPaul)  gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLond, 4,3  );
-        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec,   4,3  );
-        if(gridFF.FFelec )  gridFF.grid.saveXSF( "FFPaul_E.xsf", (float*)gridFF.FFPaul,  4,3  );
+        if(gridFF.FFPaul) gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLond, 4,3  );
+        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec, 4,3  );
+        if(gridFF.FFelec) gridFF.grid.saveXSF( "FFPaul_E.xsf", (float*)gridFF.FFPaul, 4,3  );
     }
     if(bFz){
-        if(gridFF.FFPaul)  gridFF.grid.saveXSF( "FFLond_z.xsf", (float*)gridFF.FFLond, 4,2  );
-        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_z.xsf", (float*)gridFF.FFelec,   4,2  );
-        if(gridFF.FFelec )  gridFF.grid.saveXSF( "FFPaul_z.xsf", (float*)gridFF.FFPaul,  4,2  );
+        if(gridFF.FFPaul) gridFF.grid.saveXSF( "FFLond_z.xsf", (float*)gridFF.FFLond, 4,2  );
+        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_z.xsf", (float*)gridFF.FFelec, 4,2  );
+        if(gridFF.FFelec) gridFF.grid.saveXSF( "FFPaul_z.xsf", (float*)gridFF.FFPaul, 4,2  );
     }
     // ---- Save combined forcefield
     if(bComb){
