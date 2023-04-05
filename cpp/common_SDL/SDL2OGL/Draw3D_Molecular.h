@@ -84,8 +84,15 @@ void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float 
 }
 
 void atomLabels( int n, const Vec3d* apos, int fontTex, float sz=0.02 ){
-    for(int i=0; i<n; i++){
+ for(int i=0; i<n; i++){
         drawInt( apos[i], i, fontTex, sz );
+    }
+}
+
+void atomTypes( int n, const Vec3d* apos, const int* itypes, const AtomType* types,  int fontTex, float sz=0.02 ){
+    for(int i=0; i<n; i++){
+        int it = itypes[i];
+        Draw3D::drawText( types[it].name, apos[i], fontTex, sz, 0);
     }
 }
 

@@ -885,7 +885,7 @@ class Builder{  public:
         for(int ia=0; ia<na; ia++){
             int* ngs  = neighs+ia*4;
             int itnew =-1;
-            Atom& A   = atoms[ia];
+            Atom& A           = atoms[ia];
             const AtomType& t = params->atypes[A.type];
             int iZ            = t.iZ;
             //printf( "atom[%i] %s=%i iZ %i \n", ia, t.name, A.type, iZ );
@@ -908,7 +908,7 @@ class Builder{  public:
                     hasNeighborOfType( ia,4, its_C, bls, ngs  );
                     if( bls[0] && bls[1] && (A.type==it_C_sp2) ){ // COOH
                         itnew = it_C_COO;
-                    }else if( bls[2] || bls[3] ){ // Conjugated
+                    }else if ( (A.type==it_C_sp2)&&(bls[2]||bls[3]) ){ // Conjugated sp2 carbond ()
                         itnew = it_C_CA;
                     }
                 }break;
@@ -945,6 +945,15 @@ class Builder{  public:
         }
         printf("ERROR: assignSpecialTypesLoop not converged in %i iterations\n", itr ); exit(0);
         return nnew;
+    }
+
+    void assignTypes( int* neighs=0, int niterMax=10, bool bDeallocNeighs=true ){ // advanced atom-type assignement
+        assignAllSp3Types();
+        bDeallocNeighs &= (neighs==0);
+        makeNeighs            ( neighs, 4        );
+        assignSpecialTypesLoop( niterMax, neighs );
+        //printAtomConfs(false);
+        if(bDeallocNeighs)delete [] neighs;
     }
 
     void addCaps( int ia, int ncap, int ne, int nb, const Vec3d* hs ){
@@ -1622,6 +1631,21 @@ class Builder{  public:
     void printAtomConfs( bool bOmmitCap=true, bool bNeighs=false )const{
         printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
         for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  if(bNeighs){printAtomNeighs(i);}else{printAtomConf(i);} puts(""); }
+    }
+
+    void printAtomTypes( )const{
+        printf(" # MM::Builder.printAtomTypes(na=%i,nc=%i) \n", atoms.size(), confs.size() );
+        for(int i=0; i<atoms.size(); i++){ 
+            const Atom& A = atoms[i];
+            int it=A.type;
+            if(A.iconf>=0){
+                AtomConf c = confs[A.iconf];
+                printf( "atom[%4i] %ip %ie {%3i,%3i,%3i,%3i} type[%3i]=`%s`   \n", i, c.npi, c.ne, c.neighs[0],c.neighs[1],c.neighs[2],c.neighs[3], it, params->atypes[it].name ); 
+            } else{
+                printf( "atom[%4i] type[%3i]=`%s`   \n", i, it, params->atypes[it].name  ); 
+            }
+            
+        }
     }
 
     void printAtomGroupType( int ityp )const{

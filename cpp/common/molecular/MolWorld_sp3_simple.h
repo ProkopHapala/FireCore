@@ -216,17 +216,7 @@ void makeMMFF(){
     //builder.printAtomConfs(false,true);
     builder.checkBondsOrdered( true, false );
     DEBUG
-    { // advanced atom-type assignement
-        //params.printAtomTypes();
-        builder.assignAllSp3Types();
-        //builder.printAtomConfs(false);
-        //std::vector<int> neighs( builder.atoms.size() );
-        int* neighs=0;
-        builder.makeNeighs( neighs, 4 );
-        builder.assignSpecialTypesLoop( 10, neighs );
-        builder.printAtomConfs(false);
-        delete [] neighs;
-    }
+    builder.assignTypes( );
     DEBUG
     builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs(); 
     DEBUG

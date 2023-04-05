@@ -502,8 +502,12 @@ virtual void init( bool bGrid ){
         };
 
         builder.sortConfAtomsFirst();
-        builder.printAtomConfs(false,true);
+        //builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
+        DEBUG
+        builder.assignTypes();
+        builder.printAtomTypes();
+        DEBUG
         //bool bEpair = true;
         bool bEpair = false;
         builder.toMMFFsp3    ( ff , true, bEpair );
@@ -778,7 +782,7 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<ffl.natoms; ia++){ 
             {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
-            if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // pi force
+            if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
             //if(verbosity>3)
             //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
             if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
