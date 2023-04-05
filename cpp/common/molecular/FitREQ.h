@@ -301,8 +301,6 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
     return Etot;
 }
 
-
-
 Quat4d evalExampleEnergyComponents_LJQH2(int ni, int* types, Vec3d* ps, int isamp ){
     const int    nj   = system0->natoms;
     const int*   jtyp = system0->atypes;
@@ -356,7 +354,6 @@ Quat4d evalExampleEnergyComponents_LJQH2(int ni, int* types, Vec3d* ps, int isam
             }
         }
     }
-
     return Esum;
 }
 
