@@ -82,6 +82,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   mm_bAtoms        = true;
     bool   bViewMolCharges  = false;
     bool   bViewAtomLabels  = true;
+    bool   bViewAtomTypes  = false;
     bool   bViewBondLabels  = false;
     bool   bViewAtomSpheres = true;
     bool   bViewAtomForces  = true;
@@ -682,7 +683,8 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     if(bOrig){
         //if(bViewAtomP0s     &&  fapos           ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
         if(bViewAtomForces    &&  fapos           ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
-        if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D,        0.007              );       }
+        if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, 0.007 );  }
+        if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, 0.007 );  }
         if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2, fontTex3D, 0.01 ); }
         //if(W->ff.pi0s                           ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
     }
@@ -806,26 +808,33 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_c: W->autoCharges(); break;
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
-                case SDLK_c: W->bOcl=!W->bOcl; break;
-                case SDLK_m: W->swith_method(); break;
+                case SDLK_c: W->bOcl=!W->bOcl;       break;
+                case SDLK_m: W->swith_method();      break;
                 case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
                 case SDLK_v: 
 
-                case SDLK_a: bViewAtomSpheres=! bViewAtomSpheres; break;
-                case SDLK_l: bViewAtomLabels =! bViewAtomLabels; break;
-                case SDLK_b: bViewBondLabels =! bViewBondLabels; break;
                 //case SDLK_q: W->autoCharges(); break;
-                case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
-                case SDLK_f: bViewAtomForces =! bViewAtomForces;  break;
-                case SDLK_w: bViewSubstrate  =! bViewSubstrate;   break;
+                case SDLK_a: bViewAtomSpheres ^= 1; break;
+                case SDLK_l: bViewAtomLabels  ^= 1; break;
+                case SDLK_t: bViewAtomTypes   ^= 1; break;
+                case SDLK_b: bViewBondLabels  ^= 1; break;  
+                case SDLK_q: bViewMolCharges  ^= 1; break;
+                case SDLK_f: bViewAtomForces  ^= 1; break;
+                case SDLK_w: bViewSubstrate   ^= 1; break;
 
-                case SDLK_t:{
-                            
-                            affineTransform( W->ff.natoms, W->ff.apos, W->ff.apos, W->builder.lvec, W->new_lvec );
-                            W->builder.updatePBC( W->ff.pbcShifts, &(W->new_lvec) );
-                            _swap( W->builder.lvec, W->new_lvec );
+                // case SDLK_a: bViewAtomSpheres=! bViewAtomSpheres; break;
+                // case SDLK_l: bViewAtomLabels =! bViewAtomLabels;  break;
+                // case SDLK_t: bViewAtomTypes  =! bViewAtomTypes;   break;
+                // case SDLK_b: bViewBondLabels =! bViewBondLabels;  break;
+                // case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
+                // case SDLK_f: bViewAtomForces =! bViewAtomForces;  break;
+                // case SDLK_w: bViewSubstrate  =! bViewSubstrate;   break;
 
-                            }break;
+                // case SDLK_t:{
+                //             affineTransform( W->ff.natoms, W->ff.apos, W->ff.apos, W->builder.lvec, W->new_lvec );
+                //             W->builder.updatePBC( W->ff.pbcShifts, &(W->new_lvec) );
+                //             _swap( W->builder.lvec, W->new_lvec );
+                //             }break;
 
                 case SDLK_i:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
