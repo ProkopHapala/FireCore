@@ -362,14 +362,14 @@ void MolGUI::draw(){
             p0.z = W->ffl.apos[0].z;
         } 
         //printf( "p0.x %g \n", p0.z );
-        int nx=W->gridFF.grid.n.x;
-        int ny=W->gridFF.grid.n.y;
+        int nx=W->gridFF.grid.n.x*3*5;
+        int ny=W->gridFF.grid.n.y*3*5;
         Vec3d a = W->gridFF.grid.cell.a;
         Vec3d b = W->gridFF.grid.cell.b;
-        debug_scanSurfFF( nx, p0, p0+a);
-        debug_scanSurfFF( ny, p0, p0+b );
-        debug_scanSurfFF( nx, p0+b*0.5, p0+a+b*0.5 );
-        debug_scanSurfFF( ny, p0+a*0.5, p0+b+a*0.5 );
+        //debug_scanSurfFF( nx, p0-a,       p0+a*2.       );
+        //debug_scanSurfFF( ny, p0-b,       p0+b*2.       );
+        debug_scanSurfFF( nx, p0-a+b*0.5, p0+a*2.+b*0.5 );
+        debug_scanSurfFF( ny, p0-b+a*0.5, p0+b*2.+a*0.5 );
     }
 
     for(int i=0; i<W->selection.size(); i++){ 
