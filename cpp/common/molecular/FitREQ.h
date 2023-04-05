@@ -8,6 +8,8 @@
 //#include "NBFF.h"
 #include "Atoms.h"
 #include "MMFFparams.h"
+#include "Forces.h"
+
 
 void savexyz(const char* fname, Atoms* A, Atoms* B, const char* comment=0, const char* mode="w" ){
     FILE* fout = fopen( fname, mode);
@@ -79,6 +81,13 @@ class FitREQ{ public:
     std::vector<Atoms> batch_vec;    // ToDo: would be more convenient to store Atoms* rather than Atoms
 
     MMFFparams* params=0; 
+
+    // ------- Arrays for decomposition of energy components
+    bool bDecomp = false;
+    Quat4d** Elines  = 0;
+    Quat4d** Eilines = 0;
+    Quat4d** Ejlines = 0;
+
 
 //void realoc( int nR=0, int nE=0, int nQ=0 ){
 void realloc( int nDOFs_ ){
@@ -177,7 +186,6 @@ void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy=false, bool 
 }
 
 double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
-    const double COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
     int    nj   =system0->natoms;
     int*   jtyp =system0->atypes;
     Vec3d* jpos =system0->apos;
@@ -202,9 +210,10 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
             //printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
 
             // --- Eectrostatic
-            double ir2     = 1/( d.norm2() + 1e-4 );
+            //double ir2     = 1/( d.norm2() + 1e-4 );
+            double ir2     = 1/( d.norm2() );
             double ir      = sqrt(ir2);
-            double dE_dQ   = ir * COULOMB_CONST_;
+            double dE_dQ   = ir * COULOMB_CONST;
             double Eel     = Q*dE_dQ;
             // --- Lenard-Jones
             double u2   = ir2*(R*R);
@@ -233,7 +242,6 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
 }
 
 double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
-    const double COULOMB_CONST_ = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
     int    nj   =system0->natoms;
     int*   jtyp =system0->atypes;
     Vec3d* jpos =system0->apos;
@@ -260,9 +268,10 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
             //printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
 
             // --- Eectrostatic
-            double ir2     = 1/( d.norm2() + 1e-4 );
+            //double ir2     = 1/( d.norm2() + 1e-4 );
+            double ir2     = 1/( d.norm2() );
             double ir      = sqrt(ir2);
-            double dE_dQ   = ir * COULOMB_CONST_;
+            double dE_dQ   = ir * COULOMB_CONST;
             double Eel     = Q*dE_dQ;
             // --- Lenard-Jones
             double u2   = ir2*(R*R);
@@ -290,6 +299,65 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
     }
 
     return Etot;
+}
+
+
+
+Quat4d evalExampleEnergyComponents_LJQH2(int ni, int* types, Vec3d* ps, int isamp ){
+    const int    nj   = system0->natoms;
+    const int*   jtyp = system0->atypes;
+    const Vec3d* jpos = system0->apos;
+    Quat4d Esum = Quat4dZero;
+
+    if(Eilines)for(int i=0; i<nj; i++){ Quat4d* Eiline=Eilines[i]; if(Eiline){ Eiline[isamp]=Quat4dZero; } }
+    if(Ejlines)for(int j=0; j<nj; j++){ Quat4d* Ejline=Ejlines[j]; if(Ejline){ Ejline[isamp]=Quat4dZero; } }
+
+    for(int i=0; i<ni; i++){
+        const int     ti   = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d* Eiline=0; if(Eilines){ Eiline=Eilines[i];  }
+        for(int j=0; j<nj; j++){
+            const int tj        = jtyp     [j];
+            const Quat4d& REQj  = typeREQs [tj];
+            //const Quat4d  REQij = _mixREQ(REQi,REQj);
+            double R  = REQi.x+REQj.x;
+            double E0 = REQi.y*REQj.y;
+            double Q  = REQi.z*REQj.z;
+            double H  = REQi.w*REQj.w;
+
+            const Vec3d d       = jpos     [j] - pi;
+
+            if(H>0) H=0;
+            //printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
+            // --- Eectrostatic
+            //double ir2     = 1/( d.norm2() + 1e-4 );
+            double ir2     = 1/( d.norm2() );
+            double ir      = sqrt(ir2);
+            // --- Lenard-Jones
+            double u2   = ir2*(R*R);
+            double u6   = u2*u2*u2;
+            double u12  = u6*u6;
+            Quat4d Eij = Quat4d{
+                E0   *u12,                   // Pauli
+                E0*-2*u6 ,                   // London
+                Q *COULOMB_CONST*sqrt(ir2), // Coulomb
+                E0*u12,                      // Hbond 
+            };
+            Esum.add(Eij);
+            if( bDecomp ){
+                {                                       if(Eiline){ Eiline[isamp].add(Eij); } }
+                if(Ejlines){ Quat4d* Ejline=Ejlines[j]; if(Ejline){ Ejline[isamp].add(Eij); } }
+                if(Elines){
+                    int ij = i + j*ni;
+                    Quat4d* Eline = Elines[ij];
+                    if( Eline ){    Eline[isamp]=Eij;  }
+                }
+            }
+        }
+    }
+
+    return Esum;
 }
 
 double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
