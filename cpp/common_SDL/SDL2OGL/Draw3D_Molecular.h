@@ -21,8 +21,7 @@
 #include "Draw3D.h"
 
 #include "Forces.h"
-
-//#include "MMFFParams.h"
+#include "MMFFparams.h"
 
 //#include <SDL2/SDL_opengl.h>
 
