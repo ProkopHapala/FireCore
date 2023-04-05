@@ -773,17 +773,12 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         //#pragma omp barrier
         #pragma omp single
         {E=0;F2=0;ff=0;vv=0;vf=0;}
-        //------ clean forces
-        //#pragma omp barrier
-        #pragma omp for 
-        for(int ia=0; ia<ffl.natoms; ia++){   // NOTE: for some reason this cannot be inside eval_forces loop  (or OpenMP start to give jumpy forces) .... WHY ?????
-            {                 ffl.fapos[ia          ] = Vec3dZero; } 
-            if(ia<ffl.nnode){ ffl.fapos[ia+ffl.nnode] = Vec3dZero; }
-        }
         //------ eval forces
         //#pragma omp barrier
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<ffl.natoms; ia++){ 
+            {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
+            if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // pi force
             //if(verbosity>3)
             //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
             if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
@@ -811,7 +806,7 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         //     //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
         // }
         //#pragma omp barrier
-
+        
         //#pragma omp barrier
         { //  ==== FIRE
             #pragma omp for reduction(+:vf,vv,ff)
@@ -829,6 +824,7 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
                 //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
             }
         }
+        
         }
         //#pragma omp barrier
         #pragma omp single
