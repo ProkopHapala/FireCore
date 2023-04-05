@@ -137,7 +137,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
-    void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 200. );
+    void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
@@ -154,7 +154,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
 
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
-    void debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 0., 0.}, double sc=NAN );
+    void debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.}, double sc=NAN );
 
     //void InitQMMM();
     void initGUI();
@@ -394,11 +394,8 @@ void MolGUI::showBonds(  ){
         Vec3d pi = ps[b.i];
         Vec3d pj = ps[b.j];
         printf( "b[%i,%i] pi(%7.3f,%7.3f,%7.3f) pj(%7.3f,%7.3f,%7.3f) d(%7.3f,%7.3f,%7.3f) \n", pi.x,pi.y,pi.z,    pj.x,pj.y,pj.z,  d.x,d.y,d.z );
-        Draw3D::vertex(pi-d);
-        Draw3D::vertex(pj);
-
-        Draw3D::vertex(pi);
-        Draw3D::vertex(pj+d);
+        Draw3D::vertex(pi-d);  Draw3D::vertex(pj  );
+        Draw3D::vertex(pi  );  Draw3D::vertex(pj+d);
     }
     glEnd();
 }
@@ -410,20 +407,13 @@ void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){
     Vec3d  pi  = W->ffl.apos[ia];
     Quat4f PLQ = W->ffl.PLQs[ia];
 
-    Vec3d p = pi + W->gridFF.shift;
-    if     ( p.z > grid.cell.c.z ){ p.z = grid.dCell.c.z*-0.1 + grid.cell.c.z; }
-    else if( p.z < 0             ){ p.z = grid.dCell.c.z* 0.1;                 }
-    Vec3f gpos; grid.cartesian2grid(p, gpos);
-    Quat4f fp=interpolate3DvecWrap( W->gridFF.FFPaul, grid.n, gpos );
-    Quat4f fl=interpolate3DvecWrap( W->gridFF.FFLond, grid.n, gpos );
-    Quat4f fq=interpolate3DvecWrap( W->gridFF.FFelec, grid.n, gpos );
-    Quat4f fe= fp*PLQ.x + fl*PLQ.y + fq*PLQ.z;
+    Quat4f fp = W->gridFF.getForce( pi, Quat4f{ PLQ.x , 0.    , 0.    , 0. }, true );
+    Quat4f fl = W->gridFF.getForce( pi, Quat4f{ 0.0   , PLQ.y , 0.    , 0. }, true );
+    Quat4f fq = W->gridFF.getForce( pi, Quat4f{ 0.0   , 0.    , PLQ.z , 0. }, true );
+    Quat4f fe = fp+fl+fq;
 
-
-    Quat4f fe_ref = Quat4fZero;  W->gridFF.addForce_surf( p, PLQ, fe_ref );
-
-    s += sprintf(s, "GridFF(ia=%i) Etot %15.10f Epaul %15.10f; EvdW %15.10f EH %15.10f Eel %15.10f p(%7.3f,%7.3f,%7.3f) \n", ia,   fe.e, fp.e, fl.e, fq.e,  p.x,p.y,p.z  );
-    if( fabs(fe.e-fe_ref.e)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", fe_ref.e ); }
+    s += sprintf(s, "GridFF(ia=%i) Etot %15.10f Epaul %15.10f; EvdW %15.10f Eel %15.10f p(%7.3f,%7.3f,%7.3f) \n", ia,   fe.e, fp.e, fl.e, fq.e,  pi.x,pi.y,pi.z  );
+    //if( fabs(fe.e-fe_ref.e)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", fe_ref.e ); }
     if( fe.e>0 ){ glColor3f(0.7f,0.f,0.f); }else{ glColor3f(0.f,0.f,1.f); }
     Draw::drawText( str, fontTex, fontSizeDef, {150,20} );
     glTranslatef( 0.0,fontSizeDef*2,0.0 );
