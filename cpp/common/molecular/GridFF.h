@@ -117,6 +117,9 @@ class GridFF{ public:
     }
 
 inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
+    #pragma omp SIMD
+    {
+
     Vec3d u;
     p.add(shift);
     p.sub(grid.pos0);
@@ -151,50 +154,46 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     int ky = iy+1; ky=(ky<n.y)?ky:0;
     int kz = iz+1; kz=(kz<n.z)?kz:0;
 	//------
-	const float f00 = my*mx; 
-    const float f01 = my*tx; 
-    const float f10 = ty*mx; 
-    const float f11 = ty*tx;
+	const float f00 = my*mz; 
+    const float f10 = ty*mz; 
+    const float f01 = my*tz; 
+    const float f11 = ty*tz;
     const int   i00 = n.x*(iy + n.y*iz);
+    const int   i01 = n.x*(iy + n.y*kz);
     const int   i10 = n.x*(ky + n.y*iz);
     const int   i11 = n.x*(ky + n.y*kz);
-    const int   i01 = n.x*(iy + n.y*kz);
     const int 
         i000=ix+i00, i100=kx+i00,
+        i001=ix+i01, i101=kx+i01,
         i010=ix+i10, i110=kx+i10,
-        i011=ix+i11, i111=kx+i11,
-        i001=ix+i01, i101=kx+i01;
+        i011=ix+i11, i111=kx+i11;
+        
     const float 
         f000=mx*f00, f100=tx*f00,
+        f001=mx*f01, f101=tx*f01,
         f010=mx*f10, f110=tx*f10,
-        f011=mx*f11, f111=tx*f11,
-        f001=mx*f01, f101=tx*f01;
-
+        f011=mx*f11, f111=tx*f11;
     { // DEBUG
         Quat4f fDBG = FFPaul[ i000 ];
-        /*
-         ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
-        + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
-        + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
-        + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101));
-        */
         //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
     }
 	return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
-         ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
-        + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
-        + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
-        + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101))*-PLQ.x
+          ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
+         + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
+         + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
+         + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101))*-PLQ.x
 
-        +((FFLond[ i000 ]*f000) + (FFLond[ i100 ]*f100)
-        + (FFLond[ i010 ]*f010) + (FFLond[ i110 ]*f110)  
-        + (FFLond[ i011 ]*f011) + (FFLond[ i111 ]*f111)
-        + (FFLond[ i001 ]*f001) + (FFLond[ i101 ]*f101))*-PLQ.y
+         +((FFLond[ i000 ]*f000) + (FFLond[ i100 ]*f100)
+         + (FFLond[ i010 ]*f010) + (FFLond[ i110 ]*f110)  
+         + (FFLond[ i011 ]*f011) + (FFLond[ i111 ]*f111)
+         + (FFLond[ i001 ]*f001) + (FFLond[ i101 ]*f101))*-PLQ.y
 
-        +((FFelec[ i000 ]*f000) + (FFelec[ i100 ]*f100)
-        + (FFelec[ i010 ]*f010) + (FFelec[ i110 ]*f110)  
-        + (FFelec[ i011 ]*f011) + (FFelec[ i101 ]*f111)
-        + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*-PLQ.z;
+         +((FFelec[ i000 ]*f000) + (FFelec[ i100 ]*f100)
+         + (FFelec[ i010 ]*f010) + (FFelec[ i110 ]*f110)  
+         + (FFelec[ i011 ]*f011) + (FFelec[ i101 ]*f111)
+         + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*-PLQ.z
+        ;
+    }
 }
 
 

@@ -156,33 +156,60 @@ void renderSubstrate_( const GridShape& grid, Vec3d * FF, double isoval, bool si
 */
 
 int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double isoval, bool sign, float sclr=1.0 ){
-    //printf( "iso_points.size() %i \n", iso_points.size() );
-    Vec3d * pos     = new Vec3d[grid.n.x * grid.n.y];
-    Vec3d * normals = new Vec3d[grid.n.x * grid.n.y];
+    //printf( "iso_points.size() %i \n", iso_points.size() );   
+    //Vec3d * pos     = new Vec3d[grid.n.x * grid.n.y];
+    //Vec3d * pos     = new Vec3d[grid.n.x * grid.n.y];
+    //Vec3d * normals = new Vec3d[grid.n.x * grid.n.y];
+    double * Zs = new double[grid.n.x * grid.n.y];
     //printf( " -- DEBUG 1 \n" );
-    getIsoSurfZ( grid, isoval, sign, FF, pos, normals );
+    //getIsoSurfZ( grid, isoval, sign, FF, pos, normals );
+    getIsoSurfZ( grid, isoval, sign, FF, Zs );
     //glEnable(GL_LIGHTING);
     int nvert = 0;
-    for ( int ib=1; ib<grid.n.y; ib++ ){
+    //glDisable(GL_LIGHTING);
+    for ( int ib=1; ib<=grid.n.y; ib++ ){
         glBegin(GL_TRIANGLE_STRIP);
-        for ( int ia=0; ia<grid.n.x; ia++ ){
-            int ip1 = (ib-1)*grid.n.x + ia;
-            int ip2 = (ib  )*grid.n.x + ia;
+        //glBegin(GL_LINES);
+        for ( int ia=0; ia<=grid.n.x; ia++ ){
+            int ip1 = ((ib-1)%grid.n.y)*grid.n.x + (ia%grid.n.x);
+            int ip2 = ((ib  )%grid.n.y)*grid.n.x + (ia%grid.n.x);
             //printf( "iba (%i,%i) pos (%g,%g,%g)\n", ib,ia, pos[ip1].x,pos[ip1].y,pos[ip1].z );
             //glColor3f(pos[ip1].z*5-2,1.0f,1.0f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f(pos[ip2].z*5-2,1.0f,1.0f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-            Vec3f gpos; Quat4f fel1,fel2;
-            grid.cartesian2grid( pos[ip1], gpos); fel1 = interpolate3DvecWrap( FFel, grid.n, gpos );
-            grid.cartesian2grid( pos[ip2], gpos); fel2 = interpolate3DvecWrap( FFel, grid.n, gpos );
+            Vec3f gpos; Quat4f fel1,fel2,  f1,f2;
+
+            Vec3d p1 = grid.dCell.a*ia + grid.dCell.b*(ib-1);
+            Vec3d p2 = grid.dCell.a*ia + grid.dCell.b*(ib  );
+            p1.z=Zs[ip1];
+            p2.z=Zs[ip2];
+
+            grid.cartesian2grid( p1, gpos); fel1 = interpolate3DvecWrap( FFel, grid.n, gpos );
+            grid.cartesian2grid( p2, gpos); fel2 = interpolate3DvecWrap( FFel, grid.n, gpos );
+
+            Vec3d nr1,nr2; double invr;
+            grid.cartesian2grid( p1, gpos); gpos.z-=3.5; f1 = interpolate3DvecWrap( FF, grid.n, gpos );  f1.z*=0.1; f1.normalize();
+            grid.cartesian2grid( p2, gpos); gpos.z-=3.5; f2 = interpolate3DvecWrap( FF, grid.n, gpos );  f2.z*=0.1; f2.normalize();
             //glColor3f(0.7f,0.7f,0.7f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f(0.8f,0.7f,0.7f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
             //glColor3f( fel1.x, fel1.y, fel1.z ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f( fel2.x, fel2.y, fel2.z ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
             //printf( "[%i,%i]fel1.z %g sclr %g \n", ib,ia, fel1.z, sclr );
-            if( ckeckNaN_d(1, 3, (double*)(pos+ip1), "p2" ) || ckeckNaN_d(1, 3, (double*)(pos+ip2), "p1" ) ){ printf("ERROR in renderSubstrate()[%i,%i]: ip(%i,%i) NaNs Found !!! => Exit() \n",ia,ib, ip1,ip2  );  exit(0); };
+            //if( ckeckNaN_d(1, 3, (double*)(pos+ip1), "p2" ) || ckeckNaN_d(1, 3, (double*)(pos+ip2), "p1" ) ){ printf("ERROR in renderSubstrate()[%i,%i]: ip(%i,%i) NaNs Found !!! => Exit() \n",ia,ib, ip1,ip2  );  exit(0); };
             //printf( "renderSubstrate[%i,%i] p1(%g,%g,%g) p2(%g,%g,%g) \n", ia,ib, pos[ip1].x,pos[ip1].y,pos[ip1].z, pos[ip2].x,pos[ip2].y,pos[ip2].z );
-            colorRB( fel1.z*-sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
-            colorRB( fel2.z*-sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
+            
+            
+            //colorRB( fel1.z*-sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
+            //colorRB( fel2.z*-sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
+
+            //colorRB( fel1.z*-sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
+            //colorRB( fel2.z*-sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+
+            colorRB( fel1.z*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
+            colorRB( fel2.z*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+
+            //colorRB( fel1.z*-sclr ); 
+            //glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); glVertex3f(pos[ip1].x+normals[ip1].x*0.1, pos[ip1].y+normals[ip1].y*0.1, pos[ip1].z+normals[ip1].z*0.1); nvert++;
+            
             //printf( "[%i,%i]fel1.e %g sclr %g \n", ib,ia, fel1.e, sclr );
             //colorRB( fel1.e*-sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
             //colorRB( fel2.e*-sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
@@ -190,8 +217,9 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
         glEnd();
     }
     //printf( " -- DEBUG 3 \n" );
-    delete [] pos;
-    delete [] normals;
+    delete [] Zs;
+    //delete [] pos;
+    //delete [] normals;
     //exit(0);
     return nvert;
 }
