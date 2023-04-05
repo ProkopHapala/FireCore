@@ -64,6 +64,9 @@ class GridShape { public:
 		dCell.c.set_mul( cell.c, 1.0/n.c );
 		dCell.invert_T_to( diCell );
         cell .invert_T_to( iCell  );
+        printf( "cell  \n" ); printMat(cell);
+        printf( "iCell \n" ); printMat(iCell);
+        //exit(0);
 	}
 
     inline void updateCell_2(){
