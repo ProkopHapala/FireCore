@@ -841,37 +841,37 @@ class Builder{  public:
     int assignSpecialTypes( int* neighs ){
         //printf("#===========assignSpecialTypes() \n");
         // ------ C
-        const int it_C_sp3 = params->getAtomType("C_sp3",true);
-        const int it_C_sp2 = params->getAtomType("C_sp2",true);
-        const int it_C_sp1 = params->getAtomType("C_sp1",true);
-        const int it_C_CA  = params->getAtomType("C_CA" ,true);
-        const int it_C_ene = params->getAtomType("C_ene",true);
-        const int it_C_yne = params->getAtomType("C_yne",true);
-        const int it_C_CH3 = params->getAtomType("C_CH3",true);
-        const int it_C_ald = params->getAtomType("C_ald",true);
-        const int it_C_COO = params->getAtomType("C_COO",true);
+        const int it_C_sp3 = params->getAtomType("C_sp3");
+        const int it_C_sp2 = params->getAtomType("C_sp2");
+        const int it_C_sp1 = params->getAtomType("C_sp1");
+        const int it_C_CA  = params->getAtomType("C_CA" );
+        const int it_C_ene = params->getAtomType("C_ene");
+        const int it_C_yne = params->getAtomType("C_yne");
+        const int it_C_CH3 = params->getAtomType("C_CH3");
+        const int it_C_ald = params->getAtomType("C_ald");
+        const int it_C_COO = params->getAtomType("C_COO");
         // ------ O
-        const int it_O_sp3  = params->getAtomType("O_sp3",true);
-        const int it_O_sp2  = params->getAtomType("O_sp2",true);
-        const int it_O_sp1  = params->getAtomType("O_sp1",true);
-        const int it_O_OH   = params->getAtomType("O_OH" ,true);
-        const int it_O_ald  = params->getAtomType("O_ald",true);
-        const int it_O_sCOO = params->getAtomType("O_sCOO",true);
-        const int it_O_pCOO = params->getAtomType("O_pCOO",true);
+        const int it_O_sp3  = params->getAtomType("O_sp3");
+        const int it_O_sp2  = params->getAtomType("O_sp2");
+        const int it_O_sp1  = params->getAtomType("O_sp1");
+        const int it_O_OH   = params->getAtomType("O_OH" );
+        const int it_O_ald  = params->getAtomType("O_ald");
+        const int it_O_sCOO = params->getAtomType("O_sCOO");
+        const int it_O_pCOO = params->getAtomType("O_pCOO");
         //const int it_O_O  = params->getAtomType("O_");
         // ------ N
-        const int it_N_sp3 = params->getAtomType("N_sp3",true);
-        const int it_N_sp2 = params->getAtomType("N_sp2",true);
-        const int it_N_sp1 = params->getAtomType("N_sp1",true);
-        const int it_N_NH2 = params->getAtomType("N_NH2",true);
+        const int it_N_sp3 = params->getAtomType("N_sp3");
+        const int it_N_sp2 = params->getAtomType("N_sp2");
+        const int it_N_sp1 = params->getAtomType("N_sp1");
+        const int it_N_NH2 = params->getAtomType("N_NH2");
         // ------- H
-        const int it_H_OH  = params->getAtomType("H_OH" ,true);
-        const int it_H_COO = params->getAtomType("H_COO",true);
-        const int it_H_NH2 = params->getAtomType("H_NH2",true);
-        const int it_H_CH3 = params->getAtomType("H_CH3",true);
-        const int it_H_ene = params->getAtomType("H_ene",true);
-        const int it_H_yne = params->getAtomType("H_yne",true);
-        const int it_H_ald = params->getAtomType("H_ald",true);
+        const int it_H_OH  = params->getAtomType("H_OH" );
+        const int it_H_COO = params->getAtomType("H_COO");
+        const int it_H_NH2 = params->getAtomType("H_NH2");
+        const int it_H_CH3 = params->getAtomType("H_CH3");
+        const int it_H_ene = params->getAtomType("H_ene");
+        const int it_H_yne = params->getAtomType("H_yne");
+        const int it_H_ald = params->getAtomType("H_ald");
         //  C                    0        1        2        3
         const static int its_C  [4]{it_O_sp3,it_O_sp2,it_C_sp2,it_C_CA};
         //  N                    0        1
