@@ -183,7 +183,7 @@ class RARFF2arr{ public:
 
         if( substract_LJq ){
             addAtomicForceLJQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z );
-            //addAtomicForceMorseQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z, gridFF.alpha );
+            //addAtomicForceMorseQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z, gridFF.alphaMorse );
         }
 
         const Vec3d& hi = hbonds[ib];

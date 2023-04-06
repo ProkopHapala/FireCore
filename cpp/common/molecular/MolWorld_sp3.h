@@ -235,7 +235,7 @@ void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharg
     //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
     //builder.export_atypes( nbmol.atypes );     
 	builder.export_REQs( nbmol.REQs   );    
-    nbmol  .makePLQs   ( gridFF.alpha );  
+    nbmol  .makePLQs   ( gridFF.alphaMorse );  
     ffl.PLQs=nbmol.PLQs; 
     if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
     params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
@@ -247,7 +247,7 @@ void loadNBmol( const char* name){
 	sprintf(tmpstr, "%s.xyz", name );
     params.loadXYZ( tmpstr, nbmol.natoms, &nbmol.apos, &nbmol.REQs, &nbmol.atypes );
     _realloc(nbmol.fapos,nbmol.natoms);
-    nbmol  .makePLQs     ( gridFF.alpha );  
+    nbmol  .makePLQs     ( gridFF.alphaMorse );  
     ffl.PLQs=nbmol.PLQs; 
     if(verbosity>1)nbmol.print();                              
 }
@@ -552,7 +552,7 @@ virtual void init( bool bGrid ){
             int etyp=-1; etyp=params.atomTypeDict["E"];
             ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
         }
-        nbmol.evalPLQs(gridFF.alpha);
+        nbmol.evalPLQs(gridFF.alphaMorse);
         //ffl.print_nonbonded(); exit(0);
         ffl.checkREQlimits( );
         if(bOptimizer){ 
@@ -639,8 +639,8 @@ double eval( ){
     /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); }
-        //else        { E+= nbmol .evalMorse   ( surf, false,                  gridFF.alpha, gridFF.Rdamp );  }
-        else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
+        //else        { E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
+        else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
     }
     */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );

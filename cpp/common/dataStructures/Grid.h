@@ -11,9 +11,7 @@
 //#include <string.h>
 #include "quaternion.h"
 #include "VecN.h"
-
 #include <vector>
-
 
 #include "Fourier.h"
 
@@ -33,7 +31,7 @@ int nearPow2(int i){ return ceil( log(i)/log(2) ); }
 // ================================
 
 // Force-Field namespace
-class GridShape { public:
+class GridShape{ public:
 	Vec3d   pos0;
 	Mat3d   cell;       // lattice vector
     Mat3d   iCell;      // inverse lattice vector

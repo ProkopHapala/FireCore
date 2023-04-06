@@ -657,7 +657,7 @@ class GridFF_OCL{ public:
         dA  .f = (Vec3f)gridFF.grid.dCell.a ;
         dB  .f = (Vec3f)gridFF.grid.dCell.b ;
         dC  .f = (Vec3f)gridFF.grid.dCell.c ;
-        alpha = gridFF.alpha;
+        alpha = gridFF.alphaMorse;
 
         task_FFPLE->args = {
             INTarg(nAtoms),

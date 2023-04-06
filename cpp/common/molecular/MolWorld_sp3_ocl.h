@@ -51,7 +51,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
             atoms[ii].f=(Vec3f)(surf.apos[i]+p0);
             atoms[ii].e=R2damp; 
             coefs[ii]  =(Quat4f)surf.REQs[i];
-            //coefs[ii].e=gridFF.alpha;
+            //coefs[ii].e=gridFF.alphaMorse;
             ii++;
         }
     }}}
@@ -91,7 +91,7 @@ void init_ocl(){
 
 void REQs2ocl(){
     Quat4f* q_cs= new Quat4f[nbmol.natoms];
-    pack  ( nbmol.natoms, nbmol.REQs, q_cs, gridFF.alpha );
+    pack  ( nbmol.natoms, nbmol.REQs, q_cs, gridFF.alphaMorse );
     ocl.upload( ocl.ibuff_coefs, q_cs );    
     delete [] q_cs;
 };
@@ -550,9 +550,9 @@ void eval(){
                     }
             }else { 
                 E += nbmol.evalLJQs_ng4( ffl.neighs );  // Non-bonded interactions between atoms within molecule
-              //E+= nbmol.evalMorse   (surf, false,                   gridFF.alpha, gridFF.Rdamp );
-                E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );
-              //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp ); 
+              //E+= nbmol.evalMorse   (surf, false,                   gridFF.alphaMorse, gridFF.Rdamp );
+                E+= nbmol.evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );
+              //E+= nbmol.evalMorsePLQ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp ); 
             }
         }
     }

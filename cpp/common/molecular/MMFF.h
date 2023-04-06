@@ -208,7 +208,7 @@ void setCoulombMirror(const Vec3d& hdir, const Vec3d& p0){
 
 void setCollisionRF( double Rsc ){
     Collision_Rsc   = Rsc;
-    Collision_F2max = exp( 2*2*(3.5*(1-Rsc))*gridFF.alpha );
+    Collision_F2max = exp( 2*2*(3.5*(1-Rsc))*gridFF.alphaMorse );
 }
 
 
@@ -304,7 +304,7 @@ int pickBond( const Vec3d& ray0, const Vec3d& hRay, double R ){
 void genPLQ(){
     //if(PLQ==NULL) PLQ = new Vec3d[natoms];
     for(int i=0; i<natoms; i++){
-        PLQ[i] = REQ2PLQ( REQ[i], gridFF.alpha );
+        PLQ[i] = REQ2PLQ( REQ[i], gridFF.alphaMorse );
         //printf( "genPLQ %i (%g,%g,%g)->(%g,%g,%g) \n", i, REQ[i].x, REQ[i].y, REQ[i].z,   PLQ[i].x, PLQ[i].y, PLQ[i].z );
     }
     //exit(0);
@@ -504,7 +504,7 @@ void eval_bonds( const bool substract_LJq ){
 
         if( substract_LJq ){
             //addAtomicForceLJQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z );
-            addAtomicForceMorseQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z, gridFF.alpha );
+            addAtomicForceMorseQ( dp, f, REQ[iat.x].x+REQ[iat.y].x, -REQ[iat.x].y*REQ[iat.y].y, REQ[iat.x].z*REQ[iat.y].z, gridFF.alphaMorse );
         }
 
         aforce[iat.x].add( f );
@@ -687,7 +687,7 @@ bool getCollosion( int i0, int n, double scR, const bool bFColPauli, Vec3d* poss
                     ret=true;
                     if(R2mins){ double r2m=R2mins[j]; if(r2<r2m)R2mins[j]=r2; };
                     if(forces){
-                        if (bFColPauli){ addAtomicForceExp( d, forces[j], REQi.x+REQj.x, REQi.y*REQj.y, gridFF.alpha*2 ); }
+                        if (bFColPauli){ addAtomicForceExp( d, forces[j], REQi.x+REQj.x, REQi.y*REQj.y, gridFF.alphaMorse*2 ); }
                         else           { forces[j].add_mul( d, 1/r2 - 1/R2 );                                             }
                     };
                     //if(dforces){ Energy [j].add_mul( d, 1/r2 ) };
@@ -773,7 +773,7 @@ void eval_MorseQ_On2(){
             if(i!=j){
                 Quat4d& REQj = REQ[j];
                 //printf("(%i,%i)", i, j );
-                addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alpha );
+                addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alphaMorse );
             }
         }
         aforce[i].add(f);
@@ -796,7 +796,7 @@ void eval_MorseQ_On2_fragAware(){
             if(i!=j){
                 Quat4d& REQj = REQ[j];
                 //printf("(%i,%i) (%i,%i)", ifrag, i, atom2frag[j], j );
-                addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alpha );
+                addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alphaMorse );
             }
         }
         //printf( "FMM: imol %i ia %i f(%g,%g,%g) \n", ifrag, i, f.x,f.y,f.z );
@@ -823,8 +823,8 @@ void eval_MorseQ_Frags(){
                 for( int j=ja; j<ma; j++ ){
                     Quat4d& REQj = REQ[j];
                     //printf( " (%i,%i) (%i,%i) ()  \n",  ifrag jfrag i j );
-                    //addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, 0, gridFF.alpha );
-                    addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alpha );
+                    //addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, 0, gridFF.alphaMorse );
+                    addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alphaMorse );
                 }
             }
             aforce[i].add(f);
@@ -844,7 +844,7 @@ void eval_CoulombMirror_On2(const Vec3d& hdir, double c0 ){
         Vec3d f; f.set(0.0);
         for(int j=0; j<natoms; j++){
             Quat4d& REQj = REQ[j];
-            //addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alpha );
+            //addAtomicForceMorseQ( pi-apos[j], f, REQi.x+REQj.x, -REQi.y*REQj.y, REQi.z*REQj.z, gridFF.alphaMorse );
             Vec3d pj = apos[j];
             double c = hdir.dot(pj) - c0;
             pj.add_mul( hdir, 2*c0 );

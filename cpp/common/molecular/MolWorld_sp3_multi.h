@@ -148,7 +148,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
         pack    ( ff.nnode , ff.bKs,        BKs      +i0n );
         pack    ( ff.nnode , ff.Ksp,        Ksp      +i0n );
         pack    ( ff.nnode , ff.Kpp,        Kpp      +i0n );
-        pack    ( nbmol.natoms, nbmol.REQs, REQs        +i0a, fabs(gridFF.alpha) );
+        pack    ( nbmol.natoms, nbmol.REQs, REQs        +i0a, fabs(gridFF.alphaMorse) );
     }
 
     //if(isys==5)
@@ -338,8 +338,8 @@ double eval( ){
     /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); }
-        //else        { E+= nbmol .evalMorse   ( surf, false,                  gridFF.alpha, gridFF.Rdamp );  }
-        else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alpha, gridFF.Rdamp );  }
+        //else        { E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
+        else          { E+= nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
     }
     */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
@@ -402,7 +402,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
     Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
     pack( gridFF.natoms, gridFF.apos,  atoms_surf,   sq(gridFF.Rdamp) );
-    pack( gridFF.natoms, gridFF.REQs, REQs_surf , fabs(gridFF.alpha) );
+    pack( gridFF.natoms, gridFF.REQs, REQs_surf , fabs(gridFF.alphaMorse) );
     long T1=getCPUticks();
     ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
