@@ -276,8 +276,6 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
 
     world.genPLQ();
     world.gridFF.allocateFFs();
-    //world.gridFF.evalGridFFs( {0,0,0} );
-
     //world.gridFF.setAtoms( int natoms, Vec3d * apos_, Vec3d * REQs_ );
 
     gridFFocl.evalGridFFs(world.gridFF, {1,1,1} ); DEBUG

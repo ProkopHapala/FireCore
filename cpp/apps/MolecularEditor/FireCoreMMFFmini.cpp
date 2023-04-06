@@ -429,7 +429,7 @@ void TestAppMMFFmini::draw(){
     }
     //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift );
+    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift0 );
 
     //printf( "bDoQM %i bDoMM %i \n", bDoQM, bDoMM );
     if(bDoQM)drawSystemQMMM();
@@ -489,9 +489,6 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //testREQ = Vec3d{ 2.181, 0.0243442, 0.0}; // Xe
     //genPLQ();
     gridFF.allocateFFs();
-    //world.gridFF.evalGridFFs( {0,0,0} );
-    //world.gridFF.evalGridFFs( {1,1,1} );
-    //world.gridFF.evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs );
     //bool recalcFF = true;
     //if( recalcFF ){
     gridFF.tryLoad( "data/FFelec.bin", "data/FFPaul.bin", "data/FFLond.bin" );

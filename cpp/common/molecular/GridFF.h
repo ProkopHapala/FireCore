@@ -377,6 +377,7 @@ inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=t
         }
         }
     }
+    void makeGridFF(){ makeGridFF_omp(natoms,apos,REQs); }
 
     void evalGridR(int natoms, Vec3d * apos, Quat4d * REQs ){
         printf( "GridFF::evalGridR() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );

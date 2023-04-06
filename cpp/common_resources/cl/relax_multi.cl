@@ -315,7 +315,7 @@ __kernel void getMMFFf4(
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", iG,ing,jng, par.z, par.x,par.y, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             
             fa    -= f1+f2;
-            
+            /*
             { // Remove vdW
                 float4 REQi=REQKs[inga];   // ToDo: can be optimized
                 float4 REQj=REQKs[jnga];
@@ -329,6 +329,7 @@ __kernel void getMMFFf4(
                 f2 +=  fij.xyz;
                 //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", iG,ing,jng, length(dp), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
             }
+            */
 
             fbs[i]+= f1;
             fbs[j]+= f2;
@@ -349,7 +350,7 @@ __kernel void getMMFFf4(
         fneigh[i4 +i] = (float4){fbs[i],0};
         fneigh[i4p+i] = (float4){fps[i],0};
     }
-    fapos[iav       ] = (float4){fa ,0};
+    fapos[iav       ] = (float4){fa ,0}; // We are setting not adding here => Why we need to clean ? - because of the caping atoms? (i.e. other than node atoms)
     fapos[iav+nAtoms] = (float4){fpi,0};
     //fpipos[ia] = (float4){fpi,0};
     
@@ -436,7 +437,8 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
     // =============== FORCE DONE
-    aforce[iav] = fe; // store force before limit
+    //aforce[iav] = fe;           // store force before limit
+    aforce[iav] = float4Zero;     // clean force
 
     /*
     // ---- Limit Forces
@@ -459,7 +461,7 @@ __kernel void updateAtomsMMFFf4(
        }
     }
     
-
+    /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -482,9 +484,9 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
+    */
     
     
-    /*
     // ------ Move (Leap-Frog)
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -499,7 +501,7 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
-    */
+    
 
     /*
     //------ Move Gradient-Descent
@@ -544,6 +546,7 @@ __kernel void printOnGPU(
     const int iav = iG + iS*nvec;
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
+    /*
     printf( "#### GPU::printOnGPU(isys=%i) natoms=%i nnode=%i nG,nS(%i,%i) \n", isys,  natoms,nnode,   nS,nG );
     if(mask.x){
         for(int i=0; i<natoms; i++){
@@ -578,7 +581,7 @@ __kernel void printOnGPU(
             printf( "\n" );
         }}
     }
-
+    */
 }
 
 __kernel void cleanForceMMFFf4(
@@ -617,6 +620,168 @@ __kernel void cleanForceMMFFf4(
 // ======================================================================
 
 __kernel void getNonBond(
+    const int4 ns,                  // 1
+    // Dynamical
+    __global float4*  atoms,        // 2
+    __global float4*  forces,       // 3
+    // Parameters
+    __global float4*  REQKs,        // 4
+    __global int4*    neighs,       // 5
+    __global int4*    neighCell,    // 6
+    __global cl_Mat3* lvecs,        // 7
+    const int4 nPBC,                // 8
+    const float Rdamp               // 9
+){
+    //__local float4 LATOMS[32];
+    //__local float4 LCLJS [32];
+    __local float4 LATOMS[64];
+    __local float4 LCLJS [64];
+    const int iG = get_global_id  (0);
+    const int iS = get_global_id  (1);
+    const int iL = get_local_id   (0);
+    const int nG = get_global_size(0);
+    const int nS = get_global_size(1);
+    const int nL = get_local_size (0);
+
+    const int natoms=ns.x;
+    const int nnode =ns.y;
+    const int nvec  =natoms+nnode;
+
+    //const int i0n = iS*nnode; 
+    const int i0a = iS*natoms; 
+    const int i0v = iS*nvec;
+    //const int ian = iG + i0n;
+    const int iaa = iG + i0a;
+    const int iav = iG + i0v;
+    
+    const int iS_DBG = 5;
+    const int iG_DBG = 0;
+
+    //if((iG==iG_DBG)&&(iS==iS_DBG)){ 
+    //    printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
+    //     for(int i=0; i<nS*nG; i++){
+    //         int ia = i%nS;
+    //         int is = i/nS;
+    //         if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
+    //         //printf( "GPU[%i,%i] \n", is,ia,  );        
+    //     }
+    //}
+
+    if(iG>=natoms) return;
+
+    //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
+    const bool   bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;
+    const int4   ng    = neighs   [iaa];
+    const int4   ngC   = neighCell[iaa];
+    const float4 REQKi = REQKs    [iaa];
+    const float3 posi  = atoms    [iav].xyz;
+    const float  R2damp = Rdamp*Rdamp;
+    float4 fe          = float4Zero;
+
+    const cl_Mat3 lvec = lvecs[iS];
+
+    //if(iG==0){ for(int i=0; i<natoms; i++)printf( "GPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z ); }
+
+    const float3 shift0  = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;
+    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+
+    // ========= Atom-to-Atom interaction ( N-body problem )    
+    for (int i0=0; i0<natoms; i0+= nL ){
+        const int i = i0 + iL;
+        //if(i>=nAtoms) break;  // wrong !!!!
+        LATOMS[iL] = atoms [i+i0v];
+        LCLJS [iL] = REQKs [i+i0a];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            const int ji=j+i0;
+            if( (ji!=iG) && (ji<natoms) ){   // ToDo: Should interact withhimself in PBC ?
+                const float4 aj = LATOMS[j];
+                float3 dp   = aj.xyz - posi;
+                float4 REQK = LCLJS[j];
+                REQK.x  +=REQKi.x;
+                REQK.yz *=REQKi.yz;
+                const bool bBonded = ((ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w));
+                int ipbc=0;
+                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                dp -= shift0;
+
+                /*
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                            if(bBonded){
+                                // Maybe We can avoid this by using Damped LJ or Buckingham potential which we can safely subtract in bond-evaluation ?
+                                if(
+                                        ((ji==ng.x)&&(ipbc==ngC.x))
+                                    ||((ji==ng.y)&&(ipbc==ngC.y))
+                                    ||((ji==ng.z)&&(ipbc==ngC.z))
+                                    ||((ji==ng.w)&&(ipbc==ngC.w))
+                                )continue; // skipp pbc0
+                            }
+                            //fe += getMorseQ( dp+shifts, REQK, R2damp );
+                            float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                            //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
+                            fe += fij;
+                            ipbc++; 
+                            dp+=lvec.a.xyz;
+                        }
+                        dp+=shift_a;
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp+=shift_b;
+                    //dp+=lvec.c.xyz;
+                }
+                */
+
+                // Fixed PBC size
+                //for(int iz=-1; iz<2; iz++){
+                    for(int iy=0; iy<3; iy++){
+                        for(int ix=0; ix<3; ix++){
+                            // Without these IF conditions if(bBonded) time of evaluation reduced from 61 [ms] to 51[ms]
+                            if(bBonded){
+                                // Maybe We can avoid this by using Damped LJ or Buckingham potential which we can safely subtract in bond-evaluation ?
+                                if(
+                                      ((ji==ng.x)&&(ipbc==ngC.x))
+                                    ||((ji==ng.y)&&(ipbc==ngC.y))
+                                    ||((ji==ng.z)&&(ipbc==ngC.z))
+                                    ||((ji==ng.w)&&(ipbc==ngC.w))
+                                )continue; // skipp pbc0
+                            }
+                            //fe += getMorseQ( dp+shifts, REQK, R2damp );
+                            float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                            //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
+                            fe += fij;
+                            ipbc++; 
+                            dp+=lvec.a.xyz;
+                        }
+                        dp+=shift_a;
+                        //dp+=lvec.b.xyz;
+                    }
+                    //dp+=shift_b;
+                    //dp+=lvec.c.xyz;
+                //}
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    
+    //forces[iav] = fe;
+    forces[iav] += fe;
+    //forces[iav] = fe*(-1.f);
+    
+}
+
+
+
+
+
+
+
+
+
+
+__kernel void getNonBond_bak(
     const int4 ns,                  // 1
     // Dynamical
     __global float4*  atoms,        // 2
@@ -742,8 +907,7 @@ __kernel void getNonBond(
     
     //forces[iav] = fe;
     forces[iav] += fe;
-    //forces[iav] = fe*(-1.f);
-    
+    //forces[iav] = fe*(-1.f);   
 }
 
 
@@ -860,7 +1024,7 @@ __kernel void getNonBond_GridFF(
 
     const int iS_DBG = 5;
     const int iG_DBG = 0;
-    if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "getNonBond_GridFF() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
+    //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "getNonBond_GridFF() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){ 
     //     printf( "GPU::getNonBond_GridFF() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
     //     for(int i=0; i<nS*nG; i++){
@@ -1195,7 +1359,7 @@ __kernel void addDipoleField(
     const int nMax = nab*nGrid.z;
     if(iG>nMax) return;
 
-    if(iG==0){printf("GPU::addDipoleField(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, n  );}
+    //if(iG==0){printf("GPU::addDipoleField(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, n  );}
 
     float3 pos     = grid_p0.xyz + dGrid.a.xyz*ia + dGrid.b.xyz*ib  + dGrid.c.xyz*ic;
     float4 fe  = float4Zero;

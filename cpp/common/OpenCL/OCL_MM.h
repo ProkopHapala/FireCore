@@ -36,7 +36,8 @@ class OCL_MM: public OCLsystem { public:
     int4   print_mask{1,1,1,1};
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
-    float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
+    //float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
+    float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
     //float Rdamp  = 1e-4;
     float Rdamp  = 1.;
     //float R2damp = Rdamp*Rdamp;
@@ -128,8 +129,13 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
-        task->global.x = na;
+        //int nloc = 1;
+        //int nloc = 32;
+        int nloc = 64;
+        task->local.x = nloc;
+        task->global.x = na + nloc-(na%nloc);
         task->global.y = nSystems;
+
         useKernel( task->ikernel );
         nDOFs.x=na; 
         nDOFs.y=nNode; 
