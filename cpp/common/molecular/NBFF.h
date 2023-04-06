@@ -44,14 +44,15 @@ class NBFF: public Atoms{ public:
     Quat4i   *neighs =0;
     Quat4i   *neighCell=0;
 
-    double  Rdamp  = 1.0;
+    double alphaMorse = 1.5;
+    //double  KMorse  = 1.5;
+    double  Rdamp     = 1.0;
     Mat3d   lvec;
     Vec3i   nPBC;
     bool    bPBC=false;
 
     int    npbc=0;
     Vec3d* shifts=0;
-
     Quat4f *PLQs   =0;  // used only in combination with GridFF
 
     // ==================== Functions
@@ -195,6 +196,54 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+    double evalMorseQH_PBC_external_atom_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        double E=0,fx=0,fy=0,fz=0;
+        #pragma omp simd reduction(+:E,fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            //if(ia==j)continue;    ToDo: Maybe we can keep there some ignore list ?
+            const Quat4d& REQj  = REQs[j];
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Vec3d dp     = apos[j]-pi;
+            Vec3d fij          = Vec3dZero;
+            for(int ipbc=0; ipbc<npbc; ipbc++){
+                const Vec3d dpc = dp + shifts[ipbc];
+                double eij      = getMorseQH( dpc, fij, REQij, alphaMorse, R2damp );
+                E +=eij;
+                fx+=fij.x;
+                fy+=fij.y;
+                fz+=fij.z;
+            }
+        }
+        fout=Vec3d{fx,fy,fz};
+        return E;
+    }
+
+    double evalLJQs_PBC_external_atom_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        double E=0,fx=0,fy=0,fz=0;
+        #pragma omp simd reduction(+:E,fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
+            const Quat4d& REQj  = REQs[j];
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Vec3d dp     = apos[j]-pi;
+            Vec3d fij          = Vec3dZero;
+            for(int ipbc=0; ipbc<npbc; ipbc++){
+                // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
+                const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
+                double eij      = getLJQH( dpc, fij, REQij, R2damp );
+                E +=eij;
+                fx+=fij.x;
+                fy+=fij.y;
+                fz+=fij.z;
+            }
+        }
+        fout=Vec3d{fx,fy,fz};
+        return E;
+    }
 
     double evalLJQs_ng4_PBC_atom_omp(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
@@ -203,9 +252,7 @@ class NBFF: public Atoms{ public:
         const Quat4d  REQi = REQs    [ia];
         const Quat4i ng   = neighs   [ia];
         const Quat4i ngC  = neighCell[ia];
-        Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
-
         //#pragma omp simd collapse(2) reduction(+:E,fx,fy,fz)
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
@@ -590,6 +637,17 @@ class NBFF: public Atoms{ public:
         return E;
     }
 */
+
+    int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
+        npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+        shifts = new Vec3d[npbc];
+        int ipbc=0;
+        for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+            shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+            ipbc++; 
+        }}}
+        return npbc;
+    }
 
     void print_nonbonded(){
         printf("NBFF::print_nonbonded(n=%i)\n", natoms );

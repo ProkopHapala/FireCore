@@ -9,6 +9,8 @@
 #include "Forces.h"
 #include "MMFFparams.h"
 
+#include "NBFF.h"
+
 static bool bDebug__ = 0;
 
 inline double evalDipole( int n, Vec3d* ps, Quat4d* REQs, Vec3d& Dout, Vec3d& p0out ){
@@ -55,27 +57,38 @@ inline double evalDipole( int n, Vec3d* ps, Quat4d* REQs, Vec3d& Dout, Vec3d& p0
     return Q;
 }
 
-class GridFF{ public: 
+class GridFF : public NBFF{ public: 
+    // -----  From NBFF 
+    // int  natoms     = 0;
+    // int    * atypes = 0;
+    // Vec3d  * apos   = 0;   // atomic position
+    // Quat4d * REQs  = 0;
+    //Quat4d  * PLQ = 0;
+    //Vec3d   * fapos  =0;
+    //Quat4d  * REQs   =0;
+    //Quat4i  * neighs =0;
+    //Quat4i  * neighCell=0;
+    //double  Rdamp  = 1.0;
+    //Mat3d   lvec;
+    //Vec3i   nPBC;
+    //bool    bPBC=false;
+    //int     npbc=0;
+    //Vec3d*  shifts=0;
+    //Quat4f  *PLQs   =0;  // used only in combination with GridFF
+
+    // -----------------------
     GridShape   grid;
-
-    Quat4f *FFPaul = 0;
-    Quat4f *FFLond = 0;
-    Quat4f *FFelec = 0;
-
-    //Vec3d  *FFtot    = NULL; // total FF is not used since each atom-type has different linear combination
+    Quat4f   *FFPaul = 0;
+    Quat4f   *FFLond = 0;
+    Quat4f   *FFelec = 0;
+    //Quat4f *FFtot    = 0; // total FF is not used since each atom-type has different linear combination
 
     // ------ ToDo: this should be put inside NBFF
-    int  natoms     = 0;
-    int    * atypes = 0;
-    Vec3d  * apos   = 0;   // atomic position
-    Quat4d * REQs  = 0;
-    //Quat4d * PLQ = 0;
-
     std::vector<Vec3d>  apos_  ;
     std::vector<Quat4d> REQs_  ;
     std::vector<int>    atypes_;
 
-    Vec3i nPBC{1,1,0};
+    //Vec3i nPBC{1,1,0};
     Vec3d shift = Vec3dZero;
 
     // dipole approximation
@@ -83,9 +96,7 @@ class GridFF{ public:
     Vec3d dip;
     double Q;
 
-    double alpha  =  1.5;
-    double Rdamp  =  1.0;
-
+    //double Rdamp  =  1.0;
     int iDebugEvalR = 0;
     bool bCellSet = false;
 
@@ -282,7 +293,7 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
         //Rdamp = 1.0; // WARRNIN DEBUG;
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             const double R2damp=Rdamp*Rdamp;    
-            const double K=-alpha;
+            const double K=-alphaMorse;
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
@@ -319,7 +330,7 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_){
         printf( "GridFF::makeGridFF_omp() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );
         const double R2damp=Rdamp*Rdamp;    
-        const double K=-alpha;
+        const double K=-alphaMorse;
         // ----- makePBC shifts
         int nshift = (nPBC.a*2+1)*(nPBC.b*2+1)*(nPBC.c*2+1);
         std::vector<Vec3d> shifts{nshift};
@@ -410,7 +421,7 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     }
 
     void evalCombindGridFF( Quat4d REQ, Quat4f * FF ){
-        Quat4f PLQ = REQ2PLQ( REQ, alpha );
+        Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Quat4f f = Quat4fZero;
             if(FFPaul ) f.add_mul( FFPaul [ibuff], PLQ.x );
@@ -421,7 +432,7 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     }
 
     void evalCombindGridFF_CheckInterp( Quat4d REQ, Quat4f * FF ){
-        Quat4f PLQ = REQ2PLQ( REQ, alpha );
+        Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Quat4f f = Quat4fZero;
             addForce( p+Vec3d{0.1,0.1,0.1}, (Quat4f)PLQ, f );
@@ -479,7 +490,6 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Quat4d* REQs, double d
     bindSystem( atypes_.size(), &atypes_[0], &apos_[0], &REQs_[0] );
 }
 
-
 void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){
     if(nPBC_.x>=0) nPBC=nPBC_;
     setAtomsSymetrized( natoms, atypes, apos, REQs, d );
@@ -487,7 +497,41 @@ void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){
     //params_glob->saveXYZ( "symtrized.xyz", apos_.size() , &atypes_[0] , &apos_[0], "#", &REQs_[0] );
     //evalGridFFs( apos_.size(), &apos_[0], &REQs_[0] );
     makeGridFF_omp( apos_.size(), &apos_[0], &REQs_[0] );
+}
 
+void getEFprofile( int n, Vec3d p0, Vec3d p1, Quat4d REQ, Quat4d* fes, bool bPrint=false){
+    if(bPrint){ printf("GridFF::getEFprofile(n=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
+    Vec3d dp=p1-p0; dp.mul(1./n);
+    Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );   //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
+    for(int i=0; i<n; i++){
+        Vec3d  p  = p0 + dp*i;
+        Quat4f fe = getForce( p, PLQ, true );
+        if(fes)fes[i]=(Quat4d)fe;
+        if(bPrint){ printf( "%i %6.3f %6.3f %6.3f %g %g %g\n", i, p.x, p.y, p.z, fe.x,fe.y,fe.z  ); };
+    }
+}
+
+bool checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, double tol=1e-6, bool bPrint=false, bool bExit=false ){
+    if(bPrint){ printf("GridFF::checkEFProfileVsNBFF(n=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
+    double tol2=tol*tol;
+    Vec3d dp=p1-p0; dp.mul(1./n);
+    Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );   //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
+    bool err = false;
+    for(int i=0; i<n; i++){
+        Vec3d fref;
+        Vec3d  p    = p0 + dp*i;
+        Quat4f fe   = getForce( p, PLQ, true );
+        float  Eref = evalMorseQH_PBC_external_atom_omp( p, REQ, fref );
+        float  dE   = fe.e-Eref;
+        Vec3f  df   = fe.f - (Vec3f)fref;
+        if( ((dE*dE)>tol2) || (df.norm2()>tol2) ){
+            err=true;
+            printf("WARRNING [%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g.%g,%g|%g)  NBFF(%g.%g,%g|%g)\n", i, dE, df.norm(), p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w,  Eref, fref.x,fref.y,fref.z  ); exit(0);
+            if(bExit){ printf("ERROR in GridFF::checkEFProfileVsNBFF() - GridFF force does not match NBFF reference at test point => Exit()\n" ); exit(0); }
+        } 
+        if(bPrint){ printf( "%i %6.3f %6.3f %6.3f %g %g %g\n", i, p.x, p.y, p.z, fe.x,fe.y,fe.z  ); };
+    }
+    return err;
 }
 
  #ifdef IO_utils_h

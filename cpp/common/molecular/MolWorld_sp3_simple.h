@@ -257,7 +257,7 @@ void makeFFs(){
         int etyp=-1; etyp=params.atomTypeDict["E"];
         ffl.chargeToEpairs( nbmol.REQs, nbmol.atypes, -0.2, etyp );  
     }
-    //nbmol.evalPLQs(gridFF.alpha);
+    //nbmol.evalPLQs(gridFF.alphaMorse);
     if(bOptimizer){ 
         setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
     }

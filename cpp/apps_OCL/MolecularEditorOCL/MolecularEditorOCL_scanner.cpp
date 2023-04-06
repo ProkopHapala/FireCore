@@ -265,7 +265,7 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
 
     int iatom = 11;
     testREQ = Vec3d{ 1.487, sqrt(0.0006808), 0.0 };
-    testPLQ = REQ2PLQ( testREQ, world.gridFF.alpha );//
+    testPLQ = REQ2PLQ( testREQ, world.gridFF.alphaMorse );//
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n",        testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
     printf( "REQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n", iatom, world.REQ[iatom].x, world.REQ[iatom].y, world.REQ[iatom].z, world.PLQ[iatom].x, world.PLQ[iatom].y, world.PLQ[iatom].z );
     Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
@@ -386,7 +386,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     //int nSystems = 2;
 
     //clworld.prepareBuffers( nSystems, nMols, world.gridFF.grid.n, world.gridFF.FFPaul_f, world.gridFF.FFLond_f, world.gridFF.FFelec_f );
-    clworld.alpha = world.gridFF.alpha;
+    clworld.alpha = world.gridFF.alphaMorse;
     clworld.prepareBuffers( nSystems, nMols, world.gridFF );
 
 
@@ -504,7 +504,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     DEBUG
 
     clworld.updateMolStats();
-    clworld.setupKernel_getForceRigidSystemSurfGrid( world.gridFF.grid, world.gridFF.alpha, 0.5, 1 );
+    clworld.setupKernel_getForceRigidSystemSurfGrid( world.gridFF.grid, world.gridFF.alphaMorse, 0.5, 1 );
     clworld.upload_mol2atoms(); DEBUG
     clworld.upload_poses();     DEBUG
     //printf( "DEBUG : upload_poses(); DONE\n ");

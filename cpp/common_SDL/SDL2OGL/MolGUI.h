@@ -566,7 +566,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     if(verbosity>0) printf( "MolGUI::renderGridFF()\n" );
     //int iatom = 11;
     testREQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.}; // H
-    testPLQ = REQ2PLQ( testREQ, W->gridFF.alpha );
+    testPLQ = REQ2PLQ( testREQ, W->gridFF.alphaMorse );
     Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
     W->gridFF.grid.saveXSF( "E_renderGridFF.xsf",  (float*)FFtot, 4, 3, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
@@ -705,7 +705,7 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
     //p0=Vec3d{0.0,0.0,z0_scan}; p1=Vec3d{0.0,5.0,z0_scan}; // Horizontal scan
     //p0=Vec3d{0.0,z0_scan,0.0}; p1=Vec3d{0.0,z0_scan,10.0,}; // Vertical scan
     Vec3d dp=p1-p0; dp.mul(1./n);
-    Quat4f PLQ = REQ2PLQ( REQ, W->gridFF.alpha );
+    Quat4f PLQ = REQ2PLQ( REQ, W->gridFF.alphaMorse );
     //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){
@@ -718,8 +718,8 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
 
         //double E=0;
         //if   (W->bGridFF){ E+= W->gridFF.eval        (1, W->nbmol.apos, W->nbmol.PLQs,  W->nbmol.fapos );                        }
-        //else           { E+= W->nbmol .evalMorse   (W->surf, false,                        W->gridFF.alpha, W->gridFF.Rdamp ); }
-        //else             { E+= W->nbmol .evalMorsePBC(W->surf, W->gridFF.grid.cell, W->nPBC, W->gridFF.alpha, W->gridFF.Rdamp ); }
+        //else           { E+= W->nbmol .evalMorse   (W->surf, false,                        W->gridFF.alphaMorse, W->gridFF.Rdamp ); }
+        //else             { E+= W->nbmol .evalMorsePBC(W->surf, W->gridFF.grid.cell, W->nPBC, W->gridFF.alphaMorse, W->gridFF.Rdamp ); }
         //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+W->nbmol.fapos[0]*sc );       // Force Vectro
         //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+(Vec3d{0.0,0.0,E})*sc  );  // Energy -> z
         //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+(Vec3d{0.0,E,0.0})*sc  );  // Energy -> x
