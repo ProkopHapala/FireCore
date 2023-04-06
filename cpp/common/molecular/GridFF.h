@@ -89,7 +89,6 @@ class GridFF : public NBFF{ public:
     std::vector<int>    atypes_;
 
     //Vec3i nPBC{1,1,0};
-    Vec3d shift = Vec3dZero;
 
     // dipole approximation
     Vec3d dip_p0;
@@ -130,9 +129,8 @@ class GridFF : public NBFF{ public:
 inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     #pragma omp SIMD
     {
-
     Vec3d u;
-    p.add(shift);
+    p.sub(shift0);
     p.sub(grid.pos0);
     grid.iCell.dot_to( p, u );
     Vec3i n = grid.n;
@@ -208,6 +206,11 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     }
 }
 
+inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=true )const{
+    Quat4f fe = getForce( p, PLQ, bSurf ); 
+    f.add( (Vec3d)fe.f );   
+    return fe.e;
+}
 
     inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         //printf( "GridFF::addForce() \n" );
@@ -228,7 +231,7 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
         //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
     }
     inline void addForce_surf( Vec3d pos, const Quat4f PLQ, Quat4f& f ) const {
-        pos.add( shift );
+        pos.add( shift0 );
         if     ( pos.z > grid.cell.c.z ){ pos.z = grid.dCell.c.z*-0.1 + grid.cell.c.z; }
         else if( pos.z < 0             ){ pos.z = grid.dCell.c.z* 0.1;                 }
         return addForce( pos, PLQ, f );
@@ -268,65 +271,65 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
         });
     }
 
-    void evalGridFFexp(int natoms, Vec3d * apos, Quat4d * REQs, double alpha, double A, Vec3d * FF ){
-        //interateGrid3D(  Vec3dZero, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
-        interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            Vec3d f =  Vec3dZero;
-            for(int ia=0; ia<natoms; ia++){
-                //printf( " %i (%g,%g,%g) (%g,%g)\n", ia, apos[ia].x, apos[ia].y, apos[ia].z,  aLJq[ia].x, aLJq[ia].y  );
-                addAtomicForceExp( p-apos[ia], f, REQs[ia].x, REQs[ia].y,    alpha );
-                //addAtomicForceExp( p-apos[ia], f, aLJq[ia].x, aLJq[ia].y,    alpha*2 );
-                //addAtomicForceExp( p-apos[ia], f, aLJq[ia].x, aLJq[ia].y*-2, alpha   );
-            }
-            //printf( " >> %i %i (%g,%g,%g) %g \n", ibuff, natoms, f.x, f.y, f.z, A  );
-            FF[ibuff]=f*A;
-            //printf( " %i (%g,%g,%g) \n", ibuff, p.x, p.y, p.z );
-            //FF[ibuff]=p;
-        });
-    }
+    // void evalGridFFexp(int natoms, Vec3d * apos, Quat4d * REQs, double alpha, double A, Vec3d * FF ){
+    //     //interateGrid3D(  Vec3dZero, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
+    //     interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
+    //         Vec3d f =  Vec3dZero;
+    //         for(int ia=0; ia<natoms; ia++){
+    //             //printf( " %i (%g,%g,%g) (%g,%g)\n", ia, apos[ia].x, apos[ia].y, apos[ia].z,  aLJq[ia].x, aLJq[ia].y  );
+    //             addAtomicForceExp( p-apos[ia], f, REQs[ia].x, REQs[ia].y,    alpha );
+    //             //addAtomicForceExp( p-apos[ia], f, aLJq[ia].x, aLJq[ia].y,    alpha*2 );
+    //             //addAtomicForceExp( p-apos[ia], f, aLJq[ia].x, aLJq[ia].y*-2, alpha   );
+    //         }
+    //         //printf( " >> %i %i (%g,%g,%g) %g \n", ibuff, natoms, f.x, f.y, f.z, A  );
+    //         FF[ibuff]=f*A;
+    //         //printf( " %i (%g,%g,%g) \n", ibuff, p.x, p.y, p.z );
+    //         //FF[ibuff]=p;
+    //     });
+    // }
 
-    void evalGridFFs(int natoms_, Vec3d * apos_, Quat4d * REQs_){
-        printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
-        //printf( "GridFF nPBC(%i,%i,%i) K %g R %g R2Q %g \n", nPBC.x,nPBC.y,nPBC.z, alpha, Rdamp, Rdamp*Rdamp );
-        //for(int i=0; i<natoms_; i++){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", i, apos_[i].x, apos_[i].y, apos_[i].z, REQs_[i].z ); }
-        //int Q=0; for(int i=0; i<natoms_; i++){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", i, apos_[i].x, apos_[i].y, apos_[i].z, REQs_[i].z ); Q+=REQs_[i].z; }; printf("evalGridFFs Qtot=%g \n", Q );
-        //Rdamp = 0.1; // WARRNIN DEBUG;
-        //Rdamp = 1.0; // WARRNIN DEBUG;
-        interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            const double R2damp=Rdamp*Rdamp;    
-            const double K=-alphaMorse;
-            Quat4d qp = Quat4dZero;
-            Quat4d ql = Quat4dZero;
-            Quat4d qe = Quat4dZero;
-            //if(ibuff<(grid.n.x*grid.n.y))printf( "evalGridFFs p(%g,%g,%g)\n", p.x,p.y,p.z );
-            for(int ia=0; ia<natoms_; ia++){
-                Vec3d dp0; dp0.set_sub( p, apos_[ia] );
-                Quat4d REQi = REQs_[ia];
-                //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }
-                for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
-                    Vec3d  dp = dp0 + grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
-                    //Vec3d  dp = dp0;
-                    double r2     = dp.norm2();
-                    double r      = sqrt(r2);
-                    // ---- Coulomb
-                    double ir2    = 1/(r2+R2damp);
-                    double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
-                    // ----- Morse
-                    double e      = exp( K*(r-REQi.x) );
-                    double eM     = e*REQi.y;
-                    double de     = 2*K*eM/r;                    
-                    // --- store
-                    qp.e+=eM*e;  qp.f.add_mul( dp,  de*e   ); // repulsive part of Morse
-                    ql.e+=eM*-2; ql.f.add_mul( dp, -de     ); // attractive part of Morse
-                    qe.e+=eQ;    qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+    // void evalGridFFs(int natoms_, Vec3d * apos_, Quat4d * REQs_){
+    //     printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
+    //     //printf( "GridFF nPBC(%i,%i,%i) K %g R %g R2Q %g \n", nPBC.x,nPBC.y,nPBC.z, alpha, Rdamp, Rdamp*Rdamp );
+    //     //for(int i=0; i<natoms_; i++){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", i, apos_[i].x, apos_[i].y, apos_[i].z, REQs_[i].z ); }
+    //     //int Q=0; for(int i=0; i<natoms_; i++){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", i, apos_[i].x, apos_[i].y, apos_[i].z, REQs_[i].z ); Q+=REQs_[i].z; }; printf("evalGridFFs Qtot=%g \n", Q );
+    //     //Rdamp = 0.1; // WARRNIN DEBUG;
+    //     //Rdamp = 1.0; // WARRNIN DEBUG;
+    //     interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
+    //         const double R2damp=Rdamp*Rdamp;    
+    //         const double K=-alphaMorse;
+    //         Quat4d qp = Quat4dZero;
+    //         Quat4d ql = Quat4dZero;
+    //         Quat4d qe = Quat4dZero;
+    //         //if(ibuff<(grid.n.x*grid.n.y))printf( "evalGridFFs p(%g,%g,%g)\n", p.x,p.y,p.z );
+    //         for(int ia=0; ia<natoms_; ia++){
+    //             Vec3d dp0; dp0.set_sub( p, apos_[ia] );
+    //             Quat4d REQi = REQs_[ia];
+    //             //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }
+    //             for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
+    //                 Vec3d  dp = dp0 + grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
+    //                 //Vec3d  dp = dp0;
+    //                 double r2     = dp.norm2();
+    //                 double r      = sqrt(r2);
+    //                 // ---- Coulomb
+    //                 double ir2    = 1/(r2+R2damp);
+    //                 double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
+    //                 // ----- Morse
+    //                 double e      = exp( K*(r-REQi.x) );
+    //                 double eM     = e*REQi.y;
+    //                 double de     = 2*K*eM/r;                    
+    //                 // --- store
+    //                 qp.e+=eM*e;  qp.f.add_mul( dp,  de*e   ); // repulsive part of Morse
+    //                 ql.e+=eM*-2; ql.f.add_mul( dp, -de     ); // attractive part of Morse
+    //                 qe.e+=eQ;    qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
 
-                }}}
-            }
-            if(FFPaul)FFPaul[ibuff]=(Quat4f)qp;
-            if(FFLond)FFLond[ibuff]=(Quat4f)ql;
-            if(FFelec)FFelec[ibuff]=(Quat4f)qe;
-        });
-    }
+    //             }}}
+    //         }
+    //         if(FFPaul)FFPaul[ibuff]=(Quat4f)qp;
+    //         if(FFLond)FFLond[ibuff]=(Quat4f)ql;
+    //         if(FFelec)FFelec[ibuff]=(Quat4f)qe;
+    //     });
+    // }
 
     void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_){
         printf( "GridFF::makeGridFF_omp() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );
@@ -360,8 +363,8 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
                             double eM     = e*REQi.y;
                             double de     = 2*K*eM/r;                    
                             // --- store
-                            qp.e+=eM*e;   qp.f.add_mul( dp,  de*e   ); // repulsive part of Morse
-                            ql.e+=eM*-2.; ql.f.add_mul( dp, -de     ); // attractive part of Morse
+                            qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
+                            ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
                             qe.e+=eQ;     qe.f.add_mul( dp, -eQ*ir2 ); // Coulomb
                         }
                     }
@@ -399,15 +402,15 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
         });
     }
 
-    void evalGridFFs( Vec3i nPBC_=Vec3i{-1,-1,-1} ){
-        if(nPBC_.x>=0) nPBC=nPBC_;
-        //evalGridFFexp( natoms, apos, REQs, alpha*2,  1, FFPaul  );
-        //evalGridFFexp( natoms, apos, REQs, alpha  , 1, FFLond );  // -2.0 coef is in  REQ2PLQ
-        //evalGridFFel ( natoms, apos, REQs,              FFelec   );
-        //evalGridFFs( natoms, apos, REQs );
-        if(iDebugEvalR>0){ evalGridR  ( natoms, apos, REQs );}
-        else             { evalGridFFs( natoms, apos, REQs ); }
-    }
+    // void evalGridFFs( Vec3i nPBC_=Vec3i{-1,-1,-1} ){
+    //     if(nPBC_.x>=0) nPBC=nPBC_;
+    //     //evalGridFFexp( natoms, apos, REQs, alpha*2,  1, FFPaul  );
+    //     //evalGridFFexp( natoms, apos, REQs, alpha  , 1, FFLond );  // -2.0 coef is in  REQ2PLQ
+    //     //evalGridFFel ( natoms, apos, REQs,              FFelec   );
+    //     //evalGridFFs( natoms, apos, REQs );
+    //     if(iDebugEvalR>0){ evalGridR  ( natoms, apos, REQs );}
+    //     else             { evalGridFFs( natoms, apos, REQs ); }
+    // }
 
     void evalCombindGridFF( Quat4d REQ, Quat4f * FF ){
         Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );
@@ -420,14 +423,14 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
         });
     }
 
-    void evalCombindGridFF_CheckInterp( Quat4d REQ, Quat4f * FF ){
-        Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );
-        interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-            Quat4f f = Quat4fZero;
-            addForce( p+Vec3d{0.1,0.1,0.1}, (Quat4f)PLQ, f );
-            FF[ibuff] = f;
-        });
-    }
+    // void evalCombindGridFF_CheckInterp( Quat4d REQ, Quat4f * FF ){
+    //     Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );
+    //     interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
+    //         Quat4f f = Quat4fZero;
+    //         addForce( p+Vec3d{0.1,0.1,0.1}, (Quat4f)PLQ, f );
+    //         FF[ibuff] = f;
+    //     });
+    // }
 
 void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Quat4d* REQs, double d=0.1 ){
     //printf( "evalGridFFs_symetrized() \n" );

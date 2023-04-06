@@ -89,6 +89,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewPis         = true;
     bool   bViewSubstrate   = true;
     bool   isoSurfRenderType = 1;
+    bool bDebug_scanSurfFF = false;
     Quat4d testREQ;
     Quat4f testPLQ;
 
@@ -327,7 +328,7 @@ void MolGUI::draw(){
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
     if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
-    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift + W->gridFF.grid.pos0 );
+    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
     if( ogl_esp ){ glCallList(ogl_esp);  }
 
@@ -356,7 +357,7 @@ void MolGUI::draw(){
         glColor3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
     }
 
-    { // --- GridFF debug_scanSurfFF()
+    if(bDebug_scanSurfFF){ // --- GridFF debug_scanSurfFF()
         Vec3d p0=W->gridFF.grid.pos0; 
         if(W->ipicked>-1){ p0.z = W->ffl.apos[W->ipicked].z; }{
             p0.z = W->ffl.apos[0].z;
@@ -576,9 +577,9 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
-    bool sign=false;
-    //bool sign=true;
-    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, -isoVal, sign, colorSclae );   printf("DEBUG renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
+    //bool sign=false;
+    bool sign=true;
+    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae );   printf("DEBUG renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
     // ---- This seems still not work properly
     //int ntris=0;
     //glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );

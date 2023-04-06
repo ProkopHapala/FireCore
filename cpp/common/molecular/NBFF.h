@@ -51,9 +51,10 @@ class NBFF: public Atoms{ public:
     Vec3i   nPBC;
     bool    bPBC=false;
 
-    int    npbc=0;
-    Vec3d* shifts=0;
-    Quat4f *PLQs   =0;  // used only in combination with GridFF
+    int    npbc   =0;
+    Vec3d* shifts =0;
+    Quat4f *PLQs  =0;  // used only in combination with GridFF
+    Vec3d  shift0 =Vec3dZero;
 
     // ==================== Functions
 
@@ -196,8 +197,9 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
-    double getMorseQH_PBC_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
+    inline double addMorseQH_PBC_omp( Vec3d pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        pi.sub(shift0);
         const double R2damp = Rdamp*Rdamp;
         double E=0,fx=0,fy=0,fz=0;
         #pragma omp simd reduction(+:E,fx,fy,fz)
@@ -205,8 +207,8 @@ class NBFF: public Atoms{ public:
             //if(ia==j)continue;    ToDo: Maybe we can keep there some ignore list ?
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
-            const Vec3d dp     = apos[j]-pi;
-            Vec3d fij          = Vec3dZero;
+            const Vec3d dp      = apos[j]-pi;
+            Vec3d fij           = Vec3dZero;
             for(int ipbc=0; ipbc<npbc; ipbc++){
                 const Vec3d dpc = dp + shifts[ipbc];
                 double eij      = getMorseQH( dpc, fij, REQij, alphaMorse, R2damp );
@@ -216,9 +218,10 @@ class NBFF: public Atoms{ public:
                 fz+=fij.z;
             }
         }
-        fout=Vec3d{fx,fy,fz};
+        fout.add(fx,fy,fz);
         return E;
     }
+    inline double getMorseQH_PBC_omp( Vec3d pi, const Quat4d&  REQi, Vec3d& fout ){ fout=Vec3dZero; return addMorseQH_PBC_omp( pi, REQi, fout ); }
 
     double getLJQs_PBC_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );

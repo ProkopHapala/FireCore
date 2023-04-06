@@ -233,6 +233,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         bGridFF   =true; 
         //bSurfAtoms=false;
     }
+    gridFF.shift0 = Vec3d{0.,0.,-2.0};
     gridFF.evalCheck();
 }
 
@@ -764,9 +765,10 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     verbosity = 0;
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
-    //run_omp( 100, 0.05, 1e-6, 1000.0 );
+    run_omp( 100, 0.05, 1e-6, 1000.0 );
+    //run_omp( 1, opt.dt, 1e-6, 1000.0 );
     //run_omp( 2, opt.dt, 1e-6, 1000.0 );
-    run_omp( 100, opt.dt, 1e-6, 1000.0 );
+    //run_omp( 100, opt.dt, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     bChargeUpdated=false;
@@ -802,8 +804,8 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
                 const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                 ffl.fapos[ia].add( f );
             }
-            //printf( "ffl.apos %li ffl.PLQs %li \n", ffl.apos, ffl.PLQs );
-            //if   (bGridFF){ Quat4f fe=Quat4fZero; Quat4f PLQ = ffl.PLQs[ia];   PLQ.z=0.0; gridFF.addForce_surf( ffl.apos[ia], PLQ, fe ); ffl.fapos[ia].add( (Vec3d)fe.f ); E+=fe.e;  }
+            if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
+            //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
             
         }
         // ---- assemble (we need to wait when all atoms are evaluated)

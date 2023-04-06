@@ -495,7 +495,7 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //bool recalcFF = true;
     //if( recalcFF ){
     gridFF.tryLoad( "data/FFelec.bin", "data/FFPaul.bin", "data/FFLond.bin" );
-    gridFF.shift = Vec3d{0.0,0.0,-8.0};
+    gridFF.shift0 = Vec3d{0.0,0.0,-8.0};
     if(bRenderGridFF){
         int iatom = 11;
         testREQ = Quat4d{ 1.487, 0.0006808, 0., 0. }; // H
