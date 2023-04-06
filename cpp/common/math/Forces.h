@@ -225,7 +225,7 @@ inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const d
     const double  Ae = REQH.y*e;
     const double  He = REQH.w*e; // H-bond correction
     E +=  Ae*(e - 2)   + He;
-    F += (Ae*(e - 1)*2 + He)*K/r;
+    F += (Ae*(e - 1)*2 + He)*-K/r;
     f.set_mul( dp, F );
     return E;
 }

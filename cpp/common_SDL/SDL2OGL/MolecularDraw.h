@@ -187,8 +187,8 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
             grid.cartesian2grid( p2, gpos); fel2 = interpolate3DvecWrap( FFel, grid.n, gpos );
 
             Vec3d nr1,nr2; double invr;
-            grid.cartesian2grid( p1, gpos); gpos.z-=3.5; f1 = interpolate3DvecWrap( FF, grid.n, gpos );  f1.z*=0.1; f1.normalize();
-            grid.cartesian2grid( p2, gpos); gpos.z-=3.5; f2 = interpolate3DvecWrap( FF, grid.n, gpos );  f2.z*=0.1; f2.normalize();
+            grid.cartesian2grid( p1, gpos); gpos.z-=3.5; f1 = interpolate3DvecWrap( FF, grid.n, gpos );  f1.z*=0.1; f1.normalize(); f1.mul(-1);
+            grid.cartesian2grid( p2, gpos); gpos.z-=3.5; f2 = interpolate3DvecWrap( FF, grid.n, gpos );  f2.z*=0.1; f2.normalize(); f2.mul(-1);
             //glColor3f(0.7f,0.7f,0.7f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
             //glColor3f(0.8f,0.7f,0.7f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
             //glColor3f( fel1.x, fel1.y, fel1.z ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
@@ -204,8 +204,8 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
             //colorRB( fel1.z*-sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
             //colorRB( fel2.z*-sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
 
-            colorRB( fel1.z*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            colorRB( fel2.z*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            colorRB( fel1.z*-sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
+            colorRB( fel2.z*-sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
 
             //colorRB( fel1.z*-sclr ); 
             //glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); glVertex3f(pos[ip1].x+normals[ip1].x*0.1, pos[ip1].y+normals[ip1].y*0.1, pos[ip1].z+normals[ip1].z*0.1); nvert++;

@@ -49,7 +49,7 @@ ln -s $dir/$name .
 
 # ====== Small Molecules On Substrate
 
-./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
 # ====== Polymers On Substrate
@@ -67,7 +67,9 @@ ln -s $dir/$name .
 #./$name -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 
-#./$name -x common_resources/polymer-2          -n 221 -g common_resources/NaCl_sym-center
+#./$name -x common_resources/polymer-2          -n 221 -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/polymer-2_new             -g common_resources/NaCl_1x1_L2
+
 
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
