@@ -196,7 +196,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
-    double evalMorseQH_PBC_external_atom_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
+    double getMorseQH_PBC_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         double E=0,fx=0,fy=0,fz=0;
@@ -220,7 +220,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
-    double evalLJQs_PBC_external_atom_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
+    double getLJQs_PBC_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         double E=0,fx=0,fy=0,fz=0;
@@ -229,12 +229,13 @@ class NBFF: public Atoms{ public:
             //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
-            const Vec3d dp     = apos[j]-pi;
-            Vec3d fij          = Vec3dZero;
+            const Vec3d dp      = apos[j]-pi;
+            Vec3d fij           = Vec3dZero;
             for(int ipbc=0; ipbc<npbc; ipbc++){
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
+                //printf( "getLJQs_PBC_omp[%i] dp(%6.3f,%6.3f,%6.3f) REQ(%g,%g,%g,%g) \n", eij, dp.x,dp.y,dp.z, REQij.x,REQij.y,REQij.z,REQij.w );
                 E +=eij;
                 fx+=fij.x;
                 fy+=fij.y;
@@ -640,12 +641,17 @@ class NBFF: public Atoms{ public:
 
     int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
         npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
-        shifts = new Vec3d[npbc];
+        printf( "NBFF::makePBCshifts() npbc=%i nPBC{%i,%i,%i}\n", npbc, nPBC.x,nPBC.y,nPBC.z );
+        _realloc(shifts,npbc);
         int ipbc=0;
-        for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
-            shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
-            ipbc++; 
-        }}}
+        for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ 
+            for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ 
+                for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+                    shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+                    ipbc++; 
+                }
+            }
+        }
         return npbc;
     }
 
