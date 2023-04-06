@@ -49,7 +49,7 @@ ln -s $dir/$name .
 
 # ====== Small Molecules On Substrate
 
-./$name -x common_resources/pyridine -n     -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
 # ====== Polymers On Substrate
