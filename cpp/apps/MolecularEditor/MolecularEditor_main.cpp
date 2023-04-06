@@ -268,14 +268,10 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
     world.genPLQ();
     world.gridFF.allocateFFs();
-    //world.gridFF.evalGridFFs( {0,0,0} );
-    //world.gridFF.evalGridFFs( {1,1,1} );
-    //world.gridFF.evalGridFFs(int natoms, Vec3d * apos, Vec3d * REQs );
-
     bool recalcFF = false;
     //bool recalcFF = true;
     if( recalcFF ){
-        world.gridFF.evalGridFFs( {1,1,1} );
+        world.gridFF.makeGridFF();
         if(world.gridFF.FFelec) saveBin( "data/FFelec-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
         if(world.gridFF.FFPaul) saveBin( "data/FFPaul-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPaul );
         if(world.gridFF.FFLond) saveBin( "data/FFLond-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );

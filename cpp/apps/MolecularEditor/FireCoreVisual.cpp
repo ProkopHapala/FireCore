@@ -435,7 +435,7 @@ void TestAppFireCoreVisual::draw(){
             glCallList(ogl_MO); 
         glPopMatrix();
     }
-    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift );
+    if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift0 );
     if(bDoQM)drawSystemQMMM();
     if(bDoMM)if(builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); }
     for(int i=0; i<selection.size(); i++){ int ia = selection[i];

@@ -12,7 +12,9 @@ cd $wd
 
 ln -s $dir/$name .
 
-nsys=10
+#nsys=10
+nsys=50
+
 
 # ====== Small Molecules
 

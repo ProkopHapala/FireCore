@@ -64,7 +64,7 @@ void initRigidSubstrate(){
     world.gridFF.allocateFFs();
     bool recalcFF = false;
     if( recalcFF ){
-        world.gridFF.evalGridFFs( {1,1,1} );
+        world.gridFF.makeGridFF();
         if(world.gridFF.FFelec) saveBin( "data/FFelec.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFelec );
         if(world.gridFF.FFPaul) saveBin( "data/FFPaul.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFPaul );
         if(world.gridFF.FFLond) saveBin( "data/FFLond.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );

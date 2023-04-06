@@ -92,7 +92,6 @@ void initRigidSubstrate( char* fname, int* ns, double* pos0, double* cell ){
     world.gridFF.loadXYZ     ( fname, params );
     world.translate          ( *(Vec3d*)pos0 );
     world.gridFF.allocateFFs();
-    //world.gridFF.evalGridFFs( {0,0,0} );
 }
 
 void setCoulombMirror(double* hdir,double* p0){

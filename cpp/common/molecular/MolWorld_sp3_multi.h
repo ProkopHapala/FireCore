@@ -46,6 +46,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3 { public:
 
     OCLtask* task_cleanF=0;
     OCLtask* task_NBFF=0;
+    OCLtask* task_NBFF_Grid=0;
     OCLtask* task_MMFF=0;
     OCLtask* task_move=0;
     OCLtask* task_print=0;
@@ -209,10 +210,14 @@ void setup_MMFFf4_ocl(){
     if(!task_move  )   task_move  = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );
     if(!task_print )   task_print = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );
     if(!task_MMFF  )   task_MMFF  = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
-    if(!task_NBFF  ) { 
-        if( bGridFF ){ task_NBFF  = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
-        else         { task_NBFF  = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); }
-    }
+
+    if(!task_NBFF_Grid ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
+    if(!task_NBFF      ){ task_NBFF      = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); }
+
+    // if(!task_NBFF  ) { 
+    //     if( bGridFF ){ task_NBFF  = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
+    //     else         { task_NBFF  = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); }
+    // }
     if(!task_cleanF)task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode       );
 }
 
@@ -251,23 +256,43 @@ void picked2GPU( int ipick,  double K ){
 
 double eval_MMFFf4_ocl( int niter, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
+
+    //long T0 = getCPUticks();
     picked2GPU( ipicked,  1.0 );
     int err=0;
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     // evaluate on GPU
+    long T0 = getCPUticks();
     for(int i=0; i<niter; i++){
-        err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
-        err |= task_MMFF  ->enque_raw();
-        err |= task_NBFF  ->enque_raw();
-        //err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
-        err |= task_move  ->enque_raw(); 
+        //err |= task_cleanF->enque_raw();      // DEBUG: this should be solved inside  task_move->enque_raw();   if we do not need to output force 
+        err |= task_MMFF      ->enque_raw();
+        err |= task_NBFF      ->enque_raw();    // task_NBFF takes much more time than task_MMFF
+        //err |= task_NBFF_Grid ->enque_raw();  // task_NBFF takes much more time than task_MMFF
+        //err |= task_print   ->enque_raw();    // DEBUG: just printing the forces before assempling
+        err |= task_move      ->enque_raw(); 
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
+    err |= ocl.finishRaw(); printf("eval_MMFFf4_ocl() time=%g[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
+
+    // ===============================================================================================================================================================================
+    //     Performance Measurements ( 10 replicas of polymer-2_new )
+    //     for niter = 100         
+    //         time=  5.0018 [ms]   task_cleanF; task_MMFF;            task_move;
+    //         time= 77.3187 [ms]   task_cleanF; task_MMFF; task_NBFF; task_move;
+    //   => Need to optimize task_NBFF ... i.e.  kernel getNonBond(), 
+    //          1) first try by using work_group_size = get_local_size(0) = 32  =     __local float4 LATOMS[32],LCLJS [32];
+    //              * with task->local.x=32   time=14.4335[ms]   but system explodes 
+    //              * with nsys=50 rather than 10 time goes to time=28.9872[ms] rather than time=14.4335[ms]
+    //              * with task->local.x=64 and LATOMS[64],LCLJS[64]; we fit the whole system on one work_group => system does not explode !!!!!!! :DDDD
+    //          2) then try to optimize inner most loop over pbc_shifts 
+    //          3) remove IF condition for vdw ? ( better use force limit )
+    // ===============================================================================================================================================================================
+
     if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl          .download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     //for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+    err |= ocl.finishRaw(); //printf("eval_MMFFf4_ocl() time=%g[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
 
-    err |= ocl.finishRaw();
     OCL_checkError(err, "eval_MMFFf4_ocl");
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
     unpack( ff4.nnode,  ffl. pipos, ff4. pipos );
@@ -357,6 +382,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     if( bOcl ){
         //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
+        nIter = 100;
         eval_MMFFf4_ocl( nIter );
         //eval_NBFF_ocl  ( 1 ); 
     }else{
