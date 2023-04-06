@@ -217,16 +217,23 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         if(verbosity>1)gridFF.grid.printCell();
         gridFF.allocateFFs();
         //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-        if(bAutoNPBC){  autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
+        if(bAutoNPBC){  
+            gridFF.nPBC=Vec3i{1,1,0};
+            autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); 
+        }
         //gridFF.nPBC = (Vec3i){0,0,0};
         //gridFF.nPBC = (Vec3i){1,1,0};
         //gridFF.nPBC = (Vec3i){10,10,0};
+        gridFF.lvec = gridFF.grid.cell;     // ToDo: We should unify this
+        gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
+        gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
         bSaveDebugXSFs=true;
-        gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, gridFF.nPBC, true );
+        gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false );
         if(bSaveDebugXSFs)saveGridXsfDebug();
         bGridFF   =true; 
         //bSurfAtoms=false;
     }
+    gridFF.evalCheck();
 }
 
 void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
@@ -383,21 +390,23 @@ void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonB
 	printf( "... MolWorld_sp3::initWithSMILES() DONE\n" );
 }
 
-void ini_in_dir(){
-    params.init( "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
-    builder.bindParams(&params);
-    int nheavy = 0;  // ---- Load Atomic Type Parameters
-    if( file_exist("cel.lvs") ){ 
-        loadGeom( "mm" ); 
-        if(bGridFF)makeGridFF();
-        // ----- Optimizer setup
-        //opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.fapos, 0 );
-        setOptimizer();
-        //double E = ff.eval(true);
-    }else{
-		printf("WARNING: cel.lvs not found => molecular system not initialized in [MolWorld_sp3::ini_in_dir()] \n" );
-	}
-}
+
+// void ini_in_dir(){
+//     params.init( "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+//     builder.bindParams(&params);
+//     int nheavy = 0;  // ---- Load Atomic Type Parameters
+//     if( file_exist("cel.lvs") ){ 
+//         loadGeom( "mm" ); 
+//         if(bGridFF)makeGridFF();
+//         // ----- Optimizer setup
+//         //opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.fapos, 0 );
+//         setOptimizer();
+//         //double E = ff.eval(true);
+//     }else{
+// 		printf("WARNING: cel.lvs not found => molecular system not initialized in [MolWorld_sp3::ini_in_dir()] \n" );
+// 	}
+// }
+
 
 void PBC_multiply( Vec3i& nMulPBC_, int ifrag ){
     if(verbosity>0) printf( "PBC_multiply n(%i,%i,%i) ifrag=%i \n", nMulPBC_.x,nMulPBC_.y,nMulPBC_.z, ifrag );
@@ -852,19 +861,21 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
     return itr;
 }
 
-void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
-    gridFF.bindSystem(surf.natoms, 0, surf.apos, surf.REQs );
-    //if(verbosity>1)
-    gridFF.grid.printCell();
-    gridFF.allocateFFs();
-    //double x0= ( gridFF.grid.cell.a.x + gridFF.grid.cell.b.x )*-0.5;
-    //double y0= ( gridFF.grid.cell.a.y + gridFF.grid.cell.b.y )*-0.5;
-    //gridFF.grid.pos0 = Vec3d{ x0,y0,-8.0};
-    //gridFF.shift   = Vec3d{0.0,0.0,-8.0};
-    //gridFF.tryLoad( "data/FFelec.bin", "data/FFPaul.bin", "data/FFLond.bin", true, {0,0,0} );
-    //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,1} );
-    gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, nPBC, bSaveDebugXSFs );
-}
+
+// void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
+//     gridFF.bindSystem(surf.natoms, 0, surf.apos, surf.REQs );
+//     //if(verbosity>1)
+//     gridFF.grid.printCell();
+//     gridFF.allocateFFs();
+//     //double x0= ( gridFF.grid.cell.a.x + gridFF.grid.cell.b.x )*-0.5;
+//     //double y0= ( gridFF.grid.cell.a.y + gridFF.grid.cell.b.y )*-0.5;
+//     //gridFF.grid.pos0 = Vec3d{ x0,y0,-8.0};
+//     //gridFF.shift   = Vec3d{0.0,0.0,-8.0};
+//     //gridFF.tryLoad( "data/FFelec.bin", "data/FFPaul.bin", "data/FFLond.bin", true, {0,0,0} );
+//     //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,1} );
+//     gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, nPBC, bSaveDebugXSFs );
+// }
+
 
 //inline int pickParticle( const Vec3d& ray0, const Vec3d& hRay, double R, int n, Vec3d * ps, bool* ignore=0 ){
 //int pickParticle( Vec3d ray0, Vec3d hray, double R=0.5 ){ return pickParticle( ray0, hray, R, ff.natoms, ff.apos ); }

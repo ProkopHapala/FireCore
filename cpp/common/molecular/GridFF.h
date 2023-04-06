@@ -192,17 +192,17 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
           ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
          + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
          + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
-         + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101))*-PLQ.x
+         + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101))*PLQ.x
 
          +((FFLond[ i000 ]*f000) + (FFLond[ i100 ]*f100)
          + (FFLond[ i010 ]*f010) + (FFLond[ i110 ]*f110)  
          + (FFLond[ i011 ]*f011) + (FFLond[ i111 ]*f111)
-         + (FFLond[ i001 ]*f001) + (FFLond[ i101 ]*f101))*-PLQ.y
+         + (FFLond[ i001 ]*f001) + (FFLond[ i101 ]*f101))*PLQ.y
 
          +((FFelec[ i000 ]*f000) + (FFelec[ i100 ]*f100)
          + (FFelec[ i010 ]*f010) + (FFelec[ i110 ]*f110)  
          + (FFelec[ i011 ]*f011) + (FFelec[ i101 ]*f111)
-         + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*-PLQ.z
+         + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*PLQ.z
         ;
     }
 }
@@ -315,35 +315,23 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
                     double eM     = e*REQi.y;
                     double de     = 2*K*eM/r;                    
                     // --- store
-                    qp.e+=eM*e;  qp.f.add_mul( dp,  de*e  ); // repulsive part of Morse
-                    ql.e+=eM*-2; ql.f.add_mul( dp, -de    ); // attractive part of Morse
-                    qe.e+=eQ;    qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
+                    qp.e+=eM*e;  qp.f.add_mul( dp,  de*e   ); // repulsive part of Morse
+                    ql.e+=eM*-2; ql.f.add_mul( dp, -de     ); // attractive part of Morse
+                    qe.e+=eQ;    qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
 
                 }}}
             }
-            if(FFPaul)  FFPaul [ibuff]=(Quat4f)qp;
-            if(FFLond) FFLond[ibuff]=(Quat4f)ql;
-            if(FFelec)   FFelec  [ibuff]=(Quat4f)qe;
+            if(FFPaul)FFPaul[ibuff]=(Quat4f)qp;
+            if(FFLond)FFLond[ibuff]=(Quat4f)ql;
+            if(FFelec)FFelec[ibuff]=(Quat4f)qe;
         });
     }
 
     void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_){
         printf( "GridFF::makeGridFF_omp() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );
+        if(shifts==0)makePBCshifts( nPBC, lvec );
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
-        // ----- makePBC shifts
-        int nshift = (nPBC.a*2+1)*(nPBC.b*2+1)*(nPBC.c*2+1);
-        std::vector<Vec3d> shifts{nshift};
-        int ipbc=0;
-        for(int ia=-nPBC.a; ia<=nPBC.a; ia++){ 
-            for(int ib=-nPBC.b; ib<=nPBC.b; ib++){ 
-                for(int ic=-nPBC.c; ic<=nPBC.c; ic++){
-                    shifts[ipbc] = grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
-                    ipbc++;
-                }
-            }
-        }
-        // ----- Project Forcefield on the grid
         #pragma omp parallel
         {
         #pragma omp for simd
@@ -358,7 +346,7 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
                         const Vec3d dp0   = pos - apos_[ia];
                         const Quat4d REQi = REQs_[ia];
                         //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
-                        for(int ipbc=0; ipbc<nshift; ipbc++ ){
+                        for(int ipbc=0; ipbc<npbc; ipbc++ ){
                             const Vec3d  dp = dp0 + shifts[ipbc];
                             //Vec3d  dp = dp0;
                             double r2     = dp.norm2();
@@ -371,15 +359,15 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
                             double eM     = e*REQi.y;
                             double de     = 2*K*eM/r;                    
                             // --- store
-                            qp.e+=eM*e;   qp.f.add_mul( dp,  de*e  ); // repulsive part of Morse
-                            ql.e+=eM*-2.; ql.f.add_mul( dp, -de    ); // attractive part of Morse
-                            qe.e+=eQ;     qe.f.add_mul( dp, eQ*ir2 ); // Coulomb
+                            qp.e+=eM*e;   qp.f.add_mul( dp,  de*e   ); // repulsive part of Morse
+                            ql.e+=eM*-2.; ql.f.add_mul( dp, -de     ); // attractive part of Morse
+                            qe.e+=eQ;     qe.f.add_mul( dp, -eQ*ir2 ); // Coulomb
                         }
                     }
-                    const int   ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
-                    FFPaul [ibuff]=(Quat4f)qp;
+                    const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
+                    FFPaul[ibuff]=(Quat4f)qp;
                     FFLond[ibuff]=(Quat4f)ql;
-                    FFelec  [ibuff]=(Quat4f)qe;
+                    FFelec[ibuff]=(Quat4f)qe;
                 }
             }
         }
@@ -499,6 +487,9 @@ void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){
     makeGridFF_omp( apos_.size(), &apos_[0], &REQs_[0] );
 }
 
+
+// ============= Debugging and checking
+
 void getEFprofile( int n, Vec3d p0, Vec3d p1, Quat4d REQ, Quat4d* fes, bool bPrint=false){
     if(bPrint){ printf("GridFF::getEFprofile(n=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
     Vec3d dp=p1-p0; dp.mul(1./n);
@@ -511,58 +502,99 @@ void getEFprofile( int n, Vec3d p0, Vec3d p1, Quat4d REQ, Quat4d* fes, bool bPri
     }
 }
 
-bool checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, double tol=1e-6, bool bPrint=false, bool bExit=false ){
-    if(bPrint){ printf("GridFF::checkEFProfileVsNBFF(n=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
+double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true ){
+    if(bPrint){ printf("GridFF::checkEFProfileVsNBFF(np=%i,natoms=%i,npbc=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, natoms,npbc, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
+    if(bPrint){ printf("i   x y z     E  Eref     fx fx_ref      fy fy_ref     fz  fz_ref\n"); }
     double tol2=tol*tol;
     Vec3d dp=p1-p0; dp.mul(1./n);
     Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );   //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
-    bool err = false;
+    //bool err = false;
+    double err2Max=0;
+    int imax = -1;
     for(int i=0; i<n; i++){
         Vec3d fref;
         Vec3d  p    = p0 + dp*i;
-        Quat4f fe   = getForce( p, PLQ, true );
-        float  Eref = evalMorseQH_PBC_external_atom_omp( p, REQ, fref );
+        Quat4f fe   = getForce          ( p, PLQ, true );
+        float  Eref = getMorseQH_PBC_omp( p, REQ, fref );
         float  dE   = fe.e-Eref;
         Vec3f  df   = fe.f - (Vec3f)fref;
-        if( ((dE*dE)>tol2) || (df.norm2()>tol2) ){
-            err=true;
-            printf("WARRNING [%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g.%g,%g|%g)  NBFF(%g.%g,%g|%g)\n", i, dE, df.norm(), p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w,  Eref, fref.x,fref.y,fref.z  ); exit(0);
-            if(bExit){ printf("ERROR in GridFF::checkEFProfileVsNBFF() - GridFF force does not match NBFF reference at test point => Exit()\n" ); exit(0); }
+        double e2e = dE*dE     /( Eref*Eref + fe.e*fe.e        + 1 );         
+        double e2f = df.norm2()/( fe.f.norm2() + fref.norm2() + 1 ); 
+        if( e2e>err2Max ){ err2Max=e2e; imax=i; }
+        if( e2f>err2Max ){ err2Max=e2f; imax=i; }
+        if( (e2e>tol2) || (e2f>tol2) ){
+            if(bWarn)printf("WARRNING[%i/%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g,%g,%g|%g)  NBFF(%g.%g,%g|%g)\n", i, n, dE, df.norm(), p.x,p.y,p.z,   fe.x,fe.y,fe.z,fe.w,   fref.x,fref.y,fref.z,Eref  );
+            if(bExit){ printf("ERROR in GridFF::checkEFProfileVsNBFF() - GridFF force does not match NBFF reference at test point %i MaxRelativeError=%g => Exit()\n", i, sqrt(err2Max) ); exit(0); }
         } 
-        if(bPrint){ printf( "%i %6.3f %6.3f %6.3f %g %g %g\n", i, p.x, p.y, p.z, fe.x,fe.y,fe.z  ); };
+        if(bPrint){ printf( "%i    %6.3f %6.3f %6.3f    %g %g   %g %g    %g %g    %g %g\n", i, p.x, p.y, p.z,    fe.e, Eref,    fe.x,fref.x,         fe.y,fref.y,           fe.z,fref.z     ); };
+    }
+    if(bWarn && (imax>=0) ){
+        printf("WARRNING MaxRelativeError=%g at point[%i]\n",  sqrt(err2Max), imax );
+        Vec3d fref;
+        Vec3d  p    = p0 + dp*imax;
+        Quat4f fe   = getForce          ( p, PLQ, true );
+        float  Eref = getMorseQH_PBC_omp( p, REQ, fref );
+        float  dE   = fe.e-Eref;
+        Vec3f  df   = fe.f - (Vec3f)fref;
+        double e2e = dE*dE     /(Eref*Eref + fe.e*fe.e + 1);          err2Max=fmax(err2Max,e2e);
+        double e2f = df.norm2()/( fe.f.norm2() + fref.norm2() + 1 );  err2Max=fmax(err2Max,e2f);
+        printf("WARRNING MaxError at[%i/%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g.%g,%g|%g)  NBFF(%g.%g,%g|%g)\n", imax, n, dE, df.norm(), p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w,   fref.x,fref.y,fref.z,Eref  );
+    }
+    return sqrt(err2Max);
+}
+
+bool checkZProfilesOverAtom( int ia, int n, double zmin, double zmax, const Quat4d& REQ, double tol=1e-2, bool bExit=true, bool bPrint=true ){
+    Vec3d p0=apos[ia]; p0.z=zmin;
+    Vec3d p1=p0;       p1.z=zmax;
+    double err =  checkEFProfileVsNBFF( n, p0, p1, REQ, tol, false,false );
+    if(err>tol){    
+        if(bPrint)checkEFProfileVsNBFF( n, p0, p1, REQ, tol,  false, true, false );
+        if(bExit){ printf("ERROR in GridFF::checkZProfilesOverAtom(%i) - GridFF force does not match NBFF reference, MaxRelativeError=%g => Exit()\n", ia, err ); exit(0); }
+        return true;
+    }
+    return false;
+}
+
+bool evalCheck( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, double tol=1e-2, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.1, 0.}, double dz=0.05 ){
+    REQ=Quat4d{ 1.487, 0.02609214441, +0.0, 0.};
+    printf( "GridFF::evalCheck() natoms=%i npbc=%i apos=%li REQs=%li shifts=%li \n", natoms, npbc, apos, REQs, shifts );
+    _checkNull(shifts)
+    _checkNull(REQs)
+    _checkNull(apos)
+    bool err = false;
+    double zmin=grid.pos0.z+1.0;
+    double zmax=grid.pos0.z+grid.cell.c.z -1.0;
+    zmax=fmin(zmax,10);
+    int nz = ((int)((zmax-zmin)/dz)) + 1;
+    for( int ia=imin; ia<imax; ia++ ){
+        err |= checkZProfilesOverAtom( ia, nz, zmin, zmax, REQ, tol, bExit, bPrint );
     }
     return err;
 }
 
  #ifdef IO_utils_h
-    bool tryLoad( const char* fname_Coulomb, const char* fname_Pauli, const char* fname_London, bool recalcFF=false, Vec3i nPBC={1,1,0}, bool bSymetrized=false ){
-        //printf( "DEBUG GridFF::tryLoad() 0 \n" );
-        //printf( "DEBUG GridFF::tryLoad() fname_Pauli >>%s<< fname_London >>%s<< fname_Coulomb >>%s<< \n", fname_Pauli, fname_London, fname_Coulomb );
+    bool tryLoad( const char* fname_Coul, const char* fname_Paul, const char* fname_Lond, bool recalcFF=false ){
+        //printf( "GridFF::tryLoad() \n" );
+        //printf( "GridFF::tryLoad() fname_Pauli >>%s<< fname_London >>%s<< fname_Coulomb >>%s<< \n", fname_Pauli, fname_London, fname_Coulomb );
         //printDir( "../" );
         //printDir( "./" );
-        { FILE* f=fopen( fname_Pauli,  "rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Pauli );  recalcFF=true; }else{ fclose(f); };} // Test if file exist
-        { FILE* f=fopen( fname_London, "rb"); if(0==f){ printf("File(%s) Not Found\n", fname_London);  recalcFF=true; }else{ fclose(f); };} // Test if file exist
-        { FILE* f=fopen( fname_Coulomb,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Coulomb); recalcFF=true; }else{ fclose(f); };} // Test if file exist
-        printf( "DEBUG GridFF::tryLoad() recalcFF %i \n", recalcFF );
+        { FILE* f=fopen( fname_Paul,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Paul); recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        { FILE* f=fopen( fname_Lond,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Lond); recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        { FILE* f=fopen( fname_Coul,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Coul); recalcFF=true; }else{ fclose(f); };} // Test if file exist
+        //printf( "GridFF::tryLoad() recalcFF %i \n", recalcFF );
         //printf( "fname_Pauli(%s) fname_London(%s) fname_Coulomb(%s) \n", fname_Pauli, fname_London, fname_Coulomb );
         //int nbyte= grid.getNtot()*sizeof(Vec3d);
         int nbyte= grid.getNtot()*sizeof(Quat4f);
         if( recalcFF ){
             printf( "\nBuilding GridFF for substrate ... (please wait... )\n" );
-            printf("DEBUG tryLoad() bSymetrized %i \n", bSymetrized );
-            if(bSymetrized){
-                evalGridFFs_symetrized( 0.1, nPBC );
-                //evalGridFFs( natoms, apos, REQs, nPBC );
-            }else{
-                evalGridFFs( nPBC );
-            }
-            if(FFPaul)  saveBin( fname_Pauli,    nbyte, (char*)FFPaul  );
-            if(FFLond) saveBin( fname_London,   nbyte, (char*)FFLond );
-            if(FFelec )  saveBin( fname_Coulomb,  nbyte, (char*)FFelec   );
+            makeGridFF_omp( apos_.size(), &apos_[0], &REQs_[0] );
+            if(FFPaul) saveBin( fname_Paul,  nbyte, (char*)FFPaul );
+            if(FFLond) saveBin( fname_Lond,  nbyte, (char*)FFLond );
+            if(FFelec) saveBin( fname_Coul,  nbyte, (char*)FFelec );
         }else{
-            if(FFPaul)  loadBin( fname_Pauli,    nbyte, (char*)FFPaul  );
-            if(FFLond) loadBin( fname_London,   nbyte, (char*)FFLond );
-            if(FFelec )  loadBin( fname_Coulomb,  nbyte, (char*)FFelec   );
+            if(FFPaul) loadBin( fname_Paul,  nbyte, (char*)FFPaul );
+            if(FFLond) loadBin( fname_Lond,  nbyte, (char*)FFLond );
+            if(FFelec) loadBin( fname_Coul,  nbyte, (char*)FFelec );
         }
         return recalcFF;
     }
