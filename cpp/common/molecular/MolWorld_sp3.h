@@ -227,7 +227,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         gridFF.lvec = gridFF.grid.cell;     // ToDo: We should unify this
         gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
         gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
-        bSaveDebugXSFs=true;
+        //bSaveDebugXSFs=true;
         gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false );
         if(bSaveDebugXSFs)saveGridXsfDebug();
         bGridFF   =true; 

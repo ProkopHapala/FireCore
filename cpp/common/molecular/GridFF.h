@@ -140,19 +140,20 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
 
     // ---- PBC condiction ( within outer cell bboundaries ? )
-    // u.x=(u.x-(int)u.x);
-    // u.y=(u.y-(int)u.y);
-    // u.z=(u.z-(int)u.z);
+    u.x=(u.x-(int)u.x)*n.x;
+    u.y=(u.y-(int)u.y)*n.y;
+    u.z=(u.z-(int)u.z)*n.z;
 
     //printf( "GridFF::getForce() u(%g,%g,%g) p(%g,%g,%g) shift(%g,%g,%g) p0(%g,%g,%g) \n", u.x,u.y,u.z,  p.x,p.y,p.z,  shift.x,shift.y,shift.z,   grid.pos0.x,grid.pos0.y,grid.pos0.z );
 
     // ---- Clamp ( within outer cell bboundaries ? )
-    if((u.x<0.)||(u.x>1.)||(u.y<0.)||(u.y>1.)){ return Quat4fZero; };
-    //if((u.z<0.)||(u.z>1.)){ return Quat4fZero; };
-
-    u.x*=n.x; 
-    u.y*=n.y; 
-    u.z*=n.z;
+    // {
+    // if((u.x<0.)||(u.x>1.)||(u.y<0.)||(u.y>1.)){ return Quat4fZero; };
+    // if((u.z<0.)||(u.z>1.)){ return Quat4fZero; };
+    // u.x*=n.x; 
+    // u.y*=n.y; 
+    // u.z*=n.z;
+    // }
 
     //printf( " u(%g,%g,%g) \n", u.x,u.y,u.z );
 
@@ -502,13 +503,19 @@ void getEFprofile( int n, Vec3d p0, Vec3d p1, Quat4d REQ, Quat4d* fes, bool bPri
     }
 }
 
-double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true ){
+double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true, const char* logfiflename="gridFF_vs_NBFF.log" ){
     if(bPrint){ printf("GridFF::checkEFProfileVsNBFF(np=%i,natoms=%i,npbc=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, natoms,npbc, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
-    if(bPrint){ printf("i   x y z     E  Eref     fx fx_ref      fy fy_ref     fz  fz_ref\n"); }
+    FILE * logf=0;
+    if(logfiflename){ 
+        logf = fopen(logfiflename,"w");
+        fprintf(     logf, "i   x y z     E  Eref     fx fx_ref      fy fy_ref     fz  fz_ref\n");
+    }
+    if(bPrint){     printf("i   x y z     E  Eref     fx fx_ref      fy fy_ref     fz  fz_ref\n"); }
     double tol2=tol*tol;
     Vec3d dp=p1-p0; dp.mul(1./n);
     Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );   //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
     //bool err = false;
+    bool bErr=false;
     double err2Max=0;
     int imax = -1;
     for(int i=0; i<n; i++){
@@ -523,13 +530,16 @@ double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, doubl
         if( e2e>err2Max ){ err2Max=e2e; imax=i; }
         if( e2f>err2Max ){ err2Max=e2f; imax=i; }
         if( (e2e>tol2) || (e2f>tol2) ){
+            bErr=true;
             if(bWarn)printf("WARRNING[%i/%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g,%g,%g|%g)  NBFF(%g.%g,%g|%g)\n", i, n, dE, df.norm(), p.x,p.y,p.z,   fe.x,fe.y,fe.z,fe.w,   fref.x,fref.y,fref.z,Eref  );
             if(bExit){ printf("ERROR in GridFF::checkEFProfileVsNBFF() - GridFF force does not match NBFF reference at test point %i MaxRelativeError=%g => Exit()\n", i, sqrt(err2Max) ); exit(0); }
         } 
-        if(bPrint){ printf( "%i    %6.3f %6.3f %6.3f    %g %g   %g %g    %g %g    %g %g\n", i, p.x, p.y, p.z,    fe.e, Eref,    fe.x,fref.x,         fe.y,fref.y,           fe.z,fref.z     ); };
+        if(bPrint){ printf(       "%i    %6.3f %6.3f %6.3f    %g %g   %g %g    %g %g    %g %g\n", i, p.x, p.y, p.z,    fe.e, Eref,    fe.x,fref.x,    fe.y,fref.y,    fe.z,fref.z ); }
+        if(logf  ){fprintf( logf, "%i    %6.3f %6.3f %6.3f    %g %g   %g %g    %g %g    %g %g\n", i, p.x, p.y, p.z,    fe.e, Eref,    fe.x,fref.x,    fe.y,fref.y,    fe.z,fref.z ); }
     }
-    if(bWarn && (imax>=0) ){
-        printf("WARRNING MaxRelativeError=%g at point[%i]\n",  sqrt(err2Max), imax );
+    if(logf){ fclose(logf); }
+    if(bWarn && bErr ){
+        //printf("WARRNING GridFF MaxRelativeError=%g at point[%i]\n",  sqrt(err2Max), imax );
         Vec3d fref;
         Vec3d  p    = p0 + dp*imax;
         Quat4f fe   = getForce          ( p, PLQ, true );
@@ -538,7 +548,7 @@ double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, doubl
         Vec3f  df   = fe.f - (Vec3f)fref;
         double e2e = dE*dE     /(Eref*Eref + fe.e*fe.e + 1);          err2Max=fmax(err2Max,e2e);
         double e2f = df.norm2()/( fe.f.norm2() + fref.norm2() + 1 );  err2Max=fmax(err2Max,e2f);
-        printf("WARRNING MaxError at[%i/%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g.%g,%g|%g)  NBFF(%g.%g,%g|%g)\n", imax, n, dE, df.norm(), p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w,   fref.x,fref.y,fref.z,Eref  );
+        printf("WARRNING GridFF MaxError=%g at[%i/%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g.%g,%g|%g)  NBFF(%g.%g,%g|%g)\n",  sqrt(err2Max), imax, n, dE, df.norm(), p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w,   fref.x,fref.y,fref.z,Eref  );
     }
     return sqrt(err2Max);
 }
@@ -552,6 +562,7 @@ bool checkZProfilesOverAtom( int ia, int n, double zmin, double zmax, const Quat
         if(bExit){ printf("ERROR in GridFF::checkZProfilesOverAtom(%i) - GridFF force does not match NBFF reference, MaxRelativeError=%g => Exit()\n", ia, err ); exit(0); }
         return true;
     }
+    checkEFProfileVsNBFF( n, p0, p1, REQ, tol,  false, true, false );
     return false;
 }
 

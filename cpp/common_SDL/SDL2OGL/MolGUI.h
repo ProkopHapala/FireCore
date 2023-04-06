@@ -569,7 +569,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     testPLQ = REQ2PLQ( testREQ, W->gridFF.alphaMorse );
     Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
-    W->gridFF.grid.saveXSF( "E_renderGridFF.xsf",  (float*)FFtot, 4, 3, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
+    //W->gridFF.grid.saveXSF( "E_renderGridFF.xsf",  (float*)FFtot, 4, 3, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
     //if(idebug>0) W->gridFF.grid.saveXSF( "FFtot_z.xsf",  (float*)FFtot, 4, 2, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
     ogl_isosurf = glGenLists(1);
     glNewList(ogl_isosurf, GL_COMPILE);
