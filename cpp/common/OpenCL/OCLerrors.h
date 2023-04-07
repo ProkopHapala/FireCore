@@ -95,7 +95,7 @@ void OCL_buildProgramFailure( cl_program program, cl_device_id device ){
 }
 
 void OCL_check_error(cl_int err, const char *operation, char *filename, int line, int i=-999999, const char* name=""){
-    printf( "OCL_check_error(%s) err=%i CL_SUCCESS=%i\n", operation, err, CL_SUCCESS );
+    //printf( "OCL_check_error(%s) err=%i \n", operation, err );
     if (err != CL_SUCCESS){        
         if(i==-999999){ fprintf(stderr, "Error during operation '%s'",     operation   ); }
         else   { fprintf(stderr, "Error during operation '%s'[%i] '%s'", operation, i, name ); }
