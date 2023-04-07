@@ -119,7 +119,7 @@ inline float evalBond( float3 h, float dl, float k, __private float3* f ){
     return fr*dl*0.5;
 }
 
-inline float4 getLJQ( float3 dp, float3 REQ, float R2damp ){
+inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
     // ---- Electrostatic
     float   r2    = dot(dp,dp);
     float   ir2_  = 1.f/(  r2 +  R2damp);
@@ -323,8 +323,8 @@ __kernel void getMMFFf4(
                 REQij.x  = REQi.x  + REQj.x;
                 REQij.yz = REQi.yz * REQj.yz; 
                 float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w); 
-                float4 fij = getLJQ( dp, REQij.xyz, 1.0f );
-                //float4 fij = getLJQ( apos[ingv].xyz-apos[jngv].xyz, REQKij.xyz, 1.0f );
+                float4 fij = getLJQH( dp, REQij, 1.0f );
+                //float4 fij = getLJQH( apos[ingv].xyz-apos[jngv].xyz, REQKij, 1.0f );
                 f1 -=  fij.xyz;
                 f2 +=  fij.xyz;
                 //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", iG,ing,jng, length(dp), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
@@ -719,8 +719,8 @@ __kernel void getNonBond(
                                     ||((ji==ng.w)&&(ipbc==ngC.w))
                                 )continue; // skipp pbc0
                             }
-                            //fe += getMorseQ( dp+shifts, REQK, R2damp );
-                            float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                            //fe += getMorseQ( dp+shifts, REQ, R2damp );
+                            float4 fij = getLJQH( dp, REQ, R2damp );
                             //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
                             fe += fij;
                             ipbc++; 
@@ -749,7 +749,7 @@ __kernel void getNonBond(
                                 )continue; // skipp pbc0
                             }
                             //fe += getMorseQ( dp+shifts, REQK, R2damp );
-                            float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                            float4 fij = getLJQH( dp, REQK, R2damp );
                             //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
                             fe += fij;
                             ipbc++; 
@@ -879,7 +879,7 @@ __kernel void getNonBond_bak(
                                     )continue; // skipp pbc0
                                 }
                                 //fe += getMorseQ( dp+shifts, REQK, R2damp );
-                                float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                                float4 fij = getLJQH( dp, REQK, R2damp );
                                 //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
                                 fe += fij;
                                 ipbc++; 
@@ -895,8 +895,8 @@ __kernel void getNonBond_bak(
                     if(bBonded) continue;  // Bonded ?
                     // ToDo : what if bond is not within this cell ?????
                     //fe += getMorseQ( dp, REQK, R2damp );
-                    //fe += getLJQ( dp, REQK.xyz, R2damp );
-                    float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                    //fe += getLJQH( dp, REQK, R2damp );
+                    float4 fij = getLJQH( dp, REQK, R2damp );
                     fe += fij;
                     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); } 
                 }
@@ -1085,7 +1085,7 @@ __kernel void getNonBond_GridFF(
                                     )continue; // skipp pbc0
                                 }
                                 //fe += getMorseQ( dp+shifts, REQK, R2damp );
-                                float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                                float4 fij = getLJQH( dp, REQK, R2damp );
                                 //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
                                 fe += fij;
                                 ipbc++; 
@@ -1101,8 +1101,8 @@ __kernel void getNonBond_GridFF(
                     if(bBonded) continue;  // Bonded ?
                     // ToDo : what if bond is not within this cell ?????
                     //fe += getMorseQ( dp, REQK, R2damp );
-                    //fe += getLJQ( dp, REQK.xyz, R2damp );
-                    float4 fij = getLJQ( dp, REQK.xyz, R2damp );
+                    //fe += getLJQH( dp, REQK, R2damp );
+                    float4 fij = getLJQH( dp, REQK, R2damp );
                     fe += fij;
                     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); } 
                 }
@@ -1172,6 +1172,378 @@ __kernel void getNonBond_GridFF(
     //forces[iav] = fe*(-1.f);
     
 }
+
+
+
+// =====================================================================
+// =====================================================================
+// =====================================================================
+// =====================================================================
+//
+//                 LOCAL      SUPER       KERNELL
+//
+// =====================================================================
+// =====================================================================
+// =====================================================================
+// =====================================================================
+
+__kernel void evalMMFFf4_local(
+    const int4 nDOFs,               // 1   (nAtoms,nnode)
+    // Dynamical
+    __global float4*  apos,         // 2  [natoms]
+    __global float4*  avel,         // 3
+    //__global float4*  fapos,      //   [natoms] // Only Debug output    
+    //__global float4*  fneigh,     //   [nnode*4*2]
+    __global float4*  constr,       // 4
+    // parameters
+    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global int4*    neighCell,    // 6
+    __global int4*    bkneighs,     // 7
+    __global float4*  REQs,         // 8  [natoms] non-boding parametes {R0,E0,Q} 
+    __global float4*  apars,        // 9  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+    __global float4*  bLs,          // 10  [nnode]  bond lengths  for each neighbor
+    __global float4*  bKs,          // 11  [nnode]  bond stiffness for each neighbor
+    __global float4*  Ksp,          // 12 [nnode]  stiffness of pi-alignment for each neighbor
+    __global float4*  Kpp,          // 13 [nnode]  stiffness of pi-planarization for each neighbor
+    __global cl_Mat3* lvecs,        // 14
+    __global cl_Mat3* ilvecs,       // 15
+    const int4        nPBC,         // 16
+    const float       Rdamp,        // 17
+    const float4      MDpars,       // 18
+    const int         niter         // 19
+){
+
+    const int iG = get_global_id  (0); // intex of atom
+    const int iS = get_global_id  (1); // index of system
+    const int nG = get_global_size(0);
+    const int nS = get_global_size(1); // number of systems
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
+    
+    const int natom = nDOFs.x;
+    const int nnode = nDOFs.y;
+    const int nvec  = natom+nnode;
+    const int iLc   = nL+nnode;
+
+    const int i0a = iS*natom; 
+    const int i0n = iS*nnode; 
+    const int i0v = iS*nvec;
+    // --- node atomm global indexes
+    const int iaa = iG + i0a; 
+    const int ian = iG + i0n; 
+    const int iav = iG + i0v;
+    // --- capping atom global indexes
+    const int ica = iG + i0a-nnode; 
+    const int icn = iG + i0n-nnode; 
+    const int icv = iG + i0v-nnode;
+
+    #define NNEIGH    4
+    #define NATOM_LOC 128
+    #define NNODE_LOC 64
+    // ========= Local Memory
+
+    // We want to fit only NODE atoms into local memory, the rest we do later
+
+    __local float4  _apos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
+    __local float4  _REQs    [NATOM_LOC  ];   // 6  [natoms] non-boding parametes {R0,E0,Q}
+    __local float4  _ppos    [NATOM_LOC  ];   // 2  [nnode]  // pi-postion local
+    __local float4  _fneigh  [NNODE_LOC*4];   // 4  [nnode*4*2]
+    __local float4  _fneighpi[NNODE_LOC*4];
+
+    // NOTE: We can avoid using  __local _fneigh[] if we write __private fbs[] and fps[] into __local aforce[] in synchronized manner in 4 steps (4 slots) using barrier(CLK_LOCAL_MEM_FENCE);   
+
+    const bool bNode = iG<nnode;
+    const bool bCap  = iG<(natom-nnode);
+
+    // --- node
+    float4  pa,va;                // position and velocity
+    float4  REQa,cons;            // vdW parametes and constrains
+    float4  par,vbL,vbK,vKs,vKp;  // force-field parameters
+    float4  hp,vp;                // pi
+    int4    ng,ngC,bk;            // neighbors 
+    if(bNode){
+        pa        = apos[iav];
+        va        = avel[iav];
+        REQa      = REQs[iaa];
+        _apos[iL] = pa;
+        _REQs[iL] = REQa;
+        ng   = neighs   [iaa];
+        ngC  = neighCell[iaa];
+        bk   = bkneighs [iaa];
+        cons = constr   [iaa];
+        par  = apars    [ian];    //     (xy=s0_ss,z=ssK,w=piC0 )
+        vbL  = bLs      [ian];       
+        vbK  = bKs      [ian];       
+        vKs  = Ksp      [ian];       
+        vKp  = Kpp      [ian];
+        // ---- pi 
+        hp         = apos[iav+natom];
+        vp         = avel[iav+natom];
+        _ppos [iL] = hp;
+    }
+    // --- cap
+    float4 vc,pc,REQc,c_cons;
+    int4   c_ng,c_ngC,c_bk;
+    if(bCap){
+        vc         = avel     [icv]; // caping atom velocity
+        pc         = apos     [icv]; // capping atom postion
+        REQc       = REQs     [ica];
+        c_ng       = neighs   [ica];
+        c_ngC      = neighCell[ica];
+        c_bk       = bkneighs [ica];
+        c_cons     = constr   [ica];
+        _apos[iLc] = pc;
+        _REQs[iLc] = REQc;
+    }
+    
+    // ---- Parameters
+    const cl_Mat3 lvec    = lvecs [iS];
+    const cl_Mat3 invLvec = ilvecs[iS];
+    const float  R2damp = Rdamp*Rdamp;
+    const float3 shift0  = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;
+    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+    
+    float3  fa = float3Zero;    // force on atom position
+    float3  fc = float3Zero;    // force on capping atom 
+    float3  fp = float3Zero;    // force on pi orbital
+    float   E=0;
+
+    // ======= MMFF aliases
+    // ---- Array aliases
+    const int*   ings  = (int*  )&ng; 
+    const float* bL    = (float*)&vbL; 
+    const float* bK    = (float*)&vbK;
+    const float* Kspi  = (float*)&vKs;  
+    const float* Kppi  = (float*)&vKp; 
+    const float  ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
+ 
+    // =================================
+    //            BIG LOOP
+    // =================================
+
+    for(int itr=0; itr<niter; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // ======================================
+    //            COVALENT INTERACTIONS
+    // ======================================
+    if(bNode){
+        
+        float4  hs [4];              // direction vectors of bonds
+        float3  fbs[4];              // force on neighbor sigma
+        float3  fps[4];              // force on neighbor pi
+        float3  f1,f2;               // force on pair of atoms (private temporary)
+
+        for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }
+        
+        // ========= Bonds evaluation
+
+        for(int i=0; i<NNEIGH; i++){
+            float4 h;
+            const int ing  = ings[i];
+            const int ingv = ing+i0v;
+            const int inga = ing+i0a;
+            if(ing<0) break;
+            h.xyz    = _apos[ing].xyz - pa.xyz;
+            { // PBC bond vector correction
+                float3 u  = (float3){ dot( invLvec.a.xyz, h.xyz ), dot( invLvec.b.xyz, h.xyz ), dot( invLvec.c.xyz, h.xyz ) };
+                h.xyz   += lvec.a.xyz*(1.f-(int)(u.x+1.5f))
+                        + lvec.b.xyz*(1.f-(int)(u.y+1.5f))
+                        + lvec.c.xyz*(1.f-(int)(u.z+1.5f));
+            }
+            float  l = length(h.xyz); 
+            h.w      = 1./l;
+            h.xyz   *= h.w;
+            hs[i]    = h;
+
+            float epp = 0;
+            float esp = 0;        
+            if(iG<ing){
+                E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
+                float kpp = Kppi[i];
+                // pi-pi
+                if( (ing<nnode) && (kpp>1.e-6) ){
+                    epp += evalPiAling( hp.xyz, _ppos[ing].xyz, kpp,  &f1, &f2 );   fp+=f1;  fps[i]+=f2;
+                    E+=epp;
+                }
+            } 
+            // pi-sigma 
+            float ksp = Kspi[i];
+            if(ksp>1.e-6){  
+                esp += evalAngCos( (float4){hp.xyz,1.}, h, ksp, par.w, &f1, &f2 );   fp+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
+                E+=epp;
+            }
+        }
+        
+        // ========= Angles evaluation
+
+        for(int i=0; i<NNEIGH; i++){
+            int ing = ings[i];
+            if(ing<0) break;
+            const float4 hi = hs[i];
+            float4 REQi =_REQs[ing];   // ToDo: can be optimized
+            //const int ingv  = ing+i0v;
+            //const int inga  = ing+i0a;
+            for(int j=i+1; j<NNEIGH; j++){
+                int jng  = ings[j];
+                if(jng<0) break;
+                //const int jngv  = jng+i0v;
+                //const int jnga  = jng+i0a;
+                const float4 hj = hs[j];
+                E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );            
+                fa    -= f1+f2;
+                { // Remove vdW
+                    float4 REQj=_REQs[jng];
+                    float4 REQij;
+                    REQij.x    = REQi.x   + REQj.x;
+                    REQij.yzw  = REQi.yzw * REQj.yzw; 
+                    float3 dp  = (hj.xyz/hj.w) - (hi.xyz/hi.w); 
+                    float4 fij = getLJQH( dp, REQij, 1.0f );
+                    f1 -=  fij.xyz;
+                    f2 +=  fij.xyz;
+                }
+                fbs[i]+= f1;
+                fbs[j]+= f2;
+            }
+        }
+
+        // ========= Write neighbor forces (=recoils) to local memory
+
+        const int i4=iG*4;
+        for(int i=0; i<NNEIGH; i++){
+            _fneigh  [i4+i] = (float4){fbs[i],0};
+            _fneighpi[i4+i] = (float4){fps[i],0};
+        }
+
+    }
+
+    // ======================================
+    //          NON-COVALENT INTERACTIONS
+    // ======================================
+
+    // ========= Atom-to-Atom interaction ( N-body problem )    
+
+    for(int ja=0; ja<natom; ja+= nL ){
+        const bool bBonded = ((ja==  ng.x)||(ja==  ng.y)||(ja==  ng.z)||(ja==  ng.w));
+        const bool cBonded = ((ja==c_ng.x)||(ja==c_ng.y)||(ja==c_ng.z)||(ja==c_ng.w));
+        const float4 aj    = _apos[ja];
+        float4       REQ   = _REQs[ja];
+        float4       cREQ  = REQ;
+
+        REQ.x         += REQ.x;
+        REQ.yzw       *= REQ.yzw;
+
+        cREQ.x        += REQc.x;
+        cREQ.yzw      *= REQc.yzw;
+
+        float3 dp      = aj.xyz - shift0;
+        float3 dpc     = dp - pc.xyz;
+        dp            -=      pa.xyz;
+ 
+        const float4 REQK = _REQs[ja];
+
+        int ipbc=0; 
+        for(int iy=0; iy<3; iy++){
+            for(int ix=0; ix<3; ix++){
+            
+                if(bNode && (ja!=iG) ){          // ---- Node Atom
+                    if( !( bBonded && (
+                            ((ja==ng.x)&&(ipbc==ngC.x))
+                            ||((ja==ng.y)&&(ipbc==ngC.y))
+                            ||((ja==ng.z)&&(ipbc==ngC.z))
+                            ||((ja==ng.w)&&(ipbc==ngC.w))
+                    ))){
+                        fa += getLJQH( dp, REQ, R2damp ).xyz;
+                    }                    
+                }
+
+                if(bCap && (ja!=(iG+nnode)) ){       // ---- Capping atom
+                    if(!(cBonded && (
+                            ((ja==c_ng.x)&&(ipbc==c_ngC.x))
+                            ||((ja==c_ng.y)&&(ipbc==c_ngC.y))
+                            ||((ja==c_ng.z)&&(ipbc==c_ngC.z))
+                            ||((ja==c_ng.w)&&(ipbc==c_ngC.w))
+                    ))){
+                        fc += getLJQH( dpc, cREQ, R2damp ).xyz;
+                    }
+                }
+                
+                // --- cell shift
+                ipbc++; 
+                dp+=lvec.a.xyz;
+            }
+            dp+=shift_a;
+        }
+    }
+
+    // ======================================
+    //                MOVE 
+    // ======================================
+
+    barrier(CLK_LOCAL_MEM_FENCE);    // Make sure _fneigh is uptodate for all atoms
+
+    if(bNode){ 
+        if(bk.x>=0){ fa += _fneigh  [bk.x].xyz;  fp += _fneighpi[bk.x].xyz; }
+        if(bk.y>=0){ fa += _fneigh  [bk.y].xyz;  fp += _fneighpi[bk.y].xyz; }
+        if(bk.z>=0){ fa += _fneigh  [bk.z].xyz;  fp += _fneighpi[bk.z].xyz; }
+        if(bk.w>=0){ fa += _fneigh  [bk.w].xyz;  fp += _fneighpi[bk.w].xyz; }
+
+        // --- move node atom
+        if( cons.w>0 ){  fa.xyz += (pa.xyz - cons.xyz)*-cons.w; }
+        va     *= MDpars.y;
+        va.xyz += fa.xyz*MDpars.x;
+        pa.xyz += va.xyz*MDpars.x;
+        pa.w=0;va.w=0;
+        _apos[iL] = pa;
+
+        // --- move pi    ...   This would simplify if we consider pi- is just normal cap atom (dummy atom)
+        fp.xyz += hp.xyz * -dot( hp.xyz, fp.xyz );   // subtract forces  component which change pi-orbital lenght
+        vp.xyz += hp.xyz * -dot( hp.xyz, vp.xyz );   // subtract veocity component which change pi-orbital lenght
+        vp     *= MDpars.y;
+        vp.xyz += fp.xyz*MDpars.x;
+        hp.xyz += hp.xyz*MDpars.x; 
+        hp.xyz=normalize(hp.xyz);                    // normalize pi-orobitals
+        hp.w=0;vp.w=0;
+        _ppos[iL] = hp;
+
+    }
+    if(bCap){
+        if(c_bk.x>=0){ fa += _fneigh[c_bk.x].xyz; }
+        if(c_bk.y>=0){ fa += _fneigh[c_bk.y].xyz; }
+        if(c_bk.z>=0){ fa += _fneigh[c_bk.z].xyz; }
+        if(c_bk.w>=0){ fa += _fneigh[c_bk.w].xyz; }
+
+        // --- move cap atom
+        if( c_cons.w>0 ){fc.xyz += (pc.xyz - c_cons.xyz)*-c_cons.w; }
+        va     *= MDpars.y;
+        vc.xyz += fc.xyz*MDpars.x;
+        pc.xyz += vc.xyz*MDpars.x;
+        pc.w=0;vc.w=0;
+        _apos[iLc] = pc;
+    }
+
+    } // END OF THE BIG LOOP
+
+    if(bNode){
+        apos[iav      ]=pa;
+        avel[iav      ]=va;
+        apos[iav+natom]=hp;
+        avel[iav+natom]=vp;
+    }
+    
+    if(bCap){
+        apos[ica]=pc;
+        avel[ica]=vc;
+    }
+
+};
+
+// =====================================================================
+// =====================================================================
+// =====================================================================
+// =====================================================================
+
 
 
 // ======================================================================
