@@ -193,7 +193,36 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos,
     glEnd();
 }
 
+void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0 ){
+    int* ngs  = neighs   +ia*perAtom;
+    int* ngC  = neighCell+ia*perAtom;
+    Quat4f pi = apos[ia];
+    //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3], pi.x,pi.y,pi.z );
+    glBegin( GL_LINES );
+    for(int i=0; i<perAtom; i++){
+        int ja = ngs[i];
+        if(ja<0) continue;
+        Draw3D::vertex( pi.f );
+        Vec3f pj = apos[ja].f;
+        if(shifts) pj.add( (Vec3f)shifts[ngC[i]]);
+        Draw3D::vertex( pj );
+    }
+    glEnd();
+}
+
 void neighs( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
+    for(int ia=0; ia<na; ia++){
+        atomNeighs( ia, perAtom, neighs, neighCell, apos, shifts );
+    }
+}
+
+void neighs_multi( int na, int perAtom, int* neighs_, int* neighCell_,  Quat4f* apos_, Vec3d* shifts=0, int isys=0, int nvec=-1 ){
+    if(nvec<0)nvec=na;
+    int i0v=isys*nvec;
+    int i0a=isys*na;
+    int* neighs    = neighs_   +perAtom*i0a;
+    int* neighCell = neighCell_+perAtom*i0a;
+    Quat4f* apos   = apos_     +perAtom*i0v;
     for(int ia=0; ia<na; ia++){
         atomNeighs( ia, perAtom, neighs, neighCell, apos, shifts );
     }

@@ -474,6 +474,15 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     //bSurfAtoms=false;
 }
 
+
+virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*& M_apos, int& nvec ) override {
+    nvec        = ocl.nvecs;
+    M_neighs    = (int*)neighs;
+    M_neighCell = (int*)neighCell;
+    M_apos      = atoms;
+    return 0;
+}
+
 // ##############################################################
 // ##############################################################
 //                 Debugging versions 
