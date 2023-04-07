@@ -38,6 +38,7 @@ class OCL_MM: public OCLsystem { public:
     int4   nPBC     {0,0,0,0};
     //float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
     float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
+    int    niter;
     //float Rdamp  = 1e-4;
     float Rdamp  = 1.;
     //float R2damp = Rdamp*Rdamp;
@@ -86,6 +87,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
         newTask( "make_GridFF"            ,program_relax, 1);
         newTask( "addDipoleField"         ,program_relax, 1);
+        newTask( "evalMMFFf4_local"       ,program_relax, 2);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }
@@ -454,6 +456,61 @@ class OCL_MM: public OCLsystem { public:
         // const cl_Mat3  dGrid,            // 6
         // const float4   grid_p0           // 7
     }
+
+    OCLtask* setup_evalMMFFf4_local( int niter_, OCLtask* task=0 ){
+        if(task==0) task = getTask("evalMMFFf4_local");
+        task->global.x = nnode;
+        task->global.y = nSystems;
+        useKernel( task->ikernel );
+        niter   = niter_;
+        nDOFs.x = nAtoms; 
+        nDOFs.y = nnode;  
+        // ------- Maybe We do-not need to do this every frame ?
+        err |= _useArg   ( nDOFs );              // 1
+        // Dynamical
+        err |= useArgBuff( ibuff_atoms  );       // 2
+        err |= useArgBuff( ibuff_avel   );       // 3
+        //err |= useArgBuff( ibuff_aforces);     //
+        //err |= useArgBuff( ibuff_neighForce ); //
+        // parameters
+        err |= useArgBuff( ibuff_neighs    );    // 5
+        err |= useArgBuff( ibuff_neighCell );    // 6
+        err |= useArgBuff( ibuff_bkNeighs  );    // 7
+        err |= useArgBuff( ibuff_REQs      );    // 8
+        err |= useArgBuff( ibuff_MMpars    );    // 9
+        err |= useArgBuff( ibuff_BLs       );    // 10
+        err |= useArgBuff( ibuff_BKs       );    // 11
+        err |= useArgBuff( ibuff_Ksp       );    // 12
+        err |= useArgBuff( ibuff_Kpp       );    // 13
+        err |= useArgBuff( ibuff_lvecs     );    // 14
+        err |= useArgBuff( ibuff_ilvecs    );    // 15
+        err |= _useArg   ( nPBC            );    // 16      
+        err |= _useArg   ( Rdamp           );    // 17
+        err |= _useArg   ( md_params       );    // 18
+        err |= _useArg   ( niter           );    // 19
+        OCL_checkError(err, "setup_evalMMFFf4_local");
+        return task;
+        // const int4 nDOFs,               // 1  (nAtoms,nnode)
+        // __global float4*  apos,         // 2  [natoms]
+        // __global float4*  avel,         // 3
+        // __global float4*  constr,       // 4
+        // __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+        // __global int4*    neighCell,    // 6
+        // __global int4*    bkneighs,     // 7
+        // __global float4*  REQs,         // 8  [natoms] non-boding parametes {R0,E0,Q} 
+        // __global float4*  apars,        // 9  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+        // __global float4*  bLs,          // 10 [nnode]  bond lengths  for each neighbor
+        // __global float4*  bKs,          // 11 [nnode]  bond stiffness for each neighbor
+        // __global float4*  Ksp,          // 12 [nnode]  stiffness of pi-alignment for each neighbor
+        // __global float4*  Kpp,          // 13 [nnode]  stiffness of pi-planarization for each neighbor
+        // __global cl_Mat3* lvecs,        // 14
+        // __global cl_Mat3* ilvecs,       // 15
+        // const int4        nPBC,         // 16
+        // const float       Rdamp,        // 17
+        // const float4      MDpars,       // 18
+        // const int         niter         // 19
+    }
+
 
 };
 
