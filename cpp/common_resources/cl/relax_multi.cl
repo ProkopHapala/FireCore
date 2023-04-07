@@ -695,6 +695,7 @@ __kernel void getNonBond(
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
             const int ji=j+i0;
+            //if( (ji==1)&&(iG==0) )printf( "1 non-bond[%i,%i] %i\n",iG,ji );
             if( (ji!=iG) && (ji<natoms) ){   // ToDo: Should interact withhimself in PBC ?
                 const float4 aj = LATOMS[j];
                 float3 dp   = aj.xyz - posi;
@@ -703,8 +704,13 @@ __kernel void getNonBond(
                 REQK.yz *=REQKi.yz;
                 const bool bBonded = ((ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w));
                 int ipbc=0;
-                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //if( (j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //if( (ji==1)&&(iG==0) )printf( "2 non-bond[%i,%i] bBonded %i\n",iG,ji,bBonded );
+
+
                 dp -= shift0;
+
+                float3 shift = shift0;  // just DEBUG
 
                 /*
                 for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
@@ -738,6 +744,7 @@ __kernel void getNonBond(
                 //for(int iz=-1; iz<2; iz++){
                     for(int iy=0; iy<3; iy++){
                         for(int ix=0; ix<3; ix++){
+                            if( (ji==1)&&(iG==0)&&(iS==0) )printf( "ipbc %i(%i,%i) shift(%6.3g,%6.3g,%6.3g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z ); 
                             // Without these IF conditions if(bBonded) time of evaluation reduced from 61 [ms] to 51[ms]
                             if(bBonded){
                                 // Maybe We can avoid this by using Damped LJ or Buckingham potential which we can safely subtract in bond-evaluation ?
@@ -749,17 +756,20 @@ __kernel void getNonBond(
                                 )continue; // skipp pbc0
                             }
                             //fe += getMorseQ( dp+shifts, REQK, R2damp );
+                            //if( (ji==1)&&(iG==0)&&(iS==0) )printf( "ipbc %i(%i,%i) shift(%g,%g,%g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z ); 
                             float4 fij = getLJQH( dp, REQK, R2damp );
                             //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
                             fe += fij;
                             ipbc++; 
-                            dp+=lvec.a.xyz;
+                            dp    += lvec.a.xyz;
+                            shift += lvec.a.xyz; // just DEBUG 
                         }
-                        dp+=shift_a;
-                        //dp+=lvec.b.xyz;
+                        dp    += shift_a;
+                        shift += shift_a; // just DEBUG
+                        
                     }
-                    //dp+=shift_b;
-                    //dp+=lvec.c.xyz;
+                    //dp    += shift_b;
+                    //shift += shift_b; // just DEBUG
                 //}
             }
         }
