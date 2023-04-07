@@ -108,6 +108,11 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Quat4i* neighs    = 0;
     Quat4i* neighCell = 0;
 
+    int nsys=0,nvec=0;
+    int    * M_neighs    =0;
+    int    * M_neighCell =0;
+    Quat4f * M_apos      =0;
+
     // ---- Graphics objects
     int  fontTex,fontTex3D;
 
@@ -377,6 +382,10 @@ void MolGUI::draw(){
         int ia = W->selection[i];
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.apos[ia] );     
     }
+
+
+    if(frameCount==1){ nsys=W->getMultiSystemPointers( M_neighs, M_neighCell, M_apos, nvec); }
+    if(nsys>0){ for(int isys=0; isys<nsys; isys++){ Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); } } 
 
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
