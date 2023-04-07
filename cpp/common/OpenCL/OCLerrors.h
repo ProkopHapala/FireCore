@@ -95,6 +95,7 @@ void OCL_buildProgramFailure( cl_program program, cl_device_id device ){
 }
 
 void OCL_check_error(cl_int err, const char *operation, char *filename, int line, int i=-999999, const char* name=""){
+    printf( "OCL_check_error(%s) err=%i CL_SUCCESS=%i\n", operation, err, CL_SUCCESS );
     if (err != CL_SUCCESS){        
         if(i==-999999){ fprintf(stderr, "Error during operation '%s'",     operation   ); }
         else   { fprintf(stderr, "Error during operation '%s'[%i] '%s'", operation, i, name ); }
@@ -109,6 +110,14 @@ void OCL_error_warn(cl_int err, const char *operation, int i=-999999 ){
         if(i==-999999){ fprintf(stderr, "WARRNING: Error in '%s'     \"%s\" (%d)\n", operation   , OCL_err_code(err), err ); }
         else          { fprintf(stderr, "WARRNING: Error in '%s'[%i] \"%s\" (%d)\n", operation, i, OCL_err_code(err), err ); }
     }
+}
+
+void printBinary( int err ){
+    for(int i=0;i<32;i++){
+        err>>=1;
+        printf("%1i", err&1 );
+    }
+    printf("\n" );
 }
 
 #if OCL_DEBUG

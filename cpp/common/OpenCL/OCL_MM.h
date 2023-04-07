@@ -145,6 +145,7 @@ class OCL_MM: public OCLsystem { public:
         Rdamp = Rdamp_;
         v2i4( nPBC_, nPBC );
         // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
         err |= _useArg   ( nDOFs );               // 1
         // Dynamical
         err |= useArgBuff( ibuff_atoms      ); // 2
@@ -184,7 +185,8 @@ class OCL_MM: public OCLsystem { public:
         Rdamp = Rdamp_;
         v2i4( nPBC_, nPBC );
         // ------- Maybe We do-not need to do this every frame ?
-        err |= _useArg   ( nDOFs );               // 1
+        int err=0;
+        err |= _useArg   ( nDOFs );           // 1
         // Dynamical
         err |= useArgBuff( ibuff_atoms     ); // 2
         err |= useArgBuff( ibuff_aforces   ); // 3
@@ -195,9 +197,10 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_lvecs     );  // 7
         err |= _useArg( nPBC               );  // 8
         err |= _useArg( Rdamp              );  // 9
+
         err |= useArgBuff( itex_FE_Paul    );  // 10
         err |= useArgBuff( itex_FE_Lond    );  // 11
-        err |= useArgBuff( itex_FE_Coul    );  // 12    
+        err |= useArgBuff( itex_FE_Coul    );  // 12   
         err |= _useArg( cl_diGrid          );  // 13
         err |= _useArg( grid_p0            );  // 14
         OCL_checkError(err, "setup_getNonBond_GridFF");
@@ -231,6 +234,7 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.y=nNode; 
         nDOFs.w=bPBC; 
         // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
         err |= _useArg   ( nDOFs );            // 1
         // Dynamical
         err |= useArgBuff( ibuff_atoms  );     // 2
@@ -277,6 +281,7 @@ class OCL_MM: public OCLsystem { public:
         //if(n >=0  ) 
         nDOFs.x=na; 
         nDOFs.y=nNode; 
+        int err=0;
         useKernel( task->ikernel  );
         err |= _useArg( md_params );           // 1
         err |= _useArg( nDOFs     );           // 2
@@ -309,6 +314,7 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.y=nnode;
         nDOFs.z=isys;                      
         print_mask=mask;
+        int err=0;
         useKernel( task->ikernel  );       
         err |= _useArg( nDOFs     );       
         err |= _useArg( mask      );       
@@ -331,6 +337,7 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.y=nNode; 
         nDOFs.z=0; 
         print_mask=int4{1,1,1,1};
+        int err=0;
         useKernel( task->ikernel  );
         err |= _useArg( nDOFs          );      // 1
         err |= _useArg( print_mask     );      // 2
@@ -356,7 +363,8 @@ class OCL_MM: public OCLsystem { public:
         task->global.x = na+nNode;
         task->global.y = nSystems;
         nDOFs.x=na; 
-        nDOFs.y=nNode; 
+        nDOFs.y=nNode;
+        int err=0; 
         useKernel( task->ikernel );
         err |= _useArg( nDOFs     );           // 1
         err |= useArgBuff( ibuff_aforces    ); // 2
@@ -385,14 +393,15 @@ class OCL_MM: public OCLsystem { public:
         if(itex_FE_Paul<=0) itex_FE_Paul         = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Lond<=0) itex_FE_Lond         = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Coul<=0) itex_FE_Coul         = newBufferImage3D( "FFCoul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
+        int err=0;
         err |= finishRaw();       OCL_checkError(err, "makeGridFF().imgAlloc" );
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
         if(task==0) task = getTask("make_GridFF");
         task->global.x = grid_n.x*grid_n.y*grid_n.z;
         //printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
         //printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
-        if(atoms){ err = upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }
-        if(REQs ){ err = upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "makeGridFF().upload(REQs )" ); }
+        if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }
+        if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "makeGridFF().upload(REQs )" ); }
         useKernel( task->ikernel );
         err |= useArg    ( natom_surf       ); // 1
         err |= useArgBuff( ibuff_atoms_surf ); // 2
@@ -435,6 +444,7 @@ class OCL_MM: public OCLsystem { public:
         if(dipoles  )upload( ibuff_dipoles  , dipoles  , n );
         useKernel( task->ikernel );
         int4 ngrid{ grid_n.x, grid_n.y, grid_n.z,0 };
+        int err=0;
         err |= useArg    ( n               ); // 1
         err |= useArgBuff( ibuff_dipole_ps ); // 2
         err |= useArgBuff( ibuff_dipoles   ); // 3
@@ -466,6 +476,7 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.x = nAtoms; 
         nDOFs.y = nnode;  
         // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
         err |= _useArg   ( nDOFs );              // 1
         // Dynamical
         err |= useArgBuff( ibuff_atoms  );       // 2
