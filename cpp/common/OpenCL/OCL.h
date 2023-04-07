@@ -35,7 +35,7 @@ class OCLBuffer{
     inline size_t byteSize(){ return typesize * n; }
 
     inline int initOnGPU ( cl_context& context ){
-        int err;
+        int err=0;
         //printf( "initOnGPU() buff_size %li | n %li typesize %li \n", byteSize(), n, typesize );
         if( (flags&CL_MEM_COPY_HOST_PTR)||(flags&CL_MEM_USE_HOST_PTR) ){
                 p_gpu = clCreateBuffer(context, flags, byteSize(), p_cpu,   &err);
@@ -45,7 +45,7 @@ class OCLBuffer{
     }
 
     inline int initOnGPUImage( cl_context& context ){
-        int err;
+        int err=0;
         //p_gpu = clCreateBuffer(context, flags, typesize * n, NULL,  &err);
         cl_image_desc img;
         img.image_array_size  = 0;
@@ -181,7 +181,7 @@ class OCLtask{ public:
     int enque_raw();
 
     virtual int enque( ){
-        int err;
+        int err=0;
         if( args.size() > 0 ) useArgs();
         err = enque_raw( );  OCL_checkError(err, "enque_raw");
         return err;
@@ -202,7 +202,7 @@ class OCLtask{ public:
 
 class OCLsystem{ public:
     // http://stackoverflow.com/questions/20105566/advantages-of-a-program-containing-several-opencl-kernels-versus-several-program
-    cl_int           err;           // error code returned from OpenCL calls
+    //cl_int           err;           // error code returned from OpenCL calls
     cl_device_id     device   = 0;        // compute device id
     cl_context       context  = 0;       // compute context
     cl_command_queue commands = 0;      // compute command queue
@@ -323,7 +323,7 @@ class OCLsystem{ public:
        if(nbytes<0){ nbytes=buffers[iBufFrom].byteSize(); int nbytes_=buffers[iBufTo].byteSize(); if(nbytes_<nbytes)nbytes=nbytes_;}
        //printf( "nbytes(-1) -> %i min(%i|%i) \n", nbytes, (int)buffers[iBufFrom].byteSize(), nbytes_ ); } 
        //printf( "OCLsystem::copy(%i[%i],%i[%i],n=%i)\n",iBufFrom,src_offset,iBufTo,dst_offset,nbytes  );
-       err = clEnqueueCopyBuffer( commands, buffers[iBufFrom].p_gpu, buffers[iBufTo].p_gpu, src_offset, dst_offset, nbytes, 0, 0, 0);
+       int err = clEnqueueCopyBuffer( commands, buffers[iBufFrom].p_gpu, buffers[iBufTo].p_gpu, src_offset, dst_offset, nbytes, 0, 0, 0);
        OCL_checkError(err, "copy()");
        //finishRaw();
        return err;
@@ -345,7 +345,7 @@ class OCLsystem{ public:
         size_t offset[4]{0,0,0,0};
         //size_t region[4]{nx,ny,nz,0};
         printf( "copyBuffToImage() region(%li,%li,%li)\n", region.x, region.y, region.z  );
-        err = clEnqueueCopyBufferToImage( commands, buffers[iBuff].p_gpu, buffers[itex].p_gpu, src_offset, offset, (size_t*)&region, 0,0,0 );
+        int err = clEnqueueCopyBufferToImage( commands, buffers[iBuff].p_gpu, buffers[itex].p_gpu, src_offset, offset, (size_t*)&region, 0,0,0 );
         OCL_checkError(err, "copyBuffToImage()");
         return err;
     }
@@ -365,6 +365,7 @@ class OCLsystem{ public:
     void check_commandsSet(){ if(commands==0){ printf("ERROR OCLsystem commands not set \n"); exit(-1); } }
 
     int init(){
+        int err=0;
         //cl_info(); exit(0);
         cl_uint deviceIndex = 0;
         //parseArguments(argc, argv, &deviceIndex);
@@ -385,7 +386,6 @@ class OCLsystem{ public:
         //commands = clCreateCommandQueueWithProperties( context, device, &prop, &err );
         commands = clCreateCommandQueueWithProperties( context, device, NULL, &err );   // if properties are NULL defaults are used 
         OCL_checkError(err, "Creating command queue");
-
         return err;
     }
     
@@ -471,6 +471,7 @@ class OCLsystem{ public:
     }
 
     int buildProgram( char * fname, cl_program& program_ ){       // TODO : newProgram instead ?
+        int err=0;
         char * kernelsource = getKernelSource( fname );
         program_ = clCreateProgramWithSource(context, 1, (const char **) & kernelsource, NULL, &err);
         char tmpstr[1024];
@@ -510,11 +511,11 @@ class OCLsystem{ public:
     //     }
     // }
 
-    //int  useArg( cl_mem ibuff,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(ibuff) ); printf("useArg[%i]\n",i); OCL_checkError_(err,"useArg",i); return err; };
-    int  useArg( int    i_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(int),    &(i_arg) );                OCL_error_warn_(err,"useArg",i);     return err; };
-    int  useArg( float  f_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(float),  &(f_arg) );                OCL_error_warn_(err,"useArg",i);     return err; };
-    int  useArg_( void*  buff , int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, nbytes,           buff   );                OCL_error_warn_(err,"useArg_",i);    return err; };
-    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} err=clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff].p_gpu) ); OCL_error_warn_(err,"useArgBuff",i); return err; };
+    //int  useArg( cl_mem ibuff,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} int err=clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(ibuff) ); printf("useArg[%i]\n",i); OCL_checkError_(err,"useArg",i); return err; };
+    int  useArg( int    i_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} int err=clSetKernelArg( current_kernel, i, sizeof(int),    &(i_arg) );                OCL_error_warn_(err,"useArg",i);     return err; };
+    int  useArg( float  f_arg,              int i=-1 ){ if(i<0){i=argCounter;argCounter++;} int err=clSetKernelArg( current_kernel, i, sizeof(float),  &(f_arg) );                OCL_error_warn_(err,"useArg",i);     return err; };
+    int  useArg_( void*  buff , int nbytes, int i=-1 ){ if(i<0){i=argCounter;argCounter++;} int err=clSetKernelArg( current_kernel, i, nbytes,           buff   );                OCL_error_warn_(err,"useArg_",i);    return err; };
+    int  useArgBuff( int ibuff,             int i=-1 ){ if(i<0){i=argCounter;argCounter++;} int err=clSetKernelArg( current_kernel, i, sizeof(cl_mem), &(buffers[ibuff].p_gpu) ); OCL_error_warn_(err,"useArgBuff",i); return err; };
     int enque( size_t dim, const size_t* global, const size_t* local, int ikernel=-1 ){ 
         cl_kernel kernel;
         if(ikernel<0){kernel=current_kernel;}else{ kernel = kernels[ikernel]; }; 
@@ -544,7 +545,7 @@ class OCLsystem{ public:
     }
 
     int finish(){
-        int err;
+        int err=0;
         err = clFinish(commands);   OCL_checkError(err, "finish : clFinish");
         err |= download();
         return err;

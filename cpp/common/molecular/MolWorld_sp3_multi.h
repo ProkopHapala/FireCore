@@ -256,7 +256,7 @@ void picked2GPU( int ipick,  double K ){
 
 double eval_MMFFf4_ocl( int niter, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
-
+    //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //long T0 = getCPUticks();
     picked2GPU( ipicked,  1.0 );
     int err=0;
@@ -266,8 +266,9 @@ double eval_MMFFf4_ocl( int niter, bool bForce=false ){
     for(int i=0; i<niter; i++){
         //err |= task_cleanF->enque_raw();      // DEBUG: this should be solved inside  task_move->enque_raw();   if we do not need to output force 
         err |= task_MMFF      ->enque_raw();
-        err |= task_NBFF      ->enque_raw();    // task_NBFF takes much more time than task_MMFF
-        //err |= task_NBFF_Grid ->enque_raw();  // task_NBFF takes much more time than task_MMFF
+        //err |= task_NBFF      ->enque_raw();    // task_NBFF takes much more time than task_MMFF
+        err |= task_NBFF_Grid ->enque_raw();  // task_NBFF takes much more time than task_MMFF
+        OCL_checkError(err, "eval_MMFFf4_ocl.task_NBFF_Grid");
         //err |= task_print   ->enque_raw();    // DEBUG: just printing the forces before assempling
         err |= task_move      ->enque_raw(); 
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
@@ -382,8 +383,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     if( bOcl ){
         //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
-        //nIter = 100;
-        nIter = 1;
+        nIter = 100;
+        //nIter = 1;
         eval_MMFFf4_ocl( nIter );
         //eval_NBFF_ocl  ( 1 ); 
     }else{
