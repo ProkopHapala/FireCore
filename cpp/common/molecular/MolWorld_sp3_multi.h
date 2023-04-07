@@ -211,8 +211,8 @@ void setup_MMFFf4_ocl(){
     if(!task_print )   task_print = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );
     if(!task_MMFF  )   task_MMFF  = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
 
-    if(!task_NBFF_Grid ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
-    if(!task_NBFF      ){ task_NBFF      = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); }
+    if((!task_NBFF_Grid)&&bGridFF ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
+    if(!task_NBFF                 ){ task_NBFF      = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); }
 
     // if(!task_NBFF  ) { 
     //     if( bGridFF ){ task_NBFF  = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
@@ -266,8 +266,8 @@ double eval_MMFFf4_ocl( int niter, bool bForce=false ){
     for(int i=0; i<niter; i++){
         //err |= task_cleanF->enque_raw();      // DEBUG: this should be solved inside  task_move->enque_raw();   if we do not need to output force 
         err |= task_MMFF      ->enque_raw();
-        //err |= task_NBFF      ->enque_raw();    // task_NBFF takes much more time than task_MMFF
-        err |= task_NBFF_Grid ->enque_raw();  // task_NBFF takes much more time than task_MMFF
+        if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+        else       { err |= task_NBFF      ->enque_raw(); }
         OCL_checkError(err, "eval_MMFFf4_ocl.task_NBFF_Grid");
         //err |= task_print   ->enque_raw();    // DEBUG: just printing the forces before assempling
         err |= task_move      ->enque_raw(); 
@@ -449,12 +449,13 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     }
     ocl.buffers[ocl.ibuff_atoms_surf].release();
     ocl.buffers[ocl.ibuff_REQs_surf ].release();
-    exit(0);
+    //exit(0);
 }
 
 virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true )override{
     printf( "MolWorld_sp3_multi::initGridFF() \n");
     if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
+    if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
     gridFF.grid.center_cell( cel0 );
     bGridFF=true;
     gridFF.bindSystem      (surf.natoms, surf.atypes, surf.apos, surf.REQs );
@@ -463,7 +464,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     if( ( fabs(gridFF.Q)>1e-6 ) || (gridFF.dip.norm2()>1e-8) ){ printf("ERROR: GridFF has dipole and dipole correction not yet implemented => exit() \n"); exit(0); }
     if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
     gridFF.grid.pos0.z=z0;
-    if(verbosity>1)gridFF.grid.printCell();
+    //if(verbosity>1)
+    gridFF.grid.printCell();
     if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }    
     long T0 = getCPUticks();
     surf2ocl( nPBC, bSaveDebugXSFs );

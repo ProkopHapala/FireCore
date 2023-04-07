@@ -174,7 +174,8 @@ class OCL_MM: public OCLsystem { public:
     }
 
     OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
-        printf("setup_getNonBond_GridFF(na=%i,nnode=%i) \n", na, nNode);
+        printf("setup_getNonBond_GridFF(na=%i,nnode=%i) itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i\n", na, nNode,  itex_FE_Paul,itex_FE_Lond,itex_FE_Coul );
+        if((itex_FE_Paul<=0)||(itex_FE_Paul<=0)||(itex_FE_Paul<=0)){ printf( "ERROR in setup_getNonBond_GridFF() GridFF textures not initialized(itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i) => Exit() \n", itex_FE_Paul,itex_FE_Lond,itex_FE_Coul ); exit(0); }
         if(task==0) task = getTask("getNonBond_GridFF");
         task->global.x = na;
         task->global.y = nSystems;
@@ -197,7 +198,6 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_lvecs     );  // 7
         err |= _useArg( nPBC               );  // 8
         err |= _useArg( Rdamp              );  // 9
-
         err |= useArgBuff( itex_FE_Paul    );  // 10
         err |= useArgBuff( itex_FE_Lond    );  // 11
         err |= useArgBuff( itex_FE_Coul    );  // 12   
@@ -390,6 +390,7 @@ class OCL_MM: public OCLsystem { public:
         v2i4( nPBC_, nPBC );
         if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        printf( "OCL_MM::makeGridFF() grid_n(%i,%i,%i)\n", grid_n.x,grid_n.y,grid_n.z );
         if(itex_FE_Paul<=0) itex_FE_Paul         = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Lond<=0) itex_FE_Lond         = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Coul<=0) itex_FE_Coul         = newBufferImage3D( "FFCoul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
