@@ -1103,6 +1103,312 @@ __kernel void getNonBond_GridFF(
 }
 
 
+__kernel void sampleGridFF(
+    const int4 ns,                  // 1
+    __global float4*  atoms,        // 2
+    __global float4*  forces,       // 3
+    __global float4*  REQKs,        // 4
+    const float4  GFFParams,        // 9
+    __read_only image3d_t  FE_Paul, // 10
+    __read_only image3d_t  FE_Lond, // 11
+    __read_only image3d_t  FE_Coul, // 12
+    const cl_Mat3  diGrid,          // 13
+    const float4   grid_p0          // 14
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id  (0);
+    const int iS = get_global_id  (1);
+    const int iL = get_local_id   (0);
+    const int nG = get_global_size(0);
+    const int nS = get_global_size(1);
+    const int nL = get_local_size (0);
+
+    const int natoms=ns.x;
+    const int nnode =ns.y;
+    const int nvec  =natoms+nnode;
+
+    //const int i0n = iS*nnode; 
+    const int i0a = iS*natoms; 
+    const int i0v = iS*nvec;
+    //const int ian = iG + i0n;
+    const int iaa = iG + i0a;
+    const int iav = iG + i0v;
+
+    const int iS_DBG = 5;
+    const int iG_DBG = 0;
+    if(iG>=natoms) return;
+
+    //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
+    const float4 REQKi = REQKs    [iaa];
+    const float3 posi  = atoms    [iav].xyz;
+    const float  R2damp = GFFParams.x*GFFParams.x;
+    const float  alphaMorse = GFFParams.y;
+    float4 fe           = float4Zero;
+
+    // ========== Interaction with grid
+    const float3 posg  = posi - grid_p0.xyz;
+    const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
+    #if 0
+        coord +=(float3){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+        const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
+        const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
+        const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+    #else
+        const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
+        const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
+        const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
+    #endif
+    //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
+    const float ej   = exp( alphaMorse* REQKi.x );
+    const float cL   = ej*REQKi.y;
+    const float cP   = ej*cL;
+    fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQKi.z;
+    forces[iav] += fe;
+}
+
+
+// ======================================================================
+//                           make_GridFF()
+// ======================================================================
+
+__kernel void make_GridFF(
+    const int nAtoms,                // 1
+    __global float4*  atoms,         // 2
+    __global float4*  REQKs,         // 3
+    __write_only image3d_t  FE_Paul, // 4
+    __write_only image3d_t  FE_Lond, // 5
+    __write_only image3d_t  FE_Coul, // 6
+    const int4     nPBC,             // 7
+    const int4     nGrid,            // 8
+    const cl_Mat3  lvec,             // 9
+    const float4   grid_p0,          // 10
+    const float4   GFFParams         // 11
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+
+    const float  alphaMorse = GFFParams.y;
+    const float  R2damp     = GFFParams.x*GFFParams.x;
+    
+    if(iG==0){printf("GPU:make_GridFF() nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i) Rdamp %g alphaMorse %g \n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z, GFFParams.x, alphaMorse );}
+    if(iG==0){printf("GPU:make_GridFF() p0{%6.3f,%6.3f,%6.3f} lvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}} \n", grid_p0.x,grid_p0.y,grid_p0.z,  lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );}
+    /*
+    //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
+    if(iG==0){
+        printf("GPU:make_GridFF(natoms=%i)\n", nAtoms);
+        for(int i=0; i<nAtoms; i++){ printf("GPU:atom[%i] apos(%6.3f,%6.3f,%6.3f|%g) rekq(%6.3f,%10.7f,%6.3f|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
+        int ia0 = 0;
+        float4 REQK = REQKs[ia0];
+        float Rii = REQK.x*2.f;
+        float Eii = REQK.y*REQK.y;
+        int np  = 20;
+        float dx      = 0.1;
+        float x0      = REQK.x*2.f - np*dx/2;
+        
+        //         expr = np.exp( b*Rj )
+        // cP    = Ej*expr*expr
+        // cL    = Ej*expr
+
+        const float ej   = exp( REQK.w * REQK.x );
+        const float cL   = ej*REQK.y;
+        const float cP   = ej*cL;
+
+        printf(  "GPU: REQK Ri %g Ei %g Q %g beta %g \n", REQK.x, REQK.y, REQK.z, REQK.w );
+        printf(  "GPU: ej %g  cP %g cL %g \n", ej, cP, cL );
+        printf(  "#i  r.x  E_LJ E_Paul E_Lond, E_Coul  Fx_LJ Fx_Paul Fx_Lond, Fx_Coul  \n" );
+        for(int i=0; i<np; i++){
+            float4 fe_Paul = float4Zero;
+            float4 fe_Lond = float4Zero;
+            float4 fe_Coul = float4Zero;
+            
+            float3 dp  = (float3){ x0 + dx*i, 0.f, 0.f  };
+            float  r2  = dot(dp,dp);
+            float  r   = sqrt(r2);
+            float ir2  = 1/(r2+R2damp); 
+            // ---- Electrostatic
+            float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
+            fe_Coul   += (float4)(dp*(E*ir2), E );
+            // ---- Morse ( Pauli + Dispersion )
+            float    e = exp( -REQK.w*(r-REQK.x) );
+            float   eM = REQK.y*e;
+            float   de = 2.f*REQK.w*eM/r;
+            float4  fe = (float4)( dp*de, eM );
+            fe_Paul += fe * e;
+            fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );
+
+            float ex  =      exp( -REQK.w * (r - Rii ) );
+            float ELJ =      Eii*( ex*ex - 2.f*ex );
+            float FLJ =  2.f*Eii*( ex*ex - ex     )*REQK.w;
+
+            float4 fetot  = fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQK.z*0.f;
+
+            //printf(  "FE(RvdW[%i]) Paul(%g,%g,%g|%g) Lond(%g,%g,%g|%g) Coul(%g,%g,%g|%g)  \n", ia0, fe_Paul.x,fe_Paul.y,fe_Paul.z,fe_Paul.w,   fe_Lond.x,fe_Lond.y,fe_Lond.z,fe_Lond.w,    fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w  );
+            //printf(  "%i %8.3f  %g %g    %g %g    %g %g  \n", ia0, dp.x, fe_Paul.x,fe_Paul.w,   fe_Lond.x,fe_Lond.w,    fe_Coul.x,fe_Coul.w  );
+            printf(  "%i %8.3f  %g %g %g %g %g   %g %g %g %g %g  \n", ia0, dp.x,  ELJ, fetot.w, fe_Paul.w,fe_Lond.w,fe_Coul.w*REQK.z,   FLJ, fetot.x, fe_Paul.x,fe_Lond.x,fe_Coul.x*REQK.z  );
+
+        }
+    }
+    */
+    
+    const int nMax = nab*nGrid.z;
+    if(iG>nMax) return;
+
+    const float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
+    const float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
+    const float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
+
+    const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
+                                       +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
+    //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+    float4 fe_Paul = float4Zero;
+    float4 fe_Lond = float4Zero;
+    float4 fe_Coul = float4Zero;
+    for (int i0=0; i0<nAtoms; i0+= nL ){
+        const int i = i0 + iL;
+        //if(i>=nAtoms) break;  // wrong !!!!
+        LATOMS[iL] = atoms[i];
+        LCLJS [iL] = REQKs[i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            if( (j+i0)<nAtoms ){ 
+                const float4 REQK = LCLJS[j];
+                float3       dp   = pos - LATOMS[j].xyz;
+            
+                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+
+                            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
+                            float  r2  = dot(dp,dp);
+                            float  r   = sqrt(r2);
+                            float ir2  = 1.f/(r2+R2damp); 
+                            // ---- Electrostatic
+                            float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
+                            fe_Coul   += (float4)(dp*(E*ir2), E );
+                            // ---- Morse ( Pauli + Dispersion )
+                            float    e = exp( -alphaMorse*(r-REQK.x) );
+                            float   eM = REQK.y*e;
+                            float   de = 2.f*alphaMorse*eM/r;
+                            float4  fe = (float4)( dp*de, eM );
+                            fe_Paul += fe * e;
+                            fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );
+
+                            // if((iG==0)&&(j==0)){
+                            //     //float3 sh = dp - pos + LCLJS[j].xyz + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+                            //     float3 sh = shift;
+                            //     printf( "GPU(%2i,%2i,%2i) sh(%7.3f,%7.3f,%7.3f)\n", ix,iy,iz, sh.x,sh.y,sh.z  );
+                            // }
+                            //ipbc++; 
+                            
+                            dp   +=lvec.a.xyz;
+                            //shift+=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                        //shift+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp   +=shift_c;
+                    //shift+=shift_c;
+                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
+                    //dp+=lvec.c.xyz;
+                }
+
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    int4 coord = (int4){ia,ib,ic,0};
+    //write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
+    write_imagef( FE_Paul, coord, fe_Paul );
+    write_imagef( FE_Lond, coord, fe_Lond );
+    write_imagef( FE_Coul, coord, fe_Coul );
+}
+
+// ======================================================================
+//                           add_DipoleField()
+// ======================================================================
+
+__kernel void addDipoleField(
+    const int n,                     // 1
+    __global float4*  ps,            // 2
+    __global float4*  dipols,        // 3
+    __write_only image3d_t  FE_Coul, // 4
+    const int4     nGrid,            // 5
+    const cl_Mat3  dGrid,            // 6
+    const float4   grid_p0           // 7
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+
+    const int nMax = nab*nGrid.z;
+    if(iG>nMax) return;
+
+    //if(iG==0){printf("GPU::addDipoleField(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, n  );}
+
+    float3 pos     = grid_p0.xyz + dGrid.a.xyz*ia + dGrid.b.xyz*ib  + dGrid.c.xyz*ic;
+    float4 fe  = float4Zero;
+    for (int i0=0; i0<n; i0+= nL ){
+        int i = i0 + iL;
+        //if(i>=nAtoms) break;  // wrong !!!!
+        LATOMS[iL] = ps    [i];
+        LCLJS [iL] = dipols[i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            if( (j+i0)<n ){ 
+                float4 P     = LCLJS [j];
+                float4 atom  = LATOMS[j];
+                float3 d     = pos - atom.xyz;
+                float  invr2 = 1.f / dot(d,d);
+                float  invr  = sqrt(invr2);
+                float  invr3 = invr*invr2;
+                // https://en.wikipedia.org/wiki/Electric_dipole_moment#Potential_and_field_of_an_electric_dipole
+                // Efield(R) = const *(    R*(Q/|R|^3) + R*3*<p|R>/|R|^5 - p/|R|^3
+
+                float  VP  =  dot( P.xyz, d )*invr2;
+                float4 fei = (float4){
+                    (d*( P.w + 3*VP ) - P.xyz )*invr3,   // Force  (E-filed )
+                       ( P.w +   VP           )*invr     // Energy (Potential)
+                }*COULOMB_CONST;
+                fe    += fei;
+
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    int4 coord = (int4){ia,ib,ic,0};
+    write_imagef( FE_Coul, coord, fe );
+}
+
+
+
+
+
+
 
 // =====================================================================
 // =====================================================================
@@ -1472,241 +1778,3 @@ __kernel void evalMMFFf4_local(
 // =====================================================================
 // =====================================================================
 // =====================================================================
-
-
-
-// ======================================================================
-//                           make_GridFF()
-// ======================================================================
-
-__kernel void make_GridFF(
-    const int nAtoms,                // 1
-    __global float4*  atoms,         // 2
-    __global float4*  REQKs,         // 3
-    __write_only image3d_t  FE_Paul, // 4
-    __write_only image3d_t  FE_Lond, // 5
-    __write_only image3d_t  FE_Coul, // 6
-    const int4     nPBC,             // 7
-    const int4     nGrid,            // 8
-    const cl_Mat3  lvec,             // 9
-    const float4   grid_p0,          // 10
-    const float4   GFFParams         // 11
-){
-    __local float4 LATOMS[32];
-    __local float4 LCLJS [32];
-    const int iG = get_global_id (0);
-    const int nG = get_global_size(0);
-    const int iL = get_local_id  (0);
-    const int nL = get_local_size(0);
-    const int nab = nGrid.x*nGrid.y;
-    const int ia  = iG%nGrid.x; 
-    const int ib  = (iG%nab)/nGrid.x;
-    const int ic  = iG/nab; 
-
-    const float  alphaMorse = GFFParams.y;
-    const float  R2damp     = GFFParams.x*GFFParams.x;
-    
-    if(iG==0){printf("GPU:make_GridFF() nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i) Rdamp %g alphaMorse %g \n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z, GFFParams.x, alphaMorse );}
-    if(iG==0){printf("GPU:make_GridFF() p0{%6.3f,%6.3f,%6.3f} lvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}} \n", grid_p0.x,grid_p0.y,grid_p0.z,  lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );}
-    /*
-    //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
-    if(iG==0){
-        printf("GPU:make_GridFF(natoms=%i)\n", nAtoms);
-        for(int i=0; i<nAtoms; i++){ printf("GPU:atom[%i] apos(%6.3f,%6.3f,%6.3f|%g) rekq(%6.3f,%10.7f,%6.3f|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
-        int ia0 = 0;
-        float4 REQK = REQKs[ia0];
-        float Rii = REQK.x*2.f;
-        float Eii = REQK.y*REQK.y;
-        int np  = 20;
-        float dx      = 0.1;
-        float x0      = REQK.x*2.f - np*dx/2;
-        
-        //         expr = np.exp( b*Rj )
-        // cP    = Ej*expr*expr
-        // cL    = Ej*expr
-
-        const float ej   = exp( REQK.w * REQK.x );
-        const float cL   = ej*REQK.y;
-        const float cP   = ej*cL;
-
-        printf(  "GPU: REQK Ri %g Ei %g Q %g beta %g \n", REQK.x, REQK.y, REQK.z, REQK.w );
-        printf(  "GPU: ej %g  cP %g cL %g \n", ej, cP, cL );
-        printf(  "#i  r.x  E_LJ E_Paul E_Lond, E_Coul  Fx_LJ Fx_Paul Fx_Lond, Fx_Coul  \n" );
-        for(int i=0; i<np; i++){
-            float4 fe_Paul = float4Zero;
-            float4 fe_Lond = float4Zero;
-            float4 fe_Coul = float4Zero;
-            
-            float3 dp  = (float3){ x0 + dx*i, 0.f, 0.f  };
-            float  r2  = dot(dp,dp);
-            float  r   = sqrt(r2);
-            float ir2  = 1/(r2+R2damp); 
-            // ---- Electrostatic
-            float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
-            fe_Coul   += (float4)(dp*(E*ir2), E );
-            // ---- Morse ( Pauli + Dispersion )
-            float    e = exp( -REQK.w*(r-REQK.x) );
-            float   eM = REQK.y*e;
-            float   de = 2.f*REQK.w*eM/r;
-            float4  fe = (float4)( dp*de, eM );
-            fe_Paul += fe * e;
-            fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );
-
-            float ex  =      exp( -REQK.w * (r - Rii ) );
-            float ELJ =      Eii*( ex*ex - 2.f*ex );
-            float FLJ =  2.f*Eii*( ex*ex - ex     )*REQK.w;
-
-            float4 fetot  = fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQK.z*0.f;
-
-            //printf(  "FE(RvdW[%i]) Paul(%g,%g,%g|%g) Lond(%g,%g,%g|%g) Coul(%g,%g,%g|%g)  \n", ia0, fe_Paul.x,fe_Paul.y,fe_Paul.z,fe_Paul.w,   fe_Lond.x,fe_Lond.y,fe_Lond.z,fe_Lond.w,    fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w  );
-            //printf(  "%i %8.3f  %g %g    %g %g    %g %g  \n", ia0, dp.x, fe_Paul.x,fe_Paul.w,   fe_Lond.x,fe_Lond.w,    fe_Coul.x,fe_Coul.w  );
-            printf(  "%i %8.3f  %g %g %g %g %g   %g %g %g %g %g  \n", ia0, dp.x,  ELJ, fetot.w, fe_Paul.w,fe_Lond.w,fe_Coul.w*REQK.z,   FLJ, fetot.x, fe_Paul.x,fe_Lond.x,fe_Coul.x*REQK.z  );
-
-        }
-    }
-    */
-    
-    const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
-
-    const float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
-    const float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
-    const float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
-
-    const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
-                                       +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
-    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
-    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
-
-    //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
-    float4 fe_Paul = float4Zero;
-    float4 fe_Lond = float4Zero;
-    float4 fe_Coul = float4Zero;
-    for (int i0=0; i0<nAtoms; i0+= nL ){
-        const int i = i0 + iL;
-        //if(i>=nAtoms) break;  // wrong !!!!
-        LATOMS[iL] = atoms[i];
-        LCLJS [iL] = REQKs[i];
-        barrier(CLK_LOCAL_MEM_FENCE);
-        for (int j=0; j<nL; j++){
-            if( (j+i0)<nAtoms ){ 
-                const float4 REQK = LCLJS[j];
-                float3       dp   = pos - LATOMS[j].xyz;
-            
-                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
-                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
-
-                //float3 shift=shift0; 
-                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
-                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
-                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
-
-                            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
-                            float  r2  = dot(dp,dp);
-                            float  r   = sqrt(r2);
-                            float ir2  = 1.f/(r2+R2damp); 
-                            // ---- Electrostatic
-                            float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
-                            fe_Coul   += (float4)(dp*(E*ir2), E );
-                            // ---- Morse ( Pauli + Dispersion )
-                            float    e = exp( -alphaMorse*(r-REQK.x) );
-                            float   eM = REQK.y*e;
-                            float   de = 2.f*alphaMorse*eM/r;
-                            float4  fe = (float4)( dp*de, eM );
-                            fe_Paul += fe * e;
-                            fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );
-
-                            // if((iG==0)&&(j==0)){
-                            //     //float3 sh = dp - pos + LCLJS[j].xyz + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
-                            //     float3 sh = shift;
-                            //     printf( "GPU(%2i,%2i,%2i) sh(%7.3f,%7.3f,%7.3f)\n", ix,iy,iz, sh.x,sh.y,sh.z  );
-                            // }
-                            //ipbc++; 
-                            
-                            dp   +=lvec.a.xyz;
-                            //shift+=lvec.a.xyz;
-                        }
-                        dp   +=shift_b;
-                        //shift+=shift_b;
-                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
-                        //dp+=lvec.b.xyz;
-                    }
-                    dp   +=shift_c;
-                    //shift+=shift_c;
-                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
-                    //dp+=lvec.c.xyz;
-                }
-
-            }
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
-    int4 coord = (int4){ia,ib,ic,0};
-    //write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
-    write_imagef( FE_Paul, coord, fe_Paul );
-    write_imagef( FE_Lond, coord, fe_Lond );
-    write_imagef( FE_Coul, coord, fe_Coul );
-}
-
-// ======================================================================
-//                           add_DipoleField()
-// ======================================================================
-
-__kernel void addDipoleField(
-    const int n,                     // 1
-    __global float4*  ps,            // 2
-    __global float4*  dipols,        // 3
-    __write_only image3d_t  FE_Coul, // 4
-    const int4     nGrid,            // 5
-    const cl_Mat3  dGrid,            // 6
-    const float4   grid_p0           // 7
-){
-    __local float4 LATOMS[32];
-    __local float4 LCLJS [32];
-    const int iG = get_global_id (0);
-    const int nG = get_global_size(0);
-    const int iL = get_local_id  (0);
-    const int nL = get_local_size(0);
-    const int nab = nGrid.x*nGrid.y;
-    const int ia  = iG%nGrid.x; 
-    const int ib  = (iG%nab)/nGrid.x;
-    const int ic  = iG/nab; 
-
-    const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
-
-    //if(iG==0){printf("GPU::addDipoleField(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, n  );}
-
-    float3 pos     = grid_p0.xyz + dGrid.a.xyz*ia + dGrid.b.xyz*ib  + dGrid.c.xyz*ic;
-    float4 fe  = float4Zero;
-    for (int i0=0; i0<n; i0+= nL ){
-        int i = i0 + iL;
-        //if(i>=nAtoms) break;  // wrong !!!!
-        LATOMS[iL] = ps    [i];
-        LCLJS [iL] = dipols[i];
-        barrier(CLK_LOCAL_MEM_FENCE);
-        for (int j=0; j<nL; j++){
-            if( (j+i0)<n ){ 
-                float4 P     = LCLJS [j];
-                float4 atom  = LATOMS[j];
-                float3 d     = pos - atom.xyz;
-                float  invr2 = 1.f / dot(d,d);
-                float  invr  = sqrt(invr2);
-                float  invr3 = invr*invr2;
-                // https://en.wikipedia.org/wiki/Electric_dipole_moment#Potential_and_field_of_an_electric_dipole
-                // Efield(R) = const *(    R*(Q/|R|^3) + R*3*<p|R>/|R|^5 - p/|R|^3
-
-                float  VP  =  dot( P.xyz, d )*invr2;
-                float4 fei = (float4){
-                    (d*( P.w + 3*VP ) - P.xyz )*invr3,   // Force  (E-filed )
-                       ( P.w +   VP           )*invr     // Energy (Potential)
-                }*COULOMB_CONST;
-                fe    += fei;
-
-            }
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
-    int4 coord = (int4){ia,ib,ic,0};
-    write_imagef( FE_Coul, coord, fe );
-}
