@@ -39,9 +39,11 @@ static MMFFparams* params_glob;
 #include "SMILESparser.h"
 #include "DynamicOpt.h"
 
+#include "MultiSolverInterface.h"
+
 #include "datatypes_utils.h"
 
-class MolWorld_sp3{ public:
+class MolWorld_sp3 : public SolverInterface { public:
     const char* data_dir     = "common_resources";
     const char* xyz_name     = "input";
     const char* surf_name    = "surf";
@@ -138,9 +140,32 @@ class MolWorld_sp3{ public:
 
     double Kpick = -2.0;
 
+// ===============================================
+//       Implement    SolverInterface
+// ===============================================
 
+virtual double solve( int nmax=1000, double tol=1e-6 )override{
+    run_omp( nmax, opt.dt_max, tol );
+    return Etot;
+}
+
+virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
+    ffl.lvec = *lvec;
+    for(int i=0; i<ffl.nvecs; i++){
+        ffl.apos [i] = ps[i];
+        ffl.vapos[i] = Vec3dZero;
+    }
+}
+
+virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
+    for(int i=0; i<ffl.nvecs; i++){
+        ps[i]=ffl.apos[i];
+    }
+    return Etot;
+}
 
 // =================== Functions
+
 
 virtual void swith_method(){ bGridFF=!bGridFF; };
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i ffl.bAngleCosHalf %i \n", bGridFF, ffl.bAngleCosHalf ); return str; }
@@ -217,10 +242,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         if(verbosity>1)gridFF.grid.printCell();
         gridFF.allocateFFs();
         //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-        if(bAutoNPBC){  
-            gridFF.nPBC=Vec3i{1,1,0};
-            autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); 
-        }
+        gridFF.nPBC=Vec3i{1,1,0};
+        if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
         //gridFF.nPBC = (Vec3i){0,0,0};
         //gridFF.nPBC = (Vec3i){1,1,0};
         //gridFF.nPBC = (Vec3i){10,10,0};
@@ -783,7 +806,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     bChargeUpdated=false;
 }
 
-int run_omp( int niter, double dt, double Fconv, double Flim ){
+int run_omp( int niter, double dt, double Fconv=1e-6, double Flim=1000 ){
 
     long T0 = getCPUticks();
     double E=0,F2=0;
