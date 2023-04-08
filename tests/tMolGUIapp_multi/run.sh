@@ -30,6 +30,7 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -m $nsys -x common_resources/polydiacetylene_OH
 #./$name -m $nsys -x common_resources/polymer-2_new
+#./$name -m 10    -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 
@@ -51,7 +52,7 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 
-#./$name -m $nsys -x common_resources/polymer-2_new          -n 221 -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/polymer-2_new              -g common_resources/NaCl_1x1_L2
 ./$name -m 10 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
 
