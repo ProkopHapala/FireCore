@@ -150,7 +150,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
         pack    ( ff.nnode , ff.bKs,        BKs      +i0n );
         pack    ( ff.nnode , ff.Ksp,        Ksp      +i0n );
         pack    ( ff.nnode , ff.Kpp,        Kpp      +i0n );
-        pack    ( nbmol.natoms, nbmol.REQs, REQs        +i0a, fabs(gridFF.alphaMorse) );
+        pack    ( nbmol.natoms, nbmol.REQs, REQs     +i0a );
     }
 
     //if(isys==5)
@@ -262,12 +262,12 @@ void setup_MMFFf4_ocl(){
     if(!task_print )   task_print = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );
     if(!task_MMFF  )   task_MMFF  = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
 
-    if((!task_NBFF_Grid)&&bGridFF ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
-    if(!task_NBFF                 ){ task_NBFF      = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); }
+    if((!task_NBFF_Grid)&&bGridFF ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC ); } 
+    if(!task_NBFF                 ){ task_NBFF      = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC ); }
 
     // if(!task_NBFF  ) { 
-    //     if( bGridFF ){ task_NBFF  = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); } 
-    //     else         { task_NBFF  = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp ); }
+    //     if( bGridFF ){ task_NBFF  = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC ); } 
+    //     else         { task_NBFF  = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC ); }
     // }
     if(!task_cleanF)task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode       );
 }
@@ -279,7 +279,7 @@ void setup_NBFF_ocl(){
     if(!task_cleanF )task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode        );
     if(!task_move   )task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode        ); 
     if(!task_print  )task_print  = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode        );
-    if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
+    if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC  );
 }
 
 void picked2GPU( int ipick,  double K ){
@@ -480,9 +480,11 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     long T0=getCPUticks();
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
     Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
-    pack( gridFF.natoms, gridFF.apos,  atoms_surf,   sq(gridFF.Rdamp) );
-    pack( gridFF.natoms, gridFF.REQs, REQs_surf , fabs(gridFF.alphaMorse) );
+    pack( gridFF.natoms, gridFF.apos,  atoms_surf, sq(gridFF.Rdamp) );
+    pack( gridFF.natoms, gridFF.REQs, REQs_surf                     );   // ToDo: H-bonds should be here
     long T1=getCPUticks();
+    ocl.GFFparams.x=gridFF.Rdamp;
+    ocl.GFFparams.y=gridFF.alphaMorse;
     ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
     printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );

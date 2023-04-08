@@ -335,7 +335,7 @@ void setup_MMFFf4_ocl(){
     */
     task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );   
     task_MMFF   = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
-    task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
+    task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC );
     task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode       );
 }
 
@@ -348,9 +348,9 @@ void setup_NBFF_ocl(){
     //task_NBFF    = ocl.getTask("getNonBond");
     //task_move    = ocl.getTask("updateAtomsMMFFf4");
     //task_cleanF  = ocl.getTask("cleanForceMMFFf4");
-    task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode        );
-    task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode        ); 
-    task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC, gridFF.Rdamp  );
+    task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode );
+    task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode ); 
+    task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode );
 }
 
 // ======================== EVAL OCL KERNEL functions
