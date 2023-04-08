@@ -23,7 +23,7 @@ void     copy    (int n, Quat4f* from, Quat4f* to){ for(int i=0; i<n; i++){ to[i
 
 void     set     (int n, Quat4f* qs, Quat4f v=Quat4fZero ){ for(int i=0; i<n; i++){ qs[i]=v; } }
 
-void     pack    (int n, Quat4d* fs, Quat4f* qs, float K=0 ){ for(int i=0; i<n; i++){ qs[i]  =(Quat4f)fs[i];            } }
+void     pack    (int n, Quat4d* fs, Quat4f* qs            ){ for(int i=0; i<n; i++){ qs[i]  =(Quat4f)fs[i];            } }
 void     pack    (int n, Vec3d*  fs, Quat4f* qs, float K=0 ){ for(int i=0; i<n; i++){ qs[i].f=(Vec3f)fs[i];  qs[i].e=K; } }
 void   unpack    (int n, Vec3d*  fs, Quat4f* qs            ){ for(int i=0; i<n; i++){ fs[i]  =(Vec3d)qs[i].f;           } }
 double unpack_add(int n, Vec3d*  fs, Quat4f* qs            ){ double E=0; for(int i=0; i<n; i++){ fs[i].add( (Vec3d)qs[i].f ); E+=qs[i].e; }; return E; }

@@ -629,8 +629,8 @@ __kernel void getNonBond(
     __global int4*    neighs,       // 5
     __global int4*    neighCell,    // 6
     __global cl_Mat3* lvecs,        // 7
-    const int4 nPBC,                // 8
-    const float Rdamp               // 9
+    const int4        nPBC,         // 8
+    const float4      GFFParams     // 9
 ){
     //__local float4 LATOMS[32];
     //__local float4 LCLJS [32];
@@ -675,7 +675,7 @@ __kernel void getNonBond(
     const int4   ngC   = neighCell[iaa];
     const float4 REQKi = REQKs    [iaa];
     const float3 posi  = atoms    [iav].xyz;
-    const float  R2damp = Rdamp*Rdamp;
+    const float  R2damp = GFFParams.x*GFFParams.x;
     float4 fe          = float4Zero;
 
     const cl_Mat3 lvec = lvecs[iS];
@@ -783,6 +783,8 @@ __kernel void getNonBond(
 // ======================================================================
 // ======================================================================
 
+__constant sampler_t samp0 =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
+
 __constant sampler_t sampler_1       =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 __constant sampler_t sampler_2       =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST;
 __constant sampler_t sampler_nearest =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
@@ -829,6 +831,72 @@ float4 read_imagef_trilin_( __read_only image3d_t imgIn, float4 coord ){
       + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.f,1.f,1.f,0.0) ) * fc.x )*fc.y )*fc.z;
 }; 
 
+float2 spline_hermite( float x, float4 ys ){
+    //float4  float y0, float y1, float dy0, float dy1 
+    float dy0 = (ys.z-ys.x)*0.5;
+    float dy1 = (ys.w-ys.y)*0.5;
+    float y01 = ys.x-ys.y;
+    float p2  = (-3.f*y01 -2.f*dy0 - dy1)*x;
+    float p3  = ( 2.f*y01 +    dy0 + dy1)*x*x;
+    return (float2){   ys.x + x*(dy0 +   p2 +   p3 ),  // value
+	                  dy0 + 2.f*p2 + 3.f*p3        };        // derivative
+}
+
+
+float8 hspline_basis( float x ){
+	float x2   = x*x;
+	float K    =  x2*(x - 1);
+	float d0   =  K - x2 + x;   //      x3 -   x2  
+    float d1   =  K         ;   //      x3 - 2*x2 + x
+    return (float8){
+    // ------ values
+                     d0*-0.5,
+      2*K - x2 + 1 - d1*-0.5,   //    2*x3 - 3*x2 + 1
+	 -2*K + x2     + d0* 0.5,   //   -2*x3 + 3*x2
+                     d0*0.5,
+    // ----- derivatives
+                     d0*-0.5,
+	     2*K - d1*-0.5,   //    6*x2 - 6*x
+	    -2*K + d0* 0.5,   //   -6*x2 + 6*x
+               d0*0.5                
+                     };
+}
+
+
+float4 interpolate_tricubic( __read_only image3d_t im, float4 p0 ){
+    float4 dx=(float4){1.f,0.f,0.f,0.f};
+    float4 dy=(float4){0.f,1.f,0.f,0.f};
+    float4 dz=(float4){0.f,0.f,1.f,0.f};
+    float4 iu; float4 u = fract(p0,&iu);
+    float8 cx = hspline_basis(u.x);
+    float8 cy = hspline_basis(u.y);
+    float4 p;
+    p=iu   -dz   -dy; float2 S00= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu   -dz      ; float2 S01= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu   -dz   +dy; float2 S02= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu   -dz+dy+dy; float2 S03= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    float3 S0  = S00.xyx*cy.s04.xxy + S01.xyx*cy.s15.xxy + S02.xyx*cy.s26.xxy + S03.xyx*cy.s37.xxy;
+    p=iu         -dy; float2 S10= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu            ; float2 S11= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu         +dy; float2 S12= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu      +dy+dy; float2 S13= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    float3 S1  = S10.xyx*cy.s04.xxy + S11.xyx*cy.s15.xxy + S12.xyx*cy.s26.xxy + S13.xyx*cy.s37.xxy;
+    p=iu   +dz   -dy; float2 S20= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu   +dz      ; float2 S21= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu   +dz   -dy; float2 S22= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu   +dz+dy+dy; float2 S23= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    float3 S2  = S20.xyx*cy.s04.xxy + S21.xyx*cy.s15.xxy + S22.xyx*cy.s26.xxy + S23.xyx*cy.s37.xxy;
+    p=iu+dz+dz   -dy; float2 S30= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu+dz+dz      ; float2 S31= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu+dz+dz   +dy; float2 S32= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    p=iu+dz+dz+dy+dy; float2 S33= read_imagef(im,samp0,p-dx ).x*cx.s04 + read_imagef(im,samp0,p).x*cx.s15 + read_imagef(im,samp0,p+dx).x*cx.s26 + read_imagef(im,samp0,p+dx+dx).x*cx.s37;
+    float3 S3  = S30.xyx*cy.s04.xxy + S31.xyx*cy.s15.xxy + S32.xyx*cy.s26.xxy + S33.xyx*cy.s37.xxy;
+    float8 cz = hspline_basis(u.z);
+    return S0.xyzx*cz.s04.xxxy + S1.xyzx*cz.s15.xxxy + S2.xyzx*cz.s26.xxxy + S3.xyzx*cz.s37.xxxy;
+}
+
+
+
 
 float4 interpFE( float3 pos, float3 dinvA, float3 dinvB, float3 dinvC, __read_only image3d_t imgIn ){
     const float4 coord = (float4)( dot(pos,dinvA),dot(pos,dinvB),dot(pos,dinvC), 0.0f );
@@ -858,13 +926,14 @@ __kernel void getNonBond_GridFF(
     __global int4*    neighCell,    // 6
     __global cl_Mat3* lvecs,        // 7
     const int4 nPBC,                // 8
-    const float Rdamp,              // 9
+    const float4  GFFParams,        // 9
     // GridFF
     __read_only image3d_t  FE_Paul, // 10
     __read_only image3d_t  FE_Lond, // 11
     __read_only image3d_t  FE_Coul, // 12
     const cl_Mat3  diGrid,          // 13
     const float4   grid_p0          // 14
+    
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -909,8 +978,9 @@ __kernel void getNonBond_GridFF(
     const int4   ngC   = neighCell[iaa];
     const float4 REQKi = REQKs    [iaa];
     const float3 posi  = atoms    [iav].xyz;
-    const float  R2damp = Rdamp*Rdamp;
-    float4 fe          = float4Zero;
+    const float  R2damp = GFFParams.x*GFFParams.x;
+    const float  alphaMorse = GFFParams.y;
+    float4 fe           = float4Zero;
 
     //if(iG==0){ for(int i=0; i<natoms; i++)printf( "GPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z ); }
 
@@ -984,7 +1054,7 @@ __kernel void getNonBond_GridFF(
         const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
     #endif
     //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
-    const float ej   = exp( REQKi.w * REQKi.x );
+    const float ej   = exp( alphaMorse* REQKi.x );
     const float cL   = ej*REQKi.y;
     const float cP   = ej*cL;
     fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQKi.z;
@@ -1067,7 +1137,7 @@ __kernel void evalMMFFf4_local(
     __global cl_Mat3* lvecs,        // 14
     __global cl_Mat3* ilvecs,       // 15
     const int4        nPBC,         // 16
-    const float       Rdamp,        // 17
+    const float4      GFFParams,    // 17
     const float4      MDpars,       // 18
     const int         niter         // 19
 ){
@@ -1095,6 +1165,7 @@ __kernel void evalMMFFf4_local(
     const int ica = iG + i0a-nnode; 
     const int icn = iG + i0n-nnode; 
     const int icv = iG + i0v-nnode;
+    const float R2damp = GFFParams.x*GFFParams.x;
 
     #define NNEIGH    4
     #define NATOM_LOC 128
@@ -1158,7 +1229,6 @@ __kernel void evalMMFFf4_local(
     // ---- Parameters
     const cl_Mat3 lvec    = lvecs [iS];
     const cl_Mat3 invLvec = ilvecs[iS];
-    const float  R2damp = Rdamp*Rdamp;
     const float3 shift0  = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;
     const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
     const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
@@ -1419,7 +1489,8 @@ __kernel void make_GridFF(
     const int4     nPBC,             // 7
     const int4     nGrid,            // 8
     const cl_Mat3  lvec,             // 9
-    const float4   grid_p0           // 10
+    const float4   grid_p0,          // 10
+    const float4   GFFParams         // 11
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -1432,10 +1503,11 @@ __kernel void make_GridFF(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
 
-
-    float  R2damp = 1.0;
+    const float  alphaMorse = GFFParams.y;
+    const float  R2damp     = GFFParams.x*GFFParams.x;
+    
+    if(iG==0){printf("GPU:make_GridFF() nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i) Rdamp %g alphaMorse %g \n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z, GFFParams.x, alphaMorse );}
     /*
-    if(iG==0){printf("GPU:make_GridFF(nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i))\n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z );}
     //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
     if(iG==0){
         printf("GPU:make_GridFF(natoms=%i)\n", nAtoms);
@@ -1533,7 +1605,7 @@ __kernel void make_GridFF(
                             float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
                             fe_Coul   += (float4)(dp*(E*ir2), E );
                             // ---- Morse ( Pauli + Dispersion )
-                            float    e = exp( -REQK.w*(r-REQK.x) );
+                            float    e = exp( -alphaMorse*(r-REQK.x) );
                             float   eM = REQK.y*e;
                             float   de = 2.f*REQK.w*eM/r;
                             float4  fe = (float4)( dp*de, eM );
@@ -1559,6 +1631,8 @@ __kernel void make_GridFF(
     }
     int4 coord = (int4){ia,ib,ic,0};
     write_imagef( FE_Paul, coord, fe_Paul );
+    write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
+    
     write_imagef( FE_Lond, coord, fe_Lond );
     write_imagef( FE_Coul, coord, fe_Coul );
 }

@@ -392,7 +392,7 @@ class OCL_PP: public OCL_DFT { public:
     }
 
 
-    OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
+    OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("!!!!! setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
         task->global.x = na;
@@ -400,7 +400,6 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.x=na; 
         nDOFs.y=nNode; 
         //nDOFs.x=bPBC; 
-        Rdamp = Rdamp_;
         nPBC.x = nPBC_.x;
         nPBC.y = nPBC_.y;
         nPBC.z = nPBC_.z;
@@ -415,7 +414,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_neighCell );  // 6
         err |= _useArg( nPBC               );  // 7
         err |= _useArg( cl_lvec            );  // 8
-        err |= _useArg( Rdamp              );  // 9
+        err |= _useArg( GFFparams          );  // 9
         OCL_checkError(err, "setup_getNonBond");
         return task;
         /*

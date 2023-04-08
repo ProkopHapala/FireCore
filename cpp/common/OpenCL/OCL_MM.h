@@ -39,9 +39,7 @@ class OCL_MM: public OCLsystem { public:
     //float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
     float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
     int    niter;
-    //float Rdamp  = 1e-4;
-    float Rdamp  = 1.;
-    //float R2damp = Rdamp*Rdamp;
+    float4 GFFparams{1.0,1.5,0.,0.};
 
     cl_Mat3 cl_lvec;
     cl_Mat3 cl_invLvec;
@@ -128,7 +126,7 @@ class OCL_MM: public OCLsystem { public:
         return ibuff_atoms;
     }
 
-    OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
+    OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
         //int nloc = 1;
@@ -142,7 +140,6 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.x=na; 
         nDOFs.y=nNode; 
         //nDOFs.x=bPBC; 
-        Rdamp = Rdamp_;
         v2i4( nPBC_, nPBC );
         // ------- Maybe We do-not need to do this every frame ?
         int err=0;
@@ -157,7 +154,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_lvecs     );  // 7
         //err |= _useArg( cl_lvec          );  // 7
         err |= _useArg( nPBC               );  // 8
-        err |= _useArg( Rdamp              );  // 9
+        err |= _useArg( GFFparams          );  // 9
         OCL_checkError(err, "setup_getNonBond");
         return task;
         // const int4 ns,                  // 1
@@ -173,7 +170,7 @@ class OCL_MM: public OCLsystem { public:
         // float R2damp                    // 9
     }
 
-    OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, float Rdamp_, OCLtask* task=0){
+    OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond_GridFF(na=%i,nnode=%i) itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i\n", na, nNode,  itex_FE_Paul,itex_FE_Lond,itex_FE_Coul );
         if((itex_FE_Paul<=0)||(itex_FE_Paul<=0)||(itex_FE_Paul<=0)){ printf( "ERROR in setup_getNonBond_GridFF() GridFF textures not initialized(itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i) => Exit() \n", itex_FE_Paul,itex_FE_Lond,itex_FE_Coul ); exit(0); }
         if(task==0) task = getTask("getNonBond_GridFF");
@@ -182,8 +179,7 @@ class OCL_MM: public OCLsystem { public:
         useKernel( task->ikernel );
         nDOFs.x=na; 
         nDOFs.y=nNode; 
-        //nDOFs.x=bPBC; 
-        Rdamp = Rdamp_;
+
         v2i4( nPBC_, nPBC );
         // ------- Maybe We do-not need to do this every frame ?
         int err=0;
@@ -197,7 +193,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_neighCell );  // 6
         err |= useArgBuff( ibuff_lvecs     );  // 7
         err |= _useArg( nPBC               );  // 8
-        err |= _useArg( Rdamp              );  // 9
+        err |= _useArg( GFFparams          );  // 9
         err |= useArgBuff( itex_FE_Paul    );  // 10
         err |= useArgBuff( itex_FE_Lond    );  // 11
         err |= useArgBuff( itex_FE_Coul    );  // 12   
@@ -215,7 +211,7 @@ class OCL_MM: public OCLsystem { public:
         // __global int4*    neighCell,    // 6
         // __global cl_Mat3* lvecs,        // 7
         // const int4 nPBC,                // 8
-        // const float Rdamp,              // 9
+        // const float4 GFFparams,         // 9
         // // GridFF
         // __read_only image3d_t  FE_Paul, // 10
         // __read_only image3d_t  FE_Lond, // 11
@@ -414,6 +410,7 @@ class OCL_MM: public OCLsystem { public:
         err |= _useArg( grid_n          );     // 8      
         err |= _useArg( cl_grid_lvec    );     // 9
         err |= _useArg( grid_p0         );     // 10
+        err |= _useArg( GFFparams       );     // 11
         OCL_checkError(err, "makeGridFF().setup");
         if(bRun){
             err |= task->enque_raw(); OCL_checkError(err, "makeGridFF().enque"  );
@@ -497,7 +494,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_lvecs     );    // 14
         err |= useArgBuff( ibuff_ilvecs    );    // 15
         err |= _useArg   ( nPBC            );    // 16      
-        err |= _useArg   ( Rdamp           );    // 17
+        err |= _useArg   ( GFFparams       );    // 17
         err |= _useArg   ( md_params       );    // 18
         err |= _useArg   ( niter           );    // 19
         OCL_checkError(err, "setup_evalMMFFf4_local");
@@ -518,7 +515,7 @@ class OCL_MM: public OCLsystem { public:
         // __global cl_Mat3* lvecs,        // 14
         // __global cl_Mat3* ilvecs,       // 15
         // const int4        nPBC,         // 16
-        // const float       Rdamp,        // 17
+        // const float4      GFFparams,        // 17
         // const float4      MDpars,       // 18
         // const int         niter         // 19
     }

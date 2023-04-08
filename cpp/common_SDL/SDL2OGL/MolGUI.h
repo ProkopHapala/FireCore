@@ -344,7 +344,7 @@ void MolGUI::draw(){
     if(bDoMM){
         if(W->builder.bPBC){ 
             //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-            printf( "draw() W->npbc=%i \n", W->npbc );
+            //printf( "draw() W->npbc=%i \n", W->npbc );
             Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
         }else{ drawSystem(); }
