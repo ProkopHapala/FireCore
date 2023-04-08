@@ -434,8 +434,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     if( bOcl ){
         //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
-        nIter = 100;
-        //nIter = 1;
+        //nIter = 100;
+        nIter = 1;
         eval_MMFFf4_ocl( nIter );
         //eval_NBFF_ocl  ( 1 ); 
     }else{
@@ -483,8 +483,10 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     pack( gridFF.natoms, gridFF.apos,  atoms_surf, sq(gridFF.Rdamp) );
     pack( gridFF.natoms, gridFF.REQs, REQs_surf                     );   // ToDo: H-bonds should be here
     long T1=getCPUticks();
-    ocl.GFFparams.x=gridFF.Rdamp;
-    ocl.GFFparams.y=gridFF.alphaMorse;
+    ocl.GFFparams.x = gridFF.Rdamp;
+    ocl.GFFparams.y = gridFF.alphaMorse;
+    //ocl.grid_p0     = gridFF.grid.pos0;
+    v2f4( gridFF.grid.pos0, ocl.grid_p0 );
     ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
     printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
@@ -512,6 +514,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     gridFF.grid.center_cell( cel0 );
     bGridFF=true;
     gridFF.bindSystem      (surf.natoms, surf.atypes, surf.apos, surf.REQs );
+    gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
     //gridFF.setAtomsSymetrized(surf.natoms, surf.atypes, surf.apos, surf.REQs );
     gridFF.evalCellDipole();
     if( ( fabs(gridFF.Q)>1e-6 ) || (gridFF.dip.norm2()>1e-8) ){ printf("ERROR: GridFF has dipole and dipole correction not yet implemented => exit() \n"); exit(0); }
@@ -526,6 +529,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
     bGridFF   =true; 
     //bSurfAtoms=false;
+    gridFF.shift0 = Vec3d{0.,0.,-2.0};
 }
 
 

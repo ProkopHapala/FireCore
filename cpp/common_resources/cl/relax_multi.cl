@@ -1507,6 +1507,7 @@ __kernel void make_GridFF(
     const float  R2damp     = GFFParams.x*GFFParams.x;
     
     if(iG==0){printf("GPU:make_GridFF() nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i) Rdamp %g alphaMorse %g \n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z, GFFParams.x, alphaMorse );}
+    if(iG==0){printf("GPU:make_GridFF() p0{%6.3f,%6.3f,%6.3f} lvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}} \n", grid_p0.x,grid_p0.y,grid_p0.z,  lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );}
     /*
     //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
     if(iG==0){
@@ -1577,6 +1578,7 @@ __kernel void make_GridFF(
     const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
     const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
 
+    //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
     float4 fe_Paul = float4Zero;
     float4 fe_Lond = float4Zero;
     float4 fe_Coul = float4Zero;
@@ -1588,11 +1590,13 @@ __kernel void make_GridFF(
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
             if( (j+i0)<nAtoms ){ 
-                const float4 REQK   = LCLJS [j];
-                float3 dp    = pos - LATOMS[j].xyz;
+                const float4 REQK = LCLJS[j];
+                float3       dp   = pos - LATOMS[j].xyz;
             
                 //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
                 //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+
+                //float3 shift=shift0; 
                 for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
                     for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
                         for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
@@ -1600,27 +1604,35 @@ __kernel void make_GridFF(
                             //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
                             float  r2  = dot(dp,dp);
                             float  r   = sqrt(r2);
-                            float ir2  = 1/(r2+R2damp); 
+                            float ir2  = 1.f/(r2+R2damp); 
                             // ---- Electrostatic
                             float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
                             fe_Coul   += (float4)(dp*(E*ir2), E );
                             // ---- Morse ( Pauli + Dispersion )
                             float    e = exp( -alphaMorse*(r-REQK.x) );
                             float   eM = REQK.y*e;
-                            float   de = 2.f*REQK.w*eM/r;
+                            float   de = 2.f*alphaMorse*eM/r;
                             float4  fe = (float4)( dp*de, eM );
                             fe_Paul += fe * e;
                             fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );
 
+                            // if((iG==0)&&(j==0)){
+                            //     //float3 sh = dp - pos + LCLJS[j].xyz + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+                            //     float3 sh = shift;
+                            //     printf( "GPU(%2i,%2i,%2i) sh(%7.3f,%7.3f,%7.3f)\n", ix,iy,iz, sh.x,sh.y,sh.z  );
+                            // }
                             //ipbc++; 
                             
-                            dp+=lvec.a.xyz;
+                            dp   +=lvec.a.xyz;
+                            //shift+=lvec.a.xyz;
                         }
-                        dp+=shift_b;
+                        dp   +=shift_b;
+                        //shift+=shift_b;
                         //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
                         //dp+=lvec.b.xyz;
                     }
-                    dp+=shift_c;
+                    dp   +=shift_c;
+                    //shift+=shift_c;
                     //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
                     //dp+=lvec.c.xyz;
                 }
@@ -1630,9 +1642,8 @@ __kernel void make_GridFF(
         barrier(CLK_LOCAL_MEM_FENCE);
     }
     int4 coord = (int4){ia,ib,ic,0};
+    //write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
     write_imagef( FE_Paul, coord, fe_Paul );
-    write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
-    
     write_imagef( FE_Lond, coord, fe_Lond );
     write_imagef( FE_Coul, coord, fe_Coul );
 }
