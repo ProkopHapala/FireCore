@@ -46,7 +46,8 @@ static MMFFparams* params_glob;
 class MolWorld_sp3 : public SolverInterface { public:
     const char* data_dir     = "common_resources";
     const char* xyz_name     = "input";
-    const char* surf_name    = "surf";
+    //const char* surf_name    = "surf";
+    const char* surf_name       = 0;
     const char* substitute_name = 0;    int isubs;
     //const char* lvs_name     ="input.lvs";
     //const char* surflvs_name ="surf.lvs";

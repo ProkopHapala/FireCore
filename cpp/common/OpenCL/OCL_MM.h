@@ -99,6 +99,7 @@ class OCL_MM: public OCLsystem { public:
         nbkng  = nnode*4*2;
         printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i nbkng %i \n", nSystems, nvecs, nAtoms, nnode, nbkng );
         printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i nS*nbkng %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode, nSystems*nbkng );
+        if( (nSystems<=0)||(nAtoms<=0) ){ printf("ERROR in OCL_MM::initAtomsForces() invalit size nSystems=%i nAtoms=%i => Exit() \n", nSystems, nAtoms); exit(0); }
         ibuff_atoms      = newBuffer( "atoms",      nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_aforces    = newBuffer( "aforces",    nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -130,15 +131,17 @@ class OCL_MM: public OCLsystem { public:
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
         //int nloc = 1;
-        //int nloc = 32;
-        int nloc = 64;
+        //int nloc = 4;
+        //int nloc = 8;
+        int nloc = 32;
+        //int nloc = 64;
         task->local.x = nloc;
         task->global.x = na + nloc-(na%nloc);
         task->global.y = nSystems;
 
         useKernel( task->ikernel );
         nDOFs.x=na; 
-        nDOFs.y=nNode; 
+        nDOFs.y=nNode;
         //nDOFs.x=bPBC; 
         v2i4( nPBC_, nPBC );
         // ------- Maybe We do-not need to do this every frame ?
@@ -173,9 +176,16 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond_GridFF(na=%i,nnode=%i) itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i\n", na, nNode,  itex_FE_Paul,itex_FE_Lond,itex_FE_Coul );
         if((itex_FE_Paul<=0)||(itex_FE_Paul<=0)||(itex_FE_Paul<=0)){ printf( "ERROR in setup_getNonBond_GridFF() GridFF textures not initialized(itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i) => Exit() \n", itex_FE_Paul,itex_FE_Lond,itex_FE_Coul ); exit(0); }
-        if(task==0) task = getTask("getNonBond_GridFF");
-        task->global.x = na;
+        if(task==0) task = getTask("getNonBond_GridFF");        
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        int nloc = 32;
+        //int nloc = 64;
+        task->local.x  = nloc;
+        task->global.x = na + nloc-(na%nloc);
         task->global.y = nSystems;
+
         useKernel( task->ikernel );
         nDOFs.x=na; 
         nDOFs.y=nNode; 

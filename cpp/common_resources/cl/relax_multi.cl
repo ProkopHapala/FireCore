@@ -632,10 +632,10 @@ __kernel void getNonBond(
     const int4        nPBC,         // 8
     const float4      GFFParams     // 9
 ){
-    //__local float4 LATOMS[32];
-    //__local float4 LCLJS [32];
-    __local float4 LATOMS[64];
-    __local float4 LCLJS [64];
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    //__local float4 LATOMS[64];
+    //__local float4 LCLJS [64];
     const int iG = get_global_id  (0);
     const int iS = get_global_id  (1);
     const int iL = get_local_id   (0);
@@ -645,6 +645,7 @@ __kernel void getNonBond(
 
     const int natoms=ns.x;
     const int nnode =ns.y;
+    //const int nAtomCeil =ns.w;
     const int nvec  =natoms+nnode;
 
     //const int i0n = iS*nnode; 
@@ -667,8 +668,16 @@ __kernel void getNonBond(
     //     }
     //}
 
-    if(iG>=natoms) return;
 
+    //if( iL==0 ){ for(int i=0; i<nL; i++){  LATOMS[i]=(float4){ 10000.0, (float)i,(float)iG,(float)iS }; LCLJS[i]=(float4){ 20000.0, (float)i,(float)iG,(float)iS }; } }
+
+
+    // NOTE: if(iG>=natoms) we are reading from invalid adress => last few processors produce crap, but that is not a problem
+    //       importaint is that we do not write this crap to invalid address, so we put   if(iG<natoms){forces[iav]+=fe;} at the end
+    //       we may also put these if(iG<natoms){ .. } around more things, but that will unnecessarily slow down other processors
+    //       we need these processors with (iG>=natoms) to read remaining atoms to the local memory.
+
+    //if(iG<natoms){
     //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
     const bool   bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;
     const int4   ng    = neighs   [iaa];
@@ -685,94 +694,64 @@ __kernel void getNonBond(
     const float3 shift0  = lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
     const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
     const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+    //}
 
-    // ========= Atom-to-Atom interaction ( N-body problem )    
-    for (int i0=0; i0<natoms; i0+= nL ){
-        const int i = i0 + iL;
-        //if(i>=nAtoms) break;  // wrong !!!!
-        LATOMS[iL] = atoms [i+i0v];
-        LCLJS [iL] = REQKs [i+i0a];
+    // ========= Atom-to-Atom interaction ( N-body problem )  
+
+    //barrier(CLK_LOCAL_MEM_FENCE);
+    for (int j0=0; j0<nG; j0+=nL){
+        const int i=j0+iL;
+        if(i<natoms){
+            LATOMS[iL] = atoms [i+i0v];
+            LCLJS [iL] = REQKs [i+i0a];
+        }
         barrier(CLK_LOCAL_MEM_FENCE);
-        for (int j=0; j<nL; j++){
-            const int ji=j+i0;
-            //if( (ji==1)&&(iG==0) )printf( "1 non-bond[%i,%i] %i\n",iG,ji );
-            if( (ji!=iG) && (ji<natoms) ){   // ToDo: Should interact withhimself in PBC ?
-                const float4 aj = LATOMS[j];
-                float3 dp   = aj.xyz - posi;
-                float4 REQK = LCLJS[j];
+        for (int jl=0; jl<nL; jl++){
+            const int ja=j0+jl;
+            if( (ja!=iG) && (ja<natoms) ){   // ToDo: Should interact withhimself in PBC ?
+                const float4 aj = LATOMS[jl];
+                float4 REQK     = LCLJS [jl];
+                float3 dp       = aj.xyz - posi;
+                //if((iG==44)&&(iS==0))printf( "[i=%i,ja=%i/%i,j0=%i,jl=%i/%i][iG/nG/na %i/%i/%i] aj(%g,%g,%g,%g) REQ(%g,%g,%g,%g)\n", i,ja,nG,j0,jl,nL,   iG,nG,natoms,   aj.x,aj.y,aj.z,aj.w,  REQK.x,REQK.y,REQK.z,REQK.w  );
                 REQK.x  +=REQKi.x;
                 REQK.yz *=REQKi.yz;
-                const bool bBonded = ((ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w));
+                const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));
                 int ipbc=0;
                 //if( (j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
                 //if( (ji==1)&&(iG==0) )printf( "2 non-bond[%i,%i] bBonded %i\n",iG,ji,bBonded );
-
-
                 dp += shift0;
-
-                //float3 shift = shift0;  // just DEBUG
-
-                /*
-                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
-                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
-                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
-                           if( !( bBonded &&(
-                                      ((ji==ng.x)&&(ipbc==ngC.x))
-                                    ||((ji==ng.y)&&(ipbc==ngC.y))
-                                    ||((ji==ng.z)&&(ipbc==ngC.z))
-                                    ||((ji==ng.w)&&(ipbc==ngC.w))
-                            ))){
-                                //fe += getMorseQ( dp+shifts, REQK, R2damp );
-                                //if( (ji==1)&&(iG==0)&&(iS==0) )printf( "ipbc %i(%i,%i) shift(%g,%g,%g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z ); 
-                                float4 fij = getLJQH( dp, REQK, R2damp );
-                                //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
-                                fe += fij;
-                            }
-                            ipbc++; 
-                            dp+=lvec.a.xyz;
+                // Fixed PBC size
+                for(int iy=0; iy<3; iy++){
+                    for(int ix=0; ix<3; ix++){
+                        //if( (ji==1)&&(iG==0)&&(iS==0) )printf( "GPU ipbc %i(%i,%i) shift(%7.3g,%7.3g,%7.3g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z ); 
+                        // Without these IF conditions if(bBonded) time of evaluation reduced from 61 [ms] to 51[ms]
+                        if( !( bBonded &&(
+                                  ((ja==ng.x)&&(ipbc==ngC.x))
+                                ||((ja==ng.y)&&(ipbc==ngC.y))
+                                ||((ja==ng.z)&&(ipbc==ngC.z))
+                                ||((ja==ng.w)&&(ipbc==ngC.w))
+                        ))){
+                            //fe += getMorseQ( dp+shifts, REQK, R2damp );
+                            //if( (ji==1)&&(iG==0)&&(iS==0) )printf( "ipbc %i(%i,%i) shift(%g,%g,%g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z ); 
+                            float4 fij = getLJQH( dp, REQK, R2damp );
+                            //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
+                            fe += fij;
                         }
-                        dp+=shift_a;
-                        //dp+=lvec.b.xyz;
+                        ipbc++; 
+                        dp    += lvec.a.xyz; 
                     }
-                    dp+=shift_b;
-                    //dp+=lvec.c.xyz;
+                    dp    += shift_a;
                 }
-                */
-
-                    // Fixed PBC size
-                    for(int iy=0; iy<3; iy++){
-                        for(int ix=0; ix<3; ix++){
-                            //if( (ji==1)&&(iG==0)&&(iS==0) )printf( "GPU ipbc %i(%i,%i) shift(%7.3g,%7.3g,%7.3g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z ); 
-                            // Without these IF conditions if(bBonded) time of evaluation reduced from 61 [ms] to 51[ms]
-                            if( !( bBonded &&(
-                                      ((ji==ng.x)&&(ipbc==ngC.x))
-                                    ||((ji==ng.y)&&(ipbc==ngC.y))
-                                    ||((ji==ng.z)&&(ipbc==ngC.z))
-                                    ||((ji==ng.w)&&(ipbc==ngC.w))
-                            ))){
-                                //fe += getMorseQ( dp+shifts, REQK, R2damp );
-                                //if( (ji==1)&&(iG==0)&&(iS==0) )printf( "ipbc %i(%i,%i) shift(%g,%g,%g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z ); 
-                                float4 fij = getLJQH( dp, REQK, R2damp );
-                                //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
-                                fe += fij;
-                            }
-                            ipbc++; 
-                            dp    += lvec.a.xyz;
-                            //shift += lvec.a.xyz; // just DEBUG 
-                        }
-                        dp    += shift_a;
-                        //shift += shift_a; // just DEBUG
-                        
-                    }
             }
         }
-        barrier(CLK_LOCAL_MEM_FENCE);
+        //barrier(CLK_LOCAL_MEM_FENCE);
     }
     
-    //forces[iav] = fe;
-    forces[iav] += fe;
-    //forces[iav] = fe*(-1.f);
-    
+    if(iG<natoms){
+        //forces[iav] = fe;
+        forces[iav] += fe;
+        //forces[iav] = fe*(-1.f);
+    }
 }
 
 
@@ -970,7 +949,7 @@ __kernel void getNonBond_GridFF(
     //     }
     // }
 
-    if(iG>=natoms) return;
+    //if(iG>=natoms) return;
 
     //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
     const bool   bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;
@@ -989,21 +968,20 @@ __kernel void getNonBond_GridFF(
     const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
 
     // ========= Atom-to-Atom interaction ( N-body problem )    
-    for (int i0=0; i0<natoms; i0+= nL ){
-        const int i = i0 + iL;
-        //if(i>=nAtoms) break;  // wrong !!!!
+    for (int j0=0; j0<natoms; j0+= nL ){
+        const int i = j0 + iL;
         LATOMS[iL] = atoms [i+i0v];
         LCLJS [iL] = REQKs [i+i0a];
         barrier(CLK_LOCAL_MEM_FENCE);
-        for (int j=0; j<nL; j++){
-            const int ji=j+i0;
-            if( (ji!=iG) && (ji<natoms) ){   // ToDo: Should interact withhimself in PBC ?
-                const float4 aj = LATOMS[j];
+        for (int jl=0; jl<nL; jl++){
+            const int ja=jl+j0;
+            if( (ja!=iG) && (ja<natoms) ){   // ToDo: Should interact withhimself in PBC ?
+                const float4 aj   = LATOMS[jl];
+                float4       REQK = LCLJS [jl];
                 float3 dp   = aj.xyz - posi;
-                float4 REQK = LCLJS[j];
                 REQK.x  +=REQKi.x;
                 REQK.yz *=REQKi.yz;
-                const bool bBonded = ((ji==ng.x)||(ji==ng.y)||(ji==ng.z)||(ji==ng.w));
+                const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));
                 if(bPBC){
                     int ipbc=0;
                     //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
@@ -1012,10 +990,10 @@ __kernel void getNonBond_GridFF(
                         for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
                             for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
                                 if( !( bBonded &&(
-                                        ((ji==ng.x)&&(ipbc==ngC.x))
-                                        ||((ji==ng.y)&&(ipbc==ngC.y))
-                                        ||((ji==ng.z)&&(ipbc==ngC.z))
-                                        ||((ji==ng.w)&&(ipbc==ngC.w))
+                                          ((ja==ng.x)&&(ipbc==ngC.x))
+                                        ||((ja==ng.y)&&(ipbc==ngC.y))
+                                        ||((ja==ng.z)&&(ipbc==ngC.z))
+                                        ||((ja==ng.w)&&(ipbc==ngC.w))
                                 ))){
                                     //fe += getMorseQ( dp+shifts, REQK, R2damp );
                                     float4 fij = getLJQH( dp, REQK, R2damp );
@@ -1039,6 +1017,8 @@ __kernel void getNonBond_GridFF(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
+    if(iG>=natoms) return;
 
     // ========== Interaction with grid
     const float3 posg  = posi - grid_p0.xyz;
