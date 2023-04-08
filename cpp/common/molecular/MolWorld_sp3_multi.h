@@ -8,13 +8,14 @@
 #include "OCL_MM.h"
 #include "datatypes_utils.h"
 
+#include "MultiSolverInterface.h"
 #include "Confs.h"
 
 // ======================================
 // class:        MolWorld_sp3_ocl
 // ======================================
 
-class MolWorld_sp3_multi : public MolWorld_sp3 { public:
+class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { public:
     OCL_MM     ocl;
 
     int nSystems    = 1;
@@ -199,6 +200,56 @@ void download( bool bForces=0, bool bVel=false ){
     if(bVel   ){ ocl.download( ocl.ibuff_avel,    avel    ); }
 }
 
+// ===============================================
+//       Implement    MultiSolverInterface
+// ===============================================
+
+virtual int paralel_size( )override{ return nSystems; }
+
+virtual double sove_multi ( int nmax=1000, double tol=1e-6 )override{
+    return eval_MMFFf4_ocl( nmax, tol );
+}
+
+virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
+    int i0n = isys * ocl.nnode;
+    int i0a = isys * ocl.nAtoms;
+    int i0v = isys * ocl.nvecs;
+    // ---- pack
+    pack( ocl.nvecs, ps, atoms+i0v );
+    Mat3_to_cl( ff.   lvec,  lvecs[isys] );
+    Mat3_to_cl( ff.invLvec, ilvecs[isys] );
+    if( ! bPrepared ){
+        set ( ocl.nvecs,     avel+i0v  );
+        // ---- upload to GPU
+        ocl.upload( ocl.ibuff_atoms,   atoms,   ocl.nvecs, i0v  );
+        ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v  );
+        ocl.upload( ocl.ibuff_lvecs,   lvecs,   1,         isys );
+        ocl.upload( ocl.ibuff_ilvecs,  ilvecs,  1,         isys );
+        //for(int i=0; i<ocl.nAtoms; i++){ Quat4f a=atoms[i+i0v]; a.w=-1.0; constr[i+i0a] = a; }  // contrains
+    }
+}
+
+virtual double getGeom     ( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
+    int i0n = isys * ocl.nnode;
+    int i0a = isys * ocl.nAtoms;
+    int i0v = isys * ocl.nvecs;
+    if( ! bPrepared ) ocl.download( ocl.ibuff_atoms,   atoms,   ocl.nvecs, i0v  );
+    pack( ocl.nvecs, ps, atoms+i0v );
+    //if(lvec){ lvec.a lvecs };
+}
+
+virtual void downloadPop()override{
+    ocl.download( ocl.ibuff_atoms,  atoms  );
+}
+
+virtual void uploadPop  ()override{
+    int ntot = nSystems*ocl.nvecs;
+    set ( ntot, avel);
+    ocl.upload( ocl.ibuff_avel , avel   );
+    ocl.upload( ocl.ibuff_atoms, atoms  );
+    //ocl.upload( ocl.ibuff_constr, constr );
+}
+
 // ==================================
 //          SETUP OCL KERNELS 
 // ==================================
@@ -254,7 +305,7 @@ void picked2GPU( int ipick,  double K ){
 //           eval @GPU 
 // ==================================
 
-double eval_MMFFf4_ocl( int niter, bool bForce=false ){ 
+double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //long T0 = getCPUticks();
@@ -465,10 +516,11 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
     gridFF.grid.pos0.z=z0;
     //if(verbosity>1)
-    gridFF.grid.printCell();
-    if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, nPBC, 30.0 ); }    
+    //gridFF.grid.printCell();
+    gridFF.nPBC=Vec3i{1,1,0};
+    if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
     long T0 = getCPUticks();
-    surf2ocl( nPBC, bSaveDebugXSFs );
+    surf2ocl( gridFF.nPBC, bSaveDebugXSFs );
     printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
     bGridFF   =true; 
     //bSurfAtoms=false;

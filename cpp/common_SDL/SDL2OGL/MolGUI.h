@@ -344,6 +344,7 @@ void MolGUI::draw(){
     if(bDoMM){
         if(W->builder.bPBC){ 
             //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            printf( "draw() W->npbc=%i \n", W->npbc );
             Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
         }else{ drawSystem(); }
@@ -383,9 +384,9 @@ void MolGUI::draw(){
         glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.apos[ia] );     
     }
 
-
-    if(frameCount==1){ nsys=W->getMultiSystemPointers( M_neighs, M_neighCell, M_apos, nvec); }
-    if(nsys>0){ for(int isys=0; isys<nsys; isys++){ Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); } } 
+    // --- Drawing Population of geometies overlay
+    //if(frameCount==1){ nsys=W->getMultiSystemPointers( M_neighs, M_neighCell, M_apos, nvec); }
+    //if(nsys>0){ for(int isys=0; isys<nsys; isys++){ Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); } } 
 
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
