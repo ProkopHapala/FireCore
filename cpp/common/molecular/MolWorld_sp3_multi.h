@@ -475,6 +475,63 @@ virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGr
 //       Grid evaluation
 // ==================================
 
+
+bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true, const char* logfiflename="checkSampleGridFF.log" ){
+    if(bPrint){ printf("MolWorld_sp3_multi::checkSampleGridFF(np=%i,p0{%6.3f,%6.3f,%6.3f},p1{%6.3f,%6.3f,%6.3f}REQ{%6.3f,%10.7f,%6.3f,%10.7f}) \n", n, ocl.nAtoms, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z, REQ.x,REQ.y,REQ.z,REQ.w ); };
+    if(ocl.nAtoms<n){ printf("ERROR in MolWorld_sp3_multi::checkSampleGridFF() natom(%i)<n(%i) => Exit()\n", ocl.nAtoms, n ); }
+    Vec3d dp = (p1-p0)*(1./n);
+    for(int i=0; i<n; i++){
+        v2f4(p0+dp*i, *((float4*)atoms+i) );  
+        REQs [i] = (Quat4f)REQ;
+    }
+    ocl.sampleGridFF( n, atoms, REQs, aforces, true );
+    FILE * logf=0;
+    if(logfiflename){ 
+        logf = fopen(logfiflename,"w");
+        fprintf(     logf, "i   x y z     E  Eref     fx fx_ref      fy fy_ref     fz  fz_ref\n");
+    }
+    if(bPrint){     printf("i   x y z     E  Eref     fx fx_ref      fy fy_ref     fz  fz_ref\n"); }
+    double tol2=tol*tol;
+    //Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );   //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
+    //bool err = false;
+    bool bErr=false;
+    double err2Max=0;
+    int imax = -1;
+    for(int i=0; i<n; i++){
+        Vec3d fref;
+        Vec3d  p    = p0 + dp*i;
+        Quat4f fe   = aforces[i];
+        float  Eref = gridFF.getMorseQH_PBC_omp( p, REQ, fref );
+        float  dE   = fe.e-Eref;
+        Vec3f  df   = fe.f - (Vec3f)fref;
+        double e2e = dE*dE     /( Eref*Eref + fe.e*fe.e        + 1 );         
+        double e2f = df.norm2()/( fe.f.norm2() + fref.norm2() + 1 ); 
+        if( e2e>err2Max ){ err2Max=e2e; imax=i; }
+        if( e2f>err2Max ){ err2Max=e2f; imax=i; }
+        if( (e2e>tol2) || (e2f>tol2) ){
+            bErr=true;
+            if(bWarn)printf("WARRNING[%i/%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g,%g,%g|%g)  NBFF(%g.%g,%g|%g)\n", i, n, dE, df.norm(), p.x,p.y,p.z,   fe.x,fe.y,fe.z,fe.w,   fref.x,fref.y,fref.z,Eref  );
+            if(bExit){ printf("ERROR in GridFF::checkEFProfileVsNBFF() - GridFF force does not match NBFF reference at test point %i MaxRelativeError=%g => Exit()\n", i, sqrt(err2Max) ); exit(0); }
+        } 
+        if(bPrint){ printf(       "%i    %6.3f %6.3f %6.3f    %g %g   %g %g    %g %g    %g %g\n", i, p.x, p.y, p.z,    fe.e, Eref,    fe.x,fref.x,    fe.y,fref.y,    fe.z,fref.z ); }
+        if(logf  ){fprintf( logf, "%i    %6.3f %6.3f %6.3f    %g %g   %g %g    %g %g    %g %g\n", i, p.x, p.y, p.z,    fe.e, Eref,    fe.x,fref.x,    fe.y,fref.y,    fe.z,fref.z ); }
+    }
+    if(logf){ fclose(logf); }
+    if(bWarn && bErr ){
+        //printf("WARRNING GridFF MaxRelativeError=%g at point[%i]\n",  sqrt(err2Max), imax );
+        Vec3d fref;
+        Vec3d  p    = p0 + dp*imax;
+        Quat4f fe   = aforces[imax];
+        float  Eref = gridFF.getMorseQH_PBC_omp( p, REQ, fref );
+        float  dE   = fe.e-Eref;
+        Vec3f  df   = fe.f - (Vec3f)fref;
+        double e2e = dE*dE     /(Eref*Eref + fe.e*fe.e + 1);          err2Max=fmax(err2Max,e2e);
+        double e2f = df.norm2()/( fe.f.norm2() + fref.norm2() + 1 );  err2Max=fmax(err2Max,e2f);
+        printf("WARRNING GridFF MaxError=%g at[%i/%i] dE=%g |dF|=%g p(%6.3f,%6.3f,%6.3f) GridFF(%g.%g,%g|%g)  NBFF(%g.%g,%g|%g)\n",  sqrt(err2Max), imax, n, dE, df.norm(), p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w,   fref.x,fref.y,fref.z,Eref  );
+    }
+    return bErr;
+}
+
 void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     int err=0;
     printf( "surf2ocl() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );

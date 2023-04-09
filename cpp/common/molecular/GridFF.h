@@ -507,7 +507,7 @@ void getEFprofile( int n, Vec3d p0, Vec3d p1, Quat4d REQ, Quat4d* fes, bool bPri
     }
 }
 
-double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true, const char* logfiflename="gridFF_vs_NBFF.log" ){
+double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true, const char* logfiflename="checkEFProfileVsNBFF.log" ){
     if(bPrint){ printf("GridFF::checkEFProfileVsNBFF(np=%i,natoms=%i,npbc=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, natoms,npbc, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
     FILE * logf=0;
     if(logfiflename){ 

@@ -382,6 +382,51 @@ class OCL_MM: public OCLsystem { public:
         // __global float4*  fneigh       // 6
     }
 
+
+    OCLtask* sampleGridFF( int n, Quat4f* fs=0, Quat4f* ps=0, Quat4f* REQs=0, bool bRun=true, OCLtask* task=0){
+        printf("OCL_MM::sampleGridFF() bRun=%i n=%i fs=%li ps=%li REQs=%li \n", n, bRun, n, fs,ps,REQs  );
+        int err=0;
+        if((itex_FE_Paul<=0)||(itex_FE_Lond<=0 )||(itex_FE_Coul<=0)){ printf("ERROR in OCL_MM::sampleGridFF() textures not initialized itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i => Exit()\n",  itex_FE_Paul, itex_FE_Lond,  itex_FE_Coul ); }
+        if(( ibuff_atoms<=0)||(ibuff_aforces<=0)||(ibuff_REQs<=0  )){ printf("ERROR in OCL_MM::sampleGridFF() buffers  not initialized ibuff_atoms=%i ibuff_aforces=%i ibuff_REQs=%i => Exit()\n",    ibuff_atoms,  ibuff_aforces, ibuff_REQs   ); }
+        if(ps   )upload( ibuff_atoms, ps,   n );
+        if(REQs )upload( ibuff_REQs,  REQs, n );
+        OCL_checkError(err, "sampleGridFF().upload" );
+        if(task==0) task = getTask("sampleGridFF");
+        task->local.x  = 1;
+        task->global.x = n;
+        useKernel( task->ikernel );
+        nDOFs.x=n; 
+        // ------- Maybe We do-not need to do this every frame ?
+        err |= _useArg   ( nDOFs );            // 1
+        err |= useArgBuff( ibuff_atoms     );  // 2
+        err |= useArgBuff( ibuff_aforces   );  // 3
+        err |= useArgBuff( ibuff_REQs      );  // 4
+        err |= _useArg   ( GFFparams       );  // 5
+        err |= useArgBuff( itex_FE_Paul    );  // 6
+        err |= useArgBuff( itex_FE_Lond    );  // 7
+        err |= useArgBuff( itex_FE_Coul    );  // 8   
+        err |= _useArg( cl_diGrid          );  // 9
+        err |= _useArg( grid_p0            );  // 10
+        OCL_checkError(err, "sampleGridFF.setup");
+        if(bRun){
+            err |= task->enque_raw();                      OCL_checkError(err, "sampleGridFF().enque"    );
+            err |= download( ibuff_atoms, fs,   n );  OCL_checkError(err, "sampleGridFF().downalod" );
+            err |= finishRaw();                            OCL_checkError(err, "sampleGridFF().finish"   );
+        }
+        return task;
+        return task;
+        // const int4 ns,                  // 1
+        // __global float4*  atoms,        // 2
+        // __global float4*  forces,       // 3
+        // __global float4*  REQKs,        // 4
+        // const float4  GFFParams,        // 5
+        // __read_only image3d_t  FE_Paul, // 6
+        // __read_only image3d_t  FE_Lond, // 7
+        // __read_only image3d_t  FE_Coul, // 8
+        // const cl_Mat3  diGrid,          // 9
+        // const float4   grid_p0          // 10
+    }
+
     //void setGridShape( const Mat3d& dCell ){
     void setGridShape( const GridShape& grid ){
         v2i4      ( grid.n      , grid_n       );
