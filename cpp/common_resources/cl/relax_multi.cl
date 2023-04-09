@@ -1428,7 +1428,7 @@ __kernel void evalMMFFf4_local(
     const float4      MDpars,       // 18
     const int         niter         // 19
 ){
-    /*
+    
     const int iG = get_global_id  (0); // intex of atom
     const int iS = get_global_id  (1); // index of system
     const int nG = get_global_size(0);
@@ -1454,6 +1454,7 @@ __kernel void evalMMFFf4_local(
     const int icv = iG + i0v-nnode;
     const float R2damp = GFFParams.x*GFFParams.x;
 
+    
     #define NNEIGH    4
     #define NATOM_LOC 128
     #define NNODE_LOC 64
@@ -1513,6 +1514,7 @@ __kernel void evalMMFFf4_local(
         _REQs[iLc] = REQc;
     }
     
+    
     // ---- Parameters
     const cl_Mat3 lvec    = lvecs [iS];
     const cl_Mat3 invLvec = ilvecs[iS];
@@ -1533,12 +1535,15 @@ __kernel void evalMMFFf4_local(
     const float* Kspi  = (float*)&vKs;  
     const float* Kppi  = (float*)&vKp; 
     const float  ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
- 
+    
+
     // =================================
     //            BIG LOOP
     // =================================
 
     for(int itr=0; itr<niter; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
+    
+    
     barrier(CLK_LOCAL_MEM_FENCE);
 
     // ======================================
@@ -1633,7 +1638,9 @@ __kernel void evalMMFFf4_local(
         }
 
     }
+    
 
+    
     // ======================================
     //          NON-COVALENT INTERACTIONS
     // ======================================
@@ -1692,11 +1699,11 @@ __kernel void evalMMFFf4_local(
             dp+=shift_a;
         }
     }
-
+    
     // ======================================
     //                MOVE 
     // ======================================
-
+    /*
     barrier(CLK_LOCAL_MEM_FENCE);    // Make sure _fneigh is uptodate for all atoms
 
     if(bNode){ 
@@ -1738,9 +1745,11 @@ __kernel void evalMMFFf4_local(
         pc.w=0;vc.w=0;
         _apos[iLc] = pc;
     }
+    */
 
     } // END OF THE BIG LOOP
 
+    /*
     if(bNode){
         apos[iav      ]=pa;
         avel[iav      ]=va;
@@ -1753,6 +1762,7 @@ __kernel void evalMMFFf4_local(
         avel[ica]=vc;
     }
     */
+    
 };
 
 // =====================================================================
