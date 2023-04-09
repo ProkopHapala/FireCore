@@ -110,6 +110,7 @@ virtual void init( bool bGrid ) override {
     //ocl.printOnGPU( 0,mask );
     //ocl.printOnGPU( 1,mask );
     //ocl.printOnGPU( 2,mask );
+    evalCheckGridFF_ocl();
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
 
@@ -316,7 +317,7 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     long T0 = getCPUticks();
     for(int i=0; i<niter; i++){
         //err |= task_cleanF->enque_raw();      // DEBUG: this should be solved inside  task_move->enque_raw();   if we do not need to output force 
-        err |= task_MMFF      ->enque_raw();
+        err |= task_MMFF->enque_raw();
         if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
         else       { err |= task_NBFF      ->enque_raw(); }
         OCL_checkError(err, "eval_MMFFf4_ocl.task_NBFF_Grid");
@@ -324,7 +325,7 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
         err |= task_move      ->enque_raw(); 
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
-    err |= ocl.finishRaw(); printf("eval_MMFFf4_ocl() time=%g[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
+    err |= ocl.finishRaw(); printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
 
     // ===============================================================================================================================================================================
     //     Performance Measurements ( 10 replicas of polymer-2_new )
@@ -476,9 +477,9 @@ virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGr
 // ==================================
 
 
-bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true, const char* logfiflename="checkSampleGridFF.log" ){
+bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.1, 0.}, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true, const char* logfiflename="checkSampleGridFF.log" ){
     if(bPrint){ printf("MolWorld_sp3_multi::checkSampleGridFF(np=%i,p0{%6.3f,%6.3f,%6.3f},p1{%6.3f,%6.3f,%6.3f}REQ{%6.3f,%10.7f,%6.3f,%10.7f}) \n", n, ocl.nAtoms, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z, REQ.x,REQ.y,REQ.z,REQ.w ); };
-    if(ocl.nAtoms<n){ printf("ERROR in MolWorld_sp3_multi::checkSampleGridFF() natom(%i)<n(%i) => Exit()\n", ocl.nAtoms, n ); }
+    if((ocl.nAtoms*ocl.nSystems)<n){ printf("ERROR in MolWorld_sp3_multi::checkSampleGridFF() natom(%i)<n(%i) => Exit()\n", ocl.nAtoms*ocl.nSystems, n ); exit(0); }
     Vec3d dp = (p1-p0)*(1./n);
     for(int i=0; i<n; i++){
         v2f4(p0+dp*i, *((float4*)atoms+i) );  
@@ -532,6 +533,35 @@ bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double tol=1e-2, 
     return bErr;
 }
 
+bool evalCheckGridFF_ocl( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, double tol=1e-2, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.1, 0.}, double dz=0.05 ){
+    REQ=Quat4d{ 1.487, 0.02609214441, +0.0, 0.};
+    printf( "MolWorld_sp3::evalCheckGridFF_ocl() natoms=%i npbc=%i apos=%li REQs=%li shifts=%li \n", gridFF.natoms, gridFF.npbc, gridFF.apos, gridFF.REQs, gridFF.shifts );
+    _checkNull(gridFF.shifts)
+    _checkNull(gridFF.REQs)
+    _checkNull(gridFF.apos)
+    bool err = false;
+    double zmin=gridFF.grid.pos0.z+1.0;
+    double zmax=gridFF.grid.pos0.z+gridFF.grid.cell.c.z -1.0;
+    zmax=fmin(zmax,10);
+    int nz = ((int)((zmax-zmin)/dz)) + 1;
+    for( int ia=imin; ia<imax; ia++ ){
+        Vec3d p0=gridFF.apos[ia]; p0.z=zmin;
+        Vec3d p1=p0;       p1.z=zmax;
+        //double err =  checkEFProfileVsNBFF( n, p0, p1, REQ, tol, false,false );
+        err |= checkSampleGridFF( nz, p0,p1, REQ, tol, false, false, true );
+        if(err>tol){    
+            //if(bPrint)checkEFProfileVsNBFF( n, p0, p1, REQ, tol, false, true, false );
+            if(bPrint)checkSampleGridFF   ( nz, p0,p1, REQ, tol, false, true, false );
+            if(bExit){ printf("ERROR in GridFF::checkZProfilesOverAtom(%i) - GridFF force does not match NBFF reference, MaxRelativeError=%g => Exit()\n", ia, err ); exit(0); }
+            break;
+        }
+        //checkEFProfileVsNBFF( n, p0, p1, REQ, tol,  false, true, false );
+        //double err =  checkEFProfileVsNBFF( n, p0, p1, REQ, tol, false,false );
+        //err |= checkZProfilesOverAtom( ia, nz, zmin, zmax, REQ, tol, bExit, bPrint );
+    }
+    return err;
+}
+
 void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     int err=0;
     printf( "surf2ocl() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );
@@ -550,7 +580,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
     delete [] atoms_surf;
     delete [] REQs_surf;
-    bSaveDebug=true;
+    //bSaveDebug=true;
+    bSaveDebug=false;
     if(bSaveDebug){
         gridFF.allocateFFs();
         ocl.download( ocl.itex_FE_Paul, gridFF.FFPaul  );  
@@ -578,6 +609,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     if( ( fabs(gridFF.Q)>1e-6 ) || (gridFF.dip.norm2()>1e-8) ){ printf("ERROR: GridFF has dipole and dipole correction not yet implemented => exit() \n"); exit(0); }
     if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
     gridFF.grid.pos0.z=z0;
+    gridFF.lvec = gridFF.grid.cell;
+    gridFF.makePBCshifts ( gridFF.nPBC, gridFF.lvec );
     //if(verbosity>1)
     //gridFF.grid.printCell();
     gridFF.nPBC=Vec3i{1,1,0};
@@ -588,6 +621,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     bGridFF   =true; 
     //bSurfAtoms=false;
     gridFF.shift0 = Vec3d{0.,0.,-2.0};
+    // evalCheckGridFF_ocl();   // here are not initialized buffers atoms.aforce,REQs, so it will crash.
 }
 
 

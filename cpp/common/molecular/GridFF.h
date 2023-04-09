@@ -560,13 +560,13 @@ double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, doubl
 bool checkZProfilesOverAtom( int ia, int n, double zmin, double zmax, const Quat4d& REQ, double tol=1e-2, bool bExit=true, bool bPrint=true ){
     Vec3d p0=apos[ia]; p0.z=zmin;
     Vec3d p1=p0;       p1.z=zmax;
-    double err =  checkEFProfileVsNBFF( n, p0, p1, REQ, tol, false,false );
+    double err =  checkEFProfileVsNBFF( n, p0, p1, REQ, tol, false,false, true );
     if(err>tol){    
         if(bPrint)checkEFProfileVsNBFF( n, p0, p1, REQ, tol,  false, true, false );
         if(bExit){ printf("ERROR in GridFF::checkZProfilesOverAtom(%i) - GridFF force does not match NBFF reference, MaxRelativeError=%g => Exit()\n", ia, err ); exit(0); }
         return true;
     }
-    checkEFProfileVsNBFF( n, p0, p1, REQ, tol,  false, true, false );
+    //checkEFProfileVsNBFF( n, p0, p1, REQ, tol,  false, true, false );
     return false;
 }
 

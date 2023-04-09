@@ -84,6 +84,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "printOnGPU"             ,program_relax, 2);
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
         newTask( "make_GridFF"            ,program_relax, 1);
+        newTask( "sampleGridFF"           ,program_relax, 1);
         newTask( "addDipoleField"         ,program_relax, 1);
         newTask( "evalMMFFf4_local"       ,program_relax, 2);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
