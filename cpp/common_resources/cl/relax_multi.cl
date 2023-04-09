@@ -1428,7 +1428,7 @@ __kernel void evalMMFFf4_local(
     const float4      MDpars,       // 18
     const int         niter         // 19
 ){
-
+    /*
     const int iG = get_global_id  (0); // intex of atom
     const int iS = get_global_id  (1); // index of system
     const int nG = get_global_size(0);
@@ -1752,7 +1752,7 @@ __kernel void evalMMFFf4_local(
         apos[ica]=pc;
         avel[ica]=vc;
     }
-
+    */
 };
 
 // =====================================================================
