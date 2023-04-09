@@ -97,6 +97,7 @@ virtual void init( bool bGrid ) override {
 
     // ----- init systems
     realloc( nSystems );
+    evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
     float random_init = 0.5;
     for(int i=0; i<nSystems; i++){
         pack_system( i, ffl, true, false, random_init );
@@ -110,7 +111,6 @@ virtual void init( bool bGrid ) override {
     //ocl.printOnGPU( 0,mask );
     //ocl.printOnGPU( 1,mask );
     //ocl.printOnGPU( 2,mask );
-    evalCheckGridFF_ocl();
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
 
@@ -484,8 +484,9 @@ bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.0
     for(int i=0; i<n; i++){
         v2f4(p0+dp*i, *((float4*)atoms+i) );  
         REQs [i] = (Quat4f)REQ;
+        //printf( "checkSampleGridFF[%i] p(%g,%g,%g) REQ(%g,%g,%g,%g)\n", i,  atoms[i].x,atoms[i].y,atoms[i].z,    REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w  );
     }
-    ocl.sampleGridFF( n, atoms, REQs, aforces, true );
+    ocl.sampleGridFF( n, aforces, atoms, REQs, true );
     FILE * logf=0;
     if(logfiflename){ 
         logf = fopen(logfiflename,"w");

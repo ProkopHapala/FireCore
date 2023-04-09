@@ -1087,7 +1087,7 @@ __kernel void sampleGridFF(
     const int4 ns,                  // 1
     __global float4*  atoms,        // 2
     __global float4*  forces,       // 3
-    __global float4*  REQKs,        // 4
+    __global float4*  REQs,        // 4
     const float4  GFFParams,        // 5
     __read_only image3d_t  FE_Paul, // 6
     __read_only image3d_t  FE_Lond, // 7
@@ -1095,38 +1095,52 @@ __kernel void sampleGridFF(
     const cl_Mat3  diGrid,          // 9
     const float4   grid_p0          // 10
 ){
-    __local float4 LATOMS[32];
-    __local float4 LCLJS [32];
     const int iG = get_global_id  (0);
-    const int iS = get_global_id  (1);
-    const int iL = get_local_id   (0);
     const int nG = get_global_size(0);
-    const int nS = get_global_size(1);
-    const int nL = get_local_size (0);
-
-    const int natoms=ns.x;
-    const int nnode =ns.y;
-    const int nvec  =natoms+nnode;
-
-    //const int i0n = iS*nnode; 
-    const int i0a = iS*natoms; 
-    const int i0v = iS*nvec;
-    //const int ian = iG + i0n;
-    const int iaa = iG + i0a;
-    const int iav = iG + i0v;
-
-    const int iS_DBG = 5;
-    const int iG_DBG = 0;
-    if(iG>=natoms) return;
+    const int np = ns.x;
 
     //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
-    const float4 REQKi = REQKs    [iaa];
-    const float3 posi  = atoms    [iav].xyz;
-    const float  R2damp = GFFParams.x*GFFParams.x;
+    const float4 REQ        = REQs[iG];
+    const float3 posi       = atoms[iG].xyz;
+    const float  R2damp     = GFFParams.x*GFFParams.x;
     const float  alphaMorse = GFFParams.y;
-    float4 fe           = float4Zero;
+
+    const float ej   = exp( alphaMorse* REQ.x );
+    const float cL   = ej*REQ.y;
+    const float cP   = ej*cL;
+
+    if(iG==0){ printf( "GPU::sampleGridFF() np=%i R2damp=%g aMorse=%g p(%g,%g,%g) REQ(%g,%g,%g)  cP=%g cL=%g ej=%g \n", np, R2damp, alphaMorse, posi.x,posi.y,posi.z, REQ.x,REQ.y,REQ.z, cP,cL,ej  ); }
+    if(iG==0){
+        for(int i=0; i<np; i++){
+            const float4 REQ  = REQs[i];
+            const float3 posi = atoms[i].xyz;
+            const float ej   = exp( alphaMorse* REQ.x );
+            const float cL   = ej*REQ.y;
+            const float cP   = ej*cL;
+
+            float4 fe          = float4Zero;
+            const float3 posg  = posi - grid_p0.xyz;
+            const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
+            #if 0
+                coord +=(float3){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+                const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
+                const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
+                const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+            #else
+                const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
+                const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
+                const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
+            #endif
+            //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
+            fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
+        
+            printf( "GPU[%i] E,fz(%g,%g) z(%g) PLQ(%g,%g,%g) REQ(%g,%g) \n", i,   fe.w,fe.z,   posi.z,   cP,cL,REQ.z,  REQ.x,REQ.y  );
+    
+        }
+    }
 
     // ========== Interaction with grid
+    float4 fe               = float4Zero;
     const float3 posg  = posi - grid_p0.xyz;
     const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
     #if 0
@@ -1140,11 +1154,8 @@ __kernel void sampleGridFF(
         const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
     #endif
     //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
-    const float ej   = exp( alphaMorse* REQKi.x );
-    const float cL   = ej*REQKi.y;
-    const float cP   = ej*cL;
-    fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQKi.z;
-    forces[iav] += fe;
+    fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
+    forces[iG] += fe;
 }
 
 
