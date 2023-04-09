@@ -107,9 +107,9 @@ class GridFF : public NBFF{ public:
 
     void allocateFFs(){
         int ntot = grid.getNtot();
-        _realloc( FFPaul , ntot );
+        _realloc( FFPaul, ntot );
         _realloc( FFLond, ntot );
-        _realloc( FFelec  , ntot );
+        _realloc( FFelec, ntot );
     }
     
     void allocateAtoms(int natoms_){
