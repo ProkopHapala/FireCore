@@ -1435,11 +1435,14 @@ __kernel void evalMMFFf4_local(
     const int nS = get_global_size(1); // number of systems
     const int iL = get_local_id   (0);
     const int nL = get_local_size (0);
-    
+
     const int natom = nDOFs.x;
     const int nnode = nDOFs.y;
     const int nvec  = natom+nnode;
+    const int ncap  = natom - nnode;
     const int iLc   = nL+nnode;
+
+    if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local() nL=%i nG=%i nS=%i natom=%i nnode=%i ncap=%i nvec=%i \n", nL,nG,nS, natom, nnode, ncap, nvec );
 
     const int i0a = iS*natom; 
     const int i0n = iS*nnode; 
@@ -1546,6 +1549,7 @@ __kernel void evalMMFFf4_local(
     
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    
     // ======================================
     //            COVALENT INTERACTIONS
     // ======================================
@@ -1583,22 +1587,26 @@ __kernel void evalMMFFf4_local(
             if(iG<ing){
                 E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
                 float kpp = Kppi[i];
+                /*
                 // pi-pi
                 if( (ing<nnode) && (kpp>1.e-6) ){
                     epp += evalPiAling( hp.xyz, _ppos[ing].xyz, kpp,  &f1, &f2 );   fp+=f1;  fps[i]+=f2;
                     E+=epp;
                 }
+                */
             } 
+            /*
             // pi-sigma 
             float ksp = Kspi[i];
             if(ksp>1.e-6){  
                 esp += evalAngCos( (float4){hp.xyz,1.}, h, ksp, par.w, &f1, &f2 );   fp+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
                 E+=epp;
             }
+            */
         }
         
         // ========= Angles evaluation
-
+        /*
         for(int i=0; i<NNEIGH; i++){
             int ing = ings[i];
             if(ing<0) break;
@@ -1628,7 +1636,7 @@ __kernel void evalMMFFf4_local(
                 fbs[j]+= f2;
             }
         }
-
+        */
         // ========= Write neighbor forces (=recoils) to local memory
 
         const int i4=iG*4;
@@ -1639,14 +1647,13 @@ __kernel void evalMMFFf4_local(
 
     }
     
-
     
     // ======================================
     //          NON-COVALENT INTERACTIONS
     // ======================================
 
     // ========= Atom-to-Atom interaction ( N-body problem )    
-
+    /*
     for(int ja=0; ja<natom; ja+= nL ){
         const bool bBonded = ((ja==  ng.x)||(ja==  ng.y)||(ja==  ng.z)||(ja==  ng.w));
         const bool cBonded = ((ja==c_ng.x)||(ja==c_ng.y)||(ja==c_ng.z)||(ja==c_ng.w));
@@ -1699,27 +1706,30 @@ __kernel void evalMMFFf4_local(
             dp+=shift_a;
         }
     }
-    
+    */
     // ======================================
     //                MOVE 
     // ======================================
-    /*
+    
     barrier(CLK_LOCAL_MEM_FENCE);    // Make sure _fneigh is uptodate for all atoms
 
     if(bNode){ 
+        /*
         if(bk.x>=0){ fa += _fneigh  [bk.x].xyz;  fp += _fneighpi[bk.x].xyz; }
         if(bk.y>=0){ fa += _fneigh  [bk.y].xyz;  fp += _fneighpi[bk.y].xyz; }
         if(bk.z>=0){ fa += _fneigh  [bk.z].xyz;  fp += _fneighpi[bk.z].xyz; }
         if(bk.w>=0){ fa += _fneigh  [bk.w].xyz;  fp += _fneighpi[bk.w].xyz; }
-
+        */
+        if(iS==0)printf( "[iG=%i] fa(%g,%g,%g) \n", iG, fa.x,fa.y,fa.z );
         // --- move node atom
         if( cons.w>0 ){  fa.xyz += (pa.xyz - cons.xyz)*-cons.w; }
         va     *= MDpars.y;
         va.xyz += fa.xyz*MDpars.x;
         pa.xyz += va.xyz*MDpars.x;
-        pa.w=0;va.w=0;
-        _apos[iL] = pa;
+        //pa.w=0;va.w=0;
+        //_apos[iL] = pa;
 
+        /*
         // --- move pi    ...   This would simplify if we consider pi- is just normal cap atom (dummy atom)
         fp.xyz += hp.xyz * -dot( hp.xyz, fp.xyz );   // subtract forces  component which change pi-orbital lenght
         vp.xyz += hp.xyz * -dot( hp.xyz, vp.xyz );   // subtract veocity component which change pi-orbital lenght
@@ -1729,8 +1739,9 @@ __kernel void evalMMFFf4_local(
         hp.xyz=normalize(hp.xyz);                    // normalize pi-orobitals
         hp.w=0;vp.w=0;
         _ppos[iL] = hp;
-
+        */
     }
+    /*
     if(bCap){
         if(c_bk.x>=0){ fa += _fneigh[c_bk.x].xyz; }
         if(c_bk.y>=0){ fa += _fneigh[c_bk.y].xyz; }
