@@ -1470,6 +1470,7 @@ __kernel void evalMMFFf4_local(
     __local float4  _ppos    [NATOM_LOC  ];   // 2  [nnode]  // pi-postion local
     __local float4  _fneigh  [NNODE_LOC*4];   // 4  [nnode*4*2]
     __local float4  _fneighpi[NNODE_LOC*4];
+    //__local float4  _XXX[10000000000];      // This should not be possible !!!!!! Should rise some error !!!!
 
     // NOTE: We can avoid using  __local _fneigh[] if we write __private fbs[] and fps[] into __local aforce[] in synchronized manner in 4 steps (4 slots) using barrier(CLK_LOCAL_MEM_FENCE);   
 
@@ -1569,29 +1570,31 @@ __kernel void evalMMFFf4_local(
             const int ing  = ings[i];
             const int ingv = ing+i0v;
             const int inga = ing+i0a;
+            
             if(ing<0) break;
             h.xyz    = _apos[ing].xyz - pa.xyz;
+            /*
             { // PBC bond vector correction
                 float3 u  = (float3){ dot( invLvec.a.xyz, h.xyz ), dot( invLvec.b.xyz, h.xyz ), dot( invLvec.c.xyz, h.xyz ) };
                 h.xyz   += lvec.a.xyz*(1.f-(int)(u.x+1.5f))
                         + lvec.b.xyz*(1.f-(int)(u.y+1.5f))
                         + lvec.c.xyz*(1.f-(int)(u.z+1.5f));
             }
+            */
             float  l = length(h.xyz); 
             h.w      = 1./l;
             h.xyz   *= h.w;
             hs[i]    = h;
 
-            float epp = 0;
-            float esp = 0;        
+            fbs[i]=(float3){(float)iG,(float)i,0.0f}; // DEBUG
+            //evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fa+=f1;
             if(iG<ing){
-                E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
-                float kpp = Kppi[i];
+                //evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
                 /*
                 // pi-pi
+                float kpp = Kppi[i];
                 if( (ing<nnode) && (kpp>1.e-6) ){
-                    epp += evalPiAling( hp.xyz, _ppos[ing].xyz, kpp,  &f1, &f2 );   fp+=f1;  fps[i]+=f2;
-                    E+=epp;
+                    evalPiAling( hp.xyz, _ppos[ing].xyz, kpp,  &f1, &f2 );   fp+=f1;  fps[i]+=f2;
                 }
                 */
             } 
@@ -1599,8 +1602,7 @@ __kernel void evalMMFFf4_local(
             // pi-sigma 
             float ksp = Kspi[i];
             if(ksp>1.e-6){  
-                esp += evalAngCos( (float4){hp.xyz,1.}, h, ksp, par.w, &f1, &f2 );   fp+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
-                E+=epp;
+                evalAngCos( (float4){hp.xyz,1.}, h, ksp, par.w, &f1, &f2 );   fp+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
             }
             */
         }
@@ -1620,7 +1622,7 @@ __kernel void evalMMFFf4_local(
                 //const int jngv  = jng+i0v;
                 //const int jnga  = jng+i0a;
                 const float4 hj = hs[j];
-                E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );            
+                evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );            
                 fa    -= f1+f2;
                 { // Remove vdW
                     float4 REQj=_REQs[jng];
@@ -1641,10 +1643,13 @@ __kernel void evalMMFFf4_local(
 
         const int i4=iG*4;
         for(int i=0; i<NNEIGH; i++){
-            _fneigh  [i4+i] = (float4){fbs[i],0};
-            _fneighpi[i4+i] = (float4){fps[i],0};
+            _fneigh  [i4+i] = (float4){fbs[i],0.f};
+            //_fneighpi[i4+i] = (float4){fps[i],0.f};
         }
-
+        if(iS==0){
+            printf( "[iG=%i]fbs1(%g,%g,%g) fbs2(%g,%g,%g) fbs3(%g,%g,%g) fbs4(%g,%g,%g) \n", iG, fbs[0].x,fbs[0].y,fbs[0].z,    fbs[1].x,fbs[1].y,fbs[1].z,    fbs[2].x,fbs[2].y,fbs[2].z,    fbs[3].x,fbs[3].y,fbs[3].z );
+            printf( "[iG=%i]fng[%i](%g,%g,%g) fng[%i](%g,%g,%g) fng3[%i](%g,%g,%g) fng4[%i](%g,%g,%g) \n", iG, i4,_fneigh[i4].x,_fneigh[i4].y,_fneigh[i4].z,   i4+1, _fneigh[i4+1].x,_fneigh[i4+1].y,_fneigh[i4+1].z,    i4+2,_fneigh[i4+2].x,_fneigh[i4+2].y,_fneigh[i4+2].z,  i4+3,_fneigh[i4+3].x,_fneigh[i4+3].y,_fneigh[i4+3].z );
+        }
     }
     
     
@@ -1714,20 +1719,34 @@ __kernel void evalMMFFf4_local(
     barrier(CLK_LOCAL_MEM_FENCE);    // Make sure _fneigh is uptodate for all atoms
 
     if(bNode){ 
-        /*
-        if(bk.x>=0){ fa += _fneigh  [bk.x].xyz;  fp += _fneighpi[bk.x].xyz; }
-        if(bk.y>=0){ fa += _fneigh  [bk.y].xyz;  fp += _fneighpi[bk.y].xyz; }
-        if(bk.z>=0){ fa += _fneigh  [bk.z].xyz;  fp += _fneighpi[bk.z].xyz; }
-        if(bk.w>=0){ fa += _fneigh  [bk.w].xyz;  fp += _fneighpi[bk.w].xyz; }
-        */
-        if(iS==0)printf( "[iG=%i] fa(%g,%g,%g) \n", iG, fa.x,fa.y,fa.z );
+        
+        //if(bk.x>=0){ fa += _fneigh  [bk.x].xyz;  fp += _fneighpi[bk.x].xyz; }
+        //if(bk.y>=0){ fa += _fneigh  [bk.y].xyz;  fp += _fneighpi[bk.y].xyz; }
+        //if(bk.z>=0){ fa += _fneigh  [bk.z].xyz;  fp += _fneighpi[bk.z].xyz; }
+        //if(bk.w>=0){ fa += _fneigh  [bk.w].xyz;  fp += _fneighpi[bk.w].xyz; }
+        
+        
+        float3 fng = float3Zero;
+        if(bk.x>=0){ fng += _fneigh[bk.x].xyz; }
+        if(bk.y>=0){ fng += _fneigh[bk.y].xyz; }
+        if(bk.z>=0){ fng += _fneigh[bk.z].xyz; }
+        if(bk.w>=0){ fng += _fneigh[bk.w].xyz; }
+        if(iS==0){
+            printf( "[iG=%i] bk{%3i,%3i,%3i,%3i}/%i fng(%g,%g,%g) \n", iG,  bk.x,bk.y,bk.z,bk.w, NNODE_LOC*4,  fng.x,fng.y,fng.z );
+        }
+        
+
+        //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g)  bk{%3i,%3i,%3i,%3i} \n", iG, fa.x,fa.y,fa.z,   bk.x,bk.y,bk.z,bk.w );
         // --- move node atom
         if( cons.w>0 ){  fa.xyz += (pa.xyz - cons.xyz)*-cons.w; }
         va     *= MDpars.y;
         va.xyz += fa.xyz*MDpars.x;
         pa.xyz += va.xyz*MDpars.x;
-        //pa.w=0;va.w=0;
-        //_apos[iL] = pa;
+        pa.w=0;va.w=0;
+
+        if(iS==0)printf( "[iG=%i] fa(%g,%g,%g) va(%g,%g,%g) pa(%g,%g,%g) \n", iG,  fa.x,fa.y,fa.z,  va.x,va.y,va.z,  pa.x,pa.y,pa.z );
+        _apos[iL] = pa;
+        fa = float3Zero;
 
         /*
         // --- move pi    ...   This would simplify if we consider pi- is just normal cap atom (dummy atom)
@@ -1741,6 +1760,7 @@ __kernel void evalMMFFf4_local(
         _ppos[iL] = hp;
         */
     }
+    
     /*
     if(bCap){
         if(c_bk.x>=0){ fa += _fneigh[c_bk.x].xyz; }
@@ -1760,14 +1780,15 @@ __kernel void evalMMFFf4_local(
 
     } // END OF THE BIG LOOP
 
-    /*
+    
     if(bNode){
         apos[iav      ]=pa;
         avel[iav      ]=va;
-        apos[iav+natom]=hp;
-        avel[iav+natom]=vp;
+        //apos[iav+natom]=hp;
+        //avel[iav+natom]=vp;
     }
-    
+
+    /*
     if(bCap){
         apos[ica]=pc;
         avel[ica]=vc;

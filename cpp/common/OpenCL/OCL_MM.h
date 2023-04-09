@@ -534,6 +534,8 @@ class OCL_MM: public OCLsystem { public:
         printf("OCL_MM::setup_evalMMFFf4_local()\n");
         if(task==0) task = getTask("evalMMFFf4_local");
         
+        md_params.y = 0.9;
+
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
