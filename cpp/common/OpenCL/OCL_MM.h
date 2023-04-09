@@ -539,8 +539,8 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        //int nloc  = 32;
-        int nloc = 64;
+        int nloc  = 32;
+        //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = nnode + nloc-(nnode%nloc);
         task->global.y = nSystems;

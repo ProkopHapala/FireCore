@@ -1459,17 +1459,20 @@ __kernel void evalMMFFf4_local(
 
     
     #define NNEIGH    4
-    #define NATOM_LOC 128
-    #define NNODE_LOC 64
+    //#define NATOM_LOC 128
+    //#define NNODE_LOC 64
+
+    #define NATOM_LOC 64
+    #define NNODE_LOC 32
     // ========= Local Memory
 
     // We want to fit only NODE atoms into local memory, the rest we do later
 
     __local float4  _apos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
     __local float4  _REQs    [NATOM_LOC  ];   // 6  [natoms] non-boding parametes {R0,E0,Q}
-    __local float4  _ppos    [NATOM_LOC  ];   // 2  [nnode]  // pi-postion local
+    //__local float4  _ppos    [NATOM_LOC  ];   // 2  [nnode]  // pi-postion local
     __local float4  _fneigh  [NNODE_LOC*4];   // 4  [nnode*4*2]
-    __local float4  _fneighpi[NNODE_LOC*4];
+    //__local float4  _fneighpi[NNODE_LOC*4];
     //__local float4  _XXX[10000000000];      // This should not be possible !!!!!! Should rise some error !!!!
 
     // NOTE: We can avoid using  __local _fneigh[] if we write __private fbs[] and fps[] into __local aforce[] in synchronized manner in 4 steps (4 slots) using barrier(CLK_LOCAL_MEM_FENCE);   
@@ -1501,7 +1504,20 @@ __kernel void evalMMFFf4_local(
         // ---- pi 
         hp         = apos[iav+natom];
         vp         = avel[iav+natom];
-        _ppos [iL] = hp;
+
+        { // Debug
+            _fneigh  [iL*4+0] = float4Zero;
+            _fneigh  [iL*4+1] = float4Zero;
+            _fneigh  [iL*4+2] = float4Zero;
+            _fneigh  [iL*4+3] = float4Zero;
+            //const int i4=iL*4;
+            //for(int i=0; i<NNEIGH; i++){
+            //_fneigh  [i4+i] = float4Zero;
+            //_fneighpi[i4+i] = (float4){fps[i],0.f};
+            //}
+        }
+
+        //_ppos [iL] = hp;
     }
     // --- cap
     float4 vc,pc,REQc,c_cons;
@@ -1586,10 +1602,10 @@ __kernel void evalMMFFf4_local(
             h.xyz   *= h.w;
             hs[i]    = h;
 
-            fbs[i]=(float3){(float)iG,(float)i,0.0f}; // DEBUG
+            //fbs[i]=(float3){(float)iG,(float)i,0.0f}; // DEBUG
             //evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fa+=f1;
             if(iG<ing){
-                //evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
+                evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
                 /*
                 // pi-pi
                 float kpp = Kppi[i];
@@ -1640,7 +1656,7 @@ __kernel void evalMMFFf4_local(
         }
         */
         // ========= Write neighbor forces (=recoils) to local memory
-
+        /*
         const int i4=iG*4;
         for(int i=0; i<NNEIGH; i++){
             _fneigh  [i4+i] = (float4){fbs[i],0.f};
@@ -1650,6 +1666,7 @@ __kernel void evalMMFFf4_local(
             printf( "[iG=%i]fbs1(%g,%g,%g) fbs2(%g,%g,%g) fbs3(%g,%g,%g) fbs4(%g,%g,%g) \n", iG, fbs[0].x,fbs[0].y,fbs[0].z,    fbs[1].x,fbs[1].y,fbs[1].z,    fbs[2].x,fbs[2].y,fbs[2].z,    fbs[3].x,fbs[3].y,fbs[3].z );
             printf( "[iG=%i]fng[%i](%g,%g,%g) fng[%i](%g,%g,%g) fng3[%i](%g,%g,%g) fng4[%i](%g,%g,%g) \n", iG, i4,_fneigh[i4].x,_fneigh[i4].y,_fneigh[i4].z,   i4+1, _fneigh[i4+1].x,_fneigh[i4+1].y,_fneigh[i4+1].z,    i4+2,_fneigh[i4+2].x,_fneigh[i4+2].y,_fneigh[i4+2].z,  i4+3,_fneigh[i4+3].x,_fneigh[i4+3].y,_fneigh[i4+3].z );
         }
+        */
     }
     
     
@@ -1731,9 +1748,11 @@ __kernel void evalMMFFf4_local(
         if(bk.y>=0){ fng += _fneigh[bk.y].xyz; }
         if(bk.z>=0){ fng += _fneigh[bk.z].xyz; }
         if(bk.w>=0){ fng += _fneigh[bk.w].xyz; }
-        if(iS==0){
-            printf( "[iG=%i] bk{%3i,%3i,%3i,%3i}/%i fng(%g,%g,%g) \n", iG,  bk.x,bk.y,bk.z,bk.w, NNODE_LOC*4,  fng.x,fng.y,fng.z );
-        }
+        //if(iS==0){
+        //    printf( "[iG=%i] bk{%3i,%3i,%3i,%3i}/%i fng(%g,%g,%g) \n", iG,  bk.x,bk.y,bk.z,bk.w, NNODE_LOC*4,  fng.x,fng.y,fng.z );
+        //}
+
+        //fa.xyz += fng;  // IF this swithed off it woks
         
 
         //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g)  bk{%3i,%3i,%3i,%3i} \n", iG, fa.x,fa.y,fa.z,   bk.x,bk.y,bk.z,bk.w );
