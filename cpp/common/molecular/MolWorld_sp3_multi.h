@@ -318,8 +318,8 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     //long T0 = getCPUticks();
     picked2GPU( ipicked,  1.0 );
     int err=0;
-    if( task_MMFF==0    )setup_MMFFf4_ocl();
-    if( task_MMFFloc==0 )task_MMFFloc=ocl.setup_evalMMFFf4_local( niter );
+    if( task_MMFF    ==0 )setup_MMFFf4_ocl();
+    if( task_MMFFloc ==0 )task_MMFFloc=ocl.setup_evalMMFFf4_local( niter );
     // evaluate on GPU
     long T0 = getCPUticks();
     if(task_MMFFloc){
@@ -444,8 +444,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     if( bOcl ){
         //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
-        nIter = 100;
-        //nIter = 1;
+        //nIter = 100;
+        nIter = 1;
         eval_MMFFf4_ocl( nIter );
         //eval_NBFF_ocl  ( 1 ); 
         //eval_NBFF_ocl_debug(1); //exit(0);

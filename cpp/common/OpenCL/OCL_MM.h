@@ -533,39 +533,42 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_evalMMFFf4_local( int niter_, OCLtask* task=0 ){
         printf("OCL_MM::setup_evalMMFFf4_local()\n");
         if(task==0) task = getTask("evalMMFFf4_local");
-        task->global.x = nnode;
+        
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        //int nloc  = 32;
+        int nloc = 64;
+        task->local.x  = nloc;
+        task->global.x = nnode + nloc-(nnode%nloc);
         task->global.y = nSystems;
         useKernel( task->ikernel );
         niter   = niter_;
         nDOFs.x = nAtoms; 
         nDOFs.y = nnode;  
-        DEBUG;
+        DEBUG
         // ------- Maybe We do-not need to do this every frame ?
         int err=0;
-        err |= _useArg   ( nDOFs );              // 1
-        // Dynamical
-        err |= useArgBuff( ibuff_atoms  );       // 2
-        err |= useArgBuff( ibuff_avel   );       // 3
-        //err |= useArgBuff( ibuff_aforces);     //
-        //err |= useArgBuff( ibuff_neighForce ); //
-        // parameters
-        err |= useArgBuff( ibuff_neighs    );    // 5
-        err |= useArgBuff( ibuff_neighCell );    // 6
-        err |= useArgBuff( ibuff_bkNeighs  );    // 7
-        err |= useArgBuff( ibuff_REQs      );    // 8
-        err |= useArgBuff( ibuff_MMpars    );    // 9
-        err |= useArgBuff( ibuff_BLs       );    // 10
-        err |= useArgBuff( ibuff_BKs       );    // 11
-        err |= useArgBuff( ibuff_Ksp       );    // 12
-        err |= useArgBuff( ibuff_Kpp       );    // 13
-        err |= useArgBuff( ibuff_lvecs     );    // 14
-        err |= useArgBuff( ibuff_ilvecs    );    // 15
-        err |= _useArg   ( nPBC            );    // 16      
-        err |= _useArg   ( GFFparams       );    // 17
-        err |= _useArg   ( md_params       );    // 18
-        err |= _useArg   ( niter           );    // 19
-        OCL_checkError(err, "setup_evalMMFFf4_local");
-        DEBUG;
+        err |= _useArg   ( nDOFs           );    OCL_checkError(err, "setup_evalMMFFf4_local.1");   DEBUG
+        err |= useArgBuff( ibuff_atoms     );    OCL_checkError(err, "setup_evalMMFFf4_local.2");   DEBUG
+        err |= useArgBuff( ibuff_avel      );    OCL_checkError(err, "setup_evalMMFFf4_local.3");   DEBUG
+        err |= useArgBuff( ibuff_constr    );    OCL_checkError(err, "setup_evalMMFFf4_local.4");   DEBUG
+        err |= useArgBuff( ibuff_neighs    );    OCL_checkError(err, "setup_evalMMFFf4_local.5");   DEBUG
+        err |= useArgBuff( ibuff_neighCell );    OCL_checkError(err, "setup_evalMMFFf4_local.6");   DEBUG
+        err |= useArgBuff( ibuff_bkNeighs  );    OCL_checkError(err, "setup_evalMMFFf4_local.7");   DEBUG
+        err |= useArgBuff( ibuff_REQs      );    OCL_checkError(err, "setup_evalMMFFf4_local.8");   DEBUG
+        err |= useArgBuff( ibuff_MMpars    );    OCL_checkError(err, "setup_evalMMFFf4_local.9");   DEBUG
+        err |= useArgBuff( ibuff_BLs       );    OCL_checkError(err, "setup_evalMMFFf4_local.10");  DEBUG
+        err |= useArgBuff( ibuff_BKs       );    OCL_checkError(err, "setup_evalMMFFf4_local.11");  DEBUG
+        err |= useArgBuff( ibuff_Ksp       );    OCL_checkError(err, "setup_evalMMFFf4_local.12");  DEBUG
+        err |= useArgBuff( ibuff_Kpp       );    OCL_checkError(err, "setup_evalMMFFf4_local.13");  DEBUG
+        err |= useArgBuff( ibuff_lvecs     );    OCL_checkError(err, "setup_evalMMFFf4_local.14");  DEBUG
+        err |= useArgBuff( ibuff_ilvecs    );    OCL_checkError(err, "setup_evalMMFFf4_local.15");  DEBUG
+        err |= _useArg   ( nPBC            );    OCL_checkError(err, "setup_evalMMFFf4_local.16");  DEBUG
+        err |= _useArg   ( GFFparams       );    OCL_checkError(err, "setup_evalMMFFf4_local.17");  DEBUG
+        err |= _useArg   ( md_params       );    OCL_checkError(err, "setup_evalMMFFf4_local.18");  DEBUG
+        err |= _useArg   ( niter           );    OCL_checkError(err, "setup_evalMMFFf4_local.19");  DEBUG
+        OCL_checkError(err, "setup_evalMMFFf4_local"); DEBUG;
         return task;
         // const int4 nDOFs,               // 1  (nAtoms,nnode)
         // __global float4*  apos,         // 2  [natoms]
@@ -583,7 +586,7 @@ class OCL_MM: public OCLsystem { public:
         // __global cl_Mat3* lvecs,        // 14
         // __global cl_Mat3* ilvecs,       // 15
         // const int4        nPBC,         // 16
-        // const float4      GFFparams,        // 17
+        // const float4      GFFparams,    // 17
         // const float4      MDpars,       // 18
         // const int         niter         // 19
     }
