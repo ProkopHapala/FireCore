@@ -331,8 +331,8 @@ inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=t
     //     });
     // }
 
-    void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_){
-        printf( "GridFF::makeGridFF_omp() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );
+    void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
+        printf( "GridFF::makeGridFF_omp() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );        
         if(shifts==0)makePBCshifts( nPBC, lvec );
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
@@ -354,7 +354,7 @@ inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=t
                             const Vec3d  dp = dp0 + shifts[ipbc];
                             //Vec3d  dp = dp0;
                             double r2     = dp.norm2();
-                            double r      = sqrt(r2);
+                            double r      = sqrt(r2 + 1e-32);
                             // ---- Coulomb
                             double ir2    = 1/(r2+R2damp);
                             double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
@@ -585,6 +585,22 @@ bool evalCheck( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, doubl
         err |= checkZProfilesOverAtom( ia, nz, zmin, zmax, REQ, tol, bExit, bPrint );
     }
     return err;
+}
+
+void log_z(const char* fname, int ix=0, int iy=0){
+    FILE* logf=fopen( fname, "w");       DEBUG;
+    if(logf==0){ printf("ERROR in GridFF::makeGridFF_omp() cannot open logfile(%s) => Exit()\n", fname ); exit(0); } DEBUG;
+    fprintf( logf, "#i   z  Ep_Paul Fz_Paul   Ep_Lond Fz_Lond  E_Coul Fz_Coul \n" );
+    DEBUG;
+    for ( int iz=0; iz<grid.n.z; iz++ ){
+        const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
+        const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
+        Quat4f qp = FFPaul[ibuff];
+        Quat4f ql = FFLond[ibuff];
+        Quat4f qe = FFelec[ibuff];
+        if(logf && (ix==0) && (iy==0) ){ fprintf( logf,  "%3i %8.3f    %14.6f %14.6f    %14.6f %14.6f    %14.6f %14.6f\n", iz, pos.z,  qp.w,qp.z,   ql.w,ql.z,  qe.w,qe.z ); }
+    }
+    fclose(logf);
 }
 
  #ifdef IO_utils_h

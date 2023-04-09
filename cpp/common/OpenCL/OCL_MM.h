@@ -450,7 +450,16 @@ class OCL_MM: public OCLsystem { public:
         err |= finishRaw();       OCL_checkError(err, "makeGridFF().imgAlloc" );
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
         if(task==0) task = getTask("make_GridFF");
-        task->global.x = grid_n.x*grid_n.y*grid_n.z;
+
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        int nloc  = 32;
+        int ngrid = grid_n.x*grid_n.y*grid_n.z;
+        //int nloc = 64;
+        task->local.x  = nloc;
+        task->global.x = ngrid + nloc-(ngrid%nloc);
+
         //printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
         //printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
         if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }

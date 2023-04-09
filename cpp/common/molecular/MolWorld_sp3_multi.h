@@ -535,7 +535,7 @@ bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.0
 }
 
 bool evalCheckGridFF_ocl( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, double tol=1e-2, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.1, 0.}, double dz=0.05 ){
-    REQ=Quat4d{ 1.487, 0.02609214441, +0.0, 0.};
+    REQ=Quat4d{ 1.487, 0.02609214441*0, +0.1, 0.};
     printf( "MolWorld_sp3::evalCheckGridFF_ocl() natoms=%i npbc=%i apos=%li REQs=%li shifts=%li \n", gridFF.natoms, gridFF.npbc, gridFF.apos, gridFF.REQs, gridFF.shifts );
     _checkNull(gridFF.shifts)
     _checkNull(gridFF.REQs)
@@ -581,8 +581,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
     delete [] atoms_surf;
     delete [] REQs_surf;
-    //bSaveDebug=true;
-    bSaveDebug=false;
+    bSaveDebug=true;
+    //bSaveDebug=false;
     if(bSaveDebug){
         gridFF.allocateFFs();
         ocl.download( ocl.itex_FE_Paul, gridFF.FFPaul  );  

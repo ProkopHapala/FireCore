@@ -53,7 +53,7 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 
 #./$name -m $nsys -x common_resources/polymer-2_new              -g common_resources/NaCl_1x1_L2
-./$name -m 10 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
+./$name -m 10 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2   | tee out.log
 
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
@@ -61,3 +61,4 @@ nsys=50
 #valgrind --leak-check=yes --track-origins=yes  --log-file="valgrind.log" ./$name -x common_resources/HCOOH -m 10
 
 
+grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log

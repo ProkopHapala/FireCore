@@ -253,6 +253,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
         //bSaveDebugXSFs=true;
         gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false );
+        gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
         if(bSaveDebugXSFs)saveGridXsfDebug();
         bGridFF   =true; 
         //bSurfAtoms=false;

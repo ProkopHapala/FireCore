@@ -1133,9 +1133,7 @@ __kernel void sampleGridFF(
             #endif
             //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
             fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
-        
-            printf( "GPU[%i] E,fz(%g,%g) z(%g) PLQ(%g,%g,%g) REQ(%g,%g) \n", i,   fe.w,fe.z,   posi.z,   cP,cL,REQ.z,  REQ.x,REQ.y  );
-    
+            //printf( "GPU[%i] E,fz(%g,%g) z(%g) PLQ(%g,%g,%g) REQ(%g,%g) \n", i,   fe.w,fe.z,   posi.z,   cP,cL,REQ.z,  REQ.x,REQ.y  );
         }
     }
 
@@ -1166,7 +1164,7 @@ __kernel void sampleGridFF(
 __kernel void make_GridFF(
     const int nAtoms,                // 1
     __global float4*  atoms,         // 2
-    __global float4*  REQKs,         // 3
+    __global float4*  REQs,          // 3
     __write_only image3d_t  FE_Paul, // 4
     __write_only image3d_t  FE_Lond, // 5
     __write_only image3d_t  FE_Coul, // 6
@@ -1189,93 +1187,80 @@ __kernel void make_GridFF(
 
     const float  alphaMorse = GFFParams.y;
     const float  R2damp     = GFFParams.x*GFFParams.x;
-    
-    if(iG==0){printf("GPU:make_GridFF() nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i) Rdamp %g alphaMorse %g \n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z, GFFParams.x, alphaMorse );}
-    if(iG==0){printf("GPU:make_GridFF() p0{%6.3f,%6.3f,%6.3f} lvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}} \n", grid_p0.x,grid_p0.y,grid_p0.z,  lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );}
-    /*
-    //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
-    if(iG==0){
-        printf("GPU:make_GridFF(natoms=%i)\n", nAtoms);
-        for(int i=0; i<nAtoms; i++){ printf("GPU:atom[%i] apos(%6.3f,%6.3f,%6.3f|%g) rekq(%6.3f,%10.7f,%6.3f|%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,   REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w ); }
-        int ia0 = 0;
-        float4 REQK = REQKs[ia0];
-        float Rii = REQK.x*2.f;
-        float Eii = REQK.y*REQK.y;
-        int np  = 20;
-        float dx      = 0.1;
-        float x0      = REQK.x*2.f - np*dx/2;
-        
-        //         expr = np.exp( b*Rj )
-        // cP    = Ej*expr*expr
-        // cL    = Ej*expr
-
-        const float ej   = exp( REQK.w * REQK.x );
-        const float cL   = ej*REQK.y;
-        const float cP   = ej*cL;
-
-        printf(  "GPU: REQK Ri %g Ei %g Q %g beta %g \n", REQK.x, REQK.y, REQK.z, REQK.w );
-        printf(  "GPU: ej %g  cP %g cL %g \n", ej, cP, cL );
-        printf(  "#i  r.x  E_LJ E_Paul E_Lond, E_Coul  Fx_LJ Fx_Paul Fx_Lond, Fx_Coul  \n" );
-        for(int i=0; i<np; i++){
-            float4 fe_Paul = float4Zero;
-            float4 fe_Lond = float4Zero;
-            float4 fe_Coul = float4Zero;
-            
-            float3 dp  = (float3){ x0 + dx*i, 0.f, 0.f  };
-            float  r2  = dot(dp,dp);
-            float  r   = sqrt(r2);
-            float ir2  = 1/(r2+R2damp); 
-            // ---- Electrostatic
-            float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
-            fe_Coul   += (float4)(dp*(E*ir2), E );
-            // ---- Morse ( Pauli + Dispersion )
-            float    e = exp( -REQK.w*(r-REQK.x) );
-            float   eM = REQK.y*e;
-            float   de = 2.f*REQK.w*eM/r;
-            float4  fe = (float4)( dp*de, eM );
-            fe_Paul += fe * e;
-            fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );
-
-            float ex  =      exp( -REQK.w * (r - Rii ) );
-            float ELJ =      Eii*( ex*ex - 2.f*ex );
-            float FLJ =  2.f*Eii*( ex*ex - ex     )*REQK.w;
-
-            float4 fetot  = fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQK.z*0.f;
-
-            //printf(  "FE(RvdW[%i]) Paul(%g,%g,%g|%g) Lond(%g,%g,%g|%g) Coul(%g,%g,%g|%g)  \n", ia0, fe_Paul.x,fe_Paul.y,fe_Paul.z,fe_Paul.w,   fe_Lond.x,fe_Lond.y,fe_Lond.z,fe_Lond.w,    fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w  );
-            //printf(  "%i %8.3f  %g %g    %g %g    %g %g  \n", ia0, dp.x, fe_Paul.x,fe_Paul.w,   fe_Lond.x,fe_Lond.w,    fe_Coul.x,fe_Coul.w  );
-            printf(  "%i %8.3f  %g %g %g %g %g   %g %g %g %g %g  \n", ia0, dp.x,  ELJ, fetot.w, fe_Paul.w,fe_Lond.w,fe_Coul.w*REQK.z,   FLJ, fetot.x, fe_Paul.x,fe_Lond.x,fe_Coul.x*REQK.z  );
-
-        }
-    }
-    */
-    
-    const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
-
     const float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
     const float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
     const float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
+    if(iG==0){printf("GPU:make_GridFF() nL=%i,nG=%i,nAtoms=%i,nPBC(%i,%i,%i) Rdamp %g alphaMorse %g \n", nL, nG, nAtoms, nPBC.x,nPBC.y,nPBC.z, GFFParams.x, alphaMorse );}
+    if(iG==0){printf("GPU:make_GridFF() p0{%6.3f,%6.3f,%6.3f} lvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}} \n", grid_p0.x,grid_p0.y,grid_p0.z,  lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );}
+    
+    //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
+    if(iG==0){
+        printf( "GPU_GFF_z #i   z  Ep_Paul Fz_Paul   Ep_Lond Fz_Lond  E_Coul Fz_Coul\n");
+        for(int ic=0; ic<nGrid.z; ic++){
+            const float3 pos_    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic;  // grid point within cell
+            const float3 pos     = pos_ + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;       // most negative PBC-cell
+            //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+            float4 fe_Paul = float4Zero;
+            float4 fe_Lond = float4Zero;
+            float4 fe_Coul = float4Zero;
+            for (int ja=0; ja<nAtoms; ja++ ){ 
+                const float4 REQ  =       REQs[ja];
+                float3       dp   = pos - atoms[ja].xyz; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                            float  r2  = dot(dp,dp);
+                            float  r   = sqrt(r2 + 1e-32 );
+                            float ir2  = 1.f/(r2+R2damp  ); 
+                            // ---- Electrostatic
+                            float   E  = COULOMB_CONST*REQ.z*sqrt(ir2);
+                            fe_Coul   += (float4)(dp*(E*ir2), E );
+                            // ---- Morse ( Pauli + Dispersion )
+                            float    e = exp( -alphaMorse*(r-REQ.x) );
+                            float   eM = REQ.y*e;
+                            float   de = 2.f*alphaMorse*eM/r;
+                            float4  fe = (float4)( dp*de, eM );
+                            fe_Paul += fe * e;
+                            fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );                            
+                            dp   +=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                    }
+                    dp   +=shift_c;
+                }
+            }
+            //printf(  "FE(RvdW[%i]) Paul(%g,%g,%g|%g) Lond(%g,%g,%g|%g) Coul(%g,%g,%g|%g)  \n", ia0, fe_Paul.x,fe_Paul.y,fe_Paul.z,fe_Paul.w,   fe_Lond.x,fe_Lond.y,fe_Lond.z,fe_Lond.w,    fe_Coul.x,fe_Coul.y,fe_Coul.z,fe_Coul.w  );
+            //printf(  "%i %8.3f  %g %g    %g %g    %g %g  \n", ia0, dp.x, fe_Paul.x,fe_Paul.w,   fe_Lond.x,fe_Lond.w,    fe_Coul.x,fe_Coul.w  );
+            //printf(  "%i %8.3f  %g %g %g %g %g   %g %g %g %g %g  \n", ia0, dp.x,  ELJ, fetot.w, fe_Paul.w,fe_Lond.w,fe_Coul.w*REQK.z,   FLJ, fetot.x, fe_Paul.x,fe_Lond.x,fe_Coul.x*REQK.z  );
+            printf(  "GPU_GFF_z %3i %8.3f    %14.6f %14.6f    %14.6f %14.6f    %14.6f %14.6f\n", ic, pos.z, fe_Paul.w,fe_Paul.z, fe_Lond.w,fe_Lond.z,  fe_Coul.w,fe_Coul.z  );
+        }
+    }
+    
+    
+    const int nMax = nab*nGrid.z;
+    //if(iG>nMax) return;
 
     const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
                                        +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
-    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
-    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
 
     //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
     float4 fe_Paul = float4Zero;
     float4 fe_Lond = float4Zero;
     float4 fe_Coul = float4Zero;
-    for (int i0=0; i0<nAtoms; i0+= nL ){
-        const int i = i0 + iL;
+    for (int j0=0; j0<nAtoms; j0+= nL ){
+        const int i = j0 + iL;
         //if(i>=nAtoms) break;  // wrong !!!!
         LATOMS[iL] = atoms[i];
-        LCLJS [iL] = REQKs[i];
+        LCLJS [iL] = REQs [i];
         barrier(CLK_LOCAL_MEM_FENCE);
-        for (int j=0; j<nL; j++){
-            if( (j+i0)<nAtoms ){ 
-                const float4 REQK = LCLJS[j];
-                float3       dp   = pos - LATOMS[j].xyz;
+        for (int jl=0; jl<nL; jl++){
+            const int ja=jl+j0;
+            if( ja<nAtoms ){ 
+                const float4 REQK =       LCLJS [jl];
+                float3       dp   = pos - LATOMS[jl].xyz;
             
                 //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
                 //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
@@ -1287,7 +1272,7 @@ __kernel void make_GridFF(
 
                             //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
                             float  r2  = dot(dp,dp);
-                            float  r   = sqrt(r2);
+                            float  r   = sqrt(r2+1e-32 );
                             float ir2  = 1.f/(r2+R2damp); 
                             // ---- Electrostatic
                             float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
@@ -1325,6 +1310,7 @@ __kernel void make_GridFF(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+    if(iG>=nMax) return;
     int4 coord = (int4){ia,ib,ic,0};
     //write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
     write_imagef( FE_Paul, coord, fe_Paul );
