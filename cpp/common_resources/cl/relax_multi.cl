@@ -1099,6 +1099,8 @@ __kernel void sampleGridFF(
     const int nG = get_global_size(0);
     const int np = ns.x;
 
+    float3 dz = (float3){ 0.0f, 0.0f, 0.1f };
+
     //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
     const float4 REQ        = REQs[iG];
     const float3 posi       = atoms[iG].xyz;
@@ -1111,9 +1113,11 @@ __kernel void sampleGridFF(
 
     if(iG==0){ printf( "GPU::sampleGridFF() np=%i R2damp=%g aMorse=%g p(%g,%g,%g) REQ(%g,%g,%g)  cP=%g cL=%g ej=%g \n", np, R2damp, alphaMorse, posi.x,posi.y,posi.z, REQ.x,REQ.y,REQ.z, cP,cL,ej  ); }
     if(iG==0){
+        printf( "GPU_sGFF #i  z  E_Paul Fz_Paul   E_Lond Fz_Lond   E_Coul Fz_Coul  \n" );
         for(int i=0; i<np; i++){
             const float4 REQ  = REQs[i];
-            const float3 posi = atoms[i].xyz;
+            //const float3 posi = atoms[i].xyz;
+            const float3 posi = grid_p0.xyz + dz*i;
             const float ej   = exp( alphaMorse* REQ.x );
             const float cL   = ej*REQ.y;
             const float cP   = ej*cL;
@@ -1133,7 +1137,8 @@ __kernel void sampleGridFF(
             #endif
             //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
             fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
-            //printf( "GPU[%i] E,fz(%g,%g) z(%g) PLQ(%g,%g,%g) REQ(%g,%g) \n", i,   fe.w,fe.z,   posi.z,   cP,cL,REQ.z,  REQ.x,REQ.y  );
+            //printf( "GPU[%i] z(%g) E,fz(%g,%g)  PLQ(%g,%g,%g) REQ(%g,%g) \n", i, posi.z,  fe.w,fe.z,  cP,cL,REQ.z,  REQ.x,REQ.y  );
+            printf(  "GPU_sGFF %3i %8.3f    %14.6f %14.6f    %14.6f %14.6f    %14.6f %14.6f\n", i, posi.z, fe_Paul.w,fe_Paul.z, fe_Lond.w,fe_Lond.z,  fe_Coul.w,fe_Coul.z  );
         }
     }
 
