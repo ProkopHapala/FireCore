@@ -410,11 +410,11 @@ class OCL_MM: public OCLsystem { public:
         err |= _useArg( grid_p0            );  // 10
         OCL_checkError(err, "sampleGridFF.setup");
         if(bRun){
-            err |= task->enque_raw();                      OCL_checkError(err, "sampleGridFF().enque"    );
-            err |= download( ibuff_atoms, fs,   n );  OCL_checkError(err, "sampleGridFF().downalod" );
-            err |= finishRaw();                            OCL_checkError(err, "sampleGridFF().finish"   );
+            err |= task->enque_raw();                 OCL_checkError(err, "sampleGridFF().enque"    );
+            err |= download( ibuff_aforces, fs, n );  OCL_checkError(err, "sampleGridFF().downalod" );
+            err |= finishRaw();                       OCL_checkError(err, "sampleGridFF().finish"   );
         }
-        return task;
+        //exit(0);
         return task;
         // const int4 ns,                  // 1
         // __global float4*  atoms,        // 2
