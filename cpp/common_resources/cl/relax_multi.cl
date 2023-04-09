@@ -1088,12 +1088,12 @@ __kernel void sampleGridFF(
     __global float4*  atoms,        // 2
     __global float4*  forces,       // 3
     __global float4*  REQKs,        // 4
-    const float4  GFFParams,        // 9
-    __read_only image3d_t  FE_Paul, // 10
-    __read_only image3d_t  FE_Lond, // 11
-    __read_only image3d_t  FE_Coul, // 12
-    const cl_Mat3  diGrid,          // 13
-    const float4   grid_p0          // 14
+    const float4  GFFParams,        // 5
+    __read_only image3d_t  FE_Paul, // 6
+    __read_only image3d_t  FE_Lond, // 7
+    __read_only image3d_t  FE_Coul, // 8
+    const cl_Mat3  diGrid,          // 9
+    const float4   grid_p0          // 10
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
