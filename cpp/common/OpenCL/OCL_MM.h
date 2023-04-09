@@ -455,8 +455,8 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 4;
         //int nloc = 8;
         int nloc  = 32;
-        int ngrid = grid_n.x*grid_n.y*grid_n.z;
         //int nloc = 64;
+        int ngrid = grid_n.x*grid_n.y*grid_n.z;
         task->local.x  = nloc;
         task->global.x = ngrid + nloc-(ngrid%nloc);
 
@@ -531,6 +531,7 @@ class OCL_MM: public OCLsystem { public:
     }
 
     OCLtask* setup_evalMMFFf4_local( int niter_, OCLtask* task=0 ){
+        printf("OCL_MM::setup_evalMMFFf4_local()\n");
         if(task==0) task = getTask("evalMMFFf4_local");
         task->global.x = nnode;
         task->global.y = nSystems;
@@ -538,6 +539,7 @@ class OCL_MM: public OCLsystem { public:
         niter   = niter_;
         nDOFs.x = nAtoms; 
         nDOFs.y = nnode;  
+        DEBUG;
         // ------- Maybe We do-not need to do this every frame ?
         int err=0;
         err |= _useArg   ( nDOFs );              // 1
@@ -563,6 +565,7 @@ class OCL_MM: public OCLsystem { public:
         err |= _useArg   ( md_params       );    // 18
         err |= _useArg   ( niter           );    // 19
         OCL_checkError(err, "setup_evalMMFFf4_local");
+        DEBUG;
         return task;
         // const int4 nDOFs,               // 1  (nAtoms,nnode)
         // __global float4*  apos,         // 2  [natoms]

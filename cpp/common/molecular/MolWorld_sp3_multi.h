@@ -51,6 +51,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_MMFF=0;
     OCLtask* task_move=0;
     OCLtask* task_print=0;
+    OCLtask* task_MMFFloc=0;
 
 // ==================================
 //         Initialization
@@ -94,10 +95,9 @@ virtual void init( bool bGrid ) override {
     ocl.init();
     ocl.makeKrenels_MM("common_resources/cl" );
     MolWorld_sp3::init(bGrid);
-
     // ----- init systems
     realloc( nSystems );
-    evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
+    //evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
     float random_init = 0.5;
     for(int i=0; i<nSystems; i++){
         pack_system( i, ffl, true, false, random_init );
@@ -174,24 +174,30 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0, bool bVel=false 
 
 void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
     printf("MolWorld_sp3_multi::upload() \n");
-    ocl.upload( ocl.ibuff_atoms,  atoms  );
-    ocl.upload( ocl.ibuff_constr, constr );
-    if(bForces){ ocl.upload( ocl.ibuff_aforces, aforces ); }
-    if(bVel   ){ ocl.upload( ocl.ibuff_avel,    avel    ); }
+    int err=0;
+    err|= ocl.upload( ocl.ibuff_atoms,  atoms  );
+    err|= ocl.upload( ocl.ibuff_constr, constr );
+    if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces ); }
+    if(bVel   ){ err|= ocl.upload( ocl.ibuff_avel,    avel    ); }
+    OCL_checkError(err, "MolWorld_sp2_multi::upload().upload1");
     if(bParams){
-        ocl.upload( ocl.ibuff_lvecs,   lvecs );
-        ocl.upload( ocl.ibuff_ilvecs, ilvecs );
-        ocl.upload( ocl.ibuff_neighs,     neighs    );
-        ocl.upload( ocl.ibuff_neighCell,  neighCell );
-        ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
-        //ocl.upload( ocl.ibuff_neighForce, neighForce  );
-        ocl.upload( ocl.ibuff_REQs,   REQs   );
-        ocl.upload( ocl.ibuff_MMpars, MMpars );
-        ocl.upload( ocl.ibuff_BLs, BLs );
-        ocl.upload( ocl.ibuff_BKs, BKs );
-        ocl.upload( ocl.ibuff_Ksp, Ksp );
-        ocl.upload( ocl.ibuff_Kpp, Kpp ); 
+        err|= ocl.upload( ocl.ibuff_lvecs,   lvecs );
+        err|= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
+        err|= ocl.upload( ocl.ibuff_neighs,     neighs    );
+        err|= ocl.upload( ocl.ibuff_neighCell,  neighCell );
+        err|= ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
+        OCL_checkError(err, "MolWorld_sp2_multi::upload().upload2");
+        //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
+        err|= ocl.upload( ocl.ibuff_REQs,   REQs   );
+        err|= ocl.upload( ocl.ibuff_MMpars, MMpars );
+        err|= ocl.upload( ocl.ibuff_BLs, BLs );
+        err|= ocl.upload( ocl.ibuff_BKs, BKs );
+        err|= ocl.upload( ocl.ibuff_Ksp, Ksp );
+        err|= ocl.upload( ocl.ibuff_Kpp, Kpp );
     }
+    OCL_checkError(err, "MolWorld_sp2_multi::upload().upload"); 
+    err |= ocl.finishRaw(); 
+    OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
 }
 
 void download( bool bForces=0, bool bVel=false ){
@@ -312,16 +318,19 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     //long T0 = getCPUticks();
     picked2GPU( ipicked,  1.0 );
     int err=0;
-    if( task_MMFF==0 )setup_MMFFf4_ocl();
+    if( task_MMFF==0    )setup_MMFFf4_ocl();
+    if( task_MMFFloc==0 )task_MMFFloc=ocl.setup_evalMMFFf4_local( niter );
     // evaluate on GPU
     long T0 = getCPUticks();
-    for(int i=0; i<niter; i++){
-        //err |= task_cleanF->enque_raw();      // DEBUG: this should be solved inside  task_move->enque_raw();   if we do not need to output force 
+    if(task_MMFFloc){
+        task_MMFFloc->enque_raw();
+    }else for(int i=0; i<niter; i++){
+        //err |= task_cleanF->enque_raw();      // this should be solved inside  task_move->enque_raw();   if we do not need to output force 
         err |= task_MMFF->enque_raw();
         if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
         else       { err |= task_NBFF      ->enque_raw(); }
-        OCL_checkError(err, "eval_MMFFf4_ocl.task_NBFF_Grid");
-        //err |= task_print   ->enque_raw();    // DEBUG: just printing the forces before assempling
+        //OCL_checkError(err, "eval_MMFFf4_ocl.task_NBFF_Grid");
+        //err |= task_print   ->enque_raw();    // just printing the forces before assempling
         err |= task_move      ->enque_raw(); 
         //OCL_checkError(err, "eval_MMFFf4_ocl_1");
     }
@@ -367,15 +376,15 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
     if( task_NBFF==0 ){ setup_NBFF_ocl(); }
     // evaluate on GPU
     for(int i=0; i<niter; i++){
-        //err |= task_cleanF->enque_raw(); // DEBUG: this should be solved inside  task_move->enque_raw();
+        //err |= task_cleanF->enque_raw(); // this should be solved inside  task_move->enque_raw();
         err |= task_NBFF  ->enque_raw();
-        //err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
+        //err |= task_print ->enque_raw(); // just printing the forces before assempling
         err |= task_move  ->enque_raw();
         //OCL_checkError(err, "eval_NBFF_ocl.1");
     }
     if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
-    err |=  ocl.finishRaw();                              //DEBUG
+    err |=  ocl.finishRaw();
     OCL_checkError(err, "eval_NBFF_ocl.2");
     if(bForce){
         unpack( ff4.natoms, ffl.  apos, ff4.  apos );
@@ -578,23 +587,26 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     //ocl.grid_p0     = gridFF.grid.pos0;
     v2f4( gridFF.grid.pos0, ocl.grid_p0 );
     ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
+    err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.finish");
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
     printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
+    bool bDownload =true; // WARRNING : if I set this OFF it crashes unexpectedly
+    //bSaveDebug=true;
+    bSaveDebug=false; 
+    if(bDownload){
+        gridFF.allocateFFs();
+        ocl.download( ocl.itex_FE_Paul, gridFF.FFPaul );  
+        ocl.download( ocl.itex_FE_Lond, gridFF.FFLond );
+        ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );    
+        err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
+        printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
+        if(bSaveDebug){ saveGridXsfDebug(); }
+    }
     delete [] atoms_surf;
     delete [] REQs_surf;
-    bSaveDebug=true;
-    //bSaveDebug=false;
-    if(bSaveDebug){
-        gridFF.allocateFFs();
-        ocl.download( ocl.itex_FE_Paul, gridFF.FFPaul  );  
-        ocl.download( ocl.itex_FE_Lond, gridFF.FFLond );
-        ocl.download( ocl.itex_FE_Coul, gridFF.FFelec   );
-        err =  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
-        printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
-        saveGridXsfDebug();
-    }
     ocl.buffers[ocl.ibuff_atoms_surf].release();
     ocl.buffers[ocl.ibuff_REQs_surf ].release();
+    err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.atoms_surf.release");
     //exit(0);
 }
 
@@ -651,7 +663,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
     int err=0;
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     
-    {  // DEBUG --- evaluate on CPU
+    {  // --- evaluate on CPU
         //bool bEval_ffl = false;
         bool bEval_ffl = true;
         unpack_system( iSystemCur, ffl );
@@ -666,7 +678,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
     }
     
     /*
-    { // DEBUG --- evaluate on CPU
+    { // --- evaluate on CPU
         unpack_system( iSystemCur, ffl );
         ffl  .cleanForce();
         //nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
@@ -679,10 +691,10 @@ double eval_MMFFf4_ocl_debug( int niter ){
 
     // evaluate on GPU
     for(int i=0; i<niter; i++){
-        err |= task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
+        err |= task_cleanF->enque_raw(); // this should be solved inside  task_move->enque_raw();
         err |= task_MMFF  ->enque_raw();
         err |= task_NBFF  ->enque_raw();
-        err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
+        err |= task_print ->enque_raw(); // just printing the forces before assempling
         err |= task_move  ->enque_raw(); 
         OCL_checkError(err, "eval_MMFFf4_ocl_debug.1");
     }
@@ -731,7 +743,7 @@ double eval_NBFF_ocl_debug( int niter ){
     int err=0;
     if( task_NBFF==0 ){ setup_NBFF_ocl(); }
 
-    { // DEBUG --- evaluate on CPU
+    { // --- evaluate on CPU
         unpack_system( iSystemCur, ffl );
         ffl  .cleanForce();
         //nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
@@ -742,15 +754,15 @@ double eval_NBFF_ocl_debug( int niter ){
     }
     // evaluate on GPU
     for(int i=0; i<niter; i++){
-        err |= task_cleanF->enque_raw(); // DEBUG: this should be solved inside  task_move->enque_raw();
+        err |= task_cleanF->enque_raw(); // this should be solved inside  task_move->enque_raw();
         err |= task_NBFF  ->enque_raw();
-        err |= task_print ->enque_raw(); // DEBUG: just printing the forces before assempling
+        err |= task_print ->enque_raw(); // just printing the forces before assempling
         err |= task_move  ->enque_raw();
     }
     
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
-    err |=  ocl.finishRaw();                              //DEBUG
+    err |=  ocl.finishRaw();
     OCL_checkError(err, "eval_NBFF_ocl_debug");
 
     for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
