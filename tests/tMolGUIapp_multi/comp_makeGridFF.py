@@ -6,8 +6,6 @@ import matplotlib.pyplot as plt
 dat = np.loadtxt( 'GPU_makeGridFF.log',        skiprows=0 ).transpose()
 ref = np.loadtxt( '../tMolGUIapp/initGridFF_iz_ix0_iy0.log', skiprows=1 ).transpose()
 
-
-
 # ---- Data
 #plt.figure(figsize=(15,5))
 

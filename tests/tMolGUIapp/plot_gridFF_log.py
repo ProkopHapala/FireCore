@@ -3,6 +3,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+def numDeriv(x,y):
+    dy = (y[2:] - y[:-2])/(x[2:] - x[:-2])
+    x_ = (x[2:] + x[:-2])*0.5
+    return dy,x_
+
 #data = np.loadtxt( 'checkSampleGridFF.log', skiprows=2 ).transpose()
 data = np.loadtxt( 'checkEFProfileVsNBFF.log', skiprows=2 ).transpose()
 
@@ -21,9 +26,13 @@ plt.plot(x,Eref  ,':', label='Eref');
 plt.ylim(-0.2,0.2); 
 plt.legend(); plt.grid()
 
+FzNum,x_ = numDeriv(x,E)
 plt.subplot(2,1,2);
 plt.plot(x,Fz    ,     label='Fz');   
 plt.plot(x,FzRef ,':', label='FzRef'); 
+plt.plot(x_,-FzNum ,'--', label='FzNum'); 
+
+
 plt.ylim(-0.2,0.2); 
 plt.legend(); plt.grid()
 

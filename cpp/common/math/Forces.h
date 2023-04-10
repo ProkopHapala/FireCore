@@ -218,7 +218,7 @@ inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const d
     // --- Coulomb
     const double ir2_  = 1/( r2 + R2damp );
     E = COULOMB_CONST*REQH.z*sqrt( ir2_ );
-        F = E*ir2_ ;
+        F = E*-ir2_ ;
     // --- Morse
     const double  r  = sqrt( r2   );
     const double  e  = exp( -K*(r-REQH.x) );
