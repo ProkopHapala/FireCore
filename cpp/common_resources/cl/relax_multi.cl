@@ -1752,7 +1752,7 @@ __kernel void evalMMFFf4_local(
         //    printf( "[iG=%i] bk{%3i,%3i,%3i,%3i}/%i fng(%g,%g,%g) \n", iG,  bk.x,bk.y,bk.z,bk.w, NNODE_LOC*4,  fng.x,fng.y,fng.z );
         //}
 
-        //fa.xyz += fng;  // IF this swithed off it woks
+        fa.xyz += fng;  // IF this swithed off it woks
         
 
         //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g)  bk{%3i,%3i,%3i,%3i} \n", iG, fa.x,fa.y,fa.z,   bk.x,bk.y,bk.z,bk.w );
