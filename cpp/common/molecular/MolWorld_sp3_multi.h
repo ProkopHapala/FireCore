@@ -97,7 +97,7 @@ virtual void init( bool bGrid ) override {
     MolWorld_sp3::init(bGrid);
     // ----- init systems
     realloc( nSystems );
-    //evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
+    if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
     float random_init = 0.5;
     for(int i=0; i<nSystems; i++){
         pack_system( i, ffl, true, false, random_init );
@@ -545,7 +545,7 @@ bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.0
 }
 
 bool evalCheckGridFF_ocl( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, double tol=1e-2, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.1, 0.}, double dz=0.05 ){
-    REQ=Quat4d{ 1.487, 0.02609214441*0, +0.1, 0.};
+    REQ=Quat4d{ 1.487, 0.02609214441, +0.1*0, 0.};
     printf( "MolWorld_sp3::evalCheckGridFF_ocl() natoms=%i npbc=%i apos=%li REQs=%li shifts=%li \n", gridFF.natoms, gridFF.npbc, gridFF.apos, gridFF.REQs, gridFF.shifts );
     _checkNull(gridFF.shifts)
     _checkNull(gridFF.REQs)
@@ -624,17 +624,18 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
     gridFF.grid.pos0.z=z0;
     gridFF.lvec = gridFF.grid.cell;
-    gridFF.makePBCshifts ( gridFF.nPBC, gridFF.lvec );
     //if(verbosity>1)
     //gridFF.grid.printCell();
     gridFF.nPBC=Vec3i{1,1,0};
     if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
+    gridFF.makePBCshifts ( gridFF.nPBC, gridFF.lvec );
     long T0 = getCPUticks();
     surf2ocl( gridFF.nPBC, bSaveDebugXSFs );
     printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
     bGridFF   =true; 
     //bSurfAtoms=false;
-    gridFF.shift0 = Vec3d{0.,0.,-2.0};
+    gridFF.shift0 = Vec3d{0.,0., 0.0};
+    //gridFF.shift0 = Vec3d{0.,0.,-2.0};
     // evalCheckGridFF_ocl();   // here are not initialized buffers atoms.aforce,REQs, so it will crash.
 }
 

@@ -32,7 +32,7 @@ nsys=50
 #./$name -m $nsys -x common_resources/polymer-2_new
 #./$name -m 10    -x common_resources/polymer-2_new
 #./$name -m 2    -x common_resources/polymer-2_new
-./$name -m 1    -x common_resources/polymer-2_new
+#./$name -m 1    -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 
@@ -55,7 +55,7 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 
 #./$name -m $nsys -x common_resources/polymer-2_new              -g common_resources/NaCl_1x1_L2
-#./$name -m 10 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2   | tee out.log
+./$name -m 10 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2   | tee out.log
 #./$name -m 1 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 #./$name -m 2 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
