@@ -14,6 +14,8 @@
 #include "Vec3.h"
 #include "Mat3.h"
 
+#include "datatypes.h"
+
 template <class T>
 inline T project_beam_to_sphere( T r, T x, T y ){
 	T z;
@@ -60,6 +62,10 @@ class Quat4T {
     inline explicit operator Quat4T<double>()const{ return (Quat4T<double>){ (double)x, (double)y, (double)z, (double)w }; }
     inline explicit operator Quat4T<float> ()const{ return (Quat4T<float>) { (float )x, (float )y, (float )z, (float )w }; }
     inline explicit operator Quat4T<int>   ()const{ return (Quat4T<int>)   { (int   )x, (int   )y, (int   )z, (int   )w }; }
+
+    inline explicit operator float4  ()const{ return float4 { (double)x, (double)y, (double)z, (double)w }; }
+    inline explicit operator double4 ()const{ return double4{ (float )x, (float )y, (float )z, (float )w }; }
+	inline explicit operator int4    ()const{ return int4   { (int   )x, (int   )y, (int   )z, (int   )w }; }
 
     //inline       T& operator[](int i){ return array[i]; }
     //inline const T& operator[](int i){ return array[i]; }
@@ -749,7 +755,10 @@ class QUAT : public Quat4T< T, VEC, MAT, QUAT >{  };
 */
 
 template<typename T1,typename T2>
-inline Quat4T<T2> cast(const Quat4T<T1>& i){ Quat4T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y; o.z=(T2)i.z; o.w=(T2)i.w; return o; };
+inline Quat4T<T2> cast(const Quat4T<T1>& i){ return Quat4T<T2>{ (T2)i.x, (T2)i.y, (T2)i.z, (T2)i.w }; };
+
+//inline float4 cast(const Quat4T<T1>& i){ return float4{ (float)i.x; (float)i.y; (float)i.z; (float)i.w }; };
+//inline float4 cast(const Quat4T<T1>& i){ Quat4T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y; o.z=(T2)i.z; o.w=(T2)i.w; return o; };
 
 using Quat4i = Quat4T< int>;
 using Quat4f = Quat4T< float>;

@@ -578,8 +578,8 @@ bool evalCheck( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, doubl
     _checkNull(REQs)
     _checkNull(apos)
     bool err = false;
-    double zmin=grid.pos0.z+1.0;
-    double zmax=grid.pos0.z+grid.cell.c.z -1.0;
+    double zmin=grid.pos0.z+shift0.z+1.0;
+    double zmax=grid.pos0.z+grid.cell.c.z*0.5;
     zmax=fmin(zmax,10);
     int nz = ((int)((zmax-zmin)/dz)) + 1;
     for( int ia=imin; ia<imax; ia++ ){
@@ -589,8 +589,8 @@ bool evalCheck( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, doubl
 }
 
 void log_z(const char* fname, int ix=0, int iy=0){
-    FILE* logf=fopen( fname, "w");       DEBUG;
-    if(logf==0){ printf("ERROR in GridFF::makeGridFF_omp() cannot open logfile(%s) => Exit()\n", fname ); exit(0); } DEBUG;
+    FILE* logf=fopen( fname, "w");
+    if(logf==0){ printf("ERROR in GridFF::makeGridFF_omp() cannot open logfile(%s) => Exit()\n", fname ); exit(0); }
     fprintf( logf, "#i   z  Ep_Paul Fz_Paul   Ep_Lond Fz_Lond  E_Coul Fz_Coul \n" );
     for ( int iz=0; iz<grid.n.z; iz++ ){
         const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;

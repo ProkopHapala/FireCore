@@ -110,7 +110,7 @@ class OCLBuffer{
     //inline setImageParams(  );
 
     inline OCLBuffer(){};
-    inline OCLBuffer( char* name_, size_t n_, size_t typesize_, void * p_cpu_, cl_mem_flags flags_=CL_MEM_READ_WRITE ) :n(n_),typesize(typesize_),p_cpu(p_cpu_),flags(flags_),name(name_){};
+    inline OCLBuffer( const char* name_, size_t n_, size_t typesize_, void * p_cpu_, cl_mem_flags flags_=CL_MEM_READ_WRITE ) :n(n_),typesize(typesize_),p_cpu(p_cpu_),flags(flags_),name(name_){};
     inline int release(){ return clReleaseMemObject( p_gpu ); p_gpu=0; }
     //inline ~OCLBuffer(){ if(p_gpu) release(); };   // This makes some problem with de-allocation
 }; // OCLBuffer
@@ -202,11 +202,11 @@ class OCLtask{ public:
 
 class OCLsystem{ public:
     // http://stackoverflow.com/questions/20105566/advantages-of-a-program-containing-several-opencl-kernels-versus-several-program
-    //cl_int           err;           // error code returned from OpenCL calls
-    cl_device_id     device   = 0;        // compute device id
-    cl_context       context  = 0;       // compute context
+    //cl_int           err;              // error code returned from OpenCL calls
+    cl_device_id     device   = 0;      // compute device id
+    cl_context       context  = 0;      // compute context
     cl_command_queue commands = 0;      // compute command queue
-    cl_program       program  = 0;       // compute program - TODO FIXME: There could be more than one !!!!
+    cl_program       program  = 0;      // compute program - TODO FIXME: There could be more than one !!!!
 
     std::vector<cl_kernel> kernels;
     std::vector<OCLBuffer> buffers;
@@ -253,7 +253,7 @@ class OCLsystem{ public:
         //exit(0);
     }
 
-    void print_devices( bool bDetails=false){
+    int print_devices( bool bDetails=false){
         int i, j;
         char*           value;
         size_t          valueSize;
@@ -273,12 +273,14 @@ class OCLsystem{ public:
         cl_ulong ul;
         size_t   sz;
         size_t   szs[4];
+        int i_nvidia = -1;
         for (i = 0; i < platformCount; i++) {
             clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, 0, NULL, &deviceCount);
             devices = (cl_device_id*) malloc(sizeof(cl_device_id) * deviceCount);
             clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, deviceCount, devices, NULL);
             for (j = 0; j < deviceCount; j++) {
                 clGetDeviceInfo(devices[j], CL_DEVICE_NAME,                nstrmax,      str, NULL);   printf("DEVICE[%i,%i]: %s\n", i,j, str);
+                if(strstr(str, "NVIDIA") != NULL){ i_nvidia=i; }
                 //clGetDeviceInfo(devices[j], CL_DEVICE_VENDOR,              nstrmax,      str, NULL);   printf("\tVENDOR:      %s\n", str);
                 printf("\t## VERSIONS: \n");
                 clGetDeviceInfo(devices[j], CL_DEVICE_VERSION,             nstrmax,      str, NULL);   printf("\tDEVICE_VERSION: %s\n", str);
@@ -314,7 +316,7 @@ class OCLsystem{ public:
             free(devices);
         }
         free(platforms);
-        //return 0;
+        return i_nvidia;
     }
 
 
@@ -364,10 +366,11 @@ class OCLsystem{ public:
     void check_deviceSet  (){ if(device  ==0){ printf("ERROR OCLsystem device   not set \n"); exit(-1); } }
     void check_commandsSet(){ if(commands==0){ printf("ERROR OCLsystem commands not set \n"); exit(-1); } }
 
-    int init(){
+    int init(int ichoice){
         int err=0;
         //cl_info(); exit(0);
         cl_uint deviceIndex = 0;
+        if( ichoice>=0 ){ deviceIndex=ichoice; }
         //parseArguments(argc, argv, &deviceIndex);
         cl_device_id devices[MAX_DEVICES];
         unsigned numDevices = getDeviceList(devices);
@@ -389,7 +392,7 @@ class OCLsystem{ public:
         return err;
     }
     
-    int newTask( char * name, cl_program program_=0, size_t dim=1, size_t4 global=size_t4{0,0,0,0}, size_t4 local={1,1,1,1} ){
+    int newTask( const char * name, cl_program program_=0, size_t dim=1, size_t4 global=size_t4{0,0,0,0}, size_t4 local={1,1,1,1} ){
         if(program_==0){ 
             check_programSet();
             program_=program;
@@ -403,7 +406,7 @@ class OCLsystem{ public:
         return i;
     }
 
-    int newKernel( char * name, cl_program program_=0 ){
+    int newKernel( const char * name, cl_program program_=0 ){
         if(program_==0){ 
             check_programSet();
             program_=program;
@@ -415,16 +418,16 @@ class OCLsystem{ public:
         return i;
     }
 
-    int newBuffer( char* name, size_t n, size_t typesize, void* p_cpu=0, cl_mem_flags flags=CL_MEM_READ_WRITE ){
+    int newBuffer( const char* name, size_t n, size_t typesize, void* p_cpu=0, cl_mem_flags flags=CL_MEM_READ_WRITE ){
         check_contextSet();
-        buffers.push_back( OCLBuffer( name, n, typesize, p_cpu, flags ) ); 
-        int i=buffers.size()-1; 
+        buffers.push_back( OCLBuffer( name, n, typesize, p_cpu, flags ) );
+        int i=buffers.size()-1;
         buffer_dict.insert( { name, i } );
-        int err=buffers[i].initOnGPU(context); OCL_checkError__(err, "newBuffer",i,name); 
+        int err=buffers[i].initOnGPU(context); OCL_checkError__(err, "newBuffer",i,name);
         return i;
     }
 
-    int newBufferImage2D( char* name, size_t nx, size_t ny, size_t typesize, void * p_cpu, cl_mem_flags flags, cl_image_format imageFormat ){
+    int newBufferImage2D( const char* name, size_t nx, size_t ny, size_t typesize, void * p_cpu, cl_mem_flags flags, cl_image_format imageFormat ){
         check_contextSet();
         buffers.push_back( OCLBuffer( name, nx*ny, typesize, p_cpu, flags ) );
         int i=buffers.size()-1;
@@ -437,7 +440,7 @@ class OCLsystem{ public:
         return i;
     }
 
-    int newBufferImage3D( char* name, size_t nx, size_t ny, size_t nz, size_t typesize, void * p_cpu, cl_mem_flags flags, cl_image_format imageFormat ){
+    int newBufferImage3D( const char* name, size_t nx, size_t ny, size_t nz, size_t typesize, void * p_cpu, cl_mem_flags flags, cl_image_format imageFormat ){
         check_contextSet();
         buffers.push_back( OCLBuffer( name, nx*ny, typesize, p_cpu, flags ) );
         int i=buffers.size()-1;
@@ -456,7 +459,7 @@ class OCLsystem{ public:
     int initBuffers   (){ int err = CL_SUCCESS; for(size_t i=0; i<buffers.size(); i++){  err |= buffers[i].initOnGPU ( context );     }; return err; }
     //int releaseBuffers(){ for(int i=0; i<buffers; i++){ clReleaseMemObject(buffers[i].p_gpu); } }
 
-    char * getKernelSource(char *filename){
+    char * getKernelSource(const char *filename){
         FILE *file = fopen(filename, "r");
         if (!file){ fprintf(stderr, "Error: Could not open kernel source file\n"); exit(-1); }
         fseek(file, 0, SEEK_END);
@@ -470,7 +473,7 @@ class OCLsystem{ public:
         return source;
     }
 
-    int buildProgram( char * fname, cl_program& program_ ){       // TODO : newProgram instead ?
+    int buildProgram( const char * fname, cl_program& program_ ){       // TODO : newProgram instead ?
         int err=0;
         char * kernelsource = getKernelSource( fname );
         program_ = clCreateProgramWithSource(context, 1, (const char **) & kernelsource, NULL, &err);
@@ -490,7 +493,7 @@ class OCLsystem{ public:
         //free(kernelsource);     // Why it crashes ?
         return err;
     }
-    int buildProgram( char * fname ){ return buildProgram( fname, program ); }
+    int buildProgram( const char * fname ){ return buildProgram( fname, program ); }
  
     inline int upload  (int i, const void* cpu_data, int n=-1,int i0=0 ){ return buffers[i].toGPU  (commands,cpu_data,n,i0); };
     inline int download(int i,       void* cpu_data, int n=-1,int i0=0 ){ return buffers[i].fromGPU(commands,cpu_data,n,i0); };
@@ -528,7 +531,7 @@ class OCLsystem{ public:
     int enque( size_t dim, size_t4 global, int ikernel=-1 ){  return enque(dim, (size_t*)&global, NULL, ikernel); }
 
     int enqueTask( int i ){ return tasks[i]->enque(); };
-    int enqueTask( char* name ){ return enqueTask( task_dict[name] ); }
+    int enqueTask( const char* name ){ return enqueTask( task_dict[name] ); }
 
     int download(){
         int err = CL_SUCCESS;
