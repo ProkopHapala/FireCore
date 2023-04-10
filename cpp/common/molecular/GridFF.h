@@ -572,7 +572,7 @@ bool checkZProfilesOverAtom( int ia, int n, double zmin, double zmax, const Quat
 }
 
 bool evalCheck( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, double tol=1e-2, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.1, 0.}, double dz=0.05 ){
-    REQ=Quat4d{ 1.487, 0.02609214441*0, +0.1, 0.};
+    //REQ=Quat4d{ 1.487, 0.02609214441*0, +0.1, 0.};
     printf( "GridFF::evalCheck() natoms=%i npbc=%i apos=%li REQs=%li shifts=%li \n", natoms, npbc, apos, REQs, shifts );
     _checkNull(shifts)
     _checkNull(REQs)
