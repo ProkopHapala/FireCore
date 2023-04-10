@@ -409,7 +409,7 @@ class OCLsystem{ public:
             program_=program;
         }
         //printf( "newKernel() program %li %li \n", (long)program_, (long)program );
-        int err; kernels.push_back( clCreateKernel( program_, name, &err ) );  OCL_checkError(err, "newKernel"); 
+        int err=0; kernels.push_back( clCreateKernel( program_, name, &err ) );  OCL_checkError(err, "newKernel"); 
         int i = kernels.size()-1;
         kernel_dict.insert( { name, i } );
         return i;
@@ -483,6 +483,7 @@ class OCLsystem{ public:
         if (err != CL_SUCCESS){
             printf( " ERROR in clBuildProgram %s \n", fname);
             OCL_buildProgramFailure( program_, device );
+            exit(0);
             return -1;
         }
         //delete [] kernelsource; // TODO ??????
@@ -541,12 +542,12 @@ class OCLsystem{ public:
     }
 
     int finishRaw(){
-        int err = clFinish(commands);   OCL_checkError(err, "finishRaw : clFinish"); return err;
+        int err = clFinish(commands); return err;
     }
 
     int finish(){
         int err=0;
-        err = clFinish(commands);   OCL_checkError(err, "finish : clFinish");
+        err = clFinish(commands);
         err |= download();
         return err;
     }
