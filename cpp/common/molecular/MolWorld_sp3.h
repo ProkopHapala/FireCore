@@ -258,7 +258,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
         bGridFF   =true; 
         //bSurfAtoms=false;
     }
-    gridFF.shift0 = Vec3d{0.,0.,-2.0};
+    //gridFF.shift0 = Vec3d{0.,0.,-2.0};
+    gridFF.shift0 = Vec3d{0.,0.,0.0};
     gridFF.evalCheck();
 }
 
