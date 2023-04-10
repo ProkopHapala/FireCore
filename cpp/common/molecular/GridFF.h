@@ -365,7 +365,7 @@ inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=t
                             // --- store
                             qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
                             ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
-                            qe.e+=eQ;     qe.f.add_mul( dp, -eQ*ir2 ); // Coulomb
+                            qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
                         }
                     }
                     const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
@@ -572,7 +572,7 @@ bool checkZProfilesOverAtom( int ia, int n, double zmin, double zmax, const Quat
 }
 
 bool evalCheck( int imin=0, int imax=1, bool bExit=true, bool bPrint=true, double tol=1e-2, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.1, 0.}, double dz=0.05 ){
-    //REQ=Quat4d{ 1.487, 0.02609214441*0, +0.1, 0.};
+    REQ=Quat4d{ 1.487, 0.02609214441, -0.1, 0.};
     printf( "GridFF::evalCheck() natoms=%i npbc=%i apos=%li REQs=%li shifts=%li \n", natoms, npbc, apos, REQs, shifts );
     _checkNull(shifts)
     _checkNull(REQs)

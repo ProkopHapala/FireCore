@@ -1280,7 +1280,7 @@ __kernel void make_GridFF(
                             float ir2  = 1.f/(r2+R2damp); 
                             // ---- Electrostatic
                             float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
-                            fe_Coul   += (float4)(dp*(E*-ir2), E );
+                            fe_Coul   += (float4)(dp*(E*ir2), E );
                             // ---- Morse ( Pauli + Dispersion )
                             float    e = exp( -alphaMorse*(r-REQK.x) );
                             float   eM = REQK.y*e;
