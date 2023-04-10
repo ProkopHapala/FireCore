@@ -146,6 +146,7 @@ class OCL_DFT: public OCLsystem { public:
         // https://github.com/clMathLibraries/clFFT/issues/148
         // The dimensions have to be powers of 2,3,5,7,11,13 or any combination of those.
         if(verbosity>0)printf(  "planFFT fft_dim %i N(%li,%li,%li,%li)  \n", fft_dim, Ns[0], Ns[1], Ns[2], Ns[3] );
+        int err=0;
         err = clfftCreateDefaultPlan(&planHandle, context, fft_dim, Ns );        OCLfft_checkError(err, "clfftCreateDefaultPlan" );
         err = clfftSetPlanPrecision (planHandle, CLFFT_SINGLE);                  OCLfft_checkError(err, "clfftSetPlanPrecision" );
         err = clfftSetLayout        (planHandle, CLFFT_COMPLEX_INTERLEAVED, CLFFT_COMPLEX_INTERLEAVED);   OCLfft_checkError(err, "clfftSetLayout" );
@@ -170,6 +171,7 @@ class OCL_DFT: public OCLsystem { public:
         Ntot=1; for(int i=0; i<ndim;i++){  Ns[i]=Ns_[i];  Ntot*= Ns[i]; }
         //printf( "initFFT ndim %i Ntot %li Ns[%li,%li,%li]\n", ndim, Ntot, Ns[0],Ns[1],Ns[2] );
         clfftSetupData fftSetup;                //printf("initFFT 1 \n");
+        int err=0;
         err  = clfftInitSetupData(&fftSetup);   OCLfft_checkError(err, "clfftInitSetupData");
         err  = clfftSetup        (&fftSetup);   OCLfft_checkError(err, "clfftSetup" );
         //data_cl = clCreateBuffer( context, CL_MEM_READ_WRITE, buffer_size, NULL, &err );
@@ -205,6 +207,7 @@ class OCL_DFT: public OCLsystem { public:
     }
 
     void runFFT( int ibuff, bool fwd, float* data=0 ){
+        int err=0;
         //err = clEnqueueWriteBuffer ( queue, data_cl, CL_TRUE, 0, buffer_size, data, 0, NULL, NULL );
         cl_mem data_cl =  buffers[ibuff].p_gpu;
         if(fwd){
@@ -229,6 +232,7 @@ class OCL_DFT: public OCLsystem { public:
         kdim.local [0]  = 16;
         cl_kernel kernel = kernels[iKernell_mull]; 
         //int N2 = Ntot*2;
+        int err=0;
         err =  clSetKernelArg(kernel, 0, sizeof(int),    &kdim.global        );
         err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &(buffers[0].p_gpu) );
         err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &(buffers[1].p_gpu) );
@@ -247,6 +251,7 @@ class OCL_DFT: public OCLsystem { public:
         int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
         //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
         useKernel( iKernell_roll );
+        int err=0;
         err |= useArgBuff( ibuffA );
         err |= useArgBuff( ibuffB );
         err |= _useArg( shift );
@@ -262,6 +267,7 @@ class OCL_DFT: public OCLsystem { public:
         int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
         //printf( "DEBUG roll_buf iKernell_roll %i ibuffA %i ibuffB %i \n", iKernell_roll, ibuffA, ibuffB );
         useKernel( iKernell_grad );
+        int err=0;
         err |= useArgBuff( ibuffA );
         err |= useArgBuff( ibuffB );
         err |= _useArg( mask );
@@ -286,6 +292,7 @@ class OCL_DFT: public OCLsystem { public:
         buffers[ibuff_poss].toGPU(commands);
         upload(ibuff_atoms,atoms);
         upload(ibuff_coefs,coefs);
+        int err=0;
         //printf("DEBUG projectAtomPosTex() 2 \n");
         //buffers[ibuff_out ].toGPU(commands);
         //err = clEnqueueWriteBuffer ( commands, buffers[ibuff_poss].p_gpu, CL_TRUE, 0, sizeof(float4)*nPos, poss, 0, NULL, NULL );
@@ -501,6 +508,7 @@ class OCL_DFT: public OCLsystem { public:
         //printf( "DEBUG convolution ibuffA,ibuffB,ibuff_result %i,%i,%i ", ibuffA,ibuffB,ibuff_result  );
         //saveToXsf( "DEBUG_buffA_in.xsf", ibuffA );
         //saveToXsf( "DEBUG_buffB_in.xsf", ibuffB );
+        int err=0;
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
         err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffB].p_gpu, NULL, NULL);  
         //saveToXsf( "DEBUG_buffA_w.xsf", ibuffA );
@@ -514,6 +522,7 @@ class OCL_DFT: public OCLsystem { public:
     }
 
     void poisson( int ibuffA, int ibuff_result, float4* dcell=0 ){
+        int err=0;
         //printf( "BEGIN poisson %i -> %i ( %s -> %s ) \n", ibuffA, ibuff_result, buffers[ibuffA].name, buffers[ibuff_result].name );
         //err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
         //OCLfft_checkError(err, " poisson::clfftEnqueueTransform " );

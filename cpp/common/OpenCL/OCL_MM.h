@@ -37,7 +37,9 @@ class OCL_MM: public OCLsystem { public:
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
     //float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
-    float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
+    //float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
+    float4 md_params{0.05,0.995,100.0,0.0};    // (dt,cdamp,forceLimit)
+    
     int    niter;
     float4 GFFparams{1.0,1.5,0.,0.};
 
@@ -50,15 +52,27 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_lvecs=-1, ibuff_ilvecs=-1; 
     int ibuff_constr=-1;
 
+    int ibuff_samp_ps=-1;
+    int ibuff_samp_fs=-1;
+    int ibuff_samp_REQ=-1;
+
     // ------- Grid
     //size_t Ns[4]; // = {N0, N1, N2};
     //size_t Ntot;
     int natom_surf=0;
     int4    grid_n;
-    float4  grid_p0{0.f,0.f,0.f,0.f};
+    //float4  grid_p0       { 0.f, 0.f, 0.f, 0.f };
+    //float4  grid_shift0   { 0.f, 0.f, 0.f, 0.f };
+    //float4  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f };
+
+    Quat4f  grid_p0       { 0.f, 0.f, 0.f, 0.f };
+    Quat4f  grid_shift0   { 0.f, 0.f, 0.f, 0.f };
+    Quat4f  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f };
+
     cl_Mat3 cl_dGrid;
     cl_Mat3 cl_diGrid;
     cl_Mat3 cl_grid_lvec;
+    
 
 
     int itex_FE_Paul=-1;
@@ -68,6 +82,9 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_REQs_surf =-1;
     int ibuff_dipole_ps=-1;
     int ibuff_dipoles  =-1;
+
+
+    
 
     // ====================== Functions
 
@@ -125,16 +142,21 @@ class OCL_MM: public OCLsystem { public:
         ibuff_lvecs      = newBuffer( "lvecs",      nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
         ibuff_ilvecs     = newBuffer( "ilvecs",     nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
 
+        // int nsamp_max = 1000; DEBUG
+        // ibuff_samp_fs   = newBuffer( "samp_fs",   nsamp_max, sizeof(float4), 0, CL_MEM_READ_WRITE );   DEBUG
+        // ibuff_samp_ps   = newBuffer( "samp_ps",   nsamp_max, sizeof(float4), 0, CL_MEM_READ_ONLY  );    DEBUG
+        // ibuff_samp_REQ  = newBuffer( "samp_REQ",  nsamp_max, sizeof(float4), 0, CL_MEM_READ_ONLY  );    DEBUG
+
         return ibuff_atoms;
     }
 
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
-        //int nloc = 1;
+        int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc = 32;
+        //int nloc = 32;
         //int nloc = 64;
         task->local.x = nloc;
         task->global.x = na + nloc-(na%nloc);
@@ -186,6 +208,7 @@ class OCL_MM: public OCLsystem { public:
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc);
         task->global.y = nSystems;
+        grid_shift0_p0 = grid_p0 + grid_shift0;
 
         useKernel( task->ikernel );
         nDOFs.x=na; 
@@ -209,7 +232,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( itex_FE_Lond    );  // 11
         err |= useArgBuff( itex_FE_Coul    );  // 12   
         err |= _useArg( cl_diGrid          );  // 13
-        err |= _useArg( grid_p0            );  // 14
+        err |= _useArg( grid_shift0_p0     );  // 14
         OCL_checkError(err, "setup_getNonBond_GridFF");
         return task;
         // const int4 ns,                  // 1
@@ -385,33 +408,48 @@ class OCL_MM: public OCLsystem { public:
 
 
     OCLtask* sampleGridFF( int n, Quat4f* fs=0, Quat4f* ps=0, Quat4f* REQs=0, bool bRun=true, OCLtask* task=0){
-        printf("OCL_MM::sampleGridFF() bRun=%i n=%i fs=%li ps=%li REQs=%li \n", n, bRun, n, fs,ps,REQs  );
+        printf("OCL_MM::sampleGridFF() n=%i bRun=%i fs=%li ps=%li REQs=%li\n", n, bRun, fs,ps,REQs );
         int err=0;
         if((itex_FE_Paul<=0)||(itex_FE_Lond<=0 )||(itex_FE_Coul<=0)){ printf("ERROR in OCL_MM::sampleGridFF() textures not initialized itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i => Exit()\n",  itex_FE_Paul, itex_FE_Lond,  itex_FE_Coul ); }
-        if(( ibuff_atoms<=0)||(ibuff_aforces<=0)||(ibuff_REQs<=0  )){ printf("ERROR in OCL_MM::sampleGridFF() buffers  not initialized ibuff_atoms=%i ibuff_aforces=%i ibuff_REQs=%i => Exit()\n",    ibuff_atoms,  ibuff_aforces, ibuff_REQs   ); }
-        if(ps   )upload( ibuff_atoms, ps,   n );
-        if(REQs )upload( ibuff_REQs,  REQs, n );
+        //if(( ibuff_atoms<=0)||(ibuff_aforces<=0)||(ibuff_REQs<=0  )){ printf("ERROR in OCL_MM::sampleGridFF() buffers  not initialized ibuff_atoms=%i ibuff_aforces=%i ibuff_REQs=%i => Exit()\n",    ibuff_atoms,  ibuff_aforces, ibuff_REQs   ); }
+        // DEBUG
+        // //if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   n, sizeof(float4), 0, CL_MEM_WRITE_ONLY  );   DEBUG
+        if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   n, sizeof(float4), 0, CL_MEM_WRITE_ONLY );   DEBUG
+        if(ibuff_samp_ps <=0)ibuff_samp_ps   = newBuffer( "samp_ps",   n, sizeof(float4), 0, CL_MEM_READ_ONLY  );    DEBUG
+        if(ibuff_samp_REQ<=0)ibuff_samp_REQ  = newBuffer( "samp_REQ",  n, sizeof(float4), 0, CL_MEM_READ_ONLY  );    DEBUG
+
+
+        //if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        //if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+
+        DEBUG 
+        if(ps   )upload( ibuff_samp_ps , ps,   n );  DEBUG  
+        if(REQs )upload( ibuff_samp_REQ, REQs, n );  DEBUG
+        //if(ps   )upload( ibuff_atoms, ps,   n );   
+        //if(REQs )upload( ibuff_REQs,  REQs, n );
+
         OCL_checkError(err, "sampleGridFF().upload" );
         if(task==0) task = getTask("sampleGridFF");
         task->local.x  = 1;
         task->global.x = n;
         useKernel( task->ikernel );
+        grid_shift0_p0 = grid_p0 + grid_shift0;  
         nDOFs.x=n; 
         // ------- Maybe We do-not need to do this every frame ?
         err |= _useArg   ( nDOFs );            // 1
-        err |= useArgBuff( ibuff_atoms     );  // 2
-        err |= useArgBuff( ibuff_aforces   );  // 3
-        err |= useArgBuff( ibuff_REQs      );  // 4
+        err |= useArgBuff( ibuff_samp_ps   );  // 2
+        err |= useArgBuff( ibuff_samp_fs   );  // 3
+        err |= useArgBuff( ibuff_samp_REQ  );  // 4
         err |= _useArg   ( GFFparams       );  // 5
         err |= useArgBuff( itex_FE_Paul    );  // 6
         err |= useArgBuff( itex_FE_Lond    );  // 7
         err |= useArgBuff( itex_FE_Coul    );  // 8   
         err |= _useArg( cl_diGrid          );  // 9
-        err |= _useArg( grid_p0            );  // 10
+        err |= _useArg( grid_shift0_p0     );  // 10
         OCL_checkError(err, "sampleGridFF.setup");
         if(bRun){
             err |= task->enque_raw();                 OCL_checkError(err, "sampleGridFF().enque"    );
-            err |= download( ibuff_aforces, fs, n );  OCL_checkError(err, "sampleGridFF().downalod" );
+            err |= download( ibuff_samp_fs, fs, n );  OCL_checkError(err, "sampleGridFF().downalod" );
             err |= finishRaw();                       OCL_checkError(err, "sampleGridFF().finish"   );
         }
         //exit(0);
@@ -426,12 +464,14 @@ class OCL_MM: public OCLsystem { public:
         // __read_only image3d_t  FE_Coul, // 8
         // const cl_Mat3  diGrid,          // 9
         // const float4   grid_p0          // 10
+        
     }
 
     //void setGridShape( const Mat3d& dCell ){
     void setGridShape( const GridShape& grid ){
         v2i4      ( grid.n      , grid_n       );
-        v2f4      ( grid.pos0   , grid_p0      );
+        //v2f4      ( grid.pos0   , grid_p0      );
+        grid_p0.f = (Vec3f)grid.pos0;
         Mat3_to_cl( grid.dCell  , cl_dGrid     );
         Mat3_to_cl( grid.diCell , cl_diGrid    );
         Mat3_to_cl( grid.cell   , cl_grid_lvec );
@@ -534,7 +574,7 @@ class OCL_MM: public OCLsystem { public:
         printf("OCL_MM::setup_evalMMFFf4_local()\n");
         if(task==0) task = getTask("evalMMFFf4_local");
         
-        md_params.y = 0.9;
+        //md_params.y = 0.9;
 
         //int nloc = 1;
         //int nloc = 4;

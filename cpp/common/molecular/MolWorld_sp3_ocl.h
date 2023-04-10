@@ -91,7 +91,7 @@ void init_ocl(){
 
 void REQs2ocl(){
     Quat4f* q_cs= new Quat4f[nbmol.natoms];
-    pack  ( nbmol.natoms, nbmol.REQs, q_cs, gridFF.alphaMorse );
+    pack  ( nbmol.natoms, nbmol.REQs, q_cs );
     ocl.upload( ocl.ibuff_coefs, q_cs );    
     delete [] q_cs;
 };
@@ -350,7 +350,7 @@ void setup_NBFF_ocl(){
     //task_cleanF  = ocl.getTask("cleanForceMMFFf4");
     task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode );
     task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode ); 
-    task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode );
+    task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, gridFF.nPBC );
 }
 
 // ======================== EVAL OCL KERNEL functions

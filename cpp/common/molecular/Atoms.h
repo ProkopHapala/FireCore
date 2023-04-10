@@ -42,7 +42,7 @@ class Atoms{ public:
 
     void print()const{ printf("Atoms::print() natom=%i\n", natoms); for(int i=0; i<natoms; i++){ printf( "[%i] atype %i apos(%6.3f,%6.3f,%6.3f)\n", i, atypes[i], apos[i].x, apos[i].y, apos[i].z ); } }
 
-    void atomsToXYZ(FILE* fout, bool bN, bool bComment){
+    void atomsToXYZ(FILE* fout, bool bN=false, bool bComment=false){
         if(bN      )fprintf( fout, "%i\n", natoms );
         if(bComment){
            if(lvec){ fprintf( fout, "lvs %g %g %g  %g %g %g  %g %g %g  E %g id %li\n", lvec->a.x,lvec->a.y,lvec->a.z,  lvec->b.x,lvec->b.y,lvec->b.z,   lvec->c.x,lvec->c.y,lvec->c.z,  Energy,id  ); }

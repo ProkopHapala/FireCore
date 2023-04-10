@@ -174,6 +174,7 @@ class OCL_PP: public OCL_DFT { public:
             upload( ibuff_start_point, points_, np);
         }
         useKernel( task->ikernel );
+        int err=0;
         err |= useArgBuff( itex_FF      );      // 1
         err |= useArgBuff( ibuff_start_point ); // 2
         err |= useArgBuff( ibuff_out    );      // 3
@@ -202,6 +203,7 @@ class OCL_PP: public OCL_DFT { public:
             upload( ibuff_start_point, points_, np);
         }
         useKernel( task->ikernel );
+        int err=0;
         err |= useArgBuff( itex_FF      );      // 1
         err |= useArgBuff( ibuff_start_point ); // 2
         err |= useArgBuff( ibuff_out    );      // 3
@@ -234,6 +236,7 @@ class OCL_PP: public OCL_DFT { public:
         useKernel( task->ikernel );
         printf("ibuff_out %i \n", ibuff_out);
         int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        int err=0;
         err |= useArg    ( nAtoms        ); // 1
         err |= useArgBuff( ibuff_atoms   ); // 2
         err |= useArgBuff( ibuff_coefs   ); // 3
@@ -276,6 +279,7 @@ class OCL_PP: public OCL_DFT { public:
         if(coefs)upload( ibuff_coefs, coefs, na);
         useKernel( task->ikernel );
         int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        int err=0;
         err |= useArg    ( nAtoms        ); // 1
         err |= useArgBuff( ibuff_atoms   ); // 2
         err |= useArgBuff( ibuff_coefs   ); // 3
@@ -325,6 +329,7 @@ class OCL_PP: public OCL_DFT { public:
         if(coefs)upload( ibuff_coefs, coefs, na );
         useKernel( task->ikernel );
         int4 ngrid{ (int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3] };
+        int err=0;
         err |= useArg    ( nAtoms       ); // 1
         err |= useArgBuff( ibuff_atoms  ); // 2
         err |= useArgBuff( ibuff_coefs  ); // 3
@@ -404,6 +409,7 @@ class OCL_PP: public OCL_DFT { public:
         nPBC.y = nPBC_.y;
         nPBC.z = nPBC_.z;
         // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
         err |= _useArg   ( nDOFs );               // 1
         // Dynamical
         err |= useArgBuff( ibuff_atoms      ); // 2
@@ -414,7 +420,7 @@ class OCL_PP: public OCL_DFT { public:
         err |= useArgBuff( ibuff_neighCell );  // 6
         err |= _useArg( nPBC               );  // 7
         err |= _useArg( cl_lvec            );  // 8
-        err |= _useArg( GFFparams          );  // 9
+        err |= _useArg( Rdamp              );  // 9
         OCL_checkError(err, "setup_getNonBond");
         return task;
         /*
@@ -440,6 +446,7 @@ class OCL_PP: public OCL_DFT { public:
         if(na>=0  ) task->global.x = na;
         task->global.x = na;
         useKernel( task->ikernel );
+        int err=0;
         err |= useArg    ( nAtoms       ); // 1
         err |= useArgBuff( ibuff_atoms  ); // 2
         err |= useArgBuff( ibuff_coefs  ); // 3
@@ -477,6 +484,7 @@ class OCL_PP: public OCL_DFT { public:
         //if(coefs  )upload( ibuff_neighs,  neighs, na);
         //if(aforces)upload( ibuff_aforces, aforces, na);
         OCLtask* task = setup_getNonBondForce_GridFF( 0, na );
+        int err=0;
         err = task->enque_raw();
         OCL_checkError(err, "getNonBondForce_GridFF_2");  
         if(aforces)err=download( ibuff_aforces, aforces, na);
@@ -499,7 +507,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.x=na; 
         nDOFs.y=nNode; 
         nDOFs.w=bPBC; 
-
+        int err=0;
         // ------- Maybe We do-not need to do this every frame ?
         //err |= useArg    ( nAtoms       );   // 1
         err |= _useArg   ( nDOFs );            // 1
@@ -550,6 +558,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.x=na; 
         nDOFs.y=nNode; 
         nDOFs.w=bPBC; 
+        int err=0;
         // ------- Maybe We do-not need to do this every frame ?
         err |= _useArg   ( nDOFs );            // 1
         // Dynamical
@@ -598,6 +607,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.x=na; 
         nDOFs.y=nNode; 
         useKernel( task->ikernel );
+        int err=0;
         err |= _useArg( md_params );           // 1
         err |= _useArg( nDOFs     );           // 2
         err |= useArgBuff( ibuff_atoms      ); // 3
@@ -624,6 +634,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.x=na; 
         nDOFs.y=nNode; 
         useKernel( task->ikernel );
+        int err=0;
         err |= _useArg( nDOFs     );           // 1
         err |= useArgBuff( ibuff_aforces    ); // 2
         err |= useArgBuff( ibuff_neighForce ); // 3
@@ -651,6 +662,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.x=n; 
         nDOFs.y=natom; 
         useKernel( task->ikernel );
+        int err=0;
         err |= _useArg( md_params );           // 1
         err |= _useArg( nDOFs     );           // 2
         err |= useArgBuff( ibuff_atoms  );     // 3
@@ -689,6 +701,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.y=npi; 
         //printf("setup_updatePiPos0 nDOFs(natom=%i,npi=%i) \n", nDOFs.x,nDOFs.y );
         useKernel( task->ikernel );
+        int err=0;
         err |= _useArg( nDOFs     );            // 1
         err |= useArgBuff( ibuff_atoms   );     // 2
         err |= useArgBuff( ibuff_pi0s    );     // 3
@@ -716,6 +729,7 @@ class OCL_PP: public OCL_DFT { public:
         nDOFs.y=npi; 
         //printf("setup_updatePiPos0 nDOFs(natom=%i,npi=%i) \n", nDOFs.x,nDOFs.y );
         useKernel( task->ikernel );
+        int err=0;
         err |= _useArg( nDOFs    );             // 1
         err |= useArgBuff( ibuff_atoms   );     // 2
         err |= useArgBuff( ibuff_aforces );     // 3

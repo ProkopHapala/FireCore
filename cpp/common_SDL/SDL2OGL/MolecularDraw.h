@@ -204,8 +204,8 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
             //colorRB( fel1.z*-sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
             //colorRB( fel2.z*-sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
 
-            colorRB( fel1.z*-sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            colorRB( fel2.z*-sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            colorRB( fel1.z*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
+            colorRB( fel2.z*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
 
             //colorRB( fel1.z*-sclr ); 
             //glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); glVertex3f(pos[ip1].x+normals[ip1].x*0.1, pos[ip1].y+normals[ip1].y*0.1, pos[ip1].z+normals[ip1].z*0.1); nvert++;
