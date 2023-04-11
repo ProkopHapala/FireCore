@@ -124,6 +124,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     char str[2048];
 
+    std::vector<Quat4f> debug_ps;
+    std::vector<Quat4f> debug_fs;
+    std::vector<Quat4f> debug_REQs;
 
     std::vector<Vec2i> bondsToShow;
     Vec3d * bondsToShow_shifts = 0; 
@@ -716,16 +719,27 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
     //p0=Vec3d{0.0,0.0,z0_scan}; p1=Vec3d{0.0,5.0,z0_scan}; // Horizontal scan
     //p0=Vec3d{0.0,z0_scan,0.0}; p1=Vec3d{0.0,z0_scan,10.0,}; // Vertical scan
     Vec3d dp=p1-p0; dp.mul(1./n);
-    Quat4f PLQ = REQ2PLQ( REQ, W->gridFF.alphaMorse );
+    //Quat4f PLQ = REQ2PLQ( REQ, W->gridFF.alphaMorse );
     //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
+    debug_ps  .resize(n);
+    debug_fs  .resize(n);
+    debug_REQs.resize(n);
+    for(int i=0; i<n; i++){ 
+        debug_REQs[i]  =(Quat4f)REQ;
+        debug_ps  [i].f=(Vec3f )(p0+dp*i);
+    }
+    W->scanSurfFF( n, &debug_ps[0], &debug_REQs[0], &debug_fs[0] );
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){
-        Vec3d  p  = p0 + dp*i;
+        //Vec3d  p  = p0 + dp*i;
         //Quat4f fe = Quat4fZero; W->gridFF.addForce_surf( p, PLQ, fe );
-        Quat4f fe = W->gridFF.getForce( p, PLQ, true );
+        //Quat4f fe = W->gridFF.getForce( p, PLQ, true );
         //printf( "debug_scanSurfFF[%i] p(%6.3f,%6.3f,%6.3f) fe(%g,%g,%g|%g)\n", i,  p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w );
-        Draw3D::vertex( p ); Draw3D::vertex(p + dp                );
-        Draw3D::vertex( p ); Draw3D::vertex(p + ((Vec3d)fe.f)*sc  );
+        Vec3f f = debug_fs[i].f;
+        Vec3f p = debug_ps[i].f;
+
+        Draw3D::vertex( p ); Draw3D::vertex(p + (Vec3f)dp   );
+        Draw3D::vertex( p ); Draw3D::vertex(p + f*sc        );
 
         //double E=0;
         //if   (W->bGridFF){ E+= W->gridFF.eval        (1, W->nbmol.apos, W->nbmol.PLQs,  W->nbmol.fapos );                        }
@@ -812,7 +826,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_c: W->bOcl=!W->bOcl;       break;
                 case SDLK_m: W->swith_method();      break;
                 case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
-                case SDLK_v: 
+                case SDLK_k: bDebug_scanSurfFF ^=1; break;
 
                 //case SDLK_q: W->autoCharges(); break;
                 case SDLK_a: bViewAtomSpheres ^= 1; break;

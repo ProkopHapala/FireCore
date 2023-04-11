@@ -72,6 +72,7 @@ class OCL_MM: public OCLsystem { public:
     cl_Mat3 cl_dGrid;
     cl_Mat3 cl_diGrid;
     cl_Mat3 cl_grid_lvec;
+    cl_Mat3 cl_grid_ilvec;
     
 
 
@@ -231,7 +232,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( itex_FE_Paul    );  // 10
         err |= useArgBuff( itex_FE_Lond    );  // 11
         err |= useArgBuff( itex_FE_Coul    );  // 12   
-        err |= _useArg( cl_diGrid          );  // 13
+        //err |= _useArg( cl_diGrid          );  // 13
+        err |= _useArg( cl_grid_ilvec      );  // 13
         err |= _useArg( grid_shift0_p0     );  // 14
         OCL_checkError(err, "setup_getNonBond_GridFF");
         return task;
@@ -408,23 +410,22 @@ class OCL_MM: public OCLsystem { public:
 
 
     OCLtask* sampleGridFF( int n, Quat4f* fs=0, Quat4f* ps=0, Quat4f* REQs=0, bool bRun=true, OCLtask* task=0){
-        printf("OCL_MM::sampleGridFF() n=%i bRun=%i fs=%li ps=%li REQs=%li\n", n, bRun, fs,ps,REQs );
+        //printf("OCL_MM::sampleGridFF() n=%i bRun=%i fs=%li ps=%li REQs=%li\n", n, bRun, fs,ps,REQs );
         int err=0;
         if((itex_FE_Paul<=0)||(itex_FE_Lond<=0 )||(itex_FE_Coul<=0)){ printf("ERROR in OCL_MM::sampleGridFF() textures not initialized itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i => Exit()\n",  itex_FE_Paul, itex_FE_Lond,  itex_FE_Coul ); }
         //if(( ibuff_atoms<=0)||(ibuff_aforces<=0)||(ibuff_REQs<=0  )){ printf("ERROR in OCL_MM::sampleGridFF() buffers  not initialized ibuff_atoms=%i ibuff_aforces=%i ibuff_REQs=%i => Exit()\n",    ibuff_atoms,  ibuff_aforces, ibuff_REQs   ); }
         // DEBUG
         // //if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   n, sizeof(float4), 0, CL_MEM_WRITE_ONLY  );   DEBUG
-        if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   n, sizeof(float4), 0, CL_MEM_WRITE_ONLY );   DEBUG
-        if(ibuff_samp_ps <=0)ibuff_samp_ps   = newBuffer( "samp_ps",   n, sizeof(float4), 0, CL_MEM_READ_ONLY  );    DEBUG
-        if(ibuff_samp_REQ<=0)ibuff_samp_REQ  = newBuffer( "samp_REQ",  n, sizeof(float4), 0, CL_MEM_READ_ONLY  );    DEBUG
-
-
+        
+        int nalloc = _max(n,1000);
+        if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   nalloc, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
+        if(ibuff_samp_ps <=0)ibuff_samp_ps   = newBuffer( "samp_ps",   nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        if(ibuff_samp_REQ<=0)ibuff_samp_REQ  = newBuffer( "samp_REQ",  nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        if( buffers[ibuff_samp_ps].n < n ){ printf("ERROR in OCL_MM::sampleGridFF() buffer samp_ps.n(%i)<n(%i) => Exit() \n", buffers[ibuff_samp_ps].n, n ); exit(0); }
         //if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         //if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-
-        DEBUG 
-        if(ps   )upload( ibuff_samp_ps , ps,   n );  DEBUG  
-        if(REQs )upload( ibuff_samp_REQ, REQs, n );  DEBUG
+        if(ps   )upload( ibuff_samp_ps , ps,   n );
+        if(REQs )upload( ibuff_samp_REQ, REQs, n );
         //if(ps   )upload( ibuff_atoms, ps,   n );   
         //if(REQs )upload( ibuff_REQs,  REQs, n );
 
@@ -444,7 +445,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( itex_FE_Paul    );  // 6
         err |= useArgBuff( itex_FE_Lond    );  // 7
         err |= useArgBuff( itex_FE_Coul    );  // 8   
-        err |= _useArg( cl_diGrid          );  // 9
+        //err |= _useArg( cl_diGrid        );  // 9    With un-Normalized Coordienates for texture sampler
+        err |= _useArg( cl_grid_ilvec      );  // 9      With Normalized Coordienates for texture sampler
         err |= _useArg( grid_shift0_p0     );  // 10
         OCL_checkError(err, "sampleGridFF.setup");
         if(bRun){
@@ -475,6 +477,7 @@ class OCL_MM: public OCLsystem { public:
         Mat3_to_cl( grid.dCell  , cl_dGrid     );
         Mat3_to_cl( grid.diCell , cl_diGrid    );
         Mat3_to_cl( grid.cell   , cl_grid_lvec );
+        Mat3_to_cl( grid.iCell  , cl_grid_ilvec );
     }
 
     OCLtask* makeGridFF( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, bool bRun=true, OCLtask* task=0 ){

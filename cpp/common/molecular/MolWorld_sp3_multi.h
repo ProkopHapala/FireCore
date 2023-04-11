@@ -97,7 +97,7 @@ virtual void init( bool bGrid ) override {
     MolWorld_sp3::init(bGrid);
     // ----- init systems
     realloc( nSystems );
-    if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
+    //if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
     float random_init = 0.5;
     for(int i=0; i<nSystems; i++){
         pack_system( i, ffl, true, false, random_init );
@@ -488,6 +488,9 @@ virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGr
 //       Grid evaluation
 // ==================================
 
+virtual void scanSurfFF( int n, Quat4f* ps, Quat4f* REQs, Quat4f* fs )override{
+    ocl.sampleGridFF( n, fs, ps, REQs, true  );
+}
 
 bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.1, 0.}, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true, const char* logfiflename="checkSampleGridFF.log" ){
     if(bPrint){ printf("MolWorld_sp3_multi::checkSampleGridFF(np=%i,p0{%6.3f,%6.3f,%6.3f},p1{%6.3f,%6.3f,%6.3f}REQ{%6.3f,%10.7f,%6.3f,%10.7f}) \n", n, ocl.nAtoms, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z, REQ.x,REQ.y,REQ.z,REQ.w ); };
@@ -505,7 +508,7 @@ bool checkSampleGridFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.0
         //printf( "checkSampleGridFF[%i] p(%g,%g,%g) REQ(%g,%g,%g,%g)\n", i,  atoms[i].x,atoms[i].y,atoms[i].z,    REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w  );
     }
     ocl.grid_shift0.f=(Vec3f)gridFF.shift0;
-    ocl.sampleGridFF( n, samp_fs, samp_ps, samp_REQs, true  );
+    ocl.sampleGridFF( n, samp_fs, samp_ps, samp_REQs, true   );
     FILE * logf=0;
     if(logfiflename){ 
         logf = fopen(logfiflename,"w");

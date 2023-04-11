@@ -612,6 +612,13 @@ virtual int  getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*
     return 0;
 }
 
+virtual void scanSurfFF( int n, Quat4f* ps, Quat4f* REQs, Quat4f* fs ){
+    for(int i=0; i<n; i++){
+        Quat4f PLQ = REQ2PLQ        ( (Quat4d)REQs[i], gridFF.alphaMorse );
+        fs[i]      = gridFF.getForce( (Vec3d)ps[i].f, PLQ, true );
+    }
+}
+
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
     cog   = average( ff.natoms, ff.apos  );
     vcog  = sum    ( ff.natoms, (Vec3d*)opt.vel  );
