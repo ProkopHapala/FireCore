@@ -366,7 +366,7 @@ class OCLsystem{ public:
     void check_deviceSet  (){ if(device  ==0){ printf("ERROR OCLsystem device   not set \n"); exit(-1); } }
     void check_commandsSet(){ if(commands==0){ printf("ERROR OCLsystem commands not set \n"); exit(-1); } }
 
-    int init(int ichoice){
+    int init(int ichoice=0){
         int err=0;
         //cl_info(); exit(0);
         cl_uint deviceIndex = 0;
