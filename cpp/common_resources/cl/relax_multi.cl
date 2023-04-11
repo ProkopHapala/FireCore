@@ -783,12 +783,17 @@ __kernel void getNonBond(
 // ======================================================================
 // ======================================================================
 
+// NOTE: https://registry.khronos.org/OpenCL/sdk/1.1/docs/man/xhtml/sampler_t.html
+// CLK_ADDRESS_REPEAT - out-of-range image coordinates are wrapped to the valid range. This address mode can only be used with normalized coordinates. If normalized coordinates are not used, this addressing mode may generate image coordinates that are undefined.
+
 __constant sampler_t samp0 =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
 
 __constant sampler_t sampler_1       =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 __constant sampler_t sampler_2       =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST;
 __constant sampler_t sampler_nearest =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
-__constant sampler_t sampler_gff     =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;
+__constant sampler_t sampler_nearest_norm =  CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
+__constant sampler_t sampler_gff      =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;
+__constant sampler_t sampler_gff_norm =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;
 //__constant sampler_t sampler_gff   =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 //__constant sampler_t sampler_gff   =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 
@@ -829,6 +834,24 @@ float4 read_imagef_trilin_( __read_only image3d_t imgIn, float4 coord ){
       + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.f,0.0,1.f,0.0) ) * fc.x )*mc.y
      +( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,1.f,1.f,0.0) ) * mc.x
       + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.f,1.f,1.f,0.0) ) * fc.x )*fc.y )*fc.z;
+}; 
+
+float4 read_imagef_trilin_norm( __read_only image3d_t imgIn, float4 coord ){
+    float4 icoord;
+    float4 fc     =  fract( coord, &icoord );
+    float4 mc     = (float4)(1.0,1.0,1.0,1.0) - fc;
+    // NOTE AMD-GPU seems to not accept CLK_NORMALIZED_COORDS_FALSE
+    //return read_imagef( imgIn, sampler_2, icoord );
+    //return read_imagef( imgIn, sampler_1, coord );
+    return  
+     (( read_imagef( imgIn, sampler_nearest_norm, icoord+(float4)(0.0,0.0,0.0,0.0) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest_norm, icoord+(float4)(1.0f,0.0,0.0,0.0) ) * fc.x )*mc.y
+     +( read_imagef( imgIn, sampler_nearest_norm, icoord+(float4)(0.0,1.0f,0.0,0.0) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest_norm, icoord+(float4)(1.0f,1.0f,0.0,0.0) ) * fc.x )*fc.y )*mc.z
+    +(( read_imagef( imgIn, sampler_nearest_norm, icoord+(float4)(0.0,0.0,1.f,0.0) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest_norm, icoord+(float4)(1.f,0.0,1.f,0.0) ) * fc.x )*mc.y
+     +( read_imagef( imgIn, sampler_nearest_norm, icoord+(float4)(0.0,1.f,1.f,0.0) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest_norm, icoord+(float4)(1.f,1.f,1.f,0.0) ) * fc.x )*fc.y )*fc.z;
 }; 
 
 float2 spline_hermite( float x, float4 ys ){
@@ -1044,16 +1067,16 @@ __kernel void getNonBond_GridFF(
     // ========== Interaction with grid
     const float3 posg  = posi - grid_p0.xyz;
     const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
-    #if 0
-        coord +=(float3){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
-        const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
-        const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
-        const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
-    #else
-        const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
-        const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
-        const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
-    #endif
+    // #if 0
+        //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+        const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff_norm, coord );
+        const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff_norm, coord );
+        const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff_norm, coord );
+    // #else
+        // const float4 fe_Paul = read_imagef_trilin_norm( FE_Paul, coord );
+        // const float4 fe_Lond = read_imagef_trilin_norm( FE_Lond, coord );
+        // const float4 fe_Coul = read_imagef_trilin_norm( FE_Coul, coord );
+    //#endif
     //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
     const float ej   = exp( alphaMorse* REQKi.x );
     const float cL   = ej*REQKi.y;
@@ -1086,9 +1109,9 @@ __kernel void getNonBond_GridFF(
             //const float3 posg  = pos - grid_p0.xyz;
             const float3 posg  = pos;
             const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
-            const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
-            const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
-            const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
+            const float4 fe_Paul = read_imagef_trilin_norm( FE_Paul, coord );
+            const float4 fe_Lond = read_imagef_trilin_norm( FE_Lond, coord );
+            const float4 fe_Coul = read_imagef_trilin_norm( FE_Coul, coord );
             const float4 fetot   = fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQKi.z;
 
             printf(  "%i %8.3f  %g %g %g %g   %g %g %g %g \n", ia0, pos.z,   fetot.w, fe_Paul.w*cP, fe_Lond.w*cL, fe_Coul.w*REQK.z,      fetot.z, fe_Paul.z*cP, fe_Lond.z*cL, fe_Coul.z*REQK.z  );
@@ -1132,6 +1155,7 @@ __kernel void sampleGridFF(
     const float cL   = ej*REQ.y;
     const float cP   = ej*cL;
 
+    /*
     if(iG==0){ printf( "GPU::sampleGridFF() np=%i R2damp=%g aMorse=%g p(%g,%g,%g) REQ(%g,%g,%g)  cP=%g cL=%g ej=%g \n", np, R2damp, alphaMorse, posi.x,posi.y,posi.z, REQ.x,REQ.y,REQ.z, cP,cL,ej  ); }
     if(iG==0){
         printf( "GPU_sGFF #i  z  E_Paul Fz_Paul   E_Lond Fz_Lond   E_Coul Fz_Coul  \n" );
@@ -1147,14 +1171,14 @@ __kernel void sampleGridFF(
             const float3 posg  = posi - grid_p0.xyz;
             const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
             #if 0
-                coord +=(float3){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
-                const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
-                const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
-                const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
+                //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+                const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff_norm, coord );
+                const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff_norm, coord );
+                const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff_norm, coord );
             #else
-                const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
-                const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
-                const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
+                const float4 fe_Paul = read_imagef_trilin_norm( FE_Paul, coord );
+                const float4 fe_Lond = read_imagef_trilin_norm( FE_Lond, coord );
+                const float4 fe_Coul = read_imagef_trilin_norm( FE_Coul, coord );
             #endif
             //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
             fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
@@ -1162,24 +1186,29 @@ __kernel void sampleGridFF(
             printf(  "GPU_sGFF %3i %8.3f    %14.6f %14.6f    %14.6f %14.6f    %14.6f %14.6f\n", i, posi.z, fe_Paul.w,fe_Paul.z, fe_Lond.w,fe_Lond.z,  fe_Coul.w,fe_Coul.z  );
         }
     }
+    */
+
+
+// NOTE: https://registry.khronos.org/OpenCL/sdk/1.1/docs/man/xhtml/sampler_t.html
+// CLK_ADDRESS_REPEAT - out-of-range image coordinates are wrapped to the valid range. This address mode can only be used with normalized coordinates. If normalized coordinates are not used, this addressing mode may generate image coordinates that are undefined.
 
     // ========== Interaction with grid
     float4 fe               = float4Zero;
     const float3 posg  = posi - grid_p0.xyz;
-    const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
-    #if 0
-        coord +=(float3){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
-        const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff, coord );
-        const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff, coord );
-        const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff, coord );
-    #else
-        const float4 fe_Paul = read_imagef_trilin_( FE_Paul, coord );
-        const float4 fe_Lond = read_imagef_trilin_( FE_Lond, coord );
-        const float4 fe_Coul = read_imagef_trilin_( FE_Coul, coord );
-    #endif
+    float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
+    if(iG==0){ printf( "coord(%g,%g,%g) pos(%g,%g,%g) diGrid.a(%g,%g,%g)\n", coord.x,coord.y,coord.z,  posi.x,posi.y,posi.z, diGrid.a.x,diGrid.a.y,diGrid.a.z ); }
+    //#if 0
+        //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+        const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff_norm, coord );
+        const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff_norm, coord );
+        const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff_norm, coord );
+    // #else
+    //     const float4 fe_Paul = read_imagef_trilin_norm( FE_Paul, coord );
+    //     const float4 fe_Lond = read_imagef_trilin_norm( FE_Lond, coord );
+    //     const float4 fe_Coul = read_imagef_trilin_norm( FE_Coul, coord );
+    //#endif
     //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
-    fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
-    forces[iG] += fe;
+    forces[iG] = fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
 }
 
 
