@@ -33,6 +33,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4i* neighs     =0;
     Quat4i* neighCell  =0;
     Quat4i* bkNeighs   =0;
+    Quat4i* bkNeighs_new=0;
     //Quat4f* neighForce =0;
 
     Quat4f* REQs       =0;
@@ -72,7 +73,8 @@ void realloc( int nSystems_ ){
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
     _realloc( neighCell, ocl.nAtoms*nSystems );
-    _realloc( bkNeighs,  ocl.nvecs*nSystems );
+    _realloc( bkNeighs,    ocl.nvecs*nSystems );
+    _realloc( bkNeighs_new,ocl.nvecs*nSystems );
     _realloc( atoms,     ocl.nvecs*nSystems  );
     _realloc( atoms,     ocl.nvecs*nSystems  );
     _realloc( atoms,     ocl.nvecs*nSystems  );
@@ -145,6 +147,8 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
         copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
         copy    ( ff.natoms, ff.neighs,    neighs   +i0a );
         //copy_add( ff.natoms, ff.neighs,    neighs   +i0a,           0      );
+        copy    ( ff.natoms, ff.bkneighs,  bkNeighs_new +i0v           );
+        copy    ( ff.nnode,  ff.bkneighs,  bkNeighs_new +i0v+ff.natoms );
         copy_add( ff.natoms, ff.bkneighs,   bkNeighs +i0v,           i0n*8  );
         copy_add( ff.nnode , ff.bkneighs,   bkNeighs +i0v+ff.natoms, i0n*8 + 4*ff.nnode );
         pack    ( ff.nnode , ff.apars,      MMpars   +i0n );
@@ -180,14 +184,13 @@ void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
     err|= ocl.upload( ocl.ibuff_constr, constr );
     if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces ); }
     if(bVel   ){ err|= ocl.upload( ocl.ibuff_avel,    avel    ); }
-    OCL_checkError(err, "MolWorld_sp2_multi::upload().upload1");
     if(bParams){
         err|= ocl.upload( ocl.ibuff_lvecs,   lvecs );
         err|= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
         err|= ocl.upload( ocl.ibuff_neighs,     neighs    );
         err|= ocl.upload( ocl.ibuff_neighCell,  neighCell );
         err|= ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
-        OCL_checkError(err, "MolWorld_sp2_multi::upload().upload2");
+        err|= ocl.upload( ocl.ibuff_bkNeighs_new,   bkNeighs_new  );
         //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
         err|= ocl.upload( ocl.ibuff_REQs,   REQs   );
         err|= ocl.upload( ocl.ibuff_MMpars, MMpars );
@@ -196,7 +199,6 @@ void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
         err|= ocl.upload( ocl.ibuff_Ksp, Ksp );
         err|= ocl.upload( ocl.ibuff_Kpp, Kpp );
     }
-    OCL_checkError(err, "MolWorld_sp2_multi::upload().upload"); 
     err |= ocl.finishRaw(); 
     OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
 }
