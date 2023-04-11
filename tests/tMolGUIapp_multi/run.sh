@@ -38,6 +38,8 @@ nsys=50
 #./$name -m 2     -x common_resources/polymer-2_new
 #./$name -m 1     -x common_resources/polymer-2_new
 
+#./$name -m 10 -t 1  -x common_resources/polymer-2_new
+
 # ====== Small Molecules On Substrate
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -m 10 -x common_resources/H2O -n     -g common_resources/NaCl_1x1_L2
