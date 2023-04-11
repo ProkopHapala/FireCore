@@ -29,7 +29,7 @@ int main(int argc, char *argv[]){
 	funcs["-ng"]={0,[&](const char** ss){ app->W->bCellBySurf=true; sscanf(ss[0],"%lf,%lf,%lf,%lf", &app->W->bySurf_lat[0].x,&app->W->bySurf_lat[0].y,  &app->W->bySurf_lat[1].x,&app->W->bySurf_lat[1].y ); }}; // change molecule cell by surface multiple
 	funcs["-subs"]={1,[&](const char** ss){ app->W->substitute_name=new char[256]; sscanf(ss[0],"%i,%s", &app->W->isubs, app->W->substitute_name ); }}; // substitute group on molecule
 	funcs["-q"]={0,[&](const char** ss){ sscanf( ss[0], "%lf", &(app->W->fAutoCharges) ); }}; // AutoCharge
-	
+	funcs["-t"]={0,[&](const char** ss){ sscanf( ss[0], "%i", &(app->W->itest) ); }}; // test
 
 	process_args( argc, argv, funcs );
 	app->init();

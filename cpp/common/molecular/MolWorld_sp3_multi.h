@@ -52,6 +52,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_move=0;
     OCLtask* task_print=0;
     OCLtask* task_MMFFloc=0;
+    OCLtask* task_MMFFloc_test=0;
 
 // ==================================
 //         Initialization
@@ -325,8 +326,20 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     //if( task_MMFFloc ==0 )task_MMFFloc=ocl.setup_evalMMFFf4_local( niter );
     // evaluate on GPU
     long T0 = getCPUticks();
-    if(task_MMFFloc){
-        task_MMFFloc->enque_raw();
+    //if(task_MMFFloc){
+    //    task_MMFFloc->enque_raw();
+    if( itest != 0 ){
+        //niter=1;
+        niter=10;
+        if(itest==1){ 
+            if( task_MMFFloc ==0 )task_MMFFloc=ocl.setup_evalMMFFf4_local( niter );
+            task_MMFFloc     ->enque_raw(); 
+        }
+        if(itest==2){ 
+            if( task_MMFFloc_test==0  )task_MMFFloc_test=ocl.setup_evalMMFFf4_local_test( niter );
+            task_MMFFloc_test->enque_raw();
+        }
+        //exit(0);    
     }else for(int i=0; i<niter; i++){
         //err |= task_cleanF->enque_raw();      // this should be solved inside  task_move->enque_raw();   if we do not need to output force 
         err |= task_MMFF->enque_raw();

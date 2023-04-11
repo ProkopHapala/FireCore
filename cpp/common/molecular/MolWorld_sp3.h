@@ -141,6 +141,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     double Kpick = -2.0;
 
+    int itest = 0;
+
 // ===============================================
 //       Implement    SolverInterface
 // ===============================================

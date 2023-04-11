@@ -1491,6 +1491,279 @@ __kernel void addDipoleField(
 // =====================================================================
 // =====================================================================
 
+
+/*
+__kernel void evalMMFFf4_local_test(
+    const int4 nDOFs,               // 1   (nAtoms,nnode)
+    // Dynamical
+    __global float4*  apos,         // 2  [natoms]
+    __global float4*  avel,         // 3
+    //__global float4*  fapos,      //   [natoms] // Only Debug output    
+    //__global float4*  fneigh,     //   [nnode*4*2]
+    __global float4*  constr,       // 4
+    // parameters
+    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global int4*    neighCell,    // 6
+    __global int4*    bkneighs,     // 7
+    __global float4*  REQs,         // 8  [natoms] non-boding parametes {R0,E0,Q} 
+    __global float4*  apars,        // 9  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+    __global float4*  bLs,          // 10  [nnode]  bond lengths  for each neighbor
+    __global float4*  bKs,          // 11  [nnode]  bond stiffness for each neighbor
+    __global float4*  Ksp,          // 12 [nnode]  stiffness of pi-alignment for each neighbor
+    __global float4*  Kpp,          // 13 [nnode]  stiffness of pi-planarization for each neighbor
+    __global cl_Mat3* lvecs,        // 14
+    __global cl_Mat3* ilvecs,       // 15
+    const int4        nPBC,         // 16
+    const float4      GFFParams,    // 17
+    const float4      MDpars,       // 18
+    const int         niter         // 19
+){
+    
+    const int iG  = get_global_id  (0); // intex of atom
+    const int iS  = get_global_id  (1); // index of system
+    const int nG  = get_global_size(0);
+    const int nS  = get_global_size(1); // number of systems
+    const int iL  = get_local_id   (0);
+    const int iSL = get_local_id   (1); // number of systems
+    const int nL  = get_local_size (0);
+    const int nSL = get_local_size (1);
+
+    const int natom = nDOFs.x;
+    const int nnode = nDOFs.y;
+    const int nvec  = natom+nnode;
+    const int ncap  = natom - nnode;
+    const int iLc   = nL+nnode;
+    const int nL4   = nL*4;
+
+    if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local_test.mini() G=%i/%i S=%i/%i  L=%i/%i sL=%i/%i natom=%i nnode=%i ncap=%i nvec=%i \n", iG,nG, iS,nS, iL,nL, iSL,nSL,     natom, nnode, ncap, nvec );
+
+    const int i0a = iS*natom; 
+    const int i0n = iS*nnode; 
+    const int i0v = iS*nvec;
+    // --- node atomm global indexes
+    const int iaa = iG + i0a; 
+    const int ian = iG + i0n; 
+    const int iav = iG + i0v;
+    // --- capping atom global indexes
+    const int ica = iG + i0a-nnode; 
+    const int icn = iG + i0n-nnode; 
+    const int icv = iG + i0v-nnode;
+    
+    #define NNEIGH    4
+    //#define NATOM_LOC 128
+    //#define NNODE_LOC 64
+    //#define NATOM_LOC 64
+    //#define NNODE_LOC 32
+
+    #define NATOM_LOC 16
+    #define NNODE_LOC 16
+
+    // ========= Local Memory
+    __local float4  fneigh_loc[NATOM_LOC*4];  
+
+    // ========= Atom-to-Atom interaction ( N-body problem )
+
+    const int4 bk   = bkneighs [iaa]; // back-neighborsz
+
+    float4 pa  = apos[iav];
+
+    for(int itr=0; itr<niter; itr++ ){   
+
+        float4 fa  = float4Zero;
+        fneigh_loc[iL*4+0]=float4Zero;         // save something to local memory 
+        fneigh_loc[iL*4+1]=float4Zero;         // save something to local memory 
+        fneigh_loc[iL*4+2]=float4Zero;         // save something to local memory 
+        fneigh_loc[iL*4+3]=float4Zero;         // save something to local memory 
+
+        barrier(CLK_LOCAL_MEM_FENCE); 
+        //fa.xyz += fneigh_loc[(iG+5)%natom].xyz;  // load from local memory something other proc in the workgroups saved
+
+        // fa.xyz += fneigh_loc[ (iL+15  ) % nL4 ].xyz;
+        // fa.xyz += fneigh_loc[ (iL+665 ) % nL4 ].xyz;
+        // fa.xyz += fneigh_loc[ (iL+112 ) % nL4 ].xyz;
+        // fa.xyz += fneigh_loc[ (iL+31  ) % nL4 ].xyz;
+
+        if( (bk.x>=0)&&(bk.x<nL4) ){ fa.xyz += fneigh_loc[bk.x].xyz; }
+        if( (bk.y>=0)&&(bk.x<nL4) ){ fa.xyz += fneigh_loc[bk.y].xyz; }
+        if( (bk.z>=0)&&(bk.x<nL4) ){ fa.xyz += fneigh_loc[bk.z].xyz; }
+        if( (bk.w>=0)&&(bk.x<nL4) ){ fa.xyz += fneigh_loc[bk.w].xyz; }
+
+        pa += fa;
+
+    }
+    // ---- Store to global arrays
+    apos[iav      ]=pa;
+};
+*/
+
+
+__kernel void evalMMFFf4_local_test(
+    const int4 nDOFs,               // 1   (nAtoms,nnode)
+    // Dynamical
+    __global float4*  apos,         // 2  [natoms]
+    __global float4*  avel,         // 3
+    //__global float4*  fapos,      //   [natoms] // Only Debug output    
+    //__global float4*  fneigh,     //   [nnode*4*2]
+    __global float4*  constr,       // 4
+    // parameters
+    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global int4*    neighCell,    // 6
+    __global int4*    bkneighs,     // 7
+    __global float4*  REQs,         // 8  [natoms] non-boding parametes {R0,E0,Q} 
+    __global float4*  apars,        // 9  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+    __global float4*  bLs,          // 10  [nnode]  bond lengths  for each neighbor
+    __global float4*  bKs,          // 11  [nnode]  bond stiffness for each neighbor
+    __global float4*  Ksp,          // 12 [nnode]  stiffness of pi-alignment for each neighbor
+    __global float4*  Kpp,          // 13 [nnode]  stiffness of pi-planarization for each neighbor
+    __global cl_Mat3* lvecs,        // 14
+    __global cl_Mat3* ilvecs,       // 15
+    const int4        nPBC,         // 16
+    const float4      GFFParams,    // 17
+    const float4      MDpars,       // 18
+    const int         niter         // 19
+){
+    
+    const int iG  = get_global_id  (0); // intex of atom
+    const int iS  = get_global_id  (1); // index of system
+    const int nG  = get_global_size(0);
+    const int nS  = get_global_size(1); // number of systems
+    const int iL  = get_local_id   (0);
+    const int iSL = get_local_id   (1); // number of systems
+    const int nL  = get_local_size (0);
+    const int nSL = get_local_size (1);
+
+    const int natom = nDOFs.x;
+    const int nnode = nDOFs.y;
+    const int nvec  = natom+nnode;
+    const int ncap  = natom - nnode;
+    const int iLc   = nL+nnode;
+    const int nL4   = nL*4;
+
+    if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local_test() G=%i/%i S=%i/%i  L=%i/%i sL=%i/%i natom=%i nnode=%i ncap=%i nvec=%i \n", iG,nG, iS,nS, iL,nL, iSL,nSL,     natom, nnode, ncap, nvec );
+
+    const int i0a = iS*natom; 
+    const int i0n = iS*nnode; 
+    const int i0v = iS*nvec;
+    // --- node atomm global indexes
+    const int iaa = iG + i0a; 
+    const int ian = iG + i0n; 
+    const int iav = iG + i0v;
+    // --- capping atom global indexes
+    const int ica = iG + i0a-nnode; 
+    const int icn = iG + i0n-nnode; 
+    const int icv = iG + i0v-nnode;
+    
+    #define NNEIGH    4
+    //#define NATOM_LOC 128
+    //#define NNODE_LOC 64
+    //#define NATOM_LOC 64
+    //#define NNODE_LOC 32
+
+    #define NATOM_LOC 16
+    #define NNODE_LOC 16
+
+    // ========= Local Memory
+
+    __local float4  _apos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
+    //__local float4  _fneigh  [NNODE_LOC*4];   // 4  [nnode*4*2]
+    __local float4  _fneigh  [NATOM_LOC];   // 4  [nnode*4*2]
+
+    if(iG>=natom){return; }
+
+    // --- node
+    float4 pa = apos[iav];
+    float4 va = avel[iav];
+    float3 fa = float3Zero;
+    
+    const float4  vbL  = bLs      [ian]; // bond lengths       
+    const float4  vbK  = bKs      [ian]; // bond stiffness
+    const int4    ng   = neighs   [iaa]; // neighbors
+    const int4    bk   = bkneighs [iaa]; // back-neighbors
+
+    if( (bk.x>=nL4)||(bk.y>=nL4)||(bk.z>=nL4)||(bk.w>=nL4) ){ printf("iG,S[%i,%i] bk{%3i,%3i,%3i,%3i} nL4=%i \n", iG,iS, bk.x,bk.y,bk.z,bk.w, nL4 ); };
+
+    // ---- array aliases
+    const int*   ings  = (int*  )&ng; 
+    const float* bL    = (float*)&vbL; 
+    const float* bK    = (float*)&vbK;
+
+
+    // ========== BIG LOOP  (Molecular Dynamics Loop) 
+    //for(int itr=0; itr<niter; itr++ ){   
+
+        float4  hs [4];              // direction vectors of bonds
+        float3  fbs[4];              // force on neighbor sigma
+        float3  f1,f2;               // force on pair of atoms (private temporary)
+
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; }  // ---- Clean neighbor forces
+        
+        // ========= Bonds evaluation
+
+        for(int i=0; i<NNEIGH; i++){
+            float4 h;
+            const int ing  = ings[i];
+            const int ingv = ing+i0v;
+            const int inga = ing+i0a;
+            if(ing<0) break;
+            if(ing>nnode)continue;
+            h.xyz    = _apos[ing].xyz - pa.xyz;
+            float  l = length(h.xyz); 
+            h.w      = 1./l;
+            h.xyz   *= h.w;
+            hs[i]    = h;
+            if(iG<ing){
+                evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
+            } 
+        }
+
+        // ===========  Store locals ( Neighbor Forces )
+
+        if(iG<NNODE_LOC){
+            const int i4=iG*4;
+            //for(int i=0; i<NNEIGH; i++){  _fneigh[i4+i] = (float4){fbs[i],0.f}; }
+            //for(int i=0; i<NNEIGH; i++){  _fneigh[i] = float4Zero; }
+            _fneigh[iG]=float4Zero;
+        }
+
+        // if(iS==0){
+        //     printf( "[iG=%i]fbs1(%g,%g,%g) fbs2(%g,%g,%g) fbs3(%g,%g,%g) fbs4(%g,%g,%g) \n", iG, fbs[0].x,fbs[0].y,fbs[0].z,    fbs[1].x,fbs[1].y,fbs[1].z,    fbs[2].x,fbs[2].y,fbs[2].z,    fbs[3].x,fbs[3].y,fbs[3].z );
+        //     printf( "[iG=%i]fng[%i](%g,%g,%g) fng[%i](%g,%g,%g) fng3[%i](%g,%g,%g) fng4[%i](%g,%g,%g) \n", iG, i4,_fneigh[i4].x,_fneigh[i4].y,_fneigh[i4].z,   i4+1, _fneigh[i4+1].x,_fneigh[i4+1].y,_fneigh[i4+1].z,    i4+2,_fneigh[i4+2].x,_fneigh[i4+2].y,_fneigh[i4+2].z,  i4+3,_fneigh[i4+3].x,_fneigh[i4+3].y,_fneigh[i4+3].z );
+        // }
+
+        // ===========  Assemble Forces
+
+        barrier(CLK_LOCAL_MEM_FENCE);    // Make sure _fneigh is uptodate for all atoms
+        
+        if((bk.x>=0)&&(bk.x<nL4)){ fa.xyz += _fneigh[bk.x].xyz; }
+        if((bk.y>=0)&&(bk.y<nL4)){ fa.xyz += _fneigh[bk.y].xyz; }
+        if((bk.z>=0)&&(bk.z<nL4)){ fa.xyz += _fneigh[bk.z].xyz; }
+        if((bk.w>=0)&&(bk.w<nL4)){ fa.xyz += _fneigh[bk.w].xyz; }
+        //if(iS==0){  printf( "[iG=%i] bk{%3i,%3i,%3i,%3i}/%i fng(%g,%g,%g) \n", iG,  bk.x,bk.y,bk.z,bk.w, NNODE_LOC*4,  fng.x,fng.y,fng.z );}
+
+        // ===========  Move Atoms
+        //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g)  bk{%3i,%3i,%3i,%3i} \n", iG, fa.x,fa.y,fa.z,   bk.x,bk.y,bk.z,bk.w );
+        // --- move node atom
+        va     *= MDpars.y;
+        va.xyz += fa.xyz*MDpars.x;
+        pa.xyz += va.xyz*MDpars.x;
+        pa.w=0;va.w=0;
+
+        //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g) va(%g,%g,%g) pa(%g,%g,%g) \n", iG,  fa.x,fa.y,fa.z,  va.x,va.y,va.z,  pa.x,pa.y,pa.z );
+        
+        // ===========  Store locals ( Atomic Positions )
+
+        _apos[iL] = pa;
+        fa = float3Zero;
+    
+    //} // END OF THE BIG LOOP
+    
+    // ---- Store to global arrays
+    apos[iav      ]=pa;
+    avel[iav      ]=va;
+    
+};
+
 __kernel void evalMMFFf4_local(
     const int4 nDOFs,               // 1   (nAtoms,nnode)
     // Dynamical

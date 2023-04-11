@@ -31,7 +31,7 @@ class OCL_MM: public OCLsystem { public:
     cl_program program_relax=0;
 
     int nAtoms=0;
-    int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0, nbkng=0;
+    int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0, nbkng=0, ncap=0;
 
     int4   print_mask{1,1,1,1};
     int4   nDOFs    {0,0,0,0};
@@ -105,6 +105,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "sampleGridFF"           ,program_relax, 1);
         newTask( "addDipoleField"         ,program_relax, 1);
         newTask( "evalMMFFf4_local"       ,program_relax, 2);
+        newTask( "evalMMFFf4_local_test"  ,program_relax, 2);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }
@@ -116,6 +117,7 @@ class OCL_MM: public OCLsystem { public:
         npi    = nnode_;
         nvecs  = nAtoms+npi;
         nbkng  = nnode*4*2;
+        ncap   = nAtoms-nnode;
         printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i nbkng %i \n", nSystems, nvecs, nAtoms, nnode, nbkng );
         printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i nS*nbkng %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode, nSystems*nbkng );
         if( (nSystems<=0)||(nAtoms<=0) ){ printf("ERROR in OCL_MM::initAtomsForces() invalit size nSystems=%i nAtoms=%i => Exit() \n", nSystems, nAtoms); exit(0); }
@@ -636,6 +638,68 @@ class OCL_MM: public OCLsystem { public:
         // const int         niter         // 19
     }
 
+   OCLtask* setup_evalMMFFf4_local_test( int niter_, OCLtask* task=0 ){
+        
+        if(task==0) task = getTask("evalMMFFf4_local_test");
+        //md_params.y = 0.9;
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        //int nloc  = 32;
+        //int nloc = 64;
+        int nloc  = _min( nnode, ncap );
+        task->local.x  = nloc;
+        task->global.x = nnode + nloc-(nnode%nloc);
+        task->global.y = nSystems;
+        useKernel( task->ikernel );
+        niter   = niter_;
+        nDOFs.x = nAtoms; 
+        nDOFs.y = nnode;  
+        printf("OCL_MM::evalMMFFf4_local_test(niter_=%i) nAtoms=%i nnode=%i nglob(%i,%i) nloc(%i,%i) \n", niter_,    nAtoms,nnode,     task->global.x,task->global.y,   task->local.x,task->local.y );
+        DEBUG
+        // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
+        err |= _useArg   ( nDOFs           );    OCL_checkError(err, "setup_evalMMFFf4_local_test.1");   DEBUG
+        err |= useArgBuff( ibuff_atoms     );    OCL_checkError(err, "setup_evalMMFFf4_local_test.2");   DEBUG
+        err |= useArgBuff( ibuff_avel      );    OCL_checkError(err, "setup_evalMMFFf4_local_test.3");   DEBUG
+        err |= useArgBuff( ibuff_constr    );    OCL_checkError(err, "setup_evalMMFFf4_local_test.4");   DEBUG
+        err |= useArgBuff( ibuff_neighs    );    OCL_checkError(err, "setup_evalMMFFf4_local_test.5");   DEBUG
+        err |= useArgBuff( ibuff_neighCell );    OCL_checkError(err, "setup_evalMMFFf4_local_test.6");   DEBUG
+        err |= useArgBuff( ibuff_bkNeighs  );    OCL_checkError(err, "setup_evalMMFFf4_local_test.7");   DEBUG
+        err |= useArgBuff( ibuff_REQs      );    OCL_checkError(err, "setup_evalMMFFf4_local_test.8");   DEBUG
+        err |= useArgBuff( ibuff_MMpars    );    OCL_checkError(err, "setup_evalMMFFf4_local_test.9");   DEBUG
+        err |= useArgBuff( ibuff_BLs       );    OCL_checkError(err, "setup_evalMMFFf4_local_test.10");  DEBUG
+        err |= useArgBuff( ibuff_BKs       );    OCL_checkError(err, "setup_evalMMFFf4_local_test.11");  DEBUG
+        err |= useArgBuff( ibuff_Ksp       );    OCL_checkError(err, "setup_evalMMFFf4_local_test.12");  DEBUG
+        err |= useArgBuff( ibuff_Kpp       );    OCL_checkError(err, "setup_evalMMFFf4_local_test.13");  DEBUG
+        err |= useArgBuff( ibuff_lvecs     );    OCL_checkError(err, "setup_evalMMFFf4_local_test.14");  DEBUG
+        err |= useArgBuff( ibuff_ilvecs    );    OCL_checkError(err, "setup_evalMMFFf4_local_test.15");  DEBUG
+        err |= _useArg   ( nPBC            );    OCL_checkError(err, "setup_evalMMFFf4_local_test.16");  DEBUG
+        err |= _useArg   ( GFFparams       );    OCL_checkError(err, "setup_evalMMFFf4_local_test.17");  DEBUG
+        err |= _useArg   ( md_params       );    OCL_checkError(err, "setup_evalMMFFf4_local_test.18");  DEBUG
+        err |= _useArg   ( niter           );    OCL_checkError(err, "setup_evalMMFFf4_local_test.19");  DEBUG
+        OCL_checkError(err, "setup_evalMMFFf4_local_test"); DEBUG;
+        return task;
+        // const int4 nDOFs,               // 1  (nAtoms,nnode)
+        // __global float4*  apos,         // 2  [natoms]
+        // __global float4*  avel,         // 3
+        // __global float4*  constr,       // 4
+        // __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+        // __global int4*    neighCell,    // 6
+        // __global int4*    bkneighs,     // 7
+        // __global float4*  REQs,         // 8  [natoms] non-boding parametes {R0,E0,Q} 
+        // __global float4*  apars,        // 9  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+        // __global float4*  bLs,          // 10 [nnode]  bond lengths  for each neighbor
+        // __global float4*  bKs,          // 11 [nnode]  bond stiffness for each neighbor
+        // __global float4*  Ksp,          // 12 [nnode]  stiffness of pi-alignment for each neighbor
+        // __global float4*  Kpp,          // 13 [nnode]  stiffness of pi-planarization for each neighbor
+        // __global cl_Mat3* lvecs,        // 14
+        // __global cl_Mat3* ilvecs,       // 15
+        // const int4        nPBC,         // 16
+        // const float4      GFFparams,    // 17
+        // const float4      MDpars,       // 18
+        // const int         niter         // 19
+    }
 
 };
 
