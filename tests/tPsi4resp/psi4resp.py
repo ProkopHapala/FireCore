@@ -13,8 +13,8 @@ from pyBall  import atomicUtils as au
 indir="./input/"
 #outdir="./output/"
 
-#bRelax=True
-bRelax=False
+bRelax=True
+#bRelax=False
 
 methods=[
 #    'scf',
@@ -68,7 +68,10 @@ def try_make_dirs( dname ):
 
 #names = [ f.split('.')[0] for f in os.listdir(indir) ]
 
-names = [ "backbone_pasivated-H", "backbone_pasivated-R" ]
+#names = [ "backbone_pasivated-H", "backbone_pasivated-R" ]
+names = [ "pyridine" ]
+
+
 #names =["hexa_hb3_donor"]
 print(names)
 

@@ -364,18 +364,54 @@ __kernel void getMMFFf4(
 //                     updateAtomsMMFFf4()
 // ======================================================================
 
-float2 KvaziFIREdamp( double c, float damping, float2 clim ){
+/*
+float2 KvaziFIREdamp( double c, float2 damp_lims, float2 clim ){
     float2 cvf;
-    if      (c < clim.x ){
-        cvf.x = 0.f;
-        cvf.y = 0.f;
-    }else if(c > clim.y ){
-        cvf.x = 1-damping;
-        cvf.y =   damping;
-    }else{  // cos(v,f) from [ cvf_min .. cvf_max ]
+    if      (c < clim.x ){   //-- force against veloctiy
+        cvf.x = damp_lims.x; // v    // like 0.5 (strong damping)
+        cvf.y = 0;           // f
+    }else if(c > clim.y ){   //-- force alingned to velocity
+        cvf.x = 1-damping;   // v    // like 0.99 (weak dampong damping)
+        cvf.y =   damping;   // f
+    }else{                   // -- force ~ perpendicular to velocity
         double f = (c-clim.x )/( clim.y - clim.x  );
         cvf.x = (1.-damping)*f;
         cvf.y =     damping *f;
+    }
+    return cvf;
+}
+*/
+
+/*
+def KvaziFIREdamp( c, clim, damps ):
+    # ----- velocity & force ~ perpendicular
+    t = (c-clim[0] )/( clim[1] - clim[0]  )
+    cv = damps[0] + (damps[1]-damps[0])*t
+    #cf =     damps[1] *t*(1-t)*4
+    cf =     damps[1]*t*(1-t)*2
+    # ----- velocity & force ~ against each other
+    mask_lo     =  c < clim[0]
+    cv[mask_lo] = damps[0]  # v    // like 0.5 (strong damping)
+    cf[mask_lo] = 0             # f
+    # ----- velocity & force ~ alligned
+    mask_hi     =  c > clim[1]
+    cv[mask_hi] = damps[1]  # v    // like 0.99 (weak dampong damping)
+    cf[mask_hi] = 0           # f
+    return cv,cf
+*/
+
+float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
+    float2 cvf;
+    if      (c < clim.x ){   //-- force against veloctiy
+        cvf.x = damps.x;     // v    // like 0.5 (strong damping)
+        cvf.y = 0;           // f
+    }else if(c > clim.y ){   //-- force alingned to velocity
+        cvf.x = damps.y;     // v    // like 0.99 (weak dampong damping)
+        cvf.y = 0;           // f
+    }else{                   // -- force ~ perpendicular to velocity
+        double t = (c-clim.x )/( clim.y - clim.x );
+        cvf.x = damps.x + (damps.y-damps.x)*t;
+        cvf.y = damps.y*t*(1.f-t)*2.f;
     }
     return cvf;
 }
@@ -458,7 +494,7 @@ __kernel void updateAtomsMMFFf4(
        }
     }
     
-    /*
+    
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -471,9 +507,11 @@ __kernel void updateAtomsMMFFf4(
     float  c          = vf/sqrt( ff*vv + 1e-8 ); 
     float  renorm_vf  = sqrt( vv/(ff + 1e-8) );
     //float2 cvf = KvaziFIREdamp( c, MDpars.y*0.f, (float2){-0.2f,0.2f} );
-    float2 cvf = KvaziFIREdamp( c, MDpars.y*0.f, (float2){-0.9f,-0.5f} );
-    ve.xyz = ve.xyz*cvf.x  + fe.xyz*cvf.y*renorm_vf;
-    ve.xyz  += fe.xyz*MDpars.x;  
+    float2 cvf = KvaziFIREdamp( c, (float2){-0.8f,-0.3f}, (float2){0.8f,0.999f} );
+    //if((iG==iG_DBG)&&(iS==iS_DBG)){ printf( "GPU cos=%g cv=%g \n", c, cvf.x ); }
+    ve.xyz *= cvf.x;
+    ve.xyz += fe.xyz*cvf.y*renorm_vf;
+    ve.xyz += fe.xyz*MDpars.x;  
     pe.xyz += ve.xyz*MDpars.x;
     if(bPi){ 
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
@@ -481,9 +519,9 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
-    */
     
     
+    /*
     // ------ Move (Leap-Frog)
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -498,7 +536,7 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
-    
+    */
 
     /*
     //------ Move Gradient-Descent
