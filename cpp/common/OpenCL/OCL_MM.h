@@ -47,7 +47,7 @@ class OCL_MM: public OCLsystem { public:
     cl_Mat3 cl_invLvec;
 
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
-    int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1;
+    int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
     int ibuff_lvecs=-1, ibuff_ilvecs=-1; 
     int ibuff_constr=-1;
@@ -131,8 +131,8 @@ class OCL_MM: public OCLsystem { public:
         //ibuff_constr0    = newBuffer( "constr0",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
         //ibuff_constrK    = newBuffer( "constrK",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
 
-        ibuff_bkNeighs   = newBuffer( "bkNeighs",   nSystems*nvecs , sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
-        //ibuff_bkNeighs = newBuffer( "bkNeighs",   nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        ibuff_bkNeighs     = newBuffer( "bkNeighs", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_neighForce = newBuffer( "neighForce", nSystems*nbkng,  sizeof(float4), 0, CL_MEM_READ_WRITE );
 
@@ -602,7 +602,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_constr    );    OCL_checkError(err, "setup_evalMMFFf4_local.4");   DEBUG
         err |= useArgBuff( ibuff_neighs    );    OCL_checkError(err, "setup_evalMMFFf4_local.5");   DEBUG
         err |= useArgBuff( ibuff_neighCell );    OCL_checkError(err, "setup_evalMMFFf4_local.6");   DEBUG
-        err |= useArgBuff( ibuff_bkNeighs  );    OCL_checkError(err, "setup_evalMMFFf4_local.7");   DEBUG
+        //err |= useArgBuff( ibuff_bkNeighs  );    OCL_checkError(err, "setup_evalMMFFf4_local.7");   DEBUG
+        err |= useArgBuff( ibuff_bkNeighs_new  );    OCL_checkError(err, "setup_evalMMFFf4_local.7");   DEBUG
         err |= useArgBuff( ibuff_REQs      );    OCL_checkError(err, "setup_evalMMFFf4_local.8");   DEBUG
         err |= useArgBuff( ibuff_MMpars    );    OCL_checkError(err, "setup_evalMMFFf4_local.9");   DEBUG
         err |= useArgBuff( ibuff_BLs       );    OCL_checkError(err, "setup_evalMMFFf4_local.10");  DEBUG
@@ -665,7 +666,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_constr    );    OCL_checkError(err, "setup_evalMMFFf4_local_test.4");   DEBUG
         err |= useArgBuff( ibuff_neighs    );    OCL_checkError(err, "setup_evalMMFFf4_local_test.5");   DEBUG
         err |= useArgBuff( ibuff_neighCell );    OCL_checkError(err, "setup_evalMMFFf4_local_test.6");   DEBUG
-        err |= useArgBuff( ibuff_bkNeighs  );    OCL_checkError(err, "setup_evalMMFFf4_local_test.7");   DEBUG
+        //err |= useArgBuff( ibuff_bkNeighs  );    OCL_checkError(err, "setup_evalMMFFf4_local_test.7");   DEBUG
+        err |= useArgBuff( ibuff_bkNeighs_new  );    OCL_checkError(err, "setup_evalMMFFf4_local_test.7");   DEBUG
         err |= useArgBuff( ibuff_REQs      );    OCL_checkError(err, "setup_evalMMFFf4_local_test.8");   DEBUG
         err |= useArgBuff( ibuff_MMpars    );    OCL_checkError(err, "setup_evalMMFFf4_local_test.9");   DEBUG
         err |= useArgBuff( ibuff_BLs       );    OCL_checkError(err, "setup_evalMMFFf4_local_test.10");  DEBUG
