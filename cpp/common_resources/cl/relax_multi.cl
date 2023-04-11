@@ -134,6 +134,13 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
     return  (float4){ dp*fr, E };
 }
 
+float3 limnitForce( float3 f, float fmax ){
+    float fr2 = dot(f,f);
+    if( fr2>(fmax*fmax) ){ f*=(fmax/sqrt(fr2)); }
+    return f;
+}
+
+
 // ======================================================================
 //                          getMMFFf4()
 // ======================================================================
@@ -1638,7 +1645,7 @@ __kernel void evalMMFFf4_local_test(
     const int iLc   = nL+nnode;
     const int nL4   = nL*4;
 
-    if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local_test() G=%i/%i S=%i/%i  L=%i/%i sL=%i/%i natom=%i nnode=%i ncap=%i nvec=%i niter=%i \n", iG,nG, iS,nS, iL,nL, iSL,nSL,     natom, nnode, ncap, nvec, niter );
+    //if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local_test() G=%i/%i S=%i/%i  L=%i/%i sL=%i/%i natom=%i nnode=%i ncap=%i nvec=%i niter=%i \n", iG,nG, iS,nS, iL,nL, iSL,nSL,     natom, nnode, ncap, nvec, niter );
 
     const int i0a = iS*natom; 
     const int i0n = iS*nnode; 
@@ -1674,7 +1681,7 @@ __kernel void evalMMFFf4_local_test(
     const int4    ng   = neighs   [iaa]; // neighbors
     const int4    bk   = bkneighs [iaa]; // back-neighbors
 
-    if( (bk.x>=nL4)||(bk.y>=nL4)||(bk.z>=nL4)||(bk.w>=nL4) ){ printf("GPU::ERROR bk>nL4 iG,S[%i,%i] bk{%3i,%3i,%3i,%3i} nL4=%i \n", iG,iS, bk.x,bk.y,bk.z,bk.w, nL4 ); };
+    //if( (bk.x>=nL4)||(bk.y>=nL4)||(bk.z>=nL4)||(bk.w>=nL4) ){ printf("GPU::ERROR bk>nL4 iG,S[%i,%i] bk{%3i,%3i,%3i,%3i} nL4=%i \n", iG,iS, bk.x,bk.y,bk.z,bk.w, nL4 ); };
 
     // ---- array aliases
     const int*   ings  = (int*  )&ng; 
@@ -1804,11 +1811,8 @@ __kernel void evalMMFFf4_local(
     const int iLc   = iL+nnode;
     const int nfneigh = nnode*4;
 
-    if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local() nL=%i nG=%i nS=%i natom=%i nnode=%i ncap=%i nvec=%i \n", nL,nG,nS, natom, nnode, ncap, nvec );
-    if((iG==0)&&(iS==0)){ 
-        if(NNODE_LOC<nnode)printf( "GPU::ERRROR NNODE_LOC(%i) < nnode(%i) \n", NNODE_LOC, nnode );
-    }
-
+    //if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local() nL=%i nG=%i nS=%i natom=%i nnode=%i ncap=%i nvec=%i \n", nL,nG,nS, natom, nnode, ncap, nvec );
+    //if((iG==0)&&(iS==0)){ if(NNODE_LOC<nnode)printf( "GPU::ERRROR NNODE_LOC(%i) < nnode(%i) \n", NNODE_LOC, nnode );}
 
     const int i0a = iS*natom; 
     const int i0n = iS*nnode; 
@@ -1835,12 +1839,14 @@ __kernel void evalMMFFf4_local(
     // We want to fit only NODE atoms into local memory, the rest we do later
 
     __local float4  _apos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
+    __local float4  _ppos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
     __local float4  _REQs    [NATOM_LOC  ];   // 6  [natoms] non-boding parametes {R0,E0,Q}
     __local float4  _fneigh  [NNODE_LOC*4]; 
     __local float4  _fneighpi[NNODE_LOC*4];  
 
     // NOTE: We can avoid using  __local _fneigh[] if we write __private fbs[] and fps[] into __local aforce[] in synchronized manner in 4 steps (4 slots) using barrier(CLK_LOCAL_MEM_FENCE);   
 
+    const bool bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;
     const bool bNode = iG<nnode;
     const bool bCap  = iG<ncap;
 
@@ -1854,8 +1860,12 @@ __kernel void evalMMFFf4_local(
         va        = avel[iav];
         pa        = apos[iav];
         REQa      = REQs[iaa];
+        hp        = apos[iav+natom];
+        vp        = avel[iav+natom];
+        _ppos[iL] = hp;
         _apos[iL] = pa;
         _REQs[iL] = REQa;
+        // --- params
         ng   = neighs   [iaa];
         ngC  = neighCell[iaa];
         bk   = bkneighs [iaa];
@@ -1865,11 +1875,7 @@ __kernel void evalMMFFf4_local(
         vbK  = bKs      [ian];       
         vKs  = Ksp      [ian];       
         vKp  = Kpp      [ian];
-        // ---- pi 
-        hp         = apos[iav+natom];
-        vp         = avel[iav+natom];
-
-        if( (bk.x>=nfneigh)||(bk.y>=nfneigh)||(bk.z>=nfneigh)||(bk.w>=nfneigh) ){ printf("GPU::ERROR node[%i|%i].bk{%3i,%3i,%3i,%3i}>nfneigh(%i)\n", iG,iS,  bk.x,bk.y,bk.z,bk.w, nfneigh ); };
+        //if( (bk.x>=nfneigh)||(bk.y>=nfneigh)||(bk.z>=nfneigh)||(bk.w>=nfneigh) ){ printf("GPU::ERROR node[%i|%i].bk{%3i,%3i,%3i,%3i}>nfneigh(%i)\n", iG,iS,  bk.x,bk.y,bk.z,bk.w, nfneigh ); };
     }
 
     // --- cap
@@ -1885,10 +1891,8 @@ __kernel void evalMMFFf4_local(
         c_cons     = constr   [ica];
         _apos[iLc] = pc;
         _REQs[iLc] = REQc;
-
         //if(iS==0)printf( "iL %i icv %i pc{%g,%g,%g}\n", iL, icv, pc.x,pc.y,pc.z );
-        if( (c_bk.x>=nfneigh)||(c_bk.y>=nfneigh)||(c_bk.z>=nfneigh)||(c_bk.w>=nfneigh) ){ printf("GPU::ERROR node[%i|%i].bk{%3i,%3i,%3i,%3i}>nfneigh(%i)\n", iG,iS,  c_bk.x,c_bk.y,c_bk.z,c_bk.w, nfneigh ); };
-
+        //if( (c_bk.x>=nfneigh)||(c_bk.y>=nfneigh)||(c_bk.z>=nfneigh)||(c_bk.w>=nfneigh) ){ printf("GPU::ERROR node[%i|%i].bk{%3i,%3i,%3i,%3i}>nfneigh(%i)\n", iG,iS,  c_bk.x,c_bk.y,c_bk.z,c_bk.w, nfneigh ); };
     }
     
     
@@ -1913,8 +1917,8 @@ __kernel void evalMMFFf4_local(
     //            BIG LOOP
     // =================================
 
-    //for(int itr=0; itr<niter; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
-    for(int itr=0; itr<1; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
+    for(int itr=0; itr<niter; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
+    //for(int itr=0; itr<1; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
     
     float3  fa = float3Zero;    // force on atom position
     float3  fc = float3Zero;    // force on capping atom 
@@ -1945,14 +1949,14 @@ __kernel void evalMMFFf4_local(
             
             if(ing<0) break;
             h.xyz    = _apos[ing].xyz - pa.xyz;
-            /*
+            
             { // PBC bond vector correction
                 float3 u  = (float3){ dot( invLvec.a.xyz, h.xyz ), dot( invLvec.b.xyz, h.xyz ), dot( invLvec.c.xyz, h.xyz ) };
                 h.xyz   += lvec.a.xyz*(1.f-(int)(u.x+1.5f))
                         + lvec.b.xyz*(1.f-(int)(u.y+1.5f))
                         + lvec.c.xyz*(1.f-(int)(u.z+1.5f));
             }
-            */
+            
             float  l = length(h.xyz); 
             h.w      = 1./l;
             h.xyz   *= h.w;
@@ -1962,21 +1966,21 @@ __kernel void evalMMFFf4_local(
             //evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fa+=f1;
             if(iG<ing){
                 evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
-                /*
+                
                 // pi-pi
                 float kpp = Kppi[i];
                 if( (ing<nnode) && (kpp>1.e-6) ){
                     evalPiAling( hp.xyz, _ppos[ing].xyz, kpp,  &f1, &f2 );   fp+=f1;  fps[i]+=f2;
                 }
-                */
+                
             } 
-            /*
+            
             // pi-sigma 
             float ksp = Kspi[i];
             if(ksp>1.e-6){  
                 evalAngCos( (float4){hp.xyz,1.}, h, ksp, par.w, &f1, &f2 );   fp+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
             }
-            */
+            
         }
         
         // ========= Angles evaluation
@@ -1996,7 +2000,7 @@ __kernel void evalMMFFf4_local(
                 const float4 hj = hs[j];
                 evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );            
                 fa    -= f1+f2;
-                /*
+                
                 { // Remove vdW
                     float4 REQj=_REQs[jng];
                     float4 REQij;
@@ -2007,7 +2011,7 @@ __kernel void evalMMFFf4_local(
                     f1 -=  fij.xyz;
                     f2 +=  fij.xyz;
                 }
-                */
+                
                 fbs[i]+= f1;
                 fbs[j]+= f2;
             }
@@ -2033,60 +2037,75 @@ __kernel void evalMMFFf4_local(
     // ======================================
 
     // ========= Atom-to-Atom interaction ( N-body problem )    
-    /*
-    for(int ja=0; ja<natom; ja+= nL ){
+    
+    for(int ja=0; ja<natom; ja++ ){
         const bool bBonded = ((ja==  ng.x)||(ja==  ng.y)||(ja==  ng.z)||(ja==  ng.w));
         const bool cBonded = ((ja==c_ng.x)||(ja==c_ng.y)||(ja==c_ng.z)||(ja==c_ng.w));
         const float4 aj    = _apos[ja];
         float4       REQ   = _REQs[ja];
         float4       cREQ  = REQ;
 
-        REQ.x         += REQ.x;
-        REQ.yzw       *= REQ.yzw;
+        REQ.x         += REQa.x;
+        REQ.yzw       *= REQa.yzw;
 
         cREQ.x        += REQc.x;
         cREQ.yzw      *= REQc.yzw;
 
-        float3 dp      = aj.xyz - shift0;
-        float3 dpc     = dp - pc.xyz;
-        dp            -=      pa.xyz;
+        float3 dp      = aj.xyz - pa.xyz;
+        float3 dpc     = aj.xyz - pc.xyz;
  
-        const float4 REQK = _REQs[ja];
-
-        int ipbc=0; 
-        for(int iy=0; iy<3; iy++){
-            for(int ix=0; ix<3; ix++){
+        if(bPBC){
             
-                if(bNode && (ja!=iG) ){          // ---- Node Atom
-                    if( !( bBonded && (
-                            ((ja==ng.x)&&(ipbc==ngC.x))
-                            ||((ja==ng.y)&&(ipbc==ngC.y))
-                            ||((ja==ng.z)&&(ipbc==ngC.z))
-                            ||((ja==ng.w)&&(ipbc==ngC.w))
-                    ))){
-                        fa += getLJQH( dp, REQ, R2damp ).xyz;
-                    }                    
-                }
+            dp     -= shift0;
+            dpc    -= shift0;
+            int ipbc=0;
+            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+            dp -= shift0;
+            for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                    for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+            
+                        if(bNode && (ja!=iL) ){          // ---- Node Atom
+                            if( !( bBonded && (
+                                      ((ja==ng.x)&&(ipbc==ngC.x))
+                                    ||((ja==ng.y)&&(ipbc==ngC.y))
+                                    ||((ja==ng.z)&&(ipbc==ngC.z))
+                                    ||((ja==ng.w)&&(ipbc==ngC.w))
+                            ))){
+                                fa += getLJQH( dp, REQ, R2damp ).xyz;
+                            }                    
+                        }
 
-                if(bCap && (ja!=(iG+nnode)) ){       // ---- Capping atom
-                    if(!(cBonded && (
-                            ((ja==c_ng.x)&&(ipbc==c_ngC.x))
-                            ||((ja==c_ng.y)&&(ipbc==c_ngC.y))
-                            ||((ja==c_ng.z)&&(ipbc==c_ngC.z))
-                            ||((ja==c_ng.w)&&(ipbc==c_ngC.w))
-                    ))){
-                        fc += getLJQH( dpc, cREQ, R2damp ).xyz;
+                        if(bCap && (ja!=iLc) ){       // ---- Capping atom
+                            if(!(cBonded && (
+                                      ((ja==c_ng.x)&&(ipbc==c_ngC.x))
+                                    ||((ja==c_ng.y)&&(ipbc==c_ngC.y))
+                                    ||((ja==c_ng.z)&&(ipbc==c_ngC.z))
+                                    ||((ja==c_ng.w)&&(ipbc==c_ngC.w))
+                            ))){
+                                fc += getLJQH( dpc, cREQ, R2damp ).xyz;
+                            }
+                        }
+                        
+                        ipbc++; 
+                        dp+=lvec.a.xyz;
                     }
+                    dp+=shift_a;
                 }
-                
-                // --- cell shift
-                ipbc++; 
-                dp+=lvec.a.xyz;
+                dp+=shift_b;
             }
-            dp+=shift_a;
+            
+        }else{
+            if(bNode && (ja!=iL ) && !bBonded ) fa += getLJQH( dp,   REQ, R2damp ).xyz;
+            if(bCap  && (ja!=iLc) && !cBonded ) fc += getLJQH( dpc, cREQ, R2damp ).xyz;
+            //if(bNode&& (ja!=iL )){ float3 fa_ = getLJQH( dp,   REQ, R2damp ).xyz; fa_ = limnitForce( fa_, 1.0f ); if(iS==0)printf( "nb[%i,%i] fa_(%g,%g,%g)\n", iL , ja, fa_.x,fa_.y,fa_.z ); }
+            //if(bCap && (ja!=iLc)){ float3 fc_ = getLJQH( dpc, cREQ, R2damp ).xyz; fc_ = limnitForce( fc_, 1.0f ); if(iS==0)printf( "nb[%i,%i] fc_(%g,%g,%g)\n", iLc, ja, fc_.x,fc_.y,fc_.z ); }
+            //if(bNode&&(ja!=iG )){ float3 fa_ = getLJQH( dp,   REQ, R2damp ).xyz; fa += limnitForce( fa_, 0.01f ); }
+            //if(bCap &&(ja!=iLc)){ float3 fc_ = getLJQH( dpc, cREQ, R2damp ).xyz; fc += limnitForce( fc_, 0.01f ); }
         }
-    }
-    */
+
+    } // for(ja)
+    
     // ======================================
     //                MOVE 
     // ======================================
@@ -2095,34 +2114,18 @@ __kernel void evalMMFFf4_local(
 
     if(bNode){ 
 
+        if(bk.x>=0){ fa += _fneigh[bk.x].xyz;  fp += _fneighpi[bk.x].xyz; }
+        if(bk.y>=0){ fa += _fneigh[bk.y].xyz;  fp += _fneighpi[bk.y].xyz; }
+        if(bk.z>=0){ fa += _fneigh[bk.z].xyz;  fp += _fneighpi[bk.z].xyz; }
+        if(bk.w>=0){ fa += _fneigh[bk.w].xyz;  fp += _fneighpi[bk.w].xyz; }
 
-        /*
-        //if(bk.x>=0){ fa += _fneigh  [bk.x].xyz;  fp += _fneighpi[bk.x].xyz; }
-        //if(bk.y>=0){ fa += _fneigh  [bk.y].xyz;  fp += _fneighpi[bk.y].xyz; }
-        //if(bk.z>=0){ fa += _fneigh  [bk.z].xyz;  fp += _fneighpi[bk.z].xyz; }
-        //if(bk.w>=0){ fa += _fneigh  [bk.w].xyz;  fp += _fneighpi[bk.w].xyz; }
-        float3 fng = float3Zero;
-        if(bk.x>=0){ fng += _fneigh[bk.x].xyz; }
-        if(bk.y>=0){ fng += _fneigh[bk.y].xyz; }
-        if(bk.z>=0){ fng += _fneigh[bk.z].xyz; }
-        if(bk.w>=0){ fng += _fneigh[bk.w].xyz; }
-        //if(iS==0){
-        //    printf( "[iG=%i] bk{%3i,%3i,%3i,%3i}/%i fng(%g,%g,%g) \n", iG,  bk.x,bk.y,bk.z,bk.w, NNODE_LOC*4,  fng.x,fng.y,fng.z );
-        //}
-        fa.xyz += fng;  // IF this swithed off it woks
-        //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g)  bk{%3i,%3i,%3i,%3i} \n", iG, fa.x,fa.y,fa.z,   bk.x,bk.y,bk.z,bk.w );
-        // --- move node atom
-        //if( cons.w>0 ){  fa.xyz += (pa.xyz - cons.xyz)*-cons.w; }
+        if( cons.w>0 ){  fa.xyz += (pa.xyz - cons.xyz)*-cons.w; }
         va     *= MDpars.y;
         va.xyz += fa.xyz*MDpars.x;
         pa.xyz += va.xyz*MDpars.x;
         pa.w=0;va.w=0;
-        //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g) va(%g,%g,%g) pa(%g,%g,%g) \n", iG,  fa.x,fa.y,fa.z,  va.x,va.y,va.z,  pa.x,pa.y,pa.z );
         _apos[iL] = pa;
-        */
         
-
-        /*
         // --- move pi    ...   This would simplify if we consider pi- is just normal cap atom (dummy atom)
         fp.xyz += hp.xyz * -dot( hp.xyz, fp.xyz );   // subtract forces  component which change pi-orbital lenght
         vp.xyz += hp.xyz * -dot( hp.xyz, vp.xyz );   // subtract veocity component which change pi-orbital lenght
@@ -2132,7 +2135,7 @@ __kernel void evalMMFFf4_local(
         hp.xyz=normalize(hp.xyz);                    // normalize pi-orobitals
         hp.w=0;vp.w=0;
         _ppos[iL] = hp;
-        */
+        
     }
     
     if(bCap){
@@ -2141,32 +2144,28 @@ __kernel void evalMMFFf4_local(
         if(c_bk.y>=0){ fc += _fneigh[c_bk.y].xyz; }
         if(c_bk.z>=0){ fc += _fneigh[c_bk.z].xyz; }
         if(c_bk.w>=0){ fc += _fneigh[c_bk.w].xyz; }
-
-        if( c_cons.w>0 ){fc.xyz += (pc.xyz - c_cons.xyz)*-c_cons.w; }
-        //pc.xyz += fc.xyz * 0.01f;
         
         // --- move cap atom
-        //if( c_cons.w>0 ){fc.xyz += (pc.xyz - c_cons.xyz)*-c_cons.w; }
+        if( c_cons.w>0 ){fc.xyz += (pc.xyz - c_cons.xyz)*-c_cons.w; }
         vc     *= MDpars.y;
         vc.xyz += fc.xyz*MDpars.x;
         pc.xyz += vc.xyz*MDpars.x;
         pc.w=0;vc.w=0;
-        
-
+    
         _apos[iLc] = pc;
         
     }
 
     } // END OF THE BIG LOOP
 
-    /*
+    
     if(bNode){
         apos[iav      ]=pa;
         avel[iav      ]=va;
-        //apos[iav+natom]=hp;
-        //avel[iav+natom]=vp;
+        apos[iav+natom]=hp;
+        avel[iav+natom]=vp;
     }
-    */
+    
     if(bCap){
         apos[ica]=pc;
         avel[ica]=vc;

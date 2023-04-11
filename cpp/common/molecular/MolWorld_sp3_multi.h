@@ -332,7 +332,8 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     //    task_MMFFloc->enque_raw();
     if( itest != 0 ){
         //niter=1;
-        niter=10;
+        //niter=10;
+        niter=100;
         if(itest==1){ 
             if( task_MMFFloc ==0 )task_MMFFloc=ocl.setup_evalMMFFf4_local( niter );
             task_MMFFloc     ->enque_raw(); 
