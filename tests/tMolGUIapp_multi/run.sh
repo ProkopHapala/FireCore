@@ -19,6 +19,10 @@ nsys=50
 # ====== Small Molecules
 
 #./$name -m 10 -x common_resources/H2O
+#./$name -t 2 -m 10 -x common_resources/pyridine
+./$name -t 1 -m 10 -x common_resources/pyridine
+
+#./$name -m 10 -x common_resources/H2O
 #./$name -m 10 -x common_resources/HCOOH
 #./$name -m 10 -x common_resources/formic_dimer
 #./$name -m 10 -x common_resources/pyridine
@@ -31,15 +35,15 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene_OH
 #./$name -m $nsys -x common_resources/polymer-2_new
 #./$name -m 10    -x common_resources/polymer-2_new
-#./$name -m 2    -x common_resources/polymer-2_new
-#./$name -m 1    -x common_resources/polymer-2_new
+#./$name -m 2     -x common_resources/polymer-2_new
+#./$name -m 1     -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -m 10 -x common_resources/H2O -n     -g common_resources/NaCl_1x1_L2
 #valgrind --leak-check=yes ./$name -m 10 -x common_resources/H2O -n     -g common_resources/NaCl_1x1_L2
 
-#./$name -m 10 -x common_resources/H2O      -g common_resources/NaCl_1x1_L2
+#./$name -m 10    -x common_resources/H2O           -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine      -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine  110 -g common_resources/NaCl_1x1_L2
 
@@ -58,8 +62,8 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 
-./$name -m $nsys -x common_resources/polymer-2_new              -g common_resources/NaCl_1x1_L2
-#./$name -m 10 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2   | tee out.log
+#./$name -m $nsys -x common_resources/polymer-2_new              -g common_resources/NaCl_1x1_L2
+#./$name -m 10 -x common_resources/polymer-2_new                 -g common_resources/NaCl_1x1_L2   | tee out.log
 #./$name -m 1 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 #./$name -m 2 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
