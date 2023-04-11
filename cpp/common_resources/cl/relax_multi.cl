@@ -737,9 +737,7 @@ __kernel void getNonBond(
     const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
     //}
 
-
-
-
+    /*
     if((iG==iG_DBG)&&(iS==iS_DBG)){ 
         printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) bPBC=%i nPBC(%i,%i,%i)\n", natoms,nnode,nvec, nS,nG,nL, bPBC, nPBC.x,nPBC.y,nPBC.z ); 
         for(int i=0; i<natoms; i++){
@@ -750,6 +748,7 @@ __kernel void getNonBond(
             printf( "\n");
         }
     }
+    */
 
     // ========= Atom-to-Atom interaction ( N-body problem )  
 
@@ -1639,7 +1638,7 @@ __kernel void evalMMFFf4_local_test(
     const int iLc   = nL+nnode;
     const int nL4   = nL*4;
 
-    if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local_test() G=%i/%i S=%i/%i  L=%i/%i sL=%i/%i natom=%i nnode=%i ncap=%i nvec=%i \n", iG,nG, iS,nS, iL,nL, iSL,nSL,     natom, nnode, ncap, nvec );
+    if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local_test() G=%i/%i S=%i/%i  L=%i/%i sL=%i/%i natom=%i nnode=%i ncap=%i nvec=%i niter=%i \n", iG,nG, iS,nS, iL,nL, iSL,nSL,     natom, nnode, ncap, nvec, niter );
 
     const int i0a = iS*natom; 
     const int i0n = iS*nnode; 
@@ -1654,21 +1653,16 @@ __kernel void evalMMFFf4_local_test(
     const int icv = iG + i0v-nnode;
     
     #define NNEIGH    4
-    //#define NATOM_LOC 128
-    //#define NNODE_LOC 64
-    //#define NATOM_LOC 64
-    //#define NNODE_LOC 32
-
-    #define NATOM_LOC 16
-    #define NNODE_LOC 16
+    #define NATOM_LOC 128
+    #define NNODE_LOC 64
 
     // ========= Local Memory
 
     __local float4  _apos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
-    //__local float4  _fneigh  [NNODE_LOC*4];   // 4  [nnode*4*2]
-    __local float4  _fneigh  [NATOM_LOC];   // 4  [nnode*4*2]
+    __local float4  _fneigh  [NNODE_LOC*4];   // 4  [nnode*4*2]
+    //__local float4  _fneigh  [NATOM_LOC];   // 4  [nnode*4*2]
 
-    if(iG>=natom){return; }
+    if(iG>=nnode){return; }
 
     // --- node
     float4 pa = apos[iav];
@@ -1680,7 +1674,7 @@ __kernel void evalMMFFf4_local_test(
     const int4    ng   = neighs   [iaa]; // neighbors
     const int4    bk   = bkneighs [iaa]; // back-neighbors
 
-    if( (bk.x>=nL4)||(bk.y>=nL4)||(bk.z>=nL4)||(bk.w>=nL4) ){ printf("iG,S[%i,%i] bk{%3i,%3i,%3i,%3i} nL4=%i \n", iG,iS, bk.x,bk.y,bk.z,bk.w, nL4 ); };
+    if( (bk.x>=nL4)||(bk.y>=nL4)||(bk.z>=nL4)||(bk.w>=nL4) ){ printf("GPU::ERROR bk>nL4 iG,S[%i,%i] bk{%3i,%3i,%3i,%3i} nL4=%i \n", iG,iS, bk.x,bk.y,bk.z,bk.w, nL4 ); };
 
     // ---- array aliases
     const int*   ings  = (int*  )&ng; 
@@ -1721,9 +1715,9 @@ __kernel void evalMMFFf4_local_test(
 
         if(iG<NNODE_LOC){
             const int i4=iG*4;
-            //for(int i=0; i<NNEIGH; i++){  _fneigh[i4+i] = (float4){fbs[i],0.f}; }
+            for(int i=0; i<NNEIGH; i++){  _fneigh[i4+i] = (float4){fbs[i],0.f}; }
             //for(int i=0; i<NNEIGH; i++){  _fneigh[i] = float4Zero; }
-            _fneigh[iG]=float4Zero;
+            //_fneigh[iG]=float4Zero;
         }
 
         // if(iS==0){
@@ -1735,10 +1729,16 @@ __kernel void evalMMFFf4_local_test(
 
         barrier(CLK_LOCAL_MEM_FENCE);    // Make sure _fneigh is uptodate for all atoms
         
-        if((bk.x>=0)&&(bk.x<nL4)){ fa.xyz += _fneigh[bk.x].xyz; }
-        if((bk.y>=0)&&(bk.y<nL4)){ fa.xyz += _fneigh[bk.y].xyz; }
-        if((bk.z>=0)&&(bk.z<nL4)){ fa.xyz += _fneigh[bk.z].xyz; }
-        if((bk.w>=0)&&(bk.w<nL4)){ fa.xyz += _fneigh[bk.w].xyz; }
+        // if((bk.x>=0)&&(bk.x<nL4)){ fa.xyz += _fneigh[bk.x].xyz; }
+        // if((bk.y>=0)&&(bk.y<nL4)){ fa.xyz += _fneigh[bk.y].xyz; }
+        // if((bk.z>=0)&&(bk.z<nL4)){ fa.xyz += _fneigh[bk.z].xyz; }
+        // if((bk.w>=0)&&(bk.w<nL4)){ fa.xyz += _fneigh[bk.w].xyz; }
+
+        if(bk.x>=0){ fa.xyz += _fneigh[bk.x].xyz; }
+        if(bk.y>=0){ fa.xyz += _fneigh[bk.y].xyz; }
+        if(bk.z>=0){ fa.xyz += _fneigh[bk.z].xyz; }
+        if(bk.w>=0){ fa.xyz += _fneigh[bk.w].xyz; }
+
         //if(iS==0){  printf( "[iG=%i] bk{%3i,%3i,%3i,%3i}/%i fng(%g,%g,%g) \n", iG,  bk.x,bk.y,bk.z,bk.w, NNODE_LOC*4,  fng.x,fng.y,fng.z );}
 
         // ===========  Move Atoms
@@ -1800,22 +1800,27 @@ __kernel void evalMMFFf4_local(
     const int natom = nDOFs.x;
     const int nnode = nDOFs.y;
     const int nvec  = natom+nnode;
-    const int ncap  = natom - nnode;
-    const int iLc   = nL+nnode;
+    const int ncap  = natom-nnode;
+    const int iLc   = iL+nnode;
+    const int nfneigh = nnode*4;
 
     if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local() nL=%i nG=%i nS=%i natom=%i nnode=%i ncap=%i nvec=%i \n", nL,nG,nS, natom, nnode, ncap, nvec );
+    if((iG==0)&&(iS==0)){ 
+        if(NNODE_LOC<nnode)printf( "GPU::ERRROR NNODE_LOC(%i) < nnode(%i) \n", NNODE_LOC, nnode );
+    }
+
 
     const int i0a = iS*natom; 
     const int i0n = iS*nnode; 
     const int i0v = iS*nvec;
     // --- node atomm global indexes
-    const int iaa = iG + i0a; 
-    const int ian = iG + i0n; 
-    const int iav = iG + i0v;
+    const int iaa = iL + i0a; 
+    const int ian = iL + i0n; 
+    const int iav = iL + i0v;
     // --- capping atom global indexes
-    const int ica = iG + i0a-nnode; 
-    const int icn = iG + i0n-nnode; 
-    const int icv = iG + i0v-nnode;
+    const int ica = iL + i0a+nnode; 
+    const int icn = iL + i0n+nnode; 
+    const int icv = iL + i0v+nnode;
     const float R2damp = GFFParams.x*GFFParams.x;
 
     
@@ -1831,15 +1836,13 @@ __kernel void evalMMFFf4_local(
 
     __local float4  _apos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
     __local float4  _REQs    [NATOM_LOC  ];   // 6  [natoms] non-boding parametes {R0,E0,Q}
-    //__local float4  _ppos    [NATOM_LOC  ];   // 2  [nnode]  // pi-postion local
-    __local float4  _fneigh  [NNODE_LOC*4];   // 4  [nnode*4*2]
-    //__local float4  _fneighpi[NNODE_LOC*4];
-    //__local float4  _XXX[10000000000];      // This should not be possible !!!!!! Should rise some error !!!!
+    __local float4  _fneigh  [NNODE_LOC*4]; 
+    __local float4  _fneighpi[NNODE_LOC*4];  
 
     // NOTE: We can avoid using  __local _fneigh[] if we write __private fbs[] and fps[] into __local aforce[] in synchronized manner in 4 steps (4 slots) using barrier(CLK_LOCAL_MEM_FENCE);   
 
     const bool bNode = iG<nnode;
-    const bool bCap  = iG<(natom-nnode);
+    const bool bCap  = iG<ncap;
 
     // --- node
     float4  pa,va;                // position and velocity
@@ -1848,8 +1851,8 @@ __kernel void evalMMFFf4_local(
     float4  hp,vp;                // pi
     int4    ng,ngC,bk;            // neighbors 
     if(bNode){
-        pa        = apos[iav];
         va        = avel[iav];
+        pa        = apos[iav];
         REQa      = REQs[iaa];
         _apos[iL] = pa;
         _REQs[iL] = REQa;
@@ -1866,20 +1869,9 @@ __kernel void evalMMFFf4_local(
         hp         = apos[iav+natom];
         vp         = avel[iav+natom];
 
-        { // Debug
-            _fneigh  [iL*4+0] = float4Zero;
-            _fneigh  [iL*4+1] = float4Zero;
-            _fneigh  [iL*4+2] = float4Zero;
-            _fneigh  [iL*4+3] = float4Zero;
-            //const int i4=iL*4;
-            //for(int i=0; i<NNEIGH; i++){
-            //_fneigh  [i4+i] = float4Zero;
-            //_fneighpi[i4+i] = (float4){fps[i],0.f};
-            //}
-        }
-
-        //_ppos [iL] = hp;
+        if( (bk.x>=nfneigh)||(bk.y>=nfneigh)||(bk.z>=nfneigh)||(bk.w>=nfneigh) ){ printf("GPU::ERROR node[%i|%i].bk{%3i,%3i,%3i,%3i}>nfneigh(%i)\n", iG,iS,  bk.x,bk.y,bk.z,bk.w, nfneigh ); };
     }
+
     // --- cap
     float4 vc,pc,REQc,c_cons;
     int4   c_ng,c_ngC,c_bk;
@@ -1893,21 +1885,20 @@ __kernel void evalMMFFf4_local(
         c_cons     = constr   [ica];
         _apos[iLc] = pc;
         _REQs[iLc] = REQc;
+
+        //if(iS==0)printf( "iL %i icv %i pc{%g,%g,%g}\n", iL, icv, pc.x,pc.y,pc.z );
+        if( (c_bk.x>=nfneigh)||(c_bk.y>=nfneigh)||(c_bk.z>=nfneigh)||(c_bk.w>=nfneigh) ){ printf("GPU::ERROR node[%i|%i].bk{%3i,%3i,%3i,%3i}>nfneigh(%i)\n", iG,iS,  c_bk.x,c_bk.y,c_bk.z,c_bk.w, nfneigh ); };
+
     }
     
     
     // ---- Parameters
     const cl_Mat3 lvec    = lvecs [iS];
     const cl_Mat3 invLvec = ilvecs[iS];
-    const float3 shift0  = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;
-    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
-    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+    const float3 shift0   = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;
+    const float3 shift_a  = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    const float3 shift_b  = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
     
-    float3  fa = float3Zero;    // force on atom position
-    float3  fc = float3Zero;    // force on capping atom 
-    float3  fp = float3Zero;    // force on pi orbital
-    float   E=0;
-
     // ======= MMFF aliases
     // ---- Array aliases
     const int*   ings  = (int*  )&ng; 
@@ -1922,9 +1913,13 @@ __kernel void evalMMFFf4_local(
     //            BIG LOOP
     // =================================
 
-    for(int itr=0; itr<niter; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
+    //for(int itr=0; itr<niter; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
+    for(int itr=0; itr<1; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
     
-    
+    float3  fa = float3Zero;    // force on atom position
+    float3  fc = float3Zero;    // force on capping atom 
+    float3  fp = float3Zero;    // force on pi orbital
+
     barrier(CLK_LOCAL_MEM_FENCE);
 
     
@@ -1985,7 +1980,7 @@ __kernel void evalMMFFf4_local(
         }
         
         // ========= Angles evaluation
-        /*
+        
         for(int i=0; i<NNEIGH; i++){
             int ing = ings[i];
             if(ing<0) break;
@@ -2001,6 +1996,7 @@ __kernel void evalMMFFf4_local(
                 const float4 hj = hs[j];
                 evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );            
                 fa    -= f1+f2;
+                /*
                 { // Remove vdW
                     float4 REQj=_REQs[jng];
                     float4 REQij;
@@ -2011,23 +2007,24 @@ __kernel void evalMMFFf4_local(
                     f1 -=  fij.xyz;
                     f2 +=  fij.xyz;
                 }
+                */
                 fbs[i]+= f1;
                 fbs[j]+= f2;
             }
         }
-        */
+        
         // ========= Write neighbor forces (=recoils) to local memory
-        /*
+        
         const int i4=iG*4;
         for(int i=0; i<NNEIGH; i++){
             _fneigh  [i4+i] = (float4){fbs[i],0.f};
             //_fneighpi[i4+i] = (float4){fps[i],0.f};
         }
-        if(iS==0){
-            printf( "[iG=%i]fbs1(%g,%g,%g) fbs2(%g,%g,%g) fbs3(%g,%g,%g) fbs4(%g,%g,%g) \n", iG, fbs[0].x,fbs[0].y,fbs[0].z,    fbs[1].x,fbs[1].y,fbs[1].z,    fbs[2].x,fbs[2].y,fbs[2].z,    fbs[3].x,fbs[3].y,fbs[3].z );
-            printf( "[iG=%i]fng[%i](%g,%g,%g) fng[%i](%g,%g,%g) fng3[%i](%g,%g,%g) fng4[%i](%g,%g,%g) \n", iG, i4,_fneigh[i4].x,_fneigh[i4].y,_fneigh[i4].z,   i4+1, _fneigh[i4+1].x,_fneigh[i4+1].y,_fneigh[i4+1].z,    i4+2,_fneigh[i4+2].x,_fneigh[i4+2].y,_fneigh[i4+2].z,  i4+3,_fneigh[i4+3].x,_fneigh[i4+3].y,_fneigh[i4+3].z );
-        }
-        */
+        // if(iS==0){
+        //     printf( "[iG=%i]fbs1(%g,%g,%g) fbs2(%g,%g,%g) fbs3(%g,%g,%g) fbs4(%g,%g,%g) \n", iG, fbs[0].x,fbs[0].y,fbs[0].z,    fbs[1].x,fbs[1].y,fbs[1].z,    fbs[2].x,fbs[2].y,fbs[2].z,    fbs[3].x,fbs[3].y,fbs[3].z );
+        //     printf( "[iG=%i]fng[%i](%g,%g,%g) fng[%i](%g,%g,%g) fng3[%i](%g,%g,%g) fng4[%i](%g,%g,%g) \n", iG, i4,_fneigh[i4].x,_fneigh[i4].y,_fneigh[i4].z,   i4+1, _fneigh[i4+1].x,_fneigh[i4+1].y,_fneigh[i4+1].z,    i4+2,_fneigh[i4+2].x,_fneigh[i4+2].y,_fneigh[i4+2].z,  i4+3,_fneigh[i4+3].x,_fneigh[i4+3].y,_fneigh[i4+3].z );
+        // }
+        
     }
     
     
@@ -2097,13 +2094,13 @@ __kernel void evalMMFFf4_local(
     barrier(CLK_LOCAL_MEM_FENCE);    // Make sure _fneigh is uptodate for all atoms
 
     if(bNode){ 
-        
+
+
+        /*
         //if(bk.x>=0){ fa += _fneigh  [bk.x].xyz;  fp += _fneighpi[bk.x].xyz; }
         //if(bk.y>=0){ fa += _fneigh  [bk.y].xyz;  fp += _fneighpi[bk.y].xyz; }
         //if(bk.z>=0){ fa += _fneigh  [bk.z].xyz;  fp += _fneighpi[bk.z].xyz; }
         //if(bk.w>=0){ fa += _fneigh  [bk.w].xyz;  fp += _fneighpi[bk.w].xyz; }
-        
-        
         float3 fng = float3Zero;
         if(bk.x>=0){ fng += _fneigh[bk.x].xyz; }
         if(bk.y>=0){ fng += _fneigh[bk.y].xyz; }
@@ -2112,21 +2109,18 @@ __kernel void evalMMFFf4_local(
         //if(iS==0){
         //    printf( "[iG=%i] bk{%3i,%3i,%3i,%3i}/%i fng(%g,%g,%g) \n", iG,  bk.x,bk.y,bk.z,bk.w, NNODE_LOC*4,  fng.x,fng.y,fng.z );
         //}
-
         fa.xyz += fng;  // IF this swithed off it woks
-        
-
         //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g)  bk{%3i,%3i,%3i,%3i} \n", iG, fa.x,fa.y,fa.z,   bk.x,bk.y,bk.z,bk.w );
         // --- move node atom
-        if( cons.w>0 ){  fa.xyz += (pa.xyz - cons.xyz)*-cons.w; }
+        //if( cons.w>0 ){  fa.xyz += (pa.xyz - cons.xyz)*-cons.w; }
         va     *= MDpars.y;
         va.xyz += fa.xyz*MDpars.x;
         pa.xyz += va.xyz*MDpars.x;
         pa.w=0;va.w=0;
-
-        if(iS==0)printf( "[iG=%i] fa(%g,%g,%g) va(%g,%g,%g) pa(%g,%g,%g) \n", iG,  fa.x,fa.y,fa.z,  va.x,va.y,va.z,  pa.x,pa.y,pa.z );
+        //if(iS==0)printf( "[iG=%i] fa(%g,%g,%g) va(%g,%g,%g) pa(%g,%g,%g) \n", iG,  fa.x,fa.y,fa.z,  va.x,va.y,va.z,  pa.x,pa.y,pa.z );
         _apos[iL] = pa;
-        fa = float3Zero;
+        */
+        
 
         /*
         // --- move pi    ...   This would simplify if we consider pi- is just normal cap atom (dummy atom)
@@ -2141,39 +2135,43 @@ __kernel void evalMMFFf4_local(
         */
     }
     
-    /*
     if(bCap){
-        if(c_bk.x>=0){ fa += _fneigh[c_bk.x].xyz; }
-        if(c_bk.y>=0){ fa += _fneigh[c_bk.y].xyz; }
-        if(c_bk.z>=0){ fa += _fneigh[c_bk.z].xyz; }
-        if(c_bk.w>=0){ fa += _fneigh[c_bk.w].xyz; }
+        
+        if(c_bk.x>=0){ fc += _fneigh[c_bk.x].xyz; }
+        if(c_bk.y>=0){ fc += _fneigh[c_bk.y].xyz; }
+        if(c_bk.z>=0){ fc += _fneigh[c_bk.z].xyz; }
+        if(c_bk.w>=0){ fc += _fneigh[c_bk.w].xyz; }
 
-        // --- move cap atom
         if( c_cons.w>0 ){fc.xyz += (pc.xyz - c_cons.xyz)*-c_cons.w; }
-        va     *= MDpars.y;
+        //pc.xyz += fc.xyz * 0.01f;
+        
+        // --- move cap atom
+        //if( c_cons.w>0 ){fc.xyz += (pc.xyz - c_cons.xyz)*-c_cons.w; }
+        vc     *= MDpars.y;
         vc.xyz += fc.xyz*MDpars.x;
         pc.xyz += vc.xyz*MDpars.x;
         pc.w=0;vc.w=0;
+        
+
         _apos[iLc] = pc;
+        
     }
-    */
 
     } // END OF THE BIG LOOP
 
-    
+    /*
     if(bNode){
         apos[iav      ]=pa;
         avel[iav      ]=va;
         //apos[iav+natom]=hp;
         //avel[iav+natom]=vp;
     }
-
-    /*
+    */
     if(bCap){
         apos[ica]=pc;
         avel[ica]=vc;
     }
-    */
+    
     
 };
 

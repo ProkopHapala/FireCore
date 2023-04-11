@@ -580,20 +580,19 @@ class OCL_MM: public OCLsystem { public:
         if(task==0) task = getTask("evalMMFFf4_local");
         
         //md_params.y = 0.9;
-
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc  = 32;
+        //int nloc  = 32;
         //int nloc = 64;
+        int nloc  = _max( nnode, ncap );
         task->local.x  = nloc;
         task->global.x = nnode + nloc-(nnode%nloc);
         task->global.y = nSystems;
         useKernel( task->ikernel );
         niter   = niter_;
         nDOFs.x = nAtoms; 
-        nDOFs.y = nnode;  
-        DEBUG
+        nDOFs.y = nnode; 
         // ------- Maybe We do-not need to do this every frame ?
         int err=0;
         err |= _useArg   ( nDOFs           );    OCL_checkError(err, "setup_evalMMFFf4_local.1");   DEBUG
@@ -648,7 +647,7 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 8;
         //int nloc  = 32;
         //int nloc = 64;
-        int nloc  = _min( nnode, ncap );
+        int nloc  = _max( nnode, ncap );
         task->local.x  = nloc;
         task->global.x = nnode + nloc-(nnode%nloc);
         task->global.y = nSystems;
