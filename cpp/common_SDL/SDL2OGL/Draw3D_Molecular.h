@@ -59,7 +59,7 @@ void makeSphereOgl( int& ogl, int nsub, float sz ){
     glEndList();
 }
 
-void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false ){
+void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     glShadeModel(GL_SMOOTH);
@@ -67,10 +67,10 @@ void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, int ogl_sph, float qsc=1, float R
         float q = (float)REQs[i].z*qsc;
         glColor3f(1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q));
         if(bPointCross){
-            Draw3D::drawPointCross( ps[i], (REQs[i].x-Rsub)*Rsc );
+            Draw3D::drawPointCross( ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
         }else{
             //Draw3D::drawShape( ogl_sph, ps[i], Mat3dIdentity*(REQs[i].x*Rsc) );
-            Draw3D::drawShape( ogl_sph, ps[i], Mat3dIdentity*((REQs[i].x-Rsub)*Rsc) );
+            Draw3D::drawShape( ogl_sph, ps[i]+pos0, Mat3dIdentity*((REQs[i].x-Rsub)*Rsc) );
         }
     }
 }

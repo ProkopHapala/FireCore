@@ -647,12 +647,13 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
     gridFF.makePBCshifts ( gridFF.nPBC, gridFF.lvec );
     long T0 = getCPUticks();
-    surf2ocl( gridFF.nPBC, bSaveDebugXSFs );
-    printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
-    bGridFF   =true; 
     //bSurfAtoms=false;
     //gridFF.shift0 = Vec3d{0.,0., 0.0};
     gridFF.shift0 = Vec3d{0.,0.,-2.0};
+    //gridFF.shift0 = Vec3d{0.,0.,-6.0};
+    surf2ocl( gridFF.nPBC, bSaveDebugXSFs );
+    printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
+    bGridFF   =true; 
     // evalCheckGridFF_ocl();   // here are not initialized buffers atoms.aforce,REQs, so it will crash.
 }
 

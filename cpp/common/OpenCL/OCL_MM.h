@@ -37,8 +37,8 @@ class OCL_MM: public OCLsystem { public:
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
     //float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
-    //float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
-    float4 md_params{0.05,0.995,100.0,0.0};    // (dt,cdamp,forceLimit)
+    float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
+    //float4 md_params{0.05,0.995,100.0,0.0};    // (dt,cdamp,forceLimit)
     
     int    niter;
     float4 GFFparams{1.0,1.5,0.,0.};
