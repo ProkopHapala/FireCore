@@ -104,7 +104,8 @@ class OCL_MM: public OCLsystem { public:
         newTask( "make_GridFF"            ,program_relax, 1);
         newTask( "sampleGridFF"           ,program_relax, 1);
         newTask( "addDipoleField"         ,program_relax, 1);
-        newTask( "evalMMFFf4_local"       ,program_relax, 2);
+        newTask( "evalMMFFf4_local1"      ,program_relax, 2);
+        newTask( "evalMMFFf4_local2"      ,program_relax, 2);
         newTask( "evalMMFFf4_local_test"  ,program_relax, 2);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
@@ -575,9 +576,72 @@ class OCL_MM: public OCLsystem { public:
         // const float4   grid_p0           // 7
     }
 
-    OCLtask* setup_evalMMFFf4_local( int niter_, OCLtask* task=0 ){
-        printf("OCL_MM::setup_evalMMFFf4_local()\n");
-        if(task==0) task = getTask("evalMMFFf4_local");
+    OCLtask* setup_evalMMFFf4_local1( int niter_, OCLtask* task=0 ){
+        printf("OCL_MM::setup_evalMMFFf4_local1()\n");
+        if(task==0) task = getTask("evalMMFFf4_local1");
+        
+        //md_params.y = 0.9;
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        //int nloc  = 32;
+        //int nloc = 64;
+        int nloc  = nAtoms;
+        task->local.x  = nloc;
+        task->global.x = nnode + nloc-(nnode%nloc);
+        task->global.y = nSystems;
+        useKernel( task->ikernel );
+        niter   = niter_;
+        nDOFs.x = nAtoms; 
+        nDOFs.y = nnode; 
+        // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
+        err |= _useArg   ( nDOFs           );    OCL_checkError(err, "setup_evalMMFFf4_local.1");   DEBUG
+        err |= useArgBuff( ibuff_atoms     );    OCL_checkError(err, "setup_evalMMFFf4_local.2");   DEBUG
+        err |= useArgBuff( ibuff_avel      );    OCL_checkError(err, "setup_evalMMFFf4_local.3");   DEBUG
+        err |= useArgBuff( ibuff_constr    );    OCL_checkError(err, "setup_evalMMFFf4_local.4");   DEBUG
+        err |= useArgBuff( ibuff_neighs    );    OCL_checkError(err, "setup_evalMMFFf4_local.5");   DEBUG
+        err |= useArgBuff( ibuff_neighCell );    OCL_checkError(err, "setup_evalMMFFf4_local.6");   DEBUG
+        //err |= useArgBuff( ibuff_bkNeighs  );    OCL_checkError(err, "setup_evalMMFFf4_local.7");   DEBUG
+        err |= useArgBuff( ibuff_bkNeighs_new  );    OCL_checkError(err, "setup_evalMMFFf4_local.7");   DEBUG
+        err |= useArgBuff( ibuff_REQs      );    OCL_checkError(err, "setup_evalMMFFf4_local.8");   DEBUG
+        err |= useArgBuff( ibuff_MMpars    );    OCL_checkError(err, "setup_evalMMFFf4_local.9");   DEBUG
+        err |= useArgBuff( ibuff_BLs       );    OCL_checkError(err, "setup_evalMMFFf4_local.10");  DEBUG
+        err |= useArgBuff( ibuff_BKs       );    OCL_checkError(err, "setup_evalMMFFf4_local.11");  DEBUG
+        err |= useArgBuff( ibuff_Ksp       );    OCL_checkError(err, "setup_evalMMFFf4_local.12");  DEBUG
+        err |= useArgBuff( ibuff_Kpp       );    OCL_checkError(err, "setup_evalMMFFf4_local.13");  DEBUG
+        err |= useArgBuff( ibuff_lvecs     );    OCL_checkError(err, "setup_evalMMFFf4_local.14");  DEBUG
+        err |= useArgBuff( ibuff_ilvecs    );    OCL_checkError(err, "setup_evalMMFFf4_local.15");  DEBUG
+        err |= _useArg   ( nPBC            );    OCL_checkError(err, "setup_evalMMFFf4_local.16");  DEBUG
+        err |= _useArg   ( GFFparams       );    OCL_checkError(err, "setup_evalMMFFf4_local.17");  DEBUG
+        err |= _useArg   ( md_params       );    OCL_checkError(err, "setup_evalMMFFf4_local.18");  DEBUG
+        err |= _useArg   ( niter           );    OCL_checkError(err, "setup_evalMMFFf4_local.19");  DEBUG
+        OCL_checkError(err, "setup_evalMMFFf4_local1"); DEBUG;
+        return task;
+        // const int4 nDOFs,               // 1  (nAtoms,nnode)
+        // __global float4*  apos,         // 2  [natoms]
+        // __global float4*  avel,         // 3
+        // __global float4*  constr,       // 4
+        // __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+        // __global int4*    neighCell,    // 6
+        // __global int4*    bkneighs,     // 7
+        // __global float4*  REQs,         // 8  [natoms] non-boding parametes {R0,E0,Q} 
+        // __global float4*  apars,        // 9  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+        // __global float4*  bLs,          // 10 [nnode]  bond lengths  for each neighbor
+        // __global float4*  bKs,          // 11 [nnode]  bond stiffness for each neighbor
+        // __global float4*  Ksp,          // 12 [nnode]  stiffness of pi-alignment for each neighbor
+        // __global float4*  Kpp,          // 13 [nnode]  stiffness of pi-planarization for each neighbor
+        // __global cl_Mat3* lvecs,        // 14
+        // __global cl_Mat3* ilvecs,       // 15
+        // const int4        nPBC,         // 16
+        // const float4      GFFparams,    // 17
+        // const float4      MDpars,       // 18
+        // const int         niter         // 19
+    }
+
+    OCLtask* setup_evalMMFFf4_local2( int niter_, OCLtask* task=0 ){
+        printf("OCL_MM::setup_evalMMFFf4_local2()\n");
+        if(task==0) task = getTask("evalMMFFf4_local2");
         
         //md_params.y = 0.9;
         //int nloc = 1;
@@ -615,7 +679,7 @@ class OCL_MM: public OCLsystem { public:
         err |= _useArg   ( GFFparams       );    OCL_checkError(err, "setup_evalMMFFf4_local.17");  DEBUG
         err |= _useArg   ( md_params       );    OCL_checkError(err, "setup_evalMMFFf4_local.18");  DEBUG
         err |= _useArg   ( niter           );    OCL_checkError(err, "setup_evalMMFFf4_local.19");  DEBUG
-        OCL_checkError(err, "setup_evalMMFFf4_local"); DEBUG;
+        OCL_checkError(err, "setup_evalMMFFf4_local2"); DEBUG;
         return task;
         // const int4 nDOFs,               // 1  (nAtoms,nnode)
         // __global float4*  apos,         // 2  [natoms]

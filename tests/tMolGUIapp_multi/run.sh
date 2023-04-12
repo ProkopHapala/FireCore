@@ -14,13 +14,17 @@ ln -s $dir/$name .
 
 #nsys=10
 nsys=50
+#nsys=200
 
 
 # ====== Small Molecules
 
 #./$name -m 10 -x common_resources/H2O
 #./$name -t 2 -m 10 -x common_resources/pyridine
-./$name -t 1 -m 10 -x common_resources/pyridine
+#./$name -t 1 -m 10 -x common_resources/pyridine
+#./$name -t 1 -m $nsys -x common_resources/pyridine
+#./$name -t 2 -m $nsys -x common_resources/pyridine
+
 
 #./$name -m 10 -x common_resources/H2O
 #./$name -m 10 -x common_resources/HCOOH
@@ -39,6 +43,7 @@ nsys=50
 #./$name -m 1     -x common_resources/polymer-2_new
 
 #./$name -m 10 -t 1  -x common_resources/polymer-2_new
+./$name -m $nsys -t 1  -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 

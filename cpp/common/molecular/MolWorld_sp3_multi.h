@@ -52,7 +52,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_MMFF=0;
     OCLtask* task_move=0;
     OCLtask* task_print=0;
-    OCLtask* task_MMFFloc=0;
+    OCLtask* task_MMFFloc1=0;
+    OCLtask* task_MMFFloc2=0;
     OCLtask* task_MMFFloc_test=0;
 
 // ==================================
@@ -335,10 +336,12 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
         //niter=10;
         niter=100;
         if(itest==1){ 
-            if( task_MMFFloc ==0 )task_MMFFloc=ocl.setup_evalMMFFf4_local( niter );
-            task_MMFFloc     ->enque_raw(); 
-        }
-        if(itest==2){ 
+            if( task_MMFFloc1 ==0 )task_MMFFloc1=ocl.setup_evalMMFFf4_local1( niter );
+            task_MMFFloc1     ->enque_raw(); 
+        }else if(itest==2){
+            if( task_MMFFloc2 ==0 )task_MMFFloc2=ocl.setup_evalMMFFf4_local2( niter );
+            task_MMFFloc2     ->enque_raw(); 
+        }else if(itest==3){
             if( task_MMFFloc_test==0  )task_MMFFloc_test=ocl.setup_evalMMFFf4_local_test( niter );
             task_MMFFloc_test->enque_raw();
         }
