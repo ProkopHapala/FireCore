@@ -23,7 +23,8 @@ nsys=50
 #./$name -t 2 -m 10 -x common_resources/pyridine
 #./$name -t 1 -m 10 -x common_resources/pyridine
 #./$name -t 1 -m $nsys -x common_resources/pyridine
-#./$name -t 2 -m $nsys -x common_resources/pyridine
+#./$name -t 1 -m $nsys -x common_resources/pyridine
+#./$name -t 1 -m $nsys -x common_resources/PTCDA
 
 
 #./$name -m 10 -x common_resources/H2O
@@ -43,7 +44,7 @@ nsys=50
 #./$name -m 1     -x common_resources/polymer-2_new
 
 #./$name -m 10 -t 1  -x common_resources/polymer-2_new
-./$name -m $nsys -t 1  -x common_resources/polymer-2_new
+#./$name -m $nsys -t 1  -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 
@@ -53,6 +54,8 @@ nsys=50
 #./$name -m 10    -x common_resources/H2O           -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine      -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine  110 -g common_resources/NaCl_1x1_L2
+./$name -m $nsys -x common_resources/PTCDA   -g common_resources/NaCl_1x1_L2
+
 
 # ====== Polymers On Substrate
 
