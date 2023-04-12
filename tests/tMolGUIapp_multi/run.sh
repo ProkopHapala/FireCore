@@ -39,7 +39,7 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -m $nsys -x common_resources/polydiacetylene_OH
 #./$name -m $nsys -x common_resources/polymer-2_new
-#./$name -m 10    -x common_resources/polymer-2_new
+./$name -m 10    -x common_resources/polymer-2_new
 #./$name -m 2     -x common_resources/polymer-2_new
 #./$name -m 1     -x common_resources/polymer-2_new
 
@@ -54,7 +54,7 @@ nsys=50
 #./$name -m 10    -x common_resources/H2O           -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine      -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine  110 -g common_resources/NaCl_1x1_L2
-./$name -m $nsys -x common_resources/PTCDA   -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/PTCDA   -g common_resources/NaCl_1x1_L2
 
 
 # ====== Polymers On Substrate

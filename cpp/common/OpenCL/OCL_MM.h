@@ -157,10 +157,10 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
-        int nloc = 1;
+        //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        //int nloc = 32;
+        int nloc = 32;
         //int nloc = 64;
         task->local.x = nloc;
         task->global.x = na + nloc-(na%nloc);
