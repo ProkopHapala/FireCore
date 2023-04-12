@@ -11,12 +11,91 @@
 #include "MultiSolverInterface.h"
 #include "Confs.h"
 
+struct FIRE_setup{
+    float cvf_min   = -0.1f;  // minimum cosine for velocity damping in  move_FIRE_smooth()
+    float cvf_max   = +0.1f;  // maximum cosine for velocity damping in  move_FIRE_smooth()
+    float cv_kill   =  0.0f;
+    float ff_safety = 1e-32;
+
+    int   minLastNeg  = 3;
+    float finc         = 1.1;
+    float fdec         = 0.5;
+    float falpha       = 0.8;
+
+    float dt_max       = 0;
+    float dt_min       = 0;
+    float damp_max     = 0;
+
+    inline void setup( float dt_, float damp_=0.1 ){
+        dt_max=dt_; dt_min=dt_*0.1; damp_max=damp_;
+    }
+
+    FIRE_setup()=default;
+    FIRE_setup(float dt_, float damp_=0.1){ setup(dt_,damp_); };
+};
+
+struct FIRE{
+    constexpr static float ff_safety = 1.e-32f;
+    FIRE_setup* par=0;
+
+    int   lastNeg;
+    float ff,vv,vf;
+    float cos_vf;
+    float renorm_vf;
+    float cf,cv;
+    float dt;
+    float damping;
+
+    float damp_func_FIRE( float c, float& cv ){ // Original FIRE damping
+        double cf;
+        if( c < 0.0 ){
+            cv = par->cv_kill;
+            cf = 0.;
+        }else{  
+            cv = 1-damping;
+            cf = damping;
+            //cv = 1.;
+            //cf = 0.;
+        }
+        return cf;
+    }
+
+    void update_params(){
+        float f_len      = sqrt(ff);
+        float v_len      = sqrt(vv);
+        cos_vf     = vf    / ( f_len*v_len + ff_safety );
+        renorm_vf  = v_len / ( f_len       + ff_safety );
+        cf  = renorm_vf * damp_func_FIRE( cos_vf, cv );
+        if( cos_vf < 0.0 ){
+            //dt       = fmax( dt * par->fdec, par->dt_min );
+            lastNeg  = 0;
+            damping  = par->damp_max;
+        }else{
+            if( lastNeg > par->minLastNeg ){
+                //dt        = fmin( dt * par->finc, par->dt_max );
+                damping   = damping  * par->falpha;
+            }
+            lastNeg++;
+        }
+    }
+
+    void print(){ printf( "dt %g damping %g cos_vf %g cv %g cf %g \n", dt, damping, cos_vf, cv, cf ); }
+    void bind_params( FIRE_setup* par_ ){ par=par_; dt=par->dt_max; damping=par->damp_max; };
+
+    FIRE()=default;
+    FIRE( FIRE_setup* par_ ){ bind_params(par_); }
+
+};
+
+
+
 // ======================================
 // class:        MolWorld_sp3_ocl
 // ======================================
 
 class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { public:
     OCL_MM     ocl;
+    FIRE_setup fire_setup{0.1,0.1};
 
     int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
@@ -27,6 +106,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* atoms      =0;
     Quat4f* aforces    =0;
     Quat4f* avel       =0;
+
+    FIRE*   fire         =0;
+    Quat4f* MDpars       =0;
 
     Quat4f* constr     =0;
 
@@ -88,6 +170,9 @@ void realloc( int nSystems_ ){
 
     _realloc( lvecs,     nSystems  );
     _realloc( ilvecs,    nSystems  );
+    _realloc( MDpars,    nSystems  );
+
+    _realloc( fire,      nSystems  );
 
     // ToDo : it may be good to bind buffer directly in p_cpu buffer inside   OCLsystem::newBuffer()
 }
@@ -105,6 +190,7 @@ virtual void init( bool bGrid ) override {
     float random_init = 0.5;
     for(int i=0; i<nSystems; i++){
         pack_system( i, ffl, true, false, random_init );
+        fire[i].bind_params( &fire_setup );
     }
     upload( true, false );
     //bGridFF=false;
@@ -166,6 +252,41 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
         //for(int i=0; i<ocl.nvecs; i++){ Quat4f p = atoms[i0v+i]; printf( "apos[%4i] (%5.3f,%5.3f,%5.3f) pi %i \n", i, p.x,p.y,p.z, i>=ocl.nAtoms ); }
         //if(isys==0)for(int i=0; i<ocl.nvecs; i++){Quat4i bkng = bkNeighs[i0v+i]; printf( "bkng[%4i] (%4i,%4i,%4i,%4i) pi %i\n", i, bkng.x,bkng.y,bkng.z,bkng.w, i>=ocl.nAtoms ); }
     }
+}
+
+void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
+    double vv=0,ff=0,vf=0;
+    for(int i=0; i<n; i++){
+        Vec3f f = fs[i].f;
+        Vec3f v = vs[i].f;
+        ff += f.dot(f);
+        vv += v.dot(v);
+        vf += f.dot(v);
+    }
+    fire.vv=vv;
+    fire.ff=ff;
+    fire.vf=vf;
+    fire.update_params();
+    MDpar.x = fire.dt;
+    MDpar.y = 1 - fire.damping;
+    MDpar.z = fire.cv;
+    MDpar.w = fire.cf;
+}
+
+void evalVFs( ){
+    ocl.download( ocl.ibuff_aforces , aforces );
+    ocl.download( ocl.ibuff_avel    , avel    );
+    int err=0;
+    err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs()");
+    //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
+    for(int isys=0; isys<nSystems; isys++){
+        int i0v = isys * ocl.nvecs;
+        evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
+    }
+    //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
+    err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
+    //err |= ocl.finishRaw();  
+    //OCL_checkError(err, "evalVFs()");
 }
 
 void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0, bool bVel=false ){
@@ -270,6 +391,7 @@ void setup_MMFFf4_ocl(){
     printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() \n");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
+    if(!task_cleanF)   task_cleanF = ocl.setup_cleanForceMMFFf4( ff4.natoms, ff4.nnode       );
     if(!task_move  )   task_move  = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );
     if(!task_print )   task_print = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );
     if(!task_MMFF  )   task_MMFF  = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
@@ -322,15 +444,21 @@ void picked2GPU( int ipick,  double K ){
 double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
-    //long T0 = getCPUticks();
+
     picked2GPU( ipicked,  1.0 );
     int err=0;
     if( task_MMFF    ==0 )setup_MMFFf4_ocl();
     //if( task_MMFFloc ==0 )task_MMFFloc=ocl.setup_evalMMFFf4_local( niter );
     // evaluate on GPU
-    long T0 = getCPUticks();
+    //long T0 = getCPUticks();
     //if(task_MMFFloc){
     //    task_MMFFloc->enque_raw();
+
+    //niter=10;
+
+    int nPerVFs = 10;
+    int nVFs    = niter/nPerVFs;
+    long T0 = getCPUticks();
     if( itest != 0 ){
         //niter=1;
         //niter=10;
@@ -346,15 +474,25 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
             task_MMFFloc_test->enque_raw();
         }
         //exit(0);    
-    }else for(int i=0; i<niter; i++){
-        //err |= task_cleanF->enque_raw();      // this should be solved inside  task_move->enque_raw();   if we do not need to output force 
-        err |= task_MMFF->enque_raw();
-        if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
-        else       { err |= task_NBFF      ->enque_raw(); }
-        //OCL_checkError(err, "eval_MMFFf4_ocl.task_NBFF_Grid");
-        //err |= task_print   ->enque_raw();    // just printing the forces before assempling
-        err |= task_move      ->enque_raw(); 
-        //OCL_checkError(err, "eval_MMFFf4_ocl_1");
+    }else for(int i=0; i<nVFs; i++){
+        //long T0 = getCPUticks();
+        for(int j=0; j<nPerVFs; j++){
+            //err |= task_cleanF->enque_raw();      // this should be solved inside  task_move->enque_raw();   if we do not need to output force 
+            if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+            else       { err |= task_NBFF      ->enque_raw(); }
+            err |= task_MMFF->enque_raw();
+            //OCL_checkError(err, "eval_MMFFf4_ocl.task_NBFF_Grid");
+            //err |= task_print   ->enque_raw();    // just printing the forces before assempling
+            err |= task_move      ->enque_raw(); 
+            //OCL_checkError(err, "eval_MMFFf4_ocl_1");
+        }
+        err |= ocl.finishRaw();
+        //long T1 =  getCPUticks();
+        evalVFs();
+        //long T2 =  getCPUticks();
+        //printf("eval_MMFFf4_ocl(),evalVFs() time.tot=%g[ms] time.download=%g[ms] niter=%i \n", ( T2-T0 )*tick2second*1000, ( T2-T1)*tick2second*1000, niter );
+        //printf("eval_MMFFf4_ocl(),evalVFs() time=%g[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
+        //fire[iSystemCur].print();
     }
     err |= ocl.finishRaw(); printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
 

@@ -205,6 +205,7 @@ __kernel void getMMFFf4(
     float3  fps[4];              // force on neighbor pi
     float3  fa  = float3Zero;    // force on center position 
     float3  fpi = float3Zero;    // force on pi orbital
+
     float E=0;
 
     // ---- Params
@@ -354,10 +355,10 @@ __kernel void getMMFFf4(
         fneigh[i4 +i] = (float4){fbs[i],0};
         fneigh[i4p+i] = (float4){fps[i],0};
     }
-    fapos[iav       ] = (float4){fa ,0}; // We are setting not adding here => Why we need to clean ? - because of the caping atoms? (i.e. other than node atoms)
-    fapos[iav+nAtoms] = (float4){fpi,0};
-    //fpipos[ia] = (float4){fpi,0};
-    
+    //fapos[iav       ] = (float4){fa ,0}; // If we do  run it as first forcefield
+    fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
+    fapos[iav+nAtoms]  = (float4){fpi,0}; 
+
 
     //printf( "GPU[%i] fa(%g,%g,%g) fpi(%g,%g,%g)\n", ia, fa.x,fa.y,fa.z, fpi.x,fpi.y,fpi.z );
 
@@ -424,14 +425,15 @@ float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
 }
 
 __kernel void updateAtomsMMFFf4(
-    const float4      MDpars,       // 1
+    //const float4      MDpars,       // 1
     const int4        n,            // 2
     __global float4*  apos,         // 3
     __global float4*  avel,         // 4
     __global float4*  aforce,       // 5
     __global float4*  fneigh,       // 6
     __global int4*    bkNeighs,     // 7
-    __global float4*  constr        // 8
+    __global float4*  constr,       // 8
+    __global float4*  MDparams     // 8
 ){
     const int natoms=n.x;
     const int nnode =n.y;
@@ -444,6 +446,10 @@ __kernel void updateAtomsMMFFf4(
     //const int ian = iG + iS*nnode; 
     const int iaa = iG + iS*natoms; 
     const int iav = iG + iS*nvec;
+
+    const float4 MDpars = MDparams[iS];
+
+    //if((iS==0)&&(iG==0)){ printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  }
 
     const int iS_DBG = 5;
     //const int iG_DBG = 0;
@@ -477,8 +483,8 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
     // =============== FORCE DONE
-    //aforce[iav] = fe;           // store force before limit
-    aforce[iav] = float4Zero;     // clean force
+    aforce[iav] = fe;           // store force before limit
+    //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
 
     /*
     // ---- Limit Forces
@@ -501,7 +507,7 @@ __kernel void updateAtomsMMFFf4(
        }
     }
     
-    
+    /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -526,9 +532,9 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
+    */
     
     
-    /*
     // ------ Move (Leap-Frog)
     if(bPi){ 
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
@@ -543,7 +549,7 @@ __kernel void updateAtomsMMFFf4(
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
     avel[iav] = ve;
     apos[iav] = pe;
-    */
+    
 
     /*
     //------ Move Gradient-Descent
@@ -813,8 +819,8 @@ __kernel void getNonBond(
     }
     
     if(iG<natoms){
-        //forces[iav] = fe;
-        forces[iav] += fe;
+        forces[iav] = fe;           // If we do  run it as first forcefield 
+        //forces[iav] += fe;        // If we not run it as first forcefield
         //forces[iav] = fe*(-1.f);
     }
 }
@@ -1164,8 +1170,8 @@ __kernel void getNonBond_GridFF(
     }
     */
 
-    //forces[iav] = fe;
-    forces[iav] += fe;
+    forces[iav] = fe;        // If we do  run it as first forcefield
+    //forces[iav] += fe;     // If we not run it as first forcefield
     //forces[iav] = fe*(-1.f);
     
 }
