@@ -1771,7 +1771,7 @@ __kernel void evalMMFFf4_local_test(
     
 };
 
-__kernel void evalMMFFf4_local(
+__kernel void evalMMFFf4_local2(
     const int4 nDOFs,               // 1   (nAtoms,nnode)
     // Dynamical
     __global float4*  apos,         // 2  [natoms]
@@ -1811,7 +1811,7 @@ __kernel void evalMMFFf4_local(
     const int iLc   = iL+nnode;
     const int nfneigh = nnode*4;
 
-    //if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local() nL=%i nG=%i nS=%i natom=%i nnode=%i ncap=%i nvec=%i \n", nL,nG,nS, natom, nnode, ncap, nvec );
+    //if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local2() nL=%i nG=%i nS=%i natom=%i nnode=%i ncap=%i nvec=%i \n", nL,nG,nS, natom, nnode, ncap, nvec );
     //if((iG==0)&&(iS==0)){ if(NNODE_LOC<nnode)printf( "GPU::ERRROR NNODE_LOC(%i) < nnode(%i) \n", NNODE_LOC, nnode );}
 
     const int i0a = iS*natom; 
@@ -1895,7 +1895,6 @@ __kernel void evalMMFFf4_local(
         //if( (c_bk.x>=nfneigh)||(c_bk.y>=nfneigh)||(c_bk.z>=nfneigh)||(c_bk.w>=nfneigh) ){ printf("GPU::ERROR node[%i|%i].bk{%3i,%3i,%3i,%3i}>nfneigh(%i)\n", iG,iS,  c_bk.x,c_bk.y,c_bk.z,c_bk.w, nfneigh ); };
     }
     
-    
     // ---- Parameters
     const cl_Mat3 lvec    = lvecs [iS];
     const cl_Mat3 invLvec = ilvecs[iS];
@@ -1903,16 +1902,6 @@ __kernel void evalMMFFf4_local(
     const float3 shift_a  = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
     const float3 shift_b  = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
     
-    // ======= MMFF aliases
-    // ---- Array aliases
-    const int*   ings  = (int*  )&ng; 
-    const float* bL    = (float*)&vbL; 
-    const float* bK    = (float*)&vbK;
-    const float* Kspi  = (float*)&vKs;  
-    const float* Kppi  = (float*)&vKp; 
-    const float  ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
-    
-
     // =================================
     //            BIG LOOP
     // =================================
@@ -1932,9 +1921,16 @@ __kernel void evalMMFFf4_local(
     // ======================================
     if(bNode){
         
-        float4  hs [4];              // direction vectors of bonds
-        float3  fbs[4];              // force on neighbor sigma
-        float3  fps[4];              // force on neighbor pi
+        const int*   ings  = (int*  )&ng; 
+        const float* bL    = (float*)&vbL; 
+        const float* bK    = (float*)&vbK;
+        const float* Kspi  = (float*)&vKs;  
+        const float* Kppi  = (float*)&vKp; 
+        const float  ssC0  = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
+
+        float4  hs [NNEIGH];         // direction vectors of bonds
+        float3  fbs[NNEIGH];         // force on neighbor sigma
+        float3  fps[NNEIGH];         // force on neighbor pi
         float3  f1,f2;               // force on pair of atoms (private temporary)
 
         for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }
@@ -2022,14 +2018,14 @@ __kernel void evalMMFFf4_local(
         const int i4=iG*4;
         for(int i=0; i<NNEIGH; i++){
             _fneigh  [i4+i] = (float4){fbs[i],0.f};
-            //_fneighpi[i4+i] = (float4){fps[i],0.f};
+            _fneighpi[i4+i] = (float4){fps[i],0.f};
         }
         // if(iS==0){
         //     printf( "[iG=%i]fbs1(%g,%g,%g) fbs2(%g,%g,%g) fbs3(%g,%g,%g) fbs4(%g,%g,%g) \n", iG, fbs[0].x,fbs[0].y,fbs[0].z,    fbs[1].x,fbs[1].y,fbs[1].z,    fbs[2].x,fbs[2].y,fbs[2].z,    fbs[3].x,fbs[3].y,fbs[3].z );
         //     printf( "[iG=%i]fng[%i](%g,%g,%g) fng[%i](%g,%g,%g) fng3[%i](%g,%g,%g) fng4[%i](%g,%g,%g) \n", iG, i4,_fneigh[i4].x,_fneigh[i4].y,_fneigh[i4].z,   i4+1, _fneigh[i4+1].x,_fneigh[i4+1].y,_fneigh[i4+1].z,    i4+2,_fneigh[i4+2].x,_fneigh[i4+2].y,_fneigh[i4+2].z,  i4+3,_fneigh[i4+3].x,_fneigh[i4+3].y,_fneigh[i4+3].z );
         // }
         
-    }
+    }  // if(bNode){
     
     
     // ======================================
@@ -2058,9 +2054,7 @@ __kernel void evalMMFFf4_local(
             
             dp     -= shift0;
             dpc    -= shift0;
-            int ipbc=0;
-            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
-            dp -= shift0;
+            int ipbc=0; 
             for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
                 for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
                     for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
@@ -2178,3 +2172,329 @@ __kernel void evalMMFFf4_local(
 // =====================================================================
 // =====================================================================
 // =====================================================================
+
+
+
+__kernel void evalMMFFf4_local1(
+    const int4 nDOFs,               // 1   (nAtoms,nnode)
+    // Dynamical
+    __global float4*  apos,         // 2  [natoms]
+    __global float4*  avel,         // 3
+    //__global float4*  fapos,      //   [natoms] // Only Debug output    
+    //__global float4*  fneigh,     //   [nnode*4*2]
+    __global float4*  constr,       // 4
+    // parameters
+    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global int4*    neighCell,    // 6
+    __global int4*    bkneighs,     // 7
+    __global float4*  REQs,         // 8  [natoms] non-boding parametes {R0,E0,Q} 
+    __global float4*  apars,        // 9  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+    __global float4*  bLs,          // 10  [nnode]  bond lengths  for each neighbor
+    __global float4*  bKs,          // 11  [nnode]  bond stiffness for each neighbor
+    __global float4*  Ksp,          // 12 [nnode]  stiffness of pi-alignment for each neighbor
+    __global float4*  Kpp,          // 13 [nnode]  stiffness of pi-planarization for each neighbor
+    __global cl_Mat3* lvecs,        // 14
+    __global cl_Mat3* ilvecs,       // 15
+    const int4        nPBC,         // 16
+    const float4      GFFParams,    // 17
+    const float4      MDpars,       // 18
+    const int         niter         // 19
+){
+    
+    const int iG = get_global_id  (0); // intex of atom
+    const int iS = get_global_id  (1); // index of system
+    const int nG = get_global_size(0);
+    const int nS = get_global_size(1); // number of systems
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
+
+    const int natom = nDOFs.x;
+    const int nnode = nDOFs.y;
+    const int nvec  = natom+nnode;
+    const int ncap  = natom-nnode;
+    const int iLc   = iL+nnode;
+    const int nfneigh = nnode*4;
+
+    //if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local1() nL=%i nG=%i nS=%i natom=%i nnode=%i ncap=%i nvec=%i \n", nL,nG,nS, natom, nnode, ncap, nvec );
+    //if((iG==0)&&(iS==0)){ if(NNODE_LOC<nnode)printf( "GPU::ERRROR NNODE_LOC(%i) < nnode(%i) \n", NNODE_LOC, nnode );}
+
+    const int i0a = iS*natom; 
+    const int i0n = iS*nnode; 
+    const int i0v = iS*nvec;
+    // --- node atomm global indexes
+    const int iaa = iL + i0a; 
+    const int ian = iL + i0n; 
+    const int iav = iL + i0v;
+    // --- capping atom global indexes
+    const int ica = iL + i0a+nnode; 
+    const int icn = iL + i0n+nnode; 
+    const int icv = iL + i0v+nnode;
+    const float R2damp = GFFParams.x*GFFParams.x;
+
+    
+    #define NNEIGH    4
+    //#define NATOM_LOC 128
+    //#define NNODE_LOC 64
+
+    #define NATOM_LOC 64
+    #define NNODE_LOC 32
+    // ========= Local Memory
+
+    // We want to fit only NODE atoms into local memory, the rest we do later
+
+    __local float4  _apos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
+    __local float4  _ppos    [NATOM_LOC  ];   // 2  [natoms] // atom position local
+    __local float4  _REQs    [NATOM_LOC  ];   // 6  [natoms] non-boding parametes {R0,E0,Q}
+    __local float4  _fneigh  [NNODE_LOC*4]; 
+    __local float4  _fneighpi[NNODE_LOC*4];  
+
+    // NOTE: We can avoid using  __local _fneigh[] if we write __private fbs[] and fps[] into __local aforce[] in synchronized manner in 4 steps (4 slots) using barrier(CLK_LOCAL_MEM_FENCE);   
+
+    const bool bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;
+    const bool bNode = iG<nnode;
+
+    float4       va   = avel     [iav];
+    float4       pa   = apos     [iav];
+    const float4 cons = constr   [iaa];
+    const float4 REQa = REQs     [iaa];
+    const int4 ng     = neighs   [iaa];
+    const int4 ngC    = neighCell[iaa];
+    const int4 bk     = bkneighs [iaa];
+    _apos[iL] = pa;
+    _REQs[iL] = REQa;
+    float4  par,vbL,vbK,vKs,vKp;  // force-field parameters
+    float4  hp,vp;                // pi
+    if(bNode){
+        hp        = apos[iav+natom];
+        vp        = avel[iav+natom];
+        _ppos[iL] = hp;
+        // --- params
+
+        par  = apars    [ian];    //     (xy=s0_ss,z=ssK,w=piC0 )
+        vbL  = bLs      [ian];       
+        vbK  = bKs      [ian];       
+        vKs  = Ksp      [ian];       
+        vKp  = Kpp      [ian];
+        //if( (bk.x>=nfneigh)||(bk.y>=nfneigh)||(bk.z>=nfneigh)||(bk.w>=nfneigh) ){ printf("GPU::ERROR node[%i|%i].bk{%3i,%3i,%3i,%3i}>nfneigh(%i)\n", iG,iS,  bk.x,bk.y,bk.z,bk.w, nfneigh ); };
+    
+        // ======= MMFF aliases
+    }
+    
+    // ---- Parameters
+    const cl_Mat3 lvec    = lvecs [iS];
+    const cl_Mat3 invLvec = ilvecs[iS];
+    const float3 shift0   = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;
+    const float3 shift_a  = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    const float3 shift_b  = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+    
+    // =================================
+    //            BIG LOOP
+    // =================================
+
+    for(int itr=0; itr<niter; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
+    //for(int itr=0; itr<1; itr++ ){   // BIG LOOP  (Molecular Dynamics Loop) 
+    
+    float3  fa = float3Zero;    // force on atom position
+    float3  fp = float3Zero;    // force on pi orbital
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    
+    // ======================================
+    //            COVALENT INTERACTIONS
+    // ======================================
+    if(bNode){
+        
+       // ---- Array aliases
+        const int*   ings  = (int*  )&ng; 
+        const float* bL    = (float*)&vbL; 
+        const float* bK    = (float*)&vbK;
+        const float* Kspi  = (float*)&vKs;  
+        const float* Kppi  = (float*)&vKp; 
+        const float  ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
+
+        float4  hs [NNEIGH];         // direction vectors of bonds
+        float3  fbs[NNEIGH];         // force on neighbor sigma
+        float3  fps[NNEIGH];         // force on neighbor pi
+        float3  f1,f2;               // force on pair of atoms (private temporary)
+
+        for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }
+        
+        // ========= Bonds evaluation
+
+        for(int i=0; i<NNEIGH; i++){
+            float4 h;
+            const int ing  = ings[i];
+            const int ingv = ing+i0v;
+            const int inga = ing+i0a;
+            
+            if(ing<0) break;
+            h.xyz    = _apos[ing].xyz - pa.xyz;
+            
+            if(bPBC){ // PBC bond vector correction
+                float3 u  = (float3){ dot( invLvec.a.xyz, h.xyz ), dot( invLvec.b.xyz, h.xyz ), dot( invLvec.c.xyz, h.xyz ) };
+                h.xyz   += lvec.a.xyz*(1.f-(int)(u.x+1.5f))
+                        +  lvec.b.xyz*(1.f-(int)(u.y+1.5f))
+                        +  lvec.c.xyz*(1.f-(int)(u.z+1.5f));
+            }
+
+            float  l = length(h.xyz); 
+            h.w      = 1./l;
+            h.xyz   *= h.w;
+            hs[i]    = h;
+
+            //fbs[i]=(float3){(float)iG,(float)i,0.0f}; // DEBUG
+            //evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fa+=f1;
+            if(iL<ing){
+                evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;                   
+                
+                // pi-pi
+                float kpp = Kppi[i];
+                if( (ing<nnode) && (kpp>1.e-6) ){
+                    evalPiAling( hp.xyz, _ppos[ing].xyz, kpp,  &f1, &f2 );   fp+=f1;  fps[i]+=f2;
+                }
+                
+            } 
+            
+            // pi-sigma 
+            float ksp = Kspi[i];
+            if(ksp>1.e-6){  
+                evalAngCos( (float4){hp.xyz,1.}, h, ksp, par.w, &f1, &f2 );   fp+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
+            }
+            
+        }
+        
+        
+        // ========= Angles evaluation
+        for(int i=0; i<NNEIGH; i++){
+            int ing = ings[i];
+            if(ing<0) break;
+            const float4 hi = hs[i];
+            float4 REQi =_REQs[ing];   // ToDo: can be optimized
+            //const int ingv  = ing+i0v;
+            //const int inga  = ing+i0a;
+            for(int j=i+1; j<NNEIGH; j++){
+                int jng  = ings[j];
+                if(jng<0) break;
+                //const int jngv  = jng+i0v;
+                //const int jnga  = jng+i0a;
+                const float4 hj = hs[j];
+                evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );            
+                fa    -= f1+f2;
+                
+                { // Remove vdW
+                    float4 REQj=_REQs[jng];
+                    float4 REQij;
+                    REQij.x    = REQi.x   + REQj.x;
+                    REQij.yzw  = REQi.yzw * REQj.yzw; 
+                    float3 dp  = (hj.xyz/hj.w) - (hi.xyz/hi.w); 
+                    float4 fij = getLJQH( dp, REQij, 1.0f );
+                    f1 -=  fij.xyz;
+                    f2 +=  fij.xyz;
+                }
+                
+                fbs[i]+= f1;
+                fbs[j]+= f2;
+            }
+        }
+
+        // ========= Write neighbor forces (=recoils) to local memory
+        const int i4=iL*4;
+        for(int i=0; i<NNEIGH; i++){
+            _fneigh  [i4+i] = (float4){fbs[i],0.f};
+            _fneighpi[i4+i] = (float4){fps[i],0.f};
+        }
+        
+    } // if(bNode){
+    
+    
+    // ======================================
+    //          NON-COVALENT INTERACTIONS
+    // ======================================
+
+    // ========= Atom-to-Atom interaction ( N-body problem )    
+    
+    for(int ja=0; ja<natom; ja++ ){
+        if( ja==iL ) continue;
+        const bool bBonded = ((ja==  ng.x)||(ja==  ng.y)||(ja==  ng.z)||(ja==  ng.w));
+        const float4 aj    = _apos[ja];
+        float4       REQ   = _REQs[ja];
+        REQ.x         += REQa.x;
+        REQ.yzw       *= REQa.yzw;
+        float3 dp      = aj.xyz - pa.xyz; 
+        
+        if(bPBC){
+            dp -= shift0;
+            int ipbc=0;
+            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+            for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                    for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                        if( !( bBonded && (
+                                    ((ja==ng.x)&&(ipbc==ngC.x))
+                                ||((ja==ng.y)&&(ipbc==ngC.y))
+                                ||((ja==ng.z)&&(ipbc==ngC.z))
+                                ||((ja==ng.w)&&(ipbc==ngC.w))
+                        ))){
+                            fa += getLJQH( dp, REQ, R2damp ).xyz;
+                        }
+                        
+                        ipbc++; 
+                        dp+=lvec.a.xyz;
+                    }
+                    dp+=shift_a;
+                }
+                dp+=shift_b;
+            }
+        }else{
+            if(!bBonded) fa += getLJQH( dp,   REQ, R2damp ).xyz;
+        }
+
+    } // for(ja)
+    
+    // ======================================
+    //                MOVE 
+    // ======================================
+    
+    barrier(CLK_LOCAL_MEM_FENCE);    // Make sure _fneigh is uptodate for all atoms
+    
+    if(bk.x>=0){ fa += _fneigh[bk.x].xyz; fp += _fneighpi[bk.x].xyz; }
+    if(bk.y>=0){ fa += _fneigh[bk.y].xyz; fp += _fneighpi[bk.y].xyz; }
+    if(bk.z>=0){ fa += _fneigh[bk.z].xyz; fp += _fneighpi[bk.z].xyz; }
+    if(bk.w>=0){ fa += _fneigh[bk.w].xyz; fp += _fneighpi[bk.w].xyz; }
+    if( cons.w>0 ){  fa.xyz += (pa.xyz - cons.xyz)*-cons.w; }
+    
+    //if(iS==0)printf("iL[%i] pa(%g,%g,%g) fa(%g,%g,%g) bNode %i\n", iL,  pa.x,pa.y,pa.z,  fa.x,fa.y,fa.z, bNode );
+    //if((iS==0)&&(iL==1))printf("iL[%i] bNode %i ng{%3i,%3i,%3i,%3i} fa{%g,%g,%g}\n", iL, bNode, ng.x,ng.y,ng.z,ng.w, fa.x,fa.y,fa.z );
+
+    //pa.xyz += fa.xyz*0.01f;
+
+    va     *= MDpars.y;
+    va.xyz += fa.xyz*MDpars.x;
+    pa.xyz += va.xyz*MDpars.x;
+    pa.w=0;va.w=0;
+    _apos[iL] = pa;
+    
+    
+    if(bNode){ 
+        // --- move pi    ...   This would simplify if we consider pi- is just normal cap atom (dummy atom)
+        fp.xyz += hp.xyz * -dot( hp.xyz, fp.xyz );   // subtract forces  component which change pi-orbital lenght
+        vp.xyz += hp.xyz * -dot( hp.xyz, vp.xyz );   // subtract veocity component which change pi-orbital lenght
+        vp     *= MDpars.y;
+        vp.xyz += fp.xyz*MDpars.x;
+        hp.xyz += hp.xyz*MDpars.x; 
+        hp.xyz=normalize(hp.xyz);                    // normalize pi-orobitals
+        hp.w=0;vp.w=0;
+        _ppos[iL] = hp;
+    }
+    
+    } // END OF THE BIG LOOP
+
+    apos[iav]=pa;
+    avel[iav]=va;
+    if(bNode){
+        apos[iav+natom]=hp;
+        avel[iav+natom]=vp;
+    }
+    
+};
