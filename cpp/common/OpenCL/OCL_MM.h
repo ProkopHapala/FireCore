@@ -49,7 +49,7 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
     int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
-    int ibuff_lvecs=-1, ibuff_ilvecs=-1; 
+    int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1; 
     int ibuff_constr=-1;
 
     int ibuff_samp_ps=-1;
@@ -143,6 +143,7 @@ class OCL_MM: public OCLsystem { public:
         ibuff_Ksp        = newBuffer( "Ksp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Kpp        = newBuffer( "Kpp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
 
+        ibuff_MDpars     = newBuffer( "MDpars",     nSystems,        sizeof(float4),  0, CL_MEM_READ_ONLY  );
         ibuff_lvecs      = newBuffer( "lvecs",      nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
         ibuff_ilvecs     = newBuffer( "ilvecs",     nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
 
@@ -318,7 +319,7 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.y=nNode; 
         int err=0;
         useKernel( task->ikernel  );
-        err |= _useArg( md_params );           // 1
+        //err |= _useArg( md_params );           // 1
         err |= _useArg( nDOFs     );           // 2
         err |= useArgBuff( ibuff_atoms      ); // 3
         err |= useArgBuff( ibuff_avel       ); // 4
@@ -326,6 +327,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_neighForce ); // 6
         err |= useArgBuff( ibuff_bkNeighs   ); // 7
         err |= useArgBuff( ibuff_constr     ); // 8
+        err |= useArgBuff( ibuff_MDpars     ); // 1
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         // const float4      MDpars,       // 1
