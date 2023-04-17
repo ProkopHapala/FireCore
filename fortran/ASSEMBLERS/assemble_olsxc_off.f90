@@ -173,13 +173,11 @@
            isorp = 0
            interaction = 6
            in3 = in2
-           call doscentros (interaction, isorp, kforce, in1, in2, in3, y,    &
-     &                      eps, deps, rhomx, rhompx)
+           call doscentros (interaction, isorp, kforce, in1, in2, in3, y,     eps, deps, rhomx, rhompx)
            do inu = 1, num_orb(in3)
             do imu = 1, num_orb(in1)
 !$omp atomic
-             vxc(imu,inu,ineigh,iatom) =                                     &
-     &        vxc(imu,inu,ineigh,iatom) + rhomx(imu,inu)
+             vxc(imu,inu,ineigh,iatom) =    vxc(imu,inu,ineigh,iatom) + rhomx(imu,inu)
             end do
            end do
 
@@ -189,14 +187,11 @@
            interaction = 18
            in3 = in2
            do isorp = 1, nssh(in1)
-            call doscentros (interaction, isorp, kforce, in1, in1, in3, y,   &
-     &                       eps, deps, rhomx, rhompx)
-
+            call doscentros (interaction, isorp, kforce, in1, in1, in3, y, eps, deps, rhomx, rhompx)
             dxn = (Qin(isorp,iatom) - Qneutral(isorp,in1))
             do inu = 1, num_orb(in3)
              do imu = 1, num_orb(in1)
-             vxc_ca(imu,inu,ineigh,iatom) =                                 &
-     &         vxc_ca(imu,inu,ineigh,iatom) + rhomx(imu,inu)*dxn
+             vxc_ca(imu,inu,ineigh,iatom) =  vxc_ca(imu,inu,ineigh,iatom) + rhomx(imu,inu)*dxn
              end do
             end do
            end do
@@ -206,14 +201,11 @@
            interaction = 19
            in3 = in2
            do isorp = 1, nssh(in2)
-            call doscentros (interaction, isorp, kforce, in1, in2, in3, y,   &
-     &                       eps, deps, rhomx, rhompx)
-
+            call doscentros (interaction, isorp, kforce, in1, in2, in3, y,  eps, deps, rhomx, rhompx)
             dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))
             do inu = 1, num_orb(in3)
              do imu = 1, num_orb(in1)
-              vxc_ca(imu,inu,ineigh,iatom) =                                 &
-     &         vxc_ca(imu,inu,ineigh,iatom) + rhomx(imu,inu)*dxn
+              vxc_ca(imu,inu,ineigh,iatom) = vxc_ca(imu,inu,ineigh,iatom) + rhomx(imu,inu)*dxn
              end do
             end do
            end do
@@ -235,22 +227,19 @@
            end do
 
 ! Calculate <i| V_xc(n) |j> and <i|V_xc(n_i+n_j)|j>              
-           call build_olsxc_off (in1, in2, den1x, denmx, sx, ineigh, iatom,  &
-     &                           bcxcx)
+           call build_olsxc_off (in1, in2, den1x, denmx, sx, ineigh, iatom,  bcxcx)
 
 ! now complete 'non-diagonal' terms <i|V(n)|j>
            if (itheory .eq. 0) then
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
-              vxc(imu,inu,ineigh,iatom) =                                    &
-     &         vxc(imu,inu,ineigh,iatom) + bcxcx(imu,inu)
+              vxc(imu,inu,ineigh,iatom) = vxc(imu,inu,ineigh,iatom) + bcxcx(imu,inu)
              end do
             end do
            else
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
-              vxc_ca(imu,inu,ineigh,iatom) =                                 &
-     &         vxc_ca(imu,inu,ineigh,iatom) + bcxcx(imu,inu)
+              vxc_ca(imu,inu,ineigh,iatom) = vxc_ca(imu,inu,ineigh,iatom) + bcxcx(imu,inu)
              end do
             end do
            end if

@@ -267,20 +267,20 @@
                  interaction0 = 22
                  in3 = in1
                  do isorp = 1, nssh(in2)
-                    call doscentros (interaction, isorp, iforce, in1, in2, in3, y, eps, deps, rhomx, rhompx)
-                    call doscentrosS (interaction0, isorp, iforce, in1, in2, in3, y, eps, rhomm, rhompm)
+                    call doscentros  (interaction, isorp,  iforce, in1, in2, in3, y, eps, deps, rhomx, rhompx )
+                    call doscentrosS (interaction0, isorp, iforce, in1, in2, in3, y, eps,       rhomm, rhompm )
                     do inu = 1, num_orb(in1)
                        do imu = 1, num_orb(in3)
-                         rhoi_on(imu,inu,iatom) = rhoi_on(imu,inu,iatom)      + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rhoi_2c(imu,inu) = rhoi_2c(imu,inu)                + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rho_on(imu,inu,iatom) = rho_on(imu,inu,iatom)      + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rho_2c(imu,inu) = rho_2c(imu,inu)         + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rhoi_on(imu,inu,iatom) = rhoi_on(imu,inu,iatom)  + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rhoi_2c(imu,inu)       = rhoi_2c(imu,inu)        + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rho_on(imu,inu,iatom)  = rho_on(imu,inu,iatom)   + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rho_2c(imu,inu)        = rho_2c(imu,inu)         + rhomx(imu,inu)*Qneutral(isorp,in2)
                        end do
                     end do
                     do inu = 1, nssh(in1)
                        do imu = 1, nssh(in3)
-                          rhom_2c(imu,inu) = rhom_2c(imu,inu) +       rhomm(imu,inu)*Qneutral(isorp,in2)
-                          rhomi_2c(imu,inu) = rhomi_2c(imu,inu) +      rhomm(imu,inu)*Qneutral(isorp,in2)
+                          rhom_2c(imu,inu)      = rhom_2c(imu,inu)      +  rhomm(imu,inu)*Qneutral(isorp,in2)
+                          rhomi_2c(imu,inu)     = rhomi_2c(imu,inu)     +  rhomm(imu,inu)*Qneutral(isorp,in2)
                        end do ! endo imu
                     end do ! enddo inu
                  end do ! endo do isorp
@@ -293,9 +293,9 @@
                     call doscentrosS (interaction0, isorp, iforce, in1, in2,  in3, y, eps, rhomm, rhompm)
                     do inu = 1, num_orb(in1)
                        do imu = 1, num_orb(in3)
-                         rho_on(imu,inu,iatom) = rho_on(imu,inu,iatom)   + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rho_2c(imu,inu) = rho_2c(imu,inu)       + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rhop_on(:,imu,inu,ineigh,iatom) =       rhop_on(:,imu,inu,ineigh,iatom)      + rhompx(:,imu,inu)*Qneutral(isorp,in2)
+                         rho_on(imu,inu,iatom)           = rho_on(imu,inu,iatom)           + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rho_2c(imu,inu)                 = rho_2c(imu,inu)                 + rhomx(imu,inu)*Qneutral(isorp,in2)
+                         rhop_on(:,imu,inu,ineigh,iatom) = hop_on(:,imu,inu,ineigh,iatom)  + rhompx(:,imu,inu)*Qneutral(isorp,in2)
                        end do ! do imu
                     end do ! do inu
 ! spherical symetric
