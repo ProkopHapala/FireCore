@@ -163,13 +163,13 @@
 
 ! Allocate snxc forces
         if (itheory_xc .eq. 1 .or. itheory_xc .eq. 2 .or. itheory_xc .eq. 4) then
-         allocate (spm_mat (3, nsh_max, nsh_max, neigh_max, natoms))
-         allocate (arhop_off (3, nsh_max, nsh_max, neigh_max, natoms)) 
-         allocate (arhopij_off (3, nsh_max, nsh_max, neigh_max, natoms)) 
-         allocate (rhop_off (3, numorb_max, numorb_max, neigh_max, natoms)) 
-         allocate (rhopij_off (3, numorb_max, numorb_max, neigh_max, natoms)) 
-         allocate (arhop_on (3, nsh_max, nsh_max, neigh_max, natoms)) 
-         allocate (rhop_on (3, numorb_max, numorb_max, neigh_max, natoms)) 
+         allocate (spm_mat     (3, nsh_max,    nsh_max,    neigh_max, natoms))
+         allocate (arhop_off   (3, nsh_max,    nsh_max,    neigh_max, natoms)) 
+         allocate (arhopij_off (3, nsh_max,    nsh_max,    neigh_max, natoms)) 
+         allocate (arhop_on    (3, nsh_max,    nsh_max,    neigh_max, natoms)) 
+         allocate (rhop_off    (3, numorb_max, numorb_max, neigh_max, natoms)) 
+         allocate (rhopij_off  (3, numorb_max, numorb_max, neigh_max, natoms)) 
+         allocate (rhop_on     (3, numorb_max, numorb_max, neigh_max, natoms)) 
          ! OLSXC double count corr forces
          allocate (dxcdcc (3, neigh_max, natoms))
         end if
