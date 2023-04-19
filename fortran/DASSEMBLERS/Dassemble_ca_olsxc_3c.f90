@@ -331,25 +331,18 @@
 
             do inu = 1, num_orb(in2)
              do imu = 1, num_orb(in1)
-              rhoinpa(:,imu,inu) =                                           &
-     &         rhoinpa(:,imu,inu) - rhoxpa(:,imu,inu)*Qin(isorp,ialp)
-              rhoinpb(:,imu,inu) =                                           &
-     &         rhoinpb(:,imu,inu) - rhoxpb(:,imu,inu)*Qin(isorp,ialp)
-              rhoinpc(:,imu,inu) =                                           &
-     &         rhoinpc(:,imu,inu) - rhoxpc(:,imu,inu)*Qin(isorp,ialp)
+              rhoinpa(:,imu,inu) =  rhoinpa(:,imu,inu) - rhoxpa(:,imu,inu)*Qin(isorp,ialp)
+              rhoinpb(:,imu,inu) =  rhoinpb(:,imu,inu) - rhoxpb(:,imu,inu)*Qin(isorp,ialp)
+              rhoinpc(:,imu,inu) =  rhoinpc(:,imu,inu) - rhoxpc(:,imu,inu)*Qin(isorp,ialp)
              end do
             end do
 
             do inu = 1, nssh(in2)
              do imu = 1, nssh(in1)
-              rho_3c(imu,inu) = rho_3c(imu,inu)                              &
-                                + rhomm(imu,inu)*Qin(isorp,ialp)
-              rhop_3ca(:,imu,inu) =                                          &
-     &         rhop_3ca(:,imu,inu) - rhompa(:,imu,inu)*Qin(isorp,ialp)
-              rhop_3cb(:,imu,inu) =                                          &
-     &         rhop_3cb(:,imu,inu) - rhompb(:,imu,inu)*Qin(isorp,ialp)
-              rhop_3cc(:,imu,inu) =                                          &
-     &         rhop_3cc(:,imu,inu) - rhompc(:,imu,inu)*Qin(isorp,ialp)
+              rho_3c(imu,inu) = rho_3c(imu,inu)  + rhomm(imu,inu)*Qin(isorp,ialp)
+              rhop_3ca(:,imu,inu) =  rhop_3ca(:,imu,inu) - rhompa(:,imu,inu)*Qin(isorp,ialp)
+              rhop_3cb(:,imu,inu) =  rhop_3cb(:,imu,inu) - rhompb(:,imu,inu)*Qin(isorp,ialp)
+              rhop_3cc(:,imu,inu) =  rhop_3cc(:,imu,inu) - rhompc(:,imu,inu)*Qin(isorp,ialp)
              end do
             end do
 
@@ -370,10 +363,8 @@
               endif
              endif
               spm(:) = spm_mat(:,issh,jssh,mneigh,iatom)
-              avrhop_b (:,issh,jssh) = avrhop_b (:,issh,jssh) +              &
-     &          (sm*rhop_3cb(:,issh,jssh) - rho_3c(issh,jssh)*spm(:))/(sm*sm)
-              avrhop_c (:,issh,jssh) = avrhop_c (:,issh,jssh) +              &
-     &         (sm*rhop_3cc(:,issh,jssh) + rho_3c(issh,jssh)*spm(:))/(sm*sm)
+              avrhop_b (:,issh,jssh) = avrhop_b (:,issh,jssh) + (sm*rhop_3cb(:,issh,jssh) - rho_3c(issh,jssh)*spm(:))/(sm*sm)
+              avrhop_c (:,issh,jssh) = avrhop_c (:,issh,jssh) + (sm*rhop_3cc(:,issh,jssh) + rho_3c(issh,jssh)*spm(:))/(sm*sm)
             end do
            end do
 
@@ -403,12 +394,8 @@
                sx = s_mat(imu,inu,mneigh,iatom)
 
 ! derivatives of XC matrix elements: mxca, mxcb and mxcc
-               mxcb(:,imu,inu) =                                             &
-     &           rhop_avb(:)*d2muxc*(rhoin(imu,inu) - rho_av*sx)             &
-     &          + rhoinpb(:,imu,inu)*dmuxc
-               mxcc(:,imu,inu) =                                             &
-     &          + rhop_avc(:)*d2muxc*(rhoin(imu,inu) - rho_av*sx)            &
-     &          + rhoinpc(:,imu,inu)*dmuxc
+               mxcb(:,imu,inu) = rhop_avb(:)*d2muxc*(rhoin(imu,inu) - rho_av*sx)  + rhoinpb(:,imu,inu)*dmuxc
+               mxcc(:,imu,inu) = rhop_avc(:)*d2muxc*(rhoin(imu,inu) - rho_av*sx)  + rhoinpc(:,imu,inu)*dmuxc
                mxca(:,imu,inu) = - mxcb(:,imu,inu) - mxcc(:,imu,inu)
 
 ! End loop over shells.
@@ -422,12 +409,9 @@
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
              do ix = 1, 3
-              f3xca_ca(ix,ialp) = f3xca_ca(ix,ialp)                          &
-     &         - 2*rho(imu,inu,mneigh,iatom)*mxca(ix,imu,inu)
-              f3xcb_ca(ix,iatom) = f3xcb_ca(ix,iatom)                        &
-     &        - 2*rho(imu,inu,mneigh,iatom)*mxcb(ix,imu,inu)
-              f3xcc_ca(ix,jatom) = f3xcc_ca(ix,jatom)                        &
-     &         - 2*rho(imu,inu,mneigh,iatom)*mxcc(ix,imu,inu)
+              f3xca_ca(ix,ialp) = f3xca_ca(ix,ialp)   - 2*rho(imu,inu,mneigh,iatom)*mxca(ix,imu,inu)
+              f3xcb_ca(ix,iatom) = f3xcb_ca(ix,iatom) - 2*rho(imu,inu,mneigh,iatom)*mxcb(ix,imu,inu)
+              f3xcc_ca(ix,jatom) = f3xcc_ca(ix,jatom) - 2*rho(imu,inu,mneigh,iatom)*mxcc(ix,imu,inu)
              end do
             end do
            end do

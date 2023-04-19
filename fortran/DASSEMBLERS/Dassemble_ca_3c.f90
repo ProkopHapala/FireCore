@@ -338,10 +338,8 @@
 ! ****************************************************************************
 ! Need direction cosines from atom 1 to ratm (rhatA1),
 ! and atom 2 to ratm (rhatA2).
-           distance13 = sqrt((rna(1) - r1(1))**2 + (rna(2) - r1(2))**2       &
-     &                                           + (rna(3) - r1(3))**2)
-           distance23 = sqrt((rna(1) - r2(1))**2 + (rna(2) - r2(2))**2       &
-     &                                           + (rna(3) - r2(3))**2)
+           distance13 = sqrt((rna(1) - r1(1))**2 + (rna(2) - r1(2))**2 + (rna(3) - r1(3))**2)
+           distance23 = sqrt((rna(1) - r2(1))**2 + (rna(2) - r2(2))**2 + (rna(3) - r2(3))**2)
  
 ! Find the unit vector in rna-1 direction.
            if (distance13 .gt. 1.0d-05) then
@@ -440,13 +438,9 @@
             do imu = 1, num_orb(in1)
              sterm = dq3*s_mat(imu,inu,mneigh,iatom)/2.0d0
              dterm = dq3*dip(imu,inu,mneigh,iatom)/y
- 
              spterm(:) = dq3*sp_mat(:,imu,inu,mneigh,iatom)/2.0d0
-             dpterm(:) = dq3*(dipp(:,imu,inu,mneigh,iatom)/y                 &
-     &                        + dip(imu,inu,mneigh,iatom)*sighat(:)/(y*y))
- 
-             emnpl(imu,inu) = (sterm - dterm)/distance13                     &
-     &                       + (sterm + dterm)/distance23
+             dpterm(:) = dq3*(dipp(:,imu,inu,mneigh,iatom)/y   + dip(imu,inu,mneigh,iatom)*sighat(:)/(y*y))
+             emnpl(imu,inu) = (sterm - dterm)/distance13       + (sterm + dterm)/distance23
  
 ! Now the derivatives
 ! A=3, B=1, C=2 <B|A|C> This is NOT force-like.
@@ -456,12 +450,8 @@
 ! one belonging to the 1/y term and a minus subtraction error.
 ! No minus signs are "force-like". This is not a force like derivative,
 ! but a regular derivative d/dr1.
-             demnplA(:,imu,inu) = - (sterm - dterm)*rhatA1(:)/distance13**2  &
-     &                            - (sterm + dterm)*rhatA2(:)/distance23**2
-             demnplB(:,imu,inu) = (sterm - dterm)*(rhatA1(:)/distance13**2)  &
-     &                            + (spterm(:) - dpterm(:))/distance13       &
-     &                            + (spterm(:) + dpterm(:))/distance23 
-
+             demnplA(:,imu,inu) = -(sterm - dterm)*rhatA1(:)/distance13**2    - (sterm + dterm)*rhatA2(:)/distance23**2
+             demnplB(:,imu,inu) =  (sterm - dterm)*(rhatA1(:)/distance13**2)  + (spterm(:) - dpterm(:))/distance13       + (spterm(:) + dpterm(:))/distance23 
 ! By Newton's laws demnplC = - demnplA - demnplB
              demnplC(:,imu,inu) = - demnplA(:,imu,inu) - demnplB(:,imu,inu)
             end do ! inu
@@ -511,24 +501,9 @@
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
              do ix = 1, 3
-              f3caa(ix,ialp) = f3caa(ix,ialp)                                &
-     &         + 2*rho(imu,inu,mneigh,iatom)*eq2                             &
-     &           *(  stn1(imu,inu)*f3caXa(ix,imu,inu)                        &
-     &             - stn2(imu,inu)*demnplA(ix,imu,inu)                       &
-     &             - dstnA(ix,imu,inu)*bcca(imu,inu)                         &
-     &             + dstnA(ix,imu,inu)*emnpl(imu,inu))
-              f3cab(ix,iatom) = f3cab(ix,iatom)                              &
-     &         + 2*rho(imu,inu,mneigh,iatom)*eq2                             &
-     &           *(  stn1(imu,inu)*f3caXb(ix,imu,inu)                        &
-     &             - stn2(imu,inu)*demnplB(ix,imu,inu)                       &
-     &             - dstnB(ix,imu,inu)*bcca(imu,inu)                         &
-     &             + dstnB(ix,imu,inu)*emnpl(imu,inu))
-              f3cac(ix,jatom) = f3cac(ix,jatom)                              &
-     &         + 2*rho(imu,inu,mneigh,iatom)*eq2                             &
-     &           *(  stn1(imu,inu)*f3caXc(ix,imu,inu)                        &
-     &             - stn2(imu,inu)*demnplC(ix,imu,inu)                       &
-     &             - dstnC(ix,imu,inu)*bcca(imu,inu)                         &
-     &             + dstnC(ix,imu,inu)*emnpl(imu,inu))   
+              f3caa(ix,ialp)  = f3caa(ix,ialp)  + 2*rho(imu,inu,mneigh,iatom)*eq2 *(  stn1(imu,inu)*f3caXa(ix,imu,inu) - stn2(imu,inu)*demnplA(ix,imu,inu) - dstnA(ix,imu,inu)*bcca(imu,inu) + dstnA(ix,imu,inu)*emnpl(imu,inu) )
+              f3cab(ix,iatom) = f3cab(ix,iatom) + 2*rho(imu,inu,mneigh,iatom)*eq2 *(  stn1(imu,inu)*f3caXb(ix,imu,inu) - stn2(imu,inu)*demnplB(ix,imu,inu) - dstnB(ix,imu,inu)*bcca(imu,inu) + dstnB(ix,imu,inu)*emnpl(imu,inu) )
+              f3cac(ix,jatom) = f3cac(ix,jatom) + 2*rho(imu,inu,mneigh,iatom)*eq2 *(  stn1(imu,inu)*f3caXc(ix,imu,inu) - stn2(imu,inu)*demnplC(ix,imu,inu) - dstnC(ix,imu,inu)*bcca(imu,inu) + dstnC(ix,imu,inu)*emnpl(imu,inu) )   
              end do
             end do
            end do   
