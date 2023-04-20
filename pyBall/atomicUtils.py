@@ -620,16 +620,18 @@ class AtomicSystem():
         self.qs      = qs
         self.Rs      = Rs
         self.bonds   = bonds
-        self.lvec    = lvec 
+        self.lvec    = lvec
+        self.aux_labels = None
         if fname is not None:
             if( '.mol' == fname.split('.')[0] ):
                 self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname )
             else:
                 self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname)
 
-    def saveXYZ(self, fname, mode="w", blvec=True, comment="#comment" ):
-        if blvec and (self.lvec is not None ):
-            comment="lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   )
+    def saveXYZ(self, fname, mode="w", blvec=True, comment="" ):
+        if blvec:
+            print( self.lvec )
+            comment= ( "lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   ) ) + comment
         saveXYZ( self.enames, self.apos, fname, qs=self.qs, Rs=self.Rs, mode=mode, comment=comment )
     
     def toXYZ(self, fout ):
@@ -637,7 +639,10 @@ class AtomicSystem():
 
     def print(self):
         for i in range(len(self.apos)):
-            print( "[%i] %i=%s p(%10.5f,%10.5f,%10.5f)" %( i, self.atypes[i],self.enames[i], self.apos[i,0], self.apos[i,1], self.apos[i,2] ) )
+            print( "[%i] %i=%s p(%10.5f,%10.5f,%10.5f)" %( i, self.atypes[i],self.enames[i], self.apos[i,0], self.apos[i,1], self.apos[i,2] ), end =" " )
+            if(self.aux_labels is not None): print(self.aux_labels[i], end =" ")
+            print("")
+            
 
     def printBonds(self):
         for i in range(len(self.bonds)):
@@ -715,13 +720,22 @@ class AtomicSystem():
         return self.orient_vs( fw, up, p0, trans=trans, bCopy=bCopy )
 
     def delete_atoms(self, lst ):
+        st = set(lst)
         if( self.apos   is not None ): self.apos   =  np.delete( self.apos,   lst, axis=0 )
         if( self.atypes is not None ): self.atypes =  np.delete( self.atypes, lst )
         if( self.qs     is not None ): self.qs     =  np.delete( self.qs,     lst )
         if( self.Rs     is not None ): self.Rs     =  np.delete( self.Rs,     lst )
         if( self.enames is not None ): self.enames =  np.delete( self.enames, lst )
+        if( self.aux_labels is not None ): self.aux_labels = [ v for i,v in enumerate(self.aux_labels) if i not in st ] 
 
-    def append_atoms(self, B ):
+    def append_atoms(self, B, pre="A" ):
+        if( self.aux_labels is None ):
+            print( 'self.aux_labels is None', pre ) 
+            self.aux_labels = [ str(i) for  i in range(len(self.apos)) ]
+        
+        #if( B.auxl is None ): B.auxl = [ pre+str(i) for  i in range(len(B.apos)) ]
+        self.aux_labels += B.aux_labels
+
         if( self.apos   is not None ): self.apos   =  np.append( self.apos,   B.apos, axis=0 )
         if( self.atypes is not None ): self.atypes =  np.append( self.atypes, B.atypes )
         if( self.qs     is not None ): self.qs     =  np.append( self.qs,     B.qs )
@@ -730,19 +744,32 @@ class AtomicSystem():
         #print( type(self.enames),   type(B.enames),   )
         #print( "self.enames ", self.enames, "B.enames ", B.enames )
         #if( self.enames is not None ): self.enames += B.enames
+       
+        #print(auxl)
+        #self.aux_labels += auxl
+        #print( self.aux_labels )
+        #print( "len( self.aux_labels) ", len( self.aux_labels), "len( self.apos) ", len( self.apos)  )
 
 
-    def attach_group( self, G,  i0, i1, iup,   bond,  up=(0.,0.,1.),  _0=1  ): 
+    def remap( self, lst ):
+        dct = {   key:value for (value,key) in enumerate(self.aux_labels) }
+        return [ dct.get(key,-1) for key in lst ]
+
+
+    def attach_group( self, G,  i0, i1, iup,   bond,  up=(0.,0.,1.),  _0=1, pre="A"  ): 
         up  = np.array( up )
         rot = rotmat_from_points( self.apos, ifw=bond, up=up, _0=1 );   
         rot = rot.transpose()
         p0  = self.apos[bond[0]-_0]
+        
+        if( G.aux_labels is None ): G.aux_labels = [ pre+str(i) for  i in range(len(G.apos)) ]
 
         G.orient( i0,(i0,i1),iup, _0=_0 )
         G.orient_mat( rot ); 
         G.apos[:,:]+=p0[None,:]
         G.delete_atoms( [i1-_0] )
-        self.append_atoms( G )
+
+        self.append_atoms( G, pre=pre )
 
     #def orient_vs( p0, fw, up, apos, trans=None, bool bCopy ):
     #def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):
