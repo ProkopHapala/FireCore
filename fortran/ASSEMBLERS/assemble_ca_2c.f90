@@ -102,6 +102,8 @@
         integer mbeta
         integer my_proc
         integer natomsp
+
+        integer nnu, nmu
  
         real dq1
         real dq2
@@ -237,12 +239,17 @@
           in3 = in2
           call doscentros (interaction, isorp, iforce, in1, in2, in3, y, eps, deps, dipx, dippx)
  
-          do inu = 1, num_orb(in2)
-           do imu = 1, num_orb(in1)
-            dip(imu,inu,ineigh,iatom) = dipx(imu,inu)
-            if (iforce .eq. 1) dipp(:,imu,inu,ineigh,iatom) = dippx(:,imu,inu)
-           end do
-          end do
+          nnu = num_orb(in2)
+          nmu = num_orb(in1)
+          dip(:nmu,:nnu,ineigh,iatom) = dipx(:nmu,:nnu)
+          if (iforce .eq. 1) dipp(:,:nmu,:nnu,ineigh,iatom) = dippx(:,:nmu,:nnu)
+
+        !   do inu = 1, num_orb(in2)
+        !    do imu = 1, num_orb(in1)
+        !     dip(imu,inu,ineigh,iatom) = dipx(imu,inu)
+        !     if (iforce .eq. 1) dipp(:,imu,inu,ineigh,iatom) = dippx(:,imu,inu)
+        !    end do
+        !   end do
  
 ! ****************************************************************************
 !
@@ -311,13 +318,12 @@
             do imu = 1, num_orb(in1)
              emnpl(imu,inu) = (s_mat(imu,inu,matom,iatom)/y)*dq2
 !$omp atomic
-             ewaldsr(imu,inu,matom,iatom) =                                  &
-     &        ewaldsr(imu,inu,matom,iatom) + emnpl(imu,inu)*eq2
+             ewaldsr(imu,inu,matom,iatom) =   ewaldsr(imu,inu,matom,iatom) + emnpl(imu,inu)*eq2
             end do
            end do
  
-! End if y .gt. 1.0d-4
-          end if
+
+          end if  ! End if y .gt. 1.0d-4
  
 ! ****************************************************************************
 !
@@ -336,6 +342,10 @@
 ! Initialize bcca to zero for the charge atom interactions.
           bcca = 0.0d0
  
+
+          nnu = num_orb(in3)
+          nmu = num_orb(in1)
+          
           kforce = 0
           interaction = 4
           in3 = in1
@@ -347,25 +357,31 @@
 ! Note: these loops are both over in1 indeed!  This is because the two
 ! wavefunctions are located on the same site, but the potential is located
 ! at a different site.
-           do inu = 1, num_orb(in3)
-            do imu = 1, num_orb(in1)
-             bcca(imu,inu) = bcca(imu,inu) + bccax(imu,inu)*dxn
-            end do
-           end do
+
+
+           bcca(:nmu,:nnu) = bcca(:nmu,:nnu) + bccax(:nmu,:nnu)*dxn
+
+        !    do inu = 1, num_orb(in3)
+        !     do imu = 1, num_orb(in1)
+        !      bcca(imu,inu) = bcca(imu,inu) + bccax(imu,inu)*dxn
+        !     end do
+        !    end do
+
           end do
  
+          vca(:nmu,:nnu,matom,iatom) = vca(:nmu,:nnu,matom,iatom)  + (stn1(:nmu,:nnu)*bcca(:nmu,:nnu) + stn2(:nmu,:nnu)*emnpl(:nmu,:nnu))*eq2
+
 ! Add bcca to vca, including the smoothing.
 ! Note that the loop below involves num_orb(in1) ONLY. Why?
 ! Because the potential is somewhere else (or even at iatom), but we are
 ! computing the vna_atom term, i.e. < phi(i) | v | phi(i) > but V=v(j) )
 ! interactions.
-          do inu = 1, num_orb(in3)
-           do imu = 1, num_orb(in1)
-!$omp atomic
-            vca(imu,inu,matom,iatom) = vca(imu,inu,matom,iatom)              &
-     &       + (stn1(imu,inu)*bcca(imu,inu) + stn2(imu,inu)*emnpl(imu,inu))*eq2
-           end do
-          end do
+!           do inu = 1, num_orb(in3)
+!            do imu = 1, num_orb(in1)
+! !$omp atomic
+!             vca(imu,inu,matom,iatom) = vca(imu,inu,matom,iatom)  + (stn1(imu,inu)*bcca(imu,inu) + stn2(imu,inu)*emnpl(imu,inu))*eq2
+!            end do
+!           end do
  
 ! ****************************************************************************
 !
@@ -374,20 +390,31 @@
 ! This is special case 1 - <1mu|V(1)|2nu> so the correction is
 ! (s/2)*delta_q*(1/d12).
 ! Skip self-interaction terms
-          if (y .gt. 1.0d-4) then
-           do inu = 1, num_orb(in2)
-            do imu = 1, num_orb(in1)
-             sterm_1 = dq1*eq2*s_mat(imu,inu,ineigh,iatom)/(2.0d0*y)
-             sterm_2 = dq2*eq2*s_mat(imu,inu,ineigh,iatom)/(2.0d0*y)
-             dterm_1 = dq1*eq2*dip(imu,inu,ineigh,iatom)/(y*y)
-             dterm_2 = dq2*eq2*dip(imu,inu,ineigh,iatom)/(y*y)
-!$omp atomic
-             ewaldsr(imu,inu,ineigh,iatom) = ewaldsr(imu,inu,ineigh,iatom)   &
-     &        + (sterm_1 + dterm_1) + (sterm_2 - dterm_2)
-            end do
-           end do
-          end if
- 
+!           if (y .gt. 1.0d-4) then
+!            do inu = 1, num_orb(in2)
+!             do imu = 1, num_orb(in1)
+!              sterm_1 = dq1*eq2*s_mat(imu,inu,ineigh,iatom)/(2.0d0*y)
+!              sterm_2 = dq2*eq2*s_mat(imu,inu,ineigh,iatom)/(2.0d0*y)
+!              dterm_1 = dq1*eq2*dip(imu,inu,ineigh,iatom)/(y*y)
+!              dterm_2 = dq2*eq2*dip(imu,inu,ineigh,iatom)/(y*y)
+! !$omp atomic
+!              ewaldsr(imu,inu,ineigh,iatom) = ewaldsr(imu,inu,ineigh,iatom)  + (sterm_1 + dterm_1) + (sterm_2 - dterm_2)
+!             end do
+!            end do
+!           end if
+
+        
+        if (y .gt. 1.0d-4) then
+                nnu = num_orb(in2)
+                nmu = num_orb(in1)
+                !sterm_1 = dq1*eq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y)
+                !sterm_2 = dq2*eq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y)
+                !dterm_1 = dq1*eq2*dip  (:nmu,:nnu,ineigh,iatom)/(y*y)
+                !dterm_2 = dq2*eq2*dip  (:nmu,:nnu,ineigh,iatom)/(y*y)
+                !ewaldsr(:nmu,:nnu,ineigh,iatom) = ewaldsr(:nmu,:nnu,ineigh,iatom)  + ( ( dq1*eq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y))    +  ( dq1*eq2*dip  (:nmu,:nnu,ineigh,iatom)/(y*y))  ) + (   ( dq2*eq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y)) -    ( dq2*eq2*dip  (:nmu,:nnu,ineigh,iatom)/(y*y))    )
+                ewaldsr(:nmu,:nnu,ineigh,iatom) = ewaldsr(:nmu,:nnu,ineigh,iatom)  + ( ( (s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y))    +  (dip(:nmu,:nnu,ineigh,iatom)/(y*y))  )*dq1 + (  (dq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y)) - (dip(:nmu,:nnu,ineigh,iatom)/(y*y))   )*dq2  )*eq2
+        end if
+
 ! ****************************************************************************
 !
 ! CALL DOSCENTROS AND GET VNA FOR ONTOP CASE
@@ -407,15 +434,23 @@
 ! Charged atom piece
            interaction = 2
            in3 = in2
+
+           nnu = num_orb(in3)
+           nmu = num_orb(in1)
+
            do isorp = 1, nssh(in1)
             call doscentros (interaction, isorp, kforce, in1, in1, in3, y, eps, deps, bccax, bccapx)
  
             dxn = (Qin(isorp,iatom) - Qneutral(isorp,in1))
-            do inu = 1, num_orb(in3)
-             do imu = 1, num_orb(in1)
-              bcca(imu,inu) = bcca(imu,inu) + dxn*bccax(imu,inu)
-             end do
-            end do
+
+            bcca(:nmu,:nnu) = bcca(:nmu,:nnu) + dxn*bccax(:nmu,:nnu)
+
+        !     do inu = 1, num_orb(in3)
+        !      do imu = 1, num_orb(in1)
+        !       bcca(imu,inu) = bcca(imu,inu) + dxn*bccax(imu,inu)
+        !      end do
+        !     end do
+
            end do
  
 ! For the vna_ontopr case, the potential is on the second atom (j):
@@ -427,21 +462,25 @@
             call doscentros (interaction, isorp, kforce, in1, in2, in3, y,  eps, deps, bccax, bccapx)
  
             dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))
-            do inu = 1, num_orb(in3)
-             do imu = 1, num_orb(in1)
-              bcca(imu,inu) = bcca(imu,inu) + dxn*bccax(imu,inu)
-             end do
-            end do
+
+            bcca(:nmu,:nnu) = bcca(:nmu,:nnu) + dxn*bccax(:nmu,:nnu)
+        !     do inu = 1, num_orb(in3)
+        !      do imu = 1, num_orb(in1)
+        !       bcca(imu,inu) = bcca(imu,inu) + dxn*bccax(imu,inu)
+        !      end do
+        !     end do
+
            end do
  
-! Now put into vca.
-           do inu = 1, num_orb(in3)
-            do imu = 1, num_orb(in1)
-!$omp atomic
-             vca(imu,inu,ineigh,iatom) =                                     &
-     &        vca(imu,inu,ineigh,iatom) + bcca(imu,inu)*eq2
-            end do
-           end do
+           vca(:nmu,:nnu,ineigh,iatom) =   vca(:nmu,:nnu,ineigh,iatom) + bcca(:nmu,:nnu)*eq2
+
+! ! Now put into vca.
+!            do inu = 1, num_orb(in3)
+!             do imu = 1, num_orb(in1)
+! !$omp atomic
+!              vca(imu,inu,ineigh,iatom) =   vca(imu,inu,ineigh,iatom) + bcca(imu,inu)*eq2
+!             end do
+!            end do
  
 ! End if for r1 .ne. r2 case
           end if
