@@ -122,6 +122,7 @@
            call epsilon (rhat, sighat, eps)
 !            if (igauss .eq. 0) then ! IF_DEF_ORDERN_END
              call trescentros (1, 0, isorpmax, in1, in2, indna, x, y, cost, eps, bcnax, nspecies)
+             
            do inu = 1, num_orb(in2)
             do imu = 1, num_orb(in1)
              vna(imu,inu,mneigh,iatom) = vna(imu,inu,mneigh,iatom) + bcnax(imu,inu)*eq2

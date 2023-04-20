@@ -155,6 +155,8 @@
            end do
           end do
           index_maxS(in1,in2) = index
+
+          write (*,*) "make_munuS() index_maxS(", in1, "," ,in2, ")=", index_maxS(in1,in2)
  
 ! End loops over the species
          end do
