@@ -34,6 +34,8 @@ else if (itheory_xc .eq. 2 ) then
    call assemble_olsxc_off() ! doscentros()
 end if ! if (itheory_xc = 2)
 
+
+
 if (itheory .eq. 1) then
    call assemble_ca_2c()  ! doscentros()
 endif
@@ -45,3 +47,37 @@ if (itheory .eq. 1) then
    call assemble_ca_3c()  ! trescentros()
    call assemble_lr   ()  ! no-interpolation
 else
+
+
+
+
+!! ============ FOR ( itheory .eq. 1) and  (itheory_xc .eq. 2 )  =============
+
+    if ( Kscf .eq. 1) then
+        call get_ewald         
+        call assemble_sVNL()     ! doscentrosPP()
+        call assemble_2c()       ! doscentros() 
+        call assemble_2c_PP()    ! no-interpolation
+    end if
+    call average_ca_rho()        ! doscentros(), doscentrosS(),trescentros(),trescentrosS()  ... really complicated function
+    call assemble_olsxc_on()     ! no-interpolation
+    call assemble_olsxc_off()    ! doscentros()
+    call assemble_ca_2c()        ! doscentros()
+    if (Kscf .eq. 1) then
+        call assemble_3c()       ! trescentros()
+        call assemble_3c_PP()    ! no-interpolation
+    end if
+    call assemble_ca_3c()        ! trescentros()
+    call assemble_lr   ()        ! no-interpolation
+
+
+
+
+
+
+
+
+
+
+
+
