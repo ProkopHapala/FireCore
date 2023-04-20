@@ -223,6 +223,8 @@
            n1 = n1 + l1
           end do
           index_max2c(in1,in2) = index
+
+          write (*,*) "make_munu() index_max2c(", in1, "," ,in2, ")=", index_max2c(in1,in2)
  
 ! For three-center interactions there are some extra non-zero interactions; in
 ! this case, we find out (from symmetry considerations) that non-negative
@@ -340,11 +342,16 @@
            n1 = n1 + l1
           end do
           index_max3c(in1,in2) = index
- 
+
 ! End loops over the species
-         end do
-        end do
+         end do   ! do in1 = 1, nspecies
+        end do    ! do in2 = 1, nspecies
  
+  do in1 = 1, nspecies
+  do in2 = 1, nspecies   
+        write (*,*) "make_munu() index_max3c(", in1, "," ,in2, ")=", index_max3c(in1,in2)  
+  end do   ! do in1 = 1, nspecies
+  end do    ! do in2 = 1, nspecies
 ! Deallocate Arrays
 ! ===========================================================================
  
