@@ -69,6 +69,7 @@
         use dimensions
         use interactions
         use neighbor_map
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -113,6 +114,8 @@
 ! ===========================================================================
 ! Initialize interactions to zero.
         ewaldlr = 0.0d0
+
+        ncall_assemble_lr=ncall_assemble_lr+1
 
 ! ! IF_DEF_ORDERN
 ! ! Determine which atoms are assigned to this processor.

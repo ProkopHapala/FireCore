@@ -77,7 +77,7 @@
         use interactions
         use neighbor_map
         !use gaussG
-
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -180,6 +180,8 @@
          allocate (spmG (3, numorb_max, numorb_max))
          allocate (smatG (numorb_max, numorb_max, neigh_max, natoms))
          allocate (spmatG (numorb_max, numorb_max, neigh_max, natoms))
+
+         ncall_assemble_ca_3c = ncall_assemble_ca_3c+1
 
          smG = 0.0d0
          smatG = 0.0d0

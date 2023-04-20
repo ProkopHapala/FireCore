@@ -83,6 +83,13 @@
                 real, intent (out) :: dQ_Ldx ! d/dx Q_L (Computed only if iforce = 1)
                 real, intent (out) :: dQ_Ldy ! d/dy Q_L (Computed only if iforce = 1)
         
+
+
+        ! 1   bcna
+        ! 2   xc3c
+        ! 3   den3
+        ! 4   den3S
+
         ! Local Parameters and Data Declaration
         ! ===========================================================================
         ! If you think that lower order interpolation for slowly changing parts
@@ -114,7 +121,9 @@
         ! ===========================================================================
         ! We need to find what point of the grid to use
         
-                ncall_interpolate_2d=ncall_interpolate_2d+1
+                ncall_interpolate_2d                         = ncall_interpolate_2d + 1
+                ncall_interpolate_2d_inter(interaction_glob) = ncall_interpolate_2d_inter(interaction_glob) + 1 
+
         
                 inv_hx = 1/hx
                 inv_hy = 1/hy

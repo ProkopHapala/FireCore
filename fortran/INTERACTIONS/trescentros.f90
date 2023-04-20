@@ -141,6 +141,7 @@
 ! Procedure
 ! ===========================================================================
         ncall_trescentros=ncall_trescentros+1
+        interaction_glob = interaction
 
         if(ivec_3c .eq. 1) then ! PROKOP_2022/02/12
                 call trescentros_vec(interaction, isorp, maxtype, in1, in2, indna,  x, y, cost, eps, bcnax, nspecies)

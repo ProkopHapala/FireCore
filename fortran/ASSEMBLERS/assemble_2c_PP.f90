@@ -62,6 +62,7 @@
         use forces
         use interactions
         use neighbor_map
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -126,6 +127,8 @@
           iatomstart = 1
           natomsp = natoms
 !    end if   ! IF_DEF_ordern_END
+
+          ncall_assemble_2c_PP=ncall_assemble_2c_PP+1
 
 
 ! ****************************************************************************

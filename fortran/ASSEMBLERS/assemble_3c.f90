@@ -78,6 +78,7 @@
         use forces
         use interactions
         use neighbor_map
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -166,6 +167,7 @@
         natomsp = natoms
 !         end if   ! IF_DEF_ORDERN_END
 
+        ncall_assemble_3c=ncall_assemble_3c+1
 
 ! Choose atom ialp in the central cell. This is the atom whose position
 ! we take the derivative, and is the atom who has the the neutral atom

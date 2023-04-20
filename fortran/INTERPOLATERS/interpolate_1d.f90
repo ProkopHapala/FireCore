@@ -103,6 +103,29 @@
 !
 !      declared by the index field ind2c !!!!!!!
 !
+! 1   overlap
+! 2   vna_ontopl
+! 3   vna_ontopr
+! 4   vna_atom  
+! 5   vnl       
+! 6   xc_ontop
+! 7   xc_atom   
+! 8   xc_corr   
+! 9   dipole_z  
+! 10  dipole_y  
+! 11  dipole_x  
+! 12  coulomb   
+! 13  kinetic   
+! 14  nuxc      
+! 15  den_ontopl
+! 16  den_ontopr
+! 17  den_atom  
+! 18  dnuxc_ol  
+! 19  dnuxc_or  
+! 20  denS_ontopl
+! 21  denS_ontopr
+! 22  denS_atom  
+! 23  overlapS  
 ! -------------------------------------------------------------
         !integer i
         integer imid, jxx
@@ -144,7 +167,8 @@
  
 ! Procedure
 ! ===========================================================================
-        ncall_interpolate_1d=ncall_interpolate_1d+1
+        ncall_interpolate_1d                    = ncall_interpolate_1d+1
+        ncall_interpolate_1d_inter(interaction) = ncall_interpolate_1d_inter(interaction) +1
 
         jxx =  ind2c(interaction,isub)
         nnum = numz2c(jxx,in1,in2)

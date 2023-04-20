@@ -66,6 +66,7 @@
         use forces
         use interactions
         use neighbor_map
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -102,6 +103,8 @@
         vxc = 0.0d0
         if (itheory .eq. 1) vxc_ca = 0.0d0
         uxcdcc = 0.0d0
+
+        ncall_assemble_olsxc_on=ncall_assemble_olsxc_on+1
 
 ! ! IF_DEF_ORDERN
 ! ! Determine which atoms are assigned to this processor.

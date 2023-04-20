@@ -94,6 +94,8 @@
         integer my_proc
         integer natomsp
 
+        integer nnu, nmu
+
         real distance
 
         real, dimension (numorb_max, numorb_max) :: htemp
@@ -144,41 +146,43 @@
           jatom = neigh_j(ineigh,iatom)
           in2 = imass(jatom)
 
+          nnu = num_orb(in2)
+          nmu = num_orb(in1)
+
 ! Here we add in all of the charge interactions for Kohn-Sham method .
           if (itheory .eq. 3) then
-           do inu = 1, num_orb(in2)
-            do imu = 1, num_orb(in1)
-              h_mat(imu,inu,ineigh,iatom) =                                  &
-     &         t_mat(imu,inu,ineigh,iatom) + vna(imu,inu,ineigh,iatom)       &
-     &         + vxc(imu,inu,ineigh,iatom) + vca(imu,inu,ineigh,iatom)
-            end do
-           end do
+           !do inu = 1, num_orb(in2)
+            !do imu = 1, num_orb(in1)
+              !h_mat(imu,inu,ineigh,iatom) =  t_mat(imu,inu,ineigh,iatom) + vna(imu,inu,ineigh,iatom) + vxc(imu,inu,ineigh,iatom) + vca(imu,inu,ineigh,iatom)
+            !end do
+           !end do
+
+        h_mat(:nmu,:nnu,ineigh,iatom) =  t_mat(:nmu,:nnu,ineigh,iatom) + vna(:nmu,:nnu,ineigh,iatom) + vxc(:nmu,:nnu,ineigh,iatom) + vca(:nmu,:nnu,ineigh,iatom)
 
           else
 
 ! Add all the pieces together for the Hamiltonian.
-           do inu = 1, num_orb(in2)
-            do imu = 1, num_orb(in1)
-             h_mat(imu,inu,ineigh,iatom) =                               &
-     &        t_mat(imu,inu,ineigh,iatom) + vna(imu,inu,ineigh,iatom)    &
-     &        + vxc(imu,inu,ineigh,iatom) + vxc_1c(imu,inu,ineigh,iatom)
-            end do
-           end do
-
-
+           !do inu = 1, num_orb(in2)
+            !do imu = 1, num_orb(in1)
+             !h_mat(imu,inu,ineigh,iatom) = t_mat(imu,inu,ineigh,iatom) + vna(imu,inu,ineigh,iatom) + vxc(imu,inu,ineigh,iatom) + vxc_1c(imu,inu,ineigh,iatom)
+            !end do
+           !end do
+        
+        h_mat(:nmu,:nnu,ineigh,iatom) = t_mat(:nmu,:nnu,ineigh,iatom) + vna(:nmu,:nnu,ineigh,iatom) + vxc(:nmu,:nnu,ineigh,iatom) + vxc_1c(:nmu,:nnu,ineigh,iatom)
 
 ! Here we add in all of the charge interactions, as well as the long range
 ! coulomb(ewaldlr) and the short range correction, 1/R (ewaldsr).
            if (itheory .eq. 1 .or. itheory .eq. 2) then
-            do inu = 1, num_orb(in2)
-             do imu = 1, num_orb(in1)
+            !do inu = 1, num_orb(in2)
+             !do imu = 1, num_orb(in1)
 !$omp atomic
-              h_mat(imu,inu,ineigh,iatom) = h_mat(imu,inu,ineigh,iatom)       &
-     &         + vca(imu,inu,ineigh,iatom) + vxc_ca(imu,inu,ineigh,iatom)     &
-     &         + ewaldlr(imu,inu,ineigh,iatom) - ewaldsr(imu,inu,ineigh,iatom)
+              !h_mat(imu,inu,ineigh,iatom) = h_mat(imu,inu,ineigh,iatom) + vca(imu,inu,ineigh,iatom) + vxc_ca(imu,inu,ineigh,iatom) + ewaldlr(imu,inu,ineigh,iatom) - ewaldsr(imu,inu,ineigh,iatom)
             !   h_mat(imu,inu,ineigh,iatom) = h_mat(imu,inu,ineigh,iatom) + ewaldqmmm(imu,inu,ineigh,iatom)   ! IF_DEF_QMMM_END
-             end do ! do imu
-            end do ! do inu
+             !end do ! do imu
+            !end do ! do inu
+
+            h_mat(:nmu,:nnu,ineigh,iatom) = h_mat(:nmu,:nnu,ineigh,iatom) + vca(:nmu,:nnu,ineigh,iatom) + vxc_ca(:nmu,:nnu,ineigh,iatom) + ewaldlr(:nmu,:nnu,ineigh,iatom) - ewaldsr(:nmu,:nnu,ineigh,iatom)
+
            end if ! if (itheory .eq. 1)
           endif ! if (iKS .eq. 1)
          end do ! do ineigh
@@ -233,20 +237,36 @@
      &           + (ratom(2,iatom) - (xl(2,mbeta) + ratom(2,jatom)))**2      &
      &           + (ratom(3,iatom) - (xl(3,mbeta) + ratom(3,jatom)))**2)
            if (distance .gt. testrange) then
-            do inu = 1, num_orb(in2)
-             do imu = 1, num_orb(in1)
-              h_mat(imu,inu,ineigh,iatom) = 0.0d0
-              t_mat(imu,inu,ineigh,iatom) = 0.0d0
-              s_mat(imu,inu,ineigh,iatom) = 0.0d0
-              vna(imu,inu,ineigh,iatom) = 0.0d0
-              vxc(imu,inu,ineigh,iatom) = 0.0d0
+                nnu = num_orb(in2)
+                nmu = num_orb(in1)
+                
+                
+            !do inu = 1, num_orb(in2)
+             !do imu = 1, num_orb(in1)
+              !h_mat(imu,inu,ineigh,iatom) = 0.0d0
+              !t_mat(imu,inu,ineigh,iatom) = 0.0d0
+              !s_mat(imu,inu,ineigh,iatom) = 0.0d0
+              !vna(imu,inu,ineigh,iatom) = 0.0d0
+              !vxc(imu,inu,ineigh,iatom) = 0.0d0
+              !if (itheory .eq. 1 .or. itheory .eq. 2) then
+              ! ewaldlr(imu,inu,ineigh,iatom) = 0.0d0
+              ! ewaldsr(imu,inu,ineigh,iatom) = 0.0d0
+!             !  ewaldqmmm(imu,inu,ineigh,iatom) = 0.0d0    ! IF_DEF_QMMM_END
+              !end if
+             !end do
+            !end do
+
+              h_mat(:nmu,:nnu,ineigh,iatom) = 0.0d0
+              t_mat(:nmu,:nnu,ineigh,iatom) = 0.0d0
+              s_mat(:nmu,:nnu,ineigh,iatom) = 0.0d0
+              vna  (:nmu,:nnu,ineigh,iatom) = 0.0d0
+              vxc  (:nmu,:nnu,ineigh,iatom) = 0.0d0
               if (itheory .eq. 1 .or. itheory .eq. 2) then
-               ewaldlr(imu,inu,ineigh,iatom) = 0.0d0
-               ewaldsr(imu,inu,ineigh,iatom) = 0.0d0
-!               ewaldqmmm(imu,inu,ineigh,iatom) = 0.0d0    ! IF_DEF_QMMM_END
+                !ewaldlr(:nmu,:nnu,ineigh,iatom) = 0.0d0
+                ewaldsr(:nmu,:nnu,ineigh,iatom) = 0.0d0
+!               !ewaldqmmm(:nmu,:nnu,ineigh,iatom) = 0.0d0    ! IF_DEF_QMMM_END
               end if
-             end do
-            end do
+
            end if
           end if
          end do ! do ineigh

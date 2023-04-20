@@ -62,6 +62,7 @@
         use neighbor_map
         use options !, only: idipole, itheory_xc
         use debug
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -129,6 +130,8 @@
         if(idebugWrite .gt. 0) write(*,*) "BEGIN assemble_2c.f90", iforce
 ! Initialize interactions
         vna = 0.0d0
+
+        ncall_assemble_2c=ncall_assemble_2c+1
 
 ! necessary because these arrays will be partially computed and then summed
 ! over the procs

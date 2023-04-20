@@ -63,6 +63,7 @@
         use interactions
         use neighbor_map
         use loops
+        use timing
         implicit none
 
 ! Argument Declaration and Description
@@ -178,6 +179,8 @@
           natomsp = natoms
 !         end if  ! IF_DEF_ORDERN_END
 
+          ncall_average_ca_rho=ncall_average_ca_rho+1
+      
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++
 !
 !               -----  ON SITE PART  ------

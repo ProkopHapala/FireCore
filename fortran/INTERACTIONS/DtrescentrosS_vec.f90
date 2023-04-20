@@ -93,6 +93,7 @@
         use dimensions
         use interactions
         use integrals
+        use timing
         implicit none
 
 ! Argument Declaration and Description
@@ -175,6 +176,8 @@
          end do
         end do
         kforce = 1
+
+        interaction_glob = 4
 
 ! Now interpolate.
 ! This subroutine calls the subroutine intrp1d as needed to find the value

@@ -63,6 +63,7 @@
         use forces
         use interactions
         use neighbor_map
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -139,6 +140,8 @@
 !        common  /btnmpi/ MPI_BTN_WORLD, MPI_OPT_WORLD, MPI_BTN_WORLD_SAVE        ! IF_DEF_ORDERN_END
 
         if(idebugWrite .gt. 0) write(*,*) "BEGIN assemble_ca_2c() "
+
+        ncall_assemble_ca_2c = ncall_assemble_ca_2c + 1
 
 ! Procedure
 ! ===========================================================================

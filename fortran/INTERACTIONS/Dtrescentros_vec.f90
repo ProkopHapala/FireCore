@@ -93,6 +93,7 @@
         use dimensions
         use interactions
         use integrals
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -172,6 +173,8 @@
 ! For 5 angles - ntheta.
 
         index = icon3c(in1,in2,indna)
+
+        interaction_glob = interaction
 
         if (interaction .eq. 1) then
          hx = hx_bcna(isorp,index)

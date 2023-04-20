@@ -63,6 +63,7 @@
         use dimensions
         use interactions
         use neighbor_map
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -115,6 +116,8 @@
          iatomstart = 1
          natomsp = natoms
 !        end if ! IF_DEF_ORDERN_END
+
+         ncall_assemble_snxc_off=ncall_assemble_snxc_off+1
 
 ! Loop over the atoms in the central cell.
 !!$omp parallel do private (matom, in1, ineigh, jbeta, jatom, in2, inu, imu)  &

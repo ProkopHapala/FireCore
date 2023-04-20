@@ -144,6 +144,7 @@
 ! Procedure
 ! ===========================================================================
         ncall_trescentrosS=ncall_trescentrosS+1
+        interaction_glob  = 4
 
         ! Initialize bcnax
         do inu = 1, nssh(in2)

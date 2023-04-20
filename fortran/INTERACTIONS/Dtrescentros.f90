@@ -94,6 +94,7 @@
         use interactions
         use integrals
         use options, only: ivec_3c
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -169,6 +170,9 @@
                 call Dtrescentros_vec (interaction, isorp, maxtype, in1, in2, indna, x, y, cost, eps, depsA, depsB, rhat, sighat, bcnax, f3naXa, f3naXb, f3naXc, nspecies)
                 return
         end if
+
+        ncall_Dtrescentros = ncall_Dtrescentros + 1
+        interaction_glob   = interaction
 
         kforce = 1
  
@@ -306,7 +310,7 @@
           dxbcnalist(4,iME) = dQ_Ldx
           dybcnalist(4,iME) = dQ_Ldy
          end do
-        end if
+        end if   !   if (interaction .eq. 3)
 
 ! Now calculate the matrix elements in molecular coordinates.
 ! The variable cost is passed from the assembler.
