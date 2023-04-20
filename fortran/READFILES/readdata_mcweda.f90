@@ -56,6 +56,8 @@
         !use gaussG
         use charges
         
+        use dimensions
+
         implicit none
  
 ! Argument Declaration and Description
@@ -72,6 +74,10 @@
         integer interaction
         integer interaction_start
  
+        integer maxtype, mintype
+        integer in1, in2, in3
+        integer index
+        integer isorp
 ! Procedure
 ! ===========================================================================
 ! ============================================================================
@@ -239,6 +245,51 @@
 ! Set up some tables for the 2d interpolator
          call setterp_2d (nspecies, itheory_xc, itheory)
 !        end if ! end if igauss  ! IF_DEF_GAUSS_END
+
+
+
+        !  hx = hx_bcna(isorp,index)
+        !  hy = hy_bcna(isorp,index)
+        !  nx = numx3c_bcna(isorp,index)
+        !  ny = numy3c_bcna(isorp,index)
+        !  xxmax = x3cmax_bcna(isorp,index)
+        !  yymax = y3cmax_bcna(isorp,index)
+         
+         write(*,*) "numx3c_bcna(:,:)", numx3c_bcna(:,:)
+         write(*,*) "numy3c_bcna(:,:)", numy3c_bcna(:,:)
+         write(*,*) "numx3c_xc3c(:,:)", numx3c_xc3c(:,:)
+         write(*,*) "numy3c_xc3c(:,:)", numy3c_xc3c(:,:)
+         write(*,*) "numx3c_den3(:,:)", numx3c_den3(:,:)
+         write(*,*) "numy3c_den3(:,:)", numy3c_den3(:,:)
+
+         write(*,*) "hx_bcna(:,:)", hx_bcna(:,:)
+         write(*,*) "hy_bcna(:,:)", hy_bcna(:,:)
+         write(*,*) "hx_xc3c(:,:)", hx_xc3c(:,:)
+         write(*,*) "hy_xc3c(:,:)", hy_xc3c(:,:)
+         write(*,*) "hx_den3(:,:)", hx_den3(:,:)
+         write(*,*) "hy_den3(:,:)", hy_den3(:,:)
+
+         write(*,*) "x3cmax_bcna(:,:)", x3cmax_bcna(:,:)
+         write(*,*) "y3cmax_bcna(:,:)", y3cmax_bcna(:,:)
+         write(*,*) "x3cmax_xc3c(:,:)", x3cmax_xc3c(:,:)
+         write(*,*) "y3cmax_xc3c(:,:)", y3cmax_xc3c(:,:)
+         write(*,*) "x3cmax_den3(:,:)", x3cmax_den3(:,:)
+         write(*,*) "y3cmax_den3(:,:)", y3cmax_den3(:,:)
+
+
+        !  do interaction = 1, 4
+        !         do in1 = 1, nspecies
+        !                 do in2 = 1, nspecies
+        !                         do in3 = 1, nspecies
+        !                                 index = icon3c(in1,in2,in3)
+        !                                 call getIsorpRange(interaction,itheory,in3,maxtype,mintype)
+        !                                 do isorp = mintype, maxtype
+        !                                         write(*,*) "numxy3c", interaction,in1,in2,in3, isorp , " bcna(",numx3c_bcna(isorp,index),numy3c_bcna(isorp,index) !,") xc3c(", numx3c_xc3c(isorp,index),numy3c_xc3c(isorp,index),") den3(", numx3c_den3(isorp,index),numy3c_den3(isorp,index),")"
+        !                                 end do
+        !                         end do
+        !                 end do
+        !         end do
+        ! end do
 
 ! ! IF_DEF_GAUSS
 !         if (igauss .eq. 1) then
