@@ -76,18 +76,29 @@ group_dict = dict(groups)
 
 # ------- Group attachent
 B = AtomicSystem(fname='backbone.xyz' )
+B.lvec = np.array( [[25.,0.,0.],[0.,5.,0.],[0.,0.,20.0]  ] )
 for pair in pairs:
     print(pair)
     BB = B.clonePBC()
     name1,name2 = pair
     G1 = AtomicSystem(fname="endgroups/"+name1+".xyz"  )
     G2 = AtomicSystem(fname="endgroups/"+name2+".xyz"  )
-    inds1 = group_dict[name1][0]
-    inds2 = group_dict[name2][0]
-    BB.attach_group( G1, inds1[0], inds1[1], inds1[2], (1 ,2), up=(0.,0.,1.), _0=1  )
-    BB.attach_group( G2, inds2[0], inds2[1], inds2[2], (17,9), up=(0.,0.,1.), _0=1  )
-    BB.delete_atoms( [1-1,17-1] )
-    BB.saveXYZ( "BB."+name1+"."+name2+".xyz" )
+    inds1, Hs1 = group_dict[name1]
+    inds2, Hs2 = group_dict[name2]
+    #BB.attach_group( G1, inds1[0], inds1[1], inds1[2], (1 ,2), up=(0.,0.,1.), _0=1  )
+    #BB.attach_group( G2, inds2[0], inds2[1], inds2[2], (17,9), up=(0.,0.,1.), _0=1  )
+    #BB.delete_atoms( [1-1,17-1] )
+    BB.attach_group( G1, inds1[0], inds1[1], inds1[2], (18,8), up=(0.,0.,1.), _0=1 , pre="X" )
+    BB.attach_group( G2, inds2[0], inds2[1], inds2[2], (17,6), up=(0.,0.,1.), _0=1 , pre="Y" )
+    BB.delete_atoms( [17-1,18-1] )
+
+    inds1 = BB.remap( [ "X"+str(i-1) for i in Hs1 ] )
+    inds2 = BB.remap( [ "Y"+str(i-1) for i in Hs2 ] )
+    #print( inds )
+    comment = " Hbonds:X"+str(inds1)+"Y"+str(inds2)
+
+    BB.print()
+    BB.saveXYZ( "BB."+name1+"."+name2+".xyz", comment=comment )
 
 
 
