@@ -60,6 +60,7 @@
         use forces
         use interactions
         use neighbor_map
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -95,6 +96,8 @@
         real, dimension (numorb_max, numorb_max) :: sVNLx
         real, dimension (3, numorb_max, numorb_max) :: spVNLx
  
+
+        ncall_assemble_sVNL=ncall_assemble_sVNL+1
 ! Procedure
 ! ===========================================================================
 ! Loop over the atoms in the central cell.

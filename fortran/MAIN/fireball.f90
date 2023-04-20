@@ -145,38 +145,45 @@ program fireball
     write(*,*) "TIME  1 assemble_mcweda  ", timer_sums(1)
     write(*,*) "TIME  2 solveH           ", timer_sums(2)
     write(*,*) "TIME  3 denmat           ", timer_sums(3)
-    !write(*,*) "TIME  4 getenergy_mcweda ", timer_sums(4)
+    write(*,*) "TIME  4 getenergy_mcweda ", timer_sums(4)
     write(*,*) "TIME 11 getforces_mcweda ", timer_sums(11)
-    !write(*,*) "-----------------------------------"
-    write(*,*) "TIME  5 assemble(Kscf=1)  ", timer_sums(5)
-    !write(*,*) "TIME  6 get_ewald         ", timer_sums(6)
-    !write(*,*) "TIME  7 assemble 1C       ", timer_sums(7)
-    write(*,*) "TIME  8 assemble 2C       ", timer_sums(8)
-    write(*,*) "TIME  9 assemble 3C       ", timer_sums(9)
-    !write(*,*) "TIME 10 buildH            ", timer_sums(10)
-    !write(*,*) "-----------------------------------"
-    write(*,*) "TIME 20 assemle_2c(Kscf=1) ", timer_sums(20)
-    write(*,*) "TIME 21 average_rho        ", timer_sums(21)
-    !write(*,*) "TIME 22 assemble_olsxc_on  ", timer_sums(22)
-    write(*,*) "TIME 23 assemble_olsxc_off ", timer_sums(23)
-    write(*,*) "TIME 24 assemble_ca_2c     ", timer_sums(24)
-    !write(*,*) "-----------------------------------"
-    write(*,*) "TIME 31 assemble_3c        ", timer_sums(31)
-    write(*,*) "TIME 32 assemble_3c_PP     ", timer_sums(32)
-    write(*,*) "TIME 33 assemble_ca_3c     ", timer_sums(33)
-    !write(*,*) "TIME 34 assemble_lr        ", timer_sums(34)
-    !write(*,*) "-----------------------------------"
-    !write(*,*) "TIME 50 assemble_F            ", timer_sums(50)
-    write(*,*) "TIME 51 Dassemble_2c          ", timer_sums(51)
-    !write(*,*) "TIME 52 Dassemble_2c_PP       ", timer_sums(52)
-    write(*,*) "TIME 53 Dassemble_ca_olsxc_on ", timer_sums(53)
-    write(*,*) "TIME 54 Dassemble_ca_olsxc_2c ", timer_sums(54)
-    write(*,*) "TIME 55 Dassemble_ca_2c       ", timer_sums(55)
-    write(*,*) "TIME 56 Dassemble_3c          ", timer_sums(56)
-    write(*,*) "TIME 57 Dassemble_3c_PP       ", timer_sums(57)
-    write(*,*) "TIME 58 Dassemble_ca_3c       ", timer_sums(58)
-    write(*,*) "TIME 59 Dassemble_lr          ", timer_sums(59)
-    write(*,*) "TIME 60 Dassemble_ca_olsxc_3c ", timer_sums(60)
+   
+
+    write(*,*) "==================================="
+    write(*,*) "TIME  1 assemble_mcweda            ", timer_sums(1)
+    write(*,*) "TIME  5   assemble_mcweda_neighbors", timer_sums(5)
+    write(*,*) "TIME  7   assemble_mcweda_1c       ", timer_sums(7)
+    write(*,*) "TIME  8   assemble_mcweda_2C       ", timer_sums(8)
+    write(*,*) "TIME  9   assemble_mcweda_3C       ", timer_sums(9)
+    write(*,*) "TIME  6   get_ewald                ", timer_sums(6)
+    write(*,*) "TIME 10   buildH                   ", timer_sums(10)
+    write(*,*) "-----------------------------------"
+    write(*,*) "TIME  8 assemble_mcweda_2C    ", timer_sums(8)
+    write(*,*) "TIME 20    assemle_2c(Kscf=1) ", timer_sums(20)
+    write(*,*) "TIME 21    average_rho        ", timer_sums(21)
+    write(*,*) "TIME 22    assemble_olsxc_on  ", timer_sums(22)
+    write(*,*) "TIME 23    assemble_olsxc_off ", timer_sums(23)
+    write(*,*) "TIME 24    assemble_ca_2c     ", timer_sums(24)
+    write(*,*) "-----------------------------------"
+    write(*,*) "TIME  9 assemble_mcweda_3C    ", timer_sums(9)
+    write(*,*) "TIME 31    assemble_3c        ", timer_sums(31)
+    write(*,*) "TIME 32    assemble_3c_PP     ", timer_sums(32)
+    write(*,*) "TIME 33    assemble_ca_3c     ", timer_sums(33)
+    write(*,*) "TIME 34    assemble_lr        ", timer_sums(34)
+
+    write(*,*) "==================================="
+    write(*,*) "TIME 11 getforces_mcweda ", timer_sums(11)
+    write(*,*) "TIME 50   assemble_F            ", timer_sums(50)
+    write(*,*) "TIME 51   Dassemble_2c          ", timer_sums(51)
+    write(*,*) "TIME 52   Dassemble_2c_PP       ", timer_sums(52)
+    write(*,*) "TIME 53   Dassemble_ca_olsxc_on ", timer_sums(53)
+    write(*,*) "TIME 54   Dassemble_ca_olsxc_2c ", timer_sums(54)
+    write(*,*) "TIME 55   Dassemble_ca_2c       ", timer_sums(55)
+    write(*,*) "TIME 56   Dassemble_3c          ", timer_sums(56)
+    write(*,*) "TIME 57   Dassemble_3c_PP       ", timer_sums(57)
+    write(*,*) "TIME 58   Dassemble_ca_3c       ", timer_sums(58)
+    write(*,*) "TIME 59   Dassemble_lr          ", timer_sums(59)
+    write(*,*) "TIME 60   Dassemble_ca_olsxc_3c ", timer_sums(60)
     
     stop
 end program fireball

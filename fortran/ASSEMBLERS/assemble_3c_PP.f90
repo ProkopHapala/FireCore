@@ -80,6 +80,7 @@
         use forces
         use interactions
         use neighbor_map
+        use timing
         implicit none
  
 ! Argument Declaration and Description
@@ -153,6 +154,9 @@
           iatomstart = 1
           natomsp = natoms
 !       end if     ! IF_DEF_ORDERN_END
+
+
+        ncall_assemble_3c_PP=ncall_assemble_3c_PP+1
 
 
 ! Choose atom ialp in the central cell. This is the atom whose position

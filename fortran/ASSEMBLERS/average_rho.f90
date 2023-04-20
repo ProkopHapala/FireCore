@@ -63,6 +63,7 @@
         use interactions
         use neighbor_map
         use loops
+        use timing
         implicit none
 
 ! Argument Declaration and Description
@@ -178,7 +179,8 @@
           natomsp = natoms
 !         end if              ! IF_DEF_ORDERN_END
 
-
+          ncall_average_rho=ncall_average_rho+1
+   
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++
 !
 !               -----  ON SITE PART  ------
@@ -295,7 +297,7 @@
                        do imu = 1, num_orb(in3)
                          rho_on(imu,inu,iatom)           = rho_on(imu,inu,iatom)           + rhomx(imu,inu)*Qneutral(isorp,in2)
                          rho_2c(imu,inu)                 = rho_2c(imu,inu)                 + rhomx(imu,inu)*Qneutral(isorp,in2)
-                         rhop_on(:,imu,inu,ineigh,iatom) = hop_on(:,imu,inu,ineigh,iatom)  + rhompx(:,imu,inu)*Qneutral(isorp,in2)
+                         rhop_on(:,imu,inu,ineigh,iatom) = rhop_on(:,imu,inu,ineigh,iatom)  + rhompx(:,imu,inu)*Qneutral(isorp,in2)
                        end do ! do imu
                     end do ! do inu
 ! spherical symetric

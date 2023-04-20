@@ -94,6 +94,7 @@
         use interactions
         use integrals
         use options, only: ivec_3c
+        use timing
         implicit none
 
 ! Argument Declaration and Description
@@ -168,6 +169,9 @@
         !        call DtrescentrosS_vec (isorp, maxtype, in1, in2, indna, x, y, cost, rhat, sighat, bcnax, f3naXa, f3naXb, f3naXc, nspecies)
         !        return
         !end if
+
+        ncall_DtrescentrosS = ncall_DtrescentrosS + 1
+        interaction_glob = 4
 
 ! Initialize bcnam and bcnax and forces.
         do inu = 1, nssh(in2)
