@@ -20,6 +20,7 @@ class Vec2T{
 
 	inline bool order       (){ if(a>b){ SWAP(a,b,T); return true; }; return false; }
 	inline bool orderReverse(){ if(a<b){ SWAP(a,b,T); return true; }; return false; }
+    inline VEC  swaped(){return VEC{b,a}; };
 
     inline explicit operator Vec2T<float >()const{ return (Vec2T<float >){(float)x,(float)y}; }
 	inline explicit operator Vec2T<double>()const{ return (Vec2T<double>){(double)x,(double)y}; }

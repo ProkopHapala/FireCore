@@ -200,6 +200,65 @@ void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi
     W.scanRotation( n, selection,ia0, iax0, iax1, phi, nstep, Es, bWriteTrj );
 }
 
+int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, bool bOnlyFirstNeigh, int* atoms_ ){
+    W.builder.selectBondsBetweenTypes( imin, imax, it1, it2, byZ, bOnlyFirstNeigh );
+    Vec2i* atoms = (Vec2i*)atoms_;
+    int i=0;
+    for( int ib : W.builder.selection ){
+        Vec2i b = W.builder.bonds[ib].atoms;
+        if(b.b==it1){ b=b.swaped(); };
+        //printf( "selectBondsBetweenTypes[%i] %i,%i \n", i, b.a,b.b );
+        atoms[i]=b;
+        i++;
+    }
+    return i;
+}
+
+int getFrament( int ifrag, int* bounds_, double* pose ){
+    const MM::Fragment& frag = W.builder.frags[ifrag];
+    if(bounds_){
+        Vec2i* bounds=(Vec2i*)bounds_;
+        bounds[0] = frag.atomRange;
+        bounds[1] = frag.confRange;
+        bounds[2] = frag.bondRange;
+    }
+    if( pose ){
+        const double* ds = &(frag.pos.x);
+        for(int i=0; i<7; i++){ pose[i] = ds[i]; }
+    }
+    return frag.imolType;
+    //angRange;
+    //dihRange;
+}
+
+void orient( const char* fname, int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){
+    FILE* fout = fopen(fname,"w");    
+    Vec3d fw = W.builder.atoms[fw2].pos - W.builder.atoms[fw1].pos;  fw.normalize();
+    Vec3d up = W.builder.atoms[up2].pos - W.builder.atoms[up1].pos;  up.normalize();
+    W.builder.orient_atoms( fw, up, W.builder.atoms[i0].pos,  Vec3dZero,   imin,imax );
+    W.builder.write2xyz(fout, "#scanHBond[0]" );
+    fclose(fout);
+}
+
+void scanHBond( const char* fname, int n, double d,  int ifrag1, int ifrag2, int i1a,int i1b, int i2a,int i2b ){
+    FILE* fout = fopen(fname,"w");
+    const MM::Fragment& frag1 = W.builder.frags[ifrag1];
+    const MM::Fragment& frag2 = W.builder.frags[ifrag2];
+    
+    Vec3d fw1 = W.builder.atoms[i1b].pos - W.builder.atoms[i1a].pos;  fw1.normalize();
+    Vec3d fw2 = W.builder.atoms[i2b].pos - W.builder.atoms[i2a].pos;  fw2.normalize();
+
+    W.builder.orient_atoms( fw1, Vec3dZ, W.builder.atoms[i1a].pos,  Vec3dZero,             frag1.atomRange.a, frag1.atomRange.b );
+
+    W.builder.orient_atoms( fw2, Vec3dZ, W.builder.atoms[i2a].pos,  Vec3d{ 0.0,0.0,5.0 },  frag2.atomRange.a, frag2.atomRange.b );
+    //W.builder.move();
+
+    W.builder.write2xyz(fout, "#scanHBond[0]" );
+
+    fclose(fout);
+}
+
+
 void printTypes     ( ){ W.params.printAtomTypes(); }
 void printAtomConfs ( bool bOmmitCap, bool bNeighs ){ W.builder.printAtomConfs(bOmmitCap,bNeighs); }
 void printAtomTypes ( ){ W.builder.printAtomTypes ( ); }

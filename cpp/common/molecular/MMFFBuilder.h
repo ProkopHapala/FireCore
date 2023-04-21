@@ -229,8 +229,8 @@ struct Fragment{
 
     Vec3d  pos;
     Quat4d rot;
+    Vec3d  * pos0s;
     //Molecule * mol;     // ToDo : we can replace this by MolID to leave dependence on Molecule_h
-    Vec3d    * pos0s;
 
     void finish(int ia,int ic, int ib,int ig, int id){ atomRange.y=ia; confRange.y=ic; bondRange.y=ib; angRange.y=ig; dihRange.y=id; };
 
@@ -397,9 +397,11 @@ class Builder{  public:
             pmax.setIfGreater(p);
         }
     }
-    void move_atoms     ( Vec3d dshift, int i0=0, int n=-1, bool bInit=true){ natom_def(n,i0); for(int i=0; i<n; i++){ atoms[i].pos.add(dshift); } }
-    void transform_atoms( Mat3d M, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1             ){ natom_def(n,i0);  for(int i=0; i<n; i++){ Vec3d p; M.dot_to( atoms[i].pos-orig_old, p); p.add(orig_new); atoms[i].pos=p; } }
-    void rotate_atoms   ( double angle, Vec3d axis=Vec3dZ, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1 ){ Mat3d M; M.fromRotation(angle,axis); transform_atoms( M,orig_old,orig_new,i0,n); }
+    void move_atoms     ( Vec3d dshift,                                                                        int i0=0, int imax=-1 ){ if(imax<0){imax=atoms.size();} for(int i=i0; i<imax; i++){ atoms[i].pos.add(dshift); } }
+    void transform_atoms( Mat3d M,                         Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ if(imax<0){imax=atoms.size();} printf( "transform_atoms orig_old(%g,%g,%g)  orig_new(%g,%g,%g)  \n",  orig_old.x,orig_old.y,orig_old.z,   orig_new.x,orig_new.y,orig_new.z ); for(int i=i0; i<imax; i++){ Vec3d p; M.dot_to( atoms[i].pos-orig_old, p); p.add(orig_new); atoms[i].pos=p; } }
+    void rotate_atoms   ( double angle, Vec3d axis=Vec3dZ, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ Mat3d M; M.fromRotation(angle,axis);    transform_atoms( M,orig_old,orig_new,i0,imax); }
+    void orient_atoms   ( Vec3d fw, Vec3d up,              Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ Mat3d M; M.fromDirUp(fw,up); transform_atoms( M,orig_old,orig_new,i0,imax); }
+
 
     void changeCell( const Mat3d& lvs, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1 ){
         Mat3d M,MM; 
@@ -1198,7 +1200,9 @@ class Builder{  public:
         int ityp=atoms[ia].type;
         //params->assignRE( ityp, REQ );
         AtomConf& conf = confs[ic];
-        conf.ne = params->atypes[ityp].nepair();
+        int ne = params->atypes[ityp].nepair();
+        if  ( (conf.nbond+conf.nH+ne)>N_NEIGH_MAX  ){ printf( "ERROR int autoConfEPi(ia=%i) ne(%i)+nb(%i)+nH(%i)>N_NEIGH_MAX(%i) => Exit() \n", ia, ne, conf.nbond, conf.nH, N_NEIGH_MAX ); exit(0);}
+        else{ conf.ne=ne; }
         conf.fillIn_npi_sp3();
         if(bDummyEpair){ addEpairsToAtoms(ia); }
         //int npi = 4 - conf.nbond - ne - nH;
@@ -1207,9 +1211,10 @@ class Builder{  public:
         //for(int i=0; i<npi; i++)conf.addPi();
         return true;
     }
-    int autoAllConfEPi( ){
-        int n=0,na=atoms.size();
-        for(int ia=0;ia<na;ia++){
+    int autoAllConfEPi( int ia0=0, int imax=-1 ){
+        if(imax<0){ imax=atoms.size(); }
+        int n=0;
+        for(int ia=ia0;ia<imax;ia++){
             if( autoConfEPi(ia) ){n++;}
         }
         return n;
@@ -1280,6 +1285,44 @@ class Builder{  public:
             if( getAtom_npi(ja)>0 ) npi++;
         }
         return npi;
+    }
+
+    int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ=false, bool bOnlyFirstNeigh=false ){
+        selection.clear();
+        std::unordered_set<int> nodes;
+        for(int ib=imin; ib<imax; ib++){
+            const Vec2i& b = bonds[ib].atoms;
+            const Atom&  A = atoms[b.a];
+            const Atom&  B = atoms[b.b];
+            bool match;
+            bool reverse;
+            if( byZ ){
+                int iz1 = params->atypes[A.type].iZ;
+                int iz2 = params->atypes[B.type].iZ;
+                //printf( "selectBondsBetweenTypes[%i] zs(%i,%i) ts(%i,%i) \n", ib, iz1,iz2,   it1, it2  );
+                match   = (iz1==it1)&&(iz2==it2);
+                reverse = (iz1==it2)&&(iz2==it1); 
+            }else{
+                match   = (A.type==it1)&&(B.type==it2);
+                reverse = (A.type==it2)&&(B.type==it1); 
+            }
+            match |= reverse;
+            if(match){
+                //printf( "selectBondsBetweenTypes match ib=%i \n", ib, b.a,b.b  );
+                if(bOnlyFirstNeigh){
+                    int ia;
+                    if(reverse){ ia=b.b; }else{ ia=b.a; };
+                    int na = nodes.count(ia); 
+                    if( na==0 ){
+                        selection.insert(ib);
+                        nodes.insert(ia);
+                    }
+                }else{
+                    selection.insert(ib);
+                }
+            }
+        }
+        return selection.size();
     }
 
     // ============= Angles
@@ -1428,7 +1471,7 @@ class Builder{  public:
             R = A.REQ.x;
             int ipbc=0;
             //if(verbosity>1)
-            printf( "autoBondsPBC() Atom[%i] R %g \n", i, R );
+            //printf( "autoBondsPBC() Atom[%i] R %g \n", i, R );
             for(int ix=-npbc.x;ix<=npbc.x;ix++){
                 for(int iy=-npbc.y;iy<=npbc.y;iy++){
                     for(int iz=-npbc.z;iz<=npbc.z;iz++){

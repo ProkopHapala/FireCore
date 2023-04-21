@@ -53,6 +53,10 @@ header_strings = [
 #"void printBonds     ( )",
 #"void printBondParams( )",
 #"int saveXYZ( const char* fname, const char* comment)",
+#"int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, bool bOnlyFirstNeigh, int* atoms_ ){"
+#"int getFrament( int ifrag, int* bounds_, double* pose ){",
+#"void scanHBond( const char* fname, int n, double d,  int ifrag1, int ifrag2, int i1a,int i1b, int i2a,int i2b ){",
+#"void orient( int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){"
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -395,6 +399,36 @@ def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False)
     return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
 
 
+#  int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, bool bOnlyFirstNeigh, int* atoms_ ){
+lib.selectBondsBetweenTypes.argtypes  = [c_int, c_int, c_int, c_int, c_bool, c_bool, c_int_p ] 
+lib.selectBondsBetweenTypes.restype   =  c_int
+def selectBondsBetweenTypes( imin, imax, it1, it2, byZ=False, bOnlyFirstNeigh=False, atoms=None ):
+    if(atoms is None): atoms=np.zeros((100,2), dtype=np.int32 )
+    n = lib.selectBondsBetweenTypes(imin, imax, it1, it2, byZ, bOnlyFirstNeigh, _np_as(atoms ,c_int_p) )
+    return atoms[:n,:]
+
+
+#  void orient( int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){
+lib.orient.argtypes  = [c_char_p, c_int, c_int, c_int, c_int, c_int, c_int, c_int] 
+lib.orient.restype   =  None
+def orient(fw, up, i0=None, imin=0, imax=-1, fname="oriented.xyz" ):
+    if i0 is None: i0=fw[0]
+    return lib.orient( cstr(fname), fw[0],fw[1], up[0],up[1], i0, imin, imax)
+
+#  void scanHBond( const char* fname, int n, double d,  int ifrag1, int ifrag2, int i1a,int i1b, int i2a,int i2b ){
+lib.scanHBond.argtypes  = [c_char_p, c_int, c_double, c_int, c_int, c_int, c_int, c_int, c_int] 
+lib.scanHBond.restype   =  None
+def scanHBond( b1, b2, ifrag1=0, ifrag2=1, fname="scanHBond.xyz", n=10, d=0.2 ):
+    return lib.scanHBond( cstr(fname), n, d, ifrag1, ifrag2, b1[0],b1[1], b2[0],b2[1] )
+
+#  int getFrament( int ifrag, int* bounds_, double* pose ){
+lib.getFrament.argtypes  = [c_int, c_int_p, c_double_p] 
+lib.getFrament.restype   =  c_int
+def getFrament(ifrag, bounds=None, pose=None, bBounds=True, bPose=False):
+    if( bBounds and (bounds is None) ): bounds=np.zeros((3,2), dtype=np.int32 )
+    if( bPose   and (bPose  is None) ): pose  =np.zeros((4,3))
+    imol = lib.getFrament(ifrag, _np_as(bounds,c_int_p), _np_as(pose,c_double_p))
+    return bounds, pose, imol
 
 #  void printTypes ( )
 lib.printTypes.argtypes  = [] 
