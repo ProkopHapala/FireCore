@@ -143,7 +143,6 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
     int ifrag = builder.frags.size()-1;
     if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
-    builder.addCappingTypesByIz(1);
     builder.tryAddConfsToAtoms( 0, -1 );
     builder.cleanPis();
     if(verbosity>2)builder.printAtomConfs(false);
@@ -156,10 +155,11 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
         readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
     }
     bPBC=builder.bPBC;
+    int ia0=builder.frags[ifrag].atomRange.a;
     if( bPBC ){
-        builder.autoBondsPBC();   if(verbosity>2)builder.printBonds ();
+        builder.autoBondsPBC( -0.5, ia0 );   if(verbosity>2)builder.printBonds ();
     }else{
-        builder.autoBonds();      if(verbosity>2)builder.printBonds ();
+        builder.autoBonds   ( -0.5, ia0 );      if(verbosity>2)builder.printBonds ();
     }
     return ifrag;
 }
@@ -185,6 +185,8 @@ void initParams( const char* sAtomTypes, const char* sBondTypes, const char* sAn
     builder.bindParams(&params);
     params_glob = &params;
     builder.capAtomEpair.type = params.getAtomType("E");
+    builder.addCappingTypesByIz(1);   // hydrogens
+    builder.addCappingTypesByIz(200); // electron pairs
     //params.printAtomTypeDict();
     //params.printAtomTypes();
     //params.printBond();
@@ -192,12 +194,13 @@ void initParams( const char* sAtomTypes, const char* sBondTypes, const char* sAn
 
 int buildMolecule_xyz( const char* xyz_name ){
     int ifrag = loadGeom( xyz_name );
-    builder.printBonds();
-    builder.printAtomConfs(false, false );
+    int ia0=builder.frags[ifrag].atomRange.a;
+    //builder.printBonds();
+    //builder.printAtomConfs(true, false );
     if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
     //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-    builder.autoAllConfEPi( );        
+    builder.autoAllConfEPi( ia0 );        
     //builder.printAtomConfs(false, false );
     //builder.printAtomConfs(false, true );
     builder.assignAllBondParams();    //if(verbosity>1)
@@ -431,7 +434,6 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     //int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0, &debug_rot );
     int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0 );
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
-    builder.addCappingTypesByIz(1);
     builder.tryAddConfsToAtoms( 0, -1 );    
     builder.sortConfAtomsFirst();              
     builder.tryAddBondsToConfs( );      
