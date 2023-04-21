@@ -192,11 +192,14 @@ void initParams( const char* sAtomTypes, const char* sBondTypes, const char* sAn
 
 int buildMolecule_xyz( const char* xyz_name ){
     int ifrag = loadGeom( xyz_name );
+    builder.printBonds();
+    builder.printAtomConfs(false, false );
     if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
     //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
     builder.autoAllConfEPi( );        
-    builder.printAtomConfs(false, true );
+    //builder.printAtomConfs(false, false );
+    //builder.printAtomConfs(false, true );
     builder.assignAllBondParams();    //if(verbosity>1)
     builder.finishFragment(ifrag);    
     //printf( "buildMolecule_xyz: nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
@@ -416,8 +419,8 @@ int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=fa
 // ==============================================================
 
 int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0 ){
-    builder.printAtomConfs(false);
-    builder.printBonds();
+    //builder.printAtomConfs(false);
+    //builder.printBonds();
     printf( " ===================== Substitute molecule START !!! \n");
     Molecule* mol = new Molecule(); mol->init_xyz( fname, &params, true );
     //Vec3i axSwap={2,1,0};

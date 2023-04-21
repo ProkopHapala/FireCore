@@ -135,7 +135,18 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){ return W.c
 //void open_xyzFile (const char* fname){ xyz_file=fopen( fname,"w" ); };
 //void close_xyzFile(){fclose(xyz_file)};
 
-int toXYZ(const char* comment="#comment"){ return W.toXYZ(comment); }
+
+int saveXYZ( const char* fname, const char* comment, int imod){ 
+    int ret=-1;
+    switch (imod){
+        case 0: { ret=W.builder.save2xyz(fname,comment ); } break;
+        case 1: { ret=W        .saveXYZ (fname,comment ); } break;
+    }
+    return ret;  
+}
+
+
+int toXYZ(const char* comment="#comment"){ return W.toXYZ(comment);  }
 double eval(){ return W.eval(); };
 int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){ return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  }
 
