@@ -667,6 +667,7 @@ class Builder{  public:
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
     void addCap(int ia,const Vec3d& hdir, Atom* atomj ){
+        //printf( "addCap(%i)\n", ia );
         int ja=atoms.size();
         Atom atom_tmp;
         if(atomj==0){
@@ -1098,6 +1099,7 @@ class Builder{  public:
             for(int i=0;i<ne;i++)Hmask[3-i]=0;
             breverse = 0;
         }
+        //printf( "addCaps[%i] ne %i b %i \n", ia, ne, bDummyEpair ); 
         //printf( "makeSPConf: atom[%i] ncap %i nH %i nb %i npi %i ne %i Hmask{%i,%i,%i,%i}  \n", ia, ncap, nH, nb,npi,ne,  (int)Hmask[0],(int)Hmask[1],(int)Hmask[2],(int)Hmask[3] );
         for(int i=0; i<ncap; i++){
             if     (Hmask[i]!=breverse){ addCap(ia,hs[nb+i],&capAtom     ); }
@@ -1147,12 +1149,31 @@ class Builder{  public:
             hs[i]  = atoms[ja].pos - atoms[ia].pos;
             hs[i].normalize();
         }
+        //printf( "makeSPConf[%i] npi=%i ne=%i ncap=%i bDummyEpair=%i bAddCaps=%i \n", ia, npi,ne,ncap, bDummyEpair,bAddCaps  );
         makeConfGeom(conf.nbond, npi, hs);
         if(bAddCaps && (ncap>0) ) addCaps( ia, ncap, ne, nb, hs );
         if(bDummyPi){ for(int i=0; i<npi; i++){ addCap(ia,hs[i+ncap+nb],&capAtomPi); } }
         conf.npi=npi;
         conf.ne =ne;
         //printf("-> "); println(conf);
+    }
+
+    int addEpairsToAtoms(int ia){
+        int ic=atoms[ia].iconf;
+        if(ic<0)return false;
+        AtomConf& conf = confs[ic];
+        Vec3d hs[4];
+        makeConfGeom(conf.nbond, conf.npi, hs);
+        //printf( "addEpairsToAtoms.1(%i) nb=%i npi=%i ne=%i ntot=%i \n", ia, conf.nbond, conf.npi, conf.ne, conf.n  );
+        int ne=conf.ne;
+        conf.ne=0;
+        conf.n-=ne;
+        //printf( "addEpairsToAtoms.2(%i) nb=%i npi=%i ne=%i ntot=%i \n", ia, conf.nbond, conf.npi, conf.ne, conf.n  );
+        for( int i=0; i<ne; i++ ){
+            addCap(ia,hs[conf.nbond+i],&capAtomEpair);
+        }
+        //printf( "addEpairsToAtoms.3(%i) nb=%i npi=%i ne=%i ntot=%i \n", ia, conf.nbond, conf.npi, conf.ne, conf.n  );
+        return conf.ne;
     }
 
     bool autoConfEPi(int ia){
@@ -1163,6 +1184,7 @@ class Builder{  public:
         AtomConf& conf = confs[ic];
         conf.ne  = params->atypes[ityp].nepair();
         conf.fillIn_npi_sp3();
+        if(bDummyEpair){ addEpairsToAtoms(ia); }
         //int npi = 4 - conf.nbond - ne - nH;
         //printf( "autoConfEPi[%i] typ %i ne %i npi %i \n", ia, ityp, ne, npi );
         //for(int i=0; i<ne;  i++)conf.addEpair();
@@ -1377,7 +1399,7 @@ class Builder{  public:
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
-        printf( "MM::Builder::autoBondsPBC() \n" );
+        //printf( "MM::Builder::autoBondsPBC() \n" );
         if(verbosity>0)printf( "MM::Builder::autoBondsPBC() \n" );
         if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
         if(imax<0)imax=atoms.size();
@@ -1742,10 +1764,11 @@ class Builder{  public:
 
     void printAtomNeighs(int ia)const{
         const Atom& A = atoms[ia];
-        printf("atom[%i] t%i c%i ", ia, A.type, A.iconf );
+        if(params){ printf("atom[%i] t%i=`%s` c%i ", ia, A.type, params->atypes[A.type].name, A.iconf );  }
+        else      { printf("atom[%i] t%i c%i ", ia, A.type, A.iconf ); }        
         if(A.iconf>=0){
             const AtomConf& c = confs[A.iconf];
-            printf("nbpeH(%i|%i,%i,%i,%i) neighs(", c.n,c.nbond,c.npi,c.ne,c.nH);
+            printf("nbpeH(%i|%i,%i,%i,%i) neighs{", c.n,c.nbond,c.npi,c.ne,c.nH);
             for(int i=0; i<N_NEIGH_MAX; i++){
                 int ib = c.neighs[i];
                 int ja=-2;
@@ -1754,7 +1777,7 @@ class Builder{  public:
                 }
                 printf("%3i,", ja );
             }
-            printf("]" );
+            printf("}" );
         }
     }
 
@@ -2220,7 +2243,7 @@ class Builder{  public:
         if     ( iret<0  ){ return iret; }
         else if( iret==0 ){ bPBC=false;  }
         else if( iret>0  ){ bPBC=true;   }
-        printf("MM::Builder::loadMolTypeXYZ(%s) bPBC=%i \n", fname, bPBC );
+        //printf("MM::Builder::loadMolTypeXYZ(%s) bPBC=%i \n", fname, bPBC );
         if(params) params->assignREs( mol->natoms, mol->atomType, mol->REQs );
         int ityp = molTypes.size();
         mol2molType[(size_t)mol]=ityp;

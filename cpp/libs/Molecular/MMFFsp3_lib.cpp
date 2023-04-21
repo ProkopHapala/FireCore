@@ -89,7 +89,7 @@ void* init( char* xyz_name, char* smile_name, int* nPBC, char* sAtomTypes, char*
 }
 
 void initParams       ( const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){ W.tmpstr=tmpstr; W.initParams(sAtomTypes,sBondTypes,sAngleTypes ); }
-int  buildMolecule_xyz( const char* xyz_name ){ return W.buildMolecule_xyz( xyz_name );  }
+int  buildMolecule_xyz( const char* xyz_name, bool bEpairs, double fAutoCharges ){  W.builder.bDummyEpair=bEpairs; W.fAutoCharges=fAutoCharges;  return W.buildMolecule_xyz( xyz_name );  }
 void makeFFs          ( ){ W.makeFFs(); }
 void clear            ( ){ W.clear();   }
 
@@ -188,5 +188,11 @@ void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi,
 void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){ 
     W.scanRotation( n, selection,ia0, iax0, iax1, phi, nstep, Es, bWriteTrj );
 }
+
+void printTypes     ( ){ W.params.printAtomTypes(); }
+void printAtomConfs ( bool bOmmitCap, bool bNeighs ){ W.builder.printAtomConfs(bOmmitCap,bNeighs); }
+void printAtomTypes ( ){ W.builder.printAtomTypes ( ); }
+void printBonds     ( ){ W.builder.printBonds     ( ); }
+void printBondParams( ){ W.builder.printBondParams( ); }
 
 } // extern "C"

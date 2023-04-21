@@ -48,6 +48,10 @@ header_strings = [
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){",
+#"void printAtomConfs ( bool bOmmitCap, bool bNeighs )",
+#"void printAtomTypes ( )",
+#"void printBonds     ( )",
+#"void printBondParams( )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -191,10 +195,10 @@ def initParams( sAtomTypes="common_resources/AtomTypes.dat", sBondTypes = "commo
     return lib.initParams( cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
 
 #  int  buildMolecule_xyz( const char* xyz_name )
-lib. buildMolecule_xyz.argtypes  = [c_char_p] 
+lib. buildMolecule_xyz.argtypes  = [c_char_p, c_bool, c_double ] 
 lib. buildMolecule_xyz.restype   =  c_int
-def  buildMolecule_xyz(xyz_name):
-    return lib.buildMolecule_xyz( cstr(xyz_name) )
+def  buildMolecule_xyz(xyz_name, bEpairs=False, fAutoCharges=-1 ):
+    return lib.buildMolecule_xyz( cstr(xyz_name), bEpairs, fAutoCharges )
 
 #  void makeFFs         (                      )
 lib.makeFFs.argtypes  = [] 
@@ -384,6 +388,37 @@ def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False)
     ias = bond2atom[ib,:]
     return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
 
+
+
+#  void printTypes ( )
+lib.printTypes.argtypes  = [] 
+lib.printTypes.restype   =  None
+def printTypes():
+    lib.printTypes()
+
+#  void printAtomConfs ( bool bOmmitCap, bool bNeighs )
+lib.printAtomConfs.argtypes  = [c_bool, c_bool] 
+lib.printAtomConfs.restype   =  None
+def printAtomConfs(bOmmitCap=False, bNeighs=True):
+    lib.printAtomConfs(bOmmitCap, bNeighs)
+
+#  void printAtomTypes ( )
+lib.printAtomTypes.argtypes  = [] 
+lib.printAtomTypes.restype   =  None
+def printAtomTypes():
+    lib.printAtomTypes()
+
+#  void printBonds     ( )
+lib.printBonds.argtypes  = [] 
+lib.printBonds.restype   =  None
+def printBonds():
+    lib.printBonds()
+
+#  void printBondParams( )
+lib.printBondParams.argtypes  = [] 
+lib.printBondParams.restype   =  None
+def printBondParams():
+    lib.printBondParams()
 
 # ====================================
 # ========= Python Functions
