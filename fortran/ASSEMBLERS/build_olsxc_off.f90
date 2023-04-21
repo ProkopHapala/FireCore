@@ -158,10 +158,8 @@
           n2 = n2 + l2 + 1
  
 ! Calculate XC potentials with average density 
-          call cepal (dens(issh,jssh), exc, muxc, dexc, d2exc, dmuxc, d2muxc)
-          call cepal (densij(issh,jssh), exc, muxcij, dexc, d2exc, dmuxcij,     &
-     &                d2muxc)
-
+          call cepal (dens  (issh,jssh), exc, muxc,   dexc, d2exc, dmuxc,   d2muxc )
+          call cepal (densij(issh,jssh), exc, muxcij, dexc, d2exc, dmuxcij, d2muxc )
 
 ! +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ! BUILD XC-MATRIX
@@ -197,25 +195,16 @@
             ! V_xc(n^a)<i,mu|j,nu>
             bcxcx(imu,inu) = muxc*sx(imu,inu)
             ! V'_xc(n^a)[<i,mu|n|j,nu> - n^a<i,mu|j,nu>] 
-            bcxcx(imu,inu) = bcxcx(imu,inu)                                  &
-     &       + dmuxc*(denx(imu,inu) - dens(issh,jssh)*sx(imu,inu))
+            bcxcx(imu,inu) = bcxcx(imu,inu) + dmuxc*(denx(imu,inu) - dens(issh,jssh)*sx(imu,inu))
             ! - V_xc([n_i+n_j]^a)<i,mu|j,nu>  
             ! - V'_xc([n_i+n_j]^a){<i,mu|n_i+n_j|i,nu> 
             !     - [n_i+n_j]^a<i,mu|i,nu>]}
-            bcxcx(imu,inu) = bcxcx(imu,inu) - muxcij*sx(imu,inu)              &
-     &       - dmuxcij*(den1x(imu,inu) - densij(issh,jssh)*sx(imu,inu))
+            bcxcx(imu,inu) = bcxcx(imu,inu) - muxcij*sx(imu,inu)  - dmuxcij*(den1x(imu,inu) - densij(issh,jssh)*sx(imu,inu))
 
-
-
- 
            end do ! do ind2 = -l2, l2
           end do ! do ind1 = -l1, l1
-
-          ! increment indicator 
           n2 = n2 + l2
          end do ! do jssh = 1, nssh(in2)
-
-         ! increment indicator 
          n1 = n1 + l1
         end do !do issh = 1, nssh(in1)
 
