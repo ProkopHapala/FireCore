@@ -169,18 +169,18 @@ class MMFFparams{ public:
 
     void string2AtomType(const char * str, AtomType& atyp ){
         char      parent_name[8];
-        //int iZ_, neval_, valence_, sym_;
-        //char sclr[6];           1                       2      3        4         5        6         7     8      9        10      11     12     13     14   15   16    17   18   19   20     21   22    23
-        int nret = sscanf( str, " %s         %s           %i     %i,      %i       %i        %i      %lf    %lf    %x        %lf    %lf     %lf   %lf    %lf  %lf   %lf   %lf  %lf   %lf  %i   %lf   %lf    %lf ", 
-                                 atyp.name, parent_name, &atyp.iZ, &atyp.neval, &atyp.valence, &atyp.sym,  &atyp.RvdW, &atyp.EvdW, &atyp.color,   &atyp.Eaff, &atyp.Ehard, &atyp.Ra, &atyp.eta,   &atyp.Ass,&atyp.Asp, &atyp.Kss,&atyp.Ksp,&atyp.Kep,&atyp.Kpp, &atyp.ne,&atyp.eRvdW,&atyp.eEvdW,&atyp.eQ );
-        //iZ=iZ_; neval=neval_; valence=valence_; sym=sym_;
+        int iZ_, neval_, valence_, sym_;
+        //char sclr[6];           1           2           3        4        5        6        7         8            9           10            11           12        13          14        15         16         17         18        19         20           21          22        23
+        int nret = sscanf( str, " %s         %s           %i      %i       %i        %i      %lf       %lf          %x            %lf          %lf          %lf       %lf         %lf       %lf        %lf       %lf        %lf       %lf         %i           %lf         %lf      %lf ", 
+                                 atyp.name, parent_name, &iZ_, &neval_, &valence_, &sym_,  &atyp.RvdW, &atyp.EvdW, &atyp.color,   &atyp.Eaff, &atyp.Ehard, &atyp.Ra, &atyp.eta,   &atyp.Ass,&atyp.Asp, &atyp.Kss,&atyp.Ksp,&atyp.Kep,&atyp.Kpp, &atyp.ne,&atyp.eRvdW,&atyp.eEvdW,&atyp.eQ );
+        atyp.iZ=iZ_; atyp.neval=neval_; atyp.valence=valence_; atyp.sym=sym_;
         int ipar = getAtomType(parent_name, false); if(ipar<0){  if(atypes.size()==0){ ipar=0; }else{ printf("ERROR in MMFFparams::string2AtomType(): cannot find parrent type(%s) of type(%s) => Exit() \n", parent_name, atyp.name ); exit(0); } };
         atyp.parrent=ipar;
         if(nret<10){ atyp.bQEq  = false; atyp.Eaff=0;atyp.Ehard=0;atyp.Ra=0;atyp.eta=0;           }else{ atyp.bQEq  = true; }
         if(nret<18){ atyp.bMMFF = false; atyp.Ass=0;atyp.Asp=0;atyp.Kss=0;atyp.Ksp=0;atyp.Kep=0;atyp.Kpp=0; }else{ atyp.bMMFF = true; }
         if(nret<22){ atyp.ne=-1,atyp.eRvdW=0,atyp.eEvdW=0,atyp.eQ=0; }
         atyp.subTypes=Vec3iZero;
-        //printf( "AtomType: %s iZ %i ne %i nb %i sym %i RE(%g,%g) %x \n", name,  iZ,   neval_,  valence,   sym,    RvdW, EvdW,   color );
+        //printf( "AtomType: %s iZ %i ne %i nb %i sym %i RE(%g,%g) %x \n", atyp.name,  atyp.iZ,   atyp.neval, atyp. valence,   atyp.sym,    atyp.RvdW, atyp.EvdW,   atyp.color );
         //char ss[256]; printf("%s\n", toString(ss) );
     }
 

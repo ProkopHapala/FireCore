@@ -52,6 +52,7 @@ header_strings = [
 #"void printAtomTypes ( )",
 #"void printBonds     ( )",
 #"void printBondParams( )",
+#"int saveXYZ( const char* fname, const char* comment)",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -259,6 +260,11 @@ def setTrjName(trj_fname_="trj.xyz", savePerNsteps=1, bDel=True ):
     trj_fname=cstr(trj_fname_)
     return lib.setTrjName( trj_fname, savePerNsteps )
 
+#  int saveXYZ( const char* fname, const char* comment)
+lib.saveXYZ.argtypes  = [c_char_p, c_char_p, c_int ] 
+lib.saveXYZ.restype   =  c_int
+def saveXYZ(fname, comment, imod=1 ):
+    return lib.saveXYZ( cstr(fname), cstr(comment), imod )
 
 # char* getType( int ia, bool fromFF){
 lib.getType.argtypes  = [c_int, c_bool ] 

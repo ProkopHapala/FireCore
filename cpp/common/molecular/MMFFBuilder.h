@@ -666,7 +666,7 @@ class Builder{  public:
     void assignAllBondParams(){ for(int i=0;i<bonds.size();i++){ assignBondParams(i); } };
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
-    void addCap(int ia,const Vec3d& hdir, Atom* atomj ){
+    void addCap(int ia,const Vec3d& hdir, Atom* atomj, double l=1.0 ){
         //printf( "addCap(%i)\n", ia );
         int ja=atoms.size();
         Atom atom_tmp;
@@ -674,8 +674,12 @@ class Builder{  public:
             atom_tmp=capAtom;
             atomj=&atom_tmp;
         }
-        atomj->pos = atoms[ia].pos + hdir;
+        atomj->pos = atoms[ia].pos + hdir*l;
         insertAtom(*atomj);
+        // { // DEBUG
+        //     Atom& a= atoms.back();
+        //     printf( "addCap[%i : %i ] pos(%g,%g,%g) pos0(%g,%g,%g) hdir(%g,%g,%g) \n", atoms.size(), ia, a.pos.x,a.pos.y,a.pos.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z, hdir.x,hdir.y,hdir.z );
+        // }
         capBond.atoms.set(ia,ja);
         insertBond( capBond );
     }
@@ -691,8 +695,8 @@ class Builder{  public:
     void makeConfGeom(int nb, int npi, Vec3d* hs){
         Mat3d m;
         if(nb==3){ // defined by 3 sigma bonds
+            //printf( "makeConfGeom nb=%i npi=%i \n", 3, npi );
             m.b.set_cross( hs[1]-hs[0], hs[2]-hs[0] );
-            //printf( "nb,npi(%i,%i) m.b(%g,%g,%g) \n", nb, npi, m.b.x, m.b.y, m.b.z );
             m.b.mul( -1/m.b.norm() );
             if(npi==0){ // sp3 no-pi
                 if( 0 < m.b.dot( hs[0]+hs[1]+hs[2] ) ){ m.b.mul(-1.); }
@@ -701,21 +705,23 @@ class Builder{  public:
                 hs[3]=m.b;
             }
         }else if(nb==2){ // defined by 2 sigma bonds
+            //printf( "makeConfGeom nb=%i npi=%i \n", 2, npi );
             m.fromCrossSafe( hs[0], hs[1] );
             if      (npi==0){ // -CH2- like sp3 no-pi
                 const double cb = 0.81649658092; // sqrt(2/3)
-                const double cc = 0.57735026919;  // sqrt(1/3)
+                const double cc = 0.57735026919; // sqrt(1/3)
                 hs[nb  ] = m.c*cc+m.b*cb;
                 hs[nb+1] = m.c*cc-m.b*cb;
+                //printf( "hs:\n" );
             }else if(npi==1){ // =CH- like  sp 1-pi
                 hs[nb  ] = m.c;
                 hs[nb+1] = m.b;
-                //printf("like =CH- H(%g,%g,%g) pi(%g,%g,%g,) \n", hs[nb].x, hs[nb].y, hs[nb].z, hs[nb+1].x, hs[nb+1].y, hs[nb+1].z );
             }else{            // #C- like sp 2-pi
                 hs[nb  ] = m.c;
                 hs[nb+1] = m.b;
             }
         }else if(nb==1){
+            //printf( "makeConfGeom nb=%i npi=%i \n", 1, npi );
             m.c = hs[0]; m.c.normalize();
             m.c.getSomeOrtho(m.b,m.a);
             if      (npi==0){ // -CH3 like sp3 no-pi
@@ -737,6 +743,7 @@ class Builder{  public:
                 hs[nb+2] = m.a;
             }
         }else if(nb==0){
+            //printf( "makeConfGeom nb=%i npi=%i \n", 0, npi );
             m.c = hs[0]; m.c.normalize();
             m.c.getSomeOrtho(m.b,m.a);
             if      (npi==0){ //  CH4 like sp3 no-pi
@@ -1158,19 +1165,28 @@ class Builder{  public:
         //printf("-> "); println(conf);
     }
 
-    int addEpairsToAtoms(int ia){
+    int addEpairsToAtoms(int ia, double l=0.5 ){
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
         AtomConf& conf = confs[ic];
+        int nb   = conf.nbond;
         Vec3d hs[4];
-        makeConfGeom(conf.nbond, conf.npi, hs);
+        for(int i=0;i<nb;i++){
+            int ib = conf.neighs[i];
+            int ja = bonds[ib].getNeighborAtom(ia);
+            hs[i]  = atoms[ja].pos - atoms[ia].pos;
+            hs[i].normalize();
+        }
+        makeConfGeom( nb, conf.npi, hs);
         //printf( "addEpairsToAtoms.1(%i) nb=%i npi=%i ne=%i ntot=%i \n", ia, conf.nbond, conf.npi, conf.ne, conf.n  );
         int ne=conf.ne;
         conf.ne=0;
         conf.n-=ne;
         //printf( "addEpairsToAtoms.2(%i) nb=%i npi=%i ne=%i ntot=%i \n", ia, conf.nbond, conf.npi, conf.ne, conf.n  );
         for( int i=0; i<ne; i++ ){
-            addCap(ia,hs[conf.nbond+i],&capAtomEpair);
+            int ib=nb+i;
+            //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
+            addCap(ia,hs[ib],&capAtomEpair, l );
         }
         //printf( "addEpairsToAtoms.3(%i) nb=%i npi=%i ne=%i ntot=%i \n", ia, conf.nbond, conf.npi, conf.ne, conf.n  );
         return conf.ne;
@@ -1182,7 +1198,7 @@ class Builder{  public:
         int ityp=atoms[ia].type;
         //params->assignRE( ityp, REQ );
         AtomConf& conf = confs[ic];
-        conf.ne  = params->atypes[ityp].nepair();
+        conf.ne = params->atypes[ityp].nepair();
         conf.fillIn_npi_sp3();
         if(bDummyEpair){ addEpairsToAtoms(ia); }
         //int npi = 4 - conf.nbond - ne - nH;
@@ -1411,7 +1427,8 @@ class Builder{  public:
             const Atom& A = atoms[i];
             R = A.REQ.x;
             int ipbc=0;
-            if(verbosity>1)printf( "autoBondsPBC() Atom[%i] R %g \n", i, R );
+            //if(verbosity>1)
+            printf( "autoBondsPBC() Atom[%i] R %g \n", i, R );
             for(int ix=-npbc.x;ix<=npbc.x;ix++){
                 for(int iy=-npbc.y;iy<=npbc.y;iy++){
                     for(int iz=-npbc.z;iz<=npbc.z;iz++){
