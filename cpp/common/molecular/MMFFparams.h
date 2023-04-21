@@ -68,6 +68,7 @@ class AtomType{ public:
     double    RvdW;
     double    EvdW;
     Vec3i     subTypes=Vec3iZero;  // sp1 sp2 sp3    // Q1 Q2 Q3 (polarized)
+    int       parrent;
 
     // ---- MMFF
     bool bMMFF;
@@ -91,16 +92,17 @@ class AtomType{ public:
     }
 
     //void print(int i){ printf( "AtomType[%i] %s (%i,%i,%i,%i) vdW(R=%lf,E=%lf) clr %x Eaff,Ehard (%g,%g) \n", i, name,  iZ,   neval,  valence,   sym,    RvdW, EvdW,   color, Eaff,Ehard ); }
-    void print(int i){ printf( "AtomType[%i] %s (%i,%i,%i,%i) LJ(%g,E=%g) QEq(%g,%g) MMMFF(%g,%g|%g,%g,%g,%g) Epair(%i,%g,%g,%g)\n", i, name,  iZ,   neval,valence,sym,    RvdW,EvdW,   Eaff,Ehard,   Ass,Asp,Kss,Ksp,Kep,Kpp,   ne,eRvdW,eEvdW,eQ  ); }
+    void print(int i){ printf( "AtomType[%i/%i] %s %i(%i,%i,%i) LJ(%g,E=%g) QEq(%g,%g) MMMFF(%g,%g|%g,%g,%g,%g) Epair(%i,%g,%g,%g)\n", i,parrent, name,  iZ, neval,valence,sym,    RvdW,EvdW,   Eaff,Ehard,   Ass,Asp,Kss,Ksp,Kep,Kpp,   ne,eRvdW,eEvdW,eQ  ); }
 
     inline uint8_t nepair(){ return (neval-valence)/2; };
     inline uint8_t npi   (){ return sym; };
 
+    /*
     void fromString( char * str ){
         int iZ_, neval_, valence_, sym_;
-        //char sclr[6];           1   2       3         4        5         6     7      8        9        10   11     12     13   14   15    16   17   18   19  20   21    22
-        int nret = sscanf( str, " %s    %i    %i       %i        %i      %lf    %lf    %x        %lf    %lf     %lf   %lf    %lf  %lf   %lf   %lf  %lf   %lf  %i   %lf   %lf    %lf ", 
-                                 name, &iZ_, &neval_, &valence_, &sym_,  &RvdW, &EvdW, &color,   &Eaff, &Ehard, &Ra, &eta,   &Ass,&Asp, &Kss,&Ksp,&Kep,&Kpp, &ne,&eRvdW,&eEvdW,&eQ );
+        //char sclr[6];           1     2      3        4         5        6         7     8      9        10      11     12     13     14   15   16    17   18   19   20     21   22    23
+        int nret = sscanf( str, " %s    %i     %i,      %i       %i        %i      %lf    %lf    %x        %lf    %lf     %lf   %lf    %lf  %lf   %lf   %lf  %lf   %lf  %i   %lf   %lf    %lf ", 
+                                 name, &iZ_, parrent, &neval_, &valence_, &sym_,  &RvdW, &EvdW, &color,   &Eaff, &Ehard, &Ra, &eta,   &Ass,&Asp, &Kss,&Ksp,&Kep,&Kpp, &ne,&eRvdW,&eEvdW,&eQ );
         iZ=iZ_; neval=neval_; valence=valence_; sym=sym_;
         if(nret<10){ bQEq  = false; Eaff=0;Ehard=0;Ra=0;eta=0;           }else{ bQEq  = true; }
         if(nret<18){ bMMFF = false; Ass=0;Asp=0;Kss=0;Ksp=0;Kep=0;Kpp=0; }else{ bMMFF = true; }
@@ -109,6 +111,7 @@ class AtomType{ public:
         //printf( "AtomType: %s iZ %i ne %i nb %i sym %i RE(%g,%g) %x \n", name,  iZ,   neval_,  valence,   sym,    RvdW, EvdW,   color );
         //char ss[256]; printf("%s\n", toString(ss) );
     }
+    */
 
 };
 
@@ -155,12 +158,30 @@ class MMFFparams{ public:
     }
 
     int getAtomType(const char* s, bool bErr=true){
+        //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
         auto found = atomTypeDict.find(s);
         if(found==atomTypeDict.end()){ 
             if(bErr){ printf( "ERROR: MMFFparams::getAtomType(%s) not found !!! => exit() \n", s ); printAtomTypeDict(); exit(0); }
             return -1; 
         }
         return found->second;
+    }
+
+    void string2AtomType(const char * str, AtomType& atyp ){
+        char      parent_name[8];
+        //int iZ_, neval_, valence_, sym_;
+        //char sclr[6];           1                       2      3        4         5        6         7     8      9        10      11     12     13     14   15   16    17   18   19   20     21   22    23
+        int nret = sscanf( str, " %s         %s           %i     %i,      %i       %i        %i      %lf    %lf    %x        %lf    %lf     %lf   %lf    %lf  %lf   %lf   %lf  %lf   %lf  %i   %lf   %lf    %lf ", 
+                                 atyp.name, parent_name, &atyp.iZ, &atyp.neval, &atyp.valence, &atyp.sym,  &atyp.RvdW, &atyp.EvdW, &atyp.color,   &atyp.Eaff, &atyp.Ehard, &atyp.Ra, &atyp.eta,   &atyp.Ass,&atyp.Asp, &atyp.Kss,&atyp.Ksp,&atyp.Kep,&atyp.Kpp, &atyp.ne,&atyp.eRvdW,&atyp.eEvdW,&atyp.eQ );
+        //iZ=iZ_; neval=neval_; valence=valence_; sym=sym_;
+        int ipar = getAtomType(parent_name, false); if(ipar<0){  if(atypes.size()==0){ ipar=0; }else{ printf("ERROR in MMFFparams::string2AtomType(): cannot find parrent type(%s) of type(%s) => Exit() \n", parent_name, atyp.name ); exit(0); } };
+        atyp.parrent=ipar;
+        if(nret<10){ atyp.bQEq  = false; atyp.Eaff=0;atyp.Ehard=0;atyp.Ra=0;atyp.eta=0;           }else{ atyp.bQEq  = true; }
+        if(nret<18){ atyp.bMMFF = false; atyp.Ass=0;atyp.Asp=0;atyp.Kss=0;atyp.Ksp=0;atyp.Kep=0;atyp.Kpp=0; }else{ atyp.bMMFF = true; }
+        if(nret<22){ atyp.ne=-1,atyp.eRvdW=0,atyp.eEvdW=0,atyp.eQ=0; }
+        atyp.subTypes=Vec3iZero;
+        //printf( "AtomType: %s iZ %i ne %i nb %i sym %i RE(%g,%g) %x \n", name,  iZ,   neval_,  valence,   sym,    RvdW, EvdW,   color );
+        //char ss[256]; printf("%s\n", toString(ss) );
     }
 
     int loadAtomTypes(const char * fname, bool exitIfFail=true){
@@ -184,7 +205,8 @@ class MMFFparams{ public:
             if(line==NULL)  break;
             //printf( "loadAtomTypes[%i] line=%s", i, line );
             if(line[0]=='#')continue;
-            atyp.fromString( line );
+            //atyp.fromString( line );
+            string2AtomType( line, atyp );
             atypes.push_back(atyp);
             atomTypeNames.push_back( atyp.name );
             atomTypeDict[atyp.name] = atypes.size()-1;
@@ -333,7 +355,7 @@ class MMFFparams{ public:
 
     void init(const char* fatomtypes=0, const char* fbondtypes=0, const char* fagnletypes=0){
         //if(verbosity>0) 
-        printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
+        //printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
         if(fatomtypes ){
             loadAtomTypes( fatomtypes );
             assignAllSubTypes();

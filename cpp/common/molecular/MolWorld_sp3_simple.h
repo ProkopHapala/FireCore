@@ -137,7 +137,8 @@ void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharg
 int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
-    sprintf(tmpstr, "%s.xyz", name ); printf("tmpstr=`%s`\n", tmpstr);
+    sprintf(tmpstr, "%s.xyz", name ); 
+    //printf("tmpstr=`%s`\n", tmpstr);
     int imol  = builder.loadMolType( tmpstr, name );
     int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
     int ifrag = builder.frags.size()-1;
@@ -183,8 +184,9 @@ void initParams( const char* sAtomTypes, const char* sBondTypes, const char* sAn
     params.init( sAtomTypes, sBondTypes, sAngleTypes );
     builder.bindParams(&params);
     params_glob = &params;
+    builder.capAtomEpair.type = params.getAtomType("E");
     //params.printAtomTypeDict();
-    params.printAtomTypes();
+    //params.printAtomTypes();
     //params.printBond();
 }
 
@@ -193,8 +195,8 @@ int buildMolecule_xyz( const char* xyz_name ){
     if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
     //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-    builder.autoAllConfEPi( );        //builder.printAtomConfs(true);
-
+    builder.autoAllConfEPi( );        
+    builder.printAtomConfs(false, true );
     builder.assignAllBondParams();    //if(verbosity>1)
     builder.finishFragment(ifrag);    
     //printf( "buildMolecule_xyz: nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
@@ -262,6 +264,11 @@ void makeFFs(){
         setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
     }
     _realloc( manipulation_sel, nbmol.natoms );  
+}
+
+
+virtual void init_empty(){
+
 }
 
 virtual void init( bool bGrid=false ){
