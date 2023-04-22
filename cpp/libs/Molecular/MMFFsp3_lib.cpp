@@ -206,7 +206,13 @@ int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, boo
     int i=0;
     for( int ib : W.builder.selection ){
         Vec2i b = W.builder.bonds[ib].atoms;
-        if(b.b==it1){ b=b.swaped(); };
+        //int t1 = W.builder.atoms[b.a].type;
+        int t2 = W.builder.atoms[b.b].type;
+        //if( byZ ){ t1=W.params.atypes[t1].iZ; t2=W.params.atypes[t2].iZ; };
+        if( byZ ){ t2=W.params.atypes[t2].iZ; };
+        //printf( "b(%i,%i) types(%i,%i) its(%i,%i)\n",  b.a,b.b,  t1,t2, it1,it2 );
+        //if(t2==it1){ b=b.swaped(); printf( "bond swap b(%i,%i)\n", b.a, b.b ); };
+        if(t2==it1){ b=b.swaped(); };
         //printf( "selectBondsBetweenTypes[%i] %i,%i \n", i, b.a,b.b );
         atoms[i]=b;
         i++;
@@ -240,21 +246,37 @@ void orient( const char* fname, int fw1,int fw2,  int up1,int up2,  int i0,  int
     fclose(fout);
 }
 
-void scanHBond( const char* fname, int n, double d,  int ifrag1, int ifrag2, int i1a,int i1b, int i2a,int i2b ){
+void scanHBond( const char* fname, int n, double dl, double l0, int ifrag1, int ifrag2, int i1a,int i1b, int i2a,int i2b, bool isDonor1, bool isDonor2, double* ups_ ){
     FILE* fout = fopen(fname,"w");
     const MM::Fragment& frag1 = W.builder.frags[ifrag1];
     const MM::Fragment& frag2 = W.builder.frags[ifrag2];
-    
+    Vec3d up1,up2;
+    if(ups_){ Vec3d* ups=(Vec3d*)ups_; up1=ups[0]; up2=ups[1]; up1.normalize(); up2.normalize(); }else{ up1=Vec3dZ; up2=Vec3dZ; }
+
+    //Vec3d fw1 = W.builder.atoms[i1b].pos - W.builder.atoms[i1a].pos;  fw1.normalize();
+    //Vec3d fw2 = W.builder.atoms[i2b].pos - W.builder.atoms[i2a].pos;  fw2.normalize();    
+    // W.builder.orient_atoms( fw1, up1, W.builder.atoms[i1a].pos,  Vec3dZero,            frag1.atomRange.a, frag1.atomRange.b );
+    // W.builder.orient_atoms( fw2, up2, W.builder.atoms[i2a].pos,  Vec3d{ 0.0,0.0,l0 },  frag2.atomRange.a, frag2.atomRange.b );
+
+    // Vec3d fw1 = W.builder.atoms[i1b].pos - W.builder.atoms[i1a].pos;  fw1.normalize();
+    // Vec3d fw2 = W.builder.atoms[i2a].pos - W.builder.atoms[i2b].pos;  fw2.normalize();  // reverse direction    
+    // W.builder.orient_atoms( fw1, up1, W.builder.atoms[i1b].pos,  Vec3dZero,            frag1.atomRange.a, frag1.atomRange.b ); // donor    => center is capping hydrogen [i1b]
+    // W.builder.orient_atoms( fw2, up2, W.builder.atoms[i2a].pos,  Vec3d{ 0.0,0.0,l0 },  frag2.atomRange.a, frag2.atomRange.b ); // acceptor => center is node atom        [i2a]
+    //printf( "isDonor %i %i \n", isDonor1, isDonor2 );
+    Vec3d p1,p2;
+    if(isDonor1){ p1=W.builder.atoms[i1b].pos; }else{ p1=W.builder.atoms[i1a].pos; }
+    if(isDonor2){ p2=W.builder.atoms[i2b].pos; }else{ p2=W.builder.atoms[i2a].pos; }
     Vec3d fw1 = W.builder.atoms[i1b].pos - W.builder.atoms[i1a].pos;  fw1.normalize();
-    Vec3d fw2 = W.builder.atoms[i2b].pos - W.builder.atoms[i2a].pos;  fw2.normalize();
+    Vec3d fw2 = W.builder.atoms[i2b].pos - W.builder.atoms[i2a].pos;  fw2.normalize();   fw2.mul(-1.); // reverse direction   
+    W.builder.orient_atoms( fw1, up1, p1,  Vec3d{ 0.0,0.0,0  }, frag1.atomRange.a, frag1.atomRange.b ); // donor    => center is capping hydrogen [i1b]
+    W.builder.orient_atoms( fw2, up2, p2,  Vec3d{ 0.0,0.0,l0 }, frag2.atomRange.a, frag2.atomRange.b ); // acceptor => center is node atom        [i2a]
 
-    W.builder.orient_atoms( fw1, Vec3dZ, W.builder.atoms[i1a].pos,  Vec3dZero,             frag1.atomRange.a, frag1.atomRange.b );
-
-    W.builder.orient_atoms( fw2, Vec3dZ, W.builder.atoms[i2a].pos,  Vec3d{ 0.0,0.0,5.0 },  frag2.atomRange.a, frag2.atomRange.b );
-    //W.builder.move();
-
-    W.builder.write2xyz(fout, "#scanHBond[0]" );
-
+    Vec3d d=Vec3d{ 0.0,0.0, dl };
+    for(int i=0; i<n+1; i++){
+        sprintf(tmpstr, "#scanHBond[%i] l=%7.3f[A]", i, l0+dl*i );
+        W.builder.write2xyz(fout, tmpstr );
+        W.builder.move_atoms( d, frag2.atomRange.a, frag2.atomRange.b );
+    }
     fclose(fout);
 }
 

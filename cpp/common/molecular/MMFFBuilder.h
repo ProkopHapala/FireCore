@@ -398,7 +398,7 @@ class Builder{  public:
         }
     }
     void move_atoms     ( Vec3d dshift,                                                                        int i0=0, int imax=-1 ){ if(imax<0){imax=atoms.size();} for(int i=i0; i<imax; i++){ atoms[i].pos.add(dshift); } }
-    void transform_atoms( Mat3d M,                         Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ if(imax<0){imax=atoms.size();} printf( "transform_atoms orig_old(%g,%g,%g)  orig_new(%g,%g,%g)  \n",  orig_old.x,orig_old.y,orig_old.z,   orig_new.x,orig_new.y,orig_new.z ); for(int i=i0; i<imax; i++){ Vec3d p; M.dot_to( atoms[i].pos-orig_old, p); p.add(orig_new); atoms[i].pos=p; } }
+    void transform_atoms( Mat3d M,                         Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ if(imax<0){imax=atoms.size();} for(int i=i0; i<imax; i++){ Vec3d p; M.dot_to( atoms[i].pos-orig_old, p); p.add(orig_new); atoms[i].pos=p; } }
     void rotate_atoms   ( double angle, Vec3d axis=Vec3dZ, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ Mat3d M; M.fromRotation(angle,axis);    transform_atoms( M,orig_old,orig_new,i0,imax); }
     void orient_atoms   ( Vec3d fw, Vec3d up,              Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ Mat3d M; M.fromDirUp(fw,up); transform_atoms( M,orig_old,orig_new,i0,imax); }
 

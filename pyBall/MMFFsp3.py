@@ -416,10 +416,11 @@ def orient(fw, up, i0=None, imin=0, imax=-1, fname="oriented.xyz" ):
     return lib.orient( cstr(fname), fw[0],fw[1], up[0],up[1], i0, imin, imax)
 
 #  void scanHBond( const char* fname, int n, double d,  int ifrag1, int ifrag2, int i1a,int i1b, int i2a,int i2b ){
-lib.scanHBond.argtypes  = [c_char_p, c_int, c_double, c_int, c_int, c_int, c_int, c_int, c_int] 
+lib.scanHBond.argtypes  = [c_char_p, c_int, c_double, c_double, c_int, c_int, c_int, c_int, c_int, c_int, c_bool,c_bool, c_double_p ] 
 lib.scanHBond.restype   =  None
-def scanHBond( b1, b2, ifrag1=0, ifrag2=1, fname="scanHBond.xyz", n=10, d=0.2 ):
-    return lib.scanHBond( cstr(fname), n, d, ifrag1, ifrag2, b1[0],b1[1], b2[0],b2[1] )
+def scanHBond( b1, b2, ifrag1=0, ifrag2=1, fname="scanHBond.xyz", n=10, dl=0.2, l0=5.0, isDonor=(True,False), ups=None ):
+    if(ups is not None): ups=np.array(ups)
+    return lib.scanHBond( cstr(fname), n, dl, l0, ifrag1, ifrag2, b1[0],b1[1], b2[0],b2[1],  isDonor[0],isDonor[1],  _np_as(ups,c_double_p)  )
 
 #  int getFrament( int ifrag, int* bounds_, double* pose ){
 lib.getFrament.argtypes  = [c_int, c_int_p, c_double_p] 
