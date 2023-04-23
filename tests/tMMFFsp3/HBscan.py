@@ -10,29 +10,48 @@ from pyBall import MMFFsp3     as mmff
 
 
 
-def scanAllHBonds( path1, path2 ):
-    f1 = mmff.buildMolecule_xyz( xyz_name=path1, bEpairs=True )
-    f2 = mmff.buildMolecule_xyz( xyz_name=path2, bEpairs=True )
-    b1,_,_ = mmff.getFrament(f1);    print( "bonds_1", b1[2] )
-    b2,_,_ = mmff.getFrament(f2);    print( "bonds_2", b2[2] )
-    donors_1    = mmff.selectBondsBetweenTypes( b1[2,0], b1[2,1], 8, 1,   True, True ); #print( "donors_1    ", donors_1    )
-    donors_2    = mmff.selectBondsBetweenTypes( b2[2,0], b2[2,1], 8, 1,   True, True ); #print( "donors_2    ", donors_2    )
-    acceptors_1 = mmff.selectBondsBetweenTypes( b1[2,0], b1[2,1], 8, 200, True, True ); #print( "acceptors_1 ", acceptors_1 )
-    acceptors_2 = mmff.selectBondsBetweenTypes( b2[2,0], b2[2,1], 8, 200, True, True ); #print( "acceptors_2 ", acceptors_2 )
+# ======= Setup
 
-    fname1 = os.path.split(path1)[1];  fname1=os.path.splitext(fname1)[0]
-    fname2 = os.path.split(path2)[1];  fname2=os.path.splitext(fname2)[0]
 
-    for i,b1 in enumerate(donors_1):
-        for j,b2 in enumerate(acceptors_2):
-            fname =  "scanHBond_"+fname1+"-H"+str(i)+"_vs_"+fname2+"-e"+str(j)+".xyz"
-            print( "scanHBond ",  b1, b2, fname )
-            mmff.scanHBond( b1, b2, l0=2.0, fname=fname, isDonor=(True,False), ups=[ (0.,0.,1.), (1.,0.,0.) ] )
-    for i,b1 in enumerate(acceptors_1):
-        for j,b2 in enumerate(donors_2):
-            fname = "scanHBond_"+fname1+"-e"+str(i)+"_vs_"+fname2+"-H"+str(j)+".xyz"
-            mmff.scanHBond( b1, b2, l0=2.0, fname=fname, isDonor=(False,True), ups=[ (0.,0.,1.), (1.,0.,0.) ] )
-            print( "scanHBond ", b1, b2, fname )
+'''
+Molecules of interest:
+
+H2O
+HCOOH
+CH2O
+HCN
+HCCH
+CO
+NH3
+
+
+CH3NO2
+
+
+HF,HCl,HBr
+
+'''
+
+
+
+molecules = [
+"HCN",
+#"NH3",
+#"H2O",
+"CH2O",
+#"HCOOH",
+"CHONH2",
+
+#"pyridine",
+#"pyrrole",
+#"furan",
+#"oxazine",
+#"dihydropyrazine",
+#"quinone", 
+#"maleic_anhydride",
+]
+
+
 
 
 
@@ -50,8 +69,7 @@ mmff.initParams()
 # #mmff.orient( [1,3], [0,4] )
 # mmff.orient( [3,4], [0,4] )
 
-
-scanAllHBonds( "data/HCOOH", "data/H2O" )
+mmff.scanAllHBonds( "data/HCOOH", "data/H2O" )
 
 '''
 #------ Job2: HBond-scan

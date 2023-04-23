@@ -465,6 +465,32 @@ def printBondParams():
 # ========= Python Functions
 # ====================================
 
+def scanAllHBonds( path1, path2 ):
+    f1 = buildMolecule_xyz( xyz_name=path1, bEpairs=True )
+    f2 = buildMolecule_xyz( xyz_name=path2, bEpairs=True )
+    b1,_,_ = getFrament(f1);                                                       #print( "bonds_1", b1[2] )
+    b2,_,_ = getFrament(f2);                                                       #print( "bonds_2", b2[2] )
+    donors_1    = selectBondsBetweenTypes( b1[2,0], b1[2,1], 8, 1,   True, True ); #print( "donors_1    ", donors_1    )
+    donors_2    = selectBondsBetweenTypes( b2[2,0], b2[2,1], 8, 1,   True, True ); #print( "donors_2    ", donors_2    )
+    acceptors_1 = selectBondsBetweenTypes( b1[2,0], b1[2,1], 8, 200, True, True ); #print( "acceptors_1 ", acceptors_1 )
+    acceptors_2 = selectBondsBetweenTypes( b2[2,0], b2[2,1], 8, 200, True, True ); #print( "acceptors_2 ", acceptors_2 )
+
+    fname1 = os.path.split(path1)[1];  fname1=os.path.splitext(fname1)[0]
+    fname2 = os.path.split(path2)[1];  fname2=os.path.splitext(fname2)[0]
+
+    for i,b1 in enumerate(donors_1):
+        for j,b2 in enumerate(acceptors_2):
+            fname =  "scanHBond_"+fname1+"-H"+str(i)+"_vs_"+fname2+"-e"+str(j)+".xyz"
+            print( "scanHBond ",  b1, b2, fname )
+            scanHBond( b1, b2, l0=2.0, fname=fname, isDonor=(True,False), ups=[ (0.,0.,1.), (1.,0.,0.) ] )
+    for i,b1 in enumerate(acceptors_1):
+        for j,b2 in enumerate(donors_2):
+            fname = "scanHBond_"+fname1+"-e"+str(i)+"_vs_"+fname2+"-H"+str(j)+".xyz"
+            scanHBond( b1, b2, l0=2.0, fname=fname, isDonor=(False,True), ups=[ (0.,0.,1.), (1.,0.,0.) ] )
+            print( "scanHBond ", b1, b2, fname )
+
+
+
 def plot(b2as=None,ax1=0,ax2=1,ps=None, fs=None, bForce=False, Fscale=1.0 ):
     import matplotlib.pyplot as plt
     from matplotlib import collections  as mc
@@ -492,6 +518,11 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
     if ps is None: ps=apos
     asel=ps[sel]
     plt.scatter( asel[:,ax1], asel[:,ax2], s=s, facecolors='none', edgecolors='r' )
+
+
+
+
+
 
 # ====================================
 # ========= Test Functions
