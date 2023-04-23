@@ -237,6 +237,14 @@ int getFrament( int ifrag, int* bounds_, double* pose ){
     //dihRange;
 }
 
+void findMainAxes( double* rot, int ifrag, int imin,int imax, int* permut_, bool bRot){
+    Vec3i permut{2,1,0};
+    if(permut_){ permut=*((Vec3i*)permut_); };
+    if(ifrag>=0){ const MM::Fragment& frag = W.builder.frags[ifrag]; imin=frag.atomRange.a; imax=frag.atomRange.b; }
+    if(rot){ *((Mat3d*)rot)= W.builder.findMainAxes(imin,imax,bRot,permut); }
+    else   {                 W.builder.findMainAxes(imin,imax,bRot,permut); }    
+}
+
 void orient( const char* fname, int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){
     FILE* fout = fopen(fname,"w");    
     Vec3d fw = W.builder.atoms[fw2].pos - W.builder.atoms[fw1].pos;  fw.normalize();

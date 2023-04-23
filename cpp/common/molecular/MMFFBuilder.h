@@ -46,15 +46,14 @@ struct Atom{
     int iconf;
     Vec3d  pos;
     Quat4d REQ;   // constexpr Vec3d{1.7,sqrt(0.0037292524),0}
-
     //Atom() = default;
 
     void print()const{ printf( " Atom{ t %i c %i f %i REQ(%g,%g,%g) pos(%g,%g,%g)}", type, iconf, frag, REQ.x, REQ.y, REQ.z, pos.x,pos.y,pos.z ); }
 
     Atom() = default;
-    Atom(const Vec3d& pos_):type(0),frag(-1),iconf(-1),REQ(defaultREQ),pos(pos_){};
-    Atom(const Vec3d& pos_,const Quat4d& REQ_):type(0),frag(-1),iconf(-1),REQ(REQ_),pos(pos_){};
-    Atom(int type_,int frag_,int iconf_,const Vec3d& pos_,const Quat4d& REQ_):type(type_),frag(frag_),iconf(iconf_),REQ(REQ_),pos(pos_){};
+    Atom(const Vec3d& pos_):type{0},frag{-1},iconf{-1},REQ{defaultREQ},pos{pos_}{};
+    Atom(const Vec3d& pos_,const Quat4d& REQ_):type{0},frag{-1},iconf{-1},REQ{REQ_},pos{pos_}{};
+    Atom(int type_,int frag_,int iconf_,const Vec3d& pos_,const Quat4d& REQ_):type{type_},frag{frag_},iconf{iconf_},REQ{REQ_},pos{pos_}{};
 };
 
 #define N_NEIGH_MAX 4
@@ -77,6 +76,8 @@ struct AtomConf{
     uint8_t ne    =0; // electron pairs
     uint8_t nH    =0; //
     int neighs[N_NEIGH_MAX]; // neighs  - NOTE: bonds not atoms !!!!
+
+    Vec3d  pi_dir{0.,0.,0.};
 
     //AtomConf() = default;
 
@@ -141,7 +142,7 @@ struct AtomConf{
 
     AtomConf() = default;
     //AtomConf(int iatom_,int npi_)       :iatom(iatom_),npi(npi_),ne(0  ),nH(0),nbond(0),n(npi_    ){};
-    AtomConf(int iatom_,int npi_,int ne_):iatom{iatom_},npi{npi_},ne{ne_},nH{0},nbond{0},n{npi_+ne_}{ for(int i=0;i<N_NEIGH_MAX;i++)neighs[i]=-1; };
+    AtomConf(int iatom_,int npi_,int ne_):iatom{iatom_},npi{npi_},ne{ne_},nH{0},nbond{0},n{npi_+ne_},pi_dir{Vec3dZero}{ for(int i=0;i<N_NEIGH_MAX;i++)neighs[i]=-1; };
     //AtomConf(const MMFFAtomConf&) = default;
     //AtomConf(std::initializer_list<MMFFAtomConf>) {};
 };
@@ -811,6 +812,48 @@ class Builder{  public:
         //if( (nb==2) && (npi=1) ){ printf( "hs angles %g %g %g \n", hs[0].getAngle(hs[1])/M_PI, hs[0].getAngle(hs[2])/M_PI, hs[0].getAngle(hs[3])/M_PI ); }
     }
 
+    bool makeConfGeomPi(int nb, int npi, const Vec3d& pi_dir, Vec3d* hs){
+        //Mat3d m;
+        if(nb==1){  // e.g. =O
+            Vec3d lf; lf.set_cross( pi_dir, hs[0] ); lf.normalize();
+            hs[1] = lf*+0.87758256189+hs[0]*-0.5;
+            hs[2] = lf*-0.87758256189+hs[0]*-0.5;
+            return true;
+        }
+        return false;
+    }
+
+
+    Mat3d findMainAxes(int i0=0,int imax=-1, bool bRot=true, Vec3i permut=Vec3i{2,1,0} ){
+        if(imax<0){ imax=atoms.size();}
+        Mat3d M=Mat3dZero;
+        Mat3d R;
+        Vec3d cog=Vec3dZero;
+        for(int i=i0; i<imax; i++){ cog.add(atoms[i].pos); }; cog.mul( 1./(imax-i0) );
+        for(int i=i0; i<imax; i++){
+            const Vec3d p = atoms[i].pos-cog; 
+            M.addOuter(p,p,1.0);
+        }
+        Vec3d evs;
+        M.eigenvals(evs);
+        evs.sort();
+        //printf( "findMainAxes() evs: %g %g %g \n", evs.x,evs.y,evs.z );
+        M.eigenvec( evs.array[permut.x], R.a );
+        M.eigenvec( evs.array[permut.y], R.b );
+        M.eigenvec( evs.array[permut.z], R.c );
+        if(bRot){
+            for(int i=i0; i<imax; i++){
+                Vec3d p;
+                R.dot_to( atoms[i].pos-cog, p ); 
+                atoms[i].pos=p+cog;
+            }
+        }
+        return R;
+    }
+
+    void findSymmetry(){
+
+    }
 
     void assignSp3Params( int ityp, int nb, int npi, int ne, int npi_neigh, Quat4d& par ){
         int iZ = params->atypes[ityp].iZ;
@@ -1188,7 +1231,27 @@ class Builder{  public:
         return n;
     }
 
+    void loadNeighbors(int ia, int nb, const int* neighs, Vec3d* hs ){
+        for(int i=0;i<nb;i++){
+            int ib = neighs[i];
+            int ja = bonds[ib].getNeighborAtom(ia);
+            hs[i]  = atoms[ja].pos - atoms[ia].pos;
+            hs[i].normalize();
+        }
+    }
 
+    AtomConf* tryGetNeighDirs( int ia, Vec3d* hs ){
+        int ic=atoms[ia].iconf;
+        if(ic<0){ return 0; }
+        AtomConf& conf = confs[ic];
+        int nb = conf.nbond;
+        if(nb<2){ return 0; };
+        loadNeighbors( ia, nb, conf.neighs, hs );
+        makeConfGeom( nb, conf.npi, hs);
+        //if(conf.npi>=0) conf.pi_dir = hs[3]; 
+        return &conf;
+    }
+    
     void makeSPConf(int ia,int npi,int ne){
         //if(nH==0){ // ToDo : check reasonable limits npi, nh
         int ic = atoms[ia].iconf;
@@ -1200,23 +1263,18 @@ class Builder{  public:
         if(!bAddECaps) ncap=nH;
         //printf("-- "); println(conf);
         if(verbosity>=2)printf( "makeSPConf[ia=%i] nb,npi(%i,%i) ncap,nH,ne(%i,%i,%i)\n", ia, nb,npi, ncap, nH,ne );
-        //Mat3d m;
-        Vec3d hs[4];
-        for(int i=0;i<nb;i++){
-            int ib = conf.neighs[i];
-            int ja = bonds[ib].getNeighborAtom(ia);
-            hs[i]  = atoms[ja].pos - atoms[ia].pos;
-            hs[i].normalize();
-        }
         //printf( "makeSPConf[%i] npi=%i ne=%i ncap=%i bDummyEpair=%i bAddCaps=%i \n", ia, npi,ne,ncap, bDummyEpair,bAddCaps  );
+        Vec3d hs[4];
+        loadNeighbors(ia, nb, conf.neighs, hs );
         makeConfGeom(conf.nbond, npi, hs);
-        if(bAddCaps && (ncap>0) ) addCaps( ia, ncap, ne, nb, hs );
+        if(bAddCaps && (ncap>0) )               addCaps( ia, ncap, ne, nb, hs );
         if(bDummyPi){ for(int i=0; i<npi; i++){ addCap(ia,hs[i+ncap+nb],&capAtomPi); } }
         conf.npi=npi;
         conf.ne =ne;
         //printf("-> "); println(conf);
     }
 
+/*
     int addEpairsToAtoms(int ia, double l=0.5 ){
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
@@ -1235,6 +1293,7 @@ class Builder{  public:
         conf.ne=0;
         conf.n-=ne;
         //printf( "addEpairsToAtoms.2(%i) nb=%i npi=%i ne=%i ntot=%i \n", ia, conf.nbond, conf.npi, conf.ne, conf.n  );
+        makeConfGeomPi(int nb, int npi, const Vec3d& pi_dir, Vec3d* hs);                
         for( int i=0; i<ne; i++ ){
             int ib=nb+i;
             //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
@@ -1244,7 +1303,54 @@ class Builder{  public:
         return conf.ne;
     }
 
-    bool autoConfEPi(int ia){
+    bool setPiDir(int ia){
+        Vec3d hs[4];
+        AtomConf* conf = tryGetNeighDirs( int ia, Vec3d* hs );
+        if( conf ){
+            conf.npi=hs[3];
+            return true;
+        }
+        return false;
+    }
+*/
+
+    bool setPiByNeigh(int ic){
+        //int ic=atoms[ia].iconf;
+        //if(ic<0)return false;
+        AtomConf& conf = confs[ic]; 
+        Vec3d p = conf.pi_dir;
+        double r2 = p.norm2();
+        if(r2>0.1){ return false; } // Not yet set
+        p = Vec3dZero;
+        const int* ngs = conf.neighs;
+        for(int i=0; i<conf.nbond; i++){
+            int ja = bonds[ngs[i]].getNeighborAtom(conf.iatom);
+            int jc = atoms[ja].iconf;
+            Vec3d pi = confs[jc].pi_dir;
+            if(i>0){
+                double c = p.dot(pi); if(c<0){ pi.mul(-1.); };
+            }
+            p.add(pi);
+        }
+        double r = p.norm();
+        if(r<1e-6){ return false; }
+        p.mul(1./r);
+        conf.pi_dir=p;
+        return true;
+    }
+    int setPiLoop( int ia0=0, int imax=-1, int nMaxIter=10 ){
+        if(imax<0){ imax=atoms.size(); }
+        for(int itr=0; itr<nMaxIter; itr++){
+            int new_pi=0;
+            for(int ic=0; ic<confs.size(); ic++){
+                new_pi += setPiByNeigh(ic);
+            }
+            if(new_pi==0)return itr;
+        }
+        return nMaxIter;
+    }
+
+    bool autoConfEPi(int ia, double l=0.5 ){
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
         int ityp=atoms[ia].type;
@@ -1254,18 +1360,87 @@ class Builder{  public:
         if  ( (conf.nbond+conf.nH+ne)>N_NEIGH_MAX  ){ printf( "ERROR int autoConfEPi(ia=%i) ne(%i)+nb(%i)+nH(%i)>N_NEIGH_MAX(%i) => Exit() \n", ia, ne, conf.nbond, conf.nH, N_NEIGH_MAX ); exit(0);}
         else{ conf.ne=ne; }
         conf.fillIn_npi_sp3();
-        if(bDummyEpair){ addEpairsToAtoms(ia); }
-        //int npi = 4 - conf.nbond - ne - nH;
-        //printf( "autoConfEPi[%i] typ %i ne %i npi %i \n", ia, ityp, ne, npi );
-        //for(int i=0; i<ne;  i++)conf.addEpair();
-        //for(int i=0; i<npi; i++)conf.addPi();
+        int nb = conf.nbond;
+        if(nb>=2){ // for less than 2 neighbors makeConfGeom does not make sense
+            Vec3d hs[4];
+            //AtomConf* conf = tryGetNeighDirs( ia, hs );
+            loadNeighbors( ia, conf.nbond, conf.neighs, hs );
+            makeConfGeom (     conf.nbond, conf.npi,    hs );
+
+            // { // DEBUG
+            //     sprintf( tmpstr, "atom%03i_hs.xyz", ia );
+            //     FILE* fout=fopen(tmpstr, "w");
+            //     fprintf(fout,"5\n");
+            //     fprintf(fout,"#\n");
+            //     Vec3d p = atoms[ia].pos;
+            //     fprintf(fout, "%s %g %g %g\n",  params->atypes[ityp].name, p.x,p.y,p.z  );
+            //     for(int i=0;  i<nb; i++){ Vec3d p_=p+hs[i]; fprintf(fout, "H %g %g %g\n", p_.x,p_.y,p_.z  ); }
+            //     for(int i=nb; i<4;  i++){ Vec3d p_=p+hs[i]; fprintf(fout, "E %g %g %g\n", p_.x,p_.y,p_.z  ); }
+            //     fclose(fout);
+            // }
+
+            if(conf.npi>0){ conf.pi_dir=hs[3]; }
+            if( bDummyEpair && (conf.ne>0) ){
+                conf.ne=0;
+                conf.n-=ne;
+                for( int i=0; i<ne; i++ ){
+                    int ib=nb+i;
+                    //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
+                    //printf( "autoConfEPi[%i] add epair[%i] \n", ia, i );
+                    addCap(ia,hs[ib],&capAtomEpair, l );
+                }
+            }
+        }
         return true;
     }
     int autoAllConfEPi( int ia0=0, int imax=-1 ){
-        if(imax<0){ imax=atoms.size(); }
         int n=0;
+        if(imax<0){ imax=atoms.size(); }
         for(int ia=ia0;ia<imax;ia++){
             if( autoConfEPi(ia) ){n++;}
+        }
+        return n;
+    }
+
+    bool addEpairsByPi(int ia, double l=0.5){
+        int ic=atoms[ia].iconf;
+        if(ic<0)return false;
+        int ityp=atoms[ia].type;
+        AtomConf& conf = confs[ic];
+        int ne = conf.ne;
+        if( (ne<1)||(conf.nbond>1)||(conf.npi<1) )return false;
+        conf.ne=0;
+        conf.n-=ne;
+        int nb = conf.nbond;
+        Vec3d hs[4];
+        loadNeighbors ( ia, nb,       conf.neighs, hs );
+        makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs );
+
+        // { // DEBUG
+        //     sprintf( tmpstr, "atom%03i_hs.xyz", ia );
+        //     FILE* fout=fopen(tmpstr, "w");
+        //     fprintf(fout,"5\n");
+        //     fprintf(fout,"#\n");
+        //     Vec3d p = atoms[ia].pos;
+        //     fprintf(fout, "%s %g %g %g\n",  params->atypes[ityp].name, p.x,p.y,p.z  );
+        //     for(int i=0;  i<nb; i++){ Vec3d p_=p+hs[i]; fprintf(fout, "H %g %g %g\n", p_.x,p_.y,p_.z  ); }
+        //     for(int i=nb; i<4;  i++){ Vec3d p_=p+hs[i]; fprintf(fout, "E %g %g %g\n", p_.x,p_.y,p_.z  ); }
+        //     fclose(fout);
+        // }
+
+        for( int i=0; i<ne; i++ ){
+            int ib=nb+i;
+            //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
+            //printf( "addEpairsByPi[%i] add epair[%i] \n", ia, i );
+            addCap(ia,hs[ib],&capAtomEpair, l );
+        }
+        return true;
+    }
+    int addAllEpairsByPi( int ia0=0, int imax=-1 ){
+        int n=0;
+        if(imax<0){ imax=atoms.size(); }
+        for(int ia=ia0;ia<imax;ia++){
+            if( addEpairsByPi(ia) ){n++;}
         }
         return n;
     }

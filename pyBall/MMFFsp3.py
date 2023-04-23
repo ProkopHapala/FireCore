@@ -56,7 +56,8 @@ header_strings = [
 #"int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, bool bOnlyFirstNeigh, int* atoms_ ){"
 #"int getFrament( int ifrag, int* bounds_, double* pose ){",
 #"void scanHBond( const char* fname, int n, double d,  int ifrag1, int ifrag2, int i1a,int i1b, int i2a,int i2b ){",
-#"void orient( int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){"
+#"void orient( int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){",
+#"void findMainAxes( double* rot, ifrag=-1, int imin=0,int imax=-1, bool bRot=true){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -407,6 +408,14 @@ def selectBondsBetweenTypes( imin, imax, it1, it2, byZ=False, bOnlyFirstNeigh=Fa
     n = lib.selectBondsBetweenTypes(imin, imax, it1, it2, byZ, bOnlyFirstNeigh, _np_as(atoms ,c_int_p) )
     return atoms[:n,:]
 
+#  void findMainAxes( double* rot, ifrag=-1, int imin=0,int imax=-1, bool bRot=true){
+lib.findMainAxes.argtypes  = [c_double_p, c_int, c_int, c_int, c_int_p, c_bool] 
+lib.findMainAxes.restype   =  None
+def findMainAxes(ifrag=-1, imin=0, imax=-1, rot=None, bRot=True, bSaveRot=True, permut=None ):
+    if(permut is not None): permut=np.array(permut,dtype=np.int23)
+    if( bSaveRot and (rot is None) ): rot=np.zeros((3,3))
+    lib.findMainAxes( _np_as(rot,c_double_p), ifrag, imin, imax, permut, bRot )
+    return rot
 
 #  void orient( int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){
 lib.orient.argtypes  = [c_char_p, c_int, c_int, c_int, c_int, c_int, c_int, c_int] 
