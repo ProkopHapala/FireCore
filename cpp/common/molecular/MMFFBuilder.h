@@ -815,10 +815,16 @@ class Builder{  public:
     bool makeConfGeomPi(int nb, int npi, const Vec3d& pi_dir, Vec3d* hs){
         //Mat3d m;
         if(nb==1){  // e.g. =O
-            Vec3d lf; lf.set_cross( pi_dir, hs[0] ); lf.normalize();
-            hs[1] = lf*+0.87758256189+hs[0]*-0.5;
-            hs[2] = lf*-0.87758256189+hs[0]*-0.5;
-            return true;
+            if(npi==1){
+                Vec3d lf; lf.set_cross( pi_dir, hs[0] ); lf.normalize();
+                hs[1] = lf*+0.87758256189+hs[0]*-0.5;
+                hs[2] = lf*-0.87758256189+hs[0]*-0.5;
+                return true;
+            }else if(npi==2){
+                Vec3d lf; lf.set_cross( pi_dir, hs[0] ); lf.normalize();
+                hs[1] = hs[0]*-1.0;
+                return true;
+            }
         }
         return false;
     }
@@ -1502,7 +1508,7 @@ class Builder{  public:
         for( int i=0; i<ne; i++ ){
             int ib=nb+i;
             //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
-            //printf( "addEpairsByPi[%i] add epair[%i] \n", ia, i );
+            printf( "addEpairsByPi[%i] add epair[%i] \n", ia, i );
             addCap(ia,hs[ib],&capAtomEpair, l );
         }
         return true;
