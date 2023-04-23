@@ -195,12 +195,15 @@ void initParams( const char* sAtomTypes, const char* sBondTypes, const char* sAn
 int buildMolecule_xyz( const char* xyz_name ){
     int ifrag = loadGeom( xyz_name );
     int ia0=builder.frags[ifrag].atomRange.a;
+    int ic0=builder.frags[ifrag].confRange.a;
     //builder.printBonds();
     //builder.printAtomConfs(true, false );
     if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
     //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-    builder.autoAllConfEPi( ia0 );        
+    builder.autoAllConfEPi  ( ia0 ); 
+    builder.setPiLoop       ( ic0, -1, 10 );
+    builder.addAllEpairsByPi( ia0=0 );    
     //builder.printAtomConfs(false, false );
     //builder.printAtomConfs(false, true );
     builder.assignAllBondParams();    //if(verbosity>1)

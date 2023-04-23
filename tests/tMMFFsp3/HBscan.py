@@ -35,6 +35,7 @@ HF,HCl,HBr
 
 
 molecules = [
+"HCCH",    
 "HCN",
 #"NH3",
 #"H2O",
@@ -60,8 +61,6 @@ molecules = [
 
 #mmff.setVerbosity( verbosity=1, idebug=0 )
 mmff.setVerbosity( verbosity=0, idebug=0 )
-
-
 mmff.initParams()
 
 #------ Job1: Orient
@@ -69,7 +68,15 @@ mmff.initParams()
 # #mmff.orient( [1,3], [0,4] )
 # mmff.orient( [3,4], [0,4] )
 
-mmff.scanAllHBonds( "data/HCOOH", "data/H2O" )
+#f1 = mmff.buildMolecule_xyz( xyz_name="data/pyridine", bEpairs=True )
+#f1 = mmff.buildMolecule_xyz( xyz_name="data/OCH2", bEpairs=True )
+f1 = mmff.buildMolecule_xyz( xyz_name="data/PTCDA", bEpairs=True )
+#f1 = mmff.buildMolecule_xyz( xyz_name="data/HCOOH", bEpairs=True )
+#f1 = mmff.buildMolecule_xyz( xyz_name="data/H2O", bEpairs=True )
+rot = mmff.findMainAxes( ifrag=f1 );  # print(" rot ", rot)
+mmff.saveXYZ( "auto_rot.xyz","", 0 )
+
+#mmff.scanAllHBonds( "data/HCOOH", "data/H2O" )
 
 '''
 #------ Job2: HBond-scan
