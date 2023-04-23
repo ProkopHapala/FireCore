@@ -263,8 +263,7 @@ void scanHBond( const char* fname, int n, double dl, double l0, int ifrag1, int 
     FILE* fout = fopen(fname,"w");
     const MM::Fragment& frag1 = W.builder.frags[ifrag1];
     const MM::Fragment& frag2 = W.builder.frags[ifrag2];
-    Vec3d up1,up2;
-    if(ups_){ Vec3d* ups=(Vec3d*)ups_; up1=ups[0]; up2=ups[1]; up1.normalize(); up2.normalize(); }else{ up1=Vec3dZ; up2=Vec3dZ; }
+    
 
     //Vec3d fw1 = W.builder.atoms[i1b].pos - W.builder.atoms[i1a].pos;  fw1.normalize();
     //Vec3d fw2 = W.builder.atoms[i2b].pos - W.builder.atoms[i2a].pos;  fw2.normalize();    
@@ -281,6 +280,16 @@ void scanHBond( const char* fname, int n, double dl, double l0, int ifrag1, int 
     if(isDonor2){ p2=W.builder.atoms[i2b].pos; }else{ p2=W.builder.atoms[i2a].pos; }
     Vec3d fw1 = W.builder.atoms[i1b].pos - W.builder.atoms[i1a].pos;  fw1.normalize();
     Vec3d fw2 = W.builder.atoms[i2b].pos - W.builder.atoms[i2a].pos;  fw2.normalize();   fw2.mul(-1.); // reverse direction   
+
+    Vec3d up1,up2;
+    if(ups_){ Vec3d* ups=(Vec3d*)ups_; up1=ups[0]; up2=ups[1]; up1.normalize(); up2.normalize(); }
+    else{  // auto-up-vector (make sure it is not colinear with fw)
+        if( fabs(fabs(fw1.z)-1.0) < 0.1 ){ up1=Vec3dY; }else{ up1=Vec3dZ; } 
+        if( fabs(fabs(fw2.z)-1.0) < 0.1 ){ up2=Vec3dY; }else{ up2=Vec3dZ; }
+    }
+    printf( "fw1(%g,%g,%g) |fw1.z-1|=%g up1(%g,%g,%g) p1(%g,%g,%g)\n", fw1.x,fw1.y,fw1.z, fabs(fabs(fw1.z)-1.0),   up1.x,up1.y,up1.z,    p1.x,p1.y,p1.z );
+    printf( "fw2(%g,%g,%g) |fw2.z-1|=%g up2(%g,%g,%g) p2(%g,%g,%g)\n", fw2.x,fw2.y,fw2.z, fabs(fabs(fw2.z)-1.0),   up2.x,up2.y,up2.z,    p2.x,p2.y,p2.z );
+
     W.builder.orient_atoms( fw1, up1, p1,  Vec3d{ 0.0,0.0,0  }, frag1.atomRange.a, frag1.atomRange.b ); // donor    => center is capping hydrogen [i1b]
     W.builder.orient_atoms( fw2, up2, p2,  Vec3d{ 0.0,0.0,l0 }, frag2.atomRange.a, frag2.atomRange.b ); // acceptor => center is node atom        [i2a]
 

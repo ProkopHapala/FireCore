@@ -35,13 +35,13 @@ HF,HCl,HBr
 
 
 molecules = [
-"HCCH",    
-"HCN",
-#"NH3",
+#"HCCH",    
+#"HCN",
+"NH3",
 #"H2O",
-"CH2O",
+#"CH2O",
 #"HCOOH",
-"CHONH2",
+#"CHONH2",
 
 #"pyridine",
 #"pyrrole",
@@ -70,16 +70,62 @@ mmff.initParams()
 
 #f1 = mmff.buildMolecule_xyz( xyz_name="data/pyridine", bEpairs=True )
 #f1 = mmff.buildMolecule_xyz( xyz_name="data/OCH2", bEpairs=True )
-f1 = mmff.buildMolecule_xyz( xyz_name="data/PTCDA", bEpairs=True )
+#f1 = mmff.buildMolecule_xyz( xyz_name="data/PTCDA", bEpairs=True )
 #f1 = mmff.buildMolecule_xyz( xyz_name="data/HCOOH", bEpairs=True )
 #f1 = mmff.buildMolecule_xyz( xyz_name="data/H2O", bEpairs=True )
-rot = mmff.findMainAxes( ifrag=f1 );  # print(" rot ", rot)
-sym = mmff.findSymmetry( ifrag=f1 ); print("sym=",sym)
+#f1 = mmff.buildMolecule_xyz( xyz_name="data/NH3", bEpairs=True )
+#f1 = mmff.buildMolecule_xyz( xyz_name="data/HCN", bEpairs=True )
+#rot = mmff.findMainAxes( ifrag=f1 );  # print(" rot ", rot)
+#sym = mmff.findSymmetry( ifrag=f1 ); print("sym=",sym)
+#mmff.saveXYZ( "auto_rot.xyz","", 0 )
 
-mmff.saveXYZ( "auto_rot.xyz","", 0 )
+# b1,_,_      = mmff.getFrament(f1);                                                  print( "bonds_1", b1[2] )
+# donors_1    = mmff.selectBondsBetweenTypes( b1[2,0], b1[2,1], 7, 1,   True, True ); print( "donors_1    ", donors_1    )
+# acceptors_1 = mmff.selectBondsBetweenTypes( b1[2,0], b1[2,1], 7, 200, True, True ); print( "acceptors_1 ", acceptors_1 )
 
+# n=len(molecules)
+# for i in range(n):
+#     for j in range(i+1):
+#         mmff.scanAllHBonds( "data/"+molecules[i], "data/"+molecules[j] )
 
+# ----- NH3
+#mmff.scanAllHBonds( "data/NH3", "data/NH3", t1=7, t2=7 )
+#mmff.scanAllHBonds( "data/NH3", "data/HCN", t1=7, t2=7 )
+#mmff.scanAllHBonds( "data/NH3", "data/HCN", t1=7, t2=6 )
+
+# ----- HCN
+#mmff.scanAllHBonds( "data/NH3", "data/HCN", t1=7, t2=7 )
+#mmff.scanAllHBonds( "data/NH3", "data/HCN", t1=7, t2=6 )
+#mmff.scanAllHBonds( "data/HCN", "data/HCN", t1=7, t2=6 )
+#mmff.scanAllHBonds( "data/H2O", "data/HCN", t1=8, t2=6 )
+#mmff.scanAllHBonds( "data/H2O", "data/HCN", t1=8, t2=7 )
+
+# ----- H2O
+#mmff.scanAllHBonds( "data/H2O", "data/HCN", t1=8, t2=6 )
+#mmff.scanAllHBonds( "data/H2O", "data/HCN", t1=8, t2=7 )
+#mmff.scanAllHBonds( "data/H2O", "data/H2O" )
+#mmff.scanAllHBonds( "data/H2O", "data/HCN" )
 #mmff.scanAllHBonds( "data/HCOOH", "data/H2O" )
+
+# ----- CH2O
+#mmff.scanAllHBonds( "data/OCH2", "data/OCH2", t1=8, t2=6 )
+#mmff.scanAllHBonds( "data/OCH2", "data/H2O" )
+#mmff.scanAllHBonds( "data/OCH2", "data/NH3", t2=7 )
+#mmff.scanAllHBonds( "data/OCH2", "data/HCN", t2=6 )
+
+# ----- HCOOH
+#mmff.scanAllHBonds( "data/HCOOH", "data/HCOOH" )
+#mmff.scanAllHBonds( "data/HCOOH", "data/HCOOH", ups=[[1.,0.,0.],[1.,0.,0.]] )
+#mmff.scanAllHBonds( "data/HCOOH", "data/H2O" )
+#mmff.scanAllHBonds( "data/HCOOH", "data/H2O" )
+#mmff.scanAllHBonds( "data/HCOOH", "data/NH3", t2=7 )
+#mmff.scanAllHBonds( "data/HCOOH", "data/HCN", t2=7 )
+#mmff.scanAllHBonds( "data/HCOOH", "data/HCN", t2=6 )
+
+# ----- CHONH2
+#mmff.scanAllHBonds( "data/CHONH2", "data/CHONH2", t2=7, ups=[[1.,0.,0.],[1.,0.,0.]] )
+mmff.scanAllHBonds( "data/CHONH2", "data/CHONH2", t2=7, ups=[[1.,0.,0.],[1.,0.,0.]], bOnlyFirstNeigh1=False, bOnlyFirstNeigh2=False )
+
 
 '''
 #------ Job2: HBond-scan
