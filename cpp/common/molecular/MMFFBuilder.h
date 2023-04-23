@@ -824,7 +824,7 @@ class Builder{  public:
     }
 
 
-    Mat3d findMainAxes(int i0=0,int imax=-1, bool bRot=true, Vec3i permut=Vec3i{2,1,0} ){
+    Mat3d findMainAxes(int i0=0,int imax=-1, const bool bRemoveCog=true, const bool bRot=true, Vec3i permut=Vec3i{2,1,0} ){
         if(imax<0){ imax=atoms.size();}
         Mat3d M=Mat3dZero;
         Mat3d R;
@@ -845,14 +845,85 @@ class Builder{  public:
             for(int i=i0; i<imax; i++){
                 Vec3d p;
                 R.dot_to( atoms[i].pos-cog, p ); 
-                atoms[i].pos=p+cog;
+                if(bRemoveCog){ atoms[i].pos=p; }else{ atoms[i].pos=p+cog; }
             }
         }
         return R;
     }
 
-    void findSymmetry(){
+    /*
+    bool checkPointSymmetry( int i0=0,int imax=-1, double tol=0.1 ){
+        if(imax<0){ imax=atoms.size();}
+        for(int i=i0; i<imax; i++){ 
+            atoms[i]
+        }
+    };
+    */
 
+    void findSymmetry( int* found, int i0=0,int imax=-1, double tol=0.1 ){
+        /// this function should be called after findMainAxes()
+        double tol2=tol*tol;
+        if(imax<0){ imax=atoms.size();}
+        bool bPoint=true;
+        bool bX=true;
+        bool bY=true;
+        bool bZ=true;
+        for(int i=i0; i<imax; i++){ 
+            const Atom& A = atoms[i]; 
+            bool bPoint_i=false;
+            bool bX_i=false;
+            bool bY_i=false;
+            bool bZ_i=false;
+            double r2min_x = 1e+300;
+            double r2min_y = 1e+300;
+            double r2min_z = 1e+300;
+            double r2min_p = 1e+300;
+            int imin_x=-1;
+            int imin_y=-1;
+            int imin_z=-1;
+            int imin_p=-1;
+            for(int j=i0; j<imax; j++){
+                const Atom& B = atoms[j]; 
+                if( A.type==B.type ){
+                    //printf( "#### (a%i:t%i)-(a%i:t%i)\n", i,A.type,  j,B.type );
+                    Vec3d d;
+                    if( !bPoint_i ){   // point symmetry
+                        d = A.pos - B.pos*-1.0;             //printf( "   point d(%g,%g,%g)\n", d.x,d.y,d.z );
+                        double r2 = d.norm2();
+                        if( r2<tol2 ){ bPoint_i=true; };
+                        if( r2<r2min_p ){ r2min_p=r2; imin_p=j; }
+                    }
+                    if( !bX_i ){   // X-mirror symmetry
+                        d=A.pos; d.x*=-1; d.sub(B.pos);     //printf( "   X d(%g,%g,%g) A(%g,%g,%g) B(%g,%g,%g)\n", d.x,d.y,d.z,  A.pos.x,A.pos.y,A.pos.z,  B.pos.x,B.pos.y,B.pos.z );   
+                        double r2 = d.norm2();
+                        if( r2<tol2 ){ bX_i=true; };
+                        if( r2<r2min_x ){ r2min_x=r2; imin_x=j; }
+                    }
+                    if( !bY_i ){   // Y-mirror symmetry
+                        d=A.pos; d.y*=-1; d.sub(B.pos);     //printf( "   Y d(%g,%g,%g)\n", d.x,d.y,d.z ); 
+                        double r2 = d.norm2(); 
+                        if( r2<tol2 ){ bY_i=true; };
+                        if( r2<r2min_y ){ r2min_y=r2; imin_y=j; }
+                    }
+                    if( !bZ_i ){   // Z-mirror symmetry
+                        d=A.pos; d.z*=-1; d.sub(B.pos);     //printf( "   Z d(%g,%g,%g)\n", d.x,d.y,d.z );  
+                        double r2 = d.norm2();
+                        if( r2<tol2 ){ bZ_i=true; };
+                        if( r2<r2min_z ){ r2min_z=r2; imin_z=j; }
+                    }
+                }
+            }
+            //printf( "Atom[%i,t=%i] rmin(%g,%g,%g|%g) imin(%i,%i,%i|%i) \n", i, A.type, sqrt(r2min_x),sqrt(r2min_y),sqrt(r2min_z),sqrt(r2min_p), imin_x,imin_y,imin_z,imin_p );
+            bPoint&=bPoint_i;   
+            bX&=bX_i;
+            bY&=bY_i;
+            bZ&=bZ_i;
+        }
+        found[0]=bX;
+        found[1]=bY;
+        found[2]=bZ;
+        found[3]=bPoint;
+        printf( "findSymmetry() DONE mirror(x=%i,y=%i,z=%i) point(%i)\n", bX,bY,bZ, bPoint );
     }
 
     void assignSp3Params( int ityp, int nb, int npi, int ne, int npi_neigh, Quat4d& par ){
