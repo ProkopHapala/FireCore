@@ -58,6 +58,7 @@ header_strings = [
 #"void scanHBond( const char* fname, int n, double d,  int ifrag1, int ifrag2, int i1a,int i1b, int i2a,int i2b ){",
 #"void orient( int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){",
 #"void findMainAxes( double* rot, ifrag=-1, int imin=0,int imax=-1, bool bRot=true){",
+#"void findSymmetry( int* found, int i0=0,int imax=-1, double tol=0.1 ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -416,6 +417,15 @@ def findMainAxes(ifrag=-1, imin=0, imax=-1, rot=None, bRot=True, bSaveRot=True, 
     if( bSaveRot and (rot is None) ): rot=np.zeros((3,3))
     lib.findMainAxes( _np_as(rot,c_double_p), ifrag, imin, imax, permut, bRot )
     return rot
+
+#  void findSymmetry( int* found, int i0=0,int imax=-1, double tol=0.1 ){
+lib.findSymmetry.argtypes  = [c_int_p, c_int, c_int, c_int, c_double] 
+lib.findSymmetry.restype   =  None
+def findSymmetry(found=None, ifrag=-1, i0=0, imax=-1, tol=0.1):
+    if(found is None): found=np.zeros(4, dtype=np.int32)
+    lib.findSymmetry(_np_as(found,c_int_p), ifrag, i0, imax, tol)
+    return found
+
 
 #  void orient( int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){
 lib.orient.argtypes  = [c_char_p, c_int, c_int, c_int, c_int, c_int, c_int, c_int] 

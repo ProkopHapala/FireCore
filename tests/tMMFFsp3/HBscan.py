@@ -74,7 +74,10 @@ f1 = mmff.buildMolecule_xyz( xyz_name="data/PTCDA", bEpairs=True )
 #f1 = mmff.buildMolecule_xyz( xyz_name="data/HCOOH", bEpairs=True )
 #f1 = mmff.buildMolecule_xyz( xyz_name="data/H2O", bEpairs=True )
 rot = mmff.findMainAxes( ifrag=f1 );  # print(" rot ", rot)
+sym = mmff.findSymmetry( ifrag=f1 ); print("sym=",sym)
+
 mmff.saveXYZ( "auto_rot.xyz","", 0 )
+
 
 #mmff.scanAllHBonds( "data/HCOOH", "data/H2O" )
 
