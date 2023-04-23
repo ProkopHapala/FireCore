@@ -23,6 +23,11 @@
 //#include "MMFFmini.h"
 #include "MMFFparams.h"
 
+
+//#include "MolecularGraph.h"
+#include "LimitedGraph.h"
+
+
 // =============== Structs for Atoms, Bonds etc...
 
 namespace MM{
@@ -291,6 +296,7 @@ int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, 
     return sel1->size();
 }
 
+
 // ============================
 // ========= Builder
 // ============================
@@ -320,6 +326,10 @@ class Builder{  public:
     std::unordered_set<int> capping_types;
 
     std::vector<Fragment>   frags;
+
+    // ToDo: we should rather use /home/prokop/git/FireCore/cpp/common/molecular/MolecularGraph.h
+    //std::vector<int> graph_color; 
+    //std::vector<int> graph_dist;
 
 #ifdef Molecule_h
     //std::vector<Molecule> mols;
@@ -402,7 +412,6 @@ class Builder{  public:
     void rotate_atoms   ( double angle, Vec3d axis=Vec3dZ, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ Mat3d M; M.fromRotation(angle,axis);    transform_atoms( M,orig_old,orig_new,i0,imax); }
     void orient_atoms   ( Vec3d fw, Vec3d up,              Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ Mat3d M; M.fromDirUp(fw,up); transform_atoms( M,orig_old,orig_new,i0,imax); }
 
-
     void changeCell( const Mat3d& lvs, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1 ){
         Mat3d M,MM; 
         //lvec.invert_to(M); 
@@ -435,6 +444,47 @@ class Builder{  public:
         if( innodes1.size()<innodes2.size()  ){ sel=innodes1; }else{ sel=innodes2; }
         selection.erase();
         for( int i:*sel){ selection.insert(i); };
+    }
+    */
+
+
+    int findHighestValence(){
+        int imax=-1;
+        int nmax=-1;
+        for(int i=0; i<atoms.size(); i++){
+            //const AtomConf* c = getAtomConf(int ia);
+            int ic = atoms[i].iconf;
+            if(ic<0)continue;
+            int nb = confs[ic].nbond;
+            if(nb>nmax){ nmax=nb; imax=i; } 
+            
+        }
+        return imax;
+    }
+
+    /*
+
+    // ToDo: we should rather use /home/prokop/git/FireCore/cpp/common/molecular/MolecularGraph.h
+
+    int branch_Graph( int i, int oi=-1 ){}
+
+    int walk_graph( int i, int oi ){
+        int ic = atoms[i].iconf;
+        if(ic){ ic<; };
+    }
+
+    void findBridges( int ia0=-1 ){
+        int nc = confs.size();
+        int na = atoms.size();
+        color   .resize(nc);
+        distance.resize(nc);
+        for( int& c: color ){ c=-1; }
+
+        if(ia<0){ ia=findHighestValence(); }
+
+        branch_Graph( ia );
+
+
     }
     */
 
@@ -2228,6 +2278,31 @@ class Builder{  public:
         }
         return ibs.size();
     }
+
+
+#ifdef LimitedGraph_h
+    bool toLimitedGraph( LimitedGraph<N_NEIGH_MAX>& G, bool bNoCap=true, bool bExitOnError=true, bool bRealloc=true ){
+        bool err=false;
+        int nc = confs.size();
+        int na = atoms.size();
+        int nb = bonds.size();
+        if( bRealloc ){ if(bNoCap){G.realloc(nc);}else{G.realloc(na);} }
+        for(int i=0; i<nb; i++){
+            Vec2i b = bonds[i].atoms;
+            if(bNoCap){
+                int ic1 = atoms[b.a].iconf;
+                int ic2 = atoms[b.a].iconf;
+                if( (ic1<0)||(ic2<0) ) continue;
+                err |= G.addEdge( ic1, ic2 );
+                if(err && bExitOnError){ printf( "ERROR in MM::Builder::toLimitedGraph() cannot add bond[%i] neighs are filled nng[%i]=%i nng[%i]=%i  \n => Exit(); \n", i, b.a,G.nneighs[b.a], b.b,G.nneighs[b.b] ); exit(0); };
+            }
+        }
+        return err;
+    }
+#endif // LimitedGraph_h
+
+
+
 
 #ifdef Molecule_h
 
