@@ -5,6 +5,7 @@
 //  algorithm copied from
 //    https://www.geeksforgeeks.org/bridge-in-a-graph/
 // see also:
+//      * https://cp-algorithms.com/graph/bridge-searching.html
 //      * https://en.wikipedia.org/wiki/Bridge_(graph_theory)
 //      * https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
 //      * Find Bridges in a graph using Tarjans Algorithm https://www.youtube.com/watch?v=Rhxs4k6DyMM
