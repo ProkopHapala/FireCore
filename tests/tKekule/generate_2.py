@@ -65,17 +65,35 @@ sites={
 }
 
 
+sites_can={
+"A1":[(-2.4, 0.0),  0     ],
+"A2":[( 0.0, 0.0),  1     ], 
+"A3":[( 2.4, 0.0),  2     ],
+"B1":[(-3.6,-0.7), "=CH-" ],
+"B2":[(-1.2,-0.7), "C"    ], 
+"B3":[( 1.2,-0.7), "C"    ], 
+"B4":[( 3.6,-0.7), "=CH-" ],
+"C1":[(-3.6,-2.1), "=CH-" ], 
+"C2":[(-1.2,-2.1), "C"    ], 
+"C3":[( 1.2,-2.1), "C"    ], 
+"C4":[( 3.6,-2.1), "=CH-" ],
+"D1":[(-2.4,-2.8), "C/N"  ], 
+"D2":[( 0.0,-2.8), "C/N"  ], 
+"D3":[( 2.4,-2.8), "C/N"  ],
+}
+
+
 # ====== Generate skeletons (no-types assignment)
 
 atoms0 = ["A2","B2","B3","C2","C3"]
 bonds0 = [ ("A2","B2"),("A2","B3"), ("B2","C2"), ("B3","C3") ]
 
 nmol=0
-molecules = [] 
+skeletons = [] 
 for h1 in [0,1,5,6]:
     atoms1 = []
     bonds1 = []
-    if   h1==0: # nothing
+    if   h1==0: # missing
         pass
     elif h1==1: # terminating
         atoms1.append( "A1" )
@@ -93,7 +111,7 @@ for h1 in [0,1,5,6]:
 
         atoms3 = []
         bonds3 = []
-        if   h3==0: # nothing
+        if   h3==0: # missing
             pass
         elif h3==1: # end
             atoms3.append( "A3" )
@@ -118,14 +136,75 @@ for h1 in [0,1,5,6]:
             print( nmol, h1,h3,h2 )
             
             molecule = ( atoms0+atoms1+atoms2+atoms3,  bonds0+bonds1+bonds2+bonds3, (h1,h2,h3),  )
-            molecules.append( molecule )
+            skeletons.append( molecule )
 
-print( len(molecules) )
+print( len(skeletons) )
+
+def assing_type( val, key, aaa ):
+    if isinstance(val, int):
+        return aaa[val]
+    else:
+        return val
+
+molecules = []
+for i,mol in enumerate(skeletons):
+    atoms,bonds,variant = mol
+    v1,v2,v3=variant
+    dct={ k:i for i,k in enumerate(atoms) }
+    ibonds = [ (dct[b[0]],dct[b[1]]) for b in bonds ]
+    apos   = np.array([ sites[k][0] for k in atoms ])
+
+    if   v1==0:  # missing 
+        groups1=[None] 
+    elif v1==1:  # end
+        groups1=side
+    else:  # cycle
+        groups1=central
+
+    if   v3==0:  # missing 
+        groups3=[None] 
+    elif v3==1:  # end
+        groups3=side
+    else:  # cycle
+        groups3=central
+
+    group2 = central
+
+    for a1 in groups1:
+        for a3 in groups3:
+            for a2 in group2:
+                aaa = (a1,a2,a3)
+                atypes= [ assing_type( sites_can[k][1], k, aaa ) for k in atoms ] 
+                mol = ( atypes, apos, ibonds )
+                molecules.append(mol)
 
 
-plt.figure( figsize=(10,10) )
+print(len(molecules))
 
+sz=20
+plt.figure( figsize=(sz,sz) )
+iimg = 0
 for i,mol in enumerate(molecules):
+    atypes, apos, ibonds = mol
+    print( "#### Molecule[%i] " %i, atypes )
+
+    plt.subplot(5,5,iimg+1)
+    pu.plotAtoms( apos, labels=atypes, axes=(0,1) )
+    pu.plotBonds( links=ibonds, ps=apos, axes=(0,1) )
+    plt.axis('equal')
+    plt.xlim(-4.,4.)
+    plt.ylim(-7.,1.)
+    plt.title("Mol[%i]" %i )
+    iimg+=1
+    if(iimg >= 25):
+        plt.savefig( "endgroups_%03i_%03i.png" %(i-25+1,i+1) , bbox_inches='tight')  
+        iimg=0  
+        plt.figure( figsize=(sz,sz) )
+
+
+'''
+plt.figure( figsize=(10,10) )
+for i,mol in enumerate(skeletons):
     atoms,bonds,variant = mol
     print( "#### Molecule[%i] " %i, variant, atoms )
     #print( "atoms: ", atoms )
@@ -147,102 +226,5 @@ for i,mol in enumerate(molecules):
     plt.axis('equal')
     plt.xlim(-4.,4.)
     plt.ylim(-7.,1.)
-    
-
-
 plt.show()
-
-#pu.plotAtoms( apos=apos, es=None, atoms=None, bNumbers=False, labels=None, sizes=100., colors='#808080', marker='o', axes=(0,1) ):
-#pu.plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1) ):
-
-
-
-exit()
-
-
-
-
 '''
-center =([2,3,3,3,2], [(0,1),(1,2),(2,3),(3,4),(4,5)]  )
-bridge2=(    [2,3,2], [(0,1),(1,2),(2,3)]              )
-bridge1=(      [2,2], [(0,1),(1,2)]                    ) 
-'''
-
-'''
-kek.setVerbosity(2,1)
-kek.setVerbosity(0,0)
-kek.init( len(AOs), len(b2a), b2a, AOs, seed=np.random.randint(15454) )
-kek.init_buffers()
-kek.getBuffs()
-kek.setDefaultBondOrders();
-print("kek.Ks ", kek.Ks)
-#kek.Ks[0]=0;   # Katom
-#kek.Ks[1]=0;   # Kbond
-#kek.Ks[2]=0;   # KatomInt
-#kek.Ks[3]=0;   # KbondInt
-#Eout, xs = kek.testBond( n=40, d=0.1, ib=0, val0=0.0 )
-#plt.plot( xs,Eout ); plt.show()
-T0 = time.time_ns()
-#kek.relax(maxIter=100, dt=0.1, ialg=0)
-kek.relax(maxIter=100, dt=0.5,  ialg=1)
-#kek.relaxComb()
-#print("#================= Relaxed in %g[ms]" %((time.time_ns()-T0)*1e-6) )
-#print( "b2a", b2a )
-#print( "kek.bond2atom", kek.bond2atom )
-#print( kek.Es )
-print( "kek.atomValenceMin", kek.atomValenceMin )
-print( "kek.atomValenceMax", kek.atomValenceMax )
-print( "kek.bondOrderMin", kek.bondOrderMin )
-print( "kek.bondOrderMax", kek.bondOrderMax )
-print( "kek.atomValence", kek.atomValence )
-print( "kek.bondOrder", kek.bondOrder )
-'''
-
-
-# np.angs=np.arange(kek.natoms)*2.0*np.pi/kek.natoms
-# apos = np.zeros( (kek.natoms,2) )
-# apos[:,0] = np.cos(np.angs)
-# apos[:,1] = np.sin(np.angs)
-
-
-removes = [  [0,7,8], [6,13,12], [9,10,11]   ]
-
-#= au.addBond( base, [], bNew=True )
-
-#(As,Bs),old_i = au.removeGroup( (AOs,b2a), removes[0] )    ;As[0]-=1
-#(As,Bs),old_i = au.removeGroup( (AOs,b2a), removes[0] )    ;As[2]-=1
-(As,Bs),old_i = au.removeGroup( (AOs,b2a), removes[0] )    ;As[4]-=1
-#(As,Bs),old_i = au.disolveAtom( (AOs,b2a), 8 )            ;As[1] -=1 
-apos_ = apos[old_i,:]                            
-#pu.plotAtoms( apos_, bNumbers=True )
-pu.plotAtoms( apos_, labels=np.array(As), marker='.' )
-#pu.plotBonds( links=Bs, ps=apos_ )
-
-kek.runSystem( As, Bs )
-pu.plotBonds( links=Bs, ps=apos_, lws=(kek.bondOrder-0.8)*5 )
-
-plt.figure(); pu.plotAtoms( apos_, bNumbers=True )
-
-
-
-'''
-(As,Bs),old_i = au.removeGroup( (AOs,b2a), removes[0]+removes[1] )
-#(As,Bs),old_i = au.removeGroup( (AOs,b2a), removes[0] )
-print( "old_i ", old_i)
-print( "Bs ", Bs )
-apos_ = apos[old_i,:]
-
-#pu.plotAtoms( apos_, bNumbers=True )
-pu.plotAtoms( apos_, labels=As )
-pu.plotBonds( links=Bs, ps=apos_ )
-'''
-
-#plt.figure()
-#pu.plotAtoms( apos, bNumbers=True )
-#pu.plotAtoms( apos, labels=AOs )
-#pu.plotBonds( links=b2a, ps=apos )
-
-plt.axis('equal')
-plt.show(  )
-
-
