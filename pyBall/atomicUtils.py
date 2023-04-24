@@ -262,23 +262,29 @@ def saveAtoms( atoms, fname, xyz=True ):
             fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
 
-def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True ):
+def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None ):
     if(bHeader):
-        fout.write("%i\n"  %len(xyzs) )
+        na=len(xyzs)
+        if ignore_es is not None:
+            mask = [ (  e not in ignore_es) for e in es ]
+            na = sum(mask)
+        else:
+            mask = [True]*na
+        fout.write("%i\n"  %na )
         fout.write(comment+"\n")
     if   (Rs is not None):
         for i,xyz in enumerate( xyzs ):
-            fout.write("%s %f %f %f %f %f \n"  %( es[i], xyz[0], xyz[1], xyz[2], qs[i], Rs[i] ) )
+            if mask[i]: fout.write("%s %f %f %f %f %f \n"  %( es[i], xyz[0], xyz[1], xyz[2], qs[i], Rs[i] ) )
     elif (qs is not None):
         for i,xyz in enumerate( xyzs ):
-            fout.write("%s %f %f %f %f\n"  %( es[i], xyz[0], xyz[1], xyz[2], qs[i] ) )
+            if mask[i]: fout.write("%s %f %f %f %f\n"  %( es[i], xyz[0], xyz[1], xyz[2], qs[i] ) )
     else:
         for i,xyz in enumerate( xyzs ):
-            fout.write("%s %f %f %f\n"  %( es[i], xyz[0], xyz[1], xyz[2] ) )
+            if mask[i]: fout.write("%s %f %f %f\n"  %( es[i], xyz[0], xyz[1], xyz[2] ) )
 
-def saveXYZ( es, xyzs, fname, qs=None, Rs=None, mode="w", comment="#comment" ):
+def saveXYZ( es, xyzs, fname, qs=None, Rs=None, mode="w", comment="#comment", ignore_es=None ):
     fout = open(fname, mode )
-    writeToXYZ( fout, es, xyzs, qs, Rs=Rs, comment=comment )
+    writeToXYZ( fout, es, xyzs, qs, Rs=Rs, comment=comment, ignore_es=ignore_es )
     fout.close() 
 
 def makeMovie( fname, n, es, func ):
@@ -321,13 +327,17 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
             if bReadN and (ia==0):
                 try:
                     nmax=int(wds[0])
+                    print("nmax: ", nmax)
                 except:
                     pass
         if(ia>=nmax): break
     if(bClose): fin.close()
     xyzs = np.array( xyzs )
     Zs   = np.array( Zs, dtype=np.int32 )
-    qs   = np.array(qs)
+    qs   = np.array( qs )
+    #print( len(enames), enames )
+    #print( len(Zs), Zs )
+    #print( len(xyzs), xyzs )
     return xyzs,Zs,enames,qs
 
 def loadMol(fname=None, fin=None, bReadN=False, nmax=10000 ):
@@ -351,6 +361,7 @@ def loadMol(fname=None, fin=None, bReadN=False, nmax=10000 ):
             enames.append( ename )
             Zs    .append( elements.ELEMENT_DICT[ename][0] )
             ia+=1
+            if (bReadN and ia>=na): break
         if (il>(4+na) ) and ((il-4-na)<nb):
             bonds.append( wds[1],wds[2] )  # ignoring bond order
         elif(il==4):
@@ -624,20 +635,21 @@ class AtomicSystem():
         self.aux_labels = None
         if fname is not None:
             if( '.mol' == fname.split('.')[0] ):
-                self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname )
+                self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname, bReadN=True )
             else:
-                self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname)
+                self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname , bReadN=True )
 
-    def saveXYZ(self, fname, mode="w", blvec=True, comment="" ):
+    def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None ):
         if blvec:
             print( self.lvec )
             comment= ( "lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   ) ) + comment
-        saveXYZ( self.enames, self.apos, fname, qs=self.qs, Rs=self.Rs, mode=mode, comment=comment )
+        saveXYZ( self.enames, self.apos, fname, qs=self.qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es )
     
     def toXYZ(self, fout ):
         writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=False )
 
     def print(self):
+        #print( len(self.atypes), len(self.enames), len(self.apos) )
         for i in range(len(self.apos)):
             print( "[%i] %i=%s p(%10.5f,%10.5f,%10.5f)" %( i, self.atypes[i],self.enames[i], self.apos[i,0], self.apos[i,1], self.apos[i,2] ), end =" " )
             if(self.aux_labels is not None): print(self.aux_labels[i], end =" ")
