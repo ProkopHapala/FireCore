@@ -29,6 +29,12 @@ groups={
 '-OH' :1,'=O'  :2,'-O-'  :2,
 }
 
+BO_groups={
+'-CH3':1,'=CH2':2,'-CH2-':1,
+'-NH2':1,'=NH' :2,'-NH-' :1,
+'-OH' :1,'=O'  :2,'-O-'  :1, 
+}
+
 non=[None]
 cdon =[ '-NH-',      ]    # central donors
 cacc =[ '=N-', '-O-' ]
@@ -66,22 +72,205 @@ sites={
 
 
 sites_can={
-"A1":[(-2.4, 0.0),  0     ],
-"A2":[( 0.0, 0.0),  1     ], 
-"A3":[( 2.4, 0.0),  2     ],
+"A1":[(-2.4, 0.0), 0      ],
+"A2":[( 0.0, 0.0), 1      ], 
+"A3":[( 2.4, 0.0), 2      ],
 "B1":[(-3.6,-0.7), "=CH-" ],
-"B2":[(-1.2,-0.7), "C"    ], 
-"B3":[( 1.2,-0.7), "C"    ], 
+"B2":[(-1.2,-0.7), 3      ], 
+"B3":[( 1.2,-0.7), 4      ], 
 "B4":[( 3.6,-0.7), "=CH-" ],
-"C1":[(-3.6,-2.1), "=CH-" ], 
-"C2":[(-1.2,-2.1), "C"    ], 
-"C3":[( 1.2,-2.1), "C"    ], 
-"C4":[( 3.6,-2.1), "=CH-" ],
+"C1":[(-3.6,-2.1), "C/N"  ], 
+"C2":[(-1.2,-2.1), 5      ], 
+"C3":[( 1.2,-2.1), 6      ], 
+"C4":[( 3.6,-2.1), "C/N"  ],
 "D1":[(-2.4,-2.8), "C/N"  ], 
 "D2":[( 0.0,-2.8), "C/N"  ], 
 "D3":[( 2.4,-2.8), "C/N"  ],
 }
 
+
+# ====== FUNCTIONS
+
+def makeNeighs( bonds, na ):
+    aneighs=[ [] for a in range(na) ]
+    bneighs=[ [] for a in range(na) ]
+    for ib,b in enumerate(bonds):
+        i,j=b
+        aneighs[i].append(j)
+        aneighs[j].append(i)
+        bneighs[i].append(ib)
+        bneighs[j].append(ib)
+    return aneighs,bneighs
+
+def determineBondsOfAtoms( atypes, bneighs, BO, ibonds ):
+    #print( "BO    ", BO )
+    #print( "ibonds", ibonds )
+    n_new = 0
+    for ia,a2b in enumerate(bneighs):
+        typ  = atypes[ia]
+        bo   = 0
+        n_un = 0
+        i_un = -1
+        i_uno = -1 
+        for ib in a2b:
+            boi = BO[ib]
+            if( boi > 0 ):  # determined bond order
+                bo+=boi
+            else:           # undetermined bond order
+                i_uno = i_un
+                i_un  = ib
+                n_un += 1
+        ao = groups[typ]
+        if isinstance(ao,int):
+            #print( "atom[%i]%s nng=%i n_un=%i ao=%i bo=%i " %(ia, typ, len(a2b),n_un, ao, bo), [BO[j] for j in a2b], [ibonds[j] for j in a2b ]  )
+            if bo>ao: 
+                print( "ERROR sum of bond-orders for atom[%i]%s is %i but atom can have max %i bonds" %(ia,typ,bo,ao)  )
+                #exit(0)
+                return -1
+            dbo = ao - bo
+            if(n_un == 1):
+                if bo>ao: 
+                    print( "ERROR bond[%i] of atom[%i] determined bo(%i)<1 | bo(%i) ao(%i)" %(i_un,ia,dbo, bo, ao )  )
+                    return -1
+                BO[i_un] = dbo
+                n_new+=1
+            elif(n_un==2):
+                if( dbo<2 ):
+                    print( "ERROR  atom[%i]%s ao(%i) insufficient for bo(%i)+n_un(%i)" %(ia,typ,ao,bo,n_un)  )
+                elif( dbo==2 ):
+                    BO[i_un ] = 1
+                    BO[i_uno] = 1
+                    n_new+=1
+        else:
+            ao_min,ao_max = ao
+            ao_req = bo+n_un
+            #print( "atom[%i]%s: bo(%i)+n_un(%i)=%i "  %(ia,typ,bo,n_un,ao_req ) )
+            if ao_req > ao_max:
+                print( "ERROR atom[%i]%s: bo(%i)+n_un(%i)=%i > ao_max(%i) " %(ia,typ, bo,n_un,ao_req, ao_max)  )
+            elif ao_req==3:
+                #print( "replaced atom[%i] %s -> %s " %(ia,typ,"=CH-") )
+                atypes[ia]="=CH-"
+                n_new+=1
+            elif (bo==2) and ( n_un==0 ) and (typ=="C/N"):
+                #print( "replaced atom[%i] %s -> %s " %(ia,typ,"-NH-") )
+                atypes[ia]="-NH-"
+                n_new+=1
+    
+    return n_new
+
+def determineBondOrder( atoms, bonds, BO ): 
+    for i,b in enumerate(bonds):
+        A = atoms[b[0]]
+        B = atoms[b[1]]
+        boA = BO_groups.get( A, -1 )
+        boB = BO_groups.get( B, -1 )
+        bo  = None
+        bomin = min(boA,boB)
+        bomax = max(boA,boB)
+        #if(bomax > 1 ): print( bomax, A,B, boA,boB  )
+        if ( bomin > 0 ):  # bond determined from both sides
+            if boA!=boB: 
+                print( "ERROR bond[%i](%s,%s) cannot be bonded ", i, A,B ); 
+                return
+            bo = boA
+        elif bomax>-1:  # bond determined from one side
+            bo=bomax
+        if bo is not None:
+            BO[i]=bo
+        #print( i, bo, A,B, boA, boB )
+    return BO
+
+
+def settleBonds( bonds, atypes, BO, bneighs ):
+    for ib,b in enumerate(bonds):
+        bo = BO[ib]
+        if bo == -1:
+            i,j=b
+            A = atypes[i]
+            B = atypes[j]
+            if( (A=="C/N") and (B=="C/N") ):
+
+                ngA = bneighs[i]
+                boA=0
+                for ja in ngA:
+                    if(ja!=ib):
+                        boiA = BO[i]
+                        if(boiA>0):
+                            boA+=boiA
+
+                ngB = bneighs[j]
+                boB=0
+                for jb in ngB:
+                    if(jb!=ib):
+                        boiB = BO[i]
+                        if(boiB>0):
+                            boB+=boiB
+
+                if( (boA==1) and (boB==1) ): 
+                    atypes[i]="=CH-"
+                    atypes[j]="=CH-"
+                    BO   [ib]=2
+
+
+
+def makeBondOrder(mol):
+    #atypes, _, ibonds = molecules[0]
+    atypes, apos, ibonds, BO = mol
+    #BO = [-1 for i in ibonds]
+    BO = determineBondOrder( atypes, ibonds, BO ) 
+    #print( BO )
+    
+    aneighs,bneighs = makeNeighs( ibonds, len(atypes) )
+    #print(ibonds)
+    #print(bneighs)
+    #print(BO)
+    ret = 1
+    for itr in range(10):
+        #print("#========= iter ", itr )
+        ret = determineBondsOfAtoms( atypes, bneighs, BO, ibonds )
+        if ret <=0: break
+    
+    mol = ( atypes, apos, ibonds, BO )
+    if ret<0:
+        plt.figure( figsize=(5,5))
+        plotMolecule( mol )
+        plt.show()
+        plt.close()
+
+    settleBonds( ibonds, atypes, BO, bneighs )
+
+    return mol
+
+def plotMolecule( mol ):
+    atypes, apos, ibonds, BO = mol
+
+    choice=( '#808080', '#8080f0' )
+    colors = [ choice[bo==-1] for bo in BO ]
+
+    BO = np.array(BO,dtype=np.float); BO[BO<1.0]=1.5      #print( BO )
+    lws = (BO-0.8)*8
+    
+    pu.plotBonds( links=ibonds, ps=apos, lws=lws, axes=(0,1), colors=colors )
+    pu.plotAtoms( apos, labels=atypes, axes=(0,1) )
+    #plt.axis('equal')
+    plt.gca().set_aspect('equal',adjustable='box')
+    plt.ylim(-3.5,0.5)
+    plt.xlim(-4.0,4.0)
+
+def plotMolecules( molecules, sz=20 ):
+    plt.figure( figsize=(sz,sz) )
+    iimg = 0
+    nmol = len(molecules)
+    for i,mol in enumerate(molecules):
+        print( "#### Molecule[%i] " %i, mol[0] )
+        plt.subplot(6,4,iimg+1)
+        plotMolecule( mol )
+        plt.title("Mol[%i]" %i )
+        iimg+=1
+        if( (iimg >= 24) or (i>=nmol-1)):
+            plt.savefig( "endgroups_%03i_%03i.png" %(i-24+1,i+1) , bbox_inches='tight')  
+            iimg=0  
+            plt.figure( figsize=(sz,sz) )
 
 # ====== Generate skeletons (no-types assignment)
 
@@ -154,33 +343,46 @@ for i,mol in enumerate(skeletons):
     ibonds = [ (dct[b[0]],dct[b[1]]) for b in bonds ]
     apos   = np.array([ sites[k][0] for k in atoms ])
 
+    b2="=CH-"
+    b3="=CH-"
+    c2="C/N"
+    c3="C/N"
     if   v1==0:  # missing 
         groups1=[None] 
     elif v1==1:  # end
         groups1=side
+        b2="C"
     else:  # cycle
         groups1=central
+        b2="C"
+        c2="C"
 
     if   v3==0:  # missing 
         groups3=[None] 
     elif v3==1:  # end
         groups3=side
+        b3="C"
     else:  # cycle
         groups3=central
+        b3="C"
+        c3="C"
 
     group2 = central
 
     for a1 in groups1:
         for a3 in groups3:
             for a2 in group2:
-                aaa = (a1,a2,a3)
+                aaa = (a1,a2,a3,b2,b3,c2,c3)
                 atypes= [ assing_type( sites_can[k][1], k, aaa ) for k in atoms ] 
-                mol = ( atypes, apos, ibonds )
+
+                BO = [-1 for i in ibonds]
+                mol = ( atypes, apos, ibonds, BO )
                 molecules.append(mol)
 
 
 print(len(molecules))
 
+'''
 sz=20
 plt.figure( figsize=(sz,sz) )
 iimg = 0
@@ -200,7 +402,7 @@ for i,mol in enumerate(molecules):
         plt.savefig( "endgroups_%03i_%03i.png" %(i-25+1,i+1) , bbox_inches='tight')  
         iimg=0  
         plt.figure( figsize=(sz,sz) )
-
+'''
 
 '''
 plt.figure( figsize=(10,10) )
@@ -228,3 +430,20 @@ for i,mol in enumerate(skeletons):
     plt.ylim(-7.,1.)
 plt.show()
 '''
+
+molecules_new = []
+for i,mol in enumerate(molecules):
+    print( "########## mol", i )
+    #if(i>10):break
+    mol_new = makeBondOrder(mol)
+    molecules_new.append(mol_new) 
+
+plotMolecules( molecules_new, sz=20 )
+#print( BO )
+
+
+
+
+
+
+

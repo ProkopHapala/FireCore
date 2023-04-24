@@ -16,7 +16,7 @@ def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, size
         for i in range(na):
             ax.annotate( str(labels[i]), (apos[i,ax1], apos[i,ax2]))
 
-def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1) ):
+def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k' ):
     ax1,ax2=axes
     ax_inds=[ax1,ax2]
     if lps is None:
@@ -29,7 +29,7 @@ def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1) ):
         lps[:,0,:] = ps_[ links[:,0],: ]
         lps[:,1,:] = ps_[ links[:,1],: ]
     #lws = (kek.bondOrder-0.8)*5
-    lc = mc.LineCollection(lps, linewidths=lws, colors='k' )
+    lc = mc.LineCollection(lps, linewidths=lws, colors=colors )
     ax= plt.gca()
     ax.add_collection(lc)
     #ax.autoscale()

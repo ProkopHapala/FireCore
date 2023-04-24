@@ -112,7 +112,9 @@ ELEMENTS = [
 [        109       ,        "Mt"       ,        7        ,        9        ,        "D"        ,        "Meitnerium"         ,       2.000,   2.00      ,    '#FF1493'  , 0     ]  ,
 [        110       ,        "Ds"       ,        7        ,        10       ,        "D"        ,        "Darmstadtium"       ,       2.000,   2.00      ,    '#FF1493'  , 0     ]  ,
 [        111       ,        "Rg"       ,        7        ,        1        ,        "D"        ,        "Roentgenium"        ,       2.000,   2.00      ,    '#FF1493'  , 0     ]  ,
-[        112       ,        "Uub"      ,        7        ,        2        ,        "D"        ,        "Ununbium"           ,       2.000,   2.00      ,    '#FF1493'  , 0     ]
+[        112       ,        "Uub"      ,        7        ,        2        ,        "D"        ,        "Ununbium"           ,       2.000,   2.00      ,    '#FF1493'  , 0     ],
+
+[        200       ,        "E"        ,        -1        ,        -1        ,        "D"        ,        "electron"           ,     0.5,   0.5      ,    '#FF1493'  , 0     ],
 ]                                                                                                                                            
                                                                                                                                              
 def elementDict( ELEMENTS ):                                                                                                                 
