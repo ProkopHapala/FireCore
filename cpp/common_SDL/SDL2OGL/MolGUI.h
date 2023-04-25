@@ -824,8 +824,8 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_s: W->saveXYZ( "out.xyz", "#comment", false ); break;
                 case SDLK_p: saveScreenshot( frameCount ); break;
                 
-                case SDLK_o: W->optimizeLattice_1d( 10,0, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
-
+                case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
+                //case SDLK_o: W->optimizeLattice_1d( 0,2, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
 
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;

@@ -164,7 +164,9 @@ virtual double solve( int nmax, double tol )override{
     //printf("ffl.invLvec\n" ); printMat( ffl.invLvec );
     //printf("npbc %i nPBC(%i,%i,%i) \n", npbc, nPBC.x,nPBC.y,nPBC.z );
     //nmax = 10;
-    run_omp( nmax, opt.dt_max, tol, 1000.0, -1. );
+    long t0=getCPUticks();
+    int nitr = run_omp( nmax, opt.dt_max, tol, 1000.0, -1. );
+    long t=(getCPUticks()-t0); printf( "time run_omp[%i] %g[Mtick] %g[ktick/iter]  %g[s] %g[s/iter]\n", nitr, t*1e-6, t*1.e-3/nitr, t*tick2second, t*tick2second/nitr  );
     return Etot;
 }
 
@@ -173,14 +175,13 @@ virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
     //printf("ffl.lvec\n"    ); printMat( ffl.lvec );
     //printf("   *lvec\n"    ); printMat(    *lvec );
     change_lvec( *lvec );
-    printMat( ffl.lvec );
-    printPBCshifts();
-    /*
-    for(int i=0; i<ffl.nvecs; i++){
-        ffl.apos [i] = ps[i];
+    //printMat( ffl.lvec );
+    //printPBCshifts();
+    for(int i=0; i<ffl.natoms; i++){
+        //printf( "setGeom[%i] ffl.apos(%6.3f,%6.3f,%6.3f) ps(%6.3f,%6.3f,%6.3f) \n", i, ffl.apos[i].x, ffl.apos[i].y, ffl.apos[i].z,   ps[i].x,ps[i].y,ps[i].z );
+        ffl.apos[i] = ps[i];
         ffl.vapos[i] = Vec3dZero;
     }
-    */
 }
 
 virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
@@ -196,8 +197,8 @@ virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
 
 void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     printf("\n\n\n######### optimizeLattice_1d(%i.%i)   \n", n1, n2    );
-    printMat( ffl.lvec );
-    printPBCshifts();
+    //printMat( ffl.lvec );
+    //printPBCshifts();
     //ffl.print_apos();
     //printf("ffl.lvec\n"    ); printMat( ffl.lvec    );
     //printf("ffl.invLvec\n" ); printMat( ffl.invLvec );
@@ -209,14 +210,16 @@ void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     //Mat3d lvec0 = builder.lvec;
     Mat3d lvec0 = ffl.lvec;
     //printf("optimizeLattice_1d lvec0\n"    ); printMat( lvec0    );
+    int initMode=1;
     if(n1>0){
-        gopt.lattice_scan_1d( n1, lvec0, dlvec   ,0 , "lattice_scan_1d_fw.xyz" );
-        setGeom( gopt.population[0]->apos, &lvec0 );
+        gopt.lattice_scan_1d( n1, lvec0, dlvec*-1,initMode, "lattice_scan_1d_bk.xyz", n1-1,-1 );
+        setGeom( gopt.population[n1-1]->apos, &lvec0 );
     }
     if(n2>0){
-        gopt.lattice_scan_1d( n2, lvec0, dlvec*-1,n1, "lattice_scan_1d_bk.xyz" );
-        setGeom( gopt.population[0]->apos, &lvec0 );
+        gopt.lattice_scan_1d( n2, lvec0, dlvec   ,initMode, "lattice_scan_1d_fw.xyz", n1,1 );
+        setGeom( gopt.population[n1-1]->apos, &lvec0 );
     }
+    gopt.popToXYZ( "lattice_scan_1d_all.xyz",0,-1,{2,2,1});
 }
 
 // =================== Functions

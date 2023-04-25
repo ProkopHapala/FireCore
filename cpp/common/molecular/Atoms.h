@@ -48,13 +48,12 @@ class Atoms{ public:
 
     void atomsToXYZ(FILE* fout, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1} ){
         int npbc=nPBC.totprod();
-        printf( "atomsToXYZ() atypes=%li   natoms=%i npbc=%i natoms*npbc=%i \n", (long)atypes, natoms, npbc, natoms*npbc );
+        //printf( "atomsToXYZ() atypes=%li   natoms=%i npbc=%i natoms*npbc=%i \n", (long)atypes, natoms, npbc, natoms*npbc );
         if(bN      )fprintf( fout, "%i\n", natoms*npbc );
         if(bComment){
            if(lvec){ fprintf( fout, "lvs %g %g %g  %g %g %g  %g %g %g  E %g id %li\n", lvec->a.x,lvec->a.y,lvec->a.z,  lvec->b.x,lvec->b.y,lvec->b.z,   lvec->c.x,lvec->c.y,lvec->c.z,  Energy,id  ); }
            else    { fprintf( fout, "E %g id %li\n", Energy,id  ); }
         }
-        DEBUG
         Vec3d shift=Vec3dZero;
         for(int iz=0;iz<nPBC.z;iz++){for(int iy=0;iy<nPBC.y;iy++){for(int ix=0;ix<nPBC.x;ix++){  if(lvec)shift= lvec->c*iz + lvec->b*iy + lvec->a*ix;
             for(int i=0; i<natoms; i++){
@@ -65,12 +64,15 @@ class Atoms{ public:
         }}};
     }
 
-    void toNewLattic( const Mat3d& lvec_new, Atoms* source=0 ){
+    void toNewLattice( const Mat3d& lvec_new, Atoms* source=0 ){
         Vec3d* apos_  =apos;
         int*   atypes_=atypes;
+        //printf("Atoms::toNewLattice() lvec\n");     printMat(*lvec);
+        //printf("Atoms::toNewLattice() lvec_new\n"); printMat(lvec_new);
         if( source ){
             apos_   = source->apos;
             atypes_ = source->atypes;
+            *lvec   = *(source->lvec);
         }
         Mat3d invLvec;
         lvec->invert_T_to( invLvec );

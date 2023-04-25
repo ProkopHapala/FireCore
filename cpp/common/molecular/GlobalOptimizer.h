@@ -72,22 +72,38 @@ class GlobalOptimizer{ public:
     }
 */
 
-    void lattice_scan_1d( int n, Mat3d lvec0, Mat3d dlvec, int ipop0=0, const char* outfname=0 ){
+    void popToXYZ( const char* fname, int imin=0, int imax=-1, Vec3i nPBC=Vec3i{1,1,1}){
+        FILE* fout=0;
+        fout = fopen(fname,"w");    if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_a() cannot open %s \n", fname ); exit(0); }
+        if(imax<0){ imax=npop; }
+        for(int i=imin; i<imax; i++){
+            if(fout){ population[i]->atomsToXYZ(fout,true,true,nPBC); }
+        }
+        fclose(fout);
+    }
+
+    void lattice_scan_1d( int n, Mat3d lvec0, Mat3d dlvec, int initMode=0, const char* outfname=0, int ipop0=0, int istep=1 ){
         FILE* fout=0;
         if(outfname){ fout = fopen(outfname,"w"); if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_a() cannot open %s \n", outfname ); exit(0); } }
         Mat3d lvec=lvec0;
-        Atoms* atoms0 = population[0];
+        Atoms* atoms0 = population[ipop0];
         solver->getGeom( atoms0->apos, atoms0->lvec );
-        printf("atoms0->lvec\n"    ); printMat( *(atoms0->lvec) );
+        //printf("atoms0->lvec\n"    ); printMat( *(atoms0->lvec) );
         for(int i=0; i<n; i++){
+            int ipop=i*istep+ipop0;
+            printf( "lattice_scan_1d[%i] ipop %i \n",  i,ipop );
+            long t0=getCPUticks();
             if(i>0){    
                 lvec.add(dlvec);
-                population[i]->copyOf( *population[i-1] ); *(population[i]->lvec)=lvec;
-                //population[i]->toNewLattic( lvec, population[i-1] );
+                switch(initMode){
+                    case 0:{ population[ipop]->copyOf(            *population[ipop-istep] ); *(population[ipop]->lvec)=lvec; }break;
+                    case 1:{ population[ipop]->toNewLattice( lvec, population[ipop-istep] );                                 }break;
+                }
             }
-            printf( "### lattice_scan_1d(%i) lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}} \n", i, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,  lvec.c.x,lvec.c.y,lvec.c.z  );
-            solve( i ); DEBUG
-            if(fout){ population[ipop0+i]->atomsToXYZ(fout,true,true, {2,2,1}); } DEBUG
+            //printf( "### lattice_scan_1d(%i) lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}} \n", i, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,  lvec.c.x,lvec.c.y,lvec.c.z  );
+            solve( ipop );
+            //printf( "time lattice_scan_1d[%i] %g[Mtick]\n", i, (getCPUticks()-t0)*1e-6 );
+            if(fout){ population[ipop]->atomsToXYZ(fout,true,true, {2,2,1}); }
         }
         if(fout){fclose(fout);}
     }
