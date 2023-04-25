@@ -40,6 +40,7 @@ static MMFFparams* params_glob;
 #include "DynamicOpt.h"
 
 #include "MultiSolverInterface.h"
+#include "GlobalOptimizer.h"
 
 #include "datatypes_utils.h"
 
@@ -87,6 +88,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     QEq          qeq;
 	DynamicOpt   opt;
     DynamicOpt   optRB;  // rigid body optimizer
+
+    GlobalOptimizer gopt;
 
     bool bOcl=false; // used only in Ocl version
 
@@ -147,24 +150,73 @@ class MolWorld_sp3 : public SolverInterface { public:
 //       Implement    SolverInterface
 // ===============================================
 
-virtual double solve( int nmax=1000, double tol=1e-6 )override{
-    run_omp( nmax, opt.dt_max, tol );
+void change_lvec( Mat3d lvec ){
+    ffl.setLvec( lvec );
+    npbc = makePBCshifts( nPBC, lvec );
+    ffl.bindShifts(npbc,pbc_shifts);
+    builder.lvec = lvec;
+}
+
+virtual double solve( int nmax, double tol )override{
+    //printf( "MolWorld::solve(nmax=%i,tol=%g)\n", nmax, tol );
+    //ffl.print_apos();
+    //printf("ffl.lvec\n"    ); printMat( ffl.lvec    );
+    //printf("ffl.invLvec\n" ); printMat( ffl.invLvec );
+    //printf("npbc %i nPBC(%i,%i,%i) \n", npbc, nPBC.x,nPBC.y,nPBC.z );
+    //nmax = 10;
+    run_omp( nmax, opt.dt_max, tol, 1000.0, -1. );
     return Etot;
 }
 
 virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
-    ffl.lvec = *lvec;
+    //printf( "MolWorld::setGeom()\n" );
+    //printf("ffl.lvec\n"    ); printMat( ffl.lvec );
+    //printf("   *lvec\n"    ); printMat(    *lvec );
+    change_lvec( *lvec );
+    printMat( ffl.lvec );
+    printPBCshifts();
+    /*
     for(int i=0; i<ffl.nvecs; i++){
         ffl.apos [i] = ps[i];
         ffl.vapos[i] = Vec3dZero;
     }
+    */
 }
 
 virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
-    for(int i=0; i<ffl.nvecs; i++){
+    //printf( "MolWorld::getGeom()\n" );
+    //printf("getGeom ffl.lvec\n"    ); printMat( ffl.lvec );
+    if(lvec){ *lvec=ffl.lvec; }
+    //for(int i=0; i<ffl.nvecs; i++){
+    for(int i=0; i<ffl.natoms; i++){
         ps[i]=ffl.apos[i];
     }
     return Etot;
+}
+
+void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
+    printf("\n\n\n######### optimizeLattice_1d(%i.%i)   \n", n1, n2    );
+    printMat( ffl.lvec );
+    printPBCshifts();
+    //ffl.print_apos();
+    //printf("ffl.lvec\n"    ); printMat( ffl.lvec    );
+    //printf("ffl.invLvec\n" ); printMat( ffl.invLvec );
+    //gopt.reallocPop( n1+n2, ffl.nvecs );
+    //gopt.atypes = ffl.atypes;
+    gopt.reallocPop( n1+n2, ffl.natoms, true );
+
+    for(int i=0; i<ffl.natoms; i++ ){ gopt.atypes[i]= params.atypes[ffl.atypes[i]].iZ; }
+    //Mat3d lvec0 = builder.lvec;
+    Mat3d lvec0 = ffl.lvec;
+    //printf("optimizeLattice_1d lvec0\n"    ); printMat( lvec0    );
+    if(n1>0){
+        gopt.lattice_scan_1d( n1, lvec0, dlvec   ,0 , "lattice_scan_1d_fw.xyz" );
+        setGeom( gopt.population[0]->apos, &lvec0 );
+    }
+    if(n2>0){
+        gopt.lattice_scan_1d( n2, lvec0, dlvec*-1,n1, "lattice_scan_1d_bk.xyz" );
+        setGeom( gopt.population[0]->apos, &lvec0 );
+    }
 }
 
 // =================== Functions
@@ -175,7 +227,8 @@ virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGr
 
 int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
     npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
-    pbc_shifts = new Vec3d[npbc];
+    //pbc_shifts = new Vec3d[npbc];
+    _realloc(pbc_shifts,npbc);
     int ipbc=0;
     for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
         pbc_shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
@@ -183,6 +236,11 @@ int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
         ipbc++; 
     }}}
     return npbc;
+}
+
+void printPBCshifts(){
+    printf("printPBCshifts():\n");
+    for(int i=0; i<npbc; i++){ printf("pbc_shift[%i] (%6.3f,%6.3f,%6.3f)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
 }
 
 void autoCharges(){
@@ -482,6 +540,8 @@ virtual void init( bool bGrid ){
     //params.printAtomTypes();
     //params.printBond();
 
+    gopt.solver = this;
+
     params_glob = &params;
     builder.verbosity=verbosity;
     if(verbosity>0){
@@ -568,6 +628,7 @@ virtual void init( bool bGrid ){
             ffl.makeNeighCells( npbc, pbc_shifts ); 
         }
 
+        printf("npbc %i\n", npbc ); ffl.printNeighs();
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
         idebug=1;
@@ -809,8 +870,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     verbosity = 0;
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
-    run_omp( 100, 0.05, 1e-6, 1000.0 );
-    //run_omp( 1, opt.dt, 1e-6, 1000.0 );
+    //run_omp( 100, 0.05, 1e-6, 1000.0 );
+    run_omp( 1, opt.dt, 1e-6, 1000.0 );
     //run_omp( 2, opt.dt, 1e-6, 1000.0 );
     //run_omp( 100, opt.dt, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
@@ -818,12 +879,13 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     bChargeUpdated=false;
 }
 
-int run_omp( int niter, double dt, double Fconv=1e-6, double Flim=1000 ){
+int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02 ){
 
     long T0 = getCPUticks();
-    double E=0,F2=0;
+    double E=0,F2=0,F2conv=Fconv*Fconv;
     double ff=0,vv=0,vf=0;
-    int itr=0;
+    int itr=0,niter=niter_max;
+
     //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
     #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0)
     //for(itr=0; itr<niter; itr++){
@@ -841,6 +903,8 @@ int run_omp( int niter, double dt, double Fconv=1e-6, double Flim=1000 ){
             //if(verbosity>3)
             //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
             if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+
+            
             // ----- Error is HERE
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
             else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
@@ -850,6 +914,7 @@ int run_omp( int niter, double dt, double Fconv=1e-6, double Flim=1000 ){
             }
             if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
             //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
+            
             
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
@@ -889,21 +954,24 @@ int run_omp( int niter, double dt, double Fconv=1e-6, double Flim=1000 ){
         #pragma omp single
         { 
             itr++; 
-            double t = (getCPUticks() - T0)*tick2second;
-            if(t>0.02){ 
-                niter=0; 
-                //printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
+            if(timeLimit>0){
+                double t = (getCPUticks() - T0)*tick2second;
+                if(t>0.02){ 
+                    niter=0; 
+                    if(verbosity>0)printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
+                }
             }
-            if(F2<Fconv){ 
+            if(F2<F2conv){ 
                 niter=0; 
-                //printf( "run_omp() converged in %i nsteps \n", itr );
+                if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g \n", itr,niter_max, E, sqrt(F2) );
             }   
-            //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() ); 
+            //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
             //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
-            //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
+            //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
         }
     }
-    
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i nsteps E=%g |F|=%g \n", itr,niter_max, E, sqrt(F2) );
+
     return itr;
 }
 
