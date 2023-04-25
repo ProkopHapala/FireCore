@@ -37,6 +37,7 @@ class Atoms{ public:
     }
 
     Atoms() = default;
+    Atoms(FILE* fin){ if(atomsFromXYZ(fin)<0){ natoms=-1; }; };
     Atoms(int n,bool bLvec=false, bool bAtypes=true ){ realloc( n, bAtypes ); if(bLvec){ lvec=new Mat3d; *lvec=Mat3dIdentity; };    };
     Atoms(const Atoms& As, bool bCopy=true){ if(bCopy){ copyOf(As); }else{  bind(As.natoms,As.atypes,As.apos); } };
 
@@ -46,20 +47,57 @@ class Atoms{ public:
 
     void print()const{ printf("Atoms::print() natom=%i\n", natoms); for(int i=0; i<natoms; i++){ printf( "[%i] atype %i apos(%6.3f,%6.3f,%6.3f)\n", i, atypes[i], apos[i].x, apos[i].y, apos[i].z ); } }
 
-    void atomsToXYZ(FILE* fout, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1} ){
+
+    bool cellFromString( char* s, Mat3d& lvec )const{
+        char c[3]; Mat3d M;
+        int n = sscanf( s, "%c%c%c %lf %lf %lf   %lf %lf %lf   %lf %lf %lf", c,c+1,c+2, &(M.a.x),&(M.a.y),&(M.a.z),   &(M.b.x),&(M.b.y),&(M.b.z),   &(M.c.x),&(M.c.y),&(M.c.z) );
+        if( (n==12) && (c[0]=='l')&&(c[1]=='v')&&(c[2]=='s') ){ lvec=M; return true; }
+        return false;
+    }
+
+    int atomsFromXYZ(FILE* file, bool bRealloc=true ){
+        const int nbuf=1024;
+        char buff[nbuf];
+        char* line=0;
+        int na=0;
+        line = fgets(  buff, nbuf, file );  if(!line){ return -1; }
+        int n = sscanf( line, "%i\n", &na );
+        //printf( "atomsFromXYZ() na=%i \n", na );
+        if( n != 1 ){ return -1; }
+        if((na<=0)||(na>10000)){ printf( "ERROR in Atoms::atomsFromXYZ() natoms(%i) is invalid => Exit() \n", natoms ); return -1; };
+        if(bRealloc)realloc( na );
+        Mat3d M; char c[3];
+        line = fgets(  buff, nbuf, file );
+        n = sscanf( line, "%c%c%c %lf %lf %lf   %lf %lf %lf   %lf %lf %lf", c,c+1,c+2, &(M.a.x),&(M.a.y),&(M.a.z),   &(M.b.x),&(M.b.y),&(M.b.z),   &(M.c.x),&(M.c.y),&(M.c.z) );
+        if( (n==12) && (c[0]=='l')&&(c[1]=='v')&&(c[2]=='s') ){  lvec=new Mat3d(); *lvec=M; }else{  printf("WARRNING: Atoms::atomsFromXYZ() lvec not read \n" ); }
+        int typ; Vec3d p;
+        //if(lvec)printf( "lvec %g %g %g  %g %g %g  %g %g %g  \n", lvec->a.x,lvec->a.y,lvec->a.z,  lvec->b.x,lvec->b.y,lvec->b.z,   lvec->c.x,lvec->c.y,lvec->c.z  );
+        //printf( "atomsFromXYZ() natoms=%i \n", natoms );
+        for(int i=0; i<natoms; i++){
+            line = fgets(  buff, nbuf, file );
+            //printf( "`%s`\n", line );
+            n = sscanf( line, "%i %lf %lf %lf\n", &typ, &p.x, &p.y, &p.z );
+            //printf( "atomsFromXYZ[%i] %i   %g %g %g   nread=%i\n", i, typ, p.x, p.y, p.z, n );
+            atypes[i]=typ;
+            apos  [i]=p;
+        }
+        return 0;
+    }
+
+    void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1} ){
         int npbc=nPBC.totprod();
         //printf( "atomsToXYZ() atypes=%li   natoms=%i npbc=%i natoms*npbc=%i \n", (long)atypes, natoms, npbc, natoms*npbc );
-        if(bN      )fprintf( fout, "%i\n", natoms*npbc );
+        if(bN      )fprintf( file, "%i\n", natoms*npbc );
         if(bComment){
-           if(lvec){ fprintf( fout, "lvs %g %g %g  %g %g %g  %g %g %g  E %g id %li\n", lvec->a.x,lvec->a.y,lvec->a.z,  lvec->b.x,lvec->b.y,lvec->b.z,   lvec->c.x,lvec->c.y,lvec->c.z,  Energy,id  ); }
-           else    { fprintf( fout, "E %g id %li\n", Energy,id  ); }
+           if(lvec){ fprintf( file, "lvs %g %g %g  %g %g %g  %g %g %g  E %g id %li\n", lvec->a.x,lvec->a.y,lvec->a.z,  lvec->b.x,lvec->b.y,lvec->b.z,   lvec->c.x,lvec->c.y,lvec->c.z,  Energy,id  ); }
+           else    { fprintf( file, "E %g id %li\n", Energy,id  ); }
         }
         Vec3d shift=Vec3dZero;
         for(int iz=0;iz<nPBC.z;iz++){for(int iy=0;iy<nPBC.y;iy++){for(int ix=0;ix<nPBC.x;ix++){  if(lvec)shift= lvec->c*iz + lvec->b*iy + lvec->a*ix;
             for(int i=0; i<natoms; i++){
                 //printf( "atomsToXYZ[%i]\n", i );
                 Vec3d p =  apos[i]+shift;
-                fprintf( fout, "%i %20.10f %20.10f %20.10f\n", atypes[i], p.x, p.y, p.z );
+                fprintf( file, "%i %20.10f %20.10f %20.10f\n", atypes[i], p.x, p.y, p.z );
             }
         }}};
     }

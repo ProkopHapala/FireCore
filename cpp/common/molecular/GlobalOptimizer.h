@@ -14,9 +14,11 @@ class GlobalOptimizer{ public:
     MultiSolverInterface* msolver =0;
     SolverInterface*      solver  =0;
 
-    int npop=0;
-    Atoms**             population=0;
+    //int npop=0;
+    //Atoms**             population=0;
     //std::vector<Atoms*> history;
+
+    std::vector<Atoms*> population;
 
     Vec3d dpos_min{-0.5,-0.5,-0.5};
     Vec3d dpos_max{+0.5,+0.5,+0.5};
@@ -26,15 +28,19 @@ class GlobalOptimizer{ public:
 
     // ================= Functions
 
-    void reallocPop(int npop_, int nvec, bool bAtypes ){
-        npop=npop_;
+    void reallocPop(int npop, int nvec, bool bAtypes ){
+        //npop=npop_;
         if(bAtypes)_realloc(atypes,nvec);
-        _realloc( population, npop );
+        //_realloc( population, npop );
+        population.resize(npop);
         for(int i=0; i<npop; i++){
             population[i] = new Atoms(nvec,true, false);
             population[i]->atypes=atypes;
         }
     }
+
+    void setGeom(int i){ Atoms* atoms = population[i]; solver->setGeom( atoms->apos,  atoms->lvec ); };
+    void getGeom(int i){ Atoms* atoms = population[i]; solver->getGeom( atoms->apos,  atoms->lvec ); };
 
     void solve(int ipop ){
         Atoms* atoms = population[ipop];
@@ -72,14 +78,25 @@ class GlobalOptimizer{ public:
     }
 */
 
-    void popToXYZ( const char* fname, int imin=0, int imax=-1, Vec3i nPBC=Vec3i{1,1,1}){
-        FILE* fout=0;
-        fout = fopen(fname,"w");    if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_a() cannot open %s \n", fname ); exit(0); }
-        if(imax<0){ imax=npop; }
-        for(int i=imin; i<imax; i++){
-            if(fout){ population[i]->atomsToXYZ(fout,true,true,nPBC); }
+    void loadPopXYZ( const char* fname ){
+        FILE* file = fopen(fname,"r");    if(!file){ printf("ERROR in GlobalOptimizer::lattice_scan_a() cannot open \n", fname ); exit(0); }
+        while(true){
+            //printf( "GlobalOptimizer::loadPopXYZ[%i]\n", population.size() );
+            Atoms* atoms = new Atoms(file);
+            if( atoms->natoms <=0 ){ break; };
+            population.push_back( atoms );
         }
-        fclose(fout);
+        fclose(file);
+    }
+
+    void popToXYZ( const char* fname, int imin=0, int imax=-1, Vec3i nPBC=Vec3i{1,1,1}){
+        FILE* file=0;
+        file = fopen(fname,"w");    if(!file){ printf("ERROR in GlobalOptimizer::lattice_scan_a() cannot open %s \n", fname ); exit(0); }
+        if(imax<0){ imax=population.size(); }
+        for(int i=imin; i<imax; i++){
+            if(file){ population[i]->atomsToXYZ(file,true,true,nPBC); }
+        }
+        fclose(file);
     }
 
     void lattice_scan_1d( int n, Mat3d lvec0, Mat3d dlvec, int initMode=0, const char* outfname=0, int ipop0=0, int istep=1 ){

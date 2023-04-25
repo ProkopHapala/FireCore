@@ -70,6 +70,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     SimplexRuler ruler; // Helps paiting organic molecules
 
     // ---- Visualization params
+    int iSystemCur = 0;
     int which_MO  = 7; 
     //double ForceViewScale = 1.0;
     //double mm_Rsc         = 0.25;
@@ -825,7 +826,13 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_p: saveScreenshot( frameCount ); break;
                 
                 case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
+                case SDLK_u: W->upload_pop        ( "population.xyz" ); break;
                 //case SDLK_o: W->optimizeLattice_1d( 0,2, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
+                case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
+                case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
+
+                    
+                    
 
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
@@ -868,12 +875,8 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
 
-                case SDLK_LEFTBRACKET:
-                    rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, +rotation_step );
-                    break;
-                case SDLK_RIGHTBRACKET:
-                    rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );
-                    break;
+                //case SDLK_LEFTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, +rotation_step ); break;
+                //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
 
                 case SDLK_SPACE: bRunRelax=!bRunRelax; break;
 
