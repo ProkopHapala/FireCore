@@ -230,6 +230,7 @@ double eval_atom(const int ia){
                 int ipbc = ingC[i]; 
                 //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
                 h.f.add( shifts[ipbc] );
+                //if( ipbc!=4 ){ printf("atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
             }else{
                 Vec3i g  = invLvec.nearestCell( h.f );
                 // if(ia==ia_DBG){

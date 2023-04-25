@@ -107,7 +107,12 @@ class Mat3T{
 		c.set( va.z, vb.z, vc.z );
 	};
 
-	inline MAT operator* ( T f   ) const { MAT m; m.a.set_mul(a,f); m.b.set_mul(b,f); m.c.set_mul(c,f); return m; };
+	inline MAT operator* ( T f           ) const { MAT m; m.a.set_mul(a,f);   m.b.set_mul(b,f);   m.c.set_mul(c,f);   return m; };
+    inline MAT operator+ ( const MAT& m  ) const { MAT o; o.a.set_add(a,m.a); o.b.set_add(b,m.b); o.c.set_add(c,m.c); return o; };
+
+    inline void add    ( const MAT& m      ){ a.add(m.a);       b.add(m.b);       c.add(m.c);  };
+    inline void sub    ( const MAT& m      ){ a.sub(m.a);       b.sub(m.b);       c.sub(m.c);  };
+    inline void add_mul( const MAT& m , T f){ a.add_mul(m.a,f); b.add_mul(m.b,f); c.add_mul(m.c,f); };
 
     inline void mul ( T f        ){ a.mul(f);    b.mul(f);    c.mul(f);    };
     inline void mul ( const VEC& va ){ a.mul(va.a); b.mul(va.b); c.mul(va.c); };

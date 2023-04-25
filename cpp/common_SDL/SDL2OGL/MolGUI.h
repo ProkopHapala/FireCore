@@ -94,6 +94,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Quat4f testPLQ;
 
 
+    Mat3d dlvec{ 0.1,0.0,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
+
+
     // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
     int    natoms=0,nnode=0,nbonds=0;
     int*   atypes;
@@ -807,8 +810,12 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_KP_0: qCamera = qCamera0; break;
 
-                case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
-                case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
+                //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
+                //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
+
+                case SDLK_COMMA:  W->change_lvec( W->ffl.lvec+dlvec    );; break;
+                case SDLK_PERIOD: W->change_lvec( W->ffl.lvec+dlvec*-1 ); break;
+
                 //case SDLK_LESS:    which_MO--; printf("which_MO %i \n"); break;
                 //case SDLK_GREATER: which_MO++; printf("which_MO %i \n"); break;
 
@@ -817,6 +824,9 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_s: W->saveXYZ( "out.xyz", "#comment", false ); break;
                 case SDLK_p: saveScreenshot( frameCount ); break;
                 
+                case SDLK_o: W->optimizeLattice_1d( 10,0, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
+
+
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;

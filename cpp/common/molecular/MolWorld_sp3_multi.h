@@ -180,6 +180,7 @@ void realloc( int nSystems_ ){
 virtual void init( bool bGrid ) override {
     int err = 0;
     printf("# ========== MolWorld_sp3_multi::init() START\n");
+    gopt.msolver = this;
     int i_nvidia = ocl.print_devices(true);
     ocl.init(i_nvidia);
     ocl.makeKrenels_MM("common_resources/cl" );

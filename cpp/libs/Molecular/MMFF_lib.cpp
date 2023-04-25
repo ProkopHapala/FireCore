@@ -373,4 +373,5 @@ void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi
     W.scanRotation( n, selection,ia0, iax0, iax1, phi, nstep, Es, bWriteTrj );
 }
 
+
 } // extern "C"
