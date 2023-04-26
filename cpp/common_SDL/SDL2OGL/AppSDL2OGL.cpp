@@ -43,7 +43,7 @@ void AppSDL2OGL::inputHanding(){
     //printf( "window[%i] inputHanding   %i %i \n", id, wflags&SDL_WINDOW_INPUT_FOCUS, SDL_WINDOW_INPUT_FOCUS );
     //if( wflags & SDL_WINDOW_INPUT_FOCUS ){
     //printf( "window[%i] inputHanding \n", id );
-    const Uint8 *keys = SDL_GetKeyboardState(NULL);
+    keys = SDL_GetKeyboardState(NULL);
     if( bFocus ){
         //printf( "window[%i] inputHanding has focus \n", id );
         keyStateHandling( keys );
