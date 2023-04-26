@@ -12,6 +12,7 @@ class AppSDL2OGL : public ScreenSDL2OGL{ public:
 	int  upTime=0,delay=20,timeSlice=5; //,frameCount=0;
 	bool loopEnd    = false, STOP = false;
 	//float camStep   = VIEW_MOVE_STEP;
+    const Uint8 *keys;
 
     std::vector<ScreenSDL2OGL*> child_windows;
 

@@ -96,7 +96,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
 
     Mat3d dlvec{ 0.1,0.0,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
-
+    Vec2f mouse_pix;
 
     // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
     int    natoms=0,nnode=0,nbonds=0;
@@ -135,13 +135,22 @@ class MolGUI : public AppSDL2OGL_3D { public:
     std::vector<Vec2i> bondsToShow;
     Vec3d * bondsToShow_shifts = 0; 
 
+    enum class Gui_Mode { base, edit, scan };
+    Gui_Mode  gui_mode = Gui_Mode::base;
+    //int gui_mode = Gui_Mode::edit;
+
     // ======================= Functions 
 
-	virtual void draw   ();
-	virtual void drawHUD();
-	//virtual void mouseHandling( );
-	virtual void eventHandling   ( const SDL_Event& event  );
-	virtual void keyStateHandling( const Uint8 *keys );
+	virtual void draw   () override;
+	virtual void drawHUD() override;
+	//virtual void mouseHandling( ) override;
+	virtual void eventHandling   ( const SDL_Event& event  ) override;
+	virtual void keyStateHandling( const Uint8 *keys )       override;
+
+    void eventMode_default( const SDL_Event& event );
+    void eventMode_scan   ( const SDL_Event& event );
+    void eventMode_edit   ( const SDL_Event& event );
+    void mouse_default( const SDL_Event& event );
 
 	MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ );
     void init();
@@ -533,6 +542,8 @@ void MolGUI::drawHUD(){
     }
     */
 
+    mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
+                          2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);
 }
 
 void MolGUI::drawingHex(double z0){
@@ -756,65 +767,110 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
     glEnd();
 }
 
-void MolGUI::eventHandling ( const SDL_Event& event  ){
-    //printf( "NonInert_seats::eventHandling() \n" );
-    float xstep = 0.2;
-    gui.onEvent( mouseX, mouseY, event );
-    Vec2f pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
-                          2*mouseY/float(HEIGHT) - 1              });// *(1/zoom);
-    if(useGizmo)gizmo.onEvent( pix, event );
+void MolGUI::mouse_default( const SDL_Event& event ){
+    switch( event.type ){
+        case SDL_MOUSEBUTTONDOWN:
+            switch( event.button.button ){
+                case SDL_BUTTON_LEFT: { ray0_start = ray0;  bDragging = true; }break;
+                case SDL_BUTTON_RIGHT:{ }break;
+            } break;
+        case SDL_MOUSEBUTTONUP:
+            switch( event.button.button ){
+                case SDL_BUTTON_LEFT:
+                    if( ray0.dist2(ray0_start)<0.1 ){
+                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
+                        if( ipick == W->ipicked ){ W->ipicked=-1; }else{ W->ipicked = ipick; }; 
+                        W->selection.clear();
+                        if(W->ipicked>=0){ 
+                            W->selection.push_back(W->ipicked); 
+                            Qpanel->value = W->nbmol.REQs[W->ipicked].z;
+                            Qpanel->redraw=true;
+                        };
+                        printf( "picked atom %i \n", W->ipicked );
+                    }else{
+                        selectRect( ray0_start, ray0 );
+                    }
+                    bDragging=false;
+                    break;
+                case SDL_BUTTON_RIGHT:{ W->ipicked=-1; } break;
+            }break;
+    }
+}
+
+void MolGUI::eventMode_edit( const SDL_Event& event  ){
     switch( event.type ){
         case SDL_MOUSEWHEEL:{
             if     (event.wheel.y > 0){ zoom/=1.2; }
             else if(event.wheel.y < 0){ zoom*=1.2; }}break;
-        case SDL_KEYDOWN :
-            //printf( "key: %c \n", event.key.keysym.sym );
-            if(gui.bKeyEvents) switch( event.key.keysym.sym ){
-                //case SDLK_p:  first_person = !first_person; break;
-                //case SDLK_o:  perspective  = !perspective; break;
-                //case SDLK_r:  world.fireProjectile( warrior1 ); break;
+        case SDL_KEYDOWN : { if(gui.bKeyEvents)switch( event.key.keysym.sym ){
+                case SDLK_t:{
+                    affineTransform( W->ff.natoms, W->ff.apos, W->ff.apos, W->builder.lvec, W->new_lvec );
+                    W->builder.updatePBC( W->ff.pbcShifts, &(W->new_lvec) );
+                    _swap( W->builder.lvec, W->new_lvec );
+                }break;
+                case SDLK_i:
+                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
+                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    //selection.erase();
+                    //for(int i:builder.selection){ selection.insert(i); };
+                    break;
+            }}break;
+        case SDL_WINDOWEVENT:{switch (event.window.event) {case SDL_WINDOWEVENT_CLOSE:{ quit(); }break;} } break;
+    }
+}
 
-                //case SDLK_LEFTBRACKET:  ff.i_DEBUG=(ff.i_DEBUG+1)%ff.nang; break;
-                //case SDLK_RIGHTBRACKET: ff.i_DEBUG=(ff.i_DEBUG+1)%ff.nang; break;
+void MolGUI::eventMode_scan( const SDL_Event& event  ){
+    switch( event.type ){
+        case SDL_MOUSEWHEEL:{
+            if     (event.wheel.y > 0){ zoom/=1.2; }
+            else if(event.wheel.y < 0){ zoom*=1.2; }}break;
+        case SDL_KEYDOWN : { if(gui.bKeyEvents)switch( event.key.keysym.sym ){
+            //case SDLK_KP_1: picked_lvec = &W->builder.lvec.a; break;
+            //case SDLK_KP_2: picked_lvec = &W->builder.lvec.b; break;
+            //case SDLK_KP_3: picked_lvec = &W->builder.lvec.c; break;
+            //case SDLK_KP_7: picked_lvec->x+=xstep; break;
+            //case SDLK_KP_4: picked_lvec->x-=xstep; break;
+            //case SDLK_KP_8: picked_lvec->y+=xstep; break;
+            //case SDLK_KP_5: picked_lvec->y-=xstep; break;
+            //case SDLK_KP_9: picked_lvec->z+=xstep; break;
+            //case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
-                //case SDLK_LEFTBRACKET:  if(ibpicked>=0) world.bond_0[ibpicked] += 0.1; break;
-                //case SDLK_RIGHTBRACKET: if(ibpicked>=0) world.bond_0[ibpicked] -= 0.1; break;
+            case SDLK_COMMA:  W->change_lvec( W->ffl.lvec+dlvec    ); break;
+            case SDLK_PERIOD: W->change_lvec( W->ffl.lvec+dlvec*-1 ); break;
 
-                //case SDLK_a: world.apos[1].rotate(  0.1, {0.0,0.0,1.0} ); break;
-                //case SDLK_d: world.apos[1].rotate( -0.1, {0.0,0.0,1.0} ); break;
+            case SDLK_a: apos[1].rotate(  0.1, {0.0,0.0,1.0} ); break;
+            case SDLK_d: apos[1].rotate( -0.1, {0.0,0.0,1.0} ); break;
 
-                //case SDLK_w: world.apos[1].mul( 1.1 ); break;
-                //case SDLK_s: world.apos[1].mul( 0.9 ); break;
+            case SDLK_w: apos[1].mul( 1.1 ); break;
+            case SDLK_s: apos[1].mul( 0.9 ); break;
 
-                //case SDLK_KP_7: builder.lvec.a.mul(   1.01); break;
-                //case SDLK_KP_4: builder.lvec.a.mul( 1/1.01); break;
+            case SDLK_KP_PLUS:  z0_scan = z0_scan+0.1; break;
+            case SDLK_KP_MINUS: z0_scan = z0_scan-0.1; break;
 
-                /*
-                case SDLK_KP_1: picked_lvec = &W->builder.lvec.a; break;
-                case SDLK_KP_2: picked_lvec = &W->builder.lvec.b; break;
-                case SDLK_KP_3: picked_lvec = &W->builder.lvec.c; break;
+            case SDLK_SPACE: bRunRelax=!bRunRelax; break;
 
-                case SDLK_KP_7: picked_lvec->x+=xstep; break;
-                case SDLK_KP_4: picked_lvec->x-=xstep; break;
+        }  }break;
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP:
+            mouse_default( event );
+            break;
+        case SDL_WINDOWEVENT:{switch (event.window.event) {case SDL_WINDOWEVENT_CLOSE:{ quit(); }break;} } break;
+    }
+}
 
-                case SDLK_KP_8: picked_lvec->y+=xstep; break;
-                case SDLK_KP_5: picked_lvec->y-=xstep; break;
-
-                case SDLK_KP_9: picked_lvec->z+=xstep; break;
-                case SDLK_KP_6: picked_lvec->z-=xstep; break;
-                */
-
-
-                case SDLK_KP_PLUS:  z0_scan = z0_scan+0.1; break;
-                case SDLK_KP_MINUS: z0_scan = z0_scan-0.1; break;
-                
-
+void MolGUI::eventMode_default( const SDL_Event& event ){
+    if(useGizmo)gizmo.onEvent( mouse_pix, event );
+    switch( event.type ){
+        case SDL_MOUSEWHEEL:{
+            if     (event.wheel.y > 0){ zoom/=1.2; }
+            else if(event.wheel.y < 0){ zoom*=1.2; }}break;
+        case SDL_KEYDOWN : if(gui.bKeyEvents) switch( event.key.keysym.sym ){
                 case SDLK_KP_0: qCamera = qCamera0; break;
 
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
 
-                case SDLK_COMMA:  W->change_lvec( W->ffl.lvec+dlvec    );; break;
+                case SDLK_COMMA:  W->change_lvec( W->ffl.lvec+dlvec    ); break;
                 case SDLK_PERIOD: W->change_lvec( W->ffl.lvec+dlvec*-1 ); break;
 
                 //case SDLK_LESS:    which_MO--; printf("which_MO %i \n"); break;
@@ -831,9 +887,6 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
                 case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
 
-                    
-                    
-
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;
@@ -844,7 +897,6 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_m: W->swith_method();      break;
                 case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
                 case SDLK_k: bDebug_scanSurfFF ^=1; break;
-
                 //case SDLK_q: W->autoCharges(); break;
                 case SDLK_a: bViewAtomSpheres ^= 1; break;
                 case SDLK_l: bViewAtomLabels  ^= 1; break;
@@ -853,127 +905,72 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
                 case SDLK_q: bViewMolCharges  ^= 1; break;
                 case SDLK_f: bViewAtomForces  ^= 1; break;
                 case SDLK_w: bViewSubstrate   ^= 1; break;
-
-                // case SDLK_a: bViewAtomSpheres=! bViewAtomSpheres; break;
-                // case SDLK_l: bViewAtomLabels =! bViewAtomLabels;  break;
-                // case SDLK_t: bViewAtomTypes  =! bViewAtomTypes;   break;
-                // case SDLK_b: bViewBondLabels =! bViewBondLabels;  break;
-                // case SDLK_q: bViewMolCharges =! bViewMolCharges;  break;
-                // case SDLK_f: bViewAtomForces =! bViewAtomForces;  break;
-                // case SDLK_w: bViewSubstrate  =! bViewSubstrate;   break;
-
-                // case SDLK_t:{
-                //             affineTransform( W->ff.natoms, W->ff.apos, W->ff.apos, W->builder.lvec, W->new_lvec );
-                //             W->builder.updatePBC( W->ff.pbcShifts, &(W->new_lvec) );
-                //             _swap( W->builder.lvec, W->new_lvec );
-                //             }break;
-
-                case SDLK_i:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
-                    //selection.erase();
-                    //for(int i:builder.selection){ selection.insert(i); };
-                    break;
-
                 //case SDLK_LEFTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, +rotation_step ); break;
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
-
                 case SDLK_SPACE: bRunRelax=!bRunRelax; break;
-
-                case SDLK_d: {
-                    printf( "DEBUG Camera Matrix\n");
-                    printf( "DEBUG qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
-                    qCamera.toMatrix(cam.rot);
-                    printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
-                    printMat((Mat3d)cam.rot);
-                } break;
-
+                // case SDLK_d: {
+                //     printf( "DEBUG Camera Matrix\n");
+                //     printf( "DEBUG qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
+                //     qCamera.toMatrix(cam.rot);
+                //     printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
+                //     printMat((Mat3d)cam.rot);
+                // } break;
                 //case SDLK_g: iangPicked=(iangPicked+1)%ff.nang;
                 //    printf( "ang[%i] cs(%g,%g) k %g (%i,%i,%i)\n", iangPicked, ff.ang_cs0[iangPicked].x, ff.ang_cs0[iangPicked].y, ff.ang_k[iangPicked],
                 //        ff.ang2atom[iangPicked].a,ff.ang2atom[iangPicked].b,ff.ang2atom[iangPicked].c );
                 //    break;
-
             }
             break;
         case SDL_MOUSEBUTTONDOWN:
-            switch( event.button.button ){
-                case SDL_BUTTON_LEFT:
-                    /*
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
-                    selection.clear();
-                    if(ipicked>=0){ selection.push_back(ipicked); };
-                    printf( "picked atom %i \n", ipicked );
-                    */
-                    ray0_start = ray0;
-                    bDragging = true;
-                    break;
-                case SDL_BUTTON_RIGHT:
-                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
-                    //printf("ibpicked %i \n", ibpicked);
-                    break;
-            }
-            break;
-        case SDL_MOUSEBUTTONUP:
-            switch( event.button.button ){
-                case SDL_BUTTON_LEFT:
-                    //ipicked = -1;
-                    //ray0_start
-                    if( ray0.dist2(ray0_start)<0.1 ){
-                        //int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->ff.natoms, W->ff.apos );
-                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
-                        if( ipick == W->ipicked ){ W->ipicked=-1; }else{ W->ipicked = ipick; }; 
-
-                        W->selection.clear();
-                        if(W->ipicked>=0){ 
-                            W->selection.push_back(W->ipicked); 
-                            Qpanel->value = W->nbmol.REQs[W->ipicked].z;
-                            Qpanel->redraw=true;
-                        };
-                        printf( "picked atom %i \n", W->ipicked );
-                    }else{
-                        selectRect( ray0_start, ray0 );
-                    }
-                    bDragging=false;
-                    break;
-                case SDL_BUTTON_RIGHT:
-                    //ibpicked = -1;
-                    break;
-            }
-            break;
-        case SDL_WINDOWEVENT:{
-            switch (event.window.event) {
-                case SDL_WINDOWEVENT_CLOSE:{ quit(); }break;
-            } } break;
+        case SDL_MOUSEBUTTONUP: mouse_default( event ); break;
+        case SDL_WINDOWEVENT:{switch (event.window.event) {case SDL_WINDOWEVENT_CLOSE:{ quit(); }break;} } break;
     } // switch( event.type ){
+}
+
+void MolGUI::eventHandling ( const SDL_Event& event  ){
+    //printf( "NonInert_seats::eventHandling() \n" );
+    float xstep = 0.2;
+    gui.onEvent( mouseX, mouseY, event );
+    switch (gui_mode){
+        case  Gui_Mode::edit: eventMode_edit(event); break;
+        case  Gui_Mode::scan: eventMode_scan(event); break;
+        case  Gui_Mode::base: 
+        default:              eventMode_default(event); break;   
+    }
     //AppSDL2OGL::eventHandling( event );
     //STOP = false;
 }
 
 void MolGUI::keyStateHandling( const Uint8 *keys ){
     double dstep=0.025;
-    //if( keys[ SDL_SCANCODE_X ] ){ cam.pos.z +=0.1; }
-    //if( keys[ SDL_SCANCODE_Z ] ){ cam.pos.z -=0.1; }
-    //if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.dyaw  (  keyRotSpeed ); }
-	//if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
-	//if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
-	//if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
-    //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
-
-    if( keys[ SDL_SCANCODE_KP_4 ] ){ W->nbmol.shift( {-0.1,0.,0.} ); }
-    if( keys[ SDL_SCANCODE_KP_6 ] ){ W->nbmol.shift( {+0.1,0.,0.} ); }
-    if( keys[ SDL_SCANCODE_KP_8 ] ){ W->nbmol.shift( {0.,+0.1,0.} ); }
-    if( keys[ SDL_SCANCODE_KP_2 ] ){ W->nbmol.shift( {0.,-0.1,0.} ); }
-    if( keys[ SDL_SCANCODE_KP_7 ] ){ W->nbmol.shift( {0.,0.,+0.1} ); }
-    if( keys[ SDL_SCANCODE_KP_9 ] ){ W->nbmol.shift( {0.,0.,-0.1} ); }
-
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    //AppSDL2OGL_3D::keyStateHandling( keys );
+    switch (gui_mode){
+        case Gui_Mode::edit: 
+        case Gui_Mode::scan: 
+        case Gui_Mode::base:
+        default:{
+            //if( keys[ SDL_SCANCODE_X ] ){ cam.pos.z +=0.1; }
+            //if( keys[ SDL_SCANCODE_Z ] ){ cam.pos.z -=0.1; }
+            //if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.dyaw  (  keyRotSpeed ); }
+            //if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
+            //if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
+            //if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
+            //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_KP_4 ] ){ W->nbmol.shift( {-0.1,0.,0.} ); }
+            if( keys[ SDL_SCANCODE_KP_6 ] ){ W->nbmol.shift( {+0.1,0.,0.} ); }
+            if( keys[ SDL_SCANCODE_KP_8 ] ){ W->nbmol.shift( {0.,+0.1,0.} ); }
+            if( keys[ SDL_SCANCODE_KP_2 ] ){ W->nbmol.shift( {0.,-0.1,0.} ); }
+            if( keys[ SDL_SCANCODE_KP_7 ] ){ W->nbmol.shift( {0.,0.,+0.1} ); }
+            if( keys[ SDL_SCANCODE_KP_9 ] ){ W->nbmol.shift( {0.,0.,-0.1} ); }
+            if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
+            //AppSDL2OGL_3D::keyStateHandling( keys );
+        } break;   
+    }
 };

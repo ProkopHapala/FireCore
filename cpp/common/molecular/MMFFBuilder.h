@@ -1744,11 +1744,13 @@ class Builder{  public:
         //if( byParams && (params==0) ){ printf("ERROR in MM::Builder.autoBonds() byParams(R<0) but params==NULL \n"); exit(0); }
         for(int i=i0; i<imax; i++){
             const Atom& A = atoms[i];
+            bool bCap_i = capping_types.count( A.type ) > 0; 
             for(int j=i+1; j<imax; j++){  // for pbc we need all atom pairs
                 const Atom& B = atoms[j];
                 Vec3d dp = B.pos - A.pos; // pbc here
                 if(byParams){ R = (B.REQ.x + A.REQ.x)*Rfac; }
                 if(  dp.norm2() < (R*R) ){
+                    if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
                     bondBrush.ipbc=Vec3i8{0,0,0};
                     bondBrush.atoms={i,j};
                     insertBond( bondBrush );
@@ -1761,7 +1763,7 @@ class Builder{  public:
 
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
-        if(verbosity>0)printf( "MM::Builder::autoBondsPBC() \n" );
+        if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
         if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
@@ -1770,6 +1772,7 @@ class Builder{  public:
         std::vector<int> found;
         for(int i=i0; i<imax; i++){
             const Atom& A = atoms[i];
+            bool bCap_i = capping_types.count( A.type ) > 0; 
             R = A.REQ.x;
             int ipbc=0;
             //if(verbosity>1)
@@ -1786,6 +1789,7 @@ class Builder{  public:
                         touchingAtoms( j0, imax, p, R, Rfac, found );
                         //if(i==12)printf( "# pbc[%i,%i,%i][%i] nfound %i \n", ix,iy,iz, ipbc, found.size() );
                         for(int j:found){
+                            if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
                             //bondPBC.push_back( {ix,iy,iz} );
                             bondBrush.ipbc=Vec3i8{ix,iy,iz};
                             bondBrush.atoms={i,j};
@@ -1797,6 +1801,22 @@ class Builder{  public:
             }
         }
     }
+
+    bool checkNumberOfBonds( bool bPrint=true, bool ExitOnError=true){
+        const int na = atoms.size();
+        std::vector<int> nbonds; 
+        for(int ib=0; ib<bonds.size(); ib++){
+            const Vec2i& b = bonds[ib].atoms;
+            nbonds[ b.i ] ++;
+            nbonds[ b.j ] ++; 
+        }
+        bool err = false;
+        for(int ia=0; ia<atoms.size(); ia++){
+            // Todo
+        }
+        return err;
+    }
+
 
     // =============== Configurations
 
