@@ -25,6 +25,10 @@
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
+#include <chrono>
+
+
+
 // ===========================================
 // ================= MAIN CLASS ==============
 // ===========================================
@@ -883,11 +887,34 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_s: W->saveXYZ( "out.xyz", "#comment", false ); break;
                 case SDLK_p: saveScreenshot( frameCount ); break;
                 
-                case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
-                case SDLK_u: W->upload_pop        ( "population.xyz" ); break;
+                //case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
+                case SDLK_o:{
+                        long T0 = getCPUticks();
+                        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+                        W->optimizeLattice_1d( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); 
+                        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+                        //printf( "Time{W->optimizeLattice_1d(20,20)} [s] \n", std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()   );
+                        double time_s     = std::chrono::duration_cast<std::chrono::seconds>(end-begin).count();
+                        double time_GTick = (getCPUticks()-T0)*1e-9;
+                        printf( "Time{W->optimizeLattice_1d(20,20)} %g[s] %g[GTick]  %g[GTick/s] \n", time_s,time_GTick, time_GTick/time_s  );
+                    }break;
+                case SDLK_u:{ 
+                        long T0 = getCPUticks();
+                        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+                        W->upload_pop        ( "population.xyz" ); 
+                        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+                        //printf( "Time{W->optimizeLattice_1d(20,20)} [s] \n", std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()   );
+                        double time_s     = std::chrono::duration_cast<std::chrono::seconds>(end-begin).count();
+                        double time_GTick = (getCPUticks()-T0)*1e-9;
+                        printf( "Time{W->upload_pop(population.xyz)} %g[s] %g[GTick]  %g[GTick/s] \n", time_s,time_GTick, time_GTick/time_s  );
+                    }break;
+                //case SDLK_u: W->upload_pop        ( "population.xyz" ); break;
                 //case SDLK_o: W->optimizeLattice_1d( 0,2, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
-                case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
-                case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
+                //case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
+                //case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
+
+                case SDLK_LEFTBRACKET:  W->nextSystemReplica(); break;
+                case SDLK_RIGHTBRACKET: W->prevSystemReplica(); break;
 
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;

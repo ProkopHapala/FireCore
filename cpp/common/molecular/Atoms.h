@@ -84,13 +84,14 @@ class Atoms{ public:
         return 0;
     }
 
-    void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1} ){
+    void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
         int npbc=nPBC.totprod();
         //printf( "atomsToXYZ() atypes=%li   natoms=%i npbc=%i natoms*npbc=%i \n", (long)atypes, natoms, npbc, natoms*npbc );
         if(bN      )fprintf( file, "%i\n", natoms*npbc );
         if(bComment){
-           if(lvec){ fprintf( file, "lvs %g %g %g  %g %g %g  %g %g %g  E %g id %li\n", lvec->a.x,lvec->a.y,lvec->a.z,  lvec->b.x,lvec->b.y,lvec->b.z,   lvec->c.x,lvec->c.y,lvec->c.z,  Energy,id  ); }
-           else    { fprintf( file, "E %g id %li\n", Energy,id  ); }
+           if(lvec){ fprintf( file, "lvs %g %g %g  %g %g %g  %g %g %g ", lvec->a.x,lvec->a.y,lvec->a.z,  lvec->b.x,lvec->b.y,lvec->b.z,   lvec->c.x,lvec->c.y,lvec->c.z ); }
+           if(lvec){ fprintf( file, "E %g id %li ", Energy,id  ); }
+           fprintf(file, "%s\n", comment );
         }
         Vec3d shift=Vec3dZero;
         for(int iz=0;iz<nPBC.z;iz++){for(int iy=0;iy<nPBC.y;iy++){for(int ix=0;ix<nPBC.x;ix++){  if(lvec)shift= lvec->c*iz + lvec->b*iy + lvec->a*ix;

@@ -146,6 +146,9 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     int itest = 0;
 
+    //int nSystems    = 1;
+    int iSystemCur  = 0;    // currently selected system replica
+
 // ===============================================
 //       Implement    SolverInterface
 // ===============================================
@@ -227,9 +230,16 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
 }
 
 virtual void upload_pop( const char* fname ){
-    printf("MolWorld_sp3::upload_pop(%s)\n", fname );
+    printf("MolWorld_sp3_multi::upload_pop(%s) : We do lattice constant relaxation here \n", fname );
     gopt.loadPopXYZ( fname );
+
 }
+
+virtual void setSystemReplica (int i){  iSystemCur = i; gopt.setGeom( iSystemCur ); };
+virtual int countSystemReplica(     ){ return gopt.population.size(); }
+void nextSystemReplica(){ int nsys=countSystemReplica(); int i=iSystemCur+1; if(i>=nsys)i=0;      setSystemReplica( i ); };
+void prevSystemReplica(){ int nsys=countSystemReplica(); int i=iSystemCur-1; if(i<0    )i=nsys-1; setSystemReplica( i ); };
+
 
 
 // =================== Functions
