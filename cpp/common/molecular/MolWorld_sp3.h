@@ -422,6 +422,7 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     printf( "builder.bPBC %i \n", builder.bPBC );
     if( bPBC ){ builder.autoBondsPBC(); }
     else      { builder.autoBonds();    }
+    builder.checkNumberOfBonds( true, true );
     if(verbosity>2)builder.printBonds ();
     return ifrag;
 }

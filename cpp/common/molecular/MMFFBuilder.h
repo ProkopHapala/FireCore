@@ -1802,21 +1802,34 @@ class Builder{  public:
         }
     }
 
-    bool checkNumberOfBonds( bool bPrint=true, bool ExitOnError=true){
+    bool checkNumberOfBonds( bool bPrint=true, bool bExitOnError=true){
         const int na = atoms.size();
-        std::vector<int> nbonds; 
+        std::vector<int> nbonds(na,0); 
+        //for(int ia=0; ia<na; ia++){ printf( "checkNumberOfBonds nbonds[%i]=%i\n", ia, nbonds[ia] ); };
         for(int ib=0; ib<bonds.size(); ib++){
             const Vec2i& b = bonds[ib].atoms;
+            //printf( "checkNumberOfBonds[ib=%i] b(%i,%i)\n", ib, b.i, b.j );
             nbonds[ b.i ] ++;
             nbonds[ b.j ] ++; 
         }
         bool err = false;
-        for(int ia=0; ia<atoms.size(); ia++){
-            // Todo
+        for(int ia=0; ia<na; ia++){
+            const Atom& A = atoms[ia];
+            const AtomType& t = params->atypes[A.type];
+            //printf( "checkNumberOfBonds nbonds[%i]=%i\n", ia, nbonds[ia] );
+            if(A.iconf>=0){
+                const AtomConf& c = confs[A.iconf];
+                int nb = nbonds[ia];
+                if( nb>N_NEIGH_MAX){ err|=true; if( bPrint ){ printf( "WARRNING checkNumberOfBonds[%i] `%s` nbonds(%i)>N_NEIGH_MAX (%i)\n", ia, t.name, nb, N_NEIGH_MAX ); } }
+                if( nb>t.valence  ){ err|=true; if( bPrint ){ printf( "WARRNING checkNumberOfBonds[%i] `%s` nbonds(%i)>valence     (%i)\n", ia, t.name, nb, t.valence   ); } }
+                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARRNING checkNumberOfBonds[%i] `%s` nbonds(%i)>conf.nbond  (%i)\n", ia, t.name, nb, c.nbond     ); } } 
+            }else{
+                if( nbonds[ia]>1  ){ err|=true; if( bPrint ){ printf( "WARRNING checkNumberOfBonds[%i] `%s` capping atom has %i>1 bonds \n", ia, t.name, nbonds[ia] ); } }
+            }
         }
+        if( err && bExitOnError ){ printf("ERROR in checkNumberOfBonds() => Exit() \n"); exit(0); }
         return err;
     }
-
 
     // =============== Configurations
 

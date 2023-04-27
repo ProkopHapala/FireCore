@@ -1284,45 +1284,29 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         glDisable    ( GL_DEPTH_TEST );
         glShadeModel ( GL_FLAT       );
         glPushMatrix();
-            //glMatrixMode(GL_MODELVIEW);
-            //glMatrixMode(GL_PROJECTION);
-            //printf("-- txt p (%f,%f,%f)\n", pos.x, pos.y, pos.z);
             glTranslatef( pos.x, pos.y, pos.z );
-            //Draw::billboardCam( );
-            Draw::billboardCamProj( );
-            //Draw2D::drawString( inputText.c_str(), 0, 0, textSize, fontTex );
-            Draw::drawText( str, fontTex, textSize, iend );
+            Draw::billboardCamProj( textSize );
+            Draw::drawText( str, fontTex, 1.0, iend );
         glPopMatrix();
 	}
-
-    void drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3f& up, int fontTex, float textSize, int iend ){
+    void drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3f& up, int fontTex, float textSize, int iend){
+        // ToDo: These functions are the same !!!!
         glDisable    ( GL_LIGHTING   );
         glDisable    ( GL_DEPTH_TEST );
         glShadeModel ( GL_FLAT       );
         glPushMatrix();
             glTranslatef( pos.x, pos.y, pos.z );
-            Mat3f rot;
-            //rot.fromDirUp(fw,up);
-            rot.fromSideUp(fw,up);
-            float glmat[16];
-            //toGLMatCam( {0.0,0.0,0.0},rot, glmat );
-            toGLMat( {0.0,0.0,0.0},rot, glmat );
-            glMatrixMode(GL_MODELVIEW);
-            //glLoadMatrixf( glmat );
-            glMultMatrixf( glmat );
-            Draw::drawText( str, fontTex, textSize, iend );
+            Draw::billboardCamProj( textSize );
+            Draw::drawText( str, fontTex, 1.0, iend );
         glPopMatrix();
 	}
 
 	void drawInt( const Vec3d& pos, int i, int fontTex, float sz, const char* format ){
-        char str[16];
-        sprintf(str,format,i);
-        //printf("%s\n", str);
+        char str[16]; sprintf(str,format,i); //printf("%s\n", str);
         Draw3D::drawText(str, pos, fontTex, sz, 0);
     }
     void drawDouble( const Vec3d& pos, double f, int fontTex, float sz, const char* format ){
-        char str[24];
-        sprintf(str,format,f);
+        char str[24];  sprintf(str,format,f);
         Draw3D::drawText(str, pos, fontTex, sz, 0);
     }
 
