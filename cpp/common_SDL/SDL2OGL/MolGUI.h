@@ -893,8 +893,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
                         W->optimizeLattice_1d( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); 
                         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-                        //printf( "Time{W->optimizeLattice_1d(20,20)} [s] \n", std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()   );
-                        double time_s     = std::chrono::duration_cast<std::chrono::seconds>(end-begin).count();
+                        double time_s     = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() * 1e-9;
                         double time_GTick = (getCPUticks()-T0)*1e-9;
                         printf( "Time{W->optimizeLattice_1d(20,20)} %g[s] %g[GTick]  %g[GTick/s] \n", time_s,time_GTick, time_GTick/time_s  );
                     }break;
@@ -903,8 +902,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
                         W->upload_pop        ( "population.xyz" ); 
                         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-                        //printf( "Time{W->optimizeLattice_1d(20,20)} [s] \n", std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()   );
-                        double time_s     = std::chrono::duration_cast<std::chrono::seconds>(end-begin).count();
+                        double time_s     = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() * 1e-9;
                         double time_GTick = (getCPUticks()-T0)*1e-9;
                         printf( "Time{W->upload_pop(population.xyz)} %g[s] %g[GTick]  %g[GTick/s] \n", time_s,time_GTick, time_GTick/time_s  );
                     }break;

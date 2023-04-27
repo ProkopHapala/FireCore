@@ -302,7 +302,7 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=fa
     if(bVel   ){ unpack( ff.nvecs, ff.fapos, avel   +i0v ); }
 }
 
-void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
+void upload(  bool bParams=false, bool bForces=0, bool bVel=true ){
     //printf("MolWorld_sp3_multi::upload() \n");
     int err=0;
     err|= ocl.upload( ocl.ibuff_atoms,  atoms  );
@@ -328,11 +328,14 @@ void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
     OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
 }
 
-void download( bool bForces=0, bool bVel=false ){
+void download( bool bForces=false, bool bVel=false ){
+    int err=0;
     //printf("MolWorld_sp3_multi::download() \n");
     ocl.download( ocl.ibuff_atoms, atoms );
     if(bForces){ ocl.download( ocl.ibuff_aforces, aforces ); }
     if(bVel   ){ ocl.download( ocl.ibuff_avel,    avel    ); }
+    err |= ocl.finishRaw(); 
+    OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
 }
 
 // ===============================================
@@ -349,10 +352,17 @@ virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
-    // ---- pack
-    pack( ocl.nvecs, ps, atoms+i0v );
-    Mat3_to_cl( ff.   lvec,  lvecs[isys] );
-    Mat3_to_cl( ff.invLvec, ilvecs[isys] );
+
+
+    // we cannot pack directly ps because  pipos is not defined in setGeom
+    for(int i=0; i<ffl.natoms; i++){ ffl.apos[i]=ps[i]; } 
+    ffl.initPi();         
+    pack( ocl.nvecs, ffl.apos, atoms+i0v );
+
+    if(lvec){ ffl.setLvec(*lvec); };
+    Mat3_to_cl( ffl.lvec,    lvecs [isys] );
+    Mat3_to_cl( ffl.invLvec, ilvecs[isys] );
+    printf( "setGeom[%i] lvec{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}\n",  isys,  ffl.lvec.a.x,ffl.lvec.a.y,ffl.lvec.a.z,   ffl.lvec.b.x,ffl.lvec.b.y,ffl.lvec.b.z,   ffl.lvec.c.x,ffl.lvec.c.y,ffl.lvec.c.z  ); 
     // if( ! bPrepared ){
     //     set ( ocl.nvecs,     avel+i0v  );
     //     // ---- upload to GPU
@@ -383,6 +393,8 @@ virtual void uploadPop  ()override{
     set ( ntot, avel);
     ocl.upload( ocl.ibuff_avel , avel   );
     ocl.upload( ocl.ibuff_atoms, atoms  );
+    ocl.upload( ocl.ibuff_lvecs,   lvecs  );
+    ocl.upload( ocl.ibuff_ilvecs,  ilvecs );
     //ocl.upload( ocl.ibuff_constr, constr );
 }
 
@@ -403,7 +415,16 @@ virtual void upload_pop( const char* fname ){
     */
 }
 
-virtual void setSystemReplica (int i){ iSystemCur = i;  }
+virtual void setSystemReplica (int i){ 
+    int err=0;
+    iSystemCur = i;   
+    int i0v = iSystemCur * ocl.nvecs;
+    ocl.download( ocl.ibuff_atoms,   atoms,  ocl.nvecs, i0v );
+    //ocl.download( ocl.ibuff_aforces, aforces, ocl.nvecs, i0v );
+    //ocl.download( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v );
+    err|=ocl.finishRaw();  OCL_checkError(err, "setSystemReplica()");
+    unpack_system(iSystemCur, ffl, true, true); 
+}
 virtual int countSystemReplica(     ){ return nSystems; }
 
 void saveDebugXYZreplicas( int itr, double F ){

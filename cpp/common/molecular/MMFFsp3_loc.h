@@ -349,6 +349,31 @@ double eval_atoms(){
     return E;
 }
 
+void initPi( double Kmin=0.1, double r2min=1e-4 ){
+    for(int ia=0; ia<nnode; ia++){ 
+        const int*    ngs = neighs   [ia].array;
+        const double* ks  = Ksp      [ia].array;
+        Vec3d u,v,p;
+        int nfound=0; 
+        int j=0;
+        for(;j<4;j++){ if(ks[j]>Kmin){ u=apos[ngs[j]]; nfound++; break; } }
+        for(;j<4;j++){ if(ks[j]>Kmin){ v=apos[ngs[j]]; nfound++; break; } }
+        for(;j<4;j++){ if(ks[j]>Kmin){ p=apos[ngs[j]]; nfound++; break; } }
+        if      ( nfound>=2 ){
+            if( nfound==2 ){  p=apos[ia]; }
+            u.sub(p); v.sub(p);
+            Vec3d pi; pi.set_cross( u,v );
+            double r2 = pi.norm2();
+            if( r2>r2min ){
+                pi.mul(1/r2);
+                pipos[ia]=pi;
+                continue;
+            }
+        }
+        pipos[ia]=Vec3dZ; // pi cannot be defined
+    }
+}
+
 void normalizePis(){ 
     for(int i=0; i<nnode; i++){ pipos[i].normalize(); } 
 }
