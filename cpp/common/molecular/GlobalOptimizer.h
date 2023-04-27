@@ -9,6 +9,8 @@
 #include "MultiSolverInterface.h"
 
 class GlobalOptimizer{ public:
+    double tolerance = 1.0e-6;
+    int    nmaxiter  = 10000; 
 
     int* atypes=0;
     MultiSolverInterface* msolver =0;
@@ -45,21 +47,20 @@ class GlobalOptimizer{ public:
     void solve(int ipop ){
         Atoms* atoms = population[ipop];
         solver->setGeom( atoms->apos,  atoms->lvec );   
-        solver->solve( 10000, 1.0e-6 );                 
+        solver->solve  ( nmaxiter, tolerance       );                 
         solver->getGeom( atoms->apos,            0 );   
     }
 
-    void download_multi(int npara){
+    void download_multi(int n, int i0){
         msolver->downloadPop();
-        for(int i=0; i<npara; i++){
-            //solver->getGeom( i, population[i]->apos, population[i]->lvec, true );
-            msolver->getGeom( i, population[i]->apos,                   0, true );
+        for(int i=0; i<n; i++){
+            msolver->getGeom( i, population[i+i0]->apos,                    0, true );
         }
     }
 
-    void upload_multi(int npara){
-        for(int i=0; i<npara; i++){
-            msolver->setGeom( i, population[i]->apos, population[i]->lvec, true );
+    void upload_multi(int n, int i0){
+        for(int i=0; i<n; i++){
+            msolver->setGeom( i, population[i+i0]->apos, population[i]->lvec, true );
         }
         msolver->uploadPop();
     }
@@ -101,7 +102,7 @@ class GlobalOptimizer{ public:
 
     void lattice_scan_1d( int n, Mat3d lvec0, Mat3d dlvec, int initMode=0, const char* outfname=0, int ipop0=0, int istep=1 ){
         FILE* fout=0;
-        if(outfname){ fout = fopen(outfname,"w"); if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_a() cannot open %s \n", outfname ); exit(0); } }
+        if(outfname){ fout = fopen(outfname,"w"); if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_1d() cannot open %s \n", outfname ); exit(0); } }
         Mat3d lvec=lvec0;
         Atoms* atoms0 = population[ipop0];
         solver->getGeom( atoms0->apos, atoms0->lvec );
@@ -125,42 +126,35 @@ class GlobalOptimizer{ public:
         if(fout){fclose(fout);}
     }
 
-/*
-    void lattice_scan_2d( Vec3i ns, Mat3d lvec0, Mat3d dlvec1, Mat3d dlvec2 ){
+    void lattice_scan_2d_multi( int n, Mat3d dlvec, int initMode=0, const char* outfname=0, int imin=0, int imax=-1 ){
+        char comment[256];
+        FILE* fout=0;
+        if(outfname){ fout = fopen(outfname,"w"); if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_2d_multi() cannot open %s \n", outfname ); exit(0); } }
+        if(imax<0){ imax=population.size(); };
+        int nmult = imax-imin;
+        int npara = msolver->paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
+        //std::vector<Mat3d> lvec0s;/if(bReturn0){ for(int i=imin;i<imax;i++){ lvec0s[i]= *(population[i]->lvec); } } 
+        for(int j=0;j<n;j++){ // main loop ove lvec steps
+            if(j>0){
+                for(int ipop=imin;ipop<imax;ipop++){ // change cell of all replicas
+                    Mat3d new_lvec = *(population[ipop]->lvec)  +  dlvec;   // ToDo: We may want to use lvec-trajectroy different for each of the replicas
+                    switch(initMode){
+                        case 0:{ *(population[ipop]->lvec)=new_lvec;           }break;
+                        case 1:{   population[ipop]->toNewLattice( new_lvec ); }break;
+                    }
+                }
+            }
+            upload_multi  (nmult,imin); 
+            msolver->sove_multi( nmaxiter, tolerance );
+            download_multi(nmult,imin);
 
-        FILE* fout = fopen("lattice_scan_a.xyz","w");
-        if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_a() fopen failed \n"); exit(0); }
-
-        int npara = solver->paralel_size();
-        if( npop!==npara )reallocPop( npara );
-        int ipop=0;
-        //int ipara = 0;
-        // ---- first we scan 1st DOF using serial sover (CPU) 
-        for(int i=0; i<ns.a; i++){
-            if(ia>0){
-                lvec.a.add(da1);
-                population[i]->toNewLattic( lvec, population[i-1] );
-            }
-            solve      ( ia );
-            population[i]->atomsToXYZ (fout,true,true);
-        }
-        // ---- Then we scan 2nd DOF using parallel solver (GPU), we start form  
-        for(int j=0;j<ns.b;j++){ // loop over paralle steps
-            for(int i=0;i<npop;i++){
-                lvec = *(population[ia]->lvec);
-                lvec.a.add( da2 );
-                population[i]->toNewLattic( lvec );
-            }
-            upload();
-            msolver->sove_multi();
-            download();
-            for(int ia=0;ia<ns.a;ia++){
-                population[i]->atomsToXYZ(fout,true,true);
-            }
+            //atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
+            if(fout) for(int ipop=imin;ipop<imax;ipop++){  sprintf(comment, "step %i replica %i ", j, ipop  );   population[ipop]->atomsToXYZ(fout,true,true, {2,2,1}, comment, true );  }
         }
         fclose(fout);
+        //if(bReturn0){ for(int i=imin;i<imax;i++){ *(population[i]->lvec) = lvec0s[i]; } }
     }
-*/
+
 
 };
 

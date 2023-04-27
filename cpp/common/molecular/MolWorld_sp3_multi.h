@@ -98,7 +98,6 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     FIRE_setup fire_setup{0.1,0.1};
 
     int nSystems    = 1;
-    int iSystemCur  = 0;    // currently selected system replica
     //int iSystemCur  = 5;    // currently selected system replica
     //int iSystemCur  = 8;    // currently selected system replica
     bool bGPU_MMFF = true;
@@ -210,7 +209,7 @@ virtual void init( bool bGrid ) override {
 // ==================================
 
 void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, bool bVel=false, float l_rnd=-1 ){
-    printf("MolWorld_sp3_multi::pack_system(%i) \n", isys);
+    //printf("MolWorld_sp3_multi::pack_system(%i) \n", isys);
     //ocl.nvecs;
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
@@ -274,24 +273,27 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     MDpar.w = fire.cf;
 }
 
-void evalVFs( ){
+double evalVFs(){
+    int err=0;
     ocl.download( ocl.ibuff_aforces , aforces );
     ocl.download( ocl.ibuff_avel    , avel    );
-    int err=0;
     err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs()");
     //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
+    double F2max = 0;
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
         evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
+        F2max = fmax( F2max, fire[isys].ff );
     }
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
     err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
     //err |= ocl.finishRaw();  
-    //OCL_checkError(err, "evalVFs()");
+    OCL_checkError(err, "evalVFs()");
+    return F2max;
 }
 
-void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0, bool bVel=false ){
-    printf("MolWorld_sp3_multi::unpack_system(%i) \n", isys);
+void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=false ){
+    //rintf("MolWorld_sp3_multi::unpack_system(%i) \n", isys);
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
@@ -301,7 +303,7 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=0, bool bVel=false 
 }
 
 void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
-    printf("MolWorld_sp3_multi::upload() \n");
+    //printf("MolWorld_sp3_multi::upload() \n");
     int err=0;
     err|= ocl.upload( ocl.ibuff_atoms,  atoms  );
     err|= ocl.upload( ocl.ibuff_constr, constr );
@@ -327,7 +329,7 @@ void upload(  bool bParams=0, bool bForces=0, bool bVel=true ){
 }
 
 void download( bool bForces=0, bool bVel=false ){
-    printf("MolWorld_sp3_multi::download() \n");
+    //printf("MolWorld_sp3_multi::download() \n");
     ocl.download( ocl.ibuff_atoms, atoms );
     if(bForces){ ocl.download( ocl.ibuff_aforces, aforces ); }
     if(bVel   ){ ocl.download( ocl.ibuff_avel,    avel    ); }
@@ -339,7 +341,7 @@ void download( bool bForces=0, bool bVel=false ){
 
 virtual int paralel_size( )override{ return nSystems; }
 
-virtual double sove_multi ( int nmax=1000, double tol=1e-6 )override{
+virtual double sove_multi ( int nmax, double tol )override{
     return eval_MMFFf4_ocl( nmax, tol );
 }
 
@@ -351,22 +353,22 @@ virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override
     pack( ocl.nvecs, ps, atoms+i0v );
     Mat3_to_cl( ff.   lvec,  lvecs[isys] );
     Mat3_to_cl( ff.invLvec, ilvecs[isys] );
-    if( ! bPrepared ){
-        set ( ocl.nvecs,     avel+i0v  );
-        // ---- upload to GPU
-        ocl.upload( ocl.ibuff_atoms,   atoms,   ocl.nvecs, i0v  );
-        ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v  );
-        ocl.upload( ocl.ibuff_lvecs,   lvecs,   1,         isys );
-        ocl.upload( ocl.ibuff_ilvecs,  ilvecs,  1,         isys );
-        //for(int i=0; i<ocl.nAtoms; i++){ Quat4f a=atoms[i+i0v]; a.w=-1.0; constr[i+i0a] = a; }  // contrains
-    }
+    // if( ! bPrepared ){
+    //     set ( ocl.nvecs,     avel+i0v  );
+    //     // ---- upload to GPU
+    //     ocl.upload( ocl.ibuff_atoms,   atoms,   ocl.nvecs, i0v  );
+    //     ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v  );
+    //     ocl.upload( ocl.ibuff_lvecs,   lvecs,   1,         isys );
+    //     ocl.upload( ocl.ibuff_ilvecs,  ilvecs,  1,         isys );
+    //     //for(int i=0; i<ocl.nAtoms; i++){ Quat4f a=atoms[i+i0v]; a.w=-1.0; constr[i+i0a] = a; }  // contrains
+    // }
 }
 
 virtual double getGeom     ( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
-    if( ! bPrepared ) ocl.download( ocl.ibuff_atoms,   atoms,   ocl.nvecs, i0v  );
+    //if( ! bPrepared ) ocl.download( ocl.ibuff_atoms,   atoms,   ocl.nvecs, i0v  );
     pack( ocl.nvecs, ps, atoms+i0v );
     //if(lvec){ lvec.a lvecs };
     return 0;
@@ -382,6 +384,41 @@ virtual void uploadPop  ()override{
     ocl.upload( ocl.ibuff_avel , avel   );
     ocl.upload( ocl.ibuff_atoms, atoms  );
     //ocl.upload( ocl.ibuff_constr, constr );
+}
+
+virtual void upload_pop( const char* fname ){
+    printf("MolWorld_sp3::upload_pop(%s)\n", fname );
+    gopt.loadPopXYZ( fname );
+    int nmult=gopt.population.size(); 
+    int npara=paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
+    gopt.upload_multi(nmult,0);
+
+    /*
+    //int initMode=1;
+    int initMode=0;
+    //int nstesp = 40;
+    int nstesp = 2;
+    Mat3d dlvec =  Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
+    gopt.lattice_scan_2d_multi( nstesp, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
+    */
+}
+
+virtual void setSystemReplica (int i){ iSystemCur = i;  }
+virtual int countSystemReplica(     ){ return nSystems; }
+
+void saveDebugXYZreplicas( int itr, double F ){
+    int err=0;
+    char fname  [100];
+    char commnet[100];
+    ocl.download( ocl.ibuff_atoms   , atoms   );
+    err|=ocl.finishRaw();  OCL_checkError(err, "saveDebugXYZreplicas()");
+    for(int isys=0; isys<nSystems; isys++){
+        sprintf( fname  , "DEBUG_sys%03i.xyz", isys );
+        sprintf( commnet, "# itr %i |F| %g ", itr, F );
+        unpack_system( isys, ffl, false, false );
+        if( ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.apos, fname, false ) ){ printf( "saveDebugXYZreplicas(itr=%i) NaNs in replica[%i] => Exit() \n", itr, isys  ); exit(0); };
+        saveXYZ( fname, commnet, false, "a" );
+    }
 }
 
 // ==================================
@@ -442,10 +479,10 @@ void picked2GPU( int ipick,  double K ){
 //           eval @GPU 
 // ==================================
 
-double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){ 
+int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
-
+    double F2conv = Fconv*Fconv;
     picked2GPU( ipicked,  1.0 );
     int err=0;
     if( task_MMFF    ==0 )setup_MMFFf4_ocl();
@@ -457,9 +494,12 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
 
     //niter=10;
 
-    int nPerVFs = 10;
+    int nPerVFs = _min(10,niter);
     int nVFs    = niter/nPerVFs;
+
+
     long T0 = getCPUticks();
+    int niterdone=0;
     if( itest != 0 ){
         //niter=1;
         //niter=10;
@@ -486,16 +526,23 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
             //err |= task_print   ->enque_raw();    // just printing the forces before assempling
             err |= task_move      ->enque_raw(); 
             //OCL_checkError(err, "eval_MMFFf4_ocl_1");
+            niterdone++;
+            saveDebugXYZreplicas( niterdone, 0.0 );
         }
-        err |= ocl.finishRaw();
-        //long T1 =  getCPUticks();
-        evalVFs();
+        err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs()");
+        double F2 = evalVFs();
+        //saveDebugXYZreplicas( niterdone, sqrt(F2) );
+        // if( F2<F2conv  ){ 
+        //     printf( "eval_MMFFf4_ocl() all %i replicas relaxed in %i steps, |F|(%g)<%g \n", nSystems, niterdone, sqrt(F2), Fconv ); 
+        //     return niterdone; 
+        // }
+        
         //long T2 =  getCPUticks();
         //printf("eval_MMFFf4_ocl(),evalVFs() time.tot=%g[ms] time.download=%g[ms] niter=%i \n", ( T2-T0 )*tick2second*1000, ( T2-T1)*tick2second*1000, niter );
         //printf("eval_MMFFf4_ocl(),evalVFs() time=%g[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
         //fire[iSystemCur].print();
     }
-    err |= ocl.finishRaw(); printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
+    err |= ocl.finishRaw(); printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
 
     // ===============================================================================================================================================================================
     //     Performance Measurements ( 10 replicas of polymer-2_new )
@@ -528,7 +575,7 @@ double eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
         if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
         //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
     }
-    return 0;
+    return niterdone;
 }
 
 double eval_NBFF_ocl( int niter, bool bForce=false ){ 
@@ -605,8 +652,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     if( bOcl ){
         //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
-        nIter = 100;
-        //nIter = 1;
+        //nIter = 100;
+        nIter = 1;
         eval_MMFFf4_ocl( nIter );
         //eval_NBFF_ocl  ( 1 ); 
         //eval_NBFF_ocl_debug(1); //exit(0);
