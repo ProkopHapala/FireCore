@@ -42,7 +42,11 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -m $nsys -x common_resources/polydiacetylene_OH
 #./$name -m $nsys -x common_resources/polymer-2_new
-./$name -m 40    -x common_resources/polymer-2_new
+
+#./$name -m 4    -x common_resources/polymer-2_new
+./$name -m 1    -x common_resources/polymer-2_new_crash
+
+#./$name -m 40    -x common_resources/polymer-2_new
 #./$name -m 2     -x common_resources/polymer-2_new
 #./$name -m 1     -x common_resources/polymer-2_new
 

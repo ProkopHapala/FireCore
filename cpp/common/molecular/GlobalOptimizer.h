@@ -145,7 +145,7 @@ class GlobalOptimizer{ public:
                 }
             }
             upload_multi  (nmult,imin); 
-            msolver->sove_multi( nmaxiter, tolerance );
+            msolver->solve_multi( nmaxiter, tolerance );
             download_multi(nmult,imin);
 
             //atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
