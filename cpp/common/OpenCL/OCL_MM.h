@@ -4,7 +4,8 @@
 //#include "OCL_DFT.h"
 #include "OCL.h"
 
-void v2f4( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
+void v2f4  ( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
+void f4toV3( const cl_float4& f4, Vec3d& v ){ v.x=f4.s[0]; v.y=f4.s[1]; v.z=f4.s[2]; };
 void v2i4( const Vec3i& v, int4& f4   ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
 //void v2f4( const Vec3d& v, cl_float4& f4 ){ f4.s[0]=(cl_float)v.x; f4.s[1]=(cl_float)v.y; f4.s[2]=(cl_float)v.z; };
 cl_float4 cl_f4( const Vec3d& v ){ return (cl_float4){(cl_float)v.x,(cl_float)v.y,(cl_float)v.z,0.f}; };
@@ -22,6 +23,12 @@ void Mat3_to_cl( const Mat3d& m, cl_Mat3& clm ){
     clm.a = cl_f4( m.a );
     clm.b = cl_f4( m.b );
     clm.c = cl_f4( m.c );
+}
+
+void Mat3_from_cl( Mat3d& m, const cl_Mat3& clm ){ 
+    f4toV3( clm.a, m.a );
+    f4toV3( clm.b, m.b );
+    f4toV3( clm.c, m.c );
 }
 
 //=======================================================================
