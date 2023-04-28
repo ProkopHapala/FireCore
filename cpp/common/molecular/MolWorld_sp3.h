@@ -248,6 +248,17 @@ void prevSystemReplica(){ int nsys=countSystemReplica(); int i=iSystemCur-1; if(
 virtual void swith_method(){ bGridFF=!bGridFF; };
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i ffl.bAngleCosHalf %i \n", bGridFF, ffl.bAngleCosHalf ); return str; }
 
+int evalPBCshifts( Vec3i nPBC, const Mat3d& lvec, Quat4f* shifts ){
+    npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+    int ipbc=0;
+    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+        shifts[ipbc].f = (Vec3f)( (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz) );   
+        //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
+        ipbc++; 
+    }}}
+    return npbc;
+}
+
 int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
     npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
     //pbc_shifts = new Vec3d[npbc];

@@ -49,6 +49,7 @@ class OCL_MM: public OCLsystem { public:
     int4   print_mask{1,1,1,1};
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
+    int    npbc=0;
     //float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
     float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
     //float4 md_params{0.05,0.995,100.0,0.0};    // (dt,cdamp,forceLimit)
@@ -62,7 +63,7 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
     int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
-    int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1; 
+    int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_pbcshifts=-1; 
     int ibuff_constr=-1;
 
     int ibuff_samp_ps=-1;
@@ -124,7 +125,7 @@ class OCL_MM: public OCLsystem { public:
         printf( "... makeKrenels_MM() DONE \n" );
     }
 
-    int initAtomsForces( int nSystems_, int nAtoms_, int nnode_ ){
+    int initAtomsForces( int nSystems_, int nAtoms_, int nnode_, int npbc_ ){
         nSystems=nSystems_;
         nnode  = nnode_;
         nAtoms = nAtoms_;
@@ -132,6 +133,7 @@ class OCL_MM: public OCLsystem { public:
         nvecs  = nAtoms+npi;
         nbkng  = nnode*4*2;
         ncap   = nAtoms-nnode;
+        npbc   = npbc_;
         printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i nbkng %i \n", nSystems, nvecs, nAtoms, nnode, nbkng );
         printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i nS*nbkng %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode, nSystems*nbkng );
         if( (nSystems<=0)||(nAtoms<=0) ){ printf("ERROR in OCL_MM::initAtomsForces() invalit size nSystems=%i nAtoms=%i => Exit() \n", nSystems, nAtoms); exit(0); }
@@ -159,6 +161,8 @@ class OCL_MM: public OCLsystem { public:
         ibuff_MDpars     = newBuffer( "MDpars",     nSystems,        sizeof(float4),  0, CL_MEM_READ_ONLY  );
         ibuff_lvecs      = newBuffer( "lvecs",      nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
         ibuff_ilvecs     = newBuffer( "ilvecs",     nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
+
+        ibuff_pbcshifts  = newBuffer( "pbcshifts",  nSystems*npbc,   sizeof(float4), 0, CL_MEM_READ_ONLY  );
 
         // int nsamp_max = 1000; DEBUG
         // ibuff_samp_fs   = newBuffer( "samp_fs",   nsamp_max, sizeof(float4), 0, CL_MEM_READ_WRITE );   DEBUG
@@ -290,7 +294,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_aforces);     // 3
         err |= useArgBuff( ibuff_neighForce ); // 4
         // parameters
-        err |= useArgBuff( ibuff_neighs );     // 5
+        err |= useArgBuff( ibuff_neighs    );  // 5
+        err |= useArgBuff( ibuff_neighCell );  // 5
         err |= useArgBuff( ibuff_REQs   );     // 6
         err |= useArgBuff( ibuff_MMpars );     // 7
         err |= useArgBuff( ibuff_BLs    );     // 8
@@ -299,6 +304,9 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_Kpp    );     // 11
         err |= useArgBuff( ibuff_lvecs  );     // 12
         err |= useArgBuff( ibuff_ilvecs );     // 13
+        err |= useArgBuff( ibuff_pbcshifts );  // 13
+        err |= _useArg   ( npbc         );  
+
         //err |= _useArg( cl_lvec    );        // 12
         //err |= _useArg( cl_invLvec );        // 13
         OCL_checkError(err, "setup_getMMFFf4");

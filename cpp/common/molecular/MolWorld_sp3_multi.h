@@ -126,6 +126,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     cl_Mat3*  lvecs    =0;
     cl_Mat3* ilvecs    =0;
+    Quat4f*   pbcshifts =0;
 
     OCLtask* task_cleanF=0;
     OCLtask* task_NBFF=0;
@@ -145,7 +146,7 @@ void realloc( int nSystems_ ){
     printf("MolWorld_sp3_multi::realloc() \n");
     nSystems=nSystems_;
     printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
-    ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode );
+    ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc );
     //printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i nvecs %i \n", nSystems, ocl.nAtoms, ocl.nnode, ocl.nvecs );
     // --- dynamical
     _realloc ( atoms,     ocl.nvecs*nSystems  );
@@ -167,6 +168,8 @@ void realloc( int nSystems_ ){
     _realloc( lvecs,     nSystems  );
     _realloc( ilvecs,    nSystems  );
     _realloc( MDpars,    nSystems  );
+
+    _realloc( pbcshifts, ocl.npbc*nSystems );
 
     _realloc( fire,      nSystems  );
 
@@ -212,6 +215,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
+    int i0pbc = isys*ocl.npbc;
     pack( ff.nvecs, ff.apos, atoms+i0v );
     for(int i=0; i<ocl.nAtoms; i++){ Quat4f a=atoms[i+i0v]; a.w=-1.0; constr[i+i0a] = a; }  // contrains
     /*
@@ -240,6 +244,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
 
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
+        evalPBCshifts( nPBC, ff.lvec, pbcshifts + i0pbc );
 
         copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
         copy    ( ff.natoms, ff.neighs,    neighs   +i0a );
@@ -325,6 +330,7 @@ void upload(  bool bParams=false, bool bForces=0, bool bVel=true ){
     if(bParams){
         err|= ocl.upload( ocl.ibuff_lvecs,   lvecs );
         err|= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
+        err|= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts );
         err|= ocl.upload( ocl.ibuff_neighs,     neighs    );
         err|= ocl.upload( ocl.ibuff_neighCell,  neighCell );
         err|= ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
