@@ -18,6 +18,12 @@ typedef struct __attribute__ ((packed)) cl_Mat3{
 }st_foo;
 
 
+inline void printMat( const cl_Mat3& mat  ){
+	printf( " %f %f %f \n", mat.a.s[0], mat.a.s[1], mat.a.s[2] );
+	printf( " %f %f %f \n", mat.b.s[0], mat.b.s[1], mat.b.s[2] );
+	printf( " %f %f %f \n", mat.c.s[0], mat.c.s[1], mat.c.s[2] );
+}
+
 void Mat3_to_cl( const Mat3d& m, cl_Mat3& clm ){ 
     //v2f4( m.a, clm.a ); v2f4( m.b, clm.b ); v2f4( m.c, clm.c ); 
     clm.a = cl_f4( m.a );

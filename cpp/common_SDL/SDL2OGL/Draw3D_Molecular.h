@@ -197,7 +197,8 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos
     int* ngs  = neighs   +ia*perAtom;
     int* ngC  = neighCell+ia*perAtom;
     Quat4f pi = apos[ia];
-    //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3], pi.x,pi.y,pi.z );
+    //print( "\n", neighs_[0],neighs_[1],neighs_[2],neighs_[3],  neighCell_[0],neighCell_[1],neighCell_[2],neighCell_[3],  apos.x,apos.x,apos.x,apos.x );
+    //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3],   ngC[0],ngC[1],ngC[2],ngC[3],    pi.x,pi.y,pi.z );
     glBegin( GL_LINES );
     for(int i=0; i<perAtom; i++){
         int ja = ngs[i];
@@ -222,7 +223,7 @@ void neighs_multi( int na, int perAtom, int* neighs_, int* neighCell_,  Quat4f* 
     int i0a=isys*na;
     int* neighs    = neighs_   +perAtom*i0a;
     int* neighCell = neighCell_+perAtom*i0a;
-    Quat4f* apos   = apos_     +perAtom*i0v;
+    Quat4f* apos   = apos_     +i0v;
     for(int ia=0; ia<na; ia++){
         atomNeighs( ia, perAtom, neighs, neighCell, apos, shifts );
     }

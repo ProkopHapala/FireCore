@@ -192,6 +192,7 @@ virtual void init( bool bGrid ) override {
         pack_system( i, ffl, true, false, random_init );
         fire[i].bind_params( &fire_setup );
     }
+    for(int i=0;i<nSystems; i++){ printMSystem(i); }
     upload( true, false );
     //bGridFF=false;
     //bOcl   =false;
@@ -299,7 +300,7 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=fa
     int i0v = isys * ocl.nvecs;
     unpack( ff.nvecs, ff.apos, atoms+i0v );
     if(bForces){ unpack( ff.nvecs, ff.fapos, aforces+i0v ); }
-    if(bVel   ){ unpack( ff.nvecs, ff.fapos, avel   +i0v ); }
+    if(bVel   ){ unpack( ff.nvecs, ff.vapos, avel   +i0v ); }
 }
 
 void upload(  bool bParams=false, bool bForces=0, bool bVel=true ){
@@ -337,6 +338,26 @@ void download( bool bForces=false, bool bVel=false ){
     err |= ocl.finishRaw(); 
     OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
 }
+
+void printMSystem( int isys, bool blvec=true, bool bilvec=false, bool bNg=true, bool bNgC=true, bool bPos=true, bool bF=false, bool bV=false ){
+    int i0n = isys * ocl.nnode;
+    int i0a = isys * ocl.nAtoms;
+    int i0v = isys * ocl.nvecs;
+    printf( "### System[%i] \n", isys );
+    if(blvec ){printf("lvec\n");  printMat(lvecs [isys]); }
+    if(bilvec){printf("ilvec\n"); printMat(ilvecs[isys]); }
+    for(int i=0; i<ocl.nAtoms; i++){
+        printf("[%i]", i );
+        if(bNg )printf("ng (%3i,%3i,%3i,%3i)",  neighs   [i0a+i].x, neighs   [i0a+i].y, neighs   [i0a+i].z, neighs   [i0a+i].w );
+        if(bNgC)printf("ngC(%2i,%2i,%2i,%2i)",  neighCell[i0a+i].x, neighCell[i0a+i].y, neighCell[i0a+i].z, neighCell[i0a+i].w );
+        if(bPos)printf("pa(%6.3f,%6.3f,%6.3f)", atoms    [i0v+i].x, atoms    [i0v+i].y, atoms    [i0v+i].z );
+        if(bF  )printf("va(%6.3f,%6.3f,%6.3f)", aforces  [i0v+i].x, aforces  [i0v+i].y, aforces  [i0v+i].z );
+        if(bV  )printf("fa(%6.3f,%6.3f,%6.3f)", avel     [i0v+i].x, avel     [i0v+i].y, avel     [i0v+i].z );
+        printf("\n" );
+    }
+}
+
+
 
 // ===============================================
 //       Implement    MultiSolverInterface
@@ -405,6 +426,8 @@ virtual void upload_pop( const char* fname ){
     int npara=paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
     gopt.upload_multi(nmult,0);
 
+    for(int i=0;i<nSystems; i++){ printMSystem(i); }
+
     /*
     //int initMode=1;
     int initMode=0;
@@ -419,11 +442,16 @@ virtual void setSystemReplica (int i){
     int err=0;
     iSystemCur = i;   
     int i0v = iSystemCur * ocl.nvecs;
+    int i0a = iSystemCur * ocl.nAtoms;
     ocl.download( ocl.ibuff_atoms,   atoms,  ocl.nvecs, i0v );
     //ocl.download( ocl.ibuff_aforces, aforces, ocl.nvecs, i0v );
     //ocl.download( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v );
     err|=ocl.finishRaw();  OCL_checkError(err, "setSystemReplica()");
     unpack_system(iSystemCur, ffl, true, true); 
+
+    copy( ffl.natoms, neighs+i0a, ffl.neighs );
+    for(int j=0; j<ffl.natoms; j++){ printf( "setSystemReplica[%i] ffl.neighs[%i](%3i,%3i,%3i,%3i)\n", i,  j,  ffl.neighs[j].x,ffl.neighs[j].y,ffl.neighs[j].z,ffl.neighs[j].w ); };
+
     Mat3_from_cl( builder.lvec, lvecs[iSystemCur] );
     ffl.setLvec( builder.lvec );
     makePBCshifts( nPBC, ffl.lvec );
@@ -546,12 +574,27 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
             if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
             else       { err |= task_NBFF      ->enque_raw(); }
             err |= task_MMFF->enque_raw();
+            //ocl.printOnGPU( iSystemCur, int4{1,1,0,0}  );
             //OCL_checkError(err, "eval_MMFFf4_ocl.task_NBFF_Grid");
             //err |= task_print   ->enque_raw();    // just printing the forces before assempling
             err |= task_move      ->enque_raw(); 
             //OCL_checkError(err, "eval_MMFFf4_ocl_1");
             niterdone++;
-            saveDebugXYZreplicas( niterdone, 0.0 );
+
+            { //DEBUG
+                download( true, true );
+                err|=ocl.finishRaw();  OCL_checkError(err, "eval_MMFFf4_ocl().DEBUG.download");
+                for(int isys=0; isys<nSystems; isys++){
+                    unpack_system( isys, ffl, false, false );
+                    bool berr=false;
+                    berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.apos,  "apos",  true );
+                    berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.fapos, "fapos", true );
+                    berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.vapos, "vapos", true );
+                    if(berr){ printf( "ERROR eval_MMFFf4_ocl().DEBUG.apos NaNs in replica[%i].apos  => Exit() \n", isys ); exit(0); };
+                }
+                //saveDebugXYZreplicas( niterdone, 0.0 );
+            }
+
         }
         err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs()");
         double F2 = evalVFs();
@@ -892,7 +935,7 @@ virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*&
     M_neighs    = (int*)neighs;
     M_neighCell = (int*)neighCell;
     M_apos      = atoms;
-    return 0;
+    return nSystems;
 }
 
 // ##############################################################
