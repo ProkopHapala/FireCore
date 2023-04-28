@@ -153,6 +153,7 @@ __kernel void getMMFFf4(
     __global float4*  fneigh,       // 4  [nnode*4*2]
     // parameters
     __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global int4*    neighCell,    // 5  [nnode]  neighboring atoms
     __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} 
     __global float4*  apars,        // 7  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
     __global float4*  bLs,          // 8  [nnode]  bond lengths  for each neighbor
@@ -160,7 +161,9 @@ __kernel void getMMFFf4(
     __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
     __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
     __global cl_Mat3* lvecs,        // 12
-    __global cl_Mat3* ilvecs        // 13
+    __global cl_Mat3* ilvecs,       // 13
+    __global float4*  pbc_shifts,
+    int npbc
 ){
 
     const int iG = get_global_id (0);   // intex of atom
@@ -173,15 +176,24 @@ __kernel void getMMFFf4(
     const int nnode =nDOFs.y;
     const int nvec  = nAtoms+nnode;
 
-    const int i0a = iS*nAtoms; 
-    const int i0n = iS*nnode; 
-    const int i0v = iS*nvec;
+    const int i0a   = iS*nAtoms; 
+    const int i0n   = iS*nnode; 
+    const int i0v   = iS*nvec;
+    const int ipbc0 = iS*npbc;
 
     const int iaa = iG + i0a; 
     const int ian = iG + i0n; 
     const int iav = iG + i0v;
+    
 
     #define NNEIGH 4
+
+    // if(iG==0){
+    //     printf( "GPU::getMMFFf4() npbc=%i \n", npbc );
+    //     for(int i=0; i<npbc; i++){
+    //         printf( "pbcshift[%i](%6.3f,%6.3f,%6.3f)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z );
+    //     }
+    // }
 
     // if(iav==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i iS %i nG %i nS %i \n", nnode, nAtoms, iS, nG, nS ); }
     // if(ia==0)for(int i=0; i<nnode; i++){
@@ -196,8 +208,8 @@ __kernel void getMMFFf4(
     // }
     
     // ========= Private Memory
-    const cl_Mat3 lvec    = lvecs [iS];
-    const cl_Mat3 invLvec = ilvecs[iS];
+    //const cl_Mat3 lvec    = lvecs [iS];
+    //const cl_Mat3 invLvec = ilvecs[iS];
 
     // ---- Dynamical
     float4  hs [4];              // direction vectors of bonds
@@ -210,6 +222,7 @@ __kernel void getMMFFf4(
 
     // ---- Params
     const int4   ng  = neighs[iaa];    
+    const int4   ngC = neighCell[iaa];  
     const float3 pa  = apos[iav].xyz;
     const float3 hpi = apos[iav+nAtoms].xyz; 
     const float4 par = apars[ian];    //     (xy=s0_ss,z=ssK,w=piC0 )
@@ -220,6 +233,7 @@ __kernel void getMMFFf4(
 
     // Temp Arrays
     const int*   ings  = (int*  )&ng; 
+    const int*   ingC  = (int*  )&ngC; 
     const float* bL    = (float*)&vbL; 
     const float* bK    = (float*)&vbK;
     const float* Kspi  = (float*)&vKs;  
@@ -249,15 +263,20 @@ __kernel void getMMFFf4(
         if(ing<0) break;
         h.xyz    = apos[ingv].xyz - pa;    //printf( "[%i|%i] ing=%i h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z,  pa.x,pa.y,pa.z ); 
         
-        { // PBC bond vector correction
-            float3 u  = (float3){ dot( invLvec.a.xyz, h.xyz ), dot( invLvec.b.xyz, h.xyz ), dot( invLvec.c.xyz, h.xyz ) };
-            h.xyz   += lvec.a.xyz*(1.f-(int)(u.x+1.5f))
-                     + lvec.b.xyz*(1.f-(int)(u.y+1.5f))
-                     + lvec.c.xyz*(1.f-(int)(u.z+1.5f));
-            // if((iG==iG_DBG)&&(iS==iS_DBG)){
-            //     float3 shi =  (float3){(1.f-(int)(u.x+1.5f)),  (1.f-(int)(u.y+1.5f)), (1.f-(int)(u.z+1.5f)) };
-            //     printf( "GPU:bond[%i,%i] u(%6.3f,%6.3f,%6.3f) shi(%6.3f,%6.3f,%6.3f) \n", iG, ing, u.x,u.y,u.z,   shi.x,shi.y,shi.z );
-            // }
+        // { // PBC bond vector correction
+        //     float3 u  = (float3){ dot( invLvec.a.xyz, h.xyz ), dot( invLvec.b.xyz, h.xyz ), dot( invLvec.c.xyz, h.xyz ) };
+        //     h.xyz   += lvec.a.xyz*(1.f-(int)(u.x+1.5f))
+        //              + lvec.b.xyz*(1.f-(int)(u.y+1.5f))
+        //              + lvec.c.xyz*(1.f-(int)(u.z+1.5f));
+        //     // if((iG==iG_DBG)&&(iS==iS_DBG)){
+        //     //     float3 shi =  (float3){(1.f-(int)(u.x+1.5f)),  (1.f-(int)(u.y+1.5f)), (1.f-(int)(u.z+1.5f)) };
+        //     //     printf( "GPU:bond[%i,%i] u(%6.3f,%6.3f,%6.3f) shi(%6.3f,%6.3f,%6.3f) \n", iG, ing, u.x,u.y,u.z,   shi.x,shi.y,shi.z );
+        //     // }
+        // }
+
+        { // PBC shifts
+            int ic  = ingC[i];
+            h.xyz  += pbc_shifts[ipbc0+ic].xyz; 
         }
         
         float  l = length(h.xyz); 
