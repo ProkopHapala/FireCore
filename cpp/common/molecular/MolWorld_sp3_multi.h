@@ -148,18 +148,15 @@ void realloc( int nSystems_ ){
     ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode );
     //printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i nvecs %i \n", nSystems, ocl.nAtoms, ocl.nnode, ocl.nvecs );
     // --- dynamical
-    _realloc( atoms,     ocl.nvecs*nSystems  );
-    _realloc( aforces,   ocl.nvecs*nSystems  );
-    _realloc( avel,      ocl.nvecs*nSystems  );    for(int i=0; i<ocl.nvecs*nSystems; i++){ avel[i]=Quat4fZero; }  
-    _realloc( constr,    ocl.nAtoms*nSystems );
+    _realloc ( atoms,     ocl.nvecs*nSystems  );
+    _realloc0( aforces,   ocl.nvecs*nSystems  ,Quat4fZero);
+    _realloc0( avel,      ocl.nvecs*nSystems  ,Quat4fZero);
+    _realloc ( constr,    ocl.nAtoms*nSystems );
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
     _realloc( neighCell, ocl.nAtoms*nSystems );
     _realloc( bkNeighs,    ocl.nvecs*nSystems );
     _realloc( bkNeighs_new,ocl.nvecs*nSystems );
-    _realloc( atoms,     ocl.nvecs*nSystems  );
-    _realloc( atoms,     ocl.nvecs*nSystems  );
-    _realloc( atoms,     ocl.nvecs*nSystems  );
     _realloc( REQs,      ocl.nAtoms*nSystems );
     _realloc( MMpars,    ocl.nnode*nSystems  );
     _realloc( BLs,       ocl.nnode*nSystems  );
@@ -227,11 +224,18 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
         atoms[0+i0v].x=isys;
     }
     */
+
+    Mat3d lvec0=ff.lvec;  // DEBUG
+
     if(bForces){ pack( ff.nvecs, ff.fapos, aforces+i0v ); }
     //if(bVel   ){ pack( ff.nvecs, opt.vel,  avel   +i0v ); }
     if(bParams){
+        
+        Mat3d lvec=lvec0; lvec.a.addRandomCube(0.5); ffl.setLvec(lvec);  // DEBUG
+
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
+
         copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
         copy    ( ff.natoms, ff.neighs,    neighs   +i0a );
         //copy_add( ff.natoms, ff.neighs,    neighs   +i0a,           0      );
