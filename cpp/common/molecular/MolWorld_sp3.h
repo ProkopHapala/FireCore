@@ -690,7 +690,7 @@ virtual void init( bool bGrid ){
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
-virtual int  getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*& M_apos, int& nvec ){
+virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*& M_apos, int& nvec ){
     // int nsys=0,nvec=0;
     // int    * M_neighs    =0;
     // int    * M_neighCell =0;

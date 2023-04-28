@@ -172,6 +172,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void  showAtomGrid( char* s, int ia, bool bDraw=true );
     Vec3d showNonBond ( char* s, Vec2i b, bool bDraw=true );
     void  showBonds();
+    void printMSystem( int isys, int perAtom, int na, int nvec, bool bNg=true, bool bNgC=true, bool bPos=true );
     //void flipPis( Vec3d ax );
     //void drawSystemQMMM();
     //void renderOrbital(int i, double iso=0.1);
@@ -405,8 +406,18 @@ void MolGUI::draw(){
     }
 
     // --- Drawing Population of geometies overlay
-    //if(frameCount==1){ nsys=W->getMultiSystemPointers( M_neighs, M_neighCell, M_apos, nvec); }
-    //if(nsys>0){ for(int isys=0; isys<nsys; isys++){ Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); } } 
+    if(frameCount>=1){ 
+        if(frameCount==1){
+            nsys=W->getMultiSystemPointers( M_neighs, M_neighCell, M_apos, nvec); 
+            for(int i=0;i<nsys; i++){ printMSystem(i, 4, natoms, nvec ); }
+        }
+        //printf( "nsys %i \n", nsys );
+        if(nsys>0){ for(int isys=0; isys<nsys; isys++){ 
+            //printf( "#=========== isys= %i \n", isys );
+            Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); 
+        } } 
+    }
+    
 
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
@@ -415,6 +426,21 @@ void MolGUI::draw(){
     if(bHexDrawing)drawingHex(5.0);
 };
 
+void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bool bNgC, bool bPos ){
+    int i0a = (isys * na  )*perAtom;
+    int i0v = (isys * nvec); //*perAtom;
+    printf( "### MolGUI::MSystem[%i] \n", isys );
+    //if(blvec ){printf("lvec\n");  printMat(lvecs [isys]); }
+    //if(bilvec){printf("ilvec\n"); printMat(ilvecs[isys]); }
+    for(int i=0; i<na; i++){
+        int ii=i*perAtom;
+        printf("[%i]", i );
+        if(bNg )printf("ng (%3i,%3i,%3i,%3i)",  M_neighs   [i0a+ii+0], M_neighs   [i0a+ii+1], M_neighs   [i0a+ii+2], M_neighs   [i0a+ii+3] );
+        if(bNgC)printf("ngC(%2i,%2i,%2i,%2i)",  M_neighCell[i0a+ii+0], M_neighCell[i0a+ii+1], M_neighCell[i0a+ii+2], M_neighCell[i0a+ii+3] );
+        if(bPos)printf("pa(%6.3f,%6.3f,%6.3f)", M_apos     [i0v+i].x , M_apos     [i0v+i].y , M_apos     [i0v+i].z );
+        printf("\n" );
+    }
+}
 
 void MolGUI::showBonds(  ){
     Vec3d* ps = W->ffl.apos;
@@ -505,6 +531,7 @@ void MolGUI::drawHUD(){
         char* s=str;
         //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
         //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
+        s += sprintf(s, "iSystemCur %i\n",  W->iSystemCur );
         if(W->bMMFF) s += sprintf(s, "eval:Ang,ps,ppT,ppI(%i|%i,%i,%i)\n",  W->ff.nevalAngles>0, W->ff.nevalPiSigma>0, W->ff.nevalPiPiT>0, W->ff.nevalPiPiI>0 );
         s += sprintf(s, "cog (%g,%g,%g)\n", W->cog .x,W->cog .y,W->cog .z);
         s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", W->vcog.x,W->vcog.y,W->vcog.z);
@@ -911,8 +938,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
                 //case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
 
-                case SDLK_LEFTBRACKET:  W->nextSystemReplica(); break;
-                case SDLK_RIGHTBRACKET: W->prevSystemReplica(); break;
+                case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
+                case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
 
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;

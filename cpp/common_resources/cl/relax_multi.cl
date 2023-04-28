@@ -594,7 +594,7 @@ __kernel void printOnGPU(
     const int iav = iG + iS*nvec;
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
-    /*
+    
     printf( "#### GPU::printOnGPU(isys=%i) natoms=%i nnode=%i nG,nS(%i,%i) \n", isys,  natoms,nnode,   nS,nG );
     if(mask.x){
         for(int i=0; i<natoms; i++){
@@ -629,7 +629,7 @@ __kernel void printOnGPU(
             printf( "\n" );
         }}
     }
-    */
+    
 }
 
 __kernel void cleanForceMMFFf4(
