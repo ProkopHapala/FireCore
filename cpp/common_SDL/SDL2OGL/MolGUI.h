@@ -409,7 +409,7 @@ void MolGUI::draw(){
     if(frameCount>=1){ 
         if(frameCount==1){
             nsys=W->getMultiSystemPointers( M_neighs, M_neighCell, M_apos, nvec); 
-            for(int i=0;i<nsys; i++){ printMSystem(i, 4, natoms, nvec ); }
+            //for(int i=0;i<nsys; i++){ printMSystem(i, 4, natoms, nvec ); }
         }
         //printf( "nsys %i \n", nsys );
         if(nsys>0){ for(int isys=0; isys<nsys; isys++){ 

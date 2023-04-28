@@ -37,6 +37,30 @@ bool ckeckNaN(int n, int m, T* xs, Func func, bool bPrint=true ){
     return ret;
 }
 
+template<typename T>
+bool ckeckRange(int n, int m, T* xs, T min, T max, const char* pre, bool bPrint=true ){
+    bool ret = false;
+    for(int i=0; i<n;i++){
+        bool b=false;
+        for(int j=0; j<m;j++){
+            int ij=i*m+j;
+            b|=((xs[ij]<min)||(xs[ij]>max));
+        }
+        ret |= b;
+        if(b && bPrint ){
+            printf("%s[%i](", pre, i );
+            for(int j=0; j<m;j++){
+                int ij=i*m+j;
+                printf("%g,", xs[ij] );
+            }
+            printf(") outof (%g,%g)\n", (double)min, (double)max );
+        }
+    }
+    return ret;
+}
+
+
+
 bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
     bool ret = false;
     for(int i=0; i<n;i++){

@@ -231,7 +231,12 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
     //if(bVel   ){ pack( ff.nvecs, opt.vel,  avel   +i0v ); }
     if(bParams){
         
-        Mat3d lvec=lvec0; lvec.a.addRandomCube(0.5); ffl.setLvec(lvec);  // DEBUG
+        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.5); ffl.setLvec(lvec);  // DEBUG
+        //Mat3d lvec=lvec0; lvec.b.x += randf(-0.5,0.5); ffl.setLvec(lvec);  // DEBUG
+        //Mat3d lvec=lvec0; lvec.b.x += isys*0.00163; ffl.setLvec(lvec);  // DEBUG
+        //Mat3d lvec=lvec0; lvec.b.x += isys*0.15; ffl.setLvec(lvec);  // DEBUG
+
+        Mat3d lvec=lvec0; lvec.a.y += isys*2.25; ffl.setLvec(lvec);  // DEBUG
 
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
@@ -273,6 +278,9 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     fire.vf=vf;
     fire.update_params();
     MDpar.x = fire.dt;
+    //MDpar.x = fire.dt * 0.5; // DEBUG
+    //MDpar.x = 0.01; // DEBUG
+
     MDpar.y = 1 - fire.damping;
     MDpar.z = fire.cv;
     MDpar.w = fire.cf;
@@ -369,7 +377,7 @@ void printMSystem( int isys, bool blvec=true, bool bilvec=false, bool bNg=true, 
 
 virtual int paralel_size( )override{ return nSystems; }
 
-virtual double sove_multi ( int nmax, double tol )override{
+virtual double solve_multi ( int nmax, double tol )override{
     return eval_MMFFf4_ocl( nmax, tol );
 }
 
@@ -454,7 +462,7 @@ virtual void setSystemReplica (int i){
     unpack_system(iSystemCur, ffl, true, true); 
 
     copy( ffl.natoms, neighs+i0a, ffl.neighs );
-    for(int j=0; j<ffl.natoms; j++){ printf( "setSystemReplica[%i] ffl.neighs[%i](%3i,%3i,%3i,%3i)\n", i,  j,  ffl.neighs[j].x,ffl.neighs[j].y,ffl.neighs[j].z,ffl.neighs[j].w ); };
+    //for(int j=0; j<ffl.natoms; j++){ printf( "setSystemReplica[%i] ffl.neighs[%i](%3i,%3i,%3i,%3i)\n", i,  j,  ffl.neighs[j].x,ffl.neighs[j].y,ffl.neighs[j].z,ffl.neighs[j].w ); };
 
     Mat3_from_cl( builder.lvec, lvecs[iSystemCur] );
     ffl.setLvec( builder.lvec );
@@ -574,7 +582,7 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     }else for(int i=0; i<nVFs; i++){
         //long T0 = getCPUticks();
         for(int j=0; j<nPerVFs; j++){
-            //err |= task_cleanF->enque_raw();      // this should be solved inside  task_move->enque_raw();   if we do not need to output force 
+            err |= task_cleanF->enque_raw();      // this should be solved inside  task_move->enque_raw();   if we do not need to output force 
             if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
             else       { err |= task_NBFF      ->enque_raw(); }
             err |= task_MMFF->enque_raw();
@@ -590,11 +598,19 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
                 err|=ocl.finishRaw();  OCL_checkError(err, "eval_MMFFf4_ocl().DEBUG.download");
                 for(int isys=0; isys<nSystems; isys++){
                     unpack_system( isys, ffl, false, false );
+
+                    double frange=100.0;
                     bool berr=false;
+                    berr|= ckeckRange( ffl.nvecs, 3, (double*)ffl.apos,  -frange, frange, "apos",  true );
+                    berr|= ckeckRange( ffl.nvecs, 3, (double*)ffl.fapos, -frange, frange, "fapos", true );
+                    berr|= ckeckRange( ffl.nvecs, 3, (double*)ffl.vapos, -frange, frange, "vapos", true );
+                    if(berr){ printf( "ERROR eval_MMFFf4_ocl().DEBUG outOfRange(%g) in replica[%i].apos  => Exit() \n", frange, isys ); exit(0); };
+
+                    berr=false;
                     berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.apos,  "apos",  true );
                     berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.fapos, "fapos", true );
                     berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.vapos, "vapos", true );
-                    if(berr){ printf( "ERROR eval_MMFFf4_ocl().DEBUG.apos NaNs in replica[%i].apos  => Exit() \n", isys ); exit(0); };
+                    if(berr){ printf( "ERROR eval_MMFFf4_ocl().DEBUG NaNs in replica[%i].apos  => Exit() \n", isys ); exit(0); };
                 }
                 //saveDebugXYZreplicas( niterdone, 0.0 );
             }
@@ -629,23 +645,7 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     //          3) remove IF condition for vdw ? ( better use force limit )
     // ===============================================================================================================================================================================
 
-    if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
-    ocl          .download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
-    //for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
-    err |= ocl.finishRaw(); //printf("eval_MMFFf4_ocl() time=%g[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
 
-    OCL_checkError(err, "eval_MMFFf4_ocl");
-    unpack( ff4.natoms, ffl.  apos, ff4.  apos );
-    unpack( ff4.nnode,  ffl. pipos, ff4. pipos );
-    if(bForce){
-        unpack( ff4.natoms, ffl. fapos, ff4. fapos );
-        unpack( ff4.nnode,  ffl.fpipos, ff4.fpipos );
-        // ---- Check Invariatns   - this works only if we unpack forces
-        fcog  = sum ( ffl.natoms, ffl.fapos   );
-        tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-        if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
-        //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
-    }
     return niterdone;
 }
 
@@ -684,11 +684,34 @@ double eval( ){
     double E=0;
     setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
     if(bMMFF){ 
+        bool err=0;
         //E += ff .eval();
         E += ffl.eval();
         //E += eval_f4();
         //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.apos[0].x,nbmol.apos[0].y,nbmol.apos[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
         
+        unpack_system(iSystemCur, ffl, true, true); 
+
+        /*
+        bool bForce = true;
+        if(bForce)ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
+        ocl          .download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
+        //for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+        err |= ocl.finishRaw(); //printf("eval_MMFFf4_ocl() time=%g[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
+        OCL_checkError(err, "eval_MMFFf4_ocl");
+        unpack( ff4.natoms, ffl.  apos, ff4.  apos );
+        unpack( ff4.nnode,  ffl. pipos, ff4. pipos );
+        if(bForce){
+            unpack( ff4.natoms, ffl. fapos, ff4. fapos );
+            unpack( ff4.nnode,  ffl.fpipos, ff4.fpipos );
+            // ---- Check Invariatns   - this works only if we unpack forces
+            //fcog  = sum ( ffl.natoms, ffl.fapos   );
+            //tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
+            //if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
+            //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4_ocl |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }   // NOTE: torq is non-zero because pi-orbs have inertia
+        }
+        */
+
     }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
     if(bNonBonded){
         if(bMMFF){    
@@ -726,6 +749,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         //nIter = 100;
         nIter = 1;
         eval_MMFFf4_ocl( nIter );
+        unpack_system(iSystemCur, ffl, true, true); 
         //eval_NBFF_ocl  ( 1 ); 
         //eval_NBFF_ocl_debug(1); //exit(0);
     }else{
