@@ -424,6 +424,9 @@ virtual void setSystemReplica (int i){
     //ocl.download( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v );
     err|=ocl.finishRaw();  OCL_checkError(err, "setSystemReplica()");
     unpack_system(iSystemCur, ffl, true, true); 
+    Mat3_from_cl( builder.lvec, lvecs[iSystemCur] );
+    ffl.setLvec( builder.lvec );
+    makePBCshifts( nPBC, ffl.lvec );
 }
 virtual int countSystemReplica(     ){ return nSystems; }
 
