@@ -60,7 +60,7 @@ class GlobalOptimizer{ public:
 
     void upload_multi(int n, int i0){
         for(int i=0; i<n; i++){
-            msolver->setGeom( i, population[i+i0]->apos, population[i]->lvec, true );
+            msolver->setGeom( i, population[i+i0]->apos, population[i+i0]->lvec, true );
         }
         msolver->uploadPop();
     }

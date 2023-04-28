@@ -11,6 +11,53 @@
 #include "MultiSolverInterface.h"
 #include "Confs.h"
 
+
+
+static const Vec3d crashed_lvecs_a[]{
+   Vec3d{16.5687,4.39634,0.101714}, 
+   Vec3d{16.4519,4.61055,0.15619}, 
+   Vec3d{16.4827,4.63939,0.228825}, 
+   Vec3d{16.4054,4.73343,0.368312}, 
+   Vec3d{16.2526,4.86276,0.178079}, 
+   Vec3d{16.042,4.62415,0.334746}, 
+   Vec3d{16.2681,4.39517,0.383976}, 
+   Vec3d{16.2617,4.51033,0.243186}, 
+   Vec3d{16.3247,4.27194,0.0627758}, 
+   Vec3d{16.5343,4.21968,0.0718127}, 
+   Vec3d{16.4603,3.98607,0.227191}, 
+   Vec3d{16.2381,3.88567,0.346776}, 
+   Vec3d{16.3203,4.06615,0.245208}, 
+   Vec3d{16.2251,3.91924,0.487678}, 
+   Vec3d{16.0194,3.86961,0.609477}, 
+   Vec3d{15.8735,3.85935,0.742667}, 
+   Vec3d{15.6343,3.8252,0.89687}, 
+   Vec3d{15.6943,4.03466,0.916238}, 
+   Vec3d{15.8635,4.05713,0.947218}, 
+   Vec3d{16.1022,4.0392,1.17593}, 
+   Vec3d{16.1001,4.19727,1.42104}, 
+   Vec3d{16.0033,4.38308,1.31575}, 
+   Vec3d{15.776,4.40108,1.14094}, 
+   Vec3d{15.6973,4.57392,1.06922}, 
+   Vec3d{15.611,4.79108,1.19787}, 
+   Vec3d{15.3964,4.61232,1.06626}, 
+   Vec3d{15.5651,4.44433,1.1505}, 
+   Vec3d{15.638,4.58632,1.1942}, 
+   Vec3d{15.4802,4.6475,1.01036}, 
+   Vec3d{15.6035,4.69747,1.05859}, 
+   Vec3d{15.7054,4.49526,1.0149}, 
+   Vec3d{15.8025,4.44625,0.907019}, 
+   Vec3d{16.0442,4.42003,1.06714}, 
+   Vec3d{15.8612,4.56503,1.15009}, 
+   Vec3d{15.8564,4.37371,1.2002}, 
+   Vec3d{15.7303,4.21788,1.32156}, 
+   Vec3d{15.7225,3.98073,1.52493}, 
+   Vec3d{15.549,4.06645,1.62028}, 
+   Vec3d{15.6693,4.24443,1.52682}, 
+   Vec3d{15.8556,4.29563,1.73332}
+};
+
+
+
 struct FIRE_setup{
     float cvf_min   = -0.1f;  // minimum cosine for velocity damping in  move_FIRE_smooth()
     float cvf_max   = +0.1f;  // maximum cosine for velocity damping in  move_FIRE_smooth()
@@ -192,7 +239,7 @@ virtual void init( bool bGrid ) override {
         pack_system( i, ffl, true, false, random_init );
         fire[i].bind_params( &fire_setup );
     }
-    for(int i=0;i<nSystems; i++){ printMSystem(i); }
+    //for(int i=0;i<nSystems; i++){ printMSystem(i); }
     upload( true, false );
     //bGridFF=false;
     //bOcl   =false;
@@ -234,13 +281,21 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
     if(bForces){ pack( ff.nvecs, ff.fapos, aforces+i0v ); }
     //if(bVel   ){ pack( ff.nvecs, opt.vel,  avel   +i0v ); }
     if(bParams){
+
+        //Mat3d lvec=lvec0; lvec.a.addRandomCube(1.5); ffl.setLvec(lvec);  // DEBUG 
+        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[isys]; ffl.setLvec(lvec);  // DEBUG 
+        Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[16]; ffl.setLvec(lvec);  // DEBUG 
+        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[3]; ffl.setLvec(lvec);  // DEBUG 
         
         //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.5); ffl.setLvec(lvec);  // DEBUG
+        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.4); ffl.setLvec(lvec);  // DEBUG
+        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.25); ffl.setLvec(lvec);  // DEBUG
         //Mat3d lvec=lvec0; lvec.b.x += randf(-0.5,0.5); ffl.setLvec(lvec);  // DEBUG
         //Mat3d lvec=lvec0; lvec.b.x += isys*0.00163; ffl.setLvec(lvec);  // DEBUG
         //Mat3d lvec=lvec0; lvec.b.x += isys*0.15; ffl.setLvec(lvec);  // DEBUG
+        //Mat3d lvec=lvec0; lvec.a.y += isys*2.25; ffl.setLvec(lvec);  // DEBUG
 
-        Mat3d lvec=lvec0; lvec.a.y += isys*2.25; ffl.setLvec(lvec);  // DEBUG
+        printf( "   Vec3d{%g,%g,%g}, \n",  lvec.a.x, lvec.a.y, lvec.a.z  );
 
         Mat3_to_cl( ff.   lvec,  lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
@@ -285,7 +340,6 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     MDpar.x = fire.dt;
     //MDpar.x = fire.dt * 0.5; // DEBUG
     //MDpar.x = 0.01; // DEBUG
-
     MDpar.y = 1 - fire.damping;
     MDpar.z = fire.cv;
     MDpar.w = fire.cf;
@@ -391,6 +445,7 @@ virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
+    int i0pbc = isys * ocl.npbc;
 
 
     // we cannot pack directly ps because  pipos is not defined in setGeom
@@ -401,6 +456,7 @@ virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override
     if(lvec){ ffl.setLvec(*lvec); };
     Mat3_to_cl( ffl.lvec,    lvecs [isys] );
     Mat3_to_cl( ffl.invLvec, ilvecs[isys] );
+    evalPBCshifts( nPBC, ff.lvec, pbcshifts + i0pbc );
     printf( "setGeom[%i] lvec{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}\n",  isys,  ffl.lvec.a.x,ffl.lvec.a.y,ffl.lvec.a.z,   ffl.lvec.b.x,ffl.lvec.b.y,ffl.lvec.b.z,   ffl.lvec.c.x,ffl.lvec.c.y,ffl.lvec.c.z  ); 
     // if( ! bPrepared ){
     //     set ( ocl.nvecs,     avel+i0v  );
@@ -441,10 +497,17 @@ virtual void upload_pop( const char* fname ){
     printf("MolWorld_sp3::upload_pop(%s)\n", fname );
     gopt.loadPopXYZ( fname );
     int nmult=gopt.population.size(); 
+
     int npara=paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
     gopt.upload_multi(nmult,0);
 
-    for(int i=0;i<nSystems; i++){ printMSystem(i); }
+    // for(int i=0; i<nSystems; i++){
+    //     setGeom( i, gopt.population[33]->apos, gopt.population[33]->lvec, true );
+    // }
+    // uploadPop();
+
+
+    //for(int i=0;i<nSystems; i++){ printMSystem(i); }
 
     /*
     //int initMode=1;
@@ -756,6 +819,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         nIter = 1;
         eval_MMFFf4_ocl( nIter );
         unpack_system(iSystemCur, ffl, true, true); 
+
+        //SDL_Delay(1000);
         //eval_NBFF_ocl  ( 1 ); 
         //eval_NBFF_ocl_debug(1); //exit(0);
     }else{

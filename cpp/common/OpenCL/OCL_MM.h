@@ -136,7 +136,7 @@ class OCL_MM: public OCLsystem { public:
         npbc   = npbc_;
         printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i nbkng %i \n", nSystems, nvecs, nAtoms, nnode, nbkng );
         printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i nS*nbkng %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode, nSystems*nbkng );
-        if( (nSystems<=0)||(nAtoms<=0) ){ printf("ERROR in OCL_MM::initAtomsForces() invalit size nSystems=%i nAtoms=%i => Exit() \n", nSystems, nAtoms); exit(0); }
+        if( (nSystems<=0)||(nAtoms<=0) ){ printf("ERROR in OCL_MM::initAtomsForces() invalid size nSystems=%i nAtoms=%i => Exit() \n", nSystems, nAtoms); exit(0); }
         ibuff_atoms      = newBuffer( "atoms",      nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_aforces    = newBuffer( "aforces",    nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
