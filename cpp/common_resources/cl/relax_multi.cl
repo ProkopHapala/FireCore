@@ -503,18 +503,19 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
+    // ---- Limit Forces
+    float Flimit = 10.0;
+    float fr2 = dot(fe.xyz,fe.xyz);
+    if( fr2 > (Flimit*Flimit) ){
+        fe.xyz*=(Flimit/sqrt(fr2));
+    }
+    
     // =============== FORCE DONE
     aforce[iav] = fe;           // store force before limit
     //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
 
-    /*
-    // ---- Limit Forces
-    float fr2 = dot(fe.xyz,fe.xyz);
-    if( fr2 > (MDpars.z*MDpars.z) ){
-        fe.xyz*=(MDpars.z/sqrt(fr2));
-    } 
-    */
 
+    
     // =============== DYNAMICS
 
     float4 ve = avel[iav];
