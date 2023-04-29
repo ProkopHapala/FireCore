@@ -349,28 +349,61 @@ double eval_atoms(){
     return E;
 }
 
-void initPi( double Kmin=0.1, double r2min=1e-4 ){
+void initPi( Vec3d* pbc_shifts, double Kmin=0.1, double r2min=1e-4, bool bCheck=true ){
+    //printf( "MMFFsp3_loc::initPi()\n" );
     for(int ia=0; ia<nnode; ia++){ 
+        if(vapos)vapos[natoms+ia]=Vec3dZero;
         const int*    ngs = neighs   [ia].array;
+        const int*    ngC = neighCell[ia].array;
         const double* ks  = Ksp      [ia].array;
         Vec3d u,v,p;
         int nfound=0; 
         int j=0;
-        for(;j<4;j++){ if(ks[j]>Kmin){ u=apos[ngs[j]]; nfound++; break; } }
-        for(;j<4;j++){ if(ks[j]>Kmin){ v=apos[ngs[j]]; nfound++; break; } }
-        for(;j<4;j++){ if(ks[j]>Kmin){ p=apos[ngs[j]]; nfound++; break; } }
+        while(j<4){ if(ks[j]>Kmin){ u=apos[ngs[j]]+pbc_shifts[ngC[j]]; nfound++; j++;break; }; j++; }
+        while(j<4){ if(ks[j]>Kmin){ v=apos[ngs[j]]+pbc_shifts[ngC[j]]; nfound++; j++;break; }; j++; }
+        while(j<4){ if(ks[j]>Kmin){ p=apos[ngs[j]]+pbc_shifts[ngC[j]]; nfound++; j++;break; }; j++; }
         if      ( nfound>=2 ){
             if( nfound==2 ){  p=apos[ia]; }
+            //printf( "::[%i] u(%6.3f,%6.3f,%6.3f) v(%6.3f,%6.3f,%6.3f) p(%6.3f,%6.3f,%6.3f) nf=%1i \n", ia, u.x,u.y,u.z,  v.x,v.y,v.z, p.x,p.y,p.z, nfound );
             u.sub(p); v.sub(p);
             Vec3d pi; pi.set_cross( u,v );
             double r2 = pi.norm2();
+            //printf( "::pi[%i](%6.3f,%6.3f,%6.3f) u(%6.3f,%6.3f,%6.3f) v(%6.3f,%6.3f,%6.3f) nf=%1i r2 %g \n", ia, u.x,u.y,u.z,  v.x,v.y,v.z, pi.x,pi.y,pi.z, nfound, sqrt(r2) );
             if( r2>r2min ){
-                pi.mul(1/r2);
+                pi.mul(1/sqrt(r2));
                 pipos[ia]=pi;
+                //printf( "pi[%i]=pi(%5.3f,%5.3f,%5.3f) nfound %1i r2 %g \n", ia, pi.x,pi.y,pi.z, nfound, sqrt(r2) );
                 continue;
             }
         }
-        pipos[ia]=Vec3dZ; // pi cannot be defined
+        //printf( "pi[%i]=Vec3dZero nf=%1i \n", ia, nfound );
+        //pipos[ia]=Vec3dZ; // pi cannot be define
+        pipos[ia]=Vec3dZero; // pi cannot be define
+    }
+    for(int ia=0; ia<nnode; ia++){ 
+        const int*    ngs = neighs   [ia].array;
+        const double* ks  = Kpp      [ia].array;
+        int imax=-1;
+        double kmax=0.0;
+        double r2 = pipos[ia].norm2();
+        if( r2>0.1 )continue;
+        for(int i=0; i<4; i++){
+            double k = ks[i];
+            if(k>kmax){ 
+                if(bCheck){
+                    int ing=ngs[i];
+                    if     ( ing<0     ){ printf("ERROR in MMFFsp3_loc::initPi() atom[%i] Kpp=%g but neihgbor[%i] is undefined(%i) => Exit() \n", ia, k,i, ing    ); exit(0); }    
+                    else if( ing>nnode ){ printf("ERROR in MMFFsp3_loc::initPi() atom[%i] Kpp=%g but neihgbor[%i] is cap(nnode=%i) => Exit() \n", ia, k,i, nnode  ); exit(0); }
+                }
+                imax=i; kmax=k; 
+            };
+        }
+        if( kmax>Kmin ){ 
+            pipos[ia]=pipos[ ngs[imax] ]; 
+            //printf("pi[%i] set by neigh[%i==%i] with Kpp=%g\n", ia, imax, ngs[imax], kmax ); 
+        }else{
+            pipos[ia]=Vec3dZ; // pi cannot be define
+        }
     }
 }
 

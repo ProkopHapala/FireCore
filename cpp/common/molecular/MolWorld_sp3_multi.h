@@ -256,13 +256,23 @@ virtual void init( bool bGrid ) override {
 //         GPU <-> CPU I/O
 // ==================================
 
-void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, bool bVel=false, float l_rnd=-1 ){
+void pack_system( int isys, MMFFsp3_loc& ff,  bool bParams=0, bool bForces=false, bool bVel=false, bool blvec=true, float l_rnd=-1 ){
     //printf("MolWorld_sp3_multi::pack_system(%i) \n", isys);
     //ocl.nvecs;
-    int i0n = isys * ocl.nnode;
-    int i0a = isys * ocl.nAtoms;
-    int i0v = isys * ocl.nvecs;
+    int i0n   = isys * ocl.nnode;
+    int i0a   = isys * ocl.nAtoms;
+    int i0v   = isys * ocl.nvecs;
     int i0pbc = isys*ocl.npbc;
+
+    if(blvec){
+        evalPBCshifts( nPBC, ff.lvec, pbcshifts + i0pbc );
+        //evalPBCshifts( nPBC, ff.lvec, pbc_shifts );  // This must be before pack(ff.apos)
+        pack( npbc,  pbc_shifts, pbcshifts+i0pbc );
+        //ffl.initPi(pbc_shifts);
+        Mat3_to_cl( ff.   lvec,  lvecs[isys] );
+        Mat3_to_cl( ff.invLvec, ilvecs[isys] );
+    }
+    
     pack( ff.nvecs, ff.apos, atoms+i0v );
     for(int i=0; i<ocl.nAtoms; i++){ Quat4f a=atoms[i+i0v]; a.w=-1.0; constr[i+i0a] = a; }  // contrains
     /*
@@ -276,17 +286,15 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
     }
     */
 
-    Mat3d lvec0=ff.lvec;  // DEBUG
-
+    //Mat3d lvec0=ff.lvec;  // DEBUG
     if(bForces){ pack( ff.nvecs, ff.fapos, aforces+i0v ); }
     //if(bVel   ){ pack( ff.nvecs, opt.vel,  avel   +i0v ); }
     if(bParams){
 
         //Mat3d lvec=lvec0; lvec.a.addRandomCube(1.5); ffl.setLvec(lvec);  // DEBUG 
         //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[isys]; ffl.setLvec(lvec);  // DEBUG 
-        Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[16]; ffl.setLvec(lvec);  // DEBUG 
+        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[16]; ffl.setLvec(lvec);  // DEBUG 
         //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[3]; ffl.setLvec(lvec);  // DEBUG 
-        
         //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.5); ffl.setLvec(lvec);  // DEBUG
         //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.4); ffl.setLvec(lvec);  // DEBUG
         //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.25); ffl.setLvec(lvec);  // DEBUG
@@ -294,12 +302,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=0, boo
         //Mat3d lvec=lvec0; lvec.b.x += isys*0.00163; ffl.setLvec(lvec);  // DEBUG
         //Mat3d lvec=lvec0; lvec.b.x += isys*0.15; ffl.setLvec(lvec);  // DEBUG
         //Mat3d lvec=lvec0; lvec.a.y += isys*2.25; ffl.setLvec(lvec);  // DEBUG
-
-        printf( "   Vec3d{%g,%g,%g}, \n",  lvec.a.x, lvec.a.y, lvec.a.z  );
-
-        Mat3_to_cl( ff.   lvec,  lvecs[isys] );
-        Mat3_to_cl( ff.invLvec, ilvecs[isys] );
-        evalPBCshifts( nPBC, ff.lvec, pbcshifts + i0pbc );
+        //printf( "   Vec3d{%g,%g,%g}, \n",  lvec.a.x, lvec.a.y, lvec.a.z  );
 
         copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
         copy    ( ff.natoms, ff.neighs,    neighs   +i0a );
@@ -447,26 +450,26 @@ virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override
     int i0v = isys * ocl.nvecs;
     int i0pbc = isys * ocl.npbc;
 
+    if(lvec){ ffl.setLvec(*lvec); };
+    for(int i=0; i<ffl.natoms; i++){ ffl.apos[i]=ps[i]; } 
+    evalPBCshifts( nPBC, ff.lvec, pbc_shifts );  // This must be before     pack(ff.apos)
+    ffl.initPi(pbc_shifts);
+    pack_system(isys,ffl);
 
+    /*
+    if(lvec){ ffl.setLvec(*lvec); };
+    Mat3_to_cl( ffl.lvec,    lvecs [isys] );
+    Mat3_to_cl( ffl.invLvec, ilvecs[isys] );
+    //evalPBCshifts( nPBC, ffl.lvec, pbcshifts + i0pbc );
+    evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
+    pack( npbc, pbc_shifts, pbcshifts+i0pbc );
+    printf( "setGeom[%i] lvec{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}\n",  isys,  ffl.lvec.a.x,ffl.lvec.a.y,ffl.lvec.a.z,   ffl.lvec.b.x,ffl.lvec.b.y,ffl.lvec.b.z,   ffl.lvec.c.x,ffl.lvec.c.y,ffl.lvec.c.z  ); 
     // we cannot pack directly ps because  pipos is not defined in setGeom
     for(int i=0; i<ffl.natoms; i++){ ffl.apos[i]=ps[i]; } 
     ffl.initPi();         
     pack( ocl.nvecs, ffl.apos, atoms+i0v );
+    */
 
-    if(lvec){ ffl.setLvec(*lvec); };
-    Mat3_to_cl( ffl.lvec,    lvecs [isys] );
-    Mat3_to_cl( ffl.invLvec, ilvecs[isys] );
-    evalPBCshifts( nPBC, ff.lvec, pbcshifts + i0pbc );
-    printf( "setGeom[%i] lvec{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}\n",  isys,  ffl.lvec.a.x,ffl.lvec.a.y,ffl.lvec.a.z,   ffl.lvec.b.x,ffl.lvec.b.y,ffl.lvec.b.z,   ffl.lvec.c.x,ffl.lvec.c.y,ffl.lvec.c.z  ); 
-    // if( ! bPrepared ){
-    //     set ( ocl.nvecs,     avel+i0v  );
-    //     // ---- upload to GPU
-    //     ocl.upload( ocl.ibuff_atoms,   atoms,   ocl.nvecs, i0v  );
-    //     ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v  );
-    //     ocl.upload( ocl.ibuff_lvecs,   lvecs,   1,         isys );
-    //     ocl.upload( ocl.ibuff_ilvecs,  ilvecs,  1,         isys );
-    //     //for(int i=0; i<ocl.nAtoms; i++){ Quat4f a=atoms[i+i0v]; a.w=-1.0; constr[i+i0a] = a; }  // contrains
-    // }
 }
 
 virtual double getGeom     ( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
@@ -535,7 +538,7 @@ virtual void setSystemReplica (int i){
 
     Mat3_from_cl( builder.lvec, lvecs[iSystemCur] );
     ffl.setLvec( builder.lvec );
-    makePBCshifts( nPBC, ffl.lvec );
+    evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
 }
 virtual int countSystemReplica(     ){ return nSystems; }
 
