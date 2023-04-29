@@ -1496,9 +1496,9 @@ __kernel void PPAFM_makeFF(
     const cl_Mat3  dlvec,            // 7
     const float4   grid_p0,          // 8
     //const float4   GFFParams       // 
-    const float4 tipParams,          // 9
-    const float4 Qs,                 // 10
-    const float4 QZs                 // 11
+    const float4 tipParams           // 9
+    //const float4 Qs,               // 10
+    //const float4 QZs               // 11
 ){
     __local float4 LPOS[32];
     __local float4 LREQ[32];
@@ -1583,7 +1583,7 @@ float3 update_FIRE( float3 f, float3 v, float* dt, float* damp,    float dtmin, 
 }
 
 __attribute__((reqd_work_group_size(1,1,1)))
-__kernel void relaxStrokesTilted_convZ(
+__kernel void PPAFM_scan(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
     __constant  float*     weighs,  // 3
@@ -1594,7 +1594,8 @@ __kernel void relaxStrokesTilted_convZ(
     float4 dpos0,                   // 8
     float4 relax_params,            // 9
     float4 surfFF,                  // 11
-    const int nz, const int nzout   // 12
+    const int nz,                   // 12
+    const int nzout                 // 13
 ){
 
     __local float  WEIGHTS[64];
