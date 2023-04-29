@@ -9,7 +9,8 @@
 #include "MultiSolverInterface.h"
 
 class GlobalOptimizer{ public:
-    double tolerance = 1.0e-6;
+    //double tolerance = 1.0e-6;
+    double tolerance = 0.01;
     int    nmaxiter  = 10000; 
 
     int* atypes=0;
@@ -58,9 +59,13 @@ class GlobalOptimizer{ public:
         }
     }
 
-    void upload_multi(int n, int i0){
+    void upload_multi(int n, int i0, bool bGeom, bool blvec){
         for(int i=0; i<n; i++){
-            msolver->setGeom( i, population[i+i0]->apos, population[i+i0]->lvec, true );
+            Vec3d* apos=0;
+            Mat3d* lvec=0;
+            if(bGeom)apos=population[i+i0]->apos; 
+            if(blvec)lvec=population[i+i0]->lvec;
+            msolver->setGeom( i, apos, lvec, true );
         }
         msolver->uploadPop();
     }
@@ -144,7 +149,7 @@ class GlobalOptimizer{ public:
                     }
                 }
             }
-            upload_multi  (nmult,imin); 
+            upload_multi  (nmult,imin, initMode!=0, true ); 
             msolver->solve_multi( nmaxiter, tolerance );
             download_multi(nmult,imin);
 

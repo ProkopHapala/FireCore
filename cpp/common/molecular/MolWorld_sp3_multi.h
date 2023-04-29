@@ -441,7 +441,8 @@ void printMSystem( int isys, bool blvec=true, bool bilvec=false, bool bNg=true, 
 virtual int paralel_size( )override{ return nSystems; }
 
 virtual double solve_multi ( int nmax, double tol )override{
-    return eval_MMFFf4_ocl( nmax, tol );
+    //return eval_MMFFf4_ocl( nmax, tol );
+    return eval_MMFFf4_ocl_opt( nmax, tol );
 }
 
 virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
@@ -450,10 +451,14 @@ virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override
     int i0v = isys * ocl.nvecs;
     int i0pbc = isys * ocl.npbc;
 
-    if(lvec){ ffl.setLvec(*lvec); };
-    for(int i=0; i<ffl.natoms; i++){ ffl.apos[i]=ps[i]; } 
-    evalPBCshifts( nPBC, ff.lvec, pbc_shifts );  // This must be before     pack(ff.apos)
-    ffl.initPi(pbc_shifts);
+    if(lvec){ 
+        ffl.setLvec(*lvec); 
+        evalPBCshifts( nPBC, ff.lvec, pbc_shifts ); // this must be before   ffl.initPi(pbc_shifts);
+    }
+    if(ps){
+        for(int i=0; i<ffl.natoms; i++){ ffl.apos[i]=ps[i]; } 
+        ffl.initPi(pbc_shifts);
+    }
     pack_system(isys,ffl);
 
     /*
@@ -496,30 +501,48 @@ virtual void uploadPop  ()override{
     //ocl.upload( ocl.ibuff_constr, constr );
 }
 
+virtual void add_to_lvec( const Mat3d& dlvec )override{
+    printf("MolWold_sp3_multi::add_to_lvec()\n");
+    for(int isys=0; isys<nSystems; isys++){
+        //int i0n   = isys * ocl.nnode;
+        //int i0a   = isys * ocl.nAtoms;
+        //int i0v   = isys * ocl.nvecs;
+        int i0pbc = isys*ocl.npbc;
+        Mat3_from_cl( ffl.lvec, lvecs[isys] ); 
+        ffl.setLvec ( ffl.lvec+dlvec );
+        evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
+        pack( npbc,  pbc_shifts, pbcshifts+i0pbc );
+        Mat3_to_cl( ffl.   lvec,  lvecs[isys] );
+        Mat3_to_cl( ffl.invLvec, ilvecs[isys] );
+    }
+
+    Mat3_from_cl( builder.lvec, lvecs[iSystemCur] );
+    ffl.setLvec ( builder.lvec);
+    evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
+    
+    int err=0;
+    err|= ocl.upload( ocl.ibuff_lvecs,   lvecs );
+    err|= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
+    err|= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts );
+    err |= ocl.finishRaw(); 
+    OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
+}
+
 virtual void upload_pop( const char* fname ){
     printf("MolWorld_sp3::upload_pop(%s)\n", fname );
     gopt.loadPopXYZ( fname );
     int nmult=gopt.population.size(); 
-
     int npara=paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
-    gopt.upload_multi(nmult,0);
+    gopt.upload_multi(nmult,0, true, true );
 
-    // for(int i=0; i<nSystems; i++){
-    //     setGeom( i, gopt.population[33]->apos, gopt.population[33]->lvec, true );
-    // }
-    // uploadPop();
-
-
-    //for(int i=0;i<nSystems; i++){ printMSystem(i); }
-
-    /*
-    //int initMode=1;
-    int initMode=0;
-    //int nstesp = 40;
-    int nstesp = 2;
-    Mat3d dlvec =  Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
-    gopt.lattice_scan_2d_multi( nstesp, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
-    */
+    // //int initMode=1;
+    // int initMode = 0;
+    // int nstesp   = 40;
+    // //int nstesp = 2;
+    // //gopt.tolerance = 0.02;
+    // gopt.tolerance = 0.01;
+    // Mat3d dlvec =  Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
+    // gopt.lattice_scan_2d_multi( nstesp, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
 }
 
 virtual void setSystemReplica (int i){ 
@@ -721,6 +744,41 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     return niterdone;
 }
 
+
+int eval_MMFFf4_ocl_opt( int niter, double Fconv=1e-6 ){ 
+    //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
+    //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
+    double F2conv = Fconv*Fconv;
+    int err=0;
+    if( task_MMFF==0)setup_MMFFf4_ocl();
+    int nPerVFs = _min(10,niter);
+    int nVFs    = niter/nPerVFs;
+    long T0 = getCPUticks();
+    int niterdone=0;
+    double F2=0;
+    for(int i=0; i<nVFs; i++){
+        for(int j=0; j<nPerVFs; j++){
+            if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+            else       { err |= task_NBFF      ->enque_raw(); }
+            err |= task_MMFF->enque_raw();
+            err |= task_move      ->enque_raw(); 
+            niterdone++;
+        }
+        F2 = evalVFs();
+        if( F2<F2conv  ){ 
+            double t=(getCPUticks()-T0)*tick2second;
+            printf( "eval_MMFFf4_ocl_opt(nsys=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+            return niterdone; 
+        }
+    }
+     double t=(getCPUticks()-T0)*tick2second;
+    printf( "eval_MMFFf4_ocl_opt(nsys=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+    //err |= ocl.finishRaw(); 
+    //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
+    return niterdone;
+}
+
+
 double eval_NBFF_ocl( int niter, bool bForce=false ){ 
     //printf("MolWorld_sp3_multi::eval_NBFF_ocl() \n");
     int err=0;
@@ -812,17 +870,32 @@ double eval( ){
 //                 MDloop
 // ==================================
 
+
+virtual char* getStatusString( char* s, int nmax ) override {
+    //double F2 = evalVFs();
+    double  F2max=0;
+    double  F2min=1e+300;
+    for(int isys=0; isys<nSystems; isys++){
+        int i0v = isys * ocl.nvecs;
+        evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
+        F2max = fmax( F2max, fire[isys].ff );
+        F2min = fmin( F2min, fire[isys].ff );
+    }
+    s += sprintf(s, "iSystemCur %i/%i \n",  iSystemCur, nSystems );
+    s += sprintf(s, "eval_MMFFf4_ocl |F|max=%g |F|min=%g \n", sqrt(F2max), sqrt(F2min) );
+    return s;
+}
+
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     //bMMFF=false;
     if( bOcl ){
         //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
-        //nIter = 100;
-        nIter = 1;
+        nIter = 50;
+        //nIter = 1;
         eval_MMFFf4_ocl( nIter );
         unpack_system(iSystemCur, ffl, true, true); 
-
         //SDL_Delay(1000);
         //eval_NBFF_ocl  ( 1 ); 
         //eval_NBFF_ocl_debug(1); //exit(0);

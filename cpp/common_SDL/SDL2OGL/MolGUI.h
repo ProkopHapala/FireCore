@@ -130,7 +130,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
 
-    char str[2048];
+    static const int nmaxstr=2048;
+    char str[nmaxstr];
 
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
@@ -528,15 +529,16 @@ void MolGUI::drawHUD(){
     if(W->bCheckInvariants){
         glTranslatef( 10.0,HEIGHT-20.0,0.0 );
         glColor3f(0.5,0.0,0.3);
-        char* s=str;
+        //char* s=str;
         //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
         //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
-        s += sprintf(s, "iSystemCur %i\n",  W->iSystemCur );
-        if(W->bMMFF) s += sprintf(s, "eval:Ang,ps,ppT,ppI(%i|%i,%i,%i)\n",  W->ff.nevalAngles>0, W->ff.nevalPiSigma>0, W->ff.nevalPiPiT>0, W->ff.nevalPiPiI>0 );
-        s += sprintf(s, "cog (%g,%g,%g)\n", W->cog .x,W->cog .y,W->cog .z);
-        s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", W->vcog.x,W->vcog.y,W->vcog.z);
-        s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", W->fcog.x,W->fcog.y,W->fcog.z);
-        s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", W->tqcog.x,W->tqcog.y,W->tqcog.z);
+        // s += sprintf(s, "iSystemCur %i\n",  W->iSystemCur );
+        // if(W->bMMFF) s += sprintf(s, "eval:Ang,ps,ppT,ppI(%i|%i,%i,%i)\n",  W->ff.nevalAngles>0, W->ff.nevalPiSigma>0, W->ff.nevalPiPiT>0, W->ff.nevalPiPiI>0 );
+        // s += sprintf(s, "cog (%g,%g,%g)\n", W->cog .x,W->cog .y,W->cog .z);
+        // s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", W->vcog.x,W->vcog.y,W->vcog.z);
+        // s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", W->fcog.x,W->fcog.y,W->fcog.z);
+        // s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", W->tqcog.x,W->tqcog.y,W->tqcog.z);
+        W->getStatusString( str, nmaxstr );
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
     }
 
@@ -868,8 +870,11 @@ void MolGUI::eventMode_scan( const SDL_Event& event  ){
             //case SDLK_KP_9: picked_lvec->z+=xstep; break;
             //case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
-            case SDLK_COMMA:  W->change_lvec( W->ffl.lvec+dlvec    ); break;
-            case SDLK_PERIOD: W->change_lvec( W->ffl.lvec+dlvec*-1 ); break;
+            //case SDLK_COMMA:  W->change_lvec( W->ffl.lvec+dlvec    ); break;
+            //case SDLK_PERIOD: W->change_lvec( W->ffl.lvec+dlvec*-1 ); break;
+
+            case SDLK_COMMA:  W->add_to_lvec( dlvec    ); break;
+            case SDLK_PERIOD: W->add_to_lvec( dlvec*-1 ); break;
 
             case SDLK_a: apos[1].rotate(  0.1, {0.0,0.0,1.0} ); break;
             case SDLK_d: apos[1].rotate( -0.1, {0.0,0.0,1.0} ); break;
@@ -903,8 +908,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
 
-                case SDLK_COMMA:  W->change_lvec( W->ffl.lvec+dlvec    ); break;
-                case SDLK_PERIOD: W->change_lvec( W->ffl.lvec+dlvec*-1 ); break;
+                case SDLK_COMMA:  W->add_to_lvec( dlvec    ); break;
+                case SDLK_PERIOD: W->add_to_lvec( dlvec*-1 ); break;
 
                 //case SDLK_LESS:    which_MO--; printf("which_MO %i \n"); break;
                 //case SDLK_GREATER: which_MO++; printf("which_MO %i \n"); break;

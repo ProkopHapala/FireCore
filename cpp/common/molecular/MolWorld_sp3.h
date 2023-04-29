@@ -155,9 +155,19 @@ class MolWorld_sp3 : public SolverInterface { public:
 
 void change_lvec( Mat3d lvec ){
     ffl.setLvec( lvec );
-    npbc = makePBCshifts( nPBC, lvec );
+    //npbc = makePBCshifts( nPBC, lvec );
+    evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
     ffl.bindShifts(npbc,pbc_shifts);
     builder.lvec = lvec;
+}
+
+virtual void add_to_lvec( const Mat3d& dlvec ){
+    printf("MolWold_sp3::add_to_lvec()\n");
+    ffl.setLvec( ffl.lvec+dlvec );
+    //npbc = makePBCshifts( nPBC, lvec );
+    evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
+    ffl.bindShifts(npbc,pbc_shifts);
+    builder.lvec = ffl.lvec;
 }
 
 virtual double solve( int nmax, double tol )override{
@@ -210,6 +220,8 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     //gopt.atypes = ffl.atypes;
     gopt.reallocPop( n1+n2, ffl.natoms, true );
 
+    gopt.tolerance = 0.02;
+
     for(int i=0; i<ffl.natoms; i++ ){ gopt.atypes[i]= params.atypes[ffl.atypes[i]].iZ; }
     //Mat3d lvec0 = builder.lvec;
     Mat3d lvec0 = ffl.lvec;
@@ -241,7 +253,15 @@ virtual int countSystemReplica(     ){ return gopt.population.size(); }
 void nextSystemReplica(){ int nsys=countSystemReplica(); int i=iSystemCur+1; if(i>=nsys)i=0;      setSystemReplica( i ); };
 void prevSystemReplica(){ int nsys=countSystemReplica(); int i=iSystemCur-1; if(i<0    )i=nsys-1; setSystemReplica( i ); };
 
-
+virtual char* getStatusString( char* s, int nmax ){
+    s += sprintf(s, "iSystemCur %i\n",  iSystemCur );
+    //if(bMMFF) s += sprintf(s, "eval:Ang,ps,ppT,ppI(%i|%i,%i,%i)\n",  ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0 );
+    s += sprintf(s, "cog (%g,%g,%g)\n", cog .x,  cog .y,  cog .z );
+    s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n",  vcog.x,  vcog.y,  vcog.z);
+    s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n",  fcog.x,  fcog.y,  fcog.z);
+    s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", tqcog.x, tqcog.y, tqcog.z);
+    return s;
+}
 
 // =================== Functions
 
