@@ -132,6 +132,9 @@ class MolWorld_sp3 : public SolverInterface { public:
 	int*  manipulation_sel=0;
 	int   manipulation_nsel=0;
 
+    std::vector<int> constrain_list;
+    double Kfix=1.0;
+
     int ipicked    = -1; // picket atom 
     int ibpicked   = -1; // picket bond
     int iangPicked = -1; // picket angle
@@ -152,6 +155,15 @@ class MolWorld_sp3 : public SolverInterface { public:
 // ===============================================
 //       Implement    SolverInterface
 // ===============================================
+
+virtual void setConstrains(bool bClear=true, double Kfix_=1.0 ){
+    double Kfix=Kfix_;
+    for(int i=0; i<ffl.natoms; i++){ ffl.constr[i].w=-1; }
+    for(int i: constrain_list     ){ 
+        printf( "setConstrains %i \n", i );
+        ffl.constr[i].w=Kfix; ffl.constr[i].f=ffl.apos[i]; 
+    }
+}
 
 void change_lvec( Mat3d lvec ){
     ffl.setLvec( lvec );
@@ -223,8 +235,8 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     //gopt.tolerance = 0.02;
     gopt.tolerance = 0.01;
 
-    ffl.constrainAtom(10);
-
+    //ffl.constrainAtom(10);
+    
     for(int i=0; i<ffl.natoms; i++ ){ gopt.atypes[i]= params.atypes[ffl.atypes[i]].iZ; }
     //Mat3d lvec0 = builder.lvec;
     Mat3d lvec0 = ffl.lvec;

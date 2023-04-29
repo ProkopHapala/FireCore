@@ -966,7 +966,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_w: bViewSubstrate   ^= 1; break;
                 //case SDLK_LEFTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, +rotation_step ); break;
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
-                case SDLK_SPACE: bRunRelax=!bRunRelax; break;
+                case SDLK_SPACE: bRunRelax=!bRunRelax;  if(bRunRelax)W->setConstrains();  break;
                 // case SDLK_d: {
                 //     printf( "DEBUG Camera Matrix\n");
                 //     printf( "DEBUG qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );

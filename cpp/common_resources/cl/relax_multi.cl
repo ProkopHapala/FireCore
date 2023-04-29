@@ -45,6 +45,11 @@ const float4   grid_p0
 */
 
 
+// ======================================================================
+// ======================================================================
+//                           FUNCTIONS
+// ======================================================================
+// ======================================================================
 
 #pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
@@ -63,6 +68,9 @@ typedef struct __attribute__ ((packed)){
 
 inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*b.y,  a.y*b.x - a.x*b.y }; }
 //inline void     udiv_cmplx(               const VEC& b ){                            T x_ =    x*b.x +   y*b.y;         y =    y*b.x -   x*b.y;       x=x_;  }
+
+inline float3 rotMat ( float3 v, float3 a, float3 b, float3 c ){ return (float3)(dot(v,a),dot(v,b),dot(v,c)); }
+inline float3 rotMatT( float3 v, float3 a, float3 b, float3 c ){ return a*v.x + b*v.y + c*v.z; }
 
 inline double evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
@@ -142,9 +150,17 @@ float3 limnitForce( float3 f, float fmax ){
 
 
 // ======================================================================
+// ======================================================================
+//                           MMFF kernells
+// ======================================================================
+// ======================================================================
+
+
+// ======================================================================
 //                          getMMFFf4()
 // ======================================================================
 
+__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void getMMFFf4(
     const int4 nDOFs,               // 1   (nAtoms,nnode)
     // Dynamical
@@ -445,6 +461,7 @@ float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
     return cvf;
 }
 
+__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
     //const float4      MDpars,       // 1
     const int4        n,            // 2
@@ -590,9 +607,10 @@ __kernel void updateAtomsMMFFf4(
 
 
 // ======================================================================
-//                     updateAtomsMMFFf4()
+//                     printOnGPU()
 // ======================================================================
 
+__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void printOnGPU(
     const int4        n,            // 1
     const int4        mask,         // 2
@@ -654,6 +672,11 @@ __kernel void printOnGPU(
     
 }
 
+// ======================================================================
+//                     cleanForceMMFFf4()
+// ======================================================================
+
+__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void cleanForceMMFFf4(
     const int4        n,           // 2
     __global float4*  aforce,      // 5
@@ -689,6 +712,7 @@ __kernel void cleanForceMMFFf4(
 //                           getNonBond()
 // ======================================================================
 
+__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond(
     const int4 ns,                  // 1
     // Dynamical
@@ -728,9 +752,7 @@ __kernel void getNonBond(
     const int iS_DBG = 0;
     const int iG_DBG = 0;
 
-
     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
-
     //if((iG==iG_DBG)&&(iS==iS_DBG)){ 
     //    printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
     //     for(int i=0; i<nS*nG; i++){
@@ -1008,9 +1030,10 @@ float4 interpFE_prec( float3 pos, float3 dinvA, float3 dinvB, float3 dinvC, __re
 }
 
 // ======================================================================
-//                           getNonBond()
+//                           getNonBond_GridFF()
 // ======================================================================
 
+__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond_GridFF(
     const int4 ns,                  // 1
     // Dynamical
@@ -1053,8 +1076,10 @@ __kernel void getNonBond_GridFF(
     
     const cl_Mat3 lvec = lvecs[iS];
 
-    const int iS_DBG = 5;
+    const int iS_DBG = 0;
     const int iG_DBG = 0;
+
+    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "getNonBond_GridFF() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){ 
     //     printf( "GPU::getNonBond_GridFF() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
@@ -1199,7 +1224,11 @@ __kernel void getNonBond_GridFF(
     
 }
 
+// ======================================================================
+//                           sampleGridFF()
+// ======================================================================
 
+__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void sampleGridFF(
     const int4 ns,                  // 1
     __global float4*  atoms,        // 2
@@ -1289,6 +1318,7 @@ __kernel void sampleGridFF(
 //                           make_GridFF()
 // ======================================================================
 
+__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void make_GridFF(
     const int nAtoms,                // 1
     __global float4*  atoms,         // 2
@@ -1445,10 +1475,223 @@ __kernel void make_GridFF(
     write_imagef( FE_Coul, coord, fe_Coul );
 }
 
+// ======================================
+// ======================================
+//               PP-AFM
+// ======================================
+// ======================================
+
+// ======================================
+//              PPAFM_makeFF()
+// ======================================
+
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void PPAFM_makeFF(
+    const int nAtoms,                // 1
+    __global float4*  atoms,         // 2
+    __global float4*  REQs,          // 3
+    __write_only image3d_t  imgOut,  // 4
+    const int4     nPBC,             // 5
+    const int4     nGrid,            // 6
+    const cl_Mat3  dlvec,            // 7
+    const float4   grid_p0,          // 8
+    //const float4   GFFParams       // 
+    const float4 tipParams,          // 9
+    const float4 Qs,                 // 10
+    const float4 QZs                 // 11
+){
+    __local float4 LPOS[32];
+    __local float4 LREQ[32];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+   
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+    const int nMax = nab*nGrid.z;
+    if(iG>nMax) return;
+    float4 fe  = float4Zero;
+    float3 pos = grid_p0.xyz + dlvec.a.xyz*ia + dlvec.b.xyz*ib  + dlvec.c.xyz*ic;
+    //Qs *= COULOMB_CONST;
+    for (int i0=0; i0<nAtoms; i0+= nL ){
+        int i = i0 + iL;
+        //if(i>=nAtoms) break;  // wrong !!!!
+        LPOS[iL] = atoms[i];
+        LREQ[iL] = REQs [i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int j=0; j<nL; j++){
+            if( (j+i0)<nAtoms ){ 
+                const float4 pi  = LPOS[j];
+                float4       REQ = LREQ[j]; 
+                REQ.x   += tipParams.x;
+                REQ.yzw *= tipParams.yzw;
+                fe += getLJQH( pos-pi.xyz, REQ, 1.0 );
+                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.x) ) * Qs.x;
+                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.y) ) * Qs.y;
+                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.z) ) * Qs.z;
+                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.w) ) * Qs.w;
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    // --- limit maximum force
+    float renorm = 100.0/fabs(fe.w);
+    if( renorm<1.f ){ fe*=renorm; }
+    // --- OUTPUT
+    write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
+}
+
+// ======================================
+//    PPAFM_relaxStrokesTilted_convZ
+// ======================================
+
+#define OPT_FIRE 1
+#define FIRE_FTDEC  0.5f
+#define FIRE_FTINC  1.1f
+#define FIRE_FDAMP  0.99f
+#define F2SAFE      1e-8f
+
+float3 tipForce( float3 dpos, float4 stiffness, float4 dpos0 ){
+    float r = sqrt( dot( dpos,dpos) );
+    return  (dpos-dpos0.xyz) * stiffness.xyz        // harmonic 3D
+         + dpos * ( stiffness.w * (r-dpos0.w)/r );  // radial
+}
+
+float3 update_FIRE( float3 f, float3 v, float* dt, float* damp,    float dtmin, float dtmax, float damp0 ){
+    // Bitzek, E., Koskinen, P., Gähler, F., Moseler, M., & Gumbsch, P. (2006). Structural Relaxation Made Simple. Physical Review Letters, 97(17), 170201. 
+    // https://doi.org/10.1103/PhysRevLett.97.170201
+    // http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf
+    float ff = dot(f,f);
+    float vv = dot(v,v);
+    float vf = dot(v,f);
+    if( vf < 0 ){ // if velocity along direction of force
+        v      *= 0;
+        (*dt)   = fmax( dtmin, (*dt) * FIRE_FTDEC );
+        (*damp) = damp0;
+    }else{       // if velocity against direction of force
+        // v = cV * v  + cF * F
+        v       *= (1 - (*damp));
+        v       +=  f * ( (*damp) * sqrt( vv / (ff + F2SAFE ) ) );
+        (*dt)    = fmin( dtmax, (*dt) * FIRE_FTINC );
+        (*damp) *= FIRE_FDAMP;
+    }
+    return v;
+    //v  += f * dt;
+    //p  += v * dt;
+}
+
+__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void relaxStrokesTilted_convZ(
+    __read_only image3d_t  imgIn,   // 1 
+    __global  float4*      points,  // 2
+    __constant  float*     weighs,  // 3
+    __global  float4*      FEs,     // 4
+    const cl_Mat3  diGrid,          // 5
+    const cl_Mat3  tipRot,          // 6
+    float4 stiffness,               // 7
+    float4 dpos0,                   // 8
+    float4 relax_params,            // 9
+    float4 surfFF,                  // 11
+    const int nz, const int nzout   // 12
+){
+
+    __local float  WEIGHTS[64];
+
+    const float3 dTip   = tipRot.c.xyz * tipRot.c.w;
+    float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );
+
+    float3 tipPos = points[get_global_id(0)].xyz;
+    float3 pos    = tipPos.xyz + dpos0_.xyz; 
+
+    float dt      = relax_params.x;
+    float damp    = relax_params.y;
+
+    float dtmax = dt;
+    float dtmin = dtmax*0.1f;
+    float damp0 = damp;
+
+    //if( (get_global_id(0)==0) ){     float4 fe = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );  printf( " pos (%g,%g,%g) feImg(%g,%g,%g,%g) \n", pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );}
+    //if( (get_global_id(0)==0) ){ printf( "dt %g damp %g \n", dt, damp ); }; return;
+
+    const int ioff = get_global_id(0)*nzout;
+    const int nzw   = nz-nzout;
+    const int iL=get_local_id(0);
+    const int nL=get_local_size(0);
+    for (int i=iL; i<nzw; i+=nL ){
+        WEIGHTS[i] = weighs[i];
+    }
+    for (int iz=0; iz<nzout; iz++ ){
+        FEs[ioff+iz] = 0.0f;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int itr_tot = 0;
+
+    for(int iz=0; iz<nz; iz++){
+        float4 fe;
+        float3 v   = 0.0f;
+        for(int i=0; i<128; i++){
+        //for(int i=0; i<1; i++){ // DEBUG
+            //fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            //fe            = interpFE_prec( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            const float4 coord = (float4)( dot(pos, diGrid.a.xyz),   dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
+            // #if 0
+                //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+                const float4 fe_Paul = read_imagef( imgIn, sampler_gff_norm, coord );
+            // #else
+                // const float4 fe_Paul = read_imagef_trilin_norm( imgIn, coord );
+            //#endif
+
+            float3 f      = fe.xyz;
+            float3 dpos   = pos-tipPos;
+            float3 dpos_  = rotMat  ( dpos, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );    // to tip-coordinates
+            float3 ftip   = tipForce( dpos_, stiffness, dpos0 );
+
+            f            += rotMatT ( ftip, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );      // from tip-coordinates
+            f            += tipRot.c.xyz * surfFF.x;                                            // TODO: more sophisticated model of surface potential? Like Hamaker ?
+
+            //f      +=  tipForce( dpos, stiffness, dpos0_ );  // Not rotated
+
+            #if 1
+                v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
+                //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
+            #else
+                v        *=    (1 - damp);
+                //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
+            #endif
+            v        += f * dt;
+            pos.xyz  += v * dt;
+
+            itr_tot++;
+            if(dot(f,f)<relax_params.z) break;
+        }
+        
+        if(1){ // output tip-rotated force
+            fe.xyz = rotMat( fe.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz);
+        }
+        
+        // do the convolution
+        for(int izout=0;izout<nzout;izout++){
+            int jzw = iz - izout;
+            if((jzw<nzw)&&(jzw>0)){
+                FEs[ ioff + izout] += fe * WEIGHTS[jzw];
+            }
+        }
+        //if( iz<nzout ) FEs[ioff+iz] = fe;
+        tipPos += dTip.xyz;
+        pos    += dTip.xyz;
+    }
+
+}
+
+
 // ======================================================================
 //                           add_DipoleField()
 // ======================================================================
 
+__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void addDipoleField(
     const int n,                     // 1
     __global float4*  ps,            // 2
@@ -1509,11 +1752,6 @@ __kernel void addDipoleField(
 }
 
 
-
-
-
-
-
 // =====================================================================
 // =====================================================================
 // =====================================================================
@@ -1526,112 +1764,7 @@ __kernel void addDipoleField(
 // =====================================================================
 // =====================================================================
 
-
-/*
-__kernel void evalMMFFf4_local_test(
-    const int4 nDOFs,               // 1   (nAtoms,nnode)
-    // Dynamical
-    __global float4*  apos,         // 2  [natoms]
-    __global float4*  avel,         // 3
-    //__global float4*  fapos,      //   [natoms] // Only Debug output    
-    //__global float4*  fneigh,     //   [nnode*4*2]
-    __global float4*  constr,       // 4
-    // parameters
-    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
-    __global int4*    neighCell,    // 6
-    __global int4*    bkneighs,     // 7
-    __global float4*  REQs,         // 8  [natoms] non-boding parametes {R0,E0,Q} 
-    __global float4*  apars,        // 9  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
-    __global float4*  bLs,          // 10  [nnode]  bond lengths  for each neighbor
-    __global float4*  bKs,          // 11  [nnode]  bond stiffness for each neighbor
-    __global float4*  Ksp,          // 12 [nnode]  stiffness of pi-alignment for each neighbor
-    __global float4*  Kpp,          // 13 [nnode]  stiffness of pi-planarization for each neighbor
-    __global cl_Mat3* lvecs,        // 14
-    __global cl_Mat3* ilvecs,       // 15
-    const int4        nPBC,         // 16
-    const float4      GFFParams,    // 17
-    const float4      MDpars,       // 18
-    const int         niter         // 19
-){
-    
-    const int iG  = get_global_id  (0); // intex of atom
-    const int iS  = get_global_id  (1); // index of system
-    const int nG  = get_global_size(0);
-    const int nS  = get_global_size(1); // number of systems
-    const int iL  = get_local_id   (0);
-    const int iSL = get_local_id   (1); // number of systems
-    const int nL  = get_local_size (0);
-    const int nSL = get_local_size (1);
-
-    const int natom = nDOFs.x;
-    const int nnode = nDOFs.y;
-    const int nvec  = natom+nnode;
-    const int ncap  = natom - nnode;
-    const int iLc   = nL+nnode;
-    const int nL4   = nL*4;
-
-    if((iG==0)&&(iS==0))printf( "GPU::evalMMFFf4_local_test.mini() G=%i/%i S=%i/%i  L=%i/%i sL=%i/%i natom=%i nnode=%i ncap=%i nvec=%i \n", iG,nG, iS,nS, iL,nL, iSL,nSL,     natom, nnode, ncap, nvec );
-
-    const int i0a = iS*natom; 
-    const int i0n = iS*nnode; 
-    const int i0v = iS*nvec;
-    // --- node atomm global indexes
-    const int iaa = iG + i0a; 
-    const int ian = iG + i0n; 
-    const int iav = iG + i0v;
-    // --- capping atom global indexes
-    const int ica = iG + i0a-nnode; 
-    const int icn = iG + i0n-nnode; 
-    const int icv = iG + i0v-nnode;
-    
-    #define NNEIGH    4
-    //#define NATOM_LOC 128
-    //#define NNODE_LOC 64
-    //#define NATOM_LOC 64
-    //#define NNODE_LOC 32
-
-    #define NATOM_LOC 16
-    #define NNODE_LOC 16
-
-    // ========= Local Memory
-    __local float4  fneigh_loc[NATOM_LOC*4];  
-
-    // ========= Atom-to-Atom interaction ( N-body problem )
-
-    const int4 bk   = bkneighs [iaa]; // back-neighborsz
-
-    float4 pa  = apos[iav];
-
-    for(int itr=0; itr<niter; itr++ ){   
-
-        float4 fa  = float4Zero;
-        fneigh_loc[iL*4+0]=float4Zero;         // save something to local memory 
-        fneigh_loc[iL*4+1]=float4Zero;         // save something to local memory 
-        fneigh_loc[iL*4+2]=float4Zero;         // save something to local memory 
-        fneigh_loc[iL*4+3]=float4Zero;         // save something to local memory 
-
-        barrier(CLK_LOCAL_MEM_FENCE); 
-        //fa.xyz += fneigh_loc[(iG+5)%natom].xyz;  // load from local memory something other proc in the workgroups saved
-
-        // fa.xyz += fneigh_loc[ (iL+15  ) % nL4 ].xyz;
-        // fa.xyz += fneigh_loc[ (iL+665 ) % nL4 ].xyz;
-        // fa.xyz += fneigh_loc[ (iL+112 ) % nL4 ].xyz;
-        // fa.xyz += fneigh_loc[ (iL+31  ) % nL4 ].xyz;
-
-        if( (bk.x>=0)&&(bk.x<nL4) ){ fa.xyz += fneigh_loc[bk.x].xyz; }
-        if( (bk.y>=0)&&(bk.x<nL4) ){ fa.xyz += fneigh_loc[bk.y].xyz; }
-        if( (bk.z>=0)&&(bk.x<nL4) ){ fa.xyz += fneigh_loc[bk.z].xyz; }
-        if( (bk.w>=0)&&(bk.x<nL4) ){ fa.xyz += fneigh_loc[bk.w].xyz; }
-
-        pa += fa;
-
-    }
-    // ---- Store to global arrays
-    apos[iav      ]=pa;
-};
-*/
-
-
+__attribute__((work_group_size_hint(64,1,1)))
 __kernel void evalMMFFf4_local_test(
     const int4 nDOFs,               // 1   (nAtoms,nnode)
     // Dynamical
@@ -1800,6 +1933,7 @@ __kernel void evalMMFFf4_local_test(
     
 };
 
+__attribute__((work_group_size_hint(64,1,1)))
 __kernel void evalMMFFf4_local2(
     const int4 nDOFs,               // 1   (nAtoms,nnode)
     // Dynamical
@@ -2203,7 +2337,7 @@ __kernel void evalMMFFf4_local2(
 // =====================================================================
 
 
-
+__attribute__((work_group_size_hint(32,1,1)))
 __kernel void evalMMFFf4_local1(
     const int4 nDOFs,               // 1   (nAtoms,nnode)
     // Dynamical

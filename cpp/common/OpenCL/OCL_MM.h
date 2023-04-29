@@ -133,6 +133,7 @@ class OCL_MM: public OCLsystem { public:
         nvecs  = nAtoms+npi;
         nbkng  = nnode*4*2;
         ncap   = nAtoms-nnode;
+        if(npbc_==0){ npbc=1; };
         npbc   = npbc_;
         printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i nbkng %i \n", nSystems, nvecs, nAtoms, nnode, nbkng );
         printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i nS*nbkng %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode, nSystems*nbkng );
