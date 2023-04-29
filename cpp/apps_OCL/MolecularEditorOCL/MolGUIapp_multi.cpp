@@ -30,6 +30,7 @@ int main(int argc, char *argv[]){
 	funcs["-n"]={0,[&](const char** ss){ W->nMulPBC.x=(ss[0][0]-'0'); W->nMulPBC.y=(ss[0][1]-'0'); W->nMulPBC.z=(ss[0][2]-'0');      }}; // rigid
 	funcs["-q"]={0,[&](const char** ss){ sscanf( ss[0], "%lf", &(W->fAutoCharges) ); }}; // AutoCharge
 	funcs["-t"]={0,[&](const char** ss){ sscanf( ss[0], "%i", &(app->W->itest) ); }}; // test
+    funcs["-c"]={0,[&](const char** ss){ int iconstr; sscanf( ss[0], "%i", &iconstr ); app->W->constrain_list.push_back(iconstr); }}; // test
 	process_args( argc, argv, funcs );
 	app->init();
 	app->loop( 1000000 );

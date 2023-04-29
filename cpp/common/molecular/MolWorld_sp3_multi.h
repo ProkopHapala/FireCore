@@ -193,13 +193,13 @@ void realloc( int nSystems_ ){
     printf("MolWorld_sp3_multi::realloc() \n");
     nSystems=nSystems_;
     printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
-    ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc );
+    ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
     //printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i nvecs %i \n", nSystems, ocl.nAtoms, ocl.nnode, ocl.nvecs );
     // --- dynamical
     _realloc ( atoms,     ocl.nvecs*nSystems  );
-    _realloc0( aforces,   ocl.nvecs*nSystems  ,Quat4fZero);
-    _realloc0( avel,      ocl.nvecs*nSystems  ,Quat4fZero);
-    _realloc ( constr,    ocl.nAtoms*nSystems );
+    _realloc0( aforces,   ocl.nvecs*nSystems  , Quat4fZero );
+    _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
+    _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
     _realloc( neighCell, ocl.nAtoms*nSystems );
@@ -265,7 +265,8 @@ void pack_system( int isys, MMFFsp3_loc& ff,  bool bParams=0, bool bForces=false
     int i0pbc = isys*ocl.npbc;
 
     if(blvec){
-        evalPBCshifts( nPBC, ff.lvec, pbcshifts + i0pbc );
+        if(npbc==0){ pbcshifts[isys].f=Vec3fZero; };
+        //evalPBCshifts( nPBC, ff.lvec, pbcshifts + i0pbc );
         //evalPBCshifts( nPBC, ff.lvec, pbc_shifts );  // This must be before pack(ff.apos)
         pack( npbc,  pbc_shifts, pbcshifts+i0pbc );
         //ffl.initPi(pbc_shifts);
@@ -433,10 +434,20 @@ void printMSystem( int isys, bool blvec=true, bool bilvec=false, bool bNg=true, 
 }
 
 
-
 // ===============================================
 //       Implement    MultiSolverInterface
 // ===============================================
+
+virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
+    MolWorld_sp3::setConstrains( bClear, Kfix );
+    for(int isys=0; isys<nSystems; isys++){
+        int i0a   = isys * ocl.nAtoms;
+        int i0v   = isys * ocl.nvecs;
+        for( int i=0; i<ocl.nAtoms; i++ ){ constr[i+i0a].w=-1;                                    }
+        for( int i : constrain_list     ){ constr[i+i0a].w=Kfix; constr[i+i0a].f= atoms[i+i0v].f; }
+    }
+    upload( ocl.ibuff_constr, constr );
+}
 
 virtual int paralel_size( )override{ return nSystems; }
 
@@ -628,7 +639,9 @@ void picked2GPU( int ipick,  double K ){
         acon.f = ray0 + hray*c;
         acon.w = K;
     }else{
-        for(int i=0; i<ocl.nAtoms; i++){   constr[i0a + i].w=-1.0;  };
+        for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
+        for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
+
     }
     //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
     ocl.upload( ocl.ibuff_constr, constr );   // ToDo: instead of updating the whole buffer we may update just relevant part?
@@ -673,8 +686,12 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
             if( task_MMFFloc_test==0  )task_MMFFloc_test=ocl.setup_evalMMFFf4_local_test( niter );
             task_MMFFloc_test->enque_raw();
         }
+        double t = ( getCPUticks()-T0 )*tick2second;
+        err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.test.finish");
+        printf("eval_MMFFf4_ocl.test(itest=%i) time=%7.3f[ms] %7.3f[us/iter] niter=%i na=%i \n", itest, t*1000, t*1e+6, niter, ocl.nAtoms );
+        return niter;
         //exit(0);    
-    }else for(int i=0; i<nVFs; i++){
+    }else{ for(int i=0; i<nVFs; i++){
         //long T0 = getCPUticks();
         for(int j=0; j<nPerVFs; j++){
             err |= task_cleanF->enque_raw();      // this should be solved inside  task_move->enque_raw();   if we do not need to output force 
@@ -688,6 +705,7 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
             //OCL_checkError(err, "eval_MMFFf4_ocl_1");
             niterdone++;
 
+            /*
             { //DEBUG
                 download( true, true );
                 err|=ocl.finishRaw();  OCL_checkError(err, "eval_MMFFf4_ocl().DEBUG.download");
@@ -709,9 +727,9 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
                 }
                 //saveDebugXYZreplicas( niterdone, 0.0 );
             }
+            */
 
         }
-        err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs()");
         double F2 = evalVFs();
         //saveDebugXYZreplicas( niterdone, sqrt(F2) );
         // if( F2<F2conv  ){ 
@@ -724,7 +742,10 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
         //printf("eval_MMFFf4_ocl(),evalVFs() time=%g[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niter );
         //fire[iSystemCur].print();
     }
-    err |= ocl.finishRaw(); printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
+    download(false,false);
+    err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.finish");
+    printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
+    }
 
     // ===============================================================================================================================================================================
     //     Performance Measurements ( 10 replicas of polymer-2_new )
@@ -739,7 +760,6 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     //          2) then try to optimize inner most loop over pbc_shifts 
     //          3) remove IF condition for vdw ? ( better use force limit )
     // ===============================================================================================================================================================================
-
 
     return niterdone;
 }
