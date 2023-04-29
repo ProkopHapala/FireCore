@@ -185,6 +185,7 @@ virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
         ffl.apos[i] = ps[i];
         ffl.vapos[i] = Vec3dZero;
     }
+    ffl.initPi( pbc_shifts );
 }
 
 virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
@@ -235,7 +236,7 @@ virtual void upload_pop( const char* fname ){
 
 }
 
-virtual void setSystemReplica (int i){  iSystemCur = i; gopt.setGeom( iSystemCur ); };
+virtual void setSystemReplica (int i){ int nsys=countSystemReplica(); if(nsys<1)return; iSystemCur = i; printf( "MolWorld_sp3::setSystemReplica(%i/%i)\n", iSystemCur, nsys ); gopt.setGeom( iSystemCur ); };
 virtual int countSystemReplica(     ){ return gopt.population.size(); }
 void nextSystemReplica(){ int nsys=countSystemReplica(); int i=iSystemCur+1; if(i>=nsys)i=0;      setSystemReplica( i ); };
 void prevSystemReplica(){ int nsys=countSystemReplica(); int i=iSystemCur-1; if(i<0    )i=nsys-1; setSystemReplica( i ); };
@@ -249,26 +250,31 @@ virtual void swith_method(){ bGridFF=!bGridFF; };
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i ffl.bAngleCosHalf %i \n", bGridFF, ffl.bAngleCosHalf ); return str; }
 
 int evalPBCshifts( Vec3i nPBC, const Mat3d& lvec, Quat4f* shifts ){
-    npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
     int ipbc=0;
     for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
         shifts[ipbc].f = (Vec3f)( (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz) );   
         //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
         ipbc++; 
     }}}
-    return npbc;
+    return ipbc;
+}
+
+int evalPBCshifts( Vec3i nPBC, const Mat3d& lvec, Vec3d* shifts ){
+    int ipbc=0;
+    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+        shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+        //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
+        ipbc++; 
+    }}}
+    return ipbc;
 }
 
 int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
     npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
     //pbc_shifts = new Vec3d[npbc];
     _realloc(pbc_shifts,npbc);
-    int ipbc=0;
-    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
-        pbc_shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
-        //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
-        ipbc++; 
-    }}}
+    int npbc_eval = evalPBCshifts( nPBC, lvec, pbc_shifts );
+    if(npbc!=npbc_eval){ printf( "ERORRO in MolWorld_sp3::makePBCshifts() final ipbc(%i)!=nbpc(%i) => Exit()\n", npbc_eval,npbc ); exit(0); }
     return npbc;
 }
 
@@ -905,9 +911,9 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
-    //run_omp( 1, opt.dt, 1e-6, 1000.0 );
+    run_omp( 1, opt.dt, 1e-6, 1000.0 );
     //run_omp( 2, opt.dt, 1e-6, 1000.0 );
-    run_omp( 50, opt.dt, 1e-6, 1000.0 );
+    //run_omp( 50, opt.dt, 1e-6, 1000.0 );
     //run_omp( 100, opt.dt, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
