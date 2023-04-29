@@ -89,6 +89,9 @@ class MMFFsp3_loc : public NBFF { public:
     Quat4d*  Ksp  =0;  // [nnode] stiffness of pi-alignment
     Quat4d*  Kpp  =0;  // [nnode] stiffness of pi-planarization
 
+
+    Quat4d*  constr=0;
+
     bool    bAngleCosHalf         = true;
     bool    bSubtractAngleNonBond = false;
     Mat3d   invLvec;
@@ -126,6 +129,7 @@ void realloc( int nnode_, int ncap_ ){
     _realloc0( bKs       , nnode, Quat4dNAN );
     _realloc0( Ksp       , nnode, Quat4dNAN );
     _realloc0( Kpp       , nnode, Quat4dNAN );
+    _realloc0( constr    , natoms, Quat4dOnes*-1. );
 
 }
 
@@ -333,7 +337,14 @@ double eval_atom(const int ia){
     }    
     //if(bErr){ printf("ERROR in ffl.eval_atom[%i] => Exit() \n", ia ); exit(0); }
 
-
+    double Kfix = constr[ia].w;
+    if(Kfix>0){  
+        //printf( "applyConstrain(i=%i,K=%g)\n", ia, Kfix );
+        Vec3d d = constr[ia].f-pa;
+        fa.add_mul( d, Kfix );
+        E += d.norm()*Kfix*0.5;
+    }
+    
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
     fapos [ia]=fa; 
@@ -410,6 +421,12 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.1, double r2min=1e-4, bool bCheck=
 void normalizePis(){ 
     for(int i=0; i<nnode; i++){ pipos[i].normalize(); } 
 }
+
+void constrainAtom( int ia, double Kfix=1.0 ){
+    printf( "constrainAtom(i=%i,K=%g)\n", ia, Kfix );
+    constr[ia].f=apos[ia];
+    constr[ia].w=Kfix;
+};
 
 void cleanForce(){ 
     //for(int i=0; i<natoms; i++){ fapos [i].set(0.0);  } 
