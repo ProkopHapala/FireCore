@@ -220,7 +220,10 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     //gopt.atypes = ffl.atypes;
     gopt.reallocPop( n1+n2, ffl.natoms, true );
 
-    gopt.tolerance = 0.02;
+    //gopt.tolerance = 0.02;
+    gopt.tolerance = 0.01;
+
+    ffl.constrainAtom(10);
 
     for(int i=0; i<ffl.natoms; i++ ){ gopt.atypes[i]= params.atypes[ffl.atypes[i]].iZ; }
     //Mat3d lvec0 = builder.lvec;
@@ -931,9 +934,9 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
-    run_omp( 1, opt.dt, 1e-6, 1000.0 );
+    //run_omp( 1, opt.dt, 1e-6, 1000.0 );
     //run_omp( 2, opt.dt, 1e-6, 1000.0 );
-    //run_omp( 50, opt.dt, 1e-6, 1000.0 );
+    run_omp( 50, opt.dt, 1e-6, 1000.0 );
     //run_omp( 100, opt.dt, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
