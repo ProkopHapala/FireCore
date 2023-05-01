@@ -11,53 +11,6 @@
 #include "MultiSolverInterface.h"
 #include "Confs.h"
 
-
-
-static const Vec3d crashed_lvecs_a[]{
-   Vec3d{16.5687,4.39634,0.101714}, 
-   Vec3d{16.4519,4.61055,0.15619}, 
-   Vec3d{16.4827,4.63939,0.228825}, 
-   Vec3d{16.4054,4.73343,0.368312}, 
-   Vec3d{16.2526,4.86276,0.178079}, 
-   Vec3d{16.042,4.62415,0.334746}, 
-   Vec3d{16.2681,4.39517,0.383976}, 
-   Vec3d{16.2617,4.51033,0.243186}, 
-   Vec3d{16.3247,4.27194,0.0627758}, 
-   Vec3d{16.5343,4.21968,0.0718127}, 
-   Vec3d{16.4603,3.98607,0.227191}, 
-   Vec3d{16.2381,3.88567,0.346776}, 
-   Vec3d{16.3203,4.06615,0.245208}, 
-   Vec3d{16.2251,3.91924,0.487678}, 
-   Vec3d{16.0194,3.86961,0.609477}, 
-   Vec3d{15.8735,3.85935,0.742667}, 
-   Vec3d{15.6343,3.8252,0.89687}, 
-   Vec3d{15.6943,4.03466,0.916238}, 
-   Vec3d{15.8635,4.05713,0.947218}, 
-   Vec3d{16.1022,4.0392,1.17593}, 
-   Vec3d{16.1001,4.19727,1.42104}, 
-   Vec3d{16.0033,4.38308,1.31575}, 
-   Vec3d{15.776,4.40108,1.14094}, 
-   Vec3d{15.6973,4.57392,1.06922}, 
-   Vec3d{15.611,4.79108,1.19787}, 
-   Vec3d{15.3964,4.61232,1.06626}, 
-   Vec3d{15.5651,4.44433,1.1505}, 
-   Vec3d{15.638,4.58632,1.1942}, 
-   Vec3d{15.4802,4.6475,1.01036}, 
-   Vec3d{15.6035,4.69747,1.05859}, 
-   Vec3d{15.7054,4.49526,1.0149}, 
-   Vec3d{15.8025,4.44625,0.907019}, 
-   Vec3d{16.0442,4.42003,1.06714}, 
-   Vec3d{15.8612,4.56503,1.15009}, 
-   Vec3d{15.8564,4.37371,1.2002}, 
-   Vec3d{15.7303,4.21788,1.32156}, 
-   Vec3d{15.7225,3.98073,1.52493}, 
-   Vec3d{15.549,4.06645,1.62028}, 
-   Vec3d{15.6693,4.24443,1.52682}, 
-   Vec3d{15.8556,4.29563,1.73332}
-};
-
-
-
 struct FIRE_setup{
     float cvf_min   = -0.1f;  // minimum cosine for velocity damping in  move_FIRE_smooth()
     float cvf_max   = +0.1f;  // maximum cosine for velocity damping in  move_FIRE_smooth()
@@ -185,6 +138,10 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_MMFFloc2=0;
     OCLtask* task_MMFFloc_test=0;
 
+    DynamicOpt*   opts=0;
+    MMFFsp3_loc*  ffls=0;
+
+
 // ==================================
 //         Initialization
 // ==================================
@@ -223,6 +180,22 @@ void realloc( int nSystems_ ){
     // ToDo : it may be good to bind buffer directly in p_cpu buffer inside   OCLsystem::newBuffer()
 }
 
+void initMultiCPU(int nSys){
+    _realloc( opts, nSys );
+    _realloc( ffls, nSys );
+    double dtopt=ff.optimalTimeStep();
+    for(int isys=0; isys<nSys; isys++){
+        ffls[isys].clone( ffl, true );
+        ffls[isys].makePBCshifts( nPBC, true );
+
+        // ----- optimizer
+        opts[isys].bindOrAlloc( ffls[isys].nvecs, ffls[isys].DOFs, 0, ffls[isys].fDOFs, 0 ); 
+        ffls[isys].vapos=(Vec3d*)opts[isys].vel;    
+        opts[isys].initOpt( dtopt );
+        opts[isys].cleanVel();
+    }
+}
+
 virtual void init( bool bGrid ) override {
     int err = 0;
     printf("# ========== MolWorld_sp3_multi::init() START\n");
@@ -239,6 +212,7 @@ virtual void init( bool bGrid ) override {
         pack_system( i, ffl, true, false, random_init );
         fire[i].bind_params( &fire_setup );
     }
+    initMultiCPU(nSystems);
     //for(int i=0;i<nSystems; i++){ printMSystem(i); }
     upload( true, false );
     //bGridFF=false;
@@ -791,7 +765,7 @@ int eval_MMFFf4_ocl_opt( int niter, double Fconv=1e-6 ){
             return niterdone; 
         }
     }
-     double t=(getCPUticks()-T0)*tick2second;
+    double t=(getCPUticks()-T0)*tick2second;
     printf( "eval_MMFFf4_ocl_opt(nsys=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
     //err |= ocl.finishRaw(); 
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
@@ -816,8 +790,8 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
     err |=  ocl.finishRaw();
     OCL_checkError(err, "eval_NBFF_ocl.2");
     if(bForce){
-        unpack( ff4.natoms, ffl.  apos, ff4.  apos );
-        unpack( ff4.natoms, ffl. fapos, ff4. fapos );
+        unpack( ff4.nvecs, ffl. apos, ff4.  apos );
+        unpack( ff4.nvecs, ffl.fapos, ff4. fapos );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
         if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_NBFF_ocl |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
@@ -825,6 +799,92 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
     }
     return 0;
 }
+
+
+int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02 ){
+    //printf( "rum_omp_ocl() niter_max=%i %dt=g Fconv%g \n", niter_max, dt, Fconv  ); 
+    double F2conv=Fconv*Fconv;
+    double F2max=0;
+    int itr=0,niter=niter_max;
+    long T0;
+    double T1,T2;
+    int err=0;
+    
+    //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
+    #pragma omp parallel shared(niter,itr,F2max,T0,T1,T2,err)
+    while(itr<niter){
+        if(itr<niter){
+        
+        // #pragma omp single
+        // {
+        //     T0 = getCPUticks();
+        //     ocl.upload( ocl.ibuff_atoms, atoms  );
+        //     if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+        //     else       { err |= task_NBFF      ->enque_raw(); }
+        //     ocl.download( ocl.ibuff_aforces , aforces );
+        //     //ocl.download( ocl.ibuff_avel    , avel    );
+        // }
+        
+        #pragma omp for
+        for( int isys=0; isys<nSystems; isys++ ){
+            ffls[isys].eval();
+            if( (ipicked>=0) && (isys==iSystemCur) ){ pullAtom( ipicked );  };
+        }
+
+        
+        // #pragma omp barrier
+        // #pragma omp single
+        // {
+        //     //T1 = (getCPUticks()-T0)*tick2second;
+        //     err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.finish");
+        //     //T2 = (getCPUticks()-T0)*tick2second;
+        //     //printf( "CPU.finish %g[us] GPU.finish %i[us] \n", T1*1e+6, T2*1e+6 );
+        // }
+        
+        
+        #pragma omp for reduction(max:F2max)
+        for( int isys=0; isys<nSystems; isys++ ){
+            //int i0v = isys*ocl.nvecs;
+            //unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );
+            double F2 = opts[isys].move_FIRE();
+            F2max = fmax(F2max,F2);
+            //pack      ( ffls[isys].nvecs,  ffls[isys].fapos, atoms  +i0v );
+        }
+        
+        #pragma omp single
+        { 
+            itr++; 
+            // if(timeLimit>0){
+            //     double t = (getCPUticks() - T0)*tick2second;
+            //     if(t>0.02){ 
+            //         niter=0; 
+            //         if(verbosity>0)printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
+            //     }
+            // }
+            if(F2max<F2conv){ 
+                niter=0; 
+                if(verbosity>0)printf( "rum_omp_ocl() CONVERGED in %i/%i nsteps |F|=%g \n", itr,niter_max, sqrt(F2max) );
+                itr--;
+            }   
+            //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
+            //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
+            //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
+        }
+        }
+    }
+    
+    printf( "rum_omp_ocl().copy iSystemCur=%i \n", iSystemCur );
+    for(int i=0; i<ffl.nvecs; i++){
+        ffl.apos [i]=ffls[iSystemCur].apos [i];
+        ffl.fapos[i]=ffls[iSystemCur].fapos[i];
+    }
+    if(itr>=niter_max)if(verbosity>0)printf( "rum_omp_ocl() NOT CONVERGED in %i/%i nsteps |F|=%g \n", itr,niter_max, sqrt(F2max) );
+    return itr;
+}
+
+
+
+
 
 // ==================================
 //                 eval
@@ -910,6 +970,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     //bMMFF=false;
     if( bOcl ){
+        /*
         //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
         nIter = 50;
@@ -919,6 +980,10 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         //SDL_Delay(1000);
         //eval_NBFF_ocl  ( 1 ); 
         //eval_NBFF_ocl_debug(1); //exit(0);
+        */
+
+        rum_omp_ocl( 1 );
+
     }else{
         printf( "CPU frame[%i] \n", nIter );
         for(int itr=0; itr<nIter; itr++){

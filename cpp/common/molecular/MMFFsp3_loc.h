@@ -89,14 +89,15 @@ class MMFFsp3_loc : public NBFF { public:
     Quat4d*  Ksp  =0;  // [nnode] stiffness of pi-alignment
     Quat4d*  Kpp  =0;  // [nnode] stiffness of pi-planarization
 
-
     Quat4d*  constr=0;
+    Vec3d * vapos = 0;
+
+    Mat3d   invLvec;
+    Vec3d * pbc_shifts = 0;
+    int     npbc = 0;
 
     bool    bAngleCosHalf         = true;
     bool    bSubtractAngleNonBond = false;
-    Mat3d   invLvec;
-
-    Vec3d * vapos = 0;
 
     //int itr_DBG=0;
 
@@ -130,7 +131,30 @@ void realloc( int nnode_, int ncap_ ){
     _realloc0( Ksp       , nnode, Quat4dNAN );
     _realloc0( Kpp       , nnode, Quat4dNAN );
     _realloc0( constr    , natoms, Quat4dOnes*-1. );
+}
 
+void clone( MMFFsp3_loc& from, bool bRealloc ){
+    realloc( from.nnode, from.ncap  );
+    lvec   =from.lvec;
+    invLvec=from.invLvec;
+    for(int i=0; i<nDOFs; i++){
+        DOFs[i]=from. DOFs[i];
+     //fDOFs[i]=from.fDOFs[i];
+    }
+    for(int i=0; i<natoms; i++){
+        atypes   [i]=from.atypes   [i];
+        neighs   [i]=from.neighs   [i];
+        neighCell[i]=from.neighCell[i];
+        bkneighs [i]=from.bkneighs [i];
+        constr   [i]=from.constr   [i];
+    }
+    for(int i=0; i<nnode; i++){
+        apars[i]=from.apars[i];
+        bLs  [i]=from.bLs  [i];    
+        bKs  [i]=from.bKs  [i];    
+        Ksp  [i]=from.Ksp  [i]; 
+        Kpp  [i]=from.Kpp  [i];    
+    }
 }
 
 void dealloc(){

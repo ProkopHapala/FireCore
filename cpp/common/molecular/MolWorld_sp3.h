@@ -964,7 +964,6 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
 
     //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
     #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0)
-    //for(itr=0; itr<niter; itr++){
     while(itr<niter){
         if(itr<niter){
         //#pragma omp barrier
@@ -1039,14 +1038,14 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             }
             if(F2<F2conv){ 
                 niter=0; 
-                if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g \n", itr,niter_max, E, sqrt(F2) );
+                if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps |F|=%g \n", itr,niter_max, E, sqrt(F2) );
             }   
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
             //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
             //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
         }
     }
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i nsteps E=%g |F|=%g \n", itr,niter_max, E, sqrt(F2) );
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i |F|=%g \n", itr,niter_max, E, sqrt(F2) );
 
     return itr;
 }

@@ -62,6 +62,19 @@ class NBFF: public Atoms{ public:
 
     void bindShifts(int npbc_, Vec3d* shifts_ ){ npbc=npbc_; shifts=shifts_; }
 
+    int makePBCshifts( Vec3i nPBC_, bool bRealloc=true ){
+        nPBC=nPBC_;
+        npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+        if(bRealloc) _realloc(shifts,npbc);
+        int ipbc=0;
+        for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+            shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+            ipbc++; 
+        }}}
+        if(npbc!=ipbc){ printf( "ERROR in MMFFsp3_loc::makePBCshifts() final ipbc(%i)!=nbpc(%i) => Exit()\n", ipbc,npbc ); exit(0); }
+        return npbc;
+    }
+
     void evalPLQs(double K){
         //printf( "NBFF::evalPLQs() \n" );
         if(PLQs==0){ _realloc(PLQs,natoms);  }
