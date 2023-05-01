@@ -185,11 +185,12 @@ void initMultiCPU(int nSys){
     _realloc( ffls, nSys );
     double dtopt=ff.optimalTimeStep();
     for(int isys=0; isys<nSys; isys++){
-        ffls[isys].clone( ffl, true );
+        ffls[isys].clone( ffl, true, true );
         ffls[isys].makePBCshifts( nPBC, true );
+        ffls[isys].id=isys;
 
         // ----- optimizer
-        opts[isys].bindOrAlloc( ffls[isys].nvecs, ffls[isys].DOFs, 0, ffls[isys].fDOFs, 0 ); 
+        opts[isys].bindOrAlloc( ffls[isys].nDOFs, ffls[isys].DOFs, 0, ffls[isys].fDOFs, 0 ); 
         ffls[isys].vapos=(Vec3d*)opts[isys].vel;    
         opts[isys].initOpt( dtopt );
         opts[isys].cleanVel();
@@ -216,8 +217,8 @@ virtual void init( bool bGrid ) override {
     //for(int i=0;i<nSystems; i++){ printMSystem(i); }
     upload( true, false );
     //bGridFF=false;
-    //bOcl   =false;
-    bOcl   =true;
+    bOcl   =false;
+    //bOcl   =true;
     setup_MMFFf4_ocl();
     int4 mask{1,1,0,0};
     //ocl.printOnGPU( 0,mask );
@@ -806,53 +807,56 @@ int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-6, double Flim=1
     double F2conv=Fconv*Fconv;
     double F2max=0;
     int itr=0,niter=niter_max;
-    long T0;
+    long T0,T00;
     double T1,T2;
     int err=0;
-    
+    T00 = getCPUticks();
     //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
     #pragma omp parallel shared(niter,itr,F2max,T0,T1,T2,err)
     while(itr<niter){
         if(itr<niter){
-        
-        // #pragma omp single
-        // {
-        //     T0 = getCPUticks();
-        //     ocl.upload( ocl.ibuff_atoms, atoms  );
-        //     if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
-        //     else       { err |= task_NBFF      ->enque_raw(); }
-        //     ocl.download( ocl.ibuff_aforces , aforces );
-        //     //ocl.download( ocl.ibuff_avel    , avel    );
-        // }
-        
+        #pragma omp single
+        {if(bOcl){
+            T0 = getCPUticks();
+            ocl.upload( ocl.ibuff_atoms, atoms  );
+            if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+            else       { err |= task_NBFF      ->enque_raw(); }
+            ocl.download( ocl.ibuff_aforces , aforces );
+            //ocl.download( ocl.ibuff_avel    , avel    );
+        }
+        }
         #pragma omp for
         for( int isys=0; isys<nSystems; isys++ ){
-            ffls[isys].eval();
-            if( (ipicked>=0) && (isys==iSystemCur) ){ pullAtom( ipicked );  };
-        }
-
-        
-        // #pragma omp barrier
-        // #pragma omp single
-        // {
-        //     //T1 = (getCPUticks()-T0)*tick2second;
-        //     err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.finish");
-        //     //T2 = (getCPUticks()-T0)*tick2second;
-        //     //printf( "CPU.finish %g[us] GPU.finish %i[us] \n", T1*1e+6, T2*1e+6 );
-        // }
-        
-        
+            ffls[isys].cleanForce();
+            ffls[isys].eval(false);
+            if(!bOcl){
+                if(bPBC){ ffls[isys].evalLJQs_ng4_PBC_simd(); }
+                else    { ffls[isys].evalLJQs_ng4_simd    (); } 
+                //ffls[isys].evalLJQs_ng4_simd    ();
+            }
+            if( (ipicked>=0) && (isys==iSystemCur) ){ 
+                pullAtom( ipicked, ffls[isys].apos, ffls[isys].fapos );  
+            };
+        }        
+        #pragma omp barrier
+        #pragma omp single
+        {if(bOcl){
+            T1 = (getCPUticks()-T0)*tick2second;
+            err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.finish");
+            T2 = (getCPUticks()-T0)*tick2second;
+            //printf( "CPU.finish %g[us] GPU.finish %g[us] \n", T1*1e+6, T2*1e+6 );
+        }}
         #pragma omp for reduction(max:F2max)
         for( int isys=0; isys<nSystems; isys++ ){
-            //int i0v = isys*ocl.nvecs;
-            //unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );
+            int i0v = isys*ocl.nvecs;
+            if(bOcl)unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );
             double F2 = opts[isys].move_FIRE();
             F2max = fmax(F2max,F2);
-            //pack      ( ffls[isys].nvecs,  ffls[isys].fapos, atoms  +i0v );
+            pack      ( ffls[isys].nvecs,  ffls[isys].apos, atoms  +i0v );
         }
-        
         #pragma omp single
         { 
+            nloop++;
             itr++; 
             // if(timeLimit>0){
             //     double t = (getCPUticks() - T0)*tick2second;
@@ -863,22 +867,23 @@ int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-6, double Flim=1
             // }
             if(F2max<F2conv){ 
                 niter=0; 
-                if(verbosity>0)printf( "rum_omp_ocl() CONVERGED in %i/%i nsteps |F|=%g \n", itr,niter_max, sqrt(F2max) );
+                T1 = (getCPUticks()-T00)*tick2second;
+                if(verbosity>0)printf( "rum_omp_ocl() CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", itr,niter_max, sqrt(F2max), T1*1000 );
                 itr--;
-            }   
+            }
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
             //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
             //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
         }
         }
-    }
-    
-    printf( "rum_omp_ocl().copy iSystemCur=%i \n", iSystemCur );
+    } // END while(itr<niter) OPENMP_BLOCK
+    //printf( "rum_omp_ocl().copy iSystemCur=%i \n", iSystemCur );
     for(int i=0; i<ffl.nvecs; i++){
         ffl.apos [i]=ffls[iSystemCur].apos [i];
         ffl.fapos[i]=ffls[iSystemCur].fapos[i];
     }
-    if(itr>=niter_max)if(verbosity>0)printf( "rum_omp_ocl() NOT CONVERGED in %i/%i nsteps |F|=%g \n", itr,niter_max, sqrt(F2max) );
+    T1 = (getCPUticks()-T00)*tick2second;
+    if(itr>=niter_max)if(verbosity>0)printf( "rum_omp_ocl() NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", itr,niter_max, sqrt(F2max), T1*1000 );
     return itr;
 }
 
@@ -969,8 +974,15 @@ virtual char* getStatusString( char* s, int nmax ) override {
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     //bMMFF=false;
+
+    //rum_omp_ocl( 1 );
+    //rum_omp_ocl( 50 );
+    rum_omp_ocl( 100 );
+    return;
+
+    
     if( bOcl ){
-        /*
+        
         //printf( "GPU frame[%i] -- \n", nIter );
         if( (iSystemCur<0) || (iSystemCur>=nSystems) ){  printf("ERROR: iSystemCur(%i) not in range [ 0 .. nSystems(%i) ] => exit() \n", iSystemCur, nSystems ); exit(0); }
         nIter = 50;
@@ -980,10 +992,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         //SDL_Delay(1000);
         //eval_NBFF_ocl  ( 1 ); 
         //eval_NBFF_ocl_debug(1); //exit(0);
-        */
-
-        rum_omp_ocl( 1 );
-
+        
     }else{
         printf( "CPU frame[%i] \n", nIter );
         for(int itr=0; itr<nIter; itr++){
@@ -993,7 +1002,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
             //if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
             //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
             //if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
-            if(ipicked>=0){ pullAtom( ipicked );  }; // printf( "pullAtom(%i) E=%g\n", ipicked, E ); };
+            if(ipicked>=0){ pullAtom( ipicked, nbmol.apos, nbmol.fapos );  }; // printf( "pullAtom(%i) E=%g\n", ipicked, E ); };
             //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
             //opt.move_GD(0.001);
             //opt.move_LeapFrog(0.01);
@@ -1007,6 +1016,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
             nloop++;
         }
     }
+    
     bChargeUpdated=false;
 }
 
