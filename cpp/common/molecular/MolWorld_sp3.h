@@ -902,9 +902,8 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
 }
 
 
-void pullAtom( int ia, float K=-2.0 ){ 
-    //Vec3d f = getForceSpringRay( ff.apos[ia], pick_hray, pick_ray0, K ); ff.fapos[ia].add( f );
-    Vec3d f = getForceSpringRay( nbmol.apos[ia], pick_hray, pick_ray0, K ); nbmol.fapos[ia].add( f );
+void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){ 
+    Vec3d f = getForceSpringRay( apos[ia], pick_hray, pick_ray0, K ); fapos[ia].add( f );
 }
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ){

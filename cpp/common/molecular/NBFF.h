@@ -63,6 +63,7 @@ class NBFF: public Atoms{ public:
     void bindShifts(int npbc_, Vec3d* shifts_ ){ npbc=npbc_; shifts=shifts_; }
 
     int makePBCshifts( Vec3i nPBC_, bool bRealloc=true ){
+        bPBC=true;
         nPBC=nPBC_;
         npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
         if(bRealloc) _realloc(shifts,npbc);
@@ -264,12 +265,14 @@ class NBFF: public Atoms{ public:
 
     double evalLJQs_ng4_PBC_atom_omp(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        //printf("DEBUG 1 id=%i ia=%i REQs=%li \n", id, ia, REQs );
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi   = apos     [ia];
-        const Quat4d  REQi = REQs    [ia];
+        const Quat4d REQi = REQs    [ia];
         const Quat4i ng   = neighs   [ia];
         const Quat4i ngC  = neighCell[ia];
         double E=0,fx=0,fy=0,fz=0;
+        //printf("DEBUG 1 id=%i ia=%i \n", id, ia );
         //#pragma omp simd collapse(2) reduction(+:E,fx,fy,fz)
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
@@ -279,6 +282,7 @@ class NBFF: public Atoms{ public:
             const Vec3d dp     = apos[j]-pi;
             Vec3d fij          = Vec3dZero;
             const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
+            //printf("DEBUG 2 id=%i ia=%i j=%i \n", id, ia, j );
             for(int ipbc=0; ipbc<npbc; ipbc++){
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
@@ -298,7 +302,17 @@ class NBFF: public Atoms{ public:
                 //fi+=fij;
             }
         }
+        //printf("DEBUG 3 id=%i ia=%i \n", id, ia );
         fapos[ia].add( Vec3d{fx,fy,fz} );
+        return E;
+    }
+    double evalLJQs_ng4_PBC_simd(){
+        //printf("NBFF::evalLJQs_ng4_PBC_simd()\n" );
+        double E=0;
+        for(int ia=0; ia<natoms; ia++){  
+            //printf("ffls[%i].evalLJQs_ng4_PBC_atom_omp(%i)\n", id, ia ); 
+            E+=evalLJQs_ng4_PBC_atom_omp(ia); 
+        }
         return E;
     }
 
@@ -327,6 +341,12 @@ class NBFF: public Atoms{ public:
             //fi+=fij; 
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
+        return E;
+    }
+    double evalLJQs_ng4_simd(){
+        printf("NBFF::evalLJQs_ng4_simd()\n" );
+        double E=0;
+        for(int ia=0; ia<natoms; ia++){ E+=evalLJQs_ng4_atom_omp(ia); }
         return E;
     }
 

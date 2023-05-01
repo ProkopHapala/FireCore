@@ -93,8 +93,6 @@ class MMFFsp3_loc : public NBFF { public:
     Vec3d * vapos = 0;
 
     Mat3d   invLvec;
-    Vec3d * pbc_shifts = 0;
-    int     npbc = 0;
 
     bool    bAngleCosHalf         = true;
     bool    bSubtractAngleNonBond = false;
@@ -133,7 +131,7 @@ void realloc( int nnode_, int ncap_ ){
     _realloc0( constr    , natoms, Quat4dOnes*-1. );
 }
 
-void clone( MMFFsp3_loc& from, bool bRealloc ){
+void clone( MMFFsp3_loc& from, bool bRealloc, bool bREQsDeep=true ){
     realloc( from.nnode, from.ncap  );
     lvec   =from.lvec;
     invLvec=from.invLvec;
@@ -154,6 +152,10 @@ void clone( MMFFsp3_loc& from, bool bRealloc ){
         bKs  [i]=from.bKs  [i];    
         Ksp  [i]=from.Ksp  [i]; 
         Kpp  [i]=from.Kpp  [i];    
+    }
+    if(from.REQs){
+        if(bREQsDeep){ _realloc(REQs, natoms ); for(int i=0; i<natoms; i++){  REQs[i]=from.REQs[i]; } }
+        else         {          REQs=from.REQs;                                                       }
     }
 }
 
@@ -235,6 +237,8 @@ double eval_atom(const int ia){
     //if(ia==ia_DBG)printf( "ffl[%i] neighs(%i,%i,%i,%i) \n", ia, ings[0],ings[1],ings[2],ings[3] );
     //printf("lvec %i %i \n", ia, ia_DBG ); // printMat(lvec);
 
+    //if( ia==5 ){ printf( "ffls[%2i] atom[%2i] ng(%3i,%3i,%3i,%3i) ngC(%3i,%3i,%3i,%3i) shifts=%li bPBC=%i\n", id, ia,   ings[0],ings[1],ings[2],ings[3],   ingC[0],ingC[1],ingC[2],ingC[3], (long)shifts, bPBC ); };
+
     for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
 
     // --------- Bonds Step
@@ -258,7 +262,8 @@ double eval_atom(const int ia){
                 int ipbc = ingC[i]; 
                 //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
                 h.f.add( shifts[ipbc] );
-                //if( ipbc!=4 ){ printf("atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
+                //if( (ipbc!=4) ){ printf("ffls[%i] atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", id, ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
+                //if( (ipbc!=4) ){ printf("ffls[%i] atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", id, ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
             }else{
                 Vec3i g  = invLvec.nearestCell( h.f );
                 // if(ia==ia_DBG){
@@ -337,7 +342,7 @@ double eval_atom(const int ia){
             //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fss1[%i,%i]",ia,i,j); } );
             //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fss2[%i,%i]",ia,i,j); } );
             fa    .sub( f1+f2  );
-            
+            /*
             // ----- Error is HERE
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
@@ -352,7 +357,7 @@ double eval_atom(const int ia){
                 f1.sub(fij);
                 f2.add(fij);
             }
-            
+            */
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
@@ -453,6 +458,7 @@ void constrainAtom( int ia, double Kfix=1.0 ){
 };
 
 void cleanForce(){ 
+    Etot=0;
     //for(int i=0; i<natoms; i++){ fapos [i].set(0.0);  } 
     //for(int i=0; i<nnode;  i++){ fpipos[i].set(0.0);  } 
     for(int i=0; i<nDOFs; i++){ fDOFs[i]=0;  } 
@@ -493,10 +499,10 @@ void asseble_forces(){
 double eval( bool bClean=true, bool bCheck=true ){
     //if(bClean){ cleanAll(); }
     //printf( "print_apos() BEFORE\n" );print_apos();
-    cleanForce();
+    if(bClean)cleanForce();
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
-    eval_atoms();
+    Etot += eval_atoms();
     //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
     asseble_forces();
     //Etot = Eb + Ea + Eps + EppT + EppI;
@@ -779,7 +785,7 @@ void makeNeighCells( int npbc, Vec3d* pbc_shifts ){
     }
 }
 
-void printSizes     (      ){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) \n", nDOFs,natoms,nnode,ncap,nvecs ); };
+void printSizes     (      ){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) npbc(%i)\n", nDOFs,natoms,nnode,ncap,nvecs,npbc ); };
 void printAtomParams(int ia){ printf("atom[%i] ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
 void printNeighs    (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); };
 void printBKneighs  (int ia){ printf("atom[%i] bkngs{%3i,%3i,%3i,%3i} \n", ia, bkneighs[ia].x,bkneighs[ia].y,bkneighs[ia].z,bkneighs[ia].w ); };
