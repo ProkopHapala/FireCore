@@ -228,6 +228,8 @@ double eval_atom(const int ia){
     const Vec2d cs0_ss = Vec2d{apar.x,apar.y};
     const double  ssC0 = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
+    //printf( "ang0 %g cs0(%g,%g)\n", atan2(cs0_ss.y,cs0_ss.x)*180/M_PI, cs0_ss.x,cs0_ss.x );
+
     //--- Aux Variables 
     Quat4d  hs[4];
     Vec3d   f1,f2;
@@ -387,6 +389,28 @@ double eval_atoms(){
         E+=eval_atom(ia); 
     }
     return E;
+}
+
+void addjustAtomCapLenghs(int ia){
+    const Vec3d pa  = apos [ia]; 
+    const int*    ings = neighs   [ia].array;
+    //const int*    ingC = neighCell[ia].array;
+    const double* bL   = bLs      [ia].array;
+    for(int i=0; i<4; i++){
+        int ing = ings[i];
+        if(ing<nnode)continue;
+        Vec3d  pi = apos[ing];
+        Vec3d h; 
+        h.set_sub( pi, pa );
+        h.mul(bL[ing]/h.norm());
+        apos[ing].set_add( pa, h ); 
+    } 
+}
+
+void addjustCapLenghs(){
+    for(int ia=0; ia<nnode; ia++){ 
+        addjustAtomCapLenghs(ia);
+    }
 }
 
 void initPi( Vec3d* pbc_shifts, double Kmin=0.1, double r2min=1e-4, bool bCheck=true ){
@@ -836,13 +860,15 @@ bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
 }
 
 void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
+    //printf( "MMFFsp3_loc::rotateNodes() nsel=%i phi=%g ax(%g,%g,%g) p0(%g,%g,%g) \n", n,  phi, ax.x,ax.y,ax.z,   p0.x,p0.y,p0.z );
     ax.normalize();
     double ca=cos(phi);
     double sa=sin(phi);
     for(int i=0;i<n; i++){
         int ia = sel[i];
-        if(ia>=nnode)continue;
+        //printf( "MMFFsp3_loc::rotateNodes() atom[%i](%g,%g,%g) cs(%g,%g) \n", ia, apos[ia].x,apos[ia].y,apos[ia].z, ca,sa );
         apos [ia].rotate_csa( ca, sa, ax, p0 );
+        if(ia>=nnode)continue;
         pipos[ia].rotate_csa( ca, sa, ax     );
         int* ngs=neighs[ia].array; 
         for(int j=0;j<4;j++){
@@ -862,6 +888,19 @@ void chargeToEpairs( Quat4d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
         }
     }
 }
+
+
+inline double measureCosPiPi(int ia, int ib, bool bRenorm=true){
+    double c = pipos[ia].dot(pipos[ib]);
+    if(bRenorm){ c/=sqrt( pipos[ia].norm2()* pipos[ib].norm2() ); }
+    return c;
+}
+inline double measureAnglePiPi(int ia, int ib, bool bRenorm=true ){ return acos( measureCosPiPi(ia, ib, bRenorm ) ); }
+inline double measureCosSigmaPi(int ipi, int ia, int ib){
+    Vec3d b = apos[ib]-apos[ia];
+    return pipos[ipi].dot(b)/sqrt( pipos[ipi].norm2()*b.norm2() );
+}
+inline double measureAngleSigmaPi(int ipi, int ia, int ib){ return acos( measureCosSigmaPi(ipi, ia, ib ) ); }
 
 };
 

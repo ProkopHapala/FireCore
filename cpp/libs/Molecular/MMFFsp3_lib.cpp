@@ -71,6 +71,8 @@ void init_buffers(){
     }
     ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
     buffers .insert( { "Es",       &W.ffl.Etot  } );
+    //printf( "MMFFsp3_lib::init_buffers() nDOFs=%i nnode=%i ncap=%i nvecs=%i \n", W.ffl.nDOFs, W.ffl.nnode, W.ffl.ncap, W.ffl.nvecs );
+    //printf( "MMFFsp3_lib::init_buffers() nDOFs=%i nnode=%i ncap=%i nvecs=%i \n", (&W.ffl.nDOFs)[0], (&W.ffl.nDOFs)[1], (&W.ffl.nDOFs)[2], (&W.ffl.nDOFs)[3] );
     //ibuffers.insert( { "selection", W.manipulation_sel  } );
     //for( auto c : buffers ){ printf("buff>>%s<<\n", c.first.c_str() ); }
 }
@@ -110,15 +112,15 @@ const char* getType( int ia, bool fromFF){
     return W.params.atypes[it].name;
 }
 
-void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants ){
+void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
-    _setbool( W.ffl.doAngles , doAngles  );
-    _setbool( W.ffl.doPiPiT  , doPiPiT   );
-    _setbool( W.ffl.doPiSigma, doPiSigma );
-    _setbool( W.ffl.doPiPiI  , doPiPiI   );
-    _setbool( W.doBonded    , doBonded_  );
-    _setbool( W.bPBC        , PBC );
     _setbool( W.bCheckInvariants, CheckInvariants  );
+    _setbool( W.bPBC         , PBC );
+    _setbool( W.bNonBonded   , NonBonded  );
+    _setbool( W.bMMFF        , MMFF       );
+    _setbool( W.ffl.doAngles , Angles   );
+    _setbool( W.ffl.doPiSigma, PiSigma  );
+    _setbool( W.ffl.doPiPiI  , PiPiI    );
     #undef _setbool
 }
 
@@ -159,6 +161,55 @@ void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double
 
 //int splitAtBond( int ib, int* selection ){ return W.splitAtBond( ib, selection ); }
 
+// void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
+//     DistConstr C( {0,1}, {lmax,lmin}, {kmax,kmin}, flim  );
+//     Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};
+//     Vec3d fs[2];
+//     for(int i=0; i<n; i++ ){
+//         ps[1]={xs[i],0.0,0.0};
+//         fs[0]=Vec3dZero;
+//         fs[1]=Vec3dZero;
+//         Es[i] = C.apply( ps, fs );
+//         Fs[i] = fs[0].x;
+//     }
+// }
+
+void sample_evalPiAling( double k, double ang0, double r1, double r2, int n, double* angles, double* Es, double* Fs ){
+    Vec3d h1={1,0,0};
+    Vec3d f1,f2;
+    double c0 = cos(ang0);
+    for(int i=0; i<n; i++ ){
+        double a = angles[i];
+        Vec3d h2={cos(a),sin(a),0.0};
+        Es[i] = evalPiAling( h1, h2, 1./r1, 1./r2, k, f1, f2 );  
+        Fs[i] = f1.y;
+    }
+}
+
+void sample_evalAngleCos( double k, double ang0, double r1, double r2, int n, double* angles, double* Es, double* Fs ){
+    Vec3d h1={1,0,0};
+    Vec3d f1,f2;
+    double c0 = cos(ang0);
+    for(int i=0; i<n; i++ ){
+        double a = angles[i];
+        Vec3d h2={cos(a),sin(a),0.0};
+        Es[i] = evalAngleCos( h1, h2, 1./r1, 1./r2, k, c0, f1, f2 );
+        Fs[i] = f1.y;
+    }
+}
+
+void sample_evalAngleCosHalf( double k, double ang0, double r1, double r2, int n, double* angles, double* Es, double* Fs ){
+    Vec3d h1={1,0,0};
+    Vec3d f1,f2;
+    Vec2d cs0; cs0.fromAngle( ang0/2. );
+    for(int i=0; i<n; i++ ){
+        double a = angles[i];
+        Vec3d h2={cos(a),sin(a),0.0};
+        Es[i] = evalAngleCosHalf( h1, h2, 1./r1, 1./r2, cs0, k, f1, f2 );
+        Fs[i] = f1.y;
+    }
+}
+
 void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K, double Rdamp ){
     Quat4d REQi = *(Quat4d*)REQi_;
     Quat4d REQj = *(Quat4d*)REQj_;
@@ -182,23 +233,33 @@ void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*R
     }
 }
 
-void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj ){
+double measureBond        (int ia, int ib         ){ return W.ffl.measureBondLegth(ia,ib); }
+double measureAngle       (int ic, int ia, int ib ){ return W.ffl.measureAngle (ic,ia,ib); }
+double measureAnglePiPi   (int ia, int ib         ){ return W.ffl.measureAnglePiPi(ia, ib, true ); }
+double measureAngleSigmaPi(int ipi, int ia, int ib){ return W.ffl.measureAngleSigmaPi(ipi, ia, ib ); }
+
+void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, const char* trjName, bool bAddjustCaps ){
     if(selection==0){ selection=W.manipulation_sel; n=W.manipulation_nsel; }
-    W.scanTranslation_ax( n, selection, *(Vec3d*)vec, nstep, Es, bWriteTrj );
+    W.scanTranslation_ax( n, selection, *(Vec3d*)vec, nstep, Es, trjName, bAddjustCaps );
 }
-void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj ){ 
-    W.scanTranslation( n, selection, ia0, ia1, l, nstep, Es, bWriteTrj ); 
+void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, const char* trjName, bool bAddjustCaps ){ 
+    W.scanTranslation( n, selection, ia0, ia1, l, nstep, Es, trjName, bAddjustCaps ); 
 }
 
-void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
+void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, const char* trjName ){
     if(p0==0) p0=(double*)&W.manipulation_p0;
     if(ax==0) ax=(double*)&W.manipulation_ax;
     if(selection==0){selection=W.manipulation_sel; n=W.manipulation_nsel; }
-    W.scanRotation_ax( n, selection, *(Vec3d*)p0, *(Vec3d*)ax, phi, nstep, Es, bWriteTrj );
+    W.scanRotation_ax( n, selection, *(Vec3d*)p0, *(Vec3d*)ax, phi, nstep, Es, trjName );
 }
-void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){ 
-    W.scanRotation( n, selection,ia0, iax0, iax1, phi, nstep, Es, bWriteTrj );
+void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, const char* trjName ){ 
+    W.scanRotation( n, selection,ia0, iax0, iax1, phi, nstep, Es, trjName );
 }
+
+void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, double* ax, int nstep, double* angs, double* Es, const char* trjName ){
+    W.scanAngleToAxis_ax( n, selection, r, R, *(Vec3d*)p0, *(Vec3d*)ax, nstep, angs, Es, trjName );
+}
+
 
 int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, bool bOnlyFirstNeigh, int* atoms_ ){
     W.builder.selectBondsBetweenTypes( imin, imax, it1, it2, byZ, bOnlyFirstNeigh );

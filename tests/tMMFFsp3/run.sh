@@ -12,4 +12,6 @@ make -j4 $name
 cd $wd
 
 #python3 run.py
-python3 HBscan.py
+#python3 HBscan.py
+
+python3 run_Eprofiles.py
