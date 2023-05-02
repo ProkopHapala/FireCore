@@ -94,6 +94,16 @@ def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None,
     lib.sample_DistConstr(lmin, lmax, kmin, kmax, flim, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
     return Es,Fs
 
+#  void sample_evalPiAling( double K, double c0, int n, double* angles, double* Es, double* Fs ){
+lib.sample_evalPiAling.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalPiAling.restype   =  None
+def sample_evalPiAling( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
+    n = len(angles)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalPiAling(K, ang0, r1, r2, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
 #  void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){
 lib.sample_evalAngleCos.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
 lib.sample_evalAngleCos.restype   =  None

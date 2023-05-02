@@ -222,22 +222,17 @@ void makeMMFF(){
         printf("ERROR some bonds are not in atom neighbors => exit"); 
         exit(0); 
     };
-    DEBUG
     builder.sortConfAtomsFirst();
     //builder.printAtomConfs(false,true);
     builder.checkBondsOrdered( true, false );
-    DEBUG
     builder.assignTypes( );
-    DEBUG
-    builder.toMMFFsp3_loc( ffl, &params ); //ffl.printAtomParams(); ffl.printBKneighs(); 
-    DEBUG
+    //printf( "makeMMFF() bDummyEpair=%i \n", builder.bDummyEpair );
+    builder.toMMFFsp3_loc( ffl, true, builder.bDummyEpair ); //ffl.printAtomParams(); ffl.printBKneighs(); 
     ffl.setLvec(       builder.lvec);
     nPBC=Vec3i{0,0,0};
-    DEBUG
     ffl.makeNeighCells( nPBC );  
     //builder.printBonds();
     //printf("!!!!! builder.toMMFFsp3() DONE \n");
-    DEBUG
     {   //printf(" ============ check MMFFsp3_loc START\n " );
         //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
         //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
@@ -251,7 +246,6 @@ void makeMMFF(){
         if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.nnode, 3, (double*)ffl.fpipos,  "ffl.fpipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
         //printf(" ============ check MMFFsp3_loc DONE\n " );
     }
-    DEBUG
 }
 
 void makeFFs(){
@@ -411,10 +405,12 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
     return ( vcog.norm()>maxVcog ) || ( fcog.norm()>maxFcog ) || ( tqcog.norm() );
 }
 
-int toXYZ(const char* comment="#comment", bool bNodeOnly=false){
-    if(xyz_file==0){ printf("ERROR no xyz file is open \n"); return -1; }
+int toXYZ(const char* comment="#comment", bool bNodeOnly=false, FILE* file=0, bool bPi=false, bool just_Element=true ){
+    if(file==0){ file=xyz_file; };
+    if(file==0){ printf("ERROR no xyz file is open \n"); return -1; }
     int n=ffl.natoms; if(bNodeOnly){ n=ffl.nnode; }
-    params.writeXYZ( xyz_file, n, nbmol.atypes, nbmol.apos, comment );
+    int npi=0; if(bPi)npi=ffl.nnode;
+    params.writeXYZ( file, n, nbmol.atypes, nbmol.apos, comment, 0,just_Element, npi );
     return 0;
 }
 
@@ -485,38 +481,70 @@ void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
     }
 }
 
-void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es, bool bWriteTrj ){
+void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,const char* trjName, bool bAddjustCaps ){
     //if(selection==0){ selection=manipulation_sel; n=manipulation_nsel; }
     //Vec3d d=(*(Vec3d*)(vec)); 
 	d.mul(1./nstep);
-    if(bWriteTrj){ xyz_file=fopen( "scan_trans_trj.xyz","w" ); }
+    FILE* file=0;
+    if(trjName){ file=fopen( trjName, "w" ); }
     for(int i=0; i<nstep; i++){
-        if(bWriteTrj){ toXYZ(); };
+        if(file){ toXYZ(tmpstr,false,file); };
         double E = eval();
         if(Es)Es[i]=E;
         move( n, selection, nbmol.apos, d);
     }
-    if(bWriteTrj){ fclose(xyz_file); }
+    if(file){ fclose(file); }
 }
-void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; scanTranslation_ax(n,selection, d, nstep, Es, bWriteTrj ); };
+void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, const char* trjName, bool bAddjustCaps ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; scanTranslation_ax(n,selection, d, nstep, Es, trjName , bAddjustCaps); };
 
-
-void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, bool bWriteTrj ){
+void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, const char* trjName ){
     //if(p0==0) p0=(double*)&manipulation_p0;
     //if(ax==0) ax=(double*)&manipulation_ax;
     //if(selection==0){selection=manipulation_sel; n=manipulation_nsel; }
     double dphi=phi/nstep;
-    if(bWriteTrj){ xyz_file=fopen( "scan_rot_trj.xyz","w" ); }
+    FILE* file=0;
+    if(trjName){ file=fopen( trjName, "w" ); }
+    //printf( "MolWorld_sp3_simple::scanRotation_ax() nstep=%i phi=%g nsel=%i ax(%g,%g,%g) p0(%g,%g,%g) \n", nstep, phi, n, ax.x,ax.y,ax.z,  p0.x,p0.y,p0.z );
     for(int i=0; i<nstep; i++){
         double E = eval();
         Vec3d tq = torq( n, nbmol.apos, nbmol.fapos, p0, selection );
-        if(bWriteTrj){  sprintf(tmpstr,"# rotScan[%i] E=%g tq=(%g,%g,%g)", i, E, tq.x,tq.y,tq.z );  toXYZ(tmpstr); };
+        if(file){  sprintf(tmpstr,"# rotScan[%i] E=%g tq=(%g,%g,%g)", i, E, tq.x,tq.y,tq.z );  toXYZ(tmpstr, false, file, true ); };
         if(Es)Es[i]=E;
+        //printf("scanRotation_ax[%i] phi %g E %g \n", i, phi*i, E );
         ffl.rotateNodes(n, selection, p0, ax, dphi );
     }
-    if(bWriteTrj){ fclose(xyz_file); }
+    if(file){ fclose(file); }
 }
-void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, bWriteTrj ); };
+void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, const char* trjName ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, trjName ); };
+
+
+void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Vec3d ax, int nstep, double* angs, double* Es, const char* trjName ){
+    FILE* file=0;
+    if(trjName){ file=fopen( trjName, "w" ); }
+    for(int i=0; i<nstep; i++){
+        double ang = angs[i];
+        Vec2d cs; cs.fromAngle(ang);
+        //printf( "scanAngleToAxis_ax[%i] ang=%g cs(%g,%g)\n", i, ang, cs.x, cs.y );
+        for(int j=0; j<n; j++){
+            int ia = selection[j];
+            Vec3d d = ffl.apos[ia]-p0;
+            double l2=d.norm2();
+            double c = ax.dot(d);
+            //double sign=(c>0)1:-1;
+            d.add_mul(ax, -c );                 // remove axial component
+            //d.mul( 1.0/sqrt(l2-c*c) );
+            d.mul( (r*cs.x + R)/sqrt(l2-c*c) ); // renormalize radial compent 
+            d.add_mul(ax, r*cs.y  );            // add back new axial component 
+            ffl.apos[ia] = p0 + d;
+        }
+        double E = eval();
+        if(file){ sprintf(tmpstr,"# scanAngleToAxis[%i] E=%g ", i, E);  toXYZ(tmpstr, false, file, true );  };
+        if(Es)Es[i]=E;
+    }
+    if(file){ fclose(file); }
+}
+
+
 
 };
 

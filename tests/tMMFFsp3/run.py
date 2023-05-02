@@ -40,7 +40,12 @@ mmff.makeFFs()
 #------ Long Initialization
 mmff.initParams()
 print( "py DEBUG 1" )
-mmff.buildMolecule_xyz( xyz_name="data/HCOOH"  )
+#mmff.buildMolecule_xyz( xyz_name="data/HCOOH"  )
+#mmff.buildMolecule_xyz( xyz_name="data/C2H4"  );    mmff.setSwitches( NonBonded=-1 )
+#mmff.buildMolecule_xyz( xyz_name="data/CHOCHO"  );    mmff.setSwitches( NonBonded=-1 )
+mmff.buildMolecule_xyz( xyz_name="data/CHONH2"  );    mmff.setSwitches( NonBonded=-1 )
+
+
 #mmff.buildMolecule_xyz( xyz_name="data/propandiol"  )
 print( "py DEBUG 2" )
 mmff.makeFFs()

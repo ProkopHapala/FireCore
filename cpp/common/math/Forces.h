@@ -78,12 +78,11 @@ inline double evalAngleCosHalf( const Vec3d& h1, const Vec3d& h2, double ir1, do
 
 inline double evalAngleCos( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, double c0, Vec3d& f1, Vec3d& f2 ){
     double c = h1.dot(h2);
-    //f1 = h2 - h1*c;
-    //f2 = h1 - h2*c;
     f1.set_add_mul( h2,h1,-c );
     f2.set_add_mul( h1,h2,-c );
     double c_   = c-c0;
     double E    =  K*c_*c_;
+    //printf( "evalAngleCos() cos=%g E=%g \n", c, E );
     double fang = -K*c_*2;
     f1.mul( fang*ir1 );
     f2.mul( fang*ir2 );
@@ -92,12 +91,10 @@ inline double evalAngleCos( const Vec3d& h1, const Vec3d& h2, double ir1, double
 
 inline double evalPiAling( const Vec3d& h1, const Vec3d& h2, double ir1, double ir2, double K, Vec3d& f1, Vec3d& f2 ){  // interaction between two pi-bonds
     double c = h1.dot(h2);
-    //f1 = h2 - h1*c;
-    //f2 = h1 - h2*c;
     f1.set_add_mul( h2,h1,-c );
     f2.set_add_mul( h1,h2,-c );
     bool sign = c<0; if(sign) c=-c;
-    double E    = -K*c;
+    double E    = K*(1-c);
     double fang =  K;
     if(sign)fang=-fang;
     f1.mul( fang );

@@ -123,6 +123,17 @@ class Atoms{ public:
         *(lvec) = lvec_new;
     }
 
+    inline double measureBondLegth(int ia, int ib){
+        Vec3d b = apos[ib]-apos[ia];
+        return b.norm2();
+    }
+    inline double measureCosAngle(int ic, int ia, int ib){
+        Vec3d a = apos[ia]-apos[ic];
+        Vec3d b = apos[ib]-apos[ic];
+        return a.dot(b)/sqrt( a.norm2()*b.norm2() );
+    }
+    inline double measureAngle(int ic, int ia, int ib){ return acos( measureCosAngle(ic, ia, ib ) ); }
+
 };
 
 #endif

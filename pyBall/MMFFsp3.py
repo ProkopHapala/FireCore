@@ -47,6 +47,7 @@ header_strings = [
 #"void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){",
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
+#"void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, double* ax, int nstep, double* angs, double* Es, const char* trjName )",
 #"void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){",
 #"void printAtomConfs ( bool bOmmitCap, bool bNeighs )",
 #"void printAtomTypes ( )",
@@ -59,6 +60,8 @@ header_strings = [
 #"void orient( int fw1,int fw2,  int up1,int up2,  int i0,  int imin, int imax ){",
 #"void findMainAxes( double* rot, ifrag=-1, int imin=0,int imax=-1, bool bRot=true){",
 #"void findSymmetry( int* found, int i0=0,int imax=-1, double tol=0.1 ){",
+#"double measureBond(int ia, int ib          )",
+#"double measureAngle(int ic, int ia, int ib )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -91,6 +94,46 @@ glob_bMMFF    = True
 # ====================================
 # ========= C functions
 # ====================================
+
+# #  void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
+# lib.sample_DistConstr.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+# lib.sample_DistConstr.restype   =  None
+# def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None):
+#     n = len(xs)
+#     if Es is None: Es=np.zeros(n)
+#     if Fs is None: Fs=np.zeros(n)
+#     lib.sample_DistConstr(lmin, lmax, kmin, kmax, flim, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+#     return Es,Fs
+
+#  void sample_evalPiAling( double K, double c0, int n, double* angles, double* Es, double* Fs ){
+lib.sample_evalPiAling.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalPiAling.restype   =  None
+def sample_evalPiAling( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
+    n = len(angles)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalPiAling(K, ang0, r1, r2, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+#  void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){
+lib.sample_evalAngleCos.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalAngleCos.restype   =  None
+def sample_evalAngleCos( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
+    n = len(angles)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalAngleCos(K, ang0, r1, r2, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+#  void sample_evalAngleCosHalf( double K, double c0, int n, double* angles, double* Es, double* Fs ){
+lib.sample_evalAngleCosHalf.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalAngleCosHalf.restype   =  None
+def sample_evalAngleCosHalf( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
+    n = len(angles)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalAngleCosHalf(K, ang0, r1, r2, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
 
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
 lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ] 
@@ -139,7 +182,7 @@ def getBuffs( ):
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
     global nDOFs,natoms,nnode,ncap,nvecs
     #nDOFs=0,natoms=0,nnode=0,ncap=0,nvecs=0;
-    nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];nvecs=ndims[4];
+    nDOFs=ndims[0]; nnode=ndims[1]; ncap=ndims[2];nvecs=ndims[3]; natoms=nnode+ncap;
     print( "getBuffs(): natoms %i nnode %i ncap %i nvecs %i"  %(natoms,nnode,ncap,nvecs) )
     global DOFs,fDOFs,apos,fapos,pipos,fpipos, neighs #,selection
     #Ebuf     = getEnergyTerms( )
@@ -233,11 +276,11 @@ def initWithSMILES(fname_mol, bPrint=True, bCap=True, bNonBonded=True, bOptimize
     fname_mol = fname_mol.encode('utf8')
     return lib.initWithSMILES(fname_mol, bPrint, bCap, bNonBonded, bOptimizer)
 
-#  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
-lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
+#  void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI  ){
+lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int] 
 lib.setSwitches.restype   =  None
-def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0):
-    return lib.setSwitches(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants)
+def setSwitches( CheckInvariants=0, PBC=0, NonBonded=0, MMFF=0, Angles=0, PiSigma=0, PiPiI=0 ):
+    return lib.setSwitches( CheckInvariants, PBC, NonBonded, MMFF, Angles, PiSigma, PiPiI )
 
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
@@ -349,41 +392,67 @@ def rotate_atoms_ax(ia0, iax0, iax1, phi, sel=None):
 # def splitAtBond(ib, sel=None):
 #     return lib.splitAtBond(ib, _np_as(sel,c_int_p))
 
+
+#  double measureBond(int ia, int ib          )
+lib.measureBond.argtypes  = [c_int, c_int] 
+lib.measureBond.restype   =  c_double
+def measureBond(ia, ib):
+    return lib.measureBond(ia, ib)
+
+#  double measureAngle(int ic, int ia, int ib )
+lib.measureAngle.argtypes  = [c_int, c_int, c_int] 
+lib.measureAngle.restype   =  c_double
+def measureAngle(ic, ia, ib):
+    return lib.measureAngle(ic, ia, ib)
+
+#  double measureAnglePiPi(int ia, int ib          )
+lib.measureAnglePiPi.argtypes  = [c_int, c_int] 
+lib.measureAnglePiPi.restype   =  c_double
+def measureAnglePiPi(ia, ib):
+    return lib.measureAnglePiPi(ia, ib)
+
+#  double measureAngleSigmaPi(int ic, int ia, int ib )
+lib.measureAngleSigmaPi.argtypes  = [c_int, c_int, c_int] 
+lib.measureAngleSigmaPi.restype   =  c_double
+def measureAngleSigmaPi(ipi, ia, ib):
+    return lib.measureAngleSigmaPi(ipi, ia, ib)
+
 #  void scanTranslation_ax( int n, int* sel, double* vec, int nstep, double* Es, bool bWriteTrj )
-lib.scanTranslation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_int, c_double_p, c_bool] 
+lib.scanTranslation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_int, c_double_p, c_char_p, c_bool] 
 lib.scanTranslation_ax.restype   =  None
-def scanTranslation_ax(nstep, Es, bWriteTrj, sel=None, vec=None, ):
+def scanTranslation_ax(nstep, Es=None, trjName=None, sel=None, vec=None, bAddjustCaps=False ):
     n=0
     if sel is not None:
         n=len(sel)
         sel=np.array(sel,np.int32)
     if vec is not None: vec=np.array(vec)
-    return lib.scanTranslation_ax(n, _np_as(sel,c_int_p), _np_as(vec,c_double_p), nstep, _np_as(Es,c_double_p), bWriteTrj)
+    return lib.scanTranslation_ax(n, _np_as(sel,c_int_p), _np_as(vec,c_double_p), nstep, _np_as(Es,c_double_p), cstr(trjName) )
 
 #  void scanTranslation( int n, int* sel, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )
-lib.scanTranslation.argtypes  = [c_int, c_int_p, c_int, c_int, c_double, c_int, c_double_p, c_bool] 
+lib.scanTranslation.argtypes  = [c_int, c_int_p, c_int, c_int, c_double, c_int, c_double_p, c_char_p, c_bool ] 
 lib.scanTranslation.restype   =  None
-def scanTranslation( ia0, ia1, l, nstep, Es=None, sel=None, bWriteTrj=False):
+def scanTranslation( ia0, ia1, l, nstep, Es=None, sel=None, trjName=None, ):
     if Es is None: Es=np.zeros(nstep)
-    return lib.scanTranslation(n, _np_as(sel,c_int_p), ia0, ia1, l, nstep, _np_as(Es,c_double_p), bWriteTrj)
+    return lib.scanTranslation(n, _np_as(sel,c_int_p), ia0, ia1, l, nstep, _np_as(Es,c_double_p), cstr(trjName), bAddjustCaps=False )
 
 #  void scanRotation_ax( int n, int* sel, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
-lib.scanRotation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double, c_int, c_double_p, c_bool] 
+lib.scanRotation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double, c_int, c_double_p, c_char_p ] 
 lib.scanRotation_ax.restype   =  None
-def scanRotation_ax( phi, nstep, sel=0, p0=None, ax=None,  Es=None, bWriteTrj=False):
+def scanRotation_ax( phi, nstep, sel=0, p0=None, ax=None,  Es=None, trjName=None, bEs=True):
     n=0
     if sel is not None:
         n=len(sel)
         sel=np.array(sel,np.int32)
     if p0 is not None: p0=np.array(p0)
     if ax is not None: ax=np.array(ax)
-    lib.scanRotation_ax(n, _np_as(sel,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
+    if bEs and ( Es is None ): Es = np.zeros(nstep)
+    lib.scanRotation_ax(n, _np_as(sel,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi, nstep, _np_as(Es,c_double_p), cstr(trjName) )
     return Es
 
 #  void scanRotation( int n, int* sel,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){
-lib.scanRotation.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double, c_int, c_double_p, c_bool] 
+lib.scanRotation.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double, c_int, c_double_p, c_char_p ] 
 lib.scanRotation.restype   =  None
-def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, bWriteTrj=False, _0=0):
+def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, trjName=None,  _0=0):
     n=0
     if _0!=0: ia0 -=_0; iax0-=_0; iax1-=_0;
     if sel is not None:
@@ -391,7 +460,22 @@ def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, bWriteTrj=Fals
         sel=np.array(sel,np.int32)
         sel-=_0
     if Es is None: Es=np.zeros(nstep)
-    lib.scanRotation(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
+    lib.scanRotation(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi, nstep, _np_as(Es,c_double_p), str(trjName)  )
+    return Es
+
+#  void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, double* ax, int nstep, double* angs, double* Es, const char* trjName )
+lib.scanAngleToAxis_ax.argtypes  = [c_int, c_int_p, c_double, c_double, c_double_p, c_double_p, c_int, c_double_p, c_double_p, c_char_p] 
+lib.scanAngleToAxis_ax.restype   =  None
+def scanAngleToAxis_ax(angs, sel, r=1.0, p0=[0.,0.,0.], ax=[0.,0.,1.], R=0, Es=None, trjName=None, bEs=True):
+    n=0
+    if sel is not None:
+        n=len(sel)
+        sel=np.array(sel,np.int32)
+    if p0 is not None: p0=np.array(p0)
+    if ax is not None: ax=np.array(ax)
+    nstep = len(angs)
+    if bEs and ( Es is None ): Es = np.zeros(nstep)
+    lib.scanAngleToAxis_ax(n, _np_as(sel,c_int_p), r, R, _np_as(p0,c_double_p), _np_as(ax,c_double_p), nstep, _np_as(angs,c_double_p), _np_as(Es,c_double_p), cstr(trjName)  )
     return Es
 
 def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False):
@@ -399,7 +483,6 @@ def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False)
     if bPrintSel: print( "split to:\n", selection[:nsel],"\n", selection[nsel:] )
     ias = bond2atom[ib,:]
     return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
-
 
 #  int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, bool bOnlyFirstNeigh, int* atoms_ ){
 lib.selectBondsBetweenTypes.argtypes  = [c_int, c_int, c_int, c_int, c_bool, c_bool, c_int_p ] 

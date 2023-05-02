@@ -167,6 +167,14 @@ class MMFFparams{ public:
         return found->second;
     }
 
+    AtomType* getRootParrent(AtomType* t, int nrecur=0){
+        if(nrecur>10){ printf("ERROR in MMFFparams.getRootParrent() rootParrent of type(%s) not found in %i recursions => Exit() \n", t->name, nrecur ); exit(0); }
+        if( t->parrent==0 ) return t;
+        if( (t->parrent<0)||(t->parrent>=atypes.size()) ){ printf("ERROR in MMFFparams.getRootParrent() type(%s).parrent==%i => Exit() \n", t->name,t->parrent ); exit(0); }
+        AtomType* par = &atypes[t->parrent];
+        return getRootParrent(par,nrecur+1); // recursion
+    }
+
     void string2AtomType(const char * str, AtomType& atyp ){
         char      parent_name[8];
         int iZ_, neval_, valence_, sym_;
@@ -421,9 +429,9 @@ class MMFFparams{ public:
         return ret;
     }
 
-    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true ){
+    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0 ){
         //printf( "MMFFparams::writeXYZ() n=%i REQs=%li \n", n, (long)REQs );
-        fprintf(pfile, "%i\n", n );
+        fprintf(pfile, "%i\n", n+npi );
         fprintf(pfile, "%s \n", comment );
         for(int i=0; i<n; i++){
             //printf( "DEBUG writeXYZ()[%i] \n", i );
@@ -444,7 +452,12 @@ class MMFFparams{ public:
             //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, params->atypes[ityp].name );
             if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", symbol, pi.x,pi.y,pi.z, REQs[i].z ); }
             else    { fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f \n"          , symbol, pi.x,pi.y,pi.z            ); }
-        };
+        }
+        for(int i=0; i<npi; i++){
+            const Vec3d&  pi = apos[i] + apos[i+n];
+            fprintf( pfile, "Pi   %15.10f   %15.10f   %15.10f \n", pi.x,pi.y,pi.z            );
+
+        }
     }
 
     int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true ){

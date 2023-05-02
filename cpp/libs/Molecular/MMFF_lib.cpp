@@ -224,6 +224,18 @@ void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, doub
     }
 }
 
+void sample_evalPiAling( double k, double ang0, double r1, double r2, int n, double* angles, double* Es, double* Fs ){
+    Vec3d h1={1,0,0};
+    Vec3d f1,f2;
+    double c0 = cos(ang0);
+    for(int i=0; i<n; i++ ){
+        double a = angles[i];
+        Vec3d h2={cos(a),sin(a),0.0};
+        Es[i] = evalPiAling( h1, h2, 1./r1, 1./r2, k, f1, f2 );  
+        Fs[i] = f1.y;
+    }
+}
+
 void sample_evalAngleCos( double k, double ang0, double r1, double r2, int n, double* angles, double* Es, double* Fs ){
     Vec3d h1={1,0,0};
     Vec3d f1,f2;

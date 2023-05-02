@@ -1737,7 +1737,7 @@ class Builder{  public:
     }
 
     void autoBonds( double R=-0.5, int i0=0, int imax=-1 ){
-        printf( "MM::Builder::autoBonds() \n" );
+        if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
         double Rfac   = -R;
@@ -2966,7 +2966,6 @@ void makeNeighs( int*& neighs, int perAtom ){
     _allocIfNull( neighs, ntot );
     //printf( "MM::Builder::makeNeighs() ntot=%i  ^neighs=%li \n", ntot, neighs );
     for(int i=0;i<ntot; i++){ neighs[i]=-1; }; // back neighbors
-    DEBUG
     for(int ia=0; ia<na; ia++ ){
         //printf( "MM::Builder::makeNeighs()[%i] \n", ia );
         const Atom& A =  atoms[ia];
@@ -3000,8 +2999,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
         int nconf = nCmax;
         int ncap  = nAmax - nconf;
         int nb    = bonds.size();
-        //if(verbosity>0)
-        printf(  "MM:Builder::toMMFFsp3_loc() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
+        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3_loc() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         if(bRealloc)ff.realloc( nconf, ncap+ne );
         Vec3d hs[4];
         int ie0=nconf+ncap;
@@ -3014,6 +3012,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
             const Atom& A =  atoms[ia];
             ff.apos  [ia] = A.pos;
             ff.atypes[ia] = A.type;
+            AtomType& atyp = params->atypes[A.type];
+
             if(A.iconf>=0){
 
                 // Prepare params and orientation
@@ -3049,20 +3049,24 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
                 // --- Generate Bonds
                 for(int k=0; k<conf.nbond; k++){
+                    
                     int ib = conf.neighs[k];
                     const Bond& B = bonds[ib];
                     int ja = B.getNeighborAtom(ia);
+                    const Atom& Aj =  atoms[ja];
+                    AtomType& jtyp = params->atypes[Aj.type];
+
                     hs[k]  = atoms[ja].pos - A.pos;
                     hs[k].normalize();
                     ngs[k] = ja;
                     bL [k]=B.l0;
                     bK [k]=B.k;
                     if( (conf.npi>0)||(conf.ne>0) ){
-                        Ksp[k]=Ksp_default;
+                        Ksp[k]=atyp.Ksp;
                     }
                     int nej  = getAtom_ne (ja);
                     int npij = getAtom_npi(ja);
-                    Kpp[k]=B.kpp;
+                    Kpp[k]=atyp.Kpp*jtyp.Kpp;
                 }
                 makeConfGeom( conf.nbond, conf.npi, hs );
                 if(bEPairs){ // --- Generate electron pairs
