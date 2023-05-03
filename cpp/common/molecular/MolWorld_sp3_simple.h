@@ -180,8 +180,8 @@ void setOptimizer( int n, double* ps, double* fs ){
 }
 void setOptimizer(){ setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs ); };
 
-void initParams( const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){
-    params.init( sAtomTypes, sBondTypes, sAngleTypes );
+void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){
+    params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes );
     builder.bindParams(&params);
     params_glob = &params;
     builder.capAtomEpair.type = params.getAtomType("E");
@@ -276,7 +276,7 @@ virtual void init_empty(){
 
 virtual void init( bool bGrid=false ){
     if( params.atypes.size() == 0 ){
-        initParams( "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+        initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
     }
     if( nbmol.natoms>0 ){ clear(); } // re-initialization
     builder.verbosity=verbosity;
