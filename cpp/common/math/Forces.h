@@ -8,6 +8,9 @@
 
 #define COULOMB_CONST         14.3996448915
 
+#define deg2rad    0.01745329251 
+#define rad2deg   57.2957795131
+
 #define RSAFE   1.0e-4f
 #define R2SAFE  1.0e-8f
 #define F2MAX   10.0f

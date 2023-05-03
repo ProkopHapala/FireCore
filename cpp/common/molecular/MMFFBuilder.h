@@ -983,6 +983,7 @@ class Builder{  public:
         //printf("DEBUG assignAllSp3Types() \n");
         for(int i=0; i<atoms.size(); i++){
             Atom& A = atoms[i];
+            if( params->atypes[A.type].parrent != 0 ) continue; // allready assigned
             if( A.iconf>=0 ){
                 int npi = confs[A.iconf].npi;
                 A.type = assignSp3Type_pi( A.type, npi );
@@ -3056,14 +3057,14 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
 
                 if( conf.npi>2 ){ printf("ERROR in MM:Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
                 //double ang0 = ang0s[conf.npi];
-                double ang0   = atyp.Ass;
+                double ang0   = atyp.Ass*deg2rad;
                 ang0 *= 0.5;
                 ff.apars[ia].x = cos(ang0);    // ssC0    // cos(angle) for angles (sigma-siamg)
                 ff.apars[ia].y = sin(ang0);
                 //ff.apars[ia].z = 1.0;          // ssK     // stiffness  for angles
                 //ff.apars[ia].w = 0;            // piC0    // angle0 for orthogonalization sigma-pi 
                 ff.apars[ia].z = atyp.Kss/4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
-                ff.apars[ia].w = sin(atyp.Asp);  // piC0    // angle0 for orthogonalization sigma-pi 
+                ff.apars[ia].w = sin(atyp.Asp*deg2rad);  // piC0    // angle0 for orthogonalization sigma-pi 
                 
                 //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 

@@ -251,11 +251,8 @@ void makeMMFF(){
 void makeFFs(){
     makeMMFF();
     initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
-    ffl.bSubtractAngleNonBond=true;
-    if(ffl.bSubtractAngleNonBond){
-        ffl.REQs = nbmol.REQs;
-        //ff.REQs=nbmol.REQs;
-    }
+    ffl.bSubtractAngleNonBond=bNonBonded;
+    ffl.REQs = nbmol.REQs;
     bool bChargeToEpair=true;
     //bool bChargeToEpair=false;                     
     if(bChargeToEpair){
@@ -519,6 +516,7 @@ void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi
 
 
 void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Vec3d ax, int nstep, double* angs, double* Es, const char* trjName ){
+    //printf( "scanAngleToAxis_ax()\n" );
     FILE* file=0;
     if(trjName){ file=fopen( trjName, "w" ); }
     for(int i=0; i<nstep; i++){
@@ -544,7 +542,9 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Ve
     if(file){ fclose(file); }
 }
 
-
+void printSwitches(){
+    printf( "MolWorld_sp3_simple::printSwitches() bCheckInvariants=%i bPBC=%i bNonBonded=%i bMMFF=%i ffl.doAngles=%i ffl.doPiSigma=%i ffl.doPiPiI=%i ffl.bSubtractAngleNonBond=%i \n", bCheckInvariants, bPBC, bNonBonded, bMMFF, ffl.doAngles, ffl.doPiSigma, ffl.doPiPiI, ffl.bSubtractAngleNonBond );
+}
 
 };
 

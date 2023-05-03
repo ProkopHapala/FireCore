@@ -48,27 +48,33 @@ def C2H4_torsion():
     plt.savefig( "C2H4_torsion.png" )  
 
 def NH3_inversion():
-    mmff.buildMolecule_xyz( xyz_name="data/NH3", bEpairs=False, fAutoCharges=-1 )
+    #mmff.buildMolecule_xyz( xyz_name="data/NH3", bEpairs=False, fAutoCharges=-1 )
+    mmff.buildMolecule_xyz( xyz_name="data/NH3_R", bEpairs=False, fAutoCharges=-1 )
     mmff.makeFFs()
     mmff.getBuffs()
 
-    #Es    = mmff.scanTranslation_ax( 2*np.pi, n, [1], [0,0,0],  [0.,1.,0.],  )
+    #mmff.setTrjName("NH3_relax.xyz",1); nsteps = mmff.run( 1000 )    # relax     
 
+    #Es  = mmff.scanTranslation_ax( 2*np.pi, n, [1], [0,0,0],  [0.,1.,0.],  )
     angs = np.arange( -np.pi/4, np.pi/4, 0.5*np.pi/100 )
-
     Es = mmff.scanAngleToAxis_ax( angs, [1,2,3], r=1.019, p0=[0.,0.,0.], ax=[0.,0.,1.], R=0, Es=None, trjName="NH3_inversion.xyz" )
     #mmff.scanTranslation_ax( 10, Es=None, trjName=None, sel=[0], vec=[0.0,0.0,-0.1], trjName="NH3_inversion.xyz", bAddjustCaps=False )
 
     plt.plot(angs*rad2ang, Es); plt.xlabel( "theta[˚]" ); plt.ylabel( "Energy[eV]" ); plt.grid()
-    plt.savefig( "C2H4_torsion.png" ) 
+    plt.savefig( "NH3_inversion.png" ) 
+    
 
 #======== Body
 
 #mmff.setVerbosity( verbosity=1, idebug=0 )
 mmff.setVerbosity( verbosity=0, idebug=0 )
 
+
 #mmff.setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0)
-mmff.setSwitches( NonBonded=-1 )
+#mmff.setSwitches( NonBonded=-1, PiSigma=-1, Angles=-1 )
+#mmff.setSwitches( NonBonded=-1, PiSigma=+1, Angles=-1 )
+#mmff.setSwitches( NonBonded=-1, PiSigma=-1, Angles=+1 )
+mmff.printSwitches()
 
 #------ Long Initialization
 mmff.initParams()
@@ -77,6 +83,10 @@ mmff.initParams()
 #H2O_angle()
 #C2H4_torsion()
 NH3_inversion()
+
+mmff.printAtomTypes()
+mmff.printAtomParams()
+mmff.printSwitches()
 
 plt.show()
 

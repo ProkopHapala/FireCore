@@ -717,7 +717,6 @@ virtual void init( bool bGrid ){
         //initNBmol( ff.natoms,  ff.apos,  ff.fapos  );
         //initNBmol( ffl.natoms, ffl.apos, ffl.fapos );
         initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
-        ff.bSubtractAngleNonBond=true;
         //ff .REQs=nbmol.REQs;
         //ffl.REQs=nbmol.REQs;
         setNonBond( bNonBonded );
