@@ -719,8 +719,7 @@ class Builder{  public:
         //double kij   = 664.12 * Qi*Qj/( rij*rij*rij ); 
         double kij   = 28.79898 * Qi*Qj/( rij*rij*rij ); 
         
-
-        printf( "bondUFF[%s,%s,%g] r=%g(%g,%g|%g,%g) k=%g(%g,%g) E(%g,%g)   %s %s %i %i \n", ti.name, tj.name, BO, rij,ri,rj,rBO,rEN,      kij,   Qi,Qj,Ei,Ej , ei->name,ej->name, ti.element, tj.element     );
+        //printf( "bondUFF[%s,%s,%g] r=%g(%g,%g|%g,%g) k=%g(%g,%g) E(%g,%g)   %s %s %i %i \n", ti.name, tj.name, BO, rij,ri,rj,rBO,rEN,      kij,   Qi,Qj,Ei,Ej , ei->name,ej->name, ti.element, tj.element     );
         return { rij, kij };
 
     }
@@ -3097,7 +3096,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 //ff.apars[ia].w = 0;            // piC0    // angle0 for orthogonalization sigma-pi 
                 ff.apars[ia].z = atyp.Kss/4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
                 ff.apars[ia].w = sin(atyp.Asp*deg2rad);  // piC0    // angle0 for orthogonalization sigma-pi 
-                
+
                 //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 
                 // setup ff neighbors
@@ -3118,7 +3117,6 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                     int ja = B.getNeighborAtom(ia);
                     const Atom& Aj =  atoms[ja];
                     AtomType& jtyp = params->atypes[Aj.type];
-
                     hs[k]  = atoms[ja].pos - A.pos;
                     hs[k].normalize();
                     ngs[k] = ja;
@@ -3129,6 +3127,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                         Vec2d bLK = assignBondParamsUFF( ib );
                         bL [k]=bLK.x;
                         bK [k]=bLK.y;
+                        double Kss_uff = params->assignAngleParamUFF( A.type, Aj.type, Aj.type, bL[k], bL[k] );
+                        printf( "atom[%i] Kss=%g Kss_uff=%g (%s|%s) \n", ia, ff.apars[ia].z, Kss_uff, params->atypes[A.type].name,params->atypes[Aj.type].name );
                     }
 
                     //Ksp[k]=0;

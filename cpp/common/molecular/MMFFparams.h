@@ -392,6 +392,29 @@ class MMFFparams{ public:
         }
     }
 
+
+    double assignAngleParamUFF( int ic, int ia, int ib, double ra, double rb ){
+        const double deg2rad = 0.01745329251;    
+        const AtomType& tc    = atypes[ic];
+        //const AtomType& ta    = atypes[ia];
+        //const AtomType& tb    = atypes[ib];
+        const ElementType* ei = elementOfAtomType(ia);
+        const ElementType* ej = elementOfAtomType(ib);
+        double Qi = ei->Quff;
+        double Qj = ej->Quff;
+
+        double ang0 = tc.Ass*deg2rad;
+        double c0 = cos(ang0);
+        double s0 = sin(ang0);
+
+        double r = sqrt(  ra*ra + rb*rb - 2*ra*rb*c0 ); // equlibirum distance (bond lenght) between peripheral atoms
+        double K =  28.79898 * Qi*Qj * ( 3. *ra*rb*s0*s0 - r*r*c0  ) /( r*r*r*r*r );
+
+        //printf( "angUFF[%s|%s,%s] k=%g r=%g(%g,%g) Qs(%g,%g)\n", tc.name, atypes[ia].name, atypes[ib].name, K, r,ra,rb,  Qi,Qj  );
+        return K;
+
+    }
+
     int loadBondTypes(const char * fname, bool exitIfFail=true){
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
