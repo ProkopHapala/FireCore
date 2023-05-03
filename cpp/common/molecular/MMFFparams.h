@@ -252,6 +252,7 @@ class MMFFparams{ public:
             atyp.color = et.color; 
             atyp.parrent  =ipar;
             atyp.ePairType=iept;
+            atyp.element  =iet;
         }
         if(nret<19){ atyp.bMMFF = false; atyp.Ass=0;atyp.Asp=0;atyp.Kss=0;atyp.Ksp=0;atyp.Kep=0;atyp.Kpp=0; }else{ atyp.bMMFF = true; }
         atyp.subTypes=Vec3iZero;
