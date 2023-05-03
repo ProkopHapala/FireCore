@@ -693,6 +693,38 @@ class Builder{  public:
         return insertBond( Bond(order, ias, l0, k) );
     };
 
+    Vec2d assignBondParamsUFF( int ib ){
+        Bond& b = bonds[ib];
+        const Atom& ai = atoms[b.atoms.i];
+        const Atom& aj = atoms[b.atoms.j];
+        int npi=0; if(ai.iconf>=0){ npi=confs[ai.iconf].npi; }
+        int npj=0; if(aj.iconf>=0){ npj=confs[aj.iconf].npi; }
+        const AtomType& ti    = params->atypes[ai.type];
+        const AtomType& tj    = params->atypes[aj.type];
+        const ElementType* ei = params->elementOfAtomType(ai.type);
+        const ElementType* ej = params->elementOfAtomType(aj.type);
+        double Ei = fabs(ei->Eaff);
+        double Ej = fabs(ej->Eaff);
+        double Qi = ei->Quff;
+        double Qj = ej->Quff;
+
+        double BO = 1 + _min( npi, npj );            
+        double ri = ti.Ruff;
+        double rj = tj.Ruff;
+
+        double rBO = -0.1332*(ri+rj)*log( BO );
+        double rEN = ri*rj*sq( sqrt(Ei) - sqrt(Ej) )/( Ei*ri + Ej*rj );
+        double rij = ri + rj + rBO - rEN;
+
+        //double kij   = 664.12 * Qi*Qj/( rij*rij*rij ); 
+        double kij   = 28.79898 * Qi*Qj/( rij*rij*rij ); 
+        
+
+        printf( "bondUFF[%s,%s,%g] r=%g(%g,%g|%g,%g) k=%g(%g,%g) E(%g,%g)   %s %s %i %i \n", ti.name, tj.name, BO, rij,ri,rj,rBO,rEN,      kij,   Qi,Qj,Ei,Ej , ei->name,ej->name, ti.element, tj.element     );
+        return { rij, kij };
+
+    }
+
     void assignBondParams( int ib ){
         Bond& b = bonds[ib];
         const Atom& ai = atoms[b.atoms.i];
@@ -3092,6 +3124,13 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                     ngs[k] = ja;
                     bL [k]=B.l0;
                     bK [k]=B.k;
+
+                    { // UFF
+                        Vec2d bLK = assignBondParamsUFF( ib );
+                        bL [k]=bLK.x;
+                        bK [k]=bLK.y;
+                    }
+
                     //Ksp[k]=0;
                     if( (conf.npi>0)||(conf.ne>0) ){ Ksp[k]= atyp.Ksp;}else{ Ksp[k]=0; }
                     int nej  = getAtom_ne (ja);
