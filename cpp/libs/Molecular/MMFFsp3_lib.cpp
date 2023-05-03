@@ -77,29 +77,29 @@ void init_buffers(){
     //for( auto c : buffers ){ printf("buff>>%s<<\n", c.first.c_str() ); }
 }
 
-void* init( char* xyz_name, char* smile_name, int* nPBC, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+void* init( const char* xyz_name, const char* smile_name, int* nPBC,  const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){
 	//printf( "DEBUG nPBC(%i,%i,%i)\n", nPBC[0],nPBC[1],nPBC[2] );
     W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
     W.nPBC       = *(Vec3i*)nPBC;
     W.tmpstr=tmpstr;
-    W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
+    W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes );
 	W.builder.bindParams(&W.params);
     W.init();
     //init_buffers();
     return &W;
 }
 
-void initParams       ( const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){ W.tmpstr=tmpstr; W.initParams(sAtomTypes,sBondTypes,sAngleTypes ); }
+void initParams       ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){ W.tmpstr=tmpstr; W.initParams(sElementTypes,sAtomTypes,sBondTypes,sAngleTypes ); }
 int  buildMolecule_xyz( const char* xyz_name, bool bEpairs, double fAutoCharges ){  W.builder.bDummyEpair=bEpairs; W.fAutoCharges=fAutoCharges;  return W.buildMolecule_xyz( xyz_name );  }
 void makeFFs          ( ){ W.makeFFs(); }
 void clear            ( ){ W.clear();   }
 
-void setTrjName( char* trj_fname_, int savePerNsteps_ ){ W.trj_fname=trj_fname_; W.savePerNsteps=savePerNsteps_; if(verbosity>0)printf( "setTrjName(%s)\n", W.trj_fname ); }
+void setTrjName( const char* trj_fname_, int savePerNsteps_ ){ W.trj_fname=trj_fname_; W.savePerNsteps=savePerNsteps_; if(verbosity>0)printf( "setTrjName(%s)\n", W.trj_fname ); }
 
-void insertSMILES( char* s ){  W.insertSMILES(s); };
+void insertSMILES( const char* s ){  W.insertSMILES(s); };
 
-void initWithSMILES(char* s, bool bPrint, bool bCap, bool bNonBonded_, bool bOptimizer_ ){
+void initWithSMILES(const char* s, bool bPrint, bool bCap, bool bNonBonded_, bool bOptimizer_ ){
     initWithSMILES(s,bPrint,bCap,bNonBonded_,bOptimizer_ );
     init_buffers();
 }

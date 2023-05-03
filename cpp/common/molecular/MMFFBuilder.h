@@ -999,6 +999,22 @@ class Builder{  public:
 
     const char* getAtomTypeName(int ia){ return params->atypes[atoms[ia].type].name; };
 
+    int countNeighPi( int ia, int* neighs ){
+        int npi=0;
+        int ic = atoms[ia].iconf;
+        if(ic<0) return false;
+        const AtomConf& c = confs[ic];
+        for(int i=0; i<4; i++){
+            int ja = neighs[i];
+            if(ja<0) continue;
+            int jc = atoms[ja].iconf;
+            if(jc<0) continue;
+            if( confs[jc].npi ){ npi++; }
+            //printf( "atom[%i]ng[%i] c.npi=%i npi_sum=%i \n", ia, i, confs[jc].npi, npi );
+        }
+        return npi;
+    }
+
     bool hasNeighborOfType( int ia, int n, const int* its, int* Ns, int* neighs ){
         int ic = atoms[ia].iconf;
         for(int j=0; j<n; j++){ Ns[j]=0; };
@@ -1037,10 +1053,10 @@ class Builder{  public:
         //  ==========  Type Definition
 
         // ------ C
-        _Atyp(C_sp3) 
-        _Atyp(C_sp2) 
-        _Atyp(C_sp1) 
-        _Atyp(C_CA) 
+        _Atyp(C_3) 
+        _Atyp(C_2) 
+        _Atyp(C_1) 
+        _Atyp(C_R) 
         _Atyp(C_ene)  
         _Atyp(C_yne) 
         _Atyp(C_CH3)
@@ -1048,19 +1064,20 @@ class Builder{  public:
         _Atyp(C_COO)
         // ------ O
         _Atyp(O)
-        _Atyp(O_sp3)
-        _Atyp(O_sp2)
-        _Atyp(O_sp1)
+        _Atyp(O_3)
+        _Atyp(O_2)
+        _Atyp(O_1)
+        _Atyp(O_R)
         _Atyp(O_OH)
         _Atyp(O_ald)
         _Atyp(O_sCOO)
         _Atyp(O_pCOO)
         // ------ N
         _Atyp(N)
-        _Atyp(N_sp3)
-        _Atyp(N_sp2)
-        _Atyp(N_sp1)
-        _Atyp(N_NH2)
+        _Atyp(N_3)
+        _Atyp(N_2)
+        _Atyp(N_1)
+        _Atyp(N_R)
         // ------ H
         _Atyp(H)
         _Atyp(H_OH)
@@ -1073,19 +1090,20 @@ class Builder{  public:
 
         //  ==========  Neighbor definition
         // ---- C
-        _Btyp(C,C_sp2)
-        _Btyp(C,C_CA)
-        _Btyp(C,O_sp3)
-        _Btyp(C,O_sp2)
-        _Btyp(C,N_sp2)
+        _Btyp(C,C_2)
+        _Btyp(C,C_R)
+        _Btyp(C,O_3)
+        _Btyp(C,O_2)
+        _Btyp(C,N_2)
         // ---- O
         _Btyp(O,C_COO)
-        _Btyp(O,C_sp2)
-        _Btyp(O,C_CA)
+        _Btyp(O,C_2)
+        _Btyp(O,C_R)
         _Btyp(O,C_ald)
         // ---- N
-        _Btyp(N,C_sp2)
-        _Btyp(N,C_CA)
+        _Btyp(N,C_2)
+        _Btyp(N,C_R)
+        _Btyp(N,O_2)
 
         int  na=atoms.size();
         int  count[100];
@@ -1097,6 +1115,8 @@ class Builder{  public:
             Atom& A           = atoms[ia];
             const AtomType& t = params->atypes[A.type];
             int iZ            = t.iZ;
+            int npineigh = countNeighPi( ia, ngs );
+
             //printf( "atom[%i] %s=%i iZ %i \n", ia, t.name, A.type, iZ );
             switch (iZ){
                 case 1: {  // H
@@ -1105,33 +1125,40 @@ class Builder{  public:
                     if(ingt>=0){
                         if (false){}    
                         _TCap(O_OH ,H_OH )
-                        _TCap(N_NH2,H_NH2)
+                        _TCap(N_3,H_NH2)
+                        _TCap(N_R,H_NH2)
+                        _TCap(C_3,H_CH3)
                         _TCap(C_CH3,H_CH3)
+                        _TCap(C_2,H_ene)
+                        _TCap(C_R,H_ene)
                         _TCap(C_ene,H_ene)
                         _TCap(C_yne,H_yne)
                         _TCap(C_ald,H_ald)
                     }
                 }break;
                 case 6: { // C
-                    //printf("C \n");
-                    hasNeighborOfType( ia,4, &_C[0], count, ngs  );
-                    if  ( (A.type==iC_sp2) ){
-                        if      ( ( T(C_O_sp3) && T(C_O_sp2) ) ){ itnew = iC_COO; } // -COOH
-                        else if ( ( T(C_O_sp2)               ) ){ itnew = iC_ald; } // -(C=O)-
-                        else if ( ( count[C_C_sp2] + count[C_C_CA] + count[C_N_sp2] + count[C_O_sp2] )>=2 ){ itnew = iC_CA;  } // Conjugated sp2 carbond ()
+                    printf("C%i npineigh %i \n", ia, npineigh );
+                    hasNeighborOfType( ia, _C.size(), &_C[0], count, ngs  );
+                    if  ( (A.type==iC_2) ){
+                        if      ( ( T(C_O_3) && T(C_O_2) ) ){ itnew = iC_COO; } // -COOH
+                        else if ( ( T(C_O_2)             ) ){ itnew = iC_ald; } // -(C=O)-
+                        //else if ( ( count[C_C_2] + count[C_C_R] + count[C_N_2] + count[C_O_2] )>=2 ){ itnew = iC_R;  } // Conjugated sp2 carbond ()
+                        else if ( npineigh>=2 ){ itnew = iC_R; };
                     }
                 }break;
                 case 7: { // N
                     //printf("N \n");
-                    //hasNeighborOfType( ia,2, &_N[0], T, ngs );
+                    //hasNeighborOfType( ia, _N.size(), &_N[0], count, ngs );
+                    if( A.type==iN_3 ) if( npineigh>=1 ){ itnew = iN_R; };
                 }break;
                 case 8: { // O
                     //printf("O \n");
-                    hasNeighborOfType( ia,3, &_O[0], count, ngs );
+                    hasNeighborOfType( ia, _O.size(), &_O[0], count, ngs );
                     if( T(O_C_COO) ){ // COOH
-                        if      (A.type==iO_sp3){ itnew=iO_sCOO; } // -OH of -COOH
-                        else if (A.type==iO_sp2){ itnew=iO_pCOO; } // =O  of -COOH
-                    }if( T(O_C_ald)            ){ itnew=iO_ald;  } // -(C=O)-
+                        if      (A.type==iO_3){ itnew=iO_sCOO; } // -OH of -COOH
+                        else if (A.type==iO_2){ itnew=iO_pCOO; } // =O  of -COOH
+                    }else if( T(O_C_ald)     ){ itnew=iO_ald;  } // -(C=O)-
+
                 }break;
             }
             if( (itnew>=0) && (itnew!=A.type) ){ 
@@ -1292,7 +1319,7 @@ class Builder{  public:
         AtomConf& conf = confs[ic];
         int ncap = N_NEIGH_MAX-conf.nbond - conf.npi;
         AtomType&  typ = params->atypes[ atoms[ia].type ];
-        int ne   = typ.nepair();
+        int ne   = typ.nepair;
         int nH   = ncap-ne;
         //printf( "addCapTopo[%i] ne,nH(%i,%i) nb,npi(%i,%i) \n", ia, ne, nH, conf.nbond, conf.npi );
         for(int i=0; i<ne; i++){ addBondedAtom(ia,itypEpair,false); };
@@ -1433,7 +1460,7 @@ class Builder{  public:
         int ityp=atoms[ia].type;
         //params->assignRE( ityp, REQ );
         AtomConf& conf = confs[ic];
-        int ne = params->atypes[ityp].nepair();
+        int ne = params->atypes[ityp].nepair;
         if  ( (conf.nbond+conf.nH+ne)>N_NEIGH_MAX  ){ printf( "ERROR int autoConfEPi(ia=%i) ne(%i)+nb(%i)+nH(%i)>N_NEIGH_MAX(%i) => Exit() \n", ia, ne, conf.nbond, conf.nH, N_NEIGH_MAX ); exit(0);}
         else{ conf.ne=ne; }
         conf.fillIn_npi_sp3();
@@ -2220,7 +2247,7 @@ class Builder{  public:
             for(const Bond& b: bonds){
                 Atom& A = atoms[b.atoms.i];
                 Atom& B = atoms[b.atoms.j];
-                double dQ = ( params->atypes[A.type].Eaff - params->atypes[B.type].Eaff  ) * factor;
+                double dQ = ( params->elementOfAtomType(A.type)->Eaff - params->elementOfAtomType(B.type)->Eaff  ) * factor;
                 if(itr>0){  dQ += -A.REQ.z + B.REQ.z;  dQ*=damp; }
                 A.REQ.z += dQ;
                 B.REQ.z -= dQ;
@@ -2304,7 +2331,7 @@ class Builder{  public:
                 if(verbosity>2)printf( " %s -> %i \n", at_name, ityp );
                 if(params){
                     params->assignRE( ityp, REQ );
-                    ne = params->atypes[ityp].nepair();
+                    ne = params->atypes[ityp].nepair;
                 }
                 if( noH && (at_name[0]='H') && (at_name[1]='\0')  ) continue;
                 insertAtom( it->second, pos, &REQ, npi, ne );
@@ -2414,7 +2441,7 @@ class Builder{  public:
             double q=0; if(qs){ q=qs[i]; }
             if(REQs  ){ REQ=REQs[i];                        }
             else      { params->assignRE( ityp, REQ,true ); }
-            if(params){ ne = params->atypes[ityp].nepair(); npi=params->atypes[ityp].npi(); }
+            if(params){ ne = params->atypes[ityp].nepair; npi=params->atypes[ityp].npi; }
             if(npis  ){npi=npis[i];}
             REQ.z=q;
             //printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, npi, ne  );
@@ -2610,7 +2637,7 @@ class Builder{  public:
             A.type = atyp;
             A.REQ  = mol->REQs[ipivot];
             if(A.iconf>=0){ 
-                confs[A.iconf].init0(); confs[A.iconf].ne = params->atypes[atyp].nepair(); 
+                confs[A.iconf].init0(); confs[A.iconf].ne = params->atypes[atyp].nepair; 
                 //printf( "DEBUG pivot has conf ic=%i \n", A.iconf );
             }else{ 
                 //printf( "DEBUG pivot has NOT conf ic=%i \n", A.iconf );
@@ -2625,7 +2652,7 @@ class Builder{  public:
             if(params){
                 //printf( "params \n" );
                 params->assignRE( ityp, REQ );
-                ne = params->atypes[ityp].nepair();
+                ne = params->atypes[ityp].nepair;
                 REQ.z=mol->REQs[i].z;
             }
             if( mol->npis ) npi=mol->npis[i];
@@ -2729,7 +2756,7 @@ class Builder{  public:
             if(params){
                 //printf( "params \n" );
                 params->assignRE( ityp, REQ );
-                ne = params->atypes[ityp].nepair();
+                ne = params->atypes[ityp].nepair;
                 REQ.z=mol->REQs[i].z;
             }
             if( mol->npis ) npi=mol->npis[i];
@@ -3028,12 +3055,16 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 //printf( "MM::Builder::toMMFFsp3_loc()[%i] conf.npi=%i \n", ia, conf.npi );
 
                 if( conf.npi>2 ){ printf("ERROR in MM:Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
-                double ang0 = ang0s[conf.npi];
+                //double ang0 = ang0s[conf.npi];
+                double ang0   = atyp.Ass;
                 ang0 *= 0.5;
-                ff.apars[ia].x = cos(ang0);    // ssC0  // cos(angle) for angles (sigma-siamg)
+                ff.apars[ia].x = cos(ang0);    // ssC0    // cos(angle) for angles (sigma-siamg)
                 ff.apars[ia].y = sin(ang0);
-                ff.apars[ia].z = 1.0;              // ssK   // stiffness  for angles
-                ff.apars[ia].w = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
+                //ff.apars[ia].z = 1.0;          // ssK     // stiffness  for angles
+                //ff.apars[ia].w = 0;            // piC0    // angle0 for orthogonalization sigma-pi 
+                ff.apars[ia].z = atyp.Kss/4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
+                ff.apars[ia].w = sin(atyp.Asp);  // piC0    // angle0 for orthogonalization sigma-pi 
+                
                 //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 
                 // setup ff neighbors
@@ -3049,7 +3080,6 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
                 // --- Generate Bonds
                 for(int k=0; k<conf.nbond; k++){
-                    
                     int ib = conf.neighs[k];
                     const Bond& B = bonds[ib];
                     int ja = B.getNeighborAtom(ia);
@@ -3061,12 +3091,11 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                     ngs[k] = ja;
                     bL [k]=B.l0;
                     bK [k]=B.k;
-                    if( (conf.npi>0)||(conf.ne>0) ){
-                        Ksp[k]=atyp.Ksp;
-                    }
+                    //Ksp[k]=0;
+                    if( (conf.npi>0)||(conf.ne>0) ){ Ksp[k]= atyp.Ksp;}else{ Ksp[k]=0; }
                     int nej  = getAtom_ne (ja);
                     int npij = getAtom_npi(ja);
-                    Kpp[k]=atyp.Kpp*jtyp.Kpp;
+                    Kpp[k]   = sqrt( atyp.Kpp * jtyp.Kpp );
                 }
                 makeConfGeom( conf.nbond, conf.npi, hs );
                 if(bEPairs){ // --- Generate electron pairs
@@ -3079,7 +3108,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                         ff.atypes[ie] = etyp;
                         bK [k]=Kepair;
                         bL [k]=Lepair;
-                        if( conf.npi>0 ) Ksp[k]=Ksp_default;   // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
+                        //Ksp[k]=0;
+                        if( conf.npi>0 ){ Ksp[k]=atyp.Ksp; }else{ Ksp[k]=0; }  // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
                         iie++;
                     }
                 }

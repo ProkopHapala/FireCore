@@ -220,18 +220,19 @@ def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
 
 # void* init( char* xyz_name, char* smile_name, int* nPBC, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-lib.init.argtypes  = [c_char_p, c_char_p, array1i, c_char_p, c_char_p, c_char_p] 
+lib.init.argtypes  = [c_char_p, c_char_p, array1i, c_char_p, c_char_p, c_char_p, c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
         xyz_name  ="input.xyz", 
         smile_name=None, 
+        sElementTypes = "common_resources/ElementTypes.dat",
         sAtomTypes = "common_resources/AtomTypes.dat", 
         sBondTypes = "common_resources/BondTypes.dat", 
         sAngleTypes= "common_resources/AngleTypes.dat",
         nPBC=(1,1,0)
     ):
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( cstr(xyz_name),  cstr(smile_name), nPBC, cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+    return lib.init( cstr(xyz_name),  cstr(smile_name), nPBC, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
 
 def tryInit():
     if not isInitialized:
@@ -239,10 +240,10 @@ def tryInit():
         #getBuffs( NEIGH_MAX=4 )
 
 #  void initParams       ( const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes )
-lib.initParams.argtypes  = [c_char_p, c_char_p, c_char_p] 
+lib.initParams.argtypes  = [c_char_p, c_char_p, c_char_p, c_char_p] 
 lib.initParams.restype   =  None
-def initParams( sAtomTypes="common_resources/AtomTypes.dat", sBondTypes = "common_resources/BondTypes.dat", sAngleTypes= "common_resources/AngleTypes.dat",):
-    return lib.initParams( cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+def initParams( sElementTypes="common_resources/ElementTypes.dat", sAtomTypes="common_resources/AtomTypes.dat", sBondTypes = "common_resources/BondTypes.dat", sAngleTypes= "common_resources/AngleTypes.dat",):
+    return lib.initParams( cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
 
 #  int  buildMolecule_xyz( const char* xyz_name )
 lib. buildMolecule_xyz.argtypes  = [c_char_p, c_bool, c_double ] 

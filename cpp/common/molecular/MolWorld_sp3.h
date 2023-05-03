@@ -610,10 +610,10 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
 }
 
 virtual void init( bool bGrid ){
-    params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+    params.init("common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
 	builder.bindParams(&params);
+    params.printAtomTypes(true);
     //params.printAtomTypeDict();
-    //params.printAtomTypes();
     //params.printBond();
 
     gopt.solver = this;
@@ -703,6 +703,7 @@ virtual void init( bool bGrid ){
             //ffl.makeNeighCells( nPBC );      
             ffl.makeNeighCells( npbc, pbc_shifts ); 
         }
+        ffl.printAtomParams();
         //printf("npbc %i\n", npbc ); ffl.printNeighs();
         //builder.printBonds();
         //printf("!!!!! builder.toMMFFsp3() DONE \n");
@@ -1152,12 +1153,12 @@ void autoCharges(int natoms, int* atypes, Quat4d* REQs, Quat4i* neighs, int nMax
         // --- eval charge forces
         double Qtot  = 0;
         for(int ia=0; ia<natoms; ia++ ){
-            int* ng            = neighs[i].array;
-            int  it            = atypes[i];
-            const AtomType& ti = params.atypes[it];
+            int* ng            = neighs[ia].array;
+            int  it            = atypes[ia];
+            const ElementType* et = params.elementOfAtomType(it);
             double qi   = REQs[ia].z;
             double Qtot = qi;
-            double f    = ti.Eaff + ti.Ehard*qi;
+            double f    = et->Eaff + et->Ehard*qi;
             for(int j=0;j<4;j++){
                 int ja             = ng[j];
                 if(ja<0) continue;
