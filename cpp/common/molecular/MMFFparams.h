@@ -536,6 +536,7 @@ class MMFFparams{ public:
             if( nret < 7 ){ npi=-1; };
             if(npis){ npis[i] =npi; };
             auto it = atomTypeDict.find( at_name );
+            //printf( "atom[%i] name(%s) it=%i \n", i, at_name, it->second );
             if( it != atomTypeDict.end() ){
                 int ityp=it->second;
                 if(atype_)atype[i] = ityp;

@@ -115,12 +115,13 @@ const char* getType( int ia, bool fromFF){
 void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.bCheckInvariants, CheckInvariants  );
-    _setbool( W.bPBC         , PBC );
-    _setbool( W.bNonBonded   , NonBonded  );
-    _setbool( W.bMMFF        , MMFF       );
-    _setbool( W.ffl.doAngles , Angles   );
-    _setbool( W.ffl.doPiSigma, PiSigma  );
-    _setbool( W.ffl.doPiPiI  , PiPiI    );
+    _setbool( W.bPBC         , PBC       );
+    _setbool( W.bNonBonded   , NonBonded );
+    _setbool( W.bMMFF        , MMFF      );
+    _setbool( W.ffl.doAngles , Angles    );
+    _setbool( W.ffl.doPiSigma, PiSigma   );
+    _setbool( W.ffl.doPiPiI  , PiPiI     );
+    W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool
 }
 
@@ -364,10 +365,12 @@ void scanHBond( const char* fname, int n, double dl, double l0, int ifrag1, int 
 }
 
 
-void printTypes     ( ){ W.params.printAtomTypes(); }
+void printTypes     ( ){ W.params.printAtomTypes(true); }
 void printAtomConfs ( bool bOmmitCap, bool bNeighs ){ W.builder.printAtomConfs(bOmmitCap,bNeighs); }
 void printAtomTypes ( ){ W.builder.printAtomTypes ( ); }
 void printBonds     ( ){ W.builder.printBonds     ( ); }
 void printBondParams( ){ W.builder.printBondParams( ); }
+void printAtomParams( ){ W.ffl.printAtomParams( ); }
+void printSwitches  ( ){ W.printSwitches( );           }
 
 } // extern "C"

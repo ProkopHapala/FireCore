@@ -283,6 +283,11 @@ lib.setSwitches.restype   =  None
 def setSwitches( CheckInvariants=0, PBC=0, NonBonded=0, MMFF=0, Angles=0, PiSigma=0, PiPiI=0 ):
     return lib.setSwitches( CheckInvariants, PBC, NonBonded, MMFF, Angles, PiSigma, PiPiI )
 
+lib.printSwitches.argtypes  = [] 
+lib.printSwitches.restype   =  None
+def printSwitches():
+    return lib.printSwitches()
+
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
 lib.checkInvariants.restype   =  c_bool
@@ -563,6 +568,12 @@ lib.printBondParams.argtypes  = []
 lib.printBondParams.restype   =  None
 def printBondParams():
     lib.printBondParams()
+
+#  void printAtomParams( )
+lib.printAtomParams.argtypes  = [] 
+lib.printAtomParams.restype   =  None
+def printAtomParams():
+    lib.printAtomParams()
 
 # ====================================
 # ========= Python Functions
