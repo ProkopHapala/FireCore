@@ -141,6 +141,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     DynamicOpt*   opts=0;
     MMFFsp3_loc*  ffls=0;
 
+    Quat4f* afm_ps=0;
+
 
 // ==================================
 //         Initialization
@@ -566,6 +568,50 @@ void saveDebugXYZreplicas( int itr, double F ){
     }
 }
 
+virtual void evalAFMscan( GridShape& scan, Quat4f*& data_, Quat4f** ps=0 ){ 
+    int err=0;
+    Quat4f* data=0;
+    if( data_ ){  data=data_; }else{ data=new Quat4f[scan.n.totprod()]; }
+    int nxy = scan.n.x*scan.n.y;
+    _realloc( afm_ps, nxy );
+    for(int iy=0; iy<scan.n.y; iy++) for(int ix=0; ix<scan.n.x; ix++){ afm_ps[iy*scan.n.x+ix].f = (Vec3f)(  scan.pos0 + scan.dCell.a*ix + scan.dCell.b*iy ); afm_ps[iy*scan.n.x+ix].w=0; }
+    long T0=getCPUticks();
+    ocl.PPAFM_scan( nxy, scan.n.z, afm_ps, data );  
+    printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T0)*tick2second );
+    bool bSaveDebug=true;
+    //bool bSaveDebug=false; 
+    if(bSaveDebug){ 
+        scan.saveXSF( "AFM_OutFz_E.xsf", (float*)data, 4,3 );
+        scan.saveXSF( "AFM_OutFz_z.xsf", (float*)data, 4,2 );
+    }
+    if(ps){ *ps=afm_ps; }else{ delete [] ps;   }
+    if(data_==0)             { delete [] data; }
+}
+
+virtual void evalAFM_FF( GridShape& grid, Quat4f* data_=0 ){ 
+    int err=0;
+    Quat4f* data=0;
+    if( data_ ){  data=data_; }else{ data=new Quat4f[grid.n.totprod()]; }
+    long T0=getCPUticks();
+    ocl.PPAFM_makeFF( grid, {1,1,0} );
+    //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
+    err |=  ocl.finishRaw(); OCL_checkError(err, "evalAFM_FF.PPAFM_makeFF"); printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T0)*tick2second );
+    bool bDownload =true; // WARRNING : if I set this OFF it crashes unexpectedly
+    bool bSaveDebug=true;
+    //bool bSaveDebug=false; 
+    if(bDownload){
+        ocl.download( ocl.itex_FEAFM, data );
+        err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");  printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T0)*tick2second );
+        if(bSaveDebug){ 
+            grid.saveXSF( "AFM_FF_E.xsf", (float*)data, 4,3 );
+            grid.saveXSF( "AFM_FF_z.xsf", (float*)data, 4,2 );
+        }
+    }
+    err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.atoms_surf.release");
+    if(data_==0){ delete [] data; }
+    // downalod ?
+}
+
 // ==================================
 //          SETUP OCL KERNELS 
 // ==================================
@@ -976,8 +1022,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //bMMFF=false;
 
     //rum_omp_ocl( 1 );
-    //rum_omp_ocl( 50 );
-    rum_omp_ocl( 100 );
+    rum_omp_ocl( 50 );
+    //rum_omp_ocl( 100 );
     return;
 
     

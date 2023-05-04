@@ -1586,6 +1586,90 @@ __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void PPAFM_scan(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
+    __global  float4*      FEs,     // 4
+    const cl_Mat3  diGrid,          // 5
+    const cl_Mat3  tipRot,          // 6
+    float4 stiffness,               // 7
+    float4 dpos0,                   // 8
+    float4 relax_params,            // 9
+    const int nz                    // 12
+){
+    const float3 dTip   = tipRot.c.xyz * tipRot.c.w;
+    float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );
+
+    float3 tipPos = points[get_global_id(0)].xyz;
+    float3 pos    = tipPos.xyz + dpos0_.xyz; 
+
+    float dt      = relax_params.x;
+    float damp    = relax_params.y;
+
+    float dtmax = dt;
+    float dtmin = dtmax*0.1f;
+    float damp0 = damp;
+
+    //if( (get_global_id(0)==0) ){     float4 fe = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );  printf( " pos (%g,%g,%g) feImg(%g,%g,%g,%g) \n", pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );}
+    //if( (get_global_id(0)==0) ){ printf( "dt %g damp %g \n", dt, damp ); }; return;
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int itr_tot = 0;
+    
+    for(int iz=0; iz<nz; iz++){
+        float4 fe;
+        float3 v   = 0.0f;
+        for(int i=0; i<128; i++){
+        //for(int i=0; i<1; i++){ // DEBUG
+            //fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            //fe            = interpFE_prec( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            const float4 coord = (float4)( dot(pos, diGrid.a.xyz),   dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
+            // #if 0
+                //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+                const float4 fe_Paul = read_imagef( imgIn, sampler_gff_norm, coord );
+            // #else
+                // const float4 fe_Paul = read_imagef_trilin_norm( imgIn, coord );
+            //#endif
+
+            float3 f      = fe.xyz;
+            float3 dpos   = pos-tipPos;
+            float3 dpos_  = rotMat  ( dpos, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );    // to tip-coordinates
+            float3 ftip   = tipForce( dpos_, stiffness, dpos0 );
+
+            f            += rotMatT ( ftip, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );      // from tip-coordinates
+            //f            += tipRot.c.xyz * surfFF.x;                                            // TODO: more sophisticated model of surface potential? Like Hamaker ?
+
+            //f      +=  tipForce( dpos, stiffness, dpos0_ );  // Not rotated
+
+            #if 1
+                v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
+                //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
+            #else
+                v        *=    (1 - damp);
+                //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
+            #endif
+            v        += f * dt;
+            pos.xyz  += v * dt;
+
+            itr_tot++;
+            if(dot(f,f)<relax_params.z) break;
+        }
+        
+        if(1){ // output tip-rotated force
+            fe.xyz = rotMat( fe.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz);
+        }
+        
+        FEs[ get_global_id(0)*nz + iz ] = fe; // Store Result
+
+        tipPos += dTip.xyz;
+        pos    += dTip.xyz;
+    }
+
+}
+
+
+__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void PPAFM_scan_df(
+    __read_only image3d_t  imgIn,   // 1 
+    __global  float4*      points,  // 2
     __constant  float*     weighs,  // 3
     __global  float4*      FEs,     // 4
     const cl_Mat3  diGrid,          // 5

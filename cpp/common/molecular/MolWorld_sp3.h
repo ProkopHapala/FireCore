@@ -258,10 +258,13 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
 }
 
 virtual void upload_pop( const char* fname ){
-    printf("MolWorld_sp3_multi::upload_pop(%s) : We do lattice constant relaxation here \n", fname );
+    printf("MolWorld_sp3::upload_pop(%s) : We do lattice constant relaxation here \n", fname );
     gopt.loadPopXYZ( fname );
 
 }
+
+virtual void evalAFMscan( GridShape& scan, Quat4f*& data, Quat4f** ps=0 ){ printf( "MolWorld_sp3::evalAFMscan() NOT IMPLEMENTED, use GPU accelerated class MolWorld_sp3_multi instead! \n" ); }
+virtual void evalAFM_FF ( GridShape& grid, Quat4f*  data=0             ){ printf( "MolWorld_sp3::evalAFM_FF()  NOT IMPLEMENTED, use GPU accelerated class MolWorld_sp3_multi instead! \n" ); }
 
 virtual void setSystemReplica (int i){ int nsys=countSystemReplica(); if(nsys<1)return; iSystemCur = i; printf( "MolWorld_sp3::setSystemReplica(%i/%i)\n", iSystemCur, nsys ); gopt.setGeom( iSystemCur ); };
 virtual int countSystemReplica(     ){ return gopt.population.size(); }
