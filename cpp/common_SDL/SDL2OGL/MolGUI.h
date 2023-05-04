@@ -125,6 +125,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ---- Graphics objects
     int  fontTex,fontTex3D;
 
+    int  ogl_afm=0;
     int  ogl_esp=0;
     int  ogl_sph=0;
     int  ogl_mol=0;
@@ -144,6 +145,11 @@ class MolGUI : public AppSDL2OGL_3D { public:
     enum class Gui_Mode { base, edit, scan };
     Gui_Mode  gui_mode = Gui_Mode::base;
     //int gui_mode = Gui_Mode::edit;
+
+    // ----- AFM scan
+    GridShape afm_scan_grid{ Vec3d{-5.,5.,0.0}, Vec3d{5.,5.,6.0}, 0.1 };
+    GridShape afm_ff_grid;  //  { Mat3d{}, 0.1 };
+    Quat4f    *afm_ff=0,*afm_scan=0;
 
     // ======================= Functions 
 
@@ -167,6 +173,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
+    void renderAFM( float* data, int pitch=4, int offset=2 );
+    void makeAFM();
+
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
 	void drawSystem    ( Vec3i ixyz=Vec3iZero );
@@ -654,7 +663,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
 }
 
 void MolGUI::renderESP( Quat4d REQ){
-    printf( "DEBUG MolGUI::renderESP() %li \n", ogl_esp ); //exit(0);
+    printf( "MolGUI::renderESP() %li \n", ogl_esp ); //exit(0);
     ogl_esp = glGenLists(1);
     glNewList(ogl_esp, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
@@ -663,6 +672,32 @@ void MolGUI::renderESP( Quat4d REQ){
     const NBFF& nbmol = W->nbmol;
     int nvert = Draw3D::drawESP( nbmol.natoms, nbmol.apos, nbmol.REQs, REQ );
     glEndList();
+};
+
+void MolGUI::renderAFM( float* data, int pitch, int offset ){
+    printf( "MolGUI::renderAFM() %li \n", ogl_afm ); //exit(0);
+    ogl_afm = glGenLists(1);
+    glNewList(ogl_esp, GL_COMPILE);
+    glShadeModel( GL_SMOOTH );
+    //glEnable(GL_LIGHTING);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    double vmin=1e+300;
+    double vmax=-1e+300;
+    int ntot=afm_scan_grid.n.x*afm_scan_grid.n.y;
+    for(int i=0; i<ntot; i++){ float f=data[i*pitch+offset]; vmin=fmin(f,vmin); vmax=fmax(f,vmax);  }
+    printf( "MolGUI::renderAFM() vmin=%g vmax=%g \n", vmin, vmax );
+    //Draw3D::drawScalarField( afm_scan.n.totprod, afm_ps,                                  data, pitch,offset, vmin, vmax );
+    Draw3D::drawScalarGrid ( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_scan_grid.pos0, afm_scan_grid.dCell.a, afm_scan_grid.dCell.a, data, pitch,offset, vmin, vmax );
+    glEndList();
+};
+
+void MolGUI::makeAFM(){
+    printf( "MolGUI::makeAFM() %li \n", ogl_afm ); //exit(0);
+    afm_scan_grid = W->gridFF.grid;
+    W->evalAFM_FF ( afm_ff_grid,   afm_ff   );
+    //W->evalAFMscan( afm_scan_grid, afm_scan );
+    MolGUI::renderAFM( (float*) afm_scan, 4, 2 );
 };
 
 void MolGUI::drawPi0s( float sc=1.0 ){
@@ -951,6 +986,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;
                 //case SDLK_c: W->autoCharges(); break;
+                
+                case SDLK_v: makeAFM(); break;
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl;       break;

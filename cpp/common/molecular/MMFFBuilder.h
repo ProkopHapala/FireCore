@@ -3094,7 +3094,9 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 ff.apars[ia].y = sin(ang0);
                 //ff.apars[ia].z = 1.0;          // ssK     // stiffness  for angles
                 //ff.apars[ia].w = 0;            // piC0    // angle0 for orthogonalization sigma-pi 
-                ff.apars[ia].z = atyp.Kss/4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
+                //ff.apars[ia].z = atyp.Kss/4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
+                //ff.apars[ia].z = atyp.Kss;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
+                ff.apars[ia].z = atyp.Kss*4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
                 ff.apars[ia].w = sin(atyp.Asp*deg2rad);  // piC0    // angle0 for orthogonalization sigma-pi 
 
                 //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 

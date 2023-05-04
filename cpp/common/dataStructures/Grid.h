@@ -40,6 +40,23 @@ class GridShape{ public:
 	Vec3i   n;          // number of pixels along each basis vector
     //bool bCellSet=false;
 
+    GridShape() = default;
+    GridShape(Mat3d cell_, Vec3i n_ ){ 
+        n = n_; cell=cell_;
+        updateCell();
+    }
+    GridShape( Mat3d cell_, double step){ 
+        cell=cell_;
+        updateCell(step);
+    }
+    GridShape( Vec3d pmin, Vec3d pmax, double step){
+        pos0=pmin; 
+        cell.a=Vec3d{pmin.x-pmax.x,0.,0.};
+        cell.b=Vec3d{0.,pmin.y-pmax.y,0.};
+        cell.c=Vec3d{0.,0.,pmin.z-pmax.z};
+        updateCell(step);
+    }
+
     void center_cell( Vec3d c ){ cell.dot_to_T( c, pos0 ); }
 
 	//inline Vec3d * allocateArray_Vec3d(){ return new Vec3d[n.x*n.y*n.z); }

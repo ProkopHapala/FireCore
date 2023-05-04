@@ -137,6 +137,9 @@ class OCL_MM: public OCLsystem { public:
         newTask( "evalMMFFf4_local1"      ,program_relax, 2);
         newTask( "evalMMFFf4_local2"      ,program_relax, 2);
         newTask( "evalMMFFf4_local_test"  ,program_relax, 2);
+        newTask( "make_GridFF"            ,program_relax, 1);
+        newTask( "PPAFM_scan"             ,program_relax, 1);
+        newTask( "PPAFM_scan_df"          ,program_relax, 1);
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }
@@ -675,36 +678,27 @@ class OCL_MM: public OCLsystem { public:
         //     const float4 QZs                 // 11
     }
 
-    OCLtask* PPAFM_scan( int np, int nz, int nw, Quat4f* ps, float* ws, Quat4f* FEout, bool bRun=true, OCLtask* task=0 ){
+    OCLtask* PPAFM_scan( int np, int nz, Quat4f* ps, Quat4f* FEout, bool bRun=true, OCLtask* task=0 ){
         //if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         //if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        printf( "OCL_MM::PPAFM_scan() np=%i nz=%i nw=%i \n", np, nz, nw );
+        printf( "OCL_MM::PPAFM_scan() np=%i nz=%i nw=%i \n", np, nz );
         if(ibuff_afm_ps   <=0) ibuff_afm_ps    = newBuffer( "afm_ps",    np, sizeof(float4),    0, CL_MEM_READ_ONLY  );
-        if(ibuff_afm_ws   <=0) ibuff_afm_ws    = newBuffer( "afm_ws",    nw, sizeof(float4),    0, CL_MEM_READ_ONLY  );
         if(ibuff_afm_FEout<=0) ibuff_afm_FEout = newBuffer( "afm_FEout", np*nz, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
         int err=0;
-        err |= finishRaw();       OCL_checkError(err, "PPAFM_makeFF().imgAlloc" );
-        //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
-        if(task==0) task = getTask("PPAFM_makeFF");
+        err |= finishRaw();       OCL_checkError(err, "PPAFM_makeFF().imgAlloc" );;
+        if(task==0) task = getTask("PPAFM_scan");
         task->global.x = np;
-        //printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
-        //printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
         if(ps){ err |= upload( ibuff_afm_ps, ps, np ); OCL_checkError(err, "PPAFM_scan().upload(ps)" ); }
-        if(ws){ err |= upload( ibuff_afm_ws, ws, nw ); OCL_checkError(err, "PPAFM_scan().upload(ws)" ); }
         afm_nz = nz;
         useKernel( task->ikernel );
         err |= useArg ( itex_FEAFM      ); // 1
         err |= useArg ( ibuff_afm_ps    ); // 2
-        err |= useArg ( ibuff_afm_ws    ); // 3
         err |= useArg ( ibuff_afm_FEout ); // 4
         err |= _useArg( nPBC            ); // 7       
         err |= _useArg( afm_grid_lvec   ); // 9
         err |= _useArg( tipRot          ); // 10
         err |= _useArg( tip_stiffness   ); // 11
         err |= _useArg( tip_dpos0       ); // 11
-        err |= _useArg( afm_surfFF      ); // 11
-        err |= _useArg( afm_nz              ); // 11
-        err |= _useArg( afm_nzout           ); // 11
         OCL_checkError(err, "PPAFM_scan().setup");
         if(bRun){
             err |= task->enque_raw();                   OCL_checkError(err, "PPAFM_scan().enque"    );
@@ -729,6 +723,58 @@ class OCL_MM: public OCLsystem { public:
     }
 
 
+    OCLtask* PPAFM_scan_df( int np, int nz, int nw, Quat4f* ps, float* ws, Quat4f* FEout, bool bRun=true, OCLtask* task=0 ){
+        //if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        //if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        printf( "OCL_MM::PPAFM_scan_df() np=%i nz=%i nw=%i \n", np, nz, nw );
+        if(ibuff_afm_ps   <=0) ibuff_afm_ps    = newBuffer( "afm_ps",    np, sizeof(float4),    0, CL_MEM_READ_ONLY  );
+        if(ibuff_afm_ws   <=0) ibuff_afm_ws    = newBuffer( "afm_ws",    nw, sizeof(float4),    0, CL_MEM_READ_ONLY  );
+        if(ibuff_afm_FEout<=0) ibuff_afm_FEout = newBuffer( "afm_FEout", np*nz, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
+        int err=0;
+        err |= finishRaw();       OCL_checkError(err, "PPAFM_scan_df().imgAlloc" );
+        //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
+        if(task==0) task = getTask("PPAFM_scan_df");
+        task->global.x = np;
+        //printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
+        //printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
+        if(ps){ err |= upload( ibuff_afm_ps, ps, np ); OCL_checkError(err, "PPAFM_scan().upload(ps)" ); }
+        if(ws){ err |= upload( ibuff_afm_ws, ws, nw ); OCL_checkError(err, "PPAFM_scan().upload(ws)" ); }
+        afm_nz = nz;
+        useKernel( task->ikernel );
+        err |= useArg ( itex_FEAFM      ); // 1
+        err |= useArg ( ibuff_afm_ps    ); // 2
+        err |= useArg ( ibuff_afm_ws    ); // 3
+        err |= useArg ( ibuff_afm_FEout ); // 4
+        err |= _useArg( nPBC            ); // 7       
+        err |= _useArg( afm_grid_lvec   ); // 9
+        err |= _useArg( tipRot          ); // 10
+        err |= _useArg( tip_stiffness   ); // 11
+        err |= _useArg( tip_dpos0       ); // 11
+        err |= _useArg( afm_surfFF      ); // 11
+        err |= _useArg( afm_nz              ); // 11
+        err |= _useArg( afm_nzout           ); // 11
+        OCL_checkError(err, "PPAFM_scan().setup");
+        if(bRun){
+            err |= task->enque_raw();                   OCL_checkError(err, "PPAFM_scan_df().enque"    );
+            err |= download( ibuff_afm_FEout, FEout );  OCL_checkError(err, "PPAFM_scan_df().download" );
+            err |= finishRaw();                         OCL_checkError(err, "PPAFM_scan_df().finish"   );
+            //if(FEout){ err |= upload( ibuff_afm_ws, ws, na ); OCL_checkError(err, "PPAFM_scan().upload(ws)" ); }
+        }
+        return task;
+        // __kernel void PPAFM_scan(
+        //     __read_only image3d_t  imgIn,   // 1 
+        //     __global    float4*    points,  // 2
+        //     __constant  float*     weighs,  // 3
+        //     __global    float4*    FEs,     // 4
+        //     const cl_Mat3  diGrid,          // 5
+        //     const cl_Mat3  tipRot,          // 6
+        //     float4 stiffness,               // 7
+        //     float4 dpos0,                   // 8
+        //     float4 relax_params,            // 9
+        //     float4 surfFF,                  // 11
+        //     const int nz,                   // 12
+        //     const int nzout                 // 13
+    }
 
 
 
