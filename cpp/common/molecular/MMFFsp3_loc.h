@@ -192,6 +192,9 @@ double eval_atom(const int ia){
     // double  piC0 = apars[ia].z;
     // //bool    bPi  = ings[3]<0;   we distinguish this by Ksp, otherwise it would be difficult for electron pairs e.g. (-O-C=)
 
+
+    // { cos0_ss, sin0_ss, K_ss,                  cos0_sp }
+    // for each neigh { K_bond, L_bond,    K_pp,  K_sp    }
     const Quat4d& apar  = apars[ia];
     const double  ssK  = apar.z;
     const double  piC0 = apar.w;

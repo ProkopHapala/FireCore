@@ -664,9 +664,14 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); if(pbcShifts)Draw3D::bondsPBC          ( nbonds, bond2atom, apos,  pbcShifts                          );  
                              glColor3f(0.0f,0.0f,1.0f); if(pbcShifts)Draw3D::pbcBondNeighLabels( nbonds, bond2atom, apos,  pbcShifts, fontTex3D,        0.007 );
         }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
-                             glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex );                                
+                             glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex );          
+
+
         }
         */
+
+        
+        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondPropertyLabel   ( nbonds, W->kekule.bondOrder, W->kekule.bond2atom, apos, 1,0, fontTex, 0.007 );       
         if(bOrig){
             if(bViewPis &&  fpipos ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );          }
             //if(mm_bAtoms         ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D               ); }                    
@@ -677,7 +682,13 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         }
 
     }
-    if( neighs ){  glColor3f(0.0f,0.0f,0.0f);   Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts );   }
+
+    //  bondPropertyLabel( int n, double* data, const Vec2i* b2a,  Vec3d* ps, int pitch, int offset, int fontTex, float sz=0.01, const char* format="%4.2f\0" ){
+    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondPropertyLabel   ( nbonds, W->kekule.bondOrder, W->kekule.bond2atom, apos, 1,0, fontTex, 0.007 ); 
+
+    Draw3D::bonds             ( nbonds, bond2atom, apos                                            ); 
+
+    //if( neighs ){  glColor3f(0.0f,0.0f,0.0f);   Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts );   }
     //W->nbmol.print();
     if(bViewAtomSpheres&&mm_bAtoms                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     if(bOrig){

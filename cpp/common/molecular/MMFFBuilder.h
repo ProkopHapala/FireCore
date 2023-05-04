@@ -845,7 +845,7 @@ class Builder{  public:
 #define _TCap(T1,T2) else if( ingt==i##T1 ){ itnew=i##T2; }
 #define T(i)   (count[i]>0)
 
- int assignSpecialTypes( int* neighs ){
+ int assignSpecialTypes_Prokop( int* neighs ){
         //printf("#===========assignSpecialTypes() \n");
         // ------ C
         const int nt0=10;
@@ -962,114 +962,123 @@ class Builder{  public:
         }
         return nnew;
     }
+
+     int assignSpecialTypes_UFF( int* neighs ){
+        //printf("#===========assignSpecialTypes() \n");
+        // ------ C
+        const int nt0=10;
+        std::vector<int> _C;
+        std::vector<int> _N;
+        std::vector<int> _O;
+        std::vector<int> _H;
+
+        //  ==========  Type Definition
+
+        // ------ C
+        _Atyp(C  ) 
+        _Atyp(C_3) 
+        _Atyp(C_2) 
+        _Atyp(C_1) 
+        _Atyp(C_R) 
+        // ------ O
+        _Atyp(O  )
+        _Atyp(O_3)
+        _Atyp(O_2)
+        _Atyp(O_1)
+        _Atyp(O_R) 
+        // ------ N
+        _Atyp(N  )
+        _Atyp(N_3)
+        _Atyp(N_2)
+        _Atyp(N_1)
+        _Atyp(N_R) 
+        // ------ H
+        _Atyp(H)
+
+        //  ==========  Neighbor definition
+        // ---- C
+        _Btyp(C,C_2)
+        _Btyp(C,C_R)
+        _Btyp(C,O_3)
+        _Btyp(C,O_2)
+        _Btyp(C,N_2)
+        // ---- O
+        _Btyp(O,C_R)
+        // ---- N
+        _Btyp(N,C_2)
+        _Btyp(N,C_R)
+
+        int  na=atoms.size();
+        int  count[100];
+        int  nnew=0;
+        //for(int i=0; i<na;i++){ printf("aneigs[%i]{%i,%i,%i,%i}\n", i, neighs[i*4+0],neighs[i*4+1],neighs[i*4+2],neighs[i*4+3]); }
+        for(int ia=0; ia<na; ia++){
+            int* ngs  = neighs+ia*4;
+            int itnew =-1;
+            Atom& A           = atoms[ia];
+            const AtomType& t = params->atypes[A.type];
+            int iZ            = t.iZ;
+            //printf( "atom[%i] %s=%i iZ %i \n", ia, t.name, A.type, iZ );
+            switch (iZ){
+                case 1: {  // H
+                    int ingt =  getNeighType( 0, 0, ngs );       // if(ingt>-1)printf( "H[%i]-(%i|%s)\n", ia, ingt, params->atypes[ingt].name );
+                    //printf("H ingt=%i\n", ingt );
+                    if(ingt>=0){
+                        if (false){}    
+                        // _TCap(O_OH ,H_OH )
+                        // _TCap(N_NH2,H_NH2)
+                        // _TCap(C_CH3,H_CH3)
+                        // _TCap(C_ene,H_ene)
+                        // _TCap(C_yne,H_yne)
+                        // _TCap(C_ald,H_ald)
+                    }
+                }break;
+                case 6: { // C
+                    //printf("C \n");
+                    hasNeighborOfType( ia,4, &_C[0], count, ngs  );
+                    if  ( (A.type==iC_2) ){
+                        // if      ( ( T(C_O_sp3) && T(C_O_sp2) ) ){ itnew = iC_COO; } // -COOH
+                        // else if ( ( T(C_O_sp2)               ) ){ itnew = iC_ald; } // -(C=O)-
+                        // else if ( ( count[C_C_sp2] + count[C_C_CA] + count[C_N_sp2] + count[C_O_sp2] )>=2 ){ itnew = iC_CA;  } // Conjugated sp2 carbond ()
+                    }
+                }break;
+                case 7: { // N
+                    //printf("N \n");
+                    //hasNeighborOfType( ia,2, &_N[0], T, ngs );
+                }break;
+                case 8: { // O
+                    //printf("O \n");
+                    hasNeighborOfType( ia,3, &_O[0], count, ngs );
+                    // if( T(O_C_COO) ){ // COOH
+                    //     if      (A.type==iO_sp3){ itnew=iO_sCOO; } // -OH of -COOH
+                    //     else if (A.type==iO_sp2){ itnew=iO_pCOO; } // =O  of -COOH
+                    // }if( T(O_C_ald)            ){ itnew=iO_ald;  } // -(C=O)-
+                }break;
+            }
+            if( (itnew>=0) && (itnew!=A.type) ){ 
+                //printf( "atom[%i] type %i -> %i (%s) \n", ia, A.type, itnew, params->atypes[itnew].name );
+                A.type = itnew;
+                nnew++; 
+            }
+        }
+        return nnew;
+    }
 #undef _Atyp
 #undef _Btyp 
 #undef _TCap
 #undef T
 
-
-    // int assignSpecialTypes( int* neighs ){
-    //     //printf("#===========assignSpecialTypes() \n");
-    //     // ------ C
-    //     const int it_C_sp3 = params->getAtomType("C_sp3");
-    //     const int it_C_sp2 = params->getAtomType("C_sp2");
-    //     const int it_C_sp1 = params->getAtomType("C_sp1");
-    //     const int it_C_CA  = params->getAtomType("C_CA" );
-    //     const int it_C_ene = params->getAtomType("C_ene");
-    //     const int it_C_yne = params->getAtomType("C_yne");
-    //     const int it_C_CH3 = params->getAtomType("C_CH3");
-    //     const int it_C_ald = params->getAtomType("C_ald");
-    //     const int it_C_COO = params->getAtomType("C_COO");
-    //     // ------ O
-    //     const int it_O_sp3  = params->getAtomType("O_sp3");
-    //     const int it_O_sp2  = params->getAtomType("O_sp2");
-    //     const int it_O_sp1  = params->getAtomType("O_sp1");
-    //     const int it_O_OH   = params->getAtomType("O_OH" );
-    //     const int it_O_ald  = params->getAtomType("O_ald");
-    //     const int it_O_sCOO = params->getAtomType("O_sCOO");
-    //     const int it_O_pCOO = params->getAtomType("O_pCOO");
-    //     //const int it_O_O  = params->getAtomType("O_");
-    //     // ------ N
-    //     const int it_N_sp3 = params->getAtomType("N_sp3");
-    //     const int it_N_sp2 = params->getAtomType("N_sp2");
-    //     const int it_N_sp1 = params->getAtomType("N_sp1");
-    //     const int it_N_NH2 = params->getAtomType("N_NH2");
-    //     // ------- H
-    //     const int it_H_OH  = params->getAtomType("H_OH" );
-    //     const int it_H_COO = params->getAtomType("H_COO");
-    //     const int it_H_NH2 = params->getAtomType("H_NH2");
-    //     const int it_H_CH3 = params->getAtomType("H_CH3");
-    //     const int it_H_ene = params->getAtomType("H_ene");
-    //     const int it_H_yne = params->getAtomType("H_yne");
-    //     const int it_H_ald = params->getAtomType("H_ald");
-    //     //  C                    0        1        2        3
-    //     const static int its_C  [4]{it_O_sp3,it_O_sp2,it_C_sp2,it_C_CA};
-    //     //  N                    0        1
-    //     const static int its_N[2]{it_C_sp2,it_C_CA};
-    //     //  O                    0        1        2
-    //     const static int its_O [3]{it_C_COO,it_C_sp2,it_C_CA};
-    //     int na=atoms.size();
-    //     bool bls[8];
-    //     int nnew=0;
-    //     //for(int i=0; i<na;i++){ printf("aneigs[%i]{%i,%i,%i,%i}\n", i, neighs[i*4+0],neighs[i*4+1],neighs[i*4+2],neighs[i*4+3]); }
-    //     for(int ia=0; ia<na; ia++){
-    //         int* ngs  = neighs+ia*4;
-    //         int itnew =-1;
-    //         Atom& A           = atoms[ia];
-    //         const AtomType& t = params->atypes[A.type];
-    //         int iZ            = t.iZ;
-    //         //printf( "atom[%i] %s=%i iZ %i \n", ia, t.name, A.type, iZ );
-    //         switch (iZ){
-    //             case 1: {  // H
-    //                 int ingt =  getNeighType( 0, 0, ngs );       // if(ingt>-1)printf( "H[%i]-(%i|%s)\n", ia, ingt, params->atypes[ingt].name );
-    //                 //printf("H ingt=%i\n", ingt );
-    //                 if(ingt>=0){
-    //                     if     ( ingt==it_O_OH     ){ itnew=it_H_OH;  }
-    //                     else if( ingt==it_O_sCOO   ){ itnew=it_H_COO; }
-    //                     else if( ingt==it_N_NH2    ){ itnew=it_H_NH2; }
-    //                     else if( ingt==it_C_CH3    ){ itnew=it_H_CH3; }
-    //                     else if( ingt==it_C_ene    ){ itnew=it_H_ene; }
-    //                     else if( ingt==it_C_yne    ){ itnew=it_H_yne; }
-    //                     else if( ingt==it_C_ald    ){ itnew=it_H_ald; }
-    //                 }
-    //             }break;
-    //             case 6: { // C
-    //                 //printf("C \n");
-    //                 hasNeighborOfType( ia,4, its_C, bls, ngs  );
-    //                 if( bls[0] && bls[1] && (A.type==it_C_sp2) ){ // COOH
-    //                     itnew = it_C_COO;
-    //                 }else if ( (A.type==it_C_sp2)&&(bls[2]||bls[3]) ){ // Conjugated sp2 carbond ()
-    //                     itnew = it_C_CA;
-    //                 }
-    //             }break;
-    //             case 7: { // N
-    //                 //printf("N \n");
-    //                 //hasNeighborOfType( ia,2, its_N, bls, ngs );
-    //             }break;
-    //             case 8: { // O
-    //                 //printf("O \n");
-    //                 hasNeighborOfType( ia,3, its_O, bls, ngs );
-    //                 if( bls[0] ){ // COOH
-    //                     if      (A.type==it_O_sp3){ itnew=it_O_sCOO; }
-    //                     else if (A.type==it_O_sp2){ itnew=it_O_pCOO; }
-    //                 }
-    //             }break;
-    //         }
-    //         if( (itnew>=0) && (itnew!=A.type) ){ 
-    //             //printf( "atom[%i] type %i -> %i (%s) \n", ia, A.type, itnew, params->atypes[itnew].name );
-    //             A.type = itnew;
-    //             nnew++; 
-    //         }
-    //     }
-    //     return nnew;
-    // }
-
-    int assignSpecialTypesLoop( int nmax, int* neighs ){
+    int assignSpecialTypesLoop( int iFFType, int nmax, int* neighs ){
         int nnew=0;
         int itr=0;
         for(itr=0; itr<nmax; itr++){
             printf( "# --- assignSpecialTypesLoop[%i] \n", itr );
-            int ni = assignSpecialTypes( neighs ); 
+            int ni=0;
+            if      ( iFFType == 0 ){   // Prokops FF types
+                ni = assignSpecialTypes_Prokop( neighs ); 
+            }else if( iFFType == 1 ){   // UFF types
+                ni = assignSpecialTypes_UFF( neighs ); 
+            }
             nnew+=ni; 
             if( ni==0 ){ return nnew; } 
         }
@@ -1077,12 +1086,11 @@ class Builder{  public:
         return nnew;
     }
 
-    void assignTypes( int* neighs=0, int niterMax=10, bool bDeallocNeighs=true ){ // advanced atom-type assignement
-        assignAllSp3Types();
+    void assignTypes( int iFFType=0, int* neighs=0, int niterMax=10, bool bDeallocNeighs=true ){ // advanced atom-type assignement
         bDeallocNeighs &= (neighs==0);
+        assignAllSp3Types();
         makeNeighs            ( neighs, 4        );
-        assignSpecialTypesLoop( niterMax, neighs );
-        //printAtomConfs(false);
+        assignSpecialTypesLoop( iFFType, niterMax, neighs );
         if(bDeallocNeighs)delete [] neighs;
     }
 
@@ -2409,6 +2417,42 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         //if( pbcShifts[i].norm2()>0.1 ){ printf( "PBC-bond[%i]  atoms(%i,%i)  pbcShift(%g,%g,%g) ipb(%i,%i,%i)\n",  bonds[i].atoms.a, bonds[i].atoms.b, pbcShifts[i].x,pbcShifts[i].y,pbcShifts[i].z, bonds[i].ipbc.x,bonds[i].ipbc.y,bonds[i].ipbc.z );  };  // DEBUG
     }
 }
+
+#ifdef Kekule_h
+    void toKekule( Kekule& ff, bool bRealloc=true ){
+        //printf("toMMFFsp3() verbosity %i \n", verbosity );
+        //int npi,ne; ne=countPiE( npi );
+        int na    = atoms.size();
+        //int nconf = confs.size();
+        //int ncap  = atoms.size() - nconf;
+        int nb = bonds.size();
+        if(verbosity>0)printf(  "MM:Builder::toKekule() na %i nb %i \n", na, nb  );
+        if(bRealloc)ff.realloc( na, nb );
+        export_bonds( ff.bond2atom, 0, 0 ); 
+        for(int ib=0; ib<nb; ib++ ){ 
+            ff.bondOrderMin[ib]=1; 
+            ff.bondOrderMax[ib]=3; 
+            //ff.bondOrder   [ib]=1; 
+            const Vec2i& b = bonds[ib].atoms;
+            int npi_1 = getAtom_npi(b.i);
+            int npi_2 = getAtom_npi(b.j);
+            ff.bondOrder   [ib]= 1 + _min( npi_1, npi_2 );
+            ff.bondOrderV  [ib]= 0;
+        };
+        //ff.setDefaultBondOrders( 1, 3);
+        for(int ia=0; ia<na; ia++ ){
+           int it            = atoms[ia].type;
+           const AtomType& t = params->atypes[it];
+           ff.atomValenceMin[ia] = t.valence;
+           ff.atomValenceMax[ia] = t.valence;
+           ff.atomValence[ia]=t.valence;
+
+           //printf( "toKekule atom[%i] t(%i)=`%s` v(%3.3f) \n", ia, it, t.name, ff.atomValence[ia] );
+        }
+        if(verbosity>0)printf(  "... MM:Builder::toKekule() DONE \n"  );
+    }
+#endif // MMFFmini_h
+
 
 #ifdef MMFFsp3_h
     //void toMMFFsp3( MMFFsp3& ff, bool bRealloc=true, double K_sigma=1.0, double K_pi=1.0, double K_ecap=0.75, bool bATypes=true ){

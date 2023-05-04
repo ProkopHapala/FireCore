@@ -198,7 +198,8 @@ class MMFFparams{ public:
     inline void assignSubTypes( AtomType& t ){
         //printf( "assignSubTypes %s(iZ=%i)\n", t.name, t.iZ );
         char tmp_name[8];
-        const char* ssub[3]{"sp3","sp2","sp1"};
+        //const char* ssub[3]{"sp3","sp2","sp1"};
+        const char* ssub[3]{"3","2","1"};
         for(int i=0;i<3;i++){
             sprintf( tmp_name, "%s_%s", t.name, ssub[i] );
             //printf( "assignSubTypes `%s`(iZ=%i)[%i] %s\n", t.name, t.iZ, i, tmp_name );

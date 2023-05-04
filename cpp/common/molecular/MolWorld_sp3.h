@@ -31,6 +31,7 @@ static MMFFparams* params_glob;
 #include "GridFF.h"
 #include "RigidBodyFF.h"
 #include "QEq.h"
+#include "Kekule.h"
 #include "constrains.h"
 #include "molecular_utils.h"
 
@@ -40,6 +41,8 @@ static MMFFparams* params_glob;
 #include "DynamicOpt.h"
 
 #include "datatypes_utils.h"
+
+
 
 class MolWorld_sp3{ public:
     const char* data_dir     = "common_resources";
@@ -82,6 +85,7 @@ class MolWorld_sp3{ public:
 	GridFF       gridFF;
     RigidBodyFF  rbff;
     QEq          qeq;
+    Kekule       kekule;
 	DynamicOpt   opt;
     DynamicOpt   optRB;  // rigid body optimizer
 
@@ -437,7 +441,8 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
 }
 
 virtual void init( bool bGrid ){
-    params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+    params.init("common_resources/AtomTypes_UFF.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+    //params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
 	builder.bindParams(&params);
     //params.printAtomTypeDict();
     //params.printAtomTypes();
@@ -466,6 +471,8 @@ virtual void init( bool bGrid ){
     }else if ( xyz_name ){
         if( bMMFF ){ 
             int ifrag = loadGeom( xyz_name );
+
+
             if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
             //printf("Groups with Nitrigen\n"); builder.printAtomGroupType( params.atomTypeDict["N"] );
             //printf("Groups with Oxygen\n"  ); builder.printAtomGroupType( params.atomTypeDict["O"] );
@@ -476,6 +483,88 @@ virtual void init( bool bGrid ){
             if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
             //builder.printAtomConfs(true);
             builder.autoAllConfEPi( );          //builder.printAtomConfs(true);
+
+
+            {
+                builder.toKekule( kekule, true );
+
+                printf("// ---- Kekule phase# 1: No integer constraints\n"   );
+                kekule.Katom=1.0;    kekule.Kbond=1.0;
+                kekule.KatomInt=0.0; kekule.KbondInt=0.0;
+                kekule.relax( 0.1, 1e-6, 1000, true, 1, false );
+                for(int ia=0; ia<kekule.natom; ia++){
+                    int it            = builder.atoms[ia].type;
+                    const AtomType& t = params.atypes[it];
+                    printf( "AO[%i] t(%i)=`%s` v(%3.3f) \n", ia+1, it, t.name, kekule.atomValence[ia] );
+                }
+                for (int ib=0; ib<kekule.nbond; ib++){
+                    const Vec2i& b = builder.bonds[ib].atoms;
+                    int it1            = builder.atoms[b.i].type;
+                    const AtomType& t1 = params.atypes[it1];
+                    int it2            = builder.atoms[b.j].type;
+                    const AtomType& t2 = params.atypes[it2];
+                    printf( "BO[%i] %i %i %s-%s %1.2f \n", ib+1, b.i+1, b.j+1, t1.name, t2.name, kekule.bondOrder[ib] );
+                }
+                FILE* fout = fopen("bonds_deloc.txt","w");
+                fprintf( fout, "%i \n", kekule.nbond );
+                for ( int i=0; i<kekule.nbond; i++) {
+                    const Vec2i& b = builder.bonds[i].atoms;
+                    fprintf( fout, "%i %i %i %1.6f \n", i+1,  b.i+1, b.j+1, kekule.bondOrder[i] );
+                }
+                fclose(fout);
+
+                printf("// ---- Kekule phase# 2: with integer constraints but allowing 1.5 for 'resonant' atoms\n"   );
+                kekule.KatomInt=1.0; kekule.KbondInt=1.0;
+                kekule.relax( 0.1, 1e-6, 1000, false , 1, true );
+                for(int ia=0; ia<kekule.natom; ia++){
+                    int it            = builder.atoms[ia].type;
+                    const AtomType& t = params.atypes[it];
+                    printf( "AO[%i] t(%i)=`%s` v(%3.3f) \n", ia+1, it, t.name, kekule.atomValence[ia] );
+                }
+                for (int ib=0; ib<kekule.nbond; ib++){
+                    const Vec2i& b = builder.bonds[ib].atoms;
+                    int it1            = builder.atoms[b.i].type;
+                    const AtomType& t1 = params.atypes[it1];
+                    int it2            = builder.atoms[b.j].type;
+                    const AtomType& t2 = params.atypes[it2];
+                    printf( "BO[%i] %i %i %s-%s %1.2f \n", ib+1, b.i+1, b.j+1, t1.name, t2.name, kekule.bondOrder[ib] );
+                }
+                fout = fopen("bonds_locres.txt","w");
+                fprintf( fout, "%i \n", kekule.nbond );
+                for ( int i=0; i<kekule.nbond; i++) {
+                    const Vec2i& b = builder.bonds[i].atoms;
+                    fprintf( fout, "%i %i %i %1.6f \n", i+1,  b.i+1, b.j+1, kekule.bondOrder[i] );
+                }
+                fclose(fout);
+
+                printf("// ---- Kekule phase# 3: with integer constraints\n"   );
+                //kekule.relax( 0.1, 1e-6, 1000, false , 1, false );
+                for(int ia=0; ia<kekule.natom; ia++){
+                    int it            = builder.atoms[ia].type;
+                    const AtomType& t = params.atypes[it];
+                    printf( "AO[%i] t(%i)=`%s` v(%3.3f) \n", ia+1, it, t.name, kekule.atomValence[ia] );
+                }
+                for (int ib=0; ib<kekule.nbond; ib++){
+                    const Vec2i& b = builder.bonds[ib].atoms;
+                    int it1            = builder.atoms[b.i].type;
+                    const AtomType& t1 = params.atypes[it1];
+                    int it2            = builder.atoms[b.j].type;
+                    const AtomType& t2 = params.atypes[it2];
+                    printf( "BO[%i] %i %i %s-%s %1.2f \n", ib+1, b.i+1, b.j+1, t1.name, t2.name, kekule.bondOrder[ib] );
+                }
+                fout = fopen("bonds_loc.txt","w");
+                fprintf( fout, "%i \n", kekule.nbond );
+                for ( int i=0; i<kekule.nbond; i++) {
+                    const Vec2i& b = builder.bonds[i].atoms;
+                    fprintf( fout, "%i %i %i %1.6f \n", i+1,  b.i+1, b.j+1, kekule.bondOrder[i] );
+                }
+                fclose(fout);
+
+                exit(0);
+            }
+
+
+
             //builder.makeAllConfsSP(true);     if(verbosity>1)builder.printAtomConfs(true);
             //builder.printAtomConfs(true);
             builder.assignAllBondParams();    //if(verbosity>1)
@@ -505,7 +594,9 @@ virtual void init( bool bGrid ){
         //builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
         DEBUG
-        builder.assignTypes();
+        //builder.assignTypes(0); // Prokops original types
+        builder.assignTypes(1); // UFF types
+        // printout atom types
         builder.printAtomTypes();
         DEBUG
         //bool bEpair = true;

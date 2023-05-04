@@ -95,11 +95,12 @@ class Kekule{ public:
         }
     }
     
-    void evalBondForces(){
+    void evalBondForces(bool hack15=false){
         Eb=0;
         for(int i=0; i<nbond; i++){
             double val = bondOrder[i];
             double dint = val - (int)(val+0.5);
+            if( hack15&&(val>1.25)&&(val<1.75) ){ dint = val - 1.5; }
             double dmin = val - bondOrderMin[i];   if(dmin>0)dmin=0;
             double dmax = val - bondOrderMax[i];   if(dmax<0)dmax=0;
             bondOrderF[i] = -(( dmin + dmax )*Kbond + dint*KbondInt);
@@ -138,7 +139,7 @@ class Kekule{ public:
         return F2sum;
     }
 
-    double move_MDdamp( double dt, double damping ){
+    double move_MDdamp( double dt, double damping, bool hack15=false ){
         double F2sum = 0;
         double damp = 1-damping;
         for(int i=0; i<nbond; i++){
@@ -154,8 +155,8 @@ class Kekule{ public:
         return F2sum;
     }
 
-    double eval(){
-        evalBondForces();
+    double eval( bool hack15=false ){
+        evalBondForces( hack15 );
         projectValence();
         evalAtomForces();
         projectAtomForces();
@@ -164,17 +165,17 @@ class Kekule{ public:
         return Etot;
     }
 
-    double update( double dt, int ialg ){
-        eval();
+    double update( double dt, int ialg, bool hack15=false ){
+        eval( hack15 );
         double F2;
         switch(ialg){
             case 0: F2=move_GD    ( dt          ); break;
-            case 1: F2=move_MDdamp( dt, damping ); break;
+            case 1: F2=move_MDdamp( dt, damping, hack15 ); break;
         }
         return F2;
     }
 
-    double relax( double dt, double F2conv=1e-6, int maxIter=1000, bool bRandStart=true, int ialg=1 ){
+    double relax( double dt, double F2conv=1e-6, int maxIter=1000, bool bRandStart=true, int ialg=1, bool hack15=false ){
         if(bondOrderV)clearVelocity();
         if(bRandStart){
             setRandomAtoms();
@@ -182,22 +183,31 @@ class Kekule{ public:
         }
         double F2sum=0;
         for(int i=0; i<maxIter; i++){
-            F2sum = update( dt, ialg );
+            F2sum = update( dt, ialg, hack15 );
             if(verbosity>0){ printf("Iter %i Ea %g Eb %g F2sum %g ", i, Ea, Eb, F2sum); if(verbosity>1){printBondOrders();}else{ printf("\n"); } }
             if(F2sum<F2conv) break;
+            //if(Ea+Eb<F2conv) break;
         }
         //printBondOrders();
         return F2sum;
     }
 
-
     void printBondOrders(){
-        printf("BOs[");
+        //printf("BOs[");
         for(int i=0; i<nbond; i++){
             //printf( "bondOrder[%i]= %g \n", i, bondOrder[i] );
-            printf( "%1.2f ",  bondOrder[i] );
+            printf( "BO[%i] %1.2f \n", i,  bondOrder[i] );
         }
-        printf("]\n");
+        //printf("]\n");
+    }
+
+    void printAtomValence(){
+        //printf("AOs[");
+        for(int i=0; i<natom; i++){
+            //printf( "bondOrder[%i]= %g \n", i, bondOrder[i] );
+            printf( "AO[%i] %1.2f \n", i,  atomValence[i] );
+        }
+        //printf("]\n");
     }
 
 }; // Kekule

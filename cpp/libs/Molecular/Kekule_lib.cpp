@@ -73,7 +73,7 @@ double relaxComb( bool bRandStart ){
 
     if(verbosity>0) printf("// ---- Relax phase# 2\n");
     W.KatomInt=0.1; W.KbondInt=0.1;
-    W.relax( 0.5, 1e-2, 100, false , 1);
+    W.relax( 0.1, 1e-2, 100, false , 1);
 
     if(verbosity>0) printf("// ---- Relax phase# 3\n");
     W.KatomInt=0.3; W.KbondInt=0.3;
