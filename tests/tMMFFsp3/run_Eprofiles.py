@@ -73,7 +73,7 @@ mmff.setVerbosity( verbosity=0, idebug=0 )
 #mmff.setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0)
 #mmff.setSwitches( NonBonded=-1, PiSigma=-1, Angles=-1 )
 #mmff.setSwitches( NonBonded=-1, PiSigma=+1, Angles=-1 )
-#mmff.setSwitches( NonBonded=-1, PiSigma=-1, Angles=+1 )
+mmff.setSwitches( NonBonded=-1, PiSigma=-1, Angles=+1 )
 mmff.printSwitches()
 
 #------ Long Initialization
