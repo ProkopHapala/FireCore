@@ -1626,13 +1626,13 @@ __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void PPAFM_scan(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
-    __global  float4*      FEs,     // 4
-    const cl_Mat3  diGrid,          // 5
-    const cl_Mat3  tipRot,          // 6
-    float4 stiffness,               // 7
-    float4 dpos0,                   // 8
-    float4 relax_params,            // 9
-    const int nz                    // 12
+    __global  float4*      FEs,     // 3
+    const cl_Mat3  diGrid,          // 4
+    const cl_Mat3  tipRot,          // 5
+    float4 stiffness,               // 6
+    float4 dpos0,                   // 7
+    float4 relax_params,            // 8
+    const int nz                    // 9
 ){
     const float3 dTip   = tipRot.c.xyz * tipRot.c.w;
     float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );
@@ -1647,57 +1647,88 @@ __kernel void PPAFM_scan(
     float dtmin = dtmax*0.1f;
     float damp0 = damp;
 
-    //if( (get_global_id(0)==0) ){     float4 fe = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );  printf( " pos (%g,%g,%g) feImg(%g,%g,%g,%g) \n", pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );}
-    //if( (get_global_id(0)==0) ){ printf( "dt %g damp %g \n", dt, damp ); }; return;
 
-    barrier(CLK_LOCAL_MEM_FENCE);
+    const int iG = get_global_id  (0);
+    const int nG = get_global_size(0);
+    //const int iL = get_local_id   (0);
+    //const int nL = get_local_size (0);
+
+
+    if(iG==0){printf("GPU:PPAFM_scan() nG=%i nz=%i relax_params(%g,%g,%g,%g) stiffness(%g,%g,%g,%g) dTip(%g,%g,%g) dpos0(%g,%g,%g)\n", nG, nz, relax_params.x,relax_params.y,relax_params.z,relax_params.w,  stiffness.x,stiffness.y,stiffness.z, stiffness.w, dTip.x,dTip.y,dTip.z, dpos0_.x,dpos0_.y,dpos0_.z );}
+    if(iG==0){printf("GPU:PPAFM_scan() ilvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}}\n", diGrid.a.x,diGrid.a.y,diGrid.a.z, diGrid.b.x,diGrid.b.y,diGrid.b.z, diGrid.c.x,diGrid.c.y,diGrid.c.z  );}
+
+    //if( (get_global_id(0)==0) ){ float4 fe = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );  printf( " pos (%g,%g,%g) feImg(%g,%g,%g,%g) \n", pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );}
+    //if( (get_global_id(0)==0) ){ printf( "dt %g damp %g \n", dt, damp ); }; return;
 
     int itr_tot = 0;
     
     for(int iz=0; iz<nz; iz++){
-        float4 fe;
-        float3 v   = 0.0f;
+        float4 fe = float4Zero;
+        float3 v  = float3Zero;
+
+
         for(int i=0; i<128; i++){
+        //for(int i=0; i<4; i++){
         //for(int i=0; i<1; i++){ // DEBUG
             //fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
             //fe            = interpFE_prec( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
             const float4 coord = (float4)( dot(pos, diGrid.a.xyz),   dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
             // #if 0
                 //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
-                const float4 fe_Paul = read_imagef( imgIn, sampler_gff_norm, coord );
+                const float4 fe = read_imagef( imgIn, sampler_gff_norm, coord );
             // #else
-                // const float4 fe_Paul = read_imagef_trilin_norm( imgIn, coord );
+                // const float4 fe = read_imagef_trilin_norm( imgIn, coord );
             //#endif
 
             float3 f      = fe.xyz;
             float3 dpos   = pos-tipPos;
-            float3 dpos_  = rotMat  ( dpos, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );    // to tip-coordinates
-            float3 ftip   = tipForce( dpos_, stiffness, dpos0 );
 
-            f            += rotMatT ( ftip, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );      // from tip-coordinates
+
+            //float3 dpos_  = rotMat  ( dpos, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );    // to tip-coordinates
+            //float3 ftip   = tipForce( dpos_, stiffness, dpos0 );
+            //f            += rotMatT ( ftip, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );      // from tip-coordinates
             //f            += tipRot.c.xyz * surfFF.x;                                            // TODO: more sophisticated model of surface potential? Like Hamaker ?
+
+
+
+            f += tipForce( dpos, stiffness, dpos0 );
+
+
 
             //f      +=  tipForce( dpos, stiffness, dpos0_ );  // Not rotated
 
-            #if 1
-                v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
+            //#if 1
+            //    v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
+            //    //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
+            //#else
+                v        *=    (1.f - damp);
                 //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
-            #else
-                v        *=    (1 - damp);
-                //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
-            #endif
+            //#endif
             v        += f * dt;
             pos.xyz  += v * dt;
 
             itr_tot++;
             if(dot(f,f)<relax_params.z) break;
         }
-        
-        if(1){ // output tip-rotated force
-            fe.xyz = rotMat( fe.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz);
-        }
-        
-        FEs[ get_global_id(0)*nz + iz ] = fe; // Store Result
+
+        // if(1){ // output tip-rotated force
+        //     fe.xyz = rotMat( fe.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz);
+        // }
+
+        // DEBUG
+        // //float3 pos    = tipPos.xyz;
+        // const float4 coord   = (float4)( dot(pos, diGrid.a.xyz), dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
+        // //const float4 coord   = (float4)( tipPos.x*0.1f, tipPos.y*0.1f, tipPos.z*0.1, 0.0f );
+        // fe = read_imagef( imgIn, sampler_gff_norm, coord );
+        // //fe = (float4){ tipPos.x, tipPos.y, tipPos.z, get_global_id(0)*nz+iz };
+
+
+        //FEs[ get_global_id(0)*nz + iz ] = fe; // Store Result
+        //FEs[ get_global_id(0)*nz + iz ] = (float4){ tipPos, (float)iz }; // Store Result
+        //FEs[ iz*nG + iG ] = (float4){ tipPos, (float)iz }; // Store Result
+        //FEs[ get_global_id(0)*nz + iz ] = fe; // Store Result
+        //FEs[ iz*nG + iG ] = fe; // Store Result
+        FEs[ iz*nG + iG ] = (float4){pos,fe.x}; // Store Result
 
         tipPos += dTip.xyz;
         pos    += dTip.xyz;
