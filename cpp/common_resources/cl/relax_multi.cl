@@ -1665,6 +1665,7 @@ __kernel void PPAFM_scan(
     for(int iz=0; iz<nz; iz++){
         float4 fe = float4Zero;
         float3 v  = float3Zero;
+        int itr = 0;
 
 
         for(int i=0; i<128; i++){
@@ -1675,12 +1676,12 @@ __kernel void PPAFM_scan(
             const float4 coord = (float4)( dot(pos, diGrid.a.xyz),   dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
             // #if 0
                 //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
-                const float4 fe = read_imagef( imgIn, sampler_gff_norm, coord );
+                fe = read_imagef( imgIn, sampler_gff_norm, coord );
             // #else
-                // const float4 fe = read_imagef_trilin_norm( imgIn, coord );
+                // fe = read_imagef_trilin_norm( imgIn, coord );
             //#endif
 
-            float3 f      = fe.xyz;
+            float3 f      = fe.xyz * -1.0f;
             float3 dpos   = pos-tipPos;
 
 
@@ -1689,25 +1690,20 @@ __kernel void PPAFM_scan(
             //f            += rotMatT ( ftip, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );      // from tip-coordinates
             //f            += tipRot.c.xyz * surfFF.x;                                            // TODO: more sophisticated model of surface potential? Like Hamaker ?
 
+            f +=  tipForce( dpos, stiffness, dpos0_ );  // Not rotated
 
-
-            f += tipForce( dpos, stiffness, dpos0 );
-
-
-
-            //f      +=  tipForce( dpos, stiffness, dpos0_ );  // Not rotated
-
-            //#if 1
-            //    v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
-            //    //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
-            //#else
+            #if 1
+                v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
+                //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
+            #else
                 v        *=    (1.f - damp);
                 //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
-            //#endif
+            #endif
             v        += f * dt;
             pos.xyz  += v * dt;
 
             itr_tot++;
+            itr++;
             if(dot(f,f)<relax_params.z) break;
         }
 
@@ -1722,13 +1718,12 @@ __kernel void PPAFM_scan(
         // fe = read_imagef( imgIn, sampler_gff_norm, coord );
         // //fe = (float4){ tipPos.x, tipPos.y, tipPos.z, get_global_id(0)*nz+iz };
 
+        //const float4 coord = (float4)( dot(pos, diGrid.a.xyz),   dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
+        //fe = read_imagef( imgIn, sampler_gff_norm, coord );
 
-        //FEs[ get_global_id(0)*nz + iz ] = fe; // Store Result
-        //FEs[ get_global_id(0)*nz + iz ] = (float4){ tipPos, (float)iz }; // Store Result
-        //FEs[ iz*nG + iG ] = (float4){ tipPos, (float)iz }; // Store Result
-        //FEs[ get_global_id(0)*nz + iz ] = fe; // Store Result
-        //FEs[ iz*nG + iG ] = fe; // Store Result
-        FEs[ iz*nG + iG ] = (float4){pos,fe.x}; // Store Result
+        FEs[ iz*nG + iG ] = fe; // Store Result
+        //FEs[ iz*nG + iG ] = (float4){pos,fe.w}; // Store Result
+        //FEs[ iz*nG + iG ] = (float4){pos,(float)itr}; // Store Result
 
         tipPos += dTip.xyz;
         pos    += dTip.xyz;
