@@ -1399,7 +1399,7 @@ __kernel void make_GridFF(
     */
     
     const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
+    if(iG>=nMax) return;
 
     const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
                                        +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
@@ -1487,60 +1487,100 @@ __kernel void make_GridFF(
 
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void PPAFM_makeFF(
-    const int nAtoms,                // 1
+    const int4 ns,                   // 1
     __global float4*  atoms,         // 2
     __global float4*  REQs,          // 3
     __write_only image3d_t  imgOut,  // 4
     const int4     nPBC,             // 5
     const int4     nGrid,            // 6
-    const cl_Mat3  dlvec,            // 7
+    const cl_Mat3  lvec,             // 7
     const float4   grid_p0,          // 8
-    //const float4   GFFParams       // 
-    const float4 tipParams           // 9
-    //const float4 Qs,               // 10
-    //const float4 QZs               // 11
+    const float4 tipParams,          // 9
+    const float4 Qs,                 // 10
+    const float4 QZs                 // 11
 ){
     __local float4 LPOS[32];
     __local float4 LREQ[32];
-    const int iG = get_global_id (0);
-    const int iL = get_local_id  (0);
-    const int nL = get_local_size(0);
+    const int iG = get_global_id  (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
    
     const int nab = nGrid.x*nGrid.y;
     const int ia  = iG%nGrid.x; 
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
+
+    const int natoms = ns.x;
+    const int nnode  = ns.y;
+    const int iSys   = ns.z;
+    const int i0a    = iSys*natoms;
+    const int i0v    = iSys*(natoms+nnode);
+    if(iG>=nMax) return;
+
+    if(iG==0){printf("GPU:PPAFM_makeFF() nL=%i,nG=%i,nMax=%i,na=%i,nnd=%i,nGrid(%i,%i,%i), nPBC(%i,%i,%i) \n", nL, nG,nMax, natoms,nnode, nGrid.x,nGrid.y,nGrid.z, nPBC.x,nPBC.y,nPBC.z );}
+    if(iG==0){printf("GPU:make_GridFF() p0{%6.3f,%6.3f,%6.3f} lvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}} grid_p0{%6.3f,%6.3f,%6.3f} \n", grid_p0.x,grid_p0.y,grid_p0.z,  lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z, grid_p0.x,grid_p0.y,grid_p0.z  );}
+
+    const float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
+    const float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
+    const float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
+    const float3 pos     = grid_p0.xyz  + dGrid_a.xyz*ia     + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
+                                        + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    //float3 pos = grid_p0.xyz + dlvec.a.xyz*ia + dlvec.b.xyz*ib  + dlvec.c.xyz*ic;
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
     float4 fe  = float4Zero;
-    float3 pos = grid_p0.xyz + dlvec.a.xyz*ia + dlvec.b.xyz*ib  + dlvec.c.xyz*ic;
+    
     //Qs *= COULOMB_CONST;
-    for (int i0=0; i0<nAtoms; i0+= nL ){
+    for (int i0=0; i0<natoms; i0+= nL ){
         int i = i0 + iL;
-        //if(i>=nAtoms) break;  // wrong !!!!
-        LPOS[iL] = atoms[i];
-        LREQ[iL] = REQs [i];
+        //if(i>=natoms) break;  // wrong !!!!
+        LPOS[iL] = atoms[i0v+i];
+        LREQ[iL] = REQs [i0a+i];
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
-            if( (j+i0)<nAtoms ){ 
-                const float4 pi  = LPOS[j];
+            if( (j+i0)<natoms ){ 
+                //const float4 pi  = LPOS[j];
+                float3       dp   = pos - LPOS[j].xyz;
                 float4       REQ = LREQ[j]; 
                 REQ.x   += tipParams.x;
                 REQ.yzw *= tipParams.yzw;
-                fe += getLJQH( pos-pi.xyz, REQ, 1.0 );
-                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.x) ) * Qs.x;
-                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.y) ) * Qs.y;
-                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.z) ) * Qs.z;
-                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.w) ) * Qs.w;
+
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+
+                            fe += getLJQH( dp, REQ, 1.0 );
+                            //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.x) ) * Qs.x;
+                            //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.y) ) * Qs.y;
+                            //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.z) ) * Qs.z;
+                            //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.w) ) * Qs.w;
+
+                            dp   +=lvec.a.xyz;
+                            //shift+=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                        //shift+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp   +=shift_c;
+                }
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
     // --- limit maximum force
     float renorm = 100.0/fabs(fe.w);
     if( renorm<1.f ){ fe*=renorm; }
     // --- OUTPUT
+
     write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
+    
 }
 
 // ======================================

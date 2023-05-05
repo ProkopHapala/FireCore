@@ -694,10 +694,11 @@ void MolGUI::renderAFM( float* data, int pitch, int offset ){
 
 void MolGUI::makeAFM(){
     printf( "MolGUI::makeAFM() %li \n", ogl_afm ); //exit(0);
-    afm_scan_grid = W->gridFF.grid;
+    afm_ff_grid.cell = W->builder.lvec;
+    afm_ff_grid.updateCell(0.1);
     W->evalAFM_FF ( afm_ff_grid,   afm_ff   );
     //W->evalAFMscan( afm_scan_grid, afm_scan );
-    MolGUI::renderAFM( (float*) afm_scan, 4, 2 );
+    //MolGUI::renderAFM( (float*) afm_scan, 4, 2 );
 };
 
 void MolGUI::drawPi0s( float sc=1.0 ){
