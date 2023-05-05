@@ -593,7 +593,7 @@ virtual void evalAFM_FF( GridShape& grid, Quat4f* data_=0 ){
     Quat4f* data=0;
     if( data_ ){  data=data_; }else{ data=new Quat4f[grid.n.totprod()]; }
     long T0=getCPUticks();
-    ocl.PPAFM_makeFF( grid, {1,1,0} );
+    ocl.PPAFM_makeFF( iSystemCur, grid, {1,1,0} );
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
     err |=  ocl.finishRaw(); OCL_checkError(err, "evalAFM_FF.PPAFM_makeFF"); printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T0)*tick2second );
     bool bDownload =true; // WARRNING : if I set this OFF it crashes unexpectedly
