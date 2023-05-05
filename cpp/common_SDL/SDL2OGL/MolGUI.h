@@ -147,7 +147,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //int gui_mode = Gui_Mode::edit;
 
     // ----- AFM scan
-    GridShape afm_scan_grid{ Vec3d{-5.,5.,0.0}, Vec3d{5.,5.,6.0}, 0.1 };
+    GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,6.0}, 0.1 };
     GridShape afm_ff_grid;  //  { Mat3d{}, 0.1 };
     Quat4f    *afm_ff=0,*afm_scan=0;
 
@@ -697,7 +697,7 @@ void MolGUI::makeAFM(){
     afm_ff_grid.cell = W->builder.lvec;
     afm_ff_grid.updateCell(0.1);
     W->evalAFM_FF ( afm_ff_grid,   afm_ff   );
-    //W->evalAFMscan( afm_scan_grid, afm_scan );
+    W->evalAFMscan( afm_scan_grid, afm_scan );
     //MolGUI::renderAFM( (float*) afm_scan, 4, 2 );
 };
 

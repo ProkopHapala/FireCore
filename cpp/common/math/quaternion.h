@@ -746,6 +746,15 @@ class Quat4T {
         return mrot;
     }
 
+    inline QUAT& setIfLower  (const QUAT& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y;if(a.z<z)z=a.z;if(a.w<w)w=a.w; return *this; }
+    inline QUAT& setIfGreater(const QUAT& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y;if(a.z>z)z=a.z;if(a.w>w)w=a.w; return *this; }
+    inline void update_bounds(QUAT& pmin,QUAT& pmax)const{ 
+        if ( x < pmin.x ){ pmin.x=x; } else if ( x > pmax.x ){ pmax.x=x; };
+        if ( y < pmin.y ){ pmin.y=y; } else if ( y > pmax.y ){ pmax.y=y; };
+        if ( z < pmin.z ){ pmin.z=z; } else if ( z > pmax.z ){ pmax.z=z; };
+        if ( z < pmin.w ){ pmin.w=w; } else if ( w > pmax.w ){ pmax.w=w; };
+    }
+
 };
 
 /*
@@ -785,8 +794,8 @@ static constexpr Quat4f Quat4fW    {0.0f,0.0f,0.0f,1.0f};
 static constexpr Quat4f Quat4fX    {1.0f,0.0f,0.0f,0.0f};
 static constexpr Quat4f Quat4fY    {0.0f,1.0f,0.0f,0.0f};  
 static constexpr Quat4f Quat4fZ    {0.0f,0.0f,1.0f,0.0f};
-static constexpr Quat4d Quat4fmin  {-1.e+37,-1.e+37,-1.e+37,-1.e+37};
-static constexpr Quat4d Quat4fmax  {+1.e+37,+1.e+37,+1.e+37,+1.e+37};
+static constexpr Quat4f Quat4fmin  {-1.e+37,-1.e+37,-1.e+37,-1.e+37};
+static constexpr Quat4f Quat4fmax  {+1.e+37,+1.e+37,+1.e+37,+1.e+37};
 
 
 // default quaternion poses

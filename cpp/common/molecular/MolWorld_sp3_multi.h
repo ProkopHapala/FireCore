@@ -574,15 +574,30 @@ virtual void evalAFMscan( GridShape& scan, Quat4f*& data_, Quat4f** ps=0 ){
     if( data_ ){  data=data_; }else{ data=new Quat4f[scan.n.totprod()]; }
     int nxy = scan.n.x*scan.n.y;
     _realloc( afm_ps, nxy );
+
+    int i0v = iSystemCur*ocl.nvecs;
+    float ztop= -1e+300;
+    for( int i=0; i<ocl.nAtoms; i++ ){ ztop=fmax( atoms[i0v+i].z, ztop ); };
+    printf( "MolWrold_sp3_multi::evalAFMscan() ztop=%g \n", ztop );
+
+    scan.pos0=Vec3d{0.0,0.0,ztop+4.0+5.0};
     for(int iy=0; iy<scan.n.y; iy++) for(int ix=0; ix<scan.n.x; ix++){ afm_ps[iy*scan.n.x+ix].f = (Vec3f)(  scan.pos0 + scan.dCell.a*ix + scan.dCell.b*iy ); afm_ps[iy*scan.n.x+ix].w=0; }
+    printf( "MolWrold_sp3_multi::evalAFMscan() scan.ns(%i,%i,%i) nxy=%i \n", scan.n.x,scan.n.y,scan.n.z,nxy );
     long T0=getCPUticks();
     ocl.PPAFM_scan( nxy, scan.n.z, afm_ps, data );  
     printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T0)*tick2second );
+
+    int ntot = scan.n.x*scan.n.y*scan.n.z;
+    Quat4f vmin=Quat4fmax,vmax=Quat4fmin;
+    for(int i=0; i<ntot; i++){ data[i].update_bounds( vmin, vmax ); }
+    printf( "MolWrold_sp3_multi::evalAFMscan() vmin{%g,%g,%g,%g} vmax{%g,%g,%g,%g} \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w  );
     bool bSaveDebug=true;
     //bool bSaveDebug=false; 
     if(bSaveDebug){ 
-        scan.saveXSF( "AFM_OutFz_E.xsf", (float*)data, 4,3 );
-        scan.saveXSF( "AFM_OutFz_z.xsf", (float*)data, 4,2 );
+        scan.saveXSF( "AFM_E.xsf",  (float*)data, 4,3 );
+        scan.saveXSF( "AFM_Fz.xsf", (float*)data, 4,2 );
+        scan.saveXSF( "AFM_Fy.xsf", (float*)data, 4,1 );
+        scan.saveXSF( "AFM_Fx.xsf", (float*)data, 4,0 );
     }
     if(ps){ *ps=afm_ps; }else{ delete [] ps;   }
     if(data_==0)             { delete [] data; }
