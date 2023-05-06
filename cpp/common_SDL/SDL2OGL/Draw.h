@@ -59,6 +59,8 @@ namespace Draw{
     //static uint32_t   colors_rainbow[ncolors]   = { 0xFF000000, 0xFFFF0000, 0xFFFF00FF, 0xFF00FFFF, 0xFFFFFFFF };
     static uint32_t   colors_rainbow[ncolors]   = { 0xFF000000, 0xFFFF0000, 0xFF8000FF, 0xFF00FFFF, 0xFFFFFFFF };
     static uint32_t   colors_RWB    [ncolors]   = { 0xFFFF0000, 0xFFFFFF00, 0xFFFFFFFF, 0xFF00FFFF, 0xFF0000FF };
+    //static uint32_t   colors_afmhot [ncolors]   = { 0xFF000000, 0xFFFF0000, 0xFFFF8000, 0xFFFFFF00, 0xFFFFFFFF };
+    static uint32_t   colors_afmhot [ncolors]   = { 0xFF000000, 0xFF0000FF, 0xFF0080FF, 0xFF00FFFF, 0xFFFFFFFF };
 
     //void setRGB ( uint32_t i );
     //void setRGBA( uint32_t i );

@@ -126,6 +126,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  fontTex,fontTex3D;
 
     int  ogl_afm=0;
+    int  ogl_afm_trj=0;
     int  ogl_esp=0;
     int  ogl_sph=0;
     int  ogl_mol=0;
@@ -149,7 +150,11 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ----- AFM scan
     GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,6.0}, 0.1 };
     GridShape afm_ff_grid;  //  { Mat3d{}, 0.1 };
-    Quat4f    *afm_ff=0,*afm_scan=0;
+    Quat4f    *afm_ff=0,*afm_Fout=0,*afm_PPpos=0; 
+    Quat4f    *afm_ps0=0;
+    //Vec3d     *afm_ps=0;
+    int afm_iz=35;
+
 
     // ======================= Functions 
 
@@ -173,7 +178,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
-    void renderAFM( float* data, int pitch=4, int offset=2 );
+    void renderAFM( int iz, int offset );
+    void renderAFM_trjs( int di );
     void makeAFM();
 
 
@@ -367,7 +373,9 @@ void MolGUI::draw(){
     if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
     if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
-    if( ogl_esp ){ glCallList(ogl_esp);  }
+    if( ogl_esp     ){ glCallList(ogl_esp);      }
+    if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
+    if( ogl_afm     ){ glCallList(ogl_afm);      }
 
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // DEBUG  
 
@@ -674,31 +682,73 @@ void MolGUI::renderESP( Quat4d REQ){
     glEndList();
 };
 
-void MolGUI::renderAFM( float* data, int pitch, int offset ){
+void MolGUI::renderAFM( int iz, int offset ){
+    if(iz<0 )iz=0;
+    if(iz>=afm_scan_grid.n.z)iz=afm_scan_grid.n.z-1;
+    int pitch = 4;
+    int nxy =afm_scan_grid.n.x * afm_scan_grid.n.y;
+    float* data_iz =  (float*)(afm_Fout + iz*nxy);
     printf( "MolGUI::renderAFM() %li \n", ogl_afm ); //exit(0);
+    if(ogl_afm>0)glDeleteLists(ogl_afm,1);
     ogl_afm = glGenLists(1);
-    glNewList(ogl_esp, GL_COMPILE);
+    glNewList(ogl_afm, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
     //glEnable(GL_LIGHTING);
     glDisable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
-    double vmin=1e+300;
+    double vmin=+1e+300;
     double vmax=-1e+300;
-    int ntot=afm_scan_grid.n.x*afm_scan_grid.n.y;
-    for(int i=0; i<ntot; i++){ float f=data[i*pitch+offset]; vmin=fmin(f,vmin); vmax=fmax(f,vmax);  }
+    for(int i=0; i<nxy; i++){ float f=data_iz[i*pitch+offset]; vmin=fmin(f,vmin); vmax=fmax(f,vmax);  }
+
+    //_realloc(afm_ps, nxy);
+    //for(int i=0; i<nxy; i++){ afm_ps[i]=(Vec3d)afm_ps0[i].f; }
+
+    glPushMatrix();
+    glTranslatef( 0.0,0.0,-5.0 - iz * afm_scan_grid.dCell.c.z );
     printf( "MolGUI::renderAFM() vmin=%g vmax=%g \n", vmin, vmax );
-    //Draw3D::drawScalarField( afm_scan.n.totprod, afm_ps,                                  data, pitch,offset, vmin, vmax );
-    Draw3D::drawScalarGrid ( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_scan_grid.pos0, afm_scan_grid.dCell.a, afm_scan_grid.dCell.a, data, pitch,offset, vmin, vmax );
+    Draw3D::drawScalarField( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_ps0,                                  data_iz, pitch,offset, vmax, vmin, Draw::colors_afmhot );
+    //Draw3D::drawColorScale( 10, Vec3dZero, Vec3dY, Vec3dX, Draw::colors_afmhot );
+    //Draw3D::drawScalarGrid ( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_scan_grid.pos0, afm_scan_grid.dCell.a, afm_scan_grid.dCell.a, data_iz, pitch,offset, vmin, vmax );
+    glPopMatrix();
     glEndList();
 };
+
+void MolGUI::renderAFM_trjs( int di ){
+    printf( "MolGUI::renderAFM_trjs(di=%i) afm_PPpos=%li \n", di, afm_PPpos ); //exit(0);
+    if(ogl_afm_trj>0)glDeleteLists(ogl_afm_trj,1);
+    ogl_afm_trj = glGenLists(1);
+    glNewList(ogl_afm_trj, GL_COMPILE);
+    glShadeModel( GL_SMOOTH );
+    //glEnable(GL_LIGHTING);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    Vec3i ns = afm_scan_grid.n;
+    int nxy=ns.x*ns.y;
+    for(int iy=0; iy<ns.y; iy+=di ){
+        for(int ix=0; ix<ns.x; ix+=di ){
+            //afm_ps0
+            glBegin(GL_LINE_STRIP);
+            for(int iz=0; iz<ns.z; iz++ ){
+                int i = afm_scan_grid.n.y;
+                Vec3f p = afm_PPpos[ iz*nxy + iy*ns.x + ix ].f;
+                glVertex3f( p.x,p.y,p.z ); 
+            }
+            glEnd();
+        }
+    }
+    glEndList();
+};
+
 
 void MolGUI::makeAFM(){
     printf( "MolGUI::makeAFM() %li \n", ogl_afm ); //exit(0);
     afm_ff_grid.cell = W->builder.lvec;
     afm_ff_grid.updateCell(0.1);
-    W->evalAFM_FF ( afm_ff_grid,   afm_ff   );
-    W->evalAFMscan( afm_scan_grid, afm_scan );
-    //MolGUI::renderAFM( (float*) afm_scan, 4, 2 );
+    W->evalAFM_FF ( afm_ff_grid,   afm_ff,                        false );
+    W->evalAFMscan( afm_scan_grid, afm_Fout, afm_PPpos, &afm_ps0, false );
+    MolGUI::renderAFM_trjs( 5 );
+    //MolGUI::renderAFM(  afm_scan_grid.n.z-10, 2 );
+    MolGUI::renderAFM(  afm_iz, 2 );
 };
 
 void MolGUI::drawPi0s( float sc=1.0 ){
@@ -989,6 +1039,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_c: W->autoCharges(); break;
                 
                 case SDLK_v: makeAFM(); break;
+                case SDLK_KP_MULTIPLY:  afm_iz++; if(afm_iz>=afm_scan_grid.n.z)afm_iz=0;  renderAFM(afm_iz,2); break;
+                case SDLK_KP_DIVIDE:    afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1; renderAFM(afm_iz,2);  break;
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl;       break;

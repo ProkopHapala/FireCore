@@ -568,13 +568,18 @@ void saveDebugXYZreplicas( int itr, double F ){
     }
 }
 
-virtual void evalAFMscan( GridShape& scan, Quat4f*& data_, Quat4f** ps=0 ){ 
+virtual void evalAFMscan( GridShape& scan, Quat4f*& OutFE, Quat4f*& OutPos, Quat4f** ps=0, bool bSaveDebug=false )override{ 
     int err=0;
-    Quat4f* data=0;
-    if( data_ ){  data=data_; }else{ data=new Quat4f[scan.n.totprod()]; }
+    //Quat4f* OutFE =0;
+    //Quat4f* OutPos=0;
+    //if( OutFE_  ){ OutFE =OutFE_;  }else{ OutFE =new Quat4f[scan.n.totprod()];   }
+    //if( OutPos_ ){ OutPos=OutPos_; }else{ OutPos=new Quat4f[scan.n.totprod()]; }
+    if( OutFE ==0 ){ OutFE =new Quat4f[scan.n.totprod()]; }
+    if( OutPos==0 ){ OutPos=new Quat4f[scan.n.totprod()]; }
     int nxy = scan.n.x*scan.n.y;
     _realloc( afm_ps, nxy );
 
+    // ToDo: ztop should be probably found and used in  evalAFM_FF()
     int i0v = iSystemCur*ocl.nvecs;
     float ztop= -1e+300;
     for( int i=0; i<ocl.nAtoms; i++ ){ ztop=fmax( atoms[i0v+i].z, ztop ); };
@@ -584,46 +589,49 @@ virtual void evalAFMscan( GridShape& scan, Quat4f*& data_, Quat4f** ps=0 ){
     for(int iy=0; iy<scan.n.y; iy++) for(int ix=0; ix<scan.n.x; ix++){ afm_ps[iy*scan.n.x+ix].f = (Vec3f)(  scan.pos0 + scan.dCell.a*ix + scan.dCell.b*iy ); afm_ps[iy*scan.n.x+ix].w=0; }
     printf( "MolWrold_sp3_multi::evalAFMscan() scan.ns(%i,%i,%i) nxy=%i \n", scan.n.x,scan.n.y,scan.n.z,nxy );
     long T0=getCPUticks();
-    ocl.PPAFM_scan( nxy, scan.n.z, afm_ps, data );  
+    ocl.PPAFM_scan( nxy, scan.n.z, afm_ps, OutFE, OutPos, scan.dCell.c.z );  
     printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T0)*tick2second );
 
+    // ToDo: we should probably return vmin,vmax to MolGUI for visualization? 
     int ntot = scan.n.x*scan.n.y*scan.n.z;
     Quat4f vmin=Quat4fmax,vmax=Quat4fmin;
-    for(int i=0; i<ntot; i++){ data[i].update_bounds( vmin, vmax ); }
+    for(int i=0; i<ntot; i++){ OutFE[i].update_bounds( vmin, vmax ); }
     printf( "MolWrold_sp3_multi::evalAFMscan() vmin{%g,%g,%g,%g} vmax{%g,%g,%g,%g} \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w  );
-    bool bSaveDebug=true;
-    //bool bSaveDebug=false; 
+    //bSaveDebug=true;
+    //bSaveDebug=false; 
     if(bSaveDebug){ 
-        scan.saveXSF( "AFM_E.xsf",  (float*)data, 4,3 );
-        scan.saveXSF( "AFM_Fz.xsf", (float*)data, 4,2 );
-        scan.saveXSF( "AFM_Fy.xsf", (float*)data, 4,1 );
-        scan.saveXSF( "AFM_Fx.xsf", (float*)data, 4,0 );
+        scan.saveXSF( "AFM_E.xsf",       (float*)OutFE, 4,3 );
+        scan.saveXSF( "AFM_Fx.xsf",      (float*)OutFE, 4,0 );
+        scan.saveXSF( "AFM_Fy.xsf",      (float*)OutFE, 4,1 );
+        scan.saveXSF( "AFM_Fz.xsf",      (float*)OutFE, 4,2 );
+        scan.saveXSF( "AFM_PPpos_w.xsf", (float*)OutPos, 4,3 );
+        scan.saveXSF( "AFM_PPpos_x.xsf", (float*)OutPos, 4,0 );
+        scan.saveXSF( "AFM_PPpos_y.xsf", (float*)OutPos, 4,1 );
+        scan.saveXSF( "AFM_PPpos_z.xsf", (float*)OutPos, 4,2 );
     }
     if(ps){ *ps=afm_ps; }else{ delete [] ps;   }
-    if(data_==0)             { delete [] data; }
+    //if(OutFE==0 ){ delete [] OutFE; }
+    //if(OutPos==0){ delete [] OutPos; }
 }
 
-virtual void evalAFM_FF( GridShape& grid, Quat4f* data_=0 ){ 
+virtual void evalAFM_FF( GridShape& grid, Quat4f* data_=0, bool bSaveDebug=false )override{ 
     int err=0;
     Quat4f* data=0;
-    if( data_ ){  data=data_; }else{ data=new Quat4f[grid.n.totprod()]; }
+    bool bDownload = bSaveDebug && (data_==0);
+    if( bDownload ){ data=new Quat4f[grid.n.totprod()]; }
     long T0=getCPUticks();
-    ocl.PPAFM_makeFF( iSystemCur, grid, {1,1,0} );
-    //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
+    Vec3i afm_nPBC{1,1,0};
+    autoNPBC( grid.cell, afm_nPBC, 30.0 );
+    ocl.PPAFM_makeFF( iSystemCur, grid, afm_nPBC );
     err |=  ocl.finishRaw(); OCL_checkError(err, "evalAFM_FF.PPAFM_makeFF"); printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T0)*tick2second );
-    bool bDownload =true; // WARRNING : if I set this OFF it crashes unexpectedly
-    bool bSaveDebug=true;
-    //bool bSaveDebug=false; 
-    if(bDownload){
-        ocl.download( ocl.itex_FEAFM, data );
-        err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");  printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T0)*tick2second );
-        if(bSaveDebug){ 
-            grid.saveXSF( "AFM_FF_E.xsf", (float*)data, 4,3 );
-            grid.saveXSF( "AFM_FF_z.xsf", (float*)data, 4,2 );
-        }
+    if( bDownload )ocl.download( ocl.itex_FEAFM, data );
+    err |=  ocl.finishRaw();  OCL_checkError(err, "surf2ocl.download.finish");   
+    printf( ">>time(surf2ocl.finishRaw() %g[s] download=%i \n", (getCPUticks()-T0)*tick2second, bDownload );
+    if(bSaveDebug){
+        grid.saveXSF( "AFM_FF_E.xsf", (float*)data, 4,3 );
+        grid.saveXSF( "AFM_FF_z.xsf", (float*)data, 4,2 );
     }
-    err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.atoms_surf.release");
-    if(data_==0){ delete [] data; }
+    if( bDownload && (data_==0) ){ delete [] data; }
     // downalod ?
 }
 
