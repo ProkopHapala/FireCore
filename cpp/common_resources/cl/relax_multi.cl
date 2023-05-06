@@ -1627,12 +1627,14 @@ __kernel void PPAFM_scan(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
     __global  float4*      FEs,     // 3
-    const cl_Mat3  diGrid,          // 4
-    const cl_Mat3  tipRot,          // 5
-    float4 stiffness,               // 6
-    float4 dpos0,                   // 7
-    float4 relax_params,            // 8
-    const int nz                    // 9
+    __global  float4*      PPpos,   // 4
+    const cl_Mat3  diGrid,          // 5
+    const cl_Mat3  tipRot,          // 6
+    float4 stiffness,               // 7
+    float4 dpos0,                   // 8
+    float4 relax_params,            // 9
+    const int nz,                   // 10
+    const int nMaxItr               // 11
 ){
     const float3 dTip   = tipRot.c.xyz * tipRot.c.w;
     float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );
@@ -1654,8 +1656,8 @@ __kernel void PPAFM_scan(
     //const int nL = get_local_size (0);
 
 
-    if(iG==0){printf("GPU:PPAFM_scan() nG=%i nz=%i relax_params(%g,%g,%g,%g) stiffness(%g,%g,%g,%g) dTip(%g,%g,%g) dpos0(%g,%g,%g)\n", nG, nz, relax_params.x,relax_params.y,relax_params.z,relax_params.w,  stiffness.x,stiffness.y,stiffness.z, stiffness.w, dTip.x,dTip.y,dTip.z, dpos0_.x,dpos0_.y,dpos0_.z );}
-    if(iG==0){printf("GPU:PPAFM_scan() ilvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}}\n", diGrid.a.x,diGrid.a.y,diGrid.a.z, diGrid.b.x,diGrid.b.y,diGrid.b.z, diGrid.c.x,diGrid.c.y,diGrid.c.z  );}
+    //if(iG==0){printf("GPU:PPAFM_scan() nG=%i nz=%i relax_params(%g,%g,%g,%g) stiffness(%g,%g,%g,%g) dTip(%g,%g,%g) dpos0(%g,%g,%g)\n", nG, nz, relax_params.x,relax_params.y,relax_params.z,relax_params.w,  stiffness.x,stiffness.y,stiffness.z, stiffness.w, dTip.x,dTip.y,dTip.z, dpos0_.x,dpos0_.y,dpos0_.z );}
+    //if(iG==0){printf("GPU:PPAFM_scan() ilvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}}\n", diGrid.a.x,diGrid.a.y,diGrid.a.z, diGrid.b.x,diGrid.b.y,diGrid.b.z, diGrid.c.x,diGrid.c.y,diGrid.c.z  );}
 
     //if( (get_global_id(0)==0) ){ float4 fe = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );  printf( " pos (%g,%g,%g) feImg(%g,%g,%g,%g) \n", pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );}
     //if( (get_global_id(0)==0) ){ printf( "dt %g damp %g \n", dt, damp ); }; return;
@@ -1665,10 +1667,8 @@ __kernel void PPAFM_scan(
     for(int iz=0; iz<nz; iz++){
         float4 fe = float4Zero;
         float3 v  = float3Zero;
-        int itr = 0;
-
-
-        for(int i=0; i<128; i++){
+        int itr=0; 
+        for(itr=0; itr<nMaxItr; itr++){
         //for(int i=0; i<4; i++){
         //for(int i=0; i<1; i++){ // DEBUG
             //fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
@@ -1701,11 +1701,10 @@ __kernel void PPAFM_scan(
             #endif
             v        += f * dt;
             pos.xyz  += v * dt;
-
-            itr_tot++;
             itr++;
             if(dot(f,f)<relax_params.z) break;
         }
+        //itr_tot+itr;
 
         // if(1){ // output tip-rotated force
         //     fe.xyz = rotMat( fe.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz);
@@ -1720,8 +1719,9 @@ __kernel void PPAFM_scan(
 
         //const float4 coord = (float4)( dot(pos, diGrid.a.xyz),   dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
         //fe = read_imagef( imgIn, sampler_gff_norm, coord );
-
-        FEs[ iz*nG + iG ] = fe; // Store Result
+        
+        PPpos[ iz*nG + iG ] = (float4){pos,(float)itr}; // Store Result
+        FEs  [ iz*nG + iG ] = fe; // Store Result
         //FEs[ iz*nG + iG ] = (float4){pos,fe.w}; // Store Result
         //FEs[ iz*nG + iG ] = (float4){pos,(float)itr}; // Store Result
 

@@ -1090,7 +1090,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         }
     }
 
-    void drawScalarField( Vec2i ns, const Vec3d* ps,const  float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
+    void drawScalarField( Vec2i ns, const Quat4f* ps,const  float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
         //printf( " debug_draw_GridFF \n" );
         double z0  = 1.5;
         double dz0 = 0.1;
@@ -1100,18 +1100,18 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         for(int iy=1;iy<ns.y;iy++){
             glBegin( GL_TRIANGLE_STRIP );
             for(int ix=0;ix<ns.x;ix++){
-                Vec3d p;
+                Vec3f p;
                 int i = (iy-1)*ns.x + ix;
                 double c = clamp( clsc*(data[i*pitch+offset]-vmin), 0, 1 );
                 if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
                 //p = (gsh.dCell.a*(ix + (gsh.n.x*-0.5))) + (gsh.dCell.b*(iy-1 + (gsh.n.y*-0.5) ));
-                p = ps[i];
+                p = ps[i].f;
                 glVertex3f(p.x,p.y,p.z);
 
                 i += ns.x;
                 c = clamp(  clsc*(data[i*pitch+offset]-vmin), 0, 1 );
                 if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
-                p = ps[i];
+                p = ps[i].f;
                 glVertex3f(p.x,p.y,p.z);
             }
             glEnd();
