@@ -744,7 +744,7 @@ void MolGUI::makeAFM(){
     printf( "MolGUI::makeAFM() %li \n", ogl_afm ); //exit(0);
     afm_ff_grid.cell = W->builder.lvec;
     afm_ff_grid.updateCell(0.1);
-    W->evalAFM_FF ( afm_ff_grid,   afm_ff,                        false );
+    W->evalAFM_FF ( afm_ff_grid,   afm_ff,                        true  );
     W->evalAFMscan( afm_scan_grid, afm_Fout, afm_PPpos, &afm_ps0, false );
     MolGUI::renderAFM_trjs( 5 );
     //MolGUI::renderAFM(  afm_scan_grid.n.z-10, 2 );

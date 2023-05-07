@@ -114,13 +114,15 @@ class OCL_MM: public OCLsystem { public:
         cl_Mat3  afm_grid_ilvec;
         //float4 tipRot[3]={{1.,0.,0.,0.},{0.,1.,0.,0.},{0.,0.,1.,0.1}};  // tip rotation
         cl_Mat3  tipRot;          
-        float4  afm_relax_params{0.5f,0.1f,0.02f,0.5f};
+        float4  afm_relax_params{0.5f,0.1f,0.000001f,0.5f};
         //float4  tipParams{  1.661f, 0.0091063f, -0.1f, 0.0f };
         float4  tipParams{  1.661f, 0.0091063f, 0.0f, 0.0f };
         float4  tip_stiffness { -0.03f,-0.03f,-0.03f,-1.00 };  // tip stiffness
         float4  tip_dpos0{0.0f,0.0f,-4.0f, 4.0f};    
-        float4  tip_Qs {0.f,-0.05f,0.f,0.0f};
-        float4  tip_QZs{0.1f, 0.0f,-0.1f,0.0f};
+        //float4  tip_Qs {-0.0f,-0.4f,-0.0f,0.0f};
+        //float4  tip_Qs {-0.4f,+0.4f,-0.0f,0.0f};
+        float4  tip_Qs {-2.0f,+4.0f,-2.0f,0.0f};
+        float4  tip_QZs{-0.1f, 0.0f,+0.1f,0.0f};
         float4  afm_surfFF{0.f,0.f,0.f,0.f};
         int     afm_nz,afm_nzout, afm_nMaxItr=128;       
 

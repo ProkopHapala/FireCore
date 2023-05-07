@@ -67,7 +67,8 @@ nsys=50
 #./$name -m $nsys -x common_resources/pyridine      -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine  110 -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/PTCDA   -g common_resources/NaCl_1x1_L2
-./$name -m $nsys -x common_resources/PTCDA_SAM   -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/PTCDA_SAM   -g common_resources/NaCl_1x1_L2
+./$name -m $nsys -x common_resources/BPBA   -g common_resources/NaCl_1x1_L2
 
 
 # ====== Polymers On Substrate

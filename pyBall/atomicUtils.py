@@ -640,7 +640,7 @@ class AtomicSystem():
                 self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname , bReadN=True )
 
     def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None ):
-        if blvec:
+        if blvec and (self.lvec is not None):
             print( self.lvec )
             comment= ( "lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   ) ) + comment
         saveXYZ( self.enames, self.apos, fname, qs=self.qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es )
