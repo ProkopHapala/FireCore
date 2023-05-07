@@ -11,9 +11,9 @@ from pyBall import MMFF as mmff
 #======== Body
 
 mmff.setVerbosity( verbosity=1, idebug=0 )
-#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sum-center" )                             # all
-mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sym-center", bMMFF=False  )              # without MMFF
-#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sym-center", bMMFF=False, gridStep=-1 )  # without gridFF
+#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2" )                             # all
+mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False  )              # without MMFF
+#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False, gridStep=-1 )  # without gridFF
 mmff.getBuffs()
 mmff.eval()
 #mmff.relax(1000)

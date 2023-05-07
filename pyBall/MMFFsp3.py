@@ -270,12 +270,12 @@ def insertSMILES(s ):
     s = s.encode('utf8')
     return lib.insertSMILES(s)
 
-#  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
-lib.initWithSMILES.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_bool] 
-lib.initWithSMILES.restype   =  None
-def initWithSMILES(fname_mol, bPrint=True, bCap=True, bNonBonded=True, bOptimizer=True):
-    fname_mol = fname_mol.encode('utf8')
-    return lib.initWithSMILES(fname_mol, bPrint, bCap, bNonBonded, bOptimizer)
+# #  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
+# lib.initWithSMILES.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_bool] 
+# lib.initWithSMILES.restype   =  None
+# def initWithSMILES(fname_mol, bPrint=True, bCap=True, bNonBonded=True, bOptimizer=True):
+#     fname_mol = fname_mol.encode('utf8')
+#     return lib.initWithSMILES(fname_mol, bPrint, bCap, bNonBonded, bOptimizer)
 
 #  void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI  ){
 lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int] 
@@ -321,11 +321,11 @@ lib.saveXYZ.restype   =  c_int
 def saveXYZ(fname, comment, imod=1 ):
     return lib.saveXYZ( cstr(fname), cstr(comment), imod )
 
-# char* getType( int ia, bool fromFF){
-lib.getType.argtypes  = [c_int, c_bool ] 
-lib.getType.restype   =  c_char_p
-def getType( ia, fromFF=True ):
-    s = lib.getType( ia, fromFF )
+# char* getTypeName( int ia, bool fromFF){
+lib.getTypeName.argtypes  = [c_int, c_bool ] 
+lib.getTypeName.restype   =  c_char_p
+def getTypeName( ia, fromFF=True ):
+    s = lib.getTypeName( ia, fromFF )
     ss = s.decode()
     return ss 
 

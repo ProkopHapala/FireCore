@@ -12,6 +12,12 @@ cd $wd
 
 ln -s $dir/$name .
 
+# ---- Multiprocesing
+ncpu=`nproc`
+ncpu=$(($ncpu - 1))     # let one CPU free for user interaction
+echo "compile using ncpu="$ncpu
+OMP_NUM_THREADS=$ncpu
+export OMP_NUM_THREADS
 
 rm DEBUG*
 

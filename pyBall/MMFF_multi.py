@@ -63,8 +63,8 @@ header_strings = [
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
-cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' ) 
-lib = cpp_utils.loadLib('MMFF_lib', recompile=False)
+cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs_OCL' ) 
+lib = cpp_utils.loadLib('MMFFmulti_lib', recompile=False)
 array1ui = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='CONTIGUOUS')
 array1i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=1, flags='CONTIGUOUS')
 array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
@@ -221,32 +221,6 @@ lib.init_buffers.restype   =  None
 def init_buffers():
     return lib.init_buffers()
 
-'''
-#  void init_params(const char* fatomtypes, const char* fbondtypes)
-lib.init_params.argtypes  = [c_char_p, c_char_p, c_char_p] 
-lib.init_params.restype   =  None
-def init_params(fatomtypes, fbondtypes, fbondangles ):
-    fatomtypes = fatomtypes.encode('utf8')
-    fbondtypes = fbondtypes.encode('utf8')
-    fbondangles = fbondangles.encode('utf8')
-    return lib.init_params(fatomtypes,fbondtypes,fbondangles)
-'''
-
-'''
-#  void init_nonbond()
-lib.init_nonbond.argtypes  = [] 
-lib.init_nonbond.restype   =  None
-def init_nonbond():
-    return lib.init_nonbond()
-'''
-
-#  void init_nonbond()
-#lib.init.argtypes  = [] 
-#lib.init.restype   =  None
-#def init():
-#    isInitialized = True
-#    lib.init()
-
 def cstr( s ):
     if s is None: return None
     return s.encode('utf8')
@@ -286,35 +260,6 @@ lib.insertSMILES.restype   =  None
 def insertSMILES(s ):
     s = s.encode('utf8')
     return lib.insertSMILES(s)
-
-'''
-#  void buildFF( bool bNonBonded_, bool bOptimizer_ )
-lib.buildFF.argtypes  = [c_bool, c_bool] 
-lib.buildFF.restype   =  None
-def buildFF(bNonBonded=True, bOptimizer=True):
-    return lib.buildFF(bNonBonded, bOptimizer)
-'''
-
-# #  int loadmol( const char* fname_mol )
-# lib.loadmol.argtypes  = [c_char_p] 
-# lib.loadmol.restype   =  c_int
-# def loadmol(fname_mol):
-#     fname_mol=fname_mol.encode('utf8')
-#     return lib.loadmol(fname_mol)
-
-# #  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
-# lib.initWithMolFile.argtypes  = [c_char_p, c_bool, c_bool] 
-# lib.initWithMolFile.restype   =  None
-# def initWithMolFile(fname_mol, bNonBonded=True, bOptimizer=True):
-#     fname_mol = fname_mol.encode('utf8')
-#     return lib.initWithMolFile(fname_mol, bNonBonded, bOptimizer)
-
-# #  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
-# lib.initWithSMILES.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_bool] 
-# lib.initWithSMILES.restype   =  None
-# def initWithSMILES(fname_mol, bPrint=True, bCap=True, bNonBonded=True, bOptimizer=True):
-#     fname_mol = fname_mol.encode('utf8')
-#     return lib.initWithSMILES(fname_mol, bPrint, bCap, bNonBonded, bOptimizer)
 
 #  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
 lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
@@ -374,18 +319,6 @@ lib.eval.argtypes  = []
 lib.eval.restype   =  c_double
 def eval():
     return lib.eval()
-
-# #bool relax( int niter, double Ftol )
-# lib.relax.argtypes  = [c_int, c_double, c_bool ] 
-# lib.relax.restype   =  c_bool
-# def relax(niter=100, Ftol=1e-6, bWriteTrj=False ):
-#     return lib.relax(niter, Ftol, bWriteTrj )
-
-# #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-# lib. run.argtypes  = [c_int, c_double, c_double, c_int ] 
-# lib. run.restype   =  c_int
-# def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2 ):
-#     return lib.run(nstepMax, dt, Fconv, ialg )
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
 lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p ] 
@@ -454,12 +387,6 @@ def rotate_atoms_ax(ia0, iax0, iax1, phi, sel=None):
         n=len(sel)
         sel=np.array(sel,np.int32)
     return lib.rotate_atoms_ax(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi)
-
-# #  int splitAtBond( int ib, int* sel )
-# lib.splitAtBond.argtypes  = [c_int, c_int_p] 
-# lib.splitAtBond.restype   =  c_int
-# def splitAtBond(ib, sel=None):
-#     return lib.splitAtBond(ib, _np_as(sel,c_int_p))
 
 #  void scanTranslation_ax( int n, int* sel, double* vec, int nstep, double* Es, bool bWriteTrj )
 lib.scanTranslation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_int, c_double_p, c_bool] 

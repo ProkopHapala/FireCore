@@ -33,7 +33,9 @@ int verbosity = 0;
 #include "QEq.h"
 
 #include "DirectionStiffness.h"
+#include "Graph.h"
 #include "MolecularGraph.h"
+
 
 
 #include "Draw3D_Molecular.h"  // it needs to know MMFFparams

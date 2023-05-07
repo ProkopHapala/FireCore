@@ -1,6 +1,7 @@
 #ifndef  Solids_h
 #define  Solids_h
 
+#include "constants.h"
 #include "Vec2.h"
 #include "Vec3.h"
 #include "CMesh.h"
