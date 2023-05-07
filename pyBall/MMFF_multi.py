@@ -11,6 +11,7 @@ from . import cpp_utils_ as cpp_utils
 #import cpp_utils_ as cpp_utils
 
 c_double_p = ctypes.POINTER(c_double)
+c_float_p  = ctypes.POINTER(c_float)
 c_int_p    = ctypes.POINTER(c_int)
 
 def _np_as(arr,atype):
@@ -54,6 +55,12 @@ header_strings = [
 #"void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){",
 #"void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double tol ){",
 #"virtual void upload_pop( const char* fname ){",
+# "void pack_system  ( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){",
+# "void unpack_system( int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=false ){",
+# "void upload_sys   ( int isys, bool bParams, bool bForces, bool bVel ){",
+# "void download_sys ( int isys, bool bForces, bool bVel ){",
+# "void upload       ( bool bParams, bool bForces, bool bVel ){",
+# "void download     ( bool bForces, bool bVel ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -190,6 +197,15 @@ def getBuff(name,sh):
     ptr = lib.getBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
+#double* getBuff(const char* name){ 
+lib.getfBuff.argtypes = [c_char_p]
+lib.getfBuff.restype  = c_float_p 
+def getfBuff(name,sh):
+    if not isinstance(sh, tuple): sh=(sh,)
+    name=name.encode('utf8')
+    ptr = lib.getfBuff(name)
+    return np.ctypeslib.as_array( ptr, shape=sh )
+
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
     #natom=nnode+ncap
@@ -218,6 +234,30 @@ def getBuffs( NEIGH_MAX=4 ):
         #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
         neighs   = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
+    
+    # --- GPU buffers (multi-replicas)
+    global gpu_neighs,gpu_neighCell,gpu_bkNeighs,  gpu_atoms, gpu_aforces, gpu_avel, gpu_constr,  gpu_REQs, gpu_MMpars, gpu_BLs, gpu_BKs, gpu_Ksp, gpu_Kpp, gpu_lvecs, gpu_ilvecs
+    gpu_neighs    = getIBuff ( "gpu_neighs",    (nSys,nvecs,4)  )
+    gpu_neighCell = getIBuff ( "gpu_neighCell", (nSys,nvecs,4)  ) 
+    gpu_bkNeighs  = getIBuff ( "gpu_bkNeighs",  (nSys,nvecs,4)  ) 
+
+    gpu_atoms     = getfBuff ( "gpu_atoms",     (nSys,nvecs,4)  )
+    gpu_aforces   = getfBuff ( "gpu_aforces",   (nSys,nvecs,4)  ) 
+    gpu_avel      = getfBuff ( "gpu_avel",      (nSys,nvecs,4)  ) 
+    gpu_constr    = getfBuff ( "gpu_constr",    (nSys,natoms,4) )
+
+    gpu_REQs      = getfBuff ( "gpu_REQs",      (nSys,natoms,3) )
+    gpu_MMpars    = getfBuff ( "gpu_MMpars",    (nSys,nnode,3)  ) 
+    gpu_BLs       = getfBuff ( "gpu_BLs",       (nSys,nnode,3)  ) 
+    gpu_BKs       = getfBuff ( "gpu_BKs",       (nSys,nnode,3)  )
+    gpu_Ksp       = getfBuff ( "gpu_Ksp",       (nSys,nnode,3)  )
+    gpu_Kpp       = getfBuff ( "gpu_Kpp",       (nSys,nnode,3)  )
+
+    gpu_lvecs     = getfBuff ( "gpu_lvecs",     (nSys,3,4)    )
+    gpu_ilvecs    = getfBuff ( "gpu_ilvecs",    (nSys,3,4)    )
+    #gpu_pbcshifts = getfBuff ( "gpu_pbcshifts", (nSys,npi,4)    )
+
+
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []
@@ -236,9 +276,10 @@ def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
 
 #  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
+lib.init.argtypes  = [ c_int, c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
+        nSys_=10,
         xyz_name  ="input.xyz", 
         surf_name =None, 
         smile_name=None, 
@@ -248,10 +289,11 @@ def init(
         sAngleTypes= "data/AngleTypes.dat",
         bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridStep=0.1 
     ):
-    global glob_bMMFF
+    global glob_bMMFF, nSys
+    nSys=nSys_
     glob_bMMFF = bMMFF
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
 
 def tryInit():
     if not isInitialized:
@@ -329,6 +371,44 @@ lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p ]
 lib. run.restype   =  c_int
 def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None):
     return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+
+# ========= GPU Replicas management
+
+#  void pack_system  ( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
+lib.pack_system.argtypes = [c_int, c_bool, c_bool, c_bool, c_bool] 
+lib.pack_system.restype  =  None
+def pack_system(isys, bParams=False, bForces=False, bVel=False, blvec=False ):
+    return lib.pack_system(isys, bParams, bForces, bVel, blvec)
+
+#  void unpack_system( int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=false ){
+lib.unpack_system.argtypes = [c_int, c_bool, c_bool] 
+lib.unpack_system.restype  =  None
+def unpack_system(isys, bForces=True, bVel=True ):
+    return lib.unpack_system(isys, bForces, bVel)
+
+#  void upload_sys( int isys, bool bParams, bool bForces, bool bVel ){
+lib.upload_sys.argtypes  = [c_int, c_bool, c_bool, c_bool] 
+lib.upload_sys.restype   =  None
+def upload_sys(isys, bParams=True, bForces=True, bVel=True ):
+    return lib.upload_sys(isys, bParams, bForces, bVel)
+
+#  void download_sys ( int isys, bool bForces, bool bVel ){
+lib.download_sys .argtypes  = [c_int, c_bool, c_bool] 
+lib.download_sys .restype   =  None
+def download_sys (isys, bForces, bVel):
+    return lib.download_sys (isys, bForces, bVel)
+
+#  void upload( bool bParams, bool bForces, bool bVel ){
+lib.upload.argtypes  = [c_bool, c_bool, c_bool] 
+lib.upload.restype   =  None
+def upload(bParams, bForces, bVel):
+    return lib.upload(bParams, bForces, bVel)
+
+#  void download( bool bForces, bool bVel ){
+lib.download.argtypes = [c_bool, c_bool] 
+lib.download.restype  =  None
+def download(bForces, bVel):
+    return lib.download(bForces, bVel)
 
 # ========= Lattice Optimization
 

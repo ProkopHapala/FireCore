@@ -216,7 +216,10 @@ void change_lvec( double* lvec, bool bAdd, bool  ){
     else    { W.add_to_lvec( *(Mat3d*)lvec ); }
 }
 
-void optimizeLattice_1d( int n1, int n2, double* dlvec ){
+void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){
+    printf("MMFF_lib::optimizeLattice_1d(n1=%i,n2=%i,initMode=%i,tol=%g) \n", n1, n2, initMode, tol );
+    W.gopt.tolerance=tol;
+    W.gopt.initMode =initMode; 
     W.optimizeLattice_1d( n1, n2, *(Mat3d*)dlvec );
 }
 

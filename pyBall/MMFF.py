@@ -393,6 +393,25 @@ lib. run.restype   =  c_int
 def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None):
     return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
 
+# ========= Lattice Optimization
+
+#  void change_lvec( double* lvec, bool bAdd, bool  ){
+lib.change_lvec.argtypes  = [c_double_p, c_bool, c_bool] 
+lib.change_lvec.restype   =  None
+def change_lvec( lvec, bAdd=False, bUpdatePi=False ):
+    lvec=np.array( lvec,dtype=np.float64)
+    return lib.change_lvec(_np_as(lvec,c_double_p), bAdd, bool)
+
+#  void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){
+lib.optimizeLattice_1d.argtypes  = [c_double_p, c_int, c_int, c_int, c_double] 
+lib.optimizeLattice_1d.restype   =  None
+def optimizeLattice_1d(dlvec, n1=5, n2=5, initMode=0, tol=1e-6):
+    dlvec=np.array( dlvec,dtype=np.float64)
+    print("DEBUG_3")
+    return lib.optimizeLattice_1d(_np_as(dlvec,c_double_p), n1, n2, initMode, tol)
+
+# ========= Constrains
+
 #  void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k, double* shift ){
 lib.addDistConstrain.argtypes  = [c_int, c_int, c_double, c_double, c_double, c_double, c_double, c_double_p ] 
 lib.addDistConstrain.restype   =  None

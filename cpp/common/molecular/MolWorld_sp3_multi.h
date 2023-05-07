@@ -305,46 +305,6 @@ void pack_system( int isys, MMFFsp3_loc& ff,  bool bParams=0, bool bForces=false
     }
 }
 
-void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
-    double vv=0,ff=0,vf=0;
-    for(int i=0; i<n; i++){
-        Vec3f f = fs[i].f;
-        Vec3f v = vs[i].f;
-        ff += f.dot(f);
-        vv += v.dot(v);
-        vf += f.dot(v);
-    }
-    fire.vv=vv;
-    fire.ff=ff;
-    fire.vf=vf;
-    fire.update_params();
-    MDpar.x = fire.dt;
-    //MDpar.x = fire.dt * 0.5; // DEBUG
-    //MDpar.x = 0.01; // DEBUG
-    MDpar.y = 1 - fire.damping;
-    MDpar.z = fire.cv;
-    MDpar.w = fire.cf;
-}
-
-double evalVFs(){
-    int err=0;
-    ocl.download( ocl.ibuff_aforces , aforces );
-    ocl.download( ocl.ibuff_avel    , avel    );
-    err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs()");
-    //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
-    double F2max = 0;
-    for(int isys=0; isys<nSystems; isys++){
-        int i0v = isys * ocl.nvecs;
-        evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
-        F2max = fmax( F2max, fire[isys].ff );
-    }
-    //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
-    err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
-    //err |= ocl.finishRaw();  
-    OCL_checkError(err, "evalVFs()");
-    return F2max;
-}
-
 void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=false ){
     //rintf("MolWorld_sp3_multi::unpack_system(%i) \n", isys);
     int i0n = isys * ocl.nnode;
@@ -353,6 +313,53 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=fa
     unpack( ff.nvecs, ff.apos, atoms+i0v );
     if(bForces){ unpack( ff.nvecs, ff.fapos, aforces+i0v ); }
     if(bVel   ){ unpack( ff.nvecs, ff.vapos, avel   +i0v ); }
+}
+
+void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true ){
+    //printf("MolWorld_sp3_multi::upload() \n");
+    int i0v   = isys * ocl.nvecs;
+    int i0a   = isys * ocl.nAtoms;
+    int err=0;
+    err|= ocl.upload( ocl.ibuff_atoms,  atoms,  ocl.nvecs,  i0v );
+    err|= ocl.upload( ocl.ibuff_constr, constr, ocl.nAtoms, i0a );
+    if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces, ocl.nvecs, i0v ); }
+    if(bVel   ){ err|= ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v ); }
+    if(bParams){
+        int i0n   = isys * ocl.nnode;
+        int i0bk  = isys * ocl.nbkng;
+        int i0pbc = isys * ocl.npbc;
+        err|= ocl.upload( ocl.ibuff_lvecs,     lvecs     , 1, isys  );
+        err|= ocl.upload( ocl.ibuff_ilvecs,    ilvecs    , 1, isys  );
+        err|= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts , ocl.npbc, i0pbc );
+        err|= ocl.upload( ocl.ibuff_neighs,    neighs    , ocl.nAtoms, i0a  );
+        err|= ocl.upload( ocl.ibuff_neighCell, neighCell , ocl.nAtoms, i0a  );
+        err|= ocl.upload( ocl.ibuff_bkNeighs,  bkNeighs  , ocl.nbkng, i0bk  );
+        err|= ocl.upload( ocl.ibuff_bkNeighs_new, bkNeighs_new, ocl.nbkng, i0bk  );
+        //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
+        err|= ocl.upload( ocl.ibuff_REQs,   REQs,  ocl.nAtoms, i0a  );
+        err|= ocl.upload( ocl.ibuff_MMpars, MMpars, ocl.nnode, i0n );
+        err|= ocl.upload( ocl.ibuff_BLs, BLs, ocl.nnode, i0n );
+        err|= ocl.upload( ocl.ibuff_BKs, BKs, ocl.nnode, i0n );
+        err|= ocl.upload( ocl.ibuff_Ksp, Ksp, ocl.nnode, i0n );
+        err|= ocl.upload( ocl.ibuff_Kpp, Kpp, ocl.nnode, i0n );
+    }
+    err |= ocl.finishRaw(); 
+    OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
+}
+
+void download_sys( int isys, bool bForces=false, bool bVel=false ){
+    //int i0n   = isys * ocl.nnode;
+    int i0v   = isys * ocl.nvecs;
+    //int i0a   = isys * ocl.nAtoms;
+    //int i0bk  = isys * ocl.nbkng;
+    //int i0pbc = isys * ocl.npbc;
+    int err=0;
+    //printf("MolWorld_sp3_multi::download() \n");
+    ocl.download             ( ocl.ibuff_atoms,   atoms,    ocl.nvecs, i0v );
+    if(bForces){ ocl.download( ocl.ibuff_aforces, aforces , ocl.nvecs, i0v ); }
+    if(bVel   ){ ocl.download( ocl.ibuff_avel,    avel ,    ocl.nvecs, i0v ); }
+    err |= ocl.finishRaw(); 
+    OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
 }
 
 void upload(  bool bParams=false, bool bForces=0, bool bVel=true ){
@@ -410,6 +417,45 @@ void printMSystem( int isys, bool blvec=true, bool bilvec=false, bool bNg=true, 
     }
 }
 
+void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
+    double vv=0,ff=0,vf=0;
+    for(int i=0; i<n; i++){
+        Vec3f f = fs[i].f;
+        Vec3f v = vs[i].f;
+        ff += f.dot(f);
+        vv += v.dot(v);
+        vf += f.dot(v);
+    }
+    fire.vv=vv;
+    fire.ff=ff;
+    fire.vf=vf;
+    fire.update_params();
+    MDpar.x = fire.dt;
+    //MDpar.x = fire.dt * 0.5; // DEBUG
+    //MDpar.x = 0.01; // DEBUG
+    MDpar.y = 1 - fire.damping;
+    MDpar.z = fire.cv;
+    MDpar.w = fire.cf;
+}
+
+double evalVFs(){
+    int err=0;
+    ocl.download( ocl.ibuff_aforces , aforces );
+    ocl.download( ocl.ibuff_avel    , avel    );
+    err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs()");
+    //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
+    double F2max = 0;
+    for(int isys=0; isys<nSystems; isys++){
+        int i0v = isys * ocl.nvecs;
+        evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
+        F2max = fmax( F2max, fire[isys].ff );
+    }
+    //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
+    err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
+    //err |= ocl.finishRaw();  
+    OCL_checkError(err, "evalVFs()");
+    return F2max;
+}
 
 // ===============================================
 //       Implement    MultiSolverInterface
