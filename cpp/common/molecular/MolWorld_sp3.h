@@ -61,6 +61,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     OptLog opt_log;
 
     double fAutoCharges=-1;
+    bool bEpairs = false;
 
     bool bCellBySurf=false;
     int   bySurf_ia0 =0;
@@ -165,7 +166,7 @@ virtual void setConstrains(bool bClear=true, double Kfix_=1.0 ){
     }
 }
 
-void change_lvec( Mat3d lvec ){
+virtual void change_lvec( const Mat3d& lvec ){
     ffl.setLvec( lvec );
     //npbc = makePBCshifts( nPBC, lvec );
     evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
@@ -635,7 +636,7 @@ int buildMolecule_xyz( const char* xyz_name ){
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
     builder.autoAllConfEPi  ( ia0 ); 
     builder.setPiLoop       ( ic0, -1, 10 );
-    builder.addAllEpairsByPi( ia0=0 );    
+    if(bEpairs)builder.addAllEpairsByPi( ia0=0 );    
     //builder.printAtomConfs(false, false );
     //builder.printAtomConfs(false, true );
     builder.assignAllBondParams();    //if(verbosity>1)
@@ -659,11 +660,9 @@ void makeMMFFs(){
     builder.checkBondsOrdered( true, false );
     builder.assignTypes();
     builder.printAtomTypes();
-    //bool bEpair = true;
-    bool bEpair = false;
-    builder.toMMFFsp3    ( ff , true, bEpair );
-    builder.toMMFFsp3_loc( ffl, true, bEpair );  // without electron pairs
-    builder.toMMFFf4     ( ff4, true, bEpair );  //ff4.printAtomParams(); ff4.printBKneighs(); 
+    builder.toMMFFsp3    ( ff , true, bEpairs );
+    builder.toMMFFsp3_loc( ffl, true, bEpairs );  // without electron pairs
+    builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
     ffl.flipPis( Vec3dOne );
     ff4.flipPis( Vec3fOne );
     if(bPBC){  
@@ -678,7 +677,7 @@ void makeMMFFs(){
         //ffl.makeNeighCells( nPBC );      
         ffl.makeNeighCells( npbc, pbc_shifts ); 
     }
-    ffl.printAtomParams();
+    //ffl.printAtomParams();
     //printf("npbc %i\n", npbc ); ffl.printNeighs();
     //builder.printBonds();
     //printf("!!!!! builder.toMMFFsp3() DONE \n");

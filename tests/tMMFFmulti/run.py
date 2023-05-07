@@ -10,7 +10,6 @@ from pyBall import MMFF_multi as mmff
 #======== Body
 
 mmff.setVerbosity( verbosity=1, idebug=0 )
-#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2r" )                             # all
 mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False  )              # without MMFF
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False, gridStep=-1 )  # without gridFF
 mmff.getBuffs()

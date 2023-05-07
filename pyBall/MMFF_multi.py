@@ -50,6 +50,10 @@ header_strings = [
 #"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){",
 #"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
 #"void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){",
+#"void change_lvec( double* lvec, bool bAdd, bool  ){",
+#"void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){",
+#"void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double tol ){",
+#"virtual void upload_pop( const char* fname ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -232,7 +236,7 @@ def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
 
 #  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
+lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
         xyz_name  ="input.xyz", 
@@ -242,12 +246,12 @@ def init(
         sAtomTypes = "data/AtomTypes.dat", 
         sBondTypes = "data/BondTypes.dat", 
         sAngleTypes= "data/AngleTypes.dat",
-        bMMFF=True, nPBC=(1,1,0), gridStep=0.1 
+        bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridStep=0.1 
     ):
     global glob_bMMFF
     glob_bMMFF = bMMFF
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
 
 def tryInit():
     if not isInitialized:
@@ -325,6 +329,37 @@ lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p ]
 lib. run.restype   =  c_int
 def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None):
     return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+
+# ========= Lattice Optimization
+
+#  void change_lvec( double* lvec, bool bAdd, bool  ){
+lib.change_lvec.argtypes  = [c_double_p, c_bool, c_bool] 
+lib.change_lvec.restype   =  None
+def change_lvec( lvec, bAdd=False, bUpdatePi=False ):
+    lvec=np.array( lvec,dtype=np.float64)
+    return lib.change_lvec(_np_as(lvec,c_double_p), bAdd, bool)
+
+#  void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){
+lib.optimizeLattice_1d.argtypes  = [c_double_p, c_int, c_int, c_int, c_double] 
+lib.optimizeLattice_1d.restype   =  None
+def optimizeLattice_1d(dlvec, n1=5, n2=5, initMode=0, tol=1e-6):
+    dlvec=np.array( dlvec,dtype=np.float64)
+    return lib.optimizeLattice_1d(_np_as(dlvec,c_double_p), n1, n2, initMode, tol)
+
+#  void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double tol ){
+lib.optimizeLattice_2d_multi.argtypes  = [c_double_p, c_int, c_int, c_double] 
+lib.optimizeLattice_2d_multi.restype   =  None
+def optimizeLattice_2d_multi(dlvec, nstesp=10, initMode=0, tol=1e-6):
+    dlvec=np.array( dlvec,dtype=np.float64)
+    return lib.optimizeLattice_2d_multi(_np_as(dlvec,c_double_p), nstesp, initMode, tol)
+
+#  virtual void upload_pop( const char* fname ){
+lib.upload_pop.argtypes  = [c_char_p] 
+lib.upload_pop.restype   =  None
+def upload_pop(fname):
+    return lib.upload_pop( cstr(fname) )
+
+# ========= Constrains
 
 #  void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k, double* shift ){
 lib.addDistConstrain.argtypes  = [c_int, c_int, c_double, c_double, c_double, c_double, c_double, c_double_p ] 
