@@ -38,7 +38,30 @@ void init_buffers(){
         //buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
         //buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
         //ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
-        ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+        ibuffers.insert( { "neighs",       (int*)W.ffl.neighs  } );
+
+        ibuffers.insert( { "gpu_neighs",   (int*)W.neighs    } );
+        ibuffers.insert( { "gpu_neighCell",(int*)W.neighCell } );
+        ibuffers.insert( { "gpu_bkNeighs", (int*)W.bkNeighs  } );
+
+        fbuffers.insert( { "gpu_atoms",    (float*)W.atoms   } );
+        fbuffers.insert( { "gpu_aforces",  (float*)W.aforces } );
+        fbuffers.insert( { "gpu_avel",     (float*)W.avel    } );
+        fbuffers.insert( { "gpu_constr",   (float*)W.constr  } );
+        
+        fbuffers.insert( { "gpu_REQs",     (float*)W.REQs   } );
+        fbuffers.insert( { "gpu_MMpars",   (float*)W.MMpars } );
+        fbuffers.insert( { "gpu_BLs",      (float*)W.BLs    } );
+        fbuffers.insert( { "gpu_BKs",      (float*)W.BKs    } );
+        fbuffers.insert( { "gpu_Ksp",      (float*)W.Ksp    } );
+        fbuffers.insert( { "gpu_Kpp",      (float*)W.Kpp    } );
+
+        fbuffers.insert( { "gpu_lvecs",    (float*)W.lvecs     } );
+        fbuffers.insert( { "gpu_ilvecs",   (float*)W.ilvecs    } );
+        fbuffers.insert( { "gpu_pbcshifts",(float*)W.pbcshifts } );
+
+        float* gpu_lvecs= getfBuff("gpu_lvecs"); 
+        for(int i=0; i<12; i++){ printf( "gpu_lvecs[%i]=%g\n", i, gpu_lvecs[i] ); };
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
@@ -49,7 +72,8 @@ void init_buffers(){
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i \n", nSys, xyz_name, surf_name, bMMFF, bEpairs );
 	W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
@@ -60,6 +84,7 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.tmpstr=tmpstr;
     W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
 	W.builder.bindParams(&W.params);
+    W.nSystems=nSys;
     bool bGrid = gridStep>0;
     W.init( bGrid );
     init_buffers();
@@ -177,6 +202,48 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
     }
 }
 
+
+void pack_system( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
+    W.pack_system( isys, W.ffls[isys], bParams, bForces, bVel, blvec );
+}
+void unpack_system( int isys, bool bForces=false, bool bVel=false ){
+    W.unpack_system( isys, W.ffls[isys], bForces, bVel );
+}
+
+void upload_sys  ( int isys, bool bParams, bool bForces, bool bVel ){
+    W.upload_sys  ( isys, bParams, bForces, bVel );
+}
+void download_sys( int isys, bool bForces, bool bVel ){
+    W.download_sys( isys, bForces, bVel );
+}
+
+void upload(  bool bParams, bool bForces, bool bVel ){
+    W.upload( bParams, bForces, bVel );
+}
+void download( bool bForces, bool bVel ){
+    W.download( bForces, bVel );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 void change_lvec( double* lvec, bool bAdd, bool bUpdatePi ){
     if(bAdd){ W.change_lvec( *(Mat3d*)lvec );  }
     else    { W.add_to_lvec( *(Mat3d*)lvec );  }
@@ -192,6 +259,7 @@ void upload_pop( const char* fname ){
 }
 
 void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){
+    printf("MMFFmulti_lib::optimizeLattice_1d(n1=%i,n2=%i,initMode=%i,tol=%g) \n", n1, n2, initMode, tol );
     W.optimizeLattice_1d( n1, n2, *(Mat3d*)dlvec );
 }
 

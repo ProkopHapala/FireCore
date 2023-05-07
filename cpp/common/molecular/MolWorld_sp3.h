@@ -223,7 +223,7 @@ virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
 }
 
 virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
-    printf("\n\n\n######### MolWorld_sp3::optimizeLattice_1d(%i.%i)   \n", n1, n2    );
+    printf("\n\n\n######### MolWorld_sp3::optimizeLattice_1d(%i.%i) \n", n1, n2 );
     //printMat( ffl.lvec );
     //printPBCshifts();
     //ffl.print_apos();
@@ -231,6 +231,8 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     //printf("ffl.invLvec\n" ); printMat( ffl.invLvec );
     //gopt.reallocPop( n1+n2, ffl.nvecs );
     //gopt.atypes = ffl.atypes;
+
+    
     gopt.reallocPop( n1+n2, ffl.natoms, true );
 
     //gopt.tolerance = 0.02;
@@ -242,20 +244,19 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     //Mat3d lvec0 = builder.lvec;
     Mat3d lvec0 = ffl.lvec;
     //printf("optimizeLattice_1d lvec0\n"    ); printMat( lvec0    );
-    //int initMode=1;
-    int initMode=0;
     if(n1>0){
-        //gopt.lattice_scan_1d( n1, lvec0, dlvec*-1,initMode, "lattice_scan_1d_bk.xyz", n1-1,-1 );
-        gopt.lattice_scan_1d( n1, lvec0, dlvec*-1,initMode, 0, n1-1,-1 );
+        //gopt.lattice_scan_1d( n1, lvec0, dlvec*-1, "lattice_scan_1d_bk.xyz", n1-1,-1 );
+        gopt.lattice_scan_1d( n1, lvec0, dlvec*-1, 0, n1-1,-1 );
         setGeom( gopt.population[n1-1]->apos, &lvec0 );
     }
     if(n2>0){
         //gopt.lattice_scan_1d( n2, lvec0, dlvec   ,initMode, "lattice_scan_1d_fw.xyz", n1,1 );
-        gopt.lattice_scan_1d( n2, lvec0, dlvec   ,initMode, 0, n1,1 );
+        gopt.lattice_scan_1d( n2, lvec0, dlvec   , 0, n1,1 );
         setGeom( gopt.population[n1-1]->apos, &lvec0 );
     }
     gopt.popToXYZ( "lattice_scan_1d_all.xyz");
     gopt.popToXYZ( "lattice_scan_1d_all_2x2.xyz",0,-1,{2,2,1});
+    
 }
 
 virtual void upload_pop( const char* fname ){
