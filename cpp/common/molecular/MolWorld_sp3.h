@@ -192,7 +192,7 @@ virtual double solve( int nmax, double tol )override{
     //nmax = 10;
     long t0=getCPUticks();
     int nitr = run_omp( nmax, opt.dt_max, tol, 1000.0, -1. );
-    long t=(getCPUticks()-t0); printf( "time run_omp[%i] %g[Mtick] %g[ktick/iter]  %g[s] %g[s/iter]\n", nitr, t*1e-6, t*1.e-3/nitr, t*tick2second, t*tick2second/nitr  );
+    long t=(getCPUticks()-t0); printf( "time run_omp[%i] %g[Mtick] %g[ktick/iter]  %g[s] %g[ms/iter]\n", nitr, t*1e-6, t*1.e-3/nitr, t*tick2second, t*tick2second*1000/nitr  );
     return Etot;
 }
 

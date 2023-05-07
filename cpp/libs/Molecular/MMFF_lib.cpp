@@ -1,38 +1,4 @@
 ﻿
-/*
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <vector>
-#include <math.h>
-
-//#include "testUtils.h"
-#include "fastmath.h"
-#include "Vec3.h"
-#include "Mat3.h"
-#include "Vec3Utils.h"
-
-//#include "raytrace.h"
-#include "Forces.h"
-#include "MMFFsp3.h"
-#include "NBFF.h"
-#include "molecular_utils.h"
-
-#include "Molecule.h"
-#include "MMFFparams.h"
-#include "MMFFBuilder.h"
-#include "SMILESparser.h"
-#include "DynamicOpt.h"
-
-//#include "QEq.h"
-//#include "NBSRFF.h"
-//#include "IO_utils.h"
-
-Vec3d DEBUG_dQdp;
-int DEBUG_iter     = 0;
-int DEBUG_log_iter = 0;
-int i_DEBUG=0;
-*/
 
 constexpr int ntmpstr=2048;
 char tmpstr[ntmpstr];
@@ -98,6 +64,11 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.init( bGrid );
     init_buffers();
     return &W;
+}
+
+int    run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){
+    //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
+    return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
 }
 
 void set_opt( 

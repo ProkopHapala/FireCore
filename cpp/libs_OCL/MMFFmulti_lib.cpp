@@ -60,13 +60,13 @@ void init_buffers(){
         fbuffers.insert( { "gpu_ilvecs",   (float*)W.ilvecs    } );
         fbuffers.insert( { "gpu_pbcshifts",(float*)W.pbcshifts } );
 
-        float* gpu_lvecs= getfBuff("gpu_lvecs"); 
-        for(int i=0; i<12; i++){ printf( "gpu_lvecs[%i]=%g\n", i, gpu_lvecs[i] ); };
+        //float* gpu_lvecs= getfBuff("gpu_lvecs"); 
+        //for(int i=0; i<12; i++){ printf( "gpu_lvecs[%i]=%g\n", i, gpu_lvecs[i] ); };
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
-    ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
-    buffers .insert( { "Es",       &W.ff.Etot  } );
+    ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
+    buffers .insert( { "Es",       &W.ffl.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
 }
 
@@ -89,6 +89,23 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
     W.init( bGrid );
     init_buffers();
     return &W;
+}
+
+int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, bool bOcl ){ 
+    W.bOcl=bOcl;
+    Mat3d lvec = W.ffls[0].lvec;
+    //printf( "run Fconv=%g lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}}\n", Fconv, lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );
+    return W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
+    /*
+    int m  = 50; 
+    int n  = nstepMax/m; 
+    for(int i=0; i<n; i++){
+        int ndone = W.rum_omp_ocl( m, dt, Fconv, 1000.0, 1000 ); 
+        if(ndone<m)break;
+    }
+    return 0;
+    */
+    //return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
 }
 
 void set_opt( 
@@ -210,43 +227,24 @@ void unpack_system( int isys, bool bForces=false, bool bVel=false ){
     W.unpack_system( isys, W.ffls[isys], bForces, bVel );
 }
 
-void upload_sys  ( int isys, bool bParams, bool bForces, bool bVel ){
-    W.upload_sys  ( isys, bParams, bForces, bVel );
+void upload_sys  ( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
+    W.upload_sys  ( isys, bParams, bForces, bVel, blvec );
 }
 void download_sys( int isys, bool bForces, bool bVel ){
     W.download_sys( isys, bForces, bVel );
 }
 
-void upload(  bool bParams, bool bForces, bool bVel ){
-    W.upload( bParams, bForces, bVel );
+void upload(  bool bParams, bool bForces, bool bVel, bool blvec ){
+    W.upload( bParams, bForces, bVel, blvec );
 }
 void download( bool bForces, bool bVel ){
     W.download( bForces, bVel );
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 void change_lvec( double* lvec, bool bAdd, bool bUpdatePi ){
-    if(bAdd){ W.change_lvec( *(Mat3d*)lvec );  }
-    else    { W.add_to_lvec( *(Mat3d*)lvec );  }
+    if(bAdd){ W.add_to_lvec( *(Mat3d*)lvec ); }
+    else    { W.change_lvec( *(Mat3d*)lvec ); }
     //if(bUpdatePi){ W.ffl.initPi( W.pbc_shifts ); }
 }
 

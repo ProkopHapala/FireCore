@@ -194,10 +194,9 @@ def getBuffs( NEIGH_MAX=4 ):
     global ndims,Es
     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
-    global nDOFs,natoms,nnode,ncap,nbonds,npi,nvecs
-    nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];npi=ndims[4];nbonds=ndims[5];
-    nvecs=natoms+npi
-    print( "getBuffs(): nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
+    global nDOFs,natoms,nnode,ncap,npi,nvecs
+    nDOFs=ndims[0]; nnode=ndims[1]; ncap=ndims[2];nvecs=ndims[3]; natoms=nnode+ncap; npi=nnode
+    print( "getBuffs(): nDOFs %i nvecs %i  natoms %i nnode %i ncap %i npi %i" %(nDOFs,nvecs,natoms,nnode,ncap,npi) )
     global DOFs,fDOFs,vDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )

@@ -208,16 +208,14 @@ def getfBuff(name,sh):
 
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
-    #natom=nnode+ncap
-    #nvecs=natom+npi
-    #nDOFs=nvecs*3
+    # int  nDOFs=0,nnode=0,ncap=0,nvecs=0;
+    # double Etot,Eb,Ea, Eps,EppT,EppI;
     global ndims,Es
     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
-    global nDOFs,natoms,nnode,ncap,nbonds,npi,nvecs
-    nDOFs=ndims[0]; natoms=ndims[1]; nnode=ndims[2];ncap=ndims[3];npi=ndims[4];nbonds=ndims[5];
-    nvecs=natoms+npi
-    print( "getBuffs(): nbonds %i nvecs %i npi %i natoms %i nnode %i ncap %i" %(nbonds,nvecs,npi,natoms,nnode,ncap) )
+    global nDOFs,natoms,nnode,ncap,npi,nvecs
+    nDOFs=ndims[0]; nnode=ndims[1]; ncap=ndims[2];nvecs=ndims[3]; natoms=nnode+ncap; npi=nnode
+    print( "getBuffs(): nDOFs %i nvecs %i  natoms %i nnode %i ncap %i npi %i" %(nDOFs,nvecs,natoms,nnode,ncap,npi) )
     global DOFs,fDOFs,vDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
@@ -369,15 +367,15 @@ def eval():
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
 lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p ] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None):
-    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+def  run(nstepMax=1000, dt=-1, Fconv=1e-3, ialg=2, outE=None, outF=None, bOcl=True ):
+    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), bOcl )
 
 # ========= GPU Replicas management
 
 #  void pack_system  ( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
 lib.pack_system.argtypes = [c_int, c_bool, c_bool, c_bool, c_bool] 
 lib.pack_system.restype  =  None
-def pack_system(isys, bParams=False, bForces=False, bVel=False, blvec=False ):
+def pack_system(isys, bParams=False, bForces=False, bVel=False, blvec=True ):
     return lib.pack_system(isys, bParams, bForces, bVel, blvec)
 
 #  void unpack_system( int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=false ){
@@ -387,27 +385,27 @@ def unpack_system(isys, bForces=True, bVel=True ):
     return lib.unpack_system(isys, bForces, bVel)
 
 #  void upload_sys( int isys, bool bParams, bool bForces, bool bVel ){
-lib.upload_sys.argtypes  = [c_int, c_bool, c_bool, c_bool] 
+lib.upload_sys.argtypes  = [c_int, c_bool, c_bool, c_bool, c_bool ] 
 lib.upload_sys.restype   =  None
-def upload_sys(isys, bParams=True, bForces=True, bVel=True ):
-    return lib.upload_sys(isys, bParams, bForces, bVel)
+def upload_sys(isys, bParams=True, bForces=False, bVel=True, blvec=True ):
+    return lib.upload_sys(isys, bParams, bForces, bVel, blvec)
 
 #  void download_sys ( int isys, bool bForces, bool bVel ){
 lib.download_sys .argtypes  = [c_int, c_bool, c_bool] 
 lib.download_sys .restype   =  None
-def download_sys (isys, bForces, bVel):
+def download_sys (isys, bForces=True, bVel=True):
     return lib.download_sys (isys, bForces, bVel)
 
 #  void upload( bool bParams, bool bForces, bool bVel ){
-lib.upload.argtypes  = [c_bool, c_bool, c_bool] 
+lib.upload.argtypes  = [c_bool, c_bool, c_bool, c_bool] 
 lib.upload.restype   =  None
-def upload(bParams, bForces, bVel):
-    return lib.upload(bParams, bForces, bVel)
+def upload(bParams=True, bForces=False, bVel=True, blvec=True):
+    return lib.upload(bParams, bForces, bVel, blvec)
 
 #  void download( bool bForces, bool bVel ){
 lib.download.argtypes = [c_bool, c_bool] 
 lib.download.restype  =  None
-def download(bForces, bVel):
+def download(bForces=True, bVel=True):
     return lib.download(bForces, bVel)
 
 # ========= Lattice Optimization

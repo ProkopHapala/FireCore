@@ -233,7 +233,7 @@ virtual void init( bool bGrid ) override {
 //         GPU <-> CPU I/O
 // ==================================
 
-void pack_system( int isys, MMFFsp3_loc& ff,  bool bParams=0, bool bForces=false, bool bVel=false, bool blvec=true, float l_rnd=-1 ){
+void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false, bool bVel=false, bool blvec=true, float l_rnd=-1 ){
     //printf("MolWorld_sp3_multi::pack_system(%i) \n", isys);
     //ocl.nvecs;
     int i0n   = isys * ocl.nnode;
@@ -315,7 +315,7 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=fa
     if(bVel   ){ unpack( ff.nvecs, ff.vapos, avel   +i0v ); }
 }
 
-void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true ){
+void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, bool blvec=true ){
     //printf("MolWorld_sp3_multi::upload() \n");
     int i0v   = isys * ocl.nvecs;
     int i0a   = isys * ocl.nAtoms;
@@ -324,13 +324,15 @@ void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true ){
     err|= ocl.upload( ocl.ibuff_constr, constr, ocl.nAtoms, i0a );
     if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces, ocl.nvecs, i0v ); }
     if(bVel   ){ err|= ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v ); }
-    if(bParams){
-        int i0n   = isys * ocl.nnode;
-        int i0bk  = isys * ocl.nbkng;
+    if(blvec){
         int i0pbc = isys * ocl.npbc;
         err|= ocl.upload( ocl.ibuff_lvecs,     lvecs     , 1, isys  );
         err|= ocl.upload( ocl.ibuff_ilvecs,    ilvecs    , 1, isys  );
         err|= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts , ocl.npbc, i0pbc );
+    }
+    if(bParams){
+        int i0n   = isys * ocl.nnode;
+        int i0bk  = isys * ocl.nbkng;
         err|= ocl.upload( ocl.ibuff_neighs,    neighs    , ocl.nAtoms, i0a  );
         err|= ocl.upload( ocl.ibuff_neighCell, neighCell , ocl.nAtoms, i0a  );
         err|= ocl.upload( ocl.ibuff_bkNeighs,  bkNeighs  , ocl.nbkng, i0bk  );
@@ -362,17 +364,19 @@ void download_sys( int isys, bool bForces=false, bool bVel=false ){
     OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
 }
 
-void upload(  bool bParams=false, bool bForces=0, bool bVel=true ){
+void upload(  bool bParams=false, bool bForces=0, bool bVel=true, bool blvec=true ){
     //printf("MolWorld_sp3_multi::upload() \n");
     int err=0;
     err|= ocl.upload( ocl.ibuff_atoms,  atoms  );
     err|= ocl.upload( ocl.ibuff_constr, constr );
     if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces ); }
     if(bVel   ){ err|= ocl.upload( ocl.ibuff_avel,    avel    ); }
-    if(bParams){
+    if(blvec){
         err|= ocl.upload( ocl.ibuff_lvecs,   lvecs );
         err|= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
         err|= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts );
+    }
+    if(bParams){
         err|= ocl.upload( ocl.ibuff_neighs,     neighs    );
         err|= ocl.upload( ocl.ibuff_neighCell,  neighCell );
         err|= ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
@@ -536,7 +540,7 @@ virtual void uploadPop  ()override{
 }
 
 virtual void change_lvec( const Mat3d& lvec )override{
-    printf("MolWold_sp3_multi::change_lvec() iSystemCur=%i \n", iSystemCur);
+    //printf("MolWold_sp3_multi::change_lvec() iSystemCur=%i \n", iSystemCur);
     int isys  = iSystemCur;
     int i0pbc = isys*ocl.npbc; 
     ffls[isys].setLvec ( lvec );
@@ -545,11 +549,9 @@ virtual void change_lvec( const Mat3d& lvec )override{
     Mat3_to_cl( ffls[isys].   lvec,  lvecs[isys] );
     Mat3_to_cl( ffls[isys].invLvec, ilvecs[isys] );
     
-    // { // visualization
-    // builder.lvec=ffls[isys].lvec;
-    // ffl.setLvec ( builder.lvec);
-    // evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
-    // }
+    builder.lvec = ffls[iSystemCur].lvec;
+    ffl.setLvec  ( ffls[isys].lvec );
+    evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
 
     int err=0;
     err|= ocl.upload( ocl.ibuff_lvecs,     lvecs,  1,  isys  );
@@ -560,27 +562,23 @@ virtual void change_lvec( const Mat3d& lvec )override{
 }
 
 virtual void add_to_lvec( const Mat3d& dlvec )override{
-    printf("MolWold_sp3_multi::add_to_lvec()\n");
+    //printf("MolWold_sp3_multi::add_to_lvec()\n");
     for(int isys=0; isys<nSystems; isys++){
-        //int i0n   = isys * ocl.nnode;
-        //int i0a   = isys * ocl.nAtoms;
-        //int i0v   = isys * ocl.nvecs;
         int i0pbc = isys*ocl.npbc;
-        Mat3_from_cl( ffl.lvec, lvecs[isys] ); 
-        ffl.setLvec ( ffl.lvec+dlvec );
-        evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
-        pack( npbc,  pbc_shifts, pbcshifts+i0pbc );
-        Mat3_to_cl( ffl.   lvec,  lvecs[isys] );
-        Mat3_to_cl( ffl.invLvec, ilvecs[isys] );
+        ffls[isys].setLvec ( ffls[isys].lvec+dlvec );
+        ffls[isys].makePBCshifts( nPBC, true );
+        pack( ffls[isys].npbc,  ffls[isys].shifts, pbcshifts+i0pbc);
+        Mat3_to_cl( ffls[isys].   lvec,  lvecs[isys] );
+        Mat3_to_cl( ffls[isys].invLvec, ilvecs[isys] );
     }
 
-    Mat3_from_cl( builder.lvec, lvecs[iSystemCur] );
-    ffl.setLvec ( builder.lvec);
+    builder.lvec = ffls[iSystemCur].lvec;
+    ffl.setLvec ( ffls[iSystemCur].lvec );
     evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
     
     int err=0;
-    err|= ocl.upload( ocl.ibuff_lvecs,   lvecs );
-    err|= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
+    err|= ocl.upload( ocl.ibuff_lvecs,     lvecs     );
+    err|= ocl.upload( ocl.ibuff_ilvecs,    ilvecs    );
     err|= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts );
     err |= ocl.finishRaw(); 
     OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
@@ -941,7 +939,7 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
 }
 
 
-int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02 ){
+int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-3, double Flim=1000, double timeLimit=0.02 ){
     //printf( "rum_omp_ocl() niter_max=%i %dt=g Fconv%g \n", niter_max, dt, Fconv  ); 
     double F2conv=Fconv*Fconv;
     double F2max=0;
@@ -979,10 +977,11 @@ int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-6, double Flim=1
         }        
         #pragma omp barrier
         #pragma omp single
-        {if(bOcl){
-            T1 = (getCPUticks()-T0)*tick2second;
+        {   F2max=0;
+            if(bOcl){
+            //T1 = (getCPUticks()-T0)*tick2second;
             err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.finish");
-            T2 = (getCPUticks()-T0)*tick2second;
+            //T2 = (getCPUticks()-T0)*tick2second;
             //printf( "CPU.finish %g[us] GPU.finish %g[us] \n", T1*1e+6, T2*1e+6 );
         }}
         #pragma omp for reduction(max:F2max)
@@ -991,7 +990,7 @@ int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-6, double Flim=1
             if(bOcl)unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );
             double F2 = opts[isys].move_FIRE();
             F2max = fmax(F2max,F2);
-            pack      ( ffls[isys].nvecs,  ffls[isys].apos, atoms  +i0v );
+            pack( ffls[isys].nvecs,  ffls[isys].apos, atoms  +i0v );
         }
         #pragma omp single
         { 
@@ -1007,7 +1006,7 @@ int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-6, double Flim=1
             if(F2max<F2conv){ 
                 niter=0; 
                 T1 = (getCPUticks()-T00)*tick2second;
-                if(verbosity>0)printf( "rum_omp_ocl() CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", itr,niter_max, sqrt(F2max), T1*1000 );
+                if(verbosity>0)printf( "rum_omp_ocl(bOcl=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", bOcl, itr,niter_max, sqrt(F2max), T1*1000 );
                 itr--;
             }
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
@@ -1022,11 +1021,9 @@ int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-6, double Flim=1
         ffl.fapos[i]=ffls[iSystemCur].fapos[i];
     }
     T1 = (getCPUticks()-T00)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "rum_omp_ocl() NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", itr,niter_max, sqrt(F2max), T1*1000 );
+    if(itr>=niter_max)if(verbosity>0)printf( "rum_omp_ocl(bOcl=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", bOcl, itr,niter_max, sqrt(F2max), T1*1000 );
     return itr;
 }
-
-
 
 
 

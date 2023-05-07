@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import os
+import time
 import matplotlib.pyplot as plt
 
 sys.path.append("../../")
@@ -9,21 +10,27 @@ from pyBall import MMFF_multi as mmff
 
 #======== Body
 
-#./$name -m $nsys -x common_resources/BPBA   -g common_resources/NaCl_1x1_L2
-#./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/BPBA        -g common_resources/NaCl_1x1_L2
+#./$name -m 40 -x common_resources/polymer-2_new  -g common_resources/NaCl_1x1_L2
 
 mmff.setVerbosity( verbosity=1, idebug=0 )
 mmff.init( xyz_name="data/polymer-2_new", surf_name="data/NaCl_1x1_L2"  )         # without MMFF
 mmff.getBuffs()
 
-print(mmff.gpu_atoms)
-print(mmff.gpu_lvecs)
+#print(mmff.gpu_atoms)
+#print(mmff.gpu_lvecs)
 #print(mmff.gpu_lvecs.dtype)
-exit()
+#exit()
+
+t0 = time.time_ns()
+for i in range(5):
+    mmff.change_lvec( [[0.2,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], bAdd=True )
+    #mmff.run(10000, bOcl=True)
+    mmff.run(10000,bOcl=False)
+t = time.time_ns()-t0;  print( "Py: time(optimizeLattice_1d) %g[s]" %(t*1e-9) )
 
 #20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  }
-
-mmff.optimizeLattice_1d( [[0.0,0.5,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], n1=20, n2=20, initMode=0, tol=1e-6)
+#mmff.optimizeLattice_1d( [[0.0,0.5,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], n1=20, n2=20, initMode=0, tol=1e-6)
 
 #mmff.eval()
 #mmff.relax(1000)
