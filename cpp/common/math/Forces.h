@@ -6,10 +6,7 @@
 #include "Vec2.h"
 #include "Vec3.h"
 
-#define COULOMB_CONST         14.3996448915
-
-#define deg2rad    0.01745329251 
-#define rad2deg   57.2957795131
+#include "physics_constants.h"
 
 #define RSAFE   1.0e-4f
 #define R2SAFE  1.0e-8f

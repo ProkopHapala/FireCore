@@ -6,6 +6,8 @@
 #include "Vec3.h"
 #include "integerOps.h"
 
+#include "constants.h"
+
 #include "molecular_utils.h"
 
 #include <string>
@@ -393,8 +395,7 @@ class MMFFparams{ public:
     }
 
 
-    double assignAngleParamUFF( int ic, int ia, int ib, double ra, double rb ){
-        const double deg2rad = 0.01745329251;    
+    double assignAngleParamUFF( int ic, int ia, int ib, double ra, double rb ){  
         const AtomType& tc    = atypes[ic];
         //const AtomType& ta    = atypes[ia];
         //const AtomType& tb    = atypes[ib];
