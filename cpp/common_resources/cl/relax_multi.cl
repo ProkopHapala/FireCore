@@ -142,6 +142,14 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
     return  (float4){ dp*fr, E };
 }
 
+inline float4 getCoulomb( float3 dp, float R2damp ){
+    // ---- Electrostatic
+    float   r2    = dot(dp,dp);
+    float   ir2_  = 1.f/(  r2 + R2damp);
+    float   E    = COULOMB_CONST*sqrt( ir2_ );
+    return  (float4){ dp*-E*ir2_, E };
+}
+
 float3 limnitForce( float3 f, float fmax ){
     float fr2 = dot(f,f);
     if( fr2>(fmax*fmax) ){ f*=(fmax/sqrt(fr2)); }
@@ -1545,6 +1553,9 @@ __kernel void PPAFM_makeFF(
                 //const float4 pi  = LPOS[j];
                 float3       dp   = pos - LPOS[j].xyz;
                 float4       REQ = LREQ[j]; 
+                float4 Qs_ = Qs * REQ.z; 
+                if(iG==0){ printf( "atom[%i] Qs_=(%g,%g,%g,%g) Qs=(%g,%g,%g,%g) REQ.z=%g \n", i0+j,  Qs_.x,Qs_.y,Qs_.z,Qs_.w,  Qs.x,Qs.y,Qs.z,Qs.w,  REQ.z ); };
+
                 REQ.x   += tipParams.x;
                 REQ.yzw *= tipParams.yzw;
 
@@ -1553,11 +1564,11 @@ __kernel void PPAFM_makeFF(
                     for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
                         for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
 
-                            fe += getLJQH( dp, REQ, 1.0 );
-                            //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.x) ) * Qs.x;
-                            //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.y) ) * Qs.y;
-                            //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.z) ) * Qs.z;
-                            //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.w) ) * Qs.w;
+                            fe += getLJQH   ( dp, REQ, 1.0f );
+                            fe += getCoulomb( dp+(float3)(0.0f,0.0f,QZs.x) ,0.1f) * Qs_.x;
+                            fe += getCoulomb( dp+(float3)(0.0f,0.0f,QZs.y) ,0.1f) * Qs_.y;
+                            fe += getCoulomb( dp+(float3)(0.0f,0.0f,QZs.z) ,0.1f) * Qs_.z;
+                            fe += getCoulomb( dp+(float3)(0.0f,0.0f,QZs.w) ,0.1f) * Qs_.w;
 
                             dp   +=lvec.a.xyz;
                             //shift+=lvec.a.xyz;
