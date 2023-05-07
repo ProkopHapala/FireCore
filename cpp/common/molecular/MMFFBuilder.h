@@ -1169,7 +1169,7 @@ class Builder{  public:
                     }
                 }break;
                 case 6: { // C
-                    printf("C%i npineigh %i \n", ia, npineigh );
+                    //printf("C%i npineigh %i \n", ia, npineigh );
                     hasNeighborOfType( ia, _C.size(), &_C[0], count, ngs  );
                     if  ( (A.type==iC_2) ){
                         if      ( ( T(C_O_3) && T(C_O_2) ) ){ itnew = iC_COO; } // -COOH
@@ -1307,7 +1307,7 @@ class Builder{  public:
         int nnew=0;
         int itr=0;
         for(itr=0; itr<nmax; itr++){
-            printf( "# --- assignSpecialTypesLoop[%i] \n", itr );
+            //printf( "# --- assignSpecialTypesLoop[%i] \n", itr );
             int ni = assignSpecialTypes( neighs ); 
             nnew+=ni; 
             if( ni==0 ){ return nnew; } 
@@ -1567,7 +1567,7 @@ class Builder{  public:
         for( int i=0; i<ne; i++ ){
             int ib=nb+i;
             //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
-            printf( "addEpairsByPi[%i] add epair[%i] \n", ia, i );
+            //printf( "addEpairsByPi[%i] add epair[%i] \n", ia, i );
             addCap(ia,hs[ib],&capAtomEpair, l );
         }
         return true;
@@ -3130,7 +3130,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                         bL [k]=bLK.x;
                         bK [k]=bLK.y;
                         double Kss_uff = params->assignAngleParamUFF( A.type, Aj.type, Aj.type, bL[k], bL[k] );
-                        printf( "atom[%i] Kss=%g Kss_uff=%g (%s|%s) \n", ia, ff.apars[ia].z, Kss_uff, params->atypes[A.type].name,params->atypes[Aj.type].name );
+                        //printf( "atom[%i] Kss=%g Kss_uff=%g (%s|%s) \n", ia, ff.apars[ia].z, Kss_uff, params->atypes[A.type].name,params->atypes[Aj.type].name );
                     }
 
                     //Ksp[k]=0;

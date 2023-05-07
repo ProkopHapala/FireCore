@@ -49,6 +49,7 @@ class MolWorld_sp3_simple{ public:
     const char* trj_fname    = "trj.xyz";
     int savePerNsteps = 1;
     double fAutoCharges=-1;
+    bool bEpairs=false;
 
     OptLog opt_log;
 
@@ -209,7 +210,7 @@ int buildMolecule_xyz( const char* xyz_name ){
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
     builder.autoAllConfEPi  ( ia0 ); 
     builder.setPiLoop       ( ic0, -1, 10 );
-    builder.addAllEpairsByPi( ia0=0 );    
+    if(bEpairs)builder.addAllEpairsByPi( ia0=0 );    
     //builder.printAtomConfs(false, false );
     //builder.printAtomConfs(false, true );
     builder.assignAllBondParams();    //if(verbosity>1)

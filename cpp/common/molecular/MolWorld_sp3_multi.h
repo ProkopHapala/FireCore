@@ -489,6 +489,30 @@ virtual void uploadPop  ()override{
     //ocl.upload( ocl.ibuff_constr, constr );
 }
 
+virtual void change_lvec( const Mat3d& lvec )override{
+    printf("MolWold_sp3_multi::change_lvec() iSystemCur=%i \n", iSystemCur);
+    int isys  = iSystemCur;
+    int i0pbc = isys*ocl.npbc; 
+    ffls[isys].setLvec ( lvec );
+    ffls[isys].makePBCshifts( nPBC, true );
+    pack( ffls[isys].npbc,  ffls[isys].shifts, pbcshifts+i0pbc );
+    Mat3_to_cl( ffls[isys].   lvec,  lvecs[isys] );
+    Mat3_to_cl( ffls[isys].invLvec, ilvecs[isys] );
+    
+    // { // visualization
+    // builder.lvec=ffls[isys].lvec;
+    // ffl.setLvec ( builder.lvec);
+    // evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
+    // }
+
+    int err=0;
+    err|= ocl.upload( ocl.ibuff_lvecs,     lvecs,  1,  isys  );
+    err|= ocl.upload( ocl.ibuff_ilvecs,    ilvecs, 1,  isys  );
+    err|= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts , i0pbc );
+    err |= ocl.finishRaw(); 
+    OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
+}
+
 virtual void add_to_lvec( const Mat3d& dlvec )override{
     printf("MolWold_sp3_multi::add_to_lvec()\n");
     for(int isys=0; isys<nSystems; isys++){

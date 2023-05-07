@@ -49,11 +49,12 @@ void init_buffers(){
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
 	W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
 	W.bMMFF      = bMMFF;
+    W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
     W.tmpstr=tmpstr;
@@ -174,6 +175,35 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
         fs[i]=(Vec3d)(fe.f);
         Es[i]=fe.e;
     }
+}
+
+void change_lvec( double* lvec, bool bAdd, bool bUpdatePi ){
+    if(bAdd){ W.change_lvec( *(Mat3d*)lvec );  }
+    else    { W.add_to_lvec( *(Mat3d*)lvec );  }
+    //if(bUpdatePi){ W.ffl.initPi( W.pbc_shifts ); }
+}
+
+void upload_pop( const char* fname ){
+    printf("MolWorld_sp3::upload_pop(%s)\n", fname );
+    W.gopt.loadPopXYZ( fname );
+    int nmult=W.gopt.population.size(); 
+    int npara=W.paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
+    W.gopt.upload_multi(nmult,0, true, true );
+}
+
+void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){
+    W.optimizeLattice_1d( n1, n2, *(Mat3d*)dlvec );
+}
+
+void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double tol ){
+    //int initMode=1;
+    //int initMode = 0;
+    //int nstesp   = 40;
+    //int nstesp = 2;
+    //gopt.tolerance = 0.02;
+    //W.gopt.tolerance = 0.01;
+    //Mat3d dlvec = Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
+    W.gopt.lattice_scan_2d_multi( nstesp, *(Mat3d*)dlvec, initMode, "lattice_scan_2d_multi.xyz" );
 }
 
 } // extern "C"
