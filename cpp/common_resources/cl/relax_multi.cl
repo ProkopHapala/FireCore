@@ -187,7 +187,8 @@ __kernel void getMMFFf4(
     __global cl_Mat3* lvecs,        // 12
     __global cl_Mat3* ilvecs,       // 13
     __global float4*  pbc_shifts,
-    int npbc
+    const int npbc,
+    const int bSubtractVdW
 ){
 
     const int iG = get_global_id (0);   // intex of atom
@@ -265,9 +266,9 @@ __kernel void getMMFFf4(
 
     const float   ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
-    const int iS_DBG = 5;
+    //const int iS_DBG = 5;
     // //const int iG_DBG = 0;
-    const int iG_DBG = 0;
+    //const int iG_DBG = 0;
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
     //     //for(int i=0; i<nAtoms; i++){ int4 ng_ = neighs[i+iS*nAtoms];  printf( "GPU[%i|%i] neighs(%i,%i,%i,%i) \n", i, iS, ng_.x,ng_.y,ng_.z,ng_.w ); }; 
     //     //for(int i=0; i<nAtoms*nS; i++){ int iv=i%nAtoms; int4 ng_ = neighs[i]; if(iv==0)printf("----\n"); printf( "%3i [%2i,%2i,%i] neighs(%i,%i,%i,%i) \n", i, i/nAtoms, iv, iv<=nAtoms, ng_.x,ng_.y,ng_.z,ng_.w );  }; 
@@ -366,8 +367,8 @@ __kernel void getMMFFf4(
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", iG,ing,jng, par.z, par.x,par.y, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             
             fa    -= f1+f2;
-            
-            { // Remove vdW
+            /*
+            if(bSubtractVdW){ // Remove vdW
                 float4 REQi=REQKs[inga];   // ToDo: can be optimized
                 float4 REQj=REQKs[jnga];
                 float4 REQij;
@@ -380,7 +381,8 @@ __kernel void getMMFFf4(
                 f2 +=  fij.xyz;
                 //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", iG,ing,jng, length(dp), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
             }
-            
+            */
+
             fbs[i]+= f1;
             fbs[j]+= f2;
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", iG,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
@@ -400,8 +402,8 @@ __kernel void getMMFFf4(
         fneigh[i4 +i] = (float4){fbs[i],0};
         fneigh[i4p+i] = (float4){fps[i],0};
     }
-    //fapos[iav       ] = (float4){fa ,0}; // If we do  run it as first forcefield
-    fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
+    fapos[iav       ] = (float4){fa ,0}; // If we do  run it as first forcefield
+    //fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
     fapos[iav+nAtoms]  = (float4){fpi,0}; 
 
 
@@ -538,13 +540,12 @@ __kernel void updateAtomsMMFFf4(
     // =============== FORCE DONE
     aforce[iav] = fe;           // store force before limit
     //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
-
-
     
     // =============== DYNAMICS
 
     float4 ve = avel[iav];
     float4 pe = apos[iav];
+
 
     // -------constrains
     if(iG<natoms){ 
@@ -553,6 +554,7 @@ __kernel void updateAtomsMMFFf4(
             fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
        }
     }
+
     
     /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
@@ -587,9 +589,13 @@ __kernel void updateAtomsMMFFf4(
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
     }
-    ve     *= MDpars.y;
-    ve.xyz += fe.xyz*MDpars.x;
-    pe.xyz += ve.xyz*MDpars.x;
+    // ve     *= MDpars.y;
+    // ve.xyz += fe.xyz*MDpars.x;
+    // pe.xyz += ve.xyz*MDpars.x;
+
+    ve     *= 0.99f;
+    ve.xyz += fe.xyz*0.01f;
+    pe.xyz += ve.xyz*0.01f;
     if(bPi){ 
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
     }
@@ -600,9 +606,10 @@ __kernel void updateAtomsMMFFf4(
 
     /*
     //------ Move Gradient-Descent
-    //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
+    if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
     //pe.xyz += fe.xyz*MDpars.x*0.01f;
-    pe.xyz += fe.xyz*MDpars.x*0.01f;
+    //pe.xyz += fe.xyz*MDpars.x*0.01f;
+    pe.xyz += fe.xyz*0.02f;
     //if(bPi){ pe.xyz=normalize(pe.xyz); }
     pe.w=0;  // This seems to be needed, not sure why ?????
     apos[iav] = pe;

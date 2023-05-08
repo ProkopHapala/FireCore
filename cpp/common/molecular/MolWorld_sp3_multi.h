@@ -45,6 +45,7 @@ struct FIRE{
     float cf,cv;
     float dt;
     float damping;
+    int id;
 
     float damp_func_FIRE( float c, float& cv ){ // Original FIRE damping
         double cf;
@@ -61,10 +62,10 @@ struct FIRE{
     }
 
     void update_params(){
-        float f_len      = sqrt(ff);
-        float v_len      = sqrt(vv);
-        cos_vf     = vf    / ( f_len*v_len + ff_safety );
-        renorm_vf  = v_len / ( f_len       + ff_safety );
+        float f_len = sqrt(ff);
+        float v_len = sqrt(vv);
+        cos_vf      = vf    / ( f_len*v_len + ff_safety );
+        renorm_vf   = v_len / ( f_len       + ff_safety );
         cf  = renorm_vf * damp_func_FIRE( cos_vf, cv );
         if( cos_vf < 0.0 ){
             //dt       = fmax( dt * par->fdec, par->dt_min );
@@ -77,10 +78,11 @@ struct FIRE{
             }
             lastNeg++;
         }
+        //printf( "FIRE[%i].update_params() |f|=%g,|v|=%g,cos_vf=%g,renorm_vf=%g,cf=%g,cv=%g,damping=%g,dt=%g,lastNeg=%i \n", id, f_len,v_len,cos_vf, renorm_vf, cf, cv, damping, dt, lastNeg );
     }
 
     void print(){ printf( "dt %g damping %g cos_vf %g cv %g cf %g \n", dt, damping, cos_vf, cv, cf ); }
-    void bind_params( FIRE_setup* par_ ){ par=par_; dt=par->dt_max; damping=par->damp_max; };
+    void bind_params( FIRE_setup* par_ ){ par=par_; dt=par->dt_max; damping=par->damp_max; lastNeg=0; };
 
     FIRE()=default;
     FIRE( FIRE_setup* par_ ){ bind_params(par_); }
@@ -98,6 +100,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     FIRE_setup fire_setup{0.1,0.1};
 
     int nSystems    = 1;
+    int iSysFMax=-1;
     //int iSystemCur  = 5;    // currently selected system replica
     //int iSystemCur  = 8;    // currently selected system replica
     bool bGPU_MMFF = true;
@@ -216,6 +219,7 @@ virtual void init( bool bGrid ) override {
     for(int i=0; i<nSystems; i++){
         pack_system( i, ffl, true, false, random_init );
         fire[i].bind_params( &fire_setup );
+        fire[i].id=i;
     }
     initMultiCPU(nSystems);
     //for(int i=0;i<nSystems; i++){ printMSystem(i); }
@@ -231,6 +235,7 @@ virtual void init( bool bGrid ) override {
 
     iParalelMax= 4;
     iParalelMin=-1;
+    iParalel=2;
 
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
@@ -274,6 +279,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
     if(bForces){ pack( ff.nvecs, ff.fapos, aforces+i0v ); }
     //if(bVel   ){ pack( ff.nvecs, opt.vel,  avel   +i0v ); }
     if(bParams){
+
 
         //Mat3d lvec=lvec0; lvec.a.addRandomCube(1.5); ffl.setLvec(lvec);  // DEBUG 
         //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[isys]; ffl.setLvec(lvec);  // DEBUG 
@@ -428,6 +434,7 @@ void printMSystem( int isys, bool blvec=true, bool bilvec=false, bool bNg=true, 
 }
 
 void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
+    //printf("evalVF() fire[%i]\n", fire.id );
     double vv=0,ff=0,vf=0;
     for(int i=0; i<n; i++){
         Vec3f f = fs[i].f;
@@ -449,21 +456,43 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
 }
 
 double evalVFs(){
+    //printf("MolWorld_sp3_multi::evalVFs()\n");
     int err=0;
     ocl.download( ocl.ibuff_aforces , aforces );
     ocl.download( ocl.ibuff_avel    , avel    );
-    err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs()");
+    err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().1");
     //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
     double F2max = 0;
+    iSysFMax=-1;
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
         evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
-        F2max = fmax( F2max, fire[isys].ff );
+        double f2 = fire[isys].ff;
+        if(f2>F2max){ F2max=f2; iSysFMax=isys; }
+        //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
+        //F2max = fmax( F2max, fire[isys].ff );
     }
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
     err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
     //err |= ocl.finishRaw();  
-    OCL_checkError(err, "evalVFs()");
+    OCL_checkError(err, "evalVFs().2");
+    return F2max;
+}
+
+double evalF2(){
+    int err=0;
+    ocl.download( ocl.ibuff_aforces , aforces );
+    err |= ocl.finishRaw();  OCL_checkError(err, "evalF2().1");
+    double F2max = 0;
+    iSysFMax=-1;
+    for(int isys=0; isys<nSystems; isys++){
+        double f2 = 0;
+        Quat4f* fs = aforces + isys*ocl.nvecs;
+        for(int i=0; i<ocl.nvecs; i++){ f2 += fs[i].f.norm2(); }
+        //printf( "evalF2[sys=%i] |f|=%g \n", isys, sqrt(f2) );
+        if(f2>F2max){ F2max=f2; iSysFMax=isys; }
+    }
+    OCL_checkError(err, "evalF2().2");
     return F2max;
 }
 
@@ -911,7 +940,7 @@ int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){
         }
     }
     double t=(getCPUticks()-T0)*tick2second;
-    printf( "run_ocl_loc(nsys=%i|iPara=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems,iParalel, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+    printf( "run_ocl_loc(nsys=%i|iPara=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i iSysFMax=%i \n", nSystems,iParalel, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF, iSysFMax ); 
     //err |= ocl.finishRaw(); 
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     return niterdone;
@@ -930,17 +959,24 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     long T0     = getCPUticks();
     int niterdone=0;
     double F2=0;
+
+    bool dovdW=true;
+    //bool dovdW=false;
+    ocl.bSubtractVdW=dovdW;
     for(int i=0; i<nVFs; i++){
         for(int j=0; j<nPerVFs; j++){
             err |= task_cleanF->enque_raw();
-            if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
-            else       { err |= task_NBFF      ->enque_raw(); }
+            if(dovdW){
+                if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+                else       { err |= task_NBFF      ->enque_raw(); }
+            }
             err |= task_MMFF->enque_raw();
             err |= task_move->enque_raw(); 
             niterdone++;
         }
         ocl.download( ocl.ibuff_atoms,  atoms  );
         F2 = evalVFs();
+        //F2 = evalF2();
         if( F2<F2conv  ){ 
             double t=(getCPUticks()-T0)*tick2second;
             printf( "run_ocl_opt(nSys=%i|iPara=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
@@ -948,7 +984,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         }
     }
     double t=(getCPUticks()-T0)*tick2second;
-    printf( "run_ocl_opt(nSys=%i|iPara=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+    printf( "run_ocl_opt(nSys=%i|iPara=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i iSysFMax=%i dovdW=%i \n", nSystems, iParalel, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF, iSysFMax, dovdW ); 
     //err |= ocl.finishRaw(); 
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     return niterdone;
@@ -1177,14 +1213,13 @@ double eval( ){
 //                 MDloop
 // ==================================
 
-
 virtual char* getStatusString( char* s, int nmax ) override {
     //double F2 = evalVFs();
     double  F2max=0;
     double  F2min=1e+300;
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
-        evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
+        //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
         F2max = fmax( F2max, fire[isys].ff );
         F2min = fmin( F2min, fire[isys].ff );
     }
@@ -1213,6 +1248,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         case  3: nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break; 
         case  4: nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break; 
     }
+    unpack_system( iSystemCur, ffl, true, true );
 
     /*
     if( bOcl ){

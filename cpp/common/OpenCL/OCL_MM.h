@@ -50,6 +50,7 @@ class OCL_MM: public OCLsystem { public:
     int4   nDOFs    {0,0,0,0};
     int4   nPBC     {0,0,0,0};
     int    npbc=0;
+    int    bSubtractVdW=1;
     //float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
     float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
     //float4 md_params{0.05,0.995,100.0,0.0};    // (dt,cdamp,forceLimit)
@@ -335,6 +336,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_ilvecs );     // 13
         err |= useArgBuff( ibuff_pbcshifts );  // 13
         err |= _useArg   ( npbc         );  
+        err |= _useArg   ( bSubtractVdW ); 
+        
 
         //err |= _useArg( cl_lvec    );        // 12
         //err |= _useArg( cl_invLvec );        // 13
