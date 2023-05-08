@@ -57,8 +57,9 @@ nsys=50
 #./$name -m 1    -x common_resources/polymer-2_new_crash_33
 
 
+./$name -m 1  -x common_resources/polymer-2_new
 #./$name -m 5  -x common_resources/polymer-2_new
-./$name -m 40  -x common_resources/polymer-2_new
+#./$name -m 40  -x common_resources/polymer-2_new
 #./$name -m 40 -c 10 -x common_resources/polymer-2_new
 #./$name -m 2     -x common_resources/polymer-2_new
 #./$name -m 1     -x common_resources/polymer-2_new

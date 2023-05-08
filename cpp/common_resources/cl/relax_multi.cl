@@ -845,6 +845,8 @@ __kernel void getNonBond(
                 const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));
                 //if( (j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
                 //if( (ji==1)&&(iG==0) )printf( "2 non-bond[%i,%i] bBonded %i\n",iG,ji,bBonded );
+
+                /*
                 if(bPBC){    
                     int ipbc=0;
                     dp += shift0;
@@ -870,7 +872,10 @@ __kernel void getNonBond(
                         }
                         dp    += shift_a;
                     }
-                }else if( !bBonded ){
+                }else 
+                */
+                
+                if( !bBonded ){
                     fe += getLJQH( dp, REQK, R2damp );
                 }
             }
