@@ -134,6 +134,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_MMFF=0;
     OCLtask* task_move=0;
     OCLtask* task_print=0;
+
+    OCLtask* task_MMFFloc =0;
     OCLtask* task_MMFFloc1=0;
     OCLtask* task_MMFFloc2=0;
     OCLtask* task_MMFFloc_test=0;
@@ -876,8 +878,48 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     return niterdone;
 }
 
+int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion ){ 
+    //printf("MolWorld_sp3_multi::run_ocl_loc() niter=%i \n", niter );
+    double F2conv = Fconv*Fconv;
+    int err=0;
+    if( task_MMFF==0)setup_MMFFf4_ocl();
+    int nPerVFs = _min(10,niter);
+    int nVFs    = niter/nPerVFs;
+    int niterdone=0;
+    double F2=0;
+    if( task_MMFFloc1==0 ){ task_MMFFloc1=ocl.setup_evalMMFFf4_local1( niter ); }
+    if( task_MMFFloc2==0 ){ task_MMFFloc2=ocl.setup_evalMMFFf4_local2( niter ); }
+    if     ( iVersion==1 ){ task_MMFFloctask_MMFFloc1; }
+    else if( iVersion==2 ){ task_MMFFloctask_MMFFloc2; }
+    long T0 = getCPUticks();
+    for(int i=0; i<nVFs; i++){
+        for(int j=0; j<nPerVFs; j++){
+            task_MMFFloc->enque_raw(); 
+            niterdone++;
+        }
+        for(int j=0; j<nPerVFs; j++){
+            if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+            else       { err |= task_NBFF      ->enque_raw(); }
+            err |= task_MMFF->enque_raw();
+            err |= task_move->enque_raw(); 
+            niterdone++;
+        }
+        F2 = evalVFs();
+        if( F2<F2conv  ){ 
+            double t=(getCPUticks()-T0)*tick2second;
+            printf( "eval_MMFFf4_ocl_opt(nsys=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+            return niterdone; 
+        }
+    }
+    double t=(getCPUticks()-T0)*tick2second;
+    printf( "eval_MMFFf4_ocl_opt(nsys=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+    //err |= ocl.finishRaw(); 
+    //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
+    return niterdone;
+}
 
-int eval_MMFFf4_ocl_opt( int niter, double Fconv=1e-6 ){ 
+
+int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     double F2conv = Fconv*Fconv;
@@ -939,7 +981,7 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
 }
 
 
-int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-3, double Flim=1000, double timeLimit=0.02 ){
+int rum_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double timeLimit=0.02 ){
     //printf( "rum_omp_ocl() niter_max=%i %dt=g Fconv%g \n", niter_max, dt, Fconv  ); 
     double F2conv=Fconv*Fconv;
     double F2max=0;
@@ -1025,7 +1067,48 @@ int rum_omp_ocl( int niter_max, double dt=0.01, double Fconv=1e-3, double Flim=1
     return itr;
 }
 
-
+int rum_multi_serial( int niter_max, double Fconv=1e-3, double Flim=1000, double timeLimit=0.02 ){
+    //printf( "rum_omp_ocl() niter_max=%i %dt=g Fconv%g \n", niter_max, dt, Fconv  ); 
+    double F2conv=Fconv*Fconv;
+    double F2max=0;
+    int itr=0,niter=niter_max;
+    long T0,T00;
+    double T1,T2;
+    int err=0;
+    T00 = getCPUticks();
+    while(itr<niter){
+        if(itr<niter){
+        F2max=0;
+        for( int isys=0; isys<nSystems; isys++ ){
+            ffls[isys].cleanForce();
+            ffls[isys].eval(false);
+            if(bPBC){ ffls[isys].evalLJQs_ng4_PBC_simd(); }
+            else    { ffls[isys].evalLJQs_ng4_simd    (); } 
+            if( (ipicked>=0) && (isys==iSystemCur) ){ 
+                pullAtom( ipicked, ffls[isys].apos, ffls[isys].fapos );  
+            };
+            double F2 = opts[isys].move_FIRE();
+            F2max = fmax(F2max,F2);
+        }        
+        nloop++;
+        itr++; 
+        if(F2max<F2conv){ 
+            niter=0; 
+            T1 = (getCPUticks()-T00)*tick2second;
+            if(verbosity>0)printf( "rum_multi_serial(bOcl=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", bOcl, itr,niter_max, sqrt(F2max), T1*1000 );
+            itr--;
+        }
+        }
+    } // END while(itr<niter) OPENMP_BLOCK
+    //printf( "rum_omp_ocl().copy iSystemCur=%i \n", iSystemCur );
+    for(int i=0; i<ffl.nvecs; i++){
+        ffl.apos [i]=ffls[iSystemCur].apos [i];
+        ffl.fapos[i]=ffls[iSystemCur].fapos[i];
+    }
+    T1 = (getCPUticks()-T00)*tick2second;
+    if(itr>=niter_max)if(verbosity>0)printf( "rum_multi_serial(bOcl=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", bOcl, itr,niter_max, sqrt(F2max), T1*1000 );
+    return itr;
+}
 
 // ==================================
 //                 eval
