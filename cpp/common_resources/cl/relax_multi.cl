@@ -402,8 +402,8 @@ __kernel void getMMFFf4(
         fneigh[i4 +i] = (float4){fbs[i],0};
         fneigh[i4p+i] = (float4){fps[i],0};
     }
-    fapos[iav       ] = (float4){fa ,0}; // If we do  run it as first forcefield
-    //fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
+    //fapos[iav     ] = (float4){fa ,0}; // If we do  run it as first forcefield
+    fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
     fapos[iav+nAtoms]  = (float4){fpi,0}; 
 
 
@@ -473,15 +473,15 @@ float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
 
 __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
-    //const float4      MDpars,       // 1
-    const int4        n,            // 2
-    __global float4*  apos,         // 3
-    __global float4*  avel,         // 4
-    __global float4*  aforce,       // 5
+    const int4        n,            // 1
+    __global float4*  apos,         // 2
+    __global float4*  avel,         // 3
+    __global float4*  aforce,       // 4
+    __global float4*  cvf,          // 5
     __global float4*  fneigh,       // 6
     __global int4*    bkNeighs,     // 7
     __global float4*  constr,       // 8
-    __global float4*  MDparams     // 8
+    __global float4*  MDparams      // 9
 ){
     const int natoms=n.x;
     const int nnode =n.y;
@@ -523,6 +523,7 @@ __kernel void updateAtomsMMFFf4(
     int4 ngs = bkNeighs[ iav ];
 
     //if(iS==5)printf( "iG,iS %i %i ngs %i,%i,%i,%i \n", iG, iS, ngs.x,ngs.y,ngs.z,ngs.w );
+    //if( (iS==0)&&(iG==0) ){ printf( "GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n", fe.x,fe.y,fe.z,fe.w ); }
 
     // WARRNING : bkNeighs must be properly shifted on CPU !!!!!!!!!!!!!!
     if(ngs.x>=0){ fe += fneigh[ngs.x]; }
@@ -530,13 +531,15 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
+    /*
     // ---- Limit Forces
     float Flimit = 10.0;
     float fr2 = dot(fe.xyz,fe.xyz);
     if( fr2 > (Flimit*Flimit) ){
         fe.xyz*=(Flimit/sqrt(fr2));
     }
-    
+    */
+
     // =============== FORCE DONE
     aforce[iav] = fe;           // store force before limit
     //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
@@ -546,7 +549,6 @@ __kernel void updateAtomsMMFFf4(
     float4 ve = avel[iav];
     float4 pe = apos[iav];
 
-
     // -------constrains
     if(iG<natoms){ 
        float4 cons = constr[ iaa ];
@@ -554,7 +556,6 @@ __kernel void updateAtomsMMFFf4(
             fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
        }
     }
-
     
     /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
@@ -589,13 +590,14 @@ __kernel void updateAtomsMMFFf4(
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
     }
-    // ve     *= MDpars.y;
+    cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };  
+    //ve.xyz  = ve.xyz*MDpars.z + fe.xyz*MDpars.w;
+    // ve.xyz  = ve.xyz*MDpars.z;
     // ve.xyz += fe.xyz*MDpars.x;
     // pe.xyz += ve.xyz*MDpars.x;
-
     ve     *= 0.99f;
-    ve.xyz += fe.xyz*0.01f;
-    pe.xyz += ve.xyz*0.01f;
+    ve.xyz += fe.xyz*0.1f;
+    pe.xyz += ve.xyz*0.1f;
     if(bPi){ 
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
     }
@@ -745,11 +747,14 @@ __kernel void getNonBond(
     __local float4 LCLJS [32];
     //__local float4 LATOMS[64];
     //__local float4 LCLJS [64];
+    //__local float4 LATOMS[128];
+    //__local float4 LCLJS [128];
+
     const int iG = get_global_id  (0);
-    const int iS = get_global_id  (1);
-    const int iL = get_local_id   (0);
     const int nG = get_global_size(0);
+    const int iS = get_global_id  (1);
     const int nS = get_global_size(1);
+    const int iL = get_local_id   (0);
     const int nL = get_local_size (0);
 
     const int natoms=ns.x;
@@ -874,7 +879,7 @@ __kernel void getNonBond(
                     }
                 }else 
                 */
-                
+
                 if( !bBonded ){
                     fe += getLJQH( dp, REQK, R2damp );
                 }
@@ -884,8 +889,9 @@ __kernel void getNonBond(
     }
     
     if(iG<natoms){
-        forces[iav] = fe;           // If we do  run it as first forcefield 
-        //forces[iav] += fe;        // If we not run it as first forcefield
+        //if(iS==0){ printf( "GPU::getNonBond(iG=%i) fe(%g,%g,%g,%g)\n", iG, fe.x,fe.y,fe.z,fe.w ); }
+        //forces[iav] = fe;           // If we do  run it as first forcefield 
+        forces[iav] += fe;        // If we not run it as first forcefield
         //forces[iav] = fe*(-1.f);
     }
 }

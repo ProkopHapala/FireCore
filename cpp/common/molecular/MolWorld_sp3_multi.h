@@ -65,7 +65,8 @@ struct FIRE{
         float f_len = sqrt(ff);
         float v_len = sqrt(vv);
         cos_vf      = vf    / ( f_len*v_len + ff_safety );
-        renorm_vf   = v_len / ( f_len       + ff_safety );
+        //renorm_vf   = v_len / ( f_len       + ff_safety );
+        renorm_vf   = v_len / ( f_len       + v_len );
         cf  = renorm_vf * damp_func_FIRE( cos_vf, cv );
         if( cos_vf < 0.0 ){
             //dt       = fmax( dt * par->fdec, par->dt_min );
@@ -108,6 +109,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* atoms      =0;
     Quat4f* aforces    =0;
     Quat4f* avel       =0;
+    Quat4f* cvfs       =0;
 
     FIRE*   fire         =0;
     Quat4f* MDpars       =0;
@@ -163,6 +165,7 @@ void realloc( int nSystems_ ){
     _realloc ( atoms,     ocl.nvecs*nSystems  );
     _realloc0( aforces,   ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
+    _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
@@ -216,6 +219,8 @@ virtual void init( bool bGrid ) override {
     realloc( nSystems );
     //if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
     float random_init = 0.5;
+
+    fire_setup.setup(opt.dt_max,opt.damp_max);
     for(int i=0; i<nSystems; i++){
         pack_system( i, ffl, true, false, random_init );
         fire[i].bind_params( &fire_setup );
@@ -236,6 +241,7 @@ virtual void init( bool bGrid ) override {
     iParalelMax= 4;
     iParalelMin=-1;
     iParalel=2;
+    //iParalel=iParalelMax;
 
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
@@ -335,7 +341,10 @@ void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, b
     err|= ocl.upload( ocl.ibuff_atoms,  atoms,  ocl.nvecs,  i0v );
     err|= ocl.upload( ocl.ibuff_constr, constr, ocl.nAtoms, i0a );
     if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces, ocl.nvecs, i0v ); }
-    if(bVel   ){ err|= ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v ); }
+    if(bVel   ){ 
+        err|= ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v ); 
+        err|= ocl.upload( ocl.ibuff_cvf,     cvfs,    ocl.nvecs, i0v ); 
+    }
     if(blvec){
         int i0pbc = isys * ocl.npbc;
         err|= ocl.upload( ocl.ibuff_lvecs,     lvecs     , 1, isys  );
@@ -455,18 +464,37 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     MDpar.w = fire.cf;
 }
 
+void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar ){
+    //printf("evalVF() fire[%i]\n", fire.id );
+    Vec3f cvf=Vec3fZero;
+    for(int i=0; i<n; i++){ 
+        cvf.add( cvfs[i].f ); 
+        cvfs[i] = Quat4fZero; 
+    }
+    fire.vv=cvf.x;
+    fire.ff=cvf.y;
+    fire.vf=cvf.z;
+    fire.update_params();
+    MDpar.x = fire.dt;
+    MDpar.y = 1 - fire.damping;
+    MDpar.z = fire.cv;
+    MDpar.w = fire.cf;
+}
+
 double evalVFs(){
     //printf("MolWorld_sp3_multi::evalVFs()\n");
     int err=0;
-    ocl.download( ocl.ibuff_aforces , aforces );
-    ocl.download( ocl.ibuff_avel    , avel    );
+    //ocl.download( ocl.ibuff_aforces , aforces );
+    //ocl.download( ocl.ibuff_avel    , avel    );
+    ocl.download( ocl.ibuff_cvf    , cvfs  );
     err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().1");
     //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
     double F2max = 0;
     iSysFMax=-1;
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
-        evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
+        //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
+        evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys] );
         double f2 = fire[isys].ff;
         if(f2>F2max){ F2max=f2; iSysFMax=isys; }
         //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
@@ -474,6 +502,7 @@ double evalVFs(){
     }
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
     err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
+    err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
     //err |= ocl.finishRaw();  
     OCL_checkError(err, "evalVFs().2");
     return F2max;
@@ -954,7 +983,10 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     picked2GPU( ipicked,  1.0 );
     int err=0;
     if( task_MMFF==0)setup_MMFFf4_ocl();
+
+    //int nPerVFs = _min(1,niter);
     int nPerVFs = _min(10,niter);
+    //int nPerVFs = _min(50,niter);
     int nVFs    = niter/nPerVFs;
     long T0     = getCPUticks();
     int niterdone=0;
@@ -966,23 +998,50 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     for(int i=0; i<nVFs; i++){
         for(int j=0; j<nPerVFs; j++){
             err |= task_cleanF->enque_raw();
+            err |= task_MMFF->enque_raw();
             if(dovdW){
                 if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
                 else       { err |= task_NBFF      ->enque_raw(); }
             }
-            err |= task_MMFF->enque_raw();
+            //err |= task_NBFF->enque_raw();
+            //task_print ->enque_raw(); 
             err |= task_move->enque_raw(); 
             niterdone++;
+            nloop++;
         }
-        ocl.download( ocl.ibuff_atoms,  atoms  );
+        ocl.download( ocl.ibuff_atoms,    atoms   );
+        ocl.download( ocl.ibuff_aforces,  aforces );
         F2 = evalVFs();
+
+        /*
+        { // ======= DEBUG - Check vs CPU
+            int iS=iSystemCur;
+            //printf( "MDpars[%i](dt=%g,damp=%g,cv=%g,cf=%g)cos_vf=%g\n", iSystemCur, MDpars[iS].x,MDpars[iS].y,MDpars[iS].z,MDpars[iS].w, fire[iS].cos_vf );
+            int i0v = iSystemCur * ocl.nvecs; 
+            ffl.cleanForce();
+            ffl.eval(false);
+            ffl.evalLJQs_ng4_simd    ();
+            //ffl.evalLJQs_ng4_PBC_simd();
+            //ffl.evalLJQs_ng4( ffl.neighs, gridFF.Rdamp );
+            // ---- Compare to ffl
+            bool ret=false;
+            //printf("### run_ocl_opt: Compare GPU vs CPU ffl \n"); 
+            ret |= compareVecs( ocl.nAtoms, ffl.fapos, aforces+i0v, 1e-4, 2 );
+            if(ret){ printf("ERROR in run_ocl_opt()[nloop=%i] GPU.aforce[iSystemCur=%i] != ffl.evalLJQs_ng4_PBC() => Exit()\n", nloop, iSystemCur ); exit(0); }
+            //else { printf("run_ocl_opt[nloop=%i] CHECKED: GPU.eval() == ffl.evalLJQs_ng4_PBC()\n", nloop); }
+            unpack( ffl.nvecs, ffl.apos, atoms+i0v );
+        }
+        */
+
         //F2 = evalF2();
         if( F2<F2conv  ){ 
             double t=(getCPUticks()-T0)*tick2second;
             printf( "run_ocl_opt(nSys=%i|iPara=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
             return niterdone; 
         }
+
     }
+
     double t=(getCPUticks()-T0)*tick2second;
     printf( "run_ocl_opt(nSys=%i|iPara=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i iSysFMax=%i dovdW=%i \n", nSystems, iParalel, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF, iSysFMax, dovdW ); 
     //err |= ocl.finishRaw(); 
@@ -1070,6 +1129,11 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             int i0v = isys*ocl.nvecs;
             if(bOcl)unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );
             double F2 = opts[isys].move_FIRE();
+            if(isys==iSystemCur){
+                double cv;
+                double cf  = opts[isys].renorm_vf * opts[isys].damp_func_FIRE( opts[isys].cos_vf, cv );
+                printf( "opt[%i](dt=%g/%g,damp=%g,cf=%g,cv=%g)cos_vf=%g\n", iSystemCur, opts[isys].dt,opts[isys].dt_max,opts[isys].damping,opts[isys].cv,opts[isys].cf, opts[isys].cos_vf );
+            }
             F2max = fmax(F2max,F2);
             pack( ffls[isys].nvecs,  ffls[isys].apos, atoms  +i0v );
         }
@@ -1245,8 +1309,10 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
         case  0:
         case  1: nitrdione = run_omp_ocl( nIter, Ftol    ); break; 
         case  2: nitrdione = run_ocl_opt( nIter, Ftol    ); break; 
-        case  3: nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break; 
-        case  4: nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break; 
+        //case  3: nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break; 
+        //case  4: nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break; 
+        default:
+            eval_NBFF_ocl_debug();
     }
     unpack_system( iSystemCur, ffl, true, true );
 
@@ -1569,26 +1635,27 @@ double eval_MMFFf4_ocl_debug( int niter ){
 //                   eval_NBFF_ocl_debug    
 // ==============================================================
 
-double eval_NBFF_ocl_debug( int niter ){ 
+double eval_NBFF_ocl_debug( bool bCompareToCPU=true, bool bMove=false, bool bPrintOnGPU=false, bool bPrintOnCPU=false ){ 
     printf("MolWorld_sp3_multi::eval_NBFF_ocl_debug() \n");
     int err=0;
     if( task_NBFF==0 ){ setup_NBFF_ocl(); }
 
-    { // --- evaluate on CPU
+    if(bCompareToCPU){ // --- evaluate on CPU
         unpack_system( iSystemCur, ffl );
         ffl  .cleanForce();
         //nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
-        nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); 
+        //nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); 
+        nbmol.evalLJQs_ng4( ffl.neighs, gridFF.Rdamp );
         fcog  = sum ( ffl.natoms, ffl.fapos   );
         tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
         if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_NBFF_ocl_debug() CPU |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
     }
-    // evaluate on GPU
-    for(int i=0; i<niter; i++){
+    
+    { // --- evaluate on GPU
         err |= task_cleanF->enque_raw(); // this should be solved inside  task_move->enque_raw();
         err |= task_NBFF  ->enque_raw();
-        err |= task_print ->enque_raw(); // just printing the forces before assempling
-        err |= task_move  ->enque_raw();
+        if(bPrintOnGPU) err |= task_print ->enque_raw(); // just printing the forces before assempling
+        if(bMove      ) err |= task_move  ->enque_raw();
     }
     
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
@@ -1596,21 +1663,21 @@ double eval_NBFF_ocl_debug( int niter ){
     err |=  ocl.finishRaw();
     OCL_checkError(err, "eval_NBFF_ocl_debug");
 
-    for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+    if(bPrintOnCPU)for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
 
     if( ckeckNaN_f( ff4.nvecs, 4, (float*)ff4.fapos, "gpu.fapos" ) ){ printf("ERROR in MolWorld_sp3_multi::eval_NBFF_ocl_debug() fapos contain NaNs \n"); exit(0); };
 
-    // ---- Compare to ffl
-    bool ret=false;
-    printf("### Compare ffl.fapos,  ff4.fapos   \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
-    if(ret){ printf("ERROR: GPU task_NBFF.eval() != ffl.nbmol.evalLJQs_ng4_PBC() => exit() \n"); exit(0); }else{ printf("CHECKED: GPU task_NBFF.eval() == ffl.nbmol.evalLJQs_ng4_PBC() \n"); }
+    if(bCompareToCPU){
+        // ---- Compare to ffl
+        bool ret=false;
+        printf("### Compare ffl.fapos,  ff4.fapos   \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-6, 1 );
+        if(ret){ printf("ERROR: GPU task_NBFF.eval() != ffl.nbmol.evalLJQs_ng4_PBC() => exit() \n"); exit(0); }else{ printf("CHECKED: GPU task_NBFF.eval() == ffl.nbmol.evalLJQs_ng4_PBC() \n"); }
+    }
 
     //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
     unpack( ff4.natoms, ffl. fapos, ff4. fapos );
     //opt.move_FIRE();
-    
-    
     //ff4.printDEBUG( false, false );
     // ============== CHECKS
     // ---- Check Invariatns

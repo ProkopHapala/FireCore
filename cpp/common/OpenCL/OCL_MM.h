@@ -62,7 +62,7 @@ class OCL_MM: public OCLsystem { public:
     cl_Mat3 cl_invLvec;
 
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
-    int ibuff_avel=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
+    int ibuff_avel=-1,ibuff_cvf=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
     int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_pbcshifts=-1; 
     int ibuff_constr=-1;
@@ -180,6 +180,7 @@ class OCL_MM: public OCLsystem { public:
         ibuff_bkNeighs     = newBuffer( "bkNeighs", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_cvf        = newBuffer( "cvf",        nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_neighForce = newBuffer( "neighForce", nSystems*nbkng,  sizeof(float4), 0, CL_MEM_READ_WRITE );
 
         ibuff_MMpars     = newBuffer( "MMpars",     nSystems*nnode,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
@@ -208,8 +209,11 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        //int nloc = 32;
-        int nloc = 64;
+        //int nloc = 16;
+        //int nloc = 31;
+        int nloc = 32;
+        //int nloc = 33;
+        //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc);
         task->global.y = nSystems;
@@ -372,24 +376,26 @@ class OCL_MM: public OCLsystem { public:
         nDOFs.y=nNode; 
         int err=0;
         useKernel( task->ikernel  );
-        //err |= _useArg( md_params );           // 1
-        err |= _useArg( nDOFs     );           // 2
-        err |= useArgBuff( ibuff_atoms      ); // 3
-        err |= useArgBuff( ibuff_avel       ); // 4
-        err |= useArgBuff( ibuff_aforces    ); // 5
+        err |= _useArg( nDOFs     );           // 1
+        err |= useArgBuff( ibuff_atoms      ); // 2
+        err |= useArgBuff( ibuff_avel       ); // 3
+        err |= useArgBuff( ibuff_aforces    ); // 4
+        err |= useArgBuff( ibuff_cvf        ); // 5
         err |= useArgBuff( ibuff_neighForce ); // 6
         err |= useArgBuff( ibuff_bkNeighs   ); // 7
         err |= useArgBuff( ibuff_constr     ); // 8
-        err |= useArgBuff( ibuff_MDpars     ); // 1
+        err |= useArgBuff( ibuff_MDpars     ); // 9
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
-        // const float4      MDpars,       // 1
-        // const int4        n,            // 2
-        // __global float4*  apos,         // 3
-        // __global float4*  avel,         // 4
-        // __global float4*  aforce,       // 5
+        // const int4        n,            // 1
+        // __global float4*  apos,         // 2
+        // __global float4*  avel,         // 3
+        // __global float4*  aforce,       // 4
+        // __global float4*  cvf,          // 5
         // __global float4*  fneigh,       // 6
-        // __global int4*    bkNeighs      // 7
+        // __global int4*    bkNeighs,     // 7
+        // __global float4*  constr,       // 8
+        // __global float4*  MDparams      // 9
     }
 
     void printOnGPU( int isys, int4 mask=int4{1,1,1,1}, OCLtask* task=0 ){

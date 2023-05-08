@@ -344,7 +344,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
     double evalLJQs_ng4_simd(){
-        printf("NBFF::evalLJQs_ng4_simd()\n" );
+        //printf("NBFF::evalLJQs_ng4_simd()\n" );
         double E=0;
         for(int ia=0; ia<natoms; ia++){ E+=evalLJQs_ng4_atom_omp(ia); }
         return E;

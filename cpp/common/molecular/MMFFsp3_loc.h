@@ -347,7 +347,7 @@ double eval_atom(const int ia){
             //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fss1[%i,%i]",ia,i,j); } );
             //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fss2[%i,%i]",ia,i,j); } );
             fa    .sub( f1+f2  );
-            
+            /*
             // ----- Error is HERE
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
@@ -362,7 +362,7 @@ double eval_atom(const int ia){
                 f1.sub(fij);
                 f2.add(fij);
             }
-            
+            */
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );

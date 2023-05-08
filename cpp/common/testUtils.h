@@ -38,18 +38,28 @@ inline void printVecs( int n, const Vec3f * vs ){ 	for(int i=0; i<n;i++)printf( 
 inline void printVecs( int n, const Quat4f* vs ){ 	for(int i=0; i<n;i++)printf( "[%i] (%g,%g,%g,%g)\n",i, vs[i].x, vs[i].y, vs[i].z, vs[i].w ); }
 
 
-inline bool compareVecs( int n, const Vec3d* vs, const Quat4f* qs, double Rmax, bool bPrint=true ){
+inline bool compareVecs( int n, const Vec3d* vs, const Quat4f* qs, double Rmax, int verbosity=1 ){
     bool ret=false;
-    double R2max=Rmax*Rmax; 
+    double R2max=Rmax*Rmax;
+    int imax=0;
+    double r2max=0; 
     for(int i=0; i<n;i++){
-        //double r2 = (vs[i]-(Vec3d)qs[i].f).norm2();
-        double r2 = ( ((Vec3f)vs[i]) - qs[i].f ).norm2();
+        Vec3f d = ((Vec3f)vs[i]) - qs[i].f;
+        double r2 = d.norm2();
+        if(r2>r2max){ imax=i; r2max=r2; }
         r2/=( vs[i].norm2() + qs[i].f.norm2() + 1. );
         if(r2>R2max){
-            if(bPrint)printf( "compareVecs[%i] v(%20.10f,%20.10f,%20.10f) q.f(%20.10f,%20.10f,%20.10f) r2 %f \n", i,  vs[i].x,vs[i].y,vs[i].z,   qs[i].x,qs[i].y,qs[i].z, r2 );
+            if(verbosity>1)printf( "compareVecs[%i] v(%20.10f,%20.10f,%20.10f) q.f(%20.10f,%20.10f,%20.10f) |r| %f d(%20.10f,%20.10f,%20.10f) \n", i,  vs[i].x,vs[i].y,vs[i].z,   qs[i].x,qs[i].y,qs[i].z, sqrt(r2),  d.x,d.y,d.z   );
             ret=true;
         }
     } 
+    if( ret && (verbosity>0)){
+        int i=imax; 
+        Vec3f  d = ((Vec3f)vs[i]) - qs[i].f;
+        double r2 = d.norm2();
+        r2/=( vs[i].norm2() + qs[i].f.norm2() + 1. );
+        printf( "compareVecs[imax=%i] v(%20.10f,%20.10f,%20.10f) q.f(%20.10f,%20.10f,%20.10f) |r| %f d(%20.10f,%20.10f,%20.10f) \n", i,  vs[i].x,vs[i].y,vs[i].z,   qs[i].x,qs[i].y,qs[i].z, sqrt(r2),  d.x,d.y,d.z   );
+    };
     return ret;
 }
 
