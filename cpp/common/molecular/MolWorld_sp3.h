@@ -92,6 +92,10 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     GlobalOptimizer gopt;
 
+    int  iterPerFrame=50;
+    int  iParalel=0; 
+    int  iParalelMax=1;
+    int  iParalelMin=0;
     bool bOcl=false; // used only in Ocl version
 
     double gridStep = 0.1; 
@@ -974,12 +978,14 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     */
     
     verbosity = 0;
+    
+    run_omp( iterPerFrame, opt.dt, 1e-6, 1000.0 );
+
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
     //run_omp( 1, opt.dt, 1e-6, 1000.0 );
     //run_omp( 2, opt.dt, 1e-6, 1000.0 );
-    run_omp( 50, opt.dt, 1e-6, 1000.0 );
     //run_omp( 100, opt.dt, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );

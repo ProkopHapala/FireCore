@@ -683,6 +683,7 @@ void MolGUI::renderESP( Quat4d REQ){
 };
 
 void MolGUI::renderAFM( int iz, int offset ){
+    if(afm_Fout==0){ printf("WARRNING: MolGUI::renderAFM() but afm_Fout not allocated \n"); return; };
     if(iz<0 )iz=0;
     if(iz>=afm_scan_grid.n.z)iz=afm_scan_grid.n.z-1;
     int pitch = 4;
@@ -714,6 +715,7 @@ void MolGUI::renderAFM( int iz, int offset ){
 };
 
 void MolGUI::renderAFM_trjs( int di ){
+    if(afm_Fout==0){ printf("WARRNING: MolGUI::renderAFM_trjs() but afm_PPpos not allocated \n"); return; };
     printf( "MolGUI::renderAFM_trjs(di=%i) afm_PPpos=%li \n", di, afm_PPpos ); //exit(0);
     if(ogl_afm_trj>0)glDeleteLists(ogl_afm_trj,1);
     ogl_afm_trj = glGenLists(1);
@@ -995,6 +997,15 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
 
+                //case SDLK_INSERT:   break;
+                //case SDLK_DELETE:   break;
+
+                //case SDLK_HOME:     break;
+                //case SDLK_END:      break;
+
+                case SDLK_PAGEUP  : W->iParalel=_clamp(W->iParalel+1,W->iParalelMin,W->iParalelMax); break;
+                case SDLK_PAGEDOWN: W->iParalel=_clamp(W->iParalel-1,W->iParalelMin,W->iParalelMax); break;
+
                 case SDLK_COMMA:  W->add_to_lvec( dlvec    ); break;
                 case SDLK_PERIOD: W->add_to_lvec( dlvec*-1 ); break;
 
@@ -1070,6 +1081,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //    printf( "ang[%i] cs(%g,%g) k %g (%i,%i,%i)\n", iangPicked, ff.ang_cs0[iangPicked].x, ff.ang_cs0[iangPicked].y, ff.ang_k[iangPicked],
                 //        ff.ang2atom[iangPicked].a,ff.ang2atom[iangPicked].b,ff.ang2atom[iangPicked].c );
                 //    break;
+                default:
+                    printf( "free key: %i\n", event.key.keysym.sym );
             }
             break;
         case SDL_MOUSEBUTTONDOWN:

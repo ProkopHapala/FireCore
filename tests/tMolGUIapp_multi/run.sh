@@ -57,6 +57,7 @@ nsys=50
 #./$name -m 1    -x common_resources/polymer-2_new_crash_33
 
 
+./$name -m 40  -x common_resources/polymer-2_new
 #./$name -m 40 -c 10 -x common_resources/polymer-2_new
 #./$name -m 2     -x common_resources/polymer-2_new
 #./$name -m 1     -x common_resources/polymer-2_new
@@ -97,7 +98,7 @@ nsys=50
 #./$name -m 1 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 #./$name -m 2 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
-./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
+#./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
