@@ -92,7 +92,7 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
 }
 
 int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, int iParalel ){
-    W.bOcl= iOclMode > iParalel;
+    W.bOcl= iParalel > 0;
     Mat3d lvec = W.ffls[0].lvec;
     //printf( "run Fconv=%g lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}}\n", Fconv, lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );
     int nitrdione=0;
@@ -104,7 +104,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         case  3: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 1 ); break; 
         case  4: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 2 ); break; 
     }
-
+    return nitrdione;
     //return W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
     //return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
 }

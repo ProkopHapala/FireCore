@@ -482,7 +482,7 @@ virtual int paralel_size( )override{ return nSystems; }
 
 virtual double solve_multi ( int nmax, double tol )override{
     //return eval_MMFFf4_ocl( nmax, tol );
-    return eval_MMFFf4_ocl_opt( nmax, tol );
+    return run_ocl_opt( nmax, tol );
 }
 
 virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
@@ -878,7 +878,7 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     return niterdone;
 }
 
-int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion ){ 
+int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){ 
     //printf("MolWorld_sp3_multi::run_ocl_loc() niter=%i \n", niter );
     double F2conv = Fconv*Fconv;
     int err=0;
@@ -889,8 +889,8 @@ int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion ){
     double F2=0;
     if( task_MMFFloc1==0 ){ task_MMFFloc1=ocl.setup_evalMMFFf4_local1( niter ); }
     if( task_MMFFloc2==0 ){ task_MMFFloc2=ocl.setup_evalMMFFf4_local2( niter ); }
-    if     ( iVersion==1 ){ task_MMFFloctask_MMFFloc1; }
-    else if( iVersion==2 ){ task_MMFFloctask_MMFFloc2; }
+    if     ( iVersion==1 ){ task_MMFFloc=task_MMFFloc1; }
+    else if( iVersion==2 ){ task_MMFFloc=task_MMFFloc2; }
     long T0 = getCPUticks();
     for(int i=0; i<nVFs; i++){
         for(int j=0; j<nPerVFs; j++){
@@ -907,12 +907,12 @@ int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion ){
         F2 = evalVFs();
         if( F2<F2conv  ){ 
             double t=(getCPUticks()-T0)*tick2second;
-            printf( "eval_MMFFf4_ocl_opt(nsys=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+            printf( "run_ocl_loc(nsys=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
             return niterdone; 
         }
     }
     double t=(getCPUticks()-T0)*tick2second;
-    printf( "eval_MMFFf4_ocl_opt(nsys=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+    printf( "run_ocl_loc(nsys=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
     //err |= ocl.finishRaw(); 
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     return niterdone;
@@ -941,12 +941,12 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         F2 = evalVFs();
         if( F2<F2conv  ){ 
             double t=(getCPUticks()-T0)*tick2second;
-            printf( "eval_MMFFf4_ocl_opt(nsys=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+            printf( "run_ocl_opt(nsys=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
             return niterdone; 
         }
     }
     double t=(getCPUticks()-T0)*tick2second;
-    printf( "eval_MMFFf4_ocl_opt(nsys=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+    printf( "run_ocl_opt(nsys=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
     //err |= ocl.finishRaw(); 
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     return niterdone;
@@ -1006,6 +1006,7 @@ int rum_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         }
         #pragma omp for
         for( int isys=0; isys<nSystems; isys++ ){
+            //printf( "rum_omp_ocl[itr=%i] isys=%i @cpu(%i/%i) \n", itr, isys, omp_get_thread_num(), omp_get_num_threads() );
             ffls[isys].cleanForce();
             ffls[isys].eval(false);
             if(!bOcl){

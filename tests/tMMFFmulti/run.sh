@@ -30,5 +30,7 @@ export OMP_NUM_THREADS
 #echo   $LD_PRELOAD
 #export LD_PRELOAD
 
+lscpu
+
 python3 run.py
 
