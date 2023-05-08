@@ -365,10 +365,10 @@ def eval():
     return lib.eval()
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p ] 
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, c_int ] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=-1, Fconv=1e-3, ialg=2, outE=None, outF=None, bOcl=True ):
-    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), bOcl )
+def  run(nstepMax=1000, dt=-1, Fconv=1e-3, ialg=2, outE=None, outF=None, iParalel=1 ):
+    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), iParalel )
 
 # ========= GPU Replicas management
 
