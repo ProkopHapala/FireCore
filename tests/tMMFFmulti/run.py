@@ -10,11 +10,9 @@ from pyBall import MMFF_multi as mmff
 
 #======== Body
 
-#./$name -m $nsys -x common_resources/BPBA        -g common_resources/NaCl_1x1_L2
-#./$name -m 40 -x common_resources/polymer-2_new  -g common_resources/NaCl_1x1_L2
 
 mmff.setVerbosity( verbosity=1, idebug=0 )
-mmff.init( xyz_name="data/polymer-2_new", surf_name="data/NaCl_1x1_L2"  )         # without MMFF
+mmff.init( nSys_=40, xyz_name="data/polymer-2_new", surf_name="data/NaCl_1x1_L2"  )         # without MMFF
 mmff.getBuffs()
 
 #print(mmff.gpu_atoms)
@@ -25,9 +23,10 @@ mmff.getBuffs()
 t0 = time.time_ns()
 for i in range(5):
     mmff.change_lvec( [[0.2,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], bAdd=True )
-    #mmff.run(10000,iParalel=-1)
+    mmff.run(10000,iParalel=-1)
     #mmff.run(10000,iParalel=0)
-    mmff.run(10000,iParalel=1)
+    #mmff.run(10000,iParalel=1)
+    #mmff.run(1000,iParalel=2)
 t = time.time_ns()-t0;  print( "Py: time(optimizeLattice_1d) %g[s]" %(t*1e-9) )
 
 #20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  }

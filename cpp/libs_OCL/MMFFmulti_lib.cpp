@@ -97,9 +97,9 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     //printf( "run Fconv=%g lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}}\n", Fconv, lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );
     int nitrdione=0;
     switch(iParalel){
-        case -1: nitrdione = W.rum_multi_serial( nstepMax, Fconv, 1000.0, 1000 ); break; 
+        case -1: nitrdione = W.run_multi_serial( nstepMax, Fconv, 1000.0, 1000 ); break; 
         case  0:
-        case  1: nitrdione = W.rum_omp_ocl     ( nstepMax, Fconv, 1000.0, 1000 ); break; 
+        case  1: nitrdione = W.run_omp_ocl     ( nstepMax, Fconv, 1000.0, 1000 ); break; 
         case  2: nitrdione = W.run_ocl_opt( nstepMax, Fconv    ); break; 
         case  3: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 1 ); break; 
         case  4: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 2 ); break; 
