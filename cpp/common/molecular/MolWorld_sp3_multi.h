@@ -997,15 +997,26 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     ocl.bSubtractVdW=dovdW;
     for(int i=0; i<nVFs; i++){
         for(int j=0; j<nPerVFs; j++){
+            /*
+            {
             err |= task_cleanF->enque_raw();
             err |= task_MMFF->enque_raw();
             if(dovdW){
                 if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
                 else       { err |= task_NBFF      ->enque_raw(); }
             }
-            //err |= task_NBFF->enque_raw();
-            //task_print ->enque_raw(); 
             err |= task_move->enque_raw(); 
+            }
+            */
+            {
+            
+            if(dovdW){
+                if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+                else       { err |= task_NBFF      ->enque_raw(); }
+            }
+            err |= task_MMFF->enque_raw();
+            err |= task_move->enque_raw(); 
+            }
             niterdone++;
             nloop++;
         }
@@ -1036,7 +1047,9 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         //F2 = evalF2();
         if( F2<F2conv  ){ 
             double t=(getCPUticks()-T0)*tick2second;
-            printf( "run_ocl_opt(nSys=%i|iPara=%i) CONVERGED in <%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+            //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
+            if(verbosity>0)
+            printf( "run_ocl_opt(nSys=%i|iPara=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
             return niterdone; 
         }
 
@@ -1129,13 +1142,13 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             int i0v = isys*ocl.nvecs;
             if(bOcl)unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );
             double F2 = opts[isys].move_FIRE();
-            if(isys==iSystemCur){
-                double cv;
-                double cf  = opts[isys].renorm_vf * opts[isys].damp_func_FIRE( opts[isys].cos_vf, cv );
-                printf( "opt[%i](dt=%g/%g,damp=%g,cf=%g,cv=%g)cos_vf=%g\n", iSystemCur, opts[isys].dt,opts[isys].dt_max,opts[isys].damping,opts[isys].cv,opts[isys].cf, opts[isys].cos_vf );
-            }
+            // if(isys==iSystemCur){
+            //     double cv;
+            //     double cf  = opts[isys].renorm_vf * opts[isys].damp_func_FIRE( opts[isys].cos_vf, cv );
+            //     printf( "opt[%i](dt=%g/%g,damp=%g,cf=%g,cv=%g)cos_vf=%g\n", iSystemCur, opts[isys].dt,opts[isys].dt_max,opts[isys].damping,opts[isys].cv,opts[isys].cf, opts[isys].cos_vf );
+            // }
             F2max = fmax(F2max,F2);
-            pack( ffls[isys].nvecs,  ffls[isys].apos, atoms  +i0v );
+            if(bOcl)pack( ffls[isys].nvecs,  ffls[isys].apos, atoms  +i0v );
         }
         #pragma omp single
         { 
@@ -1151,7 +1164,8 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             if(F2max<F2conv){ 
                 niter=0; 
                 T1 = (getCPUticks()-T00)*tick2second;
-                if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
+                //printf( "run_ocl_opt(nSys=%i|iPara=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+                if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
                 itr--;
             }
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
@@ -1166,7 +1180,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         ffl.fapos[i]=ffls[iSystemCur].fapos[i];
     }
     T1 = (getCPUticks()-T00)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
     return itr;
 }
 
@@ -1198,7 +1212,7 @@ int run_multi_serial( int niter_max, double Fconv=1e-3, double Flim=1000, double
         if(F2max<F2conv){ 
             niter=0; 
             T1 = (getCPUticks()-T00)*tick2second;
-            if(verbosity>0)printf( "run_multi_serial(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems,iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
+            if(verbosity>0)printf( "run_multi_serial(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems,iParalel, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
             itr--;
         }
         }
@@ -1209,7 +1223,7 @@ int run_multi_serial( int niter_max, double Fconv=1e-3, double Flim=1000, double
         ffl.fapos[i]=ffls[iSystemCur].fapos[i];
     }
     T1 = (getCPUticks()-T00)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_multi_serial(nSys=%i|iPara=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems,iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
+    if(itr>=niter_max)if(verbosity>0)printf( "run_multi_serial(nSys=%i|iPara=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems,iParalel, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
     return itr;
 }
 

@@ -23,10 +23,10 @@ mmff.getBuffs()
 t0 = time.time_ns()
 for i in range(5):
     mmff.change_lvec( [[0.2,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], bAdd=True )
-    mmff.run(10000,iParalel=-1)
+    #mmff.run(10000,iParalel=-1)
     #mmff.run(10000,iParalel=0)
     #mmff.run(10000,iParalel=1)
-    #mmff.run(1000,iParalel=2)
+    mmff.run(10000,iParalel=2)
 t = time.time_ns()-t0;  print( "Py: time(optimizeLattice_1d) %g[s]" %(t*1e-9) )
 
 #20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  }

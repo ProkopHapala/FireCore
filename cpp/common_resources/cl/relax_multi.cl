@@ -367,8 +367,9 @@ __kernel void getMMFFf4(
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", iG,ing,jng, par.z, par.x,par.y, dot(hi.xyz,hj.xyz),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             
             fa    -= f1+f2;
-            /*
-            if(bSubtractVdW){ // Remove vdW
+            
+            //if(bSubtractVdW)
+            { // Remove vdW
                 float4 REQi=REQKs[inga];   // ToDo: can be optimized
                 float4 REQj=REQKs[jnga];
                 float4 REQij;
@@ -381,7 +382,6 @@ __kernel void getMMFFf4(
                 f2 +=  fij.xyz;
                 //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", iG,ing,jng, length(dp), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
             }
-            */
 
             fbs[i]+= f1;
             fbs[j]+= f2;
@@ -531,14 +531,12 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
-    /*
     // ---- Limit Forces
     float Flimit = 10.0;
     float fr2 = dot(fe.xyz,fe.xyz);
     if( fr2 > (Flimit*Flimit) ){
         fe.xyz*=(Flimit/sqrt(fr2));
     }
-    */
 
     // =============== FORCE DONE
     aforce[iav] = fe;           // store force before limit
@@ -743,6 +741,14 @@ __kernel void getNonBond(
     const int4        nPBC,         // 8
     const float4      GFFParams     // 9
 ){
+    //__local float4 LATOMS[2];
+    //__local float4 LCLJS [2];
+    //__local float4 LATOMS[4];
+    //__local float4 LCLJS [4];
+    //__local float4 LATOMS[8];
+    //__local float4 LCLJS [8];
+    //__local float4 LATOMS[16];
+    //__local float4 LCLJS [16];
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
     //__local float4 LATOMS[64];
@@ -851,7 +857,6 @@ __kernel void getNonBond(
                 //if( (j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
                 //if( (ji==1)&&(iG==0) )printf( "2 non-bond[%i,%i] bBonded %i\n",iG,ji,bBonded );
 
-                /*
                 if(bPBC){    
                     int ipbc=0;
                     dp += shift0;
@@ -878,8 +883,6 @@ __kernel void getNonBond(
                         dp    += shift_a;
                     }
                 }else 
-                */
-
                 if( !bBonded ){
                     fe += getLJQH( dp, REQK, R2damp );
                 }
@@ -890,8 +893,8 @@ __kernel void getNonBond(
     
     if(iG<natoms){
         //if(iS==0){ printf( "GPU::getNonBond(iG=%i) fe(%g,%g,%g,%g)\n", iG, fe.x,fe.y,fe.z,fe.w ); }
-        //forces[iav] = fe;           // If we do  run it as first forcefield 
-        forces[iav] += fe;        // If we not run it as first forcefield
+        forces[iav] = fe;           // If we do  run it as first forcefield 
+        //forces[iav] += fe;        // If we not run it as first forcefield
         //forces[iav] = fe*(-1.f);
     }
 }
