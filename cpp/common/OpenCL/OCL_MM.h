@@ -207,12 +207,11 @@ class OCL_MM: public OCLsystem { public:
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
         //int nloc = 1;
+        //int nloc = 2;
         //int nloc = 4;
         //int nloc = 8;
         //int nloc = 16;
-        //int nloc = 31;
         int nloc = 32;
-        //int nloc = 33;
         //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc);
