@@ -1148,7 +1148,8 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             //     printf( "opt[%i](dt=%g/%g,damp=%g,cf=%g,cv=%g)cos_vf=%g\n", iSystemCur, opts[isys].dt,opts[isys].dt_max,opts[isys].damping,opts[isys].cv,opts[isys].cf, opts[isys].cos_vf );
             // }
             F2max = fmax(F2max,F2);
-            if(bOcl)pack( ffls[isys].nvecs,  ffls[isys].apos, atoms  +i0v );
+            //if(bOcl)
+            pack( ffls[isys].nvecs,  ffls[isys].apos, atoms  +i0v );
         }
         #pragma omp single
         { 
