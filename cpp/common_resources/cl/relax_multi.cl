@@ -72,7 +72,7 @@ inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*
 inline float3 rotMat ( float3 v, float3 a, float3 b, float3 c ){ return (float3)(dot(v,a),dot(v,b),dot(v,c)); }
 inline float3 rotMatT( float3 v, float3 a, float3 b, float3 c ){ return a*v.x + b*v.y + c*v.z; }
 
-inline double evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
+inline float evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, float k, __private float3* f1, __private float3* f2 ){
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
     float3 h  = hr1.xyz + hr2.xyz;
     float  c2 = dot(h,h)*0.25f;     // cos(a/2) = |ha+hb|
@@ -313,7 +313,7 @@ __kernel void getMMFFf4(
         float esp = 0;
 
         //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU:h[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", iaa,i,ing, l, h.x,h.y,h.z, apos[ingv].x,apos[ingv].y,apos[ingv].z, pa.x,pa.y,pa.z ); 
-        if(iG<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
+        if(iG<ing){   // we should avoid  2-counting because otherwise node atoms would be computed 2x, but capping only once
             E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU bond[%i=%i|%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", iG,iaa,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
                         
@@ -420,7 +420,7 @@ __kernel void getMMFFf4(
 // ======================================================================
 
 /*
-float2 KvaziFIREdamp( double c, float2 damp_lims, float2 clim ){
+float2 KvaziFIREdamp( float c, float2 damp_lims, float2 clim ){
     float2 cvf;
     if      (c < clim.x ){   //-- force against veloctiy
         cvf.x = damp_lims.x; // v    // like 0.5 (strong damping)
@@ -429,7 +429,7 @@ float2 KvaziFIREdamp( double c, float2 damp_lims, float2 clim ){
         cvf.x = 1-damping;   // v    // like 0.99 (weak dampong damping)
         cvf.y =   damping;   // f
     }else{                   // -- force ~ perpendicular to velocity
-        double f = (c-clim.x )/( clim.y - clim.x  );
+        float f = (c-clim.x )/( clim.y - clim.x  );
         cvf.x = (1.-damping)*f;
         cvf.y =     damping *f;
     }
@@ -455,7 +455,7 @@ def KvaziFIREdamp( c, clim, damps ):
     return cv,cf
 */
 
-float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
+float2 KvaziFIREdamp( float c, float2 clim, float2 damps ){
     float2 cvf;
     if      (c < clim.x ){   //-- force against veloctiy
         cvf.x = damps.x;     // v    // like 0.5 (strong damping)
@@ -464,7 +464,7 @@ float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
         cvf.x = damps.y;     // v    // like 0.99 (weak dampong damping)
         cvf.y = 0;           // f
     }else{                   // -- force ~ perpendicular to velocity
-        double t = (c-clim.x )/( clim.y - clim.x );
+        float t = (c-clim.x )/( clim.y - clim.x );
         cvf.x = damps.x + (damps.y-damps.x)*t;
         cvf.y = damps.y*t*(1.f-t)*2.f;
     }

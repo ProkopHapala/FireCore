@@ -373,7 +373,7 @@ void MolGUI::draw(){
     if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
-    if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
+    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
     if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 5, 5, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
     if( ogl_esp     ){ glCallList(ogl_esp);      }
@@ -435,7 +435,14 @@ void MolGUI::draw(){
             //for(int i=0;i<nsys; i++){ printMSystem(i, 4, natoms, nvec ); }
         }
         //printf( "nsys %i \n", nsys );
-        if(nsys>0){ for(int isys=0; isys<nsys; isys++){ 
+        if(nsys>0){ 
+            float dt = 2.*M_PI/nsys;
+            float shift = 2.0*M_PI/3.;
+            for(int isys=0; isys<nsys; isys++){
+            float r = cos(dt*isys           )*0.5 + 0.5;
+            float g = cos(dt*isys + shift   )*0.5 + 0.5;
+            float b = cos(dt*isys + shift*2 )*0.5 + 0.5;
+            glColor3f( r, g, b );
             //printf( "#=========== isys= %i \n", isys );
             Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); 
         } } 

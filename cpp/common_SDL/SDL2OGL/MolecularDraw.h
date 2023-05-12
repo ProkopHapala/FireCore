@@ -4,7 +4,9 @@
 #include "AtomicConfiguration.h"
 #include "molecular_utils.h"
 
-void colorRB( float f ){ glColor3f( 0.5+f, 0.5, 0.5-f ); }
+//void colorRB( float f ){ glColor3f( 0.5+f, 0.5, 0.5-f ); }
+//void colorRB( float f ){ glColor3f( 0.5+f, 0.5+f, 0.5+f ); }
+void colorRB( float f ){ glColor3f( 0.5-f, 0.5-f, 0.5-f ); }
 
 void printPoses( int n, double * poses ){
     for( int i=0; i<n; i++ ){
