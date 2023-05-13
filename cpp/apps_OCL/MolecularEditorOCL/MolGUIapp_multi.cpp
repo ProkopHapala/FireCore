@@ -32,6 +32,7 @@ int main(int argc, char *argv[]){
 	funcs["-t"]={0,[&](const char** ss){ sscanf( ss[0], "%i", &(app->W->itest) ); }}; // test
     funcs["-c"]={0,[&](const char** ss){ int iconstr; sscanf( ss[0], "%i", &iconstr ); app->W->constrain_list.push_back(iconstr); }}; // test
     funcs["-e"]={0,[&](const char** ss){ app->W->bEpairs=true; }}; // add explicit electron pairs
+	funcs["-ManipulAnim"]={0,[&](const char** ss){ app->W->bAnimManipulation=true; }}; // add explicit electron pairs
 	process_args( argc, argv, funcs );
 	app->init();
 	app->loop( 1000000 );

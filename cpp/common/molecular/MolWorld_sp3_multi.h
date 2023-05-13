@@ -240,8 +240,12 @@ virtual void init( bool bGrid ) override {
 
     iParalelMax= 4;
     iParalelMin=-1;
+    //iParalel=1;
     iParalel=2;
     //iParalel=iParalelMax;
+
+    
+
 
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
@@ -529,16 +533,61 @@ double evalF2(){
 //       Implement    MultiSolverInterface
 // ===============================================
 
+void move_MultiConstrain( Vec3d d, Vec3d di, float Kfixmin=0.001f ){
+    for(int isys=0; isys<nSystems; isys++){
+        int i0a   = isys * ocl.nAtoms;
+        int i0v   = isys * ocl.nvecs;
+        for(int ia=0; ia<ffls[isys].natoms; ia++){
+            if( ffls[isys].constr[ia].w > Kfixmin ){
+                //ffls[isys].constr[ia].w=1.0f;
+                ffls[isys].constr[ia].f.add( d + di*isys ); 
+                constr[ia+i0a]=(Quat4f)ffls[isys].constr[ia];
+            };
+        };
+    }
+    //for(int isys=0; isys<nSystems; isys++){ printf("replica %i : ", isys); ffls[isys].printAtomsConstrains(); }
+    //upload( ocl.ibuff_constr, constr );
+}
+
 virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
+    printf("MolWorld_sp3_multi::setConstrains()\n");
     MolWorld_sp3::setConstrains( bClear, Kfix );
     for(int isys=0; isys<nSystems; isys++){
         int i0a   = isys * ocl.nAtoms;
         int i0v   = isys * ocl.nvecs;
+        // set it to GPU buffers
         for( int i=0; i<ocl.nAtoms; i++ ){ constr[i+i0a].w=-1;                                    }
         for( int i : constrain_list     ){ constr[i+i0a].w=Kfix; constr[i+i0a].f= atoms[i+i0v].f; }
+        // set it to CPU ffls
+        for( int i=0; i<ffls[isys].natoms; i++ ){ ffls[isys].constr[i].w=-1;                            }
+        for( int i : constrain_list            ){ ffls[isys].constr[i].w=Kfix; ffls[isys].constr[i].f=ffls[isys].apos[i]; }
     }
+    move_MultiConstrain( Vec3d{0.0, 0.4, 5.0}, Vec3d{0.0, 0.4, 0.0} );
+    /*
+    // temporary hack to show up paralell manipulation
+    double Kfixmin = 0.001; 
+    for(int isys=0; isys<nSystems; isys++){
+        int i0a   = isys * ocl.nAtoms;
+        int i0v   = isys * ocl.nvecs;
+        // set it to GPU buffers
+        //for( int i : constrain_list     ){ constr[i+i0a].w=Kfix; constr[i+i0a].f= atoms[i+i0v].f; }
+        for(int ia=0; ia<ffls[isys].natoms; ia++){
+            if( ffls[isys].constr[ia].w > Kfixmin ){
+                //ffls[isys].constr[ia].w=1.0f;
+                ffls[isys].constr[ia].f.add( {0.0, 0.4*isys, 5.0} ); 
+                constr[ia+i0a]=(Quat4f)ffls[isys].constr[ia];
+            };
+        };
+    }
+    for(int isys=0; isys<nSystems; isys++){ printf("replica %i : ", isys); ffls[isys].printAtomsConstrains(); }
+    */
+
     upload( ocl.ibuff_constr, constr );
 }
+
+
+
+
 
 virtual int paralel_size( )override{ return nSystems; }
 
@@ -1310,6 +1359,12 @@ virtual char* getStatusString( char* s, int nmax ) override {
 virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     //bMMFF=false;
+
+
+    if(bAnimManipulation){
+        float dir_sign = ((nloop/10000)%2)*2 - 1 ; printf("AnimManipulation dir_sign=%f \n", dir_sign);
+        move_MultiConstrain( Vec3d{ 0.2*dir_sign, 0.0, 0.0}, Vec3dZero );
+    }
 
     // //run_omp_ocl( 1 );
     // run_omp_ocl( 50 );

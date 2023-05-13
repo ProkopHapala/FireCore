@@ -131,6 +131,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     int nloop=0;
     bool bChargeUpdated=false;
 
+    bool bAnimManipulation=false;
+
 	// Selecteion & Manipulasion
 	std::vector<int> selection;
 	Vec3d manipulation_p0=Vec3dZero; 

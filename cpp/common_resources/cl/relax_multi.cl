@@ -550,9 +550,11 @@ __kernel void updateAtomsMMFFf4(
     // -------constrains
     if(iG<natoms){ 
        float4 cons = constr[ iaa ];
-       if( cons.w>0 ){
+       if( cons.w>0.f ){
             fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
+            if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
        }
+       
     }
     
     /*

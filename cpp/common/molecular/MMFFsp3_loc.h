@@ -371,14 +371,21 @@ double eval_atom(const int ia){
     }    
     //if(bErr){ printf("ERROR in ffl.eval_atom[%i] => Exit() \n", ia ); exit(0); }
     
-
+    /*
     double Kfix = constr[ia].w;
     if(Kfix>0){  
         //printf( "applyConstrain(i=%i,K=%g)\n", ia, Kfix );
         Vec3d d = constr[ia].f-pa;
-        fa.add_mul( d, Kfix );
+        d.mul( Kfix );
+        double fr2 = d.norm2();
+        double F2max = 1.0;
+        if( fr2>F2max ){
+            d.mul( sqrt(F2max/fr2) );
+        }
+        fa.add( d );
         E += d.norm()*Kfix*0.5;
     }
+    */
     
     //fapos [ia].add(fa ); 
     //fpipos[ia].add(fpi);
@@ -822,6 +829,8 @@ void printNeighs    (      ){ printf("MMFFsp3_loc::printNeighs()\n"     ); for(i
 void printBKneighs  (      ){ printf("MMFFsp3_loc::printBKneighs()\n"   ); for(int i=0; i<natoms; i++){ printBKneighs  (i);   }; };
 void print_pipos    (      ){ printf("MMFFsp3_loc::print_pipos()\n"     ); for(int i=0; i<nnode;  i++){ printf( "pipos[%i](%g,%g,%g) r=%g\n", i, pipos[i].x,pipos[i].y,pipos[i].z, pipos[i].norm() ); } }
 void print_apos     (      ){ printf("MMFFsp3_loc::print_apos()\n"      ); for(int i=0; i<natoms; i++){ printf( "apos [%i](%g,%g,%g)\n",      i, apos[i].x ,apos[i].y ,apos[i].z                   ); } }
+
+void printAtomsConstrains( bool bWithOff=false ){ printf("MMFFsp3_loc::printAtomsConstrains()\n"); for(int i=0; i<natoms; i++){ if(bWithOff || (constr[i].w>0.0f) )printf( "consrt[%i](%g,%g,%g|K=%g)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w ); } }
 
 void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
     printf( "MMFFsp3_loc::printDEBUG()\n" );
