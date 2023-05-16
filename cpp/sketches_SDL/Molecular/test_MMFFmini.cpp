@@ -620,34 +620,34 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     //nheavy = loadMoleculeXYZ    ( "common_resources/polymer-2.xyz", "common_resources/polymer-2.lvs", false );
     //nheavy = loadMoleculeXYZ    ( "common_resources/polymer-2-monomer.xyz", "common_resources/polymer-2.lvs", false );
 
-
-    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
-    params.loadBondTypes( "common_resources/BondTypes.dat" );
-    builder.bindParams(&params);
-
-    readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
-    molecules.push_back( new Molecule() ); molecules[0]->atomTypeDict = builder.atomTypeDict; molecules[0]->load_xyz("common_resources/polymer-2.xyz", true);
-    molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", true);
-    builder.insertFlexibleMolecule(  molecules[0], {0,0,0}       , Mat3dIdentity, -1 );
-    builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );
-
+    params.init(   "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat" );
+    //params.loadAtomTypes( "common_resources/AtomTypes.dat" );   
+    //params.loadBondTypes( "common_resources/BondTypes.dat" ); 
+    builder.bindParams(&params); 
+    
+    readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );    
+    molecules.push_back( new Molecule() ); molecules[0]->atomTypeDict = builder.atomTypeDict; molecules[0]->load_xyz("common_resources/polymer-2.xyz", true);  
+    molecules.push_back( new Molecule() ); molecules[1]->atomTypeDict = builder.atomTypeDict; molecules[1]->load_xyz("common_resources/polymer-2-monomer.xyz", true); 
+    builder.insertFlexibleMolecule(  molecules[0], {0,0,0}       , Mat3dIdentity, -1 );        
+    builder.insertFlexibleMolecule(  molecules[1], builder.lvec.a*1.2, Mat3dIdentity, -1 );    
+    
     builder.lvec.a.x *= 2.3;
 
     //builder.printAtoms ();
     //builder.printConfs ();
     builder.printAtomConfs();
     builder.export_atypes(atypes);
+    
     builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
+    
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
     //builder.autoAngles( 0.5, 0.5 );     builder.printAngles();
     builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
     builder.toMMFFmini( ff, &params );
     builder.saveMol( "data/polymer.mol" );
-
-
-
+    
     //builder.lvec.a.x *= 2.0;
 
     /*
@@ -736,49 +736,44 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
 void TestAppMMFFmini::drawSystem( Vec3i ixyz ){
     //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts  ); // DEBUG
-    //glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
+    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
+    //printf( "TestAppMMFFmini::drawSystem ff.bond2atom=%li ff.apos=%li ff.pbcShifts=%li \n", ff.bond2atom, ff.apos, ff.pbcShifts );
+    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts  ); 
+    //glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );
+    //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );          
     //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
-
     //glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
-    //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-    //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+    //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       
+    //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );    
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );     
 }
 
 
 void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
     //if(makeScreenshot){
         char str[64];
-        sprintf( str, fname, i );               // DEBUG
+        sprintf( str, fname, i );          
         printf( "save to %s \n", str );
-        unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
-        glFlush();                                                      //DEBUG
-        glFinish();                                                     //DEBUG
+        unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];
+        glFlush();                                                      
+        glFinish();                                                    
         //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-        glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
-        //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
-        SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
-        SDL_SaveBMP(bitmap, str);    //DEBUG
+        glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);
+        //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );
+        SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 ); 
+        SDL_SaveBMP(bitmap, str);  
         SDL_FreeSurface(bitmap);
         delete[] screenPixels;
         /*
-        DEBUG
         //SDL_Window* window = this->child_windows[0]->window;
         SDL_Window* window = this->window;
         printf( "window @ptr %li \n", window );
-        DEBUG
         SDL_Renderer* renderer = SDL_GetRenderer(window);
-        DEBUG
         SDL_Surface *sshot = SDL_CreateRGBSurface(0, WIDTH, HEIGHT, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000);
-        DEBUG
         SDL_RenderReadPixels( renderer, NULL, SDL_PIXELFORMAT_ARGB8888, sshot->pixels, sshot->pitch);
-        DEBUG
+        
         SDL_SaveBMP(sshot, str );
-        DEBUG
         SDL_FreeSurface(sshot);
         */
 }
@@ -791,7 +786,7 @@ void TestAppMMFFmini::draw(){
     //printf( "====== Frame # %i \n", frameCount );
 
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
-
+    
     if(frameCount==1){
         qCamera.pitch( M_PI );
         ff.printAtomPos();
@@ -801,7 +796,7 @@ void TestAppMMFFmini::draw(){
         lvec_a0 = builder.lvec.a;
         //printf( "lvec_a0  (%g %g,%g) \n", lvec_a0.x, lvec_a0.y, lvec_a0.z );
     }
-
+    
     //Draw3D::drawAxis(  10. );
 
 	if( ogl_mol ){
@@ -849,35 +844,39 @@ void TestAppMMFFmini::draw(){
 
         for(int itr=0; itr<perFrame; itr++){
             //if(bConverged) break;
-            //printf( "======= frame %i \n", frameCount );
+            printf( "======= frame %i itr %i \n", frameCount, itr );
 
-            //printf( "DEBUG run 1 \n" );
+            //printf( " run 1 \n" );
 
             // rotate arom[0]
             //ff.apos[0] = ff.apos[1] + (ff.apos[0]-ff.apos[1]).rotate( 2*M_PI/perFrame, ff.apos[2]-ff.apos[1] );
-
+            
             double E=0;
             ff.cleanAtomForce();
             E += ff.eval(false);
+            
             if(bNonBonded){
                 //E += nff.evalLJQ_sortedMask();   // This is fast but does not work in PBC
-                E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
+                //E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );   // IT WILL CRASH when you uncoment this
             }
+            
+            ff.checkNans( true );
+
             //Vec3d cog,fsum,torq;
             //checkForceInvariatns( ff.natoms, ff.aforce, ff.apos, cog, fsum, torq );
             //printf( "fsum %g torq %g   cog (%g,%g,%g) \n", fsum.norm(), torq.norm(), cog.x, cog.y, cog.z );
 
 
             //for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0d); }
-            //printf( "DEBUG x.1 \n" );
+            //printf( " x.1 \n" );
             //world.eval_bonds(true);
             //world.eval_angles();
-            //printf( "DEBUG x.2 \n" );
+            //printf( " x.2 \n" );
             //world.eval_angles();
-            //printf( "DEBUG x.3 \n" );
+            //printf( " x.3 \n" );
             //world.eval_LJq_On2();
 
-
+            
             //exit(0);
             if(ipicked>=0){
                 Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
@@ -894,7 +893,7 @@ void TestAppMMFFmini::draw(){
 
                 //printf( "%g %g %g\n",  world.aforce[i].x, world.aforce[i].y, world.aforce[i].z );
             }
-
+            
 
             //exit(0);
 
@@ -905,12 +904,12 @@ void TestAppMMFFmini::draw(){
             //opt.move_MDquench();
 
             //opt.move_GD(0.001);
-            //double f2 = opt.move_FIRE();
+            double f2 = opt.move_FIRE();
 
-            float d = 0.05;
-            for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
-
-            double f2=1.0; opt.move_MD( 0.1, 0.005 );
+            // With Randomness - like thermostat
+            //float d = 0.05;
+            //for(int i=0; i<ff.natoms; i++){ ff.aforce[i].add({randf(-d,d),randf(-d,d),randf(-d,d)});  };
+            //double f2=1.0; opt.move_MD( 0.1, 0.005 );
 
 
             //exit(0);
@@ -928,35 +927,37 @@ void TestAppMMFFmini::draw(){
                 }
                 */
             }
+            
 
         }
     }
-
+    
     if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-
+    
     if(builder.bPBC){
         //printf( "draw PBC \n" );
         //Draw3D::drawPBC( (Vec3i){1,1,0}, builder.lvec, [&](){drawSystem();} );
         Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} );
     }else{
+        //printf( "draw NO PBC \n" );
         drawSystem({0,0,0});
     }
-
+    
     for(int i=0; i<selection.size(); i++){
         int ia = selection[i];
         glColor3f( 0.f,1.f,0.f );
         Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );
     }
-
+    
     if(iangPicked>=0){
         glColor3f(0.,1.,0.);
         Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
     }
-
+    
     /*
     printf("==========\n");
     for(int i=0; i<world.natoms; i++){
@@ -964,7 +965,7 @@ void TestAppMMFFmini::draw(){
     }
     if(frameCount>=10){STOP = true;}
     */
-
+    
     if(makeScreenshot){
         saveScreenshot( icell );
         icell++;
@@ -984,8 +985,8 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_o:  perspective  = !perspective; break;
                 //case SDLK_r:  world.fireProjectile( warrior1 ); break;
 
-                //case SDLK_LEFTBRACKET:  ff.i_DEBUG=(ff.i_DEBUG+1)%ff.nang; break;
-                //case SDLK_RIGHTBRACKET: ff.i_DEBUG=(ff.i_DEBUG+1)%ff.nang; break;
+                //case SDLK_LEFTBRACKET:  ff.i_=(ff.i_+1)%ff.nang; break;
+                //case SDLK_RIGHTBRACKET: ff.i_=(ff.i_+1)%ff.nang; break;
 
                 //case SDLK_v: for(int i=0; i<world.natoms; i++){ ((Vec3d*)opt.vel)[i].add(randf(-drndv,drndv),randf(-drndv,drndv),randf(-drndv,drndv)); } break;
                 //case SDLK_p: for(int i=0; i<world.natoms; i++){ world.apos[i].add(randf(-drndp,drndp),randf(-drndp,drndp),randf(-drndp,drndp)); } break;
