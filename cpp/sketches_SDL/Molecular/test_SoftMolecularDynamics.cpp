@@ -104,10 +104,12 @@ TestAppSoftMolDyn::TestAppSoftMolDyn( int& id, int WIDTH_, int HEIGHT_ ) : AppSD
     fontTexPix = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" );
     fontTex    = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
-    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
+    params.init(   "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat" );
+
+    //params.loadAtomTypes( "common_resources/AtomTypes.dat" );
     //mol.atomTypeNames = &params.atomTypeNames;
     //mol.atomTypeDict  = &params.atomTypeDict;
-    params.loadBondTypes( "common_resources/BondTypes.dat");
+    //params.loadBondTypes( "common_resources/BondTypes.dat");
 
     mol.bindParams(&params);
 
@@ -118,7 +120,7 @@ TestAppSoftMolDyn::TestAppSoftMolDyn( int& id, int WIDTH_, int HEIGHT_ ) : AppSD
     params.assignREs( mol.natoms, mol.atomType, mol.REQs );
 
     Vec3d cog = mol.getCOG_av();
-    mol.addToPos( cog*-1.0d );
+    mol.addToPos( cog*-1.0 );
 
     builder.insertMolecule(&mol, {0.0,0.0,0.0}, Mat3dIdentity, false );
     builder.insertMolecule(&mol, {5.0,0.0,0.0}, Mat3dIdentity, false );

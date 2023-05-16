@@ -161,8 +161,10 @@ void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d* pbc_shif
     //printf( "bondsPBC &b2a=%li &apos=%li &pbc_shifts=%li \n", (long)b2a, (long)apos, (long)pbc_shifts );
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
-        Draw3D::drawLine( apos[b.b], apos[b.a]- pbc_shifts[i] );
-        Draw3D::drawLine( apos[b.a], apos[b.b]+ pbc_shifts[i] );
+        Vec3d shift;
+        if(pbc_shifts){ shift=pbc_shifts[i]; }else{ shift=Vec3dZero; }
+        Draw3D::drawLine( apos[b.b], apos[b.a]-shift );
+        Draw3D::drawLine( apos[b.a], apos[b.b]+shift );
     }
 }
 
