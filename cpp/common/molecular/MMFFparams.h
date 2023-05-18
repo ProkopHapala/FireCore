@@ -381,12 +381,46 @@ class MMFFparams{ public:
         }
     }
 
-    DihedralType* getDihedralType( int iat, int ityp, int jtyp, int jat ){
+    DihedralType* getDihedralType( int iat, int ityp, int jtyp, int jat, bool bWildcards=true, bool bParrents=true ){
         char tmp[64];
+        if(ityp>jtyp){ _swap(ityp,jtyp); _swap(iat,jat); }
+
         sprintf( tmp, "%s-%s-%s-%s", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name );
         auto found = dihedralDict.find(tmp);
-        if( found == dihedralDict.end() ) return 0;
-        return &dihedrals[found->second];
+        if( found != dihedralDict.end() ) return &dihedrals[found->second];
+        
+        if(bParrents){
+            int i1,i2,i3,i4;
+            for(int i=0; i<16; i++ ){
+                if(i1 & 1 ){ i1=atypes[iat ].parrent; }else{ i1=iat;  }
+                if(i2 & 4 ){ i2=atypes[ityp].parrent; }else{ i2=ityp; }
+                if(i3 & 8 ){ i3=atypes[jtyp].parrent; }else{ i3=jtyp; }
+                if(i4 & 2 ){ i4=atypes[jat ].parrent; }else{ i4=jat;  }
+                sprintf( tmp, "%s-%s-%s-%s", atypes[i1].name,atypes[i2].name,atypes[i3].name,atypes[i4].name );
+                found = dihedralDict.find(tmp);
+                if( found != dihedralDict.end() ) return &dihedrals[found->second];
+            }
+            
+        }
+
+        if(bWildcards){
+            // wildcard
+            sprintf( tmp, "*-%s-%s-*", atypes[ityp].name,atypes[jtyp].name );
+            found = dihedralDict.find(tmp);
+            if( found != dihedralDict.end() ) return &dihedrals[found->second];
+            if(bParrents){
+                int i1,i2;
+                for(int i=0; i<16; i++ ){
+                    if(i1 & 1 ){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
+                    if(i2 & 2 ){ i2=atypes[jtyp].parrent; }else{ i2=jtyp; }
+                    sprintf( tmp, "*-%s-%s-*", atypes[i1].name,atypes[i2].name );
+                    found = dihedralDict.find(tmp);
+                    if( found != dihedralDict.end() ) return &dihedrals[found->second];
+                }   
+            }
+        }
+
+        return 0;
     }
 
     inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false )const{
@@ -460,6 +494,31 @@ class MMFFparams{ public:
             //printf( "loadBondTypes[%i] iZ(%i,%i|%i) id=%i \n", i, bt.at1, bt.at2, bt.order, id );
             //bt.at1--; bt.at2--;
             bonds[id]=bt;
+        }
+        return i;
+    }
+
+    int loadDihedralTypes(const char * fname, bool exitIfFail=true){
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
+            return -1;
+        }
+        char buff[1024];
+        char names[4][8];
+        char name[64];
+        char * line;
+        DihedralType t;
+        int i=0;
+        for( i; i<1000; i++){
+            line = fgets( buff, 1024, pFile );
+            if(line==NULL) break;
+            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], t.ang0, t.k, t.n );
+            sprintf( name, "%s-%s-%s-%s", names[0],names[1],names[2],names[3] );
+            //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
+            dihedrals.push_back(t);
+            dihedralDict.insert({ name, dihedrals.size()-1} );
         }
         return i;
     }
