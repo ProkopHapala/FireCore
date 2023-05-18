@@ -646,6 +646,9 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     //builder.autoAngles( 0.5, 0.5 );     builder.printAngles();
     builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
     builder.toMMFFmini( ff, &params );
+
+    printf("Exit() after toMMFFmini()\n"); exit(0);
+
     builder.saveMol( "data/polymer.mol" );
     
     //builder.lvec.a.x *= 2.0;

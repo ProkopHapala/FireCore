@@ -4,6 +4,7 @@
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "quaternion.h"
 #include "integerOps.h"
 
 #include "constants.h"
@@ -152,6 +153,14 @@ static const int z2typ0[]{
     5  //F 
 };
 
+struct DihedralType{
+    Quat4i atypes;
+    int    n;
+    double k;
+    double ang0;
+};
+
+
 class MMFFparams{ public:
 
     // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html
@@ -163,6 +172,9 @@ class MMFFparams{ public:
     std::unordered_map<std::string,int>    atomTypeDict;
     std::unordered_map<uint64_t,BondType>  bonds;
     std::unordered_map<uint64_t,AngleType> angles;
+
+    std::vector<DihedralType>           dihedrals;
+    std::unordered_map<std::string,int> dihedralDict;
 
 
     double default_bond_length      = 2.0;
@@ -367,6 +379,14 @@ class MMFFparams{ public:
             //if( t.iZ>=doIt.size() ){ printf("ERROR: atype[%i] t.iZ(%i) > =doIt.size(%i) \n", i, t.iZ, doIt.size()  ); }
             if(doIt[t.iZ]){ assignSubTypes(t); doIt[t.iZ]=false; }
         }
+    }
+
+    DihedralType* getDihedralType( int iat, int ityp, int jtyp, int jat ){
+        char tmp[64];
+        sprintf( tmp, "%s-%s-%s-%s", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name );
+        auto found = dihedralDict.find(tmp);
+        if( found == dihedralDict.end() ) return 0;
+        return &dihedrals[found->second];
     }
 
     inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false )const{

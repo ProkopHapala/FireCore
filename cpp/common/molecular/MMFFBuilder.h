@@ -209,8 +209,10 @@ struct Dihedral{
 
     int    type;
     Vec3i  bonds;
+    Quat4i atoms;
     int    n;
     double k;
+    double a0;
 
     //Dihedral()=default;
 
@@ -1733,6 +1735,38 @@ class Builder{  public:
             if(atoms[i].iconf>=0){
                 addAnglesToAtom( i, ksigma, kpi );
             }
+        }
+    }
+
+    bool addTorsionsToBond( int ibond ){
+        Vec2i b = bonds[ibond].atoms;
+        const AtomConf* ca = getAtomConf(b.i);
+        const AtomConf* cb = getAtomConf(b.j);
+        if( (ca==0) || (cb==0)) return false;
+        int ityp = atoms[b.i].type;
+        int jtyp = atoms[b.j].type;
+        for(int i=0; i<ca->nbond; i++ ){
+            for(int j=0; j<cb->nbond; j++ ){
+                int ib = ca->neighs[i];
+                int jb = cb->neighs[j];
+                int ia = bonds[ ib ].getNeighborAtom(b.i);  int iat = atoms[ia].type;
+                int ja = bonds[ jb ].getNeighborAtom(b.j);  int jat = atoms[ja].type;
+                Dihedral tor;
+                DihedralType* dtyp = params->getDihedralType( iat, ityp, jtyp, jat );
+                tor.a0    = dtyp->ang0;
+                tor.k     = dtyp->ang0;
+                tor.n     = dtyp->n;
+                tor.atoms = Quat4i{iat,ityp,jtyp,jat};
+                tor.bonds = {ibond,ib,jb};
+                dihedrals.push_back( tor );
+            }
+        }
+        return true;
+    }
+
+    void autoTorsions(){
+        for(int ib=0; ib<bonds.size(); ib++){
+            addTorsionsToBond( ib );
         }
     }
 

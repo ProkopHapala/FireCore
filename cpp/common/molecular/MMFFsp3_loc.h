@@ -63,6 +63,8 @@ class MMFFsp3_loc : public NBFF { public:
     bool doPiSigma=true;
     bool doAngles =true;
     bool doEpi    =true; 
+
+    bool bEachAngle = false;
     
     //                           c0     Kss    Ksp    c0_e
     Quat4d default_NeighParams{ -1.0,   1.0,   1.0,   -1.0 };
@@ -88,6 +90,8 @@ class MMFFsp3_loc : public NBFF { public:
     Quat4d*  bKs  =0;  // [nnode] bond stiffness
     Quat4d*  Ksp  =0;  // [nnode] stiffness of pi-alignment
     Quat4d*  Kpp  =0;  // [nnode] stiffness of pi-planarization
+
+    Vec3d*   angles=0;
 
     Quat4d*  constr=0;
     Vec3d * vapos = 0;
@@ -128,6 +132,9 @@ void realloc( int nnode_, int ncap_ ){
     _realloc0( bKs       , nnode, Quat4dNAN );
     _realloc0( Ksp       , nnode, Quat4dNAN );
     _realloc0( Kpp       , nnode, Quat4dNAN );
+
+    _realloc0( angles, nnode*6, Vec3dNAN );   // 6=4*3/2
+
     _realloc0( constr    , natoms, Quat4dOnes*-1. );
 }
 
@@ -175,6 +182,7 @@ void dealloc(){
     _dealloc(bKs);
     _dealloc(Ksp);
     _dealloc(Kpp);
+    _dealloc(angles);
 }
 
 void setLvec(const Mat3d& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
@@ -223,10 +231,7 @@ double eval_atom(const int ia){
     // //bool    bPi  = ings[3]<0;   we distinguish this by Ksp, otherwise it would be difficult for electron pairs e.g. (-O-C=)
 
     const Quat4d& apar  = apars[ia];
-    const double  ssK  = apar.z;
     const double  piC0 = apar.w;
-    const Vec2d cs0_ss = Vec2d{apar.x,apar.y};
-    const double  ssC0 = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
     //printf( "ang0 %g cs0(%g,%g)\n", atan2(cs0_ss.y,cs0_ss.x)*180/M_PI, cs0_ss.x,cs0_ss.x );
 
@@ -325,10 +330,26 @@ double eval_atom(const int ia){
     }
 
     
+
+
     //printf( "MMFF_atom[%i] cs(%6.3f,%6.3f) ang=%g [deg]\n", ia, cs0_ss.x, cs0_ss.y, atan2(cs0_ss.y,cs0_ss.x)*180./M_PI );
     // --------- Angle Step
     const double R2damp=Rdamp*Rdamp;
-    if(doAngles)for(int i=0; i<4; i++){
+    if(doAngles){
+
+    double  ssK,ssC0;
+    Vec2d   cs0_ss;
+    Vec3d*  angles_i;
+    if(bEachAngle){
+        Vec3d*   angles_i = angles+(ia*6);
+    }else{
+        ssK    = apar.z;
+        cs0_ss = Vec2d{apar.x,apar.y};
+        ssC0   = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
+    }
+
+    int iang=0;
+    for(int i=0; i<3; i++){
         int ing = ings[i];
         if(ing<0) break;
         const Quat4d& hi = hs[i];
@@ -336,6 +357,14 @@ double eval_atom(const int ia){
             int jng  = ings[j];
             if(jng<0) break;
             const Quat4d& hj = hs[j];    
+
+            if(bEachAngle){
+                // 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
+                //  0    1    2    3    4    5 
+                cs0_ss = angles_i[iang].xy();  
+                ssK    = angles_i[iang].z;
+                iang++; 
+            };
 
             //bAngleCosHalf = false;
             if( bAngleCosHalf ){
@@ -368,6 +397,7 @@ double eval_atom(const int ia){
             //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
             // ToDo: subtract non-covalent interactions
         }
+    }
     }    
     //if(bErr){ printf("ERROR in ffl.eval_atom[%i] => Exit() \n", ia ); exit(0); }
     
