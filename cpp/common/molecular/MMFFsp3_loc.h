@@ -11,6 +11,7 @@
 #include "Vec3.h"
 #include "Forces.h"
 #include "quaternion.h"
+#include "SMat3.h"
 #include "molecular_utils.h"
 
 #include "NBFF.h"
@@ -50,7 +51,7 @@ class MMFFsp3_loc : public NBFF { public:
     //Mat3d   lvec;          // from NBFF
     //double  Rdamp  = 1.0;  // from NBFF
 
-    int  nDOFs=0,nnode=0,ncap=0,nvecs=0;
+    int  nDOFs=0,nnode=0,ncap=0,nvecs=0,ntors=0;
     double Etot,Eb,Ea, Eps,EppT,EppI;
 
     double *  DOFs = 0;   // degrees of freedom
@@ -93,6 +94,9 @@ class MMFFsp3_loc : public NBFF { public:
 
     Vec3d*   angles=0;
 
+    Quat4i*  tors2atom =0;
+    Quat4d*  torsParams=0;
+
     Quat4d*  constr=0;
     Vec3d * vapos = 0;
 
@@ -105,8 +109,8 @@ class MMFFsp3_loc : public NBFF { public:
 
 // =========================== Functions
 
-void realloc( int nnode_, int ncap_ ){
-    nnode=nnode_; ncap=ncap_;
+void realloc( int nnode_, int ncap_, int ntors_=0 ){
+    nnode=nnode_; ncap=ncap_; ntors=ntors_;
     natoms= nnode + ncap; 
     nvecs = natoms+nnode;  // each atom as also pi-orientiation (like up-vector)
     nDOFs = nvecs*3;
@@ -133,7 +137,14 @@ void realloc( int nnode_, int ncap_ ){
     _realloc0( Ksp       , nnode, Quat4dNAN );
     _realloc0( Kpp       , nnode, Quat4dNAN );
 
+
+
+    // Additional:
+    // Angles
     _realloc0( angles, nnode*6, Vec3dNAN );   // 6=4*3/2
+    // Torsions
+    _realloc0( tors2atom,  ntors, Quat4iZero );
+    _realloc0( torsParams, ntors, Quat4dNAN  ); 
 
     _realloc0( constr    , natoms, Quat4dOnes*-1. );
 }
@@ -183,6 +194,9 @@ void dealloc(){
     _dealloc(Ksp);
     _dealloc(Kpp);
     _dealloc(angles);
+
+    _dealloc(tors2atom  );
+    _dealloc(torsParams );
 }
 
 void setLvec(const Mat3d& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
@@ -431,6 +445,112 @@ double eval_atoms(){
     }
     return E;
 }
+
+double eval_torsion(int it){
+    Quat4i ias = tors2atom [it];
+    Quat4d par = torsParams[it];
+
+    Vec3d ha    = apos[ ias.x ] - apos[ ias.y ];
+    Vec3d hb    = apos[ ias.w ] - apos[ ias.z ];
+    Vec3d hab   = apos[ ias.z ] - apos[ ias.y ];
+
+    double ila  = 1/ha.normalize();
+    double ilb  = 1/hb.normalize();
+    double ilab = 1/hab.normalize();
+
+    double ca   = hab.dot(ha);
+    double cb   = hab.dot(hb);
+    double cab  = ha .dot(hb);
+    double sa2  = (1-ca*ca);
+    double sb2  = (1-cb*cb);
+    double invs = 1/sqrt( sa2*sb2 );
+    //double c    = ;  //  c = <  ha - <ha|hab>hab   | hb - <hb|hab>hab    >
+
+    Vec2d cs,csn;
+    cs.x = ( cab - ca*cb )*invs;
+    cs.y = sqrt(1-cs.x*cs.x); // can we avoid this sqrt ?
+    cs.udiv_cmplx( par.xy() ); 
+
+    const int n = (int)par.w; // I know it is stupid store n as double, but I don't make another integer arrays just for it
+    for(int i=0; i<n-1; i++){
+        csn.mul_cmplx(cs);
+    }
+
+    // check here : https://www.wolframalpha.com/input/?i=(x+%2B+isqrt(1-x%5E2))%5En+derivative+by+x
+
+    const double k = par.z;
+    double E       = k  *(1-csn.x);
+    double dcn     = k*n*   csn.x;
+    //double fr  =  k*n*    csn.y;
+
+    //double c   = cos_func(ca,cb,cab);
+
+    //printf( "<fa|fb> %g cT %g cS %g \n", cs.x, cT, cS );
+
+    // derivatives to get forces
+
+    double invs2 = invs*invs;
+    dcn *= invs;
+    double dcab  = dcn;                          // dc/dcab = dc/d<ha|hb>
+    double dca   = (1-cb*cb)*(ca*cab - cb)*dcn;  // dc/dca  = dc/d<ha|hab>
+    double dcb   = (1-ca*ca)*(cb*cab - ca)*dcn;  // dc/dca  = dc/d<hb|hab>
+
+    Vec3d fa,fb,fab;
+
+    fa =Vec3dZero;
+    fb =Vec3dZero;
+    fab=Vec3dZero;
+
+    //Mat3Sd J;
+    SMat3d J;
+
+    J.from_dhat(ha);    // -- by ha
+    J.mad_ddot(hab,fa, dca ); // dca /dha = d<ha|hab>/dha
+    J.mad_ddot(hb ,fa, dcab); // dcab/dha = d<ha|hb> /dha
+
+    J.from_dhat(hb);    // -- by hb
+    J.mad_ddot(hab,fb, dcb ); // dcb /dhb = d<hb|hab>/dha
+    J.mad_ddot(ha ,fb, dcab); // dcab/dhb = d<hb|ha> /dha
+
+    J.from_dhat(hab);         // -- by hab
+    J.mad_ddot(ha,fab, dca);  // dca/dhab = d<ha|hab>/dhab
+    J.mad_ddot(hb,fab, dcb);  // dcb/dhab = d<hb|hab>/dhab
+    // derivative cab = <ha|hb>
+
+    fa .mul( ila  );
+    fb .mul( ilb  );
+    fab.mul( ilab );
+
+    // ToDo : Which order ?
+    fapos[ias.x].sub( fa );
+    fapos[ias.y].add( fa  - fab );
+    fapos[ias.z].add( fab - fb  );
+    fapos[ias.w].add( fb );
+
+    /*
+    {
+        double fsc = 100.0;
+        glColor3f(1.0,0.0,1.0);  Draw3D::drawVecInPos(hab.normalized()*E, apos[ia.x]);
+        glColor3f(1.0,1.0,1.0);  Draw3D::drawVecInPos(ha.normalized()*E, apos[ia.x]);
+        glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc, apos[ia.x]);
+        glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc*-1, apos[ia.y]);
+        glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc*-1, apos[ia.z]);
+        glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc, apos[ia.w]);
+
+    }
+    */
+
+    return E;
+}
+
+double eval_torsions(){
+    double E=0;
+    for(int it=0; it<ntors; it++){ 
+        E+=eval_torsion(it); 
+    }
+    return E;
+}
+
 
 void addjustAtomCapLenghs(int ia){
     const Vec3d pa  = apos [ia]; 
