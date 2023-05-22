@@ -53,10 +53,10 @@ class Vec3T{
 	// swizzles
 	inline VEC2 xy() const { return {x,y}; };
 	inline VEC2 xz() const { return {x,z}; };
-	inline VEC2 yz() const { return {x,y}; };
-    inline VEC2 yx() const { return {x,y}; };
-	inline VEC2 zx() const { return {x,z}; };
-	inline VEC2 zy() const { return {x,y}; };
+	inline VEC2 yz() const { return {y,z}; };
+    inline VEC2 yx() const { return {y,x}; };
+	inline VEC2 zx() const { return {z,x}; };
+	inline VEC2 zy() const { return {z,y}; };
     inline VEC xzy() const { return {x,z,y}; };
 	inline VEC yxz() const { return {y,x,z}; };
 	inline VEC yzx() const { return {y,z,x}; };

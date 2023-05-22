@@ -36,6 +36,18 @@ class AngleType{ public:
     inline uint64_t getId(){ sort(); return pack64( atoms.b,atoms.a,atoms.c, 0 ); }
 };
 
+
+class DihedralType{ public:
+    Quat4i atoms;
+    int    n;
+    double k;
+    double ang0;
+
+    inline void     sort(){ if (atoms.y>atoms.z){ _swap(atoms.y,atoms.z); _swap(atoms.x,atoms.w); }  }
+    inline uint64_t getId(){ sort(); return pack64( atoms.y,atoms.z,atoms.x,atoms.w); }
+};
+
+
 /*
 class ElementType{ public:
     char      name[8];
@@ -153,12 +165,6 @@ static const int z2typ0[]{
     5  //F 
 };
 
-struct DihedralType{
-    Quat4i atypes;
-    int    n;
-    double k;
-    double ang0;
-};
 
 
 class MMFFparams{ public:
@@ -171,11 +177,15 @@ class MMFFparams{ public:
     std::unordered_map<std::string,int>    elementTypeDict;
     std::unordered_map<std::string,int>    atomTypeDict;
     std::unordered_map<uint64_t,BondType>  bonds;
-    std::unordered_map<uint64_t,AngleType> angles;
+    //std::unordered_map<uint64_t,AngleType> angles;
 
-    std::vector<DihedralType>           dihedrals;
-    std::unordered_map<std::string,int> dihedralDict;
+    std::vector<AngleType>                  angles;
+    std::unordered_map<std::string,int>     angleDict;
+    std::unordered_map<uint64_t,AngleType*> angles_;
 
+    std::vector<DihedralType>                  dihedrals;
+    std::unordered_map<std::string,int>        dihedralDict;
+    std::unordered_map<uint64_t,DihedralType*> dihedrals_;
 
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
@@ -423,6 +433,48 @@ class MMFFparams{ public:
         return 0;
     }
 
+    AngleType* getAngleType( int iat, int ityp, int jat, bool bWildcards=true, bool bParrents=true ){
+        char tmp[64];
+        if(iat>jat){ _swap(iat,jat); }
+
+        sprintf( tmp, "%s-%s-%s", atypes[iat].name,  atypes[ityp].name,  atypes[jat].name );
+        auto found = angleDict.find(tmp);
+        if( found != angleDict.end() ) return &angles[found->second];
+        
+        if(bParrents){
+            int i1,i2,i3;
+            for(int i=0; i<8; i++ ){
+                if(i1 & 1 ){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
+                if(i2 & 2 ){ i2=atypes[iat ].parrent; }else{ i2=iat;  }
+                if(i3 & 4 ){ i3=atypes[jat ].parrent; }else{ i3=jat;  }
+                sprintf( tmp, "%s-%s-%s", atypes[i2].name, atypes[i1].name, atypes[i3].name );
+                found = angleDict.find(tmp);
+                if( found != angleDict.end() ) return &angles[found->second];
+            }
+            
+        }
+
+        if(bWildcards){
+            // wildcard
+            sprintf( tmp, "*-%s-*", atypes[iat].name );
+            found = angleDict.find(tmp);
+            if( found != angleDict.end() ) return &angles[found->second];
+            if(bParrents){
+                int i1;
+                for(int i=0; i<2; i++ ){
+                    if(i1 & 1 ){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
+                    sprintf( tmp, "*-%s-*", atypes[i1].name );
+                    found = angleDict.find(tmp);
+                    if( found != angleDict.end() ) return &angles[found->second];
+                }   
+            }
+        }
+
+        return 0;
+    }
+
+
+
     inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false )const{
         REQ.x    = atypes[ityp].RvdW;
         double e = atypes[ityp].EvdW;
@@ -498,6 +550,40 @@ class MMFFparams{ public:
         return i;
     }
 
+    int loadAngleTypes(const char * fname, bool exitIfFail=true){
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
+            return -1;
+        }
+        char buff[1024];
+        char names[3][8];
+        char name[64];
+        char * line;
+        AngleType ang;
+        int i=0;
+        for( i; i<1000; i++){
+            line = fgets( buff, 1024, pFile );
+            if(line==NULL) break;
+            sscanf(  line,            "%s %s %s %lf %lf\n",     names[0], names[1], names[2], &ang.angle0, &ang.stiffness );
+            //printf( "loadAgnleTypes[%i] %s %s %s %lf %lf\n",i,names[0], names[1], names[2],  ang.angle0,  ang.stiffness );
+            sprintf( name, "%s-%s-%s", names[0],names[1],names[2] );
+
+            angles.push_back(ang);
+            angleDict.insert({ name, angles.size()-1} );
+
+            // ang.atoms.a = getAtomType(names[0]);
+            // ang.atoms.b = getAtomType(names[1]);
+            // ang.atoms.c = getAtomType(names[2]);
+            // uint64_t id = ang.getId();
+            // auto found = angles_.find(id);
+            // if( found != angles.end() ){ printf( "WARRNIMG!!! loadAgnleTypes() angleType[%i] same as ", i); printAngle(found->second); };
+            //angles_[id]=ang;
+        }
+        return i;
+    }
+
     int loadDihedralTypes(const char * fname, bool exitIfFail=true){
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
@@ -531,33 +617,7 @@ class MMFFparams{ public:
         for(int i=0; i<atypes.size(); i++ ){ atypes[i].print(i, bParams );  }
     }
 
-    int loadAgnleType(const char * fname, bool exitIfFail=true){
-        FILE * pFile = fopen(fname,"r");
-        if( pFile == NULL ){
-            printf("cannot find %s\n", fname );
-            if(exitIfFail)exit(0);
-            return -1;
-        }
-        char buff[1024];
-        char * line;
-        AngleType ang;
-        int i=0;
-        char name[3][8];
-        for( i; i<1000; i++){
-            line = fgets( buff, 1024, pFile );
-            if(line==NULL) break;
-            sscanf(  line,            "%s %s %s %lf %lf\n",  name[0], name[1], name[2], &ang.angle0, &ang.stiffness );
-            //printf( "loadAgnleType[%i] %s %s %s %lf %lf\n",i,name[0], name[1], name[2],  ang.angle0,  ang.stiffness );
-            ang.atoms.a = getAtomType(name[0]);
-            ang.atoms.b = getAtomType(name[1]);
-            ang.atoms.c = getAtomType(name[2]);
-            uint64_t id = ang.getId();
-            auto found = angles.find(id);
-            if( found != angles.end() ){ printf( "WARRNIMG!!! loadAgnleType() angleType[%i] same as ", i); printAngle(found->second); };
-            angles[id]=ang;
-        }
-        return i;
-    }
+
 
     bool getBondParams( int atyp1, int atyp2, int btyp, double& l0, double& k )const{
         uint64_t id  = getBondTypeId( atypes[atyp1].iZ, atypes[atyp2].iZ, btyp );
@@ -593,7 +653,7 @@ class MMFFparams{ public:
             assignAllSubTypes();
         }
         if(fbondtypes )loadBondTypes( fbondtypes  );
-        if(fagnletypes)loadAgnleType( fagnletypes );
+        if(fagnletypes)loadAngleTypes( fagnletypes );
     }
 
     bool cellFromString( char* s, Mat3d& lvec )const{

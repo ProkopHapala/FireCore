@@ -49,6 +49,7 @@ float project_beam_to_sphere( float r, float x, float y ){
 template <class T>
 class Quat4T {
 	using VEC  = Vec3T<T>;
+    using VEC2 = Vec2T<T>;
 	using MAT  = Mat3T<T>;
 	using QUAT = Quat4T<T>;
 	public:
@@ -75,6 +76,27 @@ class Quat4T {
 	inline void set   ( T fx, T fy, T fz, T fw  ){ x=fx  ; y=fy  ; z=fz  ; w=fw  ; }
 	inline void setXYZ( const VEC& v            ){ x=v.x ; y=v.y ; z=v.z ;         }
 	inline void setOne(                         ){ x=y=z=0; w=1;                   }
+
+
+
+	// swizzles
+	inline VEC2 xy() const { return {x,y}; };
+	inline VEC2 xz() const { return {x,z}; };
+    inline VEC2 xw() const { return {x,w}; };
+
+	inline VEC2 yx() const { return {y,x}; };
+    inline VEC2 yz() const { return {y,z}; };
+    inline VEC2 yw() const { return {y,w}; };
+
+	inline VEC2 zx() const { return {z,x}; };
+    inline VEC2 zy() const { return {z,y}; };
+    inline VEC2 zw() const { return {z,w}; };
+
+    inline VEC2 wx() const { return {w,x}; };
+    inline VEC2 wy() const { return {w,y}; };
+    inline VEC2 wz() const { return {w,z}; };
+
+
 
 
     inline void setView_XY (){set(1.0,0.0,0.0,0.0);}    // top view  x=x, y=-y,
