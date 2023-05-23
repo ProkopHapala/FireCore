@@ -12,10 +12,6 @@
 //#include "integerOps.h"
 //#include "gonioApprox.h"
 
-#define GOLDEN_RATIO  1.61803398875
-#define DEG2RAD  0.0174533
-#define RAD2DEG  57.2958
-
 constexpr double M_TWO_PI = M_PI * 2;
 
 //#define sq(a) a*a

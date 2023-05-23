@@ -4,18 +4,16 @@ ln -s ../../cpp/common_resources data
 ln -s ../../cpp/common_resources common_resources 
 
 wd=`pwd`
-cd ../../cpp/Build/libs/Molecular/
+cd ../../cpp/Build/libs_OCL/
 pwd
-rm libMMFF_lib.so
-make MMFF_lib
-rm   libLattice2D_lib.so
-make Lattice2D_lib
+rm libMMFFmulti_lib.so
+make MMFFmulti_lib
 cd $wd
 
-cd ../../cpp/Build/libs_SDL
-rm libMolGUIlib.so
-make MolGUIlib
-cd $wd
+#cd ../../cpp/Build/libs_SDL
+#rm libMolGUIlib.so
+#make MolGUIlib
+#cd $wd
 
 
 # ---- Multiprocesing
@@ -32,9 +30,7 @@ export OMP_NUM_THREADS
 #echo   $LD_PRELOAD
 #export LD_PRELOAD
 
-#python3 run.py
-#python3 run_gui.py
-#python3 run_surf_lattice.py
-#python3 run_propandiol.py
-#python3 run_sample.py
-python3 run_lat_scan.py
+lscpu
+
+python3 run.py
+

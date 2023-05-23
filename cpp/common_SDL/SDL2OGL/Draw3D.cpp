@@ -1090,6 +1090,34 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         }
     }
 
+    void drawScalarField( Vec2i ns, const Quat4f* ps,const  float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
+        //printf( " debug_draw_GridFF \n" );
+        double z0  = 1.5;
+        double dz0 = 0.1;
+        double clsc = 1/(vmax-vmin);
+        glShadeModel(GL_SMOOTH);
+        //glEnable( GL_POLYGON_SMOOTH);
+        for(int iy=1;iy<ns.y;iy++){
+            glBegin( GL_TRIANGLE_STRIP );
+            for(int ix=0;ix<ns.x;ix++){
+                Vec3f p;
+                int i = (iy-1)*ns.x + ix;
+                double c = clamp( clsc*(data[i*pitch+offset]-vmin), 0, 1 );
+                if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
+                //p = (gsh.dCell.a*(ix + (gsh.n.x*-0.5))) + (gsh.dCell.b*(iy-1 + (gsh.n.y*-0.5) ));
+                p = ps[i].f;
+                glVertex3f(p.x,p.y,p.z);
+
+                i += ns.x;
+                c = clamp(  clsc*(data[i*pitch+offset]-vmin), 0, 1 );
+                if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
+                p = ps[i].f;
+                glVertex3f(p.x,p.y,p.z);
+            }
+            glEnd();
+        }
+    }
+
     void drawScalarGrid(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b,const double* data,  double vmin, double vmax, const uint32_t * colors, int ncol ){
         //printf( " debug_draw_GridFF \n" );
         double z0  = 1.5;
@@ -1112,6 +1140,34 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
                 i += ns.x;
                 //glColor3f ( data[i].x+0.5, data[i].y+0.5, 0.5 );
                 c = clamp(  clsc*(data[i]-vmin), 0, 1 );
+                if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
+                p.add(b);
+                glVertex3f(p.x,p.y,p.z);
+            }
+            glEnd();
+        }
+    }
+
+    void drawScalarGrid(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b,const float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
+        //printf( " debug_draw_GridFF \n" );
+        double z0  = 1.5;
+        double dz0 = 0.1;
+        double clsc = 1/(vmax-vmin);
+        glShadeModel(GL_SMOOTH);
+        //glEnable( GL_POLYGON_SMOOTH);
+        for(int iy=1;iy<ns.y;iy++){
+            glBegin( GL_TRIANGLE_STRIP );
+            for(int ix=0;ix<ns.x;ix++){
+                Vec3d p;
+                int i = (iy-1)*ns.x + ix;
+                double c = clamp( clsc*(data[i*pitch+offset]-vmin), 0, 1 );
+                if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
+                //p = (gsh.dCell.a*(ix + (gsh.n.x*-0.5))) + (gsh.dCell.b*(iy-1 + (gsh.n.y*-0.5) ));
+                p = a*ix + b*(iy-1) + p0;
+                glVertex3f(p.x,p.y,p.z);
+
+                i += ns.x;
+                c = clamp(  clsc*(data[i*pitch+offset]-vmin), 0, 1 );
                 if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
                 p.add(b);
                 glVertex3f(p.x,p.y,p.z);

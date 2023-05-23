@@ -1,5 +1,4 @@
 ﻿
-
 constexpr int ntmpstr=2048;
 char tmpstr[ntmpstr];
 
@@ -7,11 +6,12 @@ int verbosity = 1;
 int idebug    = 0;
 double tick2second=1e-9;
 
-#include "MolWorld_sp3.h"
+//#include "MolWorld_sp3.h"
+#include "MolWorld_sp3_multi.h"
 
 // ============ Global Variables
 
-MolWorld_sp3 W;
+MolWorld_sp3_multi W;
 
 //============================
 
@@ -38,37 +38,75 @@ void init_buffers(){
         //buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
         //buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
         //ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
-        ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+        ibuffers.insert( { "neighs",       (int*)W.ffl.neighs  } );
+
+        ibuffers.insert( { "gpu_neighs",   (int*)W.neighs    } );
+        ibuffers.insert( { "gpu_neighCell",(int*)W.neighCell } );
+        ibuffers.insert( { "gpu_bkNeighs", (int*)W.bkNeighs  } );
+
+        fbuffers.insert( { "gpu_atoms",    (float*)W.atoms   } );
+        fbuffers.insert( { "gpu_aforces",  (float*)W.aforces } );
+        fbuffers.insert( { "gpu_avel",     (float*)W.avel    } );
+        fbuffers.insert( { "gpu_constr",   (float*)W.constr  } );
+        
+        fbuffers.insert( { "gpu_REQs",     (float*)W.REQs   } );
+        fbuffers.insert( { "gpu_MMpars",   (float*)W.MMpars } );
+        fbuffers.insert( { "gpu_BLs",      (float*)W.BLs    } );
+        fbuffers.insert( { "gpu_BKs",      (float*)W.BKs    } );
+        fbuffers.insert( { "gpu_Ksp",      (float*)W.Ksp    } );
+        fbuffers.insert( { "gpu_Kpp",      (float*)W.Kpp    } );
+
+        fbuffers.insert( { "gpu_lvecs",    (float*)W.lvecs     } );
+        fbuffers.insert( { "gpu_ilvecs",   (float*)W.ilvecs    } );
+        fbuffers.insert( { "gpu_pbcshifts",(float*)W.pbcshifts } );
+
+        //float* gpu_lvecs= getfBuff("gpu_lvecs"); 
+        //for(int i=0; i<12; i++){ printf( "gpu_lvecs[%i]=%g\n", i, gpu_lvecs[i] ); };
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
-    ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
-    buffers .insert( { "Es",       &W.ff.Etot  } );
+    ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
+    buffers .insert( { "Es",       &W.ffl.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
 }
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i \n", nSys, xyz_name, surf_name, bMMFF, bEpairs );
 	W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
 	W.bMMFF      = bMMFF;
-     W.bEpairs   = bEpairs;
+    W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
     W.tmpstr=tmpstr;
     W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
 	W.builder.bindParams(&W.params);
+    W.nSystems=nSys;
     bool bGrid = gridStep>0;
     W.init( bGrid );
     init_buffers();
     return &W;
 }
 
-int    run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){
-    //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
-    return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
+int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, int iParalel ){
+    W.bOcl= iParalel > 0;
+    Mat3d lvec = W.ffls[0].lvec;
+    //printf( "run Fconv=%g lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}}\n", Fconv, lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );
+    int nitrdione=0;
+    switch(iParalel){
+        case -1: nitrdione = W.run_multi_serial( nstepMax, Fconv, 1000.0, 1000 ); break; 
+        case  0:
+        case  1: nitrdione = W.run_omp_ocl     ( nstepMax, Fconv, 1000.0, 1000 ); break; 
+        case  2: nitrdione = W.run_ocl_opt( nstepMax, Fconv    ); break; 
+        case  3: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 1 ); break; 
+        case  4: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 2 ); break; 
+    }
+    return nitrdione;
+    //return W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
+    //return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
 }
 
 void set_opt( 
@@ -182,17 +220,57 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
     }
 }
 
-void change_lvec( double* lvec, bool bAdd, bool  ){
-    if(bAdd){ W.change_lvec( *(Mat3d*)lvec ); }
-    else    { W.add_to_lvec( *(Mat3d*)lvec ); }
+
+void pack_system( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
+    W.pack_system( isys, W.ffls[isys], bParams, bForces, bVel, blvec );
+}
+void unpack_system( int isys, bool bForces=false, bool bVel=false ){
+    W.unpack_system( isys, W.ffls[isys], bForces, bVel );
+}
+
+void upload_sys  ( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
+    W.upload_sys  ( isys, bParams, bForces, bVel, blvec );
+}
+void download_sys( int isys, bool bForces, bool bVel ){
+    W.download_sys( isys, bForces, bVel );
+}
+
+void upload(  bool bParams, bool bForces, bool bVel, bool blvec ){
+    W.upload( bParams, bForces, bVel, blvec );
+}
+void download( bool bForces, bool bVel ){
+    W.download( bForces, bVel );
+}
+
+
+void change_lvec( double* lvec, bool bAdd, bool bUpdatePi ){
+    if(bAdd){ W.add_to_lvec( *(Mat3d*)lvec ); }
+    else    { W.change_lvec( *(Mat3d*)lvec ); }
+    //if(bUpdatePi){ W.ffl.initPi( W.pbc_shifts ); }
+}
+
+void upload_pop( const char* fname ){
+    printf("MolWorld_sp3::upload_pop(%s)\n", fname );
+    W.gopt.loadPopXYZ( fname );
+    int nmult=W.gopt.population.size(); 
+    int npara=W.paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
+    W.gopt.upload_multi(nmult,0, true, true );
 }
 
 void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){
-    printf("MMFF_lib::optimizeLattice_1d(n1=%i,n2=%i,initMode=%i,tol=%g) \n", n1, n2, initMode, tol );
-    W.gopt.tolerance=tol;
-    W.gopt.initMode =initMode; 
+    printf("MMFFmulti_lib::optimizeLattice_1d(n1=%i,n2=%i,initMode=%i,tol=%g) \n", n1, n2, initMode, tol );
     W.optimizeLattice_1d( n1, n2, *(Mat3d*)dlvec );
 }
 
+void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double tol ){
+    //int initMode=1;
+    //int initMode = 0;
+    //int nstesp   = 40;
+    //int nstesp = 2;
+    //gopt.tolerance = 0.02;
+    //W.gopt.tolerance = 0.01;
+    //Mat3d dlvec = Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
+    W.gopt.lattice_scan_2d_multi( nstesp, *(Mat3d*)dlvec, initMode, "lattice_scan_2d_multi.xyz" );
+}
 
 } // extern "C"

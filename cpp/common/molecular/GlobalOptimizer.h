@@ -12,6 +12,7 @@ class GlobalOptimizer{ public:
     //double tolerance = 1.0e-6;
     double tolerance = 0.01;
     int    nmaxiter  = 10000; 
+    int    initMode  =0;
 
     int* atypes=0;
     MultiSolverInterface* msolver =0;
@@ -105,7 +106,7 @@ class GlobalOptimizer{ public:
         fclose(file);
     }
 
-    void lattice_scan_1d( int n, Mat3d lvec0, Mat3d dlvec, int initMode=0, const char* outfname=0, int ipop0=0, int istep=1 ){
+    void lattice_scan_1d( int n, Mat3d lvec0, Mat3d dlvec, const char* outfname=0, int ipop0=0, int istep=1 ){
         FILE* fout=0;
         if(outfname){ fout = fopen(outfname,"w"); if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_1d() cannot open %s \n", outfname ); exit(0); } }
         Mat3d lvec=lvec0;

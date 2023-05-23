@@ -344,7 +344,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
     double evalLJQs_ng4_simd(){
-        printf("NBFF::evalLJQs_ng4_simd()\n" );
+        //printf("NBFF::evalLJQs_ng4_simd()\n" );
         double E=0;
         for(int ia=0; ia<natoms; ia++){ E+=evalLJQs_ng4_atom_omp(ia); }
         return E;
@@ -699,7 +699,7 @@ class NBFF: public Atoms{ public:
         }
     }
 
-    void checkREQlimits( const Quat4d vmin=Quat4d{ 1.0,0.0,-1.,-1e-8}, const Quat4d vmax=Quat4d{ 3.0,0.2,+1.,+1e-8}  ){
+    void checkREQlimits( const Quat4d vmin=Quat4d{ 0.2,0.0,-1.,-1e-8}, const Quat4d vmax=Quat4d{ 3.0,0.2,+1.,+1e-8}  ){
         if( checkLimits( natoms, 4, (double*)REQs, (double*)&vmin, (double*)&vmax, "REQs" ) ){
             printf("ERROR NBFF::checkREQlimits(): REQs are out of range (%g,%g,%g,%g) .. (%g,%g,%g,%g) => Exit() \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w ); print_nonbonded(); exit(0);
         }

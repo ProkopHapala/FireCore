@@ -53,10 +53,10 @@ class Vec3T{
 	// swizzles
 	inline VEC2 xy() const { return {x,y}; };
 	inline VEC2 xz() const { return {x,z}; };
-	inline VEC2 yz() const { return {x,y}; };
-    inline VEC2 yx() const { return {x,y}; };
-	inline VEC2 zx() const { return {x,z}; };
-	inline VEC2 zy() const { return {x,y}; };
+	inline VEC2 yz() const { return {y,z}; };
+    inline VEC2 yx() const { return {y,x}; };
+	inline VEC2 zx() const { return {z,x}; };
+	inline VEC2 zy() const { return {z,y}; };
     inline VEC xzy() const { return {x,z,y}; };
 	inline VEC yxz() const { return {y,x,z}; };
 	inline VEC yzx() const { return {y,z,x}; };
@@ -382,11 +382,11 @@ class Vec3T{
 
     inline VEC& setIfLower  (const VEC& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y;if(a.z<z)z=a.z; return *this; }
     inline VEC& setIfGreater(const VEC& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y;if(a.z>z)z=a.z; return *this; }
-    inline VEC& update_bounds(VEC& pmin,VEC& pmax)const{ 
+    inline void update_bounds(VEC& pmin,VEC& pmax)const{ 
         if ( x < pmin.x ){ pmin.x=x; } else if ( x > pmax.x ){ pmax.x=x; };
         if ( y < pmin.y ){ pmin.y=y; } else if ( y > pmax.y ){ pmax.y=y; };
         if ( z < pmin.z ){ pmin.z=z; } else if ( z > pmax.z ){ pmax.z=z; };
-        return *this;
+        //return *this;
     }
 
     //inline VEC min(VEC a){ return {fmin(x,a.x),fmin(y,a.y),fmin(z,a.z)}; };

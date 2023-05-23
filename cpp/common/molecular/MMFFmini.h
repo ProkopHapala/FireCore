@@ -549,13 +549,23 @@ double eval_torsions(){
 
 double eval( bool bClean=true ){
     if(bClean)cleanAtomForce();
-    Eb = eval_bonds();
-    Ea = eval_angles();
-    Et = eval_torsions();
+    Eb = eval_bonds();             
+    Ea = eval_angles();            
+    Et = eval_torsions();          
     //printf( "Eb %g Ea %g Et %g\n", Eb, Ea, Et );
     return Eb+Ea+Et;
 };
 
+
+bool checkNans( bool bExit=true, bool bBL=true, bool bForce=true, bool bPos=true ){
+    bool ret = false;
+    if(bPos   )  ret |= ckeckNaN_d(natoms, 3, (double*) apos,   "apos"     );
+    if(bForce )  ret |= ckeckNaN_d(natoms, 3, (double*)aforce,  "aforce"   );
+    if(bBL    ){ ret |= ckeckNaN_d(nbonds, 3, (double*) lbond,  "lbond"    );
+                 ret |= ckeckNaN_d(nbonds, 3, (double*) hbond,  "hbond"    ); }
+    if(bExit&&ret){ printf("ERROR in MMFFmini NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); exit(0); };
+    return ret;
+}
 
 double getFmax(){ double Fmax=0; for(int i=0; i<natoms;i++){ _max( Fmax, aforce[i].norm2() ); }; return Fmax; };
 void moveGD(double dt){ for(int i=0; i<natoms;i++){ apos[i].add_mul( aforce[i],dt); } };

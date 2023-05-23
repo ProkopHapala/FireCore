@@ -40,6 +40,23 @@ class GridShape{ public:
 	Vec3i   n;          // number of pixels along each basis vector
     //bool bCellSet=false;
 
+    GridShape() = default;
+    GridShape(Mat3d cell_, Vec3i n_ ){ 
+        n = n_; cell=cell_;
+        updateCell();
+    }
+    GridShape( Mat3d cell_, double step){ 
+        cell=cell_;
+        updateCell(step);
+    }
+    GridShape( Vec3d pmin, Vec3d pmax, double step){
+        pos0=pmin; 
+        cell.a=Vec3d{pmax.x-pmin.x,0.,0.};
+        cell.b=Vec3d{0.,pmax.y-pmin.y,0.};
+        cell.c=Vec3d{0.,0.,pmax.z-pmin.z};
+        updateCell(step);
+    }
+
     void center_cell( Vec3d c ){ cell.dot_to_T( c, pos0 ); }
 
 	//inline Vec3d * allocateArray_Vec3d(){ return new Vec3d[n.x*n.y*n.z); }
@@ -50,9 +67,12 @@ class GridShape{ public:
     inline int ip2i(const Vec3i& ip){ return ip.a + ( n.a*( ip.b + n.b*ip.c) );  }
 
     inline void autoN( double step){
-        n.a=(int)(cell.a.norm()/step)+1;
-        n.b=(int)(cell.b.norm()/step)+1;
-        n.c=(int)(cell.c.norm()/step)+1;
+        //n.a=(int)(cell.a.norm()/step)+1;
+        //n.b=(int)(cell.b.norm()/step)+1;
+        //n.c=(int)(cell.c.norm()/step)+1;
+        n.a=(int)(cell.a.norm()/step);
+        n.b=(int)(cell.b.norm()/step);
+        n.c=(int)(cell.c.norm()/step);
     }
 
 	inline void updateCell( double step=-1.0 ){
