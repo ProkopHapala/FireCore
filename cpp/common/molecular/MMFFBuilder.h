@@ -366,6 +366,7 @@ class Builder{  public:
     Vec3d    capUp   = Vec3d{0.0,0.0,1.0};
     bool bDummyPi    = false;
     bool bDummyEpair = false;
+    bool bAutoTypes  = true;
     bool bAddCaps    = true;
     bool bAddECaps   = false;
 
@@ -1521,7 +1522,7 @@ class Builder{  public:
                 conf.n-=ne;
                 for( int i=0; i<ne; i++ ){
                     int ib=nb+i;
-                    //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
+                    printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) bDummyEpair=%i \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z, bDummyEpair );
                     //printf( "autoConfEPi[%i] add epair[%i] \n", ia, i );
                     addCap(ia,hs[ib],&capAtomEpair, l );
                 }
@@ -1530,6 +1531,7 @@ class Builder{  public:
         return true;
     }
     int autoAllConfEPi( int ia0=0, int imax=-1 ){
+        //printf( "autoAllConfEPi() bDummyEpair=%i \n", bDummyEpair  );
         int n=0;
         if(imax<0){ imax=atoms.size(); }
         for(int ia=ia0;ia<imax;ia++){
@@ -3094,7 +3096,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 ff.apars[ia].y = sin(ang0);
                 //ff.apars[ia].z = 1.0;          // ssK     // stiffness  for angles
                 //ff.apars[ia].w = 0;            // piC0    // angle0 for orthogonalization sigma-pi 
-                ff.apars[ia].z = atyp.Kss/4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
+                ff.apars[ia].z = atyp.Kss*4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
                 ff.apars[ia].w = sin(atyp.Asp*deg2rad);  // piC0    // angle0 for orthogonalization sigma-pi 
 
                 //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 

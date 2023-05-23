@@ -91,7 +91,10 @@ void* init( const char* xyz_name, const char* smile_name, int* nPBC,  const char
 }
 
 void initParams       ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){ W.tmpstr=tmpstr; W.initParams(sElementTypes,sAtomTypes,sBondTypes,sAngleTypes ); }
-int  buildMolecule_xyz( const char* xyz_name, bool bEpairs, double fAutoCharges ){  W.builder.bDummyEpair=bEpairs; W.fAutoCharges=fAutoCharges;  return W.buildMolecule_xyz( xyz_name );  }
+int  buildMolecule_xyz( const char* xyz_name, bool bEpairs, double fAutoCharges, bool bAutoTypes, bool bRelaxPi ){  W.builder.bDummyEpair=bEpairs; W.builder.bAutoTypes=bAutoTypes; W.bRelaxPi=bRelaxPi; W.fAutoCharges=fAutoCharges;  
+//printf( "buildMolecule_xyz W.builder.bDummyEpair=%i bEpairs=%i \n", W.builder.bDummyEpair, bEpairs );
+return W.buildMolecule_xyz( xyz_name ); 
+ }
 void makeFFs          ( ){ W.makeFFs(); }
 void clear            ( ){ W.clear();   }
 
@@ -118,6 +121,7 @@ void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Ang
     _setbool( W.bPBC         , PBC       );
     _setbool( W.bNonBonded   , NonBonded );
     _setbool( W.bMMFF        , MMFF      );
+    //_setbool( W.ffl.doBonds , Bonds    );
     _setbool( W.ffl.doAngles , Angles    );
     _setbool( W.ffl.doPiSigma, PiSigma   );
     _setbool( W.ffl.doPiPiI  , PiPiI     );
