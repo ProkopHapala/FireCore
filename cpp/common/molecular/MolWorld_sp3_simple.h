@@ -87,6 +87,7 @@ class MolWorld_sp3_simple{ public:
 	bool bOptimizer  = true; 
 	bool bPBC        = false;
 	bool bCheckInvariants = true;
+    bool bRelaxPi = false;
 	Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
     //bool bChargeUpdated=false;
@@ -210,7 +211,9 @@ int buildMolecule_xyz( const char* xyz_name ){
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
     builder.autoAllConfEPi  ( ia0 ); 
     builder.setPiLoop       ( ic0, -1, 10 );
-    if(bEpairs)builder.addAllEpairsByPi( ia0=0 );    
+
+    if(builder.bDummyEpair)builder.addAllEpairsByPi( ia0=0 );    
+
     //builder.printAtomConfs(false, false );
     //builder.printAtomConfs(false, true );
     builder.assignAllBondParams();    //if(verbosity>1)
@@ -232,27 +235,31 @@ void makeMMFF(){
     builder.sortConfAtomsFirst();
     //builder.printAtomConfs(false,true);
     builder.checkBondsOrdered( true, false );
-    builder.assignTypes( );
+
+    if(builder.bAutoTypes)builder.assignTypes( );
     //printf( "makeMMFF() bDummyEpair=%i \n", builder.bDummyEpair );
+    //printf( "buildMolecule_xyz W.builder.bDummyEpair=%i builder.bAutoTypes=%i \n", builder.bDummyEpair, builder.bAutoTypes );
     builder.toMMFFsp3_loc( ffl, true, builder.bDummyEpair ); //ffl.printAtomParams(); ffl.printBKneighs(); 
     ffl.setLvec(       builder.lvec);
     nPBC=Vec3i{0,0,0};
     ffl.makeNeighCells( nPBC );  
+    ffl.makePBCshifts( nPBC );
+    ffl.initPi( ffl.shifts );
     //builder.printBonds();
     //printf("!!!!! builder.toMMFFsp3() DONE \n");
-    {   //printf(" ============ check MMFFsp3_loc START\n " );
-        //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
-        //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
-        idebug=1;
-        ffl.eval();
-        idebug=0;
-        //printf("### ffl.fneigh  :\n"); printVecs( ffl.nnode*4, ffl.fneigh   );
-        //printf("### ffl.fneighpi:\n"); printVecs( ffl.nnode*4, ffl.fneighpi );
-        //printf("### ffl.fapos:\n");   printVecs( ffl.natoms, ffl.fapos  );
-        //printf("### ffl.fpipos:\n");  printVecs( ffl.nnode,  ffl.fpipos );
-        if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.nnode, 3, (double*)ffl.fpipos,  "ffl.fpipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
-        //printf(" ============ check MMFFsp3_loc DONE\n " );
-    }
+    // {   //printf(" ============ check MMFFsp3_loc START\n " );
+    //     //printf("### ffl.apos:\n");  printVecs( ffl.natoms, ffl.apos  );
+    //     //printf("### ffl.pipos:\n"); printVecs( ffl.nnode , ffl.pipos );
+    //     idebug=1;
+    //     ffl.eval();
+    //     idebug=0;
+    //     //printf("### ffl.fneigh  :\n"); printVecs( ffl.nnode*4, ffl.fneigh   );
+    //     //printf("### ffl.fneighpi:\n"); printVecs( ffl.nnode*4, ffl.fneighpi );
+    //     //printf("### ffl.fapos:\n");   printVecs( ffl.natoms, ffl.fapos  );
+    //     //printf("### ffl.fpipos:\n");  printVecs( ffl.nnode,  ffl.fpipos );
+    //     if( ckeckNaN_d( ffl.natoms, 3, (double*)ffl.fapos,  "ffl.apos"  ) || ckeckNaN_d( ffl.nnode, 3, (double*)ffl.fpipos,  "ffl.fpipos"  ) ) { printf("ERROR: NaNs produced in MMFFsp3_loc.eval() => exit() \n"); exit(0); };
+    //     //printf(" ============ check MMFFsp3_loc DONE\n " );
+    // }
 }
 
 virtual void makeFFs(){
@@ -269,10 +276,50 @@ virtual void makeFFs(){
     //nbmol.evalPLQs(gridFF.alphaMorse);
     if(bOptimizer){ 
         setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
+        ffl.vapos = (Vec3d*)opt.vel;
+        if(bRelaxPi) relax_pi( 1000, 0.1, 1e-4 );
     }
     _realloc( manipulation_sel, nbmol.natoms );  
 }
 
+
+int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
+    printf( "MMFFsp3_loc::relax_pi() niter=%i dt=%g Fconv=%g \n", niter, dt, Fconv );
+    double F2conv = Fconv*Fconv;
+    double E=0,F2=0;
+    int    itr=0;
+    FILE* file = fopen("relax_pi.xyz","w");
+    int verbosity_bak = verbosity;
+    verbosity=0;
+
+    for(itr=0; itr<niter; itr++){
+        {E=0;F2=0;}
+        ffl.cleanForce();
+        ffl.normalizePis();
+        {ffl.Eb=0;ffl.Ea=0;ffl.Eps=0;ffl.EppT=0;ffl.EppI=0;}
+        for(int ia=0; ia<ffl.nnode; ia++){ 
+            //printf( "relax_pi eval_atom[%i] \n", ia );
+            E += ffl.eval_atom(ia);
+            //printf( "relax_pi eval_atom[%i] E %g \n", ia, E );
+        }
+        for(int ia=0; ia<ffl.nnode; ia++){
+            //printf( "assemble_atom[%i] \n", ia );
+            ffl.assemble_atom( ia );
+        }
+        for(int i=ffl.natoms; i<ffl.nvecs; i++){
+            //printf( "relax_pi move_atom_MD[%i] \n", i );
+            F2 += ffl.move_atom_MD( i, dt, Flim, 0.9 );
+            //printf( "relax_pi move_atom_MD[%i] F2 %g \n", i, F2 );
+        }
+        //if(verbosity>2)
+        //printf( "relax_pi[%i] E %g |F| %g \n", itr, E, F2 );
+        toXYZ( "#comment", false, file, true, false );
+        if(F2<F2conv){ fclose(file); return itr; }
+    }
+    fclose(file);
+    verbosity=verbosity_bak;
+    return itr;
+}
 
 virtual void init_empty(){
 
