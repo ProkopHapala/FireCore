@@ -72,7 +72,7 @@ inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*
 inline float3 rotMat ( float3 v, float3 a, float3 b, float3 c ){ return (float3)(dot(v,a),dot(v,b),dot(v,c)); }
 inline float3 rotMatT( float3 v, float3 a, float3 b, float3 c ){ return a*v.x + b*v.y + c*v.z; }
 
-inline double evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, double k, __private float3* f1, __private float3* f2 ){
+inline float evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 cs0, float k, __private float3* f1, __private float3* f2 ){
     // This is much better angular function than evalAngleCos() with just a little higher computational cost ( 2x sqrt )
     float3 h  = hr1.xyz + hr2.xyz;
     float  c2 = dot(h,h)*0.25f;     // cos(a/2) = |ha+hb|
@@ -142,6 +142,14 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
     return  (float4){ dp*fr, E };
 }
 
+inline float4 getCoulomb( float3 dp, float R2damp ){
+    // ---- Electrostatic
+    float   r2    = dot(dp,dp);
+    float   ir2_  = 1.f/(  r2 + R2damp);
+    float   E    = COULOMB_CONST*sqrt( ir2_ );
+    return  (float4){ dp*-E*ir2_, E };
+}
+
 float3 limnitForce( float3 f, float fmax ){
     float fr2 = dot(f,f);
     if( fr2>(fmax*fmax) ){ f*=(fmax/sqrt(fr2)); }
@@ -179,7 +187,8 @@ __kernel void getMMFFf4(
     __global cl_Mat3* lvecs,        // 12
     __global cl_Mat3* ilvecs,       // 13
     __global float4*  pbc_shifts,
-    int npbc
+    const int npbc,
+    const int bSubtractVdW
 ){
 
     const int iG = get_global_id (0);   // intex of atom
@@ -257,9 +266,9 @@ __kernel void getMMFFf4(
 
     const float   ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
 
-    const int iS_DBG = 5;
+    //const int iS_DBG = 5;
     // //const int iG_DBG = 0;
-    const int iG_DBG = 0;
+    //const int iG_DBG = 0;
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
     //     //for(int i=0; i<nAtoms; i++){ int4 ng_ = neighs[i+iS*nAtoms];  printf( "GPU[%i|%i] neighs(%i,%i,%i,%i) \n", i, iS, ng_.x,ng_.y,ng_.z,ng_.w ); }; 
     //     //for(int i=0; i<nAtoms*nS; i++){ int iv=i%nAtoms; int4 ng_ = neighs[i]; if(iv==0)printf("----\n"); printf( "%3i [%2i,%2i,%i] neighs(%i,%i,%i,%i) \n", i, i/nAtoms, iv, iv<=nAtoms, ng_.x,ng_.y,ng_.z,ng_.w );  }; 
@@ -304,7 +313,7 @@ __kernel void getMMFFf4(
         float esp = 0;
 
         //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU:h[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", iaa,i,ing, l, h.x,h.y,h.z, apos[ingv].x,apos[ingv].y,apos[ingv].z, pa.x,pa.y,pa.z ); 
-        if(iG<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
+        if(iG<ing){   // we should avoid  2-counting because otherwise node atoms would be computed 2x, but capping only once
             E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU bond[%i=%i|%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", iG,iaa,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
                         
@@ -359,6 +368,7 @@ __kernel void getMMFFf4(
             
             fa    -= f1+f2;
             
+            //if(bSubtractVdW)
             { // Remove vdW
                 float4 REQi=REQKs[inga];   // ToDo: can be optimized
                 float4 REQj=REQKs[jnga];
@@ -372,7 +382,7 @@ __kernel void getMMFFf4(
                 f2 +=  fij.xyz;
                 //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", iG,ing,jng, length(dp), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
             }
-            
+
             fbs[i]+= f1;
             fbs[j]+= f2;
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", iG,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
@@ -392,7 +402,7 @@ __kernel void getMMFFf4(
         fneigh[i4 +i] = (float4){fbs[i],0};
         fneigh[i4p+i] = (float4){fps[i],0};
     }
-    //fapos[iav       ] = (float4){fa ,0}; // If we do  run it as first forcefield
+    //fapos[iav     ] = (float4){fa ,0}; // If we do  run it as first forcefield
     fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
     fapos[iav+nAtoms]  = (float4){fpi,0}; 
 
@@ -410,7 +420,7 @@ __kernel void getMMFFf4(
 // ======================================================================
 
 /*
-float2 KvaziFIREdamp( double c, float2 damp_lims, float2 clim ){
+float2 KvaziFIREdamp( float c, float2 damp_lims, float2 clim ){
     float2 cvf;
     if      (c < clim.x ){   //-- force against veloctiy
         cvf.x = damp_lims.x; // v    // like 0.5 (strong damping)
@@ -419,7 +429,7 @@ float2 KvaziFIREdamp( double c, float2 damp_lims, float2 clim ){
         cvf.x = 1-damping;   // v    // like 0.99 (weak dampong damping)
         cvf.y =   damping;   // f
     }else{                   // -- force ~ perpendicular to velocity
-        double f = (c-clim.x )/( clim.y - clim.x  );
+        float f = (c-clim.x )/( clim.y - clim.x  );
         cvf.x = (1.-damping)*f;
         cvf.y =     damping *f;
     }
@@ -445,7 +455,7 @@ def KvaziFIREdamp( c, clim, damps ):
     return cv,cf
 */
 
-float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
+float2 KvaziFIREdamp( float c, float2 clim, float2 damps ){
     float2 cvf;
     if      (c < clim.x ){   //-- force against veloctiy
         cvf.x = damps.x;     // v    // like 0.5 (strong damping)
@@ -454,7 +464,7 @@ float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
         cvf.x = damps.y;     // v    // like 0.99 (weak dampong damping)
         cvf.y = 0;           // f
     }else{                   // -- force ~ perpendicular to velocity
-        double t = (c-clim.x )/( clim.y - clim.x );
+        float t = (c-clim.x )/( clim.y - clim.x );
         cvf.x = damps.x + (damps.y-damps.x)*t;
         cvf.y = damps.y*t*(1.f-t)*2.f;
     }
@@ -463,15 +473,15 @@ float2 KvaziFIREdamp( double c, float2 clim, float2 damps ){
 
 __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
-    //const float4      MDpars,       // 1
-    const int4        n,            // 2
-    __global float4*  apos,         // 3
-    __global float4*  avel,         // 4
-    __global float4*  aforce,       // 5
+    const int4        n,            // 1
+    __global float4*  apos,         // 2
+    __global float4*  avel,         // 3
+    __global float4*  aforce,       // 4
+    __global float4*  cvf,          // 5
     __global float4*  fneigh,       // 6
     __global int4*    bkNeighs,     // 7
     __global float4*  constr,       // 8
-    __global float4*  MDparams     // 8
+    __global float4*  MDparams      // 9
 ){
     const int natoms=n.x;
     const int nnode =n.y;
@@ -513,6 +523,7 @@ __kernel void updateAtomsMMFFf4(
     int4 ngs = bkNeighs[ iav ];
 
     //if(iS==5)printf( "iG,iS %i %i ngs %i,%i,%i,%i \n", iG, iS, ngs.x,ngs.y,ngs.z,ngs.w );
+    //if( (iS==0)&&(iG==0) ){ printf( "GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n", fe.x,fe.y,fe.z,fe.w ); }
 
     // WARRNING : bkNeighs must be properly shifted on CPU !!!!!!!!!!!!!!
     if(ngs.x>=0){ fe += fneigh[ngs.x]; }
@@ -526,12 +537,10 @@ __kernel void updateAtomsMMFFf4(
     if( fr2 > (Flimit*Flimit) ){
         fe.xyz*=(Flimit/sqrt(fr2));
     }
-    
+
     // =============== FORCE DONE
     aforce[iav] = fe;           // store force before limit
     //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
-
-
     
     // =============== DYNAMICS
 
@@ -541,9 +550,11 @@ __kernel void updateAtomsMMFFf4(
     // -------constrains
     if(iG<natoms){ 
        float4 cons = constr[ iaa ];
-       if( cons.w>0 ){
+       if( cons.w>0.f ){
             fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
+            if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
        }
+       
     }
     
     /*
@@ -579,9 +590,14 @@ __kernel void updateAtomsMMFFf4(
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
     }
-    ve     *= MDpars.y;
-    ve.xyz += fe.xyz*MDpars.x;
-    pe.xyz += ve.xyz*MDpars.x;
+    cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };  
+    //ve.xyz  = ve.xyz*MDpars.z + fe.xyz*MDpars.w;
+    // ve.xyz  = ve.xyz*MDpars.z;
+    // ve.xyz += fe.xyz*MDpars.x;
+    // pe.xyz += ve.xyz*MDpars.x;
+    ve     *= 0.99f;
+    ve.xyz += fe.xyz*0.1f;
+    pe.xyz += ve.xyz*0.1f;
     if(bPi){ 
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
     }
@@ -592,9 +608,10 @@ __kernel void updateAtomsMMFFf4(
 
     /*
     //------ Move Gradient-Descent
-    //if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
+    if(bPi){ fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz ); } // subtract forces  component which change pi-orbital lenght
     //pe.xyz += fe.xyz*MDpars.x*0.01f;
-    pe.xyz += fe.xyz*MDpars.x*0.01f;
+    //pe.xyz += fe.xyz*MDpars.x*0.01f;
+    pe.xyz += fe.xyz*0.02f;
     //if(bPi){ pe.xyz=normalize(pe.xyz); }
     pe.w=0;  // This seems to be needed, not sure why ?????
     apos[iav] = pe;
@@ -726,15 +743,26 @@ __kernel void getNonBond(
     const int4        nPBC,         // 8
     const float4      GFFParams     // 9
 ){
+    //__local float4 LATOMS[2];
+    //__local float4 LCLJS [2];
+    //__local float4 LATOMS[4];
+    //__local float4 LCLJS [4];
+    //__local float4 LATOMS[8];
+    //__local float4 LCLJS [8];
+    //__local float4 LATOMS[16];
+    //__local float4 LCLJS [16];
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
     //__local float4 LATOMS[64];
     //__local float4 LCLJS [64];
+    //__local float4 LATOMS[128];
+    //__local float4 LCLJS [128];
+
     const int iG = get_global_id  (0);
-    const int iS = get_global_id  (1);
-    const int iL = get_local_id   (0);
     const int nG = get_global_size(0);
+    const int iS = get_global_id  (1);
     const int nS = get_global_size(1);
+    const int iL = get_local_id   (0);
     const int nL = get_local_size (0);
 
     const int natoms=ns.x;
@@ -830,6 +858,7 @@ __kernel void getNonBond(
                 const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));
                 //if( (j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
                 //if( (ji==1)&&(iG==0) )printf( "2 non-bond[%i,%i] bBonded %i\n",iG,ji,bBonded );
+
                 if(bPBC){    
                     int ipbc=0;
                     dp += shift0;
@@ -855,7 +884,8 @@ __kernel void getNonBond(
                         }
                         dp    += shift_a;
                     }
-                }else if( !bBonded ){
+                }else 
+                if( !bBonded ){
                     fe += getLJQH( dp, REQK, R2damp );
                 }
             }
@@ -864,6 +894,7 @@ __kernel void getNonBond(
     }
     
     if(iG<natoms){
+        //if(iS==0){ printf( "GPU::getNonBond(iG=%i) fe(%g,%g,%g,%g)\n", iG, fe.x,fe.y,fe.z,fe.w ); }
         forces[iav] = fe;           // If we do  run it as first forcefield 
         //forces[iav] += fe;        // If we not run it as first forcefield
         //forces[iav] = fe*(-1.f);
@@ -1399,7 +1430,7 @@ __kernel void make_GridFF(
     */
     
     const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
+    if(iG>=nMax) return;
 
     const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
                                        +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
@@ -1487,60 +1518,103 @@ __kernel void make_GridFF(
 
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void PPAFM_makeFF(
-    const int nAtoms,                // 1
+    const int4 ns,                   // 1
     __global float4*  atoms,         // 2
     __global float4*  REQs,          // 3
     __write_only image3d_t  imgOut,  // 4
     const int4     nPBC,             // 5
     const int4     nGrid,            // 6
-    const cl_Mat3  dlvec,            // 7
+    const cl_Mat3  lvec,             // 7
     const float4   grid_p0,          // 8
-    //const float4   GFFParams       // 
-    const float4 tipParams           // 9
-    //const float4 Qs,               // 10
-    //const float4 QZs               // 11
+    const float4 tipParams,          // 9
+    const float4 Qs,                 // 10
+    const float4 QZs                 // 11
 ){
     __local float4 LPOS[32];
     __local float4 LREQ[32];
-    const int iG = get_global_id (0);
-    const int iL = get_local_id  (0);
-    const int nL = get_local_size(0);
+    const int iG = get_global_id  (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
    
     const int nab = nGrid.x*nGrid.y;
     const int ia  = iG%nGrid.x; 
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab; 
     const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
+
+    const int natoms = ns.x;
+    const int nnode  = ns.y;
+    const int iSys   = ns.z;
+    const int i0a    = iSys*natoms;
+    const int i0v    = iSys*(natoms+nnode);
+    if(iG>=nMax) return;
+
+    if(iG==0){printf("GPU:PPAFM_makeFF() nL=%i,nG=%i,nMax=%i,na=%i,nnd=%i,nGrid(%i,%i,%i), nPBC(%i,%i,%i) \n", nL, nG,nMax, natoms,nnode, nGrid.x,nGrid.y,nGrid.z, nPBC.x,nPBC.y,nPBC.z );}
+    if(iG==0){printf("GPU:make_GridFF() p0{%6.3f,%6.3f,%6.3f} lvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}} grid_p0{%6.3f,%6.3f,%6.3f} \n", grid_p0.x,grid_p0.y,grid_p0.z,  lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z, grid_p0.x,grid_p0.y,grid_p0.z  );}
+
+    const float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
+    const float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
+    const float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
+    const float3 pos     = grid_p0.xyz  + dGrid_a.xyz*ia     + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
+                                        + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    //float3 pos = grid_p0.xyz + dlvec.a.xyz*ia + dlvec.b.xyz*ib  + dlvec.c.xyz*ic;
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
     float4 fe  = float4Zero;
-    float3 pos = grid_p0.xyz + dlvec.a.xyz*ia + dlvec.b.xyz*ib  + dlvec.c.xyz*ic;
+    
     //Qs *= COULOMB_CONST;
-    for (int i0=0; i0<nAtoms; i0+= nL ){
+    for (int i0=0; i0<natoms; i0+= nL ){
         int i = i0 + iL;
-        //if(i>=nAtoms) break;  // wrong !!!!
-        LPOS[iL] = atoms[i];
-        LREQ[iL] = REQs [i];
+        //if(i>=natoms) break;  // wrong !!!!
+        LPOS[iL] = atoms[i0v+i];
+        LREQ[iL] = REQs [i0a+i];
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int j=0; j<nL; j++){
-            if( (j+i0)<nAtoms ){ 
-                const float4 pi  = LPOS[j];
+            if( (j+i0)<natoms ){ 
+                //const float4 pi  = LPOS[j];
+                float3       dp   = pos - LPOS[j].xyz;
                 float4       REQ = LREQ[j]; 
+                float4 Qs_ = Qs * REQ.z; 
+                if(iG==0){ printf( "atom[%i] Qs_=(%g,%g,%g,%g) Qs=(%g,%g,%g,%g) REQ.z=%g \n", i0+j,  Qs_.x,Qs_.y,Qs_.z,Qs_.w,  Qs.x,Qs.y,Qs.z,Qs.w,  REQ.z ); };
+
                 REQ.x   += tipParams.x;
                 REQ.yzw *= tipParams.yzw;
-                fe += getLJQH( pos-pi.xyz, REQ, 1.0 );
-                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.x) ) * Qs.x;
-                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.y) ) * Qs.y;
-                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.z) ) * Qs.z;
-                //fe += getCoulomb( pi, pos+(float3)(0,0,QZs.w) ) * Qs.w;
+
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+
+                            fe += getLJQH   ( dp, REQ, 1.0f );
+                            fe += getCoulomb( dp+(float3)(0.0f,0.0f,QZs.x) ,0.1f) * Qs_.x;
+                            fe += getCoulomb( dp+(float3)(0.0f,0.0f,QZs.y) ,0.1f) * Qs_.y;
+                            fe += getCoulomb( dp+(float3)(0.0f,0.0f,QZs.z) ,0.1f) * Qs_.z;
+                            fe += getCoulomb( dp+(float3)(0.0f,0.0f,QZs.w) ,0.1f) * Qs_.w;
+
+                            dp   +=lvec.a.xyz;
+                            //shift+=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                        //shift+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp   +=shift_c;
+                }
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
     // --- limit maximum force
     float renorm = 100.0/fabs(fe.w);
     if( renorm<1.f ){ fe*=renorm; }
     // --- OUTPUT
+
     write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
+    
 }
 
 // ======================================
@@ -1584,6 +1658,116 @@ float3 update_FIRE( float3 f, float3 v, float* dt, float* damp,    float dtmin, 
 
 __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void PPAFM_scan(
+    __read_only image3d_t  imgIn,   // 1 
+    __global  float4*      points,  // 2
+    __global  float4*      FEs,     // 3
+    __global  float4*      PPpos,   // 4
+    const cl_Mat3  diGrid,          // 5
+    const cl_Mat3  tipRot,          // 6
+    float4 stiffness,               // 7
+    float4 dpos0,                   // 8
+    float4 relax_params,            // 9
+    const int nz,                   // 10
+    const int nMaxItr               // 11
+){
+    const float3 dTip   = tipRot.c.xyz * tipRot.c.w;
+    float4 dpos0_=dpos0; dpos0_.xyz= rotMatT( dpos0_.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );
+
+    float3 tipPos = points[get_global_id(0)].xyz;
+    float3 pos    = tipPos.xyz + dpos0_.xyz; 
+
+    float dt      = relax_params.x;
+    float damp    = relax_params.y;
+
+    float dtmax = dt;
+    float dtmin = dtmax*0.1f;
+    float damp0 = damp;
+
+
+    const int iG = get_global_id  (0);
+    const int nG = get_global_size(0);
+    //const int iL = get_local_id   (0);
+    //const int nL = get_local_size (0);
+
+
+    //if(iG==0){printf("GPU:PPAFM_scan() nG=%i nz=%i relax_params(%g,%g,%g,%g) stiffness(%g,%g,%g,%g) dTip(%g,%g,%g) dpos0(%g,%g,%g)\n", nG, nz, relax_params.x,relax_params.y,relax_params.z,relax_params.w,  stiffness.x,stiffness.y,stiffness.z, stiffness.w, dTip.x,dTip.y,dTip.z, dpos0_.x,dpos0_.y,dpos0_.z );}
+    //if(iG==0){printf("GPU:PPAFM_scan() ilvec{{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f},{%6.3f,%6.3f,%6.3f}}\n", diGrid.a.x,diGrid.a.y,diGrid.a.z, diGrid.b.x,diGrid.b.y,diGrid.b.z, diGrid.c.x,diGrid.c.y,diGrid.c.z  );}
+
+    //if( (get_global_id(0)==0) ){ float4 fe = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );  printf( " pos (%g,%g,%g) feImg(%g,%g,%g,%g) \n", pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );}
+    //if( (get_global_id(0)==0) ){ printf( "dt %g damp %g \n", dt, damp ); }; return;
+
+    int itr_tot = 0;
+    
+    for(int iz=0; iz<nz; iz++){
+        float4 fe = float4Zero;
+        float3 v  = float3Zero;
+        int itr=0; 
+        for(itr=0; itr<nMaxItr; itr++){
+        //for(int i=0; i<4; i++){
+        //for(int i=0; i<1; i++){ // DEBUG
+            //fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            //fe            = interpFE_prec( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            const float4 coord = (float4)( dot(pos, diGrid.a.xyz),   dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
+            // #if 0
+                //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
+                fe = read_imagef( imgIn, sampler_gff_norm, coord );
+            // #else
+                // fe = read_imagef_trilin_norm( imgIn, coord );
+            //#endif
+
+            float3 f      = fe.xyz * -1.0f;
+            float3 dpos   = pos-tipPos;
+
+
+            //float3 dpos_  = rotMat  ( dpos, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );    // to tip-coordinates
+            //float3 ftip   = tipForce( dpos_, stiffness, dpos0 );
+            //f            += rotMatT ( ftip, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz );      // from tip-coordinates
+            //f            += tipRot.c.xyz * surfFF.x;                                            // TODO: more sophisticated model of surface potential? Like Hamaker ?
+
+            f +=  tipForce( dpos, stiffness, dpos0_ );  // Not rotated
+
+            #if 1
+                v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
+                //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
+            #else
+                v        *=    (1.f - damp);
+                //if(get_global_id(0)==(64*128+64)){ printf( "itr,iz,i %i %i %i  |F| %g |v| %g <f,v> %g , (%g,%g,%g) (%g,%g,%g) damp %g dt %g \n", itr_tot, iz,i,  sqrt(dot(f,f)), sqrt(dot(v,v)),  dot(f,v),  fe.x,fe.y,fe.z, pos.x, pos.y, pos.z, damp, dt ); }
+            #endif
+            v        += f * dt;
+            pos.xyz  += v * dt;
+            itr++;
+            if(dot(f,f)<relax_params.z) break;
+        }
+        //itr_tot+itr;
+
+        // if(1){ // output tip-rotated force
+        //     fe.xyz = rotMat( fe.xyz, tipRot.a.xyz, tipRot.b.xyz, tipRot.c.xyz);
+        // }
+
+        // DEBUG
+        // //float3 pos    = tipPos.xyz;
+        // const float4 coord   = (float4)( dot(pos, diGrid.a.xyz), dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
+        // //const float4 coord   = (float4)( tipPos.x*0.1f, tipPos.y*0.1f, tipPos.z*0.1, 0.0f );
+        // fe = read_imagef( imgIn, sampler_gff_norm, coord );
+        // //fe = (float4){ tipPos.x, tipPos.y, tipPos.z, get_global_id(0)*nz+iz };
+
+        //const float4 coord = (float4)( dot(pos, diGrid.a.xyz),   dot(pos,diGrid.b.xyz), dot(pos,diGrid.c.xyz), 0.0f );
+        //fe = read_imagef( imgIn, sampler_gff_norm, coord );
+        
+        PPpos[ iz*nG + iG ] = (float4){pos,(float)itr}; // Store Result
+        FEs  [ iz*nG + iG ] = fe; // Store Result
+        //FEs[ iz*nG + iG ] = (float4){pos,fe.w}; // Store Result
+        //FEs[ iz*nG + iG ] = (float4){pos,(float)itr}; // Store Result
+
+        tipPos += dTip.xyz;
+        pos    += dTip.xyz;
+    }
+
+}
+
+
+__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void PPAFM_scan_df(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
     __constant  float*     weighs,  // 3

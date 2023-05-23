@@ -209,8 +209,10 @@ struct Dihedral{
 
     int    type;
     Vec3i  bonds;
+    Quat4i atoms;
     int    n;
     double k;
+    double a0;
 
     //Dihedral()=default;
 
@@ -1170,7 +1172,7 @@ class Builder{  public:
                     }
                 }break;
                 case 6: { // C
-                    printf("C%i npineigh %i \n", ia, npineigh );
+                    //printf("C%i npineigh %i \n", ia, npineigh );
                     hasNeighborOfType( ia, _C.size(), &_C[0], count, ngs  );
                     if  ( (A.type==iC_2) ){
                         if      ( ( T(C_O_3) && T(C_O_2) ) ){ itnew = iC_COO; } // -COOH
@@ -1308,7 +1310,7 @@ class Builder{  public:
         int nnew=0;
         int itr=0;
         for(itr=0; itr<nmax; itr++){
-            printf( "# --- assignSpecialTypesLoop[%i] \n", itr );
+            //printf( "# --- assignSpecialTypesLoop[%i] \n", itr );
             int ni = assignSpecialTypes( neighs ); 
             nnew+=ni; 
             if( ni==0 ){ return nnew; } 
@@ -1570,7 +1572,7 @@ class Builder{  public:
         for( int i=0; i<ne; i++ ){
             int ib=nb+i;
             //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
-            printf( "addEpairsByPi[%i] add epair[%i] \n", ia, i );
+            //printf( "addEpairsByPi[%i] add epair[%i] \n", ia, i );
             addCap(ia,hs[ib],&capAtomEpair, l );
         }
         return true;
@@ -1736,6 +1738,38 @@ class Builder{  public:
             if(atoms[i].iconf>=0){
                 addAnglesToAtom( i, ksigma, kpi );
             }
+        }
+    }
+
+    bool addTorsionsToBond( int ibond ){
+        Vec2i b = bonds[ibond].atoms;
+        const AtomConf* ca = getAtomConf(b.i);
+        const AtomConf* cb = getAtomConf(b.j);
+        if( (ca==0) || (cb==0)) return false;
+        int ityp = atoms[b.i].type;
+        int jtyp = atoms[b.j].type;
+        for(int i=0; i<ca->nbond; i++ ){
+            for(int j=0; j<cb->nbond; j++ ){
+                int ib = ca->neighs[i];
+                int jb = cb->neighs[j];
+                int ia = bonds[ ib ].getNeighborAtom(b.i);  int iat = atoms[ia].type;
+                int ja = bonds[ jb ].getNeighborAtom(b.j);  int jat = atoms[ja].type;
+                Dihedral tor;
+                DihedralType* dtyp = params->getDihedralType( iat, ityp, jtyp, jat );
+                tor.a0    = dtyp->ang0;
+                tor.k     = dtyp->ang0;
+                tor.n     = dtyp->n;
+                tor.atoms = Quat4i{iat,ityp,jtyp,jat};
+                tor.bonds = {ibond,ib,jb};
+                dihedrals.push_back( tor );
+            }
+        }
+        return true;
+    }
+
+    void autoTorsions(){
+        for(int ib=0; ib<bonds.size(); ib++){
+            addTorsionsToBond( ib );
         }
     }
 
@@ -3097,6 +3131,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                 ff.apars[ia].y = sin(ang0);
                 //ff.apars[ia].z = 1.0;          // ssK     // stiffness  for angles
                 //ff.apars[ia].w = 0;            // piC0    // angle0 for orthogonalization sigma-pi 
+
                 ff.apars[ia].z = atyp.Kss*4.0;   // ssK     // stiffness  for angles    ... ToDo: check if K/4 or K*4
                 ff.apars[ia].w = sin(atyp.Asp*deg2rad);  // piC0    // angle0 for orthogonalization sigma-pi 
 
@@ -3131,7 +3166,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                         bL [k]=bLK.x;
                         bK [k]=bLK.y;
                         double Kss_uff = params->assignAngleParamUFF( A.type, Aj.type, Aj.type, bL[k], bL[k] );
-                        printf( "atom[%i] Kss=%g Kss_uff=%g (%s|%s) \n", ia, ff.apars[ia].z, Kss_uff, params->atypes[A.type].name,params->atypes[Aj.type].name );
+                        //printf( "atom[%i] Kss=%g Kss_uff=%g (%s|%s) \n", ia, ff.apars[ia].z, Kss_uff, params->atypes[A.type].name,params->atypes[Aj.type].name );
                     }
 
                     //Ksp[k]=0;

@@ -49,6 +49,7 @@ float project_beam_to_sphere( float r, float x, float y ){
 template <class T>
 class Quat4T {
 	using VEC  = Vec3T<T>;
+    using VEC2 = Vec2T<T>;
 	using MAT  = Mat3T<T>;
 	using QUAT = Quat4T<T>;
 	public:
@@ -75,6 +76,27 @@ class Quat4T {
 	inline void set   ( T fx, T fy, T fz, T fw  ){ x=fx  ; y=fy  ; z=fz  ; w=fw  ; }
 	inline void setXYZ( const VEC& v            ){ x=v.x ; y=v.y ; z=v.z ;         }
 	inline void setOne(                         ){ x=y=z=0; w=1;                   }
+
+
+
+	// swizzles
+	inline VEC2 xy() const { return {x,y}; };
+	inline VEC2 xz() const { return {x,z}; };
+    inline VEC2 xw() const { return {x,w}; };
+
+	inline VEC2 yx() const { return {y,x}; };
+    inline VEC2 yz() const { return {y,z}; };
+    inline VEC2 yw() const { return {y,w}; };
+
+	inline VEC2 zx() const { return {z,x}; };
+    inline VEC2 zy() const { return {z,y}; };
+    inline VEC2 zw() const { return {z,w}; };
+
+    inline VEC2 wx() const { return {w,x}; };
+    inline VEC2 wy() const { return {w,y}; };
+    inline VEC2 wz() const { return {w,z}; };
+
+
 
 
     inline void setView_XY (){set(1.0,0.0,0.0,0.0);}    // top view  x=x, y=-y,
@@ -746,6 +768,15 @@ class Quat4T {
         return mrot;
     }
 
+    inline QUAT& setIfLower  (const QUAT& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y;if(a.z<z)z=a.z;if(a.w<w)w=a.w; return *this; }
+    inline QUAT& setIfGreater(const QUAT& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y;if(a.z>z)z=a.z;if(a.w>w)w=a.w; return *this; }
+    inline void update_bounds(QUAT& pmin,QUAT& pmax)const{ 
+        if ( x < pmin.x ){ pmin.x=x; } else if ( x > pmax.x ){ pmax.x=x; };
+        if ( y < pmin.y ){ pmin.y=y; } else if ( y > pmax.y ){ pmax.y=y; };
+        if ( z < pmin.z ){ pmin.z=z; } else if ( z > pmax.z ){ pmax.z=z; };
+        if ( z < pmin.w ){ pmin.w=w; } else if ( w > pmax.w ){ pmax.w=w; };
+    }
+
 };
 
 /*
@@ -785,8 +816,8 @@ static constexpr Quat4f Quat4fW    {0.0f,0.0f,0.0f,1.0f};
 static constexpr Quat4f Quat4fX    {1.0f,0.0f,0.0f,0.0f};
 static constexpr Quat4f Quat4fY    {0.0f,1.0f,0.0f,0.0f};  
 static constexpr Quat4f Quat4fZ    {0.0f,0.0f,1.0f,0.0f};
-static constexpr Quat4d Quat4fmin  {-1.e+37,-1.e+37,-1.e+37,-1.e+37};
-static constexpr Quat4d Quat4fmax  {+1.e+37,+1.e+37,+1.e+37,+1.e+37};
+static constexpr Quat4f Quat4fmin  {-1.e+37,-1.e+37,-1.e+37,-1.e+37};
+static constexpr Quat4f Quat4fmax  {+1.e+37,+1.e+37,+1.e+37,+1.e+37};
 
 
 // default quaternion poses

@@ -125,6 +125,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ---- Graphics objects
     int  fontTex,fontTex3D;
 
+    int  ogl_afm=0;
+    int  ogl_afm_trj=0;
     int  ogl_esp=0;
     int  ogl_sph=0;
     int  ogl_mol=0;
@@ -144,6 +146,17 @@ class MolGUI : public AppSDL2OGL_3D { public:
     enum class Gui_Mode { base, edit, scan };
     Gui_Mode  gui_mode = Gui_Mode::base;
     //int gui_mode = Gui_Mode::edit;
+
+    // ----- AFM scan
+    GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,6.0}, 0.1 };
+    GridShape afm_ff_grid;  //  { Mat3d{}, 0.1 };
+    Quat4f    *afm_ff=0,*afm_Fout=0,*afm_PPpos=0; 
+    Quat4f    *afm_ps0=0;
+    //Vec3d     *afm_ps=0;
+    int  afm_iz    = 25;
+    int  afm_nconv = 10;
+    bool afm_bDf   = true;
+
 
     // ======================= Functions 
 
@@ -167,6 +180,11 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
+    void renderAFM( int iz, int offset );
+    void renderAFM_trjs( int di );
+    void Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float* dfout );
+    void makeAFM();
+
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
 	void drawSystem    ( Vec3i ixyz=Vec3iZero );
@@ -355,10 +373,12 @@ void MolGUI::draw(){
     if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
-    if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
-    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 3, 3, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
+    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 5, 5, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
-    if( ogl_esp ){ glCallList(ogl_esp);  }
+    if( ogl_esp     ){ glCallList(ogl_esp);      }
+    if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
+    if( ogl_afm     ){ glCallList(ogl_afm);      }
 
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // DEBUG  
 
@@ -368,7 +388,8 @@ void MolGUI::draw(){
         if(W->builder.bPBC){ 
             //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             //printf( "draw() W->npbc=%i \n", W->npbc );
-            Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            //Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            Draw3D::drawShifts( W->npbc, W->pbc_shifts, 10, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
         }else{ drawSystem(); }
 
@@ -414,7 +435,14 @@ void MolGUI::draw(){
             //for(int i=0;i<nsys; i++){ printMSystem(i, 4, natoms, nvec ); }
         }
         //printf( "nsys %i \n", nsys );
-        if(nsys>0){ for(int isys=0; isys<nsys; isys++){ 
+        if(nsys>0){ 
+            float dt = 2.*M_PI/nsys;
+            float shift = 2.0*M_PI/3.;
+            for(int isys=0; isys<nsys; isys++){
+            float r = cos(dt*isys           )*0.5 + 0.5;
+            float g = cos(dt*isys + shift   )*0.5 + 0.5;
+            float b = cos(dt*isys + shift*2 )*0.5 + 0.5;
+            glColor3f( r, g, b );
             //printf( "#=========== isys= %i \n", isys );
             Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); 
         } } 
@@ -654,7 +682,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
 }
 
 void MolGUI::renderESP( Quat4d REQ){
-    printf( "DEBUG MolGUI::renderESP() %li \n", ogl_esp ); //exit(0);
+    printf( "MolGUI::renderESP() %li \n", ogl_esp ); //exit(0);
     ogl_esp = glGenLists(1);
     glNewList(ogl_esp, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
@@ -663,6 +691,129 @@ void MolGUI::renderESP( Quat4d REQ){
     const NBFF& nbmol = W->nbmol;
     int nvert = Draw3D::drawESP( nbmol.natoms, nbmol.apos, nbmol.REQs, REQ );
     glEndList();
+};
+
+
+void MolGUI::Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float* dfout ){
+    // conversion of vertical force Fz to frequency shift
+    // according to:
+    // Giessibl, F. J. A direct method to calculate tip-sample forces from frequency shifts in frequency-modulation atomic force microscopy Appl. Phys. Lett. 78, 123 (2001)
+    // oscialltion amplitude of cantilever is A = n * dz
+    // from Python:
+    // x  = np.linspace(-1,1,n+1)
+    // y  = np.sqrt(1-x*x)
+    // dy =  ( y[1:] - y[:-1] )/(dz*n)
+    // fpi    = (n-2)**2
+    // prefactor = -1 * ( 1 + fpi*(2/np.pi) ) / (fpi+1) # correction for small n
+    // return dy*prefactor,
+
+    // ---- Build the convolution mask
+    const int nz = izmax-izmin;
+    float dz = (float)afm_scan_grid.dCell.c.z;
+    float ws[nz];
+    float x  = -1.0; 
+    float oy = 0;
+    float fpi = sq(nz-2);
+    float prefactor = -1 * ( 1 + fpi*(2/M_PI) ) / (fpi+1);
+    float  W = prefactor/(nz*dz);
+    DEBUG
+    for(int i=0; i<nz; i++){
+        x+=dz;
+        float y  = sqrt(1-x*x);
+        float dy = y-oy;
+        ws[i]    = W*dy;
+        oy=y;
+    }
+    DEBUG
+    // ---- Fz->df using the convolution mask
+    for(int ixy=0; ixy<nxy; ixy++){
+        float df = 0.0;
+        for(int iz=0; iz<nz; iz++){
+            df += afm_Fout[ (iz+izmin)*nxy+ixy ].z * ws[iz];
+        }
+        dfout[ixy] = df;
+    }
+    DEBUG
+}
+
+void MolGUI::renderAFM( int iz, int offset ){
+    if(afm_Fout==0){ printf("WARRNING: MolGUI::renderAFM() but afm_Fout not allocated \n"); return; };
+    if(iz<0 )iz=0;
+    if(iz>=afm_scan_grid.n.z)iz=afm_scan_grid.n.z-1;
+    int pitch = 4;
+    int nxy =afm_scan_grid.n.x * afm_scan_grid.n.y;
+    float* data_iz =  (float*)(afm_Fout + iz*nxy);
+
+    float* dfdata=0;
+    if(afm_bDf){
+        dfdata= new float[nxy];
+        float* data_iz = &dfdata[0];
+        Fz2df( nxy, iz, iz+afm_nconv, afm_Fout, data_iz );
+    }
+
+    printf( "MolGUI::renderAFM() %li \n", ogl_afm ); //exit(0);
+    if(ogl_afm>0)glDeleteLists(ogl_afm,1);
+    ogl_afm = glGenLists(1);
+    glNewList(ogl_afm, GL_COMPILE);
+    glShadeModel( GL_SMOOTH );
+    //glEnable(GL_LIGHTING);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    double vmin=+1e+300;
+    double vmax=-1e+300;
+    for(int i=0; i<nxy; i++){ float f=data_iz[i*pitch+offset]; vmin=fmin(f,vmin); vmax=fmax(f,vmax);  }
+
+    //_realloc(afm_ps, nxy);
+    //for(int i=0; i<nxy; i++){ afm_ps[i]=(Vec3d)afm_ps0[i].f; }
+
+    glPushMatrix();
+    glTranslatef( 0.0,0.0,-5.0 - iz * afm_scan_grid.dCell.c.z );
+    printf( "MolGUI::renderAFM() vmin=%g vmax=%g \n", vmin, vmax );
+    Draw3D::drawScalarField( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_ps0,                                  data_iz, pitch,offset, vmax, vmin, Draw::colors_afmhot );
+    //Draw3D::drawColorScale( 10, Vec3dZero, Vec3dY, Vec3dX, Draw::colors_afmhot );
+    //Draw3D::drawScalarGrid ( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_scan_grid.pos0, afm_scan_grid.dCell.a, afm_scan_grid.dCell.a, data_iz, pitch,offset, vmin, vmax );
+    glPopMatrix();
+    glEndList();
+    if(dfdata){ delete [] dfdata; }
+};
+
+void MolGUI::renderAFM_trjs( int di ){
+    if(afm_Fout==0){ printf("WARRNING: MolGUI::renderAFM_trjs() but afm_PPpos not allocated \n"); return; };
+    printf( "MolGUI::renderAFM_trjs(di=%i) afm_PPpos=%li \n", di, afm_PPpos ); //exit(0);
+    if(ogl_afm_trj>0)glDeleteLists(ogl_afm_trj,1);
+    ogl_afm_trj = glGenLists(1);
+    glNewList(ogl_afm_trj, GL_COMPILE);
+    glShadeModel( GL_SMOOTH );
+    //glEnable(GL_LIGHTING);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    Vec3i ns = afm_scan_grid.n;
+    int nxy=ns.x*ns.y;
+    for(int iy=0; iy<ns.y; iy+=di ){
+        for(int ix=0; ix<ns.x; ix+=di ){
+            //afm_ps0
+            glBegin(GL_LINE_STRIP);
+            for(int iz=0; iz<ns.z; iz++ ){
+                int i = afm_scan_grid.n.y;
+                Vec3f p = afm_PPpos[ iz*nxy + iy*ns.x + ix ].f;
+                glVertex3f( p.x,p.y,p.z ); 
+            }
+            glEnd();
+        }
+    }
+    glEndList();
+};
+
+
+void MolGUI::makeAFM(){
+    printf( "MolGUI::makeAFM() %li \n", ogl_afm ); //exit(0);
+    afm_ff_grid.cell = W->builder.lvec;
+    afm_ff_grid.updateCell(0.1);
+    W->evalAFM_FF ( afm_ff_grid,   afm_ff,                        true  );
+    W->evalAFMscan( afm_scan_grid, afm_Fout, afm_PPpos, &afm_ps0, false );
+    MolGUI::renderAFM_trjs( 5 );
+    //MolGUI::renderAFM(  afm_scan_grid.n.z-10, 2 );
+    MolGUI::renderAFM(  afm_iz, 2 );
 };
 
 void MolGUI::drawPi0s( float sc=1.0 ){
@@ -909,6 +1060,15 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
 
+                //case SDLK_INSERT:   break;
+                //case SDLK_DELETE:   break;
+
+                //case SDLK_HOME:     break;
+                //case SDLK_END:      break;
+
+                case SDLK_PAGEUP  : W->iParalel=_clamp(W->iParalel+1,W->iParalelMin,W->iParalelMax); break;
+                case SDLK_PAGEDOWN: W->iParalel=_clamp(W->iParalel-1,W->iParalelMin,W->iParalelMax); break;
+
                 case SDLK_COMMA:  W->add_to_lvec( dlvec    ); break;
                 case SDLK_PERIOD: W->add_to_lvec( dlvec*-1 ); break;
 
@@ -951,6 +1111,10 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;
                 //case SDLK_c: W->autoCharges(); break;
+                
+                case SDLK_v: makeAFM(); break;
+                case SDLK_KP_MULTIPLY:  afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
+                case SDLK_KP_DIVIDE:    afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl;       break;
@@ -980,6 +1144,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //    printf( "ang[%i] cs(%g,%g) k %g (%i,%i,%i)\n", iangPicked, ff.ang_cs0[iangPicked].x, ff.ang_cs0[iangPicked].y, ff.ang_k[iangPicked],
                 //        ff.ang2atom[iangPicked].a,ff.ang2atom[iangPicked].b,ff.ang2atom[iangPicked].c );
                 //    break;
+                default:
+                    printf( "free key: %i\n", event.key.keysym.sym );
             }
             break;
         case SDL_MOUSEBUTTONDOWN:

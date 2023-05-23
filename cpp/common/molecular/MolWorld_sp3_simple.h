@@ -15,20 +15,23 @@
 #include "Vec3.h"
 #include "Mat3.h"
 #include "Vec3Utils.h"
+#include "VecN.h"
+
 
 #include "MMFFparams.h"
 static MMFFparams* params_glob;
 
 //#include "raytrace.h"
 #include "Forces.h"
-#include "MMFFsp3.h"
+//#include "MMFFsp3.h"
 #include "MMFFsp3_loc.h"
-#include "MMFFf4.h"
+//#include "MMFFf4.h"
 
 #include "NBFF.h"
-#include "GridFF.h"
-#include "RigidBodyFF.h"
-#include "QEq.h"
+#include "constrains.h"
+//#include "GridFF.h"
+//#include "RigidBodyFF.h"
+//#include "QEq.h"
 #include "molecular_utils.h"
 
 #include "Molecule.h"
@@ -46,6 +49,7 @@ class MolWorld_sp3_simple{ public:
     const char* trj_fname    = "trj.xyz";
     int savePerNsteps = 1;
     double fAutoCharges=-1;
+    bool bEpairs=false;
 
     OptLog opt_log;
 
@@ -56,8 +60,9 @@ class MolWorld_sp3_simple{ public:
 
 	// Force-Fields & Dynamics
     MMFFsp3_loc  ffl;
-	NBFF     nbmol;
-    //QEq          qeq;
+	NBFF         nbmol;
+    Constrains   constrs;
+    //QEq        qeq;
 	DynamicOpt   opt;
 
     Vec3i nPBC{1,1,0};
@@ -135,6 +140,8 @@ void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharg
     if(verbosity>1)nbmol.print();                              
 }
 
+
+
 int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
@@ -200,11 +207,13 @@ int buildMolecule_xyz( const char* xyz_name ){
     //builder.printBonds();
     //builder.printAtomConfs(true, false );
     if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
-    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+    if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
     builder.autoAllConfEPi  ( ia0 ); 
     builder.setPiLoop       ( ic0, -1, 10 );
+
     if(builder.bDummyEpair)builder.addAllEpairsByPi( ia0=0 );    
+
     //builder.printAtomConfs(false, false );
     //builder.printAtomConfs(false, true );
     builder.assignAllBondParams();    //if(verbosity>1)
@@ -253,7 +262,7 @@ void makeMMFF(){
     // }
 }
 
-void makeFFs(){
+virtual void makeFFs(){
     makeMMFF();
     initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
     ffl.bSubtractAngleNonBond=bNonBonded;
@@ -523,7 +532,7 @@ void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
     }
 }
 
-void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,const char* trjName, bool bAddjustCaps ){
+void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,const char* trjName, bool bAddjustCaps=false ){
     //if(selection==0){ selection=manipulation_sel; n=manipulation_nsel; }
     //Vec3d d=(*(Vec3d*)(vec)); 
 	d.mul(1./nstep);
@@ -537,7 +546,7 @@ void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,c
     }
     if(file){ fclose(file); }
 }
-void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, const char* trjName, bool bAddjustCaps ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; scanTranslation_ax(n,selection, d, nstep, Es, trjName , bAddjustCaps); };
+void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, const char* trjName, bool bAddjustCaps=false ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; scanTranslation_ax(n,selection, d, nstep, Es, trjName , bAddjustCaps); };
 
 void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, const char* trjName ){
     //if(p0==0) p0=(double*)&manipulation_p0;
@@ -587,7 +596,7 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Ve
     if(file){ fclose(file); }
 }
 
-void printSwitches(){
+virtual void printSwitches(){
     printf( "MolWorld_sp3_simple::printSwitches() bCheckInvariants=%i bPBC=%i bNonBonded=%i bMMFF=%i ffl.doAngles=%i ffl.doPiSigma=%i ffl.doPiPiI=%i ffl.bSubtractAngleNonBond=%i \n", bCheckInvariants, bPBC, bNonBonded, bMMFF, ffl.doAngles, ffl.doPiSigma, ffl.doPiPiI, ffl.bSubtractAngleNonBond );
 }
 

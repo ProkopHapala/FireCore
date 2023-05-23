@@ -11,6 +11,7 @@ from . import cpp_utils_ as cpp_utils
 #import cpp_utils_ as cpp_utils
 
 c_double_p = ctypes.POINTER(c_double)
+c_float_p  = ctypes.POINTER(c_float)
 c_int_p    = ctypes.POINTER(c_int)
 
 def _np_as(arr,atype):
@@ -50,6 +51,16 @@ header_strings = [
 #"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){",
 #"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
 #"void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){",
+#"void change_lvec( double* lvec, bool bAdd, bool  ){",
+#"void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){",
+#"void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double tol ){",
+#"virtual void upload_pop( const char* fname ){",
+# "void pack_system  ( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){",
+# "void unpack_system( int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=false ){",
+# "void upload_sys   ( int isys, bool bParams, bool bForces, bool bVel ){",
+# "void download_sys ( int isys, bool bForces, bool bVel ){",
+# "void upload       ( bool bParams, bool bForces, bool bVel ){",
+# "void download     ( bool bForces, bool bVel ){",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -63,8 +74,8 @@ header_strings = [
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
-cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' ) 
-lib = cpp_utils.loadLib('MMFF_lib', recompile=False)
+cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs_OCL' ) 
+lib = cpp_utils.loadLib('MMFFmulti_lib', recompile=False)
 array1ui = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='CONTIGUOUS')
 array1i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=1, flags='CONTIGUOUS')
 array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
@@ -186,11 +197,19 @@ def getBuff(name,sh):
     ptr = lib.getBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
+#double* getBuff(const char* name){ 
+lib.getfBuff.argtypes = [c_char_p]
+lib.getfBuff.restype  = c_float_p 
+def getfBuff(name,sh):
+    if not isinstance(sh, tuple): sh=(sh,)
+    name=name.encode('utf8')
+    ptr = lib.getfBuff(name)
+    return np.ctypeslib.as_array( ptr, shape=sh )
+
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
-    #natom=nnode+ncap
-    #nvecs=natom+npi
-    #nDOFs=nvecs*3
+    # int  nDOFs=0,nnode=0,ncap=0,nvecs=0;
+    # double Etot,Eb,Ea, Eps,EppT,EppI;
     global ndims,Es
     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
@@ -213,38 +232,36 @@ def getBuffs( NEIGH_MAX=4 ):
         #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
         neighs   = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
+    
+    # --- GPU buffers (multi-replicas)
+    global gpu_neighs,gpu_neighCell,gpu_bkNeighs,  gpu_atoms, gpu_aforces, gpu_avel, gpu_constr,  gpu_REQs, gpu_MMpars, gpu_BLs, gpu_BKs, gpu_Ksp, gpu_Kpp, gpu_lvecs, gpu_ilvecs
+    gpu_neighs    = getIBuff ( "gpu_neighs",    (nSys,nvecs,4)  )
+    gpu_neighCell = getIBuff ( "gpu_neighCell", (nSys,nvecs,4)  ) 
+    gpu_bkNeighs  = getIBuff ( "gpu_bkNeighs",  (nSys,nvecs,4)  ) 
+
+    gpu_atoms     = getfBuff ( "gpu_atoms",     (nSys,nvecs,4)  )
+    gpu_aforces   = getfBuff ( "gpu_aforces",   (nSys,nvecs,4)  ) 
+    gpu_avel      = getfBuff ( "gpu_avel",      (nSys,nvecs,4)  ) 
+    gpu_constr    = getfBuff ( "gpu_constr",    (nSys,natoms,4) )
+
+    gpu_REQs      = getfBuff ( "gpu_REQs",      (nSys,natoms,3) )
+    gpu_MMpars    = getfBuff ( "gpu_MMpars",    (nSys,nnode,3)  ) 
+    gpu_BLs       = getfBuff ( "gpu_BLs",       (nSys,nnode,3)  ) 
+    gpu_BKs       = getfBuff ( "gpu_BKs",       (nSys,nnode,3)  )
+    gpu_Ksp       = getfBuff ( "gpu_Ksp",       (nSys,nnode,3)  )
+    gpu_Kpp       = getfBuff ( "gpu_Kpp",       (nSys,nnode,3)  )
+
+    gpu_lvecs     = getfBuff ( "gpu_lvecs",     (nSys,3,4)    )
+    gpu_ilvecs    = getfBuff ( "gpu_ilvecs",    (nSys,3,4)    )
+    #gpu_pbcshifts = getfBuff ( "gpu_pbcshifts", (nSys,npi,4)    )
+
+
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []
 lib.init_buffers.restype   =  None
 def init_buffers():
     return lib.init_buffers()
-
-'''
-#  void init_params(const char* fatomtypes, const char* fbondtypes)
-lib.init_params.argtypes  = [c_char_p, c_char_p, c_char_p] 
-lib.init_params.restype   =  None
-def init_params(fatomtypes, fbondtypes, fbondangles ):
-    fatomtypes = fatomtypes.encode('utf8')
-    fbondtypes = fbondtypes.encode('utf8')
-    fbondangles = fbondangles.encode('utf8')
-    return lib.init_params(fatomtypes,fbondtypes,fbondangles)
-'''
-
-'''
-#  void init_nonbond()
-lib.init_nonbond.argtypes  = [] 
-lib.init_nonbond.restype   =  None
-def init_nonbond():
-    return lib.init_nonbond()
-'''
-
-#  void init_nonbond()
-#lib.init.argtypes  = [] 
-#lib.init.restype   =  None
-#def init():
-#    isInitialized = True
-#    lib.init()
 
 def cstr( s ):
     if s is None: return None
@@ -257,9 +274,10 @@ def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
 
 #  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
+lib.init.argtypes  = [ c_int, c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
+        nSys_=10,
         xyz_name  ="input.xyz", 
         surf_name =None, 
         smile_name=None, 
@@ -267,12 +285,13 @@ def init(
         sAtomTypes = "data/AtomTypes.dat", 
         sBondTypes = "data/BondTypes.dat", 
         sAngleTypes= "data/AngleTypes.dat",
-        bMMFF=True, bEpairs=False,  nPBC=(1,1,0), gridStep=0.1 
+        bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridStep=0.1 
     ):
-    global glob_bMMFF
+    global glob_bMMFF, nSys
+    nSys=nSys_
     glob_bMMFF = bMMFF
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
 
 def tryInit():
     if not isInitialized:
@@ -285,35 +304,6 @@ lib.insertSMILES.restype   =  None
 def insertSMILES(s ):
     s = s.encode('utf8')
     return lib.insertSMILES(s)
-
-'''
-#  void buildFF( bool bNonBonded_, bool bOptimizer_ )
-lib.buildFF.argtypes  = [c_bool, c_bool] 
-lib.buildFF.restype   =  None
-def buildFF(bNonBonded=True, bOptimizer=True):
-    return lib.buildFF(bNonBonded, bOptimizer)
-'''
-
-# #  int loadmol( const char* fname_mol )
-# lib.loadmol.argtypes  = [c_char_p] 
-# lib.loadmol.restype   =  c_int
-# def loadmol(fname_mol):
-#     fname_mol=fname_mol.encode('utf8')
-#     return lib.loadmol(fname_mol)
-
-# #  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
-# lib.initWithMolFile.argtypes  = [c_char_p, c_bool, c_bool] 
-# lib.initWithMolFile.restype   =  None
-# def initWithMolFile(fname_mol, bNonBonded=True, bOptimizer=True):
-#     fname_mol = fname_mol.encode('utf8')
-#     return lib.initWithMolFile(fname_mol, bNonBonded, bOptimizer)
-
-# #  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
-# lib.initWithSMILES.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_bool] 
-# lib.initWithSMILES.restype   =  None
-# def initWithSMILES(fname_mol, bPrint=True, bCap=True, bNonBonded=True, bOptimizer=True):
-#     fname_mol = fname_mol.encode('utf8')
-#     return lib.initWithSMILES(fname_mol, bPrint, bCap, bNonBonded, bOptimizer)
 
 #  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
 lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
@@ -374,23 +364,49 @@ lib.eval.restype   =  c_double
 def eval():
     return lib.eval()
 
-# #bool relax( int niter, double Ftol )
-# lib.relax.argtypes  = [c_int, c_double, c_bool ] 
-# lib.relax.restype   =  c_bool
-# def relax(niter=100, Ftol=1e-6, bWriteTrj=False ):
-#     return lib.relax(niter, Ftol, bWriteTrj )
-
-# #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-# lib. run.argtypes  = [c_int, c_double, c_double, c_int ] 
-# lib. run.restype   =  c_int
-# def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2 ):
-#     return lib.run(nstepMax, dt, Fconv, ialg )
-
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p ] 
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, c_int ] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None):
-    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+def  run(nstepMax=1000, dt=-1, Fconv=1e-3, ialg=2, outE=None, outF=None, iParalel=1 ):
+    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), iParalel )
+
+# ========= GPU Replicas management
+
+#  void pack_system  ( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
+lib.pack_system.argtypes = [c_int, c_bool, c_bool, c_bool, c_bool] 
+lib.pack_system.restype  =  None
+def pack_system(isys, bParams=False, bForces=False, bVel=False, blvec=True ):
+    return lib.pack_system(isys, bParams, bForces, bVel, blvec)
+
+#  void unpack_system( int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=false ){
+lib.unpack_system.argtypes = [c_int, c_bool, c_bool] 
+lib.unpack_system.restype  =  None
+def unpack_system(isys, bForces=True, bVel=True ):
+    return lib.unpack_system(isys, bForces, bVel)
+
+#  void upload_sys( int isys, bool bParams, bool bForces, bool bVel ){
+lib.upload_sys.argtypes  = [c_int, c_bool, c_bool, c_bool, c_bool ] 
+lib.upload_sys.restype   =  None
+def upload_sys(isys, bParams=True, bForces=False, bVel=True, blvec=True ):
+    return lib.upload_sys(isys, bParams, bForces, bVel, blvec)
+
+#  void download_sys ( int isys, bool bForces, bool bVel ){
+lib.download_sys .argtypes  = [c_int, c_bool, c_bool] 
+lib.download_sys .restype   =  None
+def download_sys (isys, bForces=True, bVel=True):
+    return lib.download_sys (isys, bForces, bVel)
+
+#  void upload( bool bParams, bool bForces, bool bVel ){
+lib.upload.argtypes  = [c_bool, c_bool, c_bool, c_bool] 
+lib.upload.restype   =  None
+def upload(bParams=True, bForces=False, bVel=True, blvec=True):
+    return lib.upload(bParams, bForces, bVel, blvec)
+
+#  void download( bool bForces, bool bVel ){
+lib.download.argtypes = [c_bool, c_bool] 
+lib.download.restype  =  None
+def download(bForces=True, bVel=True):
+    return lib.download(bForces, bVel)
 
 # ========= Lattice Optimization
 
@@ -406,8 +422,20 @@ lib.optimizeLattice_1d.argtypes  = [c_double_p, c_int, c_int, c_int, c_double]
 lib.optimizeLattice_1d.restype   =  None
 def optimizeLattice_1d(dlvec, n1=5, n2=5, initMode=0, tol=1e-6):
     dlvec=np.array( dlvec,dtype=np.float64)
-    print("DEBUG_3")
     return lib.optimizeLattice_1d(_np_as(dlvec,c_double_p), n1, n2, initMode, tol)
+
+#  void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double tol ){
+lib.optimizeLattice_2d_multi.argtypes  = [c_double_p, c_int, c_int, c_double] 
+lib.optimizeLattice_2d_multi.restype   =  None
+def optimizeLattice_2d_multi(dlvec, nstesp=10, initMode=0, tol=1e-6):
+    dlvec=np.array( dlvec,dtype=np.float64)
+    return lib.optimizeLattice_2d_multi(_np_as(dlvec,c_double_p), nstesp, initMode, tol)
+
+#  virtual void upload_pop( const char* fname ){
+lib.upload_pop.argtypes  = [c_char_p] 
+lib.upload_pop.restype   =  None
+def upload_pop(fname):
+    return lib.upload_pop( cstr(fname) )
 
 # ========= Constrains
 
@@ -472,12 +500,6 @@ def rotate_atoms_ax(ia0, iax0, iax1, phi, sel=None):
         n=len(sel)
         sel=np.array(sel,np.int32)
     return lib.rotate_atoms_ax(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi)
-
-# #  int splitAtBond( int ib, int* sel )
-# lib.splitAtBond.argtypes  = [c_int, c_int_p] 
-# lib.splitAtBond.restype   =  c_int
-# def splitAtBond(ib, sel=None):
-#     return lib.splitAtBond(ib, _np_as(sel,c_int_p))
 
 #  void scanTranslation_ax( int n, int* sel, double* vec, int nstep, double* Es, bool bWriteTrj )
 lib.scanTranslation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_int, c_double_p, c_bool] 

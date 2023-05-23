@@ -12,6 +12,14 @@ cd $wd
 
 ln -s $dir/$name .
 
+lscpu
+
+# ---- Multiprocesing
+ncpu=`nproc`
+ncpu=$(($ncpu - 1))     # let one CPU free for user interaction
+echo "compile using ncpu="$ncpu
+OMP_NUM_THREADS=$ncpu
+export OMP_NUM_THREADS
 
 rm DEBUG*
 
@@ -51,7 +59,10 @@ nsys=50
 #./$name -m 1    -x common_resources/polymer-2_new_crash_33
 
 
-./$name -m 40 -c 10 -x common_resources/polymer-2_new
+#./$name -m 1  -x common_resources/polymer-2_new
+#./$name -m 5  -x common_resources/polymer-2_new
+#./$name -m 40  -x common_resources/polymer-2_new
+#./$name -m 40 -c 10 -x common_resources/polymer-2_new
 #./$name -m 2     -x common_resources/polymer-2_new
 #./$name -m 1     -x common_resources/polymer-2_new
 
@@ -66,8 +77,13 @@ nsys=50
 #./$name -m 10    -x common_resources/H2O           -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine      -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine  110 -g common_resources/NaCl_1x1_L2
-#./$name -m $nsys -x common_resources/PTCDA   -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/PTCDA         -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/PTCDA_SAM     -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/BPBA          -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/BPBA          -g common_resources/NaCl_1x1_L2 -e
 
+#./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2   -ManipulAnim
+./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2
 
 # ====== Polymers On Substrate
 
