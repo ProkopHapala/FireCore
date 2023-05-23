@@ -64,7 +64,26 @@ def NH3_inversion():
     plt.savefig( "NH3_inversion.png" ) 
     
 
+def do_inversion( name ):
+    #mmff.buildMolecule_xyz( xyz_name="data/NH3", bEpairs=False, fAutoCharges=-1 )
+    mmff.buildMolecule_xyz( xyz_name="data/"+name, bEpairs=False, fAutoCharges=-1 )
+    mmff.makeFFs()
+    mmff.getBuffs()
+
+    #mmff.setTrjName("NH3_relax.xyz",1); nsteps = mmff.run( 1000 )    # relax     
+
+    #Es  = mmff.scanTranslation_ax( 2*np.pi, n, [1], [0,0,0],  [0.,1.,0.],  )
+    angs = np.arange( -np.pi/4, np.pi/4, 0.5*np.pi/100 )
+    Es = mmff.scanAngleToAxis_ax( angs, [1,2,3], r=1.019, p0=[0.,0.,0.], ax=[0.,0.,1.], R=0, Es=None, trjName=name+"_inversion.xyz" )
+    #mmff.scanTranslation_ax( 10, Es=None, trjName=None, sel=[0], vec=[0.0,0.0,-0.1], trjName="NH3_inversion.xyz", bAddjustCaps=False )
+
+    plt.plot(angs*rad2ang, Es); plt.xlabel( "theta[˚]" ); plt.ylabel( "Energy[eV]" ); plt.grid()
+    plt.savefig( name+"_inversion.png" ) 
+
+
 #======== Body
+
+#name = sys.argv[1]
 
 #mmff.setVerbosity( verbosity=1, idebug=0 )
 mmff.setVerbosity( verbosity=0, idebug=0 )
@@ -83,6 +102,13 @@ mmff.initParams()
 #H2O_angle()
 #C2H4_torsion()
 NH3_inversion()
+
+#do_inversion(name)
+
+#names = ['']
+
+#for name in names:
+#    do_inversion(name)
 
 mmff.printAtomTypes()
 mmff.printAtomParams()

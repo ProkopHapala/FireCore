@@ -246,10 +246,10 @@ def initParams( sElementTypes="common_resources/ElementTypes.dat", sAtomTypes="c
     return lib.initParams( cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
 
 #  int  buildMolecule_xyz( const char* xyz_name )
-lib. buildMolecule_xyz.argtypes  = [c_char_p, c_bool, c_double ] 
+lib. buildMolecule_xyz.argtypes  = [c_char_p, c_bool, c_double, c_bool, c_bool ] 
 lib. buildMolecule_xyz.restype   =  c_int
-def  buildMolecule_xyz(xyz_name, bEpairs=False, fAutoCharges=-1 ):
-    return lib.buildMolecule_xyz( cstr(xyz_name), bEpairs, fAutoCharges )
+def  buildMolecule_xyz(xyz_name, bEpairs=False, fAutoCharges=-1, bAutoTypes=True, bRelaxPi=False ):
+    return lib.buildMolecule_xyz( cstr(xyz_name), bEpairs, fAutoCharges, bAutoTypes, bRelaxPi )
 
 #  void makeFFs         (                      )
 lib.makeFFs.argtypes  = [] 
