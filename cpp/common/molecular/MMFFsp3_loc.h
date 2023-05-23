@@ -16,6 +16,8 @@
 
 #include "NBFF.h"
 
+//#include <cstdio>
+
 inline double cos_damp_lin( double c, double& cv, double D, double cmin, double cmax  ){
     double cf;
     if      (c < cmin){
@@ -262,6 +264,11 @@ double eval_atom(const int ia){
 
     for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
 
+    // double Eb=0;
+    // double Ea=0;
+    // double EppI=0;
+    // double Eps=0;
+
     // --------- Bonds Step
     for(int i=0; i<4; i++){
         int ing = ings[i];
@@ -312,7 +319,13 @@ double eval_atom(const int ia){
 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds){
-                E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);    
+                E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
+
+                //double Ebi = evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
+                //E +=Ebi; 
+                //Eb+=Ebi; 
+
+                //printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
                 //if(ia==ia_DBG)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
                 //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fbond[%i]",ia,i); } );
             }
@@ -320,6 +333,13 @@ double eval_atom(const int ia){
             double kpp = Kppi[i];
             if( (doPiPiI) && (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                 E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+                
+                //double EppIi = evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+                //E +=EppIi; 
+                //EppI+=EppIi;
+                
+                //if(verbosity>0)printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g), EppI=%g\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z, EppIi  );
+                //printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g), EppI=%g, Epp=%g\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z, EppIi, EppI  );
                 //if(ia==ia_DBG)printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
                 //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fpp1[%i]",ia,i); } );
                 //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fpp2[%i]",ia,i); } );
@@ -333,6 +353,12 @@ double eval_atom(const int ia){
         double ksp = Kspi[i];
         if( doPiSigma && (ksp>1e-6) ){  
             E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);       //   pi-planarization (orthogonality)
+
+            //double Epsi = evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);       //   pi-planarization (orthogonality)
+            //E +=Epsi; 
+            //Eps+=Epsi;
+
+            //printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g hp(%g,%g,%g) h(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z  );
             //if(kpp<-1e-6){  E += evalPiAling( hpi, pipos[ing], 1., 1., -kpp, f1, f2 );   fpi.add(f1);  fps[i].add(f2);  }    //   align pi-electron pair (e.g. in Nitrogen)
             //if(ia==ia_DBG)printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g hp(%g,%g,%g) h(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z  );
             //if(ia==ia_DBG)printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
@@ -381,11 +407,24 @@ double eval_atom(const int ia){
             };
 
             //bAngleCosHalf = false;
+            //double Eai;
+            //printf( "bAngleCosHalf= %i\n", bAngleCosHalf);
             if( bAngleCosHalf ){
                 E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
-            }else{             
+
+                //Eai = evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
+
+            }else{ 
                 E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+
+                //Eai = evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+
             }
+            
+            //E +=Eai; 
+            //Ea+=Eai;
+            
+            //printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fss1[%i,%i]",ia,i,j); } );
             //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fss2[%i,%i]",ia,i,j); } );
@@ -435,14 +474,28 @@ double eval_atom(const int ia){
     //fpipos[ia].add(fpi);
     fapos [ia]=fa; 
     fpipos[ia]=fpi;
+
+    // MYPRINTOUT
+    
+    
+    //printf( "MYOUTPUT atom %i Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", ia+1, Eb, Ea, EppI, Eps, E );
+    //fprintf( file, "atom %i Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", ia+1, Eb, Ea, EppI, Eps, E );
+    
+
     return E;
 }
 
 double eval_atoms(){
+    //FILE *file = fopen("out","w");
+    //Etot,
+    //Eb=0;Ea=0;Eps=0;EppT=0;EppI=0;
     double E=0;
     for(int ia=0; ia<nnode; ia++){ 
         E+=eval_atom(ia); 
     }
+    //printf( "MYOUTPUT Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", Eb, Ea, EppI, Eps, E );
+    //fprintf( file, "Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", Eb, Ea, EppI, Eps, E );
+    //fclose(file);
     return E;
 }
 
@@ -574,7 +627,7 @@ void addjustCapLenghs(){
     }
 }
 
-void initPi( Vec3d* pbc_shifts, double Kmin=0.1, double r2min=1e-4, bool bCheck=true ){
+void initPi( Vec3d* pbc_shifts, double Kmin=0.0001, double r2min=1e-4, bool bCheck=true ){
     //printf( "MMFFsp3_loc::initPi()\n" );
     for(int ia=0; ia<nnode; ia++){ 
         if(vapos)vapos[natoms+ia]=Vec3dZero;
@@ -587,6 +640,7 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.1, double r2min=1e-4, bool bCheck=
         while(j<4){ if(ks[j]>Kmin){ u=apos[ngs[j]]+pbc_shifts[ngC[j]]; nfound++; j++;break; }; j++; }
         while(j<4){ if(ks[j]>Kmin){ v=apos[ngs[j]]+pbc_shifts[ngC[j]]; nfound++; j++;break; }; j++; }
         while(j<4){ if(ks[j]>Kmin){ p=apos[ngs[j]]+pbc_shifts[ngC[j]]; nfound++; j++;break; }; j++; }
+        //printf("...ia=%i nfound=%i\n",ia,nfound);
         if      ( nfound>=2 ){
             if( nfound==2 ){  p=apos[ia]; }
             //printf( "::[%i] u(%6.3f,%6.3f,%6.3f) v(%6.3f,%6.3f,%6.3f) p(%6.3f,%6.3f,%6.3f) nf=%1i \n", ia, u.x,u.y,u.z,  v.x,v.y,v.z, p.x,p.y,p.z, nfound );
@@ -629,7 +683,9 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.1, double r2min=1e-4, bool bCheck=
         }else{
             pipos[ia]=Vec3dZ; // pi cannot be define
         }
+        
     }
+    //for(int ia=0; ia<nnode; ia++){  pipos[ia]=Vec3dZ ; } // DEBUG
 }
 
 void normalizePis(){ 
@@ -765,6 +821,9 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         #pragma omp for reduction(+:F2)
         for(int i=0; i<nvecs; i++){
             F2 += move_atom_MD( i, dt, Flim, 0.99 );
+        }
+        for(int i=natoms; i<nvecs; i++){
+             F2 += move_atom_MD( i, dt, Flim, 0.99 );
         }
         #pragma omp single
         if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
