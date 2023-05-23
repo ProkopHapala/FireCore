@@ -14,18 +14,15 @@
 #include <string>
 #include <unordered_map>
 
-inline uint64_t getBondTypeId( uint16_t at1, uint16_t at2, uint8_t order ){
-    if (at1>at2){ _swap(at1,at2); }
-    return pack64( at1, at2, order, 0 );
-}
 
 class BondType{ public:
     double length;
     double stiffness;
-    uint16_t at1,at2;
-    uint8_t  order;
-    inline void sort(){ if (at1>at2){ _swap(at1,at2); }  }
-    inline uint64_t getId(){ sort(); return pack64( at1, at2, order, 0 ); }
+    Vec2i   atoms;
+    uint8_t order;
+    inline void sort(){ if (atoms.x>atoms.y){ _swap(atoms.x,atoms.y); }  }
+    inline uint64_t id(){ return getId( atoms.x, atoms.y, order ); }
+    inline static uint64_t getId( uint16_t at1, uint16_t at2, uint8_t order ){ if (at1>at2){ _swap(at1,at2); } return pack64( at1, at2, order, 0 ); }
 };
 
 class AngleType{ public:
@@ -33,7 +30,11 @@ class AngleType{ public:
     double stiffness;
     Vec3i  atoms; // a-b-c  or (lever1,fulcrum,lever2)
     inline void     sort(){ if (atoms.x>atoms.z){ _swap(atoms.x,atoms.z); }  }
-    inline uint64_t getId(){ sort(); return pack64( atoms.b,atoms.a,atoms.c, 0 ); }
+
+
+    inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c ){ if (a>c){ _swap(a,c); } return pack64( b,a,c, 0 );  }
+    inline uint64_t id(  ){ return getId( atoms.x, atoms.y, atoms.z ); }
+
 };
 
 
@@ -43,34 +44,11 @@ class DihedralType{ public:
     double k;
     double ang0;
 
-    inline void     sort(){ if (atoms.y>atoms.z){ _swap(atoms.y,atoms.z); _swap(atoms.x,atoms.w); }  }
-    inline uint64_t getId(){ sort(); return pack64( atoms.y,atoms.z,atoms.x,atoms.w); }
+    inline void            sort(){ if (atoms.y>atoms.z){ _swap(atoms.y,atoms.z); _swap(atoms.x,atoms.w); }  }
+    inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c, uint16_t d ){ if (b>c){ _swap(b,c); _swap(a,d); } return pack64( b,c,a,d);  }
+    inline        uint64_t id(){ return getId(atoms.x,atoms.y,atoms.z,atoms.w); }
+
 };
-
-
-/*
-class ElementType{ public:
-    char      name[8];
-    uint8_t   iZ;         // proton number
-    uint8_t   neval;      // number of valence electrons
-    uint8_t   valence;    // sum of bond orders of all bonds
-    uint32_t  color;
-    //double  RvdW;
-    //double  EvdW;
-}
-
-class AtomType_{ public:
-    char      name[8];
-    uint8_t   iZ;         // proton number
-    uint8_t   neval;      // number of valence electrons
-    uint8_t   valence;    // sum of bond orders of all bonds
-    uint32_t  color;
-    double  RvdW;
-    double  EvdW;
-    double  Q;
-    double Eaff,Ehard,Ra,eta;  // Charge Equilibration Params
-}
-*/
 
 
 class ElementType{ public:
@@ -176,21 +154,24 @@ class MMFFparams{ public:
     std::vector       <std::string    >    atomTypeNames;
     std::unordered_map<std::string,int>    elementTypeDict;
     std::unordered_map<std::string,int>    atomTypeDict;
-    std::unordered_map<uint64_t,BondType>  bonds;
-    //std::unordered_map<uint64_t,AngleType> angles;
 
-    std::vector<AngleType>                  angles;
-    std::unordered_map<std::string,int>     angleDict;
-    std::unordered_map<uint64_t,AngleType*> angles_;
+    std::vector<BondType>                      bonds;
+    std::unordered_map<uint64_t,BondType*>     bonds_;
+    std::unordered_map<std::string,int>        bondDict;
+
+    std::vector<AngleType>                     angles;
+    std::unordered_map<uint64_t,AngleType*>    angles_;
+    std::unordered_map<std::string,int>        angleDict;
 
     std::vector<DihedralType>                  dihedrals;
-    std::unordered_map<std::string,int>        dihedralDict;
     std::unordered_map<uint64_t,DihedralType*> dihedrals_;
+    std::unordered_map<std::string,int>        dihedralDict;
+
 
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
-    //Quat4d  default_REQ            = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen
-    Quat4d  default_REQ              = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen like
+    //Quat4d  default_REQ           = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen
+    Quat4d  default_REQ             = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen like
 
     bool reportIfMissing=true;
     bool exitIfMissing  =true;
@@ -199,15 +180,15 @@ class MMFFparams{ public:
         makeDefaultAtomTypeDict( atomTypeNames, atomTypeDict );
     }
 
-    void printAtomTypeDict(){
-        for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict[atypes[i].name] );  };
+    void printAtomTypeDict()const{
+        for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict.find(atypes[i].name)->second );  };
     }
     
-    void printElementTypeDict(){
-        for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict[etypes[i].name] );  };
+    void printElementTypeDict()const{
+        for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict.find(etypes[i].name)->second );  };
     }
 
-    int getAtomType(const char* s, bool bErr=true){
+    int getAtomType(const char* s, bool bErr=true)const{
         //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
         auto found = atomTypeDict.find(s);
         if(found==atomTypeDict.end()){ 
@@ -217,7 +198,7 @@ class MMFFparams{ public:
         return found->second;
     }
 
-    int getElementType(const char* s, bool bErr=true){
+    int getElementType(const char* s, bool bErr=true)const{
         //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
         auto found = elementTypeDict.find(s);
         if(found==elementTypeDict.end()){ 
@@ -227,13 +208,13 @@ class MMFFparams{ public:
         return found->second;
     }
 
-    inline ElementType* elementOfAtomType( int it ){ return &etypes[atypes[it].element]; }
+    inline const ElementType* elementOfAtomType( int it )const{ return &etypes[atypes[it].element]; }
 
-    AtomType* getRootParrent(AtomType* t, int nrecur=0){
+    const AtomType* getRootParrent(const AtomType* t, int nrecur=0)const{
         if(nrecur>10){ printf("ERROR in MMFFparams.getRootParrent() rootParrent of type(%s) not found in %i recursions => Exit() \n", t->name, nrecur ); exit(0); }
         if( t->parrent==0 ) return t;
         if( (t->parrent<0)||(t->parrent>=atypes.size()) ){ printf("ERROR in MMFFparams.getRootParrent() type(%s).parrent==%i => Exit() \n", t->name,t->parrent ); exit(0); }
-        AtomType* par = &atypes[t->parrent];
+        const AtomType* par = &atypes[t->parrent];
         return getRootParrent(par,nrecur+1); // recursion
     }
 
@@ -473,7 +454,37 @@ class MMFFparams{ public:
         return 0;
     }
 
+    BondType* getBondType( int ityp, int jtyp, int order, bool bParrents=true, bool bElem=false )const{
+        //uint64_t id = BondType::getId( atypes[atyp1].iZ, atypes[atyp2].iZ, btyp );
+        uint64_t id   = BondType::getId( ityp, jtyp, order );
+        auto it       = bonds_.find(id);
+        if( it != bonds_.end() ){ return it->second; } 
+        if(bParrents==0){
+            id  = BondType::getId( atypes[ityp].parrent, jtyp, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+            id  = BondType::getId( atypes[jtyp].parrent, ityp, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+        }
+        if(bElem){
+            int i0 = atomTypeDict.find( elementOfAtomType(ityp)->name )->second;
+            int j0 = atomTypeDict.find( elementOfAtomType(jtyp)->name )->second; 
+            id  = BondType::getId( i0, j0, order ); 
+            it = bonds_.find(id); 
+            if( it!=bonds_.end()){ return it->second; }
+        }
+        if(reportIfMissing){ printf("WARRNING!!! getBondParams() missing atyps(%i,%i) iZs(%i,%i) o(%i)id(%i)=>l0 %g k %g \n", ityp, ityp, atypes[ityp].iZ, atypes[ityp].iZ, order, id, default_bond_length, default_bond_stiffness ); };
+        if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };  
+        return 0;
+    }
 
+    bool getBondParams( int ityp, int jtyp, int order,  double& l0, double& k, bool bParrents=true, bool bElem=false )const{
+        BondType* bp = getBondType( ityp, jtyp, order, bParrents, bElem );
+        if( bp==0 ){ l0=bp->length; k=bp->stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
+    }
+
+    void makeIdDicts(){
+        bonds_    .clear(); for(int i=0; i<bonds    .size(); i++){ bonds_    .insert( { bonds    [i].id(), &bonds    [i] } ); }
+        angles_   .clear(); for(int i=0; i<angles   .size(); i++){ angles_   .insert( { angles   [i].id(), &angles   [i] } ); }
+        dihedrals_.clear(); for(int i=0; i<dihedrals.size(); i++){ dihedrals_.insert( { dihedrals[i].id(), &dihedrals[i] } ); }
+    }
 
     inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false )const{
         REQ.x    = atypes[ityp].RvdW;
@@ -530,6 +541,8 @@ class MMFFparams{ public:
             return -1;
         }
         char buff[1024];
+        char names[2][8];
+        char name[64];
         char * line;
         BondType bt;
         //line = fgets( buff, 1024, pFile ); //printf("%s",line);
@@ -538,14 +551,24 @@ class MMFFparams{ public:
         for( i; i<1000; i++){
             line = fgets( buff, 1024, pFile );
             if(line==NULL) break;
+            if(line[0]=='#') continue;
             //printf("%s",line);
-            sscanf(  line, "%i %i %i %lf %lf\n", &bt.at1, &bt.at2, &bt.order, &bt.length, &bt.stiffness );
+            sscanf(  line, "%s %s %i %lf %lf\n", names[0], names[1], &bt.order, &bt.length, &bt.stiffness );
+
+            bt.atoms.x = getAtomType(names[0]);
+            bt.atoms.y = getAtomType(names[1]);
+            bt.sort();
+            sprintf( name, "%s-%s-%i", atypes[bt.atoms.x],names[bt.atoms.x], bt.order );
+
+            bonds.push_back( bt );
+            bondDict.insert({ name, bonds.size()-1} );
+
             //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
-            uint64_t id = bt.getId();
+            //uint64_t id = bt.getId();
             //uint64_t id = getBondTypeId( bt.at1, bt.at2, bt.order );
             //printf( "loadBondTypes[%i] iZ(%i,%i|%i) id=%i \n", i, bt.at1, bt.at2, bt.order, id );
             //bt.at1--; bt.at2--;
-            bonds[id]=bt;
+            //bonds[id]=bt;
         }
         return i;
     }
@@ -566,16 +589,19 @@ class MMFFparams{ public:
         for( i; i<1000; i++){
             line = fgets( buff, 1024, pFile );
             if(line==NULL) break;
+            if(line[0]=='#') continue;
             sscanf(  line,            "%s %s %s %lf %lf\n",     names[0], names[1], names[2], &ang.angle0, &ang.stiffness );
             //printf( "loadAgnleTypes[%i] %s %s %s %lf %lf\n",i,names[0], names[1], names[2],  ang.angle0,  ang.stiffness );
-            sprintf( name, "%s-%s-%s", names[0],names[1],names[2] );
+            
+            ang.atoms.x = getAtomType(names[0]);
+            ang.atoms.y = getAtomType(names[1]);
+            ang.atoms.z = getAtomType(names[2]);
+            ang.sort();
+            sprintf( name, "%s-%s-%s", atypes[ang.atoms.x], names[ang.atoms.y], names[ang.atoms.z]  );
 
             angles.push_back(ang);
             angleDict.insert({ name, angles.size()-1} );
 
-            // ang.atoms.a = getAtomType(names[0]);
-            // ang.atoms.b = getAtomType(names[1]);
-            // ang.atoms.c = getAtomType(names[2]);
             // uint64_t id = ang.getId();
             // auto found = angles_.find(id);
             // if( found != angles.end() ){ printf( "WARRNIMG!!! loadAgnleTypes() angleType[%i] same as ", i); printAngle(found->second); };
@@ -595,15 +621,23 @@ class MMFFparams{ public:
         char names[4][8];
         char name[64];
         char * line;
-        DihedralType t;
+        DihedralType dih;
         int i=0;
         for( i; i<1000; i++){
             line = fgets( buff, 1024, pFile );
             if(line==NULL) break;
-            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], t.ang0, t.k, t.n );
-            sprintf( name, "%s-%s-%s-%s", names[0],names[1],names[2],names[3] );
+            if(line[0]=='#') continue;
+            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], dih.ang0, dih.k, dih.n );
+
+            dih.atoms.x = getAtomType(names[0]);
+            dih.atoms.y = getAtomType(names[1]);
+            dih.atoms.z = getAtomType(names[2]);
+            dih.atoms.w = getAtomType(names[3]);
+            dih.sort();
+            sprintf( name, "%s-%s-%s-%s", atypes[dih.atoms.x], names[dih.atoms.y], names[dih.atoms.z], names[dih.atoms.w] );
+
             //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
-            dihedrals.push_back(t);
+            dihedrals.push_back(dih);
             dihedralDict.insert({ name, dihedrals.size()-1} );
         }
         return i;
@@ -615,22 +649,6 @@ class MMFFparams{ public:
 
     void printAtomTypes(bool bParams){
         for(int i=0; i<atypes.size(); i++ ){ atypes[i].print(i, bParams );  }
-    }
-
-
-
-    bool getBondParams( int atyp1, int atyp2, int btyp, double& l0, double& k )const{
-        uint64_t id  = getBondTypeId( atypes[atyp1].iZ, atypes[atyp2].iZ, btyp );
-        //printf( "(%i,%i,%i) -> %i \n", atypes[atyp1].iZ, atypes[atyp2].iZ, btyp, id );
-        //uint64_t id  = getBondTypeId( atyp1, atyp2, btyp );
-        auto it = bonds.find(id);
-        if   ( it == bonds.end() ){ 
-            if(reportIfMissing){ printf("WARRNING!!! getBondParams() missing atyps(%i,%i) iZs(%i,%i) o(%i)id(%i)=>l0 %g k %g \n", atyp1, atyp2, atypes[atyp1].iZ, atypes[atyp2].iZ, btyp, id, default_bond_length, default_bond_stiffness ); };
-            if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };
-            l0=default_bond_length; k=default_bond_stiffness; return false;
-        }else{ 
-            l0=it->second.length;   k=it->second.stiffness;   return true; 
-        }
     }
 
     void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){
