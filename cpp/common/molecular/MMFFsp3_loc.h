@@ -15,7 +15,7 @@
 
 #include "NBFF.h"
 
-#include <cstdio>
+//#include <cstdio>
 
 inline double cos_damp_lin( double c, double& cv, double D, double cmin, double cmax  ){
     double cf;
@@ -300,9 +300,11 @@ double eval_atom(const int ia){
 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds){
-                double Ebi = evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
-                E +=Ebi; 
-                Eb+=Ebi; 
+                E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
+
+                //double Ebi = evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
+                //E +=Ebi; 
+                //Eb+=Ebi; 
 
                 //printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
                 //if(ia==ia_DBG)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) \n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z,  f1.x,f1.y,f1.z  );
@@ -311,12 +313,14 @@ double eval_atom(const int ia){
 
             double kpp = Kppi[i];
             if( (doPiPiI) && (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
-                double EppIi = evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
-                E +=EppIi; 
-                EppI+=EppIi;
+                E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+                
+                //double EppIi = evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+                //E +=EppIi; 
+                //EppI+=EppIi;
                 
                 //if(verbosity>0)printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g), EppI=%g\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z, EppIi  );
-                printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g), EppI=%g, Epp=%g\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z, EppIi, EppI  );
+                //printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g), EppI=%g, Epp=%g\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z, EppIi, EppI  );
                 //if(ia==ia_DBG)printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
                 //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fpp1[%i]",ia,i); } );
                 //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fpp2[%i]",ia,i); } );
@@ -329,9 +333,11 @@ double eval_atom(const int ia){
         //if(bPi){    
         double ksp = Kspi[i];
         if( doPiSigma && (ksp>1e-6) ){  
-            double Epsi = evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);       //   pi-planarization (orthogonality)
-            E +=Epsi; 
-            Eps+=Epsi;
+            E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);       //   pi-planarization (orthogonality)
+
+            //double Epsi = evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);       //   pi-planarization (orthogonality)
+            //E +=Epsi; 
+            //Eps+=Epsi;
 
             //printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g hp(%g,%g,%g) h(%g,%g,%g)\n", ia,ing, ksp,piC0, hpi.dot(h.f), hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z  );
             //if(kpp<-1e-6){  E += evalPiAling( hpi, pipos[ing], 1., 1., -kpp, f1, f2 );   fpi.add(f1);  fps[i].add(f2);  }    //   align pi-electron pair (e.g. in Nitrogen)
@@ -361,9 +367,15 @@ double eval_atom(const int ia){
             double Eai;
             //printf( "bAngleCosHalf= %i\n", bAngleCosHalf);
             if( bAngleCosHalf ){
-                Eai = evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
-            }else{             
-                Eai = evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+                E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
+
+                //Eai = evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
+
+            }else{ 
+                E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+
+                //Eai = evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+
             }
             E +=Eai; 
             Ea+=Eai;
@@ -422,16 +434,16 @@ double eval_atom(const int ia){
 }
 
 double eval_atoms(){
-    FILE *file = fopen("out","w");
+    //FILE *file = fopen("out","w");
     //Etot,
-    Eb=0;Ea=0;Eps=0;EppT=0;EppI=0;
+    //Eb=0;Ea=0;Eps=0;EppT=0;EppI=0;
     double E=0;
     for(int ia=0; ia<nnode; ia++){ 
         E+=eval_atom(ia); 
     }
-    printf( "MYOUTPUT Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", Eb, Ea, EppI, Eps, E );
-    fprintf( file, "Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", Eb, Ea, EppI, Eps, E );
-    fclose(file);
+    //printf( "MYOUTPUT Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", Eb, Ea, EppI, Eps, E );
+    //fprintf( file, "Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", Eb, Ea, EppI, Eps, E );
+    //fclose(file);
     return E;
 }
 
@@ -458,7 +470,7 @@ void addjustCapLenghs(){
 }
 
 void initPi( Vec3d* pbc_shifts, double Kmin=0.0001, double r2min=1e-4, bool bCheck=true ){
-    printf( "MMFFsp3_loc::initPi()\n" );
+    //printf( "MMFFsp3_loc::initPi()\n" );
     for(int ia=0; ia<nnode; ia++){ 
         if(vapos)vapos[natoms+ia]=Vec3dZero;
         const int*    ngs = neighs   [ia].array;
@@ -481,7 +493,7 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.0001, double r2min=1e-4, bool bChe
             if( r2>r2min ){
                 pi.mul(1/sqrt(r2));
                 pipos[ia]=pi;
-                printf( "pi[%i]=pi(%5.3f,%5.3f,%5.3f) nfound %1i r2 %g \n", ia, pi.x,pi.y,pi.z, nfound, sqrt(r2) );
+                //printf( "pi[%i]=pi(%5.3f,%5.3f,%5.3f) nfound %1i r2 %g \n", ia, pi.x,pi.y,pi.z, nfound, sqrt(r2) );
                 continue;
             }
         }
@@ -509,7 +521,7 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.0001, double r2min=1e-4, bool bChe
         }
         if( kmax>Kmin ){ 
             pipos[ia]=pipos[ ngs[imax] ]; 
-            printf("pi[%i] set by neigh[%i==%i] with Kpp=%g\n", ia, imax, ngs[imax], kmax ); 
+            //printf("pi[%i] set by neigh[%i==%i] with Kpp=%g\n", ia, imax, ngs[imax], kmax ); 
         }else{
             pipos[ia]=Vec3dZ; // pi cannot be define
         }
