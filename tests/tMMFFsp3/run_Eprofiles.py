@@ -83,7 +83,7 @@ def NH3_inversion():
 
 #======== Body
 
-name = sys.argv[1]
+#name = sys.argv[1]
 
 #mmff.setVerbosity( verbosity=1, idebug=0 )
 mmff.setVerbosity( verbosity=0, idebug=0 )

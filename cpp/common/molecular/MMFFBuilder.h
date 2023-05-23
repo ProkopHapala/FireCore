@@ -1522,6 +1522,7 @@ class Builder{  public:
                 conf.n-=ne;
                 for( int i=0; i<ne; i++ ){
                     int ib=nb+i;
+                    //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
                     //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) bDummyEpair=%i \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z, bDummyEpair );
                     //printf( "autoConfEPi[%i] add epair[%i] \n", ia, i );
                     addCap(ia,hs[ib],&capAtomEpair, l );
