@@ -364,7 +364,7 @@ double eval_atom(const int ia){
             const Quat4d& hj = hs[j];    
 
             //bAngleCosHalf = false;
-            double Eai;
+            //double Eai;
             //printf( "bAngleCosHalf= %i\n", bAngleCosHalf);
             if( bAngleCosHalf ){
                 E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
@@ -377,8 +377,9 @@ double eval_atom(const int ia){
                 //Eai = evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
 
             }
-            E +=Eai; 
-            Ea+=Eai;
+            
+            //E +=Eai; 
+            //Ea+=Eai;
             
             //printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
             //if(ia==ia_DBG)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
