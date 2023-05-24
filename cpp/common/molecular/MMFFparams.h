@@ -20,23 +20,20 @@ class BondType{ public:
     double stiffness;
     Vec2i   atoms;
     uint8_t order;
-    inline void sort(){ if (atoms.x>atoms.y){ _swap(atoms.x,atoms.y); }  }
-    inline uint64_t id(){ return getId( atoms.x, atoms.y, order ); }
+    inline bool            sort (){ if(atoms.x>atoms.y){ _swap(atoms.x,atoms.y); return true; } return false;  }
     inline static uint64_t getId( uint16_t at1, uint16_t at2, uint8_t order ){ if (at1>at2){ _swap(at1,at2); } return pack64( at1, at2, order, 0 ); }
+    inline uint64_t        id   (){ return getId( atoms.x, atoms.y, order ); }
 };
 
 class AngleType{ public:
     double angle0;
     double stiffness;
     Vec3i  atoms; // a-b-c  or (lever1,fulcrum,lever2)
-    inline void     sort(){ if (atoms.x>atoms.z){ _swap(atoms.x,atoms.z); }  }
-
-
+    inline bool            sort (){ if (atoms.x>atoms.z){ _swap(atoms.x,atoms.z); return true; } return false;  }
     inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c ){ if (a>c){ _swap(a,c); } return pack64( b,a,c, 0 );  }
-    inline uint64_t id(  ){ return getId( atoms.x, atoms.y, atoms.z ); }
+    inline uint64_t        id   (){ return getId( atoms.x, atoms.y, atoms.z ); }
 
 };
-
 
 class DihedralType{ public:
     Quat4i atoms;
@@ -44,9 +41,9 @@ class DihedralType{ public:
     double k;
     double ang0;
 
-    inline void            sort(){ if (atoms.y>atoms.z){ _swap(atoms.y,atoms.z); _swap(atoms.x,atoms.w); }  }
+    inline bool            sort (){ if (atoms.y>atoms.z){ _swap(atoms.y,atoms.z); _swap(atoms.x,atoms.w); return true; } return false; }
     inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c, uint16_t d ){ if (b>c){ _swap(b,c); _swap(a,d); } return pack64( b,c,a,d);  }
-    inline        uint64_t id(){ return getId(atoms.x,atoms.y,atoms.z,atoms.w); }
+    inline        uint64_t id   (){ return getId(atoms.x,atoms.y,atoms.z,atoms.w); }
 
 };
 
@@ -315,7 +312,8 @@ class MMFFparams{ public:
             string2AtomType( line, atyp );
             atypes.push_back(atyp);
             atomTypeNames.push_back( atyp.name );
-            atomTypeDict[atyp.name] = atypes.size()-1;
+            //atomTypeDict[atyp.name] = atypes.size()-1;
+            if( !atomTypeDict.insert({atyp.name, atypes.size()-1}).second ){ printf("WARRNING: atomType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
             //char str[1000];
             //atyp.toString( str );
             //printf( "%i %s %i %s \n", i, atyp.name, atypNames[atyp.name], str );
@@ -342,9 +340,141 @@ class MMFFparams{ public:
             if(line[0]=='#')continue;
             string2ElementType( line, etyp );
             etypes.push_back(etyp);
-            elementTypeDict[etyp.name] = etypes.size()-1;
+            if( !elementTypeDict.insert({ etyp.name, etypes.size()-1} ).second ){ printf("WARRNING: elementType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
+            //elementTypeDict[etyp.name] = etypes.size()-1;
         }
         return i;
+    }
+
+int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true){
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
+            return -1;
+        }
+        char buff[1024];
+        char names[2][8];
+        char name[64];
+        char * line;
+        BondType bt;
+        //line = fgets( buff, 1024, pFile ); //printf("%s",line);
+        //sscanf( line, "%i %i\n", &n );
+        int i=0;
+        for( i; i<1000; i++){
+            line = fgets( buff, 1024, pFile );
+            if(line==NULL) break;
+            if(line[0]=='#') continue;
+            //printf("%s",line);
+            sscanf(  line, "%s %s %i %lf %lf\n", names[0], names[1], &bt.order, &bt.length, &bt.stiffness );
+
+            bt.atoms.x = getAtomType(names[0]);
+            bt.atoms.y = getAtomType(names[1]);
+            if( bt.sort() && bWarnFlip ){ printf("WARRNING: bondType[%i](%s) is filled in %s\n", i, line, fname ); };
+            sprintf( name, "%s-%s-%i", atypes[bt.atoms.x].name , atypes[bt.atoms.y].name, bt.order );
+            bonds.push_back( bt );
+            if( !bondDict.insert({ name, bonds.size()-1} ).second ){ printf("WARRNING: bondType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
+
+            //printf(        "%i %i %i %lf %lf\n",  bt.atoms.x,  bt.atoms.y,  bt.order,  bt.length,  bt.stiffness );
+            //uint64_t id = bt.getId();
+            //uint64_t id = getBondTypeId( bt.at1, bt.at2, bt.order );
+            //printf( "loadBondTypes[%i] iZ(%i,%i|%i) id=%i \n", i, bt.at1, bt.at2, bt.order, id );
+            //bt.at1--; bt.at2--;
+            //bonds[id]=bt;
+        }
+        return i;
+    }
+
+    int loadAngleTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true ){
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
+            return -1;
+        }
+        char buff[1024];
+        char names[3][8];
+        char name[64];
+        char * line;
+        AngleType ang;
+        int i=0;
+        for( i; i<1000; i++){
+            line = fgets( buff, 1024, pFile );
+            if(line==NULL) break;
+            if(line[0]=='#') continue;
+            sscanf(  line,            "%s %s %s %lf %lf\n",     names[0], names[1], names[2], &ang.angle0, &ang.stiffness );
+            //printf( "loadAgnleTypes[%i] %s %s %s %lf %lf\n",i,names[0], names[1], names[2],  ang.angle0,  ang.stiffness );
+            
+            ang.atoms.x = getAtomType(names[0]);
+            ang.atoms.y = getAtomType(names[1]);
+            ang.atoms.z = getAtomType(names[2]);
+            if( ang.sort() && bWarnFlip ){ printf("WARRNING: angleType[%i](%s) is filled in %s\n", i, line, fname ); };
+            sprintf( name, "%s-%s-%s", atypes[ang.atoms.x].name , atypes[ang.atoms.y].name, atypes[ang.atoms.z].name );
+
+            angles.push_back(ang);
+            if( !angleDict.insert({ name, angles.size()-1} ).second ){ printf("WARRNING: angleType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
+
+            // uint64_t id = ang.getId();
+            // auto found = angles_.find(id);
+            // if( found != angles.end() ){ printf( "WARRNIMG!!! loadAgnleTypes() angleType[%i] same as ", i); printAngle(found->second); };
+            //angles_[id]=ang;
+        }
+        return i;
+    }
+
+    int loadDihedralTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true){
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
+            return -1;
+        }
+        char buff[1024];
+        char names[4][8];
+        char name[64];
+        char * line;
+        DihedralType dih;
+        int i=0;
+        for( i; i<1000; i++){
+            line = fgets( buff, 1024, pFile );
+            if(line==NULL) break;
+            if(line[0]=='#') continue;
+            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], dih.ang0, dih.k, dih.n );
+
+            dih.atoms.x = getAtomType(names[0]);
+            dih.atoms.y = getAtomType(names[1]);
+            dih.atoms.z = getAtomType(names[2]);
+            dih.atoms.w = getAtomType(names[3]);
+            if( dih.sort() && bWarnFlip ){ printf("WARRNING: dihedralType[%i](%s) is filled in %s\n", i, line, fname ); };   DEBUG
+            sprintf( name, "%s-%s-%s", atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.z].name );
+
+            //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
+            dihedrals.push_back(dih);
+            if( !dihedralDict.insert({ name, dihedrals.size()-1} ).second ){ printf("WARRNING: dihedralType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
+        }
+        return i;
+    }
+
+    void makeIdDicts(){
+        bonds_    .clear(); for(int i=0; i<bonds    .size(); i++){ bonds_    .insert( { bonds    [i].id(), &bonds    [i] } ); }
+        angles_   .clear(); for(int i=0; i<angles   .size(); i++){ angles_   .insert( { angles   [i].id(), &angles   [i] } ); }
+        dihedrals_.clear(); for(int i=0; i<dihedrals.size(); i++){ dihedrals_.insert( { dihedrals[i].id(), &dihedrals[i] } ); }
+    }
+
+    void init(const char* felementTypes=0, const char* fatomtypes=0, const char* fbondtypes=0, const char* fagnletypes=0, const char* fdihedraltypes=0){
+        //if(verbosity>0) 
+        //printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
+        if(felementTypes ){
+            loadElementTypes( felementTypes );
+        }
+        if(fatomtypes ){
+            loadAtomTypes( fatomtypes );
+            assignAllSubTypes();
+        }
+        if(fbondtypes    )loadBondTypes    ( fbondtypes     );
+        if(fagnletypes   )loadAngleTypes   ( fagnletypes    );
+        if(fdihedraltypes)loadDihedralTypes( fdihedraltypes );
+        makeIdDicts();
     }
 
     inline void assignSubTypes( AtomType& t ){
@@ -480,12 +610,6 @@ class MMFFparams{ public:
         if( bp==0 ){ l0=bp->length; k=bp->stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
     }
 
-    void makeIdDicts(){
-        bonds_    .clear(); for(int i=0; i<bonds    .size(); i++){ bonds_    .insert( { bonds    [i].id(), &bonds    [i] } ); }
-        angles_   .clear(); for(int i=0; i<angles   .size(); i++){ angles_   .insert( { angles   [i].id(), &angles   [i] } ); }
-        dihedrals_.clear(); for(int i=0; i<dihedrals.size(); i++){ dihedrals_.insert( { dihedrals[i].id(), &dihedrals[i] } ); }
-    }
-
     inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false )const{
         REQ.x    = atypes[ityp].RvdW;
         double e = atypes[ityp].EvdW;
@@ -533,116 +657,6 @@ class MMFFparams{ public:
 
     }
 
-    int loadBondTypes(const char * fname, bool exitIfFail=true){
-        FILE * pFile = fopen(fname,"r");
-        if( pFile == NULL ){
-            printf("cannot find %s\n", fname );
-            if(exitIfFail)exit(0);
-            return -1;
-        }
-        char buff[1024];
-        char names[2][8];
-        char name[64];
-        char * line;
-        BondType bt;
-        //line = fgets( buff, 1024, pFile ); //printf("%s",line);
-        //sscanf( line, "%i %i\n", &n );
-        int i=0;
-        for( i; i<1000; i++){
-            line = fgets( buff, 1024, pFile );
-            if(line==NULL) break;
-            if(line[0]=='#') continue;
-            //printf("%s",line);
-            sscanf(  line, "%s %s %i %lf %lf\n", names[0], names[1], &bt.order, &bt.length, &bt.stiffness );
-
-            bt.atoms.x = getAtomType(names[0]);
-            bt.atoms.y = getAtomType(names[1]);
-            bt.sort();
-            sprintf( name, "%s-%s-%i", atypes[bt.atoms.x],names[bt.atoms.x], bt.order );
-
-            bonds.push_back( bt );
-            bondDict.insert({ name, bonds.size()-1} );
-
-            //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
-            //uint64_t id = bt.getId();
-            //uint64_t id = getBondTypeId( bt.at1, bt.at2, bt.order );
-            //printf( "loadBondTypes[%i] iZ(%i,%i|%i) id=%i \n", i, bt.at1, bt.at2, bt.order, id );
-            //bt.at1--; bt.at2--;
-            //bonds[id]=bt;
-        }
-        return i;
-    }
-
-    int loadAngleTypes(const char * fname, bool exitIfFail=true){
-        FILE * pFile = fopen(fname,"r");
-        if( pFile == NULL ){
-            printf("cannot find %s\n", fname );
-            if(exitIfFail)exit(0);
-            return -1;
-        }
-        char buff[1024];
-        char names[3][8];
-        char name[64];
-        char * line;
-        AngleType ang;
-        int i=0;
-        for( i; i<1000; i++){
-            line = fgets( buff, 1024, pFile );
-            if(line==NULL) break;
-            if(line[0]=='#') continue;
-            sscanf(  line,            "%s %s %s %lf %lf\n",     names[0], names[1], names[2], &ang.angle0, &ang.stiffness );
-            //printf( "loadAgnleTypes[%i] %s %s %s %lf %lf\n",i,names[0], names[1], names[2],  ang.angle0,  ang.stiffness );
-            
-            ang.atoms.x = getAtomType(names[0]);
-            ang.atoms.y = getAtomType(names[1]);
-            ang.atoms.z = getAtomType(names[2]);
-            ang.sort();
-            sprintf( name, "%s-%s-%s", atypes[ang.atoms.x], names[ang.atoms.y], names[ang.atoms.z]  );
-
-            angles.push_back(ang);
-            angleDict.insert({ name, angles.size()-1} );
-
-            // uint64_t id = ang.getId();
-            // auto found = angles_.find(id);
-            // if( found != angles.end() ){ printf( "WARRNIMG!!! loadAgnleTypes() angleType[%i] same as ", i); printAngle(found->second); };
-            //angles_[id]=ang;
-        }
-        return i;
-    }
-
-    int loadDihedralTypes(const char * fname, bool exitIfFail=true){
-        FILE * pFile = fopen(fname,"r");
-        if( pFile == NULL ){
-            printf("cannot find %s\n", fname );
-            if(exitIfFail)exit(0);
-            return -1;
-        }
-        char buff[1024];
-        char names[4][8];
-        char name[64];
-        char * line;
-        DihedralType dih;
-        int i=0;
-        for( i; i<1000; i++){
-            line = fgets( buff, 1024, pFile );
-            if(line==NULL) break;
-            if(line[0]=='#') continue;
-            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], dih.ang0, dih.k, dih.n );
-
-            dih.atoms.x = getAtomType(names[0]);
-            dih.atoms.y = getAtomType(names[1]);
-            dih.atoms.z = getAtomType(names[2]);
-            dih.atoms.w = getAtomType(names[3]);
-            dih.sort();
-            sprintf( name, "%s-%s-%s-%s", atypes[dih.atoms.x], names[dih.atoms.y], names[dih.atoms.z], names[dih.atoms.w] );
-
-            //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
-            dihedrals.push_back(dih);
-            dihedralDict.insert({ name, dihedrals.size()-1} );
-        }
-        return i;
-    }
-
     void printAngle(const AngleType& at){
         printf( "%s %s %s %g %g\n", atypes[at.atoms.a].name, atypes[at.atoms.b].name, atypes[at.atoms.c].name, at.angle0, at.stiffness );
     }
@@ -658,20 +672,6 @@ class MMFFparams{ public:
             getBondParams( atomType[ib.x], atomType[ib.y], bondOrder[i], bond_0[i], bond_k[i] );
             //printf( "%i (%i %i) %i %g %g \n", i, atomType[ib.x], atomType[ib.y], bondOrder[i], bond_0[i], bond_k[i] );
         }
-    }
-
-    void init(const char* felementTypes=0, const char* fatomtypes=0, const char* fbondtypes=0, const char* fagnletypes=0){
-        //if(verbosity>0) 
-        //printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
-        if(felementTypes ){
-            loadElementTypes( felementTypes );
-        }
-        if(fatomtypes ){
-            loadAtomTypes( fatomtypes );
-            assignAllSubTypes();
-        }
-        if(fbondtypes )loadBondTypes( fbondtypes  );
-        if(fagnletypes)loadAngleTypes( fagnletypes );
     }
 
     bool cellFromString( char* s, Mat3d& lvec )const{
