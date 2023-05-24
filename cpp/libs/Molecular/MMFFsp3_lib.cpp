@@ -6,6 +6,7 @@ int verbosity = 1;
 int idebug    = 0;
 double tick2second=1e-9;
 
+#include "testUtils.h"
 #include "MolWorld_sp3_simple.h"
 
 // ============ Global Variables
@@ -13,6 +14,7 @@ double tick2second=1e-9;
 MolWorld_sp3_simple W;
 
 //============================
+
 
 #include "libMMFF.h"
 #include "libUtils.h"
@@ -42,13 +44,13 @@ void init_buffers(){
     //for( auto c : buffers ){ printf("buff>>%s<<\n", c.first.c_str() ); }
 }
 
-void* init( const char* xyz_name, const char* smile_name, int* nPBC,  const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){
+void* init( const char* xyz_name, const char* smile_name, int* nPBC, const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){
 	//printf( "DEBUG nPBC(%i,%i,%i)\n", nPBC[0],nPBC[1],nPBC[2] );
     W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
     W.nPBC       = *(Vec3i*)nPBC;
     W.tmpstr=tmpstr;
-    W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes );
+    W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
 	W.builder.bindParams(&W.params);
     W.init();
     //init_buffers();
