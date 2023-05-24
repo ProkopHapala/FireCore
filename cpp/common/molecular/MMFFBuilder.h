@@ -3083,7 +3083,7 @@ void makeNeighs( int*& neighs, int perAtom ){
 }
 
 #ifdef MMFFsp3_loc_h
-void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
+void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool bUFF=true ){
 
         //double c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
         double ang0s[3]{ 109.5 *M_PI/180.0, 120.0*M_PI/180.0, 180.0*M_PI/180.0 }; // cos(angle)   sp1 sp2 sp3
@@ -3160,15 +3160,11 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                     ngs[k] = ja;
                     bL [k]=B.l0;
                     bK [k]=B.k;
-
-                    { // UFF
+                    if(bUFF){
                         Vec2d bLK = assignBondParamsUFF( ib );
                         bL [k]=bLK.x;
                         bK [k]=bLK.y;
-                        double Kss_uff = params->assignAngleParamUFF( A.type, Aj.type, Aj.type, bL[k], bL[k] );
-                        //printf( "atom[%i] Kss=%g Kss_uff=%g (%s|%s) \n", ia, ff.apars[ia].z, Kss_uff, params->atypes[A.type].name,params->atypes[Aj.type].name );
                     }
-
                     //Ksp[k]=0;
                     if( (conf.npi>0)||(conf.ne>0) ){ Ksp[k]= atyp.Ksp;}else{ Ksp[k]=0; }
                     int nej  = getAtom_ne (ja);
@@ -3186,7 +3182,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
                         ff.atypes[ie] = etyp;
                         bK [k]=Kepair;
                         bL [k]=Lepair;
-                        //Ksp[k]=0;
+                        //Ksp[k]=0;                angs[iang].x = cos(ang0);
                         if( conf.npi>0 ){ Ksp[k]=atyp.Ksp; }else{ Ksp[k]=0; }  // only electron on atoms without pi-orbital are conjugted with pi-orbitas on neighboring atoms
                         iie++;
                     }
@@ -3201,7 +3197,48 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true ){
         //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
         if(verbosity>0)printf(  "MM:Builder::toMMFFsp3_loc() DONE \n"  );
     }
-#endif // MMFFf4_h
+
+void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
+    for(int ia=0; ia<ff.ncap; ia++ ){
+        int iat = ff.atypes[ia];
+        AtomType& atyp = params->atypes[iat];
+        int*    ngs = ff.neighs[ia].array;
+        Vec3d* angs = ff.angles    + ia*6;
+        double*  bL   = ff.bLs[ia].array;
+        double*  bK   = ff.bKs[ia].array;
+        int iang=0;
+        for(int i=0; i<3; i++){
+            int ing = ngs[i];
+            if(ing<0) break;
+            int it = ff.atypes[ing];
+            for(int j=i+1; j<4; j++){
+                int jng  = ngs[j];
+                if(jng<0) break; 
+                int jt = ff.atypes[jng];
+                double ang0;
+                double k;
+                if(bUFF){
+                    double ang0    = atyp.Ass*deg2rad;
+                    double Kss_uff = params->assignAngleParamUFF( iat, it, jt, bL[i], bL[j] );
+                }else{
+                    AngleType* ang = params->getAngleType( it, iat, jt, true, true );
+                    ang0 = ang->angle0;
+                    k    = ang->stiffness;
+                }
+                ang0 *= 0.5;
+                angs[iang].x = cos(ang0);
+                angs[iang].y = sin(ang0);
+                angs[iang].z = k;
+                iang++; 
+            }
+        }
+    }
+}
+
+#endif // MMFFsp3_loc_h
+
+
+
 
 #ifdef MMFFf4_h
 void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
