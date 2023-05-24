@@ -188,8 +188,11 @@ void setOptimizer( int n, double* ps, double* fs ){
 }
 void setOptimizer(){ setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs ); };
 
-void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){
-    params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes );
+void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes=0 ){
+    
+
+
+    params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
     builder.bindParams(&params);
     params_glob = &params;
     builder.capAtomEpair.type = params.getAtomType("E");
@@ -198,6 +201,9 @@ void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBo
     //params.printAtomTypeDict();
     //params.printAtomTypes();
     //params.printBond();
+    params.printBondTypes    ();
+    params.printAngleTypes   ();
+    params.printDihedralTypes();
 }
 
 int buildMolecule_xyz( const char* xyz_name ){

@@ -62,13 +62,13 @@ class ElementType{ public:
     bool   bQEq;
     double Eaff,Ehard,Ra,eta;
 
-    char* toString( char * str, bool bParams=false ){
+    char* toString( char * str, bool bParams=false )const{
         str         +=sprintf( str, "%s %i %i %i %x", name,  iZ, neval, valence, color );
         if(bParams)   sprintf( str, "%g %g %g   %g %g %g %g",  RvdW, EvdW, Quff,  Eaff,Ehard,Ra,eta  );
         return str;
     }
 
-    void print(int i, bool bParams=false ){ 
+    void print(int i, bool bParams=false )const{ 
         printf           ( "AtomType[%i,%s] %i(%i,%i) %x ", i,name,  iZ, neval, valence, color ); 
         if(bParams)printf( "REQuff(%g,%g,%g) QEq(%g,%g,%g)", RvdW, EvdW, Quff,  Eaff,Ehard,Ra,eta ); 
         printf( "\n"  ); 
@@ -110,13 +110,13 @@ class AtomType{ public:
     //double    polarizability;
 
 
-    char* toString( char * str, bool bParams=false ){
+    char* toString( char * str, bool bParams=false )const{
         str         +=sprintf( str, "%s %i %i %i %i %i", name,  iZ,  valence, nepair,npi,sym );
         if(bParams)   sprintf( str, "%g %g %g %g   %g %g %g %g %g %g",  RvdW,EvdW,Qbase,Hb,  Ass,Asp, Kss,Ksp,Kep,Kpp );
         return str;
     }
 
-    void print(int i, bool bParams=false ){ 
+    void print(int i, bool bParams=false )const{ 
         printf           ( "AtomType[%i,%s] %i(%i,%i,%i,%i) ", i,name,  iZ,  valence, nepair,npi,sym  ); 
         if(bParams)printf( "REQH(%g,%g,%g,%g) MMFF(%g,%g,%g,%g,%g,%g)", RvdW,EvdW,Qbase,Hb,  Ass,Asp, Kss,Ksp,Kep,Kpp ); 
         printf( "\n"  ); 
@@ -370,7 +370,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
 
             bt.atoms.x = getAtomType(names[0]);
             bt.atoms.y = getAtomType(names[1]);
-            if( bt.sort() && bWarnFlip ){ printf("WARRNING: bondType[%i](%s) is filled in %s\n", i, line, fname ); };
+            if( bt.sort() && bWarnFlip ){ printf("WARRNING: bondType[%i](%s) is flipped in %s\n", i, line, fname ); };
             sprintf( name, "%s-%s-%i", atypes[bt.atoms.x].name , atypes[bt.atoms.y].name, bt.order );
             bonds.push_back( bt );
             if( !bondDict.insert({ name, bonds.size()-1} ).second ){ printf("WARRNING: bondType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
@@ -408,7 +408,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             ang.atoms.x = getAtomType(names[0]);
             ang.atoms.y = getAtomType(names[1]);
             ang.atoms.z = getAtomType(names[2]);
-            if( ang.sort() && bWarnFlip ){ printf("WARRNING: angleType[%i](%s) is filled in %s\n", i, line, fname ); };
+            if( ang.sort() && bWarnFlip ){ printf("WARRNING: angleType[%i](%s) is flipped in %s\n", i, line, fname ); };
             sprintf( name, "%s-%s-%s", atypes[ang.atoms.x].name , atypes[ang.atoms.y].name, atypes[ang.atoms.z].name );
 
             angles.push_back(ang);
@@ -423,6 +423,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
     }
 
     int loadDihedralTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true){
+        printf( "MMFFparams::loadDihedralTypes(%s)\n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -439,16 +440,15 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             line = fgets( buff, 1024, pFile );
             if(line==NULL) break;
             if(line[0]=='#') continue;
-            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], dih.ang0, dih.k, dih.n );
-
+            //printf( "line(%s)\n", line );
+            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], &dih.k, &dih.ang0, &dih.n );
             dih.atoms.x = getAtomType(names[0]);
             dih.atoms.y = getAtomType(names[1]);
             dih.atoms.z = getAtomType(names[2]);
             dih.atoms.w = getAtomType(names[3]);
-            if( dih.sort() && bWarnFlip ){ printf("WARRNING: dihedralType[%i](%s) is filled in %s\n", i, line, fname ); };   DEBUG
-            sprintf( name, "%s-%s-%s", atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.z].name );
-
-            //printf(        "%i %i %i %lf %lf\n",  bt.at1,  bt.at2,  bt.order,  bt.length,  bt.stiffness );
+            if( dih.sort() && bWarnFlip ){ printf("WARRNING: dihedralType[%i](%s) is flipped in %s\n", i, line, fname ); }; 
+            sprintf( name, "%s-%s-%s-%s", atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.w].name );
+            printf( "dihedral[%i] %s-%s-%s-%s k %g ang0 %g n %i \n", dihedrals.size(), atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.w].name,  dih.k, dih.ang0, dih.n  );
             dihedrals.push_back(dih);
             if( !dihedralDict.insert({ name, dihedrals.size()-1} ).second ){ printf("WARRNING: dihedralType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
         }
@@ -584,28 +584,31 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         return 0;
     }
 
-    BondType* getBondType( int ityp, int jtyp, int order, bool bParrents=true, bool bElem=false )const{
+    BondType* getBondType( int ityp, int jtyp, int order, bool bParrents=true, bool bElem=true )const{
         //uint64_t id = BondType::getId( atypes[atyp1].iZ, atypes[atyp2].iZ, btyp );
         uint64_t id   = BondType::getId( ityp, jtyp, order );
         auto it       = bonds_.find(id);
         if( it != bonds_.end() ){ return it->second; } 
         if(bParrents==0){
-            id  = BondType::getId( atypes[ityp].parrent, jtyp, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
-            id  = BondType::getId( atypes[jtyp].parrent, ityp, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+            if(reportIfMissing){ printf("WARRNING!!! getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by parrents(%i,%i) \n", ityp, jtyp, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
+            id  = BondType::getId( atypes[ityp].parrent,        jtyp,          order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+            id  = BondType::getId(        ityp,          atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+            id  = BondType::getId( atypes[ityp].parrent, atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
         }
         if(bElem){
+            if(reportIfMissing){ printf("WARRNING!!! getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by elems(%i,%i) \n", ityp, jtyp, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
             int i0 = atomTypeDict.find( elementOfAtomType(ityp)->name )->second;
             int j0 = atomTypeDict.find( elementOfAtomType(jtyp)->name )->second; 
             id  = BondType::getId( i0, j0, order ); 
             it = bonds_.find(id); 
             if( it!=bonds_.end()){ return it->second; }
         }
-        if(reportIfMissing){ printf("WARRNING!!! getBondParams() missing atyps(%i,%i) iZs(%i,%i) o(%i)id(%i)=>l0 %g k %g \n", ityp, ityp, atypes[ityp].iZ, atypes[ityp].iZ, order, id, default_bond_length, default_bond_stiffness ); };
+        if(reportIfMissing){ printf("WARRNING!!! getBondParams(ityp=%i,jtyp=%i,order=%i) missing => defaults: l0 %g k %g \n", ityp, jtyp, order, default_bond_length, default_bond_stiffness ); };
         if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };  
         return 0;
     }
 
-    bool getBondParams( int ityp, int jtyp, int order,  double& l0, double& k, bool bParrents=true, bool bElem=false )const{
+    bool getBondParams( int ityp, int jtyp, int order,  double& l0, double& k, bool bParrents=true, bool bElem=true )const{
         BondType* bp = getBondType( ityp, jtyp, order, bParrents, bElem );
         if( bp==0 ){ l0=bp->length; k=bp->stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
     }
@@ -626,7 +629,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         }
     }
 
-    void assignQEq( int n, int* itypes, double* affins, double* hards ){
+    void assignQEq( int n, int* itypes, double* affins, double* hards )const{
         for(int i=0; i<n; i++){
             int ityp = itypes[i];
             int iet  = atypes[ityp].element; 
@@ -635,8 +638,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         }
     }
 
-
-    double assignAngleParamUFF( int ic, int ia, int ib, double ra, double rb ){  
+    double assignAngleParamUFF( int ic, int ia, int ib, double ra, double rb )const{  
         const AtomType& tc    = atypes[ic];
         //const AtomType& ta    = atypes[ia];
         //const AtomType& tb    = atypes[ib];
@@ -657,13 +659,24 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
 
     }
 
-    void printAngle(const AngleType& at){
-        printf( "%s %s %s %g %g\n", atypes[at.atoms.a].name, atypes[at.atoms.b].name, atypes[at.atoms.c].name, at.angle0, at.stiffness );
+    void printBond(int i)const{
+        const BondType& t = bonds[i];
+        printf( "bondType[%3i] %s-%s l0(%7.3f) k(%7.3f)\n", i, atypes[t.atoms.x].name, atypes[t.atoms.y].name, t.length, t.stiffness );
+    }
+    void printAngle(int i)const{
+        const AngleType& t = angles[i];
+        printf( "angleType[%3i] %s-%s-%s ang0(%7.3f) k(%7.3f) \n", i, atypes[t.atoms.x].name, atypes[t.atoms.y].name, atypes[t.atoms.z].name, t.angle0, t.stiffness );
+    }
+    void printDihedral(int i)const{
+        const DihedralType& t = dihedrals[i];
+        printf( "dihedralType[%3i] %s-%s-%s-%s ang0(%7.3f) k(%7.3f) n(%i)\n", i, atypes[t.atoms.x].name, atypes[t.atoms.y].name, atypes[t.atoms.z].name, atypes[t.atoms.w].name, t.ang0, t.k, t.n );
     }
 
-    void printAtomTypes(bool bParams){
-        for(int i=0; i<atypes.size(); i++ ){ atypes[i].print(i, bParams );  }
-    }
+    void printAtomTypes(bool bParams)const{   for(int i=0; i<atypes.size(); i++ ){ atypes[i].print(i, bParams );  }  }
+    void printBondTypes    ()const{ printf("MMFFparams::printBondTypes()\n");     for(int i=0; i<bonds.size();     i++ ){ printBond(i);     } }
+    void printAngleTypes   ()const{ printf("MMFFparams::printAngleTypes()\n");    for(int i=0; i<angles.size();    i++ ){ printAngle(i);    } }
+    void printDihedralTypes()const{ printf("MMFFparams::printDihedralTypes()\n"); for(int i=0; i<dihedrals.size(); i++ ){ printDihedral(i); } }
+
 
     void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){
         //printf("fillBondParams: %i\n", nbonds);
