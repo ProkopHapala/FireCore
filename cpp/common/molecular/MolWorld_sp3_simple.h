@@ -246,6 +246,8 @@ void makeMMFF(){
     //printf( "makeMMFF() bDummyEpair=%i \n", builder.bDummyEpair );
     //printf( "buildMolecule_xyz W.builder.bDummyEpair=%i builder.bAutoTypes=%i \n", builder.bDummyEpair, builder.bAutoTypes );
     builder.toMMFFsp3_loc( ffl, true, builder.bDummyEpair ); //ffl.printAtomParams(); ffl.printBKneighs(); 
+    //builder.assignAnglesMMFFsp3( ffl, true ); // using UFF
+    builder.assignAnglesMMFFsp3( ffl, false );  // using AngleTypes.dat
     ffl.setLvec(       builder.lvec);
     nPBC=Vec3i{0,0,0};
     ffl.makeNeighCells( nPBC );  
