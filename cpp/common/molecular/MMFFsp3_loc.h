@@ -688,6 +688,29 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.0001, double r2min=1e-4, bool bChe
     //for(int ia=0; ia<nnode; ia++){  pipos[ia]=Vec3dZ ; } // DEBUG
 }
 
+int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
+    double F2conv = Fconv*Fconv;
+    double E=0,F2=0;
+    int    itr=0;
+    for(itr=0; itr<niter; itr++){
+        {E=0;F2=0;}
+        cleanForce();
+        normalizePis();
+        {Eb=0;Ea=0;Eps=0;EppT=0;EppI=0;}
+        for(int ia=0; ia<nnode; ia++){ 
+            E += eval_atom(ia);
+        }
+        for(int ia=0; ia<nnode; ia++){
+            assemble_atom( ia );
+        }
+        for(int i=natoms; i<nvecs; i++){
+            F2 +=move_atom_MD( i, dt, Flim, 0.9 );
+        }
+        if(F2<F2conv){ return itr; }
+    }
+    return itr;
+}
+
 void normalizePis(){ 
     for(int i=0; i<nnode; i++){ pipos[i].normalize(); } 
 }

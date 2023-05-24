@@ -124,9 +124,10 @@ class MolWorld_sp3 : public SolverInterface { public:
 	bool bPlaneSurfForce  = false;
     bool bMMFF            = true;
     bool bRigid           = false;
-	bool bOptimizer  = true; 
-	bool bPBC        = false;
+	bool bOptimizer       = true; 
+	bool bPBC             = false;
 	bool bCheckInvariants = true;
+    bool bRelaxPi         = false;
 	Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
     bool bChargeUpdated=false;
@@ -622,7 +623,9 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
 }
 
 void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes ){
+    printf( "MolWorld_sp3::initParams():\n\tsElemTypes(%s)\n\tsAtomTypes(%s)\n\tsBondTypes(%s)\n\tsAngleTypes(%s)\n", sElemTypes, sAtomTypes, sBondTypes, sAngleTypes );
     params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes );
+    DEBUG
     builder.bindParams(&params);
     params_glob = &params;
     builder.capAtomEpair.type = params.getAtomType("E");
@@ -713,6 +716,7 @@ virtual void makeFFs(){
         //setOptimizer(); 
         //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
         setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
+        if(bRelaxPi) ffl.relax_pi( 1000, 0.1, 1e-4 );
         ffl.vapos = (Vec3d*)opt.vel;
     }                         
     _realloc( manipulation_sel, ff.natoms );

@@ -55,10 +55,11 @@ void* init( const char* xyz_name, const char* smile_name, int* nPBC,  const char
     return &W;
 }
   
-int  buildMolecule_xyz( const char* xyz_name, bool bEpairs, double fAutoCharges, bool bAutoTypes, bool bRelaxPi ){  W.builder.bDummyEpair=bEpairs; W.builder.bAutoTypes=bAutoTypes; W.bRelaxPi=bRelaxPi; W.fAutoCharges=fAutoCharges;  
-//printf( "buildMolecule_xyz W.builder.bDummyEpair=%i bEpairs=%i \n", W.builder.bDummyEpair, bEpairs );
-return W.buildMolecule_xyz( xyz_name ); 
- }
+// int  buildMolecule_xyz( const char* xyz_name, bool bEpairs, double fAutoCharges, bool bAutoTypes, bool bRelaxPi ){  
+//     W.builder.bDummyEpair=bEpairs; W.builder.bAutoTypes=bAutoTypes; W.bRelaxPi=bRelaxPi; W.fAutoCharges=fAutoCharges;  
+//     //printf( "buildMolecule_xyz W.builder.bDummyEpair=%i bEpairs=%i \n", W.builder.bDummyEpair, bEpairs );
+//     return W.buildMolecule_xyz( xyz_name ); 
+// }
   
 int    run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){
     //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
