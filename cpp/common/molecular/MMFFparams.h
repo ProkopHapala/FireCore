@@ -37,13 +37,14 @@ class AngleType{ public:
 
 class DihedralType{ public:
     Quat4i atoms;
+    int    bo;
     int    n;
     double k;
     double ang0;
 
     inline bool            sort (){ if (atoms.y>atoms.z){ _swap(atoms.y,atoms.z); _swap(atoms.x,atoms.w); return true; } return false; }
-    inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c, uint16_t d ){ if (b>c){ _swap(b,c); _swap(a,d); } return pack64( b,c,a,d);  }
-    inline        uint64_t id   (){ return getId(atoms.x,atoms.y,atoms.z,atoms.w); }
+    inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c, uint16_t d, int order ){ if (b>c){ _swap(b,c); _swap(a,d); } return pack64( b,c,a,d+order);  }
+    inline        uint64_t id   (){ return getId(atoms.x,atoms.y,atoms.z,atoms.w,bo); }
 
 };
 
@@ -441,14 +442,14 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             if(line==NULL) break;
             if(line[0]=='#') continue;
             //printf( "line(%s)\n", line );
-            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], &dih.k, &dih.ang0, &dih.n );
+            sscanf(  line, "%s %s %s %s %lf %lf %i\n", names[0], names[1], names[2], names[3], &dih.bo, &dih.k, &dih.ang0, &dih.n );
             dih.atoms.x = getAtomType(names[0]);
             dih.atoms.y = getAtomType(names[1]);
             dih.atoms.z = getAtomType(names[2]);
             dih.atoms.w = getAtomType(names[3]);
             if( dih.sort() && bWarnFlip ){ printf("WARRNING: dihedralType[%i](%s) is flipped in %s\n", i, line, fname ); }; 
-            sprintf( name, "%s-%s-%s-%s", atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.w].name );
-            printf( "dihedral[%i] %s-%s-%s-%s k %g ang0 %g n %i \n", dihedrals.size(), atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.w].name,  dih.k, dih.ang0, dih.n  );
+            sprintf( name, "%s-%s-%s-%s-%i", atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, dih.bo, atypes[dih.atoms.w].name );
+            printf( "dihedral[%i] %s-%s-%s-%s-%i k %g ang0 %g n %i \n", dihedrals.size(), atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.w].name, dih.bo, dih.k, dih.ang0, dih.n  );
             dihedrals.push_back(dih);
             if( !dihedralDict.insert({ name, dihedrals.size()-1} ).second ){ printf("WARRNING: dihedralType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
         }
@@ -502,31 +503,33 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         }
     }
 
-    DihedralType* getDihedralType( int iat, int ityp, int jtyp, int jat, bool bWildcards=true, bool bParrents=true ){
+    DihedralType* getDihedralType( int iat, int ityp, int jtyp, int jat, int order, bool bWildcards=true, bool bParrents=true ){
         char tmp[64];
         if(ityp>jtyp){ _swap(ityp,jtyp); _swap(iat,jat); }
 
-        sprintf( tmp, "%s-%s-%s-%s", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name );
+        sprintf( tmp, "%s-%s-%s-%s-%i", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name, order );
         auto found = dihedralDict.find(tmp);
         if( found != dihedralDict.end() ) return &dihedrals[found->second];
         
         if(bParrents){
             int i1,i2,i3,i4;
             for(int i=0; i<16; i++ ){
-                if(i1 & 1 ){ i1=atypes[iat ].parrent; }else{ i1=iat;  }
-                if(i2 & 4 ){ i2=atypes[ityp].parrent; }else{ i2=ityp; }
-                if(i3 & 8 ){ i3=atypes[jtyp].parrent; }else{ i3=jtyp; }
-                if(i4 & 2 ){ i4=atypes[jat ].parrent; }else{ i4=jat;  }
-                sprintf( tmp, "%s-%s-%s-%s", atypes[i1].name,atypes[i2].name,atypes[i3].name,atypes[i4].name );
+                if(i&1){ i1=atypes[iat ].parrent; }else{ i1=iat;  }
+                if(i&4){ i2=atypes[ityp].parrent; }else{ i2=ityp; }
+                if(i&8){ i3=atypes[jtyp].parrent; }else{ i3=jtyp; }
+                if(i&2){ i4=atypes[jat ].parrent; }else{ i4=jat;  }
+                sprintf( tmp, "%s-%s-%s-%s-%i", atypes[i1].name,atypes[i2].name,atypes[i3].name,atypes[i4].name,  order );
                 found = dihedralDict.find(tmp);
-                if( found != dihedralDict.end() ) return &dihedrals[found->second];
+                if( found != dihedralDict.end() ){ 
+                    return &dihedrals[found->second];
+                }
             }
             
         }
 
         if(bWildcards){
             // wildcard
-            sprintf( tmp, "*-%s-%s-*", atypes[ityp].name,atypes[jtyp].name );
+            sprintf( tmp, "*-%s-%s-*-%i", atypes[ityp].name,atypes[jtyp].name,  order );
             found = dihedralDict.find(tmp);
             if( found != dihedralDict.end() ) return &dihedrals[found->second];
             if(bParrents){
@@ -534,9 +537,11 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
                 for(int i=0; i<16; i++ ){
                     if(i1 & 1 ){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
                     if(i2 & 2 ){ i2=atypes[jtyp].parrent; }else{ i2=jtyp; }
-                    sprintf( tmp, "*-%s-%s-*", atypes[i1].name,atypes[i2].name );
+                    sprintf( tmp, "*-%s-%s-*-%i", atypes[i1].name,atypes[i2].name,  order );
                     found = dihedralDict.find(tmp);
-                    if( found != dihedralDict.end() ) return &dihedrals[found->second];
+                    if( found != dihedralDict.end() ){
+                        return &dihedrals[found->second];
+                    }
                 }   
             }
         }
@@ -553,19 +558,25 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         if( found != angleDict.end() ) return &angles[found->second];
         
         if(bParrents){
+            if(reportIfMissing){ printf("WARRNING!!! getAngleType(%s-%s-%s) missing, trying find by parrents(%s-%s-%s) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,   atypes[atypes[iat].parrent].name, atypes[atypes[ityp].parrent].name, atypes[atypes[jat].parrent].name ); };
             int i1,i2,i3;
             for(int i=0; i<8; i++ ){
-                if(i1 & 1 ){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
-                if(i2 & 2 ){ i2=atypes[iat ].parrent; }else{ i2=iat;  }
-                if(i3 & 4 ){ i3=atypes[jat ].parrent; }else{ i3=jat;  }
+                if(i&1){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
+                if(i&2){ i2=atypes[iat ].parrent; }else{ i2=iat;  }
+                if(i&4){ i3=atypes[jat ].parrent; }else{ i3=jat;  }
                 sprintf( tmp, "%s-%s-%s", atypes[i2].name, atypes[i1].name, atypes[i3].name );
+                //printf( "try[%i] angleDict[%s]\n", i, tmp );
                 found = angleDict.find(tmp);
-                if( found != angleDict.end() ) return &angles[found->second];
+                if( found != angleDict.end() ){
+                    printf( "found[%i] angleDict[%s]\n", i, tmp );
+                    return &angles[found->second];
+                }
             }
             
         }
 
         if(bWildcards){
+            if(reportIfMissing){ printf("WARRNING!!! getAngleType(%s-%s-%s) missing, trying find by wildcard(*-%s-*) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,    atypes[atypes[ityp].parrent].name ); };
             // wildcard
             sprintf( tmp, "*-%s-*", atypes[iat].name );
             found = angleDict.find(tmp);
@@ -576,7 +587,10 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
                     if(i1 & 1 ){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
                     sprintf( tmp, "*-%s-*", atypes[i1].name );
                     found = angleDict.find(tmp);
-                    if( found != angleDict.end() ) return &angles[found->second];
+                    if( found != angleDict.end() ){
+                        printf( "found[%i] angleDict[%s]\n", i, tmp );
+                        return &angles[found->second];
+                    }
                 }   
             }
         }
