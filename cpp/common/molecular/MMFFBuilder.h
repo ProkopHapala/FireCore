@@ -1755,7 +1755,7 @@ class Builder{  public:
                 int ia = bonds[ ib ].getNeighborAtom(b.i);  int iat = atoms[ia].type;
                 int ja = bonds[ jb ].getNeighborAtom(b.j);  int jat = atoms[ja].type;
                 Dihedral tor;
-                DihedralType* dtyp = params->getDihedralType( iat, ityp, jtyp, jat );
+                DihedralType* dtyp = params->getDihedralType( iat, ityp, jtyp, jat, bonds[ibond].type );
                 tor.a0    = dtyp->ang0;
                 tor.k     = dtyp->ang0;
                 tor.n     = dtyp->n;
@@ -3199,7 +3199,9 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
     }
 
 void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
-    for(int ia=0; ia<ff.ncap; ia++ ){
+    printf( "MM::Builder::assignAnglesMMFFsp3()\n" );
+    for(int ia=0; ia<ff.nnode; ia++ ){
+        printf( "assignTorsionsMMFFsp3[ia=%i]\n", ia );
         int iat = ff.atypes[ia];
         AtomType& atyp = params->atypes[iat];
         int*    ngs = ff.neighs[ia].array;
@@ -3222,6 +3224,7 @@ void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
                     double Kss_uff = params->assignAngleParamUFF( iat, it, jt, bL[i], bL[j] );
                 }else{
                     AngleType* ang = params->getAngleType( it, iat, jt, true, true );
+                    if(ang==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ia=%i,%i,%i) cannot find angle type(%i,%i,%i)(%s,%s,%s) =>Exit()\n", ia,i,j, it, iat, jt,  params->atypes[it].name,params->atypes[iat].name, params->atypes[jt].name ); exit(0); };
                     ang0 = ang->angle0;
                     k    = ang->stiffness;
                 }
@@ -3230,6 +3233,41 @@ void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
                 angs[iang].y = sin(ang0);
                 angs[iang].z = k;
                 iang++; 
+            }
+        }
+    }
+}
+
+void assignTorsionsMMFFsp3( MMFFsp3_loc& ff, bool bNonPi=false, bool bNO=true ){
+    printf( "MM::Builder::assignTorsionsMMFFsp3()\n" );
+    int nb = bonds.size();
+    //Quat4i*  tors2atom =0;
+    //Quat4d*  torsParams=0;
+    std::vector<Quat4i> tors2atom;
+    std::vector<Quat4d> torsParams;
+    for(int ib=0; ib<nb; ib++ ){
+        printf( "assignTorsionsMMFFsp3[ib=%i]\n", ib );
+        Vec2i b = bonds[ib].atoms;
+        int ic = atoms[b.i].iconf;
+        int jc = atoms[b.j].iconf;
+        if( (ic<0)||(jc<0) ) continue;  // must be bond between node atoms
+        const AtomConf& ci = confs[ic];
+        const AtomConf& cj = confs[jc];
+        if( (!bNonPi) && ((ci.npi!=1)||(cj.npi!=1))){
+            int iZ = params->atypes[ atoms[b.i].type ].iZ;
+            int jZ = params->atypes[ atoms[b.j].type ].iZ;
+            if(( ((iZ==7)||(iZ==8)) && ( cj.npi==1 ) )
+             ||( ((jZ==7)||(jZ==8)) && ( ci.npi==1 ) )){
+            }else{ continue; }
+        }
+        for(int i=0; i<ci.nbond; i++ ){
+            int iia = bonds[ci.neighs[i]].getNeighborAtom(b.i);
+            for(int j=0; j<cj.nbond; j++ ){
+                int jja = bonds[ci.neighs[j]].getNeighborAtom(b.j);
+                DihedralType* dih = params->getDihedralType( atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, bonds[ib].type, true, true );
+                if(dih==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ib=%i,%i,%i) cannot find angle type(%i,%i,%i,%i|%i) =>Exit()\n", ib,i,j, atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, bonds[ib].type ); exit(0); };
+                tors2atom .push_back( Quat4i{ iia,b.i,b.j,jja} );
+                torsParams.push_back( Quat4d{cos(dih->ang0), sin(dih->ang0), dih->k, dih->n} );
             }
         }
     }
