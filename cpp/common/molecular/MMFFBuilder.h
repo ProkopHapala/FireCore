@@ -3240,6 +3240,8 @@ void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
 
 void assignTorsionsMMFFsp3( MMFFsp3_loc& ff, bool bNonPi=false, bool bNO=true ){
     printf( "MM::Builder::assignTorsionsMMFFsp3()\n" );
+
+    int default_order = 2;
     int nb = bonds.size();
     //Quat4i*  tors2atom =0;
     //Quat4d*  torsParams=0;
@@ -3260,12 +3262,22 @@ void assignTorsionsMMFFsp3( MMFFsp3_loc& ff, bool bNonPi=false, bool bNO=true ){
              ||( ((jZ==7)||(jZ==8)) && ( ci.npi==1 ) )){
             }else{ continue; }
         }
+
+        int order = bonds[ib].type;
+        if(order<0){
+            printf( "WARRNING: in assignTorsionsMMFFsp3[ib=%i] order=%i changed to %i \n", ib, order, default_order ); 
+            order=default_order;
+        } 
+
         for(int i=0; i<ci.nbond; i++ ){
+            if( ci.neighs[i] == ib ) continue;
             int iia = bonds[ci.neighs[i]].getNeighborAtom(b.i);
             for(int j=0; j<cj.nbond; j++ ){
-                int jja = bonds[ci.neighs[j]].getNeighborAtom(b.j);
-                DihedralType* dih = params->getDihedralType( atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, bonds[ib].type, true, true );
-                if(dih==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ib=%i,%i,%i) cannot find angle type(%i,%i,%i,%i|%i) =>Exit()\n", ib,i,j, atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, bonds[ib].type ); exit(0); };
+                if( cj.neighs[j] == ib ) continue;
+                int jja = bonds[cj.neighs[j]].getNeighborAtom(b.j);
+                printf( "dih atoms{%i,%i,%i,%i} types{%i,%i,%i,%i} type_names{%s,%s,%s,%s}\n",   iia,b.i,b.j,jja,    atoms[iia].type,atoms[b.i].type,atoms[b.j].type,atoms[jja].type,  params->atypes[atoms[iia].type].name,params->atypes[atoms[b.i].type].name,params->atypes[atoms[b.j].type].name,params->atypes[atoms[jja].type].name     );
+                DihedralType* dih = params->getDihedralType( atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order, true, true );
+                if(dih==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ib=%i,%i,%i) cannot find angle type(%i,%i,%i,%i|%i) =>Exit()\n", ib,i,j, atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order ); exit(0); };
                 tors2atom .push_back( Quat4i{ iia,b.i,b.j,jja} );
                 torsParams.push_back( Quat4d{cos(dih->ang0), sin(dih->ang0), dih->k, dih->n} );
             }
