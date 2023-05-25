@@ -100,8 +100,8 @@ mmff.initParams()
 
 #sample_PiPi()
 #H2O_angle()
-#C2H4_torsion()
-NH3_inversion()
+C2H4_torsion()
+#NH3_inversion()
 
 #do_inversion(name)
 
