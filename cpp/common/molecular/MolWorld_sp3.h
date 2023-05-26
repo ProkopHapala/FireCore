@@ -672,14 +672,14 @@ void makeMMFFs(){
     builder.checkBondsOrdered( true, false );
     builder.assignTypes();
     builder.printAtomTypes();
+    if(ffl.bTorsion  ){ builder.assignTorsions( true, true ); ffl.printTorsions(); }  //exit(0);
 
     builder.toMMFFsp3    ( ff , true, bEpairs );
     builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
 
     builder.toMMFFsp3_loc( ffl, true, bEpairs );  // without electron pairs
-    if(ffl.bEachAngle)builder.assignAnglesMMFFsp3  ( ffl, false      );
-    if(ffl.bTorsion  )builder.assignTorsionsMMFFsp3( ffl, true, true ); 
-    DEBUG
+    if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
+    
     ffl.flipPis( Vec3dOne );
     ff4.flipPis( Vec3fOne );
     if(bPBC){  
@@ -694,15 +694,12 @@ void makeMMFFs(){
         //ffl.makeNeighCells( nPBC );      
         ffl.makeNeighCells( npbc, pbc_shifts ); 
     }
-    DEBUG
     //ffl.printAtomParams();
     //printf("npbc %i\n", npbc ); ffl.printNeighs();
     //builder.printBonds();
     //printf("!!!!! builder.toMMFFsp3() DONE \n");
     idebug=1;
-    DEBUG
     ffl.eval_check();
-    DEBUG
     ff4.eval_check();
     ff .eval_check();
     idebug=0;
@@ -996,9 +993,9 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     
     verbosity = 1;
     
-    //run_omp( iterPerFrame, opt.dt, 1e-6, 1000.0 );
+    run_omp( iterPerFrame, opt.dt, 1e-6, 1000.0 );
 
-    run_omp( 500, opt.dt, 1e-6, 1000.0 );
+    //run_omp( 500, opt.dt, 1e-6, 1000.0 );
 
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
@@ -1033,9 +1030,8 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
             //if(verbosity>3)
             //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
-            //if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
-
-            if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
+            if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+            //if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
 
             // ----- Error is HERE
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }

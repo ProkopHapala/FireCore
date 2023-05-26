@@ -370,8 +370,6 @@ double eval_atom(const int ia){
         
     }
 
-    DEBUG
-
     //printf( "MMFF_atom[%i] cs(%6.3f,%6.3f) ang=%g [deg]\n", ia, cs0_ss.x, cs0_ss.y, atan2(cs0_ss.y,cs0_ss.x)*180./M_PI );
     // --------- Angle Step
     const double R2damp=Rdamp*Rdamp;
@@ -380,12 +378,9 @@ double eval_atom(const int ia){
     double  ssK,ssC0;
     Vec2d   cs0_ss;
     Vec3d*  angles_i;
-    DEBUG
     if(bEachAngle){
-        DEBUG
-        Vec3d*   angles_i = angles+(ia*6);
+        angles_i = angles+(ia*6);
     }else{
-        DEBUG
         ssK    = apar.z;
         cs0_ss = Vec2d{apar.x,apar.y};
         ssC0   = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
@@ -400,31 +395,25 @@ double eval_atom(const int ia){
             int jng  = ings[j];
             if(jng<0) break;
             const Quat4d& hj = hs[j];    
-
             if(bEachAngle){
-                DEBUG
                 // 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
                 //  0    1    2    3    4    5 
                 cs0_ss = angles_i[iang].xy();  
                 ssK    = angles_i[iang].z;
+                //printf( "types{%i,%i,%i} ssK %g cs0(%g,%g) \n", atypes[ing], atypes[ia], atypes[jng], ssK, cs0_ss.x, cs0_ss.y  );
                 iang++; 
             };
-
             //bAngleCosHalf = false;
             //double Eai;
             //printf( "bAngleCosHalf= %i\n", bAngleCosHalf);
             if( bAngleCosHalf ){
                 E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
-
                 //Eai = evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
-
             }else{ 
                 E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
-
                 //Eai = evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
-
             }
-            
+
             //E +=Eai; 
             //Ea+=Eai;
             
@@ -1213,6 +1202,30 @@ void printNeighs    (      ){ printf("MMFFsp3_loc::printNeighs()\n"     ); for(i
 void printBKneighs  (      ){ printf("MMFFsp3_loc::printBKneighs()\n"   ); for(int i=0; i<natoms; i++){ printBKneighs  (i);   }; };
 void print_pipos    (      ){ printf("MMFFsp3_loc::print_pipos()\n"     ); for(int i=0; i<nnode;  i++){ printf( "pipos[%i](%g,%g,%g) r=%g\n", i, pipos[i].x,pipos[i].y,pipos[i].z, pipos[i].norm() ); } }
 void print_apos     (      ){ printf("MMFFsp3_loc::print_apos()\n"      ); for(int i=0; i<natoms; i++){ printf( "apos [%i](%g,%g,%g)\n",      i, apos[i].x ,apos[i].y ,apos[i].z                   ); } }
+
+
+void printAngles(int ia){
+    Vec3d* angles_i = angles+(ia*6);
+    int* ings       = neighs[ia].array; 
+    int iang=0;
+    for(int i=0; i<3; i++){
+        int ing = ings[i];
+        if(ing<0) break;
+        for(int j=i+1; j<4; j++){
+            int jng  = ings[j];
+            if(jng<0) break;
+            if(bEachAngle){
+                Vec2d cs0_ss = angles_i[iang].xy();  
+                double ssK    = angles_i[iang].z;
+                printf( "atom[%i|%i]types{%i,%i,%i} ssK %g cs0(%g,%g) \n", ia,iang,  atypes[ing], atypes[ia], atypes[jng], ssK, cs0_ss.x, cs0_ss.y  );
+                iang++; 
+            }
+        }
+    }
+}
+void printAngles(      ){ printf("MMFFsp3_loc::printAngles()\n"); for(int i=0; i<nnode; i++){ printAngles(i); } }
+
+void printTorsions(      ){ printf("MMFFsp3_loc::printTorsions()\n"); for(int i=0; i<ntors; i++){ printf( "torsion[%i]{%i,%i,%i,%i} {%i,%i,%i,%i}\n", i, tors2atom[i].x,tors2atom[i].y,tors2atom[i].z,tors2atom[i].w,   torsParams[i].x,torsParams[i].y,torsParams[i].z,torsParams[i].w  ); } }
 
 void printAtomsConstrains( bool bWithOff=false ){ printf("MMFFsp3_loc::printAtomsConstrains()\n"); for(int i=0; i<natoms; i++){ if(bWithOff || (constr[i].w>0.0f) )printf( "consrt[%i](%g,%g,%g|K=%g)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w ); } }
 
