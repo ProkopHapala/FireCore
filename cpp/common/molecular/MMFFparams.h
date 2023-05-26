@@ -171,6 +171,7 @@ class MMFFparams{ public:
     //Quat4d  default_REQ           = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen
     Quat4d  default_REQ             = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen like
 
+    bool echoTry        =true;
     bool reportIfMissing=true;
     bool exitIfMissing  =true;
 
@@ -507,46 +508,49 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
     DihedralType* getDihedralType( int iat, int ityp, int jtyp, int jat, int order, bool bWildcards=true, bool bParrents=true ){
         char tmp[64];
         if(ityp>jtyp){ _swap(ityp,jtyp); _swap(iat,jat); }
-
         sprintf( tmp, "%s-%s-%s-%s-%i", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name, order );
+        if(echoTry)printf("try dihedralDict[%s]\n", tmp);
         auto found = dihedralDict.find(tmp);
         if( found != dihedralDict.end() ){ 
-            printf( "found angleDict[%s]\n", tmp );
+            printf( "found dihedralDict[%s]\n", tmp );
             return &dihedrals[found->second];
         }
-        
         if(bWildcards){
-            if(reportIfMissing){ printf("WARRNING!!! getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order  ); };
+            if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order  ); };
             sprintf( tmp, "*-%s-%s-*-%i", atypes[ityp].name,atypes[jtyp].name,  order );
+            if(echoTry)printf("try dihedralDict[%s]\n", tmp);
             found = dihedralDict.find(tmp);
             if( found != dihedralDict.end() ){ 
-                printf( "found angleDict[%s]\n", tmp );
+                printf( "found dihedralDict[%s]\n", tmp );
                 return &dihedrals[found->second];
             }
         }
-
         if(bParrents){
-            if(reportIfMissing){ printf("WARRNING!!! getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order   ); };
+            if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by parrents(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order   ); };
             int i1,i2,i3,i4;
             for(int i=0; i<16; i++ ){
                 if(i&1){ i1=atypes[iat ].parrent; }else{ i1=iat;  }
                 if(i&4){ i2=atypes[ityp].parrent; }else{ i2=ityp; }
                 if(i&8){ i3=atypes[jtyp].parrent; }else{ i3=jtyp; }
                 if(i&2){ i4=atypes[jat ].parrent; }else{ i4=jat;  }
+                if(i2>i3){ _swap(i2,i3); _swap(i1,i4); }
                 sprintf( tmp, "%s-%s-%s-%s-%i", atypes[i1].name,atypes[i2].name,atypes[i3].name,atypes[i4].name,  order );
+                if(echoTry)printf("try dihedralDict[%s]\n", tmp);
                 found = dihedralDict.find(tmp);
                 if( found != dihedralDict.end() ){ 
-                    printf( "found angleDict[%s]\n", tmp );
+                    printf( "found dihedralDict[%s]\n", tmp );
                     return &dihedrals[found->second];
                 }
             }
             if(bWildcards){
-                if(reportIfMissing){ printf("WARRNING!!! getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,  atypes[ityp].name,atypes[jtyp].name,order   ); };
+                if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard&parrents(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order   ); };
                 int i1,i2;
                 for(int i=0; i<16; i++ ){
                     if(i&1){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
                     if(i&2){ i2=atypes[jtyp].parrent; }else{ i2=jtyp; }
+                    if(i1>i2){ _swap(i1,i2); }
                     sprintf( tmp, "*-%s-%s-*-%i", atypes[i1].name,atypes[i2].name,  order );
+                    if(echoTry)printf("try dihedralDict[%s]\n", tmp);
                     found = dihedralDict.find(tmp);
                     if( found != dihedralDict.end() ){
                         printf( "found angleDict[%s]\n", tmp );
@@ -555,7 +559,6 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
                 }   
             }
         }
-
         return 0;
     }
 
@@ -564,6 +567,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         if(iat>jat){ _swap(iat,jat); }
 
         sprintf( tmp, "%s-%s-%s", atypes[iat].name,  atypes[ityp].name,  atypes[jat].name );
+        if(echoTry)printf("try angleDict[%s]\n", tmp);
         auto found = angleDict.find(tmp);
         if( found != angleDict.end() ){
             printf( "found angleDict[%s]\n", tmp );
@@ -571,10 +575,10 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         }
         
         if(bWildcards){
-            if(reportIfMissing){ printf("WARRNING!!! getAngleType(%s-%s-%s) missing, trying find by wildcard(*-%s-*) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,  atypes[ityp].name   ); };
+            if(reportIfMissing){ printf("WARRNING getAngleType(%s-%s-%s) missing, trying find by wildcard(*-%s-*) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,  atypes[ityp].name   ); };
             // wildcard
             sprintf( tmp, "*-%s-*", atypes[ityp].name );
-            //printf( "try angleDict[%s]\n", tmp );
+            if(echoTry)printf("try angleDict[%s]\n", tmp);
             found = angleDict.find(tmp);
             if( found != angleDict.end() ){
                 printf( "found angleDict[%s]\n", tmp );
@@ -583,14 +587,14 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         }
 
         if(bParrents){
-            if(reportIfMissing){ printf("WARRNING!!! getAngleType(%s-%s-%s) missing, trying find by parrents(%s-%s-%s) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,   atypes[atypes[iat].parrent].name, atypes[atypes[ityp].parrent].name, atypes[atypes[jat].parrent].name ); };
+            if(reportIfMissing){ printf("WARRNING getAngleType(%s-%s-%s) missing, trying find by parrents(%s-%s-%s) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,   atypes[atypes[iat].parrent].name, atypes[atypes[ityp].parrent].name, atypes[atypes[jat].parrent].name ); };
             int i1,i2,i3;
             for(int i=0; i<8; i++ ){
                 if(i&1){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
                 if(i&2){ i2=atypes[iat ].parrent; }else{ i2=iat;  }
                 if(i&4){ i3=atypes[jat ].parrent; }else{ i3=jat;  }
                 sprintf( tmp, "%s-%s-%s", atypes[i2].name, atypes[i1].name, atypes[i3].name );
-                //printf( "try[%i] angleDict[%s]\n", i, tmp );
+                if(echoTry)printf("try angleDict[%s]\n", tmp);
                 found = angleDict.find(tmp);
                 if( found != angleDict.end() ){
                     printf( "found[%i] angleDict[%s]\n", i, tmp );
@@ -598,12 +602,12 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
                 }
             }
             if(bWildcards){
-                if(reportIfMissing){ printf("WARRNING!!! getAngleType(%s-%s-%s) missing, trying find by wildcard&parents(*-%s-*) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,    atypes[atypes[ityp].parrent].name ); };
+                if(reportIfMissing){ printf("WARRNING getAngleType(%s-%s-%s) missing, trying find by wildcard&parents(*-%s-*) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,    atypes[atypes[ityp].parrent].name ); };
                 int i1;
                 for(int i=0; i<2; i++ ){
                     if(i&1){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
                     sprintf( tmp, "*-%s-*", atypes[i1].name );
-                    //printf( "try(%s)\n", tmp );
+                    if(echoTry)printf("try angleDict[%s]\n", tmp);
                     found = angleDict.find(tmp);
                     if( found != angleDict.end() ){
                         printf( "found[%i] angleDict[%s]\n", i, tmp );
@@ -622,20 +626,20 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         auto it       = bonds_.find(id);
         if( it != bonds_.end() ){ return it->second; } 
         if(bParrents==0){
-            if(reportIfMissing){ printf("WARRNING!!! getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by parrents(%i,%i) \n", ityp, jtyp, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
+            if(reportIfMissing){ printf("WARRNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by parrents(%i,%i) \n", ityp, jtyp, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
             id  = BondType::getId( atypes[ityp].parrent,        jtyp,          order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
             id  = BondType::getId(        ityp,          atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
             id  = BondType::getId( atypes[ityp].parrent, atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
         }
         if(bElem){
-            if(reportIfMissing){ printf("WARRNING!!! getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by elems(%i,%i) \n", ityp, jtyp, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
+            if(reportIfMissing){ printf("WARRNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by elems(%i,%i) \n", ityp, jtyp, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
             int i0 = atomTypeDict.find( elementOfAtomType(ityp)->name )->second;
             int j0 = atomTypeDict.find( elementOfAtomType(jtyp)->name )->second; 
             id  = BondType::getId( i0, j0, order ); 
             it = bonds_.find(id); 
             if( it!=bonds_.end()){ return it->second; }
         }
-        if(reportIfMissing){ printf("WARRNING!!! getBondParams(ityp=%i,jtyp=%i,order=%i) missing => defaults: l0 %g k %g \n", ityp, jtyp, order, default_bond_length, default_bond_stiffness ); };
+        if(reportIfMissing){ printf("WARRNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing => defaults: l0 %g k %g \n", ityp, jtyp, order, default_bond_length, default_bond_stiffness ); };
         if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };  
         return 0;
     }
