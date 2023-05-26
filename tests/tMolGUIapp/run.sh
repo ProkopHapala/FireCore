@@ -45,7 +45,10 @@ ln -s $dir/$name .
 #./$name -x common_resources/polydiacetylene
 #./$name -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -x common_resources/polydiacetylene_OH
-./$name -x common_resources/polymer-2_new
+#./$name -x common_resources/polymer-2_new
+./$name -x common_resources/polymer-2_new -EachAngle
+
+
 
 # ====== Small Molecules On Substrate
 

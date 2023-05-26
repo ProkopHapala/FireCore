@@ -633,6 +633,8 @@ void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBo
     //params.printAtomTypeDict();
     //params.printAtomTypes();
     //params.printBond();
+    params.printAngleTypes();
+    params.printDihedralTypes();
 }
 
 int buildMolecule_xyz( const char* xyz_name ){
@@ -670,9 +672,14 @@ void makeMMFFs(){
     builder.checkBondsOrdered( true, false );
     builder.assignTypes();
     builder.printAtomTypes();
+
     builder.toMMFFsp3    ( ff , true, bEpairs );
-    builder.toMMFFsp3_loc( ffl, true, bEpairs );  // without electron pairs
     builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
+
+    builder.toMMFFsp3_loc( ffl, true, bEpairs );  // without electron pairs
+    if(ffl.bEachAngle)builder.assignAnglesMMFFsp3  ( ffl, false      );
+    if(ffl.bTorsion  )builder.assignTorsionsMMFFsp3( ffl, true, true ); 
+    DEBUG
     ffl.flipPis( Vec3dOne );
     ff4.flipPis( Vec3fOne );
     if(bPBC){  
@@ -687,15 +694,19 @@ void makeMMFFs(){
         //ffl.makeNeighCells( nPBC );      
         ffl.makeNeighCells( npbc, pbc_shifts ); 
     }
+    DEBUG
     //ffl.printAtomParams();
     //printf("npbc %i\n", npbc ); ffl.printNeighs();
     //builder.printBonds();
     //printf("!!!!! builder.toMMFFsp3() DONE \n");
     idebug=1;
+    DEBUG
     ffl.eval_check();
+    DEBUG
     ff4.eval_check();
     ff .eval_check();
     idebug=0;
+    DEBUG
 }
 
 virtual void makeFFs(){
@@ -728,7 +739,7 @@ virtual void init( bool bGrid ){
     // //params.printAtomTypeDict();
     // //params.printBond();
     if( params.atypes.size() == 0 ){
-        initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+        initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
     }
     gopt.solver = this;
     params_glob = &params;
@@ -1026,13 +1037,11 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
 
             if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
 
-            /*
             // ----- Error is HERE
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
             else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
             if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
             //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
-            */
             
             if(ipicked==ia){ 
                 const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
@@ -1040,6 +1049,13 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             }
 
         }
+        if(ffl.bTorsion){
+            #pragma omp for reduction(+:E)
+            for(int it=0; it<ffl.ntors; it++){ 
+                E+=ffl.eval_torsion(it); 
+            }
+        }
+
         // ---- assemble (we need to wait when all atoms are evaluated)
         //#pragma omp barrier
         #pragma omp for

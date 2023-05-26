@@ -218,7 +218,7 @@ double optimalTimeStep(double m=1.0){
 // ============== Evaluation
 
 double eval_atom(const int ia){
-    //printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
+    printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
     double E=0;
     const Vec3d pa  = apos [ia]; 
     const Vec3d hpi = pipos[ia]; 
@@ -370,6 +370,8 @@ double eval_atom(const int ia){
         
     }
 
+    DEBUG
+
     //printf( "MMFF_atom[%i] cs(%6.3f,%6.3f) ang=%g [deg]\n", ia, cs0_ss.x, cs0_ss.y, atan2(cs0_ss.y,cs0_ss.x)*180./M_PI );
     // --------- Angle Step
     const double R2damp=Rdamp*Rdamp;
@@ -378,9 +380,12 @@ double eval_atom(const int ia){
     double  ssK,ssC0;
     Vec2d   cs0_ss;
     Vec3d*  angles_i;
+    DEBUG
     if(bEachAngle){
+        DEBUG
         Vec3d*   angles_i = angles+(ia*6);
     }else{
+        DEBUG
         ssK    = apar.z;
         cs0_ss = Vec2d{apar.x,apar.y};
         ssC0   = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
@@ -397,6 +402,7 @@ double eval_atom(const int ia){
             const Quat4d& hj = hs[j];    
 
             if(bEachAngle){
+                DEBUG
                 // 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
                 //  0    1    2    3    4    5 
                 cs0_ss = angles_i[iang].xy();  
@@ -473,9 +479,6 @@ double eval_atom(const int ia){
     fapos [ia]=fa; 
     fpipos[ia]=fpi;
 
-    // MYPRINTOUT
-    
-    
     //printf( "MYOUTPUT atom %i Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", ia+1, Eb, Ea, EppI, Eps, E );
     //fprintf( file, "atom %i Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", ia+1, Eb, Ea, EppI, Eps, E );
     
@@ -639,17 +642,18 @@ double eval_atoms(){
 }
 
 double eval_torsion(int it){
+    printf( "MMFFsp3_loc::eval_torsion(%i)\n", it );
     Quat4i ias = tors2atom [it];
     Quat4d par = torsParams[it];
 
     Vec3d ha    = apos[ ias.x ] - apos[ ias.y ];
     Vec3d hb    = apos[ ias.w ] - apos[ ias.z ];
     Vec3d hab   = apos[ ias.z ] - apos[ ias.y ];
-
+    DEBUG
     double ila  = 1/ha.normalize();
     double ilb  = 1/hb.normalize();
     double ilab = 1/hab.normalize();
-
+    DEBUG
     double ca   = hab.dot(ha);
     double cb   = hab.dot(hb);
     double cab  = ha .dot(hb);
@@ -657,30 +661,30 @@ double eval_torsion(int it){
     double sb2  = (1-cb*cb);
     double invs = 1/sqrt( sa2*sb2 );
     //double c    = ;  //  c = <  ha - <ha|hab>hab   | hb - <hb|hab>hab    >
-
+    DEBUG
     Vec2d cs,csn;
     cs.x = ( cab - ca*cb )*invs;
     cs.y = sqrt(1-cs.x*cs.x); // can we avoid this sqrt ?
     cs.udiv_cmplx( par.xy() ); 
-
+    DEBUG
     const int n = (int)par.w; // I know it is stupid store n as double, but I don't make another integer arrays just for it
     for(int i=0; i<n-1; i++){
         csn.mul_cmplx(cs);
     }
-
+    DEBUG
     // check here : https://www.wolframalpha.com/input/?i=(x+%2B+isqrt(1-x%5E2))%5En+derivative+by+x
 
     const double k = par.z;
     double E       = k  *(1-csn.x);
     double dcn     = k*n*   csn.x;
     //double fr  =  k*n*    csn.y;
-
+    DEBUG
     //double c   = cos_func(ca,cb,cab);
 
     //printf( "<fa|fb> %g cT %g cS %g \n", cs.x, cT, cS );
 
     // derivatives to get forces
-
+    DEBUG
     double invs2 = invs*invs;
     dcn *= invs;
     double dcab  = dcn;                          // dc/dcab = dc/d<ha|hb>
@@ -692,7 +696,7 @@ double eval_torsion(int it){
     fa =Vec3dZero;
     fb =Vec3dZero;
     fab=Vec3dZero;
-
+    DEBUG
     //Mat3Sd J;
     SMat3d J;
 
@@ -712,13 +716,13 @@ double eval_torsion(int it){
     fa .mul( ila  );
     fb .mul( ilb  );
     fab.mul( ilab );
-
+    DEBUG
     // ToDo : Which order ?
     fapos[ias.x].sub( fa );
     fapos[ias.y].add( fa  - fab );
     fapos[ias.z].add( fab - fb  );
     fapos[ias.w].add( fb );
-
+    DEBUG
     /*
     {
         double fsc = 100.0;
@@ -736,6 +740,7 @@ double eval_torsion(int it){
 }
 
 double eval_torsions(){
+    printf( "MMFFsp3_loc::eval_torsions(ntors=%i)\n", ntors );
     double E=0;
     for(int it=0; it<ntors; it++){ 
         E+=eval_torsion(it); 
@@ -902,14 +907,18 @@ void asseble_forces(){
 double eval( bool bClean=true, bool bCheck=true ){
     //if(bClean){ cleanAll(); }
     //printf( "print_apos() BEFORE\n" );print_apos();
+    DEBUG
     if(bClean)cleanForce();
     normalizePis();
+    DEBUG
     //printf( "print_apos() AFTER \n" ); print_apos();
     Etot += eval_atoms();
+    DEBUG
     //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
     asseble_forces();
-
+    DEBUG
     if(bTorsion) EppI +=eval_torsions();
+    DEBUG
     //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 }
@@ -918,7 +927,9 @@ double eval_check(){
     printf(" ============ check MMFFsp3_loc START\n " );
     printSizes();
     //print_pipos();
+    DEBUG
     eval();
+    DEBUG
     checkNans();
     printf(" ============ check MMFFsp3_loc DONE\n " );
     return Etot;
