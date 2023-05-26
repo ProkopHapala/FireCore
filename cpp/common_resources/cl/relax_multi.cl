@@ -212,6 +212,177 @@ __kernel void getMMFFf4(
     
 
     #define NNEIGH 4
+    
+    // ---- Dynamical
+    float4  hs [4];              // direction vectors of bonds
+    float3  fbs[4];              // force on neighbor sigma
+    float3  fps[4];              // force on neighbor pi
+    float3  fa  = float3Zero;    // force on center position 
+    float3  fpi = float3Zero;    // force on pi orbital
+
+    float E=0;
+
+    // ---- Params
+    const int4   ng  = neighs[iaa];    
+    const int4   ngC = neighCell[iaa];  
+    const float3 pa  = apos[iav].xyz;
+    const float3 hpi = apos[iav+nAtoms].xyz; 
+    const float4 par = apars[ian];    //     (xy=s0_ss,z=ssK,w=piC0 )
+    const float4 vbL = bLs[ian];       
+    const float4 vbK = bKs[ian];       
+    const float4 vKs = Ksp[ian];       
+    const float4 vKp = Kpp[ian];       
+
+    // Temp Arrays
+    const int*   ings  = (int*  )&ng; 
+    const int*   ingC  = (int*  )&ngC; 
+    const float* bL    = (float*)&vbL; 
+    const float* bK    = (float*)&vbK;
+    const float* Kspi  = (float*)&vKs;  
+    const float* Kppi  = (float*)&vKp; 
+
+    const float   ssC0   = par.x*par.x - par.y*par.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
+    for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }
+
+    float3 f1,f2;         // temporary forces
+
+    { // ========= BONDS
+
+        for(int i=0; i<NNEIGH; i++){
+            float4 h;
+            const int ing  = ings[i];
+            const int ingv = ing+i0v;
+            const int inga = ing+i0a;
+            if(ing<0) break;
+            h.xyz    = apos[ingv].xyz - pa; 
+            { // PBC shifts
+                int ic  = ingC[i];
+                h.xyz  += pbc_shifts[ipbc0+ic].xyz; 
+            }
+            float  l = length(h.xyz); 
+            h.w      = 1./l;
+            h.xyz   *= h.w;
+            hs[i]    = h;
+
+            float epp = 0;
+            float esp = 0;
+
+            if(iG<ing){  
+                E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   
+                            
+                float kpp = Kppi[i];
+                if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                    epp += evalPiAling( hpi, apos[ingv+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment     (konjugation)
+                    E+=epp;
+                }
+            } 
+            
+            // pi-sigma 
+            float ksp = Kspi[i];
+            if(ksp>1.e-6){  
+                esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
+                E+=epp;
+            }
+        }
+
+    }
+    
+    { //  ============== Angles 
+
+        for(int i=0; i<NNEIGH; i++){
+            int ing = ings[i];
+            if(ing<0) break;
+            const float4 hi = hs[i];
+            const int ingv = ing+i0v;
+            const int inga = ing+i0a;
+            for(int j=i+1; j<NNEIGH; j++){
+                int jng  = ings[j];
+                if(jng<0) break;
+                const int jngv = jng+i0v;
+                const int jnga = jng+i0a;
+                const float4 hj = hs[j];            
+                E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );            
+                fa    -= f1+f2;
+
+                //if(bSubtractVdW)
+                { // Remove vdW
+                    float4 REQi=REQKs[inga];   // ToDo: can be optimized
+                    float4 REQj=REQKs[jnga];
+                    float4 REQij;
+                    REQij.x  = REQi.x  + REQj.x;
+                    REQij.yz = REQi.yz * REQj.yz; 
+                    float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w); 
+                    float4 fij = getLJQH( dp, REQij, 1.0f );
+                    f1 -=  fij.xyz;
+                    f2 +=  fij.xyz;
+                }
+
+                fbs[i]+= f1;
+                fbs[j]+= f2;
+            }
+        }
+
+    }
+    
+    // ========= Save results
+    const int i4 =(iG + iS*nnode*2 )*4;
+    const int i4p=i4+nnode*4;
+
+    for(int i=0; i<NNEIGH; i++){
+        fneigh[i4 +i] = (float4){fbs[i],0};
+        fneigh[i4p+i] = (float4){fps[i],0};
+    }
+    //fapos[iav     ] = (float4){fa ,0}; // If we do  run it as first forcefield
+    fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
+    fapos[iav+nAtoms]  = (float4){fpi,0}; 
+    
+}
+
+
+__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void getMMFFf4_bak(
+    const int4 nDOFs,               // 1   (nAtoms,nnode)
+    // Dynamical
+    __global float4*  apos,         // 2  [natoms]
+    __global float4*  fapos,        // 3  [natoms]     
+    __global float4*  fneigh,       // 4  [nnode*4*2]
+    // parameters
+    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global int4*    neighCell,    // 5  [nnode]  neighboring atoms
+    __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} 
+    __global float4*  apars,        // 7  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}
+    __global float4*  bLs,          // 8  [nnode]  bond lengths  for each neighbor
+    __global float4*  bKs,          // 9  [nnode]  bond stiffness for each neighbor
+    __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor
+    __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor
+    __global cl_Mat3* lvecs,        // 12
+    __global cl_Mat3* ilvecs,       // 13
+    __global float4*  pbc_shifts,
+    const int npbc,
+    const int bSubtractVdW
+){
+
+    const int iG = get_global_id (0);   // intex of atom
+    const int iS = get_global_id (1);   // index of system
+    const int nG = get_global_size(0);
+    const int nS = get_global_size(1);  // number of systems
+    //const int iL = get_local_id  (0);
+    //const int nL = get_local_size(0);
+    const int nAtoms=nDOFs.x;
+    const int nnode =nDOFs.y;
+    const int nvec  = nAtoms+nnode;
+
+    const int i0a   = iS*nAtoms; 
+    const int i0n   = iS*nnode; 
+    const int i0v   = iS*nvec;
+    const int ipbc0 = iS*npbc;
+
+    const int iaa = iG + i0a; 
+    const int ian = iG + i0n; 
+    const int iav = iG + i0v;
+    
+
+    #define NNEIGH 4
 
     // if(iG==0){
     //     printf( "GPU::getMMFFf4() npbc=%i \n", npbc );
@@ -552,7 +723,7 @@ __kernel void updateAtomsMMFFf4(
        float4 cons = constr[ iaa ];
        if( cons.w>0.f ){
             fe.xyz += (pe.xyz - cons.xyz)*-cons.w;
-            if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
+            //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
        }
        
     }

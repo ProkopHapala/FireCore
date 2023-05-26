@@ -82,8 +82,8 @@ nsys=50
 #./$name -m $nsys -x common_resources/BPBA          -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/BPBA          -g common_resources/NaCl_1x1_L2 -e
 
-#./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2   -ManipulAnim
-./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2
+./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2   -ManipulAnim
+#./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2
 
 # ====== Polymers On Substrate
 
