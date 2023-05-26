@@ -411,7 +411,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             ang.atoms.z = getAtomType(names[2]);
             if( ang.sort() && bWarnFlip ){ printf("WARRNING: angleType[%i](%s) is flipped in %s\n", i, line, fname ); };
             sprintf( name, "%s-%s-%s", atypes[ang.atoms.x].name , atypes[ang.atoms.y].name, atypes[ang.atoms.z].name );
-
+            printf( "loadAngleTypes[%i](%s) ang0 %g k %g \n", angles.size(), name, ang.angle0, ang.stiffness );
             angles.push_back(ang);
             if( !angleDict.insert({ name, angles.size()-1} ).second ){ printf("WARRNING: angleType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
 
@@ -450,7 +450,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             if( dih.sort() && bWarnFlip ){ printf("WARRNING: dihedralType[%i](%s) is flipped in %s\n", i, line, fname ); }; 
             sprintf( name, "%s-%s-%s-%s-%i", atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.w].name, dih.bo );
             //printf( "dihedral[%i](%s) %s-%s-%s-%s-%i k %g ang0 %g n %i \n", dihedrals.size(), atypes[dih.atoms.x].name , atypes[dih.atoms.y].name, atypes[dih.atoms.z].name, atypes[dih.atoms.w].name, dih.bo, dih.k, dih.ang0, dih.n  );
-            printf( "dihedral[%i](%s) k %g ang0 %g n %i \n", dihedrals.size(), name, dih.k, dih.ang0, dih.n  );
+            //printf( "dihedral[%i](%s) k %g ang0 %g n %i \n", dihedrals.size(), name, dih.k, dih.ang0, dih.n  );
             dihedrals.push_back(dih);
             if( !dihedralDict.insert({ name, dihedrals.size()-1} ).second ){ printf("WARRNING: dihedralType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
         }
@@ -601,8 +601,9 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
                 if(reportIfMissing){ printf("WARRNING!!! getAngleType(%s-%s-%s) missing, trying find by wildcard&parents(*-%s-*) \n", atypes[iat].name,atypes[ityp].name,atypes[jat].name,    atypes[atypes[ityp].parrent].name ); };
                 int i1;
                 for(int i=0; i<2; i++ ){
-                    if(i1 & 1 ){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
+                    if(i&1){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
                     sprintf( tmp, "*-%s-*", atypes[i1].name );
+                    //printf( "try(%s)\n", tmp );
                     found = angleDict.find(tmp);
                     if( found != angleDict.end() ){
                         printf( "found[%i] angleDict[%s]\n", i, tmp );
@@ -707,6 +708,8 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
     void printBondTypes    ()const{ printf("MMFFparams::printBondTypes()\n");     for(int i=0; i<bonds.size();     i++ ){ printBond(i);     } }
     void printAngleTypes   ()const{ printf("MMFFparams::printAngleTypes()\n");    for(int i=0; i<angles.size();    i++ ){ printAngle(i);    } }
     void printDihedralTypes()const{ printf("MMFFparams::printDihedralTypes()\n"); for(int i=0; i<dihedrals.size(); i++ ){ printDihedral(i); } }
+
+    void printAngleTypesDict()const{ printf("MMFFparams::printAngleTypesDict()\n");    for( const auto& it : angleDict ){ printf("angle(%s)[%i]\n", it.first.c_str(), it.second ); } }
 
 
     void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){

@@ -245,11 +245,11 @@ void makeMMFF(){
     if(builder.bAutoTypes)builder.assignTypes( );
     //printf( "makeMMFF() bDummyEpair=%i \n", builder.bDummyEpair );
     //printf( "buildMolecule_xyz W.builder.bDummyEpair=%i builder.bAutoTypes=%i \n", builder.bDummyEpair, builder.bAutoTypes );
-    builder.toMMFFsp3_loc( ffl, true, builder.bDummyEpair );   DEBUG //ffl.printAtomParams(); ffl.printBKneighs(); 
+    builder.toMMFFsp3_loc( ffl, true, builder.bDummyEpair );  
     //builder.assignAnglesMMFFsp3( ffl, true ); // using UFF
-    builder.assignAnglesMMFFsp3( ffl, false );                 DEBUG // using AngleTypes.dat
-    builder.assignTorsionsMMFFsp3( ffl, true, true );          DEBUG
-    ffl.setLvec(       builder.lvec);
+    if(ffl.bEachAngle)builder.assignAnglesMMFFsp3  ( ffl, false      );         
+    if(ffl.bTorsion  )builder.assignTorsionsMMFFsp3( ffl, true, true ); 
+    ffl.setLvec( builder.lvec);
     nPBC=Vec3i{0,0,0};
     ffl.makeNeighCells( nPBC );  
     ffl.makePBCshifts( nPBC );

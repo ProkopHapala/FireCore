@@ -762,7 +762,103 @@ __kernel void updateAtomsMMFFf4(
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
     }
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
-    avel[iav] = ve;
+    avel[iav] = ve;__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void getNonBond(
+    const int4 ns,                  // 1
+    // Dynamical
+    __global float4*  atoms,        // 2
+    __global float4*  forces,       // 3
+    // Parameters
+    __global float4*  REQKs,        // 4
+    __global int4*    neighs,       // 5
+    __global int4*    neighCell,    // 6
+    __global cl_Mat3* lvecs,        // 7
+    const int4        nPBC,         // 8
+    const float4      GFFParams     // 9
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+
+    //const int iG = get_global_id  (0);
+    //const int nG = get_global_size(0);
+    //const int iS = get_global_id  (1);
+    //const int nS = get_global_size(1);
+    //const int iL = get_local_id   (0);
+    //const int nL = get_local_size (0);
+
+    //const int natoms = ns.x;
+    //const int nnode  = ns.y;
+    //const int nvec   = ns.x+ns.y;
+
+    //const int i0n = iS*nnode; 
+    //const int i0a   = iS*natoms; 
+    //const int i0v   = iS*nvec;
+    //const int    iaa  = iG + i0a;
+    //const int    iav  = iG + i0v;
+    const bool   bPBC = (nPBC.x+nPBC.y+nPBC.z)>0;
+
+    const int4   ng    = neighs   [ get_global_id(0) + get_global_id(1)*ns.x ];
+    const int4   ngC   = neighCell[ get_global_id(0) + get_global_id(1)*ns.x ];
+    const float4 REQKi = REQKs    [ get_global_id(0) + get_global_id(1)*ns.x ];
+    const float3 posi  = atoms    [ get_global_id(0) + get_global_id(1)*(ns.x+ns.y) ].xyz;
+    const float  R2damp = GFFParams.x*GFFParams.x;
+    float4 fe          = float4Zero;
+
+    const cl_Mat3 lvec = lvecs[ get_global_id(1) ];
+
+    const float3 shift0  = lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+
+    // ========= Atom-to-Atom interaction ( N-body problem )  
+    for (int j0=0; j0<get_global_size(0); j0+=get_local_size(0) ){
+        const int i=j0+get_local_id(0);
+        if(i<ns.x){
+            LATOMS[get_local_id(0)] = atoms [ i + get_global_id(1)*(ns.x+ns.y) ];
+            LCLJS [get_local_id(0)] = REQKs [ i + get_global_id(1)*ns.x ];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int jl=0; jl<get_local_size(0); jl++){
+            const int ja=j0+jl;
+            if( (ja!= get_global_id(0) ) && (ja<ns.x) ){   // ToDo: Should interact withhimself in PBC ?
+                const float4 aj = LATOMS[jl];
+                float4 REQK     = LCLJS [jl];
+                float3 dp       = aj.xyz - posi;
+                REQK.x  +=REQKi.x;
+                REQK.yz *=REQKi.yz;
+                const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));
+
+                if(bPBC){    
+                    int ipbc=0;
+                    dp += shift0;
+                    for(int iy=0; iy<3; iy++){
+                        for(int ix=0; ix<3; ix++){
+                            if( !( bBonded &&(
+                                    ((ja==ng.x)&&(ipbc==ngC.x))
+                                    ||((ja==ng.y)&&(ipbc==ngC.y))
+                                    ||((ja==ng.z)&&(ipbc==ngC.z))
+                                    ||((ja==ng.w)&&(ipbc==ngC.w))
+                            ))){
+                                float4 fij = getLJQH( dp, REQK, R2damp );
+                                fe += fij;
+                            }
+                            ipbc++; 
+                            dp    += lvec.a.xyz; 
+                        }
+                        dp    += shift_a;
+                    }
+                }else 
+                if( !bBonded ){
+                    fe += getLJQH( dp, REQK, R2damp );
+                }
+            }
+        }
+    }
+    if( get_global_id(0) < ns.x ){
+        forces[ get_global_id(0) + get_global_id(1)*(ns.x+ns.y) ] = fe;           // If we do  run it as first forcefield 
+    }
+}
+
     apos[iav] = pe;
     */
     
@@ -911,107 +1007,8 @@ __kernel void cleanForceMMFFf4(
 //                           getNonBond()
 // ======================================================================
 
-
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond(
-    const int4 ns,                  // 1
-    // Dynamical
-    __global float4*  atoms,        // 2
-    __global float4*  forces,       // 3
-    // Parameters
-    __global float4*  REQKs,        // 4
-    __global int4*    neighs,       // 5
-    __global int4*    neighCell,    // 6
-    __global cl_Mat3* lvecs,        // 7
-    const int4        nPBC,         // 8
-    const float4      GFFParams     // 9
-){
-    __local float4 LATOMS[32];
-    __local float4 LCLJS [32];
-
-    //const int iG = get_global_id  (0);
-    //const int nG = get_global_size(0);
-    //const int iS = get_global_id  (1);
-    //const int nS = get_global_size(1);
-    //const int iL = get_local_id   (0);
-    //const int nL = get_local_size (0);
-
-    //const int natoms = ns.x;
-    //const int nnode  = ns.y;
-    //const int nvec   = ns.x+ns.y;
-
-    //const int i0n = iS*nnode; 
-    //const int i0a   = iS*natoms; 
-    //const int i0v   = iS*nvec;
-    //const int    iaa  = iG + i0a;
-    //const int    iav  = iG + i0v;
-    const bool   bPBC = (nPBC.x+nPBC.y+nPBC.z)>0;
-
-    const int4   ng    = neighs   [ get_global_id(0) + get_global_id(1)*ns.x ];
-    const int4   ngC   = neighCell[ get_global_id(0) + get_global_id(1)*ns.x ];
-    const float4 REQKi = REQKs    [ get_global_id(0) + get_global_id(1)*ns.x ];
-    const float3 posi  = atoms    [ get_global_id(0) + get_global_id(1)*(ns.x+ns.y) ].xyz;
-    const float  R2damp = GFFParams.x*GFFParams.x;
-    float4 fe          = float4Zero;
-
-    const cl_Mat3 lvec = lvecs[ get_global_id(1) ];
-
-    const float3 shift0  = lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
-    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
-    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
-
-    // ========= Atom-to-Atom interaction ( N-body problem )  
-    for (int j0=0; j0<get_global_size(0); j0+=get_local_size(0) ){
-        const int i=j0+get_local_id(0);
-        if(i<ns.x){
-            LATOMS[get_local_id(0)] = atoms [ i + get_global_id(1)*(ns.x+ns.y) ];
-            LCLJS [get_local_id(0)] = REQKs [ i + get_global_id(1)*ns.x ];
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);
-        for (int jl=0; jl<get_local_size(0); jl++){
-            const int ja=j0+jl;
-            if( (ja!= get_global_id(0) ) && (ja<ns.x) ){   // ToDo: Should interact withhimself in PBC ?
-                const float4 aj = LATOMS[jl];
-                float4 REQK     = LCLJS [jl];
-                float3 dp       = aj.xyz - posi;
-                REQK.x  +=REQKi.x;
-                REQK.yz *=REQKi.yz;
-                const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));
-
-                if(bPBC){    
-                    int ipbc=0;
-                    dp += shift0;
-                    for(int iy=0; iy<3; iy++){
-                        for(int ix=0; ix<3; ix++){
-                            if( !( bBonded &&(
-                                    ((ja==ng.x)&&(ipbc==ngC.x))
-                                    ||((ja==ng.y)&&(ipbc==ngC.y))
-                                    ||((ja==ng.z)&&(ipbc==ngC.z))
-                                    ||((ja==ng.w)&&(ipbc==ngC.w))
-                            ))){
-                                float4 fij = getLJQH( dp, REQK, R2damp );
-                                fe += fij;
-                            }
-                            ipbc++; 
-                            dp    += lvec.a.xyz; 
-                        }
-                        dp    += shift_a;
-                    }
-                }else 
-                if( !bBonded ){
-                    fe += getLJQH( dp, REQK, R2damp );
-                }
-            }
-        }
-    }
-    if( get_global_id(0) < ns.x ){
-        forces[ get_global_id(0) + get_global_id(1)*(ns.x+ns.y) ] = fe;           // If we do  run it as first forcefield 
-    }
-}
-
-
-__attribute__((reqd_work_group_size(32,1,1)))
-__kernel void getNonBond_bak(
     const int4 ns,                  // 1
     // Dynamical
     __global float4*  atoms,        // 2

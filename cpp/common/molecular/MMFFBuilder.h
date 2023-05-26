@@ -3224,7 +3224,7 @@ void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
                     double Kss_uff = params->assignAngleParamUFF( iat, it, jt, bL[i], bL[j] );
                 }else{
                     AngleType* ang = params->getAngleType( it, iat, jt, true, true );
-                    if(ang==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ia=%i,%i,%i) cannot find angle type(%i,%i,%i)(%s,%s,%s) =>Exit()\n", ia,i,j, it, iat, jt,  params->atypes[it].name,params->atypes[iat].name, params->atypes[jt].name ); exit(0); };
+                    if(ang==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ia=%i,%i,%i) cannot find angle type(%i,%i,%i)(%s,%s,%s) =>Exit()\n", ia,i,j, it, iat, jt,  params->atypes[it].name,params->atypes[iat].name, params->atypes[jt].name ); params->printAngleTypesDict();   exit(0); };
                     ang0 = ang->angle0;
                     k    = ang->stiffness;
                 }
