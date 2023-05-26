@@ -68,6 +68,7 @@ class MMFFsp3_loc : public NBFF { public:
     bool doEpi    =true; 
 
     bool bEachAngle = false;
+    bool bTorsion   = false;
     
     //                           c0     Kss    Ksp    c0_e
     Quat4d default_NeighParams{ -1.0,   1.0,   1.0,   -1.0 };
@@ -369,9 +370,6 @@ double eval_atom(const int ia){
         
     }
 
-    
-
-
     //printf( "MMFF_atom[%i] cs(%6.3f,%6.3f) ang=%g [deg]\n", ia, cs0_ss.x, cs0_ss.y, atan2(cs0_ss.y,cs0_ss.x)*180./M_PI );
     // --------- Angle Step
     const double R2damp=Rdamp*Rdamp;
@@ -484,6 +482,153 @@ double eval_atom(const int ia){
 
     return E;
 }
+
+
+
+    double eval_atom_opt(const int ia){
+
+        double E=0;
+        const Vec3d pa  = apos [ia]; 
+        const Vec3d hpi = pipos[ia]; 
+
+        Vec3d fa   = Vec3dZero;
+        Vec3d fpi  = Vec3dZero; 
+        
+        //--- array aliases
+        const int*    ings = neighs   [ia].array;
+        const int*    ingC = neighCell[ia].array;
+        const double* bK   = bKs      [ia].array;
+        const double* bL   = bLs      [ia].array;
+        const double* Kspi = Ksp      [ia].array;
+        const double* Kppi = Kpp      [ia].array;
+        Vec3d* fbs  = fneigh   +ia*4;
+        Vec3d* fps  = fneighpi +ia*4;
+
+        const Quat4d& apar  = apars[ia];
+        const double  piC0 = apar.w;
+
+        //--- Aux Variables 
+        Quat4d  hs[4];
+        Vec3d   f1,f2;
+
+        for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
+
+        // ========================= Bonds
+        for(int i=0; i<4; i++){
+            int ing = ings[i];
+            if(ing<0) break;
+
+            Vec3d  pi = apos[ing];
+            Quat4d h; 
+            h.f.set_sub( pi, pa );
+            
+            if(bPBC){   
+                if(shifts){
+                    int ipbc = ingC[i]; 
+                    //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
+                    h.f.add( shifts[ipbc] );
+                }else{
+                    Vec3i g  = invLvec.nearestCell( h.f );
+                    Vec3d sh = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
+                    h.f.add( sh );
+                    //apbc[i] = pi + sh;
+                }
+            }
+
+            double l = h.f.normalize();
+
+            h.e    = 1/l;
+            hs [i] = h;
+
+            if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
+                if(doBonds){
+                    E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
+                }
+
+                double kpp = Kppi[i];
+                if( (doPiPiI) && (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                    E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+                }
+            } 
+
+            double ksp = Kspi[i];
+            if( doPiSigma && (ksp>1e-6) ){  
+                E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);       //   pi-planarization (orthogonality)
+            }            
+        }
+
+
+        // ========================= Angles
+        const double R2damp=Rdamp*Rdamp;
+        if(doAngles){
+
+        double  ssK,ssC0;
+        Vec2d   cs0_ss;
+        Vec3d*  angles_i;
+        if(bEachAngle){
+            Vec3d*   angles_i = angles+(ia*6);
+        }else{
+            ssK    = apar.z;
+            cs0_ss = Vec2d{apar.x,apar.y};
+            ssC0   = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
+        }
+
+        int iang=0;
+        for(int i=0; i<3; i++){
+            int ing = ings[i];
+            if(ing<0) break;
+            const Quat4d& hi = hs[i];
+            for(int j=i+1; j<4; j++){
+                int jng  = ings[j];
+                if(jng<0) break;
+                const Quat4d& hj = hs[j];    
+
+                if(bEachAngle){
+                    // 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
+                    //  0    1    2    3    4    5 
+                    cs0_ss = angles_i[iang].xy();  
+                    ssK    = angles_i[iang].z;
+                    iang++; 
+                };
+                if( bAngleCosHalf ){
+                    E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
+                }else{ 
+                    E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+                }
+
+                fa    .sub( f1+f2  );
+                /*
+                // ----- Error is HERE
+                if(bSubtractAngleNonBond){
+                    Vec3d fij=Vec3dZero;
+                    //Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+                    Quat4d REQij = _mixREQ(REQs[ing],REQs[jng]);
+                    Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
+                    //Vec3d dp   = hj.f*(1./hj.w) - hi.f*(1./hi.w);
+                    //Vec3d dp   = apbc[j] - apbc[i];
+                    E -= getLJQH( dp, fij, REQij, R2damp );
+                    //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
+                    //bErr|=ckeckNaN( 1,3, (double*)&fij, [&]{ printf("atom[%i]fLJ2[%i,%i]",ia,i,j); } );
+                    f1.sub(fij);
+                    f2.add(fij);
+                }
+                */
+                fbs[i].add( f1     );
+                fbs[j].add( f2     );
+
+            }
+        }
+        }    
+
+
+        fapos [ia]=fa; 
+        fpipos[ia]=fpi;
+        return E;   
+    }
+
+
+
+
 
 double eval_atoms(){
     //FILE *file = fopen("out","w");
@@ -769,6 +914,8 @@ double eval( bool bClean=true, bool bCheck=true ){
     Etot += eval_atoms();
     //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
     asseble_forces();
+
+    if(bTorsion) EppI +=eval_torsions();
     //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 }

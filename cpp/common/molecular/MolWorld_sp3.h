@@ -983,9 +983,11 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     }
     */
     
-    verbosity = 0;
+    verbosity = 1;
     
-    run_omp( iterPerFrame, opt.dt, 1e-6, 1000.0 );
+    //run_omp( iterPerFrame, opt.dt, 1e-6, 1000.0 );
+
+    run_omp( 500, opt.dt, 1e-6, 1000.0 );
 
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
@@ -1020,20 +1022,23 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
             //if(verbosity>3)
             //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
-            if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+            //if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
 
-            
+            if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
+
+            /*
             // ----- Error is HERE
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
             else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+            if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
+            //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
+            */
+            
             if(ipicked==ia){ 
                 const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                 ffl.fapos[ia].add( f );
             }
-            if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
-            //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
-            
-            
+
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
         //#pragma omp barrier
@@ -1081,15 +1086,17 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             }
             if(F2<F2conv){ 
                 niter=0; 
-                if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps |F|=%g \n", itr,niter_max, E, sqrt(F2) );
+                double t = (getCPUticks() - T0)*tick2second;
+                if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
             }   
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
             //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
             //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
         }
+    }{
+    double t = (getCPUticks() - T0)*tick2second;
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
     }
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i |F|=%g \n", itr,niter_max, E, sqrt(F2) );
-
     return itr;
 }
 
