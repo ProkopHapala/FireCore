@@ -1077,7 +1077,18 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
 
                 //case SDLK_m: renderOrbital( which_MO ); break;
                 //case SDLK_r: renderDensity(          ); break;
-                case SDLK_s: W->saveXYZ( "out.xyz", "#comment", false ); break;
+                //case SDLK_s: W->saveXYZ( "out.xyz", "#comment", false ); break;
+                case SDLK_s: { 
+                    ((Atoms*)(&W->ffl))->lvec = &(W->ffl.lvec);
+                    FILE*file=fopen("snapshot.xyz","w");
+                    std::vector<int> iZs(W->ffl.natoms,-1); for(int i=0; i<W->ffl.natoms; i++){ iZs[i]=W->params.atypes[W->ffl.atypes[i]].iZ; } 
+                    int* atypes_bak=W->ffl.atypes;
+                    W->ffl.atypes=&iZs[0];
+                    W->ffl.atomsToXYZ(file, true,true, Vec3i{5,7,1}, "", false );
+                    W->ffl.atypes=atypes_bak;
+                    fclose(file);
+                    } break;
+
                 case SDLK_p: saveScreenshot( frameCount ); break;
                 
                 //case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;

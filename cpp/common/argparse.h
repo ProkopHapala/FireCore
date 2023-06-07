@@ -13,8 +13,8 @@ class ArgFunc{ public:
 }; 
 using LambdaDict = std::unordered_map<std::string, ArgFunc>;
 
-void process_args( int argc, char *argv[], const LambdaDict& funcs ){
-    for(int i=0; i<argc; i++ ){
+void process_args( int argc, char *argv[], const LambdaDict& funcs, bool bExitOnMiss=true ){
+    for(int i=1; i<argc; i++ ){
         //printf( ".process_args[%i] %s \n", i, argv[i] );
         auto found = funcs.find(argv[i]);
         if( found != funcs.end() ){
@@ -23,6 +23,11 @@ void process_args( int argc, char *argv[], const LambdaDict& funcs ){
             const char** args = (const char** )(argv+i+1); 
             argf.func( args );
             i+=argf.n;
+        }else{
+            if(bExitOnMiss){
+                printf("ERROR: process_args(%s) not found => Exit()\n", argv[i] );
+                exit(0);
+            }
         }
     }
 }

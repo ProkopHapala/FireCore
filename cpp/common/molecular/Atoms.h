@@ -93,8 +93,11 @@ class Atoms{ public:
            if(lvec){ fprintf( file, "E %g id %li ", Energy,id  ); }
            fprintf(file, "%s\n", comment );
         }
+        //printf( "*lvec=%li atypes=%li \n", (long)lvec, (long)atypes );
         Vec3d shift=Vec3dZero;
-        for(int iz=0;iz<nPBC.z;iz++){for(int iy=0;iy<nPBC.y;iy++){for(int ix=0;ix<nPBC.x;ix++){  if(lvec)shift= lvec->c*iz + lvec->b*iy + lvec->a*ix;
+        for(int iz=0;iz<nPBC.z;iz++){for(int iy=0;iy<nPBC.y;iy++){for(int ix=0;ix<nPBC.x;ix++){  
+            //printf( "ixyz(%i,%i,%i) na=%i \n", ix,iy,iz, natoms );
+            if(lvec)shift= lvec->c*iz + lvec->b*iy + lvec->a*ix;
             for(int i=0; i<natoms; i++){
                 //printf( "atomsToXYZ[%i]\n", i );
                 Vec3d p =  apos[i]+shift;
