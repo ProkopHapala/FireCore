@@ -20,11 +20,13 @@ def getFileName( path ):
 
 def plotCharges( path, fname ):
     mol = au.AtomicSystem(path+"/"+fname)                 #;print( mol.qs )
+    hbs,rbs = mol.findHBonds( )      # ;print( hbs, rbs )
+    r_labesl = [ ("%3.3fA" %r) for r in rbs ] 
     q_labels = [ ("%3.3f" %q) for q in mol.qs ]  ;print( q_labels )
     #plu.plotSystem( mol, labels=q_labels, axes=(1,2) )
-    plt.subplot(1,3,1); plu.plotSystem( mol, labels=q_labels, axes=(0,1) )
-    plt.subplot(1,3,2); plu.plotSystem( mol, labels=q_labels, axes=(1,2) )
-    plt.subplot(1,3,3); plu.plotSystem( mol, labels=q_labels, axes=(2,0) )
+    plt.subplot(1,3,1); plu.plotSystem( mol, labels=q_labels, axes=(0,1) )    ;plu.plotBonds( ps=mol.apos, links=hbs, axes=(0,1), colors="g", labels=r_labesl )
+    plt.subplot(1,3,2); plu.plotSystem( mol, labels=q_labels, axes=(1,2) )    ;plu.plotBonds( ps=mol.apos, links=hbs, axes=(1,2), colors="g", labels=r_labesl )
+    plt.subplot(1,3,3); plu.plotSystem( mol, labels=q_labels, axes=(2,0) )    ;plu.plotBonds( ps=mol.apos, links=hbs, axes=(2,0), colors="g", labels=r_labesl )
     plt.title(fname)
 
 # ============ Main

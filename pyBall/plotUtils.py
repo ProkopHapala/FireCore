@@ -16,7 +16,7 @@ def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, size
         for i in range(na):
             ax.annotate( str(labels[i]), (apos[i,ax1], apos[i,ax2]))
 
-def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k' ):
+def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k', labels=None ):
     ax1,ax2=axes
     ax_inds=[ax1,ax2]
     if lps is None:
@@ -32,6 +32,11 @@ def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k' )
     lc = mc.LineCollection(lps, linewidths=lws, colors=colors )
     ax= plt.gca()
     ax.add_collection(lc)
+
+    if labels is not None:
+        for i, s in enumerate(labels):
+            p = (lps[i,0,:]+lps[i,1,:])*0.5
+            ax.annotate( str(s), p )
     #ax.autoscale()
     #ax.margins(0.1)
 
