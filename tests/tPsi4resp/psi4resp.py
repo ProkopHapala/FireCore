@@ -10,8 +10,24 @@ from pyBall  import atomicUtils as au
 
 # ========= Setup
 
-indir="./input/"
+#indir="./input/"
+#indir="./input-small/"
+indir="./input_b3lyp/"
 #outdir="./output/"
+
+#names = [ f.split('.')[0] for f in os.listdir(indir) ]
+
+#names = [ "backbone_pasivated-H", "backbone_pasivated-R" ]
+#names = [ "pyridine" ]
+
+#names = [ "CHONH2",  "H2O",  "HCN",  "HCOOH",  "NH3",  "OCH2" ]
+#names = [ "H2O",  "HCN",  "HCOOH",  "NH3",  "OCH2" ]
+#names = [ "CHONH2" ]
+#names = [ "H2O" ]
+#names = [ "HCN" ]
+#names = [ "NH3" ]
+#names = [ "HCOOH" ]
+names = [ "OCH2" ]
 
 bRelax=True
 #bRelax=False
@@ -34,7 +50,10 @@ basises=[
 ]
 
 method_bas_pairs = [
-('scf','sto-3g'), ('pbe','cc-pvdz')
+#('scf','sto-3g'), 
+#('pbe','cc-pvdz'),
+#('b3lyp','cc-pvdz'),
+('ccsd' ,'cc-pvdz'),
 ]
 
 
@@ -66,10 +85,6 @@ def try_make_dirs( dname ):
 
 #psi4.core.be_quiet()
 
-#names = [ f.split('.')[0] for f in os.listdir(indir) ]
-
-#names = [ "backbone_pasivated-H", "backbone_pasivated-R" ]
-names = [ "pyridine" ]
 
 
 #names =["hexa_hb3_donor"]
