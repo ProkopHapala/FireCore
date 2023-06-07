@@ -219,7 +219,8 @@ struct Dihedral{
     void print()const{ printf( " Dihedral{t %i b(%i,%i,%i) n %i k %g}", type, bonds.a, bonds.b,bonds.c, n, k ); }
 
     Dihedral()=default;
-    Dihedral( int type_, Vec3i  bonds_, int n_, double k_ ):type(type_), bonds(bonds_), n(n_), k(k_){};
+    Dihedral( int type_, Vec3i  bonds_, int n_, double k_, double a0_=0):type(type_), bonds(bonds_), n(n_), k(k_),a0(a0_){};
+    Dihedral( int type_, Quat4i atoms_, int n_, double k_, double a0_=0):type(type_), atoms(atoms_), n(n_), k(k_),a0(a0_){};
 };
 
 
@@ -1784,6 +1785,63 @@ class Builder{  public:
         return true;
     }
 
+
+void assignTorsions( bool bNonPi=false, bool bNO=true ){
+    printf( "MM::Builder::assignTorsionsMMFFsp3()\n" );
+    int default_order = 2;
+    int nb = bonds.size();
+    //Quat4i*  tors2atom =0;
+    //Quat4d*  torsParams=0;
+    //std::vector<Quat4i> tors2atom;
+    //std::vector<Quat4d> torsParams;
+    for(int ib=0; ib<nb; ib++ ){
+        //printf( "assignTorsionsMMFFsp3[ib=%i]\n", ib );
+        Vec2i b = bonds[ib].atoms;
+        int ic = atoms[b.i].iconf;
+        int jc = atoms[b.j].iconf;
+        if( (ic<0)||(jc<0) ) continue;  // must be bond between node atoms
+        const AtomConf& ci = confs[ic];
+        const AtomConf& cj = confs[jc];
+        printf( "#### assignTorsionsMMFFsp3[ib=%i,%s-%s]   ci.npi=%i cj.npi=%i bNonPi=%i \n", ib, params->atypes[ atoms[b.i].type ].name, params->atypes[ atoms[b.j].type ].name, ci.npi, cj.npi, bNonPi );
+        if((ci.npi>1)||(cj.npi>1)) continue;          // No triple-bond torsion
+        if((ci.npi==0)||(cj.npi==0)){ // sp3 atoms only if O or N attaced to sp2
+            if(!bNonPi)continue;
+            int iZ = params->atypes[ atoms[b.i].type ].iZ;
+            int jZ = params->atypes[ atoms[b.j].type ].iZ;
+            printf( "#### assignTorsionsMMFFsp3[ib=%i,%s-%s]  iZ=%i jZ=%i ci.npi=%i cj.npi=%i bNonPi=%i \n", ib, params->atypes[ atoms[b.i].type ].name, params->atypes[ atoms[b.j].type ].name,  iZ,jZ, ci.npi, cj.npi, bNonPi );
+            if(( ((iZ==7)||(iZ==8)) && ( cj.npi==1 ) )
+             ||( ((jZ==7)||(jZ==8)) && ( ci.npi==1 ) )){
+            }else{ continue; }
+        }
+
+        int order = bonds[ib].type;
+        if(order<0){
+            printf( "WARRNING: in assignTorsionsMMFFsp3[ib=%i] order=%i changed to %i \n", ib, order, default_order ); 
+            order=default_order;
+        } 
+
+        for(int i=0; i<ci.nbond; i++ ){
+            if( ci.neighs[i] == ib ) continue;
+            int iia = bonds[ci.neighs[i]].getNeighborAtom(b.i);
+            for(int j=0; j<cj.nbond; j++ ){
+                if( cj.neighs[j] == ib ) continue;
+                int jja = bonds[cj.neighs[j]].getNeighborAtom(b.j);
+                printf( "dih atoms{%i,%i,%i,%i} types{%i,%i,%i,%i} type_names{%s,%s,%s,%s}\n",   iia,b.i,b.j,jja,    atoms[iia].type,atoms[b.i].type,atoms[b.j].type,atoms[jja].type,  params->atypes[atoms[iia].type].name,params->atypes[atoms[b.i].type].name,params->atypes[atoms[b.j].type].name,params->atypes[atoms[jja].type].name     );
+                DihedralType* diht = params->getDihedralType( atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order, true, true );
+                if(diht==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ib=%i,%i,%i) cannot find angle type(%i,%i,%i,%i|%i) =>Exit()\n", ib,i,j, atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order ); exit(0); };
+                //tors2atom .push_back( Quat4i{ iia,b.i,b.j,jja} );
+                //torsParams.push_back( Quat4d{cos(dih->ang0), sin(dih->ang0), dih->k, dih->n} );
+                dihedrals.push_back( Dihedral{ diht->bo, Quat4i{iia,b.i,b.j,jja}, diht->n, diht->k, diht->ang0 } );
+
+            }
+        }
+    }
+    printf( "MM::Builder::assignTorsionsMMFFsp3() DONE\n" );
+}
+
+
+
+
     /*
     void setAtoms( const Atom* brushAtom, const Vec3d* ps=0, int imin=0, int imax=-1,  ){
         if(imax<0){ imax=atoms.size(); }
@@ -3096,10 +3154,19 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
         int ncap  = nAmax - nconf;
         int nb    = bonds.size();
         if(verbosity>0)printf(  "MM:Builder::toMMFFsp3_loc() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
-        if(bRealloc)ff.realloc( nconf, ncap+ne );
+        int ntors=0; if(ff.bTorsion) ntors=dihedrals.size();
+        if(bRealloc)ff.realloc( nconf, ncap+ne, ntors );
         Vec3d hs[4];
         int ie0=nconf+ncap;
         int iie = 0;
+
+        if(ff.bTorsion){
+            for(int i=0; i<ff.ntors; i++){
+                const Dihedral& dih=dihedrals[i];
+                ff.tors2atom [i]=dih.atoms;
+                ff.torsParams[i]=Quat4d{cos(dih.a0),sin(dih.a0),dih.k,dih.n};
+            }
+        }
 
         //params->printAtomTypeDict();
         int etyp=-1;  if(params) etyp=params->atomTypeDict["E"];
@@ -3201,7 +3268,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
 void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
     printf( "MM::Builder::assignAnglesMMFFsp3()\n" );
     for(int ia=0; ia<ff.nnode; ia++ ){
-        printf( "assignTorsionsMMFFsp3[ia=%i]\n", ia );
+        printf( "assignAnglesMMFFsp3[ia=%i]\n", ia );
         int iat = ff.atypes[ia];
         AtomType& atyp = params->atypes[iat];
         int*    ngs = ff.neighs[ia].array;
@@ -3238,52 +3305,6 @@ void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
     }
 }
 
-void assignTorsionsMMFFsp3( MMFFsp3_loc& ff, bool bNonPi=false, bool bNO=true ){
-    printf( "MM::Builder::assignTorsionsMMFFsp3()\n" );
-
-    int default_order = 2;
-    int nb = bonds.size();
-    //Quat4i*  tors2atom =0;
-    //Quat4d*  torsParams=0;
-    std::vector<Quat4i> tors2atom;
-    std::vector<Quat4d> torsParams;
-    for(int ib=0; ib<nb; ib++ ){
-        printf( "assignTorsionsMMFFsp3[ib=%i]\n", ib );
-        Vec2i b = bonds[ib].atoms;
-        int ic = atoms[b.i].iconf;
-        int jc = atoms[b.j].iconf;
-        if( (ic<0)||(jc<0) ) continue;  // must be bond between node atoms
-        const AtomConf& ci = confs[ic];
-        const AtomConf& cj = confs[jc];
-        if( (!bNonPi) && ((ci.npi!=1)||(cj.npi!=1))){
-            int iZ = params->atypes[ atoms[b.i].type ].iZ;
-            int jZ = params->atypes[ atoms[b.j].type ].iZ;
-            if(( ((iZ==7)||(iZ==8)) && ( cj.npi==1 ) )
-             ||( ((jZ==7)||(jZ==8)) && ( ci.npi==1 ) )){
-            }else{ continue; }
-        }
-
-        int order = bonds[ib].type;
-        if(order<0){
-            printf( "WARRNING: in assignTorsionsMMFFsp3[ib=%i] order=%i changed to %i \n", ib, order, default_order ); 
-            order=default_order;
-        } 
-
-        for(int i=0; i<ci.nbond; i++ ){
-            if( ci.neighs[i] == ib ) continue;
-            int iia = bonds[ci.neighs[i]].getNeighborAtom(b.i);
-            for(int j=0; j<cj.nbond; j++ ){
-                if( cj.neighs[j] == ib ) continue;
-                int jja = bonds[cj.neighs[j]].getNeighborAtom(b.j);
-                printf( "dih atoms{%i,%i,%i,%i} types{%i,%i,%i,%i} type_names{%s,%s,%s,%s}\n",   iia,b.i,b.j,jja,    atoms[iia].type,atoms[b.i].type,atoms[b.j].type,atoms[jja].type,  params->atypes[atoms[iia].type].name,params->atypes[atoms[b.i].type].name,params->atypes[atoms[b.j].type].name,params->atypes[atoms[jja].type].name     );
-                DihedralType* dih = params->getDihedralType( atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order, true, true );
-                if(dih==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ib=%i,%i,%i) cannot find angle type(%i,%i,%i,%i|%i) =>Exit()\n", ib,i,j, atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order ); exit(0); };
-                tors2atom .push_back( Quat4i{ iia,b.i,b.j,jja} );
-                torsParams.push_back( Quat4d{cos(dih->ang0), sin(dih->ang0), dih->k, dih->n} );
-            }
-        }
-    }
-}
 
 #endif // MMFFsp3_loc_h
 
