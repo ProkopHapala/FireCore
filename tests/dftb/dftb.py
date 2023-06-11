@@ -22,6 +22,10 @@ for fname in fnames:
     print(  name, ename )
     if ename == '.xyz':
         atoms= au.AtomicSystem(fname)
+
+        atoms1 = atoms.selectBondedCluster( {0} )
+
+        '''
         os.mkdir(name )
         os.chdir(name )
         os.system('cp ../%s input.xyz' %fname )  
@@ -30,6 +34,7 @@ for fname in fnames:
         p = subprocess.Popen(['dftb+',"> OUT"],stdout=f)
         processes.append((p, f))
         os.chdir( workdir )
+        '''
 
 for p, f in processes:
     p.wait()

@@ -672,9 +672,20 @@ def removeGroup( base, remove ):
                 As[ ia_ ] -=1
     return (As,Bs), old_i
 
+def selectBondedCluster( s, bonds, na ):
+    #s = { i0 }
+    for i in range(2*na):
+        n = len(s)
+        for b in bonds:
+            if   b[0] in s: s.add( b[1] )
+            elif b[1] in s: s.add( b[0] )
+        if( len(s) <= n ): break
+    return s
+
+
 # ========================== Class Geom
 
-class AtomicSystem():
+class AtomicSystem( ):
 
     def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None ) -> None:
         self.apos    = apos
@@ -767,6 +778,35 @@ class AtomicSystem():
             if enames is not None: enames[:] = self.enames[:]
 
         return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
+
+
+    def selectBondedCluster( self, s ):
+        na = len(self.apos)
+        s    = selectBondedCluster( s, self.bonds )
+        inds = [ i in range(na) if i in s ]
+        n = len(inds)
+        print(inds)
+
+        if self.atypes is not None: 
+            atypes = self.atypes[inds]
+        else:
+            atypes = None
+
+        if self.enames is not None: 
+            enames = [ self.enames[i] for i in inds ]
+        else:
+            enames = None
+
+        if self.qs is not None: 
+            qs = self.qs[inds]
+        else:
+            qs = None
+
+        lvec=self.lvec
+        apos  = self.apos[inds,:]
+
+        return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
+
 
     def orient_mat(self, rot, p0=None, bCopy=False ):
         apos=self.apos  
