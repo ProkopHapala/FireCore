@@ -37,8 +37,8 @@ def getRvdWsNP( atypes, eparams=elements.ELEMENTS ):
 
 def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
     bonds  = []
+    rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
-    Rcut2  = Rcut*Rcut
     if byRvdW:
         if  RvdWs is None:
             RvdWs = getRvdWsNP( atypes, eparams=elements.ELEMENTS )
@@ -49,15 +49,19 @@ def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=Tr
         j0=i+1
         rs   = np.sqrt( np.sum( (apos[j0:,:] - pi[None,:] )**2, axis=1 ) )
         mask = rs[:] < ( RvdWs[j0:]+RvdWs[i] )*RvdwCut
-        bonds += [ (i,j) for j in iatoms[j0:][mask] ]
-    return np.array( bonds, dtype=np.int32 )
+        dbonds = [ (i,j) for j in iatoms[j0:][mask]  ]
+        bonds += dbonds 
+        rbs   += [ rs[b[1]-j0] for b in dbonds ]
+    #print( "bonds=", len(bonds), bonds )
+    #print( "rbs=",   len(rbs),   rbs )
+    return np.array( bonds, dtype=np.int32 ), np.array( rbs )
 
 def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.2, angMax=30.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
     bonds  = []
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
     cos_min = np.cos( angMax*np.pi/180.0 )
-    print( "cos_min ", cos_min )
+    #print( "cos_min ", cos_min )
     for i,pi in enumerate(apos):
         if ( atypes[ i ] not in typs1) : continue
         ds   = apos[:,:] - pi[None,:]
@@ -69,7 +73,6 @@ def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.2, angMax=30.0, typs1={"H"}, t
         dbonds = [ (i,j) for j in iatoms[:][mask] if atypes[j] in typs2 ]
         bonds += dbonds
         rbs   += [ rs[b[1]] for b in dbonds ]
-
     return np.array( bonds, dtype=np.int32 ), np.array( rbs )
 
 def neighs( natoms, bonds ):
@@ -149,6 +152,18 @@ def pairsNotShareNeigh( pairs, neighs ):
             pairs_.append( pair )
     return pairs_
 
+def rotMatPCA( ps ):
+    cog = ps.sum(axis=0)
+    ps = ps - cog[None,:]
+    M = np.dot( ps.T, ps )    #;print( M )
+    es, vs = np.linalg.eigh(M)
+    inds = np.argsort(es)[::-1]
+    es   = es[inds]
+    vs   = vs.T[inds]
+    #print(es)
+    #print(vs)
+    return( vs )
+    
 def makeRotMatAng( ang, ax1=0, ax2=1 ):
     ca=np.cos(ang)
     sa=np.sin(ang)
@@ -192,6 +207,10 @@ def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):
     fw  = apos[ip1[1]-_0]-apos[ip1[0]-_0]
     up  = apos[ip2[1]-_0]-apos[ip2[0]-_0]
     return orient_vs( p0, fw, up, apos, trans=trans )
+
+def orientPCA(ps):
+    M = rotMatPCA( ps )
+    mulpos( ps, M )
 
 def groupToPair( p1, p2, group, up, up_by_cog=False ):
     center = (p1+p2)*0.5
@@ -360,7 +379,7 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
             if bReadN and (ia==0):
                 try:
                     nmax=int(wds[0])
-                    print("nmax: ", nmax)
+                    #print("nmax: ", nmax)
                 except:
                     pass
         if(ia>=nmax): break
@@ -693,10 +712,11 @@ class AtomicSystem():
         for i in range(len(self.bonds)):
             print( "[%i] (%i,%i) (%s,%s)" %( i, self.bonds[i,0],self.bonds[i,1],  self.enames[self.bonds[i,0]], self.enames[self.bonds[i,1]] ) )
 
-    def findBonds(self, Rcut=3.0, RvdwCut=0.7, RvdWs=None, byRvdW=True ):
+    def findBonds(self, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
         if self.atypes is None:
             self.atypes = [ elements.ELEMENT_DICT[e][0] for e in self.enames ]
-        self.bonds = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
+        self.bonds, rs = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
+        return self.bonds, rs
 
     def findHBonds(self, Rb=1.5, Rh=2.2, angMax=30.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
         return findHBondsNP( self.apos, atypes=self.enames, Rb=Rb, Rh=Rh, angMax=angMax, typs1=typs1, typs2=typs2, bPrint=True )
@@ -766,6 +786,9 @@ class AtomicSystem():
         fw  = self.apos[ip1[1]-_0]-self.apos[ip1[0]-_0]
         up  = self.apos[ip2[1]-_0]-self.apos[ip2[0]-_0]
         return self.orient_vs( fw, up, p0, trans=trans, bCopy=bCopy )
+    
+    def orientPCA(self):
+        orientPCA(self.apos)
 
     def delete_atoms(self, lst ):
         st = set(lst)
