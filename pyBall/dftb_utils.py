@@ -35,14 +35,15 @@ default_params={
 
 # ============ Setup
 
-def makeDFTBjob( atoms : au.AtomicSystem, fname="input.xyz", method='D3H5', cell=None, basis_path='/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/', params=default_params, opt=True ):
+def makeDFTBjob( atoms : au.AtomicSystem, fname='dftb_in.hsd', gname="input.xyz", method='D3H5', cell=None, basis_path='/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/', params=default_params, opt=True ):
     enameset = set( atoms.enames )
+    print( "enameset = ", enameset )
 
-    hsd = open('dftb_in.hsd','w')
+    hsd = open(fname,'w')
     hsd.write(dedent("""
     Geometry = xyzFormat {
         <<< "%s"
-    }\n""" %fname ))
+    }\n""" %gname ))
 
     if opt:
         hsd.write(dedent(f"""  

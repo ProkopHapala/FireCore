@@ -672,9 +672,9 @@ def removeGroup( base, remove ):
                 As[ ia_ ] -=1
     return (As,Bs), old_i
 
-def selectBondedCluster( s, bonds, na ):
+def selectBondedCluster( s, bonds ):
     #s = { i0 }
-    for i in range(2*na):
+    for i in range( len(bonds) ):
         n = len(s)
         for b in bonds:
             if   b[0] in s: s.add( b[1] )
@@ -702,11 +702,13 @@ class AtomicSystem( ):
             else:
                 self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname , bReadN=True )
 
-    def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None ):
+    def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True ):
         if blvec and (self.lvec is not None):
             print( self.lvec )
             comment= ( "lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   ) ) + comment
-        saveXYZ( self.enames, self.apos, fname, qs=self.qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es )
+        qs = self.qs
+        if(not bQs): qs=None
+        saveXYZ( self.enames, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es )
     
     def toXYZ(self, fout ):
         writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=False )
@@ -779,16 +781,9 @@ class AtomicSystem( ):
 
         return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
 
-
-    def selectBondedCluster( self, s ):
-        na = len(self.apos)
-        s    = selectBondedCluster( s, self.bonds )
-        inds = [ i in range(na) if i in s ]
-        n = len(inds)
-        print(inds)
-
+    def selectSubset(self, inds ):
         if self.atypes is not None: 
-            atypes = self.atypes[inds]
+                atypes = self.atypes[inds]
         else:
             atypes = None
 
@@ -807,6 +802,12 @@ class AtomicSystem( ):
 
         return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
 
+    def selectBondedCluster( self, s ):
+        na = len(self.apos)
+        s     = selectBondedCluster( s, self.bonds )
+        ins  = [ i for i in range(na) if (i in s) ]
+        outs = [ i for i in range(na) if (i not in s) ] 
+        return ins,outs
 
     def orient_mat(self, rot, p0=None, bCopy=False ):
         apos=self.apos  
