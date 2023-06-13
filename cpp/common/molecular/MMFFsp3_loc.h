@@ -218,7 +218,7 @@ double optimalTimeStep(double m=1.0){
 // ============== Evaluation
 
 double eval_atom(const int ia){
-    printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
+    //printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
     double E=0;
     const Vec3d pa  = apos [ia]; 
     const Vec3d hpi = pipos[ia]; 

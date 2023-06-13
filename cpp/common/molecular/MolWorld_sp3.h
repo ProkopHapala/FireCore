@@ -672,13 +672,12 @@ void makeMMFFs(){
     builder.checkBondsOrdered( true, false );
     builder.assignTypes();
     builder.printAtomTypes();
-    if(ffl.bTorsion  ){ builder.assignTorsions( true, true ); ffl.printTorsions(); }  //exit(0);
-
-    builder.toMMFFsp3    ( ff , true, bEpairs );
-    builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
-
-    builder.toMMFFsp3_loc( ffl, true, bEpairs );  // without electron pairs
+    if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
+    
+    builder.toMMFFsp3_loc( ffl, true, bEpairs );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
     if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
+    builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
+    builder.toMMFFsp3    ( ff , true, bEpairs );
     
     ffl.flipPis( Vec3dOne );
     ff4.flipPis( Vec3fOne );
