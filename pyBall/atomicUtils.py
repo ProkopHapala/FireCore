@@ -804,6 +804,7 @@ class AtomicSystem( ):
 
     def selectBondedCluster( self, s ):
         na = len(self.apos)
+        if self.bonds is None: self.findBonds()
         s     = selectBondedCluster( s, self.bonds )
         ins  = [ i for i in range(na) if (i in s) ]
         outs = [ i for i in range(na) if (i not in s) ] 

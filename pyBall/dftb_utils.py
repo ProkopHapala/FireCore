@@ -31,14 +31,14 @@ default_params={
     #"Optimizer"  : "FIRE{StepSize = 1.0}",       #
     "MaxSteps": 1000,
     "GradAMax": 1E-4
+    #'Temperature' : 300
 }
 
 # ============ Setup
 
-def makeDFTBjob( atoms : au.AtomicSystem, fname='dftb_in.hsd', gname="input.xyz", method='D3H5', cell=None, basis_path='/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/', params=default_params, opt=True ):
-    enameset = set( atoms.enames )
-    print( "enameset = ", enameset )
-
+def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3H5', cell=None, basis_path='/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/', params=default_params, opt=True ):
+    enameset = set( enames )
+    #print( "enameset = ", enameset )
     hsd = open(fname,'w')
     hsd.write(dedent("""
     Geometry = xyzFormat {
@@ -99,6 +99,9 @@ def makeDFTBjob( atoms : au.AtomicSystem, fname='dftb_in.hsd', gname="input.xyz"
                 HHRepulsion = {params["HHRepulsion"]}
             }}\n"""  ), "    "))
 
+        if 'Temperature' in params:
+            hsd.write('    Filling = Fermi {Temperature [K] = %f }\n' %params['Temperature']    )
+
         hsd.write("}\n")
 
     return
@@ -107,6 +110,32 @@ def makeDFTBjob( atoms : au.AtomicSystem, fname='dftb_in.hsd', gname="input.xyz"
     #ParserOptions { ParserVersion = 10 }
     #Parallel { UseOmpThreads = Yes }
 
-    hsd.close()    
+def run( geom=None, params=None, id=0 ):
+    idstr = "%03i" %id 
+    print( idstr )
+    if params['own_dir']:
+        cwd = os.getcwd()
+        os.mkdir( idstr )
+        os.chdir( idstr )
+    #try:
+    #    os.system( 'cp ../%03i/charges.bin .' %(id-1) )
+    #except: pass
+    if( id>0 ):
+        os.system( 'cp ../%03i/charges.bin .' %(id-1) )
+    apos,es = geom
+    au.saveXYZ( es=es, xyzs=apos, fname="input.xyz" )
+    makeDFTBjob( enames=es, fname='dftb_in.hsd', gname="input.xyz", method=params['method'], cell=params['cell'], basis_path=params['basis'], params=params, opt=params['opt'] )
+    os.system('dftb+ > OUT' )
+    #os.system( 'grep "Total Energy" OUT | tail -1 | cut -b 52-70' )
+    Estr = os.popen('grep "Total Energy" OUT | tail -1 | cut -b 52-70').read()
+    E = float(Estr)
+    if params['own_dir']:
+        os.chdir( cwd )
+    return E
+
+
+
+
+
 
 
