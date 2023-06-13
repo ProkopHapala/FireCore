@@ -512,7 +512,7 @@ int TestAppMMFFmini::makeMoleculeInlineBuilder( bool bPBC ){
     builder.autoAngles ( 2.5, 1.25 );
 
     // instert aditional dihedral
-    MM::Dihedral brushDihedral{ -1,   {-1,-1,-1},    3, 0.5 };  println(brushDihedral);
+    MM::Dihedral brushDihedral{ -1,   Vec3i{-1,-1,-1},    3, 0.5 };  println(brushDihedral);
     builder.insertDihedralByAtom( {0,1,2,3}, brushDihedral );
     builder.trySortBonds();
 

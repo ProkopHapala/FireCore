@@ -1787,7 +1787,7 @@ class Builder{  public:
 
 
 void assignTorsions( bool bNonPi=false, bool bNO=true ){
-    printf( "MM::Builder::assignTorsionsMMFFsp3()\n" );
+    printf( "MM::Builder::assignTorsions()\n" );
     int default_order = 2;
     int nb = bonds.size();
     //Quat4i*  tors2atom =0;
@@ -1795,20 +1795,20 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     //std::vector<Quat4i> tors2atom;
     //std::vector<Quat4d> torsParams;
     for(int ib=0; ib<nb; ib++ ){
-        //printf( "assignTorsionsMMFFsp3[ib=%i]\n", ib );
+        //printf( "assignTorsions[ib=%i]\n", ib );
         Vec2i b = bonds[ib].atoms;
         int ic = atoms[b.i].iconf;
         int jc = atoms[b.j].iconf;
         if( (ic<0)||(jc<0) ) continue;  // must be bond between node atoms
         const AtomConf& ci = confs[ic];
         const AtomConf& cj = confs[jc];
-        printf( "#### assignTorsionsMMFFsp3[ib=%i,%s-%s]   ci.npi=%i cj.npi=%i bNonPi=%i \n", ib, params->atypes[ atoms[b.i].type ].name, params->atypes[ atoms[b.j].type ].name, ci.npi, cj.npi, bNonPi );
+        printf( "#### assignTorsions[ib=%i,%s-%s]   ci.npi=%i cj.npi=%i bNonPi=%i \n", ib, params->atypes[ atoms[b.i].type ].name, params->atypes[ atoms[b.j].type ].name, ci.npi, cj.npi, bNonPi );
         if((ci.npi>1)||(cj.npi>1)) continue;          // No triple-bond torsion
         if((ci.npi==0)||(cj.npi==0)){ // sp3 atoms only if O or N attaced to sp2
             if(!bNonPi)continue;
             int iZ = params->atypes[ atoms[b.i].type ].iZ;
             int jZ = params->atypes[ atoms[b.j].type ].iZ;
-            printf( "#### assignTorsionsMMFFsp3[ib=%i,%s-%s]  iZ=%i jZ=%i ci.npi=%i cj.npi=%i bNonPi=%i \n", ib, params->atypes[ atoms[b.i].type ].name, params->atypes[ atoms[b.j].type ].name,  iZ,jZ, ci.npi, cj.npi, bNonPi );
+            printf( "#### assignTorsions[ib=%i,%s-%s]  iZ=%i jZ=%i ci.npi=%i cj.npi=%i bNonPi=%i \n", ib, params->atypes[ atoms[b.i].type ].name, params->atypes[ atoms[b.j].type ].name,  iZ,jZ, ci.npi, cj.npi, bNonPi );
             if(( ((iZ==7)||(iZ==8)) && ( cj.npi==1 ) )
              ||( ((jZ==7)||(jZ==8)) && ( ci.npi==1 ) )){
             }else{ continue; }
@@ -1816,7 +1816,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
         int order = bonds[ib].type;
         if(order<0){
-            printf( "WARRNING: in assignTorsionsMMFFsp3[ib=%i] order=%i changed to %i \n", ib, order, default_order ); 
+            printf( "WARRNING: in assignTorsions[ib=%i] order=%i changed to %i \n", ib, order, default_order ); 
             order=default_order;
         } 
 
@@ -1828,7 +1828,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 int jja = bonds[cj.neighs[j]].getNeighborAtom(b.j);
                 printf( "dih atoms{%i,%i,%i,%i} types{%i,%i,%i,%i} type_names{%s,%s,%s,%s}\n",   iia,b.i,b.j,jja,    atoms[iia].type,atoms[b.i].type,atoms[b.j].type,atoms[jja].type,  params->atypes[atoms[iia].type].name,params->atypes[atoms[b.i].type].name,params->atypes[atoms[b.j].type].name,params->atypes[atoms[jja].type].name     );
                 DihedralType* diht = params->getDihedralType( atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order, true, true );
-                if(diht==0){ printf("ERROR in MM::Builder::assignAnglesMMFFsp3(ib=%i,%i,%i) cannot find angle type(%i,%i,%i,%i|%i) =>Exit()\n", ib,i,j, atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order ); exit(0); };
+                if(diht==0){ printf("ERROR in MM::Builder::assignTorsions(ib=%i,%i,%i) cannot find angle type(%i,%i,%i,%i|%i) =>Exit()\n", ib,i,j, atoms[iia].type, atoms[b.i].type, atoms[b.j].type, atoms[jja].type, order ); exit(0); };
                 //tors2atom .push_back( Quat4i{ iia,b.i,b.j,jja} );
                 //torsParams.push_back( Quat4d{cos(dih->ang0), sin(dih->ang0), dih->k, dih->n} );
                 dihedrals.push_back( Dihedral{ diht->bo, Quat4i{iia,b.i,b.j,jja}, diht->n, diht->k, diht->ang0 } );
@@ -1836,7 +1836,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             }
         }
     }
-    printf( "MM::Builder::assignTorsionsMMFFsp3() DONE\n" );
+    printf( "MM::Builder::assignTorsions() DONE\n" );
 }
 
 
