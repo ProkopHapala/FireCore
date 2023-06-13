@@ -11,6 +11,15 @@ verbosity=0
 def exprange( xmax, n=10 ):
     return ((1.+xmax)**(1./(n-1)))**np.arange(0,n)-1.0
 
+def scan_ranges( xs=[-0.4,0.4,2.0,6.0,10.0], dxs=[0.1,0.2,0.4,1.0], sigma=1e-9 ):
+    ars = []
+    n = len(dxs)
+    for i in range(n):
+        d = -sigma
+        if i==n-1: d=sigma
+        ars.append( np.arange(xs[i],xs[i+1]+d,dxs[i]) )
+    return np.concatenate( ars )
+
 def makeLinearScan_firecore( nstep, selection, d, apos, nmax_scf=200 ):
     forces = np.zeros(apos.shape)
     Etemp  = np.zeros(8)
@@ -123,7 +132,7 @@ def scan_xyz( fxyzin, fxyzout="out.xyz", Eout=None, callback=None, params=None, 
     while True:
         apos,Zs,es,qs = au.loadAtomsNP( fin=fin, bReadN=True )   #;print(apos) ;print(es)
         if(len(es)==0): break
-        if callback is not None: Es.append(  callback((apos,es), params=params ) )
+        if callback is not None: Es.append(  callback((apos,es), params=params, id=i ) )
         comment =  "i %i E_tot %20.10f x %g " %( i, Es[i], xs[i] )
         if verbosity>0: print(comment)
         if fxyzout is not None:

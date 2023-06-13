@@ -86,7 +86,7 @@ def pack_mol( apos, es, ifrag_line=None ):
     mol   = psi4.geometry( geom )
     return mol
 
-def eval( geom, params=None ):
+def eval( geom, params=None, id=None ):
     pars = params.copy()
     method = pars['method']
     basis  = pars['basis']

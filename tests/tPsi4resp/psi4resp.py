@@ -22,12 +22,12 @@ indir="./input_b3lyp/"
 
 #names = [ "CHONH2",  "H2O",  "HCN",  "HCOOH",  "NH3",  "OCH2" ]
 #names = [ "H2O",  "HCN",  "HCOOH",  "NH3",  "OCH2" ]
-#names = [ "CHONH2" ]
+names = [ "CHONH2" ]
 #names = [ "H2O" ]
 #names = [ "HCN" ]
 #names = [ "NH3" ]
 #names = [ "HCOOH" ]
-names = [ "OCH2" ]
+#names = [ "OCH2" ]
 
 bRelax=True
 #bRelax=False
