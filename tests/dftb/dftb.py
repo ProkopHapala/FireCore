@@ -18,14 +18,26 @@ from pyBall import plotUtils   as plu
 #workdir="/home/prokop/git/FireCore/tests/dftb/inputs2/"
 #workdir="/home/prokop/git/FireCore/tests/dftb/inputs3/"
 #workdir="/home/prokop/git/FireCore/tests/dftb/input_rigid/"
-workdir="/home/prokop/git/FireCore/tests/dftb/input_relaxed_tight"
+#workdir="/home/prokop/git/FireCore/tests/dftb/input_relaxed_tight"
+#workdir="/home/prokop/git/FireCore/tests/dftb/input_relaxed_tight-BFGS/"
 
+workdir="/home/prokop/git/FireCore/tests/dftb/input_relaxed_tight-bak/"
+
+opt_frag = True
 
 params = dftbu.default_params.copy()
 params.update({
     "Optimizer"   : "Rational{}",
-    "GradAMax"    : 1E-6,
-    'Temperature' : 300
+    #"Optimizer"   : "LBFGS{  Memory = 20 }",
+    #"GradElem"    : 1E-4,
+    #"DispElem"    : 1E-3,
+    #"EConv"       : 1E-7,
+    #'Temperature' : 50,
+    'Temperature' : 300,
+    #'Mixer': 'Broyden{ MixingParameter = 0.02 }',
+    'Mixer': 'Anderson{ MixingParameter = 0.05 }',
+    #'SCCTolerance' : 1e-7,
+    #'MaxSccIterations' : 200,
 })
 
 nproc_max = 6
@@ -84,8 +96,8 @@ for fname in fnames:
             os.mkdir(name2)
             A.saveXYZ(name1+"/input.xyz", bQs=False)
             B.saveXYZ(name2+"/input.xyz", bQs=False)
-            dftbu.makeDFTBjob( enames=A.enames, fname=name1+"/dftb_in.hsd", params=params, opt=False )
-            dftbu.makeDFTBjob( enames=B.enames, fname=name2+"/dftb_in.hsd", params=params, opt=False )
+            dftbu.makeDFTBjob( enames=A.enames, fname=name1+"/dftb_in.hsd", params=params, opt=opt_frag )
+            dftbu.makeDFTBjob( enames=B.enames, fname=name2+"/dftb_in.hsd", params=params, opt=opt_frag )
 
         os.mkdir(name)
         os.system('cp %s %s/input.xyz' %(fname,name) )  

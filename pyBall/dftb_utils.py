@@ -30,7 +30,7 @@ default_params={
     "Optimizer"  : "LBFGS{  Memory = 20 }",
     #"Optimizer"  : "FIRE{StepSize = 1.0}",       #
     "MaxSteps": 1000,
-    "GradAMax": 1E-4
+    "GradElem": 1E-4
     #'Temperature' : 300
 }
 
@@ -52,9 +52,15 @@ def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3
             MovedAtoms = 1:-1
             MaxSteps = {params["MaxSteps"]}
             OutputPrefix = "geom.out"
-            Convergence {{ GradAMax = {params["GradAMax"]} }}
-        }}
-        """))
+            Convergence {{ 
+                GradElem = {params["GradElem"]}
+        """) )
+        if 'DispElem' in params: 
+            hsd.write('        DispElem = %e \n' %params['DispElem']  ) 
+        if 'EConv' in params: 
+            hsd.write('        Energy   = %e \n' %params['EConv']    ) 
+        hsd.write("    }\n")
+        hsd.write("}\n")
 
     if method in methods_XTB:
         hsd.write(dedent("""
@@ -99,6 +105,12 @@ def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3
                 HHRepulsion = {params["HHRepulsion"]}
             }}\n"""  ), "    "))
 
+        if 'SCCTolerance' in params: 
+            hsd.write('    SCCTolerance = %e \n' %params['SCCTolerance']    )
+        if 'MaxSccIterations' in params:
+            hsd.write('    MaxSccIterations = %i \n' %params['MaxSccIterations']    )
+        if 'Mixer' in params:
+            hsd.write('    Mixer = %s \n' %params['Mixer']    ) 
         if 'Temperature' in params:
             hsd.write('    Filling = Fermi {Temperature [K] = %f }\n' %params['Temperature']    )
 

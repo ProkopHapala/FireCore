@@ -709,7 +709,13 @@ class AtomicSystem( ):
         qs = self.qs
         if(not bQs): qs=None
         saveXYZ( self.enames, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es )
-    
+
+    def toLines(self):
+        lines = []
+        for i,pos in enumerate(self.apos):
+            lines.append(  "%s %3.5f %3.5f %3.5f\n" %(self.enames[i], pos[0],pos[1],pos[2]) )
+        return lines
+
     def toXYZ(self, fout ):
         writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=False )
 
