@@ -6,6 +6,8 @@ int verbosity = 1;
 int idebug    = 0;
 double tick2second=1e-9;
 
+#include "testUtils.h"
+
 //#include "MolWorld_sp3.h"
 #include "MolWorld_sp3_multi.h"
 
