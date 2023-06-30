@@ -47,7 +47,7 @@ ln -s $dir/$name .
 #./$name -x common_resources/polydiacetylene_OH
 #./$name -x common_resources/polymer-2_new
 #./$name -x common_resources/polymer-2_new -EachAngle
-./$name -x common_resources/polymer-2_new -EachAngle -torsions
+#./$name -x common_resources/polymer-2_new -EachAngle -torsions
 
 
 
@@ -78,7 +78,7 @@ ln -s $dir/$name .
 
 #./$name -x common_resources/polymer-2          -n 221 -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/polymer-2_new            -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/polymer-2_new   -c 10     -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/polymer-2_new   -c 10     -g common_resources/NaCl_1x1_L2
 
 
 

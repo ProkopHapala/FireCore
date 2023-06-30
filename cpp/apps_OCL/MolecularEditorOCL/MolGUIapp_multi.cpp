@@ -27,10 +27,10 @@ int main(int argc, char *argv[]){
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz
 	funcs["-g"]={1,[&](const char** ss){ W->surf_name =ss[0]; }}; // substrate as .xyz
 	funcs["-r"]={0,[&](const char** ss){ W->bMMFF=false;      }}; // rigid
-	funcs["-n"]={0,[&](const char** ss){ W->nMulPBC.x=(ss[0][0]-'0'); W->nMulPBC.y=(ss[0][1]-'0'); W->nMulPBC.z=(ss[0][2]-'0');      }}; // rigid
-	funcs["-q"]={0,[&](const char** ss){ sscanf( ss[0], "%lf", &(W->fAutoCharges) ); }}; // AutoCharge
-	funcs["-t"]={0,[&](const char** ss){ sscanf( ss[0], "%i", &(app->W->itest) ); }}; // test
-    funcs["-c"]={0,[&](const char** ss){ int iconstr; sscanf( ss[0], "%i", &iconstr ); app->W->constrain_list.push_back(iconstr); }}; // test
+	funcs["-n"]={1,[&](const char** ss){ W->nMulPBC.x=(ss[0][0]-'0'); W->nMulPBC.y=(ss[0][1]-'0'); W->nMulPBC.z=(ss[0][2]-'0');      }}; // rigid
+	funcs["-q"]={1,[&](const char** ss){ sscanf( ss[0], "%lf", &(W->fAutoCharges) ); }}; // AutoCharge
+	funcs["-t"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &(app->W->itest) ); }}; // test
+    funcs["-c"]={1,[&](const char** ss){ int iconstr; sscanf( ss[0], "%i", &iconstr ); app->W->constrain_list.push_back(iconstr); }}; // test
     funcs["-e"]={0,[&](const char** ss){ app->W->bEpairs=true; }}; // add explicit electron pairs
 	funcs["-ManipulAnim"]={0,[&](const char** ss){ app->W->bAnimManipulation=true; }}; // add explicit electron pairs
     //funcs["-EachAngle"]={0,[&](const char** ss){ app->W->ffl.bEachAngle=true;                          }};
