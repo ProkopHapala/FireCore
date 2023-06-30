@@ -20,7 +20,9 @@ from pyBall import plotUtils   as plu
 #workdir="/home/prokop/git/FireCore/tests/dftb/inputs3/"
 #workdir="/home/prokop/git/FireCore/tests/dftb/input_rigid/"
 #workdir="/home/prokop/git/FireCore/tests/dftb/inputs_relaxed"
-workdir="/home/prokop/git/FireCore/tests/dftb/input_relaxed_tight"
+#workdir="/home/prokop/git/FireCore/tests/dftb/input_relaxed_tight"
+workdir="/home/prokop/git/FireCore/tests/dftb/input_relaxed_tight-bak"
+#workdir="/home/prokop/git/FireCore/tests/dftb/input_relaxed_tight-BFGS/"
 
 # ====== Functions
 
@@ -48,7 +50,8 @@ def getBindingEnergy( name ):
         os.system( s %name2 )
     data = np.genfromtxt( outf )
     dE_eV =  data[0,-2]- data[1,-2]- data[2,-2]
-    print( "Binding Eenergy(%s): %g[eV] %g[kcal/mol] " %(fname,dE_eV,dE_eV*23.0609 ) )
+    #print( "Binding Eenergy(%s): %g[eV] %g[kcal/mol] " %(name,dE_eV,dE_eV*23.0609 ) )
+    print( "%s %g eV %g kcal/mol" %(name,dE_eV,dE_eV*23.0609 ) )
 
     try:
         atoms = au.AtomicSystem("%s/geom.out.xyz" %name )
@@ -74,6 +77,7 @@ for fname in fnames:
     if ename == '.xyz':
         try:
             getBindingEnergy( name )
-        except:
+        except Exception as e:
             print( "ERROR in ", name  )
+            print( e )
         

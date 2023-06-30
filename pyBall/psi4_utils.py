@@ -216,3 +216,92 @@ def optHf(atoms, conv_params=None ):
     return mol
 
 '''
+
+
+
+
+default_params_block='''
+    scf_type df 
+    opt_type MIN
+    geom_maxiter 1000
+    g_convergence qchem
+    print_trajectory_xyz_file true
+    opt_coordinates cartesian
+    step_type nr
+''' 
+
+def extract_final_geom(fname):
+    s = os.popen('grep -n "Final optimized geometry" %s | cut -b -10' %fname ).read()
+    nstart = int( s.split(':')[0] )
+    lines = []
+    fin = open(fname,'r') 
+    for i in range(nstart+5):
+        next(fin)
+    for l in fin:
+        ws = l.split()
+        if( len(ws)<4 ): break
+        lines.append(l)
+    fin.close()
+    return lines
+
+def write_geom( fname, lines, comment="#comment" ):
+    fout = open(fname,'w')
+    #print(len(lines))
+    fout.write( "%i\n" %len(lines) )
+    fout.write( comment )
+    for l in lines:
+        #print(l)
+        fout.write(l)
+    fout.close()
+
+def extract_input_geom( fname ):
+    s = os.popen('grep -n "molecule " %s | cut -b -10' %fname ).read()
+    nstart = int( s.split(':')[0] )
+    fin = open(fname,'r')
+    lines = []
+    for i in range(nstart+1):
+        next(fin)
+    for l in fin:
+        ws = l.split()
+        nw = len(ws)
+        if(nw==4):
+            lines.append( l )
+        elif(nw==1):
+            nhyphen = len( lines )
+        else:    
+            break
+    fin.close()
+    return lines, nhyphen 
+
+def write_psi4_in( lines, nhyphen=None, mem='500MB', method='b3lyp', basis='CC-pVDZ', bsse="'cp'", params_block=None, fname='psi.in', q=0, multiplicity=1, opt=True ):
+    fout = open(fname,'w')
+    fout.write( 'memory '+mem+"\n" )
+    fout.write( "molecule {\n" )
+    fout.write( "%i %i\n" %(q,multiplicity) )
+    il=0
+    for l in lines:
+        fout.write(l)
+        if(il==nhyphen):
+            fout.write('  --\n')
+        il+=1
+    fout.write( "units angstrom\n" )
+    fout.write( "}\n" )
+    fout.write( "set {\n" )
+    fout.write( "    basis " + basis+"\n" )
+    if params_block is not None:
+        fout.write( params_block )
+    fout.write( "}\n" )
+    if (nhyphen is None):
+        bsse=None
+    if opt:
+        if bsse is None:
+            fout.write( "optimize( '%s')\n" %method )
+        else:
+            fout.write( "optimize( '%s', bsse_type=%s)\n" %(method,bsse) )
+    else:
+        if bsse is None:
+             fout.write( "energy('%s')\n" %method )
+        else:
+             fout.write( "energy( '%s', bsse_type=%s )\n" %(method,bsse) )
+    fout.close()
+    
