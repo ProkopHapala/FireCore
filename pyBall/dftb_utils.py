@@ -78,11 +78,13 @@ def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3
                 Suffix = ".skf"
             }
         """ %basis_path ))
-    
+        
+        hsd.write("    MaxAngularMomentum {\n")
+        for ename in enameset:  hsd.write(f'        {ename} = "{elements.ELEMENT_DICT[ename][4]}" \n'   )
+        hsd.write("    }\n")
+
         if method=="D3H5":
-            hsd.write("    MaxAngularMomentum {\n")
-            for ename in enameset:  hsd.write(f'        {ename} = "{elements.ELEMENT_DICT[ename][4]}" \n'   )
-            hsd.write("    }")
+
         
             hsd.write(indent(dedent(f"""          
             HCorrection = H5 {{

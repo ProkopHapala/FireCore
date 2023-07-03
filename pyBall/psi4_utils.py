@@ -2,14 +2,17 @@
 import sys
 import os
 import numpy as np
-import psi4
+#import psi4
 from . import atomicUtils as au
 
-try:
-    import resp
-except Exception as e:
-    print("ERROR: Cannot open `resp` module for psi4")
-    print(e)
+resp = None
+psi4 = None
+
+#try:
+#    import resp
+#except Exception as e:
+#    print("ERROR: Cannot open `resp` module for psi4")
+#    print(e)
 
 
 # https://psicode.org/psi4manual/master/api/psi4.core.Molecule.html
@@ -36,6 +39,11 @@ default_psi4_options = {
 }
 
 
+def load_res():
+    global resp
+    if resp is None:
+        import resp
+
 # ============ Functions
 
 def try_make_dirs( dname ):
@@ -59,6 +67,7 @@ def save_xyz_Q( fname, lines, Qs ):
 
 #def preparemol(fname='input.xyz', geom_str='O 0. 0. 0.\n H 1. 0. 0.\n H 0. 1. 0.' ):
 def preparemol(fname='input.xyz', geom_str=None ):
+    load_res()
     if os.path.isfile(fname):
         geom_str  = xyz2str( fname )     #;print("geom>>%s<<" %geom )
     mol   = psi4.geometry( geom_str )
@@ -79,6 +88,7 @@ def unpack_mol( mol ):
     return apos, es
 
 def pack_mol( apos, es, ifrag_line=None ):
+    load_res()
     na = len(es)
     strs = [  "%s %g %g %g" %(es[i],apos[i,0],apos[i,1],apos[i,2]) for i in range(na) ]    #;print( strs )
     if ifrag_line is not None: strs.insert( ifrag_line, "--" )
@@ -87,6 +97,7 @@ def pack_mol( apos, es, ifrag_line=None ):
     return mol
 
 def eval( geom, params=None, id=None ):
+    load_res()
     pars = params.copy()
     method = pars['method']
     basis  = pars['basis']
@@ -112,6 +123,7 @@ def eval( geom, params=None, id=None ):
     return E
 
 def relax( geom=None, params=None, fname=None ):
+    load_res()
     if  geom is not None:
         apos,es = geom
         mol     = pack_mol( apos, es )
@@ -136,6 +148,9 @@ def relax( geom=None, params=None, fname=None ):
     return mol
 
 def psi4resp( name, bRelax=True, indir="./input/", outdir="./output/", method='scf', basis='/STO-3G', resp_options=default_resp_options, psi4_options=default_psi4_options ):
+    load_res()
+    if resp is None:
+        import resp
     method_basis = method+"/"+basis;    #print( method_basis )
     # ------ load geometry
     geom  = xyz2str( indir+name+".xyz")     #;print("geom>>%s<<" %geom )

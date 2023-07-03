@@ -392,6 +392,52 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
     #print( len(xyzs), xyzs )
     return xyzs,Zs,enames,qs
 
+
+def load_xyz(fname=None, fin=None, bReadN=False, bReadComment=True, nmax=10000 ):
+    bClose=False
+    if fin is None: 
+        fin=open(fname, 'r')
+        bClose=True
+    xyzs   = [] 
+    Zs     = []
+    enames = []
+    qs     = []
+    comment = None
+    ia=0
+    for line in fin:
+        wds = line.split()
+        try:
+            xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )
+            try:
+                iz    = int(wds[0]) 
+                Zs    .append(iz)
+                enames.append( elements.ELEMENTS[iz] )
+            except:
+                ename = wds[0]
+                enames.append( ename )
+                Zs    .append( elements.ELEMENT_DICT[ename][0] )
+            try:
+                q = float(wds[4])
+            except:
+                q = 0
+            qs.append(q)
+            ia+=1
+        except:
+            #print("cannot interpet line: ", line)
+            if bReadN and (ia==0):
+                try:
+                    nmax=int(wds[0])
+                except:
+                    comment=line.strip()    
+        if(ia>=nmax): break
+    if(bClose): fin.close()
+    xyzs = np.array( xyzs )
+    Zs   = np.array( Zs, dtype=np.int32 )
+    qs   = np.array( qs )
+    return xyzs,Zs,enames,qs,comment
+
+
+
 def loadMol(fname=None, fin=None, bReadN=False, nmax=10000 ):
     bClose=False
     if fin is None: 
@@ -682,6 +728,27 @@ def selectBondedCluster( s, bonds ):
         if( len(s) <= n ): break
     return s
 
+def scan_xyz( fxyzin, callback=None, kwargs=None ):
+    fin =open(fxyzin,'r')
+    i=0
+    results = []
+    while True:
+        apos,Zs,es,qs,comment = load_xyz( fin=fin, bReadN=True )
+        if(len(es)==0): break
+        if callback is not None: 
+            if( kwargs is not None ): 
+                res = callback( (apos,es), id=i, **kwargs, comment=comment )
+            else:
+                res = callback( (apos,es), id=i, comment=comment )
+            results.append( res )
+        i+=1
+    return results
+
+def geomLines( apos, enames ):
+    lines = []
+    for i,pos in enumerate(apos):
+        lines.append(  "%s %3.5f %3.5f %3.5f\n" %(enames[i], pos[0],pos[1],pos[2]) )
+    return lines
 
 # ========================== Class Geom
 
@@ -711,10 +778,10 @@ class AtomicSystem( ):
         saveXYZ( self.enames, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es )
 
     def toLines(self):
-        lines = []
-        for i,pos in enumerate(self.apos):
-            lines.append(  "%s %3.5f %3.5f %3.5f\n" %(self.enames[i], pos[0],pos[1],pos[2]) )
-        return lines
+        #lines = []
+        #for i,pos in enumerate(self.apos):
+        #    lines.append(  "%s %3.5f %3.5f %3.5f\n" %(self.enames[i], pos[0],pos[1],pos[2]) )
+        return geomLines( self.apos, self.enames )
 
     def toXYZ(self, fout ):
         writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=False )
