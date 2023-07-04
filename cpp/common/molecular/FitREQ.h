@@ -242,6 +242,7 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
 }
 
 double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
+    //printf( "evalExampleDerivs_LJQH2()\n" );
     int    nj   =system0->natoms;
     int*   jtyp =system0->atypes;
     Vec3d* jpos =system0->apos;
@@ -277,6 +278,10 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
             double u2   = ir2*(R*R);
             double u4   = u2*u2;
             double u6   = u4*u2;
+
+            //if( (i==0) && (j==nj) ){ printf( "r %g \n", 1/ir ); }
+            //if( i==0 ){ printf( "[%i,%i] r %g \n", i,j, 1/ir ); }
+
 
             // ELJ      = E0*( (R/r)^12 - 2*(R/r)^6 )
             // dELJ/dR  = E0*( 12*(R/r)^11/r - 12*(R/r)^5/r    )
