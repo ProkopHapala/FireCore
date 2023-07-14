@@ -72,6 +72,10 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double* outE, doubl
     return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
 }
 
+int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond ){
+    return W.substituteMolecule( fname, ib, *(Vec3d*)up, ipivot, bSwapBond );
+}
+
 void set_opt( 
         double dt_max,  double dt_min, double damp_max, 
         double finc,    double fdec,   double falpha, int minLastNeg,

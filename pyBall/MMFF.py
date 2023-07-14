@@ -50,6 +50,7 @@ header_strings = [
 #"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){",
 #"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
 #"void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){",
+#"int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -427,6 +428,13 @@ lib.addAngConstrain.argtypes  = [c_int, c_int, c_int, c_double, c_double]
 lib.addAngConstrain.restype   =  None
 def addAngConstrain(i0, i1, i2, ang0=0.0, k=1.0):
     return lib.addAngConstrain(i0, i1, i2, ang0, k)
+
+#  int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond )
+lib.substituteMolecule.argtypes  = [c_char_p, c_int, c_double_p, c_int, c_bool] 
+lib.substituteMolecule.restype   =  c_int
+def substituteMolecule(fname, ib, ipivot, up=(0,0,1), bSwapBond=False):
+    up = np.array(up, np.int23)
+    return lib.substituteMolecule( cstr(fname), ib, _np_as(up,c_double_p), ipivot, bSwapBond)
 
 # ============= Manipulation
 
