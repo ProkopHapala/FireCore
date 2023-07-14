@@ -468,6 +468,7 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     //builder.printAtomConfs(false);
     //builder.printBonds();
     //builder.printBondParams();
+    delete mol;
     printf( "====================== Substitute molecule DONE !!! \n");
     return ja;
 }

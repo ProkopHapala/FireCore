@@ -375,7 +375,7 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
             qs.append(q)
             ia+=1
         except:
-            #print("cannot interpet line: ", line)
+            print("loadAtomsNP("+fname+")cannot interpet line: ", line)
             if bReadN and (ia==0):
                 try:
                     nmax=int(wds[0])
@@ -390,6 +390,7 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
     #print( len(enames), enames )
     #print( len(Zs), Zs )
     #print( len(xyzs), xyzs )
+    print( "loadAtomsNP ", fname, len(xyzs)  ,len(Zs),len(enames),len(qs) )
     return xyzs,Zs,enames,qs
 
 
@@ -596,8 +597,6 @@ def loadCoefs( characters=['s'] ):
             dens += d
     return dens, coefs, Es
 
-
-    
 def findCOG( ps, byBox=False ):
     if(byBox):
         xmin=ps[:,0].min(); xmax=ps[:,0].max();
@@ -608,7 +607,13 @@ def findCOG( ps, byBox=False ):
         cog = np.sum( ps, axis=0 )
         cog *=(1.0/len(ps))
         return cog
-        
+
+def projectAlongBondDir( apos, i0, i1 ):
+    dir = (apos[i1]-apos[i0])
+    dir*=(1/np.sqrt(np.dot(dir,dir)))   # normalize
+    prjs = np.dot( apos, dir[:,None] )  #;print(prjs)
+    return prjs
+
 def histR( ps, dbin=None, Rmax=None, weights=None ):
     rs = np.sqrt(np.sum((ps*ps),axis=1))
     bins=100
@@ -807,14 +812,25 @@ class AtomicSystem( ):
     def findHBonds(self, Rb=1.5, Rh=2.2, angMax=30.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
         return findHBondsNP( self.apos, atypes=self.enames, Rb=Rb, Rh=Rh, angMax=angMax, typs1=typs1, typs2=typs2, bPrint=True )
 
+    def findBondsOfAtom(self, ia, bAtom=False ):
+        if bAtom: 
+            return [ b[1] for b in self.bonds if(b[0]==ia) ] + [ b[0] for b in self.bonds if(b[1]==ia) ] 
+        else:
+            return [i for i,b in enumerate(self.bonds) if (b[0]==ia) or (b[1]==ia) ]
+
     def findCOG(self, apos, byBox=False ):
         return findCOG( apos, byBox=byBox )
-        
+    
+    def projectAlongBondDir( self, i0, i1 ):
+        return projectAlongBondDir( self.apos, i0, i1 )
+
     def clonePBC(self,nPBC=(1,1,1) ):
         nx,ny,nz= nPBC
         nxyz=nx*ny*nz
         na = len(self.apos)
         apos   = np.zeros((na*nxyz,3))
+
+        print( "clonePBC ", na, len(self.atypes) )
 
         if self.atypes is not None: 
             atypes = np.zeros(na*nxyz,np.int32)
@@ -882,6 +898,11 @@ class AtomicSystem( ):
         ins  = [ i for i in range(na) if (i in s) ]
         outs = [ i for i in range(na) if (i not in s) ] 
         return ins,outs
+
+    def makeRotMat( self, ip1, ip2, _0=1 ):
+        fw  = self.apos[ip1[1]-_0]-self.apos[ip1[0]-_0]
+        up  = self.apos[ip2[1]-_0]-self.apos[ip2[0]-_0]
+        return makeRotMat( fw, up )
 
     def orient_mat(self, rot, p0=None, bCopy=False ):
         apos=self.apos  

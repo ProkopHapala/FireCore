@@ -200,6 +200,22 @@ class Molecule{ public:
         return n;
     }
 
+    Mat3d findAxis( Vec2i ifw, Vec2i ilf ){
+        Mat3d M;
+        M.fromSideUp( pos[ifw.y]-pos[ifw.x], pos[ilf.y]-pos[ilf.x] );
+        return M;
+    }
+
+    void orient( int i0, Vec2i ifw, Vec2i ilf ){
+        Mat3d M;
+        Vec3d p0 = pos[i0];
+        M.fromSideUp( pos[ifw.y]-pos[ifw.x], pos[ilf.y]-pos[ilf.x] );
+        for(int i=0; i<natoms; i++){
+            Vec3d p = pos[i]; p.sub( p0 );
+            M.dot_to_T( p, pos[i] );
+        }
+    }
+
     inline double getAng0( int ia ){
         int ityp = atomType[ia];
         if(params) ityp = params->atypes[ityp].iZ; // ToDo : later this can be improved

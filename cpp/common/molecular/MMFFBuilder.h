@@ -2255,12 +2255,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return sorted;
     }
 
-    int findBondsToAtom(int ia, int* is=0, bool bPrint=false)const{
+    int findBondsToAtom(int ia, int* is=0, bool bPrint=false, int nmax=1000000)const{
         int i=0;
         for(int ib=0; ib<bonds.size(); ib++){
             if( bonds[ib].atoms.anyEqual(ia) ){ 
                 if(is){ is[i]=1; i++; }
                 if(bPrint){ printf("bond[%i]",ib); bonds[ib].print(); puts(""); }
+                if(i>=nmax){ printf("WARRNING findBondsToAtom[ia=%i] found %i>nmax(%i) bonds \n", ia, i, nmax); break; }
             };
         };
         return i;
@@ -2799,6 +2800,54 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return ja;
     }
 
+/*
+    int substituteMolecule(Molecule* mol, int ia_bone, int ia_frag=0, bool bSwapBond=false ){
+        int ib;
+        int findBondsToAtom( ia_bone, &ib,false,1);
+        int findBondsToAtom( ia_bone, &ib,false,1);
+        Bond& b = bonds[ib];
+        int ia  = b.atoms.i;
+        int ja  = b.atoms.j;
+        if(bSwapBond) _swap(ia,ja);
+        if(verbosity>0)printf( "substituteMolecule() ib=%i ipivot=%i ja=%i \n", ib, ipivot, ja  );
+        Atom& A    = atoms[ja];
+        { // set pivot atom
+            int atyp = mol->atomType[ipivot];
+            A.type = atyp;
+            A.REQ  = mol->REQs[ipivot];
+            if(A.iconf>=0){ 
+                confs[A.iconf].init0(); confs[A.iconf].ne = params->atypes[atyp].nepair; 
+                //printf( "DEBUG pivot has conf ic=%i \n", A.iconf );
+            }else{ 
+                //printf( "DEBUG pivot has NOT conf ic=%i \n", A.iconf );
+                //addConfToAtom(ia); 
+            } 
+        }
+        int natom0  = atoms.size();
+        for(int i=1; i<mol->natoms; i++){
+            int ne=0,npi=0;
+            Quat4d REQ=mol->REQs[i];
+            int ityp = mol->atomType[i];
+            if(params){
+                //printf( "params \n" );
+                params->assignRE( ityp, REQ );
+                ne = params->atypes[ityp].nepair;
+                REQ.z=mol->REQs[i].z;
+            }
+            if( mol->npis ) npi=mol->npis[i];
+            insertAtom( ityp, p, &REQ, npi, ne );
+        }
+        for(int i=0; i<mol->nbonds; i++){
+            //bonds.push_back( (Bond){mol->bondType[i], mol->bond2atom[i] + ((Vec2i){natom0,natom0}), defaultBond.l0, defaultBond.k } );
+            Vec2i b = mol->bond2atom[i];
+            if(b.i==ipivot){ b.i=ja; }else{ b.i+=natom0; if(b.i>ipivot)b.i--; };
+            if(b.j==ipivot){ b.j=ja; }else{ b.j+=natom0; if(b.j>ipivot)b.j--; };
+            //printf("add bond[%i] a(%i,%i) as a(%i,%i)\n", i,  mol->bond2atom[i].i,  mol->bond2atom[i].j,   b.i, b.j );
+            bonds.push_back( Bond(mol->bondType[i], b, defaultBond.l0, defaultBond.k ) );
+        }
+        return ja;
+    }
+*/
 
     void clearMolTypes( bool deep ){
         if(deep){ for(Molecule* mol : molTypes ){ mol->dealloc(); delete mol; } }
