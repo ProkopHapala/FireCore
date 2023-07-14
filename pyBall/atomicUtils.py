@@ -375,7 +375,7 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
             qs.append(q)
             ia+=1
         except:
-            print("loadAtomsNP("+fname+")cannot interpet line: ", line)
+            #print("loadAtomsNP("+fname+")cannot interpet line: ", line)
             if bReadN and (ia==0):
                 try:
                     nmax=int(wds[0])
@@ -390,7 +390,7 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
     #print( len(enames), enames )
     #print( len(Zs), Zs )
     #print( len(xyzs), xyzs )
-    print( "loadAtomsNP ", fname, len(xyzs)  ,len(Zs),len(enames),len(qs) )
+    #print( "loadAtomsNP ", fname, len(xyzs)  ,len(Zs),len(enames),len(qs) )
     return xyzs,Zs,enames,qs
 
 
