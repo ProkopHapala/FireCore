@@ -47,6 +47,9 @@ void init_buffers(){
     ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
     buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
+
+    bbuffers.insert( { "ffflags", &W.doBonded  } );
+
     printBuffNames();
 }
 
