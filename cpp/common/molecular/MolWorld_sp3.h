@@ -116,23 +116,24 @@ class MolWorld_sp3 : public SolverInterface { public:
 
 	// force-eval-switchefs
     int  imethod=0;
-	bool doBonded         = false;
-	bool bNonBonded       = true;
-    bool bConstrains      = false;
-	bool bSurfAtoms       = false;
-    bool bGridFF          = false;
-	bool bPlaneSurfForce  = false;
-    bool bMMFF            = true;
-    bool bRigid           = false;
-	bool bOptimizer       = true; 
-	bool bPBC             = false;
-	bool bCheckInvariants = true;
-    bool bRelaxPi         = false;
-	Vec3d cog,vcog,fcog,tqcog;
-    int nloop=0;
-    bool bChargeUpdated=false;
 
-    bool bAnimManipulation=false;
+	bool doBonded          = false;
+	bool bNonBonded        = true;
+    bool bConstrains       = false;
+	bool bSurfAtoms        = false;
+    bool bGridFF           = false;
+	bool bPlaneSurfForce   = false;
+    bool bMMFF             = true;
+    bool bRigid            = false;
+	bool bOptimizer        = true; 
+	bool bPBC              = false;
+	bool bCheckInvariants  = true;
+    bool bRelaxPi          = false;
+    bool bChargeUpdated    = false;
+    bool bAnimManipulation = false;
+	
+    Vec3d cog,vcog,fcog,tqcog;
+    int nloop=0;
 
 	// Selecteion & Manipulasion
 	std::vector<int> selection;
@@ -875,6 +876,7 @@ double eval( ){
         }
         */
     }
+    printf( "bConstrains=%i constrs.bonds.size()=%i \n", bConstrains, constrs.bonds.size() );
     if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos, &ffl.lvec );
     /*
     if(bSurfAtoms){ 
@@ -919,7 +921,7 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
     //if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(0); };
     //if(dt>0){ opt.setTimeSteps(dt); }
     //if(ialg>0){ opt.cleanVel( ); }
-    for(itr=0; itr<nstepMax; itr++ ){
+    for(itr=0; itr<nstepMax; itr++ ){        
         //ff.clearForce();
         Etot = eval();
         switch(ialg){

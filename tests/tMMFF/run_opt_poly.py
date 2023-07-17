@@ -46,6 +46,11 @@ setHBondConstrains( fname )
 mmff.getBuffs()
 #mmff.eval()
 
+print( "mmff.ffflags ", mmff.ffflags )
+
+mmff.ffflags[2] = True # set bConstrains = true
+#exit()
+
 nstepMax=2000
 outE = np.zeros(nstepMax)
 outF = np.zeros(nstepMax)

@@ -12,6 +12,7 @@ from . import cpp_utils_ as cpp_utils
 
 c_double_p = ctypes.POINTER(c_double)
 c_int_p    = ctypes.POINTER(c_int)
+c_bool_p   = ctypes.POINTER(c_bool)
 
 def _np_as(arr,atype):
     if arr is None:
@@ -187,12 +188,25 @@ def getBuff(name,sh):
     ptr = lib.getBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
+#double* getBuff(const char* name){ 
+lib.getBBuff.argtypes = [c_char_p]
+lib.getBBuff.restype  = c_bool_p 
+def getBBuff(name,sh):
+    if not isinstance(sh, tuple): sh=(sh,)
+    name=name.encode('utf8')
+    ptr = lib.getBBuff(name)
+    return np.ctypeslib.as_array( ptr, shape=sh)
+
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
     #init_buffers()
     #natom=nnode+ncap
     #nvecs=natom+npi
     #nDOFs=nvecs*3
+
+    global ffflags
+    ffflags = getBBuff( "ffflags" , (14,) )
+
     global ndims,Es
     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]

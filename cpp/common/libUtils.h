@@ -9,6 +9,7 @@
 std::unordered_map<std::string, double*>  buffers;
 std::unordered_map<std::string, float*>   fbuffers;
 std::unordered_map<std::string, int*>     ibuffers;
+std::unordered_map<std::string, bool*>    bbuffers;
 
 extern "C"{
 
@@ -16,6 +17,7 @@ void printBuffNames(){
     printf( "#=== Buffers:  \n"); for (auto& it:  buffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
     printf( "#=== fBuffers: \n"); for (auto& it: fbuffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
     printf( "#=== IBuffers: \n"); for (auto& it: ibuffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
+    printf( "#=== bBuffers: \n"); for (auto& it: bbuffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
 }
 
 double* getBuff(const char* name){ 
@@ -50,6 +52,14 @@ void setIBuff(const char* name, int* buff){
     //if( got==buffers.end() ){ return null;        }
     //else                    { return got->second; }
 }
+
+bool* getBBuff(const char* name){ 
+    auto got = bbuffers.find( name );
+    if( got == bbuffers.end() ){ printf("ERROR: getBBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
+    else                       { return got->second; }
+}
+
+void setBBuff(const char* name, bool* buff){  bbuffers[name] = buff; }
 
 };
 
