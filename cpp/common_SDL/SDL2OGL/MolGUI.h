@@ -122,6 +122,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int    * M_neighCell =0;
     Quat4f * M_apos      =0;
 
+    Constrains* constrs = 0;
+
     // ---- Graphics objects
     int  fontTex,fontTex3D;
 
@@ -315,6 +317,7 @@ void MolGUI::init(){
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Quat4d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
     //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
     MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+    constrs   = &W->constrs;
     neighs    = W->ffl.neighs;
     neighCell = W->ffl.neighCell;
     initGUI();
@@ -396,6 +399,11 @@ void MolGUI::draw(){
         //drawSystem(); // DEBUG
         //Draw3D::drawNeighs( W->ff, -1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
+    }
+
+    if(constrs){
+        glColor3f(0.0f,0.7f,0.0f);
+        for( DistConstr con : constrs->bonds ){ Draw3D::drawLine( apos[con.ias.a], apos[con.ias.b] ); }
     }
 
     glColor3f(0.0f,0.5f,0.0f); showBonds();
