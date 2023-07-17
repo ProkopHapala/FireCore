@@ -519,7 +519,7 @@ def readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None )
                         lvec = read_lammps_lvec( fin )
                     elif wds[1]=='ATOMS':
                         apos,es = readAtomsXYZ( fin, na )
-                        S = Atoms( lvec=lvec, enames=es, apos=apos)
+                        S = AtomicSystem( lvec=lvec, enames=es, apos=apos)
                         trj.append( S )
     return trj
 
@@ -776,7 +776,7 @@ class AtomicSystem( ):
 
     def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True ):
         if blvec and (self.lvec is not None):
-            print( self.lvec )
+            #print( self.lvec )
             comment= ( "lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   ) ) + comment
         qs = self.qs
         if(not bQs): qs=None
@@ -797,7 +797,12 @@ class AtomicSystem( ):
             print( "[%i] %i=%s p(%10.5f,%10.5f,%10.5f)" %( i, self.atypes[i],self.enames[i], self.apos[i,0], self.apos[i,1], self.apos[i,2] ), end =" " )
             if(self.aux_labels is not None): print(self.aux_labels[i], end =" ")
             print("")
-            
+
+    def getValenceElectrons( self ):
+        return  np.array( [ elements.ELEMENT_DICT[e][9] for e in self.enames ] )
+
+    def subtractValenceE(self, f0=-1.0, f=+1.0 ):
+        self.qs[:] = self.qs[:]*f0 + self.getValenceElectrons()*f       
 
     def printBonds(self):
         for i in range(len(self.bonds)):
@@ -829,9 +834,7 @@ class AtomicSystem( ):
         nxyz=nx*ny*nz
         na = len(self.apos)
         apos   = np.zeros((na*nxyz,3))
-
-        print( "clonePBC ", na, len(self.atypes) )
-
+        #print( "clonePBC ", na, len(self.atypes) )
         if self.atypes is not None: 
             atypes = np.zeros(na*nxyz,np.int32)
         else:
@@ -937,7 +940,7 @@ class AtomicSystem( ):
 
     def append_atoms(self, B, pre="A" ):
         if( self.aux_labels is None ):
-            print( 'self.aux_labels is None', pre ) 
+            #print( 'self.aux_labels is None', pre ) 
             self.aux_labels = [ str(i) for  i in range(len(self.apos)) ]
         
         #if( B.auxl is None ): B.auxl = [ pre+str(i) for  i in range(len(B.apos)) ]
