@@ -784,7 +784,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
     }
 
     void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0 ){
-        //printf( "MMFFparams::writeXYZ() n=%i REQs=%li \n", n, (long)REQs );
+        //printf( "MMFFparams::writeXYZ() n=%i REQs=%li just_Element=%i\n", n, (long)REQs, just_Element );
         fprintf(pfile, "%i\n", n+npi );
         fprintf(pfile, "%s \n", comment );
         for(int i=0; i<n; i++){
@@ -794,13 +794,18 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             const char* symbol; 
             bool byName = true;
             if(just_Element){ 
+
+                /*
                 int iZ = atypes[ityp].iZ;
                 if( iZ<=11 ){
                     int it = z2typ0[iZ];
                     symbol = atomTypeNames[it].c_str();
-                    //printf( "atom[%i] ityp %i iZ %i it %i `%s` \n", i, ityp, iZ, it, symbol );
+                    printf( "atom[%i] ityp %i iZ %i it %i `%s` \n", i, ityp, iZ, it, symbol );
                     byName = false;
                 }
+                */
+                byName = false;
+                symbol =  etypes[ atypes[ityp].element ].name;
             }
             if(byName){ symbol = atomTypeNames[ityp].c_str(); }
             //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, params->atypes[ityp].name );
