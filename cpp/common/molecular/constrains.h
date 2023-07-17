@@ -66,6 +66,26 @@ class Constrains{ public:
         for( const DistConstr&  c : bonds  ){ c.apply(ps,fs, lvec ); }
         for( const AngleConstr& c : angles ){ c.apply(ps,fs); }
     }
+
+    int loadBonds( const char* fname ){
+        FILE* pFile = fopen( fname, "r" );
+        if(pFile==0){ printf("ERROR in Constrains::loadBonds(%s) - No Such File \n", fname ); return -1; }
+        else{
+            char buff[1024];            
+            int i=0;
+            for(i=0; i<10000; i++){
+                char* line = fgets( buff, 1024, pFile );
+                if(line==NULL)  break;
+                if(line[0]=='#')continue;
+                DistConstr cons; cons.active=true;
+                int nret = sscanf( line, "%i %i   %lf %lf   %lf %lf   %lf %lf %lf  %lf ",   &cons.ias.a,&cons.ias.a,  &cons.ls.a,&cons.ias.b,   &cons.ks.a,&cons.ks.b,    &cons.shift.a,&cons.shift.b,&cons.shift.c,    &cons.flim   );
+                if(nret<10){ printf("WARRNING : Constrains::loadBonds[%i] nret(%i)<10 line=%s", nret, line ); }
+                bonds.push_back( cons );
+            }
+            return i;
+            fclose( pFile );
+        }
+    }
     
 };
 
