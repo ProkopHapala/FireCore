@@ -861,7 +861,6 @@ double eval( ){
         
     }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
     //bPBC=false;
-    
     if(bNonBonded){
         //E += nbmol.evalLJQs_ng4_PBC_omp( );
         E += ffl  .evalLJQs_ng4_PBC_omp( );
@@ -995,6 +994,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     
     verbosity = 1;
     
+
+    /*
     run_omp( iterPerFrame, opt.dt, 1e-6, 1000.0 );
 
     //run_omp( 500, opt.dt, 1e-6, 1000.0 );
@@ -1007,6 +1008,9 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //run_omp( 100, opt.dt, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
+    */
+    run( 10 );
+    
     bChargeUpdated=false;
 }
 

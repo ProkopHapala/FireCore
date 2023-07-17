@@ -35,6 +35,8 @@ struct DistConstr{
         return E;
     }
 
+    void print(){ printf( "ias(%i,%i) ls(%f,%f) ks(%lf,%lf) shift(%lf,%lf,%lf) flim=%lf \n",   ias.a,ias.b,  ls.a,ls.b,   ks.a,ks.b,    shift.a,shift.b,shift.c,    flim ); };
+
 };
 
 struct AngleConstr{
@@ -67,7 +69,7 @@ class Constrains{ public:
         for( const AngleConstr& c : angles ){ c.apply(ps,fs); }
     }
 
-    int loadBonds( const char* fname ){
+    int loadBonds( const char* fname, int _0=1 ){
         FILE* pFile = fopen( fname, "r" );
         if(pFile==0){ printf("ERROR in Constrains::loadBonds(%s) - No Such File \n", fname ); return -1; }
         else{
@@ -78,8 +80,11 @@ class Constrains{ public:
                 if(line==NULL)  break;
                 if(line[0]=='#')continue;
                 DistConstr cons; cons.active=true;
-                int nret = sscanf( line, "%i %i   %lf %lf   %lf %lf   %lf %lf %lf  %lf ",   &cons.ias.a,&cons.ias.a,  &cons.ls.a,&cons.ias.b,   &cons.ks.a,&cons.ks.b,    &cons.shift.a,&cons.shift.b,&cons.shift.c,    &cons.flim   );
+                int nret = sscanf( line, "%i %i   %lf %lf   %lf %lf   %lf %lf %lf  %lf ",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,   &cons.ks.a,&cons.ks.b,    &cons.shift.a,&cons.shift.b,&cons.shift.c,    &cons.flim   );
+                cons.ias.a-=_0;
+                cons.ias.b-=_0;
                 if(nret<10){ printf("WARRNING : Constrains::loadBonds[%i] nret(%i)<10 line=%s", nret, line ); }
+                cons.print();
                 bonds.push_back( cons );
             }
             return i;
