@@ -22,7 +22,9 @@ struct DistConstr{
     DistConstr()=default;
     DistConstr( Vec2i ias_, Vec2d ls_, Vec2d ks_, double flim_=1e+300, Vec3d shift_=Vec3dZero ):ias(ias_),ls(ls_),ks(ks_),flim(flim_),shift(shift_),active(true){ };
 
-    inline double apply( Vec3d* ps, Vec3d* fs )const{
+    inline double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0 )const{
+        Vec3d sh;
+        if(lvec){ lvec->dot_to_T( shift, sh ); }else{ sh=shift; }
         Vec3d d   = ps[ias.b] -ps[ias.a] + shift;
         double l  = d.norm(); 
         double f,E;
@@ -60,8 +62,8 @@ class Constrains{ public:
     std::vector<DistConstr>  bonds;
     std::vector<AngleConstr> angles;
 
-    void apply( Vec3d* ps, Vec3d* fs  ){  
-        for( const DistConstr&  c : bonds  ){ c.apply(ps,fs); }
+    void apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec ){  
+        for( const DistConstr&  c : bonds  ){ c.apply(ps,fs, lvec ); }
         for( const AngleConstr& c : angles ){ c.apply(ps,fs); }
     }
     

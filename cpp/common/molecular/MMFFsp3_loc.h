@@ -896,18 +896,13 @@ void asseble_forces(){
 double eval( bool bClean=true, bool bCheck=true ){
     //if(bClean){ cleanAll(); }
     //printf( "print_apos() BEFORE\n" );print_apos();
-    DEBUG
     if(bClean)cleanForce();
     normalizePis();
-    DEBUG
     //printf( "print_apos() AFTER \n" ); print_apos();
     Etot += eval_atoms();
-    DEBUG
     //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
     asseble_forces();
-    DEBUG
     if(bTorsion) EppI +=eval_torsions();
-    DEBUG
     //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 }
@@ -916,9 +911,7 @@ double eval_check(){
     printf(" ============ check MMFFsp3_loc START\n " );
     printSizes();
     //print_pipos();
-    DEBUG
     eval();
-    DEBUG
     checkNans();
     printf(" ============ check MMFFsp3_loc DONE\n " );
     return Etot;

@@ -22,6 +22,7 @@ MolWorld_sp3 W;
 extern "C"{
 
 void init_buffers(){
+    //printf( "init_buffers() \n" );
     buffers .insert( { "apos",   (double*)W.nbmol.apos } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
     if(W.bMMFF){
@@ -46,6 +47,7 @@ void init_buffers(){
     ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
     buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
+    printBuffNames();
 }
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }

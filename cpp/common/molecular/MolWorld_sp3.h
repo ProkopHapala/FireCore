@@ -703,7 +703,6 @@ void makeMMFFs(){
     ff4.eval_check();
     ff .eval_check();
     idebug=0;
-    DEBUG
 }
 
 virtual void makeFFs(){
@@ -846,6 +845,7 @@ void setNonBond( bool bNonBonded ){
 }
 
 double eval( ){
+    //printf("MolWorld_sp3::eval() \n" );
     double E=0;
     //setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
     if(bMMFF){ 
@@ -875,7 +875,7 @@ double eval( ){
         }
         */
     }
-    //if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
+    if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos, &ffl.lvec );
     /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); }
@@ -930,8 +930,8 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
             case  3: F2 = opt.move_FIRE_smooth();   break;
         }
         opt_log.set(itr, opt.cos_vf, opt.f_len, opt.v_len, opt.dt, opt.damping );
-        //if(outE){ outE[itr]=Etot; }
-        //if(outF){ outF[itr]=F2;   }
+        if(outE){ outE[itr]=Etot; }
+        if(outF){ outF[itr]=F2;   }
         if( (trj_fname) && (itr%savePerNsteps==0) ){
             sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
             saveXYZ( trj_fname, tmpstr, false, "a" );
