@@ -156,7 +156,7 @@ for pairTyp in pairTypes:
             BB, inds1, inds2 = attachPair( name1, name2, group_dict )
 
             #print( inds )
-            comment = " Hbonds:X"+str(inds1)+"Y"+str(inds2)
+            comment = " Hbonds={'X':"+str(inds1)+",'Y':"+str(inds2)+"}"
             #BB.enames[ inds1 ] = 'As'
             #BB.enames[ inds2 ] = 'P'
 
@@ -166,6 +166,7 @@ for pairTyp in pairTypes:
             name = "BB."+name1+"."+name2
 
             print( name+".Qtot: ", BB.qs.sum() )
+
             BB.saveXYZ( "out/"+name+".xyz", comment=comment )
 
 

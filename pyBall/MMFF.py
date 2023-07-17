@@ -189,6 +189,7 @@ def getBuff(name,sh):
 
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
+    #init_buffers()
     #natom=nnode+ncap
     #nvecs=natom+npi
     #nDOFs=nvecs*3
@@ -219,6 +220,7 @@ def getBuffs( NEIGH_MAX=4 ):
 lib.init_buffers.argtypes  = []
 lib.init_buffers.restype   =  None
 def init_buffers():
+    #print( "init_buffers()" )
     return lib.init_buffers()
 
 '''
@@ -421,7 +423,7 @@ def addDistConstrain( i0, i1, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, l=Non
     if k is not None: 
         kmin=k; kmax=k
     shift=np.array(shift)
-    return lib.addDistConstrain(i0, i1, lmin, lmax, kmin, kmax, flim, shift )
+    return lib.addDistConstrain(i0, i1, lmin, lmax, kmin, kmax, flim, _np_as(shift,c_double_p) )
 
 #  void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){
 lib.addAngConstrain.argtypes  = [c_int, c_int, c_int, c_double, c_double] 
