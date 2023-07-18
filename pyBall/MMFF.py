@@ -431,7 +431,7 @@ def optimizeLattice_1d(dlvec, n1=5, n2=5, initMode=0, tol=1e-6):
 #  void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k, double* shift ){
 lib.addDistConstrain.argtypes  = [c_int, c_int, c_double, c_double, c_double, c_double, c_double, c_double_p ] 
 lib.addDistConstrain.restype   =  None
-def addDistConstrain( i0, i1, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, l=None, k=None, shift=(0.,0.,0.) ):
+def addDistConstrain( i0, i1, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, l=None, k=None, shift=(0.,0.,0.), bOldIndex=True ):
     if l is not None: 
         lmin=l; lmax=l
     if k is not None: 

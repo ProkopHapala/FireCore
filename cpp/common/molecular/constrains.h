@@ -25,13 +25,17 @@ struct DistConstr{
     inline double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0 )const{
         Vec3d sh;
         if(lvec){ lvec->dot_to_T( shift, sh ); }else{ sh=shift; }
-        Vec3d d   = ps[ias.b] -ps[ias.a] + shift;
+        Vec3d d   = ps[ias.b] -ps[ias.a] + sh;
         double l  = d.norm(); 
         double f,E;
         E = spring( l, ls, ks, flim, f );
+        //f = ks.x*l; E= 0.5*ks.x*l*l;
         d.mul(f/l);
         fs[ias.b].sub(d);
         fs[ias.a].add(d);
+        //fs[ias.b].add(d);
+        //fs[ias.a].sub(d);
+        //printf( "DistConstr:apply(%i,%i) l %g E %g f %g | ls(%g,%g) ks(%g,%g) lvec %li |sh| %g \n", ias.b, ias.a, l, E,f, ls.x,ls.y, ks.x,ks.y, (long)lvec, sh.norm() );
         return E;
     }
 
@@ -64,12 +68,15 @@ class Constrains{ public:
     std::vector<DistConstr>  bonds;
     std::vector<AngleConstr> angles;
 
-    void apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec ){  
-        for( const DistConstr&  c : bonds  ){ c.apply(ps,fs, lvec ); }
-        for( const AngleConstr& c : angles ){ c.apply(ps,fs); }
+    double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec ){
+        double E=0;  
+        for( const DistConstr&  c : bonds  ){ E+= c.apply(ps,fs, lvec ); }
+        for( const AngleConstr& c : angles ){ E+= c.apply(ps,fs); }
+        return E;
     }
 
-    int loadBonds( const char* fname, int _0=1 ){
+    int loadBonds( const char* fname, int* atom_permut=0, int _0=1 ){
+        printf("!!!!!!!!! Constrains::loadBonds() \n" );
         FILE* pFile = fopen( fname, "r" );
         if(pFile==0){ printf("ERROR in Constrains::loadBonds(%s) - No Such File \n", fname ); return -1; }
         else{
@@ -83,6 +90,11 @@ class Constrains{ public:
                 int nret = sscanf( line, "%i %i   %lf %lf   %lf %lf   %lf %lf %lf  %lf ",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,   &cons.ks.a,&cons.ks.b,    &cons.shift.a,&cons.shift.b,&cons.shift.c,    &cons.flim   );
                 cons.ias.a-=_0;
                 cons.ias.b-=_0;
+                if( atom_permut ){
+                    printf( "permut bond (%i->%i)-(%i->%i) \n", cons.ias.a, atom_permut[cons.ias.a], cons.ias.b, atom_permut[cons.ias.b] ); 
+                    cons.ias.a=atom_permut[cons.ias.a];
+                    cons.ias.b=atom_permut[cons.ias.b];
+                }
                 if(nret<10){ printf("WARRNING : Constrains::loadBonds[%i] nret(%i)<10 line=%s", nret, line ); }
                 cons.print();
                 bonds.push_back( cons );
