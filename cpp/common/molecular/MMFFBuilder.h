@@ -40,7 +40,7 @@ static const double const_eVA2_Nm = 16.0217662;
 struct Atom{
     constexpr const static Quat4d HcapREQ    = Quat4d{ 1.4870, sqrt(0.000681    ), 0., 0. };
     constexpr const static Quat4d defaultREQ = Quat4d{ 1.7,    sqrt(0.0037292524), 0., 0. };
-
+    int id;
     int type;
     int frag;
     int iconf;
@@ -48,12 +48,12 @@ struct Atom{
     Quat4d REQ;   // constexpr Vec3d{1.7,sqrt(0.0037292524),0}
     //Atom() = default;
 
-    void print()const{ printf( " Atom{ t %i c %i f %i REQ(%g,%g,%g) pos(%g,%g,%g)}", type, iconf, frag, REQ.x, REQ.y, REQ.z, pos.x,pos.y,pos.z ); }
+    void print()const{ printf( " Atom{id %i t %i c %i f %i REQ(%g,%g,%g) pos(%g,%g,%g)}", id, type, iconf, frag, REQ.x, REQ.y, REQ.z, pos.x,pos.y,pos.z ); }
 
     Atom() = default;
     Atom(const Vec3d& pos_):type{0},frag{-1},iconf{-1},REQ{defaultREQ},pos{pos_}{};
     Atom(const Vec3d& pos_,const Quat4d& REQ_):type{0},frag{-1},iconf{-1},REQ{REQ_},pos{pos_}{};
-    Atom(int type_,int frag_,int iconf_,const Vec3d& pos_,const Quat4d& REQ_):type{type_},frag{frag_},iconf{iconf_},REQ{REQ_},pos{pos_}{};
+    Atom(int type_,int frag_,int iconf_,const Vec3d& pos_,const Quat4d& REQ_):id(-1),type{type_},frag{frag_},iconf{iconf_},REQ{REQ_},pos{pos_}{};
 };
 
 #define N_NEIGH_MAX 4
@@ -309,6 +309,7 @@ class Builder{  public:
     //bool bDEBUG = false;
 
     std::unordered_set<int> selection;
+    std::vector<int>        atom_permut;
 
     //static int iDebug = 0;
     std::vector<Atom>       atoms;
@@ -2265,6 +2266,15 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             };
         };
         return i;
+    }
+
+    void numberAtoms(){
+        for(int i=0; i<atoms.size(); i++){ atoms[i].id=i; };
+    }
+
+    void setup_atom_permut(){
+        atom_permut.resize(atoms.size());
+        for(int i=0; i<atoms.size(); i++){ atom_permut[ atoms[i].id ]=i; };
     }
 
     void printSizes()const{ printf( "sizes: atoms(%i|%i) bonds(%i) angles(%i) dihedrals(%i) \n", atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ); };

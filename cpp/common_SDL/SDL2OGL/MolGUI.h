@@ -403,7 +403,12 @@ void MolGUI::draw(){
 
     if(constrs){
         glColor3f(0.0f,0.7f,0.0f);
-        for( DistConstr con : constrs->bonds ){ Draw3D::drawLine( apos[con.ias.a], apos[con.ias.b] ); }
+        //for( DistConstr con : constrs->bonds ){ Draw3D::drawLine( apos[con.ias.a], apos[con.ias.b] ); }
+        for( DistConstr con : constrs->bonds ){ 
+            Vec3d sh; W->builder.lvec.dot_to_T( con.shift, sh );
+            Draw3D::drawLine( apos[con.ias.a],    apos[con.ias.b] + sh ); 
+            Draw3D::drawLine( apos[con.ias.a]-sh, apos[con.ias.b]      ); 
+        }
     }
 
     glColor3f(0.0f,0.5f,0.0f); showBonds();

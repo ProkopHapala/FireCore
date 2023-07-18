@@ -112,6 +112,13 @@ class MolWorld_sp3_simple{ public:
 
 // =================== Functions
 
+void addDistConstrain( int i0,int i1, double lmin=1.0,double lmax=2.0,double kmin=0.0,double kmax=1.0,double flim=10.0, Vec3d shift=Vec3dZero, bool bOldIndex=false ){
+    if(bOldIndex){
+        i0 = builder.atom_permut[i0];
+        i1 = builder.atom_permut[i1];
+    }
+    constrs.bonds.push_back( DistConstr{ {i0,i1}, {lmax,lmin}, {kmax,kmin}, flim, shift } );
+}
 
 // ======================================
 // ========= Initialization

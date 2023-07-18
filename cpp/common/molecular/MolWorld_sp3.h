@@ -53,6 +53,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     //const char* lvs_name     ="input.lvs";
     //const char* surflvs_name ="surf.lvs";
     const char* smile_name   = 0;
+    const char* constr_name  = 0;
     Vec3i nMulPBC  = Vec3iZero; 
 
     //const char* trj_fname    = "trj.xyz";
@@ -165,6 +166,15 @@ class MolWorld_sp3 : public SolverInterface { public:
 // ===============================================
 //       Implement    SolverInterface
 // ===============================================
+
+void addDistConstrain( int i0,int i1, double lmin=1.0,double lmax=2.0,double kmin=0.0,double kmax=1.0,double flim=10.0, Vec3d shift=Vec3dZero, bool bOldIndex=false ){
+    if(bOldIndex){
+        i0 = builder.atom_permut[i0];
+        i1 = builder.atom_permut[i1];
+    }
+    constrs.bonds.push_back( DistConstr{ {i0,i1}, {lmax,lmin}, {kmax,kmin}, flim, shift } );
+}
+
 
 virtual void setConstrains(bool bClear=true, double Kfix_=1.0 ){
     double Kfix=Kfix_;
@@ -669,6 +679,7 @@ void makeMMFFs(){
         printf("ERROR some bonds are not in atom neighbors => exit"); 
         exit(0); 
     };
+    builder.numberAtoms();
     builder.sortConfAtomsFirst();
     //builder.printAtomConfs(false,true);
     builder.checkBondsOrdered( true, false );
@@ -770,6 +781,9 @@ virtual void init( bool bGrid ){
     if(bMMFF){      
         makeFFs();
     }
+    builder.setup_atom_permut();
+    constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );
+    builder.printAtoms();
     //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
@@ -875,7 +889,7 @@ double eval( ){
         }
         */
     }
-    printf( "bConstrains=%i constrs.bonds.size()=%i \n", bConstrains, constrs.bonds.size() );
+    //printf( "bConstrains=%i constrs.bonds.size()=%i \n", bConstrains, constrs.bonds.size() );
     if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos, &ffl.lvec );
     /*
     if(bSurfAtoms){ 

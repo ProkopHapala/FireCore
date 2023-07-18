@@ -64,7 +64,7 @@ def attachPair( name1, name2, group_dict, _0=1, bSaveDebugG=False ):
     dir1 = BB.apos[ inds1[-1] ] - BB.apos[ inds1[-0] ]; 
     if(dir1[2]<0.): 
         inds1=inds1[::-1] 
-    dir2 = BB.apos[ inds1[-1] ] - BB.apos[ inds1[-0] ]; 
+    dir2 = BB.apos[ inds2[-1] ] - BB.apos[ inds2[-0] ]; 
     if(dir2[2]<0.): 
         inds2=inds2[::-1]
     
