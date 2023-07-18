@@ -34,7 +34,7 @@ def plotGroup( G, inds, bFlip=False ):
     ps=G.apos[[iis[0]-1,iis[1]-1]]; plt.scatter(ps[:,0],ps[:,1],color=['b','g'],zorder=5);  
     #plt.title(name1)
 
-def attachPair( name1, name2, group_dict, _0=1, bSaveDebugG=False ):
+def attachPair( name1, name2, group_dict, _0=1, bSaveDebugG=False, amargin=5.0 ):
     
     BB = B.clonePBC()
     #G1 = AtomicSystem(fname="endgroups/"+name1+".xyz"  )
@@ -67,6 +67,15 @@ def attachPair( name1, name2, group_dict, _0=1, bSaveDebugG=False ):
     dir2 = BB.apos[ inds2[-1] ] - BB.apos[ inds2[-0] ]; 
     if(dir2[2]<0.): 
         inds2=inds2[::-1]
+
+    avec = BB.apos[ inds1[0] ] - BB.apos[ inds2[0] ]
+    r = np.sqrt(np.dot(avec,avec))
+    print( r, avec )
+    avec*=( (r+2.0)/(r) )
+    avec[2] = 0.0
+    avec[0] += amargin
+    
+    BB.lvec[0] = avec
     
     return BB, inds1, inds2
 
@@ -80,6 +89,18 @@ def findLastHydrogen( atoms, ifw, ilf ):
 
 def nameToTyp( s ):
     return s.split('-')[0].replace("O", "e" ).replace("N", "e" )
+
+def saveMolGUIscript(name, inds, path="./", amargin=5.0 ):
+    fsh = open( path+name+".sh", 'w')
+    fsh.write(f"../../cpp/Build/apps/MolecularEditor/MolGUIapp -x {name} -b {name}.hbonds -dlvec {-amargin},0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
+    fsh.close()
+    fhb = open( path+name+".hbonds", 'w')
+    for i in range(len(inds[0])):
+        fhb.write( "%i %i 1.7 1.5    5.0 0.0     1.0 0.0 0.0   10.0 \n" %(inds[0][i],inds[1][i]) ) 
+    fhb.close()
+
+
+
 
 #def selectPartners():
 
@@ -147,13 +168,14 @@ B.lvec = np.array( [[25.,0.,0.],[0.,5.,0.],[0.,0.,20.0]  ] )
 #    name1, name2 = pair
 #    attachPair( name1, name2, group_dict )
 
+amargin = 5.0
 for pairTyp in pairTypes:
     names1 = typs[pairTyp[0]]
     names2 = typs[pairTyp[1]]
     for name1 in names1:
         for name2 in names2:
             #print( name1, name2 )
-            BB, inds1, inds2 = attachPair( name1, name2, group_dict )
+            BB, inds1, inds2 = attachPair( name1, name2, group_dict, amargin=amargin )
 
             #print( inds )
             comment = " Hbonds={'X':"+str(inds1)+",'Y':"+str(inds2)+"}"
@@ -168,6 +190,13 @@ for pairTyp in pairTypes:
             print( name+".Qtot: ", BB.qs.sum() )
 
             BB.saveXYZ( "out/"+name+".xyz", comment=comment )
+
+            BB_ = BB.clonePBC( (2,2,1) )
+            BB_.saveXYZ( "out/"+name+"_2x2.xyz", comment=comment )
+
+            saveMolGUIscript( name, (inds1,inds2), path="./out/", amargin=amargin )
+
+
 
 
 

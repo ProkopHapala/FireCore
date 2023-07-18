@@ -861,7 +861,7 @@ class AtomicSystem( ):
                         apos  [i0:i0+na,:] = self.apos[:,:] + shift[None,:]
                         if atypes is not None: atypes[i0:i0+na  ] = self.atypes
                         if qs     is not None: qs    [i0:i0+na  ] = self.qs    
-                        if enames is not None: enames[i0:i0+na  ] += self.enames
+                        if enames is not None: enames[i0:i0+na  ] = self.enames
                         #if enames is not None: enames += self.enames
                         i0+=na
         else:

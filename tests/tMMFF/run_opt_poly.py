@@ -30,44 +30,43 @@ def setHBondConstrains( fname ):
     print( Hbonds )
 
     for i in range(len(hbXs)):
-        mmff.addDistConstrain( hbXs[i], hbYs[i], lmin=1.5, lmax=1.7, kmin=0.0, kmax=1., flim=10.0, l=None, k=None, shift=(1.,0.,0.) )
+        mmff.addDistConstrain( hbXs[i], hbYs[i], lmin=1.5, lmax=1.7, kmin=0.0, kmax=1., flim=10.0, l=None, k=None, shift=(1.,0.,0.), bOldIndex=True )
 
-fname = "out/BB.HNH-h.NHO-hh"
-
+#fname = "out/BB.HNH-h.NHO-hh"
 
 #======== Main Body
+
+
 
 mmff.setVerbosity( verbosity=1, idebug=0 )
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False  )              # without MMFF
 
-mmff.init( xyz_name=fname  )              # without MMFF
-
-setHBondConstrains( fname )
-mmff.getBuffs()
-#mmff.eval()
-
-print( "mmff.ffflags ", mmff.ffflags )
-
-mmff.ffflags[2] = True # set bConstrains = true
-#exit()
-
+names = [ os.path.splitext(fname)[0] for fname in os.listdir("out") ]
+print(names)
 nstepMax=2000
 outE = np.zeros(nstepMax)
 outF = np.zeros(nstepMax)
-mmff.setTrjName( "relax_log.xyz" )
 
-mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )
+for name in names:
+    print("########### " + name )
+    mmff.init( xyz_name="out/"+name  )              # without MMFF
+    setHBondConstrains( "out/"+name )
+    #mmff.getBuffs()
+   
+    mmff.setTrjName( "relax_trjs/"+name+".xyz" )
+    outE[:]=0;outF[:]=0
+    mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )
 
-print( "outE ", outE )
-print( "outF ", outF )
-plt.plot( outE )
-plt.plot( np.log10(outF) )
-plt.show()
+    mmff.clear()
 
-'''
-print( "FORCES:\n mmff.fapos:\n ", mmff.fapos )
-mmff.plot(bForce=True, Fscale=10.0 )
-plt.show()
-exit(0)
-'''
+
+
+    '''
+    print( "outE ", outE )
+    print( "outF ", outF )
+    plt.plot( outE )
+    plt.plot( np.log10(outF) )
+    plt.show()
+    '''
+
 

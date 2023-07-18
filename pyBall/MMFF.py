@@ -256,6 +256,12 @@ def init_nonbond():
     return lib.init_nonbond()
 '''
 
+#  void clear         (                      )
+lib.clear.argtypes  = [] 
+lib.clear.restype   =  None
+def clear():
+    return lib.clear()
+
 #  void init_nonbond()
 #lib.init.argtypes  = [] 
 #lib.init.restype   =  None

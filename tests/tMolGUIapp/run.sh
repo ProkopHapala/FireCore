@@ -59,7 +59,8 @@ ln -s $dir/$name .
 
 #./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
 
-./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds
+./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 
 # ====== Polymers On Substrate
 
