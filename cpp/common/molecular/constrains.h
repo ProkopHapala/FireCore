@@ -22,7 +22,7 @@ struct DistConstr{
     DistConstr()=default;
     DistConstr( Vec2i ias_, Vec2d ls_, Vec2d ks_, double flim_=1e+300, Vec3d shift_=Vec3dZero ):ias(ias_),ls(ls_),ks(ks_),flim(flim_),shift(shift_),active(true){ };
 
-    inline double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0 )const{
+    inline double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0 )const{
         Vec3d sh;
         if(lvec){ lvec->dot_to_T( shift, sh ); }else{ sh=shift; }
         Vec3d d   = ps[ias.b] -ps[ias.a] + sh;
@@ -33,6 +33,15 @@ struct DistConstr{
         d.mul(f/l);
         fs[ias.b].sub(d);
         fs[ias.a].add(d);
+
+        if( dlvec ){  // Forces on Lattice Vector
+            //  dE/dsh = (dE/dr) * ( dr/dsh ) = f * ( dr/dsh ) = f * d|a-b+sh|/dsh = f/|a-b+sh| * sh = sh*(f/l) 
+            sh.mul( f/l );
+            dlvec->a.add_mul( sh, shift.a );
+            dlvec->b.add_mul( sh, shift.b );
+            dlvec->c.add_mul( sh, shift.c );
+        }
+
         //fs[ias.b].add(d);
         //fs[ias.a].sub(d);
         //printf( "DistConstr:apply(%i,%i) l %g E %g f %g | ls(%g,%g) ks(%g,%g) lvec %li |sh| %g \n", ias.b, ias.a, l, E,f, ls.x,ls.y, ks.x,ks.y, (long)lvec, sh.norm() );
@@ -68,9 +77,9 @@ class Constrains{ public:
     std::vector<DistConstr>  bonds;
     std::vector<AngleConstr> angles;
 
-    double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec ){
+    double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec, Mat3d* dlvec=0 ){
         double E=0;  
-        for( const DistConstr&  c : bonds  ){ E+= c.apply(ps,fs, lvec ); }
+        for( const DistConstr&  c : bonds  ){ E+= c.apply(ps,fs, lvec, dlvec ); }
         for( const AngleConstr& c : angles ){ E+= c.apply(ps,fs); }
         return E;
     }
@@ -101,6 +110,15 @@ class Constrains{ public:
             }
             return i;
             fclose( pFile );
+        }
+    }
+
+    void clear( bool bShring=false){
+        bonds.clear();
+        angles.clear();
+        if(bShring){
+            bonds.shrink_to_fit();
+            angles.shrink_to_fit();
         }
     }
     

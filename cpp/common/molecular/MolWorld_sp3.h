@@ -152,6 +152,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     Vec3d* picked_lvec = 0;
     Vec3d pick_hray, pick_ray0;
 
+    Mat3d* dlvec = 0;
+
 	// IO temp & aux
 	FILE* xyz_file=0;
 	char* tmpstr;
@@ -783,12 +785,13 @@ virtual void init( bool bGrid ){
     }
     builder.setup_atom_permut();
     constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );
+    if(dlvec){ builder.lvec.add( *dlvec ); change_lvec( builder.lvec );  }
     builder.printAtoms();
     //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
-virtual void clear(){
+virtual void clear( bool bParams=true ){
     printf("MolWorld_sp3.clear() \n");
     builder.clear();
     ffl.dealloc();
@@ -804,6 +807,12 @@ virtual void clear(){
     opt.pos = 0;
     opt.force = 0;
     opt.dealloc();
+
+    constrs.clear();
+
+    if(bParams){
+        params.clear();
+    }
 }
 
 virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*& M_apos, int& nvec ){

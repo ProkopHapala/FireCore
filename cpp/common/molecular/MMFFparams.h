@@ -828,6 +828,45 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         return n;
     }
 
+    void clear( bool bShring=false ){
+        etypes.clear();
+        atypes.clear();
+        atomTypeNames.clear();
+        elementTypeDict.clear();
+        atomTypeDict.clear();
+
+        bonds.clear();
+        bonds_.clear();
+        bondDict.clear();
+
+        angles.clear();
+        angles_.clear();
+        angleDict.clear();
+
+        dihedrals.clear();
+        dihedrals_.clear();
+        dihedralDict.clear();
+        if(bShring){
+            etypes.shrink_to_fit();
+            atypes.shrink_to_fit();
+            atomTypeNames.shrink_to_fit();
+            elementTypeDict.rehash(0);
+            atomTypeDict.rehash(0);
+
+            bonds.shrink_to_fit();
+            bonds_.rehash(0);
+            bondDict.rehash(0);
+
+            angles.shrink_to_fit();
+            angles_.rehash(0);
+            angleDict.rehash(0);
+
+            dihedrals.shrink_to_fit();
+            dihedrals_.rehash(0);
+            dihedralDict.rehash(0);
+        }
+    }
+
 };
 
 #endif
