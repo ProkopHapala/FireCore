@@ -172,6 +172,28 @@ void realloc( int nnode_, int ncap_ ){
 
 }
 
+void dealloc(){
+    _dealloc(DOFs );
+    _dealloc(fDOFs);
+    _dealloc(vDOFs);
+    apos   = 0;
+    fapos  = 0;
+    pipos  = 0;
+    fpipos = 0;
+    _dealloc(neighs);
+    _dealloc(neighCell);
+    _dealloc(bkneighs);
+    _dealloc(apars);
+    _dealloc(bLs);
+    _dealloc(bKs);
+    _dealloc(Ksp);
+    _dealloc(Kpp);
+    //_dealloc(angles);
+    //_dealloc(tors2atom  );
+    //_dealloc(torsParams );
+    nnode=0; ncap=0; natoms=0; nvecs=0; nDOFs=0;
+}
+
 void setLvec(const Mat3f& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
 
 // ============== Evaluation

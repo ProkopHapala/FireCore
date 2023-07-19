@@ -1324,7 +1324,7 @@ double eval( ){
             else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
         }
     }
-    if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos );
+    if(bConstrains)constrs.apply( nbmol.apos, nbmol.fapos, &ffl.lvec );
     /*
     if(bSurfAtoms){ 
         if   (bGridFF){ E+= gridFF.eval(nbmol.natoms, nbmol.apos, nbmol.PLQs, nbmol.fapos ); }

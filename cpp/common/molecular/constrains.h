@@ -77,7 +77,7 @@ class Constrains{ public:
     std::vector<DistConstr>  bonds;
     std::vector<AngleConstr> angles;
 
-    double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec, Mat3d* dlvec=0 ){
+    double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec=0, Mat3d* dlvec=0 ){
         double E=0;  
         for( const DistConstr&  c : bonds  ){ E+= c.apply(ps,fs, lvec, dlvec ); }
         for( const AngleConstr& c : angles ){ E+= c.apply(ps,fs); }

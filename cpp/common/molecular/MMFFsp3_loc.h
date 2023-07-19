@@ -140,8 +140,6 @@ void realloc( int nnode_, int ncap_, int ntors_=0 ){
     _realloc0( Ksp       , nnode, Quat4dNAN );
     _realloc0( Kpp       , nnode, Quat4dNAN );
 
-
-
     // Additional:
     // Angles
     _realloc0( angles, nnode*6, Vec3dNAN );   // 6=4*3/2
@@ -200,6 +198,7 @@ void dealloc(){
 
     _dealloc(tors2atom  );
     _dealloc(torsParams );
+    nnode=0; ncap=0; ntors=0; natoms=0; nvecs =0; nDOFs =0; int ipi0=natoms;
 }
 
 void setLvec(const Mat3d& lvec_){ lvec=lvec_; lvec.invert_T_to( invLvec ); }
@@ -422,7 +421,6 @@ double eval_atom(const int ia){
             //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fss1[%i,%i]",ia,i,j); } );
             //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fss2[%i,%i]",ia,i,j); } );
             fa    .sub( f1+f2  );
-            /*
             // ----- Error is HERE
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
@@ -437,7 +435,6 @@ double eval_atom(const int ia){
                 f1.sub(fij);
                 f2.add(fij);
             }
-            */
             fbs[i].add( f1     );
             fbs[j].add( f2     );
             //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
@@ -638,11 +635,11 @@ double eval_torsion(int it){
     Vec3d ha    = apos[ ias.x ] - apos[ ias.y ];
     Vec3d hb    = apos[ ias.w ] - apos[ ias.z ];
     Vec3d hab   = apos[ ias.z ] - apos[ ias.y ];
-    DEBUG
+
     double ila  = 1/ha.normalize();
     double ilb  = 1/hb.normalize();
     double ilab = 1/hab.normalize();
-    DEBUG
+
     double ca   = hab.dot(ha);
     double cb   = hab.dot(hb);
     double cab  = ha .dot(hb);
@@ -650,30 +647,30 @@ double eval_torsion(int it){
     double sb2  = (1-cb*cb);
     double invs = 1/sqrt( sa2*sb2 );
     //double c    = ;  //  c = <  ha - <ha|hab>hab   | hb - <hb|hab>hab    >
-    DEBUG
+
     Vec2d cs,csn;
     cs.x = ( cab - ca*cb )*invs;
     cs.y = sqrt(1-cs.x*cs.x); // can we avoid this sqrt ?
     cs.udiv_cmplx( par.xy() ); 
-    DEBUG
+
     const int n = (int)par.w; // I know it is stupid store n as double, but I don't make another integer arrays just for it
     for(int i=0; i<n-1; i++){
         csn.mul_cmplx(cs);
     }
-    DEBUG
+
     // check here : https://www.wolframalpha.com/input/?i=(x+%2B+isqrt(1-x%5E2))%5En+derivative+by+x
 
     const double k = par.z;
     double E       = k  *(1-csn.x);
     double dcn     = k*n*   csn.x;
     //double fr  =  k*n*    csn.y;
-    DEBUG
+
     //double c   = cos_func(ca,cb,cab);
 
     //printf( "<fa|fb> %g cT %g cS %g \n", cs.x, cT, cS );
 
     // derivatives to get forces
-    DEBUG
+
     double invs2 = invs*invs;
     dcn *= invs;
     double dcab  = dcn;                          // dc/dcab = dc/d<ha|hb>
@@ -685,7 +682,7 @@ double eval_torsion(int it){
     fa =Vec3dZero;
     fb =Vec3dZero;
     fab=Vec3dZero;
-    DEBUG
+
     //Mat3Sd J;
     SMat3d J;
 
@@ -705,13 +702,13 @@ double eval_torsion(int it){
     fa .mul( ila  );
     fb .mul( ilb  );
     fab.mul( ilab );
-    DEBUG
+
     // ToDo : Which order ?
     fapos[ias.x].sub( fa );
     fapos[ias.y].add( fa  - fab );
     fapos[ias.z].add( fab - fb  );
     fapos[ias.w].add( fb );
-    DEBUG
+
     /*
     {
         double fsc = 100.0;
