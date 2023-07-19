@@ -787,6 +787,10 @@ virtual void init( bool bGrid ){
     if(dlvec       ){ builder.lvec.add( *dlvec ); change_lvec( builder.lvec );       }
     //builder.printAtoms();
     //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
+
+
+    ffl.printNeighs();
+
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
@@ -794,8 +798,8 @@ virtual void clear( bool bParams=true ){
     //printf("MolWorld_sp3.clear() \n");
     builder.clear();
     ffl.dealloc();
-    //ff..dealloc();
-    //ff4.dealloc();
+    ff.dealloc();
+    ff4.dealloc();
     // --- nbmol
     nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
     nbmol.apos=0;  
@@ -868,12 +872,16 @@ void setNonBond( bool bNonBonded ){
 }
 
 double eval( ){
-    //printf("MolWorld_sp3::eval() \n" );
+    printf("MolWorld_sp3::eval() bNonBonded %i ffl.bSubtractAngleNonBond %i  ffl.bPBC %i ffl.doBonds %i ffl.doPiPiI %i ffl.doPiSigma %i ffl.doAngles %i ffl.bAngleCosHalf %i ffl.bEachAngle %i \n", bNonBonded, ffl.bSubtractAngleNonBond,   ffl.bPBC, ffl.doBonds, ffl.doPiPiI, ffl.doPiSigma, ffl.doAngles, ffl.bAngleCosHalf, ffl.bEachAngle );
     double E=0;
     //setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
+    ffl.print_nonbonded();
+    ffl.printAtomParams();
     if(bMMFF){ 
         //E += ff .eval();
         E += ffl.eval(); 
+        ffl.printDEBUG(  false, false );
+        //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }   
         
         //printf( "ffl.lvec\n" );    printMat( ffl.lvec    );
         //printf( "ffl.invLvec\n" ); printMat( ffl.invLvec );
@@ -907,7 +915,11 @@ double eval( ){
     }
     */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
-    //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }
+    //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
+    ffl.printDEBUG(  false, false );
+    exit(0);
+
+
     return E;
 }
 
@@ -933,6 +945,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
+    printf( "MolWorld_sp3::run(%i) \n", nstepMax );
     //printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
     //printf( "opt.damp_max %g opt.damping %g \n", opt.damp_max, opt.damping );
     double F2conv=Fconv*Fconv;
@@ -980,6 +993,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
 }
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ){
+    printf( "MolWorld_sp3::MDloop() \n" );
     //ff.doPiPiI  =false;
     //ff.doPiPiT  =false;
     //ff.doPiSigma=false;
@@ -1031,7 +1045,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     */
-    run( 10 );
+    run( nIter );
     
     bChargeUpdated=false;
 }

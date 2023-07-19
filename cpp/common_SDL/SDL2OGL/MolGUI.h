@@ -48,7 +48,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //int ibpicked   = -1; // picket bond
     //int iangPicked = -1; // picket angle
     //Vec3d* picked_lvec = 0;
-    int perFrame =  1;
+    //int perFrame =  1;
+    int perFrame =  100;
     Quat4f qCamera0;
 
     bool bDoMM=true;//,bDoQM=true;
@@ -350,7 +351,10 @@ void MolGUI::draw(){
     W->pick_hray = (Vec3d)cam.rot.c;
     W->pick_ray0 = ray0;
 
-    if(bRunRelax){ W->MDloop(perFrame); }
+    if(bRunRelax){ 
+        printf( "MolGUI::draw() -> W->MDloop(%i);", perFrame );    
+        W->MDloop(perFrame); 
+    }
     //if(bRunRelax){ W->relax( perFrame ); }
 
     // --- Mouse Interaction / Visualization

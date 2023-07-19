@@ -290,7 +290,7 @@ def init(
         sAtomTypes = "data/AtomTypes.dat", 
         sBondTypes = "data/BondTypes.dat", 
         sAngleTypes= "data/AngleTypes.dat",
-        bMMFF=True, bEpairs=False,  nPBC=(1,1,0), gridStep=0.1 
+        bMMFF=True, bEpairs=False,  nPBC=(1,3,0), gridStep=0.1 
     ):
     global glob_bMMFF
     glob_bMMFF = bMMFF

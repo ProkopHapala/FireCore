@@ -194,7 +194,7 @@ for pairTyp in pairTypes:
             BB_ = BB.clonePBC( (2,2,1) )
             BB_.saveXYZ( "out/"+name+"_2x2.xyz", comment=comment )
 
-            saveMolGUIscript( name, (inds1,inds2), path="./out/", amargin=amargin )
+            saveMolGUIscript( name, (inds1,inds2), path="./out/", amargin=amargin-3.0 )
 
 
 

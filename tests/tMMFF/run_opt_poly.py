@@ -42,11 +42,19 @@ def setHBondConstrains( fname ):
 mmff.setVerbosity( verbosity=0, idebug=0 )
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False  )              # without MMFF
 
-names = [ os.path.splitext(fname)[0] for fname in os.listdir("out") ]
+names = [ name for name in os.listdir("out") ]
+names = [ name for name in names if ( "2x2" not in name ) ]
+names = [ os.path.splitext(name)[0] for name in names if ( os.path.splitext(name)[1] != '.sh' ) ]
 print(names)
 nstepMax=2000
 outE = np.zeros(nstepMax)
 outF = np.zeros(nstepMax)
+
+names = [
+    'BB.HNH-hp.OHO-h_1',
+    #'BB.HNH-hh.NHO-hp',
+    #'BB.HNH-hh.NHO-hp',
+]
 
 for name in names:
     print("########### " + name )
@@ -61,15 +69,5 @@ for name in names:
     mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )
 
     mmff.clear()
-
-
-
-    '''
-    print( "outE ", outE )
-    print( "outF ", outF )
-    plt.plot( outE )
-    plt.plot( np.log10(outF) )
-    plt.show()
-    '''
 
 

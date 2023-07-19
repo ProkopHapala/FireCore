@@ -108,6 +108,29 @@ void realloc( int nnode_, int nbonds_, int npi_, int ncap_, bool bNeighs=true ){
     //printf( "MMFFsp3::realloc() DONE \n" );
 }
 
+void dealloc(  ){
+    nnode=0; ncap=0; nbonds=0; npi=0; natoms=0; nvecs=0; nDOFs=0;
+    _dealloc( DOFs      );
+    _dealloc( fDOFs     );
+    _realloc( atype, natoms );
+    apos   = 0 ;
+    fapos  = 0;
+    pipos  = 0;
+    fpipos = 0;
+    _dealloc( bond2atom );
+    _dealloc( bond_l0    );
+    _dealloc( bond_k     );
+    _dealloc( bond_kPi   );
+
+    _dealloc( neighs );
+    _dealloc( abonds );
+    //_dealloc( Kneighs, nn );
+    _dealloc( NeighParams );
+    //_dealloc( Kpis      );
+    
+    //printf( "MMFFsp3::realloc() DONE \n" );
+}
+
 void initPBC(){
     _realloc(  pbcShifts, nbonds );
     for(int i=0; i<nbonds; i++){ pbcShifts[i]=Vec3dZero; }
