@@ -38,7 +38,8 @@ def setHBondConstrains( fname ):
 
 
 
-mmff.setVerbosity( verbosity=1, idebug=0 )
+#mmff.setVerbosity( verbosity=1, idebug=0 )
+mmff.setVerbosity( verbosity=0, idebug=0 )
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False  )              # without MMFF
 
 names = [ os.path.splitext(fname)[0] for fname in os.listdir("out") ]
@@ -51,6 +52,8 @@ for name in names:
     print("########### " + name )
     mmff.init( xyz_name="out/"+name  )              # without MMFF
     setHBondConstrains( "out/"+name )
+    mmff.change_lvec( [[-5.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], bAdd=True )
+
     #mmff.getBuffs()
    
     mmff.setTrjName( "relax_trjs/"+name+".xyz" )

@@ -908,12 +908,14 @@ double eval( bool bClean=true, bool bCheck=true ){
 }
 
 double eval_check(){
-    printf(" ============ check MMFFsp3_loc START\n " );
-    printSizes();
+    if(verbosity>0){
+        printf(" ============ check MMFFsp3_loc START\n " );
+        printSizes();
+    }
     //print_pipos();
     eval();
     checkNans();
-    printf(" ============ check MMFFsp3_loc DONE\n " );
+    if(verbosity>0)printf(" ============ check MMFFsp3_loc DONE\n " );
     return Etot;
 }
 

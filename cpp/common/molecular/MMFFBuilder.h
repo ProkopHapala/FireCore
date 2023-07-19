@@ -515,18 +515,18 @@ class Builder{  public:
     }
 
     void clear(){
-        atoms.clear(); //printf("DEBUG a.1 \n");
+        atoms.clear();
         confs.clear();
-        bonds.clear(); //printf("DEBUG a.2 \n");
+        bonds.clear(); 
         //bondPBC.clear();
         angles.clear();
         dihedrals.clear();
 #ifdef Molecule_h
-        //mols .clear(); //printf("DEBUG a.3 \n");
-        frags.clear(); //printf("DEBUG a.4 \n");
+        //mols .clear();
+        frags.clear();
         fragTypes.clear();
 #endif // Molecule_h
-        printf("MM::Builder::clear() DONE\n");
+        //printf("MM::Builder::clear() DONE\n");
     }
 
     void bindParams( MMFFparams* params_ ){
@@ -2634,9 +2634,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     void multFragPBC( int ifrag, const Vec3i& nPBC, Mat3d lvs ){
-        printf( "multFragPBC() nPBC(%i,%i,%i) ifrag=%i ) \n", nPBC.x, nPBC.y, nPBC.z,  ifrag );
+        //printf( "multFragPBC() nPBC(%i,%i,%i) ifrag=%i ) \n", nPBC.x, nPBC.y, nPBC.z,  ifrag );
         lvs.print();
-        printSizes();
+        //printSizes();
         for(int ic=0; ic<nPBC.c; ic++){ for(int ib=0; ib<nPBC.b; ib++){ for(int ia=0; ia<nPBC.a; ia++){
             if( (ia==0)&&(ib==0)&&(ic==0) ) continue;
             Vec3d pos0 = lvs.a*ia + lvs.b*ib + lvs.c*ic;
@@ -2647,7 +2647,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         lvec.a.set_mul(lvs.a,nPBC.a);
         lvec.b.set_mul(lvs.b,nPBC.b);
         lvec.c.set_mul(lvs.c,nPBC.c);
-        printSizes();
+        //printSizes();
     }
 
     int findNearestBondPBC( int ib, int& ifrag0, int ifragMin, int ifragMax, Vec3i8& ipbc ){
