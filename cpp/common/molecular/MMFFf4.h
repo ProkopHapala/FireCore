@@ -351,11 +351,13 @@ float eval( bool bClean=true, bool bCheck=true ){
 }
 
 double eval_check(){
-    printf(" ============ check MMFFf4 START\n " );
-    printSizes();
+    if(verbosity>0){
+        printf(" ============ check MMFFf4 START\n " );
+        printSizes();
+    }
     eval();
     checkNans();
-    printf(" ============ check MMFFf4 DONE\n " );
+    if(verbosity>0)printf(" ============ check MMFFf4 DONE\n " );
     return Etot;
 }
 

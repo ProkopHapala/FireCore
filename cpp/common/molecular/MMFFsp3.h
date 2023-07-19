@@ -625,11 +625,13 @@ double eval( bool bClean=true, bool bCheck=true ){
 }
 
 double eval_check(){
-    printf(" ============ check MMFFsp3 START\n " );
-    printSizes();
+    if(verbosity>0){
+        printf(" ============ check MMFFsp3 START\n " );
+        printSizes();
+    }
     eval();
     checkNans();
-    printf(" ============ check MMFFsp3 DONE\n " );
+    if(verbosity>0)printf(" ============ check MMFFsp3 DONE\n " );
     return Etot;
 } 
 
@@ -659,7 +661,7 @@ void evalPi0s(){
 }
 
 void chargeToEpairs( Quat4d* REQs, double cQ=-0.2, int etyp=-1 ){
-    printf( "chargeToEpairs() \n" );
+    //printf( "chargeToEpairs() \n" );
     for( int ib=0; ib<nbonds; ib++ ){
         Vec2i b = bond2atom[ib];
         if( atype[b.i]==etyp ){ REQs[b.i].z+=cQ; REQs[b.j].z-=cQ; }

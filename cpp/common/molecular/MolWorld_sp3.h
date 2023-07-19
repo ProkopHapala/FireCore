@@ -196,7 +196,7 @@ virtual void change_lvec( const Mat3d& lvec ){
 }
 
 virtual void add_to_lvec( const Mat3d& dlvec ){
-    printf("MolWold_sp3::add_to_lvec()\n");
+    //printf("MolWold_sp3::add_to_lvec()\n");
     ffl.setLvec( ffl.lvec+dlvec );
     //npbc = makePBCshifts( nPBC, lvec );
     evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
@@ -489,7 +489,7 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
 int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
-    sprintf(tmpstr, "%s.xyz", name ); printf("tmpstr=`%s`\n", tmpstr);
+    sprintf(tmpstr, "%s.xyz", name ); //printf("tmpstr=`%s`\n", tmpstr);
     int imol  = builder.loadMolType( tmpstr, name );
     int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
     int ifrag = builder.frags.size()-1;
@@ -507,8 +507,7 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
         builder.bPBC=true;
         readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
     }
-    bPBC=builder.bPBC;
-    printf( "builder.bPBC %i \n", builder.bPBC );
+    bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
     if( bPBC ){ builder.autoBondsPBC(); }
     else      { builder.autoBonds();    }
     builder.checkNumberOfBonds( true, true );
@@ -686,7 +685,7 @@ void makeMMFFs(){
     //builder.printAtomConfs(false,true);
     builder.checkBondsOrdered( true, false );
     builder.assignTypes();
-    builder.printAtomTypes();
+    //builder.printAtomTypes();
     if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
     
     builder.toMMFFsp3_loc( ffl, true, bEpairs );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
@@ -784,15 +783,15 @@ virtual void init( bool bGrid ){
         makeFFs();
     }
     builder.setup_atom_permut();
-    constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );
-    if(dlvec){ builder.lvec.add( *dlvec ); change_lvec( builder.lvec );  }
-    builder.printAtoms();
+    if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
+    if(dlvec       ){ builder.lvec.add( *dlvec ); change_lvec( builder.lvec );       }
+    //builder.printAtoms();
     //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
 virtual void clear( bool bParams=true ){
-    printf("MolWorld_sp3.clear() \n");
+    //printf("MolWorld_sp3.clear() \n");
     builder.clear();
     ffl.dealloc();
     //ff..dealloc();
