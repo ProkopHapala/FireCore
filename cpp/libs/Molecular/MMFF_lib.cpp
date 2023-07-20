@@ -58,7 +58,7 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
 	W.bMMFF      = bMMFF;
-     W.bEpairs   = bEpairs;
+    W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
     W.tmpstr=tmpstr;
@@ -191,8 +191,8 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
 }
 
 void change_lvec( double* lvec, bool bAdd, bool  ){
-    if(bAdd){ W.change_lvec( *(Mat3d*)lvec ); }
-    else    { W.add_to_lvec( *(Mat3d*)lvec ); }
+    if(bAdd){ W.add_to_lvec( *(Mat3d*)lvec ); }
+    else    { W.change_lvec( *(Mat3d*)lvec ); }
 }
 
 void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){
