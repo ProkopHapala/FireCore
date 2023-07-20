@@ -64,7 +64,7 @@ for name in names:
 
     #mmff.getBuffs()
    
-    mmff.setTrjName( "relax_trjs/"+name+".xyz" )
+    mmff.setTrjName( "relax_trjs/"+name+".xyz", nPBC=(2,2,1) )
     outE[:]=0;outF[:]=0
     mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )
 
