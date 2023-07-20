@@ -20,7 +20,7 @@ def getFromCommnet( fname, varname="Hbonds" ):
     return eval( comment[i0+len(varname)+1:] )
     #print( Hbonds['X'], Hbonds['Y'] )
 
-def setHBondConstrains( fname ):
+def setHBondConstrains( fname, k=5., lmax=1.7, flim=10.0 ):
     Hbonds = getFromCommnet( fname+".xyz" )
     hbXs = Hbonds['X']
     hbYs = Hbonds['Y']
@@ -30,7 +30,7 @@ def setHBondConstrains( fname ):
     print( Hbonds )
 
     for i in range(len(hbXs)):
-        mmff.addDistConstrain( hbXs[i], hbYs[i], lmin=1.5, lmax=1.7, kmin=0.0, kmax=1., flim=10.0, l=None, k=None, shift=(1.,0.,0.), bOldIndex=True )
+        mmff.addDistConstrain( hbXs[i], hbYs[i], lmin=1.5, lmax=lmax, kmin=0.0, kmax=k, flim=flim, l=None, k=None, shift=(1.,0.,0.), bOldIndex=True )
 
 #fname = "out/BB.HNH-h.NHO-hh"
 
@@ -38,22 +38,22 @@ def setHBondConstrains( fname ):
 
 
 
-#mmff.setVerbosity( verbosity=1, idebug=0 )
-mmff.setVerbosity( verbosity=0, idebug=0 )
+mmff.setVerbosity( verbosity=2, idebug=0 )
+#mmff.setVerbosity( verbosity=0, idebug=0 )
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False  )              # without MMFF
 
 names = [ name for name in os.listdir("out") ]
 names = [ name for name in names if ( "2x2" not in name ) ]
 names = [ os.path.splitext(name)[0] for name in names if ( os.path.splitext(name)[1] != '.sh' ) ]
 print(names)
-nstepMax=2000
+nstepMax=10000
 outE = np.zeros(nstepMax)
 outF = np.zeros(nstepMax)
 
 names = [
     'BB.HNH-hp.OHO-h_1',
     #'BB.HNH-hh.NHO-hp',
-    #'BB.HNH-hh.NHO-hp',
+    'BB.HNH-hh.NHO-hp',
 ]
 
 for name in names:
@@ -64,7 +64,7 @@ for name in names:
 
     #mmff.getBuffs()
    
-    mmff.setTrjName( "relax_trjs/"+name+".xyz", nPBC=(2,2,1) )
+    mmff.setTrjName( "relax_trjs/"+name+".xyz", nPBC=(2,2,1), savePerNsteps=1000000 )
     outE[:]=0;outF[:]=0
     mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )
 

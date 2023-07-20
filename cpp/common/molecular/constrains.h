@@ -44,7 +44,7 @@ struct DistConstr{
 
         //fs[ias.b].add(d);
         //fs[ias.a].sub(d);
-        //printf( "DistConstr:apply(%i,%i) l %g E %g f %g | ls(%g,%g) ks(%g,%g) lvec %li |sh| %g \n", ias.b, ias.a, l, E,f, ls.x,ls.y, ks.x,ks.y, (long)lvec, sh.norm() );
+        //printf( "DistConstr:apply(%i,%i) l %g E %g f %g | ls(%g,%g) ks(%g,%g) flim %g lvec %li |sh| %g \n", ias.b, ias.a, l, E,f, ls.x,ls.y, ks.x,ks.y, flim, (long)lvec, sh.norm() );
         return E;
     }
 
@@ -79,6 +79,7 @@ class Constrains{ public:
 
     double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec=0, Mat3d* dlvec=0 ){
         double E=0;  
+        int i=0;
         for( const DistConstr&  c : bonds  ){ E+= c.apply(ps,fs, lvec, dlvec ); }
         for( const AngleConstr& c : angles ){ E+= c.apply(ps,fs); }
         return E;

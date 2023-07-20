@@ -878,13 +878,12 @@ void setNonBond( bool bNonBonded ){
 double eval( ){
 
     //ffl.doBonds       = false;
-    ffl.doPiPiI       = false;
-    ffl.doPiSigma     = false;
-    ffl.doAngles      = false;
+    //ffl.doPiPiI       = false;
+    //ffl.doPiSigma     = false;
+    //ffl.doAngles      = false;
     //ffl.bAngleCosHalf = false;
     //ffl.bEachAngle    = true;
-
-    //printf("MolWorld_sp3::eval() bNonBonded %i ffl.bSubtractAngleNonBond %i  ffl.bPBC %i ffl.doBonds %i ffl.doPiPiI %i ffl.doPiSigma %i ffl.doAngles %i ffl.bAngleCosHalf %i ffl.bEachAngle %i \n", bNonBonded, ffl.bSubtractAngleNonBond,   ffl.bPBC, ffl.doBonds, ffl.doPiPiI, ffl.doPiSigma, ffl.doAngles, ffl.bAngleCosHalf, ffl.bEachAngle );
+    //printf("MolWorld_sp3::eval() bConstrains %i bNonBonded %i ffl.bSubtractAngleNonBond %i  ffl.bPBC %i ffl.doBonds %i ffl.doPiPiI %i ffl.doPiSigma %i ffl.doAngles %i ffl.bAngleCosHalf %i ffl.bEachAngle %i \n", bConstrains, bNonBonded, ffl.bSubtractAngleNonBond,   ffl.bPBC, ffl.doBonds, ffl.doPiPiI, ffl.doPiSigma, ffl.doAngles, ffl.bAngleCosHalf, ffl.bEachAngle );
     double E=0;
     //setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
     //ffl.print_nonbonded();
