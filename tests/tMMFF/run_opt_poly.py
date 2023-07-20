@@ -38,8 +38,9 @@ def setHBondConstrains( fname, k=5., lmax=1.7, flim=10.0 ):
 
 
 
-mmff.setVerbosity( verbosity=2, idebug=0 )
-#mmff.setVerbosity( verbosity=0, idebug=0 )
+#mmff.setVerbosity( verbosity=2, idebug=0 )
+#mmff.setVerbosity( verbosity=1, idebug=0 )
+mmff.setVerbosity( verbosity=0, idebug=0 )
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False  )              # without MMFF
 
 names = [ name for name in os.listdir("out") ]
@@ -50,22 +51,34 @@ nstepMax=10000
 outE = np.zeros(nstepMax)
 outF = np.zeros(nstepMax)
 
+#names = sys.argv[1].split(',')
+
+'''
 names = [
     'BB.HNH-hp.OHO-h_1',
     #'BB.HNH-hh.NHO-hp',
     'BB.HNH-hh.NHO-hp',
 ]
+'''
+
+#names = [  'BB.HNH-hp.OHO-h_1', 'BB.HNH-hh.NHO-hp' ]
+
+#names = [ 'BB.HNH-hh.NHO-hh' ]
+names = [ 'BB.HNH-hp.OHO-h_1', 'BB.HNH-hh.NHO-hh' ]
+
 
 for name in names:
-    print("########### " + name )
+    print("########### (%s)" %name )
     mmff.init( xyz_name="out/"+name  )              # without MMFF
     setHBondConstrains( "out/"+name )
-    mmff.change_lvec( [[-2.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], bAdd=True )
+    mmff.change_lvec( [[-3.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], bAdd=True )
 
     #mmff.getBuffs()
    
     mmff.setTrjName( "relax_trjs/"+name+".xyz", nPBC=(2,2,1), savePerNsteps=1000000 )
     outE[:]=0;outF[:]=0
+
+    mmff.print_debugs()
     mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )
 
     mmff.clear()

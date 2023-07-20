@@ -52,6 +52,7 @@ header_strings = [
 #"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
 #"void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){",
 #"int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond )",
+#'void print_debugs( bool bParams, bool bNeighs, bool bShifts ){',
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -255,6 +256,12 @@ lib.init_nonbond.restype   =  None
 def init_nonbond():
     return lib.init_nonbond()
 '''
+
+#  void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
+lib.print_debugs.argtypes  = [c_bool, c_bool, c_bool] 
+lib.print_debugs.restype   =  None
+def print_debugs(bParams=True, bNeighs=True, bShifts=False):
+    return lib.print_debugs(bParams, bNeighs, bShifts)
 
 #  void clear         (                      )
 lib.clear.argtypes  = [] 

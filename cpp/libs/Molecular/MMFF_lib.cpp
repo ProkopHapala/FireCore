@@ -147,6 +147,14 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
     }
 }
 
+
+void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
+    W.ffl.printSizes();
+    if( bParams ) W.ffl.printAtomParams();
+    if( bNeighs ) W.ffl.printNeighs();
+    if( bShifts ) W.ffl.print_pbc_shifts();
+}
+
 void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, int kind, int atyp, double Q, double K, double RQ, double* pos0_, bool bSave){
     Vec3d* poss =(Vec3d*)poss_;
     Vec3d* fs   =(Vec3d*)fs_;

@@ -198,14 +198,14 @@ virtual void change_lvec( const Mat3d& lvec ){
 }
 
 virtual void add_to_lvec( const Mat3d& dlvec ){
-    printf("MolWold_sp3::add_to_lvec()\n");
-    printf(  "BEFORE ffl.lvec " ); printMat(ffl.lvec);
+    ///printf("MolWold_sp3::add_to_lvec()\n");
+    //printf(  "BEFORE ffl.lvec " ); printMat(ffl.lvec);
     ffl.setLvec( ffl.lvec+dlvec );
     //npbc = makePBCshifts( nPBC, lvec );
     evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
     ffl.bindShifts(npbc,pbc_shifts);
     builder.lvec = ffl.lvec;
-    printf(  "AFTER ffl.lvec " ); printMat(ffl.lvec);
+    //printf(  "AFTER ffl.lvec " ); printMat(ffl.lvec);
 }
 
 virtual double solve( int nmax, double tol )override{
@@ -716,9 +716,10 @@ void makeMMFFs(){
     //builder.printBonds();
     //printf("!!!!! builder.toMMFFsp3() DONE \n");
     idebug=1;
+    
     ffl.eval_check();
-    ff4.eval_check();
-    ff .eval_check();
+    //ff4.eval_check();
+    //ff .eval_check();
     idebug=0;
 }
 
@@ -791,10 +792,7 @@ virtual void init( bool bGrid ){
     if(dlvec       ){ add_to_lvec(*dlvec);    }
     //builder.printAtoms();
     //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
-
-
-    ffl.printNeighs();
-
+    //ffl.printNeighs();
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
