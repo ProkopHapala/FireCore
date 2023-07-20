@@ -60,6 +60,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     const char* trj_fname    = 0;
     int savePerNsteps = 1;
     OptLog opt_log;
+    Vec3i nPBC_save{1,1,1};
+
 
     double fAutoCharges=-1;
     bool bEpairs = false;
@@ -982,7 +984,7 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
         if(outF){ outF[itr]=F2;   }
         if( (trj_fname) && (itr%savePerNsteps==0) ){
             sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
-            saveXYZ( trj_fname, tmpstr, false, "a" );
+            saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
         }
         if(verbosity>1){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
@@ -990,7 +992,7 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
             if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             if( trj_fname ){
                 sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
-                saveXYZ( trj_fname, tmpstr, false, "a" );
+                saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
             }
             break;
         }
@@ -1200,7 +1202,7 @@ int toXYZ(const char* comment="#comment", bool bNodeOnly=false, FILE* file=0, bo
     return 0;
 }
 
-int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w" ){ return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs, mode ); }
+int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs, mode, true, nPBC, ffl.lvec ); }
 //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
 //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs ); }
 

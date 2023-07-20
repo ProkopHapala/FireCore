@@ -783,27 +783,22 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         return ret;
     }
 
-    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0 ){
+    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity ){
         //printf( "MMFFparams::writeXYZ() n=%i REQs=%li just_Element=%i\n", n, (long)REQs, just_Element );
-        fprintf(pfile, "%i\n", n+npi );
+        int npbc = nPBC.totprod();
+        fprintf(pfile, "%i\n", (n+npi)*npbc );
         fprintf(pfile, "%s \n", comment );
+        //printf( "MM::Params::writeXYZ() nPBC={%i,%i,%i}\n", nPBC.x,nPBC.y,nPBC.z );
+        for(int ic=0;ic<nPBC.z;ic++){ for(int ib=0;ib<nPBC.y;ib++){ for(int ia=0;ia<nPBC.x;ia++){
+            Vec3d shift = lvec.a*ia + lvec.b*ib + lvec.c*ic; 
+            //// //////////////------------------- 
         for(int i=0; i<n; i++){
             //printf( "DEBUG writeXYZ()[%i] \n", i );
             int ityp   = atyps[i];
-            const Vec3d&  pi = apos[i];
+            const Vec3d&  pi = apos[i] + shift;
             const char* symbol; 
             bool byName = true;
             if(just_Element){ 
-
-                /*
-                int iZ = atypes[ityp].iZ;
-                if( iZ<=11 ){
-                    int it = z2typ0[iZ];
-                    symbol = atomTypeNames[it].c_str();
-                    printf( "atom[%i] ityp %i iZ %i it %i `%s` \n", i, ityp, iZ, it, symbol );
-                    byName = false;
-                }
-                */
                 byName = false;
                 symbol =  etypes[ atypes[ityp].element ].name;
             }
@@ -812,6 +807,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", symbol, pi.x,pi.y,pi.z, REQs[i].z ); }
             else    { fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f \n"          , symbol, pi.x,pi.y,pi.z            ); }
         }
+        }}}
         for(int i=0; i<npi; i++){
             const Vec3d&  pi = apos[i] + apos[i+n];
             fprintf( pfile, "Pi   %15.10f   %15.10f   %15.10f \n", pi.x,pi.y,pi.z            );
@@ -819,11 +815,11 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         }
     }
 
-    int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true ){
+    int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity ){
         FILE* pfile = fopen(fname, mode );
         //printf( "saveXYZ(%s) \n", fname );
         if( pfile == NULL ) return -1;
-        writeXYZ( pfile, n, atyps, apos, comment, REQs, just_Element );
+        writeXYZ( pfile, n, atyps, apos, comment, REQs, just_Element, 0, nPBC, lvec );
         fclose(pfile);
         return n;
     }

@@ -48,6 +48,7 @@ class MolWorld_sp3_simple{ public:
     const char* smile_name   = 0;
     const char* trj_fname    = "trj.xyz";
     int savePerNsteps = 1;
+    Vec3i nPBC_save{1,1,1};
     double fAutoCharges=-1;
     bool bEpairs=false;
 

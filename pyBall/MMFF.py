@@ -371,11 +371,12 @@ def setOptLog( n ):
 #  void setTrjName( char* trj_fname_ ){ 
 lib.setTrjName.argtypes  = [c_char_p, c_int ] 
 lib.setTrjName.restype   =  c_bool
-def setTrjName(trj_fname_="trj.xyz", savePerNsteps=1, bDel=True ):
+def setTrjName(trj_fname_="trj.xyz", savePerNsteps=1, bDel=True, nPBC=(1,1,1) ):
     if bDel: open(trj_fname_,"w").close()
     global trj_fname
     trj_fname=cstr(trj_fname_)
-    return lib.setTrjName( trj_fname, savePerNsteps )
+    nPBC=np.array(nPBC, np.int32)
+    return lib.setTrjName( trj_fname, savePerNsteps, _np_as(nPBC,c_int_p)  )
 
 #  int saveXYZ( const char* fname, const char* comment)
 lib.saveXYZ.argtypes  = [c_char_p, c_char_p, c_int ] 

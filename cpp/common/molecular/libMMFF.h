@@ -48,7 +48,7 @@ void addAngConstrain( int i0,int i1,int i2, double ang0, double k ){
 // ================ UTILS
 
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){ return W.checkInvariants( maxVcog, maxFcog, maxTg ); }
-void setTrjName     ( const char* trj_fname_, int savePerNsteps_ ){ W.trj_fname=trj_fname_; W.savePerNsteps=savePerNsteps_; if(verbosity>0)printf( "setTrjName(%s)\n", W.trj_fname ); }
+void setTrjName     ( const char* trj_fname_, int savePerNsteps_, int* nPBC ){ W.trj_fname=trj_fname_; W.savePerNsteps=savePerNsteps_; if(verbosity>0)printf( "setTrjName(%s)\n", W.trj_fname ); W.nPBC_save=*(Vec3i*)nPBC; }
 int toXYZ           (const char* comment="#comment"){ return W.toXYZ(comment); }
 int saveXYZ( const char* fname, const char* comment, int imod){ 
     int ret=-1;
