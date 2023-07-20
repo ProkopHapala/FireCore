@@ -1257,7 +1257,13 @@ bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
     if(bPi) ret |= ckeckNaN_d(nnode,   3, (double*)fpipos, "fpipos" );
     if(bNg) ret |= ckeckNaN_d(nnode*4, 3, (double*)fneigh,  "fneigh"   );
     if(bNg) ret |= ckeckNaN_d(nnode*4, 3, (double*)fneighpi,"fneighpi" );
-    if(bExit&&ret){ printf("ERROR: NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); exit(0); };
+    if(bExit&&ret){ printf("ERROR: NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); 
+        printSizes();
+        printAtomParams();
+        printNeighs();
+        print_pbc_shifts();
+        exit(0); 
+    };
     return ret;
 }
 
