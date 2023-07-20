@@ -40,6 +40,7 @@ void clear            ( ){ W.clear();   }
 void addDistConstrain( int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double* shift, bool bOldIndex  ){
     //W.constrs.bonds.push_back( DistConstr{ {i0,i1}, {lmax,lmin}, {kmax,kmin}, flim, *(Vec3d*)shift } );
     W.addDistConstrain( i0,i1, lmin,lmax,kmin,kmax,flim, *(Vec3d*)shift, bOldIndex );
+    W.bConstrains=true;
 }
 void addAngConstrain( int i0,int i1,int i2, double ang0, double k ){
     W.constrs.angles.push_back( AngleConstr{ {i0,i1,i2}, {cos(ang0/2.),sin(ang0/2.)}, k, } );
