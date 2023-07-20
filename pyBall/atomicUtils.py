@@ -56,20 +56,27 @@ def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=Tr
     #print( "rbs=",   len(rbs),   rbs )
     return np.array( bonds, dtype=np.int32 ), np.array( rbs )
 
-def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.2, angMax=30.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
+def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
     bonds  = []
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
     cos_min = np.cos( angMax*np.pi/180.0 )
-    #print( "cos_min ", cos_min )
+    print( "cos_min ", cos_min )
     for i,pi in enumerate(apos):
         if ( atypes[ i ] not in typs1) : continue
+        
         ds   = apos[:,:] - pi[None,:]
         rs   = np.sqrt( np.sum( ds**2, axis=1 ) )
         rs[i]=100.0
         jmin = np.argmin(rs)   # nearest neighbor i.e. bond
+        
         cs   = np.dot( ds, ds[jmin] ) / ( rs*rs[jmin] )
         mask = np.logical_and( cs<-cos_min, rs<Rh )
+        # print( i, atypes[i], jmin, rs[jmin], atypes[jmin] )
+        # if( atypes[jmin]=="N" ):
+        #     print(" ==== NEIGHS of ", i )
+        #     for j in range(len(apos)):
+        #         print( atypes[j], j, cs[j], rs[j], mask[j], cs[j]<-cos_min,  rs[j]<Rh )
         dbonds = [ (i,j) for j in iatoms[:][mask] if atypes[j] in typs2 ]
         bonds += dbonds
         rbs   += [ rs[b[1]] for b in dbonds ]
@@ -814,7 +821,7 @@ class AtomicSystem( ):
         self.bonds, rs = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
         return self.bonds, rs
 
-    def findHBonds(self, Rb=1.5, Rh=2.2, angMax=30.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
+    def findHBonds(self, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
         return findHBondsNP( self.apos, atypes=self.enames, Rb=Rb, Rh=Rh, angMax=angMax, typs1=typs1, typs2=typs2, bPrint=True )
 
     def findBondsOfAtom(self, ia, bAtom=False ):
