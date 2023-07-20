@@ -196,12 +196,14 @@ virtual void change_lvec( const Mat3d& lvec ){
 }
 
 virtual void add_to_lvec( const Mat3d& dlvec ){
-    //printf("MolWold_sp3::add_to_lvec()\n");
+    printf("MolWold_sp3::add_to_lvec()\n");
+    printf(  "BEFORE ffl.lvec " ); printMat(ffl.lvec);
     ffl.setLvec( ffl.lvec+dlvec );
     //npbc = makePBCshifts( nPBC, lvec );
     evalPBCshifts( nPBC, ffl.lvec, pbc_shifts );
     ffl.bindShifts(npbc,pbc_shifts);
     builder.lvec = ffl.lvec;
+    printf(  "AFTER ffl.lvec " ); printMat(ffl.lvec);
 }
 
 virtual double solve( int nmax, double tol )override{
@@ -784,7 +786,7 @@ virtual void init( bool bGrid ){
     }
     builder.setup_atom_permut();
     if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
-    if(dlvec       ){ builder.lvec.add( *dlvec ); change_lvec( builder.lvec );       }
+    if(dlvec       ){ add_to_lvec(*dlvec);    }
     //builder.printAtoms();
     //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
 
@@ -872,15 +874,25 @@ void setNonBond( bool bNonBonded ){
 }
 
 double eval( ){
-    printf("MolWorld_sp3::eval() bNonBonded %i ffl.bSubtractAngleNonBond %i  ffl.bPBC %i ffl.doBonds %i ffl.doPiPiI %i ffl.doPiSigma %i ffl.doAngles %i ffl.bAngleCosHalf %i ffl.bEachAngle %i \n", bNonBonded, ffl.bSubtractAngleNonBond,   ffl.bPBC, ffl.doBonds, ffl.doPiPiI, ffl.doPiSigma, ffl.doAngles, ffl.bAngleCosHalf, ffl.bEachAngle );
+
+    //ffl.doBonds       = false;
+    ffl.doPiPiI       = false;
+    ffl.doPiSigma     = false;
+    ffl.doAngles      = false;
+    //ffl.bAngleCosHalf = false;
+    //ffl.bEachAngle    = true;
+
+    //printf("MolWorld_sp3::eval() bNonBonded %i ffl.bSubtractAngleNonBond %i  ffl.bPBC %i ffl.doBonds %i ffl.doPiPiI %i ffl.doPiSigma %i ffl.doAngles %i ffl.bAngleCosHalf %i ffl.bEachAngle %i \n", bNonBonded, ffl.bSubtractAngleNonBond,   ffl.bPBC, ffl.doBonds, ffl.doPiPiI, ffl.doPiSigma, ffl.doAngles, ffl.bAngleCosHalf, ffl.bEachAngle );
     double E=0;
     //setNonBond( bNonBonded );  // Make sure ffl subtracts non-covalent interction for angles
-    ffl.print_nonbonded();
-    ffl.printAtomParams();
+    //ffl.print_nonbonded();
+    //ffl.printAtomParams();
+    //ffl.print_pbc_shifts();
+    //printf("lvec: ");printMat(builder.lvec);
     if(bMMFF){ 
         //E += ff .eval();
         E += ffl.eval(); 
-        ffl.printDEBUG(  false, false );
+        //ffl.printDEBUG(  false, false );
         //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }   
         
         //printf( "ffl.lvec\n" );    printMat( ffl.lvec    );
@@ -916,8 +928,8 @@ double eval( ){
     */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
     //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
-    ffl.printDEBUG(  false, false );
-    exit(0);
+    //ffl.printDEBUG(  false, false );
+    //exit(0);
 
 
     return E;
@@ -945,7 +957,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
-    printf( "MolWorld_sp3::run(%i) \n", nstepMax );
+    //printf( "MolWorld_sp3::run(%i) \n", nstepMax );
     //printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
     //printf( "opt.damp_max %g opt.damping %g \n", opt.damp_max, opt.damping );
     double F2conv=Fconv*Fconv;
@@ -993,7 +1005,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
 }
 
 virtual void MDloop( int nIter, double Ftol = 1e-6 ){
-    printf( "MolWorld_sp3::MDloop() \n" );
+    //printf( "MolWorld_sp3::MDloop() \n" );
     //ff.doPiPiI  =false;
     //ff.doPiPiT  =false;
     //ff.doPiSigma=false;

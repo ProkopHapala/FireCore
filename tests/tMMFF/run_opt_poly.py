@@ -60,7 +60,7 @@ for name in names:
     print("########### " + name )
     mmff.init( xyz_name="out/"+name  )              # without MMFF
     setHBondConstrains( "out/"+name )
-    mmff.change_lvec( [[-5.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], bAdd=True )
+    mmff.change_lvec( [[-2.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]], bAdd=True )
 
     #mmff.getBuffs()
    

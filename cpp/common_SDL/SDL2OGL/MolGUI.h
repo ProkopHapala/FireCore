@@ -352,7 +352,7 @@ void MolGUI::draw(){
     W->pick_ray0 = ray0;
 
     if(bRunRelax){ 
-        printf( "MolGUI::draw() -> W->MDloop(%i);", perFrame );    
+        //printf( "MolGUI::draw() -> W->MDloop(%i);", perFrame );    
         W->MDloop(perFrame); 
     }
     //if(bRunRelax){ W->relax( perFrame ); }

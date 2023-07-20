@@ -290,7 +290,7 @@ double eval_atom(const int ia){
                 int ipbc = ingC[i]; 
                 //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
                 h.f.add( shifts[ipbc] );
-                //if( (ipbc!=4) ){ printf("ffls[%i] atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", id, ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
+                //if( (ia==0) ){ printf("ffls[%i] atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", id, ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
                 //if( (ipbc!=4) ){ printf("ffls[%i] atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", id, ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
             }else{
                 Vec3i g  = invLvec.nearestCell( h.f );
@@ -1194,7 +1194,7 @@ void printNeighs    (      ){ printf("MMFFsp3_loc::printNeighs()\n"     ); for(i
 void printBKneighs  (      ){ printf("MMFFsp3_loc::printBKneighs()\n"   ); for(int i=0; i<natoms; i++){ printBKneighs  (i);   }; };
 void print_pipos    (      ){ printf("MMFFsp3_loc::print_pipos()\n"     ); for(int i=0; i<nnode;  i++){ printf( "pipos[%i](%g,%g,%g) r=%g\n", i, pipos[i].x,pipos[i].y,pipos[i].z, pipos[i].norm() ); } }
 void print_apos     (      ){ printf("MMFFsp3_loc::print_apos()\n"      ); for(int i=0; i<natoms; i++){ printf( "apos [%i](%g,%g,%g)\n",      i, apos[i].x ,apos[i].y ,apos[i].z                   ); } }
-
+void print_pbc_shifts(     ){ printf("MMFFsp3_loc::print_pbc_shifts()\n"); for(int i=0; i<npbc;   i++){ printf( "pbc_shifts[%i](%g,%g,%g)\n", i, shifts[i].x,shifts[i].y,shifts[i].z                   ); } }
 
 void printAngles(int ia){
     Vec3d* angles_i = angles+(ia*6);
