@@ -635,7 +635,7 @@ double eval_atom_debug(const int ia, bool bPrint=true){
                 double Evdwi = getLJQH( dp, fij, REQij, R2damp );
                 //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
                 //bErr|=ckeckNaN( 1,3, (double*)&fij, [&]{ printf("atom[%i]fLJ2[%i,%i]",ia,i,j); } );
-                if(bPrint)printf( "ffl:vdw[%i|%i,%i] REQH{%g,%g,%g,%g} r %g f1(%g,%g,%g) f2(%g,%g,%g) E %g\n", ia,ing,jng, REQij.x,REQij.y,REQij.z,REQij.w,  dp.norm(), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z, Evdwi );
+                if(bPrint)printf( "ffl:vdw[%i|%i,%i] REQH{%g,%g,%g,%g} r %g fij(%g,%g,%g) E %g\n", ia,ing,jng, REQij.x,REQij.y,REQij.z,REQij.w,  dp.norm(), fij.x,fij.y,fij.z, Evdwi );
                 f1.sub(fij);
                 f2.add(fij);
                 E-=Evdwi;

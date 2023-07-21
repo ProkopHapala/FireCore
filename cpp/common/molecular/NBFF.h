@@ -22,7 +22,7 @@ bool checkLimits( int n, int m, const double* vals, const double* vmin, const do
         const double* vali = vals+i*m;
         for(int j=0; j<m; j++){
             double v = vali[j];
-            if( v<vmin[j] || v>vmax[j] ){  
+            if( v<vmin[j] || v>vmax[j] || isnan(v) ){  
                 b=true; 
                 if(bPrint){
                     printf( "%s[%i/%i,%i/%i] %g out of limits [%g,%g] \n", message, i,n, j,m,   v, vmin[j], vmax[j]  );
@@ -699,7 +699,9 @@ class NBFF: public Atoms{ public:
         }
     }
 
+
     void checkREQlimits( const Quat4d vmin=Quat4d{ 0.2,0.0,-1.,-1e-8}, const Quat4d vmax=Quat4d{ 3.0,0.2,+1.,+1e-8}  ){
+        if( REQs==0 ){ printf( "NBFF::checkREQlimits() REQs is NULL=> Exit()\n" ); exit(0); }
         if( checkLimits( natoms, 4, (double*)REQs, (double*)&vmin, (double*)&vmax, "REQs" ) ){
             printf("ERROR NBFF::checkREQlimits(): REQs are out of range (%g,%g,%g,%g) .. (%g,%g,%g,%g) => Exit() \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w ); print_nonbonded(); exit(0);
         }

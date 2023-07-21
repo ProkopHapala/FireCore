@@ -711,16 +711,6 @@ void makeMMFFs(){
         //ffl.makeNeighCells( nPBC );      
         ffl.makeNeighCells( npbc, pbc_shifts ); 
     }
-    //ffl.printAtomParams();
-    //printf("npbc %i\n", npbc ); ffl.printNeighs();
-    //builder.printBonds();
-    //printf("!!!!! builder.toMMFFsp3() DONE \n");
-    idebug=1;
-    
-    ffl.eval_check();
-    //ff4.eval_check();
-    //ff .eval_check();
-    idebug=0;
 }
 
 virtual void makeFFs(){
@@ -734,8 +724,20 @@ virtual void makeFFs(){
         ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
     }
     nbmol.evalPLQs(gridFF.alphaMorse);
+    { // check FFS
+        //ffl.printAtomParams();
+        //printf("npbc %i\n", npbc ); ffl.printNeighs();
+        //builder.printBonds();
+        //printf("!!!!! builder.toMMFFsp3() DONE \n");
+        idebug=1;
+        //printf( "!!!!!!!!!!!!!!!! ffl.checkREQlimits(); \n" );
+        ffl.checkREQlimits();
+        ffl.eval_check();
+        //ff4.eval_check();
+        //ff .eval_check();
+        idebug=0;
+    }
     //ffl.print_nonbonded(); exit(0);
-    ffl.checkREQlimits( );
     if(bOptimizer){ 
         //setOptimizer(); 
         //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
@@ -927,7 +929,7 @@ double eval( ){
     */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
     //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
-    ffl.printDEBUG(  false, false );
+    //ffl.printDEBUG(  false, false );
     //exit(0);
 
 
