@@ -47,8 +47,8 @@ names = [ name for name in os.listdir("out") ]
 names = [ name for name in names if ( "2x2" not in name ) ]
 names = [ os.path.splitext(name)[0] for name in names if ( os.path.splitext(name)[1] != '.sh' ) ]
 print(names)
-nstepMax=0
-#nstepMax=10000000
+#nstepMax=0
+nstepMax=10000000
 outE = np.zeros(nstepMax)
 outF = np.zeros(nstepMax)
 
@@ -80,7 +80,7 @@ for name in names:
     outE[:]=0;outF[:]=0
 
     #mmff.print_debugs()
-    mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )
+    nsteps = mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )  ;print("relaxation took %i  steps of(%i)" %(nsteps,nstepMax) )
 
     mmff.clear()
 
