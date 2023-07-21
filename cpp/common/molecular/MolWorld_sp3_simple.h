@@ -89,6 +89,7 @@ class MolWorld_sp3_simple{ public:
 	bool bPBC        = false;
 	bool bCheckInvariants = true;
     bool bRelaxPi = false;
+    bool bConstrains = false;
 	Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
     //bool bChargeUpdated=false;

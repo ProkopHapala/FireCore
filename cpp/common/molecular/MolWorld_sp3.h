@@ -966,7 +966,7 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
     double Etot=0;
     int itr=0;
     //if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(0); };
-    //if(dt>0){ opt.setTimeSteps(dt); }
+    if(dt>0){ opt.setTimeSteps(dt); }
     //if(ialg>0){ opt.cleanVel( ); }
     for(itr=0; itr<nstepMax; itr++ ){        
         //ff.clearForce();
@@ -1044,27 +1044,27 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     verbosity = 1;
     
 
-    /*
-    run_omp( iterPerFrame, opt.dt, 1e-6, 1000.0 );
+    
+
 
     //run_omp( 500, opt.dt, 1e-6, 1000.0 );
-
     //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
-    //run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    run_omp( nIter, 0.05, 1e-6, 1000.0 );
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
     //run_omp( 1, opt.dt, 1e-6, 1000.0 );
     //run_omp( 2, opt.dt, 1e-6, 1000.0 );
     //run_omp( 100, opt.dt, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
     //run_omp( 500, 0.05, 1e-6, 1000.0 );
-    */
-    run( nIter );
+    
+    //run( nIter );
     
     bChargeUpdated=false;
 }
 
-int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02 ){
-
+int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
+    //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
+    if(dt>0){ opt.setTimeSteps(dt); }
     long T0 = getCPUticks();
     double E=0,F2=0,F2conv=Fconv*Fconv;
     double ff=0,vv=0,vf=0;
@@ -1106,7 +1106,13 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
                 E+=ffl.eval_torsion(it); 
             }
         }
-
+        if(bConstrains){
+            #pragma omp single
+            {
+                //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
+                constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
+            }
+        }
         // ---- assemble (we need to wait when all atoms are evaluated)
         //#pragma omp barrier
         #pragma omp for
@@ -1155,7 +1161,17 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
                 niter=0; 
                 double t = (getCPUticks() - T0)*tick2second;
                 if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
-            }   
+            }
+
+            if(outE){ outE[itr]=Etot; }
+            if(outF){ outF[itr]=F2;   }
+
+            if( (trj_fname) && ( (itr%savePerNsteps==0) ||(niter==0) ) ){
+                sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
+                //printf( "run_omp::save() %s \n", tmpstr );
+                saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
+            }
+
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
             //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
             //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
