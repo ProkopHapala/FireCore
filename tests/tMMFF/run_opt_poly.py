@@ -76,11 +76,13 @@ for name in names:
 
     #mmff.getBuffs()
    
-    mmff.setTrjName( "relax_trjs/"+name+".xyz", nPBC=(2,2,1), savePerNsteps=1000000 )
+    mmff.setTrjName( "relax_trjs_omp/"+name+".xyz", nPBC=(2,2,1), savePerNsteps=1000000 )
+    #mmff.setTrjName( "relax_trjs_omp/"+name+".xyz", nPBC=(2,2,1), savePerNsteps=1 )
     outE[:]=0;outF[:]=0
 
     #mmff.print_debugs()
-    nsteps = mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )  ;print("relaxation took %i  steps of(%i)" %(nsteps,nstepMax) )
+    #nsteps = mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )  ;print("relaxation took %i  steps of(%i)" %(nsteps,nstepMax) )
+    nsteps = mmff.run( nstepMax=nstepMax, outE=outE, outF=outF, omp=True )  ;print("relaxation took %i  steps of(%i)" %(nsteps,nstepMax) )
 
     mmff.clear()
 
