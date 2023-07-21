@@ -927,7 +927,7 @@ double eval( ){
     */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
     //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
-    //ffl.printDEBUG(  false, false );
+    ffl.printDEBUG(  false, false );
     //exit(0);
 
 

@@ -473,6 +473,211 @@ double eval_atom(const int ia){
 }
 
 
+double eval_atom_debug(const int ia, bool bPrint=true){
+    //printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
+    double E=0;
+    const Vec3d pa  = apos [ia]; 
+    const Vec3d hpi = pipos[ia]; 
+
+ 
+    Vec3d fa   = Vec3dZero;
+    Vec3d fpi  = Vec3dZero; 
+    
+    //--- array aliases
+    const int*    ings = neighs   [ia].array;
+    const int*    ingC = neighCell[ia].array;
+    const double* bK   = bKs      [ia].array;
+    const double* bL   = bLs      [ia].array;
+    const double* Kspi = Ksp      [ia].array;
+    const double* Kppi = Kpp      [ia].array;
+    Vec3d* fbs  = fneigh   +ia*4;
+    Vec3d* fps  = fneighpi +ia*4;
+
+    const Quat4d& apar  = apars[ia];
+    const double  piC0 = apar.w;
+
+    //--- Aux Variables 
+    Quat4d  hs[4];
+    Vec3d   f1,f2;
+
+    for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break
+
+    double Eb=0;
+    double Ea=0;
+    double EppI=0;
+    double Eps=0;
+
+    // --------- Bonds Step
+    for(int i=0; i<4; i++){
+        int ing = ings[i];
+        if(ing<0) break;
+
+        //printf("ia %i ing %i \n", ia, ing ); 
+        Vec3d  pi = apos[ing];
+        Quat4d h; 
+        h.f.set_sub( pi, pa );
+        //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
+        
+        if(bPBC){   
+            if(shifts){
+                int ipbc = ingC[i]; 
+                //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
+                h.f.add( shifts[ipbc] );
+                //if( (ia==0) ){ printf("ffls[%i] atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", id, ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
+                //if( (ipbc!=4) ){ printf("ffls[%i] atom[%i,%i=%i] ipbc %i shifts(%g,%g,%g)\n", id, ia,i,ing, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z); };
+            }else{
+                Vec3i g  = invLvec.nearestCell( h.f );
+                // if(ia==ia_DBG){
+                //     Vec3d u; invLvec.dot_to(h.f,u);
+                //     printf( "CPU:bond[%i,%i] u(%6.3f,%6.3f,%6.3f) shi(%6.3f,%6.3f,%6.3f) \n", ia, ing, u.x,u.y,u.z,   (float)g.x,(float)g.y,(float)g.z );
+                // }
+                Vec3d sh = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
+                h.f.add( sh );
+                //apbc[i] = pi + sh;
+            }
+        }
+
+        //printf( "h[%i,%i] r_old %g r_new %g \n", ia, ing, h_bak.norm(), h.f.norm() );
+        double l = h.f.normalize();
+
+        h.e    = 1/l;
+        hs [i] = h;
+
+
+
+        //if(ia==ia_DBG) printf( "ffl:h[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, l, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z, pa.x,pa.y,pa.z );
+
+        if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
+            if(doBonds){
+                double Ebi = evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
+                E +=Ebi; 
+                Eb+=Ebi; 
+                if(bPrint)printf( "ffl:bond[%i|%i=%i] kb=%g l0=%g l=%g h(%g,%g,%g) f(%g,%g,%g) E %g\n", ia,i,ing, bK[i],bL[i], l, h.x,h.y,h.z, f1.x,f1.y,f1.z,  Ebi);
+            }
+            double kpp = Kppi[i];
+            if( (doPiPiI) && (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                double EppIi = evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
+                E   +=EppIi; 
+                EppI+=EppIi;
+                if(bPrint)printf( "ffl:pp[%i|%i] kpp=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g), EppI=%g\n", ia,ing, kpp, hpi.dot(pipos[ing]), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z, EppIi  );
+            }
+            // ToDo: triple bonds ?
+            
+        } 
+        
+        // pi-sigma 
+        //if(bPi){    
+        double ksp = Kspi[i];
+        if( doPiSigma && (ksp>1e-6) ){  
+            double Epsi = evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);       //   pi-planarization (orthogonality)
+            E  +=Epsi; 
+            Eps+=Epsi;
+            if(bPrint)printf( "ffl:sp[%i|%i] ksp=%g piC0=%g c=%g hp(%g,%g,%g) h(%g,%g,%g) E %g \n", ia,ing, ksp,piC0, hpi.dot(h.f), hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z, Epsi );
+        }
+        //}
+        
+    }
+
+    //printf( "MMFF_atom[%i] cs(%6.3f,%6.3f) ang=%g [deg]\n", ia, cs0_ss.x, cs0_ss.y, atan2(cs0_ss.y,cs0_ss.x)*180./M_PI );
+    // --------- Angle Step
+    const double R2damp=Rdamp*Rdamp;
+    if(doAngles){
+
+    double  ssK,ssC0;
+    Vec2d   cs0_ss;
+    Vec3d*  angles_i;
+    if(bEachAngle){
+        angles_i = angles+(ia*6);
+    }else{
+        ssK    = apar.z;
+        cs0_ss = Vec2d{apar.x,apar.y};
+        ssC0   = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
+    }
+
+    int iang=0;
+    for(int i=0; i<3; i++){
+        int ing = ings[i];
+        if(ing<0) break;
+        const Quat4d& hi = hs[i];
+        for(int j=i+1; j<4; j++){
+            int jng  = ings[j];
+            if(jng<0) break;
+            const Quat4d& hj = hs[j];    
+            if(bEachAngle){
+                // 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
+                //  0    1    2    3    4    5 
+                cs0_ss = angles_i[iang].xy();  
+                ssK    = angles_i[iang].z;
+                //printf( "types{%i,%i,%i} ssK %g cs0(%g,%g) \n", atypes[ing], atypes[ia], atypes[jng], ssK, cs0_ss.x, cs0_ss.y  );
+                iang++; 
+            };
+            //bAngleCosHalf = false;
+            //double Eai;
+            //printf( "bAngleCosHalf= %i\n", bAngleCosHalf);
+            double Eai;
+            if( bAngleCosHalf ){
+                Eai = evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
+            }else{ 
+                Eai = evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
+            }
+            E +=Eai; 
+            Ea+=Eai;
+            if(bPrint)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) E %g\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z, f2.x,f2.y,f2.z, Eai );
+            fa    .sub( f1+f2  );
+            // ----- Error is HERE
+            if(bSubtractAngleNonBond){
+                Vec3d fij=Vec3dZero;
+                //Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+                Quat4d REQij = _mixREQ(REQs[ing],REQs[jng]);
+                Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
+                //Vec3d dp   = hj.f*(1./hj.w) - hi.f*(1./hi.w);
+                //Vec3d dp   = apbc[j] - apbc[i];
+                double Evdwi = getLJQH( dp, fij, REQij, R2damp );
+                //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
+                //bErr|=ckeckNaN( 1,3, (double*)&fij, [&]{ printf("atom[%i]fLJ2[%i,%i]",ia,i,j); } );
+                if(bPrint)printf( "ffl:vdw[%i|%i,%i] REQH{%g,%g,%g,%g} r %g f1(%g,%g,%g) f2(%g,%g,%g) E %g\n", ia,ing,jng, REQij.x,REQij.y,REQij.z,REQij.w,  dp.norm(), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z, Evdwi );
+                f1.sub(fij);
+                f2.add(fij);
+                E-=Evdwi;
+            }
+            //if(bPrint)printf( "ffl:ang-vdw[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g)\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
+            fbs[i].add( f1     );
+            fbs[j].add( f2     );
+            //if(ia==ia_DBG)printf( "ffl:ANG[%i|%i,%i] fa(%g,%g,%g) fbs[%i](%g,%g,%g) fbs[%i](%g,%g,%g)\n", ia,ing,jng, fa.x,fa.y,fa.z, i,fbs[i].x,fbs[i].y,fbs[i].z,   j,fbs[j].x,fbs[j].y,fbs[j].z  );
+            // ToDo: subtract non-covalent interactions
+        }
+    }
+    }    
+    //if(bErr){ printf("ERROR in ffl.eval_atom[%i] => Exit() \n", ia ); exit(0); }
+    
+    /*
+    double Kfix = constr[ia].w;
+    if(Kfix>0){  
+        //printf( "applyConstrain(i=%i,K=%g)\n", ia, Kfix );
+        Vec3d d = constr[ia].f-pa;
+        d.mul( Kfix );
+        double fr2 = d.norm2();
+        double F2max = 1.0;
+        if( fr2>F2max ){
+            d.mul( sqrt(F2max/fr2) );
+        }
+        fa.add( d );
+        E += d.norm()*Kfix*0.5;
+    }
+    */
+    
+    //fapos [ia].add(fa ); 
+    //fpipos[ia].add(fpi);
+    fapos [ia]=fa; 
+    fpipos[ia]=fpi;
+
+    //printf( "MYOUTPUT atom %i Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", ia+1, Eb, Ea, EppI, Eps, E );
+    //fprintf( file, "atom %i Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", ia+1, Eb, Ea, EppI, Eps, E );
+    
+
+    return E;
+}
+
 
     double eval_atom_opt(const int ia){
 
@@ -613,14 +818,13 @@ double eval_atom(const int ia){
 
 
 
-double eval_atoms(){
+double eval_atoms( bool bDebug=false, bool bPrint=false ){
     //FILE *file = fopen("out","w");
     //Etot,
     //Eb=0;Ea=0;Eps=0;EppT=0;EppI=0;
     double E=0;
-    for(int ia=0; ia<nnode; ia++){ 
-        E+=eval_atom(ia); 
-    }
+    if  (bDebug){ for(int ia=0; ia<nnode; ia++){  E+=eval_atom_debug(ia,bPrint); }}
+    else        { for(int ia=0; ia<nnode; ia++){  E+=eval_atom(ia);              }}
     //printf( "MYOUTPUT Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", Eb, Ea, EppI, Eps, E );
     //fprintf( file, "Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", Eb, Ea, EppI, Eps, E );
     //fclose(file);
@@ -1262,6 +1466,11 @@ bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
         printAtomParams();
         printNeighs();
         print_pbc_shifts();
+        printDEBUG(  false, false );
+
+        eval_atoms(true,true);
+
+        printf("ERROR: NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); 
         exit(0); 
     };
     return ret;
