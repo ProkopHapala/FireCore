@@ -47,7 +47,8 @@ names = [ name for name in os.listdir("out") ]
 names = [ name for name in names if ( "2x2" not in name ) ]
 names = [ os.path.splitext(name)[0] for name in names if ( os.path.splitext(name)[1] != '.sh' ) ]
 print(names)
-nstepMax=10000
+nstepMax=0
+#nstepMax=10000000
 outE = np.zeros(nstepMax)
 outF = np.zeros(nstepMax)
 
@@ -64,7 +65,7 @@ names = [
 #names = [  'BB.HNH-hp.OHO-h_1', 'BB.HNH-hh.NHO-hp' ]
 
 #names = [ 'BB.HNH-hh.NHO-hh' ]
-names = [ 'BB.HNH-hp.OHO-h_1', 'BB.HNH-hh.NHO-hh' ]
+#names = [ 'BB.HNH-hp.OHO-h_1', 'BB.HNH-hh.NHO-hh' ]
 
 
 for name in names:
@@ -78,7 +79,7 @@ for name in names:
     mmff.setTrjName( "relax_trjs/"+name+".xyz", nPBC=(2,2,1), savePerNsteps=1000000 )
     outE[:]=0;outF[:]=0
 
-    mmff.print_debugs()
+    #mmff.print_debugs()
     mmff.run( nstepMax=nstepMax, outE=outE, outF=outF )
 
     mmff.clear()

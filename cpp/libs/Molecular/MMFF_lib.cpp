@@ -147,7 +147,6 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
     }
 }
 
-
 void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
     W.ffl.printSizes();
     if( bParams ) W.ffl.printAtomParams();
