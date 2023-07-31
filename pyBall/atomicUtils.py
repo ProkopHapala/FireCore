@@ -108,7 +108,45 @@ def findTypeNeigh( atoms, neighs, typ, neighTyps=[(1,2,2)] ):
             if( (n>=nmin)and(n<=nmax) ):
                 selected.append( iatom )
     return selected
-    
+
+def findAngles( neighs, apos, select=None ):
+    if select is None:
+        select = range(len(apos))
+    iang=[]
+    angs=[]
+    for ia in select:
+        ngs=neighs
+        for ja in ngs:
+            a = apos[ja] - apos[ia]
+            for jb in ngs:
+                if jb<ja:
+                    b = apos[jb] - apos[ia] 
+                    angs.append( np.arccos( np.dot(a,b)/np.sqrt( np.dot(a,a)*np.dot(b,b) ) ) )
+                    iang.append( (ja,ia,jb) )
+    return angs, iang
+
+def findDihedral( enames, apos, neighs, select, neighTyp={'H'} ):
+    if select is None:
+        select = range(len(apos))
+    iang=[]
+    angs=[]
+    for ia in select:
+        ngs=neighs
+        if len(ngs)<3:
+            print( f"ERROR in findDihedral: atom {ia} has <3 neighbors" )
+        for ja in ngs:
+            if a in neighTyp:
+                a = apos[ja] - apos[ia]
+                for jb in ngs:
+                    for jc in ngs:
+                        if jb<jc:
+                            b = apos[jb] - apos[ia]
+                            c = apos[jc] - apos[ia] 
+                            n = np.cross(b,c)
+                            angs.append( np.dot(n,a) / np.sqrt(np.dot(n,n)*np.dot(a,a)) )
+                            iang.append( (ja,ia,jb,jc) )
+    return angs, iang 
+
 def getAllNeighsOfSelected( selected, neighs, atoms, typs={1} ):
     result = {}
     for iatom in selected:
@@ -829,6 +867,21 @@ class AtomicSystem( ):
             return [ b[1] for b in self.bonds if(b[0]==ia) ] + [ b[0] for b in self.bonds if(b[1]==ia) ] 
         else:
             return [i for i,b in enumerate(self.bonds) if (b[0]==ia) or (b[1]==ia) ]
+
+    def neighs( self, ):
+        if(self.bonds is None):
+            self.findBonds()
+        return neighs( len(self.apos), self.bonds )
+
+    def findAngles(self, select=None, ngs=None, ):
+        if ngs is None:
+            ngs = self.neighs()
+        return findAngles(select=select, neighs=ngs )
+
+    def findDihedral( self, neighs=None, select=None, neighTyp={'H'} ):
+        if ngs is None:
+            ngs = self.neighs()
+        return findDihedral( self.enames, self.apos, ngs, select=select, neighTyp=neighTyp ) 
 
     def findCOG(self, apos, byBox=False ):
         return findCOG( apos, byBox=byBox )
