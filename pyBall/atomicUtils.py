@@ -61,7 +61,7 @@ def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, t
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
     cos_min = np.cos( angMax*np.pi/180.0 )
-    print( "cos_min ", cos_min )
+    #print( "cos_min ", cos_min )
     for i,pi in enumerate(apos):
         if ( atypes[ i ] not in typs1) : continue
         
@@ -109,42 +109,73 @@ def findTypeNeigh( atoms, neighs, typ, neighTyps=[(1,2,2)] ):
                 selected.append( iatom )
     return selected
 
-def findAngles( neighs, apos, select=None ):
+def findTypeNeigh_( types, neighs, typ='N', neighTyps={'H':(1,2)} ):
+    #typ_mask = ( types == typ )
+    #satoms   = atoms[typ_mask]
+    select = [ i for i,t in enumerate(types) if (t==typ) ]
+    selected = [] 
+    for ia in select:
+        count = {}
+        for jatom in neighs[ ia ].keys():  # count number of neighbors of certain type
+            jtyp = types[jatom]
+            count[jtyp] = count.get(jtyp, 0) + 1
+        for jtyp, (nmin,nmax) in neighTyps.items():
+            n = count.get(jtyp,0)
+            if( (n>=nmin)and(n<=nmax) ):
+                selected.append( ia )
+    return selected
+
+
+def findAngles( apos, neighs, select=None ):
     if select is None:
         select = range(len(apos))
     iang=[]
     angs=[]
     for ia in select:
-        ngs=neighs
-        for ja in ngs:
+        ngs=neighs[ia]
+        for ja in ngs.keys():
             a = apos[ja] - apos[ia]
-            for jb in ngs:
+            for jb in ngs.keys():
                 if jb<ja:
                     b = apos[jb] - apos[ia] 
                     angs.append( np.arccos( np.dot(a,b)/np.sqrt( np.dot(a,a)*np.dot(b,b) ) ) )
                     iang.append( (ja,ia,jb) )
     return angs, iang
 
-def findDihedral( enames, apos, neighs, select, neighTyp={'H'} ):
+def findDihedral( apos, enames, neighs, select, neighTyp={'H'} ):
     if select is None:
         select = range(len(apos))
     iang=[]
     angs=[]
     for ia in select:
-        ngs=neighs
+        ngs=neighs[ia]
         if len(ngs)<3:
             print( f"ERROR in findDihedral: atom {ia} has <3 neighbors" )
-        for ja in ngs:
-            if a in neighTyp:
+        js = list(ngs.keys())
+        if(len(js))<3:
+            continue
+        #print("------- ", js )
+        for ja in js:
+            if enames[ja] in neighTyp:
+                js.remove(ja)
                 a = apos[ja] - apos[ia]
-                for jb in ngs:
-                    for jc in ngs:
-                        if jb<jc:
+                for jb in js:
+                    for jc in js:
+                        if jc>jb:
                             b = apos[jb] - apos[ia]
                             c = apos[jc] - apos[ia] 
                             n = np.cross(b,c)
-                            angs.append( np.dot(n,a) / np.sqrt(np.dot(n,n)*np.dot(a,a)) )
-                            iang.append( (ja,ia,jb,jc) )
+                            #print( ja,jb,jc," b: ", b, " c: ",c, " n: ", n )
+                            #print( " n: ", n, " a: ", a )
+                            sa = np.dot(n,a) / np.sqrt(np.dot(n,n)*np.dot(a,a))
+                            ca = np.sqrt( 1. - sa**2 )
+                            angs.append(  np.arccos( ca ) )
+                            #iang.append( (ja,ia,jb,jc) )
+                            #iang.append( (ia,ja,jb,jc) )
+                            #iang.append( (jb,jc,ia,ja) )
+                            #iang.append( (jb,jc,ja,ia) )
+                            iang.append( (ja,jb,ia,jc) )
+                break
     return angs, iang 
 
 def getAllNeighsOfSelected( selected, neighs, atoms, typs={1} ):
@@ -873,15 +904,25 @@ class AtomicSystem( ):
             self.findBonds()
         return neighs( len(self.apos), self.bonds )
 
+    def select_by_ename( self, elist ):
+        return [ i for i,e in enumerate(self.enames) if e in elist ]
+
+    def select_by_neighType( self, neighs, typ='N', neighTyps={'H':(1,2)} ):
+        return findTypeNeigh_( self.enames, neighs, typ=typ, neighTyps=neighTyps )
+
+    # def findTypeNeigh( atoms, neighs=None, typ, neighTyps=[(1,2,2)] ):
+    #     if 
+    #     def findTypeNeigh( atoms, neighs, typ, neighTyps=[(1,2,2)] ):
+
     def findAngles(self, select=None, ngs=None, ):
         if ngs is None:
             ngs = self.neighs()
-        return findAngles(select=select, neighs=ngs )
+        return findAngles( self.apos, select=select, neighs=ngs )
 
-    def findDihedral( self, neighs=None, select=None, neighTyp={'H'} ):
+    def findDihedral( self, select=None, ngs=None, neighTyp={'H'} ):
         if ngs is None:
             ngs = self.neighs()
-        return findDihedral( self.enames, self.apos, ngs, select=select, neighTyp=neighTyp ) 
+        return findDihedral( self.apos, self.enames, ngs, select=select, neighTyp=neighTyp ) 
 
     def findCOG(self, apos, byBox=False ):
         return findCOG( apos, byBox=byBox )

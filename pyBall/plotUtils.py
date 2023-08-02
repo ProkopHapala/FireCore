@@ -40,6 +40,23 @@ def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k', 
     #ax.autoscale()
     #ax.margins(0.1)
 
+def plotAngles( iangs, angs, ps, axes=(0,1), colors='k', labels=None, bPoly=True, alpha=0.2 ):
+    ax1,ax2=axes
+    ax_inds=[ax1,ax2]
+    if isinstance(colors, str ):
+        c = colors
+        colors = [ c for i in range(len(iangs)) ]
+    ax=plt.gca()
+    for i,a in enumerate(iangs):
+        iang=iangs[i]
+        #print( ps.shape, iang, ax_inds ) 
+        pp = ps[iang,:];
+        pp = pp[:,ax_inds] ; #print(pp)
+        t1 = plt.Polygon( pp, color=colors[i], fill=True, alpha=alpha, lw=0 )
+        ax.add_patch(t1)
+        p = (ps[iang[0],:] + ps[iang[1],:] + ps[iang[2],:])/3.0
+        ax.annotate( "%3.0f˚" %(angs[i]*180.0/np.pi), p[ax_inds], color=colors[i] )
+
 
 def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=(0,1), bLabels=True, labels=None, _0=1 ):    
     if( bBonds ):
