@@ -48,7 +48,7 @@ names = [ name for name in names if ( "2x2" not in name ) ]
 names = [ os.path.splitext(name)[0] for name in names if ( os.path.splitext(name)[1] != '.sh' ) ]
 print(names)
 #nstepMax=0
-nstepMax=10000000
+nstepMax=10000
 outE = np.zeros(nstepMax)
 outF = np.zeros(nstepMax)
 
