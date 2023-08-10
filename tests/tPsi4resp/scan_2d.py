@@ -9,6 +9,8 @@ from pyBall import atomicUtils as au
 from pyBall import FFFit as fff
 from pyBall import psi4_utils as psi4u
 
+from pyBall import dftb_utils as dftbu
+
 import numpy as np
 import matplotlib.pyplot as plt
 #from functools import partial
@@ -50,13 +52,41 @@ params = {  # These are the default settings
 
 }
 
+
+params_dftb = dftbu.default_params.copy()
+params_dftb.update({
+    'own_dir': True,
+    'method':'D3H5',
+    'cell':None,
+    'basis':"/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/",
+    'opt':False,
+    'Temperature' : 50
+})
+
+'''
+params_dftb_ = dftbu.default_params.copy()
+params_dftb_.update({
+    #"Optimizer"   : "Rational{}",
+    #"Optimizer"   : "LBFGS{  Memory = 20 }",
+    #"GradElem"    : 1E-4,
+    #"DispElem"    : 1E-3,
+    #"EConv"       : 1E-7,
+    #'Temperature' : 50,
+    'Temperature' : 50,
+    #'Mixer': 'Broyden{ MixingParameter = 0.02 }',
+    'Mixer': 'Anderson{ MixingParameter = 0.05 }',
+    #'SCCTolerance' : 1e-7,
+    #'MaxSccIterations' : 200,
+})
+'''
+
 # ============ MAIN
 
 
-'''
+
 #mol = au.AtomicSystem( fname='HBond_OCH2_vs_H2O.xyz' )
-#mol = au.AtomicSystem( fname='HBond_OCH2_vs_H2O-x-2.xyz' )
-mol = au.AtomicSystem( fname='HBond_H2O_vs_H2O.xyz' )
+mol = au.AtomicSystem( fname='HBond_OCH2_vs_H2O-x-2.xyz' )
+#mol = au.AtomicSystem( fname='HBond_H2O_vs_H2O.xyz' )
 #mol.orient( 2, (5,2), (5,6), trans=(2,1,0)  )
 #mol.orient( 1, (1,2), (2,3), trans=(2,1,0)  )
 #mol.saveXYZ('HBond_OCH2_vs_H2O-.xyz' )
@@ -82,15 +112,17 @@ angs  = np.arange(0.0,0.5+1e-8,0.1) * np.pi #+ ang0
 
 #fff.angularScan_1mol_vecs(  (mol.apos,mol.enames), [4,5,6], rs, angs, dir=(0.0,0.0,1.0),up=(0.0,1.0,0.0), xyz_file="scan_in.xyz" )
 #fff.angularScan_1mol_vecs(  (mol.apos,mol.enames),  [4,5,6], rs, angs, dir=(0.0,0.0,-1.0),up=(0.0,1.0,0.0), xyz_file="scan_in.xyz" )
-fff.angularScan_1mol(  (mol.apos,mol.enames),  [3,4,5], rs, angs, ax1=0,ax2=1, dir=(-1.0,0.0,0.0), xyz_file="scan_in.xyz" )
+#fff.angularScan_1mol(  (mol.apos,mol.enames),      [3,4,5], rs, angs, ax1=0,ax2=1, dir=(-1.0,0.0,0.0), xyz_file="scan_in.xyz" )
+fff.angularScan_1mol(  (mol.apos,mol.enames),      [4,5,6], rs, angs, ax1=0,ax2=1, dir=(-1.0,0.0,0.0), xyz_file="scan_in.xyz" )
 
 os.system("jmol_ scan_in.xyz")
-'''
 
 
-params['ifrag_line'] = 3
-Es, xs = fff.scan_xyz( "scan_in.xyz", fxyzout="scan_out_.xyz", Eout=None, params=params, callback=psi4u.eval )
+#params['ifrag_line'] = 4
+#params['ifrag_line'] = 3
+#Es, xs = fff.scan_xyz( "scan_in.xyz", fxyzout="scan_out_.xyz", Eout=None, params=params, callback=psi4u.eval )
 #Es, xs = fff.scan_xyz( "scan_in.xyz", fxyzout="scan_out_.xyz", Eout=None, params=params )
+Es, xs = fff.scan_xyz( "scan_in.xyz", fxyzout="scan_out_dftb.xyz", Eout=None, params=params_dftb, callback=dftbu.run )
 
 
 exit()
