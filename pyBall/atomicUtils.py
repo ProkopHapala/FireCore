@@ -262,6 +262,24 @@ def makeRotMat( fw, up ):
     left = left/np.linalg.norm(left) 
     return np.array([left,up,fw])
 
+def makeRotMatAng2( fw, up, ang ):    
+    fw   = fw/np.linalg.norm(fw)
+    up   = up - fw*np.dot(up,fw)
+    ru   = np.linalg.norm(up)
+    if ru<1e-4:  # if colinear
+        print("WARRNING: makeRotMat() up,fw are colinear => randomize up ")
+        up = np.random.rand(3)
+        up = up - fw*np.dot(up,fw)
+        ru = np.linalg.norm(up)
+    up   = up/ru
+    left = np.cross(fw,up)
+    left = left/np.linalg.norm(left)
+    ca = np.cos(ang)
+    sa = np.sin(ang)
+    fw_ = fw*ca + up*-sa
+    up_ = fw*sa + up*ca
+    return np.array([left,up_,fw_])
+
 def rotmat_from_points( ps, ifw=None, iup=None,  fw=None, up=None, _0=1 ):
     if fw is None: fw  = ps[ifw[1]-_0]-ps[ifw[0]-_0]
     if up is None: up  = ps[iup[1]-_0]-ps[iup[0]-_0]
@@ -422,7 +440,7 @@ def makeMovie( fname, n, es, func ):
         writeToXYZ( fout, es, xyzs, qs, comment=("frame %i " %i) )
     fout.close() 
 
-def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
+def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None ):
     bClose=False
     if fin is None: 
         fin=open(fname, 'r')
@@ -433,6 +451,10 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000 ):
     qs     = []
     ia=0
     for line in fin:
+        if comments is not None:
+            if line[0]=='#':
+                comments.append(line)
+                continue
         wds = line.split()
         try:
             xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )

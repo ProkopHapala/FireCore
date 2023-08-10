@@ -19,6 +19,9 @@ psi4 = None
 # https://github.com/psi4/psi4numpy/blob/master/Tutorials/01_Psi4NumPy-Basics/1b_molecule.ipynb    
 #    * Example: Fitting Lennard-Jones Parameters from Potential Energy Scan
 
+# see also : https://notebook.community/dsirianni/psi4_api-docs/01_interactive_Psi4_Basics
+
+
 # ============ Setup
 
 
@@ -88,6 +91,7 @@ def unpack_mol( mol ):
     return apos, es
 
 def pack_mol( apos, es, ifrag_line=None ):
+    print( "pack_mol es="+str(es)+" apos="+str(apos) )
     load_res()
     na = len(es)
     strs = [  "%s %g %g %g" %(es[i],apos[i,0],apos[i,1],apos[i,2]) for i in range(na) ]    #;print( strs )
@@ -99,15 +103,14 @@ def pack_mol( apos, es, ifrag_line=None ):
 def eval( geom, params=None, id=None ):
     load_res()
     pars = params.copy()
-    method = pars['method']
-    basis  = pars['basis']
-    del pars['method']; del pars['basis']; 
-
+    method = pars['method'];   del pars['method'];
+    basis  = pars['basis' ];   del pars['basis' ];
+    bsse   = pars['bsse'  ];   del pars['bsse' ];  
+     
     # ---- Fragments
     ifrag_line=None
     if 'ifrag_line' in params.keys():
-        ifrag_line = params.get('ifrag_line')
-        del pars['ifrag_line']
+        ifrag_line = params.get('ifrag_line'); del pars['ifrag_line']
 
     #print( method, basis  )
     method_basis=method+"/"+basis
@@ -118,7 +121,7 @@ def eval( geom, params=None, id=None ):
     mol.symmetrize(1e-3)   # this heps prevent problems with symmetry : https://github.com/psi4/psi4webmo/issues/4
     psi4.set_options( pars )
         
-    E = psi4.energy(method_basis, molecule=mol, bsse_type='cp' )
+    E = psi4.energy(method_basis, molecule=mol, bsse_type=bsse )
 
     return E
 

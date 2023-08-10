@@ -94,7 +94,6 @@ def linearScan_1mol( mol, selection, xs, dir=(1.,0,0), xyz_file="scan.xyz", Eout
     if Eout_file is not None: np.savetxt( Eout_file, np.array( [xs, Es] ).transpose() )
     return Es
 
-
 def angularScan( n, dang, molFix, molMov, ang0=None, drot=None, ax1=0,ax2=1, xyz_file="scan.xyz", Eout_file=None, callback=None ):
     if xyz_file is not None: fout = open(xyz_file,'w')
     if drot is None: drot = au.makeRotMatAng( dang, ax1=ax1, ax2=ax2 ).transpose()
@@ -123,6 +122,65 @@ def angularScan( n, dang, molFix, molMov, ang0=None, drot=None, ax1=0,ax2=1, xyz
     if Eout_file is not None: np.savetxt( Eout_file, np.array( [angs, Es] ).transpose() )
     return Es,angs
 
+def angularScan_1mol(  mol, selection, rs, angs, ax1=0,ax2=1, dir=None, xyz_file="scan.xyz", Eout_file=None, callback=None ):
+    if xyz_file is not None: fout = open(xyz_file,'w')
+    Es   = np.zeros( (len(rs),len(angs)) )
+    if(dir is None): 
+        dir=[0.,0.,0.]; dir[ax1]=1.0; dir=np.array(dir)
+    else:
+        dir=np.array(dir); dir*=(1/np.sqrt(np.dot(dir,dir)))
+    apos,es = mol 
+    apos0 = apos.copy()
+    apos  = apos.copy()
+    for i,r in enumerate(rs):
+        #apos_i = apos0.copy()
+        #apos_i[selection,:] += dir[None,:]*r
+        aposi = apos0[selection,:] + dir[None,:]*r
+        for j,ang in enumerate(angs):
+            aposj = aposi.copy()
+            #rot = au.makeRotMatAng( ang, ax1=1, ax2=2 ).transpose()
+            rot = au.makeRotMatAng( ang, ax1=ax1, ax2=ax2 ).transpose()
+            au.mulpos(aposj,rot)
+            apos[selection,:] = aposj
+            if callback is not None: Es[i] = callback( (apos,es) )
+            #print( " out.mol._atom  \n", out.mol._atom )
+            if xyz_file is not None:
+                comment = ("# r %10.5f ang %10.5f " %(rs[i],angs[j]) )
+                if callback is not None:
+                    comment = " E_tot %20.10f" %Es[i,j]
+                au.writeToXYZ( fout, es, apos, comment=comment )
+    if xyz_file is not None: fout.close()
+    if Eout_file is not None: np.savetxt( Eout_file, np.array( [angs, Es] ).transpose() )
+    return Es,angs
+
+def angularScan_1mol_vecs(  mol, selection, rs, angs, dir=(1.,0.,0.), up=(0.0,1.0,0.0), xyz_file="scan.xyz", Eout_file=None, callback=None ):
+    if xyz_file is not None: fout = open(xyz_file,'w')
+    Es   = np.zeros( (len(rs),len(angs)) )
+    #dir=[0.,0.,0.]; dir[ax2]=1.0; dir=np.array(dir)
+    dir=np.array(dir); up=np.array(up)  #dir[ax2]=1.0; dir=np.array(dir)
+    apos,es = mol 
+    apos0 = apos.copy()
+    apos  = apos.copy()
+    print( selection )
+    for i,r in enumerate(rs):
+        #apos_i = apos0.copy()
+        #apos_i[selection,:] += dir[None,:]*r
+        aposi = apos0[selection,:] + dir[None,:]*r
+        for j,ang in enumerate(angs):
+            aposj = aposi.copy()
+            #rot = au.makeRotMatAng( ang, ax1=1, ax2=2 ).transpose()
+            rot = au.makeRotMatAng2( dir, up, ang ).transpose()
+            #rot = au.makeRotMatAng( ang, ax1=ax1, ax2=ax2 ).transpose()
+            au.mulpos(aposj,rot)
+            apos[selection,:] = aposj
+            if callback is not None: Es[i] = callback( (apos,es) )
+            #print( " out.mol._atom  \n", out.mol._atom )
+            if xyz_file is not None:
+                au.writeToXYZ( fout, es, apos, comment=("r %10.0f ang %10.5f E_tot %20.10f " %(rs[i],angs[j],Es[i,j]) ) )
+    if xyz_file is not None: fout.close()
+    if Eout_file is not None: np.savetxt( Eout_file, np.array( [angs, Es] ).transpose() )
+    return Es,angs
+
 def scan_xyz( fxyzin, fxyzout="out.xyz", Eout=None, callback=None, params=None, xs=None ):
     fin =open(fxyzin,'r')
     if fxyzout is not None: fout=open(fxyzout,'w')
@@ -130,10 +188,15 @@ def scan_xyz( fxyzin, fxyzout="out.xyz", Eout=None, callback=None, params=None, 
     i=0
     if xs is None: xs=range(i)
     while True:
-        apos,Zs,es,qs = au.loadAtomsNP( fin=fin, bReadN=True )   #;print(apos) ;print(es)
+        comments=[]
+        apos,Zs,es,qs = au.loadAtomsNP( fin=fin, bReadN=True, comments=comments )  #;print(apos) ;print(es)
         if(len(es)==0): break
-        if callback is not None: Es.append(  callback((apos,es), params=params, id=i ) )
-        comment =  "i %i E_tot %20.10f x %g " %( i, Es[i], xs[i] )
+        E = 0.0
+        if callback is not None:  E = callback( (apos,es), params=params, id=i )
+        #comment = ( "i %i E_tot %20.10f x " %( i, Es[i] ) ) + str(xs[i])
+        Es.append( E )
+        #print( "comments "+str(i)+" "+ str(comments) )
+        comment = comments[0].strip() + ( "E_tot %20.10f" %E )
         if verbosity>0: print(comment)
         if fxyzout is not None:
             au.writeToXYZ( fout, es, apos, comment=comment )
