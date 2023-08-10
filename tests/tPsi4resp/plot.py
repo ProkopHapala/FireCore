@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 Hartree2kcal = 627.503
+eV2kcal      = 23.0609
 rad2deg      = 180.0/np.pi 
 
 
@@ -19,7 +20,8 @@ rs=data[:,2]    #;print("rs   ", rs  )
 angs=data[:,4]  #;print("angs ", angs)
 Es=data[:,6]    #;print("Es   ", Es  )
 
-Es*=Hartree2kcal
+#Es*=Hartree2kcal
+Es*=eV2kcal;   Es-=Es.min()
 
 cmap='plasma'
 
@@ -31,8 +33,8 @@ extent=[rs.min()+r0,rs.max()+r0, angs.min()*rad2deg,angs.max()*rad2deg ]
 
 print(extent)
 
-#plt.imshow( Es.T, cmap, vmax=vmin+2.0, vmin=vmin, origin='lower', extent=extent )
-plt.imshow( Es.T, cmap, vmax=0, vmin=vmin, origin='lower', extent=extent )
+plt.imshow( Es.T, cmap, vmax=vmin+5.0, vmin=vmin, origin='lower', extent=extent )
+#plt.imshow( Es.T, cmap, vmax=0, vmin=vmin, origin='lower', extent=extent )
 plt.colorbar()
 plt.axis('tight')
 plt.xlabel('Distance [A]')

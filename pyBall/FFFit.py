@@ -196,7 +196,7 @@ def scan_xyz( fxyzin, fxyzout="out.xyz", Eout=None, callback=None, params=None, 
         #comment = ( "i %i E_tot %20.10f x " %( i, Es[i] ) ) + str(xs[i])
         Es.append( E )
         #print( "comments "+str(i)+" "+ str(comments) )
-        comment = comments[0].strip() + ( "E_tot %20.10f" %E )
+        comment = comments[0].strip() + ( " E_tot %20.10f" %E )
         if verbosity>0: print(comment)
         if fxyzout is not None:
             au.writeToXYZ( fout, es, apos, comment=comment )
