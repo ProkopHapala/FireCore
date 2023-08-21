@@ -139,8 +139,11 @@ def getIBuff(name,sh):
     if not isinstance(sh, tuple): sh=(sh,)
     name=name.encode('utf8')
     ptr = lib.getIBuff(name)
-    return np.ctypeslib.as_array( ptr, shape=sh)
-
+    if(ptr):
+        return np.ctypeslib.as_array( ptr, shape=sh)
+    else:
+        return None
+    
 #double* getBuff(const char* name){ 
 lib.getBuff.argtypes = [c_char_p]
 lib.getBuff.restype  = c_double_p 
@@ -148,7 +151,10 @@ def getBuff(name,sh):
     if not isinstance(sh, tuple): sh=(sh,)
     name=name.encode('utf8')
     ptr = lib.getBuff(name)
-    return np.ctypeslib.as_array( ptr, shape=sh)
+    if(ptr):
+        return np.ctypeslib.as_array( ptr, shape=sh)
+    else:
+        return None
 
 def getBuffs():
     init_buffers()
@@ -158,22 +164,24 @@ def getBuffs():
     print( "getBuffs(): nDOFs %i ntype %i nbatch %i n0 %i n1 %i" %(nDOFs,ntype,nbatch,n0,n1) )
 
     global DOFs,fDOFs,typeREQs,typeREQsMin,typeREQsMax,typeREQs0,typeKreg,typToREQ,weights,Es,poses,ps1,ps2,ps3, types1,types2,types3
-    DOFs     = getBuff ( "DOFs",     nDOFs  )
-    fDOFs    = getBuff ( "fDOFs",    nDOFs  )
-    typToREQ = getIBuff( "typToREQ",     (ntype,4)  )
-    typeREQs0= getBuff ( "typeREQs0",    (ntype,4)  )
-    typeREQsMin= getBuff ( "typeREQsMin",(ntype,4)  )
-    typeREQsMax= getBuff ( "typeREQsMax",(ntype,4)  )
-    typeKreg = getBuff ( "typeKreg",     (ntype,4)  )
+    DOFs       = getBuff ( "DOFs",     nDOFs  )
+    fDOFs      = getBuff ( "fDOFs",    nDOFs  )
+    typToREQ   = getIBuff( "typToREQ",    (ntype,4)  )
+    typeREQs   = getBuff ( "typeREQs",    (ntype,4)  )
+    typeREQs0  = getBuff ( "typeREQs0",   (ntype,4)  )
+    typeREQsMin= getBuff ( "typeREQsMin", (ntype,4)  )
+    typeREQsMax= getBuff ( "typeREQsMax", (ntype,4)  )
+    typeKreg   = getBuff ( "typeKreg",    (ntype,4)  )
+    
     #weights = getBuff ( "weights",  nbatch )
     Es       = getBuff ( "Es",       nbatch ) 
-    poses    = getBuff ( "poses",    (nbatch,3,3) )
-    ps1      = getBuff ( "ps1",  (n0,3)    )
-    ps2      = getBuff ( "ps2",  (n1,3)   )
-    ps3      = getBuff ( "ps3",  (n1,3)   )
+    poses    = getBuff ( "poses",  (nbatch,3,3) )
+    ps1      = getBuff ( "ps1",    (n0,3)    )
+    #ps2      = getBuff ( "ps2",  (n1,3)   )
+    #ps3      = getBuff ( "ps3",  (n1,3)   )
     types1   = getIBuff( "types1", n0 )
-    types2   = getIBuff( "types2", n1 )
-    types3   = getIBuff( "types3", n1 )
+    #types2   = getIBuff( "types2", n1 )
+    #types3   = getIBuff( "types3", n1 )
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []

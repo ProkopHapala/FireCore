@@ -150,6 +150,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     Quat4f* afm_ps=0;
 
+    const char* uploadPopName=0;
+
 
 // ==================================
 //         Initialization
@@ -245,6 +247,8 @@ virtual void init( bool bGrid ) override {
     //iParalel=iParalelMax;
 
     
+    printf( "uploadPopName @ %li", uploadPopName );
+    if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)", uploadPopName );  upload_pop( uploadPopName ); }
 
 
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
@@ -714,6 +718,22 @@ virtual void upload_pop( const char* fname ){
     // gopt.lattice_scan_2d_multi( nstesp, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
 }
 
+virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
+    printf("\n\n\n######### MolWorld_sp3_multi::optimizeLattice_1d(%i.%i) \n", n1, n2 );
+    int initMode=1;
+    // //int initMode = 0;
+    // //int nstesp   = 40;
+    // //int nstesp = 2;
+    // //gopt.tolerance = 0.02;
+    // gopt.tolerance = 0.01;
+    ///Mat3d dlvec =  Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
+    gopt.lattice_scan_2d_multi( n1, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
+    
+}
+
+
+
+
 virtual void setSystemReplica (int i){ 
     int err=0;
     iSystemCur = i;   
@@ -1176,6 +1196,10 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             if( (ipicked>=0) && (isys==iSystemCur) ){ 
                 pullAtom( ipicked, ffls[isys].apos, ffls[isys].fapos );  
             };
+            if(bConstrains){
+                //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
+                constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec );
+            }
         }        
         #pragma omp barrier
         #pragma omp single
@@ -1189,7 +1213,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         #pragma omp for reduction(max:F2max)
         for( int isys=0; isys<nSystems; isys++ ){
             int i0v = isys*ocl.nvecs;
-            if(bOcl)unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );
+            //if(bOcl)unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );  // APPLY non-covalent forces form GPU
             double F2 = opts[isys].move_FIRE();
             // if(isys==iSystemCur){
             //     double cv;

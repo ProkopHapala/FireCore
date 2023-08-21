@@ -210,6 +210,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void initGUI();
     void initWiggets();
     void drawingHex(double z0);
+    void lattice_scan( int n1, int n2, const Mat3d& dlvec );
 };
 
 //=================================================
@@ -340,6 +341,9 @@ void MolGUI::draw(){
     glEnable(GL_BLEND);
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
+
+    //printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
+    if(W->bLatScan){ lattice_scan( W->latscan_n.x, W->latscan_n.y, *W->latscan_dlvec ); quit(); }
 
     if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
     //if( ogl_esp==0 ){ renderESP(); }
@@ -971,6 +975,17 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
     glEnd();
 }
 
+void MolGUI::lattice_scan( int n1, int n2, const Mat3d& dlvec ){
+    printf( "MolGUI::lattice_scan(%i,%i, dvec", n1,n2  ); printMat(dlvec);
+    long T0 = getCPUticks();
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    W->optimizeLattice_1d( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); 
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    double time_s     = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() * 1e-9;
+    double time_GTick = (getCPUticks()-T0)*1e-9;
+    printf( "Time{W->optimizeLattice_1d(20,20)} %g[s] %g[GTick]  %g[GTick/s] \n", time_s,time_GTick, time_GTick/time_s  );
+}
+
 void MolGUI::mouse_default( const SDL_Event& event ){
     switch( event.type ){
         case SDL_MOUSEBUTTONDOWN:
@@ -1110,13 +1125,16 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 
                 //case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
                 case SDLK_o:{
-                        long T0 = getCPUticks();
-                        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-                        W->optimizeLattice_1d( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); 
-                        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-                        double time_s     = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() * 1e-9;
-                        double time_GTick = (getCPUticks()-T0)*1e-9;
-                        printf( "Time{W->optimizeLattice_1d(20,20)} %g[s] %g[GTick]  %g[GTick/s] \n", time_s,time_GTick, time_GTick/time_s  );
+                    MolGUI::lattice_scan( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0 } );
+                    
+                    // long T0 = getCPUticks();
+                    // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+                    // W->optimizeLattice_1d( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); 
+                    // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+                    // double time_s     = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() * 1e-9;
+                    // double time_GTick = (getCPUticks()-T0)*1e-9;
+                    // printf( "Time{W->optimizeLattice_1d(20,20)} %g[s] %g[GTick]  %g[GTick/s] \n", time_s,time_GTick, time_GTick/time_s  );
+                    
                     }break;
                 case SDLK_u:{ 
                         long T0 = getCPUticks();

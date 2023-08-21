@@ -191,6 +191,7 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
     Vec3d* jpos =system0->apos;
     double Etot=0;
     double Qtot=0;
+    //printf( "evalExampleDerivs_LJQH (n=%i,nj=%i ) \n", n,nj );
     for(int i=0; i<n; i++){
         int   ti          = types[i];
         const Vec3d&  pi   = ps[i]; 
@@ -242,12 +243,12 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
 }
 
 double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
-    //printf( "evalExampleDerivs_LJQH2()\n" );
     int    nj   =system0->natoms;
     int*   jtyp =system0->atypes;
     Vec3d* jpos =system0->apos;
     double Etot=0;
     double Qtot=0;
+    printf( "evalExampleDerivs_LJQH2 (n=%i,nj=%i ) \n", n,nj );
     for(int i=0; i<n; i++){
         int   ti          = types[i];
         const Vec3d&  pi   = ps[i]; 
@@ -266,7 +267,7 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
 
             if(H>0) H=0;
 
-            //printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
+            printf( "ij[%i=%i,%i=%i] REQi(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
 
             // --- Eectrostatic
             //double ir2     = 1/( d.norm2() + 1e-4 );
@@ -451,7 +452,7 @@ void clean_fs(int n){
 }
 
 double evalDerivs( double* Eout=0 ){
-    printf( "FitREQ::evalDerivs() \n" );
+    printf( "FitREQ::evalDerivs() nbatch %i imodel %i \n", nbatch, imodel );
     tryRealocTemp();
     double Error = 0;
     for(int i=0; i<nbatch; i++){
@@ -474,6 +475,8 @@ double evalDerivs( double* Eout=0 ){
         acumDerivs(C.natoms, C.atypes, dE );
         //double dE = C.E - E;
         //double E_ = evalExampleDerivs_LJQ(C.n, C.atypes, C.apos, dE*wi );  // Backward pass
+
+        exit(0);
     }
     return Error;
 }

@@ -69,6 +69,15 @@ nsys=50
 #./$name -m 10 -t 1  -x common_resources/polymer-2_new
 #./$name -m $nsys -t 1  -x common_resources/polymer-2_new
 
+# ------- lattice scan
+
+#./$name -x BB.HNH-h.NHO-hh                            -iParalel 1 -perframe 1
+./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+#./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,10 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+
 # ====== Small Molecules On Substrate
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -m 10 -x common_resources/H2O -n     -g common_resources/NaCl_1x1_L2
@@ -105,7 +114,7 @@ nsys=50
 #./$name -m 1 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 #./$name -m 2 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
-./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
+#./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
