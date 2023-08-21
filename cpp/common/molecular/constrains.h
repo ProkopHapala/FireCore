@@ -94,6 +94,7 @@ class Constrains{ public:
             int i=0;
             for(i=0; i<10000; i++){
                 char* line = fgets( buff, 1024, pFile );
+                printf( "Constrains::loadBonds[i=%i](%s) \n", i, line );
                 if(line==NULL)  break;
                 if(line[0]=='#')continue;
                 DistConstr cons; cons.active=true;

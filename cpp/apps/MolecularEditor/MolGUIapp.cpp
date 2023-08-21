@@ -34,11 +34,22 @@ int main(int argc, char *argv[]){
     //funcs["-b"]={1,[&](const char** ss){ app->W->bConstrains=true; app->W->constrs.loadBonds( ss[0], &app->W->builder.atom_permut[0] ); }}; // constrains must be loaded after initialization of geometry
     funcs["-b"]={1,[&](const char** ss){ app->W->bConstrains=true; app->W->constr_name=ss[0]; }}; // test
     funcs["-dlvec"]={1,[&](const char** ss){ Mat3d* m=new Mat3d(); app->W->dlvec=m; printf( "ss[0] `%s`\n", ss[0] ); sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z ); printf( "app->W->dlvec set to " ); printMat(*(app->W->dlvec)); } }; // test
+    funcs["-latscan"]={2,[&](const char** ss){ 
+        app->W->bLatScan=true;
+        Mat3d* m=new Mat3d(); app->W->latscan_dlvec=m; 
+        printf( "ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] ); DEBUG
+        sscanf(ss[0],"%i,%i", &app->W->latscan_n.x, &app->W->latscan_n.y ); DEBUG
+        sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z ); DEBUG
+        printf( "app->W->latscan_n(%i,%i) latscan_dlvec ", app->W->latscan_n.x, app->W->latscan_n.y ); printMat(*(app->W->latscan_dlvec)); DEBUG
+    } }; // test
 
     funcs["-e"]={0,[&](const char** ss){ app->W->bEpairs=true; }}; // add explicit electron pair
     funcs["-EachAngle"]={0,[&](const char** ss){ app->W->ffl.bEachAngle=true;                          }};
     funcs["-torsions"]={0,[&](const char** ss){ app->W->ffl.bTorsion=true; app->W->ffl.doPiPiI=false;  }};
     
+
+
+
 	process_args( argc, argv, funcs );
 	app->init();
 	app->loop( 1000000 );

@@ -74,11 +74,12 @@ double getEs( int imodel, double* Es, bool bRigid ){
 }
 
 void init_buffers(){
-    ibuffers.insert( { "ndims", (int*)&W.nDOFs } );
 
+    ibuffers.insert( { "ndims", (int*)&W.nDOFs } );
+    
     buffers .insert( { "DOFs",   (double*)W.DOFs  } );
     buffers .insert( { "fDOFs",  (double*)W.fDOFs } );
-
+    
     ibuffers.insert( { "typToREQ",   (int*)   W.typToREQ  } );
     buffers .insert( { "typeREQs",   (double*)W.typeREQs  } );
     buffers .insert( { "typeREQs0",  (double*)W.typeREQs0 } );
@@ -86,17 +87,22 @@ void init_buffers(){
     buffers .insert( { "typeREQsMax",(double*)W.typeREQsMax } );
     buffers .insert( { "typeKreg",   (double*)W.typeKreg  } );
 
-
     //buffers .insert( { "weights",          W.weights  } );
     buffers .insert( { "Es",               W.Es       } );
-    buffers .insert( { "poses",   (double*)W.poses    } );
+    //if(W.poses)
+    buffers .insert( { "poses",   (double*)W.poses  } );
 
+    //printf( "init_buffers() @Es %li @poses %li \n", (long)W.Es, (long)W.poses  );
+
+    //printf( "init_buffers() W.system0 @ %li %li %li \n", (long)W.system0, (long)W.systemTest0, (long)W.systemTest );
     buffers .insert( { "ps1",    (double*)W.system0    ->apos  } );
-    buffers .insert( { "ps2",    (double*)W.systemTest0->apos  } );
-    buffers .insert( { "ps3",    (double*)W.systemTest ->apos  } );
+    //buffers .insert( { "ps2",    (double*)W.systemTest0->apos  } );
+    //buffers .insert( { "ps3",    (double*)W.systemTest ->apos  } );
+    
     ibuffers.insert( { "types1", (int*)W.system0    ->atypes } );
-    ibuffers.insert( { "types2", (int*)W.systemTest0->atypes } );
-    ibuffers.insert( { "types3", (int*)W.systemTest ->atypes } );
+    //ibuffers.insert( { "types2", (int*)W.systemTest0->atypes } );
+    //ibuffers.insert( { "types3", (int*)W.systemTest ->atypes } );
+    
 }
 
 } // extern "C"

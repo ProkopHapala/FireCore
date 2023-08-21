@@ -156,6 +156,11 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     Mat3d* dlvec = 0;
 
+    // lattice scan
+    bool   bLatScan      = false;
+    Mat3d* latscan_dlvec = 0;
+    Vec2i  latscan_n{0,0};
+
 	// IO temp & aux
 	FILE* xyz_file=0;
 	char* tmpstr;
@@ -791,7 +796,7 @@ virtual void init( bool bGrid ){
     }
     builder.setup_atom_permut();
     if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
-    if(dlvec       ){ add_to_lvec(*dlvec);    }
+    if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems 
     //builder.printAtoms();
     //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
     //ffl.printNeighs();
