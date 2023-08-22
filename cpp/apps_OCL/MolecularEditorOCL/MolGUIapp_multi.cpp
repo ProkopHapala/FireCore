@@ -49,10 +49,10 @@ int main(int argc, char *argv[]){
     funcs["-latscan"]={2,[&](const char** ss){  // scan lattice vector
         W->bLatScan=true;
         Mat3d* m=new Mat3d(); W->latscan_dlvec=m; 
-        printf( "ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] ); DEBUG
-        sscanf(ss[0],"%i,%i", &W->latscan_n.x, &W->latscan_n.y ); DEBUG
-        sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z ); DEBUG
-        printf( "W->latscan_n(%i,%i) latscan_dlvec ", W->latscan_n.x, W->latscan_n.y ); printMat(*(W->latscan_dlvec)); DEBUG
+        printf( "ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] );
+        sscanf(ss[0],"%i,%i", &W->latscan_n.x, &W->latscan_n.y );
+        sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z );
+        printf( "W->latscan_n(%i,%i) latscan_dlvec ", W->latscan_n.x, W->latscan_n.y ); printMat(*(W->latscan_dlvec));
     } }; // test
 
 	process_args( argc, argv, funcs );

@@ -243,7 +243,7 @@ virtual void init( bool bGrid ) override {
     iParalelMax= 4;
     iParalelMin=-1;
     //iParalel=1;
-    iParalel=2;
+    iParalel=3;
     //iParalel=iParalelMax;
 
     
@@ -1239,7 +1239,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
                 niter=0; 
                 T1 = (getCPUticks()-T00)*tick2second;
                 //printf( "run_ocl_opt(nSys=%i|iPara=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
-                if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
+                if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel,bOcl, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
                 itr--;
             }
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
@@ -1254,7 +1254,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         ffl.fapos[i]=ffls[iSystemCur].fapos[i];
     }
     T1 = (getCPUticks()-T00)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems, iParalel,bOcl, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
     return itr;
 }
 
@@ -1396,15 +1396,16 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     // return;
 
     nIter=iterPerFrame;
-    bOcl=iParalel>0;
+    //bOcl=iParalel>0;
     int nitrdione=0;
     switch(iParalel){
-        case -1: nitrdione = run_multi_serial(nIter,Ftol);  break; 
+        case -1: bOcl=false;  nitrdione = run_multi_serial(nIter,Ftol);  break; 
         case  0:
-        case  1: nitrdione = run_omp_ocl( nIter, Ftol    ); break; 
-        case  2: nitrdione = run_ocl_opt( nIter, Ftol    ); break; 
-        //case  3: nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break; 
-        //case  4: nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break; 
+        case  1: bOcl=false;  nitrdione = run_omp_ocl( nIter, Ftol    ); break; 
+        case  2: bOcl=true;   nitrdione = run_omp_ocl( nIter, Ftol    ); break; 
+        case  3: bOcl=true;   nitrdione = run_ocl_opt( nIter, Ftol    ); break; 
+        //case  3: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break; 
+        //case  4: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break; 
         default:
             eval_NBFF_ocl_debug();
     }
