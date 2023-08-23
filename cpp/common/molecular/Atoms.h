@@ -90,7 +90,7 @@ class Atoms{ public:
         if(bN      )fprintf( file, "%i\n", natoms*npbc );
         if(bComment){
            if(lvec){ fprintf( file, "lvs %g %g %g  %g %g %g  %g %g %g ", lvec->a.x,lvec->a.y,lvec->a.z,  lvec->b.x,lvec->b.y,lvec->b.z,   lvec->c.x,lvec->c.y,lvec->c.z ); }
-           if(lvec){ fprintf( file, "E %g id %li ", Energy,id  ); }
+           if(bEnergy){ fprintf( file, "E %g id %li ", Energy,id  ); }
            fprintf(file, "%s\n", comment );
         }
         //printf( "*lvec=%li atypes=%li \n", (long)lvec, (long)atypes );

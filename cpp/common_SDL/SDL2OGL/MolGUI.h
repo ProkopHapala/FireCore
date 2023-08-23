@@ -979,7 +979,7 @@ void MolGUI::lattice_scan( int n1, int n2, const Mat3d& dlvec ){
     printf( "MolGUI::lattice_scan(%i,%i, dvec", n1,n2  ); printMat(dlvec);
     long T0 = getCPUticks();
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-    W->optimizeLattice_1d( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); 
+    W->optimizeLattice_1d( n1,n2, dlvec ); 
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     double time_s     = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() * 1e-9;
     double time_GTick = (getCPUticks()-T0)*1e-9;
