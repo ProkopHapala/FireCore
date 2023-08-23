@@ -111,7 +111,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
 	// state
 	bool bConverged = false;
-	double Etot=0;
+	double  Etot=0;
 	double  maxVcog = 1e-9;
 	double  maxFcog = 1e-9;
 	double  maxTg   = 1e-1;
@@ -249,6 +249,7 @@ virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
     for(int i=0; i<ffl.natoms; i++){
         ps[i]=ffl.apos[i];
     }
+    //printf( "MolWorld_sp3::getGeom() Etot=%g \n ", Etot );
     return Etot;
 }
 
@@ -1115,7 +1116,7 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             #pragma omp single
             {
                 //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
-                constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
+                E+= constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
             }
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
@@ -1154,6 +1155,7 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
         //#pragma omp barrier
         #pragma omp single
         { 
+            Etot=E;
             itr++; 
             if(timeLimit>0){
                 double t = (getCPUticks() - T0)*tick2second;

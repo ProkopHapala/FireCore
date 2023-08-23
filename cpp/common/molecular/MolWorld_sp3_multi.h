@@ -597,7 +597,20 @@ virtual int paralel_size( )override{ return nSystems; }
 
 virtual double solve_multi ( int nmax, double tol )override{
     //return eval_MMFFf4_ocl( nmax, tol );
-    return run_ocl_opt( nmax, tol );
+    //return run_ocl_opt( nmax, tol );
+    int nitrdione;
+    switch(iParalel){
+        case -1: bOcl=false;  nitrdione = run_multi_serial(nmax,tol);  break; 
+        case  0:
+        case  1: bOcl=false;  nitrdione = run_omp_ocl( nmax, tol    ); break; 
+        case  2: bOcl=true;   nitrdione = run_omp_ocl( nmax, tol    ); break; 
+        case  3: bOcl=true;   nitrdione = run_ocl_opt( nmax, tol    ); break; 
+        //case  3: bOcl=true; nitrdione = run_ocl_loc( nmax, tol, 1 ); break; 
+        //case  4: bOcl=true; nitrdione = run_ocl_loc( nmax, tol, 2 ); break; 
+        //default:
+        //    eval_NBFF_ocl_debug();
+    }
+    return nitrdione;
 }
 
 virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
@@ -633,6 +646,7 @@ virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override
 }
 
 virtual double getGeom     ( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
+    /*
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
@@ -640,6 +654,10 @@ virtual double getGeom     ( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )o
     pack( ocl.nvecs, ps, atoms+i0v );
     //if(lvec){ lvec.a lvecs };
     return 0;
+    */
+   for(int ia=0;ia<ffls[isys].natoms;ia++){ ps[ia]=ffls[isys].apos[ia]; };
+   printf( "MolWorld_sp3_multi::getGeom(isys=%i) Etot %g \n", isys, ffls[isys].Etot );
+   return ffls[isys].Etot;
 }
 
 virtual void downloadPop()override{
@@ -649,8 +667,8 @@ virtual void downloadPop()override{
 virtual void uploadPop  ()override{
     int ntot = nSystems*ocl.nvecs;
     set ( ntot, avel);
-    ocl.upload( ocl.ibuff_avel , avel   );
-    ocl.upload( ocl.ibuff_atoms, atoms  );
+    ocl.upload( ocl.ibuff_avel ,   avel   );
+    ocl.upload( ocl.ibuff_atoms,   atoms  );
     ocl.upload( ocl.ibuff_lvecs,   lvecs  );
     ocl.upload( ocl.ibuff_ilvecs,  ilvecs );
     //ocl.upload( ocl.ibuff_constr, constr );
@@ -675,7 +693,7 @@ virtual void change_lvec( const Mat3d& lvec )override{
     err|= ocl.upload( ocl.ibuff_ilvecs,    ilvecs, 1,  isys  );
     err|= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts , i0pbc );
     err |= ocl.finishRaw(); 
-    OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
+    OCL_checkError(err, "MolWorld_sp3_multi::upload().finish");
 }
 
 virtual void add_to_lvec( const Mat3d& dlvec )override{
@@ -1189,8 +1207,8 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             ffls[isys].cleanForce();
             ffls[isys].eval(false);
             if(!bOcl){
-                if(bPBC){ ffls[isys].evalLJQs_ng4_PBC_simd(); }
-                else    { ffls[isys].evalLJQs_ng4_simd    (); } 
+                if(bPBC){ ffls[isys].Etot += ffls[isys].evalLJQs_ng4_PBC_simd(); }
+                else    { ffls[isys].Etot += ffls[isys].evalLJQs_ng4_simd    (); } 
                 //ffls[isys].evalLJQs_ng4_simd    ();
             }
             if( (ipicked>=0) && (isys==iSystemCur) ){ 
@@ -1198,8 +1216,9 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             };
             if(bConstrains){
                 //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
-                constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec );
+                ffls[isys].Etot += constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec );
             }
+            printf("ffls[%i].Etot(itr=%i) = %g \n", isys, itr, ffls[isys].Etot );
         }        
         #pragma omp barrier
         #pragma omp single
@@ -1238,7 +1257,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             if(F2max<F2conv){ 
                 niter=0; 
                 T1 = (getCPUticks()-T00)*tick2second;
-                //printf( "run_ocl_opt(nSys=%i|iPara=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+                //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
                 if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel,bOcl, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
                 itr--;
             }

@@ -62,7 +62,7 @@ ln -s $dir/$name .
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,10 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,10 0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 
 # ====== Polymers On Substrate
 

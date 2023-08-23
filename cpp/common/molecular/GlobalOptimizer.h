@@ -43,20 +43,21 @@ class GlobalOptimizer{ public:
         }
     }
 
-    void setGeom(int i){ Atoms* atoms = population[i]; solver->setGeom( atoms->apos,  atoms->lvec ); };
-    void getGeom(int i){ Atoms* atoms = population[i]; solver->getGeom( atoms->apos,  atoms->lvec ); };
+    void setGeom(int i){ Atoms* atoms = population[i];               solver->setGeom( atoms->apos,  atoms->lvec ); };
+    void getGeom(int i){ Atoms* atoms = population[i]; atoms->Energy=solver->getGeom( atoms->apos,  atoms->lvec ); };
 
     void solve(int ipop ){
         Atoms* atoms = population[ipop];
         solver->setGeom( atoms->apos,  atoms->lvec );   
         solver->solve  ( nmaxiter, tolerance       );                 
-        solver->getGeom( atoms->apos,            0 );   
+        atoms->Energy = solver->getGeom( atoms->apos, 0 );   
+        atoms->id=ipop;
     }
 
     void download_multi(int n, int i0){
         msolver->downloadPop();
         for(int i=0; i<n; i++){
-            msolver->getGeom( i, population[i+i0]->apos,                    0, true );
+            population[i+i0]->Energy = msolver->getGeom( i, population[i+i0]->apos, 0, true );
         }
     }
 
@@ -111,7 +112,7 @@ class GlobalOptimizer{ public:
         if(outfname){ fout = fopen(outfname,"w"); if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_1d() cannot open %s \n", outfname ); exit(0); } }
         Mat3d lvec=lvec0;
         Atoms* atoms0 = population[ipop0];
-        solver->getGeom( atoms0->apos, atoms0->lvec );
+        atoms0->Energy = solver->getGeom( atoms0->apos, atoms0->lvec );
         //printf("atoms0->lvec\n"    ); printMat( *(atoms0->lvec) );
         for(int i=0; i<n; i++){
             int ipop=i*istep+ipop0;
@@ -145,7 +146,7 @@ class GlobalOptimizer{ public:
                 for(int ipop=imin;ipop<imax;ipop++){ // change cell of all replicas
                     Mat3d new_lvec = *(population[ipop]->lvec)  +  dlvec;   // ToDo: We may want to use lvec-trajectroy different for each of the replicas
                     switch(initMode){
-                        case 0:{ *(population[ipop]->lvec)=new_lvec;           }break;
+                        case 0:{ *(population[ipop]->lvec) =       new_lvec;   }break;
                         case 1:{   population[ipop]->toNewLattice( new_lvec ); }break;
                     }
                 }
@@ -155,7 +156,7 @@ class GlobalOptimizer{ public:
             download_multi(nmult,imin);
 
             //atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
-            if(fout) for(int ipop=imin;ipop<imax;ipop++){  sprintf(comment, "step %i replica %i ", j, ipop  );   population[ipop]->atomsToXYZ(fout,true,true, {2,2,1}, comment, true );  }
+            if(fout) for(int ipop=imin;ipop<imax;ipop++){  sprintf(comment, "step %i replica %i ",  j, ipop  );   population[ipop]->atomsToXYZ(fout,true,true, {2,2,1}, comment, true );  }
         }
         fclose(fout);
         //if(bReturn0){ for(int i=imin;i<imax;i++){ *(population[i]->lvec) = lvec0s[i]; } }
