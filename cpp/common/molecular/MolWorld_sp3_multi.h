@@ -614,20 +614,50 @@ virtual double solve_multi ( int nmax, double tol )override{
 }
 
 virtual void setGeom( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )override{
+
+
+    /* //   OLD
+    
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
     int i0pbc = isys * ocl.npbc;
-
     if(lvec){ 
         ffl.setLvec(*lvec); 
         evalPBCshifts( nPBC, ff.lvec, pbc_shifts ); // this must be before   ffl.initPi(pbc_shifts);
+
+        printf( "MolWorld_sp3_multi::setGeom() lvec(a={}) ",  );
     }
     if(ps){
         for(int i=0; i<ffl.natoms; i++){ ffl.apos[i]=ps[i]; } 
         ffl.initPi(pbc_shifts);
     }
     pack_system(isys,ffl);
+    */
+
+    {
+        if(lvec){
+            ffls[isys].setLvec(*lvec);
+            int i0pbc = isys*ocl.npbc;
+            ffls[isys].setLvec ( *lvec );
+            ffls[isys].makePBCshifts( nPBC, true );
+
+            pack( ffls[isys].npbc,  ffls[isys].shifts, pbcshifts+i0pbc);
+            Mat3_to_cl( ffls[isys].   lvec,  lvecs[isys] );
+            Mat3_to_cl( ffls[isys].invLvec, ilvecs[isys] );  
+        }
+        
+        if(ps){
+            for(int i=0; i<ffls[isys].natoms; i++){ ffls[isys].apos[i]=ps[i]; } 
+            //ffls[isys].initPi(pbc_shifts);
+
+            //pack_system(isys,ffls[isys]);
+        }
+
+    }
+
+
+
 
     /*
     if(lvec){ ffl.setLvec(*lvec); };
@@ -656,7 +686,7 @@ virtual double getGeom     ( int isys, Vec3d* ps, Mat3d *lvec, bool bPrepared )o
     return 0;
     */
    for(int ia=0;ia<ffls[isys].natoms;ia++){ ps[ia]=ffls[isys].apos[ia]; };
-   printf( "MolWorld_sp3_multi::getGeom(isys=%i) Etot %g \n", isys, ffls[isys].Etot );
+   //printf( "MolWorld_sp3_multi::getGeom(isys=%i) Etot %g \n", isys, ffls[isys].Etot );
    return ffls[isys].Etot;
 }
 
@@ -737,7 +767,7 @@ virtual void upload_pop( const char* fname ){
 }
 
 virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
-    printf("\n\n\n######### MolWorld_sp3_multi::optimizeLattice_1d(%i.%i) \n", n1, n2 );
+    printf("\n\n\n######### MolWorld_sp3_multi::optimizeLattice_1d(%i,%i) \n", n1, n2 );
     int initMode=1;
     // //int initMode = 0;
     // //int nstesp   = 40;
@@ -1218,7 +1248,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
                 //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
                 ffls[isys].Etot += constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec );
             }
-            printf("ffls[%i].Etot(itr=%i) = %g \n", isys, itr, ffls[isys].Etot );
+            //printf("ffls[%i].Etot(itr=%i) = %g \n", isys, itr, ffls[isys].Etot );
         }        
         #pragma omp barrier
         #pragma omp single
