@@ -48,7 +48,7 @@ struct DistConstr{
         return E;
     }
 
-    void print(){ printf( "ias(%i,%i) ls(%f,%f) ks(%lf,%lf) shift(%lf,%lf,%lf) flim=%lf \n",   ias.a,ias.b,  ls.a,ls.b,   ks.a,ks.b,    shift.a,shift.b,shift.c,    flim ); };
+    void print(){ printf( "bond_constr ias(%i,%i) ls(%f,%f) ks(%lf,%lf) shift(%lf,%lf,%lf) flim=%lf \n",   ias.a,ias.b,  ls.a,ls.b,   ks.a,ks.b,    shift.a,shift.b,shift.c,    flim ); };
 
 };
 
@@ -56,6 +56,7 @@ struct AngleConstr{
     Vec3i  ias;
     Vec2d  cs0;
     double k;
+    double flim;
     bool active;
 
     AngleConstr()=default;
@@ -70,6 +71,8 @@ struct AngleConstr{
         fs[ias.x].sub(f2); fs[ias.z].add(f2);
         return E;
     }
+
+    void print(){ printf( "angle_constr ias(%i,%i,%i) cs0(%f,%f) k(%lf) flim=%lf \n",   ias.a,ias.b,ias.b,   cs0.x,cs0.y,      k,       flim ); };
 
 };
 
@@ -94,21 +97,44 @@ class Constrains{ public:
             int i=0;
             for(i=0; i<10000; i++){
                 char* line = fgets( buff, 1024, pFile );
-                printf( "Constrains::loadBonds[i=%i](%s) \n", i, line );
+                printf( "Constrains::loadBonds[i=%i](%s)\n", i, line );
                 if(line==NULL)  break;
-                if(line[0]=='#')continue;
-                DistConstr cons; cons.active=true;
-                int nret = sscanf( line, "%i %i   %lf %lf   %lf %lf   %lf %lf %lf  %lf ",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,   &cons.ks.a,&cons.ks.b,    &cons.shift.a,&cons.shift.b,&cons.shift.c,    &cons.flim   );
-                cons.ias.a-=_0;
-                cons.ias.b-=_0;
-                if( atom_permut ){
-                    printf( "permut bond (%i->%i)-(%i->%i) \n", cons.ias.a, atom_permut[cons.ias.a], cons.ias.b, atom_permut[cons.ias.b] ); 
-                    cons.ias.a=atom_permut[cons.ias.a];
-                    cons.ias.b=atom_permut[cons.ias.b];
+                if     (line[0]=='#'){continue;}
+                else if(line[0]=='b'){
+
+                    DistConstr cons; cons.active=true;
+                    int nret = sscanf( line, "b %i %i   %lf %lf   %lf %lf   %lf %lf %lf  %lf ",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,  &cons.ks.a,&cons.ks.b,  &cons.shift.a,&cons.shift.b,&cons.shift.c,    &cons.flim   );
+                    cons.ias.a-=_0;
+                    cons.ias.b-=_0;
+                    if( atom_permut ){
+                        printf( "permut bond (%i->%i)-(%i->%i) \n", cons.ias.a, atom_permut[cons.ias.a], cons.ias.b, atom_permut[cons.ias.b] ); 
+                        cons.ias.a=atom_permut[cons.ias.a];
+                        cons.ias.b=atom_permut[cons.ias.b];
+                    }
+                    if(nret<10){ printf("WARRNING : Constrains::loadBonds[%i] bond nret(%i)<10 line=%s", i, nret, line ); }
+                    cons.print();
+                    bonds.push_back( cons );
+
+                }else if(line[0]=='g'){
+            
+                    double ang;
+                    AngleConstr cons; cons.active=true;
+                    int nret = sscanf( line, "g %i %i %i   %lf  %lf %lf ",    &cons.ias.a,&cons.ias.b,&cons.ias.c,   &ang,   &cons.k,   &cons.flim   );
+                    cons.cs0.fromAngle( (ang/180.0)*M_PI*0.5 );
+                    cons.ias.a-=_0;
+                    cons.ias.b-=_0;
+                    cons.ias.c-=_0;
+                    if( atom_permut ){
+                        printf( "permut angle (%i->%i)-(%i->%i)-(%i->%i) \n", cons.ias.a, atom_permut[cons.ias.a], cons.ias.b, atom_permut[cons.ias.b],  cons.ias.c, atom_permut[cons.ias.c] ); 
+                        cons.ias.a=atom_permut[cons.ias.a];
+                        cons.ias.b=atom_permut[cons.ias.b];
+                        cons.ias.c=atom_permut[cons.ias.c];
+                    }
+                    if(nret<6){ printf("WARRNING : Constrains::loadBonds[%i] angle nret(%i)<6 line=%s", i, nret, line ); }
+                    cons  .print();
+                    angles.push_back( cons );
+                    
                 }
-                if(nret<10){ printf("WARRNING : Constrains::loadBonds[%i] nret(%i)<10 line=%s", nret, line ); }
-                cons.print();
-                bonds.push_back( cons );
             }
             return i;
             fclose( pFile );

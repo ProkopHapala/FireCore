@@ -116,15 +116,15 @@ class GlobalOptimizer{ public:
         //printf("atoms0->lvec\n"    ); printMat( *(atoms0->lvec) );
         for(int i=0; i<n; i++){
             int ipop=i*istep+ipop0;
-            printf( "lattice_scan_1d[%i] ipop %i \n",  i,ipop );
             long t0=getCPUticks();
-            if(i>0){    
-                lvec.add(dlvec);
-                switch(initMode){
-                    case 0:{ population[ipop]->copyOf(            *population[ipop-istep] ); *(population[ipop]->lvec)=lvec; }break;
-                    case 1:{ population[ipop]->toNewLattice( lvec, population[ipop-istep] );                                 }break;
-                }
+            int io=ipop0;
+            if(i>0){ lvec.add(dlvec); io=ipop-istep; }
+            switch(initMode){
+                case 0:{ population[ipop]->copyOf(            *population[io] ); *(population[ipop]->lvec)=lvec; }break;
+                case 1:{ population[ipop]->toNewLattice( lvec, population[io] );                                 }break;
             }
+            //printf( "lattice_scan_1d[%i] ipop %i lvec\n",  i,ipop ); printMat( lvec );
+            printf( "lattice_scan_1d[%i] ipop %i lvec(%6.2f,%6.2f,%6.2f) \n",  i,ipop, lvec.a.x,lvec.a.y,lvec.a.z ); //printMat( lvec );
             //printf( "### lattice_scan_1d(%i) lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}} \n", i, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,  lvec.c.x,lvec.c.y,lvec.c.z  );
             solve( ipop );
             //printf( "time lattice_scan_1d[%i] %g[Mtick]\n", i, (getCPUticks()-t0)*1e-6 );
