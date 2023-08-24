@@ -228,16 +228,22 @@ def pairsNotShareNeigh( pairs, neighs ):
             pairs_.append( pair )
     return pairs_
 
-def rotMatPCA( ps ):
-    cog = ps.sum(axis=0)
+def rotMatPCA( ps, bUnBorm=False ):
+    cog = ps.sum(axis=0)/len(ps)
     ps = ps - cog[None,:]
     M = np.dot( ps.T, ps )    #;print( M )
     es, vs = np.linalg.eigh(M)
     inds = np.argsort(es)[::-1]
+    #inds = np.argsort(es)
     es   = es[inds]
     vs   = vs.T[inds]
+    #for ii,i in enumerate(inds):
+    #    print( ['x','y','z'][ii], es[ii], vs[ii] )
     #print(es)
     #print(vs)
+    if(bUnBorm):
+        emax=es.max()
+        for i in range(3): vs[i]*=(es[i]/emax)
     return( vs )
     
 def makeRotMatAng( ang, ax1=0, ax2=1 ):
@@ -397,9 +403,12 @@ def saveAtoms( atoms, fname, xyz=True ):
             fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
 
-def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None ):
+def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None, other_lines=None ):
+    
     if(bHeader):
         na=len(xyzs)
+        if other_lines is not None:
+            na += len(other_lines)
         if ignore_es is not None:
             mask = [ (  e not in ignore_es) for e in es ]
             na = sum(mask)
@@ -416,10 +425,13 @@ def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=Tr
     else:
         for i,xyz in enumerate( xyzs ):
             if mask[i]: fout.write("%s %f %f %f\n"  %( es[i], xyz[0], xyz[1], xyz[2] ) )
+    if other_lines is not None:
+        for l in other_lines:
+            fout.write(l)
 
-def saveXYZ( es, xyzs, fname, qs=None, Rs=None, mode="w", comment="#comment", ignore_es=None ):
+def saveXYZ( es, xyzs, fname, qs=None, Rs=None, mode="w", comment="#comment", ignore_es=None, other_lines=None ):
     fout = open(fname, mode )
-    writeToXYZ( fout, es, xyzs, qs, Rs=Rs, comment=comment, ignore_es=ignore_es )
+    writeToXYZ( fout, es, xyzs, qs, Rs=Rs, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
     fout.close() 
 
 '''
@@ -872,13 +884,13 @@ class AtomicSystem( ):
             else:
                 self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname , bReadN=True )
 
-    def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True ):
+    def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True, other_lines=None ):
         if blvec and (self.lvec is not None):
             #print( self.lvec )
             comment= ( "lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   ) ) + comment
         qs = self.qs
         if(not bQs): qs=None
-        saveXYZ( self.enames, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es )
+        saveXYZ( self.enames, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
 
     def toLines(self):
         #lines = []
