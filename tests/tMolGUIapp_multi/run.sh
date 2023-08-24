@@ -74,7 +74,7 @@ nsys=50
 #./$name -x BB.HNH-h.NHO-hh                          -iParalel 1 -perframe 10
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 
 #./$name -m 40 -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 -pop lattice_scan_1d_all.xyz
-./$name  -m 40 -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 -pop lattice_scan_1d_all.xyz -latscan 10,10 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+./$name  -m 30 -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 -pop lattice_scan_1d_all.xyz -latscan 40,0 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0

@@ -213,6 +213,16 @@ virtual void add_to_lvec( const Mat3d& dlvec ){
     //printf(  "AFTER ffl.lvec " ); printMat(ffl.lvec);
 }
 
+
+virtual void change_lvec_relax( int nstep, int nMaxIter, double tol, const Mat3d& dlvec ){
+    printf( "MolWorld_sp3::change_lvec_relax() \n" );
+    for(int i=0; i<nstep; i++){
+        add_to_lvec( dlvec );
+        printf( "change_lvec_relax()[%i] lvec(%6.2f,%6.2f,%6.2f) \n", i, ffl.lvec.a.x,ffl.lvec.a.x,ffl.lvec.a.x );
+        solve( nMaxIter, tol );
+    }
+}
+
 virtual double solve( int nmax, double tol )override{
     //printf( "MolWorld::solve(nmax=%i,tol=%g)\n", nmax, tol );
     //ffl.print_apos();
@@ -253,6 +263,9 @@ virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
     return Etot;
 }
 
+
+
+
 virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     printf("\n\n\n######### MolWorld_sp3::optimizeLattice_1d(%i.%i) \n", n1, n2 );
     //printMat( ffl.lvec );
@@ -282,7 +295,7 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     }
     if(n2>0){
         //gopt.lattice_scan_1d( n2, lvec0, dlvec   ,initMode, "lattice_scan_1d_fw.xyz", n1,1 );
-        gopt.lattice_scan_1d( n2, lvec0, dlvec   , 0, n1,1 );
+        gopt.lattice_scan_1d( n2, lvec0+dlvec, dlvec   , 0, n1,1 );
         setGeom( gopt.population[n1-1]->apos, &lvec0 );
     }
     gopt.popToXYZ( "lattice_scan_1d_all.xyz");
