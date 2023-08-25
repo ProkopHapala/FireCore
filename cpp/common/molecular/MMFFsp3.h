@@ -373,6 +373,7 @@ double eval_bond(int ib){
     return E;
 }
 
+
 double eval_bond_neigh(int ib, Vec3d h, double l){
     double k  = bond_k[ib];
     double dl = (l-bond_l0[ib]);

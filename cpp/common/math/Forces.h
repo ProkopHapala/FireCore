@@ -133,6 +133,7 @@ inline void combineREQ(const Quat4d& a, const Quat4d& b, Quat4d& out){
 
 #define _mixREQ(A,B)    Quat4d{ A.x+B.x, A.y*B.y, A.z*B.z, A.w*B.w }
 
+// evaluate energy and force using Lennard-Jones and Coulomb potential, single precision
 inline void addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, double r0, double eps, double qq ){
     //Vec3f dp; dp.set_sub( p2, p1 );
     double ir2  = 1/( dp.norm2() + R2SAFE );
@@ -143,6 +144,7 @@ inline void addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, double r0, double eps,
     f.add_mul( dp, fr );
 }
 
+// evaluate energy and force using Lennard-Jones and Coulomb potential, double precision
 inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ ){
     //Vec3f dp; dp.set_sub( p2, p1 );
     double ir2  = 1/( dp.norm2() + 1e-4 );
@@ -158,6 +160,7 @@ inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ ){
     return  ( ir6 - 2 )*vdW + Eel;
 }
 
+// evaluate energy and force using Lennard-Jones and Coulomb potential, single precision
 inline float getLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ, const float R2damp ){
     const float   r2   = dp.norm2();
     // ---- Coulomb
@@ -175,6 +178,7 @@ inline float getLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ, const float R2
     return E;
 }
 
+// evaluate energy and force using Lennard-Jones and Coulomb potential, double precision
 inline double getLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ, const double R2damp ){
     const double   r2   = dp.norm2();
     // ---- Coulomb
@@ -192,6 +196,7 @@ inline double getLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ, const double
     return E;
 }
 
+// evaluate energy and force using Lennard-Jones and Coulomb potential and Hydrogen bond pseudo-charges
 inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double R2damp ){
     const double  r2  = dp.norm2();
     double E,F;
@@ -211,6 +216,7 @@ inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const doub
     return E;
 }
 
+// evaluate energy and force using Morse and Coulomb potential and Hydrogen bond pseudo-charges
 inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double K, double R2damp ){
     const double r2    = dp.norm2();
     double E,F;
@@ -229,6 +235,7 @@ inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const d
     return E;
 }
 
+// evaluate energy and force using Lennard-Jones and Coulomb potential and Hydrogen bond pseudo-charges, with cutoffs
 inline double getLJQH_cut( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double R2damp, const double Cr2_cut, const double LJr2_cut ){
     // E_cut = e_max * (R/r_cut)^6
     // u2_cut = (e_max/E_cut)^(1/6)
@@ -256,6 +263,7 @@ inline double getLJQH_cut( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const 
     return E;
 }
 
+// evaluate energy and force using Morse and Coulomb potential and Hydrogen bond pseudo-charges, with cutoffs
 inline double getMorseQH_cut( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double K, double R2damp, const double Cr2_cut, const double Mr2_cut ){
     // Morse Cutoff:
     // E_cut                  = e0*exp( -K * r_cut )
@@ -287,6 +295,7 @@ inline double getMorseQH_cut( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, con
     return E;
 }
 
+// evaluate energy and force using Morse 
 inline void addAtomicForceMorse( const Vec3d& dp, Vec3d& f, double r0, double eps, double beta ){
     //Vec3f dp; dp.set_sub( p2, p1 );
     const double R2ELEC = 1.0;
@@ -299,6 +308,7 @@ inline void addAtomicForceMorse( const Vec3d& dp, Vec3d& f, double r0, double ep
     f.add_mul( dp, fr/r );
 }
 
+// evaluate energy and force using Morse and Coulomb potential
 inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double E0, double qq, double K=-1., double R2damp=1. ){
     double r2    = dp.norm2();
     double ir2_  = 1/(r2+R2damp);
@@ -320,6 +330,7 @@ inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double
     return EMors + Eel;
 }
 
+// evaluate energy and force using Harmonic potential
 inline double addAtomicForceQ_R2( const Vec3d& dp, Vec3d& f, double qq, double K=-1., double R2damp=1. ){
     double r2    = dp.norm2();
     double ir2_  = 1/(r2+R2damp);
@@ -329,6 +340,7 @@ inline double addAtomicForceQ_R2( const Vec3d& dp, Vec3d& f, double qq, double K
     return Eel;
 }
 
+// evaluate energy and force using Coulomb potential
 inline double addAtomicForceQ( const Vec3d& dp, Vec3d& f, double qq ){
     double ir2  = 1/( dp.norm2() + R2SAFE );
     double ir   = sqrt(ir2);
@@ -338,6 +350,7 @@ inline double addAtomicForceQ( const Vec3d& dp, Vec3d& f, double qq ){
     return E;
 }
 
+// evaluate energy and force using Lennard-Jones potential
 inline void addAtomicForceLJ( const Vec3d& dp, Vec3d& f, double r0, double eps ){
     double ir2  = 1/( dp.norm2() + R2SAFE );
     double ir2_ = ir2*r0*r0;
@@ -346,6 +359,7 @@ inline void addAtomicForceLJ( const Vec3d& dp, Vec3d& f, double r0, double eps )
     f.add_mul( dp, fr );
 }
 
+// evaluate energy and force using Exponential potential
 inline void addAtomicForceExp( const Vec3d& dp, Vec3d& f, double r0, double eps, double alpha ){
     double r    = sqrt(dp.norm2() + R2SAFE );
     double E    = eps*exp( alpha*(r-r0) );
@@ -354,6 +368,7 @@ inline void addAtomicForceExp( const Vec3d& dp, Vec3d& f, double r0, double eps,
     //f.add_mul( dp, 1/(dp.norm2()+R2SAFE) ); // WARRNING DEBUG !!!!
 }
 
+// transform from non-covalent parameters from (R_vdw,E_vdw,Q) to (Pauli,London,Q), single precision
 inline Quat4f REQ2PLQ( const Quat4d& REQ, double K ){
     float e  = (float) exp(K*REQ.x);
     float cL = (float) e*REQ.y;
@@ -362,6 +377,7 @@ inline Quat4f REQ2PLQ( const Quat4d& REQ, double K ){
     return Quat4f{ cP, cL, REQ.z, cH };
 }
 
+// transform from non-covalent parameters from (R_vdw,E_vdw,Q) to (Pauli,London,Q), double precision
 inline Quat4d REQ2PLQ_d( const Quat4d& REQ, double K ){
     double e  = exp(K*REQ.x);
     double cL = e*REQ.y;
@@ -370,6 +386,7 @@ inline Quat4d REQ2PLQ_d( const Quat4d& REQ, double K ){
     return Quat4d{ cP, cL, REQ.z, cH };
 }
 
+// transform from non-covalent parameters from (Pauli,London,Q) to (R_vdw,E_vdw,Q),  double precision
 inline Quat4f REnergyQ2PLQ( const Quat4d& REQ, double alpha ){
     return REQ2PLQ( Quat4d{REQ.x, sqrt(REQ.y), REQ.z, REQ.w}, alpha );
 }
@@ -379,6 +396,7 @@ inline Quat4f REnergyQ2PLQ( const Quat4d& REQ, double alpha ){
 
 // ================= Force Bounding Box, Plane etc.
 
+// evaluate force from bounding box forces in 1D
 inline double boxForce1D(double x, double xmin, double xmax, double k){
     double f=0;
     if(k<0) return 0;
@@ -387,12 +405,14 @@ inline double boxForce1D(double x, double xmin, double xmax, double k){
     return f;
 }
 
+// evaluate force from bounding box forces in 3D
 inline void boxForce(const Vec3d& p, Vec3d& f,const Vec3d& pmin, const Vec3d& pmax, const Vec3d& k){
     f.x+=boxForce1D( p.x, pmin.x, pmax.x, k.x);
     f.y+=boxForce1D( p.y, pmin.y, pmax.y, k.y);
     f.z+=boxForce1D( p.z, pmin.z, pmax.z, k.z);
 }
 
+// evaluate spring force in given direction (normal) from plane and point c0
 inline Vec3d getForceSpringPlane( const Vec3d& p, const Vec3d& normal, double c0, double k ){
     double cdot = normal.dot(p) - c0;
     return normal * (cdot * k);
@@ -400,6 +420,7 @@ inline Vec3d getForceSpringPlane( const Vec3d& p, const Vec3d& normal, double c0
 
 // ================= Force from Surface & Plan
 
+// evaluate force from plane using Hamaker potential
 inline Vec3d getForceHamakerPlane( const Vec3d& p, const Vec3d& normal, double z0, double amp, double R ){
     // https://en.wikipedia.org/wiki/Lennard-Jones_potential
     //printf(  " normal %g %g %g \n", normal.x, normal.y, normal.z );
@@ -411,6 +432,7 @@ inline Vec3d getForceHamakerPlane( const Vec3d& p, const Vec3d& normal, double z
     return normal * f;
 }
 
+// evaluate force from plane using Morse potential
 inline Vec3d getForceMorsePlane( const Vec3d& p, const Vec3d& normal, double amp, double R, double beta ){
     // https://en.wikipedia.org/wiki/Lennard-Jones_potential
     //printf(  " normal %g %g %g \n", normal.x, normal.y, normal.z );
@@ -425,6 +447,7 @@ inline Vec3d getForceMorsePlane( const Vec3d& p, const Vec3d& normal, double amp
 
 // ================= Simple Radial Forces & Pulling
 
+// evaluate spring force on particle p, from line (ray) defined by point ray0 and hray (normalized direction vector)
 inline Vec3d getForceSpringRay( const Vec3d& p, const Vec3d& hray, const Vec3d& ray0, double k ){
     Vec3d dp; dp.set_sub( p, ray0 );
     double cdot = hray.dot(dp);
@@ -432,6 +455,7 @@ inline Vec3d getForceSpringRay( const Vec3d& p, const Vec3d& hray, const Vec3d& 
     return dp*k;
 }
 
+// evaluate spring force on particl
 inline double addForceR2( const Vec3d& dp, Vec3d& f, double R2, double K ){
     double r2 = dp.norm2();
     if(r2<R2){

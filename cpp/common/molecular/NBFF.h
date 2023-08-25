@@ -1,6 +1,8 @@
 /*
 Non-Bonded Force-Field
- should be easily plugged with any molecular dynamics, by either sharing pointer to same data buffer, or by copying data
+
+    should be easily plugged with any molecular dynamics, by either sharing pointer to same data buffer, or by copying data
+    
 */
 
 #ifndef NBFF_h
@@ -14,7 +16,7 @@ Non-Bonded Force-Field
 
 #include "Forces.h"
 
-
+// check if "vals" are within limits "vmin","vmax"
 bool checkLimits( int n, int m, const double* vals, const double* vmin, const double* vmax, const char* message, bool bPrint=true ){
     //for(int j=0; j<m; j++){ printf( "checkLimits[%i] [%g,%g]\n", j, vmin[j], vmax[j] ); }
     bool b=false;
@@ -34,34 +36,40 @@ bool checkLimits( int n, int m, const double* vals, const double* vmin, const do
 }
 
 
-
+// Force-Field for Non-Bonded Interactions
 class NBFF: public Atoms{ public:
+    
+    // ---  inherited from Atoms
     //int     n      =0; // from Atoms
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
-    Vec3d    *fapos  =0;
-    Quat4d   *REQs   =0;
-    Quat4i   *neighs =0;
-    Quat4i   *neighCell=0;
+    
+    Vec3d    *fapos  =0; // forces on atomic positions
+    Quat4d   *REQs   =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
+    Quat4i   *neighs =0; // list of neighbors (4 per atom)
+    Quat4i   *neighCell=0; // list of neighbors (4 per atom)
 
-    double alphaMorse = 1.5;
-    //double  KMorse  = 1.5;
-    double  Rdamp     = 1.0;
-    Mat3d   lvec;
-    Vec3i   nPBC;
-    bool    bPBC=false;
+    double alphaMorse = 1.5; // alpha parameter for Morse potential
+    //double  KMorse  = 1.5; // spring constant for Morse potential
+    double  Rdamp     = 1.0; // damping radius for LJQ and MorseQ
+    Mat3d   lvec;  // lattice vectors
+    Vec3i   nPBC;  // number of periodic images in each direction 
+    bool    bPBC=false; // periodic boundary conditions ?
 
-    int    npbc   =0;
-    Vec3d* shifts =0;
-    Quat4f *PLQs  =0;  // used only in combination with GridFF
-    Vec3d  shift0 =Vec3dZero;
+    int    npbc   =0;  // total number of periodic images
+    Vec3d* shifts =0;  // array of bond vectors shifts in periodic boundary conditions
+    Quat4f *PLQs  =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
+    Vec3d  shift0 =Vec3dZero; 
 
     // ==================== Functions
 
+    // calculate total torque on the molecule (with respect to point p0) 
     void torq     ( const Vec3d& p0,  Vec3d& tq                   ){ for(int i=0; i<natoms; i++){ Vec3d d; d.set_sub(apos[i],p0); tq.add_cross(fapos[i],d); } }
 
+    // bind PBC-shift vectors 
     void bindShifts(int npbc_, Vec3d* shifts_ ){ npbc=npbc_; shifts=shifts_; }
 
+    // make PBC-shift vectors
     int makePBCshifts( Vec3i nPBC_, bool bRealloc=true ){
         bPBC=true;
         nPBC=nPBC_;
@@ -76,6 +84,7 @@ class NBFF: public Atoms{ public:
         return npbc;
     }
 
+    // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
     void evalPLQs(double K){
         //printf( "NBFF::evalPLQs() \n" );
         if(PLQs==0){ _realloc(PLQs,natoms);  }
@@ -92,6 +101,7 @@ class NBFF: public Atoms{ public:
         evalPLQs(K);
     }
 
+    // evaluate non-bonding interaction using Lenard-Jones potential and Coulomb potential
     double evalLJQs( double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs() \n" );
         double R2damp = Rdamp*Rdamp;
@@ -103,9 +113,9 @@ class NBFF: public Atoms{ public:
             const Quat4d& REQi = REQs[i];
             for(int j=i+1; j<N; j++){    // atom-atom
                 Vec3d fij = Vec3dZero;
-                Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
+                Quat4d REQij; combineREQ( REQs[j], REQi, REQij ); // combine non-bonding interaction parameters of atoms i and j
                 //E += addAtomicForceLJQ( apos[j]-pi, fij, REQij );
-                E += getLJQH( apos[j]-pi, fij, REQij, R2damp );
+                E += getLJQH( apos[j]-pi, fij, REQij, R2damp ); // calculate non-bonding interaction energy and force using Lenard-Jones potential and Coulomb potential and 
                 fapos[j].sub(fij);
                 fi   .add(fij);
             }
@@ -122,11 +132,13 @@ class NBFF: public Atoms{ public:
         int npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1) -1;
         Vec3d shifts[npbc]; // temporary store for lattice shifts
         int ipbc=0;
+        // initialize shifts
         for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){ 
             if((ia==0)&&(ib==0)&&(ic==0))continue; // skipp pbc0
             shifts[ipbc] = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);   
             ipbc++; 
         }}}
+        // calculate non-bonding interaction
         for(int i=0; i<N; i++){
             Vec3d fi = Vec3dZero;
             const Vec3d     pi = apos[i];
@@ -147,6 +159,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+    // evaluate non-bonding interaction for given atom (ia) excluding bonded atoms, assume max 4 bonds per atom
     double evalLJQs_ng4_atom( int ia ){
         //printf( "NBFF::evalLJQs_ng4_atom() %li %li \n" );
         const double R2damp = Rdamp*Rdamp;
@@ -169,6 +182,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+    // evaluate all non-bonding interactions excluding bonded atoms, with OpenMP parallelization
     double evalLJQs_ng4_omp( ){
         //printf( "NBFF::evalLJQs_ng4_omp() \n" );
         double E =0;
@@ -182,6 +196,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+    // evaluate all non-bonding interactions excluding bonded atoms (assume max 4 bonds per atom), single-threaded version
     double evalLJQs_ng4( const Quat4i* neighs, double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs_ng4() \n" );
         double R2damp = Rdamp*Rdamp;
@@ -211,6 +226,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+    // evaluate all non-bonding interactions using Morse potential and Coulomb potential in periodic boundary conditions with OpenMP parallelization
     inline double addMorseQH_PBC_omp( Vec3d pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         pi.sub(shift0);
@@ -237,6 +253,7 @@ class NBFF: public Atoms{ public:
     }
     inline double getMorseQH_PBC_omp( Vec3d pi, const Quat4d&  REQi, Vec3d& fout ){ fout=Vec3dZero; return addMorseQH_PBC_omp( pi, REQi, fout ); }
 
+    // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP parallelization
     double getLJQs_PBC_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
@@ -263,6 +280,9 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+
+    // Can you optimize this function ?     
+    // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP SIMD parallelization
     double evalLJQs_ng4_PBC_atom_omp(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         //printf("DEBUG 1 id=%i ia=%i REQs=%li \n", id, ia, REQs );
