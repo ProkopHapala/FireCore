@@ -101,19 +101,19 @@ class MMFFsp3_loc : public NBFF { public:
     //Quat4i*  neighs =0;   // [natoms] // from NBFF
     Quat4i*  bkneighs=0;   // [natoms]  inverse neighbors
     
-    Quat4d*  apars=0;  // [nnode] per atom forcefield parametrs
-    Quat4d*  bLs  =0;  // [nnode] bond lengths
-    Quat4d*  bKs  =0;  // [nnode] bond stiffness
-    Quat4d*  Ksp  =0;  // [nnode] stiffness of pi-alignment
-    Quat4d*  Kpp  =0;  // [nnode] stiffness of pi-planarization
+    Quat4d*  apars __attribute__((aligned(64))) =0;  // [nnode] per atom forcefield parametrs
+    Quat4d*  bLs   __attribute__((aligned(64))) =0;  // [nnode] bond lengths
+    Quat4d*  bKs   __attribute__((aligned(64))) =0;  // [nnode] bond stiffness
+    Quat4d*  Ksp   __attribute__((aligned(64))) =0;  // [nnode] stiffness of pi-alignment
+    Quat4d*  Kpp   __attribute__((aligned(64))) =0;  // [nnode] stiffness of pi-planarization
 
     Vec3d*   angles=0; // [nnode*6]  angles between bonds
 
-    Quat4i*  tors2atom =0; // [ntors]  torsion atoms
-    Quat4d*  torsParams=0; // [ntors]  torsion parameters
+    Quat4i*  tors2atom  __attribute__((aligned(64))) =0; // [ntors]  torsion atoms
+    Quat4d*  torsParams __attribute__((aligned(64))) =0; // [ntors]  torsion parameters
 
-    Quat4d*  constr=0; // [natom]  constraints
-    Vec3d * vapos = 0; // [natom]  velocities of atoms
+    Quat4d* constr __attribute__((aligned(64))) = 0; // [natom]  constraints
+    Vec3d * vapos  __attribute__((aligned(64))) = 0; // [natom]  velocities of atoms
 
     Mat3d   invLvec; // inverse lattice vectors
 

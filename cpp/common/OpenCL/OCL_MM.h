@@ -1,14 +1,23 @@
 #ifndef  OCL_MM_h
 #define  OCL_MM_h
 
+/*
+This is a OpenCL interface for Classical Forcefield such as  MMFFf4 (molecular mechanics with 4 neighbor), GridFF, and PP-AFM (probe particle AFM)
+It can simulate multiple replica of systems in parallel in order to exploit GPU parallelism and use all cores of the GPU even when simulating small systems (<100-1000 atoms)
+Non-covalent interactions are calculated in periodic boundary conditions (PBC) excluding interactions between bonded atoms which is recognized from list of neighbors and its cell indexes
+Non-covalent interactions between dynamical atoms consist of Lennard-Jones (LJ) and Coulomb interactions and Hydrogen bond correction (pseudo-charge H)
+Non-covalent with rigid substrate (Pauli repulsion, London dispersion, and Coulomb electrostatics) is calculated using GridFF by 3D texture interpolation
+*/
+
 //#include "OCL_DFT.h"
 #include "OCL.h"
 
-void v2f4  ( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
-void f4toV3( const cl_float4& f4, Vec3d& v ){ v.x=f4.s[0]; v.y=f4.s[1]; v.z=f4.s[2]; };
-void v2i4( const Vec3i& v, int4& f4   ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
-//void v2f4( const Vec3d& v, cl_float4& f4 ){ f4.s[0]=(cl_float)v.x; f4.s[1]=(cl_float)v.y; f4.s[2]=(cl_float)v.z; };
-cl_float4 cl_f4( const Vec3d& v ){ return (cl_float4){(cl_float)v.x,(cl_float)v.y,(cl_float)v.z,0.f}; };
+// coversions between OpenCL and C++ types
+void v2f4  ( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };                      // pack Vec3d to float4
+void f4toV3( const cl_float4& f4, Vec3d& v ){ v.x=f4.s[0]; v.y=f4.s[1]; v.z=f4.s[2]; };                               // unpack float4 to Vec3d
+void v2i4( const Vec3i& v, int4& f4   ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };                        // pack Vec3i to int4
+//void v2f4( const Vec3d& v, cl_float4& f4 ){ f4.s[0]=(cl_float)v.x; f4.s[1]=(cl_float)v.y; f4.s[2]=(cl_float)v.z; }; // pack Vec3d to float4
+cl_float4 cl_f4( const Vec3d& v ){ return (cl_float4){(cl_float)v.x,(cl_float)v.y,(cl_float)v.z,0.f}; };              // pack Vec3d to float4
 
 // see https://stackoverflow.com/questions/33119233/opencl-using-struct-as-kernel-argument
 typedef struct __attribute__ ((packed)) cl_Mat3{
@@ -24,6 +33,7 @@ inline void printMat( const cl_Mat3& mat  ){
 	printf( " %f %f %f \n", mat.c.s[0], mat.c.s[1], mat.c.s[2] );
 }
 
+// pack Mat3d to OpenCL cl_Mat3
 void Mat3_to_cl( const Mat3d& m, cl_Mat3& clm ){ 
     //v2f4( m.a, clm.a ); v2f4( m.b, clm.b ); v2f4( m.c, clm.c ); 
     clm.a = cl_f4( m.a );
@@ -31,6 +41,7 @@ void Mat3_to_cl( const Mat3d& m, cl_Mat3& clm ){
     clm.c = cl_f4( m.c );
 }
 
+// unpack OpenCL cl_Mat3 to Mat3d
 void Mat3_from_cl( Mat3d& m, const cl_Mat3& clm ){ 
     f4toV3( clm.a, m.a );
     f4toV3( clm.b, m.b );
@@ -43,54 +54,35 @@ void Mat3_from_cl( Mat3d& m, const cl_Mat3& clm ){
 class OCL_MM: public OCLsystem { public:
     cl_program program_relax=0;
 
-    int nAtoms=0;
-    int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0, nbkng=0, ncap=0;
+    // dimensions
+    int nAtoms=0; 
+    int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0, nbkng=0, ncap=0; // nnode: number of node atoms; nvecs: number of vectors (atoms and pi-orbitals); nneigh: number of neighbors); npi: number of pi orbitals; nSystems: number of system replicas; nbkng: number of back-neighbors; ncap: number of capping atoms
 
-    int4   print_mask{1,1,1,1};
-    int4   nDOFs    {0,0,0,0};
-    int4   nPBC     {0,0,0,0};
-    int    npbc=0;
-    int    bSubtractVdW=1;
-    //float4 md_params{0.05,0.9,100.0,0.0};    // (dt,cdamp,forceLimit)
-    float4 md_params{0.05,0.98,100.0,0.0};    // (dt,cdamp,forceLimit)
-    //float4 md_params{0.05,0.995,100.0,0.0};    // (dt,cdamp,forceLimit)
+    int4   print_mask{1,1,1,1};  // what to print on GPU
+    int4   nDOFs    {0,0,0,0};   // number of DOFs (nAtoms,nnode,nSystems,0)
+    int4   nPBC     {0,0,0,0};   // number of PBC images in each direction (nx,ny,nz,0)
+    int    npbc=0;               // total number of PBC images
+    int    bSubtractVdW=1;       // subtract non-bonded interactions for atoms bonnded to common neighbor ?
+    //float4 md_params{0.05,0.9,100.0,0.0};     // (dt,cdamp,forceLimit)
+    float4 md_params{0.05,0.98,100.0,0.0};      // (dt,cdamp,forceLimit)
+    //float4 md_params{0.05,0.995,100.0,0.0};   // (dt,cdamp,forceLimit)
     
-    int    niter;
-    float4 GFFparams{1.0,1.5,0.,0.};
+    int    niter;                    // number of iterations in relax
+    float4 GFFparams{1.0,1.5,0.,0.}; // (Rdamp, alphaMorse, 0, 0) for GridFF
 
-    cl_Mat3 cl_lvec;
-    cl_Mat3 cl_invLvec;
+    cl_Mat3 cl_lvec;      // lattice vectors         - DEPRECATED: but we do not need them anymore, we use arrays of lattice vectors for each system
+    cl_Mat3 cl_invLvec;   // inverse lattice vectors - DEPRECATED: but we do not need them anymore, we use arrays of lattice vectors for each system
 
+    // OpenCL buffers and textures ids
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
     int ibuff_avel=-1,ibuff_cvf=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
     int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_pbcshifts=-1; 
     int ibuff_constr=-1;
-
     int ibuff_samp_ps=-1;
     int ibuff_samp_fs=-1;
     int ibuff_samp_REQ=-1;
-
-    // ------- Grid
-    //size_t Ns[4]; // = {N0, N1, N2};
-    //size_t Ntot;
-    int natom_surf=0;
-    int4    grid_n;
-    //float4  grid_p0       { 0.f, 0.f, 0.f, 0.f };
-    //float4  grid_shift0   { 0.f, 0.f, 0.f, 0.f };
-    //float4  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f };
-
-    Quat4f  grid_p0       { 0.f, 0.f, 0.f, 0.f };
-    Quat4f  grid_shift0   { 0.f, 0.f, 0.f, 0.f };
-    Quat4f  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f };
-
-    cl_Mat3 cl_dGrid;
-    cl_Mat3 cl_diGrid;
-    cl_Mat3 cl_grid_lvec;
-    cl_Mat3 cl_grid_ilvec;
-    
-
-
+    // OpenCL buffers and textures ids
     int itex_FE_Paul=-1;
     int itex_FE_Lond=-1;
     int itex_FE_Coul=-1;
@@ -99,33 +91,50 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_dipole_ps=-1;
     int ibuff_dipoles  =-1;
 
+    // ------- Grid
+    //size_t Ns[4]; // = {N0, N1, N2};
+    //size_t Ntot;
+    int natom_surf=0;  // number of atoms in surface
+    int4    grid_n;    // number of grid points in each direction (nx,ny,nz,0)
+    //float4  grid_p0       { 0.f, 0.f, 0.f, 0.f };
+    //float4  grid_shift0   { 0.f, 0.f, 0.f, 0.f };
+    //float4  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f };
 
-    // =================== PP_AFM
+    Quat4f  grid_p0       { 0.f, 0.f, 0.f, 0.f }; // grid origin
+    Quat4f  grid_shift0   { 0.f, 0.f, 0.f, 0.f }; // grid shift
+    Quat4f  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f }; // grid shift + origin
 
-        int itex_FEAFM      =-1;      
-        int ibuff_afm_ps    =-1;   
-        int ibuff_afm_ws    =-1;    
-        int ibuff_afm_FEout =-1;   
-        int ibuff_afm_PPpos =-1;    
+    cl_Mat3 cl_dGrid;       // grid cell step (voxel rhombus)
+    cl_Mat3 cl_diGrid;      // inverse grid cell step
+    cl_Mat3 cl_grid_lvec;   // grid lattice vectors
+    cl_Mat3 cl_grid_ilvec;  // inverse grid lattice vectors
+    
+    // =================== PP_AFM - Probe Particle AFM variables
 
-        int4     afm_nPBC{0,0,0,0};
-        int4     afm_grid_n{0,0,0,0};
-        Quat4f   afm_grid_p0{0.,0.,0.,0.};
-        cl_Mat3  afm_grid_lvec;
-        cl_Mat3  afm_grid_ilvec;
+        int itex_FEAFM      =-1;     // Forcefield texture with Force and Energy for AFM  
+        int ibuff_afm_ps    =-1;     // buffer with AFM probe particle positions at which we sample the forcefield
+        int ibuff_afm_ws    =-1;     // buffer with AFM probe particle weights (for convolution)
+        int ibuff_afm_FEout =-1;     // buffer with AFM probe particle Force and Energy output
+        int ibuff_afm_PPpos =-1;     // buffer with AFM probe particle positions after relaxation
+
+        int4     afm_nPBC{0,0,0,0};        // number of PBC images in each direction (nx,ny,nz,0)
+        int4     afm_grid_n{0,0,0,0};      // number of grid points in each direction (nx,ny,nz,0)
+        Quat4f   afm_grid_p0{0.,0.,0.,0.}; // grid origin
+        cl_Mat3  afm_grid_lvec;            // grid lattice vectors
+        cl_Mat3  afm_grid_ilvec;           // inverse grid lattice vectors
         //float4 tipRot[3]={{1.,0.,0.,0.},{0.,1.,0.,0.},{0.,0.,1.,0.1}};  // tip rotation
-        cl_Mat3  tipRot;          
-        float4  afm_relax_params{0.5f,0.1f,0.000001f,0.5f};
-        //float4  tipParams{  1.661f, 0.0091063f, -0.1f, 0.0f };
-        float4  tipParams{  1.661f, 0.0091063f, 0.0f, 0.0f };
+        cl_Mat3  tipRot;                                          // tip rotation
+        float4  afm_relax_params{0.5f,0.1f,0.000001f,0.5f};       // (dt,cdamp,forceLimit,forceLimit2)
+        //float4  tipParams{  1.661f, 0.0091063f, -0.1f, 0.0f };  // tip stiffness
+        float4  tipParams{  1.661f, 0.0091063f, 0.0f, 0.0f };     // 
         float4  tip_stiffness { -0.03f,-0.03f,-0.03f,-1.00 };  // tip stiffness
         float4  tip_dpos0{0.0f,0.0f,-4.0f, 4.0f};    
         //float4  tip_Qs {-0.0f,-0.4f,-0.0f,0.0f};
         //float4  tip_Qs {-0.4f,+0.4f,-0.0f,0.0f};
-        float4  tip_Qs {-2.0f,+4.0f,-2.0f,0.0f};
-        float4  tip_QZs{-0.1f, 0.0f,+0.1f,0.0f};
-        float4  afm_surfFF{0.f,0.f,0.f,0.f};
-        int     afm_nz,afm_nzout, afm_nMaxItr=128;       
+        float4  tip_Qs {-2.0f,+4.0f,-2.0f,0.0f};        // tip charge
+        float4  tip_QZs{-0.1f, 0.0f,+0.1f,0.0f};        // tip charge z-position
+        float4  afm_surfFF{0.f,0.f,0.f,0.f};            // surface forcefield parameters
+        int     afm_nz,afm_nzout, afm_nMaxItr=128;      // number of z-slices, number of z-slices in output, max number of iterations
 
     // ====================== Functions
 
@@ -159,17 +168,17 @@ class OCL_MM: public OCLsystem { public:
         nnode  = nnode_;
         nAtoms = nAtoms_;
         npi    = nnode_;
-        nvecs  = nAtoms+npi;
-        nbkng  = nnode*4*2;
-        ncap   = nAtoms-nnode;
-        if(npbc_==0){ npbc=1; };
+        nvecs  = nAtoms+npi;   // number of vectors (atoms and pi-orbitals)
+        nbkng  = nnode*4*2;    // number of back-neighbors (4 neighbors per node, position and pi-orbital)
+        ncap   = nAtoms-nnode; // number of capping atoms
+        if(npbc_==0){ npbc=1; }; 
         npbc   = npbc_;
         printf( "initAtomsForces() nSystems %i nvecs %i natoms %i nnode %i nbkng %i \n", nSystems, nvecs, nAtoms, nnode, nbkng );
         printf( "initAtomsForces() nS*nvecs %i nS*natoms %i nS*nnode %i nS*nbkng %i \n", nSystems*nvecs,  nSystems*nAtoms, nSystems*nnode, nSystems*nbkng );
         if( (nSystems<=0)||(nAtoms<=0) ){ printf("ERROR in OCL_MM::initAtomsForces() invalid size nSystems=%i nAtoms=%i => Exit() \n", nSystems, nAtoms); exit(0); }
-        ibuff_atoms      = newBuffer( "atoms",      nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_aforces    = newBuffer( "aforces",    nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_atoms      = newBuffer( "atoms",      nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE ); // atoms positions and velocities (x,y,z,m)
+        ibuff_aforces    = newBuffer( "aforces",    nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE ); // atoms forces
+        ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  ); // atoms parameters {R0,E0,Q}
         ibuff_neighs     = newBuffer( "neighs",     nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_neighCell  = newBuffer( "neighCell" , nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
 
@@ -177,9 +186,9 @@ class OCL_MM: public OCLsystem { public:
         //ibuff_constr0    = newBuffer( "constr0",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
         //ibuff_constrK    = newBuffer( "constrK",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
 
-        ibuff_bkNeighs     = newBuffer( "bkNeighs", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
-        ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
-        ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_bkNeighs     = newBuffer( "bkNeighs", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );     // back neighbors
+        ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );   
+        ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );     // atoms velocities (x,y,z,m)
         ibuff_cvf        = newBuffer( "cvf",        nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_neighForce = newBuffer( "neighForce", nSystems*nbkng,  sizeof(float4), 0, CL_MEM_READ_WRITE );
 
@@ -203,6 +212,7 @@ class OCL_MM: public OCLsystem { public:
         return ibuff_atoms;
     }
 
+
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getNonBond");
@@ -214,7 +224,7 @@ class OCL_MM: public OCLsystem { public:
         int nloc = 32;
         //int nloc = 64;
         task->local.x  = nloc;
-        task->global.x = na + nloc-(na%nloc);
+        task->global.x = na + nloc-(na%nloc); // round up to multiple of nloc
         task->global.y = nSystems;
 
         useKernel( task->ikernel );
@@ -224,9 +234,9 @@ class OCL_MM: public OCLsystem { public:
         v2i4( nPBC_, nPBC );
         // ------- Maybe We do-not need to do this every frame ?
         int err=0;
-        err |= _useArg   ( nDOFs );               // 1
+        err |= _useArg   ( nDOFs );               // 1 
         // Dynamical
-        err |= useArgBuff( ibuff_atoms      ); // 2
+        err |= useArgBuff( ibuff_atoms      ); // 2  
         err |= useArgBuff( ibuff_aforces    ); // 3
         // parameters
         err |= useArgBuff( ibuff_REQs      );  // 4
