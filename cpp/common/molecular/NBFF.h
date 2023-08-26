@@ -44,22 +44,22 @@ class NBFF: public Atoms{ public:
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
     
-    Vec3d    *fapos  =0; // forces on atomic positions
-    Quat4d   *REQs   =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
+    Vec3d    *fapos __attribute__((aligned(64))) =0; // forces on atomic positions
+    Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
     Quat4i   *neighs =0; // list of neighbors (4 per atom)
     Quat4i   *neighCell=0; // list of neighbors (4 per atom)
 
     double alphaMorse = 1.5; // alpha parameter for Morse potential
     //double  KMorse  = 1.5; // spring constant for Morse potential
     double  Rdamp     = 1.0; // damping radius for LJQ and MorseQ
-    Mat3d   lvec;  // lattice vectors
+    Mat3d   lvec __attribute__((aligned(64)));  // lattice vectors
     Vec3i   nPBC;  // number of periodic images in each direction 
     bool    bPBC=false; // periodic boundary conditions ?
 
     int    npbc   =0;  // total number of periodic images
-    Vec3d* shifts =0;  // array of bond vectors shifts in periodic boundary conditions
-    Quat4f *PLQs  =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
-    Vec3d  shift0 =Vec3dZero; 
+    Vec3d* shifts __attribute__((aligned(64))) =0;  // array of bond vectors shifts in periodic boundary conditions
+    Quat4f *PLQs  __attribute__((aligned(64))) =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
+    Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
 
     // ==================== Functions
 
@@ -281,7 +281,6 @@ class NBFF: public Atoms{ public:
     }
 
 
-    // Can you optimize this function ?     
     // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP SIMD parallelization
     double evalLJQs_ng4_PBC_atom_omp(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
