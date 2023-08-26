@@ -27,6 +27,8 @@ int main(int argc, char *argv[]){
 
 	// --------- using argparse & LabdaDict;
 	app = new MolGUI( junk, DM.w-100, DM.h-100, NULL );
+    MolWorld_sp3* W = app->W;
+
 	funcs["-s"]={1,[&](const char** ss){ app->W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ app->W->xyz_name  =ss[0]; }}; // molecule as .xyz
 	funcs["-g"]={1,[&](const char** ss){ app->W->surf_name =ss[0]; }}; // substrate as .xyz
@@ -62,7 +64,7 @@ int main(int argc, char *argv[]){
     funcs["-torsions"]={0,[&](const char** ss){ app->W->ffl.bTorsion=true; app->W->ffl.doPiPiI=false;  }};
     
 
-
+    funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
 
 	process_args( argc, argv, funcs );
 	app->init();

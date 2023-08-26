@@ -54,8 +54,10 @@ struct DistConstr{
 
 
 struct AngleConstr{
-    Vec3i  ias;
-    Vec2d  cs0;
+    Vec3i  ias;     // (ia,ib,ic), ia is the center, ib and ic are the ends
+    Vec2d  cs0;     // unitary complex number (cos,sin) of the equilibrium angle
+    Vec3i  acell;   // indexes of PBC cell shift of bond a
+    Vec3i  bcell;   // indexes of PBC cell shift of bond b
     double k;
     double flim;
     bool active;
@@ -63,17 +65,25 @@ struct AngleConstr{
     AngleConstr()=default;
     AngleConstr( Vec3i ias_, Vec2d cs0_, double k_ ):ias(ias_),cs0(cs0_),k(k_),active(true){ };
 
-    inline double  apply( Vec3d* ps, Vec3d* fs )const{
+    inline double  apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0 )const{
+        Vec3d ashift,bshift;
+        if(lvec){
+            ashift=lvec->a*acell.a + lvec->b*acell.b + lvec->c*acell.c;
+            bshift=lvec->a*bcell.a + lvec->b*bcell.b + lvec->c*bcell.c;
+        }else{ ashift=Vec3dZero; bshift=Vec3dZero;}
         Vec3d f1,f2,h1,h2;
-        h1.set_sub(ps[ias.x],ps[ias.y]); double ir1 = 1./h1.normalize();
-        h2.set_sub(ps[ias.x],ps[ias.z]); double ir2 = 1./h2.normalize();
+        h1.set_sub(ps[ias.x],ps[ias.y]+ashift); double ir1 = 1./h1.normalize();
+        h2.set_sub(ps[ias.x],ps[ias.z]+bshift); double ir2 = 1./h2.normalize();
         double E =  evalAngleCosHalf( h1, h2, ir1,ir2, cs0, k, f1,f2 );
-        fs[ias.x].sub(f1); fs[ias.y].add(f1);
-        fs[ias.x].sub(f2); fs[ias.z].add(f2);
+        //printf(  "AngleConstr::apply(%i,%i,%i) E= %g   cos(a)= %g \n", ias.x, ias.y, ias.z, E,  f1.dot(f2)/sqrt(f1.norm2()*f2.norm2()) );
+        //fs[ias.x].sub(f1); fs[ias.y].add(f1);
+        //fs[ias.x].sub(f2); fs[ias.z].add(f2);
+        fs[ias.y].sub(f1); fs[ias.x].add(f1);
+        fs[ias.z].sub(f2); fs[ias.x].add(f2);
         return E;
     }
 
-    void print(){ printf( "angle_constr ias(%i,%i,%i) cs0(%f,%f) k(%lf) flim=%lf \n",   ias.a,ias.b,ias.b,   cs0.x,cs0.y,      k,       flim ); };
+    void print(){ printf( "angle_constr ias(%i,%i,%i) cs0(%f,%f) k(%lf) flim=%lf acell(%i,%i,%i) bcell(%i,%i,%i)\n",   ias.a,ias.b,ias.b,   cs0.x,cs0.y,      k,       flim, acell.a, acell.b, acell.c, bcell.a, bcell.b, bcell.c); };
 
 };
 
@@ -85,7 +95,7 @@ class Constrains{ public:
         double E=0;  
         int i=0;
         for( const DistConstr&  c : bonds  ){ E+= c.apply(ps,fs, lvec, dlvec ); }
-        for( const AngleConstr& c : angles ){ E+= c.apply(ps,fs); }
+        for( const AngleConstr& c : angles ){ E+= c.apply(ps,fs, lvec, dlvec ); }
         return E;
     }
 
@@ -104,7 +114,7 @@ class Constrains{ public:
                 else if(line[0]=='b'){
 
                     DistConstr cons; cons.active=true;
-                    int nret = sscanf( line, "b %i %i   %lf %lf   %lf %lf   %lf %lf %lf  %lf ",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,  &cons.ks.a,&cons.ks.b,  &cons.shift.a,&cons.shift.b,&cons.shift.c,    &cons.flim   );
+                    int nret = sscanf( line, "b %i %i   %lf %lf   %lf %lf   %lf    %lf %lf %lf",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,  &cons.ks.a,&cons.ks.b,  &cons.flim, &cons.shift.a,&cons.shift.b,&cons.shift.c );
                     cons.ias.a-=_0;
                     cons.ias.b-=_0;
                     if( atom_permut ){
@@ -112,7 +122,8 @@ class Constrains{ public:
                         cons.ias.a=atom_permut[cons.ias.a];
                         cons.ias.b=atom_permut[cons.ias.b];
                     }
-                    if(nret<10){ printf("WARRNING : Constrains::loadBonds[%i] bond nret(%i)<10 line=%s", i, nret, line ); }
+                    if(nret<10){cons.shift=Vec3dZero;}
+                    if(nret<7 ){ printf("WARRNING : Constrains::loadBonds[%i] bond nret(%i)<10 line=%s", i, nret, line ); }
                     cons.print();
                     bonds.push_back( cons );
 
@@ -120,17 +131,19 @@ class Constrains{ public:
             
                     double ang;
                     AngleConstr cons; cons.active=true;
-                    int nret = sscanf( line, "g %i %i %i   %lf  %lf %lf ",    &cons.ias.a,&cons.ias.b,&cons.ias.c,   &ang,   &cons.k,   &cons.flim   );
+                    int nret = sscanf( line, "g %i %i %i   %lf  %lf %lf   %i %i %i  %i %i %i",    &cons.ias.a,&cons.ias.b,&cons.ias.c,   &ang,   &cons.k,   &cons.flim,   &cons.acell.a,&cons.acell.b,&cons.acell.c,   &cons.bcell.a,&cons.bcell.b,&cons.bcell.c );
                     cons.cs0.fromAngle( (ang/180.0)*M_PI*0.5 );
                     cons.ias.a-=_0;
                     cons.ias.b-=_0;
                     cons.ias.c-=_0;
                     if( atom_permut ){
-                        printf( "permut angle (%i->%i)-(%i->%i)-(%i->%i) \n", cons.ias.a, atom_permut[cons.ias.a], cons.ias.b, atom_permut[cons.ias.b],  cons.ias.c, atom_permut[cons.ias.c] ); 
+                        printf( "permut angle (%i->%i)-(%i->%i)-(%i->%i) \n", cons.ias.b, atom_permut[cons.ias.b],   cons.ias.a, atom_permut[cons.ias.a],    cons.ias.c, atom_permut[cons.ias.c] ); 
                         cons.ias.a=atom_permut[cons.ias.a];
                         cons.ias.b=atom_permut[cons.ias.b];
                         cons.ias.c=atom_permut[cons.ias.c];
                     }
+                    if(nret<12){cons.bcell=Vec3iZero;}
+                    if(nret<9 ){cons.acell=Vec3iZero;}
                     if(nret<6){ printf("WARRNING : Constrains::loadBonds[%i] angle nret(%i)<6 line=%s", i, nret, line ); }
                     cons  .print();
                     angles.push_back( cons );

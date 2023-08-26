@@ -410,12 +410,27 @@ void MolGUI::draw(){
     }
 
     if(constrs){
+        // bond constrains
         glColor3f(0.0f,0.7f,0.0f);
         //for( DistConstr con : constrs->bonds ){ Draw3D::drawLine( apos[con.ias.a], apos[con.ias.b] ); }
         for( DistConstr con : constrs->bonds ){ 
             Vec3d sh; W->builder.lvec.dot_to_T( con.shift, sh );
             Draw3D::drawLine( apos[con.ias.a],    apos[con.ias.b] + sh ); 
             Draw3D::drawLine( apos[con.ias.a]-sh, apos[con.ias.b]      ); 
+        }
+        // angle constrains
+        glColor3f(0.0f,0.8f,0.8f);
+        for( AngleConstr con : constrs->angles ){ 
+            const Mat3d& lvec = W->builder.lvec;
+            Vec3d ash = lvec.a*con.acell.a + lvec.b*con.acell.b + lvec.c*con.acell.c;
+            Vec3d bsh = lvec.a*con.bcell.a + lvec.b*con.bcell.b + lvec.c*con.bcell.c;
+            //Draw3D::drawTriangle( apos[con.ias.b] + ash,   apos[con.ias.a],   apos[con.ias.c] + bsh );
+            //Draw3D::drawTriangle( apos[con.ias.b],   apos[con.ias.a],   apos[con.ias.c] );
+            glBegin(GL_TRIANGLES);
+            glColor3f(0.0f,1.0f,0.5f); Draw3D::vertex(apos[con.ias.b] + ash);
+            glColor3f(0.0f,0.7f,0.7f); Draw3D::vertex(apos[con.ias.a]      );
+            glColor3f(0.0f,0.5f,1.0f); Draw3D::vertex(apos[con.ias.c] + bsh);
+            glEnd();
         }
     }
 

@@ -39,8 +39,8 @@ int main(int argc, char *argv[]){
     //funcs["-EachAngle"]={0,[&](const char** ss){ W->ffl.bEachAngle=true;                          }};
     //funcs["-torsions"]={0,[&](const char** ss){ W->ffl.bTorsion=true; W->ffl.doPiPiI=false;  }};
 
-    funcs["-iParalel"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &iParalel        ); printf( "#### -iParalel %i \n", iParalel ); }};         // paralelization model
-    funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
+    funcs["-iParalel"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &iParalel        );                                printf( "#### -iParalel %i \n", iParalel ); }};         // paralelization model
+    funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
 
     funcs["-b"  ]={1,[&](const char** ss){ W->bConstrains=true; W->constr_name=ss[0]; }};  // constrain bond lenghts
     funcs["-pop"]={1,[&](const char** ss){ W->uploadPopName=ss[0]; }};                     // upload population
