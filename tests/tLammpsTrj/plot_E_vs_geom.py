@@ -38,6 +38,11 @@ bases_to_remove = set( ['NNO-hp','ONO-p','NO-h-p'] )
 #_,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/4-dimers_energy_sorted.dat", ni=1, nf=3, iname=0, toRemove=bases_to_remove )
 _,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/1-binding_energy_all.dat",   ni=4, nf=2, iname=0, toRemove=bases_to_remove )
 
+_, Angs,   names_angs,_   = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/dihedral_angle_ave.dat",   ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+_, Hbonds, names_hbonds,_ = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/bond_length_min.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+
+
+
 #names__  = [ bpu.split_pair_with_S( n1 ) for n1,n2 in names ]   # convert names format from HHH-hhS1_NNO-hpS1  to (HHH-hh,NNO-hp)
 #names__  = [ (n1,n2) for n1,n2 in names__ if not ((n1 in bases_to_remove) or (n2 in bases_to_remove)) ]   # filter out pairs from bases_to_remove
 
@@ -63,13 +68,13 @@ Emins = bpu.find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 )
 for n,e in Emins.items():  print(n) # print( n, e )
 
 sel_classes =[
-    'H_e',
+    #'H_e',
     'HH_ee',
-    'HH_eee',  
-    'ee_HHH',
-    'HHH_eee', 
-    'HeH_eHe',  
-    'HHe_Hee', 
+    #'HH_eee',  
+    #'ee_HHH',
+    #'HHH_eee', 
+    #'HeH_eHe',  
+    #'HHe_Hee', 
 ]
 
 
@@ -192,8 +197,12 @@ for n in sel_classes:        # for each class of pairs
     plt.title( n )                                       # set title to name of this class
     #plt.xticks(range(len(ns)), [ f"{n1:>8} {n2:>8}"  for n1,n2 in nps ], rotation='vertical', fontproperties=font_prop )  # set xticks to names of pairs in this class
     plt.xticks(range(len(ns)), [ f"{n1:<10} {n2:<8}"  for (n1,n2),e,ec in nps ], rotation='vertical', fontproperties=font_prop )  # set xticks to names of pairs in this class
-    plt.plot( [-Emins[k][0] for k in ns], '.-' )          # plot energies of the minimum energy conformer for each pair in this class
-    plt.plot( [-Emins[k][0]+0.5*( Emins[(k[0],k[0])][0]+Emins[(k[1],k[1])][0]) for k in ns], '.-' )          # plot energies of the minimum energy conformer for each pair in this class
+    plt.plot( [-Emins[k][0] for k in ns], '.-', label='Ebind' )          # plot energies of the minimum energy conformer for each pair in this class
+    plt.plot( [-Emins[k][0]+0.5*( Emins[(k[0],k[0])][0]+Emins[(k[1],k[1])][0]) for k in ns], '.-', label='Contrast' )          # plot energies of the minimum energy conformer for each pair in this class
+    
+    plt.plot( [ Angs  [ Emins[k][1] ] for k in ns], '.-', label='Angles' )   
+    plt.plot( [ Hbonds[ Emins[k][1] ] for k in ns], '.-', label='HBonds' )   
+    
     plt.grid()
     plt.ylabel( "Energy [kcal/mol]" ) 
     #plt.ylim(-60.,0.)

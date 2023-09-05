@@ -1,4 +1,5 @@
 import sys
+import numpy as np
 import matplotlib.pyplot as plt
 import re
 sys.path.append("../../")
@@ -39,15 +40,28 @@ def read_dat( fname, ni=0, nf=1, iname=0, toRemove=None ):
     floats=[]
     names =[] 
     pair_names = []
+
+    nc = ni+nf+2 # number of columns in the file
     for l in f:
         ws = l.split()
-        name  = ws[ni+nf+1+iname]
-        pname = split_pair_with_S( name, bJoin=False ) 
+        nw = len(ws)
+        if(nw<nc):
+            ints_i    = [-1    ]*ni
+            floats_i  = [np.nan]*nf
+            name      = ws[nw-1]
+            pname     = split_pair_with_S( name, bJoin=False ) 
+        else:
+            ints_i   = [ int(ws[i])   for i in range(0    ,ni           ) ]
+            floats_i = [ float(ws[i]) for i in range(ni   ,ni+nf        ) ]
+            name     = ws[ni+nf+1+iname]
+            pname    = split_pair_with_S( name, bJoin=False ) 
+
         if toRemove is not None:
             if (pname[0] in toRemove)or(pname[1] in toRemove):
                 continue
-        ints  .append( [ int(ws[i])   for i in range(0    ,ni           ) ] )
-        floats.append( [ float(ws[i]) for i in range(ni   ,ni+nf        ) ] )
+
+        ints      .append( ints_i   )
+        floats    .append( floats_i )
         names     .append( name )
         pair_names.append( pname )
     return ints,floats,names,pair_names
