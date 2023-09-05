@@ -56,7 +56,7 @@ def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=Tr
     #print( "rbs=",   len(rbs),   rbs )
     return np.array( bonds, dtype=np.int32 ), np.array( rbs )
 
-def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
+def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2=neg_types_set, bPrint=False, bHbase=False ):
     bonds  = []
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
@@ -77,17 +77,28 @@ def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, t
         #     print(" ==== NEIGHS of ", i )
         #     for j in range(len(apos)):
         #         print( atypes[j], j, cs[j], rs[j], mask[j], cs[j]<-cos_min,  rs[j]<Rh )
-        dbonds = [ (i,j) for j in iatoms[:][mask] if atypes[j] in typs2 ]
+        if(bHbase):
+            dbonds = [ (i,j,jmin) for j in iatoms[:][mask] if atypes[j] in typs2 ]
+        else:
+            dbonds = [ (i,j) for j in iatoms[:][mask] if atypes[j] in typs2 ]
         bonds += dbonds
         rbs   += [ rs[b[1]] for b in dbonds ]
     return np.array( bonds, dtype=np.int32 ), np.array( rbs )
 
-def neighs( natoms, bonds ):
+def neigh_bonds( natoms, bonds ):
     neighs = [{} for i in range(natoms) ]
     for ib, b in enumerate(bonds):
         i = b[0]; j = b[1]; 
         neighs[i][j] = ib
         neighs[j][i] = ib
+    return neighs
+
+def neigh_atoms( natoms, bonds ):
+    neighs = [ set() for i in range(natoms) ]
+    for b in bonds:
+        i = b[0]; j = b[1]; 
+        neighs[i].add(j)
+        neighs[j].add(i)
     return neighs
 
 def findTypeNeigh( atoms, neighs, typ, neighTyps=[(1,2,2)] ):
@@ -924,8 +935,8 @@ class AtomicSystem( ):
         self.bonds, rs = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
         return self.bonds, rs
 
-    def findHBonds(self, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2=neg_types_set, bPrint=False ):
-        return findHBondsNP( self.apos, atypes=self.enames, Rb=Rb, Rh=Rh, angMax=angMax, typs1=typs1, typs2=typs2, bPrint=True )
+    def findHBonds(self, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2=neg_types_set, bPrint=False, bHbase=False ):
+        return findHBondsNP( self.apos, atypes=self.enames, Rb=Rb, Rh=Rh, angMax=angMax, typs1=typs1, typs2=typs2, bPrint=bPrint,  bHbase=bHbase )
 
     def findBondsOfAtom(self, ia, bAtom=False ):
         if bAtom: 
@@ -933,10 +944,13 @@ class AtomicSystem( ):
         else:
             return [i for i,b in enumerate(self.bonds) if (b[0]==ia) or (b[1]==ia) ]
 
-    def neighs( self, ):
+    def neighs( self, bBond=True ):
         if(self.bonds is None):
             self.findBonds()
-        return neighs( len(self.apos), self.bonds )
+        if(bBond):
+            return neigh_bonds( len(self.apos), self.bonds )
+        else:
+            return neigh_atoms( len(self.apos), self.bonds )
 
     def select_by_ename( self, elist ):
         return [ i for i,e in enumerate(self.enames) if e in elist ]
