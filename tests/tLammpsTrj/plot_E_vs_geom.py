@@ -28,22 +28,24 @@ f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/B3LYP_oriented/"
 f = open( f_energy, 'r' )
 
 
-_,Es,names = bpu.read_dat( f_energy, ni=1, nf=3, nn=2 )
+bases_to_remove = set( ['NNO-hp','ONO-p','NO-h-p'] )
 
-names__  = [ bpu.split_pair_with_S( n1 ) for n1,n2 in names ]   # convert names format from HHH-hhS1_NNO-hpS1  to (HHH-hh,NNO-hp)
-names_   = [  n1+"_"+n2 for n1,n2 in names__ ]                  # convert names format from (HHH-hh,NNO-hp) to HHH-hh_NNO-hp
+_,Es,names,pair_names = bpu.read_dat( f_energy, ni=1, nf=3, iname=0, toRemove=bases_to_remove )
 
+#names__  = [ bpu.split_pair_with_S( n1 ) for n1,n2 in names ]   # convert names format from HHH-hhS1_NNO-hpS1  to (HHH-hh,NNO-hp)
+#names__  = [ (n1,n2) for n1,n2 in names__ if not ((n1 in bases_to_remove) or (n2 in bases_to_remove)) ]   # filter out pairs from bases_to_remove
 
-for i,(n1,n2) in enumerate(names__): print( i,n1,n2 )
+#pair_names_  = [  n1+"_"+n2 for n1,n2 in pair_names ]                  # convert names format from (HHH-hh,NNO-hp) to HHH-hh_NNO-hp
+
+for i,(n1,n2) in enumerate(pair_names): print( i,n1,n2 )
 
 #exit()
-
 #ng_set = set( s for pair in names__ for s in pair ) 
 #print(ng_set)
 
 #pair_classes = set( bpu.name_to_class( n1 ) + "_" + bpu.name_to_class( n2 ) for n1,n2 in names__ )    ;print( pair_classes )
 
-names__set = set(names__)
+pair_name_set = set(pair_names)
 
 pair_classes ={
     'H_e'      : [],
@@ -55,12 +57,13 @@ pair_classes ={
     'HHe_Hee'  : [],
 }
 
-for n1,n2 in names__set:
+for n1,n2 in pair_name_set:
     n = bpu.name_to_class( n1 ) + "_" + bpu.name_to_class( n2 )
-    pair_classes[n].append( n1+"_"+n2 )
+    #pair_classes[n].append( n1+"_"+n2 )
+    pair_classes[n].append( (n1,n2) )
 for n in pair_classes: print( n,"\n", pair_classes[n] )
 
-Emins = bpu.find_minim_energy_confs( Es, names_, Emax=1000, ipivot=0 )
+Emins = bpu.find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 )
 for n,e in Emins.items():  print(n) # print( n, e )
 
 sel_classes =[
@@ -83,7 +86,7 @@ for n in sel_classes:        # for each class of pairs
 
     print( "#=========", n )
 
-    nps = [ (names__[Emins[k][1]], Emins[k][0]) for k in ns ]
+    nps = [ (pair_names[Emins[k][1]], Emins[k][0]) for k in ns ]
 
     for (n1,n2),e in nps: print( n1, n2, e )
 
@@ -158,7 +161,9 @@ for n in sel_classes:        # for each class of pairs
     plt.plot( [Emins[k][0] for k in ns], 'o-' )          # plot energies of the minimum energy conformer for each pair in this class
     plt.grid()
     plt.ylabel( "Energy [kcal/mol]" ) 
-    plt.ylim(-60.,0.)
+    #plt.ylim(-60.,0.)
+    plt.ylim(-45.,0.)
+    plt.yticks(np.arange( -45.0, 0.00001, 5.0 ))
     plt.tight_layout()
     plt.savefig( n+".png", bbox_inches='tight' )
     

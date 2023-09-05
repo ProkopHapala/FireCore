@@ -32,18 +32,25 @@ def split_pair_with_S( name, bJoin=False ):
 def name_to_class( name ):
     return re.sub( re_name_to_class, 'e', name.split('-')[0] )
 
-def read_dat( fname, ni=0, nf=1, nn=0 ):
+def read_dat( fname, ni=0, nf=1, iname=0, toRemove=None ):
     #format:            1  -96.294471702523595       -251.76919147019100       -48.443292828581697       # HHH-hhS1_NNO-hpS1 HHH-hhS1_NNO-hpS1 
     f=open( fname, 'r' )
     ints  =[]
     floats=[]
     names =[] 
+    pair_names = []
     for l in f:
         ws = l.split()
+        name  = ws[ni+nf+1+iname]
+        pname = split_pair_with_S( name, bJoin=False ) 
+        if toRemove is not None:
+            if (pname[0] in toRemove)or(pname[1] in toRemove):
+                continue
         ints  .append( [ int(ws[i])   for i in range(0    ,ni           ) ] )
         floats.append( [ float(ws[i]) for i in range(ni   ,ni+nf        ) ] )
-        names .append( [ ws[i]        for i in range(ni+nf+1,ni+nf+1+nn ) ] )
-    return ints,floats,names
+        names     .append( name )
+        pair_names.append( pname )
+    return ints,floats,names,pair_names
 
 
 def find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 ):
