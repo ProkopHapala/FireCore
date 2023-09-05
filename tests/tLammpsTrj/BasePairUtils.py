@@ -52,6 +52,12 @@ def read_dat( fname, ni=0, nf=1, iname=0, toRemove=None ):
         pair_names.append( pname )
     return ints,floats,names,pair_names
 
+def try_nickname( name, nicknames, sep='\n' ):
+    if name in nicknames:
+        return sep+nicknames[name]
+    else:
+        return ""
+
 
 def find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 ):
     Emins = { n:(Emax,-1) for n in pair_names }   # dictionary of minimum energies for each pair
