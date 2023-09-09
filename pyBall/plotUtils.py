@@ -3,6 +3,58 @@ import matplotlib.pyplot as plt
 from   matplotlib import collections  as mc
 from . import elements
 
+def read_gnuplot_2d(fname):
+    f = open(fname,'r')
+    xs=[]
+    ys=[]
+    vals=[]
+    nx=-1
+    il=0
+    for iil, l in enumerate(f):
+        ws=l.split()
+        if len(ws)<3:
+            if(nx<0): 
+                nx=int(il)
+            print( iil, il )
+            il=0
+        else:
+            xs  .append( float(ws[0]) )
+            ys  .append( float(ws[1]) )
+            vals.append( float(ws[2]) )
+            il+=1
+    xs   = np.array(xs)  .reshape(-1,nx)
+    ys   = np.array(ys)  .reshape(-1,nx)
+    vals = np.array(vals).reshape(-1,nx)
+    return  vals, xs, ys
+
+def read_dat( fname, ni=0, nf=1, iname=0, toRemove=None ):
+    #format:            1  -96.294471702523595       -251.76919147019100       -48.443292828581697       # HHH-hhS1_NNO-hpS1 HHH-hhS1_NNO-hpS1 
+    f=open( fname, 'r' )
+    ints  =[]
+    floats=[]
+    names =[] 
+    nc = ni+nf+2 # number of columns in the file
+    for l in f:
+        ws = l.split()
+        nw = len(ws)
+        if(nw<nc):
+            ints_i    = [-1    ]*ni
+            floats_i  = [np.nan]*nf
+            name      = ws[nw-1]
+        else:
+            ints_i   = [ int(ws[i])   for i in range(0    ,ni           ) ]
+            floats_i = [ float(ws[i]) for i in range(ni   ,ni+nf        ) ]
+            name     = ws[ni+nf+1+iname]
+
+        if toRemove is not None:
+            if name in toRemove:
+                continue
+
+        ints      .append( ints_i   )
+        floats    .append( floats_i )
+        names     .append( name )
+    return ints,floats,names
+
 def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, sizes=100., colors='#808080', marker='o', axes=(0,1) ):
     ax1,ax2=axes
     if apos is None: apos = np.array([ a[1] for a in atoms ])  #;print(apos)
@@ -16,7 +68,7 @@ def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, size
         for i in range(na):
             ax.annotate( str(labels[i]), (apos[i,ax1], apos[i,ax2]))
 
-def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k', labels=None ):
+def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k', labels=None, ls='solid', fnsz=10, fnclr='k', fontweight=None ):
     ax1,ax2=axes
     ax_inds=[ax1,ax2]
     if lps is None:
@@ -29,14 +81,14 @@ def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k', 
         lps[:,0,:] = ps_[ links[:,0],: ]
         lps[:,1,:] = ps_[ links[:,1],: ]
     #lws = (kek.bondOrder-0.8)*5
-    lc = mc.LineCollection(lps, linewidths=lws, colors=colors )
+    lc = mc.LineCollection(lps, linewidths=lws, colors=colors, linestyle=ls )
     ax= plt.gca()
     ax.add_collection(lc)
 
     if labels is not None:
         for i, s in enumerate(labels):
             p = (lps[i,0,:]+lps[i,1,:])*0.5
-            ax.annotate( str(s), p )
+            ax.annotate( str(s), p, size=fnsz, color=fnclr, fontweight=fontweight )
     #ax.autoscale()
     #ax.margins(0.1)
 
