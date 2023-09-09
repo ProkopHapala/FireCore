@@ -40,6 +40,7 @@ _,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_
 
 _, Angs,   names_angs,_   = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/dihedral_angle_ave.dat",   ni=0, nf=1, iname=0, toRemove=bases_to_remove )
 _, Hbonds, names_hbonds,_ = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/bond_length_min.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+_, Hbonds_av, names_hbonds_av,_ = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/bond_length_ave.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
 
 
 
@@ -68,13 +69,13 @@ Emins = bpu.find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 )
 for n,e in Emins.items():  print(n) # print( n, e )
 
 sel_classes =[
-    #'H_e',
+    'H_e',
     'HH_ee',
-    #'HH_eee',  
-    #'ee_HHH',
-    #'HHH_eee', 
-    #'HeH_eHe',  
-    #'HHe_Hee', 
+    'HH_eee',  
+    'ee_HHH',
+    'HHH_eee', 
+    'HeH_eHe',  
+    'HHe_Hee', 
 ]
 
 
@@ -197,12 +198,11 @@ for n in sel_classes:        # for each class of pairs
     plt.title( n )                                       # set title to name of this class
     #plt.xticks(range(len(ns)), [ f"{n1:>8} {n2:>8}"  for n1,n2 in nps ], rotation='vertical', fontproperties=font_prop )  # set xticks to names of pairs in this class
     plt.xticks(range(len(ns)), [ f"{n1:<10} {n2:<8}"  for (n1,n2),e,ec in nps ], rotation='vertical', fontproperties=font_prop )  # set xticks to names of pairs in this class
-    plt.plot( [-Emins[k][0] for k in ns], '.-', label='Ebind' )          # plot energies of the minimum energy conformer for each pair in this class
-    plt.plot( [-Emins[k][0]+0.5*( Emins[(k[0],k[0])][0]+Emins[(k[1],k[1])][0]) for k in ns], '.-', label='Contrast' )          # plot energies of the minimum energy conformer for each pair in this class
+    plt.plot( [-Emins[k][0] for k in ns], '.-k', lw=3, label='E_bind' )          # plot energies of the minimum energy conformer for each pair in this class
+    plt.plot( [-Emins[k][0]+0.5*( Emins[(k[0],k[0])][0]+Emins[(k[1],k[1])][0]) for k in ns], '.-', c='orange', label='E_Contrast' )          # plot energies of the minimum energy conformer for each pair in this class
     
-    plt.plot( [ Angs  [ Emins[k][1] ] for k in ns], '.-', label='Angles' )   
-    plt.plot( [ Hbonds[ Emins[k][1] ] for k in ns], '.-', label='HBonds' )   
-    
+    plt.plot( [ Angs  [ Emins[k][1] ] for k in ns], '.-g', lw=0.5, label='Angles' )   
+
     plt.grid()
     plt.ylabel( "Energy [kcal/mol]" ) 
     #plt.ylim(-60.,0.)
@@ -210,6 +210,19 @@ for n in sel_classes:        # for each class of pairs
     plt.ylim(0.,+45)
     #plt.yticks(np.arange( -45.0, 0.00001, 5.0 ))
     plt.yticks(np.arange( 0.0, 45.0+0.001, 5.0 ))
+
+    ax1 = plt.gca()
+    #ax1.legend(loc='upper left')  
+     
+    
+    ax2 = plt.gca().twinx()
+    ax2.plot( [ Hbonds[ Emins[k][1] ] for k in ns], 'r.', label='HBonds' ) 
+    ax2.plot( [ Hbonds_av[ Emins[k][1] ] for k in ns], 'r_', label='HBonds' ) 
+    ax2.set_ylabel('L{H-Bond}[A]', color='r')
+    ax2.tick_params(axis='y', labelcolor='r')
+    #ax2.legend(loc='upper right')
+    #ax1.legend(loc='upper right', framealpha=1.0 ) 
+
     plt.tight_layout()
     plt.savefig( n+".png", bbox_inches='tight' )
     
