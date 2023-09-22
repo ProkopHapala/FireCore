@@ -93,7 +93,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewAtomSpheres = true;
     bool   bViewAtomForces  = true;
     bool   bViewBondLenghts = false;
-    bool   bViewPis         = true;
+    bool   bViewPis         = false;
     bool   bViewSubstrate   = true;
     bool   isoSurfRenderType = 1;
     bool bDebug_scanSurfFF = false;
@@ -151,7 +151,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //int gui_mode = Gui_Mode::edit;
 
     // ----- AFM scan
-    GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,6.0}, 0.1 };
+    GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,8.0}, 0.1 };
     GridShape afm_ff_grid;  //  { Mat3d{}, 0.1 };
     Quat4f    *afm_ff=0,*afm_Fout=0,*afm_PPpos=0; 
     Quat4f    *afm_ps0=0;
@@ -1176,6 +1176,18 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_v: makeAFM(); break;
                 case SDLK_KP_MULTIPLY:  afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 case SDLK_KP_DIVIDE:    afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
+                
+                case SDLK_SEMICOLON:    afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
+                case SDLK_QUOTE:        afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
+
+                case SDLK_0:            afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
+                case SDLK_9:            afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
+
+                case SDLK_LEFTPAREN:    afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
+                case SDLK_RIGHTPAREN:   afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
+                
+                //case SDLK_LESS:      afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
+                //case SDLK_GREATER:   afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl;       break;

@@ -201,6 +201,8 @@ void initMultiCPU(int nSys){
         ffls[isys].makePBCshifts( nPBC, true );
         ffls[isys].id=isys;
 
+        ffls[isys].PLQs = ffl.PLQs;  // WARNING : maybe we should make own copy of PLQs for each system because we have own copy of REQs for each system
+
         // ----- optimizer
         opts[isys].bindOrAlloc( ffls[isys].nDOFs, ffls[isys].DOFs, 0, ffls[isys].fDOFs, 0 ); 
         ffls[isys].vapos=(Vec3d*)opts[isys].vel;    
@@ -834,7 +836,7 @@ virtual void evalAFMscan( GridShape& scan, Quat4f*& OutFE, Quat4f*& OutPos, Quat
     for( int i=0; i<ocl.nAtoms; i++ ){ ztop=fmax( atoms[i0v+i].z, ztop ); };
     printf( "MolWrold_sp3_multi::evalAFMscan() ztop=%g \n", ztop );
 
-    scan.pos0=Vec3d{0.0,0.0,ztop+4.0+5.0};
+    scan.pos0=Vec3d{0.0,0.0,ztop+4.0+5.0+1.0};
     for(int iy=0; iy<scan.n.y; iy++) for(int ix=0; ix<scan.n.x; ix++){ afm_ps[iy*scan.n.x+ix].f = (Vec3f)(  scan.pos0 + scan.dCell.a*ix + scan.dCell.b*iy ); afm_ps[iy*scan.n.x+ix].w=0; }
     printf( "MolWrold_sp3_multi::evalAFMscan() scan.ns(%i,%i,%i) nxy=%i \n", scan.n.x,scan.n.y,scan.n.z,nxy );
     long T0=getCPUticks();
@@ -1240,6 +1242,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
                 if(bPBC){ ffls[isys].Etot += ffls[isys].evalLJQs_ng4_PBC_simd(); }
                 else    { ffls[isys].Etot += ffls[isys].evalLJQs_ng4_simd    (); } 
                 //ffls[isys].evalLJQs_ng4_simd    ();
+                if   (bGridFF){ gridFF.addForces( ffls[isys].natoms, ffls[isys].apos, ffls[isys].PLQs, ffls[isys].fapos ); }        // GridFF
             }
             if( (ipicked>=0) && (isys==iSystemCur) ){ 
                 pullAtom( ipicked, ffls[isys].apos, ffls[isys].fapos );  
@@ -1288,7 +1291,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
                 niter=0; 
                 T1 = (getCPUticks()-T00)*tick2second;
                 //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
-                if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel,bOcl, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
+                if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i,bGridFF=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel,bOcl,bGridFF, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
                 itr--;
             }
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
@@ -1303,7 +1306,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         ffl.fapos[i]=ffls[iSystemCur].fapos[i];
     }
     T1 = (getCPUticks()-T00)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems, iParalel,bOcl, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i,bGridFF=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems, iParalel,bOcl,bGridFF, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
     return itr;
 }
 
