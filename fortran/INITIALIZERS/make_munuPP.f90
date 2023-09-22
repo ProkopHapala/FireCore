@@ -171,7 +171,7 @@
           end do
           index_maxPP(in1,in2) = index
 
-          write (*,*) "make_munuPP() index_maxPP(", in1, "," ,in2, ")=", index_maxPP(in1,in2)
+          ! write (*,*) "make_munuPP() index_maxPP(", in1, "," ,in2, ")=", index_maxPP(in1,in2)
  
 ! End loops over the species
          end do

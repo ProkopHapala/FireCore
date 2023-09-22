@@ -15,7 +15,8 @@ namespace FireCore{
 //subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' )
 //subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_  )  bind(c, name='firecore_setupGrid' )
 
-typedef void (*P_evalForce  )(int,double*,double*);
+typedef void (*P_2int  )(int,int);
+typedef void (*P_evalForce  )(int,double*,double*,double*,int);
 typedef void (*P_init       )(int,int*,double*);
 //typedef void (*P_getCharges )(double*);
 typedef void (*P_1d         )(double*);
@@ -34,9 +35,11 @@ class Lib{ public:
 
     P_proc preinit=0;
 
-    P_getGridMO getGridMO=0;
+    P_getGridMO   getGridMO=0;
     P_getGridDens getGridDens=0;
-    P_setupGrid setupGrid=0;
+    P_setupGrid   setupGrid=0;
+
+    P_2int setVerbosity=0;
 
     //P_1d getp_ratom=0;
     //P_1d getp_ftot =0;
@@ -50,24 +53,16 @@ class Lib{ public:
         if (plib){
             lib_handle=plib;
         }else{ printf( "%s\n", dlerror()); return -1; }
-        init      = (P_init)     dlsym(lib_handle, "firecore_init");
-        if ((error = dlerror())){ printf( "%s\n", error); init    =0; exit(0); }
-        evalForce = (P_evalForce)dlsym(lib_handle, "firecore_evalForce");
-        if ((error = dlerror())){ printf("%s\n", error); evalForce=0; exit(0); }
-        getCharges = (P_1d)dlsym(lib_handle, "firecore_getCharges");
-        if ((error = dlerror())){ printf("%s\n", error); getCharges=0; exit(0); }
-        set_lvs    = (P_1d)dlsym(lib_handle, "firecore_set_lvs");
-        if ((error = dlerror())){ printf("%s\n", error); set_lvs=0; exit(0); }
 
-        preinit    = (P_proc)dlsym(lib_handle, "firecore_preinit");
-        if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
-
-        getGridMO    = (P_getGridMO)dlsym(lib_handle, "firecore_getGridMO");
-        if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
-        getGridDens  = (P_getGridDens)dlsym(lib_handle, "firecore_getGridDens");
-        if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
-        setupGrid    = (P_setupGrid)dlsym(lib_handle, "firecore_setupGrid");
-        if ((error = dlerror())){ printf("%s\n", error); preinit=0; exit(0); }
+        setVerbosity = (P_2int       )dlsym(lib_handle, "firecore_setVerbosity");  if ((error=dlerror())){ printf("ERROR in dlsym(setVerbosity) %s\n", error); setVerbosity=0; exit(0); }
+        init         = (P_init       )dlsym(lib_handle, "firecore_init");          if ((error=dlerror())){ printf("ERROR in dlsym(init)         %s\n", error); init        =0; exit(0); }
+        evalForce    = (P_evalForce  )dlsym(lib_handle, "firecore_evalForce");     if ((error=dlerror())){ printf("ERROR in dlsym(evalForce)    %s\n", error); evalForce   =0; exit(0); }
+        getCharges   = (P_1d         )dlsym(lib_handle, "firecore_getCharges");    if ((error=dlerror())){ printf("ERROR in dlsym(getCharges)   %s\n", error); getCharges  =0; exit(0); }
+        set_lvs      = (P_1d         )dlsym(lib_handle, "firecore_set_lvs");       if ((error=dlerror())){ printf("ERROR in dlsym(set_lvs)      %s\n", error); set_lvs     =0; exit(0); }
+        preinit      = (P_proc       )dlsym(lib_handle, "firecore_preinit");       if ((error=dlerror())){ printf("ERROR in dlsym(preinit)      %s\n", error); preinit     =0; exit(0); }
+        getGridMO    = (P_getGridMO  )dlsym(lib_handle, "firecore_getGridMO");     if ((error=dlerror())){ printf("ERROR in dlsym(getGridMO)    %s\n", error); preinit     =0; exit(0); }
+        getGridDens  = (P_getGridDens)dlsym(lib_handle, "firecore_getGridDens");   if ((error=dlerror())){ printf("ERROR in dlsym(getGridDens)  %s\n", error); preinit     =0; exit(0); }
+        setupGrid    = (P_setupGrid  )dlsym(lib_handle, "firecore_setupGrid");     if ((error=dlerror())){ printf("ERROR in dlsym(setupGrid)    %s\n", error); preinit     =0; exit(0); }
 
         //getp_ratom = (P_1d)dlsym(lib_handle, "firecore_getPointer_ratom");
         //!if ((error = dlerror())){ printf("%s\n", error); getp_ratom=0; exit(0); }
@@ -90,6 +85,8 @@ class QMMM{ public:
     Vec3d*  aforce=0;
     double* charges=0;
     MMFFparams* params=0;
+
+    double Es[8];
 
 
     P_evalForce  p_evalForce=0;
@@ -171,10 +168,14 @@ class QMMM{ public:
         //for(int i=0; i<nqm; i++){ int im=imms[i]; printf( "QM apos[%i->%i] cap %i Z %i %g %g %g |  %g %g %g \n",i,im, isCap[i], atypeZ[i], apos[i].x,apos[i].y,apos[i].z,   mmpos[im].x,mmpos[im].y,mmpos[im].z  ); }
     };
     void save_aforce(       Vec3d* mmforce )const{ qm2mm(3,(const double*)aforce,(      double*)mmforce ); };
-    void evalQM(const Vec3d* mmpos, Vec3d* mmforce){
+    void evalQM(const Vec3d* mmpos, Vec3d* mmforce, int ixyzfile=-1){
+        DEBUG
         load_apos( mmpos );
-        p_evalForce ( nmax_scf, (double*)apos, (double*)aforce );
+        DEBUG
+        p_evalForce ( nmax_scf, (double*)apos, (double*)aforce, Es, ixyzfile );
+        DEBUG
         save_aforce( mmforce );
+        DEBUG
     }
 
 #ifdef MMFFmini_h
@@ -183,23 +184,23 @@ class QMMM{ public:
         for(int i=0; i<nqm; i++){ imm_set.insert( imms[i] ); }
         for(int i:imm_set){  };
         for(int i=0; i<ff.nbonds; i++ ){
-            printf( "DEBUG mask bond?  %i/%i \n", i, ff.nbonds );
+            //printf( "DEBUG mask bond?  %i/%i \n", i, ff.nbonds );
             Vec2i iat = ff.bond2atom[i];
             if( imm_set.end() == imm_set.find(iat.a) ) continue;
             if( imm_set.end() == imm_set.find(iat.b) ) continue;
             ff.bondMasked[i] = true;
-            printf( "DEBUG bond %i, (%i,%i) masked \n", i, iat.a, iat.b );
+            //printf( "DEBUG bond %i, (%i,%i) masked \n", i, iat.a, iat.b );
         }
-        printf("DEBUG bondMasked DONE \n");
+        //printf("DEBUG bondMasked DONE \n");
         for(int i=0; i<ff.nang; i++ ){
             Vec3i iat = ff.ang2atom[i];
             if( imm_set.end() == imm_set.find(iat.a) ) continue;
             if( imm_set.end() == imm_set.find(iat.b) ) continue;
             if( imm_set.end() == imm_set.find(iat.c) ) continue;
             ff.angMasked[i] = true;
-            printf( "DEBUG angle %i, (%i,%i,%i) masked \n", i, iat.a, iat.b, iat.b );
+            //printf( "DEBUG angle %i, (%i,%i,%i) masked \n", i, iat.a, iat.b, iat.b );
         }
-        printf("DEBUG angMasked DONE \n");
+        //printf("DEBUG angMasked DONE \n");
         for(int i=0; i<ff.nang; i++ ){
             Quat4i iat = ff.tors2atom[i];
             if( imm_set.end() == imm_set.find(iat.x) ) continue;
@@ -207,9 +208,9 @@ class QMMM{ public:
             if( imm_set.end() == imm_set.find(iat.z) ) continue;
             if( imm_set.end() == imm_set.find(iat.w) ) continue;
             ff.torsMasked[i] = true;
-            printf( "DEBUG torsion %i, (%i,%i,%i,%i) masked \n", i, iat.x, iat.y, iat.z, iat.w );
+            //printf( "DEBUG torsion %i, (%i,%i,%i,%i) masked \n", i, iat.x, iat.y, iat.z, iat.w );
         }
-        printf("DEBUG torsMasked DONE \n");
+        //printf("DEBUG torsMasked DONE \n");
     }
 #endif
 

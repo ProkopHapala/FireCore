@@ -24,11 +24,13 @@ int verbosity = 0;
 #include "raytrace.h"
 #include "Forces.h"
 
+#include "MMFFparams.h"
+static MMFFparams* params_glob;
+
 #include "Molecule.h"
 #include "MMFFmini.h"
 #include "NBFF_old.h"
 #include "GridFF.h"
-#include "MMFFparams.h"
 #include "MMFFBuilder.h"
 #include "DynamicOpt.h"
 #include "QEq.h"
@@ -155,6 +157,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
     void tryLoadGridFF();
     void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
+    void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes=0 );
 
 	void drawSystem( Vec3d ixyz );
     void drawSystemQMMM();
@@ -177,6 +180,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 //=================================================
 
 void TestAppFireCoreVisual::InitQMMM(){
+    printf( "TestAppFireCoreVisual::InitQMMM()\n" );
     // ----- QMMM setup
     qmmm.init(6);
     qmmm.params=&params;
@@ -191,14 +195,19 @@ void TestAppFireCoreVisual::InitQMMM(){
     // ----- FireCore setup
 
     //fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
-    fireCore.loadLib( "/home/prokophapala/git/FireCore/build/libFireCore.so" );
+    //fireCore.loadLib( "/home/prokophapala/git/FireCore/build/libFireCore.so" );
+    fireCore.loadLib( "./libFireCore.so" );
+    fireCore.setVerbosity(1,0);
     fireCore.preinit( );
+    fireCore.setVerbosity(1,0);
     fireCore.set_lvs( (double*)&(builder.lvec) );
     fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
     double tmp[3]{0.,0.,0.};
     fireCore.setupGrid( 100.0, 0, tmp, (int*)&MOgrid.n, (double*)&MOgrid.dCell );
-    MOgrid.printCell();
+    MOgrid.updateCell_2();
+    printf("MOgrid.printCell()\n");MOgrid.printCell();
     qmmm.bindFireCoreLib( fireCore );
+    printf( "TestAppFireCoreVisual::InitQMMM() DONE !!! \n" );
 }
 
 void TestAppFireCoreVisual::loadGeom(){
@@ -277,17 +286,33 @@ void TestAppFireCoreVisual::initGUI(){
         );
 }
 
+void TestAppFireCoreVisual::initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){
+    printf( "FireCoreVisual::initParams():\n\tsElemTypes(%s)\n\tsAtomTypes(%s)\n\tsBondTypes(%s)\n\tsAngleTypes(%s)\n", sElemTypes, sAtomTypes, sBondTypes, sAngleTypes );
+    params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
+    builder.bindParams(&params);
+    params_glob = &params;
+    builder.capAtomEpair.type = params.getAtomType("E");
+    builder.addCappingTypesByIz(1);   // hydrogens
+    builder.addCappingTypesByIz(200); // electron pairs
+    //params.printAtomTypeDict();
+    //params.printAtomTypes();
+    //params.printBond();
+    params.printAngleTypes();
+    params.printDihedralTypes();
+}
 
 TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
+    printf( "TestAppFireCoreVisual::constructor() START !!!\n" );
 
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
     // ---- Load Atomic Type Parameters
-    int nheavy = 0;
-    params.loadAtomTypes( "common_resources/AtomTypes.dat" );
-    params.loadBondTypes( "common_resources/BondTypes.dat" );
-    builder.bindParams(&params);
+    // int nheavy = 0;
+    // params.loadAtomTypes( "common_resources/AtomTypes.dat" );
+    // params.loadBondTypes( "common_resources/BondTypes.dat" );
+    // builder.bindParams(&params);
+    initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
 
     if( file_exist("cel.lvs")        ){ 
         loadGeom(); 
@@ -328,24 +353,33 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
 
     initGUI();
 
+    printf( "TestAppFireCoreVisual::constructor() DONE !!!\n" );
 }
 
 void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
+    printf( "TestAppFireCoreVisual::renderOrbital() \n" );
     if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    DEBUG
     qmmm.evalQM( ff.apos, ff.aforce );
+    DEBUG
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
+    DEBUG
     fireCore.getGridMO( iMO, ewfaux );
+    DEBUG
     ogl_MO  = glGenLists(1);
     Vec3d p=Vec3d{0.4,2.5,0.0};
+    DEBUG
     glNewList(ogl_MO, GL_COMPILE);
     glTranslatef( p.x, p.y, p.z );
     int ntris=0;  
+    DEBUG
     glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType);
     glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType);
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     glTranslatef( -p.x, -p.y, -p.z );
     glEndList();
+    DEBUG
     delete [] ewfaux;
 }
 
@@ -370,6 +404,7 @@ void TestAppFireCoreVisual::renderDensity(double iso){
 void TestAppFireCoreVisual::MDloop(){
     double Ftol = 1e-6;
     for(int itr=0; itr<perFrame; itr++){
+        printf( "TestAppFireCoreVisual::MDloop(itr=%i) bDoQM(%i) bDoMM(%i) \n", itr, bDoQM, bDoMM );
         double E=0;
         ff.cleanAtomForce();
         if(bDoQM){
@@ -526,11 +561,13 @@ void  TestAppFireCoreVisual::selectShorterSegment( const Vec3d& ro, const Vec3d&
 
 void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
     //gridFF.loadXYZ  ( "inputs/NaCl_sym.xyz", params );
-    params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.REQs, &gridFF.atypes );
+    //int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Quat4d** REQs_=0, int** atype_=0, int** npis_=0, Mat3d* lvec=0, int verbosity=0 )const{
+    params.loadXYZ( "inputs/NaCl_sym.xyz", gridFF.natoms, &gridFF.apos, &gridFF.REQs, &gridFF.atypes, 0, &gridFF.grid.cell, 1 );
     gridFF.grid.n    = Vec3i{60,60,100};
     gridFF.grid.pos0 = Vec3d{0.0,0.0,0.0};
-    gridFF.loadCell ( "inputs/cel.lvs" );
-    gridFF.grid.printCell();
+    //gridFF.loadCell ( "inputs/cel.lvs" );
+    gridFF.grid.updateCell();
+    printf("gridFF.grid.printCell()\n"); gridFF.grid.printCell();
     gridFF.allocateFFs();
     gridFF.tryLoad( "data/FFelec.bin", "data/FFPaul.bin", "data/FFLond.bin" );
     gridFF.shift0 = Vec3d{0.0,0.0,-8.0};
