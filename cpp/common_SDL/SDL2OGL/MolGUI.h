@@ -198,8 +198,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void printMSystem( int isys, int perAtom, int na, int nvec, bool bNg=true, bool bNgC=true, bool bPos=true );
     //void flipPis( Vec3d ax );
     //void drawSystemQMMM();
-    //void renderOrbital(int i, double iso=0.1);
-    //void renderDensity(       double iso=0.1);
+    void renderOrbital(int i, double iso=0.1);
+    void renderDensity(       double iso=0.1);
 	void selectShorterSegment( const Vec3d& ro, const Vec3d& rd );
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
 
@@ -729,6 +729,39 @@ void MolGUI::renderESP( Quat4d REQ){
     glEndList();
 };
 
+void MolGUI::renderOrbital(int iMO, double iso ){
+    printf( "MolGUI::renderOrbital() \n" );
+    double * ewfaux=0;
+    W->projectOrbital( iMO, ewfaux );
+    if(ewfaux==0)return;
+    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    ogl_MO  = glGenLists(1);
+    Vec3d p=Vec3d{0.4,2.5,0.0};
+    glNewList(ogl_MO, GL_COMPILE);
+    glTranslatef( p.x, p.y, p.z );
+    int ntris=0;  
+    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid,  iso, ewfaux, isoSurfRenderType);
+    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid, -iso, ewfaux, isoSurfRenderType);
+    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(W->MOgrid.cell.transposed(), Vec3dZero, Vec3dOne );
+    glTranslatef( -p.x, -p.y, -p.z );
+    glEndList();
+    delete [] ewfaux;
+}
+
+void MolGUI::renderDensity(double iso){
+    printf( "MolGUI::renderDensity() \n" );
+    double * ewfaux=0;
+    W->projectDensity( ewfaux );
+    if(ewfaux==0)return;
+    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    ogl_MO  = glGenLists(1);
+    glNewList(ogl_MO, GL_COMPILE);
+    int ntris = Draw3D::MarchingCubesCross( W->MOgrid, iso, ewfaux, isoSurfRenderType  );
+    //printf( "renderOrbital() ntris %i \n", ntris );
+    glEndList();
+    delete [] ewfaux;
+}
+
 
 void MolGUI::Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float* dfout ){
     // conversion of vertical force Fz to frequency shift
@@ -1137,11 +1170,14 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     } break;
 
                 case SDLK_p: saveScreenshot( frameCount ); break;
+                case SDLK_h:{
+                    //int iMO = which_MO;
+                    renderOrbital( which_MO ); break;
+                }break;
                 
                 //case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
                 case SDLK_o:{
-                    MolGUI::lattice_scan( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0 } );
-                    
+                    MolGUI::lattice_scan( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0 } );    
                     // long T0 = getCPUticks();
                     // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
                     // W->optimizeLattice_1d( 20,20, Mat3d{   0.0,0.5,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); 
@@ -1149,8 +1185,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     // double time_s     = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() * 1e-9;
                     // double time_GTick = (getCPUticks()-T0)*1e-9;
                     // printf( "Time{W->optimizeLattice_1d(20,20)} %g[s] %g[GTick]  %g[GTick/s] \n", time_s,time_GTick, time_GTick/time_s  );
-                    
                     }break;
+                
                 case SDLK_u:{ 
                         long T0 = getCPUticks();
                         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
@@ -1192,7 +1228,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl;       break;
                 case SDLK_m: W->swith_method();      break;
-                case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
+                //case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
                 case SDLK_k: bDebug_scanSurfFF ^=1; break;
                 //case SDLK_q: W->autoCharges(); break;
                 case SDLK_a: bViewAtomSpheres ^= 1; break;
