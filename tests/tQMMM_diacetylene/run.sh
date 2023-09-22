@@ -1,17 +1,34 @@
 #!/bin/bash
 
-fireball_cpp_2="../../cpp/Build/apps/MolecularEditor/FireCoreMMFFmini"
-#FireCoreVisual="../../cpp/Build/apps/MolecularEditor/FireCoreVisual"
-FireCoreVisual="../../cpp/Build/apps/MolecularEditor/FireCoreVisual"
-FireCoreVisualOCL="../../cpp/Build/apps_OCL/MolecularEditorOCL/FireCoreVisualOCL"
+ln -s ../../cpp/common_resources data
+ln -s ../../cpp/common_resources common_resources
 
-MKL_PATH=$PATH:/home/prokop/SW/intel/mkl/lib/intel64
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MKL_PATH
-export $LD_LIBRARY_PATH
+dir="../../cpp/Build/apps/MolecularEditor/"
+name="FireCoreVisual"
+
+
+#MKL_PATH=$PATH:/home/prokop/SW/intel/mkl/lib/intel64
+#LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MKL_PATH
+#export $LD_LIBRARY_PATH
 #echo $LD_LIBRARY_PATH
+
+# ---- Compilation
+wd=`pwd`
+cd $dir
+pwd
+rm $name
+make -j$ncpu $name   # 2>$wd/compile_err.log
+cd $wd
+
+#cd ../../build/
+#make libFireCore
+#cd $wd
+
+ln -s $dir/$name .
+ln -s ../../build/libFireCore.so .
+
+#export $LD_LIBRARY_PATH:../../build/
 
 rm answer.bas answer.xyz params.dat CHARGES *.out
 
-#$fireball_cpp_2
-$FireCoreVisual
-#$FireCoreVisualOCL
+./$name
