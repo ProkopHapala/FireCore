@@ -109,6 +109,25 @@ class QMMM{ public:
         charges = new double[nqm];
     }
 
+    void init_file(const char * fname){
+        FILE* pFile = fopen(fname,"r");
+        if(pFile==0){ printf( "ERROR in QMMM::init(%s) file not found \n", fname ); exit(0); }
+        const int nbuf=1024;
+        char buff[nbuf];
+        char * line;
+        int nl;
+        line = fgets( buff, nbuf, pFile );
+        sscanf( line, "%i", &nl );
+        init(nl);
+        for(int i=0; i<nl; i++){
+            line = fgets( buff, nbuf, pFile );
+            int im, iscap;
+            sscanf( line, "%i %i", &im, &iscap );
+            imms [i]=im;
+            isCap[i]=iscap>0;
+        }
+    }
+
     void setAtypes(int* atypes_){
         for(int i=0; i<nqm; i++){
             int im = imms[i];
@@ -169,13 +188,9 @@ class QMMM{ public:
     };
     void save_aforce(       Vec3d* mmforce )const{ qm2mm(3,(const double*)aforce,(      double*)mmforce ); };
     void evalQM(const Vec3d* mmpos, Vec3d* mmforce, int ixyzfile=-1){
-        DEBUG
         load_apos( mmpos );
-        DEBUG
         p_evalForce ( nmax_scf, (double*)apos, (double*)aforce, Es, ixyzfile );
-        DEBUG
         save_aforce( mmforce );
-        DEBUG
     }
 
 #ifdef MMFFmini_h

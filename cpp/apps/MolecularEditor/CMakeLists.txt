@@ -33,6 +33,13 @@ add_executable( MolGUIapp
 )
 target_link_libraries( MolGUIapp ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
 
+add_executable( MolGUIapp_QMMM
+	MolGUIapp_QMMM.cpp
+	$<TARGET_OBJECTS:DynamicOpt>
+	$<TARGET_OBJECTS:SDL2OGL>  
+)
+target_link_libraries( MolGUIapp_QMMM ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+
 add_executable( FireCoreMMFFmini
 	FireCoreMMFFmini.cpp
 	$<TARGET_OBJECTS:DynamicOpt>

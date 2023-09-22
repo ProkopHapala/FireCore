@@ -308,10 +308,17 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_, energies, ixyzfile
     ! ====== Body
     write(*,*) "DEBUG firecore_evalForce() verbosity=", verbosity
     if(verbosity.gt.0)write(*,*) "firecore_evalForce() "
+
     ratom(:,:) = positions_(:,:)
     iforce    = 1
     ftot(:,:) = 0
     ikpoint   = 1
+
+    do i=1,natoms  
+        !write (*,*) "DEBUG firecore_evalForce() atom ", i, positions_(1,i), positions_(2,i), positions_(3,i)
+        write (*,*) "DEBUG firecore_evalForce() atom ", i, iatyp(i), ratom(1,i), ratom(2,i), ratom(3,i)
+    end do
+
     scf_achieved = .false.
     max_scf_iterations = nmax_scf
     if(verbosity.gt.0)write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations, scf_achieved

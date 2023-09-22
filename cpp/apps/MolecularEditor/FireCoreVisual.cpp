@@ -359,27 +359,20 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
 void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
     printf( "TestAppFireCoreVisual::renderOrbital() \n" );
     if(ogl_MO){ glDeleteLists(ogl_MO,1); }
-    DEBUG
     qmmm.evalQM( ff.apos, ff.aforce );
-    DEBUG
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
-    DEBUG
     fireCore.getGridMO( iMO, ewfaux );
-    DEBUG
     ogl_MO  = glGenLists(1);
     Vec3d p=Vec3d{0.4,2.5,0.0};
-    DEBUG
     glNewList(ogl_MO, GL_COMPILE);
     glTranslatef( p.x, p.y, p.z );
     int ntris=0;  
-    DEBUG
     glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType);
     glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType);
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     glTranslatef( -p.x, -p.y, -p.z );
     glEndList();
-    DEBUG
     delete [] ewfaux;
 }
 

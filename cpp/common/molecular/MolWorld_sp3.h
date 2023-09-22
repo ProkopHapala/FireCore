@@ -95,6 +95,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     GlobalOptimizer gopt;
 
+    GridShape MOgrid;
+
     int  iterPerFrame=50;
     int  iParalel=0; 
     int  iParalelMax=1;
@@ -175,6 +177,10 @@ class MolWorld_sp3 : public SolverInterface { public:
 // ===============================================
 //       Implement    SolverInterface
 // ===============================================
+
+
+    virtual int projectOrbital(int iMO, double*& ewfaux ){ ewfaux=0; return 0; };  
+    virtual int projectDensity(         double*& ewfaux ){ ewfaux=0; return 0; };
 
 void addDistConstrain( int i0,int i1, double lmin=1.0,double lmax=2.0,double kmin=0.0,double kmax=1.0,double flim=10.0, Vec3d shift=Vec3dZero, bool bOldIndex=false ){
     if(bOldIndex){
