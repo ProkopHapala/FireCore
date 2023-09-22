@@ -211,6 +211,11 @@ inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=t
     f.add( (Vec3d)fe.f );   
     return fe.e;
 }
+double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf=true )const{ 
+    double E=0;
+    for(int ia=0; ia<natoms; ia++){ E+=addForce( apos[ia], PLQs[ia], fpos[ia], bSurf ); };
+    return E;
+}
 
     inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         //printf( "GridFF::addForce() \n" );
