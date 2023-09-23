@@ -61,6 +61,7 @@ subroutine sqrtS( Smat, norbitals, divide )
     use debug
     use  workmat
     use interactions, only: norbitals_new
+    use options, only: idebugWrite
     implicit none
 
 ! Arguments
@@ -95,6 +96,9 @@ subroutine sqrtS( Smat, norbitals, divide )
 
 
     zzzz = Smat
+
+    write (*,*) "!!!! DEBUG sqrtS debug_writeMatFile(Sk_sqrtS.log) norbitals=",norbitals, ' lwork = ',lwork, ' lrwork = ',lrwork, ' liwork = ',liwork, ' divide = ',divide
+    call debug_writeMatFile_cmp( "Sk_sqrtS.log", zzzz, norbitals, norbitals )
 
     if (divide) then
         call zheevd('V', 'U', norbitals, zzzz, norbitals, slam, work,  lwork, rwork , lrwork, iwork, liwork, info )
@@ -131,7 +135,7 @@ subroutine sqrtS( Smat, norbitals, divide )
 ! Determine the smallest active eigenvector
     mineig = 0
     do imu = 1, norbitals
-    if (slam(imu) .lt. overtol) mineig = imu
+        if (slam(imu) .lt. overtol) mineig = imu
     end do
 
 ! You can specify a specific number of orbitals to drop with this
@@ -141,43 +145,43 @@ subroutine sqrtS( Smat, norbitals, divide )
     mineig = mineig + 1
     norbitals_new = norbitals + 1 - mineig
 
-    if (norbitals_new .ne. norbitals) then
-    write (*,*) '  '
-    write (*,*) ' WARNING. ############################ '
-    write (*,*) ' Linear dependence encountered in basis set. '
-    write (*,*) ' An overlap eigenvalue is very small. '
-    write (*,*) norbitals - norbitals_new, ' vectors removed. '
-    write (*,*) ' Spurious orbital energies near zero will '
-    write (*,*) ' appear as a result of dropping these orbitals'
-    write (*,*) ' You can change this by adjusting overtol in '
-    write (*,*) ' kspace.f '
-    write (*,*) '  '
-    !if(ishort .eq. 1) then    ! Don't print out again if done above
-    !    write (*,*) '            The overlap eigenvalues: '
-    !    write (*,*) ' ********************************************** '
-    !    write (*,200) (slam(imu), imu = 1, norbitals)
-    !else                      ! They asked for extra printout
-    !    write(*,*) ' '
-    !    write(*,*) ' Eigenvectors that correspond to eigenvalues'
-    !    write(*,*) ' that were eliminated.  These might provide'
-    !    write(*,*) ' insight into what atomic orbitals are causing'
-    !    write(*,*) ' the problem.'
-    !    write(*,*) ' '
-    !    do imu = 1, mineig - 1
-    !    write(*,*) ' eigenvector',imu
-    !    do jmu = 1, norbitals
-    !        write(*,*) jmu,' ',zzzz(jmu,imu)
-    !    end do
-    !    end do
-    !end if ! ishort
-    write (*,*) ' '
+    if ( (norbitals_new .ne. norbitals) .or.  (idebugWrite .gt. 0)  ) then
+        write (*,*) '  '
+        write (*,*) ' !!!!!!!! WARNING. !!!!!!!!! '
+        write (*,*) ' norbitals_new(',norbitals_new,') .ne. norbitals(',norbitals,')'
+        write (*,*) ' => Linear dependence encountered in basis set. An overlap eigenvalue is very small.', norbitals - norbitals_new, ' vectors removed. '
+        write (*,*) ' Spurious orbital energies near zero will appear as a result of dropping these orbitals'
+        write (*,*) ' You can change this by adjusting overtol(',overtol,') in kspace.f '
+        do imu = 1, norbitals
+            write (*,*) 'slam[',imu,']=',slam(imu),' vs overtol(',overtol,')'
+        end do
 
-    do imu = mineig, norbitals
-    jmu = imu - mineig + 1
-    zzzz(:,jmu) = zzzz(:,imu)
-    slam(jmu) = slam(imu)
-    end do
-    end if
+        !if(ishort .eq. 1) then    ! Don't print out again if done above
+        !    write (*,*) '            The overlap eigenvalues: '
+        !    write (*,*) ' ********************************************** '
+        !    write (*,200) (slam(imu), imu = 1, norbitals)
+        !else                      ! They asked for extra printout
+        !    write(*,*) ' '
+        !    write(*,*) ' Eigenvectors that correspond to eigenvalues'
+        !    write(*,*) ' that were eliminated.  These might provide'
+        !    write(*,*) ' insight into what atomic orbitals are causing'
+        !    write(*,*) ' the problem.'
+        !    write(*,*) ' '
+        !    do imu = 1, mineig - 1
+        !    write(*,*) ' eigenvector',imu
+        !    do jmu = 1, norbitals
+        !        write(*,*) jmu,' ',zzzz(jmu,imu)
+        !    end do
+        !    end do
+        !end if ! ishort
+        write (*,*) ' '
+
+        do imu = mineig, norbitals
+            jmu = imu - mineig + 1
+            zzzz(:,jmu) = zzzz(:,imu)
+            slam(jmu) = slam(imu)
+        end do
+    end if ! norbitals_new .ne. norbitals
 
     ! CALCULATE (S^-1/2) --> sm1
     ! ****************************************************************************

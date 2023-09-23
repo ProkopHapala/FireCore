@@ -207,10 +207,7 @@ subroutine fillneigh ( iatomstart, natomsp )
  				rc_max = max(rc_max,(rcutoff_i + rcutoff_j))
 				if (distance2 .le. range2) then
 					if (distance2 .lt. 0.7d0 .and. distance .gt. 1.0d-4 .and. iatom .ne. jatom .and. wrtout) then
-						write (*,*) ' WARNING - atoms dangerously close! '
-						write (*,*) ' WARNING - atoms dangerously close! '
-						write (*,*) ' WARNING - atoms dangerously close! '
-						write (*,*) ' iatom, jatom, distance = ', iatom, jatom, distance
+						write (*,*) ' WARNING - atoms dangerously close: iatom, jatom, distance = ', iatom, jatom, distance
 					end if
  					num_neigh = num_neigh + 1
 ! The num_neigh'th neighbor to (0,iatom) at (mbeta,jatom)

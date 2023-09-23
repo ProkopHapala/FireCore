@@ -89,10 +89,10 @@
  
 ! Procedure
 ! ===========================================================================
-  if(idebugWrite .gt. 0) then
-   write (*,*) "mixer <<Qin  ", Qin (1,:)
-   write (*,*) "mixer <<Qout ", Qout(1,:)
-  end if  
+  !if(idebugWrite .gt. 0) then
+  ! write (*,*) "mixer <<Qin  ", Qin (1,:)
+  ! write (*,*) "mixer <<Qout ", Qout(1,:)
+  !end if  
 
 ! Check to see if input charges and output charges are within tolerance.
 ! If they are within tolerance, then perform a motional time step. If
@@ -219,10 +219,10 @@
 !    write (*,*) ' (What it must be)           ztot = ', ztot
 !    write (*,*) '  '
     !if (verbosity .ge. 1) write (*,'(A,i3,A,e14.7,A,e14.7)' ) "=============> Kscf", Kscf, "sigma = ",sigma," Must be < ", sigmatol 
-    if(idebugWrite .gt. 0) then
-      write (*,*) "mixer >>Qin  ", Qin (1,:)
-      write (*,*) "mixer >>Qout ", Qout(1,:)
-     end if  
+    ! if(idebugWrite .gt. 0) then
+    !   write (*,*) "mixer >>Qin  ", Qin (1,:)
+    !   write (*,*) "mixer >>Qout ", Qout(1,:)
+    !  end if  
 
 ! Format Statements
 ! ===========================================================================

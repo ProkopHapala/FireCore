@@ -5,8 +5,6 @@ kptpreference = 'input.kpts'
 icluster      =  0
 iqout         =  1
 nstepf        =  1
-
-idebugwrite   = 1
 &END
 
 &OUTPUT

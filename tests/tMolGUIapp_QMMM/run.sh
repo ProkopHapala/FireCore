@@ -22,6 +22,15 @@ ln -s $dir/$name .
 
 
 
+
+
+
+LD_LIBRARY_PATH=/home/prokop/intel/mkl/lib/intel64:$LD_LIBRARY_PATH
+export $LD_LIBRARY_PATH
+echo $LD_LIBRARY_PATH
+
+
+
 # ------- asan (Memory Sanitizer)
 #LD_PRELOAD=$(g++ -print-file-name=libasan.so)
 #echo   $LD_PRELOAD
@@ -54,10 +63,11 @@ ln -s $dir/$name .
 # ====== Small Molecules On Substrate
 
 #./$name -x common_resources/H2O               -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
-./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/CH2O -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
 
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 1
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 50
