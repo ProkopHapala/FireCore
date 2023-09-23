@@ -93,9 +93,9 @@ void InitQMMM(){
     //fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
     //fireCore.loadLib( "/home/prokophapala/git/FireCore/build/libFireCore.so" );
     fireCore.loadLib( "./libFireCore.so" );
-    fireCore.setVerbosity(1,0);
+    fireCore.setVerbosity(1,1);
     fireCore.preinit( );
-    fireCore.setVerbosity(1,0);
+    fireCore.setVerbosity(1,1);
     fireCore.set_lvs( (double*)&(builder.lvec) );
     fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
     double tmp[3]{0.,0.,0.};

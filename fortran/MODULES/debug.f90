@@ -65,6 +65,36 @@ subroutine debug_writeMatFile( fname, mat, n, m )
     close(ifile)
 end subroutine debug_writeMatFile
 
+subroutine debug_writeMat_cmp( ifile, mat, n, m )
+    ! ===== Parameters
+    integer,                 intent (in) :: ifile
+    complex, dimension( :, : ), intent (in) :: mat
+    integer,                 intent (in) :: n, m
+    ! ===== Variables
+    integer i, j
+    ! ===== Body
+    do i=1,n
+        do j=1,m
+            write(ifile,'(e20.10,e20.10)',advance='no' ) real(mat(i,j)),aimag(mat(i,j)) 
+        end do
+        write (ifile,*)
+    end do
+end subroutine debug_writeMat_cmp
+
+subroutine debug_writeMatFile_cmp( fname, mat, n, m )
+    ! ===== Parameters
+    character(len=*), intent(in) :: fname
+    complex, dimension( :, : ), intent (in) :: mat
+    integer,                 intent (in) :: n, m
+    ! ===== Variables
+    integer                 ifile
+    ! ===== Body
+    ifile = 11111
+    open( ifile, file=fname, status='unknown' )
+    call debug_writeMat_cmp( ifile, mat, n, m )
+    close(ifile)
+end subroutine debug_writeMatFile_cmp
+
 subroutine debug_writeBlockedMat( name, M )
     use configuration
     use neighbor_map

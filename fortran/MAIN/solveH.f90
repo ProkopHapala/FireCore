@@ -170,6 +170,10 @@ subroutine solveH( ikpoint, kpoint )
             allocate (sm12_save(norbitals,norbitals,nkpoints))
         end if
         if (Kscf .eq. 1) then
+
+            write (*,*) "!!!! DEBUG debug_writeMatFile(Sk.log) norbitals=",norbitals
+            call debug_writeMatFile_cmp( "Sk.log", Sk, norbitals, norbitals )
+
             call sqrtS( Sk, norbitals, divide )
             do inu = 1, norbitals
                 do imu = 1, norbitals

@@ -63,6 +63,7 @@ subroutine ktransform( kpoint, n, Sk, Hk )
         use dimensions
         use interactions
         use neighbor_map
+        !use debug
         implicit none
 
 ! Argument Declaration and Description
