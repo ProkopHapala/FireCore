@@ -3,12 +3,16 @@ dir=../../cpp/Build/apps/MolecularEditor
 ln -s ../../cpp/common_resources data
 ln -s ../../cpp/common_resources common_resources 
 
-# ---- Multiprocesing
-ncpu=`nproc`
-ncpu=$(($ncpu - 1))     # let one CPU free for user interaction
-echo "compile using ncpu="$ncpu
-OMP_NUM_THREADS=$ncpu
-export OMP_NUM_THREADS
+## ---- Multiprocesing
+#ncpu=`nproc`
+#ncpu=$(($ncpu - 1))     # let one CPU free for user interaction
+#echo "compile using ncpu="$ncpu
+#OMP_NUM_THREADS=$ncpu
+#export OMP_NUM_THREADS
+
+
+export OMP_NUM_THREADS=1
+
 
 # ---- Compilation
 wd=`pwd`
@@ -25,9 +29,12 @@ ln -s $dir/$name .
 
 
 
-LD_LIBRARY_PATH=/home/prokop/intel/mkl/lib/intel64:$LD_LIBRARY_PATH
-export $LD_LIBRARY_PATH
-echo $LD_LIBRARY_PATH
+#LD_LIBRARY_PATH=/home/prokop/intel/mkl/lib/intel64:$LD_LIBRARY_PATH
+#export $LD_LIBRARY_PATH
+#echo $LD_LIBRARY_PATH
+
+
+#export MKL_VERBOSE=1
 
 
 
@@ -63,11 +70,11 @@ echo $LD_LIBRARY_PATH
 # ====== Small Molecules On Substrate
 
 #./$name -x common_resources/H2O               -g common_resources/NaCl_1x1_L2
-./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
 #./$name -x common_resources/CH2O -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
 
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 1
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 50

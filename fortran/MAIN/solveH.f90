@@ -170,16 +170,15 @@ subroutine solveH( ikpoint, kpoint )
             allocate (sm12_save(norbitals,norbitals,nkpoints))
         end if
         if (Kscf .eq. 1) then
-
-            write (*,*) "!!!! DEBUG debug_writeMatFile(Sk.log) norbitals=",norbitals
-            call debug_writeMatFile_cmp( "Sk.log", Sk, norbitals, norbitals )
-
             call sqrtS( Sk, norbitals, divide )
             do inu = 1, norbitals
                 do imu = 1, norbitals
                     sm12_save(imu,inu,ikpoint) = xxxx(imu,inu)
                 end do
             end do
+
+            !write (*,*) "!!!! DEBUG solveH() debug_writeMatFile(Sm12.log) norbitals=",norbitals
+            !call debug_writeMatFile_cmp( "Sm12_", xxxx, norbitals, norbitals, Kscf )
         else    ! Kscf .eq. 1 
             xxxx(:,:) = sm12_save(:,:,ikpoint)  ! Restore S^-1/2 from s(k)^-1/2,
         end if  ! Kscf .eq. 1 
@@ -199,7 +198,7 @@ subroutine solveH( ikpoint, kpoint )
 
 ! CALCULATE (S^-1/2)*H*(S^-1/2)
 ! ****************************************************************************
-        if(idebugWrite .gt. 0) write(*,*) "solveH norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork
+        if(idebugWrite .gt. 0) write(*,*) "solveH norbitals ", norbitals, " lwork ",lwork, " lrwork ",lrwork, " liwork ",liwork, " divide ",divide, " iqout ",iqout
         !ifile = 111111
         !open( ifile, file='solveH_mats.log', status='unknown' )
         !write(ifile,*) "sqrtS: "
@@ -207,6 +206,10 @@ subroutine solveH( ikpoint, kpoint )
         !write(ifile,*) "Hk: "
         !call debug_writeMat( ifile, real(Hk),   norbitals, norbitals )
         if (iqout .ne. 3) then
+
+            !write (*,*) "!!!! DEBUG solveH() debug_writeMatFile(Hk.log) norbitals=",norbitals
+            !call debug_writeMatFile_cmp( "Hk_noS_", Hk, norbitals, norbitals, Kscf )
+            
             call zhemm ( 'R', 'U', norbitals, norbitals, a1, xxxx, norbitals, Hk, norbitals,   a0, zzzz, norbitals )   ! M=H*(S^-.5)
             call zhemm ( 'L', 'U', norbitals, norbitals, a1, xxxx, norbitals, zzzz, norbitals, a0, Hk, norbitals )   ! Z=(S^-.5)*M
         else ! FIXME: I think these two calls we don't need them!!
@@ -269,6 +272,9 @@ subroutine solveH( ikpoint, kpoint )
 !          write (*,*) ' *********************************************** '
 !        end if
  
+        !write (*,*) "!!!! DEBUG solveH() debug_writeMatFile(Hk.log) norbitals=",norbitals
+        !call debug_writeMatFile_cmp( "Hk_low_", Hk, norbitals, norbitals, Kscf )
+
 ! Eigenvectors are needed to calculate the charges and for forces!
         if (divide) then
             call zheevd('V', 'U', norbitals, Hk, norbitals, eigen, work,  lwork, rwork , lrwork, iwork, liwork, info )
