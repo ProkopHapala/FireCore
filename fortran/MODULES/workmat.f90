@@ -3,7 +3,7 @@
 
 module workmat
 
-    integer lwork, lrwork, liwork
+    integer  lwork, lrwork, liwork
     complex, allocatable, dimension (:) :: work
     real,    allocatable, dimension (:) :: rwork
     integer, allocatable, dimension (:) :: iwork
@@ -21,6 +21,7 @@ contains
         logical, intent(in) :: divide  ! do we divide and conquer?
         ! ===== Variables
         ! ===== Body
+        !write (*,* ) "!!!! workmat::alloc_work(): norbitals = ", norbitals, " divide = ", divide
         allocate ( slam(norbitals) )
         allocate ( xxxx(norbitals,norbitals) )
         allocate ( zzzz(norbitals,norbitals) )
@@ -55,6 +56,7 @@ contains
         deallocate ( xxxx )
         deallocate ( zzzz )
         deallocate ( slam )
+        !write (*,* ) "!!!! workmat::dealloc_work()"
     end subroutine dealloc_work
         
 end module workmat

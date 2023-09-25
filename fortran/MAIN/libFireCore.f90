@@ -67,6 +67,22 @@ subroutine firecore_set_lvs( lvs_ )  bind(c, name='firecore_set_lvs')
     a3vec = lvs_(:,3)
 end subroutine
 
+subroutine firecore_initdir( )  bind(c, name='firecore_initdir' )
+    use iso_c_binding
+    use options
+    use interactions
+    use configuration
+    use kpoints
+    use loops
+    use charges
+    use integrals !, only : fdataLocation
+    implicit none
+    ! ========= body
+    call initbasics()
+    call readdata_mcweda ()
+    call init_wfs(norbitals, nkpoints)
+end subroutine
+
 subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     use iso_c_binding
     use options
@@ -536,6 +552,7 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     !allocate   ( ewfaux(0:nrm-1))
     !pewf => ewfaux
     !write(*,*) "firecore_getGridMO ", iMO
+    call center_cell ( .True. )
     call project_orb( iMO, ewfaux )
 end subroutine
 

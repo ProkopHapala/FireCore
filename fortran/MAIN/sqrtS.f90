@@ -80,6 +80,8 @@ subroutine sqrtS( Smat, norbitals, divide )
 
     real*8, parameter :: overtol = 1.0d-4
 
+    complex, dimension (1) :: work_query
+
 ! Procedure
 ! ===========================================================================
 ! DIAGONALIZE THE OVERLAP MATRIX
@@ -97,18 +99,22 @@ subroutine sqrtS( Smat, norbitals, divide )
 
     zzzz = Smat
 
-    write (*,*) "!!!! DEBUG sqrtS debug_writeMatFile(Sk_sqrtS.log) norbitals=",norbitals, ' lwork = ',lwork, ' lrwork = ',lrwork, ' liwork = ',liwork, ' divide = ',divide
-    call debug_writeMatFile_cmp( "Sk_sqrtS.log", zzzz, norbitals, norbitals )
+    !write (*,*) "!!!! DEBUG sqrtS debug_writeMatFile(Sk_sqrtS.log) norbitals=",norbitals, ' lwork = ',lwork, ' lrwork = ',lrwork, ' liwork = ',liwork, ' divide = ',divide
+    !call debug_writeMatFile_cmp( "Sk_sqrtS_", zzzz, norbitals, norbitals, 0 )
 
     if (divide) then
         call zheevd('V', 'U', norbitals, zzzz, norbitals, slam, work,  lwork, rwork , lrwork, iwork, liwork, info )
     else
 ! first find optimal working space
-        call zheev ('V', 'U', norbitals, zzzz, norbitals, slam, work,   -1, rwork, info)
+        !  zheev (JOBZ,UPLO,N,A[lda,*],lda,W_evals,WORK,LWORK,RWORK,integer 	INFO )		
+        call zheev ('V', 'U', norbitals, zzzz, norbitals, slam, work_query,   -1, rwork, info)
+        if (info .ne. 0) call diag_error (info, 0)
+        !call debug_writeMatFile_cmp( "S_query_", zzzz, norbitals, norbitals, 0 )
+
 ! resize working space
-        lwork = work(1)
+        lwork = work_query(1)
         deallocate (work)
-        allocate (work(lwork))
+        allocate   (work(lwork))
 ! diagonalize the overlap matrix with the new working space
         call zheev ('V', 'U', norbitals, zzzz, norbitals, slam, work,  lwork, rwork , info)
     end if
@@ -124,6 +130,10 @@ subroutine sqrtS( Smat, norbitals, divide )
 ! zzzz = Overlap eigenvectors
 ! yyyy = Hamiltonian
 
+    !write(*,*) "!!!! DEBUG S-eigenvalues: ", slam(:)
+
+    !write (*,*) "!!!! DEBUG sqrtS() debug_writeMatFile(zzzz_pre.log) norbitals=",norbitals, " norbitals_new= ", norbitals_new, "info ", info
+    !call debug_writeMatFile_cmp( "zzzz_pre1_", zzzz, norbitals, norbitals, 0 )
 
 ! CHECK THE LINEAR DEPENDENCE
 ! ****************************************************************************
@@ -183,6 +193,9 @@ subroutine sqrtS( Smat, norbitals, divide )
         end do
     end if ! norbitals_new .ne. norbitals
 
+    !write (*,*) "!!!! DEBUG sqrtS() debug_writeMatFile(zzzz_pre.log) norbitals=",norbitals, " norbitals_new= ", norbitals_new
+    !call debug_writeMatFile_cmp( "zzzz_pre2_", zzzz, norbitals, norbitals, 0 )
+
     ! CALCULATE (S^-1/2) --> sm1
     ! ****************************************************************************
     ! In a diagonal reperesentation (Udagger*S*U = s, s is a diagonal matrix)
@@ -196,6 +209,14 @@ subroutine sqrtS( Smat, norbitals, divide )
         zzzz(:,imu) = zzzz(:,imu)*sqlami
     end do
 
+    !write (*,*) "!!!! DEBUG sqrtS() debug_writeMatFile(zzzz_pre.log) norbitals=",norbitals, " norbitals_new= ", norbitals_new
+    !call debug_writeMatFile_cmp( "zzzz_pre3_", zzzz, norbitals, norbitals, 0 )
+
     call zgemm ('N', 'C', norbitals, norbitals, norbitals_new, cmplx(1.0d0,0.0d0), zzzz, norbitals, zzzz, norbitals, cmplx(0.0d0,0.0d0), xxxx, norbitals)
+
+    !write (*,*) "!!!! DEBUG sqrtS() debug_writeMatFile(zzzz.log) norbitals=",norbitals
+    !call debug_writeMatFile_cmp( "zzzz_", zzzz, norbitals, norbitals, 0 )
+    !write (*,*) "!!!! DEBUG sqrtS() debug_writeMatFile(Sm12.log) norbitals=",norbitals
+    !call debug_writeMatFile_cmp( "xxxx_", xxxx, norbitals, norbitals, 0 )
 
 end subroutine sqrtS

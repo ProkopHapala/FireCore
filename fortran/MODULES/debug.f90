@@ -81,16 +81,20 @@ subroutine debug_writeMat_cmp( ifile, mat, n, m )
     end do
 end subroutine debug_writeMat_cmp
 
-subroutine debug_writeMatFile_cmp( fname, mat, n, m )
+subroutine debug_writeMatFile_cmp( fname, mat, n, m, iname )
     ! ===== Parameters
     character(len=*), intent(in) :: fname
     complex, dimension( :, : ), intent (in) :: mat
-    integer,                 intent (in) :: n, m
+    integer,                 intent (in) :: n, m, iname
     ! ===== Variables
     integer                 ifile
+    character(40)   :: fname_
+    character(4)    :: name
     ! ===== Body
     ifile = 11111
-    open( ifile, file=fname, status='unknown' )
+    write (name,'(i4.4)') iname
+    fname_ = trim(fname)//trim(name)//".log"
+    open( ifile, file=fname_, status='unknown' )
     call debug_writeMat_cmp( ifile, mat, n, m )
     close(ifile)
 end subroutine debug_writeMatFile_cmp

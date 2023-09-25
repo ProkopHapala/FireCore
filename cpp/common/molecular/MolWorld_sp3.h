@@ -178,7 +178,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 //       Implement    SolverInterface
 // ===============================================
 
-
+    virtual int getHOMO(){ return 0; };
     virtual int projectOrbital(int iMO, double*& ewfaux ){ ewfaux=0; return 0; };  
     virtual int projectDensity(         double*& ewfaux ){ ewfaux=0; return 0; };
 

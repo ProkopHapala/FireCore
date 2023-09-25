@@ -93,11 +93,24 @@ void InitQMMM(){
     //fireCore.loadLib( "/home/prokop/git/FireCore/build/libFireCore.so" );
     //fireCore.loadLib( "/home/prokophapala/git/FireCore/build/libFireCore.so" );
     fireCore.loadLib( "./libFireCore.so" );
-    fireCore.setVerbosity(1,1);
-    fireCore.preinit( );
-    fireCore.setVerbosity(1,1);
-    fireCore.set_lvs( (double*)&(builder.lvec) );
-    fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
+    qmmm.nmax_scf = 100;
+    //qmmm.nmax_scf = 1;
+
+    bool bInitFromDir = false;
+    //bool bInitFromDir = true;
+
+    if(bInitFromDir){
+        //fireCore.setVerbosity(1,1);
+        fireCore.initdir( );
+        //fireCore.setVerbosity(2,1);
+    }else{
+        //fireCore.setVerbosity(1,1);
+        fireCore.preinit( );
+        //fireCore.setVerbosity(2,1);
+        fireCore.set_lvs( (double*)&(builder.lvec) );
+        fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
+    }
+
     double tmp[3]{0.,0.,0.};
     fireCore.setupGrid( 100.0, 0, tmp, (int*)&MOgrid.n, (double*)&MOgrid.dCell );
     MOgrid.updateCell_2();
@@ -148,6 +161,8 @@ virtual  int projectDensity( double*& ewfaux )override{
     delete [] ewfaux;
     */
 }
+
+virtual int getHOMO() override { return qmmm.nelec/2; };
 
 };
 

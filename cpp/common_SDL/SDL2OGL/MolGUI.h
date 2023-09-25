@@ -76,7 +76,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     // ---- Visualization params
     int iSystemCur = 0;
-    int which_MO  = 7; 
+    int which_MO  = 0; 
     //double ForceViewScale = 1.0;
     //double mm_Rsc         = 0.25;
     //double mm_Rsub        = 1.0;
@@ -370,15 +370,6 @@ void MolGUI::draw(){
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
 
-    if(ogl_MO){ 
-        glPushMatrix();
-        Vec3d c = W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
-        glTranslatef( c.x, c.y, c.z );
-            glColor3f(1.0,1.0,1.0); 
-            glCallList(ogl_MO); 
-        glPopMatrix();
-    }
-
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
 
     if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
@@ -394,6 +385,21 @@ void MolGUI::draw(){
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // DEBUG  
 
     //if(bDoQM)drawSystemQMMM();
+
+    if(ogl_MO){ 
+        glPushMatrix();
+        //Vec3d c = W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
+        //Vec3d c = Vec3dZero;
+        //Vec3d c = W->gridFF.shift0;
+        //W->cog = average( W->ffl.natoms, W->ffl.apos  );
+        Vec3d pmin,pmax; bbox( pmin, pmax, W->ffl.natoms, W->ffl.apos, 0 ); W->cog=(pmin+pmax)*0.5;
+        Vec3d c = W->cog + W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
+        //printf( "ogl_MO c (%g,%g,%g) cog (%g,%g,%g) \n", c.x, c.y, c.z, W->cog.x, W->cog.y, W->cog.z );
+        glTranslatef( c.x, c.y, c.z );
+            glColor3f(1.0,1.0,1.0); 
+            glCallList(ogl_MO); 
+        glPopMatrix();
+    }
 
     if(bDoMM){
         if(W->builder.bPBC){ 
@@ -736,14 +742,11 @@ void MolGUI::renderOrbital(int iMO, double iso ){
     if(ewfaux==0)return;
     if(ogl_MO){ glDeleteLists(ogl_MO,1); }
     ogl_MO  = glGenLists(1);
-    Vec3d p=Vec3d{0.4,2.5,0.0};
     glNewList(ogl_MO, GL_COMPILE);
-    glTranslatef( p.x, p.y, p.z );
     int ntris=0;  
     glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid,  iso, ewfaux, isoSurfRenderType);
     glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid, -iso, ewfaux, isoSurfRenderType);
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(W->MOgrid.cell.transposed(), Vec3dZero, Vec3dOne );
-    glTranslatef( -p.x, -p.y, -p.z );
     glEndList();
     delete [] ewfaux;
 }
@@ -1172,7 +1175,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_p: saveScreenshot( frameCount ); break;
                 case SDLK_h:{
                     //int iMO = which_MO;
-                    renderOrbital( which_MO ); break;
+                    int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
+                    renderOrbital( iHOMO + which_MO ); break;
                 }break;
                 
                 //case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;

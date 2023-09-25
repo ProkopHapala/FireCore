@@ -104,7 +104,7 @@ static inline void bbox( Vec3T<T>& pmin, Vec3T<T>& pmax, int n, const Vec3T<T>* 
     }
     for(int i=0; i<n; i++){ 
         int ii=i;
-        if(selection)ii=selection;
+        if(selection)ii=selection[i];
         pmin.setIfLower  (ps[ii]);
         pmax.setIfGreater(ps[ii]);
     }

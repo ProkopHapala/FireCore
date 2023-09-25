@@ -34,6 +34,7 @@ class Lib{ public:
     P_1d set_lvs=0;
 
     P_proc preinit=0;
+    P_proc initdir=0;
 
     P_getGridMO   getGridMO=0;
     P_getGridDens getGridDens=0;
@@ -55,11 +56,12 @@ class Lib{ public:
         }else{ printf( "%s\n", dlerror()); return -1; }
 
         setVerbosity = (P_2int       )dlsym(lib_handle, "firecore_setVerbosity");  if ((error=dlerror())){ printf("ERROR in dlsym(setVerbosity) %s\n", error); setVerbosity=0; exit(0); }
+        preinit      = (P_proc       )dlsym(lib_handle, "firecore_preinit");       if ((error=dlerror())){ printf("ERROR in dlsym(preinit)      %s\n", error); preinit     =0; exit(0); }
+        initdir      = (P_proc       )dlsym(lib_handle, "firecore_initdir");       if ((error=dlerror())){ printf("ERROR in dlsym(initdir)      %s\n", error); initdir     =0; exit(0); }
         init         = (P_init       )dlsym(lib_handle, "firecore_init");          if ((error=dlerror())){ printf("ERROR in dlsym(init)         %s\n", error); init        =0; exit(0); }
         evalForce    = (P_evalForce  )dlsym(lib_handle, "firecore_evalForce");     if ((error=dlerror())){ printf("ERROR in dlsym(evalForce)    %s\n", error); evalForce   =0; exit(0); }
         getCharges   = (P_1d         )dlsym(lib_handle, "firecore_getCharges");    if ((error=dlerror())){ printf("ERROR in dlsym(getCharges)   %s\n", error); getCharges  =0; exit(0); }
         set_lvs      = (P_1d         )dlsym(lib_handle, "firecore_set_lvs");       if ((error=dlerror())){ printf("ERROR in dlsym(set_lvs)      %s\n", error); set_lvs     =0; exit(0); }
-        preinit      = (P_proc       )dlsym(lib_handle, "firecore_preinit");       if ((error=dlerror())){ printf("ERROR in dlsym(preinit)      %s\n", error); preinit     =0; exit(0); }
         getGridMO    = (P_getGridMO  )dlsym(lib_handle, "firecore_getGridMO");     if ((error=dlerror())){ printf("ERROR in dlsym(getGridMO)    %s\n", error); preinit     =0; exit(0); }
         getGridDens  = (P_getGridDens)dlsym(lib_handle, "firecore_getGridDens");   if ((error=dlerror())){ printf("ERROR in dlsym(getGridDens)  %s\n", error); preinit     =0; exit(0); }
         setupGrid    = (P_setupGrid  )dlsym(lib_handle, "firecore_setupGrid");     if ((error=dlerror())){ printf("ERROR in dlsym(setupGrid)    %s\n", error); preinit     =0; exit(0); }
@@ -85,6 +87,7 @@ class QMMM{ public:
     Vec3d*  aforce=0;
     double* charges=0;
     MMFFparams* params=0;
+    int nelec=0;
 
     double Es[8];
 
@@ -129,11 +132,15 @@ class QMMM{ public:
     }
 
     void setAtypes(int* atypes_){
+        nelec=0;
         for(int i=0; i<nqm; i++){
             int im = imms[i];
             int Z=6;
             int ityp = atypes_[im];
-            if(params)Z=params->atypes[ ityp ].iZ;
+            if(params){
+                Z=params->atypes[ ityp ].iZ;
+                nelec += params->elementOfAtomType( ityp )->neval;
+            }
             atypeZ[i]= isCap[i] ? 1 : Z;   
             atype [i]= isCap[i] ? 0 : ityp;
             //printf( "DEBUG atom %i, type %i -> iZ = %i \n", i, atypeZ[i], iZ );
