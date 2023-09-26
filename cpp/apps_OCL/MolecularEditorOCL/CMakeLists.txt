@@ -28,6 +28,13 @@ add_executable( MolGUIapp_multi
 )
 target_link_libraries( MolGUIapp_multi ${OPENGL_LIBRARIES} ${CLFFT_LIBRARIES} ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
 
+add_executable( MolGUIapp_QMMM_multi
+        MolGUIapp_QMMM_multi.cpp
+        $<TARGET_OBJECTS:DynamicOpt>
+        $<TARGET_OBJECTS:SDL2OGL>  
+)
+target_link_libraries( MolGUIapp_QMMM_multi ${OPENGL_LIBRARIES} ${CLFFT_LIBRARIES} ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+
 #add_executable( ${NAME}_main
 #    ${NAME}_main.cpp 
 #    $<TARGET_OBJECTS:MolecularEngine>
