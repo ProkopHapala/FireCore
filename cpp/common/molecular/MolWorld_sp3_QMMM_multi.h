@@ -104,10 +104,12 @@ void InitQMMM(){
         //fireCore.setVerbosity(1,1);
         fireCore.initdir( );
         //fireCore.setVerbosity(2,1);
+        fireCore.setVerbosity(1,0);
     }else{
         //fireCore.setVerbosity(1,1);
         fireCore.preinit( );
         //fireCore.setVerbosity(2,1);
+        fireCore.setVerbosity(1,0);
         fireCore.set_lvs( (double*)&(builder.lvec) );
         fireCore.init( qmmm.nqm, qmmm.atypeZ, (double*)qmmm.apos );
     }
