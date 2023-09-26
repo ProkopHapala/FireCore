@@ -164,13 +164,18 @@
     call inv3x3 (lmat,invl)
 
 
+    write (*,*) "DEBUG project_orb(",iband,") g0=", g0(:)  
+    write (*,*) "DEBUG project_orb(",iband,") lvec(1)=", lmat(:,1) 
+    write (*,*) "DEBUG project_orb(",iband,") lvec(2)=", lmat(:,2) 
+    write (*,*) "DEBUG project_orb(",iband,") lvec(3)=", lmat(:,3) 
+
+
 ! Loop over atoms
     do iatom = 1, natoms
 
      in1 = imass(iatom)
      r1(:) = ratom(:,iatom)
-! vector between the iatom (not centered in the unit cell yet) and
-! the initial grid point
+! vector between the iatom (not centered in the unit cell yet) and the initial grid point
       do i = 1,3
        u(i) = ratom(i,iatom) - g0(i)
       enddo ! i

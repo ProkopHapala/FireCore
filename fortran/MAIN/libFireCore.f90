@@ -551,8 +551,10 @@ subroutine firecore_getGridMO( iMO, ewfaux )  bind(c, name='firecore_getGridMO' 
     !if(verbosity.gt.0)write(*,*) "firecore_getGridMO() ", iMO
     !allocate   ( ewfaux(0:nrm-1))
     !pewf => ewfaux
-    !write(*,*) "firecore_getGridMO ", iMO
+    write(*,*) "firecore_getGridMO ", iMO
+    write(*,*) "DEBUG firecore_getGridMO 1 center_cell " 
     call center_cell ( .True. )
+    write(*,*) "DEBUG firecore_getGridMO 2 project_orb iMO=", iMO 
     call project_orb( iMO, ewfaux )
 end subroutine
 
