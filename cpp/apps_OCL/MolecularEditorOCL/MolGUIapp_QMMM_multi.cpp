@@ -46,6 +46,9 @@ int main(int argc, char *argv[]){
     funcs["-pop"]={1,[&](const char** ss){ W->uploadPopName=ss[0]; }};                     // upload population
     funcs["-dlvec"]={1,[&](const char** ss){ Mat3d* m=new Mat3d(); W->dlvec=m; printf( "ss[0] `%s`\n", ss[0] ); sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z ); printf( "W->dlvec set to " ); printMat(*(W->dlvec)); } }; // modify lattice vector
     
+    funcs["-substr_iso"]={1,[&](const char** ss){ sscanf( ss[0], "%lf", &app->subs_iso ); }};
+    funcs["-iMO"       ]={1,[&](const char** ss){ sscanf( ss[0], "%i",  &app->which_MO ); }};
+
     funcs["-latscan"]={2,[&](const char** ss){  // scan lattice vector
         W->bLatScan=true;
         Mat3d* m=new Mat3d(); W->latscan_dlvec=m; 

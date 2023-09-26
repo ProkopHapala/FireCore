@@ -61,11 +61,14 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool bDrawHexGrid=true;
     bool bHexDrawing=false; 
 
+
     bool bWriteOptimizerState = true;
     //bool bPrepared_mm = false;
     //bool bPrepared_qm = false;
 
     double z0_scan = 0.0;
+
+    double subs_iso = 0.05;
 
     MolWorld_sp3* W=0;
 
@@ -181,7 +184,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
-    void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
+    //void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
+    void renderGridFF( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
     void renderAFM( int iz, int offset );
     void renderAFM_trjs( int di );
@@ -345,7 +349,7 @@ void MolGUI::draw(){
     //printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
     if(W->bLatScan){ lattice_scan( W->latscan_n.x, W->latscan_n.y, *W->latscan_dlvec ); quit(); }
 
-    if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF(); }
+    if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
     //if( ogl_esp==0 ){ renderESP(); }
 
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
