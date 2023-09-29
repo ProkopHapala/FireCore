@@ -110,16 +110,27 @@ def plotAngles( iangs, angs, ps, axes=(0,1), colors='k', labels=None, bPoly=True
         ax.annotate( "%3.0f˚" %(angs[i]*180.0/np.pi), p[ax_inds], color=colors[i] )
 
 
-def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=(0,1), bLabels=True, labels=None, _0=1 ):    
+def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=(0,1), bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False  ):    
     if( bBonds ):
         if sys.bonds is None:
-            sys.findBonds( Rcut=3.0, RvdwCut=RvdwCut )
+            bs, rbs = sys.findBonds( Rcut=3.0, RvdwCut=RvdwCut )
+        rb_labs = None
+        if bBLabels:
+            rb_labs = [ ("%3.2f" %r) for r in rbs ]
         plotBonds( links=sys.bonds, ps=sys.apos, axes=axes )
     
     if(colors is None): colors = [ elements.ELEMENT_DICT[e][8]    for e in sys.enames ]
     if(sizes  is None): sizes  = [ elements.ELEMENT_DICT[e][6]*sz for e in sys.enames ]
     if((labels is None) and bLabels): labels=[ "%s%i" %(e,i+_0) for i,e in enumerate(sys.enames) ]
     plotAtoms( apos=sys.apos, es=sys.enames, sizes=sizes, colors=colors, marker='o', axes=axes, labels=labels )
+
+    # H-Bonds
+    if len(HBs)>0:
+        hbs,rhbs = HBs
+        rh_labs = None
+        if bHBlabels:
+            rh_labs = [ ("%3.2f" %r) for r in rhbs ]
+        plotBonds ( ps=sys.apos, links=hbs, axes=axes, colors="g", labels=rh_labs )
 
     if extent is not None:
         plt.xlim(extent[0],extent[1])
