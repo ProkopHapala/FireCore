@@ -86,7 +86,7 @@ Angs = np.array( Angs ); print( "Angs ", Angs ); #exit()
 intervals = np.arange( 0, 50+1, 5.0 ); print( "intervals ", intervals   ); #exit()
 
 
-Emins =   bpu.find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 )                          # find minimum energy conformers for each pair
+Emins, uique_pnames =   bpu.find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 )                          # find minimum energy conformers for each pair
 
 EBs   = np.array([-Emins[k][0]                                                    for k in  pair_names ])     # compute binding energy  for each pair as numpy array
 ECs   = np.array([-Emins[k][0]+0.5*( Emins[(k[0],k[0])][0]+Emins[(k[1],k[1])][0]) for k in  pair_names ])     # compute energy contrast for each pair as numpy array
@@ -131,6 +131,8 @@ xs=range(len(pair_sel))
 plt.xticks( xs, [ f"{n1:<10} {n2:<8}"  for i,(n1,n2) in pair_sel ], rotation='vertical', fontproperties=font_prop )  # set xticks to names of pairs in this class
 for l, c in zip(plt.gca().get_xticklabels(), colors):
     l.set_color(c)
+
+print( "N(E_C>%i): " %Econtrast_min , len(EBs_))
 
 plt.plot( EBs_, '-b',  lw=4, label='E_bind'     )   # plot energies of the minimum energy conformer for each pair in this class
 plt.plot( ECs_, '.-r', lw=2, label='E_Contrast' )   # plot energies of the minimum energy conformer for each pair in this class

@@ -73,10 +73,16 @@ def try_nickname( name, nicknames, sep='\n' ):
         return ""
 
 
-def find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 ):
-    Emins = { n:(Emax,-1) for n in pair_names }   # dictionary of minimum energies for each pair
+def find_minim_energy_confs( Es, pair_names, Emax=-1000, ipivot=0 ):
+    #Emins = { n:(Emax,-1) for n in pair_names }   # dictionary of minimum energies for each pair
+    Emins         = {}
+    unique_pnames = []
     for i,n in enumerate(pair_names):             # find minimum energy for each pair
-        e = Es[i][ipivot]                         # Es[i] is a list of energies for each pair (DFTB, B3LYP, DFTB+disp)
-        if Emins[n][0]>e:                         # if current energy is lower than the minimum energy for this pair
-            Emins[n]=(e,i)                        # update minimum energy for this pair, and index of the minimum energy
-    return Emins
+        e = Es[i][ipivot]  
+        if n not in Emins: 
+            unique_pnames.append(n)
+            Emins[n]=(e,i)
+        else:
+            if Emins[n][0]>e:                         # if current energy is lower than the minimum energy for this pair
+                Emins[n]=(e,i)                        # update minimum energy for this pair, and index of the minimum energy
+    return Emins, unique_pnames
