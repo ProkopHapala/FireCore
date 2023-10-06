@@ -125,12 +125,13 @@ def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50.,
     plotAtoms( apos=sys.apos, es=sys.enames, sizes=sizes, colors=colors, marker='o', axes=axes, labels=labels )
 
     # H-Bonds
-    if len(HBs)>0:
-        hbs,rhbs = HBs
-        rh_labs = None
-        if bHBlabels:
-            rh_labs = [ ("%3.2f" %r) for r in rhbs ]
-        plotBonds ( ps=sys.apos, links=hbs, axes=axes, colors="g", labels=rh_labs )
+    if HBs is not None:
+        if len(HBs)>0:
+            hbs,rhbs = HBs
+            rh_labs = None
+            if bHBlabels:
+                rh_labs = [ ("%3.2f" %r) for r in rhbs ]
+            plotBonds ( ps=sys.apos, links=hbs, axes=axes, colors="g", labels=rh_labs )
 
     if extent is not None:
         plt.xlim(extent[0],extent[1])
