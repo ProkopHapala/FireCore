@@ -9,6 +9,9 @@ from pyBall import plotUtils   as plu
 
 # ============ Functions
 
+# list all .xyz files in directory
+#files  = [ f for f in os.listdir('.') if os.path.isfile(f) and f.endswith(".xyz") ]
+
 #re_name_to_class = re.compile(r'([ON])[^-]*')
 re_name_to_class = re.compile(r'([NO])' )
 
