@@ -160,7 +160,7 @@ pairTypes = [
 #("HHH","eee"),
 #("HHe","Hee"),
 ("HHH","eee"),
-("HH","ee"),
+#("HH","ee"),
 ]
 
 B = AtomicSystem(fname='backbone.xyz' )
@@ -175,14 +175,19 @@ for pairTyp in pairTypes:
     names2 = typs[pairTyp[1]]
 
     odir = "out_"+pairTyp[0]+"_"+pairTyp[1]+"/"
-    os.mkdir( odir )
-    os.mkdir( odir+"/2x2/" )
+    try:
+        os.mkdir( odir )
+        os.mkdir( odir+"/2x2/" )
+    except:
+        pass
     for name1 in names1:
         for name2 in names2:
             #print( name1, name2 )
             BB, inds1, inds2 = attachPair( name1, name2, group_dict, amargin=amargin )
+            inds1b = BB.getNeighsOfType( inds1, typ='N')
+            inds1b = [ a[0] for a in inds1b ] 
+            print( "inds1, inds2, inds1b ", inds1, inds2, inds1b )
 
-            #print( inds )
             comment = " Hbonds={'X':"+str(inds1)+",'Y':"+str(inds2)+"}"
             #BB.enames[ inds1 ] = 'As'
             #BB.enames[ inds2 ] = 'P'
@@ -201,8 +206,24 @@ for pairTyp in pairTypes:
 
             saveMolGUIscript( name, (inds1,inds2), path="./out/", amargin=amargin-3.0 )
 
+            
+            fig = plt.figure(figsize=(16,4))
+            axes=(0,1)
+            plt.subplot(1,2,1)
+            plu.plotSystem( BB, bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=axes, bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False )
+            plu.plotAtoms( BB.apos, colors='#FF0000', marker='o', axes=axes, selection = inds1 )
+            plu.plotAtoms( BB.apos, colors='#FFFF00', marker='o', axes=axes, selection = inds1b )
+            plu.plotAtoms( BB.apos, colors='#0000FF', marker='o', axes=axes, selection = inds2 )
+            axes=(0,2)
+            plt.subplot(1,2,2)
+            plu.plotSystem( BB, bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=axes, bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False )
+            plu.plotAtoms( BB.apos, colors='#FF0000', marker='o', axes=axes, selection = inds1 )
+            plu.plotAtoms( BB.apos, colors='#FFFF00', marker='o', axes=axes, selection = inds1b )
+            plu.plotAtoms( BB.apos, colors='#0000FF', marker='o', axes=axes, selection = inds2 )
 
-
+            plt.tight_layout()
+            plt.savefig( odir+name+".png", bbox_inches='tight' )
+            plt.close(fig)
 
 
 

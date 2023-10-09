@@ -101,26 +101,47 @@ def neigh_atoms( natoms, bonds ):
         neighs[j].add(i)
     return neighs
 
+def findNeighOfType( ia, atypes, neighs, typ='N' ):
+    result=[]
+    for ja in neighs[ia]:
+        #print( ia, atypes[ia], ja, atypes[ja], typ )
+        if atypes[ja]==typ:
+            result.append( ja )
+    return result
+
+def findNeighsOfType( selection, atypes, neighs, typ='N' ):
+    found =  []
+    for ia in selection:
+        out = findNeighOfType( ia, atypes, neighs, typ )
+        found.append( out )
+    return found
+
 def findTypeNeigh( atoms, neighs, typ, neighTyps=[(1,2,2)] ):
-    typ_mask = ( atoms[:,0] == typ )
-    satoms   = atoms[typ_mask]
-    iatoms   = np.arange(len(atoms),dtype=int)[typ_mask]
+    '''
+    find atoms of type 'typ' that have neighbors of types in 'neighTyps'
+    '''
+    typ_mask = ( atoms[:,0] == typ )   # boolean mask of atoms of type 'typ'
+    satoms   = atoms[typ_mask]         # selected atoms of type 'typ'
+    iatoms   = np.arange(len(atoms),dtype=int)[typ_mask]   # indices of selected atoms of type 'typ'
     selected = []
     for i,atom in enumerate(satoms):
         iatom = iatoms[i]
         #for jatom in neighs[ iatom ]:
         #    jtyp = atoms[jatom,0]
-        count = {}
+        count = {}   # count number of neighbors of certain type
         for jatom in neighs[ iatom ]:
             jtyp = atoms[jatom,0]
             count[jtyp] = count.get(jtyp, 0) + 1
-        for jtyp, (nmin,nmax) in list(neighTyps.items()):
+        for jtyp, (nmin,nmax) in list(neighTyps.items()):   
             n = count.get(jtyp,0)
             if( (n>=nmin)and(n<=nmax) ):
                 selected.append( iatom )
     return selected
 
 def findTypeNeigh_( types, neighs, typ='N', neighTyps={'H':(1,2)} ):
+    '''
+    find atoms of type 'typ' that have neighbors of types in 'neighTyps'
+    '''
     #typ_mask = ( types == typ )
     #satoms   = atoms[typ_mask]
     select = [ i for i,t in enumerate(types) if (t==typ) ]
@@ -880,13 +901,14 @@ def geomLines( apos, enames ):
 
 class AtomicSystem( ):
 
-    def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None ) -> None:
+    def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None, ngs=None ) -> None:
         self.apos    = apos
         self.atypes  = atypes
         self.enames  = enames
         self.qs      = qs
         self.Rs      = Rs
         self.bonds   = bonds
+        self.ngs     = ngs 
         self.lvec    = lvec
         self.aux_labels = None
         if fname is not None:
@@ -947,13 +969,15 @@ class AtomicSystem( ):
     def neighs( self, bBond=True ):
         if(self.bonds is None):
             self.findBonds()
-        if(bBond):
-            return neigh_bonds( len(self.apos), self.bonds )
-        else:
-            return neigh_atoms( len(self.apos), self.bonds )
+        self.ngs = neigh_bonds( len(self.apos), self.bonds )
+        return self.ngs
 
     def select_by_ename( self, elist ):
         return [ i for i,e in enumerate(self.enames) if e in elist ]
+
+    def getNeighsOfType( self, selection, typ='N'):
+        if self.ngs is None: self.neighs()
+        return findNeighsOfType( selection, self.enames, self.ngs, typ=typ ) 
 
     def select_by_neighType( self, neighs, typ='N', neighTyps={'H':(1,2)} ):
         return findTypeNeigh_( self.enames, neighs, typ=typ, neighTyps=neighTyps )
