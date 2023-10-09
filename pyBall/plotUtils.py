@@ -55,9 +55,12 @@ def read_dat( fname, ni=0, nf=1, iname=0, toRemove=None ):
         names     .append( name )
     return ints,floats,names
 
-def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, sizes=100., colors='#808080', marker='o', axes=(0,1) ):
+def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, sizes=100., colors='#808080', marker='o', axes=(0,1), selection=None ):
     ax1,ax2=axes
     if apos is None: apos = np.array([ a[1] for a in atoms ])  #;print(apos)
+    if selection is not None: 
+        apos                  = apos[selection,:]
+        if es is not None: es = es  [selection]
     plt.scatter( apos[:,ax1],apos[:,ax2], marker=marker, c=colors, s=sizes, cmap='seismic', zorder=2 ); plt.axis('equal'); #plt.grid()
     bLabels = labels is not None
     if bNumbers or bLabels:
