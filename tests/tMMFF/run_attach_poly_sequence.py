@@ -12,25 +12,41 @@ from pyBall  import plotUtils   as plu
 
 import polymerUtils as pu
 
+sys.path.append("../tLammpsTrj")
+import BasePairUtils as bpu
+
 # ======== Setup
 
 folder    = "/home/prokop/Desktop/CARBSIS/Paolo/endgroups/"
 dir_meta  = folder+"endgroups/"
 dir_relax = folder+"endgroups_relaxed/mols/"
 
-pairs = [
-("HNH-h","OHO-h_1")
+'''
+sequence = [
+("HNH-h","OHO-h_1"),
+("OHO-h_1","HNH-h"),
+("HNH-h","OHO-h_1"),
+]
+'''
+
+'''
+sequence = [
+("HH-hh-p","NN-hh"),
+("NN-hh","HH-hh-p"),
+("HH-hh-p","NN-hh"),
+]
+'''
+
+
+sequence = [
+("HHH-h-p","NNN-hhh"),
+("NNN-hhh","HHH-h-p"),
+("HHH-h-p","NNN-hhh"),
 ]
 
-pairTypes = [
-("HeH","eHe"),
-#("HHe","Hee"),
-#("HHH","eee"),
-#("HH","ee"),
-#("HH","eee"),
-#("HHH","ee"),
-]
 
+out_name = "sequence_1"
+amargin = 5.0
 #======== Functions
 
 #======== Body
@@ -47,64 +63,80 @@ for typ in typs: print( typ, typs[typ]  )
 
 B = AtomicSystem(fname='backbone.xyz' )
 B.lvec = np.array( [[25.,0.,0.],[0.,5.,0.],[0.,0.,20.0]  ] )
-#for pair in pairs:
-#    name1, name2 = pair
-#    attachPair( name1, name2, group_dict )
 
-amargin = 5.0
-for pairTyp in pairTypes:
-    names1 = typs[pairTyp[0]]
-    names2 = typs[pairTyp[1]]
+#monomers = [ ]
 
-    bPure = all( 'H' == c for c in pairTyp[0] )
+fig = plt.figure(figsize=(16,4))
 
-    odir = "out_"+pairTyp[0]+"_"+pairTyp[1]+"/"
-    try:
-        os.mkdir( odir )
-        os.mkdir( odir+"/2x2/" )
-    except:
-        pass
-    for name1 in names1:
-        for name2 in names2:
-            #print( name1, name2 )
-            BB, inds1, inds2 = pu.attachPair( B, name1, name2, group_dict, amargin=amargin )
-            
-            # if pairTyp[0]='H' take from inds1 else from inds2
-            inds_ = [ inds1[i] if pairTyp[0][i]=='H' else inds2[i] for i in range(len(inds1)) ]    ;print(  "inds_ ",  inds_ )
-            inds1b = BB.getNeighsOfType( inds_, typ='N')
-            
-            print( "inds1, inds2, inds1b ", inds1, inds2, inds_, inds1b )
-            inds1b = [ a[0] for a in inds1b ] 
+BBB = None
 
-            comment = " Hbonds={'X':"+str(inds1)+",'Y':"+str(inds2)+"}"
+inds1_ = []
+inds2_ = []
+inds3_ = [] 
 
-            name = "BB."+name1+"."+name2
+for i,pair in enumerate(sequence):
+    name1,name2 = pair
+    BB, inds1, inds2 = pu.attachPair( B, name1, name2, group_dict, amargin=amargin )
 
-            print( name+".Qtot: ", BB.qs.sum() )
+    # find the indices of nitrogen atoms which are hydrogen bond donors
+    cls1   = bpu.name_to_class( name1 )
+    inds_  = [ inds1[i] if cls1[i]=='H' else inds2[i] for i in range(len(inds1)) ]    ;print(  "inds_ ",  inds_ )
+    inds3 = BB.getNeighsOfType( inds_, typ='N')
+    inds3 = [ a[0] for a in inds3 ]
 
-            BB.saveXYZ( odir+name+".xyz", comment=comment )
+    BB.apos[:,:] += B.lvec[1,:][None,:] * i 
 
-            BB_ = BB.clonePBC( (2,2,1) )
-            BB_.saveXYZ( odir+"/2x2/"+name+"_2x2.xyz", comment=comment )
+    i0=0
+    if BBB is None:
+        BBB = BB.clonePBC()
+    else:
+        i0 = len(BBB.apos)
+        BBB.append_atoms( BB )
+        #BBB.lvec[1,:] += B.lvec[1,:] 
+    print(  "inds1, inds2, inds3 ", len(inds1), len(inds2), len(inds3),  inds1, inds2, inds3 )
+    inds1_ += [ i0+j for j in inds1 ]
+    inds2_ += [ i0+j for j in inds2 ]
+    inds3_ += [ i0+j for j in inds3 ]
 
-            if len(inds1)==len(inds2):
-                pu.saveMolGUIscript( name, (inds1,inds2), path="./out/", amargin=amargin-3.0 )
+    #monomers.append( BB )
 
-            
-            fig = plt.figure(figsize=(16,4))
-            axes=(0,1)
-            plt.subplot(1,2,1)
-            plu.plotSystem( BB, bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=axes, bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False )
-            plu.plotAtoms( BB.apos, colors='#FF0000', marker='o', axes=axes, selection = inds1 )
-            plu.plotAtoms( BB.apos, colors='#FFFF00', marker='o', axes=axes, selection = inds1b )
-            plu.plotAtoms( BB.apos, colors='#0000FF', marker='o', axes=axes, selection = inds2 )
-            axes=(0,2)
-            plt.subplot(1,2,2)
-            plu.plotSystem( BB, bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=axes, bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False )
-            plu.plotAtoms( BB.apos, colors='#FF0000', marker='o', axes=axes, selection = inds1 )
-            plu.plotAtoms( BB.apos, colors='#FFFF00', marker='o', axes=axes, selection = inds1b )
-            plu.plotAtoms( BB.apos, colors='#0000FF', marker='o', axes=axes, selection = inds2 )
+    '''
+    plt.subplot(1,2,1)
+    axes=(0,1)
+    plu.plotSystem( BB, bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=axes, bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False )
+    plu.plotAtoms( BB.apos, colors='#FF0000', marker='o', axes=axes, selection = inds1 )
+    #plu.plotAtoms( BB.apos, colors='#FFFF00', marker='o', axes=axes, selection = inds1b )
+    plu.plotAtoms( BB.apos, colors='#0000FF', marker='o', axes=axes, selection = inds2 )
+    axes=(0,2)
+    plt.subplot(1,2,2)
+    plu.plotSystem( BB, bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=axes, bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False )
+    plu.plotAtoms( BB.apos, colors='#FF0000', marker='o', axes=axes, selection = inds1 )
+    #plu.plotAtoms( BB.apos, colors='#FFFF00', marker='o', axes=axes, selection = inds1b )
+    plu.plotAtoms( BB.apos, colors='#0000FF', marker='o', axes=axes, selection = inds2 )
+    '''
+    
+print(  "inds1, inds2, inds3 ", inds1_, inds2_, inds3_ )
+BBB.lvec[1,:] = B.lvec[1,:]*3
+BBB.findBonds( )
 
-            plt.tight_layout()
-            plt.savefig( odir+name+".png", bbox_inches='tight' )
-            plt.close(fig)
+BBB.saveXYZ( "./out/"+out_name+".xyz", comment=" Hbonds={'X':"+str(inds1_)+",'Y':"+str(inds2_)+"'N':"+str(inds3_)+"}" )
+pu.saveMolGUIscript( out_name, (inds1_,inds2_,inds3_), path="./out/", amargin=amargin-3.0 )
+
+plt.subplot(1,2,1)
+axes=(0,1)
+plu.plotSystem( BBB, bBonds=True,  axes=axes, bLabels=False )
+plu.plotAtoms( BBB.apos, colors='#FF0000', marker='o', axes=axes, selection = inds1_ )
+plu.plotAtoms( BBB.apos, colors='#0000FF', marker='o', axes=axes, selection = inds2_ )
+plu.plotAtoms( BBB.apos, colors='#FFFF00', marker='o', axes=axes, selection = inds3_ )
+axes=(0,2)
+plt.subplot(1,2,2)
+plu.plotSystem( BBB, bBonds=True,axes=axes, bLabels=False )
+plu.plotAtoms( BBB.apos, colors='#FF0000', marker='o', axes=axes, selection = inds1_ )
+plu.plotAtoms( BBB.apos, colors='#0000FF', marker='o', axes=axes, selection = inds2_ )
+plu.plotAtoms( BBB.apos, colors='#FFFF00', marker='o', axes=axes, selection = inds3_ )
+
+plt.tight_layout()
+#plt.savefig( odir+name+".png", bbox_inches='tight' )
+#plt.close(fig)
+
+plt.show()
