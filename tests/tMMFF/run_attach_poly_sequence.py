@@ -21,13 +21,13 @@ folder    = "/home/prokop/Desktop/CARBSIS/Paolo/endgroups/"
 dir_meta  = folder+"endgroups/"
 dir_relax = folder+"endgroups_relaxed/mols/"
 
-'''
+
 sequence = [
 ("HNH-h","OHO-h_1"),
 ("OHO-h_1","HNH-h"),
 ("HNH-h","OHO-h_1"),
 ]
-'''
+
 
 '''
 sequence = [
@@ -37,15 +37,15 @@ sequence = [
 ]
 '''
 
-
+'''
 sequence = [
 ("HHH-h-p","NNN-hhh"),
 ("NNN-hhh","HHH-h-p"),
 ("HHH-h-p","NNN-hhh"),
 ]
+'''
 
-
-out_name = "sequence_1"
+out_name = "sequence_"+sequence[0][0]+"_"+sequence[0][1]
 amargin = 5.0
 #======== Functions
 
@@ -74,6 +74,7 @@ inds1_ = []
 inds2_ = []
 inds3_ = [] 
 
+cls_=""
 for i,pair in enumerate(sequence):
     name1,name2 = pair
     BB, inds1, inds2 = pu.attachPair( B, name1, name2, group_dict, amargin=amargin )
@@ -97,6 +98,7 @@ for i,pair in enumerate(sequence):
     inds1_ += [ i0+j for j in inds1 ]
     inds2_ += [ i0+j for j in inds2 ]
     inds3_ += [ i0+j for j in inds3 ]
+    cls_+=cls1
 
     #monomers.append( BB )
 
@@ -120,7 +122,7 @@ BBB.lvec[1,:] = B.lvec[1,:]*3
 BBB.findBonds( )
 
 BBB.saveXYZ( "./out/"+out_name+".xyz", comment=" Hbonds={'X':"+str(inds1_)+",'Y':"+str(inds2_)+"'N':"+str(inds3_)+"}" )
-pu.saveMolGUIscript( out_name, (inds1_,inds2_,inds3_), path="./out/", amargin=amargin-3.0 )
+pu.saveMolGUIscript( out_name, (inds1_,inds2_,inds3_), cls=cls_, path="./out/", amargin=amargin-3.0 )
 
 plt.subplot(1,2,1)
 axes=(0,1)

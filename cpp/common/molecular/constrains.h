@@ -83,7 +83,7 @@ struct AngleConstr{
         return E;
     }
 
-    void print(){ printf( "angle_constr ias(%i,%i,%i) cs0(%f,%f) k(%lf) flim=%lf acell(%i,%i,%i) bcell(%i,%i,%i)\n",   ias.a,ias.b,ias.b,   cs0.x,cs0.y,      k,       flim, acell.a, acell.b, acell.c, bcell.a, bcell.b, bcell.c); };
+    void print(){ printf( "angle_constr ias(%i,%i,%i) cs0(%f,%f) k(%lf) flim=%lf acell(%i,%i,%i) bcell(%i,%i,%i)\n",   ias.a,ias.b,ias.c,   cs0.x,cs0.y,      k,       flim, acell.a, acell.b, acell.c, bcell.a, bcell.b, bcell.c); };
 
 };
 
@@ -100,7 +100,7 @@ class Constrains{ public:
     }
 
     int loadBonds( const char* fname, int* atom_permut=0, int _0=1 ){
-        //printf("Constrains::loadBonds() \n" );
+        printf("Constrains::loadBonds(%s) atom_permut=%li _0=%i\n", fname, (long)atom_permut, _0 );
         FILE* pFile = fopen( fname, "r" );
         if(pFile==0){ printf("ERROR in Constrains::loadBonds(%s) - No Such File \n", fname ); return -1; }
         else{
@@ -108,11 +108,10 @@ class Constrains{ public:
             int i=0;
             for(i=0; i<10000; i++){
                 char* line = fgets( buff, 1024, pFile );
-                printf( "Constrains::loadBonds[i=%i](%s)\n", i, line );
+                printf( "Constrains::loadBonds[i=%4i] %s", i, line );
                 if(line==NULL)  break;
                 if     (line[0]=='#'){continue;}
                 else if(line[0]=='b'){
-
                     DistConstr cons; cons.active=true;
                     int nret = sscanf( line, "b %i %i   %lf %lf   %lf %lf   %lf    %lf %lf %lf",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,  &cons.ks.a,&cons.ks.b,  &cons.flim, &cons.shift.a,&cons.shift.b,&cons.shift.c );
                     cons.ias.a-=_0;

@@ -814,7 +814,7 @@ virtual void init( bool bGrid ){
     if(bMMFF){      
         makeFFs();
     }
-    builder.setup_atom_permut();
+    builder.setup_atom_permut( true );
     if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
     if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems 
     //builder.printAtoms();
