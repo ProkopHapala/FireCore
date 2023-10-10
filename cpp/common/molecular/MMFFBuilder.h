@@ -2272,9 +2272,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         for(int i=0; i<atoms.size(); i++){ atoms[i].id=i; };
     }
 
-    void setup_atom_permut(){
+    void setup_atom_permut( bool bPrint=false ){
         atom_permut.resize(atoms.size());
-        for(int i=0; i<atoms.size(); i++){ atom_permut[ atoms[i].id ]=i; };
+        for(int i=0; i<atoms.size(); i++){ 
+            atom_permut[ atoms[i].id ]=i; 
+            printf( "setup_atom_permut[%i]-> %i \n", i, atoms[i].id );
+        };
+        for(int i=0; i<atoms.size(); i++){ printf( "atom_permut[%i] %i \n", i, atom_permut[i] ); };
     }
 
     void printSizes()const{ printf( "sizes: atoms(%i|%i) bonds(%i) angles(%i) dihedrals(%i) \n", atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ); };

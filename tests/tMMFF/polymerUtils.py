@@ -76,9 +76,9 @@ def findLastHydrogen( atoms, ifw, ilf ):
 def nameToTyp( s ):
     return s.split('-')[0].replace("O", "e" ).replace("N", "e" )
 
-def saveMolGUIscript(name, inds, path="./", amargin=5.0, bBoncConstr=True, bAngConstr=True ):
+def saveMolGUIscript(name, inds, cls='HHH', path="./", amargin=5.0, bBoncConstr=True, bAngConstr=True ):
     fsh = open( path+name+".sh", 'w')
-    fsh.write(f"../../cpp/Build/apps/MolecularEditor/MolGUIapp -x {name} -b {name}.hbonds -dlvec {-amargin},0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
+    fsh.write(f"./MolGUIapp -x {name} -b {name}.hbonds -dlvec {-amargin},0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0\n")
     fsh.close()
     fhb = open( path+name+".hbonds", 'w')
 
@@ -87,10 +87,15 @@ def saveMolGUIscript(name, inds, path="./", amargin=5.0, bBoncConstr=True, bAngC
     # write constrains for /home/prokop/git/FireCore/cpp/common/molecular/constrains.h
     if bBoncConstr:
         # sscanf( line, "b %i %i      %lf %lf       %lf %lf   %lf    %lf %lf %lf",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,  &cons.ks.a,&cons.ks.b,  &cons.flim, &cons.shift.a,&cons.shift.b,&cons.shift.c );
-        for i in range(len(inds[0])): fhb.write( "%i %i 1.7 1.5    5.0 0.0     1.0 0.0 0.0   10.0 \n" %(inds[0][i],inds[1][i]) ) 
+        for i in range(len(inds[0])): fhb.write( "b %4i %4i 1.7 1.5    5.0 0.0  10.0   1.0 0.0 0.0 \n" %(inds[0][i],inds[1][i]) ) 
     if bAngConstr:
         # sscanf( line, "g %i %i %i   %lf %lf %lf   %i %i %i  %i %i %i",    &cons.ias.a,&cons.ias.b,&cons.ias.c,   &ang,   &cons.k,   &cons.flim,   &cons.acell.a,&cons.acell.b,&cons.acell.c,   &cons.bcell.a,&cons.bcell.b,&cons.bcell.c );
-        for i in range(len(inds[0])): fhb.write( "%i %i %i  180.0 1.5 10.0  0 0 0    -1 0 0  \n" %(inds[0][i],inds[1][i],inds[2][i]+1) )  
+        #for i in range(len(inds[0])): fhb.write( "g %4i %4i %4i  180.0 1.5 10.0  0 0 0    -1 0 0  \n" %(inds[0][i],inds[1][i],inds[2][i]) )  
+        for i in range(len(inds[0])):
+            if cls[i]=='H':
+                fhb.write( "g %4i %4i %4i  180.0 1.5 10.0  1 0 0    0 0 0  \n" %(inds[0][i],inds[1][i],inds[2][i]) ) 
+            else: 
+                fhb.write( "g %4i %4i %4i  180.0 1.5 10.0  -1 0 0    0 0 0  \n" %(inds[1][i],inds[0][i],inds[2][i]) )
     fhb.close()
 
 def load_groups( names, folder="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/", dir_meta=None, dir_relax=None ):
