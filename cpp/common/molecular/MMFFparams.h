@@ -791,6 +791,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         //printf( "MM::Params::writeXYZ() nPBC={%i,%i,%i}\n", nPBC.x,nPBC.y,nPBC.z );
         for(int ic=0;ic<nPBC.z;ic++){ for(int ib=0;ib<nPBC.y;ib++){ for(int ia=0;ia<nPBC.x;ia++){
             Vec3d shift = lvec.a*ia + lvec.b*ib + lvec.c*ic; 
+            //printf( "MM::Params::writeXYZ() iPBC(%i,%i,%i) shift(%g,%g,%g)\n", ia,ib,ic, shift.x,shift.y,shift.z );
             //// //////////////------------------- 
         for(int i=0; i<n; i++){
             //printf( "DEBUG writeXYZ()[%i] \n", i );
@@ -803,7 +804,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
                 symbol =  etypes[ atypes[ityp].element ].name;
             }
             if(byName){ symbol = atomTypeNames[ityp].c_str(); }
-            //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, params->atypes[ityp].name );
+            //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, atypes[ityp].name );
             if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", symbol, pi.x,pi.y,pi.z, REQs[i].z ); }
             else    { fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f \n"          , symbol, pi.x,pi.y,pi.z            ); }
         }
@@ -816,8 +817,8 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
     }
 
     int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity ){
+        //printf( "MMFFparams::saveXYZ(%s) \n", fname );
         FILE* pfile = fopen(fname, mode );
-        //printf( "saveXYZ(%s) \n", fname );
         if( pfile == NULL ) return -1;
         writeXYZ( pfile, n, atyps, apos, comment, REQs, just_Element, 0, nPBC, lvec );
         fclose(pfile);

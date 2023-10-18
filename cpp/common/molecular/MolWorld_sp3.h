@@ -44,6 +44,9 @@ static MMFFparams* params_glob;
 
 #include "datatypes_utils.h"
 
+#include "arrayAlgs.h"
+#include "SVG_render.h"
+
 class MolWorld_sp3 : public SolverInterface { public:
     const char* data_dir     = "common_resources";
     const char* xyz_name     = "input";
@@ -96,6 +99,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     GlobalOptimizer gopt;
 
     GridShape MOgrid;
+
+    SVG_render svg;
 
     int  iterPerFrame=50;
     int  iParalel=0; 
@@ -173,6 +178,97 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     //int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
+
+
+// ========== Render to SVG
+
+void renderSVG( const char* fname, Vec3d nPBC=Vec3d{0,0,0}, Mat3d rotMat=Mat3dIdentity, bool bAtoms=true, bool bBonds=true, bool bCaps=true, bool bAtomIndex=false, float Rsc=0.25, float Rsub=0.5 ){
+    
+    svg.rot = rotMat;
+    Vec3d cog =  cog_bbox( ffl.natoms, ffl.apos );  svg.cog = cog;
+
+    char str[256];
+
+    int na = ffl.nnode;
+    if(bCaps) na = ffl.natoms; 
+    svg.findViewport( na, ffl.apos );
+    svg.open(fname);
+
+    //bool bOrig = true;
+
+    // order of rendering:    arrange atoms from back to front (using z-order in the current view)
+    std::vector<int>   z_order(na);
+    std::vector<float> zs     (na);
+    for(int ia=0; ia<na; ia++){ 
+        Vec3d p; rotMat.dot_to( ffl.apos[ia], p );
+        zs     [ia] = p.z; 
+        z_order[ia] = ia;
+    }
+    //sort( z_order.begin(), z_order.end(), [&zs](int i1, int i2){ return zs[i1]<zs[i2]; } ); // sort indexes by z
+    quickSort<float>( &zs[0], &z_order[0], 0, na-1 );
+
+    for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+        for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+            for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                svg.cog = cog + ffl.lvec.a*ix + ffl.lvec.b*iy + ffl.lvec.c*iz;
+                printf( "ix,iy,iz %i %i %i cog(%g,%g,%g) \n", ix,iy,iz, svg.cog.x,svg.cog.y,svg.cog.z );
+                bool bOrig = (ix==0)&&(iy==0)&&(iz==0);
+
+                // --- bonds
+                if(bBonds){
+                    svg.stroke_opacity = 1.0;
+                    svg.stroke_width   = 3.0;
+                    svg.beginPath();
+                    for(int ia=0; ia<na;    ia++){
+                        for(int j=0; j<4; j++){
+                            int ib = ffl.neighs[ia].array[j];
+                            if (ib<0)                         continue; 
+                            if ( (!bCaps) && (ia>ffl.nnode) ) continue;
+                            svg.path_move( ffl.apos[ia] );
+                            Vec3d pj = ffl.apos[ib];
+                            if(ffl.shifts) pj.add( ffl.shifts[ffl.neighCell[ia].array[j]]);
+                            svg.path_line( pj );
+                        }
+                    }
+                    svg.endPath();
+                }
+
+                // --- atoms
+                svg.stroke_width   = 1.0;
+                svg.stroke_opacity = 0.5;
+                const char* atom_style = "atom_style";
+                svg.writeCurrentStyle( atom_style );
+                if(bAtoms){
+                    for(int i=0; i<na; i++){
+                        int ia = z_order[i]; 
+                        //int ia = i;
+                        //printf( "zorder[i=%i] ia=%i \n", i, ia );
+                        int it         = ffl.atypes[ia];
+                        svg.color_fill = params_glob->atypes[it].color;
+                        float r        = (params_glob->atypes[it].RvdW-Rsub)*Rsc; 
+                        svg.drawCircle( ffl.apos[ia], r, atom_style ); 
+                    }
+                }
+                
+                if(bOrig & bAtomIndex){
+                    const char* label_style = "label_style";
+                    svg.beginStyle( label_style );
+                    svg.print("font-family: \"DejaVu Mono, monospace\"\n");
+                    svg.print("font-size: 20\n");
+                    svg.print("fill: #000000\n");
+                    svg.endStyle();
+                    svg.color_fill = 0x000000;
+                    svg.font_size = 15;
+                    for(int ia=0; ia<ffl.natoms;    ia++){
+                        sprintf(str,"%i",ia);
+                        if(bAtomIndex) svg.drawText( str, ffl.apos[ia], label_style );
+                    }
+                }
+    
+    }}}
+    svg.close();
+}
+
 
 // ===============================================
 //       Implement    SolverInterface
@@ -1243,7 +1339,11 @@ int toXYZ(const char* comment="#comment", bool bNodeOnly=false, FILE* file=0, bo
     return 0;
 }
 
-int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs, mode, true, nPBC, ffl.lvec ); }
+int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
+    char str_tmp[1024];
+    sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment );
+    return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, str_tmp, nbmol.REQs, mode, true, nPBC, ffl.lvec ); 
+}
 //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
 //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs ); }
 

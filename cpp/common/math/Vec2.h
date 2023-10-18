@@ -163,6 +163,19 @@ class Vec2T{
 
 	inline void enclose(T v){ x=fmin(x,v); y=fmax(y,v); }
 
+
+    inline bool isLower  ( const VEC& vmax ) const { return (x<vmax.x)&&(y<vmax.y); }
+    inline bool isGreater( const VEC& vmin ) const { return (x>=vmin.x)&&(y>=vmin.y); }
+    inline bool isBetween( const VEC& vmin, const VEC& vmax ) const { return (x>=vmin.x)&&(x<vmax.x)&&(y>=vmin.y)&&(y<vmax.y); }
+
+    inline VEC& setIfLower  (const VEC& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y; return *this; }
+    inline VEC& setIfGreater(const VEC& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y; return *this; }
+    inline void update_bounds(VEC& pmin,VEC& pmax)const{ 
+        if ( x < pmin.x ){ pmin.x=x; } else if ( x > pmax.x ){ pmax.x=x; };
+        if ( y < pmin.y ){ pmin.y=y; } else if ( y > pmax.y ){ pmax.y=y; };
+        //return *this;
+    }
+
 	// === static functions:
 
 	static inline T dot      (VEC& a, VEC& b){ return a.x*b.y - a.y*b.x; };
