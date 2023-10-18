@@ -104,7 +104,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Quat4f testPLQ;
 
 
-    Mat3d dlvec{ 0.1,0.0,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
+    Mat3d dlvec { 0.1,0.0,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
+    Mat3d dlvec2{ 0.0,0.1,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
     Vec2f mouse_pix;
 
     // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
@@ -1153,11 +1154,17 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_HOME:     break;
                 //case SDLK_END:      break;
 
-                case SDLK_PAGEUP  : W->iParalel=_clamp(W->iParalel+1,W->iParalelMin,W->iParalelMax); break;
-                case SDLK_PAGEDOWN: W->iParalel=_clamp(W->iParalel-1,W->iParalelMin,W->iParalelMax); break;
+                //case SDLK_PAGEUP  : W->add_to_lvec( dlvec2     ); break;
+                //case SDLK_PAGEDOWN: W->add_to_lvec( dlvec2*-1  ); break;
+
+                case SDLK_0:      W->add_to_lvec( dlvec2     ); break;
+                case SDLK_9:      W->add_to_lvec( dlvec2*-1  ); break;
 
                 case SDLK_COMMA:  W->add_to_lvec( dlvec    ); break;
                 case SDLK_PERIOD: W->add_to_lvec( dlvec*-1 ); break;
+
+                case SDLK_SEMICOLON:    afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
+                case SDLK_QUOTE:        afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
                 //case SDLK_LESS:    which_MO--; printf("which_MO %i \n"); break;
                 //case SDLK_GREATER: which_MO++; printf("which_MO %i \n"); break;
@@ -1176,7 +1183,15 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     fclose(file);
                     } break;
 
-                case SDLK_p: saveScreenshot( frameCount ); break;
+                //case SDLK_p: saveScreenshot( frameCount ); break;
+                case SDLK_p:{ 
+                    saveScreenshot( frameCount );
+                    W->renderSVG( "screenshot.svg",     {0,0,0}, Mat3dIdentity );
+                    W->renderSVG( "screenshot_2x2.svg", {1,1,0}, Mat3dIdentity );
+                    W->saveXYZ( "screenshot.xyz",     "#comment", false, "w", {1,1,1} );
+                    W->saveXYZ( "screenshot_3x3.xyz", "#comment", false, "w", {3,3,1} );
+                }break;
+
                 case SDLK_h:{
                     //int iMO = which_MO;
                     int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
@@ -1221,11 +1236,11 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_KP_MULTIPLY:  afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 case SDLK_KP_DIVIDE:    afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
                 
-                case SDLK_SEMICOLON:    afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
-                case SDLK_QUOTE:        afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
+                //case SDLK_SEMICOLON:    afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
+                //case SDLK_QUOTE:        afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
-                case SDLK_0:            afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
-                case SDLK_9:            afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
+                //case SDLK_0:            afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
+                //case SDLK_9:            afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
                 case SDLK_LEFTPAREN:    afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 case SDLK_RIGHTPAREN:   afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;

@@ -88,7 +88,7 @@ for pairTyp in pairTypes:
             BB_.saveXYZ( odir+"/2x2/"+name+"_2x2.xyz", comment=comment )
 
             if len(inds1)==len(inds2):
-                pu.saveMolGUIscript( name, (inds1,inds2), path="./out/", amargin=amargin-3.0 )
+                pu.saveMolGUIscript( name, (inds1,inds2,inds1b), path="./out/", amargin=amargin-3.0 )
 
             
             fig = plt.figure(figsize=(16,4))
@@ -107,4 +107,5 @@ for pairTyp in pairTypes:
 
             plt.tight_layout()
             plt.savefig( odir+name+".png", bbox_inches='tight' )
+            plt.savefig( odir+name+".svg", bbox_inches='tight' )
             plt.close(fig)
