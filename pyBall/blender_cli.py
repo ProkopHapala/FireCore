@@ -73,6 +73,28 @@ def create_sun_light(location: Tuple[float, float, float] = (0.0, 0.0, 5.0),
     if name is not None: obj.name = name
     return obj
 
+
+def build_environment_texture_background(world: bpy.types.World, hdri_path: str, rotation: float = 0.0) -> None:
+    world.use_nodes = True
+    node_tree = world.node_tree
+
+    environment_texture_node = node_tree.nodes.new(type="ShaderNodeTexEnvironment")
+    environment_texture_node.image = bpy.data.images.load(hdri_path)
+
+    mapping_node = node_tree.nodes.new(type="ShaderNodeMapping")
+    if bpy.app.version >= (2, 81, 0):
+        mapping_node.inputs["Rotation"].default_value = (0.0, 0.0, rotation)
+    else:
+        mapping_node.rotation[2] = rotation
+
+    tex_coord_node = node_tree.nodes.new(type="ShaderNodeTexCoord")
+
+    node_tree.links.new(tex_coord_node.outputs["Generated"], mapping_node.inputs["Vector"])
+    node_tree.links.new(mapping_node.outputs["Vector"], environment_texture_node.inputs["Vector"])
+    node_tree.links.new(environment_texture_node.outputs["Color"], node_tree.nodes["Background"].inputs["Color"])
+
+    #arrange_nodes(node_tree)
+
 # =============================================================================
 # Constraints
 # =============================================================================
@@ -289,6 +311,7 @@ def set_output_properties(scene: bpy.types.Scene,
     if output_file_path:
         scene.render.filepath = output_file_path
 
+'''
 def set_cycles_renderer(scene: bpy.types.Scene,
                         camera_object: bpy.types.Object,
                         num_samples: int,
@@ -322,6 +345,55 @@ def set_cycles_renderer(scene: bpy.types.Scene,
     for d in bpy.context.preferences.addons["cycles"].preferences.devices:
         print("- {}".format(d["name"]))
     print("----")
+'''
+
+def set_renderer(scene: bpy.types.Scene,
+                        camera_object: bpy.types.Object,
+                        num_samples: int,
+                        use_denoising: bool = True,
+                        use_motion_blur: bool = False,
+                        use_transparent_bg: bool = False,
+                        prefer_cuda_use: bool = True,
+                        use_adaptive_sampling: bool = True,
+                        engine : str ='CYCLES'
+                        ) -> None:
+    scene.camera = camera_object
+    scene.render.image_settings.file_format = 'PNG'
+    scene.render.engine = engine
+
+    scene.render.use_motion_blur  = use_motion_blur
+    scene.render.film_transparent = use_transparent_bg
+    scene.view_layers[0].cycles.use_denoising = use_denoising
+
+    if engine == 'CYCLES':
+        scene.cycles.use_adaptive_sampling = use_adaptive_sampling
+        scene.cycles.samples = num_samples
+        # Enable GPU acceleration
+        # Source - https://blender.stackexchange.com/a/196702
+        if prefer_cuda_use:
+            bpy.context.scene.cycles.device = "GPU"
+            # Change the preference setting
+            bpy.context.preferences.addons["cycles"].preferences.compute_device_type = "CUDA"
+        # Call get_devices() to let Blender detects GPU device (if any)
+        bpy.context.preferences.addons["cycles"].preferences.get_devices()
+        # Let Blender use all available devices, include GPU and CPU
+        for d in bpy.context.preferences.addons["cycles"].preferences.devices:
+            d["use"] = 1
+        # Display the devices to be used for rendering
+        print("The following devices will be used for path tracing:")
+        for d in bpy.context.preferences.addons["cycles"].preferences.devices:
+            print("- {}".format(d["name"]))
+    elif engine == 'BLENDER_EEVEE':
+        eevee = bpy.context.scene.eevee
+        eevee.use_soft_shadows = True
+        eevee.use_ssr = True
+        eevee.use_ssr_refraction = True
+        eevee.use_gtao = True
+        eevee.gtao_distance = 1
+        eevee.use_volumetric_shadows = True
+        eevee.volumetric_tile_size = '2'
+
+
 
 def clean_objects() -> None:
     for item in bpy.data.objects:
@@ -569,17 +641,30 @@ def make_bonds( ps, bonds, r=1., mat=None, c=(128,128,128), names=None ):
         o.active_material = mat 
     return bpy.data.objects[ "bond_0" ]
 
-def finishScene( cam_target, cam_pos=(0.0, 0.0, 100.0), sun_dir=(0.0,0.0,-1.0), sun_energy=10.0, light_size=None, light_pos=(5.0,5.0,10.0), lens=50.0, fname_render="./out/render.png", fname_blend="tmp.blend",  resolution_percentage=100, num_samples=128 ):
+def set_background_color( color ):
+    world = bpy.context.scene.world
+    world.use_nodes = True
+    shader_node = world.node_tree.nodes.get('Background')
+    if shader_node:
+        shader_node.inputs['Color'].default_value = color
+    else:
+        print("Background shader node not found.")
+
+def finishScene( cam_target, cam_pos=(0.0, 0.0, 100.0), sun_dir=(0.0,0.0,-1.0), sun_energy=10.0, light_size=None, light_pos=(50.0,50.0,100.0), lens=50.0, fname_render="./out/render.png", fname_blend="tmp.blend",  resolution_percentage=100, num_samples=128, bLight=True, background_color=(0,0,0,1), bCycles=True ):
     cam = create_camera(location=cam_pos )
     add_track_to_constraint(cam,      cam_target )
     set_camera_params      (cam.data, cam_target, lens=lens )
-    
-    if light_size is not None:
-        create_area_light(location=light_pos, rotation=sun_dir, size=light_size, color=(1.0,1.0,1.0,1.0),energy=sun_energy*100.0 )
-    elif sun_dir is not None: 
-        create_sun_light( rotation=sun_dir, energy=sun_energy )
+    set_background_color( background_color )
+    if bLight:
+        if light_size is not None:
+            create_area_light(location=light_pos, rotation=sun_dir, size=light_size, color=(1.0,1.0,1.0,1.0),energy=sun_energy*100.0 )
+        elif sun_dir is not None: 
+            create_sun_light( rotation=sun_dir, energy=sun_energy )
 
     scene = bpy.data.scenes["Scene"]
     bpy.ops.wm.save_as_mainfile(filepath="tmp.blend")
     set_output_properties(scene, resolution_percentage, fname_render)
-    set_cycles_renderer  (scene, cam, num_samples)
+    if bCycles:
+        set_renderer(scene, cam, num_samples,engine='CYCLES' )
+    else:
+        set_renderer(scene, cam, num_samples,engine='BLENDER_EEVEE' )
