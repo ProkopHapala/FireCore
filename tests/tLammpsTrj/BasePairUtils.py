@@ -355,6 +355,9 @@ def try_all_combs( Emap, alphabets, pairs, dEmin=4.0, bCheck=True ):
            
     return  alphabets_new
 
+def inds2names( inds, names ):
+    return (names[inds[0]],names[inds[1]])
+
 def alphabet2names( alph, names ):
     return [ (names[a[0]],names[a[1]]) for a in alph ]
 
@@ -376,19 +379,15 @@ def print_sorted_alphabets( Emap, alphabets, dEmin=4.0, nMax=1000000, names=None
     alphabets = [  (check_min_gap(Emap, np.array(list(a))), a )  for a in alphabets ]
     alphabets.sort( key = lambda a: -a[0] )
     for i,(dE,a) in enumerate(alphabets):
-        print( "alphabet_%03i %10.5f " %(len(a), dE), end =" ")
+        print( "alphabet_%03i %10.2f " %(len(a), dE), end =" ")
         if( names is not None ):
-            a = alphabet2names( a, names )
-        for p in a: print(p,             end =" ")
+            aa = alphabet2names( a, names )
+            e = [ Emap[n[0],n[1]] for n in a ]
+        for j,p in enumerate(aa): print(p, "%10.2f" %-e[j],             end =" ")
         print("")            
         if(i+1>=nMax): break
 
-
-
-        
-
-
-def findAlphabetsForRange( Emap, EbindRange, dEmin=4.0, nPairMax=4,E_contrast=None, verbosity=1, nMax=1000000, names=None ):
+def findAlphabetsForRange( Emap, EbindRange, dEmin=4.0, nPairMax=4,E_contrast=None, verbosity=1, nMax=1000000, nMax2=5, names=None ):
     
     if E_contrast is None: E_contrast = uu.makeEcontrast( Emap )
     
@@ -404,10 +403,10 @@ def findAlphabetsForRange( Emap, EbindRange, dEmin=4.0, nPairMax=4,E_contrast=No
 
     alphs = { frozenset( [ p ] ) for p in pairs }                    #;print( "alphs1 ", alphs1 ) 
     if len(alphs)>0: levels.append( alphs )
-    if verbosity>0:
+    if (verbosity>0) and (nMax2>0):
         print("#### Alphabets(m_pairs=%i) found(%i) EB(%g,%g) dE>%g " %(1,len(alphs),EbindRange[0],EbindRange[1],dEmin) ); 
         #print_all_alphabets( alphs, Emap=Emap )
-        print_sorted_alphabets( Emap, alphs, dEmin=dEmin, nMax=nMax, names=names )
+        print_sorted_alphabets( Emap, alphs, dEmin=dEmin, nMax=nMax2, names=names )
 
     for npair in range(2,nPairMax+1):
         alphs = try_all_combs( Emap, alphs, pairs, dEmin=dEmin ) 
@@ -420,7 +419,7 @@ def findAlphabetsForRange( Emap, EbindRange, dEmin=4.0, nPairMax=4,E_contrast=No
             #print_all_alphabets( alphs, Emap=Emap )
             print_sorted_alphabets( Emap, alphs, dEmin=dEmin, nMax=nMax, names=names )
     
-    return alphs, inds
+    return levels, inds
         
 
 
