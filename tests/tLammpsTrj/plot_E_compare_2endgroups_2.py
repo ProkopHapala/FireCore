@@ -18,14 +18,10 @@ import BasePairUtils as bpu
 
 dEcontrast_min = 10.0
 
-
-
-
-
 #f_geoms="/home/prokop/Desktop/CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/2-plot_confs/dirs/"
 #f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/endgroups/"
-f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/B3LYP_oriented/"
-dir_geom="/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/pairs_b3lyp/confs/"
+f_egs    = "/home/prokop/Desktop/CARBSIS/Paolo/endgroups/B3LYP_oriented/"
+dir_geom = "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/pairs_b3lyp/confs/"
 
 '''
 # ----- DD
