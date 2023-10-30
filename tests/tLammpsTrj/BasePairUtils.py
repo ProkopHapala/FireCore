@@ -47,6 +47,7 @@ def read_dat( fname, ni=0, nf=1, iname=0, toRemove=None ):
     nc = ni+nf+2 # number of columns in the file
     for l in f:
         ws = l.split()
+        if len(ws)<1: continue
         nw = len(ws)
         if(nw<nc):
             ints_i    = [-1    ]*ni
@@ -387,17 +388,24 @@ def print_sorted_alphabets( Emap, alphabets, dEmin=4.0, nMax=1000000, names=None
         print("")            
         if(i+1>=nMax): break
 
-def findAlphabetsForRange( Emap, EbindRange, dEmin=4.0, nPairMax=4,E_contrast=None, verbosity=1, nMax=1000000, nMax2=5, names=None ):
+def findAlphabetsForRange( Emap, EbindRange, dEmin=4.0, nPairMax=4,E_contrast=None, verbosity=1, nMax=1000000, nMax2=5, names=None, excluded_names=None ):
     
     if E_contrast is None: E_contrast = uu.makeEcontrast( Emap )
     
     # --- select basepairs within EbindRange with minumum contrast dEmin
     mask   = np.logical_and( E_contrast > dEmin, np.logical_and( Emap>EbindRange[0], Emap<EbindRange[1] ) )   #;print("mask ", mask)
     inds   = np.where( mask );                                       #; print( "inds:\n", inds )
+
+    #print( "inds", inds )
+    #if excluded_names is not None:
+    #    inds = np.array( [ p for p in inds if (names[p[0]] not in excluded_names) and (names[p[1]] not in excluded_names) ])
     
     #ind1d  = np.union1d( inds[0], inds[1] )                          #; print( "\nind1d:\n", ind1d )
     #pairs  = [ (i[0],i[1]) for i in np.array(inds).transpose() if i[0]!=i[1] ]    #; print( "pairs ", pairs ) 
     pairs  = [ (i[0],i[1]) for i in np.array(inds).transpose() if (i[0]<i[1]) ]    #; print( "pairs ", pairs ) 
+
+    if excluded_names is not None:
+        pairs = [ p for p in pairs if (names[p[0]] not in excluded_names) and (names[p[1]] not in excluded_names) ]
 
     levels = []
 
