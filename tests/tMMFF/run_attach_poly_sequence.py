@@ -21,11 +21,20 @@ folder    = "/home/prokop/Desktop/CARBSIS/Paolo/endgroups/"
 dir_meta  = folder+"endgroups/"
 dir_relax = folder+"endgroups_relaxed/mols/"
 
-
+'''
 sequence = [
 ("HNH-h","OHO-h_1"),
 ("OHO-h_1","HNH-h"),
 ("HNH-h","OHO-h_1"),
+]
+'''
+
+sequence = [
+('OHO-h-p','HNH-hh' ),    
+('HNH-hh', 'OHO-h-p'),
+('HH-hh-p','NNN-hhh'),
+('HH-hh-p','NNN-hhh'),
+('NNN-hhh','HH-hh-p'),
 ]
 
 
@@ -77,11 +86,15 @@ inds3_ = []
 cls_=""
 for i,pair in enumerate(sequence):
     name1,name2 = pair
+    print( "pair ", i, name1,name2 )
     BB, inds1, inds2 = pu.attachPair( B, name1, name2, group_dict, amargin=amargin )
 
     # find the indices of nitrogen atoms which are hydrogen bond donors
-    cls1   = bpu.name_to_class( name1 )
-    inds_  = [ inds1[i] if cls1[i]=='H' else inds2[i] for i in range(len(inds1)) ]    ;print(  "inds_ ",  inds_ )
+    cls1   = bpu.name_to_class( name1 )    
+    nmin=min(len(inds1),len(inds2))
+    inds_  = [ inds1[i] if cls1[i]=='H' else inds2[i] for i in range(nmin) ]    ;print(  "inds_ ",  inds_ )
+
+    #print( "inds_",  [ (i, BB.enames[i]) for i in inds_ ] )
     inds3 = BB.getNeighsOfType( inds_, typ='N')
     inds3 = [ a[0] for a in inds3 ]
 
@@ -95,9 +108,9 @@ for i,pair in enumerate(sequence):
         BBB.append_atoms( BB )
         #BBB.lvec[1,:] += B.lvec[1,:] 
     print(  "inds1, inds2, inds3 ", len(inds1), len(inds2), len(inds3),  inds1, inds2, inds3 )
-    inds1_ += [ i0+j for j in inds1 ]
-    inds2_ += [ i0+j for j in inds2 ]
-    inds3_ += [ i0+j for j in inds3 ]
+    inds1_ += [ i0+j for j in inds1[:nmin] ]
+    inds2_ += [ i0+j for j in inds2[:nmin] ]
+    inds3_ += [ i0+j for j in inds3[:nmin] ]
     cls_+=cls1
 
     #monomers.append( BB )
@@ -118,7 +131,7 @@ for i,pair in enumerate(sequence):
     '''
     
 print(  "inds1, inds2, inds3 ", inds1_, inds2_, inds3_ )
-BBB.lvec[1,:] = B.lvec[1,:]*3
+BBB.lvec[1,:] = B.lvec[1,:]*len(sequence)
 BBB.findBonds( )
 
 BBB.saveXYZ( "./out/"+out_name+".xyz", comment=" Hbonds={'X':"+str(inds1_)+",'Y':"+str(inds2_)+"'N':"+str(inds3_)+"}" )

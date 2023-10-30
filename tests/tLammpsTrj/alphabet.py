@@ -117,6 +117,20 @@ for key in keys:
     names+=name_dct[key]
 
 
+
+excluded_names = [
+#--- H
+'H-h_1',
+'H-h_2',
+'H-hh',
+'H-p',
+#--- e
+'N-hh',
+'N-h',
+'O-h',
+'O-p',
+]
+
     
 Es         = bpu.load_dict( "/home/prokop/Desktop/CARBSIS/Paolo/correlations/binding_energy.dat" )
 Emin_dct   = bpu.find_E_min( Es )
@@ -157,7 +171,7 @@ inds=[]
 for E0 in Eranges:
     print( "\n################## Erange (%g,%g) dE %g" %(E0-Espan,E0+Espan,dEmin) )
     #alphs, ind = bpu.findAlphabetsForRange( Emap, EbindRange=(E0-Espan,E0+Espan), dEmin=dEmin, nPairMax=4, E_contrast=E_contrast, verbosity=1, names=names )
-    levels, ind = bpu.findAlphabetsForRange( Emap, EbindRange=(E0-Espan,E0+Espan), dEmin=dEmin, nPairMax=4, E_contrast=E_contrast, verbosity=1, names=names, nMax2=0 )
+    levels, ind = bpu.findAlphabetsForRange( Emap, EbindRange=(E0-Espan,E0+Espan), dEmin=dEmin, nPairMax=4, E_contrast=E_contrast, verbosity=1, names=names, nMax2=5, excluded_names=excluded_names )
 
     l4  = None
     if len(levels)>1:
@@ -206,6 +220,8 @@ plt.scatter( Emap_*-1., E_contrast_, c='k', s=1.0 )
 #colors = [ 'b', 'r', 'g', 'b', 'c', 'k', 'k', 'k', 'k', 'k', 'k' ]
 colors = [ 'k', 'k', 'k','k','k','k', 'c', 'b', 'g', 'r' ]
 
+colors = [ 'k', 'k', 'k','k','k','k', 'k', 'k', 'k', 'k' ]
+
 for i,E0 in enumerate( Eranges):
     # plt lines between indexes stored in l4
     l4 = L4s[i]
@@ -215,7 +231,7 @@ for i,E0 in enumerate( Eranges):
         for p1,p2 in l4:
             #print( "p1,p2", p1,p2 )
             c = colors[i]
-            plt.plot( [Emap[p1[0],p1[1]]*-1., Emap[p2[0],p2[1]]*-1.], [E_contrast[p1[0],p1[1]], E_contrast[p2[0],p2[1]]], 'o-', ms=3, color=c, lw=0.5 )
+            plt.plot( [Emap[p1[0],p1[1]]*-1., Emap[p2[0],p2[1]]*-1.], [E_contrast[p1[0],p1[1]], E_contrast[p2[0],p2[1]]], 'o-', ms=3, color=c, lw=0.7 )
 
 
 #for ind in inds:
