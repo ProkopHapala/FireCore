@@ -37,8 +37,8 @@ class AngleType{ public:
 
 class DihedralType{ public:
     Quat4i atoms;
-    int    bo;
-    int    n;
+    int    bo; // bond order of central atoms
+    int    n; 
     double k;
     double ang0;
 
@@ -50,18 +50,19 @@ class DihedralType{ public:
 
 
 class ElementType{ public:
-    char      name[4];
-    uint8_t   iZ;
+    char      name[4];    // symbol
+    uint8_t   iZ;         // atomic number
     uint8_t   neval;      // number of valence electrons
     uint8_t   valence;    // sum of bond orders of all bonds
-    uint32_t  color;
-    double    RvdW;
-    double    EvdW;
-    double    Quff;
-
-    // QEq
-    bool   bQEq;
-    double Eaff,Ehard,Ra,eta;
+    uint32_t  color;      // color
+    double    RvdW;       // LJ distance parameter
+    double    EvdW;       // LJ energy parameter
+    double    Quff;       // effective charge in UFF
+    bool      bQEq;       // flag to see if QEq params are provided
+    double    Eaff;       // electronegativity
+    double    Ehard;      // chemical hardness
+    double    Ra;         // atomic size
+    double    eta;        // valence orbital exponent
 
     char* toString( char * str, bool bParams=false )const{
         str         +=sprintf( str, "%s %i %i %i %x", name,  iZ, neval, valence, color );
@@ -80,36 +81,31 @@ class ElementType{ public:
 };
 
 class AtomType{ public:
-    char      name[8];
-    uint8_t   iZ;         // proton number
+    char      name[8];    // symbol
+    uint8_t   iZ;         // atomic number
     uint8_t   valence;    // sum of bond orders of all bonds
     uint8_t   nepair;     // number of electron pairs
     uint8_t   npi;        // number of pi orbitals
+    // TBD to check about this, it can be useful for UFF...
     uint8_t   sym;        // sp3=0,sp2=1, sp1=2,  ... tetrahedral, triangle, linear, kink, square, octahedral
-    uint32_t  color;
+    uint32_t  color;      // color
     double    Ruff;       // UFF natural bond radius
-    double    RvdW;       // van der Waals potential minimum position
-    double    EvdW;       // van der Waals potential minimum energy
-    double    Qbase;      // base charge
+    double    RvdW;       // LJ distance parameter
+    double    EvdW;       // LJ energy parameter
+    double    Qbase;      // atomic charge
     double    Hb;         // hydrogen bond correction
-    int       parrent;
-    int       element;
-    int       ePairType;
-    // ---- MMFF
-    bool bMMFF;
-    double  Ass,Asp, Kss,Ksp,Kep,Kpp;
-
+    int       parrent;    // parent type
+    int       element;    // corresponding element type
+    int       ePairType;  // type of lone pair owned
+    bool      bMMFF;      // flag to see if MMFF params are provided
+    double    Ass;        // equilibrium angle value for sigma-sigma interaction (angle bending)
+    double    Asp;        // equilibrium angle value for sigma-pi interaction
+    double    Kss;        // force constant for sigma-sigma interaction (angle bending)
+    double    Ksp;        // force constant for sigma-pi interaction
+    double    Kep;        // force constant for pi-lone pair interaction
+    double    Kpp;        // force constant for lone pair-lone pair interaction
+    // TBD to get rid of it?
     Vec3i     subTypes=Vec3iZero;  // sp1 sp2 sp3    // Q1 Q2 Q3 (polarized)
-    
-    //double  eRvdW,eEvdW,eQ;  // electron pair REQ parameters
-    // ---- charge equlibration
-    //bool   bQEq;
-    //double Eaff,Ehard,Ra,eta;
-    // ==== additional
-    //double    piStiff;
-    //double    electroneg;
-    //double    polarizability;
-
 
     char* toString( char * str, bool bParams=false )const{
         str         +=sprintf( str, "%s %i %i %i %i %i", name,  iZ,  valence, nepair,npi,sym );
@@ -145,7 +141,7 @@ static const int z2typ0[]{
 
 class MMFFparams{ public:
 
-    // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html
+    // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html LINK EXPIRED
     
     std::vector       <ElementType>        etypes;
     std::vector       <AtomType>           atypes;
@@ -175,156 +171,34 @@ class MMFFparams{ public:
     bool reportIfMissing=true;
     bool exitIfMissing  =true;
 
-    void initDefaultAtomTypeDict(){
-        makeDefaultAtomTypeDict( atomTypeNames, atomTypeDict );
-    }
-
-    void printAtomTypeDict()const{
-        for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict.find(atypes[i].name)->second );  };
-    }
-    
-    void printElementTypeDict()const{
-        for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict.find(etypes[i].name)->second );  };
-    }
-
-    int getAtomType(const char* s, bool bErr=true)const{
-        //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
-        auto found = atomTypeDict.find(s);
-        if(found==atomTypeDict.end()){ 
-            if(bErr){ printf( "ERROR: MMFFparams::getAtomType(%s) not found !!! => exit() \n", s ); printAtomTypeDict(); exit(0); }
-            return -1; 
-        }
-        return found->second;
-    }
-
-    int getElementType(const char* s, bool bErr=true)const{
-        //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
-        auto found = elementTypeDict.find(s);
-        if(found==elementTypeDict.end()){ 
-            if(bErr){ printf( "ERROR: MMFFparams::getElementType(%s) not found !!! => exit() \n", s ); printAtomTypeDict(); exit(0); }
-            return -1; 
-        }
-        return found->second;
-    }
-
-    inline const ElementType* elementOfAtomType( int it )const{ return &etypes[atypes[it].element]; }
-
-    const AtomType* getRootParrent(const AtomType* t, int nrecur=0)const{
-        if(nrecur>10){ printf("ERROR in MMFFparams.getRootParrent() rootParrent of type(%s) not found in %i recursions => Exit() \n", t->name, nrecur ); exit(0); }
-        if( t->parrent==0 ) return t;
-        if( (t->parrent<0)||(t->parrent>=atypes.size()) ){ printf("ERROR in MMFFparams.getRootParrent() type(%s).parrent==%i => Exit() \n", t->name,t->parrent ); exit(0); }
-        const AtomType* par = &atypes[t->parrent];
-        return getRootParrent(par,nrecur+1); // recursion
-    }
-
-    void string2AtomType(const char * str, AtomType& atyp ){
-        char      parent_name[8];
-        char      epair_name[8];
-        char      element_name[4];
-        int iZ_, neval_, valence_, nepair_, npi_, sym_;
-        //char sclr[6];           1           2           3        4        5        6        7         8            9           10            11           12        13          14        15         16         17         18        19         20           21          22        23
-        //int nret = sscanf( str, " %s         %s           %i      %i       %i        %i      %lf       %lf          %x            %lf          %lf          %lf       %lf         %lf       %lf        %lf       %lf        %lf       %lf         %i           %lf         %lf      %lf ", 
-        //                         atyp.name, parent_name, &iZ_, &neval_, &valence_, &sym_,  &atyp.RvdW, &atyp.EvdW, &atyp.color,   &atyp.Eaff, &atyp.Ehard, &atyp.Ra, &atyp.eta,   &atyp.Ass,&atyp.Asp, &atyp.Kss,&atyp.Ksp,&atyp.Kep,&atyp.Kpp, &atyp.ne,&atyp.eRvdW,&atyp.eEvdW,&atyp.eQ );
-
-        // char      name[8];
-        // uint8_t   iZ;         // proton number
-        // uint8_t   valence;    // sum of bond orders of all bonds
-        // uint8_t   ne;         // number of electron pairs
-        // uint8_t   npi;        // number of pi orbitals
-        // uint8_t   sym;        // sp3=0,sp2=1, sp1=2,  ... tetrahedral, triangle, linear, kink, square, octahedral
-        // uint32_t  color;
-        // double    RvdW;       // van der Waals potential minimum position
-        // double    EvdW;       // van der Waals potential minimum energy
-        // double    Qbase;      // base charge
-        // double    Hb;         // hydrogen bond correction
-        // int       parrent;
-        // int       element;
-        // int       ePairType;
-        // // ---- MMFF
-        // bool bMMFF;
-        // double  Ass,Asp, Kss,Ksp,Kep,Kpp;
-        //char sclr[6];           1           2           3              4             5          6        7       8          9         10        11           12         13            14        15         16         17         18        19      
-        int nret = sscanf( str, " %s         %s          %s              %s            %i         %i      %i      %i        %lf         %lf       %lf         %lf        %lf            %lf       %lf        %lf       %lf        %lf       %lf   ", 
-                                 atyp.name, parent_name, element_name, epair_name,  &valence_, &nepair_, &npi_, &sym_,    &atyp.Ruff, &atyp.RvdW, &atyp.EvdW, &atyp.Qbase, &atyp.Hb,    &atyp.Ass,&atyp.Asp, &atyp.Kss,&atyp.Ksp,&atyp.Kep,&atyp.Kpp );
-        atyp.valence=valence_; atyp.nepair=nepair_; atyp.npi=npi_; atyp.sym=sym_;
-        if(atypes.size()!=0){
-            int iet  = getElementType(element_name, false); if(iet <0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find elementType (%s) of type(%s) => Exit() \n", element_name, atyp.name ); exit(0);  };
-            int ipar = getAtomType   (parent_name,  false); if(ipar<0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find parrent type(%s) of type(%s) => Exit() \n", parent_name,  atyp.name ); exit(0); };
-            int iept = getAtomType   (epair_name,   false); if(iept<0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find epair   type(%s) of type(%s) => Exit() \n", epair_name,   atyp.name ); exit(0); };
-            const ElementType& et = etypes[iet];
-            atyp.iZ    = et.iZ;
-            atyp.color = et.color; 
-            atyp.parrent  =ipar;
-            atyp.ePairType=iept;
-            atyp.element  =iet;
-        }
-        if(nret<19){ atyp.bMMFF = false; atyp.Ass=0;atyp.Asp=0;atyp.Kss=0;atyp.Ksp=0;atyp.Kep=0;atyp.Kpp=0; }else{ atyp.bMMFF = true; }
-        atyp.subTypes=Vec3iZero;
-        //printf( "AtomType: %s iZ %i ne %i nb %i sym %i RE(%g,%g) %x \n", atyp.name,  atyp.iZ,   atyp.neval, atyp. valence,   atyp.sym,    atyp.RvdW, atyp.EvdW,   atyp.color );
-        //char ss[256]; printf("%s\n", toString(ss) );
-    }
-
-    void string2ElementType(const char * str, ElementType& atyp ){
-        // char      name[4];
-        // uint8_t   iZ;
-        // uint8_t   neval;      // number of valence electrons
-        // uint8_t   valence;    // sum of bond orders of all bonds
-        // uint32_t  color;
-        // double    RvdW;
-        // double    EvdW;
-        // // QEq
-        // bool   bQEq;
-        // double Eaff,Ehard,Ra,eta;
-        // // UFF
-        // bool   bUFF;
-        // double uff_l0,uff_q;
-        
-        int iZ_, neval_, valence_, sym_;
-        //char sclr[6];           1           2        3       4         5              6          7              8              9            10       11       12           
-        int nret = sscanf( str, " %s          %i      %i       %i        %x             %lf       %lf            %lf           %lf          %lf        %lf     %lf", 
-                                 atyp.name,  &iZ_, &neval_, &valence_,   &atyp.color, &atyp.RvdW, &atyp.EvdW, &atyp.Quff,  &atyp.Eaff, &atyp.Ehard, &atyp.Ra, &atyp.eta  );
-        atyp.iZ=iZ_; atyp.neval=neval_; atyp.valence=valence_;
+    //////////////////////////////////////////////////////////////////////////////////
+    // LOAD TABLES WITH ELEMENT, ATOM, BOND, ANGLE AND DIHEDRAL TYPE SPECIFICATIONS //
+    //////////////////////////////////////////////////////////////////////////////////
+    // extract variables from one line of the ElementTypes file
+    void string2ElementType(const char * str, ElementType& etyp ){
+        //char      name[4];    // symbol
+        //uint8_t   iZ;         // atomic number
+        //uint8_t   neval;      // number of valence electrons
+        //uint8_t   valence;    // sum of bond orders of all bonds
+        //uint32_t  color;      // color
+        //double    RvdW;       // LJ radius
+        //double    EvdW;       // LJ energy well 
+        //double    Quff;       // effective charge in UFF
+        //bool   bQEq;          // flag to see if QEq params are provided
+        //double Eaff;          // electronegativity
+        //double Ehard;         // chemical hardness
+        //double Ra;            // atomic size
+        //double eta;           // valence orbital exponent
+        //                       1          2         3            4              5            6           7           8           9           10           11        12           
+        int nret = sscanf( str, "%s         %i        %i           %i             %x           %lf         %lf         %lf         %lf         %lf          %lf       %lf", 
+                                 etyp.name, &etyp.iZ, &etyp.neval, &etyp.valence, &etyp.color, &etyp.RvdW, &etyp.EvdW, &etyp.Quff, &etyp.Eaff, &etyp.Ehard, &etyp.Ra, &etyp.eta );
         const int nretmin=8;
-        if(nret<nretmin){ printf( "ERROR in MMFFparams::string2ElementType(iZ=%i,%s) not complete (nret(%i)<nretmin(%i)) => Exit() \n", iZ_, atyp.name, nret, nretmin  ); printf("%s\n", str ); exit(0); }
-        if(nret<12     ){ atyp.bQEq=false;  atyp.Eaff=0; atyp.Ehard=0; atyp.Ra=0; atyp.eta=0;  }else{ atyp.bQEq=true; }
+        if(nret<nretmin){ printf( "ERROR in MMFFparams::string2ElementType(iZ=%i,%s) not complete (nret(%i)<nretmin(%i)) => Exit() \n", etyp.iZ, etyp.name, nret, nretmin  ); printf("%s\n", str ); exit(0); }
+        if(nret<12     ){ etyp.bQEq=false; etyp.Eaff=0; etyp.Ehard=0; etyp.Ra=0; etyp.eta=0; }else{ etyp.bQEq=true; }
     }
 
-    int loadAtomTypes(const char * fname, bool exitIfFail=true){
-        //printf( "loadAtomTypes %s \n", fname );
-        FILE * pFile = fopen(fname,"r");
-        if( pFile == NULL ){
-            printf("cannot find %s\n", fname );
-            if(exitIfFail)exit(0);
-            return -1;
-        }
-        char buff[1024];
-        char * line;
-        int nl;
-
-        AtomType atyp;
-        int i=0;
-        for(i=0; i<10000; i++){
-        //for(int i; i<0xFFFF; i++){
-            //printf( "loadAtomTypes %i \n", i );
-            line = fgets( buff, 1024, pFile );
-            if(line==NULL)  break;
-            //printf( "loadAtomTypes[%i] line=%s", i, line );
-            if(line[0]=='#')continue;
-            //atyp.fromString( line );
-            string2AtomType( line, atyp );
-            atypes.push_back(atyp);
-            atomTypeNames.push_back( atyp.name );
-            //atomTypeDict[atyp.name] = atypes.size()-1;
-            if( !atomTypeDict.insert({atyp.name, atypes.size()-1}).second ){ printf("WARRNING: atomType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
-            //char str[1000];
-            //atyp.toString( str );
-            //printf( "%i %s %i %s \n", i, atyp.name, atypNames[atyp.name], str );
-        }
-        return i;
-    }
-
+    // read and store element types
     int loadElementTypes(const char * fname, bool exitIfFail=true){
-        //printf( "loadAtomTypes %s \n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -333,22 +207,96 @@ class MMFFparams{ public:
         }
         char buff[1024];
         char * line;
-        int nl;
         ElementType etyp;
-        int i=0;
-        for(i=0; i<200; i++){
+        int i;
+        for(i=0; ; i++){
             line = fgets( buff, 1024, pFile );
             if(line==NULL)  break;
             if(line[0]=='#')continue;
             string2ElementType( line, etyp );
             etypes.push_back(etyp);
-            if( !elementTypeDict.insert({ etyp.name, etypes.size()-1} ).second ){ printf("WARRNING: elementType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
-            //elementTypeDict[etyp.name] = etypes.size()-1;
+            if( !elementTypeDict.insert({ etyp.name, etypes.size()-1} ).second ){ printf("WARNING: elementType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
+            printf("loadElementTypes[%i] name='%s' iZ=%i neval=%i valence=%i\n", etypes.size(), etyp.name, etyp.iZ, etyp.neval, etyp.valence );
         }
         return i;
     }
 
-int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true){
+    // extract variables from one line of the AtomTypes file
+    void string2AtomType(const char * str, AtomType& atyp ){
+        //char      name[8];    // symbol
+        //uint8_t   iZ;         // atomic number
+        //uint8_t   valence;    // sum of bond orders of all bonds
+        //uint8_t   nepair;     // number of electron pairs
+        //uint8_t   npi;        // number of pi orbitals
+        //uint8_t   sym;        // sp3=0,sp2=1, sp1=2,  ... tetrahedral, triangle, linear, kink, square, octahedral
+        //uint32_t  color;      // color
+        //double    Ruff;       // UFF natural bond radius
+        //double    RvdW;       // LJ distance parameter
+        //double    EvdW;       // LJ energy parameter
+        //double    Qbase;      // atomic charge
+        //double    Hb;         // hydrogen bond correction
+        //int       parrent;    // parent type
+        //int       element;    // corresponding element type
+        //int       ePairType;  // type of lone pair owned
+        //bool      bMMFF;      // flag to see if MMFF params are provided
+        //double    Ass;        // equilibrium angle value for sigma-sigma interaction (angle bending)
+        //double    Asp;        // equilibrium angle value for sigma-pi interaction
+        //double    Kss;        // force constant for sigma-sigma interaction (angle bending)
+        //double    Ksp;        // force constant for sigma-pi interaction
+        //double    Kep;        // force constant for pi-lone pair interaction
+        //double    Kpp;        // force constant for lone pair-lone pair interaction
+        //Vec3i     subTypes=Vec3iZero;  // sp1 sp2 sp3    // Q1 Q2 Q3 (polarized)
+        char parent_name[8];
+        char epair_name[8];
+        char element_name[4];
+        //                       1          2            3             4           5              6             7          8          9           10          11          12           13        14         15         16         17         18         19
+        int nret = sscanf( str, "%s         %s           %s            %s          %i             %i            %i         %i         %lf         %lf         %lf         %lf          %lf       %lf        %lf        %lf        %lf        %lf        %lf", 
+                                 atyp.name, parent_name, element_name, epair_name, &atyp.valence, &atyp.nepair, &atyp.npi, &atyp.sym, &atyp.Ruff, &atyp.RvdW, &atyp.EvdW, &atyp.Qbase, &atyp.Hb, &atyp.Ass, &atyp.Asp, &atyp.Kss, &atyp.Ksp, &atyp.Kep, &atyp.Kpp );
+        if(atypes.size()!=0){
+            int iet  = getElementType(element_name, false); if(iet <0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find elementType (%s) of type(%s) => Exit() \n", element_name, atyp.name ); exit(0);  };
+            int ipar = getAtomType   (parent_name,  false); if(ipar<0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find parrent type(%s) of type(%s) => Exit() \n", parent_name,  atyp.name ); exit(0); };
+            int iept = getAtomType   (epair_name,   false); if(iept<0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find epair   type(%s) of type(%s) => Exit() \n", epair_name,   atyp.name ); exit(0); };
+            const ElementType& et = etypes[iet];
+            atyp.element   = iet;
+            atyp.parrent   = ipar;
+            atyp.ePairType = iept;
+            atyp.iZ        = et.iZ;
+            atyp.color     = et.color; 
+        }
+        atyp.subTypes=Vec3iZero;
+        const int nretmin=13;
+        if(nret<nretmin){ printf( "ERROR in MMFFparams::string2AtomType(%s) not complete (nret(%i)<nretmin(%i)) => Exit() \n", atyp.name, nret, nretmin  ); printf("%s\n", str ); exit(0); }
+        if(nret<19){ atyp.bMMFF = false; atyp.Ass=0; atyp.Asp=0; atyp.Kss=0; atyp.Ksp=0; atyp.Kep=0; atyp.Kpp=0; }else{ atyp.bMMFF = true; }
+    }
+
+    // read and store atom types
+    int loadAtomTypes(const char * fname, bool exitIfFail=true){
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
+            return -1;
+        }
+        char buff[1024];
+        char * line;
+        AtomType atyp;
+        int i;
+        for(i=0; ; i++){
+            line = fgets( buff, 1024, pFile );
+            if(line==NULL)  break;
+            if(line[0]=='#')continue;
+            string2AtomType( line, atyp );
+            atypes.push_back(atyp);
+            atomTypeNames.push_back( atyp.name );
+            if( !atomTypeDict.insert({atyp.name, atypes.size()-1}).second ){ printf("WARNING: atomType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
+            printf("loadAtomTypes[%i] name='%s' valence=%i nepair=%i npi=%i sym=%i\n", atypes.size(), atyp.name, atyp.valence, atyp.nepair, atyp.npi, atyp.sym );
+        }
+        return i;
+    }
+
+
+
+    int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true){
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -412,7 +360,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             ang.atoms.z = getAtomType(names[2]);
             if( ang.sort() && bWarnFlip ){ printf("WARRNING: angleType[%i](%s) is flipped in %s\n", i, line, fname ); };
             sprintf( name, "%s-%s-%s", atypes[ang.atoms.x].name , atypes[ang.atoms.y].name, atypes[ang.atoms.z].name );
-            printf( "loadAngleTypes[%i](%s) ang0 %g k %g \n", angles.size(), name, ang.angle0, ang.stiffness );
+            //printf( "loadAngleTypes[%i](%s) ang0 %g k %g \n", angles.size(), name, ang.angle0, ang.stiffness );
             angles.push_back(ang);
             if( !angleDict.insert({ name, angles.size()-1} ).second ){ printf("WARRNING: angleType[%i](%s) is duplicated !!! => Ignore \n", i, line ); exit(0); };
 
@@ -458,28 +406,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         return i;
     }
 
-    void makeIdDicts(){
-        bonds_    .clear(); for(int i=0; i<bonds    .size(); i++){ bonds_    .insert( { bonds    [i].id(), &bonds    [i] } ); }
-        angles_   .clear(); for(int i=0; i<angles   .size(); i++){ angles_   .insert( { angles   [i].id(), &angles   [i] } ); }
-        dihedrals_.clear(); for(int i=0; i<dihedrals.size(); i++){ dihedrals_.insert( { dihedrals[i].id(), &dihedrals[i] } ); }
-    }
-
-    void init(const char* felementTypes=0, const char* fatomtypes=0, const char* fbondtypes=0, const char* fagnletypes=0, const char* fdihedraltypes=0){
-        //if(verbosity>0) 
-        //printf("MMFFparams::init(%s,%s,%s)\n", fatomtypes, fbondtypes, fagnletypes );
-        if(felementTypes ){
-            loadElementTypes( felementTypes );
-        }
-        if(fatomtypes ){
-            loadAtomTypes( fatomtypes );
-            assignAllSubTypes();
-        }
-        if(fbondtypes    )loadBondTypes    ( fbondtypes     );
-        if(fagnletypes   )loadAngleTypes   ( fagnletypes    );
-        if(fdihedraltypes)loadDihedralTypes( fdihedraltypes );
-        makeIdDicts();
-    }
-
+    // TBD - shall we get rid of subtypes...?
     inline void assignSubTypes( AtomType& t ){
         //printf( "assignSubTypes %s(iZ=%i)\n", t.name, t.iZ );
         char tmp_name[8];
@@ -494,6 +421,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             //printf( "assignSubTypes %s(iZ=%i)[%i] %s=%i\n", t.name, t.iZ, tmp_name, it );
         }
     }
+
     inline void assignAllSubTypes(){
         int n=atypes.size();
         std::vector<bool> doIt(256,true); // Warrning : we assume maximum proton number 256
@@ -505,60 +433,81 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         }
     }
 
-    DihedralType* getDihedralType( int iat, int ityp, int jtyp, int jat, int order, bool bWildcards=true, bool bParrents=true ){
-        char tmp[64];
-        if(ityp>jtyp){ _swap(ityp,jtyp); _swap(iat,jat); }
-        sprintf( tmp, "%s-%s-%s-%s-%i", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name, order );
-        if(echoTry)printf("try dihedralDict[%s]\n", tmp);
-        auto found = dihedralDict.find(tmp);
-        if( found != dihedralDict.end() ){ 
-            printf( "found dihedralDict[%s]\n", tmp );
-            return &dihedrals[found->second];
+    // TBD - move dicts into load
+    void makeIdDicts(){
+        bonds_    .clear(); for(int i=0; i<bonds    .size(); i++){ bonds_    .insert( { bonds    [i].id(), &bonds    [i] } ); }
+        angles_   .clear(); for(int i=0; i<angles   .size(); i++){ angles_   .insert( { angles   [i].id(), &angles   [i] } ); }
+        dihedrals_.clear(); for(int i=0; i<dihedrals.size(); i++){ dihedrals_.insert( { dihedrals[i].id(), &dihedrals[i] } ); }
+    }
+
+    void init(const char* fElementTypes=0, const char* fAtomTypes=0, const char* fBondTypes=0, const char* fAngleTypes=0, const char* fDihedralTypes=0){
+        //printf( "MMFFparams::init sElementTypes='%s' sAtomTypes='%s' sBondTypes='%s' sAngleTypes='%s' sDihedralTypes='%s' \n", fElementTypes, fAtomTypes, fBondTypes, fAngleTypes, fDihedralTypes ); exit(0);
+        if(fElementTypes )loadElementTypes ( fElementTypes  );
+        if(fAtomTypes    ){
+            loadAtomTypes( fAtomTypes );
+            assignAllSubTypes();
         }
-        if(bWildcards){
-            if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order  ); };
-            sprintf( tmp, "*-%s-%s-*-%i", atypes[ityp].name,atypes[jtyp].name,  order );
-            if(echoTry)printf("try dihedralDict[%s]\n", tmp);
-            found = dihedralDict.find(tmp);
-            if( found != dihedralDict.end() ){ 
-                printf( "found dihedralDict[%s]\n", tmp );
-                return &dihedrals[found->second];
-            }
+        exit(0);
+        // FIN QUA...
+        if(fBondTypes    )loadBondTypes    ( fBondTypes     );
+        if(fAngleTypes   )loadAngleTypes   ( fAngleTypes    );
+        if(fDihedralTypes)loadDihedralTypes( fDihedralTypes );
+        makeIdDicts();
+    }
+    // dictionaries
+    void initDefaultAtomTypeDict(){
+        makeDefaultAtomTypeDict( atomTypeNames, atomTypeDict );
+    }
+    ////////////////////////////////////
+    // END OF LOADING TABLES OF TYPES //
+    ////////////////////////////////////
+
+    //////////////////////////////////////////////////////////
+    // ASSIGN ELEMENT, ATOM, BOND, ANGLE AND DIHEDRAL TYPES //
+    //////////////////////////////////////////////////////////
+    // TBD return pointer?
+    int getElementType(const char* s, bool bErr=true)const{
+        //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
+        auto found = elementTypeDict.find(s);
+        if(found==elementTypeDict.end()){ 
+            if(bErr){ printf( "ERROR: MMFFparams::getElementType(%s) not found !!! => exit() \n", s ); printAtomTypeDict(); exit(0); }
+            return -1; 
         }
-        if(bParrents){
-            if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by parrents(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order   ); };
-            int i1,i2,i3,i4;
-            for(int i=0; i<16; i++ ){
-                if(i&1){ i1=atypes[iat ].parrent; }else{ i1=iat;  }
-                if(i&4){ i2=atypes[ityp].parrent; }else{ i2=ityp; }
-                if(i&8){ i3=atypes[jtyp].parrent; }else{ i3=jtyp; }
-                if(i&2){ i4=atypes[jat ].parrent; }else{ i4=jat;  }
-                if(i2>i3){ _swap(i2,i3); _swap(i1,i4); }
-                sprintf( tmp, "%s-%s-%s-%s-%i", atypes[i1].name,atypes[i2].name,atypes[i3].name,atypes[i4].name,  order );
-                if(echoTry)printf("try dihedralDict[%s]\n", tmp);
-                found = dihedralDict.find(tmp);
-                if( found != dihedralDict.end() ){ 
-                    printf( "found dihedralDict[%s]\n", tmp );
-                    return &dihedrals[found->second];
-                }
-            }
-            if(bWildcards){
-                if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard&parrents(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order   ); };
-                int i1,i2;
-                for(int i=0; i<16; i++ ){
-                    if(i&1){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
-                    if(i&2){ i2=atypes[jtyp].parrent; }else{ i2=jtyp; }
-                    if(i1>i2){ _swap(i1,i2); }
-                    sprintf( tmp, "*-%s-%s-*-%i", atypes[i1].name,atypes[i2].name,  order );
-                    if(echoTry)printf("try dihedralDict[%s]\n", tmp);
-                    found = dihedralDict.find(tmp);
-                    if( found != dihedralDict.end() ){
-                        printf( "found angleDict[%s]\n", tmp );
-                        return &dihedrals[found->second];
-                    }
-                }   
-            }
+        return found->second;
+    }
+
+    // TBD return pointer?
+    int getAtomType(const char* s, bool bErr=true)const{
+        //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
+        auto found = atomTypeDict.find(s);
+        if(found==atomTypeDict.end()){ 
+            if(bErr){ printf( "ERROR: MMFFparams::getAtomType(%s) not found !!! => exit() \n", s ); printAtomTypeDict(); exit(0); }
+            return -1; 
         }
+        return found->second;
+    }
+
+    BondType* getBondType( int ityp, int jtyp, int order, bool bParrents=true, bool bElem=true )const{
+        //uint64_t id = BondType::getId( atypes[atyp1].iZ, atypes[atyp2].iZ, btyp );
+        uint64_t id   = BondType::getId( ityp, jtyp, order );
+        auto it       = bonds_.find(id);
+        if( it != bonds_.end() ){ return it->second; } 
+        if(bParrents==0){
+            if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by parents(%i,%i) \n", ityp, jtyp, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
+            id  = BondType::getId( atypes[ityp].parrent,        jtyp,          order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+            id  = BondType::getId(        ityp,          atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+            id  = BondType::getId( atypes[ityp].parrent, atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+        }
+        if(bElem){
+            if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by elements(%i,%i) \n", ityp, jtyp, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
+            int i0 = atomTypeDict.find( elementOfAtomType(ityp)->name )->second;
+            int j0 = atomTypeDict.find( elementOfAtomType(jtyp)->name )->second; 
+            id  = BondType::getId( i0, j0, order ); 
+            it = bonds_.find(id); 
+            if( it!=bonds_.end()){ return it->second; }
+        }
+        if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing => defaults: l0 %g k %g \n", ityp, jtyp, order, default_bond_length, default_bond_stiffness ); };
+        if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };  
         return 0;
     }
 
@@ -620,35 +569,102 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         return 0;
     }
 
-    BondType* getBondType( int ityp, int jtyp, int order, bool bParrents=true, bool bElem=true )const{
-        //uint64_t id = BondType::getId( atypes[atyp1].iZ, atypes[atyp2].iZ, btyp );
-        uint64_t id   = BondType::getId( ityp, jtyp, order );
-        auto it       = bonds_.find(id);
-        if( it != bonds_.end() ){ return it->second; } 
-        if(bParrents==0){
-            if(reportIfMissing){ printf("WARRNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by parrents(%i,%i) \n", ityp, jtyp, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
-            id  = BondType::getId( atypes[ityp].parrent,        jtyp,          order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
-            id  = BondType::getId(        ityp,          atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
-            id  = BondType::getId( atypes[ityp].parrent, atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
+    DihedralType* getDihedralType( int iat, int ityp, int jtyp, int jat, int order, bool bWildcards=true, bool bParrents=true ){
+        char tmp[64];
+        if(ityp>jtyp){ _swap(ityp,jtyp); _swap(iat,jat); }
+        sprintf( tmp, "%s-%s-%s-%s-%i", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name, order );
+        if(echoTry)printf("try dihedralDict[%s]\n", tmp);
+        auto found = dihedralDict.find(tmp);
+        if( found != dihedralDict.end() ){ 
+            printf( "found dihedralDict[%s]\n", tmp );
+            return &dihedrals[found->second];
         }
-        if(bElem){
-            if(reportIfMissing){ printf("WARRNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by elems(%i,%i) \n", ityp, jtyp, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
-            int i0 = atomTypeDict.find( elementOfAtomType(ityp)->name )->second;
-            int j0 = atomTypeDict.find( elementOfAtomType(jtyp)->name )->second; 
-            id  = BondType::getId( i0, j0, order ); 
-            it = bonds_.find(id); 
-            if( it!=bonds_.end()){ return it->second; }
+        if(bWildcards){
+            if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order  ); };
+            sprintf( tmp, "*-%s-%s-*-%i", atypes[ityp].name,atypes[jtyp].name,  order );
+            if(echoTry)printf("try dihedralDict[%s]\n", tmp);
+            found = dihedralDict.find(tmp);
+            if( found != dihedralDict.end() ){ 
+                printf( "found dihedralDict[%s]\n", tmp );
+                return &dihedrals[found->second];
+            }
         }
-        if(reportIfMissing){ printf("WARRNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing => defaults: l0 %g k %g \n", ityp, jtyp, order, default_bond_length, default_bond_stiffness ); };
-        if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };  
+        if(bParrents){
+            if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by parrents(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order   ); };
+            int i1,i2,i3,i4;
+            for(int i=0; i<16; i++ ){
+                if(i&1){ i1=atypes[iat ].parrent; }else{ i1=iat;  }
+                if(i&4){ i2=atypes[ityp].parrent; }else{ i2=ityp; }
+                if(i&8){ i3=atypes[jtyp].parrent; }else{ i3=jtyp; }
+                if(i&2){ i4=atypes[jat ].parrent; }else{ i4=jat;  }
+                if(i2>i3){ _swap(i2,i3); _swap(i1,i4); }
+                sprintf( tmp, "%s-%s-%s-%s-%i", atypes[i1].name,atypes[i2].name,atypes[i3].name,atypes[i4].name,  order );
+                if(echoTry)printf("try dihedralDict[%s]\n", tmp);
+                found = dihedralDict.find(tmp);
+                if( found != dihedralDict.end() ){ 
+                    printf( "found dihedralDict[%s]\n", tmp );
+                    return &dihedrals[found->second];
+                }
+            }
+            if(bWildcards){
+                if(reportIfMissing){ printf("WARRNING getDihedralType(%s-%s-%s-%s-%i) missing, trying find by wildcard&parrents(*-%s-%s-*-%i) \n", atypes[iat].name,atypes[ityp].name,atypes[jtyp].name,atypes[jat].name,order,  atypes[ityp].name,atypes[jtyp].name,order   ); };
+                int i1,i2;
+                for(int i=0; i<16; i++ ){
+                    if(i&1){ i1=atypes[ityp].parrent; }else{ i1=ityp; }
+                    if(i&2){ i2=atypes[jtyp].parrent; }else{ i2=jtyp; }
+                    if(i1>i2){ _swap(i1,i2); }
+                    sprintf( tmp, "*-%s-%s-*-%i", atypes[i1].name,atypes[i2].name,  order );
+                    if(echoTry)printf("try dihedralDict[%s]\n", tmp);
+                    found = dihedralDict.find(tmp);
+                    if( found != dihedralDict.end() ){
+                        printf( "found angleDict[%s]\n", tmp );
+                        return &dihedrals[found->second];
+                    }
+                }   
+            }
+        }
         return 0;
     }
+    ////////////////////////////
+    // END OF TYPE ASSIGNMENT //
+    ////////////////////////////
 
+    /////////////////////////////
+    // ASSIGNING FF PARAMETERS //
+    /////////////////////////////
+    // TBD should we do it here?
+    // assigning bond parameters
     bool getBondParams( int ityp, int jtyp, int order,  double& l0, double& k, bool bParrents=true, bool bElem=true )const{
         BondType* bp = getBondType( ityp, jtyp, order, bParrents, bElem );
         if( bp==0 ){ l0=bp->length; k=bp->stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
     }
 
+    void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){
+        //printf("fillBondParams: %i\n", nbonds);
+        for(int i=0; i<nbonds; i++){
+            Vec2i ib = bond2atom[i];
+            getBondParams( atomType[ib.x], atomType[ib.y], bondOrder[i], bond_0[i], bond_k[i] );
+            //printf( "%i (%i %i) %i %g %g \n", i, atomType[ib.x], atomType[ib.y], bondOrder[i], bond_0[i], bond_k[i] );
+        }
+    }
+
+    // assigning angle parameters UFF
+    // TBD it returns the force constant only, not the equilibrium angle...
+    double assignAngleParamUFF( int ic, int ia, int ib, double ra, double rb )const{  
+        const AtomType& tc    = atypes[ic];
+        const ElementType* ei = elementOfAtomType(ia);
+        const ElementType* ej = elementOfAtomType(ib);
+        double Qi = ei->Quff;
+        double Qj = ej->Quff;
+        double ang0 = tc.Ass*deg2rad;
+        double c0 = cos(ang0);
+        double s0 = sin(ang0);
+        double r = sqrt(  ra*ra + rb*rb - 2*ra*rb*c0 ); // equlibirum distance (bond lenght) between peripheral atoms
+        double K =  28.79898 * Qi*Qj * ( 3. *ra*rb*s0*s0 - r*r*c0  ) /( r*r*r*r*r );
+        return K;
+    }
+
+    // vector with all non-bonded parameters
     inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false )const{
         REQ.x    = atypes[ityp].RvdW;
         double e = atypes[ityp].EvdW;
@@ -665,6 +681,8 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         }
     }
 
+    // assign QEq parameters
+    // TBD only electronegativity and hardness are considered...
     void assignQEq( int n, int* itypes, double* affins, double* hards )const{
         for(int i=0; i<n; i++){
             int ityp = itypes[i];
@@ -673,28 +691,20 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             hards [i]=etypes[iet].Ehard;
         }
     }
+    ///////////////////////
+    // END FF PARAMETERS //
+    ///////////////////////
 
-    double assignAngleParamUFF( int ic, int ia, int ib, double ra, double rb )const{  
-        const AtomType& tc    = atypes[ic];
-        //const AtomType& ta    = atypes[ia];
-        //const AtomType& tb    = atypes[ib];
-        const ElementType* ei = elementOfAtomType(ia);
-        const ElementType* ej = elementOfAtomType(ib);
-        double Qi = ei->Quff;
-        double Qj = ej->Quff;
-
-        double ang0 = tc.Ass*deg2rad;
-        double c0 = cos(ang0);
-        double s0 = sin(ang0);
-
-        double r = sqrt(  ra*ra + rb*rb - 2*ra*rb*c0 ); // equlibirum distance (bond lenght) between peripheral atoms
-        double K =  28.79898 * Qi*Qj * ( 3. *ra*rb*s0*s0 - r*r*c0  ) /( r*r*r*r*r );
-
-        //printf( "angUFF[%s|%s,%s] k=%g r=%g(%g,%g) Qs(%g,%g)\n", tc.name, atypes[ia].name, atypes[ib].name, K, r,ra,rb,  Qi,Qj  );
-        return K;
-
+    /////////////////
+    // PRINT STUFF //
+    /////////////////
+    void printAtomTypeDict()const{
+        for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict.find(atypes[i].name)->second );  };
     }
-
+    
+    void printElementTypeDict()const{
+        for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict.find(etypes[i].name)->second );  };
+    }
     void printBond(int i)const{
         const BondType& t = bonds[i];
         printf( "bondType[%3i] %s-%s l0(%7.3f) k(%7.3f)\n", i, atypes[t.atoms.x].name, atypes[t.atoms.y].name, t.length, t.stiffness );
@@ -707,24 +717,18 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         const DihedralType& t = dihedrals[i];
         printf( "dihedralType[%3i] %s-%s-%s-%s ang0(%7.3f) k(%7.3f) n(%i)\n", i, atypes[t.atoms.x].name, atypes[t.atoms.y].name, atypes[t.atoms.z].name, atypes[t.atoms.w].name, t.ang0, t.k, t.n );
     }
-
     void printAtomTypes(bool bParams)const{   for(int i=0; i<atypes.size(); i++ ){ atypes[i].print(i, bParams );  }  }
     void printBondTypes    ()const{ printf("MMFFparams::printBondTypes()\n");     for(int i=0; i<bonds.size();     i++ ){ printBond(i);     } }
     void printAngleTypes   ()const{ printf("MMFFparams::printAngleTypes()\n");    for(int i=0; i<angles.size();    i++ ){ printAngle(i);    } }
     void printDihedralTypes()const{ printf("MMFFparams::printDihedralTypes()\n"); for(int i=0; i<dihedrals.size(); i++ ){ printDihedral(i); } }
-
     void printAngleTypesDict()const{ printf("MMFFparams::printAngleTypesDict()\n");    for( const auto& it : angleDict ){ printf("angle(%s)[%i]\n", it.first.c_str(), it.second ); } }
+    //////////////////
+    // END OF PRINT //
+    //////////////////
 
-
-    void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){
-        //printf("fillBondParams: %i\n", nbonds);
-        for(int i=0; i<nbonds; i++){
-            Vec2i ib = bond2atom[i];
-            getBondParams( atomType[ib.x], atomType[ib.y], bondOrder[i], bond_0[i], bond_k[i] );
-            //printf( "%i (%i %i) %i %g %g \n", i, atomType[ib.x], atomType[ib.y], bondOrder[i], bond_0[i], bond_k[i] );
-        }
-    }
-
+    ///////////////////
+    // DEAL WITH XYZ //
+    ///////////////////
     bool cellFromString( char* s, Mat3d& lvec )const{
         char c[3]; Mat3d M;
         int n = sscanf( s, "%c%c%c %lf %lf %lf   %lf %lf %lf   %lf %lf %lf", c,c+1,c+2, &(M.a.x),&(M.a.y),&(M.a.z),   &(M.b.x),&(M.b.y),&(M.b.z),   &(M.c.x),&(M.c.y),&(M.c.z) );
@@ -787,6 +791,7 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         //printf( "MMFFparams::writeXYZ() n=%i REQs=%li just_Element=%i\n", n, (long)REQs, just_Element );
         int npbc = nPBC.totprod();
         fprintf(pfile, "%i\n", (n+npi)*npbc );
+        // TBD print lattice vectors
         fprintf(pfile, "%s \n", comment );
         //printf( "MM::Params::writeXYZ() nPBC={%i,%i,%i}\n", nPBC.x,nPBC.y,nPBC.z );
         for(int ic=0;ic<nPBC.z;ic++){ for(int ib=0;ib<nPBC.y;ib++){ for(int ia=0;ia<nPBC.x;ia++){
@@ -823,6 +828,24 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         writeXYZ( pfile, n, atyps, apos, comment, REQs, just_Element, 0, nPBC, lvec );
         fclose(pfile);
         return n;
+    }
+    ////////////////
+    // END OF XYZ //
+    ////////////////
+
+    //////////
+    // MISC //
+    //////////
+    // TBD comment a/o remove
+    inline const ElementType* elementOfAtomType( int it )const{ return &etypes[atypes[it].element]; }
+
+    // following the graph and getting the ancestor
+    const AtomType* getRootParrent(const AtomType* t, int nrecur=0)const{
+        if(nrecur>10){ printf("ERROR in MMFFparams.getRootParrent() rootParrent of type(%s) not found in %i recursions => Exit() \n", t->name, nrecur ); exit(0); }
+        if( t->parrent==0 ) return t;
+        if( (t->parrent<0)||(t->parrent>=atypes.size()) ){ printf("ERROR in MMFFparams.getRootParrent() type(%s).parrent==%i => Exit() \n", t->name,t->parrent ); exit(0); }
+        const AtomType* par = &atypes[t->parrent];
+        return getRootParrent(par,nrecur+1); // recursion
     }
 
     void clear( bool bShring=false ){
@@ -863,6 +886,9 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             dihedralDict.rehash(0);
         }
     }
+    //////////////
+    // END MISC //
+    //////////////
 
 };
 

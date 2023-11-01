@@ -79,7 +79,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     Mat3d debug_rot; // This was used for debuging molecular orientation
 
 	// Building
-	MMFFparams   params;
+	MMFFparams    params;
+    //MMFFparams*   params = null;
 	MM::Builder  builder;
 	SMILESparser smiles;
 
@@ -134,6 +135,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bGridFF           = false;
 	bool bPlaneSurfForce   = false;
     bool bMMFF             = true;
+    bool bUFF              = false; 
     bool bRigid            = false;
 	bool bOptimizer        = true; 
 	bool bPBC              = false;
@@ -805,19 +807,27 @@ void makeMMFFs(){
         printf("ERROR some bonds are not in atom neighbors => exit"); 
         exit(0); 
     };
+    // reshuffling atoms in order to have non-capping first
     builder.numberAtoms();
     builder.sortConfAtomsFirst();
     //builder.printAtomConfs(false,true);
     builder.checkBondsOrdered( true, false );
+    // TBD: check assignment
     builder.assignTypes();
     //builder.printAtomTypes();
     if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
     
-    builder.toMMFFsp3_loc( ffl, true, bEpairs );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
+    builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
     if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
     builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
     builder.toMMFFsp3    ( ff , true, bEpairs );
     
+    if(bUFF){
+        ffl.bEachAngle = true;
+        ffl.bTorsion   = true;
+
+    }
+
     ffl.flipPis( Vec3dOne );
     ff4.flipPis( Vec3fOne );
     if(bPBC){  
@@ -869,12 +879,15 @@ virtual void makeFFs(){
     _realloc( manipulation_sel, ff.natoms );
 }
 
+// TBD we should pass also a bool to set UFF or MMFF...
 virtual void init( bool bGrid ){
     // params.init("common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
 	// builder.bindParams(&params);
     // params.printAtomTypes(true);
     // //params.printAtomTypeDict();
     // //params.printBond();
+    printf( "params.atypes.size() = %i \n", params.atypes.size() );
+    exit(0);
     if( params.atypes.size() == 0 ){
         initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
     }

@@ -353,7 +353,7 @@ virtual void init( bool bGrid=false ){
     if( nbmol.natoms>0 ){ clear(); } // re-initialization
     builder.verbosity=verbosity;
     if(verbosity>0){
-        printf("\n#### MolWorld_sp3::init()\n");
+        printf("\n#### MolWorld_sp3_simple::init()\n");
         if(smile_name   )printf("smile_name  (%s)\n", smile_name );
         if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
         //if(data_dir     )printf("data_dir    (%s)\n", data_dir );

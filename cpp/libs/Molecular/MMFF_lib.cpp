@@ -52,8 +52,9 @@ void init_buffers(){
 }
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
-
-void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+//lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF,      bEpairs,      bUFF,      nPBC,      gridStep,        cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) 
+void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, int* nPBC, double gridStep, char* sElementTypes,  char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
+    //printf( "init(): sElementTypes='%s' sAtomTypes='%s' sBondTypes='%s' sAngleTypes='%s' sDihedralTypes='%s' \n", sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes ); exit(0);
 	W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
@@ -61,8 +62,12 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
+    W.bUFF       = bUFF; 
     W.tmpstr=tmpstr;
-    W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
+    // read and store parameters from tables
+    W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
+    exit(0);
+    // bring names of atom types into builder (H is capping atom, E is electron pair)
 	W.builder.bindParams(&W.params);
     bool bGrid = gridStep>0;
     W.init( bGrid );
