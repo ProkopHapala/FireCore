@@ -30,9 +30,10 @@
 
 // =============== Structs for Atoms, Bonds etc...
 
+// TBD builder is the only one in a namespace...
 namespace MM{
 
-static const double const_eVA2_Nm = 16.0217662;
+static const double const_eVA2_Nm = 16.02176634;
 
 // ============================
 // ========= Atom
@@ -74,28 +75,32 @@ struct AtomConf{
     uint8_t nbond =0;
     uint8_t npi   =0; // pi bonds
     uint8_t ne    =0; // electron pairs
-    uint8_t nH    =0; //
+    uint8_t nH    =0; // capping atoms
     int neighs[N_NEIGH_MAX]; // neighs  - NOTE: bonds not atoms !!!!
 
     Vec3d  pi_dir{0.,0.,0.};
 
     //AtomConf() = default;
 
+    // compute the number of pi bonds
     inline int fillIn_npi_sp3(){ npi=4-nbond-ne-nH; n=4; return npi; };
+
+    // cleanup
     inline int clean_pi_sp3  (){ npi=0; n=nbond+ne+nH;   return n;   };
 
+    // shifting all bond indexes by dib
     inline void rebase(int dib){
         for(int i=0; i<N_NEIGH_MAX; i++){ if(neighs[i]>=0)neighs[i]+=dib; };
     }
 
+    // given a bond, it finds if the atom is its neighbor
     inline int findNeigh(int ib)const{
-        for(int i=0; i<N_NEIGH_MAX; i++){
-            //printf( "MM:AtomConf.findNeigh()[%i] ng(%i)?=ib(%i) %i \n", i, neighs[i], ib, neighs[i]==ib );
-            if(neighs[i]==ib) return i;
+        for(int i=0; i<N_NEIGH_MAX; i++){ if(neighs[i]==ib) return i;
         }
         return -1;
     }
 
+    // add a bond (or pi bond, or electron pair, or capping atom) into an atom neighbor list
     inline bool addNeigh(int ib, uint8_t& ninc ){
         if(n>=N_NEIGH_MAX)return false;
         if(ib>=0){ neighs[nbond]=ib; }else{ neighs[N_NEIGH_MAX-(n-nbond)-1]=ib; };
@@ -170,7 +175,7 @@ struct Bond{
     void print()const{ printf( " Bond{t %i a(%i,%i) l0 %g k %g}", type, atoms.i, atoms.j, l0, k ); };
 
     Bond()=default;
-    Bond(int type_, Vec2i atoms_, double l0_, double k_):type(type_),atoms(atoms_),l0(l0_),k(k_),ipbc{0,0,0}{};
+    Bond(int type_, Vec2i atoms_, double l0_, double k_, double kpp_=0.0):type(type_),atoms(atoms_),l0(l0_),k(k_),ipbc{0,0,0},kpp{kpp_}{};
 };
 
 // ============================
@@ -1078,7 +1083,7 @@ class Builder{  public:
 #define _TCap(T1,T2) else if( ingt==i##T1 ){ itnew=i##T2; }
 #define T(i)   (count[i]>0)
 
- int assignSpecialTypes( int* neighs ){
+    int assignSpecialTypes( int* neighs ){
         //printf("#===========assignSpecialTypes() \n");
         // ------ C
         const int nt0=10;
@@ -2985,7 +2990,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         //frags.push_back( Fragment{ mol, pos, qrot,  {natoms0, atoms.size()-natoms0} } );
         molTypes.push_back(mol);
         size_t mol_id = molTypes.size()-1;
-        frags.push_back( Fragment{ mol_id, pos, qrot, {natoms0, atoms.size()-natoms0}, mol->pos } );
+        frags.push_back( Fragment{ mol_id, pos, qrot, Vec2i{natoms0, (int)(atoms.size()-natoms0)}, mol->pos } );
         //size_t mol_id = static_cast<size_t>(mol);
         auto got = fragTypes.find(mol_id);
         if ( got == fragTypes.end() ) {

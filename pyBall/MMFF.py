@@ -286,8 +286,9 @@ lib.setVerbosity.restype   =  None
 def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
 
-#  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
+# interface to init on the C++ side (MMFF_lib.cpp)
+# void* init(   char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes )
+lib.init.argtypes  = [c_char_p,        c_char_p,         c_char_p,     c_bool,       c_bool,    c_bool,   array1i,        c_double,            c_char_p,         c_char_p,         c_char_p,          c_char_p,             c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
         xyz_name  ="input.xyz", 
@@ -297,12 +298,17 @@ def init(
         sAtomTypes = "data/AtomTypes.dat", 
         sBondTypes = "data/BondTypes.dat", 
         sAngleTypes= "data/AngleTypes.dat",
-        bMMFF=True, bEpairs=False,  nPBC=(1,3,0), gridStep=0.1 
+        sDihedralTypes= "data/DihedralTypes.dat",
+        bMMFF=True, 
+        bEpairs=False,  
+        nPBC=(1,3,0), 
+        gridStep=0.1,
+        bUFF=True
     ):
     global glob_bMMFF
     glob_bMMFF = bMMFF
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 
 def tryInit():
     if not isInitialized:
