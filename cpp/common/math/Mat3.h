@@ -589,6 +589,12 @@ class Mat3T{
         zx+=v1.z*v2.x*f; zy+=v1.z*v2.y*f; zz+=v1.z*v2.z*f;
     }
 
+    inline void setOuter( const VEC& v1, const VEC& v2, T f ){
+        xx=v1.x*v2.x*f; xy=v1.x*v2.y*f; xz=v1.x*v2.z*f;
+        yx=v1.y*v2.x*f; yy=v1.y*v2.y*f; yz=v1.y*v2.z*f;
+        zx=v1.z*v2.x*f; zy=v1.z*v2.y*f; zz=v1.z*v2.z*f;
+    }
+
 	inline Vec3T<int> nearestCell( const VEC& d, const int ncellMax=1 ){
 		VEC u;
 		T off = ncellMax + 0.5;
