@@ -61,7 +61,7 @@ def cstr( s ):
 #  void init_types(int ntyp, int* typeMask, double* typREQs ){
 lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool ] 
 lib.init_types.restype   =  None
-def init_types(typeMask, typREQs=None, bCopy=False ):
+def init_types(typeMask, typREQs=None, bCopy=True ):
     ntyp = len(typeMask)
     return lib.init_types( ntyp, _np_as(typeMask,c_int_p), _np_as(typREQs,c_double_p), bCopy)
 

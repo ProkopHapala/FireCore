@@ -388,6 +388,14 @@ class Mat3T{
         }
 	}
 
+/**
+ * @brief Sets the matrix to a rotation matrix that represents the given Euler angles.
+ * 
+ * The rotation is applied in the order of phi (roll), theta (pitch), and psi (yaw).
+ * @param phi The roll angle in radians.
+ * @param theta The pitch angle in radians.
+ * @param psi The yaw angle in radians.
+ */
 	inline void fromEuler( T phi, T theta, T psi ){
         // http://mathworld.wolfram.com/EulerAngles.html
         T ca=1,sa=0, cb=1,sb=0, cc=1,sc=0;
@@ -421,6 +429,13 @@ class Mat3T{
 	};
 
 
+    /**
+     * @brief Sets the matrix to a rotation matrix that corresponds to the given Euler angles in the order of inclination, longitude ascending node, and argument of periapsis.
+     * 
+     * @param inc The inclination angle in radians.
+     * @param lan The longitude ascending node angle in radians.
+     * @param apa The argument of periapsis angle in radians.
+     */
     inline void fromEuler_orb( T inc, T lan, T apa ){
         T ci=cos(inc), si=sin(inc); // inc  inclination
         T cl=cos(lan), sl=sin(lan); // lan  longitude ascedning node  capital omega
@@ -436,9 +451,7 @@ class Mat3T{
 		zz =  ci;
 	};
 
-	// http://www.realtimerendering.com/resources/GraphicsGems/gemsiii/rand_rotation.c
-    // http://www.realtimerendering.com/resources/GraphicsGems/gemsiii/rand_rotation.c
-    // http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.53.1357&rep=rep1&type=pdf
+
      //  RAND _ ROTATION   Author: Jim Arvo, 1991
      //  This routine maps three values (x[0], x[1], x[2]) in the range [0,1]
      //  into a 3x3 rotation matrix, M.  Uniformly distributed random variables
@@ -452,6 +465,19 @@ class Mat3T{
      // random variables may be stratified (or "jittered") for a slightly more
      // even distribution.
      //=========================================================================
+/**
+ * @brief Generates a random rotation matrix using the given random vector.
+ * 
+ * The random vector is used to distribute points over the sphere via the reflection I - V Transpose(V).
+ * This formulation of V will guarantee that if x[1] and x[2] are uniformly distributed, the reflected points will be uniform on the sphere.
+ * 
+ *  see
+ * 	http://www.realtimerendering.com/resources/GraphicsGems/gemsiii/rand_rotation.c
+ *  http://www.realtimerendering.com/resources/GraphicsGems/gemsiii/rand_rotation.c
+ *  http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.53.1357&rep=rep1&type=pdf
+ * 
+ * @param vrand The random vector used to generate the rotation matrix.
+ */
 	inline void fromRand( const VEC& vrand  ){
         T theta = vrand.x * M_TWO_PI; // Rotation about the pole (Z).
         T phi   = vrand.y * M_TWO_PI; // For direction of pole deflection.
@@ -483,6 +509,16 @@ class Mat3T{
     // Smith, Oliver K. (April 1961), "Eigenvalues of a symmetric 3 × 3 matrix.", Communications of the ACM 4 (4): 168
     // http://www.geometrictools.com/Documentation/EigenSymmetric3x3.pdf
     // https://www.geometrictools.com/GTEngine/Include/Mathematics/GteSymmetricEigensolver3x3.h
+/**
+ * @brief Calculates the eigenvalues of a 3x3 matrix and stores them in the given evs vector. 
+ * 
+ * took from here:
+ *   Smith, Oliver K. (April 1961), "Eigenvalues of a symmetric 3 × 3 matrix.", Communications of the ACM 4 (4): 168
+ *   http://www.geometrictools.com/Documentation/EigenSymmetric3x3.pdf
+ *   https://www.geometrictools.com/GTEngine/Include/Mathematics/GteSymmetricEigensolver3x3.h
+ * 
+ * @param evs (out) vector to store the eigenvalues in.
+ */
 	inline void eigenvals( VEC& evs ) const {
 		const T inv3  = 0.33333333333;
         const T root3 = 1.73205080757;
@@ -507,6 +543,11 @@ class Mat3T{
 		evs.c = amax*( c2Div3 - magnitude*(cs - root3*sn) );
 	}
 
+/**
+ * Calculates the eigenvector corresponding to the given eigenvalue of the 3x3 matrix.
+ * @param eval (in)  The eigenvalue to find the eigenvector for.
+ * @param evec (out) The resulting eigenvector.
+ */
 	inline void eigenvec( T eval, VEC& evec ) const{
 		VEC row0;  row0.set( ax - eval, ay, az );
 		VEC row1;  row1.set( bx, by - eval, bz );

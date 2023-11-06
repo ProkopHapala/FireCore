@@ -167,7 +167,7 @@ void tryRealocTemp_rigid(){
  */
 int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false ){
     
-    printf( "FitREQ::init_types() ntype_=%i ntype=%i \n", ntype_, ntype );
+    printf( "FitREQ::init_types() ntype_=%i ntype=%i bCopy=%i tREQs=%li \n", ntype_, ntype, bCopy, (long)tREQs );
     int nDOFs=0;
     typToREQ = new Quat4i[ntype_];
     for(int i=0; i<ntype_; i++){
@@ -181,7 +181,7 @@ int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false 
                 tt.array[j]=-1;
             }
         }
-        //printf(  "tt[%i] tm(%i,%i,%i) tt(%i,%i,%i)  nDOF %i \n", i, tm.x,tm.y,tm.z, tt.x,tt.y,tt.z, nDOFs);
+        printf(  "init_types() [%i] typeMask(%i,%i,%i) typToREQ(%i,%i,%i)  nDOF %i  tREQs(%g,%g,%g,%g) \n", i, tm.x,tm.y,tm.z, tt.x,tt.y,tt.z, nDOFs, tREQs[i].x,tREQs[i].y,tREQs[i].z,tREQs[i].w );
     }
     realloc(nDOFs);
     //poses = new Mat3d[nbatch];
@@ -196,9 +196,12 @@ int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false 
             typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4dmax; }
             typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = tREQs[i]; }
             typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero; }
-        }else{ typeREQs = tREQs; }
+        }else{ 
+            typeREQs = tREQs; 
+        }
         DOFsFromTypes(); 
     }
+    //for(int i=0; i<ntype; i++){ printf( "init_types()[%i] typeREQs(%g,%g,%g,%g) \n", i,  ); }
     //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
     return nDOFs;
 }
@@ -335,20 +338,19 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
  * @return The total energy of the system.
  */
 double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
-    
     int    nj   =system0->natoms;
     int*   jtyp =system0->atypes;
     Vec3d* jpos =system0->apos;
     double Etot=0;
     double Qtot=0;
-    printf( "evalExampleDerivs_LJQH2 (n=%i,nj=%i ) \n", n,nj );
-    for(int i=0; i<n; i++){
+    //printf( "evalExampleDerivs_LJQH2 (sys:n=%i,sys0:nj=%i ) \n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
         int   ti          = types[i];
         const Vec3d&  pi   = ps[i]; 
         const Quat4d& REQi = typeREQs[ti];
         Quat4d fsi         = Quat4dZero;
         Qtot+=REQi.z;
-        for(int j=0; j<nj; j++){
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
             int tj              = jtyp[j];
             const Quat4d& REQj  = typeREQs[tj];
             //const Quat4d& REQj = REQ0[j]; // optimization
@@ -360,7 +362,7 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
 
             if(H>0) H=0;
 
-            printf( "ij[%i=%i,%i=%i] REQi(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
+            //printf( "ij[%i=%i,%i=%i] REQHij(%6.3f,%10.7f,%6.3f,%6.3f) sys:REQHi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQHj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
 
             // --- Eectrostatic
             //double ir2     = 1/( d.norm2() + 1e-4 );
@@ -629,8 +631,7 @@ double evalDerivs( double* Eout=0 ){
         acumDerivs(C.natoms, C.atypes, dE );
         //double dE = C.E - E;
         //double E_ = evalExampleDerivs_LJQ(C.n, C.atypes, C.apos, dE*wi );  // Backward pass
-
-        exit(0);
+        //exit(0);
     }
     return Error;
 }
