@@ -304,6 +304,8 @@ class Vec3T{
         return acos(c); 
     }
 
+    inline T getAngle_unitary(const VEC& b){ return acos( dot(b) ); }
+
 	// Rodrigues rotation formula: v' = cosa*v + sina*(uaxis X v) + (1-cosa)*(uaxis . v)*uaxis
 	inline VEC& rotate( T angle, const VEC& axis  ){
 		VEC uaxis;

@@ -490,10 +490,10 @@ double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
 }
 
 /**
- * @brief reads non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[i]. If index of DOF is negative, the parameter is not read.  
+ * @brief reads non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not read.  
  * @param ityp Index of the type
  */
-inline void DOFsToType(int ityp{
+inline void DOFsToType(int ityp){
     const Quat4i& tt = typToREQ[ityp];
     Quat4d& REQ      = typeREQs[ityp];
     if(tt.x>=0)REQ.x = DOFs[tt.x];
@@ -506,11 +506,11 @@ void getType(int i, Quat4d& REQ ){ typeREQs[i]=REQ; DOFsToType(i); }
 
 
 /**
- * @brief writes non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[i]. If index of DOF is negative, the parameter is not writen.  
+ * @brief writes non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not writen.  
  * 
  * @param ityp The index of the type.
  */
-inline void DOFsFromType(int i){
+inline void DOFsFromType(int ityp){
     const Quat4i& tt  = typToREQ[ityp];
     const Quat4d& REQ = typeREQs[ityp];
     if(tt.x>=0)DOFs[tt.x] = REQ.x;

@@ -14,9 +14,9 @@ class Points{ public:
 };
 
 class Atoms{ public:
-    int     natoms =0;
-    int   * atypes =0;
-    Vec3d * apos  __attribute__((aligned(64))) =0;
+    int     natoms =0;  // number of atoms in the system
+    int   * atypes =0;  // [natoms] array of atom type indices
+    Vec3d * apos  __attribute__((aligned(64))) =0;      apos=0;    // [natoms] atomic positions
     // --- for global optimization
     Mat3d * lvec   =0;  // ToDo: should this be pointer or full array ?
     double Energy  =0;
