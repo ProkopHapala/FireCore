@@ -16,12 +16,13 @@
 
 
 class BondType{ public:
-    double length;
-    double stiffness;
-    Vec2i   atoms;
-    uint8_t order;
-    inline bool            sort (){ if(atoms.x>atoms.y){ _swap(atoms.x,atoms.y); return true; } return false;  }
-    inline static uint64_t getId( uint16_t at1, uint16_t at2, uint8_t order ){ if (at1>at2){ _swap(at1,at2); } return pack64( at1, at2, order, 0 ); }
+    // This class is used for both bond and angle type
+    double length;     // equilibrium length
+    double stiffness;  // force constant
+    Vec2i   atoms;    
+    uint8_t order;     // bond order (1,2,3)
+    inline bool            sort (){ if(atoms.x>atoms.y){ _swap(atoms.x,atoms.y); return true; } return false;  }                                       // sort atoms by index
+    inline static uint64_t getId( uint16_t at1, uint16_t at2, uint8_t order ){ if (at1>at2){ _swap(at1,at2); } return pack64( at1, at2, order, 0 ); }  // pack atoms and order into 64bit integer
     inline uint64_t        id   (){ return getId( atoms.x, atoms.y, order ); }
 };
 
@@ -60,8 +61,8 @@ class ElementType{ public:
     double    Quff;
 
     // QEq
-    bool   bQEq;
-    double Eaff,Ehard,Ra,eta;
+    bool   bQEq; // charge equlibration
+    double Eaff,Ehard,Ra,eta; 
 
     char* toString( char * str, bool bParams=false )const{
         str         +=sprintf( str, "%s %i %i %i %x", name,  iZ, neval, valence, color );
@@ -143,7 +144,18 @@ static const int z2typ0[]{
 
 
 
+/**
+ * @file MMFFparams.h
+ * @brief This file contains the declaration of the MMFFparams class, which stores parameters for the Molecular Mechanics Force-field
+ * 
+ * The MMFFparams class contains vectors and maps that store information about the different types of atoms, bonds, angles, and dihedrals. 
+ * It also contains default values for bond length and stiffness, as well as a default non-bonding parameters for hydrogen-like atoms.
+ * The class provides methods for initializing and printing the atom and element type dictionaries, as well as methods for retrieving the atom and element types of a given string. 
+ * It also provides methods for retrieving the root parent of an atom type and converting a string to an atom type.
+ */
 class MMFFparams{ public:
+
+
 
     // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html
     
@@ -168,8 +180,8 @@ class MMFFparams{ public:
 
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
-    //Quat4d  default_REQ           = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen
-    Quat4d  default_REQ             = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen like
+    //Quat4d  default_REQ           = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen (RvdW, EvdW, Q, Hb)
+    Quat4d  default_REQ             = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen (RvdW, EvdW, Q, Hb)
 
     bool echoTry        =true;
     bool reportIfMissing=true;
