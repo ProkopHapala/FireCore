@@ -84,9 +84,11 @@ class FitREQ{ public:
     double*   fDOFs=0;       // [nDOFs]
     double*   vDOFs=0;       // [nDOFs]
 
-    double  Kneutral = 1.0;
-    //double max_step=-1.;
-    double  max_step=0.01345;
+    // parameters
+    double Kneutral      = 1.0;
+    double max_step      = 0.01345;
+    double Rfac_tooClose = 0.0;
+    double kMorse        = 1.6;
 
     //double* Rs =0,Es =0,Qs =0;
     //double* fRs=0,fEs=0,fQs=0;
@@ -260,6 +262,36 @@ void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy=false, bool 
     }
 }
 
+/*
+bool checkToClose(double Rfac){
+    int    nj   =system0->natoms;
+    int*   jtyp =system0->atypes;
+    Vec3d* jpos =system0->apos;
+    for(int i=0; i<n; i++){
+        int   ti          = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Qtot+=REQi.z;
+        for(int j=0; j<nj; j++){
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            Vec3d d             = jpos[j] - pi;
+            double R  = REQi.x+REQj.x;
+
+            double r2 = d.norm2();
+            if( r2 < (R*R*Rfac2) ){ return true; }
+           
+        }
+        fs[i].add(fsi);
+    }
+    return false
+}
+*/
+
+
+// ======================================
+// =========  EVAL DERIVS  ==============
+// ======================================
 
 /**
  * Calculates the total energy and forces of a system of atoms interacting through the Lennard-Jones potential, electrostatic interactions and hydrogen bond correction H1.
@@ -344,6 +376,8 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
     double Etot=0;
     double Qtot=0;
     //printf( "evalExampleDerivs_LJQH2 (sys:n=%i,sys0:nj=%i ) \n", n,nj );
+
+    double Rfac2 = Rfac_tooClose*Rfac_tooClose;
     for(int i=0; i<n; i++){ // loop over all atoms[i] in system
         int   ti          = types[i];
         const Vec3d&  pi   = ps[i]; 
@@ -360,13 +394,19 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
             double Q  = REQi.z*REQj.z;
             double H  = REQi.w*REQj.w;
 
+            double r2 = d.norm2();
+            if( r2 < (R*R*Rfac2) ){ 
+                if(verbosity>0) printf( "L{s%i,%i}=%4.2f(<%2.1f*%4.2f(=%4.2f+%4.2f) => skip", j,i, sqrt(r2), Rfac_tooClose, R, REQj.x, REQi.x );
+                return 1.1e+300; 
+            }
+
             if(H>0) H=0;
 
             //printf( "ij[%i=%i,%i=%i] REQHij(%6.3f,%10.7f,%6.3f,%6.3f) sys:REQHi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQHj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
 
             // --- Eectrostatic
             //double ir2     = 1/( d.norm2() + 1e-4 );
-            double ir2     = 1/( d.norm2() );
+            double ir2     = 1/( r2 );
             double ir      = sqrt(ir2);
             double dE_dQ   = ir * COULOMB_CONST;
             double Eel     = Q*dE_dQ;
@@ -401,6 +441,179 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
 
     return Etot;
 }
+
+/**
+ * Calculates the total energy and forces of a system of atoms interacting through the Lennard-Jones potential, electrostatic interactions and hydrogen bond correction H2.
+ * 
+ * @param n The number of atoms in the system.
+ * @param types An array of integers representing the type of each atom.
+ * @param ps An array of Vec3d representing the position of each atom
+ * 
+ * @return The total energy of the system.
+ */
+double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps ){
+    //printf( "evalExampleDerivs_MorseQH2() \n" );
+    int    nj   =system0->natoms;
+    int*   jtyp =system0->atypes;
+    Vec3d* jpos =system0->apos;
+    double Etot=0;
+    double Qtot=0;
+    //printf( "evalExampleDerivs_LJQH2 (sys:n=%i,sys0:nj=%i ) \n", n,nj );
+
+    double Rfac2 = Rfac_tooClose*Rfac_tooClose;
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti          = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        Qtot+=REQi.z;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            //const Quat4d& REQj = REQ0[j]; // optimization
+            Vec3d d             = jpos[j] - pi;
+            double R  = REQi.x+REQj.x;
+            double E0 = REQi.y*REQj.y;
+            double Q  = REQi.z*REQj.z;
+            double H  = REQi.w*REQj.w;
+
+            double r2 = d.norm2();
+            if( r2 < (R*R*Rfac2) ){ 
+                if(verbosity>0) printf( "L{s%i,%i}=%4.2f(<%2.1f*%4.2f(=%4.2f+%4.2f) => skip", j,i, sqrt(r2), Rfac_tooClose, R, REQj.x, REQi.x );
+                return 1.1e+300; 
+            }
+
+            if(H>0) H=0;
+
+            //printf( "H %g REQi.w %g REQj.w %g \n", H, REQi.w, REQj.w );
+
+            // --- Buckingham
+            double r = sqrt(r2);
+            double e = exp( (R-r) * kMorse );
+
+            // --- Eectrostatic
+            //double ir2     = 1/( d.norm2() + 1e-4 );
+            //double ir2     = 1/( r2 );
+            double ir      = 1/r;
+            double dE_dQ   = ir * COULOMB_CONST;
+
+            double dE_dE = e*(e - 2);
+            double dE_dH = e*e;
+            double dE_dR = H*e*kMorse - E0*(e - 2)*kMorse;
+
+            //Etot  += dE_dE*E0 + dE_dH*H + dE_dQ*Q;
+            Etot  += (E0+H)*e*e - E0*2*e + dE_dQ*Q;
+            //Etot  += e*e - 2*e;
+
+            //Etot  += exp( (R-r) * kMorse );
+
+            fsi.x += dE_dR;        // dEtot/dRi
+            fsi.y += dE_dE*REQj.y; // dEtot/dEi
+            fsi.z += dE_dQ*REQj.z; // dEtot/dQi
+            fsi.w += dE_dH*REQj.w; // dEtot/dHi
+        }
+        fs[i].add(fsi);
+    }
+
+    return Etot;
+}
+
+/**
+ * Calculates the total energy and forces of a system of atoms interacting through the Lennard-Jones potential, electrostatic interactions and hydrogen bond correction H2.
+ * 
+ * @param n The number of atoms in the system.
+ * @param types An array of integers representing the type of each atom.
+ * @param ps An array of Vec3d representing the position of each atom
+ * 
+ * @return The total energy of the system.
+ */
+double evalExampleDerivs_BuckinghamQH2(int n, int* types, Vec3d* ps ){
+    int    nj   =system0->natoms;
+    int*   jtyp =system0->atypes;
+    Vec3d* jpos =system0->apos;
+    double Etot=0;
+    double Qtot=0;
+    //printf( "evalExampleDerivs_LJQH2 (sys:n=%i,sys0:nj=%i ) \n", n,nj );
+
+    double Rfac2 = Rfac_tooClose*Rfac_tooClose;
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti          = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        Qtot+=REQi.z;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            //const Quat4d& REQj = REQ0[j]; // optimization
+            Vec3d d             = jpos[j] - pi;
+            double R  = REQi.x+REQj.x;
+            double E0 = REQi.y*REQj.y;
+            double Q  = REQi.z*REQj.z;
+            double H  = REQi.w*REQj.w;
+
+            double r2 = d.norm2();
+            if( r2 < (R*R*Rfac2) ){ 
+                if(verbosity>0) printf( "L{s%i,%i}=%4.2f(<%2.1f*%4.2f(=%4.2f+%4.2f) => skip", j,i, sqrt(r2), Rfac_tooClose, R, REQj.x, REQi.x );
+                return 1.1e+300; 
+            }
+
+            if(H>0) H=0;
+
+            kMorse = 3.0;
+
+            // --- Buckingham
+            double r = sqrt(r2);
+            //double B  = exp  ( R *  kMorse );
+            //double EB = B*exp( r * -kMorse );
+            double e = exp( (R-r) * kMorse );
+
+            // --- Eectrostatic
+            //double ir2     = 1/( d.norm2() + 1e-4 );
+            //double ir2     = 1/( r2 );
+            double ir      = 1/r;
+            double dE_dQ   = ir * COULOMB_CONST;
+            double Eel     = Q*dE_dQ;
+
+            // --- Lenard-Jones
+            double u    = ir*R;
+            double u2   = u*u;
+            double u4   = u2*u2;
+            double u6   = u4*u2;
+
+            //if( (i==0) && (j==nj) ){ printf( "r %g \n", 1/ir ); }
+            //if( i==0 ){ printf( "[%i,%i] r %g \n", i,j, 1/ir ); }
+
+
+            // ELJ      = E0*( (R/r)^12 - 2*(R/r)^6 )
+            // dELJ/dR  = E0*( 12*(R/r)^11/r - 12*(R/r)^5/r    )
+
+            double dE_dE = e - 2*u6;
+            double dE_dH = e;
+            double dE_dR = (H-E0)*e*kMorse -12*E0*ir*u4;
+            //double ELJ   = E0*dE_dE - 0*H*e;
+
+            double ELJ   =   e - 2*u6;
+
+            //printf( "ij[%i=%i,%i=%i] EH %g EPaul %g EvdW %g Eel %g REQij(%6.3f,%10.7f,%6.3f,%6.3f) \n", i,ti, j,tj,  H*u6*u6, E0*u6*u6, E0*u6*-2, Q*dE_dQ,  R,E0,Q,H  );
+
+            Etot  += ELJ + Eel*0;
+
+            fsi.x += dE_dR;        // dEtot/dRi
+            fsi.y += dE_dE*REQj.y; // dEtot/dEi
+            fsi.z += dE_dQ*REQj.z; // dEtot/dQi
+            fsi.w += dE_dH*REQj.w; // dEtot/dHi
+        }
+        fs[i].add(fsi);
+    }
+
+    return Etot;
+}
+
+
+// ======================================
+// =========  EVAL ENERGY  ==============
+// ======================================
 
 /**
  * Calculates the energy components of a Lenard-Jones potential, electrostatic interactions and hydrogen bond correction H1 between two systems of atoms
@@ -441,7 +654,6 @@ Quat4d evalExampleEnergyComponents_LJQH2(int ni, int* types, Vec3d* ps, int isam
             // --- Eectrostatic
             //double ir2     = 1/( d.norm2() + 1e-4 );
             double ir2     = 1/( d.norm2() );
-            double ir      = sqrt(ir2);
             // --- Lenard-Jones
             double u2   = ir2*(R*R);
             double u6   = u2*u2*u2;
@@ -450,7 +662,65 @@ Quat4d evalExampleEnergyComponents_LJQH2(int ni, int* types, Vec3d* ps, int isam
                 E0   *u12,                   // Pauli
                 E0*-2*u6 ,                   // London
                 Q *COULOMB_CONST*sqrt(ir2),  // Coulomb
-                E0*u12,                      // Hbond 
+                H*u12,                       // Hbond 
+            };
+            Esum.add(Eij);
+            if( bDecomp ){
+                {                                       if(Eiline){ Eiline[isamp].add(Eij); } }
+                if(Ejlines){ Quat4d* Ejline=Ejlines[j]; if(Ejline){ Ejline[isamp].add(Eij); } }
+                if(Elines){
+                    int ij = i + j*ni;
+                    Quat4d* Eline = Elines[ij];
+                    if( Eline ){    Eline[isamp]=Eij;  }
+                }
+            }
+        }
+    }
+    return Esum;
+}
+
+Quat4d evalExampleEnergyComponents_BuckinghamQH2(int ni, int* types, Vec3d* ps, int isamp ){
+    
+    const int    nj   = system0->natoms;
+    const int*   jtyp = system0->atypes;
+    const Vec3d* jpos = system0->apos;
+    Quat4d Esum = Quat4dZero;
+
+    if(Eilines)for(int i=0; i<nj; i++){ Quat4d* Eiline=Eilines[i]; if(Eiline){ Eiline[isamp]=Quat4dZero; } }
+    if(Ejlines)for(int j=0; j<nj; j++){ Quat4d* Ejline=Ejlines[j]; if(Ejline){ Ejline[isamp]=Quat4dZero; } }
+
+    for(int i=0; i<ni; i++){
+        const int     ti   = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d* Eiline=0; if(Eilines){ Eiline=Eilines[i];  }
+        for(int j=0; j<nj; j++){
+            const int tj        = jtyp     [j];
+            const Quat4d& REQj  = typeREQs [tj];
+            //const Quat4d  REQij = _mixREQ(REQi,REQj);
+            double R  = REQi.x+REQj.x;
+            double E0 = REQi.y*REQj.y;
+            double Q  = REQi.z*REQj.z;
+            double H  = REQi.w*REQj.w;
+
+            const Vec3d d       = jpos     [j] - pi;
+
+            if(H>0) H=0;
+            double r = sqrt( d.norm2() );
+            //double B  = exp  ( R *  kMorse );
+            //double EB = B*exp( r * -kMorse );
+            double e = exp( (R-r) * kMorse );
+
+            double ir      = 1/r;
+            double u       = ir*R;
+            // --- Buckingam
+            double u2   = u*u;
+            double u6   = u2*u2*u2;
+            Quat4d Eij = Quat4d{
+                E0*e,                 // Pauli
+                E0*-2*u6 ,            // London
+                Q *COULOMB_CONST*ir,  // Coulomb
+                H*e,                  // Hbond 
             };
             Esum.add(Eij);
             if( bDecomp ){
@@ -608,7 +878,7 @@ void clean_fs(int n){
  * @return double, returns the total fitting error.
  */
 double evalDerivs( double* Eout=0 ){ 
-    printf( "FitREQ::evalDerivs() nbatch %i imodel %i \n", nbatch, imodel );
+    printf( "FitREQ::evalDerivs() nbatch %i imodel %i verbosity %i \n", nbatch, imodel, verbosity );
     tryRealocTemp();
     double Error = 0;
     for(int i=0; i<nbatch; i++){
@@ -622,9 +892,15 @@ double evalDerivs( double* Eout=0 ){
         clean_fs(C.natoms);
         double E=0;
         switch (imodel){
-            case 1: E = evalExampleDerivs_LJQH (C.natoms, C.atypes, C.apos ); break;
-            case 2: E = evalExampleDerivs_LJQH2(C.natoms, C.atypes, C.apos ); break;
+            case 1: E = evalExampleDerivs_LJQH         (C.natoms, C.atypes, C.apos ); break;
+            case 2: E = evalExampleDerivs_LJQH2        (C.natoms, C.atypes, C.apos ); break;
+            case 3: E = evalExampleDerivs_MorseQH2     (C.natoms, C.atypes, C.apos ); break;
+            case 4: E = evalExampleDerivs_BuckinghamQH2(C.natoms, C.atypes, C.apos ); break;
         }
+        if( E>1e+300 ){
+            if(verbosity>0) printf( "skipped sample [%i] atoms too close \n", i );
+            continue;
+        } 
         if(Eout){ Eout[i]=E; };
         double dE = (E - Eref)*wi;
         Error += dE;
@@ -643,7 +919,7 @@ double evalDerivs( double* Eout=0 ){
  * @return double, eturns the total fitting error.
  */
 double evalDerivsRigid( double* Eout=0 ){
-    //printf( "FitREQ::evalDerivsRigid() \n" );
+    printf( "FitREQ::evalDerivsRigid() nbatch %i imodel %i verbosity %i \n", nbatch, imodel, verbosity );
     tryRealocTemp_rigid();
     const Atoms& C0 = *systemTest0;
     const Atoms& C  = *systemTest;
@@ -657,7 +933,12 @@ double evalDerivsRigid( double* Eout=0 ){
         switch (imodel){
             case 1: E = evalExampleDerivs_LJQH (C.natoms, C.atypes, C.apos ); break;
             case 2: E = evalExampleDerivs_LJQH2(C.natoms, C.atypes, C.apos ); break;
+            case 3: E = evalExampleDerivs_MorseQH2     (C.natoms, C.atypes, C.apos ); break;
+            case 4: E = evalExampleDerivs_BuckinghamQH2(C.natoms, C.atypes, C.apos ); break;
         }
+        if( E>1e+300 ){
+
+        } 
         if(Eout){ Eout[i]=E; };
         double wi = 1;
         if(weights) wi = weights[i];

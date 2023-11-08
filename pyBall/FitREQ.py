@@ -58,6 +58,12 @@ def cstr( s ):
     if s is None: return None
     return s.encode('utf8')
 
+#  void setVerbosity( int verbosity_, int idebug_ ){
+lib.setVerbosity.argtypes  = [c_int, c_int] 
+lib.setVerbosity.restype   =  None
+def setVerbosity( verbosity=1, idebug=0 ):
+    return lib.setVerbosity( verbosity, idebug )
+
 #  void init_types(int ntyp, int* typeMask, double* typREQs ){
 lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool ] 
 lib.init_types.restype   =  None
@@ -158,10 +164,11 @@ def getBuff(name,sh):
 
 def getBuffs():
     init_buffers()
-    global ndims,nDOFs,ntype,nbatch,n0,n1
+    global ndims,nDOFs,ntype,nbatch,n0,n1, params
     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
     nDOFs=ndims[0]; ntype=ndims[1]; nbatch=ndims[2];n0=ndims[3];n1=ndims[4]; 
     print( "getBuffs(): nDOFs %i ntype %i nbatch %i n0 %i n1 %i" %(nDOFs,ntype,nbatch,n0,n1) )
+    params     = getBuff( "params", 4 )
 
     global DOFs,fDOFs,typeREQs,typeREQsMin,typeREQsMax,typeREQs0,typeKreg,typToREQ,weights,Es,poses,ps1,ps2,ps3, types1,types2,types3
     DOFs       = getBuff ( "DOFs",     nDOFs  )
@@ -209,5 +216,9 @@ def EnergyFromXYZ(fname):
     Es = np.array(Es)
     xs = np.array(xs)
     return Es,xs
+
+
+
+
 
 

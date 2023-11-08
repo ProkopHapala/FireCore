@@ -10,41 +10,50 @@ from pyBall import atomicUtils as au
 
 # ============== Setup
 
-Hartree2eV   = 27.2114079527
-kcal2eV      =  0.0433634
-
-# --------- Load Reference energy
-# #fname = "scan_H2O_b3lyp_cc-pvdz.xyz"
-# r0 = 1.91
-# Eref,xs=fit.EnergyFromXYZ(fname)    # load reference energy and position from xyz file
-# xs+=r0
-# Eref*=Hartree2eV
-
-
-dat   = np.genfromtxt( "angScan_HBond_OCH2_vs_H2O_Emap.dat", comments='@' )   ;print( "dat[1,:] ", dat[1,:] )
-Eref  =  dat[:,6]
-rs    =  dat[:,2]
-angs  =  dat[:,4]
-Eref/=0.0433634
+imodel = 3
+fname = "angScan_HBond_OCH2_vs_H2O_Emap"
 
 # ------ Set strength of hydrogen bond correction
 #Hfactor = 0.99
+Hfactor = 0.85
 #Hfactor = 0.9
-Hfactor = 0.95
+#Hfactor = 0.95
 #Hfactor = 0.99
 #Hfactor = 1.0
-1.908   
 
 # ------ Set atom types
 types = [
-    ([     1.487 ,    np.sqrt(0.0006808),     +0.2,    +np.sqrt(0.0006808)*Hfactor   ], [0,0,0,1] ),    # 0 H H2O
-    ([     1.487 ,    np.sqrt(0.0006808),     +0.18,   +np.sqrt(0.0006808)*Hfactor*0 ], [0,0,0,0] ),    # 1 H CH2=O
-    ([     1.661 ,    np.sqrt(0.0091063),     -0.4 ,   -np.sqrt(0.0091063)*Hfactor*0 ], [0,0,0,0] ),    # 2 O H2O
-    ([     1.661 ,    np.sqrt(0.0091063),     -0.36,   -np.sqrt(0.0091063)*Hfactor   ], [0,0,0,1] ),    # 3 O CH2=O 
-    ([     1.908 ,    np.sqrt(0.0037292),     -0.0 ,   -np.sqrt(0.0037292)*Hfactor*0 ], [0,0,0,0] ),    # 4 C CH2=O
+    ([     1.487 ,    np.sqrt(0.0006808),     +0.20,   +np.sqrt(0.0006808)*Hfactor   ], [0,0,0,1] ),    # 0 H H2O
+    ([     1.487 ,    np.sqrt(0.0006808),     +0.20,   +np.sqrt(0.0006808)*Hfactor*0 ], [0,0,0,0] ),    # 1 H CH2=O
+    ([     1.661 ,    np.sqrt(0.0091063),     -0.40,   -np.sqrt(0.0091063)*Hfactor*0 ], [0,0,0,0] ),    # 2 O H2O
+    ([     1.661 ,    np.sqrt(0.0091063),     -0.45,   -np.sqrt(0.0091063)*Hfactor   ], [0,0,0,1] ),    # 3 O CH2=O 
+    ([     1.908 ,    np.sqrt(0.0037292),     -0.00,   -np.sqrt(0.0037292)*Hfactor*0 ], [0,0,0,0] ),    # 4 C CH2=O
 ]
+
+Hartree2eV   = 27.2114079527
+kcal2eV      =  0.0433634
+
+# ============== Functions
+
+def load_dat( fname ):
+    dat   = np.genfromtxt( fname, comments='@' )   ;print( "dat[1,:] ", dat[1,:] )
+    Es  =  dat[:,6]
+    rs    =  dat[:,2]
+    angs  =  dat[:,4]
+    #Es/=0.0433634
+    return Es,rs,angs
+
+# ============== Main
+
+
+Eref,rs,angs = load_dat( fname+".dat" )
+rs += 2.0
+Eref/=0.0433634
+
 typeMask = np.array( [ t[1] for t in types ], dtype=np.int32  )
 typREQs  = np.array( [ t[0] for t in types ], dtype=np.double )
+
+fit.setVerbosity(1)
 fit.init_types( typeMask, typREQs, bCopy=True ) 
 #fit.loadXYZ( fname, [0,1,2], [3,4,5] )
 #fit.loadXYZ( fname+"_scan.xyz", [3,4,5], [0,1,2], types0=[1,0,0], testtypes=[1,0,0]  )     # load reference geometry
@@ -52,6 +61,11 @@ fit.loadXYZ( "angScan_HBond_OCH2_vs_H2O.xyz", [0,1,2,3], [4,5,6], types0=[3,4,1,
 
 
 fit.getBuffs()
+
+print( "fit.params ", fit.params )
+fit.params[ 3 ] = 2.0; # kMorse
+print( "fit.params ", fit.params )
+
 print( "typToREQ" , fit.typToREQ )
 print( "typeREQs" , fit.typeREQs )
 print( "types1"   , fit.types1   )
@@ -59,17 +73,14 @@ print( "types1"   , fit.types1   )
 #print( "types3"   , fit.types3   )
 
 # ------ obtain energy profile from classical model (fit)
-Es     = fit.getEs( imodel=2, bRigid=False)     #;print( "Es_noH", Es     )
+Es     = fit.getEs( imodel=imodel, bRigid=False)     #;print( "Es_noH", Es     )
 
 # ------ obtain energy progile with HBond correction set to zero
 typREQs[0,3] = 0.0              # set HBond correction to zero
 fit.setType(0, typREQs[0,:] )   # set atom type 0
-Es_noH = fit.getEs( imodel=1, bRigid=False)     #;print( "Es_noH", Es_noH )
-
+Es_noH = fit.getEs( imodel=imodel, bRigid=False)     #;print( "Es_noH", Es_noH )
 
 #exit()
-
-
 n2=6
 
 rs    =  np.reshape( rs    ,(-1,n2)).transpose()
