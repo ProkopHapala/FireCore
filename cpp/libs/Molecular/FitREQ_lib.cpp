@@ -3,9 +3,11 @@
 //constexpr int ntmpstr=2048;
 //char tmpstr[ntmpstr];
 
-//int verbosity = 1;
-//int idebug    = 0;
+int verbosity = 1;
+int idebug    = 0;
 //double tick2second=1e-9;
+
+//int verbosity = 1;
 
 #include "testUtils.h"
 #include "FitREQ.h"
@@ -20,6 +22,11 @@ MMFFparams params;
 #include "libUtils.h"
 
 extern "C"{
+
+void setVerbosity( int verbosity_, int idebug_ ){
+    verbosity = verbosity_;
+    idebug    = idebug_;
+}
 
 void init_types(int ntyp, int* typeMask, double* typREQs, bool bCopy ){
     W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
@@ -91,6 +98,7 @@ void init_buffers(){
     buffers .insert( { "Es",               W.Es       } );
     //if(W.poses)
     buffers .insert( { "poses",   (double*)W.poses  } );
+    buffers .insert( { "params",  &W.Kneutral       } );
 
     //printf( "init_buffers() @Es %li @poses %li \n", (long)W.Es, (long)W.poses  );
 
