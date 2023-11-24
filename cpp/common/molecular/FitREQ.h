@@ -108,13 +108,10 @@ class FitREQ{ public:
 
     // Temporary array for accumulation of derivs
     int     nmax = 0;
-    Quat4d* fs   = 0; //[nmax]
+    Quat4d* fs   = 0; //[nmax] 
     //std::vector<Vec3d> fs;
 
     std::vector<Atoms> batch_vec;    // ToDo: would be more convenient to store Atoms* rather than Atoms
-
-
-
     std::vector<Atoms*> samples;    // ToDo: would be more convenient to store Atoms* rather than Atoms
 
 
@@ -156,6 +153,12 @@ void tryRealocTemp(){
     if(n>nmax){ _realloc( fs, n );  nmax=n; };
 }
 
+void tryRealocSamp(){
+    int n=nmax;
+    for(int i=0; i<samples.size(); i++){ int ni = samples[i]->natoms; if(ni>n){ n=ni;} }
+    if(n>nmax){ _realloc( fs, n );  nmax=n; };
+}
+
 /**
  * This function checks if the current number of atoms in the system exceeds the maximum number of atoms allowed. If so, it reallocates memory for the force array to accommodate the new number of atoms.
  */
@@ -165,6 +168,10 @@ void tryRealocTemp_rigid(){
         _realloc( fs, nmax );
     }
 }
+
+
+
+
 
 /**
  * Initializes the types of the FitREQ object.
@@ -214,6 +221,49 @@ int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false 
     //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
     return nDOFs;
 }
+
+
+/**
+ * Initializes the types and parameters for fitting the REQ (Quadrupole) values.
+ * This function calculates the number of degrees of freedom (nDOFs) and initializes the typToREQ array, which maps each atom type to its corresponding REQ values.
+ * The params->atypes array is used to initialize the typeREQs array. t->sym controls which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
+ * It also initializes other arrays related to typeREQs.
+ *
+ * @return The number of degrees of freedom (nDOFs).
+ */
+int init_types_par(){
+    printf( "FitREQ::init_types_par()\n" );
+    int ntype_ = params->atypes.size();
+    int nDOFs=0;
+    typToREQ = new Quat4i[ntype_];
+    for(int i=0; i<params->atypes.size(); i++){
+        AtomType& t  = params->atypes[i];        
+        Quat4i&   tt = typToREQ[i];
+        int bitmask = 1;
+        for(int j=0; j<4; j++){
+            if( bitmask & t.sym ){
+                tt.array[j]=nDOFs;
+                nDOFs++;
+            }else{
+                tt.array[j]=-1;
+            }
+            bitmask<<=1;
+        }
+        //printf(  "init_types() [%i] typeMask(%i,%i,%i) typToREQ(%i,%i,%i)  nDOF %i  tREQs(%g,%g,%g,%g) \n", i, tm.x,tm.y,tm.z, tt.x,tt.y,tt.z, nDOFs, tREQs[i].x,tREQs[i].y,tREQs[i].z,tREQs[i].w );
+    }
+    realloc(nDOFs);
+    ntype = ntype_; 
+    typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = Quat4d{ params->atypes[i].RvdW, params->atypes[i].EvdW, params->atypes[i].Qbase, params->atypes[i].Hb }; }
+    typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = typeREQs[i]; }
+    typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4dmin;   }
+    typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4dmax;   }
+    typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero;  }
+    DOFsFromTypes(); 
+    //for(int i=0; i<ntype; i++){ printf( "init_types()[%i] typeREQs(%g,%g,%g,%g) \n", i,  ); }
+    //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
+    return nDOFs;
+}
+
 
 
 /**
@@ -309,11 +359,12 @@ bool checkToClose(double Rfac){
  * 
  * @return The total energy of the system.
  */
-double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
-    
-    int    nj   =system0->natoms;
-    int*   jtyp =system0->atypes;
-    Vec3d* jpos =system0->apos;
+double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps,   int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
+    if( jpos==0 ){   
+        nj   =system0->natoms;
+        jtyp =system0->atypes;
+        jpos =system0->apos;
+    }
     double Etot=0;
     double Qtot=0;
     //printf( "evalExampleDerivs_LJQH (n=%i,nj=%i ) \n", n,nj );
@@ -376,10 +427,12 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps ){
  * 
  * @return The total energy of the system.
  */
-double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
-    int    nj   =system0->natoms;
-    int*   jtyp =system0->atypes;
-    Vec3d* jpos =system0->apos;
+double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps,   int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
+    if( jpos==0 ){   
+        nj   =system0->natoms;
+        jtyp =system0->atypes;
+        jpos =system0->apos;
+    }
     double Etot=0;
     double Qtot=0;
     //printf( "evalExampleDerivs_LJQH2 (sys:n=%i,sys0:nj=%i ) \n", n,nj );
@@ -458,14 +511,16 @@ double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps ){
  * 
  * @return The total energy of the system.
  */
-double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps ){
+double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps,   int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
     //printf( "evalExampleDerivs_MorseQH2() \n" );
-    int    nj   =system0->natoms;
-    int*   jtyp =system0->atypes;
-    Vec3d* jpos =system0->apos;
+    if( jpos==0 ){   
+        nj   =system0->natoms;
+        jtyp =system0->atypes;
+        jpos =system0->apos;
+    }
     double Etot=0;
     double Qtot=0;
-    //printf( "evalExampleDerivs_LJQH2 (sys:n=%i,sys0:nj=%i ) \n", n,nj );
+    printf( "evalExampleDerivs_MorseQH2(sys:n=%i,sys0:nj=%i ) \n", n,nj );
 
     double Rfac2 = Rfac_tooClose*Rfac_tooClose;
     for(int i=0; i<n; i++){ // loop over all atoms[i] in system
@@ -514,6 +569,8 @@ double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps ){
 
             //Etot  += exp( (R-r) * kMorse );
 
+            printf( "ij[%i=%i,%i=%i] EH %g EPaul %g EvdW %g Eel %g REQij(%6.3f,%10.7f,%6.3f,%6.3f) \n", i,ti, j,tj,  H*e*e, E0*e*e, - E0*2*e, dE_dQ*Q,  R,E0,Q,H  );
+
             fsi.x += dE_dR;        // dEtot/dRi
             fsi.y += dE_dE*REQj.y; // dEtot/dEi
             fsi.z += dE_dQ*REQj.z; // dEtot/dQi
@@ -534,10 +591,12 @@ double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps ){
  * 
  * @return The total energy of the system.
  */
-double evalExampleDerivs_BuckinghamQH2(int n, int* types, Vec3d* ps ){
-    int    nj   =system0->natoms;
-    int*   jtyp =system0->atypes;
-    Vec3d* jpos =system0->apos;
+double evalExampleDerivs_BuckinghamQH2(int n, int* types, Vec3d* ps,  int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
+    if( jpos==0 ){   
+        nj   =system0->natoms;
+        jtyp =system0->atypes;
+        jpos =system0->apos;
+    }
     double Etot=0;
     double Qtot=0;
     //printf( "evalExampleDerivs_LJQH2 (sys:n=%i,sys0:nj=%i ) \n", n,nj );
@@ -630,11 +689,13 @@ double evalExampleDerivs_BuckinghamQH2(int n, int* types, Vec3d* ps ){
  * @param isamp An integer representing the index of current system (sample).
  * @return A Quat4d representing the sum of non-covalent interaction energy components (Pauli,London, Coulomb, Hbond) of the input system with the system0.
  */
-Quat4d evalExampleEnergyComponents_LJQH2(int ni, int* types, Vec3d* ps, int isamp ){
+Quat4d evalExampleEnergyComponents_LJQH2(int ni, int* types, Vec3d* ps, int isamp,  int nj=0, int* jtyp=0, Vec3d* jpos=0   ){
     
-    const int    nj   = system0->natoms;
-    const int*   jtyp = system0->atypes;
-    const Vec3d* jpos = system0->apos;
+    if( jpos==0 ){   
+        nj   =system0->natoms;
+        jtyp =system0->atypes;
+        jpos =system0->apos;
+    }
     Quat4d Esum = Quat4dZero;
 
     if(Eilines)for(int i=0; i<nj; i++){ Quat4d* Eiline=Eilines[i]; if(Eiline){ Eiline[isamp]=Quat4dZero; } }
@@ -686,11 +747,13 @@ Quat4d evalExampleEnergyComponents_LJQH2(int ni, int* types, Vec3d* ps, int isam
     return Esum;
 }
 
-Quat4d evalExampleEnergyComponents_BuckinghamQH2(int ni, int* types, Vec3d* ps, int isamp ){
+Quat4d evalExampleEnergyComponents_BuckinghamQH2(int ni, int* types, Vec3d* ps, int isamp,  int nj=0, int* jtyp=0, Vec3d* jpos=0   ){
     
-    const int    nj   = system0->natoms;
-    const int*   jtyp = system0->atypes;
-    const Vec3d* jpos = system0->apos;
+    if( jpos==0 ){   
+        nj   =system0->natoms;
+        jtyp =system0->atypes;
+        jpos =system0->apos;
+    }
     Quat4d Esum = Quat4dZero;
 
     if(Eilines)for(int i=0; i<nj; i++){ Quat4d* Eiline=Eilines[i]; if(Eiline){ Eiline[isamp]=Quat4dZero; } }
@@ -885,36 +948,42 @@ void clean_fs(int n){
  * @return double, returns the total fitting error.
  */
 double evalDerivsSamp( double* Eout=0 ){ 
-    printf( "FitREQ::evalDerivs() nbatch %i imodel %i verbosity %i \n", nbatch, imodel, verbosity );
-    tryRealocTemp();
+    printf( "FitREQ::evalDerivsSamp() nbatch %i imodel %i verbosity %i \n", samples.size(), imodel, verbosity );
+    tryRealocSamp();
     double Error = 0;
     for(int i=0; i<samples.size(); i++){
         const Atoms* atoms = samples[i];
-        // todo: maybe it would be better to modify evalExampleDerivs_* functions to take the arrays as arguments
-        system0->natoms = atoms->n0;
-        system0->atypes = atoms->atypes;
-        system0->apos   = atoms->apos;
+        int    nj       = atoms->n0;
+        int*   jtyp     = atoms->atypes;
+        Vec3d* jpos     = atoms->apos;
         int    na       = atoms->natoms - atoms->n0;
         int*   atypes   = atoms->atypes + atoms->n0;
         Vec3d* apos     = atoms->apos   + atoms->n0;
-        double Eref=Es[i];
+        printf( "evalDerivsSamp[%i] na %i n0 %i imodel %i \n", i, na, atoms->n0, imodel );
+        double Eref=atoms->Energy;
         double wi = 1; 
         if(weights) wi = weights[i];
+        DEBUG
+        // ToDo: we need to initialize fs acording to DOFs before calling clean_fs()
         clean_fs(na);
         double E=0;
+        DEBUG
         switch (imodel){
-            case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos ); break;
-            case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos ); break;
-            case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos ); break;
-            case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos ); break;
+            case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos, nj, jtyp, jpos ); break; 
+            case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos, nj, jtyp, jpos ); break;
+            case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, nj, jtyp, jpos ); break;
+            case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos, nj, jtyp, jpos ); break;
         }
+        DEBUG
         if( E>1e+300 ){
             if(verbosity>0) printf( "skipped sample [%i] atoms too close \n", i );
             continue;
         } 
+        DEBUG
         if(Eout){ Eout[i]=E; };
         double dE = (E - Eref)*wi;
         Error += dE;
+        DEBUG
         acumDerivs(na, atypes, dE );
     }
     return Error;
