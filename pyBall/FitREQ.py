@@ -93,11 +93,11 @@ def run( nstep, ErrMax=1e-6, dt=0.1, bRigid=False, imodel=1, ialg=1, bRegularize
     return lib.run(imodel, nstep, ErrMax, dt, bRigid, ialg, bRegularize )
 
 #void getEs( double* Es, bool bRigid ){
-lib.getEs.argtypes  = [ c_int, c_double_p,  c_bool] 
+lib.getEs.argtypes  = [ c_int, c_double_p,  c_int] 
 lib.getEs.restype   =  c_double
-def getEs( imodel=1, Es=None, bRigid=True):
+def getEs( imodel=1, Es=None, isampmode=0 ):
     if Es is None: Es = np.zeros( nbatch )
-    Eerr = lib.getEs( imodel, _np_as(Es,c_double_p), bRigid)
+    Eerr = lib.getEs( imodel, _np_as(Es,c_double_p), isampmode )
     return Es
 
 #  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
@@ -114,6 +114,13 @@ def loadXYZ( fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="
     nbatch = lib.loadXYZ( cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes) )
     return nbatch
 
+# int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
+lib.loadXYZ_new.argtypes  = [c_char_p, c_char_p ]
+lib.loadXYZ_new.restype   =  c_int
+def loadXYZ_new( fname, fname_AtomTypes="data/AtomTypes.dat" ):
+    global nbatch
+    nbatch = lib.loadXYZ_new( cstr(fname), cstr(fname_AtomTypes) )
+    return nbatch
 
 #  void setType(int i, double* REQ )
 lib.setType.argtypes  = [c_int, c_double_p] 

@@ -46,6 +46,13 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
     return W.loadXYZ( fname, n0, i0s, ntest, itests, types0, testtypes );
 }
 
+int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
+    printf( "loadXYZ_new(%s)\n", fname );
+    params.loadAtomTypes( fname_AtomTypes ); W.params=&params;
+    printf( "loadXYZ_new() 2 \n" );
+    return W.loadXYZ_new( fname );
+}
+
 double run( int imodel,  int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bRegularize, bool bClamp){
     W.imodel=imodel;
     double Err=0;
@@ -74,10 +81,14 @@ double run( int imodel,  int nstep, double Fmax, double dt, bool bRigid , int ia
 void setType(int i, double* REQ ){ W.setType( i, *(Quat4d*)REQ ); }
 void getType(int i, double* REQ ){ W.getType( i, *(Quat4d*)REQ ); }
 
-double getEs( int imodel, double* Es, bool bRigid ){
+double getEs( int imodel, double* Es, int isampmode ){
     W.imodel=imodel;
-    if(bRigid){ return W.evalDerivsRigid( Es ); }
-    else      { return W.evalDerivs     ( Es ); }
+    switch(isampmode){
+        case 0: return W.evalDerivsRigid( Es ); break;
+        case 1: return W.evalDerivs     ( Es ); break;
+        case 2: return W.evalDerivsSamp ( Es ); break;
+    }
+    return 0;
 }
 
 void init_buffers(){

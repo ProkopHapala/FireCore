@@ -20,8 +20,10 @@ cd $wd
 #python3 run.py
 #python3 fit_manual.py
 #python3 fit_manual_2.py
-python3 fit_manual_2d.py
+#python3 fit_manual_2d.py
 #python3 fit_manual_OH.py
+
+python3 fit_manual_samp.py
 
 
 
