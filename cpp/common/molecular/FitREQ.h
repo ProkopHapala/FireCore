@@ -113,6 +113,13 @@ class FitREQ{ public:
 
     std::vector<Atoms> batch_vec;    // ToDo: would be more convenient to store Atoms* rather than Atoms
 
+
+
+    std::vector<Atoms*> samples;    // ToDo: would be more convenient to store Atoms* rather than Atoms
+
+
+
+
     MMFFparams* params=0; 
 
     // ------- Arrays for decomposition of energy components
@@ -877,6 +884,48 @@ void clean_fs(int n){
  * @param Eout array to store the non-covalent interaction energy values of each atomic system in the batch. if Eout==null, the function will not store the energy values.
  * @return double, returns the total fitting error.
  */
+double evalDerivsSamp( double* Eout=0 ){ 
+    printf( "FitREQ::evalDerivs() nbatch %i imodel %i verbosity %i \n", nbatch, imodel, verbosity );
+    tryRealocTemp();
+    double Error = 0;
+    for(int i=0; i<samples.size(); i++){
+        const Atoms* atoms = samples[i];
+        // todo: maybe it would be better to modify evalExampleDerivs_* functions to take the arrays as arguments
+        system0->natoms = atoms->n0;
+        system0->atypes = atoms->atypes;
+        system0->apos   = atoms->apos;
+        int    na       = atoms->natoms - atoms->n0;
+        int*   atypes   = atoms->atypes + atoms->n0;
+        Vec3d* apos     = atoms->apos   + atoms->n0;
+        double Eref=Es[i];
+        double wi = 1; 
+        if(weights) wi = weights[i];
+        clean_fs(na);
+        double E=0;
+        switch (imodel){
+            case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos ); break;
+            case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos ); break;
+            case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos ); break;
+            case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos ); break;
+        }
+        if( E>1e+300 ){
+            if(verbosity>0) printf( "skipped sample [%i] atoms too close \n", i );
+            continue;
+        } 
+        if(Eout){ Eout[i]=E; };
+        double dE = (E - Eref)*wi;
+        Error += dE;
+        acumDerivs(na, atypes, dE );
+    }
+    return Error;
+}
+
+/**
+ * @brief Evaluates the variational derivatives of the fitting error (sumed batch training samples) with respect to all fitting parameters (i.e. non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) for each atom type). The atomic systems are not assumed rigid (i.e. the atomic positions can vary freely from sample to sample).
+ * 
+ * @param Eout array to store the non-covalent interaction energy values of each atomic system in the batch. if Eout==null, the function will not store the energy values.
+ * @return double, returns the total fitting error.
+ */
 double evalDerivs( double* Eout=0 ){ 
     printf( "FitREQ::evalDerivs() nbatch %i imodel %i verbosity %i \n", nbatch, imodel, verbosity );
     tryRealocTemp();
@@ -1024,6 +1073,48 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
     return nbatch;
 }
 
+int loadXYZ_new( const char* fname ){
+    printf( "FitREQ::loadXYZ_new() fname `%s` \n", fname );
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    char at_name[8];
+    int il   = 0;
+    int nbatch=0;
+    Atoms* atoms=0;
+    while( fgets(line, nline, fin) ){
+        printf( "LINE:%s", line );
+        if      ( il==0 ){
+            int na=-1;
+            sscanf( line, "%i", &na );
+            if( (na>0)&&(na<10000) ){
+                atoms = new Atoms(na);
+            }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
+        }else if( il==1 ){
+            // comment - ToDo : Here we can read the reference Energy directly from .xyz 
+            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+            //printf( "n0 %i E %g \n", n0, E );
+        }else if( il<atoms->natoms+2 ){
+            double x,y,z,q;
+            //printf( ">>%s<<\n", line );
+            int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
+            if(nret<5){q=0;}
+            int i=il-2;
+            //printf( "[%i] `%s` (%g,%g,%g) q %g \n", i, at_name, x, y, z, q );
+            atoms->apos[i].set(x,y,z);
+            atoms->atypes[i]=params->getAtomType(at_name);
+        }
+        il++;
+        if( il >= atoms->natoms+2 ){ 
+            samples.push_back( atoms );
+            printf( "===== FitREQ::loadXYZ() isys %i na %i n0 %i E %g \n", nbatch, atoms->natoms, atoms->n0, atoms->Energy  );
+            for(int i=0; i<atoms->natoms; i++ ){ printf( "a[%2i] type %2i pos(%7.3f,%7.3f,%7.3f)\n", i, atoms->atypes[i], atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z ); }
+            il=0; nbatch++;
+        }
+    }
+    return nbatch;
+}
 
 /**
  * @brief Cleans the derivative array by setting all its elements to zero.

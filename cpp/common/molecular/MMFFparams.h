@@ -260,15 +260,17 @@ class MMFFparams{ public:
                                  atyp.name, parent_name, element_name, epair_name,  &valence_, &nepair_, &npi_, &sym_,    &atyp.Ruff, &atyp.RvdW, &atyp.EvdW, &atyp.Qbase, &atyp.Hb,    &atyp.Ass,&atyp.Asp, &atyp.Kss,&atyp.Ksp,&atyp.Kep,&atyp.Kpp );
         atyp.valence=valence_; atyp.nepair=nepair_; atyp.npi=npi_; atyp.sym=sym_;
         if(atypes.size()!=0){
-            int iet  = getElementType(element_name, false); if(iet <0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find elementType (%s) of type(%s) => Exit() \n", element_name, atyp.name ); exit(0);  };
             int ipar = getAtomType   (parent_name,  false); if(ipar<0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find parrent type(%s) of type(%s) => Exit() \n", parent_name,  atyp.name ); exit(0); };
             int iept = getAtomType   (epair_name,   false); if(iept<0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find epair   type(%s) of type(%s) => Exit() \n", epair_name,   atyp.name ); exit(0); };
-            const ElementType& et = etypes[iet];
-            atyp.iZ    = et.iZ;
-            atyp.color = et.color; 
-            atyp.parrent  =ipar;
-            atyp.ePairType=iept;
-            atyp.element  =iet;
+            if( etypes.size()>0 ){
+                int iet  = getElementType(element_name, false); if(iet <0){ printf("ERROR in MMFFparams::string2AtomType(): cannot find elementType (%s) of type(%s) => Exit() \n", element_name, atyp.name ); exit(0); };
+                const ElementType& et = etypes[iet];
+                atyp.iZ       = et.iZ;
+                atyp.color    = et.color; 
+                atyp.parrent  =ipar;
+                atyp.ePairType=iept;
+                atyp.element  =iet;
+            }
         }
         if(nret<19){ atyp.bMMFF = false; atyp.Ass=0;atyp.Asp=0;atyp.Kss=0;atyp.Ksp=0;atyp.Kep=0;atyp.Kpp=0; }else{ atyp.bMMFF = true; }
         atyp.subTypes=Vec3iZero;
