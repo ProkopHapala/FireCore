@@ -49,6 +49,8 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
 int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
     printf( "loadXYZ_new(%s)\n", fname );
     params.loadAtomTypes( fname_AtomTypes ); W.params=&params;
+    printf( "loadXYZ_new() 1 \n" );
+    W.init_types_par();
     printf( "loadXYZ_new() 2 \n" );
     return W.loadXYZ_new( fname );
 }
