@@ -25,6 +25,8 @@
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
+#include "AtomsInGrid.h"
+
 #include <chrono>
 
 
@@ -165,6 +167,10 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool afm_bDf   = true;
 
 
+    // ----- Atoms in grid
+    AtomsInGrid atomsInGrid;
+
+
     // ======================= Functions 
 
 	virtual void draw   () override;
@@ -216,6 +222,77 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void initWiggets();
     void drawingHex(double z0);
     void lattice_scan( int n1, int n2, const Mat3d& dlvec );
+
+    void makeNonuniformGrid(int niter=5, double dt=0.1 ){
+        printf( "makeNonuniformGrid() \n" );
+        //atomsInGrid.setup( Vec3d pmin, Vec3d pmax_, double step );
+        atomsInGrid.snap_corners( W->nbmol );
+        //for(int iter=0; iter<niter; iter++){
+        //    atomsInGrid.eval_forces();
+        //    atomsInGrid.move_points( dt );
+        //}
+    };
+
+    void relaxNonuniformGrid(int niter=10, double dt=0.1 ){
+        printf( "relaxNonuniformGrid() niter=%i double dt=%g \n", niter, dt );
+        for(int iter=0; iter<niter; iter++){
+            atomsInGrid.eval_forces();
+            double f2 = atomsInGrid.move_points( dt );
+            printf( "relaxNonuniformGrid[%i] |F|=%g \n", iter, sqrt(f2) );
+        }
+    };
+
+    void plotNonuniformGrid( bool bFixedOnly=false ){
+        for (int i=0; i<atomsInGrid.gpoints.size(); i++){
+            GridPointDynamics& gp = atomsInGrid.gpoints[i];
+
+            if( bFixedOnly && !gp.fixed ) continue;
+            Vec3i ipos; atomsInGrid.i2ixyz( gp.ic, ipos );
+            Vec3d pj; 
+
+            if( gp.fixed ){ 
+                glColor3f( 1.0, 0.0, 0.0 );
+                //Draw3D::drawPointCross( gp.pos, 0.1 );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z-1}); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y-1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y+1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            } else { 
+                glColor3f( 0.0, 0.0, 1.0 ); 
+                //Draw3D::drawPointCross( gp.pos, 0.1 );
+                Vec3d pj;
+                bool bfix; 
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z-1}, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z+1}, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y-1, ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y+1, ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x-1, ipos.y,   ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x+1, ipos.y,   ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+            }
+            
+            /*
+            
+            Vec3d pj; 
+            Vec3i ip;
+            ip={ipos.x,   ipos.y,   ipos.z-1};  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x,   ipos.y,   ipos.z+1};  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x,   ipos.y-1, ipos.z  };  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x,   ipos.y+1, ipos.z  };  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x-1, ipos.y,   ipos.z  };  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x+1, ipos.y,   ipos.z  };  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            */
+            // pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( gp.pos, pj );
+            // pj = atomsInGrid.get_gpos({ipos.x,   ipos.y-1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            // pj = atomsInGrid.get_gpos({ipos.x,   ipos.y+1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            // pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            // pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            
+            //Draw3D::drawPointCross( gp.pos, 0.1 );
+        }
+    }
+
 };
 
 //=================================================
@@ -390,6 +467,8 @@ void MolGUI::draw(){
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // DEBUG  
 
     //if(bDoQM)drawSystemQMMM();
+
+    plotNonuniformGrid();
 
     if(ogl_MO){ 
         glPushMatrix();
@@ -1248,11 +1327,14 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LESS:      afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 //case SDLK_GREATER:   afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
+                case SDLK_j: makeNonuniformGrid(); break;
+                case SDLK_k: relaxNonuniformGrid(); break;
+
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl;       break;
                 case SDLK_m: W->swith_method();      break;
                 //case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
-                case SDLK_k: bDebug_scanSurfFF ^=1; break;
+                //case SDLK_k: bDebug_scanSurfFF ^=1; break;
                 //case SDLK_q: W->autoCharges(); break;
                 case SDLK_a: bViewAtomSpheres ^= 1; break;
                 case SDLK_l: bViewAtomLabels  ^= 1; break;

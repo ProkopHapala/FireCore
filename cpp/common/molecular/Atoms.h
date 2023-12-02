@@ -42,6 +42,13 @@ class Atoms{ public:
     Atoms(int n,bool bLvec=false, bool bAtypes=true ){ realloc( n, bAtypes ); if(bLvec){ lvec=new Mat3d; *lvec=Mat3dIdentity; };    };
     Atoms(const Atoms& As, bool bCopy=true){ if(bCopy){ copyOf(As); }else{  bind(As.natoms,As.atypes,As.apos); } };
 
+    void getAABB( Vec3d &pmin, Vec3d &pmax )const{
+        pmin.set( 1e+300, 1e+300, 1e+300 );
+        pmax.set(-1e+300,-1e+300,-1e+300 );
+        for(int ia=0; ia<natoms; ia++){
+            apos[ia].update_bounds( pmin, pmax );
+        }
+    }
 
     void fromRigid( Vec3d* ps0, const Vec3d& p0, const Mat3d& rot ){ for(int i=0; i<natoms; i++){ rot.dot_to_T( ps0[i], apos[i] ); apos[i].add(p0);         } }
     void shift    ( Vec3d d                                       ){ for(int i=0; i<natoms; i++){ apos[i].add(d); } }
