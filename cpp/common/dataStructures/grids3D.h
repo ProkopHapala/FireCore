@@ -99,9 +99,20 @@ class CubeGridRuler : public GridRulerInterface { public:
         //printf( "(%3.3f,%3.3f,%3.3f) (%i,%i,%i)\n", pos.x, pos.y, pos.z, ipos.x,ipos.y,ipos.z);
     }
 
+    bool isIndexValid( const Vec3i& ipos ) const {
+        return (ipos.x>=0)&&(ipos.y>=0)&&(ipos.z>=0)&&(ipos.x<n.x)&&(ipos.y<n.y)&&(ipos.z<n.z);
+    }
+
     inline Vec3i ipcell( const Vec3d& pos ) const { return (Vec3i){ (int)(pos.x-pos0.x)*invStep, (int)(pos.y-pos0.y)*invStep, (int)(pos.z-pos0.z)*invStep }; }
     inline int   icell ( const Vec3d& pos ) const { return ixyz2i(ipcell(pos)); }
     //inline int   icell ( const Vec3d& pos ) const { return ixyz2i({ (int)(pos.x-pos0.x)*invStep, (int)(pos.y-pos0.y)*invStep, (int)(pos.z-pos0.z)*invStep } ); }
+
+    inline Vec3d box2pos( const Vec3i& ipos) const {
+        return Vec3d{
+            step*ipos.x + pos0.x,
+            step*ipos.y + pos0.y,
+            step*ipos.z + pos0.z };
+    }
 
     inline Vec3d box2pos( const Vec3i& ipos, const Vec3d& dpos ) const {
         return Vec3d{
@@ -186,9 +197,15 @@ class CubeGridRuler : public GridRulerInterface { public:
     inline uint64_t ixyz2long( Vec3i      ip         ) const { return (ip.x+OFFSET3D) + ( ( (ip.y+OFFSET3D) + ((ip.z+OFFSET3D)<<NBIT3D) )<<NBIT3D );  }
     inline void     long2ixyz( uint64_t i, Vec3i& ip ) const { ip.x = i&XMASK3D; ip.y = (i&YMASK3D)>>NBIT3D; ip.z = (i&ZMASK3D)>>(NBIT3D*2); }
 
-    inline int  ixyz2i( Vec3i ip         ) const { return ip.x + n.x*(ip.y + n.y*ip.z);          }
+    inline int  ixyz2i( const Vec3i& ip         ) const { return ip.x + n.x*(ip.y + n.y*ip.z);          }
     inline void i2ixyz( int i, Vec3i& ip ) const { ip.z=i/nxy; i=i%nxy; ip.y=i/n.x; ip.x=i%n.x;  }
 
+    inline Vec3i ipwrap( const Vec3i& ip        ) const {
+        int ix = wrap_index_fast( ip.x,n.x);
+        int iy = wrap_index_fast( ip.y,n.y);
+        int iz = wrap_index_fast( ip.z,n.z);
+        return Vec3i{ix,iy,iz};
+    }
 
     //inline int wrap(int , n)
     inline int  ixyz2i_wrap( Vec3i ip         ) const {
