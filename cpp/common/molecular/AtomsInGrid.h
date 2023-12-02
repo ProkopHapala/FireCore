@@ -21,6 +21,7 @@ struct AtomInBox{
 
 struct GridPointDynamics{
     int ic = -1;
+    int ia = -1;
     bool  fixed = false;
     Vec3d pos   = Vec3dZero;
     Vec3d force = Vec3dZero;
@@ -48,7 +49,8 @@ class AtomsInGrid : public CubeGridRuler { public:
     // Vec3i  n;
     // int    ntot,nxy;
 
-    double KL = 1.0; // stiffness along the edge
+    double Korig = 0.2; // stiffness of the original grid points
+    double KL = 0.5; // stiffness along the edge
     double KT = 1.0; // stiffness perpendicular to the edge ( strightening the edge )
 
     int* ginds = 0;           // grid point indexes
@@ -61,10 +63,10 @@ class AtomsInGrid : public CubeGridRuler { public:
         //if( !isIndexValid( ipos ) ) return false;
         //int ic = ixyz2i( ipos );
         int ic = ixyz2i_wrap( ipos );
-        if( ginds[ic]>=0 ){ // if grid point is not yet occupied
+        if( ginds[ic]<0 ){ // if grid point is not yet occupied
             ginds[ic] = gpoints.size();
             Vec3d pos = box2pos( ipos );
-            gpoints.push_back( GridPointDynamics{ ic, false, pos, Vec3dZero } );  
+            gpoints.push_back( GridPointDynamics{ ic, -1, false, pos, Vec3dZero } );  
         }
         return true;
     } 
@@ -80,62 +82,94 @@ class AtomsInGrid : public CubeGridRuler { public:
         }
     }
 
-    void snap_corners( const Atoms& atoms ){
-        _realloc( ginds, ntot );
+    bool get_gpos2( Vec3i ipos, Vec3d& gpos ){
+        //int ic = ixyz2i( ipos );
+        int ic = ixyz2i_wrap( ipos );
+        int ig = ginds[ic];
+        if( ig>=0 ){ // if grid point is not yet occupied
+            gpos = gpoints[ig].pos;
+            return gpoints[ig].fixed;
+        }else{
+            gpos = box2pos( ipos );
+        }
+        return false;
+    }
+
+    void snap_corners( const Atoms& atoms, bool bAutoSetup=true, double margin=2.0, double step=0.5 ){
+        //printf( "snap_corners(): atoms.n=%i bAutoSteup=%i, margin=%g, step=%g \n", atoms.natoms, bAutoSetup, margin, step );
+        if( bAutoSetup ){
+            atoms.getAABB( pos0, pmax );
+            pos0.add( -margin );
+            pmax.add(  margin );
+            setup( pos0, pmax, step );
+            //printf( "snap_corners(): n(%i,%i,%i) pmin(%g,%g,%g) pmax(%g,%g,%g) \n", n.x,n.y,n.z, pmin.x,pmin.y,pmin.z, pmax.x,pmax.y,pmax.z );
+        }
+        printf( "snap_corners(): n(%i|%i,%i,%i) pmin(%g,%g,%g) pmax(%g,%g,%g) \n", ntot, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z, pmax.x,pmax.y,pmax.z );
+        _realloc( ginds, ntot ); for(int i=0; i<ntot; i++){ ginds[i]=-1; }
         gpoints.clear();
+        const Vec3d p0{0.5*step,0.5*step,0.5*step}; 
         for(int ia=0; ia<atoms.natoms; ia++){
+            //printf( "snap_corners[%i] \n", ia );
             Vec3d p = atoms.apos[ia];
             Vec3i ipos;
             Vec3d dpos;
-            pos2box( p, ipos, dpos );
+            pos2box( p+p0, ipos, dpos );
             int ic = ixyz2i( ipos );
-
+            //printf( "snap_corners[%i] pos(%6.3f,%6.3f,%6.3f) ipos(%i,%i,%i) ic=%i \n", ia, p.x,p.y,p.z, ipos.x,ipos.y,ipos.z, ic );
             // snap grid point to atom center (i.e. set position and fix it )
             int ig = ginds[ic];
             if( ig<0 ){ // if grid point is not yet occupied
                 ginds[ic] = gpoints.size();
-                gpoints.push_back( GridPointDynamics{ ic, true, p, Vec3dZero } );  
-            }else{     // if grid point is already occupied
-                gpoints[ig].pos.set( p );
+                gpoints.push_back( GridPointDynamics{ ic, ia, true, p, Vec3dZero } );  
+            }else if( !gpoints[ig].fixed ){     // if grid point is already occupied
+                gpoints[ig].pos.set( p  );
+                gpoints[ig].ia   =  ia ;
                 gpoints[ig].fixed = true; 
+            }else{
+                printf( "ERROR in snap_corners[ia=%i] grid point %i is already occupied by atom #%i \n", ia, ic, gpoints[ig].ia );
+                exit(0);
             }
 
             // create edges to the nearest grid points, and apply forces to them
-            make_neigh( {ipos.x+1,   ipos.y,   ipos.z } );
-            make_neigh( {ipos.x-1,   ipos.y,   ipos.z } );
-            make_neigh( {ipos.x,   ipos.y+1,   ipos.z } );
-            make_neigh( {ipos.x,   ipos.y-1,   ipos.z } );
-            make_neigh( {ipos.x,   ipos.y,   ipos.z+1 } );
-            make_neigh( {ipos.x,   ipos.y,   ipos.z-1 } );
+            make_neigh({ipos.x+1, ipos.y,   ipos.z   });
+            make_neigh({ipos.x-1, ipos.y,   ipos.z   });
+            make_neigh({ipos.x,   ipos.y+1, ipos.z   });
+            make_neigh({ipos.x,   ipos.y-1, ipos.z   });
+            make_neigh({ipos.x,   ipos.y,   ipos.z+1 });
+            make_neigh({ipos.x,   ipos.y,   ipos.z-1 } );
         }
+        printf( "snap_corners() DONE: gpoints.size()=%i \n", gpoints.size() );
     }
 
     void eval_forces(){
+        for( GridPointDynamics& gp : gpoints ){ gp.force.set(0.0); }
         for( GridPointDynamics& gp : gpoints ){
             if( gp.fixed ) continue;
             Vec3i ipos; i2ixyz( gp.ic, ipos );
             Vec3d p1,p2,f=Vec3dZero,p=gp.pos;
+            f.add( (box2pos( ipos )-p)*Korig );  // force to snap to the original grid point
             p1 = get_gpos( {ipos.x+1,   ipos.y,   ipos.z } ); 
             p2 = get_gpos( {ipos.x-1,   ipos.y,   ipos.z } ); 
-            f.add( ((p1+p2)*0.5 - p)*KT );
-            p1.sub(p); f.add( p1*(1.0-p1.norm()*invStep)*KL );
-            p2.sub(p); f.add( p2*(1.0-p2.norm()*invStep)*KL );
+            f.add( ((p1+p2)*0.5 - p)*KT );                     // force to strighten the edge along x
+            p1.sub(p); f.add( p1*(p1.norm()*invStep-1.0)*KL ); // force to keep the edge length
+            p2.sub(p); f.add( p2*(p2.norm()*invStep-1.0)*KL ); // force to keep the edge length
             p1 = get_gpos( {ipos.x,   ipos.y+1,   ipos.z } );  
             p2 = get_gpos( {ipos.x,   ipos.y-1,   ipos.z } );  
-            f.add( ((p1+p2)*0.5 - p)*KT  );
-            p1.sub(p); f.add( p1*(1.0-p1.norm()*invStep)*KL );
-            p2.sub(p); f.add( p2*(1.0-p2.norm()*invStep)*KL );
+            f.add( ((p1+p2)*0.5 - p)*KT  );                    // force to strighten the edge along y
+            p1.sub(p); f.add( p1*(p1.norm()*invStep-1.0)*KL );
+            p2.sub(p); f.add( p2*(p2.norm()*invStep-1.0)*KL );
             p1 = get_gpos( {ipos.x,   ipos.y,   ipos.z+1 } ); 
             p2 = get_gpos( {ipos.x,   ipos.y,   ipos.z-1 } );
-            f.add( ((p1+p2)*0.5 - p)*KT  );
-            p1.sub(p); f.add( p1*(1.0-p1.norm()*invStep)*KL );
-            p2.sub(p); f.add( p2*(1.0-p2.norm()*invStep)*KL );
+            f.add( ((p1+p2)*0.5 - p)*KT  );                   // force to strighten the edge along z
+            p1.sub(p); f.add( p1*(p1.norm()*invStep-1.0)*KL );
+            p2.sub(p); f.add( p2*(p2.norm()*invStep-1.0)*KL );
+            
             gp.force.add( f );
         }
 
     }
 
-    double move( double dt ){
+    double move_points( double dt=0.1 ){
         double f2sum = 0;
         for( GridPointDynamics& gp : gpoints ){
             if( gp.fixed ) continue;
