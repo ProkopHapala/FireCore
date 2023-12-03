@@ -7,6 +7,7 @@ int verbosity = 1;
 int idebug    = 0;
 //double tick2second=1e-9;
 
+#include "testUtils.h"
 #include "QuadratureCoefsOptimizer.h"
 
 QuadratureCoefsOptimizer W;
@@ -24,7 +25,7 @@ void setVerbosity( int verbosity_, int idebug_ ){
 }
 
 void init_buffers(){
-    ibuffers.insert( { "npars",  &W.nparams } );
+    ibuffers.insert( { "ndims",  &W.ntrain } );
     buffers.insert( { "train_cs",  W.train_cs } );
     buffers.insert( { "qps",     (double*)W.qps      } );
     buffers.insert( { "qws",     W.qws      } );
@@ -49,8 +50,12 @@ double evaluateQuadrature( int n, double* ps, double* params, double* ws, double
     return W.evaluateQuadrature( n, (Vec3d*)ps, params, ws, ys );
 }
 
-double distributPointsTetrahedron_open( int n, bool bRef, bool bAlloc ){
-    return W.distributPointsTetrahedron_open( n, bRef, bAlloc );
+double distributPointsTetrahedron( int n, bool bRef, bool bAlloc, int imode ){
+    switch (imode){
+        case 0: return W.distributPointsTetrahedron_open ( n, bRef, bAlloc ); break;
+        case 1: return W.distributPointsTetrahedron_close( n, bRef, bAlloc ); break;
+        case 2: return W.distributPointsTetrahedron_Shunn( n, bRef, bAlloc ); break;
+    }
 }
 
 
