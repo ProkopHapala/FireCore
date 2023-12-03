@@ -139,6 +139,8 @@ class Vec3T{
     inline T bidot  ( const VEC& a, const VEC& b ) const { return x*a.x*b.x + y*a.y*b.y + z*a.z*b.z;  };
     inline T antidot( const VEC& a, const VEC& b ) const { return x*a.y*b.z + y*a.z*b.x + z*a.x*b.y;  };
 
+    inline T triple_product( const VEC& a, const VEC& b ) const { return x*(a.y*b.z-a.z*b.y) + y*(a.z*b.x-a.x*b.z) + z*(a.x*b.y-a.y*b.x);  };  // https://en.wikipedia.org/wiki/Triple_product
+
 	inline T dot  ( const VEC& a ) const { return x*a.x + y*a.y + z*a.z;  };
 	inline T norm2(              ) const { return x*x + y*y + z*z;        };
 	inline T norm ( ) const { return  sqrt( x*x + y*y + z*z ); };
