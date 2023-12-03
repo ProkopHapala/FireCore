@@ -10,3 +10,5 @@ add_subdirectory (Molecular)
 #add_subdirectory (KosmoSuite)
 #add_subdirectory (CombatModels)
 
+#add_library(quadrature_lib  SHARED quadrature_lib.cpp  $<TARGET_OBJECTS:DynamicOpt> )
+add_library(quadrature_lib  SHARED quadrature_lib.cpp  )
