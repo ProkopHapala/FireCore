@@ -656,7 +656,14 @@ class Builder{  public:
             }
             //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ADDED \n", ia, ib );
             bool success = confs[ic].addBond(ib);
-            if(!success){printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); exit(0); }
+            if(!success){
+                printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); 
+                confs[ic].print();
+                int it1 = atoms[bonds[ib].atoms.a].type;
+                int it2 = atoms[bonds[ib].atoms.b].type;
+                printf( "\nbond(%i-%i) %s-%s \n", bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
+                exit(0); 
+            }
             //int order = bonds[ib].type;
             //if(order>1){ for(int i=0; i<order-1; i++)confs[ic].addPi(); };
         }
@@ -1892,6 +1899,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     void autoBonds( double R=-0.5, int i0=0, int imax=-1 ){
+        printf( "MM::Builder::autoBonds() \n" );
         if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
@@ -1908,6 +1916,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                     if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
                     bondBrush.ipbc=Vec3i8{0,0,0};
                     bondBrush.atoms={i,j};
+                    printf( "autoBonds() try add bond(%i-%i)\n", i,j );
                     insertBond( bondBrush );
                 }
             }
@@ -2569,17 +2578,22 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     void startFragment (         ){                          frags.push_back( Fragment( atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ) ); }
     void finishFragment(int i=-1 ){ if(i<0)i=frags.size()-1; frags[i].finish(           atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size()   ); }
 
-    void insertAtoms( int na, int* atypes, Vec3d* apos, Quat4d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
-        //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
+    int insertAtoms( int na, int* atypes, Vec3d* apos, Quat4d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity, const Vec3d& pos0=Vec3dZero ){
+        printf( "MM::Builder::insertAtoms  natoms %i atypes=%li apos=%li REQs=%li qs=%li npis=%li \n", na, (long)atypes, (long)apos, (long)REQs, (long)qs, (long)npis );
         //startFragment();
         //int natom0  = atoms.size();
         //int nbond0  = bonds.size();
+        //std::vector<int> atomInds(mol->natoms);
+        //std::vector<int> bondInds(mol->nbonds);
+        int ncap=0;
         for(int i=0; i<na; i++){
+            printf( "insert Atom[%i] ityp %i %s \n", i, atypes[i], params->atypes[atypes[i]].name );
             Vec3d p;
             Quat4d REQ;
             int ne=0,npi=0;
             int ityp = atypes[i];
             if( ityp==ignoreType ) continue;
+            //if( capping_types.contains(ityp)  ){ ncap++; continue; }
             double q=0; if(qs){ q=qs[i]; }
             if(REQs  ){ REQ=REQs[i];                        }
             else      { params->assignRE( ityp, REQ,true ); }
@@ -2587,10 +2601,26 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             if(npis  ){npi=npis[i];}
             REQ.z=q;
             //printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, npi, ne  );
-            rot.dot_to( apos[i],p); p.add( pos );
+            rot.dot_to( apos[i]-pos0,p); p.add( pos );
             insertAtom( ityp, p, &REQ, npi, ne );
         }
         //finishFragment();
+        return 0;
+    }
+
+    int insertAtoms( const Atoms& mol, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity, const Vec3d& pos0=Vec3dZero ){
+        return insertAtoms( mol.natoms, mol.atypes, mol.apos, 0, 0, 0, pos, rot, pos0 );
+    }
+
+    Atoms* exportAtoms( int i0=0, int n=-1 ){
+        natom_def(n,i0);
+        Atoms* out = new Atoms( n, bPBC, true );
+        if(bPBC){ *(out->lvec)=lvec; };
+        for(int i=0; i<n; i++){
+            const Atom& a = atoms[i0+i];
+            out->atypes[i] = a.type;
+            out->apos  [i] = a.pos;
+        }
     }
 
     void insertBonds( int nb, Vec2i* b2as, int* btypes ){
@@ -2732,7 +2762,6 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
         return ibs.size();
     }
-
 
 #ifdef LimitedGraph_h
     bool toLimitedGraph( LimitedGraph<N_NEIGH_MAX>& G, bool bNoCap=true, bool bExitOnError=true, bool bRealloc=true ){

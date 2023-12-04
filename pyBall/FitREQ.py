@@ -115,11 +115,11 @@ def loadXYZ( fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="
     return nbatch
 
 # int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
-lib.loadXYZ_new.argtypes  = [c_char_p, c_char_p ]
+lib.loadXYZ_new.argtypes  = [c_char_p, c_char_p, c_bool, c_bool ]
 lib.loadXYZ_new.restype   =  c_int
-def loadXYZ_new( fname, fname_AtomTypes="data/AtomTypes.dat" ):
+def loadXYZ_new( fname, fname_AtomTypes="data/AtomTypes.dat", bAddEpairs=False, bOutXYZ=False ):
     global nbatch
-    nbatch = lib.loadXYZ_new( cstr(fname), cstr(fname_AtomTypes) )
+    nbatch = lib.loadXYZ_new( cstr(fname), cstr(fname_AtomTypes), bAddEpairs, bOutXYZ )
     return nbatch
 
 #  void setType(int i, double* REQ )

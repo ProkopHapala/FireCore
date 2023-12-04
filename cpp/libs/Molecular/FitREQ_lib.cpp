@@ -46,13 +46,13 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
     return W.loadXYZ( fname, n0, i0s, ntest, itests, types0, testtypes );
 }
 
-int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
-    printf( "loadXYZ_new(%s)\n", fname );
+int loadXYZ_new( const char* fname, const char* fname_AtomTypes, bool bAddEpairs, bool bOutXYZ ){
+    //printf( "loadXYZ_new(%s)\n", fname );
     params.loadAtomTypes( fname_AtomTypes ); W.params=&params;
-    printf( "loadXYZ_new() 1 \n" );
+    //printf( "loadXYZ_new() 1 \n" );
     W.init_types_par();
-    printf( "loadXYZ_new() 2 \n" );
-    return W.loadXYZ_new( fname );
+    //printf( "loadXYZ_new() 2 \n" );
+    return W.loadXYZ_new( fname, bAddEpairs, bOutXYZ );
 }
 
 double run( int imodel,  int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bRegularize, bool bClamp){

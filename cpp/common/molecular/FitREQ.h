@@ -10,6 +10,9 @@
 #include "MMFFparams.h"
 #include "Forces.h"
 
+#include "MMFFBuilder.h"
+
+
 
 /**
  * Saves the coordinates of composite system comprising atoms stored in two systems A and B to a file in XYZ format. 
@@ -115,7 +118,7 @@ class FitREQ{ public:
     std::vector<Atoms*> samples;    // ToDo: would be more convenient to store Atoms* rather than Atoms
 
 
-
+    MM::Builder builder;
 
     MMFFparams* params=0; 
 
@@ -1142,29 +1145,87 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
     return nbatch;
 }
 
-int loadXYZ_new( const char* fname ){
-    printf( "FitREQ::loadXYZ_new() fname `%s` \n", fname );
+Atoms* addEpairs( Atoms* mol ){
+    //MM::Builder builder;
+    builder.params = params;
+    DEBUG
+    builder.clear();
+    if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
+    DEBUG
+    builder.insertAtoms(*mol);
+    //int ia0=builder.frags[ifrag].atomRange.a;
+    //int ic0=builder.frags[ifrag].confRange.a;
+    //builder.printBonds();
+    //builder.printAtomConfs(true, false );
+    //if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
+    //builder.addCappingTypesByIz(1);  // insert H caps
+    //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
+    DEBUG
+    builder.tryAddConfsToAtoms( 0, -1 );
+    builder.cleanPis();
+    DEBUG
+    //if(verbosity>2)
+    builder.printAtomConfs(false);
+    //builder.export_atypes(atypes);
+    // ------- Load lattice vectros
+    DEBUG
+    // NOTE: ERROR IS HERE:  autoBonds() -> insertBond() -> tryAddBondToAtomConf( int ib, int ia, bool bCheck )
+    //       probably we try to add multiple bonds for hydrogen ?
+    if( builder.bPBC ){ builder.autoBondsPBC(); }
+    else              { builder.autoBonds();    }
+    DEBUG
+    builder.checkNumberOfBonds( true, true );
+    //if(verbosity>2)
+    builder.printBonds ();
+    DEBUG
+    //if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
+    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+    //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+    DEBUG
+    builder.autoAllConfEPi( ); 
+    //builder.setPiLoop       ( ic0, -1, 10 );
+    builder.addAllEpairsByPi();    
+    DEBUG
+    //builder.printAtomConfs(false, false );
+    //builder.printAtomConfs(false, true );
+    //builder.assignAllBondParams();    //if(verbosity>1)
+    //builder.finishFragment(ifrag);    
+
+    return builder.exportAtoms(); 
+}
+
+int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
+    printf( "FitREQ::loadXYZ_new() fname `%s` bAddEpairs %i bOutXYZ %i \n", fname, bAddEpairs, bOutXYZ  );
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
     char line[1024];
     char at_name[8];
+    DEBUG
+    // --- Open output file
+    FILE* fout=0;
+    if(bAddEpairs && bOutXYZ){
+        //sprintf(line,"%s_Epairs.xyz", fname );
+        fout = fopen("out.xyz","w");
+    }
+
     int il   = 0;
     int nbatch=0;
     Atoms* atoms=0;
+    DEBUG
     while( fgets(line, nline, fin) ){
         printf( "LINE:%s", line );
-        if      ( il==0 ){
+        if      ( il==0 ){               // --- Read number of atoms
             int na=-1;
             sscanf( line, "%i", &na );
             if( (na>0)&&(na<10000) ){
                 atoms = new Atoms(na);
             }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
-        }else if( il==1 ){
+        }else if( il==1 ){               // --- Read comment line ( read reference energy )
             // comment - ToDo : Here we can read the reference Energy directly from .xyz 
             sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
             //printf( "n0 %i E %g \n", n0, E );
-        }else if( il<atoms->natoms+2 ){
+        }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
             double x,y,z,q;
             //printf( ">>%s<<\n", line );
             int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
@@ -1175,13 +1236,24 @@ int loadXYZ_new( const char* fname ){
             atoms->atypes[i]=params->getAtomType(at_name);
         }
         il++;
-        if( il >= atoms->natoms+2 ){ 
+        if( il >= atoms->natoms+2 ){    // ---- store sample atoms to batch
+            if(bAddEpairs){
+                printf( "converting to Epairs sample[%i] natoms %i \n", samples.size(), atoms->natoms  ); 
+                Atoms* bak = atoms; 
+                atoms = addEpairs( atoms );
+                delete bak;
+                if(fout){
+                    atoms->atomsToXYZ( fout, true, true );
+                }
+            }
             samples.push_back( atoms );
             printf( "===== FitREQ::loadXYZ() isys %i na %i n0 %i E %g \n", nbatch, atoms->natoms, atoms->n0, atoms->Energy  );
             for(int i=0; i<atoms->natoms; i++ ){ printf( "a[%2i] type %2i pos(%7.3f,%7.3f,%7.3f)\n", i, atoms->atypes[i], atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z ); }
             il=0; nbatch++;
         }
     }
+    if(fout)fclose(fout);
+    fclose(fin);
     return nbatch;
 }
 
