@@ -42,6 +42,8 @@ class Atoms{ public:
     Atoms(int n,bool bLvec=false, bool bAtypes=true ){ realloc( n, bAtypes ); if(bLvec){ lvec=new Mat3d; *lvec=Mat3dIdentity; };    };
     Atoms(const Atoms& As, bool bCopy=true){ if(bCopy){ copyOf(As); }else{  bind(As.natoms,As.atypes,As.apos); } };
 
+    ~Atoms(){ dealloc(); if(lvec)delete lvec; };   // ToDo: should we delete lvec ?  If Atoms go out of scope, we should make sure lvec==nullptr
+
     void getAABB( Vec3d &pmin, Vec3d &pmax )const{
         pmin.set( 1e+300, 1e+300, 1e+300 );
         pmax.set(-1e+300,-1e+300,-1e+300 );

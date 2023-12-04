@@ -16,8 +16,10 @@ imodel = 3
 # ============== Functions
 
 fit.setVerbosity(1)
-fit.loadXYZ_new( fname+".xyz", fname_AtomTypes="atypes.dat" )     # load reference geometry
+#fit.loadXYZ_new( fname+".xyz", fname_AtomTypes="atypes.dat" )     # load reference geometry
 
+#fit.loadXYZ_new( fname+".xyz", fname_AtomTypes="atypes.dat", bAddEpairs=True, bOutXYZ=True )     # load reference geometry
+fit.loadXYZ_new( fname+".xyz", bAddEpairs=True, bOutXYZ=True )     # load reference geometry
 
 #fit.getBuffs()
 #print( "typToREQ\n" , fit.typToREQ )

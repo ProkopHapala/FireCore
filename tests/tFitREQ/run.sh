@@ -7,7 +7,7 @@ ln -s ../../cpp/common_resources data
 wd=`pwd`
 cd $dir
 pwd
-rm lib$name
+rm lib$name.so
 make -j4 $name
 cd $wd
 
