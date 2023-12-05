@@ -116,6 +116,8 @@ class Atoms{ public:
         }}};
     }
 
+    
+
     void toNewLattice( const Mat3d& lvec_new, Atoms* source=0 ){
         Vec3d* apos_  =apos;
         int*   atypes_=atypes;

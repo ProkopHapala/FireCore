@@ -23,6 +23,7 @@ cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
 # ===== To generate Interfaces automatically from headers call:
 header_strings = [
+"void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){",
 "void init_types(int nbatch, int ntyp, int* typeMask, double* typREQs ){",
 "void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){",
 "void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy ){",
@@ -114,12 +115,18 @@ def loadXYZ( fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="
     nbatch = lib.loadXYZ( cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes) )
     return nbatch
 
+# void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
+lib.loadTypes.argtypes  = [c_char_p, c_char_p ]
+lib.loadTypes.restype   =  None
+def loadTypes( fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat" ):
+    return lib.loadTypes( cstr(fEtypes), cstr(fAtypes) )
+
 # int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
-lib.loadXYZ_new.argtypes  = [c_char_p, c_char_p, c_bool, c_bool ]
+lib.loadXYZ_new.argtypes  = [c_char_p, c_bool, c_bool ]
 lib.loadXYZ_new.restype   =  c_int
-def loadXYZ_new( fname, fname_AtomTypes="data/AtomTypes.dat", bAddEpairs=False, bOutXYZ=False ):
+def loadXYZ_new( fname, bAddEpairs=False, bOutXYZ=False ):
     global nbatch
-    nbatch = lib.loadXYZ_new( cstr(fname), cstr(fname_AtomTypes), bAddEpairs, bOutXYZ )
+    nbatch = lib.loadXYZ_new( cstr(fname), bAddEpairs, bOutXYZ )
     return nbatch
 
 #  void setType(int i, double* REQ )
