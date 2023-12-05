@@ -781,6 +781,23 @@ class Builder{  public:
     }
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
+    void addEpair(int ia, const Vec3d& hdir, double l=-0.5 ){
+        //printf( "addEpairsByPi[%i, typ=%i] add epair[%i] type %i h(%g,%g,%g)\n", ia, ityp, i, ecap.type,   hs[ib].x,hs[ib].y,hs[ib].z );
+        int ja=atoms.size();
+        capAtom.type = itypEpair;
+        if(params){ 
+            int ityp = atoms[ia].type;
+            capAtom.type = params->atypes[ityp].ePairType; 
+            if(l<0)l=params->atypes[capAtom.type].Ruff;  // NOTE: we use Ruff as default length for epair, this is questionable, but this parameter has no other use for epair
+        }else{ l=-l; }
+        //printf( "addEpair[%i] type %i |h|=%g l=%g\n", ja, capAtom.type,   hdir.norm(), l );
+        capAtom.pos = atoms[ia].pos + hdir*l;
+        insertAtom(capAtom);
+        capBond.atoms.set(ia,ja);
+        insertBond( capBond );
+    }
+
+    //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
     void addBondedAtom(int ia, int ityp, bool bConf ){
         int ja=atoms.size();
         int npi=-1; if(bConf){npi=0;};
@@ -803,7 +820,7 @@ class Builder{  public:
         }else if(nb==2){ // defined by 2 sigma bonds
             //printf( "makeConfGeom nb=%i npi=%i \n", 2, npi );
             m.fromCrossSafe( hs[0], hs[1] );
-            if      (npi==0){ // -CH2- like sp3 no-pi
+            if      (npi==0){ // -CH2- like sp3 no-pi  => 109.5 deg.
                 const double cb = 0.81649658092; // sqrt(2/3)
                 const double cc = 0.57735026919; // sqrt(1/3)
                 hs[nb  ] = m.c*cc+m.b*cb;
@@ -820,16 +837,17 @@ class Builder{  public:
             //printf( "makeConfGeom nb=%i npi=%i \n", 1, npi );
             m.c = hs[0]; m.c.normalize();
             m.c.getSomeOrtho(m.b,m.a);
-            if      (npi==0){ // -CH3 like sp3 no-pi
+            if      (npi==0){ // -CH3 like sp3 no-pi => 109.5 deg.
                 const double ca = 0.81649658092;  // sqrt(2/3)
                 const double cb = 0.47140452079;  // sqrt(2/9)
                 const double cc =-0.33333333333;  // 1/3
                 hs[nb  ] = m.c*cc + m.b*(cb*2) ;
                 hs[nb+1] = m.c*cc - m.b* cb    + m.a*ca;
                 hs[nb+2] = m.c*cc - m.b* cb    - m.a*ca;
-            }else if(npi==1){ // =CH2 like sp2 1-pi
-                const double ca = 0.87758256189;  // 1/2
-                const double cc =-0.5;            // sqrt(1/8)
+            }else if(npi==1){ // =CH2 like sp2 1-pi,   => 60 deg.
+                //const double ca = 0.87758256189;  // 1/2  // this seems to be wrong,   0.87758256189^2 + 0.5^2 = 1.02015115293, should be 1.0
+                const double ca = 0.86602540378;    // 1/2
+                const double cc =-0.5;              // sqrt(1/8)
                 hs[nb  ] = m.c*cc + m.a*ca;
                 hs[nb+1] = m.c*cc - m.a*ca;
                 hs[nb+2] = m.b;
@@ -842,7 +860,7 @@ class Builder{  public:
             //printf( "makeConfGeom nb=%i npi=%i \n", 0, npi );
             m.c = hs[0]; m.c.normalize();
             m.c.getSomeOrtho(m.b,m.a);
-            if      (npi==0){ //  CH4 like sp3 no-pi
+            if      (npi==0){ //  CH4 like sp3 no-pi  => 109.5 deg.
                 const double ca = 0.81649658092;  // sqrt(2/3)
                 const double cb = 0.47140452079;  // sqrt(2/9)
                 const double cc =-0.33333333333;  // 1/3
@@ -860,8 +878,9 @@ class Builder{  public:
         if(nb==1){  // e.g. =O
             if(npi==1){
                 Vec3d lf; lf.set_cross( pi_dir, hs[0] ); lf.normalize();
-                hs[1] = lf*+0.87758256189+hs[0]*-0.5;
-                hs[2] = lf*-0.87758256189+hs[0]*-0.5;
+                hs[1] = lf*+0.86602540378+hs[0]*-0.5;
+                hs[2] = lf*-0.86602540378+hs[0]*-0.5;
+                // what was this old bad number: -0.87758256189
                 return true;
             }else if(npi==2){
                 Vec3d lf; lf.set_cross( pi_dir, hs[0] ); lf.normalize();
@@ -1462,13 +1481,19 @@ class Builder{  public:
     }
 */
 
+    /**
+     * Sets the pi direction vector for a given atom configuration according to the directions of pi-vectors of its neighbors.
+     * 
+     * @param ic The index of the atom configuration.
+     * @return True if the pi direction vector was successfully set, false otherwise.
+     */
     bool setPiByNeigh(int ic){
         //int ic=atoms[ia].iconf;
         //if(ic<0)return false;
         AtomConf& conf = confs[ic]; 
         Vec3d p = conf.pi_dir;
         double r2 = p.norm2();
-        if(r2>0.1){ return false; } // Not yet set
+        if(r2>0.1){ return false; } // already set
         p = Vec3dZero;
         const int* ngs = conf.neighs;
         for(int i=0; i<conf.nbond; i++){
@@ -1498,7 +1523,7 @@ class Builder{  public:
         return nMaxIter;
     }
 
-    bool autoConfEPi(int ia, double l=0.5 ){
+    bool autoConfEPi(int ia, double l=-0.5 ){
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
         int ityp=atoms[ia].type;
@@ -1533,10 +1558,8 @@ class Builder{  public:
                 conf.n-=ne;
                 for( int i=0; i<ne; i++ ){
                     int ib=nb+i;
-                    //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
-                    //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) bDummyEpair=%i \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z, bDummyEpair );
-                    //printf( "autoConfEPi[%i] add epair[%i] \n", ia, i );
-                    addCap(ia,hs[ib],&capAtomEpair, l );
+                    //printf( "addEpairsToAtoms[%i] i=%i ib=%i |h|=%g \n", ia, i, ib, hs[ib].norm() );
+                    addEpair(ia,hs[ib],l);
                 }
             }
         }
@@ -1552,7 +1575,8 @@ class Builder{  public:
         return n;
     }
 
-    bool addEpairsByPi(int ia, double l=0.5){
+    bool addEpairsByPi(int ia, double l=-0.5 ){
+        //printf( "addEpairsByPi[%i] \n", ia  );
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
         int ityp=atoms[ia].type;
@@ -1565,6 +1589,9 @@ class Builder{  public:
         Vec3d hs[4];
         loadNeighbors ( ia, nb,       conf.neighs, hs );
         makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs );
+        //if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); } // NOTE: we need to asign pi_dir before calling makeConfGeomPi(), this is however necessary for atoms like =O which do not have other bonds direction of e-pair is not defined if pi-plane is not defined
+        //else    { makeConfGeom  ( nb, conf.npi,              hs ); }  
+        //printf( "addEpairsByPi[%i, typ=%i=%s] npi=%i hs[0](%6.3f,%6.3f,%6.3f) hs[1](%6.3f,%6.3f,%6.3f) hs[2](%6.3f,%6.3f,%6.3f) hs[3](%6.3f,%6.3f,%6.3f) \n", ia, ityp, params->atypes[ityp].name,  hs[0].x,hs[0].y,hs[0].z,   hs[1].x,hs[1].y,hs[1].z,   hs[2].x,hs[2].y,hs[2].z, hs[3].x,hs[3].y,hs[3].z );
 
         // { // DEBUG
         //     sprintf( tmpstr, "atom%03i_hs.xyz", ia );
@@ -1580,17 +1607,16 @@ class Builder{  public:
 
         for( int i=0; i<ne; i++ ){
             int ib=nb+i;
-            //printf( "addEpairsToAtoms[%i] i=%i ib=%i h(%g,%g,%g) \n", ia, i, ib, hs[ib].x,hs[ib].y,hs[ib].z );
-            //printf( "addEpairsByPi[%i] add epair[%i] \n", ia, i );
-            addCap(ia,hs[ib],&capAtomEpair, l );
+            //printf( "addEpairsToAtoms[%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g \n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l );
+            addEpair(ia,hs[ib],l);
         }
         return true;
     }
-    int addAllEpairsByPi( int ia0=0, int imax=-1 ){
+    int addAllEpairsByPi( int ia0=0, int imax=-1, bool byPi=true ){
         int n=0;
         if(imax<0){ imax=atoms.size(); }
         for(int ia=ia0;ia<imax;ia++){
-            if( addEpairsByPi(ia) ){n++;}
+            if( addEpairsByPi(ia ) ){n++;}
         }
         return n;
     }
@@ -1899,7 +1925,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     void autoBonds( double R=-0.5, int i0=0, int imax=-1 ){
-        printf( "MM::Builder::autoBonds() \n" );
+        //printf( "MM::Builder::autoBonds() \n" );
         if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
@@ -1916,7 +1942,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                     if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
                     bondBrush.ipbc=Vec3i8{0,0,0};
                     bondBrush.atoms={i,j};
-                    printf( "autoBonds() try add bond(%i-%i)\n", i,j );
+                    //printf( "autoBonds() try add bond(%i-%i)\n", i,j );
                     insertBond( bondBrush );
                 }
             }
@@ -2579,7 +2605,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     void finishFragment(int i=-1 ){ if(i<0)i=frags.size()-1; frags[i].finish(           atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size()   ); }
 
     int insertAtoms( int na, int* atypes, Vec3d* apos, Quat4d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity, const Vec3d& pos0=Vec3dZero ){
-        printf( "MM::Builder::insertAtoms  natoms %i atypes=%li apos=%li REQs=%li qs=%li npis=%li \n", na, (long)atypes, (long)apos, (long)REQs, (long)qs, (long)npis );
+        //printf( "MM::Builder::insertAtoms  natoms %i atypes=%li apos=%li REQs=%li qs=%li npis=%li \n", na, (long)atypes, (long)apos, (long)REQs, (long)qs, (long)npis );
         //startFragment();
         //int natom0  = atoms.size();
         //int nbond0  = bonds.size();
@@ -2587,7 +2613,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         //std::vector<int> bondInds(mol->nbonds);
         int ncap=0;
         for(int i=0; i<na; i++){
-            printf( "insert Atom[%i] ityp %i %s \n", i, atypes[i], params->atypes[atypes[i]].name );
+            //printf( "insert Atom[%i] ityp %i %s \n", i, atypes[i], params->atypes[atypes[i]].name );
             Vec3d p;
             Quat4d REQ;
             int ne=0,npi=0;
@@ -2621,6 +2647,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             out->atypes[i] = a.type;
             out->apos  [i] = a.pos;
         }
+        return out;
     }
 
     void insertBonds( int nb, Vec2i* b2as, int* btypes ){

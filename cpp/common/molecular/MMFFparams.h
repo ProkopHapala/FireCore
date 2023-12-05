@@ -14,6 +14,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "Atoms.h"
 
 class BondType{ public:
     // This class is used for both bond and angle type
@@ -71,7 +72,7 @@ class ElementType{ public:
     }
 
     void print(int i, bool bParams=false )const{ 
-        printf           ( "AtomType[%i,%s] %i(%i,%i) %x ", i,name,  iZ, neval, valence, color ); 
+        printf           ( "ElementType[%i,%s] %i(%i,%i) %x ", i,name,  iZ, neval, valence, color ); 
         if(bParams)printf( "REQuff(%g,%g,%g) QEq(%g,%g,%g)", RvdW, EvdW, Quff,  Eaff,Ehard,Ra,eta ); 
         printf( "\n"  ); 
     }
@@ -189,14 +190,6 @@ class MMFFparams{ public:
 
     void initDefaultAtomTypeDict(){
         makeDefaultAtomTypeDict( atomTypeNames, atomTypeDict );
-    }
-
-    void printAtomTypeDict()const{
-        for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict.find(atypes[i].name)->second );  };
-    }
-    
-    void printElementTypeDict()const{
-        for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict.find(etypes[i].name)->second );  };
     }
 
     int getAtomType(const char* s, bool bErr=true)const{
@@ -722,12 +715,16 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         printf( "dihedralType[%3i] %s-%s-%s-%s ang0(%7.3f) k(%7.3f) n(%i)\n", i, atypes[t.atoms.x].name, atypes[t.atoms.y].name, atypes[t.atoms.z].name, atypes[t.atoms.w].name, t.ang0, t.k, t.n );
     }
 
-    void printAtomTypes(bool bParams)const{   for(int i=0; i<atypes.size(); i++ ){ atypes[i].print(i, bParams );  }  }
-    void printBondTypes    ()const{ printf("MMFFparams::printBondTypes()\n");     for(int i=0; i<bonds.size();     i++ ){ printBond(i);     } }
-    void printAngleTypes   ()const{ printf("MMFFparams::printAngleTypes()\n");    for(int i=0; i<angles.size();    i++ ){ printAngle(i);    } }
-    void printDihedralTypes()const{ printf("MMFFparams::printDihedralTypes()\n"); for(int i=0; i<dihedrals.size(); i++ ){ printDihedral(i); } }
+    void printElementTypes (bool bParams=true) const{ printf("MMFFparams::printElementTypes()\n");  for(int i=0; i<etypes   .size(); i++ ){ etypes[i].print(i, bParams ); } }
+    void printAtomTypes    (bool bParams=true) const{ printf("MMFFparams::printAtomTypes()\n");     for(int i=0; i<atypes   .size(); i++ ){ atypes[i].print(i, bParams ); } }
+    void printBondTypes    ()                  const{ printf("MMFFparams::printBondTypes()\n");     for(int i=0; i<bonds    .size(); i++ ){ printBond(i);     } }
+    void printAngleTypes   ()                  const{ printf("MMFFparams::printAngleTypes()\n");    for(int i=0; i<angles   .size(); i++ ){ printAngle(i);    } }
+    void printDihedralTypes()                  const{ printf("MMFFparams::printDihedralTypes()\n"); for(int i=0; i<dihedrals.size(); i++ ){ printDihedral(i); } }
 
     void printAngleTypesDict()const{ printf("MMFFparams::printAngleTypesDict()\n");    for( const auto& it : angleDict ){ printf("angle(%s)[%i]\n", it.first.c_str(), it.second ); } }
+
+    void printAtomTypeDict   ()const{for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict.find(atypes[i].name)->second );         };}
+    void printElementTypeDict()const{for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict.find(etypes[i].name)->second );  };}
 
 
     void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){
@@ -813,10 +810,12 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
             const Vec3d&  pi = apos[i] + shift;
             const char* symbol; 
             bool byName = true;
+            //printf( "DEBUG writeXYZ()[%i] ityp %i \n", i, ityp );
             if(just_Element){ 
                 byName = false;
                 symbol =  etypes[ atypes[ityp].element ].name;
             }
+            //printf( "DEBUG writeXYZ()[%i] ityp %i %s \n", i, ityp, symbol );
             if(byName){ symbol = atomTypeNames[ityp].c_str(); }
             //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, atypes[ityp].name );
             if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", symbol, pi.x,pi.y,pi.z, REQs[i].z ); }
@@ -829,6 +828,11 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
 
         }
     }
+    void writeXYZ( FILE* pfile, Atoms* atoms, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0, Vec3i nPBC=Vec3i{1,1,1} ){
+        Mat3d lvec;
+        if(atoms->lvec){ lvec=*atoms->lvec; }else{ lvec=Mat3dIdentity; }
+        writeXYZ( pfile, atoms->natoms, atoms->atypes, atoms->apos, comment, REQs, just_Element, npi, nPBC, lvec );
+    }
 
     int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity ){
         //printf( "MMFFparams::saveXYZ(%s) \n", fname );
@@ -837,6 +841,11 @@ int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true)
         writeXYZ( pfile, n, atyps, apos, comment, REQs, just_Element, 0, nPBC, lvec );
         fclose(pfile);
         return n;
+    }
+    int saveXYZ( const char * fname, Atoms* atoms, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true, Vec3i nPBC=Vec3i{1,1,1} ){
+        Mat3d lvec;
+        if(atoms->lvec){ lvec=*atoms->lvec; }else{ lvec=Mat3dIdentity; }
+        return saveXYZ( fname, atoms->natoms, atoms->atypes, atoms->apos, comment, REQs, mode, just_Element, nPBC, lvec );
     }
 
     void clear( bool bShring=false ){

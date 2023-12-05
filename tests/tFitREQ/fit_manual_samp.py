@@ -16,6 +16,9 @@ imodel = 3
 # ============== Functions
 
 fit.setVerbosity(1)
+#fit.loadTypes( fAtypes="atypes.dat" )     # load atom types
+fit.loadTypes( )     # load atom types
+
 #fit.loadXYZ_new( fname+".xyz", fname_AtomTypes="atypes.dat" )     # load reference geometry
 
 #fit.loadXYZ_new( fname+".xyz", fname_AtomTypes="atypes.dat", bAddEpairs=True, bOutXYZ=True )     # load reference geometry

@@ -46,12 +46,14 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
     return W.loadXYZ( fname, n0, i0s, ntest, itests, types0, testtypes );
 }
 
-int loadXYZ_new( const char* fname, const char* fname_AtomTypes, bool bAddEpairs, bool bOutXYZ ){
-    //printf( "loadXYZ_new(%s)\n", fname );
-    params.loadAtomTypes( fname_AtomTypes ); W.params=&params;
-    //printf( "loadXYZ_new() 1 \n" );
+void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
+    params.loadElementTypes( fname_ElemTypes );
+    params.loadAtomTypes( fname_AtomTypes ); 
+    W.params=&params;
     W.init_types_par();
-    //printf( "loadXYZ_new() 2 \n" );
+}
+
+int loadXYZ_new( const char* fname, bool bAddEpairs, bool bOutXYZ ){
     return W.loadXYZ_new( fname, bAddEpairs, bOutXYZ );
 }
 

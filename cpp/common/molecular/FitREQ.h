@@ -951,7 +951,7 @@ void clean_fs(int n){
  * @return double, returns the total fitting error.
  */
 double evalDerivsSamp( double* Eout=0 ){ 
-    printf( "FitREQ::evalDerivsSamp() nbatch %i imodel %i verbosity %i \n", samples.size(), imodel, verbosity );
+    //printf( "FitREQ::evalDerivsSamp() nbatch %i imodel %i verbosity %i \n", samples.size(), imodel, verbosity );
     tryRealocSamp();
     double Error = 0;
     for(int i=0; i<samples.size(); i++){
@@ -962,31 +962,26 @@ double evalDerivsSamp( double* Eout=0 ){
         int    na       = atoms->natoms - atoms->n0;
         int*   atypes   = atoms->atypes + atoms->n0;
         Vec3d* apos     = atoms->apos   + atoms->n0;
-        printf( "evalDerivsSamp[%i] na %i n0 %i imodel %i \n", i, na, atoms->n0, imodel );
+        //printf( "evalDerivsSamp[%i] na %i n0 %i imodel %i \n", i, na, atoms->n0, imodel );
         double Eref=atoms->Energy;
         double wi = 1; 
         if(weights) wi = weights[i];
-        DEBUG
         // ToDo: we need to initialize fs acording to DOFs before calling clean_fs()
         clean_fs(na);
         double E=0;
-        DEBUG
         switch (imodel){
             case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos, nj, jtyp, jpos ); break; 
             case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos, nj, jtyp, jpos ); break;
             case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, nj, jtyp, jpos ); break;
             case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos, nj, jtyp, jpos ); break;
         }
-        DEBUG
         if( E>1e+300 ){
             if(verbosity>0) printf( "skipped sample [%i] atoms too close \n", i );
             continue;
         } 
-        DEBUG
         if(Eout){ Eout[i]=E; };
         double dE = (E - Eref)*wi;
         Error += dE;
-        DEBUG
         acumDerivs(na, atypes, dE );
     }
     return Error;
@@ -1148,10 +1143,8 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
 Atoms* addEpairs( Atoms* mol ){
     //MM::Builder builder;
     builder.params = params;
-    DEBUG
     builder.clear();
     if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
-    DEBUG
     builder.insertAtoms(*mol);
     //int ia0=builder.frags[ifrag].atomRange.a;
     //int ic0=builder.frags[ifrag].confRange.a;
@@ -1160,61 +1153,60 @@ Atoms* addEpairs( Atoms* mol ){
     //if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
     //builder.addCappingTypesByIz(1);  // insert H caps
     //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
-    DEBUG
     builder.tryAddConfsToAtoms( 0, -1 );
     builder.cleanPis();
-    DEBUG
     //if(verbosity>2)
-    builder.printAtomConfs(false);
+    //builder.printAtomConfs(false);
     //builder.export_atypes(atypes);
     // ------- Load lattice vectros
-    DEBUG
     // NOTE: ERROR IS HERE:  autoBonds() -> insertBond() -> tryAddBondToAtomConf( int ib, int ia, bool bCheck )
     //       probably we try to add multiple bonds for hydrogen ?
-    if( builder.bPBC ){ builder.autoBondsPBC(); }
-    else              { builder.autoBonds();    }
-    DEBUG
+    if( builder.bPBC ){ 
+        builder.autoBondsPBC( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+        builder.autoBondsPBC( -.5,  mol->n0, mol->natoms ); 
+    }else{ 
+        builder.autoBonds( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+        builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
+    }
     builder.checkNumberOfBonds( true, true );
     //if(verbosity>2)
-    builder.printBonds ();
-    DEBUG
+    //builder.printBonds ();
     //if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
     //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
     //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-    DEBUG
+    // --- Add Epairs
+    builder.bDummyEpair = true;
     builder.autoAllConfEPi( ); 
-    //builder.setPiLoop       ( ic0, -1, 10 );
-    builder.addAllEpairsByPi();    
-    DEBUG
-    //builder.printAtomConfs(false, false );
-    //builder.printAtomConfs(false, true );
+    // --- add Epairs to atoms like =O (i.e. with 2 just one neighbor)
+    builder.setPiLoop       ( 0, -1, 10 );
+    builder.addAllEpairsByPi( 0, -1 );    
+    //builder.printAtomConfs( false, true );
     //builder.assignAllBondParams();    //if(verbosity>1)
     //builder.finishFragment(ifrag);    
-
     return builder.exportAtoms(); 
 }
 
 int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
-    printf( "FitREQ::loadXYZ_new() fname `%s` bAddEpairs %i bOutXYZ %i \n", fname, bAddEpairs, bOutXYZ  );
+    //printf( "FitREQ::loadXYZ_new() fname `%s` bAddEpairs %i bOutXYZ %i \n", fname, bAddEpairs, bOutXYZ  );
+    //params->printElementTypes();
+    //params->printAtomTypes();
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
     char line[1024];
     char at_name[8];
-    DEBUG
     // --- Open output file
     FILE* fout=0;
     if(bAddEpairs && bOutXYZ){
-        //sprintf(line,"%s_Epairs.xyz", fname );
-        fout = fopen("out.xyz","w");
+        sprintf(line,"%s_Epairs.xyz", fname );
+        fout = fopen(line,"w");
+        //fout = fopen("out.xyz","w");
     }
-
     int il   = 0;
     int nbatch=0;
     Atoms* atoms=0;
-    DEBUG
     while( fgets(line, nline, fin) ){
-        printf( "LINE:%s", line );
+        //printf( "LINE:%s", line );
         if      ( il==0 ){               // --- Read number of atoms
             int na=-1;
             sscanf( line, "%i", &na );
@@ -1238,17 +1230,23 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
         il++;
         if( il >= atoms->natoms+2 ){    // ---- store sample atoms to batch
             if(bAddEpairs){
-                printf( "converting to Epairs sample[%i] natoms %i \n", samples.size(), atoms->natoms  ); 
+                //printf( "converting to Epairs sample[%i] natoms %i \n", samples.size(), atoms->natoms  ); 
                 Atoms* bak = atoms; 
                 atoms = addEpairs( atoms );
+                atoms->n0 = bak->n0;
+                atoms->Energy = bak->Energy;
                 delete bak;
                 if(fout){
-                    atoms->atomsToXYZ( fout, true, true );
+                    //for(int ia=0; ia<atoms->natoms; ia++){ Vec3d& p = atoms->apos[ia]; printf(  "out.atom[%i] typ=%i pos(%g,%g,%g)\n", ia, atoms->atypes[ia], p.x, p.y, p.z ); }
+                    //atoms->atomsToXYZ( fout, true, true );
+                    // comment: #	n0 3 E_tot   0.0108320770
+                    sprintf(line,"#	n0 %i E_tot %g", atoms->n0, atoms->Energy ); 
+                    params->writeXYZ( fout, atoms, line, 0, true );
                 }
             }
             samples.push_back( atoms );
-            printf( "===== FitREQ::loadXYZ() isys %i na %i n0 %i E %g \n", nbatch, atoms->natoms, atoms->n0, atoms->Energy  );
-            for(int i=0; i<atoms->natoms; i++ ){ printf( "a[%2i] type %2i pos(%7.3f,%7.3f,%7.3f)\n", i, atoms->atypes[i], atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z ); }
+            //printf( "===== FitREQ::loadXYZ_new() isys %i na %i n0 %i E %g \n", nbatch, atoms->natoms, atoms->n0, atoms->Energy  );
+            //for(int i=0; i<atoms->natoms; i++ ){ printf( "a[%2i] type %2i pos(%7.3f,%7.3f,%7.3f)\n", i, atoms->atypes[i], atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z ); }
             il=0; nbatch++;
         }
     }
