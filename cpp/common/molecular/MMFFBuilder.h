@@ -2801,10 +2801,11 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             Vec2i b = bonds[i].atoms;
             if(bNoCap){
                 int ic1 = atoms[b.a].iconf;
-                int ic2 = atoms[b.a].iconf;
+                int ic2 = atoms[b.b].iconf;
                 if( (ic1<0)||(ic2<0) ) continue;
                 err |= G.addEdge( ic1, ic2 );
                 if(err && bExitOnError){ printf( "ERROR in MM::Builder::toLimitedGraph() cannot add bond[%i] neighs are filled nng[%i]=%i nng[%i]=%i  \n => Exit(); \n", i, b.a,G.nneighs[b.a], b.b,G.nneighs[b.b] ); exit(0); };
+                //G.print();
             }
         }
         return err;
