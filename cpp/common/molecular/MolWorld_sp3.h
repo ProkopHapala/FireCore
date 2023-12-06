@@ -34,6 +34,8 @@ static MMFFparams* params_glob;
 #include "constrains.h"
 #include "molecular_utils.h"
 
+#include "LimitedGraph.h"
+
 #include "Molecule.h"
 #include "MMFFBuilder.h"
 #include "SMILESparser.h"
@@ -95,6 +97,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     QEq          qeq;
 	DynamicOpt   opt;
     DynamicOpt   optRB;  // rigid body optimizer
+
+    LimitedGraph<N_NEIGH_MAX> graph; // used to find bridges in the molecule, and other topology-related algorithms
 
     GlobalOptimizer gopt;
 
@@ -611,6 +615,19 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     return ja;
 }
 
+
+int findBridgeBonds(){
+    //LimitedGraph graph;
+    //graph.init( builder.na, builder.bonds.size(), builder.bonds.data() );
+    builder.toLimitedGraph( graph );
+    graph.bPrint = true;
+    graph.bridge();
+    printf( "graph.found.size() %i \n", graph.found.size() );
+    return graph.found.size();
+}
+
+
+
 int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
@@ -812,6 +829,9 @@ void makeMMFFs(){
     builder.assignTypes();
     //builder.printAtomTypes();
     if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
+
+    // --- find bridge bonds
+    findBridgeBonds();
     
     builder.toMMFFsp3_loc( ffl, true, bEpairs );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
     if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);

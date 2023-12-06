@@ -18,7 +18,7 @@
 
 template<unsigned int M>
 class LimitedGraph{ public:
-    static constexpr const int m = M;
+    static constexpr const int m = M; // max number of neighs
 	using Vmi = std::array<int,M>;
     int  n =0;
     int* nneighs=0;
@@ -30,6 +30,8 @@ class LimitedGraph{ public:
     int  *disc=0;
     int  *low=0;
     int  *parent=0;
+
+    bool bPrint=false;
 
 // ============= Functions
 
@@ -54,6 +56,7 @@ void dealloc(){
     _dealloc( parent  );
 }
 
+LimitedGraph()=default;
 LimitedGraph(int n_){
     realloc(n_);
 }
@@ -70,8 +73,7 @@ bool fromBonds( int nb, const Vec2i* bonds, bool bIgnoreAtoms, bool bExitOnErro=
     bool err=0;
     for(int i=0; i<nb; i++){
         Vec2i b = bonds[i];
-        if( (b.a>=n) || (b.b>=n) ) if(bIgnoreAtoms){ continue;
-        }else{ printf( "ERROR in LimitedGraph::fromBonds() bond[%i](%i,%i) out of range(0..%i) \n => Exit(); \n", i, b.a,b.b, n ); exit(0); };
+        if( (b.a>=n) || (b.b>=n) ) if(bIgnoreAtoms){ continue; }else{ printf( "ERROR in LimitedGraph::fromBonds() bond[%i](%i,%i) out of range(0..%i) \n => Exit(); \n", i, b.a,b.b, n ); exit(0); };
         bool err = addEdge(b.a, b.b);
         if(err && bExitOnErro){ printf( "ERROR in LimitedGraph::fromBonds() cannot add bond[%i] neighs are filled nng[%i]=%i nng[%i]=%i  \n => Exit(); \n", i, b.a,nneighs[b.a], b.b,nneighs[b.b] ); exit(0); };
     }
@@ -94,10 +96,10 @@ void bridgeUtil(int i, bool visited[], int disc[],  int low[], int parent[] ) {
 		if (!visited[j]){      
 			parent[j] = i;
 			bridgeUtil( j, visited, disc, low, parent );
-			low[i] = _min(low[i], low[j]);     // Check if the subtree rooted with v has a connection to one of the ancestors of u
-			if (low[j]>disc[i]){            // If the lowest vertex reachable from subtree under v is below u in DFS tree, then u-v is a bridge
-                printf( "bridge %i %i \n", i,j );
-                found.push_back( (Vec2i){i,j} );
+			low[i] = _min(low[i], low[j]);         // Check if the subtree rooted with v has a connection to one of the ancestors of u
+			if (low[j]>disc[i]){                   // If the lowest vertex reachable from subtree under v is below u in DFS tree, then u-v is a bridge
+                if(bPrint)printf( "bridge %i %i \n", i,j );
+                found.push_back( (Vec2i){i,j} );   // add bridge to found list
             }
 		} else if ( j!= parent[i])  low[i] = _min(low[i], disc[j]);  // Update low value of u for parent function calls.
 	}
@@ -112,7 +114,18 @@ void bridge(){
     for (int i=0;i<n;i++) if(visited[i]==false) bridgeUtil(i, visited, disc, low, parent);  // Call the recursive helper function to find Bridges in DFS tree rooted with vertex 'i'
 }
 
-};
+
+void print(){
+    printf( "LimitedGraph::print() n %i \n", n );
+    for(int i=0; i<n; i++){
+        printf( "node[%i] : ", i );
+        for(int j=0; j<nneighs[i]; j++){ printf( " %i", neighs[i][j] ); }
+        printf( "\n" );
+    }
+}
+
+}; // ---- end class LimitedGraph
+
 
 bool test_LimitedGraph_findBridge(){   // Driver program to test above function
 	// Create graphs given in above diagrams
@@ -149,6 +162,7 @@ bool test_LimitedGraph_findBridge(){   // Driver program to test above function
 
    return true;
 }
+
 
 #endif
 
