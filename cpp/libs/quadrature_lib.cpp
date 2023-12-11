@@ -56,6 +56,7 @@ double distributPointsTetrahedron( int n, bool bRef, bool bAlloc, int imode ){
         case 1: return W.distributPointsTetrahedron_close( n, bRef, bAlloc ); break;
         case 2: return W.distributPointsTetrahedron_Shunn( n, bRef, bAlloc ); break;
     }
+    return 0;
 }
 
 
