@@ -7,13 +7,14 @@ import sys
 import numpy as np
 import os
 
-sys.path.append("../")
-from pyOCL import oclfft as ocl
-from pyOCL import utils as oclu
-from pyOCL import high_level as oclh
-from pyOCL import jobs
-from pyOCL import atomicUtils as au
-from pyOCL import PP as pp
+sys.path.append("../../")
+from pyBall.DFT import oclfft as ocl
+from pyBall.DFT import utils as oclu
+from pyBall.DFT import high_level as oclh
+from pyBall.DFT import jobs
+from pyBall.DFT import PP as pp
+from pyBall     import atomicUtils as au
+
 
 def test_PP_scan_LJQ(iZPP=8, nx=200, ny=100, nz=20, dtip=0.1, bUseBuffFE=False):
     ocl.setErrorCheck( 1 )

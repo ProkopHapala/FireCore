@@ -83,7 +83,7 @@ else:
 
 lib.init.argtypes  = [ c_char_p ] 
 lib.init.restype   =  None
-def init( cl_src_dir='../cl' ):
+def init( cl_src_dir='./data/cl' ):
     global b_Init; b_Init = True
     cl_src_dir = cl_src_dir.encode('utf8')
     lib.init( cl_src_dir )
@@ -347,7 +347,7 @@ def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", R
 #void initPP( const char* cl_src_dir, size_t* Ns_ ){
 lib.initPP.argtypes  = [ c_char_p , c_long_p ] 
 lib.initPP.restype   =  c_int
-def initPP( Ns, path='../cl' ):
+def initPP( Ns, path='./data/cl' ):
     global b_Init, b_initFFT
     b_Init    = True
     b_initFFT = True

@@ -8,12 +8,12 @@
 import sys
 import numpy as np
 
-sys.path.append("../")
-from pyOCL import oclfft as ocl
-from pyOCL import utils as oclu
-from pyOCL import high_level as oclh
-from pyOCL import jobs
-from pyOCL import atomicUtils as au
+sys.path.append("../../")
+from pyBall.DFT import oclfft as ocl
+from pyBall.DFT import utils as oclu
+from pyBall.DFT import high_level as oclh
+from pyBall.DFT import jobs
+from pyBall     import atomicUtils as au
 
 
 #ocl.setErrorCheck( 0 )

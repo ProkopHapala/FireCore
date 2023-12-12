@@ -1,9 +1,20 @@
 # /bin/bash
+ln -s ../../cpp/common_resources data
+ln -s ../../cpp/common_resources common_resources 
+
+name=OCL_GridFF
 
 wd=`pwd`
-cd ../cpp/
-./compile.sh
+cd ../../cpp/Build/libs_OCL/
+pwd
+rm lib$name.so
+make $name
 cd $wd
+
+#wd=`pwd`
+#cd ../cpp/
+#./compile.sh
+#cd $wd
 
 #LPATH=/usr/local/lib64/
 LPATH2=usr/lib/x86_64-linux-gnu/
