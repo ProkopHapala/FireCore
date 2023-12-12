@@ -17,7 +17,7 @@ class Parser_OpenCL():
 
     def __init__(self, fname):
         self.kernels = self.parseFile( fname )
-        self.buffers = self.kernels2buffers( kernels )
+        self.buffers = self.kernels2buffers( self.kernels )
 
     def parseFile(self, fname ):
         """
@@ -46,11 +46,11 @@ class Parser_OpenCL():
                     if( l[:2]!="//" ):  # if not commented append 
                         ker_args.append(l)
             elif( wds[0]== "__kernel" ):  # if line starts with kernell
-                ker_name = wds[2]
+                ker_name = wds[2].split('(')[0]
                 bKer     = True
         return kernels
 
-    def kernels2buffers( kernels ):
+    def kernels2buffers(self, kernels ):
         """
         Converts a list of kernels into a dictionary of buffers.
 
@@ -65,38 +65,32 @@ class Parser_OpenCL():
             for l in ker[1]:
                 ws = l.split()
                 if(ws[0] == "__global"):
-                    buffers[ ws[2] ] = ws[1] 
+                    buffers[ ws[2] ] = ws[1]
         return buffers
     
-    def printKernels(self):
+    def printKernels(self, outf=sys.stdout ):
         for kernel in self.kernels:
-            print("\nKernel Name:", kernel[0])
-            print("Arguments:")
+            outf.write("\n"+kernel[0]+"\n"   )
+            outf.write("(\n")
             for arg in kernel[1]:
-                print("\t", arg)  
+                outf.write(arg+"\n")  
+            outf.write(")\n")
 
     # writeBuffers writes out buffers nicely to screen
-    def w
+    def printBuffers(self, outf=sys.stdout ):
+        for key,val in self.buffers.items():
+            outf.write(val +" "+ key+"\n" )
               
 if __name__ == "__main__":
 
-    parser = Parser_OpenCL()
-
     fname = "/home/prokop/git/FireCore/cpp/common_resources/cl/myprog.cl"
-    if( len(sys.argv)>0 ):
+    if( len(sys.argv)>1 ):
         fname = sys.argv[1]
 
-    kernels = parser.parseFile( fname ) 
+    parser = Parser_OpenCL(fname)
+    #kernels = parser.parseFile( fname ) 
 
+    print("\n######### KERNELS ########\n")
     parser.printKernels()
-
-
-    # print("\n######### KERNELS ########\n")
-    # for ker in kernels:
-    #     print("\n",ker[0])
-    #     for l in ker[1]:
-    #         print( "\t", l )            
-    # buffers = parser.kernels2buffers( kernels )
-    # print("\n\n######### BUFFERS ########\n")
-    # for key,val in buffers.items():
-    #     print(val, key )
+    print("\n\n######### BUFFERS ########\n")
+    parser.printBuffers()
