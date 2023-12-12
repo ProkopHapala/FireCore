@@ -68,7 +68,7 @@ class OCLBuffer{
             return clEnqueueReadBuffer( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL ); 
         }else{
             size_t offset[4]{0,0,0,0};
-            size_t region[4]{nImg[0],nImg[1],nImg[2],0};
+            size_t region[4]{(size_t)nImg[0],(size_t)nImg[1],(size_t)nImg[2],0};
             return clEnqueueReadImage ( commands, p_gpu, CL_TRUE, offset, region, 0,0,  cpu_data, 0, NULL, NULL ); 
         }
     }
@@ -79,7 +79,7 @@ class OCLBuffer{
             return clEnqueueWriteBuffer( commands, p_gpu, CL_TRUE, 0, typesize*n_, cpu_data, 0, NULL, NULL );
         }else{
             size_t offset[4]{0,0,0,0};
-            size_t region[4]{nImg[0],nImg[1],nImg[2],0};
+            size_t region[4]{(size_t)nImg[0],(size_t)nImg[1],(size_t)nImg[2],0};
             return clEnqueueWriteImage ( commands, p_gpu, CL_TRUE, offset, region, 0,0,  cpu_data, 0, NULL, NULL ); 
         }
     }
@@ -148,8 +148,8 @@ class OCLtask{ public:
     void roundSizes(){  
         size_t* global_=(size_t*)&global;
         size_t* local_ =(size_t*)&local;
-        for(int i=0;i<dim;i++){
-            int nL=local_[i]; if(nL<1){nL==1;}
+        for(int i=0;i<(int)dim;i++){
+            int nL=local_[i]; if(nL<1){nL=1;}
             global_[i] = (((int)(global_[i]/nL))+1)*nL;
             printf("OCLtask roundSizes[%li/%i] \n", global_[i], nL );
         }
@@ -356,7 +356,7 @@ class OCLsystem{ public:
         return i;
     }
 
-    int initBuffers   (){ int err = CL_SUCCESS; for(size_t i=0; i<buffers.size(); i++){  err |= buffers[i].initOnGPU ( context );     }; return err; }
+    int initBuffers   (){ int err = CL_SUCCESS; for(int i=0; i<(int)buffers.size(); i++){  err |= buffers[i].initOnGPU ( context );     }; return err; }
     //int releaseBuffers(){ for(int i=0; i<buffers; i++){ clReleaseMemObject(buffers[i].p_gpu); } }
 
     char * getKernelSource(char *filename){
@@ -460,7 +460,7 @@ class OCLsystem{ public:
 
     void printBuffers(){
         printf("OCLsystem::printBuffers()\n");
-        for(int i=0; i<buffers.size(); i++ ){
+        for(int i=0; i<(int)buffers.size(); i++ ){
             const OCLBuffer& b = buffers[i];
             printf( "buffers[%i](%s) %li*%li img_dims %i\n", i, b.name.c_str(), b.n, b.typesize, b.img_dims );
         } 

@@ -206,7 +206,8 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
 
 void initNBmol( int na, Vec3d* apos, Vec3d* fapos ){
     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() ff.natoms %i \n", ff.natoms  );
-	nbmol  .bindOrRealloc( na, apos,  fapos, 0 );
+    // void bindOrRealloc(int n_, Vec3d* ps_, Vec3d* fs_, Vec3d* REQs_, int* atypes_ ){
+	nbmol  .bindOrRealloc( na, apos,  fapos, 0, 0 );
     nbmol.atypes = ff.atype;              
 	builder.export_REQs  ( nbmol.REQs   );   
     for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                              
@@ -328,7 +329,7 @@ void initRigid(){
         int ni =  frag.atomRange.y - i0;
         //printf("# initRigid[%i] i0 %i ni %i \n", i, i0, ni );
         nbmol.ps + i0;
-        rbff.mols[i].bindOrRealloc(ni, nbmol.ps+i0, nbmol.fs+i0, nbmol.REQs+i0 );
+        rbff.mols[i].bindOrRealloc(ni, nbmol.ps+i0, nbmol.fs+i0, nbmol.REQs+i0, 0 );
         natom+=ni;
     }
     rbff.makePos0s();

@@ -77,7 +77,8 @@ else:
     #mode=ct.RTLD_GLOBAL
     #lib1 = ct.CDLL(  "/usr/lib/x86_64-linux-gnu/libOpenCL.so",  mode )
     #lib2 = ct.CDLL(  "/usr/lib/x86_64-linux-gnu/libclFFT.so",   mode )
-    lib  = ct.CDLL(  "../../cpp/Build_OCL/libs_OCL/libOCL_GridFF.so",  mode )
+    #lib  = ct.CDLL(  "../../cpp/Build/libs_OCL/libOCL_GridFF.so",  mode )
+    lib  = ct.CDLL(  "../cpp_build/libOCLfft.so",  mode )
 
 
 
