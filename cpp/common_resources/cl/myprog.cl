@@ -419,11 +419,11 @@ __kernel void projectAtomsToGrid_texture(
 * @param[out] outGrid : output grid to store the projected density
 * @param[in] imgIn    : input image containing the basis functions
 * @param[in] nGrid    : size of the grid (nx,ny,nz,0)
-* @param[in] grid_p0  : origin of the grid.
-* @param[in] grid_dA  : first vector defining the grid.
-* @param[in] grid_dB  : second vector defining the grid.
-* @param[in] grid_dC  : third vector defining the grid.
-* @param[in] acumCoef The coefficients of the molecular orbital.
+* @param[in] grid_p0  : origin of the grid
+* @param[in] grid_dA  : grid step along axis A
+* @param[in] grid_dB  : grid step along axis B
+* @param[in] grid_dC  : grid step along axis C
+* @param[in] acumCoef : coefficients of the linear combination of the density (c0,c1), c0 is the coefficient of the old density stored in the grid, c1 is the coefficient of the new density to be added to the grid.
 */
 
 __kernel void projectOrbDenToGrid_texture(
