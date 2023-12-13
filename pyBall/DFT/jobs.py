@@ -412,8 +412,8 @@ def density_from_firecore( atomType=None, atomPos=None, bSCF=False, Cden=1.0, Cd
     Calculate electron density from FireCore. It can be either projected on a grid or as set of coefficients of molecular orbitals.
 
     Args:
-        atomType  (list)  : List of atomic types.
-        atomPos   (list)  : List of atomic positions.
+        atomType  (list)  : atomic types.
+        atomPos   (list)  : atomic positions.
         bSCF      (bool)  : Flag indicating whether to perform self-consistent field calculation.
         Cden      (float) : Density scaling factor.
         Cden0     (float) : Initial density scaling factor.
@@ -439,10 +439,24 @@ def density_from_firecore( atomType=None, atomPos=None, bSCF=False, Cden=1.0, Cd
         i0orb  = oclu.countOrbs( atomType ) 
         wfcoef = fc.get_wfcoef(norb=i0orb[-1])
         coefs = (wfcoef,i0orb)
-    
     return coefs, grid
 
 def density_from_firecore_to_xsf( atomType=None, atomPos=None, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=0.0, fc=None ):
+    """
+    Calculate electron density using FireCore and saves it to .xsf file
+
+    Args:
+        atomType (ndarray): atom types.
+        atomPos  (ndarray): atom positions.
+        bSCF     (bool):    Flag indicating whether to perform self-consistent field calculation.
+        saveXsf  (str):     Filepath to save the XSF file.
+        Cden     (float):   Density scaling factor.
+        Cden0    (float):   Background density scaling factor.
+        fc       (object):  FireCore object.
+
+    Returns:
+        None
+    """
     print( "DEBUG density_from_firecore_to_xsf()" )
     _, (ewfaux,ngrid,dCell,lvs) = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, Cden=Cden, Cden0=Cden0, bGetGrid=True, bGetCoefs=False, fc=fc )
     if saveXsf is not None:
@@ -458,6 +472,25 @@ def density_from_firecore_to_xsf( atomType=None, atomPos=None, bSCF=False, saveX
         ocl.saveToXsfAtomsData( saveXsf, ewfaux, atomType, atomPos )
 
 def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, iMO0=0, iMO1=None, i0orb=None, bDownalod=False, bDen0diff=False ):
+    """
+    Projects the electron density onto a grid using GPU acceleration.
+
+    Args:
+        wfcoef    (ndarray) : Wavefunction coefficients.
+        atomType  (list)    : Atom types.
+        atomPos   (ndarray) : Atom positions.
+        ngrid     (tuple)   : Number of grid points in each dimension (default: (64, 64, 64)).
+        dcell     (list)    : Cell dimensions (default: [0.2, 0.2, 0.2, 0.2]).
+        iOutBuff  (int)     : Output buffer index (default: 0).
+        iMO0      (int)     : Starting molecular orbital index (default: 0).
+        iMO1      (int)     : Ending   molecular orbital index (default: None), if None then half of all the orbitals are projected (assumed to be occupied).
+        i0orb     (list)    : List of initial orbital indices (default: None).
+        bDownalod (bool)    : Flag to download the density data (default: False).
+        bDen0diff (bool)    : Flag to calculate the difference density (default: False).
+
+    Returns:
+        numpy.ndarray: The projected electron density data (if bDownalod is True).
+    """
     print( "#======= project_dens_GPU | ngrid: ", ngrid," dcell: ", dcell )
     if iMO1 is None:
         iMO1 = i0orb[-1]//2
@@ -481,6 +514,23 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
         return data
 
 def check_density_projection( atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], bSCF=False, iOutBuff=0, Cden=1.0, Cden0=-1.0, iMO1=None ):
+    """
+    Check the density projection.
+
+    Args:
+        atomType (list)  : Atom types.
+        atomPos  (list)  : Atom positions.
+        ngrid    (tuple) : Number of grid points in each direction.
+        dcell    (list)  : Cell dimensions.
+        bSCF     (bool)  : Flag indicating whether to perform self-consistent field calculation.
+        iOutBuff (int)   : Output buffer index.
+        Cden     (float) : Density scaling factor.
+        Cden0    (float) : Initial density scaling factor.
+        iMO1     (int)   : Index of the molecular orbital.
+
+    Returns:
+        None
+    """
     print( "#======= check_density_projection()" )
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
     #g0 = [-12.0,-6.0,-3.0]
@@ -506,6 +556,25 @@ def check_density_projection( atomType=None, atomPos=None, ngrid=(64,64,64), dce
     print( "DEBUG check_density_projection() DONE" )
 
 def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], p0=None, iOutBuff=0, Rcuts=[4.5,4.5], bSCF=False, bSaveXsf=False, bSaveBin=False, saveName="dens", bDen0diff=False ):
+    """
+    Projects the density onto a grid and optionally saves the results.
+
+    Args:
+        iMO0      (int)   : Index of the starting molecular orbital. Defaults to 1.
+        iMO1      (int)   : Index of the ending molecular orbital. Defaults to None, if None, then sum of all orbitals is used.
+        atomType  (list)  : List of atomic types. Defaults to None.
+        atomPos   (list)  : List of atomic positions. Defaults to None.
+        ngrid     (tuple) : Number of grid points in each dimension. Defaults to (64, 64, 64).
+        dcell     (list)  : Cell dimensions. Defaults to [0.2, 0.2, 0.2, 0.2].
+        p0        (list)  : grid origin, Not used. Defaults to None.
+        iOutBuff  (int)   : Output buffer index. Defaults to 0.
+        Rcuts     (list)  : Cutoff radii for density calculation. Defaults to [4.5, 4.5].
+        bSCF      (bool)  : Flag to enable self-consistent field calculation. Defaults to False.
+        bSaveXsf  (bool)  : Flag to save density in .xsf format. Defaults to False.
+        bSaveBin  (bool)  : Flag to save density in binary format. Defaults to False.
+        saveName  (str)   : Name of the saved file. Defaults to "dens".
+        bDen0diff (bool)  : Flag to calculate the difference density. Defaults to False.
+    """
     print("# ========= projectDens() bSCF ", bSCF )
     (wfcoef,i0orb),_ = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, bGetGrid=False, bGetCoefs=True )
     project_dens_GPU( wfcoef, atomType=atomType, atomPos=atomPos, ngrid=ngrid, dcell=dcell, iOutBuff=iOutBuff, iMO0=iMO0, iMO1=iMO1, i0orb=i0orb, bDen0diff=bDen0diff )
@@ -515,6 +584,25 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
         ocl.saveToBin(      saveName+".bin", iOutBuff )
 
 def projectDens0_new( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, Rcuts=[4.5,4.5], bSaveXsf=False, bSaveBin=False, saveName="dens0", acumCoef=[1.0,-1.0]  ):
+    """
+    Projects the electron density onto a grid using the given parameters.
+
+    Args:
+        atomType (list)  : Atom types.
+        atomPos  (list)  : Atom positions.
+        ngrid    (tuple) : Number of grid points in each dimension.
+        dcell    (list)  : Cell dimensions.
+        iOutBuff (int)   : Output buffer index.
+        Rcuts    (list)  : Cutoff radii for each atomic type.
+        bSaveXsf (bool)  : Flag indicating whether to save the density in .xsf format.
+        bSaveBin (bool)  : Flag indicating whether to save the density in binary format.
+        saveName (str)   : Name of the output file.
+        acumCoef (list)  : Coefficients for accumulating the density.
+
+    Returns:
+        None
+    """
+    
     print("# ========= projectDens0_new() " )
     sys.path.append("../../")
     import pyBall as pb

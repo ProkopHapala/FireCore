@@ -1186,6 +1186,15 @@ Atoms* addEpairs( Atoms* mol ){
     return builder.exportAtoms(); 
 }
 
+/**
+ * Loads XYZ file and creates Atoms objects for each molecule inside it. It saves the molecules to the "samples" vector.
+ * Optionally adds electron pairs and outputs XYZ file with epairs.
+ *
+ * @param fname The name of the XYZ file to load.
+ * @param bAddEpairs Flag indicating whether to add epairs to the loaded atoms.
+ * @param bOutXYZ Flag indicating whether to output XYZ file with epairs.
+ * @return The number of batches created.
+ */
 int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     //printf( "FitREQ::loadXYZ_new() fname `%s` bAddEpairs %i bOutXYZ %i \n", fname, bAddEpairs, bOutXYZ  );
     //params->printElementTypes();
