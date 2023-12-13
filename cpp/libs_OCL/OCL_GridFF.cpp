@@ -37,12 +37,13 @@ extern "C" {
         oclfft.init();
         oclfft.makeMyKernels( cl_src_dir );
     }
+    void printDeviceInfo( bool bDetails ){ oclfft.printDeviceInfo( bDetails ); }
 
-    int   upload(int i, const float* cpu_data ){ return oclfft  .upload(i,cpu_data);                        };
-    int download(int i,       float* cpu_data ){ return oclfft.download(i,cpu_data);  oclfft.finishRaw();   };
+    int   upload(int i, const float* cpu_data ){ return oclfft  .upload(i,cpu_data);                                   };
+    int download(int i,       float* cpu_data ){ int iret=oclfft.download(i,cpu_data);  oclfft.finishRaw();  OCL_checkError_(iret,"OCL_GridFF.cpp::download()",i);  return iret; };
 
-    int copy           ( int iBufFrom, int iBufTo, int nbytes, int  src_offset, int  dst_offset ){ return oclfft.copy           ( iBufFrom, iBufTo, nbytes, src_offset, dst_offset ); };
-    int copyBuffToImage( int iBuff, int itex, int nx,int ny,int nz ){ return oclfft.copyBuffToImage( iBuff,      itex, size_t4{(size_t)nx,(size_t)ny,(size_t)nz} ); };
+    int copy           ( int iBufFrom, int iBufTo, int nbytes, int  src_offset, int  dst_offset ){ int iret=oclfft.copy           ( iBufFrom, iBufTo, nbytes, src_offset, dst_offset );            OCL_checkError_(iret,"OCL_GridFF.cpp::copy()",iBufFrom);          return iret; };
+    int copyBuffToImage( int iBuff, int itex, int nx,int ny,int nz                              ){ int iret=oclfft.copyBuffToImage( iBuff,      itex, size_t4{(size_t)nx,(size_t)ny,(size_t)nz} ); OCL_checkError_(iret,"OCL_GridFF.cpp::copyBuffToImage()",iBuff);  return iret; };
  
     void roll_buf( int ibuffA, int ibuffB, int* shift ){ return oclfft.roll_buf( ibuffA, ibuffB, *(int4*)shift ); }
 
@@ -145,7 +146,7 @@ extern "C" {
 
     void loadWf(const char* fname, float* out){ loadWf_(fname, out); };
 
-    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){ oclfft.loadWfBasis(path, RcutSamp,nsamp,ntmp,nZ,iZs,Rcuts ); }
+    float* loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts, bool bDelete ){ return oclfft.loadWfBasis(path, RcutSamp,nsamp,ntmp,nZ,iZs,Rcuts, bDelete ); }
 
     void saveToBin(const char* fname, int ibuff){ oclfft.saveToBin(fname, ibuff); }
     void loadFromBin(const char* fname, int ibuff){ oclfft.loadFromBin(fname,ibuff); }

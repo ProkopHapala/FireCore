@@ -52,6 +52,8 @@ def export_density_shifted():
     ocl.saveToBin( "dens_diff.bin", iB )
 
 
+ocl.setVerbosity(1)
+
 #ocl.tryInitFFT( ngrid)           ;print( "DEBUG poisson 1 " )
 
 #jobs.projectDens ( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=1, iMO1=8, ngrid=ngrid, dcell=dcell, bSaveXsf=True, bSaveBin=True )

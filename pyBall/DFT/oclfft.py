@@ -88,6 +88,12 @@ def init( cl_src_dir='./data/cl' ):
     cl_src_dir = cl_src_dir.encode('utf8')
     lib.init( cl_src_dir )
 
+# void printDeviceInfo( bool bDetails )
+lib.printDeviceInfo.argtypes  = [ c_bool ]
+lib.printDeviceInfo.restype   =  None
+def printDeviceInfo( bDetails=False ):
+    lib.printDeviceInfo( bDetails )
+
 lib.cleanup.argtypes  = [ ] 
 lib.cleanup.restype   =  None
 def cleanup():
@@ -105,6 +111,7 @@ lib.download.restype   =  c_int
 def download( i, data=None, Ns=-1,dtype=np.csingle):
     if data is None:
         data = np.zeros(Ns,dtype=dtype)
+        print( "download() allocated %i bytes ", data.nbytes )
     lib.download( i, _np_as( data, c_float_p ) )
     return data
 
@@ -328,9 +335,9 @@ def saveToXsfAtomsData( fname, data, atypes, apos ):
     lib.saveToXsfAtomsData( fname, _np_as(ngrid, c_int_p ),  _np_as( data, c_double_p ),  na, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
 
 #    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){
-lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p, c_float_p ] 
-lib.loadWfBasis.restype   =  None
-def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", Rcuts=None, RcutDef=4.5 ):
+lib.loadWfBasis.argtypes  = [  c_char_p, c_float, c_int, c_int, c_int, c_int_p, c_float_p, c_bool ] 
+lib.loadWfBasis.restype   = c_float_p
+def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", Rcuts=None, RcutDef=4.5, bDelete=True ):
     # NOTE : RcutSamp is in [Angstroem] while Rcuts and RcutDef are in [bohr_radius];    RcutSamp should not be changed without chaning "wf_tiles_per_angstroem" in myprog.cl
     global b_basisLoaded; b_basisLoaded=True; 
     nZ=len(iZs)
@@ -340,7 +347,14 @@ def loadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", R
         Rcuts=np.ones(nZ,dtype=np.float32)*RcutDef
     else:
         Rcuts=np.array(Rcuts,dtype=np.float32)
-    return lib.loadWfBasis( path, RcutSamp, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ), _np_as( Rcuts, c_float_p ) )
+    wf_data = lib.loadWfBasis( path, RcutSamp, nsamp, ntmp, nZ, _np_as( iZs, c_int_p ), _np_as( Rcuts, c_float_p ), bDelete )
+    # convert wf_data from c_float_p to np.array, if it is not null pointer
+    if wf_data: # check if wf_data is not null pointer
+        print( "loadWfBasis ", wf_data )
+        wf_data = np.ctypeslib.as_array(wf_data, shape=(nZ,nsamp,2))
+    #else:
+    #    print( "loadWfBasis  bDelete, wf_data ", bDelete, wf_data )
+    return wf_data
 
 # =================== OCL_PP
 
@@ -436,9 +450,9 @@ def tryInitFFT( sh ):
         fft_shape = sh
         initFFT( fft_shape )
 
-def tryLoadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", Rcuts=None, RcutDef=4.5 ):
+def tryLoadWfBasis( iZs, nsamp=100, ntmp=1000, RcutSamp=5.0, path="Fdata/basis/", Rcuts=None, RcutDef=4.5, bDelete=True ):
     if not b_basisLoaded:
-        loadWfBasis( iZs, nsamp=nsamp, ntmp=ntmp, RcutSamp=RcutSamp, path=path, Rcuts=Rcuts, RcutDef=RcutDef )
+        return loadWfBasis( iZs, nsamp=nsamp, ntmp=ntmp, RcutSamp=RcutSamp, path=path, Rcuts=Rcuts, RcutDef=RcutDef, bDelete=bDelete )
 
 def initFFTgrid( Ns, dcell = [0.2,0.2,0.2,0.2], dCell=None ):
     init() 
