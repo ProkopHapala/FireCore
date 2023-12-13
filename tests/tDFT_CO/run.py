@@ -43,6 +43,8 @@ def export_density_shifted():
     ocl.saveToXsf( "dens_scf.xsf", iB )
     ocl.saveToBin( "dens_scf.bin", iB )
     
+    exit(0)
+
     print( "# ---- density difference" )
     jobs.projectDens0_new( iOutBuff=iA,  atomType=Zs, atomPos=apos, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, acumCoef=[1.0,-1.0] )
     ocl.roll( iA, iB, shift )
