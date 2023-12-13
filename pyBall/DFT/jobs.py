@@ -407,7 +407,7 @@ def orbitals_from_firecore(atomType=None, atomPos=None, bSCF=False, orbitals=[0,
         fc.orb2xsf( iMO )
         #ewfaux = fc.getGridDens( ngrid=ngrid, Cden=Cden, Cden0=Cden0 )
 
-def density_from_firecore( atomType=None, atomPos=None, bSCF=False, Cden=1.0, Cden0=0.0, bGetGrid=False, bGetCoefs=False,  ngrid=None, dCell=None, g0=None ):
+def density_from_firecore( atomType=None, atomPos=None, bSCF=False, Cden=1.0, Cden0=0.0, bGetGrid=False, bGetCoefs=False,  ngrid=None, dCell=None, g0=None, fc=None ):
     """
     Calculate electron density from FireCore. It can be either projected on a grid or as set of coefficients of molecular orbitals.
 
@@ -422,6 +422,7 @@ def density_from_firecore( atomType=None, atomPos=None, bSCF=False, Cden=1.0, Cd
         ngrid     (int)   : Number of grid points.
         dCell     (float) : Grid cell size.
         g0        (float) : Initial grid size.
+        fc       (object) : FireCore object.
 
     Returns:
         tuple: A tuple containing the wavefunction coefficients and grid information.
@@ -499,18 +500,27 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
     dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
     elems, dct, ords, Rcuts = iZs2dict(atomType)
     ocl.tryInitFFT( Ns )
-    ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )
+    ocl.printDeviceInfo( bDetails=True)
+    wf_data = ocl.tryLoadWfBasis( elems, Rcuts=Rcuts, bDelete=True ) # load the basis functions without visualization
+    # -- to visualize the basis functions
+    #wf_data = ocl.tryLoadWfBasis( elems, Rcuts=Rcuts, bDelete=False )
+    #import matplotlib.pyplot as plt; plt.subplot(2,1,1); plt.imshow( wf_data[:,:,0] ); plt.subplot(2,1,2); plt.imshow( wf_data[:,:,1] ); plt.show()
+
     ocl.setGridShape_dCell( Ns, dCell )
     ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True )
-    ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1, acumCoef=[0.0,2.0] )     #  2.0 electrions per atom
+    ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1, acumCoef=[0.0,2.0] )     #  2.0 electrons per orbital
     if bDen0diff:
+        print( "DEBUG project_dens_GPU() bDen0diff ", bDen0diff )
         ords=np.array( ords, dtype=np.int32)
         #ocl.setTypes( [1,4], [[1.0,0.0],[1.0,3.0]] )  ;print( "WARRNING: project_dens_GPU(): ocl.setTypes([4,4],[[1.0,3.0],[1.0,5.0]]) is works just for Hydrocarbons !!!!" )
         ocl.setTypesZ( sorted(list(set(atomType))) )
         ocl.projectAtomsDens0( iOutBuff, apos=atomPos, atypes=ords, acumCoef=[1.0,-1.0] ) 
+    
+    bDownalod=True; print( "WARRNING DEBUG project_dens_GPU() bDownalod= ", bDownalod, iOutBuff )
     if bDownalod:
         data = ocl.download( iOutBuff, data=None, Ns=Ns )
-        data = data.real.astype(np.float)
+        print( "project_dens_GPU data:", data.shape, data.dtype,    np.min(data), np.max(data), np.sum(data) )
+        #data = data.real.astype(np.float)
         return data
 
 def check_density_projection( atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], bSCF=False, iOutBuff=0, Cden=1.0, Cden0=-1.0, iMO1=None ):
@@ -575,8 +585,10 @@ def projectDens( iMO0=1, iMO1=None, atomType=None, atomPos=None, ngrid=(64,64,64
         saveName  (str)   : Name of the saved file. Defaults to "dens".
         bDen0diff (bool)  : Flag to calculate the difference density. Defaults to False.
     """
-    print("# ========= projectDens() bSCF ", bSCF )
+    #print("# ========= projectDens() bSCF ", bSCF )
     (wfcoef,i0orb),_ = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, bGetGrid=False, bGetCoefs=True )
+    #print( "wfcoef", wfcoef )
+    #import matplotlib.pyplot as plt;  plt.imshow( wfcoef ); plt.show();    
     project_dens_GPU( wfcoef, atomType=atomType, atomPos=atomPos, ngrid=ngrid, dcell=dcell, iOutBuff=iOutBuff, iMO0=iMO0, iMO1=iMO1, i0orb=i0orb, bDen0diff=bDen0diff )
     if bSaveXsf:
         ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff,    atomType, atomPos  )

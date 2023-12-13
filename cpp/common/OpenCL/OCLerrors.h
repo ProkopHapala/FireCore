@@ -94,13 +94,20 @@ void OCL_buildProgramFailure( cl_program program, cl_device_id device ){
     delete [] log;
 }
 
-void OCL_check_error(cl_int err, const char *operation, char *filename, int line, int i=-999999, const char* name=""){
+void OCL_check_error(cl_int err, const char *operation=0, char *filename=0, int line=-1, int i=-999999, const char* name=0){
     //printf( "OCL_check_error(%s) err=%i \n", operation, err );
     if (err != CL_SUCCESS){        
-        if(i==-999999){ fprintf(stderr, "Error during operation '%s'",     operation   ); }
-        else   { fprintf(stderr, "Error during operation '%s'[%i] '%s'", operation, i, name ); }
-        fprintf(stderr, "in '%s' on line %d\n", filename, line);
-        fprintf(stderr, "Error code was \"%s\" (%d)\n", OCL_err_code(err), err);
+        //if(i==-999999){ fprintf(stderr, "Error during operation '%s'",     operation   ); }
+        //else   { fprintf(stderr, "Error during operation '%s'[%i] '%s'", operation, i, name ); }
+        //fprintf(stderr, "in '%s' on line %d\n", filename, line);
+        //fprintf(stderr, "Error code was \"%s\" (%d)\n", OCL_err_code(err), err);
+        //if(i==-999999){ fprintf(stderr, "OCL_ERROR(%i) %s during operation '%s'", err, OCL_err_code(err), operation ); }
+        //else          { fprintf(stderr, "OCL_ERROR(%i) %s during operation '%s'", err, OCL_err_code(err), operation, i, name );  }
+        fprintf(stderr, "OCL_ERROR(%i) %s", err, OCL_err_code(err));
+        if(operation)fprintf(stderr, " during %s", operation );
+        if(filename )fprintf(stderr, "%s #line=%i", filename, line );
+        if(name     )fprintf(stderr, "%s[%i]", name, i );
+        fprintf(stderr, "\n" );
         exit(0);
     }
 }

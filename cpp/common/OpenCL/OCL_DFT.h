@@ -8,6 +8,8 @@
 #include "IO_utils.h"
 #include "quaternion.h"
 
+#include "VecN.h"
+
 double const_Bohr_Radius = 0.529177210903;
 
 void v2f4( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
@@ -26,6 +28,17 @@ inline static double dist2_PointBox( const Vec3d& p, const Vec3d& a, const Vec3d
     return dist2;
 }
 
+/**
+ * @brief Loads basis-function from a file.
+ * 
+ * The waveform data is expected to be in a specific format, with each line containing four floating-point values.
+ * The function replaces any 'D' characters in the lines with 'e' characters before parsing the values.
+ * The function continues reading lines until it encounters a line that does not contain four values.
+ * 
+ * @param fname file name of the wavefunction data file
+ * @param out   The array to store the wavefunction data
+ * @return      The total number of wavefunction values read from the file
+ */
 int loadWf_(const char* fname, float* out){
     const int nbuff = 1024;
     char buff[nbuff]; char* line;
@@ -33,6 +46,7 @@ int loadWf_(const char* fname, float* out){
     FILE *pFile = fopen(fname, "r" );
     if(pFile==0)return -1;
     //printf( "loadWf_ 0 \n" );
+    // skip header 
     line=fgets(buff,nbuff,pFile);
     line=fgets(buff,nbuff,pFile);
     line=fgets(buff,nbuff,pFile);
@@ -40,7 +54,7 @@ int loadWf_(const char* fname, float* out){
     line=fgets(buff,nbuff,pFile);
     //double xs[4];
     int n=0;
-    while(true){
+    while(true){ // 
         line=fgets(buff,nbuff,pFile);
         //printf( "loadWf_ >>%s<< \n", line );
         for(int i=0; i<nbuff; i++){ if(line[i]=='D')line[i]='e'; }
@@ -57,6 +71,20 @@ int loadWf_(const char* fname, float* out){
     return n;
 }
 
+/**
+ * Resamples a 1D array from the input range [x0in, x1in] to the output range [x0out, x1out].
+ * 
+ * @param nin   number of elements in the input array
+ * @param x0in  starting value of the input range
+ * @param x1in  ending value of the input range
+ * @param from  input array
+ * @param nout  number of elements in the output array
+ * @param x0out starting value of the output range
+ * @param x1out ending value of the output range
+ * @param to    output array
+ * @param pitch pitch of the output array
+ * @param off   offset of the output array
+ */
 void resample1D( int nin, float x0in, float x1in, float* from,   int nout, float x0out, float x1out, float* to,   int pitch, int off ){
     float dx_in    = (x1in -x0in )/nin;
     float dx_out   = (x1out-x0out)/nout;
@@ -409,7 +437,7 @@ class OCL_DFT: public OCLsystem { public:
     }
 
     void initTask_project_dens_tex( int ibuffAtoms, int ibuffCoefs, int ibuff_result ){
-        //printf("DEBUG initTask_project_dens_tex() \n");
+        printf("DEBUG initTask_project_dens_tex() \n");
         Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
         cltask_project_den_tex.setup( this, iKernell_project_dens_tex, 1, {Ntot*2,0,0,0}, {16,0,0,0} );
         cltask_project_den_tex.args = { 
@@ -471,22 +499,24 @@ class OCL_DFT: public OCLsystem { public:
     }
 
     void projectAtomsDens( float4* atoms, float4* coefs, int ibuff_result, int iorb1, int iorb2, float2 acumCoef_ ){
-        //printf( "DEBUG projectAtomsDens() \n"  );
+        int ierr=0;
+        printf( "projectAtomsDens() iorb=[%i .. %i] iresult=%i acumCoef(%g,%g) \n", iorb1, iorb2, ibuff_result, acumCoef_.x, acumCoef_.y  );
         //printf( "DEBUG projectAtomsDens acumCoef_ (%g,%g) \n", acumCoef_.x, acumCoef_.y  );
         //printf( "DEBUG projectAtomsDens(%i,%i) | atoms* %li long* %li \n", iorb1, iorb2,  (long)atoms, (long)coefs );
         if( atoms ) upload(ibuff_atoms,atoms); 
         if( coefs ) upload(ibuff_coefs,coefs);
         //clFinish(commands); 
-        finishRaw();
+        ierr = finishRaw();                               OCL_checkError( ierr, "upload");
         //initTask_project_dens_tex
-        initTask_project_dens_tex( ibuff_atoms, ibuff_coefs, ibuff_result );
+        initTask_project_dens_tex( ibuff_atoms, ibuff_coefs, ibuff_result );   
         //cltask_project_den_tex
         cltask_project_den_tex.args[1].i=iorb1;
         cltask_project_den_tex.args[2].i=iorb2;
         acumCoef=acumCoef_;
         //cltask_project_den_tex.print_arg_list();
-        cltask_project_den_tex.enque( );
-        finishRaw();
+        ierr = cltask_project_den_tex.enque( );           OCL_checkError( ierr, "enque"  );
+        finishRaw();                                      OCL_checkError( ierr, "finish" );
+        //download( ibuff_result, (float2*)coefs );
         //printf( "DEBUG projectAtomsDens() END \n");
     }
     
@@ -579,33 +609,40 @@ class OCL_DFT: public OCLsystem { public:
         //exit(0);
     };
 
-    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){
+    float* loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts, bool bDelete=true ){
+        //printf( "loadWfBasis(%s) nsamp %i ntmp %i nZ %i RcutSamp %g [A] verbosity %i \n", path, nsamp, ntmp, nZ, RcutSamp, verbosity  );
         float* data_tmp = new float[ntmp      ];
         float* data     = new float[nsamp*2*nZ];
         char fname[64];
         //float dxTmp =(Rcut*const_Bohr_Radius)/ntmp;
         //float dxSamp=Rcut/nsamp;
         //RcutSamp*=0.529177210903f;
-        if(verbosity>0)printf( "loadWfBasis nsamp %i ntmp %i nZ %i RcutSamp %g [A]\n", nsamp, ntmp, nZ, RcutSamp );
+        if(verbosity>0)printf( "loadWfBasis(%s) nsamp %i ntmp %i nZ %i RcutSamp %g [A]\n", path, nsamp, ntmp, nZ, RcutSamp );
         for(int i=0; i<nZ; i++){
             int iz=iZs[i];
             float Ri = Rcuts[i];
+            // --- wf1
             sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Ri*100), 1 );
             int nin = loadWf_(fname, data_tmp );
             //resample1D( nsamp, 0, 0, dxSamp, dxTmp, data_tmp, data+nsamp*(i*2), 2,0 );
             resample1D( nin, 0.0, Ri*const_Bohr_Radius, data_tmp,   nsamp,0.0, RcutSamp, data+nsamp*(i*2),   2,0 );
+            // --- wf2
             sprintf( fname, "%s%03i_%03i.wf%i", path, iz, (int)(Ri*100), 2 );
-            if(verbosity>0)printf( "DEBUG loadWfBasis() %s \n", fname );
+            if(verbosity>0)printf( "loadWfBasis[%i] (iZ=%2i,nin=%3i,Ri=%5.3f) %s \n", i, iz, Ri, nin, fname );
             if( loadWf_(fname, data_tmp ) ){
+                printf( "resample1D \n" );
                 resample1D( nin, 0.0, Ri*const_Bohr_Radius, data_tmp,   nsamp,0.0, RcutSamp, data+nsamp*(i*2),   2,1 );
             }else{
-                for(int j=0; j<nsamp; j++){ data[nsamp*(i*2)+2*j+1]=data[nsamp*(i*2)+2*j]; }
+                printf( "copy from wf1 nsamp=%i \n", nsamp );
+                for(int j=0; j<nsamp; j++){ int j0=nsamp*(i*2)+2*j; data[j0+1]=data[j0]; }
             }
         }
         //for(int i=0; i<nsamp; i++){ printf("basis [%i] (%f,%f) (%f,%f) \n", i, data[i*2],data[i*2+1],data[i*2+2*nsamp],data[i*2+1+2*nsamp] );  }
         delete [] data_tmp;
+        //for(int i=0; i<nZ; i++){  printf( "wf[%2i]:", i );  for(int j=0; j<10; j++){ printf( "%g ", data[i*nsamp+j] ); }; printf( "\n" ); };
         itex_basis = newBufferImage2D( "BasisTable", nsamp, nZ,  sizeof(float)*2,  data, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR , {CL_RG, CL_FLOAT} );
-        delete [] data;
+        if(bDelete){ delete [] data; data=0; }
+        return data;
     }
 
     void update_GridShape(){
@@ -630,6 +667,7 @@ class OCL_DFT: public OCLsystem { public:
         float* cpu_data = new float[Ntot*stride]; // complex 2*float
         download( ibuff,cpu_data);
         finishRaw();
+        float amin,amax; VecN::bounds<float>( Ntot*stride, cpu_data, amin, amax ); printf( "saveToXsf() amin,amax %g %g \n" ); // DEBUG
         grid.saveXSF( fname, cpu_data, stride, offset,   natoms, atypes,apos );
         delete [] cpu_data;
     }
