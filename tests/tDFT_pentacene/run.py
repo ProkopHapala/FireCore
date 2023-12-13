@@ -16,6 +16,74 @@ from pyBall.DFT import PP as pp
 from pyBall     import atomicUtils as au
 
 
+# ======= density operations
+
+def project_or_load_density( ngrid, iBuff=0, dcell=None, save_file=None ):
+    if dcell is None: dcell = [0.2,0.2,0.2,0.2]
+    if not os.path.exists( "dens.bin" ):
+        print("!!!!! job_convolve_density_with_CO :  PROJECT+SAVE ./dens.bin ")
+        xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+        jobs.projectDens( iOutBuff=iBuff, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=True )
+        if save_file is not None: ocl.saveBuff(iBuff,save_file)
+    else:
+        print("!!!!! job_convolve_density_with_CO :  LOAD ./dens.bin ")
+        Ns = (ngrid[0],ngrid[1],ngrid[2])
+        ocl.initFFTgrid( Ns, dcell=dcell )
+        ocl.loadFromBin( "./dens.bin", iBuff )
+
+def test_job_Density_Gradient():
+    ocl.setErrorCheck( 1 )
+    print( "# --- Preparation" )
+    apos,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+    ngrid=(128,64,32)
+    dcell = [0.2,0.2,0.2,0.2]
+    iA=0; iC=1
+
+    print( "# --- SCF density")
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, bSCF=True, bDen0diff=False )
+    ibuff_FE  = ocl.newFFTbuffer( "FE", 4 )
+    ocl.gradient( iA, ibuff_FE, dcell)
+    ocl.saveToXsf( "F_x.xsf", ibuff_FE, stride=4, offset=0 )
+    ocl.saveToXsf( "F_y.xsf", ibuff_FE, stride=4, offset=1 )
+    ocl.saveToXsf( "F_z.xsf", ibuff_FE, stride=4, offset=2 )
+    ocl.saveToXsf( "F_w.xsf", ibuff_FE, stride=4, offset=3 )
+    #ocl.ocl.saveToXsf( "test.xsf", ibuff_FE, stride=4, offset=0 )
+
+def job_convolve_density_with_CO_orig( ):
+    ocl.setErrorCheck( 1 )
+    xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+    ngrid=(128,64,32)
+    dcell = [0.2,0.2,0.2,0.2]
+    iA=0; iC=1
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell )
+    ibuff_MCOconv = 2
+    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
+    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
+    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
+    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
+    ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
+
+def job_convolve_density_with_CO( iA=0 ):
+    print( "JOB: convolve_density_with_CO() " )
+    ocl.setErrorCheck( 1 )
+    ngrid=(128,64,32)
+    project_or_load_density( ngrid, iBuff=iA )
+    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
+    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
+    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
+    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
+    ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
+
+def job_poisson_equation( iA=0, iC=1 ):
+    ocl.setErrorCheck( 1 )
+    ngrid = (128,64,32)
+    dcell = [0.2,0.2,0.2,0.2]
+    project_or_load_density( ngrid, iBuff=iA, dcell=dcell )
+    ocl.poisson( iA=iA, iOut=iC, dcell=dcell )
+    ocl.saveToXsf( "Vout.xsf", iC )
+
+# ======= Probe Particle (PP) simulations
+
 def test_PP_scan_LJQ(iZPP=8, nx=200, ny=100, nz=20, dtip=0.1, bUseBuffFE=False):
     ocl.setErrorCheck( 1 )
     print( "# --- Preparation" )
@@ -141,24 +209,6 @@ def test_PP_sampleFF():
         plt.subplot(5,4,i*4+4); plt.imshow( OutFE[:,:,i,3] ); plt.colorbar()
     plt.show()
 
-def test_job_Density_Gradient():
-    ocl.setErrorCheck( 1 )
-    print( "# --- Preparation" )
-    apos,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
-    ngrid=(128,64,32)
-    dcell = [0.2,0.2,0.2,0.2]
-    iA=0; iC=1
-
-    print( "# --- SCF density")
-    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, bSCF=True, bDen0diff=False )
-    ibuff_FE  = ocl.newFFTbuffer( "FE", 4 )
-    ocl.gradient( iA, ibuff_FE, dcell)
-    ocl.saveToXsf( "F_x.xsf", ibuff_FE, stride=4, offset=0 )
-    ocl.saveToXsf( "F_y.xsf", ibuff_FE, stride=4, offset=1 )
-    ocl.saveToXsf( "F_z.xsf", ibuff_FE, stride=4, offset=2 )
-    ocl.saveToXsf( "F_w.xsf", ibuff_FE, stride=4, offset=3 )
-    #ocl.ocl.saveToXsf( "test.xsf", ibuff_FE, stride=4, offset=0 )
-
 def job_make_Eelec_Epauli():
     ocl.setErrorCheck( 1 )
     print( "# --- Preparation" )
@@ -211,50 +261,8 @@ def job_make_Eelec_Epauli():
     ocl.convolve( iC,ibuff_densCO, ibuff_ConvOut )
     ocl.saveToXsf( "E_elec.xsf",   ibuff_ConvOut )
 
-def job_convolve_density_with_CO_orig( ):
-    ocl.setErrorCheck( 1 )
-    xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
-    ngrid=(128,64,32)
-    dcell = [0.2,0.2,0.2,0.2]
-    iA=0; iC=1
-    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell )
-    ibuff_MCOconv = 2
-    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
-    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
-    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
-    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
-    ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
 
-def project_or_load_density( ngrid, iBuff=0, dcell=None ):
-    if dcell is None: dcell = [0.2,0.2,0.2,0.2]
-    if not os.path.exists( "dens.bin" ):
-        print("!!!!! job_convolve_density_with_CO :  PROJECT+SAVE ./dens.bin ")
-        xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
-        jobs.projectDens( iOutBuff=iBuff, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=True )
-    else:
-        print("!!!!! job_convolve_density_with_CO :  LOAD ./dens.bin ")
-        Ns = (ngrid[0],ngrid[1],ngrid[2])
-        ocl.initFFTgrid( Ns, dcell=dcell )
-        ocl.loadFromBin( "./dens.bin", iBuff )
-
-def job_convolve_density_with_CO( iA=0 ):
-    print( "JOB: convolve_density_with_CO() " )
-    ocl.setErrorCheck( 1 )
-    ngrid=(128,64,32)
-    project_or_load_density( ngrid, iBuff=iA )
-    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
-    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
-    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
-    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
-    ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
-
-def job_poisson_equation( iA=0, iC=1 ):
-    ocl.setErrorCheck( 1 )
-    ngrid = (128,64,32)
-    dcell = [0.2,0.2,0.2,0.2]
-    project_or_load_density( ngrid, iBuff=iA, dcell=dcell )
-    ocl.poisson( iA=iA, iOut=iC, dcell=dcell )
-    ocl.saveToXsf( "Vout.xsf", iC )
+project_or_load_density( (128,64,32), iBuff=0, dcell=[0.2,0.2,0.2,0.2], save_file="density.xsf" )
 
 #job_convolve_density_with_CO_orig()
 #job_convolve_density_with_CO()
@@ -263,7 +271,7 @@ def job_poisson_equation( iA=0, iC=1 ):
 #test_job_Density_Gradient()
 #test_PP_sampleFF()
 #test_PP_makeFF_LJQ()
-test_PP_scan_LJQ()
+#test_PP_scan_LJQ()
 
 exit()
 

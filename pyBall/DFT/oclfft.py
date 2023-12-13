@@ -440,6 +440,12 @@ def initFireBall( atypes, apos ):
 
 # ===================== PYTHON
 
+def saveBuff( iBuff, fname ):
+    if   fname[-4:] == ".xsf":
+        saveToXsf( fname, iBuff )
+    elif fname[-4:] == ".bin":  
+        saveToBin( fname, iBuff )
+
 def tryInitFFT( sh ):
     #print( "!!!!------------------------- tryInitFFT: b_Init, b_initFFT ", b_Init, b_initFFT )
     if not b_Init: 
