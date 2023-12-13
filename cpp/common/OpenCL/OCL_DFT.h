@@ -609,6 +609,21 @@ class OCL_DFT: public OCLsystem { public:
         //exit(0);
     };
 
+    /**
+     * @brief Loads the wavefunction basis from a file. The basis function files are expected to be named as follows: 
+     *    "path/001_480.wf1" for the s-function of the hydrogen atom(iZ=1) with cutoff 4.80 Angstrom
+     *    "path/008_560.wf2" for the p-function of the oxygen(iZ=8)        with cutoff 4.80 Angstrom
+     * 
+     * @param path     path containing the files 
+     * @param RcutSamp cutoff radius of the output wavefunction basis array used in OpenCL calculations.
+     * @param nsamp    number of radial samples in the output wavefunction basis array used in OpenCL calculations.
+     * @param ntmp     size of the temporary data array.
+     * @param nZ       number of elements to be loaded.
+     * @param iZs      atomic number of the elements to be loaded.
+     * @param Rcuts    cutoff radius for each element to be loaded.
+     * @param bDelete  Flag indicating whether to delete the data array after uploading to the GPU (useful for debugging, WARRNING: if(bDelete==False) make sure to delete the data array after use outside of this function).
+     * @return The loaded wavefunction basis data.
+     */
     float* loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts, bool bDelete=true ){
         //printf( "loadWfBasis(%s) nsamp %i ntmp %i nZ %i RcutSamp %g [A] verbosity %i \n", path, nsamp, ntmp, nZ, RcutSamp, verbosity  );
         float* data_tmp = new float[ntmp      ];
@@ -692,23 +707,40 @@ class OCL_DFT: public OCLsystem { public:
         delete [] cpu_data;
     }
 
+    /**
+     * Prepares the atom coordinates (x,y,z,slot) for the OpenCL DFT calculation. The slot is used in OpenCL kernel to identify the atom type and idicate from which line of the texture read the basis function shape.
+     * 
+     * @param natoms number of atoms
+     * @param ityps  atom types
+     * @param oatoms atom coordinates
+     */
     void prepareAtomCoords(  int natoms, int* ityps, Vec3d* oatoms ){
         float4* atoms = new float4[ natoms ];
         for(int ia=0; ia<natoms; ia++){
-            atoms[ia]=(float4){ (float)oatoms[ia].x,(float)oatoms[ia].y,(float)oatoms[ia].z, ityps[ia]+0.1f };
+            float slot = (float)(ityps[ia]+0.1f);
+            atoms[ia]=(float4){ (float)oatoms[ia].x,(float)oatoms[ia].y,(float)oatoms[ia].z, slot };
         }
         upload(ibuff_atoms,atoms, natoms );
         finishRaw();
         delete [] atoms;
     }
 
+    /**
+     * Converts orbital coefficients from double precision to single precision and assigns them to the float4(s, py, pz, px.) array, which is optimized for the OpenCL calculations.
+     * For hydrogen atoms (atomic number 1), only the last element of ocoefs is used.
+     * 
+     * @param natoms The number of atoms
+     * @param iZs The array of atomic numbers
+     * @param ocoefs input orbital coefficients in double precision e.g. from Fireball
+     * @param coefs  output orbital coefficients in single precision in float4(s,py,pz,px) optimized for OpenCL calculations
+     */
     void convOrbCoefs( int natoms, int* iZs, double* ocoefs, float4* coefs ){
         int io=0;
         for(int ia=0; ia<natoms; ia++){
-            if(iZs[ia]==1){ 
+            if(iZs[ia]==1){ // hydrogen
                 coefs[ia]=(float4){0.f,0.f,0.f, (float)ocoefs[io] };
                 io+=1; 
-            }else{ 
+            }else{          // not hydrogen
                 coefs[ia]=(float4){ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] };   //  Fireball order:   s,py,pz,px   see https://nanosurf.fzu.cz/wiki/doku.php?id=fireball
                 io+=4; 
             }
@@ -716,6 +748,13 @@ class OCL_DFT: public OCLsystem { public:
         }
     }
 
+    /**
+     * Assigns coefficients of neutral-atom-density depending on type of atom (i.e. specific occupation of each shell (s, p) is distributed equally among the orbitals of the shell).
+     * 
+     * @param natoms number of atoms
+     * @param ityps  atom types
+     * @param coefs  float4 array to store the neutral atomic density coefficients
+     */
     void assignAtomDensCoefs( int natoms, int* ityps, float4* coefs ){
         //printf( "DEBUG assignAtomDensCoefs() \n" );
         for(int ia=0; ia<natoms; ia++){
@@ -729,17 +768,38 @@ class OCL_DFT: public OCLsystem { public:
         //printf( "DEBUG assignAtomDensCoefs() DONE\n" );
     }
 
+    /**
+     * @brief Generates neutral-atom-density coefficients for the given atoms.
+     * 
+     * This function generates atom density coefficients for the specified atoms. 
+     * It initializes the atoms if the `bInit` parameter is set to `true`.
+     * 
+     * @param natoms number of atoms.
+     * @param ityps  array of atom types.
+     * @param oatoms An array of atom coordinates.
+     * @param bInit  Flag indicating whether to initialize the atoms.
+     */
     void makeAtomDensCoefs( int natoms, int* ityps, Vec3d* oatoms, bool bInit=false ){
         //printf( "DEBUG makeAtomDensCoefs() \n" );
-        if( bInit ){ initAtoms( natoms, natoms ); }
-        prepareAtomCoords( natoms, ityps, oatoms );
+        if( bInit ){ initAtoms( natoms, natoms ); }   // create buffers
+        prepareAtomCoords( natoms, ityps, oatoms );   // prepare atom coordinates (x,y,z,slot)
         float4* coefs = new float4[ natoms  ];
-        assignAtomDensCoefs( natoms, ityps, coefs );
-        upload(ibuff_coefs,coefs, natoms  );
+        assignAtomDensCoefs( natoms, ityps, coefs );  // assign coefficients of neutral-atom-density
+        upload(ibuff_coefs,coefs, natoms  );          // upload coefficients to the GPU
         delete [] coefs;
         //printf( "DEBUG makeAtomDensCoefs() DONE \n" );
     };
 
+    /**
+     * Assigns diagonal orbital coefficients to the given number of orbitals, atoms, atom types, and coefficients.
+     *  NOTE: it seems to be redundant, but it seens to do the same as assignAtomDensCoefs()
+     * 
+     * @param norb   number of orbitals.
+     * @param natoms The number of atoms.
+     * @param ityps  array of atom types.
+     * @param coefs  array of coefficients.
+     * @return The total number of orbitals assigned.
+     */
     int assignDiagonalOrbCoefs( int norb, int natoms, int* ityps, float4* coefs ){
         //printf( "DEBUG assignDiagonalOrbCoefs()\n" );
         int ia_orb=0;
@@ -753,11 +813,11 @@ class OCL_DFT: public OCLsystem { public:
             if(io>=nOrbAtom){ io=0; ia_orb++; if(ia_orb>=natoms) break; }
             //printf( "iorb[%i|%i,%i] norb %i ityp %i \n", iorb, ia_orb,io,  norb, ityp );
             for(int ia=0; ia<natoms; ia++){ cs[ia]=(float4){0.f,0.f,0.f,0.f}; };
-            if(io>0){ 
+            if(io>0){  // --- p orbitals
                 double Q = atype_Qconfs[ityp].y/3.0; 
                 //printf( "p Q %g \n", Q );
                 ((float*)(cs+ia_orb))[io-1] = sqrt(Q);
-            }else{
+            }else{    // --- s orbital
                 double Q = atype_Qconfs[ityp].x;
                 //printf( "s Q %g \n", Q ); 
                 cs[ia_orb].w = sqrt(Q);
@@ -778,10 +838,23 @@ class OCL_DFT: public OCLsystem { public:
     }
 
 
+    /**
+     * Converts the coefficients of the orbitals from Fireball to the format optimized for OpenCL calculations.
+     * 
+     * @param natoms The number of atoms.
+     * @param iZs    atomic numbers (proton numbers) for each atom.
+     * @param ityps  atom types for each atom
+     * @param ocoefs input array of orbital coefficients in double precision e.g. from Fireball
+     * @param oatoms input array of atom coordinates in double precision e.g. from Fireball
+     * @param bInit Flag indicating whether to initialize the OpenCL buffers for atoms and coefficients and positions
+     * @param bDiagonal Flag indicating whether to assign diagonal orbital coefficients (i.e. for neutral-atom-density).
+     * @return The number of orbitals.
+     */
     int convCoefs( int natoms, int* iZs, int* ityps, double* ocoefs, double* oatoms, bool bInit=false, bool bDiagonal=false ){
         //printf( "DEBUG convCoefs() ocoefs %li \n", (long)ocoefs );
         int norb=0;
         for(int ia=0; ia<natoms; ia++){ if(iZs[ia]==1){ norb+=1; }else{ norb+=4; }; }   // --- Count orbitals
+        //countOrbs( int natoms, int* iZs, int* offsets );
         int ncoef=natoms*norb;
         float4* coefs = new float4[ ncoef  ];
         if(bDiagonal){
@@ -791,11 +864,9 @@ class OCL_DFT: public OCLsystem { public:
         }else for(int iorb=0; iorb<norb; iorb++){
             convOrbCoefs( natoms, iZs, ocoefs+iorb*norb, coefs+iorb*natoms );
         }
-        if( bInit ){
-            initAtoms( natoms, norb );
-        }
+        if( bInit ){ initAtoms( natoms, norb ); } // create buffers
         prepareAtomCoords( natoms, ityps, (Vec3d*)oatoms );
-        upload(ibuff_coefs,coefs, ncoef  );
+        upload(ibuff_coefs,coefs, ncoef  );      // upload coefficients to the GPU
         delete [] coefs;
         return norb;
     };
@@ -808,16 +879,31 @@ class OCL_DFT: public OCLsystem { public:
         }
     }
 
+    /**
+     * Builds the density matrix just for selected atoms ( i.e. relevant locally, for some block of atoms ).
+     * 
+     * @param nsel The number of selected atoms.
+     * @param sel An array of selected atom indices.
+     * @param iZs An array of atomic numbers.
+     * @param i0Cs An array of offsets of selected atoms in the coefs array.
+     * @param ocoefs An array of coefficients.
+     * @param iorb0 The starting orbital index.
+     * @param iorb1 The ending orbital index.
+     * @param rho The density matrix to be built.
+     */
     void buildDenmat( int nsel, int* sel, int* iZs, int* i0Cs, double* ocoefs, int iorb0, int iorb1, Quat4f* rho ){
         for(int i=0; i<(nsel*nsel*4); i++){ rho[i] = Quat4fZero; }
-        Quat4f lcoefs[nsel];
-        for(int iorb=iorb0; iorb<iorb1; iorb++ ){
+        Quat4f lcoefs[nsel];                       // local coefs for selected atoms
+        for(int iorb=iorb0; iorb<iorb1; iorb++ ){ // loop over orbitals
+            // --- convert Fireball coefs to local Quat4f coefs on selected atoms
             for(int i=0; i<nsel; i++){
                 int ia = sel [i];
-                int io = i0Cs[ia];
-                if(iZs[ia]==1){ lcoefs[ia]=Quat4f{0.f,0.f,0.f, (float)ocoefs[io] };}
+                int io = i0Cs[ia]; // offset of selected atom in the coefs array
+                
+                if(iZs[ia]==1){ lcoefs[ia]=Quat4f{0.f,0.f,0.f, (float)ocoefs[io] };} // hydrogen has only s orbital
                 else          { lcoefs[ia]=Quat4f{ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] }; }
             }
+            // --- build density matrix from local coefs
             for(int i=0; i<nsel; i++){
                 Quat4f qi = lcoefs[i];
                 for(int j=0; j<nsel; j++){
@@ -831,7 +917,18 @@ class OCL_DFT: public OCLsystem { public:
         }
     }
 
-    int atoms2box( Vec3d p0, Vec3d p1, double Rcut, int natoms, Vec3d* apos, int* sel ){
+    /**
+     * Selects atoms which cutoff radius touch box defined by two points ( i.e. box-sphere intersection ). It is used to select atoms which basis functions are relevant for some block of grid points.
+     * 
+     * @param p0     origin of the box
+     * @param p1     end of the box
+     * @param Rcut   The cutoff radius of the atomic sphere (i.e. basis function cutoff radius)
+     * @param natoms The total number of atoms
+     * @param apos   atom positions.
+     * @param sel    indexes of selected atoms
+     * @return The number of atoms selected.
+     */
+    int atoms2box( Vec3d p0, Vec3d p1, double Rcut, int natoms, Vec3d* apos, int* sel ){ 
         double R2=Rcut*Rcut;
         //int sel[natoms];
         int nsel=0;
@@ -842,11 +939,23 @@ class OCL_DFT: public OCLsystem { public:
         return nsel;
     }
 
+    /**
+     * Project electron density onto grid. It uses optimized algorithm which constructs density matrix just for selected atoms which are relevant for local blocks of grid points.
+     *
+     * @param natoms total number of atoms.
+     * @param iZs    atomic numbers ( proton numbers, i.e. 1 for hydrogen, 6 for carbon, etc. ).
+     * @param ityps  atom types for each atom ( it is usefull to know the cutoff radius of the basis function for each atom type ).
+     * @param ocoefs all orbital coefficients ( e.g. computed by Fireball ).
+     * @param apos   atom positions.
+     * @param iorb0  starting orbital index.
+     * @param iorb1  ending orbital index.
+     * @param Rcut   max cutoff radius ( used if not specified for each atom type ).
+     * @param bInit  Flag indicating whether to initialize the density matrix.
+     */
     void projectDenmat( int natoms, int* iZs, int* ityps, double* ocoefs, double* apos, int iorb0, int iorb1, double Rcut, bool bInit=false ){
         int sel [natoms];
         int i0Cs[natoms];
         countOrbs( natoms, iZs, i0Cs );
-
         Vec3d lbox  = Vec3d{3.0,3.0,3.0};
         Vec3d cell  = Vec3d{ grid.cell.a.x, grid.cell.b.y, grid.cell.c.z };
         Vec3i nbox  = Vec3i{ (int)(1+cell.x/lbox.x), (int)(1+cell.y/lbox.y), (int)(1+cell.z/lbox.z)  };
@@ -859,6 +968,7 @@ class OCL_DFT: public OCLsystem { public:
                     int nsel = atoms2box( p0, p1, Rcut, natoms, (Vec3d*)apos, sel );
                     float* rho = new float[4*4*nsel*nsel];
                     buildDenmat( nsel, sel, iZs, i0Cs, ocoefs, iorb0, iorb1, (Quat4f*)rho );
+                    // --- ToDo: project density matrix onto grid
                     delete [] rho;
                 }
             }
