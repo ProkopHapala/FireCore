@@ -327,6 +327,20 @@ def Test_projectDens( iMO0=1, iMO1=2 ):
     plt.show()
 
 def iZs2dict(iZs, dr="./Fdata/basis"):
+    """
+    Convert a set of atomic numbers to a dictionary representation.
+
+    Args:
+        iZs (set):           Set of atomic numbers.
+        dr  (str, optional): Directory path. Defaults to "./Fdata/basis".
+
+    Returns:
+        tuple: A tuple containing the following elements:
+            - elems (list) : Sorted list of unique atomic numbers.
+            - dct   (dict) : Dictionary mapping atomic numbers to their index plus one (fortran indexing).
+            - ords  (list) : List of indices corresponding to the input atomic numbers with the same ordering as the input.
+            - Rcuts (list) : List of cutoff values for each atomic number.
+    """
     import glob
     s = { i for i in iZs }
     elems = sorted( s )   ;print( "elems ", elems )
@@ -341,32 +355,80 @@ def iZs2dict(iZs, dr="./Fdata/basis"):
         Rcuts.append( rcut )
     return elems, dct, ords, Rcuts
 
-def prepare_fireball(  atomType=None, atomPos=None, bSCF=False ):
+def prepare_fireball(atomType=None, atomPos=None, bSCF=False):
+    """
+    Prepares a Fireball package for DFT calculations.
+
+    Args:
+        atomType (list) : atomic types.
+        atomPos  (list) : atomic positions.
+        bSCF     (bool) : flag indicating whether to perform self-consistent field (SCF) calculation.
+
+    Returns:
+        FireCore: The prepared fireball object.
+    """
     sys.path.append("../../")
     import pyBall as pb
-    from pyBall import FireCore as fc
+    from   pyBall import FireCore as fc
     fc.setVerbosity(verbosity=0)
     fc.preinit()
-    norb = fc.init( atomType, atomPos )
+    norb = fc.init(atomType, atomPos)
     # --------- Electron Density
     if bSCF:
         fc.setVerbosity(verbosity=1)
-        fc.SCF( atomPos, iforce=0, nmax_scf=200 )
+        fc.SCF(atomPos, iforce=0, nmax_scf=200)
     else:
-        fc.assembleH( atomPos)
+        fc.assembleH(atomPos)
         fc.solveH()
-        sigma=fc.updateCharges() ; print( sigma )
+        sigma = fc.updateCharges()
+        print(sigma)
     return fc
 
-def orbitals_from_firecore( atomType=None, atomPos=None, bSCF=False, orbitals=[0,], ngrid=None, dCell=None, g0=None ):
-    fc = prepare_fireball( atomType=atomType, atomPos=atomPos, bSCF=bSCF )
+def orbitals_from_firecore(atomType=None, atomPos=None, bSCF=False, orbitals=[0,], ngrid=None, dCell=None, g0=None, fc=None):
+    """
+    Save molecular orbitals from FireCore to .xsf file.
+
+    Args:
+        atomType (list)   : atomic types.
+        atomPos  (list)   : atomic positions.
+        bSCF     (bool)   : Flag indicating whether to perform self-consistent field calculation.
+        orbitals (list)   : indices of orbital to project generate.
+        ngrid    (int)    : Number of grid points.
+        dCell    (float)  : Grid spacing.
+        g0       (float)  : Smoothing parameter.
+        fc       (object) : FireCore object.
+
+    Returns:
+        None
+    """
+    if fc is None: fc = prepare_fireball( atomType=atomType, atomPos=atomPos, bSCF=bSCF )
     ngrid, dCell, lvs = fc.setupGrid( ngrid=ngrid, dCell=dCell, g0=g0 )
     for iMO in orbitals:
         fc.orb2xsf( iMO )
         #ewfaux = fc.getGridDens( ngrid=ngrid, Cden=Cden, Cden0=Cden0 )
 
 def density_from_firecore( atomType=None, atomPos=None, bSCF=False, Cden=1.0, Cden0=0.0, bGetGrid=False, bGetCoefs=False,  ngrid=None, dCell=None, g0=None ):
-    fc = prepare_fireball( atomType=atomType, atomPos=atomPos, bSCF=bSCF )
+    """
+    Calculate electron density from FireCore. It can be either projected on a grid or as set of coefficients of molecular orbitals.
+
+    Args:
+        atomType  (list)  : List of atomic types.
+        atomPos   (list)  : List of atomic positions.
+        bSCF      (bool)  : Flag indicating whether to perform self-consistent field calculation.
+        Cden      (float) : Density scaling factor.
+        Cden0     (float) : Initial density scaling factor.
+        bGetGrid  (bool)  : Flag indicating whether to retrieve the grid information.
+        bGetCoefs (bool)  : Flag indicating whether to retrieve the wavefunction coefficients.
+        ngrid     (int)   : Number of grid points.
+        dCell     (float) : Grid cell size.
+        g0        (float) : Initial grid size.
+
+    Returns:
+        tuple: A tuple containing the wavefunction coefficients and grid information.
+            - coefs (tuple): A tuple containing the wavefunction coefficients and orbital indices.
+            - grid (tuple): A tuple containing the grid density, number of grid points, grid cell size, and lattice vectors.
+    """
+    if fc is None: fc = prepare_fireball( atomType=atomType, atomPos=atomPos, bSCF=bSCF )
     grid=None
     if bGetGrid:
         ngrid, dCell, lvs = fc.setupGrid( ngrid=ngrid, dCell=dCell, g0=g0 )
@@ -380,9 +442,9 @@ def density_from_firecore( atomType=None, atomPos=None, bSCF=False, Cden=1.0, Cd
     
     return coefs, grid
 
-def density_from_firecore_to_xsf( atomType=None, atomPos=None, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=0.0 ):
+def density_from_firecore_to_xsf( atomType=None, atomPos=None, bSCF=False, saveXsf="dens_check.xsf", Cden=1.0, Cden0=0.0, fc=None ):
     print( "DEBUG density_from_firecore_to_xsf()" )
-    _, (ewfaux,ngrid,dCell,lvs) = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, Cden=Cden, Cden0=Cden0, bGetGrid=True, bGetCoefs=False )
+    _, (ewfaux,ngrid,dCell,lvs) = density_from_firecore( atomType=atomType, atomPos=atomPos, bSCF=bSCF, Cden=Cden, Cden0=Cden0, bGetGrid=True, bGetCoefs=False, fc=fc )
     if saveXsf is not None:
         #ngrid, dCell, lvs = fc.setupGrid()
         #ewfaux = fc.getGridDens( ngrid=ngrid, Cden=1.0, Cden0=0.0 )
