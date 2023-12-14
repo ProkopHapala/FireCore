@@ -536,37 +536,22 @@ class OCL_DFT: public OCLsystem { public:
 
     void convolution( int ibuffA, int ibuffB, int ibuff_result ){
         //printf( "DEBUG convolution ibuffA,ibuffB,ibuff_result %i,%i,%i ", ibuffA,ibuffB,ibuff_result  );
-        //saveToXsf( "DEBUG_buffA_in.xsf", ibuffA );
-        //saveToXsf( "DEBUG_buffB_in.xsf", ibuffB );
         int err=0;
-        err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
-        err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffB].p_gpu, NULL, NULL);  
-        //saveToXsf( "DEBUG_buffA_w.xsf", ibuffA );
-        //saveToXsf( "DEBUG_buffB_w.xsf", ibuffB );
-        //mul_buffs( ibuffA, ibuffB, ibuff_result );
+        err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);  OCLfft_checkError(err, "OCL_DFT::convolution().FFT(buffA)" );
+        err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffB].p_gpu, NULL, NULL);  OCLfft_checkError(err, "OCL_DFT::convolution().FFT(buffB)" );
         initTask_mul( ibuffA, ibuffB, ibuff_result );  //cltask_mul.print_arg_list();
-        cltask_mul.enque( );
-        //saveToXsf( "DEBUG_buffOut_w.xsf", ibuff_result );
-        err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL);  
-        //saveToXsf( "DEBUG_buffOut_out.xsf", ibuff_result );
+        err = cltask_mul.enque( );                                                                                                        OCLfft_checkError(err, "OCL_DFT::convolution().mul(~A,~B)" );
+        err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL);  OCLfft_checkError(err, "OCL_DFT::convolution().invFFT(~A*~B))" );
     }
 
     void poisson( int ibuffA, int ibuff_result, float4* dcell=0 ){
-        int err=0;
         //printf( "BEGIN poisson %i -> %i ( %s -> %s ) \n", ibuffA, ibuff_result, buffers[ibuffA].name, buffers[ibuff_result].name );
-        //err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
-        //OCLfft_checkError(err, " poisson::clfftEnqueueTransform " );
+        int err=0;
         if( dcell ){ dcell_poisson = *dcell; }
-        initTask_poissonW( ibuffA, ibuff_result );                   //printf( "DEBUG 1 ");
-        //finishRaw(); saveToXsf( "rho.xsf", ibuffA );                 //printf( "DEBUG 2 ");
-        err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);
-        OCLfft_checkError(err, " poisson::clfftEnqueueTransform " ); //printf( "DEBUG 4 ");
-        //finishRaw(); saveToXsf( "rho_w.xsf", ibuffA );               //printf( "DEBUG 5 ");
-        cltask_poissonW.enque( );                                    //printf( "DEBUG 6 ");
-        //finishRaw(); saveToXsf( "Vw.xsf", ibuff_result );            //printf( "DEBUG 7 ");
-        err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL);  
-        //finishRaw(); saveToXsf( "V.xsf", ibuff_result );             //printf( "DEBUG 8 ");
-        //printf( "END poisson \n" );
+        initTask_poissonW( ibuffA, ibuff_result );                           
+        err = clfftEnqueueTransform( planHandle, CLFFT_FORWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuffA].p_gpu, NULL, NULL);        OCLfft_checkError(err, "OCL_DFT::poisson().FFT(rho)" );           
+        err = cltask_poissonW.enque( );                                                                                                  OCLfft_checkError(err, "OCL_DFT::poisson().poissonW(~rho)" );                          
+        err = clfftEnqueueTransform( planHandle, CLFFT_BACKWARD, 1, &commands, 0, NULL, NULL, &buffers[ibuff_result].p_gpu, NULL, NULL); OCLfft_checkError(err, "OCL_DFT::poisson().invFFT(~V)" );  
     }
 
     void gradient( int ibuffA, int ibuff_result, float4* dcell=0 ){
@@ -592,9 +577,8 @@ class OCL_DFT: public OCLsystem { public:
     void makeMyKernels( const char*  cl_src_dir ){
         char srcpath[1024];
         sprintf( srcpath, "%s/myprog.cl", cl_src_dir );
-        printf( "DEBUG makeKrenels() %s \n", srcpath );
+        printf( "OCL_DFT::makeKrenels() %s \n", srcpath );
         buildProgram( srcpath );  //printf( "DEBUG makeMyKernels 1 program %li \n", (long)program );
-
         iKernell_mull             = newKernel( "mul" );
         iKernell_roll             = newKernel( "roll" );
         iKernell_grad             = newKernel( "makeForceField" );
@@ -678,12 +662,13 @@ class OCL_DFT: public OCLsystem { public:
     }
 
     void saveToXsf(const char* fname, int ibuff, int stride=2, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0 ){
+        if(verbosity>0)printf( "saveToXsf( %i, %s ) \n", ibuff, fname );
         update_GridShape();                   
         float* cpu_data = new float[Ntot*stride]; // complex 2*float
         download( ibuff,cpu_data);
         finishRaw();
-        float amin,amax; VecN::bounds<float>( Ntot*stride, cpu_data, amin, amax ); printf( "saveToXsf() amin,amax %g %g \n" ); // DEBUG
-        grid.saveXSF( fname, cpu_data, stride, offset,   natoms, atypes,apos );
+        //float amin,amax; VecN::bounds<float>( Ntot*stride, cpu_data, amin, amax ); //printf( "saveToXsf(%s) amin,amax %g %g \n", fname, amin,amax ); // DEBUG
+        if(  grid.saveXSF( fname, cpu_data, stride, offset,   natoms, atypes,apos ) !=0 ){ printf( "ERROR in OCL_DFT::saveToXsf(%s)\n", fname ); exit(0);  }
         delete [] cpu_data;
     }
 
@@ -693,7 +678,7 @@ class OCL_DFT: public OCLsystem { public:
         float* cpu_data = new float[Ntot*2]; // complex 2*float
         download( ibuff,cpu_data);
         finishRaw();
-        saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
+        if(  saveBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data ) !=0 ){ printf( "ERROR in OCL_DFT::saveToBin(%s)\n", fname ); exit(0);  }
         delete [] cpu_data;
     }
 
@@ -701,8 +686,9 @@ class OCL_DFT: public OCLsystem { public:
         if(verbosity>0)printf( "loadFromBin( %i, %s ) \n", ibuff, fname );
         //update_GridShape();
         float* cpu_data = new float[Ntot*2]; // complex 2*float
-        loadBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data );
+        if( loadBin( fname, (Ntot*2)*sizeof(float), (char*)cpu_data ) !=0 ){ printf( "ERROR in OCL_DFT::loadFromBin(%s)\n", fname ); exit(0); };
         upload( ibuff,cpu_data);
+        //saveToXsf( "DEBUG_loadFromBin.xsf", ibuff );
         finishRaw();
         delete [] cpu_data;
     }
@@ -974,6 +960,19 @@ class OCL_DFT: public OCLsystem { public:
             }
         }
     }
+
+    void release_OCL_DFT( bool bReleaseOCL=true, bool bReleaseOCLfft=true ){
+        printf( "OCL_DEF::release_OCL_DFT()\n" );
+        if(bReleaseOCLfft){ printf( "OCL_DEF::release_OCL_DFT().clfftTeardown()\n" ); clfftTeardown(); }
+        if(bReleaseOCL   ){ printf( "OCL_DEF::release_OCL_DFT().release_OCL()\n" );   release_OCL  (); }
+    }
+
+    /*
+    ~OCL_DFT(){
+        //clfftTeardown();
+        release_OCL_DFT();
+    }
+    */
 
 };
 

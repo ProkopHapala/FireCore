@@ -9,6 +9,8 @@
 #include <clFFT.h>
 #include "OCLfft_errors.h"
 #include <clFFT.h>
+
+#include "testUtils.h"
 #include "OCL.h"
 #include "Grid.h"
 #include "IO_utils.h"
@@ -66,6 +68,9 @@ extern "C" {
         oclfft.newFFTbuffer( "outputC" ); //printf( "C initFFT 4 \n" );
         //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
+
+
+    void release( bool bReleaseOCL, bool bReleaseOCLfft ){ oclfft.release_OCL_DFT( bReleaseOCL, bReleaseOCLfft); }
 
     // ================ PP
 
@@ -154,6 +159,7 @@ extern "C" {
     void saveToXsf     (const char* fname, int ibuff, int stride, int offset ){ return oclfft.saveToXsf(fname, ibuff,stride,offset,0,0,0); }
     void saveToXsfAtoms(const char* fname, int ibuff, int stride, int offset, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, stride, offset, natoms,atypes,(Vec3d*)apos); }
     void saveToXsfAtomsData(const char* fname, int* ngrid, double* data, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsfData(fname, *(Vec3i*)ngrid, data, natoms,atypes,(Vec3d*)apos); }
+
 
     /*
 
