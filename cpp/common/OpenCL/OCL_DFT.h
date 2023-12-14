@@ -119,7 +119,7 @@ struct KernelDims{
 //=======================================================================
 
 class OCL_DFT: public OCLsystem { public:
-
+    cl_program program_DFT=0; 
     clfftPlanHandle planHandle;
     clfftDim fft_dim = CLFFT_3D;
 
@@ -135,6 +135,9 @@ class OCL_DFT: public OCLsystem { public:
     int iKernell_project=-1;
     int iKernell_project_tex=-1;
     int iKernell_project_dens_tex=-1;
+    //int iKernell_project_denmat_simp=-1;
+    //int iKernell_project_denmat_simp=-1;
+
     int iKernell_project_atom_dens_tex=-1;
     int iKernell_projectPos_tex=-1;
     int iKernell_poissonW=-1;
@@ -151,6 +154,8 @@ class OCL_DFT: public OCLsystem { public:
     OCLtask cltask_projectPos_tex;
     int itex_basis=-1;
 
+    int ibuff_denmapt = -1;
+
     int    nAtoms=0;
     int    nOrbs=0;
     int    nPos=0;
@@ -160,6 +165,8 @@ class OCL_DFT: public OCLsystem { public:
     float2 acumCoef = (float2){0.0,1.0};
     GridShape grid;
     int ibuff_atoms=-1,ibuff_coefs=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
+
+    int ibuff_sel=-1, ibuff_denmat=-1, ibuff_out=-1;
 
     int     nAtype=0;
     int*    atype_nOrb  =0; // number of orbitals per atomic type (hydrogen=1(s), carbon=4(s,px,py,pz))
@@ -349,6 +356,57 @@ class OCL_DFT: public OCLsystem { public:
         //OCL_checkError(err, "Waiting for kernel to finish");
         //double run_time = wtime() - start_time;
     }
+
+    OCLtask* projectDenmatToGrid_simp( int na, int nNode, OCLtask* task=0,  float2* out=0, bool bRun=true){
+        printf("setup_projectDenmatToGrid_simp(na=%i,nnode=%i) \n", na, nNode);
+        if(task==0) task = getTask("setup_projectDenmatToGrid_simp");
+        int nloc = 1;
+        //int nloc = 32;
+        //int nloc = 64;
+        task->local.x  = nloc;
+        task->global.x = na + nloc-(na%nloc); // round up to multiple of nloc
+        //task->global.y = nSystems;
+        if(ibuff_sel   <=0)ibuff_sel    = newBuffer( "selection",  na,    sizeof(float4),  0, CL_MEM_WRITE_ONLY );
+        if(ibuff_denmat<=0)ibuff_denmat = newBuffer( "denmapt",    na*na, sizeof(float16), 0, CL_MEM_READ_ONLY  );
+        if(ibuff_out   <=0)ibuff_out    = newBuffer( "out" ,       nPos,  sizeof(float2),  (float*)out, CL_MEM_READ_WRITE  );
+        Nvec  =(int4){(int)Ns[0],(int)Ns[1],(int)Ns[2],(int)Ns[3]};
+        useKernel( task->ikernel );
+        // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
+        err |= _useArg   ( na );           // 1 
+        // Dynamical
+        err |= useArgBuff( ibuff_sel    ); // 2  
+        err |= useArgBuff( ibuff_atoms  ); // 3
+        err |= useArgBuff( ibuff_denmat );  // 4
+        err |= useArgBuff( ibuff_out    );  // 5
+        err |= useArgBuff( itex_basis   );  // 6
+        err |= _useArg( Nvec            );  // 7
+        err |= _useArg( pos0            );  // 8
+        err |= _useArg( dA              );  // 9
+        err |= _useArg( dB              );  // 10
+        err |= _useArg( dC              );  // 11
+        err |= _useArg( acumCoef        );  // 12
+        OCL_checkError(err, "setup_getNonBond");
+        if(bRun){
+            err |= task->enque_raw();                 OCL_checkError(err, "sampleGridFF().enque"    );
+            //err |= download( ibuff_samp_fs, fs, n );  OCL_checkError(err, "sampleGridFF().downalod" );
+            //err |= finishRaw();                       OCL_checkError(err, "sampleGridFF().finish"   );
+        }
+        return task;
+        // const int nAtoms,            //1
+        // __global int*     sel,       //2
+        // __global float4*  atoms,     //3
+        // __global float16* denmat,    //4
+        // __global float2*  outGrid,   //5
+        // __read_only image2d_t imgIn, //6 
+        // int4   nGrid,                //7
+        // float4 grid_p0,              //8
+        // float4 grid_dA,              //9
+        // float4 grid_dB,              //10
+        // float4 grid_dC,              //11
+        // float2 acumCoef              //12
+    }
+
 
     void initTask_mul( int ibuffA, int ibuffB, int ibuff_result ){
         cltask_mul.setup( this, iKernell_mull, 1, {Ntot*2,0,0,0}, {16,0,0,0} );
@@ -578,7 +636,7 @@ class OCL_DFT: public OCLsystem { public:
         char srcpath[1024];
         sprintf( srcpath, "%s/myprog.cl", cl_src_dir );
         printf( "OCL_DFT::makeKrenels() %s \n", srcpath );
-        buildProgram( srcpath );  //printf( "DEBUG makeMyKernels 1 program %li \n", (long)program );
+        buildProgram( srcpath, program );  //printf( "DEBUG makeMyKernels 1 program %li \n", (long)program );
         iKernell_mull             = newKernel( "mul" );
         iKernell_roll             = newKernel( "roll" );
         iKernell_grad             = newKernel( "makeForceField" );
@@ -589,6 +647,9 @@ class OCL_DFT: public OCLsystem { public:
         iKernell_project_dens_tex = newKernel( "projectOrbDenToGrid_texture" );
         iKernell_project_atom_dens_tex = newKernel( "projectAtomDenToGrid_texture" );
         iKernell_projectPos_tex   = newKernel( "projectWfAtPoints_tex" );
+
+        newTask( "projectDenmatToGrid"      ,program, 1);
+        newTask( "projectDenmatToGrid_simp" ,program, 1);
         //printf( "DEBUG makeMyKernels END \n" );
         //exit(0);
     };
@@ -863,6 +924,48 @@ class OCL_DFT: public OCLsystem { public:
             if(iZs[i]==1){ io++; }else{ io+=4; }
             offsets[i]=io;
         }
+    }
+
+    /**
+     * Projects the density matrix using a brute-force method.
+     * 
+     * @param natoms The number of atoms
+     * @param iZs    atomic numbers (proton numbers) for each atom
+     * @param ocoefs coefficients of molecular orbitals
+     * @param iorb0  starting orbital index
+     * @param iorb1  ending orbital index
+     * @param dens   (output) density matrix. If dens==0, the memory is allocated.
+     */
+    void projectDenmat_brute( int natoms, int* iZs, double* ocoefs, int iorb0, int iorb1, float*& dens ){
+        if(dens==0){ dens=new float[natoms*natoms*16]; }
+        Quat4f*  rho = (Quat4f*)dens;
+        int*    i0Cs = new int   [natoms];
+        Quat4f* orb  = new Quat4f[natoms];
+        countOrbs( natoms, iZs, i0Cs ); 
+        for(int i=0; i<(natoms*natoms*4); i++){ rho[i] = Quat4fZero; }
+        // #pragma omp parallel for reduction(+:rho[:norb])
+        for(int iorb=iorb0; iorb<iorb1; iorb++ ){ // loop over orbitals
+            // --- convert Fireball coefs to local Quat4f coefs on selected atoms
+            for(int ia=0; ia<natoms; ia++){
+                int io = i0Cs[ia]; // offset of selected atom in the coefs array
+                if(iZs[ia]==1){ orb[ia]=Quat4f{0.f,0.f,0.f, (float)ocoefs[io] };} // hydrogen has only s orbital
+                else          { orb[ia]=Quat4f{ (float)ocoefs[io+3],(float)ocoefs[io+1],(float)ocoefs[io+2], (float)ocoefs[io] }; }
+            }
+            // --- build density matrix from local coefs
+            // #pragma omp simd reduction(+:rho[:norb]) collapse(2)
+            for(int ia=0; ia<natoms; ia++){
+                Quat4f qi = orb[ia];
+                for(int ja=0; ja<natoms; ja++){
+                    Quat4f qj = orb[ja];
+                    rho[ia  ].add_mul( qj, qi.x);
+                    rho[ia+1].add_mul( qj, qi.y);
+                    rho[ia+2].add_mul( qj, qi.z);
+                    rho[ia+4].add_mul( qj, qi.w);
+                }
+            } 
+        }
+        delete [] i0Cs;
+        delete [] orb;
     }
 
     /**
