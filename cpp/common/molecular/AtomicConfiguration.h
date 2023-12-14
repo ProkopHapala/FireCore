@@ -11,6 +11,14 @@ class AtomicConfiguration{ public:
     int   * types=0;
     Vec3d * pos  =0;
 
+    /**
+     * Calculates the squared distance between the current AtomicConfiguration and another AtomicConfiguration.
+     * The distance is calculated by finding the minimum squared distance between each atom in the current configuration
+     * and atoms of the same type in the other configuration.
+     * 
+     * @param p The other AtomicConfiguration to calculate the distance with.
+     * @return The squared distance between the two configurations.
+     */
     double dist(const AtomicConfiguration& p){
         double R2 = 0;
         for(int i=0; i<p.natoms; i++){
@@ -34,6 +42,11 @@ class AtomicConfiguration{ public:
 
     void bind( int n, int* types_, Vec3d* pos_ ){ natoms=n; types=types_; pos=pos_; }
 
+    /**
+     * Copies the contents of another AtomicConfiguration object.
+     * 
+     * @param p The AtomicConfiguration object to copy from.
+     */
     void copyOf(const AtomicConfiguration& p){
         if(natoms!=p.natoms)realloc(p.natoms);
         //for(int i=0; i<natoms; i++){ pos[i]=p.pos[i]; types[i] = p.types[i]; }
@@ -76,6 +89,14 @@ class FastAtomicMetric : public AtomicConfiguration { public:
     };
 
     //void project( int natoms_, int* types_, Vec3d* pos_, double Rcut ){
+    /**
+     * @brief Converts the atomic configuration to cells.
+     * 
+     * This function performs symmetry folding and assigns atoms to cells based on their positions and a cutoff radius.
+     * It updates the atom2cells and atomNs arrays, as well as the cell2atoms and cellNs arrays.
+     * 
+     * @note All symmetry folding should be performed within this function (e.g., periodicity, inversion).
+     */
     void toCells(){
         //
         //  NOTE : all symmetry folding should be here ( periodicity, inversion.. )
@@ -138,6 +159,14 @@ class FastAtomicMetric : public AtomicConfiguration { public:
 
     inline void toCells(double Rcut_){ Rcut=Rcut_; toCells(); }
 
+    /**
+     * Calculates the squared distance between atoms in the atomic configuration.
+     * 
+     * @param n The number of atoms.
+     * @param types_ An array of atom types.
+     * @param pos_ An array of atom positions.
+     * @return The squared distance between atoms.
+     */
     double dist( int n, int * types_, Vec3d * pos_ )const{
         double R2    = 0;
         double R2cut = sq(Rcut);
@@ -161,6 +190,14 @@ class FastAtomicMetric : public AtomicConfiguration { public:
         return R2;
     };
 
+    /**
+     * Finds the neighboring atoms within a specified distance from a given point.
+     * 
+     * @param p The position of the point.
+     * @param Rcut The cutoff distance.
+     * @param out An array to store the indices of the neighboring atoms.
+     * @return The number of neighboring atoms found.
+     */
     int findNeighs( const Vec3d& p, double Rcut, int* out )const{
         double R2cut = Rcut*Rcut;
         int nfound=0;

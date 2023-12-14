@@ -49,6 +49,13 @@ static MMFFparams* params_glob;
 #include "arrayAlgs.h"
 #include "SVG_render.h"
 
+/**
+ * @class MolWorld_sp3
+ * @brief A class representing a molecular world in a 3D space.
+ *
+ * This class inherits from SolverInterface and provides functionality for manipulating and simulating molecular systems.
+ * It contains various member variables and methods for handling molecular data, force fields, dynamics, and more.
+ */
 class MolWorld_sp3 : public SolverInterface { public:
     const char* data_dir     = "common_resources";
     const char* xyz_name     = "input";
@@ -59,13 +66,13 @@ class MolWorld_sp3 : public SolverInterface { public:
     //const char* surflvs_name ="surf.lvs";
     const char* smile_name   = 0;
     const char* constr_name  = 0;
-    Vec3i nMulPBC  = Vec3iZero; 
+    Vec3i nMulPBC  = Vec3iZero;                    // Vector for multiple Periodic Boundary Conditions
 
     //const char* trj_fname    = "trj.xyz";
     const char* trj_fname    = 0;
     int savePerNsteps = 1;
     OptLog opt_log;
-    Vec3i nPBC_save{1,1,1};
+    Vec3i nPBC_save{1,1,1};                         // Vector for saving Periodic Boundary Conditions
 
 
     double fAutoCharges=-1;
@@ -73,10 +80,10 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     bool bCellBySurf=false;
     int   bySurf_ia0 =0;
-    Vec2d bySurf_c0=Vec2dZero;
-    Vec2d bySurf_lat[2];
+    Vec2d bySurf_c0=Vec2dZero;                      // Vector for surface coordinates
+    Vec2d bySurf_lat[2];                            // Array for surface lattice
 
-    Mat3d new_lvec=Mat3dIdentity;
+    Mat3d new_lvec=Mat3dIdentity;                   // Matrix for new lattice vectors
 
     Mat3d debug_rot; // This was used for debuging molecular orientation
 
@@ -91,12 +98,12 @@ class MolWorld_sp3 : public SolverInterface { public:
     MMFFf4       ff4;
 	Constrains   constrs;
 	//NBFF_old   nff;
-    NBFF         surf, nbmol;
-	GridFF       gridFF;
-    RigidBodyFF  rbff;
-    QEq          qeq;
-	DynamicOpt   opt;
-    DynamicOpt   optRB;  // rigid body optimizer
+    NBFF surf, nbmol; // Non-bonded force fields for surface and molecule
+    GridFF gridFF;    // Grid force field
+    RigidBodyFF rbff; // Rigid body force field
+    QEq qeq;          // Charge equilibration
+    DynamicOpt opt;
+    DynamicOpt optRB; // rigid body optimizer
 
     LimitedGraph<N_NEIGH_MAX> graph; // used to find bridges in the molecule, and other topology-related algorithms
 
@@ -120,32 +127,31 @@ class MolWorld_sp3 : public SolverInterface { public:
     int    npbc       = 0;
     Vec3d* pbc_shifts = 0;
 
-	// state
-	bool bConverged = false;
-	double  Etot=0;
-	double  maxVcog = 1e-9;
-	double  maxFcog = 1e-9;
-	double  maxTg   = 1e-1;
-	double  Kmorse = -1.0;
+    bool bConverged = false; // Boolean flag indicating if the simulation has converged
+    double Etot = 0;         // Total energy of the system
+    double maxVcog = 1e-9;   // Maximum velocity of the center of gravity
+    double maxFcog = 1e-9;   // Maximum force on the center of gravity
+    double maxTg = 1e-1;     // Maximum torque on the center of gravity
+    double Kmorse = -1.0;    // Morse potential constant
 
-	// force-eval-switchefs
+    // force-eval-switchefs
     int  imethod=0;
 
-	bool doBonded          = false;
-	bool bNonBonded        = true;
-    bool bConstrains       = false;
-	bool bSurfAtoms        = false;
-    bool bGridFF           = false;
-	bool bPlaneSurfForce   = false;
-    bool bMMFF             = true;
-    bool bRigid            = false;
-	bool bOptimizer        = true; 
-	bool bPBC              = false;
-	bool bCheckInvariants  = true;
-    bool bRelaxPi          = false;
-    bool bChargeUpdated    = false;
-    bool bAnimManipulation = false;
-	
+    bool doBonded          = false; // If true, the program considers bonded interactions.
+    bool bNonBonded        = true;  // If true, the program considers non-bonded interactions.
+    bool bConstrains       = false; // If true, the program applies certain constraints (like bond lengths or angles).
+    bool bSurfAtoms        = false; // If true, the program considers surface atoms for some calculations.
+    bool bGridFF           = false; // If true, the program uses a grid-based force field.
+    bool bPlaneSurfForce   = false; // If true, the program applies a force related to a plane surface.
+    bool bMMFF             = true;  // If true, the program uses the Merck Molecular Force Field for calculations.
+    bool bRigid            = false; // If true, the program treats the molecule as rigid (no internal degrees of freedom).
+    bool bOptimizer        = true;  // If true, the program uses an optimizer to find the lowest energy state.
+    bool bPBC              = false; // If true, the program uses Periodic Boundary Conditions.
+    bool bCheckInvariants  = true;  // If true, the program checks for invariants (properties that don't change during the simulation).
+    bool bRelaxPi          = false; // If true, the program allows relaxation of pi systems (double and triple bonds).
+    bool bChargeUpdated    = false; // If true, the program updates the charges on atoms during the simulation.
+    bool bAnimManipulation = false; // If true, the program allows for manipulation of the animation of the molecule.
+
     Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
 
@@ -282,6 +288,19 @@ void renderSVG( const char* fname, Vec3d nPBC=Vec3d{0,0,0}, Mat3d rotMat=Mat3dId
     virtual int projectOrbital(int iMO, double*& ewfaux ){ ewfaux=0; return 0; };  
     virtual int projectDensity(         double*& ewfaux ){ ewfaux=0; return 0; };
 
+/**
+ * Adds a distance constraint between two atoms to the molecular world.
+ *
+ * @param i0 The index of the first atom.
+ * @param i1 The index of the second atom.
+ * @param lmin The minimum allowed distance between the atoms (default: 1.0).
+ * @param lmax The maximum allowed distance between the atoms (default: 2.0).
+ * @param kmin The minimum force constant for the constraint (default: 0.0).
+ * @param kmax The maximum force constant for the constraint (default: 1.0).
+ * @param flim The maximum force limit for the constraint (default: 10.0).
+ * @param shift The shift vector to be applied to the atoms (default: 0).
+ * @param bOldIndex Flag indicating whether to use old atom indices (default: false).
+ */
 void addDistConstrain( int i0,int i1, double lmin=1.0,double lmax=2.0,double kmin=0.0,double kmax=1.0,double flim=10.0, Vec3d shift=Vec3dZero, bool bOldIndex=false ){
     if(bOldIndex){
         i0 = builder.atom_permut[i0];
@@ -291,6 +310,12 @@ void addDistConstrain( int i0,int i1, double lmin=1.0,double lmax=2.0,double kmi
 }
 
 
+/**
+ * Sets the constraints for the molecular world.
+ * 
+ * @param bClear Flag indicating whether to clear existing constraints. Default is true.
+ * @param Kfix_ The fixed constraint strength. Default is 1.0.
+ */
 virtual void setConstrains(bool bClear=true, double Kfix_=1.0 ){
     double Kfix=Kfix_;
     for(int i=0; i<ffl.natoms; i++){ ffl.constr[i].w=-1; }
@@ -300,6 +325,14 @@ virtual void setConstrains(bool bClear=true, double Kfix_=1.0 ){
     }
 }
 
+/**
+ * @brief Changes the lattice vector of the molecular world.
+ * 
+ * This function updates the lattice vector of the molecular world
+ * and performs necessary calculations and bindings based on the new lattice vector.
+ * 
+ * @param lvec The new lattice vector to be set.
+ */
 virtual void change_lvec( const Mat3d& lvec ){
     ffl.setLvec( lvec );
     //npbc = makePBCshifts( nPBC, lvec );
@@ -308,6 +341,13 @@ virtual void change_lvec( const Mat3d& lvec ){
     builder.lvec = lvec;
 }
 
+/**
+ * Adds the given displacement vector to the lattice vector of the molecular world.
+ * This function updates the lattice vector, evaluates the periodic boundary conditions (PBC) shifts,
+ * and binds the shifts to the molecular world.
+ * 
+ * @param dlvec The displacement vector to be added to the lattice vector.
+ */
 virtual void add_to_lvec( const Mat3d& dlvec ){
     ///printf("MolWold_sp3::add_to_lvec()\n");
     //printf(  "BEFORE ffl.lvec " ); printMat(ffl.lvec);
@@ -320,6 +360,14 @@ virtual void add_to_lvec( const Mat3d& dlvec ){
 }
 
 
+/**
+ * Changes the lattice vector of the molecular world using relaxation method.
+ * 
+ * @param nstep     The number of relaxation steps to perform.
+ * @param nMaxIter  The maximum number of iterations for the relaxation solver.
+ * @param tol       The tolerance for convergence of the relaxation solver.
+ * @param dlvec     The change in lattice vector to be added at each step.
+ */
 virtual void change_lvec_relax( int nstep, int nMaxIter, double tol, const Mat3d& dlvec ){
     printf( "MolWorld_sp3::change_lvec_relax() \n" );
     for(int i=0; i<nstep; i++){
@@ -329,6 +377,13 @@ virtual void change_lvec_relax( int nstep, int nMaxIter, double tol, const Mat3d
     }
 }
 
+/**
+ * Solves the molecular system using the specified parameters.
+ * 
+ * @param nmax The maximum number of iterations.
+ * @param tol The tolerance for convergence.
+ * @return The total energy of the system.
+ */
 virtual double solve( int nmax, double tol )override{
     //printf( "MolWorld::solve(nmax=%i,tol=%g)\n", nmax, tol );
     //ffl.print_apos();
@@ -342,6 +397,12 @@ virtual double solve( int nmax, double tol )override{
     return Etot;
 }
 
+/**
+ * Sets the geometry of the atoms
+ * 
+ * @param ps Pointer to an array of Vec3d representing the positions of the atoms.
+ * @param lvec Pointer to a Mat3d representing the lattice vectors.
+ */
 virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
     //printf( "MolWorld::setGeom()\n" );
     //printf("ffl.lvec\n"    ); printMat( ffl.lvec );
@@ -357,6 +418,13 @@ virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
     ffl.initPi( pbc_shifts );
 }
 
+/**
+ * @brief Retrieves the geometry of the atoms
+ * 
+ * @param ps Pointer to an array of Vec3d objects to store the atom positions.
+ * @param lvec Pointer to a Mat3d object to store the lattice vectors (optional).
+ * @return The total energy of the molecular system.
+ */
 virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
     //printf( "MolWorld::getGeom()\n" );
     //printf("getGeom ffl.lvec\n"    ); printMat( ffl.lvec );
@@ -372,6 +440,16 @@ virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
 
 
 
+/**
+ * @brief Optimizes the lattice in one dimension.
+ * 
+ * This function optimizes the lattice in one dimension by performing a lattice scan.
+ * It adjusts the lattice vectors and atom positions to minimize the energy of the system.
+ * 
+ * @param n1 The number of lattice scans in the negative direction.
+ * @param n2 The number of lattice scans in the positive direction.
+ * @param dlvec The displacement vector used for the lattice scan.
+ */
 virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     printf("\n\n\n######### MolWorld_sp3::optimizeLattice_1d(%i.%i) \n", n1, n2 );
     //printMat( ffl.lvec );
@@ -439,6 +517,15 @@ virtual char* getStatusString( char* s, int nmax ){
 virtual void swith_method(){ bGridFF=!bGridFF; };
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i ffl.bAngleCosHalf %i \n", bGridFF, ffl.bAngleCosHalf ); return str; }
 
+
+/**
+ * @brief Evaluates the periodic boundary condition (PBC) shifts for a given set of PBC and lattice vectors.
+ * 
+ * @param nPBC The dimensions of the PBC in each direction (x, y, z).
+ * @param lvec The lattice vectors defining the unit cell.
+ * @param shifts An array to store the calculated PBC shifts.
+ * @return The total number of PBC shifts calculated.
+ */
 int evalPBCshifts( Vec3i nPBC, const Mat3d& lvec, Quat4f* shifts ){
     int ipbc=0;
     for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
@@ -459,6 +546,15 @@ int evalPBCshifts( Vec3i nPBC, const Mat3d& lvec, Vec3d* shifts ){
     return ipbc;
 }
 
+
+/**
+ * @brief Calculates the periodic boundary condition (PBC) shifts for a given set of PBC and lattice vectors.
+ * 
+ * @param nPBC The dimensions of the PBC in each direction (x, y, z).
+ * @param lvec The lattice vectors defining the unit cell.
+ * @param shifts An array to store the calculated PBC shifts.
+ * @return The total number of PBC shifts calculated.
+ */
 int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
     npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
     //pbc_shifts = new Vec3d[npbc];
@@ -473,6 +569,12 @@ void printPBCshifts(){
     for(int i=0; i<npbc; i++){ printf("pbc_shift[%i] (%6.3f,%6.3f,%6.3f)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
 }
 
+/**
+ * Calculates the auto charges for the molecules in the molecular world.
+ * This function assigns charges to the atoms based on the given force field parameters.
+ * It also applies constraints to certain atom types and performs charge relaxation using molecular dynamics.
+ * After the charges are calculated, they are copied to the corresponding molecules in the molecular world.
+ */
 void autoCharges(){
     if(verbosity>0)printf("MolWorld_sp3::autoCharges() \n");
     qeq.realloc( ff.natoms );
@@ -484,6 +586,13 @@ void autoCharges(){
     bChargeUpdated=true;
 }
 
+/**
+ * Automatically calculates the number of periodic boundary conditions (nPBC) based on minimum length.
+ * 
+ * @param cell The cell dimensions represented by a 3x3 matrix (Mat3d).
+ * @param nPBC The number of periodic boundary conditions in each direction (x, y, z). This parameter will be modified by the function.
+ * @param Lmin The minimum length for calculating the number of periodic boundary conditions. Default value is 30.0.
+ */
 static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
     if(nPBC.x!=0){ nPBC.x=(int)Lmin/cell.a.norm(); }
     if(nPBC.y!=0){ nPBC.y=(int)Lmin/cell.b.norm(); }
@@ -491,6 +600,14 @@ static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
     printf("autoNPBC(): (%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
 }
 
+/**
+ * Saves the grid data in XSF format for debugging purposes.
+ * 
+ * @param bE Whether to save the energy-related grids (default: true)
+ * @param bFz Whether to save the force-related grids (default: true)
+ * @param bComb Whether to save the combined forcefield grid (default: true)
+ * @param testREQ The test Quat4d value for evaluating the combined forcefield (default: Quat4d{ 1.487, 0.02609214441, 0., 0.})
+ */
 void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d testREQ=Quat4d{ 1.487, 0.02609214441, 0., 0.} ){
     // not testREQ.y [eV^0.5] = sqrt(Eii), 
     // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
@@ -514,6 +631,16 @@ void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d test
     }
 }
 
+/**
+ * Initializes the grid-based force field (GridFF)
+ * 
+ * @param name The name of the grid file.
+ * @param bGrid Flag indicating whether to enable grid-based force field.
+ * @param bSaveDebugXSFs Flag indicating whether to save debug XSF files.
+ * @param z0 The z-coordinate of the cell origin.
+ * @param cel0 The initial cell position.
+ * @param bAutoNPBC Flag indicating whether to automatically set non-periodic boundary conditions.
+ */
 virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
     if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     sprintf(tmpstr, "%s.lvs", name );
@@ -553,6 +680,15 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     gridFF.evalCheck();
 }
 
+/**
+ * Initializes the non-bonded molecules
+ * 
+ * @param na The number of atoms.
+ * @param apos An array of Vec3d representing the positions of the atoms.
+ * @param fapos An array of Vec3d representing the final positions of the atoms.
+ * @param atypes An array of integers representing the atom types.
+ * @param bCleanCharge A boolean indicating whether to clean the charges of atoms not present in the builder.
+ */
 void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
 	nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
@@ -566,6 +702,11 @@ void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharg
     if(verbosity>1)nbmol.print();                              
 }
 
+/**
+ * Loads a molecular structure from an XYZ file.
+ * 
+ * @param name The name of the XYZ file.
+ */
 void loadNBmol( const char* name){
     if(verbosity>0)printf( "MolWorld_sp3::loadNBmol() \n" );
 	sprintf(tmpstr, "%s.xyz", name );
@@ -576,6 +717,16 @@ void loadNBmol( const char* name){
     if(verbosity>1)nbmol.print();                              
 }
 
+/**
+ * @brief Loads a surface from a file and initializes the necessary data structures.
+ * 
+ * @param name The name of the file to load the surface from.
+ * @param bGrid Flag indicating whether to generate a grid.
+ * @param bSaveDebugXSFs Flag indicating whether to save debug XSF files.
+ * @param z0 The z-coordinate of the surface.
+ * @param cel0 The initial cell coordinates.
+ * @return True if the surface is successfully loaded, false otherwise.
+ */
 bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
     sprintf(tmpstr, "%s.xyz", name );
 	int ret = params.loadXYZ( tmpstr, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
@@ -590,6 +741,18 @@ bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, doub
 	return true;
 }
 
+/**
+ * Substitutes a molecule in the builder.
+ * 
+ * @param fname The filename of the molecule to be substituted.
+ * @param ib The index of the atom in the builder where the substitution will occur.
+ * @param up The up vector for the substitution.
+ * @param ipivot The index of the pivot atom for the substitution.
+ * @param bSwapBond Flag indicating whether to swap the bond during substitution.
+ * @param axSwap The axis swap vector for the substitution.
+ * 
+ * @return The index of the substituted molecule in the builder.
+ */
 int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0 ){
     builder.printAtomConfs(false);
     builder.printBonds();
@@ -616,6 +779,11 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
 }
 
 
+/**
+ * Finds the bridge bonds in the molecular world.
+ * 
+ * @return The number of bridge bonds found.
+ */
 int findBridgeBonds(){
     //LimitedGraph graph;
     //graph.init( builder.na, builder.bonds.size(), builder.bonds.data() );
@@ -628,6 +796,12 @@ int findBridgeBonds(){
 
 
 
+/**
+ * Loads the geometry from a file and inserts it into the molecular world.
+ * 
+ * @param name The name of the file containing the geometry.
+ * @return The index of the inserted fragment in the builder.
+ */
 int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
     // ------ Load geometry
@@ -663,11 +837,23 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
 //     return imol;
 // }
 
+/**
+ * Inserts a SMILES string into the molecular world.
+ * 
+ * @param s The SMILES string to be inserted.
+ */
 void insertSMILES(const char* s){
     smiles.builder=&builder;
     smiles.parseString( 10000, s );
 }
 
+/**
+ * Sets the optimizer for the molecular world.
+ * 
+ * @param n The number of degrees of freedom.
+ * @param ps Pointer to the array of positions.
+ * @param fs Pointer to the array of forces.
+ */
 void setOptimizer( int n, double* ps, double* fs ){
     //opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
     opt.bindOrAlloc( n, ps, 0, fs, 0 );
@@ -679,6 +865,9 @@ void setOptimizer( int n, double* ps, double* fs ){
 }
 void setOptimizer(){ setOptimizer( ff.nDOFs, ff.DOFs, ff.fDOFs ); };
 
+/**
+ * Initializes the rigid bodies
+ */
 void initRigid(){
     int nrb = builder.frags.size();
     //printf("# --- initRigid() nrb=%i \n", nrb);
@@ -700,6 +889,15 @@ void initRigid(){
     //printf("# --- initRigid() END \n");
 }
 
+/**
+ * @brief Initializes the MolWorld_sp3 object with a SMILES string.
+ * 
+ * @param s The SMILES string to initialize the object with.
+ * @param bPrint Flag indicating whether to print debug information.
+ * @param bCap Flag indicating whether to add all-cap topology.
+ * @param bNonBonded_ Flag indicating whether to initialize non-bonded interactions. #spare
+ * @param bOptimizer_ Flag indicating whether to set up an optimizer.
+ */
 void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
     params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
     //params.printAtomTypeDict();
@@ -740,6 +938,12 @@ void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonB
 // }
 
 
+/**
+ * Multiplies the periodic boundary conditions (PBC) for a given fragment.
+ * 
+ * @param nMulPBC_ The vector representing the number of times to multiply the PBC in each direction (a, b, c)
+ * @param ifrag The index of the fragment.
+ */
 void PBC_multiply( Vec3i& nMulPBC_, int ifrag ){
     if(verbosity>0) printf( "PBC_multiply n(%i,%i,%i) ifrag=%i \n", nMulPBC_.x,nMulPBC_.y,nMulPBC_.z, ifrag );
     //printf("surface  lattice:\n"); gridFF .grid.cell.print();
@@ -756,6 +960,16 @@ void PBC_multiply( Vec3i& nMulPBC_, int ifrag ){
     //builder.printBonds();    
 }
 
+/**
+ * Changes the cell by specifying two vectors, a and b.
+ * Optionally, the function can also specify the index of an atom (ia0) and a shift vector (c0) to move the atoms.
+ * If ia0 is provided, the atoms are shifted by the specified vector relative to the position of atom ia0.
+ * 
+ * @param a The first vector used to change the cell.
+ * @param b The second vector used to change the cell.
+ * @param ia0 (Optional) The index of the atom to use as a reference for shifting the atoms.
+ * @param c0 (Optional) The shift vector to move the atoms.
+ */
 void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
     //printf( "changeCellBySurf() a(%g,%g) b(%g,%g) \n", a.x,a.y, b.x,b.y  );
     double la0=builder.lvec.a.norm();
@@ -777,6 +991,15 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
     //builder.printBonds();    
 }
 
+/**
+ * Initializes the parameters for the MolWorld_sp3 class.
+ * 
+ * @param sElemTypes    The string containing the element types.
+ * @param sAtomTypes    The string containing the atom types.
+ * @param sBondTypes    The string containing the bond types.
+ * @param sAngleTypes   The string containing the angle types.
+ * @param sDihedralTypes    The string containing the dihedral types (optional).
+ */
 void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes=0 ){
     printf( "MolWorld_sp3::initParams():\n\tsElemTypes(%s)\n\tsAtomTypes(%s)\n\tsBondTypes(%s)\n\tsAngleTypes(%s)\n", sElemTypes, sAtomTypes, sBondTypes, sAngleTypes );
     params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
@@ -792,6 +1015,12 @@ void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBo
     params.printDihedralTypes();
 }
 
+/**
+ * Builds a molecule from an XYZ file.
+ * 
+ * @param xyz_name The name of the XYZ file.
+ * @return The index of the built molecule.
+ */
 int buildMolecule_xyz( const char* xyz_name ){
     int ifrag = loadGeom( xyz_name );
     int ia0=builder.frags[ifrag].atomRange.a;
@@ -815,6 +1044,12 @@ int buildMolecule_xyz( const char* xyz_name ){
     return ifrag;
 }
 
+/**
+ * Prepare the molecular world for MMFF calculations.
+ * This includes checking bonds, assigning atom types, assigning torsions, finding bridge bonds,
+ * converting to MMFF sp3 format, assigning angles, converting to MMFF f4 format, and setting up
+ * periodic boundary conditions if enabled.
+ */
 void makeMMFFs(){
     //builder.printAtoms();          
     //if( builder.checkBondsOrdered( false, true ) ) { printf("ERROR Bonds are not ordered => exit"); exit(0); };
@@ -854,6 +1089,13 @@ void makeMMFFs(){
     }
 }
 
+/**
+ * This function is responsible for performing various operations to generate force fields (FFs).
+ * It calls the makeMMFFs() function, initializes the non-bonded molecules, sets the non-bonded interactions,
+ * and performs additional calculations and checks.
+ * If the bChargeToEpair flag is set to true, it converts charges to electron pairs.
+ * Finally, if the bOptimizer flag is set to true, it sets the optimizer and performs relaxation if bRelaxPi is also true.
+ */
 virtual void makeFFs(){
     makeMMFFs();
     initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
@@ -889,6 +1131,11 @@ virtual void makeFFs(){
     _realloc( manipulation_sel, ff.natoms );
 }
 
+/**
+ * Initializes the MolWorld_sp3 object.
+ * 
+ * @param bGrid A boolean indicating whether to initialize the grid.
+ */
 virtual void init( bool bGrid ){
     // params.init("common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
 	// builder.bindParams(&params);
@@ -939,6 +1186,13 @@ virtual void init( bool bGrid ){
     if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
 }
 
+/**
+ * @brief Clears the MolecularWorld object.
+ * 
+ * This function clears the MolecularWorld object by deallocating memory and resetting variables.
+ * 
+ * @param bParams Flag indicating whether to clear the parameters as well. Default is true.
+ */
 virtual void clear( bool bParams=true ){
     //printf("MolWorld_sp3.clear() \n");
     builder.clear();
@@ -971,6 +1225,14 @@ virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*&
     return 0;
 }
 
+/**
+ * Scans the surface with force field, changing forces.
+ * 
+ * @param n The number of particles.
+ * @param ps An array of Quat4f representing the particle positions.
+ * @param REQs An array of Quat4f representing non-bonded interactions.
+ * @param fs An array of Quat4f to store the calculated forces.
+ */
 virtual void scanSurfFF( int n, Quat4f* ps, Quat4f* REQs, Quat4f* fs ){
     for(int i=0; i<n; i++){
         Quat4f PLQ = REQ2PLQ        ( (Quat4d)REQs[i], gridFF.alphaMorse );
@@ -978,6 +1240,14 @@ virtual void scanSurfFF( int n, Quat4f* ps, Quat4f* REQs, Quat4f* fs ){
     }
 }
 
+/**
+ * Checks the invariants of the molecular world.
+ * 
+ * @param maxVcog The maximum value for the center of gravity velocity.
+ * @param maxFcog The maximum value for the center of gravity force.
+ * @param maxTg   The maximum value for the torque of the center of gravity.
+ * @return True if any of the invariants exceed the maximum values, false otherwise.
+ */
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
     cog   = average( ff.natoms, ff.apos  );
     vcog  = sum    ( ff.natoms, (Vec3d*)opt.vel  );
@@ -990,6 +1260,11 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
 //void open_xyzFile (const char* fname){ xyz_file=fopen( fname,"w" ); };
 //void close_xyzFile(){fclose(xyz_file)};
 
+/**
+ * Evaluates the energy using the ff4 potential and returns the result.
+ * 
+ * @return The energy evaluated using the ff4 potential.
+ */
 double eval_f4(){
     pack( ff4.natoms, ffl.apos , ff4.apos  );
     pack( ff4.nnode,  ffl.pipos, ff4.pipos );
@@ -1003,6 +1278,11 @@ double eval_f4(){
     return E;   
 };
 
+/**
+ * Sets the non-bonded flag for the molecular world.
+ * 
+ * @param bNonBonded A boolean value indicating whether non-bonded interactions should be considered.
+ */
 void setNonBond( bool bNonBonded ){
     ffl.bSubtractAngleNonBond = bNonBonded;
     ff4.bSubtractAngleNonBond = bNonBonded;
@@ -1016,6 +1296,11 @@ void setNonBond( bool bNonBonded ){
     }
 }
 
+/**
+ * Calculates the energy of the molecular system.
+ *
+ * @return The calculated energy of the molecular system.
+ */
 double eval( ){
 
     //ffl.doBonds       = false;
@@ -1078,6 +1363,14 @@ double eval( ){
 }
 
 
+/**
+ * Performs relaxation of the molecular system with FIRE algorithm.
+ * 
+ * @param niter The number of relaxation iterations to perform.
+ * @param Ftol The force tolerance for convergence. Defaults to 1e-6.
+ * @param bWriteTrj Flag indicating whether to write trajectory information. Defaults to false.
+ * @return True if relaxation converged, false otherwise.
+ */
 bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     printf( "MolWorld_sp3::relax() niter %i Ftol %g bWriteTrj %i \n", niter, Ftol, bWriteTrj );
     Etot=0.0;
@@ -1097,6 +1390,18 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     return bConverged;
 }
 
+
+/**
+ * Runs the simulation for a specified number of steps.
+ * 
+ * @param nstepMax The maximum number of steps to run.
+ * @param dt The time step size. Default value is -1.
+ * @param Fconv The convergence threshold for the force. Default value is 1e-6.
+ * @param ialg The algorithm to use for optimization. Default value is 2.
+ * @param outE Pointer to an array to store the total energy at each step. Default value is 0.
+ * @param outF Pointer to an array to store the force at each step. Default value is 0.
+ * @return The number of iterations performed.
+ */
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
     //printf( "MolWorld_sp3::run(%i) \n", nstepMax );
@@ -1142,6 +1447,14 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
 }
 
 
+/**
+ * Pulls an atom towards a target position using a spring force.
+ * 
+ * @param ia The index of the atom to be pulled.
+ * @param apos The array of atom positions.
+ * @param fapos The array of final atom positions after applying the force.
+ * @param K The spring constant (default value: -2.0).
+ */
 void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){ 
     Vec3d f = getForceSpringRay( apos[ia], pick_hray, pick_ray0, K ); fapos[ia].add( f );
 }
@@ -1203,6 +1516,18 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     bChargeUpdated=false;
 }
 
+/**
+ * Runs the simulation using OpenMP parallelization.
+ *
+ * @param niter_max The maximum number of iterations.
+ * @param dt The time step.
+ * @param Fconv The convergence threshold for the force.
+ * @param Flim The force limit.
+ * @param timeLimit The time limit for the optimization.
+ * @param outE Pointer to an array to store the total energy at each iteration (optional).
+ * @param outF Pointer to an array to store the squared force at each iteration (optional).
+ * @return The number of iterations performed.
+ */
 int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
     //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
     if(dt>0){ opt.setTimeSteps(dt); }
@@ -1350,6 +1675,16 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
 //     return 0;
 // }
 
+/**
+ * Prepares the MolecularWorld object to be written to an XYZ file by function writeXYZ.
+ *
+ * @param comment The comment to be included in the XYZ file (default: "#comment").
+ * @param bNodeOnly Flag indicating whether to convert only the nodes or the entire structure (default: false).
+ * @param file The file pointer to write the XYZ data to (default: 0).
+ * @param bPi Flag indicating whether to include pi electrons in the XYZ file (default: false).
+ * @param just_Element Flag indicating whether to include only the element symbols in the XYZ file (default: true).
+ * @return 0 if successful, -1 if an error occurs.
+ */
 int toXYZ(const char* comment="#comment", bool bNodeOnly=false, FILE* file=0, bool bPi=false, bool just_Element=true ){
     if(file==0){ file=xyz_file; };
     if(file==0){ printf("ERROR no xyz file is open \n"); return -1; }
@@ -1359,6 +1694,16 @@ int toXYZ(const char* comment="#comment", bool bNodeOnly=false, FILE* file=0, bo
     return 0;
 }
 
+/**
+ * Saves the molecular structure in XYZ format to a file.
+ *
+ * @param fname The name of the file to save the structure to.
+ * @param comment The comment to include in the XYZ file. Default is "#comment".
+ * @param bNodeOnly Flag indicating whether to save only the nodes or all atoms. Default is false.
+ * @param mode The file mode to open the file with. Default is "w".
+ * @param nPBC The number of periodic boundary conditions in each direction. Default is {1, 1, 1}.
+ * @return The number of atoms saved to the file.
+ */
 int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
     char str_tmp[1024];
     sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment );
@@ -1369,11 +1714,53 @@ int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=fa
 
 // ========= Manipulation with the molecule
 
+/**
+ * Shifts the positions of atoms in the given selection by the specified displacement vector d.
+ *
+ * @param n The number of atoms in the selection.
+ * @param selection An array of indices representing the atoms in the selection.
+ * @param d The displacement vector to shift the atoms by.
+ */
 void shift_atoms ( int n, int* selection, Vec3d d                          ){ move  ( n, selection, ff.apos, d           ); };
+/**
+ * Rotates the atoms specified by the given selection around the specified axis ax by the specified angle phi.
+ *
+ * @param n The number of atoms in the selection.
+ * @param selection An array of integers representing the indices of the atoms to be rotated.
+ * @param p0 The pivot point around which the atoms will be rotated.
+ * @param ax The axis of rotation.
+ * @param phi The angle of rotation in radians.
+ */
 void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi   ){ rotate( n, selection, ff.apos, p0, ax, phi ); };
+/**
+ * Shifts the atoms in the given selection by a specified distance l along the line connecting the atoms with indices ia0 and ia1.
+ *
+ * @param n         The number of atoms in the selection.
+ * @param selection An array of indices representing the atoms in the selection.
+ * @param ia0       The index of the first atom
+ * @param ia1       The index of the second atom
+ * @param l         The distance to shift the atoms by.
+ */
 void shift_atoms ( int n, int* selection, int ia0, int ia1, double l              ){ Vec3d d=(ff.apos[ia1]-ff.apos[ia0]).normalized()*l; move( n, selection, ff.apos, d); };
+/**
+ * Rotates the specified atoms in the selection around an axis defined by the atoms with indices iax0 and iax1 by the specified angle phi.
+ *
+ * @param n The number of atoms in the selection.
+ * @param selection An array of indices representing the atoms to be rotated.
+ * @param ia0 The index of the reference atom.
+ * @param iax0 The index of the starting atom of the rotation axis.
+ * @param iax1 The index of the ending atom of the rotation axis.
+ * @param phi The angle of rotation in radians.
+ */
 void rotate_atoms( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, ff.apos, ff.apos[ia0], (ff.apos[iax1]-ff.apos[iax0]).normalized(), phi ); };
 
+/**
+ * Splits the selection at a specified bond index.
+ * 
+ * @param ib The bond index to split at.
+ * @param selection The selection array to modify. If set to 0, the global manipulation_sel array will be used.
+ * @return The number of atoms in the resulting selection.
+ */
 int splitAtBond( int ib, int* selection ){
     bool bGlob=(selection==0); 
     if(bGlob){ selection=manipulation_sel; }
@@ -1382,6 +1769,13 @@ int splitAtBond( int ib, int* selection ){
     return n;
 }
 
+/**
+ * Selects atoms within a rectangular region defined by two points in 3D space.
+ * 
+ * @param p0 The first point defining the rectangular region.
+ * @param p1 The second point defining the rectangular region.
+ * @param rot The rotation matrix to transform the points to the desired coordinate system.
+ */
 void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
     Vec3d Tp0,Tp1,Tp;
     //Mat3d rot = (Mat3d)cam.rot;
@@ -1400,6 +1794,17 @@ void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
     }
 }
 
+/**
+ * Performs a translation scan along the specified direction d for a given number of steps.
+ *
+ * @param n The number of atoms in the selection.
+ * @param selection An array of indices representing the atoms in the selection.
+ * @param d The direction of translation.
+ * @param nstep The number of steps for the translation scan.
+ * @param Es An array to store the energy values at each step (optional).
+ * @param trjName The name of the trajectory file to write the coordinates (optional).
+ * @param bAddjustCaps Flag indicating whether to adjust the caps (default: false).
+ */
 void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,const char* trjName, bool bAddjustCaps=false ){
     //if(selection==0){ selection=manipulation_sel; n=manipulation_nsel; }
     //Vec3d d=(*(Vec3d*)(vec)); 
@@ -1414,8 +1819,33 @@ void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,c
     }
     if(file){ fclose(file); }
 }
+/**
+ * Performs a translation scan along the line connecting the atoms with indices ia0 and ia1 for a given number of steps.
+ *
+ * @param n The number of atoms in the system.
+ * @param selection An array of indices representing the atoms to be translated.
+ * @param ia0 The index of the first atom involved in the translation.
+ * @param ia1 The index of the second atom involved in the translation.
+ * @param l The length of the translation vector.
+ * @param nstep The number of steps in the translation scan.
+ * @param Es An array to store the calculated energies.
+ * @param trjName The name of the trajectory file to save the scan results.
+ * @param bAddjustCaps Flag indicating whether to adjust the caps of the molecular system.
+ */
 void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, const char* trjName, bool bAddjustCaps=false ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; scanTranslation_ax(n,selection, d, nstep, Es, trjName , bAddjustCaps); };
 
+/**
+ * Performs a rotational scan of the selected atoms around a given axis ax for a given number of steps.
+ *
+ * @param n The number of atoms in the selection.
+ * @param selection An array of integers representing the indices of the atoms in the selection.
+ * @param p0 The reference point for rotation.
+ * @param ax The axis of rotation.
+ * @param phi The total rotation angle.
+ * @param nstep The number of steps in the rotational scan.
+ * @param Es An array to store the energy values at each step (optional).
+ * @param trjName The name of the trajectory file to write the rotational scan data (optional).
+ */
 void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, const char* trjName ){
     //if(p0==0) p0=(double*)&manipulation_p0;
     //if(ax==0) ax=(double*)&manipulation_ax;
@@ -1434,9 +1864,40 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
     }
     if(file){ fclose(file); }
 }
+/**
+ * Scans the rotation of the selected atoms around the axis defined by the atoms with indices iax0 and iax1 for a given number of steps.
+ *
+ * @param n The number of atoms in the system.
+ * @param selection An array of indices representing the atoms to be rotated.
+ * @param ia0 The index of the central atom.
+ * @param iax0 The index of the starting atom of the rotation axis.
+ * @param iax1 The index of the ending atom of the rotation axis.
+ * @param phi The rotation angle in radians.
+ * @param nstep The number of steps in the rotation.
+ * @param Es An array to store the calculated energies.
+ * @param trjName The name of the trajectory file to save the rotated configurations.
+ */
 void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, const char* trjName ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, trjName ); };
 
 
+/**
+ * Scans angles to axis.
+ *
+ * This function scans a set of angles and modifies the positions of atoms based on the given parameters.
+ * The positions of atoms are adjusted by removing the axial component, renormalizing the radial component,
+ * and adding back a new axial component. The energy of the system is evaluated at each step.
+ *
+ * @param n         The number of atoms in the selection.
+ * @param selection An array of atom indices representing the selection.
+ * @param r         The radial component parameter.
+ * @param R         The renormalization parameter.
+ * @param p0        The reference point for the axial component.
+ * @param ax        The axial vector.
+ * @param nstep     The number of steps to perform.
+ * @param angs      An array of angles to scan.
+ * @param Es        An array to store the evaluated energies.
+ * @param trjName   The name of the trajectory file to write the positions to (optional).
+ */
 void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Vec3d ax, int nstep, double* angs, double* Es, const char* trjName ){
     //printf( "scanAngleToAxis_ax()\n" );
     FILE* file=0;
@@ -1466,6 +1927,21 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Ve
 
 
 
+/**
+ * Calculates automaticaly the charges for a molecular system.
+ *
+ * @param natoms The number of atoms in the system.
+ * @param atypes An array of atom types.
+ * @param REQs An array of quaternion values representing the atomic charges.
+ * @param neighs An array of quaternion values representing the neighboring atoms.
+ * @param nMaxIter The maximum number of iterations for the charge calculation (default: 10).
+ * @param K The charge force constant (default: 1.0).
+ * @param K0 The charge force constant for the total charge (default: 1.0).
+ * @param Q0 The desired total charge (default: 0.0).
+ * @param dt The time step for the charge calculation (default: 0.1).
+ * @param damping The damping factor for the charge calculation (default: 0.1).
+ * @param Fconv The convergence criterion for the charge calculation (default: 1e-6).
+ */
 void autoCharges(int natoms, int* atypes, Quat4d* REQs, Quat4i* neighs, int nMaxIter=10, double K=1.0, double K0=1.0, double Q0=0.0, double dt=0.1, double damping=0.1, double Fconv=1e-6 ){
     std::vector<double> fs(natoms);
     std::vector<double> vs(natoms,0.);
@@ -1507,6 +1983,11 @@ void autoCharges(int natoms, int* atypes, Quat4d* REQs, Quat4i* neighs, int nMax
     }
 }
 
+/**
+ * Prints the current state of the switches used in MolWorld_sp3_simple.
+ * The switches include bCheckInvariants, bPBC, bNonBonded, bMMFF, ffl.doAngles,
+ * ffl.doPiSigma, ffl.doPiPiI, and ffl.bSubtractAngleNonBond.
+ */
 virtual void printSwitches(){
     printf( "MolWorld_sp3_simple::printSwitches() bCheckInvariants=%i bPBC=%i bNonBonded=%i bMMFF=%i ffl.doAngles=%i ffl.doPiSigma=%i ffl.doPiPiI=%i ffl.bSubtractAngleNonBond=%i \n", bCheckInvariants, bPBC, bNonBonded, bMMFF, ffl.doAngles, ffl.doPiSigma, ffl.doPiPiI, ffl.bSubtractAngleNonBond );
 }

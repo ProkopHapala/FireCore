@@ -46,6 +46,13 @@ class Group{ public:
     int*    iatoms;  // atom indexes belonging to the group
     Quat4f* cs;      // projection coefficients
 
+    /**
+     * Calculates the squared distance between two arrays of Quat4f objects.
+     * 
+     * @param ps1 Pointer to the first array of Quat4f objects.
+     * @param ps2 Pointer to the second array of Quat4f objects.
+     * @return The squared distance between the two arrays.
+     */
     inline float distance2( Quat4f* ps1, Quat4f* ps2 )const{
         float lr2 = 0.f; 
         for(int i=0; i<n; i++){
@@ -55,7 +62,11 @@ class Group{ public:
         }
         return lr2;
     }
-
+    /**
+     * @brief Calculates the center of gravity for an array of Quat4f objects.
+     * @param ps The array of Quat4f objects.
+     * @return The center of gravity.
+     */
     inline Vec3f cog( Quat4f* ps )const{
         Vec3f cog = Vec3fZero; 
         for(int i=0; i<n; i++){
@@ -66,6 +77,15 @@ class Group{ public:
         return cog;
     }
 
+    /**
+     * Calculates the pose of the molecule based on the given quaternion array and updates the center of gravity (cog),
+     * and the orientation vectors (u and v).
+     *
+     * @param ps   The array of quaternions representing the molecule's pose.
+     * @param cog  The center of gravity of the molecule (output parameter).
+     * @param u    The orientation vector u (output parameter).
+     * @param v    The orientation vector v (output parameter).
+     */
     void pose( Quat4f* ps, Vec3f& cog, Vec3f& u, Vec3f& v )const{
         cog = Vec3fZero;
         u   = Vec3fZero;
@@ -85,6 +105,14 @@ class Group{ public:
         v.add_mul( cog, -Csum.y );
     }
 
+    /**
+     * Applies a pose force to the given array of Quat4f objects.
+     * 
+     * @param fs   The array of Quat4f objects to apply the pose force to.
+     * @param fcog The center of gravity force vector.
+     * @param fu   The u-axis force vector.
+     * @param fv   The v-axis force vector.
+     */
     void apply_pose_force( Quat4f* fs, const Vec3f& fcog, const Vec3f& fu, const Vec3f& fv )const{
         for(int i=0; i<n; i++){
             int ia          = iatoms[i];

@@ -15,8 +15,8 @@ class GlobalOptimizer{ public:
     int    initMode  =0;
 
     int* atypes=0;
-    MultiSolverInterface* msolver =0;
-    SolverInterface*      solver  =0;
+    MultiSolverInterface* msolver =0; // multi solver
+    SolverInterface*      solver  =0; // single solver
 
     //int npop=0;
     //Atoms**             population=0;
@@ -32,6 +32,13 @@ class GlobalOptimizer{ public:
 
     // ================= Functions
 
+    /**
+     * Reallocates the population with the specified number of individuals and vectors.
+     * 
+     * @param npop The number of individuals in the population.
+     * @param nvec The number of vectors in each individual.
+     * @param bAtypes A boolean flag indicating whether to reallocate the atom types.
+     */
     void reallocPop(int npop, int nvec, bool bAtypes ){
         //npop=npop_;
         if(bAtypes)_realloc(atypes,nvec);
@@ -54,6 +61,12 @@ class GlobalOptimizer{ public:
         atoms->id=ipop;
     }
 
+    /**
+     * Downloads the population from the parallel solver and updates the energy of each individual.
+     * 
+     * @param n The number of individuals to update.
+     * @param i0 The starting index of the individuals to update.
+     */
     void download_multi(int n, int i0){
         msolver->downloadPop();
         for(int i=0; i<n; i++){
@@ -61,6 +74,14 @@ class GlobalOptimizer{ public:
         }
     }
 
+    /**
+     * Uploads multiple molecular configurations to the parallel solver.
+     * 
+     * @param n The number of configurations to upload.
+     * @param i0 The starting index of the configurations in the population array.
+     * @param bGeom Flag indicating whether to upload atomic positions.
+     * @param blvec Flag indicating whether to upload lattice vectors.
+     */
     void upload_multi(int n, int i0, bool bGeom, bool blvec){
         for(int i=0; i<n; i++){
             Vec3d* apos=0;
@@ -86,6 +107,11 @@ class GlobalOptimizer{ public:
     }
 */
 
+    /**
+     * @brief Loads the XYZ file containing atomic coordinates for the population.
+     * 
+     * @param fname The name of the file to load.
+     */
     void loadPopXYZ( const char* fname ){
         FILE* file = fopen(fname,"r");    if(!file){ printf("ERROR in GlobalOptimizer::lattice_scan_a() cannot open \n", fname ); exit(0); }
         while(true){
@@ -97,6 +123,14 @@ class GlobalOptimizer{ public:
         fclose(file);
     }
 
+    /**
+     * Writes the atomic coordinates of the population to an XYZ file.
+     * 
+     * @param fname The name of the output file.
+     * @param imin The index of the first individual in the population to write (default: 0).
+     * @param imax The index of the last individual in the population to write (default: -1, which means all individuals).
+     * @param nPBC The number of periodic boundary conditions in each direction (default: {1, 1, 1}).
+     */
     void popToXYZ( const char* fname, int imin=0, int imax=-1, Vec3i nPBC=Vec3i{1,1,1}){
         FILE* file=0;
         file = fopen(fname,"w");    if(!file){ printf("ERROR in GlobalOptimizer::lattice_scan_a() cannot open %s \n", fname ); exit(0); }
@@ -107,6 +141,16 @@ class GlobalOptimizer{ public:
         fclose(file);
     }
 
+    /**
+     * Performs a 1-dimensional lattice scan.
+     *
+     * @param n The number of iterations for the scan.
+     * @param lvec0 The initial lattice vector.
+     * @param dlvec The change in lattice vector for each iteration.
+     * @param outfname The output file name (optional).
+     * @param ipop0 The initial population index (optional).
+     * @param istep The step size for population index (optional).
+     */
     void lattice_scan_1d( int n, Mat3d lvec0, Mat3d dlvec, const char* outfname=0, int ipop0=0, int istep=1 ){
         FILE* fout=0;
         if(outfname){ fout = fopen(outfname,"w"); if(!fout){ printf("ERROR in GlobalOptimizer::lattice_scan_1d() cannot open %s \n", outfname ); exit(0); } }
@@ -133,6 +177,16 @@ class GlobalOptimizer{ public:
         if(fout){fclose(fout);}
     }
 
+    /**
+     * Performs a 2D lattice scan for multiple replicas.
+     *
+     * @param n The number of steps in the lattice scan.
+     * @param dlvec The displacement vector for each step.
+     * @param initMode The initialization mode for changing the cell of replicas. Default is 0.
+     * @param outfname The output file name. Default is nullptr.
+     * @param imin The minimum index of replicas to consider. Default is 0.
+     * @param imax The maximum index of replicas to consider. Default is -1, which means all replicas.
+     */
     void lattice_scan_2d_multi( int n, Mat3d dlvec, int initMode=0, const char* outfname=0, int imin=0, int imax=-1 ){
         char comment[256];
         FILE* fout=0;
