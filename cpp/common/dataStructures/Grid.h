@@ -238,17 +238,18 @@ class GridShape{ public:
     }
 
     template<typename T>
-    void saveXSF( const char * fname,const T* FF, int pitch=1, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
-        printf( "saving %s\n", fname );
+    int saveXSF( const char * fname,const T* FF, int pitch=1, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
+        //printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");
-        if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
+        if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return -1; }
         if(natoms>0){
             if (bPrimCoord){ primcoordToXSF( fout,  natoms, atypes, apos );  }
             else           { atomsToXSF    ( fout,  natoms, atypes, apos );  }
         } 
         toXSF( fout, FF, pitch, offset );
         fclose(fout);
+        return 0;
     }
 
     double Laplace( const double* f, double* out )const{

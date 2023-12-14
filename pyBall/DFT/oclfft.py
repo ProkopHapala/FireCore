@@ -88,6 +88,12 @@ def init( cl_src_dir='./data/cl' ):
     cl_src_dir = cl_src_dir.encode('utf8')
     lib.init( cl_src_dir )
 
+# void release( bool bReleaseOCL, bool bReleaseOCLfft);
+lib.release.argtypes  = [ c_bool, c_bool ]
+lib.release.restype   =  None
+def release( bReleaseOCL=False, bReleaseOCLfft=True ):
+    lib.release( bReleaseOCL, bReleaseOCLfft )
+
 # void printDeviceInfo( bool bDetails )
 lib.printDeviceInfo.argtypes  = [ c_bool ]
 lib.printDeviceInfo.restype   =  None

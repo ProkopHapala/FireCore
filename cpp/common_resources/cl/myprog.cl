@@ -90,6 +90,8 @@ __kernel void mul(
     //if(i==0)printf( "DEBUG_GPU mul N %i \n", N );
     if(i<N){ 
         out[i] = A[i] * B[i]; 
+        //out[i] = A[i];
+        //out[i] = B[i];
         //out[i] = sin( i*0.1 ); 
         //if((i/100)<100)printf( "DEBUG_GPU mul[%i] A=%g B=%g out=%g \n", i, A[i], B[i], out[i] );
     }
