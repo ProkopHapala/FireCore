@@ -351,7 +351,7 @@ virtual void init( bool bGrid=false ){
         initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
     }
     if( nbmol.natoms>0 ){ clear(); } // re-initialization
-    builder.verbosity=verbosity;
+    //builder.verbosity=verbosity;
     if(verbosity>0){
         printf("\n#### MolWorld_sp3_simple::init()\n");
         if(smile_name   )printf("smile_name  (%s)\n", smile_name );

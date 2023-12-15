@@ -26,7 +26,8 @@ int DEBUG_iter     = 0;
 int DEBUG_log_iter = 0;
 int i_DEBUG=0;
 
-int verbosity=0;
+#include <globals.h>
+//int verbosity=0;
 int idebug   =0;
 
 const char* prefix = "#Epiece";

@@ -378,12 +378,12 @@ def replacePairs( pairs, atoms, group, up_vec=(np.array((0.0,0.0,0.0)),1) ):
     return atoms_
 
 def findNearest( p, ps, rcut=1e+9 ):
-	rs = np.sum( (ps - p)**2, axis=1 )
-	imin = np.argmin(rs)
-	if rs[imin]<(rcut**2):
-	    return imin
-	else: 
-	    return -1 
+    rs = np.sum( (ps - p)**2, axis=1 )
+    imin = np.argmin(rs)
+    if rs[imin]<(rcut**2):
+        return imin
+    else: 
+        return -1 
 
 def countTypeBonds( atoms, ofAtoms, rcut ):
     bond_counts = np.zeros(len(atoms), dtype=int )
@@ -485,6 +485,7 @@ def makeMovie( fname, n, es, func ):
     fout.close() 
 
 def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None ):
+    #print(" HELLO !!!!!!!", fname)
     bClose=False
     if fin is None: 
         fin=open(fname, 'r')
@@ -501,14 +502,17 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None ):
                 continue
         wds = line.split()
         try:
+            #print( "line", line, "wds: ", wds )
             xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )
             try:
                 iz    = int(wds[0]) 
                 Zs    .append(iz)
                 enames.append( elements.ELEMENTS[iz] )
             except:
-                ename = wds[0]
-                enames.append( ename )
+                typname = wds[0]
+                ename = typname.split('_')[0]
+                #print( "ename: ", ename, " line ", line )
+                enames.append( typname )
                 Zs    .append( elements.ELEMENT_DICT[ename][0] )
             try:
                 q = float(wds[4])
@@ -705,7 +709,7 @@ def load_xyz_movie( fname ):
     while True:
         line = f.readline()
         if il==0:
-            n=int(l.split()[0])
+            n=int(line.split()[0]) 
         else:
             apos=np.array((n,3))
             es  =[]
