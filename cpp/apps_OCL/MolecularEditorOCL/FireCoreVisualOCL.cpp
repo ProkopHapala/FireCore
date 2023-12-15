@@ -1,4 +1,5 @@
-int verbosity = 0;
+#include <globals.h>
+//int verbosity = 0;
 int idebug=0;
 
 #include <stdlib.h>
@@ -195,7 +196,7 @@ void TestAppFireCoreVisual::loadGeom(){
     //builder.lvec.a.x *= 2.3;
     builder.printAtomConfs();
     builder.export_atypes(atypes);
-    builder.verbosity = true;
+    //builder.verbosity = true;
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
     builder.toMMFFmini( ff, &params );

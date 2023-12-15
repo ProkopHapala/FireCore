@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <memory>
 
+#include  "globals.h"
+
 #include "macroUtils.h"
 #include "testUtils.h"
 
@@ -28,6 +30,9 @@
 #include "LimitedGraph.h"
 
 
+#include "Kekule.h"
+
+
 // =============== Structs for Atoms, Bonds etc...
 
 // TBD builder is the only one in a namespace...
@@ -39,8 +44,8 @@ static const double const_eVA2_Nm = 16.02176634;
 // ========= Atom
 // ============================
 struct Atom{
-    constexpr const static Quat4d HcapREQ    = Quat4d{ 1.4870, sqrt(0.000681    ), 0., 0. };
-    constexpr const static Quat4d defaultREQ = Quat4d{ 1.7,    sqrt(0.0037292524), 0., 0. };
+    constexpr const static Quat4d HcapREQ    = Quat4d{ 1.4870, 0.026095977, 0., 0. }; // sqrt(0.000681)=0.026095977
+    constexpr const static Quat4d defaultREQ = Quat4d{ 1.7,    0.061067605, 0., 0. }; // sqrt(0.0037292524)=0.061067605
     int id;
     int type;
     int frag;
@@ -159,9 +164,9 @@ struct Bond{
     // --- this breaks {<brace-enclosed initializer list>} in C++11
     int    type  = -1;
     Vec2i  atoms = (Vec2i){-1,-1};
-    double l0=1,k=0,kpp=0;
+    double l0=1.0,k=0.0,kpp=0;
     Vec3i8 ipbc=Vec3i8{0,0,0}; // for periodic boundary conditions
-
+    double order=0.0; // actual bond order
     //int    type;
     //Vec2i  atoms;
     //double l0,k;
@@ -194,6 +199,8 @@ struct Angle{
     Vec2i  bonds;
     double a0;
     double k;
+    double C0,C1,C2,C3;
+Vec3i  atoms;
 
     void print()const{ printf( " Angle{t %i b(%i,%i) a0 %g k %g}", type, bonds.i, bonds.j, a0, k ); }
 
@@ -290,7 +297,7 @@ int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes 
     }while( innodes.size()>n0 ); // as long as new nodes are added
     return innodes.size();
 }
-
+#include  "globals.h"
 int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, Vec3d& ax, Vec3d& p0 ){
     const Vec2i& b = bond2atom[ib];
     ax = (apos[b.b]-apos[b.a]).normalized();
@@ -310,7 +317,7 @@ int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, 
 // ========= Builder
 // ============================
 class Builder{  public:
-    int verbosity = 0;
+    //int verbosity = 0;
     //bool bDEBUG = false;
 
     std::unordered_set<int> selection;
@@ -382,7 +389,12 @@ class Builder{  public:
     // =================== Functions =====================
 
     int addCappingTypesByIz( int iZ ){
-        int n=0; for( int i=0; i<params->atypes.size(); i++ ){ if(params->atypes[i].iZ==iZ) capping_types.insert(i); n++; }; return n; 
+        int n=0; 
+        for( int i=0; i<params->atypes.size(); i++ ){ 
+            if(params->atypes[i].iZ==iZ) capping_types.insert(i); 
+            n++; 
+        } 
+        return n; 
     }
 
     // =================== Geometry Functions =====================
@@ -586,12 +598,9 @@ class Builder{  public:
     int tryAddConfsToAtoms( int i0=0, int imax=-1 ){
         if(imax<0){ imax=atoms.size(); }
         int n=0;
-        for(int ia=0;ia<imax;ia++){
-            //if( ignoreType == atoms[ia].type) continue;
-            int t  = atoms[ia].type;
+        for(int ia=0; ia<imax; ia++){
+            int t = atoms[ia].type;
             if( capping_types.contains( t ) ) continue;
-            //int iZ = params.atypes[t].iZ;
-            //if( capping_iZs  .contains( iZ ) ) continue;
             if( atoms[ia].iconf < 0 ){
                 addConfToAtom( ia, 0 );
                 n++;
@@ -729,7 +738,7 @@ class Builder{  public:
         //double kij   = 664.12 * Qi*Qj/( rij*rij*rij ); 
         double kij   = 28.79898 * Qi*Qj/( rij*rij*rij ); 
         
-        //printf( "bondUFF[%s,%s,%g] r=%g(%g,%g|%g,%g) k=%g(%g,%g) E(%g,%g)   %s %s %i %i \n", ti.name, tj.name, BO, rij,ri,rj,rBO,rEN,      kij,   Qi,Qj,Ei,Ej , ei->name,ej->name, ti.element, tj.element     );
+        printf( "bondUFF[%s,%s,%g] r=%g(%g,%g|%g,%g) k=%g(%g,%g) E(%g,%g)   %s %s %i %i \n", ti.name, tj.name, BO, rij,ri,rj,rBO,rEN,      kij,   Qi,Qj,Ei,Ej , ei->name,ej->name, ti.element, tj.element     );
         return { rij, kij };
 
     }
@@ -1020,11 +1029,19 @@ class Builder{  public:
         return ityp;
     }
 
+    int assignResonantType( int ityp_old )const{
+        const AtomType& t = params->atypes[ityp_old];
+        char tmp_name[8];
+        sprintf( tmp_name, "%c_%s", t.name[0], "R" );
+        int ityp = params->getAtomType(tmp_name, true);  // search for the subtypes in the atom type dictionary
+        return ityp;
+    }
+
     void assignAllSp3Types(){
         //printf("DEBUG assignAllSp3Types() \n");
         for(int i=0; i<atoms.size(); i++){
             Atom& A = atoms[i];
-            if( params->atypes[A.type].parrent != 0 ) continue; // allready assigned
+            if( params->atypes[A.type].parrent != 0 ) continue; // already assigned
             if( A.iconf>=0 ){
                 int npi = confs[A.iconf].npi;
                 A.type = assignSp3Type_pi( A.type, npi );
@@ -1326,7 +1343,9 @@ class Builder{  public:
         return nnew;
     }
 
-    void assignTypes( int* neighs=0, int niterMax=10, bool bDeallocNeighs=true ){ // advanced atom-type assignement
+    // advanced atom-type assignement
+    void assignTypes( int* neighs=0, int niterMax=10, bool bDeallocNeighs=true ){ 
+        // assign all like X_3 or X_2 or X_1
         assignAllSp3Types();
         bDeallocNeighs &= (neighs==0);
         makeNeighs            ( neighs, 4        );
@@ -1334,6 +1353,7 @@ class Builder{  public:
         //printAtomConfs(false);
         if(bDeallocNeighs)delete [] neighs;
     }
+
 
     void addCaps( int ia, int ncap, int ne, int nb, const Vec3d* hs ){
         bool Hmask[]{1,1,1,1};
@@ -1484,6 +1504,8 @@ class Builder{  public:
         conf.pi_dir=p;
         return true;
     }
+
+    // TBD what is ia0 here for? 
     int setPiLoop( int ia0=0, int imax=-1, int nMaxIter=10 ){
         if(imax<0){ imax=atoms.size(); }
         for(int itr=0; itr<nMaxIter; itr++){
@@ -1921,6 +1943,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
+    // find 
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
         if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
@@ -1946,12 +1969,14 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                         //Vec3d p = A.pos - pbcShift( {ix,iy,iz} );
                         Vec3d p = A.pos - lvec.lincomb( ix, iy, iz );
                         found.clear();
-                        touchingAtoms( j0, imax, p, R, Rfac, found );
+                        // find overlapping atoms
+                        touchingAtoms( j0, imax, p, R, Rfac, found ); 
                         //if(i==12)printf( "# pbc[%i,%i,%i][%i] nfound %i \n", ix,iy,iz, ipbc, found.size() );
                         for(int j:found){
                             if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
                             //bondPBC.push_back( {ix,iy,iz} );
-                            bondBrush.ipbc=Vec3i8{ix,iy,iz};
+                            //bondBrush.ipbc=Vec3i8{ix,iy,iz};
+                            bondBrush.ipbc=Vec3i8{ (int8_t)ix, (int8_t)iy, (int8_t)iz };
                             bondBrush.atoms={i,j};
                             insertBond( bondBrush );
                         }
@@ -1980,14 +2005,14 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             if(A.iconf>=0){
                 const AtomConf& c = confs[A.iconf];
                 int nb = nbonds[ia];
-                if( nb>N_NEIGH_MAX){ err|=true; if( bPrint ){ printf( "WARRNING checkNumberOfBonds[%i] `%s` nbonds(%i)>N_NEIGH_MAX (%i)\n", ia, t.name, nb, N_NEIGH_MAX ); } }
-                if( nb>t.valence  ){ err|=true; if( bPrint ){ printf( "WARRNING checkNumberOfBonds[%i] `%s` nbonds(%i)>valence     (%i)\n", ia, t.name, nb, t.valence   ); } }
-                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARRNING checkNumberOfBonds[%i] `%s` nbonds(%i)>conf.nbond  (%i)\n", ia, t.name, nb, c.nbond     ); } } 
+                if( nb>N_NEIGH_MAX){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>N_NEIGH_MAX (%i)\n", ia, t.name, nb, N_NEIGH_MAX ); } }
+                if( nb>t.valence  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>valence     (%i)\n", ia, t.name, nb, t.valence   ); } }
+                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)!=conf.nbond  (%i)\n", ia, t.name, nb, c.nbond     ); } } 
             }else{
-                if( nbonds[ia]>1  ){ err|=true; if( bPrint ){ printf( "WARRNING checkNumberOfBonds[%i] `%s` capping atom has %i>1 bonds \n", ia, t.name, nbonds[ia] ); } }
+                if( nbonds[ia]>1  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` capping atom has %i>1 bonds\n", ia, t.name, nbonds[ia] ); } }
             }
         }
-        if( err && bExitOnError ){ printf("ERROR in checkNumberOfBonds() => Exit() \n"); exit(0); }
+        if( err && bExitOnError ){ printf("ERROR in checkNumberOfBonds() => Exit()\n"); exit(0); }
         return err;
     }
 
@@ -2099,7 +2124,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         for(int ib=0; ib<bonds.size(); ib++ ){
             //printf("\----bond[%i]\n", ib);
             if( ! checkBondInNeighs( ib ) ){
-                if(bPrint){ Vec2i b=bonds[ib].atoms; printf("WARRNING bond[%i|%i,%i] is not in neighborhood \n", ib, b.a, b.b); printAtomConf(b.a); puts(""); printAtomConf(b.b); puts(""); }
+                if(bPrint){ Vec2i b=bonds[ib].atoms; printf("WARNING bond[%i|%i,%i] is not in neighborhood \n", ib, b.a, b.b); printAtomConf(b.a); puts(""); printAtomConf(b.b); puts(""); }
                 ret=true;
             }
         }
@@ -2124,7 +2149,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
     void permutAtoms(int* permut, bool doBonds=false ){
         for(Bond&     b: bonds){ b.atoms.a=permut[b.atoms.a];  b.atoms.b=permut[b.atoms.b]; }
-        // Confs are not re-shufled because they point to bonds, not atoms
+        // Confs are not re-shuffled because they point to bonds, not atoms
         //for(AtomConf& c: confs){ 
         //    for(int j=0; j<N_NEIGH_MAX;j++){
         //        int& ing= c.neighs[j];
@@ -2882,6 +2907,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         //int iret = mol->load_xyz( fname ); 
         int iret =  params->loadXYZ( fname, mol->natoms, &mol->pos, &mol->REQs, &mol->atomType, &mol->npis, &lvec );
         //mol->printAtomInfo(); //exit(0);
+        // TBD how ret can be -1???
         if     ( iret<0  ){ return iret; }
         else if( iret==0 ){ bPBC=false;  }
         else if( iret>0  ){ bPBC=true;   }
@@ -3209,7 +3235,7 @@ void makeNeighs( int*& neighs, int perAtom ){
 }
 
 #ifdef MMFFsp3_loc_h
-void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool bUFF=true ){
+void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool bUFF=false ){
 
         //double c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
         double ang0s[3]{ 109.5 *M_PI/180.0, 120.0*M_PI/180.0, 180.0*M_PI/180.0 }; // cos(angle)   sp1 sp2 sp3
@@ -3232,7 +3258,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
             for(int i=0; i<ff.ntors; i++){
                 const Dihedral& dih=dihedrals[i];
                 ff.tors2atom [i]=dih.atoms;
-                ff.torsParams[i]=Quat4d{cos(dih.a0),sin(dih.a0),dih.k,dih.n};
+                //ff.torsParams[i]=Quat4d{cos(dih.a0),sin(dih.a0),dih.k,dih.n};
+                ff.torsParams[i]=Quat4d{cos(dih.a0),sin(dih.a0),dih.k, (double)dih.n}; 
             }
         }
 
@@ -3691,9 +3718,1357 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
     */
 #endif  // EFF_old_h
 
+    void assignUFFtypes_trivial( int* neighs, double* BOs, int* BOs_int, bool* set_atom, bool* set_bond ){
+
+        for(int ia=0; ia<atoms.size(); ia++){
+            Atom& Ai = atoms[ia];
+            AtomConf& Ci = confs[Ai.iconf];
+            if( params->atypes[Ai.type].name[0] == 'H' ){ // all hydrogens
+                Ai.type = params->getAtomType("H_", true);
+                set_atom[ia] = true;
+                int ja = neighs[ia*4];
+                int ib = getBondByAtoms( ia, ja );
+                BOs[ib] = 1.0;
+                BOs_int[ib] = 1;
+                set_bond[ib] = true;
+            } else {
+                AtomConf& Ci = confs[Ai.iconf];
+                if( params->atypes[Ai.type].name[0] == 'C' && Ci.nbond == 4 ){ // all sp3 carbons
+                    Ai.type = params->getAtomType("C_3", true);
+                    set_atom[ia] = true;
+                    for(int in=ia*4; in<ia*4+4; in++){
+                        int ja = neighs[in];
+                        int ib = getBondByAtoms( ia, ja );
+                        BOs[ib] = 1.0;
+                        BOs_int[ib] = 1;
+                        set_bond[ib] = true;
+                    }    
+                }else if( params->atypes[Ai.type].name[0] == 'N' && Ci.nbond == 3 ){ // all sp3 nitrogens
+                    // not setting ufftype and final bond orders, as some may be resonant
+                    for(int in=ia*4; in<ia*4+3; in++){
+                        int ja = neighs[in];
+                        int ib = getBondByAtoms( ia, ja );
+                        BOs_int[ib] = 1;
+                    }    
+                }else if( params->atypes[Ai.type].name[0] == 'N' && Ci.nbond == 1 ){ // all sp1 nitrogens
+                    Ai.type = params->getAtomType("N_1", true);
+                    set_atom[ia] = true;
+                    int ja = neighs[ia*4];
+                    int ib = getBondByAtoms( ia, ja );
+                    BOs[ib] = 3.0;
+                    BOs_int[ib] = 3;
+                    set_bond[ib] = true;
+                    Atom& Aj = atoms[ja];
+                    // nitrile group
+                    if( params->atypes[Aj.type].name[0] == 'C' ){ 
+                        Aj.type = params->getAtomType("C_1", true);
+                        set_atom[ja] = true;
+                        for(int jn=ja*4; jn<ja*4+2; jn++){
+                            int ka = neighs[jn];
+                            if( ka == ia ) continue;
+                            int jb = getBondByAtoms( ja, ka );
+                            BOs[jb] = 1.0;
+                            BOs_int[jb] = 1;
+                            set_bond[jb] = true;
+                        }
+                    }
+                }else if( params->atypes[Ai.type].name[0] == 'O' && Ci.nbond == 2 ){ // all sp3 oxygens
+                    // not setting ufftype and final bond orders, as some may be resonant
+                    for(int in=ia*4; in<ia*4+2; in++){
+                        int ja = neighs[in];
+                        int ib = getBondByAtoms( ia, ja );
+                        BOs_int[ib] = 1;
+                    }    
+                }else if( params->atypes[Ai.type].name[0] == 'O' && Ci.nbond == 1 ){ // all sp2 oxygens
+                    // not setting ufftype and final bond orders, as some may be resonant
+                    int ja = neighs[ia*4];
+                    int ib = getBondByAtoms( ia, ja );
+                    BOs_int[ib] = 2;
+                }
+            }
+        }
+
+    }
+
+    void assignUFFtypes_nitro( int* neighs, double* BOs, int* BOs_int, bool* set_atom, bool* set_bond ){
+
+        for(int ia=0; ia<atoms.size(); ia++){
+            Atom& Ai = atoms[ia];
+            if( params->atypes[Ai.type].name[0] == 'H' ) continue;
+            AtomConf& Ci = confs[Ai.iconf];
+            if( params->atypes[Ai.type].name[0] == 'N' && Ci.nbond == 3 ){ 
+                int n = 0;
+                for(int in=ia*4; in<ia*4+3; in++){
+                    int ja = neighs[in];
+                    Atom& Aj = atoms[ja];
+                    if ( params->atypes[Aj.type].name[0] == 'O' ){n++;};
+                }
+                if( n == 2 ){
+                    Ai.type = params->getAtomType("N_R", true);
+                    set_atom[ia] = true;
+                    for(int in=ia*4; in<ia*4+3; in++){
+                        int ja = neighs[in];
+                        Atom& Aj = atoms[ja];
+                        if ( params->atypes[Aj.type].name[0] == 'O' ){
+                            Aj.type = params->getAtomType("O_R", true);
+                            set_atom[ja] = true;
+                            int ib = getBondByAtoms( ia, ja );
+                            BOs[ib] = 1.5;
+                            set_bond[ib] = true;
+                        }else{
+                            int ib = getBondByAtoms( ia, ja );
+                            BOs[ib] = 1.0;
+                            set_bond[ib] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+    bool assignUFFtypes_checkall( int* neighs, int* BOs_int ){
+
+        // check saturation
+        for (; true; ) {
+            bool changed = false;
+            for(int ia=0; ia<atoms.size(); ia++){
+                bool found = false;
+                Atom& A = atoms[ia];
+                if( params->atypes[A.type].name[0] == 'H' ) continue;
+                AtomConf& C = confs[A.iconf];
+                // skip already set atoms
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ja = neighs[in];
+                    int ib = getBondByAtoms( ia, ja );
+                    if( BOs_int[ib] < 0 ){ found = true; break; }
+                }
+                if( !found ) continue;
+                // look for atoms that misses only one bond (or only single bonds)
+                int nset = 0;
+                int val = 0;
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ja = neighs[in];
+                    int ib = getBondByAtoms( ia, ja );
+                    if( BOs_int[ib] > 0 ){ nset++; val+=BOs_int[ib]; }
+                }
+                // if found, set it
+                if( ( nset == C.nbond - 1 ) || ( C.nbond - nset == params->atypes[A.type].valence - val ) ){
+                    changed = true;
+                    if( nset == C.nbond-1 ){
+                        for(int in=ia*4; in<ia*4+C.nbond; in++){
+                            int ja = neighs[in];
+                            int ib = getBondByAtoms( ia, ja );
+                            if( BOs_int[ib] < 0 ){ BOs_int[ib] = params->atypes[A.type].valence - val; break; }
+                        }
+                    }else if( C.nbond - nset == params->atypes[A.type].valence - val ){
+                        for(int in=ia*4; in<ia*4+C.nbond; in++){
+                            int ja = neighs[in];
+                            int ib = getBondByAtoms( ia, ja );
+                            if( BOs_int[ib] < 0 ){ BOs_int[ib] = 1; }
+                        }
+                    }
+                }
+            }
+            if (!changed) break;
+        }
+
+        // check if we are done
+        bool done = true;
+        // check if the bond orders are all set
+        for (int ib = 0; ib < bonds.size(); ib++) {
+            if ( BOs_int[ib] < 0 ) { done = false; break; }
+        }
+        return done;
+
+    }
+
+    bool assignUFFtypes_checkatom( int ia, int* neighs, int* BOs_int ){
+
+        bool exclude = true;
+        Atom& A = atoms[ia];
+        AtomConf& C = confs[A.iconf];
+        for(int in=ia*4; in<ia*4+C.nbond; in++){
+            int ja = neighs[in];
+            int ib = getBondByAtoms( ia, ja );
+            if( BOs_int[ib] < 0 ){ exclude = false; break; }
+        }
+        return exclude;
+
+    }
+
+    void assignUFFtypes_treewalk( int* neighs, int* BOs_int ){
+
+        // see if the problem is trivial
+        bool done = assignUFFtypes_checkall ( neighs, &BOs_int[0] );
+        if ( done ) return;
+
+        // --- explore the graph
+        // NB: at this point, only sp2 C, sp2 N and sp C (both triple bond and 2x double bond) are left to be assigned
+        // TBD use arrays instead of vectors
+        std::vector<int> BOs_int_tmp0(bonds.size());
+        std::vector<int> BOs_int_tmp1(bonds.size());
+        std::vector<int> BOs_int_tmp2(bonds.size());
+        std::vector<int> BOs_int_tmp3(bonds.size());
+        for (int ib = 0; ib < bonds.size(); ib++) { BOs_int_tmp0[ib] = BOs_int[ib]; }
+
+        // pick an atom to attempt assigning a double bond
+        for(int ia1=0; ia1<atoms.size(); ia1++){
+            Atom& A1 = atoms[ia1];
+            if( params->atypes[A1.type].name[0] == 'H' ) continue;
+            if ( assignUFFtypes_checkatom( ia1, neighs, &BOs_int[0] ) ) continue;
+            // pick a a neighbor
+            AtomConf& C1 = confs[A1.iconf];
+            for(int in1=ia1*4; in1<ia1*4+C1.nbond; in1++){
+                int ib1 = getBondByAtoms( ia1, neighs[in1] );
+                if( BOs_int_tmp0[ib1] > 0 ) continue;
+                // try to set it up as a double bond
+                for (int ib = 0; ib < bonds.size(); ib++) { BOs_int_tmp1[ib] = BOs_int_tmp0[ib]; }
+                BOs_int_tmp1[ib1] = 2;
+                // see if this solves the problem
+                if ( assignUFFtypes_checkall ( neighs, &BOs_int_tmp1[0] ) ){ 
+                    for (int ib = 0; ib < bonds.size(); ib++) { BOs_int[ib] = BOs_int_tmp1[ib]; } 
+                    return; 
+                }
+
+                // otherwise, continue with the second nested attempt
+                // pick an atom to attempt assigning a double bond
+                for(int ia2=0; ia2<atoms.size(); ia2++){
+                    Atom& A2 = atoms[ia2];
+                    if( params->atypes[A2.type].name[0] == 'H' ) continue;
+                    if ( assignUFFtypes_checkatom( ia2, neighs, &BOs_int[0] ) ) continue;
+                    // pick a a neighbor
+                    AtomConf& C2 = confs[A2.iconf];
+                    for(int in2=ia2*4; in2<ia2*4+C2.nbond; in2++){
+                        int ib2 = getBondByAtoms( ia2, neighs[in2] );
+                        if( BOs_int_tmp1[ib2] > 0 ) continue;
+                        // try to set it up as a double bond
+                        for (int ib = 0; ib < bonds.size(); ib++) { BOs_int_tmp2[ib] = BOs_int_tmp1[ib]; }
+                        BOs_int_tmp2[ib2] = 2;
+                        // see if this solves the problem
+                        if ( assignUFFtypes_checkall ( neighs, &BOs_int_tmp2[0] ) ){ 
+                            for (int ib = 0; ib < bonds.size(); ib++) { BOs_int[ib] = BOs_int_tmp2[ib]; } 
+                            return; 
+                        }
+
+                        // otherwise, continue with the third nested attempt
+                        // pick an atom to attempt assigning a double bond
+                        for(int ia3=0; ia3<atoms.size(); ia3++){
+                            Atom& A3 = atoms[ia3];
+                            if( params->atypes[A3.type].name[0] == 'H' ) continue;
+                            if ( assignUFFtypes_checkatom( ia3, neighs, &BOs_int[0] ) ) continue;
+                            // pick a a neighbor
+                            AtomConf& C3 = confs[A3.iconf];
+                            for(int in3=ia3*4; in3<ia3*4+C3.nbond; in3++){
+                                int ib3 = getBondByAtoms( ia3, neighs[in3] );
+                                if( BOs_int_tmp2[ib3] > 0 ) continue;
+                                // try to set it up as a double bond
+                                for (int ib = 0; ib < bonds.size(); ib++) { BOs_int_tmp3[ib] = BOs_int_tmp2[ib]; }
+                                BOs_int_tmp3[ib3] = 2;
+                                // see if this solves the problem
+                                if ( assignUFFtypes_checkall ( neighs, &BOs_int_tmp3[0] ) ){ 
+                                    for (int ib = 0; ib < bonds.size(); ib++) { BOs_int[ib] = BOs_int_tmp3[ib]; } 
+                                    return; 
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        printf("ERROR TREEWALK: tree walk failed\n");
+        printf("STOP\n");
+        exit(0);
+
+    }
+
+    void assignUFFtypes_simplerule( double tol, int* neighs, double* BOs, bool* set_atom, bool* set_bond ){
+
+        // simplest-est rule: atoms with two sp2 neighbors (or heteroatoms) are resonant
+        for(int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            if( params->atypes[A.type].name[0] == 'H' ) continue;
+            AtomConf& C = confs[A.iconf];
+            if( ( params->atypes[A.type].name[0] == 'C' && C.nbond == 3 ) || // C_2
+                ( params->atypes[A.type].name[0] == 'N' && C.nbond > 1 ) ||  // N_3 or N_2
+                ( params->atypes[A.type].name[0] == 'O' && C.nbond == 2 ) ){ // O_3
+                int n = 0;
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ja = neighs[in];
+                    Atom& Aj = atoms[ja];
+                    if( params->atypes[Aj.type].name[0] == 'H' ) continue;
+                    AtomConf& Cj = confs[Aj.iconf];
+                    if( ( params->atypes[Aj.type].name[0] == 'C' && Cj.nbond == 3 ) || // C_2
+                        ( params->atypes[Aj.type].name[0] == 'N' && Cj.nbond > 1 ) ||  // N_3 or N_2
+                        ( params->atypes[Aj.type].name[0] == 'O' && Cj.nbond == 2 ) ){ n++; }
+                }
+                if( n > 1 ){
+                    // set atoms
+                    if ( set_atom[ia] ) {
+                        if ( params->atypes[A.type].name[2] != 'R' ) printf("WARNING SIMPLERULE: atom %i would be set to resonant but it has already a type of %s\n", ia+1, params->atypes[A.type].name);
+                        continue;
+                    }
+                    if ( params->atypes[A.type].name[0] == 'C' ){ 
+                        A.type = params->getAtomType("C_R", true); 
+                    }else if ( params->atypes[A.type].name[0] == 'N' ){ 
+                        A.type = params->getAtomType("N_R", true);
+                    }else if ( params->atypes[A.type].name[0] == 'O' ){
+                        A.type = params->getAtomType("O_R", true);
+                    }else{
+                        printf("ERROR SIMPLERULE: atom %i type %i not recognized\n", ia, A.type);
+                        printf("STOP\n");
+                        exit(0);
+                    }
+                    set_atom[ia] = true;
+                    // set bonds
+                    for(int in=ia*4; in<ia*4+C.nbond; in++){
+                        int ja = neighs[in];
+                        Atom& Aj = atoms[ja];
+                        if( params->atypes[Aj.type].name[0] == 'H' ) continue;
+                        AtomConf& Cj = confs[Aj.iconf];
+                        if( ( params->atypes[Aj.type].name[0] == 'C' && Cj.nbond == 3 ) || // C_2
+                            ( params->atypes[Aj.type].name[0] == 'N' && Cj.nbond > 1 ) ||  // N_3 or N_2
+                            ( params->atypes[Aj.type].name[0] == 'O' && Cj.nbond == 2 ) ){ // O_3
+                            int ib = getBondByAtoms( ia, neighs[in] );
+                            if ( set_bond[ib] ){
+                                if ( abs(BOs[ib]-1.5) > tol ) printf("WARNING SIMPLERULE: bond %i between atoms %i and %i would be set to 1.5 but it has already a bond order of %g\n", ib+1, ia+1, ja+1, BOs[ib]);
+                                continue;
+                            }
+                            BOs[ib] = 1.5;
+                            set_bond[ib] = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void assignUFFtypes_findrings( double tol, int* neighs, double* BOs, int* BOs_int, bool* set_atom, bool* set_bond ){
+
+        bool   explored[atoms.size()];
+        for(int ia=0; ia<atoms.size(); ia++){explored[ia]=false;}
+        std::vector<int>  nb(7);
+        for (; true; ) {
+            bool changed = false;
+            for(int ia=0; ia<atoms.size(); ia++){
+                nb[1] = ia; // 1st atom
+                Atom& A1 = atoms[nb[1]];
+                if ( params->atypes[A1.type].name[0] == 'H' ) continue;
+                AtomConf& C1 = confs[A1.iconf];
+                for(int in1=nb[1]*4; in1<nb[1]*4+C1.nbond; in1++){
+                    nb[2] = neighs[in1]; // 2nd atom
+                    Atom& A2 = atoms[nb[2]];
+                    if ( params->atypes[A2.type].name[0] == 'H' ) continue;
+                    AtomConf& C2 = confs[A2.iconf];
+                    for(int in2=nb[2]*4; in2<nb[2]*4+C2.nbond; in2++){
+                        nb[3] = neighs[in2]; // 3rd atom
+                        if ( nb[3] == nb[1] ) continue;
+                        Atom& A3 = atoms[nb[3]];
+                        if ( params->atypes[A3.type].name[0] == 'H' ) continue;
+                        AtomConf& C3 = confs[A3.iconf];
+                        for(int in3=nb[3]*4; in3<nb[3]*4+C3.nbond; in3++){
+                            nb[4] = neighs[in3]; // 4th atom
+                            if ( nb[4] == nb[2] ) continue;
+                            Atom& A4 = atoms[nb[4]];
+                            if ( params->atypes[A4.type].name[0] == 'H' ) continue;
+                            AtomConf& C4 = confs[A4.iconf];
+                            for(int in4=nb[4]*4; in4<nb[4]*4+C4.nbond; in4++){
+                                nb[5] = neighs[in4]; // 5th atom
+                                if ( nb[5] == nb[3] ) continue;
+                                Atom& A5 = atoms[nb[5]];
+                                if ( params->atypes[A5.type].name[0] == 'H' ) continue;
+                                AtomConf& C5 = confs[A5.iconf];
+                                for(int in5=nb[5]*4; in5<nb[5]*4+C5.nbond; in5++){
+                                    nb[6] = neighs[in5]; // 6th atom
+                                    if ( nb[6] == nb[4] ) continue;
+
+                                    // found 5-member ring
+                                    if ( nb[6] == nb[1] ) {
+                                        if ( explored[nb[1]] && explored[nb[2]] && explored[nb[3]] && explored[nb[4]] && explored[nb[5]] ) continue;
+                                        nb[0] = nb[5];
+                                        // count double bonds & heteroatoms
+                                        if ( assignUFFtypes_checkaroma ( 5, &nb[0], &BOs[0], &BOs_int[0], tol ) ) {
+                                            changed = true;
+                                            for(int i=1; i<6; i++){explored[nb[i]] = true;}
+                                            assignUFFtypes_setaroma ( 5, &nb[0], &neighs[0], &BOs[0], &set_atom[0], &set_bond[0], tol );
+                                        }
+                                    }
+
+                                    Atom& A6 = atoms[nb[6]];
+                                    if ( params->atypes[A6.type].name[0] == 'H' ) continue;
+                                    AtomConf& C6 = confs[A6.iconf];
+                                    for(int in6=nb[6]*4; in6<nb[6]*4+C6.nbond; in6++){
+                                        nb[7] = neighs[in6]; // 7th atom
+                                        if ( nb[7] == nb[5] ) continue;
+
+                                        // found 6-member ring
+                                        if ( nb[7] == nb[1] ) {
+                                            if ( explored[nb[1]] && explored[nb[2]] && explored[nb[3]] && explored[nb[4]] && explored[nb[5]] && explored[nb[6]] ) continue;
+                                            nb[0] = nb[6];
+                                            // count double bonds & heteroatoms
+                                            if ( assignUFFtypes_checkaroma ( 6, &nb[0], &BOs[0], &BOs_int[0], tol ) ) {
+                                                changed = true;
+                                                for(int i=1; i<7; i++){explored[nb[i]] = true;}
+                                                assignUFFtypes_setaroma ( 6, &nb[0], &neighs[0], &BOs[0], &set_atom[0], &set_bond[0], tol );
+                                            }
+                                        }
+
+                                    } // in6
+                                } // in5
+                            } // in4
+                        } // in3
+                    } // in2
+                } // in1
+            } // ia
+
+            if (!changed) break;
+        }
+
+    }
+
+    bool assignUFFtypes_checkaroma ( int n, int* nb, double* BOs, int* BOs_int, double tol ){
+
+        // check that all carbons in the ring are sp2
+        for(int i=1; i<n+1; i++){
+            Atom& A = atoms[nb[i]];
+            AtomConf& C = confs[A.iconf];
+            if ( params->atypes[A.type].name[0] == 'C' && C.nbond != 3 ) return false;
+        }
+                
+        int npi = 0;
+
+        // count heteroatoms in the ring that can donate an electron pair        
+        for(int i=1; i<n+1; i++){
+            Atom& A = atoms[nb[i]];
+            AtomConf& C = confs[A.iconf];
+            if ( ( params->atypes[A.type].name[0] == 'N' && C.nbond == 3 ) || 
+                 ( params->atypes[A.type].name[0] == 'O' && C.nbond == 2 ) ) npi += 2;
+        }
+
+        int npi_save = npi;
+
+        // count pi electrons in the ring considering double bonds in the ring only
+        for(int i=1; i<n+1; i++){
+            int ib1 = getBondByAtoms( nb[i], nb[i+1] );
+            int ib2 = getBondByAtoms( nb[i-1], nb[i] );
+            if ( BOs_int[ib1] == 2 || BOs_int[ib2] == 2 ) npi += 1;
+        }
+
+        if ( npi == 6 ) return true;
+
+        npi = npi_save;
+
+        // count pi electrons in the ring considering also fused rings
+        for(int i=1; i<n+1; i++){
+            int ib1 = getBondByAtoms( nb[i], nb[i+1] );
+            int ib2 = getBondByAtoms( nb[i-1], nb[i] );
+            if ( BOs_int[ib1] == 2 || abs(BOs[ib1]-1.5) < tol || BOs_int[ib2] == 2 || abs(BOs[ib2]-1.5) < tol ) npi += 1;
+        }
+
+        if ( npi == 6 ) return true;
+
+        return false;
+
+    }
+
+    void assignUFFtypes_setaroma ( int n, int* nb, int* neighs, double* BOs, bool* set_atom, bool* set_bond, double tol ){
+
+        // set atoms
+        for(int i=1; i<n+1; i++){
+            Atom& A = atoms[nb[i]];
+            if ( set_atom[nb[i]] ) {
+                printf("WARNING SETAROMA: atom %c %i would be set to resonant but it has already a type of %i\n", params->atypes[A.type].name[0], nb[i]+1, A.type);
+                continue;
+            }
+            if ( params->atypes[A.type].name[0] == 'C' ){ 
+                A.type = params->getAtomType("C_R", true); 
+            }else if ( params->atypes[A.type].name[0] == 'N' ){ 
+                A.type = params->getAtomType("N_R", true);
+            }else if ( params->atypes[A.type].name[0] == 'O' ){
+                A.type = params->getAtomType("O_R", true);
+            }else{
+                printf("ERROR SIMPLERULE: atom %i type %i not recognized\n", nb[i]+1, A.type);
+                printf("STOP\n");
+                exit(0);
+            }
+            set_atom[nb[i]] = true;
+        }
+        // set ring bonds
+        for(int i=1; i<n+1; i++){
+            int ib = getBondByAtoms( nb[i], nb[i+1] );
+            if ( set_bond[ib] && abs(BOs[ib]-1.5) > tol ) {
+                Atom& A1 = atoms[nb[i]];
+                Atom& A2 = atoms[nb[i+1]];
+                printf("WARNING SETAROMA: bond %i between atoms %c %i and %c %i would be set to 1.5 but it has already a bond order of %g\n", ib+1, params->atypes[A1.type].name[0], nb[i]+1, params->atypes[A2.type].name[0], nb[i+1]+1, BOs[ib]);
+                continue;
+            }
+            BOs[ib] = 1.5;
+            set_bond[ib] = true;
+        }
+
+        // set other bonds
+        for(int i=1; i<n+1; i++){
+            Atom& A = atoms[nb[i]];
+            if ( params->atypes[A.type].name[0] == 'H' ) continue;
+            AtomConf& C = confs[A.iconf];
+            for(int in=nb[i]*4; in<nb[i]*4+C.nbond; in++){
+                bool ok = true;
+                for(int j=1; j<n+1; j++){ if ( neighs[in] == nb[j] ) { ok = false; break; } }
+                if ( !ok ) continue;
+                Atom& Aj = atoms[neighs[in]];
+                if ( params->atypes[Aj.type].name[0] == 'H' ) continue;
+                AtomConf& Cj = confs[Aj.iconf];
+                int ib = getBondByAtoms( nb[i], neighs[in] );
+                if ( params->atypes[Aj.type].name[0] == 'O' && Cj.nbond == 1 ) { // delocalized carbonyl
+                    if ( set_atom[neighs[in]] && params->atypes[Aj.type].name[2] != 'R' ) {
+                        printf("WARNING SETAROMA: carbonyl atom %c %i would be set to resonant but it has already a type of %i\n", params->atypes[Aj.type].name[0], neighs[in]+1, Aj.type);
+                        continue;
+                    }
+                    if ( set_bond[ib] && abs(BOs[ib]-1.5) > tol ) {
+                        printf("WARNING SETAROMA: bond %i between atoms %c %i and %c %i would be set to 1.5 but it has already a bond order of %g\n", ib+1, params->atypes[A.type].name[0], nb[i]+1, params->atypes[Aj.type].name[0], neighs[in]+1, BOs[ib]);
+                        continue;
+                    }
+                    Aj.type = params->getAtomType("O_R", true);
+                    set_atom[neighs[in]] = true;
+                    BOs[ib] = 1.5;
+                    set_bond[ib] = true;
+                } //else {
+                  //  BOs[ib] = 1.0;
+                  //  set_bond[ib] = true; }
+            }
+        }
+
+    }
+
+    void assignUFFtypes_assignrest( int* neighs, double* BOs, int* BOs_int, bool* set_atom, bool* set_bond ){
+
+        for(int ia=0; ia<atoms.size(); ia++){
+            if ( set_atom[ia] ) continue;
+            Atom& A = atoms[ia];
+            if ( params->atypes[A.type].name[0] == 'H' ) continue;
+            AtomConf& C = confs[A.iconf];
+            if ( params->atypes[A.type].name[0] == 'C' ) {
+                if ( C.nbond == 2 ) { 
+                    A.type = params->getAtomType("C_1", true); 
+                    set_atom[ia] = true; 
+                } else if ( C.nbond == 3 ) { 
+                    A.type = params->getAtomType("C_2", true); 
+                    set_atom[ia] = true; 
+                }
+            } else if ( params->atypes[A.type].name[0] == 'N' ) {
+                if ( C.nbond == 2 ) { 
+                    A.type = params->getAtomType("N_2", true); 
+                    set_atom[ia] = true; 
+                } else if ( C.nbond == 3 ) { 
+                    A.type = params->getAtomType("N_3", true); 
+                    set_atom[ia] = true;
+                    for(int in=ia*4; in<ia*4+3; in++){
+                        int ib = getBondByAtoms( ia, neighs[in] );
+                        BOs[ib] = 1.0;
+                        BOs_int[ib] = 1;
+                        set_bond[ib] = true;
+                    }
+                }
+            } else if ( params->atypes[A.type].name[0] == 'O' ) {
+                if ( C.nbond == 1 ) { 
+                    A.type = params->getAtomType("O_2", true); 
+                    set_atom[ia] = true; 
+                    int ib = getBondByAtoms( ia, neighs[ia*4] );
+                    BOs[ib] = 2.0;
+                    BOs_int[ib] = 2;
+                    set_bond[ib] = true;
+                    Atom& Aj = atoms[neighs[ia*4]];
+                    if ( params->atypes[Aj.type].name[0] == 'H' ) continue;
+                    AtomConf& Cj = confs[Aj.iconf];
+                    if ( params->atypes[A.type].name[0] == 'C' && !set_atom[neighs[ia*4]] && Cj.nbond == 3 ) {
+                        Aj.type = params->getAtomType("C_2", true);
+                        set_atom[neighs[ia*4]] = true;
+                    }
+                } else if ( C.nbond == 2 ) { 
+                    A.type = params->getAtomType("O_3", true); 
+                    set_atom[ia] = true; 
+                    for(int in=ia*4; in<ia*4+2; in++){
+                        int ib = getBondByAtoms( ia, neighs[in] );
+                        BOs[ib] = 1.0;
+                        BOs_int[ib] = 1;
+                        set_bond[ib] = true;
+                    }
+                }
+            }
+        }
+
+    }
+
+    void assignUFFtypes_fixsaturation( int* neighs, double* BOs, int* BOs_int, bool* set_bond, double tol ){
+
+        for (; true; ) {
+            bool changed = false;
+
+            for(int ia=0; ia<atoms.size(); ia++){
+                Atom& A = atoms[ia];
+                if ( params->atypes[A.type].name[0] == 'H' ) continue;
+                AtomConf& C = confs[A.iconf];
+                // if the atom has all bonds set, skip
+                bool ok = true;
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ib = getBondByAtoms( ia, neighs[in] );
+                    if ( BOs[ib] < 0.0 ) { ok = false; break; }
+                }
+                if ( ok ) continue;
+                // compute number of already set bonds and corresponding atom valence
+                int nset = 0;
+                double val = 0.0;
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ib = getBondByAtoms( ia, neighs[in] );
+                    if ( BOs[ib] > 0.0 ) { 
+                        nset++; 
+                        val+=(double)BOs_int[ib]; 
+                    }
+                }
+                val = (double)params->atypes[A.type].valence - val;
+                // only one bond to be set
+                if ( nset == C.nbond-1 ) {
+                    // check for weird valence
+                    if ( abs( val - (double)rint(val) ) > tol || abs(val) < tol ) {
+                        printf("ERROR FIXSATURATION: atom %c %i would have a valence of %g\n", params->atypes[A.type].name[0], ia+1, val);
+                        printf("STOP\n");
+                        exit(0);
+                    }
+                    changed = true;
+                    for(int in=ia*4; in<ia*4+C.nbond; in++){
+                        int ib = getBondByAtoms( ia, neighs[in] );
+                        if ( BOs[ib] < 0.0 ) {
+                            BOs[ib] = val;
+                            BOs_int[ib] = (int)rint(val);
+                            set_bond[ib] = true;
+                            break;
+                        }
+                    }
+                // or multiple bonds to be set, but they are all single
+                } else if ( (int)rint(val) == C.nbond-nset ) {
+                        changed = true;
+                        for(int in=ia*4; in<ia*4+C.nbond; in++){
+                            int ib = getBondByAtoms( ia, neighs[in] );
+                            if ( BOs[ib] < 0.0 ) {
+                                BOs[ib] = 1.0;
+                                BOs_int[ib] = 1;
+                                set_bond[ib] = true;
+                            }
+                        }
+                }
+            }
+                
+            if( !changed ) break;
+        }
+
+    }
+
+    void assignUFFtypes_cumulene( int* neighs, double* BOs, int* BOs_int, bool* set_bond ){
+
+        // ad hoc exception for getting rid of cumulenes in the backbone, i.e.
+        /* ... C(ia3)                                           ... C(ia3)                          
+               \\                              /                    \\                __            /     
+                C(ia4) == C(ia1) == C(ia2) == C(ia3)	    ==>       C(ia4) -- C(ia1) == C(ia2) -- C(ia3) 
+               /                              \\                     /                              \\           
+                                                C(ia4) ...                                           C(ia4) ... */
+        for(int ia1=0; ia1<atoms.size(); ia1++){
+            Atom& A1 = atoms[ia1];
+            if( params->atypes[A1.type].name[0] != 'C' ) continue; // looking for C
+            AtomConf& C1 = confs[A1.iconf];
+            if( C1.nbond != 2 ) continue; // looking for sp C
+            for(int in1=ia1*4; in1<ia1*4+2; in1++){
+                int ia2 = neighs[in1];
+                Atom& A2 = atoms[ia2];
+                if( params->atypes[A2.type].name[0] != 'C' ) continue; // looking for C
+                AtomConf& C2 = confs[A2.iconf];
+                if( C2.nbond != 2 ) continue; // looking for sp C
+                int ib1 = getBondByAtoms( ia1, ia2 );
+                int ia4;
+                if(in1==ia1*4){ia4=neighs[ia1*4+1];}else{ia4=neighs[ia1*4];}
+                Atom& A4 = atoms[ia4];
+                if( params->atypes[A4.type].name[0] != 'C' ) continue; // looking for C
+                AtomConf& C4 = confs[A4.iconf];
+                if( C4.nbond != 3 ) continue; // looking for sp2 C
+                int ib4 = getBondByAtoms( ia1, ia4 );
+                for(int in2=ia2*4; in2<ia2*4+2; in2++){
+                    int ia3 = neighs[in2];
+                    if( ia3 == ia1 ) continue; // looking for the other neighbor of ia2
+                    Atom& A3 = atoms[ia3];
+                    if( params->atypes[A3.type].name[0] != 'C' ) continue; // looking for C
+                    AtomConf& C3 = confs[A3.iconf];
+                    if( C3.nbond != 3 ) continue; // looking for sp2 C
+                    for(int in3=ia3*4; in3<ia3*4+3; in3++){
+                        if( neighs[in3] != ia4 ) continue; // looking for the right ia3
+                        int ib2 = getBondByAtoms( ia2, ia3 );
+                        int ib3 = getBondByAtoms( ia3, ia4 );
+                        BOs[ib1] = 3.0;
+                        BOs[ib2] = 1.0;
+                        BOs[ib3] = 2.0;
+                        BOs[ib4] = 1.0;
+                        BOs_int[ib1] = 3;
+                        BOs_int[ib2] = 1;
+                        BOs_int[ib3] = 2;
+                        BOs_int[ib4] = 1;
+                        set_bond[ib1] = true;
+                        set_bond[ib2] = true;
+                        set_bond[ib3] = true;
+                        set_bond[ib4] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    void assignUFFtypes_conjugation( int* neighs, double* BOs ){
+
+        for(int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            if ( params->atypes[A.type].name[0] == 'H' ) continue;
+            AtomConf& C = confs[A.iconf];
+            if( (params->atypes[A.type].name[0]=='N'&&C.nbond==3) || (params->atypes[A.type].name[0]=='O'&&C.nbond==2) ){
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ja = neighs[in];
+                    Atom& Aj = atoms[ja];
+                    if ( params->atypes[Aj.type].name[2]=='R' ) {
+                        if ( params->atypes[A.type].name[0] == 'N' ) { A.type = params->getAtomType("N_R", true); } 
+                        else if ( params->atypes[A.type].name[0] == 'O' ) { A.type = params->getAtomType("O_R", true); }
+                        int ib = getBondByAtoms( ia, ja );
+                        BOs[ib] = 1.5;
+                    }
+                }
+            }
+        }
+
+    }
+
+    void assignUFFtypes_checks( int* neighs, double* BOs, int* BOs_int, bool* set_atom, bool* set_bond, double tol ){
+
+        // sanity checks
+        for(int ia=0; ia<atoms.size(); ia++){
+            if(!set_atom[ia]){printf("ERROR CHECKS: atom %i is not set\n", ia+1);printf("STOP\n");exit(0);}
+        }
+        for(int ib=0; ib<bonds.size(); ib++){
+            if(!set_bond[ib]){printf("ERROR CHECKS: bond %i is not set\n", ib+1);printf("STOP\n");exit(0);}
+            if(BOs[ib]<0.0){printf("ERROR CHECKS: order for bond %i order is not set\n", ib+1);printf("STOP\n");exit(0);}
+            if(BOs_int[ib]<0){printf("ERROR CHECKS: integer order for bond %i order is not set\n", ib+1);printf("STOP\n");exit(0);}
+        }
+
+        for(int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            // check that resonant atoms have at least one 1.5 bond
+            if ( params->atypes[A.type].name[2]=='R' ) { 
+                AtomConf& C = confs[A.iconf]; 
+                bool found = false;
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ib = getBondByAtoms( ia, neighs[in] );
+                    if ( abs(BOs[ib]-1.5) < tol ) { found = true; break; }
+                }
+                if ( !found ) {
+                    printf("ERROR CHECKS: atom %c %i is resonant but it has no 1.5 bonds\n", params->atypes[A.type].name[0], ia+1);
+                    for(int in=ia*4; in<ia*4+C.nbond; in++){
+                        int ib = getBondByAtoms( ia, neighs[in] );
+                        printf("  bond %i atoms %c %i %c %i bond order %g %i\n", ib+1, params->atypes[A.type].name[0], ia+1, params->atypes[atoms[neighs[in]].type].name[0], neighs[in]+1, BOs[ib], BOs_int[ib]);
+                    }
+                    printf("STOP\n");
+                    exit(0);
+                }
+            // check that sp2 atoms have one localized double bond
+            } else if ( params->atypes[A.type].name[2]=='2' ) { 
+                AtomConf& C = confs[A.iconf]; 
+                bool found = false;
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ib = getBondByAtoms( ia, neighs[in] );
+                    if ( abs(BOs[ib]-2.0) < tol ) { 
+                        if ( found ) {
+                            printf("ERROR CHECKS: atom %c %i is sp2 but it has more than one double bond\n", params->atypes[A.type].name[0], ia+1);
+                            for(int in=ia*4; in<ia*4+C.nbond; in++){
+                                int ib = getBondByAtoms( ia, neighs[in] );
+                                printf("  bond %i atoms %c %i %c %i bond order %g %i\n", ib+1, params->atypes[A.type].name[0], ia+1, params->atypes[atoms[neighs[in]].type].name[0], neighs[in]+1, BOs[ib], BOs_int[ib]);
+                            }
+                            printf("STOP\n");
+                            exit(0);
+                        }
+                        found = true;
+                    }
+                }
+                if ( !found ) {
+                    found = false;
+                    for(int in=ia*4; in<ia*4+C.nbond; in++){
+                        int ib = getBondByAtoms( ia, neighs[in] );
+                        if ( abs(BOs[ib]-1.5) < tol ) { found = true; break; }
+                    }
+                    if ( found ) {
+                        printf("WARNING CHECKS: atom %c %i is sp2 and it has no double bonds, only 1.5 bonds\n", params->atypes[A.type].name[0], ia+1);
+                    } else {
+                        printf("ERROR CHECKS: atom %c %i is sp2 but it has no double bonds\n", params->atypes[A.type].name[0], ia+1);
+                        for(int in=ia*4; in<ia*4+C.nbond; in++){
+                            int ib = getBondByAtoms( ia, neighs[in] );
+                            printf("  bond %i atoms %c %i %c %i bond order %g %i\n", ib+1, params->atypes[A.type].name[0], ia+1, params->atypes[atoms[neighs[in]].type].name[0], neighs[in]+1, BOs[ib], BOs_int[ib]);
+                        }
+                        printf("STOP\n");
+                        exit(0);
+                    }
+                }
+            }
+        }
+
+        // check that 1.5 bonds must be either 1 or 2 in the limit resonance structure
+        for(int ib=0; ib<bonds.size(); ib++){
+            if ( abs(BOs[ib]-1.5) < tol ) {
+                if ( BOs_int[ib] != 1 && BOs_int[ib] != 2 ) {
+                    printf("ERROR CHECKS: bond %i is 1.5 but in the limit resonance structure is neither single nor double\n", ib+1);
+                    printf("STOP\n");
+                    exit(0);
+                }
+            }
+        }
+    }
+
+    void assignUFFtypes_amide( int* neighs, double* BOs ){
+
+        for(int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            if ( params->atypes[A.type].name[0] == 'H' ) continue;
+            AtomConf& C = confs[A.iconf];
+            if( params->atypes[A.type].name[0] == 'C' && C.nbond == 3 ) {
+                // look for a carbonyl oxygen
+                bool found = false;
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ja = neighs[in];
+                    Atom& Aj = atoms[ja];
+                    if ( params->atypes[Aj.type].name[0] == 'H' ) continue;
+                    AtomConf& Cj = confs[Aj.iconf];
+                    if( params->atypes[Aj.type].name[0] == 'O' && Cj.nbond == 1 ) { found = true; break; }
+                }
+                if ( !found ) continue;
+                // look for an amino nitrogen
+                found = false;
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ja = neighs[in];
+                    Atom& Aj = atoms[ja];
+                    if ( params->atypes[Aj.type].name[0] == 'H' ) continue;
+                    AtomConf& Cj = confs[Aj.iconf];
+                    if( params->atypes[Aj.type].name[0] == 'N' && Cj.nbond == 3 ) { found = true; break; }
+                }
+                if ( !found ) continue;
+                A.type = params->getAtomType("C_R", true);
+                for(int in=ia*4; in<ia*4+C.nbond; in++){
+                    int ja = neighs[in];
+                    Atom& Aj = atoms[ja];
+                    if ( params->atypes[Aj.type].name[0] == 'H' ) continue;
+                    AtomConf& Cj = confs[Aj.iconf];
+                    if( params->atypes[Aj.type].name[0] == 'O' && Cj.nbond == 1 ) {
+                        Aj.type = params->getAtomType("O_R", true);
+                        int ib = getBondByAtoms( ia, ja );
+                        BOs[ib] = 1.5;
+                    } else if( params->atypes[Aj.type].name[0] == 'N' && Cj.nbond == 3 ) {
+                        Aj.type = params->getAtomType("N_R", true);
+                        int ib = getBondByAtoms( ia, ja );
+                        BOs[ib] = 1.41;
+                    }
+                }
+            }
+        }
+
+    }
+
+    // UFF atom-type assignement
+    void assignUFFtypes( int* neighs=0, bool bCumulene=false, bool bDeallocNeighs=true, bool b141=true, bool bSimple=false, bool bConj=false ){ 
+
+        // init working arrays
+        double tol = 0.05;
+        bool   set_atom[atoms.size()];
+        bool   set_bond[bonds.size()];
+        std::vector<double> BOs(bonds.size());
+        std::vector<int>    BOs_int(bonds.size());
+        for(int ia=0; ia<atoms.size(); ia++){set_atom[ia]=false;}
+        for(int ib=0; ib<bonds.size(); ib++){BOs[ib]=-1.0; BOs_int[ib]=-1; set_bond[ib]=false;}
+
+        bDeallocNeighs &= (neighs==0);
+        makeNeighs ( neighs, 4 );
+
+        // assign bond orders and atom types for trivial cases
+        // e.g. sp3 carbons, hydrogens, etc...
+        assignUFFtypes_trivial( neighs, &BOs[0], &BOs_int[0], &set_atom[0], &set_bond[0] );
+
+        // assign bond orders and atom types for nitro groups
+        assignUFFtypes_nitro( neighs, &BOs[0], &BOs_int[0], &set_atom[0], &set_bond[0] );
+
+        // find a (hopefully) valid limit resonance structure
+        assignUFFtypes_treewalk( neighs, &BOs_int[0] );
+
+        if ( bSimple ) {
+            // assign resonant atoms according to the "simple" rule: atoms with two sp2 neighbors (or heteroatoms) are resonant
+            assignUFFtypes_simplerule( tol, neighs, &BOs[0], &set_atom[0], &set_bond[0] );
+        } else {
+            // assign resonant atoms according to the Huckel rule for aromaticity
+            assignUFFtypes_findrings( tol, neighs, &BOs[0], &BOs_int[0], &set_atom[0], &set_bond[0] );
+        }
+
+        // assign the rest of atom types
+        assignUFFtypes_assignrest( neighs, &BOs[0], &BOs_int[0], &set_atom[0], &set_bond[0] );
+
+        // try to assign the rest of double bonds
+        assignUFFtypes_fixsaturation( neighs, &BOs[0], &BOs_int[0], &set_bond[0], tol );
+
+        // exception to avoid cumulenes
+        if( bCumulene ) { assignUFFtypes_cumulene( neighs, &BOs[0], &BOs_int[0], &set_bond[0] ); }
+  
+        // manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation)
+        if( bConj ){ assignUFFtypes_conjugation( neighs, &BOs[0] ); }
+
+for(int i=0; i<atoms.size(); i++){
+    for(int ia=0; ia<atoms.size(); ia++){
+        Atom& A = atoms[ia];
+        if ( A.id == i ) { printf("atom %i has type %s set %d\n", i+1, params->atypes[A.type].name, set_atom[ia] ); }
+    }
+}
+for(int ib=0; ib<bonds.size(); ib++){
+    Bond& B = bonds[ib];
+    printf("bond %i between atoms %i %i has order %g %i set %d\n", ib+1, atoms[B.atoms.x].id+1, atoms[B.atoms.y].id+1, BOs[ib], BOs_int[ib], set_bond[ib] ); 
+}
+
+        // some check before assigning parameters
+        assignUFFtypes_checks( neighs, &BOs[0], &BOs_int[0], &set_atom[0], &set_bond[0], tol );
+
+        // exception for amide groups
+        assignUFFtypes_amide( neighs, &BOs[0] );
+
+        // store bond orders
+        for(int ib=0; ib<bonds.size(); ib++){
+            Bond& B = bonds[ib];
+            B.order = BOs[ib];
+            if(verbosity>0)printf( "bondOrder[%i](%i-%i)= %g\n", ib+1, B.atoms.i+1, B.atoms.j+1, B.order );            
+        }
+
+       
+  
+
+/* --- OLD CODE (not working)
+        // assign basic atom types (i.e. X_n, where X is the element symbol and n is the hybridization, 3=sp3, 2=sp2, 1=sp)
+        assignAllSp3Types();//for(int ia=0; ia<atoms.size(); ia++){printf( "atom[%i] type %i (%s) \n", ia, atoms[ia].type, params->atypes[atoms[ia].type].name );}exit(0);
+        
+        // Kekule solver
+        // init
+        Kekule kek;
+        kek.realloc( atoms.size(), bonds.size() );
+        // set boundaries for valence to the atomic valences
+        for(int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            //kek.atomValence[ia]    = params->atypes[A.type].valence;
+            kek.atomValenceMin[ia] = params->atypes[A.type].valence;
+            kek.atomValenceMax[ia] = params->atypes[A.type].valence;
+        }
+        // set atoms involved in bonds
+        for(int ib=0; ib<bonds.size(); ib++){
+            Bond& B = bonds[ib];
+            kek.bond2atom[ib] = Vec2i{ B.atoms.i, B.atoms.j };
+        }
+        // set boundaries for bond orders and the sigma-skeleton
+        kek.setDefaultBondOrders( 1.0, 3.0, 1.0 );
+//        // compute valences based on bond orders
+//        kek.setValences();
+        // default parameters
+        double dt=0.1;
+        double damping=0.1;
+        double F2conv=1e-8;
+        int maxIter=3000;
+        bool bRandStart=false;
+        int ialg=1; // damped MD
+        // Kekule phase# 1: 
+        // - strongly enforcing the constraint about meaningful bond orders (1<=BO<=3)
+        // - trying to get right atom valences (bond orders will increase)
+        if(verbosity>0) printf("// ---- Relax phase# 1\n");
+        kek.Katom=0.1;     // correctness of atom valences
+        kek.Kbond=10.0;    // non-sense bond orders
+        kek.KatomInt=0.0;  // integerness of atom valences 
+        kek.KbondInt=0.0;  // "integerness" of bond orders
+        bool hack15=false; // hack to treat 1.5 as an integer
+        kek.relax( dt, damping, F2conv, maxIter, bRandStart, ialg, hack15 );//for(int ib=0; ib<bonds.size(); ib++){ printf( " Bond{id=%i order=%g}\n", ib, kek.bondOrder[ib] ); }//exit(0);
+        // Kekule phase# 2: 
+        // - relax the constraint about meaningful bond orders
+        // - strenghten the constraint about correct atom valences
+        if(verbosity>0) printf("// ---- Relax phase# 2\n");
+        kek.Katom=10.0;    // correctness of atom valences
+        kek.Kbond=0.1;     // non-sense bond orders
+        kek.relax( dt, damping, F2conv, maxIter, bRandStart, ialg, hack15 );//for(int ib=0; ib<bonds.size(); ib++){ printf( " Bond{id=%i order=%g}\n", ib, kek.bondOrder[ib] ); }//exit(0);
+        // Kekule phase# 3: 
+        // - enforce both constraints about correctness of atom valences and meaningful bond orders
+        // - trying to get "integer" bond orders
+        kek.Kbond=10.0;    // non-sense bond orders
+        kek.KbondInt=0.1;  // "integerness" of bond orders
+        if(verbosity>0) printf("// ---- Relax phase# 3\n");
+        kek.relax( dt, damping, F2conv, maxIter, bRandStart, ialg, hack15 );//for(int ib=0; ib<bonds.size(); ib++){ printf( " Bond{id=%i order=%g}\n", ib, kek.bondOrder[ib] ); }//exit(0);
+        // Kekule phase# 4: 
+        // - push further "integerness" of bond orders, also allowing 1.5
+        if(verbosity>0) printf("// ---- Relax phase# 4\n");
+        kek.KbondInt=10.0; // "integerness" of bond orders
+        hack15=true;       // hack to treat 1.5 as an integer
+        kek.relax( dt, damping, F2conv, maxIter, bRandStart, ialg, hack15 );//for(int ib=0; ib<bonds.size(); ib++){ printf( " Bond{id=%i order=%g}\n", ib, kek.bondOrder[ib] ); }//exit(0);
+
+        // round up bond orders
+        double tol=0.05;
+        kek.roundBondOrders( tol );
+
+
+
+        // ad hoc exception for getting rid of cumulenes in the backbone, i.e.
+           ... C(ia3)                                           ... C(ia3)                          
+               \\                              /                    \\                __            /     
+                C(ia4) == C(ia1) == C(ia2) == C(ia3)	    ==>       C(ia4) -- C(ia1) == C(ia2) -- C(ia3) 
+               /                              \\                     /                              \\           
+                                                C(ia4) ...                                           C(ia4) ... 
+
+        if(bCumulene){
+            bDeallocNeighs &= (neighs==0);
+            makeNeighs ( neighs, 4 );
+            for(int ia1=0; ia1<atoms.size(); ia1++){
+                Atom& A1 = atoms[ia1];
+                //printf("atom[%i] type %i (%c)\n", ia1, A1.type, params->atypes[A1.type].name[0]);
+                if( params->atypes[A1.type].name[0] != 'C' ) continue; // looking for C
+                AtomConf& C1 = confs[A1.iconf];
+                if( C1.nbond != 2 ) continue; // looking for sp C
+                for(int in1=ia1*4; in1<ia1*4+2; in1++){
+                    int ia2 = neighs[in1];
+                    Atom& A2 = atoms[ia2];
+                    //printf("atom[%i] type %i (%c) has neigh[%i] type %i (%c)\n", ia1, A1.type, params->atypes[A1.type].name[0], ia2, A2.type, params->atypes[A2.type].name[0]);
+                    if( params->atypes[A2.type].name[0] != 'C' ) continue; // looking for C
+                    AtomConf& C2 = confs[A2.iconf];
+                    if( C2.nbond != 2 ) continue; // looking for sp C
+                    int ib1 = getBondByAtoms( ia1, ia2 );
+                    int ia4;
+                    if(in1==ia1*4){ia4=neighs[ia1*4+1];}else{ia4=neighs[ia1*4];}
+                    Atom& A4 = atoms[ia4];
+                    //printf("atom[%i] type %i (%c) has also neigh[%i] type %i (%c)\n", ia1, A1.type, params->atypes[A1.type].name[0], ia4, A4.type, params->atypes[A4.type].name[0]);
+                    if( params->atypes[A4.type].name[0] != 'C' ) continue; // looking for C
+                    AtomConf& C4 = confs[A4.iconf];
+                    if( C4.nbond != 3 ) continue; // looking for sp2 C
+                    int ib4 = getBondByAtoms( ia1, ia4 );
+                    for(int in2=ia2*4; in2<ia2*4+2; in2++){
+                        int ia3 = neighs[in2];
+                        if( ia3 == ia1 ) continue; // looking for the other neighbor of ia2
+                        Atom& A3 = atoms[ia3];
+                        //printf("atom[%i] type %i (%c) has neigh[%i] type %i (%c)\n", ia2, A2.type, params->atypes[A2.type].name[0], ia3, A3.type, params->atypes[A3.type].name[0]);                      
+                        if( params->atypes[A3.type].name[0] != 'C' ) continue; // looking for C
+                        AtomConf& C3 = confs[A3.iconf];
+                        if( C3.nbond != 3 ) continue; // looking for sp2 C
+                        for(int in3=ia3*4; in3<ia3*4+3; in3++){
+                            if( neighs[in3] != ia4 ) continue; // looking for the right ia3
+                            int ib2 = getBondByAtoms( ia2, ia3 );
+                            int ib3 = getBondByAtoms( ia3, ia4 );
+                            kek.bondOrder[ib1]= 3.0;
+                            kek.bondOrder[ib2]= 1.0;
+                            kek.bondOrder[ib3]= 2.0;
+                            kek.bondOrder[ib4]= 1.0;
+                        }
+                    }
+                }
+            }
+            if(bDeallocNeighs)delete [] neighs;
+        }
+
+        // final check on valences
+        kek.projectValence();
+        for(int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            if( fabs(kek.atomValence[ia]-params->atypes[A.type].valence) > tol ){
+                printf( "ERROR: assignUFFtypes() atom[%i] type %i (%s) has valence %g != %g\n", ia, A.type, params->atypes[A.type].name, kek.atomValence[ia], params->atypes[A.type].valence );
+                exit(0);
+            }
+        }
+
+        // assign resonant atoms - fortran version (if 2 bonds with order 1.5 -> resonant)
+        for(int ia=0; ia<atoms.size(); ia++){
+            int n=0;
+            for(int ib=0; ib<bonds.size(); ib++){
+                Bond& B = bonds[ib];
+                if( ((B.atoms.i==ia)||(B.atoms.j==ia))&&fabs(kek.bondOrder[ib]-1.5)<tol ){ n++; }
+            }
+            if(n==2){
+                Atom& A = atoms[ia];
+                A.type = assignResonantType( A.type );
+            }
+        }
+        // assign resonant atoms - ex-novo version (if 1 bond with order 1.5 -> resonant)
+        for(int ib=0; ib<bonds.size(); ib++){
+            Bond& B = bonds[ib];
+            if( fabs(kek.bondOrder[ib]-1.5) < tol ){
+                Atom& Ai = atoms[B.atoms.i];
+                Atom& Aj = atoms[B.atoms.j];
+                Ai.type = assignResonantType( Ai.type );
+                Aj.type = assignResonantType( Aj.type );
+            }
+        }
+
+        // manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation)
+        if(bResonant){
+            for(int ia=0; ia<atoms.size(); ia++){
+                Atom& A = atoms[ia];
+                if( params->atypes[A.type].name[2]=='3' && (params->atypes[A.type].name[0]=='N'||params->atypes[A.type].name[0]=='O') ){
+                    for(int ib=0; ib<bonds.size(); ib++){
+                        Bond& B = bonds[ib];
+                        if( B.atoms.i==ia ){
+                            Atom& Aj = atoms[B.atoms.j];
+                            if( params->atypes[Aj.type].name[2]=='2' || params->atypes[Aj.type].name[2]=='R' ){ A.type = assignResonantType( A.type ); }
+                        }else if( B.atoms.j==ia ){
+                            Atom& Ai = atoms[B.atoms.i];
+                            if( params->atypes[Ai.type].name[2]=='2' || params->atypes[Ai.type].name[2]=='R' ){ A.type = assignResonantType( A.type ); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // manually change resonant bonds between C_R and N_R from 1.5 to 1.41
+        if(b141){
+            for(int ib=0; ib<bonds.size(); ib++){
+                if( fabs(kek.bondOrder[ib]-1.5)<tol ){
+                    Atom& Ai = atoms[bonds[ib].atoms.i];
+                    Atom& Aj = atoms[bonds[ib].atoms.j];
+                    if( params->atypes[Ai.type].name[2]=='R' && params->atypes[Aj.type].name[2]=='R' ){ 
+                        if( (params->atypes[Ai.type].name[0]=='C'&& params->atypes[Aj.type].name[0]=='N')||(params->atypes[Ai.type].name[0]=='N'&& params->atypes[Aj.type].name[0]=='C') ){ 
+                            kek.bondOrder[ib] = 1.41;
+                        }
+                    }
+                }
+            }
+        }
+                
+        // store bond orders
+        for(int ib=0; ib<bonds.size(); ib++){
+            Bond& B = bonds[ib];
+            B.order = kek.bondOrder[ib];
+            if(verbosity>0)printf( "bondOrder[%i](%i-%i)= %g\n", ib, B.atoms.i, B.atoms.j, B.order );            
+        }
+        kek.clear(true,true,true);
+--- END OLD CODE */
+
+        if(bDeallocNeighs)delete [] neighs;
+
+    }
+
+    double assignUFF_calcrij ( int ib ){
+
+        //Bond  B__;
+        Bond& B = bonds[ib];   // reference
+        //B.k = 0.0; 
+        //Bond* B_ = &bonds[ib]; // pointer
+        //(*B_).k = 0.0;
+        //B_->k   = 0.0;
+        
+        //B_->k = 0.0;
+        //const B__& = *B_;
+         
+
+        AtomType& Ti = params->atypes[atoms[B.atoms.i].type];
+        AtomType& Tj = params->atypes[atoms[B.atoms.j].type];
+        //const ElementType* Ei = params->elementOfAtomType(atoms[B.atoms.i].type);
+        //const ElementType* Ej = params->elementOfAtomType(atoms[B.atoms.j].type);
+        const ElementType& Ei = *params->elementOfAtomType(atoms[B.atoms.i].type);
+        const ElementType& Ej = *params->elementOfAtomType(atoms[B.atoms.j].type);
+        double rBO = -0.1332 * ( Ti.Ruff + Tj.Ruff ) * log( B.order );
+        double rEN = Ti.Ruff * Tj.Ruff * sq( sqrt(-Ei.Eaff) - sqrt(-Ej.Eaff) ) / ( -Ei.Eaff*Ti.Ruff -Ej.Eaff*Tj.Ruff );
+        double rIJ = Ti.Ruff + Tj.Ruff + rBO - rEN;
+        return rIJ;
+
+    }
+
+    void assignUFFparams( int* neighs=0, bool bDeallocNeighs=true ){
+
+        bDeallocNeighs &= (neighs==0);
+        makeNeighs ( neighs, 4 );
+
+        // assign vdw parameters
+        for( int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            params->assignRE( A.type, A.REQ, true );
+        }
+
+        // assign bond parameters
+        for ( int ib=0; ib<bonds.size(); ib++ ) {
+            Bond& B = bonds[ib];
+            const ElementType& Ei = *params->elementOfAtomType(atoms[B.atoms.i].type);
+            const ElementType& Ej = *params->elementOfAtomType(atoms[B.atoms.j].type);
+            B.l0 = assignUFF_calcrij(ib);
+            B.k = 28.7989689090648 * Ei.Quff * Ej.Quff / ( B.l0*sq(B.l0) );
+        }
+
+        // populate angle array & assign angle parameters
+        angles.clear();
+        for( int j=0; j<atoms.size(); j++){
+            Atom& Aj = atoms[j];
+            AtomType& Tj = params->atypes[Aj.type];
+            double ct = cos(Tj.Ass*deg2rad);
+            double st2 = sq(sin(Tj.Ass*deg2rad));
+            if ( params->atypes[Aj.type].name[0] == 'H' ) continue;
+            AtomConf& Cj = confs[Aj.iconf];
+            for(int in1=j*4; in1<j*4+Cj.nbond-1; in1++){
+                int i = neighs[in1];
+                const ElementType& Ei = *params->elementOfAtomType(atoms[i].type);
+                for(int in2=in1+1; in2<j*4+Cj.nbond; in2++){
+                    int k = neighs[in2];
+                    const ElementType& Ek = *params->elementOfAtomType(atoms[k].type);
+                    Angle a;
+                    a.atoms.i = i;
+                    a.atoms.j = j;
+                    a.atoms.k = k;
+                    a.bonds.x = getBondByAtoms( i, j );
+                    a.bonds.y = getBondByAtoms( j, k );
+                    double rij = assignUFF_calcrij(a.bonds.x);
+                    double rjk = assignUFF_calcrij(a.bonds.y);
+                    double rik = sqrt( rij*rij + rjk*rjk - 2.0*rij*rjk*ct );
+                    double kappa = 28.7989689090648 * Ei.Quff * Ek.Quff / (sq(rik)*sq(rik)*rik) * ( 3.0*rij*rjk*st2 - sq(rik)*ct );
+                    if ( params->atypes[Aj.type].name[2]=='1' || params->atypes[Aj.type].name[2]=='2' || 
+                    params->atypes[Aj.type].name[2]=='R' ) { // cosine/periodic
+                        if ( params->atypes[Aj.type].name[2]=='1' ) {
+                            a.k = 0.5 * kappa;
+                            a.C0 = 1.0;
+                            a.C1 = 1.0;
+                            a.C2 = 0.0;
+                            a.C3 = 0.0;
+                        } else if ( params->atypes[Aj.type].name[2]=='2' || params->atypes[Aj.type].name[2]=='R' ) {
+                            a.k = 0.5 * kappa / 9.0;
+                            a.C0 = 1.0;
+                            a.C1 = 0.0;
+                            a.C2 = 0.0;
+                            a.C3 = -1.0;
+                        } 
+                    } else if ( params->atypes[Aj.type].name[2]=='3' ) { // fourier
+                        a.k = kappa;
+                        a.C2 = 1.0 / ( 4.0 * st2 );
+                        a.C1 = -4.0 * a.C2 * ct;
+                        a.C0 = a.C2 * ( 2.0*sq(ct) + 1.0 );
+                        a.C3 = 0.0;
+                    }
+                    angles.push_back(a);
+                }
+            }
+        }
+
+
+   
+  // assign torsion parameters
+  //call assign_torsions
+  
+  // assign inversion parameters
+  //call assign_inversions
+
+// write data
+double tokcal = 60.2214076*1.602176634/4.1840;
+FILE* f=fopen( "mol.data.firecore", "w");
+fprintf( f, "\n" );
+fprintf( f, "\n" );
+fprintf( f, "%i atoms\n", atoms.size() );
+fprintf( f, "%i atom types\n", atoms.size() );
+fprintf( f, "%i bonds\n", bonds.size() );
+fprintf( f, "%i bond types\n", bonds.size() );
+fprintf( f, "%i angles\n", angles.size() );
+fprintf( f, "%i angle types\n", angles.size() );
+//fprintf( f, "%i dihedrals\n", dihedrals.size() );
+//fprintf( f, "%i dihedral types\n", dihedrals.size() );
+//fprintf( f, "%i impropers\n", impropers.size() );
+//fprintf( f, "%i improper types\n", impropers.size() );
+fprintf( f, "0 dihedrals\n" );
+fprintf( f, "0 dihedral types\n" );
+fprintf( f, "0 impropers\n" );
+fprintf( f, "0 improper types\n" );
+fprintf( f, "\n" );
+fprintf( f, "0.0 64.0 xlo xhi\n" );
+fprintf( f, "0.0 64.0 ylo yhi\n" );
+fprintf( f, "0.0 64.0 zlo zhi\n" );
+fprintf( f, "0.0 0.0 0.0 xy xz yz\n" );
+fprintf( f, "\n" );
+fprintf( f, "Masses\n" );
+fprintf( f, "\n" );
+for( int ia=0; ia<atoms.size(); ia++){
+    Atom& A = atoms[ia];
+    fprintf( f, "%i 1.0 # %s\n", ia+1, params->atypes[A.type].name );
+}
+fprintf( f, "\n" );
+fprintf( f, "Pair Coeffs\n" );
+fprintf( f, "\n" );
+for( int ia=0; ia<atoms.size(); ia++){
+    Atom& A = atoms[ia];
+    fprintf( f, "%i %f %f # %s %s\n", ia+1, sq(A.REQ.y)*tokcal, A.REQ.x*2.0*0.890898718140339, params->atypes[A.type].name, params->atypes[A.type].name );
+}
+fprintf( f, "\n" );
+fprintf( f, "Bond Coeffs\n" );
+fprintf( f, "\n" );
+for( int ib=0; ib<bonds.size(); ib++){
+    Bond& B = bonds[ib];
+    fprintf( f, "%i %f %f # %s %s\n", ib+1, 0.5*B.k*tokcal, B.l0, params->atypes[atoms[B.atoms.i].type].name, params->atypes[atoms[B.atoms.j].type].name );
+}
+fprintf( f, "\n" );
+fprintf( f, "Angle Coeffs\n" );
+fprintf( f, "\n" );
+for( int ia=0; ia<angles.size(); ia++){
+    Angle& A = angles[ia];
+    int i = A.atoms.j;
+    if ( params->atypes[atoms[i].type].name[2] == '1' ) { // cosine/periodic
+        fprintf( f, "%i cosine/periodic %f 1 1 # %s %s %s\n", ia+1, A.k*tokcal, params->atypes[atoms[bonds[A.bonds.x].atoms.i].type].name, params->atypes[atoms[bonds[A.bonds.x].atoms.j].type].name, params->atypes[atoms[bonds[A.bonds.y].atoms.j].type].name );
+    } else if ( params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { // cosine/periodic
+        fprintf( f, "%i cosine/periodic %f -1 3 # %s %s %s\n", ia+1, 9.0*A.k*tokcal, params->atypes[atoms[bonds[A.bonds.x].atoms.i].type].name, params->atypes[atoms[bonds[A.bonds.x].atoms.j].type].name, params->atypes[atoms[bonds[A.bonds.y].atoms.j].type].name );
+    } else if ( params->atypes[atoms[i].type].name[2] == '3' ) { // fourier
+        fprintf( f, "%i fourier %f %f %f %f # %s %s %s\n", ia+1, A.k*tokcal, A.C0, A.C1, A.C2, params->atypes[atoms[bonds[A.bonds.x].atoms.i].type].name, params->atypes[atoms[bonds[A.bonds.x].atoms.j].type].name, params->atypes[atoms[bonds[A.bonds.y].atoms.j].type].name );
+    }
+}
+/*
+fprintf( f, "\n" );
+fprintf( f, "Dihedral Coeffs\n" );
+fprintf( f, "\n" );
+fprintf( f, "\n" );
+fprintf( f, "Improper Coeffs\n" );
+fprintf( f, "\n" );
+*/
+fprintf( f, "\n" );
+fprintf( f, "Atoms\n" );
+fprintf( f, "\n" );
+for( int ia=0; ia<atoms.size(); ia++){
+    Atom& A = atoms[ia];
+    fprintf( f, "%i 1 %i 0.0 %g %g %g\n", A.id+1, ia+1, A.pos.x, A.pos.y, A.pos.z );
+}
+fprintf( f, "\n" );
+fprintf( f, "Bonds\n" );
+fprintf( f, "\n" );
+for( int ib=0; ib<bonds.size(); ib++){
+    Bond& B = bonds[ib];
+    fprintf( f, "%i %i %i %i\n", ib+1, ib+1, atoms[B.atoms.i].id+1, atoms[B.atoms.j].id+1 );
+}
+fprintf( f, "\n" );
+fprintf( f, "Angles\n" );
+fprintf( f, "\n" );
+for( int ia=0; ia<angles.size(); ia++){
+    Angle& A = angles[ia];
+    fprintf( f, "%i %i %i %i %i\n", ia+1, ia+1, atoms[A.atoms.i].id+1, atoms[A.atoms.j].id+1, atoms[A.atoms.k].id+1 );
+}
+/*
+fprintf( f, "\n" );
+fprintf( f, "Dihedrals\n" );
+fprintf( f, "\n" );
+fprintf( f, "\n" );
+fprintf( f, "Impropers\n" );
+fprintf( f, "\n" );
+*/
+
+
+
+fclose(f);
+
+  
+    }
+  
+
+
+
+
+
+
+
 }; // MMFFBuilder
 
 
 } // namespace MMFF
 
 #endif // MMFFBuilder_h
+        

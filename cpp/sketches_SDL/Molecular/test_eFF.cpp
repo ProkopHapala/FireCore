@@ -14,7 +14,8 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 */
 
 
-int verbosity = 0;
+#include <globals.h>
+//int verbosity = 0;
 
 #include <stdlib.h>
 #include <stdio.h>

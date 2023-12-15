@@ -1,5 +1,6 @@
 
-int verbosity = 0;
+#include <globals.h>
+//int verbosity = 0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -186,7 +187,7 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
     //builder.printConfs ();
     builder.printAtomConfs();
     builder.export_atypes(atypes);
-    builder.verbosity = 5;
+    //builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
@@ -395,7 +396,7 @@ int TestAppDirectionStiffness::loadMoleculeXYZ( const char* fname, const char* f
     //exit(0);
     builder.export_atypes(atypes);
 
-    builder.verbosity = 5;
+    //builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);

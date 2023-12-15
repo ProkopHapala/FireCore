@@ -14,7 +14,8 @@
 #include "IO_utils.h"
 #include "quaternion.h"
 
-int verbosity = 0;
+#include <globals.h>
+//int verbosity = 0;
 #include "OCL_DFT.h"
 #include "OCL_PP.h"
 

@@ -61,6 +61,8 @@ def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, size
     if selection is not None: 
         apos                  = apos[selection,:]
         if es is not None: es = es  [selection]
+    #print( "apos.shape ", apos.shape )
+    #print( "apos ", apos )
     plt.scatter( apos[:,ax1],apos[:,ax2], marker=marker, c=colors, s=sizes, cmap='seismic', zorder=2 ); plt.axis('equal'); #plt.grid()
     bLabels = labels is not None
     if bNumbers or bLabels:
@@ -122,9 +124,11 @@ def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50.,
             rb_labs = [ ("%3.2f" %r) for r in rbs ]
         plotBonds( links=sys.bonds, ps=sys.apos, axes=axes )
     
-    if(colors is None): colors = [ elements.ELEMENT_DICT[e][8]    for e in sys.enames ]
-    if(sizes  is None): sizes  = [ elements.ELEMENT_DICT[e][6]*sz for e in sys.enames ]
+    enames = [ typ.split('_')[0] for typ in sys.enames ]
+    if(colors is None): colors = [ elements.ELEMENT_DICT[e][8]    for e in enames ]
+    if(sizes  is None): sizes  = [ elements.ELEMENT_DICT[e][6]*sz for e in enames ]
     if((labels is None) and bLabels): labels=[ "%s%i" %(e,i+_0) for i,e in enumerate(sys.enames) ]
+    #print( "labels ", labels)
     plotAtoms( apos=sys.apos, es=sys.enames, sizes=sizes, colors=colors, marker='o', axes=axes, labels=labels )
 
     # H-Bonds

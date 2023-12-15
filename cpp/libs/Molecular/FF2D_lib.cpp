@@ -9,7 +9,8 @@
 #include <unordered_map>
 #include <string>
 
-int verbosity=0;
+#include <globals.h>
+//int verbosity=0;
 int idebug   =0;
 
 #include "FF2D.h"
