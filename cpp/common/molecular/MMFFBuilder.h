@@ -228,13 +228,36 @@ struct Dihedral{
 
     //Dihedral()=default;
 
-    void print()const{ printf( " Dihedral{t %i b(%i,%i,%i) n %i k %g}", type, bonds.a, bonds.b,bonds.c, n, k ); }
+    void print()const{ printf( " Dihedral{t %i b(%i,%i,%i) k %g d %i n %i}", type, bonds.a, bonds.b,bonds.c, k, d, n ); }
 
     Dihedral()=default;
-    Dihedral( int type_, Vec3i  bonds_, int n_, double k_, double a0_=0):type(type_), bonds(bonds_), n(n_), k(k_),a0(a0_){};
-    Dihedral( int type_, Quat4i atoms_, int n_, double k_, double a0_=0):type(type_), atoms(atoms_), n(n_), k(k_),a0(a0_){};
+    Dihedral( int type_, Vec3i  bonds_, int n_, double k_, int d_):type(type_), bonds(bonds_), n(n_), k(k_), d(d_){};
+    Dihedral( int type_, Quat4i atoms_, int n_, double k_, int d_):type(type_), atoms(atoms_), n(n_), k(k_), d(d_){};
 };
 
+// ============================
+// ========= Inversion
+// ============================
+struct Inversion{
+
+    // --- this breaks {<brace-enclosed initializer list>} in C++11
+    //int type     = -1;
+    //Vec3i  bonds = (Vec3i){-1,-1,-1};
+    //int    n=0;
+    //double k=0;
+
+    int    type;
+    Vec3i  bonds;
+    Quat4i atoms;
+    double k;
+    double C0,C1,C2;
+
+    void print()const{ printf( " Inversion{t %i b(%i,%i,%i) k %g C0 %g C1 %g C2 %g}", type, bonds.a, bonds.b,bonds.c, k, C0, C1, C2 ); }
+
+    Inversion()=default;
+    Inversion( int type_, Vec3i  bonds_, double k_, double C0_, double C1_, double C2_):type(type_), bonds(bonds_), k(k_), C0(C0_), C1(C1_), C2(C2_){};
+    Inversion( int type_, Quat4i atoms_, double k_, double C0_, double C1_, double C2_):type(type_), atoms(atoms_), k(k_), C0(C0_), C1(C1_), C2(C2_){};
+};
 
 // ============================
 // ========= Fragment
@@ -328,7 +351,8 @@ class Builder{  public:
     std::vector<Bond>       bonds;
     std::vector<Angle>      angles;
     std::vector<Dihedral>   dihedrals;
-    std::vector<AtomConf>  confs;
+    std::vector<Inversion>  inversions;
+    std::vector<AtomConf>   confs;
     //std::vector<int>  atom_neighs;
 
     bool bPBC  = false;
@@ -4848,7 +4872,83 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             }
         }
 
-    }                            
+    }       
+
+    void assingUFFparams_assigninversion( int i1, int i2, int i3, int i4 ){
+
+        Atom& A1 = atoms[i1];
+        Atom& A2 = atoms[i2];
+        Atom& A3 = atoms[i3];
+        Atom& A4 = atoms[i4];
+
+        Inversion i;
+        i.atoms.x = i1;
+        i.atoms.y = i2;
+        i.atoms.z = i3;
+        i.atoms.w = i4;
+        i.bonds.x = getBondByAtoms( i1, i2 );
+        i.bonds.y = getBondByAtoms( i1, i3 );
+        i.bonds.z = getBondByAtoms( i1, i4 );
+        // sp2 carbon
+        if ( params->atypes[A1.type].name[0] == 'C' && (params->atypes[A1.type].name[2]=='2'||params->atypes[A1.type].name[2]=='R') ){
+            // carbonyl
+            if ( ( params->atypes[A2.type].name[0] == 'O' && params->atypes[A2.type].name[2] == '2' ) ||
+                 ( params->atypes[A3.type].name[0] == 'O' && params->atypes[A3.type].name[2] == '2' ) ||
+                 ( params->atypes[A4.type].name[0] == 'O' && params->atypes[A4.type].name[2] == '2' ) ){
+                i.k = 50.0 * 4.1840/60.2214076/1.602176634; } // 50 kcal/mol to eV
+            else { i.k = 6.0 * 4.1840/60.2214076/1.602176634; } // 6 kcal/mol to eV
+            i.C0 = 1.0;
+            i.C1 = -1.0;
+            i.C2 = 0.0;
+        }
+        // sp2 nitrogen
+        else if ( params->atypes[A1.type].name[0] == 'N' && (params->atypes[A1.type].name[2]=='2'||params->atypes[A1.type].name[2]=='R') ){
+            i.k = 6.0 * 4.1840/60.2214076/1.602176634; // 6 kcal/mol to eV
+            i.C0 = 1.0;
+            i.C1 = -1.0;
+            i.C2 = 0.0;
+        }
+        // sp3 nitrogen
+        else if ( params->atypes[A1.type].name[0] == 'N' && params->atypes[A1.type].name[2]=='3' ){
+            i.k = 0.0;
+            i.C0 = 0.0;
+            i.C1 = 0.0;
+            i.C2 = 0.0;
+        }
+        // sp3 group 15
+        else if ( params->atypes[A1.type].name[0] == 'P' || params->atypes[A1.type].name[0] == '3' ){
+            double omega0 = 84.4339 * deg2rad;
+            i.C0 = 4.0 * sq(cos(omega0)) - cos(2.0*omega0);
+            i.C1 = -4.0 * cos(omega0);
+            i.C2 = 1.0;
+            i.k = 22.0 * 4.1840/60.2214076/1.602176634 / ( i.C0 + i.C1 + i.C2 ); // 22 kcal/mol to eV
+        } else {
+            printf("ERROR: assignUFFparams_inversions: improper case not found for atoms %s %s %s %s\n", params->atypes[A1.type].name, params->atypes[A2.type].name, params->atypes[A3.type].name, params->atypes[A4.type].name);
+            printf("STOP\n");
+            exit(0);
+        }
+        i.k = i.k / 3.0;
+        inversions.push_back(i);
+
+    }
+
+    void assignUFFparams_inversions( int* neighs ){
+
+        inversions.clear();
+        for( int i1=0; i1<atoms.size(); i1++){
+            Atom& A1 = atoms[i1];
+            if ( params->atypes[A1.type].name[0] == 'H' ) continue;
+            AtomConf& C1 = confs[A1.iconf]; 
+            if ( C1.nbond != 3 ) continue;
+            int i2 = neighs[i1*4];
+            int i3 = neighs[i1*4+1];
+            int i4 = neighs[i1*4+2];
+            assingUFFparams_assigninversion( i1, i2, i3, i4 );
+            assingUFFparams_assigninversion( i1, i2, i4, i3 );
+            assingUFFparams_assigninversion( i1, i4, i3, i2 );
+        }
+
+    }
 
     void assignUFFparams( int* neighs=0, bool bDeallocNeighs=true ){
 
@@ -4868,7 +4968,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         assignUFFparams_dihedrals( neighs );
     
         // assign inversion parameters
-        //call assign_inversions
+        assignUFFparams_inversions( neighs );
 
         // deallocate neighbor array
         if(bDeallocNeighs)delete [] neighs;
@@ -4893,10 +4993,8 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         fprintf( f, "%i angle types\n", angles.size() );
         fprintf( f, "%i dihedrals\n", dihedrals.size() );
         fprintf( f, "%i dihedral types\n", dihedrals.size() );
-        //fprintf( f, "%i impropers\n", impropers.size() );
-        //fprintf( f, "%i improper types\n", impropers.size() );
-        fprintf( f, "0 impropers\n" );
-        fprintf( f, "0 improper types\n" );
+        fprintf( f, "%i impropers\n", inversions.size() );
+        fprintf( f, "%i improper types\n", inversions.size() );
         fprintf( f, "\n" );
         fprintf( f, "0.0 64.0 xlo xhi\n" );
         fprintf( f, "0.0 64.0 ylo yhi\n" );
@@ -4916,39 +5014,67 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             Atom& A = atoms[ia];
             fprintf( f, "%i %f %f # %s %s\n", ia+1, sq(A.REQ.y)*tokcal, A.REQ.x*2.0*0.890898718140339, params->atypes[A.type].name, params->atypes[A.type].name );
         }
-        fprintf( f, "\n" );
-        fprintf( f, "Bond Coeffs\n" );
-        fprintf( f, "\n" );
-        for( int ib=0; ib<bonds.size(); ib++){
-            Bond& B = bonds[ib];
-            fprintf( f, "%i %f %f # %s %s\n", ib+1, 0.5*B.k*tokcal, B.l0, params->atypes[atoms[B.atoms.i].type].name, params->atypes[atoms[B.atoms.j].type].name );
-        }
-        fprintf( f, "\n" );
-        fprintf( f, "Angle Coeffs\n" );
-        fprintf( f, "\n" );
-        for( int ia=0; ia<angles.size(); ia++){
-            Angle& A = angles[ia];
-            int i = A.atoms.j;
-            if ( params->atypes[atoms[i].type].name[2] == '1' ) { // cosine/periodic
-                fprintf( f, "%i cosine/periodic %f 1 1 # %s %s %s\n", ia+1, A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
-            } else if ( params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { // cosine/periodic
-                fprintf( f, "%i cosine/periodic %f -1 3 # %s %s %s\n", ia+1, 9.0*A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
-            } else if ( params->atypes[atoms[i].type].name[2] == '3' ) { // fourier
-                fprintf( f, "%i fourier %f %f %f %f # %s %s %s\n", ia+1, A.k*tokcal, A.C0, A.C1, A.C2, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+        if ( bonds.size() > 0 ){
+            fprintf( f, "\n" );
+            fprintf( f, "Bond Coeffs\n" );
+            fprintf( f, "\n" );
+            for( int ib=0; ib<bonds.size(); ib++){
+                Bond& B = bonds[ib];
+                fprintf( f, "%i %f %f # %s %s\n", ib+1, 0.5*B.k*tokcal, B.l0, params->atypes[atoms[B.atoms.i].type].name, params->atypes[atoms[B.atoms.j].type].name );
             }
         }
-        fprintf( f, "\n" );
-        fprintf( f, "Dihedral Coeffs\n" );
-        fprintf( f, "\n" );
-        for( int id=0; id<dihedrals.size(); id++){
-            Dihedral& D = dihedrals[id];
-            fprintf( f, "%i %f %i %i # %s %s %s %s\n", id+1, D.k*tokcal, D.d, D.n, params->atypes[atoms[D.atoms.x].type].name, params->atypes[atoms[D.atoms.y].type].name, params->atypes[atoms[D.atoms.z].type].name, params->atypes[atoms[D.atoms.w].type].name );
+        if ( angles.size() > 0 ){
+            fprintf( f, "\n" );
+            fprintf( f, "Angle Coeffs\n" );
+            fprintf( f, "\n" );
+            bool bFourier = false;
+            bool bCosine = false;
+            for( int ia=0; ia<angles.size(); ia++){
+                Angle& A = angles[ia];
+                int i = A.atoms.j;
+                if ( params->atypes[atoms[i].type].name[2] == '1' || params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { bCosine = true; }
+                if ( params->atypes[atoms[i].type].name[2] == '3' ) { bFourier = true; }
+            }
+            for( int ia=0; ia<angles.size(); ia++){
+                Angle& A = angles[ia];
+                int i = A.atoms.j;
+                if ( bFourier && bCosine ) { 
+                    if ( params->atypes[atoms[i].type].name[2] == '1' ) { // cosine/periodic
+                        fprintf( f, "%i cosine/periodic %f 1 1 # %s %s %s\n", ia+1, A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+                    } else if ( params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { // cosine/periodic
+                        fprintf( f, "%i cosine/periodic %f -1 3 # %s %s %s\n", ia+1, 9.0*A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+                    } else if ( params->atypes[atoms[i].type].name[2] == '3' ) { // fourier
+                        fprintf( f, "%i fourier %f %f %f %f # %s %s %s\n", ia+1, A.k*tokcal, A.C0, A.C1, A.C2, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+                    }
+                } else {
+                    if ( params->atypes[atoms[i].type].name[2] == '1' ) { // cosine/periodic
+                        fprintf( f, "%i %f 1 1 # %s %s %s\n", ia+1, A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+                    } else if ( params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { // cosine/periodic
+                        fprintf( f, "%i %f -1 3 # %s %s %s\n", ia+1, 9.0*A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+                    } else if ( params->atypes[atoms[i].type].name[2] == '3' ) { // fourier
+                        fprintf( f, "%i %f %f %f %f # %s %s %s\n", ia+1, A.k*tokcal, A.C0, A.C1, A.C2, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+                    }
+                }
+            }
         }
-        /*
-        fprintf( f, "\n" );
-        fprintf( f, "Improper Coeffs\n" );
-        fprintf( f, "\n" );
-        */
+        if ( dihedrals.size() > 0 ){
+            fprintf( f, "\n" );
+            fprintf( f, "Dihedral Coeffs\n" );
+            fprintf( f, "\n" );
+            for( int id=0; id<dihedrals.size(); id++){
+                Dihedral& D = dihedrals[id];
+                fprintf( f, "%i %f %i %i # %s %s %s %s\n", id+1, D.k*tokcal, D.d, D.n, params->atypes[atoms[D.atoms.x].type].name, params->atypes[atoms[D.atoms.y].type].name, params->atypes[atoms[D.atoms.z].type].name, params->atypes[atoms[D.atoms.w].type].name );
+            }
+        }
+        if ( inversions.size() > 0 ){
+            fprintf( f, "\n" );
+            fprintf( f, "Improper Coeffs\n" );
+            fprintf( f, "\n" );
+            for( int ii=0; ii<inversions.size(); ii++){
+                Inversion& I = inversions[ii];
+                fprintf( f, "%i %f %f %f %f # %s %s %s %s\n", ii+1, I.k*tokcal, I.C0, I.C1, I.C2, params->atypes[atoms[I.atoms.x].type].name, params->atypes[atoms[I.atoms.y].type].name, params->atypes[atoms[I.atoms.z].type].name, params->atypes[atoms[I.atoms.w].type].name );
+            }
+        }
         fprintf( f, "\n" );
         fprintf( f, "Atoms\n" );
         fprintf( f, "\n" );
@@ -4956,32 +5082,42 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             Atom& A = atoms[ia];
             fprintf( f, "%i 1 %i 0.0 %g %g %g\n", A.id+1, ia+1, A.pos.x, A.pos.y, A.pos.z );
         }
-        fprintf( f, "\n" );
-        fprintf( f, "Bonds\n" );
-        fprintf( f, "\n" );
-        for( int ib=0; ib<bonds.size(); ib++){
-            Bond& B = bonds[ib];
-            fprintf( f, "%i %i %i %i\n", ib+1, ib+1, atoms[B.atoms.i].id+1, atoms[B.atoms.j].id+1 );
+        if ( bonds.size() > 0 ){
+            fprintf( f, "\n" );
+            fprintf( f, "Bonds\n" );
+            fprintf( f, "\n" );
+            for( int ib=0; ib<bonds.size(); ib++){
+                Bond& B = bonds[ib];
+                fprintf( f, "%i %i %i %i\n", ib+1, ib+1, atoms[B.atoms.i].id+1, atoms[B.atoms.j].id+1 );
+            }
         }
-        fprintf( f, "\n" );
-        fprintf( f, "Angles\n" );
-        fprintf( f, "\n" );
-        for( int ia=0; ia<angles.size(); ia++){
-            Angle& A = angles[ia];
-            fprintf( f, "%i %i %i %i %i\n", ia+1, ia+1, atoms[A.atoms.i].id+1, atoms[A.atoms.j].id+1, atoms[A.atoms.k].id+1 );
+        if ( angles.size() > 0 ){
+            fprintf( f, "\n" );
+            fprintf( f, "Angles\n" );
+            fprintf( f, "\n" );
+            for( int ia=0; ia<angles.size(); ia++){
+                Angle& A = angles[ia];
+                fprintf( f, "%i %i %i %i %i\n", ia+1, ia+1, atoms[A.atoms.i].id+1, atoms[A.atoms.j].id+1, atoms[A.atoms.k].id+1 );
+            }
         }
-        fprintf( f, "\n" );
-        fprintf( f, "Dihedrals\n" );
-        fprintf( f, "\n" );
-        for( int id=0; id<dihedrals.size(); id++){
-            Dihedral& D = dihedrals[id];
-            fprintf( f, "%i %i %i %i %i %i\n", id+1, id+1, atoms[D.atoms.x].id+1, atoms[D.atoms.y].id+1, atoms[D.atoms.z].id+1, atoms[D.atoms.w].id+1 );
+        if ( dihedrals.size() > 0 ){
+            fprintf( f, "\n" );
+            fprintf( f, "Dihedrals\n" );
+            fprintf( f, "\n" );
+            for( int id=0; id<dihedrals.size(); id++){
+                Dihedral& D = dihedrals[id];
+                fprintf( f, "%i %i %i %i %i %i\n", id+1, id+1, atoms[D.atoms.x].id+1, atoms[D.atoms.y].id+1, atoms[D.atoms.z].id+1, atoms[D.atoms.w].id+1 );
+            }
         }
-        /*
-        fprintf( f, "\n" );
-        fprintf( f, "Impropers\n" );
-        fprintf( f, "\n" );
-        */
+        if ( inversions.size() > 0 ){
+            fprintf( f, "\n" );
+            fprintf( f, "Impropers\n" );
+            fprintf( f, "\n" );
+            for( int ii=0; ii<inversions.size(); ii++){
+                Inversion& I = inversions[ii];
+                fprintf( f, "%i %i %i %i %i %i\n", ii+1, ii+1, atoms[I.atoms.x].id+1, atoms[I.atoms.y].id+1, atoms[I.atoms.z].id+1, atoms[I.atoms.w].id+1 );
+            }
+        }
         fclose(f);
 
     }

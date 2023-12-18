@@ -872,34 +872,34 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::init)\n");exit(0);
         // make atom type assignement
         if( bUFF ){ 
             // according to UFF
-            //void assignUFFtypes( int* neighs=0, bool bCumulene=false, bool bDeallocNeighs=true, bool b141=true, bool bSimple=false, bool bConj=false ){ 
-            builder.assignUFFtypes(            0, bCumulene,                                true,           b141,   bSimple,  bConj); 
-            //void assignUFF_params( int* neighs=0, bool bDeallocNeighs=true ){
-            builder.assignUFFparams(             0,                     true );
-printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeMMFFs)\n");exit(0);
+            builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
+            builder.assignUFFparams( 0, true );
         }else{ 
             // according to MMFF
             builder.assignTypes(); 
         }
 
-        // TBD assign all parameters (nonbonded, bonds, angles, dihedrals, impropers -> see my fortran)
+printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeMMFFs)\n");exit(0);
 
-        //builder.printAtomTypes();
-        if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
+        if ( bUFF ){
+
+            //builder.toUFF();
+
+        }else{
+
+            //builder.printAtomTypes();
+            if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
         
-        // TBD set up UFF here
-        builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
-        if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
-        builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
-        builder.toMMFFsp3    ( ff , true, bEpairs );
+            builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
+            if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
+            builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
+            builder.toMMFFsp3    ( ff , true, bEpairs );
         
-        if(bUFF){
-            ffl.bEachAngle = true;
-            ffl.bTorsion   = true;
+            ffl.flipPis( Vec3dOne );
+            ff4.flipPis( Vec3fOne );
+
         }
 
-        ffl.flipPis( Vec3dOne );
-        ff4.flipPis( Vec3fOne );
         if(bPBC){  
             //ff.printAtomParams();
             ff.bPBCbyLvec = true;
@@ -912,6 +912,7 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeMMFFs)\n");exit(0);
             //ffl.makeNeighCells( nPBC );      
             ffl.makeNeighCells( npbc, pbc_shifts ); 
         }
+
     }
 
     virtual void makeFFs(){
