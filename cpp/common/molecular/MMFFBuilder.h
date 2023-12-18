@@ -200,7 +200,7 @@ struct Angle{
     double a0;
     double k;
     double C0,C1,C2,C3;
-Vec3i  atoms;
+    Vec3i  atoms;
 
     void print()const{ printf( " Angle{t %i b(%i,%i) a0 %g k %g}", type, bonds.i, bonds.j, a0, k ); }
 
@@ -222,7 +222,7 @@ struct Dihedral{
     int    type;
     Vec3i  bonds;
     Quat4i atoms;
-    int    n;
+    int    d,n;
     double k;
     double a0;
 
@@ -4618,17 +4618,6 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         // manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation)
         if( bConj ){ assignUFFtypes_conjugation( neighs, &BOs[0] ); }
 
-for(int i=0; i<atoms.size(); i++){
-    for(int ia=0; ia<atoms.size(); ia++){
-        Atom& A = atoms[ia];
-        if ( A.id == i ) { printf("atom %i has type %s set %d\n", i+1, params->atypes[A.type].name, set_atom[ia] ); }
-    }
-}
-for(int ib=0; ib<bonds.size(); ib++){
-    Bond& B = bonds[ib];
-    printf("bond %i between atoms %i %i has order %g %i set %d\n", ib+1, atoms[B.atoms.x].id+1, atoms[B.atoms.y].id+1, BOs[ib], BOs_int[ib], set_bond[ib] ); 
-}
-
         // some check before assigning parameters
         assignUFFtypes_checks( neighs, &BOs[0], &BOs_int[0], &set_atom[0], &set_bond[0], tol );
 
@@ -4642,229 +4631,18 @@ for(int ib=0; ib<bonds.size(); ib++){
             if(verbosity>0)printf( "bondOrder[%i](%i-%i)= %g\n", ib+1, B.atoms.i+1, B.atoms.j+1, B.order );            
         }
 
-       
-  
-
-/* --- OLD CODE (not working)
-        // assign basic atom types (i.e. X_n, where X is the element symbol and n is the hybridization, 3=sp3, 2=sp2, 1=sp)
-        assignAllSp3Types();//for(int ia=0; ia<atoms.size(); ia++){printf( "atom[%i] type %i (%s) \n", ia, atoms[ia].type, params->atypes[atoms[ia].type].name );}exit(0);
-        
-        // Kekule solver
-        // init
-        Kekule kek;
-        kek.realloc( atoms.size(), bonds.size() );
-        // set boundaries for valence to the atomic valences
-        for(int ia=0; ia<atoms.size(); ia++){
-            Atom& A = atoms[ia];
-            //kek.atomValence[ia]    = params->atypes[A.type].valence;
-            kek.atomValenceMin[ia] = params->atypes[A.type].valence;
-            kek.atomValenceMax[ia] = params->atypes[A.type].valence;
-        }
-        // set atoms involved in bonds
-        for(int ib=0; ib<bonds.size(); ib++){
-            Bond& B = bonds[ib];
-            kek.bond2atom[ib] = Vec2i{ B.atoms.i, B.atoms.j };
-        }
-        // set boundaries for bond orders and the sigma-skeleton
-        kek.setDefaultBondOrders( 1.0, 3.0, 1.0 );
-//        // compute valences based on bond orders
-//        kek.setValences();
-        // default parameters
-        double dt=0.1;
-        double damping=0.1;
-        double F2conv=1e-8;
-        int maxIter=3000;
-        bool bRandStart=false;
-        int ialg=1; // damped MD
-        // Kekule phase# 1: 
-        // - strongly enforcing the constraint about meaningful bond orders (1<=BO<=3)
-        // - trying to get right atom valences (bond orders will increase)
-        if(verbosity>0) printf("// ---- Relax phase# 1\n");
-        kek.Katom=0.1;     // correctness of atom valences
-        kek.Kbond=10.0;    // non-sense bond orders
-        kek.KatomInt=0.0;  // integerness of atom valences 
-        kek.KbondInt=0.0;  // "integerness" of bond orders
-        bool hack15=false; // hack to treat 1.5 as an integer
-        kek.relax( dt, damping, F2conv, maxIter, bRandStart, ialg, hack15 );//for(int ib=0; ib<bonds.size(); ib++){ printf( " Bond{id=%i order=%g}\n", ib, kek.bondOrder[ib] ); }//exit(0);
-        // Kekule phase# 2: 
-        // - relax the constraint about meaningful bond orders
-        // - strenghten the constraint about correct atom valences
-        if(verbosity>0) printf("// ---- Relax phase# 2\n");
-        kek.Katom=10.0;    // correctness of atom valences
-        kek.Kbond=0.1;     // non-sense bond orders
-        kek.relax( dt, damping, F2conv, maxIter, bRandStart, ialg, hack15 );//for(int ib=0; ib<bonds.size(); ib++){ printf( " Bond{id=%i order=%g}\n", ib, kek.bondOrder[ib] ); }//exit(0);
-        // Kekule phase# 3: 
-        // - enforce both constraints about correctness of atom valences and meaningful bond orders
-        // - trying to get "integer" bond orders
-        kek.Kbond=10.0;    // non-sense bond orders
-        kek.KbondInt=0.1;  // "integerness" of bond orders
-        if(verbosity>0) printf("// ---- Relax phase# 3\n");
-        kek.relax( dt, damping, F2conv, maxIter, bRandStart, ialg, hack15 );//for(int ib=0; ib<bonds.size(); ib++){ printf( " Bond{id=%i order=%g}\n", ib, kek.bondOrder[ib] ); }//exit(0);
-        // Kekule phase# 4: 
-        // - push further "integerness" of bond orders, also allowing 1.5
-        if(verbosity>0) printf("// ---- Relax phase# 4\n");
-        kek.KbondInt=10.0; // "integerness" of bond orders
-        hack15=true;       // hack to treat 1.5 as an integer
-        kek.relax( dt, damping, F2conv, maxIter, bRandStart, ialg, hack15 );//for(int ib=0; ib<bonds.size(); ib++){ printf( " Bond{id=%i order=%g}\n", ib, kek.bondOrder[ib] ); }//exit(0);
-
-        // round up bond orders
-        double tol=0.05;
-        kek.roundBondOrders( tol );
-
-
-
-        // ad hoc exception for getting rid of cumulenes in the backbone, i.e.
-           ... C(ia3)                                           ... C(ia3)                          
-               \\                              /                    \\                __            /     
-                C(ia4) == C(ia1) == C(ia2) == C(ia3)	    ==>       C(ia4) -- C(ia1) == C(ia2) -- C(ia3) 
-               /                              \\                     /                              \\           
-                                                C(ia4) ...                                           C(ia4) ... 
-
-        if(bCumulene){
-            bDeallocNeighs &= (neighs==0);
-            makeNeighs ( neighs, 4 );
-            for(int ia1=0; ia1<atoms.size(); ia1++){
-                Atom& A1 = atoms[ia1];
-                //printf("atom[%i] type %i (%c)\n", ia1, A1.type, params->atypes[A1.type].name[0]);
-                if( params->atypes[A1.type].name[0] != 'C' ) continue; // looking for C
-                AtomConf& C1 = confs[A1.iconf];
-                if( C1.nbond != 2 ) continue; // looking for sp C
-                for(int in1=ia1*4; in1<ia1*4+2; in1++){
-                    int ia2 = neighs[in1];
-                    Atom& A2 = atoms[ia2];
-                    //printf("atom[%i] type %i (%c) has neigh[%i] type %i (%c)\n", ia1, A1.type, params->atypes[A1.type].name[0], ia2, A2.type, params->atypes[A2.type].name[0]);
-                    if( params->atypes[A2.type].name[0] != 'C' ) continue; // looking for C
-                    AtomConf& C2 = confs[A2.iconf];
-                    if( C2.nbond != 2 ) continue; // looking for sp C
-                    int ib1 = getBondByAtoms( ia1, ia2 );
-                    int ia4;
-                    if(in1==ia1*4){ia4=neighs[ia1*4+1];}else{ia4=neighs[ia1*4];}
-                    Atom& A4 = atoms[ia4];
-                    //printf("atom[%i] type %i (%c) has also neigh[%i] type %i (%c)\n", ia1, A1.type, params->atypes[A1.type].name[0], ia4, A4.type, params->atypes[A4.type].name[0]);
-                    if( params->atypes[A4.type].name[0] != 'C' ) continue; // looking for C
-                    AtomConf& C4 = confs[A4.iconf];
-                    if( C4.nbond != 3 ) continue; // looking for sp2 C
-                    int ib4 = getBondByAtoms( ia1, ia4 );
-                    for(int in2=ia2*4; in2<ia2*4+2; in2++){
-                        int ia3 = neighs[in2];
-                        if( ia3 == ia1 ) continue; // looking for the other neighbor of ia2
-                        Atom& A3 = atoms[ia3];
-                        //printf("atom[%i] type %i (%c) has neigh[%i] type %i (%c)\n", ia2, A2.type, params->atypes[A2.type].name[0], ia3, A3.type, params->atypes[A3.type].name[0]);                      
-                        if( params->atypes[A3.type].name[0] != 'C' ) continue; // looking for C
-                        AtomConf& C3 = confs[A3.iconf];
-                        if( C3.nbond != 3 ) continue; // looking for sp2 C
-                        for(int in3=ia3*4; in3<ia3*4+3; in3++){
-                            if( neighs[in3] != ia4 ) continue; // looking for the right ia3
-                            int ib2 = getBondByAtoms( ia2, ia3 );
-                            int ib3 = getBondByAtoms( ia3, ia4 );
-                            kek.bondOrder[ib1]= 3.0;
-                            kek.bondOrder[ib2]= 1.0;
-                            kek.bondOrder[ib3]= 2.0;
-                            kek.bondOrder[ib4]= 1.0;
-                        }
-                    }
-                }
-            }
-            if(bDeallocNeighs)delete [] neighs;
-        }
-
-        // final check on valences
-        kek.projectValence();
-        for(int ia=0; ia<atoms.size(); ia++){
-            Atom& A = atoms[ia];
-            if( fabs(kek.atomValence[ia]-params->atypes[A.type].valence) > tol ){
-                printf( "ERROR: assignUFFtypes() atom[%i] type %i (%s) has valence %g != %g\n", ia, A.type, params->atypes[A.type].name, kek.atomValence[ia], params->atypes[A.type].valence );
-                exit(0);
-            }
-        }
-
-        // assign resonant atoms - fortran version (if 2 bonds with order 1.5 -> resonant)
-        for(int ia=0; ia<atoms.size(); ia++){
-            int n=0;
-            for(int ib=0; ib<bonds.size(); ib++){
-                Bond& B = bonds[ib];
-                if( ((B.atoms.i==ia)||(B.atoms.j==ia))&&fabs(kek.bondOrder[ib]-1.5)<tol ){ n++; }
-            }
-            if(n==2){
-                Atom& A = atoms[ia];
-                A.type = assignResonantType( A.type );
-            }
-        }
-        // assign resonant atoms - ex-novo version (if 1 bond with order 1.5 -> resonant)
-        for(int ib=0; ib<bonds.size(); ib++){
-            Bond& B = bonds[ib];
-            if( fabs(kek.bondOrder[ib]-1.5) < tol ){
-                Atom& Ai = atoms[B.atoms.i];
-                Atom& Aj = atoms[B.atoms.j];
-                Ai.type = assignResonantType( Ai.type );
-                Aj.type = assignResonantType( Aj.type );
-            }
-        }
-
-        // manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation)
-        if(bResonant){
-            for(int ia=0; ia<atoms.size(); ia++){
-                Atom& A = atoms[ia];
-                if( params->atypes[A.type].name[2]=='3' && (params->atypes[A.type].name[0]=='N'||params->atypes[A.type].name[0]=='O') ){
-                    for(int ib=0; ib<bonds.size(); ib++){
-                        Bond& B = bonds[ib];
-                        if( B.atoms.i==ia ){
-                            Atom& Aj = atoms[B.atoms.j];
-                            if( params->atypes[Aj.type].name[2]=='2' || params->atypes[Aj.type].name[2]=='R' ){ A.type = assignResonantType( A.type ); }
-                        }else if( B.atoms.j==ia ){
-                            Atom& Ai = atoms[B.atoms.i];
-                            if( params->atypes[Ai.type].name[2]=='2' || params->atypes[Ai.type].name[2]=='R' ){ A.type = assignResonantType( A.type ); }
-                        }
-                    }
-                }
-            }
-        }
-
-        // manually change resonant bonds between C_R and N_R from 1.5 to 1.41
-        if(b141){
-            for(int ib=0; ib<bonds.size(); ib++){
-                if( fabs(kek.bondOrder[ib]-1.5)<tol ){
-                    Atom& Ai = atoms[bonds[ib].atoms.i];
-                    Atom& Aj = atoms[bonds[ib].atoms.j];
-                    if( params->atypes[Ai.type].name[2]=='R' && params->atypes[Aj.type].name[2]=='R' ){ 
-                        if( (params->atypes[Ai.type].name[0]=='C'&& params->atypes[Aj.type].name[0]=='N')||(params->atypes[Ai.type].name[0]=='N'&& params->atypes[Aj.type].name[0]=='C') ){ 
-                            kek.bondOrder[ib] = 1.41;
-                        }
-                    }
-                }
-            }
-        }
-                
-        // store bond orders
-        for(int ib=0; ib<bonds.size(); ib++){
-            Bond& B = bonds[ib];
-            B.order = kek.bondOrder[ib];
-            if(verbosity>0)printf( "bondOrder[%i](%i-%i)= %g\n", ib, B.atoms.i, B.atoms.j, B.order );            
-        }
-        kek.clear(true,true,true);
---- END OLD CODE */
-
+        // deallocate neighbor array
         if(bDeallocNeighs)delete [] neighs;
 
     }
 
-    double assignUFF_calcrij ( int ib ){
+    double assignUFFparams_calcrij ( int ib ){
 
-        //Bond  B__;
         Bond& B = bonds[ib];   // reference
-        //B.k = 0.0; 
         //Bond* B_ = &bonds[ib]; // pointer
-        //(*B_).k = 0.0;
-        //B_->k   = 0.0;
-        
-        //B_->k = 0.0;
-        //const B__& = *B_;
-         
 
         AtomType& Ti = params->atypes[atoms[B.atoms.i].type];
         AtomType& Tj = params->atypes[atoms[B.atoms.j].type];
-        //const ElementType* Ei = params->elementOfAtomType(atoms[B.atoms.i].type);
-        //const ElementType* Ej = params->elementOfAtomType(atoms[B.atoms.j].type);
         const ElementType& Ei = *params->elementOfAtomType(atoms[B.atoms.i].type);
         const ElementType& Ej = *params->elementOfAtomType(atoms[B.atoms.j].type);
         double rBO = -0.1332 * ( Ti.Ruff + Tj.Ruff ) * log( B.order );
@@ -4874,27 +4652,29 @@ for(int ib=0; ib<bonds.size(); ib++){
 
     }
 
-    void assignUFFparams( int* neighs=0, bool bDeallocNeighs=true ){
+    void assignUFFparams_vdws( ){
 
-        bDeallocNeighs &= (neighs==0);
-        makeNeighs ( neighs, 4 );
-
-        // assign vdw parameters
         for( int ia=0; ia<atoms.size(); ia++){
             Atom& A = atoms[ia];
             params->assignRE( A.type, A.REQ, true );
         }
 
-        // assign bond parameters
+    }
+
+    void assignUFFparams_bonds( ){
+
         for ( int ib=0; ib<bonds.size(); ib++ ) {
             Bond& B = bonds[ib];
             const ElementType& Ei = *params->elementOfAtomType(atoms[B.atoms.i].type);
             const ElementType& Ej = *params->elementOfAtomType(atoms[B.atoms.j].type);
-            B.l0 = assignUFF_calcrij(ib);
+            B.l0 = assignUFFparams_calcrij(ib);
             B.k = 28.7989689090648 * Ei.Quff * Ej.Quff / ( B.l0*sq(B.l0) );
         }
 
-        // populate angle array & assign angle parameters
+    }
+
+    void assignUFFparams_angles( int* neighs ){
+
         angles.clear();
         for( int j=0; j<atoms.size(); j++){
             Atom& Aj = atoms[j];
@@ -4910,13 +4690,13 @@ for(int ib=0; ib<bonds.size(); ib++){
                     int k = neighs[in2];
                     const ElementType& Ek = *params->elementOfAtomType(atoms[k].type);
                     Angle a;
-                    a.atoms.i = i;
-                    a.atoms.j = j;
-                    a.atoms.k = k;
+                    a.atoms.x = i;
+                    a.atoms.y = j;
+                    a.atoms.z = k;
                     a.bonds.x = getBondByAtoms( i, j );
                     a.bonds.y = getBondByAtoms( j, k );
-                    double rij = assignUFF_calcrij(a.bonds.x);
-                    double rjk = assignUFF_calcrij(a.bonds.y);
+                    double rij = assignUFFparams_calcrij(a.bonds.x);
+                    double rjk = assignUFFparams_calcrij(a.bonds.y);
                     double rik = sqrt( rij*rij + rjk*rjk - 2.0*rij*rjk*ct );
                     double kappa = 28.7989689090648 * Ei.Quff * Ek.Quff / (sq(rik)*sq(rik)*rik) * ( 3.0*rij*rjk*st2 - sq(rik)*ct );
                     if ( params->atypes[Aj.type].name[2]=='1' || params->atypes[Aj.type].name[2]=='2' || 
@@ -4946,124 +4726,265 @@ for(int ib=0; ib<bonds.size(); ib++){
             }
         }
 
+    }
 
+    void assignUFFparams_dihedrals( int* neighs ){
+
+        dihedrals.clear();
+        for( int i1=0; i1<atoms.size(); i1++){
+            Atom& A1 = atoms[i1];
+            int n1;
+            if ( params->atypes[A1.type].name[0] == 'H' ){ n1 = 1; } 
+            else { AtomConf& C1 = confs[A1.iconf]; n1 = C1.nbond; }
+            for(int in1=i1*4; in1<i1*4+n1; in1++){
+                int i2 = neighs[in1];
+                Atom& A2 = atoms[i2];
+                if ( params->atypes[A2.type].name[0] == 'H' ) continue;
+                if ( params->atypes[A2.type].name[2] == '1' ) continue; // Torsional potentials for central bonds involving sp-hybridized centers X-1 were assigned a value of zero
+                AtomConf& C2 = confs[A2.iconf];
+                for(int in2=i2*4; in2<i2*4+C2.nbond; in2++){
+                    int i3 = neighs[in2];
+                    if ( i3 != i1 ) {
+                        Atom& A3 = atoms[i3];
+                        if ( params->atypes[A3.type].name[0] == 'H' ) continue;
+                        if ( params->atypes[A3.type].name[2] == '1' ) continue; // Torsional potentials for central bonds involving sp-hybridized centers X-1 were assigned a value of zero
+                        AtomConf& C3 = confs[A3.iconf];
+                        for(int in3=i3*4; in3<i3*4+C3.nbond; in3++){
+                            int i4 = neighs[in3];
+                            if ( i4 != i2 && i4 > i1 ) { // avoid 3-membered rings and double-counting
+                                Atom& A4 = atoms[i4];
+                                Dihedral d;
+                                d.atoms.x = i1;
+                                d.atoms.y = i2;
+                                d.atoms.z = i3;
+                                d.atoms.w = i4;
+                                d.bonds.x = getBondByAtoms( i1, i2 );
+                                d.bonds.y = getBondByAtoms( i2, i3 );
+                                d.bonds.z = getBondByAtoms( i3, i4 );
+                                const ElementType& E2 = *params->elementOfAtomType(atoms[i2].type);
+                                const ElementType& E3 = *params->elementOfAtomType(atoms[i3].type);
+                                // specific general case (a): * - sp3 - sp3 - *
+                                if ( params->atypes[A2.type].name[2] == '3' && params->atypes[A3.type].name[2] == '3' ){
+                                    d.k = sqrt( E2.Vuff * E3.Vuff );
+                                    d.d = 1;
+                                    d.n = 3;
+                                    // special case of * - group 16 sp3 - group 16 sp3 - *
+                                    if ( (params->atypes[A2.type].name[0]=='O'||params->atypes[A2.type].name[0]=='S') &&
+                                        (params->atypes[A3.type].name[0]=='O'||params->atypes[A3.type].name[0]=='S') ){
+                                            d.k = 4.1840/60.2214076/1.602176634; // 1 kcal/mol to eV
+                                            d.n = 2;
+                                            if ( params->atypes[A2.type].name[0] == 'O' ){ d.k *= 2.0; }
+                                            else { d.k *= 6.8; }
+                                            if ( params->atypes[A3.type].name[0] == 'O' ){ d.k *= 2.0; }
+                                            else { d.k *= 6.8; }
+                                            d.k = sqrt( d.k );
+                                    }
+                                } 
+                                // specific general case (b): * - sp3 - sp2 - *
+                                else if ( (params->atypes[A2.type].name[2]=='3'&&(params->atypes[A3.type].name[2]=='2'||params->atypes[A3.type].name[2]=='R')) ||
+                                ((params->atypes[A2.type].name[2]=='2'||params->atypes[A2.type].name[2]=='R')&&params->atypes[A3.type].name[2]=='3') ){
+                                    d.k = 4.1840/60.2214076/1.602176634; // 1 kcal/mol to eV
+                                    d.d = -1;
+                                    d.n = 6;
+                                    // special case of * - group 16 sp3 - sp2 - *
+                                    if ( (params->atypes[A2.type].name[2]=='3'&&(params->atypes[A2.type].name[0]=='O'||params->atypes[A2.type].name[0]=='S')) ||
+                                        (params->atypes[A3.type].name[2]=='3'&&(params->atypes[A3.type].name[0]=='O'||params->atypes[A3.type].name[0]=='S')) ){
+                                        int ib = getBondByAtoms( i2, i3 );
+                                        Bond& B = bonds[ib];
+                                        d.k = 5.0 * sqrt( E2.Uuff * E3.Uuff ) * ( 1.0 + 4.18 * log( B.order ) );
+                                        d.d = 1;
+                                        d.n = 2;
+                                    }
+                                    // special case of * - sp3 - sp2 bounded to another sp2 atom
+                                    if ( params->atypes[A2.type].name[2]=='3' ){
+                                        bool found = false;
+                                        for(int in=i3*4; in<i3*4+C3.nbond; in++){
+                                            Atom& A = atoms[neighs[in]];
+                                            if ( params->atypes[A.type].name[2]=='2' || params->atypes[A.type].name[2]=='R' ) {
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                        if ( found ) {
+                                            d.k = 2.0 * 4.1840/60.2214076/1.602176634; // 2 kcal/mol to eV
+                                            d.d = 1;
+                                            d.n = 3;
+                                        }
+                                    } else if ( params->atypes[A3.type].name[2]=='3' ){
+                                        bool found = false;
+                                        for(int in=i2*4; in<i2*4+C2.nbond; in++){
+                                            Atom& A = atoms[neighs[in]];
+                                            if ( params->atypes[A.type].name[2]=='2' || params->atypes[A.type].name[2]=='R' ) {
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                        if ( found ) {
+                                            d.k = 2.0 * 4.1840/60.2214076/1.602176634; // 2 kcal/mol to eV
+                                            d.d = 1;
+                                            d.n = 3;
+                                        }
+                                    }
+                                }
+                                // specific general case (c): * - sp2 - sp2 - *
+                                else if ( (params->atypes[A2.type].name[2]=='2'||params->atypes[A2.type].name[2]=='R') &&
+                                        (params->atypes[A3.type].name[2]=='2'||params->atypes[A3.type].name[2]=='R') ){
+                                    int ib = getBondByAtoms( i2, i3 );
+                                    Bond& B = bonds[ib];
+                                    d.k = 5.0 * sqrt( E2.Uuff * E3.Uuff ) * ( 1.0 + 4.18 * log( B.order ) );
+                                    d.d = -1;
+                                    d.n = 2;
+                                } else {
+                                    printf("ERROR: assignUFFparams_dihedrals: torsion case not found for atoms %s %s %s %s\n", params->atypes[A1.type].name, params->atypes[A2.type].name, params->atypes[A3.type].name, params->atypes[A4.type].name);
+                                    printf("STOP\n");
+                                    exit(0);
+                                }
+                                d.k = 0.5 * d.k / ( (double)(C2.nbond-1) * (double)(C3.nbond-1) );
+                                dihedrals.push_back(d);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    }                            
+
+    void assignUFFparams( int* neighs=0, bool bDeallocNeighs=true ){
+
+        bDeallocNeighs &= (neighs==0);
+        makeNeighs ( neighs, 4 );
+
+        // assign vdw parameters
+        assignUFFparams_vdws();   
+
+        // assign bond parameters
+        assignUFFparams_bonds();
+
+        // populate angle array & assign angle parameters
+        assignUFFparams_angles( neighs );
    
-  // assign torsion parameters
-  //call assign_torsions
-  
-  // assign inversion parameters
-  //call assign_inversions
+        // assign torsion parameters
+        assignUFFparams_dihedrals( neighs );
+    
+        // assign inversion parameters
+        //call assign_inversions
 
-// write data
-double tokcal = 60.2214076*1.602176634/4.1840;
-FILE* f=fopen( "mol.data.firecore", "w");
-fprintf( f, "\n" );
-fprintf( f, "\n" );
-fprintf( f, "%i atoms\n", atoms.size() );
-fprintf( f, "%i atom types\n", atoms.size() );
-fprintf( f, "%i bonds\n", bonds.size() );
-fprintf( f, "%i bond types\n", bonds.size() );
-fprintf( f, "%i angles\n", angles.size() );
-fprintf( f, "%i angle types\n", angles.size() );
-//fprintf( f, "%i dihedrals\n", dihedrals.size() );
-//fprintf( f, "%i dihedral types\n", dihedrals.size() );
-//fprintf( f, "%i impropers\n", impropers.size() );
-//fprintf( f, "%i improper types\n", impropers.size() );
-fprintf( f, "0 dihedrals\n" );
-fprintf( f, "0 dihedral types\n" );
-fprintf( f, "0 impropers\n" );
-fprintf( f, "0 improper types\n" );
-fprintf( f, "\n" );
-fprintf( f, "0.0 64.0 xlo xhi\n" );
-fprintf( f, "0.0 64.0 ylo yhi\n" );
-fprintf( f, "0.0 64.0 zlo zhi\n" );
-fprintf( f, "0.0 0.0 0.0 xy xz yz\n" );
-fprintf( f, "\n" );
-fprintf( f, "Masses\n" );
-fprintf( f, "\n" );
-for( int ia=0; ia<atoms.size(); ia++){
-    Atom& A = atoms[ia];
-    fprintf( f, "%i 1.0 # %s\n", ia+1, params->atypes[A.type].name );
-}
-fprintf( f, "\n" );
-fprintf( f, "Pair Coeffs\n" );
-fprintf( f, "\n" );
-for( int ia=0; ia<atoms.size(); ia++){
-    Atom& A = atoms[ia];
-    fprintf( f, "%i %f %f # %s %s\n", ia+1, sq(A.REQ.y)*tokcal, A.REQ.x*2.0*0.890898718140339, params->atypes[A.type].name, params->atypes[A.type].name );
-}
-fprintf( f, "\n" );
-fprintf( f, "Bond Coeffs\n" );
-fprintf( f, "\n" );
-for( int ib=0; ib<bonds.size(); ib++){
-    Bond& B = bonds[ib];
-    fprintf( f, "%i %f %f # %s %s\n", ib+1, 0.5*B.k*tokcal, B.l0, params->atypes[atoms[B.atoms.i].type].name, params->atypes[atoms[B.atoms.j].type].name );
-}
-fprintf( f, "\n" );
-fprintf( f, "Angle Coeffs\n" );
-fprintf( f, "\n" );
-for( int ia=0; ia<angles.size(); ia++){
-    Angle& A = angles[ia];
-    int i = A.atoms.j;
-    if ( params->atypes[atoms[i].type].name[2] == '1' ) { // cosine/periodic
-        fprintf( f, "%i cosine/periodic %f 1 1 # %s %s %s\n", ia+1, A.k*tokcal, params->atypes[atoms[bonds[A.bonds.x].atoms.i].type].name, params->atypes[atoms[bonds[A.bonds.x].atoms.j].type].name, params->atypes[atoms[bonds[A.bonds.y].atoms.j].type].name );
-    } else if ( params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { // cosine/periodic
-        fprintf( f, "%i cosine/periodic %f -1 3 # %s %s %s\n", ia+1, 9.0*A.k*tokcal, params->atypes[atoms[bonds[A.bonds.x].atoms.i].type].name, params->atypes[atoms[bonds[A.bonds.x].atoms.j].type].name, params->atypes[atoms[bonds[A.bonds.y].atoms.j].type].name );
-    } else if ( params->atypes[atoms[i].type].name[2] == '3' ) { // fourier
-        fprintf( f, "%i fourier %f %f %f %f # %s %s %s\n", ia+1, A.k*tokcal, A.C0, A.C1, A.C2, params->atypes[atoms[bonds[A.bonds.x].atoms.i].type].name, params->atypes[atoms[bonds[A.bonds.x].atoms.j].type].name, params->atypes[atoms[bonds[A.bonds.y].atoms.j].type].name );
-    }
-}
-/*
-fprintf( f, "\n" );
-fprintf( f, "Dihedral Coeffs\n" );
-fprintf( f, "\n" );
-fprintf( f, "\n" );
-fprintf( f, "Improper Coeffs\n" );
-fprintf( f, "\n" );
-*/
-fprintf( f, "\n" );
-fprintf( f, "Atoms\n" );
-fprintf( f, "\n" );
-for( int ia=0; ia<atoms.size(); ia++){
-    Atom& A = atoms[ia];
-    fprintf( f, "%i 1 %i 0.0 %g %g %g\n", A.id+1, ia+1, A.pos.x, A.pos.y, A.pos.z );
-}
-fprintf( f, "\n" );
-fprintf( f, "Bonds\n" );
-fprintf( f, "\n" );
-for( int ib=0; ib<bonds.size(); ib++){
-    Bond& B = bonds[ib];
-    fprintf( f, "%i %i %i %i\n", ib+1, ib+1, atoms[B.atoms.i].id+1, atoms[B.atoms.j].id+1 );
-}
-fprintf( f, "\n" );
-fprintf( f, "Angles\n" );
-fprintf( f, "\n" );
-for( int ia=0; ia<angles.size(); ia++){
-    Angle& A = angles[ia];
-    fprintf( f, "%i %i %i %i %i\n", ia+1, ia+1, atoms[A.atoms.i].id+1, atoms[A.atoms.j].id+1, atoms[A.atoms.k].id+1 );
-}
-/*
-fprintf( f, "\n" );
-fprintf( f, "Dihedrals\n" );
-fprintf( f, "\n" );
-fprintf( f, "\n" );
-fprintf( f, "Impropers\n" );
-fprintf( f, "\n" );
-*/
+        // deallocate neighbor array
+        if(bDeallocNeighs)delete [] neighs;
 
-
-
-fclose(f);
-
-  
+        // write data
+        assignUFFparams_writedata();
+          
     }
   
+    void assignUFFparams_writedata( ){
 
+        double tokcal = 60.2214076*1.602176634/4.1840;
+        //double toeV = 4.1840/60.2214076/1.602176634;
+        FILE* f=fopen( "mol.data.firecore", "w");
+        fprintf( f, "\n" );
+        fprintf( f, "\n" );
+        fprintf( f, "%i atoms\n", atoms.size() );
+        fprintf( f, "%i atom types\n", atoms.size() );
+        fprintf( f, "%i bonds\n", bonds.size() );
+        fprintf( f, "%i bond types\n", bonds.size() );
+        fprintf( f, "%i angles\n", angles.size() );
+        fprintf( f, "%i angle types\n", angles.size() );
+        fprintf( f, "%i dihedrals\n", dihedrals.size() );
+        fprintf( f, "%i dihedral types\n", dihedrals.size() );
+        //fprintf( f, "%i impropers\n", impropers.size() );
+        //fprintf( f, "%i improper types\n", impropers.size() );
+        fprintf( f, "0 impropers\n" );
+        fprintf( f, "0 improper types\n" );
+        fprintf( f, "\n" );
+        fprintf( f, "0.0 64.0 xlo xhi\n" );
+        fprintf( f, "0.0 64.0 ylo yhi\n" );
+        fprintf( f, "0.0 64.0 zlo zhi\n" );
+        fprintf( f, "0.0 0.0 0.0 xy xz yz\n" );
+        fprintf( f, "\n" );
+        fprintf( f, "Masses\n" );
+        fprintf( f, "\n" );
+        for( int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            fprintf( f, "%i 1.0 # %s\n", ia+1, params->atypes[A.type].name );
+        }
+        fprintf( f, "\n" );
+        fprintf( f, "Pair Coeffs\n" );
+        fprintf( f, "\n" );
+        for( int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            fprintf( f, "%i %f %f # %s %s\n", ia+1, sq(A.REQ.y)*tokcal, A.REQ.x*2.0*0.890898718140339, params->atypes[A.type].name, params->atypes[A.type].name );
+        }
+        fprintf( f, "\n" );
+        fprintf( f, "Bond Coeffs\n" );
+        fprintf( f, "\n" );
+        for( int ib=0; ib<bonds.size(); ib++){
+            Bond& B = bonds[ib];
+            fprintf( f, "%i %f %f # %s %s\n", ib+1, 0.5*B.k*tokcal, B.l0, params->atypes[atoms[B.atoms.i].type].name, params->atypes[atoms[B.atoms.j].type].name );
+        }
+        fprintf( f, "\n" );
+        fprintf( f, "Angle Coeffs\n" );
+        fprintf( f, "\n" );
+        for( int ia=0; ia<angles.size(); ia++){
+            Angle& A = angles[ia];
+            int i = A.atoms.j;
+            if ( params->atypes[atoms[i].type].name[2] == '1' ) { // cosine/periodic
+                fprintf( f, "%i cosine/periodic %f 1 1 # %s %s %s\n", ia+1, A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+            } else if ( params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { // cosine/periodic
+                fprintf( f, "%i cosine/periodic %f -1 3 # %s %s %s\n", ia+1, 9.0*A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+            } else if ( params->atypes[atoms[i].type].name[2] == '3' ) { // fourier
+                fprintf( f, "%i fourier %f %f %f %f # %s %s %s\n", ia+1, A.k*tokcal, A.C0, A.C1, A.C2, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
+            }
+        }
+        fprintf( f, "\n" );
+        fprintf( f, "Dihedral Coeffs\n" );
+        fprintf( f, "\n" );
+        for( int id=0; id<dihedrals.size(); id++){
+            Dihedral& D = dihedrals[id];
+            fprintf( f, "%i %f %i %i # %s %s %s %s\n", id+1, D.k*tokcal, D.d, D.n, params->atypes[atoms[D.atoms.x].type].name, params->atypes[atoms[D.atoms.y].type].name, params->atypes[atoms[D.atoms.z].type].name, params->atypes[atoms[D.atoms.w].type].name );
+        }
+        /*
+        fprintf( f, "\n" );
+        fprintf( f, "Improper Coeffs\n" );
+        fprintf( f, "\n" );
+        */
+        fprintf( f, "\n" );
+        fprintf( f, "Atoms\n" );
+        fprintf( f, "\n" );
+        for( int ia=0; ia<atoms.size(); ia++){
+            Atom& A = atoms[ia];
+            fprintf( f, "%i 1 %i 0.0 %g %g %g\n", A.id+1, ia+1, A.pos.x, A.pos.y, A.pos.z );
+        }
+        fprintf( f, "\n" );
+        fprintf( f, "Bonds\n" );
+        fprintf( f, "\n" );
+        for( int ib=0; ib<bonds.size(); ib++){
+            Bond& B = bonds[ib];
+            fprintf( f, "%i %i %i %i\n", ib+1, ib+1, atoms[B.atoms.i].id+1, atoms[B.atoms.j].id+1 );
+        }
+        fprintf( f, "\n" );
+        fprintf( f, "Angles\n" );
+        fprintf( f, "\n" );
+        for( int ia=0; ia<angles.size(); ia++){
+            Angle& A = angles[ia];
+            fprintf( f, "%i %i %i %i %i\n", ia+1, ia+1, atoms[A.atoms.i].id+1, atoms[A.atoms.j].id+1, atoms[A.atoms.k].id+1 );
+        }
+        fprintf( f, "\n" );
+        fprintf( f, "Dihedrals\n" );
+        fprintf( f, "\n" );
+        for( int id=0; id<dihedrals.size(); id++){
+            Dihedral& D = dihedrals[id];
+            fprintf( f, "%i %i %i %i %i %i\n", id+1, id+1, atoms[D.atoms.x].id+1, atoms[D.atoms.y].id+1, atoms[D.atoms.z].id+1, atoms[D.atoms.w].id+1 );
+        }
+        /*
+        fprintf( f, "\n" );
+        fprintf( f, "Impropers\n" );
+        fprintf( f, "\n" );
+        */
+        fclose(f);
 
-
-
-
-
+    }
 
 }; // MMFFBuilder
 
