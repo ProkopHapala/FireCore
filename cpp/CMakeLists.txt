@@ -30,6 +30,7 @@ if (  CMAKE_BUILD_TYPE MATCHES Debug )
         #SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer -static-libasan") # static-asan does not work see https://github.com/google/sanitizers/issues/796
     else()
         #SET( AXULIARY_COMPILE_FLAGS "-Wall -g -Og")
+        ### flags for debug
         SET( AXULIARY_COMPILE_FLAGS "-g -Og")
     endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
@@ -38,6 +39,7 @@ else()
     #SET( AXULIARY_COMPILE_FLAGS "-w -O3 -fPIC ")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
+    ### flags for optimize
     SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native -fopt-info-vec-all")
 endif()
@@ -49,6 +51,7 @@ if ( WITH_OMP )
     SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fopenmp" )
 endif()
 
+### flags always there
 SET( IGNORE_WARRNING_FLAGS "-Wno-int-to-pointer-cast -Wno-switch -Wno-reorder -Wno-deprecated -Wno-maybe-uninitialized -Wno-char-subscripts -Wno-write-strings -Wno-format -Wno-parentheses -Wno-unused-but-set-variable  -Wno-narrowing -Wno-unused-result  -Wno-sign-compare -Wno-strict-aliasing -Wno-unused-variable -Wno-unused-value -Wno-comment -Wno-misleading-indentation " )
 SET( WARRNING_TO_ERROR     "-Werror=return-type -Werror=init-self -Werror=uninitialized -Werror=implicit-fallthrough -Werror=tautological-compare -Werror=delete-non-virtual-dtor")
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
