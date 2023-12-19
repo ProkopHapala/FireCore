@@ -26,6 +26,7 @@ static MMFFparams* params_glob;
 #include "MMFFsp3.h"
 #include "MMFFsp3_loc.h"
 #include "MMFFf4.h"
+#include "UFF.h"
 
 #include "NBFF.h"
 #include "GridFF.h"
@@ -89,7 +90,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 	MMFFsp3      ff;
     MMFFsp3_loc  ffl;
     MMFFf4       ff4;
-	Constrains   constrs;
+    UFF          ffu;
+    Constrains   constrs;
 	//NBFF_old   nff;
     NBFF         surf, nbmol;
 	GridFF       gridFF;
@@ -879,26 +881,24 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::init)\n");exit(0);
             builder.assignTypes(); 
         }
 
-printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeMMFFs)\n");exit(0);
-
         if ( bUFF ){
 
-            //builder.toUFF();
+            builder.toUFF( ffu, true );
 
         }else{
 
             //builder.printAtomTypes();
             if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
-        
             builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
             if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
             builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
             builder.toMMFFsp3    ( ff , true, bEpairs );
-        
             ffl.flipPis( Vec3dOne );
             ff4.flipPis( Vec3fOne );
 
         }
+
+printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeMMFFs)\n");exit(0);
 
         if(bPBC){  
             //ff.printAtomParams();

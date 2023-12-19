@@ -101,7 +101,7 @@ class MMFFsp3_loc : public NBFF { public:
     //Quat4i*  neighs =0;   // [natoms] // from NBFF
     Quat4i*  bkneighs=0;   // [natoms]  inverse neighbors
     
-    Quat4d*  apars __attribute__((aligned(64))) =0;  // [nnode] per atom forcefield parametrs
+    Quat4d*  apars __attribute__((aligned(64))) =0;  // [nnode] angle parameters
     Quat4d*  bLs   __attribute__((aligned(64))) =0;  // [nnode] bond lengths
     Quat4d*  bKs   __attribute__((aligned(64))) =0;  // [nnode] bond stiffness
     Quat4d*  Ksp   __attribute__((aligned(64))) =0;  // [nnode] stiffness of pi-alignment
@@ -540,7 +540,7 @@ double eval_atom_debug(const int ia, bool bPrint=true){
 
         //printf("ia %i ing %i \n", ia, ing ); 
         Vec3d  pi = apos[ing];
-        Quat4d h; 
+        Quat4d h; // {x,y,z|w} = {f.x,f.y,f.z|e}
         h.f.set_sub( pi, pa );
         //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
         

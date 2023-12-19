@@ -3258,6 +3258,12 @@ void makeNeighs( int*& neighs, int perAtom ){
     //for(int ia=0; ia<na; ia++){ printf( "neigh[%i](%i,%i,%i,%i)\n", ia, neighs[ia*perAtom],neighs[ia*perAtom+1],neighs[ia*perAtom+2],neighs[ia*perAtom+3] ); };
 }
 
+#ifdef UFF_h
+void toUFF( UFF&, bool bRealloc=true ){
+    
+}
+#endif // UFF_h
+
 #ifdef MMFFsp3_loc_h
 void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool bUFF=false ){
 
