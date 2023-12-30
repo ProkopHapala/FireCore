@@ -1,0 +1,1 @@
+Example of using library [FitREQ.h](https://github.com/ProkopHapala/FireCore/blob/master/cpp/libs/Molecular/FitREQ_lib.cpp) through [python interface](https://github.com/ProkopHapala/FireCore/blob/master/pyBall/FitREQ.py). The library is used to fit non-covalent interaction parameters from molecular geometries and energies of interacting fragments stored in `.xyz` file. 
