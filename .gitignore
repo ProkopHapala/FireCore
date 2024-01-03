@@ -15,5 +15,9 @@
 *.npy
 *.xsf
 *.bin
+__pycache__
 
 build
+Build
+build-*
+Build-*

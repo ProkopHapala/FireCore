@@ -112,6 +112,8 @@ extern "C" {
     void projectAtoms    ( float* atoms, float* coefs, int ibuff_result                       ){ oclfft.projectAtoms    ( (float4*)atoms, (float4*)coefs, ibuff_result ); }
     void projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2, float* acumCoef ){  oclfft.projectAtomsDens( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef ); }
     void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0 ){ oclfft.projectAtomsDens0( ibuff_result, *(float2*)acumCoef, natoms, ityps, (Vec3d*)oatoms ); }
+
+    void projectDenmat( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2, float* acumCoef ){  oclfft.projectDenmat( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef ); }
     
     // void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
     void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out ){ oclfft.projectAtomPosTex( (float4*)atoms, (float4*)coefs,  nPos, (float4*)poss, (float2*)out ); }

@@ -1186,11 +1186,13 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     
 
     
+    
+    //ffl.run( 1, 0.05, 1e-6, 1000.0 );
+    //ffl.run_omp( 1, 0.05, 1e-6, 1000.0 );
 
-
-    //run_omp( 500, opt.dt, 1e-6, 1000.0 );
-    //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
+    //run_omp( 1, 0.05, 1e-6, 1000.0 );
     run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
     //run_omp( 1, opt.dt, 1e-6, 1000.0 );
     //run_omp( 2, opt.dt, 1e-6, 1000.0 );
@@ -1202,6 +1204,56 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     
     bChargeUpdated=false;
 }
+
+
+int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=0.1 ){
+    //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
+    //if(dt>0){ opt.setTimeSteps(dt); }
+    double F2conv=Fconv*Fconv;
+    long T0 = getCPUticks();
+    int itr=0,niter=niter_max;
+    double E=0,F2=0;
+    double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+    for(itr=0; itr<niter; itr++){
+        //double ff=0,vv=0,vf=0;
+        E=0;F2=0;  //ff=0;vv=0;vf=0;
+        
+        //------ eval forces
+        for(int ia=0; ia<ffl.natoms; ia++){ 
+            {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
+            if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
+            if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+            // ----- Error is HERE
+            if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+            else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+        }
+        // ---- assembling
+        for(int ia=0; ia<ffl.natoms; ia++){
+            ffl.assemble_atom( ia );
+        }        
+        // ----- Dynamics
+        for(int i=0; i<ffl.nvecs; i++){
+            ffl.move_atom_MD( i, dt, Flim, cdamp );
+            //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
+            //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
+            //ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+            //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+        }
+        Etot=E;
+        itr++; 
+        if(F2<F2conv){ 
+            //niter=0; 
+            double t = (getCPUticks() - T0)*tick2second;
+            if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+            break;
+        }
+    }
+    double t = (getCPUticks() - T0)*tick2second;
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+    return itr;
+}
+
+
 
 int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
     //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
@@ -1281,6 +1333,10 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             // ------ move
             #pragma omp for
             for(int i=0; i<ffl.nvecs; i++){
+
+                //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
+                //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
+                //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
                 //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
             }
@@ -1320,7 +1376,7 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
         }
     }{
     double t = (getCPUticks() - T0)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr );
     }
     return itr;
 }

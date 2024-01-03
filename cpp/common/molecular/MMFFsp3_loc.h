@@ -120,6 +120,9 @@ class MMFFsp3_loc : public NBFF { public:
     bool    bAngleCosHalf         = true;   // if true we use evalAngleCosHalf() instead of evalAngleCos() to compute anglular energy
     bool    bSubtractAngleNonBond = false;  // if true we subtract angle energy from non-bonded energy
 
+
+
+
     //int itr_DBG=0;
 
 // =========================== Functions
@@ -1172,9 +1175,10 @@ double eval_check(){
 
 // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy
 // ToDo: OpenMP paraelization atempt
-int run( int niter, double dt, double Fconv, double Flim ){
+int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
-    double E,F2;
+    double E=0,F2=0;
+    double cdamp = 1-damping; if(cdamp<0)cdamp=0;
     int    itr;
     //if(itr_DBG==0)print_pipos();
     //bool bErr=0;
@@ -1182,9 +1186,15 @@ int run( int niter, double dt, double Fconv, double Flim ){
         E=0;
         // ------ eval MMFF
         for(int ia=0; ia<natoms; ia++){ 
+            {             fapos[ia       ] = Vec3dZero; } // atom pos force
+            if(ia<nnode){ fapos[ia+natoms] = Vec3dZero; } // atom pi  force
             if(ia<nnode)E += eval_atom(ia);
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.MMFF[%i]",ia); } );
-            E += evalLJQs_ng4_PBC_atom( ia ); 
+            //E += evalLJQs_ng4_PBC_atom( ia ); 
+
+            if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+            else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
+
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.NBFF[%i]",ia); } );
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
@@ -1197,7 +1207,8 @@ int run( int niter, double dt, double Fconv, double Flim ){
         for(int i=0; i<nvecs; i++){
             //F2 += move_atom_GD( i, dt, Flim );
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
-            F2 += move_atom_MD( i, dt, Flim, 0.99 );
+            F2 += move_atom_MD( i, dt, Flim, cdamp );
+            //move_atom_MD( i, 0.05, 1000.0, 0.9 );
             //F2 += move_atom_kvaziFIRE( i, dt, Flim );
         }
         if(F2<F2conv)break;
@@ -1207,9 +1218,10 @@ int run( int niter, double dt, double Fconv, double Flim ){
 }
 
 // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy, wih OpenMP parallelization
-int run_omp( int niter, double dt, double Fconv, double Flim ){
+int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
     double E=0,F2=0;
+    double cdamp = 1-damping; if(cdamp<0)cdamp=0;
     int    itr=0;
     #pragma omp parallel shared(E,F2) private(itr)
     for(itr=0; itr<niter; itr++){
@@ -1220,9 +1232,13 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<natoms; ia++){ 
             if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+            {             fapos[ia       ] = Vec3dZero; } // atom pos force
+            if(ia<nnode){ fapos[ia+natoms] = Vec3dZero; } // atom pi  force
             if(ia<nnode)E += eval_atom(ia);
             //E += evalLJQs_ng4_PBC_atom( ia ); 
-            E += evalLJQs_ng4_PBC_atom_omp( ia ); 
+            //E += evalLJQs_ng4_PBC_atom_omp( ia ); 
+            if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+            else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
         #pragma omp for
@@ -1232,10 +1248,8 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
         // ------ move
         #pragma omp for reduction(+:F2)
         for(int i=0; i<nvecs; i++){
-            F2 += move_atom_MD( i, dt, Flim, 0.99 );
-        }
-        for(int i=natoms; i<nvecs; i++){
-             F2 += move_atom_MD( i, dt, Flim, 0.99 );
+            F2 += move_atom_MD( i, dt, Flim, cdamp );
+            //F2 += move_atom_MD( i, 0.05, 1000.0, 0.9 );
         }
         #pragma omp single
         if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}

@@ -50,7 +50,7 @@ void Mat3_from_cl( Mat3d& m, const cl_Mat3& clm ){
 
 //=======================================================================
 //=======================================================================
-//class OCL_MM: public OCL_DFT { public:
+
 class OCL_MM: public OCLsystem { public:
     cl_program program_relax=0;
 
