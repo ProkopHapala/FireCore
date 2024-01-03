@@ -1187,11 +1187,11 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
 
     
     
-    //ffl.run( 1, 0.05, 1e-6, 1000.0 );
+    ffl.run( 1, 0.05, 1e-6, 1000.0 );
     //ffl.run_omp( 1, 0.05, 1e-6, 1000.0 );
 
     //run_omp( 1, 0.05, 1e-6, 1000.0 );
-    run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    //run_omp( nIter, 0.05, 1e-6, 1000.0 );
     
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
     //run_omp( 1, opt.dt, 1e-6, 1000.0 );

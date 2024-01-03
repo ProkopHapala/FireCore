@@ -79,6 +79,11 @@ class MMFFsp3_loc : public NBFF { public:
     bool doAngles =true; // compute angles
     //bool doEpi    =true; // compute pi-electron interaction
 
+    bool   bCollisionDamping = false; // if true we use collision damping
+    double collisionDamping  = 0.1;   // collision damping coefficient rate [1/s] ... should be set to 1.0/(dt * ndampstep)
+    int    ndampstep         = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
+
+
     bool bEachAngle = false; // if true we compute angle energy for each angle separately, otherwise we use common parameters for all angles
     bool bTorsion   = false; // if true we compute torsion energy
     
@@ -342,6 +347,22 @@ double eval_atom(const int ia){
 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds){
+
+                if(bCollisionDamping){ // 
+                    // double invL = 1./l;
+                    // double dv   = d.dot( vel[b.y].f - vel[b.x].f )*invL;
+                    // double mcog = pj.w + pi.w;
+                    // double reduced_mass = pj.w*pi.w/mcog;
+                    // double imp  = collision_damping * reduced_mass * dv;
+                    // for masses = 1.0 we have reduced_mass = 1*1/(1+1) = 0.5
+
+                    double dv   = h.f.dot( vapos[ing] - vapos[ia] );
+                    double fcol = collisionDamping * 0.5 * dv;   // collisionDamping ~ 1/(dt*ndampstep);     f = m*a = m*dv/dt
+
+                    f1.set_mul( h.f, fcol );
+                    fbs[i].sub(f1);  fa.add(f1); 
+                }
+
                 // bond length force
                 E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1); 
 
@@ -1178,7 +1199,21 @@ double eval_check(){
 int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
     double E=0,F2=0;
+
+    bCollisionDamping = 1;
+    ndampstep = 2;
+    if(bCollisionDamping){
+        collisionDamping  = 1./(dt * ndampstep);
+        damping           = 0.01/ndampstep;
+    }else{
+        collisionDamping  = 0;
+        damping           = 0.1/ndampstep;
+    }
     double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+
+    //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
+    printf( "MMFFsp3_loc::run(bCollisionDamping=%i) dt %g damping %g collisionDamping %g \n", bCollisionDamping, dt, damping, collisionDamping );
+
     int    itr;
     //if(itr_DBG==0)print_pipos();
     //bool bErr=0;
