@@ -509,6 +509,9 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
     ocl.setGridShape_dCell( Ns, dCell )
     ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True )
     ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1, acumCoef=[0.0,2.0] )     #  2.0 electrons per orbital
+
+
+
     if bDen0diff:
         print( "DEBUG project_dens_GPU() bDen0diff ", bDen0diff )
         ords=np.array( ords, dtype=np.int32)
@@ -522,7 +525,7 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
         print( "project_dens_GPU data:", data.shape, data.dtype,    np.min(data), np.max(data), np.sum(data) )
         #data = data.real.astype(np.float)
         return data
-
+    
 def check_density_projection( atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], bSCF=False, iOutBuff=0, Cden=1.0, Cden0=-1.0, iMO1=None ):
     """
     Check the density projection.
