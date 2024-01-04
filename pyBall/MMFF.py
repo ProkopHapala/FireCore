@@ -90,7 +90,23 @@ glob_bMMFF    = True
 #  void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
 lib.sample_DistConstr.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
 lib.sample_DistConstr.restype   =  None
-def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None):
+def sample_DistConstr(xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None):
+    """
+    Sample distance constraints for a given set of coordinates.
+
+    Args:
+        xs (list): List of coordinates.
+        lmin (int): Minimum length constraint (default: 1).
+        lmax (int): Maximum length constraint (default: 1).
+        kmin (int): Minimum force constant constraint (default: 1).
+        kmax (int): Maximum force constant constraint (default: 1).
+        flim (float): Maximum force (default: 1e+300).
+        Es (list): List of energy values (default: None).
+        Fs (list): List of force values (default: None).
+
+    Returns:
+        tuple: Tuple containing the updated energy values (Es) and force values (Fs).
+    """
     n = len(xs)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
@@ -100,7 +116,22 @@ def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None,
 #  void sample_evalPiAling( double K, double c0, int n, double* angles, double* Es, double* Fs ){
 lib.sample_evalPiAling.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
 lib.sample_evalPiAling.restype   =  None
-def sample_evalPiAling( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
+def sample_evalPiAling(angles, K=1.0, ang0=0.0, r1=1., r2=1., Es=None, Fs=None):
+    """
+    Calculates the energy and force components (based on Pi-Pi alignment) for a given set of angles.
+
+    Args:
+        angles (list): List of angles.
+        K (float, optional): Force constant. Defaults to 1.0.
+        ang0 (float, optional): Reference angle. Defaults to 0.0.
+        r1 (float, optional): Parameter r1. Defaults to 1.0.
+        r2 (float, optional): Parameter r2. Defaults to 1.0.
+        Es (list, optional): List to store the energy components. Defaults to None.
+        Fs (list, optional): List to store the force components. Defaults to None.
+
+    Returns:
+        tuple: A tuple containing the energy components (Es) and force components (Fs).
+    """
     n = len(angles)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
@@ -290,7 +321,7 @@ def setVerbosity( verbosity=1, idebug=0 ):
 lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
-        xyz_name  ="input.xyz", 
+        xyz_name  ="input", 
         surf_name =None, 
         smile_name=None, 
         sElementTypes = "data/ElementTypes.dat",
@@ -569,6 +600,15 @@ def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False)
     return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
 
 
+# =====================================
+# ========= Database
+# =====================================
+
+def addSnapshot():
+    lib.addSnapshot()
+
+def printDatabase():
+    lib.printDatabase()
 
 
 
