@@ -53,16 +53,17 @@ class MMFFsp3_loc : public NBFF { public:
     static constexpr const int nneigh_max = 4; // maximum number of neighbors
 
     // === inherited from NBFF
-    // int natoms=0;         // [natoms] // from Atoms
-    //Vec3d *   apos  =0;    // [natoms] // from Atoms
-    //Vec3d *  fapos  =0;    // [natoms] // from NBFF
-    //Quat4i*  neighs =0;    // [natoms] // from NBFF
-    //Quat4i*  neighCell=0; // [natoms] // from NBFF
-    //Quat4d*  REQs =0;       // [nnode]  // from NBFF
-    //bool bPBC=false;       // from NBFF
-    //Vec3i   nPBC;          // from NBFF 
-    //Mat3d   lvec;          // from NBFF
-    //double  Rdamp  = 1.0;  // from NBFF
+    // int natoms=0;        // [natoms] // from Atoms
+    //Vec3d * apos  =0;     // [natoms] // from Atoms
+    //Vec3d * vapos = 0;    // [natom]  velocities of atoms
+    //Vec3d * fapos  =0;    // [natoms] // from NBFF
+    //Quat4i* neighs =0;    // [natoms] // from NBFF
+    //Quat4i* neighCell=0;  // [natoms] // from NBFF
+    //Quat4d* REQs =0;      // [nnode]  // from NBFF
+    //bool    bPBC=false;       // from NBFF
+    //Vec3i   nPBC;         // from NBFF 
+    //Mat3d   lvec;         // from NBFF
+    //double  Rdamp  = 1.0; // from NBFF
 
     // dimensions of the system
     int  nDOFs=0,nnode=0,ncap=0,nvecs=0,ntors=0;
@@ -79,10 +80,16 @@ class MMFFsp3_loc : public NBFF { public:
     bool doAngles =true; // compute angles
     //bool doEpi    =true; // compute pi-electron interaction
 
-    bool   bCollisionDamping = false; // if true we use collision damping
-    double collisionDamping  = 0.1;   // collision damping coefficient rate [1/s] ... should be set to 1.0/(dt * ndampstep)
-    int    ndampstep         = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
+    bool    bCollisionDamping        = false; // if true we use collision damping
+    bool    bCollisionDampingNonBond = false;  // if true we use collision damping for non-bonded interactions
+    double  damping_medium           = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
+    double  collisionDamping         = 0.0;   // col_damp    =     collisionDamping   /(dt*ndampstep )
+    double  collisionDamping_NB      = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    int     ndampstep                = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
+    double  col_damp_dRcut           = 0.5;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
 
+    double col_damp      = 0.0;  //  collisionDamping   /(dt*ndampstep );
+    double col_damp_NB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
 
     bool bEachAngle = false; // if true we compute angle energy for each angle separately, otherwise we use common parameters for all angles
     bool bTorsion   = false; // if true we compute torsion energy
@@ -118,7 +125,7 @@ class MMFFsp3_loc : public NBFF { public:
     Quat4d*  torsParams __attribute__((aligned(64))) =0; // [ntors]  torsion parameters
 
     Quat4d* constr __attribute__((aligned(64))) = 0; // [natom]  constraints
-    Vec3d * vapos  __attribute__((aligned(64))) = 0; // [natom]  velocities of atoms
+    //Vec3d * vapos  __attribute__((aligned(64))) = 0; // [natom]  velocities of atoms
 
     Mat3d   invLvec; // inverse lattice vectors
 
@@ -348,7 +355,7 @@ double eval_atom(const int ia){
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds){
 
-                if(bCollisionDamping){ // 
+                if(bCollisionDamping && vapos ){ // 
                     // double invL = 1./l;
                     // double dv   = d.dot( vel[b.y].f - vel[b.x].f )*invL;
                     // double mcog = pj.w + pi.w;
@@ -357,10 +364,18 @@ double eval_atom(const int ia){
                     // for masses = 1.0 we have reduced_mass = 1*1/(1+1) = 0.5
 
                     double dv   = h.f.dot( vapos[ing] - vapos[ia] );
-                    double fcol = collisionDamping * 0.5 * dv;   // collisionDamping ~ 1/(dt*ndampstep);     f = m*a = m*dv/dt
+                    double fcol = col_damp * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
 
                     f1.set_mul( h.f, fcol );
                     fbs[i].sub(f1);  fa.add(f1); 
+
+                    // double w    = damp_rate * 0.5 * smoothstep_down(sqrt(r2),R, R+dRcut ); // ToDo : we can optimize this by using some other cutoff function which depends only on r2 (no sqrt)
+                    // //double w    = damp_rate * 0.5 * R8down         (r2,      R, R+dRcut );
+                    // double fcol = w * d.dot( vapos[j]-vi );                                // collisionDamping ~ 1/(dt*ndampstep);     f = m*a = m*dv/dt
+                    // Vec3d fij; fij.set_mul( d, fcol/r2 ); //  vII = d*d.fot(v)/|d|^2 
+                    // fx+=fij.x;
+                    // fy+=fij.y;
+                    // fz+=fij.z;
                 }
 
                 // bond length force
@@ -1085,7 +1100,7 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.0001, double r2min=1e-4, bool bChe
         }
         
     }
-    //for(int ia=0; ia<nnode; ia++){  pipos[ia]=Vec3dZ ; } // DEBUG
+    //for(int ia=0; ia<nnode; ia++){  pipos[ia]=Vec3dZ ; } // Debug
 }
 
 // initialize directions of pi orbitals iteratively
@@ -1174,7 +1189,7 @@ double eval( bool bClean=true, bool bCheck=true ){
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     Etot += eval_atoms();
-    //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
+    //if(idebug){printf("CPU BEFORE assemble() \n"); printDebug();} 
     asseble_forces();
     if(bTorsion) EppI +=eval_torsions();
     //Etot = Eb + Ea + Eps + EppT + EppI;
@@ -1200,19 +1215,15 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
     double E=0,F2=0;
 
-    bCollisionDamping = 1;
-    ndampstep = 2;
-    if(bCollisionDamping){
-        collisionDamping  = 1./(dt * ndampstep);
-        damping           = 0.01/ndampstep;
-    }else{
-        collisionDamping  = 0;
-        damping           = 0.1/ndampstep;
-    }
-    double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+    //bCollisionDamping = 1;
+    //ndampstep = 2;
+
+    double  cdamp = 1 -(damping_medium     /ndampstep     );  if(cdamp<0)cdamp=0;
+    col_damp      =     collisionDamping   /(dt*ndampstep );
+    col_damp_NB   =     collisionDamping_NB/(dt*ndampstep );
 
     //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
-    printf( "MMFFsp3_loc::run(bCollisionDamping=%i) dt %g damping %g collisionDamping %g \n", bCollisionDamping, dt, damping, collisionDamping );
+    printf( "MMFFsp3_loc::run(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter, bCollisionDamping, bCollisionDampingNonBond, dt, 1-cdamp, col_damp*dt, col_damp_NB*dt );
 
     int    itr;
     //if(itr_DBG==0)print_pipos();
@@ -1228,7 +1239,13 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
             //E += evalLJQs_ng4_PBC_atom( ia ); 
 
             if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
-            else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
+            else    { 
+                E+=evalLJQs_ng4_atom_omp    ( ia ); 
+            
+                if( bCollisionDampingNonBond ){
+                    evalCollisionDamp_atom_omp( ia, col_damp_NB, col_damp_dRcut );
+                }
+            } 
 
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.NBFF[%i]",ia); } );
         }
@@ -1477,7 +1494,7 @@ void makeNeighCells( int npbc, Vec3d* pbc_shifts ){
 
             /*
             // -------- Fast method
-            { //DEBUG
+            { //Debug
                 Vec3d u;
                 invLvec.dot_to( d, u );
                 int ix = 1-(int)(u.x+1.5);
@@ -1533,8 +1550,8 @@ void printTorsions(      ){ printf("MMFFsp3_loc::printTorsions()\n"); for(int i=
 
 void printAtomsConstrains( bool bWithOff=false ){ printf("MMFFsp3_loc::printAtomsConstrains()\n"); for(int i=0; i<natoms; i++){ if(bWithOff || (constr[i].w>0.0f) )printf( "consrt[%i](%g,%g,%g|K=%g)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w ); } }
 
-void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
-    printf( "MMFFsp3_loc::printDEBUG()\n" );
+void printDebug(  bool bNg=true, bool bPi=true, bool bA=true ){
+    printf( "MMFFsp3_loc::printDebug()\n" );
     if(bA)for(int i=0; i<natoms; i++){
         printf( "CPU[%i] ", i );
         //printf( "bkngs{%2i,%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
@@ -1575,7 +1592,7 @@ bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
         printAtomParams();
         printNeighs();
         print_pbc_shifts();
-        printDEBUG(  false, false );
+        printDebug(  false, false );
 
         eval_atoms(true,true);
 

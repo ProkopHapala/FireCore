@@ -12,6 +12,60 @@
 #define R2SAFE  1.0e-8f
 #define F2MAX   10.0f
 
+
+
+// ================= Trashold functions
+
+double smoothstep_up(double x_, double xmin, double xmax) {
+    if      (x_<xmin){ return 0; }
+    else if (x_>xmax){ return 1; }
+    double x = (x_-xmin)/(xmax-xmin);
+    return x*x*(3-2*x);
+}
+
+double smoothstep_down(double x_, double xmin, double xmax) {
+    if      (x_<xmin){ return 1; }
+    else if (x_>xmax){ return 0; }
+    double x = (x_-xmin)/(xmax-xmin);
+    return 1-x*x*(3-2*x);
+}
+
+double R4blob(double r2) { r2=1-r2; return r2*r2; }   // simplest and fastest cutoff function which depends only on r2 (i.e. eliminate need for sqrt)
+
+double R8func(double r2, double R, double Rnod ){
+    //This functions should is C1-continuous smoothstep function which is use only r2 (i.e. eliminate need for sqrt), it can be used in 3 ways:
+    //  1) smoothstep from 0.0 to 1.0 at interval [Rnod,R] if Rnod<R
+    //  2) smoothstep from 1.0 to 0.0 at interval [R,Rnod] if Rnod>R
+    //  3) smooth bumb at interval [R1,R2] with peak at R, where 2R^2 = R1^2 + R2^2
+    double R2   = R*R;              // 1 mul
+    double R2n  = Rnod*Rnod;        // 1 mul
+    double y1   =       R2 - r2;    // 1 add
+    double y2   = R2n + R2 - y1*y1; // 2 add, 1 mul 
+    y2*= R2/(R2+R2n); // rescale to have maximum at y=1   // 1 add, 1 div, 1 mul
+    return y2*y2;                   // 1 mul .... in total cost 5 mul, 3 add, 1 div
+}
+
+double R8down(double r2, double R, double Rnod ){
+    //This functions should is C1-continuous smoothstep function which is use only r2 (i.e. eliminate need for sqrt), it can be used in 3 ways:
+    //  1) smoothstep from 0.0 to 1.0 at interval [Rnod,R] if Rnod<R
+    double R2   = R*R;             
+    double R2n  = Rnod*Rnod;       
+    if     ( r2<R2  ) return 1;
+    else if( r2>R2n ) return 0;
+    double y1   =       R2 - r2;    
+    double y2   = R2n + R2 - y1*y1; 
+    y2*= R2/(R2+R2n); 
+    return y2*y2;   
+}
+
+double finiteLorenz( double r2, double w2, double R2cut ){
+    if( r2>R2cut ) return 0;
+    double fcut = (R2cut-r2);
+    return fcut*fcut/(R2cut*R2cut*(r2+w2));
+}
+
+
+
 // ================ Angular Forces (MMFF) 
 
 inline double evalBond( const Vec3d& h, double dl, double k, Vec3d& f ){

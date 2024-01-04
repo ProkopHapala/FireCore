@@ -3336,15 +3336,21 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 // -- atoms
                 //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
                 // --- Generate Bonds
+
+                printf( "ia[%i nbond=%i \n", ia, conf.nbond  );
+
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
                     const Bond& B = bonds[ib];
+                    printf( "ia,ib[%i,%i] ts[%i,%i] B.l0=%g B.k=%g \n", ia, ib, B.atoms.a, B.atoms.b, B.l0, B.k  );
                     int ja = B.getNeighborAtom(ia);
                     const Atom& Aj =  atoms[ja];
                     AtomType& jtyp = params->atypes[Aj.type];
                     hs[k]  = atoms[ja].pos - A.pos;
                     hs[k].normalize();
                     ngs[k] = ja;
+
+
                     bL [k]=B.l0;
                     bK [k]=B.k;
                     if(bUFF){
