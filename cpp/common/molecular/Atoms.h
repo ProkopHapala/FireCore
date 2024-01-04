@@ -13,6 +13,40 @@ class Points{ public:
     Vec3d * ps=0;
 };
 
+class MetaData{ public:
+   /*virtual void print()=0;
+   virtual char* tostr(int id)=0;*/
+   
+};
+
+//class MolecularDatabase : public MetaData{ 
+// private:
+//     double* descriptors;
+//     Atoms* atoms;
+//     int nMembers;
+// public:
+//     MolecularDatabase(){
+//         descriptors = nullptr;
+//         atoms = nullptr;
+//         nMembers = 0;
+//     };
+//     void realloc(int n){
+//         this->nMembers = n;
+//         Atoms* temp = new Atoms[n];
+//         memcpy(temp, this->atoms, sizeof(Atoms)*n);
+//         delete[] this->atoms;
+//         this->atoms = temp;
+
+//         this->descriptors = new double[n];
+//     };
+//     void addSnapshot(Atoms structure){
+
+//     };
+//    virtual void  print(){};
+//    virtual char* tostr(int id){};
+//};
+
+
 class Atoms{ public:
     int     natoms =0;  // number of atoms in the system
     int   * atypes =0;  // [natoms] array of atom type indices
@@ -22,6 +56,8 @@ class Atoms{ public:
     double Energy  =0;
     long   id      =0;
     int    n0      =0; // number of atoms in the first part of the system (e.g. ligand) 
+
+    MetaData* metaData=0;
 
     void realloc ( int n, bool bAtypes=true ){ natoms=n;  _realloc(apos,natoms); if(bAtypes)_realloc(atypes,natoms); }
     void allocNew( int n, bool bAtypes=true ){ natoms=n;  _alloc(apos,natoms);   if(bAtypes)_alloc(atypes,natoms);   }

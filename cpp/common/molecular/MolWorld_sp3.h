@@ -9,7 +9,7 @@
 #include <math.h>
 
 #include <omp.h>
-
+#include <memory>
 #include "IO_utils.h"
 
 //#include "testUtils.h"
@@ -48,6 +48,12 @@ static MMFFparams* params_glob;
 
 #include "arrayAlgs.h"
 #include "SVG_render.h"
+
+
+
+#include "MolecularDatabase.h"
+
+
 
 /**
  * @class MolWorld_sp3
@@ -1180,6 +1186,9 @@ virtual void init( bool bGrid ){
     builder.setup_atom_permut( true );
     if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
     if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems 
+
+    database = new MolecularDatabase;
+
     //builder.printAtoms();
     //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
     //ffl.printNeighs();
@@ -1991,6 +2000,28 @@ void autoCharges(int natoms, int* atypes, Quat4d* REQs, Quat4i* neighs, int nMax
 virtual void printSwitches(){
     printf( "MolWorld_sp3_simple::printSwitches() bCheckInvariants=%i bPBC=%i bNonBonded=%i bMMFF=%i ffl.doAngles=%i ffl.doPiSigma=%i ffl.doPiPiI=%i ffl.bSubtractAngleNonBond=%i \n", bCheckInvariants, bPBC, bNonBonded, bMMFF, ffl.doAngles, ffl.doPiSigma, ffl.doPiPiI, ffl.bSubtractAngleNonBond );
 }
+
+
+MolecularDatabase* database;
+
+
+void addSnapshot(){
+    //std::unique_ptr<DatabaseMember> dbm(new DatabaseMember);
+
+    database->addMember(nbmol);
+
+}
+
+void printDatabase(){
+    database->print();
+}
+
+
+
+
+
+
+
 
 };
 
