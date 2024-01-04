@@ -1013,7 +1013,8 @@ void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Ve
 
 void MolGUI::drawSystem( Vec3i ixyz ){
     //float textSize=0.007;
-    float textSize=1.0;
+    //float textSize=1.0;
+    float textSize=0.015;
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );

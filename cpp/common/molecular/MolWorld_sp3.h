@@ -786,10 +786,10 @@ void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBo
     builder.addCappingTypesByIz(1);   // hydrogens
     builder.addCappingTypesByIz(200); // electron pairs
     //params.printAtomTypeDict();
-    //params.printAtomTypes();
+    params.printAtomTypes();
     //params.printBond();
-    params.printAngleTypes();
-    params.printDihedralTypes();
+    //params.printAngleTypes();
+    //params.printDihedralTypes();
 }
 
 int buildMolecule_xyz( const char* xyz_name ){
@@ -838,6 +838,9 @@ void makeMMFFs(){
     builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
     builder.toMMFFsp3    ( ff , true, bEpairs );
     
+
+    ffl.printAtomParams();
+
     ffl.flipPis( Vec3dOne );
     ff4.flipPis( Vec3fOne );
     if(bPBC){  
@@ -1185,10 +1188,8 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     verbosity = 1;
     
 
-    
-    
-    ffl.run( 1, 0.05, 1e-6, 1000.0 );
-    //ffl.run_omp( 1, 0.05, 1e-6, 1000.0 );
+    ffl.run( nIter, 0.05, 1e-6, 1000.0 );
+    //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
 
     //run_omp( 1, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );

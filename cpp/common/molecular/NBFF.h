@@ -44,9 +44,10 @@ class NBFF: public Atoms{ public:
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
     
+    Vec3d    *vapos  __attribute__((aligned(64))) = 0; // [natom]  velocities of atoms
     Vec3d    *fapos __attribute__((aligned(64))) =0; // forces on atomic positions
     Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
-    Quat4i   *neighs =0; // list of neighbors (4 per atom)
+    Quat4i   *neighs   =0; // list of neighbors (4 per atom)
     Quat4i   *neighCell=0; // list of neighbors (4 per atom)
 
     double alphaMorse = 1.5; // alpha parameter for Morse potential
@@ -341,7 +342,6 @@ class NBFF: public Atoms{ public:
         const Vec3d  pi   = apos     [ia];
         const Quat4d  REQi = REQs     [ia];
         const Quat4i ng   = neighs   [ia];
-        const Quat4i ngC  = neighCell[ia];
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
 
@@ -368,6 +368,47 @@ class NBFF: public Atoms{ public:
         for(int ia=0; ia<natoms; ia++){ E+=evalLJQs_ng4_atom_omp(ia); }
         return E;
     }
+
+    double evalCollisionDamp_atom_omp( const int ia, double damp_rate, double dRcut=0.5 ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi     = apos [ia];
+        const Vec3d  vi     = vapos[ia];
+        const double Ri     = REQs [ia].x;
+        Vec3d fi = Vec3dZero;
+        double fx=0,fy=0,fz=0;
+
+        //#pragma omp simd reduction(+:fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            double R = Ri + REQs[j].x;
+            const Vec3d d  = apos[j]-pi;
+            double r2 = d.norm2();
+            if(j == ia) continue;
+            // reduced_mass = mi*mj/(mi+mj) = mi*mj/m_cog
+            // delta_v      = reduced_mass * dv
+            // fi           = mi * delta_v/dt
+            // for masses = 1.0 we have reduced_mass = 1*1/(1+1) = 0.5
+            // fi           = 0.5 * dv/dt = 0.5 * damp_rate .... because damp_rate = 1/(dt*ndampstep)
+
+            double w    = damp_rate * 0.5 * smoothstep_down(sqrt(r2),R, R+dRcut ); // ToDo : we can optimize this by using some other cutoff function which depends only on r2 (no sqrt)
+            //double w    = damp_rate * 0.5 * R8down         (r2,      R, R+dRcut );
+            double fcol = w * d.dot( vapos[j]-vi );                                // collisionDamping ~ 1/(dt*ndampstep);     f = m*a = m*dv/dt
+            Vec3d fij; fij.set_mul( d, fcol/r2 ); //  vII = d*d.fot(v)/|d|^2 
+            fx+=fij.x;
+            fy+=fij.y;
+            fz+=fij.z;
+            //fi+=fij; 
+        }
+        fapos[ia].add( Vec3d{fx,fy,fz} );
+        return 0;
+    }
+    double evalCollisionDamp_omp( double damp_rate, double dRcut=0.5 ){
+        //printf("NBFF::evalCollisionDamp_omp()\n" );
+        double E=0;
+        for(int ia=0; ia<natoms; ia++){ E+=evalCollisionDamp_atom_omp(ia, damp_rate, dRcut ); }
+        return E;
+    }
+
 
     double evalLJQs_ng4_PBC_atom(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );

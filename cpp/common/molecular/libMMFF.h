@@ -62,6 +62,28 @@ int saveXYZ( const char* fname, const char* comment, int imod){
 
 // ================ RUN / EVAL
 
+void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut ){
+    // bool    bCollisionDamping        = false; // if true we use collision damping
+    // bool    bCollisionDampingNonBond = false;  // if true we use collision damping for non-bonded interactions
+    // double  damping_medium           = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
+    // double  collisionDamping         = 0.1;   // col_damp    =     collisionDamping   /(dt*ndampstep )
+    // double  collisionDamping_NB      = 0.1;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    // int     ndampstep                = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
+    // double  col_damp_dRcut           = 0.5;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    // double col_damp      = 0.0;  //  collisionDamping   /(dt*ndampstep );
+    // double col_damp_NB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
+    W.ffl.bCollisionDamping        = collisionDamping   >0;
+    W.ffl.bCollisionDampingNonBond = collisionDamping_NB>0;
+    W.ffl.damping_medium           = damping_medium;
+    W.ffl.collisionDamping         = fmax( collisionDamping   ,0 );
+    W.ffl.collisionDamping_NB      = fmax( collisionDamping_NB,0 );
+    W.ffl.ndampstep                = ndampstep;
+    W.ffl.col_damp_dRcut           = col_damp_dRcut;
+}
+
+
+
+
 double eval (){ return W.eval(); };
 //int    run  ( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  }
 //bool   relax( int niter,    double Ftol, bool bWriteTrj ){ return W.relax( niter, Ftol, bWriteTrj );}
