@@ -615,18 +615,15 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     return ja;
 }
 
-
 int findBridgeBonds(){
     //LimitedGraph graph;
     //graph.init( builder.na, builder.bonds.size(), builder.bonds.data() );
     builder.toLimitedGraph( graph );
-    graph.bPrint = true;
+    if(verbosity>2)graph.bPrint = true; // Debug
     graph.bridge();
-    printf( "graph.found.size() %i \n", graph.found.size() );
+    if(verbosity>0)printf( "MolWorld_sp3::findBridgeBonds()  graph.found.size() %i \n", graph.found.size() );
     return graph.found.size();
 }
-
-
 
 int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
     if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
@@ -838,13 +835,10 @@ void makeMMFFs(){
     builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
     builder.toMMFFsp3    ( ff , true, bEpairs );
     
-
-    ffl.printAtomParams();
-
+    //ffl.printAtomParams();
     ffl.flipPis( Vec3dOne );
     ff4.flipPis( Vec3fOne );
     if(bPBC){  
-        //ff.printAtomParams();
         ff.bPBCbyLvec = true;
         ff .setLvec( builder.lvec);
         ffl.setLvec( builder.lvec);   
@@ -1080,7 +1074,6 @@ double eval( ){
     return E;
 }
 
-
 bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     printf( "MolWorld_sp3::relax() niter %i Ftol %g bWriteTrj %i \n", niter, Ftol, bWriteTrj );
     Etot=0.0;
@@ -1101,7 +1094,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
 }
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
-virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
+virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){ 
     //printf( "MolWorld_sp3::run(%i) \n", nstepMax );
     //printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
     //printf( "opt.damp_max %g opt.damping %g \n", opt.damp_max, opt.damping );
@@ -1207,17 +1200,18 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
 }
 
 
-int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=0.1 ){
+int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=0.1, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
     //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
     //if(dt>0){ opt.setTimeSteps(dt); }
     double F2conv=Fconv*Fconv;
     long T0 = getCPUticks();
     int itr=0,niter=niter_max;
-    double E=0,F2=0;
-    double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+    double E=0;
+    double cdamp = ffl.update_collisionDamping( dt );
+    //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
     for(itr=0; itr<niter; itr++){
         //double ff=0,vv=0,vf=0;
-        E=0;F2=0;  //ff=0;vv=0;vf=0;
+        E=0;  //ff=0;vv=0;vf=0;
         
         //------ eval forces
         for(int ia=0; ia<ffl.natoms; ia++){ 
@@ -1226,7 +1220,10 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
             if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
             // ----- Error is HERE
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-            else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+            else    { 
+                E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); 
+                if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
+            } 
         }
         // ---- assembling
         for(int ia=0; ia<ffl.natoms; ia++){
@@ -1234,29 +1231,34 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
         }        
         // ----- Dynamics
         for(int i=0; i<ffl.nvecs; i++){
-            ffl.move_atom_MD( i, dt, Flim, cdamp );
+            ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, cdamp ) );
             //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
             //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
             //ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
             //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
         }
         Etot=E;
+        if(outE )outE [itr]=Etot;
+        if(outF )outF [itr]=sqrt(ffl.cvf.z);
+        if(outV )outV [itr]=sqrt(ffl.cvf.y);
+        if(outVF)outVF[itr]=ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y + 1e-32);
         itr++; 
-        if(F2<F2conv){ 
+        if( isnan(Etot) || isnan(ffl.cvf.z) || isnan(ffl.cvf.y) ){  printf( "run_omp(itr=%i) ERROR NaNs : E=%f cvf(%g,%g,%g)\n", itr, E, ffl.cvf.x, sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); return itr; }
+        if(ffl.cvf.z<F2conv){ 
             //niter=0; 
             double t = (getCPUticks() - T0)*tick2second;
-            if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+            if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
             break;
         }
     }
     double t = (getCPUticks() - T0)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
     return itr;
 }
 
 
 
-int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
+int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
     //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
     if(dt>0){ opt.setTimeSteps(dt); }
     long T0 = getCPUticks();

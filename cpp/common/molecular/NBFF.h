@@ -369,7 +369,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
-    double evalCollisionDamp_atom_omp( const int ia, double damp_rate, double dRcut=0.5 ){
+    double evalCollisionDamp_atom_omp( const int ia, double damp_rate, double dRcut1=-0.2, double dRcut2=0.3 ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi     = apos [ia];
@@ -390,7 +390,7 @@ class NBFF: public Atoms{ public:
             // for masses = 1.0 we have reduced_mass = 1*1/(1+1) = 0.5
             // fi           = 0.5 * dv/dt = 0.5 * damp_rate .... because damp_rate = 1/(dt*ndampstep)
 
-            double w    = damp_rate * 0.5 * smoothstep_down(sqrt(r2),R, R+dRcut ); // ToDo : we can optimize this by using some other cutoff function which depends only on r2 (no sqrt)
+            double w    = damp_rate * 0.5 * smoothstep_down(sqrt(r2), R+dRcut1, R+dRcut2 ); // ToDo : we can optimize this by using some other cutoff function which depends only on r2 (no sqrt)
             //double w    = damp_rate * 0.5 * R8down         (r2,      R, R+dRcut );
             double fcol = w * d.dot( vapos[j]-vi );                                // collisionDamping ~ 1/(dt*ndampstep);     f = m*a = m*dv/dt
             Vec3d fij; fij.set_mul( d, fcol/r2 ); //  vII = d*d.fot(v)/|d|^2 

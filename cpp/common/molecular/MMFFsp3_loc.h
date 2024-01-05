@@ -86,10 +86,13 @@ class MMFFsp3_loc : public NBFF { public:
     double  collisionDamping         = 0.0;   // col_damp    =     collisionDamping   /(dt*ndampstep )
     double  collisionDamping_NB      = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
     int     ndampstep                = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
-    double  col_damp_dRcut           = 0.5;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    double  col_damp_dRcut1          = -0.2;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    double  col_damp_dRcut2          =  0.3;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
 
     double col_damp      = 0.0;  //  collisionDamping   /(dt*ndampstep );
     double col_damp_NB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
+
+    Vec3d cvf=Vec3dZero; // <f|f>, <v|v>, <v|f> 
 
     bool bEachAngle = false; // if true we compute angle energy for each angle separately, otherwise we use common parameters for all angles
     bool bTorsion   = false; // if true we compute torsion energy
@@ -1120,7 +1123,7 @@ int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
             assemble_atom( ia );
         }
         for(int i=natoms; i<nvecs; i++){
-            F2 +=move_atom_MD( i, dt, Flim, 0.9 );
+            F2 +=move_atom_MD( i, dt, Flim, 0.9 ).z;
         }
         if(F2<F2conv){ return itr; }
     }
@@ -1147,6 +1150,8 @@ void cleanForce(){
     for(int i=0; i<nDOFs; i++){ fDOFs[i]=0;  } 
     // NOTE: We do not need clean fneigh,fneighpi because they are set in eval_atoms 
 }
+
+void cleanVelocity(){  for(int i=0; i<nDOFs; i++){ fDOFs[i]=0; }  }
 
 // add neighbor recoil forces to an atom (ia)
 void assemble_atom(int ia){
@@ -1209,18 +1214,22 @@ double eval_check(){
     return Etot;
 }
 
+inline double update_collisionDamping( double dt ){
+    double  cdamp = 1 -(damping_medium     /ndampstep     );  if(cdamp<0)cdamp=0;
+    col_damp      =     collisionDamping   /(dt*ndampstep );
+    col_damp_NB   =     collisionDamping_NB/(dt*ndampstep );
+    return cdamp;
+};
+
+
+
 // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy
 // ToDo: OpenMP paraelization atempt
 int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
-    double E=0,F2=0;
+    double E=0,ff=0,vv=0,vf=0;
 
-    //bCollisionDamping = 1;
-    //ndampstep = 2;
-
-    double  cdamp = 1 -(damping_medium     /ndampstep     );  if(cdamp<0)cdamp=0;
-    col_damp      =     collisionDamping   /(dt*ndampstep );
-    col_damp_NB   =     collisionDamping_NB/(dt*ndampstep );
+    double cdamp = update_collisionDamping( dt );
 
     //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
     printf( "MMFFsp3_loc::run(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter, bCollisionDamping, bCollisionDampingNonBond, dt, 1-cdamp, col_damp*dt, col_damp_NB*dt );
@@ -1242,9 +1251,7 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
             else    { 
                 E+=evalLJQs_ng4_atom_omp    ( ia ); 
             
-                if( bCollisionDampingNonBond ){
-                    evalCollisionDamp_atom_omp( ia, col_damp_NB, col_damp_dRcut );
-                }
+                if( bCollisionDampingNonBond ){ evalCollisionDamp_atom_omp( ia, col_damp_NB, col_damp_dRcut1, col_damp_dRcut2 ); }
             } 
 
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.NBFF[%i]",ia); } );
@@ -1255,15 +1262,16 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("assemble[%i]",ia); } );
         }
         // ------ move
-        F2=0;
+        cvf = Vec3dZero;
         for(int i=0; i<nvecs; i++){
             //F2 += move_atom_GD( i, dt, Flim );
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
-            F2 += move_atom_MD( i, dt, Flim, cdamp );
+            cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
             //move_atom_MD( i, 0.05, 1000.0, 0.9 );
             //F2 += move_atom_kvaziFIRE( i, dt, Flim );
         }
-        if(F2<F2conv)break;
+        if(cvf.z<F2conv)break;
+        if(cvf.x<0){ cleanVelocity(); };
         //itr_DBG++;
     }
     return itr;
@@ -1272,14 +1280,14 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
 // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy, wih OpenMP parallelization
 int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
-    double E=0,F2=0;
+    double E=0,ff=0,vv=0,vf=0;
     double cdamp = 1-damping; if(cdamp<0)cdamp=0;
     int    itr=0;
-    #pragma omp parallel shared(E,F2) private(itr)
+    #pragma omp parallel shared(E,ff,vv,vf) private(itr)
     for(itr=0; itr<niter; itr++){
         // This {} should be done just by one of the processors
         #pragma omp single
-        {E=0;F2=0;}
+        {E=0;ff=0;vv=0;vf=0;}
         // ------ eval MMFF
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<natoms; ia++){ 
@@ -1298,13 +1306,19 @@ int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1
             assemble_atom( ia );
         }
         // ------ move
-        #pragma omp for reduction(+:F2)
+        #pragma omp for reduction(+:ff,vv,vf)
         for(int i=0; i<nvecs; i++){
-            F2 += move_atom_MD( i, dt, Flim, cdamp );
-            //F2 += move_atom_MD( i, 0.05, 1000.0, 0.9 );
+            const Vec3d cvf_ = move_atom_MD( i, dt, Flim, cdamp );
+            //const Vec3d cvf_ += move_atom_MD( i, 0.05, 1000.0, 0.9 );
+            ff += cvf_.x; vv += cvf_.y; vf += cvf_.z;
         }
         #pragma omp single
-        if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
+        {
+            cvf.x=ff; cvf.y=vv; cvf.z=vf;
+            if(cvf.x<0){ cleanVelocity(); };
+            //if(cvf.z<F2conv)break;
+            if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(ff), omp_get_num_threads() );}
+        }
     }
     return itr;
 }
@@ -1333,11 +1347,11 @@ inline double move_atom_GD(int i, float dt, double Flim){
 }
 
 // update atom positions using molecular dynamics (damped leap-frog)
-inline double move_atom_MD( int i, const float dt, const double Flim, const double cdamp=0.9 ){
-    Vec3d  f = fapos[i];
-    Vec3d  v = vapos[i];
-    Vec3d  p = apos [i];
-    const double fr2 = f.norm2();
+inline Vec3d move_atom_MD( int i, const float dt, const double Flim, const double cdamp=0.9 ){
+    Vec3d f = fapos[i];
+    Vec3d v = vapos[i];
+    Vec3d p = apos [i];
+    //const double fr2 = f.norm2();
     //if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
     const bool bPi = i>=natoms;
     // bool b=false;
@@ -1345,6 +1359,7 @@ inline double move_atom_MD( int i, const float dt, const double Flim, const doub
     // b|=ckeckNaN_d( 1,3, (double*)&v, "v.1" );
     // b|=ckeckNaN_d( 1,3, (double*)&f, "f.1" );
     if(bPi)f.add_mul( p, -p.dot(f) );           //b|=ckeckNaN_d( 1,3, (double*)&f, "f.2" );
+    const Vec3d  cvf{ v.dot(f), v.norm2(), f.norm2() };
     v.mul    ( cdamp );
     v.add_mul( f, dt );                         //b|=ckeckNaN_d( 1,3, (double*)&v, "v.2" );
     if(bPi)v.add_mul( p, -p.dot(v) );           //b|=ckeckNaN_d( 1,3, (double*)&v, "v.3" );
@@ -1358,7 +1373,7 @@ inline double move_atom_MD( int i, const float dt, const double Flim, const doub
     apos [i] = p;
     vapos[i] = v;
     //fapos[i] = Vec3dZero;
-    return fr2;
+    return cvf;
 }
 
 // update atom positions using FIRE (Fast Inertial Relaxation Engine)

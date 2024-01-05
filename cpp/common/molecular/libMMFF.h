@@ -62,7 +62,7 @@ int saveXYZ( const char* fname, const char* comment, int imod){
 
 // ================ RUN / EVAL
 
-void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut ){
+void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut1, double col_damp_dRcut2 ){
     // bool    bCollisionDamping        = false; // if true we use collision damping
     // bool    bCollisionDampingNonBond = false;  // if true we use collision damping for non-bonded interactions
     // double  damping_medium           = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
@@ -78,7 +78,8 @@ void setupCollisionDamping( int ndampstep, double damping_medium, double collisi
     W.ffl.collisionDamping         = fmax( collisionDamping   ,0 );
     W.ffl.collisionDamping_NB      = fmax( collisionDamping_NB,0 );
     W.ffl.ndampstep                = ndampstep;
-    W.ffl.col_damp_dRcut           = col_damp_dRcut;
+    W.ffl.col_damp_dRcut1          = col_damp_dRcut1;
+    W.ffl.col_damp_dRcut2          = col_damp_dRcut2;
 }
 
 
