@@ -2311,9 +2311,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         atom_permut.resize(atoms.size());
         for(int i=0; i<atoms.size(); i++){ 
             atom_permut[ atoms[i].id ]=i; 
-            printf( "setup_atom_permut[%i]-> %i \n", i, atoms[i].id );
+            //printf( "setup_atom_permut[%i]-> %i \n", i, atoms[i].id );
         };
-        for(int i=0; i<atoms.size(); i++){ printf( "atom_permut[%i] %i \n", i, atom_permut[i] ); };
+        //for(int i=0; i<atoms.size(); i++){ printf( "atom_permut[%i] %i \n", i, atom_permut[i] ); };
     }
 
     void printSizes()const{ printf( "sizes: atoms(%i|%i) bonds(%i) angles(%i) dihedrals(%i) \n", atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ); };
@@ -3337,20 +3337,17 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
                 // --- Generate Bonds
 
-                printf( "ia[%i nbond=%i \n", ia, conf.nbond  );
-
+                //printf( "ia[%i nbond=%i \n", ia, conf.nbond  );
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
                     const Bond& B = bonds[ib];
-                    printf( "ia,ib[%i,%i] ts[%i,%i] B.l0=%g B.k=%g \n", ia, ib, B.atoms.a, B.atoms.b, B.l0, B.k  );
+                    //printf( "ia,ib[%i,%i] ts[%i,%i] B.l0=%g B.k=%g \n", ia, ib, B.atoms.a, B.atoms.b, B.l0, B.k  );
                     int ja = B.getNeighborAtom(ia);
                     const Atom& Aj =  atoms[ja];
                     AtomType& jtyp = params->atypes[Aj.type];
                     hs[k]  = atoms[ja].pos - A.pos;
                     hs[k].normalize();
                     ngs[k] = ja;
-
-
                     bL [k]=B.l0;
                     bK [k]=B.k;
                     if(bUFF){

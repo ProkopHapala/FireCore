@@ -53,44 +53,45 @@ ln -s $dir/$name .
 
 # ===== test Collision Damping
 
-#./$name -x common_resources/polymer-2_new  -col_damp 10 -1.5 -1.6 0.9
-#./$name -x common_resources/polymer-2_new  -col_damp 10 -1.0 -1.0 1.0
+#./$name -x common_resources/polymer-2_new  -col_damp 10 -1.5 -1.6 0.9   0.0 0.5
+#./$name -x common_resources/polymer-2_new  -col_damp 10 -1.0 -1.0 1.0   0.0 0.5
 
-#./$name -x common_resources/O2 -perframe  1  -col_damp 5 -1.0 -1.0 0.1
-#./$name -x common_resources/O2 -perframe  1  -col_damp 5 1.0 -1.0 0.0
-#./$name -x common_resources/O2 -perframe  1  -col_damp 5 -1.0 1.0 0.0
-
-
-#./$name -x common_resources/nHexadecan -perframe 100  -col_damp 10 -1.0 -1.0 0.1
-#./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 10 -1.0 -1.0 0.1
-#./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 5 -1.0 -1.0 0.05
-#./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 5 1.0 -1.0 0.02
-#./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 5 -1.0 -1.0 0.02
-
-#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5 -1.0 -1.0 0.01
-#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5 -0.1 -0.01 0.005
-#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5 -0.5 0.01 0.005
-
-#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5 1.0 -1.0 0.01
-#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5 -1.0 1.0 0.01
-#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 2 1.0 0.1 0.001
-./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 2 1.0 0.01 0.001
+#./$name -x common_resources/O2 -perframe  1  -col_damp 5 -1.0 -1.0 0.1  0.0 0.5
+#./$name -x common_resources/O2 -perframe  1  -col_damp 5 1.0 -1.0 0.0   0.0 0.5
+#./$name -x common_resources/O2 -perframe  1  -col_damp 5 -1.0 1.0 0.0   0.0 0.5
 
 
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 2 -1.0 -1.0 0.020
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 2 -1.0 -1.0 0.005
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 2  1.0 -1.0 0.005
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 2 -1.0  1.0 0.005
+#./$name -x common_resources/nHexadecan      -perframe 100  -col_damp 10 -1.0 -1.0 0.1    0.0 0.5  
+#./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 10 -1.0 -1.0 0.1    0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 5  -1.0 -1.0 0.05   0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 5   1.0 -1.0 0.02   0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 5  -1.0 -1.0 0.02   0.0 0.5
 
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 4 -1.0 -1.0 0.020
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 4 -1.0 -1.0 0.005
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 4  1.0 -1.0 0.005
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 4 -1.0  1.0 0.005
+#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5  -1.0 -1.0 0.01   0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5  -0.1 -0.01 0.005 0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5  -0.5 0.01 0.005  0.0 0.5
 
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10  1.0 -1.0 0.1
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10  1.0 -1.0 0.1
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10 -1.0  1.0 0.1
-#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10  -1.0 -1.0 0.1
+#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5  -1.0 -1.0 0.01   0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5   1.0 -1.0 0.01   0.0 0.5
+ ./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5  -1.0  1.0 0.01   0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 2   1.0  0.1  0.001 0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 2   1.0  0.01 0.001 0.0 0.5
+
+
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 2 -1.0 -1.0 0.020   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 2 -1.0 -1.0 0.005   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 2  1.0 -1.0 0.005   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 2 -1.0  1.0 0.005   0.0 0.5
+
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 4 -1.0 -1.0 0.020   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 4 -1.0 -1.0 0.005   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 4  1.0 -1.0 0.005   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 4 -1.0  1.0 0.005   0.0 0.5
+
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10  1.0 -1.0 0.1   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10  1.0 -1.0 0.1   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10 -1.0  1.0 0.1   0.0 0.5
+#./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10 -1.0 -1.0 0.1   0.0 0.5
 
 # ====== Small Molecules On Substrate
 
