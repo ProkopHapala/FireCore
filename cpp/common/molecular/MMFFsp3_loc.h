@@ -359,6 +359,7 @@ double eval_atom(const int ia){
             if(doBonds){
 
                 if(bCollisionDamping && vapos ){ // 
+                    //printf( "MMFFsp3_loc::eval_atom() bCollisionDamping=%i col_damp=%g \n", bCollisionDamping, col_damp ); exit(0);
                     // double invL = 1./l;
                     // double dv   = d.dot( vel[b.y].f - vel[b.x].f )*invL;
                     // double mcog = pj.w + pi.w;
@@ -1151,7 +1152,7 @@ void cleanForce(){
     // NOTE: We do not need clean fneigh,fneighpi because they are set in eval_atoms 
 }
 
-void cleanVelocity(){  for(int i=0; i<nDOFs; i++){ fDOFs[i]=0; }  }
+void cleanVelocity(){  for(int i=0; i<nvecs; i++){ vapos[i]=Vec3dZero; }  }
 
 // add neighbor recoil forces to an atom (ia)
 void assemble_atom(int ia){
@@ -1216,8 +1217,9 @@ double eval_check(){
 
 inline double update_collisionDamping( double dt ){
     double  cdamp = 1 -(damping_medium     /ndampstep     );  if(cdamp<0)cdamp=0;
-    col_damp      =     collisionDamping   /(dt*ndampstep );
-    col_damp_NB   =     collisionDamping_NB/(dt*ndampstep );
+    if( bCollisionDamping        ){ col_damp    = collisionDamping   /(dt*ndampstep ); }else{ col_damp=0;    }
+    if( bCollisionDampingNonBond ){ col_damp_NB = collisionDamping_NB/(dt*ndampstep ); }else{ col_damp_NB=0; }
+    //printf( "update_collisionDamping(dt=%g,ndampstep=%i,collisionDamping=%g,collisionDamping_NB=%g) cdamp=%g col_damp=%g col_damp_NB=%g \n", dt,  ndampstep, collisionDamping, collisionDamping_NB,    cdamp, col_damp, col_damp_NB  );
     return cdamp;
 };
 

@@ -1200,19 +1200,19 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
 }
 
 
-int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=0.1, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
-    //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
-    //if(dt>0){ opt.setTimeSteps(dt); }
+int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+    if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
+    if(verbosity>0)printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
     double F2conv=Fconv*Fconv;
     long T0 = getCPUticks();
     int itr=0,niter=niter_max;
-    double E=0;
-    double cdamp = ffl.update_collisionDamping( dt );
-    //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+    double E=0,cdamp=0;
+    cdamp = ffl.update_collisionDamping( dt );
+    if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
+    if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter_max, ffl.bCollisionDamping, ffl.bCollisionDampingNonBond, dt, 1-cdamp, ffl.col_damp*dt, ffl.col_damp_NB*dt );
     for(itr=0; itr<niter; itr++){
         //double ff=0,vv=0,vf=0;
-        E=0;  //ff=0;vv=0;vf=0;
-        
+        E=0; ffl.cvf = Vec3dZero;
         //------ eval forces
         for(int ia=0; ia<ffl.natoms; ia++){ 
             {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
@@ -1222,7 +1222,7 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
             else    { 
                 E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); 
-                if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
+                //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
             } 
         }
         // ---- assembling
@@ -1237,30 +1237,40 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
             //ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
             //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
         }
+        if(ffl.cvf.x<0){ 
+            ffl.cleanVelocity(); 
+            //printf( "MolWorld_sp3::run_no_omp(itr=%i).cleanVelocity() \n", itr, ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); 
+        };
         Etot=E;
         if(outE )outE [itr]=Etot;
         if(outF )outF [itr]=sqrt(ffl.cvf.z);
         if(outV )outV [itr]=sqrt(ffl.cvf.y);
         if(outVF)outVF[itr]=ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y + 1e-32);
-        itr++; 
-        if( isnan(Etot) || isnan(ffl.cvf.z) || isnan(ffl.cvf.y) ){  printf( "run_omp(itr=%i) ERROR NaNs : E=%f cvf(%g,%g,%g)\n", itr, E, ffl.cvf.x, sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); return itr; }
+        if( isnan(Etot) || isnan(ffl.cvf.z) || isnan(ffl.cvf.y) ){  printf( "MolWorld_sp3::run_no_omp(itr=%i) ERROR NaNs : E=%f cvf(%g,%g,%g)\n", itr, E, ffl.cvf.x, sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); return itr; }
+        if( (trj_fname) && ( (itr%savePerNsteps==0) ||(niter==0) ) ){
+            sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(ffl.cvf.z) );
+            //printf( "run_no_omp::save() %s \n", tmpstr );
+            saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
+        }
         if(ffl.cvf.z<F2conv){ 
             //niter=0; 
             double t = (getCPUticks() - T0)*tick2second;
-            if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
+            if(verbosity>0)printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
             break;
+        }else{
+            if(verbosity>3)printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) E=%g |F|=%g |v|=%g cos(v,f)=%g dt=%g cdamp=%g\n", itr,niter_max, E, sqrt(ffl.cvf.z), sqrt(ffl.cvf.y), ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), dt, cdamp );
         }
     }
     double t = (getCPUticks() - T0)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
+    if(itr>=niter_max)if(verbosity>0)printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
     return itr;
 }
 
 
 
 int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+    if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
     //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
-    if(dt>0){ opt.setTimeSteps(dt); }
     long T0 = getCPUticks();
     double E=0,F2=0,F2conv=Fconv*Fconv;
     double ff=0,vv=0,vf=0;
