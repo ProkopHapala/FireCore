@@ -62,7 +62,8 @@ int saveXYZ( const char* fname, const char* comment, int imod){
 
 // ================ RUN / EVAL
 
-void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut1, double col_damp_dRcut2 ){
+void setupCollisionDamping( int nstep, double medium, double bond, double ang, double nonB, double dRcut1, double dRcut2 ){
+    W.ffl.colDamp.set( nstep, medium, bond, ang, nonB, dRcut1, dRcut2 );
     // bool    bCollisionDamping        = false; // if true we use collision damping
     // bool    bCollisionDampingNonBond = false;  // if true we use collision damping for non-bonded interactions
     // double  damping_medium           = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
@@ -72,14 +73,14 @@ void setupCollisionDamping( int ndampstep, double damping_medium, double collisi
     // double  col_damp_dRcut           = 0.5;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
     // double col_damp      = 0.0;  //  collisionDamping   /(dt*ndampstep );
     // double col_damp_NB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
-    W.ffl.bCollisionDamping        = collisionDamping   >0;
-    W.ffl.bCollisionDampingNonBond = collisionDamping_NB>0;
-    W.ffl.damping_medium           = damping_medium;
-    W.ffl.collisionDamping         = fmax( collisionDamping   ,0 );
-    W.ffl.collisionDamping_NB      = fmax( collisionDamping_NB,0 );
-    W.ffl.ndampstep                = ndampstep;
-    W.ffl.col_damp_dRcut1          = col_damp_dRcut1;
-    W.ffl.col_damp_dRcut2          = col_damp_dRcut2;
+    // W.ffl.bCollisionDamping        = collisionDamping   >0;
+    // W.ffl.bCollisionDampingNonBond = collisionDamping_NB>0;
+    // W.ffl.damping_medium           = damping_medium;
+    // W.ffl.collisionDamping         = fmax( collisionDamping   ,0 );
+    // W.ffl.collisionDamping_NB      = fmax( collisionDamping_NB,0 );
+    // W.ffl.ndampstep                = ndampstep;
+    // W.ffl.col_damp_dRcut1          = col_damp_dRcut1;
+    // W.ffl.col_damp_dRcut2          = col_damp_dRcut2;
 }
 
 

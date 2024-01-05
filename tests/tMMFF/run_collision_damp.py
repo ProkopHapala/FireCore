@@ -12,19 +12,41 @@ from pyBall import MMFF as mmff
 
 mmff.setVerbosity( verbosity=1, idebug=0 )
 
-#mmff.init( xyz_name="data/nHexadecan" ); mmff.setTrjName( "opt_nHexadecan.xyz" );
-mmff.init( xyz_name="data/nHexadecan_fold" ); mmff.setTrjName( "opt_nHexadecan_fold.xyz", savePerNsteps=10 );
+#fname = "nHexadecan_fold"
+#fname = "pentacene_dimer"
+#fname = "pentacene_cross2"
+#fname = "pentacene_cross3"
+fname = "pentacene_cross_preopt"
 
-fconv = 1e-3
+#mmff.init( xyz_name="data/nHexadecan" ); mmff.setTrjName( "opt_nHexadecan.xyz" );
+mmff.init( xyz_name="data/"+fname ); mmff.setTrjName( "opt_"+fname+".xyz", savePerNsteps=10 );
+
+
 nds  =  1
-cdB  = -1.0
-#cdB  = 0.1
-cdNB = -1.0
-cmd  =  0.01
-dt   =  0.05
+cdB=-1.0;cdA=-1.0;cdNB=-1.0;cmd=0.0; dt=-1.0 
+#fconv = 1e-3
+fconv = 1e-4
+#fconv = 1e-6
+
+#cdB  =  0.1
+#cdA  =  0.1
+#cdB  =  0.5
+#cdA  =  0.3
+
+cdA  =  0.3
+#cdA  =  0.05
+cdB  =  1.0
+
+#cmd = 0.01
+
+#dt   =  0.05
+#dt   =  0.12
+#dt   =  0.15
+#dt   =  0.20
+
 
 #mmff.getBuffs()
-mmff.setupCollisionDamping( nds, cmd, cdB, cdNB )
+mmff.setupCollisionDamping( nstep=nds, medium=cmd, cB=cdB, cA=cdA, cNB=cdNB )
 
 nstepMax = 20000
 outE  = np.zeros( nstepMax )
@@ -40,15 +62,15 @@ nitr = mmff.run(nstepMax=nstepMax, dt=dt, Fconv=fconv, outE=outE, outF=outF, out
 
 fig, ax1 = plt.subplots()
 
-Emin = outE.min()
+Emin = outE[:nitr].min(); print( "Emin ", Emin )
 
 #plt.subplot(2,1,1)
-#ax1.plot( outE [:nitr]-Emin,"-k", label="E"  )
+ax1.plot( outE [:nitr]-Emin,"-k", label="E"  )
 ax1.plot( outF [:nitr],"-r", label="|f|" , lw=0.5 )
 ax1.plot( outV [:nitr],"-b", label="|v|" , lw=0.5 )
 ax1.set_xlabel('MD step')
 ax1.set_ylabel('E, F, V')
-ax1.set_ylim(1e-5, 1e+2)
+ax1.set_ylim(1e-6, 1e+2)
 ax1.set_yscale('log')
 plt.grid()
 plt.legend()
@@ -57,13 +79,17 @@ ax2 = ax1.twinx()
 ax2.plot( range(nitr), outVF[:nitr],"-g", label="cos(v,f)", lw=0.5 )
 ax2.set_ylim(-1.1,+4.1)
 
+
+
 plt.legend( loc='upper left')
 
 #print( "outE ", outE [:nitr] )
-
 #plt.xlim(0, 100)
 
-plt.savefig("opt_nds%i_cdB%6.3f_cdNB%6.3f_cmd%6.3f_dt%6.3f.png" %(nds,cdB,cdNB,cmd,dt), bbox_inches='tight')
+spar = "_nds%i_cdB%6.3f_cdA%6.3f_cdNB%6.3f_cmd%6.3f_dt%6.3f"  %(nds,cdB,cdA,cdNB,cmd,dt)
+plt.title( fname+spar )
+
+plt.savefig("opt_"+fname+spar+".png", bbox_inches='tight')
 plt.show()
 
 

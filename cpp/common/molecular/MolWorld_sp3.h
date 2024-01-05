@@ -668,7 +668,7 @@ void insertSMILES(const char* s){
 void setOptimizer( int n, double* ps, double* fs ){
     //opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
     opt.bindOrAlloc( n, ps, 0, fs, 0 );
-    double dtopt=ff.optimalTimeStep(); 
+    double dtopt=ffl.optimalTimeStep(); 
     if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimnal time step = %g \n", dtopt);
     opt.initOpt( dtopt );
     opt.cleanVel();
@@ -1207,9 +1207,10 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
     long T0 = getCPUticks();
     int itr=0,niter=niter_max;
     double E=0,cdamp=0;
-    cdamp = ffl.update_collisionDamping( dt );
+    cdamp = ffl.colDamp.update( dt );
     if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
-    if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter_max, ffl.bCollisionDamping, ffl.bCollisionDampingNonBond, dt, 1-cdamp, ffl.col_damp*dt, ffl.col_damp_NB*dt );
+    //if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter_max, ffl.bCollisionDamping, ffl.bCollisionDampingNonBond, dt, 1-cdamp, ffl.col_damp*dt, ffl.col_damp_NB*dt );
+    if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.bond*dt, ffl.colDamp.nonB*dt, ffl.colDamp.nonB*dt );
     for(itr=0; itr<niter; itr++){
         //double ff=0,vv=0,vf=0;
         E=0; ffl.cvf = Vec3dZero;
@@ -1222,6 +1223,7 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
             else    { 
                 E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); 
+                if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.nonB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
                 //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
             } 
         }

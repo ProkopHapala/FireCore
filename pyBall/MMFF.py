@@ -166,10 +166,10 @@ def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0
     return Es,fs
 
 # void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut ){
-lib.setupCollisionDamping.argtypes  = [c_int, c_double, c_double, c_double, c_double, c_double]
+lib.setupCollisionDamping.argtypes  = [c_int, c_double, c_double, c_double, c_double, c_double, c_double]
 lib.setupCollisionDamping.restype   =  None
-def setupCollisionDamping( ndampstep=10, medium=0.02, cB=-1.0, cNB=-1.0, dRcut1=-0.2, dRcut2=0.3 ):
-    lib.setupCollisionDamping( ndampstep, medium, cB, cNB, dRcut1, dRcut2 )
+def setupCollisionDamping( nstep=10, medium=0.02, cB=-1.0, cA=-1.0, cNB=-1.0, dRcut1=-0.2, dRcut2=0.3 ):
+    lib.setupCollisionDamping( nstep, medium, cB, cA, cNB, dRcut1, dRcut2 )
 
 #printBuffNames(){
 lib.printBuffNames.argtypes = []

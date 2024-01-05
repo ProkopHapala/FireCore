@@ -35,6 +35,48 @@ inline double cos_damp_lin( double c, double& cv, double D, double cmin, double 
     return cf;
 }
 
+class CollisionDamping{ public:
+    bool    bBond = false; // if true we use collision damping
+    bool    bAng  = false;
+    bool    bNonB = false;  // if true we use collision damping for non-bonded interactions
+
+    int     nstep  = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
+
+    double  medium = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
+    double  bond   = 0.0;   // col_damp    =     collisionDamping   /(dt*ndampstep )
+    double  ang    = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    double  nonB   = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    
+    double  dRcut1  = -0.2;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    double  dRcut2  =  0.3;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+
+    double cdampB    = 0.0;  //  collisionDamping   /(dt*ndampstep );
+    double cdampAng  = 0.0;
+    double cdampNB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
+
+    inline double update( double dt ){
+        if( bBond ){ cdampB   = bond /(dt*nstep ); }else{ cdampB=0;   }
+        if( bBond ){ cdampAng = ang  /(dt*nstep ); }else{ cdampAng=0; }
+        if( bNonB ){ cdampNB  = nonB /(dt*nstep ); }else{ cdampNB=0;  }
+        //printf( "update_collisionDamping(dt=%g,ndampstep=%i,collisionDamping=%g,collisionDamping_NB=%g) cdamp=%g col_damp=%g col_damp_NB=%g \n", dt,  ndampstep, collisionDamping, collisionDamping_NB,    cdamp, col_damp, col_damp_NB  );
+        double  cdamp = 1-(medium/nstep );  if(cdamp<0)cdamp=0;
+        return cdamp;
+    }
+
+    void set( int nstep_, double medium_, double bond_, double ang_, double nonB_, double dRcut1_, double dRcut2_ ){
+        nstep   = nstep_;
+        medium  = fmax( medium_,0 );
+        bond    = fmax( bond_  ,0 );
+        ang     = fmax( ang_   ,0 );
+        nonB    = fmax( nonB_  ,0 );
+        dRcut1  = dRcut1_;
+        dRcut2  = dRcut2_;
+        bBond = bond>0;
+        bAng  = ang >0;
+        bNonB = nonB>0;
+    }
+};
+
 // ========================
 // ====   MMFFsp3_loc  ====
 // ========================
@@ -44,8 +86,6 @@ inline double cos_damp_lin( double c, double& cv, double D, double cmin, double 
     This allows for efficient parallelization, since we avoid synchronization of the global force array fapos or using atomic operations.
     The drawback is that we need to allocate additional memory for fneigh and possibly lower the performance due to cache misses.
 */
-
-
 
 //class MMFFsp3_loc: public NBFF { public:
 
@@ -80,17 +120,21 @@ class MMFFsp3_loc : public NBFF { public:
     bool doAngles =true; // compute angles
     //bool doEpi    =true; // compute pi-electron interaction
 
-    bool    bCollisionDamping        = false; // if true we use collision damping
-    bool    bCollisionDampingNonBond = false;  // if true we use collision damping for non-bonded interactions
-    double  damping_medium           = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
-    double  collisionDamping         = 0.0;   // col_damp    =     collisionDamping   /(dt*ndampstep )
-    double  collisionDamping_NB      = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
-    int     ndampstep                = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
-    double  col_damp_dRcut1          = -0.2;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
-    double  col_damp_dRcut2          =  0.3;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    // bool    bCollisionDamping        = false; // if true we use collision damping
+    // bool    bCollisionDampingAng     = false;
+    // bool    bCollisionDampingNonBond = false;  // if true we use collision damping for non-bonded interactions
+    // double  damping_medium           = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
+    // double  collisionDamping         = 0.0;   // col_damp    =     collisionDamping   /(dt*ndampstep )
+    // double  collisionDamping_ang     = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    // double  collisionDamping_NB      = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    // int     ndampstep                = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
+    // double  col_damp_dRcut1          = -0.2;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    // double  col_damp_dRcut2          =  0.3;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    // double col_damp      = 0.0;  //  collisionDamping   /(dt*ndampstep );
+    // double col_damp_NB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
+    // double col_dampAng   = 0.0;  //  collisionDamping   /(dt*ndampstep );
 
-    double col_damp      = 0.0;  //  collisionDamping   /(dt*ndampstep );
-    double col_damp_NB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
+    CollisionDamping colDamp;
 
     Vec3d cvf=Vec3dZero; // <f|f>, <v|v>, <v|f> 
 
@@ -276,6 +320,9 @@ double eval_atom(const int ia){
     Vec3d* fbs  = fneigh   +ia*4;             // forces on bonds
     Vec3d* fps  = fneighpi +ia*4;             // forces on pi vectors
 
+    const bool bColDampB   = colDamp.bBond && vapos; // if true we use collision damping
+    const bool bColDampAng = colDamp.bAng  && vapos; // if true we use collision damping for non-bonded interactions
+
     // // --- settings
     // double  ssC0 = apars[ia].x;
     // double  ssK  = apars[ia].y;
@@ -358,7 +405,7 @@ double eval_atom(const int ia){
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds){
 
-                if(bCollisionDamping && vapos ){ // 
+                if(bColDampB){ // 
                     //printf( "MMFFsp3_loc::eval_atom() bCollisionDamping=%i col_damp=%g \n", bCollisionDamping, col_damp ); exit(0);
                     // double invL = 1./l;
                     // double dv   = d.dot( vel[b.y].f - vel[b.x].f )*invL;
@@ -368,7 +415,7 @@ double eval_atom(const int ia){
                     // for masses = 1.0 we have reduced_mass = 1*1/(1+1) = 0.5
 
                     double dv   = h.f.dot( vapos[ing] - vapos[ia] );
-                    double fcol = col_damp * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                    double fcol = colDamp.bond * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
 
                     f1.set_mul( h.f, fcol );
                     fbs[i].sub(f1);  fa.add(f1); 
@@ -489,6 +536,16 @@ double eval_atom(const int ia){
             //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fss1[%i,%i]",ia,i,j); } );
             //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fss2[%i,%i]",ia,i,j); } );
             fa    .sub( f1+f2  );  // apply force on the central atom
+
+            if(bColDampAng){
+                Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
+                double dv   = dp.dot( vapos[ing] - vapos[ia] );
+                double fcol = colDamp.ang * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                dp.mul( fcol/dp.norm2() );
+                f1.sub(dp);
+                f2.add(dp);
+            }
+
             // ----- Error is HERE
             if(bSubtractAngleNonBond){ // subtract non-bonded interactions between atoms which have common neighbor
                 Vec3d fij=Vec3dZero;
@@ -1215,13 +1272,7 @@ double eval_check(){
     return Etot;
 }
 
-inline double update_collisionDamping( double dt ){
-    double  cdamp = 1 -(damping_medium     /ndampstep     );  if(cdamp<0)cdamp=0;
-    if( bCollisionDamping        ){ col_damp    = collisionDamping   /(dt*ndampstep ); }else{ col_damp=0;    }
-    if( bCollisionDampingNonBond ){ col_damp_NB = collisionDamping_NB/(dt*ndampstep ); }else{ col_damp_NB=0; }
-    //printf( "update_collisionDamping(dt=%g,ndampstep=%i,collisionDamping=%g,collisionDamping_NB=%g) cdamp=%g col_damp=%g col_damp_NB=%g \n", dt,  ndampstep, collisionDamping, collisionDamping_NB,    cdamp, col_damp, col_damp_NB  );
-    return cdamp;
-};
+
 
 
 
@@ -1231,10 +1282,10 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
     double E=0,ff=0,vv=0,vf=0;
 
-    double cdamp = update_collisionDamping( dt );
+    double cdamp = colDamp.update( dt );
 
     //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
-    printf( "MMFFsp3_loc::run(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter, bCollisionDamping, bCollisionDampingNonBond, dt, 1-cdamp, col_damp*dt, col_damp_NB*dt );
+    printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.bond*dt, colDamp.nonB*dt, colDamp.nonB*dt );
 
     int    itr;
     //if(itr_DBG==0)print_pipos();
@@ -1252,10 +1303,8 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
             if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
             else    { 
                 E+=evalLJQs_ng4_atom_omp    ( ia ); 
-            
-                if( bCollisionDampingNonBond ){ evalCollisionDamp_atom_omp( ia, col_damp_NB, col_damp_dRcut1, col_damp_dRcut2 ); }
+                if( colDamp.bNonB ){ evalCollisionDamp_atom_omp( ia, colDamp.nonB, colDamp.dRcut1, colDamp.dRcut2 ); }
             } 
-
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.NBFF[%i]",ia); } );
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
