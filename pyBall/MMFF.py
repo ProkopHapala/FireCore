@@ -166,10 +166,10 @@ def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0
     return Es,fs
 
 # void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut ){
-lib.setupCollisionDamping.argtypes  = [c_int, c_double, c_double, c_double, c_double]
+lib.setupCollisionDamping.argtypes  = [c_int, c_double, c_double, c_double, c_double, c_double]
 lib.setupCollisionDamping.restype   =  None
-def setupCollisionDamping( ndampstep=10, damping_medium=0.02, collisionDamping=0.1, collisionDamping_NB=0.1, col_damp_dRcut=0.5 ):
-    lib.setupCollisionDamping( ndampstep, damping_medium, collisionDamping, collisionDamping_NB, col_damp_dRcut )
+def setupCollisionDamping( ndampstep=10, medium=0.02, cB=-1.0, cNB=-1.0, dRcut1=-0.2, dRcut2=0.3 ):
+    lib.setupCollisionDamping( ndampstep, medium, cB, cNB, dRcut1, dRcut2 )
 
 #printBuffNames(){
 lib.printBuffNames.argtypes = []
@@ -424,10 +424,10 @@ def eval():
 #     return lib.run(nstepMax, dt, Fconv, ialg )
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_bool ] 
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p, c_double_p, c_double_p, c_bool ] 
 lib. run.restype   =  c_int
-def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None, outV=None, outVF=None, omp=False):
-    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outE,c_double_p), _np_as(outF,c_double_p), omp )
+def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=None, outV=None, outVF=None, omp=False):
+    return lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
 
 # ========= Lattice Optimization
 
