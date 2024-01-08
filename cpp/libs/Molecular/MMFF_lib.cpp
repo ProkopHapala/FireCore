@@ -31,18 +31,11 @@ void init_buffers(){
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
         buffers .insert( { "vDOFs",     W.opt.vel  } );
-        //buffers .insert( { "apos",   (double*)W.ff.apos   } );
-        //buffers .insert( { "fapos",  (double*)W.ff.fapos } );
-        buffers .insert( { "apos",   (double*)W.nbmol.apos } );
-        buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
-        buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
-        buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-        //buffers .insert( { "bond_l0",   (double*)W.ffl.bond_l0   } );
-        //buffers .insert( { "bond_k",    (double*)W.ffl.bond_k    } );
-        //buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
-        //buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
-        //ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
-        ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+        if(!W.bUFF){
+            buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
+            buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
+            ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+        }
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
@@ -77,8 +70,7 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
 	W.builder.bindParams(&W.params);
     bool bGrid = gridStep>0;
     // initialize the main
-    W.init( bGrid );
-printf("ADES SON ARIVA' FIN QUA...(MMFF_lib.cpp::init)\n");exit(0);
+    W.init( bGrid, bUFF );
     init_buffers();
     return &W;
 }

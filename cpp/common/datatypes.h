@@ -46,4 +46,12 @@ struct float8 {
 	};
 };
 
+struct double5 {
+	union{
+		struct{ double k,c0,c1,c2,c3; };
+		double array[5];
+	};
+};
+
+
 #endif

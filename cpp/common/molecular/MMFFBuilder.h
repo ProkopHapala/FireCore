@@ -3145,12 +3145,12 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         int nconf = nCmax;
         int ncap  = nAmax - nconf;
         int nb    = bonds.size();
-        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
+        if(verbosity>0)printf(  "MM::Builder::toMMFFsp3() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         if(bRealloc)ff.realloc( nconf, nb+ne, npi, ncap+ne );
         export_apos     ( ff.apos  ,0,nAmax);
         export_atypes   ( ff.atype ,0,nAmax);
         export_bonds    ( ff.bond2atom, ff.bond_l0, ff.bond_k, ff.bond_kPi,  0,nBmax);
-        if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM:Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max ); exit(0); } 
+        if ( ff.nneigh_max != N_NEIGH_MAX  ){ printf( "ERROR in MM::Builder.toMMFFsp3() N_NEIGH_MAX(%i) != ff.nneigh_max(%i) ", N_NEIGH_MAX, ff.nneigh_max ); exit(0); } 
         Vec3d hs[N_NEIGH_MAX];
         int ipi=0;
         //int ja=0;
@@ -3228,7 +3228,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         ff.ie0=ie0;
         if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
         //printf( "check number of pi bonds ipi %i npi %i \n", ipi, npi );
-        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3() DONE \n"  );
+        if(verbosity>0)printf(  "MM::Builder::toMMFFsp3() DONE \n"  );
     }
 #endif // MMFFmini_h
 
@@ -3259,8 +3259,57 @@ void makeNeighs( int*& neighs, int perAtom ){
 }
 
 #ifdef UFF_h
-void toUFF( UFF&, bool bRealloc=true ){
+void toUFF( UFF& ff, bool bRealloc=true ){
+
+    int natoms      = atoms.size();
+    int nbonds      = bonds.size();
+    int nangles     = angles.size();
+    int ndihedrals  = dihedrals.size();
+    int ninversions = inversions.size();
+    if(verbosity>0) printf(  "MM::Builder::toUFF() natoms %i nbonds %i nangles %i ndihedrals %i ninversions %i\n", natoms, nbonds, nangles, ndihedrals, ninversions );
+    if(bRealloc) ff.realloc( natoms, nbonds, nangles, ndihedrals, ninversions );
     
+    for(int i=0; i<nbonds; i++ ){
+        const Bond& B = bonds[i];
+        ff.bonAtoms[i]  = Vec2i{B.atoms.x, B.atoms.y};
+        ff.bonParams[i] = Vec2d{B.k, B.l0};
+    }
+    for(int i=0; i<nangles; i++ ){
+        const Angle& A = angles[i];
+        ff.angAtoms[i]  = Vec3i{A.atoms.x, A.atoms.y, A.atoms.z};
+        ff.angParams[i] = double5{A.k, A.C0, A.C1, A.C2, A.C3};
+    }
+    for(int i=0; i<ndihedrals; i++ ){
+        const Dihedral& D = dihedrals[i];
+        ff.dihAtoms[i]  = Quat4i{D.atoms.x, D.atoms.y, D.atoms.z, D.atoms.w};
+        ff.dihParams[i] = Vec3d{D.k, D.d, D.n};
+    }
+    for(int i=0; i<ninversions; i++ ){
+        const Inversion& I = inversions[i];
+        ff.invAtoms[i]  = Quat4i{I.atoms.x, I.atoms.y, I.atoms.z, I.atoms.w};
+        ff.invParams[i] = Quat4d{I.k, I.C0, I.C1, I.C2};
+    }
+
+    for(int ia=0; ia<natoms; ia++ ){
+        const Atom& A =  atoms[ia];
+        ff.atypes[ia] = A.type;
+        ff.apos [ia]  = A.pos; 
+        ff.neighs[ia]=Quat4i{-1,-1,-1,-1};
+        if(A.iconf>=0){
+            AtomConf& conf = confs[A.iconf];
+            int* ngs  = ff.neighs[ia].array;
+            for(int k=0; k<conf.nbond; k++){
+                int ib = conf.neighs[k];
+                const Bond& B = bonds[ib];
+                int ja = B.getNeighborAtom(ia);
+                ngs[k] = ja;
+            }
+        }
+    } 
+
+    ff.bPBC = bPBC;
+    if(verbosity>0)printf("MM::Builder::toUFF DONE\n");
+
 }
 #endif // UFF_h
 
@@ -3277,7 +3326,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
         int nconf = nCmax;
         int ncap  = nAmax - nconf;
         int nb    = bonds.size();
-        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3_loc() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
+        if(verbosity>0)printf(  "MM::Builder::toMMFFsp3_loc() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         int ntors=0; if(ff.bTorsion) ntors=dihedrals.size();
         if(bRealloc)ff.realloc( nconf, ncap+ne, ntors );
         Vec3d hs[4];
@@ -3315,7 +3364,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 // ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
                 //printf( "MM::Builder::toMMFFsp3_loc()[%i] conf.npi=%i \n", ia, conf.npi );
 
-                if( conf.npi>2 ){ printf("ERROR in MM:Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
+                if( conf.npi>2 ){ printf("ERROR in MM::Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
                 //double ang0 = ang0s[conf.npi];
                 double ang0   = atyp.Ass*deg2rad;
                 ang0 *= 0.5;
@@ -3387,7 +3436,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
         ff.bPBC = bPBC;
         ff.makeBackNeighs();
         //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
-        if(verbosity>0)printf(  "MM:Builder::toMMFFsp3_loc() DONE \n"  );
+        if(verbosity>0)printf(  "MM::Builder::toMMFFsp3_loc() DONE \n"  );
     }
 
 void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
@@ -3449,7 +3498,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         int nconf = nCmax;
         int ncap  = nAmax - nconf;
         int nb    = bonds.size();
-        if(verbosity>0)printf(  "MM:Builder::toMMFFf4() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
+        if(verbosity>0)printf(  "MM::Builder::toMMFFf4() nconf %i ncap %i npi %i ne %i \n", nconf, ncap, npi, ne  );
         if(bRealloc)ff.realloc( nconf, ncap+ne );
         Vec3d hs[N_NEIGH_MAX];
         int ie0=nconf+ncap;
@@ -3473,7 +3522,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
                 // ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
                 // ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
                 // ff.apars[ia].w = 0.0; 
-                if( conf.npi>2 ){ printf("ERROR in MM:Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
+                if( conf.npi>2 ){ printf("ERROR in MM::Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
                 double ang0 = ang0s[conf.npi];
                 ang0 *= 0.5;
                 ff.apars[ia].x = cos(ang0);    // ssCos0  // cos(angle) for angles (sigma-siamg)
@@ -3530,7 +3579,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             } // if(A.iconf>=0){
         }
         ff.makeBackNeighs();
-        if(verbosity>0)printf(  "MM:Builder::toMMFFf4() DONE \n"  );
+        if(verbosity>0)printf(  "MM::Builder::toMMFFf4() DONE \n"  );
     }
 #endif // MMFFf4_h
 
@@ -4658,7 +4707,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         for(int ib=0; ib<bonds.size(); ib++){
             Bond& B = bonds[ib];
             B.order = BOs[ib];
-            if(verbosity>0)printf( "bondOrder[%i](%i-%i)= %g\n", ib+1, B.atoms.i+1, B.atoms.j+1, B.order );            
+            //if(verbosity>0)printf( "bondOrder[%i](%i-%i)= %g\n", ib+1, B.atoms.i+1, B.atoms.j+1, B.order );            
         }
 
         // deallocate neighbor array
@@ -4698,7 +4747,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             const ElementType& Ei = *params->elementOfAtomType(atoms[B.atoms.i].type);
             const ElementType& Ej = *params->elementOfAtomType(atoms[B.atoms.j].type);
             B.l0 = assignUFFparams_calcrij(ib);
-            B.k = 28.7989689090648 * Ei.Quff * Ej.Quff / ( B.l0*sq(B.l0) );
+            B.k = 0.5 * 28.7989689090648 * Ei.Quff * Ej.Quff / ( B.l0*sq(B.l0) );
         }
 
     }
@@ -4980,7 +5029,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         if(bDeallocNeighs)delete [] neighs;
 
         // write data
-        assignUFFparams_writedata();
+        //assignUFFparams_writedata();
           
     }
   
