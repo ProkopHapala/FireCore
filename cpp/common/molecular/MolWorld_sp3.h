@@ -190,11 +190,9 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     // ========== from python interface
 
-    // TBD we should pass also a bool to set UFF or MMFF...
-    virtual void init( bool bGrid ){
+    virtual void init( bool bGrid, bool bUFF ){
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
-        // TBD params should be already initialized...
         if( params.atypes.size() == 0 ){
             initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
         }
@@ -209,7 +207,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             if(surf_name    )printf("surf_name   (%s)\n", surf_name );
             if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
             // TBD we should also print if we use UFF or not...
-            printf( "MolWorld_sp3::init() bMMFF %i bRigid %i\n", bMMFF, bRigid );
+            printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
         }
         if(surf_name )loadSurf( surf_name, bGrid, idebug>0 );
         if ( smile_name ){               
@@ -228,14 +226,13 @@ class MolWorld_sp3 : public SolverInterface { public:
         if(bMMFF){     
             makeFFs();
         }
-printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::init)\n");exit(0);
-        builder.setup_atom_permut( true );
+        if(!bUFF){ builder.setup_atom_permut( true ); }
         if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
         if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems 
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
-        if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
+        if(verbosity>0) printf( "#### MolWorld_sp3::init() DONE\n\n");
     }
 
 
@@ -715,7 +712,7 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::init)\n");exit(0);
         //opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
         opt.bindOrAlloc( n, ps, 0, fs, 0 );
         double dtopt=ff.optimalTimeStep(); 
-        if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimnal time step = %g \n", dtopt);
+        if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimal time step = %g \n", dtopt);
         opt.initOpt( dtopt );
         opt.cleanVel();
         //opt.verbosity=2;
@@ -859,6 +856,7 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::init)\n");exit(0);
     }
 
     void makeMMFFs(){
+
         // check if all bonds are in atom neighbors
         if( builder.checkBondsInNeighs(true) ) { 
             printf("ERROR some bonds are not in atom neighbors => exit"); 
@@ -867,11 +865,9 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::init)\n");exit(0);
         // reshuffling atoms in order to have non-capping first
         builder.numberAtoms();
         builder.sortConfAtomsFirst();
-        //builder.printAtomConfs(false,true);
         builder.checkBondsOrdered( true, false );
-        // here we should assign all types defined in AtomTypes.dat
 
-        // make atom type assignement
+        // make assignement of atom types and force field parameters
         if( bUFF ){ 
             // according to UFF
             builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
@@ -881,13 +877,10 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::init)\n");exit(0);
             builder.assignTypes(); 
         }
 
+        // passing them to FFs
         if ( bUFF ){
-
             builder.toUFF( ffu, true );
-
         }else{
-
-            //builder.printAtomTypes();
             if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
             builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
             if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
@@ -895,60 +888,71 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::init)\n");exit(0);
             builder.toMMFFsp3    ( ff , true, bEpairs );
             ffl.flipPis( Vec3dOne );
             ff4.flipPis( Vec3fOne );
-
         }
 
-printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeMMFFs)\n");exit(0);
-
-        if(bPBC){  
-            //ff.printAtomParams();
-            ff.bPBCbyLvec = true;
-            ff .setLvec( builder.lvec);
-            ffl.setLvec( builder.lvec);   
-            ff4.setLvec((Mat3f)builder.lvec);
-            npbc = makePBCshifts( nPBC, builder.lvec );
-            ffl.bindShifts(npbc,pbc_shifts);
-            ff4.makeNeighCells  ( nPBC );       
-            //ffl.makeNeighCells( nPBC );      
-            ffl.makeNeighCells( npbc, pbc_shifts ); 
+        // setting up PBC
+        if(bPBC){
+            if ( bUFF ){
+                ffu.setLvec( builder.lvec);   
+                npbc = makePBCshifts( nPBC, builder.lvec );
+                ffu.bindShifts(npbc,pbc_shifts);
+                //ffu.makeNeighCells( nPBC );      
+                ffu.makeNeighCells( npbc, pbc_shifts ); 
+            }else{
+                ff.bPBCbyLvec = true;
+                ff .setLvec( builder.lvec);
+                ffl.setLvec( builder.lvec);   
+                ff4.setLvec((Mat3f)builder.lvec);
+                npbc = makePBCshifts( nPBC, builder.lvec );
+                ffl.bindShifts(npbc,pbc_shifts);
+                ff4.makeNeighCells  ( nPBC );       
+                //ffl.makeNeighCells( nPBC );      
+                ffl.makeNeighCells( npbc, pbc_shifts ); 
+            }
         }
 
     }
 
     virtual void makeFFs(){
+
         makeMMFFs();
-printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeFFs)\n");exit(0);
-        initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
-        setNonBond( bNonBonded );
-        bool bChargeToEpair=true;
-        //bool bChargeToEpair=false;
-        if(bChargeToEpair){
-            int etyp=-1; etyp=params.atomTypeDict["E"];
-            ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
+        if ( bUFF ){
+            initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
+            setNonBond( bNonBonded );
+            nbmol.evalPLQs(gridFF.alphaMorse);
+            if(bOptimizer){ 
+                setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
+                ffu.vapos = (Vec3d*)opt.vel;
+            }                         
+        }else{
+            initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
+            setNonBond( bNonBonded );
+            bool bChargeToEpair=true;
+            //bool bChargeToEpair=false;
+            if(bChargeToEpair){
+                int etyp=-1; etyp=params.atomTypeDict["E"];
+                ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
+            }
+            nbmol.evalPLQs(gridFF.alphaMorse);
+            { // check FFS
+                idebug=1;
+                ffl.checkREQlimits();
+                ffl.eval_check();
+                //ff4.eval_check();
+                //ff .eval_check();
+                idebug=0;
+            }
+            //ffl.print_nonbonded(); exit(0);
+            if(bOptimizer){ 
+                //setOptimizer(); 
+                //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
+                setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
+                if(bRelaxPi) ffl.relax_pi( 1000, 0.1, 1e-4 );
+                ffl.vapos = (Vec3d*)opt.vel;
+            }                         
+            _realloc( manipulation_sel, ff.natoms );
         }
-        nbmol.evalPLQs(gridFF.alphaMorse);
-        { // check FFS
-            //ffl.printAtomParams();
-            //printf("npbc %i\n", npbc ); ffl.printNeighs();
-            //builder.printBonds();
-            //printf("!!!!! builder.toMMFFsp3() DONE \n");
-            idebug=1;
-            //printf( "!!!!!!!!!!!!!!!! ffl.checkREQlimits(); \n" );
-            ffl.checkREQlimits();
-            ffl.eval_check();
-            //ff4.eval_check();
-            //ff .eval_check();
-            idebug=0;
-        }
-        //ffl.print_nonbonded(); exit(0);
-        if(bOptimizer){ 
-            //setOptimizer(); 
-            //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
-            setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
-            if(bRelaxPi) ffl.relax_pi( 1000, 0.1, 1e-4 );
-            ffl.vapos = (Vec3d*)opt.vel;
-        }                         
-        _realloc( manipulation_sel, ff.natoms );
+
     }
 
 
@@ -1031,6 +1035,9 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeFFs)\n");exit(0);
 
     double eval( ){
 
+        if(verbosity>0) printf( "#### MolWorld_sp3::eval()\n");
+
+
         //ffl.doBonds       = false;
         //ffl.doPiPiI       = false;
         //ffl.doPiSigma     = false;
@@ -1045,18 +1052,11 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeFFs)\n");exit(0);
         //ffl.print_pbc_shifts();
         //printf("lvec: ");printMat(builder.lvec);
         if(bMMFF){ 
-            //E += ff .eval();
-            E += ffl.eval(); 
-            //ffl.printDEBUG(  false, false );
-            //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }   
-            
-            //printf( "ffl.lvec\n" );    printMat( ffl.lvec    );
-            //printf( "ffl.invLvec\n" ); printMat( ffl.invLvec );
-            //exit(0);
-            //E += eval_f4();
-            //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.apos[0].x,nbmol.apos[0].y,nbmol.apos[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
+            if(bUFF){ E += ffu.eval(); }
+            else{ E += ffl.eval(); }
             
         }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
+printf("ADES SON ARIVA' FIN QUA -> MolWorld_sp3.h::eval()\n");exit(0);        
         //bPBC=false;
         if(bNonBonded){
             //E += nbmol.evalLJQs_ng4_PBC_omp( );
@@ -1085,7 +1085,7 @@ printf("ADES SON ARIVA' FIN QUA...(MolWorld_sp3.h::makeFFs)\n");exit(0);
         //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
         //ffl.printDEBUG(  false, false );
         //exit(0);
-
+        if(verbosity>0) printf( "#### MolWorld_sp3::eval() DONE\n\n");
 
         return E;
     }
