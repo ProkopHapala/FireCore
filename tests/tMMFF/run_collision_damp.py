@@ -16,7 +16,12 @@ mmff.setVerbosity( verbosity=1, idebug=0 )
 #fname = "pentacene_dimer"
 #fname = "pentacene_cross2"
 #fname = "pentacene_cross3"
-fname = "pentacene_cross_preopt"
+#fname = "pentacene_cross_preopt"
+
+#fname = "pentacene_cross_preopt"
+
+#fname = "diamin_and_diether_C10"
+fname = "hydropentacene_cross"
 
 #mmff.init( xyz_name="data/nHexadecan" ); mmff.setTrjName( "opt_nHexadecan.xyz" );
 mmff.init( xyz_name="data/"+fname ); mmff.setTrjName( "opt_"+fname+".xyz", savePerNsteps=10 );
@@ -33,13 +38,23 @@ fconv = 1e-4
 #cdB  =  0.5
 #cdA  =  0.3
 
+#cdA  =  0.2
+#cdB  =  0.5
+
 cdA  =  0.3
-#cdA  =  0.05
-cdB  =  1.0
+cdB  =  0.5
 
 #cmd = 0.01
+cmd = -0.03   # acceleration
+#cmd = -0.02   # acceleration
+#cmd = -0.05   # acceleration
+#cmd = -0.01*0 # acceleration
+#cmd = -0.01*0 # acceleration
+
 
 #dt   =  0.05
+#dt   =  0.08
+dt   =  0.10
 #dt   =  0.12
 #dt   =  0.15
 #dt   =  0.20
@@ -48,7 +63,8 @@ cdB  =  1.0
 #mmff.getBuffs()
 mmff.setupCollisionDamping( nstep=nds, medium=cmd, cB=cdB, cA=cdA, cNB=cdNB )
 
-nstepMax = 20000
+nstepMax = 10000
+#nstepMax = 20000
 outE  = np.zeros( nstepMax )
 outF  = np.zeros( nstepMax )
 outV  = np.zeros( nstepMax )
@@ -71,12 +87,17 @@ ax1.plot( outV [:nitr],"-b", label="|v|" , lw=0.5 )
 ax1.set_xlabel('MD step')
 ax1.set_ylabel('E, F, V')
 ax1.set_ylim(1e-6, 1e+2)
+ax1.set_xlim(0,nstepMax)
 ax1.set_yscale('log')
 plt.grid()
 plt.legend()
 
 ax2 = ax1.twinx()
 ax2.plot( range(nitr), outVF[:nitr],"-g", label="cos(v,f)", lw=0.5 )
+ax2.axhline( y=1.0, color='gray', linestyle='--', lw=0.5 )
+ax2.axhline( y=0.5, color='gray', linestyle='--', lw=0.5 )
+ax2.axhline( y=0.0, color='gray', linestyle='--', lw=0.5 )
+ax2.axhline( y=-1.0, color='gray', linestyle='--', lw=0.5 )
 ax2.set_ylim(-1.1,+4.1)
 
 

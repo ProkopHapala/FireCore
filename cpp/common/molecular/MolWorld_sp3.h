@@ -88,7 +88,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 	// Force-Fields & Dynamics
 	MMFFsp3      ff;
     MMFFsp3_loc  ffl;
-    MMFFf4       ff4;
+    //MMFFf4     ff4;
 	Constrains   constrs;
 	//NBFF_old   nff;
     NBFF         surf, nbmol;
@@ -832,20 +832,20 @@ void makeMMFFs(){
     
     builder.toMMFFsp3_loc( ffl, true, bEpairs );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
     if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
-    builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
+    //uilder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
     builder.toMMFFsp3    ( ff , true, bEpairs );
     
     //ffl.printAtomParams();
     ffl.flipPis( Vec3dOne );
-    ff4.flipPis( Vec3fOne );
+    //ff4.flipPis( Vec3fOne );
     if(bPBC){  
         ff.bPBCbyLvec = true;
         ff .setLvec( builder.lvec);
         ffl.setLvec( builder.lvec);   
-        ff4.setLvec((Mat3f)builder.lvec);
+        //ff4.setLvec((Mat3f)builder.lvec);
         npbc = makePBCshifts( nPBC, builder.lvec );
         ffl.bindShifts(npbc,pbc_shifts);
-        ff4.makeNeighCells  ( nPBC );       
+        //ff4.makeNeighCells  ( nPBC );       
         //ffl.makeNeighCells( nPBC );      
         ffl.makeNeighCells( npbc, pbc_shifts ); 
     }
@@ -937,24 +937,23 @@ virtual void init( bool bGrid ){
 }
 
 virtual void clear( bool bParams=true ){
-    //printf("MolWorld_sp3.clear() \n");
+    printf("MolWorld_sp3.clear() \n");
+
     builder.clear();
     ffl.dealloc();
-    ff.dealloc();
-    ff4.dealloc();
+    ff .dealloc();
+    //ff4.dealloc();
     // --- nbmol
     nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
-    nbmol.apos=0;  
-    nbmol.fapos=0;  
+    nbmol.apos=0;
+    nbmol.fapos=0;
     nbmol.atypes=0;
     nbmol.dealloc();
     // --- opt
     opt.pos = 0;
     opt.force = 0;
     opt.dealloc();
-
     constrs.clear();
-
     if(bParams){
         params.clear();
     }
@@ -987,29 +986,29 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
 //void open_xyzFile (const char* fname){ xyz_file=fopen( fname,"w" ); };
 //void close_xyzFile(){fclose(xyz_file)};
 
-double eval_f4(){
-    pack( ff4.natoms, ffl.apos , ff4.apos  );
-    pack( ff4.nnode,  ffl.pipos, ff4.pipos );
-    double E = ff4.eval();
-    //ff4.move_GD( 0.01);
-    unpack( ff4.natoms, ffl. apos, ff4. apos  );
-    unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
-    unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
-    unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
-    //for(int i=0; i<ff4.nnode; i++) printf("pi[%i] <fpi,pi> %g |pi| %g \n", i, ffl.fpipos[i].dot( ffl.pipos[i] ), ffl.pipos[i].norm() );
-    return E;   
-};
+// double eval_f4(){
+//     pack( ff4.natoms, ffl.apos , ff4.apos  );
+//     pack( ff4.nnode,  ffl.pipos, ff4.pipos );
+//     double E = ff4.eval();
+//     //ff4.move_GD( 0.01);
+//     unpack( ff4.natoms, ffl. apos, ff4. apos  );
+//     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
+//     unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
+//     unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
+//     //for(int i=0; i<ff4.nnode; i++) printf("pi[%i] <fpi,pi> %g |pi| %g \n", i, ffl.fpipos[i].dot( ffl.pipos[i] ), ffl.pipos[i].norm() );
+//     return E;   
+// };
 
 void setNonBond( bool bNonBonded ){
     ffl.bSubtractAngleNonBond = bNonBonded;
-    ff4.bSubtractAngleNonBond = bNonBonded;
+    //ff4.bSubtractAngleNonBond = bNonBonded;
     if(bNonBonded){
         ffl.REQs = nbmol.REQs;
         ff .REQs = nbmol.REQs;
-        if(ff4.REQs==0){
-            ff4.REQs = new Quat4f[nbmol.natoms];
-            for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
-        }
+        // if(ff4.REQs==0){
+        //     ff4.REQs = new Quat4f[nbmol.natoms];
+        //     for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
+        // }
     }
 }
 
@@ -1181,8 +1180,10 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     verbosity = 1;
     
 
-    ffl.run( nIter, 0.05, 1e-6, 1000.0 );
+    //ffl.run( nIter, 0.05, 1e-6, 1000.0 );
     //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
+
+    run_no_omp( nIter, 0.05, 1e-6, 1000.0 );
 
     //run_omp( 1, 0.05, 1e-6, 1000.0 );
     //run_omp( nIter, 0.05, 1e-6, 1000.0 );
@@ -1207,12 +1208,13 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
     long T0 = getCPUticks();
     int itr=0,niter=niter_max;
     double E=0,cdamp=0;
-    cdamp = ffl.colDamp.update( dt );
+    cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
     if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
     //if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter_max, ffl.bCollisionDamping, ffl.bCollisionDampingNonBond, dt, 1-cdamp, ffl.col_damp*dt, ffl.col_damp_NB*dt );
-    if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.bond*dt, ffl.colDamp.nonB*dt, ffl.colDamp.nonB*dt );
+    if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.cdampB*dt, ffl.colDamp.cdampAng*dt, ffl.colDamp.cdampNB*dt );
     for(itr=0; itr<niter; itr++){
         //double ff=0,vv=0,vf=0;
+        Vec3d cvf_bak = ffl.cvf;
         E=0; ffl.cvf = Vec3dZero;
         //------ eval forces
         for(int ia=0; ia<ffl.natoms; ia++){ 
@@ -1223,26 +1225,39 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
             if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
             else    { 
                 E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); 
-                if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.nonB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
+                if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.cdampNB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
                 //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
             } 
+
+            if(ipicked==ia){ 
+                const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
+                ffl.fapos[ia].add( f );
+            }
         }
         // ---- assembling
         for(int ia=0; ia<ffl.natoms; ia++){
             ffl.assemble_atom( ia );
         }        
         // ----- Dynamics
+        if(ffl.colDamp.medium<0){ cdamp=ffl.colDamp.tryAccel(); }
+        //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium;  }else{ cdamp=1+ffl.colDamp.medium*0.2; } }
+        //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium; }else{ cdamp=1+ffl.colDamp.medium; } }
         for(int i=0; i<ffl.nvecs; i++){
             ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, cdamp ) );
+            //ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, 1.0 ) );
+            //ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, 1.01 ) );
             //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
             //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
             //ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
             //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
         }
-        if(ffl.cvf.x<0){ 
-            ffl.cleanVelocity(); 
-            //printf( "MolWorld_sp3::run_no_omp(itr=%i).cleanVelocity() \n", itr, ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); 
-        };
+        //printf( "Acceleration: cdamp=%g(%g) nstepOK=%i \n", cdamp_, cdamp, ffl.colDamp.nstepOK );
+        //printf( "Kinetic energy decrease: factor=%g v2_new=%g v2_old=%g \n", ffl.cvf.y/cvf_bak.y,  ffl.cvf.y, cvf_bak.y );
+        double cos_vf = ffl.colDamp.update_acceleration( ffl.cvf );
+        if(ffl.cvf.x<0){ ffl.cleanVelocity(); }else{
+            //double renorm_vf  = sqrt( ffl.cvf.y / ( ffl.cvf.z  + 1e-32 ) );
+            //for(int i=0; i<ffl.nvecs; i++){ ffl.vapos[i] = ffl.vapos[i]*(1-cdamp) + ffl.fapos[i]*( renorm_vf * cdamp ); }
+        }
         Etot=E;
         if(outE )outE [itr]=Etot;
         if(outF )outF [itr]=sqrt(ffl.cvf.z);
@@ -1432,7 +1447,8 @@ int toXYZ(const char* comment="#comment", bool bNodeOnly=false, FILE* file=0, bo
 
 int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
     char str_tmp[1024];
-    sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment );
+    if(bPBC){ sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment ); }
+    else    { sprintf( str_tmp, "%s", comment ); }
     return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, str_tmp, nbmol.REQs, mode, true, nPBC, ffl.lvec ); 
 }
 //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
