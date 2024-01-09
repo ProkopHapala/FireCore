@@ -39,8 +39,8 @@ export OMP_NUM_THREADS
 #python3 run_sample.py
 #python3 run_lat_scan.py
 
-#python3 run_collision_damp.py
-python3 run_collision_damp_scan.py
+python3 run_collision_damp.py
+#python3 run_collision_damp_scan.py
 #python3 run_test_clear.py
 
 #python3 run_opt_poly.py BB.HNH-hh.NHO-hp

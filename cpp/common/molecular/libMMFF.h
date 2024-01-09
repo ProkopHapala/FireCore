@@ -84,6 +84,10 @@ void setupCollisionDamping( int nstep, double medium, double bond, double ang, d
 }
 
 
+void setup_accel(int nstep_acc_min_, double cos_vf_acc_ ){
+    W.ffl.colDamp.setup_accel( nstep_acc_min_, cos_vf_acc_ );
+}
+
 
 
 double eval (){ return W.eval(); };
