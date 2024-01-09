@@ -59,8 +59,6 @@ bool ckeckRange(int n, int m, T* xs, T min, T max, const char* pre, bool bPrint=
     return ret;
 }
 
-
-
 bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
     bool ret = false;
     for(int i=0; i<n;i++){
@@ -81,6 +79,19 @@ bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
         }
     }
     return ret;
+}
+
+int whereNaN_d(int n, int m, double* xs, const char* pre ){
+    for(int i=0; i<n;i++){
+        bool b=false;
+        for(int j=0; j<m;j++){
+            int ij=i*m+j;
+            b|=isnan( xs[ij] );
+            b|=isinf( xs[ij] );
+        }
+        if(b){ return i; }
+    }
+    return -1;
 }
 
 bool ckeckNaN_f(int n, int m, float* xs, const char* pre, bool bPrint=true ){

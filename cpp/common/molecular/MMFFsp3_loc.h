@@ -54,6 +54,12 @@ class CollisionDamping{ public:
     double cdampAng  = 0.0;
     double cdampNB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
 
+    int nstepOK    = 0;
+    int nstepOKmin = 20;
+
+    inline bool   canAccelerate(){ return nstepOK>nstepOKmin; }
+    inline double tryAccel     (){ if(    nstepOK>nstepOKmin  ){ return 1-medium;  }else{ return 1.0; } }
+
     inline double update( double dt ){
         if( bBond ){ cdampB   = bond /(dt*nstep ); }else{ cdampB=0;   }
         if( bBond ){ cdampAng = ang  /(dt*nstep ); }else{ cdampAng=0; }
@@ -65,7 +71,8 @@ class CollisionDamping{ public:
 
     void set( int nstep_, double medium_, double bond_, double ang_, double nonB_, double dRcut1_, double dRcut2_ ){
         nstep   = nstep_;
-        medium  = fmax( medium_,0 );
+        //medium  = fmax( medium_,0 );
+        medium  = medium_; // we want also acceleration
         bond    = fmax( bond_  ,0 );
         ang     = fmax( ang_   ,0 );
         nonB    = fmax( nonB_  ,0 );
@@ -75,6 +82,26 @@ class CollisionDamping{ public:
         bAng  = ang >0;
         bNonB = nonB>0;
     }
+
+    inline double update_acceleration( Vec3d cvf ){
+        double cos_fv = cvf.x/sqrt(cvf.z*cvf.y+1e-32);
+        if(cvf.x<0){ 
+            nstepOK = 0;
+            //printf( "MolWorld_sp3::run_no_omp(itr=%i).cleanVelocity() \n", itr, ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); 
+        }else {
+            if( cos_fv>0.5 ){
+                nstepOK++;
+                //printf( "MolWorld_sp3::run_no_omp(itr=%i) Acceleration: cdamp=%g(%g) nstepOK=%i cos(f,v)\n", itr, cdamp, ffl.colDamp.nstepOK, ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32) );
+            }else{
+                //double vf_damp = (0.5-cos_fv)*0.0;
+                //double renorm_vf  = sqrt( ffl.cvf.y / ( ffl.cvf.z  + 1e-32 ) );
+                //for(int i=0; i<ffl.nvecs; i++){ ffl.vapos[i] = ffl.vapos[i]*(1-vf_damp) + ffl.fapos[i]*( renorm_vf * vf_damp ); }
+                nstepOK=0;
+            }
+        }
+        return cos_fv;
+    }
+
 };
 
 // ========================
@@ -262,6 +289,10 @@ void dealloc(){
     fapos  = 0;
     pipos  = 0;
     fpipos = 0;
+
+    //vDOFs  = 0;   // to-do (not sure if we should deallocate it here ?)
+    vapos  = 0;   // to-do (not sure if we should deallocate it here ?)
+    //vpipos = 0;   // to-do (not sure if we should deallocate it here ?)
     _dealloc(atypes);
     _dealloc(neighs);
     _dealloc(neighCell);
@@ -415,7 +446,7 @@ double eval_atom(const int ia){
                     // for masses = 1.0 we have reduced_mass = 1*1/(1+1) = 0.5
 
                     double dv   = h.f.dot( vapos[ing] - vapos[ia] );
-                    double fcol = colDamp.bond * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                    double fcol = colDamp.cdampB * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
 
                     f1.set_mul( h.f, fcol );
                     fbs[i].sub(f1);  fa.add(f1); 
@@ -540,7 +571,7 @@ double eval_atom(const int ia){
             if(bColDampAng){
                 Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
                 double dv   = dp.dot( vapos[ing] - vapos[ia] );
-                double fcol = colDamp.ang * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                double fcol = colDamp.cdampAng * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
                 dp.mul( fcol/dp.norm2() );
                 f1.sub(dp);
                 f2.add(dp);
@@ -600,7 +631,7 @@ double eval_atom(const int ia){
 
 
 double eval_atom_debug(const int ia, bool bPrint=true){
-    //printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
+    if(bPrint)printf( "#### MMFFsp3_loc::eval_atom_debug(%i)\n", ia );
     double E=0;
     const Vec3d pa  = apos [ia]; 
     const Vec3d hpi = pipos[ia]; 
@@ -621,6 +652,9 @@ double eval_atom_debug(const int ia, bool bPrint=true){
 
     const Quat4d& apar  = apars[ia];
     const double  piC0 = apar.w;
+
+    const bool bColDampB   = colDamp.bBond && vapos; // if true we use collision damping
+    const bool bColDampAng = colDamp.bAng  && vapos; // if true we use collision damping for non-bonded interactions
 
     //--- Aux Variables 
     Quat4d  hs[4];
@@ -675,6 +709,15 @@ double eval_atom_debug(const int ia, bool bPrint=true){
 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds){
+
+                if(bColDampB){ // 
+                    double dv   = h.f.dot( vapos[ing] - vapos[ia] );
+                    double fcol = colDamp.cdampB * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                    f1.set_mul( h.f, fcol );
+                    if(bPrint)printf( "ffl:bondCol[%i|%i=%i] colDamp=%g dv=%g fcol=%g h(%g,%g,%g) f(%g,%g,%g) E %g\n", ia,i,ing, colDamp.cdampB, dv, fcol, h.x,h.y,h.z, f1.x,f1.y,f1.z);
+                    fbs[i].sub(f1);  fa.add(f1); 
+                }
+
                 double Ebi = evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
                 E +=Ebi; 
                 Eb+=Ebi; 
@@ -750,6 +793,18 @@ double eval_atom_debug(const int ia, bool bPrint=true){
             Ea+=Eai;
             if(bPrint)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) E %g\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z, f2.x,f2.y,f2.z, Eai );
             fa    .sub( f1+f2  );
+
+
+            if(bColDampAng){
+                Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
+                double dv   = dp.dot( vapos[ing] - vapos[ia] );
+                double fcol = colDamp.cdampAng * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                dp.mul( fcol/dp.norm2() );
+                f1.sub(dp);
+                f2.add(dp);
+                if(bPrint)printf( "ffl:colDampAng[%i|%i,%i] cDampAng=%g dv=%g fcol=%g fij(%g,%g,%g)\n", ia,ing,jng, colDamp.cdampAng, dv, fcol, dp.x,dp.y,dp.z );
+            }
+
             // ----- Error is HERE
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
@@ -1266,6 +1321,8 @@ double eval_check(){
         printSizes();
     }
     //print_pipos();
+    cleanForce();
+    if(vapos)cleanVelocity();
     eval();
     checkNans();
     if(verbosity>0)printf(" ============ check MMFFsp3_loc DONE\n " );
@@ -1285,7 +1342,7 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double cdamp = colDamp.update( dt );
 
     //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
-    printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.bond*dt, colDamp.nonB*dt, colDamp.nonB*dt );
+    printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
 
     int    itr;
     //if(itr_DBG==0)print_pipos();
@@ -1647,6 +1704,7 @@ void printDebug(  bool bNg=true, bool bPi=true, bool bA=true ){
 // check if there are NaNs in the arrays (and exit with error-message if there are)
 bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
     bool ret = false;
+    int ia = whereNaN_d( natoms,  3, (double*)fapos,   "fapos"   ); if(ia>=0){ eval_atom_debug(ia,true);  printf("ERROR NaNs detected in fapos[%i]\n", ia ); exit(0); }
     if(bA)  ret |= ckeckNaN_d(natoms,  3, (double*) apos,   "apos"  );
     if(bA)  ret |= ckeckNaN_d(natoms,  3, (double*)fapos,  "fapos"  );
     if(bPi) ret |= ckeckNaN_d(nnode,   3, (double*) pipos,  "pipos" );
@@ -1658,10 +1716,8 @@ bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
         printAtomParams();
         printNeighs();
         print_pbc_shifts();
-        printDebug(  false, false );
-
+        printDebug( false, false );
         eval_atoms(true,true);
-
         printf("ERROR: NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); 
         exit(0); 
     };

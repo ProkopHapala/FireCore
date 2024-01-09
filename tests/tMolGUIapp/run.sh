@@ -61,6 +61,17 @@ ln -s $dir/$name .
 #./$name -x common_resources/O2 -perframe  1  -col_damp 5 -1.0 1.0 0.0   0.0 0.5
 
 
+
+#./$name -x common_resources/diamin_and_diether_C10 -perframe  1  -col_damp 1 0.5 0.3 0.0   0.0 0.5
+#./$name -x common_resources/diamin_and_diether_C10- -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
+#./$name -x common_resources/C8_diamin_diether-2 -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
+#./$name -x common_resources/C8_diamin_diether -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
+#./$name -x common_resources/nNonan_cross -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
+./$name -x common_resources/hydropentacene_cross -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
+
+
+
+
 #./$name -x common_resources/nHexadecan      -perframe 100  -col_damp 10 -1.0 -1.0 0.1    0.0 0.5  
 #./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 10 -1.0 -1.0 0.1    0.0 0.5
 #./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 5  -1.0 -1.0 0.05   0.0 0.5
@@ -73,7 +84,7 @@ ln -s $dir/$name .
 
 #./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5  -1.0 -1.0 0.01   0.0 0.5
 #./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5   1.0 -1.0 0.01   0.0 0.5
- ./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5  -1.0  1.0 0.01   0.0 0.5
+#./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 5  -1.0  1.0 0.01   0.0 0.5
 #./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 2   1.0  0.1  0.001 0.0 0.5
 #./$name -x common_resources/nHexadecan_fold -perframe  10  -col_damp 2   1.0  0.01 0.001 0.0 0.5
 

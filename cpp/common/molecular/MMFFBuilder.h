@@ -1497,8 +1497,11 @@ class Builder{  public:
         p = Vec3dZero;
         const int* ngs = conf.neighs;
         for(int i=0; i<conf.nbond; i++){
-            int ja = bonds[ngs[i]].getNeighborAtom(conf.iatom);
+            int ib = ngs[i];
+            int ja = bonds[ib].getNeighborAtom(conf.iatom);
+            //printf( "setPiByNeigh[%i] i=%i ib=%i ja=%i \n", ic, i, ib, ja );
             int jc = atoms[ja].iconf;
+            if(jc<0) continue;
             Vec3d pi = confs[jc].pi_dir;
             if(i>0){
                 double c = p.dot(pi); if(c<0){ pi.mul(-1.); };
@@ -1512,6 +1515,7 @@ class Builder{  public:
         return true;
     }
     int setPiLoop( int ia0=0, int imax=-1, int nMaxIter=10 ){
+        //printf( "setPiLoop() confs.size()=%i \n", confs.size() );
         if(imax<0){ imax=atoms.size(); }
         for(int itr=0; itr<nMaxIter; itr++){
             int new_pi=0;
