@@ -1206,6 +1206,8 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
     if(verbosity>0)printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
     double F2conv=Fconv*Fconv;
     long T0 = getCPUticks();
+    //bool bFIRE = false;
+    bool bFIRE = true;
     int itr=0,niter=niter_max;
     double E=0,cdamp=0;
     cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
@@ -1237,33 +1239,53 @@ int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, d
         // ---- assembling
         for(int ia=0; ia<ffl.natoms; ia++){
             ffl.assemble_atom( ia );
-        }        
-        // ----- Dynamics
-        if(ffl.colDamp.medium<0){ cdamp=ffl.colDamp.tryAccel(); }
-        //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium;  }else{ cdamp=1+ffl.colDamp.medium*0.2; } }
-        //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium; }else{ cdamp=1+ffl.colDamp.medium; } }
+        } 
+        if(bFIRE){
+            for(int i=0; i<opt.n; i++){
+                double v=opt.vel  [i];
+                double f=opt.force[i];
+                //vv+=v*v; ff+=f*f; vf+=v*f;
+                ffl.cvf.x += v*f;
+                ffl.cvf.y += v*v;
+                ffl.cvf.z += f*f;
+            }
+            opt.vf=ffl.cvf.x;
+            opt.vv=ffl.cvf.y; 
+            opt.ff=ffl.cvf.z; 
+            opt.FIRE_update_params();
+        }else{
+            // ----- Dynamics
+            if(ffl.colDamp.medium<0){ cdamp=ffl.colDamp.tryAccel(); }
+            //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium;  }else{ cdamp=1+ffl.colDamp.medium*0.2; } }
+            //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium; }else{ cdamp=1+ffl.colDamp.medium; } }
+        }
         for(int i=0; i<ffl.nvecs; i++){
-            ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, cdamp ) );
+            if(bFIRE){
+                ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+            }else{
+                ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, cdamp ) );
+            }
             //ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, 1.0 ) );
             //ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, 1.01 ) );
             //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
             //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
-            //ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
             //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
         }
-        //printf( "Acceleration: cdamp=%g(%g) nstepOK=%i \n", cdamp_, cdamp, ffl.colDamp.nstepOK );
-        //printf( "Kinetic energy decrease: factor=%g v2_new=%g v2_old=%g \n", ffl.cvf.y/cvf_bak.y,  ffl.cvf.y, cvf_bak.y );
-        double cos_vf = ffl.colDamp.update_acceleration( ffl.cvf );
-        if(ffl.cvf.x<0){ ffl.cleanVelocity(); }else{
-            //double renorm_vf  = sqrt( ffl.cvf.y / ( ffl.cvf.z  + 1e-32 ) );
-            //for(int i=0; i<ffl.nvecs; i++){ ffl.vapos[i] = ffl.vapos[i]*(1-cdamp) + ffl.fapos[i]*( renorm_vf * cdamp ); }
+        if(!bFIRE){
+            //printf( "Acceleration: cdamp=%g(%g) nstepOK=%i \n", cdamp_, cdamp, ffl.colDamp.nstepOK );
+            //printf( "Kinetic energy decrease: factor=%g v2_new=%g v2_old=%g \n", ffl.cvf.y/cvf_bak.y,  ffl.cvf.y, cvf_bak.y );
+            double cos_vf = ffl.colDamp.update_acceleration( ffl.cvf );
+            if(ffl.cvf.x<0){ ffl.cleanVelocity(); }else{
+                //double renorm_vf  = sqrt( ffl.cvf.y / ( ffl.cvf.z  + 1e-32 ) );
+                //for(int i=0; i<ffl.nvecs; i++){ ffl.vapos[i] = ffl.vapos[i]*(1-cdamp) + ffl.fapos[i]*( renorm_vf * cdamp ); }
+            }
         }
         Etot=E;
         if(outE )outE [itr]=Etot;
         if(outF )outF [itr]=sqrt(ffl.cvf.z);
         if(outV )outV [itr]=sqrt(ffl.cvf.y);
         if(outVF)outVF[itr]=ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y + 1e-32);
-        if( isnan(Etot) || isnan(ffl.cvf.z) || isnan(ffl.cvf.y) ){  printf( "MolWorld_sp3::run_no_omp(itr=%i) ERROR NaNs : E=%f cvf(%g,%g,%g)\n", itr, E, ffl.cvf.x, sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); return itr; }
+        if( isnan(Etot) || isnan(ffl.cvf.z) || isnan(ffl.cvf.y) ){  printf( "MolWorld_sp3::run_no_omp(itr=%i) ERROR NaNs : E=%f cvf(%g,%g,%g)\n", itr, E, ffl.cvf.x, sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); return -itr; }
         if( (trj_fname) && ( (itr%savePerNsteps==0) ||(niter==0) ) ){
             sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(ffl.cvf.z) );
             //printf( "run_no_omp::save() %s \n", tmpstr );

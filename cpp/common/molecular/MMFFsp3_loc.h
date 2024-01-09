@@ -54,11 +54,12 @@ class CollisionDamping{ public:
     double cdampAng  = 0.0;
     double cdampNB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
 
-    int nstepOK    = 0;
-    int nstepOKmin = 20;
+    double cos_vf_acc = 0.5;
+    int nstep_acc     = 0;
+    int nstep_acc_min = 20;
 
-    inline bool   canAccelerate(){ return nstepOK>nstepOKmin; }
-    inline double tryAccel     (){ if(    nstepOK>nstepOKmin  ){ return 1-medium;  }else{ return 1.0; } }
+    inline bool   canAccelerate(){ return nstep_acc>nstep_acc_min; }
+    inline double tryAccel     (){ if(    nstep_acc>nstep_acc_min  ){ return 1-medium;  }else{ return 1.0; } }
 
     inline double update( double dt ){
         if( bBond ){ cdampB   = bond /(dt*nstep ); }else{ cdampB=0;   }
@@ -83,20 +84,26 @@ class CollisionDamping{ public:
         bNonB = nonB>0;
     }
 
+    void setup_accel(int nstep_acc_min_, double cos_vf_acc_ ){
+        nstep_acc_min = nstep_acc_min_;
+        cos_vf_acc    = cos_vf_acc_;
+        printf( "CollisionDamping::setup_accel nstep_acc_min %i cos_vf_acc %g \n", nstep_acc_min, cos_vf_acc );
+    }
+
     inline double update_acceleration( Vec3d cvf ){
         double cos_fv = cvf.x/sqrt(cvf.z*cvf.y+1e-32);
         if(cvf.x<0){ 
-            nstepOK = 0;
+            nstep_acc = 0;
             //printf( "MolWorld_sp3::run_no_omp(itr=%i).cleanVelocity() \n", itr, ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); 
         }else {
-            if( cos_fv>0.5 ){
-                nstepOK++;
+            if( cos_fv>cos_vf_acc ){
+                nstep_acc++;
                 //printf( "MolWorld_sp3::run_no_omp(itr=%i) Acceleration: cdamp=%g(%g) nstepOK=%i cos(f,v)\n", itr, cdamp, ffl.colDamp.nstepOK, ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32) );
             }else{
                 //double vf_damp = (0.5-cos_fv)*0.0;
                 //double renorm_vf  = sqrt( ffl.cvf.y / ( ffl.cvf.z  + 1e-32 ) );
                 //for(int i=0; i<ffl.nvecs; i++){ ffl.vapos[i] = ffl.vapos[i]*(1-vf_damp) + ffl.fapos[i]*( renorm_vf * vf_damp ); }
-                nstepOK=0;
+                nstep_acc=0;
             }
         }
         return cos_fv;
