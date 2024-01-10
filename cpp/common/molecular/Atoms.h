@@ -13,38 +13,36 @@ class Points{ public:
     Vec3d * ps=0;
 };
 
+enum DescriptorType {principal_axes, number_of_atoms};
+
+struct MolecularDatabaseDescriptor
+{
+    DescriptorType type;
+    int atom_type = -1;
+};
+
 class MetaData{ public:
    /*virtual void print()=0;
    virtual char* tostr(int id)=0;*/
-   
+
+    MolecularDatabaseDescriptor* usedDescriptors=nullptr;
+    int nbOfusedDescriptors = 0;
+    int dimensionOfDescriptorSpace = 0;
+// User can choose desriptors to use by writing it in the usedDescriptor array (chosen order is important):
+// first parameter is the type of descriptor (principal_axes, number_of_atoms)
+// second parameter is the atom type (-1 means all atoms)
+    MetaData(){
+        nbOfusedDescriptors = 3;
+        usedDescriptors = new MolecularDatabaseDescriptor[nbOfusedDescriptors];
+        usedDescriptors[0] = {principal_axes, -1};
+        usedDescriptors[1] = {number_of_atoms, -1};
+        usedDescriptors[2] = {number_of_atoms, -1};
+    };
+    ~MetaData(){
+        delete[] usedDescriptors;
+    };
 };
 
-//class MolecularDatabase : public MetaData{ 
-// private:
-//     double* descriptors;
-//     Atoms* atoms;
-//     int nMembers;
-// public:
-//     MolecularDatabase(){
-//         descriptors = nullptr;
-//         atoms = nullptr;
-//         nMembers = 0;
-//     };
-//     void realloc(int n){
-//         this->nMembers = n;
-//         Atoms* temp = new Atoms[n];
-//         memcpy(temp, this->atoms, sizeof(Atoms)*n);
-//         delete[] this->atoms;
-//         this->atoms = temp;
-
-//         this->descriptors = new double[n];
-//     };
-//     void addSnapshot(Atoms structure){
-
-//     };
-//    virtual void  print(){};
-//    virtual char* tostr(int id){};
-//};
 
 
 class Atoms{ public:

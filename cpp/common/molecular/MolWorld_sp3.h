@@ -2007,9 +2007,21 @@ MolecularDatabase* database;
 
 void addSnapshot(){
     //std::unique_ptr<DatabaseMember> dbm(new DatabaseMember);
-
-    database->addMember(nbmol);
-
+    int nMembers = database->getNMembers();
+    //if(nMembers == 2)    nbmol.natoms = 2;
+    if(!nbmol.metaData)  nbmol.metaData = new MetaData;
+    database->testHash(&nbmol);
+    
+    
+    // if(nMembers >=1){
+    //     if(database->compareDescriptors(nMembers, 0)){
+    //         printf( "MolWorld_sp3_simple::addSnapshot() WARNING: duplicate descriptor \n" );
+    //     }
+    //     else{
+    //         printf( "MolWorld_sp3_simple::addSnapshot() new descriptor \n" );
+    //     }
+    // }
+    //nbmol.natoms = 6;
 }
 
 void printDatabase(){
