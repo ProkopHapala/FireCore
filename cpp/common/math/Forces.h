@@ -65,6 +65,36 @@ double finiteLorenz( double r2, double w2, double R2cut ){
 }
 
 
+// ================ Zero Torque ( for torsion angles )
+
+inline void zeroTorque( const Vec3d& a, const Vec3d& b, const Vec3d& fa, const Vec3d& fb, const Mat3d rot, double l, Vec3d& f ){
+    // This function find force f which counteracts torque from fa and fb ( at the end points A,B of bonds a and b, a = A-C, b = B-D )
+    // We consider torsion angle between two bonds a and b between atoms A,B,C,D  (A,B are end points of a, C,D are on the axis, C is at origin adjecent to A and D is adjecent to B in distance l=|C-D| from C)
+    // we consider action of force in plane defined by orientation matrix rot (rot.a,rot.b,rot.c), rot.a is normal to plane, rot.c is axis of torsion, rot.b is up vector such that b is in plane of rot.b and rot.c  
+    // for force component fI in the    plane we have: fI*l = faI*aI                (because fbII=0 by choice of plane)
+    // for force component fN normal to plane we have: fN*l = faN*aI + fbN*(l+bI)
+    double aI  = rot.c.dot(a);  // will be probably negative
+    double bI  = rot.c.dot(b);
+    double faI = rot.b.dot(fa);
+    double faN = rot.a.dot(fa);
+    double fbN = rot.a.dot(fb);
+    double il  = -1./l;
+    double fI  = ( faI*aI              )*il;
+    double fN  = ( faN*aI + fbN*(l+bI) )*il;
+    f = rot.a*fN + rot.b*fI;
+}
+
+inline void torsion( double fang, Vec3d a, Vec3d b, Quat4d ax,   Vec3d& fa, Vec3d& fb, Vec3d& fc, Vec3d& fd ){
+    Mat3d rota,rotb;
+    rota.fromDirUp( ax.f, a );
+    rotb.fromDirUp( ax.f, b );
+    double ila = 1./rota.b.dot(a);
+    double ilb = 1./rotb.b.dot(b);
+    Vec3d   fa = rota.a*(fang*ila);
+    Vec3d   fb = rotb.a*(fang*ilb);
+    zeroTorque( a, b, fa, fb, rota, ax.w, fd );
+    zeroTorque( b, a, fb, fa, rota, ax.w, fc );
+}
 
 // ================ Angular Forces (MMFF) 
 

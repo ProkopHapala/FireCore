@@ -159,6 +159,7 @@ class OCL_DFT: public OCLsystem { public:
     int    nAtoms=0;
     int    nOrbs=0;
     int    nPos=0;
+    float4 possionW_params{1.f,1.f,1.f,1.f};
     float4 dcell_poisson{1.f,1.f,1.f,1.f};
     float4 dcell_gradient{1.f,1.f,1.f,1.f};
     float4 pos0, dA, dB, dC;
@@ -578,10 +579,10 @@ class OCL_DFT: public OCLsystem { public:
         //printf( "DEBUG projectAtomsDens() END \n");
     }
     
-    void projectAtomsDens0( int ibuff_result, float2 acumCoef_, int natoms_=0, int* ityps=0, Vec3d* oatoms=0 ){
-        //printf( "DEBUG projectAtomsDens0 acumCoef_ (%g,%g) natoms_ %i \n", acumCoef_.x, acumCoef_.y, natoms_ );
+    void projectAtomsDens0( int ibuff_result, float2 acumCoef_, int natoms_=0, int* ityps=0, Vec3d* oatoms=0, float4* atomQcoefs=0 ){
+        printf( "DEBUG projectAtomsDens0 acumCoef_ (%g,%g) natoms_ %i @ityps=%li @oatoms=%li @atomQcoefs=%li \n", acumCoef_.x, acumCoef_.y, natoms_, (long)ityps, (long)oatoms, (long)atomQcoefs );
         if(natoms_>0){
-            makeAtomDensCoefs( natoms_, ityps, oatoms, false );
+            makeAtomDensCoefs( natoms_, ityps, oatoms, ibuff_coefs==-1, atomQcoefs );
             finishRaw();
         }
         initTask_project_atom_dens_tex( ibuff_atoms, ibuff_coefs, ibuff_result );
@@ -590,7 +591,6 @@ class OCL_DFT: public OCLsystem { public:
         finishRaw();
         //printf( "DEBUG projectAtomsDens0() END \n");
     }
-
 
     void convolution( int ibuffA, int ibuffB, int ibuff_result ){
         //printf( "DEBUG convolution ibuffA,ibuffB,ibuff_result %i,%i,%i ", ibuffA,ibuffB,ibuff_result  );
@@ -618,6 +618,30 @@ class OCL_DFT: public OCLsystem { public:
         initTask_gradient( ibuffA, ibuff_result );
         cltask_gradient.enque( );
         finishRaw();
+    }
+
+    void evalVpointChargesPBC( int na, const Vec3d* apos, const double* aQs, int np, const Vec3d* ps, double* Vps, const Vec3i& nPBC, const Mat3d& cell ){
+        //printf( "evalVpointChargesPBC() na %i np %i \n" );
+        //printf( "evalVpointChargesPBC() @apos %li @aQs %li @ps %li @Vps %li nPBC(%i,%i,%i) \n", (long)apos, (long)aQs, (long)ps, (long)Vps, nPBC.x, nPBC.y, nPBC.z );
+        double COULOMB_CONST =  14.399644;
+        for( int i=0; i<np; i++ ){
+            Vec3d p = ps[i];
+            double V = 0;
+            // sum charge from many periodic images
+            for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+            for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+            for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                //printf( "ix,iy,iz %i %i %i \n", ix,iy,iz );
+                Vec3d shift = cell.a*ix + cell.b*iy + cell.c*iz - p;
+                //if(i==0){ printf( "shift %g %g %g \n", shift.x, shift.y, shift.z ); }
+                for(int ia=0; ia<na; ia++){
+                    Vec3d d = apos[ia] + shift;
+                    //if(i==0){ printf( "Q=%g |d|=%g apos(%g,%g,%g) d(%g,%g,%g) \n", aQs[ia], d.norm(), apos[ia].x, apos[ia].y, apos[ia].z, d.x, d.y,d.z ); }
+                    V += aQs[ia] * COULOMB_CONST / d.norm();
+                }
+            }}}  
+            Vps[i] = V;
+        } // i
     }
 
     void cleanup(){
@@ -762,8 +786,10 @@ class OCL_DFT: public OCLsystem { public:
      * @param oatoms atom coordinates
      */
     void prepareAtomCoords(  int natoms, int* ityps, Vec3d* oatoms ){
+        printf( "prepareAtomCoords(natoms=%i) ityps=%li oatoms=%li\n", natoms ,ityps, oatoms);
         float4* atoms = new float4[ natoms ];
         for(int ia=0; ia<natoms; ia++){
+            printf( "prepareAtomCoords() atom[%i] xyz(%g,%g,%g) ityp %i \n", ia, oatoms[ia].x, oatoms[ia].y, oatoms[ia].z, ityps[ia] );
             float slot = (float)(ityps[ia]+0.1f);
             atoms[ia]=(float4){ (float)oatoms[ia].x,(float)oatoms[ia].y,(float)oatoms[ia].z, slot };
         }
@@ -826,14 +852,18 @@ class OCL_DFT: public OCLsystem { public:
      * @param oatoms An array of atom coordinates.
      * @param bInit  Flag indicating whether to initialize the atoms.
      */
-    void makeAtomDensCoefs( int natoms, int* ityps, Vec3d* oatoms, bool bInit=false ){
+    void makeAtomDensCoefs( int natoms, int* ityps, Vec3d* oatoms, bool bInit=false, float4* coefs=0 ){
         //printf( "DEBUG makeAtomDensCoefs() \n" );
         if( bInit ){ initAtoms( natoms, natoms ); }   // create buffers
         prepareAtomCoords( natoms, ityps, oatoms );   // prepare atom coordinates (x,y,z,slot)
-        float4* coefs = new float4[ natoms  ];
-        assignAtomDensCoefs( natoms, ityps, coefs );  // assign coefficients of neutral-atom-density
-        upload(ibuff_coefs,coefs, natoms  );          // upload coefficients to the GPU
-        delete [] coefs;
+        if(coefs==0){
+            coefs = new float4[ natoms  ];
+            assignAtomDensCoefs( natoms, ityps, coefs );  // assign coefficients of neutral-atom-densit
+            upload(ibuff_coefs,coefs, natoms  );          // upload coefficients to the GPU
+            delete [] coefs;
+        }else{
+            upload(ibuff_coefs,coefs, natoms  );          // upload coefficients to the GPU
+        }
         //printf( "DEBUG makeAtomDensCoefs() DONE \n" );
     };
 
@@ -1041,7 +1071,7 @@ class OCL_DFT: public OCLsystem { public:
      * @param Rcut   max cutoff radius ( used if not specified for each atom type ).
      * @param bInit  Flag indicating whether to initialize the density matrix.
      */
-    void projectDenmat( int natoms, int* iZs, int* ityps, double* ocoefs, double* apos, int iorb0, int iorb1, double Rcut, bool bInit=false ){
+    void projectDenmat( int natoms, int* iZs, int* ityps, double* ocoefs, Vec3d* apos, int iorb0, int iorb1, double Rcut, bool bInit=false ){
         int sel [natoms];
         int i0Cs[natoms];
         countOrbs( natoms, iZs, i0Cs );
@@ -1062,6 +1092,8 @@ class OCL_DFT: public OCLsystem { public:
                 }
             }
         }
+
+        
     }
 
     void release_OCL_DFT( bool bReleaseOCL=true, bool bReleaseOCLfft=true ){

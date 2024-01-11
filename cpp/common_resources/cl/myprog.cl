@@ -240,7 +240,7 @@ __kernel void poissonW(
     const int   N,
     __global float2* A,
     __global float2* out,
-    const float4 dCell
+    const float4 dCell     // 
 ){
     const int ix = get_global_id(0);
     const int iy = get_global_id(1);
@@ -254,8 +254,8 @@ __kernel void poissonW(
     int i = ix + nx*( iy + ny*iz );
     //float4 k = (float4){ dCell.x*ix, dCell.y*iy, dCell.z*iz, 0};
     float4 k = (float4){ ix/(0.5f*nx), iy/(0.5f*ny), iz/(0.5f*nz), 0};
-    k = 1.0f-fabs(k-1.0f);
-    float  f = 1/dot( k, k ); 
+    k = 1.0f-fabs(k-1.0f);  // 
+    float  f = dCell.w/dot( k, k );    // dCell.w = 4*pi*eps0*dV - rescaling constant
     if(i==0)f=0;
     if(i<N){ 
         out[i] = A[i]*f;
@@ -663,7 +663,7 @@ __kernel void projectAtomDenToGrid_texture(
         outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
     }
     //if(iG==0){ printf( "GPU all DONE ! \n" ); }
-    //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
+    //if(iG==0){ printf("projectAtomDenToGrid_texture END \n"); }
 }
 
 

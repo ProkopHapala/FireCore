@@ -149,13 +149,30 @@ def test_job_Density_Gradient( fname="pentacene.xyz", ngrid = (128, 64, 32), dce
 #project_or_load_density( (128,64,32), iBuff=0, dcell=[0.2,0.2,0.2,0.2], save_file="density.xsf" )
 
 #job_convolve_density_with_CO_orig()
-job_convolve_density_with_CO()
+#job_convolve_density_with_CO()
 #job_poisson_equation()
 #job_make_Eelec_Epauli()
 #test_job_Density_Gradient()
 #test_PP_sampleFF()
 #test_PP_makeFF_LJQ()
 #test_PP_scan_LJQ()
+
+jobs.check_PoissonScaling(  
+    atomType=[1,1,1], 
+    #atomPos=[[5.0,5.0,5.0],[6.0,5.0,5.0]], 
+    atomPos=[[-2.0,0.0,0.0],[0.0,0.0,0.0],[2.0,0.0,0.0]], 
+    atomQs=[1.0,-2.0,1.0],
+    #ngrid=(64,64,64), 
+    #dcell=[0.2,0.2,0.2,1.0], 
+    ngrid=(100,100,100),
+    #ngrid=(200,100,100),
+    dcell=[0.1,0.1,0.1,1.0], 
+    #dcell=[0.1,0.1,0.1,0.2], 
+    Rcuts=[4.5,4.5], 
+    acumCoef=[1.0,-1.0]  
+)
+
+
 
 exit()
 

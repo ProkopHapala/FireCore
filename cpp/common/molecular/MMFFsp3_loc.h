@@ -1073,7 +1073,7 @@ double eval_torsion(int it){
     dcn *= invs;
     double dcab  = dcn;                          // dc/dcab = dc/d<ha|hb>
     double dca   = (1-cb*cb)*(ca*cab - cb)*dcn;  // dc/dca  = dc/d<ha|hab>
-    double dcb   = (1-ca*ca)*(cb*cab - ca)*dcn;  // dc/dca  = dc/d<hb|hab>
+    double dcb   = (1-ca*ca)*(cb*cab - ca)*dcn;  // dc/dcb  = dc/d<hb|hab>
 
     Vec3d fa,fb,fab;
 
@@ -1081,7 +1081,7 @@ double eval_torsion(int it){
     fb =Vec3dZero;
     fab=Vec3dZero;
 
-    // Jacobina: derivative of <ha|hb> = <ha|hab> + <hb|hab> 
+    // Jacobian: derivative of <ha|hb> = <ha|hab> + <hb|hab> 
     //Mat3Sd J;
     SMat3d J;
 
