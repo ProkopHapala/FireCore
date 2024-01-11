@@ -510,7 +510,45 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
     ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True )
     ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1, acumCoef=[0.0,2.0] )     #  2.0 electrons per orbital
 
+def project_denmat_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], iOutBuff=0, iMO0=0, iMO1=None, i0orb=None, bDownalod=False, bDen0diff=False ):
+    """
+    Projects the electron density onto a grid using GPU acceleration.
 
+    Args:
+        wfcoef    (ndarray) : Wavefunction coefficients.
+        atomType  (list)    : Atom types.
+        atomPos   (ndarray) : Atom positions.
+        ngrid     (tuple)   : Number of grid points in each dimension (default: (64, 64, 64)).
+        dcell     (list)    : Cell dimensions (default: [0.2, 0.2, 0.2, 0.2]).
+        iOutBuff  (int)     : Output buffer index (default: 0).
+        iMO0      (int)     : Starting molecular orbital index (default: 0).
+        iMO1      (int)     : Ending   molecular orbital index (default: None), if None then half of all the orbitals are projected (assumed to be occupied).
+        i0orb     (list)    : List of initial orbital indices (default: None).
+        bDownalod (bool)    : Flag to download the density data (default: False).
+        bDen0diff (bool)    : Flag to calculate the difference density (default: False).
+
+    Returns:
+        numpy.ndarray: The projected electron density data (if bDownalod is True).
+    """
+    print( "#======= project_dens_GPU | ngrid: ", ngrid," dcell: ", dcell )
+    if iMO1 is None:
+        iMO1 = i0orb[-1]//2
+        print( "project_dens_GPU iMO1 ", iMO1 )
+    Ns = (ngrid[0],ngrid[1],ngrid[2])
+    dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
+    elems, dct, ords, Rcuts = iZs2dict(atomType)
+    ocl.tryInitFFT( Ns )
+    ocl.printDeviceInfo( bDetails=True)
+    wf_data = ocl.tryLoadWfBasis( elems, Rcuts=Rcuts, bDelete=True ) # load the basis functions without visualization
+    # -- to visualize the basis functions
+    #wf_data = ocl.tryLoadWfBasis( elems, Rcuts=Rcuts, bDelete=False )
+    #import matplotlib.pyplot as plt; plt.subplot(2,1,1); plt.imshow( wf_data[:,:,0] ); plt.subplot(2,1,2); plt.imshow( wf_data[:,:,1] ); plt.show()
+
+    ocl.setGridShape_dCell( Ns, dCell )
+    #ocl.convCoefsC( atomType, ords, atomPos, wfcoef, bInit=True )
+    #ocl.projectAtomsDens( iOutBuff, iorb0=iMO0, iorb1=iMO1, acumCoef=[0.0,2.0] )     #  2.0 electrons per orbital
+    iZs = atomType # this is perhaps wrong
+    ocl.projectDenmat( iZs, atomType, atomPos, iorb0=iMO1, iorb1=iMO1, Rcut=5.0, bInit=False )
 
     if bDen0diff:
         print( "DEBUG project_dens_GPU() bDen0diff ", bDen0diff )
@@ -525,7 +563,9 @@ def project_dens_GPU( wfcoef, atomType=None, atomPos=None, ngrid=(64,64,64), dce
         print( "project_dens_GPU data:", data.shape, data.dtype,    np.min(data), np.max(data), np.sum(data) )
         #data = data.real.astype(np.float)
         return data
-    
+
+
+
 def check_density_projection( atomType=None, atomPos=None, ngrid=(64,64,64), dcell = [0.2,0.2,0.2,0.2], bSCF=False, iOutBuff=0, Cden=1.0, Cden0=-1.0, iMO1=None ):
     """
     Check the density projection.
@@ -639,6 +679,77 @@ def projectDens0_new( atomType=None, atomPos=None, ngrid=(64,64,64), dcell=[0.2,
         ocl.saveToXsfAtoms( saveName+".xsf", iOutBuff, atomType, atomPos  )
     if bSaveBin:
         ocl.saveToBin( saveName+".bin", iOutBuff )
+
+
+def check_PoissonScaling( atomType=None, atomPos=None, atomQs=None, ngrid=(64,64,64), dcell=[0.2,0.2,0.2,0.2], Rcuts=[4.5,4.5], acumCoef=[1.0,-1.0] ):    
+    print("# ========= projectDens0_new() " )
+    sys.path.append("../../")
+    import pyBall as pb
+    elems, dct, ords, Rcuts = iZs2dict(atomType)
+    #print("# ======== FireCore Run " )
+    #print ("atomType ", atomType)
+    #print ("atomPos  ", atomPos)
+    #print ("ords  ", ords)
+    dCell = np.array([[dcell[0],0.0,0.0],[0.0,dcell[1],0.0],[0.0,0.0,dcell[2]]],dtype=np.float32)
+    Ns = (ngrid[0],ngrid[1],ngrid[2])    
+    ocl.tryInitFFT( Ns )
+    ocl.tryLoadWfBasis( elems, Rcuts=Rcuts )
+    ocl.setGridShape_dCell( Ns, dCell )
+    #ocl.setTypes( [1,4], [[1.0,0.0],[1.0,3.0]] )
+    ocl.setTypesZ( sorted(list(set(atomType))) )
+    ords=np.array( ords, dtype=np.int32)
+
+    atomQcoefs = None
+    if atomQs is not None:
+        atomQcoefs = np.zeros( (len(atomType),4), dtype=np.float32 ); atomQcoefs[:,3]=atomQs
+
+    atomPos  = np.array( atomPos )
+    atomType = np.array( atomType, dtype=np.int32 )
+
+    ibuff_rho = 0
+    ibuff_V   = 1
+
+    ocl.projectAtomsDens0( ibuff_rho, apos=atomPos, atypes=ords, acumCoef=acumCoef, coefs=atomQcoefs ) 
+    ocl.saveToXsfAtoms( "check_PoissonScaling_rho.xsf", ibuff_rho, atomType, atomPos  )
+
+    # ---- check total charge
+    rho  = ocl.download( ibuff_rho, Ns=ngrid ).real
+    dV   = dcell[0]*dcell[1]*dcell[2]
+    Q    = rho.sum()*dV
+    Qabs = np.abs(rho).sum()*dV
+    print( "Q ", Q, "Qabs ", Qabs )
+
+    # ---- check potential
+    COULOMB_CONST = 14.399644
+    ocl.poisson   ( iA=ibuff_rho, iOut=ibuff_V, dcell=dcell )
+    ocl.saveToXsfAtoms( "check_PoissonScaling_V.xsf", ibuff_V, atomType, atomPos )
+    V  = ocl.download( ibuff_V, Ns=ngrid ).real
+    yV = V[ngrid[2]//2,ngrid[1]//2,:] * -COULOMB_CONST * dcell[0]*dcell[0]
+    #yV = V[ngrid[2]//2,ngrid[1]//2,:] * (-COULOMB_CONST / 12.5663706144) / 0.2
+    xV = np.linspace( 0.0, dcell[0]*ngrid[0], ngrid[0] ) - dcell[0]*(ngrid[0]-1)*0.5
+    yRho = rho[ngrid[2]//2,ngrid[1]//2,:]
+
+    # ---- evaluate scan of the potential
+    cell = np.array([[dcell[0]*ngrid[0],0.0,0.0],[0.0,dcell[1]*ngrid[1],0.0],[0.0,0.0,dcell[2]*ngrid[2]]])
+    ps    = np.zeros( (len(xV),3), dtype=np.float32 )
+    ps[:,0] = xV
+    Vps = ocl.evalVpointChargesPBC( atomPos, atomQs, ps, cell, nPBC=[30,10,10] )
+
+    import matplotlib.pyplot as plt
+    plt.plot( ps[:,0], Vps[:], label="Vps" )
+    plt.plot( xV, yV,   label="V_poiss" )
+    plt.plot( xV, yRho*10.0, label="rho" )
+    plt.ylim( -50.0, 50.0 )
+    plt.axhline( 0.0, color='k', linestyle='--' )
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+    #if bSaveXsf:
+    #if bSaveBin:
+    #    ocl.saveToBin( saveName+".bin", iOutBuff )
+
+
 
 if __name__ == "__main__":
     #Test_projectWf( iMO=2 )

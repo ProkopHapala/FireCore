@@ -101,7 +101,7 @@ extern "C" {
 
     // ================ END PP
 
-    void newFFTbuffer( char* name, int nfloat, int ntot ){ oclfft.newFFTbuffer( name, nfloat, ntot ); }
+    int newFFTbuffer( char* name, int nfloat, int ntot ){ return oclfft.newFFTbuffer( name, nfloat, ntot ); }
 
     int initAtoms( int nAtoms, int nOrbs ){  return oclfft.initAtoms( nAtoms, nOrbs ); };
     void runfft( int ibuff, bool fwd     ){ oclfft.runFFT( ibuff,fwd,0);     };
@@ -110,13 +110,22 @@ extern "C" {
     void poisson ( int ibuffA, int ibuff_result, float* dcell ){  oclfft.poisson ( ibuffA, ibuff_result, (float4*)dcell );}
     void gradient( int ibuffA, int ibuff_result, float* dcell ){  oclfft.gradient( ibuffA, ibuff_result, (float4*)dcell );}
     void projectAtoms    ( float* atoms, float* coefs, int ibuff_result                       ){ oclfft.projectAtoms    ( (float4*)atoms, (float4*)coefs, ibuff_result ); }
+                                                                                                                   
     void projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2, float* acumCoef ){  oclfft.projectAtomsDens( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef ); }
-    void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0 ){ oclfft.projectAtomsDens0( ibuff_result, *(float2*)acumCoef, natoms, ityps, (Vec3d*)oatoms ); }
+    void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0, float4* coefs=0 ){ oclfft.projectAtomsDens0( ibuff_result, *(float2*)acumCoef, natoms, ityps, (Vec3d*)oatoms, coefs ); }
 
-    void projectDenmat( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2, float* acumCoef ){  oclfft.projectDenmat( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef ); }
+    void projectDenmat( int natoms, int* iZs, int* ityps, double* ocoefs, double* apos, int iorb0, int iorb1, double Rcut, bool bInit ){  
+        oclfft.projectDenmat( natoms, iZs, ityps, ocoefs, (Vec3d*)apos, iorb0, iorb1, Rcut, bInit );
+        //oclfft.projectDenmat( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef );     
+    }
     
     // void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
     void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out ){ oclfft.projectAtomPosTex( (float4*)atoms, (float4*)coefs,  nPos, (float4*)poss, (float2*)out ); }
+
+    void evalVpointChargesPBC( int na, double* apos, double* aQs, int np, double* ps, double* Vps, int* nPBC, double* cell ){
+        oclfft.evalVpointChargesPBC( na, (Vec3d*)apos, aQs, np, (Vec3d*)ps, Vps, *(Vec3i*)nPBC, *(Mat3d*)cell );
+    }
+
 
     void cleanup(){ oclfft.cleanup(); }
 

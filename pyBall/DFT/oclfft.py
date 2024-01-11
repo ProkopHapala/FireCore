@@ -204,6 +204,22 @@ def gradient(iA,iOut, dcell):
     dcell=np.array(dcell, np.float32)
     lib.gradient( iA,iOut, _np_as( dcell, c_float_p )  )
 
+# void evalVpointChargesPBC( int na, double* apos, double* aQs, int np, double* ps, double* Vps, int* nPBC, double* cell ){
+lib.evalVpointChargesPBC.argtypes  = [ c_int, c_double_p, c_double_p, c_int, c_double_p, c_double_p, c_int_p, c_double_p ]
+lib.evalVpointChargesPBC.restype   =  None
+def evalVpointChargesPBC( apos, aQs, ps, cell, Vps=None, nPBC=[0,0,0] ):
+    na = len(apos)
+    n = len(ps)
+    apos = np.array(apos, dtype=np.float64)
+    aQs  = np.array(aQs,  dtype=np.float64)
+    ps   = np.array(ps,   dtype=np.float64)
+    cell = np.array(cell, dtype=np.float64)
+    if Vps is None:
+        Vps = np.zeros(n, dtype=np.float64)
+    nPBC = np.array(nPBC, dtype=np.int32)
+    lib.evalVpointChargesPBC( na, _np_as(apos,c_double_p), _np_as(aQs,c_double_p), n, _np_as(ps,c_double_p), _np_as(Vps,c_double_p), _np_as(nPBC,c_int_p), _np_as(cell,c_double_p) )
+    return Vps
+
 #projectAtoms( float* atoms, float4* coefs, int ibuff_result )
 lib.projectAtoms.argtypes  = [ c_float_p, c_float_p, c_int ] 
 lib.projectAtoms.restype   =  None
@@ -218,16 +234,16 @@ def projectAtomsDens( iOut, atoms=None,coefs=None,  iorb0=0, iorb1=1, acumCoef=[
     lib.projectAtomsDens( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),iOut, iorb0, iorb1, _np_as( acumCoef, c_float_p ) )
 
 #void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0 )
-lib.projectAtomsDens0.argtypes  = [ c_int, c_float_p, c_int, c_int_p, c_double_p ] 
+lib.projectAtomsDens0.argtypes  = [ c_int, c_float_p, c_int, c_int_p, c_double_p, c_float_p ] 
 lib.projectAtomsDens0.restype   =  None
-def projectAtomsDens0( iOut, atypes=None, apos=None, acumCoef=[0.0,1.0] ):
+def projectAtomsDens0( iOut, atypes=None, apos=None, acumCoef=[0.0,1.0], coefs=None ):
     natom=0
     if atypes is not None: natom=len(atypes)
     acumCoef = np.array(acumCoef,dtype=np.float32)
     #print( "type(atypes)    ", type(atypes)   )
     #print( "type(apos)      ", type(apos)     )
     #print( "type(acumCoef)  ", type(acumCoef) )
-    lib.projectAtomsDens0( iOut, _np_as( acumCoef, c_float_p ), natom, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ) )
+    lib.projectAtomsDens0( iOut, _np_as( acumCoef, c_float_p ), natom, _np_as( atypes, c_int_p ), _np_as( apos, c_double_p ), _np_as( coefs, c_float_p ) )
 
 #void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out )
 lib.projectAtomPosTex.argtypes  = [ c_float_p, c_float_p, c_int, c_float_p, c_float_p ] 
@@ -238,6 +254,15 @@ def projectAtomPosTex(atoms,coefs,poss,out=None):
         out = np.zeros((nPos,2), dtype=np.float32)
     lib.projectAtomPosTex( _np_as( atoms, c_float_p ),_np_as( coefs, c_float_p ),nPos, _np_as( poss, c_float_p ), _np_as( out, c_float_p ) )
     return out
+
+# projectDenmat( int natoms, int* iZs, int* ityps, double* ocoefs, double* apos, int iorb0, int iorb1, double Rcut, bool bInit ){ 
+lib.projectDenmat.argtypes  = [ c_int, c_int_p, c_int_p, c_double_p, c_double_p, c_int, c_int, c_double, c_bool ]
+lib.projectDenmat.restype   =  None
+def projectDenmat( iZs, ityps, apos, iorb0=0, iorb1=1, Rcut=5.0, bInit=False ):
+    natoms=len(iZs)
+    iZs   = np.array(iZs,   dtype=np.int32)
+    ityps = np.array(ityps, dtype=np.int32)-1
+    lib.projectDenmat( natoms, _np_as(iZs,c_int_p),_np_as(ityps,c_int_p), _np_as(apos,c_double_p), iorb0, iorb1, Rcut, bInit )
 
 #void setTypes( int* atype_nOrb_, float* atype_Qconfs_ ){
 lib.setTypes.argtypes  = [ c_int, c_int_p, c_float_p, c_bool ] 
@@ -282,7 +307,7 @@ lib.runfft.restype   =  None
 def runfft(ibuff, fwd=True ):
     lib.runfft( ibuff, fwd )
 
-#void newFFTbuffer( char* name ){ oclfft.newFFTbuffer( name ); }
+#int newFFTbuffer( char* name ){ oclfft.newFFTbuffer( name ); }
 lib.newFFTbuffer.argtypes  = [ c_char_p, c_int, c_int ] 
 lib.newFFTbuffer.restype   =  c_int
 def newFFTbuffer( fname, nfloat=2, ntot=-1 ):
