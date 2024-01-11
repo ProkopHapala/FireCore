@@ -4781,13 +4781,14 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
                     if ( params->atypes[Aj.type].name[2]=='1' || params->atypes[Aj.type].name[2]=='2' || 
                     params->atypes[Aj.type].name[2]=='R' ) { // cosine/periodic
                         if ( params->atypes[Aj.type].name[2]=='1' ) {
-                            a.k = 0.5 * kappa;
+                            //a.k = 0.5 * kappa;
+                            a.k = kappa;
                             a.C0 = 1.0;
                             a.C1 = 1.0;
                             a.C2 = 0.0;
                             a.C3 = 0.0;
                         } else if ( params->atypes[Aj.type].name[2]=='2' || params->atypes[Aj.type].name[2]=='R' ) {
-                            a.k = 0.5 * kappa / 9.0;
+                            a.k = kappa / 9.0;
                             a.C0 = 1.0;
                             a.C1 = 0.0;
                             a.C2 = 0.0;
