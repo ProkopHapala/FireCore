@@ -34,6 +34,9 @@ ln -s $dir/$name .
 
 # ====== Small Molecules
 
+./$name -x common_resources/C2H4
+
+
 #./$name -x common_resources/H2O
 #./$name -x common_resources/HCOOH
 #./$name -x common_resources/formic_dimer
@@ -67,7 +70,7 @@ ln -s $dir/$name .
 #./$name -x common_resources/C8_diamin_diether-2 -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
 #./$name -x common_resources/C8_diamin_diether -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
 #./$name -x common_resources/nNonan_cross -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
-./$name -x common_resources/hydropentacene_cross -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
+#./$name -x common_resources/hydropentacene_cross -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
 
 
 
