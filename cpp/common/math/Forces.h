@@ -64,6 +64,28 @@ double finiteLorenz( double r2, double w2, double R2cut ){
     return fcut*fcut/(R2cut*R2cut*(r2+w2));
 }
 
+double repulsion_R4( Vec3d d, Vec3d& f, double R, double R2cut, double A ){
+    // we use R4blob(r) = A * (1-r^2)^2
+    // such that at distance r=R we have force f = fmax
+    // f = -dR4blob/dr = 4*A*r*(1-r^2) = fmax
+    // A = fmax/(4*R*(1-R^2))
+    double R2 = R*R;
+    double r2 = d.norm2();
+    if( r2>R2cut ){ 
+        return 0;
+        // f = Vec3dZero;
+    }else if (r2<R2){
+        double r    = sqrt(r2);
+        double fmax = 4*A*r*(1-r2);
+        f.add_mul( d, fmax/r );
+        return fmax*(R-r);
+    }else{
+        double mr2 = 1-r2;
+        double fr = A*mr2;
+        f.add_mul( d, 4*fr );
+        return fr*mr2;
+    }
+}
 
 // ================ Zero Torque ( for torsion angles )
 
