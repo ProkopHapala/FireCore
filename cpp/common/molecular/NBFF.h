@@ -14,6 +14,7 @@ Non-Bonded Force-Field
 #include "quaternion.h"
 #include "Atoms.h"
 
+#include "Buckets.h"
 #include "Forces.h"
 
 // check if "vals" are within limits "vmin","vmax"
@@ -35,6 +36,19 @@ bool checkLimits( int n, int m, const double* vals, const double* vmin, const do
     return b;
 }
 
+void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
+    //Quat8d bb;
+    //bb.lo = bb.lo = ps[c2o[0]];
+    for(int i=0; i<n; i++){ 
+        //printf( "fitAABB() i %i \n", i );
+        int ip = c2o[i];
+        //printf( "fitAABB() i=%i ip=%i \n", i, ip );
+        Vec3d p = ps[ip];
+        bb.lo.setIfLower  ( p );
+        bb.hi.setIfGreater( p );
+    }; 
+    //return bb;
+}
 
 // Force-Field for Non-Bonded Interactions
 class NBFF: public Atoms{ public:
@@ -49,6 +63,14 @@ class NBFF: public Atoms{ public:
     Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
     Quat4i   *neighs   =0; // list of neighbors (4 per atom)
     Quat4i   *neighCell=0; // list of neighbors (4 per atom)
+
+    //  --- Use this to speed-up short range interaction (just repulsion no L-J or Coulomb)
+    //       * there can be additional hydrogen bonds just for selected pairs of atoms
+    //       * use function repulsion_R4() to calculate repulsion without need of square root ( it is defined in Forces.h )
+    // Bounding Boxes
+    int      nBBs=0;
+    Vec6d*  BBs=0; // bounding boxes (can be either AABB, or cylinder, capsula) 
+    Buckets  pointBBs;    // buckets for collision detection
 
     double alphaMorse = 1.5; // alpha parameter for Morse potential
     //double  KMorse  = 1.5; // spring constant for Morse potential
@@ -101,6 +123,23 @@ class NBFF: public Atoms{ public:
         _realloc(PLQs,natoms);
         evalPLQs(K);
     }
+
+    inline void updatePointBBs( bool bInit=true){
+        const Buckets& buckets = pointBBs;
+        //printf( "updatePointBBs() START \n" );
+        for(int ib=0; ib<buckets.ncell; ib++){
+            //printf( "updatePointBBs() ib %i \n", ib );
+            if(bInit){ BBs[ib].lo = Vec3dmax; BBs[ib].hi = Vec3dmin; }
+            int n = buckets.cellNs[ib];
+            if(n>0){
+                int i0 = buckets.cellI0s[ib];
+                //printf( "updatePointBBs() ib %i n %i i0 %i \n", ib, n, i0 );
+                fitAABB( BBs[ib], n, buckets.cell2obj+i0, vapos );
+            }
+        }
+        //printf( "updatePointBBs() DONE \n" );
+    }
+
 
     // evaluate non-bonding interaction using Lenard-Jones potential and Coulomb potential
     double evalLJQs( double Rdamp=1.0 ){

@@ -81,7 +81,7 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     Vec3d f1_;   f1_.set_mul(n123,-f*il2_123 );
     Vec3d f3_;   f3_.set_mul(n234, f*il2_234 );
 
-
+    // --- Recoil forces on axis atoms
     double sin123 = r12.norm()*l32*sqrt(il2_123);
     double sin234 = r43.norm()*l32*sqrt(il2_234);
 

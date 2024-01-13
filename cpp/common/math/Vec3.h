@@ -535,6 +535,18 @@ inline int print( const Vec3f&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); 
 inline int print( const Vec3d&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
 inline int print( const Vec3i&  v){ return printf( "%i %i %i", v.x, v.y, v.z ); };
 
+
+template <class T>
+class Vec6T { public:
+	union{
+        struct{ Vec3T<T> lo,hi; };
+		T array[6];
+	};
+};
+using Vec6i = Vec6T< int>;
+using Vec6f = Vec6T< float>;
+using Vec6d = Vec6T< double >;
+
 #endif
 
 
