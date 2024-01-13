@@ -82,6 +82,13 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     Vec3d f3_;   f3_.set_mul(n234, f*il2_234 );
 
 
+    double sin123 = r12.norm()*l32*sqrt(il2_123);
+    double sin234 = r43.norm()*l32*sqrt(il2_234);
+
+    //Vec3d f_32_ = (n123 - n234)*inv_n12*-s;
+    Vec3d f_32_ = (n123 - n234)*(inv_n12*-s/ (sin123*sin234) );
+
+
     // ===== Paolo's
     double l123 = n123.normalize();
     double l234 = n234.normalize();
@@ -104,14 +111,10 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     Vec3d f_12;       f_12      .set_cross( r32, tmp_234 );       // force on atom i  // f_12 = fact * (r32 X tmp_234) * (l32/l123)
     Vec3d f_43;       f_43      .set_cross( r32, tmp_123 );       // force on atom l  // f_43 = fact * (r32 X tmp_123) * (l32/l234)
     
-    double fact_ = -par.x * par.y * par.z * csn.y; 
-
     double fact = -par.x * par.y * par.z * csn.y / cs.y ;
     
     Vec3d f1;    f1.set_mul(f_12,fact*l32/l123);
     Vec3d f3;    f3.set_mul(f_43,fact*l32/l234);
-
-
 
     printf(  "|f1|/|f1_| %g  |f3|/|f3_| %g cos(f1,f1_) %g cos(f3,f3_) %g |cs| %g \n", f1.norm()/f1_.norm(), f3.norm2()/f3_.norm2(),  f1.dot(f1_)/sqrt(f1.norm2()*f1_.norm2()),  f3.dot(f3_)/sqrt(f3.norm2()*f3_.norm2()),  c*c+s*s );
 
@@ -131,17 +134,17 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     // Draw3D::drawVecInPos( tmp_123, p3 );
     // Draw3D::drawVecInPos( tmp_234, p2 );
 
-    glLineWidth(2.0);
-    glColor3f(1.0,0.0,1.0); 
-    //Draw3D::drawVecInPos( f_12, p1 );
-    //Draw3D::drawVecInPos( f_43, p4 );
-    Draw3D::drawVecInPos( f1, p1 );
-    Draw3D::drawVecInPos( f3, p4 );
-    glColor3f(0.0,0.0,1.0); 
-    //Draw3D::drawVecInPos( f_12_, p1 );
-    //Draw3D::drawVecInPos( f_43_, p4 );
-    Draw3D::drawVecInPos( f1_, p1 );
-    Draw3D::drawVecInPos( f3_, p4 );
+    // glLineWidth(2.0);
+    // glColor3f(1.0,0.0,1.0); 
+    // //Draw3D::drawVecInPos( f_12, p1 );
+    // //Draw3D::drawVecInPos( f_43, p4 );
+    // Draw3D::drawVecInPos( f1, p1 );
+    // Draw3D::drawVecInPos( f3, p4 );
+    // glColor3f(0.0,0.0,1.0); 
+    // //Draw3D::drawVecInPos( f_12_, p1 );
+    // //Draw3D::drawVecInPos( f_43_, p4 );
+    // Draw3D::drawVecInPos( f1_, p1 );
+    // Draw3D::drawVecInPos( f3_, p4 );
 
 
     Vec3d tmp2_32;    tmp2_32   .set_mul  ( tmp_123, l43/l234 );
@@ -151,12 +154,24 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     Vec3d vec_32;     vec_32    .set_add  ( vec1_32, vec2_32  ); // vec_32  = (r43 X tmp_123) * (l43/l234)  +  (r12 X tmp_234) * (l12/l123)
 
 
-    Draw3D::drawVecInPos( vec_32, p2 );
-    Draw3D::drawVecInPos( vec_32, p3 );
+    //Draw3D::drawVecInPos( vec_32, p2 );
+    //Draw3D::drawVecInPos( vec_32, p3 );
     //Draw3D::drawVecInPos( f3_, p4 );
 
 
     Vec3d f_32; f_32.set_mul(vec_32,fact);   //  f_32 =  fact * (  (r43 X tmp_123) * (l43/l234)  +  (r12 X tmp_234) * (l12/l123) )
+
+    // printf(  "|f_32|/|f_32_| %g cos(f_32,f_32_) %g \n", f_32.norm()/f_32_.norm(),  f_32.dot(f_32_)/sqrt(f_32.norm2()*f_32_.norm2()) );
+    // glLineWidth(2.0);
+    // glColor3f(0.0,0.7,0.0); 
+    // Draw3D::drawVecInPos( f_32*-1., p2 );
+    // Draw3D::drawVecInPos( f_32*+1., p3 );
+    // glLineWidth(3.0);
+    // glColor3f(1.0,0.0,1.0); 
+    // Draw3D::drawVecInPos( f_32_*-1., p2 );
+    // Draw3D::drawVecInPos( f_32_*+1., p3 );
+
+
     //fdih[id*4+1] = (f_32 + f1)*-1;
     //fdih[id*4+2] =  f_32 - f3;
     return E;
@@ -655,6 +670,10 @@ void MolGUI::draw(){
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
     if( frameCount==0){
+        Vec3d ax = apos[1]-apos[0];
+        apos[2].add_mul( ax, -0.5 );
+        apos[3].add_mul( ax, -0.5 );
+        for(int i=4; i<6; i++){ apos[i].mul(0.8); }
         for(int i=0; i<natoms; i++){ apos[i].mul(1.5); }
     }
 
