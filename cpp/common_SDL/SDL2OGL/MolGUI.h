@@ -43,6 +43,9 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     Vec3d r12 = p2-p1; 
     Vec3d r32 = p3-p2;
     Vec3d r43 = p4-p3;
+    int n = (int)par.z;
+
+    Vec2d cs,csn;
 
     Vec3d n123; n123.set_cross( r12, r32 );
     Vec3d n234; n234.set_cross( r43, r32 );
@@ -51,41 +54,33 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     double l32 = r32.normalize();
     double l43 = r43.normalize();
 
+    // ===== Prokop's
+    Vec3d u12  = r12 - r32*r32.dot(r12);   u12.normalize();
+    Vec3d u43  = r43 - r32*r32.dot(r43);   u43.normalize();
+    Vec3d f_12_;  f_12_ .set_cross( u12, r32 ); 
+    Vec3d f_43_;  f_43_ .set_cross( u43, r32 );
+    double s = u12.dot(f_43_);
+    double c = u12.dot(u43);
+
+    double sign = (s>0)?1.0:-1.0;
 
 
+
+    // ===== Paolo's
     
     double l123 = n123.normalize();
     double l234 = n234.normalize();
-    double cos  = n123.dot(n234);
+    cs.x  = n123.dot(n234);
     //double cos = abs(n123.dot(n234))/(l123*l234);
-    double sin = sqrt(1.0-cos*cos+1e-14); // must be positive number !!!
+    cs.y = sqrt(1.0-cs.x*cs.x+1e-14); // must be positive number !!!
 
-    // Prokop's
-    Vec3d u12  = r12 - r32*r32.dot(r12);   u12.normalize();
-    Vec3d u43  = r43 - r32*r32.dot(r43);   u43.normalize();
-    Vec3d v123 = u43 * sin;
-    Vec3d v234 = u12 * sin;
-    
-    //Vec3d f_12_;  f_12_ .set_cross( r12, r32 );
-    //Vec3d f_43_;  f_43_ .set_cross( r43, r32 );
-
-    Vec3d f_12_;  f_12_ .set_cross( u12, r32 ); //f_12_.mul(sin);
-    Vec3d f_43_;  f_43_ .set_cross( u43, r32 ); //f_43_.mul(sin);
-
-    double s = u12.dot(f_43_);
-    double sign = (s>0)?1.0:-1.0;
-
-    //f_12_.normalize(); f_12_.mul(sin);
-    //f_43_.normalize(); f_43_.mul(sin);
-
-
-    int n = (int)par.z;
-    Vec2d cs {cos,sin};
-    Vec2d csn{cos,sin};
+    //Vec2d cs {cos,sin};
+    //Vec2d csn{cos,sin};
+    csn = cs;
     for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
     double E = par.x * ( 1.0 + par.y * csn.x );
-    Vec3d scaled_123; scaled_123.set_mul  ( n123, cos );          // component of n123 parallel      to n234
-    Vec3d scaled_234; scaled_234.set_mul  ( n234, cos );          // component of n234 parallel      to n123
+    Vec3d scaled_123; scaled_123.set_mul  ( n123, cs.x );          // component of n123 parallel      to n234
+    Vec3d scaled_234; scaled_234.set_mul  ( n234, cs.x );          // component of n234 parallel      to n123
     Vec3d tmp_123;    tmp_123   .set_sub  ( n123, scaled_234 );   // component of n123 perpendiculer to n234
     Vec3d tmp_234;    tmp_234   .set_sub  ( n234, scaled_123 );   // component of n234 perpendiculer to n123
     Vec3d f_12;       f_12      .set_cross( r32, tmp_234 );       // force on atom i  // f_12 = fact * (r32 X tmp_234) * (l32/l123)
@@ -93,7 +88,7 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     
     double fact_ = -par.x * par.y * par.z * csn.y; 
 
-    double fact = -par.x * par.y * par.z * csn.y / sin ;
+    double fact = -par.x * par.y * par.z * csn.y / cs.y ;
     
     Vec3d f1;    f1.set_mul(f_12,fact*l32/l123);
     Vec3d f3;    f3.set_mul(f_43,fact*l32/l234);
