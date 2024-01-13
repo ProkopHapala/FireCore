@@ -45,36 +45,51 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     Vec3d r43 = p4-p3;
     int n = (int)par.z;
 
+    double l12_ = r12.norm();
+    double l32_ = r32.norm();
+    double l43_ = r43.norm();
+
     Vec2d cs,csn;
 
-    Vec3d n123; n123.set_cross( r12, r32 );
+    Vec3d n123; n123.set_cross( r12, r32 );    //    |n123| = |r12| |r32| * sin( r12, r32 ) 
     Vec3d n234; n234.set_cross( r43, r32 );
-    double l123 = n123.normalize();
-    double l234 = n234.normalize();
-
-    double l12 = r12.normalize();
-    double l32 = r32.normalize();
-    double l43 = r43.normalize();
+    double l123 = n123.norm();
+    double l234 = n234.norm();
+    double l32_2 = r32.norm2();
 
     // ===== Prokop's
-    Vec3d u12  = r12 - r32*r32.dot(r12);   u12.normalize();
-    Vec3d u43  = r43 - r32*r32.dot(r43);   u43.normalize();
-    Vec3d f_12_;  f_12_ .set_cross( u12, r32 ); 
-    Vec3d f_43_;  f_43_ .set_cross( u43, r32 );
-    cs.y = u12.dot(f_43_);
-    cs.x = u12.dot(u43);
+    // Vec3d u12  = r12 - r32*(r32.dot(r12)/l32_2); u12.normalize();
+    // Vec3d u43  = r43 - r32*(r32.dot(r43)/l32_2); u43.normalize();
+    // //Vec3d f_12_;  f_12_ .set_cross( u12, r32 ); // |f_12_| = |u12| |r32| * sin( u12, r32 ) = |r32| 
+    // //Vec3d f_43_;  f_43_ .set_cross( u43, r32 );
+    // Vec3d f_12_;  f_12_ = n123;   f_12_.mul(l32_/l123);    
+    // Vec3d f_43_;  f_43_ = n234;   f_43_.mul(l32_/l234);
+    // //printf(  "|f_12_|/|n123| %g cos(f_12_,n123) %g l123 %g \n", f_12_.norm()/n123.norm(),  f_12_.dot(n123)/sqrt(f_12_.norm2()*n123.norm2()), (l32_)/l123 );
+    // cs.y = u12.dot(f_43_)/l32_;
+    // cs.x = u12.dot(u43);
+
+    cs.x =  n123.dot(n234)/(l123*l234);
+    //cs.y = sqrt(1.0-cs.x*cs.x+1e-14); // must be positive number !!!
+    cs.y = -n123.dot(r43)/( l123*l234/l32_ );
+    double c = cs.x;
     double s = cs.y;
+
+
+
     csn = cs;
     for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
     double f = -par.x * par.y * par.z * csn.y; 
-    f*=l32;
-    //if(cs.y<0){ f=-f;}
-    //double sign = (cs.y>0)?1.0:-1.0;
-    Vec3d f1_;   f1_.set_mul(f_12_,-f/l123);
-    Vec3d f3_;   f3_.set_mul(f_43_, f/l234);
+    f*=l32_;
+    Vec3d f1_;   f1_.set_mul(n123,-f/( l123*l123 ) );
+    Vec3d f3_;   f3_.set_mul(n234, f/( l234*l234 ) );
 
 
     // ===== Paolo's
+    n123.mul(1/l123);
+    n234.mul(1/l234);
+    double l32 = r32.normalize();
+    double l12 = r12.normalize();
+    double l43 = r43.normalize();
     cs.x  = n123.dot(n234);
     //double cos = abs(n123.dot(n234))/(l123*l234);
     cs.y = sqrt(1.0-cs.x*cs.x+1e-14); // must be positive number !!!
@@ -100,7 +115,7 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
 
 
 
-    printf(  "|f1|/|f1_| %g  |f3|/|f3_| %g cos(f1,f1_) %g cos(f3,f3_) %g s %g \n", f1.norm()/f1_.norm(), f3.norm2()/f3_.norm2(),  f1.dot(f1_)/sqrt(f1.norm2()*f1_.norm2()),  f3.dot(f3_)/sqrt(f3.norm2()*f3_.norm2()), s  );
+    printf(  "|f1|/|f1_| %g  |f3|/|f3_| %g cos(f1,f1_) %g cos(f3,f3_) %g |cs| %g \n", f1.norm()/f1_.norm(), f3.norm2()/f3_.norm2(),  f1.dot(f1_)/sqrt(f1.norm2()*f1_.norm2()),  f3.dot(f3_)/sqrt(f3.norm2()*f3_.norm2()),  c*c+s*s );
 
     //fdih[id*4  ]=f1;
     //fdih[id*4+3]=f3;
