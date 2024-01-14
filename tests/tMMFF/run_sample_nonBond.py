@@ -22,23 +22,21 @@ eij = np.sqrt(REQi[1]*REQi[1])
 xs    = np.linspace(0.0,6.0,1000)
 #xs    = np.linspace(0.0,6.0,100)
 
-
-#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.1 )
-EsSR,FsSR = mmff.sampleNonBond( xs, kind=4, REQi=REQi, REQj=REQj, K=eij*0.2, Rdamp=0.5 )   # short-range repulsion R4func
-#EsMo,FsMo = mmff.sampleNonBond( xs, kind=1, REQi=REQi, REQj=REQj, K=1.0, Rdamp=0.1 )       # Morse
+EsSR,FsSR = mmff.sampleNonBond( xs, kind=4, REQi=REQi, REQj=REQj, K=eij*0.15, Rdamp=0.5 )   # short-range repulsion R4func
+EsMo,FsMo = mmff.sampleNonBond( xs, kind=1, REQi=REQi, REQj=REQj, K=-1.6, Rdamp=0.1 )       # Morse
 EsLJ,FsLJ = mmff.sampleNonBond( xs, kind=2, REQi=REQi, REQj=REQj )       # L-J
 
 #FnumSR = numDeriv(xs,EsSR)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
 #Es,Fs = cos_half( xs + np.pi*0.5 )
 xs/=np.pi
 plt.figure(); 
-plt.plot(xs, EsSR-eij, label="E_SR"); 
-plt.plot(xs, FsSR, label="F_SR");  
+plt.plot(xs, EsSR-eij,'g--', label="E_SR"); 
+plt.plot(xs, FsSR,    'g-', label="F_SR");  
 #plt.plot(xs[1:-1], -FnumSR, label="F_num"); 
-#plt.plot(xs, EsMo, label="E_Mo"); 
-#plt.plot(xs, FsMo, label="F_Mo"); 
-plt.plot(xs, EsLJ, label="E_LJ"); 
-plt.plot(xs, FsLJ, label="F_LJ"); 
+plt.plot(xs, EsMo, 'r--', label="E_Mo"); 
+plt.plot(xs, FsMo, 'r-', label="F_Mo"); 
+plt.plot(xs, EsLJ, 'b--',label="E_LJ"); 
+plt.plot(xs, FsLJ, 'b-',label="F_LJ"); 
 plt.grid(); 
 plt.legend()
 
