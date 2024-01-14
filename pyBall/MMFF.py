@@ -130,7 +130,7 @@ def sample_evalAngleCosHalf( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=N
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
 lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ] 
 lib.sampleNonBond.restype   =  None
-def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
+def sampleNonBond( rs, Es=None, Fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
     n =len(rs)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
@@ -138,7 +138,7 @@ def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQ
     REQi=np.array(REQi)
     REQj=np.array(REQj) 
     lib.sampleNonBond(n, rs, Es, Fs, kind, REQi, REQj, K, Rdamp)
-    return Es,fs
+    return Es,Fs
 
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
 lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 

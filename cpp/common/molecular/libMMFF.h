@@ -211,9 +211,10 @@ void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*R
         Vec3d  f=Vec3dZero;
         pj.x=rs[i];
         switch(kind){
-            case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K, R2damp );      break;  // Morse
-            case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                                              break;  // Lenard Jones
+            case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K, R2damp ); break;  // Morse
+            case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                                break;  // Lenard Jones
             case 3: double fr; E=erfx_e6( pj.x, K, fr ); f.x=fr; break;  // gauss damped electrostatics
+            case 4: E=repulsion_R4( pj-pi, f, REQij.x-Rdamp, REQij.x, K );
         }
         //printf( "i %i r %g E %g f %g \n", i, pj.x, E, f.x );
         fs[i]=f.x;

@@ -64,26 +64,29 @@ double finiteLorenz( double r2, double w2, double R2cut ){
     return fcut*fcut/(R2cut*R2cut*(r2+w2));
 }
 
-double repulsion_R4( Vec3d d, Vec3d& f, double R, double R2cut, double A ){
+double repulsion_R4( Vec3d d, Vec3d& f, double R, double Rcut, double A ){
     // we use R4blob(r) = A * (1-r^2)^2
     // such that at distance r=R we have force f = fmax
     // f = -dR4blob/dr = 4*A*r*(1-r^2) = fmax
     // A = fmax/(4*R*(1-R^2))
-    double R2 = R*R;
+    double R2    = R*R;
+    double R2cut = Rcut*Rcut;
     double r2 = d.norm2();
     if( r2>R2cut ){ 
         return 0;
         // f = Vec3dZero;
-    }else if (r2<R2){
-        double r    = sqrt(r2);
-        double fmax = 4*A*r*(1-r2);
-        f.add_mul( d, fmax/r );
-        return fmax*(R-r);
-    }else{
-        double mr2 = 1-r2;
+    }else if( r2>R2 ){ 
+        double mr2 = R2cut-r2;
         double fr = A*mr2;
         f.add_mul( d, 4*fr );
         return fr*mr2;
+    }else{
+        double mr2 = R2cut-R2;
+        double fr  = A*mr2;
+        double r    = sqrt(r2);
+        double fmax = 4*R*fr;
+        f.add_mul( d, fmax/r );
+        return fmax*(R-r) + fr*mr2;
     }
 }
 
@@ -258,10 +261,11 @@ inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ ){
     double ir2_ = ir2*REQ.x*REQ.x;
     double ir6  = ir2_*ir2_*ir2_;
     //double fr   = ( ( 1 - ir6 )*ir6*12*REQ.b + ir*REQ.c*-COULOMB_CONST )*ir2;
-    double Eel  = ir*REQ.x*COULOMB_CONST;
+    double Eel  = ir*REQ.z*COULOMB_CONST;
     double vdW  = ir6*REQ.y;
-    double fr   = ( ( 1 - ir6 )*12*vdW - Eel )*ir2;
+    double fr   = ( ( 1 - ir6 )*-12*vdW - Eel )*ir2;
     //printf( " (%g,%g,%g) r %g fr %g \n", dp.x,dp.y,dp.z, 1/ir, fr );
+    //printf( " r %g fr %g vdW %g Eel %g \n", 1/ir, fr, vdW, Eel  );
     f.add_mul( dp, fr );
     return  ( ir6 - 2 )*vdW + Eel;
 }
