@@ -1056,7 +1056,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             else{ E += ffl.eval(); }
             
         }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
-printf("ADES SON ARIVA' FIN QUA -> MolWorld_sp3.h::eval()\n");exit(0);        
+//printf("ADES SON ARIVA' FIN QUA -> MolWorld_sp3.h::eval()\n");exit(0);        
         //bPBC=false;
         if(bNonBonded){
             //E += nbmol.evalLJQs_ng4_PBC_omp( );
