@@ -51,6 +51,7 @@ class UFF : public NBFF { public:
     Vec3i  *  angAtoms  __attribute__((aligned(64))) = 0; // [nangles]     angles atoms
     double5*  angParams __attribute__((aligned(64))) = 0; // [nangles]     angles parameters
     Quat4i *  dihAtoms  __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals atoms
+    Vec3i  *  dihNgs    __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals neighbor index
     Vec3d  *  dihParams __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals parameters
     Quat4i *  invAtoms  __attribute__((aligned(64))) = 0; // [ninversions] inversions atoms
     Quat4d *  invParams __attribute__((aligned(64))) = 0; // [ninversions] inversions parameters
@@ -92,7 +93,8 @@ class UFF : public NBFF { public:
         _realloc0( angAtoms  , nangles, Vec3iZero );
         _realloc0( angParams , nangles, (double5){(double)NAN,(double)NAN,(double)NAN,(double)NAN,(double)NAN}  );
         _realloc0( dihAtoms  , ndihedrals, Quat4iZero );
-        _realloc0( dihParams , ndihedrals, Vec3dNAN  );
+        _realloc0( dihNgs    , ndihedrals, Vec3iZero  );
+        _realloc0( dihParams , ndihedrals, Vec3dNAN   );
         _realloc0( invAtoms  , ninversions, Quat4iZero );
         _realloc0( invParams , ninversions, Quat4dNAN  );
 
@@ -123,6 +125,7 @@ class UFF : public NBFF { public:
         _dealloc(angAtoms);
         _dealloc(angParams);
         _dealloc(dihAtoms);
+        _dealloc(dihNgs);
         _dealloc(dihParams);
         _dealloc(invAtoms);
         _dealloc(invParams);
@@ -134,6 +137,42 @@ class UFF : public NBFF { public:
 
 
     // ============== Evaluation
+
+    void bakeDihedralNeighs(){
+        for( int id=0; id<ndihedrals; id++){
+            int i = dihAtoms[id].x;
+            int j = dihAtoms[id].y;
+            int k = dihAtoms[id].z;
+            int l = dihAtoms[id].w;
+            const int* ingsj = neighs[j].array; // neighbors
+            const int* ingsk = neighs[k].array; // neighbors
+            Vec3d  r12, r32;
+            double l12, l32;
+            for(int in=0; in<4; in++){
+                int ing = ingsj[in];
+                if(ing<0) { break; }
+                if     (ing==i) { 
+                    //r12 = hneigh[j*4+in].f;  
+                    dihNgs[id].x = j*4+in;   // j-i
+                }   
+                else if(ing==k) { 
+                    //r32 = hneigh[j*4+in].f;  
+                    dihNgs[id].y = j*4+in;  // j-k
+                } 
+            }
+            Vec3d r43;
+            double l43;
+            for(int in=0; in<4; in++){
+                int ing = ingsk[in];
+                if(ing<0) { break; }
+                if     (ing==l) { 
+                    //r43 = hneigh[k*4+in].f; 
+                    dihNgs[id].z = k*4+in; // k-l
+                }   
+            }
+        }
+    }
+
 
     // clear forces on all atoms and other DOFs
     //void cleanForce(){ Etot=0.0; for(int i=0; i<nDOFs; i++){ fDOFs[i]=0.0; } }
@@ -424,16 +463,28 @@ class UFF : public NBFF { public:
         double E=0.0;
         for( int id=0; id<ndihedrals; id++){
             const Quat4i ijkl = dihAtoms[id];
-            const Vec3d p2 = apos[ijkl.y];
-            const Vec3d p3 = apos[ijkl.z];
+
+            const Vec3d p2  = apos[ijkl.y];
+            const Vec3d p3  = apos[ijkl.z];
             const Vec3d r32 = p3-p2;
             const Vec3d r12 = apos[ijkl.x]-p2; 
             const Vec3d r43 = apos[ijkl.w]-p3;
+            
+            { // we need to read the normalized vectros for hneigh because of PBC
+                Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
+                const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
+                const double l32 = 1./hneigh[ngs.y].e; 
+                const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
+                const double l12 = 1./hneigh[ngs.x].e;
+                const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
+                const double l43 = 1./hneigh[ngs.z].e;
+            }
+
             Vec3d n123; n123.set_cross( r12, r32 );  //  |n123| = |r12| |r32| * sin( r12, r32 ) 
             Vec3d n234; n234.set_cross( r43, r32 );  //  |n234| = |r43| |r32| * sin( r43, r32 )
             
             // ===== Prokop's
-            const double l32     = r32   .norm();   // we can avoid this sqrt() if we read it from hneigh
+            const double l32     = r32   .norm ();   // we can avoid this sqrt() if we read it from hneigh
             const double il2_123 = 1/n123.norm2();
             const double il2_234 = 1/n234.norm2();
             const double inv_n12 = sqrt(il2_123*il2_234);
@@ -458,8 +509,8 @@ class UFF : public NBFF { public:
             double c432   = r32.dot(r43)*il2_32;
             Vec3d fp3; fp3.set_lincomb(  c123,   fp1,  c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
             Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
-            //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                       // from condition ftot=0     ( conservation of linear  momentum )
-            //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                       // from condition ftot=0     ( conservation of linear  momentum )
+            //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+            //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
             const int i4=id*4;
             fdih[i4  ]=fp1;
             fdih[i4+1]=fp2;
