@@ -5000,8 +5000,8 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             int i3 = neighs[i1*4+1];
             int i4 = neighs[i1*4+2];
             assingUFFparams_assigninversion( i1, i2, i3, i4 );
-            assingUFFparams_assigninversion( i1, i2, i4, i3 );
-            assingUFFparams_assigninversion( i1, i4, i3, i2 );
+            assingUFFparams_assigninversion( i1, i4, i2, i3 );
+            assingUFFparams_assigninversion( i1, i3, i4, i2 );
         }
 
     }
@@ -5128,7 +5128,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             fprintf( f, "\n" );
             for( int ii=0; ii<inversions.size(); ii++){
                 Inversion& I = inversions[ii];
-                fprintf( f, "%i %f %f %f %f # %s %s %s %s\n", ii+1, I.k*tokcal, I.C0, I.C1, I.C2, params->atypes[atoms[I.atoms.x].type].name, params->atypes[atoms[I.atoms.y].type].name, params->atypes[atoms[I.atoms.z].type].name, params->atypes[atoms[I.atoms.w].type].name );
+                fprintf( f, "%i %f %f %f %f 0 # %s %s %s %s\n", ii+1, I.k*tokcal, I.C0, I.C1, I.C2, params->atypes[atoms[I.atoms.x].type].name, params->atypes[atoms[I.atoms.y].type].name, params->atypes[atoms[I.atoms.z].type].name, params->atypes[atoms[I.atoms.w].type].name );
             }
         }
         fprintf( f, "\n" );
