@@ -206,10 +206,10 @@ class UFF : public NBFF { public:
         Eb = evalBonds();
         Ea = evalAngles();
         Ed = evalDihedrals();
-        //Ei = evalInversions();
+        Ei = evalInversions();
         
-        //Etot = Eb + Ea + Ed + Ei;
-        //assembleForces();
+        Etot = Eb + Ea + Ed + Ei;
+        assembleForces();
 
 // DEBUG 
 //Etot = Eb; 
@@ -218,18 +218,17 @@ class UFF : public NBFF { public:
 //assembleForcesDEBUG(false,true,false,false);
 //Etot = Ed; 
 //assembleForcesDEBUG(false,false,true,false);
-Etot = Ei; 
-assembleForcesDEBUG(false,false,false,true);
-double tokcal = 60.2214076*1.602176634/4.1840;
-FILE *file = fopen("out","w");
-fprintf( file, "%g\n", Etot*tokcal );
-fprintf( file, "%i\n", natoms );
-for(int ia=0; ia<natoms; ia++){
-    fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
-//printf("%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
-}
-fclose(file);
-printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
+//Etot = Ei; 
+//assembleForcesDEBUG(false,false,false,true);
+//double tokcal = 60.2214076*1.602176634/4.1840;
+//FILE *file = fopen("out","w");
+//fprintf( file, "%g\n", Etot*tokcal );
+//fprintf( file, "%i\n", natoms );
+//for(int ia=0; ia<natoms; ia++){
+//    fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
+//}
+//fclose(file);
+//printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
 
         return Etot;
 
@@ -369,7 +368,8 @@ printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);
                 double dl= l-par.y;
                 E += par.x*dl*dl;
                 fbon[ib*2].set_mul( dp, 2.0*par.x*dl*hneigh[inn].e ); // force on atom i
-                fbon[ib*2+1].set_mul(fbon[ib*2],-1.0);                         // force on atom j
+                fbon[ib*2+1].set_mul(fbon[ib*2],-1.0);                // force on atom j
+                // TBD exclude non-bonded interactions between 1-2 neighbors
             }
         }
         return E;
@@ -384,7 +384,6 @@ printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);
             int j = angAtoms[ia].y;
             int k = angAtoms[ia].z;
             const int*    ings = neighs   [j].array; // neighbors
-            const int*    ingC = neighCell[j].array; // neighbors cell index
             Vec3d  rij, rkj;
             double lij, lkj;
             for(int in=0; in<4; in++){
@@ -414,6 +413,8 @@ printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);
             fang[ia*3+2].set_mul(vec_k,fact*lkj);
             fang[ia*3+1].set_add(fang[ia*3],fang[ia*3+2]);
             fang[ia*3+1].set_mul(fang[ia*3+1],-1.0);
+            // TBD exclude non-bonded interactions between 1-3 neighbors
+
         }
 
         return E;
@@ -477,9 +478,7 @@ printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);
             int k = dihAtoms[id].z;
             int l = dihAtoms[id].w;
             const int*    ingsj = neighs   [j].array; // neighbors
-            const int*    ingCj = neighCell[j].array; // neighbors cell index
             const int*    ingsk = neighs   [k].array; // neighbors
-            const int*    ingCk = neighCell[k].array; // neighbors cell index
             Vec3d  r12, r32;
             double l12, l32;
             for(int in=0; in<4; in++){
@@ -503,7 +502,6 @@ printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);
             double l123 = n123.normalize();
             double l234 = n234.normalize();
             double cos = n123.dot(n234);
-            //double cos = abs(n123.dot(n234))/(l123*l234);
             double sin = sqrt(1.0-cos*cos+1e-14); // must be positive number !!!
             Vec3d par = dihParams[id];
             int n = (int)par.z;
@@ -531,376 +529,59 @@ printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);
             fdih[id*4+1].set_add(fdih[id*4],f_32);
             fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
             fdih[id*4+2].set_sub(f_32,fdih[id*4+3]);
-// OLD
-/*
-            r12.set_mul( r12, l12 );
-            r32.set_mul( r32, l32 );
-            r43.set_mul( r43, l43 );
-            Vec3d n123; n123.set_cross( r12, r32 );
-            Vec3d n234; n234.set_cross( r43, r32 );
-            double l123 = n123.norm();
-            double l234 = n234.norm();
-            double cos = n123.dot(n234)/(l123*l234);
-            //double cos = abs(n123.dot(n234))/(l123*l234);
-            double sin = sqrt(1.0-cos*cos+1e-14); // must be positive number !!!
-            Vec3d par = dihParams[id];
-            int n = (int)par.z;
-            Vec2d cs{cos,sin};
-            Vec2d csn{cos,sin};
-            for(int i=1; i<n; i++){
-                csn.mul_cmplx(cs);
-            }
-            E += par.x * ( 1.0 + par.y * csn.x );
-            Vec3d tmp1_123; tmp1_123.set_mul( n123, 1.0/(l123*l234) );
-            Vec3d tmp2_123; tmp2_123.set_mul( n123, cos/(l123*l123) );
-            Vec3d tmp1_234; tmp1_234.set_mul( n234, 1.0/(l123*l234) );
-            Vec3d tmp2_234; tmp2_234.set_mul( n234, cos/(l234*l234) );
-            Vec3d tmp_12; tmp_12.set_sub( tmp1_234, tmp2_123 );
-            Vec3d vec_12; vec_12.set_cross( r32, tmp_12 );
-            Vec3d tmp_43; tmp_43.set_sub( tmp1_123, tmp2_234 );
-            Vec3d vec_43; vec_43.set_cross( r32, tmp_43 );
-            Vec3d vec1_32; vec1_32.set_cross( tmp_12, r12 );
-            Vec3d vec2_32; vec2_32.set_cross( tmp_43, r43 );
-            Vec3d vec_32; vec_32.set_add( vec1_32, vec2_32 );
-            double fact = -par.x * par.y * par.z * csn.y / sin ;
-            Vec3d f32; f32.set_mul(vec_32,fact);
-            fdih[id*4  ].set_mul(vec_12,fact);
-            fdih[id*4+3].set_mul(vec_43,fact);
-            fdih[id*4+1].set_add(fdih[id*4],f32);
-            fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
-            fdih[id*4+2].set_sub(f32,fdih[id*4+3]);
-*/            
-//printf("dihedral=%i energy=%g i=%i j=%i k=%i l=%i fdih_i=(%g,%g,%g) fdih_j=(%g,%g,%g) fdih_k=(%g,%g,%g) fdih_l=(%g,%g,%g)\n",id+1,i+1,j+1,k+1,l+1,par.x*(1.0+par.y*csn.x)*23.060547831,
-//fdih[id*4].x*23.060547831,fdih[id*4].y*23.060547831,fdih[id*4].z*23.060547831,fdih[id*4+1].x*23.060547831,fdih[id*4+1].y*23.060547831,fdih[id*4+1].z*23.060547831,fdih[id*4+2].x*23.060547831,fdih[id*4+2].y*23.060547831,fdih[id*4+2].z*23.060547831,fdih[id*4+3].x*23.060547831,fdih[id*4+3].y*23.060547831,fdih[id*4+3].z*23.060547831);
         }
 
         return E;
     }
 
+    double evalInversions(){
 
-/*        // ======= Angle Step : we compute forces due to angles between bonds, and also due to angles between bonds and pi-vectors
-        const double R2damp=Rdamp*Rdamp;
-        if(doAngles){
-        double  ssK,ssC0;
-        Vec2d   cs0_ss;
-        Vec3d*  angles_i;
-        if(bEachAngle){ // if we compute angle energy for each angle separately, we need to store angle parameters for each angle
-            angles_i = angles+(ia*6);
-        }else{          // otherwise we use common parameters for all angles
-            ssK    = apar.z;
-            cs0_ss = Vec2d{apar.x,apar.y};
-            ssC0   = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
-        }
-        int iang=0;
-        for(int i=0; i<3; i++){
-            int ing = ings[i];
-            if(ing<0) break;
-            const Quat4d& hi = hs[i];
-            for(int j=i+1; j<4; j++){
-                int jng  = ings[j];
-                if(jng<0) break;
-                const Quat4d& hj = hs[j];    
-                if(bEachAngle){ //
-                    // 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
-                    //  0    1    2    3    4    5 
-                    cs0_ss = angles_i[iang].xy();  
-                    ssK    = angles_i[iang].z;
-                    iang++; 
-                };
-                if( bAngleCosHalf ){
-                    E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
-                }else{ 
-                    E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
-                }
-                fa    .sub( f1+f2  );  // apply force on the central atom
-                // ----- Error is HERE
-                if(bSubtractAngleNonBond){ // subtract non-bonded interactions between atoms which have common neighbor
-                    Vec3d fij=Vec3dZero;
-                    Quat4d REQij = _mixREQ(REQs[ing],REQs[jng]);  // combine van der Waals parameters for the pair of atoms
-                    Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f ); // compute vector between neighbors i,j
-                    E -= getLJQH( dp, fij, REQij, R2damp ); // subtract non-bonded interactions 
-                    f1.sub(fij); // 
-                    f2.add(fij);
-                }
-                // apply forces on neighbors
-                fbs[i].add( f1     ); 
-                fbs[j].add( f2     );
-            }
-        }
-        }
+        double E=0.0;
+        for( int ii=0; ii<ninversions; ii++){
 
-        fapos [ia]=fa; 
-        fpipos[ia]=fpi;
-        return E;
-    }
-*/
-/*
-        for(int ia=0; ia<natoms; ia++){
-            const Vec3d   pa   = apos     [ia]; 
-            const int*    ings = neighs   [ia].array; // neighbors
-            const int*    ingC = neighCell[ia].array; // neighbors cell index
-            for(int in=0; in<4; in++){
+            int i = invAtoms[ii].x;
+            int j = invAtoms[ii].y;
+            int k = invAtoms[ii].z;
+            int l = invAtoms[ii].w;
+            const int*    ings = neighs   [i].array; // neighbors
+            Vec3d  r21, r31, r41;
+            double l21, l31, l41;
+            for(int in=0; in<3; in++){
                 int ing = ings[in];
-                if(ing<0) break;
-                // --- Bond vectors
-                int inn=ia*4+in;
-                Vec3d  pi = apos[ing]; 
-                Vec3d  dp;               
-                dp.set_sub( pi, pa );
-                if(bPBC){ // Periodic Boundary Conditions
-                    if(shifts){ // if we have bond shifts vectors we use them
-                        int ipbc = ingC[in]; 
-                        dp.add( shifts[ipbc] );
-                    }else{ // if we don't have bond shifts vectors we use lattice vectors
-                        Vec3i g  = invLvec.nearestCell( dp );
-                        Vec3d sh = lvec.a*(double)g.x + lvec.b*(double)g.y + lvec.c*(double)g.z;
-                        dp.add( sh );
-                    }
-                }
-                double l = dp.norm();
-                hneigh[inn].f.set_mul( dp, 1.0/l ); 
-                hneigh[inn].e    = 1.0/l;
-//printf("atom=%i neighbor=%i hb=(%g,%g,%g,%g)\n",ia,ing,hneigh[inn].x,hneigh[inn].y,hneigh[inn].z,hneigh[inn].w);
-
-                // --- Bond Energy
-                if(ing<ia) continue; // avoid double computing
-                int ib;
-                for(int i=0; i<nbonds; i++){
-                    if( ( bonAtoms[i].x == ia && bonAtoms[i].y == ing ) || 
-                    ( bonAtoms[i].y == ia && bonAtoms[i].x == ing ) ) { ib = i; break; }
-                }
-                Vec2i iva= bonAtoms [ib];
-                Vec2d par= bonParams[ib];
-                double dl= l-par.y;
-                E += par.x*dl*dl;
-                fbon[ib].set_mul( dp, 2.0*par.x*dl*hneigh[inn].e );
-//printf("bond=%i energy=%g fbon=(%g,%g,%g)\n",ib,par.y*dl*dl,fbon[ib].x,fbon[ib].y,fbon[ib].z);
+                if     (ing==j) { r21 = hneigh[i*4+in].f; l21 = 1.0/hneigh[i*4+in].e; }   
+                else if(ing==k) { r31 = hneigh[i*4+in].f; l31 = 1.0/hneigh[i*4+in].e; } 
+                else if(ing==l) { r41 = hneigh[i*4+in].f; l41 = 1.0/hneigh[i*4+in].e; } 
             }
-        }
-*/
-
-    // evaluate energy and forces for single atom (ia) depending on its neighbors
-    /*
-    double eval_atom(const int ia){
-        double E=0;
-        const Vec3d pa  = apos [ia]; 
-        const Vec3d hpi = pipos[ia]; 
-        Vec3d fa   = Vec3dZero;
-        Vec3d fpi  = Vec3dZero; 
-        //--- array aliases
-        const int*    ings = neighs   [ia].array; // neighbors
-        const int*    ingC = neighCell[ia].array; // neighbors cell index
-        const double* bK   = bKs      [ia].array; // bond stiffness
-        const double* bL   = bLs      [ia].array; // bond length
-        const double* Kspi = Ksp      [ia].array; // pi-sigma stiffness
-        const double* Kppi = Kpp      [ia].array; // pi-pi stiffness
-        Vec3d* fbs  = fneigh   +ia*4;             // forces on bonds
-        Vec3d* fps  = fneighpi +ia*4;             // forces on pi vectors
-        const Quat4d& apar  = apars[ia]; // [c0, Kss, Ksp, c0_e] c0 is cos of equilibrium angle, Kss is bond stiffness, Ksp is pi-sigma stiffness, c0_e is cos of equilibrium angle for pi-electron interaction
-        const double  piC0 = apar.w;     // cos of equilibrium angle for pi-electron interaction
-        //--- Aux Variables 
-        Quat4d  hs[4]; // bond vectors (normalized in .xyz ) and their inverse length in .w
-        Vec3d   f1,f2; // working forces
-        for(int i=0; i<4; i++){ fbs[i]=Vec3dZero; fps[i]=Vec3dZero; } // we initialize it here because of the break in the loop
-        // --------- Bonds Step
-        for(int i=0; i<4; i++){ // loop over bonds
-            int ing = ings[i];
-            if(ing<0) break;
-            Vec3d  pi = apos[ing];
-            Quat4d h; 
-            h.f.set_sub( pi, pa );
-            // Periodic Boundary Conditions
-            if(bPBC){    
-                if(shifts){ // if we have bond shifts vectors we use them
-                    int ipbc = ingC[i]; 
-                    h.f.add( shifts[ipbc] );
-                }else{  // if we don't have bond shifts vectors we use lattice vectors
-                    Vec3i g  = invLvec.nearestCell( h.f );
-                    Vec3d sh = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
-                    h.f.add( sh );
-                }
-            }
-            // initial bond vectors
-
-            // TBD actual length between ia and neighbor (in the right cell)
-            double l = h.f.normalize(); 
-            h.e    = 1/l;
-
-            // TBD this is an array with normalized directions and magnitude for all neighbors
-            // TBD we will compute and store for all bonds
-            hs [i] = h;
-            if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
-                if(doBonds){
-                    // bond length force
-                    E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1); 
-                }
-
-                double kpp = Kppi[i];
-                if( (doPiPiI) && (ing<nnode) && (kpp>1e-6) ){   // Only node atoms have pi-pi alignemnt interaction
-                    // pi-pi interaction (make them parallel)
-                    E += evalPiAling( hpi, pipos[ing], 1., 1.,   kpp,       f1, f2 );   fpi.add(f1);  fps[i].add(f2);    //   pi-alignment     (konjugation)
-                }
-            } 
-            // pi-sigma 
-            double ksp = Kspi[i];
-            if( doPiSigma && (ksp>1e-6) ){  
-                // pi-sigma interaction (make them orthogonal)
-                E += evalAngleCos( hpi, h.f      , 1., h.e, ksp, piC0, f1, f2 );   fpi.add(f1); fa.sub(f2);  fbs[i].add(f2);       //   pi-planarization (orthogonality)
-            }
+            Vec3d r21abs; r21abs.set_mul( r21, l21 );
+            Vec3d r31abs; r31abs.set_mul( r31, l31 );
+            Vec3d n123; n123.set_cross( r21abs, r31abs );
+            double l123 = n123.normalize();
+            double sin = -n123.dot(r41);
+            double cos = sqrt(1.0-sin*sin+1e-14); // must be positive number !!!
+            Quat4d par = invParams[ii];
+            Vec2d cs{cos,sin};
+            Vec2d cs2{cos,sin};
+            cs2.mul_cmplx(cs);
+            E += par.x * ( par.y + par.z * cos + par.w * cs2.x );
+            Vec3d scaled_123; scaled_123.set_mul( n123, -sin);
+            Vec3d scaled_41;  scaled_41.set_mul (  r41, -sin);
+            Vec3d tmp_123; tmp_123.set_sub( n123, scaled_41  );
+            Vec3d tmp_41;  tmp_41.set_sub (  r41, scaled_123 );
+            Vec3d f_21; f_21.set_cross( r31, tmp_41 );
+            Vec3d f_31; f_31.set_cross( tmp_41, r21 );
+            double fact = -par.x * ( par.z * sin + 2.0 * par.w * cs2.y ) / cos ;
+            finv[ii*4+1].set_mul(f_21,   fact*l31/l123);
+            finv[ii*4+2].set_mul(f_31,   fact*l21/l123);
+            finv[ii*4+3].set_mul(tmp_123,fact/l41     );
+            finv[ii*4  ].set_lincomb(-1.0,-1.0,-1.0,finv[ii*4+1],finv[ii*4+2],finv[ii*4+3]);
         }
 
-
-
-        // ======= Angle Step : we compute forces due to angles between bonds, and also due to angles between bonds and pi-vectors
-        const double R2damp=Rdamp*Rdamp;
-        if(doAngles){
-        double  ssK,ssC0;
-        Vec2d   cs0_ss;
-        Vec3d*  angles_i;
-        if(bEachAngle){ // if we compute angle energy for each angle separately, we need to store angle parameters for each angle
-            angles_i = angles+(ia*6);
-        }else{          // otherwise we use common parameters for all angles
-            ssK    = apar.z;
-            cs0_ss = Vec2d{apar.x,apar.y};
-            ssC0   = cs0_ss.x*cs0_ss.x - cs0_ss.y*cs0_ss.y;   // cos(2x) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf
-        }
-        int iang=0;
-        for(int i=0; i<3; i++){
-            int ing = ings[i];
-            if(ing<0) break;
-            const Quat4d& hi = hs[i];
-            for(int j=i+1; j<4; j++){
-                int jng  = ings[j];
-                if(jng<0) break;
-                const Quat4d& hj = hs[j];    
-                if(bEachAngle){ //
-                    // 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
-                    //  0    1    2    3    4    5 
-                    cs0_ss = angles_i[iang].xy();  
-                    ssK    = angles_i[iang].z;
-                    iang++; 
-                };
-                if( bAngleCosHalf ){
-                    E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
-                }else{ 
-                    E += evalAngleCos( hi.f, hj.f, hi.e, hj.e, ssK, ssC0, f1, f2 );     // angles between sigma bonds
-                }
-                fa    .sub( f1+f2  );  // apply force on the central atom
-                // ----- Error is HERE
-                if(bSubtractAngleNonBond){ // subtract non-bonded interactions between atoms which have common neighbor
-                    Vec3d fij=Vec3dZero;
-                    Quat4d REQij = _mixREQ(REQs[ing],REQs[jng]);  // combine van der Waals parameters for the pair of atoms
-                    Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f ); // compute vector between neighbors i,j
-                    E -= getLJQH( dp, fij, REQij, R2damp ); // subtract non-bonded interactions 
-                    f1.sub(fij); // 
-                    f2.add(fij);
-                }
-                // apply forces on neighbors
-                fbs[i].add( f1     ); 
-                fbs[j].add( f2     );
-            }
-        }
-        }
-
-        fapos [ia]=fa; 
-        fpipos[ia]=fpi;
         return E;
     }
-    */
 
-   /*
-    double eval_atoms( bool bDebug=false, bool bPrint=false ){
-        //FILE *file = fopen("out","w");
-        //Etot,
-        //Eb=0;Ea=0;Eps=0;EppT=0;EppI=0;
-        double E=0;
-        if  (bDebug){ for(int ia=0; ia<nnode; ia++){  E+=eval_atom_debug(ia,bPrint); }}
-        else        { for(int ia=0; ia<nnode; ia++){  E+=eval_atom(ia);              }}
-        //printf( "MYOUTPUT Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", Eb, Ea, EppI, Eps, E );
-        //fprintf( file, "Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", Eb, Ea, EppI, Eps, E );
-        //fclose(file);
-        return E;
-    }
-    */
 
-    // compute torsion energy and forces for a given torsion angle
-    /*
-    double eval_torsion(int it){ 
-        printf( "MMFFsp3_loc::eval_torsion(%i)\n", it );
-        Quat4i ias = tors2atom [it];
-        Quat4d par = torsParams[it];
-        // vectors between atoms x--y--z--w 
-        Vec3d ha    = apos[ ias.x ] - apos[ ias.y ]; // ha  = x-y
-        Vec3d hb    = apos[ ias.w ] - apos[ ias.z ]; // hb  = w-z
-        Vec3d hab   = apos[ ias.z ] - apos[ ias.y ]; // hab = z-y
-        double ila  = 1/ha.normalize();
-        double ilb  = 1/hb.normalize();
-        double ilab = 1/hab.normalize();
-        double ca   = hab.dot(ha); // ca  = cos(alpha) = <  ha | hab > 
-        double cb   = hab.dot(hb); // cb  = cos(beta ) = <  hb | hab >
-        double cab  = ha .dot(hb); // cab = <  ha | hb  >
-        double sa2  = (1-ca*ca);   // sa2 = sin^2( alpha ) = 1 - cos^2( alpha )
-        double sb2  = (1-cb*cb);   // sb2 = sin^2( beta  ) = 1 - cos^2( beta  )
-        double invs = 1/sqrt( sa2*sb2 );
-        Vec2d cs,csn;
-        cs.x = ( cab - ca*cb )*invs;   
-        cs.y = sqrt(1-cs.x*cs.x);      // can we avoid this sqrt ?
-        cs.udiv_cmplx( par.xy() );     // cs = cs0 * exp( i*phi )
-        const int n = (int)par.w; // I know it is stupid store n as double, but I don't make another integer arrays just for it
-        for(int i=0; i<n-1; i++){ // cs = cs0^n
-            csn.mul_cmplx(cs);
-        }
-        // check here : https://www.wolframalpha.com/input/?i=(x+%2B+isqrt(1-x%5E2))%5En+derivative+by+x
-        // energy
-        const double k = par.z;
-        double E       = k  *(1-csn.x);
-        double dcn     = k*n*   csn.x;
-        // derivatives to get forces
-        double invs2 = invs*invs;
-        dcn *= invs;
-        double dcab  = dcn;                          // dc/dcab = dc/d<ha|hb>
-        double dca   = (1-cb*cb)*(ca*cab - cb)*dcn;  // dc/dca  = dc/d<ha|hab>
-        double dcb   = (1-ca*ca)*(cb*cab - ca)*dcn;  // dc/dca  = dc/d<hb|hab>
-        Vec3d fa,fb,fab;
-        fa =Vec3dZero;
-        fb =Vec3dZero;
-        fab=Vec3dZero;
-        // Jacobina: derivative of <ha|hb> = <ha|hab> + <hb|hab> 
-        SMat3d J;
-        // derivative by ha
-        J.from_dhat(ha);    // -- by ha
-        J.mad_ddot(hab,fa, dca ); // dca /dha = d<ha|hab>/dha
-        J.mad_ddot(hb ,fa, dcab); // dcab/dha = d<ha|hb> /dha
-        J.from_dhat(hb);    // -- by hb
-        J.mad_ddot(hab,fb, dcb ); // dcb /dhb = d<hb|hab>/dha
-        J.mad_ddot(ha ,fb, dcab); // dcab/dhb = d<hb|ha> /dha
-        J.from_dhat(hab);         // -- by hab
-        J.mad_ddot(ha,fab, dca);  // dca/dhab = d<ha|hab>/dhab
-        J.mad_ddot(hb,fab, dcb);  // dcb/dhab = d<hb|hab>/dhab
-        // multiply by inverse lengths
-        fa .mul( ila  );
-        fb .mul( ilb  );
-        fab.mul( ilab );
-        // apply forces and recoils to atoms
-        fapos[ias.x].sub( fa );
-        fapos[ias.y].add( fa  - fab );
-        fapos[ias.z].add( fab - fb  );
-        fapos[ias.w].add( fb );
-        return E;
-    }
-    */
 
-    //  compute torsion energy and forces for all torsion angles
-    /*
-    double eval_torsions(){
-        printf( "MMFFsp3_loc::eval_torsions(ntors=%i)\n", ntors );
-        double E=0;
-        for(int it=0; it<ntors; it++){ 
-            E+=eval_torsion(it); 
-        }
-        return E;
-    }
-    */
+
 
     // constrain atom to fixed position
     /*
@@ -911,54 +592,6 @@ printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);
     };
     */
 
-    // add neighbor recoil forces to an atom (ia)
-    /*
-    void assemble_atom(int ia){
-        Vec3d fa=Vec3dZero,fp=Vec3dZero;
-        const int* ings = bkneighs[ia].array;
-        bool bpi = ia<nnode; // if this is node atom, it has pi-orbital
-        for(int i=0; i<4; i++){
-            int j = ings[i];
-            if(j<0) break;
-            fa.add(fneigh  [j]);
-            if(bpi){
-                fp.add(fneighpi[j]);
-            }
-        }
-        fapos [ia].add( fa ); 
-        if(bpi){ // if this is node atom, apply recoil to pi-orbital as well
-            fpipos[ia].add( fp );
-            fpipos[ia].makeOrthoU( pipos[ia] );  // subtract force component which change pi-vector size
-        }
-    }
-    */
-
-    // add neighbor recoil forces to all atoms
-    /*
-    void asseble_forces(){
-        for(int ia=0; ia<natoms; ia++){
-            assemble_atom(ia);
-        }
-    }
-    */
-
-    // make list of back-neighbors
-    /*
-    void makeBackNeighs( bool bCapNeighs=true ){
-        for(int i=0; i<natoms; i++){ bkneighs[i]=Quat4i{-1,-1,-1,-1}; } // clear back-neighbors to -1
-        for(int ia=0; ia<nnode; ia++){
-            for(int j=0; j<4; j++){        // 4 neighbors
-                int ja = neighs[ia].array[j];
-                if( ja<0 )continue;
-                bool ret = addFirstEmpty( bkneighs[ja].array, 4, ia*4+j, -1 ); // add neighbor to back-neighbor-list on the first empty place
-                if(!ret){ printf("ERROR in MMFFsp3_loc::makeBackNeighs(): Atom #%i has >4 back-Neighbors (while adding atom #%i) \n", ja, ia ); exit(0); }
-            }
-        }
-        if(bCapNeighs){   // set neighbors for capping atoms
-            for(int ia=nnode; ia<natoms; ia++){ neighs[ia]=Quat4i{-1,-1,-1,-1};  neighs[ia].x = bkneighs[ia].x/4;  }
-        }
-    }
-    */
 
     // ================== Print functions  
 
