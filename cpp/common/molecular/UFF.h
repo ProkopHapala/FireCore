@@ -443,6 +443,7 @@ class UFF : public NBFF { public:
                 -n123.dot(r43 )*inv_n12*l32
             };
             Vec2d csn = cs;
+            Vec3d par = dihParams[id];
             const int n = (int)par.z;
             for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
             E       +=  par.x * ( 1.0 + par.y * csn.x );
@@ -455,8 +456,8 @@ class UFF : public NBFF { public:
             double il2_32 = -1/(l32*l32);
             double c123   = r32.dot(r12)*il2_32;
             double c432   = r32.dot(r43)*il2_32;
-            Vec3d fp3; fp3_.set_lincomb(  c123,   fp1_,  c432-1., fp4_ );   // from condition torq_p2=0  ( conservation of angular momentum )
-            Vec3d fp2; fp2_.set_lincomb( -c123-1, fp1_, -c432   , fp4_ );   // from condition torq_p3=0  ( conservation of angular momentum )
+            Vec3d fp3; fp3.set_lincomb(  c123,   fp1,  c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
+            Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
             //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                       // from condition ftot=0     ( conservation of linear  momentum )
             //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                       // from condition ftot=0     ( conservation of linear  momentum )
             const int i4=id*4;
