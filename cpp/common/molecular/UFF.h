@@ -419,6 +419,54 @@ printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);
         return E;
     }
 
+    double evalDihedrals_Prokop(){
+        double E=0.0;
+        for( int id=0; id<ndihedrals; id++){
+            const Quat4i ijkl = dihAtoms[id];
+            const Vec3d p2 = apos[ijkl.y];
+            const Vec3d p3 = apos[ijkl.z];
+            const Vec3d r32 = p3-p2;
+            const Vec3d r12 = apos[ijkl.x]-p2; 
+            const Vec3d r43 = apos[ijkl.w]-p3;
+            Vec3d n123; n123.set_cross( r12, r32 );  //  |n123| = |r12| |r32| * sin( r12, r32 ) 
+            Vec3d n234; n234.set_cross( r43, r32 );  //  |n234| = |r43| |r32| * sin( r43, r32 )
+            
+            // ===== Prokop's
+            const double l32     = r32   .norm();   // we can avoid this sqrt() if we read it from hneigh
+            const double il2_123 = 1/n123.norm2();
+            const double il2_234 = 1/n234.norm2();
+            const double inv_n12 = sqrt(il2_123*il2_234);
+            // --- Energy
+            const Vec2d cs{
+                 n123.dot(n234)*inv_n12     ,
+                -n123.dot(r43 )*inv_n12*l32
+            };
+            Vec2d csn = cs;
+            const int n = (int)par.z;
+            for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
+            E       +=  par.x * ( 1.0 + par.y * csn.x );
+            // --- Force on end atoms
+            double f = -par.x * par.y * par.z * csn.y; 
+            f*=l32;
+            Vec3d fp1; fp1.set_mul(n123,-f*il2_123 );
+            Vec3d fp4; fp4.set_mul(n234, f*il2_234 );
+            // --- Recoil forces on axis atoms
+            double il2_32 = -1/(l32*l32);
+            double c123   = r32.dot(r12)*il2_32;
+            double c432   = r32.dot(r43)*il2_32;
+            Vec3d fp3; fp3_.set_lincomb(  c123,   fp1_,  c432-1., fp4_ );   // from condition torq_p2=0  ( conservation of angular momentum )
+            Vec3d fp2; fp2_.set_lincomb( -c123-1, fp1_, -c432   , fp4_ );   // from condition torq_p3=0  ( conservation of angular momentum )
+            //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                       // from condition ftot=0     ( conservation of linear  momentum )
+            //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                       // from condition ftot=0     ( conservation of linear  momentum )
+            const int i4=id*4;
+            fdih[i4  ]=fp1;
+            fdih[i4+1]=fp2;
+            fdih[i4+2]=fp3;
+            fdih[i4+3]=fp4;
+        }
+        return E;
+    }
+
     double evalDihedrals(){
 
         double E=0.0;
