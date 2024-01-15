@@ -34,8 +34,7 @@ ln -s $dir/$name .
 
 # ====== Small Molecules
 
-./$name -x common_resources/C2H4
-
+#./$name -x common_resources/C2H4
 
 #./$name -x common_resources/H2O
 #./$name -x common_resources/HCOOH
@@ -113,7 +112,7 @@ ln -s $dir/$name .
 #./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
-#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
 
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 1
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 50
