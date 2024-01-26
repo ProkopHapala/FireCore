@@ -1,0 +1,45 @@
+
+#======================================================================
+# CRYSTAL DATA
+#----------------------------------------------------------------------
+data_VESTA_phase_1
+
+_chemical_name_common                  'lvs 64.0 0.0 0.0 0.0 64.0 0.0 0.0 0.0 '
+_cell_length_a                         7.684687
+_cell_length_b                         7.684687
+_cell_length_c                         7.684687
+_cell_angle_alpha                      90.000000
+_cell_angle_beta                       90.000000
+_cell_angle_gamma                      90.000000
+_cell_volume                           1.000000
+_space_group_name_H-M_alt              'P 1'
+_space_group_IT_number                 1
+
+loop_
+_space_group_symop_operation_xyz
+   'x, y, z'
+
+loop_
+   _atom_site_label
+   _atom_site_occupancy
+   _atom_site_fract_x
+   _atom_site_fract_y
+   _atom_site_fract_z
+   _atom_site_adp_type
+   _atom_site_U_iso_or_equiv
+   _atom_site_type_symbol
+   C1         1.0     0.345582     0.591082     0.491937    Uiso  ? C
+   C2         1.0     0.288981     0.418476     0.502463    Uiso  ? C
+   C3         1.0     0.587688     0.329536     0.508624    Uiso  ? C
+   C4         1.0     0.411807     0.285583     0.510779    Uiso  ? C
+   C5         1.0     0.634320     0.504869     0.498617    Uiso  ? C
+   H1         1.0     0.118074     0.379592     0.504590    Uiso  ? H
+   H2         1.0     0.371324     0.150318     0.518834    Uiso  ? H
+   N1         1.0     0.229361     0.724984     0.482202    Uiso  ? N
+   N2         1.0     0.516034     0.635011     0.490108    Uiso  ? N
+   H3         1.0     0.100000     0.699829     0.489661    Uiso  ? H
+   H4         1.0     0.272248     0.849682     0.481166    Uiso  ? H
+   N3         1.0     0.805029     0.552987     0.497438    Uiso  ? N
+   H5         1.0     0.900000     0.461440     0.497146    Uiso  ? H
+   H6         1.0     0.837158     0.680351     0.484472    Uiso  ? H
+   H7         1.0     0.686487     0.228472     0.514980    Uiso  ? H
