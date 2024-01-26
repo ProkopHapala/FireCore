@@ -205,29 +205,30 @@ class UFF : public NBFF { public:
 
         Eb = evalBonds();
         Ea = evalAngles();
-        Ed = evalDihedrals();
+        //Ed = evalDihedrals();
+        Ed = evalDihedrals_Prokop();
         Ei = evalInversions();
         
-        Etot = Eb + Ea + Ed + Ei;
-        assembleForces();
+        //Etot = Eb + Ea + Ed + Ei;
+        //assembleForces();
 
 // DEBUG 
 //Etot = Eb; 
 //assembleForcesDEBUG(true,false,false,false);
 //Etot = Ea; 
 //assembleForcesDEBUG(false,true,false,false);
-//Etot = Ed; 
-//assembleForcesDEBUG(false,false,true,false);
+Etot = Ed; 
+assembleForcesDEBUG(false,false,true,false);
 //Etot = Ei; 
 //assembleForcesDEBUG(false,false,false,true);
-//double tokcal = 60.2214076*1.602176634/4.1840;
-//FILE *file = fopen("out","w");
-//fprintf( file, "%g\n", Etot*tokcal );
-//fprintf( file, "%i\n", natoms );
-//for(int ia=0; ia<natoms; ia++){
-//    fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
-//}
-//fclose(file);
+double tokcal = 60.2214076*1.602176634/4.1840;
+FILE *file = fopen("out","w");
+fprintf( file, "%g\n", Etot*tokcal );
+fprintf( file, "%i\n", natoms );
+for(int ia=0; ia<natoms; ia++){
+    fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
+}
+fclose(file);
 //printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
 
         return Etot;
