@@ -12,6 +12,8 @@
 #include "molecular_utils.h"   // various molecular utilities
 #include "NBFF.h" // Non-Bonded Force Field
 
+#include "Draw3D.h"  // just for debug
+
 // ========================
 // ====   UFF          ====
 // ========================
@@ -178,11 +180,11 @@ class UFF : public NBFF { public:
     //void cleanForce(){ Etot=0.0; for(int i=0; i<nDOFs; i++){ fDOFs[i]=0.0; } }
     void cleanForce(){ 
         Etot=0.0; 
-        for(int i=0; i<natoms; i++){       fapos[i]=Vec3d{0.0,0.0,0.0}; }
-        for(int i=0; i<nbonds*2; i++){      fbon[i]=Vec3d{0.0,0.0,0.0}; }
-        for(int i=0; i<nangles*3; i++){     fang[i]=Vec3d{0.0,0.0,0.0}; }
-        for(int i=0; i<ndihedrals*4; i++){  fdih[i]=Vec3d{0.0,0.0,0.0}; }
-        for(int i=0; i<ninversions*4; i++){ finv[i]=Vec3d{0.0,0.0,0.0}; }
+        for(int i=0; i<natoms;        i++){ fapos[i]=Vec3d{0.0,0.0,0.0}; }
+        for(int i=0; i<nbonds*2;      i++){ fbon [i]=Vec3d{0.0,0.0,0.0}; }
+        for(int i=0; i<nangles*3;     i++){ fang [i]=Vec3d{0.0,0.0,0.0}; }
+        for(int i=0; i<ndihedrals*4;  i++){ fdih [i]=Vec3d{0.0,0.0,0.0}; }
+        for(int i=0; i<ninversions*4; i++){ finv [i]=Vec3d{0.0,0.0,0.0}; }
     }
 
     // make list of neighbors cell index (in periodic boundary conditions), by going through all periodic images
@@ -371,274 +373,270 @@ fclose(file);
 
     }
 
-    double evalBonds(){
-
+    inline double evalAtomBonds(const int ia){
         double E=0.0;
-        for(int ia=0; ia<natoms; ia++){
-            const Vec3d   pa   = apos     [ia]; 
-            const int*    ings = neighs   [ia].array; // neighbors
-            const int*    ingC = neighCell[ia].array; // neighbors cell index
-            for(int in=0; in<4; in++){
-                int ing = ings[in];
-                if(ing<0) break;
-                // --- Bond vectors
-                int inn=ia*4+in;
-                Vec3d  pi = apos[ing]; 
-                Vec3d  dp;               
-                dp.set_sub( pi, pa );
-                // Periodic Boundary Conditions
-                if(bPBC){ 
-                    if(shifts){ // if we have bond shifts vectors we use them
-                        int ipbc = ingC[in]; 
-                        dp.add( shifts[ipbc] );
-                    }else{ // if we don't have bond shifts vectors we use lattice vectors
-                        Vec3i g  = invLvec.nearestCell( dp );
-                        Vec3d sh = lvec.a*(double)g.x + lvec.b*(double)g.y + lvec.c*(double)g.z;
-                        dp.add( sh );
-                    }
+        const Vec3d   pa   = apos     [ia]; 
+        const int*    ings = neighs   [ia].array; // neighbors
+        const int*    ingC = neighCell[ia].array; // neighbors cell index
+        for(int in=0; in<4; in++){
+            int ing = ings[in];
+            if(ing<0) break;
+            // --- Bond vectors
+            int inn=ia*4+in;
+            Vec3d  pi = apos[ing]; 
+            Vec3d  dp;               
+            dp.set_sub( pi, pa );
+            // Periodic Boundary Conditions
+            if(bPBC){ 
+                if(shifts){ // if we have bond shifts vectors we use them
+                    int ipbc = ingC[in]; 
+                    dp.add( shifts[ipbc] );
+                }else{ // if we don't have bond shifts vectors we use lattice vectors
+                    Vec3i g  = invLvec.nearestCell( dp );
+                    Vec3d sh = lvec.a*(double)g.x + lvec.b*(double)g.y + lvec.c*(double)g.z;
+                    dp.add( sh );
                 }
-                double l = dp.norm();
-                hneigh[inn].f.set_mul( dp, 1.0/l ); 
-                hneigh[inn].e    = 1.0/l;
-
-                // --- Bond Energy
-                if(ing<ia) continue; // avoid double computing
-                int ib;
-                for(int i=0; i<nbonds; i++){
-                    if( ( bonAtoms[i].x == ia && bonAtoms[i].y == ing ) || 
-                    ( bonAtoms[i].y == ia && bonAtoms[i].x == ing ) ) { ib = i; break; }
-                }
-
-                Vec2d par= bonParams[ib];
-                double dl= l-par.y;
-                E += par.x*dl*dl;
-                fbon[ib*2].set_mul( dp, 2.0*par.x*dl*hneigh[inn].e ); // force on atom i
-                fbon[ib*2+1].set_mul(fbon[ib*2],-1.0);                // force on atom j
-                // TBD exclude non-bonded interactions between 1-2 neighbors
             }
+            double l = dp.norm();
+            hneigh[inn].f.set_mul( dp, 1.0/l ); 
+            hneigh[inn].e = 1.0/l;
+
+            // --- Bond Energy
+            if(ing<ia) continue; // avoid double computing
+            int ib;
+            // ToDo: this should be optimized !!!!!!!!!!!!!!!!
+            for(int i=0; i<nbonds; i++){  
+                if( ( bonAtoms[i].x == ia && bonAtoms[i].y == ing ) || ( bonAtoms[i].y == ia && bonAtoms[i].x == ing ) ) { ib = i; break; }
+            }
+            Vec2d par= bonParams[ib];
+            double dl= l-par.y;
+            E += par.x*dl*dl;
+            fbon[ib*2  ].set_mul( dp, 2.0*par.x*dl*hneigh[inn].e ); // force on atom i
+            fbon[ib*2+1].set_mul(fbon[ib*2],-1.0);                // force on atom j
+            // TBD exclude non-bonded interactions between 1-2 neighbors
         }
         return E;
+    }
 
+    double evalBonds(){
+        double E=0.0;
+        for(int ia=0; ia<natoms; ia++){ E+= evalAtomBonds(ia); }
+        return E;
+    }
+
+    inline double evalAngle( const int ia ){
+        int i = angAtoms[ia].x;
+        int j = angAtoms[ia].y;
+        int k = angAtoms[ia].z;
+        const int*    ings = neighs   [j].array; // neighbors
+        Vec3d  rij, rkj;
+        double lij, lkj;
+        for(int in=0; in<4; in++){
+            int ing = ings[in];
+            if(ing<0) { break; }
+            if     (ing==i) { rij = hneigh[j*4+in].f; lij = hneigh[j*4+in].e; }   
+            else if(ing==k) { rkj = hneigh[j*4+in].f; lkj = hneigh[j*4+in].e; } 
+        }
+        Vec3d h;
+        h.set_add( rij, rkj );
+        double cos = 0.5*(h.norm2()-2.0);
+        double sin = sqrt(1.0-cos*cos+1e-14); // must be positive number !!!
+        Vec2d cs{cos,sin};
+        Vec2d cs2{cos,sin};
+        cs2.mul_cmplx(cs);
+        Vec2d cs3{cos,sin};
+        cs3.mul_cmplx(cs2);
+        double5 par = angParams[ia];
+        double E = par.k * ( par.c0 + par.c1*cs.x + par.c2*cs2.x + par.c3*cs3.x );
+        double fact = par.k * ( par.c1 + 2.0*par.c2*cs2.y/cs.y + 3.0*par.c3*cs3.y/cs.y );
+        Vec3d vec_i, vec_k;
+        vec_i.set_mul(rij,cs.x);
+        vec_i.set_sub(vec_i,rkj);
+        vec_k.set_mul(rkj,cs.x);
+        vec_k.set_sub(vec_k,rij);
+        fang[ia*3].  set_mul(vec_i,fact*lij);
+        fang[ia*3+2].set_mul(vec_k,fact*lkj);
+        fang[ia*3+1].set_add(fang[ia*3],fang[ia*3+2]);
+        fang[ia*3+1].set_mul(fang[ia*3+1],-1.0);
+        // TBD exclude non-bonded interactions between 1-3 neighbors
+        return E;
     }
 
     double evalAngles(){
-
         double E=0.0;
-        for( int ia=0; ia<nangles; ia++){
-            int i = angAtoms[ia].x;
-            int j = angAtoms[ia].y;
-            int k = angAtoms[ia].z;
-            const int*    ings = neighs   [j].array; // neighbors
-            Vec3d  rij, rkj;
-            double lij, lkj;
-            for(int in=0; in<4; in++){
-                int ing = ings[in];
-                if(ing<0) { break; }
-                if     (ing==i) { rij = hneigh[j*4+in].f; lij = hneigh[j*4+in].e; }   
-                else if(ing==k) { rkj = hneigh[j*4+in].f; lkj = hneigh[j*4+in].e; } 
-            }
-            Vec3d h;
-            h.set_add( rij, rkj );
-            double cos = 0.5*(h.norm2()-2.0);
-            double sin = sqrt(1.0-cos*cos+1e-14); // must be positive number !!!
-            Vec2d cs{cos,sin};
-            Vec2d cs2{cos,sin};
-            cs2.mul_cmplx(cs);
-            Vec2d cs3{cos,sin};
-            cs3.mul_cmplx(cs2);
-            double5 par = angParams[ia];
-            E += par.k * ( par.c0 + par.c1*cs.x + par.c2*cs2.x + par.c3*cs3.x );
-            double fact = par.k * ( par.c1 + 2.0*par.c2*cs2.y/cs.y + 3.0*par.c3*cs3.y/cs.y );
-            Vec3d vec_i, vec_k;
-            vec_i.set_mul(rij,cs.x);
-            vec_i.set_sub(vec_i,rkj);
-            vec_k.set_mul(rkj,cs.x);
-            vec_k.set_sub(vec_k,rij);
-            fang[ia*3].  set_mul(vec_i,fact*lij);
-            fang[ia*3+2].set_mul(vec_k,fact*lkj);
-            fang[ia*3+1].set_add(fang[ia*3],fang[ia*3+2]);
-            fang[ia*3+1].set_mul(fang[ia*3+1],-1.0);
-            // TBD exclude non-bonded interactions between 1-3 neighbors
-
-        }
-
+        for( int ia=0; ia<nangles; ia++){ E+= evalAngle(ia); }
         return E;
     }
 
-    double evalDihedrals_Prokop(){
-        double E=0.0;
-        for( int id=0; id<ndihedrals; id++){
-            const Quat4i ijkl = dihAtoms[id];
-
-            const Vec3d p2  = apos[ijkl.y];
-            const Vec3d p3  = apos[ijkl.z];
-            const Vec3d r32 = p3-p2;
-            const Vec3d r12 = apos[ijkl.x]-p2; 
-            const Vec3d r43 = apos[ijkl.w]-p3;
-            
-            { // we need to read the normalized vectros for hneigh because of PBC
-                Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
-                const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
-                const double l32 = 1./hneigh[ngs.y].e; 
-                const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
-                const double l12 = 1./hneigh[ngs.x].e;
-                const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
-                const double l43 = 1./hneigh[ngs.z].e;
-            }
-
-            Vec3d n123; n123.set_cross( r12, r32 );  //  |n123| = |r12| |r32| * sin( r12, r32 ) 
-            Vec3d n234; n234.set_cross( r43, r32 );  //  |n234| = |r43| |r32| * sin( r43, r32 )
-            
-            // ===== Prokop's
-            const double l32     = r32   .norm ();   // we can avoid this sqrt() if we read it from hneigh
-            const double il2_123 = 1/n123.norm2();
-            const double il2_234 = 1/n234.norm2();
-            const double inv_n12 = sqrt(il2_123*il2_234);
-            // --- Energy
-            const Vec2d cs{
-                 n123.dot(n234)*inv_n12     ,
-                -n123.dot(r43 )*inv_n12*l32
-            };
-            Vec2d csn = cs;
-            Vec3d par = dihParams[id];
-            const int n = (int)par.z;
-            for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
-            E       +=  par.x * ( 1.0 + par.y * csn.x );
-            // --- Force on end atoms
-            double f = -par.x * par.y * par.z * csn.y; 
-            f*=l32;
-            Vec3d fp1; fp1.set_mul(n123,-f*il2_123 );
-            Vec3d fp4; fp4.set_mul(n234, f*il2_234 );
-            // --- Recoil forces on axis atoms
-            double il2_32 = -1/(l32*l32);
-            double c123   = r32.dot(r12)*il2_32;
-            double c432   = r32.dot(r43)*il2_32;
-            Vec3d fp3; fp3.set_lincomb(  c123,   fp1,  c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
-            Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
-            //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
-            //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
-            const int i4=id*4;
-            fdih[i4  ]=fp1;
-            fdih[i4+1]=fp2;
-            fdih[i4+2]=fp3;
-            fdih[i4+3]=fp4;
+    double evalDihedral_Prokop( const int id ){
+        //double E=0.0;
+        const Quat4i ijkl = dihAtoms[id];
+        const Vec3d p2  = apos[ijkl.y];
+        const Vec3d p3  = apos[ijkl.z];
+        const Vec3d r32 = p3-p2;
+        const Vec3d r12 = apos[ijkl.x]-p2; 
+        const Vec3d r43 = apos[ijkl.w]-p3;
+        { // we need to read the normalized vectros for hneigh because of PBC
+            Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
+            const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
+            const double l32 = 1./hneigh[ngs.y].e; 
+            const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
+            const double l12 = 1./hneigh[ngs.x].e;
+            const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
+            const double l43 = 1./hneigh[ngs.z].e;
         }
+        Vec3d n123; n123.set_cross( r12, r32 );  //  |n123| = |r12| |r32| * sin( r12, r32 ) 
+        Vec3d n234; n234.set_cross( r43, r32 );  //  |n234| = |r43| |r32| * sin( r43, r32 )
+        
+        // ===== Prokop's
+        const double l32     = r32   .norm ();   // we can avoid this sqrt() if we read it from hneigh
+        const double il2_123 = 1/n123.norm2();
+        const double il2_234 = 1/n234.norm2();
+        const double inv_n12 = sqrt(il2_123*il2_234);
+        // --- Energy
+        const Vec2d cs{
+             n123.dot(n234)*inv_n12     ,
+            -n123.dot(r43 )*inv_n12*l32
+        };
+        Vec2d csn = cs;
+        Vec3d par = dihParams[id];
+        const int n = (int)par.z;
+        for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
+        double E  =  par.x * ( 1.0 + par.y * csn.x );
+        // --- Force on end atoms
+        double f = -par.x * par.y * par.z * csn.y; 
+        f*=l32;
+        Vec3d fp1; fp1.set_mul(n123,-f*il2_123 );
+        Vec3d fp4; fp4.set_mul(n234, f*il2_234 );
+        // --- Recoil forces on axis atoms
+        double il2_32 = -1/(l32*l32);
+        double c123   = r32.dot(r12)*il2_32;
+        double c432   = r32.dot(r43)*il2_32;
+        Vec3d fp3; fp3.set_lincomb(  c123,   fp1,  c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
+        Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
+        //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+        //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+        const int i4=id*4;
+        fdih[i4  ]=fp1;
+        fdih[i4+1]=fp2;
+        fdih[i4+2]=fp3;
+        fdih[i4+3]=fp4;
+        return E;
+    }
+
+    double evalDihedral_Paolo( const int id ){
+        int i = dihAtoms[id].x;
+        int j = dihAtoms[id].y;
+        int k = dihAtoms[id].z;
+        int l = dihAtoms[id].w;
+        const int*    ingsj = neighs   [j].array; // neighbors
+        const int*    ingsk = neighs   [k].array; // neighbors
+        Vec3d  r12, r32;
+        double l12, l32;
+        for(int in=0; in<4; in++){
+            int ing = ingsj[in];
+            if(ing<0) { break; }
+            if     (ing==i) { r12 = hneigh[j*4+in].f; l12 = 1.0/hneigh[j*4+in].e; }   
+            else if(ing==k) { r32 = hneigh[j*4+in].f; l32 = 1.0/hneigh[j*4+in].e; } 
+        }
+        Vec3d r43;
+        double l43;
+        for(int in=0; in<4; in++){
+            int ing = ingsk[in];
+            if(ing<0) { break; }
+            if     (ing==l) { r43 = hneigh[k*4+in].f; l43 = 1.0/hneigh[k*4+in].e; }   
+        }
+        Vec3d r12abs; r12abs.set_mul( r12, l12 );
+        Vec3d r32abs; r32abs.set_mul( r32, l32 );
+        Vec3d r43abs; r43abs.set_mul( r43, l43 );
+        Vec3d n123; n123.set_cross( r12abs, r32abs );
+        Vec3d n234; n234.set_cross( r43abs, r32abs );
+        double l123 = n123.normalize();
+        double l234 = n234.normalize();
+        double cos = n123.dot(n234);
+        double sin = sqrt(1.0-cos*cos+1e-14); // must be positive number !!!
+        Vec3d par = dihParams[id];
+        int n = (int)par.z;
+        Vec2d cs{cos,sin};
+        Vec2d csn{cos,sin};
+        for(int i=1; i<n; i++){
+            csn.mul_cmplx(cs);
+        }
+        double E = par.x * ( 1.0 + par.y * csn.x );
+        Vec3d scaled_123; scaled_123.set_mul( n123, cos );
+        Vec3d scaled_234; scaled_234.set_mul( n234, cos );
+        Vec3d tmp_123; tmp_123.set_sub( n123, scaled_234 );
+        Vec3d tmp_234; tmp_234.set_sub( n234, scaled_123 );
+        Vec3d f_12; f_12.set_cross( r32, tmp_234 );
+        Vec3d f_43; f_43.set_cross( r32, tmp_123 );
+        Vec3d tmp1_32; tmp1_32.set_mul( tmp_234, l12/l123 );
+        Vec3d tmp2_32; tmp2_32.set_mul( tmp_123, l43/l234 );
+        Vec3d vec1_32; vec1_32.set_cross( tmp1_32, r12 );
+        Vec3d vec2_32; vec2_32.set_cross( tmp2_32, r43 );
+        Vec3d vec_32; vec_32.set_add( vec1_32, vec2_32 );
+        double fact = -par.x * par.y * par.z * csn.y / sin ;
+        Vec3d f_32; f_32.set_mul(vec_32,fact);
+        fdih[id*4  ].set_mul(f_12,fact*l32/l123);
+        fdih[id*4+3].set_mul(f_43,fact*l32/l234);
+        fdih[id*4+1].set_add(fdih[id*4],f_32);
+        fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
+        fdih[id*4+2].set_sub(f_32,fdih[id*4+3]);
         return E;
     }
 
     double evalDihedrals(){
-
         double E=0.0;
-        for( int id=0; id<ndihedrals; id++){
-
-            int i = dihAtoms[id].x;
-            int j = dihAtoms[id].y;
-            int k = dihAtoms[id].z;
-            int l = dihAtoms[id].w;
-            const int*    ingsj = neighs   [j].array; // neighbors
-            const int*    ingsk = neighs   [k].array; // neighbors
-            Vec3d  r12, r32;
-            double l12, l32;
-            for(int in=0; in<4; in++){
-                int ing = ingsj[in];
-                if(ing<0) { break; }
-                if     (ing==i) { r12 = hneigh[j*4+in].f; l12 = 1.0/hneigh[j*4+in].e; }   
-                else if(ing==k) { r32 = hneigh[j*4+in].f; l32 = 1.0/hneigh[j*4+in].e; } 
-            }
-            Vec3d r43;
-            double l43;
-            for(int in=0; in<4; in++){
-                int ing = ingsk[in];
-                if(ing<0) { break; }
-                if     (ing==l) { r43 = hneigh[k*4+in].f; l43 = 1.0/hneigh[k*4+in].e; }   
-            }
-            Vec3d r12abs; r12abs.set_mul( r12, l12 );
-            Vec3d r32abs; r32abs.set_mul( r32, l32 );
-            Vec3d r43abs; r43abs.set_mul( r43, l43 );
-            Vec3d n123; n123.set_cross( r12abs, r32abs );
-            Vec3d n234; n234.set_cross( r43abs, r32abs );
-            double l123 = n123.normalize();
-            double l234 = n234.normalize();
-            double cos = n123.dot(n234);
-            double sin = sqrt(1.0-cos*cos+1e-14); // must be positive number !!!
-            Vec3d par = dihParams[id];
-            int n = (int)par.z;
-            Vec2d cs{cos,sin};
-            Vec2d csn{cos,sin};
-            for(int i=1; i<n; i++){
-                csn.mul_cmplx(cs);
-            }
-            E += par.x * ( 1.0 + par.y * csn.x );
-            Vec3d scaled_123; scaled_123.set_mul( n123, cos );
-            Vec3d scaled_234; scaled_234.set_mul( n234, cos );
-            Vec3d tmp_123; tmp_123.set_sub( n123, scaled_234 );
-            Vec3d tmp_234; tmp_234.set_sub( n234, scaled_123 );
-            Vec3d f_12; f_12.set_cross( r32, tmp_234 );
-            Vec3d f_43; f_43.set_cross( r32, tmp_123 );
-            Vec3d tmp1_32; tmp1_32.set_mul( tmp_234, l12/l123 );
-            Vec3d tmp2_32; tmp2_32.set_mul( tmp_123, l43/l234 );
-            Vec3d vec1_32; vec1_32.set_cross( tmp1_32, r12 );
-            Vec3d vec2_32; vec2_32.set_cross( tmp2_32, r43 );
-            Vec3d vec_32; vec_32.set_add( vec1_32, vec2_32 );
-            double fact = -par.x * par.y * par.z * csn.y / sin ;
-            Vec3d f_32; f_32.set_mul(vec_32,fact);
-            fdih[id*4  ].set_mul(f_12,fact*l32/l123);
-            fdih[id*4+3].set_mul(f_43,fact*l32/l234);
-            fdih[id*4+1].set_add(fdih[id*4],f_32);
-            fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
-            fdih[id*4+2].set_sub(f_32,fdih[id*4+3]);
+        for( int id=0; id<ndihedrals; id++){  
+            E+= evalDihedral_Prokop(id);
+            //E+= evalDihedral_Paolo(id);
         }
+        return E;
+    }
 
+    inline double evalInversions( const int ii ){
+        int i = invAtoms[ii].x;
+        int j = invAtoms[ii].y;
+        int k = invAtoms[ii].z;
+        int l = invAtoms[ii].w;
+        const int*    ings = neighs   [i].array; // neighbors
+        Vec3d  r21, r31, r41;
+        double l21, l31, l41;
+        for(int in=0; in<3; in++){
+            int ing = ings[in];
+            if     (ing==j) { r21 = hneigh[i*4+in].f; l21 = 1.0/hneigh[i*4+in].e; }   
+            else if(ing==k) { r31 = hneigh[i*4+in].f; l31 = 1.0/hneigh[i*4+in].e; } 
+            else if(ing==l) { r41 = hneigh[i*4+in].f; l41 = 1.0/hneigh[i*4+in].e; } 
+        }
+        Vec3d r21abs; r21abs.set_mul( r21, l21 );
+        Vec3d r31abs; r31abs.set_mul( r31, l31 );
+        Vec3d n123; n123.set_cross( r21abs, r31abs );
+        double l123 = n123.normalize();
+        double sin = -n123.dot(r41);
+        double cos = sqrt(1.0-sin*sin+1e-14); // must be positive number !!!
+        Quat4d par = invParams[ii];
+        Vec2d cs{cos,sin};
+        Vec2d cs2{cos,sin};
+        cs2.mul_cmplx(cs);
+        double E = par.x * ( par.y + par.z * cos + par.w * cs2.x );
+        Vec3d scaled_123; scaled_123.set_mul( n123, -sin);
+        Vec3d scaled_41;  scaled_41.set_mul (  r41, -sin);
+        Vec3d tmp_123; tmp_123.set_sub( n123, scaled_41  );
+        Vec3d tmp_41;  tmp_41.set_sub (  r41, scaled_123 );
+        Vec3d f_21; f_21.set_cross( r31, tmp_41 );
+        Vec3d f_31; f_31.set_cross( tmp_41, r21 );
+        double fact = -par.x * ( par.z * sin + 2.0 * par.w * cs2.y ) / cos ;
+        finv[ii*4+1].set_mul(f_21,   fact*l31/l123);
+        finv[ii*4+2].set_mul(f_31,   fact*l21/l123);
+        finv[ii*4+3].set_mul(tmp_123,fact/l41     );
+        finv[ii*4  ].set_lincomb(-1.0,-1.0,-1.0,finv[ii*4+1],finv[ii*4+2],finv[ii*4+3]);
         return E;
     }
 
     double evalInversions(){
-
         double E=0.0;
-        for( int ii=0; ii<ninversions; ii++){
-
-            int i = invAtoms[ii].x;
-            int j = invAtoms[ii].y;
-            int k = invAtoms[ii].z;
-            int l = invAtoms[ii].w;
-            const int*    ings = neighs   [i].array; // neighbors
-            Vec3d  r21, r31, r41;
-            double l21, l31, l41;
-            for(int in=0; in<3; in++){
-                int ing = ings[in];
-                if     (ing==j) { r21 = hneigh[i*4+in].f; l21 = 1.0/hneigh[i*4+in].e; }   
-                else if(ing==k) { r31 = hneigh[i*4+in].f; l31 = 1.0/hneigh[i*4+in].e; } 
-                else if(ing==l) { r41 = hneigh[i*4+in].f; l41 = 1.0/hneigh[i*4+in].e; } 
-            }
-            Vec3d r21abs; r21abs.set_mul( r21, l21 );
-            Vec3d r31abs; r31abs.set_mul( r31, l31 );
-            Vec3d n123; n123.set_cross( r21abs, r31abs );
-            double l123 = n123.normalize();
-            double sin = -n123.dot(r41);
-            double cos = sqrt(1.0-sin*sin+1e-14); // must be positive number !!!
-            Quat4d par = invParams[ii];
-            Vec2d cs{cos,sin};
-            Vec2d cs2{cos,sin};
-            cs2.mul_cmplx(cs);
-            E += par.x * ( par.y + par.z * cos + par.w * cs2.x );
-            Vec3d scaled_123; scaled_123.set_mul( n123, -sin);
-            Vec3d scaled_41;  scaled_41.set_mul (  r41, -sin);
-            Vec3d tmp_123; tmp_123.set_sub( n123, scaled_41  );
-            Vec3d tmp_41;  tmp_41.set_sub (  r41, scaled_123 );
-            Vec3d f_21; f_21.set_cross( r31, tmp_41 );
-            Vec3d f_31; f_31.set_cross( tmp_41, r21 );
-            double fact = -par.x * ( par.z * sin + 2.0 * par.w * cs2.y ) / cos ;
-            finv[ii*4+1].set_mul(f_21,   fact*l31/l123);
-            finv[ii*4+2].set_mul(f_31,   fact*l21/l123);
-            finv[ii*4+3].set_mul(tmp_123,fact/l41     );
-            finv[ii*4  ].set_lincomb(-1.0,-1.0,-1.0,finv[ii*4+1],finv[ii*4+2],finv[ii*4+3]);
-        }
-
+        for( int ii=0; ii<ninversions; ii++){ E+=evalInversions(ii); }
         return E;
     }
-
-
-
 
 
     // constrain atom to fixed position

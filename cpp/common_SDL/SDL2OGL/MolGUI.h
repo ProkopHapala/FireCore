@@ -447,6 +447,31 @@ void MolGUI::draw(){
 
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
+    // // ==== MolGUI TESTS   Torsions ( Paolo vs Prokop optimized )
+    if( frameCount==0){
+        Vec3d ax = apos[1]-apos[0];
+        apos[2].add_mul( ax, -0.5 );
+        apos[3].add_mul( ax, -0.5 );
+        for(int i=4; i<6; i++){ apos[i].mul(0.8); }
+        for(int i=0; i<natoms; i++){ apos[i].mul(1.5); }
+    }
+
+    {
+        double angle = 0.0;
+        if( keys[ SDL_SCANCODE_LEFTBRACKET  ] ){ angle=0.1; }
+        if( keys[ SDL_SCANCODE_RIGHTBRACKET ] ){ angle=-0.1; }
+        int sel[3]{1,4,5};
+       
+        Vec3d ax = apos[1]-apos[0];
+        Vec3d p0 = apos[0];
+        ax.normalize();
+        Vec2d cs; cs.fromAngle( angle );
+        for(int i=0; i<3; i++){
+            apos[sel[i]].rotate_csa( cs.x, cs.y, ax, p0 );
+        }
+    }
+    // //torsion_Paolo( apos[2], apos[0], apos[1], apos[4], Vec3d{ 1.0, 1.0, 1.0 } );
+    // torsion_Prokop( apos[2], apos[0], apos[1], apos[4], Vec3d{ 1.0, 1.0, 1.0 } );
 
     if(W->ipicked>-1){ 
         Vec3d p = W->ffl.apos[W->ipicked];
@@ -1224,8 +1249,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
                 //case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
 
-                case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
-                case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
+                //case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
+                //case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
 
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
