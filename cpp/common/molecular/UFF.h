@@ -245,7 +245,7 @@ class UFF : public NBFF { public:
         Eb = evalBonds();
         Ea = evalAngles();
         //Ed = evalDihedrals();
-        Ed = evalDihedrals_Prokop();
+        //Ed = evalDihedrals_Prokop();
         Ei = evalInversions();
         
         //Etot = Eb + Ea + Ed + Ei;
@@ -275,9 +275,11 @@ fclose(file);
     }
 
     void assembleForcesDEBUG(bool bbonds, bool bangles, bool bdihedrals, bool binversions){
+        printf("assembleForcesDEBUG(bonds(%i|%i) angles(%i|%i) dihedrals(%i|%i) inversions(%i|%i) )\n", bbonds,nbonds, bangles, nangles, bdihedrals, ndihedrals, binversions, ninversions ); 
         if(bbonds){
             // bonds
             for(int i=0; i<nbonds; i++){
+                printf("bond[%i]\n",i);
                 int ia1 = bonAtoms[i].x;
                 int ia2 = bonAtoms[i].y;
                 fapos[ia1].add( fbon[i*2] );
@@ -287,6 +289,7 @@ fclose(file);
         if(bangles){
             // angles
             for(int i=0; i<nangles; i++){
+                printf("angle[%i]\n",i);
                 int ia1 = angAtoms[i].x;
                 int ia2 = angAtoms[i].y;
                 int ia3 = angAtoms[i].z;
@@ -298,6 +301,7 @@ fclose(file);
         if(bdihedrals){
             // dihedrals
             for(int i=0; i<ndihedrals; i++){
+                printf("dihedral[%i]\n",i);
                 int ia1 = dihAtoms[i].x;
                 int ia2 = dihAtoms[i].y;
                 int ia3 = dihAtoms[i].z;
@@ -311,6 +315,7 @@ fclose(file);
         if(binversions){
             // inversions
             for(int i=0; i<ninversions; i++){
+                printf("inversion[%i]\n",i);
                 int ia1 = invAtoms[i].x;
                 int ia2 = invAtoms[i].y;
                 int ia3 = invAtoms[i].z;
