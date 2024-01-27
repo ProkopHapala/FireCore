@@ -21,6 +21,26 @@
 //    This is an implementation of Universal Force Field. It was made using MMFFsp3_loc as a template.
 //
 
+bool checkVec3Match( Vec3d f, Vec3d f_, const char* label, int iPrint=1 ){
+    double l  = f.norm();
+    double l_ = f_.norm();
+    double r = l/l_;
+    double c = f.dot(f_)/(l*l_);
+    if(iPrint>0){
+        printf( "%s : cos(f,f_)=%g |f|/|f_|=%g \n", label,  c, r );
+    }else if(iPrint>1){
+        printf( "%s : cos(f,f_)=%g |f|/|f_|=%g | f(%g,%g,%g) f_ref(%g,%g,%g) \n", label,  c, r,  f.x, f.y, f.z, f_.x, f_.y, f_.z );
+    }
+    return  ( fabs(c-1)<1e-6 ) && ( fabs(r-1)<1e-6 );
+}
+
+bool checkVec3Matches( int n, Vec3d* v, Vec3d* v_, const char* label, int iPrint=1 ){
+    char strbuf[256];
+    sprintf( strbuf, "%s_%i ", label, n );
+    bool bMatch = true;
+    for(int i=0; i<n; i++){ checkVec3Match( v[i], v_[i], strbuf, iPrint ); }
+    return bMatch;
+}
 
 class UFF : public NBFF { public:
 
@@ -42,7 +62,7 @@ class UFF : public NBFF { public:
 
     // Auxiliary Variables
     
-    Quat4d* hneigh= 0;  // [natoms*4]     bond vectors (normalized in .xyz=f ) and their inverse length in .w=e
+    Quat4d* hneigh __attribute__((aligned(64))) = 0;  // [natoms*4]     bond vectors (normalized in .xyz=f ) and their inverse length in .w=e
                         //                for each atom and each neighbor (the array in already unrolled)
     //Vec3d * fbon __attribute__((aligned(64))) = 0;  // [nbonds*2]     temporary store of forces on atoms from bonds (before the assembling step)
     Vec3d * fang __attribute__((aligned(64))) = 0;  // [nangles*3]    temporary store of forces on atoms from bonds (before the assembling step)
@@ -60,7 +80,7 @@ class UFF : public NBFF { public:
     Quat4i *  invAtoms  __attribute__((aligned(64))) = 0; // [ninversions] inversions atoms
     Quat4d *  invParams __attribute__((aligned(64))) = 0; // [ninversions] inversions parameters
 
-    Vec3i  *  dihNgs    __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals neighbor index
+    Vec3i * dihNgs __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals neighbor index
     Vec2i * angNgs __attribute__((aligned(64))) = 0; // [nangles]     angles neighbor index
     Vec3i * invNgs __attribute__((aligned(64))) = 0; // [ninversions] inversions neighbor index
 
@@ -402,7 +422,7 @@ fclose(file);
     }
 
     void assembleForces(){
-
+        // NOTE: this is not parallelized ( wee need somethig which loops over atoms otherwise we would need atomic add )
         // bonds
         // for(int i=0; i<nbonds; i++){
         //     int ia1 = bonAtoms[i].x;
@@ -412,36 +432,46 @@ fclose(file);
         // }
         // angles
         for(int i=0; i<nangles; i++){
-            int ia1 = angAtoms[i].x;
-            int ia2 = angAtoms[i].y;
-            int ia3 = angAtoms[i].z;
-            fapos[ia1].add( fang[i*3] );
-            fapos[ia2].add( fang[i*3+1] );
-            fapos[ia3].add( fang[i*3+2] );
+            const Vec3i ii = angAtoms[i];
+            //int ia1 = angAtoms[i].x;
+            //int ia2 = angAtoms[i].y;
+            //int ia3 = angAtoms[i].z;
+            fapos[ii.x].add( fang[i*3] );
+            fapos[ii.y].add( fang[i*3+1] );
+            fapos[ii.z].add( fang[i*3+2] );
         }
         // dihedrals
         for(int i=0; i<ndihedrals; i++){
-            int ia1 = dihAtoms[i].x;
-            int ia2 = dihAtoms[i].y;
-            int ia3 = dihAtoms[i].z;
-            int ia4 = dihAtoms[i].w;
-            fapos[ia1].add( fdih[i*4] );
-            fapos[ia2].add( fdih[i*4+1] );
-            fapos[ia3].add( fdih[i*4+2] );
-            fapos[ia4].add( fdih[i*4+3] );
+            const Quat4i ii = dihAtoms[i];
+            // int ia1 = dihAtoms[i].x;
+            // int ia2 = dihAtoms[i].y;
+            // int ia3 = dihAtoms[i].z;
+            // int ia4 = dihAtoms[i].w;
+            fapos[ii.x].add( fdih[i*4] );
+            fapos[ii.y].add( fdih[i*4+1] );
+            fapos[ii.z].add( fdih[i*4+2] );
+            fapos[ii.w].add( fdih[i*4+3] );
         }
         // inversions
         for(int i=0; i<ninversions; i++){
-            int ia1 = invAtoms[i].x;
-            int ia2 = invAtoms[i].y;
-            int ia3 = invAtoms[i].z;
-            int ia4 = invAtoms[i].w;
-            fapos[ia1].add( finv[i*4] );
-            fapos[ia2].add( finv[i*4+1] );
-            fapos[ia3].add( finv[i*4+2] );
-            fapos[ia4].add( finv[i*4+3] );
+            // int ia1 = invAtoms[i].x;
+            // int ia2 = invAtoms[i].y;
+            // int ia3 = invAtoms[i].z;
+            // int ia4 = invAtoms[i].w;
+            const Quat4i ii = dihAtoms[i];
+            fapos[ii.x].add( finv[i*4] );
+            fapos[ii.y].add( finv[i*4+1] );
+            fapos[ii.z].add( finv[i*4+2] );
+            fapos[ii.w].add( finv[i*4+3] );
         }
+    }
 
+    void assembleAtomForce(const int ia){
+        fapos[ia].add( fang[ia*3] );
+    }
+
+    void assembleAtomsForces(){
+        for(int ia=0; ia<natoms; ia++){ assembleAtomForce(ia); }
     }
 
     inline double evalAtomBonds(const int ia){
@@ -472,9 +502,8 @@ fclose(file);
             const double l = dp.norm();
             hneigh[inn].f.set_mul( dp, 1.0/l ); 
             hneigh[inn].e = 1.0/l;
-
             // --- Bond Energy
-            if(ing<ia) continue; // avoid double computing
+            //if(ing<ia) continue; // avoid double computing - NOTE: but we do double computing (in order to make it better parallelizable)
             //int ib;
             // ToDo: this should be optimized !!!!!!!!!!!!!!!!
             // for(int i=0; i<nbonds; i++){  
@@ -488,8 +517,8 @@ fclose(file);
             //fbon[ib*2  ]=f; // force on atom i
             //f.mul(-1.0);
             //fbon[ib*2+1]=f;      
-            fapos[ia ].add(f);
-            fapos[ing].sub(f);          
+            fapos[ia].add(f);
+            //fapos[ing].sub(f);       // NOTE: this will cause problems in parallelization !!!!!!!! ( we need to use atomic add )   
             // TBD exclude non-bonded interactions between 1-2 neighbors
         }
         return E;
@@ -545,7 +574,71 @@ fclose(file);
         return E;
     }
 
+    // ====================== Dihedrals
+
     double evalDihedral_Prokop( const int id ){
+        //double E=0.0;
+        Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
+        
+        const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
+        const double l32 = 1./hneigh[ngs.y].e; 
+        const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
+        const double l12 = 1./hneigh[ngs.x].e;
+        const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
+        const double l43 = 1./hneigh[ngs.z].e;
+
+        Vec3d n123; n123.set_cross( r12, r32 );  //  |n123| = |r12| |r32| * sin( r12, r32 ) 
+        Vec3d n234; n234.set_cross( r43, r32 );  //  |n234| = |r43| |r32| * sin( r43, r32 )
+        
+        // ===== Prokop's
+        //const double l32     = r32   .norm ();   // we can avoid this sqrt() if we read it from hneigh
+        const double il2_123 = 1/n123.norm2();
+        const double il2_234 = 1/n234.norm2();
+        const double inv_n12 = sqrt(il2_123*il2_234);
+        // --- Energy
+        const Vec2d cs{
+             n123.dot(n234)*inv_n12     ,
+            -n123.dot(r43 )*inv_n12*l32
+        };
+        Vec2d csn = cs;
+        Vec3d par = dihParams[id];
+        const int n = (int)par.z;
+        for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
+        double E  =  par.x * ( 1.0 + par.y * csn.x );
+        // --- Force on end atoms
+        double f = -par.x * par.y * par.z * csn.y; 
+        f*=l32;
+        Vec3d fp1; fp1.set_mul(n123,-f*il2_123 );
+        Vec3d fp4; fp4.set_mul(n234, f*il2_234 );
+        // --- Recoil forces on axis atoms
+        double il2_32 = -1/(l32*l32);
+        double c123   = r32.dot(r12)*il2_32;
+        double c432   = r32.dot(r43)*il2_32;
+        Vec3d fp3; fp3.set_lincomb(  c123,   fp1,  c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
+        Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
+        //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+        //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+        const int i4=id*4;
+        fdih[i4  ]=fp1;
+        fdih[i4+1]=fp2;
+        fdih[i4+2]=fp3;
+        fdih[i4+3]=fp4;
+
+        { // Debug Draw
+            const Quat4i ijkl = dihAtoms[id];
+            const Vec3d p1 = apos[ijkl.x]; 
+            const Vec3d p2 = apos[ijkl.y];
+            const Vec3d p3 = apos[ijkl.z];
+            const Vec3d p4 = apos[ijkl.w];
+            Draw3D::drawArrow( p1, p2+fp1, 0.1 );
+            Draw3D::drawArrow( p2, p2+fp2, 0.1 );
+            Draw3D::drawArrow( p3, p2+fp3, 0.1 );
+            Draw3D::drawArrow( p4, p2+fp4, 0.1 );
+        }
+        return E;
+    }
+
+    double evalDihedral_Prokop_Old( const int id ){
         //double E=0.0;
         const Quat4i ijkl = dihAtoms[id];
         const Vec3d p2  = apos[ijkl.y];
@@ -553,15 +646,6 @@ fclose(file);
         const Vec3d r32 = p3-p2;
         const Vec3d r12 = apos[ijkl.x]-p2; 
         const Vec3d r43 = apos[ijkl.w]-p3;
-        { // we need to read the normalized vectros for hneigh because of PBC
-            Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
-            const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
-            const double l32 = 1./hneigh[ngs.y].e; 
-            const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
-            const double l12 = 1./hneigh[ngs.x].e;
-            const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
-            const double l43 = 1./hneigh[ngs.z].e;
-        }
         Vec3d n123; n123.set_cross( r12, r32 );  //  |n123| = |r12| |r32| * sin( r12, r32 ) 
         Vec3d n234; n234.set_cross( r43, r32 );  //  |n234| = |r43| |r32| * sin( r43, r32 )
         
@@ -625,7 +709,9 @@ fclose(file);
         // }
 
         //{ // we need to read the normalized vectros for hneigh because of PBC
-        Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
+        //printf( "evalDihedral_Paolo() id %i \n", id );
+        const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
+        printf( "evalDihedral_Paolo() ngs %i %i %i \n", ngs.x, ngs.y, ngs.z );
         const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
         const double l32 = 1./hneigh[ngs.y].e; 
         const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
@@ -633,6 +719,8 @@ fclose(file);
         const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
         const double l43 = 1./hneigh[ngs.z].e;
         //}
+
+        printf( "evalDihedral_Paolo() l12 %g l32 %g l43 %g \n", l12, l32, l43 );
 
         Vec3d r12abs; r12abs.set_mul( r12, l12 );
         Vec3d r32abs; r32abs.set_mul( r32, l32 );
@@ -664,11 +752,32 @@ fclose(file);
         Vec3d vec_32; vec_32.set_add( vec1_32, vec2_32 );
         double fact = -par.x * par.y * par.z * csn.y / sin ;
         Vec3d f_32; f_32.set_mul(vec_32,fact);
-        fdih[id*4  ].set_mul(f_12,fact*l32/l123);
-        fdih[id*4+3].set_mul(f_43,fact*l32/l234);
-        fdih[id*4+1].set_add(fdih[id*4],f_32);
-        fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
-        fdih[id*4+2].set_sub(f_32,fdih[id*4+3]);
+
+        Vec3d fp1 = f_12 * ( fact*l32/l123 );
+        Vec3d fp4 = f_43 * ( fact*l32/l234 );
+        Vec3d fp2 = ( f_32 + fp1 )*-1.0; 
+        Vec3d fp3 = ( f_32 - fp4 );
+        const int i4=id*4;
+        fdih[i4  ]=fp1;
+        fdih[i4+1]=fp2;
+        fdih[i4+2]=fp3;
+        fdih[i4+3]=fp4;
+        // fdih[id*4  ].set_mul(f_12,fact*l32/l123);
+        // fdih[id*4+3].set_mul(f_43,fact*l32/l234);
+        // fdih[id*4+1].set_add(fdih[id*4],f_32);
+        // fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
+        // fdih[id*4+2].set_sub(f_32,fdih[id*4+3]);
+        { // Debug Draw
+            const Quat4i ijkl = dihAtoms[id];
+            const Vec3d p1 = apos[ijkl.x]; 
+            const Vec3d p2 = apos[ijkl.y];
+            const Vec3d p3 = apos[ijkl.z];
+            const Vec3d p4 = apos[ijkl.w];
+            Draw3D::drawArrow( p1, p2+fp1, 0.1 );
+            Draw3D::drawArrow( p2, p2+fp2, 0.1 );
+            Draw3D::drawArrow( p3, p2+fp3, 0.1 );
+            Draw3D::drawArrow( p4, p2+fp4, 0.1 );
+        }
         return E;
     }
 
@@ -749,8 +858,9 @@ fclose(file);
 
     // ================== Print functions  
 
+    
+    void printSizes     (      ){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nbonds(%i) nangles(%i) ndihedrals(%i) ninversions(%i) npbc(%i)\n", nDOFs,natoms,nbonds,nangles,ndihedrals,ninversions,npbc); }
     /*
-    void printSizes     (      ){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nnode(%i) ncap(%i) nvecs(%i) npbc(%i)\n", nDOFs,natoms,nnode,ncap,nvecs,npbc ); }
     void printAtomParams(int ia){ printf("atom[%i] t%i ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, atypes[ia], neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,apars[ia].w,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
     void printNeighs    (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); }
     void printBKneighs  (int ia){ printf("atom[%i] bkngs{%3i,%3i,%3i,%3i} \n", ia, bkneighs[ia].x,bkneighs[ia].y,bkneighs[ia].z,bkneighs[ia].w ); }

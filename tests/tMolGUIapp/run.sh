@@ -40,7 +40,7 @@ ln -s $dir/$name .
 #./$name -x common_resources/pyridine
 #./$name -x common_resources/propandiol
 
-./$name -x common_resources/C2H4
+./$name -uff -x common_resources/C2H4
 
 
 

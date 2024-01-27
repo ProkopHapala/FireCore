@@ -190,7 +190,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     // ========== from python interface
 
-    virtual void init( bool bGrid, bool bUFF ){
+    virtual void init(){
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
         if( params.atypes.size() == 0 ){
@@ -209,7 +209,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             // TBD we should also print if we use UFF or not...
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
         }
-        if(surf_name )loadSurf( surf_name, bGrid, idebug>0 );
+        if(surf_name )loadSurf( surf_name, bGridFF, idebug>0 );
         if ( smile_name ){               
             insertSMILES( smile_name );    
             builder.addAllCapTopo();       
@@ -828,8 +828,8 @@ class MolWorld_sp3 : public SolverInterface { public:
         //params.printAtomTypeDict();
         //params.printAtomTypes();
         //params.printBond();
-        params.printAngleTypes();
-        params.printDihedralTypes();
+        //params.printAngleTypes();
+        //params.printDihedralTypes();
     }
 
     int buildMolecule_xyz( const char* xyz_name ){

@@ -60,6 +60,8 @@ int main(int argc, char *argv[]){
         printf( "prelat_dlvec(%i,%i) latscan_dlvec ", prelat_nstep, prelat_nItrMax  ); printMat(prelat_dlvec);  DEBUG
     } }; // test
 
+    funcs["-uff"]={0,[&](const char** ss){ W->bUFF=true; }}; // AutoCharge
+
     funcs["-e"]={0,[&](const char** ss){ app->W->bEpairs=true; }}; // add explicit electron pair
     funcs["-EachAngle"]={0,[&](const char** ss){ app->W->ffl.bEachAngle=true;                          }};
     funcs["-torsions"]={0,[&](const char** ss){ app->W->ffl.bTorsion=true; app->W->ffl.doPiPiI=false;  }};
