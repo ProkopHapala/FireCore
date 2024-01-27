@@ -320,7 +320,7 @@ void MolGUI::initGUI(){
 
 void MolGUI::init(){
     if(verbosity>0)printf("MolGUI::init() \n");
-    W->init( true, true );
+    W->init();
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Quat4d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
     //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
     MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
@@ -415,7 +415,7 @@ void MolGUI::draw(){
             glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
         }else{ drawSystem(); }
 
-        //drawSystem(); // DEBUG
+        //drawSystem(); // debug
         //Draw3D::drawNeighs( W->ff, -1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
@@ -447,16 +447,17 @@ void MolGUI::draw(){
 
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
-    // // ==== MolGUI TESTS   Torsions ( Paolo vs Prokop optimized )
-    if( frameCount==0){
-        Vec3d ax = apos[1]-apos[0];
-        apos[2].add_mul( ax, -0.5 );
-        apos[3].add_mul( ax, -0.5 );
-        for(int i=4; i<6; i++){ apos[i].mul(0.8); }
-        for(int i=0; i<natoms; i++){ apos[i].mul(1.5); }
-    }
+    { // ==== MolGUI TESTS   Torsions ( Paolo vs Prokop optimized )
+    
+        if( frameCount==0){
+            Vec3d ax = apos[1]-apos[0];
+            apos[2].add_mul( ax, -0.5 );
+            apos[3].add_mul( ax, -0.5 );
+            for(int i=4; i<6; i++){ apos[i].mul(0.8); }
+            for(int i=0; i<natoms; i++){ apos[i].mul(1.5); }
+        }
 
-    {
+
         double angle = 0.0;
         if( keys[ SDL_SCANCODE_LEFTBRACKET  ] ){ angle=0.1; }
         if( keys[ SDL_SCANCODE_RIGHTBRACKET ] ){ angle=-0.1; }
@@ -469,9 +470,15 @@ void MolGUI::draw(){
         for(int i=0; i<3; i++){
             apos[sel[i]].rotate_csa( cs.x, cs.y, ax, p0 );
         }
+
+        W->ffu.evalBonds();
+        Vec3d fbak[4];
+        W->ffu.evalDihedral_Paolo( 0 );
+        // for(int i=0; i<4; i++){ fbak[i]=W->ffu.fdih[i]; }
+        // W->ffu.evalDihedral_Prokop_Old( 0 );
+        // checkVec3Matches( 4, W->ffu.fdih, fbak, "dih", 1 );
+
     }
-    // //torsion_Paolo( apos[2], apos[0], apos[1], apos[4], Vec3d{ 1.0, 1.0, 1.0 } );
-    // torsion_Prokop( apos[2], apos[0], apos[1], apos[4], Vec3d{ 1.0, 1.0, 1.0 } );
 
     if(W->ipicked>-1){ 
         Vec3d p = W->ffl.apos[W->ipicked];

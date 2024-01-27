@@ -3260,6 +3260,7 @@ void makeNeighs( int*& neighs, int perAtom ){
 
 #ifdef UFF_h
 void toUFF( UFF& ff, bool bRealloc=true ){
+    printf( "MM::Builder::toUFF() \n" );
 
     int natoms      = atoms.size();
     int nbonds      = bonds.size();
@@ -3306,7 +3307,13 @@ void toUFF( UFF& ff, bool bRealloc=true ){
             }
         }
     } 
-
+    DEBUG
+    ff.makeNeighBs(); DEBUG
+    ff.bakeAngleNeighs(); DEBUG
+    ff.bakeDihedralNeighs(); DEBUG
+    ff.bakeInversionNeighs(); DEBUG
+    ff.printSizes();
+ 
     ff.bPBC = bPBC;
     if(verbosity>0)printf("MM::Builder::toUFF DONE\n");
 
