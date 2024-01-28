@@ -625,15 +625,16 @@ fclose(file);
         fdih[i4+3]=fp4;
 
         { // Debug Draw
+            glColor3f(1.0,0.0,0.0);
             const Quat4i ijkl = dihAtoms[id];
             const Vec3d p1 = apos[ijkl.x]; 
             const Vec3d p2 = apos[ijkl.y];
             const Vec3d p3 = apos[ijkl.z];
             const Vec3d p4 = apos[ijkl.w];
-            Draw3D::drawArrow( p1, p2+fp1, 0.1 );
+            Draw3D::drawArrow( p1, p1+fp1, 0.1 );
             Draw3D::drawArrow( p2, p2+fp2, 0.1 );
-            Draw3D::drawArrow( p3, p2+fp3, 0.1 );
-            Draw3D::drawArrow( p4, p2+fp4, 0.1 );
+            Draw3D::drawArrow( p3, p3+fp3, 0.1 );
+            Draw3D::drawArrow( p4, p4+fp4, 0.1 );
         }
         return E;
     }
@@ -682,45 +683,58 @@ fclose(file);
         fdih[i4+1]=fp2;
         fdih[i4+2]=fp3;
         fdih[i4+3]=fp4;
+
+        { // Debug Draw
+            glColor3f(1.0,0.0,1.0);
+            const Quat4i ijkl = dihAtoms[id];
+            const Vec3d p1 = apos[ijkl.x]; 
+            const Vec3d p2 = apos[ijkl.y];
+            const Vec3d p3 = apos[ijkl.z];
+            const Vec3d p4 = apos[ijkl.w];
+            Draw3D::drawArrow( p1, p1+fp1, 0.01 );
+            Draw3D::drawArrow( p2, p2+fp2, 0.01 );
+            Draw3D::drawArrow( p3, p3+fp3, 0.01 );
+            Draw3D::drawArrow( p4, p4+fp4, 0.01 );
+        }
         return E;
     }
 
     double evalDihedral_Paolo( const int id ){
-        // int i = dihAtoms[id].x;
-        // int j = dihAtoms[id].y;
-        // int k = dihAtoms[id].z;
-        // int l = dihAtoms[id].w;
-        // const int*    ingsj = neighs   [j].array; // neighbors
-        // const int*    ingsk = neighs   [k].array; // neighbors
-        // Vec3d  r12, r32;
-        // double l12, l32;
-        // for(int in=0; in<4; in++){
-        //     int ing = ingsj[in];
-        //     if(ing<0) { break; }
-        //     if     (ing==i) { r12 = hneigh[j*4+in].f; l12 = 1.0/hneigh[j*4+in].e; }   
-        //     else if(ing==k) { r32 = hneigh[j*4+in].f; l32 = 1.0/hneigh[j*4+in].e; } 
-        // }
-        // Vec3d r43;
-        // double l43;
-        // for(int in=0; in<4; in++){
-        //     int ing = ingsk[in];
-        //     if(ing<0) { break; }
-        //     if     (ing==l) { r43 = hneigh[k*4+in].f; l43 = 1.0/hneigh[k*4+in].e; }   
-        // }
+        int i = dihAtoms[id].x;
+        int j = dihAtoms[id].y;
+        int k = dihAtoms[id].z;
+        int l = dihAtoms[id].w;
+        const int*    ingsj = neighs   [j].array; // neighbors
+        const int*    ingsk = neighs   [k].array; // neighbors
+        Vec3d  r12, r32;
+        double l12, l32;
+        for(int in=0; in<4; in++){
+            int ing = ingsj[in];
+            if(ing<0) { break; }
+            if     (ing==i) { r12 = hneigh[j*4+in].f; l12 = 1.0/hneigh[j*4+in].e; }   
+            else if(ing==k) { r32 = hneigh[j*4+in].f; l32 = 1.0/hneigh[j*4+in].e; } 
+        }
+        Vec3d r43;
+        double l43;
+        for(int in=0; in<4; in++){
+            int ing = ingsk[in];
+            if(ing<0) { break; }
+            if     (ing==l) { r43 = hneigh[k*4+in].f; l43 = 1.0/hneigh[k*4+in].e; }   
+        }
 
-        //{ // we need to read the normalized vectros for hneigh because of PBC
-        //printf( "evalDihedral_Paolo() id %i \n", id );
-        const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
-        printf( "evalDihedral_Paolo() ngs %i %i %i \n", ngs.x, ngs.y, ngs.z );
-        const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
-        const double l32 = 1./hneigh[ngs.y].e; 
-        const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
-        const double l12 = 1./hneigh[ngs.x].e;
-        const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
-        const double l43 = 1./hneigh[ngs.z].e;
-        //}
+        // //{ // we need to read the normalized vectros for hneigh because of PBC
+        // //printf( "evalDihedral_Paolo() id %i \n", id );
+        // const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
+        // printf( "evalDihedral_Paolo() ngs %i %i %i \n", ngs.x, ngs.y, ngs.z );
+        // const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
+        // const double l32 = 1./hneigh[ngs.y].e; 
+        // const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
+        // const double l12 = 1./hneigh[ngs.x].e;
+        // const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
+        // const double l43 = 1./hneigh[ngs.z].e;
+        // //}
 
-        printf( "evalDihedral_Paolo() l12 %g l32 %g l43 %g \n", l12, l32, l43 );
+        //printf( "evalDihedral_Paolo() l12 %g l32 %g l43 %g \n", l12, l32, l43 );
 
         Vec3d r12abs; r12abs.set_mul( r12, l12 );
         Vec3d r32abs; r32abs.set_mul( r32, l32 );
@@ -768,15 +782,21 @@ fclose(file);
         // fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
         // fdih[id*4+2].set_sub(f_32,fdih[id*4+3]);
         { // Debug Draw
+            glColor3f(0.0,0.8,0.0);
             const Quat4i ijkl = dihAtoms[id];
             const Vec3d p1 = apos[ijkl.x]; 
             const Vec3d p2 = apos[ijkl.y];
             const Vec3d p3 = apos[ijkl.z];
             const Vec3d p4 = apos[ijkl.w];
-            Draw3D::drawArrow( p1, p2+fp1, 0.1 );
-            Draw3D::drawArrow( p2, p2+fp2, 0.1 );
-            Draw3D::drawArrow( p3, p2+fp3, 0.1 );
-            Draw3D::drawArrow( p4, p2+fp4, 0.1 );
+            Draw3D::drawArrow( p1, p1+fp1, 0.02 );
+            Draw3D::drawArrow( p2, p2+fp2, 0.02 );
+            Draw3D::drawArrow( p3, p3+fp3, 0.02 );
+            Draw3D::drawArrow( p4, p4+fp4, 0.02 );
+
+            // glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r12abs, p2 );
+            // glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r32abs, p2 );
+            // glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r43abs, p3 );
+            //Draw3D::drawVecInPos( r12abs, p2 )
         }
         return E;
     }
