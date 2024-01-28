@@ -868,28 +868,124 @@ fclose(file);
         return E;
     }
 
-    inline double evalInversions( const int ii ){
-        // int i = invAtoms[ii].x;
-        // int j = invAtoms[ii].y;
-        // int k = invAtoms[ii].z;
-        // int l = invAtoms[ii].w;
-        //const int*    ings = neighs   [i].array; // neighbors
-        // Vec3d  r21, r31, r41;
-        // double l21, l31, l41;
-        // for(int in=0; in<3; in++){
-        //     int ing = ings[in];
-        //     if     (ing==j) { r21 = hneigh[i*4+in].f; l21 = 1.0/hneigh[i*4+in].e; }   
-        //     else if(ing==k) { r31 = hneigh[i*4+in].f; l31 = 1.0/hneigh[i*4+in].e; } 
-        //     else if(ing==l) { r41 = hneigh[i*4+in].f; l41 = 1.0/hneigh[i*4+in].e; } 
-        // }
+    inline double evalInversions_Prokop( const int ii ){
+        const Vec3i ngs  = invNgs[ii];  // {ji, ki, li}
+        Quat4d q21 =    hneigh[ngs.x];  // ji
+        Quat4d q31 =    hneigh[ngs.y];  // ki
+        Quat4d q41 =    hneigh[ngs.z];  // li
 
-        const Vec3i ngs  = invNgs[ii];   // {ji, ki, li}
-        const Vec3d  r21 =    hneigh[ngs.y].f;  // ji
-        const double l21 = 1./hneigh[ngs.y].e; 
-        const Vec3d  r31 =    hneigh[ngs.x].f;  // ki
-        const double l31 = 1./hneigh[ngs.x].e;
-        const Vec3d  r41 =    hneigh[ngs.z].f;  // li
-        const double l41 = 1./hneigh[ngs.z].e;
+        double l21=1.0/q21.w; 
+        double l31=1.0/q31.w;
+        double l41=1.0/q41.w;
+
+
+        Vec3d  n123;  n123.set_cross( q21.f, q31.f );         //  |n123| = sin( r21, r31 )
+        const double l123  = n123.norm();                     //  |n123| = sin( r21, r31 )
+        const double il123 =  1/l123;                         // il2_123 =   1 / (sin( r21, r31 ))^2
+        const double s     = -n123.dot(q41.f)*il123;          // sin = -n123*q41 / |n123|
+        const double c     =  sqrt(1.0-s*s+1e-14);            // must be positive number !!!
+        const Quat4d par = invParams[ii];
+        Vec2d cs {c,s};
+        Vec2d cs2{c,s};
+        cs2.mul_cmplx(cs);
+        const double E =  par.x * ( par.y + par.z * c +       par.w * cs2.x );
+        const double f = -par.x * (         par.z * s + 2.0 * par.w * cs2.y ) / c;
+        
+        // Vec3d scaled_123 = n123 * -sin ;
+        // Vec3d scaled_41  = r41  * -sin ;
+        // Vec3d tmp_123    = n123 - scaled_41;
+        // Vec3d fp4 = ( tmp_123 * fact ) * ( 1.0/l41 );
+
+        // Vec3d tmp_41;     tmp_41    .set_sub  ( r41,  scaled_123 );
+        // Vec3d f_21;       f_21      .set_cross( r31,  tmp_41 );
+        // Vec3d f_31;       f_31      .set_cross( tmp_41, r21 );
+        // double fact = -par.x * ( par.z * sin + 2.0 * par.w * cs2.y ) / cos ;
+        // Vec3d fp2 = f_21 * ( fact*l31/l123 );
+        // Vec3d fp3 = f_31 * ( fact*l21/l123 );
+        
+        // Vec3d fp1 = ( fp2 + fp3 + fp4 ) * -1.0;
+        //Vec3d tmp_123 = n123*il123 - q41.f*-s;
+
+        Vec3d fp4     = ( n123*il123 + q41.f*s )* ( f/l41 );
+
+        Vec3d tmp_41  = q41.f + n123*(s*il123);
+        Vec3d f_21;  f_21.set_cross( q31.f, tmp_41 );
+        Vec3d f_31;  f_31.set_cross( tmp_41, q21.f );
+        
+        Vec3d fp2 = f_21 * ( f*l31/l123 );
+        Vec3d fp3 = f_31 * ( f*l21/l123 );
+
+        // Vec3d fp2 = f_21 * ( f*l31 );
+        // Vec3d fp3 = f_31 * ( f*l21 );
+
+        //Vec3d fp2 = f_21 * ( fact*l31/l123 );
+        //Vec3d fp3 = f_31 * ( fact*l21/l123 );
+        
+        Vec3d fp1 = ( fp2 + fp3 + fp4 ) * -1.0;
+        finv[ii*4  ]=fp1;
+        finv[ii*4+1]=fp2;
+        finv[ii*4+2]=fp3;
+        finv[ii*4+3]=fp4;
+
+        { // Debug Draw
+            double fsc = 20.0;
+            glColor3f(1.0,0.0,1.0);
+            const Quat4i ijkl = invAtoms[id];
+            const Vec3d p1 = apos[ijkl.x]; 
+            const Vec3d p2 = apos[ijkl.y];
+            const Vec3d p3 = apos[ijkl.z];
+            const Vec3d p4 = apos[ijkl.w];
+            // Draw3D::drawArrow( p1, p1+fp1*fsc, 0.02 );
+            // Draw3D::drawArrow( p2, p2+fp2*fsc, 0.02 );
+            // Draw3D::drawArrow( p3, p3+fp3*fsc, 0.02 );
+            // Draw3D::drawArrow( p4, p4+fp4*fsc, 0.02 );
+
+            Draw3D::drawArrow( p2, p2+f_21, 0.02 );
+            Draw3D::drawArrow( p3, p3+f_31, 0.02 );
+
+            Vec3d r21abs =  q21.f * l21;
+            Vec3d r31abs =  q31.f * l31;
+            Vec3d r41abs =  q41.f * l41;
+
+            // Draw3D::drawArrow( p2, p2+f_21, 0.02 );
+            // Draw3D::drawArrow( p3, p3+f_31, 0.02 );
+            Draw3D::drawArrow( p1, p1+tmp_41, 0.01 );
+
+            //Draw3D::drawArrow( p4, p4+tmp_123, 0.01 );
+            //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+n123*il123, 0.02 );
+            //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+q41.f     , 0.02 );
+
+
+            glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
+            glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
+            glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
+            //Draw3D::drawVecInPos( r12abs, p2 )
+        }
+        return E;
+    }
+
+    inline double evalInversions_Paolo( const int ii ){
+        int i = invAtoms[ii].x;
+        int j = invAtoms[ii].y;
+        int k = invAtoms[ii].z;
+        int l = invAtoms[ii].w;
+        const int*    ings = neighs   [i].array; // neighbors
+        Vec3d  r21, r31, r41;
+        double l21, l31, l41;
+        for(int in=0; in<3; in++){
+            int ing = ings[in];
+            if     (ing==j) { r21 = hneigh[i*4+in].f; l21 = 1.0/hneigh[i*4+in].e; }   
+            else if(ing==k) { r31 = hneigh[i*4+in].f; l31 = 1.0/hneigh[i*4+in].e; } 
+            else if(ing==l) { r41 = hneigh[i*4+in].f; l41 = 1.0/hneigh[i*4+in].e; } 
+        }
+
+        // const Vec3i ngs  = invNgs[ii];   // {ji, ki, li}
+        // const Vec3d  r21 =    hneigh[ngs.y].f;  // ji
+        // const double l21 = 1./hneigh[ngs.y].e; 
+        // const Vec3d  r31 =    hneigh[ngs.x].f;  // ki
+        // const double l31 = 1./hneigh[ngs.x].e;
+        // const Vec3d  r41 =    hneigh[ngs.z].f;  // li
+        // const double l41 = 1./hneigh[ngs.z].e;
 
 
         Vec3d r21abs; r21abs.set_mul( r21, l21 );
@@ -903,23 +999,73 @@ fclose(file);
         Vec2d cs2{cos,sin};
         cs2.mul_cmplx(cs);
         double E = par.x * ( par.y + par.z * cos + par.w * cs2.x );
-        Vec3d scaled_123; scaled_123.set_mul( n123, -sin);
-        Vec3d scaled_41;  scaled_41.set_mul (  r41, -sin);
-        Vec3d tmp_123; tmp_123.set_sub( n123, scaled_41  );
-        Vec3d tmp_41;  tmp_41.set_sub (  r41, scaled_123 );
-        Vec3d f_21; f_21.set_cross( r31, tmp_41 );
-        Vec3d f_31; f_31.set_cross( tmp_41, r21 );
+        Vec3d scaled_123; scaled_123.set_mul  ( n123, -sin );
+        Vec3d scaled_41;  scaled_41 .set_mul  ( r41,  -sin );
+        Vec3d tmp_123;    tmp_123   .set_sub  ( n123, scaled_41  );
+
+        Vec3d tmp_123_ = n123 - r41*-sin;
+
+
+        Vec3d tmp_41_  = r41 + n123*sin;
+
+        Vec3d tmp_41;     tmp_41    .set_sub  ( r41,  scaled_123 );
+        Vec3d f_21;       f_21      .set_cross( r31,  tmp_41 );
+        Vec3d f_31;       f_31      .set_cross( tmp_41, r21 );
         double fact = -par.x * ( par.z * sin + 2.0 * par.w * cs2.y ) / cos ;
-        finv[ii*4+1].set_mul(f_21,   fact*l31/l123);
-        finv[ii*4+2].set_mul(f_31,   fact*l21/l123);
-        finv[ii*4+3].set_mul(tmp_123,fact/l41     );
-        finv[ii*4  ].set_lincomb(-1.0,-1.0,-1.0,finv[ii*4+1],finv[ii*4+2],finv[ii*4+3]);
+        Vec3d fp2 = f_21 * ( fact*l31/l123 );
+        Vec3d fp3 = f_31 * ( fact*l21/l123 );
+        Vec3d fp4 = ( tmp_123 * fact ) * ( 1.0/l41 );
+        Vec3d fp1 = ( fp2 + fp3 + fp4 ) * -1.0;
+        finv[ii*4  ]=fp1;
+        finv[ii*4+1]=fp2;
+        finv[ii*4+2]=fp3;
+        finv[ii*4+3]=fp4;
+        // finv[ii*4+1].set_mul(f_21,   fact*l31/l123);
+        // finv[ii*4+2].set_mul(f_31,   fact*l21/l123);
+        // finv[ii*4+3].set_mul(tmp_123,fact/l41     );
+        // finv[ii*4  ].set_lincomb(-1.0,-1.0,-1.0,finv[ii*4+1],finv[ii*4+2],finv[ii*4+3]);
+
+        { // Debug Draw
+            double fsc = 20.0;
+            glColor3f(0.0,0.8,0.0);
+            const Quat4i ijkl = invAtoms[id];
+            const Vec3d p1 = apos[ijkl.x]; 
+            const Vec3d p2 = apos[ijkl.y];
+            const Vec3d p3 = apos[ijkl.z];
+            const Vec3d p4 = apos[ijkl.w];
+            // Draw3D::drawArrow( p1, p1+fp1*fsc, 0.03 );
+            // Draw3D::drawArrow( p2, p2+fp2*fsc, 0.03 );
+            // Draw3D::drawArrow( p3, p3+fp3*fsc, 0.03 );
+            // Draw3D::drawArrow( p4, p4+fp4*fsc, 0.03 );
+
+            Draw3D::drawArrow( p2, p2+f_21, 0.03 );
+            Draw3D::drawArrow( p3, p3+f_31, 0.03 );
+
+            Draw3D::drawArrow( p1, p1+tmp_41, 0.05 );
+            glColor3f(0.0,0.0,0.0);
+            Draw3D::drawArrow( p1, p1+tmp_41_, 0.03 );
+
+            // Draw3D::drawArrow( p4, p4+tmp_123, 0.03 );
+            // Draw3D::drawArrow( p4, p4+tmp_123_, 0.05 );
+            // glColor3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+n123, 0.03 );
+            // glColor3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+r41 , 0.03 );
+
+            // Vec3d r41abs = q41.f * l41;
+            // glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
+            // glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
+            // glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
+            //Draw3D::drawVecInPos( r12abs, p2 )
+        }
+
         return E;
     }
 
     double evalInversions(){
         double E=0.0;
-        for( int ii=0; ii<ninversions; ii++){ E+=evalInversions(ii); }
+        for( int ii=0; ii<ninversions; ii++){ 
+            //E+=evalInversions_Paolo(ii); 
+            E+=evalInversions_Prokop(ii); 
+        }
         return E;
     }
 

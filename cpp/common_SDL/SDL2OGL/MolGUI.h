@@ -455,12 +455,17 @@ void MolGUI::draw(){
             apos[3].add_mul( ax, -0.5 );
             for(int i=4; i<6; i++){ apos[i].mul(0.8); }
             for(int i=0; i<natoms; i++){ apos[i].mul(1.5); }
+
+            //apos[0].z += 0.5;
         }
 
-
         double angle = 0.0;
-        if( keys[ SDL_SCANCODE_LEFTBRACKET  ] ){ angle=0.1; }
-        if( keys[ SDL_SCANCODE_RIGHTBRACKET ] ){ angle=-0.1; }
+        //if( keys[ SDL_SCANCODE_LEFTBRACKET  ] ){ angle=0.1; }
+        //if( keys[ SDL_SCANCODE_RIGHTBRACKET ] ){ angle=-0.1; }
+
+        if( keys[ SDL_SCANCODE_LEFTBRACKET  ] ){ apos[3].z -= 0.1; }
+        if( keys[ SDL_SCANCODE_RIGHTBRACKET ] ){ apos[3].z += 0.1; }
+
         int sel[3]{1,4,5};
        
         Vec3d ax = apos[1]-apos[0];
@@ -472,27 +477,40 @@ void MolGUI::draw(){
         }
 
         // { // Check Dihedrals
-        // W->ffu.evalBonds();
-        // Vec3d fbak[4];
-        // double E,E_;
-        // E_=W->ffu.evalDihedral_Paolo( 0 );
-        // //E_=W->ffu.evalDihedral_Prokop_Old( 0 );
-        // for(int i=0; i<4; i++){ fbak[i]=W->ffu.fdih[i]; }
-        // //E=W->ffu.evalDihedral_Prokop_Old( 0 );
-        // E=W->ffu.evalDihedral_Prokop( 0 );
-        // printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
-        // checkVec3Matches( 4, W->ffu.fdih, fbak, "dih_fp", 1 );
+        //     W->ffu.evalBonds();
+        //     Vec3d fbak[4];
+        //     double E,E_;
+        //     E_=W->ffu.evalDihedral_Paolo( 0 );
+        //     //E_=W->ffu.evalDihedral_Prokop_Old( 0 );
+        //     for(int i=0; i<4; i++){ fbak[i]=W->ffu.fdih[i]; }
+        //     //E=W->ffu.evalDihedral_Prokop_Old( 0 );
+        //     E=W->ffu.evalDihedral_Prokop( 0 );
+        //     printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
+        //     checkVec3Matches( 4, W->ffu.fdih, fbak, "dih_fp", 1 );
         // }
 
-        { // Check Angles
+        // { // Check Angles
+        //     W->ffu.evalBonds();
+        //     Vec3d fbak[4];
+        //     double E,E_;
+        //     E_=W->ffu.evalAngle_Paolo( 0 );
+        //     for(int i=0; i<3; i++){ fbak[i]=W->ffu.fang[i]; }
+        //     E=W->ffu.evalAngle_Prokop( 0 );
+        //     printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
+        //     checkVec3Matches( 3, W->ffu.fang, fbak, "dih_fp", 1 );
+        // }
+
+
+        { // Check Inversions
+            //W->ffu.printSizes();
             W->ffu.evalBonds();
             Vec3d fbak[4];
             double E,E_;
-            E_=W->ffu.evalAngle_Paolo( 0 );
-            for(int i=0; i<3; i++){ fbak[i]=W->ffu.fang[i]; }
-            E=W->ffu.evalAngle_Prokop( 0 );
+            E_=W->ffu.evalInversions_Paolo( 0 );
+            for(int i=0; i<4; i++){ fbak[i]=W->ffu.fang[i]; }
+            E=W->ffu.evalInversions_Prokop( 0 );
             printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
-            checkVec3Matches( 3, W->ffu.fang, fbak, "dih_fp", 1 );
+            //checkVec3Matches( 4, W->ffu.fang, fbak, "dih_fp", 1 );
         }
 
     }
