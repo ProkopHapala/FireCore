@@ -36,9 +36,11 @@ bool checkVec3Match( Vec3d f, Vec3d f_, const char* label, int iPrint=1 ){
 
 bool checkVec3Matches( int n, Vec3d* v, Vec3d* v_, const char* label, int iPrint=1 ){
     char strbuf[256];
-    sprintf( strbuf, "%s_%i ", label, n );
     bool bMatch = true;
-    for(int i=0; i<n; i++){ checkVec3Match( v[i], v_[i], strbuf, iPrint ); }
+    for(int i=0; i<n; i++){ 
+        sprintf( strbuf, "%s_%i ", label, i );
+        checkVec3Match( v[i], v_[i], strbuf, iPrint ); 
+    }
     return bMatch;
 }
 
@@ -579,26 +581,19 @@ fclose(file);
     double evalDihedral_Prokop( const int id ){
         //double E=0.0;
         Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
-        
-        const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
-        const double l32 = 1./hneigh[ngs.y].e; 
-        const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
-        const double l12 = 1./hneigh[ngs.x].e;
-        const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
-        const double l43 = 1./hneigh[ngs.z].e;
-
-        Vec3d n123; n123.set_cross( r12, r32 );  //  |n123| = |r12| |r32| * sin( r12, r32 ) 
-        Vec3d n234; n234.set_cross( r43, r32 );  //  |n234| = |r43| |r32| * sin( r43, r32 )
-        
-        // ===== Prokop's
-        //const double l32     = r32   .norm ();   // we can avoid this sqrt() if we read it from hneigh
-        const double il2_123 = 1/n123.norm2();
-        const double il2_234 = 1/n234.norm2();
-        const double inv_n12 = sqrt(il2_123*il2_234);
+        const Quat4d q12 =    hneigh[ngs.x];  // ji
+        const Quat4d q32 =    hneigh[ngs.y];  // jk
+        const Quat4d q43 =    hneigh[ngs.z];  // kl
+        // --- normals 
+        Vec3d n123; n123.set_cross( q12.f, q32.f );   //  |n123| = sin( r12, r32 ) 
+        Vec3d n234; n234.set_cross( q43.f, q32.f );   //  |n234| = sin( r43, r32 )
+        const double il2_123 = 1/n123.norm2();        //  il2_123 =  1/ ( sin( r12, r32 ) )^2
+        const double il2_234 = 1/n234.norm2();        //  il2_234 =  1/ ( sin( r43, r32 ) )^2
+        const double inv_n12 = sqrt(il2_123*il2_234); //  inv_n12 =  1/ ( sin( r12, r32 ) * sin( r43, r32 ) )
         // --- Energy
         const Vec2d cs{
-             n123.dot(n234)*inv_n12     ,
-            -n123.dot(r43 )*inv_n12*l32
+             n123.dot(n234 )*inv_n12,
+            -n123.dot(q43.f)*inv_n12
         };
         Vec2d csn = cs;
         Vec3d par = dihParams[id];
@@ -607,17 +602,13 @@ fclose(file);
         double E  =  par.x * ( 1.0 + par.y * csn.x );
         // --- Force on end atoms
         double f = -par.x * par.y * par.z * csn.y; 
-        f*=l32;
-        Vec3d fp1; fp1.set_mul(n123,-f*il2_123 );
-        Vec3d fp4; fp4.set_mul(n234, f*il2_234 );
+        Vec3d fp1; fp1.set_mul(n123,-f*il2_123*q12.w );
+        Vec3d fp4; fp4.set_mul(n234, f*il2_234*q43.w );
         // --- Recoil forces on axis atoms
-        double il2_32 = -1/(l32*l32);
-        double c123   = r32.dot(r12)*il2_32;
-        double c432   = r32.dot(r43)*il2_32;
-        Vec3d fp3; fp3.set_lincomb(  c123,   fp1,  c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
-        Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
-        //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
-        //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+        double c123   = q32.f.dot(q12.f)*(q32.w/q12.w);
+        double c432   = q32.f.dot(q43.f)*(q32.w/q43.w);
+        Vec3d fp3; fp3.set_lincomb( -c123,   fp1, -c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
+        Vec3d fp2; fp2.set_lincomb( +c123-1, fp1, +c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
         const int i4=id*4;
         fdih[i4  ]=fp1;
         fdih[i4+1]=fp2;
@@ -652,9 +643,9 @@ fclose(file);
         
         // ===== Prokop's
         const double l32     = r32   .norm ();   // we can avoid this sqrt() if we read it from hneigh
-        const double il2_123 = 1/n123.norm2();
-        const double il2_234 = 1/n234.norm2();
-        const double inv_n12 = sqrt(il2_123*il2_234);
+        const double il2_123 = 1/n123.norm2();   //  il2_123 =  1/ (   |r12| |r32| * sin( r12, r32 ) )^2 
+        const double il2_234 = 1/n234.norm2();   //  il2_234 =  1/ (   |r43| |r32| * sin( r43, r32 ) )^2
+        const double inv_n12 = sqrt(il2_123*il2_234); // inv_n12 = 1/ ( |r12| |r32| * sin( r12, r32 ) * |r43| |r32| * sin( r43, r32 ) )
         // --- Energy
         const Vec2d cs{
              n123.dot(n234)*inv_n12     ,
