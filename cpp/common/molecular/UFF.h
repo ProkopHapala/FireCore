@@ -532,7 +532,60 @@ fclose(file);
         return E;
     }
 
-    inline double evalAngle( const int ia ){
+    inline double evalAngle_Prokop( const int ia ){
+        const Vec2i  ngs = angNgs[id];  
+        const Quat4d qij = hneigh[ngs.x];  // ji
+        const Quat4d qkj = hneigh[ngs.y];  // jk
+        // ---- Angle ( cos, sin )
+        const Vec3d  h = qij.f + qkj.f;
+        const double c = 0.5*(h.norm2()-2.0);
+        const Vec2d  cs{ c, sqrt(1.0-c*c+1e-14) };
+        const double inv_sin = 1.0/cs.y;
+        const double5 par    = angParams[ia];
+        // ---- Energy & Force Fourier
+        //double E = par.k * ( par.c0 + par.c1*cs.x +     par.c2*cs2.x         +     par.c3*cs3.x         );
+        //double f = par.k * (          par.c1      + 2.0*par.c2*cs2.y*inv_sin + 3.0*par.c3*cs3.y*inv_sin );
+        double E  = par.c0;
+        double f  = par.c1;
+        Vec2d csn = cs;
+        csn.mul_cmplx(cs);
+        E += par.c2*csn.x;
+        f += par.c2*csn.y*inv_sin*2.0;
+        csn.mul_cmplx(cs);
+        E += par.c3*csn.x;
+        f += par.c3*csn.y*inv_sin*3.0;
+        E *= par.k;
+        f *= par.k;
+        // --- Force Vectors
+        const double fi  = f*qij.w;
+        const double fk  = f*qkj.w;
+        const double fic = fi*c;
+        const double fkc = fk*c;
+        Vec3d fpi; fpi.set_lincomb(  fic,    qij.f, -fi,     qkj.f );
+        Vec3d fpk; fpk.set_lincomb( -fk,     qij.f,  fkc,    qkj.f );
+        Vec3d fpj; fpj.set_lincomb(  fk-fic, qij.f,  fi-fkc, qkj.f );
+        const int i3=ia*3;
+        fang[i3  ]=fpi;
+        fang[i3+1]=fpj;
+        fang[i3+2]=fpk;
+        // TBD exclude non-bonded interactions between 1-3 neighbors
+        { // Debug Draw
+            glColor3f(1.0,0.0,1.0);
+            const Vec3i ijk = angAtoms[id];
+            const Vec3d pi = apos[ijk.x]; 
+            const Vec3d pj = apos[ijk.y];
+            const Vec3d pk = apos[ijk.z];
+            Draw3D::drawArrow( pi, pi+fpi, 0.03 );
+            Draw3D::drawArrow( pj, pj+fpj, 0.03 );
+            Draw3D::drawArrow( pk, pk+fpk, 0.03 );
+            //glColor3f(0.0,0.0,1.0); Draw3D::drawArrow( pj, pj+qij.f*(1/qij.w), 0.03 );
+            //glColor3f(1.0,0.0,0.0); Draw3D::drawArrow( pj, pj+qkj.f*(1/qkj.w), 0.03 );
+            //Draw3D::drawArrow( pk, pk+fpk, 0.03 );
+        }
+        return E;
+    }
+
+    inline double evalAngle_Paolo( const int ia ){
         int i = angAtoms[ia].x;
         int j = angAtoms[ia].y;
         int k = angAtoms[ia].z;
@@ -555,24 +608,38 @@ fclose(file);
         Vec2d cs3{cos,sin};
         cs3.mul_cmplx(cs2);
         double5 par = angParams[ia];
-        double E = par.k * ( par.c0 + par.c1*cs.x + par.c2*cs2.x + par.c3*cs3.x );
-        double fact = par.k * ( par.c1 + 2.0*par.c2*cs2.y/cs.y + 3.0*par.c3*cs3.y/cs.y );
+        double E    = par.k * ( par.c0 + par.c1*cs.x +     par.c2*cs2.x      +     par.c3*cs3.x      );
+        double fact = par.k * (          par.c1      + 2.0*par.c2*cs2.y/cs.y + 3.0*par.c3*cs3.y/cs.y );
         Vec3d vec_i, vec_k;
         vec_i.set_mul(rij,cs.x);
         vec_i.set_sub(vec_i,rkj);
         vec_k.set_mul(rkj,cs.x);
         vec_k.set_sub(vec_k,rij);
-        fang[ia*3].  set_mul(vec_i,fact*lij);
-        fang[ia*3+2].set_mul(vec_k,fact*lkj);
-        fang[ia*3+1].set_add(fang[ia*3],fang[ia*3+2]);
-        fang[ia*3+1].set_mul(fang[ia*3+1],-1.0);
+        Vec3d fpi = vec_i*(fact*lij);
+        Vec3d fpk = vec_k*(fact*lkj);
+        Vec3d fpj = (fpi + fpk)*(-1.0);
+        fang[ia*3]  =fpi;
+        fang[ia*3+2]=fpk;
+        fang[ia*3+1]=fpj;
+        { // Debug Draw
+            glColor3f(0.0,1.0,0.0);
+            const Vec3i ijk = angAtoms[id];
+            const Vec3d pi = apos[ijk.x]; 
+            const Vec3d pj = apos[ijk.y];
+            const Vec3d pk = apos[ijk.z];
+            Draw3D::drawArrow( pi, pi+fpi, 0.03 );
+            Draw3D::drawArrow( pj, pj+fpj, 0.03 );
+            Draw3D::drawArrow( pk, pk+fpk, 0.03 );
+        }
         // TBD exclude non-bonded interactions between 1-3 neighbors
         return E;
     }
 
     double evalAngles(){
         double E=0.0;
-        for( int ia=0; ia<nangles; ia++){ E+= evalAngle(ia); }
+        for( int ia=0; ia<nangles; ia++){ 
+            E+= evalAngle_Prokop(ia); 
+        }
         return E;
     }
 
@@ -580,7 +647,7 @@ fclose(file);
 
     double evalDihedral_Prokop( const int id ){
         //double E=0.0;
-        Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
+        const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
         const Quat4d q12 =    hneigh[ngs.x];  // ji
         const Quat4d q32 =    hneigh[ngs.y];  // jk
         const Quat4d q43 =    hneigh[ngs.z];  // kl
@@ -596,17 +663,17 @@ fclose(file);
             -n123.dot(q43.f)*inv_n12
         };
         Vec2d csn = cs;
-        Vec3d par = dihParams[id];
+        const Vec3d par = dihParams[id];
         const int n = (int)par.z;
         for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
-        double E  =  par.x * ( 1.0 + par.y * csn.x );
+        const double E  =  par.x * ( 1.0 + par.y * csn.x );
         // --- Force on end atoms
-        double f = -par.x * par.y * par.z * csn.y; 
+        const double f = -par.x * par.y * par.z * csn.y; 
         Vec3d fp1; fp1.set_mul(n123,-f*il2_123*q12.w );
         Vec3d fp4; fp4.set_mul(n234, f*il2_234*q43.w );
         // --- Recoil forces on axis atoms
-        double c123   = q32.f.dot(q12.f)*(q32.w/q12.w);
-        double c432   = q32.f.dot(q43.f)*(q32.w/q43.w);
+        const double c123   = q32.f.dot(q12.f)*(q32.w/q12.w);
+        const double c432   = q32.f.dot(q43.f)*(q32.w/q43.w);
         Vec3d fp3; fp3.set_lincomb( -c123,   fp1, -c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
         Vec3d fp2; fp2.set_lincomb( +c123-1, fp1, +c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
         const int i4=id*4;
