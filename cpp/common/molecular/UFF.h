@@ -700,39 +700,39 @@ fclose(file);
     }
 
     double evalDihedral_Paolo( const int id ){
-        int i = dihAtoms[id].x;
-        int j = dihAtoms[id].y;
-        int k = dihAtoms[id].z;
-        int l = dihAtoms[id].w;
-        const int*    ingsj = neighs   [j].array; // neighbors
-        const int*    ingsk = neighs   [k].array; // neighbors
-        Vec3d  r12, r32;
-        double l12, l32;
-        for(int in=0; in<4; in++){
-            int ing = ingsj[in];
-            if(ing<0) { break; }
-            if     (ing==i) { r12 = hneigh[j*4+in].f; l12 = 1.0/hneigh[j*4+in].e; }   
-            else if(ing==k) { r32 = hneigh[j*4+in].f; l32 = 1.0/hneigh[j*4+in].e; } 
-        }
-        Vec3d r43;
-        double l43;
-        for(int in=0; in<4; in++){
-            int ing = ingsk[in];
-            if(ing<0) { break; }
-            if     (ing==l) { r43 = hneigh[k*4+in].f; l43 = 1.0/hneigh[k*4+in].e; }   
-        }
+        // int i = dihAtoms[id].x;
+        // int j = dihAtoms[id].y;
+        // int k = dihAtoms[id].z;
+        // int l = dihAtoms[id].w;
+        // const int*    ingsj = neighs   [j].array; // neighbors
+        // const int*    ingsk = neighs   [k].array; // neighbors
+        // Vec3d  r12, r32;
+        // double l12, l32;
+        // for(int in=0; in<4; in++){
+        //     int ing = ingsj[in];
+        //     if(ing<0) { break; }
+        //     if     (ing==i) { r12 = hneigh[j*4+in].f; l12 = 1.0/hneigh[j*4+in].e; }   
+        //     else if(ing==k) { r32 = hneigh[j*4+in].f; l32 = 1.0/hneigh[j*4+in].e; } 
+        // }
+        // Vec3d r43;
+        // double l43;
+        // for(int in=0; in<4; in++){
+        //     int ing = ingsk[in];
+        //     if(ing<0) { break; }
+        //     if     (ing==l) { r43 = hneigh[k*4+in].f; l43 = 1.0/hneigh[k*4+in].e; }   
+        // }
 
-        // //{ // we need to read the normalized vectros for hneigh because of PBC
-        // //printf( "evalDihedral_Paolo() id %i \n", id );
-        // const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
-        // printf( "evalDihedral_Paolo() ngs %i %i %i \n", ngs.x, ngs.y, ngs.z );
-        // const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
-        // const double l32 = 1./hneigh[ngs.y].e; 
-        // const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
-        // const double l12 = 1./hneigh[ngs.x].e;
-        // const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
-        // const double l43 = 1./hneigh[ngs.z].e;
-        // //}
+        //{ // we need to read the normalized vectros for hneigh because of PBC
+        //printf( "evalDihedral_Paolo() id %i \n", id );
+        const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
+        printf( "evalDihedral_Paolo() ngs %i %i %i \n", ngs.x, ngs.y, ngs.z );
+        const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
+        const double l32 = 1./hneigh[ngs.y].e; 
+        const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
+        const double l12 = 1./hneigh[ngs.x].e;
+        const Vec3d  r43 =    hneigh[ngs.z].f;  // kl
+        const double l43 = 1./hneigh[ngs.z].e;
+        //}
 
         //printf( "evalDihedral_Paolo() l12 %g l32 %g l43 %g \n", l12, l32, l43 );
 
