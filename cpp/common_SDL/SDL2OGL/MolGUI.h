@@ -471,16 +471,29 @@ void MolGUI::draw(){
             apos[sel[i]].rotate_csa( cs.x, cs.y, ax, p0 );
         }
 
-        W->ffu.evalBonds();
-        Vec3d fbak[4];
-        double E,E_;
-        E_=W->ffu.evalDihedral_Paolo( 0 );
-        //E_=W->ffu.evalDihedral_Prokop_Old( 0 );
-        for(int i=0; i<4; i++){ fbak[i]=W->ffu.fdih[i]; }
-        //E=W->ffu.evalDihedral_Prokop_Old( 0 );
-        E=W->ffu.evalDihedral_Prokop( 0 );
-        printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
-        checkVec3Matches( 4, W->ffu.fdih, fbak, "dih_fp", 1 );
+        // { // Check Dihedrals
+        // W->ffu.evalBonds();
+        // Vec3d fbak[4];
+        // double E,E_;
+        // E_=W->ffu.evalDihedral_Paolo( 0 );
+        // //E_=W->ffu.evalDihedral_Prokop_Old( 0 );
+        // for(int i=0; i<4; i++){ fbak[i]=W->ffu.fdih[i]; }
+        // //E=W->ffu.evalDihedral_Prokop_Old( 0 );
+        // E=W->ffu.evalDihedral_Prokop( 0 );
+        // printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
+        // checkVec3Matches( 4, W->ffu.fdih, fbak, "dih_fp", 1 );
+        // }
+
+        { // Check Angles
+            W->ffu.evalBonds();
+            Vec3d fbak[4];
+            double E,E_;
+            E_=W->ffu.evalAngle_Paolo( 0 );
+            for(int i=0; i<3; i++){ fbak[i]=W->ffu.fang[i]; }
+            E=W->ffu.evalAngle_Prokop( 0 );
+            printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
+            checkVec3Matches( 3, W->ffu.fang, fbak, "dih_fp", 1 );
+        }
 
     }
 
