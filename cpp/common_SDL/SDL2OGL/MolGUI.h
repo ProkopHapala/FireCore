@@ -474,9 +474,9 @@ void MolGUI::draw(){
         W->ffu.evalBonds();
         Vec3d fbak[4];
         W->ffu.evalDihedral_Paolo( 0 );
-        // for(int i=0; i<4; i++){ fbak[i]=W->ffu.fdih[i]; }
-        // W->ffu.evalDihedral_Prokop_Old( 0 );
-        // checkVec3Matches( 4, W->ffu.fdih, fbak, "dih", 1 );
+        for(int i=0; i<4; i++){ fbak[i]=W->ffu.fdih[i]; }
+        W->ffu.evalDihedral_Prokop_Old( 0 );
+        checkVec3Matches( 4, W->ffu.fdih, fbak, "dih", 1 );
 
     }
 
