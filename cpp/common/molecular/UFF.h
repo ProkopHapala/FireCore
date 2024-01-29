@@ -890,36 +890,16 @@ fclose(file);
         cs2.mul_cmplx(cs);
         const double E =  par.x * ( par.y + par.z * c +       par.w * cs2.x );
         const double f = -par.x * (         par.z * s + 2.0 * par.w * cs2.y ) / c;
-        
-        // Vec3d scaled_123 = n123 * -sin ;
-        // Vec3d scaled_41  = r41  * -sin ;
-        // Vec3d tmp_123    = n123 - scaled_41;
-        // Vec3d fp4 = ( tmp_123 * fact ) * ( 1.0/l41 );
 
-        // Vec3d tmp_41;     tmp_41    .set_sub  ( r41,  scaled_123 );
-        // Vec3d f_21;       f_21      .set_cross( r31,  tmp_41 );
-        // Vec3d f_31;       f_31      .set_cross( tmp_41, r21 );
-        // double fact = -par.x * ( par.z * sin + 2.0 * par.w * cs2.y ) / cos ;
-        // Vec3d fp2 = f_21 * ( fact*l31/l123 );
-        // Vec3d fp3 = f_31 * ( fact*l21/l123 );
-        
-        // Vec3d fp1 = ( fp2 + fp3 + fp4 ) * -1.0;
-        //Vec3d tmp_123 = n123*il123 - q41.f*-s;
-
-        Vec3d fp4     = ( n123*il123 + q41.f*s )* ( f/l41 );
-
+        Vec3d fp4     = ( n123*il123 + q41.f*s )* ( f*q41.w );
         Vec3d tmp_41  = q41.f + n123*(s*il123);
         Vec3d f_21;  f_21.set_cross( q31.f, tmp_41 );
         Vec3d f_31;  f_31.set_cross( tmp_41, q21.f );
         
-        Vec3d fp2 = f_21 * ( f*l31/l123 );
-        Vec3d fp3 = f_31 * ( f*l21/l123 );
+        Vec3d fp2 = f_21 * ( f*il123*q21.e );
+        Vec3d fp3 = f_31 * ( f*il123*q31.e );
 
-        // Vec3d fp2 = f_21 * ( f*l31 );
-        // Vec3d fp3 = f_31 * ( f*l21 );
-
-        //Vec3d fp2 = f_21 * ( fact*l31/l123 );
-        //Vec3d fp3 = f_31 * ( fact*l21/l123 );
+        //printf( "Prokop: f %g l31 %g l123 %g  \n", f, l31, l123/(q21.e*q31.e) );
         
         Vec3d fp1 = ( fp2 + fp3 + fp4 ) * -1.0;
         finv[ii*4  ]=fp1;
@@ -935,13 +915,13 @@ fclose(file);
             const Vec3d p2 = apos[ijkl.y];
             const Vec3d p3 = apos[ijkl.z];
             const Vec3d p4 = apos[ijkl.w];
-            // Draw3D::drawArrow( p1, p1+fp1*fsc, 0.02 );
-            // Draw3D::drawArrow( p2, p2+fp2*fsc, 0.02 );
-            // Draw3D::drawArrow( p3, p3+fp3*fsc, 0.02 );
-            // Draw3D::drawArrow( p4, p4+fp4*fsc, 0.02 );
+            Draw3D::drawArrow( p1, p1+fp1*fsc, 0.02 );
+            Draw3D::drawArrow( p2, p2+fp2*fsc, 0.02 );
+            Draw3D::drawArrow( p3, p3+fp3*fsc, 0.02 );
+            Draw3D::drawArrow( p4, p4+fp4*fsc, 0.02 );
 
-            Draw3D::drawArrow( p2, p2+f_21, 0.02 );
-            Draw3D::drawArrow( p3, p3+f_31, 0.02 );
+            //Draw3D::drawArrow( p2, p2+f_21, 0.02 );
+            //Draw3D::drawArrow( p3, p3+f_31, 0.02 );
 
             Vec3d r21abs =  q21.f * l21;
             Vec3d r31abs =  q31.f * l31;
@@ -949,7 +929,7 @@ fclose(file);
 
             // Draw3D::drawArrow( p2, p2+f_21, 0.02 );
             // Draw3D::drawArrow( p3, p3+f_31, 0.02 );
-            Draw3D::drawArrow( p1, p1+tmp_41, 0.01 );
+            //Draw3D::drawArrow( p1, p1+tmp_41, 0.01 );
 
             //Draw3D::drawArrow( p4, p4+tmp_123, 0.01 );
             //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+n123*il123, 0.02 );
@@ -999,19 +979,20 @@ fclose(file);
         Vec2d cs2{cos,sin};
         cs2.mul_cmplx(cs);
         double E = par.x * ( par.y + par.z * cos + par.w * cs2.x );
-        Vec3d scaled_123; scaled_123.set_mul  ( n123, -sin );
-        Vec3d scaled_41;  scaled_41 .set_mul  ( r41,  -sin );
-        Vec3d tmp_123;    tmp_123   .set_sub  ( n123, scaled_41  );
+        Vec3d scaled_123; scaled_123.set_mul( n123, -sin );
+        Vec3d scaled_41;  scaled_41 .set_mul( r41,  -sin );
+        Vec3d tmp_123;    tmp_123   .set_sub( n123, scaled_41  );
 
         Vec3d tmp_123_ = n123 - r41*-sin;
-
-
         Vec3d tmp_41_  = r41 + n123*sin;
 
         Vec3d tmp_41;     tmp_41    .set_sub  ( r41,  scaled_123 );
         Vec3d f_21;       f_21      .set_cross( r31,  tmp_41 );
         Vec3d f_31;       f_31      .set_cross( tmp_41, r21 );
         double fact = -par.x * ( par.z * sin + 2.0 * par.w * cs2.y ) / cos ;
+
+        //printf( "Paolo: f %g l31 %g l123 %g \n", fact, l31, l123 );
+
         Vec3d fp2 = f_21 * ( fact*l31/l123 );
         Vec3d fp3 = f_31 * ( fact*l21/l123 );
         Vec3d fp4 = ( tmp_123 * fact ) * ( 1.0/l41 );
@@ -1033,17 +1014,17 @@ fclose(file);
             const Vec3d p2 = apos[ijkl.y];
             const Vec3d p3 = apos[ijkl.z];
             const Vec3d p4 = apos[ijkl.w];
-            // Draw3D::drawArrow( p1, p1+fp1*fsc, 0.03 );
-            // Draw3D::drawArrow( p2, p2+fp2*fsc, 0.03 );
-            // Draw3D::drawArrow( p3, p3+fp3*fsc, 0.03 );
-            // Draw3D::drawArrow( p4, p4+fp4*fsc, 0.03 );
+            Draw3D::drawArrow( p1, p1+fp1*fsc, 0.03 );
+            Draw3D::drawArrow( p2, p2+fp2*fsc, 0.03 );
+            Draw3D::drawArrow( p3, p3+fp3*fsc, 0.03 );
+            Draw3D::drawArrow( p4, p4+fp4*fsc, 0.03 );
 
-            Draw3D::drawArrow( p2, p2+f_21, 0.03 );
-            Draw3D::drawArrow( p3, p3+f_31, 0.03 );
+            //Draw3D::drawArrow( p2, p2+f_21, 0.03 );
+            //Draw3D::drawArrow( p3, p3+f_31, 0.03 );
 
-            Draw3D::drawArrow( p1, p1+tmp_41, 0.05 );
-            glColor3f(0.0,0.0,0.0);
-            Draw3D::drawArrow( p1, p1+tmp_41_, 0.03 );
+            //Draw3D::drawArrow( p1, p1+tmp_41, 0.05 );
+            //glColor3f(0.0,0.0,0.0);
+            //Draw3D::drawArrow( p1, p1+tmp_41_, 0.03 );
 
             // Draw3D::drawArrow( p4, p4+tmp_123, 0.03 );
             // Draw3D::drawArrow( p4, p4+tmp_123_, 0.05 );
