@@ -211,14 +211,14 @@ void initMultiCPU(int nSys){
     }
 }
 
-virtual void init( bool bGrid ) override {
+virtual void init() override {
     int err = 0;
     printf("# ========== MolWorld_sp3_multi::init() START\n");
     gopt.msolver = this;
     int i_nvidia = ocl.print_devices(true);
     ocl.init(i_nvidia);
     ocl.makeKrenels_MM("common_resources/cl" );
-    MolWorld_sp3::init(bGrid);
+    MolWorld_sp3::init();
     // ----- init systems
     realloc( nSystems );
     //if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them

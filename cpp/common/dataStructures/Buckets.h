@@ -5,7 +5,7 @@
 #include "macroUtils.h"
 
 class Buckets{ public:
-    int ncell;
+    int  ncell;
     int* cellNs=0;   //[ncell]
     int* cellI0s=0;  //[ncell]
     int* cell2obj=0; //[nobj]
@@ -16,7 +16,12 @@ class Buckets{ public:
     int  nobj_bind=-1;
     int* obj2cell_bind=0; 
 
-
+    inline int addToCell( int icell, int iobj ){
+        int j = cellI0s[icell] + cellNs[icell];
+        cell2obj[j] = iobj;
+        cellNs[icell]++;
+        return j;
+    }
 
     inline void clean(){ for(int k=0; k<ncell; k++ ){ cellNs[k]=0; } }
     inline void count( int nobj, int* obj2cell ){ 

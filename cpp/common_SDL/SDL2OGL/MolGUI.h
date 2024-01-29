@@ -456,7 +456,8 @@ void MolGUI::draw(){
             for(int i=4; i<6; i++){ apos[i].mul(0.8); }
             for(int i=0; i<natoms; i++){ apos[i].mul(1.5); }
 
-            //apos[0].z += 0.5;
+            apos[0].z += 0.5;
+            apos[1].z -= 0.5;
         }
 
         double angle = 0.0;
@@ -500,18 +501,29 @@ void MolGUI::draw(){
         //     checkVec3Matches( 3, W->ffu.fang, fbak, "dih_fp", 1 );
         // }
 
+        // { // Check Inversions
+        //     //W->ffu.printSizes();
+        //     W->ffu.evalBonds();
+        //     Vec3d fbak[4];
+        //     double E,E_;
+        //     E_=W->ffu.evalInversions_Paolo( 0 );
+        //     for(int i=0; i<4; i++){ fbak[i]=W->ffu.fang[i]; }
+        //     E=W->ffu.evalInversions_Prokop( 0 );
+        //     printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
+        //     //checkVec3Matches( 4, W->ffu.fang, fbak, "dih_fp", 1 );
+        // }
 
-        { // Check Inversions
-            //W->ffu.printSizes();
-            W->ffu.evalBonds();
-            Vec3d fbak[4];
-            double E,E_;
-            E_=W->ffu.evalInversions_Paolo( 0 );
-            for(int i=0; i<4; i++){ fbak[i]=W->ffu.fang[i]; }
-            E=W->ffu.evalInversions_Prokop( 0 );
-            printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
-            //checkVec3Matches( 4, W->ffu.fang, fbak, "dih_fp", 1 );
+        { // check OMP
+            Vec3d fapos[ W->ffu.natoms ];
+            double E_ = W->ffu.eval();
+            for(int i=0; i<W->ffu.natoms; i++){ fapos[i]=W->ffu.fapos[i]; }
+            double E  = W->ffu.eval_omp();
+            printf( " Eerr %g | E_ref %g E %g \n", E-E_, E_, E);
+            bool b = checkVec3Matches( W->ffu.natoms, W->ffu.fapos, fapos, "fpos", 1 );
+            if(b){ printf( "ffu.eval_omp() OK \n" ); }else{ printf( "ffu.eval_omp() FAILED \n" ); }
+            exit(0);
         }
+
 
     }
 

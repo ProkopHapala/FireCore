@@ -277,10 +277,10 @@ void checkBkNeighCPU(){
     //exit(0);
 }
 
-virtual void init( bool bGrid ) override  {
+virtual void init() override  {
     ocl.init();
     ocl.makeKrenels_PP("common_resources/cl" );
-    MolWorld_sp3::init(bGrid);
+    MolWorld_sp3::init();
     mol2ocl();
     bGridFF=false;
     bOcl   =false;

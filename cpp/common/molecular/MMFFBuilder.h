@@ -468,10 +468,10 @@ class Builder{  public:
         //MM = M;
         //MM.set_mmul(lvec,M);
         //MM.set_mmul(lvs,M);
-        //printf("DEBUG changeCell()  lvec\n"); lvec .print();
-        //printf("DEBUG changeCell()  lvs\n"); lvs   .print();
-        //printf("DEBUG changeCell()  M (inv(lvs))\n"); M .print();
-        //printf("DEBUG changeCell() MM\n"); MM.print(); //exit(0);
+        //printf("Debug changeCell()  lvec\n"); lvec .print();
+        //printf("Debug changeCell()  lvs\n"); lvs   .print();
+        //printf("Debug changeCell()  M (inv(lvs))\n"); M .print();
+        //printf("Debug changeCell() MM\n"); MM.print(); //exit(0);
         transform_atoms( MM,orig_old,orig_new,i0,n);
         lvec=lvs;
     }
@@ -803,7 +803,7 @@ class Builder{  public:
         }
         atomj->pos = atoms[ia].pos + hdir*l;
         insertAtom(*atomj);
-        // { // DEBUG
+        // { // Debug
         //     Atom& a= atoms.back();
         //     printf( "addCap[%i : %i ] pos(%g,%g,%g) pos0(%g,%g,%g) hdir(%g,%g,%g) \n", atoms.size(), ia, a.pos.x,a.pos.y,a.pos.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z, hdir.x,hdir.y,hdir.z );
         // }
@@ -1062,7 +1062,7 @@ class Builder{  public:
     }
 
     void assignAllSp3Types(){
-        //printf("DEBUG assignAllSp3Types() \n");
+        //printf("Builder::assignAllSp3Types() \n");
         for(int i=0; i<atoms.size(); i++){
             Atom& A = atoms[i];
             if( params->atypes[A.type].parrent != 0 ) continue; // already assigned
@@ -1559,7 +1559,7 @@ class Builder{  public:
             loadNeighbors( ia, conf.nbond, conf.neighs, hs );
             makeConfGeom (     conf.nbond, conf.npi,    hs );
 
-            // { // DEBUG
+            // { // Debug
             //     sprintf( tmpstr, "atom%03i_hs.xyz", ia );
             //     FILE* fout=fopen(tmpstr, "w");
             //     fprintf(fout,"5\n");
@@ -1610,7 +1610,7 @@ class Builder{  public:
         loadNeighbors ( ia, nb,       conf.neighs, hs );
         makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs );
 
-        // { // DEBUG
+        // { // Debug
         //     sprintf( tmpstr, "atom%03i_hs.xyz", ia );
         //     FILE* fout=fopen(tmpstr, "w");
         //     fprintf(fout,"5\n");
@@ -1663,7 +1663,7 @@ class Builder{  public:
 
     int countPiE(int& npi, int i0=0, int n=-1)const{
         nconf_def(n,i0);
-        //printf("DEBUG countPiE() n %i i0 %i \n", n,i0);
+        //printf("Builder::countPiE() n %i i0 %i \n", n,i0);
         int ne=0; 
         npi=0;
         for(int i=0; i<n;i++){
@@ -2115,7 +2115,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         int ic = atoms[ia].iconf;
         if(ic>=0){
             int i = confs[ic].findNeigh(ib);
-            //printf( "DEBUG ia=%i neighs[%i]=%i \n", ia, i, ib );
+            //printf( "Builder::checkAtomHasBond ia=%i neighs[%i]=%i \n", ia, i, ib );
             return i>=0;
         }
         return bDefault;
@@ -2139,7 +2139,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         const Vec2i& b=bonds[ib].atoms; 
         bool ba = checkAtomHasBond(b.a,ib);
         bool bb = checkAtomHasBond(b.b,ib);
-        //if(! (ba && bb))printf( "DEBUG !bond[%i|%i,%i] %i %i\n", ib, b.a, b.b, ba, bb);
+        //if(! (ba && bb))printf( "Builder::checkBondInNeighs !bond[%i|%i,%i] %i %i\n", ib, b.a, b.b, ba, bb);
         return ba && bb;
     }
 
@@ -2834,9 +2834,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             A.REQ  = mol->REQs[ipivot];
             if(A.iconf>=0){ 
                 confs[A.iconf].init0(); confs[A.iconf].ne = params->atypes[atyp].nepair; 
-                //printf( "DEBUG pivot has conf ic=%i \n", A.iconf );
             }else{ 
-                //printf( "DEBUG pivot has NOT conf ic=%i \n", A.iconf );
                 //addConfToAtom(ia); 
             } 
         }
@@ -2885,9 +2883,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             A.REQ  = mol->REQs[ipivot];
             if(A.iconf>=0){ 
                 confs[A.iconf].init0(); confs[A.iconf].ne = params->atypes[atyp].nepair; 
-                //printf( "DEBUG pivot has conf ic=%i \n", A.iconf );
             }else{ 
-                //printf( "DEBUG pivot has NOT conf ic=%i \n", A.iconf );
                 //addConfToAtom(ia); 
             } 
         }
@@ -3121,7 +3117,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         //pbcShifts[i] = pbcShift( (Vec3i)bonds[i].ipbc );
         const Vec3i8& G = bonds[i].ipbc;
         pbcShifts[i] = M->a*G.a + M->b*G.b + M->c*G.c;
-        //if( pbcShifts[i].norm2()>0.1 ){ printf( "PBC-bond[%i]  atoms(%i,%i)  pbcShift(%g,%g,%g) ipb(%i,%i,%i)\n",  bonds[i].atoms.a, bonds[i].atoms.b, pbcShifts[i].x,pbcShifts[i].y,pbcShifts[i].z, bonds[i].ipbc.x,bonds[i].ipbc.y,bonds[i].ipbc.z );  };  // DEBUG
+        //if( pbcShifts[i].norm2()>0.1 ){ printf( "PBC-bond[%i]  atoms(%i,%i)  pbcShift(%g,%g,%g) ipb(%i,%i,%i)\n",  bonds[i].atoms.a, bonds[i].atoms.b, pbcShifts[i].x,pbcShifts[i].y,pbcShifts[i].z, bonds[i].ipbc.x,bonds[i].ipbc.y,bonds[i].ipbc.z );  };
     }
 }
 
@@ -3132,7 +3128,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
         int nBmax = bonds.size();
         int nCmax = confs.size();
         // {
-        //     printf("!!!! WARRNING DEBUG HACK !!!! Builder::toMMFFsp3(): change array sizes \n");
+        //     printf("!!!! WARRNING Debug HACK !!!! Builder::toMMFFsp3(): change array sizes \n");
         //     printf("!!!! Before: nAmax %i nBmax %i \n", nAmax, nBmax);
         //     nAmax = frags[0].atomRange.b;
         //     nBmax = frags[0].bondRange.b;
@@ -3307,12 +3303,13 @@ void toUFF( UFF& ff, bool bRealloc=true ){
             }
         }
     } 
-    DEBUG
-    ff.makeNeighBs(); DEBUG
-    ff.bakeAngleNeighs(); DEBUG
-    ff.bakeDihedralNeighs(); DEBUG
-    ff.bakeInversionNeighs(); DEBUG
-    ff.printSizes();
+
+    ff.makeNeighBs();         
+    ff.bakeAngleNeighs();     
+    ff.bakeDihedralNeighs();  
+    ff.bakeInversionNeighs(); 
+    ff.mapAtomInteractions(); 
+    ff.printSizes();          
  
     ff.bPBC = bPBC;
     if(verbosity>0)printf("MM::Builder::toUFF DONE\n");
