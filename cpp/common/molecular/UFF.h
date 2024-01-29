@@ -429,7 +429,7 @@ class UFF : public NBFF { public:
         return Etot;
     }
 
-    double eval_omp( bool bClean=true ){
+    double eval_omp_old( bool bClean=true ){
         printf("UFF::eval_omp() \n");
         if(bClean)cleanForce();
         Eb = evalBonds();
@@ -441,6 +441,52 @@ class UFF : public NBFF { public:
         assembleAtomsForces();
         return Etot;
     }
+
+    double eval_omp( bool bClean=true ){
+        printf("UFF::eval_omp() \n");
+        #pragma omp parallel shared(Eb,Ea,Ed,Ei)
+        {
+            #pragma omp single
+            {
+                Eb = 0; Ea = 0; Ed = 0; Ei = 0;
+            }
+            #pragma omp for reduction(+:Eb)
+            for(int ia=0; ia<natoms; ia++){ 
+                fapos[ia]=Vec3dZero;
+                Eb+=evalAtomBonds(ia); 
+                // Non-Bonded
+                // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+            }
+            // #pragma omp for reduction(+:Ea)
+            // for(int ia=0; ia<natoms; ia++){ 
+            //     Ea+=evalAngle_Prokop(ia); 
+            // }
+            // #pragma omp for reduction(+:Ed)
+            // for(int ia=0; ia<natoms; ia++){ 
+            //     Ed+=evalDihedral_Prokop(ia); 
+            // }
+            // #pragma omp for reduction(+:Ei)
+            // for(int ia=0; ia<natoms; ia++){ 
+            //     Ei+=evalInversion_Prokop(ia); 
+            // }
+            // #pragma omp single
+            // {
+
+            // }
+            #pragma omp for
+            for(int ia=0; ia<natoms; ia++){ 
+                assembleAtomForce(ia); 
+            }
+        }
+        Etot = Eb + Ea + Ed + Ei;
+        return Etot;
+    }
+
+
+
+
+
 
     void assembleForcesDebug(bool bbonds, bool bangles, bool bdihedrals, bool binversions){
         printf("UFF::assembleForcesDebug(bonds(%i|%i) angles(%i|%i) dihedrals(%i|%i) inversions(%i|%i) )\n", bbonds,nbonds, bangles, nangles, bdihedrals, ndihedrals, binversions, ninversions ); 
@@ -988,7 +1034,7 @@ class UFF : public NBFF { public:
         return E;
     }
 
-    inline double evalInversions_Prokop( const int ii ){
+    inline double evalInversion_Prokop( const int ii ){
         const Vec3i ngs  = invNgs[ii];  // {ji, ki, li}
         Quat4d q21 =    hneigh[ngs.x];  // ji
         Quat4d q31 =    hneigh[ngs.y];  // ki
@@ -1050,7 +1096,7 @@ class UFF : public NBFF { public:
         return E;
     }
 
-    inline double evalInversions_Paolo( const int ii ){
+    inline double evalInversion_Paolo( const int ii ){
         int i = invAtoms[ii].x;
         int j = invAtoms[ii].y;
         int k = invAtoms[ii].z;
@@ -1150,8 +1196,8 @@ class UFF : public NBFF { public:
     double evalInversions(){
         double E=0.0;
         for( int ii=0; ii<ninversions; ii++){ 
-            E+=evalInversions_Prokop(ii); 
-            //E+=evalInversions_Paolo(ii); 
+            E+=evalInversion_Prokop(ii); 
+            //E+=evalInversion_Paolo(ii); 
         }
         return E;
     }
