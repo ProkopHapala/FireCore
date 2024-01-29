@@ -528,7 +528,9 @@ fclose(file);
 
     double evalBonds(){
         double E=0.0;
-        for(int ia=0; ia<natoms; ia++){ E+= evalAtomBonds(ia); }
+        for(int ia=0; ia<natoms; ia++){ 
+            E+= evalAtomBonds(ia); 
+        }
         return E;
     }
 
@@ -639,6 +641,7 @@ fclose(file);
         double E=0.0;
         for( int ia=0; ia<nangles; ia++){ 
             E+= evalAngle_Prokop(ia); 
+            //E+= evalAngle_Paolo(ia);
         }
         return E;
     }
@@ -873,34 +876,26 @@ fclose(file);
         Quat4d q21 =    hneigh[ngs.x];  // ji
         Quat4d q31 =    hneigh[ngs.y];  // ki
         Quat4d q41 =    hneigh[ngs.z];  // li
-
-        double l21=1.0/q21.w; 
-        double l31=1.0/q31.w;
-        double l41=1.0/q41.w;
-
-
+        // --- normal to plane jkl
         Vec3d  n123;  n123.set_cross( q21.f, q31.f );         //  |n123| = sin( r21, r31 )
-        const double l123  = n123.norm();                     //  |n123| = sin( r21, r31 )
-        const double il123 =  1/l123;                         // il2_123 =   1 / (sin( r21, r31 ))^2
-        const double s     = -n123.dot(q41.f)*il123;          // sin = -n123*q41 / |n123|
+        const double il123  = 1/n123.normalize();         
+        // --- energy and force
+        const double s     = -n123.dot(q41.f);                // sin = -n123*q41
         const double c     =  sqrt(1.0-s*s+1e-14);            // must be positive number !!!
-        const Quat4d par = invParams[ii];
+        const Quat4d par   =  invParams[ii];
         Vec2d cs {c,s};
         Vec2d cs2{c,s};
         cs2.mul_cmplx(cs);
         const double E =  par.x * ( par.y + par.z * c +       par.w * cs2.x );
         const double f = -par.x * (         par.z * s + 2.0 * par.w * cs2.y ) / c;
-
-        Vec3d fp4     = ( n123*il123 + q41.f*s )* ( f*q41.w );
-        Vec3d tmp_41  = q41.f + n123*(s*il123);
-        Vec3d f_21;  f_21.set_cross( q31.f, tmp_41 );
-        Vec3d f_31;  f_31.set_cross( tmp_41, q21.f );
-        
-        Vec3d fp2 = f_21 * ( f*il123*q21.e );
-        Vec3d fp3 = f_31 * ( f*il123*q31.e );
-
-        //printf( "Prokop: f %g l31 %g l123 %g  \n", f, l31, l123/(q21.e*q31.e) );
-        
+        // --- Force on end atoms
+        const double fq41  = f*q41.w;
+        const double fi123 = f*il123;
+        Vec3d tq ; tq .set_lincomb( s*fi123, n123,  fi123, q41.f );
+        Vec3d fp4; fp4.set_lincomb(    fq41, n123, s*fq41, q41.f );
+        Vec3d fp2; fp2.set_cross( q31.f, tq );  fp2.mul( q21.e );
+        Vec3d fp3; fp3.set_cross( tq, q21.f );  fp3.mul( q31.e );
+        // --- Recoil forces on fulcrum and output
         Vec3d fp1 = ( fp2 + fp3 + fp4 ) * -1.0;
         finv[ii*4  ]=fp1;
         finv[ii*4+1]=fp2;
@@ -919,23 +914,17 @@ fclose(file);
             Draw3D::drawArrow( p2, p2+fp2*fsc, 0.02 );
             Draw3D::drawArrow( p3, p3+fp3*fsc, 0.02 );
             Draw3D::drawArrow( p4, p4+fp4*fsc, 0.02 );
-
             //Draw3D::drawArrow( p2, p2+f_21, 0.02 );
             //Draw3D::drawArrow( p3, p3+f_31, 0.02 );
-
-            Vec3d r21abs =  q21.f * l21;
-            Vec3d r31abs =  q31.f * l31;
-            Vec3d r41abs =  q41.f * l41;
-
             // Draw3D::drawArrow( p2, p2+f_21, 0.02 );
             // Draw3D::drawArrow( p3, p3+f_31, 0.02 );
             //Draw3D::drawArrow( p1, p1+tmp_41, 0.01 );
-
             //Draw3D::drawArrow( p4, p4+tmp_123, 0.01 );
             //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+n123*il123, 0.02 );
             //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+q41.f     , 0.02 );
-
-
+            Vec3d r21abs =  q21.f *( 1/q21.w);
+            Vec3d r31abs =  q31.f *( 1/q31.w);
+            Vec3d r41abs =  q41.f *( 1/q41.w);
             glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
             glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
             glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
@@ -1044,8 +1033,8 @@ fclose(file);
     double evalInversions(){
         double E=0.0;
         for( int ii=0; ii<ninversions; ii++){ 
-            //E+=evalInversions_Paolo(ii); 
             E+=evalInversions_Prokop(ii); 
+            //E+=evalInversions_Paolo(ii); 
         }
         return E;
     }
