@@ -12,6 +12,8 @@
 #include "molecular_utils.h"   // various molecular utilities
 #include "NBFF.h" // Non-Bonded Force Field
 
+#include "Buckets.h" // Buckets
+
 #include "Draw3D.h"  // just for debug
 
 // ========================
@@ -54,7 +56,8 @@ class UFF : public NBFF { public:
 
     // dimensions of the system
     double Etot, Eb, Ea, Ed, Ei;                          // total, bond, angle, dihedral, inversion energies
-    int natoms, nbonds, nangles, ndihedrals, ninversions; // number of bonds, angles, dihedrals, inversions
+    int natoms, nbonds, nangles, ndihedrals, ninversions, nf; // number of bonds, angles, dihedrals, inversions, number of force pieces
+    int i0dih,i0inv,i0ang,i0bon;
     int nDOFs;                                            // total number of degrees of freedom
     double*  DOFs __attribute__((aligned(64))) = 0;                                  // degrees of freedom
     double* fDOFs __attribute__((aligned(64))) = 0;                                  // forces                               
@@ -66,10 +69,16 @@ class UFF : public NBFF { public:
     
     Quat4d* hneigh __attribute__((aligned(64))) = 0;  // [natoms*4]     bond vectors (normalized in .xyz=f ) and their inverse length in .w=e
                         //                for each atom and each neighbor (the array in already unrolled)
-    //Vec3d * fbon __attribute__((aligned(64))) = 0;  // [nbonds*2]     temporary store of forces on atoms from bonds (before the assembling step)
-    Vec3d * fang __attribute__((aligned(64))) = 0;  // [nangles*3]    temporary store of forces on atoms from bonds (before the assembling step)
-    Vec3d * fdih __attribute__((aligned(64))) = 0;  // [ndihedrals*4] temporary store of forces on atoms from bonds (before the assembling step)
-    Vec3d * finv __attribute__((aligned(64))) = 0;  // [nimpropers*4] temporary store of forces on atoms from bonds (before the assembling step)
+    // Vec3d * fbon __attribute__((aligned(64))) = 0;  // [nbonds*2]     temporary store of forces on atoms from bonds (before the assembling step)
+    // Vec3d * fang __attribute__((aligned(64))) = 0;  // [nangles*3]    temporary store of forces on atoms from bonds (before the assembling step)
+    // Vec3d * fdih __attribute__((aligned(64))) = 0;  // [ndihedrals*4] temporary store of forces on atoms from bonds (before the assembling step)
+    // Vec3d * finv __attribute__((aligned(64))) = 0;  // [nimpropers*4] temporary store of forces on atoms from bonds (before the assembling step)
+
+    Vec3d * fint __attribute__((aligned(64))) = 0;  // [ndihedrals+nimpropers+nangles*3+nbonds]  temporary store of forces on atoms from bonds (before the assembling step)
+    Vec3d * fbon = 0;  // [nbonds*2]     temporary store of forces on atoms from bonds (before the assembling step)
+    Vec3d * fang = 0;  // [nangles*3]    temporary store of forces on atoms from bonds (before the assembling step)
+    Vec3d * fdih = 0;  // [ndihedrals*4] temporary store of forces on atoms from bonds (before the assembling step)
+    Vec3d * finv = 0;  // [nimpropers*4] temporary store of forces on atoms from bonds (before the assembling step)
 
     // Params
     Quat4i *  neighBs   __attribute__((aligned(64))) = 0; // [natoms]      bond indices for each neighbor
@@ -82,16 +91,17 @@ class UFF : public NBFF { public:
     Quat4i *  invAtoms  __attribute__((aligned(64))) = 0; // [ninversions] inversions atoms
     Quat4d *  invParams __attribute__((aligned(64))) = 0; // [ninversions] inversions parameters
 
-    Vec3i * dihNgs __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals neighbor index
     Vec2i * angNgs __attribute__((aligned(64))) = 0; // [nangles]     angles neighbor index
+    Vec3i * dihNgs __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals neighbor index
     Vec3i * invNgs __attribute__((aligned(64))) = 0; // [ninversions] inversions neighbor index
 
     /*
-
     // TBD this can be done on interactions e.g. f from bonds, f from angles...
     Vec3d * fneigh  =0;  // [nnode*4]     temporary store of forces on atoms form neighbors (before assembling step)
     Vec3d * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
     */
+
+    Buckets a2f; // mapping from atoms to force pieces (bonds, angles, dihedrals, inversions) for fast force assembling
 
     // =========================== Functions
 
@@ -103,6 +113,16 @@ class UFF : public NBFF { public:
         nangles=nangles_; 
         ndihedrals=ndihedrals_; 
         ninversions=ninversions_;
+        // ---- For assembly of forces
+        nf    = ndihedrals*4+ninversions*4+nangles*3+nbonds;
+        i0dih = 0;
+        i0inv = i0dih + 4*ndihedrals;
+        i0ang = i0inv + 4*ninversions;
+        i0bon = i0ang + 3*nangles;
+
+        //printf( "UFF::realloc natoms %i nbonds %i nangles %i ndihedrals %i ninversions %i \n", natoms, nbonds, nangles, ndihedrals, ninversions );
+        printf( "UFF::realloc nf %i i0dihedrals %i i0inv %i i0ang %i i0bon %i \n", nf, i0dih, i0inv, i0ang, i0bon );
+
         nDOFs = natoms*3;
         _realloc0(  DOFs, nDOFs, (double)NAN );
         _realloc0( fDOFs, nDOFs, (double)NAN );
@@ -114,29 +134,35 @@ class UFF : public NBFF { public:
         _realloc0( hneigh    , natoms*4, Quat4dNAN );
         _realloc0( atypes    , natoms,   -1        );
         // ---- Aux
+        _realloc0( fint, nf, Vec3dNAN );
+        fdih=fint + i0dih;
+        finv=fint + i0inv;
+        fang=fint + i0ang;
+        fbon=fint + i0bon;
+        
+        
         //_realloc0( fbon  , nbonds*2,      Vec3dNAN );
-        _realloc0( fang  , nangles*3,     Vec3dNAN );
-        _realloc0( fdih  , ndihedrals*4,  Vec3dNAN );
-        _realloc0( finv  , ninversions*4, Vec3dNAN );
+        //_realloc0( fang  , nangles*3,     Vec3dNAN );
+        //_realloc0( fdih  , ndihedrals*4,  Vec3dNAN );
+        //_realloc0( finv  , ninversions*4, Vec3dNAN );
         // ----- Params 
         _realloc0( bonAtoms  , nbonds,    Vec2iZero );
         _realloc0( bonParams , nbonds,    Vec2dNAN  );
         _realloc0( angAtoms  , nangles,   Vec3iZero );
         _realloc0( angParams , nangles,   (double5){(double)NAN,(double)NAN,(double)NAN,(double)NAN,(double)NAN}  );
         _realloc0( dihAtoms  , ndihedrals,  Quat4iZero );
-        _realloc0( dihNgs    , ndihedrals,  Vec3iZero  );
         _realloc0( dihParams , ndihedrals,  Vec3dNAN   );
         _realloc0( invAtoms  , ninversions, Quat4iZero );
         _realloc0( invParams , ninversions, Quat4dNAN  );
 
-        _realloc0( invNgs    , nangles,     Vec3iZero  );
-        _realloc0( angNgs    , ninversions, Vec2iZero  );
+        _realloc0( angNgs    , nangles,     Vec2iZero  );
+        _realloc0( invNgs    , ninversions, Vec3iZero  );
+        _realloc0( dihNgs    , ndihedrals,  Vec3iZero  );
 
     }
 
     // deallocate UFF
     void dealloc(){
-
         natoms=0; 
         nbonds=0; 
         nangles=0; 
@@ -174,6 +200,45 @@ class UFF : public NBFF { public:
 
 
     // ============== Evaluation
+
+    void mapAtomInteractions(){
+        a2f.resizeCells( natoms );
+        a2f.resizeObjs ( nf     );
+        a2f.clean();
+        for(int i=0; i<ndihedrals; i++){ const Quat4i& d = dihAtoms[i]; a2f.cellNs[d.x]++; a2f.cellNs[d.y]++; a2f.cellNs[d.z]++; a2f.cellNs[d.w]++; }
+        for(int i=0; i<ninversions;i++){ const Quat4i& v = invAtoms[i]; a2f.cellNs[v.x]++; a2f.cellNs[v.y]++; a2f.cellNs[v.z]++; a2f.cellNs[v.w]++; }
+        for(int i=0; i<nangles;    i++){ const Vec3i&  a = angAtoms[i]; a2f.cellNs[a.x]++; a2f.cellNs[a.y]++; a2f.cellNs[a.z]++;                    }
+        for(int i=0; i<nbonds;     i++){ const Vec2i&  b = bonAtoms[i]; a2f.cellNs[b.y]++;                                                          }
+        a2f.updateOffsets();
+        for(int i=0; i<ndihedrals; i++){ 
+            const Quat4i& d = dihAtoms[i]; 
+            int i0 = i*4 + i0dih;
+            a2f.addToCell( d.x, i0   );
+            a2f.addToCell( d.y, i0+1 );
+            a2f.addToCell( d.z, i0+2 );
+            a2f.addToCell( d.w, i0+3 );
+        }
+        for(int i=0; i<ninversions;i++){ 
+            const Quat4i& v = invAtoms[i];
+            int i0 = i*4 + i0inv; 
+            a2f.addToCell( v.x, i0   );
+            a2f.addToCell( v.y, i0+1 );
+            a2f.addToCell( v.z, i0+2 );
+            a2f.addToCell( v.w, i0+3 );    
+        }
+        for(int i=0; i<nangles;    i++){ 
+            const Vec3i&  a = angAtoms[i];
+            int i0 = i*3 + i0ang;
+            a2f.addToCell( a.x, i0   );
+            a2f.addToCell( a.y, i0+1 );
+            a2f.addToCell( a.z, i0+2 );
+        }
+        for(int i=0; i<nbonds;     i++){ 
+            const Vec2i&  b = bonAtoms[i];
+            //a2f.addToCell( b.x, i+i0bon );   // this is already done in evalAtomBonds()
+            a2f.addToCell( b.y, i+i0bon );
+        }
+    }
 
     void makeNeighBs(){
         for(int i=0; i<nbonds; i++){  
@@ -335,42 +400,50 @@ class UFF : public NBFF { public:
 
     // Full evaluation of UFF intramolecular force-field
     double eval( bool bClean=true ){
+        //printf("UFF::eval() \n");
+        if(bClean)cleanForce();  
+        Eb = evalBonds();  
+        Ea = evalAngles(); 
+        Ed = evalDihedrals();
+        Ei = evalInversions(); 
+        Etot = Eb + Ea + Ed + Ei;
+        //printForcePieces();
+        assembleForces();
+        // //Etot = Eb; 
+        // //assembleForcesDebug(true,false,false,false);
+        // //Etot = Ea; 
+        // //assembleForcesDebug(false,true,false,false);
+        // Etot = Ed; 
+        // assembleForcesDebug(false,false,true,false);
+        // //Etot = Ei; 
+        // //assembleForcesDebug(false,false,false,true);
+        // double tokcal = 60.2214076*1.602176634/4.1840;
+        // FILE *file = fopen("out","w");
+        // fprintf( file, "%g\n", Etot*tokcal );
+        // fprintf( file, "%i\n", natoms );
+        // for(int ia=0; ia<natoms; ia++){
+        //     fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
+        // }
+        // fclose(file);
+        // //printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
+        return Etot;
+    }
 
+    double eval_omp( bool bClean=true ){
+        printf("UFF::eval_omp() \n");
         if(bClean)cleanForce();
-
         Eb = evalBonds();
         Ea = evalAngles();
         Ed = evalDihedrals();
         Ei = evalInversions();
-        
-        //Etot = Eb + Ea + Ed + Ei;
+        Etot = Eb + Ea + Ed + Ei;
         //assembleForces();
-
-// DEBUG 
-//Etot = Eb; 
-//assembleForcesDEBUG(true,false,false,false);
-//Etot = Ea; 
-//assembleForcesDEBUG(false,true,false,false);
-Etot = Ed; 
-assembleForcesDEBUG(false,false,true,false);
-//Etot = Ei; 
-//assembleForcesDEBUG(false,false,false,true);
-double tokcal = 60.2214076*1.602176634/4.1840;
-FILE *file = fopen("out","w");
-fprintf( file, "%g\n", Etot*tokcal );
-fprintf( file, "%i\n", natoms );
-for(int ia=0; ia<natoms; ia++){
-    fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
-}
-fclose(file);
-//printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
-
+        assembleAtomsForces();
         return Etot;
-
     }
 
-    void assembleForcesDEBUG(bool bbonds, bool bangles, bool bdihedrals, bool binversions){
-        printf("assembleForcesDEBUG(bonds(%i|%i) angles(%i|%i) dihedrals(%i|%i) inversions(%i|%i) )\n", bbonds,nbonds, bangles, nangles, bdihedrals, ndihedrals, binversions, ninversions ); 
+    void assembleForcesDebug(bool bbonds, bool bangles, bool bdihedrals, bool binversions){
+        printf("UFF::assembleForcesDebug(bonds(%i|%i) angles(%i|%i) dihedrals(%i|%i) inversions(%i|%i) )\n", bbonds,nbonds, bangles, nangles, bdihedrals, ndihedrals, binversions, ninversions ); 
         // if(bbonds){
         //     // bonds
         //     for(int i=0; i<nbonds; i++){
@@ -421,59 +494,102 @@ fclose(file);
                 fapos[ia4].add( finv[i*4+3] );
             }
         }
+        printf("UFF::assembleForcesDebug() DONE\n");
     }
 
     void assembleForces(){
+        //printf("assembleForces()\n");
         // NOTE: this is not parallelized ( wee need somethig which loops over atoms otherwise we would need atomic add )
-        // bonds
-        // for(int i=0; i<nbonds; i++){
-        //     int ia1 = bonAtoms[i].x;
-        //     int ia2 = bonAtoms[i].y;
-        //     fapos[ia1].add( fbon[i*2] );
-        //     fapos[ia2].add( fbon[i*2+1] );
-        // }
+        //printf("assembleForces() bonds %i \n" , nbonds );
+        for(int i=0; i<nbonds; i++){
+            //int ia1 = bonAtoms[i].x;
+            int ia2 = bonAtoms[i].y;
+            //printf("assembleForces() bonds %i = %i \n", i, i+i0bon );
+            //fapos[ia1].add( fbon[i*2] );  // this is already done in evalAtomBonds()
+            fapos[ia2].add( fbon[i] );
+        }
         // angles
+        //printf("assembleForces() angles %i \n" , nangles );
         for(int i=0; i<nangles; i++){
+            const int i3 = i*3;
             const Vec3i ii = angAtoms[i];
-            //int ia1 = angAtoms[i].x;
-            //int ia2 = angAtoms[i].y;
-            //int ia3 = angAtoms[i].z;
-            fapos[ii.x].add( fang[i*3] );
-            fapos[ii.y].add( fang[i*3+1] );
-            fapos[ii.z].add( fang[i*3+2] );
+            //printf("assembleForces() angles %i = %i \n", i, i3+2+i0ang );
+            fapos[ii.x].add( fang[i3  ] );
+            fapos[ii.y].add( fang[i3+1] );
+            fapos[ii.z].add( fang[i3+2] );
         }
         // dihedrals
+        //printf("assembleForces() dihedrals %i \n" , ndihedrals );
         for(int i=0; i<ndihedrals; i++){
+            const int i4 = i*4;
             const Quat4i ii = dihAtoms[i];
-            // int ia1 = dihAtoms[i].x;
-            // int ia2 = dihAtoms[i].y;
-            // int ia3 = dihAtoms[i].z;
-            // int ia4 = dihAtoms[i].w;
-            fapos[ii.x].add( fdih[i*4] );
-            fapos[ii.y].add( fdih[i*4+1] );
-            fapos[ii.z].add( fdih[i*4+2] );
-            fapos[ii.w].add( fdih[i*4+3] );
+            //printf("assembleForces() dihedrals[%i] = %i \n", i, i4+3+i0dih );
+            fapos[ii.x].add( fdih[i4  ] );
+            fapos[ii.y].add( fdih[i4+1] );
+            fapos[ii.z].add( fdih[i4+2] );
+            fapos[ii.w].add( fdih[i4+3] );
         }
         // inversions
+        //printf("assembleForces() inversions %i \n" , ninversions );
         for(int i=0; i<ninversions; i++){
-            // int ia1 = invAtoms[i].x;
-            // int ia2 = invAtoms[i].y;
-            // int ia3 = invAtoms[i].z;
-            // int ia4 = invAtoms[i].w;
-            const Quat4i ii = dihAtoms[i];
-            fapos[ii.x].add( finv[i*4] );
-            fapos[ii.y].add( finv[i*4+1] );
-            fapos[ii.z].add( finv[i*4+2] );
-            fapos[ii.w].add( finv[i*4+3] );
+            const int i4 = i*4;
+            const Quat4i ii = invAtoms[i];
+            //printf("assembleForces() inversions[%i] = %i \n", i, i4+3+i0inv );
+            fapos[ii.x].add( finv[i4  ] );
+            fapos[ii.y].add( finv[i4+1] );
+            fapos[ii.z].add( finv[i4+2] );
+            fapos[ii.w].add( finv[i4+3] );
         }
+        //printf("assembleForces() DONE\n");
+    }
+
+    void printForcePieces(){
+        printf("printForcePieces()\n");
+        int j = 0;
+        printf("assembleForces() dihedrals %i \n" , ndihedrals );
+        for(int i=0; i<ndihedrals; i++){
+            printf("printForcePieces() dihedrals[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+            printf("printForcePieces() dihedrals[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+            printf("printForcePieces() dihedrals[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+            printf("printForcePieces() dihedrals[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+        }
+        printf("assembleForces() inversions %i \n" , ninversions );
+        for(int i=0; i<ninversions; i++){
+            printf("printForcePieces() inversions[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+            printf("printForcePieces() inversions[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+            printf("printForcePieces() inversions[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+            printf("printForcePieces() inversions[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+        }
+        printf("assembleForces() angles %i \n" , nangles );
+        for(int i=0; i<nangles; i++){
+            printf("printForcePieces() angles[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+            printf("printForcePieces() angles[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+            printf("printForcePieces() angles[%i,%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+        }
+        printf("assembleForces() bonds %i \n" , nbonds );
+        for(int i=0; i<nbonds; i++){
+            printf("printForcePieces() bonds[%i=%i] f(%g,%g,%g) \n", i, j, fint[j].x, fint[j].y, fint[j].z ); j++;
+        }
+        printf("printForcePieces() DONE\n");
     }
 
     void assembleAtomForce(const int ia){
-        fapos[ia].add( fang[ia*3] );
+        int i0  = a2f.cellI0s[ia];
+        int i1  = i0 + a2f.cellNs[ia];
+        Vec3d f = fapos[ia];
+        for(int i=i0; i<i1; i++){
+            int j = a2f.cell2obj[i];
+            //Vec3d fi = fint[j];
+            //f.add(fi);
+            f.add( fint[j] );
+        } 
+        fapos[ia] = f;
     }
 
     void assembleAtomsForces(){
+        //printf("UFF::assembleAtomsForces() \n");
         for(int ia=0; ia<natoms; ia++){ assembleAtomForce(ia); }
+        //printf("UFF::assembleAtomsForces() DONE\n");
     }
 
     inline double evalAtomBonds(const int ia){
@@ -520,7 +636,8 @@ fclose(file);
             //f.mul(-1.0);
             //fbon[ib*2+1]=f;      
             fapos[ia].add(f);
-            //fapos[ing].sub(f);       // NOTE: this will cause problems in parallelization !!!!!!!! ( we need to use atomic add )   
+            f.mul(-1.0);
+            fbon[ib]=f;       // NOTE: this will cause problems in parallelization !!!!!!!! ( we need to use atomic add )   
             // TBD exclude non-bonded interactions between 1-2 neighbors
         }
         return E;

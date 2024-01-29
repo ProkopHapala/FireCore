@@ -89,7 +89,8 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
 	W.builder.bindParams(&W.params);
     W.nSystems=nSys;
     bool bGrid = gridStep>0;
-    W.init( bGrid );
+    W.bGridFF = bGrid;
+    W.init();
     init_buffers();
     return &W;
 }

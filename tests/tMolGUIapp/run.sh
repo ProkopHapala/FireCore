@@ -18,9 +18,8 @@ rm $name
 make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
 
+rm $name
 ln -s $dir/$name .
-
-
 
 # ------- asan (Memory Sanitizer)
 #LD_PRELOAD=$(g++ -print-file-name=libasan.so)
