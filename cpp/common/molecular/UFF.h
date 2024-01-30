@@ -14,7 +14,7 @@
 
 #include "Buckets.h" // Buckets
 
-#include "Draw3D.h"  // just for debug
+//#include "Draw3D.h"  // just for debug
 
 // ========================
 // ====   UFF          ====
@@ -401,6 +401,7 @@ class UFF : public NBFF { public:
     // Full evaluation of UFF intramolecular force-field
     double eval( bool bClean=true ){
         //printf("UFF::eval() \n");
+        Eb=0; Ea=0; Ed=0; Ei=0;
         if(bClean)cleanForce();  
         Eb = evalBonds();  
         Ea = evalAngles(); 
@@ -443,7 +444,8 @@ class UFF : public NBFF { public:
     }
 
     double eval_omp( bool bClean=true ){
-        printf("UFF::eval_omp() \n");
+        //#pragma omp for reduction(+:Ei) nowait   // to remove implicit barrier
+        //printf("UFF::eval_omp() \n");
         #pragma omp parallel shared(Eb,Ea,Ed,Ei)
         {
             #pragma omp single
@@ -453,27 +455,26 @@ class UFF : public NBFF { public:
             #pragma omp for reduction(+:Eb)
             for(int ia=0; ia<natoms; ia++){ 
                 fapos[ia]=Vec3dZero;
-                Eb+=evalAtomBonds(ia); 
+                Eb +=evalAtomBonds(ia); 
                 // Non-Bonded
                 // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
                 // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
             }
-            // #pragma omp for reduction(+:Ea)
-            // for(int ia=0; ia<natoms; ia++){ 
-            //     Ea+=evalAngle_Prokop(ia); 
-            // }
-            // #pragma omp for reduction(+:Ed)
-            // for(int ia=0; ia<natoms; ia++){ 
-            //     Ed+=evalDihedral_Prokop(ia); 
-            // }
-            // #pragma omp for reduction(+:Ei)
-            // for(int ia=0; ia<natoms; ia++){ 
-            //     Ei+=evalInversion_Prokop(ia); 
-            // }
-            // #pragma omp single
-            // {
-
-            // }
+            #pragma omp for reduction(+:Ea)
+            for(int i=0; i<nangles; i++){ 
+                Ea+=evalAngle_Prokop(i);
+                //Ea+=evalAngle_Paolo(i); 
+            }
+            #pragma omp for reduction(+:Ed)
+            for(int i=0; i<ndihedrals; i++){ 
+                Ed+=evalDihedral_Prokop(i); 
+            }
+            #pragma omp for reduction(+:Ei)
+            for(int i=0; i<ninversions; i++){ 
+                Ei+=evalInversion_Prokop(i); 
+            }
+            //#pragma omp single
+            //{            }
             #pragma omp for
             for(int ia=0; ia<natoms; ia++){ 
                 assembleAtomForce(ia); 
@@ -692,7 +693,7 @@ class UFF : public NBFF { public:
     double evalBonds(){
         double E=0.0;
         for(int ia=0; ia<natoms; ia++){ 
-            E+= evalAtomBonds(ia); 
+            E += evalAtomBonds(ia);
         }
         return E;
     }
@@ -734,19 +735,19 @@ class UFF : public NBFF { public:
         fang[i3+1]=fpj;
         fang[i3+2]=fpk;
         // TBD exclude non-bonded interactions between 1-3 neighbors
-        { // Debug Draw
-            glColor3f(1.0,0.0,1.0);
-            const Vec3i ijk = angAtoms[id];
-            const Vec3d pi = apos[ijk.x]; 
-            const Vec3d pj = apos[ijk.y];
-            const Vec3d pk = apos[ijk.z];
-            Draw3D::drawArrow( pi, pi+fpi, 0.03 );
-            Draw3D::drawArrow( pj, pj+fpj, 0.03 );
-            Draw3D::drawArrow( pk, pk+fpk, 0.03 );
-            //glColor3f(0.0,0.0,1.0); Draw3D::drawArrow( pj, pj+qij.f*(1/qij.w), 0.03 );
-            //glColor3f(1.0,0.0,0.0); Draw3D::drawArrow( pj, pj+qkj.f*(1/qkj.w), 0.03 );
-            //Draw3D::drawArrow( pk, pk+fpk, 0.03 );
-        }
+        // { // Debug Draw
+        //     glColor3f(1.0,0.0,1.0);
+        //     const Vec3i ijk = angAtoms[id];
+        //     const Vec3d pi = apos[ijk.x]; 
+        //     const Vec3d pj = apos[ijk.y];
+        //     const Vec3d pk = apos[ijk.z];
+        //     Draw3D::drawArrow( pi, pi+fpi, 0.03 );
+        //     Draw3D::drawArrow( pj, pj+fpj, 0.03 );
+        //     Draw3D::drawArrow( pk, pk+fpk, 0.03 );
+        //     //glColor3f(0.0,0.0,1.0); Draw3D::drawArrow( pj, pj+qij.f*(1/qij.w), 0.03 );
+        //     //glColor3f(1.0,0.0,0.0); Draw3D::drawArrow( pj, pj+qkj.f*(1/qkj.w), 0.03 );
+        //     //Draw3D::drawArrow( pk, pk+fpk, 0.03 );
+        // }
         return E;
     }
 
@@ -786,16 +787,16 @@ class UFF : public NBFF { public:
         fang[ia*3]  =fpi;
         fang[ia*3+2]=fpk;
         fang[ia*3+1]=fpj;
-        { // Debug Draw
-            glColor3f(0.0,1.0,0.0);
-            const Vec3i ijk = angAtoms[id];
-            const Vec3d pi = apos[ijk.x]; 
-            const Vec3d pj = apos[ijk.y];
-            const Vec3d pk = apos[ijk.z];
-            Draw3D::drawArrow( pi, pi+fpi, 0.03 );
-            Draw3D::drawArrow( pj, pj+fpj, 0.03 );
-            Draw3D::drawArrow( pk, pk+fpk, 0.03 );
-        }
+        // { // Debug Draw
+        //     glColor3f(0.0,1.0,0.0);
+        //     const Vec3i ijk = angAtoms[id];
+        //     const Vec3d pi = apos[ijk.x]; 
+        //     const Vec3d pj = apos[ijk.y];
+        //     const Vec3d pk = apos[ijk.z];
+        //     Draw3D::drawArrow( pi, pi+fpi, 0.03 );
+        //     Draw3D::drawArrow( pj, pj+fpj, 0.03 );
+        //     Draw3D::drawArrow( pk, pk+fpk, 0.03 );
+        // }
         // TBD exclude non-bonded interactions between 1-3 neighbors
         return E;
     }
@@ -848,18 +849,18 @@ class UFF : public NBFF { public:
         fdih[i4+2]=fp3;
         fdih[i4+3]=fp4;
 
-        { // Debug Draw
-            glColor3f(1.0,0.0,0.0);
-            const Quat4i ijkl = dihAtoms[id];
-            const Vec3d p1 = apos[ijkl.x]; 
-            const Vec3d p2 = apos[ijkl.y];
-            const Vec3d p3 = apos[ijkl.z];
-            const Vec3d p4 = apos[ijkl.w];
-            Draw3D::drawArrow( p1, p1+fp1, 0.1 );
-            Draw3D::drawArrow( p2, p2+fp2, 0.1 );
-            Draw3D::drawArrow( p3, p3+fp3, 0.1 );
-            Draw3D::drawArrow( p4, p4+fp4, 0.1 );
-        }
+        // { // Debug Draw
+        //     glColor3f(1.0,0.0,0.0);
+        //     const Quat4i ijkl = dihAtoms[id];
+        //     const Vec3d p1 = apos[ijkl.x]; 
+        //     const Vec3d p2 = apos[ijkl.y];
+        //     const Vec3d p3 = apos[ijkl.z];
+        //     const Vec3d p4 = apos[ijkl.w];
+        //     Draw3D::drawArrow( p1, p1+fp1, 0.1 );
+        //     Draw3D::drawArrow( p2, p2+fp2, 0.1 );
+        //     Draw3D::drawArrow( p3, p3+fp3, 0.1 );
+        //     Draw3D::drawArrow( p4, p4+fp4, 0.1 );
+        // }
         return E;
     }
 
@@ -908,18 +909,18 @@ class UFF : public NBFF { public:
         fdih[i4+2]=fp3;
         fdih[i4+3]=fp4;
 
-        { // Debug Draw
-            glColor3f(1.0,0.0,1.0);
-            const Quat4i ijkl = dihAtoms[id];
-            const Vec3d p1 = apos[ijkl.x]; 
-            const Vec3d p2 = apos[ijkl.y];
-            const Vec3d p3 = apos[ijkl.z];
-            const Vec3d p4 = apos[ijkl.w];
-            Draw3D::drawArrow( p1, p1+fp1, 0.01 );
-            Draw3D::drawArrow( p2, p2+fp2, 0.01 );
-            Draw3D::drawArrow( p3, p3+fp3, 0.01 );
-            Draw3D::drawArrow( p4, p4+fp4, 0.01 );
-        }
+        // { // Debug Draw
+        //     glColor3f(1.0,0.0,1.0);
+        //     const Quat4i ijkl = dihAtoms[id];
+        //     const Vec3d p1 = apos[ijkl.x]; 
+        //     const Vec3d p2 = apos[ijkl.y];
+        //     const Vec3d p3 = apos[ijkl.z];
+        //     const Vec3d p4 = apos[ijkl.w];
+        //     Draw3D::drawArrow( p1, p1+fp1, 0.01 );
+        //     Draw3D::drawArrow( p2, p2+fp2, 0.01 );
+        //     Draw3D::drawArrow( p3, p3+fp3, 0.01 );
+        //     Draw3D::drawArrow( p4, p4+fp4, 0.01 );
+        // }
         return E;
     }
 
@@ -1005,23 +1006,23 @@ class UFF : public NBFF { public:
         // fdih[id*4+1].set_add(fdih[id*4],f_32);
         // fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
         // fdih[id*4+2].set_sub(f_32,fdih[id*4+3]);
-        { // Debug Draw
-            glColor3f(0.0,0.8,0.0);
-            const Quat4i ijkl = dihAtoms[id];
-            const Vec3d p1 = apos[ijkl.x]; 
-            const Vec3d p2 = apos[ijkl.y];
-            const Vec3d p3 = apos[ijkl.z];
-            const Vec3d p4 = apos[ijkl.w];
-            Draw3D::drawArrow( p1, p1+fp1, 0.02 );
-            Draw3D::drawArrow( p2, p2+fp2, 0.02 );
-            Draw3D::drawArrow( p3, p3+fp3, 0.02 );
-            Draw3D::drawArrow( p4, p4+fp4, 0.02 );
+        // { // Debug Draw
+        //     glColor3f(0.0,0.8,0.0);
+        //     const Quat4i ijkl = dihAtoms[id];
+        //     const Vec3d p1 = apos[ijkl.x]; 
+        //     const Vec3d p2 = apos[ijkl.y];
+        //     const Vec3d p3 = apos[ijkl.z];
+        //     const Vec3d p4 = apos[ijkl.w];
+        //     Draw3D::drawArrow( p1, p1+fp1, 0.02 );
+        //     Draw3D::drawArrow( p2, p2+fp2, 0.02 );
+        //     Draw3D::drawArrow( p3, p3+fp3, 0.02 );
+        //     Draw3D::drawArrow( p4, p4+fp4, 0.02 );
 
-            // glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r12abs, p2 );
-            // glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r32abs, p2 );
-            // glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r43abs, p3 );
-            //Draw3D::drawVecInPos( r12abs, p2 )
-        }
+        //     // glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r12abs, p2 );
+        //     // glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r32abs, p2 );
+        //     // glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r43abs, p3 );
+        //     //Draw3D::drawVecInPos( r12abs, p2 )
+        // }
         return E;
     }
 
@@ -1065,34 +1066,34 @@ class UFF : public NBFF { public:
         finv[ii*4+2]=fp3;
         finv[ii*4+3]=fp4;
 
-        { // Debug Draw
-            double fsc = 20.0;
-            glColor3f(1.0,0.0,1.0);
-            const Quat4i ijkl = invAtoms[id];
-            const Vec3d p1 = apos[ijkl.x]; 
-            const Vec3d p2 = apos[ijkl.y];
-            const Vec3d p3 = apos[ijkl.z];
-            const Vec3d p4 = apos[ijkl.w];
-            Draw3D::drawArrow( p1, p1+fp1*fsc, 0.02 );
-            Draw3D::drawArrow( p2, p2+fp2*fsc, 0.02 );
-            Draw3D::drawArrow( p3, p3+fp3*fsc, 0.02 );
-            Draw3D::drawArrow( p4, p4+fp4*fsc, 0.02 );
-            //Draw3D::drawArrow( p2, p2+f_21, 0.02 );
-            //Draw3D::drawArrow( p3, p3+f_31, 0.02 );
-            // Draw3D::drawArrow( p2, p2+f_21, 0.02 );
-            // Draw3D::drawArrow( p3, p3+f_31, 0.02 );
-            //Draw3D::drawArrow( p1, p1+tmp_41, 0.01 );
-            //Draw3D::drawArrow( p4, p4+tmp_123, 0.01 );
-            //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+n123*il123, 0.02 );
-            //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+q41.f     , 0.02 );
-            Vec3d r21abs =  q21.f *( 1/q21.w);
-            Vec3d r31abs =  q31.f *( 1/q31.w);
-            Vec3d r41abs =  q41.f *( 1/q41.w);
-            glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
-            glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
-            glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
-            //Draw3D::drawVecInPos( r12abs, p2 )
-        }
+        // { // Debug Draw
+        //     double fsc = 20.0;
+        //     glColor3f(1.0,0.0,1.0);
+        //     const Quat4i ijkl = invAtoms[id];
+        //     const Vec3d p1 = apos[ijkl.x]; 
+        //     const Vec3d p2 = apos[ijkl.y];
+        //     const Vec3d p3 = apos[ijkl.z];
+        //     const Vec3d p4 = apos[ijkl.w];
+        //     Draw3D::drawArrow( p1, p1+fp1*fsc, 0.02 );
+        //     Draw3D::drawArrow( p2, p2+fp2*fsc, 0.02 );
+        //     Draw3D::drawArrow( p3, p3+fp3*fsc, 0.02 );
+        //     Draw3D::drawArrow( p4, p4+fp4*fsc, 0.02 );
+        //     //Draw3D::drawArrow( p2, p2+f_21, 0.02 );
+        //     //Draw3D::drawArrow( p3, p3+f_31, 0.02 );
+        //     // Draw3D::drawArrow( p2, p2+f_21, 0.02 );
+        //     // Draw3D::drawArrow( p3, p3+f_31, 0.02 );
+        //     //Draw3D::drawArrow( p1, p1+tmp_41, 0.01 );
+        //     //Draw3D::drawArrow( p4, p4+tmp_123, 0.01 );
+        //     //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+n123*il123, 0.02 );
+        //     //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+q41.f     , 0.02 );
+        //     Vec3d r21abs =  q21.f *( 1/q21.w);
+        //     Vec3d r31abs =  q31.f *( 1/q31.w);
+        //     Vec3d r41abs =  q41.f *( 1/q41.w);
+        //     glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
+        //     glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
+        //     glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
+        //     //Draw3D::drawVecInPos( r12abs, p2 )
+        // }
         return E;
     }
 
@@ -1158,37 +1159,37 @@ class UFF : public NBFF { public:
         // finv[ii*4+3].set_mul(tmp_123,fact/l41     );
         // finv[ii*4  ].set_lincomb(-1.0,-1.0,-1.0,finv[ii*4+1],finv[ii*4+2],finv[ii*4+3]);
 
-        { // Debug Draw
-            double fsc = 20.0;
-            glColor3f(0.0,0.8,0.0);
-            const Quat4i ijkl = invAtoms[id];
-            const Vec3d p1 = apos[ijkl.x]; 
-            const Vec3d p2 = apos[ijkl.y];
-            const Vec3d p3 = apos[ijkl.z];
-            const Vec3d p4 = apos[ijkl.w];
-            Draw3D::drawArrow( p1, p1+fp1*fsc, 0.03 );
-            Draw3D::drawArrow( p2, p2+fp2*fsc, 0.03 );
-            Draw3D::drawArrow( p3, p3+fp3*fsc, 0.03 );
-            Draw3D::drawArrow( p4, p4+fp4*fsc, 0.03 );
+        // { // Debug Draw
+        //     double fsc = 20.0;
+        //     glColor3f(0.0,0.8,0.0);
+        //     const Quat4i ijkl = invAtoms[id];
+        //     const Vec3d p1 = apos[ijkl.x]; 
+        //     const Vec3d p2 = apos[ijkl.y];
+        //     const Vec3d p3 = apos[ijkl.z];
+        //     const Vec3d p4 = apos[ijkl.w];
+        //     Draw3D::drawArrow( p1, p1+fp1*fsc, 0.03 );
+        //     Draw3D::drawArrow( p2, p2+fp2*fsc, 0.03 );
+        //     Draw3D::drawArrow( p3, p3+fp3*fsc, 0.03 );
+        //     Draw3D::drawArrow( p4, p4+fp4*fsc, 0.03 );
 
-            //Draw3D::drawArrow( p2, p2+f_21, 0.03 );
-            //Draw3D::drawArrow( p3, p3+f_31, 0.03 );
+        //     //Draw3D::drawArrow( p2, p2+f_21, 0.03 );
+        //     //Draw3D::drawArrow( p3, p3+f_31, 0.03 );
 
-            //Draw3D::drawArrow( p1, p1+tmp_41, 0.05 );
-            //glColor3f(0.0,0.0,0.0);
-            //Draw3D::drawArrow( p1, p1+tmp_41_, 0.03 );
+        //     //Draw3D::drawArrow( p1, p1+tmp_41, 0.05 );
+        //     //glColor3f(0.0,0.0,0.0);
+        //     //Draw3D::drawArrow( p1, p1+tmp_41_, 0.03 );
 
-            // Draw3D::drawArrow( p4, p4+tmp_123, 0.03 );
-            // Draw3D::drawArrow( p4, p4+tmp_123_, 0.05 );
-            // glColor3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+n123, 0.03 );
-            // glColor3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+r41 , 0.03 );
+        //     // Draw3D::drawArrow( p4, p4+tmp_123, 0.03 );
+        //     // Draw3D::drawArrow( p4, p4+tmp_123_, 0.05 );
+        //     // glColor3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+n123, 0.03 );
+        //     // glColor3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+r41 , 0.03 );
 
-            // Vec3d r41abs = q41.f * l41;
-            // glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
-            // glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
-            // glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
-            //Draw3D::drawVecInPos( r12abs, p2 )
-        }
+        //     // Vec3d r41abs = q41.f * l41;
+        //     // glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
+        //     // glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
+        //     // glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
+        //     //Draw3D::drawVecInPos( r12abs, p2 )
+        // }
 
         return E;
     }
