@@ -17,7 +17,7 @@
 //#include "Draw3D.h"  // just for debug
 
 // ========================
-// ====   UFF          ====
+// ====       UFF      ====
 // ========================
 //
 //    This is an implementation of Universal Force Field. It was made using MMFFsp3_loc as a template.
@@ -57,11 +57,8 @@ class UFF : public NBFF { public:
     // dimensions of the system
     double Etot, Eb, Ea, Ed, Ei;                          // total, bond, angle, dihedral, inversion energies
     int natoms, nbonds, nangles, ndihedrals, ninversions, nf; // number of bonds, angles, dihedrals, inversions, number of force pieces
-    int i0dih,i0inv,i0ang,i0bon;
-    int nDOFs;                                            // total number of degrees of freedom
-    double*  DOFs __attribute__((aligned(64))) = 0;                                  // degrees of freedom
-    double* fDOFs __attribute__((aligned(64))) = 0;                                  // forces                               
-    Vec3d * vapos __attribute__((aligned(64))) = 0;      // [natoms] velocities of atoms
+    int i0dih,i0inv,i0ang,i0bon;                         
+    //Vec3d * vapos __attribute__((aligned(64))) = 0;      // [natoms] velocities of atoms
 
     Mat3d   invLvec;    // inverse lattice vectors
 
@@ -123,11 +120,16 @@ class UFF : public NBFF { public:
         //printf( "UFF::realloc natoms %i nbonds %i nangles %i ndihedrals %i ninversions %i \n", natoms, nbonds, nangles, ndihedrals, ninversions );
         printf( "UFF::realloc nf %i i0dihedrals %i i0inv %i i0ang %i i0bon %i \n", nf, i0dih, i0inv, i0ang, i0bon );
 
-        nDOFs = natoms*3;
-        _realloc0(  DOFs, nDOFs, (double)NAN );
-        _realloc0( fDOFs, nDOFs, (double)NAN );
-        apos   = (Vec3d*) DOFs ;
-        fapos  = (Vec3d*)fDOFs;
+        //nDOFs = natoms*3;
+        // _realloc0(  DOFs, nDOFs, (double)NAN );
+        // _realloc0( fDOFs, nDOFs, (double)NAN );
+        // apos   = (Vec3d*) DOFs;
+        // fapos  = (Vec3d*)fDOFs;
+
+        _realloc0( apos    , natoms, Vec3dNAN );
+        _realloc0( fapos   , natoms, Vec3dNAN );
+        _realloc0( vapos   , natoms, Vec3dNAN );  
+
         _realloc0( neighs    , natoms,   Quat4iMinusOnes );  // neighbor indices for each atom
         _realloc0( neighBs   , natoms,   Quat4iMinusOnes );  // bond indices for each neighbor
         _realloc0( neighCell , natoms,   Quat4iMinusOnes );  // cell indices for each neighbor
@@ -168,9 +170,9 @@ class UFF : public NBFF { public:
         nangles=0; 
         ndihedrals=0; 
         ninversions=0;
-        nDOFs= 0;
-        _dealloc(DOFs );
-        _dealloc(fDOFs);
+        // nDOFs= 0;
+        // _dealloc(DOFs );
+        // _dealloc(fDOFs);
         apos   = 0;
         fapos  = 0;
         _dealloc(neighs);
@@ -398,109 +400,19 @@ class UFF : public NBFF { public:
         }
     }
 
-    // Full evaluation of UFF intramolecular force-field
-    double eval( bool bClean=true ){
-        //printf("UFF::eval() \n");
-        Eb=0; Ea=0; Ed=0; Ei=0;
-        if(bClean)cleanForce();  
-        Eb = evalBonds();  
-        Ea = evalAngles(); 
-        Ed = evalDihedrals();
-        Ei = evalInversions(); 
-        Etot = Eb + Ea + Ed + Ei;
-        //printForcePieces();
-        assembleForces();
-        // //Etot = Eb; 
-        // //assembleForcesDebug(true,false,false,false);
-        // //Etot = Ea; 
-        // //assembleForcesDebug(false,true,false,false);
-        // Etot = Ed; 
-        // assembleForcesDebug(false,false,true,false);
-        // //Etot = Ei; 
-        // //assembleForcesDebug(false,false,false,true);
-        // double tokcal = 60.2214076*1.602176634/4.1840;
-        // FILE *file = fopen("out","w");
-        // fprintf( file, "%g\n", Etot*tokcal );
-        // fprintf( file, "%i\n", natoms );
-        // for(int ia=0; ia<natoms; ia++){
-        //     fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
-        // }
-        // fclose(file);
-        // //printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
-        return Etot;
-    }
-
-    double eval_omp_old( bool bClean=true ){
-        printf("UFF::eval_omp() \n");
-        if(bClean)cleanForce();
-        Eb = evalBonds();
-        Ea = evalAngles();
-        Ed = evalDihedrals();
-        Ei = evalInversions();
-        Etot = Eb + Ea + Ed + Ei;
-        //assembleForces();
-        assembleAtomsForces();
-        return Etot;
-    }
-
-    double eval_omp( bool bClean=true ){
-        //#pragma omp for reduction(+:Ei) nowait   // to remove implicit barrier
-        //printf("UFF::eval_omp() \n");
-        #pragma omp parallel shared(Eb,Ea,Ed,Ei)
-        {
-            #pragma omp single
-            {
-                Eb = 0; Ea = 0; Ed = 0; Ei = 0;
-            }
-            #pragma omp for reduction(+:Eb)
-            for(int ia=0; ia<natoms; ia++){ 
-                fapos[ia]=Vec3dZero;
-                Eb +=evalAtomBonds(ia); 
-                // Non-Bonded
-                // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
-            }
-            #pragma omp for reduction(+:Ea)
-            for(int i=0; i<nangles; i++){ 
-                Ea+=evalAngle_Prokop(i);
-                //Ea+=evalAngle_Paolo(i); 
-            }
-            #pragma omp for reduction(+:Ed)
-            for(int i=0; i<ndihedrals; i++){ 
-                Ed+=evalDihedral_Prokop(i); 
-            }
-            #pragma omp for reduction(+:Ei)
-            for(int i=0; i<ninversions; i++){ 
-                Ei+=evalInversion_Prokop(i); 
-            }
-            //#pragma omp single
-            //{            }
-            #pragma omp for
-            for(int ia=0; ia<natoms; ia++){ 
-                assembleAtomForce(ia); 
-            }
-        }
-        Etot = Eb + Ea + Ed + Ei;
-        return Etot;
-    }
-
-
-
-
-
 
     void assembleForcesDebug(bool bbonds, bool bangles, bool bdihedrals, bool binversions){
         printf("UFF::assembleForcesDebug(bonds(%i|%i) angles(%i|%i) dihedrals(%i|%i) inversions(%i|%i) )\n", bbonds,nbonds, bangles, nangles, bdihedrals, ndihedrals, binversions, ninversions ); 
-        // if(bbonds){
-        //     // bonds
-        //     for(int i=0; i<nbonds; i++){
-        //         printf("bond[%i]\n",i);
-        //         int ia1 = bonAtoms[i].x;
-        //         int ia2 = bonAtoms[i].y;
-        //         fapos[ia1].add( fbon[i*2] );
-        //         fapos[ia2].add( fbon[i*2+1] );
-        //     }
-        // }
+        if(bbonds){
+            // bonds
+            for(int i=0; i<nbonds; i++){
+                printf("bond[%i]\n",i);
+                //int ia1 = bonAtoms[i].x;
+                int ia2 = bonAtoms[i].y;
+                //fapos[ia1].add( fbon[i*2] );
+                fapos[ia2].add( fbon[i*2+1] );
+            }
+        }
         if(bangles){
             // angles
             for(int i=0; i<nangles; i++){
@@ -1214,10 +1126,210 @@ class UFF : public NBFF { public:
     */
 
 
-    // ================== Print functions  
+    // Full evaluation of UFF intramolecular force-field
+    double eval( bool bClean=true ){
+        //printf("UFF::eval() \n");
+        Eb=0; Ea=0; Ed=0; Ei=0;
+        if(bClean)cleanForce();  
+        Eb = evalBonds();  
+        Ea = evalAngles(); 
+        Ed = evalDihedrals();
+        Ei = evalInversions(); 
+        Etot = Eb + Ea + Ed + Ei;
+        //printForcePieces();
+        assembleForces();
+        // //Etot = Eb; 
+        // //assembleForcesDebug(true,false,false,false);
+        // //Etot = Ea; 
+        // //assembleForcesDebug(false,true,false,false);
+        // Etot = Ed; 
+        // assembleForcesDebug(false,false,true,false);
+        // //Etot = Ei; 
+        // //assembleForcesDebug(false,false,false,true);
+        // double tokcal = 60.2214076*1.602176634/4.1840;
+        // FILE *file = fopen("out","w");
+        // fprintf( file, "%g\n", Etot*tokcal );
+        // fprintf( file, "%i\n", natoms );
+        // for(int ia=0; ia<natoms; ia++){
+        //     fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
+        // }
+        // fclose(file);
+        // //printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
+        return Etot;
+    }
 
+    double eval_omp_old( bool bClean=true ){
+        printf("UFF::eval_omp() \n");
+        if(bClean)cleanForce();
+        Eb = evalBonds();
+        Ea = evalAngles();
+        Ed = evalDihedrals();
+        Ei = evalInversions();
+        Etot = Eb + Ea + Ed + Ei;
+        //assembleForces();
+        assembleAtomsForces();
+        return Etot;
+    }
+
+    double eval_omp( bool bClean=true ){
+        //#pragma omp for reduction(+:Ei) nowait   // to remove implicit barrier
+        //printf("UFF::eval_omp() \n");
+        #pragma omp parallel shared(Eb,Ea,Ed,Ei)
+        {
+            #pragma omp single
+            {
+                Eb = 0; Ea = 0; Ed = 0; Ei = 0;
+            }
+            #pragma omp for reduction(+:Eb)
+            for(int ia=0; ia<natoms; ia++){ 
+                fapos[ia]=Vec3dZero;
+                Eb +=evalAtomBonds(ia); 
+                // Non-Bonded
+                // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+            }
+            #pragma omp barrier   // all hneigh[] must be computed before computing other interactions
+            #pragma omp for reduction(+:Ea) nowait  // angles and dihedrals can be computed in parallel (are independent)
+            for(int i=0; i<nangles; i++){ 
+                Ea+=evalAngle_Prokop(i);
+                //Ea+=evalAngle_Paolo(i); 
+            }
+            #pragma omp for reduction(+:Ed) nowait  // dihedrals and inversions can be computed in parallel (are independent)
+            for(int i=0; i<ndihedrals; i++){ 
+                Ed+=evalDihedral_Prokop(i); 
+            }
+            #pragma omp for reduction(+:Ei) 
+            for(int i=0; i<ninversions; i++){ 
+                Ei+=evalInversion_Prokop(i); 
+            }
+            #pragma omp barrier  // all force pieves in fint must be computed before assembling
+            #pragma omp for
+            for(int ia=0; ia<natoms; ia++){ 
+                assembleAtomForce(ia); 
+            }
+        }
+        Etot = Eb + Ea + Ed + Ei;
+        return Etot;
+    }
+
+
+   // ============== Move atoms in order to minimize energy
+   
+    int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
+        double F2conv = Fconv*Fconv;
+        double E=0,ff=0,vv=0,vf=0;
+        //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+        double cdamp = colDamp.update( dt );
+
+        //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
+        //printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
+
+        int    itr;
+        //if(itr_DBG==0)print_pipos();
+        //bool bErr=0;
+        for(itr=0; itr<niter; itr++){
+            E=0;
+            // ------ eval UFF
+            // if(bClean)cleanForce();
+            Eb = evalBonds();
+            Ea = evalAngles();
+            Ed = evalDihedrals();
+            Ei = evalInversions();
+            // ---- assemble (we need to wait when all atoms are evaluated)
+            for(int ia=0; ia<natoms; ia++){
+                assembleAtomForce(ia); 
+                if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
+            }
+            // ------ move
+            cvf = Vec3dZero;
+            for(int i=0; i<natoms; i++){
+                //F2 += move_atom_GD( i, dt, Flim );
+                //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
+                cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
+                //move_atom_MD( i, 0.05, 1000.0, 0.9 );
+                //F2 += move_atom_kvaziFIRE( i, dt, Flim );
+            }
+            if(cvf.z<F2conv)break;
+            if(cvf.x<0){ cleanVelocity(); };
+            //itr_DBG++;
+        }
+        return itr;
+    }
+
+    int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
+        double F2conv = Fconv*Fconv;
+        double Enb=0,ff=0,vv=0,vf=0;
+        //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+        double cdamp = colDamp.update( dt );
+        int    itr=0;
+        #pragma omp parallel shared( Enb, Eb, Ea, Ed, Ei, ff,vv,vf ) private(itr)
+        for(itr=0; itr<niter; itr++){
+            // This {} should be done just by one of the processors
+            #pragma omp single
+            { Enb=0; Eb = 0; Ea = 0; Ed = 0; Ei = 0; ff=0;vv=0;vf=0; }
+            // ------ eval MMFF
+            #pragma omp for reduction(+:Eb)
+            for(int ia=0; ia<natoms; ia++){ 
+                fapos[ia]=Vec3dZero;
+                Eb +=evalAtomBonds(ia); 
+                // Non-Bonded
+                // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+            }
+            #pragma omp barrier   // all hneigh[] must be computed before computing other interactions
+            #pragma omp for reduction(+:Ea) nowait  // angles and dihedrals can be computed in parallel (are independent)
+            for(int i=0; i<nangles; i++){ 
+                Ea+=evalAngle_Prokop(i);
+                //Ea+=evalAngle_Paolo(i); 
+            }
+            #pragma omp for reduction(+:Ed) nowait  // dihedrals and inversions can be computed in parallel (are independent)
+            for(int i=0; i<ndihedrals; i++){ 
+                Ed+=evalDihedral_Prokop(i); 
+            }
+            #pragma omp for reduction(+:Ei) 
+            for(int i=0; i<ninversions; i++){ 
+                Ei+=evalInversion_Prokop(i); 
+            }
+            #pragma omp barrier  // all force pieves in fint must be computed before assembling
+            // ---- assemble and move 
+            #pragma omp for reduction(+:Enb,  ff,vv,vf )
+            for(int ia=0; ia<natoms; ia++){
+                assembleAtomForce( ia );
+                if(bPBC){ Enb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                else    { Enb+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                const Vec3d cvf_ = move_atom_MD( ia, dt, Flim, cdamp );
+                ff += cvf_.x; vv += cvf_.y; vf += cvf_.z;
+            }
+            #pragma omp single
+            {
+                Etot = Eb + Ea + Ed + Ei + Enb;
+                cvf.x=ff; cvf.y=vv; cvf.z=vf;
+                if(cvf.x<0){ cleanVelocity(); };
+                //if(cvf.z<F2conv)break;
+                if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, Etot, sqrt(ff), omp_get_num_threads() );}
+            }
+        }
+        return itr;
+    }
+
+    // find optimal time-step for dy FIRE optimization algorithm 
+    /*
+    double optimalTimeStep(double m=1.0){
+        double Kmax = 1.0;
+        for(int i=0; i<nnode; i++){ 
+            Kmax=fmax(Kmax, bKs[i].x ); 
+            Kmax=fmax(Kmax, bKs[i].y ); 
+            Kmax=fmax(Kmax, bKs[i].z ); 
+            Kmax=fmax(Kmax, bKs[i].w ); 
+        }
+        return M_PI*2.0*sqrt(m/Kmax)/10.0;  // dt=T/10;   T = 2*pi/omega = 2*pi*sqrt(m/k)
+    }
+    */
+
+    // ================== Print functions  
     
-    void printSizes     (      ){ printf( "MMFFf4::printSizes(): nDOFs(%i) natoms(%i) nbonds(%i) nangles(%i) ndihedrals(%i) ninversions(%i) npbc(%i)\n", nDOFs,natoms,nbonds,nangles,ndihedrals,ninversions,npbc); }
+    void printSizes     (      ){ printf( "MMFFf4::printSizes(): natoms(%i) nbonds(%i) nangles(%i) ndihedrals(%i) ninversions(%i) npbc(%i)\n", natoms,nbonds,nangles,ndihedrals,ninversions,npbc); }
     /*
     void printAtomParams(int ia){ printf("atom[%i] t%i ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, atypes[ia], neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,apars[ia].w,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
     void printNeighs    (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); }
@@ -1296,182 +1408,6 @@ class UFF : public NBFF { public:
     }
     */
 
-   // ============== Move atoms in order to minimize energy
-   
-    // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy
-    /*
-    int run( int niter, double dt, double Fconv, double Flim ){
-        double F2conv = Fconv*Fconv;
-        double E,F2;
-        int    itr;
-        for(itr=0; itr<niter; itr++){
-            E=0;
-            // ------ eval MMFF
-            for(int ia=0; ia<natoms; ia++){ 
-                if(ia<nnode)E += eval_atom(ia);
-                E += evalLJQs_ng4_PBC_atom( ia ); 
-            }
-            // ---- assemble (we need to wait when all atoms are evaluated)
-            for(int ia=0; ia<natoms; ia++){
-                assemble_atom( ia );
-            }
-            // ------ move
-            F2=0;
-            for(int i=0; i<nvecs; i++){
-                F2 += move_atom_MD( i, dt, Flim, 0.99 );
-            }
-            if(F2<F2conv)break;
-        }
-        return itr;
-    }
-    */
-
-    // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy, wih OpenMP parallelization
-    /*
-    int run_omp( int niter, double dt, double Fconv, double Flim ){
-        double F2conv = Fconv*Fconv;
-        double E=0,F2=0;
-        int    itr=0;
-        #pragma omp parallel shared(E,F2) private(itr)
-        for(itr=0; itr<niter; itr++){
-            // This {} should be done just by one of the processors
-            #pragma omp single
-            {E=0;F2=0;}
-            // ------ eval MMFF
-            #pragma omp for reduction(+:E)
-            for(int ia=0; ia<natoms; ia++){ 
-                if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
-                if(ia<nnode)E += eval_atom(ia);
-                E += evalLJQs_ng4_PBC_atom_omp( ia ); 
-            }
-            // ---- assemble (we need to wait when all atoms are evaluated)
-            #pragma omp for
-            for(int ia=0; ia<natoms; ia++){
-                assemble_atom( ia );
-            }
-            // ------ move
-            #pragma omp for reduction(+:F2)
-            for(int i=0; i<nvecs; i++){
-                F2 += move_atom_MD( i, dt, Flim, 0.99 );
-            }
-            for(int i=natoms; i<nvecs; i++){
-                F2 += move_atom_MD( i, dt, Flim, 0.99 );
-            }
-            #pragma omp single
-            if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
-        }
-        return itr;
-    }
-    */
-
-    // update atom positions using gradient descent
-    /*
-    inline double move_atom_GD(int i, float dt, double Flim){
-        Vec3d  f   = fapos[i];
-        Vec3d  p = apos [i];
-        double fr2 = f.norm2();
-        if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
-        const bool bPi = i>=natoms;
-        if(bPi){ f.add_mul( p, -p.dot(f) ); }
-        p.add_mul( f, dt );
-        if(bPi)p.normalize();
-        apos [i] = p;
-        return fr2;
-    }
-    */
-
-    // update atom positions using molecular dynamics (damped leap-frog)
-    /*
-    inline double move_atom_MD( int i, const float dt, const double Flim, const double cdamp=0.9 ){
-        Vec3d  f = fapos[i];
-        Vec3d  v = vapos[i];
-        Vec3d  p = apos [i];
-        const double fr2 = f.norm2();
-        const bool bPi = i>=natoms;
-        if(bPi)f.add_mul( p, -p.dot(f) );           //b|=ckeckNaN_d( 1,3, (double*)&f, "f.2" );
-        v.mul    ( cdamp );
-        v.add_mul( f, dt );                         //b|=ckeckNaN_d( 1,3, (double*)&v, "v.2" );
-        if(bPi)v.add_mul( p, -p.dot(v) );           //b|=ckeckNaN_d( 1,3, (double*)&v, "v.3" );
-        p.add_mul( v, dt );
-        if(bPi)p.normalize();
-        apos [i] = p;
-        vapos[i] = v;
-        return fr2;
-    }
-    */
-
-    // update atom positions using FIRE (Fast Inertial Relaxation Engine)
-    /*
-    inline double move_atom_FIRE( int i, float dt, double Flim, double cv, double cf ){
-        Vec3d  f   = fapos[i];
-        Vec3d  v   = vapos[i];
-        Vec3d  p   = apos [i];
-        double fr2 = f.norm2();
-        const bool bPi = i>=natoms;
-        if(bPi)f.add_mul( p, -p.dot(f) ); 
-        v.mul(             cv );
-        v.add_mul( f, dt + cf );
-        if(bPi) v.add_mul( p, -p.dot(v) );
-        p.add_mul( v, dt );
-        if(bPi)  p.normalize();
-        apos [i] = p;
-        vapos[i] = v;
-        return fr2;
-    }
-    */
-
-    // update atom positions using modified FIRE algorithm
-    /*
-    inline double move_atom_kvaziFIRE( int i, float dt, double Flim ){
-        Vec3d  f   = fapos[i];
-        Vec3d        v   = vapos[i];
-        Vec3d        p   = apos [i];
-        double fr2 = f.norm2();
-        if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); }
-        const bool bPi = i>=natoms;
-        if(bPi)f.add_mul( p, -p.dot(f) ); 
-        double vv  = v.norm2();
-        double ff  = f.norm2();
-        double vf  = v.dot(f);
-        double c   = vf/sqrt( vv*ff + 1.e-16    );
-        double v_f =    sqrt( vv/( ff + 1.e-8)  );
-        double cv;
-        double cf = cos_damp_lin( c, cv, 0.01, -0.7,0.0 );
-        v.mul(                 cv );
-        v.add_mul( f, dt + v_f*cf );
-        if(bPi) v.add_mul( p, -p.dot(v) );
-        p.add_mul( v, dt );
-        if(bPi)  p.normalize();
-        apos [i] = p;
-        vapos[i] = v;
-        return fr2;
-    }
-    */
-
-    // update atom positions using gradient descent
-    /*
-    double move_GD(float dt, double Flim=100.0 ){
-        double F2sum=0;
-        for(int i=0; i<nvecs; i++){
-            F2sum += move_atom_GD(i, dt, Flim);
-        }
-        return F2sum;
-    }
-    */
-
-    // find optimal time-step for dy FIRE optimization algorithm 
-    /*
-    double optimalTimeStep(double m=1.0){
-        double Kmax = 1.0;
-        for(int i=0; i<nnode; i++){ 
-            Kmax=fmax(Kmax, bKs[i].x ); 
-            Kmax=fmax(Kmax, bKs[i].y ); 
-            Kmax=fmax(Kmax, bKs[i].z ); 
-            Kmax=fmax(Kmax, bKs[i].w ); 
-        }
-        return M_PI*2.0*sqrt(m/Kmax)/10.0;  // dt=T/10;   T = 2*pi/omega = 2*pi*sqrt(m/k)
-    }
-    */
 
 };
 
