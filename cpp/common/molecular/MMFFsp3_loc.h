@@ -18,23 +18,6 @@
 
 //#include <cstdio>
 
-// damping functions for velocity and forces depending on cos(angle)=<v|f>  (v,f) - vectors of velocity and force
-inline double cos_damp_lin( double c, double& cv, double D, double cmin, double cmax  ){
-    double cf;
-    if      (c < cmin){
-        cv = 0.;
-        cf = 0.;
-    }else if(c > cmax){
-        cv = 1-D;
-        cf =   D;
-    }else{  // cos(v,f) from [ cmin .. cmax ]
-        double u = (c-cmin)/(cmax-cmin);
-        cv = (1.-D)*u;
-        cf =     D *u;
-    }
-    return cf;
-}
-
 // ========================
 // ====   MMFFsp3_loc  ====
 // ========================
@@ -44,8 +27,6 @@ inline double cos_damp_lin( double c, double& cv, double D, double cmin, double 
     This allows for efficient parallelization, since we avoid synchronization of the global force array fapos or using atomic operations.
     The drawback is that we need to allocate additional memory for fneigh and possibly lower the performance due to cache misses.
 */
-
-
 
 //class MMFFsp3_loc: public NBFF { public:
 

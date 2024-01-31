@@ -3069,14 +3069,14 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 #endif // Molecule_h
 
 
-#ifdef ForceField_h
-    void toForceField( ForceField& ff ){
-        if(iDebug>0) printf( " MMFFbuilder.toForceField na %li nb %li nA %li nd %li \n", atoms.size(), bonds.size(), angles.size(), dihedrals.size() );
+#ifdef SimpleForceField_h
+    void toSimpleForceField( SimpleForceField& ff ){
+        if(idebug>0) printf( " MMFFbuilder.toSimpleForceField na %li nb %li nA %li nd %li \n", atoms.size(), bonds.size(), angles.size(), dihedrals.size() );
         //mmff->deallocate();
         ff.realloc( atoms.size(), bonds.size(), angles.size(), dihedrals.size() );
         for(int i=0; i<atoms.size(); i++){
             ff.apos [i]  = atoms[i].pos;
-            if(iDebug>0){ printf("[%i]", i); atoms[i].print(); if( atoms[i].iconf>=0){confs[atoms[i].iconf].print();} puts(""); }
+            if(idebug>0){ printf("[%i]", i); atoms[i].print(); if( atoms[i].iconf>=0){confs[atoms[i].iconf].print();} puts(""); }
         }
         for(int i=0; i<bonds.size(); i++){
             const Bond& b  = bonds[i];
@@ -3089,20 +3089,20 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             //    ff.setBondParam(i, b.l0, b.k );
             //}
             ff.setBondParam(i, b.l0, b.k );
-            if(iDebug>0){  printf( "bond[%i] (%i,%i) %g %g | %g %g\n", i, ff.bond2atom[i].i, ff.bond2atom[i].j, ff.bond_l0[i], ff.bond_k[i], b.l0, b.k ); }
+            if(idebug>0){  printf( "bond[%i] (%i,%i) %g %g | %g %g\n", i, ff.bond2atom[i].i, ff.bond2atom[i].j, ff.bond_l0[i], ff.bond_k[i], b.l0, b.k ); }
             //bondTypes[i]       = bonds[i].type;
         }
         for(int i=0; i<angles.size(); i++){
             const Angle& a  = angles[i];
             ff.ang2bond[i] = a.bonds;
             ff.setAngleParam(i, a.a0, a.k );
-            if(iDebug>0){  printf( "angle[%i] (%i,%i) (%g,%g) %g\n", i, ff.ang2bond[i].i, ff.ang2bond[i].j, ff.ang_cs0[i].x, ff.ang_cs0[i].y, ff.ang_k[i] ); }
+            if(idebug>0){  printf( "angle[%i] (%i,%i) (%g,%g) %g\n", i, ff.ang2bond[i].i, ff.ang2bond[i].j, ff.ang_cs0[i].x, ff.ang_cs0[i].y, ff.ang_k[i] ); }
         }
         for(int i=0; i<dihedrals.size(); i++){
             const Dihedral& d  = dihedrals[i];
             ff.tors2bond[i] = d.bonds;
             ff.setTorsParam( i, d.n, d.k );
-            if(iDebug>0){ printf( "dihedrals[%i] (%i,%i,%i) %i %g\n", i, ff.tors2bond[i].a, ff.tors2bond[i].b, ff.tors2bond[i].c, ff.tors_n[i], ff.tors_k[i] ); }
+            if(idebug>0){ printf( "dihedrals[%i] (%i,%i,%i) %i %g\n", i, ff.tors2bond[i].a, ff.tors2bond[i].b, ff.tors2bond[i].c, ff.tors_n[i], ff.tors_k[i] ); }
         }
         ff.angles_bond2atom();
         ff.torsions_bond2atom();

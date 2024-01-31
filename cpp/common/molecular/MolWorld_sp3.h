@@ -708,9 +708,9 @@ class MolWorld_sp3 : public SolverInterface { public:
         smiles.parseString( 10000, s );
     }
 
-    void setOptimizer( int n, double* ps, double* fs ){
+    void setOptimizer( int n, double* ps, double* fs, double* vs=0 ){
         //opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
-        opt.bindOrAlloc( n, ps, 0, fs, 0 );
+        opt.bindOrAlloc( n, ps, vs, fs, 0 );
         double dtopt=ff.optimalTimeStep(); 
         if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimal time step = %g \n", dtopt);
         opt.initOpt( dtopt );
@@ -921,7 +921,8 @@ class MolWorld_sp3 : public SolverInterface { public:
             setNonBond( bNonBonded );
             nbmol.evalPLQs(gridFF.alphaMorse);
             if(bOptimizer){ 
-                setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
+                //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
+                setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
                 ffu.vapos = (Vec3d*)opt.vel;
             }                         
         }else{

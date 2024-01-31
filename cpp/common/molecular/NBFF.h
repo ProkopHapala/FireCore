@@ -13,38 +13,18 @@ Non-Bonded Force-Field
 #include "Vec3.h"
 #include "quaternion.h"
 #include "Atoms.h"
-
 #include "Forces.h"
-
-// check if "vals" are within limits "vmin","vmax"
-bool checkLimits( int n, int m, const double* vals, const double* vmin, const double* vmax, const char* message, bool bPrint=true ){
-    //for(int j=0; j<m; j++){ printf( "checkLimits[%i] [%g,%g]\n", j, vmin[j], vmax[j] ); }
-    bool b=false;
-    for(int i=0; i<n; i++){
-        const double* vali = vals+i*m;
-        for(int j=0; j<m; j++){
-            double v = vali[j];
-            if( v<vmin[j] || v>vmax[j] || isnan(v) ){  
-                b=true; 
-                if(bPrint){
-                    printf( "%s[%i/%i,%i/%i] %g out of limits [%g,%g] \n", message, i,n, j,m,   v, vmin[j], vmax[j]  );
-                }
-            }
-        }
-    }
-    return b;
-}
-
+#include "ForceField.h"
 
 // Force-Field for Non-Bonded Interactions
-class NBFF: public Atoms{ public:
+class NBFF: public ForceField{ public:
     
     // ---  inherited from Atoms
     //int     n      =0; // from Atoms
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
-    
-    Vec3d    *fapos __attribute__((aligned(64))) =0; // forces on atomic positions
+    //Vec3d    *fapos __attribute__((aligned(64))) =0; // forces on atomic positions
+
     Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
     Quat4i   *neighs =0; // list of neighbors (4 per atom)
     Quat4i   *neighCell=0; // list of neighbors (4 per atom)
@@ -60,6 +40,7 @@ class NBFF: public Atoms{ public:
     Vec3d* shifts __attribute__((aligned(64))) =0;  // array of bond vectors shifts in periodic boundary conditions
     Quat4f *PLQs  __attribute__((aligned(64))) =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
     Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
+
 
     // ==================== Functions
 
