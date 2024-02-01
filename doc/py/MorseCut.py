@@ -65,6 +65,33 @@ def MorseCut_2( r, Ei=0.1, Ri=1.4, Rc=6.0, n=8 ):
     F =  2*Ei*(e*e -   e)
     return E,F, e
 
+def MorseCut_3( r, Ei=0.1, Ri=1.4, Rc=6.0 ):
+    r2 = r*r
+    x1 = 1-(r2/(Rc*Rc))
+    x2 = 1-(r2/(0.7*Ri*Ri))
+    x3 = 1-(r2/(2.0*Rc*Rc))
+    mask = r2>(Rc*Rc)
+    x1[mask] = 0
+    #E =  5*Ei* x1*x1*x1*x1*( -1 + x2 )
+    E =  35*Ei*x2*(x1**2)*(x3**16)
+    #E =  10*Ei*x2*(x1**2)*(x3**4)
+    F =  0
+    return E,F
+
+def MorseCut_4( r, Ei=0.1, Ri=1.4, Rc=6.0 ):
+    r2 = r*r
+    x1 = 1-(r2/(Rc*Rc))
+    ir2 = (Ri*Ri*1.3)/r2 
+    ir4 = ( (Ri*Ri*1.05)/r2 )**2
+    #x2 = ir2*ir2 - 2*ir2
+    x2 = ir4*ir4 - 2*ir4
+    mask = r2>(Rc*Rc)
+    x1[mask] = 0
+    E =  1.8*Ei*(x1**2)*x2
+    #E =  2.0*Ei*(x1**2)*x2*x2
+    F =  0
+    return E,F
+
 xs = np.linspace(0,6,1000)
 
 # e_n  = exp_approx( xs, Ri=1.4+1.6, Rcut=6.0, n=4 )
@@ -73,6 +100,8 @@ xs = np.linspace(0,6,1000)
 #e_n2  = exp_approx_2( xs, Ri=1.4+1.6, Rcut=6.0, n=4 )
 # e_n2  = exp_approx_2( xs, Ri=1.4+1.6, Rcut=5.5, n=4 )
 # plt.plot(xs,e_n2,'-',label='e_n2')
+
+
 
 E_LJ,F_LJ  = LennardJones( xs, Ei=0.1, Ri=1.4+1.6 )
 F_LJnm, x_ = numDeriv( xs, E_LJ )
@@ -96,6 +125,12 @@ plt.plot(xs,E_C1,'-',label='E_C1')
 E_C2,F_C2, e_C2 =  MorseCut_2( xs, Ei=0.1, Ri=1.4+1.6, Rc=5.2,  n=4 )
 #plt.plot(xs,e_C2,'-',label='e_C1')
 plt.plot(xs,E_C2,'-',label='E_C2')
+
+#E_3,F_3  = MorseCut_3( xs, Ei=0.1, Ri=1.4+1.6, Rc=6.0 )
+#plt.plot(xs,E_3,'-k', lw=3, label='E_3')
+
+E_4,F_4  = MorseCut_4( xs, Ei=0.1, Ri=1.4+1.6, Rc=6.0 )
+plt.plot(xs,E_4,'-k', lw=3, label='E_3')
 
 #plt.ylim(0,2)
 
