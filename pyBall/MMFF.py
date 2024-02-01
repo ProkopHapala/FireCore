@@ -130,7 +130,7 @@ def sample_evalAngleCosHalf( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=N
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
 lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ] 
 lib.sampleNonBond.restype   =  None
-def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
+def sampleNonBond( rs, Es=None, Fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
     n =len(rs)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
@@ -138,7 +138,7 @@ def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQ
     REQi=np.array(REQi)
     REQj=np.array(REQj) 
     lib.sampleNonBond(n, rs, Es, Fs, kind, REQi, REQj, K, Rdamp)
-    return Es,fs
+    return Es,Fs
 
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
 lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
@@ -164,6 +164,20 @@ def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0
     pos0=np.array(pos0)
     lib.sampleSurf_vecs( name, n, poss, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
     return Es,fs
+
+# void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut ){
+lib.setupCollisionDamping.argtypes  = [c_int, c_double, c_double, c_double, c_double, c_double, c_double]
+lib.setupCollisionDamping.restype   =  None
+def setupCollisionDamping( nstep=10, medium=0.02, cB=-1.0, cA=-1.0, cNB=-1.0, dRcut1=-0.2, dRcut2=0.3 ):
+    #print( "setupCollisionDamping(): ",nstep,medium,cB,cA,cNB,dRcut1,dRcut2 )
+    lib.setupCollisionDamping( nstep, medium, cB, cA, cNB, dRcut1, dRcut2 )
+
+#void setup_accel(int nstep_acc_min_, double cos_vf_acc_ ){
+lib.setup_accel.argtypes  = [c_int, c_double]
+lib.setup_accel.restype   =  None
+def setup_accel( nstep_acc_min=10, cos_vf_acc=0.5 ):
+    #print( "setup_accel(): ",nstep_acc_min,cos_vf_acc )
+    lib.setup_accel( nstep_acc_min, cos_vf_acc )
 
 #printBuffNames(){
 lib.printBuffNames.argtypes = []
@@ -430,10 +444,10 @@ def eval():
 #     return lib.run(nstepMax, dt, Fconv, ialg )
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, c_bool ] 
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p, c_double_p, c_double_p, c_bool ] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None, omp=False):
-    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), omp )
+def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=None, outV=None, outVF=None, omp=False):
+    return lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
 
 # ========= Lattice Optimization
 

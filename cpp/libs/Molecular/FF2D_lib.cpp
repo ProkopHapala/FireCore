@@ -11,7 +11,7 @@
 
 #include <globals.h>
 //int verbosity=0;
-int idebug   =0;
+//int idebug   =0;
 
 #include "FF2D.h"
 //#include "DynamicOpt.h"

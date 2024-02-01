@@ -13,6 +13,7 @@
 
 class MolWorld_sp3_ocl : public MolWorld_sp3 { public:
     OCL_PP     ocl;
+    MMFFf4     ff4;
 
     Quat4f * q_ps=0;
     Quat4f * q_fs=0; 
@@ -284,6 +285,12 @@ virtual void init() override  {
     mol2ocl();
     bGridFF=false;
     bOcl   =false;
+
+    // initialization of ff4 is here because parrent MolWorld_sp3 does not contain ff4 anymore 
+    builder.toMMFFf4( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
+    ff4.flipPis( Vec3fOne );
+    ff4.setLvec((Mat3f)builder.lvec);
+    ff4.makeNeighCells  ( nPBC );
 }
 
 // ======================== SETUP OCL KERNEL functions

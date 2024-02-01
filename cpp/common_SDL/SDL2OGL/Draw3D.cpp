@@ -1341,8 +1341,8 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         glShadeModel ( GL_FLAT       );
         glPushMatrix();
             glTranslatef( pos.x, pos.y, pos.z );
-            Draw::billboardCamProj( textSize );
-            Draw::drawText( str, fontTex, 1.0, iend );
+            Draw::billboardCamProj( );
+            Draw::drawText( str, fontTex, textSize, iend );
         glPopMatrix();
 	}
     void drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3f& up, int fontTex, float textSize, int iend){
@@ -1352,8 +1352,8 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         glShadeModel ( GL_FLAT       );
         glPushMatrix();
             glTranslatef( pos.x, pos.y, pos.z );
-            Draw::billboardCamProj( textSize );
-            Draw::drawText( str, fontTex, 1.0, iend );
+            Draw::billboardCamProj();
+            Draw::drawText( str, fontTex, textSize, iend );
         glPopMatrix();
 	}
 

@@ -329,7 +329,7 @@ int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
         }
         for(int i=ffl.natoms; i<ffl.nvecs; i++){
             //printf( "relax_pi move_atom_MD[%i] \n", i );
-            F2 += ffl.move_atom_MD( i, dt, Flim, 0.9 );
+            F2 += ffl.move_atom_MD( i, dt, Flim, 0.9 ).z;
             //printf( "relax_pi move_atom_MD[%i] F2 %g \n", i, F2 );
         }
         //if(verbosity>2)

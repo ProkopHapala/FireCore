@@ -139,6 +139,8 @@ class Vec3T{
     inline T bidot  ( const VEC& a, const VEC& b ) const { return x*a.x*b.x + y*a.y*b.y + z*a.z*b.z;  };
     inline T antidot( const VEC& a, const VEC& b ) const { return x*a.y*b.z + y*a.z*b.x + z*a.x*b.y;  };
 
+    inline T triple_product( const VEC& a, const VEC& b ) const { return x*(a.y*b.z-a.z*b.y) + y*(a.z*b.x-a.x*b.z) + z*(a.x*b.y-a.y*b.x);  };  // https://en.wikipedia.org/wiki/Triple_product
+
 	inline T dot  ( const VEC& a ) const { return x*a.x + y*a.y + z*a.z;  };
 	inline T norm2(              ) const { return x*x + y*y + z*z;        };
 	inline T norm ( ) const { return  sqrt( x*x + y*y + z*z ); };
@@ -303,6 +305,8 @@ class Vec3T{
         T c = dot(b)/sqrt( norm2()*b.norm2() );
         return acos(c); 
     }
+
+    inline T getAngle_unitary(const VEC& b){ return acos( dot(b) ); }
 
 	// Rodrigues rotation formula: v' = cosa*v + sina*(uaxis X v) + (1-cosa)*(uaxis . v)*uaxis
 	inline VEC& rotate( T angle, const VEC& axis  ){
@@ -530,6 +534,18 @@ inline Vec3T<T2> cast(const Vec3T<T1>& i){ Vec3T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y
 inline int print( const Vec3f&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
 inline int print( const Vec3d&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
 inline int print( const Vec3i&  v){ return printf( "%i %i %i", v.x, v.y, v.z ); };
+
+
+template <class T>
+class Vec6T { public:
+	union{
+        struct{ Vec3T<T> lo,hi; };
+		T array[6];
+	};
+};
+using Vec6i = Vec6T< int>;
+using Vec6f = Vec6T< float>;
+using Vec6d = Vec6T< double >;
 
 #endif
 

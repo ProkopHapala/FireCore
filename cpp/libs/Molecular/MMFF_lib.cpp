@@ -6,7 +6,7 @@ char tmpstr[ntmpstr];
 #include  "globals.h"
 
 //int verbosity = 1;
-int idebug    = 0;
+//int idebug    = 0;
 double tick2second=1e-9;
 
 #include "testUtils.h"
@@ -78,11 +78,13 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     return &W;
 }
 
-int    run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, bool omp ){
+int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, bool omp ){
+    //printf( "bOpenMP = %i \n", omp );
     //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
     // run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
-    if(omp){ return W.run_omp(nstepMax,dt,Fconv,10.0, -1.0, outE, outF );  }
-    else   { return W.run    (nstepMax,dt,Fconv,ialg,outE,outF);                 }
+    if(omp){ return W.run_omp   (nstepMax,dt,Fconv,   10.0, -1.0, outE, outF, outV, outVF ); }
+    else   { return W.run_no_omp(nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
+    //else   { return W.run       (nstepMax,dt,Fconv,ialg,       outE, outF, outV, outVF ); }
 }
 
 int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond ){
