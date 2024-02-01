@@ -1,6 +1,6 @@
 #include <globals.h>
 //int verbosity = 0;
-int idebug=0;
+//int idebug=0;
 
 #include <stdlib.h>
 #include <stdio.h>

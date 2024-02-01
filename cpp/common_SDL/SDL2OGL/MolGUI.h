@@ -1,3 +1,5 @@
+#ifndef MolGUI_h
+#define MolGUI_h
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -25,9 +27,11 @@
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
+#include "AtomsInGrid.h"
+
 #include <chrono>
 
-
+#include "MolGUI_tests.h"
 
 // ===========================================
 // ================= MAIN CLASS ==============
@@ -103,6 +107,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Quat4d testREQ;
     Quat4f testPLQ;
 
+    double myAngle=0.0;
 
     Mat3d dlvec { 0.1,0.0,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
     Mat3d dlvec2{ 0.0,0.1,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
@@ -165,6 +170,10 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool afm_bDf   = true;
 
 
+    // ----- Atoms in grid
+    AtomsInGrid atomsInGrid;
+
+
     // ======================= Functions 
 
 	virtual void draw   () override;
@@ -180,6 +189,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
 	MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ );
     void init();
+
+    bool visual_FF_test();
 
 	//int  loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
@@ -216,6 +227,77 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void initWiggets();
     void drawingHex(double z0);
     void lattice_scan( int n1, int n2, const Mat3d& dlvec );
+
+    void makeNonuniformGrid(int niter=5, double dt=0.1 ){
+        printf( "makeNonuniformGrid() \n" );
+        //atomsInGrid.setup( Vec3d pmin, Vec3d pmax_, double step );
+        atomsInGrid.snap_corners( W->nbmol );
+        //for(int iter=0; iter<niter; iter++){
+        //    atomsInGrid.eval_forces();
+        //    atomsInGrid.move_points( dt );
+        //}
+    };
+
+    void relaxNonuniformGrid(int niter=10, double dt=0.1 ){
+        printf( "relaxNonuniformGrid() niter=%i double dt=%g \n", niter, dt );
+        for(int iter=0; iter<niter; iter++){
+            atomsInGrid.eval_forces();
+            double f2 = atomsInGrid.move_points( dt );
+            printf( "relaxNonuniformGrid[%i] |F|=%g \n", iter, sqrt(f2) );
+        }
+    };
+
+    void plotNonuniformGrid( bool bFixedOnly=false ){
+        for (int i=0; i<atomsInGrid.gpoints.size(); i++){
+            GridPointDynamics& gp = atomsInGrid.gpoints[i];
+
+            if( bFixedOnly && !gp.fixed ) continue;
+            Vec3i ipos; atomsInGrid.i2ixyz( gp.ic, ipos );
+            Vec3d pj; 
+
+            if( gp.fixed ){ 
+                glColor3f( 1.0, 0.0, 0.0 );
+                //Draw3D::drawPointCross( gp.pos, 0.1 );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z-1}); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y-1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y+1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+                pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            } else { 
+                glColor3f( 0.0, 0.0, 1.0 ); 
+                //Draw3D::drawPointCross( gp.pos, 0.1 );
+                Vec3d pj;
+                bool bfix; 
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z-1}, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z+1}, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y-1, ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y+1, ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x-1, ipos.y,   ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x+1, ipos.y,   ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+            }
+            
+            /*
+            
+            Vec3d pj; 
+            Vec3i ip;
+            ip={ipos.x,   ipos.y,   ipos.z-1};  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x,   ipos.y,   ipos.z+1};  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x,   ipos.y-1, ipos.z  };  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x,   ipos.y+1, ipos.z  };  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x-1, ipos.y,   ipos.z  };  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            ip={ipos.x+1, ipos.y,   ipos.z  };  if( gp.fixed || !atomsInGrid.gpoints[ atomsInGrid.ixyz2i(ip) ].fixed  ) Draw3D::drawLine( gp.pos, atomsInGrid.box2pos(ip) );
+            */
+            // pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( gp.pos, pj );
+            // pj = atomsInGrid.get_gpos({ipos.x,   ipos.y-1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            // pj = atomsInGrid.get_gpos({ipos.x,   ipos.y+1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            // pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            // pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+            
+            //Draw3D::drawPointCross( gp.pos, 0.1 );
+        }
+    }
+
 };
 
 //=================================================
@@ -331,123 +413,7 @@ void MolGUI::init(){
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
 
-
-//=================================================
-//                   DRAW()
-//=================================================
-
-void MolGUI::draw(){
-    //printf( "MolGUI::draw() 1 \n" );
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
-    //glEnable(GL_LINE_SMOOTH);
-    glEnable(GL_BLEND);
-    glEnable(GL_LIGHTING );
-    glEnable(GL_DEPTH_TEST);
-
-    //printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
-    if(W->bLatScan){ lattice_scan( W->latscan_n.x, W->latscan_n.y, *W->latscan_dlvec ); quit(); }
-
-    if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
-    //if( ogl_esp==0 ){ renderESP(); }
-
-    if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
-
-    //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
-
-    W->pick_hray = (Vec3d)cam.rot.c;
-    W->pick_ray0 = ray0;
-
-    if(bRunRelax){ 
-        //printf( "MolGUI::draw() -> W->MDloop(%i);", perFrame );    
-        W->MDloop(perFrame); 
-    }
-    //if(bRunRelax){ W->relax( perFrame ); }
-
-    // --- Mouse Interaction / Visualization
-	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
-    Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
-    //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
-    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], ray0); // Mouse Dragging Visualization
-    Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
-    Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
-    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
-
-    //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
-
-    if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
-    //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
-    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
-    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
-    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 5, 5, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
-
-    if( ogl_esp     ){ glCallList(ogl_esp);      }
-    if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
-    if( ogl_afm     ){ glCallList(ogl_afm);      }
-
-    //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // DEBUG  
-
-    //if(bDoQM)drawSystemQMMM();
-
-    if(ogl_MO){ 
-        glPushMatrix();
-        //Vec3d c = W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
-        //Vec3d c = Vec3dZero;
-        //Vec3d c = W->gridFF.shift0;
-        //W->cog = average( W->ffl.natoms, W->ffl.apos  );
-        Vec3d pmin,pmax; bbox( pmin, pmax, W->ffl.natoms, W->ffl.apos, 0 ); W->cog=(pmin+pmax)*0.5;
-        Vec3d c = W->cog + W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
-        //printf( "ogl_MO c (%g,%g,%g) cog (%g,%g,%g) \n", c.x, c.y, c.z, W->cog.x, W->cog.y, W->cog.z );
-        glTranslatef( c.x, c.y, c.z );
-            glColor3f(1.0,1.0,1.0); 
-            glCallList(ogl_MO); 
-        glPopMatrix();
-    }
-
-    if(bDoMM){
-        if(W->builder.bPBC){ 
-            //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-            //printf( "draw() W->npbc=%i \n", W->npbc );
-            //Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-            Draw3D::drawShifts( W->npbc, W->pbc_shifts, 10, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-            glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
-        }else{ drawSystem(); }
-
-        //drawSystem(); // debug
-        //Draw3D::drawNeighs( W->ff, -1.0 );    
-        //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
-    }
-
-    if(constrs){
-        // bond constrains
-        glColor3f(0.0f,0.7f,0.0f);
-        //for( DistConstr con : constrs->bonds ){ Draw3D::drawLine( apos[con.ias.a], apos[con.ias.b] ); }
-        for( DistConstr con : constrs->bonds ){ 
-            Vec3d sh; W->builder.lvec.dot_to_T( con.shift, sh );
-            Draw3D::drawLine( apos[con.ias.a],    apos[con.ias.b] + sh ); 
-            Draw3D::drawLine( apos[con.ias.a]-sh, apos[con.ias.b]      ); 
-        }
-        // angle constrains
-        glColor3f(0.0f,0.8f,0.8f);
-        for( AngleConstr con : constrs->angles ){ 
-            const Mat3d& lvec = W->builder.lvec;
-            Vec3d ash = lvec.a*con.acell.a + lvec.b*con.acell.b + lvec.c*con.acell.c;
-            Vec3d bsh = lvec.a*con.bcell.a + lvec.b*con.bcell.b + lvec.c*con.bcell.c;
-            //Draw3D::drawTriangle( apos[con.ias.b] + ash,   apos[con.ias.a],   apos[con.ias.c] + bsh );
-            //Draw3D::drawTriangle( apos[con.ias.b],   apos[con.ias.a],   apos[con.ias.c] );
-            glBegin(GL_TRIANGLES);
-            glColor3f(0.0f,1.0f,0.5f); Draw3D::vertex(apos[con.ias.b] + ash);
-            glColor3f(0.0f,0.7f,0.7f); Draw3D::vertex(apos[con.ias.a]      );
-            glColor3f(0.0f,0.5f,1.0f); Draw3D::vertex(apos[con.ias.c] + bsh);
-            glEnd();
-        }
-    }
-
-    glColor3f(0.0f,0.5f,0.0f); showBonds();
-
-    { // ==== MolGUI TESTS   Torsions ( Paolo vs Prokop optimized )
+    bool MolGUI::visual_FF_test(){ // ==== MolGUI TESTS   Torsions ( Paolo vs Prokop optimized )
     
         if( frameCount==0){
             Vec3d ax = apos[1]-apos[0];
@@ -513,19 +479,138 @@ void MolGUI::draw(){
         //     //checkVec3Matches( 4, W->ffu.fang, fbak, "dih_fp", 1 );
         // }
 
-        { // check OMP
-            Vec3d fapos[ W->ffu.natoms ];
-            double E_ = W->ffu.eval();
-            for(int i=0; i<W->ffu.natoms; i++){ fapos[i]=W->ffu.fapos[i]; }
-            double E  = W->ffu.eval_omp();
-            printf( " Eerr %g | E_ref %g E %g \n", E-E_, E_, E);
-            bool b = checkVec3Matches( W->ffu.natoms, W->ffu.fapos, fapos, "fpos", 1 );
-            if(b){ printf( "ffu.eval_omp() OK \n" ); }else{ printf( "ffu.eval_omp() FAILED \n" ); }
-            exit(0);
-        }
+        // { // check OMP
+        //     Vec3d fapos[ W->ffu.natoms ];
+        //     double E_ = W->ffu.eval();
+        //     for(int i=0; i<W->ffu.natoms; i++){ fapos[i]=W->ffu.fapos[i]; }
+        //     double E  = W->ffu.eval_omp();
+        //     printf( " Eerr %g | E_ref %g E %g \n", E-E_, E_, E);
+        //     bool b = checkVec3Matches( W->ffu.natoms, W->ffu.fapos, fapos, "fpos", 1 );
+        //     if(b){ printf( "ffu.eval_omp() OK \n" ); }else{ printf( "ffu.eval_omp() FAILED \n" ); }
+        //     exit(0);
+        // }
 
-
+        return false;
     }
+
+//=================================================
+//                   DRAW()
+//=================================================
+
+void MolGUI::draw(){
+    //printf( "MolGUI::draw() 1 \n" );
+    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
+    //glEnable(GL_LINE_SMOOTH);
+    glEnable(GL_BLEND);
+    glEnable(GL_LIGHTING );
+    glEnable(GL_DEPTH_TEST);
+
+    //printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
+    if(W->bLatScan){ lattice_scan( W->latscan_n.x, W->latscan_n.y, *W->latscan_dlvec ); quit(); }
+
+    if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
+    //if( ogl_esp==0 ){ renderESP(); }
+
+    if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
+
+    //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
+
+    W->pick_hray = (Vec3d)cam.rot.c;
+    W->pick_ray0 = ray0;
+
+    if(bRunRelax){ 
+        //printf( "MolGUI::draw() -> W->MDloop(%i);", perFrame );    
+        W->MDloop(perFrame); 
+    }
+    //if(bRunRelax){ W->relax( perFrame ); }
+
+    // --- Mouse Interaction / Visualization
+	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+    Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
+    //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
+    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], ray0); // Mouse Dragging Visualization
+    Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
+    Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
+    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+
+    //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
+
+    if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
+    //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
+    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
+    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
+    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 5, 5, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+
+    if( ogl_esp     ){ glCallList(ogl_esp);      }
+    if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
+    if( ogl_afm     ){ glCallList(ogl_afm);      }
+
+    //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // DEBUG  
+
+    //if(bDoQM)drawSystemQMMM();
+
+    plotNonuniformGrid();
+
+    if(ogl_MO){ 
+        glPushMatrix();
+        //Vec3d c = W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
+        //Vec3d c = Vec3dZero;
+        //Vec3d c = W->gridFF.shift0;
+        //W->cog = average( W->ffl.natoms, W->ffl.apos  );
+        Vec3d pmin,pmax; bbox( pmin, pmax, W->ffl.natoms, W->ffl.apos, 0 ); W->cog=(pmin+pmax)*0.5;
+        Vec3d c = W->cog + W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
+        //printf( "ogl_MO c (%g,%g,%g) cog (%g,%g,%g) \n", c.x, c.y, c.z, W->cog.x, W->cog.y, W->cog.z );
+        glTranslatef( c.x, c.y, c.z );
+            glColor3f(1.0,1.0,1.0); 
+            glCallList(ogl_MO); 
+        glPopMatrix();
+    }
+
+    if(bDoMM){
+        if(W->builder.bPBC){ 
+            //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            //printf( "draw() W->npbc=%i \n", W->npbc );
+            //Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            Draw3D::drawShifts( W->npbc, W->pbc_shifts, 10, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
+        }else{ drawSystem(); }
+
+        //drawSystem(); // debug
+        //Draw3D::drawNeighs( W->ff, -1.0 );    
+        //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
+    }
+
+    if(constrs){
+        // bond constrains
+        glColor3f(0.0f,0.7f,0.0f);
+        //for( DistConstr con : constrs->bonds ){ Draw3D::drawLine( apos[con.ias.a], apos[con.ias.b] ); }
+        for( DistConstr con : constrs->bonds ){ 
+            Vec3d sh; W->builder.lvec.dot_to_T( con.shift, sh );
+            Draw3D::drawLine( apos[con.ias.a],    apos[con.ias.b] + sh ); 
+            Draw3D::drawLine( apos[con.ias.a]-sh, apos[con.ias.b]      ); 
+        }
+        // angle constrains
+        glColor3f(0.0f,0.8f,0.8f);
+        for( AngleConstr con : constrs->angles ){ 
+            const Mat3d& lvec = W->builder.lvec;
+            Vec3d ash = lvec.a*con.acell.a + lvec.b*con.acell.b + lvec.c*con.acell.c;
+            Vec3d bsh = lvec.a*con.bcell.a + lvec.b*con.bcell.b + lvec.c*con.bcell.c;
+            //Draw3D::drawTriangle( apos[con.ias.b] + ash,   apos[con.ias.a],   apos[con.ias.c] + bsh );
+            //Draw3D::drawTriangle( apos[con.ias.b],   apos[con.ias.a],   apos[con.ias.c] );
+            glBegin(GL_TRIANGLES);
+            glColor3f(0.0f,1.0f,0.5f); Draw3D::vertex(apos[con.ias.b] + ash);
+            glColor3f(0.0f,0.7f,0.7f); Draw3D::vertex(apos[con.ias.a]      );
+            glColor3f(0.0f,0.5f,1.0f); Draw3D::vertex(apos[con.ias.c] + bsh);
+            glEnd();
+        }
+    }
+
+    glColor3f(0.0f,0.5f,0.0f); showBonds();
+
+    //visual_FF_test();
 
     if(W->ipicked>-1){ 
         Vec3d p = W->ffl.apos[W->ipicked];
@@ -1013,7 +1098,8 @@ void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Ve
 
 void MolGUI::drawSystem( Vec3i ixyz ){
     //float textSize=0.007;
-    float textSize=1.0;
+    //float textSize=1.0;
+    float textSize=0.015;
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
@@ -1029,6 +1115,20 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
         if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
         //if(W->ff.pi0s                           ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
+    
+        {// Graph
+
+            // --- draw whole molecule skeleton stored in W->graph
+            //glColor3f(1.0,0.0,1.0);
+            //for(int i=0; i<W->graph.n; i++){ 
+            //    for(int j=0; j<W->graph.nneighs[i]; j++ ) Draw3D::drawLine( apos[i], apos[W->graph.neighs[i][j]] ); 
+            //};
+
+            // --- draw only the bridge bonds stored in W->graph.found
+            glColor3f(1.0,0.0,1.0);
+            for(int i=0; i<W->graph.found.size(); i++){ Vec2i b = W->graph.found[i]; Draw3D::drawLine( apos[b.i], apos[b.j] );  };
+        }
+    
     }
     if( bond2atom ){
         //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( nbonds, bond2atom, apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
@@ -1306,6 +1406,9 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
                 //case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
 
+                //case SDLK_LEFTBRACKET:  myAngle-=0.1; printf( "myAngle %g \n", myAngle ); break;
+                //case SDLK_RIGHTBRACKET: myAngle+=0.1; printf( "myAngle %g \n", myAngle );  break;
+
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;
@@ -1327,11 +1430,14 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LESS:      afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 //case SDLK_GREATER:   afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
+                case SDLK_j: makeNonuniformGrid(); break;
+                case SDLK_k: relaxNonuniformGrid(); break;
+
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl;       break;
                 case SDLK_m: W->swith_method();      break;
                 //case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
-                case SDLK_k: bDebug_scanSurfFF ^=1; break;
+                //case SDLK_k: bDebug_scanSurfFF ^=1; break;
                 //case SDLK_q: W->autoCharges(); break;
                 case SDLK_a: bViewAtomSpheres ^= 1; break;
                 case SDLK_l: bViewAtomLabels  ^= 1; break;
@@ -1412,3 +1518,6 @@ void MolGUI::keyStateHandling( const Uint8 *keys ){
         } break;   
     }
 };
+
+
+#endif

@@ -3,9 +3,12 @@
 //constexpr int ntmpstr=2048;
 //char tmpstr[ntmpstr];
 
-//int verbosity = 1;
-//int idebug    = 0;
+#include "globals.h"
+// int verbosity = 1;
+// int idebug    = 0;
 //double tick2second=1e-9;
+
+//int verbosity = 1;
 
 #include "testUtils.h"
 #include "FitREQ.h"
@@ -20,6 +23,11 @@ MMFFparams params;
 #include "libUtils.h"
 
 extern "C"{
+
+void setVerbosity( int verbosity_, int idebug_ ){
+    verbosity = verbosity_;
+    idebug    = idebug_;
+}
 
 void init_types(int ntyp, int* typeMask, double* typREQs, bool bCopy ){
     W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
@@ -37,6 +45,17 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
     bool bReadTypes = !(types0 && testtypes);
     if( bReadTypes && !W.params ){ params.loadAtomTypes( fname_AtomTypes ); W.params=&params; }
     return W.loadXYZ( fname, n0, i0s, ntest, itests, types0, testtypes );
+}
+
+void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
+    params.loadElementTypes( fname_ElemTypes );
+    params.loadAtomTypes( fname_AtomTypes ); 
+    W.params=&params;
+    W.init_types_par();
+}
+
+int loadXYZ_new( const char* fname, bool bAddEpairs, bool bOutXYZ ){
+    return W.loadXYZ_new( fname, bAddEpairs, bOutXYZ );
 }
 
 double run( int imodel,  int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bRegularize, bool bClamp){
@@ -67,10 +86,14 @@ double run( int imodel,  int nstep, double Fmax, double dt, bool bRigid , int ia
 void setType(int i, double* REQ ){ W.setType( i, *(Quat4d*)REQ ); }
 void getType(int i, double* REQ ){ W.getType( i, *(Quat4d*)REQ ); }
 
-double getEs( int imodel, double* Es, bool bRigid ){
+double getEs( int imodel, double* Es, int isampmode ){
     W.imodel=imodel;
-    if(bRigid){ return W.evalDerivsRigid( Es ); }
-    else      { return W.evalDerivs     ( Es ); }
+    switch(isampmode){
+        case 0: return W.evalDerivsRigid( Es ); break;
+        case 1: return W.evalDerivs     ( Es ); break;
+        case 2: return W.evalDerivsSamp ( Es ); break;
+    }
+    return 0;
 }
 
 void init_buffers(){
@@ -91,6 +114,7 @@ void init_buffers(){
     buffers .insert( { "Es",               W.Es       } );
     //if(W.poses)
     buffers .insert( { "poses",   (double*)W.poses  } );
+    buffers .insert( { "params",  &W.Kneutral       } );
 
     //printf( "init_buffers() @Es %li @poses %li \n", (long)W.Es, (long)W.poses  );
 

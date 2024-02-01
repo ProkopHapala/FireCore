@@ -1,6 +1,7 @@
 
 //int verbosity = 0;
 #include <globals.h>
+//int idebug=0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -46,7 +47,7 @@
 
 #include "AppSDL2OGL_3D.h"
 
-int idebug=0;
+
 
 
 // ===========================================

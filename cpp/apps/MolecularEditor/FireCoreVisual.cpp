@@ -1,6 +1,7 @@
 
 //int verbosity = 0;
 #include <globals.h>
+//int idebug=0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -47,7 +48,7 @@ static MMFFparams* params_glob;
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
 
-int idebug=0;
+
 
 
 // (-0.706981   ,-0.00550127,0.00597562,0.707185)     - Front

@@ -7,7 +7,7 @@ ln -s ../../cpp/common_resources data
 wd=`pwd`
 cd $dir
 pwd
-rm lib$name
+rm lib$name.so
 make -j4 $name
 cd $wd
 
@@ -20,7 +20,10 @@ cd $wd
 #python3 run.py
 #python3 fit_manual.py
 #python3 fit_manual_2.py
-python3 fit_manual_2d.py
+#python3 fit_manual_2d.py
+#python3 fit_manual_OH.py
+
+python3 fit_manual_samp.py
 
 
 

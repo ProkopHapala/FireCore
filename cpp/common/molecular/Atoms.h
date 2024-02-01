@@ -14,13 +14,14 @@ class Points{ public:
 };
 
 class Atoms{ public:
-    int     natoms =0;
-    int   * atypes =0;
-    Vec3d * apos  __attribute__((aligned(64))) =0;
+    int     natoms =0;  // number of atoms in the system
+    int   * atypes =0;  // [natoms] array of atom type indices
+    Vec3d * apos  __attribute__((aligned(64))) =0;   // [natoms] atomic positions
     // --- for global optimization
     Mat3d * lvec   =0;  // ToDo: should this be pointer or full array ?
     double Energy  =0;
     long   id      =0;
+    int    n0      =0; // number of atoms in the first part of the system (e.g. ligand) 
 
     void realloc ( int n, bool bAtypes=true ){ natoms=n;  _realloc(apos,natoms); if(bAtypes)_realloc(atypes,natoms); }
     void allocNew( int n, bool bAtypes=true ){ natoms=n;  _alloc(apos,natoms);   if(bAtypes)_alloc(atypes,natoms);   }
@@ -41,6 +42,15 @@ class Atoms{ public:
     Atoms(int n,bool bLvec=false, bool bAtypes=true ){ realloc( n, bAtypes ); if(bLvec){ lvec=new Mat3d; *lvec=Mat3dIdentity; };    };
     Atoms(const Atoms& As, bool bCopy=true){ if(bCopy){ copyOf(As); }else{  bind(As.natoms,As.atypes,As.apos); } };
 
+    ~Atoms(){ dealloc(); if(lvec)delete lvec; };   // ToDo: should we delete lvec ?  If Atoms go out of scope, we should make sure lvec==nullptr
+
+    void getAABB( Vec3d &pmin, Vec3d &pmax )const{
+        pmin.set( 1e+300, 1e+300, 1e+300 );
+        pmax.set(-1e+300,-1e+300,-1e+300 );
+        for(int ia=0; ia<natoms; ia++){
+            apos[ia].update_bounds( pmin, pmax );
+        }
+    }
 
     void fromRigid( Vec3d* ps0, const Vec3d& p0, const Mat3d& rot ){ for(int i=0; i<natoms; i++){ rot.dot_to_T( ps0[i], apos[i] ); apos[i].add(p0);         } }
     void shift    ( Vec3d d                                       ){ for(int i=0; i<natoms; i++){ apos[i].add(d); } }
@@ -105,6 +115,8 @@ class Atoms{ public:
             }
         }}};
     }
+
+    
 
     void toNewLattice( const Mat3d& lvec_new, Atoms* source=0 ){
         Vec3d* apos_  =apos;

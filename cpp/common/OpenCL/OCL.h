@@ -17,8 +17,8 @@
 //=======================================================================
 //=======================================================================
 
-class OCLBuffer{
-    public:
+class OCLBuffer{public:
+
     void       * p_cpu = NULL;
     cl_mem       p_gpu    = 0;
     size_t       n        = 0;
@@ -86,7 +86,11 @@ class OCLBuffer{
     inline int fromGPU ( cl_command_queue& commands,       void* cpu_data, int n_=-1, int i0=0 ){ 
         if(img_dims==0){
             if(n_<0)n_=n; 
-            return clEnqueueReadBuffer( commands, p_gpu, CL_TRUE, i0*typesize, n_*typesize, cpu_data, 0, NULL, NULL ); 
+            //printf( "fromGPU() nbutes=%i n_ %i i0 %i typesize %li p_gpu=%li cpu_data=%li \n", n_*typesize,  n_, i0, typesize, (long)p_gpu, (long)cpu_data ); // DEBUG
+            //for(int i=0;i<n_*typesize;i++){ ((char*)cpu_data)[i]=0; } // DEBUG
+            int iret = clEnqueueReadBuffer( commands, p_gpu, CL_TRUE, i0*typesize, n_*typesize, cpu_data, 0, NULL, NULL ); 
+            //OCL_checkError(iret,"fromGPU()");
+            return iret;
         }else{
             size_t offset[4]{0,0,0,0};
             size_t region[4]{nImg[0],nImg[1],nImg[2],0};
@@ -253,6 +257,50 @@ class OCLsystem{ public:
         //exit(0);
     }
 
+    void print_device_params( cl_device_id device, bool bDetails=false ){
+        cl_uint  ui;
+        cl_ulong ul;
+        size_t   sz;
+        size_t   szs[4];
+        const int nstrmax=1024;
+        char     str[nstrmax];
+        //clGetDeviceInfo(device, CL_DEVICE_NAME,                nstrmax,      str, NULL);   printf("DEVICE[%i,%i]: %s\n", i,j, str);
+        //if(strstr(str, "NVIDIA") != NULL){ i_nvidia=i; }
+        //clGetDeviceInfo(devices[j], CL_DEVICE_VENDOR,              nstrmax,      str, NULL);   printf("\tVENDOR:      %s\n", str);
+        printf("\t## VERSIONS: \n");
+        clGetDeviceInfo(device, CL_DEVICE_VERSION,             nstrmax,      str, NULL);   printf("\tDEVICE_VERSION: %s\n", str);
+        clGetDeviceInfo(device, CL_DRIVER_VERSION,             nstrmax,      str, NULL);   printf("\tDRIVER_VERSION: %s\n", str);
+        clGetDeviceInfo(device, CL_DEVICE_OPENCL_C_VERSION,    nstrmax,      str, NULL);   printf("\tC_VERSION:      %s\n", str);
+        printf("\t## PERFORMANCE: \n");
+        clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,        sizeof(uint),  &ui, NULL);  printf("\tMAX_COMPUTE_UNITS:    %d\n", ui  );
+        clGetDeviceInfo(device, CL_DEVICE_MAX_CLOCK_FREQUENCY,      sizeof(uint),  &ui, NULL);  printf("\tMAX_CLOCK_FREQUENCY:  %d  MHz \n", ui   );
+        clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE,          sizeof(ulong), &ul, NULL);  printf("\tGLOBAL_MEM_SIZE:      %lu MB  \n", (ul/1024)/1024 );
+        clGetDeviceInfo(device, CL_DEVICE_LOCAL_MEM_SIZE,           sizeof(ulong), &ul, NULL);  printf("\tLOCAL_MEM_SIZE:       %lu kB  \n", ul/1024 );
+        clGetDeviceInfo(device, CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE, sizeof(ulong), &ul, NULL);  printf("\tCONSTANT_BUFFER_SIZE: %lu kB  \n", ul/1024 );
+        clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE,    sizeof(ulong),  &ul, NULL); printf("\tGLOBAL_MEM_CACHE_SIZE:     %lu kB \n", (ul/1024) );
+        clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE,sizeof(ulong),  &ul, NULL); printf("\tGLOBAL_MEM_CACHELINE_SIZE: %lu \n", ul );
+        if(!bDetails) return;
+        printf("\t## DETAILS: \n");
+        clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS,      sizeof(uint),    &ui, NULL); printf("\tMAX_WORK_ITEM_DIMENSIONS: %d  \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,           sizeof(size_t),  &sz, NULL); printf("\tMAX_WORK_GROUP_SIZE:      %lu \n", sz );
+        clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_ITEM_SIZES,           sizeof(size_t)*4,szs, NULL); printf("\tMAX_WORK_ITEM_SIZES:      [%li,%li,%li] \n", szs[0],szs[1],szs[1] );
+        clGetDeviceInfo(device, CL_DEVICE_MIN_DATA_TYPE_ALIGN_SIZE,      sizeof(uint),    &ui, NULL); printf("\tMIN_DATA_TYPE_ALIGN_SIZE: %d  \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_IMAGE_MAX_BUFFER_SIZE,         sizeof(size_t),  &sz, NULL); printf("\tIMAGE_MAX_BUFFER_SIZE:    %d Mpix \n", sz/1024/1024 );
+        clGetDeviceInfo(device, CL_DEVICE_IMAGE_MAX_ARRAY_SIZE,          sizeof(size_t),  &sz, NULL); printf("\tIMAGE_MAX_ARRAY_SIZE:     %d  \n", sz );
+        clGetDeviceInfo(device, CL_DEVICE_QUEUE_ON_DEVICE_MAX_SIZE,      sizeof(uint),    &ui, NULL); printf("\tQUEUE_ON_DEVICE_MAX_SIZE:      %d   \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_QUEUE_ON_DEVICE_PREFERRED_SIZE,sizeof(uint),    &ui, NULL); printf("\tPREFERRED_QUEUE_SIZE:          %d \n", ui  );
+        clGetDeviceInfo(device, CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR,   sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_CHAR:   %d \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT,  sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_SHORT:  %d \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT,    sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_INT:    %d \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG,   sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_LONG:   %d \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,  sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_FLOAT:  %d \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE, sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_DOUBLE: %d \n", ui );
+        clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS,               nstrmax,       str, NULL);  printf("\tEXTENSIONS: %s\n", str);
+        //printf("\n");
+    }
+
+    void printDeviceInfo( bool bDetails=false ){ print_device_params( device, bDetails ); }
+
     int print_devices( bool bDetails=false){
         int i, j;
         char*           value;
@@ -281,36 +329,7 @@ class OCLsystem{ public:
             for (j = 0; j < deviceCount; j++) {
                 clGetDeviceInfo(devices[j], CL_DEVICE_NAME,                nstrmax,      str, NULL);   printf("DEVICE[%i,%i]: %s\n", i,j, str);
                 if(strstr(str, "NVIDIA") != NULL){ i_nvidia=i; }
-                //clGetDeviceInfo(devices[j], CL_DEVICE_VENDOR,              nstrmax,      str, NULL);   printf("\tVENDOR:      %s\n", str);
-                printf("\t## VERSIONS: \n");
-                clGetDeviceInfo(devices[j], CL_DEVICE_VERSION,             nstrmax,      str, NULL);   printf("\tDEVICE_VERSION: %s\n", str);
-                clGetDeviceInfo(devices[j], CL_DRIVER_VERSION,             nstrmax,      str, NULL);   printf("\tDRIVER_VERSION: %s\n", str);
-                clGetDeviceInfo(devices[j], CL_DEVICE_OPENCL_C_VERSION,    nstrmax,      str, NULL);   printf("\tC_VERSION:      %s\n", str);
-                printf("\t## PERFORMANCE: \n");
-                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_COMPUTE_UNITS,        sizeof(uint),  &ui, NULL);  printf("\tMAX_COMPUTE_UNITS:    %d\n", ui  );
-                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_CLOCK_FREQUENCY,      sizeof(uint),  &ui, NULL);  printf("\tMAX_CLOCK_FREQUENCY:  %d  MHz \n", ui   );
-                clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_SIZE,          sizeof(ulong), &ul, NULL);  printf("\tGLOBAL_MEM_SIZE:      %lu MB  \n", (ul/1024)/1024 );
-                clGetDeviceInfo(devices[j], CL_DEVICE_LOCAL_MEM_SIZE,           sizeof(ulong), &ul, NULL);  printf("\tLOCAL_MEM_SIZE:       %lu kB  \n", ul/1024 );
-                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE, sizeof(ulong), &ul, NULL);  printf("\tCONSTANT_BUFFER_SIZE: %lu kB  \n", ul/1024 );
-                clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_CACHE_SIZE,    sizeof(ulong),  &ul, NULL); printf("\tGLOBAL_MEM_CACHE_SIZE:     %lu kB \n", (ul/1024) );
-                clGetDeviceInfo(devices[j], CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE,sizeof(ulong),  &ul, NULL); printf("\tGLOBAL_MEM_CACHELINE_SIZE: %lu \n", ul );
-                if(!bDetails) continue;
-                printf("\t## DETAILS: \n");
-                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS,      sizeof(uint),    &ui, NULL); printf("\tMAX_WORK_ITEM_DIMENSIONS: %d  \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_WORK_GROUP_SIZE,           sizeof(size_t),  &sz, NULL); printf("\tMAX_WORK_GROUP_SIZE:      %lu \n", sz );
-                clGetDeviceInfo(devices[j], CL_DEVICE_MAX_WORK_ITEM_SIZES,           sizeof(size_t)*4,szs, NULL); printf("\tMAX_WORK_ITEM_SIZES:      [%li,%li,%li] \n", szs[0],szs[1],szs[1] );
-                clGetDeviceInfo(devices[j], CL_DEVICE_MIN_DATA_TYPE_ALIGN_SIZE,      sizeof(uint),    &ui, NULL); printf("\tMIN_DATA_TYPE_ALIGN_SIZE: %d  \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_IMAGE_MAX_BUFFER_SIZE,         sizeof(size_t),  &sz, NULL); printf("\tIMAGE_MAX_BUFFER_SIZE:    %d Mpix \n", sz/1024/1024 );
-                clGetDeviceInfo(devices[j], CL_DEVICE_IMAGE_MAX_ARRAY_SIZE,          sizeof(size_t),  &sz, NULL); printf("\tIMAGE_MAX_ARRAY_SIZE:     %d  \n", sz );
-                clGetDeviceInfo(devices[j], CL_DEVICE_QUEUE_ON_DEVICE_MAX_SIZE,      sizeof(uint),    &ui, NULL); printf("\tQUEUE_ON_DEVICE_MAX_SIZE:      %d   \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_QUEUE_ON_DEVICE_PREFERRED_SIZE,sizeof(uint),    &ui, NULL); printf("\tPREFERRED_QUEUE_SIZE:          %d \n", ui  );
-                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR,   sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_CHAR:   %d \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_SHORT,  sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_SHORT:  %d \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT,    sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_INT:    %d \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG,   sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_LONG:   %d \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT,  sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_FLOAT:  %d \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE, sizeof(uint),    &ui, NULL); printf("\tPREFERRED_VECTOR_WIDTH_DOUBLE: %d \n", ui );
-                clGetDeviceInfo(devices[j], CL_DEVICE_EXTENSIONS,               nstrmax,       str, NULL);  printf("\tEXTENSIONS: %s\n", str);
+                print_device_params( devices[j] );
                 printf("\n");
             }
             free(devices);
@@ -318,8 +337,6 @@ class OCLsystem{ public:
         free(platforms);
         return i_nvidia;
     }
-
-
 
     int copy( int iBufFrom, int iBufTo, int nbytes=-1, int src_offset=0, int dst_offset=0){
        if(nbytes<0){ nbytes=buffers[iBufFrom].byteSize(); int nbytes_=buffers[iBufTo].byteSize(); if(nbytes_<nbytes)nbytes=nbytes_;}
@@ -366,7 +383,7 @@ class OCLsystem{ public:
     void check_deviceSet  (){ if(device  ==0){ printf("ERROR OCLsystem device   not set \n"); exit(-1); } }
     void check_commandsSet(){ if(commands==0){ printf("ERROR OCLsystem commands not set \n"); exit(-1); } }
 
-    int init(int ichoice=0){
+    int init(int ichoice=0 ){
         int err=0;
         //cl_info(); exit(0);
         cl_uint deviceIndex = 0;
@@ -556,17 +573,24 @@ class OCLsystem{ public:
     }
 
     void release_OCL( cl_program program=0 ){
+        printf( "OCL_DEF::release_OCL() --- START \n" );
         if(program==0) program=this->program;
-        clReleaseProgram(program);
-        for(size_t i=0; i<kernels.size(); i++){ clReleaseKernel(kernels[i]);       }
+        printf( "OCL_DEF::release_OCL() kernels \n" );
+        for(size_t i=0; i<kernels.size(); i++){ clReleaseKernel   (kernels[i]      ); }
+        printf( "OCL_DEF::release_OCL() buffers \n" );
         for(size_t i=0; i<buffers.size(); i++){ clReleaseMemObject(buffers[i].p_gpu); }
+        printf( "OCL_DEF::release_OCL() program \n" );
+        clReleaseProgram(program);   
+        printf( "OCL_DEF::release_OCL() commands \n" );
         //clReleaseKernel(kernel);
         clReleaseCommandQueue(commands);
+        printf( "OCL_DEF::release_OCL() context \n" );
         clReleaseContext(context);
+        printf( "OCL_DEF::release_OCL() --- DONE \n" );
     }
     ~OCLsystem(){ 
         release_OCL();
-     }
+    }
 
     void printBuffers(){
         printf("OCLsystem::printBuffers()\n");

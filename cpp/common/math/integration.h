@@ -11,8 +11,14 @@
 //   Shunn, L., & Ham, F. (2012). Journal of Computational and Applied Mathematics, 236(17), 4348–4364. https://doi.org/10.1016/j.cam.2012.03.032
 //   http://dx.doi.org/10.1016/j.cam.2012.03.032 https://linkinghub.elsevier.com/retrieve/pii/S0377042712001604
 
-namespace TetrahedronIntegral{
+// Other 3D quadrature rules can be downloaded from (as .zip file):
+// On the identification of symmetric quadrature rules for finite element methods
+// F.D. Witherden, P.E. Vincent, Computers & Mathematics with Applications, Volume 69, Issue 10, May 2015, 1232–1241, https://doi.org/10.1016/j.camwa.2015.03.017
+// https://www.sciencedirect.com/science/article/pii/S0898122115001224
+// https://ars.els-cdn.com/content/image/1-s2.0-S0898122115001224-mmc1.zip
 
+
+namespace TetrahedronIntegral{
 
 //constexpr const static double ps_1[4][] = {	0.25000000000000000	,	0.25000000000000000	,	0.25000000000000000	,	0.25000000000000000	};
 

@@ -1,7 +1,7 @@
 
 #include <globals.h>
 //int verbosity = 1;
-int idebug    = 0;
+//int idebug    = 0;
 double tick2second=1e-9;
 
 #include "MolGUI.h"
@@ -29,6 +29,23 @@ int main(int argc, char *argv[]){
 	// --------- using argparse & LabdaDict;
 	app = new MolGUI( junk, DM.w-100, DM.h-100, NULL );
     MolWorld_sp3* W = app->W;
+
+    funcs["-col_damp"]={6,[&](const char** ss){
+        //printf( "ss[0](%s)\n", ss[0] ); printf( "ss[1](%s)\n", ss[1] );printf( "ss[2](%s)\n", ss[2] );printf( "ss[3](%s)\n", ss[3] );printf( "ss[4](%s)\n", ss[4] );exit(0);
+        int n; double cB, cNB, cAng=0, cm,dR1,dR2;
+        sscanf( ss[0], "%i" , &n   ) ; sscanf( ss[1], "%lf", &cB  ); sscanf( ss[2], "%lf", &cNB ); sscanf( ss[3], "%lf", &cm  ); sscanf( ss[3], "%lf", &dR1  ); sscanf( ss[3], "%lf", &dR2  ); 
+        printf( "W->ffl.ndampstep %i collisionDamping %g collisionDamping_NB %g damping_medium %g R1,2(%g,%g)\n", n, cB, cNB, cm, dR1, dR2 );
+        W->ffl.colDamp.set( n, cm, cB, cAng, cNB, dR1, dR2 );
+        // W->ffl.ndampstep                = n;
+        // W->ffl.damping_medium           = cm;
+        // W->ffl.collisionDamping         = fmax( 0.0, cB  );
+        // W->ffl.collisionDamping_NB      = fmax( 0.0, cNB );
+        // W->ffl.bCollisionDamping        = cB  > 0.0;
+        // W->ffl.bCollisionDampingNonBond = cNB > 0.0;
+        // W->ffl.col_damp_dRcut1          = dR1;
+        // W->ffl.col_damp_dRcut2          = dR2;
+        printf( "W->ffl.colDamp(n=%i,bond=%g,nonB=%g,medium=%g,R12(%g,%g)\n", W->ffl.colDamp.nstep, W->ffl.colDamp.bond, W->ffl.colDamp.nonB, W->ffl.colDamp.medium, W->ffl.colDamp.dRcut1, W->ffl.colDamp.dRcut2 );
+    }};// collision damping parameters
 
 	funcs["-s"]={1,[&](const char** ss){ app->W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ app->W->xyz_name  =ss[0]; }}; // molecule as .xyz

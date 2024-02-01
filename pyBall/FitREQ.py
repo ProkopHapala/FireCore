@@ -23,6 +23,7 @@ cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
 # ===== To generate Interfaces automatically from headers call:
 header_strings = [
+"void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){",
 "void init_types(int nbatch, int ntyp, int* typeMask, double* typREQs ){",
 "void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){",
 "void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy ){",
@@ -58,10 +59,16 @@ def cstr( s ):
     if s is None: return None
     return s.encode('utf8')
 
+#  void setVerbosity( int verbosity_, int idebug_ ){
+lib.setVerbosity.argtypes  = [c_int, c_int] 
+lib.setVerbosity.restype   =  None
+def setVerbosity( verbosity=1, idebug=0 ):
+    return lib.setVerbosity( verbosity, idebug )
+
 #  void init_types(int ntyp, int* typeMask, double* typREQs ){
 lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool ] 
 lib.init_types.restype   =  None
-def init_types(typeMask, typREQs=None, bCopy=False ):
+def init_types(typeMask, typREQs=None, bCopy=True ):
     ntyp = len(typeMask)
     return lib.init_types( ntyp, _np_as(typeMask,c_int_p), _np_as(typREQs,c_double_p), bCopy)
 
@@ -87,11 +94,11 @@ def run( nstep, ErrMax=1e-6, dt=0.1, bRigid=False, imodel=1, ialg=1, bRegularize
     return lib.run(imodel, nstep, ErrMax, dt, bRigid, ialg, bRegularize )
 
 #void getEs( double* Es, bool bRigid ){
-lib.getEs.argtypes  = [ c_int, c_double_p,  c_bool] 
+lib.getEs.argtypes  = [ c_int, c_double_p,  c_int] 
 lib.getEs.restype   =  c_double
-def getEs( imodel=1, Es=None, bRigid=True):
+def getEs( imodel=1, Es=None, isampmode=0 ):
     if Es is None: Es = np.zeros( nbatch )
-    Eerr = lib.getEs( imodel, _np_as(Es,c_double_p), bRigid)
+    Eerr = lib.getEs( imodel, _np_as(Es,c_double_p), isampmode )
     return Es
 
 #  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
@@ -108,6 +115,19 @@ def loadXYZ( fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="
     nbatch = lib.loadXYZ( cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes) )
     return nbatch
 
+# void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
+lib.loadTypes.argtypes  = [c_char_p, c_char_p ]
+lib.loadTypes.restype   =  None
+def loadTypes( fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat" ):
+    return lib.loadTypes( cstr(fEtypes), cstr(fAtypes) )
+
+# int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
+lib.loadXYZ_new.argtypes  = [c_char_p, c_bool, c_bool ]
+lib.loadXYZ_new.restype   =  c_int
+def loadXYZ_new( fname, bAddEpairs=False, bOutXYZ=False ):
+    global nbatch
+    nbatch = lib.loadXYZ_new( cstr(fname), bAddEpairs, bOutXYZ )
+    return nbatch
 
 #  void setType(int i, double* REQ )
 lib.setType.argtypes  = [c_int, c_double_p] 
@@ -158,10 +178,11 @@ def getBuff(name,sh):
 
 def getBuffs():
     init_buffers()
-    global ndims,nDOFs,ntype,nbatch,n0,n1
+    global ndims,nDOFs,ntype,nbatch,n0,n1, params
     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
     nDOFs=ndims[0]; ntype=ndims[1]; nbatch=ndims[2];n0=ndims[3];n1=ndims[4]; 
     print( "getBuffs(): nDOFs %i ntype %i nbatch %i n0 %i n1 %i" %(nDOFs,ntype,nbatch,n0,n1) )
+    params     = getBuff( "params", 4 )
 
     global DOFs,fDOFs,typeREQs,typeREQsMin,typeREQsMax,typeREQs0,typeKreg,typToREQ,weights,Es,poses,ps1,ps2,ps3, types1,types2,types3
     DOFs       = getBuff ( "DOFs",     nDOFs  )
@@ -209,5 +230,9 @@ def EnergyFromXYZ(fname):
     Es = np.array(Es)
     xs = np.array(xs)
     return Es,xs
+
+
+
+
 
 

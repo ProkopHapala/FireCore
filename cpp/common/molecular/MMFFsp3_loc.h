@@ -34,16 +34,17 @@ class MMFFsp3_loc : public NBFF { public:
     static constexpr const int nneigh_max = 4; // maximum number of neighbors
 
     // === inherited from NBFF
-    // int natoms=0;         // [natoms] // from Atoms
-    //Vec3d *   apos  =0;    // [natoms] // from Atoms
-    //Vec3d *  fapos  =0;    // [natoms] // from NBFF
-    //Quat4i*  neighs =0;    // [natoms] // from NBFF
-    //Quat4i*  neighCell=0; // [natoms] // from NBFF
-    //Quat4d*  REQs =0;       // [nnode]  // from NBFF
-    //bool bPBC=false;       // from NBFF
-    //Vec3i   nPBC;          // from NBFF 
-    //Mat3d   lvec;          // from NBFF
-    //double  Rdamp  = 1.0;  // from NBFF
+    // int natoms=0;        // [natoms] // from Atoms
+    //Vec3d * apos  =0;     // [natoms] // from Atoms
+    //Vec3d * vapos = 0;    // [natom]  velocities of atoms
+    //Vec3d * fapos  =0;    // [natoms] // from NBFF
+    //Quat4i* neighs =0;    // [natoms] // from NBFF
+    //Quat4i* neighCell=0;  // [natoms] // from NBFF
+    //Quat4d* REQs =0;      // [nnode]  // from NBFF
+    //bool    bPBC=false;       // from NBFF
+    //Vec3i   nPBC;         // from NBFF 
+    //Mat3d   lvec;         // from NBFF
+    //double  Rdamp  = 1.0; // from NBFF
 
     // dimensions of the system
     int  nDOFs=0,nnode=0,ncap=0,nvecs=0,ntors=0;
@@ -59,6 +60,24 @@ class MMFFsp3_loc : public NBFF { public:
     bool doPiSigma=true; // compute pi-sigma interaction
     bool doAngles =true; // compute angles
     //bool doEpi    =true; // compute pi-electron interaction
+
+    // bool    bCollisionDamping        = false; // if true we use collision damping
+    // bool    bCollisionDampingAng     = false;
+    // bool    bCollisionDampingNonBond = false;  // if true we use collision damping for non-bonded interactions
+    // double  damping_medium           = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
+    // double  collisionDamping         = 0.0;   // col_damp    =     collisionDamping   /(dt*ndampstep )
+    // double  collisionDamping_ang     = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    // double  collisionDamping_NB      = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    // int     ndampstep                = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
+    // double  col_damp_dRcut1          = -0.2;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    // double  col_damp_dRcut2          =  0.3;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    // double col_damp      = 0.0;  //  collisionDamping   /(dt*ndampstep );
+    // double col_damp_NB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
+    // double col_dampAng   = 0.0;  //  collisionDamping   /(dt*ndampstep );
+
+    CollisionDamping colDamp;
+
+    Vec3d cvf=Vec3dZero; // <f|f>, <v|v>, <v|f> 
 
     bool bEachAngle = false; // if true we compute angle energy for each angle separately, otherwise we use common parameters for all angles
     bool bTorsion   = false; // if true we compute torsion energy
@@ -94,12 +113,15 @@ class MMFFsp3_loc : public NBFF { public:
     Quat4d*  torsParams __attribute__((aligned(64))) =0; // [ntors]  torsion parameters
 
     Quat4d* constr __attribute__((aligned(64))) = 0; // [natom]  constraints
-    Vec3d * vapos  __attribute__((aligned(64))) = 0; // [natom]  velocities of atoms
+    //Vec3d * vapos  __attribute__((aligned(64))) = 0; // [natom]  velocities of atoms
 
     Mat3d   invLvec; // inverse lattice vectors
 
     bool    bAngleCosHalf         = true;   // if true we use evalAngleCosHalf() instead of evalAngleCos() to compute anglular energy
     bool    bSubtractAngleNonBond = false;  // if true we subtract angle energy from non-bonded energy
+
+
+
 
     //int itr_DBG=0;
 
@@ -181,6 +203,10 @@ void dealloc(){
     fapos  = 0;
     pipos  = 0;
     fpipos = 0;
+
+    //vDOFs  = 0;   // to-do (not sure if we should deallocate it here ?)
+    vapos  = 0;   // to-do (not sure if we should deallocate it here ?)
+    //vpipos = 0;   // to-do (not sure if we should deallocate it here ?)
     _dealloc(atypes);
     _dealloc(neighs);
     _dealloc(neighCell);
@@ -238,6 +264,9 @@ double eval_atom(const int ia){
     const double* Kppi = Kpp      [ia].array; // pi-pi stiffness
     Vec3d* fbs  = fneigh   +ia*4;             // forces on bonds
     Vec3d* fps  = fneighpi +ia*4;             // forces on pi vectors
+
+    const bool bColDampB   = colDamp.bBond && vapos; // if true we use collision damping
+    const bool bColDampAng = colDamp.bAng  && vapos; // if true we use collision damping for non-bonded interactions
 
     // // --- settings
     // double  ssC0 = apars[ia].x;
@@ -320,6 +349,31 @@ double eval_atom(const int ia){
 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds){
+
+                if(bColDampB){ // 
+                    //printf( "MMFFsp3_loc::eval_atom() bCollisionDamping=%i col_damp=%g \n", bCollisionDamping, col_damp ); exit(0);
+                    // double invL = 1./l;
+                    // double dv   = d.dot( vel[b.y].f - vel[b.x].f )*invL;
+                    // double mcog = pj.w + pi.w;
+                    // double reduced_mass = pj.w*pi.w/mcog;
+                    // double imp  = collision_damping * reduced_mass * dv;
+                    // for masses = 1.0 we have reduced_mass = 1*1/(1+1) = 0.5
+
+                    double dv   = h.f.dot( vapos[ing] - vapos[ia] );
+                    double fcol = colDamp.cdampB * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+
+                    f1.set_mul( h.f, fcol );
+                    fbs[i].sub(f1);  fa.add(f1); 
+
+                    // double w    = damp_rate * 0.5 * smoothstep_down(sqrt(r2),R, R+dRcut ); // ToDo : we can optimize this by using some other cutoff function which depends only on r2 (no sqrt)
+                    // //double w    = damp_rate * 0.5 * R8down         (r2,      R, R+dRcut );
+                    // double fcol = w * d.dot( vapos[j]-vi );                                // collisionDamping ~ 1/(dt*ndampstep);     f = m*a = m*dv/dt
+                    // Vec3d fij; fij.set_mul( d, fcol/r2 ); //  vII = d*d.fot(v)/|d|^2 
+                    // fx+=fij.x;
+                    // fy+=fij.y;
+                    // fz+=fij.z;
+                }
+
                 // bond length force
                 E+= evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1); 
 
@@ -427,6 +481,16 @@ double eval_atom(const int ia){
             //bErr|=ckeckNaN( 1,3, (double*)&f1, [&]{ printf("atom[%i]fss1[%i,%i]",ia,i,j); } );
             //bErr|=ckeckNaN( 1,3, (double*)&f2, [&]{ printf("atom[%i]fss2[%i,%i]",ia,i,j); } );
             fa    .sub( f1+f2  );  // apply force on the central atom
+
+            if(bColDampAng){
+                Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
+                double dv   = dp.dot( vapos[ing] - vapos[ia] );
+                double fcol = colDamp.cdampAng * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                dp.mul( fcol/dp.norm2() );
+                f1.sub(dp);
+                f2.add(dp);
+            }
+
             // ----- Error is HERE
             if(bSubtractAngleNonBond){ // subtract non-bonded interactions between atoms which have common neighbor
                 Vec3d fij=Vec3dZero;
@@ -481,7 +545,7 @@ double eval_atom(const int ia){
 
 
 double eval_atom_debug(const int ia, bool bPrint=true){
-    //printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
+    if(bPrint)printf( "#### MMFFsp3_loc::eval_atom_debug(%i)\n", ia );
     double E=0;
     const Vec3d pa  = apos [ia]; 
     const Vec3d hpi = pipos[ia]; 
@@ -502,6 +566,9 @@ double eval_atom_debug(const int ia, bool bPrint=true){
 
     const Quat4d& apar  = apars[ia];
     const double  piC0 = apar.w;
+
+    const bool bColDampB   = colDamp.bBond && vapos; // if true we use collision damping
+    const bool bColDampAng = colDamp.bAng  && vapos; // if true we use collision damping for non-bonded interactions
 
     //--- Aux Variables 
     Quat4d  hs[4];
@@ -556,6 +623,15 @@ double eval_atom_debug(const int ia, bool bPrint=true){
 
         if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds){
+
+                if(bColDampB){ // 
+                    double dv   = h.f.dot( vapos[ing] - vapos[ia] );
+                    double fcol = colDamp.cdampB * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                    f1.set_mul( h.f, fcol );
+                    if(bPrint)printf( "ffl:bondCol[%i|%i=%i] colDamp=%g dv=%g fcol=%g h(%g,%g,%g) f(%g,%g,%g) E %g\n", ia,i,ing, colDamp.cdampB, dv, fcol, h.x,h.y,h.z, f1.x,f1.y,f1.z);
+                    fbs[i].sub(f1);  fa.add(f1); 
+                }
+
                 double Ebi = evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
                 E +=Ebi; 
                 Eb+=Ebi; 
@@ -631,6 +707,18 @@ double eval_atom_debug(const int ia, bool bPrint=true){
             Ea+=Eai;
             if(bPrint)printf( "ffl:ang[%i|%i,%i] kss=%g cs0(%g,%g) c=%g l(%g,%g) f1(%g,%g,%g) f2(%g,%g,%g) E %g\n", ia,ing,jng, ssK, cs0_ss.x,cs0_ss.y, hi.f.dot(hj.f),hi.w,hj.w, f1.x,f1.y,f1.z, f2.x,f2.y,f2.z, Eai );
             fa    .sub( f1+f2  );
+
+
+            if(bColDampAng){
+                Vec3d dp; dp.set_lincomb( 1./hj.w, hj.f,  -1./hi.w, hi.f );
+                double dv   = dp.dot( vapos[ing] - vapos[ia] );
+                double fcol = colDamp.cdampAng * 0.5 * dv;   // col_damp ~ collision_damping/(dt*ndampstep);     f = m*a = m*dv/dt
+                dp.mul( fcol/dp.norm2() );
+                f1.sub(dp);
+                f2.add(dp);
+                if(bPrint)printf( "ffl:colDampAng[%i|%i,%i] cDampAng=%g dv=%g fcol=%g fij(%g,%g,%g)\n", ia,ing,jng, colDamp.cdampAng, dv, fcol, dp.x,dp.y,dp.z );
+            }
+
             // ----- Error is HERE
             if(bSubtractAngleNonBond){
                 Vec3d fij=Vec3dZero;
@@ -892,7 +980,7 @@ double eval_torsion(int it){
     dcn *= invs;
     double dcab  = dcn;                          // dc/dcab = dc/d<ha|hb>
     double dca   = (1-cb*cb)*(ca*cab - cb)*dcn;  // dc/dca  = dc/d<ha|hab>
-    double dcb   = (1-ca*ca)*(cb*cab - ca)*dcn;  // dc/dca  = dc/d<hb|hab>
+    double dcb   = (1-ca*ca)*(cb*cab - ca)*dcn;  // dc/dcb  = dc/d<hb|hab>
 
     Vec3d fa,fb,fab;
 
@@ -900,7 +988,7 @@ double eval_torsion(int it){
     fb =Vec3dZero;
     fab=Vec3dZero;
 
-    // Jacobina: derivative of <ha|hb> = <ha|hab> + <hb|hab> 
+    // Jacobian: derivative of <ha|hb> = <ha|hab> + <hb|hab> 
     //Mat3Sd J;
     SMat3d J;
 
@@ -1042,7 +1130,7 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.0001, double r2min=1e-4, bool bChe
         }
         
     }
-    //for(int ia=0; ia<nnode; ia++){  pipos[ia]=Vec3dZ ; } // DEBUG
+    //for(int ia=0; ia<nnode; ia++){  pipos[ia]=Vec3dZ ; } // Debug
 }
 
 // initialize directions of pi orbitals iteratively
@@ -1062,7 +1150,7 @@ int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
             assemble_atom( ia );
         }
         for(int i=natoms; i<nvecs; i++){
-            F2 +=move_atom_MD( i, dt, Flim, 0.9 );
+            F2 +=move_atom_MD( i, dt, Flim, 0.9 ).z;
         }
         if(F2<F2conv){ return itr; }
     }
@@ -1089,6 +1177,8 @@ void cleanForce(){
     for(int i=0; i<nDOFs; i++){ fDOFs[i]=0;  } 
     // NOTE: We do not need clean fneigh,fneighpi because they are set in eval_atoms 
 }
+
+void cleanVelocity(){  for(int i=0; i<nvecs; i++){ vapos[i]=Vec3dZero; }  }
 
 // add neighbor recoil forces to an atom (ia)
 void assemble_atom(int ia){
@@ -1131,7 +1221,7 @@ double eval( bool bClean=true, bool bCheck=true ){
     normalizePis();
     //printf( "print_apos() AFTER \n" ); print_apos();
     Etot += eval_atoms();
-    //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
+    //if(idebug){printf("CPU BEFORE assemble() \n"); printDebug();} 
     asseble_forces();
     if(bTorsion) EppI +=eval_torsions();
     //Etot = Eb + Ea + Eps + EppT + EppI;
@@ -1145,17 +1235,29 @@ double eval_check(){
         printSizes();
     }
     //print_pipos();
+    cleanForce();
+    if(vapos)cleanVelocity();
     eval();
     checkNans();
     if(verbosity>0)printf(" ============ check MMFFsp3_loc DONE\n " );
     return Etot;
 }
 
+
+
+
+
 // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy
 // ToDo: OpenMP paraelization atempt
-int run( int niter, double dt, double Fconv, double Flim ){
+int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
-    double E,F2;
+    double E=0,ff=0,vv=0,vf=0;
+
+    double cdamp = colDamp.update( dt );
+
+    //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
+    printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
+
     int    itr;
     //if(itr_DBG==0)print_pipos();
     //bool bErr=0;
@@ -1163,9 +1265,17 @@ int run( int niter, double dt, double Fconv, double Flim ){
         E=0;
         // ------ eval MMFF
         for(int ia=0; ia<natoms; ia++){ 
+            {             fapos[ia       ] = Vec3dZero; } // atom pos force
+            if(ia<nnode){ fapos[ia+natoms] = Vec3dZero; } // atom pi  force
             if(ia<nnode)E += eval_atom(ia);
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.MMFF[%i]",ia); } );
-            E += evalLJQs_ng4_PBC_atom( ia ); 
+            //E += evalLJQs_ng4_PBC_atom( ia ); 
+
+            if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+            else    { 
+                E+=evalLJQs_ng4_atom_omp    ( ia ); 
+                if( colDamp.bNonB ){ evalCollisionDamp_atom_omp( ia, colDamp.nonB, colDamp.dRcut1, colDamp.dRcut2 ); }
+            } 
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("eval.NBFF[%i]",ia); } );
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
@@ -1174,36 +1284,43 @@ int run( int niter, double dt, double Fconv, double Flim ){
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+ia), [&]{ printf("assemble[%i]",ia); } );
         }
         // ------ move
-        F2=0;
+        cvf = Vec3dZero;
         for(int i=0; i<nvecs; i++){
             //F2 += move_atom_GD( i, dt, Flim );
             //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
-            F2 += move_atom_MD( i, dt, Flim, 0.99 );
+            cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
+            //move_atom_MD( i, 0.05, 1000.0, 0.9 );
             //F2 += move_atom_kvaziFIRE( i, dt, Flim );
         }
-        if(F2<F2conv)break;
+        if(cvf.z<F2conv)break;
+        if(cvf.x<0){ cleanVelocity(); };
         //itr_DBG++;
     }
     return itr;
 }
 
 // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy, wih OpenMP parallelization
-int run_omp( int niter, double dt, double Fconv, double Flim ){
+int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
-    double E=0,F2=0;
+    double E=0,ff=0,vv=0,vf=0;
+    double cdamp = 1-damping; if(cdamp<0)cdamp=0;
     int    itr=0;
-    #pragma omp parallel shared(E,F2) private(itr)
+    #pragma omp parallel shared(E,ff,vv,vf) private(itr)
     for(itr=0; itr<niter; itr++){
         // This {} should be done just by one of the processors
         #pragma omp single
-        {E=0;F2=0;}
+        {E=0;ff=0;vv=0;vf=0;}
         // ------ eval MMFF
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<natoms; ia++){ 
             if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+            {             fapos[ia       ] = Vec3dZero; } // atom pos force
+            if(ia<nnode){ fapos[ia+natoms] = Vec3dZero; } // atom pi  force
             if(ia<nnode)E += eval_atom(ia);
             //E += evalLJQs_ng4_PBC_atom( ia ); 
-            E += evalLJQs_ng4_PBC_atom_omp( ia ); 
+            //E += evalLJQs_ng4_PBC_atom_omp( ia ); 
+            if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+            else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
         }
         // ---- assemble (we need to wait when all atoms are evaluated)
         #pragma omp for
@@ -1211,15 +1328,19 @@ int run_omp( int niter, double dt, double Fconv, double Flim ){
             assemble_atom( ia );
         }
         // ------ move
-        #pragma omp for reduction(+:F2)
+        #pragma omp for reduction(+:ff,vv,vf)
         for(int i=0; i<nvecs; i++){
-            F2 += move_atom_MD( i, dt, Flim, 0.99 );
-        }
-        for(int i=natoms; i<nvecs; i++){
-             F2 += move_atom_MD( i, dt, Flim, 0.99 );
+            const Vec3d cvf_ = move_atom_MD( i, dt, Flim, cdamp );
+            //const Vec3d cvf_ += move_atom_MD( i, 0.05, 1000.0, 0.9 );
+            ff += cvf_.x; vv += cvf_.y; vf += cvf_.z;
         }
         #pragma omp single
-        if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, F2, omp_get_num_threads() );}
+        {
+            cvf.x=ff; cvf.y=vv; cvf.z=vf;
+            if(cvf.x<0){ cleanVelocity(); };
+            //if(cvf.z<F2conv)break;
+            if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(ff), omp_get_num_threads() );}
+        }
     }
     return itr;
 }
@@ -1248,11 +1369,11 @@ inline double move_atom_GD(int i, float dt, double Flim){
 }
 
 // update atom positions using molecular dynamics (damped leap-frog)
-inline double move_atom_MD( int i, const float dt, const double Flim, const double cdamp=0.9 ){
-    Vec3d  f = fapos[i];
-    Vec3d  v = vapos[i];
-    Vec3d  p = apos [i];
-    const double fr2 = f.norm2();
+inline Vec3d move_atom_MD( int i, const float dt, const double Flim, const double cdamp=0.9 ){
+    Vec3d f = fapos[i];
+    Vec3d v = vapos[i];
+    Vec3d p = apos [i];
+    //const double fr2 = f.norm2();
     //if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
     const bool bPi = i>=natoms;
     // bool b=false;
@@ -1260,6 +1381,7 @@ inline double move_atom_MD( int i, const float dt, const double Flim, const doub
     // b|=ckeckNaN_d( 1,3, (double*)&v, "v.1" );
     // b|=ckeckNaN_d( 1,3, (double*)&f, "f.1" );
     if(bPi)f.add_mul( p, -p.dot(f) );           //b|=ckeckNaN_d( 1,3, (double*)&f, "f.2" );
+    const Vec3d  cvf{ v.dot(f), v.norm2(), f.norm2() };
     v.mul    ( cdamp );
     v.add_mul( f, dt );                         //b|=ckeckNaN_d( 1,3, (double*)&v, "v.2" );
     if(bPi)v.add_mul( p, -p.dot(v) );           //b|=ckeckNaN_d( 1,3, (double*)&v, "v.3" );
@@ -1273,7 +1395,7 @@ inline double move_atom_MD( int i, const float dt, const double Flim, const doub
     apos [i] = p;
     vapos[i] = v;
     //fapos[i] = Vec3dZero;
-    return fr2;
+    return cvf;
 }
 
 // update atom positions using FIRE (Fast Inertial Relaxation Engine)
@@ -1409,7 +1531,7 @@ void makeNeighCells( int npbc, Vec3d* pbc_shifts ){
 
             /*
             // -------- Fast method
-            { //DEBUG
+            { //Debug
                 Vec3d u;
                 invLvec.dot_to( d, u );
                 int ix = 1-(int)(u.x+1.5);
@@ -1465,8 +1587,8 @@ void printTorsions(      ){ printf("MMFFsp3_loc::printTorsions()\n"); for(int i=
 
 void printAtomsConstrains( bool bWithOff=false ){ printf("MMFFsp3_loc::printAtomsConstrains()\n"); for(int i=0; i<natoms; i++){ if(bWithOff || (constr[i].w>0.0f) )printf( "consrt[%i](%g,%g,%g|K=%g)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w ); } }
 
-void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
-    printf( "MMFFsp3_loc::printDEBUG()\n" );
+void printDebug(  bool bNg=true, bool bPi=true, bool bA=true ){
+    printf( "MMFFsp3_loc::printDebug()\n" );
     if(bA)for(int i=0; i<natoms; i++){
         printf( "CPU[%i] ", i );
         //printf( "bkngs{%2i,%2i,%2i,%2i,%2i} ",         bkNeighs[i].x, bkNeighs[i].y, bkNeighs[i].z, bkNeighs[i].w );
@@ -1496,6 +1618,7 @@ void printDEBUG(  bool bNg=true, bool bPi=true, bool bA=true ){
 // check if there are NaNs in the arrays (and exit with error-message if there are)
 bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
     bool ret = false;
+    int ia = whereNaN_d( natoms,  3, (double*)fapos,   "fapos"   ); if(ia>=0){ eval_atom_debug(ia,true);  printf("ERROR NaNs detected in fapos[%i]\n", ia ); exit(0); }
     if(bA)  ret |= ckeckNaN_d(natoms,  3, (double*) apos,   "apos"  );
     if(bA)  ret |= ckeckNaN_d(natoms,  3, (double*)fapos,  "fapos"  );
     if(bPi) ret |= ckeckNaN_d(nnode,   3, (double*) pipos,  "pipos" );
@@ -1507,10 +1630,8 @@ bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
         printAtomParams();
         printNeighs();
         print_pbc_shifts();
-        printDEBUG(  false, false );
-
+        printDebug( false, false );
         eval_atoms(true,true);
-
         printf("ERROR: NaNs detected in %s in %s => exit(0)\n", __FUNCTION__, __FILE__ ); 
         exit(0); 
     };

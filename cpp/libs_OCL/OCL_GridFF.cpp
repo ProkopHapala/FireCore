@@ -9,6 +9,8 @@
 #include <clFFT.h>
 #include "OCLfft_errors.h"
 #include <clFFT.h>
+
+#include "testUtils.h"
 #include "OCL.h"
 #include "Grid.h"
 #include "IO_utils.h"
@@ -38,12 +40,13 @@ extern "C" {
         oclfft.init();
         oclfft.makeMyKernels( cl_src_dir );
     }
+    void printDeviceInfo( bool bDetails ){ oclfft.printDeviceInfo( bDetails ); }
 
-    int   upload(int i, const float* cpu_data ){ return oclfft  .upload(i,cpu_data);                        };
-    int download(int i,       float* cpu_data ){ return oclfft.download(i,cpu_data);  oclfft.finishRaw();   };
+    int   upload(int i, const float* cpu_data ){ return oclfft  .upload(i,cpu_data);                                   };
+    int download(int i,       float* cpu_data ){ int iret=oclfft.download(i,cpu_data);  oclfft.finishRaw();  OCL_checkError_(iret,"OCL_GridFF.cpp::download()",i);  return iret; };
 
-    int copy           ( int iBufFrom, int iBufTo, int nbytes, int  src_offset, int  dst_offset ){ return oclfft.copy           ( iBufFrom, iBufTo, nbytes, src_offset, dst_offset ); };
-    int copyBuffToImage( int iBuff, int itex, int nx,int ny,int nz ){ return oclfft.copyBuffToImage( iBuff,      itex, size_t4{(size_t)nx,(size_t)ny,(size_t)nz} ); };
+    int copy           ( int iBufFrom, int iBufTo, int nbytes, int  src_offset, int  dst_offset ){ int iret=oclfft.copy           ( iBufFrom, iBufTo, nbytes, src_offset, dst_offset );            OCL_checkError_(iret,"OCL_GridFF.cpp::copy()",iBufFrom);          return iret; };
+    int copyBuffToImage( int iBuff, int itex, int nx,int ny,int nz                              ){ int iret=oclfft.copyBuffToImage( iBuff,      itex, size_t4{(size_t)nx,(size_t)ny,(size_t)nz} ); OCL_checkError_(iret,"OCL_GridFF.cpp::copyBuffToImage()",iBuff);  return iret; };
  
     void roll_buf( int ibuffA, int ibuffB, int* shift ){ return oclfft.roll_buf( ibuffA, ibuffB, *(int4*)shift ); }
 
@@ -66,6 +69,9 @@ extern "C" {
         oclfft.newFFTbuffer( "outputC" ); //printf( "C initFFT 4 \n" );
         //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
+
+
+    void release( bool bReleaseOCL, bool bReleaseOCLfft ){ oclfft.release_OCL_DFT( bReleaseOCL, bReleaseOCLfft); }
 
     // ================ PP
 
@@ -96,7 +102,7 @@ extern "C" {
 
     // ================ END PP
 
-    void newFFTbuffer( char* name, int nfloat, int ntot ){ oclfft.newFFTbuffer( name, nfloat, ntot ); }
+    int newFFTbuffer( char* name, int nfloat, int ntot ){ return oclfft.newFFTbuffer( name, nfloat, ntot ); }
 
     int initAtoms( int nAtoms, int nOrbs ){  return oclfft.initAtoms( nAtoms, nOrbs ); };
     void runfft( int ibuff, bool fwd     ){ oclfft.runFFT( ibuff,fwd,0);     };
@@ -105,11 +111,22 @@ extern "C" {
     void poisson ( int ibuffA, int ibuff_result, float* dcell ){  oclfft.poisson ( ibuffA, ibuff_result, (float4*)dcell );}
     void gradient( int ibuffA, int ibuff_result, float* dcell ){  oclfft.gradient( ibuffA, ibuff_result, (float4*)dcell );}
     void projectAtoms    ( float* atoms, float* coefs, int ibuff_result                       ){ oclfft.projectAtoms    ( (float4*)atoms, (float4*)coefs, ibuff_result ); }
+                                                                                                                   
     void projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2, float* acumCoef ){  oclfft.projectAtomsDens( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef ); }
-    void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0 ){ oclfft.projectAtomsDens0( ibuff_result, *(float2*)acumCoef, natoms, ityps, (Vec3d*)oatoms ); }
+    void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0, float4* coefs=0 ){ oclfft.projectAtomsDens0( ibuff_result, *(float2*)acumCoef, natoms, ityps, (Vec3d*)oatoms, coefs ); }
+
+    void projectDenmat( int natoms, int* iZs, int* ityps, double* ocoefs, double* apos, int iorb0, int iorb1, double Rcut, bool bInit ){  
+        oclfft.projectDenmat( natoms, iZs, ityps, ocoefs, (Vec3d*)apos, iorb0, iorb1, Rcut, bInit );
+        //oclfft.projectDenmat( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef );     
+    }
     
     // void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
     void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out ){ oclfft.projectAtomPosTex( (float4*)atoms, (float4*)coefs,  nPos, (float4*)poss, (float2*)out ); }
+
+    void evalVpointChargesPBC( int na, double* apos, double* aQs, int np, double* ps, double* Vps, int* nPBC, double* cell ){
+        oclfft.evalVpointChargesPBC( na, (Vec3d*)apos, aQs, np, (Vec3d*)ps, Vps, *(Vec3i*)nPBC, *(Mat3d*)cell );
+    }
+
 
     void cleanup(){ oclfft.cleanup(); }
 
@@ -146,7 +163,7 @@ extern "C" {
 
     void loadWf(const char* fname, float* out){ loadWf_(fname, out); };
 
-    void loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts ){ oclfft.loadWfBasis(path, RcutSamp,nsamp,ntmp,nZ,iZs,Rcuts ); }
+    float* loadWfBasis( const char* path, float RcutSamp, int nsamp, int ntmp, int nZ, int* iZs, float* Rcuts, bool bDelete ){ return oclfft.loadWfBasis(path, RcutSamp,nsamp,ntmp,nZ,iZs,Rcuts, bDelete ); }
 
     void saveToBin(const char* fname, int ibuff){ oclfft.saveToBin(fname, ibuff); }
     void loadFromBin(const char* fname, int ibuff){ oclfft.loadFromBin(fname,ibuff); }
@@ -154,6 +171,7 @@ extern "C" {
     void saveToXsf     (const char* fname, int ibuff, int stride, int offset ){ return oclfft.saveToXsf(fname, ibuff,stride,offset,0,0,0); }
     void saveToXsfAtoms(const char* fname, int ibuff, int stride, int offset, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, stride, offset, natoms,atypes,(Vec3d*)apos); }
     void saveToXsfAtomsData(const char* fname, int* ngrid, double* data, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsfData(fname, *(Vec3i*)ngrid, data, natoms,atypes,(Vec3d*)apos); }
+
 
     /*
 

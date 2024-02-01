@@ -50,7 +50,7 @@ void Mat3_from_cl( Mat3d& m, const cl_Mat3& clm ){
 
 //=======================================================================
 //=======================================================================
-//class OCL_MM: public OCL_DFT { public:
+
 class OCL_MM: public OCLsystem { public:
     cl_program program_relax=0;
 
@@ -159,6 +159,9 @@ class OCL_MM: public OCLsystem { public:
         newTask( "PPAFM_makeFF"           ,program_relax, 1);
         newTask( "PPAFM_scan"             ,program_relax, 1);
         newTask( "PPAFM_scan_df"          ,program_relax, 1);
+
+        newTask( "getSortRangeBuckets"    ,program_relax, 1); 
+
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
     }

@@ -13,7 +13,42 @@
 #include <string>
 #include <unordered_map>
 
-// element type class
+#include "Atoms.h"
+
+class BondType{ public:
+    double  length;    // bond equilibrium distance
+    double  stiffness; // bond force constant
+    Vec2i   atoms;     // atoms involved in the bond
+    // TBD for UFF, should this be double?
+    // TBD ...but this is just to have everything in a table, actually we do not need to specify it there, 
+    //     force constants and equilibrium distances can be calculated just according to the atom types...
+    uint8_t order;     // bond order
+    inline bool            sort (){ if(atoms.x>atoms.y){ _swap(atoms.x,atoms.y); return true; } return false;  }
+    inline static uint64_t getId( uint16_t at1, uint16_t at2, uint8_t order ){ if (at1>at2){ _swap(at1,at2); } return pack64( at1, at2, order, 0 ); }
+    inline uint64_t        id   (){ return getId( atoms.x, atoms.y, order ); }
+};
+
+class AngleType{ public:
+    double angle0;    // equilibrium angle
+    double stiffness; // angle force constant
+    Vec3i  atoms;     // atoms involved in the angle, a-b-c  or (lever1,fulcrum,lever2)
+    inline bool            sort (){ if (atoms.x>atoms.z){ _swap(atoms.x,atoms.z); return true; } return false;  }
+    inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c ){ if (a>c){ _swap(a,c); } return pack64( b,a,c, 0 );  }
+    inline uint64_t        id   (){ return getId( atoms.x, atoms.y, atoms.z ); }
+};
+
+
+class DihedralType{ public:
+    Quat4i atoms; // atoms involved in the dihedral, a-b-c-d
+    int    bo;    // bond order of central atoms
+    int    n;     // angle periodicity
+    double k;     // dihedral force constant
+    double ang0;  // dihedral equilibrium angle
+    inline bool            sort (){ if (atoms.y>atoms.z){ _swap(atoms.y,atoms.z); _swap(atoms.x,atoms.w); return true; } return false; }
+    inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c, uint16_t d, int order ){ if (b>c){ _swap(b,c); _swap(a,d); } return pack64( b,c,a,d+order);  }
+    inline        uint64_t id   (){ return getId(atoms.x,atoms.y,atoms.z,atoms.w,bo); }
+};
+
 class ElementType{ public:
     char      name[4];    // symbol
     uint8_t   iZ;         // atomic number
@@ -30,13 +65,14 @@ class ElementType{ public:
     double    Ehard;      // chemical hardness
     double    Ra;         // atomic size
     double    eta;        // valence orbital exponent
+
     char* toString( char * str, bool bParams=false )const{
         str         +=sprintf( str, "%s %i %i %i %x", name,  iZ, neval, valence, color );
         if(bParams)   sprintf( str, "%g %g %g   %g %g %g %g",  RvdW, EvdW, Quff,  Eaff,Ehard,Ra,eta  );
         return str;
     }
     void print(int i, bool bParams=false )const{ 
-        printf           ( "AtomType[%i,%s] %i(%i,%i) %x ", i,name,  iZ, neval, valence, color ); 
+        printf           ( "ElementType[%i,%s] %i(%i,%i) %x ", i,name,  iZ, neval, valence, color ); 
         if(bParams)printf( "REQuff(%g,%g,%g) QEq(%g,%g,%g)", RvdW, EvdW, Quff,  Eaff,Ehard,Ra,eta ); 
         printf( "\n"  ); 
     }
@@ -82,41 +118,7 @@ class AtomType{ public:
     }
 };
 
-// bond type class
-class BondType{ public:
-    double  length;    // bond equilibrium distance
-    double  stiffness; // bond force constant
-    Vec2i   atoms;     // atoms involved in the bond
-    // TBD for UFF, should this be double?
-    // TBD ...but this is just to have everything in a table, actually we do not need to specify it there, 
-    //     force constants and equilibrium distances can be calculated just according to the atom types...
-    uint8_t order;     // bond order
-    inline bool            sort (){ if(atoms.x>atoms.y){ _swap(atoms.x,atoms.y); return true; } return false;  }
-    inline static uint64_t getId( uint16_t at1, uint16_t at2, uint8_t order ){ if (at1>at2){ _swap(at1,at2); } return pack64( at1, at2, order, 0 ); }
-    inline uint64_t        id   (){ return getId( atoms.x, atoms.y, order ); }
-};
 
-// angle type class
-class AngleType{ public:
-    double angle0;    // equilibrium angle
-    double stiffness; // angle force constant
-    Vec3i  atoms;     // atoms involved in the angle, a-b-c  or (lever1,fulcrum,lever2)
-    inline bool            sort (){ if (atoms.x>atoms.z){ _swap(atoms.x,atoms.z); return true; } return false;  }
-    inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c ){ if (a>c){ _swap(a,c); } return pack64( b,a,c, 0 );  }
-    inline uint64_t        id   (){ return getId( atoms.x, atoms.y, atoms.z ); }
-};
-
-// dihedral type class
-class DihedralType{ public:
-    Quat4i atoms; // atoms involved in the dihedral, a-b-c-d
-    int    bo;    // bond order of central atoms
-    int    n;     // angle periodicity
-    double k;     // dihedral force constant
-    double ang0;  // dihedral equilibrium angle
-    inline bool            sort (){ if (atoms.y>atoms.z){ _swap(atoms.y,atoms.z); _swap(atoms.x,atoms.w); return true; } return false; }
-    inline static uint64_t getId(  uint16_t a, uint16_t b, uint16_t c, uint16_t d, int order ){ if (b>c){ _swap(b,c); _swap(a,d); } return pack64( b,c,a,d+order);  }
-    inline        uint64_t id   (){ return getId(atoms.x,atoms.y,atoms.z,atoms.w,bo); }
-};
 
 // TBD should we have an improper class as well...?
 
@@ -136,10 +138,18 @@ static const int z2typ0[]{
     5  //F 
 };
 
-// main parameters class
+/**
+ * @file MMFFparams.h
+ * @brief This file contains the declaration of the MMFFparams class, which stores parameters for the Molecular Mechanics Force-field
+ * 
+ * The MMFFparams class contains vectors and maps that store information about the different types of atoms, bonds, angles, and dihedrals. 
+ * It also contains default values for bond length and stiffness, as well as a default non-bonding parameters for hydrogen-like atoms.
+ * The class provides methods for initializing and printing the atom and element type dictionaries, as well as methods for retrieving the atom and element types of a given string. 
+ * It also provides methods for retrieving the root parent of an atom type and converting a string to an atom type.
+ */
 class MMFFparams{ public:
-    //int verbosity = 0;
-    // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html LINK EXPIRED
+
+    // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html
     
     std::vector       <ElementType>        etypes;
     std::vector       <AtomType>           atypes;
@@ -162,16 +172,17 @@ class MMFFparams{ public:
 
     double default_bond_length      = 2.0;
     double default_bond_stiffness   = 1.0;
-    //Quat4d  default_REQ           = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen
-    Quat4d  default_REQ             = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen like
+    //Quat4d  default_REQ           = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen (RvdW, EvdW, Q, Hb)
+    Quat4d  default_REQ             = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen (RvdW, EvdW, Q, Hb)
 
     bool echoTry        =true;
     bool reportIfMissing=true;
     bool exitIfMissing  =true;
 
-    //////////////////////////////////////////////////////////////////////////////////
-    // LOAD TABLES WITH ELEMENT, ATOM, BOND, ANGLE AND DIHEDRAL TYPE SPECIFICATIONS //
-    //////////////////////////////////////////////////////////////////////////////////
+    // ==================================================================================
+    //    LOAD TABLES WITH ELEMENT, ATOM, BOND, ANGLE AND DIHEDRAL TYPE SPECIFICATIONS 
+    // ==================================================================================
+
     // extract variables from one line of the ElementTypes file
     void string2ElementType(const char * str, ElementType& etyp ){
         //char      name[4];    // symbol
@@ -194,34 +205,7 @@ class MMFFparams{ public:
         if(nret<nretmin){ printf( "ERROR in MMFFparams::string2ElementType: ElementType(iZ=%i,%s) is not complete (nret(%i)<nretmin(%i)) => Exit()\n", etyp.iZ, etyp.name, nret, nretmin ); printf("%s\n", str ); exit(0); }
         if(nret<14     ){ etyp.bQEq=false; etyp.Eaff=0; etyp.Ehard=0; etyp.Ra=0; etyp.eta=0; }else{ etyp.bQEq=true; }
     }
-
-    // read and store element types
-    int loadElementTypes(const char * fname, bool exitIfFail=true){
-        printf(  "MMFFparams:loadElementTypes() verbosity = %i \n", verbosity );
-
-        FILE * pFile = fopen(fname,"r");
-        if( pFile == NULL ){
-            printf("cannot find %s\n", fname );
-            if(exitIfFail)exit(0);
-            return -1;
-        }
-        char buff[1024];
-        char * line;
-        ElementType etyp;
-        int i;
-        for(i=0; ; i++){
-            line = fgets( buff, 1024, pFile );
-            if(line==NULL)  break;
-            if(line[0]=='#')continue;
-            string2ElementType( line, etyp );
-            etypes.push_back(etyp);
-            if( !elementTypeDict.insert({ etyp.name, etypes.size()-1} ).second ){ printf("ERROR in MMFFparams::loadElementTypes: ElementType[%i](%s) is duplicated => Exit()\n", etypes.size(), etyp.name ); printf("%s\n", line ); exit(0); };
-            if(verbosity>1)printf("loadElementTypes[%i] name='%s' iZ=%i neval=%i valence=%i\n", etypes.size(), etyp.name, etyp.iZ, etyp.neval, etyp.valence );
-        }
-        fclose(pFile);
-        return i;
-    }
-
+    
     // extract variables from one line of the AtomTypes file
     void string2AtomType(const char * str, AtomType& atyp ){
         //char      name[8];    // symbol
@@ -268,6 +252,32 @@ class MMFFparams{ public:
             atyp.color     = et.color; 
         }
         atyp.subTypes=Vec3iZero;
+    }
+
+    // read and store element types
+    int loadElementTypes(const char * fname, bool exitIfFail=true){
+        printf(  "MMFFparams:loadElementTypes() verbosity = %i \n", verbosity );
+        FILE * pFile = fopen(fname,"r");
+        if( pFile == NULL ){
+            printf("cannot find %s\n", fname );
+            if(exitIfFail)exit(0);
+            return -1;
+        }
+        char buff[1024];
+        char * line;
+        ElementType etyp;
+        int i;
+        for(i=0; ; i++){
+            line = fgets( buff, 1024, pFile );
+            if(line==NULL)  break;
+            if(line[0]=='#')continue;
+            string2ElementType( line, etyp );
+            etypes.push_back(etyp);
+            if( !elementTypeDict.insert({ etyp.name, etypes.size()-1} ).second ){ printf("ERROR in MMFFparams::loadElementTypes: ElementType[%i](%s) is duplicated => Exit()\n", etypes.size(), etyp.name ); printf("%s\n", line ); exit(0); };
+            if(verbosity>1)printf("loadElementTypes[%i] name='%s' iZ=%i neval=%i valence=%i\n", etypes.size(), etyp.name, etyp.iZ, etyp.neval, etyp.valence );
+        }
+        fclose(pFile);
+        return i;
     }
 
     // read and store atom types
@@ -466,14 +476,11 @@ class MMFFparams{ public:
     void initDefaultAtomTypeDict(){
         makeDefaultAtomTypeDict( atomTypeNames, atomTypeDict );
     }
-    ////////////////////////////////////
-    // END OF LOADING TABLES OF TYPES //
-    ////////////////////////////////////
 
-    //////////////////////////////////////////////////////////
-    // ASSIGN ELEMENT, ATOM, BOND, ANGLE AND DIHEDRAL TYPES //
-    //////////////////////////////////////////////////////////
-    // TBD return pointer?
+    // ====================================================================
+    // ========  Select type of Element, Atom, Bond, Angle, Dihedral    ===
+    // ====================================================================
+
     int getElementType(const char* s, bool bErr=true)const{
         //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
         auto found = elementTypeDict.find(s);
@@ -481,10 +488,9 @@ class MMFFparams{ public:
             if(bErr){ printf( "ERROR: MMFFparams::getElementType(%s) not found !!! => exit() \n", s ); printAtomTypeDict(); exit(0); }
             return -1; 
         }
-        return found->second;
+        return found->second;  // should we rather return pointer? 
     }
 
-    // TBD return pointer?
     int getAtomType(const char* s, bool bErr=true)const{
         //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
         auto found = atomTypeDict.find(s);
@@ -492,7 +498,18 @@ class MMFFparams{ public:
             if(bErr){ printf( "ERROR: MMFFparams::getAtomType(%s) not found !!! => exit() \n", s ); printAtomTypeDict(); exit(0); }
             return -1; 
         }
-        return found->second;
+        return found->second; // should we rather return pointer?
+    }
+
+    inline const ElementType* elementOfAtomType( int it )const{ return &etypes[atypes[it].element]; }
+
+    // following the graph and getting the ancestor
+    const AtomType* getRootParrent(const AtomType* t, int nrecur=0)const{
+        if(nrecur>10){ printf("ERROR in MMFFparams.getRootParrent() rootParrent of type(%s) not found in %i recursions => Exit() \n", t->name, nrecur ); exit(0); }
+        if( t->parrent==0 ) return t;
+        if( (t->parrent<0)||(t->parrent>=atypes.size()) ){ printf("ERROR in MMFFparams.getRootParrent() type(%s).parrent==%i => Exit() \n", t->name,t->parrent ); exit(0); }
+        const AtomType* par = &atypes[t->parrent];
+        return getRootParrent(par,nrecur+1); // recursion
     }
 
     BondType* getBondType( int ityp, int jtyp, int order, bool bParrents=true, bool bElem=true )const{
@@ -699,20 +716,9 @@ class MMFFparams{ public:
             hards [i]=etypes[iet].Ehard;
         }
     }
-    ///////////////////////
-    // END FF PARAMETERS //
-    ///////////////////////
 
-    /////////////////
-    // PRINT STUFF //
-    /////////////////
-    void printAtomTypeDict()const{
-        for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict.find(atypes[i].name)->second );  };
-    }
-    
-    void printElementTypeDict()const{
-        for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict.find(etypes[i].name)->second );  };
-    }
+    // =========== PRINT STUFF 
+
     void printBond(int i)const{
         const BondType& t = bonds[i];
         printf( "bondType[%3i] %s-%s l0(%7.3f) k(%7.3f)\n", i, atypes[t.atoms.x].name, atypes[t.atoms.y].name, t.length, t.stiffness );
@@ -725,19 +731,16 @@ class MMFFparams{ public:
         const DihedralType& t = dihedrals[i];
         printf( "dihedralType[%3i] %s-%s-%s-%s ang0(%7.3f) k(%7.3f) n(%i)\n", i, atypes[t.atoms.x].name, atypes[t.atoms.y].name, atypes[t.atoms.z].name, atypes[t.atoms.w].name, t.ang0, t.k, t.n );
     }
-    void printAtomTypes(bool bParams)const{   for(int i=0; i<atypes.size(); i++ ){ atypes[i].print(i, bParams );  }  }
-    void printBondTypes    ()const{ printf("MMFFparams::printBondTypes()\n");     for(int i=0; i<bonds.size();     i++ ){ printBond(i);     } }
-    void printAngleTypes   ()const{ printf("MMFFparams::printAngleTypes()\n");    for(int i=0; i<angles.size();    i++ ){ printAngle(i);    } }
-    void printDihedralTypes()const{ printf("MMFFparams::printDihedralTypes()\n"); for(int i=0; i<dihedrals.size(); i++ ){ printDihedral(i); } }
-    void printAngleTypesDict()const{ printf("MMFFparams::printAngleTypesDict()\n");    for( const auto& it : angleDict ){ printf("angle(%s)[%i]\n", it.first.c_str(), it.second ); } }
-    //////////////////
-    // END OF PRINT //
-    //////////////////
 
-    ///////////////////
-    // DEAL WITH XYZ //
-    ///////////////////
-    // read cell vectors
+    void printElementTypes (bool bParams=true) const{ printf("MMFFparams::printElementTypes()\n");  for(int i=0; i<etypes   .size(); i++ ){ etypes[i].print(i, bParams ); } }
+    void printAtomTypes    (bool bParams=true) const{ printf("MMFFparams::printAtomTypes()\n");     for(int i=0; i<atypes   .size(); i++ ){ atypes[i].print(i, bParams ); } }
+    void printBondTypes    ()                  const{ printf("MMFFparams::printBondTypes()\n");     for(int i=0; i<bonds    .size(); i++ ){ printBond(i);     } }
+    void printAngleTypes   ()                  const{ printf("MMFFparams::printAngleTypes()\n");    for(int i=0; i<angles   .size(); i++ ){ printAngle(i);    } }
+    void printDihedralTypes()                  const{ printf("MMFFparams::printDihedralTypes()\n"); for(int i=0; i<dihedrals.size(); i++ ){ printDihedral(i); } }
+    void printAngleTypesDict()                 const{ printf("MMFFparams::printAngleTypesDict()\n");for( const auto& it : angleDict ){ printf("angle(%s)[%i]\n", it.first.c_str(), it.second ); } }
+    void printAtomTypeDict   ()const{for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict.find(atypes[i].name)->second );         };}
+    void printElementTypeDict()const{for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict.find(etypes[i].name)->second );  };}
+
     bool cellFromString( char* s, Mat3d& lvec )const{
         char c[3]; Mat3d M;
         int n = sscanf( s, "%c%c%c %lf %lf %lf   %lf %lf %lf   %lf %lf %lf", c,c+1,c+2, &(M.a.x),&(M.a.y),&(M.a.z),   &(M.b.x),&(M.b.y),&(M.b.z),   &(M.c.x),&(M.c.y),&(M.c.z) );
@@ -816,10 +819,12 @@ class MMFFparams{ public:
             const Vec3d&  pi = apos[i] + shift;
             const char* symbol; 
             bool byName = true;
+            //printf( "DEBUG writeXYZ()[%i] ityp %i \n", i, ityp );
             if(just_Element){ 
                 byName = false;
                 symbol =  etypes[ atypes[ityp].element ].name;
             }
+            //printf( "DEBUG writeXYZ()[%i] ityp %i %s \n", i, ityp, symbol );
             if(byName){ symbol = atomTypeNames[ityp].c_str(); }
             //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, atypes[ityp].name );
             if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", symbol, pi.x,pi.y,pi.z, REQs[i].z ); }
@@ -832,6 +837,11 @@ class MMFFparams{ public:
 
         }
     }
+    void writeXYZ( FILE* pfile, Atoms* atoms, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0, Vec3i nPBC=Vec3i{1,1,1} ){
+        Mat3d lvec;
+        if(atoms->lvec){ lvec=*atoms->lvec; }else{ lvec=Mat3dIdentity; }
+        writeXYZ( pfile, atoms->natoms, atoms->atypes, atoms->apos, comment, REQs, just_Element, npi, nPBC, lvec );
+    }
 
     int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity ){
         //printf( "MMFFparams::saveXYZ(%s) \n", fname );
@@ -840,24 +850,6 @@ class MMFFparams{ public:
         writeXYZ( pfile, n, atyps, apos, comment, REQs, just_Element, 0, nPBC, lvec );
         fclose(pfile);
         return n;
-    }
-    ////////////////
-    // END OF XYZ //
-    ////////////////
-
-    //////////
-    // MISC //
-    //////////
-    // TBD comment a/o remove
-    inline const ElementType* elementOfAtomType( int it )const{ return &etypes[atypes[it].element]; }
-
-    // following the graph and getting the ancestor
-    const AtomType* getRootParrent(const AtomType* t, int nrecur=0)const{
-        if(nrecur>10){ printf("ERROR in MMFFparams.getRootParrent() rootParrent of type(%s) not found in %i recursions => Exit() \n", t->name, nrecur ); exit(0); }
-        if( t->parrent==0 ) return t;
-        if( (t->parrent<0)||(t->parrent>=atypes.size()) ){ printf("ERROR in MMFFparams.getRootParrent() type(%s).parrent==%i => Exit() \n", t->name,t->parrent ); exit(0); }
-        const AtomType* par = &atypes[t->parrent];
-        return getRootParrent(par,nrecur+1); // recursion
     }
 
     void clear( bool bShring=false ){
