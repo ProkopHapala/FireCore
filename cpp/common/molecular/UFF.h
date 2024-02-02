@@ -1271,19 +1271,20 @@ class UFF : public NBFF { public:
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorstionFactor>0;
-        #pragma omp parallel shared(Eb,Ea,Ed,Ei)
+        double Enb=0;
+        #pragma omp parallel shared(Enb,Eb,Ea,Ed,Ei)
         {
             #pragma omp single
-            {
-                Eb = 0; Ea = 0; Ed = 0; Ei = 0;
-            }
+            { Enb=0; Eb=0; Ea=0; Ed=0; Ei=0; }
             #pragma omp for reduction(+:Eb)
             for(int ia=0; ia<natoms; ia++){ 
                 fapos[ia]=Vec3dZero;
                 Eb +=evalAtomBonds(ia, R2damp, Fmax2 );
                 // Non-Bonded
-                // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                if(bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
+                else    { Eb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
+                // // if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                // // else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
             }
             #pragma omp barrier   // all hneigh[] must be computed before computing other interactions
             #pragma omp for reduction(+:Ea) nowait  // angles and dihedrals can be computed in parallel (are independent)
@@ -1317,7 +1318,7 @@ class UFF : public NBFF { public:
         double E=0,ff=0,vv=0,vf=0;
         //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
         double cdamp = colDamp.update( dt );
-
+        const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
         //printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
 
@@ -1335,8 +1336,10 @@ class UFF : public NBFF { public:
             // ---- assemble (we need to wait when all atoms are evaluated)
             for(int ia=0; ia<natoms; ia++){
                 assembleAtomForce(ia); 
-                if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
-                else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                if(bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
+                else    { Eb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
+                // // if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                // // else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
             }
             // ------ move
             cvf = Vec3dZero;
@@ -1373,9 +1376,10 @@ class UFF : public NBFF { public:
             for(int ia=0; ia<natoms; ia++){ 
                 fapos[ia]=Vec3dZero;
                 Eb +=evalAtomBonds(ia, R2damp, Fmax2 );
-                // Non-Bonded
-                // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                if(bPBC){ Enb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
+                else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
+                // // if(bPBC){ Enb+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                // // else    { Enb+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
             }
             #pragma omp barrier   // all hneigh[] must be computed before computing other interactions
             #pragma omp for reduction(+:Ea) nowait  // angles and dihedrals can be computed in parallel (are independent)

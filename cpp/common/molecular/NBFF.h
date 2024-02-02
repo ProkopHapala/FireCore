@@ -385,6 +385,45 @@ class NBFF: public ForceField{ public:
         return E;
     }
 
+    // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP SIMD parallelizati
+    double evalLJQs_PBC_atom_omp( const int ia, const double Fmax2 ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const Vec3d   pi      = apos[ia];
+        const Quat4d  REQi    = REQs[ia];
+        const double  R2damp = Rdamp*Rdamp;
+        double E=0,fx=0,fy=0,fz=0;
+        #pragma omp simd reduction(+:E,fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
+            const Quat4d& REQj  = REQs[j];
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Vec3d dp      = apos[j]-pi;
+            Vec3d fij           = Vec3dZero;
+            for(int ipbc=0; ipbc<npbc; ipbc++){
+                // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
+                const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
+                double eij      = getLJQH( dpc, fij, REQij, R2damp );
+                if(bClampNonBonded)clampForce( fij, Fmax2 );
+                //printf( "getLJQs_PBC_omp[%i] dp(%6.3f,%6.3f,%6.3f) REQ(%g,%g,%g,%g) \n", eij, dp.x,dp.y,dp.z, REQij.x,REQij.y,REQij.z,REQij.w );
+                E +=eij;
+                fx+=fij.x;
+                fy+=fij.y;
+                fz+=fij.z;
+            }
+        }
+        fapos[ia].add( Vec3d{fx,fy,fz} );
+        return E;
+    }
+    double evalLJQs_PBC_simd(){
+        //printf("NBFF::evalLJQs_PBC_simd()\n" );
+        double E=0;
+        const double Fmax2 = FmaxNonBonded*FmaxNonBonded;
+        for(int ia=0; ia<natoms; ia++){  
+            //printf("ffls[%i].evalLJQs_PBC_simd(%i)\n", id, ia ); 
+            E+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); 
+        }
+        return E;
+    }
 
     // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP SIMD parallelization
     double evalLJQs_ng4_PBC_atom_omp(const int ia ){
@@ -437,6 +476,37 @@ class NBFF: public ForceField{ public:
             //printf("ffls[%i].evalLJQs_ng4_PBC_atom_omp(%i)\n", id, ia ); 
             E+=evalLJQs_ng4_PBC_atom_omp(ia); 
         }
+        return E;
+    }
+
+    double evalLJQs_atom_omp( const int ia, const double Fmax2 ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi   = apos     [ia];
+        const Quat4d REQi = REQs     [ia];
+        Vec3d fi = Vec3dZero;
+        double E=0,fx=0,fy=0,fz=0;
+        #pragma omp simd reduction(+:E,fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            const Quat4d& REQj  = REQs[j];
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Vec3d dp      = apos[j]-pi;
+            Vec3d fij           = Vec3dZero;
+            double eij = getLJQH( dp, fij, REQij, R2damp );
+            E +=eij;
+            fx+=fij.x;
+            fy+=fij.y;
+            fz+=fij.z;
+            //fi+=fij; 
+        }
+        fapos[ia].add( Vec3d{fx,fy,fz} );
+        return E;
+    }
+    double evalLJQs_simd(){
+        //printf("NBFF::evalLJQs_simd()\n" );
+        double E=0;
+        const double Fmax2 = FmaxNonBonded*FmaxNonBonded;
+        for(int ia=0; ia<natoms; ia++){ E+=evalLJQs_atom_omp(ia, Fmax2 ); }
         return E;
     }
 
