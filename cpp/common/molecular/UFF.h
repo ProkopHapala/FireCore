@@ -62,6 +62,10 @@ class UFF : public NBFF { public:
 
     Mat3d   invLvec;    // inverse lattice vectors
 
+    bool    bSubtractBondNonBond  = true;  // if true we subtract bond energy from non-bonded energy
+    bool    bSubtractAngleNonBond = true;  // if true we subtract angle energy from non-bonded energy
+    double  SubNBTorstionFactor   = 0.5;    // if >0 we subtract torsion energy from non-bonded energy
+
     // Auxiliary Variables
     
     Quat4d* hneigh __attribute__((aligned(64))) = 0;  // [natoms*4]     bond vectors (normalized in .xyz=f ) and their inverse length in .w=e
@@ -72,10 +76,10 @@ class UFF : public NBFF { public:
     // Vec3d * finv __attribute__((aligned(64))) = 0;  // [nimpropers*4] temporary store of forces on atoms from bonds (before the assembling step)
 
     Vec3d * fint __attribute__((aligned(64))) = 0;  // [ndihedrals+nimpropers+nangles*3+nbonds]  temporary store of forces on atoms from bonds (before the assembling step)
-    Vec3d * fbon = 0;  // [nbonds*2]     temporary store of forces on atoms from bonds (before the assembling step)
-    Vec3d * fang = 0;  // [nangles*3]    temporary store of forces on atoms from bonds (before the assembling step)
-    Vec3d * fdih = 0;  // [ndihedrals*4] temporary store of forces on atoms from bonds (before the assembling step)
-    Vec3d * finv = 0;  // [nimpropers*4] temporary store of forces on atoms from bonds (before the assembling step)
+    Vec3d * fbon = 0;  // [nbonds      ] store forces from bonds     (before the assembling step) - Note: Maybe we should not use this for bonds, instead we do per-atom loop as in MMFFsp3_loc  
+    Vec3d * fang = 0;  // [nangles*3   ] store forces from angles    (before the assembling step) - Note: Maybe we should not use this for angles, instead we do per-atom loop as in MMFFsp3_loc
+    Vec3d * fdih = 0;  // [ndihedrals*4] store forces from dihedrals (before the assembling step)
+    Vec3d * finv = 0;  // [nimpropers*4] store forces from imporper  (before the assembling step)
 
     // Params
     Quat4i *  neighBs   __attribute__((aligned(64))) = 0; // [natoms]      bond indices for each neighbor
@@ -136,6 +140,7 @@ class UFF : public NBFF { public:
         _realloc0( hneigh    , natoms*4, Quat4dNAN );
         _realloc0( atypes    , natoms,   -1        );
         // ---- Aux
+        // NOTE : size is n = ndihedrals*4+ninversions*4+nangles*3+nbonds;    this means that fang and fbon are not nicely aligned in memory (by 64 bytes), this can be a problem for SIMD => we should maybe avoid assembling bonds and angles, instead we should do per-atom loop as in MMFFsp3_loc
         _realloc0( fint, nf, Vec3dNAN );
         fdih=fint + i0dih;
         finv=fint + i0inv;
@@ -551,9 +556,10 @@ class UFF : public NBFF { public:
         //printf("UFF::assembleAtomsForces() DONE\n");
     }
 
-    inline double evalAtomBonds(const int ia){
+    inline double evalAtomBonds(const int ia, const double R2damp, const double Fmax2){
         double E=0.0;
         const Vec3d   pa   = apos     [ia]; 
+        const Quat4d& REQi = REQs     [ia];
         const int*    ings = neighs   [ia].array; // neighbors
         const int*    ingC = neighCell[ia].array; // neighbors cell index
         const int*    inbs = neighBs  [ia].array; // neighbors bond index
@@ -591,12 +597,21 @@ class UFF : public NBFF { public:
             const double dl = l-par.y;
             E += par.x*dl*dl;
             Vec3d f; f.set_mul( dp, 2.0*par.x*dl*hneigh[inn].e );
+
+            if(bSubtractBondNonBond){
+                const Quat4d& REQj  = REQs[ing];
+                const Quat4d  REQij = _mixREQ(REQi,REQj); 
+                Vec3d fnb; 
+                E -= getLJQH( dp, fnb, REQij, R2damp );
+                if(bClampNonBonded)clampForce( fnb, Fmax2 );
+                f.add( fnb );
+            }
+
             //fbon[ib*2  ]=f; // force on atom i
             //f.mul(-1.0);
             //fbon[ib*2+1]=f;      
             fapos[ia].add(f);
-            f.mul(-1.0);
-            fbon[ib]=f;       // NOTE: this will cause problems in parallelization !!!!!!!! ( we need to use atomic add )   
+            //f.mul(-1.0); fbon[ib]=f; // should we do this ?   if we commented out if(ing<ia) continue; we don't need this
             // TBD exclude non-bonded interactions between 1-2 neighbors
         }
         return E;
@@ -604,14 +619,16 @@ class UFF : public NBFF { public:
 
     double evalBonds(){
         double E=0.0;
+        const double R2damp = Rdamp*Rdamp;
+        const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
         for(int ia=0; ia<natoms; ia++){ 
-            E += evalAtomBonds(ia);
+            E += evalAtomBonds(ia, R2damp, Fmax2 );
         }
         return E;
     }
 
-    inline double evalAngle_Prokop( const int ia ){
-        const Vec2i  ngs = angNgs[id];  
+    inline double evalAngle_Prokop( const int ia, const double R2damp, const double Fmax2 ){
+        const Vec2i  ngs = angNgs[ia];  
         const Quat4d qij = hneigh[ngs.x];  // ji
         const Quat4d qkj = hneigh[ngs.y];  // jk
         // ---- Angle ( cos, sin )
@@ -643,6 +660,20 @@ class UFF : public NBFF { public:
         Vec3d fpk; fpk.set_lincomb( -fk,     qij.f,  fkc,    qkj.f );
         Vec3d fpj; fpj.set_lincomb(  fk-fic, qij.f,  fi-fkc, qkj.f );
         const int i3=ia*3;
+
+        // TBD exclude non-bonded interactions between 1-3 neighbors
+        if(bSubtractAngleNonBond){
+            const Vec3i ijk = angAtoms[ia];
+            const Quat4d  REQij = _mixREQ( REQs[ijk.x], REQs[ijk.z]); 
+            Vec3d fnb; 
+            //Vec3d dp = apos[ijk.x]-apos[ijk.z];   //  There may be problem in PBC
+            Vec3d dp; dp.set_lincomb( (1./qij.w), qij.f, (-1./qkj.w), qkj.f );
+            E -= getLJQH( dp, fnb, REQij, R2damp );
+            if(bClampNonBonded)clampForce( fnb, Fmax2 );
+            fpi.add( fnb );
+            fpk.sub( fnb );
+        }
+
         fang[i3  ]=fpi;
         fang[i3+1]=fpj;
         fang[i3+2]=fpk;
@@ -660,10 +691,12 @@ class UFF : public NBFF { public:
         //     //glColor3f(1.0,0.0,0.0); Draw3D::drawArrow( pj, pj+qkj.f*(1/qkj.w), 0.03 );
         //     //Draw3D::drawArrow( pk, pk+fpk, 0.03 );
         // }
+
+
         return E;
     }
 
-    inline double evalAngle_Paolo( const int ia ){
+    inline double evalAngle_Paolo( const int ia, const double R2damp, const double Fmax2 ){
         int i = angAtoms[ia].x;
         int j = angAtoms[ia].y;
         int k = angAtoms[ia].z;
@@ -696,6 +729,20 @@ class UFF : public NBFF { public:
         Vec3d fpi = vec_i*(fact*lij);
         Vec3d fpk = vec_k*(fact*lkj);
         Vec3d fpj = (fpi + fpk)*(-1.0);
+
+        // TBD exclude non-bonded interactions between 1-3 neighbors
+        if(bSubtractAngleNonBond){
+            const Vec3i ijk = angAtoms[ia];
+            const Quat4d  REQij = _mixREQ( REQs[ijk.x], REQs[ijk.z]); 
+            Vec3d fnb; 
+            //Vec3d dp = apos[ijk.x]-apos[ijk.z];   //  There may be problem in PBC
+            Vec3d dp; dp.set_lincomb( (1./lij), rij, (-1./lkj), rkj ); 
+            E -= getLJQH( dp, fnb, REQij, R2damp );
+            if(bClampNonBonded)clampForce( fnb, Fmax2 );
+            fpi.add( fnb );
+            fpk.sub( fnb );
+        }
+
         fang[ia*3]  =fpi;
         fang[ia*3+2]=fpk;
         fang[ia*3+1]=fpj;
@@ -709,22 +756,24 @@ class UFF : public NBFF { public:
         //     Draw3D::drawArrow( pj, pj+fpj, 0.03 );
         //     Draw3D::drawArrow( pk, pk+fpk, 0.03 );
         // }
-        // TBD exclude non-bonded interactions between 1-3 neighbors
+        
         return E;
     }
 
     double evalAngles(){
         double E=0.0;
+        const double R2damp = Rdamp*Rdamp;
+        const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
         for( int ia=0; ia<nangles; ia++){ 
-            E+= evalAngle_Prokop(ia); 
-            //E+= evalAngle_Paolo(ia);
+            E+= evalAngle_Prokop(ia, R2damp, Fmax2 ); 
+            //E+= evalAngle_Paolo(ia, R2damp, Fmax2 );
         }
         return E;
     }
 
     // ====================== Dihedrals
 
-    double evalDihedral_Prokop( const int id ){
+    double evalDihedral_Prokop( const int id, const bool bSubNonBond, const double R2damp, const double Fmax2 ){
         //double E=0.0;
         const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
         const Quat4d q12 =    hneigh[ngs.x];  // ji
@@ -745,7 +794,7 @@ class UFF : public NBFF { public:
         const Vec3d par = dihParams[id];
         const int n = (int)par.z;
         for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
-        const double E  =  par.x * ( 1.0 + par.y * csn.x );
+        double E  =  par.x * ( 1.0 + par.y * csn.x );
         // --- Force on end atoms
         const double f = -par.x * par.y * par.z * csn.y; 
         Vec3d fp1; fp1.set_mul(n123,-f*il2_123*q12.w );
@@ -755,6 +804,20 @@ class UFF : public NBFF { public:
         const double c432   = q32.f.dot(q43.f)*(q32.w/q43.w);
         Vec3d fp3; fp3.set_lincomb( -c123,   fp1, -c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
         Vec3d fp2; fp2.set_lincomb( +c123-1, fp1, +c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
+        
+        if(bSubNonBond){
+            const Quat4i ijkl  = dihAtoms[id];
+            const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
+            Vec3d fnb; 
+            //Vec3d dp = apos[ijkl.x]-apos[ijkl.w];   //  There may be problem in PBC
+            Vec3d dp; dp.set_lincomb( (1./q12.w), (-1./q43.w), (-1./q32.w), q12.f, q43.f, q32.f );
+            E -= getLJQH( dp, fnb, REQij, R2damp );
+            if(bClampNonBonded)clampForce( fnb, Fmax2 );
+            fnb.mul( SubNBTorstionFactor );
+            fp1.add( fnb );
+            fp4.sub( fnb );
+        }
+        
         const int i4=id*4;
         fdih[i4  ]=fp1;
         fdih[i4+1]=fp2;
@@ -776,7 +839,7 @@ class UFF : public NBFF { public:
         return E;
     }
 
-    double evalDihedral_Prokop_Old( const int id ){
+    double evalDihedral_Prokop_Old( const int id, const bool bSubNonBond, const double R2damp, const double Fmax2 ){
         //double E=0.0;
         const Quat4i ijkl = dihAtoms[id];
         const Vec3d p2  = apos[ijkl.y];
@@ -815,6 +878,20 @@ class UFF : public NBFF { public:
         Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
         //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
         //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+        
+        if(bSubNonBond){
+            const Quat4i ijkl  = dihAtoms[id];
+            const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
+            Vec3d fnb; 
+            Vec3d dp = apos[ijkl.w] - apos[ijkl.x];   //  There may be problem in PBC
+            //Vec3d dp; dp.set_lincomb( (1./q12.w), (-1./q43.w), (-1./q32.w), q12.f, q43.f, q32.f );
+            E -= getLJQH( dp, fnb, REQij, R2damp );
+            if(bClampNonBonded)clampForce( fnb, Fmax2 );
+            fnb.mul( SubNBTorstionFactor );
+            fp1.add( fnb );
+            fp4.sub( fnb );
+        }
+
         const int i4=id*4;
         fdih[i4  ]=fp1;
         fdih[i4+1]=fp2;
@@ -836,7 +913,7 @@ class UFF : public NBFF { public:
         return E;
     }
 
-    double evalDihedral_Paolo( const int id ){
+    double evalDihedral_Paolo( const int id, const bool bSubNonBond, const double R2damp, const double Fmax2 ){
         // int i = dihAtoms[id].x;
         // int j = dihAtoms[id].y;
         // int k = dihAtoms[id].z;
@@ -909,6 +986,20 @@ class UFF : public NBFF { public:
         Vec3d fp2 = ( f_32 + fp1 )*-1.0; 
         Vec3d fp3 = ( f_32 - fp4 );
         const int i4=id*4;
+
+        if(bSubNonBond){
+            const Quat4i ijkl  = dihAtoms[id];
+            const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
+            Vec3d fnb; 
+            //Vec3d dp = apos[ijkl.x]-apos[ijkl.w];   //  There may be problem in PBC
+            Vec3d dp = r12abs -r43abs - r32abs;
+            E -= getLJQH( dp, fnb, REQij, R2damp );
+            if(bClampNonBonded)clampForce( fnb, Fmax2 );
+            fnb.mul( SubNBTorstionFactor );
+            fp1.add( fnb );
+            fp4.sub( fnb );
+        }
+
         fdih[i4  ]=fp1;
         fdih[i4+1]=fp2;
         fdih[i4+2]=fp3;
@@ -940,9 +1031,12 @@ class UFF : public NBFF { public:
 
     double evalDihedrals(){
         double E=0.0;
+        const double R2damp    = Rdamp*Rdamp;
+        const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
+        const bool bSubNonBond = SubNBTorstionFactor>0;
         for( int id=0; id<ndihedrals; id++){  
-            E+= evalDihedral_Prokop(id);
-            //E+= evalDihedral_Paolo(id);
+            E+= evalDihedral_Prokop(id, bSubNonBond, R2damp, Fmax2 );
+            //E+= evalDihedral_Paolo(id, bSubNonBond, R2damp, Fmax2 );
         }
         return E;
     }
@@ -1174,6 +1268,9 @@ class UFF : public NBFF { public:
     double eval_omp( bool bClean=true ){
         //#pragma omp for reduction(+:Ei) nowait   // to remove implicit barrier
         //printf("UFF::eval_omp() \n");
+        const double R2damp    = Rdamp*Rdamp;
+        const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
+        const bool bSubNonBond = SubNBTorstionFactor>0;
         #pragma omp parallel shared(Eb,Ea,Ed,Ei)
         {
             #pragma omp single
@@ -1183,7 +1280,7 @@ class UFF : public NBFF { public:
             #pragma omp for reduction(+:Eb)
             for(int ia=0; ia<natoms; ia++){ 
                 fapos[ia]=Vec3dZero;
-                Eb +=evalAtomBonds(ia); 
+                Eb +=evalAtomBonds(ia, R2damp, Fmax2 );
                 // Non-Bonded
                 // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
                 // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
@@ -1191,12 +1288,12 @@ class UFF : public NBFF { public:
             #pragma omp barrier   // all hneigh[] must be computed before computing other interactions
             #pragma omp for reduction(+:Ea) nowait  // angles and dihedrals can be computed in parallel (are independent)
             for(int i=0; i<nangles; i++){ 
-                Ea+=evalAngle_Prokop(i);
-                //Ea+=evalAngle_Paolo(i); 
+                Ea+=evalAngle_Prokop(i, R2damp, Fmax2 );
+                //Ea+=evalAngle_Paolo(i, R2damp, Fmax2 ); 
             }
             #pragma omp for reduction(+:Ed) nowait  // dihedrals and inversions can be computed in parallel (are independent)
             for(int i=0; i<ndihedrals; i++){ 
-                Ed+=evalDihedral_Prokop(i); 
+                Ed+=evalDihedral_Prokop(i, bSubNonBond, R2damp, Fmax2 );
             }
             #pragma omp for reduction(+:Ei) 
             for(int i=0; i<ninversions; i++){ 
@@ -1262,6 +1359,9 @@ class UFF : public NBFF { public:
         double Enb=0,ff=0,vv=0,vf=0;
         //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
         double cdamp = colDamp.update( dt );
+        const double R2damp    = Rdamp*Rdamp;
+        const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
+        const bool bSubNonBond = SubNBTorstionFactor>0;
         int    itr=0;
         #pragma omp parallel shared( Enb, Eb, Ea, Ed, Ei, ff,vv,vf ) private(itr)
         for(itr=0; itr<niter; itr++){
@@ -1272,7 +1372,7 @@ class UFF : public NBFF { public:
             #pragma omp for reduction(+:Eb)
             for(int ia=0; ia<natoms; ia++){ 
                 fapos[ia]=Vec3dZero;
-                Eb +=evalAtomBonds(ia); 
+                Eb +=evalAtomBonds(ia, R2damp, Fmax2 );
                 // Non-Bonded
                 // if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
                 // else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
@@ -1280,12 +1380,12 @@ class UFF : public NBFF { public:
             #pragma omp barrier   // all hneigh[] must be computed before computing other interactions
             #pragma omp for reduction(+:Ea) nowait  // angles and dihedrals can be computed in parallel (are independent)
             for(int i=0; i<nangles; i++){ 
-                Ea+=evalAngle_Prokop(i);
-                //Ea+=evalAngle_Paolo(i); 
+                Ea+=evalAngle_Prokop(i, R2damp, Fmax2 );
+                //Ea+=evalAngle_Paolo(i, R2damp, Fmax2 ); 
             }
             #pragma omp for reduction(+:Ed) nowait  // dihedrals and inversions can be computed in parallel (are independent)
             for(int i=0; i<ndihedrals; i++){ 
-                Ed+=evalDihedral_Prokop(i); 
+                Ed+=evalDihedral_Prokop(i, bSubNonBond, R2damp, Fmax2 );
             }
             #pragma omp for reduction(+:Ei) 
             for(int i=0; i<ninversions; i++){ 

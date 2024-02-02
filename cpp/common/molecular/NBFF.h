@@ -54,6 +54,10 @@ class NBFF: public ForceField{ public:
     Vec6d*   BBs=0; // bounding boxes (can be either AABB, or cylinder, capsula) 
     Buckets  pointBBs;    // buckets for collision detection
 
+    // --- Parameters
+    bool    bClampNonBonded =  0.0; // if >0 then we clamp non-bonded forces to this value
+    double  FmaxNonBonded   = 10.0; // if bClampNonBonded>0 then we clamp non-bonded forces to this value
+
     double drSR  = 0.5;     // R_SR = R_cut - drSR
     double ampSR = 0.15;   // Amplitude of short-range repulsion  = ampSR * EvdW
 
