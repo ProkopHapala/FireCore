@@ -18,6 +18,9 @@ Non-Bonded Force-Field
 #include "Forces.h"
 #include "ForceField.h"
 
+#include "simd.h"
+
+
 void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     //Quat8d bb;
     //bb.lo = bb.lo = ps[c2o[0]];
@@ -74,7 +77,12 @@ class NBFF: public ForceField{ public:
     Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
 
 
+    // ========== Try SIMD
+    Vec3sd* apos_simd __attribute__((aligned(64))) =0; // forces on atomic positions
+    Vec4sd* REQs_simd __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
+
     // ==================== Functions
+
 
     // calculate total torque on the molecule (with respect to point p0) 
     void torq     ( const Vec3d& p0,  Vec3d& tq                   ){ for(int i=0; i<natoms; i++){ Vec3d d; d.set_sub(apos[i],p0); tq.add_cross(fapos[i],d); } }
@@ -541,6 +549,58 @@ class NBFF: public ForceField{ public:
         double E=0;
         for(int ia=0; ia<natoms; ia++){ E+=evalLJQs_ng4_atom_omp(ia); }
         return E;
+    }
+
+    double evalLJQs_atom_simd( const int ia, const double Fmax2 ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi_   = apos[ia];
+        
+        const Vec3sd pi = Vec3sd{ 
+            _mm256_set_pd( pi_.x, pi_.x, pi_.x, pi_.x ), 
+            _mm256_set_pd( pi_.y, pi_.y, pi_.y, pi_.y ), 
+            _mm256_set_pd( pi_.z, pi_.z, pi_.z, pi_.z ) 
+        };
+        const Quat4d REQi_ = REQs[ia];
+        const Vec4sd REQi = Vec4sd{ 
+            _mm256_set_pd( REQi_.x, REQi_.x, REQi_.x, REQi_.x ), 
+            _mm256_set_pd( REQi_.y, REQi_.y, REQi_.y, REQi_.y ), 
+            _mm256_set_pd( REQi_.z, REQi_.z, REQi_.z, REQi_.z ), 
+            _mm256_set_pd( REQi_.w, REQi_.w, REQi_.w, REQi_.w ) 
+        };
+        Vec3sd fi = Vec3sd{ _mm256_set_pd( 0.,0.,0.,0. ), _mm256_set_pd( pi_.y, pi_.y, pi_.y, pi_.y ), _mm256_set_pd( pi_.z, pi_.z, pi_.z, pi_.z ) };
+        __m256d E = _mm256_set_pd( 0.,0.,0.,0. );
+        for (int j=0; j<natoms; j++){ 
+            const Vec4sd& REQj  = REQs_simd[j];
+
+            const __m256d Rij = REQi.x+REQj.x;
+            const __m256d Eij = REQi.y*REQj.y;
+            const __m256d Qij = REQi.z*REQj.z;
+            const __m256d Hij = REQi.w*REQj.w;
+            const Vec3sd dp      = apos_simd[j]-pi;
+
+            const __m256d  r2  = dp.norm2();
+            __m256d F;
+            // ---- Electrostatic
+            const __m256d ir2_ = 1./( r2 + R2damp  );
+            E +=  COULOMB_CONST* ( Qij*_mm256_sqrt_pd( ir2_ ) );
+            F  =  E*ir2_ ;
+            // --- LJ 
+            const __m256d  ir2 = 1./r2;
+            const __m256d  u2  = Rij*Rij*ir2;
+            const __m256d  u6  = u2*u2*u2;
+            const __m256d vdW  = u6*Eij;
+            const __m256d   H  = u6*u6* ((Hij<0) ? Hij : 0.0);  // H-bond correction
+            E   +=  (u6-2.)*vdW + H             ;
+            F   += ((u6-1.)*vdW + H )*ir2*12 ;
+            fi.add_mul( dp, -F );
+        }
+        fapos[ia].add( 
+            hsum_double_avx( fi.x),
+            hsum_double_avx( fi.y),
+            hsum_double_avx( fi.z)       
+        );
+        return hsum_double_avx( E );
     }
 
     double evalCollisionDamp_atom_omp( const int ia, double damp_rate, double dRcut1=-0.2, double dRcut2=0.3 ){
