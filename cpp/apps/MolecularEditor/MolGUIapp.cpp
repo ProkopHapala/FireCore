@@ -119,14 +119,16 @@ int main(int argc, char *argv[]){
 
 #ifdef WITH_LUA
     initMyLua();
-    app->console.callback = [&](const char* str){
+    app->console.callback = [&](const char* str)->bool{
        lua_State* L=theLua;
        // printf( "console.callback: %s\n", cmd );
         if (luaL_dostring(L, str) != LUA_OK) {
             // If there's an error, print it
             fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
             lua_pop(L, 1);  // Remove error message from the stack
+            return false;
         }
+        return true;
     };
 #endif // WITH_LUA
 
