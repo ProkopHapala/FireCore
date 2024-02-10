@@ -13,6 +13,8 @@
 #include <string>
 //#include <functional>
 
+#include "CircularArray.h"
+
     // SDL_SCANCODE_1 = 30,
     // SDL_SCANCODE_2 = 31,
     // SDL_SCANCODE_3 = 32,
@@ -53,12 +55,22 @@ class Console{ public:
     char * line=0;
     int  ncur=0;
     int  nend=0;
+
+    //bool historyOpen=false;
+    int iHistory=-1;
+
     // lambda function for callback
-    std::function<void(const char*)> callback;
-    //std::vector(string[]) prev_cmd;   // previous commands (history)
+    std::function<bool(const char*)> callback;
+    //std::vector<std::string> history;   // previous commands (history)
     //std::string(string[]) quick_tab;  // quick tab completion
+    CircularArray<char*> history{ 16, true, true }; 
 
     // ===== Functions
+
+    void close_history(){
+        //historyOpen=false;
+        iHistory=-1;
+    }
 
     void init( int lineLength_=1024, SDL_Window* window_=0 ){
         if(lineLength_>0){ 
@@ -66,7 +78,8 @@ class Console{ public:
             line = new char[lineLength]; 
         }
         if(window_){ window=window_; }
-        for(int i=0;i<lineLength;i++){ line[i]='\0'; }
+        //for(int i=0;i<lineLength;i++){ line[i]='\0'; }
+        set(lineLength,'\0');
         //printf( "Console::init() %i %i %i \n", lineLength, window, window_ );
     }
 
@@ -78,6 +91,7 @@ class Console{ public:
     //     }
     //     //printf( "Console::fwd_copy() end\n" );
     // }
+    void set(int n,char c){ for(int i=0; i<n; i++){ line[i]=c; } }
     void fwd_copy( int n, const char* src, char* dst ){ for(int i=0;   i<n; i++ ){ dst[i] = src[i]; } }
     void bwd_copy( int n, const char* src, char* dst ){ for(int i=n-1; i>=0; i--){ dst[i] = src[i]; } }
 
@@ -92,7 +106,18 @@ class Console{ public:
             case SDLK_KP_ENTER: //  [[fallthrough]]
             case SDLK_RETURN: {
                 //printf( "Console::run(%s) \n", line ); 
-                callback( line );
+                if( callback( line ) ){
+                    close_history();
+                    if(nend>0){ // save to history
+                        char* s = new char[nend];
+                        fwd_copy(nend, line, s);
+                        //printf( "Console::SDLK_RETURN() history.push(%s) line(%s) \n", s, line );
+                        history.push( s );
+                    }
+                    ncur=0;
+                    nend=0;
+                    set(lineLength,'\0');
+                }
             } break;
             case SDLK_BACKSPACE: 
             if(ncur>0   ){ 
@@ -111,6 +136,43 @@ class Console{ public:
             } break;
             case SDLK_LEFT:      if(ncur>0   ){ ncur--; } break;
             case SDLK_RIGHT:     if(ncur<nend){ ncur++; } break;
+
+            case SDLK_ESCAPE:    close_history(); break;
+            case SDLK_TAB: {
+                //printf( "Console::keyDown(SDLK_TAB) iHistory=%i \n", iHistory );
+                if( iHistory>=0 ){
+                    const char* s = history.get(iHistory);
+                    //int n = strlen(s);
+                    // copy s to line
+                    strcpy( line, s );
+                    // if(n>0){
+                    //     if(ncur<nend){ bwd_copy(nend-ncur, line+ncur, line+ncur+n); }
+                    //     fwd_copy(n, s, line+ncur);
+                    //     ncur+=n;
+                    //     nend+=n;
+                    // }
+                    close_history();
+                }
+            } break;
+
+            case SDLK_UP:{ 
+                //printf("Console::keyDown() history.size() %i \n", history.size() );
+                int ih = iHistory+1;
+                if(ih<history.size()){
+                    iHistory = ih;
+                    //const char* s = history.get(ih);
+                    //historyOpen=true;
+                    //printf("Console::keyUp() history[%i]=`%s` %i \n", iHistory, history.get(iHistory) );
+                } 
+            }break;
+            case SDLK_DOWN: {
+                iHistory-=1;
+                // if(iHistory>=0){
+                //     iHistory = ih;
+                //     //const char* s = history.get(ih);
+                //     historyOpen=true;
+                // } 
+            } break;
 
             //case SDLK_LSHIFT: //  [[fallthrough]]
             //case SDLK_RSHIFT: {bShift=!bShift;}  break;
@@ -158,8 +220,8 @@ class Console{ public:
                 }else{
                     int k = (key&0xff)-84;
                     if( (k>=0) && (k<16) ){
-                        //printf(  "key(%c) %i   %i \n", kp_scancode[k], k, key );
-                        c = kp_scancode[c];
+                        c = kp_scancode[k];
+                        //printf(  "key(%c) %i   %i \n", c, k, key );
                     }
                 }
                 if(c!=0){
@@ -203,7 +265,14 @@ class Console{ public:
         //Draw2D::drawString( line, {0,0}, 0.1, 0 );
         //Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0, GUI_fontTex, fontSizeDef );
         Draw2D::drawText( line           , nend            , {0   , h   -fontSizeDef*2}, 0.0, fontTex, fontSizeDef );
-
+        if(iHistory>=0){
+            glColor3f(0.3f,0.3f,0.3f);
+            const char* s = history.get(iHistory);
+            int n = strlen(s);
+            Draw2D::drawRectangle( xcur,h+fontSizeDef*2, xcur+n*fontSizeDef,h-fontSizeDef*4, true );
+            glColor3f(1.0f,1.0f,1.0f);
+            Draw2D::drawText( s, n, {0, h-fontSizeDef*4}, 0.0, fontTex, fontSizeDef );
+        }
     }
 
 };
