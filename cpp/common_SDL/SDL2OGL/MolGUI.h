@@ -23,6 +23,7 @@
 #include "MolecularDraw.h"
 #include "MarchingCubes.h"
 #include "GUI.h"
+#include "Console.h"
 #include "EditorGizmo.h"
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
@@ -65,6 +66,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool bDrawHexGrid=true;
     bool bHexDrawing=false; 
 
+    bool bConsole=false;
+
 
     bool bWriteOptimizerState = true;
     //bool bPrepared_mm = false;
@@ -76,6 +79,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     MolWorld_sp3* W=0;
 
+    Console console;
     GUI gui;
     GUIPanel* Qpanel;
     EditorGizmo  gizmo;
@@ -365,13 +369,11 @@ void MolGUI::initWiggets(){
 }
 
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
-
     long T0=getCPUticks();
     float nseconds = 0.1;
     SDL_Delay( (int)(1000*0.1) );
     tick2second = nseconds/(getCPUticks()-T0);
     printf( "CPU speed calibration: tick=%g [s] ( %g GHz)\n", tick2second, 1.0e-9/tick2second );
-
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
     if(W_==0){ W = new MolWorld_sp3(); }else{ W=W_; }
@@ -381,6 +383,11 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OG
 
 void MolGUI::initGUI(){
     // ---- Graphics setup
+    //Console::init( int lineLength=256, SDL_Window* window_=0 ){
+    console.init( 256, window );
+    console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
+    console.fontTex = fontTex;
+
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
@@ -766,6 +773,7 @@ void MolGUI::drawHUD(){
     glDisable ( GL_LIGHTING );
     gui.draw();
 
+    glPushMatrix();
     if(W->bCheckInvariants){
         glTranslatef( 10.0,HEIGHT-20.0,0.0 );
         glColor3f(0.5,0.0,0.3);
@@ -781,7 +789,6 @@ void MolGUI::drawHUD(){
         W->getStatusString( str, nmaxstr );
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
     }
-
     if(bWriteOptimizerState){
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         glColor3f(0.0,0.5,0.0);
@@ -793,8 +800,8 @@ void MolGUI::drawHUD(){
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         Draw::drawText( W->info_str(str), fontTex, fontSizeDef, {100,20} );
-
     }
+    glPopMatrix();
 
     /*
     glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
@@ -817,6 +824,8 @@ void MolGUI::drawHUD(){
 
     mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
                           2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);
+
+    if(bConsole) console.draw();
 }
 
 void MolGUI::drawingHex(double z0){
@@ -1317,11 +1326,15 @@ void MolGUI::eventMode_scan( const SDL_Event& event  ){
 
 void MolGUI::eventMode_default( const SDL_Event& event ){
     if(useGizmo)gizmo.onEvent( mouse_pix, event );
+    //printf( "MolGUI::eventMode_default() bConsole=%i \n", bConsole );
     switch( event.type ){
         case SDL_MOUSEWHEEL:{
             if     (event.wheel.y > 0){ zoom/=1.2; }
             else if(event.wheel.y < 0){ zoom*=1.2; }}break;
-        case SDL_KEYDOWN : if(gui.bKeyEvents) switch( event.key.keysym.sym ){
+        case SDL_KEYDOWN : 
+                if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
+                else 
+                if(gui.bKeyEvents) switch( event.key.keysym.sym ){
                 case SDLK_KP_0: qCamera = qCamera0; break;
 
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
@@ -1335,6 +1348,11 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
 
                 //case SDLK_PAGEUP  : W->add_to_lvec( dlvec2     ); break;
                 //case SDLK_PAGEDOWN: W->add_to_lvec( dlvec2*-1  ); break;
+
+                case SDLK_BACKQUOTE:{ 
+                    printf("SDLK_BACKQUOTE => bConsole=%i -> %i \n", bConsole, !bConsole );
+                    bConsole = !bConsole;   // ` SDLK_ for key '`' 
+                }break;
 
                 case SDLK_0:      W->add_to_lvec( dlvec2     ); break;
                 case SDLK_9:      W->add_to_lvec( dlvec2*-1  ); break;
@@ -1469,6 +1487,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
         case SDL_MOUSEBUTTONUP: mouse_default( event ); break;
         case SDL_WINDOWEVENT:{switch (event.window.event) {case SDL_WINDOWEVENT_CLOSE:{ quit(); }break;} } break;
     } // switch( event.type ){
+    //printf( "MolGUI::eventMode_default() END bConsole=%i \n", bConsole );
 }
 
 void MolGUI::eventHandling ( const SDL_Event& event  ){
@@ -1486,6 +1505,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
 }
 
 void MolGUI::keyStateHandling( const Uint8 *keys ){
+    if(bConsole){ return; }
     double dstep=0.025;
     switch (gui_mode){
         case Gui_Mode::edit: 
