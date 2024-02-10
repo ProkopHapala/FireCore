@@ -4,14 +4,24 @@ project ( SimpleSimulationEngine )
 
 option(WITH_OPENCL "build with OpenCL GPU acceleration? (can accelare >100x some forcefields and grids  )" OFF)
 option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                                    OFF)
+option(WITH_LUA    "build with Lua 5.2 for scripting inside interactive GUI"                        OFF)
 option(RELEASE     "build optimized release (-O3 -Ofast) rather than debug? (-g -Og)"               OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and leaks?"              OFF)
 option(WITH_OMP    "use OpenMP paralelization"                                                      OFF)
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_OPENCL=${WITH_OPENCL} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DWITH_OMP=${WITH_OMP}" )
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DWITH_OMP=${WITH_OMP}" )
+
 
 # ==============================
 # ==== FLAGS
 # ==============================
+
+if(WITH_LUA)
+    add_definitions(-DWITH_LUA)
+    find_package(Lua 5.2 REQUIRED)
+    # Add more Lua-specific setup here, e.g., including directories, linking libraries
+else()
+    set(LUA_LIBRARIES "")
+endif()
 
 if(RELEASE)
     set(CMAKE_BUILD_TYPE Release)
@@ -26,12 +36,12 @@ endif()
 message ( "CMAKE_BUILD_TYPE "   ${CMAKE_BUILD_TYPE} )
 if (  CMAKE_BUILD_TYPE MATCHES Debug )
     if ( WITH_ASAN )
-        SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer")
+        SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native -fsanitize=address -fno-omit-frame-pointer")
         #SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer -static-libasan") # static-asan does not work see https://github.com/google/sanitizers/issues/796
     else()
         #SET( AXULIARY_COMPILE_FLAGS "-Wall -g -Og")
         ### flags for debug
-        SET( AXULIARY_COMPILE_FLAGS "-g -Og")
+        SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native")
     endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
     message("DEBUG BUILD FFLAGS : " )
@@ -98,6 +108,7 @@ add_subdirectory( ${MY_SRC_DIR}/libs    )
 
 if ( WITH_OPENCL )
     add_subdirectory( ${MY_SRC_DIR}/libs_OCL )
+    find_package( OpenCL REQUIRED )
 endif()
 
 # ====== SDL@OpenGL

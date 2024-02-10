@@ -17,6 +17,32 @@ int   prelat_nstep=0;
 int   prelat_nItrMax=0;
 Mat3d prelat_dlvec;
 
+#ifdef WITH_LUA
+//#include "LuaUtils.h"
+//#include "LuaClass.h"
+#include "LuaHelpers.h"
+
+lua_State  * theLua=0;
+
+int l_fixAtom(lua_State *L){
+    // LuaCall: fixAtom( ia, true )
+    int ia = Lua::getInt(L,1);
+    int b  = Lua::getInt(L,2);
+    printf( "l_fixAtom(ia=%i,b=%i)\n", ia, b ); 
+    //if     (b>0){ app->W->atomFixed[ia] = true;  }
+    //else if(b<0){ app->W->atomFixed[ia] = false; }
+    return 0; // number of return values to Lua environment
+}
+
+int initMyLua(){
+    theLua         = luaL_newstate();
+    lua_State  * L = theLua;
+    luaL_openlibs(L);
+    lua_register(L, "fixAtom", l_fixAtom  );
+    return 1;
+}
+
+#endif // WITH_LUA
 
 int main(int argc, char *argv[]){
 	SDL_Init(SDL_INIT_VIDEO);
@@ -90,6 +116,20 @@ int main(int argc, char *argv[]){
 
 	process_args( argc, argv, funcs );
 	app->init();
+
+#ifdef WITH_LUA
+    initMyLua();
+    app->console.callback = [&](const char* str){
+       lua_State* L=theLua;
+       // printf( "console.callback: %s\n", cmd );
+        if (luaL_dostring(L, str) != LUA_OK) {
+            // If there's an error, print it
+            fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+            lua_pop(L, 1);  // Remove error message from the stack
+        }
+    };
+#endif // WITH_LUA
+
     if(prelat_nstep>0)app->W->change_lvec_relax( prelat_nstep, prelat_nItrMax, 1e-3, prelat_dlvec );
 	app->loop( 1000000 );
 	return 0;
