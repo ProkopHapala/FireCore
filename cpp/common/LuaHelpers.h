@@ -25,7 +25,9 @@
 namespace Lua{
 
     void print_error(lua_State* L) { puts( lua_tostring(L, -1)); lua_pop(L, 1); }
-    bool  checkError( lua_State* L, int ret ){ if(ret!=LUA_OK) print_error(L); return ret==LUA_OK; }
+    bool checkError( lua_State* L, int ret ){ if(ret!=LUA_OK) print_error(L); return ret==LUA_OK; }
+    //bool checkError( lua_State* L, int ret ){ if(ret!=LUA_OK) print_error(L); return ret==LUA_OK; }
+    //if (luaL_dofile(L,ss[0]) != LUA_OK){ fprintf(stderr, "Error: %s\n", lua_tostring(L, -1)); lua_pop(L, 1); }
 
     void getError( int i,  const char * s ){ printf( "LuaERROR @Stack[%i]: %s\n", i, s ); }
     void clean   (lua_State* L) { int n = lua_gettop(L); lua_pop(L, n); }
@@ -202,8 +204,12 @@ namespace Lua{
     }
     void getVec2i( lua_State* L, Vec2i& vec){  getVec2i(L, -1, vec); }
 
-
-
+    void pushVec3( lua_State* L, const Vec3d& vec ){
+        lua_createtable(L, 3, 0);
+        lua_pushnumber(L, vec.x); lua_rawseti(L, -2, 1); // 
+        lua_pushnumber(L, vec.y); lua_rawseti(L, -2, 2);
+        lua_pushnumber(L, vec.z); lua_rawseti(L, -2, 3);
+    }
 
     bool getVar(lua_State* L, const char * nameStr) {
         int level = 0;

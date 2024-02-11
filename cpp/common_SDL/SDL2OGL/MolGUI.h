@@ -378,7 +378,6 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OG
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
     if(W_==0){ W = new MolWorld_sp3(); }else{ W=W_; }
     W->tmpstr=str;
-
 }
 
 void MolGUI::initGUI(){

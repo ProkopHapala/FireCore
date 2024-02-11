@@ -14,6 +14,7 @@
 //#include <functional>
 
 #include "CircularArray.h"
+#include "SortedStrings.h"
 
     // SDL_SCANCODE_1 = 30,
     // SDL_SCANCODE_2 = 31,
@@ -55,7 +56,9 @@ class Console{ public:
     char * line=0;
     int  ncur=0;
     int  nend=0;
+    int  nminMatch=2;
 
+    int imatch=-1,imatchn=0;
     //bool historyOpen=false;
     int iHistory=-1;
 
@@ -65,11 +68,22 @@ class Console{ public:
     //std::string(string[]) quick_tab;  // quick tab completion
     CircularArray<char*> history{ 16, true, true }; 
 
+    SortedStrings quick_tab; // quick tab completion
+
     // ===== Functions
 
     void close_history(){
         //historyOpen=false;
         iHistory=-1;
+    }
+    void accept_history(){
+        if(iHistory>=0){
+            const char* s = history.get(iHistory);
+            int nend = strlen(s);
+            if(ncur>nend){ ncur=nend; }
+            strcpy( line, s );
+            close_history();
+        }
     }
 
     void init( int lineLength_=1024, SDL_Window* window_=0 ){
@@ -97,23 +111,29 @@ class Console{ public:
 
     // console.keyDown( event.key.keysym.sym )
     bool keyDown( const SDL_Keycode key ){ 
+        if(iHistory<0){ iHistory=-1; }
         SDL_Keymod modState = SDL_GetModState();  // Get the current state of modifier keys
         bool bShift = modState & KMOD_SHIFT;
         //printf( "Console::keyDown() bShift=%i \n", bShift );
-        //printf( "Console::keyDown(key=%i) ncur=%i\n", key, ncur );
+        printf( "Console::keyDown(key=%i|%c) ncur=%i\n", key, key, ncur );
         switch( key ){
             case SDLK_BACKQUOTE: return false; break; 
             case SDLK_KP_ENTER: //  [[fallthrough]]
             case SDLK_RETURN: {
                 //printf( "Console::run(%s) \n", line ); 
-                if( callback( line ) ){
-                    close_history();
-                    if(nend>0){ // save to history
-                        char* s = new char[nend];
-                        fwd_copy(nend, line, s);
-                        //printf( "Console::SDLK_RETURN() history.push(%s) line(%s) \n", s, line );
-                        history.push( s );
+                char* s = line;
+                if(iHistory>=0){ s = history.get(iHistory); } 
+                if( callback( s ) ){
+                    //printf("Console::SDLK_RETURN() callback() OK\n");
+                    if( (nend>0) && (iHistory<0) ){ // save to history
+                        char* ss = new char[nend];
+                        fwd_copy(nend, s, ss);
+                        //printf( "Console::SDLK_RETURN() history.push(%s) line(%s) \n", ss, line );
+                        history.push( ss );
+                    }else{
+                        //printf( "Console::SDLK_RETURN() not-push() iHistory=%i nend=%i \n", iHistory, nend );
                     }
+                    close_history();
                     ncur=0;
                     nend=0;
                     set(lineLength,'\0');
@@ -134,25 +154,22 @@ class Console{ public:
                 line[nend-1]='\0';
                 nend--;         
             } break;
-            case SDLK_LEFT:      if(ncur>0   ){ ncur--; } break;
-            case SDLK_RIGHT:     if(ncur<nend){ ncur++; } break;
+            case SDLK_LEFT: { accept_history();    if(ncur>0   ){ ncur--; }} break;
+            case SDLK_RIGHT:{ accept_history();    if(ncur<nend){ ncur++; }} break;
 
             case SDLK_ESCAPE:    close_history(); break;
             case SDLK_TAB: {
                 //printf( "Console::keyDown(SDLK_TAB) iHistory=%i \n", iHistory );
-                if( iHistory>=0 ){
-                    const char* s = history.get(iHistory);
-                    //int n = strlen(s);
-                    // copy s to line
-                    strcpy( line, s );
-                    // if(n>0){
-                    //     if(ncur<nend){ bwd_copy(nend-ncur, line+ncur, line+ncur+n); }
-                    //     fwd_copy(n, s, line+ncur);
-                    //     ncur+=n;
-                    //     nend+=n;
-                    // }
-                    close_history();
+                if(iHistory>=0){
+                    accept_history();
+                }else if(imatch>=0){
+                    const std::string& s = quick_tab.table[imatch]; 
+                    nend = s.size();
+                    strcpy( line, quick_tab.table[imatch].c_str() );
+                    printf( "Console::keyDown(SDLK_TAB) quick_tab[%i] nend=%i `%s` line=`%s`\n", imatch, nend, quick_tab.table[imatch].c_str(), line );
+                    //close_history();
                 }
+                //accept_history();
             } break;
 
             case SDLK_UP:{ 
@@ -163,10 +180,11 @@ class Console{ public:
                     //const char* s = history.get(ih);
                     //historyOpen=true;
                     //printf("Console::keyUp() history[%i]=`%s` %i \n", iHistory, history.get(iHistory) );
-                } 
+                }
+                //else{   printf("Console::keyDown(SDLK_UP) ih(%i) >=  history.size(%i) \n", ih, history.size() );}
             }break;
             case SDLK_DOWN: {
-                iHistory-=1;
+                iHistory-=1; if(iHistory<0){ iHistory=-1; }
                 // if(iHistory>=0){
                 //     iHistory = ih;
                 //     //const char* s = history.get(ih);
@@ -249,6 +267,17 @@ class Console{ public:
         //     if(n>0){ line[n-1] = 0; }
         //     return true;
         // }
+
+        if( (iHistory<0)&&( nend>nminMatch ) ){     
+            imatch = quick_tab.findMatch( line );
+            if(imatch>=0){ 
+                imatchn = quick_tab.findMatchEnd( line, imatch );
+                //printf( "Console::keyDown() imatch %i \n", imatch );
+                printf( "Console::keyDown() quick_tab[%i] `%s` \n", imatch, quick_tab.table[imatch].c_str() );
+            }
+        }
+
+
         return true;
     }
 
@@ -266,12 +295,24 @@ class Console{ public:
         //Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0, GUI_fontTex, fontSizeDef );
         Draw2D::drawText( line           , nend            , {0   , h   -fontSizeDef*2}, 0.0, fontTex, fontSizeDef );
         if(iHistory>=0){
-            glColor3f(0.3f,0.3f,0.3f);
             const char* s = history.get(iHistory);
             int n = strlen(s);
-            Draw2D::drawRectangle( xcur,h+fontSizeDef*2, xcur+n*fontSizeDef,h-fontSizeDef*4, true );
-            glColor3f(1.0f,1.0f,1.0f);
-            Draw2D::drawText( s, n, {0, h-fontSizeDef*4}, 0.0, fontTex, fontSizeDef );
+            //printf( "Console::draw() history[%i] history.size(%i) n=%i @%li `%s`\n", iHistory, history.size(), n, (long)s, s );
+            //glColor3f(0.3f,0.3f,0.3f); Draw2D::drawRectangle( 0,h+fontSizeDef*2, n*fontSizeDef,h-fontSizeDef*4, true );
+            //glColor3f(1.0f,1.0f,1.0f); Draw2D::drawText( s, n, {0, h-fontSizeDef*4}, 0.0, fontTex, fontSizeDef );
+            glColor3f(0.0f,0.0f,0.5f); Draw2D::drawRectangle( 0,h, n*fontSizeDef,h-fontSizeDef*2, true );
+            glColor3f(1.0f,1.0f,1.0f); Draw2D::drawText( s, n, {0, h-fontSizeDef*2}, 0.0, fontTex, fontSizeDef );
+        }else
+        if(imatchn>0){
+            //glColor3f(0.0f,0.0f,1.0f); Draw2D::drawRectangle( 0,h-fontSizeDef*2, n*fontSizeDef,h-(1+imatchn)*fontSizeDef*2, true );
+            //glColor3f(1.0f,1.0f,1.0f);
+            for(int i=0; i<imatchn; i++){
+                const char* s = quick_tab.table[imatch+i].c_str();
+                int n = strlen(s);
+                //printf( "Console::draw() quick_tab[%i] quick_tab.size(%i) n=%i @%li `%s`\n", imatch, quick_tab.table.size(), n, (long)s, s );
+                glColor3f(0.5f,0.0f,0.5f); Draw2D::drawRectangle( 0,h-(1+i)*fontSizeDef*2, n*fontSizeDef,h-(2+i)*fontSizeDef*2, true );
+                glColor3f(1.0f,1.0f,1.0f); Draw2D::drawText( s, n, {0, h-(2+i)*fontSizeDef*2}, 0.0, fontTex, fontSizeDef );
+            }
         }
     }
 
