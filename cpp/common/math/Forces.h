@@ -300,8 +300,8 @@ inline double getLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ, const double
     const double  u2  = REQ.x*REQ.x*ir2;
     const double  u6  = u2*u2*u2;
     const double vdW  = u6*REQ.y;
-    E    =      (u6-2.)*vdW     ;
-    F    =  12.*(u6-1.)*vdW*ir2 ;
+    E    +=      (u6-2.)*vdW     ;
+    F    +=  12.*(u6-1.)*vdW*ir2 ;
     f.set_mul( dp, -F );
     return E;
 }
