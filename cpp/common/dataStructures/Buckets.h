@@ -17,7 +17,7 @@ class Buckets{ public:
 
     int* obj2cell=0; 
     //int  nobj_bind=-1;
-    int* obj2cell_bind=0; 
+    //int* obj2cell_bind=0; 
 
     inline int addToCell( int icell, int iobj ){
         int j = cellI0s[icell] + cellNs[icell];
@@ -36,8 +36,11 @@ class Buckets{ public:
      * @param obj2cell An array mapping each object to its corresponding cell.
      */
     inline void count( int nobj, int* obj2cell ){ 
+        //printf( "Buckets::count() nobj=%i ncell=%i iDebug_count=%i  @obj2cell=%li \n", nobj, iDebug_count, (long)obj2cell );
         for(int i=0; i<nobj; i++ ){ 
+            //printf( "Buckets::count()[%i] \n", i );
             int ic = obj2cell[i]; 
+            //if( (ic<0)||(ic>=ncell) ){ printf( "Buckets::count() ERROR i %i ic %i ncell %i \n", i, ic, ncell ); }
             //printf( "obj[%i ]-> cell %i \n", i, ic );
             cellNs[ ic ]++;  
         } 
