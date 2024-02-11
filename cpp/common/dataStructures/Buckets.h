@@ -104,7 +104,18 @@ class Buckets{ public:
     }
 
     inline bool resizeCells( int ncell_                 ){ bool b=(ncell_>ncell); if(b){ ncell=ncell_; _realloc(cellNs,ncell_); _realloc(cellI0s,ncell_); }; return b; };
-    inline bool resizeObjs ( int nobj_, bool bO2C=false ){ bool b=(nobj_>nobjSize); nobj=nobj_; if(b){ nobjSize =nobj_; _realloc(cell2obj,nobjSize); if(bO2C)_realloc(obj2cell,nobj_); }; return b; };
+    inline bool resizeObjs ( int nobj_, bool bO2C=false ){ 
+        bool b=(nobj_>nobjSize);  // need to resize
+        nobj=nobj_;  // true number of objects ( if nobj decreases we do not need to resize, but we want to itereate over just the used part of the array )
+        if(b){       // if need to resize
+            //printf( "Buckets::resizeObjs() nobjSize(%i) -> nobj_(%i) \n", nobjSize, nobj_ );
+            nobjSize =nobj_; 
+            _realloc(cell2obj,nobjSize); 
+            if(bO2C)_realloc(obj2cell,nobj_);
+        };
+        //printf( "Buckets::resizeObjs() nobjSize(%i) nobj_(%i) \n", nobjSize, nobj_ ); 
+        return b; 
+    };
     inline void bindObjs   ( int nobj_, int* obj2cell_  ){ resizeObjs ( nobj_, false ); obj2cell=obj2cell_; }
 
     inline void realloc( int ncell_, int nobj_, bool bO2C=false ){ 

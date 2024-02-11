@@ -1365,6 +1365,9 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         char str[24];  sprintf(str,format,f);
         Draw3D::drawText(str, pos, fontTex, sz, 0);
     }
+    void pointLabels( int n, const Vec3d* ps, int fontTex, float sz ){
+        for(int i=0; i<n; i++){ drawInt( ps[i], i, fontTex, sz ); }
+    }
 
 	void drawCurve( float tmin, float tmax, int n, Func1d3 func ){
         glBegin(GL_LINE_STRIP);

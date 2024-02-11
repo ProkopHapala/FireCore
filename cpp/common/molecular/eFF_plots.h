@@ -46,17 +46,17 @@ bool checkScalar(const char* s, double v, double vmin, double vmax){
     return b;
 }
 
-
 void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.1, double rBond=-1 ){
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    bool bF=true; if( fabs(fsc)<1e-100) bF=false;
     for(int i=0; i<ff.na; i++){
         //printf( "apos[%i] (%g,%g,%g)\n", i, ff.apos[i].x, ff.apos[i].y, ff.apos[i].z );
         //glColor3f(0.0,0.0,0.0); Draw3D::drawPointCross( ff.apos  [i]      , ff.aPars[i].x*Qsz );
         glColor4f(0.0,0.0,0.0, 0.5); Draw3D::drawShape( oglSph, ff.apos[i], Mat3dIdentity*ff.aPars[i].x*Qsz*0.5,  false );
         //glColor3f(0.0,0.0,0.0); Draw3D::drawPointCross( ff.apos  [i]    , Qsz );
-        glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos  ( ff.aforce[i]*fsc, ff.apos[i] );
+        if(bF)glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos  ( ff.aforce[i]*fsc, ff.apos[i] );
         //Draw3D::drawVecInPos(   ff.aforce[i]*fsc, ff.apos[i] );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.apos[i].x,ff.apos[i].y,ff.apos[i].z );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.aforce[i].x, ff.aforce[i].y, ff.aforce[i].z );

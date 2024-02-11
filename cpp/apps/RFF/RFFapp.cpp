@@ -27,7 +27,6 @@
 #include "testUtils.h"
 #include "SDL_utils.h"
 #include "Plot2D.h"
-
 #include "Draw3D_Molecular.h"
 
 //#include "MMFF.h"
@@ -36,6 +35,16 @@
 //#include "RARFFarr.h"
 #include "RARFF_SR.h"
 #include "QEq.h"
+
+#include "argparse.h"
+#include "Console.h"
+LambdaDict funcs;
+#ifdef WITH_LUA
+//#include "LuaUtils.h"
+//#include "LuaClass.h"
+#include "LuaHelpers.h"
+lua_State  * theLua=0;
+#endif // WITH_LUA
 
 #define R2SAFE  1.0e-8f
 
@@ -49,7 +58,7 @@
 std::vector<RigidAtomType*> atomTypes;
 RARFF_SR ff;
 PairList pairList;
-QEq       qeq;
+QEq      qeq;
 
 // ============= Functions
 
@@ -111,6 +120,9 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     Quat4i capsBrush;
 
+    int renderMode=0;
+    int nrenderModes=2;
+    bool bViewGrid=false;
     bool bBlockAddAtom=false;
     int ipicked = -1;
     Vec3d ray0;
@@ -125,6 +137,10 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     int    perFrame = 100;
 
     int      fontTex;
+    bool bConsole=false;
+    Console console;
+
+    // ========== Functions
 
     virtual void draw   ();
     virtual void drawHUD();
@@ -168,6 +184,25 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
     Draw3D::makeSphereOgl( ogl_sph, 3, 0.25 );
 
+    ff.map.bResizing=true;
+
+    console.init( 256, window );
+    console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
+    console.fontTex = fontTex;
+#ifdef WITH_LUA
+    console.callback = [&](const char* str)->bool{
+       lua_State* L=theLua;
+        printf( "console.lua_callback: %s\n", str );
+        if (luaL_dostring(L, str) != LUA_OK) {
+            // If there's an error, print it
+            //fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+            printf( "Error: %s\n", lua_tostring(L, -1) );
+            lua_pop(L, 1);  // Remove error message from the stack
+            return false;
+        }
+        return true;
+    };
+#endif // WITH_LUA
 }
 
 void TestAppRARFF::simulation(){
@@ -199,11 +234,12 @@ void TestAppRARFF::draw(){
     //bRun = false;
     perFrame = 10;
     //ff.bGridAccel=false;
+    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     if(bRun){
         long T=getCPUticks();
         simulation();
         T=getCPUticks()-T;
-        printf( "T %g[MTicks/Step] %g [ticks/Pair]  pairs_tried %g n_pairs_evaluated %g \n", T*1.0e-6/perFrame, T/(ff.n_pairs_evaluated*1.), ff.n_pairs_tried/(perFrame*1.), ff.n_pairs_evaluated/(perFrame*1.) );
+        printf( "T %g[MTicks/Step] %g[tick/pair] pairs_eval(%g) pairs_try(%g) n^2(%i)\n", T*1.0e-6/perFrame, T/(ff.n_pairs_evaluated*1.), ff.n_pairs_tried/(perFrame*1.), ff.n_pairs_evaluated/(perFrame*1.), ff.natom*ff.natom );
         ff.n_pairs_tried    =0;
         ff.n_pairs_evaluated=0;
     }else{
@@ -213,21 +249,32 @@ void TestAppRARFF::draw(){
             ff.apos[ipicked].add(dpos);
         }
     }
-    if(ff.AccelType==1)visualize_cells();
+    if(bViewGrid){
+        //if(ff.AccelType==1)
+        visualize_cells();
+    }
+    switch(renderMode){
+        case 0: glDisable(GL_LIGHTING); break;
+        case 1: glEnable (GL_LIGHTING); break;
+    }
     visualize_atoms();
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
     Draw3D::drawAxis( 1.0);
 };
 
 void TestAppRARFF::drawHUD(){
+    glPushMatrix();
 	glTranslatef( 400.0,400.0,0.0 );
 	glScalef    ( 40.0,40.0,1.0  );
 	plot1.view();
+    glPopMatrix();
+
+    if(bConsole) console.draw();
 }
 
 void TestAppRARFF::keyStateHandling( const Uint8 *keys ){
+    if(bConsole){ return; }
     if( keys[ SDL_SCANCODE_R ] ){
         if(ipicked>=0){
             //Mat3d rot;
@@ -247,11 +294,15 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
 
     switch( event.type ){
         case SDL_KEYDOWN :
-            switch( event.key.keysym.sym ){
+            if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
+            else switch( event.key.keysym.sym ){
                 case SDLK_p:  first_person = !first_person; break;
                 case SDLK_o:  perspective  = !perspective; break;
+                case SDLK_BACKQUOTE:{ bConsole = !bConsole;}break;   // ` SDLK_ for key '`' 
                 case SDLK_g:  ff.AccelType = (ff.AccelType+1)%3; break;
-
+                case SDLK_h:  bViewGrid = !bViewGrid; break;
+                case SDLK_r:  renderMode=(renderMode+1)%nrenderModes; break;
+                
                 case SDLK_KP_0: caps->array[0]*=-1; break;
                 case SDLK_KP_1: caps->array[1]*=-1; break;
                 case SDLK_KP_2: caps->array[2]*=-1; break;
@@ -265,7 +316,9 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_r:  world.fireProjectile( warrior1 ); break;
             }
             break;
-
+        case SDL_MOUSEWHEEL:{
+            if     (event.wheel.y > 0){ zoom/=1.2; }
+            else if(event.wheel.y < 0){ zoom*=1.2; }}break;
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:{
@@ -276,7 +329,7 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
                         else           { ipicked=ip;                     printf("set\n"); }
                     }else{ ipicked=-1; }
                     mouse_p0 = (Vec3d)( cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
-                    printf( "LMB DOWN picked %i/%i bblock %i \n", ipicked,ip, bBlockAddAtom );
+                    //printf( "LMB DOWN picked %i/%i bblock %i \n", ipicked,ip, bBlockAddAtom );
                     }break;
                 case SDL_BUTTON_RIGHT:{
                     /*
@@ -290,7 +343,7 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONUP:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    printf( "LMB UP picked %i bblock %i \n", ipicked, bBlockAddAtom );
+                    //printf( "LMB UP picked %i bblock %i \n", ipicked, bBlockAddAtom );
                     if( (ipicked==-1)&&(!bBlockAddAtom) ){
                         Vec3d mouse_p = (Vec3d)( cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
                         Vec3d dir = mouse_p-mouse_p0;
@@ -400,15 +453,56 @@ void TestAppRARFF::generate_atoms( int natom, double xspan, double step  ){
 
 // ===================== MAIN
 
-TestAppRARFF* thisApp;
+TestAppRARFF* app=0;
+
+#ifdef WITH_LUA
+int l_insertQuickCommand(lua_State *L){
+    const char* s = Lua::getString(L,1);
+    printf( "l_insertQuickCommand `%s`\n", s );
+    app->console.quick_tab.table.push_back( s );
+    app->console.quick_tab.sort();
+    printf( "l_insertQuickCommand table.size() %i \n", app->console.quick_tab.table.size() );
+    for(int i=0; i<app->console.quick_tab.table.size(); i++){
+        printf( "l_insertQuickCommand[%i] `%s`\n", i, app->console.quick_tab.table[i].c_str() );
+    }
+    return 1; // number of return values to Lua environment
+}
+
+int initMyLua(){
+    printf( "initMyLua()\n" );
+    theLua         = luaL_newstate();
+    lua_State  * L = theLua;
+    luaL_openlibs(L);
+    // lua_register(L, "fix",   l_fixAtom      );
+    // lua_register(L, "natom", l_getAtomCount );
+    // lua_register(L, "apos",  l_getAtomPos   );
+    // lua_register(L, "run",   l_toggleStop   );
+    lua_register(L, "command", l_insertQuickCommand  );
+    printf( "initMyLua() DONE\n" );
+    return 1;
+}
+#endif // WITH_LUA
+
 
 int main(int argc, char *argv[]){
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
 	//SDL_SetRelativeMouseMode( SDL_TRUE );
 	int junk;
-	thisApp = new TestAppRARFF( junk , 1400, 1000 );
-	thisApp->loop( 1000000 );
+    SDL_DisplayMode DM;
+    SDL_GetCurrentDisplayMode(0, &DM);
+    app = new TestAppRARFF( junk , DM.w-100, DM.h-100 );
+	//app = new TestAppRARFF( junk , 1400, 1000 );
+
+    #ifdef WITH_LUA
+        initMyLua();
+        funcs["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] no such file %s => exit()\n", ss[0] ); exit(0); }; }};
+    #endif // WITH_LUA
+    //char str[40];  sprintf(str,  );
+	//SDL_SetWindowTitle( app->child_windows[1]->window, " test_eFF " );
+    process_args( argc, argv, funcs );
+
+	app->loop( 1000000 );
 	return 0;
 }
 

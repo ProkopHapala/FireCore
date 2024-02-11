@@ -11,8 +11,7 @@
 
 //#include "Table.h"
 #include <string>
-//#include <functional>
-
+#include <functional>
 #include "CircularArray.h"
 #include "SortedStrings.h"
 
