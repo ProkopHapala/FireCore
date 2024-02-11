@@ -2,18 +2,23 @@ cmake_minimum_required ( VERSION 2.8 )
 
 project ( SimpleSimulationEngine )
 
-option(WITH_OPENCL "build with OpenCL GPU acceleration? (can accelare >100x some forcefields and grids  )" OFF)
-option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                                    OFF)
-option(WITH_LUA    "build with Lua 5.2 for scripting inside interactive GUI"                        OFF)
-option(RELEASE     "build optimized release (-O3 -Ofast) rather than debug? (-g -Og)"               OFF)
-option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and leaks?"              OFF)
-option(WITH_OMP    "use OpenMP paralelization"                                                      OFF)
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DWITH_OMP=${WITH_OMP}" )
+option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                           OFF)
+option(WITH_LUA    "build with Lua 5.2 for scripting inside interactive GUI"               OFF)
+option(WITH_OPENCL "build with OpenCL GPU acceleration? up to 100x speedup"                OFF)
+option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"                    OFF)
+option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
+option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
+option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
 
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
 
 # ==============================
 # ==== FLAGS
 # ==============================
+
+if (WITH_AVX)
+    add_definitions(-DWITH_AVX)
+endif()
 
 if(WITH_LUA)
     add_definitions(-DWITH_LUA)
