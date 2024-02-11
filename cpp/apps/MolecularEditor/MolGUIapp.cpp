@@ -162,19 +162,11 @@ int main(int argc, char *argv[]){
     
     funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
 
-    // do lua script from file provided as argument
-    funcs["-lua"]={1,[&](const char** ss){ 
-        printf( "LAMBDA luaL_dofile(theLua,ss[0])\n" );
-        int ret = luaL_dofile(theLua,ss[0]);
-        Lua::checkError( theLua, ret );
-        if(ret!=LUA_OK )exit(0); 
-        printf( "LAMBDA luaL_dofile DONE\n" );
-    }};  // interations per frame
-
 	process_args( argc, argv, funcs );
 	app->init();
 
 #ifdef WITH_LUA
+    funcs["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] no such file %s => exit()\n", ss[0] ); exit(0); }; }};
     app->console.callback = [&](const char* str)->bool{
        lua_State* L=theLua;
         printf( "console.lua_callback: %s\n", str );

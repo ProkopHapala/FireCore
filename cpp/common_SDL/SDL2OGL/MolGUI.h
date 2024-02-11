@@ -1348,10 +1348,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_PAGEUP  : W->add_to_lvec( dlvec2     ); break;
                 //case SDLK_PAGEDOWN: W->add_to_lvec( dlvec2*-1  ); break;
 
-                case SDLK_BACKQUOTE:{ 
-                    printf("SDLK_BACKQUOTE => bConsole=%i -> %i \n", bConsole, !bConsole );
-                    bConsole = !bConsole;   // ` SDLK_ for key '`' 
-                }break;
+                case SDLK_BACKQUOTE:{ bConsole = !bConsole;}break;   // ` SDLK_ for key '`' 
 
                 case SDLK_0:      W->add_to_lvec( dlvec2     ); break;
                 case SDLK_9:      W->add_to_lvec( dlvec2*-1  ); break;

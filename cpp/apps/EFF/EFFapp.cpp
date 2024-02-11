@@ -23,8 +23,11 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 #include <math.h>
 #include  <functional>
 
+
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
+
+#include "testUtils.h"
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -35,9 +38,9 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 #include "VecN.h"
 
 #include "AppSDL2OGL_3D.h"
-#include "testUtils.h"
 #include "SDL_utils.h"
 #include "Plot2D.h"
+#include "Console.h"
 
 //#include "MMFF.h"
 
@@ -53,9 +56,7 @@ Vec3d* DEBUG_fa_ae =0;
 Vec3d* DEBUG_fe_ee =0;
 Vec3d* DEBUG_fa_aa =0;
 
-
 #include "DynamicOpt.h"
-
 #include "InteractionsGauss.h"
 #include "eFF.h"
 
@@ -68,6 +69,14 @@ Vec3d* DEBUG_fa_aa =0;
 
 #include "eFF_plots.h"
 
+#include "argparse.h"
+LambdaDict funcs;
+#ifdef WITH_LUA
+//#include "LuaUtils.h"
+//#include "LuaClass.h"
+#include "LuaHelpers.h"
+lua_State  * theLua=0;
+#endif // WITH_LUA
 
 void cleanDebugForce(int ne, int na){
     for(int i=0; i<ne; i++){
@@ -123,6 +132,8 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     int      fontTex;
 
+    bool bConsole=false;
+    Console console;
     // ---- Functions
 
     virtual void draw   ();
@@ -244,6 +255,24 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     plot1.update();
     plot1.render();
     plot1.view();
+
+    console.init( 256, window );
+    console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
+    console.fontTex = fontTex;
+#ifdef WITH_LUA
+    console.callback = [&](const char* str)->bool{
+       lua_State* L=theLua;
+        printf( "console.lua_callback: %s\n", str );
+        if (luaL_dostring(L, str) != LUA_OK) {
+            // If there's an error, print it
+            //fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+            printf( "Error: %s\n", lua_tostring(L, -1) );
+            lua_pop(L, 1);  // Remove error message from the stack
+            return false;
+        }
+        return true;
+    };
+#endif // WITH_LUA
 
 }
 
@@ -373,18 +402,19 @@ void TestAppRARFF::drawHUD(){
 	//glScalef    ( 100.0, 100.0, 1.0 );
 	//plot1.view();
 
-
+    glPushMatrix();
     glTranslatef( 10.0,HEIGHT-20.0,0.0 );
 	glColor3f(0.5,0.0,0.3);
-
     //Draw::drawText( "AHOJ ", fontTex, fontSizeDef, {100,20} );
-
     int nstr=2048;
 	char str[nstr];
 	char* s=str;
 	s+=ff.Eterms2str(s);
 	ff.orbs2str(s);
     Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+    glPopMatrix();
+
+    if(bConsole) console.draw();
 
 }
 
@@ -403,9 +433,11 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
     Vec3d pa0;
     switch( event.type ){
         case SDL_KEYDOWN :
-            switch( event.key.keysym.sym ){
+            if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
+            else switch( event.key.keysym.sym ){
                 case SDLK_p:  first_person = !first_person; break;
                 case SDLK_o:  perspective  = !perspective; break;
+                case SDLK_BACKQUOTE:{ bConsole = !bConsole;}break;   // ` SDLK_ for key '`' 
 
                 case SDLK_i: ff.info(); break;
                 case SDLK_LEFTBRACKET :  Espread *= 1.2; ogl_fs=genFieldMap(ogl_fs, field_ns, field_ps, field_Es, E0-Espread, E0+Espread ); break;
@@ -480,18 +512,58 @@ void TestAppRARFF::init2DMap( int n, double dx ){
 
 // ===================== MAIN
 
-TestAppRARFF* thisApp;
+TestAppRARFF* app=0;
+
+#ifdef WITH_LUA
+int l_insertQuickCommand(lua_State *L){
+    const char* s = Lua::getString(L,1);
+    printf( "l_insertQuickCommand `%s`\n", s );
+    app->console.quick_tab.table.push_back( s );
+    app->console.quick_tab.sort();
+    printf( "l_insertQuickCommand table.size() %i \n", app->console.quick_tab.table.size() );
+    for(int i=0; i<app->console.quick_tab.table.size(); i++){
+        printf( "l_insertQuickCommand[%i] `%s`\n", i, app->console.quick_tab.table[i].c_str() );
+    }
+    return 1; // number of return values to Lua environment
+}
+
+int initMyLua(){
+    printf( "initMyLua()\n" );
+    theLua         = luaL_newstate();
+    lua_State  * L = theLua;
+    luaL_openlibs(L);
+    // lua_register(L, "fix",   l_fixAtom      );
+    // lua_register(L, "natom", l_getAtomCount );
+    // lua_register(L, "apos",  l_getAtomPos   );
+    // lua_register(L, "run",   l_toggleStop   );
+    lua_register(L, "command", l_insertQuickCommand  );
+    printf( "initMyLua() DONE\n" );
+    return 1;
+}
+#endif // WITH_LUA
 
 int main(int argc, char *argv[]){
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
 	//SDL_SetRelativeMouseMode( SDL_TRUE );
 	int junk;
-	thisApp = new TestAppRARFF( junk , 800, 600 );
-	thisApp->loop( 1000000 );
+    SDL_DisplayMode DM;
+    SDL_GetCurrentDisplayMode(0, &DM);
+    app = new TestAppRARFF( junk , DM.w-100, DM.h-100 );
+	//app = new TestAppRARFF( junk , 800, 600 );
 
+
+#ifdef WITH_LUA
+    initMyLua();
+    funcs["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] no such file %s => exit()\n", ss[0] ); exit(0); }; }};
+#endif // WITH_LUA
     //char str[40];  sprintf(str,  );
-	//SDL_SetWindowTitle( thisApp->child_windows[1]->window, " test_eFF " );
+	//SDL_SetWindowTitle( app->child_windows[1]->window, " test_eFF " );
+
+    process_args( argc, argv, funcs );
+	app->loop( 1000000 );
+
+
 
 	return 0;
 }
