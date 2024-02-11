@@ -329,7 +329,7 @@ int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
         }
         for(int i=ffl.natoms; i<ffl.nvecs; i++){
             //printf( "relax_pi move_atom_MD[%i] \n", i );
-            F2 += ffl.move_atom_MD( i, dt, Flim, 0.9 );
+            F2 += ffl.move_atom_MD( i, dt, Flim, 0.9 ).z;
             //printf( "relax_pi move_atom_MD[%i] F2 %g \n", i, F2 );
         }
         //if(verbosity>2)
@@ -351,9 +351,9 @@ virtual void init( bool bGrid=false ){
         initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
     }
     if( nbmol.natoms>0 ){ clear(); } // re-initialization
-    builder.verbosity=verbosity;
+    //builder.verbosity=verbosity;
     if(verbosity>0){
-        printf("\n#### MolWorld_sp3::init()\n");
+        printf("\n#### MolWorld_sp3_simple::init()\n");
         if(smile_name   )printf("smile_name  (%s)\n", smile_name );
         if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
         //if(data_dir     )printf("data_dir    (%s)\n", data_dir );

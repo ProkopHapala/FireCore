@@ -60,9 +60,10 @@ class MolWorld_sp3_QMMM_multi : public MolWorld_sp3_multi { public:
 
     // ==== Functions Definition
 
-virtual void init( bool bGrid ){
+virtual void init(){
     //MolWorld_sp3    ::init( bGrid );
-    MolWorld_sp3_multi::init( bGrid );
+    //MolWorld_sp3_multi::init( bGrid );
+    MolWorld_sp3_multi::init();
     if( file_exist("Fdata/info.dat") ){ 
         InitQMMM(); bPrepared_qm=true; 
         printf("QM preparation DONE \n");

@@ -178,9 +178,9 @@ void GUIPanel::view ( ){
 
 void GUIPanel::render(){
     if(isInt){ value=round(value); }
-    glDisable( GL_LIGHTING );
-    glDisable( GL_DEPTH_TEST);
-    glShadeModel( GL_FLAT     );
+    glDisable( GL_LIGHTING   );
+    glDisable( GL_DEPTH_TEST );
+    glShadeModel( GL_FLAT    );
     Draw  ::setRGB( bgColor );
     Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
     if(isSlider){

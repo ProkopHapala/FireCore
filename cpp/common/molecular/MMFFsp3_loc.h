@@ -18,99 +18,6 @@
 
 //#include <cstdio>
 
-// damping functions for velocity and forces depending on cos(angle)=<v|f>  (v,f) - vectors of velocity and force
-inline double cos_damp_lin( double c, double& cv, double D, double cmin, double cmax  ){
-    double cf;
-    if      (c < cmin){
-        cv = 0.;
-        cf = 0.;
-    }else if(c > cmax){
-        cv = 1-D;
-        cf =   D;
-    }else{  // cos(v,f) from [ cmin .. cmax ]
-        double u = (c-cmin)/(cmax-cmin);
-        cv = (1.-D)*u;
-        cf =     D *u;
-    }
-    return cf;
-}
-
-class CollisionDamping{ public:
-    bool    bBond = false; // if true we use collision damping
-    bool    bAng  = false;
-    bool    bNonB = false;  // if true we use collision damping for non-bonded interactions
-
-    int     nstep  = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
-
-    double  medium = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
-    double  bond   = 0.0;   // col_damp    =     collisionDamping   /(dt*ndampstep )
-    double  ang    = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
-    double  nonB   = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
-    
-    double  dRcut1  = -0.2;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
-    double  dRcut2  =  0.3;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
-
-    double cdampB    = 0.0;  //  collisionDamping   /(dt*ndampstep );
-    double cdampAng  = 0.0;
-    double cdampNB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
-
-    double cos_vf_acc = 0.5;
-    int nstep_acc     = 0;
-    int nstep_acc_min = 20;
-
-    inline bool   canAccelerate(){ return nstep_acc>nstep_acc_min; }
-    inline double tryAccel     (){ if(    nstep_acc>nstep_acc_min  ){ return 1-medium;  }else{ return 1.0; } }
-
-    inline double update( double dt ){
-        if( bBond ){ cdampB   = bond /(dt*nstep ); }else{ cdampB=0;   }
-        if( bBond ){ cdampAng = ang  /(dt*nstep ); }else{ cdampAng=0; }
-        if( bNonB ){ cdampNB  = nonB /(dt*nstep ); }else{ cdampNB=0;  }
-        //printf( "update_collisionDamping(dt=%g,ndampstep=%i,collisionDamping=%g,collisionDamping_NB=%g) cdamp=%g col_damp=%g col_damp_NB=%g \n", dt,  ndampstep, collisionDamping, collisionDamping_NB,    cdamp, col_damp, col_damp_NB  );
-        double  cdamp = 1-(medium/nstep );  if(cdamp<0)cdamp=0;
-        return cdamp;
-    }
-
-    void set( int nstep_, double medium_, double bond_, double ang_, double nonB_, double dRcut1_, double dRcut2_ ){
-        nstep   = nstep_;
-        //medium  = fmax( medium_,0 );
-        medium  = medium_; // we want also acceleration
-        bond    = fmax( bond_  ,0 );
-        ang     = fmax( ang_   ,0 );
-        nonB    = fmax( nonB_  ,0 );
-        dRcut1  = dRcut1_;
-        dRcut2  = dRcut2_;
-        bBond = bond>0;
-        bAng  = ang >0;
-        bNonB = nonB>0;
-    }
-
-    void setup_accel(int nstep_acc_min_, double cos_vf_acc_ ){
-        nstep_acc_min = nstep_acc_min_;
-        cos_vf_acc    = cos_vf_acc_;
-        printf( "CollisionDamping::setup_accel nstep_acc_min %i cos_vf_acc %g \n", nstep_acc_min, cos_vf_acc );
-    }
-
-    inline double update_acceleration( Vec3d cvf ){
-        double cos_fv = cvf.x/sqrt(cvf.z*cvf.y+1e-32);
-        if(cvf.x<0){ 
-            nstep_acc = 0;
-            //printf( "MolWorld_sp3::run_no_omp(itr=%i).cleanVelocity() \n", itr, ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); 
-        }else {
-            if( cos_fv>cos_vf_acc ){
-                nstep_acc++;
-                //printf( "MolWorld_sp3::run_no_omp(itr=%i) Acceleration: cdamp=%g(%g) nstepOK=%i cos(f,v)\n", itr, cdamp, ffl.colDamp.nstepOK, ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32) );
-            }else{
-                //double vf_damp = (0.5-cos_fv)*0.0;
-                //double renorm_vf  = sqrt( ffl.cvf.y / ( ffl.cvf.z  + 1e-32 ) );
-                //for(int i=0; i<ffl.nvecs; i++){ ffl.vapos[i] = ffl.vapos[i]*(1-vf_damp) + ffl.fapos[i]*( renorm_vf * vf_damp ); }
-                nstep_acc=0;
-            }
-        }
-        return cos_fv;
-    }
-
-};
-
 // ========================
 // ====   MMFFsp3_loc  ====
 // ========================
@@ -194,7 +101,7 @@ class MMFFsp3_loc : public NBFF { public:
     //Quat4i*  neighs =0;   // [natoms] // from NBFF
     Quat4i*  bkneighs=0;   // [natoms]  inverse neighbors
     
-    Quat4d*  apars __attribute__((aligned(64))) =0;  // [nnode] per atom forcefield parametrs
+    Quat4d*  apars __attribute__((aligned(64))) =0;  // [nnode] angle parameters
     Quat4d*  bLs   __attribute__((aligned(64))) =0;  // [nnode] bond lengths
     Quat4d*  bKs   __attribute__((aligned(64))) =0;  // [nnode] bond stiffness
     Quat4d*  Ksp   __attribute__((aligned(64))) =0;  // [nnode] stiffness of pi-alignment
@@ -681,7 +588,7 @@ double eval_atom_debug(const int ia, bool bPrint=true){
 
         //printf("ia %i ing %i \n", ia, ing ); 
         Vec3d  pi = apos[ing];
-        Quat4d h; 
+        Quat4d h; // {x,y,z|w} = {f.x,f.y,f.z|e}
         h.f.set_sub( pi, pa );
         //if(idebug)printf( "bond[%i|%i=%i] l=%g pj[%i](%g,%g,%g) pi[%i](%g,%g,%g)\n", ia,i,ing, h.f.norm(), ing,apos[ing].x,apos[ing].y,apos[ing].z, ia,pa.x,pa.y,pa.z  );
         

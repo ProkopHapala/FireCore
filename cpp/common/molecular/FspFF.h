@@ -58,7 +58,7 @@ struct Mat3Sd{ // symmetric 3x3 matrix
 
 inline void addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, double r0, double eps, double qq ){
     //Vec3f dp; dp.set_sub( p2, p1 );
-    const double COULOMB_CONST = 14.3996448915d;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
+    //const double COULOMB_CONST = 14.3996448915;  //  [V*A/e] = [ (eV/A) * A^2 /e^2]
     double ir2  = 1/( dp.norm2() + 1e+4 );
     double ir   = sqrt(ir2);
     double ir2_ = ir2*r0*r0;

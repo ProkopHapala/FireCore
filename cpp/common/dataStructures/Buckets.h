@@ -5,6 +5,7 @@
 #include "macroUtils.h"
 
 class Buckets{ public:
+
     int ncell,nobj;
     int* cellNs=0;   //[ncell] number of objects contained in given cell, it may be not necessary as it can be computed as cellI0s[i+1]-cellI0s[i], but it is more convenient to have it here
     int* cellI0s=0;  //[ncell] index of first object contained given cell in the array cell2obj
@@ -13,7 +14,17 @@ class Buckets{ public:
     int  maxInBucket=0;
     
     int  nobjSize=-1;
+
     int* obj2cell=0; 
+    //int  nobj_bind=-1;
+    //int* obj2cell_bind=0; 
+
+    inline int addToCell( int icell, int iobj ){
+        int j = cellI0s[icell] + cellNs[icell];
+        cell2obj[j] = iobj;
+        cellNs[icell]++;
+        return j;
+    }
 
     inline void clean(){ for(int k=0; k<ncell; k++ ){ cellNs[k]=0; } }
     inline void cleanO2C( int icell=-1 ){ for(int i=0; i<nobj; i++ ){ obj2cell[i]=icell; } }
@@ -25,8 +36,11 @@ class Buckets{ public:
      * @param obj2cell An array mapping each object to its corresponding cell.
      */
     inline void count( int nobj, int* obj2cell ){ 
+        //printf( "Buckets::count() nobj=%i ncell=%i iDebug_count=%i  @obj2cell=%li \n", nobj, iDebug_count, (long)obj2cell );
         for(int i=0; i<nobj; i++ ){ 
+            //printf( "Buckets::count()[%i] \n", i );
             int ic = obj2cell[i]; 
+            //if( (ic<0)||(ic>=ncell) ){ printf( "Buckets::count() ERROR i %i ic %i ncell %i \n", i, ic, ncell ); }
             //printf( "obj[%i ]-> cell %i \n", i, ic );
             cellNs[ ic ]++;  
         } 
@@ -90,7 +104,18 @@ class Buckets{ public:
     }
 
     inline bool resizeCells( int ncell_                 ){ bool b=(ncell_>ncell); if(b){ ncell=ncell_; _realloc(cellNs,ncell_); _realloc(cellI0s,ncell_); }; return b; };
-    inline bool resizeObjs ( int nobj_, bool bO2C=false ){ bool b=(nobj_>nobjSize); nobj=nobj_; if(b){ nobjSize =nobj_; _realloc(cell2obj,nobjSize); if(bO2C)_realloc(obj2cell,nobj_); }; return b; };
+    inline bool resizeObjs ( int nobj_, bool bO2C=false ){ 
+        bool b=(nobj_>nobjSize);  // need to resize
+        nobj=nobj_;  // true number of objects ( if nobj decreases we do not need to resize, but we want to itereate over just the used part of the array )
+        if(b){       // if need to resize
+            //printf( "Buckets::resizeObjs() nobjSize(%i) -> nobj_(%i) \n", nobjSize, nobj_ );
+            nobjSize =nobj_; 
+            _realloc(cell2obj,nobjSize); 
+            if(bO2C)_realloc(obj2cell,nobj_);
+        };
+        //printf( "Buckets::resizeObjs() nobjSize(%i) nobj_(%i) \n", nobjSize, nobj_ ); 
+        return b; 
+    };
     inline void bindObjs   ( int nobj_, int* obj2cell_  ){ resizeObjs ( nobj_, false ); obj2cell=obj2cell_; }
 
     inline void realloc( int ncell_, int nobj_, bool bO2C=false ){ 

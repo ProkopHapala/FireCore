@@ -381,6 +381,7 @@ class RARFF_SR{ public:
             //printf( "caps[%i] %i \n", j, caps[j] );
         }
         return ia;
+        map.bResizing=true;
     }
 
     // ======== Force Evaluation
@@ -673,15 +674,15 @@ class RARFF_SR{ public:
     }
 
     void eval(){
-        cleanAtomForce();     //printf( "DEBUG 1 \n " );
-        projectBonds();       //printf( "DEBUG 2 \n " );
+        cleanAtomForce();
+        projectBonds();     
         if(AccelType==1){
-            map.pointsToCells( natomActive, apos, ignoreAtoms ); //ff.map.printCells(0);
-            interEF_buckets();   //printf( "DEBUG 4 \n " );
+            map.pointsToCells( natomActive, apos, ignoreAtoms );
+            interEF_buckets();   
         }else if(AccelType==2){
-            interEF_list();      //printf( "DEBUG 4 \n " );
+            interEF_list();     
         }else{
-            interEF_brute();     //printf( "DEBUG 3 \n " );
+            interEF_brute(); 
         }
     }
 

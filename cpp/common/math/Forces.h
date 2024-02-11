@@ -14,6 +14,17 @@
 
 
 
+
+inline bool clampForce( Vec3d& f, const double f2max ){
+    const double f2   = f.norm2();
+    const bool bClamp = f2>f2max;
+    if( bClamp ){
+        f.mul( sqrt(f2max/f2) );
+    }
+    return bClamp;
+}
+
+
 // ================= Trashold functions
 
 double smoothstep_up(double x_, double xmin, double xmax) {

@@ -105,18 +105,15 @@ void Plot2D::autoAxes(double dx, double dy){
     n0=(int)(bounds.y0/dy)-1;  axBounds.y0 = dy*n0;
     n1=(int)(bounds.y1/dy)+1;  axBounds.y1 = dy*n1; nYTicks=(n1-n0)+1;
     //printf("y(%g:%g) dy %g ny(%i:%i) nYTicks %i \n", bounds.y0, bounds.y1, dy,   n0, n1, nYTicks );
-
     if( xTicks==NULL ) delete xTicks;
     if( yTicks==NULL ) delete yTicks;
     //double x0    = (axBounds.x0 - axPos.x);  x0 = 2*x0 - dx*(int)(x0/dx);
     //double y0    = (axBounds.y0 - axPos.y);  y0 = 2*y0 - dy*(int)(y0/dy);
     //printf("DEBUG 2.1.1\n");
     xTicks = new double[nXTicks]; VecN::arange( nXTicks, axBounds.x0, dx, xTicks );
-    //printf("DEBUG 2.1.2 %i\n", nYTicks );
     yTicks = new double[nYTicks];
-    //printf("DEBUG 2.1.3\n");
+    //printf("Plot2D::autoAxes() nXTicks(%i) nYTicks(%i)\n", nXTicks, nYTicks );
     VecN::arange( nYTicks, axBounds.y0, dy, yTicks );
-    //printf("DEBUG 2.1.4\n");
 }
 
 void Plot2D::drawTexts(){
@@ -153,6 +150,7 @@ void Plot2D::drawTexts(){
 void Plot2D::drawAxes(){
     //Draw2D::drawPointCross({0.0,0.0},100.0);
     //grid=false;
+    //printf( "Plot2D::drawAxes nXTicks(%i) xTicks(%i) \n", nXTicks, nYTicks );
     if(bGrid){
         Draw::setRGBA(clrGrid);
         Draw2D::drawGrid( nXTicks, xTicks, axBounds.y0, axBounds.y1, true  );

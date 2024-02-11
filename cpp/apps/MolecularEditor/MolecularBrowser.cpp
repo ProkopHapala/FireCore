@@ -1,6 +1,8 @@
 
 
-int verbosity = 0;
+//int verbosity = 0;
+#include <globals.h>
+//int idebug=0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -94,9 +96,6 @@ void drawThumbnail( int itex, Vec2d p0, Vec2d p1, float sz ){
     glEnd();
     glDisable  ( GL_TEXTURE_2D );
 };
-
-
-int idebug=0;
 
 // ===========================================
 // ================= MAIN CLASS ==============

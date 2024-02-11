@@ -1,6 +1,7 @@
 #ifndef  OCL_DFT_h
 #define  OCL_DFT_h
 
+#include "constants.h"
 #include "OCLfft_errors.h"
 #include <clFFT.h>
 #include "OCL.h"
@@ -9,8 +10,6 @@
 #include "quaternion.h"
 
 #include "VecN.h"
-
-double const_Bohr_Radius = 0.529177210903;
 
 void v2f4( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };
 //void v2f4( const Vec3d& v, cl_float4& f4 ){ f4.s[0]=(cl_float)v.x; f4.s[1]=(cl_float)v.y; f4.s[2]=(cl_float)v.z; };
@@ -623,7 +622,7 @@ class OCL_DFT: public OCLsystem { public:
     void evalVpointChargesPBC( int na, const Vec3d* apos, const double* aQs, int np, const Vec3d* ps, double* Vps, const Vec3i& nPBC, const Mat3d& cell ){
         //printf( "evalVpointChargesPBC() na %i np %i \n" );
         //printf( "evalVpointChargesPBC() @apos %li @aQs %li @ps %li @Vps %li nPBC(%i,%i,%i) \n", (long)apos, (long)aQs, (long)ps, (long)Vps, nPBC.x, nPBC.y, nPBC.z );
-        double COULOMB_CONST =  14.399644;
+        //double COULOMB_CONST =  14.399644;
         for( int i=0; i<np; i++ ){
             Vec3d p = ps[i];
             double V = 0;

@@ -23,6 +23,7 @@
 #include "MolecularDraw.h"
 #include "MarchingCubes.h"
 #include "GUI.h"
+#include "Console.h"
 #include "EditorGizmo.h"
 #include "SimplexRuler.h"
 #include "AppSDL2OGL_3D.h"
@@ -65,6 +66,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool bDrawHexGrid=true;
     bool bHexDrawing=false; 
 
+    bool bConsole=false;
+
 
     bool bWriteOptimizerState = true;
     //bool bPrepared_mm = false;
@@ -76,6 +79,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     MolWorld_sp3* W=0;
 
+    Console console;
     GUI gui;
     GUIPanel* Qpanel;
     EditorGizmo  gizmo;
@@ -189,6 +193,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
 	MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ );
     void init();
+
+    bool visual_FF_test();
 
 	//int  loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
@@ -363,22 +369,24 @@ void MolGUI::initWiggets(){
 }
 
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
-
     long T0=getCPUticks();
     float nseconds = 0.1;
     SDL_Delay( (int)(1000*0.1) );
     tick2second = nseconds/(getCPUticks()-T0);
     printf( "CPU speed calibration: tick=%g [s] ( %g GHz)\n", tick2second, 1.0e-9/tick2second );
-
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
     if(W_==0){ W = new MolWorld_sp3(); }else{ W=W_; }
     W->tmpstr=str;
-
 }
 
 void MolGUI::initGUI(){
     // ---- Graphics setup
+    //Console::init( int lineLength=256, SDL_Window* window_=0 ){
+    console.init( 256, window );
+    console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
+    console.fontTex = fontTex;
+
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
@@ -400,7 +408,7 @@ void MolGUI::initGUI(){
 
 void MolGUI::init(){
     if(verbosity>0)printf("MolGUI::init() \n");
-    W->init( true );
+    W->init();
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Quat4d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
     //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
     MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
@@ -411,6 +419,85 @@ void MolGUI::init(){
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
 
+    bool MolGUI::visual_FF_test(){ // ==== MolGUI TESTS   Torsions ( Paolo vs Prokop optimized )
+    
+        if( frameCount==0){
+            Vec3d ax = apos[1]-apos[0];
+            apos[2].add_mul( ax, -0.5 );
+            apos[3].add_mul( ax, -0.5 );
+            for(int i=4; i<6; i++){ apos[i].mul(0.8); }
+            for(int i=0; i<natoms; i++){ apos[i].mul(1.5); }
+
+            apos[0].z += 0.5;
+            apos[1].z -= 0.5;
+        }
+
+        double angle = 0.0;
+        //if( keys[ SDL_SCANCODE_LEFTBRACKET  ] ){ angle=0.1; }
+        //if( keys[ SDL_SCANCODE_RIGHTBRACKET ] ){ angle=-0.1; }
+
+        if( keys[ SDL_SCANCODE_LEFTBRACKET  ] ){ apos[3].z -= 0.1; }
+        if( keys[ SDL_SCANCODE_RIGHTBRACKET ] ){ apos[3].z += 0.1; }
+
+        int sel[3]{1,4,5};
+       
+        Vec3d ax = apos[1]-apos[0];
+        Vec3d p0 = apos[0];
+        ax.normalize();
+        Vec2d cs; cs.fromAngle( angle );
+        for(int i=0; i<3; i++){
+            apos[sel[i]].rotate_csa( cs.x, cs.y, ax, p0 );
+        }
+
+        // { // Check Dihedrals
+        //     W->ffu.evalBonds();
+        //     Vec3d fbak[4];
+        //     double E,E_;
+        //     E_=W->ffu.evalDihedral_Paolo( 0 );
+        //     //E_=W->ffu.evalDihedral_Prokop_Old( 0 );
+        //     for(int i=0; i<4; i++){ fbak[i]=W->ffu.fdih[i]; }
+        //     //E=W->ffu.evalDihedral_Prokop_Old( 0 );
+        //     E=W->ffu.evalDihedral_Prokop( 0 );
+        //     printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
+        //     checkVec3Matches( 4, W->ffu.fdih, fbak, "dih_fp", 1 );
+        // }
+
+        // { // Check Angles
+        //     W->ffu.evalBonds();
+        //     Vec3d fbak[4];
+        //     double E,E_;
+        //     E_=W->ffu.evalAngle_Paolo( 0 );
+        //     for(int i=0; i<3; i++){ fbak[i]=W->ffu.fang[i]; }
+        //     E=W->ffu.evalAngle_Prokop( 0 );
+        //     printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
+        //     checkVec3Matches( 3, W->ffu.fang, fbak, "dih_fp", 1 );
+        // }
+
+        // { // Check Inversions
+        //     //W->ffu.printSizes();
+        //     W->ffu.evalBonds();
+        //     Vec3d fbak[4];
+        //     double E,E_;
+        //     E_=W->ffu.evalInversions_Paolo( 0 );
+        //     for(int i=0; i<4; i++){ fbak[i]=W->ffu.fang[i]; }
+        //     E=W->ffu.evalInversions_Prokop( 0 );
+        //     printf( " Eerr %g |   E_ref %g E %g \n", E-E_, E_, E );
+        //     //checkVec3Matches( 4, W->ffu.fang, fbak, "dih_fp", 1 );
+        // }
+
+        // { // check OMP
+        //     Vec3d fapos[ W->ffu.natoms ];
+        //     double E_ = W->ffu.eval();
+        //     for(int i=0; i<W->ffu.natoms; i++){ fapos[i]=W->ffu.fapos[i]; }
+        //     double E  = W->ffu.eval_omp();
+        //     printf( " Eerr %g | E_ref %g E %g \n", E-E_, E_, E);
+        //     bool b = checkVec3Matches( W->ffu.natoms, W->ffu.fapos, fapos, "fpos", 1 );
+        //     if(b){ printf( "ffu.eval_omp() OK \n" ); }else{ printf( "ffu.eval_omp() FAILED \n" ); }
+        //     exit(0);
+        // }
+
+        return false;
+    }
 
 //=================================================
 //                   DRAW()
@@ -497,7 +584,7 @@ void MolGUI::draw(){
             glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
         }else{ drawSystem(); }
 
-        //drawSystem(); // DEBUG
+        //drawSystem(); // debug
         //Draw3D::drawNeighs( W->ff, -1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
@@ -529,31 +616,7 @@ void MolGUI::draw(){
 
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
-    // // ==== MolGUI TESTS   Torsions ( Paolo vs Prokop optimized )
-    // if( frameCount==0){
-    //     Vec3d ax = apos[1]-apos[0];
-    //     apos[2].add_mul( ax, -0.5 );
-    //     apos[3].add_mul( ax, -0.5 );
-    //     for(int i=4; i<6; i++){ apos[i].mul(0.8); }
-    //     for(int i=0; i<natoms; i++){ apos[i].mul(1.5); }
-    // }
-
-    // {
-    //     double angle = 0.0;
-    //     if( keys[ SDL_SCANCODE_LEFTBRACKET  ] ){ angle=0.1; }
-    //     if( keys[ SDL_SCANCODE_RIGHTBRACKET ] ){ angle=-0.1; }
-    //     int sel[3]{1,4,5};
-       
-    //     Vec3d ax = apos[1]-apos[0];
-    //     Vec3d p0 = apos[0];
-    //     ax.normalize();
-    //     Vec2d cs; cs.fromAngle( angle );
-    //     for(int i=0; i<3; i++){
-    //         apos[sel[i]].rotate_csa( cs.x, cs.y, ax, p0 );
-    //     }
-    // }
-    // //torsion_Paolo( apos[2], apos[0], apos[1], apos[4], Vec3d{ 1.0, 1.0, 1.0 } );
-    // torsion_Prokop( apos[2], apos[0], apos[1], apos[4], Vec3d{ 1.0, 1.0, 1.0 } );
+    //visual_FF_test();
 
     if(W->ipicked>-1){ 
         Vec3d p = W->ffl.apos[W->ipicked];
@@ -709,6 +772,7 @@ void MolGUI::drawHUD(){
     glDisable ( GL_LIGHTING );
     gui.draw();
 
+    glPushMatrix();
     if(W->bCheckInvariants){
         glTranslatef( 10.0,HEIGHT-20.0,0.0 );
         glColor3f(0.5,0.0,0.3);
@@ -724,7 +788,6 @@ void MolGUI::drawHUD(){
         W->getStatusString( str, nmaxstr );
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
     }
-
     if(bWriteOptimizerState){
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         glColor3f(0.0,0.5,0.0);
@@ -736,8 +799,8 @@ void MolGUI::drawHUD(){
         Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         Draw::drawText( W->info_str(str), fontTex, fontSizeDef, {100,20} );
-
     }
+    glPopMatrix();
 
     /*
     glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
@@ -760,6 +823,8 @@ void MolGUI::drawHUD(){
 
     mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
                           2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);
+
+    if(bConsole) console.draw();
 }
 
 void MolGUI::drawingHex(double z0){
@@ -1260,11 +1325,15 @@ void MolGUI::eventMode_scan( const SDL_Event& event  ){
 
 void MolGUI::eventMode_default( const SDL_Event& event ){
     if(useGizmo)gizmo.onEvent( mouse_pix, event );
+    //printf( "MolGUI::eventMode_default() bConsole=%i \n", bConsole );
     switch( event.type ){
         case SDL_MOUSEWHEEL:{
             if     (event.wheel.y > 0){ zoom/=1.2; }
             else if(event.wheel.y < 0){ zoom*=1.2; }}break;
-        case SDL_KEYDOWN : if(gui.bKeyEvents) switch( event.key.keysym.sym ){
+        case SDL_KEYDOWN : 
+                if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
+                else 
+                if(gui.bKeyEvents) switch( event.key.keysym.sym ){
                 case SDLK_KP_0: qCamera = qCamera0; break;
 
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
@@ -1278,6 +1347,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
 
                 //case SDLK_PAGEUP  : W->add_to_lvec( dlvec2     ); break;
                 //case SDLK_PAGEDOWN: W->add_to_lvec( dlvec2*-1  ); break;
+
+                case SDLK_BACKQUOTE:{ bConsole = !bConsole;}break;   // ` SDLK_ for key '`' 
 
                 case SDLK_0:      W->add_to_lvec( dlvec2     ); break;
                 case SDLK_9:      W->add_to_lvec( dlvec2*-1  ); break;
@@ -1346,8 +1417,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
                 //case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
 
-                case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
-                case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
+                //case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
+                //case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
 
                 //case SDLK_LEFTBRACKET:  myAngle-=0.1; printf( "myAngle %g \n", myAngle ); break;
                 //case SDLK_RIGHTBRACKET: myAngle+=0.1; printf( "myAngle %g \n", myAngle );  break;
@@ -1412,6 +1483,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
         case SDL_MOUSEBUTTONUP: mouse_default( event ); break;
         case SDL_WINDOWEVENT:{switch (event.window.event) {case SDL_WINDOWEVENT_CLOSE:{ quit(); }break;} } break;
     } // switch( event.type ){
+    //printf( "MolGUI::eventMode_default() END bConsole=%i \n", bConsole );
 }
 
 void MolGUI::eventHandling ( const SDL_Event& event  ){
@@ -1429,6 +1501,7 @@ void MolGUI::eventHandling ( const SDL_Event& event  ){
 }
 
 void MolGUI::keyStateHandling( const Uint8 *keys ){
+    if(bConsole){ return; }
     double dstep=0.025;
     switch (gui_mode){
         case Gui_Mode::edit: 

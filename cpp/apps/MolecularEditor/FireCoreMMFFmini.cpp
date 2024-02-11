@@ -1,5 +1,7 @@
 
-int verbosity = 0;
+//int verbosity = 0;
+#include <globals.h>
+//int idebug=0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -45,7 +47,7 @@ int verbosity = 0;
 
 #include "AppSDL2OGL_3D.h"
 
-int idebug=0;
+
 
 
 // ===========================================
@@ -175,7 +177,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     //builder.printConfs ();
     builder.printAtomConfs();
     builder.export_atypes(atypes);
-    builder.verbosity = true;
+    //builder.verbosity = true;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
@@ -534,7 +536,7 @@ int TestAppMMFFmini::loadMoleculeXYZ( const char* fname, const char* fnameLvs, b
     //exit(0);
     builder.export_atypes(atypes); // NOTE : these are not proton numbers !!!!
 
-    builder.verbosity = 5;
+    //builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
