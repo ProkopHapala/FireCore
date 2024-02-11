@@ -115,7 +115,7 @@ class Console{ public:
         SDL_Keymod modState = SDL_GetModState();  // Get the current state of modifier keys
         bool bShift = modState & KMOD_SHIFT;
         //printf( "Console::keyDown() bShift=%i \n", bShift );
-        printf( "Console::keyDown(key=%i|%c) ncur=%i\n", key, key, ncur );
+        //printf( "Console::keyDown(key=%i|%c) ncur=%i\n", key, key, ncur );
         switch( key ){
             case SDLK_BACKQUOTE: return false; break; 
             case SDLK_KP_ENTER: //  [[fallthrough]]
@@ -126,8 +126,8 @@ class Console{ public:
                 if( callback( s ) ){
                     //printf("Console::SDLK_RETURN() callback() OK\n");
                     if( (nend>0) && (iHistory<0) ){ // save to history
-                        char* ss = new char[nend];
-                        fwd_copy(nend, s, ss);
+                        char* ss = new char[nend+1];
+                        fwd_copy(nend+1, s, ss);
                         //printf( "Console::SDLK_RETURN() history.push(%s) line(%s) \n", ss, line );
                         history.push( ss );
                     }else{
@@ -177,53 +177,11 @@ class Console{ public:
                 int ih = iHistory+1;
                 if(ih<history.size()){
                     iHistory = ih;
-                    //const char* s = history.get(ih);
-                    //historyOpen=true;
-                    //printf("Console::keyUp() history[%i]=`%s` %i \n", iHistory, history.get(iHistory) );
                 }
-                //else{   printf("Console::keyDown(SDLK_UP) ih(%i) >=  history.size(%i) \n", ih, history.size() );}
             }break;
             case SDLK_DOWN: {
                 iHistory-=1; if(iHistory<0){ iHistory=-1; }
-                // if(iHistory>=0){
-                //     iHistory = ih;
-                //     //const char* s = history.get(ih);
-                //     historyOpen=true;
-                // } 
             } break;
-
-            //case SDLK_LSHIFT: //  [[fallthrough]]
-            //case SDLK_RSHIFT: {bShift=!bShift;}  break;
-            // // other non-printable keys
-            // case SDLK_ESCAPE:
-            // case SDLK_TAB:
-            // case SDLK_CAPSLOCK:
-            // case SDLK_F1 ... SDLK_F12:  // Range for function keys
-            // case SDLK_PRINTSCREEN:
-            // case SDLK_SCROLLLOCK:
-            // case SDLK_PAUSE:
-            // case SDLK_INSERT:
-            // //case SDLK_DELETE:
-            // case SDLK_HOME:
-            // case SDLK_END:
-            // case SDLK_PAGEUP:
-            // case SDLK_PAGEDOWN:
-            // //case SDLK_RIGHT:
-            // //case SDLK_LEFT:
-            // case SDLK_DOWN:
-            // case SDLK_UP:
-            // case SDLK_NUMLOCKCLEAR:
-            // //case SDLK_LSHIFT:
-            // //case SDLK_RSHIFT:
-            // case SDLK_RALT:
-            // case SDLK_LALT:
-            // case SDLK_LCTRL:
-            // case SDLK_RCTRL:
-            // case SDLK_LGUI:
-            // case SDLK_RGUI:
-            // case SDLK_MENU:
-            // case SDLK_SYSREQ:
-
             default:             
             if(nend<lineLength){ 
                 char c=0;
@@ -251,41 +209,27 @@ class Console{ public:
                 }
             } break;
         }
-        
-        // if(ncur<nend){
-        //     line[ncur]=key;
-        //     ncur++;
-        // }
-        // if(key==SDLK_BACKQUOTE){ return false; }
-        // else if(key==SDLK_RETURN){
-        //     printf( "Console::run(%s)\n", key, line );
-        //     callback( line );
-        //     //if( line[0] != 0 ){ printf( "Console::keyDown(%i) line %s\n", key, line ); }
-        //     return true;
-        // }else if(key==SDLK_BACKSPACE){
-        //     int n = strlen(line);
-        //     if(n>0){ line[n-1] = 0; }
-        //     return true;
-        // }
-
         if( (iHistory<0)&&( nend>nminMatch ) ){     
             imatch = quick_tab.findMatch( line );
+            //printf( "Console::keyDown() quick_tab.findMatch() imatch(%i) \n", imatch );
             if(imatch>=0){ 
+                //printf( "Console::keyDown() quick_tab.findMatch() imatch(%i)>0 \n", imatch );
                 imatchn = quick_tab.findMatchEnd( line, imatch );
                 //printf( "Console::keyDown() imatch %i \n", imatch );
-                printf( "Console::keyDown() quick_tab[%i] `%s` \n", imatch, quick_tab.table[imatch].c_str() );
+                //printf( "Console::keyDown() quick_tab[%i] `%s` imatchn=%i \n", imatch, quick_tab.table[imatch].c_str(), imatchn );
+            }else{
+                imatchn=0;
             }
         }
-
-
         return true;
     }
 
     void draw(){
         int w,h;
         SDL_GetWindowSize(window, &w, &h);
-        glColor3f(0.0f,0.0f,0.0f);
-        Draw2D::drawRectangle( 0,h-fontSizeDef*2, w,h );
+        //printf( "Console::draw() w %i h %i \n", w, h );
+        glColor3f(0.0f,0.0f,0.0f); Draw2D::drawRectangle( 0,h-fontSizeDef*2, w,h );
+        //glColor3f(0.0f,1.0f,0.0f); Draw2D::drawRectangle( w/2,h/2, w,h );   // just debugging
         glColor3f(0.0f,1.0f,0.0f);
         //Draw2D::drawRectangle( w/2,h*2, w,h, false );
         float xcur = fontSizeDef*ncur;
@@ -303,10 +247,11 @@ class Console{ public:
             glColor3f(0.0f,0.0f,0.5f); Draw2D::drawRectangle( 0,h, n*fontSizeDef,h-fontSizeDef*2, true );
             glColor3f(1.0f,1.0f,1.0f); Draw2D::drawText( s, n, {0, h-fontSizeDef*2}, 0.0, fontTex, fontSizeDef );
         }else
-        if(imatchn>0){
+        if( (imatch>=-1)&&(imatchn>0)){
             //glColor3f(0.0f,0.0f,1.0f); Draw2D::drawRectangle( 0,h-fontSizeDef*2, n*fontSizeDef,h-(1+imatchn)*fontSizeDef*2, true );
             //glColor3f(1.0f,1.0f,1.0f);
             for(int i=0; i<imatchn; i++){
+                //printf( "Console::draw(imatch..imatchn) imatch=%i, i=%i, quick_tab.table.size(%i) \n", imatch, i, quick_tab.table.size() );
                 const char* s = quick_tab.table[imatch+i].c_str();
                 int n = strlen(s);
                 //printf( "Console::draw() quick_tab[%i] quick_tab.size(%i) n=%i @%li `%s`\n", imatch, quick_tab.table.size(), n, (long)s, s );

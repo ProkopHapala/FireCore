@@ -13,6 +13,7 @@
 #include "Vec3.h"
 #include "Mat3.h"
 #include "quaternion.h"
+#include "IO_utils.h"
 
 #ifdef __cplusplus
 # include <lua5.2/lua.hpp>
@@ -229,17 +230,15 @@ namespace Lua{
     }
 
     bool dofile(lua_State* L, const char* filename){
-        //luaL_openlibs(state);  // Make standard libraries available in the Lua object
-        // Load the program; this supports both source code and bytecode files.
-        //int result = luaL_loadfile(state, filename);
-        //if ( result != LUA_OK ) { print_error(state); return; }
-        if( !checkError(L,luaL_loadfile(L, filename)) ) return true;
-        // Finally, execute the program by calling into it.
-        // Change the arguments if you're not running vanilla Lua code.
-        //result = lua_pcall(state, 0, LUA_MULTRET, 0);
-        //if ( result != LUA_OK ) { print_error(state); return; }
-        if( !checkError(L,lua_pcall(L, 0, LUA_MULTRET, 0)) ) return true;
-        return false;
+        bool ret=true;
+        if( fileExist(filename ) ){
+            int ret = luaL_dofile(L,filename);
+            checkError( L, ret );
+            if(ret==LUA_OK) return false; //exit(0); 
+        }else{
+            printf( "Lua::dofile() ERROR: file not found %s\n", filename );
+        }
+        return ret;
     }
 
 /*
