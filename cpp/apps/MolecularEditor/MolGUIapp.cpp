@@ -29,16 +29,57 @@ int l_fixAtom(lua_State *L){
     int ia = Lua::getInt(L,1);
     int b  = Lua::getInt(L,2);
     printf( "l_fixAtom(ia=%i,b=%i)\n", ia, b ); 
+    double Kfix = 10.0; //app->W->ffl.Kfix;
+    Quat4d constr;
+    constr.f=app->W->ffl.apos[ia];
+    constr.e=Kfix; 
+    app->W->ffl.constr[ia]=constr; 
     //if     (b>0){ app->W->atomFixed[ia] = true;  }
     //else if(b<0){ app->W->atomFixed[ia] = false; }
     return 0; // number of return values to Lua environment
 }
 
+int l_getAtomCount(lua_State *L){
+    //Lua::pushInt(L, app->W->ffl.natoms );
+    lua_pushinteger(L, app->W->ffl.natoms );
+    return 1; // number of return values to Lua environment
+}
+
+int l_toggleStop(lua_State *L){
+    app->bRunRelax = !app->bRunRelax;
+    printf( "l_toggleStop %i\n", app->bRunRelax );
+    return 0; // number of return values to Lua environment
+}
+
+int l_getAtomPos(lua_State *L){
+    int ia = Lua::getInt(L,1);
+    Vec3d pos = app->W->ffl.apos[ia];
+    Lua::pushVec3(L, pos);
+    return 1; // number of return values to Lua environment
+}
+
+int l_insertQuickCommand(lua_State *L){
+    const char* s = Lua::getString(L,1);
+    printf( "l_insertQuickCommand `%s`\n", s );
+    app->console.quick_tab.table.push_back( s );
+    app->console.quick_tab.sort();
+    for(int i=0; i<app->console.quick_tab.table.size(); i++){
+        printf( "l_insertQuickCommand[%i] `%s`\n", i, app->console.quick_tab.table[i].c_str() );
+    }
+    return 1; // number of return values to Lua environment
+}
+
 int initMyLua(){
+    printf( "initMyLua()\n" );
     theLua         = luaL_newstate();
     lua_State  * L = theLua;
     luaL_openlibs(L);
-    lua_register(L, "fixAtom", l_fixAtom  );
+    lua_register(L, "fix", l_fixAtom  );
+    lua_register(L, "natom", l_getAtomCount  );
+    lua_register(L, "apos", l_getAtomPos  );
+    lua_register(L, "run", l_toggleStop  );
+    lua_register(L, "command", l_insertQuickCommand  );
+    printf( "initMyLua() DONE\n" );
     return 1;
 }
 
@@ -51,6 +92,10 @@ int main(int argc, char *argv[]){
 	int junk;
     SDL_DisplayMode DM;
     SDL_GetCurrentDisplayMode(0, &DM);
+
+#ifdef WITH_LUA
+    initMyLua();
+#endif // WITH_LUA
 
 	// --------- using argparse & LabdaDict;
 	app = new MolGUI( junk, DM.w-100, DM.h-100, NULL );
@@ -103,6 +148,9 @@ int main(int argc, char *argv[]){
         printf( "prelat_dlvec(%i,%i) latscan_dlvec ", prelat_nstep, prelat_nItrMax  ); printMat(prelat_dlvec);  DEBUG
     } }; // test
 
+    // set verbosity
+    funcs["-verb"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &verbosity ); }};
+
     funcs["-uff"]={0,[&](const char** ss){ W->bUFF=true; }}; // AutoCharge
 
     funcs["-e"]={0,[&](const char** ss){ app->W->bEpairs=true; }}; // add explicit electron pair
@@ -114,17 +162,26 @@ int main(int argc, char *argv[]){
     
     funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
 
+    // do lua script from file provided as argument
+    funcs["-lua"]={1,[&](const char** ss){ 
+        printf( "LAMBDA luaL_dofile(theLua,ss[0])\n" );
+        int ret = luaL_dofile(theLua,ss[0]);
+        Lua::checkError( theLua, ret );
+        if(ret!=LUA_OK )exit(0); 
+        printf( "LAMBDA luaL_dofile DONE\n" );
+    }};  // interations per frame
+
 	process_args( argc, argv, funcs );
 	app->init();
 
 #ifdef WITH_LUA
-    initMyLua();
     app->console.callback = [&](const char* str)->bool{
        lua_State* L=theLua;
-       // printf( "console.callback: %s\n", cmd );
+        printf( "console.lua_callback: %s\n", str );
         if (luaL_dostring(L, str) != LUA_OK) {
             // If there's an error, print it
-            fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+            //fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+            printf( "Error: %s\n", lua_tostring(L, -1) );
             lua_pop(L, 1);  // Remove error message from the stack
             return false;
         }
