@@ -2,6 +2,7 @@
 #ifndef  simd_h
 #define  simd_h
 
+#ifdef WITH_AVX
 #include <immintrin.h>
 
 #include "datatypes.h"
@@ -57,8 +58,8 @@ inline double hsum_double_avx(__m256d v) {
     return  _mm_cvtsd_f64(_mm_add_sd(vlow, high64));  // reduce to scalar
 }
 
-
-#endif
+#endif //WITH_AVX
+#endif //simd_h
 
 
 

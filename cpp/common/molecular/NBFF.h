@@ -20,7 +20,6 @@ Non-Bonded Force-Field
 
 #include "simd.h"
 
-
 void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     //Quat8d bb;
     //bb.lo = bb.lo = ps[c2o[0]];
@@ -76,11 +75,11 @@ class NBFF: public ForceField{ public:
     Quat4f *PLQs  __attribute__((aligned(64))) =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
     Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
 
-
+#ifdef WITH_AVX
     // ========== Try SIMD
     Vec3sd* apos_simd __attribute__((aligned(64))) =0; // forces on atomic positions
     Vec4sd* REQs_simd __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
-
+#endif //WITH_AVX
     // ==================== Functions
 
 
@@ -551,7 +550,8 @@ class NBFF: public ForceField{ public:
         return E;
     }
 
-    double evalLJQs_atom_simd( const int ia, const double Fmax2 ){
+#ifdef WITH_AVX
+    double evalLJQs_atom_avx( const int ia, const double Fmax2 ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi_   = apos[ia];
@@ -602,6 +602,7 @@ class NBFF: public ForceField{ public:
         );
         return hsum_double_avx( E );
     }
+#endif // WITH_AVX
 
     double evalCollisionDamp_atom_omp( const int ia, double damp_rate, double dRcut1=-0.2, double dRcut2=0.3 ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
