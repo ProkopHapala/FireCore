@@ -62,6 +62,83 @@ QEq      qeq;
 
 // ============= Functions
 
+void generate_atoms( RARFF_SR& ff, int natom, double xspan, double step, int ntyps, RigidAtomType* types, Quat4i capsBrush ){
+    //Vec3d pmin={-5.,-5.,-1.0};
+    //Vec3d pmin={-5.,-5.,-1.0};
+    //printf("DEBUG 1 \n");
+    ff.map.setup_Buckets3D( Vec3d{-xspan,-xspan,-step}, Vec3d{xspan,xspan,step}, step );
+    //printf("DEBUG 2 \n");
+    int nat=natom;
+    //int nat=2;
+    ff.realloc( nat, 100 );
+    for(int i=0; i<nat; i++){
+        //if(randf()>0.5){ ff.types[i]=&type1;  }else{ ff.types[i]=&type2; }
+        //ff.types[i]=curType;
+        ff.types[i]=&types[0];
+        ff.apos [i].fromRandomBox( ff.map.pos0 , ff.map.pmax );
+        ff.qrots[i].setRandomRotation();
+        ((Quat4i*)ff.bondCaps)[i]=capsBrush;
+    }
+    ff.apos [0]=Vec3dZero;
+    ff.qrots[0]=Quat4dIdentity;
+    ff.cleanAux();
+    //printf("DEBUG 3 \n");
+}
+
+
+void generate_diamond( RARFF_SR& ff, double alat, Vec3i n, int ntypes, RigidAtomType* types, Quat4i capsBrush ){
+    //Vec3d pmin={-5.,-5.,-1.0};
+    //Vec3d pmin={-5.,-5.,-1.0};
+    Vec3d fccOffsets[] = {
+        Vec3d{0, 0, 0    },
+        Vec3d{0.5, 0.5, 0},
+        Vec3d{0.5, 0, 0.5},
+        Vec3d{0, 0.5, 0.5}
+    };
+    Vec3d p0{0.25, 0.25, 0.25};
+
+    //ff.map.setup_Buckets3D( Vec3d{-xspan,-xspan,-step}, Vec3d{xspan,xspan,step}, step );
+    int nat=4*2*n.x*n.y*n.z;
+    printf("generate_diamond() nat %i \n", nat );
+    ff.realloc( nat, 100 );
+    DEBUG
+    int ia=0;
+    for (int x = 0; x < n.x; ++x) {
+        for (int y = 0; y < n.y; ++y) {
+            for (int z = 0; z < n.z; ++z) {
+                Vec3d base{x,y,z};
+                for (int i = 0; i < 4; ++i) {
+                    Vec3d offset = fccOffsets[i];
+                    ff.apos[ia]  = (base + offset)*alat;
+                    ff.types[ia] = &types[0];
+                    ((Quat4i*)ff.bondCaps)[ia] = capsBrush;
+                    ia++;
+                    ff.apos[ia]  = (base + offset)*alat;
+                    ff.types[ia] = &types[0];
+                    ((Quat4i*)ff.bondCaps)[ia] = capsBrush;
+                    ia++;
+
+                    // latticePoints.push_back(base + offset      );
+                    // latticePoints.push_back(base + offset + p0 );
+                }
+            }
+        }
+    }
+    DEBUG
+    Vec3d pmin=Vec3dmax,pmax=Vec3dmin;
+    for(int i=0; i<nat; i++){
+        pmin.setIfLower  ( ff.apos[i] );
+        pmax.setIfGreater( ff.apos[i] );
+    }
+    DEBUG
+    double step = alat;
+    ff.map.setup_Buckets3D( pmin, pmax, step );
+    // ff.apos [0]=Vec3dZero;
+    // ff.qrots[0]=Quat4dIdentity;
+    ff.cleanAux();
+    printf("generate_diamond() DONE\n");
+}
+
 template< typename FF>
 int pickBond( FF ff, Vec3d& ray0, const Vec3d& hRay, double R ){
     double tmin =  1e+300;
@@ -154,7 +231,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     void makePotentialPlot();
     void visualize_cells();
     void visualize_atoms();
-    void generate_atoms( int natom, double xspan, double step );
+    //void generate_atoms( int natom, double xspan, double step );
 
 };
 
@@ -176,7 +253,11 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     ff.bRepelCaps  =  false; // ignore caps .... good e.g. for water
     ff.bDonorAcceptorCap = true;
 
-    generate_atoms( 1000, 20.0, ff.RcutMax );
+    double alat_Si      = 5.43;
+    double alat_Diamond = 3.57;
+    //generate_atoms(   1000, 20.0, ff.RcutMax );
+    generate_atoms( ff, 1000, 20.0, ff.RcutMax, 1, &typeList[1], capsBrush );
+    //generate_diamond( ff, alat_Diamond, {3,3,1}, 1, &typeList[1], capsBrush );
     ff.qrots[1]=Quat4dFront;
     ff.qrots[0]=Quat4dBack;
     ff.projectBonds();
@@ -206,6 +287,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 }
 
 void TestAppRARFF::simulation(){
+    //printf( "TestAppRARFF::simulation() frame=%i AccelType=%i \n", frameCount, ff.AccelType );
     if(ff.AccelType==2){ 
         pairList.makeSRList( ff.natomActive, ff.apos, ff.RcutMax ); 
         pairList.bind( ff.npairs, ff.pairs );
@@ -427,28 +509,6 @@ void TestAppRARFF::visualize_atoms(){
             //glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
         }
     };
-}
-
-void TestAppRARFF::generate_atoms( int natom, double xspan, double step  ){
-    //Vec3d pmin={-5.,-5.,-1.0};
-    //Vec3d pmin={-5.,-5.,-1.0};
-    //printf("DEBUG 1 \n");
-    ff.map.setup_Buckets3D( Vec3d{-xspan,-xspan,-step}, Vec3d{xspan,xspan,step}, step );
-    //printf("DEBUG 2 \n");
-    int nat=natom;
-    //int nat=2;
-    ff.realloc( nat, 100 );
-    for(int i=0; i<nat; i++){
-        //if(randf()>0.5){ ff.types[i]=&type1;  }else{ ff.types[i]=&type2; }
-        ff.types[i]=curType;
-        ff.apos [i].fromRandomBox( ff.map.pos0 , ff.map.pmax );
-        ff.qrots[i].setRandomRotation();
-        ((Quat4i*)ff.bondCaps)[i]=capsBrush;
-    }
-    ff.apos [0]=Vec3dZero;
-    ff.qrots[0]=Quat4dIdentity;
-    ff.cleanAux();
-    //printf("DEBUG 3 \n");
 }
 
 // ===================== MAIN
