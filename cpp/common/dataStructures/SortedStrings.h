@@ -39,9 +39,7 @@ class SortedStrings{ public:
         int i = findPrefixStart( s );
         if( i<0 ) return -1;
         //printf( "findMatch->i(%i) table.size(%i) s(%s)\n", i, table.size(), s.c_str() );
-        if( prefixMatches(s, table[i]) ){
-            return i;
-        }
+        if( prefixMatches(s, table[i]) ){ return i; }
         return -1;
     }
 

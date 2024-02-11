@@ -73,21 +73,21 @@ int pickBond( FF ff, Vec3d& ray0, const Vec3d& hRay, double R ){
 }
 
 void testEF( RARFF_SR& ff, double rmin, double rmax, int n, double* Eout=0, double* Fout=0, double* xs=0, double* Fnum=0 ){
-    printf( "DEBUG testEF \n" );
+    printf( "RFFapp::testEF() \n" );
     int i1=0;
     int i2=1;
     ff.apos[i1]=Vec3dZero;
     double dx = (rmax-rmin)/n;
     RigidAtomType pairType;
-    //printf( "DEBUG testEF 2 \n" );
+    //printf( "RFFapp::testEF() 2 \n" );
     for(int i=0; i<n; i++){
         double x = rmin+dx*i;
         ff.apos[i2]=Vec3d{ x, 0.0,0.0 };
         pairType.combine( *ff.types[i1], *ff.types[i2] );
         ff.aforce[i2] = Vec3dZero;
-        //printf( "testEF[%i] x %g -> ", i, x );
+        //printf( "RFFapp::testEF()[%i] x %g -> ", i, x );
         double E = ff.pairEF( i1, i2, ff.types[i1]->nbond, ff.types[i1]->nbond, pairType);
-        //printf( " E %g F(%g,%g,%g) \n", E, ff.aforce[i2].x,ff.aforce[i2].y,ff.aforce[i2].z );
+        //printf( "RFFapp::testEF() E %g F(%g,%g,%g) \n", E, ff.aforce[i2].x,ff.aforce[i2].y,ff.aforce[i2].z );
         if(Eout) Eout[i]=E;
         if(Fout) Fout[i]=ff.aforce[i2].x;
         if(xs) xs[i]=x;
@@ -143,8 +143,6 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 };
 
 TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
-    DEBUG
-
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" );
     {RigidAtomType& typ=typeList[1]; // C-sp3
         typ.id = 1;
@@ -162,31 +160,23 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     ff.bRepelCaps  =  false; // ignore caps .... good e.g. for water
     ff.bDonorAcceptorCap = true;
 
-    DEBUG
-
     generate_atoms( 1000, 20.0, ff.RcutMax );
     ff.qrots[1]=Quat4dFront;
     ff.qrots[0]=Quat4dBack;
     ff.projectBonds();
     //makePotentialPlot();
 
-    DEBUG
-
     Draw3D::makeSphereOgl( ogl_sph, 3, 0.25 );
 
 }
 
 void TestAppRARFF::simulation(){
-    DEBUG
     if(ff.AccelType==2){ 
         pairList.makeSRList( ff.natomActive, ff.apos, ff.RcutMax ); 
         pairList.bind( ff.npairs, ff.pairs );
     }
-    DEBUG
     for(int i=0; i<perFrame; i++){     
-        DEBUG   
         ff.eval();
-        DEBUG
         //ff.applyForceHarmonic1D( Vec3dZ, 0.0, -1.0); // Press atoms together in z-diraction (like on substrate) 
         if(ipicked>=0){                                // Drag atoms by Mouse
             Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
@@ -194,7 +184,6 @@ void TestAppRARFF::simulation(){
         }
         ff.moveMDdamp(0.05, 0.9);
     }
-    DEBUG
 }
 
 void TestAppRARFF::draw(){
@@ -210,13 +199,10 @@ void TestAppRARFF::draw(){
     //bRun = false;
     perFrame = 10;
     //ff.bGridAccel=false;
-    DEBUG
     if(bRun){
         long T=getCPUticks();
         simulation();
-        DEBUG
         T=getCPUticks()-T;
-        DEBUG
         printf( "T %g[MTicks/Step] %g [ticks/Pair]  pairs_tried %g n_pairs_evaluated %g \n", T*1.0e-6/perFrame, T/(ff.n_pairs_evaluated*1.), ff.n_pairs_tried/(perFrame*1.), ff.n_pairs_evaluated/(perFrame*1.) );
         ff.n_pairs_tried    =0;
         ff.n_pairs_evaluated=0;
@@ -227,14 +213,12 @@ void TestAppRARFF::draw(){
             ff.apos[ipicked].add(dpos);
         }
     }
-    DEBUG
     if(ff.AccelType==1)visualize_cells();
     visualize_atoms();
     ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
     Draw3D::drawAxis( 1.0);
-    DEBUG
 };
 
 void TestAppRARFF::drawHUD(){
