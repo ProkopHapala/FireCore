@@ -102,13 +102,15 @@ void applyParabolicPotential( const Vec3d& p0, const Vec3d& k, int n, const Vec3
 // ======= THE CLASS
 
 class TestAppRARFF: public AppSDL2OGL_3D { public:
-
+    //enum PICK_MODE{ PICK_NONE, ATOM, ELECTRON };
+    enum PICK_MODE{ ATOM, ELECTRON, N_PICK_MODE };
     bool bRun = false;
 
     //E2FF ff2;
     EFF  ff;
     DynamicOpt opt;
 
+    Vec3d ray0;
     int perFrame = 1;
 
     Vec2i field_ns;
@@ -119,10 +121,13 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     std::function<void   (const Vec3d& p, Vec3d& f)>  FFfunc;
     std::function<double (const Vec3d& p)          >  Efunc ;
 
+    bool bViewForce   = false;
+    bool bDrawPointLabels = true;
     bool bDrawPlots   = true;
     bool bDrawObjects = true;
     bool bMapElectron = false;
-    int ipicked  = 0;
+    int ipicked  = -1;
+    int PickMode = ELECTRON;
 
     // DEBUG STUFF
     GLint ogl_fs = 0;
@@ -134,13 +139,14 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     bool bConsole=false;
     Console console;
-    // ---- Functions
+
+    // ========== Functions
 
     virtual void draw   ();
     virtual void drawHUD();
     //virtual void mouseHandling( );
     virtual void eventHandling   ( const SDL_Event& event  );
-    //virtual void keyStateHandling( const Uint8 *keys );
+    virtual void keyStateHandling( const Uint8 *keys );
 
     TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ );
     void init2DMap( int n, double dx );
@@ -200,8 +206,6 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //ff.loadFromFile_fgo( "data/H2O.fgo" );
     ff.loadFromFile_fgo( "data/C2H4.fgo" );
     //ff.loadFromFile_fgo( "data/C2H2.fgo" );
-
-
 
     //ff.bEvalAECoulomb = 0;
     //ff.bEvalAEPauli   = 0;
@@ -285,6 +289,7 @@ void TestAppRARFF::draw(){
 
     //return;
 
+    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     double vminOK = 1e-6;
     double vmaxOK = 1e+3;
 
@@ -309,10 +314,16 @@ void TestAppRARFF::draw(){
             //applyParabolicPotential( {0.0,0.0,0.0}, {0.1,0.1,0.1}, ff.ne, ff.epos, ff.eforce );
 
             Etot = ff.eval();
+            
             //ff.apos[0].set(.0);
             //checkFinite( ff, vminOK, vmaxOK );
 
             //printf( "fa1(%g,%g,%g) fe1(%g,%g,%g)\n", fa1.x,fa1.x,fa1.x,   fe1.x,fe1.x,fe1.x );
+
+            if(ipicked>=0){                                // Drag atoms by Mouse
+                if     (PickMode==ATOM    ){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.aforce[ipicked].add( f ); }
+                else if(PickMode==ELECTRON){ Vec3d f = getForceSpringRay( ff.epos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.eforce[ipicked].add( f ); }
+            }
 
             //VecN::set( ff.na*3, 0.0, (double*)ff.aforce );  // FIX ATOMS
             //VecN::set( ff.ne  , 0.0, ff.fsize  );           // FIX ELECTRON SIZE
@@ -320,7 +331,6 @@ void TestAppRARFF::draw(){
             //if(bRun)ff.move_GD(0.001 );
             //ff.move_GD( 0.0001 );
             //if(bRun) ff.move_GD_noAlias( 0.0001 );
-
             F2 = opt.move_FIRE();
 
             //checkFinite( ff, vminOK, vmaxOK );
@@ -347,7 +357,23 @@ void TestAppRARFF::draw(){
         }
     }
 
-    drawEFF( ff, oglSph, 1.0, 0.1, 0.1, 1.5 );
+    glColor3f(0.0,0.5,0.0);
+    Draw3D::drawPointCross( ray0, 0.1 );
+    //if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0){                                // Drag atoms by Mouse
+        //glColor3f(0.0,0.5,0.0);
+        if     (PickMode==ATOM    ){
+            printf( "ipicked %i pi(%g,%g,%g) ray0(%g,%g,%g) \n", ipicked, ff.apos[ipicked].x, ff.apos[ipicked].y, ff.apos[ipicked].z, ray0.x, ray0.y, ray0.z );
+            Draw3D::drawLine( ff.apos[ipicked], ray0); 
+            }
+        else if(PickMode==ELECTRON){ Draw3D::drawLine( ff.epos[ipicked], ray0); }
+    }
+
+    drawEFF( ff, oglSph, 1.0*bViewForce, 0.1, 0.1, 1.5 );
+    if(bDrawPointLabels){
+        glColor3f(1.0,0.0,0.0); Draw3D::pointLabels( ff.na, ff.apos, fontTex, 0.05 );
+        //glColor3f(0.0,0.5,0.5); Draw3D::pointLabels( ff.ne, ff.epos, fontTex, 0.05 );
+    }
 
     if(bDrawPlots){
         plotAtomsPot( ff, plot1.lines[0], (Vec3d){0.0,0.0,0.0}, (Vec3d){1.0,0.0,0.0}, -0.2, 0.1 );
@@ -435,15 +461,18 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
         case SDL_KEYDOWN :
             if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
             else switch( event.key.keysym.sym ){
-                case SDLK_p:  first_person = !first_person; break;
+                //case SDLK_p:  first_person = !first_person; break;
                 case SDLK_o:  perspective  = !perspective; break;
                 case SDLK_BACKQUOTE:{ bConsole = !bConsole;}break;   // ` SDLK_ for key '`' 
+                case SDLK_p: PickMode=(PickMode+1)%N_PICK_MODE; break;
+                case SDLK_f: bViewForce=!bViewForce; break;
+                case SDLK_q: bDrawPointLabels=!bDrawPointLabels; break;
 
                 case SDLK_i: ff.info(); break;
                 case SDLK_LEFTBRACKET :  Espread *= 1.2; ogl_fs=genFieldMap(ogl_fs, field_ns, field_ps, field_Es, E0-Espread, E0+Espread ); break;
                 case SDLK_RIGHTBRACKET:  Espread /= 1.2; ogl_fs=genFieldMap(ogl_fs, field_ns, field_ps, field_Es, E0-Espread, E0+Espread ); break;
                 case SDLK_e: bMapElectron=!bMapElectron; break;
-                case SDLK_f:{
+                case SDLK_m:{
                     pa0 = ff.apos[ipicked];
                     sampleScalarField( Efunc, field_ns, {-5.0,-5.0,+0.1}, {0.1,0.0,0.0}, {0.0,0.1,0.0}, field_ps, field_Es, Erange );
                     E0 = field_Es[0];
@@ -454,24 +483,40 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
                 //case SDLK_r:  world.fireProjectile( warrior1 ); break;
             }
             break;
-        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEWHEEL:{
+            if     (event.wheel.y > 0){ zoom/=1.2; }
+            else if(event.wheel.y < 0){ zoom*=1.2; }}break;
+        case SDL_MOUSEBUTTONDOWN:{
             switch( event.button.button ){
-                case SDL_BUTTON_LEFT:
-                    //ipicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rot.c , 0.5 );
-                break;
-            }
-            break;
+                case SDL_BUTTON_LEFT:{
+                    if     ( PickMode==PICK_MODE::ATOM     ){ ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.na, ff.apos, 0 ); if(ipicked>=0)printf("picked atom %i\n", ipicked); }
+                    else if( PickMode==PICK_MODE::ELECTRON ){ ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.ne, ff.epos, 0 ); if(ipicked>=0)printf("picked elec %i\n", ipicked); }
+                    }break;
+                case SDL_BUTTON_RIGHT:{
+                    /*
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
+                    printf( "remove atom %i \n", ipicked );
+                    ff.ignoreAtoms[ ipicked ] = true;
+                    */
+                    }break;
+                }
+            } break;
         case SDL_MOUSEBUTTONUP:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     //ibpicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rot.c , 0.5 );
                     //printf( "dist %i %i = ", ipicked, ibpicked );
                     break;
-            }
-            break;
-    };
+            } break;
+    }
     AppSDL2OGL::eventHandling( event );
 }
+
+void TestAppRARFF::keyStateHandling( const Uint8 *keys ){
+    if(bConsole){ return; }
+    //if( keys[ SDL_SCANCODE_R ] ){}
+	AppSDL2OGL_3D::keyStateHandling( keys );
+};
 
 void TestAppRARFF::init2DMap( int n, double dx ){
 
@@ -559,7 +604,6 @@ int main(int argc, char *argv[]){
 #endif // WITH_LUA
     //char str[40];  sprintf(str,  );
 	//SDL_SetWindowTitle( app->child_windows[1]->window, " test_eFF " );
-
     process_args( argc, argv, funcs );
 	app->loop( 1000000 );
 
