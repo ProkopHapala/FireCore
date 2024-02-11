@@ -6,6 +6,7 @@
 #define deg2rad         0.01745329251994329547
 #define rad2deg        57.29577951308232286465
 
-#define COULOMB_CONST  14.3996448915
+#define COULOMB_CONST      14.3996448915
+#define const_Bohr_Radius  0.529177210903
 
 #endif

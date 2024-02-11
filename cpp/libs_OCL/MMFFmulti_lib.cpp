@@ -2,8 +2,9 @@
 constexpr int ntmpstr=2048;
 char tmpstr[ntmpstr];
 
-int verbosity = 1;
-int idebug    = 0;
+#include <globals.h>
+//int verbosity = 1;
+//int idebug    = 0;
 double tick2second=1e-9;
 
 #include "testUtils.h"
@@ -88,7 +89,8 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
 	W.builder.bindParams(&W.params);
     W.nSystems=nSys;
     bool bGrid = gridStep>0;
-    W.init( bGrid );
+    W.bGridFF = bGrid;
+    W.init();
     init_buffers();
     return &W;
 }

@@ -89,7 +89,7 @@ class CubeGridRuler : public GridRulerInterface { public:
         pos0=pmin;
         pmax=pmax_;
         span=pmax-pos0;
-        setn( { (int)(span.z*invStep+1), (int)(span.y*invStep+1), (int)(span.z*invStep+1) } );
+        setn( { (int)(span.x*invStep+1), (int)(span.y*invStep+1), (int)(span.z*invStep+1) } );
     };
 
     inline void pos2box( const Vec3d& pos, Vec3i& ipos, Vec3d& dpos ) const {

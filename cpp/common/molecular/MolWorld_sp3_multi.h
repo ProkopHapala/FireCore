@@ -3,7 +3,8 @@
 #define MolWorld_sp3_ocl_h
 
 #include "MMFFf4.h"
-#include "MMFFBuilder.h"
+//#include "Molecule.h"
+//#include "MMFFBuilder.h"
 #include "MolWorld_sp3.h"
 //#include "OCL_DFT.h"
 //#include "OCL_PP.h"
@@ -215,20 +216,20 @@ void initMultiCPU(int nSys){
     }
 }
 
-virtual void init( bool bGrid ) override {
+virtual void init() override {
     int err = 0;
     printf("# ========== MolWorld_sp3_multi::init() START\n");
     gopt.msolver = this;
     int i_nvidia = ocl.print_devices(true);
     ocl.init(i_nvidia);
     ocl.makeKrenels_MM("common_resources/cl" );
-    MolWorld_sp3::init(bGrid);
+    MolWorld_sp3::init();
 
+    // initialization of ff4 is here because parrent MolWorld_sp3 does not contain ff4 anymore 
     builder.toMMFFf4( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
     ff4.flipPis( Vec3fOne );
     ff4.setLvec((Mat3f)builder.lvec);
     ff4.makeNeighCells  ( nPBC );
-
 
     // ----- init systems
     realloc( nSystems );

@@ -31,7 +31,7 @@ add_executable( MolGUIapp
 	$<TARGET_OBJECTS:DynamicOpt>
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
-target_link_libraries( MolGUIapp ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+target_link_libraries( MolGUIapp ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
 
 add_executable( MolGUIapp_QMMM
 	MolGUIapp_QMMM.cpp

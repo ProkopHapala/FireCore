@@ -1,6 +1,7 @@
 
 
-int verbosity = 0;
+#include <globals.h>
+//int verbosity = 0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -392,7 +393,7 @@ int TestAppMMFFmini::loadMoleculeXYZ( const char* fname, const char* fnameLvs, b
     //exit(0);
     builder.export_atypes(atypes);
 
-    builder.verbosity = 5;
+    //builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
@@ -512,7 +513,7 @@ int TestAppMMFFmini::makeMoleculeInlineBuilder( bool bPBC ){
     builder.autoAngles ( 2.5, 1.25 );
 
     // instert aditional dihedral
-    MM::Dihedral brushDihedral{ -1,   Vec3i{-1,-1,-1},    3, 0.5 };  println(brushDihedral);
+    MM::Dihedral brushDihedral{ -1,   Vec3i{-1,-1,-1},    0,3, 0.5 };  println(brushDihedral);
     builder.insertDihedralByAtom( {0,1,2,3}, brushDihedral );
     builder.trySortBonds();
 
@@ -638,7 +639,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     builder.printAtomConfs();
     builder.export_atypes(atypes);
     
-    builder.verbosity = 5;
+    //builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     

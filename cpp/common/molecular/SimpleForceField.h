@@ -1,13 +1,13 @@
 
-#ifndef forcefield_h
-#define forcefield_h
+#ifndef SimpleForceField_h
+#define SimpleForceField_h
 
 #include <math.h>
 #include "fastmath.h"
 #include "Vec3.h"
 
 
-namespace ForceField{
+namespace SimpleForceField{
 	static int      ntypes  = 0;
 	static double * C6s     = NULL;
     static double * C12s    = NULL;
@@ -194,19 +194,19 @@ inline int interMolForceLJE(
 	//Vec3d fsum; fsum.set(0.0);
 	for(int ia=0; ia<na; ia++){
 		int atyp  = atypes[ia];
-		int ityp0 = ForceField::ntypes*atyp;
+		int ityp0 = SimpleForceField::ntypes*atyp;
 		double qa = Qas[ia];
 		for(int ib=0; ib<nb; ib++){
             Vec3d dR;
             dR.set_sub( aRs[ia], bRs[ib] );
 
             double r2 = dR.norm2();
-            if( r2>ForceField::Rcut2 ) continue;
+            if( r2>SimpleForceField::Rcut2 ) continue;
 
 			int btyp   = btypes[ib];
 			int ityp   = ityp0 + btyp;
-			double C6  = ForceField::C6s [ ityp ];
-			double C12 = ForceField::C12s[ ityp ];
+			double C6  = SimpleForceField::C6s [ ityp ];
+			double C12 = SimpleForceField::C12s[ ityp ];
 			//printf( "interMolForceLJE %i %i  %i %i  %i %i  %g %g \n", ia, ib, atyp, btyp, ityp, ntypes,   C6, C12 );
 			Vec3d f;
 
@@ -215,9 +215,9 @@ inline int interMolForceLJE(
 			//forceLJE( dR, C6, C12, qa*Qbs[ib], f );
 
 			double qq   = qa*Qbs[ib];
-			double fcut = ForceField::FcutLJ[ityp] + ForceField::FcutCoulomb[ityp]*qq;
+			double fcut = SimpleForceField::FcutLJ[ityp] + SimpleForceField::FcutCoulomb[ityp]*qq;
 			//ForceField::forceLJE( dR, C6, C12, qq, -fcut, f );
-			ForceField::forceLJE( dR, C6, C12, qq, 0.0, f );
+			SimpleForceField::forceLJE( dR, C6, C12, qq, 0.0, f );
 
 			aFs[ia].add( f ); bFs[ib].sub( f );
 			//aFs[ia].sub( f ); bFs[ib].add( f );
