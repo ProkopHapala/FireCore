@@ -161,12 +161,14 @@ int main(int argc, char *argv[]){
     funcs["-iMO"       ]={1,[&](const char** ss){ sscanf( ss[0], "%i",  &app->which_MO ); }};
     
     funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
+#ifdef WITH_LUA
+    funcs["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] no such file %s => exit()\n", ss[0] ); exit(0); }; }};
+#endif // WITH_LUA
 
 	process_args( argc, argv, funcs );
 	app->init();
 
 #ifdef WITH_LUA
-    funcs["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] no such file %s => exit()\n", ss[0] ); exit(0); }; }};
     app->console.callback = [&](const char* str)->bool{
        lua_State* L=theLua;
         printf( "console.lua_callback: %s\n", str );
