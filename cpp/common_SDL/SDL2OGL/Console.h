@@ -78,7 +78,7 @@ class Console{ public:
     void accept_history(){
         if(iHistory>=0){
             const char* s = history.get(iHistory);
-            int nend = strlen(s);
+            nend = strlen(s);
             if(ncur>nend){ ncur=nend; }
             strcpy( line, s );
             close_history();

@@ -293,8 +293,8 @@ inline float getLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ, const float R2
     const float  u2  = REQ.x*REQ.x*ir2;
     const float  u6  = u2*u2*u2;
     const float vdW  = u6*REQ.y;
-    E    =      (u6-2.)*vdW     ;
-    F    =  12.*(u6-1.)*vdW*ir2 ;
+    E    +=      (u6-2.)*vdW     ;
+    F    +=  12.*(u6-1.)*vdW*ir2 ;
     f.set_mul( dp, -F );
     return E;
 }
@@ -311,8 +311,8 @@ inline double getLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ, const double
     const double  u2  = REQ.x*REQ.x*ir2;
     const double  u6  = u2*u2*u2;
     const double vdW  = u6*REQ.y;
-    E    =      (u6-2.)*vdW     ;
-    F    =  12.*(u6-1.)*vdW*ir2 ;
+    E    +=      (u6-2.)*vdW     ;
+    F    +=  12.*(u6-1.)*vdW*ir2 ;
     f.set_mul( dp, -F );
     return E;
 }
@@ -344,7 +344,7 @@ inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const d
     // --- Coulomb
     const double ir2_  = 1/( r2 + R2damp );
     E = COULOMB_CONST*REQH.z*sqrt( ir2_ );
-        F = E*-ir2_ ;
+    F = E*-ir2_ ;
     // --- Morse
     const double  r  = sqrt( r2   );
     const double  e  = exp( -K*(r-REQH.x) );
