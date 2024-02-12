@@ -239,6 +239,7 @@ class RARFF_SR{ public:
     Vec3d*         fbonds=0;
     int  *         bondCaps = 0;
 
+    bool * fixedAtoms  = 0;
     bool * ignoreAtoms = 0;
     //double F2pos=0;
     //double F2rot=0;
@@ -257,12 +258,16 @@ class RARFF_SR{ public:
         _alloc(omegas ,natom);  // just for MD
         _alloc(vels   ,natom);  // just for MD
         _alloc(ignoreAtoms, natom);
+        _alloc(fixedAtoms ,natom);
         _alloc(ebonds ,natom*N_BOND_MAX);
         _alloc(hbonds ,natom*N_BOND_MAX);
         _alloc(fbonds ,natom*N_BOND_MAX);
         _alloc(bondCaps ,natom*N_BOND_MAX);
         natomActive=natom;
-        for(int i=0; i<natom; i++){ ignoreAtoms[i]=false; }
+        for(int i=0; i<natom; i++){ 
+            ignoreAtoms[i]=false; 
+            fixedAtoms [i]=false;
+        }
     }
 
     void realloc(int natom_, int nbuff=0 ){
@@ -277,12 +282,14 @@ class RARFF_SR{ public:
         _realloc(omegas ,natom);
         _realloc(vels   ,natom);
         _realloc(ignoreAtoms, natom);
+        _realloc(fixedAtoms,natom);
         _realloc(ebonds ,natom*N_BOND_MAX);
         _realloc(hbonds ,natom*N_BOND_MAX);
         _realloc(fbonds ,natom*N_BOND_MAX);
         _realloc(bondCaps ,natom*N_BOND_MAX);
         for(int i=0;      i<natom_; i++){ ignoreAtoms[i]=false; }
         for(int i=natom_; i<natom;  i++){ ignoreAtoms[i]=true;  }
+        for(int i=0; i<natom;       i++){ fixedAtoms [i]=false; }
     }
 
     void resize( int natom_new ){
@@ -297,6 +304,7 @@ class RARFF_SR{ public:
         Vec3d*  omegas_ = omegas; // just for MD
         Vec3d*  vels_   = vels;   // just for MD
         bool*   ignoreAtoms_ = ignoreAtoms;
+        bool*   fixedAtoms_  = fixedAtoms;
         double* ebonds_ = ebonds;
         Vec3d*  hbonds_ = hbonds;
         Vec3d*  fbonds_ = fbonds;
@@ -315,6 +323,7 @@ class RARFF_SR{ public:
             omegas[ja] = omegas_[ia];
             vels  [ja] = vels_  [ia];
             ignoreAtoms[ja] = false;
+            fixedAtoms [ja] = fixedAtoms_[ia];
             for(int ib=0; ib<N_BOND_MAX; ib++){
                 int i=ia*N_BOND_MAX + ib;
                 int j=ja*N_BOND_MAX + ib;
@@ -329,6 +338,7 @@ class RARFF_SR{ public:
         natomActive=ja;
         for(int ia=ja; ia<natom; ia++){
             ignoreAtoms[ia] = true;
+            fixedAtoms [ia] = false;
         }
         delete[] types_;
         delete[] apos_;
@@ -338,6 +348,7 @@ class RARFF_SR{ public:
         delete[] omegas_;  // just for MD
         delete[] vels_;    // just for MD
         delete[] ignoreAtoms_;
+        delete[] fixedAtoms_;
         delete[] ebonds_;
         delete[] hbonds_;
         delete[] fbonds_;
@@ -370,6 +381,7 @@ class RARFF_SR{ public:
         if( ia>=natom ){ resize(natom+5); }
         natomActive++;
         ignoreAtoms[ia] = false;
+        fixedAtoms [ia] = false;
         types[ia] = typ;
         apos [ia] = p;
         qrots[ia].fromMatrixT(m);
@@ -689,7 +701,7 @@ class RARFF_SR{ public:
     void move(double dt){
         evalTorques();
         for(int i=0; i<natom; i++){
-            if(ignoreAtoms[i])continue;
+            if( ignoreAtoms[i] || fixedAtoms[i] )continue;
             //atoms[i].moveRotGD(dt*invRotMass);
             //atoms[i].movePosGD(dt);
             qrots[i].dRot_exact( dt, torqs[i] );  qrots[i].normalize();          // costly => debug
@@ -701,7 +713,8 @@ class RARFF_SR{ public:
     void moveMDdamp(double dt, double damp){
         evalTorques();
         for(int i=0; i<natom; i++){
-            if(ignoreAtoms[i])continue;
+            //if( fixedAtoms[i] ){ printf( "fixedAtoms[%i] \n", i ); continue; }
+            if(ignoreAtoms[i] || fixedAtoms[i] )continue;
             //atoms[i].moveMDdamp( dt, invRotMass, damp);
             vels  [i].set_lincomb( damp, vels  [i], dt,            aforce[i] );
             omegas[i].set_lincomb( damp, omegas[i], dt*invRotMass, torqs [i] );
