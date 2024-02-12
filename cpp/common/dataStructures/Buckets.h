@@ -36,12 +36,13 @@ class Buckets{ public:
      * @param obj2cell An array mapping each object to its corresponding cell.
      */
     inline void count( int nobj, int* obj2cell ){ 
-        //printf( "Buckets::count() nobj=%i ncell=%i iDebug_count=%i  @obj2cell=%li \n", nobj, iDebug_count, (long)obj2cell );
+        //printf( "Buckets::count() nobj=%i ncell=%i @obj2cell=%li \n", nobj, (long)obj2cell );
         for(int i=0; i<nobj; i++ ){ 
             //printf( "Buckets::count()[%i] \n", i );
             int ic = obj2cell[i]; 
             //if( (ic<0)||(ic>=ncell) ){ printf( "Buckets::count() ERROR i %i ic %i ncell %i \n", i, ic, ncell ); }
             //printf( "obj[%i ]-> cell %i \n", i, ic );
+            if(ic>0)
             cellNs[ ic ]++;  
         } 
     }
@@ -73,9 +74,10 @@ class Buckets{ public:
     inline void objectsToCells( int nobj, int* obj2cell ){ 
         for(int i=0; i<nobj; i++){
             //printf( "[%i] ", i );
-            int k =  obj2cell[i];
-            int& ni = cellNs[k];
-            int j =  cellI0s[k] + ni;
+            int  ic =  obj2cell[i];
+            if(ic<0) continue;
+            int& ni = cellNs[ic];
+            int j   =  cellI0s[ic] + ni;
             //printf( " k %i j %i | nobj %i \n", k, j, nobj );
             cell2obj[j] = i;
             ni++;

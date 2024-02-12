@@ -6,7 +6,7 @@
 
 //template <class T,class VEC>
 template <class T>
-class Vec2T{
+class Vec2T {
 	using VEC = Vec2T<T>;
 	public:
 	union{
@@ -110,6 +110,13 @@ class Vec2T{
 	inline T cross ( const VEC& a ) const { return x*a.y - y*a.x;  }
 
 	bool isBetweenRotations( const VEC& a, const VEC& b ){ return (cross(a)<0)&&(cross(b)>0);  }
+
+    // what about using bitwize operators for this ^ (multiplication) and | (division) ?
+    //inline VEC operator%(const VEC& a, const VEC& b)const{ return VEC{ a.x*b.x - a.y*b.y, a.y*b.x + a.x*b.y; };  // mul_cmplx
+    //inline VEC operator|(const VEC& a, const VEC& b)const{ return VEC{ a.x*b.x + a.y*b.y, a.y*b.x - a.x*b.y; };  // udiv_cmplx
+
+    inline VEC operator%(const VEC& b)const{ return Vec2T<T>{ x*b.x - y*b.y, y*b.x + x*b.y }; }  // mul_cmplx
+    inline VEC operator|(const VEC& b)const{ return Vec2T<T>{ x*b.x + y*b.y, y*b.x - x*b.y }; }  // udiv_cmplx
 
 	inline void     mul_cmplx (               const VEC& b ){                            T x_ =    x*b.x -   y*b.y;         y =    y*b.x +   x*b.y;       x=x_;  }
 	inline void     udiv_cmplx(               const VEC& b ){                            T x_ =    x*b.x +   y*b.y;         y =    y*b.x -   x*b.y;       x=x_;  }

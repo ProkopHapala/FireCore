@@ -65,9 +65,7 @@ QEq      qeq;
 void generate_atoms( RARFF_SR& ff, int natom, double xspan, double step, int ntyps, RigidAtomType* types, Quat4i capsBrush ){
     //Vec3d pmin={-5.,-5.,-1.0};
     //Vec3d pmin={-5.,-5.,-1.0};
-    //printf("DEBUG 1 \n");
     ff.map.setup_Buckets3D( Vec3d{-xspan,-xspan,-step}, Vec3d{xspan,xspan,step}, step );
-    //printf("DEBUG 2 \n");
     int nat=natom;
     //int nat=2;
     ff.realloc( nat, 100 );
@@ -82,61 +80,96 @@ void generate_atoms( RARFF_SR& ff, int natom, double xspan, double step, int nty
     ff.apos [0]=Vec3dZero;
     ff.qrots[0]=Quat4dIdentity;
     ff.cleanAux();
-    //printf("DEBUG 3 \n");
 }
 
+void generate_quad_row(RARFF_SR& ff, int ntypes, RigidAtomType* types, Quat4i capsBrush){
+    //Quat4d rots  [] = { Quat4dFront, Quat4dBack, Quat4dFront, Quat4dBack }; 
+    //Quat4d y90{0.0,1.0,0.0,0.0};
+    // ---- Rotation by x-axis
+    // Quat4d q0 {  0.00000000000, 0.0,0.0, 1.00000000000  };
+    // Quat4d x30{ -0.25881904510, 0.0,0.0, 0.96592582628  };
+    // Quat4d x45{ -0.38268343236, 0.0,0.0, 0.92387953251  };
+    // Quat4d x60{ -0.50000000000, 0.0,0.0, 0.86602540378  };
+    // Quat4d x90{ -M_SQRT1_2    , 0.0,0.0, M_SQRT1_2      };
+    // Quat4d q0 {  0.00000000000, 0.0,0.0, 1.00000000000  };
+    // Quat4d x30{ +0.25881904510, 0.0,0.0, 0.96592582628  };
+    // Quat4d x45{ +0.38268343236, 0.0,0.0, 0.92387953251  };
+    // Quat4d x60{ +0.50000000000, 0.0,0.0, 0.86602540378  };
+    // Quat4d x90{ +M_SQRT1_2    , 0.0,0.0, M_SQRT1_2      };
+    // ----- rotation by y-axis
+    Quat4d q0 { 0.0,  0.00000000000, 0.0, 1.00000000000  };
+    Quat4d y30{ 0.0, +0.25881904510, 0.0, 0.96592582628  };
+    Quat4d y45{ 0.0, +0.38268343236, 0.0, 0.92387953251  };
+    Quat4d y60{ 0.0, +0.50000000000, 0.0, 0.86602540378  };
+    Quat4d y90{ 0.0, +M_SQRT1_2    , 0.0, M_SQRT1_2      };
+    //Quat4d y90{0.0,1.0,0.0,0.0};
+    int np = 5;
+    Quat4d rots  [np] = { q0, y30, y45, y60, y90 }; 
+    ff.realloc( np, 100 );
+    for (int i=0; i<np; i++){
+        ff.types[i] = &types[0];
+        ff.apos [i] = Vec3d{i*2.0,0.0,0.0};
+        ff.qrots[i] = rots[i];
+        ((Quat4i*)ff.bondCaps)[i] = capsBrush;
+    }
+}
 
-void generate_diamond( RARFF_SR& ff, double alat, Vec3i n, int ntypes, RigidAtomType* types, Quat4i capsBrush ){
-    //Vec3d pmin={-5.,-5.,-1.0};
-    //Vec3d pmin={-5.,-5.,-1.0};
-    Vec3d fccOffsets[] = {
-        Vec3d{0, 0, 0    },
-        Vec3d{0.5, 0.5, 0},
-        Vec3d{0.5, 0, 0.5},
-        Vec3d{0, 0.5, 0.5}
-    };
-    Vec3d p0{0.25, 0.25, 0.25};
+void generateDiamond111Surface( RARFF_SR& ff, double alat, Vec3i n, int ntypes, RigidAtomType* types, Quat4i capsBrush ) {
+    print( "generateDiamond111Surface() \n" );
+    n=Vec3i{3,3,4};
+    //double a = 5.43; // Silicon lattice constant, use 3.57 for diamond
+    alat = 3.57; // Diamond lattice constant
+    double sqrt3 = sqrt(3.0);
+    // Hexagonal close-packed layer spacing
+    //double layerSpacing = alat * sqrt3 / 2.0;
+    double bL             = alat * sqrt3 / 4.0; // Bond length
+    printf( "generateDiamond111Surface() alat %g bL %g \n", alat, bL );
+    int size = n.x; // Number of layers
 
-    //ff.map.setup_Buckets3D( Vec3d{-xspan,-xspan,-step}, Vec3d{xspan,xspan,step}, step );
-    int nat=4*2*n.x*n.y*n.z;
-    printf("generate_diamond() nat %i \n", nat );
-    ff.realloc( nat, 100 );
-    DEBUG
-    int ia=0;
-    for (int x = 0; x < n.x; ++x) {
-        for (int y = 0; y < n.y; ++y) {
-            for (int z = 0; z < n.z; ++z) {
-                Vec3d base{x,y,z};
-                for (int i = 0; i < 4; ++i) {
-                    Vec3d offset = fccOffsets[i];
-                    ff.apos[ia]  = (base + offset)*alat;
-                    ff.types[ia] = &types[0];
-                    ((Quat4i*)ff.bondCaps)[ia] = capsBrush;
-                    ia++;
-                    ff.apos[ia]  = (base + offset)*alat;
-                    ff.types[ia] = &types[0];
-                    ((Quat4i*)ff.bondCaps)[ia] = capsBrush;
-                    ia++;
+    Vec3d avec = Vec3d{  3.0/4.0, sqrt3/4.0, 0.0 }*alat;
+    Vec3d bvec = Vec3d{  0.0    , sqrt3/2.0, 0.0 }*alat;
+    Vec3d zvec = Vec3d{  0.0    , 0.0      , 1.0 };
 
-                    // latticePoints.push_back(base + offset      );
-                    // latticePoints.push_back(base + offset + p0 );
-                }
+    Quat4d q0 {  0.00000000000, 0.0,0.0, 1.00000000000  };
+    Quat4d x30 {   0.25881904510, 0.0,0.0, 0.96592582628  };
+    Quat4d x30m{ -0.25881904510, 0.0,0.0, 0.96592582628  };
+    //Quat4d y60{ 0.0, +0.50000000000, 0.0, 0.86602540378  };
+    Quat4d y90 { 0.0, +M_SQRT1_2    , 0.0, M_SQRT1_2      };
+    Quat4d y90m{ 0.0, -M_SQRT1_2    , 0.0, M_SQRT1_2      };
+
+    Quat4d rots  [] = { y90%x30, y90m%x30, y90%x30m, y90m%x30m }; 
+    Vec3d  shifts[] = { {0.0,0.0,0.0}, (avec+bvec)*(1./3.)  + zvec*(bL/3.0), (avec+bvec)*(1./3.) + zvec*(bL*(4/3.)), Vec3d{0.0,0.0,bL*(5/3.)} };
+
+
+    Vec3d pmin = Vec3dmax;
+    Vec3d pmax = Vec3dmin;
+    int i = 0;
+    ff.realloc( n.totprod(), 100 );
+    // Generate points in a hexagonal pattern
+    for (int iz=0; iz<n.z; iz++){
+        Vec3d  shift = shifts[iz];
+        Quat4d rot   = rots  [iz];
+        for (int iy=0; iy<n.y; iy++){
+            for (int ix=0; ix<n.x; ix++){
+                Vec3d p = avec*ix + bvec*iy + shift;
+                pmin = pmin.setIfLower(p);
+                pmax = pmax.setIfGreater(p);
+                ff.types[i] = &types[0];
+                ff.apos [i] = avec*ix + bvec*iy + shift;
+                ff.qrots[i] = rot;
+                ((Quat4i*)ff.bondCaps)[i] = capsBrush;
+                i++;
             }
         }
     }
-    DEBUG
-    Vec3d pmin=Vec3dmax,pmax=Vec3dmin;
-    for(int i=0; i<nat; i++){
-        pmin.setIfLower  ( ff.apos[i] );
-        pmax.setIfGreater( ff.apos[i] );
-    }
-    DEBUG
-    double step = alat;
+
+    double step = 2*bL;
+    pmin.add( -step, -step, -step );
+    pmax.add(  step,  step,  step );
+
     ff.map.setup_Buckets3D( pmin, pmax, step );
-    // ff.apos [0]=Vec3dZero;
-    // ff.qrots[0]=Quat4dIdentity;
-    ff.cleanAux();
-    printf("generate_diamond() DONE\n");
+    printf( "generateDiamond111Surface() pmin(%g,%g,%g) pmax(%g,%g,%g) ntot=%i n(%i,%i,%i) \n", pmin.x,pmin.y,pmin.z, pmax.x,pmax.y,pmax.z, ff.map.ntot, ff.map.n.x,ff.map.n.y,ff.map.n.z );
+    print( "generateDiamond111Surface() DONE\n" );
 }
 
 template< typename FF>
@@ -199,7 +232,8 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     int renderMode=0;
     int nrenderModes=2;
-    bool bViewGrid=false;
+    //bool bViewGrid=false;
+    bool bViewGrid=true;
     bool bBlockAddAtom=false;
     int ipicked = -1;
     Vec3d ray0;
@@ -210,7 +244,8 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     const char* workFileName="data/work.rff";
 
     Plot2D plot1;
-    bool bRun = true;
+    //bool bRun = true;
+    bool bRun = false;
     int    perFrame = 100;
 
     int      fontTex;
@@ -229,7 +264,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     void simulation();
     void makePotentialPlot();
-    void visualize_cells();
+    void visualize_cells(const bool bDrawPoints=false);
     void visualize_atoms();
     //void generate_atoms( int natom, double xspan, double step );
 
@@ -254,19 +289,20 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     ff.bDonorAcceptorCap = true;
 
     double alat_Si      = 5.43;
-    double alat_Diamond = 3.57;
+    //double alat_Diamond = 3.57;
     //generate_atoms(   1000, 20.0, ff.RcutMax );
-    generate_atoms( ff, 1000, 20.0, ff.RcutMax, 1, &typeList[1], capsBrush );
+    //generate_atoms( ff, 1000, 20.0, ff.RcutMax, 1, &typeList[1], capsBrush );
     //generate_diamond( ff, alat_Diamond, {3,3,1}, 1, &typeList[1], capsBrush );
-    ff.qrots[1]=Quat4dFront;
-    ff.qrots[0]=Quat4dBack;
+    generateDiamond111Surface( ff, alat_Si, {3,3,1}, 1, &typeList[1], capsBrush );
+    //ff.qrots[1]=Quat4dFront;
+    //ff.qrots[0]=Quat4dBack;
     ff.projectBonds();
     //makePotentialPlot();
-
     Draw3D::makeSphereOgl( ogl_sph, 3, 0.25 );
 
-    ff.map.bResizing=true;
+    ff.map.pointsToCells( ff.natomActive, ff.apos, ff.ignoreAtoms );
 
+    ff.map.bResizing=true;
     console.init( 256, window );
     console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
     console.fontTex = fontTex;
@@ -469,21 +505,26 @@ void TestAppRARFF::makePotentialPlot(){
     plot1.render();
 }
 
-void TestAppRARFF::visualize_cells(){
+void TestAppRARFF::visualize_cells( bool bDrawPoints ){
+    //print( "visualize_cells() \n" );
+    bDrawPoints=true;
     for(int ic=0;ic<ff.map.ncell;ic++){
-        int i0=ff.map.cellI0s[ic];
-        int ni=ff.map.cellNs [ic];
-        //printf( "ic %i io %i ni %i \n", ic, i0, ni );
         Vec3i ip;
         Draw  ::color_of_hash( 464+645*ic );
         ff.map.i2ixyz( ic, ip );
         Draw3D::drawBBox( ff.map.box2pos2( ip, {0.,0.,0.} ),  ff.map.box2pos2( ip, {1.,1.,1.} ) );
-        for(int j=i0; j<i0+ni;j++){
-            int io = ff.map.cell2obj[j];
-            Vec3d p = ff.apos[io];
-            //printf( "j %i io %i p(%g,%g,%g) \n", j, io, p.x,p.y,p.z );
-            //Draw  ::color_of_hash( 464+645*ic );
-            Draw3D::drawPointCross( p, 0.2 );            
+        if(bDrawPoints){
+            int i0=ff.map.cellI0s[ic];
+            int ni=ff.map.cellNs [ic];
+            //printf( "ic %i i0 %i ni %i \n", ic, i0, ni );
+            if( (ni<0) || (i0<0) || ( (ni!=0) && (i0+ni>ff.map.nobjSize) ) ){ printf( "ERROR TestAppRARFF::visualize_cells() ic %i i0 %i ni %i ff.map.nobjSize=%i \n", ic, i0, ni, ff.map.nobjSize ); exit(0); }
+            for(int j=i0; j<i0+ni;j++){
+                int io  = ff.map.cell2obj[j];
+                Vec3d p = ff.apos[io];
+                //printf( "j %i io %i p(%g,%g,%g) \n", j, io, p.x,p.y,p.z );
+                //Draw  ::color_of_hash( 464+645*ic );
+                Draw3D::drawPointCross( p, 0.2 );            
+            }
         }
     }
 }
@@ -494,15 +535,17 @@ void TestAppRARFF::visualize_atoms(){
     double fsc = 0.1;
     double tsc = 0.1;
     //printf( "ff.natom %i \n", ff.natom );
+    uint32_t clrs[]={0xFF000000,0xFF0000FF,0xFF00FF00,0xFFFF0000};
     for(int ia=0; ia<ff.natom; ia++){
         if(ff.ignoreAtoms[ia])continue;
         glColor3f(0.3,0.3,0.3);
-        Draw3D::drawShape( ogl_sph, ff.apos[ia], Mat3dIdentity );
+        Draw3D::drawShape( ogl_sph, ff.apos[ia], Mat3dIdentity*0.25 );
         for(int j=0; j<ff.types[ia]->nbond; j++){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );
             //printf( "bondCaps[%i] %i\n", i, ff.bondCaps[i] );
             if( ff.bondCaps[i]>=0 ){ glColor3f(1.0,0.0,0.0); } else{ glColor3f(0.0,0.0,0.0); }
+            Draw::setRGB( clrs[j] );
             Draw3D::drawLine( ff.apos[ia] , pb );
             glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb );
             //glColor3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
