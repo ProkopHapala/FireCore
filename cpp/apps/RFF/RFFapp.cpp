@@ -140,6 +140,7 @@ void generateDiamond111Surface( RARFF_SR& ff, double alat, Vec3i n, int ntypes, 
     Quat4d rots  [] = { y90%x30, y90m%x30, y90%x30m, y90m%x30m }; 
     Vec3d  shifts[] = { {0.0,0.0,0.0}, (avec+bvec)*(1./3.)  + zvec*(bL/3.0), (avec+bvec)*(1./3.) + zvec*(bL*(4/3.)), Vec3d{0.0,0.0,bL*(5/3.)} };
 
+    bool fixed[] = { false, false, true, true };
 
     Vec3d pmin = Vec3dmax;
     Vec3d pmax = Vec3dmin;
@@ -157,6 +158,7 @@ void generateDiamond111Surface( RARFF_SR& ff, double alat, Vec3i n, int ntypes, 
                 ff.types[i] = &types[0];
                 ff.apos [i] = avec*ix + bvec*iy + shift;
                 ff.qrots[i] = rot;
+                ff.fixedAtoms[i] = fixed[iz];
                 ((Quat4i*)ff.bondCaps)[i] = capsBrush;
                 i++;
             }
@@ -232,8 +234,9 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     int renderMode=0;
     int nrenderModes=2;
-    //bool bViewGrid=false;
-    bool bViewGrid=true;
+    bool bViewBox =true;
+    bool bViewGrid=false;
+    //bool bViewGrid=true;
     bool bBlockAddAtom=false;
     int ipicked = -1;
     Vec3d ray0;
@@ -246,11 +249,16 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     Plot2D plot1;
     //bool bRun = true;
     bool bRun = false;
-    int    perFrame = 100;
+    //int  perFrame = 100;
+    //int  perFrame = 50;
+    //int  perFrame = 20;
+    int  perFrame = 10;
 
     int      fontTex;
     bool bConsole=false;
     Console console;
+
+    int nAtomCount=0;
 
     // ========== Functions
 
@@ -335,7 +343,8 @@ void TestAppRARFF::simulation(){
             Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
             ff.aforce[ipicked].add( f );
         }
-        ff.moveMDdamp(0.05, 0.9);
+        //ff.moveMDdamp(0.05, 0.9);
+        ff.moveMDdamp(0.05, 0.98);
     }
 }
 
@@ -350,14 +359,14 @@ void TestAppRARFF::draw(){
     //return;
     // ---------- Simulate
     //bRun = false;
-    perFrame = 10;
+    //perFrame = 10;
     //ff.bGridAccel=false;
     ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     if(bRun){
         long T=getCPUticks();
         simulation();
         T=getCPUticks()-T;
-        printf( "T %g[MTicks/Step] %g[tick/pair] pairs_eval(%g) pairs_try(%g) n^2(%i)\n", T*1.0e-6/perFrame, T/(ff.n_pairs_evaluated*1.), ff.n_pairs_tried/(perFrame*1.), ff.n_pairs_evaluated/(perFrame*1.), ff.natom*ff.natom );
+        //printf( "T %g[MTicks/Step] %g[tick/pair] pairs_eval(%g) pairs_try(%g) n^2(%i)\n", T*1.0e-6/perFrame, T/(ff.n_pairs_evaluated*1.), ff.n_pairs_tried/(perFrame*1.), ff.n_pairs_evaluated/(perFrame*1.), ff.natom*ff.natom );
         ff.n_pairs_tried    =0;
         ff.n_pairs_evaluated=0;
     }else{
@@ -367,7 +376,10 @@ void TestAppRARFF::draw(){
             ff.apos[ipicked].add(dpos);
         }
     }
-    if(bViewGrid){
+    if(bViewBox && (ff.AccelType==1) ){
+        glColor3f(0.0f,0.0f,0.0f); Draw3D::drawBBox( (Vec3f)ff.map.pos0, (Vec3f)ff.map.pmax );
+    }
+    if(bViewGrid && (ff.AccelType==1) ){
         //if(ff.AccelType==1)
         visualize_cells();
     }
@@ -530,6 +542,7 @@ void TestAppRARFF::visualize_cells( bool bDrawPoints ){
 }
 
 void TestAppRARFF::visualize_atoms(){
+    int na = 0;
     // ---------- Draw
     glColor3f(0.0,0.0,0.0);
     double fsc = 0.1;
@@ -538,6 +551,7 @@ void TestAppRARFF::visualize_atoms(){
     uint32_t clrs[]={0xFF000000,0xFF0000FF,0xFF00FF00,0xFFFF0000};
     for(int ia=0; ia<ff.natom; ia++){
         if(ff.ignoreAtoms[ia])continue;
+        na++;
         glColor3f(0.3,0.3,0.3);
         Draw3D::drawShape( ogl_sph, ff.apos[ia], Mat3dIdentity*0.25 );
         for(int j=0; j<ff.types[ia]->nbond; j++){
@@ -552,6 +566,7 @@ void TestAppRARFF::visualize_atoms(){
             //glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
         }
     };
+    if(na<nAtomCount){printf( "TestAppRARFF::visualize_atoms() number of atoms decreased( na=%i nAtomCount=%i )\n", na, nAtomCount ); nAtomCount=na; }
 }
 
 // ===================== MAIN
