@@ -188,6 +188,7 @@ class Quat4T {
 
 // ====== Quaternion multiplication
 
+
 	inline void setQmul( const QUAT& a, const QUAT& b) {
         x =  a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x;
         y = -a.x * b.z + a.y * b.w + a.z * b.x + a.w * b.y;
@@ -228,6 +229,37 @@ class Quat4T {
         a.z = -x * ay + y * ax - z * aw + w * az;
         a.w = +x * ax + y * ay + z * az + w * aw;
     };
+
+    inline QUAT operator%( const QUAT& b)const{ 
+        return QUAT{
+             x * b.w + y * b.z - z * b.y + w * b.x,
+            -x * b.z + y * b.w + z * b.x + w * b.y,
+             x * b.y - y * b.x + z * b.w + w * b.z,
+            -x * b.x - y * b.y - z * b.z + w * b.w
+        };
+    }
+
+    inline VEC operator%( const VEC& v)const{  // Hamilton product ( q * v ) vector is rotated by quaternion
+        T tx = 2*( z*v.y - y*v.z  + w*v.x);
+        T ty = 2*( x*v.z - z*v.x  + w*v.y);
+        T tz = 2*( y*v.x - x*v.y  + w*v.z);
+        return VEC{
+            v.x + ty*z - tz*y,
+            v.y + tz*x - tx*z,
+            v.z + tx*y - ty*x
+        };
+    }
+
+    inline VEC operator|( const VEC& v )const{  // inverse Hamilton product ( v * q ) vector is rotated by quaternion backwards
+        T tx = 2*( y*v.z - z*v.y  + w*v.x);
+        T ty = 2*( z*v.x - x*v.z  + w*v.y);
+        T tz = 2*( x*v.y - y*v.x  + w*v.z);
+        return VEC{
+            v.x + y*tz - z*ty,
+            v.y + z*tx - x*tz,
+            v.z + x*ty - y*tx
+        };
+    }
 
     inline void transformVec( const VEC& vec, VEC& out ) const{
         //QUAT qv; qv.set(vec.x,vec.y,vec.z,0.0);

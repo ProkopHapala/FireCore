@@ -27,22 +27,31 @@ class Buckets3D : public Buckets, public CubeGridRuler { public:
     void pointsToCells( int np, Vec3d* ps, bool* ignore=0 ){
         //printf( "Buckets3D::pointsToCells(np=%i) @ps=%li @ignore=%li @obj2cell=%li \n", np, (long)ps, (long)ignore, (long)obj2cell );
         if( bResizing || (obj2cell==0) ){ Buckets::resizeObjs( np, true ); }
+        //printf( "Buckets3D::pointsToCells(np=%i) @ps=%li @ignore=%li @obj2cell=%li \n", np, (long)ps, (long)ignore, (long)obj2cell );
         if( np>nobjSize ){ printf( "Buckets3D::pointsToCells(bResizing=%i) ERROR np(%i)>nobjSize(%i) => Exit()\n", bResizing, np, nobjSize ); exit(0); }
         //printf( "Buckets3D::pointsToCells() obj2cell %li \n", (long)obj2cell  );
         if  (ignore){ 
             for( int i=0; i<np; i++ ){ 
-                //printf( "Buckets3D::pointsToCells()[i=%i]\n", i  );
-                bool bi = ignore[i];
-                if(!bi){ 
-                    int ic = icell( ps[i] );
-                    //if((ic<0)||(ic>=ncell  )){ printf( "Buckets3D::pointsToCells() ic=%i ncell=%i \n", ic, ncell ); }      // Debug
-                    //if((i <0)||(i>=nobjSize)){ printf( "Buckets3D::pointsToCells() i=%i nobjSize=%i \n", i, nobjSize ); } // Debug
-                    obj2cell[i] = ic; 
-                }
+                //printf( "Buckets3D::pointsToCells()[i=%i]  A\n", i  );
+                //bool bi = ignore[i];
+                //const int ic = icell( ps[i] );
+                int ic; 
+                if( ignore[i] ){ ic = -1; }else{ ic=icell_bound( ps[i] ); }
+                //if((ic<0)||(ic>=ncell  )){ printf( "Buckets3D::pointsToCells() ic=%i ncell=%i \n", ic, ncell ); }      // Debug
+                //if((i <0)||(i>=nobjSize)){ printf( "Buckets3D::pointsToCells() i=%i nobjSize=%i \n", i, nobjSize ); } // Debug
+                obj2cell[i] = ic; 
                 //if(!ignore[i])obj2cell[i] = icell( ps[i] );}
             } 
         }
-        else        { for( int i=0; i<np; i++ ){               obj2cell[i] = icell( ps[i] );} }
+        else { for( int i=0; i<np; i++ ){
+                //printf( "Buckets3D::pointsToCells()[i=%i]  B\n", i  );
+                //if(i>=nobjSize){ printf( "Buckets3D::pointsToCells() i=%i nobjSize=%i \n", i, nobjSize ); }   // Debug
+                //const int ic = icell( ps[i] );
+                const int ic = icell_bound( ps[i] );
+                //if((ic<0)||(ic>=ncell  )){ printf( "Buckets3D::pointsToCells() ic=%i ncell=%i \n", ic, ncell ); }      // Debug
+                obj2cell[i] = ic;
+            } 
+        }
         //printf( "Buckets3D::pointsToCells() np %i \n", np  );
         updateCells( np, obj2cell );
         //printf( "Buckets3D::pointsToCells() DONE\n"  );
