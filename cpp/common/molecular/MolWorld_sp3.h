@@ -231,6 +231,7 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if(bRigid)initRigid();
             }
         }
+        builder.randomFragmentCollors();
         if(bMMFF){     
             makeFFs();
         }
@@ -734,10 +735,12 @@ class MolWorld_sp3 : public SolverInterface { public:
         // ToDo: we should be able to insert molecule without actually creating molecule-type
         //sprintf(tmpstr, "%s.xyz", name );
         int imol  = builder.loadMolType( fname, name );
+        if (imol<0){ printf("ERROR MolWorld_sp3::builder.loadMolType(%s) imol=%i \n", name, imol ); exit(0); }
         int iret  = builder.insertFlexibleMolecule( imol, pos, Mat3dIdentity, -1 );
-        if (iret<0){ printf("ERROR MolWorld_sp3::loadGeom(%s) cannot be loaded \n", name); exit(0); }
-        int ifrag = builder.frags.size()-1;
-        return ifrag;
+        if (iret<0){ printf("ERROR MolWorld_sp3::insertMolecule(%s) iret=%i \n", name, iret ); exit(0); }
+        //int ifrag = builder.frags.size()-1;
+        //return ifrag;
+        return iret;
     }
 
     void makeMoleculeTopology(){
@@ -1094,12 +1097,13 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
     }
 
-    int updateBuilderFromFF(){
-        if( ffl.nnode  != builder.confs.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.nnode(%i)  != builder->confs.size(%i) \n", ffl.nnode, builder.confs.size() ); exit(0); }
+    int updateBuilderFromFF(bool bPos=true, bool bQ=true){
+        if( ffl.nnode  != builder.confs.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.nnode(%i)  != builder->confs.size(%i) \n", ffl.nnode,  builder.confs.size() ); exit(0); }
         if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
-        printf( "MolWorld_sp3::updateBuilderFromFF(nnode=%i,ncap=%i) \n", ffl.nnode, ffl.natoms-ffl.nnode );
+        //printf( "MolWorld_sp3::updateBuilderFromFF(nnode=%i,ncap=%i) \n", ffl.nnode, ffl.natoms-ffl.nnode );
         for(int i=0; i<ffl.natoms; i++){
-            builder.atoms[i].pos   = (Vec3d)ffl.apos[i];
+            if(bPos){ builder.atoms[i].pos   = ffl.apos[i];   }
+            if(bQ  ){ builder.atoms[i].REQ.z = ffl.REQs[i].z; }
         }
         return 0;
     }

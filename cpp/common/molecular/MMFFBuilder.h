@@ -415,9 +415,16 @@ class Builder{  public:
     // =================== Functions =====================
 
     void randomFragmentCollors(){
+        printf("Builder::randomFragmentCollors()\n");
+        srand( 1234 );
         for(int i=0; i<frags.size(); i++){
-            //frags[i].color = hash_Wang( 55 + i )&&0xFF  + ((hash_Wang( 4487 + i*12 )&&0xFF)<<8)+ ((hash_Wang( 15455 + i*123 )&&0xFF)<<16);
-            frags[i].color = ( rand()&&0xFF  + ((rand()&&0xFF)<<8)+ ((rand()&&0xFF)<<16)) || 0xFF000000;
+            //frags[i].color = hash_Wang( 55 + i )&0xFF  + ((hash_Wang( 4487 + i*12 )&0xFF)<<8)+ ((hash_Wang( 15455 + i*123 )&0xFF)<<16);
+            int r = rand()&0xFF;
+            int g = rand()&0xFF;
+            int b = rand()&0xFF;
+            //frags[i].color = ( rand()&0xFF  + ((rand()&0xFF)<<8)+ ((rand()&0xFF)<<16)) | 0xFF000000;
+            frags[i].color = ( r + (g<<8) + (b<<16) ) | 0xFF000000;
+            printf("frags[%i].color %X (%i,%i,%i)\n", i, frags[i].color, r, g, b );
         }
     }
 
@@ -2669,7 +2676,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     void startFragment (         ){                          frags.push_back( Fragment( atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size() ) ); }
-    void finishFragment(int i=-1 ){ if(i<0)i=frags.size()-1; frags[i].finish(           atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size()   ); }
+    int  finishFragment(int i=-1 ){ if(i<0)i=frags.size()-1; frags[i].finish(           atoms.size(), confs.size(), bonds.size(), angles.size(), dihedrals.size()   ); return i; }
 
     int insertAtoms( int na, int* atypes, Vec3d* apos, Quat4d* REQs=0, double* qs=0, int* npis=0, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity, const Vec3d& pos0=Vec3dZero ){
         //printf( "MM::Builder::insertAtoms  natoms %i atypes=%li apos=%li REQs=%li qs=%li npis=%li \n", na, (long)atypes, (long)apos, (long)REQs, (long)qs, (long)npis );
@@ -3028,7 +3035,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return itype;
     }
 
-    void insertFlexibleMolecule_ignorH( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int iH = 1 ){
+    int insertFlexibleMolecule_ignorH( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int iH = 1 ){
+        printf( "# MM::Builder::insertFlexibleMolecule_ignorH()  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
+        startFragment();
         int natom0  = atoms.size();
         int nbond0  = bonds.size();
         std::vector<int> atomInds(mol->natoms);
@@ -3050,11 +3059,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             const Vec2i& ang = mol->ang2bond[i];
             angles.push_back( (Angle){ 1, { bondInds[ang.a],bondInds[ang.b] }, defaultAngle.a0, defaultAngle.k } );
         }
+        return finishFragment();
     }
 
-    void insertFlexibleMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){
-        //printf( "# MM::Builder::insertFlexibleMolecule  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
+    int insertFlexibleMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){
+        printf( "# MM::Builder::insertFlexibleMolecule()  natoms %i nbonds %i \n", mol->natoms, mol->nbonds );
         startFragment();
+        int ifrag   = frags.size()-1;  // frags.size()-1
         int natom0  = atoms.size();
         int nbond0  = bonds.size();
         for(int i=0; i<mol->natoms; i++){
@@ -3071,7 +3082,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             if( mol->npis ) npi=mol->npis[i];
             //printf( "insert Atom[%i] ityp %i REQ(%g,%g,%g) npi,ne %i %i \n", i, ityp, REQ.x, REQ.y, REQ.z, mol->npis[i], ne  );
             Vec3d p; rot.dot_to(mol->pos[i],p); p.add( pos );
-            insertAtom( ityp, p, &REQ, npi, ne );
+            int ia = insertAtom( ityp, p, &REQ, npi, ne );
+            atoms[ia].frag = ifrag;
         }
         for(int i=0; i<mol->nbonds; i++){
             //bonds.push_back( (Bond){mol->bondType[i], mol->bond2atom[i] + ((Vec2i){natom0,natom0}), defaultBond.l0, defaultBond.k } );
@@ -3084,6 +3096,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             //printf( "angle[%i|%i,%i] %g|%g %g \n", i, angles.back().bonds.a, angles.back().bonds.b, angles.back().a0, alfa0, angles.back().k );
         }
         finishFragment();
+        return ifrag;
     }
 
     int insertRigidMolecule( Molecule * mol, const Vec3d& pos, const Mat3d& rot ){
@@ -3122,17 +3135,16 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         if( rigid ){
             return insertRigidMolecule( mol, pos, rot );
         }else{
-            if(noH>0){ insertFlexibleMolecule_ignorH( mol, pos, rot, noH ); }
-            else     { insertFlexibleMolecule       ( mol, pos, rot      ); }
-            return -1;
+            if(noH>0){ return insertFlexibleMolecule_ignorH( mol, pos, rot, noH ); }
+            else     { return insertFlexibleMolecule       ( mol, pos, rot      ); }
+            //return -1;
         }
     }
-
 
     int insertMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, bool rigid ){ return insertMolecule( molTypes[itype]                 , pos, rot, rigid ); }
     int insertMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, bool rigid ){ return insertMolecule( molTypes[ molTypeDict[molName] ], pos, rot, rigid ); }
 
-    int insertFlexibleMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ if(itype<0) return itype; insertFlexibleMolecule( molTypes[itype], pos, rot, ignoreType ); return 0; }
+    int insertFlexibleMolecule( int itype                 , const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ if(itype<0){ return itype; }else{ return insertFlexibleMolecule( molTypes[itype], pos, rot, ignoreType ); }  }
     int insertFlexibleMolecule( const std::string& molName, const Vec3d& pos, const Mat3d& rot, int ignoreType=-1 ){ return insertFlexibleMolecule( molTypeDict[molName], pos, rot, ignoreType ); }
 #endif // Molecule_h
 

@@ -97,6 +97,7 @@ int l_makeFF(lua_State *L){
     W->builder.printSizes();
     W->builder.printAtoms();
     printf(" ======== l_makeFF() 1 W->makeMoleculeTopology()\n" );
+    W->builder.randomFragmentCollors();
     W->makeMoleculeTopology();
     //W->builder.printConfs();
     W->builder.printAtomConfs();
