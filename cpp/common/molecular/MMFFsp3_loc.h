@@ -35,6 +35,7 @@ class MMFFsp3_loc : public NBFF { public:
 
     // === inherited from NBFF
     // int natoms=0;        // [natoms] // from Atoms
+    //int   * atypes  =0; // [natom]  atom types
     //Vec3d * apos  =0;     // [natoms] // from Atoms
     //Vec3d * vapos = 0;    // [natom]  velocities of atoms
     //Vec3d * fapos  =0;    // [natoms] // from NBFF
@@ -94,9 +95,6 @@ class MMFFsp3_loc : public NBFF { public:
     // Aux Dynamil
     Vec3d * fneigh  =0;  // [nnode*4]     temporary store of forces on atoms form neighbors (before assembling step)
     Vec3d * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
-
-    // Params
-    int   *  atypes  =0; // [natom]  atom types
 
     //Quat4i*  neighs =0;   // [natoms] // from NBFF
     Quat4i*  bkneighs=0;   // [natoms]  inverse neighbors

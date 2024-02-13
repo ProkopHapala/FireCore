@@ -95,6 +95,8 @@ class Atoms{ public:
     }
 
     void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
+        printf( "Atoms::atomsToXYZ() natoms=%i @file=%li @atypes=%li @apos=%li @lvec=%li\n", natoms, (long)file, (long)atypes, (long)apos, (long)lvec );
+        if( (file==0)||(atypes==0)||(apos==0)||(lvec==0) ){   printf( "ERROR Atoms::atomsToXYZ() encountered NULL pointer @file=%li @atypes=%li @apos=%li @lvec=%li\n", (long)file, (long)atypes, (long)apos, (long)lvec );    }
         int npbc=nPBC.totprod();
         //printf( "atomsToXYZ() atypes=%li   natoms=%i npbc=%i natoms*npbc=%i \n", (long)atypes, natoms, npbc, natoms*npbc );
         if(bN      )fprintf( file, "%i\n", natoms*npbc );

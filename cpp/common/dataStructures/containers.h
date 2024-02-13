@@ -33,7 +33,7 @@ V* setp( std::unordered_map<K,V*>& map, const K& key, const V* val, bool bReplac
 template<typename T>
 class Dict{ public:
     std::unordered_map<std::string,int> map;
-    std::vector<T*>                     vec;
+    std::vector<T>                     vec;
 
     int getId( const char* name )const{
         auto it = map.find(name);
@@ -47,8 +47,39 @@ class Dict{ public:
 
     int add( T* mat, bool bDel=true ){
         auto it = map.find( mat->name );
-        if( it == map.end() ){ int i=vec.size(); vec.push_back(mat); map.insert({mat->name,i}); return i; }else{ if(bDel)delete vec[it->second]; vec[it->second] = mat; return -1; }
+        if( it == map.end() ){    // not found
+            int i=vec.size(); vec.push_back(mat); 
+            map.insert({mat->name,i}); return i; 
+        }else{    // found
+            if(bDel)delete vec[it->second]; 
+            vec[it->second] = mat; return -1; 
+        }
     }
+
+    bool insert( const char* name, T* mat, int i, bool bDel=true ){
+        if( vec.size(i)<=i ) vec.resize(i+1);
+        vec[i] = mat;
+        auto it = map.find(name);
+        if( it != map.end() ){  // found
+            if( i != it->second ){ if(bDel) vec[it->second]=0; }
+            map[name] = i; 
+            vec[i] = mat; 
+            return true;
+        }else{ 
+           map.insert({name,i}); 
+           return false; 
+        }
+    }
+
+    void rebind( const char* name, int i ){
+        auto it = map.find(name);
+        if( it != map.end() ){ 
+            it->second = i; 
+        }else{ 
+            map.insert({name,i}); 
+        }
+    }
+
 };
 
 
