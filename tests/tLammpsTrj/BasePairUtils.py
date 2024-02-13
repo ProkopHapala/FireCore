@@ -81,19 +81,35 @@ def find_minim_energy_confs( Es, pair_names, Emax=-1000, ipivot=0 ):
     #Emins = { n:(Emax,-1) for n in pair_names }   # dictionary of minimum energies for each pair
     Emins         = {}
     unique_pnames = []
+    unique_inds   = {}
     for i,n in enumerate(pair_names):             # find minimum energy for each pair
         e = Es[i][ipivot]  
         if n not in Emins: 
             unique_pnames.append(n)
             Emins[n]=(e,i)
+            unique_inds[n] = i
         else:
             if Emins[n][0]>e:                         # if current energy is lower than the minimum energy for this pair
                 Emins[n]=(e,i)                        # update minimum energy for this pair, and index of the minimum energy
-    return Emins, unique_pnames
+                unique_inds[n] = i
+    # print( " find_minim_energy_confs().check() " )
+    # col_set = set()
+    # for i,(n,e) in enumerate(Emins.items() ): 
+    #     if n in col_set:
+    #         print( i, "Already in the set ",  n )
+    #     else:
+    #         col_set.add( n )
+    #     #print( i, n, e )
+    unique_inds = [ unique_inds[n] for n in unique_pnames ]
+    return Emins, unique_pnames, unique_inds
 
-
-
-
+def check_list_uniqueness( lst ):
+    col_set = set()
+    for i,n in lst :   
+        if n in col_set:
+            print( "check_list_uniqueness[%i]" %i, " already in the set ", n )
+        else:
+            col_set.add( n )
 
 # =============  From /home/prokop/Desktop/CARBSIS/Paolo/correlations/utils.py
 

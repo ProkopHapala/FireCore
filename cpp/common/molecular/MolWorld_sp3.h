@@ -119,8 +119,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     double gridStep = 0.1; 
     //double gridStep = 0.2; 
     //Vec3i nPBC{0,0,0};   // just debug
-    //Vec3i nPBC{1,1,0};
-    Vec3i nPBC{1,3,0};
+    Vec3i nPBC{1,1,0};
+    //Vec3i nPBC{1,3,0};
     int    npbc       = 0;
     Vec3d* pbc_shifts = 0;
 
@@ -213,7 +213,10 @@ class MolWorld_sp3 : public SolverInterface { public:
             // TBD we should also print if we use UFF or not...
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
         }
-        if(surf_name )loadSurf( surf_name, bGridFF, idebug>0 );
+        if(surf_name ){
+            bGridFF = true;
+            loadSurf( surf_name, bGridFF, idebug>0 );
+        }
         if ( smile_name ){               
             insertSMILES( smile_name );    
             builder.addAllCapTopo();       
@@ -657,7 +660,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
         if(bGrid){
             gridFF.grid.center_cell( cel0 );
-            bGridFF=true;
+            //bGridFF=true;
             gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
             if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
             gridFF.grid.pos0.z=z0;
@@ -677,7 +680,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false );
             gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
             if(bSaveDebugXSFs)saveGridXsfDebug();
-            bGridFF   =true; 
+            //bGridFF   =true; 
             //bSurfAtoms=false;
         }
         gridFF.shift0 = Vec3d{0.,0.,-2.0};

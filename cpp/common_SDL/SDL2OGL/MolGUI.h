@@ -548,7 +548,8 @@ void MolGUI::draw(){
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
-    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 5, 5, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+    //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 10, 10, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
     if( ogl_esp     ){ glCallList(ogl_esp);      }
     if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
