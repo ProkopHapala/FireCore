@@ -92,24 +92,36 @@ class QEq{ public:
         return err2;
     }
 
-    void moveMDdamp(double dt, double damping){
+    double moveMDdamp(double dt, double damping){
         Qtot = 0.0;
         double damp=1-damping;
         int nsum=0;
+        double cvf=0;
         for(int i=0; i<n; i++){
             if(constrain[i]) continue;
-            vqs[i]  = vqs[i]*damp - fqs[i]*dt;
-             qs[i] += vqs[i]*dt;
-            Qtot   += qs[i];
+            double fqi = fqs[i];
+            double vqi = vqs[i];
+            double qi  = qs[i];
+            vqi*=damp;
+            vqi-=fqi*dt;
+            qi +=vqi*dt;
+            //vqs[i]  = vqs[i]*damp - fqs[i]*dt;
+            // qs[i] += vqs[i]*dt;
+            vqs[i] = vqi;
+            qs[i]  = qi;
+            Qtot  += qi;
+            cvf   += fqi*vqi;
             nsum++;
         }
+        //if(cvf<0){ for(int i=0; i<n; i++){ vqs[i]=0; }; }
         // force Qtarget
         //printf( "Qtot %g \n" );
         double dQ    = (Qtarget-Qtot)/nsum;
         for(int i=0; i<n; i++){ qs[i] += dQ; }
+        return Qtot;
     }
 
-    double relaxChargeMD( Vec3d* ps, int nsteps=1000, double Fconf=1e-2, double dt=0.1, double damp=0.1 ){
+    double relaxChargeMD( Vec3d* ps, int nsteps=1000, double Fconf=1e-2, double dt=0.1, double damp=0.0, bool bVerbose=false ){
         //printf( "QEq.relaxChargeMD() \n" );
         double F2conf=Fconf*Fconf;
         J = new double[n*n];
@@ -119,11 +131,18 @@ class QEq{ public:
         for(int itr=0; itr<nsteps; itr++){
             F2 = getQvars();
             if(F2<F2conf) break;
-            //printf( "QEq.relaxChargeMD()[%i] |F| %g \n", itr, sqrt(F2) );
+            if(bVerbose)printf( "QEq.relaxChargeMD()[%i] |F|=%g \n", itr, sqrt(F2) );
             //printf( "F2 %g \n", F2 );
-            moveMDdamp(dt, damp);
+            double cvf = moveMDdamp(dt, damp);
+            if(cvf<0){ 
+                if(bVerbose)printf( "QEq.relaxChargeMD()[%i](cvf(%g)<0) => v[:]=0 \n", itr, cvf );
+                for(int i=0; i<n; i++){ vqs[i]=0; }; 
+            }
         }
-        for(int i=0; i<n; i++){ qs[i]*=-1.0; };   // Revert charges (e-)
+        for(int i=0; i<n; i++){ 
+            qs[i]*=-1.0; 
+            if(bVerbose)printf( "QEq.relaxChargeMD() qs[%i] %g \n", i, qs[i] );
+        };   // reverse charges (e-)
         delete [] J; J=0;
         return F2;
     }

@@ -709,11 +709,13 @@ class MMFFparams{ public:
     // assign QEq parameters
     // TBD only electronegativity and hardness are considered...
     void assignQEq( int n, int* itypes, double* affins, double* hards )const{
+        //printf( "MMFFparams::assignQEq(%i) @itypes=%li @affins=%li @hards=%li \n", n, itypes, affins, hards );
         for(int i=0; i<n; i++){
             int ityp = itypes[i];
             int iet  = atypes[ityp].element; 
             affins[i]=etypes[iet].Eaff;
             hards [i]=etypes[iet].Ehard;
+            //printf( "assignQEq[%i](ityp=%i,iet=%i) -> (affins=%g,hards=%g)\n", i, ityp, iet, affins[i], hards[i] );
         }
     }
 

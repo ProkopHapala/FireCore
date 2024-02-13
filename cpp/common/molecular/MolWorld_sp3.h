@@ -609,14 +609,15 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printBonds();    
     }
 
-    void autoCharges(){
+    void autoCharges(bool bVerbose=false){
         if(verbosity>0)printf("MolWorld_sp3::autoCharges() \n");
+        //bVerbose=true;
         qeq.realloc( ff.natoms );
         params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );
         int iconstr = params.getAtomType("E");    //printf("constrain type %i \n", iconstr );
         qeq.constrainTypes( ff.atype, iconstr );
-        qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.1 );
-        copy( qeq.n, 1, 0, (double*)qeq.qs, 3, 2, (double*)nbmol.REQs );
+        qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.0, bVerbose );
+        copy( qeq.n, 1, 0, (double*)qeq.qs, 4, 2, (double*)nbmol.REQs );
         bChargeUpdated=true;
     }
 
@@ -1484,13 +1485,13 @@ class MolWorld_sp3 : public SolverInterface { public:
                     double t = (getCPUticks() - T0)*tick2second;
                     if(t>0.02){ 
                         niter=0; 
-                        if(verbosity>0)printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
+                        if(verbosity>1)printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
                     }
                 }
                 if(F2<F2conv){ 
                     niter=0; 
                     double t = (getCPUticks() - T0)*tick2second;
-                    if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+                    if(verbosity>1)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
                 }
                 //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
                 //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
@@ -1498,7 +1499,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             }
         }{
         double t = (getCPUticks() - T0)*tick2second;
-        if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+        if(itr>=niter_max)if(verbosity>1)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr );
         }
         return itr;
     }
