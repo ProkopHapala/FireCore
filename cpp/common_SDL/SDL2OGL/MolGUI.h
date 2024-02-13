@@ -214,6 +214,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
+    void unBindMolecule();
 	void drawSystem ( Vec3i ixyz=Vec3iZero );
     void drawBuilder( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
@@ -586,7 +587,6 @@ void MolGUI::draw(){
     }
 
     if(bDoMM){
-
         if( bViewBuilder ){ drawBuilder(); }
         else if(W->builder.bPBC){ 
             //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
@@ -1116,7 +1116,12 @@ void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Ve
     if(pbcShifts_)pbcShifts=pbcShifts_;
 }
 
+void MolGUI::unBindMolecule(){
+    natoms=0; nnode=0; nbonds=0; atypes=0; apos=0; fapos=0; REQs=0; pipos=0; fpipos=0; bond2atom=0; pbcShifts=0;
+}
+
 void MolGUI::drawBuilder( Vec3i ixyz ){
+    //printf( "DEBUG MolGUI::drawBuilder() ixyz(%i,%i,%i)\n", ixyz.x,ixyz.y,ixyz.z );
     float textSize=0.015;
     glEnable(GL_DEPTH_TEST);
     MM::Builder& B = W->builder;
@@ -1127,8 +1132,10 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
         //Draw3D::ato( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); 
         for(int ia=0; ia<B.atoms.size(); ia++){
             const MM::Atom& a = B.atoms[ia];
+            //const MM::AtomType& atyp = W->params.atypes[a.type];
+            const AtomType& atyp = W->params.atypes[a.type];
             if(bViewColorFrag){ Draw::setRGB( B.frags[a.frag].color ); }else{ Draw::setRGB( W->params.atypes[a.type].color ); }
-            Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity, 1.0 );
+            Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity*((atyp.RvdW-mm_Rsub)*mm_Rsc) );
         }    
     }
     if(mm_bAtoms&&bViewAtomLabels ){ for(int ia=0; ia<B.atoms.size(); ia++){ Draw3D::drawInt( B.atoms[ia].pos, ia, fontTex, textSize );} }
@@ -1146,6 +1153,7 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
 }
 
 void MolGUI::drawSystem( Vec3i ixyz ){
+    //printf( "DEBUG MolGUI::drawSystem() bViewBuilder=%i ixyz(%i,%i,%i)\n", bViewBuilder, ixyz.x,ixyz.y,ixyz.z );
     //float textSize=0.007;
     //float textSize=1.0;
     float textSize=0.015;

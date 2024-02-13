@@ -730,7 +730,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         // ToDo: we should be able to insert molecule without actually creating molecule-type
         //sprintf(tmpstr, "%s.xyz", name );
         int imol  = builder.loadMolType( fname, name );
-        int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
+        int iret  = builder.insertFlexibleMolecule( imol, pos, Mat3dIdentity, -1 );
         if (iret<0){ printf("ERROR MolWorld_sp3::loadGeom(%s) cannot be loaded \n", name); exit(0); }
         int ifrag = builder.frags.size()-1;
         return ifrag;
