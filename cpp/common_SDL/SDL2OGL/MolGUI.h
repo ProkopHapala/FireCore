@@ -1147,6 +1147,7 @@ void MolGUI::unBindMolecule(){
 void MolGUI::drawBuilder( Vec3i ixyz ){
     //printf( "DEBUG MolGUI::drawBuilder() ixyz(%i,%i,%i)\n", ixyz.x,ixyz.y,ixyz.z );
     //float textSize=0.015;
+    //if(bViewColorFrag){ printf( " B.frags.size(%i) \n", B.frags.size() ); }
     glEnable(GL_DEPTH_TEST);
     MM::Builder& B = W->builder;
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
@@ -1158,11 +1159,29 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
             const MM::Atom& a = B.atoms[ia];
             //const MM::AtomType& atyp = W->params.atypes[a.type];
             const AtomType& atyp = W->params.atypes[a.type];
-            if(bViewColorFrag){ Draw::setRGB( B.frags[a.frag].color ); }else{ Draw::setRGB( W->params.atypes[a.type].color ); }
+            if(bViewColorFrag){ 
+                if(a.frag<0) continue;
+                if( (a.frag<0)||(a.frag>=B.frags.size()) ){ printf( "ERROR MolGUI::drawBuilder() a.frag(%i) out of range 0 .. B.frags.size(%i) \n", a.frag, B.frags.size() ); exit(0); }
+                Draw::setRGB( B.frags[a.frag].color ); 
+            }else{ Draw::setRGB( W->params.atypes[a.type].color ); }
             Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity*((atyp.RvdW-mm_Rsub)*mm_Rsc) );
         }    
     }
-    if(mm_bAtoms&&bViewAtomLabels ){ for(int ia=0; ia<B.atoms.size(); ia++){ Draw3D::drawInt( B.atoms[ia].pos, ia, fontTex, textSize );} }
+    if(mm_bAtoms&&bViewAtomLabels ){ 
+        glColor3f(0.0f,0.0f,0.0f); 
+        if(bViewMolCharges){
+            //void atomPropertyLabel( int n, double* data, Vec3d* ps, int pitch, int offset, int fontTex, float sz=0.02, const char* format="%4.2f\0" ){
+            for(int i=0; i<B.atoms.size(); i++){
+                Draw3D::drawDouble( B.atoms[i].pos, B.atoms[i].REQ.z, fontTex, textSize, "%4.2f" );
+                //drawInt( ps[i], (int)data[i*pitch+offset], fontTex, sz );
+            }
+        }else
+        for(int ia=0; ia<B.atoms.size(); ia++){ 
+            int ii=ia;
+            if(bViewColorFrag){ ii = B.atoms[ia].frag; }
+            Draw3D::drawInt( B.atoms[ia].pos, ii, fontTex, textSize );
+        } 
+    }
     if( bViewBonds ){
         glDisable(GL_LIGHTING);
         glColor3f(0.0f,0.0f,0.0f);
