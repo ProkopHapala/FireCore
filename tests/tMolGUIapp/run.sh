@@ -50,7 +50,7 @@ ln -s $dir/$name .
 #./$name -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -x common_resources/polydiacetylene_OH
 #./$name -x common_resources/polymer-2_new
-./$name -x common_resources/polymer-2_new -verb 0  -lua script.lua
+#./$name -x common_resources/polymer-2_new -verb 0  -lua script.lua
 
 #./$name -x common_resources/polymer-2_new -EachAngle
 #./$name -x common_resources/polymer-2_new -EachAngle -torsions
@@ -114,7 +114,7 @@ ln -s $dir/$name .
 #./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
-#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
 
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 1
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 50

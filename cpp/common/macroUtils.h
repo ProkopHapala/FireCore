@@ -96,7 +96,6 @@ inline bool addFirstEmpty( int* arr, int n, int what, int empty=-1 ){
 #define _template_TN     template<typename T,size_t N>
 #define _inline_T        template<typename T> inline
 
-
 #define _checkNull(var) if(var==nullptr){ printf("ERROR %s is NULL => Exit()\n", #var ); exit(0); }
 
 template<typename T> void _vec2arr(T*out, const std::vector<T>& v){ for(int i=0;i<v.size();i++)out[i]=v[i];} 

@@ -116,8 +116,6 @@ names = []
 for key in keys:
     names+=name_dct[key]
 
-
-
 excluded_names = [
 #--- H
 'H-h_1',
@@ -131,8 +129,13 @@ excluded_names = [
 'O-p',
 ]
 
-    
-Es         = bpu.load_dict( "/home/prokop/Desktop/CARBSIS/Paolo/correlations/binding_energy.dat" )
+path= "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo"
+
+
+#Es         = bpu.load_dict( "/home/prokop/Desktop/CARBSIS/Paolo/correlations/binding_energy.dat" )
+#Es         = bpu.load_dict( "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/correlations/binding_energy.dat")
+Es         = bpu.load_dict( path+"/correlations/binding_energy.dat")
+
 Emin_dct   = bpu.find_E_min( Es )
 Emap, Exx  = bpu.makeEmaps( names, Emin_dct )
 E_contrast = bpu.makeEcontrast( Emap )
@@ -222,6 +225,8 @@ colors = [ 'k', 'k', 'k','k','k','k', 'c', 'b', 'g', 'r' ]
 
 colors = [ 'k', 'k', 'k','k','k','k', 'k', 'k', 'k', 'k' ]
 
+
+# Plot Lines
 for i,E0 in enumerate( Eranges):
     # plt lines between indexes stored in l4
     l4 = L4s[i]

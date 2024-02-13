@@ -41,14 +41,13 @@ class_prop = dict( class_prop_ )
 
 
 
-#f_geoms="/home/prokop/Desktop/CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/2-plot_confs/dirs/"
-#f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/endgroups/"
-f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/B3LYP_oriented/"
+path= "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo"
 
-dir_geom="/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/pairs_b3lyp/confs/"
+#f_geoms=path+"/pairs_compare_DFTB_vs_B3LYP/2-plot_confs/dirs/"
+#f_egs=path+"/endgroups/endgroups/"
+f_egs=path+"/endgroups/B3LYP_oriented/"
 
-
-
+dir_geom=path+"/B3LYP_finished/pairs_b3lyp/confs/"
 
 # ============ Functions
 
@@ -70,8 +69,8 @@ def find_in_interval( intervals, EBs, ECs, nbest=1 ):
 
 bases_to_remove = set( ['NNO-hp','ONO-p','NO-h-p'] )
 
-#_,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/4-dimers_energy_sorted.dat", ni=1, nf=3, iname=0, toRemove=bases_to_remove )
-_,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/1-binding_energy_all.dat",   ni=4, nf=2, iname=0, toRemove=bases_to_remove )
+#_,Es,names,pair_names = bpu.read_dat( path+"/pairs_compare_DFTB_vs_B3LYP/4-dimers_energy_sorted.dat", ni=1, nf=3, iname=0, toRemove=bases_to_remove )
+_,Es,names,pair_names = bpu.read_dat( path+"/B3LYP_finished/1-binding_energy_all.dat",   ni=4, nf=2, iname=0, toRemove=bases_to_remove )
 
 old_inds = np.array(  range(len(Es)) )
 
@@ -81,7 +80,7 @@ old_inds = np.array(  range(len(Es)) )
 intervals = np.arange( 0, 50+1, 5.0 ); print( "intervals ", intervals   ); #exit()
 
 
-Emins =   bpu.find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 )                          # find minimum energy conformers for each pair
+Emins, unique_pnames =   bpu.find_minim_energy_confs( Es, pair_names, Emax=1000, ipivot=0 )                          # find minimum energy conformers for each pair
 
 EBs   = np.array([-Emins[k][0]                                                    for k in  pair_names ])     # compute binding energy  for each pair as numpy array
 ECs   = np.array([-Emins[k][0]+0.5*( Emins[(k[0],k[0])][0]+Emins[(k[1],k[1])][0]) for k in  pair_names ])     # compute energy contrast for each pair as numpy array

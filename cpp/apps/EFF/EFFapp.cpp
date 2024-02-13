@@ -112,7 +112,9 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     Vec3d ray0;
     //int perFrame = 1;
-    int perFrame = 50;
+    int perFrame = 10;
+    //int perFrame = 20;
+    //int perFrame = 50;
 
     Vec2i field_ns;
     Vec2d Erange;
@@ -253,7 +255,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
     oglSph=Draw::list(oglSph);
     //Draw3D::drawSphere_oct(3,1.0d,(Vec3d){0.,0.,0.});
-    Draw3D::drawSphere_oct(5,1.0d,(Vec3d){0.,0.,0.});
+    Draw3D::drawSphere_oct(5,1.0,(Vec3d){0.,0.,0.});
     glEndList();
 
     plot1.init();
