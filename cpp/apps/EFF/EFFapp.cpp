@@ -111,7 +111,8 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     DynamicOpt opt;
 
     Vec3d ray0;
-    int perFrame = 1;
+    //int perFrame = 1;
+    int perFrame = 50;
 
     Vec2i field_ns;
     Vec2d Erange;
@@ -203,8 +204,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //ff.loadFromFile_fgo( "data/C_e4_1g.fgo" );
     //ff.loadFromFile_fgo( "data/CH4.fgo" );
     //ff.loadFromFile_fgo( "data/NH3.fgo" );
-    //ff.loadFromFile_fgo( "data/H2O.fgo" );
-    ff.loadFromFile_fgo( "data/C2H4.fgo" );
+    ff.loadFromFile_fgo( "data/H2O.fgo" );
+    //ff.loadFromFile_fgo( "data/C2H4.fgo" );    // Atoms Fly Away
     //ff.loadFromFile_fgo( "data/C2H2.fgo" );
 
     //ff.bEvalAECoulomb = 0;
@@ -236,7 +237,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     // ==== Bind Optimizer
     opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, 0, ff.fDOFs, 0 );
     opt.cleanVel( );
-    opt.initOpt( 0.01, 0.2 );
+    //opt.initOpt( 0.01, 0.2 );
+    opt.initOpt( 0.0015, 0.01 );
     opt.f_limit = 1000.0;
 
     //ff.iPauliModel = 0; // dens overlap
@@ -250,7 +252,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //printf( " test_eFF exits ... \n" ); exit(0);
 
     oglSph=Draw::list(oglSph);
-    Draw3D::drawSphere_oct(3,1.0d,(Vec3d){0.,0.,0.});
+    //Draw3D::drawSphere_oct(3,1.0d,(Vec3d){0.,0.,0.});
+    Draw3D::drawSphere_oct(5,1.0d,(Vec3d){0.,0.,0.});
     glEndList();
 
     plot1.init();
@@ -294,7 +297,7 @@ void TestAppRARFF::draw(){
     double vmaxOK = 1e+3;
 
     //perFrame=10; // ToDo : why it does not work properly for  perFrame>1 ?
-    perFrame = 1;
+    //perFrame = 1;
     double sum = 0;
     if(bRun){
         double F2 = 1.0;
@@ -342,7 +345,7 @@ void TestAppRARFF::draw(){
             //printf( "frame[%i] E %g lHH %g lH1e1 %g se1 %g \n", frameCount, E, (ff.apos[0]-ff.apos[1]).norm(),   (ff.apos[0]-ff.epos[0]).norm(), ff.esize[0] );
 
             //printf( "frame[%i,%i] E %g | Ek %g Eee %g EeePaul %g Eaa %g Eae %g EaePaul %g \n", frameCount, itr, Etot, ff.Ek, ff.Eee, ff.EeePaul, ff.Eaa, ff.Eae, ff.EaePaul );
-            printf( "frame[%i,%i] " );  ff.printEnergies();
+            //printf( "frame[%i,%i] " );  ff.printEnergies();
             //printf( "E %g | Ek %g Eee %g EeePaul %g Eaa %g Eae %g EaePaul %g \n", E, ff.Ek, ff.Eee, ff.EeePaul, ff.Eaa, ff.Eae, ff.EaePaul );
             //printf( "=== %i %i frame[%i][%i] |F| %g \n", ff.na, ff.ne, frameCount, itr, sqrt(F2) );
         }
@@ -352,7 +355,6 @@ void TestAppRARFF::draw(){
             ff.info();
             printDistFormAtom( ff.na, ff.apos, 0 );
             bRun=false;
-
             ff.save_xyz( "data/eff_relaxed.xyz" );
         }
     }

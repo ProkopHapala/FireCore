@@ -383,20 +383,22 @@ void TestAppRARFF::draw(){
     //ff.checkAtomsCollapsed( 0.2, true );
     ff.checkAtomsOut( 100.0, true );
     if(bViewBox && (ff.AccelType==1) ){
-        glColor3f(0.0f,0.0f,0.0f); Draw3D::drawBBox( (Vec3f)ff.map.pos0, (Vec3f)ff.map.pmax );
+        glColor3f(0.7f,0.7f,0.7f); Draw3D::drawBBox( (Vec3f)ff.map.pos0, (Vec3f)ff.map.pmax );
     }
     if(bViewGrid && (ff.AccelType==1) ){
         //if(ff.AccelType==1)
         visualize_cells();
     }
-    switch(renderMode){
-        case 0: glDisable(GL_LIGHTING); break;
-        case 1: glEnable (GL_LIGHTING); break;
-    }
-    visualize_atoms();
     Draw3D::drawPointCross( ray0, 0.1 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
     Draw3D::drawAxis( 1.0);
+
+    // switch(renderMode){
+    //     case 0: glDisable(GL_LIGHTING); break;
+    //     case 1: glEnable (GL_LIGHTING); break;
+    // }
+    glEnable (GL_LIGHTING);
+    visualize_atoms();
 };
 
 void TestAppRARFF::drawHUD(){
@@ -550,6 +552,7 @@ void TestAppRARFF::visualize_cells( bool bDrawPoints ){
 void TestAppRARFF::visualize_atoms(){
     int na = 0;
     // ---------- Draw
+    glLineWidth(3.0f); 
     glColor3f(0.0,0.0,0.0);
     double fsc = 0.1;
     double tsc = 0.1;
@@ -558,20 +561,23 @@ void TestAppRARFF::visualize_atoms(){
     for(int ia=0; ia<ff.natom; ia++){
         if(ff.ignoreAtoms[ia])continue;
         na++;
-        glColor3f(0.3,0.3,0.3);
-        Draw3D::drawShape( ogl_sph, ff.apos[ia], Mat3dIdentity*0.25 );
+        //glColor3f(0.3,0.3,0.3);
+        glColor3f(0.5,0.5,0.5);
+        Draw3D::drawShape( ogl_sph, ff.apos[ia], Mat3dIdentity*0.7 );
         for(int j=0; j<ff.types[ia]->nbond; j++){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );
             //printf( "bondCaps[%i] %i\n", i, ff.bondCaps[i] );
             if( ff.bondCaps[i]>=0 ){ glColor3f(1.0,0.0,0.0); } else{ glColor3f(0.0,0.0,0.0); }
-            Draw::setRGB( clrs[j] );
+            //Draw::setRGB( clrs[j] );
+            glColor3f(0.5,0.5,0.5);;
             Draw3D::drawLine( ff.apos[ia] , pb );
             glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb );
             //glColor3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
             //glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
         }
     };
+    glLineWidth(1.0f); 
     //if(na<nAtomCount){ printf( "TestAppRARFF::visualize_atoms() number of atoms decreased( na=%i nAtomCount=%i )\n", na, nAtomCount ); nAtomCount=na; }
     //printf( "TestAppRARFF::visualize_atoms() na=%i \n", na );
     //int nig = ff.countIgnoreAtoms(true);
