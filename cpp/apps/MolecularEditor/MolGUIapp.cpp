@@ -7,11 +7,9 @@ double tick2second=1e-9;
 #include "MolGUI.h"
 #include "argparse.h"
 
-
 //MMFFsp3 W;
 MolGUI* app=0;
 LambdaDict funcs;
-
 
 int   prelat_nstep=0;
 int   prelat_nItrMax=0;
@@ -20,69 +18,9 @@ Mat3d prelat_dlvec;
 #ifdef WITH_LUA
 //#include "LuaUtils.h"
 //#include "LuaClass.h"
-#include "LuaHelpers.h"
-
-lua_State  * theLua=0;
-
-int l_fixAtom(lua_State *L){
-    // LuaCall: fixAtom( ia, true )
-    int ia = Lua::getInt(L,1);
-    int b  = Lua::getInt(L,2);
-    printf( "l_fixAtom(ia=%i,b=%i)\n", ia, b ); 
-    double Kfix = 10.0; //app->W->ffl.Kfix;
-    Quat4d constr;
-    constr.f=app->W->ffl.apos[ia];
-    constr.e=Kfix; 
-    app->W->ffl.constr[ia]=constr; 
-    //if     (b>0){ app->W->atomFixed[ia] = true;  }
-    //else if(b<0){ app->W->atomFixed[ia] = false; }
-    return 0; // number of return values to Lua environment
-}
-
-int l_getAtomCount(lua_State *L){
-    //Lua::pushInt(L, app->W->ffl.natoms );
-    lua_pushinteger(L, app->W->ffl.natoms );
-    return 1; // number of return values to Lua environment
-}
-
-int l_toggleStop(lua_State *L){
-    app->bRunRelax = !app->bRunRelax;
-    printf( "l_toggleStop %i\n", app->bRunRelax );
-    return 0; // number of return values to Lua environment
-}
-
-int l_getAtomPos(lua_State *L){
-    int ia = Lua::getInt(L,1);
-    Vec3d pos = app->W->ffl.apos[ia];
-    Lua::pushVec3(L, pos);
-    return 1; // number of return values to Lua environment
-}
-
-int l_insertQuickCommand(lua_State *L){
-    const char* s = Lua::getString(L,1);
-    printf( "l_insertQuickCommand `%s`\n", s );
-    app->console.quick_tab.table.push_back( s );
-    app->console.quick_tab.sort();
-    for(int i=0; i<app->console.quick_tab.table.size(); i++){
-        printf( "l_insertQuickCommand[%i] `%s`\n", i, app->console.quick_tab.table[i].c_str() );
-    }
-    return 1; // number of return values to Lua environment
-}
-
-int initMyLua(){
-    printf( "initMyLua()\n" );
-    theLua         = luaL_newstate();
-    lua_State  * L = theLua;
-    luaL_openlibs(L);
-    lua_register(L, "fix", l_fixAtom  );
-    lua_register(L, "natom", l_getAtomCount  );
-    lua_register(L, "apos", l_getAtomPos  );
-    lua_register(L, "run", l_toggleStop  );
-    lua_register(L, "command", l_insertQuickCommand  );
-    printf( "initMyLua() DONE\n" );
-    return 1;
-}
-
+//#include "LuaHelpers.h"
+//lua_State  * theLua=0;
+#include "MolGUIapp_Lua.h"
 #endif // WITH_LUA
 
 int main(int argc, char *argv[]){

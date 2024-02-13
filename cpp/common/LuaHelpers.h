@@ -121,44 +121,52 @@ namespace Lua{
         }
     }
 
-    void getVec4( lua_State* L, int idx, Quat4d& vec){
+    Quat4d getVec4( lua_State* L, int idx){
+        Quat4d v;
         // universal helper function to get Vec3 function argument from Lua to C++ function
         luaL_checktype(L, idx, LUA_TTABLE);
-        lua_rawgeti(L, idx, 1); vec.x = lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 2); vec.y = lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 3); vec.z = lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 4); vec.z = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 1); v.x = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 2); v.y = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 3); v.z = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 4); v.z = lua_tonumber(L, -1); lua_pop(L, 1);
         //lua_pop(L, 3);
+        return v;
     }
-    void getVec4( lua_State* L, Quat4d& vec){  getVec4(L, -1, vec); }
+    Quat4d getVec4( lua_State* L){ return getVec4(L, -1); }
 
-    void getVec3( lua_State* L, int idx, Vec3d& vec){
+    Vec3d getVec3( lua_State* L, int idx){
+        Vec3d v;
         // universal helper function to get Vec3 function argument from Lua to C++ function
         luaL_checktype(L, idx, LUA_TTABLE);
-        lua_rawgeti(L, idx, 1); vec.x = lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 2); vec.y = lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 3); vec.z = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 1); v.x = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 2); v.y = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 3); v.z = lua_tonumber(L, -1); lua_pop(L, 1);
         //lua_pop(L, 3);
+        return v;
     }
-    void getVec3( lua_State* L, Vec3d& vec){  getVec3(L, -1, vec); }
+    Vec3d getVec3( lua_State* L){  return getVec3(L, -1 ); }
 
-    void getVec2( lua_State* L, int idx, Vec2d& vec){
+    Vec2d getVec2( lua_State* L, int idx){
+        Vec2d v;
         // universal helper function to get Vec3 function argument from Lua to C++ function
         luaL_checktype(L, idx, LUA_TTABLE);
-        lua_rawgeti(L, idx, 1); vec.x = lua_tonumber(L, -1); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 2); vec.y = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 1); v.x = lua_tonumber(L, -1); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 2); v.y = lua_tonumber(L, -1); lua_pop(L, 1);
         //lua_pop(L, 3);
+        return v;
     }
-    void getVec2( lua_State* L, Vec2d& vec){  getVec2(L, -1, vec); }
+    Vec2d getVec2( lua_State* L){ return getVec2(L,-1); }
 
-    void getMat3( lua_State* L, int idx, Mat3d& mat){
+    Mat3d getMat3( lua_State* L, int idx){
+        Mat3d mat;
         // universal helper function to get Vec3 function argument from Lua to C++ function
         luaL_checktype(L, idx, LUA_TTABLE);
-        lua_pushinteger(L, 1); lua_gettable(L, idx); getVec3(L,-1, mat.a ); lua_pop(L, 1);
-        lua_pushinteger(L, 2); lua_gettable(L, idx); getVec3(L,-1, mat.b ); lua_pop(L, 1);
-        lua_pushinteger(L, 3); lua_gettable(L, idx); getVec3(L,-1, mat.c ); lua_pop(L, 1);
+        lua_pushinteger(L, 1); lua_gettable(L, idx); mat.a=getVec3(L,-1); lua_pop(L, 1);
+        lua_pushinteger(L, 2); lua_gettable(L, idx); mat.b=getVec3(L,-1); lua_pop(L, 1);
+        lua_pushinteger(L, 3); lua_gettable(L, idx); mat.c=getVec3(L,-1); lua_pop(L, 1);
+        return mat;
     }
-    void getMat3(lua_State* L, Mat3d& mat){ getMat3(L, -1, mat); };
+    Mat3d getMat3(lua_State* L){ return getMat3(L, -1); };
 
     void getDoubleVector( lua_State* L, std::vector<double>& vec ) {
         luaL_checktype(L, -1, LUA_TTABLE);
@@ -167,15 +175,15 @@ namespace Lua{
         clean(L);
     }
 
-
-    void getVec4i( lua_State* L, int idx, Quat4i& vec){
+    Quat4i getVec4i( lua_State* L, int idx){
+        Quat4i v;
         // universal helper function to get Vec3 function argument from Lua to C++ function
         luaL_checktype(L, idx, LUA_TTABLE);
         //double x,y,z,w;
-        lua_rawgeti(L, idx, 1); vec.x = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 2); vec.y = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 3); vec.z = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 4); vec.w = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 1); v.x = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 2); v.y = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 3); v.z = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 4); v.w = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
         //lua_rawgeti(L, idx, 1); x = lua_tonumber(L, -1); lua_pop(L, 1);
         //lua_rawgeti(L, idx, 2); y = lua_tonumber(L, -1); lua_pop(L, 1);
         //lua_rawgeti(L, idx, 3); z = lua_tonumber(L, -1); lua_pop(L, 1);
@@ -183,27 +191,32 @@ namespace Lua{
         //vec.x = floor(x); vec.y = floor(y); vec.z = floor(z); vec.w = floor(w);
         //printf( "getVec4i() (%g,%g,%g,%g) -> (%i,%i,%i,%i)", x,y,z,w, vec.x, vec.y, vec.z, vec.w );
         //lua_pop(L, 3);
+        return v;
     }
-    void getVec4i( lua_State* L, Quat4i& vec){  getVec4i(L, -1, vec); }
+    Quat4i getVec4i( lua_State* L){ return getVec4i(L, -1); }
 
-    void getVec3i( lua_State* L, int idx, Vec3i& vec){
+    Vec3i getVec3i( lua_State* L, int idx){
+        Vec3i v;
         // universal helper function to get Vec3 function argument from Lua to C++ function
         luaL_checktype(L, idx, LUA_TTABLE);
-        lua_rawgeti(L, idx, 1); vec.x = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 2); vec.y = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 3); vec.z = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 1); v.x = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 2); v.y = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 3); v.z = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
         //lua_pop(L, 3);
+        return v;
     }
-    void getVec3i( lua_State* L, Vec3i& vec){  getVec3i(L, -1, vec); }
+    Vec3i getVec3i( lua_State* L){ return getVec3i(L, -1); }
 
-    void getVec2i( lua_State* L, int idx, Vec2i& vec){
+    Vec2i getVec2i( lua_State* L, int idx){
+        Vec2i v;
         // universal helper function to get Vec3 function argument from Lua to C++ function
         luaL_checktype(L, idx, LUA_TTABLE);
-        lua_rawgeti(L, idx, 1); vec.x = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
-        lua_rawgeti(L, idx, 2); vec.y = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 1); v.x = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
+        lua_rawgeti(L, idx, 2); v.y = floor(lua_tonumber(L, -1)); lua_pop(L, 1);
         //lua_pop(L, 3);
+        return v;
     }
-    void getVec2i( lua_State* L, Vec2i& vec){  getVec2i(L, -1, vec); }
+    Vec2i getVec2i( lua_State* L){ return getVec2i(L, -1); }
 
     void pushVec3( lua_State* L, const Vec3d& vec ){
         lua_createtable(L, 3, 0);

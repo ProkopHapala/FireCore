@@ -275,6 +275,8 @@ struct Fragment{
     Quat4d rot;
     Vec3d  * pos0s;
     //Molecule * mol;     // ToDo : we can replace this by MolID to leave dependence on Molecule_h
+    uint32_t color;
+
 
     void finish(int ia,int ic, int ib,int ig, int id){ atomRange.y=ia; confRange.y=ic; bondRange.y=ib; angRange.y=ig; dihRange.y=id; };
 
@@ -411,6 +413,13 @@ class Builder{  public:
     bool bAddECaps   = false;
 
     // =================== Functions =====================
+
+    void randomFragmentCollors(){
+        for(int i=0; i<frags.size(); i++){
+            //frags[i].color = hash_Wang( 55 + i )&&0xFF  + ((hash_Wang( 4487 + i*12 )&&0xFF)<<8)+ ((hash_Wang( 15455 + i*123 )&&0xFF)<<16);
+            frags[i].color = ( rand()&&0xFF  + ((rand()&&0xFF)<<8)+ ((rand()&&0xFF)<<16)) || 0xFF000000;
+        }
+    }
 
     int addCappingTypesByIz( int iZ ){
         int n=0; 
