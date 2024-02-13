@@ -247,6 +247,46 @@ class RARFF_SR{ public:
     int n_pairs_tried=0;
     int n_pairs_evaluated=0;
 
+    int countIgnoreAtoms(bool bPrint=false){
+        int nignore=0;
+        for(int i=0; i<natom; i++){ if(ignoreAtoms[i]) nignore++; }
+        if(bPrint)printf( "RARFF_SR::countIgnoreAtoms() natom=%i nignore=%i \n", natom, nignore );
+        return nignore;
+    }
+
+    int checkAtomsCollapsed( const double Rcut, int bPrint=false ){
+        int n=0;
+        double R2cut = Rcut*Rcut;
+        for(int i=0; i<natom; i++){
+            if(ignoreAtoms[i]) continue;
+            for(int j=i+1; j<natom; j++){
+                if(ignoreAtoms[j]) continue;
+                Vec3d d = apos[i]-apos[j];
+                double r2 = d.norm2();
+                if(r2<R2cut){
+                    n++;
+                    if(bPrint)printf( "RARFF_SR::checkAtomsCollapsed(%i,%i) |rij|=%g \n", i, j, sqrt(r2) );
+                }
+            }
+        }
+        return n;
+    }
+
+    int checkAtomsOut( const double Rcut, int bPrint=false){
+        int n=0;
+        double R2cut = Rcut*Rcut;
+        for(int i=0; i<natom; i++){
+            if(ignoreAtoms[i]) continue;
+            Vec3d d = apos[i];
+            double r2 = d.norm2();
+            if( (r2>R2cut) || isnan(r2) ){
+                n++;
+                if(bPrint)printf( "RARFF_SR::checkAtomsCollapsed(%i,%i) |rij|=%g \n", i, sqrt(r2) );
+            }
+        }
+        return n;
+    }
+
     void alloc(int natom_){
         natom=natom_;
         //printf(  "FARFF aloc na %i no %i nDOF %i \n", natom, norb, nDOF );
@@ -482,6 +522,9 @@ class RARFF_SR{ public:
                 double eEb = e * Eb;
                 eis[ib]+=eEb*0.5;
                 ejs[jb]+=eEb*0.5;
+
+                if( isnan(eEb) ){ printf( "ERROR pairEF(ia=%i,ja=%i)(ib=%i,jb=%i): eEb is %i \n", ia,ja, ib,jb, eEb ); exit(0); }
+
                 E      += eEb;
 
                 // Evaluate forces due to bonds
@@ -570,15 +613,18 @@ class RARFF_SR{ public:
                     const RigidAtomType& typei = *types[ia];
                     Vec3d                pi    =  apos [ia];
                     // -- within same cell
+                    //printf( "Same Cell\n");
                     for(int j=i+1; j<nic; j++){    // all other atoms in the same cell (prevent double-counting)  
                         int ja = neighs[j];
                         pairType.combine( typei, *types[ja] );                           // evaluate interaction parameters form the two atom types 
                         E += pairEF( ia, ja, typei.nbond, types[ja]->nbond, pairType );  // Interact
                         //glColor3f(0,0,0); Draw3D::drawLine( apos[ia], apos[ja] );
                     }
+                    //printf( "Other Cells\n");
                     // -- with neighbor cells
                     for(int j=0; j<nrest; j++){   // all atoms in the other cells
                         int ja = neighs_[j];
+                        if( ia==ja ) continue; // this should not happen !!!! ( but for some reason it is happening )
                         pairType.combine( typei, *types[ja] );                           // evaluate interaction parameters form the two atom types 
                         E += pairEF( ia, ja, typei.nbond, types[ja]->nbond, pairType );  // Interact
                         //if( ic==31 ){ glColor3f(0,0,0); Draw3D::drawLine( apos[ia], apos[ja] ); }

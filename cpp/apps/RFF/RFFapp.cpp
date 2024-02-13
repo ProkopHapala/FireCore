@@ -116,7 +116,8 @@ void generate_quad_row(RARFF_SR& ff, int ntypes, RigidAtomType* types, Quat4i ca
 
 void generateDiamond111Surface( RARFF_SR& ff, double alat, Vec3i n, int ntypes, RigidAtomType* types, Quat4i capsBrush ) {
     print( "generateDiamond111Surface() \n" );
-    n=Vec3i{3,3,4};
+    //n=Vec3i{3,3,4};
+    n=Vec3i{5,5,4};
     //double a = 5.43; // Silicon lattice constant, use 3.57 for diamond
     alat = 3.57; // Diamond lattice constant
     double sqrt3 = sqrt(3.0);
@@ -141,6 +142,7 @@ void generateDiamond111Surface( RARFF_SR& ff, double alat, Vec3i n, int ntypes, 
     Vec3d  shifts[] = { {0.0,0.0,0.0}, (avec+bvec)*(1./3.)  + zvec*(bL/3.0), (avec+bvec)*(1./3.) + zvec*(bL*(4/3.)), Vec3d{0.0,0.0,bL*(5/3.)} };
 
     bool fixed[] = { false, false, true, true };
+    //bool fixed[] = { false, false, false, false };
 
     Vec3d pmin = Vec3dmax;
     Vec3d pmax = Vec3dmin;
@@ -258,7 +260,8 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     bool bConsole=false;
     Console console;
 
-    int nAtomCount=0;
+    int nAtomCount= 0;
+    int nIgnore   = 0;
 
     // ========== Functions
 
@@ -344,7 +347,8 @@ void TestAppRARFF::simulation(){
             ff.aforce[ipicked].add( f );
         }
         //ff.moveMDdamp(0.05, 0.9);
-        ff.moveMDdamp(0.05, 0.98);
+        //ff.moveMDdamp(0.05, 0.98);
+        ff.moveMDdamp(0.03, 0.98);
     }
 }
 
@@ -361,7 +365,7 @@ void TestAppRARFF::draw(){
     //bRun = false;
     //perFrame = 10;
     //ff.bGridAccel=false;
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)( cam.pos + cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
     if(bRun){
         long T=getCPUticks();
         simulation();
@@ -376,6 +380,8 @@ void TestAppRARFF::draw(){
             ff.apos[ipicked].add(dpos);
         }
     }
+    //ff.checkAtomsCollapsed( 0.2, true );
+    ff.checkAtomsOut( 100.0, true );
     if(bViewBox && (ff.AccelType==1) ){
         glColor3f(0.0f,0.0f,0.0f); Draw3D::drawBBox( (Vec3f)ff.map.pos0, (Vec3f)ff.map.pmax );
     }
@@ -566,7 +572,11 @@ void TestAppRARFF::visualize_atoms(){
             //glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
         }
     };
-    if(na<nAtomCount){printf( "TestAppRARFF::visualize_atoms() number of atoms decreased( na=%i nAtomCount=%i )\n", na, nAtomCount ); nAtomCount=na; }
+    //if(na<nAtomCount){ printf( "TestAppRARFF::visualize_atoms() number of atoms decreased( na=%i nAtomCount=%i )\n", na, nAtomCount ); nAtomCount=na; }
+    //printf( "TestAppRARFF::visualize_atoms() na=%i \n", na );
+    //int nig = ff.countIgnoreAtoms(true);
+    //int nig = ff.countIgnoreAtoms(false);
+    //if( nig>nIgnore) { printf( "TestAppRARFF::visualize_atoms() number of atoms decreased( na=%i nAtomCount=%i )\n", nig,  nIgnore ); nIgnore=nig; }
 }
 
 // ===================== MAIN
