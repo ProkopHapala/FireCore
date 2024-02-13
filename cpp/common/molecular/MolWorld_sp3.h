@@ -123,6 +123,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     //Vec3i nPBC{1,3,0};
     int    npbc       = 0;
     Vec3d* pbc_shifts = 0;
+    int    ipbc0=0;
 
 	// state
 	bool bConverged = false;
@@ -501,6 +502,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     int evalPBCshifts( Vec3i nPBC, const Mat3d& lvec, Quat4f* shifts ){
         int ipbc=0;
         for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+            if( (ix==0) && (iy==0) && (iz==0) ) ipbc0 = ipbc;
             shifts[ipbc].f = (Vec3f)( (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz) );   
             //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
             ipbc++; 
@@ -512,6 +514,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         int ipbc=0;
         for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
             shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+            if( (ix==0) && (iy==0) && (iz==0) ) ipbc0 = ipbc;
             //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
             ipbc++; 
         }}}
@@ -523,7 +526,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         //pbc_shifts = new Vec3d[npbc];
         _realloc(pbc_shifts,npbc);
         int npbc_eval = evalPBCshifts( nPBC, lvec, pbc_shifts );
-        if(npbc!=npbc_eval){ printf( "ERORRO in MolWorld_sp3::makePBCshifts() final ipbc(%i)!=nbpc(%i) => Exit()\n", npbc_eval,npbc ); exit(0); }
+        if(npbc!=npbc_eval){ printf( "ERROR in MolWorld_sp3::makePBCshifts() final ipbc(%i)!=nbpc(%i) => Exit()\n", npbc_eval,npbc ); exit(0); }
         return npbc;
     }
 
@@ -1090,6 +1093,15 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
     }
 
+    int updateBuilderFromFF(){
+        if( ffl.nnode  != builder.confs.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.nnode(%i)  != builder->confs.size(%i) \n", ffl.nnode, builder.confs.size() ); exit(0); }
+        if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
+        printf( "MolWorld_sp3::updateBuilderFromFF(nnode=%i,ncap=%i) \n", ffl.nnode, ffl.natoms-ffl.nnode );
+        for(int i=0; i<ffl.natoms; i++){
+            builder.atoms[i].pos   = (Vec3d)ffl.apos[i];
+        }
+        return 0;
+    }
 
     double eval( ){
         if(verbosity>0) printf( "#### MolWorld_sp3::eval()\n");

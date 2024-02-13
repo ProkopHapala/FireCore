@@ -9,7 +9,9 @@ function A()
     clear()
     add( "./common_resources/H2O.xyz", {0.,0.,0.} )
     add( "./common_resources/NH3.xyz", {10.,0.,0.} )
-    --make()
+    print("LUA: ====== make() ==============")
+    make()
+    autoCharges()
 end
 
 print("LUA: test_add_mols.lua END")

@@ -83,6 +83,13 @@ int l_addMoleculeFile(lua_State *L){
     return 1; // number of return values to Lua environment
 }
 
+int l_autoCharges(lua_State *L){
+    printf( "l_autoCharges()\n" );
+    app->W->autoCharges();
+    return 0; // number of return values to Lua environment
+};
+
+
 int l_makeFF(lua_State *L){
     printf( "l_makeFF()\n" );
     MolWorld_sp3* W = app->W;
@@ -97,8 +104,10 @@ int l_makeFF(lua_State *L){
     W->assingMoleculeTopoTypes();
     printf(" ======== l_makeFF() 3 W->assingMoleculeTopoTypes()\n" );
     W->makeFFs();
-    app->bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
-    //app->bViewBuilder = false;
+    app->bindMolecule( W->ffl.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+    app->neighs    = W->ffl.neighs;
+    app->neighCell = W->ffl.neighCell;
+    app->bViewBuilder = false;
     printf(" ======== l_makeFF() 4 DONE\n" );
     return 0; // number of return values to Lua environment
 }
@@ -116,6 +125,7 @@ int initMyLua(){
     lua_register(L, "clear",   l_clearMolecules  );
     lua_register(L, "add",     l_addMoleculeFile  );
     lua_register(L, "make",    l_makeFF  );
+    lua_register(L, "autoCharges", l_autoCharges  );
     printf( "initMyLua() DONE\n" );
     return 1;
 }

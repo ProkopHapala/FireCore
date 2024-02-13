@@ -214,6 +214,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
+    void bindMolecule(const MolWorld_sp3* W );
     void unBindMolecule();
 	void drawSystem ( Vec3i ixyz=Vec3iZero );
     void drawBuilder( Vec3i ixyz=Vec3iZero );
@@ -421,10 +422,11 @@ void MolGUI::init(){
     W->init();
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Quat4d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
     //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
-    MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
-    constrs   = &W->constrs;
-    neighs    = W->ffl.neighs;
-    neighCell = W->ffl.neighCell;
+    //MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+    //constrs   = &W->constrs;
+    //neighs    = W->ffl.neighs;
+    //neighCell = W->ffl.neighCell;
+    MolGUI::bindMolecule( W );
     initGUI();
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
@@ -541,6 +543,7 @@ void MolGUI::draw(){
         //printf( "MolGUI::draw() -> W->MDloop(%i);", perFrame );    
         W->MDloop(perFrame); 
     }
+    if( bViewBuilder ){  W->updateBuilderFromFF(); }
     //if(bRunRelax){ W->relax( perFrame ); }
 
     // --- Mouse Interaction / Visualization
@@ -592,7 +595,7 @@ void MolGUI::draw(){
             //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             //printf( "draw() W->npbc=%i \n", W->npbc );
             //Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-            Draw3D::drawShifts( W->npbc, W->pbc_shifts, 10, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            Draw3D::drawShifts( W->npbc, W->pbc_shifts, W->ipbc0, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
         }else{ drawSystem(); }
 
@@ -1116,8 +1119,18 @@ void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Ve
     if(pbcShifts_)pbcShifts=pbcShifts_;
 }
 
+void MolGUI::bindMolecule( const MolWorld_sp3* W ){
+    //natoms=ff.natoms; nnode=ff.nnode; nbonds=ff.nbonds;
+    //atypes=ff.atypes; apos=ff.apos; fapos=ff.fapos; REQs=ff.REQs; pipos=ff.pipos; fpipos=ff.fpipos; bond2atom=ff.bond2atom; pbcShifts=ff.pbcShifts;
+    bindMolecule( W->ffl.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+    neighs    = W->ffl.neighs;
+    neighCell = W->ffl.neighCell;
+    constrs   = (Constrains*)&W->constrs;
+}
+
 void MolGUI::unBindMolecule(){
     natoms=0; nnode=0; nbonds=0; atypes=0; apos=0; fapos=0; REQs=0; pipos=0; fpipos=0; bond2atom=0; pbcShifts=0;
+    neighs=0; neighCell=0;
 }
 
 void MolGUI::drawBuilder( Vec3i ixyz ){
@@ -1154,6 +1167,7 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
 
 void MolGUI::drawSystem( Vec3i ixyz ){
     //printf( "DEBUG MolGUI::drawSystem() bViewBuilder=%i ixyz(%i,%i,%i)\n", bViewBuilder, ixyz.x,ixyz.y,ixyz.z );
+    printf( "DEBUG MolGUI::drawSystem(%i,%i,%i) mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n",  ixyz.x,ixyz.y,ixyz.z, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
     //float textSize=0.007;
     //float textSize=1.0;
     float textSize=0.015;
@@ -1166,6 +1180,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //W->nbmol.print();
     if(bViewAtomSpheres&&mm_bAtoms                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     if(bOrig){
+        printf( "DEBUG MolGUI::drawSystem() bOrig(%i)  mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n", bOrig, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
         //if(bViewAtomP0s     &&  fapos           ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
         if(bViewAtomForces    &&  fapos           ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
         if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
@@ -1475,7 +1490,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;
-                //case SDLK_c: W->autoCharges(); break;
+                case SDLK_c: W->autoCharges(); break;
                 
                 case SDLK_v: makeAFM(); break;
                 case SDLK_KP_MULTIPLY:  afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
@@ -1500,7 +1515,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_j: bViewBuilder   ^= 1; break;
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
-                case SDLK_c: W->bOcl=!W->bOcl;       break;
+                //case SDLK_c: W->bOcl=!W->bOcl;       break;
                 case SDLK_m: W->swith_method();      break;
                 //case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
                 //case SDLK_k: bDebug_scanSurfFF ^=1; break;
