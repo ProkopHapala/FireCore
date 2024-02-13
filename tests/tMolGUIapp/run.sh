@@ -44,6 +44,20 @@ ln -s $dir/$name .
 
 #./$name -uff -x common_resources/C2H4
 
+# ====== Small Molecules On Substrate
+
+#./$name -x common_resources/H2O    -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/NH3    -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/HCOOH   -g common_resources/NaCl_1x1_L2
+
+#./$name -x common_resources/pyridine        -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
+
+#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
+
+
+
 # ====== Polymers
 
 #./$name -x common_resources/polydiacetylene
@@ -110,12 +124,12 @@ ln -s $dir/$name .
 
 # ====== Small Molecules On Substrate
 
-#./$name -x common_resources/H2O               -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/H2O             -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/pyridine        -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
 #./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
-./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
+#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
 
 
 

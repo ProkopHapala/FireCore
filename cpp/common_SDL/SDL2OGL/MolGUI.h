@@ -92,13 +92,15 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ---- Visualization params
     int iSystemCur = 0;
     int which_MO  = 0; 
-    //double ForceViewScale = 1.0;
-    //double mm_Rsc         = 0.25;
-    //double mm_Rsub        = 1.0;
 
-    double ForceViewScale = 100.0;
-    double mm_Rsc         = 0.05;
-    double mm_Rsub        = 0.0;
+    double ForceViewScale = 1.0;
+    double mm_Rsc         = 0.25;
+    double mm_Rsub        = 0.5;
+    float textSize        = 0.025;
+
+    // double ForceViewScale = 100.0;
+    // double mm_Rsc         = 0.05;
+    // double mm_Rsub        = 0.0;
 
     bool   bViewBuilder     = false;
 
@@ -541,6 +543,9 @@ void MolGUI::draw(){
 
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
 
+    // --- Mouse Interaction / Visualization
+	ray0 = (Vec3d)(  cam.rot.a*mouse_begin_x  +  cam.rot.b*mouse_begin_y  +  cam.pos );
+
     W->pick_hray = (Vec3d)cam.rot.c;
     W->pick_ray0 = ray0;
 
@@ -551,14 +556,15 @@ void MolGUI::draw(){
     if( bViewBuilder ){  W->updateBuilderFromFF(); }
     //if(bRunRelax){ W->relax( perFrame ); }
 
-    // --- Mouse Interaction / Visualization
-	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
     //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
     if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], ray0); // Mouse Dragging Visualization
-    Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
-    Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
-    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+    
+    {   // draw mouse selection box;   ToDo:   for some reason the screen is upside-down
+        Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
+        Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
+        if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+    }
 
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
 
@@ -1140,7 +1146,7 @@ void MolGUI::unBindMolecule(){
 
 void MolGUI::drawBuilder( Vec3i ixyz ){
     //printf( "DEBUG MolGUI::drawBuilder() ixyz(%i,%i,%i)\n", ixyz.x,ixyz.y,ixyz.z );
-    float textSize=0.015;
+    //float textSize=0.015;
     glEnable(GL_DEPTH_TEST);
     MM::Builder& B = W->builder;
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
@@ -1175,7 +1181,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //printf( "MolGUI::drawSystem(%i,%i,%i) mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n",  ixyz.x,ixyz.y,ixyz.z, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
     //float textSize=0.007;
     //float textSize=1.0;
-    float textSize=0.015;
+    //float textSize=0.015;
     glEnable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
