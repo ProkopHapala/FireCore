@@ -96,14 +96,18 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double mm_Rsc         = 0.05;
     double mm_Rsub        = 0.0;
 
+    bool   bViewBuilder     = false;
+
     bool   mm_bAtoms        = true;
     bool   bViewMolCharges  = false;
     bool   bViewAtomLabels  = true;
-    bool   bViewAtomTypes  = false;
+    bool   bViewAtomTypes   = false;
+    bool   bViewColorFrag   = false;
     bool   bViewBondLabels  = false;
     bool   bViewAtomSpheres = true;
     bool   bViewAtomForces  = true;
     bool   bViewBondLenghts = false;
+    bool   bViewBonds       = true;
     bool   bViewPis         = false;
     bool   bViewSubstrate   = true;
     bool   isoSurfRenderType = 1;
@@ -210,7 +214,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
-	void drawSystem    ( Vec3i ixyz=Vec3iZero );
+	void drawSystem ( Vec3i ixyz=Vec3iZero );
+    void drawBuilder( Vec3i ixyz=Vec3iZero );
     void drawPi0s( float sc );
     void  showAtomGrid( char* s, int ia, bool bDraw=true );
     Vec3d showNonBond ( char* s, Vec2i b, bool bDraw=true );
@@ -231,6 +236,10 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void initWiggets();
     void drawingHex(double z0);
     void lattice_scan( int n1, int n2, const Mat3d& dlvec );
+
+    // ======================= Functions for AtomsInGrid
+    // What is this Non-uniform grid? I don't remember when and why I implemented this.
+    // Class representing quadrature mesh created by embeding spherical atoms in 3D rectangular grid. 
 
     void makeNonuniformGrid(int niter=5, double dt=0.1 ){
         printf( "makeNonuniformGrid() \n" );
@@ -577,7 +586,9 @@ void MolGUI::draw(){
     }
 
     if(bDoMM){
-        if(W->builder.bPBC){ 
+
+        if( bViewBuilder ){ drawBuilder(); }
+        else if(W->builder.bPBC){ 
             //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             //printf( "draw() W->npbc=%i \n", W->npbc );
             //Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
@@ -1105,6 +1116,35 @@ void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Ve
     if(pbcShifts_)pbcShifts=pbcShifts_;
 }
 
+void MolGUI::drawBuilder( Vec3i ixyz ){
+    float textSize=0.015;
+    glEnable(GL_DEPTH_TEST);
+    MM::Builder& B = W->builder;
+    bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
+    if(bViewAtomSpheres&&mm_bAtoms ){       
+        glEnable(GL_LIGHTING);
+        glShadeModel(GL_SMOOTH);                     
+        //Draw3D::ato( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); 
+        for(int ia=0; ia<B.atoms.size(); ia++){
+            const MM::Atom& a = B.atoms[ia];
+            if(bViewColorFrag){ Draw::setRGB( B.frags[a.frag].color ); }else{ Draw::setRGB( W->params.atypes[a.type].color ); }
+            Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity, 1.0 );
+        }    
+    }
+    if(mm_bAtoms&&bViewAtomLabels ){ for(int ia=0; ia<B.atoms.size(); ia++){ Draw3D::drawInt( B.atoms[ia].pos, ia, fontTex, textSize );} }
+    if( bViewBonds ){
+        glDisable(GL_LIGHTING);
+        glColor3f(0.0f,0.0f,0.0f);
+        glBegin(GL_LINES);
+        for(int ib=0; ib<B.bonds.size(); ib++){
+            Vec2i b  = B.bonds[ib].atoms;
+            Draw3D::vertex(B.atoms[b.a].pos); 
+            Draw3D::vertex(B.atoms[b.b].pos);
+        }
+        glEnd();
+    }
+}
+
 void MolGUI::drawSystem( Vec3i ixyz ){
     //float textSize=0.007;
     //float textSize=1.0;
@@ -1445,8 +1485,11 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LESS:      afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 //case SDLK_GREATER:   afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
-                case SDLK_j: makeNonuniformGrid(); break;
-                case SDLK_k: relaxNonuniformGrid(); break;
+                //case SDLK_j: makeNonuniformGrid(); break;
+                //case SDLK_k: relaxNonuniformGrid(); break;
+
+                case SDLK_k: bViewColorFrag ^= 1; break;
+                case SDLK_j: bViewBuilder   ^= 1; break;
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 case SDLK_c: W->bOcl=!W->bOcl;       break;
@@ -1462,6 +1505,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_f: bViewAtomForces  ^= 1; break;
                 case SDLK_w: bViewSubstrate   ^= 1; break;
                 case SDLK_i: bViewBondLenghts ^= 1; break;
+                
                 //case SDLK_LEFTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, +rotation_step ); break;
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
                 case SDLK_SPACE: bRunRelax=!bRunRelax;  if(bRunRelax)W->setConstrains();  break;

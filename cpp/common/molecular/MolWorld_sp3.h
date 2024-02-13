@@ -725,14 +725,53 @@ class MolWorld_sp3 : public SolverInterface { public:
         return true;
     }
 
+    int insertMolecule( const char* fname, const char* name=0, Vec3d pos={0,0,0}, Mat3d rot=Mat3dIdentity ){
+        if(name==0){ name=fname; }
+        // ToDo: we should be able to insert molecule without actually creating molecule-type
+        //sprintf(tmpstr, "%s.xyz", name );
+        int imol  = builder.loadMolType( fname, name );
+        int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
+        if (iret<0){ printf("ERROR MolWorld_sp3::loadGeom(%s) cannot be loaded \n", name); exit(0); }
+        int ifrag = builder.frags.size()-1;
+        return ifrag;
+    }
+
+    void makeMoleculeTopology(){
+        // ToDo: this will make topology for the whole system (all molecules), in future we should think how to make topology for individual molecules separately
+        builder.addCappingTypesByIz(1);
+        builder.tryAddConfsToAtoms( 0, -1 );
+        builder.cleanPis();
+        //if(verbosity>2)builder.printAtomConfs(false);
+        // --- we assume the lattice vectors are already loaded, and bPBC is set
+        if( bPBC ){ builder.autoBondsPBC(); }
+        else      { builder.autoBonds();    }
+        builder.checkNumberOfBonds( true, true );
+        //if(verbosity>2)builder.printBonds ();
+    }
+
+    void assingMoleculeTopoTypes(){
+        if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
+        //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+        //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+        builder.autoAllConfEPi  (           ); 
+        builder.setPiLoop       ( 0, -1, 10 ); // setup pi-orbitals
+        if(bEpairs)builder.addAllEpairsByPi( );    
+        //builder.printAtomConfs(false, false );
+        //builder.printAtomConfs(false, true );
+        // TBD here FF params are assigned already, but types are not yet found out...
+        builder.assignAllBondParams();    //if(verbosity>1) 
+    }
+
     int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
         if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n", name );
         // ------ Load geometry
         sprintf(tmpstr, "%s.xyz", name );
+        /*
         int imol  = builder.loadMolType( tmpstr, name );
         int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
         int ifrag = builder.frags.size()-1;
-        if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
+        */
+        int ifrag = insertMolecule( tmpstr, name, {0,0,0}, Mat3dIdentity );
         builder.addCappingTypesByIz(1);
         builder.tryAddConfsToAtoms( 0, -1 );
         builder.cleanPis();
@@ -971,7 +1010,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     }
 
-    virtual void clear( bool bParams=true ){
+    virtual void clear( bool bParams=true, bool bSurf=false ){
         //printf("MolWorld_sp3.clear() \n");
         builder.clear();
         ffl.dealloc();
@@ -987,9 +1026,12 @@ class MolWorld_sp3 : public SolverInterface { public:
         opt.pos = 0;
         opt.force = 0;
         opt.dealloc();
-
         constrs.clear();
-
+        if(bSurf){  // ToDo: deallocate gridFF and surf ?
+            //gridFF.dealloc();
+            //gridFF.bCellSet=false;
+            //gridFF.bGridFF=false;
+        }
         if(bParams){
             params.clear();
         }
