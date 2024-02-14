@@ -1658,6 +1658,7 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
 
 // redistribute charges from atom to capping electron pair
 void chargeToEpairs( Quat4d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
+    printf( "MMFFsp3_loc::chargeToEpairs() cQ %g etyp %i \n", cQ, etyp );
     for( int ia=0; ia<nnode; ia++ ){
         int* ngs=neighs[ia].array; 
         for( int j=0; j<4; j++ ){
@@ -1667,6 +1668,7 @@ void chargeToEpairs( Quat4d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
         }
     }
 }
+void chargeToEpairs( double cQ=-0.2, int etyp=-1 ){ chargeToEpairs( REQs, atypes, cQ, etyp ); }
 
 // ========== Measure functions
 

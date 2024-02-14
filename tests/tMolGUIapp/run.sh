@@ -53,13 +53,12 @@ ln -s $dir/$name .
 #./$name -x common_resources/pyridine -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
 
-./$name -x common_resources/N_2edge_assay_1  -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/N_2edge_assay_1  -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/N_2edge_assay_1  -g common_resources/NaCl_1x1_L2 -e
 
 
 #./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
-
-
 
 # ====== Polymers
 
@@ -71,6 +70,34 @@ ln -s $dir/$name .
 
 #./$name -x common_resources/polymer-2_new -EachAngle
 #./$name -x common_resources/polymer-2_new -EachAngle -torsions
+
+# ====== Polymers On Substrate
+
+#./$name -x common_resources/polydiacetylene           -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/polydiacetylene           -g common_resources/NaCl_1x1_L2 -subs 4,common_resources/-COOH.xyz
+#./$name -x common_resources/polydiacetylene    -n 221 -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/polydiacetylene    -n 241 -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/polydiacetylene    -n 241 -g common_resources/NaCl_1x1_L2 -ng 4,-2,2,3
+#./$name -x common_resources/polydiacetylene    -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,2,3
+#./$name -x common_resources/polydiacetylene    -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,3,4
+#./$name -x common_resources/polydiacetylene    -n 141 -g common_resources/NaCl_1x1_L2 -subs 4,common_resources/-COOH.xyz  -ng 2,-1,3,4 -q 0.05
+
+#./$name -x common_resources/polydiacetylene_OH -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,3,4
+#./$name -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
+
+#./$name -x common_resources/polymer-2_new            -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/polymer-2_new            -g common_resources/NaCl_1x1_L2  -e
+#./$name -x common_resources/polymer-2          -n 221 -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/polymer-2_new   -c 10     -g common_resources/NaCl_1x1_L2
+
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 1
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 50
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+#./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,20 0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+#./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -prelat 5,10000 -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,20 0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+
 
 # ===== test Collision Damping
 
@@ -89,9 +116,6 @@ ln -s $dir/$name .
 #./$name -x common_resources/C8_diamin_diether -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
 #./$name -x common_resources/nNonan_cross -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
 #./$name -x common_resources/hydropentacene_cross -perframe  10  -col_damp 1 -0.5 -0.3 0.0   0.0 0.5
-
-
-
 
 #./$name -x common_resources/nHexadecan      -perframe 100  -col_damp 10 -1.0 -1.0 0.1    0.0 0.5  
 #./$name -x common_resources/nHexadecan_fold -perframe 100  -col_damp 10 -1.0 -1.0 0.1    0.0 0.5
@@ -125,42 +149,7 @@ ln -s $dir/$name .
 #./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10 -1.0  1.0 0.1   0.0 0.5
 #./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10 -1.0 -1.0 0.1   0.0 0.5
 
-# ====== Small Molecules On Substrate
 
-#./$name -x common_resources/H2O             -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/pyridine        -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
-
-#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
-
-
-
-#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 1
-#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -perframe 50
-#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-#./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,20 0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-#./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -prelat 5,10000 -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,20 0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-
-# ====== Polymers On Substrate
-
-#./$name -x common_resources/polydiacetylene           -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/polydiacetylene           -g common_resources/NaCl_1x1_L2 -subs 4,common_resources/-COOH.xyz
-#./$name -x common_resources/polydiacetylene    -n 221 -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/polydiacetylene    -n 241 -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/polydiacetylene    -n 241 -g common_resources/NaCl_1x1_L2 -ng 4,-2,2,3
-#./$name -x common_resources/polydiacetylene    -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,2,3
-#./$name -x common_resources/polydiacetylene    -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,3,4
-#./$name -x common_resources/polydiacetylene    -n 141 -g common_resources/NaCl_1x1_L2 -subs 4,common_resources/-COOH.xyz  -ng 2,-1,3,4 -q 0.05
-
-#./$name -x common_resources/polydiacetylene_OH -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,3,4
-#./$name -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
-
-#./$name -x common_resources/polymer-2          -n 221 -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/polymer-2_new            -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/polymer-2_new   -c 10     -g common_resources/NaCl_1x1_L2
 
 
 

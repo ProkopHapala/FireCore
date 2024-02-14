@@ -612,15 +612,21 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printBonds();    
     }
 
-    void autoCharges(bool bVerbose=false){
-        if(verbosity>0)printf("MolWorld_sp3::autoCharges() \n");
+    void autoCharges(bool bVerbose=false, bool bFromScratch=false ){
+        //if(verbosity>0)
+        printf("MolWorld_sp3::autoCharges() \n");
+        printf("MolWorld_sp3::autoCharges() START REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
         //bVerbose=true;
         qeq.realloc( ff.natoms );
         params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );
-        int iconstr = params.getAtomType("E");    //printf("constrain type %i \n", iconstr );
-        qeq.constrainTypes( ff.atype, iconstr );
-        qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.0, bVerbose );
-        copy( qeq.n, 1, 0, (double*)qeq.qs, 4, 2, (double*)nbmol.REQs );
+        int etyp = params.getAtomType("E");    //Constrain electron pairs
+        qeq.constrainTypes( ff.atype, etyp );
+        if(!bFromScratch){ copy( qeq.n, 4,2,(double*)nbmol.REQs, 1,0,(double*)qeq.qs ); }  // Initial charges 
+        //for(int i=0; i<qeq.n; i++){ printf( "qeq.qs[%i]=%g  REQ.z=%g  \n", i, qeq.qs[i], nbmol.REQs[i].z );}
+        qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.0, bVerbose, bFromScratch );
+        copy( qeq.n, 1,0,(double*)qeq.qs, 4,2,(double*)nbmol.REQs );
+        if(bFromScratch){ ffl.chargeToEpairs( -0.2, etyp ); }
+        printf("MolWorld_sp3::autoCharges() END REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
         bChargeUpdated=true;
     }
 
@@ -916,10 +922,11 @@ class MolWorld_sp3 : public SolverInterface { public:
         builder.setPiLoop       ( ic0, -1, 10 );
         if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
         //builder.printAtomConfs(false, false );
-        builder.printAtomConfs(false, true );
+        //builder.printAtomConfs(false, true );
         // TBD here FF params are assigned already, but types are not yet found out...
         builder.assignAllBondParams();    //if(verbosity>1)
         builder.finishFragment(ifrag);    
+        //builder.printAtoms();
         //printf( "buildMolecule_xyz: nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
         //if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
         //if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
@@ -959,6 +966,9 @@ class MolWorld_sp3 : public SolverInterface { public:
             builder.toMMFFsp3    ( ff , true, bEpairs );
             ffl.flipPis( Vec3dOne );
             //ff4.flipPis( Vec3fOne );
+
+            //ffl.printAtomParams();
+            //ffl.print_nonbonded();
         }
 
         // setting up PBC
@@ -1002,7 +1012,8 @@ class MolWorld_sp3 : public SolverInterface { public:
             //bool bChargeToEpair=false;
             if(bChargeToEpair){
                 int etyp=-1; etyp=params.atomTypeDict["E"];
-                ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
+                //ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
+                ffl.chargeToEpairs( -0.2, etyp ); 
             }
             nbmol.evalPLQs(gridFF.alphaMorse);
             { // check FFS
@@ -1023,7 +1034,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             }                         
             _realloc( manipulation_sel, ff.natoms );
         }
-
+        //ffl.print_nonbonded();
     }
 
     virtual void clear( bool bParams=true, bool bSurf=false ){

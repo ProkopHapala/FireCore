@@ -93,10 +93,18 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int iSystemCur = 0;
     int which_MO  = 0; 
 
+
+    //float textSize        = 0.025;
+    float textSize        = 0.020;
+    //float textSize        = 0.015;
+
     double ForceViewScale = 1.0;
-    double mm_Rsc         = 0.25;
-    double mm_Rsub        = 0.5;
-    float textSize        = 0.025;
+    double mm_Rsc         = 0.20;
+    double mm_Rsub        = 0.0;
+
+    // double ForceViewScale = 1.0;
+    // double mm_Rsc         = 0.25;
+    // double mm_Rsub        = 0.5;
 
     // double ForceViewScale = 100.0;
     // double mm_Rsc         = 0.05;
@@ -1214,6 +1222,7 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
 }
 
 void MolGUI::drawSystem( Vec3i ixyz ){
+    //printf( "MolGUI::drawSystem() natoms=%i\n", natoms );
     //printf( "MolGUI::drawSystem() bViewBuilder=%i ixyz(%i,%i,%i)\n", bViewBuilder, ixyz.x,ixyz.y,ixyz.z );
     //printf( "MolGUI::drawSystem(%i,%i,%i) mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n",  ixyz.x,ixyz.y,ixyz.z, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
     //float textSize=0.007;
