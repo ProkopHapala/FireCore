@@ -1121,9 +1121,10 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     int updateBuilderFromFF(bool bPos=true, bool bQ=true){
         if( ffl.nnode  != builder.confs.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.nnode(%i)  != builder->confs.size(%i) \n", ffl.nnode,  builder.confs.size() ); exit(0); }
-        if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
+        //if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
         //printf( "MolWorld_sp3::updateBuilderFromFF(nnode=%i,ncap=%i) \n", ffl.nnode, ffl.natoms-ffl.nnode );
-        for(int i=0; i<ffl.natoms; i++){
+        int na = builder.atoms.size();  if(na>ffl.natoms)na=ffl.natoms;
+        for(int i=0; i<na; i++){
             if(bPos){ builder.atoms[i].pos   = ffl.apos[i];   }
             if(bQ  ){ builder.atoms[i].REQ.z = ffl.REQs[i].z; }
         }
