@@ -1760,6 +1760,7 @@ class Builder{  public:
     }
 
     int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ=false, bool bOnlyFirstNeigh=false ){
+        printf( "Builder::selectBondsBetweenTypes[%i,%i] it1 %i it2 %i byZ %i bOnlyFirstNeigh %i \n", imin, imax, it1, it2, byZ, bOnlyFirstNeigh );
         selection.clear();
         std::unordered_set<int> nodes;
         for(int ib=imin; ib<imax; ib++){

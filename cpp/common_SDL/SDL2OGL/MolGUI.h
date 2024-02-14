@@ -172,6 +172,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     enum class Gui_Mode { base, edit, scan };
     Gui_Mode  gui_mode = Gui_Mode::base;
     //int gui_mode = Gui_Mode::edit;
+    DropDownList* panel_Frags=0;
 
     // ----- AFM scan
     GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,8.0}, 0.1 };
@@ -241,6 +242,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     //void InitQMMM();
     void initGUI();
+    void updateGUI();
     void initWiggets();
     void drawingHex(double z0);
     void lattice_scan( int n1, int n2, const Mat3d& dlvec );
@@ -345,18 +347,22 @@ void MolGUI::initWiggets(){
     
     ((TableView*)gui.addPanel( new TableView( tab1, "lattice", 5, ylay.x0,  0, 0, 3, 3 ) ))->input = new GUITextInput();
 
-    ylay.step(2); 
+    ylay.step(3); 
     ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,ylay.x0,5+100,ylay.x1, true, true ) ) )
         ->setRange(5.0,50.0)
         ->setValue(zoom)
         //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
         ->setCommand( [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; } );
 
-    ylay.step(2); 
+    ylay.step(3); 
     ((DropDownList*)gui.addPanel( new DropDownList("Pick Mode:",5,ylay.x0,5+100, 3 ) ) )
         ->addItem("pick_atoms")
         ->addItem("pick_bonds")
-        ->addItem("Item_angles");
+        ->addItem("pick_angles");
+
+    ylay.step(3); 
+    panel_Frags = ((DropDownList*)gui.addPanel( new DropDownList("Fragments:",5,ylay.x0,5+100, 3 ) ) );
+    panel_Frags->setCommand( [&](GUIAbstractPanel* me_){ int i=((DropDownList*)me_)->iSelected; printf( "panel_Frags %02i \n", i );  W->selectFragment(i); return 0; } );   
 
     ylay.step(6); 
     ((DropDownList*)gui.addPanel( new DropDownList("View Side",5,ylay.x0,5+100, 3 ) ) )
@@ -424,6 +430,17 @@ void MolGUI::initGUI(){
     initWiggets();
 }
 
+void MolGUI::updateGUI(){
+    if(panel_Frags){
+        panel_Frags->labels.clear();
+        for(int i=0; i<W->builder.frags.size(); i++){
+            char s[16]; sprintf(s,"Frag_%02i", i );
+            panel_Frags->addItem( s );
+        }
+    
+    }
+}
+
 void MolGUI::init(){
     if(verbosity>0)printf("MolGUI::init() \n");
     W->init();
@@ -435,6 +452,7 @@ void MolGUI::init(){
     //neighCell = W->ffl.neighCell;
     MolGUI::bindMolecule( W );
     initGUI();
+    updateGUI();
     if(verbosity>0)printf("... MolGUI::init() DONE\n");
 }
 
@@ -668,7 +686,7 @@ void MolGUI::draw(){
 
     for(int i=0; i<W->selection.size(); i++){ 
         int ia = W->selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, W->nbmol.apos[ia] );     
+        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia] );     
     }
 
     // --- Drawing Population of geometies overlay
@@ -1335,14 +1353,20 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                 case SDL_BUTTON_LEFT:
                     if( ray0.dist2(ray0_start)<0.1 ){
                         int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
-                        if( ipick == W->ipicked ){ W->ipicked=-1; }else{ W->ipicked = ipick; }; 
-                        W->selection.clear();
+                        if( ipick>=0 ){ 
+                            printf( "MolGUI::mouse_default() ipick=%i \n", ipick ); 
+                            W->selection.clear();  
+                        };
+                        if( ipick == W->ipicked ){  W->ipicked=-1; }else{ W->ipicked = ipick; };
                         if(W->ipicked>=0){ 
+                            //printf( "picked atom %i \n", W->ipicked ); 
+                            //printf( "MolGUI::mouse_default() SDL_BUTTON_LEFT W->selection.clear(); (B) ipick=%i W->ipicked=%i\n", ipick, W->ipicked );
+                            //W->selection.clear();
                             W->selection.push_back(W->ipicked); 
                             Qpanel->value = W->nbmol.REQs[W->ipicked].z;
                             Qpanel->redraw=true;
                         };
-                        printf( "picked atom %i \n", W->ipicked );
+                        //printf( "picked atom %i \n", W->ipicked );
                     }else{
                         selectRect( ray0_start, ray0 );
                     }

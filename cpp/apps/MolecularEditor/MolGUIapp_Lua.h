@@ -109,6 +109,7 @@ int l_makeFF(lua_State *L){
     app->neighs    = W->ffl.neighs;
     app->neighCell = W->ffl.neighCell;
     app->bViewBuilder = false;
+    app->updateGUI();
     printf(" ======== l_makeFF() 4 DONE\n" );
     return 0; // number of return values to Lua environment
 }

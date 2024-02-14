@@ -689,7 +689,7 @@ GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, 
                         iSelected = i;
                         //if(onSelect)onSelect->GUIcallback(this);
                         if(command)command(this);
-                        printf( "iSelected %i  iItem0 %i  labels.size() %i  \n", iSelected, iItem0, labels.size() );
+                        printf( "DropDownList::onMouse() iSelected %i  iItem0 %i  labels.size() %i  \n", iSelected, iItem0, labels.size() );
                     }
                     close();
                 }else{
