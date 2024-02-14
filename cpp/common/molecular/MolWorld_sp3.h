@@ -160,7 +160,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     int nloop=0;
 
 	// Selecteion & Manipulasion
-	std::vector<int> selection;
+	std::vector<int>            selection;
+    std::unordered_map<int,int> selection_map;
 	Vec3d manipulation_p0=Vec3dZero; 
 	Vec3d manipulation_ax=Vec3dZ;
 	int*  manipulation_sel=0;
@@ -1020,6 +1021,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     virtual void clear( bool bParams=true, bool bSurf=false ){
         //printf("MolWorld_sp3.clear() \n");
         builder.clear();
+        selection.clear();
         ffl.dealloc();
         ff.dealloc();
         //ff4.dealloc();
@@ -1566,7 +1568,8 @@ class MolWorld_sp3 : public SolverInterface { public:
         return n;
     }
 
-    void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
+    int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
+        printf( "MolWorld_sp3::selectRect() p0(%g,%g,%g) p1(%g,%g,%g) \n", p0.x,p0.y,p0.z, p1.x,p1.y,p1.z );
         Vec3d Tp0,Tp1,Tp;
         //Mat3d rot = (Mat3d)cam.rot;
         rot.dot_to(p0,Tp0);
@@ -1582,6 +1585,20 @@ class MolWorld_sp3 : public SolverInterface { public:
                 selection.push_back( i );
             }
         }
+        return selection.size();
+    }
+
+    int selectFragment( int ifrag ){
+        printf( "MolWorld_sp3::selectFragment() ifrag %i \n", ifrag );
+        selection.clear();
+        // ToDo: this is not most efficient way to do it, but for know we don't have reliable way to get all atoms which belongs to the fragment when atoms are reordered
+        for(int i=0; i<builder.atoms.size(); i++ ){
+            const MM::Atom& a = builder.atoms[i];
+            if( a.frag == ifrag ){
+                selection.push_back( i );
+            }
+        }
+        return selection.size();
     }
 
     void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,const char* trjName, bool bAddjustCaps=false ){
