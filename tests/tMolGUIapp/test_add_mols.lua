@@ -12,6 +12,7 @@ function A()
     print("LUA: ====== make() ==============")
     make()
     autoCharges()
+    -- frags()
 end
 
 print("LUA: test_add_mols.lua END")

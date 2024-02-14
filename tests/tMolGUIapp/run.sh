@@ -50,8 +50,11 @@ ln -s $dir/$name .
 #./$name -x common_resources/NH3      -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/HCOOH    -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/pyridine -g common_resources/NaCl_1x1_L2
-./$name -x common_resources/pyridine -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
+#./$name -x common_resources/pyridine -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
 #./$name -x common_resources/pyridine -n 110 -g common_resources/NaCl_1x1_L2
+
+./$name -x common_resources/N_2edge_assay_1  -g common_resources/NaCl_1x1_L2
+
 
 #./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
