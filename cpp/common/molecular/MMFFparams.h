@@ -695,6 +695,7 @@ class MMFFparams{ public:
         double e = atypes[ityp].EvdW;
         if(bSqrtE) e=sqrt(e);
         REQ.y = e;
+        REQ.w = atypes[ityp].Hb; // Hbond Correction
     }
 
     void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=false, bool bQ0=false )const{

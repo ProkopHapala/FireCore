@@ -54,7 +54,7 @@ struct Atom{
     Quat4d REQ;   // constexpr Vec3d{1.7,sqrt(0.0037292524),0}
     //Atom() = default;
 
-    void print()const{ printf( " Atom{id %i t %i c %i f %i REQ(%g,%g,%g) pos(%g,%g,%g)}", id, type, iconf, frag, REQ.x, REQ.y, REQ.z, pos.x,pos.y,pos.z ); }
+    void print()const{ printf( " Atom{id %i t %i c %i f %i REQ(%g,%g,%g,%g) pos(%g,%g,%g)}", id, type, iconf, frag, REQ.x, REQ.y, REQ.z,REQ.w, pos.x,pos.y,pos.z ); }
 
     Atom() = default;
     Atom(const Vec3d& pos_):type{0},frag{-1},iconf{-1},REQ{defaultREQ},pos{pos_}{};
