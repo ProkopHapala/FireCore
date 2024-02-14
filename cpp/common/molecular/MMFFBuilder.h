@@ -3015,6 +3015,41 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return molTypes.size()-1;
     }
 
+    int loadXYZ_Atoms(const char* fname, MMFFparams* params_=0, int iH=-1, bool bCOG=false, const Vec3d& pos, const Mat3d& rot ){
+        if(params_!=0) params=params_;
+        //  this is a bit stupid - we allocate and deallocate mol just because we need some temporary storage for calling params->loadXYZ()
+        Atoms   mol;
+        Quat4d* REQs=0;
+        int iret =  params->loadXYZ( fname, mol.natoms, &mol.apos, &REQs, &mol.atypes, 0, &lvec );
+        int ifrag=-1;
+        if( iret>=0  ){ 
+            if( iret==0 ){ bPBC=false; }else{ bPBC=true; }
+            //printf("MM::Builder::loadMolTypeXYZ(%s) bPBC=%i \n", fname, bPBC );
+            //if(params) params->assignREs( mol.natoms, mol.atypes, REQs );
+            Vec3d cog=Vec3dZero;
+            if(bCOG) cog=mol.getBBcog();
+            int ifrag   = frags.size()-1;  // frags.size()-1
+            for(int i=0; i<mol.natoms; i++){
+                const int ityp = mol.atypes[i];
+                if( ityp==iH ) continue;
+                int ne=0,npi=0; 
+                Quat4d REQ=REQs[i];
+                if(params){  //printf( "params \n" );
+                    params->assignRE( ityp, REQ );
+                    ne = params->atypes[ityp].nepair;
+                    REQ.z=REQs[i].z;
+                }
+                //Quat4d  REQi = REQs[i]; REQi.y = sqrt(REQi.y);
+                Vec3d p; rot.dot_to(mol.apos[i],p); p.add( pos ); p.sub(cog);
+                //atoms.push_back( (Atom){mol.atypes[i], -1, -1, p, REQi } );
+                int ia = insertAtom( ityp, p, &REQ, npi, ne );
+                atoms[ia].frag = ifrag;
+            }
+        }
+        delete [] REQs;
+        return ifrag;
+    }
+
     int registerRigidMolType( int natoms, Vec3d* pos, Quat4d* REQs, int* atomType ){
         Molecule* mol = new Molecule();
         mol->allocate( natoms, 0 );
