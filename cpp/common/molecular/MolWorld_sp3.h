@@ -2006,12 +2006,53 @@ MolecularDatabase* database;
 
 
 void addSnapshot(){
-    //std::unique_ptr<DatabaseMember> dbm(new DatabaseMember);
+
     int nMembers = database->getNMembers();
-    //if(nMembers == 2)    nbmol.natoms = 2;
-    if(!nbmol.metaData)  nbmol.metaData = new MetaData;
-    database->testHash(&nbmol);
+    database->setDescriptors(&params, &nbmol);
+
+
+
+srand(time(0));
+
+    double angle = randf() * 360;
+    double move_x = randf() * 0.5;
+    double move_y = randf() * 0.5;
+    double move_z = randf() * 0.5;
+    Vec3d axis = {randf(), randf(), randf()};
+    Vec3d p0 = {randf()*5-2.5, randf()*5-2.5, randf()*5-2.5};
+    for (int i = 0; i < nbmol.natoms; i++)
+    {
+        nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
+        nbmol.apos[i].add({move_x, move_y, move_z});    
+    }
+
+
+
     
+
+    for (int i = 0; i<nMembers; i++)
+    {
+        printf("%d <-> %d: %lf\n", nMembers, i, database->compareAtoms(&nbmol, i));
+    }
+    
+    database->testHash(&nbmol);    
+    
+    std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
+    const char* cstr1 = trjName1.c_str();  
+    FILE* file1=0;
+    file1=fopen( cstr1, "w" );
+    params.writeXYZ(file1, &nbmol, "#comment");
+    fclose(file1);
+    // for (int i = 0; i < nbmol.natoms; i++)
+    // {
+    //     nbmol.apos[i].rotate(-2 * 3.14159 / 360 * 20, Vec3d{0, 0, 1}, Vec3d{0, 0, 0});
+    // }
+    //params.writeXYZ(file2, &nbmol, "#comment");
+    
+    //fclose(file2);
+    //if(nMembers>0) printf("database->compareDescriptors(nMembers-1, 0): %f\n", database->compareDescriptors(nMembers, 0));
+
+
     
     // if(nMembers >=1){
     //     if(database->compareDescriptors(nMembers, 0)){
