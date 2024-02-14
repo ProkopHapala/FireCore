@@ -419,9 +419,12 @@ class Builder{  public:
         srand( 1234 );
         for(int i=0; i<frags.size(); i++){
             //frags[i].color = hash_Wang( 55 + i )&0xFF  + ((hash_Wang( 4487 + i*12 )&0xFF)<<8)+ ((hash_Wang( 15455 + i*123 )&0xFF)<<16);
-            int r = rand()&0xFF;
-            int g = rand()&0xFF;
-            int b = rand()&0xFF;
+            //int r = rand()&0xFF;
+            //int g = rand()&0xFF;
+            //int b = rand()&0xFF;
+            int r = (rand()>>23)&0xFF;
+            int g = (rand()>>23)&0xFF;
+            int b = (rand()>>23)&0xFF;
             //frags[i].color = ( rand()&0xFF  + ((rand()&0xFF)<<8)+ ((rand()&0xFF)<<16)) | 0xFF000000;
             frags[i].color = ( r + (g<<8) + (b<<16) ) | 0xFF000000;
             printf("frags[%i].color %X (%i,%i,%i)\n", i, frags[i].color, r, g, b );

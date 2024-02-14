@@ -89,6 +89,11 @@ int l_autoCharges(lua_State *L){
     return 0; // number of return values to Lua environment
 };
 
+int l_autoFrags(lua_State *L){
+    printf( "l_autoFrags()\n" );
+    app->W->fragmentsByBonds();
+    return 0; // number of return values to Lua environment
+};
 
 int l_makeFF(lua_State *L){
     printf( "l_makeFF()\n" );
@@ -128,6 +133,7 @@ int initMyLua(){
     lua_register(L, "add",     l_addMoleculeFile  );
     lua_register(L, "make",    l_makeFF  );
     lua_register(L, "autoCharges", l_autoCharges  );
+    lua_register(L, "frags",   l_autoFrags  );
     printf( "initMyLua() DONE\n" );
     return 1;
 }

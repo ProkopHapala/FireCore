@@ -161,7 +161,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 
 	// Selecteion & Manipulasion
 	std::vector<int>            selection;
-    std::unordered_map<int,int> selection_map;
+    //std::unordered_map<int,int> selection_map;
+    std::unordered_set<int>     selection_set;
 	Vec3d manipulation_p0=Vec3dZero; 
 	Vec3d manipulation_ax=Vec3dZ;
 	int*  manipulation_sel=0;
@@ -1029,6 +1030,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         //printf("MolWorld_sp3.clear() \n");
         builder.clear();
         selection.clear();
+        selection_set.clear();
         ffl.dealloc();
         ff.dealloc();
         //ff4.dealloc();
@@ -1606,6 +1608,60 @@ class MolWorld_sp3 : public SolverInterface { public:
             }
         }
         return selection.size();
+    }
+
+    int selectAllBonded( int ia ){
+        selection_set.clear();
+        selection.clear();
+        if( (ia<0)||(ia>=builder.atoms.size()) ){  printf( "ERROR : MolWorld_sp3::selectAllBonded(ia=%i) but builder.atoms.size(%i) \n" );  exit(0); };
+        if( builder.atoms[ia].iconf == -1 ){  // if this atom is capping
+            for(int ib=0; ib<builder.bonds.size(); ib++){
+                const Vec2i b = builder.bonds[ib].atoms;
+                if(b.x==ia){ selection_set.insert( b.y ); }else if(b.y==ia){ selection_set.insert( b.x ); }
+            }
+        }else{
+            selection_set.insert( ia );
+        }
+        int nfound = 1;
+        while( nfound>0){
+            int osz = selection_set.size();
+            for( int ia : selection_set ){
+                int ic = builder.atoms[ia].iconf;
+                if( ic < 0 )continue;  
+                MM::AtomConf& conf = builder.confs[ic];
+                for( int j = 0; j<conf.nbond; j++ ){
+                    int ib = conf.neighs[j];
+                    int ja = builder.bonds[ib].getNeighborAtom(ia);
+                    selection_set.insert( ja );
+                }
+            }
+            nfound = selection_set.size() - osz;
+        }
+        for( int ia : selection_set ){ selection.push_back( ia ); }
+        return selection.size();
+    }
+
+    int fragmentsByBonds(){
+        builder.frags.clear();
+        for( MM::Atom& a : builder.atoms ){ a.frag = -1; }
+        //int nfound = 1;
+        for( int ia=0; ia<builder.atoms.size(); ia++ ){
+            if( builder.atoms[ia].frag == -1 ){
+                int nfound = selectAllBonded( ia );
+                int ifrag = builder.frags.size();
+                //builder.startFragment();
+                builder.frags.push_back( MM::Fragment() );
+                printf( "fragmentsByBonds() ifrag %i nfound %i \n", ifrag, nfound );
+                for( int i : selection ){
+                    builder.atoms[i].frag = ifrag;
+                    //builder.frags[ifrag].atoms.push_back( i );
+                }
+            }    
+        }
+        selection_set.clear();
+        selection.clear();
+        builder.randomFragmentCollors();
+        return builder.frags.size();
     }
 
     void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,const char* trjName, bool bAddjustCaps=false ){
