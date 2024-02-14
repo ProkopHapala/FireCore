@@ -51,6 +51,11 @@ class Atoms{ public:
             apos[ia].update_bounds( pmin, pmax );
         }
     }
+    Vec3d getBBcog()const{
+        Vec3d pmin,pmax;
+        getAABB( pmin, pmax );
+        return (pmin+pmax)*0.5;
+    }
 
     void fromRigid( Vec3d* ps0, const Vec3d& p0, const Mat3d& rot ){ for(int i=0; i<natoms; i++){ rot.dot_to_T( ps0[i], apos[i] ); apos[i].add(p0);         } }
     void shift    ( Vec3d d                                       ){ for(int i=0; i<natoms; i++){ apos[i].add(d); } }

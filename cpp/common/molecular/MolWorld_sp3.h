@@ -732,13 +732,19 @@ class MolWorld_sp3 : public SolverInterface { public:
     }
 
     int insertMolecule( const char* fname, const char* name=0, Vec3d pos={0,0,0}, Mat3d rot=Mat3dIdentity ){
-        if(name==0){ name=fname; }
         // ToDo: we should be able to insert molecule without actually creating molecule-type
         //sprintf(tmpstr, "%s.xyz", name );
-        int imol  = builder.loadMolType( fname, name );
-        if (imol<0){ printf("ERROR MolWorld_sp3::builder.loadMolType(%s) imol=%i \n", name, imol ); exit(0); }
-        int iret  = builder.insertFlexibleMolecule( imol, pos, Mat3dIdentity, -1 );
-        if (iret<0){ printf("ERROR MolWorld_sp3::insertMolecule(%s) iret=%i \n", name, iret ); exit(0); }
+        int iret=-1;
+        // {   // Previous version using Molecule class
+        //     if(name==0){ name=fname; }
+        //     int imol  = builder.loadMolType( fname, name );
+        //     if (imol<0){ printf("ERROR MolWorld_sp3::builder.loadMolType(%s) imol=%i \n", name, imol ); exit(0); }
+        //     iret  = builder.insertFlexibleMolecule( imol, pos, Mat3dIdentity, -1 );
+        //     if (iret<0){ printf("ERROR MolWorld_sp3::insertMolecule(%s) iret=%i \n", name, iret ); exit(0); }
+        // }
+        {   // New version using Atoms class
+            iret = builder.loadXYZ_Atoms( fname, &params, -1, false, pos, rot );
+        }
         //int ifrag = builder.frags.size()-1;
         //return ifrag;
         return iret;
