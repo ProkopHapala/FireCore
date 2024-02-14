@@ -551,8 +551,8 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &axSwap, &debug_rot );
         int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0, &debug_rot );
         //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
-        builder.addCappingTypesByIz(1);
-        builder.tryAddConfsToAtoms( 0, -1 );    
+        //builder.addCappingTypesByIz(1);
+        builder.tryAddConfsToAtoms( 0, -1 ); 
         builder.sortConfAtomsFirst();              
         builder.tryAddBondsToConfs( );      
         builder.finishFragment();       
@@ -752,7 +752,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     void makeMoleculeTopology(){
         // ToDo: this will make topology for the whole system (all molecules), in future we should think how to make topology for individual molecules separately
-        builder.addCappingTypesByIz(1);
+        //builder.addCappingTypesByIz(1);
         builder.tryAddConfsToAtoms( 0, -1 );
         builder.cleanPis();
         //if(verbosity>2)builder.printAtomConfs(false);
@@ -904,17 +904,18 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     int buildMolecule_xyz( const char* xyz_name ){
         int ifrag = loadGeom( xyz_name );
+        //printf( "MolWorld_sp3::buildMolecule_xyz(%s) ifrag=%i \n", xyz_name, ifrag );
         int ia0=builder.frags[ifrag].atomRange.a;
         int ic0=builder.frags[ifrag].confRange.a;
         // TBD not sure that I got how charges are assigned in here...
         if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
         if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
         if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-        builder.autoAllConfEPi  ( ia0 ); 
+        builder.autoAllConfEPi  ( ia0 );
         builder.setPiLoop       ( ic0, -1, 10 );
-        if(bEpairs)builder.addAllEpairsByPi( ia0=0 );    
+        if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
         //builder.printAtomConfs(false, false );
-        //builder.printAtomConfs(false, true );
+        builder.printAtomConfs(false, true );
         // TBD here FF params are assigned already, but types are not yet found out...
         builder.assignAllBondParams();    //if(verbosity>1)
         builder.finishFragment(ifrag);    
@@ -1162,7 +1163,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         */
         //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
         //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
-        //ffl.printDEBUG(  false, false );
+        //ffl.printDebug(  false, false );
         //exit(0);
         if(verbosity>0) printf( "#### MolWorld_sp3::eval() DONE\n\n");
 

@@ -343,7 +343,7 @@ int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, 
 // ============================
 class Builder{  public:
     //int verbosity = 0;
-    //bool bDEBUG = false;
+    //bool bDebug = false;
 
     std::unordered_set<int> selection;
     std::vector<int>        atom_permut;
@@ -640,6 +640,7 @@ class Builder{  public:
         int n=0;
         for(int ia=0; ia<imax; ia++){
             int t = atoms[ia].type;
+            //printf( "Builder::tryAddConfsToAtoms()[ia=%i] t %i capping_types.contains(t)=%i \n", ia, t, capping_types.contains(t) );
             if( capping_types.contains( t ) ) continue;
             if( atoms[ia].iconf < 0 ){
                 addConfToAtom( ia, 0 );
@@ -666,11 +667,11 @@ class Builder{  public:
                 REQ=&REQloc;
             }else{ REQ=&defaultREQ; }
         int iconf=-1;
-        if(npi>=0){
+        if(npi>=0){ if( !capping_types.contains(ityp)){ 
             //printf( "insertAtom npi>0 => make Conf \n" );
             iconf=confs.size();
             confs.push_back( AtomConf(atoms.size(), npi, ne ) );
-        }
+        }}
         atoms.push_back( Atom    ( ityp,-1,iconf, pos, *REQ )  );
         //printf( "insertAtom[%i]", atoms.size() ); atoms.back().print(); puts("");
         return atoms.size()-1;
@@ -2026,7 +2027,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     // find 
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
-        if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
+        //if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
         if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
@@ -2065,6 +2066,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 }
             }
         }
+        //printf( "MM::Builder::autoBondsPBC() DONE\n" );
     }
 
     bool checkNumberOfBonds( bool bPrint=true, bool bExitOnError=true){
@@ -3015,7 +3017,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return molTypes.size()-1;
     }
 
-    int loadXYZ_Atoms(const char* fname, MMFFparams* params_=0, int iH=-1, bool bCOG=false, const Vec3d& pos, const Mat3d& rot ){
+    int loadXYZ_Atoms(const char* fname, MMFFparams* params_=0, int iH=-1, bool bCOG=false, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
+        //printf( "MM::Builder::loadXYZ_Atoms(%s) \n", fname );
         if(params_!=0) params=params_;
         //  this is a bit stupid - we allocate and deallocate mol just because we need some temporary storage for calling params->loadXYZ()
         Atoms   mol;
@@ -3024,11 +3027,12 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         int ifrag=-1;
         if( iret>=0  ){ 
             if( iret==0 ){ bPBC=false; }else{ bPBC=true; }
-            //printf("MM::Builder::loadMolTypeXYZ(%s) bPBC=%i \n", fname, bPBC );
+            //printf("MM::Builder::loadXYZ_Atoms(%s) iH=%i bCOG=%i \n", fname, iH, bCOG );
             //if(params) params->assignREs( mol.natoms, mol.atypes, REQs );
             Vec3d cog=Vec3dZero;
             if(bCOG) cog=mol.getBBcog();
-            int ifrag   = frags.size()-1;  // frags.size()-1
+            startFragment();
+            ifrag   = frags.size()-1;  // frags.size()-1
             for(int i=0; i<mol.natoms; i++){
                 const int ityp = mol.atypes[i];
                 if( ityp==iH ) continue;
@@ -3047,6 +3051,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             }
         }
         delete [] REQs;
+        //printf( "MM::Builder::loadXYZ_Atoms(%s) ifrag=%i DONE \n", fname, ifrag );
         return ifrag;
     }
 
@@ -3813,7 +3818,6 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         //int ne = bonds.size() * 2; // ToDo
         int ne = 0;
         int na = 0;
-        DEBUG
         for(int i=0; i<atoms.size(); i++){
             int ityp = atoms[i].type;
             if( ityp==capAtomEpair.type || ityp==capAtomPi.type ) continue;
@@ -3821,10 +3825,8 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             ne += params[ ityp ].ne;
             printf( "[%i] ityp %i ne %i  %i \n", i, ityp, params[ityp].ne, ne );
         }
-        DEBUG
         printf( "na %i ne %i | %i \n", atoms.size(), ne, bonds.size()*2 );
         ff.realloc( na, ne );
-        DEBUG
         for(int i=0; i<na; i++){
             int ityp = atoms[i].type;
             if( ityp==capAtomEpair.type || ityp==capAtomPi.type ) continue;
@@ -3833,7 +3835,6 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             //ff.aQ [i]  = params[ ityp ].ne; // ToDo
             ff.aPars[i]  = EFF::default_AtomParams[ityp];
         }
-        DEBUG
         for(int i=0; i<bonds.size(); i++){
             const MM::Bond& b  = bonds[i];
             const Vec2i& ib    = b.atoms;
@@ -3849,7 +3850,6 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             ff.espin[i2] = -1;
             //break;
         }
-        DEBUG
         // ToDo:  pi-bonds & e-pairs
 
     }
@@ -3870,7 +3870,6 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         //int ne = bonds.size() * 2; // ToDo
         int ne = 0;
         int na = 0;
-        DEBUG
         for(int i=0; i<atoms.size(); i++){
             int ityp = atoms[i].type;
             if( ityp==capAtomEpair.type || ityp==capAtomPi.type ) continue;
@@ -3878,10 +3877,8 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             ne += params[ ityp ].ne;
             printf( "[%i] ityp %i ne %i  %i \n", i, ityp, params[ityp].ne, ne );
         }
-        DEBUG
         printf( "na %i ne %i | %i \n", atoms.size(), ne, bonds.size()*2 );
         ff.realloc( na, ne );
-        DEBUG
         for(int i=0; i<na; i++){
             int ityp = atoms[i].type;
             if( ityp==capAtomEpair.type || ityp==capAtomPi.type ) continue;
@@ -3889,7 +3886,6 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             ff.apos [i]  = atoms[i].pos;
             ff.aQ   [i]  = params[ ityp ].ne; // ToDo
         }
-        DEBUG
         for(int i=0; i<bonds.size(); i++){
             const MM::Bond& b  = bonds[i];
             const Vec2i& ib    = b.atoms;
@@ -3905,7 +3901,6 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
             ff.espin[i2] = -1;
             //break;
         }
-        DEBUG
         // ToDo:  pi-bonds & e-pairs
 
     }

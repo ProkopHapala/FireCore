@@ -447,7 +447,7 @@ class MMFFparams{ public:
         std::vector<bool> doIt(256,true); // Warrning : we assume maximum proton number 256
         for(int i=0;i<n;i++){
             AtomType& t = atypes[i];
-            //printf( "DEBUG assignAllSubTypes() t.iZ %i doIt.size()= %i \n", t.iZ, doIt.size() );
+            //printf( "assignAllSubTypes() t.iZ %i doIt.size()= %i \n", t.iZ, doIt.size() );
             //if( t.iZ>=doIt.size() ){ printf("ERROR: atype[%i] t.iZ(%i) > =doIt.size(%i) \n", i, t.iZ, doIt.size()  ); }
             if(doIt[t.iZ]){ assignSubTypes(t); doIt[t.iZ]=false; }
         }
@@ -746,10 +746,10 @@ class MMFFparams{ public:
     bool cellFromString( char* s, Mat3d& lvec )const{
         char c[3]; Mat3d M;
         int n = sscanf( s, "%c%c%c %lf %lf %lf   %lf %lf %lf   %lf %lf %lf", c,c+1,c+2, &(M.a.x),&(M.a.y),&(M.a.z),   &(M.b.x),&(M.b.y),&(M.b.z),   &(M.c.x),&(M.c.y),&(M.c.z) );
-        //printf( "DEBUG cellFromString() n=%i %c%c%c (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n", n, c[0],c[1],c[2], M.a.x,M.a.y,M.a.z,   M.b.x,M.b.y,M.b.z,   M.c.x,M.c.y,M.c.z );
+        //printf( "cellFromString() n=%i %c%c%c (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n", n, c[0],c[1],c[2], M.a.x,M.a.y,M.a.z,   M.b.x,M.b.y,M.b.z,   M.c.x,M.c.y,M.c.z );
         if( (n==12) && (c[0]=='l')&&(c[1]=='v')&&(c[2]=='s') ){
             lvec=M;
-            //printf( "DEBUG cellFromString() lvec (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n",  lvec.a.x,lvec.a.y,lvec.a.z,   lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
+            //printf( "cellFromString() lvec (%g,%g,%g)(%g,%g,%g)(%g,%g,%g) \n",  lvec.a.x,lvec.a.y,lvec.a.z,   lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
             return true;
         }
         return false;
@@ -757,6 +757,7 @@ class MMFFparams{ public:
 
     // read an xyz file
     int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Quat4d** REQs_=0, int** atype_=0, int** npis_=0, Mat3d* lvec=0, int verbosity=0 )const{
+        //printf( "MMFFparams::loadXYZ(%s) @apos_=%li @REQs_=%li @atype_=%li @npis_=%li \n", fname, (long)apos_, (long)REQs_, (long)atype_, (long)npis_ );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -816,17 +817,17 @@ class MMFFparams{ public:
             //printf( "MM::Params::writeXYZ() iPBC(%i,%i,%i) shift(%g,%g,%g)\n", ia,ib,ic, shift.x,shift.y,shift.z );
             //// //////////////------------------- 
         for(int i=0; i<n; i++){
-            //printf( "DEBUG writeXYZ()[%i] \n", i );
+            //printf( "writeXYZ()[%i] \n", i );
             int ityp   = atyps[i];
             const Vec3d&  pi = apos[i] + shift;
             const char* symbol; 
             bool byName = true;
-            //printf( "DEBUG writeXYZ()[%i] ityp %i \n", i, ityp );
+            //printf( "writeXYZ()[%i] ityp %i \n", i, ityp );
             if(just_Element){ 
                 byName = false;
                 symbol =  etypes[ atypes[ityp].element ].name;
             }
-            //printf( "DEBUG writeXYZ()[%i] ityp %i %s \n", i, ityp, symbol );
+            //printf( "writeXYZ()[%i] ityp %i %s \n", i, ityp, symbol );
             if(byName){ symbol = atomTypeNames[ityp].c_str(); }
             //printf( "write2xyz %i %i (%g,%g,%g) %s \n", i, ityp, pi.x,pi.y,pi.z, atypes[ityp].name );
             if(REQs){ fprintf( pfile, "%s   %15.10f   %15.10f   %15.10f     %10.6f\n", symbol, pi.x,pi.y,pi.z, REQs[i].z ); }
