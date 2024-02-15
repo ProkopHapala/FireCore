@@ -50,6 +50,13 @@ static MMFFparams* params_glob;
 #include "arrayAlgs.h"
 #include "SVG_render.h"
 
+enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
+//static inline MolWorldVersion operator|(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) | ((int)b)  );  };
+//static inline MolWorldVersion operator&(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) & ((int)b)  );  };
+static inline int operator|(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) | ((int)b)  );  };
+static inline int operator&(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) & ((int)b)  );  };
+
+
 class MolWorld_sp3 : public SolverInterface { public:
     //const char* data_dir     = "common_resources";
     const char* data_dir     = 0;
@@ -196,6 +203,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     int iSystemCur  = 0;    // currently selected system replica
 
     // ========== from python interface
+
+    virtual MolWorldVersion getMolWorldVersion() const { return MolWorldVersion::BASIC; };
 
     virtual void init(){
         //params.verbosity=verbosity;
