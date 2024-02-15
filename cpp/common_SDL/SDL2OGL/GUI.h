@@ -503,6 +503,8 @@ class GUI{ public:
     //void layoutRow( int xmin, int xmax );
     void layoutRow( int xmin, int ymin, int xspace=0 );
 
+    int clear(int i0=0){ int n=0; for(int i=i0; i<panels.size(); i++){  if(panels[i]){ n++; delete panels[i];} } panels.resize(i0); return n; }
+
     inline ~GUI(){ for(GUIAbstractPanel* panel: panels){ delete panel; } }
 
 };
