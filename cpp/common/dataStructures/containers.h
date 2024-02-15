@@ -40,12 +40,12 @@ class Dict{ public:
         if( it != map.end() ){ return it->second; }else{ return -1; }
     }
 
-    T* get( const char* name )const{
+    T get( const char* name )const{
         auto it = map.find(name);
         if( it != map.end() ){ return vec[it->second]; }else{ return 0; }
     }
 
-    int add( T* mat, bool bDel=true ){
+    int add( T mat, bool bDel=true ){
         auto it = map.find( mat->name );
         if( it == map.end() ){    // not found
             int i=vec.size(); vec.push_back(mat); 
@@ -56,7 +56,7 @@ class Dict{ public:
         }
     }
 
-    bool insert( const char* name, T* mat, int i, bool bDel=true ){
+    bool insert( const char* name, T mat, int i, bool bDel=true ){
         if( vec.size(i)<=i ) vec.resize(i+1);
         vec[i] = mat;
         auto it = map.find(name);

@@ -11,9 +11,6 @@ double tick2second=1e-9;
 MolGUI* app=0;
 LambdaDict funcs;
 
-
-
-
 int   prelat_nstep=0;
 int   prelat_nItrMax=0;
 Mat3d prelat_dlvec;

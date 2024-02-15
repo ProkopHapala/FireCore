@@ -36,6 +36,11 @@
 
 #include "MethodDict.h"
 
+using Action  = std::function<void(double val)>; 
+//using CommandDict = std::unordered_map<std::string,>;
+
+
+
 // ===========================================
 // ================= MAIN CLASS ==============
 // ===========================================
@@ -183,6 +188,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     DropDownList* panel_Frags=0;
     GUIPanel*     panel_iMO  =0;
 
+    Dict<Action> panelActions;
+
     // ----- AFM scan
     GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,8.0}, 0.1 };
     GridShape afm_ff_grid;  //  { Mat3d{}, 0.1 };
@@ -197,8 +204,12 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ----- Atoms in grid
     AtomsInGrid atomsInGrid;
 
-
     // ======================= Functions 
+
+    void setPanelAction( int ipanel, const char* name ){ 
+        //gui.panels[ipanel]->setCommand( panelActions.get(name) );
+        // ToDo:       cannot convert ‘void (MolGUI::*)()’ to ‘const std::function<void(GUIAbstractPanel*)>&’
+    };
 
 	virtual void draw   () override;
 	virtual void drawHUD() override;

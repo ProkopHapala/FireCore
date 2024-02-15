@@ -2,9 +2,40 @@
 #define MolGUIapp_Lua_h
 
 //#include "MolGUI.h"
+#include <unordered_map>
+#include <functional>
+
+//using Command     = std::function<void(double val)>; 
+//using CommandDict = std::unordered_map<std::string,>;
+
 
 #include "LuaHelpers.h"
 lua_State  * theLua=0;
+
+int l_addGUIpanel(lua_State *L){
+    Vec3i xyw             = Lua::getVec3i (L,1);
+    int icmd              = Lua::getInt   (L,2); // index of command in the array of commands 
+    const char* label     = Lua::getString(L,3);
+    Vec3i SliderButtonInt = Lua::getVec3i (L,4);
+    Vec3d MinMaxCur       = Lua::getVec3  (L,5);
+    const char* command   = Lua::getString(L,6);
+    int ipanel = app->gui.panels.size();
+    GUIPanel* panel = (GUIPanel*)app->gui.addPanel( new GUIPanel( label, xyw.x,xyw.y, xyw.x+xyw.z*fontSizeDef,xyw.y+fontSizeDef*2, SliderButtonInt.x>0, SliderButtonInt.y>0, SliderButtonInt.z>0 ) );
+    //GUIPanel* panel = ((GUIPanel*)app->gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
+    panel->setRange(MinMaxCur.x,MinMaxCur.y);
+    panel->setValue(MinMaxCur.z);
+    //panel->setCommand( app->actions.get( command ) );
+    app->setPanelAction( ipanel, command  );
+    lua_pushinteger(L, ipanel);
+    return 1;
+}
+
+int l_clearGUI   (lua_State *L){
+    int n = Lua::getInt(L,1);
+    int ret = app->gui.clear( n );
+    lua_pushinteger(L, ret );
+    return 1;
+}
 
 int l_fixAtom(lua_State *L){
     // LuaCall: fixAtom( ia, true )
@@ -134,6 +165,9 @@ int initMyLua(){
     lua_register(L, "make",    l_makeFF  );
     lua_register(L, "autoCharges", l_autoCharges  );
     lua_register(L, "frags",   l_autoFrags  );
+
+    lua_register(L, "button",    l_addGUIpanel );
+    lua_register(L, "clear_gui", l_clearGUI    );
     printf( "initMyLua() DONE\n" );
     return 1;
 }
