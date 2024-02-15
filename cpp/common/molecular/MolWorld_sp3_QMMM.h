@@ -60,6 +60,9 @@ class MolWorld_sp3_QMMM : public MolWorld_sp3 { public:
 
     // ==== Functions Definition
 
+    virtual MolWorldVersion getMolWorldVersion() const override { return MolWorldVersion::QM; };
+
+
 virtual void init( ){
     MolWorld_sp3::init( );
     if( file_exist("Fdata/info.dat") ){ 

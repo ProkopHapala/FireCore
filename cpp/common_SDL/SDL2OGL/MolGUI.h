@@ -181,6 +181,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Gui_Mode  gui_mode = Gui_Mode::base;
     //int gui_mode = Gui_Mode::edit;
     DropDownList* panel_Frags=0;
+    GUIPanel*     panel_iMO  =0;
 
     // ----- AFM scan
     GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,8.0}, 0.1 };
@@ -338,6 +339,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
 void MolGUI::initWiggets(){
 
+    // TODO: adding GUI widgets would be better witth LUA for fast experimentation
+
     GUI_stepper ylay;
     ylay.step(2);
     Qpanel = new GUIPanel( "Q_pick: ", 5,ylay.x0,5+100,ylay.x1, true, true ); 
@@ -397,6 +400,26 @@ void MolGUI::initWiggets(){
             printMat((Mat3d)cam.rot);
             }
         );
+
+    printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
+    //exit(0);
+
+    if( W->getMolWorldVersion() & MolWorldVersion::QM ){ 
+        
+        // --- Selection of orbital to plot
+        ylay.step(3);
+        panel_iMO = ((GUIPanel*)gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
+        panel_iMO->setRange(-5.0,5.0);
+        panel_iMO->setValue(0.0);
+        panel_iMO->setCommand( [&](GUIAbstractPanel* p){ 
+            which_MO = ((GUIPanel *)p)->value;
+            int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
+            renderOrbital( iHOMO + which_MO );
+        return 0; });
+
+    }
+   
+
 }
 
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
@@ -1512,7 +1535,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     W->saveXYZ( "screenshot_3x3.xyz", "#comment", false, "w", {3,3,1} );
                 }break;
 
-                case SDLK_h:{
+                case SDLK_h:if( ( W->getMolWorldVersion() & MolWorldVersion::QM ) ){ printf( "makeAFM(): is supported only in GPU version of MolWorld \n" ); }else{
                     //int iMO = which_MO;
                     int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
                     renderOrbital( iHOMO + which_MO ); break;
@@ -1555,7 +1578,9 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_g: W->swith_gridFF(); break;
                 case SDLK_c: W->autoCharges(); break;
                 
-                case SDLK_v: makeAFM(); break;
+                case SDLK_v:{ 
+                    if( W->getMolWorldVersion() & MolWorldVersion::GPU ){ makeAFM(); }else{ printf( "makeAFM(): is supported only in GPU version of MolWorld \n" ); } 
+                    } break;
                 case SDLK_KP_MULTIPLY:  afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 case SDLK_KP_DIVIDE:    afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
                 

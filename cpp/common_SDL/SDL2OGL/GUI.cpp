@@ -177,7 +177,7 @@ void GUIPanel::view ( ){
 }
 
 void GUIPanel::render(){
-    if(isInt){ value=round(value); }
+    if(isInt){ value=getIntVal(); }
     glDisable( GL_LIGHTING   );
     glDisable( GL_DEPTH_TEST );
     glShadeModel( GL_FLAT    );
@@ -235,6 +235,7 @@ void GUIPanel::onKeyDown( const SDL_Event&  e, GUI& gui  ){
             case SDLK_KP_ENTER:
                 try{
                     float f = std::stof( inputText.c_str() );
+                    if(isInt)f=getIntVal();
                     value=f;
                 }catch(std::exception const &exc){
                     printf("exception:%s\n", exc.what() );
@@ -268,7 +269,7 @@ GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& 
             if(isSlider && (event.button.button==SDL_BUTTON_RIGHT)){
                 //value=( x*(vmax-vmin)/(xmax-xmin) ) + vmin;
                 value=x2val(x);
-                if(isInt)value=round(value);
+                if(isInt)value=getIntVal();
                 //sprintf(val_text, "%3.3f", value );
                 //inputText = std::to_string(value);
                 redraw=true;

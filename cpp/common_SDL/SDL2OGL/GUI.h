@@ -178,8 +178,8 @@ class GUIPanel : public GUIAbstractPanel { public:
     // ==== functions
 
     GUIPanel()=default;
-    GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_, bool isButton_ ){
-        initPanel(caption, xmin,ymin,xmax,ymax); isSlider=isSlider_; isButton=isButton_;
+    GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_=true, bool isButton_=true, bool isInt_=false ){
+        initPanel(caption, xmin,ymin,xmax,ymax); isSlider=isSlider_; isButton=isButton_; isInt=isInt_;
         command=0;
     };
 
@@ -191,9 +191,14 @@ class GUIPanel : public GUIAbstractPanel { public:
     virtual GUIAbstractPanel* onMouse  ( int x, int y, const SDL_Event& event, GUI& gui ) override;
 
 	// ===== inline functions
-    inline void   val2text()         { inputText = std::to_string(value); };
+    inline int    getIntVal()        { return round(value); };
+    inline void   val2text()         { if(isInt){ inputText = std::to_string(getIntVal()); }else{ inputText = std::to_string(value); }; };
 	inline double x2val( float  x   ){ return ( x*(vmax-vmin)/(xmax-xmin) )+ vmin; };
 	inline float  val2x( double val ){ return (val-vmin)*(xmax-xmin)/(vmax-vmin);  };
+
+	inline int   x2val_int( float  x   ){ return round( x*(vmax-vmin)/(xmax-xmin) )+ vmin; };
+	//inline float val2x_int( double val ){ return (val-vmin)*(xmax-xmin)/(vmax-vmin);  };
+
     inline void syncRead (){ if(master)value=*master; }
     inline void syncWrite(){ if(master)*master=value; }
 
