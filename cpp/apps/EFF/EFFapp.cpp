@@ -152,7 +152,53 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     virtual void keyStateHandling( const Uint8 *keys );
 
     TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ );
+
+    void initEFFsystem( const char * fname, bool bTestEval=true, bool bDebug=false );
     void init2DMap( int n, double dx );
+
+};
+
+void TestAppRARFF::initEFFsystem( const char * fname, bool bTestEval, bool bDebug ){
+
+    ff.loadFromFile_fgo( fname );
+
+    if(bDebug){
+        DEBUG_fe_ae = new Vec3d[ff.ne];
+        DEBUG_fa_ae = new Vec3d[ff.na];
+        DEBUG_fe_ee = new Vec3d[ff.ne];
+        DEBUG_fa_aa = new Vec3d[ff.na];
+    }
+    //setGeom(ff);
+    //double sz = 0.2;
+    //for(int i=0; i<ff.na; i++){ ff.apos[i].add( randf(-sz,sz),randf(-sz,sz),randf(-sz,sz) );  }
+    //for(int i=0; i<ff.ne; i++){ ff.epos[i].add( randf(-sz,sz),randf(-sz,sz),randf(-sz,sz) );  }
+    //ff.autoAbWs( default_aAbWs, default_eAbWs );
+    //VecN::set(ff.ne,4.0,ff.esize);
+
+    // ==== Test Eval
+
+    //makePlots( plot1, ff );
+    //ff.loadFromFile_xyz( fname  );
+    //init2DMap( 100, 0.1 );
+
+    // ==== Bind Optimizer
+    opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, 0, ff.fDOFs, 0 );
+    opt.cleanVel( );
+    //opt.initOpt( 0.01, 0.2 );
+    opt.initOpt( 0.0015, 0.01 );
+    opt.f_limit = 1000.0;
+
+    //ff.iPauliModel = 0; // dens overlap
+    ff.iPauliModel = 1; // addPauliGauss   from the article using  KRSrho
+    //ff.iPauliModel = 2; // addPauliGaussVB valence bons
+    ff.info();
+
+    if(bTestEval){
+        double E = ff.eval();
+        //printf( "E %g | Ek %g Eee %g EeePaul %g Eaa %g Eae %g EaePaul %g \n", E, ff.Ek, ff.Eee, ff.EeePaul, ff.Eaa, ff.Eae, ff.EaePaul );
+        ff.printEnergies();
+        //printf( " test_eFF exits ... \n" ); exit(0);
+    }
 
 };
 
@@ -206,7 +252,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //ff.loadFromFile_fgo( "data/C_e4_1g.fgo" );
     //ff.loadFromFile_fgo( "data/CH4.fgo" );
     //ff.loadFromFile_fgo( "data/NH3.fgo" );
-    ff.loadFromFile_fgo( "data/H2O.fgo" );
+    //ff.loadFromFile_fgo( "data/H2O.fgo" );
     //ff.loadFromFile_fgo( "data/C2H4.fgo" );    // Atoms Fly Away
     //ff.loadFromFile_fgo( "data/C2H2.fgo" );
 
@@ -216,42 +262,6 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //ff.bEvalPauli     = 0;
     //ff.bEvalKinetic   = 0;
     //ff.bEvalAA        = 0;
-
-
-    DEBUG_fe_ae = new Vec3d[ff.ne];
-    DEBUG_fa_ae = new Vec3d[ff.na];
-    DEBUG_fe_ee = new Vec3d[ff.ne];
-    DEBUG_fa_aa = new Vec3d[ff.na];
-
-    //setGeom(ff);
-    //double sz = 0.2;
-    //for(int i=0; i<ff.na; i++){ ff.apos[i].add( randf(-sz,sz),randf(-sz,sz),randf(-sz,sz) );  }
-    //for(int i=0; i<ff.ne; i++){ ff.epos[i].add( randf(-sz,sz),randf(-sz,sz),randf(-sz,sz) );  }
-    //ff.autoAbWs( default_aAbWs, default_eAbWs );
-    //VecN::set(ff.ne,4.0,ff.esize);
-
-    // ==== Test Eval
-
-    //makePlots( plot1, ff );
-    //ff.loadFromFile_xyz( fname  );
-    //init2DMap( 100, 0.1 );
-
-    // ==== Bind Optimizer
-    opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, 0, ff.fDOFs, 0 );
-    opt.cleanVel( );
-    //opt.initOpt( 0.01, 0.2 );
-    opt.initOpt( 0.0015, 0.01 );
-    opt.f_limit = 1000.0;
-
-    //ff.iPauliModel = 0; // dens overlap
-    ff.iPauliModel = 1; // addPauliGauss   from the article using  KRSrho
-    //ff.iPauliModel = 2; // addPauliGaussVB valence bons
-    ff.info();
-
-    double E = ff.eval();
-    //printf( "E %g | Ek %g Eee %g EeePaul %g Eaa %g Eae %g EaePaul %g \n", E, ff.Ek, ff.Eee, ff.EeePaul, ff.Eaa, ff.Eae, ff.EaePaul );
-     ff.printEnergies();
-    //printf( " test_eFF exits ... \n" ); exit(0);
 
     oglSph=Draw::list(oglSph);
     //Draw3D::drawSphere_oct(3,1.0d,(Vec3d){0.,0.,0.});
@@ -353,11 +363,11 @@ void TestAppRARFF::draw(){
         }
         if( F2 < 1e-6 ){
             //printf( "Finished: E %g | Ek %g Eee %g EeePaul %g Eaa %g Eae %g EaePaul %g \n", Etot, ff.Ek, ff.Eee, ff.EeePaul, ff.Eaa, ff.Eae, ff.EaePaul );
-            printf( "Finished:"); ff.printEnergies();
-            ff.info();
-            printDistFormAtom( ff.na, ff.apos, 0 );
-            bRun=false;
-            ff.save_xyz( "data/eff_relaxed.xyz" );
+            //printf( "Finished:"); ff.printEnergies();
+            //ff.info();
+            //printDistFormAtom( ff.na, ff.apos, 0 );
+            //bRun=false;
+            //ff.save_xyz( "data/eff_relaxed.xyz" );
         }
     }
 
@@ -601,6 +611,9 @@ int main(int argc, char *argv[]){
     app = new TestAppRARFF( junk , DM.w-100, DM.h-100 );
 	//app = new TestAppRARFF( junk , 800, 600 );
 
+    funcs["-f"]={1,[&](const char** ss){ app->initEFFsystem( ss[0], true, true ); }}; // molecule as .fgo
+    
+    //app->initEFFsystem( const char * fname, true, false );
 
 #ifdef WITH_LUA
     initMyLua();
