@@ -36,7 +36,7 @@
 
 #include "MethodDict.h"
 
-using Action  = std::function<void(double val)>; 
+//using Action  = std::function<void(double val)>; 
 //using CommandDict = std::unordered_map<std::string,>;
 
 
@@ -48,6 +48,9 @@ using Action  = std::function<void(double val)>;
 //void command_example(double x, void* caller);
 
 class MolGUI : public AppSDL2OGL_3D { public:
+
+    //using Action  = std::function<void(double val)>;
+    using Action = std::function<void(GUIAbstractPanel* panel)>; 
 
     Vec3d  rotation_center = Vec3dZero;
     Vec3d  rotation_axis   = Vec3dZ;
@@ -207,7 +210,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ======================= Functions 
 
     void setPanelAction( int ipanel, const char* name ){ 
-        //gui.panels[ipanel]->setCommand( panelActions.get(name) );
+        gui.panels[ipanel]->setCommand( panelActions.get(name) );
         // ToDo:       cannot convert ‘void (MolGUI::*)()’ to ‘const std::function<void(GUIAbstractPanel*)>&’
     };
 
