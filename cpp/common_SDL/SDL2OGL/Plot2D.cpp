@@ -126,22 +126,22 @@ void Plot2D::autoAxes(double dx, double dy){
 
 void Plot2D::drawTexts(){
     char str[16];
-    if(bTicks){
-    Draw::setRGBA(clrTicksX);
-    Draw2D::drawText( xlabel.c_str(), 0, {shift.x,shift.y-2*tickSz*scaling.y}, 0.0, fontTex, tickSz );
-    for(int i=0; i<nXTicks; i++){
-        if(logX) { sprintf(str,tickFormat,pow(10,xTicks[i])); }
-        else     { sprintf(str,tickFormat,xTicks[i]); }
-        Draw2D::drawText(str, 0, {shift.x+xTicks[i]*scaling.x,shift.y+axPos.y*scaling.y}, 90, fontTex, tickSz );
-    }
-    Draw::setRGBA(clrTicksY);
-    Draw2D::drawText( ylabel.c_str(), 0, (Vec2d){shift.x,shift.y-tickSz*ylabel.length()*scaling.y}, 90.0, fontTex, tickSz );
-    for(int i=0; i<nYTicks; i++){
-        sprintf(str,tickFormat,yTicks[i]);
-        if(logY) { sprintf(str,tickFormat,pow(10,yTicks[i])); }
-        else     { sprintf(str,tickFormat,yTicks[i]); }
-        Draw2D::drawText(str, 0, {shift.x+axPos.x*scaling.x,shift.x+yTicks[i]*scaling.y}, 0.0, fontTex, tickSz );
-    }
+    if(bTicks&&bAxes){
+        Draw::setRGBA(clrTicksX);
+        Draw2D::drawText( xlabel.c_str(), 0, {shift.x,shift.y-2*tickSz*scaling.y}, 0.0, fontTex, tickSz );
+        for(int i=0; i<nXTicks; i++){
+            if(logX) { sprintf(str,tickFormat,pow(10,xTicks[i])); }
+            else     { sprintf(str,tickFormat,xTicks[i]); }
+            Draw2D::drawText(str, 0, {shift.x+xTicks[i]*scaling.x,shift.y+axPos.y*scaling.y}, 90, fontTex, tickSz );
+        }
+        Draw::setRGBA(clrTicksY);
+        Draw2D::drawText( ylabel.c_str(), 0, (Vec2d){shift.x,shift.y-tickSz*ylabel.length()*scaling.y}, 90.0, fontTex, tickSz );
+        for(int i=0; i<nYTicks; i++){
+            sprintf(str,tickFormat,yTicks[i]);
+            if(logY) { sprintf(str,tickFormat,pow(10,yTicks[i])); }
+            else     { sprintf(str,tickFormat,yTicks[i]); }
+            Draw2D::drawText(str, 0, {shift.x+axPos.x*scaling.x,shift.x+yTicks[i]*scaling.y}, 0.0, fontTex, tickSz );
+        }
     }
     for( DataLine2D* line : lines ){ // lines labels
         Draw::setRGBA(line->clr);
@@ -168,7 +168,7 @@ void Plot2D::drawAxes(){
         Draw::setRGBA(clrTicksX); Draw2D::drawLine( {axPos   .x ,axBounds.y0}, {axPos   .x ,axBounds.y1} );
         Draw::setRGBA(clrTicksY); Draw2D::drawLine( {axBounds.x0,axPos   .y }, {axBounds.x1,axPos   .y } );
     }
-    if(bTicks){
+    if(bTicks&&bAxes){
         Draw::setRGBA(clrTicksY); Draw2D::drawGrid( nXTicks, xTicks, axPos.x, axPos.x+(tickSz/(scaling.y)), true  );
         Draw::setRGBA(clrTicksX); Draw2D::drawGrid( nYTicks, yTicks, axPos.x, axPos.y+(tickSz/(scaling.x)), false );
     }

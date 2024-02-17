@@ -147,6 +147,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     Plot2D plot1;
     //DropDownList* panel_Frags=0;
     //GUIPanel*     panel_iMO  =0;
+    CheckBoxList* panel_Plot=0;
 
     // ========== Functions
 
@@ -169,12 +170,30 @@ void TestAppRARFF::initWiggets(){
     // MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs)
     //GUI_stepper ylay;
     GUI_stepper gx(0,4);
-    GUIPanel* p=0;
-    MultiPanel* mpanel = new MultiPanel( "Plot", gx.x0, 10, gx.x1, 0, 3, false, true, false, false );   gui.addPanel( mpanel );
-    p=mpanel->subs[0]; p->caption = "view";  p->command=[&](GUIAbstractPanel* p){ bDrawPlots=!bDrawPlots; };
-    p=mpanel->subs[1]; p->caption = "grid"; p->command=[&](GUIAbstractPanel* p){ plot1.bGrid=!plot1.bGrid;                             plot1.redraw=true; };
-    p=mpanel->subs[2]; p->caption = "axes"; p->command=[&](GUIAbstractPanel* p){ plot1.bAxes=!plot1.bAxes; plot1.bTicks=!plot1.bTicks; plot1.redraw=true; };
-    
+
+    // GUIPanel* p=0;
+    // MultiPanel* mpanel = new MultiPanel( "Plot", gx.x0, 10, gx.x1, 0, 3, false, true, false, false );   gui.addPanel( mpanel );
+    // p=mpanel->subs[0]; p->caption = "view"; p->command=[&](GUIAbstractPanel* p){ bDrawPlots=!bDrawPlots; };
+    // p=mpanel->subs[1]; p->caption = "grid"; p->command=[&](GUIAbstractPanel* p){ plot1.bGrid=!plot1.bGrid;                             plot1.redraw=true; };
+    // p=mpanel->subs[2]; p->caption = "axes"; p->command=[&](GUIAbstractPanel* p){ plot1.bAxes=!plot1.bAxes; plot1.bTicks=!plot1.bTicks; plot1.redraw=true; };
+
+    // void initCheckBoxList( int xmin_, int ymin_, int xmax_, int dy=fontSizeDef*2 );
+    //CheckBox* b;
+    CheckBoxList* chk = new CheckBoxList( gx.x0, 10, gx.x1 );
+    gui.addPanel( chk );
+    panel_Plot = chk; 
+    chk->caption = "Plot"; chk->bgColor = 0xFFE0E0E0;
+    chk->addBox( "view", &bDrawPlots  );
+    chk->addBox( "grid", &plot1.bGrid );
+    chk->addBox( "axes", &plot1.bAxes );
+
+    // chk->boxes[0].label = "view"; DEBUG 
+    // chk->boxes[0].master = &bDrawPlots; DEBUG
+    // chk->boxes[1].label = "grid"; DEBUG 
+    // chk->boxes[1].master = &plot1.bGrid; DEBUG
+    // chk->boxes[2].label = "axes"; DEBUG 
+    // chk->boxes[2].master = &plot1.bAxes; DEBUG
+
     printf( "TestAppRARFF::initWiggets() END \n" );
 }
 
@@ -452,7 +471,11 @@ void TestAppRARFF::mouseHandling( ){
 void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
     //printf( "NonInert_seats::eventHandling() \n" );
     Vec3d pa0;
-    if( gui.onEvent( mouseX, mouseY, event ) ){ return; };
+    GUIAbstractPanel* clicked_panel = gui.onEvent( mouseX, mouseY, event );
+    if( clicked_panel ){ 
+        int itoggle =  clicked_panel->toggleChanged();
+        if( clicked_panel==panel_Plot ){ if( (itoggle==1)||(itoggle==2)  ) plot1.redraw=true; }
+    };
     switch( event.type ){
         case SDL_KEYDOWN :
             if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }

@@ -493,6 +493,13 @@ void CheckBoxList::render( ){
     glDisable( GL_DEPTH_TEST);
     glShadeModel( GL_FLAT );
     update();
+
+    int y0 = ymin+boxes.size()*dy;
+    Draw  ::setRGB( bgColor );
+    Draw2D::drawRectangle ( xmin, y0, xmax, y0+dy, true );
+    Draw  ::setRGB( textColor );
+    Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0,  GUI_fontTex, fontSizeDef );
+    //Draw2D::drawText( caption.c_str(), 0, {xmin, y0}, 0.0, GUI_fontTex, fontSizeDef );
     for(int i=0; i<boxes.size(); i++){
         const CheckBox& box = boxes[i];
         if(box.val){ Draw::setRGB(checkColor); }else{ Draw::setRGB(bgColor); }
@@ -514,11 +521,14 @@ GUIAbstractPanel* CheckBoxList::onMouse  ( int x, int y, const SDL_Event& event,
                 if( ibox<boxes.size()){
                     boxes[ibox].flip();
                     redraw=true;
+                    iboxchanged=ibox;
+                    return active;
                 }
                 //if(event.button.clicks > 1 ){ toggleOpen();}
             }
         }
     }
+    iboxchanged=-1;
     return active;
 }
 
