@@ -181,8 +181,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     Constrains* constrs = 0;
 
-    // ---- Graphics objects
-    int  fontTex,fontTex3D;
+    // ---- Graphics objects    // ToDO: maybe move to globals.h
+    int  fontTex=-1,fontTex3D=-1;
 
     int  ogl_afm=0;
     int  ogl_afm_trj=0;

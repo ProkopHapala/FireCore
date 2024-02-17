@@ -39,6 +39,7 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 
 #include "AppSDL2OGL_3D.h"
 #include "SDL_utils.h"
+#include "GUI.h"
 #include "Plot2D.h"
 #include "Console.h"
 
@@ -136,12 +137,16 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     GLint ogl_fs = 0;
     GLint oglSph = 0;
 
-    Plot2D plot1;
-
-    int      fontTex;
+    // ToDO: maybe move to globals.h
+    int    fontTex=-1;
+    int  fontTex3D=-1;
 
     bool bConsole=false;
+    GUI gui;
     Console console;
+    Plot2D plot1;
+    //DropDownList* panel_Frags=0;
+    //GUIPanel*     panel_iMO  =0;
 
     // ========== Functions
 
@@ -155,8 +160,23 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     void initEFFsystem( const char * fname, bool bTestEval=true, bool bDebug=false );
     void init2DMap( int n, double dx );
+    void initWiggets();
 
 };
+
+void TestAppRARFF::initWiggets(){
+    printf( "TestAppRARFF::initWiggets() \n" );
+    // MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs)
+    //GUI_stepper ylay;
+    GUI_stepper gx(0,4);
+    GUIPanel* p=0;
+    MultiPanel* mpanel = new MultiPanel( "Plot", gx.x0, 10, gx.x1, 0, 3, false, true, false, false );   gui.addPanel( mpanel );
+    p=mpanel->subs[0]; p->caption = "view";  p->command=[&](GUIAbstractPanel* p){ bDrawPlots=!bDrawPlots; };
+    p=mpanel->subs[1]; p->caption = "grid"; p->command=[&](GUIAbstractPanel* p){ plot1.bGrid=!plot1.bGrid;                             plot1.redraw=true; };
+    p=mpanel->subs[2]; p->caption = "axes"; p->command=[&](GUIAbstractPanel* p){ plot1.bAxes=!plot1.bAxes; plot1.bTicks=!plot1.bTicks; plot1.redraw=true; };
+    
+    printf( "TestAppRARFF::initWiggets() END \n" );
+}
 
 void TestAppRARFF::initEFFsystem( const char * fname, bool bTestEval, bool bDebug ){
 
@@ -200,61 +220,20 @@ void TestAppRARFF::initEFFsystem( const char * fname, bool bTestEval, bool bDebu
         //printf( " test_eFF exits ... \n" ); exit(0);
     }
 
+    initWiggets();
 };
 
 TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_, " test_eFF " ) {
 
-    fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" );
+    fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
+    fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
+
     plot1.fontTex=fontTex;
 
     //checkDerivs( ff.KRSrho );   // exit(0);
     //makePlots( plot1, ff );     // exit(0);
     //makePlots2( plot1 );        // exit(0);
     //checkDerivs2();             // exit(0);
-
-    // ===== SETUP GEOM
-    //char* fname = "data/H_eFF.xyz";
-    //char* fname = "data/e2_eFF_singlet.xyz";
-    //char* fname = "data/e2_eFF_triplet.xyz";
-    //char* fname = "data/H2_eFF.xyz";
-    //char* fname = "data/He_eFF_singlet.xyz";
-    //char* fname = "data/He_eFF_triplet.xyz";
-    //char* fname = "data/H2O_eFF.xyz";
-    //char* fname = "data/H2_eFF_spin.xyz";
-    //char* fname = "data/Ce1_eFF.xyz";
-    //char* fname = "data/Ce2_eFF.xyz";
-    //char* fname = "data/Ce4_eFF.xyz";
-    //char* fname = "data/CH3_eFF_spin.xyz";
-    //char* fname = "data/CH4_eFF_flat_spin.xyz";
-    //char* fname = "data/CH4_eFF_spin.xyz";
-    //char* fname = "data/C2_eFF_spin.xyz";
-    //char* fname = "data/C2H4_eFF_spin.xyz";
-    //char* fname = "data/C2H4_eFF_spin_.xyz";
-    //char* fname = "data/C2H6_eFF_spin.xyz";
-    //char* fname = "data/C2H6_eFF_spin_.xyz";
-    //ff.loadFromFile_xyz( "data/C2H4_eFF_spin.xyz" );
-    //ff.loadFromFile_xyz( fname );
-
-    //ff.loadFromFile_fgo( "data/e2_1g_2o_singlet.fgo" );
-    //ff.loadFromFile_fgo( "data/e2_1g_2o_triplet.fgo );
-    //ff.loadFromFile_fgo( "data/H_1g_1o.fgo" );
-    //ff.loadFromFile_fgo( "data/He_singlet.fgo" );
-    //ff.loadFromFile_fgo( "data/He_triplet.fgo" );
-    //ff.loadFromFile_fgo( "data/H2_1g_2o.fgo" );
-    //ff.loadFromFile_fgo( "data/H2.fgo" );
-    //ff.loadFromFile_fgo( "data/C_1g.fgo" );
-    //ff.loadFromFile_fgo( "data/C_2g_o1.fgo" );
-    //ff.loadFromFile_fgo( "data/N2.fgo" );
-    //ff.loadFromFile_fgo( "data/O2.fgo" );
-    //ff.loadFromFile_fgo( "data/O2_half.fgo" );
-    //ff.loadFromFile_fgo( "data/H2O_1g_8o.fgo" );
-
-    //ff.loadFromFile_fgo( "data/C_e4_1g.fgo" );
-    //ff.loadFromFile_fgo( "data/CH4.fgo" );
-    //ff.loadFromFile_fgo( "data/NH3.fgo" );
-    //ff.loadFromFile_fgo( "data/H2O.fgo" );
-    //ff.loadFromFile_fgo( "data/C2H4.fgo" );    // Atoms Fly Away
-    //ff.loadFromFile_fgo( "data/C2H2.fgo" );
 
     //ff.bEvalAECoulomb = 0;
     //ff.bEvalAEPauli   = 0;
@@ -271,6 +250,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     plot1.init();
     plot1.fontTex = fontTex;
     plot1.add( new DataLine2D( 200, -10.0, 0.1, 0xFF0000FF, "Vatom" ) );
+    plot1.bAxes  = true;
+    plot1.bTicks = true;
     plot1.update();
     plot1.render();
     plot1.view();
@@ -391,11 +372,12 @@ void TestAppRARFF::draw(){
 
     if(bDrawPlots){
         plotAtomsPot( ff, plot1.lines[0], (Vec3d){0.0,0.0,0.0}, (Vec3d){1.0,0.0,0.0}, -0.2, 0.1 );
-        plot1.bGrid=false;
-        plot1.bAxes=false;
-        plot1.bTicks=false;
-        plot1.update();
-        plot1.render();
+        // plot1.bGrid=false;
+        // plot1.bAxes=false;
+        // plot1.bTicks=false;
+        //plot1.update();
+        //plot1.render();
+        plot1.tryRender();
         plot1.view();
     }
 
@@ -408,7 +390,6 @@ void TestAppRARFF::draw(){
     //for(int i=0; i<ff.na; i++){  ff.aforce[i].z += -Kz*ff.apos[i].z;  };
     //for(int i=0; i<ff.ne; i++){  ff.eforce[i].z += -Kz*ff.epos[i].z;  };
     //printf( "na %i ne %i \n", ff.na, ff.ne );
-
 
     //Vec3d d = ff.apos[0]-ff.apos[1];
 
@@ -438,9 +419,7 @@ void TestAppRARFF::draw(){
 
 
 void TestAppRARFF::drawHUD(){
-	//glTranslatef( 100.0, 250.0, 0.0 );
-	//glScalef    ( 100.0, 100.0, 1.0 );
-	//plot1.view();
+    gui.draw();
 
     glPushMatrix();
     glTranslatef( 10.0,HEIGHT-20.0,0.0 );
@@ -460,6 +439,8 @@ void TestAppRARFF::drawHUD(){
 
 /*
 void TestAppRARFF::mouseHandling( ){
+    gui.onEvent( mouseX, mouseY, event );
+
     int mx,my; Uint32 buttons = SDL_GetRelativeMouseState( &mx, &my);
     if ( buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) {
 
@@ -471,6 +452,7 @@ void TestAppRARFF::mouseHandling( ){
 void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
     //printf( "NonInert_seats::eventHandling() \n" );
     Vec3d pa0;
+    if( gui.onEvent( mouseX, mouseY, event ) ){ return; };
     switch( event.type ){
         case SDL_KEYDOWN :
             if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
@@ -486,6 +468,14 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
                 case SDLK_LEFTBRACKET :  Espread *= 1.2; ogl_fs=genFieldMap(ogl_fs, field_ns, field_ps, field_Es, E0-Espread, E0+Espread ); break;
                 case SDLK_RIGHTBRACKET:  Espread /= 1.2; ogl_fs=genFieldMap(ogl_fs, field_ns, field_ps, field_Es, E0-Espread, E0+Espread ); break;
                 case SDLK_e: bMapElectron=!bMapElectron; break;
+
+                // plot // plot/grid options
+                case SDLK_g:  
+                //plot1.bGrid=false;
+                // plot1.bAxes=false;
+                // plot1.bTicks=false;
+
+
                 case SDLK_m:{
                     pa0 = ff.apos[ipicked];
                     sampleScalarField( Efunc, field_ns, {-5.0,-5.0,+0.1}, {0.1,0.0,0.0}, {0.0,0.1,0.0}, field_ps, field_Es, Erange );
@@ -634,6 +624,50 @@ int main(int argc, char *argv[]){
 
 
 
+
+    // ===== SETUP GEOM
+    //char* fname = "data/H_eFF.xyz";
+    //char* fname = "data/e2_eFF_singlet.xyz";
+    //char* fname = "data/e2_eFF_triplet.xyz";
+    //char* fname = "data/H2_eFF.xyz";
+    //char* fname = "data/He_eFF_singlet.xyz";
+    //char* fname = "data/He_eFF_triplet.xyz";
+    //char* fname = "data/H2O_eFF.xyz";
+    //char* fname = "data/H2_eFF_spin.xyz";
+    //char* fname = "data/Ce1_eFF.xyz";
+    //char* fname = "data/Ce2_eFF.xyz";
+    //char* fname = "data/Ce4_eFF.xyz";
+    //char* fname = "data/CH3_eFF_spin.xyz";
+    //char* fname = "data/CH4_eFF_flat_spin.xyz";
+    //char* fname = "data/CH4_eFF_spin.xyz";
+    //char* fname = "data/C2_eFF_spin.xyz";
+    //char* fname = "data/C2H4_eFF_spin.xyz";
+    //char* fname = "data/C2H4_eFF_spin_.xyz";
+    //char* fname = "data/C2H6_eFF_spin.xyz";
+    //char* fname = "data/C2H6_eFF_spin_.xyz";
+    //ff.loadFromFile_xyz( "data/C2H4_eFF_spin.xyz" );
+    //ff.loadFromFile_xyz( fname );
+
+    //ff.loadFromFile_fgo( "data/e2_1g_2o_singlet.fgo" );
+    //ff.loadFromFile_fgo( "data/e2_1g_2o_triplet.fgo );
+    //ff.loadFromFile_fgo( "data/H_1g_1o.fgo" );
+    //ff.loadFromFile_fgo( "data/He_singlet.fgo" );
+    //ff.loadFromFile_fgo( "data/He_triplet.fgo" );
+    //ff.loadFromFile_fgo( "data/H2_1g_2o.fgo" );
+    //ff.loadFromFile_fgo( "data/H2.fgo" );
+    //ff.loadFromFile_fgo( "data/C_1g.fgo" );
+    //ff.loadFromFile_fgo( "data/C_2g_o1.fgo" );
+    //ff.loadFromFile_fgo( "data/N2.fgo" );
+    //ff.loadFromFile_fgo( "data/O2.fgo" );
+    //ff.loadFromFile_fgo( "data/O2_half.fgo" );
+    //ff.loadFromFile_fgo( "data/H2O_1g_8o.fgo" );
+
+    //ff.loadFromFile_fgo( "data/C_e4_1g.fgo" );
+    //ff.loadFromFile_fgo( "data/CH4.fgo" );
+    //ff.loadFromFile_fgo( "data/NH3.fgo" );
+    //ff.loadFromFile_fgo( "data/H2O.fgo" );
+    //ff.loadFromFile_fgo( "data/C2H4.fgo" );    // Atoms Fly Away
+    //ff.loadFromFile_fgo( "data/C2H2.fgo" );
 
 
 
