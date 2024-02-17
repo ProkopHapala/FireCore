@@ -638,6 +638,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.0, bVerbose, bFromScratch );
         copy( qeq.n, 1,0,(double*)qeq.qs, 4,2,(double*)nbmol.REQs );
         if(bFromScratch){ ffl.chargeToEpairs( -0.2, etyp ); }
+        nbmol.evalPLQs(gridFF.alphaMorse);
         printf("MolWorld_sp3::autoCharges() END REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
         bChargeUpdated=true;
     }
