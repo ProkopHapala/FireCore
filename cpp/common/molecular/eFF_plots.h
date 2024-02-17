@@ -222,7 +222,7 @@ void plotAtomsPot( EFF& ff, DataLine2D *line, Vec3d p0, Vec3d dp, float sc=1.0, 
     Vec3d ps[line->n];
     for(int i=0; i<line->n; i++){  ps[i]=p0+dp*line->xs[i]; }
     //solver.orbAtPoints( io, line->n, ps, line->ys );
-    ff.atomsPotAtPoints( line->n, ps, line->ys, s, 1.0 );
+    ff.evalPotAtPoints( line->n, ps, line->ys, s, 1.0 );
     for(int i=0; i<line->n; i++){  line->ys[i]*=sc; }
     line->redraw=true;
 }

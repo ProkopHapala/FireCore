@@ -641,10 +641,49 @@ void autoAbWs( const Vec3d * AAs, const Vec3d * AEs ){
 }
 */
 
+double electronPotAtPoint( const Vec3d& pi, double si, double Q, int spini=0, bool bEvalCoulomb=true )const{
+    double EeeCoul=0;
+    double EeePaul=0;
+    Vec3d fp; double fsi;
+    bool bEvalPauli = (spini!=0);
+    // ToDo: perhaps we should make put this loop into a separate function
+    for(int j=0; j<ne; j++){
+        Vec3d  f  = Vec3dZero;
+        const Vec3d  dR = epos [j] - pi;
+        //const double sj = esize[j];
+        const double sj = esize[j];
+        double&     fsj = fsize[j];
+        double dEee=0,dEpaul=0;
+        if(bEvalCoulomb){
+            dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, Q );
+        }
+        if(bEvalPauli){
+            if( iPauliModel == 1 ){ // Pauli repulsion form this eFF paper http://aip.scitation.org/doi/10.1063/1.3272671
+                dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini*espin[j], KRSrho );
+                //printf( "EeePaul[j=%i] dEpaul=%g spins(%i*%i)\n", j, dEpaul , spini, espin[j] ); // it seems it gives almost ZERO for some reason => investigate
+            }else if( iPauliModel == 2 ){ 
+                if(spini==espin[j]){ 
+                    dEpaul = addPauliGaussVB( dR, si, sj, f, fsi, fsj );
+                }
+            }else{  
+                if( spini==espin[j] ){
+                    dEpaul = addDensOverlapGauss_S( dR, si*M_SQRT2, sj*M_SQRT2, KPauliOverlap, f, fsi, fsj );
+                }
+            }
+        }
+        EeeCoul+= dEee;
+        EeePaul+= dEpaul;
+        //printf( "EeePaul[j=%i] EeePaul=%g EeeCoul=%g spins(%i*%i)\n", j, EeePaul, EeeCoul, spini, espin[j] );
+    }
+    //printf( "electronPotAtPoint() END EeePaul=%g EeeCoul=%g \n", EeePaul, EeeCoul );
+    return EeeCoul + EeePaul;
+}
+
 double atomsPotAtPoint( const Vec3d& pos, double s, double Q )const{
     double Eae    =0;
     double EaePaul=0;
     Vec3d fp; double fs;
+    // ToDo: perhaps we should make put this loop into a separate function
     for(int i=0; i<na; i++){
         const Vec3d  dR   = pos-apos[i];
         const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
@@ -660,10 +699,14 @@ double atomsPotAtPoint( const Vec3d& pos, double s, double Q )const{
     }
     return Eae + EaePaul;
 }
-double* atomsPotAtPoints( int n, Vec3d* ps, double* out=0, double s=0.0, double Q=1.0 )const{
+
+double* evalPotAtPoints( int n, Vec3d* ps, double* out=0, double s=0.0, double Q=1.0, int spin=0, bool bAtom=true, bool bElectron=false )const{
     if(out==0){ out = new double[n]; };
     for(int i=0; i<n; i++){
-        out[i] = atomsPotAtPoint( ps[i], s, Q );
+        double E = 0;
+        if(bAtom    ){ E += atomsPotAtPoint   ( ps[i], s, Q       ); }
+        if(bElectron){ E += electronPotAtPoint( ps[i], s, Q, spin ); }
+        out[i] = E;
     }
     return out;
 }

@@ -99,6 +99,39 @@ void applyParabolicPotential( const Vec3d& p0, const Vec3d& k, int n, const Vec3
     for(int i=0;i<n; i++){ Vec3d dp=ps[i]-p0; fs[i].add( dp*dp*k ); }
 }
 
+void draw2Dfunc( const EFF& ff, Vec2i ns, Vec2d spanx, Vec2d spany, double z_cut, Vec3i axes, bool bAtom=true, bool bElectron=true, bool bCoulomb=true, int spin=0.0, double s=0.0, double Q=1.0 ){
+    double dx = (spanx.y-spany.x)/ns.x;
+    double dy = (spany.y-spany.x)/ns.y;
+    Vec3d p0=Vec3dZero;
+    p0.array[axes.x] = spanx.x;
+    p0.array[axes.y] = spany.x;
+    double sign_Q = (Q>0)?1.0:-1.0;
+    double absQ   = fabs(Q);
+    Q*=bCoulomb; sign_Q*=bCoulomb;
+    //printf( "draw2Dfunc Q %g sign_Q %g absQ %g \n", Q, sign_Q, absQ );
+    for(int iy=0; iy<=ns.y; iy++){
+        Vec3d p = p0;
+        p.array[axes.y] = p0.y + iy*dy;
+        glBegin(GL_LINE_STRIP);
+        for(int ix=0; ix<=ns.x; ix++){
+            p.array[axes.x] = p0.x + ix*dx;
+            p.array[axes.z] = z_cut;
+            double E = 0;
+            if(bAtom    ){ E += ff.atomsPotAtPoint   ( p, s,      Q            ); }
+            if(bElectron){ E += ff.electronPotAtPoint( p, s,-sign_Q, spin )*absQ; }
+            p.array[axes.z] = E;
+            glVertex3f( p.x, p.y, p.z );
+        }
+        glEnd();
+    }
+    glBegin(GL_LINE_LOOP);
+    //p0.array[axes.z]=0;
+    p0.array[axes.y]=spany.x; p0.array[axes.x]=spanx.x; glVertex3f( p0.x, p0.y, p0.z );
+    p0.array[axes.y]=spany.x; p0.array[axes.x]=spanx.y; glVertex3f( p0.x, p0.y, p0.z );
+    p0.array[axes.y]=spany.y; p0.array[axes.x]=spanx.y; glVertex3f( p0.x, p0.y, p0.z );
+    p0.array[axes.y]=spany.y; p0.array[axes.x]=spanx.x; glVertex3f( p0.x, p0.y, p0.z );
+    glEnd();
+}
 
 // ======= THE CLASS
 
@@ -127,11 +160,23 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
 
     bool bViewForce   = false;
     bool bDrawPointLabels = true;
-    bool bDrawPlots   = true;
+    //bool bDrawPlots   = true;
+    bool bDrawPlots   = false;
+    bool bDrawPlotXY  = true;
+    bool bDrawPlotXZ  = true;
+    bool bDrawPlotYZ  = true;
     bool bDrawObjects = true;
     bool bMapElectron = false;
     int ipicked  = -1;
     int PickMode = ELECTRON;
+
+    double xy_height = 0.0;
+    double yz_height = 0.0;
+    double xz_height = 0.0;
+    double scale_V   = 1.0;
+    double electron_size = 1.0;
+    int    electron_spin = 1;
+    int    electron_Q    = 1;
 
     // DEBUG STUFF
     GLint ogl_fs = 0;
@@ -187,12 +232,15 @@ void TestAppRARFF::initWiggets(){
     chk->addBox( "grid", &plot1.bGrid );
     chk->addBox( "axes", &plot1.bAxes );
 
-    // chk->boxes[0].label = "view"; DEBUG 
-    // chk->boxes[0].master = &bDrawPlots; DEBUG
-    // chk->boxes[1].label = "grid"; DEBUG 
-    // chk->boxes[1].master = &plot1.bGrid; DEBUG
-    // chk->boxes[2].label = "axes"; DEBUG 
-    // chk->boxes[2].master = &plot1.bAxes; DEBUG
+    gx.x1+=5; gx.step( 15 );
+    GUIPanel* p=0;
+    MultiPanel* mpanel = new MultiPanel( "PlotXY", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mpanel );
+    p=mpanel->subs[0]; p->caption = "view";    p->command=[&](GUIAbstractPanel* p){ bDrawPlotXY=!bDrawPlotXY;            }; p->isSlider=false; p->viewVal=false;
+    p=mpanel->subs[1]; p->caption = "z_cut: "; p->command=[&](GUIAbstractPanel* p){ xy_height    =((GUIPanel*)p)->value; }; p->setRange(-10.0,10.0); p->setValue(0.0);
+    p=mpanel->subs[1]; p->caption = "scale: "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0);
+    p=mpanel->subs[2]; p->caption = "size : "; p->command=[&](GUIAbstractPanel* p){ electron_size=((GUIPanel*)p)->value; }; p->setRange( 0.0 ,2.0);  p->setValue(1.0);
+    p=mpanel->subs[3]; p->caption = "spin : "; p->command=[&](GUIAbstractPanel* p){ electron_spin=((GUIPanel*)p)->value; }; p->setRange(-1.0 ,1.0);  p->setValue(1.0); p->isInt=true;
+    p=mpanel->subs[4]; p->caption = "Q    : "; p->command=[&](GUIAbstractPanel* p){ electron_Q   =((GUIPanel*)p)->value; }; p->setRange( 0.0 ,1.0);  p->setValue(1.0); p->isInt=true;
 
     printf( "TestAppRARFF::initWiggets() END \n" );
 }
@@ -231,6 +279,21 @@ void TestAppRARFF::initEFFsystem( const char * fname, bool bTestEval, bool bDebu
     ff.iPauliModel = 1; // addPauliGauss   from the article using  KRSrho
     //ff.iPauliModel = 2; // addPauliGaussVB valence bons
     ff.info();
+
+    // {
+    // Vec3d p = ff.epos[0];
+    // double dx = 0.1;
+    // double sz = 0.5;
+    // double sign_Q = 0.0;
+    // double absQ   = 1.0;
+    // int    spin   = -1;
+    // for(int ix=0; ix<10; ix++){ 
+    //     double E = ff.electronPotAtPoint( p, sz, sign_Q, spin )*absQ;
+    //     //printf( "E[%i] x=%g  E=%g absQ=%g \n", ix, ix*dx, E, absQ );
+    //     p.x += 0.1;
+    // }
+    // exit(0);
+    // }
 
     if(bTestEval){
         double E = ff.eval();
@@ -398,6 +461,11 @@ void TestAppRARFF::draw(){
         //plot1.render();
         plot1.tryRender();
         plot1.view();
+    }
+
+    if( bDrawPlotXY ){
+        //draw2Dfunc( ff, {20,20}, {-10.,10.0}, {-10.,10.0}, xy_height, {0,1,2}, true, true, true, 1.0, 0.5, 1.0 );
+        draw2Dfunc( ff, {100,100}, {-10.,10.0}, {-10.,10.0}, xy_height, {0,1,2}, true, true, fabs(electron_Q)>1e-6, electron_spin, electron_size, scale_V );
     }
 
     //printf( "e[0] r %g s %g \n", ff.epos[0].norm(), ff.esize[0] );

@@ -174,7 +174,7 @@ class GUIAbstractPanel{ public:
 // ==============================
 
 class GUIPanel : public GUIAbstractPanel { public:
-	bool isSlider=true, isButton=false;
+	bool isSlider=true, isButton=false, bCmdOnSlider=false;
 
 	uint32_t barColor=0x00FF00;
     bool viewVal=true;
@@ -183,6 +183,7 @@ class GUIPanel : public GUIAbstractPanel { public:
 	bool     executed=false;
 	int      curPos=0;
 	std::string inputText;
+    int      ndigits=2;
 
 	float    vmin=0.0f, vmax=1.0f;
 	double   value=0.0;
@@ -192,8 +193,8 @@ class GUIPanel : public GUIAbstractPanel { public:
     // ==== functions
 
     GUIPanel()=default;
-    GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_=true, bool isButton_=true, bool isInt_=false, bool viewVal_=true ){
-        initPanel(caption, xmin,ymin,xmax,ymax); isSlider=isSlider_; isButton=isButton_; isInt=isInt_; viewVal=viewVal_;
+    GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_=true, bool isButton_=true, bool isInt_=false, bool viewVal_=true, bool bCmdOnSlider_=false ){
+        initPanel(caption, xmin,ymin,xmax,ymax); isSlider=isSlider_; isButton=isButton_; isInt=isInt_; viewVal=viewVal_; bCmdOnSlider=bCmdOnSlider_;
         command=0;
     };
 
@@ -206,7 +207,8 @@ class GUIPanel : public GUIAbstractPanel { public:
 
 	// ===== inline functions
     inline int    getIntVal()        { return round(value); };
-    inline void   val2text()         { if(isInt){ inputText = std::to_string(getIntVal()); }else{ inputText = std::to_string(value); }; };
+    //inline void   val2text()         { if(isInt){ inputText = std::to_string(getIntVal()); }else{  inputText = std::doubleToString(value,ndigits); }; };
+    inline void   val2text()         { if(isInt){ inputText = std::to_string(getIntVal()); }else{ char str[20]; sprintf(str, "%.*f", ndigits, value); inputText=str; }; };
 	inline double x2val( float  x   ){ return ( x*(vmax-vmin)/(xmax-xmin) )+ vmin; };
 	inline float  val2x( double val ){ return (val-vmin)*(xmax-xmin)/(vmax-vmin);  };
 
@@ -257,9 +259,9 @@ class MultiPanel : public GUIAbstractPanel { public:
 
     // ==== functions
 
-    void initMulti( const std::string& caption, int xmin_, int ymin_, int xmax_, int dy, int nsubs_, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true );
+    void initMulti( const std::string& caption, int xmin_, int ymin_, int xmax_, int dy, int nsubs_, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true, bool bCmdOnSlider=false );
     MultiPanel(){};
-    MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true ){ if(dy==0){dy=2*fontSizeDef;} initMulti( caption, xmin, ymin, xmax, dy, nsubs, isSlider,isButton,isInt,viewVal); }
+    MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true, bool bCmdOnSlider=false ){ if(dy==0){dy=2*fontSizeDef;} initMulti( caption, xmin, ymin, xmax, dy, nsubs, isSlider,isButton,isInt,viewVal,bCmdOnSlider); }
 
     virtual void open()override;
     virtual void close()override;

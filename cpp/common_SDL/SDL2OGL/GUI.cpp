@@ -131,7 +131,7 @@ void GUIAbstractPanel::moveTo(int x, int y){
 }
 
 void GUIAbstractPanel::render(){
-    printf( "GUIAbstractPanel::render() p0(%i,%i) p2(%i,%i) \n", xmin, ymin, xmax, ymax );
+    //printf( "GUIAbstractPanel::render() p0(%i,%i) p2(%i,%i) \n", xmin, ymin, xmax, ymax );
     glDisable   ( GL_LIGHTING    );
     glDisable   ( GL_DEPTH_TEST  );
     glShadeModel( GL_FLAT        );
@@ -157,7 +157,7 @@ void GUIAbstractPanel::tryRender(){
 }
 
 void GUIAbstractPanel::initPanel( const std::string& caption_, int xmin_, int ymin_, int xmax_, int ymax_ ){
-    printf( "GUIAbstractPanel::initPanel(%s,pmin(%i,%i),pmax(%i,%i)) \n", caption_.c_str(), xmin_, ymin_, xmax_, ymax_ );
+    //printf( "GUIAbstractPanel::initPanel(%s,pmin(%i,%i),pmax(%i,%i)) \n", caption_.c_str(), xmin_, ymin_, xmax_, ymax_ );
     caption=caption_;
     xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymax_;
     redraw = true;
@@ -180,7 +180,7 @@ void GUIPanel::view ( ){
 }
 
 void GUIPanel::render(){
-    printf( "GUIPanel::render() p0(%i,%i) p2(%i,%i) isSlider(%i) isButton(%i) \n", xmin, ymin, xmax, ymax, isSlider, isButton );
+    //printf( "GUIPanel::render() p0(%i,%i) p2(%i,%i) isSlider(%i) isButton(%i) \n", xmin, ymin, xmax, ymax, isSlider, isButton );
     if(isInt){ value=getIntVal(); }
     glDisable( GL_LIGHTING   );
     glDisable( GL_DEPTH_TEST );
@@ -277,10 +277,11 @@ GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& 
         //printf( "  panel.onMouse %i %i \n", x, y );
         if( ( event.type == SDL_MOUSEBUTTONDOWN ) ){
             active = this;
-            if(isSlider && (event.button.button==SDL_BUTTON_RIGHT)){
+            if(isSlider && (event.button.button==SDL_BUTTON_RIGHT)){ // onSliderChange 
                 //value=( x*(vmax-vmin)/(xmax-xmin) ) + vmin;
                 value=x2val(x);
                 if(isInt)value=getIntVal();
+                if(bCmdOnSlider) command(this);
                 //sprintf(val_text, "%3.3f", value );
                 //inputText = std::to_string(value);
                 redraw=true;
@@ -354,8 +355,8 @@ GUIAbstractPanel* ScisorBox::onMouse( int x, int y, const SDL_Event&  event, GUI
 // ==============================
 
 //void MultiPanel::initMulti( int xmin_, int ymin_, int xmax_, int ymax_, int fontTex_, int nsubs_ ){
-void MultiPanel::initMulti( const std::string& caption_, int xmin_, int ymin_, int xmax_, int dy_, int nsubs_, bool isSlider, bool isButton, bool isInt, bool viewVal ){
-    printf( "MultiPanel::initMulti(%s,nsubs=%i,dy=%i,dx=%i) pmin(%i,%i)  isSlider=%i isButton=%i isInt=%i viewVal=%i \n", caption_.c_str(), nsubs_, dy_, xmax_-xmin_, xmin_, ymin_, isSlider, isButton, isInt, viewVal );
+void MultiPanel::initMulti( const std::string& caption_, int xmin_, int ymin_, int xmax_, int dy_, int nsubs_, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider ){
+    //printf( "MultiPanel::initMulti(%s,nsubs=%i,dy=%i,dx=%i) pmin(%i,%i)  isSlider=%i isButton=%i isInt=%i viewVal=%i bCmdOnSlider=%i\n", caption_.c_str(), nsubs_, dy_, xmax_-xmin_, xmin_, ymin_, isSlider, isButton, isInt, viewVal, bCmdOnSlider );
     //xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymax_; fontTex=fontTex_;
     caption =caption_;
     xmin=xmin_,ymin=ymin_,xmax=xmax_, dy=dy_; //fontTex=fontTex_;
@@ -368,7 +369,7 @@ void MultiPanel::initMulti( const std::string& caption_, int xmin_, int ymin_, i
         char buf[16];
         sprintf(buf,"val_%i",i);
         //printf( "MultiPanel::initMulti(%i) p0(%i,%i) p1(%i,%i) \n", i, xmin,yi,xmax,yi+dy );
-        subs[i] = new GUIPanel( buf, xmin,yi,xmax,yi+dy, isSlider, isButton,isInt, viewVal );
+        subs[i] = new GUIPanel( buf, xmin,yi,xmax,yi+dy, isSlider, isButton,isInt, viewVal, bCmdOnSlider );
         yi-=dy;
     }
     redraw = true;
@@ -422,14 +423,14 @@ void MultiPanel::tryRender( ){
 */
 
 void MultiPanel::render( ){
-    printf( "MultiPanel::render() opened=%i \n", opened );
+    //printf( "MultiPanel::render() opened=%i \n", opened );
     GUIAbstractPanel::render();
     if(opened){
         for(int i=0; i<nsubs; i++){
             subs[i]->render();
         }
     }
-    printf( "MultiPanel::render() END\n" );
+    //printf( "MultiPanel::render() END\n" );
 }
 
 GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, GUI& gui ){
@@ -669,7 +670,7 @@ void DropDownList ::render(){
             if( iItem<labels.size() ){
                 Draw2D::drawText( labels[iItem].c_str(), labels[iItem].length(), {xmin, ymax-(i+2)*2*fontSizeDef}, 0.0, GUI_fontTex, fontSizeDef );
                 //sprintf( labels[],"val%i",i);
-                    //sprintf(subs[i]->caption,"val%i",i);
+                //sprintf(subs[i]->caption,"val%i",i);
             }
         }
     }else{
@@ -709,7 +710,7 @@ GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, 
                         iSelected = i;
                         //if(onSelect)onSelect->GUIcallback(this);
                         if(command)command(this);
-                        printf( "DropDownList::onMouse() iSelected %i  iItem0 %i  labels.size() %i  \n", iSelected, iItem0, labels.size() );
+                        //printf( "DropDownList::onMouse() iSelected %i  iItem0 %i  labels.size() %i  \n", iSelected, iItem0, labels.size() );
                     }
                     close();
                 }else{
@@ -873,7 +874,7 @@ void TableView::onKeyDown( const SDL_Event& e, GUI& gui ){
 }
 
 void TableView::onText( const SDL_Event& e, GUI& gui ){
-    printf( "TableView::onText() \n" );
+    //printf( "TableView::onText() \n" );
     if( SDL_GetModState() & KMOD_CTRL ) return;
     if(input){
         input->inputText.insert(input->curPos,e.text.text); input->curPos++;
@@ -892,7 +893,7 @@ GUIAbstractPanel* TableView::onMouse( int x, int y, const SDL_Event& event, GUI&
             for(int j=j0;j<jmax;j++){ if(dx<xs[j+1]){ j_=j; break; } }
             if(event.button.button == SDL_BUTTON_LEFT){
                 i=i_; j=j_;
-                printf( "TableView mouse select i,j %i %i\n", i, j );
+                //printf( "TableView mouse select i,j %i %i\n", i, j );
                 gui.bKeyEvents = false;
                 SDL_StartTextInput();
                 redraw = true;
@@ -927,7 +928,7 @@ GUIAbstractPanel* GUI::onEvent( int mouseX, int mouseY, const SDL_Event& event )
         case SDL_TEXTINPUT:
             //if(focused){ focused->onText   ( event ); }else{ txt.onText   ( event );  }; break;
             if(focused && !bKeyEvents){ 
-                printf( "GUI::onEvent() -> onText()  focused= `%s`| %li \n", focused->caption.c_str(), (long)focused );
+                //printf( "GUI::onEvent() -> onText()  focused= `%s`| %li \n", focused->caption.c_str(), (long)focused );
                 focused->onText( event, *this ); 
             }
             break;
