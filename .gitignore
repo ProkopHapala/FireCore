@@ -18,6 +18,11 @@
 __pycache__
 
 build
-Build
 build-*
+Build
 Build-*
+
+cpp/Build
+cpp/Build-*
+cpp/build
+cpp/build-*

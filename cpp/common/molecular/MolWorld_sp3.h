@@ -214,11 +214,9 @@ class MolWorld_sp3 : public SolverInterface { public:
         if( params.atypes.size() == 0 ){
             initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
         }
-        DEBUG
         // initialization global optimizer
         gopt.solver = this;
         params_glob = &params;
-        DEBUG
         if(verbosity>0){
             printf("\n#### MolWorld_sp3::init()\n");
             if(smile_name   )printf("smile_name  (%s)\n", smile_name );
@@ -229,12 +227,10 @@ class MolWorld_sp3 : public SolverInterface { public:
             // TBD we should also print if we use UFF or not...
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
         }
-        DEBUG
         if(surf_name ){
             bGridFF = true;
             loadSurf( surf_name, bGridFF, idebug>0 );
         }
-        DEBUG
         if ( smile_name ){               
             insertSMILES( smile_name );    
             builder.addAllCapTopo();       
@@ -248,16 +244,13 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if(bRigid)initRigid();
             }
         }
-        DEBUG
         builder.randomFragmentCollors();
         if(bMMFF){     
             makeFFs();
         }
-        DEBUG
         if(!bUFF){ builder.setup_atom_permut( true ); }
         if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
         if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems 
-        DEBUG
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
@@ -744,9 +737,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     }
 
     bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
-        DEBUG
         sprintf(tmpstr, "%s.xyz", name );
-        DEBUG
         int ret = params.loadXYZ( tmpstr, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
         if     ( ret<0 ){ printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found => Exit() \n",         tmpstr ); exit(0); }
         if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", tmpstr ); exit(0); }
@@ -755,9 +746,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
         //surf.print();
         bSurfAtoms=true;
-        DEBUG
         initGridFF( name,bGrid,bSaveDebugXSFs,z0,cel0 );
-        DEBUG
         return true;
     }
 

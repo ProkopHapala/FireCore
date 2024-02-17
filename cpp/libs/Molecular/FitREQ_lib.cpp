@@ -1,14 +1,6 @@
 ﻿
 
-//constexpr int ntmpstr=2048;
-//char tmpstr[ntmpstr];
-
 #include "globals.h"
-// int verbosity = 1;
-// int idebug    = 0;
-//double tick2second=1e-9;
-
-//int verbosity = 1;
 
 #include "testUtils.h"
 #include "FitREQ.h"

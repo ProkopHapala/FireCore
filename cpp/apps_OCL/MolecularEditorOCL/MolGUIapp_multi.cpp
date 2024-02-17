@@ -1,7 +1,4 @@
 #include <globals.h>
-//int verbosity = 1;
-//int idebug    = 0;
-double tick2second=1e-9;
 
 #include "MolGUI.h"
 #include "MolWorld_sp3_multi.h"
@@ -23,8 +20,9 @@ int main(int argc, char *argv[]){
     SDL_GetCurrentDisplayMode(0, &DM);
 
 	MolWorld_sp3_multi* W = new MolWorld_sp3_multi();
+    app                   = new MolGUI( junk, DM.w-100, DM.h-100, W );
+
 	// --------- using argparse & LabdaDict;
-	app = new MolGUI( junk, DM.w-100, DM.h-100, W );
 	funcs["-m"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &W->nSystems ); }}; // number of systems
 	funcs["-s"]={1,[&](const char** ss){ W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz
@@ -59,7 +57,8 @@ int main(int argc, char *argv[]){
     } }; // test
 
 	process_args( argc, argv, funcs );
-	app->init();
+    W->init();
+    app->bindMolWorld( W );
 
     // --- Apply after-initialization settings and hacks 
     if(iParalel>-100){ W->iParalel=iParalel; printf( "#### W->iParalel set to %i \n", W->iParalel ); };
