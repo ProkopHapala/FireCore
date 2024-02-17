@@ -13,12 +13,11 @@
 lua_State  * theLua=0;
 
 int l_addGUIpanel(lua_State *L){
-    Vec3i xyw             = Lua::getVec3i (L,1);
-    int icmd              = Lua::getInt   (L,2); // index of command in the array of commands 
-    const char* label     = Lua::getString(L,3);
-    Vec3i SliderButtonInt = Lua::getVec3i (L,4);
-    Vec3d MinMaxCur       = Lua::getVec3  (L,5);
-    const char* command   = Lua::getString(L,6);
+    const char* label     = Lua::getString(L,1);
+    Vec3i xyw             = Lua::getVec3i (L,2);
+    Vec3i SliderButtonInt = Lua::getVec3i (L,3);
+    Vec3d MinMaxCur       = Lua::getVec3  (L,4);
+    const char* command   = Lua::getString(L,5);
     int ipanel = app->gui.panels.size();
     GUIPanel* panel = (GUIPanel*)app->gui.addPanel( new GUIPanel( label, xyw.x,xyw.y, xyw.x+xyw.z*fontSizeDef,xyw.y+fontSizeDef*2, SliderButtonInt.x>0, SliderButtonInt.y>0, SliderButtonInt.z>0 ) );
     //GUIPanel* panel = ((GUIPanel*)app->gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );

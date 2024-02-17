@@ -1,6 +1,9 @@
 #ifndef MolGUI_h
 #define MolGUI_h
 
+#include "globals.h"
+
+#include "macroUtils.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -175,8 +178,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
 
-    static const int nmaxstr=2048;
-    char str[nmaxstr];
+    //static const int nmaxstr=2048; // use globals.h ntmpstr instead
+    //char str[nmaxstr];             // use globals.h tmpstr instead
 
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
@@ -191,7 +194,11 @@ class MolGUI : public AppSDL2OGL_3D { public:
     DropDownList* panel_Frags=0;
     GUIPanel*     panel_iMO  =0;
 
-    Dict<Action> panelActions;
+    Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
+
+    // this is used for binding to Lua and to GUI
+    std::unordered_map<std::string,int> member_offsets_double;
+    std::unordered_map<std::string,int> member_offsets_int;
 
     // ----- AFM scan
     GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,8.0}, 0.1 };
@@ -210,7 +217,14 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ======================= Functions 
 
     void setPanelAction( int ipanel, const char* name ){ 
-        gui.panels[ipanel]->setCommand( panelActions.get(name) );
+        //gui.panels[ipanel]->setCommand( panelActions.get(name) );
+        int id = panelActions.getId(name);
+        if(id<0){
+            printf( "ERROR: setPanelAction(%i,%s) failed\n", ipanel, name );
+            exit(0);
+        }else{ 
+            gui.panels[ipanel]->setCommand( panelActions.vec[id] );
+        }
         // ToDo:       cannot convert ‘void (MolGUI::*)()’ to ‘const std::function<void(GUIAbstractPanel*)>&’
     };
 
@@ -225,11 +239,11 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void eventMode_edit   ( const SDL_Event& event );
     void mouse_default( const SDL_Event& event );
 
-	MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ );
-    void init();
-
+	MolGUI( int& id, int WIDTH_, int HEIGHT_);
+    
+    //void initMol(MolWorld_sp3* W_);
+    //void InitQMMM();
     bool visual_FF_test();
-
 	//int  loadMoleculeMol( const char* fname, bool bAutoH, bool loadTypes );
 	//int  loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH=false );
     void tryLoadGridFF();
@@ -241,10 +255,11 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void renderAFM_trjs( int di );
     void Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float* dfout );
     void makeAFM();
-
+    void lattice_scan( int n1, int n2, const Mat3d& dlvec );
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
     void bindMolecule(const MolWorld_sp3* W );
+    void bindMolWorld( MolWorld_sp3* W );
     void unBindMolecule();
 	void drawSystem ( Vec3i ixyz=Vec3iZero );
     void drawBuilder( Vec3i ixyz=Vec3iZero );
@@ -263,12 +278,12 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
     void debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.}, double sc=NAN );
 
-    //void InitQMMM();
     void initGUI();
     void updateGUI();
+    void initMemberOffsets();
     void initWiggets();
+    void initCommands();
     void drawingHex(double z0);
-    void lattice_scan( int n1, int n2, const Mat3d& dlvec );
 
     // ======================= Functions for AtomsInGrid
     // What is this Non-uniform grid? I don't remember when and why I implemented this.
@@ -351,10 +366,24 @@ class MolGUI : public AppSDL2OGL_3D { public:
 //=================================================
 
 
+void MolGUI::initMemberOffsets(){
+    {
+    auto& m = member_offsets_double;
+    mapByteOffIn(m, z0_scan );
+    }
+    {
+    auto& m = member_offsets_int;
+    mapByteOffIn(m, perFrame );
+    }
+}
+
+void MolGUI::initCommands(){
+    panelActions.add( "perFrame", [&](GUIAbstractPanel* p){ perFrame = ((GUIPanel*)p)->getIntVal(); printf( "GUIPanel(%s) set perFrame=%i \n", ((GUIPanel*)p)->caption.c_str(), perFrame ); return 0; } );
+}
+
 void MolGUI::initWiggets(){
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
-
     GUI_stepper ylay;
     ylay.step(2);
     Qpanel = new GUIPanel( "Q_pick: ", 5,ylay.x0,5+100,ylay.x1, true, true ); 
@@ -369,7 +398,7 @@ void MolGUI::initWiggets(){
     tab1->addColum( &(W->builder.lvec.a.x), 1, DataType::Double    );
     tab1->addColum( &(W->builder.lvec.a.y), 1, DataType::Double    );
     tab1->addColum( &(W->builder.lvec.a.z), 1, DataType::Double    );
-    
+
     ((TableView*)gui.addPanel( new TableView( tab1, "lattice", 5, ylay.x0,  0, 0, 3, 3 ) ))->input = new GUITextInput();
 
     ylay.step(3); 
@@ -419,7 +448,6 @@ void MolGUI::initWiggets(){
     //exit(0);
 
     if( W->getMolWorldVersion() & MolWorldVersion::QM ){ 
-        
         // --- Selection of orbital to plot
         ylay.step(3);
         panel_iMO = ((GUIPanel*)gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
@@ -430,13 +458,12 @@ void MolGUI::initWiggets(){
             int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
             renderOrbital( iHOMO + which_MO );
         return 0; });
-
     }
-   
 
 }
 
-MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
+MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
+    printf( "MolGUI::MolGUI() \n" );
     long T0=getCPUticks();
     float nseconds = 0.1;
     SDL_Delay( (int)(1000*0.1) );
@@ -444,12 +471,18 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OG
     printf( "CPU speed calibration: tick=%g [s] ( %g GHz)\n", tick2second, 1.0e-9/tick2second );
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
-    if(W_==0){ W = new MolWorld_sp3(); }else{ W=W_; }
-    W->tmpstr=str;
     actions.vec.resize( 256 );
+
+    initGUI();
+
 }
 
 void MolGUI::initGUI(){
+
+    initMemberOffsets();
+
+    initCommands();
+
     // ---- Graphics setup
     //Console::init( int lineLength=256, SDL_Window* window_=0 ){
     console.init( 256, window );
@@ -467,38 +500,47 @@ void MolGUI::initGUI(){
     gizmo.cam = &cam;
     //gizmo.bindPoints(W->ff.natoms, W->ff.apos      );
     //gizmo.bindEdges (W->ff.nbonds, W->ff.bond2atom );
-    gizmo.bindPoints( natoms, apos      );
-    gizmo.bindEdges ( nbonds, bond2atom );
     gizmo.pointSize = 0.5;
     //gizmo.iDebug    = 2;
     ruler.setStep( 1.5 * sqrt(3) );
-    initWiggets();
+
 }
 
 void MolGUI::updateGUI(){
+    gizmo.bindPoints( natoms, apos      );
+    gizmo.bindEdges ( nbonds, bond2atom );
     if(panel_Frags){
         panel_Frags->labels.clear();
         for(int i=0; i<W->builder.frags.size(); i++){
             char s[16]; sprintf(s,"Frag_%02i", i );
             panel_Frags->addItem( s );
         }
-    
     }
 }
 
-void MolGUI::init(){
-    if(verbosity>0)printf("MolGUI::init() \n");
-    W->init();
+void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
+    //if(verbosity>0)
+    printf("MolGUI::bindMolWorld() \n");
+    W = W_;
+    // if(W_!=0){ W = W_;}
+    // if(W==0){
+    //     W = new MolWorld_sp3(); 
+    //     W->init();
+    // }else{ 
+    //     if( W->isInitialized==false){ W->init(); } 
+    // }
     //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Quat4d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
     //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
     //MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
     //constrs   = &W->constrs;
     //neighs    = W->ffl.neighs;
     //neighCell = W->ffl.neighCell;
+    //W->tmpstr = str;
     MolGUI::bindMolecule( W );
-    initGUI();
+    //initGUI();
+    initWiggets();
     updateGUI();
-    if(verbosity>0)printf("... MolGUI::init() DONE\n");
+    //if(verbosity>0)printf("... MolGUI::bindMolWorld() DONE\n");
 }
 
     bool MolGUI::visual_FF_test(){ // ==== MolGUI TESTS   Torsions ( Paolo vs Prokop optimized )
@@ -642,7 +684,7 @@ void MolGUI::draw(){
     if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
     if( ogl_afm     ){ glCallList(ogl_afm);      }
 
-    //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // DEBUG  
+    //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // Debug
 
     //if(bDoQM)drawSystemQMMM();
 
@@ -808,7 +850,7 @@ void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){
     s += sprintf(s, "GridFF(ia=%i) Etot %15.10f Epaul %15.10f; EvdW %15.10f Eel %15.10f p(%7.3f,%7.3f,%7.3f) \n", ia,   fe.e, fp.e, fl.e, fq.e,  pi.x,pi.y,pi.z  );
     //if( fabs(fe.e-fe_ref.e)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", fe_ref.e ); }
     if( fe.e>0 ){ glColor3f(0.7f,0.f,0.f); }else{ glColor3f(0.f,0.f,1.f); }
-    Draw::drawText( str, fontTex, fontSizeDef, {150,20} );
+    Draw::drawText( tmpstr, fontTex, fontSizeDef, {150,20} );
     glTranslatef( 0.0,fontSizeDef*2,0.0 );
     
 }
@@ -852,7 +894,7 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
     s += sprintf(s, "PLQH[%i,%i] r=%6.3f Etot %15.10f Epaul %15.10f; EvdW %15.10f EH %15.10f Eel %15.10f\n", b.i,b.j, sqrt(r2), Etot, Epaul, EvdW, EH, Eel );
     if( fabs(Etot-Eref)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", Eref ); }
     if( Etot>0 ){ glColor3f(0.7f,0.f,0.f); }else{ glColor3f(0.f,0.f,1.f); }
-    Draw::drawText( str, fontTex, fontSizeDef, {150,20} );
+    Draw::drawText( tmpstr, fontTex, fontSizeDef, {150,20} );
     glTranslatef( 0.0,fontSizeDef*2,0.0 );
     return shift;
 }
@@ -865,7 +907,7 @@ void MolGUI::drawHUD(){
     if(W->bCheckInvariants){
         glTranslatef( 10.0,HEIGHT-20.0,0.0 );
         glColor3f(0.5,0.0,0.3);
-        //char* s=str;
+        //char* s=tmpstr;
         //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
         //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
         // s += sprintf(s, "iSystemCur %i\n",  W->iSystemCur );
@@ -874,20 +916,20 @@ void MolGUI::drawHUD(){
         // s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", W->vcog.x,W->vcog.y,W->vcog.z);
         // s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", W->fcog.x,W->fcog.y,W->fcog.z);
         // s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", W->tqcog.x,W->tqcog.y,W->tqcog.z);
-        W->getStatusString( str, nmaxstr );
-        Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+        W->getStatusString( tmpstr, ntmpstr );
+        Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     }
     if(bWriteOptimizerState){
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         glColor3f(0.0,0.5,0.0);
-        char* s=str;
+        char* s=tmpstr;
         //dt 0.132482 damp 3.12175e-17 n+ 164 | cfv 0.501563 |f| 3.58409e-10 |v| 6.23391e-09
         double v=sqrt(W->opt.vv);
         double f=sqrt(W->opt.ff);
         s += sprintf(s,"dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
-        Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+        Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
-        Draw::drawText( W->info_str(str), fontTex, fontSizeDef, {100,20} );
+        Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );
     }
     glPopMatrix();
 
@@ -904,7 +946,6 @@ void MolGUI::drawHUD(){
         REQs[35].w = +0.7 * REQs[35].y;
         REQs[7 ].w = -0.7 * REQs[7 ].y;
     }
-    DEBUG
     for(int i=0; i<bondsToShow.size(); i++ ){
         bondsToShow_shifts[i] =  MolGUI::showNonBond( str, bondsToShow[i] );
     }
@@ -977,7 +1018,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     glEnable(GL_DEPTH_TEST);
     //bool sign=false;
     bool sign=true;
-    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae );   printf("DEBUG renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
+    int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae );   //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
     // ---- This seems still not work properly
     //int ntris=0;
     //glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
@@ -1054,7 +1095,6 @@ void MolGUI::Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float
     float fpi = sq(nz-2);
     float prefactor = -1 * ( 1 + fpi*(2/M_PI) ) / (fpi+1);
     float  W = prefactor/(nz*dz);
-    DEBUG
     for(int i=0; i<nz; i++){
         x+=dz;
         float y  = sqrt(1-x*x);
@@ -1062,7 +1102,6 @@ void MolGUI::Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float
         ws[i]    = W*dy;
         oy=y;
     }
-    DEBUG
     // ---- Fz->df using the convolution mask
     for(int ixy=0; ixy<nxy; ixy++){
         float df = 0.0;
@@ -1071,7 +1110,6 @@ void MolGUI::Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float
         }
         dfout[ixy] = df;
     }
-    DEBUG
 }
 
 void MolGUI::renderAFM( int iz, int offset ){
@@ -1193,7 +1231,8 @@ void MolGUI::bindMolecule( int natoms_, int nnode_, int nbonds_, int* atypes_,Ve
     if(pbcShifts_)pbcShifts=pbcShifts_;
 }
 
-void MolGUI::bindMolecule( const MolWorld_sp3* W ){
+void MolGUI::bindMolecule(const MolWorld_sp3* W ){
+    printf( "MolGUI::bindMolecule() \n" );
     //natoms=ff.natoms; nnode=ff.nnode; nbonds=ff.nbonds;
     //atypes=ff.atypes; apos=ff.apos; fapos=ff.fapos; REQs=ff.REQs; pipos=ff.pipos; fpipos=ff.fpipos; bond2atom=ff.bond2atom; pbcShifts=ff.pbcShifts;
     bindMolecule( W->ffl.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
@@ -1208,7 +1247,7 @@ void MolGUI::unBindMolecule(){
 }
 
 void MolGUI::drawBuilder( Vec3i ixyz ){
-    //printf( "DEBUG MolGUI::drawBuilder() ixyz(%i,%i,%i)\n", ixyz.x,ixyz.y,ixyz.z );
+    //printf( "MolGUI::drawBuilder() ixyz(%i,%i,%i)\n", ixyz.x,ixyz.y,ixyz.z );
     //float textSize=0.015;
     //if(bViewColorFrag){ printf( " B.frags.size(%i) \n", B.frags.size() ); }
     glEnable(GL_DEPTH_TEST);
@@ -1298,7 +1337,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     }
     if( bond2atom ){
         //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( nbonds, bond2atom, apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( nbonds,bond2atom,apos );  // DEBUG
+        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( nbonds,bond2atom,apos );  // Debug
         /*
         if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); if(pbcShifts)Draw3D::bondsPBC          ( nbonds, bond2atom, apos,  pbcShifts                          );  
                              glColor3f(0.0f,0.0f,1.0f); if(pbcShifts)Draw3D::pbcBondNeighLabels( nbonds, bond2atom, apos,  pbcShifts, fontTex3D,        textSize );
@@ -1320,9 +1359,9 @@ void MolGUI::drawSystem( Vec3i ixyz ){
 }
 
 void MolGUI::saveScreenshot( int i, const char* fname ){
-    char str[64];
-    sprintf( str, fname, i );               
-    printf( "save to %s \n", str );
+    //char str[64];
+    sprintf( tmpstr, fname, i );               
+    printf( "save to %s \n", tmpstr );
     unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  
     glFlush();                                                      
     glFinish();                                                     
@@ -1330,7 +1369,7 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
     glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);  
     //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   
     SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );  
-    SDL_SaveBMP(bitmap, str);   
+    SDL_SaveBMP(bitmap, tmpstr);   
     SDL_FreeSurface(bitmap);
     delete[] screenPixels;
 }
@@ -1635,10 +1674,10 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
                 case SDLK_SPACE: bRunRelax=!bRunRelax;  if(bRunRelax)W->setConstrains();  break;
                 // case SDLK_d: {
-                //     printf( "DEBUG Camera Matrix\n");
-                //     printf( "DEBUG qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
+                //     printf( "Camera Matrix\n");
+                //     printf( "qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
                 //     qCamera.toMatrix(cam.rot);
-                //     printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
+                //     printf( "cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
                 //     printMat((Mat3d)cam.rot);
                 // } break;
                 //case SDLK_g: iangPicked=(iangPicked+1)%ff.nang;

@@ -446,12 +446,12 @@ void TestAppRARFF::drawHUD(){
     glTranslatef( 10.0,HEIGHT-20.0,0.0 );
 	glColor3f(0.5,0.0,0.3);
     //Draw::drawText( "AHOJ ", fontTex, fontSizeDef, {100,20} );
-    int nstr=2048;
-	char str[nstr];
-	char* s=str;
+    //int nstr=2048;
+	//char str[nstr];
+	char* s=tmpstr;
 	s+=ff.Eterms2str(s);
 	ff.orbs2str(s);
-    Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+    Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     glPopMatrix();
 
     if(bConsole) console.draw();

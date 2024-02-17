@@ -109,7 +109,7 @@ class MolWorld_sp3_simple{ public:
 
 	// IO temp & aux
 	FILE* xyz_file=0;
-	char* tmpstr;
+	//char* tmp_str;       // use globals.h tmpstr[ntmpstr] instead
 
 
 // =================== Functions

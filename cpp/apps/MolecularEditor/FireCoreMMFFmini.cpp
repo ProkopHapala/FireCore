@@ -107,7 +107,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
 
-    char str[256];
+    // char str[256];   // use globals.h   tmpstr[ntmpstr] instead
 
     Vec3d ray0;
     int ipicked  = -1, ibpicked = -1, iangPicked = -1;
@@ -664,9 +664,9 @@ void TestAppMMFFmini::drawSystemQMMM(){
 
 void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
     //if(makeScreenshot){
-        char str[64];
-        sprintf( str, fname, i );               // DEBUG
-        printf( "save to %s \n", str );
+        //char str[64];
+        sprintf( tmp_str, fname, i );               // DEBUG
+        printf( "save to %s \n", tmp_str );
         unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
         glFlush();                                                      //DEBUG
         glFinish();                                                     //DEBUG
@@ -674,7 +674,7 @@ void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
         glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
         //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
         SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
-        SDL_SaveBMP(bitmap, str);    //DEBUG
+        SDL_SaveBMP(bitmap, tmp_str);    //DEBUG
         SDL_FreeSurface(bitmap);
         delete[] screenPixels;
 }

@@ -7,9 +7,11 @@ double tick2second=1e-9;
 #include "MolGUI.h"
 #include "argparse.h"
 
-//MMFFsp3 W;
 MolGUI* app=0;
-LambdaDict funcs;
+
+// There are 3 stages of initialization command line arguments can be processed (  1. After MolGUI initialization and before initMol, 2. after initMol, ) 
+LambdaDict funcs; // functions to be called before initMol
+LambdaDict funcs2; // functions to be called after initMol
 
 int   prelat_nstep=0;
 int   prelat_nItrMax=0;
@@ -31,28 +33,26 @@ int main(int argc, char *argv[]){
     SDL_DisplayMode DM;
     SDL_GetCurrentDisplayMode(0, &DM);
 
+    // --------- Initialize MolGUI and MolWorld_sp3
+
+	app             = new MolGUI( junk, DM.w-100, DM.h-100 );
+    MolWorld_sp3* W = new MolWorld_sp3();
+    app->W = W;
+
+    // ========== Before initMol
 #ifdef WITH_LUA
     initMyLua();
+    funcs["-lua0"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua0] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
 #endif // WITH_LUA
 
 	// --------- using argparse & LabdaDict;
-	app = new MolGUI( junk, DM.w-100, DM.h-100, NULL );
-    MolWorld_sp3* W = app->W;
 
     funcs["-col_damp"]={6,[&](const char** ss){
         //printf( "ss[0](%s)\n", ss[0] ); printf( "ss[1](%s)\n", ss[1] );printf( "ss[2](%s)\n", ss[2] );printf( "ss[3](%s)\n", ss[3] );printf( "ss[4](%s)\n", ss[4] );exit(0);
         int n; double cB, cNB, cAng=0, cm,dR1,dR2;
         sscanf( ss[0], "%i" , &n   ) ; sscanf( ss[1], "%lf", &cB  ); sscanf( ss[2], "%lf", &cNB ); sscanf( ss[3], "%lf", &cm  ); sscanf( ss[3], "%lf", &dR1  ); sscanf( ss[3], "%lf", &dR2  ); 
         printf( "W->ffl.ndampstep %i collisionDamping %g collisionDamping_NB %g damping_medium %g R1,2(%g,%g)\n", n, cB, cNB, cm, dR1, dR2 );
-        W->ffl.colDamp.set( n, cm, cB, cAng, cNB, dR1, dR2 );
-        // W->ffl.ndampstep                = n;
-        // W->ffl.damping_medium           = cm;
-        // W->ffl.collisionDamping         = fmax( 0.0, cB  );
-        // W->ffl.collisionDamping_NB      = fmax( 0.0, cNB );
-        // W->ffl.bCollisionDamping        = cB  > 0.0;
-        // W->ffl.bCollisionDampingNonBond = cNB > 0.0;
-        // W->ffl.col_damp_dRcut1          = dR1;
-        // W->ffl.col_damp_dRcut2          = dR2;
+        app->W->ffl.colDamp.set( n, cm, cB, cAng, cNB, dR1, dR2 );
         printf( "W->ffl.colDamp(n=%i,bond=%g,nonB=%g,medium=%g,R12(%g,%g)\n", W->ffl.colDamp.nstep, W->ffl.colDamp.bond, W->ffl.colDamp.nonB, W->ffl.colDamp.medium, W->ffl.colDamp.dRcut1, W->ffl.colDamp.dRcut2 );
     }};// collision damping parameters
 
@@ -89,7 +89,7 @@ int main(int argc, char *argv[]){
     // set verbosity
     funcs["-verb"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &verbosity ); }};
 
-    funcs["-uff"]={0,[&](const char** ss){ W->bUFF=true; }}; // AutoCharge
+    funcs["-uff"]={0,[&](const char** ss){ app->W->bUFF=true; }}; // AutoCharge
 
     funcs["-e"]={0,[&](const char** ss){ app->W->bEpairs=true; }}; // add explicit electron pair
     funcs["-EachAngle"]={0,[&](const char** ss){ app->W->ffl.bEachAngle=true;                          }};
@@ -97,14 +97,19 @@ int main(int argc, char *argv[]){
     
     funcs["-substr_iso"]={1,[&](const char** ss){ sscanf( ss[0], "%lf", &app->subs_iso ); }};
     funcs["-iMO"       ]={1,[&](const char** ss){ sscanf( ss[0], "%i",  &app->which_MO ); }};
+    funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &app->W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", app->W->iterPerFrame ); }};  // interations per frame
     
-    funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
-#ifdef WITH_LUA
-    funcs["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
-#endif // WITH_LUA
+    process_args( argc, argv, funcs, false );
+    W->init();
+    app->bindMolWorld( W );
 
-	process_args( argc, argv, funcs );
-	app->init();
+    /*
+    //app->initMol( 0 );
+    app->bindMolecule( W );
+    app->updateGUI();
+    */
+
+    // ========== After initMol
 
 #ifdef WITH_LUA
     app->console.callback = [&](const char* str)->bool{
@@ -119,7 +124,9 @@ int main(int argc, char *argv[]){
         }
         return true;
     };
+    funcs2["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
 #endif // WITH_LUA
+    process_args( argc, argv, funcs2, false );
 
     if(prelat_nstep>0)app->W->change_lvec_relax( prelat_nstep, prelat_nItrMax, 1e-3, prelat_dlvec );
 	app->loop( 1000000 );

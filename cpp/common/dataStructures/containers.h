@@ -35,35 +35,47 @@ class Dict{ public:
     std::unordered_map<std::string,int> map;
     std::vector<T>                     vec;
 
-    int getId( const char* name )const{
+    int getId( const char* name, const int def = -1 )const{
         auto it = map.find(name);
-        if( it != map.end() ){ return it->second; }else{ return -1; }
+        if( it != map.end() ){ return it->second; }else{ return def; }
     }
 
-    T get( const char* name )const{
+    T get( const char* name, const T def )const{
         auto it = map.find(name);
-        if( it != map.end() ){ return vec[it->second]; }else{ return 0; }
+        if( it != map.end() ){ return vec[it->second]; }else{ return def; }
     }
 
-    int add( T mat, bool bDel=true ){
-        auto it = map.find( mat->name );
+    int getTo( const char* name, T& out )const{
+        auto it = map.find(name);
+        if( it != map.end() ){ out=vec[it->second]; return it->second; }else{ return -1; }
+    }
+
+    int add( const std::string& name, T t, bool bDel=true ){
+        auto it = map.find( name );
         if( it == map.end() ){    // not found
-            int i=vec.size(); vec.push_back(mat); 
-            map.insert({mat->name,i}); return i; 
+            int i=vec.size(); vec.push_back(t); 
+            map.insert({name,i}); return i; 
         }else{    // found
-            if(bDel)delete vec[it->second]; 
-            vec[it->second] = mat; return -1; 
+            if constexpr (std::is_pointer<T>::value){
+                if(bDel)delete vec[it->second]; 
+            }
+            vec[it->second] = t; 
+            return -1; 
         }
     }
 
-    bool insert( const char* name, T mat, int i, bool bDel=true ){
+    bool insert( const char* name, T t, int i, bool bDel=true ){
         if( vec.size(i)<=i ) vec.resize(i+1);
-        vec[i] = mat;
+        vec[i] = t;
         auto it = map.find(name);
         if( it != map.end() ){  // found
-            if( i != it->second ){ if(bDel) vec[it->second]=0; }
+            if constexpr (std::is_pointer<T>::value){
+                if( i != it->second ){     
+                    if(bDel) vec[it->second]=0; 
+                }
+            }
             map[name] = i; 
-            vec[i] = mat; 
+            vec[i]    = t; 
             return true;
         }else{ 
            map.insert({name,i}); 
