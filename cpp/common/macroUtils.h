@@ -23,6 +23,12 @@
 
 //#define _realloc(TYPE,arr,n){ if(var) delete [] arr; arr=new TYPE[n]; }
 
+// Get byte offset of a member in a struct ( call from outside the struct )
+#define mapByteOffset(offset_map,instance,member) { offset_map[#member] = ((char*)&instance.member) - ((char*)&instance); }
+// Get byte offset of a member in a struct ( call from inside the struct )
+#define mapByteOffIn(offset_map,member) { offset_map[#member] = ((char*)&(this->member)) - ((char*)this); }
+
+
 // ============= sorting
 inline int selectMinHigher(int a0, int n, int* arr){
     int amin=0x7FFFFFFF; // 32 int max

@@ -43,8 +43,8 @@
 #include "AppSDL2OGL_3D.h"
 
 bool bPrint = true;
-constexpr int  ntmp_str=2048;
-char tmp_str[ntmp_str];
+//constexpr int  ntmp_str=2048;   // use globals.h tmpstr[ntmpstr] instead
+//char tmp_str[ntmp_str];         // use globals.h tmpstr[ntmpstr] instead
 
 // ===========================================
 // ================= MAIN CLASS ==============

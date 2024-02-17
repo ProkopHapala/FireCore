@@ -79,12 +79,12 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
 void init_ocl(){
     //  ToDo : This is probably wrong
     printf( "MolWorld_sp3_ocl::init_ocl()\n" );
-    //for(int i=0; i<nbmol.natoms; i++){ nbmol.apos->addRandomCube(0.1); }; // DEBUG - displace atoms to test relaxation forces
+    //for(int i=0; i<nbmol.natoms; i++){ nbmol.apos->addRandomCube(0.1); }; // Debug - displace atoms to test relaxation forces
     long T0 = getCPUticks();
-    //ocl.initPP( "common_resources/cl" );    DEBUG
+    //ocl.initPP( "common_resources/cl" );    // Debug
     // ---- Init Surface force-field grid
     //surf2ocl( nPBC, true );
-    surf2ocl( nPBC, false );                DEBUG
+    surf2ocl( nPBC, false );                // Debug
     printf( ">>time(surf2ocl): %g [s] \n", (getCPUticks()-T1)*tick2second  );
     printf( "MolWorld_sp3_ocl::init_ocl() END\n" );
 }
@@ -330,7 +330,6 @@ void setup_MMFFf4_ocl(){
     ocl.nDOFs.y=ff.nnode;
     Mat3_to_cl( ff.lvec   , ocl.cl_lvec    );
     Mat3_to_cl( ff.invLvec, ocl.cl_invLvec );
-    //DEBUG
     //printf( "na %i nnode %i \n", ff4.natoms, ff4.nnode );
     /*
     task_MMFF    = ocl.getTask("getMMFFf4");
@@ -398,42 +397,42 @@ double eval_MMFFsp3_ocl( int niter, int n, Vec3d* ps, Vec3d* fs ){
 
 
 double eval_MMFFf4_ocl( int niter ){ 
-    //printf( " ======= eval_MMFFf4() DEBUG \n" );
+    //printf( " ======= eval_MMFFf4() \n" );
     /*
     // ========= To Compare CPU and GPU forces
     ff4.eval();
-    printf("CPU AFTER assemble() \n"); ff4.printDEBUG(  false,false );
+    printf("CPU AFTER assemble() \n"); ff4.printDebug(  false,false );
     unpack( ff4.natoms, ffl. apos, ff4. apos  );
     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
     // ---- Check Invariatns
     fcog  = sum ( ffl.natoms, ffl.fapos   );
     tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
-    if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4 |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }else{ printf("DEBUG eval_MMFFf4 |fcog| OK\n"); }
+    if(  fcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4 |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }else{ printf("eval_MMFFf4 |fcog| OK\n"); }
     //if( tqcog.norm2()>1e-8 ){ printf("WARRNING: eval_MMFFf4 |torq| =%g; torq=(%g,%g,%g)\n", tqcog.norm(),tqcog.x,tqcog.y,tqcog.z ); exit(0); }  // NOTE: torq is non-zero because pi-orbs have inertia
     */
     //printf( " ======= eval_MMFFf4_ocl() \n" );
     if( task_MMFF==0 )setup_MMFFf4_ocl();
     for(int i=0; i<niter; i++){
-        task_cleanF->enque_raw();  // DEBUG: this should be solved inside  task_move->enque_raw();
+        task_cleanF->enque_raw();  // Debug: this should be solved inside  task_move->enque_raw();
         task_MMFF  ->enque_raw();
         //task_NBFF  ->enque_raw();
         /*
-        { // DEBUG
+        { // Debug
         ocl.download( ocl.ibuff_aforces,    ff4.fapos , ff4.nvecs );
         ocl.download( ocl.ibuff_atoms,      ff4.apos  , ff4.nvecs );
         ocl.download( ocl.ibuff_neighForce, ff4.fneigh, ff4.nvecs );
         ocl.finishRaw();   
-        printf("GPU BEFORE assemble() \n"); ff4.printDEBUG( false,false );
+        printf("GPU BEFORE assemble() \n"); ff4.printDdebug( false,false );
         }
         */
-        task_move->enque_raw(); //DEBUG
+        task_move->enque_raw(); 
     }
     //printf( "ocl.download(n=%i) \n", n );
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
     //for(int i=0; i<ff4.natoms; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z ); }
-    ocl.finishRaw();                              //DEBUG
-    //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
+    ocl.finishRaw();                              //Debug
+    //printf("GPU AFTER assemble() \n"); ff4.printDebug( false,false );
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
     unpack( ff4.natoms, ffl. fapos, ff4. fapos );
     unpack( ff4.nnode,  ffl. pipos, ff4. pipos );
@@ -465,11 +464,11 @@ double eval_NBFF_ocl( int niter ){
     //ocl.upload( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
     for(int i=0; i<niter; i++){
 
-        { // DEBUG
+        { // Debug
             ffl  .cleanForce();
             // nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, ffl.lvec, ffl.nPBC, gridFF.Rdamp );
             nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp );
-            //ffl.printDEBUG( false, false );
+            //ffl.printDebug( false, false );
             fcog  = sum ( ffl.natoms, ffl.fapos   );
             tqcog = torq( ffl.natoms, ffl.apos, ffl.fapos );
             if(  fcog.norm2()>1e-8 ){ printf("WARRNING: ffl.cleanForce() |fcog| =%g; fcog=(%g,%g,%g)\n", fcog.norm(),  fcog.x, fcog.y, fcog.z ); exit(0); }
@@ -477,9 +476,9 @@ double eval_NBFF_ocl( int niter ){
             //ffl.move_GD(0.01); return 0;
         }
         
-        task_cleanF->enque_raw(); // DEBUG: this should be solved inside  task_move->enque_raw();
+        task_cleanF->enque_raw(); // Debug: this should be solved inside  task_move->enque_raw();
         task_NBFF  ->enque_raw();
-        task_move  ->enque_raw(); //DEBUG
+        task_move  ->enque_raw(); //Debug
         
     }
     
@@ -487,7 +486,7 @@ double eval_NBFF_ocl( int niter ){
     ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
     ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
     //for(int i=0; i<ff4.natoms; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z ); }
-    ocl.finishRaw();                              //DEBUG
+    ocl.finishRaw();                              //Debug
     //ff4.move_GD( 0.01 );
         
     // ---- Compare to ffl
@@ -495,13 +494,13 @@ double eval_NBFF_ocl( int niter ){
     printf("### Compare ffl.fapos,  ff4.fapos   \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
     if(ret){ printf("ERROR: GPU task_NBFF.eval() != ffl.nbmol.evalLJQs_ng4_PBC() => exit() \n"); exit(0); }else{ printf("CHECKED: GPU task_NBFF.eval() == ffl.nbmol.evalLJQs_ng4_PBC() \n"); }
 
-    //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
+    //printf("GPU AFTER assemble() \n"); ff4.printDebug( false,false );
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
     unpack( ff4.natoms, ffl. fapos, ff4. fapos );
     //opt.move_FIRE();
     
     
-    //ff4.printDEBUG( false, false );
+    //ff4.printDebug( false, false );
     // ============== CHECKS
     // ---- Check Invariatns
     fcog  = sum ( ffl.natoms, ffl.fapos   );
