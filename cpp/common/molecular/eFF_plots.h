@@ -224,6 +224,7 @@ void plotAtomsPot( EFF& ff, DataLine2D *line, Vec3d p0, Vec3d dp, float sc=1.0, 
     //solver.orbAtPoints( io, line->n, ps, line->ys );
     ff.atomsPotAtPoints( line->n, ps, line->ys, s, 1.0 );
     for(int i=0; i<line->n; i++){  line->ys[i]*=sc; }
+    line->redraw=true;
 }
 
 int genFieldMap( int ogl, Vec2i ns, const Vec3d* ps, const double* Es, double vmin, double vmax ){

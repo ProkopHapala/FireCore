@@ -58,6 +58,14 @@ int DataLine2D::render(){
     return glObj;
 };
 
+int DataLine2D::tryRender(){
+    if( redraw){
+        render();
+        redraw=false;
+    }
+    return glObj;
+};
+
 void DataLine2D::view(){
     if(bView){
         Draw::setRGBA(clr);
@@ -150,7 +158,7 @@ void Plot2D::drawTexts(){
 void Plot2D::drawAxes(){
     //Draw2D::drawPointCross({0.0,0.0},100.0);
     //grid=false;
-    //printf( "Plot2D::drawAxes nXTicks(%i) xTicks(%i) \n", nXTicks, nYTicks );
+    //printf( "Plot2D::drawAxes nXTicks(%i) nYTicks(%i) \n", nXTicks, nYTicks );
     if(bGrid){
         Draw::setRGBA(clrGrid);
         Draw2D::drawGrid( nXTicks, xTicks, axBounds.y0, axBounds.y1, true  );
@@ -166,24 +174,30 @@ void Plot2D::drawAxes(){
     }
 }
 
-
-int Plot2D::render(){
-    //void drawGrid( bounds.x0, bounds.y0, bounds.x0, bounds.x0, dx, dy );
+int Plot2D::renderFrameworks(){
     if( glObj ) glDeleteLists(glObj,1);
     glObj = glGenLists(1);
     glNewList(glObj, GL_COMPILE);
     if( (clrBg&0xFF000000) ){ Draw::setRGBA( clrBg ); Draw2D::drawRectangle_d( axBounds.a, axBounds.b, true ); }
     drawAxes();
-    int i=0;
     glEndList( );
-    //char str[256];
-    for( DataLine2D* line : lines ){
-        //printf( "render line[%i]\n", i );
-        line->render();
-        i++;
+    redraw=false;
+    return glObj;
+}
+
+int Plot2D::render(){
+    for( DataLine2D* line : lines ){ line->render(); }
+    redraw=false;
+    return renderFrameworks();
+}
+
+int Plot2D::tryRender(bool bUpdate){
+    for( DataLine2D* line : lines ){ line->tryRender(); }
+    if(redraw){
+        if(bUpdate) update();
+        renderFrameworks();
+        redraw=false;
     }
-    // TO DO :
-    //if( tickCaption ){ }
     return glObj;
 }
 

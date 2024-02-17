@@ -24,6 +24,8 @@ TODO:
 
 class GUI_stepper{ public:
     int x0=0,x1=0;
+    GUI_stepper()=default;
+    GUI_stepper(int n, int l){ x0=n*fontSizeDef; x1=(n+l)*fontSizeDef; }
     inline void step(int n){ x0=x1; x1=x0+n*fontSizeDef; }
 };
 
@@ -127,12 +129,15 @@ class GUIAbstractPanel{ public:
 
 	// ==== functions
 
+
     void initPanel( const std::string& caption_, int xmin_, int ymin_, int xmax_, int ymax_ );
 
     GUIAbstractPanel(){};
     GUIAbstractPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax ){ initPanel(caption, xmin,ymin,xmax,ymax); };
-    virtual ~GUIAbstractPanel(){};
+    virtual ~GUIAbstractPanel()=default;
 
+    virtual void open(){};
+    virtual void close(){};
 	virtual void moveTo(int x, int y);
 	virtual void moveBy(int dx,int dy);
 
@@ -148,7 +153,13 @@ class GUIAbstractPanel{ public:
 
     // inline fnctions
 
-    inline void draw      ( ){ tryRender(); view(); };
+    inline void draw      ( ){ 
+        //printf( "GUIAbstractPanel::draw() \n" );
+        tryRender(); 
+        view(); 
+        redraw=false; 
+        //printf( "GUIAbstractPanel::draw() END\n" );
+    };
     inline bool check     ( int  x, int  y ){
         //printf( "check x %i <%i...%i>   y %i <%i...%i>\n", x, xmin, xmax,   y, ymin, ymax );
         return (x>xmin)&&(x<xmax)&&(y>ymin)&&(y<ymax);
@@ -165,6 +176,8 @@ class GUIPanel : public GUIAbstractPanel { public:
 	bool isSlider=true, isButton=false;
 
 	uint32_t barColor=0x00FF00;
+    bool viewVal=true;
+    bool valBelow=true;
 
 	bool     executed=false;
 	int      curPos=0;
@@ -178,8 +191,8 @@ class GUIPanel : public GUIAbstractPanel { public:
     // ==== functions
 
     GUIPanel()=default;
-    GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_=true, bool isButton_=true, bool isInt_=false ){
-        initPanel(caption, xmin,ymin,xmax,ymax); isSlider=isSlider_; isButton=isButton_; isInt=isInt_;
+    GUIPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax, bool isSlider_=true, bool isButton_=true, bool isInt_=false, bool viewVal_=true ){
+        initPanel(caption, xmin,ymin,xmax,ymax); isSlider=isSlider_; isButton=isButton_; isInt=isInt_; viewVal=viewVal_;
         command=0;
     };
 
@@ -243,21 +256,19 @@ class MultiPanel : public GUIAbstractPanel { public:
 
     // ==== functions
 
-    void initMulti( const std::string& caption, int xmin_, int ymin_, int xmax_, int dy, int nsubs_ );
-
+    void initMulti( const std::string& caption, int xmin_, int ymin_, int xmax_, int dy, int nsubs_, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true );
     MultiPanel(){};
-    MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs){ initMulti( caption, xmin, ymin, xmax, dy, nsubs ); }
+    MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true ){ if(dy==0){dy=2*fontSizeDef;} initMulti( caption, xmin, ymin, xmax, dy, nsubs, isSlider,isButton,isInt,viewVal); }
 
-    virtual void open();
-    virtual void close();
-    void toggleOpen();
-
-    virtual void moveBy(int dx, int dy);
-
-    virtual void view  ( );
+    virtual void open()override;
+    virtual void close()override;
+    virtual void moveBy(int dx, int dy) override;
+    virtual void view  ( )override;
     //virtual void tryRender( );
-    virtual void render( )                                                              override;
-    virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui ) override;
+    virtual void render( )override;
+    virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui )override;
+
+    void toggleOpen();
 
     //virtual void onKeyDown( SDL_Event e, GUI& gui ){};
     //virtual void onText   ( SDL_Event e, GUI& gui ){};
@@ -391,16 +402,16 @@ class DropDownList : public GUIAbstractPanel { public:
     DropDownList(){}
     DropDownList( const std::string& caption, int xmin, int ymin, int xmax, int nSlots){ initList(caption,xmin,ymin,xmax,nSlots); }
 
-    virtual void open();
-    virtual void close();
+    virtual void open() override;
+    virtual void close() override;
 
     //virtual void view ( );
     //virtual void tryRender( );
     virtual void render( )                                                                override;
     virtual GUIAbstractPanel* onMouse  ( int x, int y, const SDL_Event& event, GUI& gui ) override;
 
-    //virtual void onKeyDown( SDL_Event e ){};
-    //virtual void onText   ( SDL_Event e ){};
+    //virtual void onKeyDown( SDL_Event e )override{};
+    //virtual void onText   ( SDL_Event e )override{};
 
 };
 
