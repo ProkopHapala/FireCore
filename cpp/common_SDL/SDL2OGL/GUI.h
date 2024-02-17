@@ -136,6 +136,7 @@ class GUIAbstractPanel{ public:
     GUIAbstractPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax ){ initPanel(caption, xmin,ymin,xmax,ymax); };
     virtual ~GUIAbstractPanel()=default;
 
+    virtual int  toggleChanged(){ return -1; };
     virtual void open(){};
     virtual void close(){};
 	virtual void moveTo(int x, int y);
@@ -283,29 +284,36 @@ class MultiPanel : public GUIAbstractPanel { public:
 
 struct CheckBox{
     bool  val   =0; //
-    bool* master=0; // if not zero, this is the true value
+    bool* master=0; // if pointer not NULL, this is the true value
     std::string label;
+    //bool bChanged=false;
+    // --- functions
     inline void read (){ if(master)val=*master; }
     inline void write(){ if(master)*master=val; }
-    inline void flip (){ printf("flip  %i %i ", val,*master ); val=!val; write(); printf("-> %i %i \n", val,*master); }
+    inline void flip (){ val=!val; write(); }
 };
 
 class CheckBoxList : public GUIAbstractPanel { public:
     std::vector<CheckBox> boxes;
     int dy;
     uint32_t checkColor=0x00FF00;
-
+    int iboxchanged = -1;
 
     // ==== functions
 
-    void addBox(std::string label, bool* ptr){
-        boxes.push_back((CheckBox){false,ptr,label});
+    CheckBox* addBox(std::string label, bool* ptr){
+        boxes.push_back((CheckBox){*ptr,ptr,label});
+        return &boxes.back(); // Sould we rather return a reference ?
+        //return boxes.back();    // Sould we rather return a pointer ?
     }
 
     void initCheckBoxList( int xmin_, int ymin_, int xmax_, int dy=fontSizeDef*2 );
 
     CheckBoxList(){};
-    CheckBoxList(int xmin, int ymin, int xmax, int dy=fontSizeDef*2){ initCheckBoxList( xmin, ymin, xmax, dy); }
+    CheckBoxList(int xmin, int ymin, int xmax, int dy=fontSizeDef*2, int n=0 ){ 
+        initCheckBoxList( xmin, ymin, xmax, dy); 
+        //for(int i=0; i<n; i++){ addBox( "box"+std::to_string(i), 0 ); }
+    }
 
     //virtual void  open();
     //virtual void close();
@@ -313,6 +321,7 @@ class CheckBoxList : public GUIAbstractPanel { public:
     //virtual void moveBy(int dx, int dy);
     void update();
 
+    virtual int  toggleChanged(){ int i=iboxchanged; iboxchanged=-1; return i; };
     virtual void view  ( )                                                               override;
     virtual void render( )                                                               override;
     virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui )  override;
