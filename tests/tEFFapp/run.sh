@@ -38,6 +38,11 @@ ln -s $dir/$name .
 
 # ====== Small Molecules
 
+
+#./$name -f data/e.fgo
+#./$name -f data/e2_singlet_far.fgo
+#./$name -f data/e2_1g_2o_singlet.fgo
+#./$name -f data/e2_1g_2o_triplet.fgo
 ./$name -f data/H2_eFF.fgo
 #./$name -f data/H2O.fgo
 #./$name -f data/C2H4.fgo
