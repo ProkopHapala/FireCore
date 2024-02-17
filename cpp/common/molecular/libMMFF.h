@@ -1,12 +1,4 @@
 ﻿
-
-// constexpr int ntmpstr=2048;
-// char tmpstr[ntmpstr];
-// int verbosity       = 1;
-// int idebug          = 0;
-// double tick2second=1e-9;
-
-
 #include "Forces.h"
 
 extern "C"{
@@ -23,7 +15,7 @@ void setVerbosity( int verbosity_, int idebug_ ){
 //int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 void insertSMILES( char* s ){  W.insertSMILES(s); };
 
-void initParams          ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){ W.tmpstr=tmpstr; W.initParams(sElementTypes,sAtomTypes,sBondTypes,sAngleTypes,sDihedralTypes); }
+void initParams          ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){ W.initParams(sElementTypes,sAtomTypes,sBondTypes,sAngleTypes,sDihedralTypes); }
 
 //int  buildMolecule_xyz   ( const char* xyz_name, bool bEpairs, double fAutoCharges ){  W.builder.bDummyEpair=bEpairs; W.bEpairs=bEpairs; W.fAutoCharges=fAutoCharges;  return W.buildMolecule_xyz( xyz_name );  }
 

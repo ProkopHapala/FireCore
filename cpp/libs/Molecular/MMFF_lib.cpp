@@ -1,13 +1,5 @@
 ﻿
-
-constexpr int ntmpstr=2048;
-char tmpstr[ntmpstr];
-
 #include  "globals.h"
-
-//int verbosity = 1;
-//int idebug    = 0;
-double tick2second=1e-9;
 
 #include "testUtils.h"
 #include "MolWorld_sp3.h"
@@ -61,7 +53,6 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.bSimple    = bSimple;
     W.bConj      = bConj;
     W.bCumulene  = bCumulene;
-    W.tmpstr     = tmpstr; // temporary string used somewhere...
     // read and store parameters from tables
     // TBD pass bUFF to MMFFparams::init so that if true, no need to read bonds, angles nor dihedrals...
     //W.params.verbosity = verbosity;

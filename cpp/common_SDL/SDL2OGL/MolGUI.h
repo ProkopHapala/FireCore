@@ -92,15 +92,29 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     MolWorld_sp3* W=0;
 
+    // ---- GUI
+
     Console console;
     GUI gui;
-    GUIPanel* Qpanel;
+    GUIPanel*    Qpanel=0;
     EditorGizmo  gizmo;
     SimplexRuler ruler; // Helps paiting organic molecules
+    enum class Gui_Mode { base, edit, scan };
+    Gui_Mode  gui_mode = Gui_Mode::base;
+    //int gui_mode = Gui_Mode::edit;
+    DropDownList* panel_Frags=0;
+    GUIPanel*     panel_iMO  =0;
+
+    Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
+
+    // this is used for binding to Lua and to GUI
+    std::unordered_map<std::string,int> member_offsets_double;
+    std::unordered_map<std::string,int> member_offsets_int;
 
     MethodDict<MolGUI> actions;
 
     // ---- Visualization params
+
     int iSystemCur = 0;
     int which_MO  = 0; 
 
@@ -178,27 +192,12 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
 
-    //static const int nmaxstr=2048; // use globals.h ntmpstr instead
-    //char str[nmaxstr];             // use globals.h tmpstr instead
-
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
     std::vector<Quat4f> debug_REQs;
 
     std::vector<Vec2i> bondsToShow;
     Vec3d * bondsToShow_shifts = 0; 
-
-    enum class Gui_Mode { base, edit, scan };
-    Gui_Mode  gui_mode = Gui_Mode::base;
-    //int gui_mode = Gui_Mode::edit;
-    DropDownList* panel_Frags=0;
-    GUIPanel*     panel_iMO  =0;
-
-    Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
-
-    // this is used for binding to Lua and to GUI
-    std::unordered_map<std::string,int> member_offsets_double;
-    std::unordered_map<std::string,int> member_offsets_int;
 
     // ----- AFM scan
     GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,8.0}, 0.1 };
@@ -209,7 +208,6 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  afm_iz    = 25;
     int  afm_nconv = 10;
     bool afm_bDf   = true;
-
 
     // ----- Atoms in grid
     AtomsInGrid atomsInGrid;
@@ -239,7 +237,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void eventMode_edit   ( const SDL_Event& event );
     void mouse_default( const SDL_Event& event );
 
-	MolGUI( int& id, int WIDTH_, int HEIGHT_);
+	MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_=0 );
     
     //void initMol(MolWorld_sp3* W_);
     //void InitQMMM();
@@ -280,6 +278,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     void initGUI();
     void updateGUI();
+    int  clearGUI(int n);
     void initMemberOffsets();
     void initWiggets();
     void initCommands();
@@ -382,6 +381,7 @@ void MolGUI::initCommands(){
 }
 
 void MolGUI::initWiggets(){
+    printf( "MolGUI::initWiggets() \n" );
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay;
@@ -462,8 +462,9 @@ void MolGUI::initWiggets(){
 
 }
 
-MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
+MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
     printf( "MolGUI::MolGUI() \n" );
+    if( W_ ) W=W_;
     long T0=getCPUticks();
     float nseconds = 0.1;
     SDL_Delay( (int)(1000*0.1) );
@@ -472,9 +473,7 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, 
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
     actions.vec.resize( 256 );
-
     initGUI();
-
 }
 
 void MolGUI::initGUI(){
@@ -516,6 +515,14 @@ void MolGUI::updateGUI(){
             panel_Frags->addItem( s );
         }
     }
+}
+
+int MolGUI::clearGUI(int n){
+    printf( "MolGUI::clearGUI(%i) \n", n );
+    Qpanel      = 0;
+    panel_Frags = 0;
+    panel_iMO   = 0;
+    return gui.clear( n );
 }
 
 void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
@@ -1427,6 +1434,7 @@ void MolGUI::lattice_scan( int n1, int n2, const Mat3d& dlvec ){
 }
 
 void MolGUI::mouse_default( const SDL_Event& event ){
+    //printf( "MolGUI::mouse_default() \n" );
     switch( event.type ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
@@ -1448,8 +1456,16 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                             //printf( "MolGUI::mouse_default() SDL_BUTTON_LEFT W->selection.clear(); (B) ipick=%i W->ipicked=%i\n", ipick, W->ipicked );
                             //W->selection.clear();
                             W->selection.push_back(W->ipicked); 
-                            Qpanel->value = W->nbmol.REQs[W->ipicked].z;
-                            Qpanel->redraw=true;
+                            //if( Qpanel==0 ){ printf( "MolGUI::mouse_default() Qpanel==0 \n" ); exit(0); }
+                            // printf( "MolGUI::mouse_default() @Qpanel=%li @W=%li W->nbmol.REQs=%li W->ipicked=%i \n", (long)Qpanel, (long)W, (long)W->nbmol.REQs, W->ipicked );
+                            // int ip = W->ipicked;             DEBUG
+                            // double z = W->nbmol.REQs[ip].z;  DEBUG
+                            // Qpanel->value = z;               DEBUG
+                            if( Qpanel ){ 
+                                Qpanel->value = W->nbmol.REQs[W->ipicked].z;
+                                Qpanel->redraw=true;
+                            }
+                            
                         };
                         //printf( "picked atom %i \n", W->ipicked );
                     }else{

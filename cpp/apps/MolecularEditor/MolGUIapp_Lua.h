@@ -31,7 +31,8 @@ int l_addGUIpanel(lua_State *L){
 
 int l_clearGUI   (lua_State *L){
     int n = Lua::getInt(L,1);
-    int ret = app->gui.clear( n );
+    int ret = app->clearGUI( n );
+    //int ret = app->gui.clear( n );
     lua_pushinteger(L, ret );
     return 1;
 }
