@@ -255,8 +255,8 @@ class MultiPanel : public GUIAbstractPanel { public:
         return p;
     };
 
-    virtual int clearChanged()     override{ int i=-1; for(int i=0; i<nsubs; i++){ int j=subs[i]->clearChanged(); if(i<0)i=j;       } return  i; };
-    virtual int readChanged()const override{           for(int i=0; i<nsubs; i++){ int j=subs[i]->readChanged();  if(j>0)return i;  } return -1; };
+    virtual int clearChanged()     override{ int j=-1; for(int i=0; i<nsubs; i++){ if( subs[i]->clearChanged()>=0 ){ if(j<0)j=i; } } return  j; };
+    virtual int readChanged()const override{           for(int i=0; i<nsubs; i++){ if( subs[i]-> readChanged()>=0 ){ return i;   } } return -1; };
 
     virtual void open()override;
     virtual void close()override;

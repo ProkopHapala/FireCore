@@ -1678,36 +1678,37 @@ class MolWorld_sp3 : public SolverInterface { public:
         return false;
     }
 
-    Vec3d getCenter( int* sel=0, int n=-1 ){
+    Vec3d center( bool dotIt=false, int* sel=0, int n=-1 ){
         trySel( sel, n );
         Vec3d c = Vec3dZero;
         for(int i=0; i<n; i++){  // ToDo: is it better to do it with min/max ?
             c.add( ffl.apos[selection[i]] ); 
         }
         c.mul( 1./n );
-        printf( "getCenter() cog(%g,%g,%g) \n", c.x,c.y,c.z );
+        //printf( "getCenter() cog(%g,%g,%g) \n", c.x,c.y,c.z );
+        if(dotIt){ for(int i=0; i<n; i++){ ffl.apos[selection[i]].sub(c); } }
         return c;
     }
 
     Mat3d getInertiaTensor( int* sel=0, int n=-1, Vec3d* cog=0 ){
         trySel( sel, n );
         Vec3d c;
-        if(cog){ c=*cog; }else{ c=getCenter( sel, n ); }
+        if(cog){ c=*cog; }else{ c=center(0, sel, n ); }
         Mat3d I = Mat3dZero;
         for(int i=0; i<n; i++){
             int ia = selection[i];
             Vec3d p = ffl.apos[ia];
             Vec3d d = p - c;
-            printf( "getInertiaTensor()[%i->%i] d(%g,%g,%g) p(%g,%g,%g) \n", i, ia,  d.x,d.y,d.z, p.x,p.y,p.z );
+            //printf( "getInertiaTensor()[%i->%i] d(%g,%g,%g) p(%g,%g,%g) \n", i, ia,  d.x,d.y,d.z, p.x,p.y,p.z );
             I.addOuter(d,d, 1.0 );
         }
-        printf( "getInertiaTensor() I(%g,%g,%g) (%g,%g,%g) (%g,%g,%g) \n", I.a.x,I.a.y,I.a.z, I.b.x,I.b.y,I.b.z, I.c.x,I.c.y,I.c.z );
+        //printf( "getInertiaTensor() I(%g,%g,%g) (%g,%g,%g) (%g,%g,%g) \n", I.a.x,I.a.y,I.a.z, I.b.x,I.b.y,I.b.z, I.c.x,I.c.y,I.c.z );
         return I;
     }
 
     Mat3d alignToAxis( Vec3i ax={2,1,0}, Mat3d* I_=0, Vec3d* cog=0, bool doIt=true, int* sel=0, int n=-1 ){
         trySel( sel, n );
-        Vec3d c; if(cog){ c=*cog;  }else{ c = getCenter( sel, n ); }
+        Vec3d c; if(cog){ c=*cog;  }else{ c = center(0, sel, n ); }
         Mat3d I; if(I_ ){ I = *I_; }else{ I = getInertiaTensor( sel, n, &c ); }
         Vec3d ls; I.eigenvals(ls);
         printf( "alignToAxis() evals(%g,%g,%g) \n", ls.x,ls.y,ls.z );
