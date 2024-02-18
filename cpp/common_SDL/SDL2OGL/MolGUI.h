@@ -42,7 +42,21 @@
 //using Action  = std::function<void(double val)>; 
 //using CommandDict = std::unordered_map<std::string,>;
 
-
+void plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d p2, int n, Vec3d up=Vec3dZ, bool bForce=false ){
+    Vec3d d = (p2-p1)*(1.0/n);
+    Vec3d p = p1;
+    double fsc = up.norm();
+    glBegin(GL_LINE_STRIP);
+    for(int i=0; i<=n; i++){
+        Quat4d fe = ff.evalLJQs( p, REQi, Rdamp );
+        //Draw3D::drawVecInPos( p, f*0.1, 0.1 );
+        Vec3d pf;
+        if(bForce){ pf = p + fe.f*fsc; } // Force 
+        else      { pf = p + up*fe.e;  } // Energy
+        glVertex3f( pf.x, pf.y, pf.z );
+    }
+    glEnd();
+}
 
 // ===========================================
 // ================= MAIN CLASS ==============
@@ -104,6 +118,12 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //int gui_mode = Gui_Mode::edit;
     DropDownList* panel_Frags=0;
     GUIPanel*     panel_iMO  =0;
+
+    // --- NonBond plot
+    bool bDrawNonBond = false;
+    MultiPanel* panel_NonBondPlot=0;
+    MultiPanel* panel_PickedType=0;
+    MultiPanel* panel_TestType=0;
 
     Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
 
@@ -191,6 +211,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_mol=0;
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
+    int  ogl_nonBond = 0;
 
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
@@ -264,6 +285,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void drawPi0s( float sc );
     void  showAtomGrid( char* s, int ia, bool bDraw=true );
     Vec3d showNonBond ( char* s, Vec2i b, bool bDraw=true );
+    void plotNonBond();
     void  showBonds();
     void printMSystem( int isys, int perAtom, int na, int nvec, bool bNg=true, bool bNgC=true, bool bPos=true );
     //void flipPis( Vec3d ax );
@@ -282,6 +304,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void initMemberOffsets();
     void initWiggets();
     void initCommands();
+    void nonBondGUI();
     void drawingHex(double z0);
 
     // ======================= Functions for AtomsInGrid
@@ -460,6 +483,132 @@ void MolGUI::initWiggets(){
         return 0; });
     }
 
+    MolGUI::nonBondGUI();
+}
+
+void MolGUI::nonBondGUI(){
+    GUI_stepper gx(100,6);
+    bDrawNonBond = true;
+    // ---- NonBond plot Options
+    CheckBoxList* chk = new CheckBoxList( gx.x0, 10, gx.x1 );
+    gui.addPanel( chk );
+    //panel_Plot = chk; 
+    chk->caption = "NBPlot"; chk->bgColor = 0xFFE0E0E0;
+    chk->addBox( "view", &bDrawNonBond  );
+    //chk->addBox( "grid", &plot1.bGrid );
+    //chk->addBox( "axes", &plot1.bAxes );
+
+    GUIPanel* p=0;
+    MultiPanel* mp=0;
+
+    // ----- 1D plot option
+    gx.step( 2 ); gx.step( 8+10 );
+    mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0,-4); gui.addPanel( mp ); panel_NonBondPlot=mp;
+    //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
+    mp->addPanel( "Mode  : ", {0.0,2.0, 0.0},  1,0,1,1,0 );   // ToDo: perhaps it would be better to use bit-mask
+    mp->addPanel( "Ezoom : ", {-3.0,3.0,0.0},  1,0,0,1,0 );
+    mp->addPanel( "Rplot : ", {0.0,10.0,5.0},  1,0,0,1,0 );
+    mp->addPanel( "dstep : ", {0.02,0.5,0.1},  1,0,0,1,0 );
+    //mp->addPanel( "Rdamp : ", {-2.0,2.0,0.1},  1,0,0,1,0 );
+    //mp->addPanel( "Rcut  : ", {-2.0,2.0,10.1}, 1,0,0,1,0 );
+
+    // ----- TestAtom Params
+    gx.step( 2 ); gx.step( 8+10 );
+    mp = new MultiPanel( "TestType", gx.x0, 10, gx.x1, 0,-4);   gui.addPanel( mp );    panel_TestType=mp;
+    mp->addPanel( "RvdW  : ", { 0.0,2.50,1.5    },  1,0,0,1,0 );
+    mp->addPanel( "EvdW  : ", { 0.0,0.02,0.0006808},1,0,0,1,0 );
+    mp->addPanel( "Charge: ", {-0.5,0.5, 0.0    },  1,0,0,1,0 );
+    mp->addPanel( "Hbond : ", { 1.0,1.0, 0.0    },  1,0,0,1,0 );
+
+    // ----- PickedAtom params
+    gx.step( 2 ); gx.step( 8+10 );
+    mp = new MultiPanel( "PickedType", gx.x0, 10, gx.x1, 0,-4 ); gui.addPanel( mp );  panel_PickedType=mp;
+    mp->addPanel( "RvdW  : ", { 0.0,2.50,1.5    },  1,0,0,1,0 );
+    mp->addPanel( "EvdW  : ", { 0.0,0.02,0.0006808},1,0,0,1,0 );
+    mp->addPanel( "Charge: ", {-0.5,0.5, 0.0    },  1,0,0,1,0 );
+    mp->addPanel( "Hbond : ", { 1.0,1.0, 0.0    },  1,0,0,1,0 );
+
+    // // ----- 1D plot option
+    // gx.x1+=5; gx.step( 15 );
+    // mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true ); gui.addPanel( mp ); panel_NonBondPlot=mp;
+    // p=mp->subs[0]; p->caption="Mode  : "; p->setRange( 0.0,2.0  ); p->setValue(0.0); p->isInt=true;
+    // p=mp->subs[1]; p->caption="Ezoom : "; p->setRange(-3.0,3.0  ); p->setValue(0.0);  // logScale
+    // p=mp->subs[1]; p->caption="Rplot : "; p->setRange( 0.0,10.0 ); p->setValue(5.0);
+    // p=mp->subs[2]; p->caption="dstep : "; p->setRange( 0.02,0.5 ); p->setValue(0.1);
+    // //p=mp->subs[3]; p->caption = "Rdamp : "; p->setRange(-2.0,2.0  ); p->setValue(0.1);
+    // //p=mp->subs[4]; p->caption = "Rcut  : "; p->setRange(-2.0,2.0  ); p->setValue(10.1);
+
+    // // ----- TestAtom Params
+    // mp = new MultiPanel( "TestType", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mp );    panel_TestType=mp;
+    // p=mp->subs[0]; p->caption="Hbond : "; p->setRange( 0.0 ,2.0); p->setValue(1.0);
+    // p=mp->subs[1]; p->caption="EvdW  : "; p->setRange(-1.0 ,1.0); p->setValue(1.0); 
+    // p=mp->subs[2]; p->caption="Charge: "; p->setRange( 0.0 ,1.0); p->setValue(1.0); 
+
+    // // ----- PickedAtom params
+    // mp = new MultiPanel( "PickedType", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mp );  panel_PickedType=mp;
+    // p=mp->subs[0]; p->caption="Hbond : "; p->setRange( 0.0 ,2.0); p->setValue(1.0);
+    // p=mp->subs[1]; p->caption="EvdW  : "; p->setRange(-1.0 ,1.0); p->setValue(1.0); 
+    // p=mp->subs[2]; p->caption="Charge: "; p->setRange( 0.0 ,1.0); p->setValue(1.0); 
+
+    // // ----- 1D plot option
+    // gx.x1+=5; gx.step( 15 );
+    // GUIPanel* p=0;
+    // MultiPanel* mpanel = new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mpanel );  panel_NonBondPlot=mpanel;
+    // p=mpanel->subs[0]; p->caption = "Mode  : "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0); p->isInt=true;
+    // p=mpanel->subs[1]; p->caption = "Rplot : "; p->command=[&](GUIAbstractPanel* p){ xy_height    =((GUIPanel*)p)->value; }; p->setRange(-10.0,10.0); p->setValue(0.0);
+    // p=mpanel->subs[2]; p->caption = "dstep : "; p->command=[&](GUIAbstractPanel* p){ xy_height    =((GUIPanel*)p)->value; }; p->setRange(-10.0,10.0); p->setValue(0.0);
+    // p=mpanel->subs[3]; p->caption = "Rdamp : "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0);
+    // p=mpanel->subs[4]; p->caption = "Rcut  : "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0);
+
+    // // ----- TestAtom Params
+    // MultiPanel* mpanel = new MultiPanel( "TestType", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mpanel );    panel_TestType=mpanel;
+    // p=mpanel->subs[0]; p->caption = "Hbond : "; p->command=[&](GUIAbstractPanel* p){ electron_size=((GUIPanel*)p)->value; }; p->setRange( 0.0 ,2.0);  p->setValue(1.0);
+    // p=mpanel->subs[1]; p->caption = "EvdW  : "; p->command=[&](GUIAbstractPanel* p){ electron_spin=((GUIPanel*)p)->value; }; p->setRange(-1.0 ,1.0);  p->setValue(1.0); 
+    // p=mpanel->subs[2]; p->caption = "Charge: "; p->command=[&](GUIAbstractPanel* p){ electron_Q   =((GUIPanel*)p)->value; }; p->setRange( 0.0 ,1.0);  p->setValue(1.0); 
+
+    // // ----- PickedAtom params
+    // MultiPanel* mpanel = new MultiPanel( "PickedType", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mpanel );  panel_PickedType=mpanel;
+    // p=mpanel->subs[0]; p->caption = "Hbond : "; p->command=[&](GUIAbstractPanel* p){ electron_size=((GUIPanel*)p)->value; }; p->setRange( 0.0 ,2.0);  p->setValue(1.0);
+    // p=mpanel->subs[1]; p->caption = "EvdW  : "; p->command=[&](GUIAbstractPanel* p){ electron_spin=((GUIPanel*)p)->value; }; p->setRange(-1.0 ,1.0);  p->setValue(1.0); 
+    // p=mpanel->subs[2]; p->caption = "Charge: "; p->command=[&](GUIAbstractPanel* p){ electron_Q   =((GUIPanel*)p)->value; }; p->setRange( 0.0 ,1.0);  p->setValue(1.0); 
+}
+
+void MolGUI::plotNonBond(){
+    // --- plot lines along each e-pair in the molecule
+    // -- display list - delete if exist
+    int epair_element = W->params.getElementType("E");
+    double R0 = 1.5;
+
+    //GUIPanel* p=0;
+    MultiPanel* mp=0;
+    mp=panel_TestType;    
+    Quat4d REQtest{ mp->subs[0]->value, mp->subs[1]->value, mp->subs[2]->value, mp->subs[3]->value };
+    double dstep, Rplot, Ezoom;
+    mp=panel_NonBondPlot; Ezoom=mp->subs[1]->value; Rplot=mp->subs[2]->value; dstep=mp->subs[3]->value;
+
+    if(ogl_nonBond>0) glDeleteLists(ogl_nonBond,1);
+    ogl_nonBond = glGenLists(1);
+    glNewList(ogl_nonBond, GL_COMPILE);
+    for(int i=0; i<W->nbmol.natoms; i++){
+        int ityp = W->nbmol.atypes[i];
+        AtomType& t = W->params.atypes[ityp];
+        if(t.element!=epair_element) continue;
+
+        int j = W->ffl.neighs[i].x;
+        Vec3d pe    = W->nbmol.apos[i];
+        Vec3d pa    = W->nbmol.apos[j];
+        Quat4d REQa = W->nbmol.REQs[j];
+        Vec3d d = pa-pe;
+        double r = d.normalize();
+
+        // double plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d p2, int n, Vec3d up=Vec3dZ, bool bForce ){
+        Vec3d p0 = pa + d*(REQa.x + REQtest.x);
+        Vec3d p1 = p0 + d*Rplot;
+        int n = (int)(Rplot/dstep);
+        plotNonBondLine( W->nbmol, REQtest, 0.1, p0, p1, n, Vec3dZ, false );
+        
+    }
+    glEndList();
 }
 
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
@@ -863,8 +1012,10 @@ void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){
 }
 
 Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
+    // function to evaluate non-bonded interaction between two atoms and plotting results to screen
     int na = W->ffl.natoms ;
     if( (b.i>=na)||(b.j>=na) ){ printf( "ERROR showNonBond(%i,%i) out of atom range [0 .. %i] \n", b.i,b.j, W->ffl.natoms ); }
+    // --- mix non-bonded parameters
     Quat4d* REQs = W->ffl.REQs;
     Vec3d * ps   = W->ffl.apos;
     Mat3d& lvec  = W->ffl.lvec;
@@ -872,7 +1023,6 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
     Vec3d pi     = ps[b.i];
     Vec3d pj     = ps[b.j];
     Vec3d d      = pj-pi;
-    // --- PBC
     
     Vec3i g      = W->ffl.invLvec.nearestCell( d );
     Vec3d shift  = lvec.a*g.x + lvec.b*g.y + lvec.c*g.z;
@@ -898,9 +1048,11 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
     double EH     = u6*u6* ((REQH.w<0) ? REQH.w : 0.0);  // H-bond correction
     double Etot   = Epaul + EvdW + EH + Eel;
     //F      +=  (12.*(u6-1.)*vdW + H*6.)*ir2;
+    // --- print Energy components to string
     s += sprintf(s, "PLQH[%i,%i] r=%6.3f Etot %15.10f Epaul %15.10f; EvdW %15.10f EH %15.10f Eel %15.10f\n", b.i,b.j, sqrt(r2), Etot, Epaul, EvdW, EH, Eel );
     if( fabs(Etot-Eref)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", Eref ); }
     if( Etot>0 ){ glColor3f(0.7f,0.f,0.f); }else{ glColor3f(0.f,0.f,1.f); }
+    // --- draw to screen
     Draw::drawText( tmpstr, fontTex, fontSizeDef, {150,20} );
     glTranslatef( 0.0,fontSizeDef*2,0.0 );
     return shift;
@@ -1294,6 +1446,7 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
     if( bViewBonds ){
         glDisable(GL_LIGHTING);
         glColor3f(0.0f,0.0f,0.0f);
+        glLineWidth(5.0);
         glBegin(GL_LINES);
         for(int ib=0; ib<B.bonds.size(); ib++){
             Vec2i b  = B.bonds[ib].atoms;
@@ -1301,6 +1454,7 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
             Draw3D::vertex(B.atoms[b.b].pos);
         }
         glEnd();
+        glLineWidth(1.0);
     }
 }
 
@@ -1316,7 +1470,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
     //printf( "MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
     //printf("MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
-    if( neighs ){  glColor3f(0.0f,0.0f,0.0f);   Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts );   }
+    if( neighs ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(5.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
     //W->nbmol.print();
     if(bViewAtomSpheres&&mm_bAtoms                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     if(bOrig){

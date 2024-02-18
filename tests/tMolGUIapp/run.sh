@@ -36,7 +36,7 @@ ln -s $dir/$name .
 #./$name -x common_resources/C2H4
 
 #./$name -x common_resources/H2O
-#./$name -x common_resources/HCOOH
+./$name -x common_resources/HCOOH
 #./$name -x common_resources/formic_dimer
 #./$name -x common_resources/pyridine
 #./$name -x common_resources/propandiol
@@ -46,10 +46,10 @@ ln -s $dir/$name .
 
 # ====== Small Molecules On Substrate
 
-#./$name -x common_resources/H2O      -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/H2O      -g common_resources/NaCl_1x1_L2  -lua makeGUI.lua
-./$name -x common_resources/H2O_Monika     -g common_resources/NaCl_1x1_L2 -e
-#./$name -x common_resources/Molekuly     -g common_resources/NaCl_1x1_L2 -e
+#./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2  -lua makeGUI.lua
+#./$name -x  common_resources/H2O2     -g common_resources/NaCl_1x1_L2 -e
+#./$name -x common_resources/Molekuly  -g common_resources/NaCl_1x1_L2 -e
 
 
 #./$name -x common_resources/NH3      -g common_resources/NaCl_1x1_L2

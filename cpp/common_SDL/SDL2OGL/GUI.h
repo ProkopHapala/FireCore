@@ -26,7 +26,7 @@ class GUI_stepper{ public:
     int x0=0,x1=0;
     GUI_stepper()=default;
     GUI_stepper(int n, int l){ x0=n*fontSizeDef; x1=(n+l)*fontSizeDef; }
-    inline void step(int n){ x0=x1; x1=x0+n*fontSizeDef; }
+    inline void step(int n){ x0=x1; x1=x1+n*fontSizeDef; }
 };
 
 struct Command{
@@ -112,13 +112,11 @@ class GUITextInput{ public:
 
 class GUIAbstractPanel{ public:
     //int textSz = fontSizeDef;
-	int  xmin=256,xmax=128,ymin=0,ymax=0;
-	bool visible=true, disabled=false;
-
-	uint32_t bgColor=0xA0A0A0, textColor=0x000000;
-
-	bool     redraw=true;
-	int      gllist=0;
+	int  xmin=256,xmax=128,ymin=0,ymax=0;  // // ToDo: perhaps it would be better to Vec2i, or Rect2i ?
+	bool visible=true, disabled=false,redraw=true;
+    int ivalchanged = -1; 
+	uint32_t bgColor=0xA0A0A0, textColor=0x000000; // ToDo: perhaps it would be better to use some style-class
+	int      gllist=0; // rendered shape ( e.g. OpenGL display list )
 
 	//int      fontTex=0;
     //char*    caption=NULL;
@@ -136,7 +134,10 @@ class GUIAbstractPanel{ public:
     GUIAbstractPanel( const std::string& caption, int xmin, int ymin, int xmax, int ymax ){ initPanel(caption, xmin,ymin,xmax,ymax); };
     virtual ~GUIAbstractPanel()=default;
 
-    virtual int  toggleChanged(){ return -1; };
+    //virtual int  toggleChanged(){ return -1; };
+    virtual int clearChanged()    { int i=ivalchanged; ivalchanged=-1; return i; };
+    virtual int readChanged()const{ return ivalchanged; };
+    //inline  int  toggleChanged(){ int i=ivalchanged; ivalchanged=-1; return i; };
     virtual void open(){};
     virtual void close(){};
 	virtual void moveTo(int x, int y);
@@ -174,11 +175,9 @@ class GUIAbstractPanel{ public:
 // ==============================
 
 class GUIPanel : public GUIAbstractPanel { public:
-	bool isSlider=true, isButton=false, bCmdOnSlider=false;
+	bool isSlider=true, isButton=false, bCmdOnSlider=false, isInt = false, viewVal=true, valBelow=true;   // ToDo: perhaps it would be better to use bit-mask
 
-	uint32_t barColor=0x00FF00;
-    bool viewVal=true;
-    bool valBelow=true;
+	uint32_t barColor=0x00FF00;  // ToDo: perhaps it would be better to use some style-class
 
 	bool     executed=false;
 	int      curPos=0;
@@ -187,8 +186,7 @@ class GUIPanel : public GUIAbstractPanel { public:
 
 	float    vmin=0.0f, vmax=1.0f;
 	double   value=0.0;
-	bool     isInt = false;
-	double* master=0;
+	double*  master=0;
 
     // ==== functions
 
@@ -253,15 +251,33 @@ class ScisorBox : public GUIAbstractPanel { public:
 
 class MultiPanel : public GUIAbstractPanel { public:
     int nsubs;
-    GUIPanel ** subs;
+    //GUIPanel ** subs;
+    std::vector<GUIPanel*> subs;
     bool opened = true;
     int dy;
 
     // ==== functions
 
-    void initMulti( const std::string& caption, int xmin_, int ymin_, int xmax_, int dy, int nsubs_, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true, bool bCmdOnSlider=false );
+    void initMulti( const std::string& caption, int xmin_, int ymin_, int xmax_, int dy, int nsubs_=0, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true, bool bCmdOnSlider=false );
     MultiPanel(){};
-    MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true, bool bCmdOnSlider=false ){ if(dy==0){dy=2*fontSizeDef;} initMulti( caption, xmin, ymin, xmax, dy, nsubs, isSlider,isButton,isInt,viewVal,bCmdOnSlider); }
+    MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs=0, bool isSlider=true, bool isButton=true, bool isInt=false, bool viewVal=true, bool bCmdOnSlider=false ){ if(dy==0){dy=2*fontSizeDef;} initMulti( caption, xmin, ymin, xmax, dy, nsubs, isSlider,isButton,isInt,viewVal,bCmdOnSlider); }
+
+    GUIPanel* addPanel( const std::string& label, Vec3d vals, bool isSlider_=true, bool isButton_=true, bool isInt_=false, bool viewVal_=true, bool bCmdOnSlider_=false ){
+        int ns = subs.size();
+        int yi = ymin+dy*ns;
+        //xmin,yi,xmax,yi+dy;
+        //printf( "MultiPanel(%s)::addPanel(%s) pmin(%i,%i) pmax(%i,%i) \n", caption.c_str(), label.c_str(), xmin, yi, xmax, yi+dy,    ymin,ymax,dy );
+        printf( "MultiPanel(%s)::addPanel(%s) ys(%i,%i) | dy=%i yrange(%i,%i) \n", caption.c_str(), label.c_str(), yi, yi+dy,    dy,ymin,ymax );
+        GUIPanel* p = new GUIPanel( label, xmin, yi, xmax, yi+dy, isSlider_, isButton_, isInt_, viewVal_, bCmdOnSlider_ ); 
+        subs.push_back(p);
+        p->setRange(vals.x,vals.y);
+        p->setValue(vals.z);
+        redraw = true;
+        return p;
+    };
+
+    virtual int clearChanged()     override{ int i=-1; for(int i=0; i<nsubs; i++){ int j=subs[i]->clearChanged(); if(i<0)i=j;       } return  i; };
+    virtual int readChanged()const override{           for(int i=0; i<nsubs; i++){ int j=subs[i]->readChanged();  if(j>0)return i;  } return -1; };
 
     virtual void open()override;
     virtual void close()override;
@@ -299,7 +315,7 @@ class CheckBoxList : public GUIAbstractPanel { public:
     std::vector<CheckBox> boxes;
     int dy;
     uint32_t checkColor=0x00FF00;
-    int iboxchanged = -1;
+    //int ivalchanged = -1;   // moved to GUIAbstractPanel
 
     // ==== functions
 
@@ -323,7 +339,7 @@ class CheckBoxList : public GUIAbstractPanel { public:
     //virtual void moveBy(int dx, int dy);
     void update();
 
-    virtual int  toggleChanged(){ int i=iboxchanged; iboxchanged=-1; return i; };
+    //virtual int  toggleChanged(){ int i=ivalchanged; ivalchanged=-1; return i; };  // moved to GUIAbstractPanel
     virtual void view  ( )                                                               override;
     virtual void render( )                                                               override;
     virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui )  override;

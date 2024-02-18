@@ -215,12 +215,13 @@ void TestAppRARFF::initWiggets(){
     // MultiPanel(const std::string& caption, int xmin, int ymin, int xmax, int dy, int nsubs)
     //GUI_stepper ylay;
     GUI_stepper gx(0,4);
+    GUIPanel*   p=0;
+    MultiPanel* mp=0;
 
-    // GUIPanel* p=0;
-    // MultiPanel* mpanel = new MultiPanel( "Plot", gx.x0, 10, gx.x1, 0, 3, false, true, false, false );   gui.addPanel( mpanel );
-    // p=mpanel->subs[0]; p->caption = "view"; p->command=[&](GUIAbstractPanel* p){ bDrawPlots=!bDrawPlots; };
-    // p=mpanel->subs[1]; p->caption = "grid"; p->command=[&](GUIAbstractPanel* p){ plot1.bGrid=!plot1.bGrid;                             plot1.redraw=true; };
-    // p=mpanel->subs[2]; p->caption = "axes"; p->command=[&](GUIAbstractPanel* p){ plot1.bAxes=!plot1.bAxes; plot1.bTicks=!plot1.bTicks; plot1.redraw=true; };
+    // mp = new MultiPanel( "Plot", gx.x0, 10, gx.x1, 0, 3, false, true, false, false );   gui.addPanel( mp );
+    // p=mp->subs[0]; p->caption = "view"; p->command=[&](GUIAbstractPanel* p){ bDrawPlots=!bDrawPlots; };
+    // p=mp->subs[1]; p->caption = "grid"; p->command=[&](GUIAbstractPanel* p){ plot1.bGrid=!plot1.bGrid;                             plot1.redraw=true; };
+    // p=mp->subs[2]; p->caption = "axes"; p->command=[&](GUIAbstractPanel* p){ plot1.bAxes=!plot1.bAxes; plot1.bTicks=!plot1.bTicks; plot1.redraw=true; };
 
     // void initCheckBoxList( int xmin_, int ymin_, int xmax_, int dy=fontSizeDef*2 );
     //CheckBox* b;
@@ -233,15 +234,23 @@ void TestAppRARFF::initWiggets(){
     chk->addBox( "axes", &plot1.bAxes );
 
     gx.x1+=5; gx.step( 15 );
-    GUIPanel* p=0;
-    MultiPanel* mpanel = new MultiPanel( "PlotXY", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mpanel );
-    p=mpanel->subs[0]; p->caption = "view";    p->command=[&](GUIAbstractPanel* p){ bDrawPlotXY=!bDrawPlotXY;            }; p->isSlider=false; p->viewVal=false;
-    p=mpanel->subs[1]; p->caption = "z_cut: "; p->command=[&](GUIAbstractPanel* p){ xy_height    =((GUIPanel*)p)->value; }; p->setRange(-10.0,10.0); p->setValue(0.0);
-    p=mpanel->subs[1]; p->caption = "scale: "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0);
-    p=mpanel->subs[2]; p->caption = "size : "; p->command=[&](GUIAbstractPanel* p){ electron_size=((GUIPanel*)p)->value; }; p->setRange( 0.0 ,2.0);  p->setValue(1.0);
-    p=mpanel->subs[3]; p->caption = "spin : "; p->command=[&](GUIAbstractPanel* p){ electron_spin=((GUIPanel*)p)->value; }; p->setRange(-1.0 ,1.0);  p->setValue(1.0); p->isInt=true;
-    p=mpanel->subs[4]; p->caption = "Q    : "; p->command=[&](GUIAbstractPanel* p){ electron_Q   =((GUIPanel*)p)->value; }; p->setRange( 0.0 ,1.0);  p->setValue(1.0); p->isInt=true;
-
+    //mp = new MultiPanel( "PlotXY", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mp );
+    // p=mp->subs[0]; p->caption = "view";    p->command=[&](GUIAbstractPanel* p){ bDrawPlotXY=!bDrawPlotXY;            }; p->isSlider=false; p->viewVal=false;
+    // p=mp->subs[1]; p->caption = "z_cut: "; p->command=[&](GUIAbstractPanel* p){ xy_height    =((GUIPanel*)p)->value; }; p->setRange(-10.0,10.0); p->setValue(0.0);
+    // p=mp->subs[1]; p->caption = "scale: "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0);
+    // p=mp->subs[2]; p->caption = "size : "; p->command=[&](GUIAbstractPanel* p){ electron_size=((GUIPanel*)p)->value; }; p->setRange( 0.0 ,2.0);  p->setValue(1.0);
+    // p=mp->subs[3]; p->caption = "spin : "; p->command=[&](GUIAbstractPanel* p){ electron_spin=((GUIPanel*)p)->value; }; p->setRange(-1.0 ,1.0);  p->setValue(1.0); p->isInt=true;
+    // p=mp->subs[4]; p->caption = "Q    : "; p->command=[&](GUIAbstractPanel* p){ electron_Q   =((GUIPanel*)p)->value; }; p->setRange( 0.0 ,1.0);  p->setValue(1.0); p->isInt=true;
+    
+    mp = new MultiPanel( "PlotXY", gx.x0, 10, gx.x1, 0, -5, true, true, false, true, true );   gui.addPanel( mp );
+    // GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
+    mp->addPanel( "view",    { 0.0 ,1.0 ,0.0}, 0,1,0,0,0 )->command=[&](GUIAbstractPanel* p){ bDrawPlotXY=!bDrawPlotXY;            };
+    mp->addPanel( "z_cut: ", {-10.0,10.0,0.0}, 1,1,0,1,1 )->command=[&](GUIAbstractPanel* p){ xy_height    =((GUIPanel*)p)->value; };
+    mp->addPanel( "scale: ", {-2.0 ,2.0 ,0.0}, 1,1,0,1,1 )->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); };
+    mp->addPanel( "size : ", { 0.0 ,2.0 ,1.0}, 1,1,0,1,1 )->command=[&](GUIAbstractPanel* p){ electron_size=((GUIPanel*)p)->value; };
+    mp->addPanel( "spin : ", {-1.0 ,1.0 ,1.0}, 1,1,1,1,1 )->command=[&](GUIAbstractPanel* p){ electron_spin=((GUIPanel*)p)->value; };
+    mp->addPanel( "Q    : ", { 0.0 ,1.0 ,1.0}, 1,1,1,1,1 )->command=[&](GUIAbstractPanel* p){ electron_Q   =((GUIPanel*)p)->value; };
+    
     printf( "TestAppRARFF::initWiggets() END \n" );
 }
 
@@ -541,8 +550,8 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
     Vec3d pa0;
     GUIAbstractPanel* clicked_panel = gui.onEvent( mouseX, mouseY, event );
     if( clicked_panel ){ 
-        int itoggle =  clicked_panel->toggleChanged();
-        if( clicked_panel==panel_Plot ){ if( (itoggle==1)||(itoggle==2)  ) plot1.redraw=true; }
+        int ichanged =  clicked_panel->clearChanged();
+        if( clicked_panel==panel_Plot ){ if( (ichanged==1)||(ichanged==2)  ) plot1.redraw=true; }
     };
     switch( event.type ){
         case SDL_KEYDOWN :

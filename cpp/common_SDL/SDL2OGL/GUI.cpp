@@ -193,7 +193,9 @@ void GUIPanel::render(){
 
     if(isSlider){
         Draw::setRGB(barColor);
-        Draw2D::drawRectangle ( xmin, ymin, xmin+val2x(value), ymax, true );
+        float dx = val2x(value);
+        if( (dx<0)||(dx>(xmax-xmin)) ){ printf( "GUIPanel(%s)::render() va(%f) out of range(0,%g) \n", caption.c_str(), dx, (xmax-xmin) ); }
+        Draw2D::drawRectangle ( xmin, ymin, xmin+dx, ymax, true );
         //Draw2D::drawRectangle ( xmin, ymax-2*fontSizeDef, xmin+val2x(value), ymax, true );
         //Draw2D::drawRectangle ( xmin, ymin, xmin+val2x(value), ymax-2*fontSizeDef, true );
     }
@@ -280,6 +282,7 @@ GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& 
             if(isSlider && (event.button.button==SDL_BUTTON_RIGHT)){ // onSliderChange 
                 //value=( x*(vmax-vmin)/(xmax-xmin) ) + vmin;
                 value=x2val(x);
+                ivalchanged=1;
                 if(isInt)value=getIntVal();
                 if(bCmdOnSlider) command(this);
                 //sprintf(val_text, "%3.3f", value );
@@ -360,11 +363,14 @@ void MultiPanel::initMulti( const std::string& caption_, int xmin_, int ymin_, i
     //xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymax_; fontTex=fontTex_;
     caption =caption_;
     xmin=xmin_,ymin=ymin_,xmax=xmax_, dy=dy_; //fontTex=fontTex_;
-    nsubs=nsubs_;
-    subs = new GUIPanel*[nsubs_];
+    //nsubs=nsubs_;
+    //subs = new GUIPanel*[nsubs_];
+    bool balloc = nsubs_>0; 
+    if(balloc){nsubs=nsubs_; subs.resize(nsubs); }else{nsubs=-nsubs_; subs.reserve(nsubs); }
     //int dy = (ymax-ymin-fontSizeDef)/nsubs;
     ymax=ymin + dy*nsubs + fontSizeDef*2;
     int yi = ymax-dy-fontSizeDef*2;
+    if(balloc)
     for(int i=0; i<nsubs; i++){
         char buf[16];
         sprintf(buf,"val_%i",i);
@@ -522,14 +528,14 @@ GUIAbstractPanel* CheckBoxList::onMouse  ( int x, int y, const SDL_Event& event,
                 if( ibox<boxes.size()){
                     boxes[ibox].flip();
                     redraw=true;
-                    iboxchanged=ibox;
+                    ivalchanged=ibox;
                     return active;
                 }
                 //if(event.button.clicks > 1 ){ toggleOpen();}
             }
         }
     }
-    iboxchanged=-1;
+    ivalchanged=-1;
     return active;
 }
 
