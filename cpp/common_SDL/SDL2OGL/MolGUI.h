@@ -62,6 +62,28 @@ void plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d
     glEnd();
 }
 
+Vec2d evalNonBondGrid2D( const NBFF& ff, Quat4d REQi, double Rdamp, Vec2i ns, double*& Egrid, Vec3d p0, Vec3d a, Vec3d b, Vec3d up=Vec3dZ, bool bForce=false ){
+    printf( "evalNonBondGrid2D().1 ns(%i,%i) @Egrid=%li \n", ns.x, ns.y, (long)Egrid );
+    if(Egrid==0)Egrid = new double[(ns.a)*(ns.b)];
+    printf( "evalNonBondGrid2D().2 ns(%i,%i) @Egrid=%li \n", ns.x, ns.y, (long)Egrid );
+    a.mul( 1.0/ns.a );
+    b.mul( 1.0/ns.b );
+    up.normalize();
+    Vec2d Erange = Vec2d{1e+300,-1e+300};
+    for(int iy=0; iy<ns.b; iy++){
+        for(int ix=0; ix<ns.a; ix++){
+            Vec3d p = p0 + a*ix + b*iy;
+            Quat4d fe = ff.evalLJQs( p, REQi, Rdamp );
+            double val;
+            if(bForce){ val = fe.f.dot(up); } // Force 
+            else      { val = fe.e;         } // Energy
+            Erange.enclose( val );
+            Egrid[ix*ns.a+iy] = val;
+        }
+    }
+    return Erange;
+}
+
 // ===========================================
 // ================= MAIN CLASS ==============
 // ===========================================
@@ -124,10 +146,13 @@ class MolGUI : public AppSDL2OGL_3D { public:
     GUIPanel*     panel_iMO  =0;
 
     // --- NonBond plot
-    bool bDrawNonBond = false;
+    //bool bDrawNonBond = false;
+    bool bDrawNonBondLines=false;
+    bool bDrawNonBondGrid =false;
     MultiPanel* panel_NonBondPlot=0;
     MultiPanel* panel_PickedType=0;
     MultiPanel* panel_TestType=0;
+    MultiPanel* panel_GridXY=0;
 
     Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
 
@@ -289,7 +314,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void drawPi0s( float sc );
     void  showAtomGrid( char* s, int ia, bool bDraw=true );
     Vec3d showNonBond ( char* s, Vec2i b, bool bDraw=true );
-    void plotNonBond();
+    void tryPlotNonBond();
+    void plotNonBondLines();
+    void plotNonBondGrid();
     void  showBonds();
     void printMSystem( int isys, int perAtom, int na, int nvec, bool bNg=true, bool bNgC=true, bool bPos=true );
     //void flipPis( Vec3d ax );
@@ -481,10 +508,12 @@ void MolGUI::initWiggets(){
     MultiPanel* mp=0;
     // ------ Edit
     ylay.step( 1 ); ylay.step( 2 );
-    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); panel_NonBondPlot=mp;
+    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-4); gui.addPanel( mp ); panel_NonBondPlot=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i); return 0; };
-    //mp->addPanel( "rot3a"  , {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->rot3a();              return 0; };
+    mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ std::unordered_set<int> s(W->selection.begin(),W->selection.end()); W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++) if( !s.contains(i) )W->selection.push_back(i); return 0; };
+    //mp->addPanel( "rot3a"  , {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->rot3a();            return 0; };
+    mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->center(true);         return 0; };
     mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->alignToAxis({2,1,0}); return 0; };
 
 
@@ -509,13 +538,14 @@ void MolGUI::initWiggets(){
 
 void MolGUI::nonBondGUI(){
     GUI_stepper gx(100,6);
-    bDrawNonBond = true;
+    //bDrawNonBond = true;
     // ---- NonBond plot Options
     CheckBoxList* chk = new CheckBoxList( gx.x0, 10, gx.x1 );
     gui.addPanel( chk );
     //panel_Plot = chk; 
     chk->caption = "NBPlot"; chk->bgColor = 0xFFE0E0E0;
-    chk->addBox( "view", &bDrawNonBond  );
+    chk->addBox( "lines ", &bDrawNonBondLines );
+    chk->addBox( "gridXY", &bDrawNonBondGrid  );
     //chk->addBox( "grid", &plot1.bGrid );
     //chk->addBox( "axes", &plot1.bAxes );
 
@@ -535,6 +565,14 @@ void MolGUI::nonBondGUI(){
 
     // ----- TestAtom Params
     gx.step( 2 ); gx.step( 8+10 );
+    mp = new MultiPanel( "GridXY", gx.x0, 10, gx.x1, 0,-4);   gui.addPanel( mp );    panel_GridXY=mp;
+    mp->addPanel( "n     : ", {  10,200, 120  }, 1,0,1,1,0 );
+    mp->addPanel( "size  : ", { 2.0,20.0,6.0  }, 1,0,0,1,0 );
+    mp->addPanel( "vmin  : ", {-6.0,6.0,-2.0  }, 1,0,0,1,0 );
+    mp->addPanel( "z_cut : ", {-5.0,5.0, 0.0  }, 1,0,0,1,0 );
+
+    // ----- TestAtom Params
+    gx.step( 2 ); gx.step( 8+10 );
     mp = new MultiPanel( "TestType", gx.x0, 10, gx.x1, 0,-4);   gui.addPanel( mp );    panel_TestType=mp;
     mp->addPanel( "RvdW  : ", { 0.0,2.50,1.5    },  1,0,0,1,0 );
     mp->addPanel( "EvdW  : ", { 0.0,0.02,0.0006808},1,0,0,1,0 );
@@ -551,31 +589,25 @@ void MolGUI::nonBondGUI(){
 
 }
 
-void MolGUI::plotNonBond(){
-
-    // --- check if parameters changed
-    bool bChanged = (panel_NonBondPlot->clearChanged()>=0) || (panel_TestType->clearChanged()>=0) || (panel_PickedType->clearChanged()>=0);
-    //printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
-    bool ogl0     = (ogl_nonBond<=0);
-    if( !( bChanged || ogl0 ) ){ return; };
-    if( !ogl0 ){ glDeleteLists(ogl_nonBond,1); }
-
-    printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
-
+void MolGUI::plotNonBondLines(){
+    //GUIPanel* p=0;
+    MultiPanel* mp=0;
+    mp=panel_TestType;    
+    Quat4d REQtest{ 
+        mp->subs[0]->value, 
+        sqrt(mp->subs[1]->value), 
+        mp->subs[2]->value, 
+        mp->subs[3]->value 
+    };
+    REQtest.w*=REQtest.y;  // Hbond = %H * sqrt(EvdW_ii)
+    double dstep, Rplot, Ezoom, Rdamp, Rcut;
+    mp=panel_NonBondPlot; Ezoom=pow(10.,mp->subs[1]->value); Rplot=mp->subs[2]->value; dstep=mp->subs[3]->value;  Rdamp = mp->subs[4]->value; Rcut = mp->subs[5]->value;
+    
     // --- plot lines along each e-pair in the molecule
     // -- display list - delete if exist
     int epair_element = W->params.getElementType("E");
     double R0 = 1.5;
 
-    //GUIPanel* p=0;
-    MultiPanel* mp=0;
-    mp=panel_TestType;    
-    Quat4d REQtest{ mp->subs[0]->value, mp->subs[1]->value, mp->subs[2]->value, mp->subs[3]->value };
-    double dstep, Rplot, Ezoom, Rdamp, Rcut;
-    mp=panel_NonBondPlot; Ezoom=pow(10.,mp->subs[1]->value); Rplot=mp->subs[2]->value; dstep=mp->subs[3]->value;  Rdamp = mp->subs[4]->value; Rcut = mp->subs[5]->value;
-    
-    ogl_nonBond = glGenLists(1);
-    glNewList(ogl_nonBond, GL_COMPILE);
     for(int i=0; i<W->nbmol.natoms; i++){
         int ityp = W->nbmol.atypes[i];
         AtomType& t = W->params.atypes[ityp];
@@ -603,6 +635,55 @@ void MolGUI::plotNonBond(){
         plotNonBondLine( W->nbmol, REQtest, Rdamp, p0, p1, n, Vec3dZ*Ezoom, false );
         
     }
+}
+
+void MolGUI::plotNonBondGrid(){
+    //GUIPanel* p=0;
+    MultiPanel* mp=0;
+    mp=panel_TestType;    
+    Quat4d REQtest{ 
+        mp->subs[0]->value, 
+        sqrt(mp->subs[1]->value), 
+        mp->subs[2]->value, 
+        mp->subs[3]->value 
+    };
+    REQtest.w*=REQtest.y;  // Hbond = %H * sqrt(EvdW_ii)
+    mp=panel_NonBondPlot; 
+    double Ezoom = pow(10.,mp->subs[1]->value); 
+    double Rplot = mp->subs[2]->value; 
+    double dstep = mp->subs[3]->value;  
+    double Rdamp = mp->subs[4]->value; 
+    double Rcut  = mp->subs[5]->value;
+
+    mp=panel_GridXY; 
+    int    n    = mp->subs[0]->getIntVal();
+    double sz   = mp->subs[1]->value; 
+    double vmax = pow(10.,mp->subs[2]->value);
+    double z_cut= mp->subs[3]->value;
+    
+    Vec2i ns{100,100};
+    Vec3d p0{-sz    ,-sz   ,0.0};
+    Vec3d a { sz*2.0,   0.0,0.0};
+    Vec3d b { 0.0   ,sz*2.0,0.0};
+    double* Egrid=0;
+    Vec2d Erange = evalNonBondGrid2D( W->nbmol, REQtest, Rdamp, ns, Egrid, p0, a,b );
+    printf( "Erange(%g,%g) vlim(%g,%g)\n", Erange.x, Erange.y, -vmax, vmax );
+    Draw3D::drawScalarGrid( ns, p0,b*(1./ns.b),a*(1./ns.a), Egrid, -vmax, vmax, Draw::colors_RWB ); //  const uint32_t * colors, int ncol );
+    delete [] Egrid;
+}
+
+void MolGUI::tryPlotNonBond(){
+    // --- check if parameters changed
+    bool bChanged =  (panel_GridXY->clearChanged()>=0) || (panel_NonBondPlot->clearChanged()>=0) || (panel_TestType->clearChanged()>=0) || (panel_PickedType->clearChanged()>=0);
+    //printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
+    bool ogl0     = (ogl_nonBond<=0);
+    if( !( bChanged || ogl0 ) ){ return; };
+    if( !ogl0 ){ glDeleteLists(ogl_nonBond,1); }
+    //printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
+    ogl_nonBond = glGenLists(1);
+    glNewList(ogl_nonBond, GL_COMPILE);
+    if( bDrawNonBondLines ){ plotNonBondLines(); };
+    if( bDrawNonBondGrid  ){ plotNonBondGrid();  };
     glEndList();
 }
 
@@ -835,8 +916,7 @@ void MolGUI::draw(){
     if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
     if( ogl_afm     ){ glCallList(ogl_afm);      }
 
-    if(bDrawNonBond){ plotNonBond(); }
-    if( ogl_nonBond && bDrawNonBond ){ glCallList(ogl_nonBond); }
+    if(bDrawNonBondGrid || bDrawNonBondLines){  tryPlotNonBond();  if( ogl_nonBond) glCallList(ogl_nonBond); }
 
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // Debug
 

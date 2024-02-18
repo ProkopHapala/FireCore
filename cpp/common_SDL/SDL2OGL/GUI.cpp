@@ -362,6 +362,7 @@ void MultiPanel::view( ){
     //printf( "MultiPanel::view() opened %i \n", opened );
     glCallList( gllist );
     // --- NOTE: we do not need to call view() for subs, because they are already baked into gllist ( see MultiPanel::render() )
+    if(opened){ for(int i=0; i<nsubs; i++){ redraw |= subs[i]->redraw;} }
     // if(opened){
     //     for(int i=0; i<nsubs; i++){
     //         subs[i]->tryRender();
@@ -391,6 +392,7 @@ GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, G
             nsubs = subs.size();
             for(int i=0; i<nsubs; i++){
                 active = subs[i]->onMouse ( x, y, event, gui );
+                if(subs[i]->redraw) redraw = true;
                 if(active) return active;
             }
         }
