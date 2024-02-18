@@ -568,7 +568,7 @@ void MolGUI::nonBondGUI(){
     mp = new MultiPanel( "GridXY", gx.x0, 10, gx.x1, 0,-4);   gui.addPanel( mp );    panel_GridXY=mp;
     mp->addPanel( "n     : ", {  10,200, 120  }, 1,0,1,1,0 );
     mp->addPanel( "size  : ", { 2.0,20.0,6.0  }, 1,0,0,1,0 );
-    mp->addPanel( "vmin  : ", {-6.0,6.0,-2.0  }, 1,0,0,1,0 );
+    mp->addPanel( "vmin  : ", {-6.0,6.0,-1.0  }, 1,0,0,1,0 );
     mp->addPanel( "z_cut : ", {-5.0,5.0, 0.0  }, 1,0,0,1,0 );
 
     // ----- TestAtom Params
@@ -668,7 +668,8 @@ void MolGUI::plotNonBondGrid(){
     double* Egrid=0;
     Vec2d Erange = evalNonBondGrid2D( W->nbmol, REQtest, Rdamp, ns, Egrid, p0, a,b );
     printf( "Erange(%g,%g) vlim(%g,%g)\n", Erange.x, Erange.y, -vmax, vmax );
-    Draw3D::drawScalarGrid( ns, p0,b*(1./ns.b),a*(1./ns.a), Egrid, -vmax, vmax, Draw::colors_RWB ); //  const uint32_t * colors, int ncol );
+    //Draw3D::drawScalarGrid( ns, p0,b*(1./ns.b),a*(1./ns.a), Egrid, -vmax, vmax, Draw::colors_RWB ); //  const uint32_t * colors, int ncol );
+    Draw3D::drawScalarGridLines( ns, p0, b*(1./ns.b), a*(1./ns.a), Vec3dZ, Egrid, 10.0/vmax, Vec2d{-vmax,vmax} );
     delete [] Egrid;
 }
 

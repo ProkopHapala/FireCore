@@ -1148,7 +1148,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         }
     }
 
-    void drawScalarGridLines(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b, const Vec3d& up, const double* data, double sc, Vec2d vclamp=Vec2d{-1e+300,1e+300} ){
+    void drawScalarGridLines(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b, const Vec3d& up, const double* data, double sc, Vec2d vclamp ){
         //printf( " debug_draw_GridFF \n" );
         double z0  = 1.5;
         double dz0 = 0.1;
@@ -1157,7 +1157,10 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
             for(int ix=0;ix<ns.x;ix++){
                 Vec3d p;
                 int i = iy*ns.x + ix;
-                double val = _clamp( data[i], vclamp.x, vclamp.y ) *sc;
+                double val = data[i];
+                //if( (val<vclamp.x) || (val>vclamp.y) ) continue;
+                val = _clamp( val, vclamp.x, vclamp.y );
+                val*=sc;
                 p = p0 + a*ix + b*iy + up*val;
                 glVertex3f(p.x,p.y,p.z);
             }

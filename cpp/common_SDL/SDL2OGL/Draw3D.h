@@ -182,6 +182,7 @@ void drawScalarArray(int n,const Vec3d* ps,const double* vs, double vmin=0.0, do
 void drawScalarField(Vec2i ns,const Vec3d*  ps,const double* data, double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 void drawScalarField(Vec2i ns,const Quat4f* ps,const float* data, int pitch, int offset, double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 
+void drawScalarGridLines(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b, const Vec3d& up, const double* data, double sc=1.0, Vec2d vclamp=Vec2d{-1e+300,1e+300} );
 void drawScalarGrid(Vec2i ns,const Vec3d& p0, const Vec3d& a, const Vec3d& b, const double* data,  double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 void drawScalarGrid(Vec2i ns,const Vec3d& p0, const Vec3d& a, const Vec3d& b, const float*  data, int pitch, int offset,  double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 void drawColorScale( int n,const Vec3d& p0, const Vec3d& Vec3dY, const Vec3d& up=Vec3dX, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
