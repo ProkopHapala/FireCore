@@ -550,6 +550,19 @@ class NBFF: public ForceField{ public:
         return E;
     }
 
+    Quat4d evalLJQs( Vec3d pi, Quat4d REQi, double Rdamp )const{
+        const double R2damp = Rdamp*Rdamp;
+        Quat4d fe = Quat4dZero;
+        for(int i=0; i<natoms; i++){
+            const Quat4d  REQij = _mixREQ(REQi,(REQs[i])); 
+            Vec3d dp = pi - apos[i];
+            Vec3d fij;
+            fe.e += getLJQH( dp, fij, REQij, R2damp );
+            fe.f.add(fij);
+        }
+        return fe;
+    }
+
 #ifdef WITH_AVX
     double evalLJQs_atom_avx( const int ia, const double Fmax2 ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
