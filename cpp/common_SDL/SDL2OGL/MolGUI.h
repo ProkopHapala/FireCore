@@ -503,14 +503,14 @@ void MolGUI::nonBondGUI(){
 
     // ----- 1D plot option
     gx.step( 2 ); gx.step( 8+10 );
-    mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0,-4); gui.addPanel( mp ); panel_NonBondPlot=mp;
+    mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0,-6); gui.addPanel( mp ); panel_NonBondPlot=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Mode  : ", {0.0,2.0, 0.0},  1,0,1,1,0 );   // ToDo: perhaps it would be better to use bit-mask
     mp->addPanel( "Ezoom : ", {-3.0,3.0,0.0},  1,0,0,1,0 );
     mp->addPanel( "Rplot : ", {0.0,10.0,5.0},  1,0,0,1,0 );
     mp->addPanel( "dstep : ", {0.02,0.5,0.1},  1,0,0,1,0 );
-    //mp->addPanel( "Rdamp : ", {-2.0,2.0,0.1},  1,0,0,1,0 );
-    //mp->addPanel( "Rcut  : ", {-2.0,2.0,10.1}, 1,0,0,1,0 );
+    mp->addPanel( "Rdamp : ", {-2.0,2.0,0.1},  1,0,0,1,0 );
+    mp->addPanel( "Rcut  : ", {-2.0,2.0,10.1}, 1,0,0,1,0 );
 
     // ----- TestAtom Params
     gx.step( 2 ); gx.step( 8+10 );
@@ -518,15 +518,20 @@ void MolGUI::nonBondGUI(){
     mp->addPanel( "RvdW  : ", { 0.0,2.50,1.5    },  1,0,0,1,0 );
     mp->addPanel( "EvdW  : ", { 0.0,0.02,0.0006808},1,0,0,1,0 );
     mp->addPanel( "Charge: ", {-0.5,0.5, 0.0    },  1,0,0,1,0 );
-    mp->addPanel( "Hbond : ", { 1.0,1.0, 0.0    },  1,0,0,1,0 );
+    mp->addPanel( "Hbond : ", {-1.0,1.0, 0.0    },  1,0,0,1,0 );
 
-    // ----- PickedAtom params
+    // // ----- PickedAtom params
     gx.step( 2 ); gx.step( 8+10 );
     mp = new MultiPanel( "PickedType", gx.x0, 10, gx.x1, 0,-4 ); gui.addPanel( mp );  panel_PickedType=mp;
     mp->addPanel( "RvdW  : ", { 0.0,2.50,1.5    },  1,0,0,1,0 );
     mp->addPanel( "EvdW  : ", { 0.0,0.02,0.0006808},1,0,0,1,0 );
     mp->addPanel( "Charge: ", {-0.5,0.5, 0.0    },  1,0,0,1,0 );
-    mp->addPanel( "Hbond : ", { 1.0,1.0, 0.0    },  1,0,0,1,0 );
+    mp->addPanel( "Hbond : ", {-1.0,1.0, 0.0    },  1,0,0,1,0 );
+
+    // gx.step( 2 ); gx.step( 8+10 );
+    // mp = new MultiPanel( "PickedType", gx.x0, 10, gx.x1, 0,-1 ); gui.addPanel( mp );  panel_PickedType=mp;
+    // mp->addPanel( "RvdW  : ", { 0.0,2.50,1.5 },  1,0,0,1,0 );
+
 
     // // ----- 1D plot option
     // gx.x1+=5; gx.step( 15 );

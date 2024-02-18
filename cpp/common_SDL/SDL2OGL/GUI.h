@@ -216,32 +216,10 @@ class GUIPanel : public GUIAbstractPanel { public:
     inline void syncRead (){ if(master)value=*master; }
     inline void syncWrite(){ if(master)*master=value; }
 
-	inline GUIPanel* setRange(float vmin_, float vmax_){ vmin=vmin_; vmax=vmax_; return this; };
+    bool checkRange(bool bExit=false, bool bWarn=true);
+    bool checkValue(bool bExit=false, bool bWarn=true);
+	inline GUIPanel* setRange(float vmin_, float vmax_){ vmin=vmin_; vmax=vmax_; checkRange(); return this; };
     inline GUIPanel* setValue(float val_){ value=_clamp(val_,vmin,vmax); redraw=true; return this; };
-
-};
-
-// ==============================
-//     class  ScisorBox
-// ==============================
-
-class ScisorBox : public GUIAbstractPanel { public:
-
-    // ==== functions
-
-    void apply();
-    void initScisor( const std::string& caption, int xmin_, int ymin_, int xmax_, int ymax_ );
-
-    ScisorBox(){};
-    ScisorBox( const std::string& caption, int xmin_, int ymin_, int xmax_, int ymax_ ){ initScisor( caption, xmin_, ymin_, xmax_, ymax_ ); };
-
-    //virtual void draw     ( );
-    //virtual void tryRender( );
-    virtual void render( )                                                                override;
-    virtual GUIAbstractPanel* onMouse ( int x, int y, const SDL_Event&  event, GUI& gui ) override;
-
-    //virtual void onKeyDown( SDL_Event e ){};
-    //virtual void onText   ( SDL_Event e ){};
 
 };
 
@@ -267,11 +245,12 @@ class MultiPanel : public GUIAbstractPanel { public:
         int yi = ymin+dy*ns;
         //xmin,yi,xmax,yi+dy;
         //printf( "MultiPanel(%s)::addPanel(%s) pmin(%i,%i) pmax(%i,%i) \n", caption.c_str(), label.c_str(), xmin, yi, xmax, yi+dy,    ymin,ymax,dy );
-        printf( "MultiPanel(%s)::addPanel(%s) ys(%i,%i) | dy=%i yrange(%i,%i) \n", caption.c_str(), label.c_str(), yi, yi+dy,    dy,ymin,ymax );
+        //printf( "MultiPanel(%s)::addPanel(%s) ys(%i,%i) | dy=%i yrange(%i,%i) \n", caption.c_str(), label.c_str(), yi, yi+dy,    dy,ymin,ymax );
         GUIPanel* p = new GUIPanel( label, xmin, yi, xmax, yi+dy, isSlider_, isButton_, isInt_, viewVal_, bCmdOnSlider_ ); 
         subs.push_back(p);
         p->setRange(vals.x,vals.y);
         p->setValue(vals.z);
+        nsubs = subs.size();
         redraw = true;
         return p;
     };
@@ -348,6 +327,29 @@ class CheckBoxList : public GUIAbstractPanel { public:
     inline void syncWrite(){ for(CheckBox& b: boxes){ b.write(); } }
 };
 
+// ==============================
+//     class  ScisorBox
+// ==============================
+
+class ScisorBox : public GUIAbstractPanel { public:
+
+    // ==== functions
+
+    void apply();
+    void initScisor( const std::string& caption, int xmin_, int ymin_, int xmax_, int ymax_ );
+
+    ScisorBox(){};
+    ScisorBox( const std::string& caption, int xmin_, int ymin_, int xmax_, int ymax_ ){ initScisor( caption, xmin_, ymin_, xmax_, ymax_ ); };
+
+    //virtual void draw     ( );
+    //virtual void tryRender( );
+    virtual void render( )                                                                override;
+    virtual GUIAbstractPanel* onMouse ( int x, int y, const SDL_Event&  event, GUI& gui ) override;
+
+    //virtual void onKeyDown( SDL_Event e ){};
+    //virtual void onText   ( SDL_Event e ){};
+
+};
 
 // ==============================
 //     class  CommandList
@@ -378,7 +380,6 @@ class CommandList : public GUIAbstractPanel { public:
     virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui ) override;
 
 };
-
 
 // ==============================
 //     class  KeyTree
