@@ -1148,6 +1148,34 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         }
     }
 
+    void drawScalarGridLines(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b, const Vec3d& up, const double* data, double sc, Vec2d vclamp=Vec2d{-1e+300,1e+300} ){
+        //printf( " debug_draw_GridFF \n" );
+        double z0  = 1.5;
+        double dz0 = 0.1;
+        for(int iy=1;iy<ns.y;iy++){
+            glBegin( GL_LINE_STRIP );
+            for(int ix=0;ix<ns.x;ix++){
+                Vec3d p;
+                int i = iy*ns.x + ix;
+                double val = _clamp( data[i], vclamp.x, vclamp.y ) *sc;
+                p = p0 + a*ix + b*iy + up*val;
+                glVertex3f(p.x,p.y,p.z);
+            }
+            glEnd();
+        }
+        for(int ix=0;ix<ns.x;ix++){
+            glBegin( GL_LINE_STRIP );
+            for(int iy=1;iy<ns.y;iy++){
+                Vec3d p;
+                int i = iy*ns.x + ix;
+                double val = _clamp( data[i], vclamp.x, vclamp.y ) *sc;
+                p = p0 + a*ix + b*iy + up*val;
+                glVertex3f(p.x,p.y,p.z);
+            }
+            glEnd();
+        }
+    }
+
     void drawScalarGrid(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b,const float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
         //printf( " debug_draw_GridFF \n" );
         double z0  = 1.5;
