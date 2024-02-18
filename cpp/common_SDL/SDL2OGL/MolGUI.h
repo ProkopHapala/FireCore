@@ -46,14 +46,18 @@ void plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d
     Vec3d d = (p2-p1)*(1.0/n);
     Vec3d p = p1;
     double fsc = up.norm();
-    glBegin(GL_LINE_STRIP);
+    //glBegin(GL_LINE_STRIP);
+    glBegin(GL_TRIANGLE_STRIP);
     for(int i=0; i<=n; i++){
         Quat4d fe = ff.evalLJQs( p, REQi, Rdamp );
         //Draw3D::drawVecInPos( p, f*0.1, 0.1 );
         Vec3d pf;
         if(bForce){ pf = p + fe.f*fsc; } // Force 
         else      { pf = p + up*fe.e;  } // Energy
+        //printf( "plotNonBondLine[%i] p(%g,%g,%g) E=%g pf(%g,%g,%g) \n", i, p.x,p.y,p.z, fe.w, pf.x,pf.y,pf.z );
         glVertex3f( pf.x, pf.y, pf.z );
+        glVertex3f( p.x, p.y, p.z );
+        p.add(d);
     }
     glEnd();
 }
@@ -407,23 +411,26 @@ void MolGUI::initWiggets(){
     printf( "MolGUI::initWiggets() \n" );
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
-    GUI_stepper ylay;
-    ylay.step(2);
-    Qpanel = new GUIPanel( "Q_pick: ", 5,ylay.x0,5+100,ylay.x1, true, true ); 
-    Qpanel->setRange(-1.0,1.0)
-          ->setValue(0.0)
-        //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
-          ->setCommand( [&](GUIAbstractPanel* p){ W->nbmol.REQs[W->ipicked].z = ((GUIPanel *)p)->value; return 0; } );
-    (GUIPanel*)gui.addPanel( Qpanel );
+    GUI_stepper ylay(1,2 );
+    GUI_stepper gx  (1,16);
 
+    // ylay.step(2);
+    // Qpanel = new GUIPanel( "Q_pick: ", 5,ylay.x0,5+100,ylay.x1, true, true ); 
+    // Qpanel->setRange(-1.0,1.0)
+    //       ->setValue(0.0)
+    //     //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
+    //       ->setCommand( [&](GUIAbstractPanel* p){ W->nbmol.REQs[W->ipicked].z = ((GUIPanel *)p)->value; return 0; } );
+    // (GUIPanel*)gui.addPanel( Qpanel );
+
+    // --- table of lattice vectors binding to the builder.lvec
     ylay.step(6);
     Table* tab1 = new Table( 9, sizeof(W->builder.lvec.a), (char*)&W->builder.lvec );
     tab1->addColum( &(W->builder.lvec.a.x), 1, DataType::Double    );
     tab1->addColum( &(W->builder.lvec.a.y), 1, DataType::Double    );
     tab1->addColum( &(W->builder.lvec.a.z), 1, DataType::Double    );
-
     ((TableView*)gui.addPanel( new TableView( tab1, "lattice", 5, ylay.x0,  0, 0, 3, 3 ) ))->input = new GUITextInput();
 
+    // --- change zoom
     ylay.step(3); 
     ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,ylay.x0,5+100,ylay.x1, true, true ) ) )
         ->setRange(5.0,50.0)
@@ -431,16 +438,19 @@ void MolGUI::initWiggets(){
         //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
         ->setCommand( [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; } );
 
+    // --- change picking mode
     ylay.step(3); 
     ((DropDownList*)gui.addPanel( new DropDownList("Pick Mode:",5,ylay.x0,5+100, 3 ) ) )
         ->addItem("pick_atoms")
         ->addItem("pick_bonds")
         ->addItem("pick_angles");
 
+    // --- select fragment
     ylay.step(3); 
     panel_Frags = ((DropDownList*)gui.addPanel( new DropDownList("Fragments:",5,ylay.x0,5+100, 3 ) ) );
     panel_Frags->setCommand( [&](GUIAbstractPanel* me_){ int i=((DropDownList*)me_)->iSelected; printf( "panel_Frags %02i \n", i );  W->selectFragment(i); return 0; } );   
 
+    // --- select view
     ylay.step(6); 
     ((DropDownList*)gui.addPanel( new DropDownList("View Side",5,ylay.x0,5+100, 3 ) ) )
         ->addItem("Top")
@@ -466,6 +476,17 @@ void MolGUI::initWiggets(){
             printMat((Mat3d)cam.rot);
             }
         );
+
+    GUIPanel* p=0;
+    MultiPanel* mp=0;
+    // ------ Edit
+    ylay.step( 1 ); ylay.step( 2 );
+    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); panel_NonBondPlot=mp;
+    //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
+    mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i); return 0; };
+    //mp->addPanel( "rot3a"  , {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->rot3a();              return 0; };
+    mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->alignToAxis({2,1,0}); return 0; };
+
 
     printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
     //exit(0);
@@ -528,57 +549,19 @@ void MolGUI::nonBondGUI(){
     mp->addPanel( "Charge: ", {-0.5,0.5, 0.0    },  1,0,0,1,0 );
     mp->addPanel( "Hbond : ", {-1.0,1.0, 0.0    },  1,0,0,1,0 );
 
-    // gx.step( 2 ); gx.step( 8+10 );
-    // mp = new MultiPanel( "PickedType", gx.x0, 10, gx.x1, 0,-1 ); gui.addPanel( mp );  panel_PickedType=mp;
-    // mp->addPanel( "RvdW  : ", { 0.0,2.50,1.5 },  1,0,0,1,0 );
-
-
-    // // ----- 1D plot option
-    // gx.x1+=5; gx.step( 15 );
-    // mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true ); gui.addPanel( mp ); panel_NonBondPlot=mp;
-    // p=mp->subs[0]; p->caption="Mode  : "; p->setRange( 0.0,2.0  ); p->setValue(0.0); p->isInt=true;
-    // p=mp->subs[1]; p->caption="Ezoom : "; p->setRange(-3.0,3.0  ); p->setValue(0.0);  // logScale
-    // p=mp->subs[1]; p->caption="Rplot : "; p->setRange( 0.0,10.0 ); p->setValue(5.0);
-    // p=mp->subs[2]; p->caption="dstep : "; p->setRange( 0.02,0.5 ); p->setValue(0.1);
-    // //p=mp->subs[3]; p->caption = "Rdamp : "; p->setRange(-2.0,2.0  ); p->setValue(0.1);
-    // //p=mp->subs[4]; p->caption = "Rcut  : "; p->setRange(-2.0,2.0  ); p->setValue(10.1);
-
-    // // ----- TestAtom Params
-    // mp = new MultiPanel( "TestType", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mp );    panel_TestType=mp;
-    // p=mp->subs[0]; p->caption="Hbond : "; p->setRange( 0.0 ,2.0); p->setValue(1.0);
-    // p=mp->subs[1]; p->caption="EvdW  : "; p->setRange(-1.0 ,1.0); p->setValue(1.0); 
-    // p=mp->subs[2]; p->caption="Charge: "; p->setRange( 0.0 ,1.0); p->setValue(1.0); 
-
-    // // ----- PickedAtom params
-    // mp = new MultiPanel( "PickedType", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mp );  panel_PickedType=mp;
-    // p=mp->subs[0]; p->caption="Hbond : "; p->setRange( 0.0 ,2.0); p->setValue(1.0);
-    // p=mp->subs[1]; p->caption="EvdW  : "; p->setRange(-1.0 ,1.0); p->setValue(1.0); 
-    // p=mp->subs[2]; p->caption="Charge: "; p->setRange( 0.0 ,1.0); p->setValue(1.0); 
-
-    // // ----- 1D plot option
-    // gx.x1+=5; gx.step( 15 );
-    // GUIPanel* p=0;
-    // MultiPanel* mpanel = new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mpanel );  panel_NonBondPlot=mpanel;
-    // p=mpanel->subs[0]; p->caption = "Mode  : "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0); p->isInt=true;
-    // p=mpanel->subs[1]; p->caption = "Rplot : "; p->command=[&](GUIAbstractPanel* p){ xy_height    =((GUIPanel*)p)->value; }; p->setRange(-10.0,10.0); p->setValue(0.0);
-    // p=mpanel->subs[2]; p->caption = "dstep : "; p->command=[&](GUIAbstractPanel* p){ xy_height    =((GUIPanel*)p)->value; }; p->setRange(-10.0,10.0); p->setValue(0.0);
-    // p=mpanel->subs[3]; p->caption = "Rdamp : "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0);
-    // p=mpanel->subs[4]; p->caption = "Rcut  : "; p->command=[&](GUIAbstractPanel* p){ scale_V      =pow(10.0,((GUIPanel*)p)->value); }; p->setRange(-2.0,2.0); p->setValue(0.0);
-
-    // // ----- TestAtom Params
-    // MultiPanel* mpanel = new MultiPanel( "TestType", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mpanel );    panel_TestType=mpanel;
-    // p=mpanel->subs[0]; p->caption = "Hbond : "; p->command=[&](GUIAbstractPanel* p){ electron_size=((GUIPanel*)p)->value; }; p->setRange( 0.0 ,2.0);  p->setValue(1.0);
-    // p=mpanel->subs[1]; p->caption = "EvdW  : "; p->command=[&](GUIAbstractPanel* p){ electron_spin=((GUIPanel*)p)->value; }; p->setRange(-1.0 ,1.0);  p->setValue(1.0); 
-    // p=mpanel->subs[2]; p->caption = "Charge: "; p->command=[&](GUIAbstractPanel* p){ electron_Q   =((GUIPanel*)p)->value; }; p->setRange( 0.0 ,1.0);  p->setValue(1.0); 
-
-    // // ----- PickedAtom params
-    // MultiPanel* mpanel = new MultiPanel( "PickedType", gx.x0, 10, gx.x1, 0, 5, true, true, false, true, true );   gui.addPanel( mpanel );  panel_PickedType=mpanel;
-    // p=mpanel->subs[0]; p->caption = "Hbond : "; p->command=[&](GUIAbstractPanel* p){ electron_size=((GUIPanel*)p)->value; }; p->setRange( 0.0 ,2.0);  p->setValue(1.0);
-    // p=mpanel->subs[1]; p->caption = "EvdW  : "; p->command=[&](GUIAbstractPanel* p){ electron_spin=((GUIPanel*)p)->value; }; p->setRange(-1.0 ,1.0);  p->setValue(1.0); 
-    // p=mpanel->subs[2]; p->caption = "Charge: "; p->command=[&](GUIAbstractPanel* p){ electron_Q   =((GUIPanel*)p)->value; }; p->setRange( 0.0 ,1.0);  p->setValue(1.0); 
 }
 
 void MolGUI::plotNonBond(){
+
+    // --- check if parameters changed
+    bool bChanged = (panel_NonBondPlot->clearChanged()>=0) || (panel_TestType->clearChanged()>=0) || (panel_PickedType->clearChanged()>=0);
+    //printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
+    bool ogl0     = (ogl_nonBond<=0);
+    if( !( bChanged || ogl0 ) ){ return; };
+    if( !ogl0 ){ glDeleteLists(ogl_nonBond,1); }
+
+    printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
+
     // --- plot lines along each e-pair in the molecule
     // -- display list - delete if exist
     int epair_element = W->params.getElementType("E");
@@ -588,29 +571,36 @@ void MolGUI::plotNonBond(){
     MultiPanel* mp=0;
     mp=panel_TestType;    
     Quat4d REQtest{ mp->subs[0]->value, mp->subs[1]->value, mp->subs[2]->value, mp->subs[3]->value };
-    double dstep, Rplot, Ezoom;
-    mp=panel_NonBondPlot; Ezoom=mp->subs[1]->value; Rplot=mp->subs[2]->value; dstep=mp->subs[3]->value;
-
-    if(ogl_nonBond>0) glDeleteLists(ogl_nonBond,1);
+    double dstep, Rplot, Ezoom, Rdamp, Rcut;
+    mp=panel_NonBondPlot; Ezoom=pow(10.,mp->subs[1]->value); Rplot=mp->subs[2]->value; dstep=mp->subs[3]->value;  Rdamp = mp->subs[4]->value; Rcut = mp->subs[5]->value;
+    
     ogl_nonBond = glGenLists(1);
     glNewList(ogl_nonBond, GL_COMPILE);
     for(int i=0; i<W->nbmol.natoms; i++){
         int ityp = W->nbmol.atypes[i];
         AtomType& t = W->params.atypes[ityp];
+        //printf( "plotNonBond[%i] %s t.element=%i epair_element=%i \n", i, t.name, t.element,  epair_element );
         if(t.element!=epair_element) continue;
+        //printf( "plotNonBond[%i] %s | %s \n", i, t.name, "IS E-PAIR" );
 
         int j = W->ffl.neighs[i].x;
         Vec3d pe    = W->nbmol.apos[i];
         Vec3d pa    = W->nbmol.apos[j];
         Quat4d REQa = W->nbmol.REQs[j];
-        Vec3d d = pa-pe;
+        Vec3d d = pe-pa;
         double r = d.normalize();
 
         // double plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d p2, int n, Vec3d up=Vec3dZ, bool bForce ){
-        Vec3d p0 = pa + d*(REQa.x + REQtest.x);
+        double R0ij = REQa.x + REQtest.x;
+        Vec3d p0 = pa + d*R0ij*0.5;
         Vec3d p1 = p0 + d*Rplot;
         int n = (int)(Rplot/dstep);
-        plotNonBondLine( W->nbmol, REQtest, 0.1, p0, p1, n, Vec3dZ, false );
+
+        int jtyp = W->nbmol.atypes[j];
+        //printf( "plotNonBond[%i]: jtyp=%i j=%i n=%i \n", i, jtyp,j, n );
+        //printf( "plotNonBond[%i]: %s(%i) n=%i \n", i, W->params.atypes[jtyp].name,j, n );
+
+        plotNonBondLine( W->nbmol, REQtest, Rdamp, p0, p1, n, Vec3dZ*Ezoom, false );
         
     }
     glEndList();
@@ -845,6 +835,9 @@ void MolGUI::draw(){
     if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
     if( ogl_afm     ){ glCallList(ogl_afm);      }
 
+    if(bDrawNonBond){ plotNonBond(); }
+    if( ogl_nonBond && bDrawNonBond ){ glCallList(ogl_nonBond); }
+
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // Debug
 
     //if(bDoQM)drawSystemQMMM();
@@ -963,6 +956,8 @@ void MolGUI::draw(){
     //}
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
+
+    glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1);
 };
 
 void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bool bNgC, bool bPos ){

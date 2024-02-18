@@ -519,7 +519,7 @@ class Mat3T{
  * 
  * @param evs (out) vector to store the eigenvalues in.
  */
-	inline void eigenvals( VEC& evs ) const {
+	inline void eigenvals( VEC& evs, bool bSort=true ) const {
 		const T inv3  = 0.33333333333;
         const T root3 = 1.73205080757;
 		T amax = array[0];
@@ -538,9 +538,15 @@ class Mat3T{
 		T angle = atan2( sqrt(-q), mbDiv2 ) * inv3;
 		T cs    = cos(angle);
 		T sn    = sin(angle);
+		// are the eigenvalues already sorted ?  - I think they are, from 
 		evs.a = amax*( c2Div3 + 2.0*magnitude*cs );
 		evs.b = amax*( c2Div3 - magnitude*(cs + root3*sn) );
 		evs.c = amax*( c2Div3 - magnitude*(cs - root3*sn) );
+		if(bSort){
+			_order(evs.a,evs.b);
+			_order(evs.b,evs.c);
+			_order(evs.a,evs.b);
+		}
 	}
 
 /**

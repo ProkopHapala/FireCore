@@ -1623,8 +1623,9 @@ class MolWorld_sp3 : public SolverInterface { public:
     }
 
     int selectFragment( int ifrag ){
-        printf( "MolWorld_sp3::selectFragment() ifrag %i \n", ifrag );
+        //printf( "MolWorld_sp3::selectFragment() ifrag %i \n", ifrag );
         selection.clear();
+        if(ifrag<0)selection.size();
         // ToDo: this is not most efficient way to do it, but for know we don't have reliable way to get all atoms which belongs to the fragment when atoms are reordered
         for(int i=0; i<builder.atoms.size(); i++ ){
             const MM::Atom& a = builder.atoms[i];
@@ -1664,6 +1665,64 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
         for( int ia : selection_set ){ selection.push_back( ia ); }
         return selection.size();
+    }
+
+    // ========= Geometry operations on selected atoms
+
+    bool trySel( int*& sel, int& n ){ 
+        if(sel==0){
+            sel=selection.data(); 
+            n  =selection.size();
+            return true; 
+        }
+        return false;
+    }
+
+    Vec3d getCenter( int* sel=0, int n=-1 ){
+        trySel( sel, n );
+        Vec3d c = Vec3dZero;
+        for(int i=0; i<n; i++){  // ToDo: is it better to do it with min/max ?
+            c.add( ffl.apos[selection[i]] ); 
+        }
+        c.mul( 1./n );
+        printf( "getCenter() cog(%g,%g,%g) \n", c.x,c.y,c.z );
+        return c;
+    }
+
+    Mat3d getInertiaTensor( int* sel=0, int n=-1, Vec3d* cog=0 ){
+        trySel( sel, n );
+        Vec3d c;
+        if(cog){ c=*cog; }else{ c=getCenter( sel, n ); }
+        Mat3d I = Mat3dZero;
+        for(int i=0; i<n; i++){
+            int ia = selection[i];
+            Vec3d p = ffl.apos[ia];
+            Vec3d d = p - c;
+            printf( "getInertiaTensor()[%i->%i] d(%g,%g,%g) p(%g,%g,%g) \n", i, ia,  d.x,d.y,d.z, p.x,p.y,p.z );
+            I.addOuter(d,d, 1.0 );
+        }
+        printf( "getInertiaTensor() I(%g,%g,%g) (%g,%g,%g) (%g,%g,%g) \n", I.a.x,I.a.y,I.a.z, I.b.x,I.b.y,I.b.z, I.c.x,I.c.y,I.c.z );
+        return I;
+    }
+
+    Mat3d alignToAxis( Vec3i ax={2,1,0}, Mat3d* I_=0, Vec3d* cog=0, bool doIt=true, int* sel=0, int n=-1 ){
+        trySel( sel, n );
+        Vec3d c; if(cog){ c=*cog;  }else{ c = getCenter( sel, n ); }
+        Mat3d I; if(I_ ){ I = *I_; }else{ I = getInertiaTensor( sel, n, &c ); }
+        Vec3d ls; I.eigenvals(ls);
+        printf( "alignToAxis() evals(%g,%g,%g) \n", ls.x,ls.y,ls.z );
+        Mat3d rot;
+        I.eigenvec( ls.array[ax.x], rot.a );
+        I.eigenvec( ls.array[ax.y], rot.b );
+        I.eigenvec( ls.array[ax.z], rot.c );
+        if(doIt){
+            for(int i=0; i<n; i++){
+                int ia = selection[i];
+                Vec3d p; rot.dot_to( ffl.apos[ia]-c, p );
+                ffl.apos[ia] = p + c; 
+            }
+        }
+        return rot;
     }
 
     int fragmentsByBonds(){
