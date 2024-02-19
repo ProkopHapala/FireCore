@@ -1659,6 +1659,7 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
 // redistribute charges from atom to capping electron pair
 void chargeToEpairs( Quat4d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
     printf( "MMFFsp3_loc::chargeToEpairs() cQ %g etyp %i \n", cQ, etyp );
+    // ToDo: we should operate on element-type not atom-type basis ( ielem = params.atypes[ityp].element ),   this is because we can have multiple electron-pair-types (depending on the atom-type to which they are attached)
     for( int ia=0; ia<nnode; ia++ ){
         int* ngs=neighs[ia].array; 
         for( int j=0; j<4; j++ ){

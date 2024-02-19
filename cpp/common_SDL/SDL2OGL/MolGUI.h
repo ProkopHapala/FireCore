@@ -149,6 +149,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //bool bDrawNonBond = false;
     bool bDrawNonBondLines=false;
     bool bDrawNonBondGrid =false;
+    bool hideEp           =false;
+    CheckBoxList* panel_NBPlot=0;
     MultiPanel* panel_NonBondPlot=0;
     MultiPanel* panel_PickedType=0;
     MultiPanel* panel_TestType=0;
@@ -540,12 +542,13 @@ void MolGUI::nonBondGUI(){
     GUI_stepper gx(100,6);
     //bDrawNonBond = true;
     // ---- NonBond plot Options
-    CheckBoxList* chk = new CheckBoxList( gx.x0, 10, gx.x1 );
+    CheckBoxList* chk = new CheckBoxList( gx.x0, 10, gx.x1 );   panel_NBPlot=chk;
     gui.addPanel( chk );
     //panel_Plot = chk; 
     chk->caption = "NBPlot"; chk->bgColor = 0xFFE0E0E0;
     chk->addBox( "lines ", &bDrawNonBondLines );
     chk->addBox( "gridXY", &bDrawNonBondGrid  );
+    chk->addBox( "hideEp", &hideEp            );
     //chk->addBox( "grid", &plot1.bGrid );
     //chk->addBox( "axes", &plot1.bAxes );
 
@@ -666,7 +669,24 @@ void MolGUI::plotNonBondGrid(){
     Vec3d a { sz*2.0,   0.0,0.0};
     Vec3d b { 0.0   ,sz*2.0,0.0};
     double* Egrid=0;
+
+    int nEp=0, etyp=0;
+    printf( "plotNonBondGrid() hideEp %i \n", hideEp );
+    if(hideEp){
+        printf( "plotNonBondGrid() removing EPairs %i \n" );
+        etyp = W->params.getAtomType("E");
+        W->ffl.chargeToEpairs( -W->QEpair, etyp );
+        W->selectByType( W->params.getElementType("E"), true );
+        nEp = W->selection.size();
+        W->nbmol.natoms -= nEp;
+    }
     Vec2d Erange = evalNonBondGrid2D( W->nbmol, REQtest, Rdamp, ns, Egrid, p0, a,b );
+    if(hideEp){
+        printf( "plotNonBondGrid() adding EPairs %i \n" );
+        W->nbmol.natoms += nEp;
+        W->ffl.chargeToEpairs( W->QEpair, etyp );
+    }
+    
     printf( "Erange(%g,%g) vlim(%g,%g)\n", Erange.x, Erange.y, -vmax, vmax );
     //Draw3D::drawScalarGrid( ns, p0,b*(1./ns.b),a*(1./ns.a), Egrid, -vmax, vmax, Draw::colors_RWB ); //  const uint32_t * colors, int ncol );
     Draw3D::drawScalarGridLines( ns, p0, b*(1./ns.b), a*(1./ns.a), Vec3dZ, Egrid, 10.0/vmax, Vec2d{-vmax,vmax} );
@@ -675,7 +695,7 @@ void MolGUI::plotNonBondGrid(){
 
 void MolGUI::tryPlotNonBond(){
     // --- check if parameters changed
-    bool bChanged =  (panel_GridXY->clearChanged()>=0) || (panel_NonBondPlot->clearChanged()>=0) || (panel_TestType->clearChanged()>=0) || (panel_PickedType->clearChanged()>=0);
+    bool bChanged =  (panel_GridXY->clearChanged()>=0) || (panel_NonBondPlot->clearChanged()>=0) || (panel_TestType->clearChanged()>=0) || (panel_PickedType->clearChanged()>=0) || (panel_NBPlot->clearChanged()>=0);
     //printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
     bool ogl0     = (ogl_nonBond<=0);
     if( !( bChanged || ogl0 ) ){ return; };
