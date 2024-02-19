@@ -37,7 +37,8 @@ ln -s $dir/$name .
 
 #./$name -x common_resources/H2O
 #./$name -x common_resources/HCOOH
-./$name -x common_resources/HCOOH  -e
+#./$name -x common_resources/HCOOH  -e
+./$name -x common_resources/HCOOH_xy  -e
 #./$name -x common_resources/formic_dimer
 #./$name -x common_resources/pyridine
 #./$name -x common_resources/propandiol
