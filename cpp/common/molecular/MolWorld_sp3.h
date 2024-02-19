@@ -196,7 +196,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 	FILE* xyz_file=0;
 	//char* tmpstr;
 
-    double Kpick = -2.0;
+    double Kpick  = -2.0;
+    double QEpair = -0.2;
 
     int itest = 0;
 
@@ -637,7 +638,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         //for(int i=0; i<qeq.n; i++){ printf( "qeq.qs[%i]=%g  REQ.z=%g  \n", i, qeq.qs[i], nbmol.REQs[i].z );}
         qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.0, bVerbose, bFromScratch );
         copy( qeq.n, 1,0,(double*)qeq.qs, 4,2,(double*)nbmol.REQs );
-        if(bFromScratch){ ffl.chargeToEpairs( -0.2, etyp ); }
+        if(bFromScratch){ ffl.chargeToEpairs( QEpair, etyp ); }
         nbmol.evalPLQs(gridFF.alphaMorse);
         printf("MolWorld_sp3::autoCharges() END REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
         bChargeUpdated=true;
@@ -1025,8 +1026,8 @@ class MolWorld_sp3 : public SolverInterface { public:
             //bool bChargeToEpair=false;
             if(bChargeToEpair){
                 int etyp=-1; etyp=params.atomTypeDict["E"];
-                //ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
-                ffl.chargeToEpairs( -0.2, etyp ); 
+                //ff.chargeToEpairs( nbmol.REQs, QEpair, etyp );  
+                ffl.chargeToEpairs( QEpair, etyp ); 
             }
             nbmol.evalPLQs(gridFF.alphaMorse);
             { // check FFS
@@ -1600,6 +1601,16 @@ class MolWorld_sp3 : public SolverInterface { public:
         int n = MM::splitByBond( ib, ff.nbonds, ff.bond2atom, ff.apos, selection, manipulation_ax, manipulation_p0 );
         if(bGlob){ manipulation_nsel=n; }
         return n;
+    }
+
+    int selectByType( int itype, bool bByElement=false ){
+        selection.clear();
+        for(int i=0; i<ffl.natoms; i++){ 
+            int it = ffl.atypes[i];
+            if( bByElement ){ it = params.atypes[it].element; }
+            if( it == itype ){ selection.push_back( i ); }
+        }
+        return selection.size();
     }
 
     int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
