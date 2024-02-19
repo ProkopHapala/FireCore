@@ -530,7 +530,8 @@ class TableView : public GUIAbstractPanel { public:
 // ==============================
 
 class GUI{ public:
-    bool bKeyEvents = true;
+    bool bKeyEvents  = true;
+    bool bTextEvents = false;
     GUIAbstractPanel* focused = 0;
     GUIAbstractPanel* dragged = 0;
     std::vector<GUIAbstractPanel*> panels;

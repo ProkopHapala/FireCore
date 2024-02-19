@@ -73,6 +73,9 @@ SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WAR
 message("RELEASE BUILD FFLAGS : " )
 message ( ${CMAKE_CXX_FLAGS} )
 
+### this is for compile_commands.json   (it should help various IDEs and other tool to understand the project)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # ==============================
 # ==== DIRS
 # ==============================
