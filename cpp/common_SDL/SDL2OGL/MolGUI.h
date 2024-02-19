@@ -149,12 +149,17 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //bool bDrawNonBond = false;
     bool bDrawNonBondLines=false;
     bool bDrawNonBondGrid =false;
+    bool bDrawParticles = false;
     bool hideEp           =false;
     CheckBoxList* panel_NBPlot=0;
     MultiPanel* panel_NonBondPlot=0;
     MultiPanel* panel_PickedType=0;
     MultiPanel* panel_TestType=0;
     MultiPanel* panel_GridXY=0;
+
+    std::vector<Quat4d> particles;
+
+
 
     Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
 
@@ -319,7 +324,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryPlotNonBond();
     void plotNonBondLines();
     void plotNonBondGrid();
-    void  showBonds();
+    void relaxNonBondParticles( double dt = 0.2, double Fconv = 1e-6, int niter = 1000);
+    void drawParticles();
+    void showBonds();
     void printMSystem( int isys, int perAtom, int na, int nvec, bool bNg=true, bool bNgC=true, bool bPos=true );
     //void flipPis( Vec3d ax );
     //void drawSystemQMMM();
@@ -546,6 +553,7 @@ void MolGUI::nonBondGUI(){
     gui.addPanel( chk );
     //panel_Plot = chk; 
     chk->caption = "NBPlot"; chk->bgColor = 0xFFE0E0E0;
+    chk->addBox( "minima", &bDrawParticles    );
     chk->addBox( "lines ", &bDrawNonBondLines );
     chk->addBox( "gridXY", &bDrawNonBondGrid  );
     chk->addBox( "hideEp", &hideEp            );
@@ -569,8 +577,8 @@ void MolGUI::nonBondGUI(){
     // ----- TestAtom Params
     gx.step( 2 ); gx.step( 8+10 );
     mp = new MultiPanel( "GridXY", gx.x0, 10, gx.x1, 0,-4);   gui.addPanel( mp );    panel_GridXY=mp;
-    mp->addPanel( "n     : ", {  10,200, 120  }, 1,0,1,1,0 );
-    mp->addPanel( "size  : ", { 2.0,20.0,6.0  }, 1,0,0,1,0 );
+    mp->addPanel( "n     : ", {  10,200, 150  }, 1,0,1,1,0 );
+    mp->addPanel( "size  : ", { 2.0,20.0,15.0  }, 1,0,0,1,0 );
     mp->addPanel( "vmin  : ", {-6.0,6.0,-1.0  }, 1,0,0,1,0 );
     mp->addPanel( "z_cut : ", {-5.0,5.0, 0.0  }, 1,0,0,1,0 );
 
@@ -609,7 +617,7 @@ void MolGUI::plotNonBondLines(){
     // --- plot lines along each e-pair in the molecule
     // -- display list - delete if exist
     int epair_element = W->params.getElementType("E");
-    double R0 = 1.5;
+    //double R0 = 1.5;
 
     for(int i=0; i<W->nbmol.natoms; i++){
         int ityp = W->nbmol.atypes[i];
@@ -706,6 +714,80 @@ void MolGUI::tryPlotNonBond(){
     if( bDrawNonBondLines ){ plotNonBondLines(); };
     if( bDrawNonBondGrid  ){ plotNonBondGrid();  };
     glEndList();
+}
+
+void MolGUI::relaxNonBondParticles( double dt, double Fconv, int niter){
+    if( panel_NBPlot->clearChanged()<0 ) return;
+    printf( "relaxNonBondParticles() dt=%g Fconv=%g niter=%i \n", dt, Fconv, niter );
+    double F2conv = Fconv*Fconv;
+    MultiPanel* mp=0;
+    mp=panel_TestType;    
+    Quat4d REQtest{ 
+        mp->subs[0]->value, 
+        sqrt(mp->subs[1]->value), 
+        mp->subs[2]->value, 
+        mp->subs[3]->value 
+    };
+    // ----------- SELECT E-PAIRS and add hydrogen particles next to it
+    particles.clear();
+    int epair_element = W->params.getElementType("E");
+    for(int i=0; i<W->nbmol.natoms; i++){
+        int ityp = W->nbmol.atypes[i];
+        AtomType& t = W->params.atypes[ityp];
+        if(t.element!=epair_element) continue;
+        int j = W->ffl.neighs[i].x;
+        Vec3d pe    = W->nbmol.apos[i];
+        Vec3d pa    = W->nbmol.apos[j];
+        Quat4d REQa = W->nbmol.REQs[j];
+        Vec3d d = pe-pa;
+        double r = d.normalize();
+        double R0ij = REQa.x + REQtest.x;
+        Quat4d p; p.f = pa + d*R0ij;
+        particles.push_back( p );
+    }
+    // ------------ RELAXATION
+    // double F2conv = 1e-6;
+    // double dt = 0.0;
+    // int niter = 100;
+    //std::vector<Vec3d> vpos( particles.size() );
+    for( int i=0; i<particles.size(); i++ ){
+        Vec3d p    = particles[i].f;
+        //Vec3d v    = vpos[i];
+        Vec3d v    = Vec3dZero;
+        Quat4d fe;
+        for(int iter=0; iter<niter; iter++){
+            fe = W->nbmol.evalLJQs( p, REQtest, W->ffl.Rdamp );
+            fe.f.mul( -1.0 );
+            if( fe.norm2() < F2conv ) break;
+            double cvf = v.dot(fe.f);
+            printf( "relaxNonBondParticles[%i] iter %i E=%g |f|=%g cvf=%4.2f \n", i, iter, fe.e, fe.norm2(), cvf/sqrt(fe.norm2()*v.norm2()) );
+            if( cvf<0 ){ v.set(0.0); }
+            v += fe.f * dt;
+            p += v    * dt;
+        }
+        //vpos[i]        = v;
+        particles[i].f = p;
+        particles[i].e = fe.e;
+    }
+}
+
+void MolGUI::drawParticles(){
+    //printf( "drawParticles() particles.size()=%i \n", particles.size() );
+    // int ityp       = W->params.getAtomType("H");
+    // AtomType& atyp = W->params.atypes[ityp];
+    // double r = ((atyp.RvdW-mm_Rsub)*mm_Rsc);
+    Mat3d m  = Mat3dIdentity*0.2;
+    glEnable(GL_LIGHTING);
+    glShadeModel(GL_SMOOTH);
+    glColor3f( 0.0, 1.0, 0.0 );
+    for( int i=0; i<particles.size(); i++ ){
+        Quat4d& p = particles[i];    Draw3D::drawShape( ogl_sph, p.f, m, 0.1 );
+    }
+    glColor3f( 0.0, 0.0, 0.0 );
+    glBegin(GL_TRIANGLES);
+    for( int i=0; i<particles.size(); i++ ){
+        Quat4d& p = particles[i];    Draw3D::drawDouble( p.f, p.e*1000.0, fontTex, textSize, "%6.6f[meV]" );
+    }
 }
 
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
@@ -938,6 +1020,7 @@ void MolGUI::draw(){
     if( ogl_afm     ){ glCallList(ogl_afm);      }
 
     if(bDrawNonBondGrid || bDrawNonBondLines){  tryPlotNonBond();  if( ogl_nonBond) glCallList(ogl_nonBond); }
+    if(bDrawParticles){ relaxNonBondParticles(); drawParticles(); }; 
 
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // Debug
 
