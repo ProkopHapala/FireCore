@@ -198,6 +198,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     double Kpick  = -2.0;
     double QEpair = -0.2;
+    //int nEp=0;    // number of electron pairs
+    //int etyp=0;   // electron pair type
 
     int itest = 0;
 
@@ -625,10 +627,28 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printBonds();    
     }
 
+    void hideEPairs(){
+        //printf( "plotNonBondGrid() removing EPairs %i \n" );
+        int etyp = params.getAtomType("E");
+        ffl.chargeToEpairs( -QEpair, etyp );
+        selectByType( params.getElementType("E"), true );
+        int nEp = selection.size();
+        nbmol.natoms -= nEp;
+    }
+
+    void unHideEPairs(){
+        //if(nEp)
+        //nbmol.natoms += nEp;
+        nbmol.natoms = ffl.natoms;
+        int etyp = params.getAtomType("E");
+        ffl.chargeToEpairs( QEpair, etyp );
+        //nEp = -1;
+    }
+
     void autoCharges(bool bVerbose=false, bool bFromScratch=false ){
         //if(verbosity>0)
-        printf("MolWorld_sp3::autoCharges() \n");
-        printf("MolWorld_sp3::autoCharges() START REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
+        //printf("MolWorld_sp3::autoCharges() \n");
+        //printf("MolWorld_sp3::autoCharges() START REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
         //bVerbose=true;
         qeq.realloc( ff.natoms );
         params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );

@@ -1400,6 +1400,44 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         for(int i=0; i<n; i++){ drawInt( ps[i], i, fontTex, sz ); }
     }
 
+    //void drawAxis3D( int n, Vec3d p0, Vec3d dp, double v0, double dval, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" ){
+    void drawAxis3D( int n, Vec3d p0, Vec3d dp, double v0, double dval, int fontTex, float tickSz, float textSz, const char* format ){
+        //printf( "drawAxis3D() n=%i p0(%g,%g,%g) dp(%g,%g,%g) v0=%g dval=%g fontTex=%i tickSz=%g textSz=%g format=%s \n", n, p0.x,p0.y,p0.z, dp.x,dp.y,dp.z, v0, dval, fontTex, tickSz, textSz, format );
+        Vec3d a,b;
+        dp.getSomeOrtho( a, b );
+        Vec3d p = p0;
+        // tick marks
+        glBegin(GL_LINES);
+        vertex(p); vertex(p+dp*n);
+        for(int i=0; i<=n; i++){
+            vertex(p-a*tickSz); vertex(p+a*tickSz);
+            vertex(p+b*tickSz); vertex(p+b*tickSz);
+            p.add(dp);
+        }
+        glEnd();
+        // labels
+        p=p0;
+        double val = v0;
+        char str[64];
+        for(int i=0; i<=n; i++){
+            sprintf(str,format,val);
+            //printf( "drawAxis3D()[%i] str(%s) \n", i, str );
+            //drawText(p, a, b, str, fontTex, textSz );
+            Draw3D::drawText(str, p, fontTex, textSz, 0);
+            p.add(dp);
+            val+=dval;
+        }
+    }
+    //void drawAxis3D( Vec3i ns, Vec3d p0, Vec3d ls, Vec3d v0s, Vec3d dvs, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" ){
+    void drawAxis3D( Vec3i ns, Vec3d p0, Vec3d ls, Vec3d v0s, Vec3d dvs, int fontTex, float tickSz, float textSz, const char* format ){
+        //drawAxis3D( ns.x, p0, Vec3dX*ls.x, v0s.x, dvs.x, fontTex, tickSz, textSz, format );
+        //drawAxis3D( ns.y, p0, Vec3dY*ls.y, v0s.y, dvs.y, fontTex, tickSz, textSz, format );
+        //drawAxis3D( ns.z, p0, Vec3dZ*ls.z, v0s.z, dvs.z, fontTex, tickSz, textSz, format );
+        drawAxis3D( ns.x, {p0.x,.0,.0}, Vec3dX*ls.x, v0s.x, dvs.x, fontTex, tickSz, textSz, format );
+        drawAxis3D( ns.y, {0.,p0.x,.0}, Vec3dY*ls.y, v0s.y, dvs.y, fontTex, tickSz, textSz, format );
+        drawAxis3D( ns.z, {0.,0.,p0.z}, Vec3dZ*ls.z, v0s.z, dvs.z, fontTex, tickSz, textSz, format );
+    }
+
 	void drawCurve( float tmin, float tmax, int n, Func1d3 func ){
         glBegin(GL_LINE_STRIP);
         float dt = (tmax-tmin)/n;
