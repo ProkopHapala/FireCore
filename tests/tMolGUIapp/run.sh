@@ -38,8 +38,9 @@ ln -s $dir/$name .
 #./$name -x common_resources/H2O
 #./$name -x common_resources/HCOOH
 #./$name -x common_resources/HCOOH  -e
-#./$name -x common_resources/HCOOH_xy  -e
-./$name -x common_resources/CH2O  -e
+
+./$name -x common_resources/HCOOH_xy  -e
+#./$name -x common_resources/CH2O  -e
 
 
 
