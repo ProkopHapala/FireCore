@@ -92,6 +92,8 @@ void drawInt   ( const Vec3d& pos, int i   , int fontTex, float sz=0.02, const c
 void drawDouble( const Vec3d& pos, double f, int fontTex, float sz=0.02, const char* format="%g\0" );
 
 void pointLabels( int n, const Vec3d* ps, int fontTex, float sz=7 );
+void drawAxis3D( int n, Vec3d p0, Vec3d dp, double v0, double dval, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" );
+void drawAxis3D( Vec3i ns, Vec3d p0, Vec3d ls, Vec3d v0s, Vec3d dvs, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" );
 
 
 void drawBox( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b );
