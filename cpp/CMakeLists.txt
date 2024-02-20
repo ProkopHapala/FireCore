@@ -77,6 +77,30 @@ message ( ${CMAKE_CXX_FLAGS} )
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ==============================
+# ==== Functions
+# ==============================
+
+# Define a function to setup precompiled headers for a target with additional, target-specific headers
+function(setup_precompiled_headers target)
+    set(additional_headers ${ARGN}) # ARGN holds all additional arguments passed to the function
+    set(all_headers
+        <vector>
+        <string>
+        <unordered_map>
+        <unordered_set>
+        "testUtils.h"
+        "macroUtils.h"
+        "fastmath.h"
+        "Vec2.h"
+        "Vec3.h"
+        "Quat4.h"
+        "Mat3.h"
+        ${additional_headers} # This now directly uses the list of additional headers
+    )
+    target_precompile_headers(${target} PRIVATE ${all_headers})
+endfunction()
+
+# ==============================
 # ==== DIRS
 # ==============================
 

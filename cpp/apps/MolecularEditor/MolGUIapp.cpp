@@ -26,6 +26,8 @@ Mat3d prelat_dlvec;
 int main(int argc, char *argv[]){
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);
+    glEnable(GL_MULTISAMPLE);
 	//SDL_SetRelativeMouseMode( SDL_TRUE );
 	int junk;
     SDL_DisplayMode DM;

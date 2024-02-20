@@ -84,6 +84,47 @@ Vec2d evalNonBondGrid2D( const NBFF& ff, Quat4d REQi, double Rdamp, Vec2i ns, do
     return Erange;
 }
 
+namespace Draw3D{
+void drawAxis3D( int n, Vec3d p0, Vec3d dp, double v0, double dval, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" ){
+    printf( "drawAxis3D() n=%i p0(%g,%g,%g) dp(%g,%g,%g) v0=%g dval=%g fontTex=%i tickSz=%g textSz=%g format=%s \n", n, p0.x,p0.y,p0.z, dp.x,dp.y,dp.z, v0, dval, fontTex, tickSz, textSz, format );
+    Vec3d a,b;
+    dp.getSomeOrtho( a, b );
+    Vec3d p = p0;
+    // tick marks
+    glBegin(GL_LINES);
+    vertex(p); vertex(p+dp*n);
+    for(int i=0; i<=n; i++){
+        vertex(p-a*tickSz); vertex(p+a*tickSz);
+        vertex(p+b*tickSz); vertex(p+b*tickSz);
+        p.add(dp);
+    }
+    glEnd();
+    // labels
+    p=p0;
+    double val = v0;
+    char str[64];
+    for(int i=0; i<=n; i++){
+        sprintf(str,format,val);
+        //printf( "drawAxis3D()[%i] str(%s) \n", i, str );
+        //drawText(p, a, b, str, fontTex, textSz );
+        Draw3D::drawText(str, p, fontTex, textSz, 0);
+        p.add(dp);
+        val+=dval;
+    }
+}
+void drawAxis3D( Vec3i ns, Vec3d p0, Vec3d ls, Vec3d v0s, Vec3d dvs, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" ){
+    //drawAxis3D( ns.x, p0, Vec3dX*ls.x, v0s.x, dvs.x, fontTex, tickSz, textSz, format );
+    //drawAxis3D( ns.y, p0, Vec3dY*ls.y, v0s.y, dvs.y, fontTex, tickSz, textSz, format );
+    //drawAxis3D( ns.z, p0, Vec3dZ*ls.z, v0s.z, dvs.z, fontTex, tickSz, textSz, format );
+    drawAxis3D( ns.x, {p0.x,.0,.0}, Vec3dX*ls.x, v0s.x, dvs.x, fontTex, tickSz, textSz, format );
+    drawAxis3D( ns.y, {0.,p0.x,.0}, Vec3dY*ls.y, v0s.y, dvs.y, fontTex, tickSz, textSz, format );
+    drawAxis3D( ns.z, {0.,0.,p0.z}, Vec3dZ*ls.z, v0s.z, dvs.z, fontTex, tickSz, textSz, format );
+}
+
+} // namespace Draw3D
+
+
+
 // ===========================================
 // ================= MAIN CLASS ==============
 // ===========================================
@@ -248,6 +289,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
     int  ogl_nonBond = 0;
+    int  ogl_trj = 0;
 
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
@@ -324,6 +366,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryPlotNonBond();
     void plotNonBondLines();
     void plotNonBondGrid();
+    void plotNonBondGridAxis();
     void relaxNonBondParticles( double dt = 0.2, double Fconv = 1e-6, int niter = 1000);
     void drawParticles();
     void showBonds();
@@ -579,7 +622,7 @@ void MolGUI::nonBondGUI(){
     mp = new MultiPanel( "GridXY", gx.x0, 10, gx.x1, 0,-4);   gui.addPanel( mp );    panel_GridXY=mp;
     mp->addPanel( "n     : ", {  10,200, 150  }, 1,0,1,1,0 );
     mp->addPanel( "size  : ", { 2.0,20.0,15.0  }, 1,0,0,1,0 );
-    mp->addPanel( "vmin  : ", {-6.0,6.0,-1.0  }, 1,0,0,1,0 );
+    mp->addPanel( "vmin  : ", {-6.0,6.0,-0.0  }, 1,0,0,1,0 );
     mp->addPanel( "z_cut : ", {-5.0,5.0, 0.0  }, 1,0,0,1,0 );
 
     // ----- TestAtom Params
@@ -587,7 +630,7 @@ void MolGUI::nonBondGUI(){
     mp = new MultiPanel( "TestType", gx.x0, 10, gx.x1, 0,-4);   gui.addPanel( mp );    panel_TestType=mp;
     mp->addPanel( "RvdW  : ", { 0.0,2.50,1.5    },  1,0,0,1,0 );
     mp->addPanel( "EvdW  : ", { 0.0,0.02,0.0006808},1,0,0,1,0 );
-    mp->addPanel( "Charge: ", {-0.5,0.5, 0.0    },  1,0,0,1,0 );
+    mp->addPanel( "Charge: ", {-0.5,0.5,+0.2    },  1,0,0,1,0 );
     mp->addPanel( "Hbond : ", {-1.0,1.0, 0.0    },  1,0,0,1,0 );
 
     // // ----- PickedAtom params
@@ -672,7 +715,7 @@ void MolGUI::plotNonBondGrid(){
     double vmax = pow(10.,mp->subs[2]->value);
     double z_cut= mp->subs[3]->value;
     
-    Vec2i ns{100,100};
+    Vec2i ns{n,n};
     Vec3d p0{-sz    ,-sz   ,0.0};
     Vec3d a { sz*2.0,   0.0,0.0};
     Vec3d b { 0.0   ,sz*2.0,0.0};
@@ -695,10 +738,38 @@ void MolGUI::plotNonBondGrid(){
         W->ffl.chargeToEpairs( W->QEpair, etyp );
     }
     
+    double lvmax = 10.0;
+
     printf( "Erange(%g,%g) vlim(%g,%g)\n", Erange.x, Erange.y, -vmax, vmax );
     //Draw3D::drawScalarGrid( ns, p0,b*(1./ns.b),a*(1./ns.a), Egrid, -vmax, vmax, Draw::colors_RWB ); //  const uint32_t * colors, int ncol );
-    Draw3D::drawScalarGridLines( ns, p0, b*(1./ns.b), a*(1./ns.a), Vec3dZ, Egrid, 10.0/vmax, Vec2d{-vmax,vmax} );
+    glLineWidth(0.25);
+    Draw3D::drawScalarGridLines( ns, p0, b*(1./ns.b), a*(1./ns.a), Vec3dZ, Egrid, lvmax/vmax, Vec2d{-vmax,vmax} );
+    glLineWidth(1.0);
+    // saddly text drawing in drawAxis3D is not working when baked in display list, so we have to draw it on the fly
+    //glColor3f( 0.0, 0.0, 0.0 );
+    //int nEtick =10;
+    //Draw3D::drawAxis3D( {ns.x,ns.y,nEtick}, p0+(Vec3dZero*(-lvmax/nEtick)), {sz/ns.a,sz/ns.b,}, {sz*-0.5/ns.a,sz*-0.5/ns.b,nEtick*-0.5*vmax}, {sz/ns.a,sz/ns.b,nEtick*vmax}, fontTex, textSize, "%6.6f" );
+    
     delete [] Egrid;
+}
+
+void MolGUI::plotNonBondGridAxis(){
+    MultiPanel* mp=0;
+    mp=panel_GridXY; 
+    int    n    = mp->subs[0]->getIntVal();
+    double sz   = mp->subs[1]->value; 
+    double vmax = pow(10.,mp->subs[2]->value);
+    double lvmax = 10.0;
+    int nEtick =10;
+    n/=10;
+    Vec2i ns{n,n};
+    Vec3d p0{-sz    ,-sz   ,-lvmax};
+    Vec3d a { sz*2.0,   0.0,0.0};
+    Vec3d b { 0.0   ,sz*2.0,0.0};
+
+    //double to_meV = 1000.0;
+    double to_meV = 0.0;
+    Draw3D::drawAxis3D( {ns.x,ns.y,nEtick}, p0, {sz*2/ns.a,sz*2/ns.b,2*lvmax/nEtick}, {-sz,-sz,-vmax*to_meV }, {2*sz/ns.a,2*sz/ns.b,2*vmax*to_meV/nEtick }, fontTex3D, 0.1, textSize*0.7, "%.2f" );
 }
 
 void MolGUI::tryPlotNonBond(){
@@ -750,12 +821,21 @@ void MolGUI::relaxNonBondParticles( double dt, double Fconv, int niter){
     // double dt = 0.0;
     // int niter = 100;
     //std::vector<Vec3d> vpos( particles.size() );
+    bool bTrj = true;
+    //int ogl_trj = 0;
+    if(bTrj){
+        if(ogl_trj>0) glDeleteLists(ogl_trj,1);
+        ogl_trj = glGenLists(1);
+        glNewList(ogl_trj, GL_COMPILE);
+    }
     for( int i=0; i<particles.size(); i++ ){
         Vec3d p    = particles[i].f;
         //Vec3d v    = vpos[i];
         Vec3d v    = Vec3dZero;
         Quat4d fe;
+        if(bTrj){ Draw3D::drawPointCross( p, 0.2 ); glBegin(GL_LINE_STRIP); }
         for(int iter=0; iter<niter; iter++){
+            if(bTrj){ glVertex3f(p.x,p.y,p.z); }
             fe = W->nbmol.evalLJQs( p, REQtest, W->ffl.Rdamp );
             fe.f.mul( -1.0 );
             if( fe.norm2() < F2conv ) break;
@@ -765,10 +845,12 @@ void MolGUI::relaxNonBondParticles( double dt, double Fconv, int niter){
             v += fe.f * dt;
             p += v    * dt;
         }
+        if(bTrj){ glEnd(); }
         //vpos[i]        = v;
         particles[i].f = p;
         particles[i].e = fe.e;
     }
+    if(bTrj){ glEndList(); }
 }
 
 void MolGUI::drawParticles(){
@@ -785,8 +867,9 @@ void MolGUI::drawParticles(){
     }
     glColor3f( 0.0, 0.0, 0.0 );
     glBegin(GL_TRIANGLES);
+    double to_meV = 1000.0;
     for( int i=0; i<particles.size(); i++ ){
-        Quat4d& p = particles[i];    Draw3D::drawDouble( p.f, p.e*1000.0, fontTex, textSize, "%6.6f[meV]" );
+        Quat4d& p = particles[i];    Draw3D::drawDouble( p.f, p.e*to_meV, fontTex3D, textSize, "%.3fmeV" );
     }
 }
 
@@ -1019,8 +1102,8 @@ void MolGUI::draw(){
     if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
     if( ogl_afm     ){ glCallList(ogl_afm);      }
 
-    if(bDrawNonBondGrid || bDrawNonBondLines){  tryPlotNonBond();  if( ogl_nonBond) glCallList(ogl_nonBond); }
-    if(bDrawParticles){ relaxNonBondParticles(); drawParticles(); }; 
+    if(bDrawNonBondGrid || bDrawNonBondLines){  tryPlotNonBond();  if( ogl_nonBond){ glLineWidth(0.25); glCallList(ogl_nonBond); glLineWidth(1.00); glColor3f(.0f,.0f,.0f); plotNonBondGridAxis(); } }
+    if(bDrawParticles){ relaxNonBondParticles();  glColor3f(.0f,1.0f,.5f); if(ogl_trj){ glCallList(ogl_trj); } drawParticles(); }; 
 
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // Debug
 
