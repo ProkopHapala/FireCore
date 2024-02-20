@@ -1059,8 +1059,14 @@ void MolGUI::draw(){
     W->pick_ray0 = ray0;
 
     if(bRunRelax){ 
+        bool bRelaxOld = W->bConverged;
         //printf( "MolGUI::draw() -> W->MDloop(%i);", perFrame );    
         W->MDloop(perFrame); 
+
+        // if( W->bConverged && !bRelaxOld ){  // it relaxed just now
+        //     if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  }
+        //     //updateGUI(); 
+        // }
     }
     if( bViewBuilder ){  W->updateBuilderFromFF(); }
     //if(bRunRelax){ W->relax( perFrame ); }
@@ -1097,7 +1103,8 @@ void MolGUI::draw(){
 
     plotNonuniformGrid();
 
-    if(ogl_MO){ 
+    //if( ogl_MO && W->bConverged ){ 
+    if( ogl_MO && (!bRunRelax) ){ 
         glPushMatrix();
         //Vec3d c = W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
         //Vec3d c = Vec3dZero;
@@ -1467,6 +1474,8 @@ void MolGUI::renderOrbital(int iMO, double iso ){
     glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid, -iso, ewfaux, isoSurfRenderType);
     glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(W->MOgrid.cell.transposed(), Vec3dZero, Vec3dOne );
     glEndList();
+    W->bConverged=true;
+    bRunRelax=false;
     delete [] ewfaux;
 }
 
@@ -1481,6 +1490,8 @@ void MolGUI::renderDensity(double iso){
     int ntris = Draw3D::MarchingCubesCross( W->MOgrid, iso, ewfaux, isoSurfRenderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
     glEndList();
+    W->bConverged=true;
+    bRunRelax=false;
     delete [] ewfaux;
 }
 
@@ -1938,7 +1949,11 @@ void MolGUI::eventMode_scan( const SDL_Event& event  ){
             case SDLK_KP_PLUS:  z0_scan = z0_scan+0.1; break;
             case SDLK_KP_MINUS: z0_scan = z0_scan-0.1; break;
 
-            case SDLK_SPACE: bRunRelax=!bRunRelax; break;
+            case SDLK_SPACE: 
+                bRunRelax=!bRunRelax; 
+                // printf( "bRunRelax %i \n", bRunRelax );
+                // if(!bRunRelax){ if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  } }
+                break;
 
         }  }break;
         case SDL_MOUSEBUTTONDOWN:
@@ -2095,7 +2110,12 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 
                 //case SDLK_LEFTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, +rotation_step ); break;
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
-                case SDLK_SPACE: bRunRelax=!bRunRelax;  if(bRunRelax)W->setConstrains();  break;
+                case SDLK_SPACE: 
+                    bRunRelax=!bRunRelax;  
+                    // printf( "bRunRelax %i \n", bRunRelax );
+                    if(bRunRelax)W->setConstrains();                  
+                    if(!bRunRelax){ if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  } }
+                    break;
                 // case SDLK_d: {
                 //     printf( "Camera Matrix\n");
                 //     printf( "qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );

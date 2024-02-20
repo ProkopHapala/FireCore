@@ -1349,6 +1349,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         double F2conv=Fconv*Fconv;
         long T0 = getCPUticks();
         //bool bFIRE = false;
+        bConverged = false;
         bool bFIRE = true;
         int itr=0,niter=niter_max;
         double E=0,cdamp=0;
@@ -1435,6 +1436,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             }
             if(ffl.cvf.z<F2conv){ 
                 //niter=0; 
+                bConverged=true;
                 double t = (getCPUticks() - T0)*tick2second;
                 if(verbosity>0)printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
                 break;
@@ -1456,7 +1458,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         double E=0,F2=0,F2conv=Fconv*Fconv;
         double ff=0,vv=0,vf=0;
         int itr=0,niter=niter_max;
-
+        bConverged = false;
         //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
         #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0)
         while(itr<niter){
@@ -1551,6 +1553,7 @@ class MolWorld_sp3 : public SolverInterface { public:
                 }
                 if(F2<F2conv){ 
                     niter=0; 
+                    bConverged = true;
                     double t = (getCPUticks() - T0)*tick2second;
                     if(verbosity>1)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
                 }
