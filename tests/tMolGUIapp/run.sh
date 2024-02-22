@@ -39,15 +39,23 @@ ln -s $dir/$name .
 #./$name -x common_resources/HCOOH
 #./$name -x common_resources/HCOOH  -e
 
-./$name -x common_resources/HCOOH_xy  -e
+#./$name -x common_resources/HCOOH_xy  -e
 #./$name -x common_resources/CH2O  -e
 
 
 
 #./$name -x common_resources/formic_dimer
-#./$name -x common_resources/pyridine
+#./$name -x common_resources/pyridine -lua script.lua
 #./$name -x common_resources/propandiol
 #./$name -x common_resources/butandiol
+
+
+
+#./$name -x common_resources/nHexadecan_dicarboxyl
+./$name -x common_resources/nHexadecan_dicarboxyl -T 500.0
+
+
+
 
 #./$name -uff -x common_resources/C2H4
 

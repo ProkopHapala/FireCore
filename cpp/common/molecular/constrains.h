@@ -87,6 +87,95 @@ struct AngleConstr{
 
 };
 
+/*
+struct DihedralConstr{
+    Quat4i  ias;     // (ia,ib,ic), ia is the center, ib and ic are the ends
+    Vec2d  cs0;     // unitary complex number (cos,sin) of the equilibrium angle
+    Vec3i  acell;   // indexes of PBC cell shift of bond a
+    Vec3i  bcell;   // indexes of PBC cell shift of bond b
+    double k;
+    double flim;
+    bool active;
+
+    DihedralConstr()=default;
+    DihedralConstr( Quat4i ias_, Vec2d cs0_, double k_ ):ias(ias_),cs0(cs0_),k(k_),active(true){ };
+
+    inline double  apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0 )const{
+        //double E=0.0;
+        //const Vec3i ngs = dihNgs[id];         // {ji, jk, kl}
+        ////const Quat4d q12 =    hneigh[ngs.x];  // ji
+        //const Quat4d q32 =    hneigh[ngs.y];  // jk
+        //const Quat4d q43 =    hneigh[ngs.z];  // kl
+
+        const Quat4i ijkl = ias[id];
+        const Vec3d p2  = apos[ijkl.y];
+        const Vec3d p3  = apos[ijkl.z];
+        const Vec3d r32 = p3-p2;
+        const Vec3d r12 = apos[ijkl.x]-p2; 
+        const Vec3d r43 = apos[ijkl.w]-p3;
+
+        Vec3d n123; n123.set_cross( r12, r32 );  //  |n123| = |r12| |r32| * sin( r12, r32 ) 
+        Vec3d n234; n234.set_cross( r43, r32 );  //  |n234| = |r43| |r32| * sin( r43, r32 )
+        
+        // ===== Prokop's
+        const double l32     = r32   .norm ();   // we can avoid this sqrt() if we read it from hneigh
+        const double il2_123 = 1/n123.norm2();   //  il2_123 =  1/ (   |r12| |r32| * sin( r12, r32 ) )^2 
+        const double il2_234 = 1/n234.norm2();   //  il2_234 =  1/ (   |r43| |r32| * sin( r43, r32 ) )^2
+        const double inv_n12 = sqrt(il2_123*il2_234); // inv_n12 = 1/ ( |r12| |r32| * sin( r12, r32 ) * |r43| |r32| * sin( r43, r32 ) )
+        // --- Energy
+        const Vec2d cs{
+             n123.dot(n234)*inv_n12     ,
+            -n123.dot(r43 )*inv_n12*l32
+        };
+        Vec2d csn = cs;
+        Vec3d par = dihParams[id];
+        const int n = (int)par.z;
+        for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
+        double E  =  par.x * ( 1.0 + par.y * csn.x );
+        // --- Force on end atoms
+        double f = -par.x * par.y * par.z * csn.y; 
+        f*=l32;
+        Vec3d fp1; fp1.set_mul(n123,-f*il2_123 );
+        Vec3d fp4; fp4.set_mul(n234, f*il2_234 );
+        // --- Recoil forces on axis atoms
+        double il2_32 = -1/(l32*l32);
+        double c123   = r32.dot(r12)*il2_32;
+        double c432   = r32.dot(r43)*il2_32;
+        Vec3d fp3; fp3.set_lincomb(  c123,   fp1,  c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
+        Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
+        //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+        //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
+        
+        if(bSubNonBond){
+            const Quat4i ijkl  = dihAtoms[id];
+            const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
+            Vec3d fnb; 
+            Vec3d dp = apos[ijkl.w] - apos[ijkl.x];   //  There may be problem in PBC
+            //Vec3d dp; dp.set_lincomb( (1./q12.w), (-1./q43.w), (-1./q32.w), q12.f, q43.f, q32.f );
+            E -= getLJQH( dp, fnb, REQij, R2damp );
+            if(bClampNonBonded)clampForce( fnb, Fmax2 );
+            fnb.mul( SubNBTorstionFactor );
+            fp1.add( fnb );
+            fp4.sub( fnb );
+        }
+
+        const int i4=id*4;
+        fdih[i4  ]=fp1;
+        fdih[i4+1]=fp2;
+        fdih[i4+2]=fp3;
+        fdih[i4+3]=fp4;
+
+
+
+    }
+
+    void print(){ printf( "angle_constr ias(%i,%i,%i) cs0(%f,%f) k(%lf) flim=%lf acell(%i,%i,%i) bcell(%i,%i,%i)\n",   ias.a,ias.b,ias.c,   cs0.x,cs0.y,      k,       flim, acell.a, acell.b, acell.c, bcell.a, bcell.b, bcell.c); };
+
+};
+
+*/
+
+
 class Constrains{ public:
     std::vector<DistConstr>  bonds;
     std::vector<AngleConstr> angles;

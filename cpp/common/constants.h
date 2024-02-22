@@ -9,4 +9,7 @@
 #define COULOMB_CONST      14.3996448915
 #define const_Bohr_Radius  0.529177210903
 
+
+#define const_kB  8.617333262145e-5
+
 #endif
