@@ -461,6 +461,7 @@ class UFF : public NBFF { public:
         printf("UFF::assembleForcesDebug() DONE\n");
     }
 
+    __attribute__((hot))  
     void assembleForces(){
         //printf("assembleForces()\n");
         // NOTE: this is not parallelized ( wee need somethig which loops over atoms otherwise we would need atomic add )
@@ -537,6 +538,7 @@ class UFF : public NBFF { public:
         printf("printForcePieces() DONE\n");
     }
 
+    __attribute__((hot))  
     void assembleAtomForce(const int ia){
         int i0  = a2f.cellI0s[ia];
         int i1  = i0 + a2f.cellNs[ia];
@@ -550,12 +552,14 @@ class UFF : public NBFF { public:
         fapos[ia] = f;
     }
 
+    __attribute__((hot))  
     void assembleAtomsForces(){
         //printf("UFF::assembleAtomsForces() \n");
         for(int ia=0; ia<natoms; ia++){ assembleAtomForce(ia); }
         //printf("UFF::assembleAtomsForces() DONE\n");
     }
 
+    __attribute__((hot))  
     inline double evalAtomBonds(const int ia, const double R2damp, const double Fmax2){
         double E=0.0;
         const Vec3d   pa   = apos     [ia]; 
@@ -616,7 +620,7 @@ class UFF : public NBFF { public:
         }
         return E;
     }
-
+    __attribute__((hot))  
     double evalBonds(){
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
@@ -626,7 +630,7 @@ class UFF : public NBFF { public:
         }
         return E;
     }
-
+    __attribute__((hot))  
     inline double evalAngle_Prokop( const int ia, const double R2damp, const double Fmax2 ){
         const Vec2i  ngs = angNgs[ia];  
         const Quat4d qij = hneigh[ngs.x];  // ji
@@ -695,7 +699,7 @@ class UFF : public NBFF { public:
 
         return E;
     }
-
+    __attribute__((hot))  
     inline double evalAngle_Paolo( const int ia, const double R2damp, const double Fmax2 ){
         int i = angAtoms[ia].x;
         int j = angAtoms[ia].y;
@@ -759,7 +763,7 @@ class UFF : public NBFF { public:
         
         return E;
     }
-
+    __attribute__((hot))  
     double evalAngles(){
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
@@ -772,7 +776,7 @@ class UFF : public NBFF { public:
     }
 
     // ====================== Dihedrals
-
+    __attribute__((hot))  
     double evalDihedral_Prokop( const int id, const bool bSubNonBond, const double R2damp, const double Fmax2 ){
         //double E=0.0;
         const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
@@ -838,7 +842,7 @@ class UFF : public NBFF { public:
         // }
         return E;
     }
-
+    __attribute__((hot))  
     double evalDihedral_Prokop_Old( const int id, const bool bSubNonBond, const double R2damp, const double Fmax2 ){
         //double E=0.0;
         const Quat4i ijkl = dihAtoms[id];
@@ -912,7 +916,7 @@ class UFF : public NBFF { public:
         // }
         return E;
     }
-
+    __attribute__((hot))  
     double evalDihedral_Paolo( const int id, const bool bSubNonBond, const double R2damp, const double Fmax2 ){
         // int i = dihAtoms[id].x;
         // int j = dihAtoms[id].y;
@@ -1028,7 +1032,7 @@ class UFF : public NBFF { public:
         // }
         return E;
     }
-
+    __attribute__((hot))  
     double evalDihedrals(){
         double E=0.0;
         const double R2damp    = Rdamp*Rdamp;
@@ -1040,7 +1044,7 @@ class UFF : public NBFF { public:
         }
         return E;
     }
-
+    __attribute__((hot))  
     inline double evalInversion_Prokop( const int ii ){
         const Vec3i ngs  = invNgs[ii];  // {ji, ki, li}
         Quat4d q21 =    hneigh[ngs.x];  // ji
@@ -1102,7 +1106,7 @@ class UFF : public NBFF { public:
         // }
         return E;
     }
-
+    __attribute__((hot))  
     inline double evalInversion_Paolo( const int ii ){
         int i = invAtoms[ii].x;
         int j = invAtoms[ii].y;
@@ -1199,7 +1203,7 @@ class UFF : public NBFF { public:
 
         return E;
     }
-
+    __attribute__((hot))  
     double evalInversions(){
         double E=0.0;
         for( int ii=0; ii<ninversions; ii++){ 
@@ -1221,6 +1225,7 @@ class UFF : public NBFF { public:
 
 
     // Full evaluation of UFF intramolecular force-field
+    __attribute__((hot))  
     double eval( bool bClean=true ){
         //printf("UFF::eval() \n");
         Eb=0; Ea=0; Ed=0; Ei=0;
@@ -1251,7 +1256,7 @@ class UFF : public NBFF { public:
         // //printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
         return Etot;
     }
-
+    __attribute__((hot))  
     double eval_omp_old( bool bClean=true ){
         printf("UFF::eval_omp() \n");
         if(bClean)cleanForce();
@@ -1264,7 +1269,7 @@ class UFF : public NBFF { public:
         assembleAtomsForces();
         return Etot;
     }
-
+    __attribute__((hot))  
     double eval_omp( bool bClean=true ){
         //#pragma omp for reduction(+:Ei) nowait   // to remove implicit barrier
         //printf("UFF::eval_omp() \n");
@@ -1312,7 +1317,7 @@ class UFF : public NBFF { public:
 
 
    // ============== Move atoms in order to minimize energy
-   
+    __attribute__((hot))  
     int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
         double F2conv = Fconv*Fconv;
         double E=0,ff=0,vv=0,vf=0;
@@ -1356,7 +1361,7 @@ class UFF : public NBFF { public:
         }
         return itr;
     }
-
+    __attribute__((hot))  
     int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
         double F2conv = Fconv*Fconv;
         double Enb=0,ff=0,vv=0,vf=0;

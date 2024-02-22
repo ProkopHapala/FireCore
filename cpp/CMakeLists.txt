@@ -1,4 +1,5 @@
-cmake_minimum_required ( VERSION 2.8 )
+#cmake_minimum_required ( VERSION 2.8 )
+cmake_minimum_required(VERSION 3.10)
 
 project ( SimpleSimulationEngine )
 
@@ -80,25 +81,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ==== Functions
 # ==============================
 
-# Define a function to setup precompiled headers for a target with additional, target-specific headers
-function(setup_precompiled_headers target)
-    set(additional_headers ${ARGN}) # ARGN holds all additional arguments passed to the function
-    set(all_headers
-        <vector>
-        <string>
-        <unordered_map>
-        <unordered_set>
-        "testUtils.h"
-        "macroUtils.h"
-        "fastmath.h"
-        "Vec2.h"
-        "Vec3.h"
-        "Quat4.h"
-        "Mat3.h"
-        ${additional_headers} # This now directly uses the list of additional headers
-    )
-    target_precompile_headers(${target} PRIVATE ${all_headers})
-endfunction()
+# Attempt to find ccache
+find_program(CCACHE_FOUND ccache)
+if(CCACHE_FOUND)
+    message(STATUS "Found ccache: ${CCACHE_FOUND}")
+    # Set ccache as the compiler launcher if found
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_FOUND}")
+else()
+    message(STATUS "ccache not found, compilation will proceed without it")
+endif()
 
 # ==============================
 # ==== DIRS
@@ -111,6 +102,46 @@ SET( COMMON_SRCS      "${MY_SRC_DIR}/common"     )
 SET( COMMON_SDL_SRCS  "${MY_SRC_DIR}/common_SDL" )
 SET( COMMON_RESOURCES "${MY_SRC_DIR}/common_resources"       )
 SET( COMMON_SHADERS   "${MY_SRC_DIR}/common_resources/shaders" )
+
+function(setup_precompiled_headers target)
+    set(additional_headers ${ARGN}) # ARGN holds all additional arguments passed to the function
+    set(all_headers
+        <vector>
+        <string>
+        <unordered_map>
+        <unordered_set>
+        "${COMMON_SRCS}/testUtils.h"
+        "${COMMON_SRCS}/macroUtils.h"
+        "${COMMON_SRCS}/IO_utils.h"
+        "${COMMON_SRCS}/math/fastmath.h"
+        "${COMMON_SRCS}/math/Vec2.h"
+        "${COMMON_SRCS}/math/Vec3.h"
+        "${COMMON_SRCS}/math/quaternion.h"
+        "${COMMON_SRCS}/math/Mat3.h"
+        ${additional_headers} # This now directly uses the list of additional headers
+    )
+    target_precompile_headers(${target} PRIVATE ${all_headers})
+endfunction()
+
+# function(setup_precompiled_headers target)
+#     set(additional_headers ${ARGN}) # ARGN holds all additional arguments passed to the function
+#     set(all_headers
+#         <vector>
+#         <string>
+#         <unordered_map>
+#         <unordered_set>
+#         "testUtils.h"
+#         "macroUtils.h"
+#         "IO_utils.h"
+#         "fastmath.h"
+#         "Vec2.h"
+#         "Vec3.h"
+#         "quaternion.h"
+#         "Mat3.h"
+#         ${additional_headers} # This now directly uses the list of additional headers
+#     )
+#     target_precompile_headers(${target} PRIVATE ${all_headers})
+# endfunction()
 
 include_directories(
         ${COMMON_SRCS}

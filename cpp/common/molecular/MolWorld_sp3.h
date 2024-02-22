@@ -1179,6 +1179,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         return T_current;
     }
 
+    __attribute__((hot))  
     double eval( ){
         if(verbosity>0) printf( "#### MolWorld_sp3::eval()\n");
         //ffl.doBonds       = false;
@@ -1232,6 +1233,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         return E;
     }
 
+    __attribute__((hot))  
     bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
         printf( "MolWorld_sp3::relax() niter %i Ftol %g bWriteTrj %i \n", niter, Ftol, bWriteTrj );
         Etot=0.0;
@@ -1252,6 +1254,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     }
 
     //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
+    __attribute__((hot))  
     virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){ 
         //printf( "MolWorld_sp3::run(%i) \n", nstepMax );
         //printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
@@ -1356,7 +1359,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         bChargeUpdated=false;
     }
 
-
+    __attribute__((hot))  
     int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
         if(verbosity>0)printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
@@ -1463,8 +1466,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         return itr;
     }
 
-
-
+    __attribute__((hot))  
     int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
         //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
@@ -1869,6 +1871,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         if(file){ fclose(file); }
     }
 
+    __attribute__((hot))  
     void autoCharges(int natoms, int* atypes, Quat4d* REQs, Quat4i* neighs, int nMaxIter=10, double K=1.0, double K0=1.0, double Q0=0.0, double dt=0.1, double damping=0.1, double Fconv=1e-6 ){
         std::vector<double> fs(natoms);
         std::vector<double> vs(natoms,0.);
