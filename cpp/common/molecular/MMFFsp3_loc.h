@@ -241,6 +241,7 @@ double optimalTimeStep(double m=1.0){
 // ============== Evaluation
 
 // evaluate energy and forces for single atom (ia) depending on its neighbors
+__attribute__((hot))   
 double eval_atom(const int ia){
     //printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
     double E=0;
@@ -314,8 +315,8 @@ double eval_atom(const int ia){
         //Vec3d h_bak = h.f;    
         //shifts=0; 
         // Periodic Boundary Conditions
-        if(bPBC){    
-            if(shifts){ // if we have bond shifts vectors we use them
+        if(bPBC){   [[likely]] 
+            if(shifts){ [[likely]]  // if we have bond shifts vectors we use them
                 int ipbc = ingC[i]; 
                 //Vec3d sh = shifts[ipbc]; //apbc[i]  = pi + sh;
                 h.f.add( shifts[ipbc] );
@@ -347,8 +348,8 @@ double eval_atom(const int ia){
 
         //if(ia==ia_DBG) printf( "ffl:h[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, l, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z, pa.x,pa.y,pa.z );
 
-        if(ia<ing){   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
-            if(doBonds){
+        if(ia<ing){  [[likely]]   // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
+            if(doBonds){ [[likely]] 
 
                 if(bColDampB){ // 
                     //printf( "MMFFsp3_loc::eval_atom() bCollisionDamping=%i col_damp=%g \n", bCollisionDamping, col_damp ); exit(0);
@@ -437,7 +438,7 @@ double eval_atom(const int ia){
     double  ssK,ssC0;
     Vec2d   cs0_ss;
     Vec3d*  angles_i;
-    if(bEachAngle){ // if we compute angle energy for each angle separately, we need to store angle parameters for each angle
+    if(bEachAngle){ [[unlikely]]  // if we compute angle energy for each angle separately, we need to store angle parameters for each angle
         angles_i = angles+(ia*6);
     }else{          // otherwise we use common parameters for all angles
         ssK    = apar.z;
@@ -454,7 +455,7 @@ double eval_atom(const int ia){
             int jng  = ings[j];
             if(jng<0) break;
             const Quat4d& hj = hs[j];    
-            if(bEachAngle){ //
+            if(bEachAngle){  [[unlikely]]  //
                 // 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
                 //  0    1    2    3    4    5 
                 cs0_ss = angles_i[iang].xy();  
@@ -465,7 +466,7 @@ double eval_atom(const int ia){
             //bAngleCosHalf = false;
             //double Eai;
             //printf( "bAngleCosHalf= %i\n", bAngleCosHalf);
-            if( bAngleCosHalf ){
+            if( bAngleCosHalf ){ [[likely]] 
                 E += evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
                 //Eai = evalAngleCosHalf( hi.f, hj.f,  hi.e, hj.e,  cs0_ss,  ssK, f1, f2 );
             }else{ 
@@ -492,7 +493,7 @@ double eval_atom(const int ia){
             }
 
             // ----- Error is HERE
-            if(bSubtractAngleNonBond){ // subtract non-bonded interactions between atoms which have common neighbor
+            if(bSubtractAngleNonBond){ [[likely]]  // subtract non-bonded interactions between atoms which have common neighbor
                 Vec3d fij=Vec3dZero;
                 //Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
                 Quat4d REQij = _mixREQ(REQs[ing],REQs[jng]);  // combine van der Waals parameters for the pair of atoms
@@ -773,7 +774,7 @@ double eval_atom_debug(const int ia, bool bPrint=true){
     return E;
 }
 
-
+    __attribute__((hot))  
     double eval_atom_opt(const int ia){
 
         double E=0;
@@ -1154,6 +1155,7 @@ void initPi( Vec3d* pbc_shifts, double Kmin=0.0001, double r2min=1e-4, bool bChe
 }
 
 // initialize directions of pi orbitals iteratively
+__attribute__((hot))  
 int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
     double F2conv = Fconv*Fconv;
     double E=0,F2=0;
@@ -1178,6 +1180,7 @@ int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
 }
 
 // normalize pi orbitals
+__attribute__((hot))  
 void normalizePis(){ 
     for(int i=0; i<nnode; i++){ pipos[i].normalize(); } 
 }
@@ -1201,6 +1204,7 @@ void cleanForce(){
 void cleanVelocity(){  for(int i=0; i<nvecs; i++){ vapos[i]=Vec3dZero; }  }
 
 // add neighbor recoil forces to an atom (ia)
+__attribute__((hot))  
 void assemble_atom(int ia){
     Vec3d fa=Vec3dZero,fp=Vec3dZero;
     const int* ings = bkneighs[ia].array;
@@ -1227,6 +1231,7 @@ void assemble_atom(int ia){
 }
 
 // add neighbor recoil forces to all atoms
+__attribute__((hot))  
 void asseble_forces(){
     for(int ia=0; ia<natoms; ia++){
         assemble_atom(ia);
@@ -1234,6 +1239,7 @@ void asseble_forces(){
 }
 
 // Full evaluation of MMFFsp3 intramolecular force-field
+__attribute__((hot))  
 double eval( bool bClean=true, bool bCheck=true ){
     //if(bClean){ cleanAll(); }
     //printf( "print_apos() BEFORE\n" );print_apos();
@@ -1269,6 +1275,7 @@ double eval_check(){
 
 // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy
 // ToDo: OpenMP paraelization atempt
+__attribute__((hot))  
 int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
     double E=0,ff=0,vv=0,vf=0;
@@ -1320,6 +1327,7 @@ int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
 }
 
 // Loop which iteratively evaluate MMFFsp3 intramolecular force-field and move atoms to minimize energy, wih OpenMP parallelization
+__attribute__((hot))  
 int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
     double F2conv = Fconv*Fconv;
     double E=0,ff=0,vv=0,vf=0;
@@ -1374,6 +1382,7 @@ void flipPis( Vec3d ax ){
 }
 
 // update atom positions using gradient descent
+__attribute__((hot))  
 inline double move_atom_GD(int i, float dt, double Flim){
     Vec3d  f   = fapos[i];
     Vec3d  p = apos [i];
@@ -1388,6 +1397,7 @@ inline double move_atom_GD(int i, float dt, double Flim){
     return fr2;
 }
 // update atom positions using molecular dynamics (damped leap-frog)
+__attribute__((hot))  
 inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){
     Vec3d f = fapos[i];
     Vec3d v = vapos[i];
@@ -1415,6 +1425,7 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
 
 
 // update atom positions using molecular dynamics (damped leap-frog)
+__attribute__((hot))  
 inline Vec3d move_atom_MD( int i, const float dt, const double Flim, const double cdamp=0.9 ){
     Vec3d f = fapos[i];
     Vec3d v = vapos[i];
@@ -1445,6 +1456,7 @@ inline Vec3d move_atom_MD( int i, const float dt, const double Flim, const doubl
 }
 
 // update atom positions using FIRE (Fast Inertial Relaxation Engine)
+__attribute__((hot))  
 inline double move_atom_FIRE( int i, float dt, double Flim, double cv, double cf ){
     Vec3d  f   = fapos[i];
     Vec3d  v   = vapos[i];
@@ -1465,6 +1477,7 @@ inline double move_atom_FIRE( int i, float dt, double Flim, double cv, double cf
 }
 
 // update atom positions using modified FIRE algorithm
+__attribute__((hot))  
 inline double move_atom_kvaziFIRE( int i, float dt, double Flim ){
     Vec3d  f   = fapos[i];
     Vec3d        v   = vapos[i];
@@ -1492,6 +1505,7 @@ inline double move_atom_kvaziFIRE( int i, float dt, double Flim ){
 }
 
 // update atom positions using gradient descent
+__attribute__((hot))  
 double move_GD(float dt, double Flim=100.0 ){
     double F2sum=0;
     for(int i=0; i<nvecs; i++){

@@ -121,6 +121,7 @@ class NBFF: public ForceField{ public:
         evalPLQs(K);
     }
 
+    __attribute__((hot))  
     inline void updatePointBBs( bool bInit=true){
         const Buckets& buckets = pointBBs;
         //printf( "updatePointBBs() START \n" );
@@ -137,6 +138,7 @@ class NBFF: public ForceField{ public:
         //printf( "updatePointBBs() DONE \n" );
     }
 
+    __attribute__((hot))  
     inline int selectInBox( const Vec6d& bb, const int ib, Vec3d* ps, Quat4d* paras, int* inds ){
         const int  npi = pointBBs.cellNs[ib];
         const int* ips = pointBBs.cell2obj +pointBBs.cellI0s[ib];
@@ -157,6 +159,7 @@ class NBFF: public ForceField{ public:
         return n;
     }
 
+    __attribute__((hot))  
     double evalSortRange_BBs( double Rcut, int ngmax ){
         //printf( "evalSortRange_BBs() START \n" );
         double E=0;
@@ -213,6 +216,7 @@ class NBFF: public ForceField{ public:
     }
 
     // evaluate non-bonding interaction using Lenard-Jones potential and Coulomb potential
+    __attribute__((hot))  
     double evalLJQs( double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs() \n" );
         double R2damp = Rdamp*Rdamp;
@@ -235,6 +239,7 @@ class NBFF: public ForceField{ public:
         return E;
     }
 
+    __attribute__((hot))  
     double evalLJQs_PBC( const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs_PBC() \n" );
         double R2damp = Rdamp*Rdamp;
@@ -245,7 +250,7 @@ class NBFF: public ForceField{ public:
         int ipbc=0;
         // initialize shifts
         for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){ 
-            if((ia==0)&&(ib==0)&&(ic==0))continue; // skipp pbc0
+            if((ia==0)&&(ib==0)&&(ic==0)){ [[unlikely]]  continue; } // skipp pbc0
             shifts[ipbc] = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);   
             ipbc++; 
         }}}
@@ -271,6 +276,7 @@ class NBFF: public ForceField{ public:
     }
 
     // evaluate non-bonding interaction for given atom (ia) excluding bonded atoms, assume max 4 bonds per atom
+    __attribute__((hot))  
     double evalLJQs_ng4_atom( int ia ){
         //printf( "NBFF::evalLJQs_ng4_atom() %li %li \n" );
         const double R2damp = Rdamp*Rdamp;
@@ -281,7 +287,7 @@ class NBFF: public ForceField{ public:
         Vec3d        fi   = Vec3dZero;
         for(int j=0; j<natoms; j++){
             if(ia==j) continue;
-            if( (ng.x==j)||(ng.y==j)||(ng.z==j)||(ng.w==j) ) continue;
+            if( (ng.x==j)||(ng.y==j)||(ng.z==j)||(ng.w==j) ){ [[unlikely]]  continue; }
             Vec3d fij   = Vec3dZero;
             const Vec3d pj     = apos[j];                       // global read   apos[j]
             const Quat4d REQj  = REQs[j];                       // global read   REQs[j]
@@ -294,6 +300,7 @@ class NBFF: public ForceField{ public:
     }
 
     // evaluate all non-bonding interactions excluding bonded atoms, with OpenMP parallelization
+    __attribute__((hot))  
     double evalLJQs_ng4_omp( ){
         //printf( "NBFF::evalLJQs_ng4_omp() \n" );
         double E =0;
@@ -308,6 +315,7 @@ class NBFF: public ForceField{ public:
     }
 
     // evaluate all non-bonding interactions excluding bonded atoms (assume max 4 bonds per atom), single-threaded version
+    __attribute__((hot))  
     double evalLJQs_ng4( const Quat4i* neighs, double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs_ng4() \n" );
         double R2damp = Rdamp*Rdamp;
@@ -324,7 +332,7 @@ class NBFF: public ForceField{ public:
             //printf( "NBFF::evalLJQs_ng4()[%i] ngs(%i,%i,%i,%i) \n", i, ngs.x,ngs.y,ngs.z,ngs.w );
             for(int j=i+1; j<N; j++){    // atom-atom (no self interaction, no double-counting)
                 //printf( "NBFF::evalLJQs_ng4()[%i,%j] neighs=%li \n", neighs );
-                if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) continue;
+                if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ){ [[unlikely]]  continue; }
                 Vec3d fij = Vec3dZero;
                 Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
                 //E += addAtomicForceLJQ( apos[j]-pi, fij, REQij );
@@ -339,6 +347,7 @@ class NBFF: public ForceField{ public:
 
 
     // evaluate all non-bonding interactions using Morse potential and Coulomb potential in periodic boundary conditions with OpenMP parallelization
+    __attribute__((hot))  
     inline double addMorseQH_PBC_omp( Vec3d pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         pi.sub(shift0);
@@ -366,6 +375,7 @@ class NBFF: public ForceField{ public:
     inline double getMorseQH_PBC_omp( Vec3d pi, const Quat4d&  REQi, Vec3d& fout ){ fout=Vec3dZero; return addMorseQH_PBC_omp( pi, REQi, fout ); }
 
     // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP parallelization
+    __attribute__((hot))  
     double getLJQs_PBC_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
@@ -393,6 +403,7 @@ class NBFF: public ForceField{ public:
     }
 
     // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP SIMD parallelizati
+    __attribute__((hot))  
     double evalLJQs_PBC_atom_omp( const int ia, const double Fmax2 ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const Vec3d   pi      = apos[ia];
@@ -421,6 +432,7 @@ class NBFF: public ForceField{ public:
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
+    __attribute__((hot))  
     double evalLJQs_PBC_simd(){
         //printf("NBFF::evalLJQs_PBC_simd()\n" );
         double E=0;
@@ -433,6 +445,7 @@ class NBFF: public ForceField{ public:
     }
 
     // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP SIMD parallelization
+    __attribute__((hot))  
     double evalLJQs_ng4_PBC_atom_omp(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         //printf("DEBUG 1 id=%i ia=%i REQs=%li \n", id, ia, REQs );
@@ -458,12 +471,14 @@ class NBFF: public ForceField{ public:
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
                 // --- If atoms are bonded we don't use the computed non-bonding interaction energy and force
-                if(bBonded){
+                if(bBonded){ [[unlikely]] 
                     if(   ((j==ng.x)&&(ipbc==ngC.x))
                         ||((j==ng.y)&&(ipbc==ngC.y))
                         ||((j==ng.z)&&(ipbc==ngC.z))
                         ||((j==ng.w)&&(ipbc==ngC.w))
-                    ){ continue;}
+                    ){ [[unlikely]] 
+                        continue;
+                    }
                 }
                 E +=eij;
                 fx+=fij.x;
@@ -476,6 +491,7 @@ class NBFF: public ForceField{ public:
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
+    __attribute__((hot))  
     double evalLJQs_ng4_PBC_simd(){
         //printf("NBFF::evalLJQs_ng4_PBC_simd()\n" );
         double E=0;
@@ -485,7 +501,7 @@ class NBFF: public ForceField{ public:
         }
         return E;
     }
-
+    __attribute__((hot))  
     double evalLJQs_atom_omp( const int ia, const double Fmax2 ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
@@ -509,6 +525,7 @@ class NBFF: public ForceField{ public:
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
+    __attribute__((hot))  
     double evalLJQs_simd(){
         //printf("NBFF::evalLJQs_simd()\n" );
         double E=0;
@@ -517,6 +534,7 @@ class NBFF: public ForceField{ public:
         return E;
     }
 
+    __attribute__((hot))  
     double evalLJQs_ng4_atom_omp( const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
@@ -528,7 +546,7 @@ class NBFF: public ForceField{ public:
 
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
-            if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) continue;
+            if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) { [[unlikely]] continue; }
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;
@@ -543,6 +561,7 @@ class NBFF: public ForceField{ public:
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
+    __attribute__((hot))  
     double evalLJQs_ng4_simd(){
         //printf("NBFF::evalLJQs_ng4_simd()\n" );
         double E=0;
@@ -550,6 +569,7 @@ class NBFF: public ForceField{ public:
         return E;
     }
 
+    __attribute__((hot))  
     Quat4d evalLJQs( Vec3d pi, Quat4d REQi, double Rdamp )const{
         const double R2damp = Rdamp*Rdamp;
         Quat4d fe = Quat4dZero;
@@ -564,6 +584,7 @@ class NBFF: public ForceField{ public:
     }
 
 #ifdef WITH_AVX
+    __attribute__((hot))  
     double evalLJQs_atom_avx( const int ia, const double Fmax2 ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;

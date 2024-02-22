@@ -59,6 +59,7 @@ class QEq{ public:
     void init(){ for(int i=0; i<n; i++){ qs[i]=0; fqs[i]=0; vqs[i]=0; } }
     void constrainTypes(const int* atypes,int iconst ){ for(int i=0; i<n; i++){ if(atypes[i]==iconst){constrain[i]=true;}; }  }
 
+    __attribute__((hot))  
     double getQvars(){
         double err2=0;
         //Qtot         = 0.0;
@@ -93,6 +94,7 @@ class QEq{ public:
         return err2;
     }
 
+    __attribute__((hot))  
     double moveMDdamp(double dt, double damping){
         Qtot = 0.0;
         double damp=1-damping;
@@ -126,6 +128,7 @@ class QEq{ public:
         return Qtot;
     }
 
+    __attribute__((hot))  
     double relaxChargeMD( Vec3d* ps, int nsteps=1000, double Fconf=1e-2, double dt=0.1, double damp=0.0, bool bVerbose=false, bool bInit=true ){
         //printf( "QEq.relaxChargeMD() \n" );
         double F2conf=Fconf*Fconf;

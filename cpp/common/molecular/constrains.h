@@ -18,10 +18,10 @@ struct DistConstr{
     double flim;
     bool active;
 
-
     DistConstr()=default;
     DistConstr( Vec2i ias_, Vec2d ls_, Vec2d ks_, double flim_=1e+300, Vec3d shift_=Vec3dZero ):ias(ias_),ls(ls_),ks(ks_),flim(flim_),shift(shift_),active(true){ };
 
+    __attribute__((hot))  
     inline double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0 )const{
         Vec3d sh;
         if(lvec){ lvec->dot_to_T( shift, sh ); }else{ sh=shift; }
@@ -65,6 +65,7 @@ struct AngleConstr{
     AngleConstr()=default;
     AngleConstr( Vec3i ias_, Vec2d cs0_, double k_ ):ias(ias_),cs0(cs0_),k(k_),active(true){ };
 
+    __attribute__((hot))  
     inline double  apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0 )const{
         Vec3d ashift,bshift;
         if(lvec){
@@ -87,27 +88,20 @@ struct AngleConstr{
 
 };
 
-/*
-struct DihedralConstr{
-    Quat4i  ias;     // (ia,ib,ic), ia is the center, ib and ic are the ends
-    Vec2d  cs0;     // unitary complex number (cos,sin) of the equilibrium angle
-    Vec3i  acell;   // indexes of PBC cell shift of bond a
-    Vec3i  bcell;   // indexes of PBC cell shift of bond b
-    double k;
-    double flim;
+
+struct TorsionConstr{
+    Quat4i  ijkl;     // (ia,ib,ic), ia is the center, ib and ic are the ends
+     Vec3d par;      
+    // TODO: currently we cannot define dihedral constrains crossing PBC boundaries
     bool active;
+    bool driving;
+    double fDrive;
 
-    DihedralConstr()=default;
-    DihedralConstr( Quat4i ias_, Vec2d cs0_, double k_ ):ias(ias_),cs0(cs0_),k(k_),active(true){ };
+    TorsionConstr()=default;
+    TorsionConstr( Quat4i ijkl_, Vec3d par_, double k_ ):ijkl(ijkl_),par(par_),active(true),driving(false),fDrive(0.0){ };
 
-    inline double  apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0 )const{
-        //double E=0.0;
-        //const Vec3i ngs = dihNgs[id];         // {ji, jk, kl}
-        ////const Quat4d q12 =    hneigh[ngs.x];  // ji
-        //const Quat4d q32 =    hneigh[ngs.y];  // jk
-        //const Quat4d q43 =    hneigh[ngs.z];  // kl
-
-        const Quat4i ijkl = ias[id];
+    __attribute__((hot))  
+    inline double  apply( Vec3d* apos, Vec3d* fapos, Mat3d* lvec=0, Mat3d* dlvec =0 )const{
         const Vec3d p2  = apos[ijkl.y];
         const Vec3d p3  = apos[ijkl.z];
         const Vec3d r32 = p3-p2;
@@ -128,12 +122,15 @@ struct DihedralConstr{
             -n123.dot(r43 )*inv_n12*l32
         };
         Vec2d csn = cs;
-        Vec3d par = dihParams[id];
         const int n = (int)par.z;
         for(int i=1; i<n; i++){ csn.mul_cmplx(cs); }
+        
         double E  =  par.x * ( 1.0 + par.y * csn.x );
         // --- Force on end atoms
-        double f = -par.x * par.y * par.z * csn.y; 
+        double f;
+        if(driving){ double f = fDrive; }
+        else       { double f = -par.x * par.y * par.z * csn.y; }
+
         f*=l32;
         Vec3d fp1; fp1.set_mul(n123,-f*il2_123 );
         Vec3d fp4; fp4.set_mul(n234, f*il2_234 );
@@ -145,41 +142,96 @@ struct DihedralConstr{
         Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
         //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
         //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
-        
-        if(bSubNonBond){
-            const Quat4i ijkl  = dihAtoms[id];
-            const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
-            Vec3d fnb; 
-            Vec3d dp = apos[ijkl.w] - apos[ijkl.x];   //  There may be problem in PBC
-            //Vec3d dp; dp.set_lincomb( (1./q12.w), (-1./q43.w), (-1./q32.w), q12.f, q43.f, q32.f );
-            E -= getLJQH( dp, fnb, REQij, R2damp );
-            if(bClampNonBonded)clampForce( fnb, Fmax2 );
-            fnb.mul( SubNBTorstionFactor );
-            fp1.add( fnb );
-            fp4.sub( fnb );
-        }
-
-        const int i4=id*4;
-        fdih[i4  ]=fp1;
-        fdih[i4+1]=fp2;
-        fdih[i4+2]=fp3;
-        fdih[i4+3]=fp4;
-
-
-
+        fapos[ijkl.x]=fp1;
+        fapos[ijkl.y]=fp2;
+        fapos[ijkl.z]=fp3;
+        fapos[ijkl.w]=fp4;
+        return E;
     }
 
-    void print(){ printf( "angle_constr ias(%i,%i,%i) cs0(%f,%f) k(%lf) flim=%lf acell(%i,%i,%i) bcell(%i,%i,%i)\n",   ias.a,ias.b,ias.c,   cs0.x,cs0.y,      k,       flim, acell.a, acell.b, acell.c, bcell.a, bcell.b, bcell.c); };
+    void print(){ printf( "TorsionConstr ijkl(%i,%i,%i,%i) par(c0=%%g,k=%g,|n=%f) \n",   ijkl.x,ijkl.y,ijkl.z,ijkl.w,   par.x,par.y,par.z,  fDrive ); };
 
 };
 
-*/
 
 
 class Constrains{ public:
     std::vector<DistConstr>  bonds;
     std::vector<AngleConstr> angles;
+    std::vector<TorsionConstr> torsions;
 
+    int addBond( const char* line, int* atom_permut=0, int _0=1 ){
+        int i = bonds.size();
+        DistConstr cons; cons.active=true;
+        int nret = sscanf( line, "b %i %i   %lf %lf   %lf %lf   %lf    %lf %lf %lf",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,  &cons.ks.a,&cons.ks.b,  &cons.flim, &cons.shift.a,&cons.shift.b,&cons.shift.c );
+        cons.ias.a-=_0;
+        cons.ias.b-=_0;
+        if( atom_permut ){
+            printf( "permut bond (%i->%i)-(%i->%i) \n", cons.ias.a, atom_permut[cons.ias.a], cons.ias.b, atom_permut[cons.ias.b] ); 
+            cons.ias.a=atom_permut[cons.ias.a];
+            cons.ias.b=atom_permut[cons.ias.b];
+        }
+        if(nret<10){cons.shift=Vec3dZero;}
+        if(nret<7 ){ printf("WARRNING : Constrains::loadBonds[%i] bond nret(%i)<10 line=%s", i, nret, line ); }
+        cons.print();
+        bonds.push_back( cons );
+        return i;
+    }
+
+    int addAngle( const char* line, int* atom_permut=0, int _0=1 ){
+        int i = angles.size();
+        double ang;
+        AngleConstr cons; cons.active=true;
+        int nret = sscanf( line, "g %i %i %i   %lf  %lf %lf   %i %i %i  %i %i %i",    &cons.ias.a,&cons.ias.b,&cons.ias.c,   &ang,   &cons.k,   &cons.flim,   &cons.acell.a,&cons.acell.b,&cons.acell.c,   &cons.bcell.a,&cons.bcell.b,&cons.bcell.c );
+        cons.cs0.fromAngle( (ang/180.0)*M_PI*0.5 );
+        cons.ias.a-=_0;
+        cons.ias.b-=_0;
+        cons.ias.c-=_0;
+        if( atom_permut ){
+            printf( "permut angle (%i->%i)-(%i->%i)-(%i->%i) \n", cons.ias.b, atom_permut[cons.ias.b],   cons.ias.a, atom_permut[cons.ias.a],    cons.ias.c, atom_permut[cons.ias.c] ); 
+            cons.ias.a=atom_permut[cons.ias.a];
+            cons.ias.b=atom_permut[cons.ias.b];
+            cons.ias.c=atom_permut[cons.ias.c];
+        }
+        if(nret<12){cons.bcell=Vec3iZero;}
+        if(nret<9 ){cons.acell=Vec3iZero;}
+        if(nret<6){ printf("WARRNING : Constrains::loadBonds[%i] angle nret(%i)<6 line=%s", i, nret, line ); }
+        cons  .print();
+        angles.push_back( cons );
+        return i;
+    }
+
+    int addTorsion( const char* line, int* atom_permut=0, int _0=1 ){
+        int i = torsions.size();
+        Quat4i ijkl;
+        Vec3d par;
+        double fDrive;
+        int nret = sscanf( line, "t %i %i %i %i   %lf %lf %lf    %lf ",    &ijkl.x,&ijkl.y,&ijkl.z,&ijkl.w,   &par.x,&par.y,&par.z,  &fDrive );
+        ijkl.x-=_0;
+        ijkl.y-=_0;
+        ijkl.z-=_0;
+        ijkl.w-=_0;
+        if( atom_permut ){
+            printf( "permut torsion (%i->%i)-(%i->%i)-(%i->%i)-(%i->%i) \n", ijkl.x, atom_permut[ijkl.x],   ijkl.y, atom_permut[ijkl.y],    ijkl.z, atom_permut[ijkl.z],    ijkl.w, atom_permut[ijkl.w] ); 
+            ijkl.x=atom_permut[ijkl.x];
+            ijkl.y=atom_permut[ijkl.y];
+            ijkl.z=atom_permut[ijkl.z];
+            ijkl.w=atom_permut[ijkl.w];
+        }
+        if(nret<12){printf("WARRNING : Constrains::loadBonds[%i] torsion nret(%i)<12 line=%s", i, nret, line ); }
+        TorsionConstr cons; cons.active=true;
+        cons.ijkl=ijkl;
+        cons.par=par;
+        if(nret<7){par.z=1;}
+        if(nret<8){cons.fDrive=0;}
+        if( fabs(fDrive)>1e-16 ) cons.driving=false;
+        cons.fDrive=fDrive;
+        cons.print();
+        torsions.push_back( cons );
+        return i;
+    }
+
+    __attribute__((hot))  
     double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec=0, Mat3d* dlvec=0 ){
         double E=0;  
         int i=0;
@@ -201,41 +253,11 @@ class Constrains{ public:
                 if(line==NULL)  break;
                 if     (line[0]=='#'){continue;}
                 else if(line[0]=='b'){
-                    DistConstr cons; cons.active=true;
-                    int nret = sscanf( line, "b %i %i   %lf %lf   %lf %lf   %lf    %lf %lf %lf",   &cons.ias.a,&cons.ias.b,  &cons.ls.a,&cons.ls.b,  &cons.ks.a,&cons.ks.b,  &cons.flim, &cons.shift.a,&cons.shift.b,&cons.shift.c );
-                    cons.ias.a-=_0;
-                    cons.ias.b-=_0;
-                    if( atom_permut ){
-                        printf( "permut bond (%i->%i)-(%i->%i) \n", cons.ias.a, atom_permut[cons.ias.a], cons.ias.b, atom_permut[cons.ias.b] ); 
-                        cons.ias.a=atom_permut[cons.ias.a];
-                        cons.ias.b=atom_permut[cons.ias.b];
-                    }
-                    if(nret<10){cons.shift=Vec3dZero;}
-                    if(nret<7 ){ printf("WARRNING : Constrains::loadBonds[%i] bond nret(%i)<10 line=%s", i, nret, line ); }
-                    cons.print();
-                    bonds.push_back( cons );
-
+                    addBond( line, atom_permut, _0=_0 );
                 }else if(line[0]=='g'){
-            
-                    double ang;
-                    AngleConstr cons; cons.active=true;
-                    int nret = sscanf( line, "g %i %i %i   %lf  %lf %lf   %i %i %i  %i %i %i",    &cons.ias.a,&cons.ias.b,&cons.ias.c,   &ang,   &cons.k,   &cons.flim,   &cons.acell.a,&cons.acell.b,&cons.acell.c,   &cons.bcell.a,&cons.bcell.b,&cons.bcell.c );
-                    cons.cs0.fromAngle( (ang/180.0)*M_PI*0.5 );
-                    cons.ias.a-=_0;
-                    cons.ias.b-=_0;
-                    cons.ias.c-=_0;
-                    if( atom_permut ){
-                        printf( "permut angle (%i->%i)-(%i->%i)-(%i->%i) \n", cons.ias.b, atom_permut[cons.ias.b],   cons.ias.a, atom_permut[cons.ias.a],    cons.ias.c, atom_permut[cons.ias.c] ); 
-                        cons.ias.a=atom_permut[cons.ias.a];
-                        cons.ias.b=atom_permut[cons.ias.b];
-                        cons.ias.c=atom_permut[cons.ias.c];
-                    }
-                    if(nret<12){cons.bcell=Vec3iZero;}
-                    if(nret<9 ){cons.acell=Vec3iZero;}
-                    if(nret<6){ printf("WARRNING : Constrains::loadBonds[%i] angle nret(%i)<6 line=%s", i, nret, line ); }
-                    cons  .print();
-                    angles.push_back( cons );
-                    
+                    addAngle( line, atom_permut, _0=_0 );
+                }else if(line[0]=='t'){
+                    addTorsion( line, atom_permut, _0=_0 );
                 }
             }
             return i;
