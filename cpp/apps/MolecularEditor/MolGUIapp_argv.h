@@ -10,6 +10,8 @@
         printf( "W->ffl.colDamp(n=%i,bond=%g,nonB=%g,medium=%g,R12(%g,%g)\n", W->ffl.colDamp.nstep, W->ffl.colDamp.bond, W->ffl.colDamp.nonB, W->ffl.colDamp.medium, W->ffl.colDamp.dRcut1, W->ffl.colDamp.dRcut2 );
     }};// collision damping parameters
 
+    funcs["-T"]={1,[&](const char** ss){ sscanf( ss[0], "%lf", &W->T_target ); W->bThermalSampling=true;  }}; // run at non-zero temperature ( i.e. using Langevin dynamics termostat )
+
 	funcs["-s"]={1,[&](const char** ss){ W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz
 	funcs["-g"]={1,[&](const char** ss){ W->surf_name =ss[0]; }}; // substrate as .xyz

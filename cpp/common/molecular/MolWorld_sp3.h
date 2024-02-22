@@ -22,6 +22,7 @@
 static MMFFparams* params_glob;
 
 //#include "raytrace.h"
+#include "constants.h"
 #include "Forces.h"
 #include "MMFFsp3.h"
 #include "MMFFsp3_loc.h"
@@ -77,6 +78,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     OptLog opt_log;
     Vec3i nPBC_save{1,1,1};
 
+    // ---  Parameters for Molecular Dynamics at non-zero temperature
+    double bThermalSampling = 0.0;   // if >0 then we do thermal sampling
+    double T_target         = 0.0;   // target temperature for thermal sampling (if bThermalSampling>0)
+    double T_current        = 0.0;   // current temperature for thermal sampling (if bThermalSampling>0)
+    double gamma_damp       = 0.1;   // damping factor for thermal sampling (if bThermalSampling>0)
 
     double fAutoCharges=-1;
     bool bEpairs = false;
@@ -1165,6 +1171,14 @@ class MolWorld_sp3 : public SolverInterface { public:
         return 0;
     }
 
+    double evalEkTemp(){
+        double Ek = ffl.evalKineticEnergy();
+        int nDOFs = ffl.natoms*3;
+        //nDOFs += ffl.nnode*2; // pi-rotations
+        T_current = ( 2*Ek/ (const_kB*nDOFs) );
+        return T_current;
+    }
+
     double eval( ){
         if(verbosity>0) printf( "#### MolWorld_sp3::eval()\n");
         //ffl.doBonds       = false;
@@ -1489,12 +1503,12 @@ class MolWorld_sp3 : public SolverInterface { public:
                 }
 
             }
-            if(ffl.bTorsion){
-                #pragma omp for reduction(+:E)
-                for(int it=0; it<ffl.ntors; it++){ 
-                    E+=ffl.eval_torsion(it); 
-                }
-            }
+            // if(ffl.bTorsion){
+            //     #pragma omp for reduction(+:E)
+            //     for(int it=0; it<ffl.ntors; it++){ 
+            //         E+=ffl.eval_torsion(it); 
+            //     }
+            // }
             if(bConstrains){
                 #pragma omp single
                 {
@@ -1529,12 +1543,20 @@ class MolWorld_sp3 : public SolverInterface { public:
                 // ------ move
                 #pragma omp for
                 for(int i=0; i<ffl.nvecs; i++){
-
-                    //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
-                    //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
-                    //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
-                    ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
-                    //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+                    if( bThermalSampling ){
+                            // ---  Parameters for Molecular Dynamics at non-zero temperature
+                        // double bThermalSampling = 0.0;     // if >0 then we do thermal sampling
+                        // double T_target         = 300.0;   // target temperature for thermal sampling (if bThermalSampling>0)
+                        // double T_currnt         = 300.0;   // current temperature for thermal sampling (if bThermalSampling>0)
+                        // double gamma_damp       = 0.1;     // damping factor for thermal sampling (if bThermalSampling>0)
+                        ffl.move_atom_Langevin( i, dt, 10000.0, gamma_damp, T_target );
+                    }else{
+                        //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
+                        //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
+                        //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
+                        ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+                        //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+                    }
                 }
             }
             

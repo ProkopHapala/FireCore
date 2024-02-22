@@ -1339,13 +1339,14 @@ void MolGUI::drawHUD(){
         Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     }
     if(bWriteOptimizerState){
+        double T = W->evalEkTemp();   printf( "T_kinetic=%g[K] \n", T );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         glColor3f(0.0,0.5,0.0);
         char* s=tmpstr;
         //dt 0.132482 damp 3.12175e-17 n+ 164 | cfv 0.501563 |f| 3.58409e-10 |v| 6.23391e-09
         double v=sqrt(W->opt.vv);
         double f=sqrt(W->opt.ff);
-        s += sprintf(s,"dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
+        s += sprintf(s,"T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
         Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );

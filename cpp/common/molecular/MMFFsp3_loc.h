@@ -10,6 +10,8 @@
 #include "Vec2.h"       // 2D vector
 #include "Vec3.h"       // 3D vector
 #include "quaternion.h" // quaternions
+
+#include "constants.h"   
 #include "Forces.h"     // various physical interactions
 #include "SMat3.h"             // Symmetric Matrix
 #include "molecular_utils.h"   // various molecular utilities
@@ -1042,6 +1044,26 @@ double eval_torsions(){
     return E;
 }
 
+
+double evalKineticEnergy(){
+    double Ek=0;
+    double mass=1; // ToDo: get some masses later
+    for(int ia=0; ia<natoms; ia++){ 
+        Ek+=0.5*mass*vapos[ia].norm2();
+    }
+    double v2mean = sqrt(Ek/natoms);
+    printf( "v2mean %g [A/fs] \n", v2mean );
+    // units conversion 
+    //  velocity is in Angstrom/fs   1 Angstrom = 1.0e-10 m, 1 fs = 1.0e-15 s =>   1 Angstrom/fs = 1.0e+5 m/s 
+    //  mass is in amu      1 amu = 1.66053906660E-27 kg
+    //  1/2 m v^2 = 1/2 * 1.66053906660E-27 * (1.0e+5)^2 = 1.66053906660E-27 * 1.0e+10 = 1.66053906660E-17 J
+    // eV = 1.602176634E-19 J
+    // 1.66053906660e-17 / 1.1.602176634e-19 = 103.642695
+    // 1.602176634e-19 / 1.66053906660e-17 = 0.00964853321
+    Ek*=0.00964853321;
+    return Ek;
+}
+
 // move cappping atom to equilibrium distance from the node atoms
 void addjustAtomCapLenghs(int ia){
     const Vec3d pa  = apos [ia]; 
@@ -1365,6 +1387,32 @@ inline double move_atom_GD(int i, float dt, double Flim){
     //fapos[i] = Vec3dZero;
     return fr2;
 }
+// update atom positions using molecular dynamics (damped leap-frog)
+inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){
+    Vec3d f = fapos[i];
+    Vec3d v = vapos[i];
+    Vec3d p = apos [i];
+    const bool bPi = i>=natoms;
+    if(bPi)f.add_mul( p, -p.dot(f) ); 
+    const Vec3d  cvf{ v.dot(f), v.norm2(), f.norm2() };
+
+    // ----- Langevin
+    f.add_mul( v, -gamma_damp );  // check the untis  ... cdamp/dt = gamma
+    Vec3d rnd = {-6.,-6.,-6.};
+    for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() );}    // ToDo: optimize this
+    f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp ) );
+
+    v.add_mul( f, dt );      
+    if(bPi)v.add_mul( p, -p.dot(v) );                     
+    p.add_mul( v, dt );
+    if(bPi)p.normalize();
+    
+    apos [i] = p;
+    vapos[i] = v;
+
+    return cvf;
+}
+
 
 // update atom positions using molecular dynamics (damped leap-frog)
 inline Vec3d move_atom_MD( int i, const float dt, const double Flim, const double cdamp=0.9 ){

@@ -76,9 +76,9 @@ nsys=50
 #./$name -m 40 -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 -pop lattice_scan_1d_all.xyz
 #./$name  -m 30 -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 -pop lattice_scan_1d_all.xyz -latscan 40,0 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1
-#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+#./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-#./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,10 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,10 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 
 # ====== Small Molecules On Substrate
 
@@ -94,7 +94,7 @@ nsys=50
 #./$name -m $nsys -x common_resources/BPBA          -g common_resources/NaCl_1x1_L2 -e
 
 #./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2   -ManipulAnim
-./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2
+#./$name -m 20 -x common_resources/PTCDA_SAM  -c 59      -g common_resources/NaCl_1x1_L2
 
 # ====== Polymers On Substrate
 
