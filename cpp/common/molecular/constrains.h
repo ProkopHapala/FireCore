@@ -96,12 +96,19 @@ struct TorsionConstr{
     bool active;
     bool driving;
     double fDrive;
+    Vec2d  fDrives; // force for liear interpolation
+
+
 
     TorsionConstr()=default;
     TorsionConstr( Quat4i ijkl_, Vec3d par_, double k_ ):ijkl(ijkl_),par(par_),active(true),driving(false),fDrive(0.0){ };
 
+    inline void   push_fDrive(double f){    fDrives.x=fDrives.y; fDrives.y=f; }
+    inline void   generate   (){ push_fDrive( randf( -fDrive, fDrive ) ); }
+    inline double interpolate_fDrive(double t)const{ return fDrives.x*(1-t) + fDrives.y*t; }
+
     __attribute__((hot))  
-    inline double  apply( Vec3d* apos, Vec3d* fapos, Mat3d* lvec=0, Mat3d* dlvec =0 )const{
+    inline double  apply( Vec3d* apos, Vec3d* fapos, double t, Mat3d* lvec=0, Mat3d* dlvec =0 )const{
         const Vec3d p2  = apos[ijkl.y];
         const Vec3d p3  = apos[ijkl.z];
         const Vec3d r32 = p3-p2;
@@ -128,8 +135,10 @@ struct TorsionConstr{
         double E  =  par.x * ( 1.0 + par.y * csn.x );
         // --- Force on end atoms
         double f;
-        if(driving){ double f = fDrive; }
-        else       { double f = -par.x * par.y * par.z * csn.y; }
+        if(driving){ //double f = fDrive;
+            f = interpolate_fDrive(t);
+            //printf( "TorsionConstr::apply[%i] driving f=%g fDrives(%g,%g) t=%g fDrive %g \n", (int)ijkl.x, f, fDrives.x, fDrives.y, t, fDrive );
+        } else  { f = -par.x * par.y * par.z * csn.y; }
 
         f*=l32;
         Vec3d fp1; fp1.set_mul(n123,-f*il2_123 );
@@ -142,14 +151,28 @@ struct TorsionConstr{
         Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
         //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
         //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
-        fapos[ijkl.x]=fp1;
-        fapos[ijkl.y]=fp2;
-        fapos[ijkl.z]=fp3;
-        fapos[ijkl.w]=fp4;
+        // fapos[ijkl.x]=fp1;
+        // fapos[ijkl.y]=fp2;
+        // fapos[ijkl.z]=fp3;
+        // fapos[ijkl.w]=fp4;
+        {
+            const Vec3d p1 = apos[ijkl.x]; 
+            const Vec3d p4 = apos[ijkl.w];
+            glColor3f(0.0,0.0,1.0);
+            Draw3D::drawVecInPos( n123, p2 );
+            Draw3D::drawVecInPos( n234, p3 );
+            glColor3f(1.0,0.0,0.0);
+            Draw3D::drawVecInPos( fp1, p1 );
+            Draw3D::drawVecInPos( fp4, p4 );
+            Draw3D::drawVecInPos( fp2, p2 );
+            Draw3D::drawVecInPos( fp3, p3 );
+            //Draw3D::drawVecInPos( fp1, p2, 0.1, 0xFF0000 );
+
+        }
         return E;
     }
 
-    void print(){ printf( "TorsionConstr ijkl(%i,%i,%i,%i) par(c0=%%g,k=%g,|n=%f) \n",   ijkl.x,ijkl.y,ijkl.z,ijkl.w,   par.x,par.y,par.z,  fDrive ); };
+    void print(){ printf( "TorsionConstr ijkl(%i,%i,%i,%i) par(c0=%g,k=%g,|n=%f) fDrive=%g driving=%i \n",   ijkl.x,ijkl.y,ijkl.z,ijkl.w,   par.x,par.y,par.z,  fDrive, driving ); };
 
 };
 
@@ -159,6 +182,10 @@ class Constrains{ public:
     std::vector<DistConstr>  bonds;
     std::vector<AngleConstr> angles;
     std::vector<TorsionConstr> torsions;
+
+    double dt = 0.01;
+    int nDriveUpdate = 100;
+    int iDriveUpdate = 0;
 
     int addBond( const char* line, int* atom_permut=0, int _0=1 ){
         int i = bonds.size();
@@ -218,13 +245,13 @@ class Constrains{ public:
             ijkl.z=atom_permut[ijkl.z];
             ijkl.w=atom_permut[ijkl.w];
         }
-        if(nret<12){printf("WARRNING : Constrains::loadBonds[%i] torsion nret(%i)<12 line=%s", i, nret, line ); }
+        if(nret<8){printf("WARRNING : Constrains::loadBonds[%i] torsion nret(%i)<8 line=%s", i, nret, line ); }
         TorsionConstr cons; cons.active=true;
         cons.ijkl=ijkl;
         cons.par=par;
         if(nret<7){par.z=1;}
         if(nret<8){cons.fDrive=0;}
-        if( fabs(fDrive)>1e-16 ) cons.driving=false;
+        if( fabs(fDrive)>1e-16 ){ cons.driving=true; }else{ cons.driving=false; }
         cons.fDrive=fDrive;
         cons.print();
         torsions.push_back( cons );
@@ -235,13 +262,23 @@ class Constrains{ public:
     double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec=0, Mat3d* dlvec=0 ){
         double E=0;  
         int i=0;
+        if(iDriveUpdate>=nDriveUpdate){ iDriveUpdate=0; }
+        double t = iDriveUpdate/(double)nDriveUpdate;
         for( const DistConstr&  c : bonds  ){ E+= c.apply(ps,fs, lvec, dlvec ); }
         for( const AngleConstr& c : angles ){ E+= c.apply(ps,fs, lvec, dlvec ); }
+        i=0;
+        for( TorsionConstr& c : torsions ){ 
+            if(iDriveUpdate==0){ c.generate(); }
+            E+= c.apply(ps,fs, t, lvec, dlvec ); 
+            printf( "TorsionConstr::apply[%i] iDriveUpdate %i t %g \n", i, iDriveUpdate, t );
+            i++;
+        }
+        iDriveUpdate++;
         return E;
     }
 
     int loadBonds( const char* fname, int* atom_permut=0, int _0=1 ){
-        printf("Constrains::loadBonds(%s) atom_permut=%li _0=%i\n", fname, (long)atom_permut, _0 );
+        //printf("Constrains::loadBonds(%s) atom_permut=%li _0=%i\n", fname, (long)atom_permut, _0 );
         FILE* pFile = fopen( fname, "r" );
         if(pFile==0){ printf("ERROR in Constrains::loadBonds(%s) - No Such File \n", fname ); return -1; }
         else{

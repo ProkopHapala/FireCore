@@ -82,7 +82,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     double bThermalSampling = 0.0;   // if >0 then we do thermal sampling
     double T_target         = 0.0;   // target temperature for thermal sampling (if bThermalSampling>0)
     double T_current        = 0.0;   // current temperature for thermal sampling (if bThermalSampling>0)
-    double gamma_damp       = 0.1;   // damping factor for thermal sampling (if bThermalSampling>0)
+    double gamma_damp       = 0.01;  // damping factor for thermal sampling (if bThermalSampling>0)
 
     double fAutoCharges=-1;
     bool bEpairs = false;
@@ -1342,10 +1342,10 @@ class MolWorld_sp3 : public SolverInterface { public:
         //ffl.run( nIter, 0.05, 1e-6, 1000.0 );
         //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
 
-        //run_no_omp( nIter, 0.05, 1e-6, 1000.0 );
+        run_no_omp( nIter, 0.05, 1e-6, 1000.0 );
 
         //run_omp( 1, 0.05, 1e-6, 1000.0 );
-        run_omp( nIter, 0.05, 1e-6, 1000.0 );
+        //run_omp( nIter, 0.05, 1e-6, 1000.0 );
         
         //run_omp( 100, 0.05, 1e-6, 1000.0 );
         //run_omp( 1, opt.dt, 1e-6, 1000.0 );
@@ -1394,6 +1394,13 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if(ipicked==ia){ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                     ffl.fapos[ia].add( f );
+                }
+            }
+            if(bConstrains){
+                #pragma omp single
+                {
+                    //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
+                    E+= constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
                 }
             }
             // ---- assembling
@@ -1556,7 +1563,7 @@ class MolWorld_sp3 : public SolverInterface { public:
                         //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
                         //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
                         //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
-                        ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+                        //ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
                         //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
                     }
                 }

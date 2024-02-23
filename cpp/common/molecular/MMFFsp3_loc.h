@@ -1047,11 +1047,29 @@ double eval_torsions(){
 
 
 double evalKineticEnergy(){
+    // In SI units:
+    double mass=1; 
+    double Ek=0;
+    double vabsmean = 0;
+    double msum = 0;
+    for(int ia=0; ia<natoms; ia++){ 
+        vabsmean = fabs( vapos[ia].norm()/10.180505710774743 ); // to Angstrom/fs
+        double mi = (1.66053906660e-27 * mass);
+        msum  += mi;
+        Ek    += 0.5* mi* vapos[ia].norm2()*sq( 1e-10/1.0180505710774743e-14 );
+    }
+    double Ek_eV = Ek/1.602176634e-19;
+    double v2mean = sqrt(2*Ek/msum);
+    //printf( "vabsmean %g[m/s](%g[au]) v2mean %g[m/s](%g[au]) Ek=%g[J](Ek=%g[eV]) msum=%g[kg] \n", vabsmean*1e+5,vabsmean,    v2mean,v2mean/1e+5,   Ek, Ek_eV, msum );
+    return Ek_eV;
+
+    /*
     double Ek=0;
     double mass=1; // ToDo: get some masses later
     for(int ia=0; ia<natoms; ia++){ 
         Ek+=0.5*mass*vapos[ia].norm2();
     }
+    Ek * = const_fs_timeu*const_fs_timeu; // convert to eV
     double v2mean = sqrt(Ek/natoms);
     printf( "v2mean %g [A/fs] \n", v2mean );
     // units conversion 
@@ -1059,10 +1077,11 @@ double evalKineticEnergy(){
     //  mass is in amu      1 amu = 1.66053906660E-27 kg
     //  1/2 m v^2 = 1/2 * 1.66053906660E-27 * (1.0e+5)^2 = 1.66053906660E-27 * 1.0e+10 = 1.66053906660E-17 J
     // eV = 1.602176634E-19 J
-    // 1.66053906660e-17 / 1.1.602176634e-19 = 103.642695
+    // 1.66053906660e-17 / 1.602176634e-19 = 103.642695
     // 1.602176634e-19 / 1.66053906660e-17 = 0.00964853321
     Ek*=0.00964853321;
     return Ek;
+    */
 }
 
 // move cappping atom to equilibrium distance from the node atoms
@@ -1409,8 +1428,9 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
     // ----- Langevin
     f.add_mul( v, -gamma_damp );  // check the untis  ... cdamp/dt = gamma
     Vec3d rnd = {-6.,-6.,-6.};
-    for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() );}    // ToDo: optimize this
-    f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp ) );
+    for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
+    //if(i==0){ printf( "dt=%g[arb.]  dt=%g[fs]\n", dt, dt*10.180505710774743  ); }
+    f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp/dt ) );
 
     v.add_mul( f, dt );      
     if(bPi)v.add_mul( p, -p.dot(v) );                     

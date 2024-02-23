@@ -52,7 +52,9 @@ export LD_PRELOAD
 
 
 #./$name -x common_resources/nHexadecan_dicarboxylic
-./$name -x common_resources/nHexadecan_dicarboxylic -T 500.0
+./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons
+#./$name -x common_resources/nHexadecan_dicarboxylic -T 500.0
+#./$name -x common_resources/nHexadecan_dicarboxylic -T 500.0
 
 
 

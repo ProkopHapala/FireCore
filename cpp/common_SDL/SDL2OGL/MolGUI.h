@@ -182,18 +182,20 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //float textSize        = 0.025;
     float textSize        = 0.020;
     //float textSize        = 0.015;
-
     double ForceViewScale = 1.0;
-    double mm_Rsc         = 0.20;
-    double mm_Rsub        = 0.0;
+
+    // ---- nice balls and sticks for school
+    // double mm_Rsc         = 0.20;
+    // double mm_Rsub        = 0.0;
 
     // double ForceViewScale = 1.0;
     // double mm_Rsc         = 0.25;
     // double mm_Rsub        = 0.5;
 
+    // ---- small balls and sticks for debugging
     // double ForceViewScale = 100.0;
-    // double mm_Rsc         = 0.05;
-    // double mm_Rsub        = 0.0;
+    double mm_Rsc         = 0.05;
+    double mm_Rsub        = 0.0;
 
     bool   bViewBuilder     = false;
 
@@ -1339,7 +1341,7 @@ void MolGUI::drawHUD(){
         Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     }
     if(bWriteOptimizerState){
-        double T = W->evalEkTemp();   printf( "T_kinetic=%g[K] \n", T );
+        double T = W->evalEkTemp();   //printf( "T_kinetic=%g[K] \n", T );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         glColor3f(0.0,0.5,0.0);
         char* s=tmpstr;
