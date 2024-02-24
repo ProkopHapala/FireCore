@@ -1389,10 +1389,10 @@ class MolWorld_sp3 : public SolverInterface { public:
         //ffl.run( nIter, 0.05, 1e-6, 1000.0 );
         //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
 
-        run_no_omp( nIter, 0.05, 1e-6, 1000.0 );
+        //run_no_omp( nIter, 0.05, 1e-6, 1000.0 );
 
         //run_omp( 1, 0.05, 1e-6, 1000.0 );
-        //run_omp( nIter, 0.05, 1e-6, 1000.0 );
+        run_omp( nIter, 0.05, 1e-6, 1000.0 );
         
         //run_omp( 100, 0.05, 1e-6, 1000.0 );
         //run_omp( 1, opt.dt, 1e-6, 1000.0 );
@@ -1557,13 +1557,24 @@ class MolWorld_sp3 : public SolverInterface { public:
         double ff=0,vv=0,vf=0;
         int itr=0,niter=niter_max;
         bConverged = false;
+        bool bExploring = false;
+        if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
         //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
-        #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0)
+        #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bExploring,bThermalSampling,bConstrains,bConverged)
         while(itr<niter){
             if(itr<niter){
             //#pragma omp barrier
             #pragma omp single
-            {E=0;F2=0;ff=0;vv=0;vf=0;}
+            {E=0;F2=0;ff=0;vv=0;vf=0;
+                bExploring = false;
+                if(bGopt){
+                    go.update();
+                    bExploring       = go.bExploring; 
+                    bThermalSampling = bExploring;
+                    bConstrains      = bExploring;
+                    if(bExploring) bConverged = false;
+                }
+            }
             //------ eval forces
             //#pragma omp barrier
             #pragma omp for reduction(+:E)
@@ -1657,6 +1668,15 @@ class MolWorld_sp3 : public SolverInterface { public:
                     bConverged = true;
                     double t = (getCPUticks() - T0)*tick2second;
                     if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
+                    if(bGopt){
+                        gopt_ifound++;
+                        sprintf(tmpstr,"# %i E %g |F| %g", gopt_ifound, Etot, sqrt(ffl.cvf.z) );
+                        printf( "run_omp().save %s niter=%i \n", tmpstr, niter_max );
+                        saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                        go.startExploring();
+                        bConverged=false;
+                        go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
+                    }
                 }
                 //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
                 //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}

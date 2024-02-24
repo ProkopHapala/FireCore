@@ -70,7 +70,7 @@ int main(int argc, char *argv[]){
     funcs2["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
 #endif // WITH_LUA
     process_args( argc, argv, funcs2, false );
-
+    
     if(prelat_nstep>0)W->change_lvec_relax( prelat_nstep, prelat_nItrMax, 1e-3, prelat_dlvec );
 	app->loop( 1000000 );
 	return 0;
