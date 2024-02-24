@@ -89,7 +89,7 @@ namespace VecN{
 
 
  // =======  iterration over array
-	template<typename T> inline T norm2 (int n,const T* a                 ){ T sum =0; for (int i=0; i<n; i++ ){ T ai=a[i]; sum+=ai*ai;          } return sum; }
+	template<typename T>inline T norm2 (int n,const T* a                 ){ T sum =0; for (int i=0; i<n; i++ ){ T ai=a[i]; sum+=ai*ai;          } return sum; }
 	template<typename T>inline T wnorm2(int n,const T* a,const T* w ){ T sum =0; for (int i=0; i<n; i++ ){ T ai=a[i]; sum+= (ai*ai)*w[i];  } return sum; }
 	template<typename T>inline T wdot  (int n,const T* a,const T* b,const T* w){ T sum =0; for (int i=0; i<n; i++ ){ sum+= a[i]*b[i]*w[i];  } return sum; }
 
