@@ -29,9 +29,9 @@ fi
 
 
 # ------- asan (Memory Sanitizer)
-LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-echo   $LD_PRELOAD
-export LD_PRELOAD
+#LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+#echo   $LD_PRELOAD
+#export LD_PRELOAD
 
 
 # ---- Run
@@ -65,7 +65,8 @@ export LD_PRELOAD
 
 #./$name -x common_resources/nHexadecan_dicarboxylic  -T 100 0.01
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
-./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
+#./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
+./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,1000 0.25,1.0
 
 
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons
