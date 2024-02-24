@@ -10,7 +10,9 @@
         printf( "W->ffl.colDamp(n=%i,bond=%g,nonB=%g,medium=%g,R12(%g,%g)\n", W->ffl.colDamp.nstep, W->ffl.colDamp.bond, W->ffl.colDamp.nonB, W->ffl.colDamp.medium, W->ffl.colDamp.dRcut1, W->ffl.colDamp.dRcut2 );
     }};// collision damping parameters
 
-    funcs["-T"]={1,[&](const char** ss){ sscanf( ss[0], "%lf", &W->T_target ); W->bThermalSampling=true;  }}; // run at non-zero temperature ( i.e. using Langevin dynamics termostat )
+    funcs["-T"]={2,[&](const char** ss){ sscanf( ss[0], "%lf", &W->T_target ); sscanf( ss[1], "%lf",&W->gamma_damp ); W->bThermalSampling=true; W->bToCOG=true; }}; // run at non-zero temperature ( i.e. using Langevin dynamics termostat )
+
+    funcs["-gopt"]={2,[&](const char** ss){ sscanf( ss[0], "%i,%i", &W->go.nExplore, &W->go.nRelax ); sscanf( ss[1], "%lf,%lf", &W->go.pos_kick, &W->go.vel_kick ); W->bGopt=true; W->bToCOG=true;  }}; // global optimization
 
 	funcs["-s"]={1,[&](const char** ss){ W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz

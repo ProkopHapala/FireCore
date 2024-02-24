@@ -250,7 +250,7 @@ class NBFF: public ForceField{ public:
         int ipbc=0;
         // initialize shifts
         for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){ 
-            if((ia==0)&&(ib==0)&&(ic==0)){ [[unlikely]]  continue; } // skipp pbc0
+            if((ia==0)&&(ib==0)&&(ic==0))[[unlikely]]{  continue; } // skipp pbc0
             shifts[ipbc] = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);   
             ipbc++; 
         }}}
@@ -287,7 +287,7 @@ class NBFF: public ForceField{ public:
         Vec3d        fi   = Vec3dZero;
         for(int j=0; j<natoms; j++){
             if(ia==j) continue;
-            if( (ng.x==j)||(ng.y==j)||(ng.z==j)||(ng.w==j) ){ [[unlikely]]  continue; }
+            if( (ng.x==j)||(ng.y==j)||(ng.z==j)||(ng.w==j) ) [[unlikely]] { continue; }
             Vec3d fij   = Vec3dZero;
             const Vec3d pj     = apos[j];                       // global read   apos[j]
             const Quat4d REQj  = REQs[j];                       // global read   REQs[j]
@@ -332,7 +332,7 @@ class NBFF: public ForceField{ public:
             //printf( "NBFF::evalLJQs_ng4()[%i] ngs(%i,%i,%i,%i) \n", i, ngs.x,ngs.y,ngs.z,ngs.w );
             for(int j=i+1; j<N; j++){    // atom-atom (no self interaction, no double-counting)
                 //printf( "NBFF::evalLJQs_ng4()[%i,%j] neighs=%li \n", neighs );
-                if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ){ [[unlikely]]  continue; }
+                if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) [[unlikely]]  {continue; }
                 Vec3d fij = Vec3dZero;
                 Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
                 //E += addAtomicForceLJQ( apos[j]-pi, fij, REQij );
@@ -471,12 +471,12 @@ class NBFF: public ForceField{ public:
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
                 // --- If atoms are bonded we don't use the computed non-bonding interaction energy and force
-                if(bBonded){ [[unlikely]] 
+                if(bBonded) [[unlikely]]  { 
                     if(   ((j==ng.x)&&(ipbc==ngC.x))
                         ||((j==ng.y)&&(ipbc==ngC.y))
                         ||((j==ng.z)&&(ipbc==ngC.z))
                         ||((j==ng.w)&&(ipbc==ngC.w))
-                    ){ [[unlikely]] 
+                    ) [[unlikely]]  { 
                         continue;
                     }
                 }
@@ -546,7 +546,7 @@ class NBFF: public ForceField{ public:
 
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
-            if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) { [[unlikely]] continue; }
+            if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) [[unlikely]]  { continue; }
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;
