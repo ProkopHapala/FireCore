@@ -1062,7 +1062,7 @@ void MolGUI::draw(){
 
     if(bRunRelax){ 
         bool bRelaxOld = W->bConverged;
-        //printf( "MolGUI::draw() -> W->MDloop(%i);", perFrame );    
+        //printf( "MolGUI::draw().W->MDloop(%i) \n", perFrame );    
         W->MDloop(perFrame); 
 
         // if( W->bConverged && !bRelaxOld ){  // it relaxed just now
