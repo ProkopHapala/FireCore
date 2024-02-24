@@ -10,6 +10,12 @@ echo "compile using ncpu="$ncpu
 OMP_NUM_THREADS=$ncpu
 export OMP_NUM_THREADS
 
+no_compile=false
+if [[ "$*" == *"no"* ]]; then
+    no_compile=true
+fi
+
+if [ "$no_compile" = false ]; then
 # ---- Compilation
 wd=`pwd`
 cd $dir
@@ -17,9 +23,10 @@ pwd
 rm $name
 make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
-
 rm $name
 ln -s $dir/$name .
+fi
+
 
 # ------- asan (Memory Sanitizer)
 LD_PRELOAD=$(g++ -print-file-name=libasan.so)
@@ -50,9 +57,18 @@ export LD_PRELOAD
 #./$name -x common_resources/butandiol
 
 
-
 #./$name -x common_resources/nHexadecan_dicarboxylic
-./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons
+#./$name -x common_resources/nHexadecan_dicarboxylic -perframe 1 -T 10 0.1
+#./$name -x common_resources/nHexadecan_dicarboxylic -perframe 1 -T 100 0.1
+#./$name -x common_resources/nHexadecan_dicarboxylic -perframe 1 -T 1000 0.1
+#./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1 -T 10 0.1
+
+#./$name -x common_resources/nHexadecan_dicarboxylic  -T 100 0.01
+#./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
+./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -preframe 1000 -gopt 1000,1000 0.25,1.0
+
+
+#./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons
 #./$name -x common_resources/nHexadecan_dicarboxylic -T 500.0
 #./$name -x common_resources/nHexadecan_dicarboxylic -T 500.0
 

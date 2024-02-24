@@ -123,26 +123,6 @@ function(setup_precompiled_headers target)
     target_precompile_headers(${target} PRIVATE ${all_headers})
 endfunction()
 
-# function(setup_precompiled_headers target)
-#     set(additional_headers ${ARGN}) # ARGN holds all additional arguments passed to the function
-#     set(all_headers
-#         <vector>
-#         <string>
-#         <unordered_map>
-#         <unordered_set>
-#         "testUtils.h"
-#         "macroUtils.h"
-#         "IO_utils.h"
-#         "fastmath.h"
-#         "Vec2.h"
-#         "Vec3.h"
-#         "quaternion.h"
-#         "Mat3.h"
-#         ${additional_headers} # This now directly uses the list of additional headers
-#     )
-#     target_precompile_headers(${target} PRIVATE ${all_headers})
-# endfunction()
-
 include_directories(
         ${COMMON_SRCS}
         ${COMMON_SRCS}/math
