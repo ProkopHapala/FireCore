@@ -48,6 +48,7 @@ header_strings = [
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){",
 #"void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){",
+# void sample_SplineConstr( double lmin, double lmax, double dx, int n, double* Eps, double* Es, double* Fs ){    
 #"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){",
 #"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
 #"void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){",
@@ -86,6 +87,16 @@ glob_bMMFF    = True
 # ====================================
 # ========= C functions
 # ====================================
+
+# void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
+lib.sample_SplineConstr.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_SplineConstr.restype   =  None
+def sample_SplineConstr( xs, Eps, x0=0.0, dx=1.0, Es=None, Fs=None):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_SplineConstr(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
 
 #  void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
 lib.sample_DistConstr.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 

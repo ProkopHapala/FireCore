@@ -206,7 +206,7 @@ void TestAppFireCoreVisual::loadGeom(){
     nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.aforce, 0, ff.bond2atom );
     builder.export_REQs( nff.REQs );
     if(bNonBonded){
-        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
+        if( !checkPairsSorted( nff.nmask, nff.pairMask ) )[[unlikely]]{
             printf( "ERROR: nff.pairMask is not sorted => exit \n" );
             exit(0);
         };
