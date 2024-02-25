@@ -354,7 +354,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     console.callback = [&](const char* str)->bool{
        lua_State* L=theLua;
         printf( "console.lua_callback: %s\n", str );
-        if (luaL_dostring(L, str) != LUA_OK) {
+        if (luaL_dostring(L, str) != LUA_OK)[[unlikely]]{
             // If there's an error, print it
             //fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
             printf( "Error: %s\n", lua_tostring(L, -1) );
@@ -707,7 +707,7 @@ int main(int argc, char *argv[]){
 
 #ifdef WITH_LUA
     initMyLua();
-    funcs["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] no such file %s => exit()\n", ss[0] ); exit(0); }; }};
+    funcs["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) )[[unlikely]]{ printf( "ERROR in funcs[-lua] no such file %s => exit()\n", ss[0] ); exit(0); }; }};
 #endif // WITH_LUA
     //char str[40];  sprintf(str,  );
 	//SDL_SetWindowTitle( app->child_windows[1]->window, " test_eFF " );

@@ -141,6 +141,19 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 
 // ========= Force-Field Component Sampling  
 
+void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
+    SplineConstr C( {0,1}, x0, dx, np, Eps );
+    Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};
+    Vec3d fs[2];
+    for(int i=0; i<n; i++ ){
+        ps[1]={xs[i],0.0,0.0};
+        fs[0]=Vec3dZero;
+        fs[1]=Vec3dZero;
+        Es[i] = C.apply( ps, fs );
+        Fs[i] = fs[0].x;
+    }
+}
+
 void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
     DistConstr C( {0,1}, {lmax,lmin}, {kmax,kmin}, flim  );
     Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};

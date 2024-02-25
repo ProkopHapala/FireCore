@@ -191,7 +191,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
     //bNonBonded = false;
     if(bNonBonded){
-        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
+        if( !checkPairsSorted( nff.nmask, nff.pairMask ) )[[unlikely]]{
             printf( "ERROR: nff.pairMask is not sorted => exit \n" );
             exit(0);
         };

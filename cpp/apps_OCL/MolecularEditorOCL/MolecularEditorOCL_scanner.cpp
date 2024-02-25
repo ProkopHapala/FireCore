@@ -519,7 +519,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     
     
     int err = clworld.relaxStepGPU( 500, 0.5 );
-    if(err!=CL_SUCCESS){
+    if(err!=CL_SUCCESS)[[unlikely]]{
         printf( "runtime error in clworld.relaxStepGPU %s \n", OCL_err_code(err) );
         exit(0);
     }

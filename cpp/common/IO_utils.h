@@ -117,7 +117,7 @@ inline char * fgetsNonComment(char * str, int num, FILE * stream, char commentCh
 
 inline int readMatrix( const char* fname, int nrow, int ncol, double* buff, bool bTranspose=0 ){
     FILE *file = fopen(fname, "r");
-    if ( file==0 ){
+    if ( file==0 )[[unlikely]]{
         printf( "ERROR in readMatrix(%s): no such file \n", fname );
         return -1;
     }

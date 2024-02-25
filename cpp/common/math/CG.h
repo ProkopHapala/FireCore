@@ -59,7 +59,7 @@ class CG{ public:
     inline void dotA(int n, const double * x, double * Ax=0 ){
         if(A){ VecN::mdot(n,n,A,x,Ax); }
         else {
-            if(!dotFunc){ printf( "ERROR in CG : dotFunc not defined !!! \n" ); exit(0); }
+            if(!dotFunc)[[unlikely]]{ printf( "ERROR in CG : dotFunc not defined !!! \n" ); exit(0); }
             dotFunc(n    ,x,Ax);
         }
     }

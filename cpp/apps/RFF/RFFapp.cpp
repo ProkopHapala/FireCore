@@ -321,7 +321,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     console.callback = [&](const char* str)->bool{
        lua_State* L=theLua;
         printf( "console.lua_callback: %s\n", str );
-        if (luaL_dostring(L, str) != LUA_OK) {
+        if (luaL_dostring(L, str) != LUA_OK) [[unlikely]]{
             // If there's an error, print it
             //fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
             printf( "Error: %s\n", lua_tostring(L, -1) );
@@ -537,7 +537,7 @@ void TestAppRARFF::visualize_cells( bool bDrawPoints ){
             int i0=ff.map.cellI0s[ic];
             int ni=ff.map.cellNs [ic];
             //printf( "ic %i i0 %i ni %i \n", ic, i0, ni );
-            if( (ni<0) || (i0<0) || ( (ni!=0) && (i0+ni>ff.map.nobjSize) ) ){ printf( "ERROR TestAppRARFF::visualize_cells() ic %i i0 %i ni %i ff.map.nobjSize=%i \n", ic, i0, ni, ff.map.nobjSize ); exit(0); }
+            if( (ni<0) || (i0<0) || ( (ni!=0) && (i0+ni>ff.map.nobjSize) ) )[[unlikely]]{ printf( "ERROR TestAppRARFF::visualize_cells() ic %i i0 %i ni %i ff.map.nobjSize=%i \n", ic, i0, ni, ff.map.nobjSize ); exit(0); }
             for(int j=i0; j<i0+ni;j++){
                 int io  = ff.map.cell2obj[j];
                 Vec3d p = ff.apos[io];
