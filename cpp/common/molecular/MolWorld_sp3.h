@@ -1670,8 +1670,8 @@ class MolWorld_sp3 : public SolverInterface { public:
                     if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
                     if(bGopt){
                         gopt_ifound++;
-                        sprintf(tmpstr,"# %i E %g |F| %g", gopt_ifound, Etot, sqrt(ffl.cvf.z) );
-                        printf( "run_omp().save %s niter=%i \n", tmpstr, niter_max );
+                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
+                        printf( "run_omp().save %s \n", tmpstr );
                         saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
                         go.startExploring();
                         bConverged=false;
