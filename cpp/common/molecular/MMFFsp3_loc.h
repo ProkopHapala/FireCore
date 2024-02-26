@@ -1184,6 +1184,13 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
 
     return cvf;
 }
+Vec3d move_Langevin( const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){
+    Vec3d cvf = Vec3dZero;
+    for(int i=0; i<nvecs; i++){
+        cvf.add( move_atom_Langevin( i, dt, Flim, gamma_damp, T ) );
+    }
+    return cvf;
+};
 
 
 // update atom positions using molecular dynamics (damped leap-frog)
