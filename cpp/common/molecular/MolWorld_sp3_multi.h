@@ -1484,7 +1484,8 @@ virtual char* getStatusString( char* s, int nmax ) override {
     return s;
 }
 
-virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
+virtual void MDloop( int nIter, double Ftol = -1 ) override {
+    if(Ftol<0)  Ftol = Ftol_default;
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
     //bMMFF=false;
 

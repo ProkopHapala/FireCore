@@ -38,7 +38,7 @@ struct GOpt{
     Constrains constrs;
 
     void startExploring(){
-        //printf( "GOpt::startExploring()\n" );
+        printf( "GOpt::startExploring()\n" );
         bExploring = true;
         istep=0;
         constrs.update_drives();
@@ -49,7 +49,7 @@ struct GOpt{
         istep++;
         if(bExploring){
             if(istep>=nExplore){ 
-                //printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
+                printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
                 bExploring=false; istep=0; return true; 
             }
         }else{
@@ -64,9 +64,18 @@ struct GOpt{
 
     void apply_kick( int n, Vec3d* pos=0, Vec3d* vel=0 ){
         //printf( "GOpt::apply_kick() n=%i |pos|=%g |vel=%g|\n", n, pos_kick, vel_kick );
+        Vec3d vcog = Vec3dZero;
         for(int i=0; i<n; i++){
             if(pos) pos[i].add( randf(-pos_kick,pos_kick), randf(-pos_kick,pos_kick), randf(-pos_kick,pos_kick) );
-            if(vel) vel[i].add( randf(-vel_kick,vel_kick), randf(-vel_kick,vel_kick), randf(-vel_kick,vel_kick) );
+            if(vel){
+                Vec3d dv = Vec3d{ randf(-vel_kick,vel_kick), randf(-vel_kick,vel_kick), randf(-vel_kick,vel_kick) };
+                vel[i].add( dv );
+                vcog  .add( dv );
+            }
+        }
+        vcog.mul( 1.0/n );
+        if(vel)for(int i=0; i<n; i++){
+            vel[i].sub( vcog );
         }
     }
 
