@@ -1169,8 +1169,14 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
 
     // ----- Langevin
     f.add_mul( v, -gamma_damp );  // check the untis  ... cdamp/dt = gamma
-    Vec3d rnd = {-6.,-6.,-6.};
-    for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
+    
+    // --- generate randomg force from normal distribution (i.e. gaussian white noise)
+    // -- this is too costly
+    //Vec3d rnd = {-6.,-6.,-6.};
+    //for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
+    // -- keep uniform distribution for now
+    Vec3d rnd = {randf(-1.0,1.0),randf(-1.0,1.0),randf(-1.0,1.0)};
+
     //if(i==0){ printf( "dt=%g[arb.]  dt=%g[fs]\n", dt, dt*10.180505710774743  ); }
     f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp/dt ) );
 

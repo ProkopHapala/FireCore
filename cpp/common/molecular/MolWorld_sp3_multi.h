@@ -1262,7 +1262,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         }
         #pragma omp for
         for( int isys=0; isys<nSystems; isys++ ){
-            gopts[isys].update();    
+            if(bGopt)gopts[isys].update();    
             //printf( "run_omp_ocl[itr=%i] isys=%i @cpu(%i/%i) \n", itr, isys, omp_get_thread_num(), omp_get_num_threads() );
             ffls[isys].cleanForce();
             ffls[isys].eval(false);
@@ -1296,11 +1296,10 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             int i0v = isys*ocl.nvecs;
             //if(bOcl)unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );  // APPLY non-covalent forces form GPU
             double F2=1.0;
-            if( bGopt && gopts[isys].bExploring ){
+            if( gopts[isys].bExploring ){
                 //printf( "run_omp_ocl() gopts[isys].bExploring=true \n", isys );
                 ffls[isys].Etot += gopts[isys].constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec );
                 ffls[isys].move_Langevin( opts[isys].dt_max, 10000.0, gopts[isys].gamma_damp, gopts[isys].T_target );
-
                 if(bToCOG){ Vec3d cog=average( ffls[isys].natoms, ffls[isys].apos );  move( ffls[isys].natoms, ffls[isys].apos, cog*-1.0 ); }
             }
             else{

@@ -1522,10 +1522,8 @@ class MolWorld_sp3 : public SolverInterface { public:
             //#pragma omp barrier
             #pragma omp single
             {E=0;F2=0;ff=0;vv=0;vf=0;
-                if(bGopt){
-                    go.update();
-                    if(go.bExploring) bConverged = false;
-                }
+                if( bGopt         ) go.update();
+                if( go.bExploring ) bConverged = false;
             }
             //------ eval forces
             //#pragma omp barrier
