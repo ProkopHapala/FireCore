@@ -50,8 +50,15 @@ nsys=50
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
 #./$name -m 10 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 1000 -gopt 1000,1000 0.25,1.0
-./$name -m 30 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 1000 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
-#./$name -m 10 -x common_resources/nHexadecan_dicarboxylic  -iParalel 1 -perframe 100 -gopt 1000,1000 0.0,0.0 -T 10000 0.01
+#./$name -m 30 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 1000 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
+
+#./$name -m 60 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 100 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
+./$name -m 120 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 2 -perframe 100 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
+#./$name -m 60 -x common_resources/nHexadecan_dicarboxylic  -iParalel 1 -perframe 100 -gopt 1000,1000 0.0,0.0 -T 10000 0.01
+
+#./$name -m 60 -x common_resources/nHexadecan_dicarboxylic -iParalel 1 -perframe 100 -T 1000 0.02
+#./$name -m 120 -x common_resources/nHexadecan_dicarboxylic -iParalel 2 -perframe 100 -T 1000 0.02
+
 
 # ====== Polymers
 
