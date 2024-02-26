@@ -2008,65 +2008,54 @@ MolecularDatabase* database;
 void addSnapshot(){
 
     int nMembers = database->getNMembers();
-    database->setDescriptors(&params, &nbmol);
 
-
+        database->setDescriptors(&params, &nbmol);
 
 srand(time(0));
 
-    double angle = randf() * 360;
-    double move_x = randf() * 0.5;
-    double move_y = randf() * 0.5;
-    double move_z = randf() * 0.5;
-    Vec3d axis = {randf(), randf(), randf()};
-    Vec3d p0 = {randf()*5-2.5, randf()*5-2.5, randf()*5-2.5};
-    for (int i = 0; i < nbmol.natoms; i++)
-    {
+        double angle = randf() * 360;
+        Vec3d axis = {randf(), randf(), randf()};
+        Vec3d p0 = {randf()*5-2.5, randf()*5-2.5, randf()*5-2.5};
+        
+
+
+    for (int i = 0; i < nbmol.natoms/3; i++)
+    {    
+        double move_x = 0.25*randf();
+        double move_y = 0.25*randf();
+        double move_z = 0.25*randf();
         nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
         nbmol.apos[i].add({move_x, move_y, move_z});    
     }
 
-
-
     
 
-    for (int i = 0; i<nMembers; i++)
-    {
-        printf("%d <-> %d: %lf\n", nMembers, i, database->compareAtoms(&nbmol, i));
-    }
-    
-    database->testHash(&nbmol);    
-    
-    std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
-    const char* cstr1 = trjName1.c_str();  
-    FILE* file1=0;
-    file1=fopen( cstr1, "w" );
-    params.writeXYZ(file1, &nbmol, "#comment");
-    fclose(file1);
-    // for (int i = 0; i < nbmol.natoms; i++)
-    // {
-    //     nbmol.apos[i].rotate(-2 * 3.14159 / 360 * 20, Vec3d{0, 0, 1}, Vec3d{0, 0, 0});
-    // }
-    //params.writeXYZ(file2, &nbmol, "#comment");
-    
-    //fclose(file2);
-    //if(nMembers>0) printf("database->compareDescriptors(nMembers-1, 0): %f\n", database->compareDescriptors(nMembers, 0));
+    // std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
+    // const char* cstr1 = trjName1.c_str();  
+    // FILE* file1=0;
+    // file1=fopen( cstr1, "w" );
+    // params.writeXYZ(file1, &nbmol, "#comment");
+    // fclose(file1);
 
+    database->testHash(&nbmol);   
 
-    
-    // if(nMembers >=1){
-    //     if(database->compareDescriptors(nMembers, 0)){
-    //         printf( "MolWorld_sp3_simple::addSnapshot() WARNING: duplicate descriptor \n" );
-    //     }
-    //     else{
-    //         printf( "MolWorld_sp3_simple::addSnapshot() new descriptor \n" );
+    //printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");
+    // for (int i = 0; i < nMembers; i++) {
+    //     if(i == nMembers-1){
+    //         //double compareAtoms1 = database->compareAtoms(nMembers, i);
+    //         //double compareDescriptors = database->compareDescriptors(nMembers, i);
+    //         //double compareAtoms2 = database->compareAtoms(i, nMembers);
+    //         //printf("%-5d %-5d %-20lf %-20lf\n", i, nMembers, compareAtoms1, compareDescriptors);
     //     }
     // }
-    //nbmol.natoms = 6;
+    
+     
+
+
 }
 
 void printDatabase(){
-    database->print();
+    //database->print();
 }
 
 
