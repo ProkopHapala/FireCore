@@ -10,9 +10,10 @@
         printf( "W->ffl.colDamp(n=%i,bond=%g,nonB=%g,medium=%g,R12(%g,%g)\n", W->ffl.colDamp.nstep, W->ffl.colDamp.bond, W->ffl.colDamp.nonB, W->ffl.colDamp.medium, W->ffl.colDamp.dRcut1, W->ffl.colDamp.dRcut2 );
     }};// collision damping parameters
 
-    funcs["-T"]={2,[&](const char** ss){ sscanf( ss[0], "%lf", &W->T_target ); sscanf( ss[1], "%lf",&W->gamma_damp ); W->bThermalSampling=true; W->bToCOG=true; }}; // run at non-zero temperature ( i.e. using Langevin dynamics termostat )
+    funcs["-T"]={2,[&](const char** ss){ sscanf( ss[0], "%lf", &W->go.T_target ); sscanf( ss[1], "%lf",&W->go.gamma_damp ); W->go.bExploring=true; W->bToCOG=true; }}; // run at non-zero temperature ( i.e. using Langevin dynamics termostat )
 
     funcs["-gopt"]={2,[&](const char** ss){ sscanf( ss[0], "%i,%i", &W->go.nExplore, &W->go.nRelax ); sscanf( ss[1], "%lf,%lf", &W->go.pos_kick, &W->go.vel_kick ); W->bGopt=true; W->bToCOG=true;  }}; // global optimization
+    funcs["-drive"]={1,[&](const char** ss){ W->go.constrs.loadBonds(ss[0]); }}; // test
 
 	funcs["-s"]={1,[&](const char** ss){ W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz
@@ -34,14 +35,6 @@
         sscanf(ss[0],"%i,%i", &W->latscan_n.x, &W->latscan_n.y );
         sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z ); 
         printf( "W->latscan_n(%i,%i) latscan_dlvec ", W->latscan_n.x, W->latscan_n.y ); printMat(*(W->latscan_dlvec)); 
-    } }; // test
-
-    funcs["-prelat"]={2,[&](const char** ss){ 
-        Mat3d* m=&prelat_dlvec;
-        printf( "ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] );
-        sscanf(ss[0],"%i,%i", &prelat_nstep, &prelat_nItrMax );
-        sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z );
-        printf( "prelat_dlvec(%i,%i) latscan_dlvec ", prelat_nstep, prelat_nItrMax  ); printMat(prelat_dlvec);
     } }; // test
 
     // set verbosity

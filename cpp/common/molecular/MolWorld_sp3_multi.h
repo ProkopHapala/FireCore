@@ -151,6 +151,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     DynamicOpt*   opts=0;
     MMFFsp3_loc*  ffls=0;
 
+    GOpt*         gopts=0;
+
     MMFFf4     ff4;
 
     Quat4f* afm_ps=0;
@@ -200,6 +202,8 @@ void realloc( int nSystems_ ){
 void initMultiCPU(int nSys){
     _realloc( opts, nSys );
     _realloc( ffls, nSys );
+    _realloc( gopts,nSys );
+
     double dtopt=ff.optimalTimeStep();
     for(int isys=0; isys<nSys; isys++){
         ffls[isys].clone( ffl, true, true );
@@ -213,6 +217,11 @@ void initMultiCPU(int nSys){
         ffls[isys].vapos=(Vec3d*)opts[isys].vel;    
         opts[isys].initOpt( dtopt );
         opts[isys].cleanVel();
+        gopts[isys].copy( go );
+        gopts[isys].startExploring();
+        gopts[isys].print();
+        gopts[isys].constrs.printSizes();  // Debug
+        gopts[isys].constrs.printDrives( );
     }
 }
 
@@ -793,8 +802,13 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     
 }
 
-
-
+int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
+    char str_tmp[1024];
+    MMFFsp3_loc& ffl = ffls[isys];
+    if(bPBC){ sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment ); }
+    else    { sprintf( str_tmp, "%s", comment ); }
+    return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , ffl.atypes, ffl.apos, str_tmp, ffl.REQs, mode, true, nPBC, ffl.lvec ); 
+}
 
 virtual void setSystemReplica (int i){ 
     int err=0;
@@ -1232,11 +1246,12 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
     int err=0;
     T00 = getCPUticks();
     //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
-    #pragma omp parallel shared(niter,itr,F2max,T0,T1,T2,err)
+    #pragma omp parallel shared(niter,itr,F2max,T0,T1,T2,err,gopt_ifound)
     while(itr<niter){
         if(itr<niter){
         #pragma omp single
-        {if(bOcl){
+        {
+        if(bOcl){
             T0 = getCPUticks();
             ocl.upload( ocl.ibuff_atoms, atoms  );
             if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
@@ -1247,6 +1262,7 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         }
         #pragma omp for
         for( int isys=0; isys<nSystems; isys++ ){
+            gopts[isys].update();    
             //printf( "run_omp_ocl[itr=%i] isys=%i @cpu(%i/%i) \n", itr, isys, omp_get_thread_num(), omp_get_num_threads() );
             ffls[isys].cleanForce();
             ffls[isys].eval(false);
@@ -1259,11 +1275,12 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             if( (ipicked>=0) && (isys==iSystemCur) ){ 
                 pullAtom( ipicked, ffls[isys].apos, ffls[isys].fapos );  
             };
-            if(bConstrains){
+            if(bConstrains){ // ToDo: this apply the same constrains to all replicas, we may want to apply different constrains to different replicas
                 //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
                 ffls[isys].Etot += constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec );
             }
             //printf("ffls[%i].Etot(itr=%i) = %g \n", isys, itr, ffls[isys].Etot );
+            //if( bGopt && gopts[isys].bExploring ){  ffls[isys].Etot += gopts[isys].constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec ); }
         }        
         #pragma omp barrier
         #pragma omp single
@@ -1278,7 +1295,18 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         for( int isys=0; isys<nSystems; isys++ ){
             int i0v = isys*ocl.nvecs;
             //if(bOcl)unpack_add( ffls[isys].natoms, ffls[isys].fapos, aforces+i0v );  // APPLY non-covalent forces form GPU
-            double F2 = opts[isys].move_FIRE();
+            double F2=1.0;
+            if( bGopt && gopts[isys].bExploring ){
+                //printf( "run_omp_ocl() gopts[isys].bExploring=true \n", isys );
+                ffls[isys].Etot += gopts[isys].constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec );
+                ffls[isys].move_Langevin( opts[isys].dt_max, 10000.0, gopts[isys].gamma_damp, gopts[isys].T_target );
+
+                if(bToCOG){ Vec3d cog=average( ffls[isys].natoms, ffls[isys].apos );  move( ffls[isys].natoms, ffls[isys].apos, cog*-1.0 ); }
+            }
+            else{
+                F2 = opts[isys].move_FIRE();
+            }
+            //double F2 = opts[isys].move_FIRE();
             // if(isys==iSystemCur){
             //     double cv;
             //     double cf  = opts[isys].renorm_vf * opts[isys].damp_func_FIRE( opts[isys].cos_vf, cv );
@@ -1299,7 +1327,20 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
             //         if(verbosity>0)printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
             //     }
             // }
-            if(F2max<F2conv){ 
+
+            if( bGopt ){
+                for(int isys=0; isys<nSystems; isys++){
+                    if( ( opts[isys].ff < F2conv )  && ( !gopts[isys].bExploring ) ){
+                        gopt_ifound++;
+                        sprintf(tmpstr,"# %i sys: %i E: %g |F|: %g istep: %i", gopt_ifound, isys, ffls[isys].Etot, sqrt(ffl.cvf.z), gopts[isys].istep );
+                        printf( "run_omp_ocl(GOopt).save %s \n", tmpstr );
+                        saveSysXYZ( isys, "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                        gopts[isys].startExploring();
+                        gopts[isys].apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
+                        if( gopt_ifound > gopt_nfoundMax ){ printf( "gopt_ifound(%i)>gopt_nfoundMax(%i) => exit \n", gopt_ifound, gopt_nfoundMax ); exit(0); };
+                    }
+                }
+            }else if(F2max<F2conv){ 
                 niter=0; 
                 T1 = (getCPUticks()-T00)*tick2second;
                 //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g[ms] %g[us/step] bGridFF=%i \n", nSystems, iParalel, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
