@@ -50,10 +50,10 @@
     funcs["-iMO"       ]={1,[&](const char** ss){ sscanf( ss[0], "%i",  &app->which_MO ); }};
     funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
 
-    funcs["-Ftol"]={1,[&](const char** ss){ sscanf(ss[0],"%lf", &W->Ftol_default ); printf( "Ftol_default=%g\n", W->Ftol_default ); }};  // number of frames
-    funcs["-seed"]={1,[&](const char** ss){ int seed; sscanf(ss[0],"%i", &seed ); srand(seed); }};  // number of frames
-    funcs["-stuck"]={1,[&](const char** ss){ sscanf(ss[0],"%i,%lf", &W->nStuckMax, &W->RStuck );  W->bCheckStuck=true;  }};  // number of frames
-
+    funcs["-Ftol"]={1,[&](const char** ss){ sscanf(ss[0],"%lf", &W->Ftol_default ); printf( "Ftol_default=%g\n", W->Ftol_default ); }};  
+    funcs["-seed"]={1,[&](const char** ss){ int seed; sscanf(ss[0],"%i", &seed ); srand(seed); }}; 
+    funcs["-stuck"]={1,[&](const char** ss){ sscanf(ss[0],"%i,%lf", &W->nStuckMax, &W->RStuck );  W->bCheckStuck=true;  }};  
+    funcs["-zspring"]={1,[&](const char** ss){ sscanf(ss[0],"%lf,%lf,%lf", &W->ConstrZ_xmin, &W->ConstrZ_l, &W->ConstrZ_k ); W->ConstrZ_l-=W->ConstrZ_xmin; W->bConstrZ=true;   printf( "!!!!!! ARG: ConstrZ_xmin %g ConstrZ_l %g ConstrZ_k %g\n", W->ConstrZ_xmin, W->ConstrZ_l, W->ConstrZ_k ); }};  
 
 #endif // MolGUIapp_Lua
 

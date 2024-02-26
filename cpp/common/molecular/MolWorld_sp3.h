@@ -203,6 +203,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     Vec3d* picked_lvec = 0;
     Vec3d pick_hray, pick_ray0;
 
+    bool   bConstrZ=false;
+    double ConstrZ_xmin=0.0;
+    double ConstrZ_l=0.0;
+    double ConstrZ_k=1.0;
+
     Mat3d* dlvec = 0;
 
     // lattice scan
@@ -1589,6 +1594,10 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if(ipicked==ia)[[unlikely]]{ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                     ffl.fapos[ia].add( f );
+                }
+
+                if(bConstrZ){
+                    springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
                 }
 
             }

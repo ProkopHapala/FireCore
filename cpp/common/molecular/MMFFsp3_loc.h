@@ -1299,6 +1299,7 @@ Vec3d shiftBack(bool bPBC=false){
         cog.add_lincomb( g.x,g.y,g.z, lvec.a, lvec.b, lvec.c );
     }
     for(int i=0; i<natoms; i++){ apos[i].sub( cog ); }
+    return cog;
 }
 
 // make list of back-neighbors
