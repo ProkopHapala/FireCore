@@ -102,6 +102,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 	MM::Builder  builder;
 	SMILESparser smiles;
 
+    Vec3d* apos_bak=0;
+
 	// Force-Fields & Dynamics
 	MMFFsp3      ff;
     MMFFsp3_loc  ffl;
@@ -123,6 +125,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool   bGopt =false;
     int gopt_ifound=0;
     int gopt_nfoundMax=1000000;
+
+    bool bCheckStuck=false;
+    double RStuck=0.2;
+    int nStuckMax=100;
+    int nStuck=0;
 
     GridShape MOgrid;
 
@@ -150,6 +157,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 	double  maxFcog = 1e-9;
 	double  maxTg   = 1e-1;
 	double  Kmorse = -1.0;
+    double  Ftol_default = 1e-4;
 
 	// force-eval-switchefs
     int  imethod=0;
@@ -260,6 +268,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         builder.randomFragmentCollors();
         if(bMMFF){     
             makeFFs();
+            if(bCheckStuck)apos_bak = new Vec3d[ffl.natoms];
         }
         if(!bUFF){ builder.setup_atom_permut( true ); }
         if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
@@ -1089,6 +1098,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         ffl.dealloc();
         ff.dealloc();
         //ff4.dealloc();
+        _dealloc( apos_bak );
         // --- nbmol
         nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
         nbmol.apos=0;  
@@ -1189,9 +1199,39 @@ class MolWorld_sp3 : public SolverInterface { public:
         go.nExplore = 0;
     }
 
+    double getMostDisplacedAtom( Vec3d* ps, int& imax ){
+        imax=-1;
+        double R2max =  0;
+        for(int ia=0; ia<ffl.natoms; ia++){
+            Vec3d d=ffl.apos[ia]-ps[ia];
+            double r2 = d.norm2();
+            if(r2>R2max){ R2max=r2; imax=ia; }
+        }
+        return R2max;
+    }
+
+    bool checkStuck( double R ){
+        double R2 = R*R;
+        int imax  = -1;
+        double R2max = getMostDisplacedAtom( apos_bak, imax );
+        if(R2max>R2)[[unlikely]]{ 
+            for(int ia=0; ia<ffl.natoms; ia++){ apos_bak[ia]=ffl.apos[ia]; }
+            nStuck=0;
+            return true;
+        }
+        if( nStuck>nStuckMax )[[unlikely]]{
+            printf( "MolWorld_sp3::checkStuck() nStuck(%i)>nStuckMax(%i) => exit(0) \n", nStuck, nStuckMax );
+            //saveXYZ( "stuck.xyz", ffl.natoms, ffl.apos, ffl.atypes );
+            saveXYZ( "stuck.xyz", tmpstr, false, "a", nPBC_save );
+            exit(0);
+        }
+        nStuck++;
+        return false;
+    }
+
     __attribute__((hot))  
     double eval( ){
-        if(verbosity>0) printf( "#### MolWorld_sp3::eval()\n");
+        if(verbosity>0)[[unlikely]]{ printf( "#### MolWorld_sp3::eval()\n"); }
         //ffl.doBonds       = false;
         //ffl.doPiPiI       = false;
         //ffl.doPiSigma     = false;
@@ -1238,8 +1278,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
         //ffl.printDebug(  false, false );
         //exit(0);
-        if(verbosity>0) printf( "#### MolWorld_sp3::eval() DONE\n\n");
-
+        if(verbosity>0)[[unlikely]]{ printf( "#### MolWorld_sp3::eval() DONE\n\n"); }
         return E;
     }
 
@@ -1289,15 +1328,15 @@ class MolWorld_sp3 : public SolverInterface { public:
             opt_log.set(itr, opt.cos_vf, opt.f_len, opt.v_len, opt.dt, opt.damping );
             if(outE){ outE[itr]=Etot; }
             if(outF){ outF[itr]=F2;   }
-            if( (trj_fname) && (itr%savePerNsteps==0) ){
+            if( (trj_fname) && (itr%savePerNsteps==0) )[[unlikely]]{
                 sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
                 saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
             }
-            if(verbosity>1){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
-            if(F2<F2conv){
+            if(verbosity>1)[[unlikely]]{ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
+            if(F2<F2conv)[[unlikely]]{
                 bConverged=true;
-                if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
-                if( trj_fname ){
+                if(verbosity>0)[[unlikely]]{ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+                if( trj_fname )[[unlikely]]{
                     sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
                     saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
                 }
@@ -1312,7 +1351,8 @@ class MolWorld_sp3 : public SolverInterface { public:
         Vec3d f = getForceSpringRay( apos[ia], pick_hray, pick_ray0, K ); fapos[ia].add( f );
     }
 
-    virtual void MDloop( int nIter, double Ftol = 1e-6 ){
+    virtual void MDloop( int nIter, double Ftol=-1 ){
+        if(Ftol<0)Ftol=Ftol_default;
         //printf( "MolWorld_sp3::MDloop() \n" );
         //ff.doPiPiI  =false;
         //ff.doPiPiT  =false;
@@ -1349,20 +1389,20 @@ class MolWorld_sp3 : public SolverInterface { public:
         */
         
         //verbosity = 1;
-        //ffl.run( nIter, 0.05, 1e-6, 1000.0 );
-        //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
+        //ffl.run( nIter, 0.05, Ftol, 1000.0 );
+        //ffl.run_omp( nIter, 0.05, Ftol, 1000.0 );
 
-        //run_no_omp( nIter, 0.05, 1e-6, 1000.0 );
+        //run_no_omp( nIter, 0.05, Ftol, 1000.0 );
 
-        //run_omp( 1, 0.05, 1e-6, 1000.0 );
-        run_omp( nIter, 0.05, 1e-6, 1000.0 );
+        //run_omp( 1, 0.05, Ftol, 1000.0 );
+        run_omp( nIter, 0.05, Ftol, 1000.0 );
         
-        //run_omp( 100, 0.05, 1e-6, 1000.0 );
-        //run_omp( 1, opt.dt, 1e-6, 1000.0 );
-        //run_omp( 2, opt.dt, 1e-6, 1000.0 );
-        //run_omp( 100, opt.dt, 1e-6, 1000.0 );
-        //run_omp( 500, 0.05, 1e-6, 1000.0 );
-        //run_omp( 500, 0.05, 1e-6, 1000.0 );
+        //run_omp( 100, 0.05, Ftol, 1000.0 );
+        //run_omp( 1, opt.dt, Ftol, 1000.0 );
+        //run_omp( 2, opt.dt, Ftol, 1000.0 );
+        //run_omp( 100, opt.dt, Ftol, 1000.0 );
+        //run_omp( 500, 0.05, Ftol, 1000.0 );
+        //run_omp( 500, 0.05, Ftol, 1000.0 );
         
         //run( nIter );
         
@@ -1372,7 +1412,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     __attribute__((hot))  
     int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
-        if(verbosity>1)printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
+        if(verbosity>1)[[unlikely]]{ printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF ); }
         double F2conv=Fconv*Fconv;
         long T0 = getCPUticks();
         //bool bFIRE = false;
@@ -1388,7 +1428,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         
         
         //if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter_max, ffl.bCollisionDamping, ffl.bCollisionDampingNonBond, dt, 1-cdamp, ffl.col_damp*dt, ffl.col_damp_NB*dt );
-        if(verbosity>1)printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.cdampB*dt, ffl.colDamp.cdampAng*dt, ffl.colDamp.cdampNB*dt );
+        if(verbosity>1)[[unlikely]]{printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.cdampB*dt, ffl.colDamp.cdampAng*dt, ffl.colDamp.cdampNB*dt ); }
         for(itr=0; itr<niter; itr++){
             //double ff=0,vv=0,vf=0;
             if(bGopt){
@@ -1485,8 +1525,8 @@ class MolWorld_sp3 : public SolverInterface { public:
                 //niter=0; 
                 bConverged=true;
                 double t = (getCPUticks() - T0)*tick2second;
-                if(verbosity>1)printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
-                if( bGopt && !go.bExploring ){
+                if(verbosity>1)[[unlikely]]{printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr ); }
+                if( bGopt && !go.bExploring )[[unlikely]]{
                     gopt_ifound++;
                     sprintf(tmpstr,"# %i E %g |F| %g istep=%i ", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
                     printf( "run_no_omp::save() %s \n", tmpstr );
@@ -1514,7 +1554,11 @@ class MolWorld_sp3 : public SolverInterface { public:
         double ff=0,vv=0,vf=0;
         int itr=0,niter=niter_max;
         bConverged = false;
-        if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
+        if(bToCOG && (!bGridFF) ){ 
+            Vec3d cog=average( ffl.natoms, ffl.apos );  
+            move( ffl.natoms, ffl.apos, cog*-1.0 ); 
+        }
+        if(bCheckStuck){ checkStuck( RStuck ); }
         //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
         #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bConstrains,bConverged)
         while(itr<niter){
@@ -1616,6 +1660,8 @@ class MolWorld_sp3 : public SolverInterface { public:
                     bConverged = true;
                     double t = (getCPUticks() - T0)*tick2second;
                     if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
+
+                    printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
                     if(bGopt  && (!go.bExploring) ){
                         gopt_ifound++;
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
@@ -1624,6 +1670,11 @@ class MolWorld_sp3 : public SolverInterface { public:
                         go.startExploring();
                         go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
                         bConverged=false;
+
+                        // if(bToCOG && bGridFF ){ 
+                        //     Vec3d cog=average( ffl.natoms, ffl.apos );   cog.z=0;  
+                        //     move( ffl.natoms, ffl.apos, cog*-1.0 ); 
+                        // }
                     }
                 }
                 //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
