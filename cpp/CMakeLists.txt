@@ -1,17 +1,33 @@
-cmake_minimum_required ( VERSION 2.8 )
+#cmake_minimum_required ( VERSION 2.8 )
+cmake_minimum_required(VERSION 3.10)
 
 project ( SimpleSimulationEngine )
 
-option(WITH_OPENCL "build with OpenCL GPU acceleration? (can accelare >100x some forcefields and grids  )" OFF)
-option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                                    OFF)
-option(RELEASE     "build optimized release (-O3 -Ofast) rather than debug? (-g -Og)"               OFF)
-option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and leaks?"              OFF)
-option(WITH_OMP    "use OpenMP paralelization"                                                      OFF)
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_OPENCL=${WITH_OPENCL} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DWITH_OMP=${WITH_OMP}" )
+option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                           OFF)
+option(WITH_LUA    "build with Lua 5.2 for scripting inside interactive GUI"               OFF)
+option(WITH_OPENCL "build with OpenCL GPU acceleration? up to 100x speedup"                OFF)
+option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"                    OFF)
+option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
+option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
+option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
+
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
 
 # ==============================
 # ==== FLAGS
 # ==============================
+
+if (WITH_AVX)
+    add_definitions(-DWITH_AVX)
+endif()
+
+if(WITH_LUA)
+    add_definitions(-DWITH_LUA)
+    find_package(Lua 5.2 REQUIRED)
+    # Add more Lua-specific setup here, e.g., including directories, linking libraries
+else()
+    set(LUA_LIBRARIES "")
+endif()
 
 if(RELEASE)
     set(CMAKE_BUILD_TYPE Release)
@@ -26,11 +42,12 @@ endif()
 message ( "CMAKE_BUILD_TYPE "   ${CMAKE_BUILD_TYPE} )
 if (  CMAKE_BUILD_TYPE MATCHES Debug )
     if ( WITH_ASAN )
-        SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer")
+        SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native -fsanitize=address -fno-omit-frame-pointer")
         #SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer -static-libasan") # static-asan does not work see https://github.com/google/sanitizers/issues/796
     else()
         #SET( AXULIARY_COMPILE_FLAGS "-Wall -g -Og")
-        SET( AXULIARY_COMPILE_FLAGS "-g -Og")
+        ### flags for debug
+        SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native")
     endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
     message("DEBUG BUILD FFLAGS : " )
@@ -38,6 +55,7 @@ else()
     #SET( AXULIARY_COMPILE_FLAGS "-w -O3 -fPIC ")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
+    ### flags for optimize
     SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native -fopt-info-vec-all")
 endif()
@@ -49,11 +67,29 @@ if ( WITH_OMP )
     SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fopenmp" )
 endif()
 
+### flags always there
 SET( IGNORE_WARRNING_FLAGS "-Wno-int-to-pointer-cast -Wno-switch -Wno-reorder -Wno-deprecated -Wno-maybe-uninitialized -Wno-char-subscripts -Wno-write-strings -Wno-format -Wno-parentheses -Wno-unused-but-set-variable  -Wno-narrowing -Wno-unused-result  -Wno-sign-compare -Wno-strict-aliasing -Wno-unused-variable -Wno-unused-value -Wno-comment -Wno-misleading-indentation " )
 SET( WARRNING_TO_ERROR     "-Werror=return-type -Werror=init-self -Werror=uninitialized -Werror=implicit-fallthrough -Werror=tautological-compare -Werror=delete-non-virtual-dtor")
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
 message("RELEASE BUILD FFLAGS : " )
 message ( ${CMAKE_CXX_FLAGS} )
+
+### this is for compile_commands.json   (it should help various IDEs and other tool to understand the project)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ==============================
+# ==== Functions
+# ==============================
+
+# Attempt to find ccache
+find_program(CCACHE_FOUND ccache)
+if(CCACHE_FOUND)
+    message(STATUS "Found ccache: ${CCACHE_FOUND}")
+    # Set ccache as the compiler launcher if found
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_FOUND}")
+else()
+    message(STATUS "ccache not found, compilation will proceed without it")
+endif()
 
 # ==============================
 # ==== DIRS
@@ -66,6 +102,26 @@ SET( COMMON_SRCS      "${MY_SRC_DIR}/common"     )
 SET( COMMON_SDL_SRCS  "${MY_SRC_DIR}/common_SDL" )
 SET( COMMON_RESOURCES "${MY_SRC_DIR}/common_resources"       )
 SET( COMMON_SHADERS   "${MY_SRC_DIR}/common_resources/shaders" )
+
+function(setup_precompiled_headers target)
+    set(additional_headers ${ARGN}) # ARGN holds all additional arguments passed to the function
+    set(all_headers
+        <vector>
+        <string>
+        <unordered_map>
+        <unordered_set>
+        "${COMMON_SRCS}/testUtils.h"
+        "${COMMON_SRCS}/macroUtils.h"
+        "${COMMON_SRCS}/IO_utils.h"
+        "${COMMON_SRCS}/math/fastmath.h"
+        "${COMMON_SRCS}/math/Vec2.h"
+        "${COMMON_SRCS}/math/Vec3.h"
+        "${COMMON_SRCS}/math/quaternion.h"
+        "${COMMON_SRCS}/math/Mat3.h"
+        ${additional_headers} # This now directly uses the list of additional headers
+    )
+    target_precompile_headers(${target} PRIVATE ${all_headers})
+endfunction()
 
 include_directories(
         ${COMMON_SRCS}
@@ -95,6 +151,7 @@ add_subdirectory( ${MY_SRC_DIR}/libs    )
 
 if ( WITH_OPENCL )
     add_subdirectory( ${MY_SRC_DIR}/libs_OCL )
+    find_package( OpenCL REQUIRED )
 endif()
 
 # ====== SDL@OpenGL

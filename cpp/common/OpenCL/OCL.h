@@ -86,7 +86,8 @@ class OCLBuffer{public:
     inline int fromGPU ( cl_command_queue& commands,       void* cpu_data, int n_=-1, int i0=0 ){ 
         if(img_dims==0){
             if(n_<0)n_=n; 
-            printf( "fromGPU() nbutes=%i n_ %i i0 %i typesize %li p_gpu=%li cpu_data=%li \n", n_*typesize,  n_, i0, typesize, (long)p_gpu, (long)cpu_data );
+            //printf( "fromGPU() nbutes=%i n_ %i i0 %i typesize %li p_gpu=%li cpu_data=%li \n", n_*typesize,  n_, i0, typesize, (long)p_gpu, (long)cpu_data ); // DEBUG
+            //for(int i=0;i<n_*typesize;i++){ ((char*)cpu_data)[i]=0; } // DEBUG
             int iret = clEnqueueReadBuffer( commands, p_gpu, CL_TRUE, i0*typesize, n_*typesize, cpu_data, 0, NULL, NULL ); 
             //OCL_checkError(iret,"fromGPU()");
             return iret;
@@ -572,17 +573,24 @@ class OCLsystem{ public:
     }
 
     void release_OCL( cl_program program=0 ){
+        printf( "OCL_DEF::release_OCL() --- START \n" );
         if(program==0) program=this->program;
-        clReleaseProgram(program);
-        for(size_t i=0; i<kernels.size(); i++){ clReleaseKernel(kernels[i]);       }
+        printf( "OCL_DEF::release_OCL() kernels \n" );
+        for(size_t i=0; i<kernels.size(); i++){ clReleaseKernel   (kernels[i]      ); }
+        printf( "OCL_DEF::release_OCL() buffers \n" );
         for(size_t i=0; i<buffers.size(); i++){ clReleaseMemObject(buffers[i].p_gpu); }
+        printf( "OCL_DEF::release_OCL() program \n" );
+        clReleaseProgram(program);   
+        printf( "OCL_DEF::release_OCL() commands \n" );
         //clReleaseKernel(kernel);
         clReleaseCommandQueue(commands);
+        printf( "OCL_DEF::release_OCL() context \n" );
         clReleaseContext(context);
+        printf( "OCL_DEF::release_OCL() --- DONE \n" );
     }
     ~OCLsystem(){ 
         release_OCL();
-     }
+    }
 
     void printBuffers(){
         printf("OCLsystem::printBuffers()\n");

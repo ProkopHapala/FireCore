@@ -17,7 +17,6 @@ void init(){
     fcntl(fd, F_SETFL, flags);
 }
 
-
 class Interpreter{ public:
     // https://stackoverflow.com/questions/61969316/is-it-possible-to-put-lambda-expressions-into-a-map-or-list-in-c
     // https://en.cppreference.com/w/cpp/utility/any

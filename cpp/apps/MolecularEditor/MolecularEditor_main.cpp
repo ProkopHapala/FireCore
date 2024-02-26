@@ -1,5 +1,6 @@
 
-int verbosity = 0;
+//int verbosity = 0;
+#include <globals.h>
 
 #include <stdlib.h>
 #include <stdio.h>

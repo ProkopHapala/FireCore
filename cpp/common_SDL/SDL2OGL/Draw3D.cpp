@@ -1148,6 +1148,37 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         }
     }
 
+    void drawScalarGridLines(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b, const Vec3d& up, const double* data, double sc, Vec2d vclamp ){
+        //printf( " debug_draw_GridFF \n" );
+        double z0  = 1.5;
+        double dz0 = 0.1;
+        for(int iy=1;iy<ns.y;iy++){
+            glBegin( GL_LINE_STRIP );
+            for(int ix=0;ix<ns.x;ix++){
+                Vec3d p;
+                int i = iy*ns.x + ix;
+                double val = data[i];
+                //if( (val<vclamp.x) || (val>vclamp.y) ) continue;
+                val = _clamp( val, vclamp.x, vclamp.y );
+                val*=sc;
+                p = p0 + a*ix + b*iy + up*val;
+                glVertex3f(p.x,p.y,p.z);
+            }
+            glEnd();
+        }
+        for(int ix=0;ix<ns.x;ix++){
+            glBegin( GL_LINE_STRIP );
+            for(int iy=1;iy<ns.y;iy++){
+                Vec3d p;
+                int i = iy*ns.x + ix;
+                double val = _clamp( data[i], vclamp.x, vclamp.y ) *sc;
+                p = p0 + a*ix + b*iy + up*val;
+                glVertex3f(p.x,p.y,p.z);
+            }
+            glEnd();
+        }
+    }
+
     void drawScalarGrid(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b,const float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
         //printf( " debug_draw_GridFF \n" );
         double z0  = 1.5;
@@ -1341,8 +1372,8 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         glShadeModel ( GL_FLAT       );
         glPushMatrix();
             glTranslatef( pos.x, pos.y, pos.z );
-            Draw::billboardCamProj( textSize );
-            Draw::drawText( str, fontTex, 1.0, iend );
+            Draw::billboardCamProj( );
+            Draw::drawText( str, fontTex, textSize, iend );
         glPopMatrix();
 	}
     void drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3f& up, int fontTex, float textSize, int iend){
@@ -1352,8 +1383,8 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         glShadeModel ( GL_FLAT       );
         glPushMatrix();
             glTranslatef( pos.x, pos.y, pos.z );
-            Draw::billboardCamProj( textSize );
-            Draw::drawText( str, fontTex, 1.0, iend );
+            Draw::billboardCamProj();
+            Draw::drawText( str, fontTex, textSize, iend );
         glPopMatrix();
 	}
 
@@ -1364,6 +1395,47 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
     void drawDouble( const Vec3d& pos, double f, int fontTex, float sz, const char* format ){
         char str[24];  sprintf(str,format,f);
         Draw3D::drawText(str, pos, fontTex, sz, 0);
+    }
+    void pointLabels( int n, const Vec3d* ps, int fontTex, float sz ){
+        for(int i=0; i<n; i++){ drawInt( ps[i], i, fontTex, sz ); }
+    }
+
+    //void drawAxis3D( int n, Vec3d p0, Vec3d dp, double v0, double dval, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" ){
+    void drawAxis3D( int n, Vec3d p0, Vec3d dp, double v0, double dval, int fontTex, float tickSz, float textSz, const char* format ){
+        //printf( "drawAxis3D() n=%i p0(%g,%g,%g) dp(%g,%g,%g) v0=%g dval=%g fontTex=%i tickSz=%g textSz=%g format=%s \n", n, p0.x,p0.y,p0.z, dp.x,dp.y,dp.z, v0, dval, fontTex, tickSz, textSz, format );
+        Vec3d a,b;
+        dp.getSomeOrtho( a, b );
+        Vec3d p = p0;
+        // tick marks
+        glBegin(GL_LINES);
+        vertex(p); vertex(p+dp*n);
+        for(int i=0; i<=n; i++){
+            vertex(p-a*tickSz); vertex(p+a*tickSz);
+            vertex(p+b*tickSz); vertex(p+b*tickSz);
+            p.add(dp);
+        }
+        glEnd();
+        // labels
+        p=p0;
+        double val = v0;
+        char str[64];
+        for(int i=0; i<=n; i++){
+            sprintf(str,format,val);
+            //printf( "drawAxis3D()[%i] str(%s) \n", i, str );
+            //drawText(p, a, b, str, fontTex, textSz );
+            Draw3D::drawText(str, p, fontTex, textSz, 0);
+            p.add(dp);
+            val+=dval;
+        }
+    }
+    //void drawAxis3D( Vec3i ns, Vec3d p0, Vec3d ls, Vec3d v0s, Vec3d dvs, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" ){
+    void drawAxis3D( Vec3i ns, Vec3d p0, Vec3d ls, Vec3d v0s, Vec3d dvs, int fontTex, float tickSz, float textSz, const char* format ){
+        //drawAxis3D( ns.x, p0, Vec3dX*ls.x, v0s.x, dvs.x, fontTex, tickSz, textSz, format );
+        //drawAxis3D( ns.y, p0, Vec3dY*ls.y, v0s.y, dvs.y, fontTex, tickSz, textSz, format );
+        //drawAxis3D( ns.z, p0, Vec3dZ*ls.z, v0s.z, dvs.z, fontTex, tickSz, textSz, format );
+        drawAxis3D( ns.x, {p0.x,.0,.0}, Vec3dX*ls.x, v0s.x, dvs.x, fontTex, tickSz, textSz, format );
+        drawAxis3D( ns.y, {0.,p0.x,.0}, Vec3dY*ls.y, v0s.y, dvs.y, fontTex, tickSz, textSz, format );
+        drawAxis3D( ns.z, {0.,0.,p0.z}, Vec3dZ*ls.z, v0s.z, dvs.z, fontTex, tickSz, textSz, format );
     }
 
 	void drawCurve( float tmin, float tmax, int n, Func1d3 func ){

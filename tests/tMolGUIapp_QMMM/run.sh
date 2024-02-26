@@ -21,8 +21,8 @@ pwd
 rm $name
 make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
-
 ln -s $dir/$name .
+
 
 #export MKL_VERBOSE=1
 

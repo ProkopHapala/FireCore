@@ -23,24 +23,24 @@ nicknames = {
     'OHO-h_1'   : 'uracil',
 }
 
+dir0="/home/prokophapala/Desktop/"
 
+f_geoms=dir0+"CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/2-plot_confs/dirs/"
 
-f_geoms="/home/prokop/Desktop/CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/2-plot_confs/dirs/"
+#f_egs=dir0+"/CARBSIS/Paolo/endgroups/endgroups/"
 
-#f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/endgroups/"
-
-f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/B3LYP_oriented/"
+f_egs=dir0+"/CARBSIS/Paolo/endgroups/B3LYP_oriented/"
 
 # ============ Main
 
 bases_to_remove = set( ['NNO-hp','ONO-p','NO-h-p'] )
 
-#_,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/4-dimers_energy_sorted.dat", ni=1, nf=3, iname=0, toRemove=bases_to_remove )
-_,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/1-binding_energy_all.dat",   ni=4, nf=2, iname=0, toRemove=bases_to_remove )
+#_,Es,names,pair_names = bpu.read_dat( dir0+"CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/4-dimers_energy_sorted.dat", ni=1, nf=3, iname=0, toRemove=bases_to_remove )
+_,Es,names,pair_names = bpu.read_dat( dir0+"CARBSIS/Paolo/B3LYP_finished/1-binding_energy_all.dat",   ni=4, nf=2, iname=0, toRemove=bases_to_remove )
 
-_, Angs,   names_angs,_   = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/dihedral_angle_ave.dat",   ni=0, nf=1, iname=0, toRemove=bases_to_remove )
-_, Hbonds, names_hbonds,_ = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/bond_length_min.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
-_, Hbonds_av, names_hbonds_av,_ = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/bond_length_ave.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+_, Angs,   names_angs,_   = bpu.read_dat( dir0+"CARBSIS/Paolo/B3LYP_finished/dihedral_angle_ave.dat",   ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+_, Hbonds, names_hbonds,_ = bpu.read_dat( dir0+"CARBSIS/Paolo/B3LYP_finished/bond_length_min.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+_, Hbonds_av, names_hbonds_av,_ = bpu.read_dat( dir0+"CARBSIS/Paolo/B3LYP_finished/bond_length_ave.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
 
 
 
@@ -198,10 +198,10 @@ for n in sel_classes:        # for each class of pairs
     plt.title( n )                                       # set title to name of this class
     #plt.xticks(range(len(ns)), [ f"{n1:>8} {n2:>8}"  for n1,n2 in nps ], rotation='vertical', fontproperties=font_prop )  # set xticks to names of pairs in this class
     plt.xticks(range(len(ns)), [ f"{n1:<10} {n2:<8}"  for (n1,n2),e,ec in nps ], rotation='vertical', fontproperties=font_prop )  # set xticks to names of pairs in this class
-    plt.plot( [-Emins[k][0] for k in ns], '.-k', lw=3, label='E_bind' )          # plot energies of the minimum energy conformer for each pair in this class
-    plt.plot( [-Emins[k][0]+0.5*( Emins[(k[0],k[0])][0]+Emins[(k[1],k[1])][0]) for k in ns], '.-', c='orange', label='E_Contrast' )          # plot energies of the minimum energy conformer for each pair in this class
+    plt.plot( [-Emins[k][0] for k in ns],                                                    '.-b', lw=3, label='E_bind' )          # plot energies of the minimum energy conformer for each pair in this class
+    plt.plot( [-Emins[k][0]+0.5*( Emins[(k[0],k[0])][0]+Emins[(k[1],k[1])][0]) for k in ns], '.-r', lw=3, label='E_Contrast' )          # plot energies of the minimum energy conformer for each pair in this class
     
-    plt.plot( [ Angs  [ Emins[k][1] ] for k in ns], '.-g', lw=0.5, label='Angles' )   
+    plt.plot( [ Angs  [ Emins[k][1] ] for k in ns], '.-g', lw=1.0, label='Angles' )   
 
     plt.grid()
     plt.ylabel( "Energy [kcal/mol]" ) 
@@ -216,10 +216,10 @@ for n in sel_classes:        # for each class of pairs
      
     
     ax2 = plt.gca().twinx()
-    ax2.plot( [ Hbonds[ Emins[k][1] ] for k in ns], 'r.', label='HBonds' ) 
-    ax2.plot( [ Hbonds_av[ Emins[k][1] ] for k in ns], 'r_', label='HBonds' ) 
-    ax2.set_ylabel('L{H-Bond}[A]', color='r')
-    ax2.tick_params(axis='y', labelcolor='r')
+    ax2.plot( [ Hbonds   [ Emins[k][1] ] for k in ns],  'm.', label='HBonds' ) 
+    ax2.plot( [ Hbonds_av[ Emins[k][1] ] for k in ns],  'm_', label='HBonds' ) 
+    ax2.set_ylabel('L{H-Bond}[A]', color='m')
+    ax2.tick_params(axis='y', labelcolor='m')
     #ax2.legend(loc='upper right')
     #ax1.legend(loc='upper right', framealpha=1.0 ) 
 

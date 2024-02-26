@@ -405,11 +405,13 @@ void Draw2D::drawGrid( float xmin, float ymin, float xmax, float ymax, float dx,
 
 void Draw2D::drawGrid( int n, double * ticks, double lmin, double lmax, bool XorY ){
     glBegin(GL_LINES);
-    // X-grid
-    if( XorY ){
-        for( int i=0; i<=n; i++ ){ float x = ticks[i]; glVertex3f( x,    (float)lmin, z_layer ); glVertex3f( x,    (float)lmax, z_layer ); }
-    }else{
-        for( int i=0; i<=n; i++ ){ float y = ticks[i]; glVertex3f( lmin, (float)y,    z_layer ); glVertex3f( lmax, (float)y,    z_layer ); }
+    //printf( "Draw2D::drawGrid() n %i \n", n );
+    if( XorY ){ // X-grid
+        //for( int i=0; i<=n; i++ ){ float x = ticks[i]; glVertex3f( x,    (float)lmin, z_layer ); glVertex3f( x,    (float)lmax, z_layer );  }   // <=n ( this caused segfault when Plot2D::drawAxes()  )
+        for( int i=0; i<n; i++ ){ float x = ticks[i]; glVertex3f( x,    (float)lmin, z_layer ); glVertex3f( x,    (float)lmax, z_layer );  }
+    }else{ // Y-grid
+        //for( int i=0; i<=n; i++ ){ float y = ticks[i];   glVertex3f( lmin, (float)y,    z_layer ); glVertex3f( lmax, (float)y,    z_layer ); }  // <=n ( this caused segfault when Plot2D::drawAxes()  )
+        for( int i=0; i<n; i++ ){ float y = ticks[i];   glVertex3f( lmin, (float)y,    z_layer ); glVertex3f( lmax, (float)y,    z_layer ); }
     }
     glEnd();
 };

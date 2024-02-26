@@ -89,7 +89,7 @@ class CubeGridRuler : public GridRulerInterface { public:
         pos0=pmin;
         pmax=pmax_;
         span=pmax-pos0;
-        setn( { (int)(span.z*invStep+1), (int)(span.y*invStep+1), (int)(span.z*invStep+1) } );
+        setn( { (int)(span.x*invStep+1), (int)(span.y*invStep+1), (int)(span.z*invStep+1) } );
     };
 
     inline void pos2box( const Vec3d& pos, Vec3i& ipos, Vec3d& dpos ) const {
@@ -105,6 +105,16 @@ class CubeGridRuler : public GridRulerInterface { public:
 
     inline Vec3i ipcell( const Vec3d& pos ) const { return (Vec3i){ (int)(pos.x-pos0.x)*invStep, (int)(pos.y-pos0.y)*invStep, (int)(pos.z-pos0.z)*invStep }; }
     inline int   icell ( const Vec3d& pos ) const { return ixyz2i(ipcell(pos)); }
+
+    inline int   icell_bound ( const Vec3d& pos ) const { 
+        const Vec3i ip = ipcell(pos);
+        if( (ip.x<0)||(ip.x>=n.x)
+        ||  (ip.y<0)||(ip.y>=n.y)  
+        ||  (ip.z<0)||(ip.z>=n.z) ) return -1;
+        return ixyz2i(ip); 
+    }
+
+
     //inline int   icell ( const Vec3d& pos ) const { return ixyz2i({ (int)(pos.x-pos0.x)*invStep, (int)(pos.y-pos0.y)*invStep, (int)(pos.z-pos0.z)*invStep } ); }
 
     inline Vec3d box2pos( const Vec3i& ipos) const {

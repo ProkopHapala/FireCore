@@ -1,10 +1,5 @@
 ﻿
-constexpr int ntmpstr=2048;
-char tmpstr[ntmpstr];
-
-int verbosity = 1;
-int idebug    = 0;
-double tick2second=1e-9;
+#include <globals.h>
 
 #include "testUtils.h"
 #include "MolWorld_sp3_simple.h"
@@ -49,7 +44,6 @@ void* init( const char* xyz_name, const char* smile_name, int* nPBC, const char*
     W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
     W.nPBC       = *(Vec3i*)nPBC;
-    W.tmpstr=tmpstr;
     W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
 	W.builder.bindParams(&W.params);
     W.init();

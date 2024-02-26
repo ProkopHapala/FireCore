@@ -1,5 +1,7 @@
 
-int verbosity = 0;
+//int verbosity = 0;
+#include <globals.h>
+//int idebug=0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -45,7 +47,7 @@ int verbosity = 0;
 
 #include "AppSDL2OGL_3D.h"
 
-int idebug=0;
+
 
 
 // ===========================================
@@ -104,8 +106,6 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     int  ogl_mol=0;
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
-
-    char str[256];
 
     Vec3d ray0;
     int ipicked  = -1, ibpicked = -1, iangPicked = -1;
@@ -175,7 +175,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     //builder.printConfs ();
     builder.printAtomConfs();
     builder.export_atypes(atypes);
-    builder.verbosity = true;
+    //builder.verbosity = true;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
@@ -191,7 +191,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
     //bNonBonded = false;
     if(bNonBonded){
-        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
+        if( !checkPairsSorted( nff.nmask, nff.pairMask ) )[[unlikely]]{
             printf( "ERROR: nff.pairMask is not sorted => exit \n" );
             exit(0);
         };
@@ -534,7 +534,7 @@ int TestAppMMFFmini::loadMoleculeXYZ( const char* fname, const char* fnameLvs, b
     //exit(0);
     builder.export_atypes(atypes); // NOTE : these are not proton numbers !!!!
 
-    builder.verbosity = 5;
+    //builder.verbosity = 5;
     //builder.autoBonds ();             builder.printBonds ();
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     //builder.autoBondsPBC(-0.5, 0, -1, {0,0,0});             builder.printBonds ();  // exit(0);
@@ -662,17 +662,17 @@ void TestAppMMFFmini::drawSystemQMMM(){
 
 void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
     //if(makeScreenshot){
-        char str[64];
-        sprintf( str, fname, i );               // DEBUG
-        printf( "save to %s \n", str );
-        unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
-        glFlush();                                                      //DEBUG
-        glFinish();                                                     //DEBUG
+        //char str[64];
+        sprintf( tmpstr, fname, i );              
+        printf( "save to %s \n", tmpstr );
+        unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4]; 
+        glFlush();                                                     
+        glFinish();                                                  
         //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-        glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
-        //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
-        SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
-        SDL_SaveBMP(bitmap, str);    //DEBUG
+        glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels); 
+        //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );  
+        SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 ); 
+        SDL_SaveBMP(bitmap, tmpstr);    
         SDL_FreeSurface(bitmap);
         delete[] screenPixels;
 }

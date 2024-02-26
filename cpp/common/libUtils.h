@@ -22,7 +22,7 @@ void printBuffNames(){
 
 double* getBuff(const char* name){ 
     auto got = buffers.find( name );
-    if( got==buffers.end() ){ printf("ERROR: getBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
+    if( got==buffers.end() )[[unlikely]]{ printf("ERROR: getBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
     else                    { return got->second; }
 }
 
@@ -32,7 +32,7 @@ void setBuff(const char* name, double* buff){
 
 float* getfBuff(const char* name){ 
     auto got = fbuffers.find( name );
-    if( got==fbuffers.end() ){ printf("ERROR: getfBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
+    if( got==fbuffers.end() )[[unlikely]]{ printf("ERROR: getfBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
     else                    { return got->second; }
 }
 
@@ -42,7 +42,7 @@ void setfBuff(const char* name, float* buff){
 
 int* getIBuff(const char* name){ 
     auto got = ibuffers.find( name );
-    if( got == ibuffers.end() ){ printf("ERROR: getIBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
+    if( got == ibuffers.end() )[[unlikely]]{ printf("ERROR: getIBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
     else                       { return got->second; }
 }
 
@@ -55,7 +55,7 @@ void setIBuff(const char* name, int* buff){
 
 bool* getBBuff(const char* name){ 
     auto got = bbuffers.find( name );
-    if( got == bbuffers.end() ){ printf("ERROR: getBBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
+    if( got == bbuffers.end() )[[unlikely]]{ printf("ERROR: getBBuff(%s) NOT FOUND\n", name); printBuffNames(); return 0;        }
     else                       { return got->second; }
 }
 

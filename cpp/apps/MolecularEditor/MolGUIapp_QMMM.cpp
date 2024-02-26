@@ -1,12 +1,9 @@
 
-int verbosity = 1;
-int idebug    = 0;
-double tick2second=1e-9;
+#include <globals.h>
 
 #include "MolGUI.h"
 #include "MolWorld_sp3_QMMM.h"
 #include "argparse.h"
-
 
 //MMFFsp3 W;
 MolGUI* app=0;
@@ -53,11 +50,11 @@ int main(int argc, char *argv[]){
     } }; // test
 
     funcs["-prelat"]={2,[&](const char** ss){ 
-        Mat3d* m=&prelat_dlvec;  DEBUG
-        printf( "ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] );  DEBUG
-        sscanf(ss[0],"%i,%i", &prelat_nstep, &prelat_nItrMax );  DEBUG
-        sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z );  DEBUG
-        printf( "prelat_dlvec(%i,%i) latscan_dlvec ", prelat_nstep, prelat_nItrMax  ); printMat(prelat_dlvec);  DEBUG
+        Mat3d* m=&prelat_dlvec;
+        printf( "ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] );
+        sscanf(ss[0],"%i,%i", &prelat_nstep, &prelat_nItrMax );
+        sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z ); 
+        printf( "prelat_dlvec(%i,%i) latscan_dlvec ", prelat_nstep, prelat_nItrMax  ); printMat(prelat_dlvec); 
     } }; // test
 
     funcs["-e"]={0,[&](const char** ss){ app->W->bEpairs=true; }}; // add explicit electron pair
@@ -70,7 +67,9 @@ int main(int argc, char *argv[]){
     funcs["-perframe"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iterPerFrame ); app->perFrame=W->iterPerFrame; printf( "#### -perframe %i \n", W->iterPerFrame ); }};  // interations per frame
 
 	process_args( argc, argv, funcs );
-	app->init();
+    W->init();
+    app->bindMolWorld( W );
+
     if(prelat_nstep>0)app->W->change_lvec_relax( prelat_nstep, prelat_nItrMax, 1e-3, prelat_dlvec );
 	app->loop( 1000000 );
 	return 0;

@@ -58,6 +58,14 @@ int DataLine2D::render(){
     return glObj;
 };
 
+int DataLine2D::tryRender(){
+    if( redraw){
+        render();
+        redraw=false;
+    }
+    return glObj;
+};
+
 void DataLine2D::view(){
     if(bView){
         Draw::setRGBA(clr);
@@ -105,38 +113,35 @@ void Plot2D::autoAxes(double dx, double dy){
     n0=(int)(bounds.y0/dy)-1;  axBounds.y0 = dy*n0;
     n1=(int)(bounds.y1/dy)+1;  axBounds.y1 = dy*n1; nYTicks=(n1-n0)+1;
     //printf("y(%g:%g) dy %g ny(%i:%i) nYTicks %i \n", bounds.y0, bounds.y1, dy,   n0, n1, nYTicks );
-
     if( xTicks==NULL ) delete xTicks;
     if( yTicks==NULL ) delete yTicks;
     //double x0    = (axBounds.x0 - axPos.x);  x0 = 2*x0 - dx*(int)(x0/dx);
     //double y0    = (axBounds.y0 - axPos.y);  y0 = 2*y0 - dy*(int)(y0/dy);
     //printf("DEBUG 2.1.1\n");
     xTicks = new double[nXTicks]; VecN::arange( nXTicks, axBounds.x0, dx, xTicks );
-    //printf("DEBUG 2.1.2 %i\n", nYTicks );
     yTicks = new double[nYTicks];
-    //printf("DEBUG 2.1.3\n");
+    //printf("Plot2D::autoAxes() nXTicks(%i) nYTicks(%i)\n", nXTicks, nYTicks );
     VecN::arange( nYTicks, axBounds.y0, dy, yTicks );
-    //printf("DEBUG 2.1.4\n");
 }
 
 void Plot2D::drawTexts(){
     char str[16];
-    if(bTicks){
-    Draw::setRGBA(clrTicksX);
-    Draw2D::drawText( xlabel.c_str(), 0, {shift.x,shift.y-2*tickSz*scaling.y}, 0.0, fontTex, tickSz );
-    for(int i=0; i<nXTicks; i++){
-        if(logX) { sprintf(str,tickFormat,pow(10,xTicks[i])); }
-        else     { sprintf(str,tickFormat,xTicks[i]); }
-        Draw2D::drawText(str, 0, {shift.x+xTicks[i]*scaling.x,shift.y+axPos.y*scaling.y}, 90, fontTex, tickSz );
-    }
-    Draw::setRGBA(clrTicksY);
-    Draw2D::drawText( ylabel.c_str(), 0, (Vec2d){shift.x,shift.y-tickSz*ylabel.length()*scaling.y}, 90.0, fontTex, tickSz );
-    for(int i=0; i<nYTicks; i++){
-        sprintf(str,tickFormat,yTicks[i]);
-        if(logY) { sprintf(str,tickFormat,pow(10,yTicks[i])); }
-        else     { sprintf(str,tickFormat,yTicks[i]); }
-        Draw2D::drawText(str, 0, {shift.x+axPos.x*scaling.x,shift.x+yTicks[i]*scaling.y}, 0.0, fontTex, tickSz );
-    }
+    if(bTicks&&bAxes){
+        Draw::setRGBA(clrTicksX);
+        Draw2D::drawText( xlabel.c_str(), 0, {shift.x,shift.y-2*tickSz*scaling.y}, 0.0, fontTex, tickSz );
+        for(int i=0; i<nXTicks; i++){
+            if(logX) { sprintf(str,tickFormat,pow(10,xTicks[i])); }
+            else     { sprintf(str,tickFormat,xTicks[i]); }
+            Draw2D::drawText(str, 0, {shift.x+xTicks[i]*scaling.x,shift.y+axPos.y*scaling.y}, 90, fontTex, tickSz );
+        }
+        Draw::setRGBA(clrTicksY);
+        Draw2D::drawText( ylabel.c_str(), 0, (Vec2d){shift.x,shift.y-tickSz*ylabel.length()*scaling.y}, 90.0, fontTex, tickSz );
+        for(int i=0; i<nYTicks; i++){
+            sprintf(str,tickFormat,yTicks[i]);
+            if(logY) { sprintf(str,tickFormat,pow(10,yTicks[i])); }
+            else     { sprintf(str,tickFormat,yTicks[i]); }
+            Draw2D::drawText(str, 0, {shift.x+axPos.x*scaling.x,shift.x+yTicks[i]*scaling.y}, 0.0, fontTex, tickSz );
+        }
     }
     for( DataLine2D* line : lines ){ // lines labels
         Draw::setRGBA(line->clr);
@@ -153,6 +158,7 @@ void Plot2D::drawTexts(){
 void Plot2D::drawAxes(){
     //Draw2D::drawPointCross({0.0,0.0},100.0);
     //grid=false;
+    //printf( "Plot2D::drawAxes nXTicks(%i) nYTicks(%i) \n", nXTicks, nYTicks );
     if(bGrid){
         Draw::setRGBA(clrGrid);
         Draw2D::drawGrid( nXTicks, xTicks, axBounds.y0, axBounds.y1, true  );
@@ -162,30 +168,36 @@ void Plot2D::drawAxes(){
         Draw::setRGBA(clrTicksX); Draw2D::drawLine( {axPos   .x ,axBounds.y0}, {axPos   .x ,axBounds.y1} );
         Draw::setRGBA(clrTicksY); Draw2D::drawLine( {axBounds.x0,axPos   .y }, {axBounds.x1,axPos   .y } );
     }
-    if(bTicks){
+    if(bTicks&&bAxes){
         Draw::setRGBA(clrTicksY); Draw2D::drawGrid( nXTicks, xTicks, axPos.x, axPos.x+(tickSz/(scaling.y)), true  );
         Draw::setRGBA(clrTicksX); Draw2D::drawGrid( nYTicks, yTicks, axPos.x, axPos.y+(tickSz/(scaling.x)), false );
     }
 }
 
-
-int Plot2D::render(){
-    //void drawGrid( bounds.x0, bounds.y0, bounds.x0, bounds.x0, dx, dy );
+int Plot2D::renderFrameworks(){
     if( glObj ) glDeleteLists(glObj,1);
     glObj = glGenLists(1);
     glNewList(glObj, GL_COMPILE);
     if( (clrBg&0xFF000000) ){ Draw::setRGBA( clrBg ); Draw2D::drawRectangle_d( axBounds.a, axBounds.b, true ); }
     drawAxes();
-    int i=0;
     glEndList( );
-    //char str[256];
-    for( DataLine2D* line : lines ){
-        //printf( "render line[%i]\n", i );
-        line->render();
-        i++;
+    redraw=false;
+    return glObj;
+}
+
+int Plot2D::render(){
+    for( DataLine2D* line : lines ){ line->render(); }
+    redraw=false;
+    return renderFrameworks();
+}
+
+int Plot2D::tryRender(bool bUpdate){
+    for( DataLine2D* line : lines ){ line->tryRender(); }
+    if(redraw){
+        if(bUpdate) update();
+        renderFrameworks();
+        redraw=false;
     }
-    // TO DO :
-    //if( tickCaption ){ }
     return glObj;
 }
 

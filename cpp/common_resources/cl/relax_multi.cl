@@ -177,6 +177,29 @@ float3 limnitForce( float3 f, float fmax ){
     return f;
 }
 
+float4 getR4repulsion( float3 d, float R, float Rcut, float A ){
+    // we use R4blob(r) = A * (1-r^2)^2
+    // such that at distance r=R we have force f = fmax
+    // f = -dR4blob/dr = 4*A*r*(1-r^2) = fmax
+    // A = fmax/(4*R*(1-R^2))
+    float R2    = R*R;
+    float R2cut = Rcut*Rcut;
+    float r2 = dot(d,d);
+    if( r2>R2cut ){ 
+        return (float4){0.0f,0.0f,0.0f,0.0f};
+    }else if( r2>R2 ){ 
+        float mr2 = R2cut-r2;
+        float fr = A*mr2;
+        return (float4){ d*(-4*fr), fr*mr2 };
+    }else{
+        float mr2 = R2cut-R2;
+        float fr  = A*mr2;
+        float r    = sqrt(r2);
+        float fmax = 4*R*fr;
+        return (float4){ d* (-fmax/r), fmax*(R-r) + fr*mr2 };
+    }
+}
+
 
 // ======================================================================
 // ======================================================================
@@ -1031,6 +1054,98 @@ __kernel void cleanForceMMFFf4(
     }
     //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
 }
+
+
+
+// ======================================================================
+//                           getSortRangeBuckets()
+// ======================================================================
+
+__kernel void getSortRangeBuckets(
+    const int4 ns,                  // 1
+    // Dynamical
+    __global float4*  atoms,        // 2
+    __global float4*  forces,       // 3
+    __global int2*    buckets,      // 4 // i0,n for bucket i
+    __global int*     cell2obj,     // 5 // bucket index for each atom, ToDo: we can get rid of this if we re-arange atoms so that atoms are already sorted by buckets
+    __global float8*  BBs,          // 6 // bounding boxes (xmin,xmax,ymin,0,  ymax,zmin,zmax,0 )
+    // Parameters
+    __global float4*  REQKs,        // 4
+    const float Rcut,
+    const float SRdR,
+    const float SRamp
+    //const int4 nPBC,              // 7
+    //const cl_Mat3 lvec,           // 8
+    //const float Rdamp             // 9
+){
+    // local size should be equal to maximum size of one bucket (i.e. maximum number of atoms in one bucket)
+    __local float4 POS[16];  // atom positions
+    __local float4 PAR[16];  // REQKs parameters
+    __local bool   mask[16]; // is the atoms within BB ?
+
+    const int iG = get_global_id  (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
+
+    const int natoms=ns.x;
+    const int nnode =ns.y;
+
+    if(iG>=natoms) return;
+
+    const int ib = get_group_id(0); 
+    const int nb = ns.w;             // number of buckets
+
+    // ========= Atom-to-Atom interaction ( N-body problem )    
+    float4 posi  = atoms[iG];
+    float4 REQKi = REQKs[iG];
+    float4 fe    = float4Zero;
+    float8 bbi   = BBs[ib];
+
+    for(int jb=0; jb<nb; jb++){ 
+        int2 b = buckets[jb];
+        int ia = b.x + iL;
+        
+        // ToDo: wee need some better algorithm check wthich slots in local memory are free
+        // copy atoms to local memory
+        // we can do this untill we fill all local memory
+        //bool bIn = false;
+        mask[iL] = false;
+        if( iL < b.y ){
+            float4 p = atoms[ia];
+            if( (p.x<bbi.lo.x) && (p.x>bbi.hi.x) && 
+                (p.y<bbi.lo.y) && (p.y>bbi.hi.y) && 
+                (p.z<bbi.lo.z) && (p.z>bbi.hi.z) 
+            ){
+                POS[iL]  = p;
+                PAR[iL]  = REQKs[ia];
+                //bIn = true; 
+                mask[iL] = true; 
+            }
+        } 
+        //mask[iL] = bIn; 
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        for (int j=0; j<nL; j++){
+            if( mask[iL] ){   // ToDo: Should interact withhimself in PBC ?
+                const float4 aj = POS[j];
+                const float3 dp = aj.xyz - posi.xyz;
+                float4 REQK = PAR[j];
+                REQK.x +=REQKi.x;
+                REQK.yz*=REQKi.yz;
+                float4 fij = getR4repulsion( dp, REQK.x-SRdR, REQK.x, REQK.y*SRamp );
+                fe += fij;
+                //if(iG==4){ printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,0, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); } 
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    
+    forces[iG] = fe;
+    //forces[iG] = fe*(-1.f);
+    
+}
+
 
 // ======================================================================
 //                           getNonBond()

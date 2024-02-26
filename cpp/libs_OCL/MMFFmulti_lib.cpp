@@ -1,10 +1,5 @@
 ﻿
-constexpr int ntmpstr=2048;
-char tmpstr[ntmpstr];
-
-int verbosity = 1;
-int idebug    = 0;
-double tick2second=1e-9;
+#include <globals.h>
 
 #include "testUtils.h"
 
@@ -83,12 +78,12 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
-    W.tmpstr=tmpstr;
     W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
 	W.builder.bindParams(&W.params);
     W.nSystems=nSys;
     bool bGrid = gridStep>0;
-    W.init( bGrid );
+    W.bGridFF = bGrid;
+    W.init();
     init_buffers();
     return &W;
 }

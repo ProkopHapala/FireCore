@@ -23,7 +23,10 @@ const int dYTicks_def = 1.0;
 class DataLine2D{ public:
     // data
     int      n = 0;
-    bool   bSharedX =false;
+    bool     bSharedX =false;
+    bool     redraw   =true;
+    bool     bView    =true;
+
     //Arr xs;
     double * xs    =0;
     double * ys    =0;
@@ -36,13 +39,14 @@ class DataLine2D{ public:
     //char     pointStyle ='+';
     char     pointStyle =' ';
     float    pointSize  =0.1;
-    bool     bView = true;
+
     uint32_t clr        =0xFFFF00FF;
     std::string label;
 
 
     void update();
     int  render();
+    int  tryRender();
     void draw();
     void view();
 
@@ -82,7 +86,7 @@ class Plot2D{ public:
     double * xTicks=NULL;
     double * yTicks=NULL;
     int      glObj=0;
-
+    bool     redraw=true;
 
     Vec2d shift   =Vec2dZero;
     Vec2d scaling =Vec2dOnes;
@@ -94,11 +98,6 @@ class Plot2D{ public:
 
     std::string xlabel="";
     std::string ylabel="";
-
-    inline DataLine2D* add(DataLine2D* dline){
-        lines.push_back(dline);
-        return dline;
-    };
 
     bool     logX  = false;
     bool     logY  = false;
@@ -113,12 +112,19 @@ class Plot2D{ public:
     char   * tickFormat = "%2.2f\0";
     int      fontTex=0;
 
+    // ===== Functions
 
+    inline DataLine2D* add(DataLine2D* dline){
+        lines.push_back(dline);
+        return dline;
+    };
 
     void update();
     void drawTexts();
     void drawAxes();
     int  render();
+    int  renderFrameworks();
+    int  tryRender(bool bUpdate=true);
     void view  (bool bAxes=true);
     void init  ();
     //void xsharingLines(int nl, int np);

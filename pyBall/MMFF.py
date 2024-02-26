@@ -48,6 +48,7 @@ header_strings = [
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){",
 #"void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){",
+# void sample_SplineConstr( double lmin, double lmax, double dx, int n, double* Eps, double* Es, double* Fs ){    
 #"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){",
 #"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
 #"void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){",
@@ -86,6 +87,16 @@ glob_bMMFF    = True
 # ====================================
 # ========= C functions
 # ====================================
+
+# void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
+lib.sample_SplineConstr.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_SplineConstr.restype   =  None
+def sample_SplineConstr( xs, Eps, x0=0.0, dx=1.0, Es=None, Fs=None):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_SplineConstr(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
 
 #  void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
 lib.sample_DistConstr.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
@@ -161,7 +172,7 @@ def sample_evalAngleCosHalf( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=N
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
 lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ] 
 lib.sampleNonBond.restype   =  None
-def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
+def sampleNonBond( rs, Es=None, Fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
     n =len(rs)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
@@ -169,7 +180,7 @@ def sampleNonBond( rs, Es=None, fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQ
     REQi=np.array(REQi)
     REQj=np.array(REQj) 
     lib.sampleNonBond(n, rs, Es, Fs, kind, REQi, REQj, K, Rdamp)
-    return Es,fs
+    return Es,Fs
 
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
 lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
@@ -195,6 +206,20 @@ def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0
     pos0=np.array(pos0)
     lib.sampleSurf_vecs( name, n, poss, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
     return Es,fs
+
+# void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut ){
+lib.setupCollisionDamping.argtypes  = [c_int, c_double, c_double, c_double, c_double, c_double, c_double]
+lib.setupCollisionDamping.restype   =  None
+def setupCollisionDamping( nstep=10, medium=0.02, cB=-1.0, cA=-1.0, cNB=-1.0, dRcut1=-0.2, dRcut2=0.3 ):
+    #print( "setupCollisionDamping(): ",nstep,medium,cB,cA,cNB,dRcut1,dRcut2 )
+    lib.setupCollisionDamping( nstep, medium, cB, cA, cNB, dRcut1, dRcut2 )
+
+#void setup_accel(int nstep_acc_min_, double cos_vf_acc_ ){
+lib.setup_accel.argtypes  = [c_int, c_double]
+lib.setup_accel.restype   =  None
+def setup_accel( nstep_acc_min=10, cos_vf_acc=0.5 ):
+    #print( "setup_accel(): ",nstep_acc_min,cos_vf_acc )
+    lib.setup_accel( nstep_acc_min, cos_vf_acc )
 
 #printBuffNames(){
 lib.printBuffNames.argtypes = []
@@ -317,23 +342,35 @@ lib.setVerbosity.restype   =  None
 def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
 
-#  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-lib.init.argtypes  = [c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
+# interface to init on the C++ side (MMFF_lib.cpp)
+
+#void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
+#lib.init(      cstr(xyz_name), cstr(surf_name), cstr(smile_name),  bMMFF, bEpairs,   bUFF,   b141, bSimple,  bConj, bCumulene,    nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+lib.init.argtypes  = [c_char_p,        c_char_p,         c_char_p, c_bool,  c_bool, c_bool, c_bool,  c_bool, c_bool,    c_bool, array1i, c_double,            c_char_p,         c_char_p,         c_char_p,          c_char_p,             c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
-        xyz_name  ="input", 
+        xyz_name  =None, 
         surf_name =None, 
         smile_name=None, 
         sElementTypes = "data/ElementTypes.dat",
         sAtomTypes = "data/AtomTypes.dat", 
         sBondTypes = "data/BondTypes.dat", 
         sAngleTypes= "data/AngleTypes.dat",
-        bMMFF=True, bEpairs=False,  nPBC=(1,3,0), gridStep=0.1 
+        sDihedralTypes= "data/DihedralTypes.dat",
+        bMMFF=True, 
+        bEpairs=False,  
+        nPBC=(1,3,0), 
+        gridStep=0.1,
+        bUFF=False,
+        b141=True,
+        bSimple=False,
+        bConj=True,
+        bCumulene=True
     ):
     global glob_bMMFF
     glob_bMMFF = bMMFF
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 
 def tryInit():
     if not isInitialized:
@@ -449,10 +486,10 @@ def eval():
 #     return lib.run(nstepMax, dt, Fconv, ialg )
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, c_bool ] 
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p, c_double_p, c_double_p, c_bool ] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, outE=None, outF=None, omp=False):
-    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), omp )
+def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=None, outV=None, outVF=None, omp=False):
+    return lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
 
 # ========= Lattice Optimization
 

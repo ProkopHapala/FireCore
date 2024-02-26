@@ -1,11 +1,5 @@
 ﻿
-
-constexpr int ntmpstr=2048;
-char tmpstr[ntmpstr];
-
-int verbosity = 1;
-int idebug    = 0;
-double tick2second=1e-9;
+#include  "globals.h"
 
 #include "testUtils.h"
 #include "MolWorld_sp3.h"
@@ -29,18 +23,11 @@ void init_buffers(){
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
         buffers .insert( { "vDOFs",     W.opt.vel  } );
-        //buffers .insert( { "apos",   (double*)W.ff.apos   } );
-        //buffers .insert( { "fapos",  (double*)W.ff.fapos } );
-        buffers .insert( { "apos",   (double*)W.nbmol.apos } );
-        buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
-        buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
-        buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-        //buffers .insert( { "bond_l0",   (double*)W.ffl.bond_l0   } );
-        //buffers .insert( { "bond_k",    (double*)W.ffl.bond_k    } );
-        //buffers .insert( { "pbcShifts", (double*)W.ff.pbcShifts } );
-        //buffers .insert( { "Kneighs",   (double*)W.ff.Kneighs   } );
-        //ibuffers.insert( { "bond2atom",    (int*)W.ff.bond2atom  } );
-        ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+        if(!W.bUFF){
+            buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
+            buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
+            ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+        }
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
@@ -52,8 +39,8 @@ void init_buffers(){
 }
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
-
-void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
+//lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name),      bMMFF,      bEpairs,      bUFF,      b141,      bSimple,      bConj,      bCumulene,      nPBC,        gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
 	W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
@@ -61,20 +48,34 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
-    W.tmpstr=tmpstr;
-    W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
+    W.bUFF       = bUFF; 
+    W.b141       = b141;
+    W.bSimple    = bSimple;
+    W.bConj      = bConj;
+    W.bCumulene  = bCumulene;
+    // read and store parameters from tables
+    // TBD pass bUFF to MMFFparams::init so that if true, no need to read bonds, angles nor dihedrals...
+    //W.params.verbosity = verbosity;
+    W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
+    // bring names of atom types into builder (H is capping atom, E is electron pair)
 	W.builder.bindParams(&W.params);
     bool bGrid = gridStep>0;
-    W.init( bGrid );
+    // initialize the main
+    //W.init( bGrid, bUFF );
+    W.bGridFF=bGrid;
+    W.bUFF   =bUFF;
+    W.init();
     init_buffers();
     return &W;
 }
 
-int    run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, bool omp ){
+int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, bool omp ){
+    //printf( "bOpenMP = %i \n", omp );
     //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
     // run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
-    if(omp){ return W.run_omp(nstepMax,dt,Fconv,10.0, -1.0, outE, outF );  }
-    else   { return W.run    (nstepMax,dt,Fconv,ialg,outE,outF);                 }
+    if(omp){ return W.run_omp   (nstepMax,dt,Fconv,   10.0, -1.0, outE, outF, outV, outVF ); }
+    else   { return W.run_no_omp(nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
+    //else   { return W.run       (nstepMax,dt,Fconv,ialg,       outE, outF, outV, outVF ); }
 }
 
 int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond ){

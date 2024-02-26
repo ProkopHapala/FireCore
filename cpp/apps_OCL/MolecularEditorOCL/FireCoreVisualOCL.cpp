@@ -1,5 +1,6 @@
-int verbosity = 0;
-int idebug=0;
+#include <globals.h>
+//int verbosity = 0;
+//int idebug=0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -195,7 +196,7 @@ void TestAppFireCoreVisual::loadGeom(){
     //builder.lvec.a.x *= 2.3;
     builder.printAtomConfs();
     builder.export_atypes(atypes);
-    builder.verbosity = true;
+    //builder.verbosity = true;
     builder.autoBondsPBC();             builder.printBonds ();  // exit(0);
     builder.autoAngles( 10.0, 10.0 );     builder.printAngles();
     builder.toMMFFmini( ff, &params );
@@ -205,7 +206,7 @@ void TestAppFireCoreVisual::loadGeom(){
     nff.bindOrRealloc( ff.natoms, ff.nbonds, ff.apos, ff.aforce, 0, ff.bond2atom );
     builder.export_REQs( nff.REQs );
     if(bNonBonded){
-        if( !checkPairsSorted( nff.nmask, nff.pairMask ) ){
+        if( !checkPairsSorted( nff.nmask, nff.pairMask ) )[[unlikely]]{
             printf( "ERROR: nff.pairMask is not sorted => exit \n" );
             exit(0);
         };

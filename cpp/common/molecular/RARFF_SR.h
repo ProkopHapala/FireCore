@@ -239,12 +239,53 @@ class RARFF_SR{ public:
     Vec3d*         fbonds=0;
     int  *         bondCaps = 0;
 
+    bool * fixedAtoms  = 0;
     bool * ignoreAtoms = 0;
     //double F2pos=0;
     //double F2rot=0;
 
     int n_pairs_tried=0;
     int n_pairs_evaluated=0;
+
+    int countIgnoreAtoms(bool bPrint=false){
+        int nignore=0;
+        for(int i=0; i<natom; i++){ if(ignoreAtoms[i]) nignore++; }
+        if(bPrint)printf( "RARFF_SR::countIgnoreAtoms() natom=%i nignore=%i \n", natom, nignore );
+        return nignore;
+    }
+
+    int checkAtomsCollapsed( const double Rcut, int bPrint=false ){
+        int n=0;
+        double R2cut = Rcut*Rcut;
+        for(int i=0; i<natom; i++){
+            if(ignoreAtoms[i]) continue;
+            for(int j=i+1; j<natom; j++){
+                if(ignoreAtoms[j]) continue;
+                Vec3d d = apos[i]-apos[j];
+                double r2 = d.norm2();
+                if(r2<R2cut){
+                    n++;
+                    if(bPrint)printf( "RARFF_SR::checkAtomsCollapsed(%i,%i) |rij|=%g \n", i, j, sqrt(r2) );
+                }
+            }
+        }
+        return n;
+    }
+
+    int checkAtomsOut( const double Rcut, int bPrint=false){
+        int n=0;
+        double R2cut = Rcut*Rcut;
+        for(int i=0; i<natom; i++){
+            if(ignoreAtoms[i]) continue;
+            Vec3d d = apos[i];
+            double r2 = d.norm2();
+            if( (r2>R2cut) || isnan(r2) ){
+                n++;
+                if(bPrint)printf( "RARFF_SR::checkAtomsCollapsed(%i,%i) |rij|=%g \n", i, sqrt(r2) );
+            }
+        }
+        return n;
+    }
 
     void alloc(int natom_){
         natom=natom_;
@@ -257,12 +298,16 @@ class RARFF_SR{ public:
         _alloc(omegas ,natom);  // just for MD
         _alloc(vels   ,natom);  // just for MD
         _alloc(ignoreAtoms, natom);
+        _alloc(fixedAtoms ,natom);
         _alloc(ebonds ,natom*N_BOND_MAX);
         _alloc(hbonds ,natom*N_BOND_MAX);
         _alloc(fbonds ,natom*N_BOND_MAX);
         _alloc(bondCaps ,natom*N_BOND_MAX);
         natomActive=natom;
-        for(int i=0; i<natom; i++){ ignoreAtoms[i]=false; }
+        for(int i=0; i<natom; i++){ 
+            ignoreAtoms[i]=false; 
+            fixedAtoms [i]=false;
+        }
     }
 
     void realloc(int natom_, int nbuff=0 ){
@@ -277,12 +322,14 @@ class RARFF_SR{ public:
         _realloc(omegas ,natom);
         _realloc(vels   ,natom);
         _realloc(ignoreAtoms, natom);
+        _realloc(fixedAtoms,natom);
         _realloc(ebonds ,natom*N_BOND_MAX);
         _realloc(hbonds ,natom*N_BOND_MAX);
         _realloc(fbonds ,natom*N_BOND_MAX);
         _realloc(bondCaps ,natom*N_BOND_MAX);
         for(int i=0;      i<natom_; i++){ ignoreAtoms[i]=false; }
         for(int i=natom_; i<natom;  i++){ ignoreAtoms[i]=true;  }
+        for(int i=0; i<natom;       i++){ fixedAtoms [i]=false; }
     }
 
     void resize( int natom_new ){
@@ -297,6 +344,7 @@ class RARFF_SR{ public:
         Vec3d*  omegas_ = omegas; // just for MD
         Vec3d*  vels_   = vels;   // just for MD
         bool*   ignoreAtoms_ = ignoreAtoms;
+        bool*   fixedAtoms_  = fixedAtoms;
         double* ebonds_ = ebonds;
         Vec3d*  hbonds_ = hbonds;
         Vec3d*  fbonds_ = fbonds;
@@ -315,6 +363,7 @@ class RARFF_SR{ public:
             omegas[ja] = omegas_[ia];
             vels  [ja] = vels_  [ia];
             ignoreAtoms[ja] = false;
+            fixedAtoms [ja] = fixedAtoms_[ia];
             for(int ib=0; ib<N_BOND_MAX; ib++){
                 int i=ia*N_BOND_MAX + ib;
                 int j=ja*N_BOND_MAX + ib;
@@ -329,6 +378,7 @@ class RARFF_SR{ public:
         natomActive=ja;
         for(int ia=ja; ia<natom; ia++){
             ignoreAtoms[ia] = true;
+            fixedAtoms [ia] = false;
         }
         delete[] types_;
         delete[] apos_;
@@ -338,6 +388,7 @@ class RARFF_SR{ public:
         delete[] omegas_;  // just for MD
         delete[] vels_;    // just for MD
         delete[] ignoreAtoms_;
+        delete[] fixedAtoms_;
         delete[] ebonds_;
         delete[] hbonds_;
         delete[] fbonds_;
@@ -370,6 +421,7 @@ class RARFF_SR{ public:
         if( ia>=natom ){ resize(natom+5); }
         natomActive++;
         ignoreAtoms[ia] = false;
+        fixedAtoms [ia] = false;
         types[ia] = typ;
         apos [ia] = p;
         qrots[ia].fromMatrixT(m);
@@ -381,6 +433,7 @@ class RARFF_SR{ public:
             //printf( "caps[%i] %i \n", j, caps[j] );
         }
         return ia;
+        map.bResizing=true;
     }
 
     // ======== Force Evaluation
@@ -469,6 +522,9 @@ class RARFF_SR{ public:
                 double eEb = e * Eb;
                 eis[ib]+=eEb*0.5;
                 ejs[jb]+=eEb*0.5;
+
+                if( isnan(eEb) ){ printf( "ERROR pairEF(ia=%i,ja=%i)(ib=%i,jb=%i): eEb is %i \n", ia,ja, ib,jb, eEb ); exit(0); }
+
                 E      += eEb;
 
                 // Evaluate forces due to bonds
@@ -557,15 +613,18 @@ class RARFF_SR{ public:
                     const RigidAtomType& typei = *types[ia];
                     Vec3d                pi    =  apos [ia];
                     // -- within same cell
+                    //printf( "Same Cell\n");
                     for(int j=i+1; j<nic; j++){    // all other atoms in the same cell (prevent double-counting)  
                         int ja = neighs[j];
                         pairType.combine( typei, *types[ja] );                           // evaluate interaction parameters form the two atom types 
                         E += pairEF( ia, ja, typei.nbond, types[ja]->nbond, pairType );  // Interact
                         //glColor3f(0,0,0); Draw3D::drawLine( apos[ia], apos[ja] );
                     }
+                    //printf( "Other Cells\n");
                     // -- with neighbor cells
                     for(int j=0; j<nrest; j++){   // all atoms in the other cells
                         int ja = neighs_[j];
+                        if( ia==ja ) continue; // this should not happen !!!! ( but for some reason it is happening )
                         pairType.combine( typei, *types[ja] );                           // evaluate interaction parameters form the two atom types 
                         E += pairEF( ia, ja, typei.nbond, types[ja]->nbond, pairType );  // Interact
                         //if( ic==31 ){ glColor3f(0,0,0); Draw3D::drawLine( apos[ia], apos[ja] ); }
@@ -673,22 +732,22 @@ class RARFF_SR{ public:
     }
 
     void eval(){
-        cleanAtomForce();     //printf( "DEBUG 1 \n " );
-        projectBonds();       //printf( "DEBUG 2 \n " );
+        cleanAtomForce();
+        projectBonds();     
         if(AccelType==1){
-            map.pointsToCells( natomActive, apos, ignoreAtoms ); //ff.map.printCells(0);
-            interEF_buckets();   //printf( "DEBUG 4 \n " );
+            map.pointsToCells( natomActive, apos, ignoreAtoms );
+            interEF_buckets();   
         }else if(AccelType==2){
-            interEF_list();      //printf( "DEBUG 4 \n " );
+            interEF_list();     
         }else{
-            interEF_brute();     //printf( "DEBUG 3 \n " );
+            interEF_brute(); 
         }
     }
 
     void move(double dt){
         evalTorques();
         for(int i=0; i<natom; i++){
-            if(ignoreAtoms[i])continue;
+            if( ignoreAtoms[i] || fixedAtoms[i] )continue;
             //atoms[i].moveRotGD(dt*invRotMass);
             //atoms[i].movePosGD(dt);
             qrots[i].dRot_exact( dt, torqs[i] );  qrots[i].normalize();          // costly => debug
@@ -700,7 +759,8 @@ class RARFF_SR{ public:
     void moveMDdamp(double dt, double damp){
         evalTorques();
         for(int i=0; i<natom; i++){
-            if(ignoreAtoms[i])continue;
+            //if( fixedAtoms[i] ){ printf( "fixedAtoms[%i] \n", i ); continue; }
+            if(ignoreAtoms[i] || fixedAtoms[i] )continue;
             //atoms[i].moveMDdamp( dt, invRotMass, damp);
             vels  [i].set_lincomb( damp, vels  [i], dt,            aforce[i] );
             omegas[i].set_lincomb( damp, omegas[i], dt*invRotMass, torqs [i] );

@@ -1,7 +1,5 @@
 
-int verbosity = 1;
-int idebug    = 0;
-double tick2second=1e-9;
+#include <globals.h>
 
 #include "MolGUI.h"
 #include "MolWorld_sp3_QMMM_multi.h"
@@ -59,7 +57,8 @@ int main(int argc, char *argv[]){
     } }; // test
 
 	process_args( argc, argv, funcs );
-	app->init();
+    W->init();
+    app->bindMolWorld( W );
 
     // --- Apply after-initialization settings and hacks 
     if(iParalel>-100){ W->iParalel=iParalel; printf( "#### W->iParalel set to %i \n", W->iParalel ); };

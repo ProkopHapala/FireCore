@@ -505,6 +505,7 @@ static constexpr Vec3i Vec3iZ    {0,0,1};
 static constexpr Vec3i Vec3imin  {-2147483647,-2147483647,-2147483647};
 static constexpr Vec3i Vec3imax  {+2147483647,+2147483647,+2147483647};
 
+
 inline uint64_t scalar_id  ( const Vec3i& v){ return ( v.x | (((uint64_t)v.y)<<16) | (((uint64_t)v.z)<<32) ); }
 inline Vec3i    from_id    ( uint64_t id   ){
     Vec3i vi;
@@ -534,6 +535,18 @@ inline Vec3T<T2> cast(const Vec3T<T1>& i){ Vec3T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y
 inline int print( const Vec3f&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
 inline int print( const Vec3d&  v){ return printf( "%g %g %g", v.x, v.y, v.z ); };
 inline int print( const Vec3i&  v){ return printf( "%i %i %i", v.x, v.y, v.z ); };
+
+
+template <class T>
+class Vec6T { public:
+	union{
+        struct{ Vec3T<T> lo,hi; };
+		T array[6];
+	};
+};
+using Vec6i = Vec6T< int>;
+using Vec6f = Vec6T< float>;
+using Vec6d = Vec6T< double >;
 
 #endif
 

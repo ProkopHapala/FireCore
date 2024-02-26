@@ -19,8 +19,8 @@ void drawVecInPos   ( const Vec2f& v,   const Vec2f& pos );
 void drawBody2d     ( const Vec2f& rot, const Vec2f& pos, float l1, float l2 );
 void drawLine       ( const Vec2f& p1, const Vec2f& p2   );
 void drawTriangle   ( const Vec2f& p1, const Vec2f& p2, const Vec2f& p3 );
-void drawRectangle  ( float p1x, float p1y, float p2x, float p2y, bool filled );
-void drawRectangle  ( const Vec2f& p1, const Vec2f& p2, bool filled );
+void drawRectangle  ( float p1x, float p1y, float p2x, float p2y, bool filled = true);
+void drawRectangle  ( const Vec2f& p1, const Vec2f& p2, bool filled=true );
 void drawCircle     ( const Vec2f& center, float radius, int n, bool filled );
 void drawArc        ( const Vec2f& center, float radius, float phi0, float phi, float dphi, bool filled );
 
