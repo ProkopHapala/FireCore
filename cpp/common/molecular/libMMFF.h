@@ -1,12 +1,4 @@
 ﻿
-
-// constexpr int ntmpstr=2048;
-// char tmpstr[ntmpstr];
-// int verbosity       = 1;
-// int idebug          = 0;
-// double tick2second=1e-9;
-
-
 #include "Forces.h"
 
 extern "C"{
@@ -23,7 +15,7 @@ void setVerbosity( int verbosity_, int idebug_ ){
 //int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 void insertSMILES( char* s ){  W.insertSMILES(s); };
 
-void initParams          ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){ W.tmpstr=tmpstr; W.initParams(sElementTypes,sAtomTypes,sBondTypes,sAngleTypes,sDihedralTypes); }
+void initParams          ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){ W.initParams(sElementTypes,sAtomTypes,sBondTypes,sAngleTypes,sDihedralTypes); }
 
 //int  buildMolecule_xyz   ( const char* xyz_name, bool bEpairs, double fAutoCharges ){  W.builder.bDummyEpair=bEpairs; W.bEpairs=bEpairs; W.fAutoCharges=fAutoCharges;  return W.buildMolecule_xyz( xyz_name );  }
 
@@ -61,6 +53,34 @@ int saveXYZ( const char* fname, const char* comment, int imod){
 }
 
 // ================ RUN / EVAL
+
+void setupCollisionDamping( int nstep, double medium, double bond, double ang, double nonB, double dRcut1, double dRcut2 ){
+    W.ffl.colDamp.set( nstep, medium, bond, ang, nonB, dRcut1, dRcut2 );
+    // bool    bCollisionDamping        = false; // if true we use collision damping
+    // bool    bCollisionDampingNonBond = false;  // if true we use collision damping for non-bonded interactions
+    // double  damping_medium           = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
+    // double  collisionDamping         = 0.1;   // col_damp    =     collisionDamping   /(dt*ndampstep )
+    // double  collisionDamping_NB      = 0.1;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
+    // int     ndampstep                = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
+    // double  col_damp_dRcut           = 0.5;   // non-covalent collision damping interaction goes between 1.0 to 0.0 on interval  [ Rvdw , Rvdw+col_damp_dRcut ]
+    // double col_damp      = 0.0;  //  collisionDamping   /(dt*ndampstep );
+    // double col_damp_NB   = 0.0;  //  collisionDamping_NB/(dt*ndampstep );
+    // W.ffl.bCollisionDamping        = collisionDamping   >0;
+    // W.ffl.bCollisionDampingNonBond = collisionDamping_NB>0;
+    // W.ffl.damping_medium           = damping_medium;
+    // W.ffl.collisionDamping         = fmax( collisionDamping   ,0 );
+    // W.ffl.collisionDamping_NB      = fmax( collisionDamping_NB,0 );
+    // W.ffl.ndampstep                = ndampstep;
+    // W.ffl.col_damp_dRcut1          = col_damp_dRcut1;
+    // W.ffl.col_damp_dRcut2          = col_damp_dRcut2;
+}
+
+
+void setup_accel(int nstep_acc_min_, double cos_vf_acc_ ){
+    W.ffl.colDamp.setup_accel( nstep_acc_min_, cos_vf_acc_ );
+}
+
+
 
 double eval (){ return W.eval(); };
 //int    run  ( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  }
@@ -120,6 +140,19 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 }
 
 // ========= Force-Field Component Sampling  
+
+void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
+    SplineConstr C( {0,1}, x0, dx, np, Eps );
+    Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};
+    Vec3d fs[2];
+    for(int i=0; i<n; i++ ){
+        ps[1]={xs[i],0.0,0.0};
+        fs[0]=Vec3dZero;
+        fs[1]=Vec3dZero;
+        Es[i] = C.apply( ps, fs );
+        Fs[i] = fs[0].x;
+    }
+}
 
 void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
     DistConstr C( {0,1}, {lmax,lmin}, {kmax,kmin}, flim  );
@@ -183,9 +216,10 @@ void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*R
         Vec3d  f=Vec3dZero;
         pj.x=rs[i];
         switch(kind){
-            case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K, R2damp );      break;  // Morse
-            case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                                              break;  // Lenard Jones
+            case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K, R2damp ); break;  // Morse
+            case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                                break;  // Lenard Jones
             case 3: double fr; E=erfx_e6( pj.x, K, fr ); f.x=fr; break;  // gauss damped electrostatics
+            case 4: E=repulsion_R4( pj-pi, f, REQij.x-Rdamp, REQij.x, K );
         }
         //printf( "i %i r %g E %g f %g \n", i, pj.x, E, f.x );
         fs[i]=f.x;

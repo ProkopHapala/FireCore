@@ -36,9 +36,14 @@ export OMP_NUM_THREADS
 #python3 run_gui.py
 #python3 run_surf_lattice.py
 #python3 run_propandiol.py
-#python3 run_sample.py
+python3 run_sample.py
+#python3 run_sample_nonBond.py
 #python3 run_lat_scan.py
 
+#python3 run_collision_damp.py
+#python3 run_collision_damp_scan.py
+#python3 run_test_clear.py
+
 #python3 run_opt_poly.py BB.HNH-hh.NHO-hp
-python3 run_opt_poly.py BB.HNH-hp.OHO-h_1,BB.HNH-hh.NHO-hp
+#python3 run_opt_poly.py BB.HNH-hp.OHO-h_1,BB.HNH-hh.NHO-hp
 

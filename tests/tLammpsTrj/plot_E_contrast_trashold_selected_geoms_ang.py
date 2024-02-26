@@ -65,13 +65,13 @@ class_prop_ = [
 ] 
 class_prop = dict( class_prop_ )
 
+path= "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo"
 
+#f_geoms=path+"/pairs_compare_DFTB_vs_B3LYP/2-plot_confs/dirs/"
+#f_egs=path+"/endgroups/endgroups/"
+f_egs=path+"/endgroups/B3LYP_oriented/"
 
-#f_geoms="/home/prokop/Desktop/CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/2-plot_confs/dirs/"
-#f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/endgroups/"
-f_egs="/home/prokop/Desktop/CARBSIS/Paolo/endgroups/B3LYP_oriented/"
-
-dir_geom="/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/pairs_b3lyp/confs/"
+dir_geom=path+"/B3LYP_finished/pairs_b3lyp/confs/"
 
 
 
@@ -96,14 +96,14 @@ def find_in_interval( intervals, EBs, ECs, nbest=1 ):
 
 bases_to_remove = set( ['NNO-hp','ONO-p','NO-h-p'] )
 
-#_,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/pairs_compare_DFTB_vs_B3LYP/4-dimers_energy_sorted.dat", ni=1, nf=3, iname=0, toRemove=bases_to_remove )
-_,Es,names,pair_names = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/1-binding_energy_all.dat",   ni=4, nf=2, iname=0, toRemove=bases_to_remove )
+#_,Es,names,pair_names = bpu.read_dat( path+"/pairs_compare_DFTB_vs_B3LYP/4-dimers_energy_sorted.dat", ni=1, nf=3, iname=0, toRemove=bases_to_remove )
+_,Es,names,pair_names = bpu.read_dat( path+"/B3LYP_finished/1-binding_energy_all.dat",   ni=4, nf=2, iname=0, toRemove=bases_to_remove )
 
 old_inds = np.array(  range(len(Es)) )
 
-_, Angs,   names_angs,_         = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/dihedral_angle_ave.dat",   ni=0, nf=1, iname=0, toRemove=bases_to_remove )
-_, Hbonds, names_hbonds,_       = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/bond_length_min.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
-_, Hbonds_av, names_hbonds_av,_ = bpu.read_dat( "/home/prokop/Desktop/CARBSIS/Paolo/B3LYP_finished/bond_length_ave.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+_, Angs,   names_angs,_         = bpu.read_dat( path+"/B3LYP_finished/dihedral_angle_ave.dat",   ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+_, Hbonds, names_hbonds,_       = bpu.read_dat( path+"/B3LYP_finished/bond_length_min.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
+_, Hbonds_av, names_hbonds_av,_ = bpu.read_dat( path+"/B3LYP_finished/bond_length_ave.dat",      ni=0, nf=1, iname=0, toRemove=bases_to_remove )
 
 
 Angs = np.array( Angs ); print( "Angs ", Angs ); #exit()

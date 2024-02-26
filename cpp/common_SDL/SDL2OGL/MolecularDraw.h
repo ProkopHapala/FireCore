@@ -239,4 +239,17 @@ void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec
     glPopMatrix();
 }
 
+void viewSubstrate( Vec2i nxs, Vec2i nys, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
+    glPushMatrix();
+    for( int ix = nxs.x; ix<=nxs.y; ix++ ){
+        for( int iy = nys.x; iy<=nys.y; iy++ ){
+            Vec3d pos = a*ix + b*iy + pos0;
+            glTranslatef(pos.x, pos.y, pos.z);
+            glCallList(isoOgl);
+            glTranslatef(-pos.x, -pos.y, -pos.z);
+        }
+    }
+    glPopMatrix();
+}
+
 #endif

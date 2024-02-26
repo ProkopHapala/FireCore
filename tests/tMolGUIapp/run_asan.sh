@@ -40,12 +40,14 @@ export LD_PRELOAD
 #./$name -x common_resources/pyridine
 #./$name -x common_resources/propandiol
 
+./$name -uff -x common_resources/C2H4
+
 # ====== Polymers
 
 #./$name -x common_resources/polydiacetylene
 #./$name -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -x common_resources/polydiacetylene_OH
-./$name -x common_resources/polymer-2_new
+3./$name -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 

@@ -64,6 +64,11 @@ class Atoms{ public:
             apos[ia].update_bounds( pmin, pmax );
         }
     }
+    Vec3d getBBcog()const{
+        Vec3d pmin,pmax;
+        getAABB( pmin, pmax );
+        return (pmin+pmax)*0.5;
+    }
 
     void fromRigid( Vec3d* ps0, const Vec3d& p0, const Mat3d& rot ){ for(int i=0; i<natoms; i++){ rot.dot_to_T( ps0[i], apos[i] ); apos[i].add(p0);         } }
     void shift    ( Vec3d d                                       ){ for(int i=0; i<natoms; i++){ apos[i].add(d); } }
@@ -108,6 +113,8 @@ class Atoms{ public:
     }
 
     void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
+        printf( "Atoms::atomsToXYZ() natoms=%i @file=%li @atypes=%li @apos=%li @lvec=%li\n", natoms, (long)file, (long)atypes, (long)apos, (long)lvec );
+        if( (file==0)||(atypes==0)||(apos==0)||(lvec==0) ){   printf( "ERROR Atoms::atomsToXYZ() encountered NULL pointer @file=%li @atypes=%li @apos=%li @lvec=%li\n", (long)file, (long)atypes, (long)apos, (long)lvec );    }
         int npbc=nPBC.totprod();
         //printf( "atomsToXYZ() atypes=%li   natoms=%i npbc=%i natoms*npbc=%i \n", (long)atypes, natoms, npbc, natoms*npbc );
         if(bN      )fprintf( file, "%i\n", natoms*npbc );

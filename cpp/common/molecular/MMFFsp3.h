@@ -871,7 +871,7 @@ void printPis(){
 double optimalTimeStep(double m=1.0){
     double Kmax = 1.0;
     for(int i=0; i<nbonds; i++){ Kmax=fmax(Kmax, bond_k[i] ); }
-    return M_PI*2.0*sqrt(m/Kmax)/10.0;  // dt=T/10;   T = 2*pi/omega = 2*pi*sqrt(m/k)
+    return M_PI*2.0*sqrt(m/Kmax)/15.0;  // dt=T/10;   T = 2*pi/omega = 2*pi*sqrt(m/k)
 }
 
 

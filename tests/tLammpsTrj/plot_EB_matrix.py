@@ -42,6 +42,7 @@ EBmax = 40.0
 
 #fname = "/home/prokop/Desktop/CARBSIS/Clanke_1/Data_for_Figs/Energy_B3LYP/binding_energy_big_B3LYP.dat"
 fname = "/home/prokop/Desktop/CARBSIS/Clanke_1/Data_for_Figs/Energy_B3LYP/binding_energy_big_B3LYP-mithun_correct.dat"
+fname = "/home/prokop/Desktop/CARBSIS/Clanke_1/Data_for_Figs/Energy_B3LYP/binding_energy_big_B3LYP-mithun_correct.dat"
 
 # ============ Functions
 

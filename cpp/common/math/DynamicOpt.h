@@ -7,6 +7,8 @@
 #include <math.h>
 #include "macroUtils.h"
 
+#include <globals.h>
+
 typedef void (*ForceFunction)( int n, double * xs, double * dfs );
 
 class OptLog { public:
@@ -32,7 +34,7 @@ class OptLog { public:
 
 class DynamicOpt{ public:
     // variables
-    int verbosity = 0;
+    //int verbosity = 0;
     int n=0;
     double * pos       = 0;
     double * vel       = 0;

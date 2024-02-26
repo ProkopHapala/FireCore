@@ -15,19 +15,14 @@
 *.npy
 *.xsf
 *.bin
+__pycache__
 
 build
-cpp/Build/
-cpp/MolecularEditor/data
-cpp/MolecularEditor/doc
-cpp/MolecularEditor/inputs
+build-*
+Build
+Build-*
 
-tests/tMolGUIapp
-
-cpp/apps_OCL/MolecularEditorOCL/data
-cpp/apps_OCL/MolecularEditorOCL/doc
-cpp/apps_OCL/MolecularEditorOCL/inputs
-
-cpp/apps_OCL/data
-cpp/apps_OCL/doc
-cpp/apps_OCL/inputs
+cpp/Build
+cpp/Build-*
+cpp/build
+cpp/build-*

@@ -6,7 +6,7 @@
 
 //template <class T,class VEC>
 template <class T>
-class Vec2T{
+class Vec2T {
 	using VEC = Vec2T<T>;
 	public:
 	union{
@@ -111,6 +111,13 @@ class Vec2T{
 
 	bool isBetweenRotations( const VEC& a, const VEC& b ){ return (cross(a)<0)&&(cross(b)>0);  }
 
+    // what about using bitwize operators for this ^ (multiplication) and | (division) ?
+    //inline VEC operator%(const VEC& a, const VEC& b)const{ return VEC{ a.x*b.x - a.y*b.y, a.y*b.x + a.x*b.y; };  // mul_cmplx
+    //inline VEC operator|(const VEC& a, const VEC& b)const{ return VEC{ a.x*b.x + a.y*b.y, a.y*b.x - a.x*b.y; };  // udiv_cmplx
+
+    inline VEC operator%(const VEC& b)const{ return Vec2T<T>{ x*b.x - y*b.y, y*b.x + x*b.y }; }  // mul_cmplx
+    inline VEC operator|(const VEC& b)const{ return Vec2T<T>{ x*b.x + y*b.y, y*b.x - x*b.y }; }  // udiv_cmplx
+
 	inline void     mul_cmplx (               const VEC& b ){                            T x_ =    x*b.x -   y*b.y;         y =    y*b.x +   x*b.y;       x=x_;  }
 	inline void     udiv_cmplx(               const VEC& b ){                            T x_ =    x*b.x +   y*b.y;         y =    y*b.x -   x*b.y;       x=x_;  }
 	inline void pre_mul_cmplx ( const VEC& a               ){                            T x_ =  a.x*  x - a.y*  y;         y =  a.y*  x + a.x*  y;       x=x_;  }
@@ -190,11 +197,13 @@ using Vec2i = Vec2T<int>;
 using Vec2f = Vec2T<float>;
 using Vec2d = Vec2T<double>;
 
+static constexpr Vec2d Vec2dNAN  = (Vec2d){NAN,NAN};
 static constexpr Vec2d Vec2dZero = (Vec2d){0.0,0.0};
 static constexpr Vec2d Vec2dOnes = (Vec2d){1.0,1.0};
 static constexpr Vec2d Vec2dX    = (Vec2d){1.0,0.0};
 static constexpr Vec2d Vec2dY    = (Vec2d){0.0,1.0};
 
+static constexpr Vec2f Vec2fNAN  = (Vec2f){NAN,NAN};
 static constexpr Vec2f Vec2fZero = (Vec2f){0.0f,0.0f};
 static constexpr Vec2f Vec2fOnes = (Vec2f){1.0f,1.0f};
 static constexpr Vec2f Vec2fX    = (Vec2f){1.0f,0.0f};

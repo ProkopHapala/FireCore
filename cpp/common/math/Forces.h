@@ -12,6 +12,126 @@
 #define R2SAFE  1.0e-8f
 #define F2MAX   10.0f
 
+
+
+
+inline bool clampForce( Vec3d& f, const double f2max ){
+    const double f2   = f.norm2();
+    const bool bClamp = f2>f2max;
+    if( bClamp ){
+        f.mul( sqrt(f2max/f2) );
+    }
+    return bClamp;
+}
+
+
+// ================= Trashold functions
+
+double smoothstep_up(double x_, double xmin, double xmax) {
+    if      (x_<xmin){ return 0; }
+    else if (x_>xmax){ return 1; }
+    double x = (x_-xmin)/(xmax-xmin);
+    return x*x*(3-2*x);
+}
+
+double smoothstep_down(double x_, double xmin, double xmax) {
+    if      (x_<xmin){ return 1; }
+    else if (x_>xmax){ return 0; }
+    double x = (x_-xmin)/(xmax-xmin);
+    return 1-x*x*(3-2*x);
+}
+
+double R4blob(double r2) { r2=1-r2; return r2*r2; }   // simplest and fastest cutoff function which depends only on r2 (i.e. eliminate need for sqrt)
+
+double R8func(double r2, double R, double Rnod ){
+    //This functions should is C1-continuous smoothstep function which is use only r2 (i.e. eliminate need for sqrt), it can be used in 3 ways:
+    //  1) smoothstep from 0.0 to 1.0 at interval [Rnod,R] if Rnod<R
+    //  2) smoothstep from 1.0 to 0.0 at interval [R,Rnod] if Rnod>R
+    //  3) smooth bumb at interval [R1,R2] with peak at R, where 2R^2 = R1^2 + R2^2
+    double R2   = R*R;              // 1 mul
+    double R2n  = Rnod*Rnod;        // 1 mul
+    double y1   =       R2 - r2;    // 1 add
+    double y2   = R2n + R2 - y1*y1; // 2 add, 1 mul 
+    y2*= R2/(R2+R2n); // rescale to have maximum at y=1   // 1 add, 1 div, 1 mul
+    return y2*y2;                   // 1 mul .... in total cost 5 mul, 3 add, 1 div
+}
+
+double R8down(double r2, double R, double Rnod ){
+    //This functions should is C1-continuous smoothstep function which is use only r2 (i.e. eliminate need for sqrt), it can be used in 3 ways:
+    //  1) smoothstep from 0.0 to 1.0 at interval [Rnod,R] if Rnod<R
+    double R2   = R*R;             
+    double R2n  = Rnod*Rnod;       
+    if     ( r2<R2  ) return 1;
+    else if( r2>R2n ) return 0;
+    double y1   =       R2 - r2;    
+    double y2   = R2n + R2 - y1*y1; 
+    y2*= R2/(R2+R2n); 
+    return y2*y2;   
+}
+
+double finiteLorenz( double r2, double w2, double R2cut ){
+    if( r2>R2cut ) return 0;
+    double fcut = (R2cut-r2);
+    return fcut*fcut/(R2cut*R2cut*(r2+w2));
+}
+
+double repulsion_R4( Vec3d d, Vec3d& f, double R, double Rcut, double A ){
+    // we use R4blob(r) = A * (1-r^2)^2
+    // such that at distance r=R we have force f = fmax
+    // f = -dR4blob/dr = 4*A*r*(1-r^2) = fmax
+    // A = fmax/(4*R*(1-R^2))
+    double R2    = R*R;
+    double R2cut = Rcut*Rcut;
+    double r2 = d.norm2();
+    if( r2>R2cut ){ 
+        return 0;
+        // f = Vec3dZero;
+    }else if( r2>R2 ){ 
+        double mr2 = R2cut-r2;
+        double fr = A*mr2;
+        f.add_mul( d, -4*fr );
+        return fr*mr2;
+    }else{
+        double mr2 = R2cut-R2;
+        double fr  = A*mr2;
+        double r    = sqrt(r2);
+        double fmax = 4*R*fr;
+        f.add_mul( d, -fmax/r );
+        return fmax*(R-r) + fr*mr2;
+    }
+}
+
+// ================ Zero Torque ( for torsion angles )
+
+// inline void zeroTorque( const Vec3d& a, const Vec3d& b, const Vec3d& fa, const Vec3d& fb, const Mat3d rot, double l, Vec3d& f ){
+//     // This function find force f which counteracts torque from fa and fb ( at the end points A,B of bonds a and b, a = A-C, b = B-D )
+//     // We consider torsion angle between two bonds a and b between atoms A,B,C,D  (A,B are end points of a, C,D are on the axis, C is at origin adjecent to A and D is adjecent to B in distance l=|C-D| from C)
+//     // we consider action of force in plane defined by orientation matrix rot (rot.a,rot.b,rot.c), rot.a is normal to plane, rot.c is axis of torsion, rot.b is up vector such that b is in plane of rot.b and rot.c  
+//     // for force component fI in the    plane we have: fI*l = faI*aI                (because fbII=0 by choice of plane)
+//     // for force component fN normal to plane we have: fN*l = faN*aI + fbN*(l+bI)
+//     double aI  = rot.c.dot(a);  // will be probably negative
+//     double bI  = rot.c.dot(b);
+//     double faI = rot.b.dot(fa);
+//     double faN = rot.a.dot(fa);
+//     double fbN = rot.a.dot(fb);
+//     double il  = -1./l;
+//     double fI  = ( faI*aI              )*il;
+//     double fN  = ( faN*aI + fbN*(l+bI) )*il;
+//     f = rot.a*fN + rot.b*fI;
+// }
+
+// inline void torsion( double fang, Vec3d a, Vec3d b, Quat4d ax,   Vec3d& fa, Vec3d& fb, Vec3d& fc, Vec3d& fd ){
+//     Mat3d rota,rotb;
+//     rota.fromDirUp( ax.f, a );
+//     rotb.fromDirUp( ax.f, b );
+//     double ila = 1./rota.b.dot(a);
+//     double ilb = 1./rotb.b.dot(b);
+//     Vec3d   fa = rota.a*(fang*ila);
+//     Vec3d   fb = rotb.a*(fang*ilb);
+//     zeroTorque( a, b, fa, fb, rota, ax.w, fd );
+//     zeroTorque( b, a, fb, fa, rota, ax.w, fc );
+// }
+
 // ================ Angular Forces (MMFF) 
 
 inline double evalBond( const Vec3d& h, double dl, double k, Vec3d& f ){
@@ -152,10 +272,11 @@ inline double addAtomicForceLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ ){
     double ir2_ = ir2*REQ.x*REQ.x;
     double ir6  = ir2_*ir2_*ir2_;
     //double fr   = ( ( 1 - ir6 )*ir6*12*REQ.b + ir*REQ.c*-COULOMB_CONST )*ir2;
-    double Eel  = ir*REQ.x*COULOMB_CONST;
+    double Eel  = ir*REQ.z*COULOMB_CONST;
     double vdW  = ir6*REQ.y;
     double fr   = ( ( 1 - ir6 )*12*vdW - Eel )*ir2;
     //printf( " (%g,%g,%g) r %g fr %g \n", dp.x,dp.y,dp.z, 1/ir, fr );
+    //printf( " r %g fr %g vdW %g Eel %g \n", 1/ir, fr, vdW, Eel  );
     f.add_mul( dp, fr );
     return  ( ir6 - 2 )*vdW + Eel;
 }
@@ -172,8 +293,8 @@ inline float getLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ, const float R2
     const float  u2  = REQ.x*REQ.x*ir2;
     const float  u6  = u2*u2*u2;
     const float vdW  = u6*REQ.y;
-    E    =      (u6-2.)*vdW     ;
-    F    =  12.*(u6-1.)*vdW*ir2 ;
+    E    +=      (u6-2.)*vdW     ;
+    F    +=  12.*(u6-1.)*vdW*ir2 ;
     f.set_mul( dp, -F );
     return E;
 }
@@ -190,8 +311,8 @@ inline double getLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ, const double
     const double  u2  = REQ.x*REQ.x*ir2;
     const double  u6  = u2*u2*u2;
     const double vdW  = u6*REQ.y;
-    E    =      (u6-2.)*vdW     ;
-    F    =  12.*(u6-1.)*vdW*ir2 ;
+    E    +=      (u6-2.)*vdW     ;
+    F    +=  12.*(u6-1.)*vdW*ir2 ;
     f.set_mul( dp, -F );
     return E;
 }
@@ -223,7 +344,7 @@ inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const d
     // --- Coulomb
     const double ir2_  = 1/( r2 + R2damp );
     E = COULOMB_CONST*REQH.z*sqrt( ir2_ );
-        F = E*-ir2_ ;
+    F = E*-ir2_ ;
     // --- Morse
     const double  r  = sqrt( r2   );
     const double  e  = exp( -K*(r-REQH.x) );

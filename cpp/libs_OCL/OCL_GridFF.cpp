@@ -9,12 +9,15 @@
 #include <clFFT.h>
 #include "OCLfft_errors.h"
 #include <clFFT.h>
+
+#include "testUtils.h"
 #include "OCL.h"
 #include "Grid.h"
 #include "IO_utils.h"
 #include "quaternion.h"
 
-int verbosity = 0;
+#include <globals.h>
+//int verbosity = 0;
 #include "OCL_DFT.h"
 #include "OCL_PP.h"
 
@@ -67,6 +70,9 @@ extern "C" {
         //oclfft.initTask_mul( 0, 1, 2 );    // If we know arguments in front, we may define it right now
     }
 
+
+    void release( bool bReleaseOCL, bool bReleaseOCLfft ){ oclfft.release_OCL_DFT( bReleaseOCL, bReleaseOCLfft); }
+
     // ================ PP
 
     int initPP( const char* cl_src_dir, size_t* Ns_ ){
@@ -96,7 +102,7 @@ extern "C" {
 
     // ================ END PP
 
-    void newFFTbuffer( char* name, int nfloat, int ntot ){ oclfft.newFFTbuffer( name, nfloat, ntot ); }
+    int newFFTbuffer( char* name, int nfloat, int ntot ){ return oclfft.newFFTbuffer( name, nfloat, ntot ); }
 
     int initAtoms( int nAtoms, int nOrbs ){  return oclfft.initAtoms( nAtoms, nOrbs ); };
     void runfft( int ibuff, bool fwd     ){ oclfft.runFFT( ibuff,fwd,0);     };
@@ -105,11 +111,22 @@ extern "C" {
     void poisson ( int ibuffA, int ibuff_result, float* dcell ){  oclfft.poisson ( ibuffA, ibuff_result, (float4*)dcell );}
     void gradient( int ibuffA, int ibuff_result, float* dcell ){  oclfft.gradient( ibuffA, ibuff_result, (float4*)dcell );}
     void projectAtoms    ( float* atoms, float* coefs, int ibuff_result                       ){ oclfft.projectAtoms    ( (float4*)atoms, (float4*)coefs, ibuff_result ); }
+                                                                                                                   
     void projectAtomsDens( float* atoms, float* coefs, int ibuff_result, int iorb1, int iorb2, float* acumCoef ){  oclfft.projectAtomsDens( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef ); }
-    void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0 ){ oclfft.projectAtomsDens0( ibuff_result, *(float2*)acumCoef, natoms, ityps, (Vec3d*)oatoms ); }
+    void projectAtomsDens0( int ibuff_result, float* acumCoef, int natoms=0, int* ityps=0, Vec3d* oatoms=0, float4* coefs=0 ){ oclfft.projectAtomsDens0( ibuff_result, *(float2*)acumCoef, natoms, ityps, (Vec3d*)oatoms, coefs ); }
+
+    void projectDenmat( int natoms, int* iZs, int* ityps, double* ocoefs, double* apos, int iorb0, int iorb1, double Rcut, bool bInit ){  
+        oclfft.projectDenmat( natoms, iZs, ityps, ocoefs, (Vec3d*)apos, iorb0, iorb1, Rcut, bInit );
+        //oclfft.projectDenmat( (float4*)atoms, (float4*)coefs, ibuff_result, iorb1, iorb2, *(float2*)acumCoef );     
+    }
     
     // void projectAtomPosTex(  float4* atoms, float4* coefs, int nPos, float4* poss, float2* out ){
     void projectAtomPosTex( float* atoms, float* coefs, int nPos, float* poss, float* out ){ oclfft.projectAtomPosTex( (float4*)atoms, (float4*)coefs,  nPos, (float4*)poss, (float2*)out ); }
+
+    void evalVpointChargesPBC( int na, double* apos, double* aQs, int np, double* ps, double* Vps, int* nPBC, double* cell ){
+        oclfft.evalVpointChargesPBC( na, (Vec3d*)apos, aQs, np, (Vec3d*)ps, Vps, *(Vec3i*)nPBC, *(Mat3d*)cell );
+    }
+
 
     void cleanup(){ oclfft.cleanup(); }
 
@@ -154,6 +171,7 @@ extern "C" {
     void saveToXsf     (const char* fname, int ibuff, int stride, int offset ){ return oclfft.saveToXsf(fname, ibuff,stride,offset,0,0,0); }
     void saveToXsfAtoms(const char* fname, int ibuff, int stride, int offset, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsf(fname, ibuff, stride, offset, natoms,atypes,(Vec3d*)apos); }
     void saveToXsfAtomsData(const char* fname, int* ngrid, double* data, int natoms, int* atypes, double* apos ){ return oclfft.saveToXsfData(fname, *(Vec3i*)ngrid, data, natoms,atypes,(Vec3d*)apos); }
+
 
     /*
 

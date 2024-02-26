@@ -47,7 +47,7 @@ void drawPointCross( const Vec3f& vec, float  sz        );
 void drawVec       ( const Vec3f& vec                   );
 void drawVecInPos  ( const Vec3f& v,   const Vec3f& pos );
 void drawLine      ( const Vec3f& p1,  const Vec3f& p2  );
-void drawArrow     ( const Vec3f& p1,  const Vec3f& p2, float sz );
+void drawArrow     ( const Vec3f& p1,  const Vec3f& p2, float sz=0.1 );
 
 void drawScale     ( const Vec3f& p1,  const Vec3f& p2, const Vec3f& a, float tick, float sza, float szb );
 
@@ -91,6 +91,10 @@ void drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3
 void drawInt   ( const Vec3d& pos, int i   , int fontTex, float sz=0.02, const char* format="%i\0" );
 void drawDouble( const Vec3d& pos, double f, int fontTex, float sz=0.02, const char* format="%g\0" );
 
+void pointLabels( int n, const Vec3d* ps, int fontTex, float sz=7 );
+void drawAxis3D( int n, Vec3d p0, Vec3d dp, double v0, double dval, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" );
+void drawAxis3D( Vec3i ns, Vec3d p0, Vec3d ls, Vec3d v0s, Vec3d dvs, int fontTex, float tickSz=0.5, float textSz=0.015, const char* format="%g" );
+
 
 void drawBox( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b );
 void drawBBox        ( const Vec3f& p0, const Vec3f& p1 );
@@ -107,7 +111,7 @@ inline void drawVec       ( const Vec3d& vec                   ){drawVec  ((Vec3
 inline void drawPointCross( const Vec3d& vec, double sz        ){drawPointCross((Vec3f)vec,sz); }
 inline void drawVecInPos  ( const Vec3d& v,   const Vec3d& pos ){drawVecInPos((Vec3f)v,(Vec3f)pos); }
 inline void drawLine      ( const Vec3d& p1,  const Vec3d& p2  ){drawLine ((Vec3f)p1,(Vec3f)p2); }
-inline void drawArrow     ( const Vec3d& p1,  const Vec3d& p2, float sz  ){drawArrow((Vec3f)p1,(Vec3f)p2, sz); }
+inline void drawArrow     ( const Vec3d& p1,  const Vec3d& p2, float sz=0.1  ){drawArrow((Vec3f)p1,(Vec3f)p2, sz); }
 
 inline void drawScale     ( const Vec3d& p1,  const Vec3d& p2, const Vec3d& a, double tick, double sza, double szb ){  drawScale( (Vec3f)p1, (Vec3f)p2, (Vec3f)a, tick,sza,szb); };
 
@@ -180,6 +184,7 @@ void drawScalarArray(int n,const Vec3d* ps,const double* vs, double vmin=0.0, do
 void drawScalarField(Vec2i ns,const Vec3d*  ps,const double* data, double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 void drawScalarField(Vec2i ns,const Quat4f* ps,const float* data, int pitch, int offset, double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 
+void drawScalarGridLines(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b, const Vec3d& up, const double* data, double sc=1.0, Vec2d vclamp=Vec2d{-1e+300,1e+300} );
 void drawScalarGrid(Vec2i ns,const Vec3d& p0, const Vec3d& a, const Vec3d& b, const double* data,  double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 void drawScalarGrid(Vec2i ns,const Vec3d& p0, const Vec3d& a, const Vec3d& b, const float*  data, int pitch, int offset,  double vmin=0.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
 void drawColorScale( int n,const Vec3d& p0, const Vec3d& Vec3dY, const Vec3d& up=Vec3dX, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );

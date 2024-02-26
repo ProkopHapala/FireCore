@@ -14,40 +14,54 @@ Non-Bonded Force-Field
 #include "quaternion.h"
 #include "Atoms.h"
 
+#include "Buckets.h"
 #include "Forces.h"
+#include "ForceField.h"
 
-// check if "vals" are within limits "vmin","vmax"
-bool checkLimits( int n, int m, const double* vals, const double* vmin, const double* vmax, const char* message, bool bPrint=true ){
-    //for(int j=0; j<m; j++){ printf( "checkLimits[%i] [%g,%g]\n", j, vmin[j], vmax[j] ); }
-    bool b=false;
-    for(int i=0; i<n; i++){
-        const double* vali = vals+i*m;
-        for(int j=0; j<m; j++){
-            double v = vali[j];
-            if( v<vmin[j] || v>vmax[j] || isnan(v) ){  
-                b=true; 
-                if(bPrint){
-                    printf( "%s[%i/%i,%i/%i] %g out of limits [%g,%g] \n", message, i,n, j,m,   v, vmin[j], vmax[j]  );
-                }
-            }
-        }
-    }
-    return b;
+#include "simd.h"
+
+void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
+    //Quat8d bb;
+    //bb.lo = bb.lo = ps[c2o[0]];
+    for(int i=0; i<n; i++){ 
+        //printf( "fitAABB() i %i \n", i );
+        int ip = c2o[i];
+        //printf( "fitAABB() i=%i ip=%i \n", i, ip );
+        Vec3d p = ps[ip];
+        bb.lo.setIfLower  ( p );
+        bb.hi.setIfGreater( p );
+    }; 
+    //return bb;
 }
 
-
 // Force-Field for Non-Bonded Interactions
-class NBFF: public Atoms{ public:
+class NBFF: public ForceField{ public:
     
     // ---  inherited from Atoms
     //int     n      =0; // from Atoms
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
-    
-    Vec3d    *fapos __attribute__((aligned(64))) =0; // forces on atomic positions
+    //Vec3d  *fapos  =0; // forces on atomic positions
+    //Vec3d  *vapos  = 0; // [natom]  velocities of atoms
+
     Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
-    Quat4i   *neighs =0; // list of neighbors (4 per atom)
+    Quat4i   *neighs   =0; // list of neighbors (4 per atom)
     Quat4i   *neighCell=0; // list of neighbors (4 per atom)
+
+    //  --- Use this to speed-up short range interaction (just repulsion no L-J or Coulomb)
+    //       * there can be additional hydrogen bonds just for selected pairs of atoms
+    //       * use function repulsion_R4() to calculate repulsion without need of square root ( it is defined in Forces.h )
+    // Bounding Boxes
+    int      nBBs=0;
+    Vec6d*   BBs=0; // bounding boxes (can be either AABB, or cylinder, capsula) 
+    Buckets  pointBBs;    // buckets for collision detection
+
+    // --- Parameters
+    bool    bClampNonBonded =  0.0; // if >0 then we clamp non-bonded forces to this value
+    double  FmaxNonBonded   = 10.0; // if bClampNonBonded>0 then we clamp non-bonded forces to this value
+
+    double drSR  = 0.5;     // R_SR = R_cut - drSR
+    double ampSR = 0.15;   // Amplitude of short-range repulsion  = ampSR * EvdW
 
     double alphaMorse = 1.5; // alpha parameter for Morse potential
     //double  KMorse  = 1.5; // spring constant for Morse potential
@@ -61,7 +75,13 @@ class NBFF: public Atoms{ public:
     Quat4f *PLQs  __attribute__((aligned(64))) =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
     Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
 
+#ifdef WITH_AVX
+    // ========== Try SIMD
+    Vec3sd* apos_simd __attribute__((aligned(64))) =0; // forces on atomic positions
+    Vec4sd* REQs_simd __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
+#endif //WITH_AVX
     // ==================== Functions
+
 
     // calculate total torque on the molecule (with respect to point p0) 
     void torq     ( const Vec3d& p0,  Vec3d& tq                   ){ for(int i=0; i<natoms; i++){ Vec3d d; d.set_sub(apos[i],p0); tq.add_cross(fapos[i],d); } }
@@ -101,7 +121,102 @@ class NBFF: public Atoms{ public:
         evalPLQs(K);
     }
 
+    __attribute__((hot))  
+    inline void updatePointBBs( bool bInit=true){
+        const Buckets& buckets = pointBBs;
+        //printf( "updatePointBBs() START \n" );
+        for(int ib=0; ib<buckets.ncell; ib++){
+            //printf( "updatePointBBs() ib %i \n", ib );
+            if(bInit){ BBs[ib].lo = Vec3dmax; BBs[ib].hi = Vec3dmin; }
+            int n = buckets.cellNs[ib];
+            if(n>0){
+                int i0 = buckets.cellI0s[ib];
+                //printf( "updatePointBBs() ib %i n %i i0 %i \n", ib, n, i0 );
+                fitAABB( BBs[ib], n, buckets.cell2obj+i0, vapos );
+            }
+        }
+        //printf( "updatePointBBs() DONE \n" );
+    }
+
+    __attribute__((hot))  
+    inline int selectInBox( const Vec6d& bb, const int ib, Vec3d* ps, Quat4d* paras, int* inds ){
+        const int  npi = pointBBs.cellNs[ib];
+        const int* ips = pointBBs.cell2obj +pointBBs.cellI0s[ib];
+        int  n   = 0;
+        for(int i=0; i<npi; i++){
+            int ia = ips[i];
+            const Vec3d& p = vapos[ ia ];
+            if( (p.x>bb.lo.x)&&(p.x<bb.hi.x)&&
+                (p.y>bb.lo.y)&&(p.y<bb.hi.y)&&
+                (p.z>bb.lo.z)&&(p.z<bb.hi.z) 
+            ){
+                ps[i]    = p;
+                paras[i] = REQs[ ips[i] ];
+                inds[i]  = ia;
+                n++;
+            }
+        }
+        return n;
+    }
+
+    __attribute__((hot))  
+    double evalSortRange_BBs( double Rcut, int ngmax ){
+        //printf( "evalSortRange_BBs() START \n" );
+        double E=0;
+        const double R2cut = Rcut*Rcut;
+        Quat4d REQis[ngmax];
+        Quat4d REQjs[ngmax];
+        Vec3d  pis  [ngmax];
+        Vec3d  pjs  [ngmax];
+        int   nis   [ngmax];
+        int   njs   [ngmax];
+
+        for(int ib=0; ib<nBBs; ib++){
+
+            // --- Within the same bucket
+            const int  ni =  selectInBox( BBs[ib], ib, pis, REQis, nis );  // this is maybe not optimal (we just select all atoms in the bucket)
+            for(int ip=0; ip<ni; ip++){
+                const Vec3d&  pi   = pis[ip];
+                const Quat4d& REQi = REQis[ip];
+                const int     ia   = nis[ip];
+                for(int jp=ip+1; jp<ni; jp++){
+                    const Vec3d& d  = pjs[jp] - pi;
+                    int          ja = nis[jp];
+                    Quat4d REQij; combineREQ( REQis[ip], REQis[jp], REQij );
+                    Vec3d f; repulsion_R4( d, f, REQij.x-drSR, REQij.x, REQij.y*ampSR );
+                    fapos[ia].sub(f);
+                    fapos[ja].add(f);
+                }
+            }
+
+            // --- between different buckets 
+            for(int jb=0; jb<ib; jb++){
+                Vec6d bb;
+                bb = BBs[jb]; bb.lo.add(-Rcut); bb.hi.add(Rcut); const int ni =  selectInBox( bb, ib, pis, REQis, nis );  // atoms in bucket i overlapping with bucket j
+                bb = BBs[ib]; bb.lo.add(-Rcut); bb.hi.add(Rcut); const int nj =  selectInBox( bb, jb, pjs, REQjs, njs );  // atoms in bucket j overlapping with bucket i
+                for(int jp=0; jp<nj; jp++){
+                    const Vec3d&  pj   = pjs[jp];
+                    const Quat4d& REQj = REQjs[jp];
+                    const int     ja   = nis[jp];
+                    for(int ip=0; ip<ni; ip++){
+                        const Vec3d& d = pis[jp] - pj;
+                        const int ia   = nis[ip];
+                        Quat4d REQij; combineREQ( REQis[ip], REQj, REQij );
+                        Vec3d f; repulsion_R4( d, f, REQij.x-drSR, REQij.x, REQij.y*ampSR );
+                        fapos[ia].sub(f);
+                        fapos[ja].add(f);
+                    }
+                }
+            }
+
+        }
+        //printf( "evalSortRange_BBs() DONE \n" );
+        return E;
+
+    }
+
     // evaluate non-bonding interaction using Lenard-Jones potential and Coulomb potential
+    __attribute__((hot))  
     double evalLJQs( double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs() \n" );
         double R2damp = Rdamp*Rdamp;
@@ -124,6 +239,7 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+    __attribute__((hot))  
     double evalLJQs_PBC( const Mat3d& lvec, Vec3i nPBC=Vec3i{1,1,1}, double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs_PBC() \n" );
         double R2damp = Rdamp*Rdamp;
@@ -134,7 +250,7 @@ class NBFF: public Atoms{ public:
         int ipbc=0;
         // initialize shifts
         for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){ 
-            if((ia==0)&&(ib==0)&&(ic==0))continue; // skipp pbc0
+            if((ia==0)&&(ib==0)&&(ic==0))[[unlikely]]{  continue; } // skipp pbc0
             shifts[ipbc] = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);   
             ipbc++; 
         }}}
@@ -160,6 +276,7 @@ class NBFF: public Atoms{ public:
     }
 
     // evaluate non-bonding interaction for given atom (ia) excluding bonded atoms, assume max 4 bonds per atom
+    __attribute__((hot))  
     double evalLJQs_ng4_atom( int ia ){
         //printf( "NBFF::evalLJQs_ng4_atom() %li %li \n" );
         const double R2damp = Rdamp*Rdamp;
@@ -170,7 +287,7 @@ class NBFF: public Atoms{ public:
         Vec3d        fi   = Vec3dZero;
         for(int j=0; j<natoms; j++){
             if(ia==j) continue;
-            if( (ng.x==j)||(ng.y==j)||(ng.z==j)||(ng.w==j) ) continue;
+            if( (ng.x==j)||(ng.y==j)||(ng.z==j)||(ng.w==j) ) [[unlikely]] { continue; }
             Vec3d fij   = Vec3dZero;
             const Vec3d pj     = apos[j];                       // global read   apos[j]
             const Quat4d REQj  = REQs[j];                       // global read   REQs[j]
@@ -183,6 +300,7 @@ class NBFF: public Atoms{ public:
     }
 
     // evaluate all non-bonding interactions excluding bonded atoms, with OpenMP parallelization
+    __attribute__((hot))  
     double evalLJQs_ng4_omp( ){
         //printf( "NBFF::evalLJQs_ng4_omp() \n" );
         double E =0;
@@ -197,6 +315,7 @@ class NBFF: public Atoms{ public:
     }
 
     // evaluate all non-bonding interactions excluding bonded atoms (assume max 4 bonds per atom), single-threaded version
+    __attribute__((hot))  
     double evalLJQs_ng4( const Quat4i* neighs, double Rdamp=1.0 ){
         //printf( "NBFF::evalLJQs_ng4() \n" );
         double R2damp = Rdamp*Rdamp;
@@ -213,7 +332,7 @@ class NBFF: public Atoms{ public:
             //printf( "NBFF::evalLJQs_ng4()[%i] ngs(%i,%i,%i,%i) \n", i, ngs.x,ngs.y,ngs.z,ngs.w );
             for(int j=i+1; j<N; j++){    // atom-atom (no self interaction, no double-counting)
                 //printf( "NBFF::evalLJQs_ng4()[%i,%j] neighs=%li \n", neighs );
-                if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) continue;
+                if( (ngs.x==j)||(ngs.y==j)||(ngs.z==j)||(ngs.w==j) ) [[unlikely]]  {continue; }
                 Vec3d fij = Vec3dZero;
                 Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
                 //E += addAtomicForceLJQ( apos[j]-pi, fij, REQij );
@@ -226,7 +345,9 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+
     // evaluate all non-bonding interactions using Morse potential and Coulomb potential in periodic boundary conditions with OpenMP parallelization
+    __attribute__((hot))  
     inline double addMorseQH_PBC_omp( Vec3d pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         pi.sub(shift0);
@@ -254,6 +375,7 @@ class NBFF: public Atoms{ public:
     inline double getMorseQH_PBC_omp( Vec3d pi, const Quat4d&  REQi, Vec3d& fout ){ fout=Vec3dZero; return addMorseQH_PBC_omp( pi, REQi, fout ); }
 
     // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP parallelization
+    __attribute__((hot))  
     double getLJQs_PBC_omp( const Vec3d& pi, const Quat4d&  REQi, Vec3d& fout ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
@@ -280,8 +402,50 @@ class NBFF: public Atoms{ public:
         return E;
     }
 
+    // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP SIMD parallelizati
+    __attribute__((hot))  
+    double evalLJQs_PBC_atom_omp( const int ia, const double Fmax2 ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const Vec3d   pi      = apos[ia];
+        const Quat4d  REQi    = REQs[ia];
+        const double  R2damp = Rdamp*Rdamp;
+        double E=0,fx=0,fy=0,fz=0;
+        #pragma omp simd reduction(+:E,fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
+            const Quat4d& REQj  = REQs[j];
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Vec3d dp      = apos[j]-pi;
+            Vec3d fij           = Vec3dZero;
+            for(int ipbc=0; ipbc<npbc; ipbc++){
+                // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
+                const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
+                double eij      = getLJQH( dpc, fij, REQij, R2damp );
+                if(bClampNonBonded)clampForce( fij, Fmax2 );
+                //printf( "getLJQs_PBC_omp[%i] dp(%6.3f,%6.3f,%6.3f) REQ(%g,%g,%g,%g) \n", eij, dp.x,dp.y,dp.z, REQij.x,REQij.y,REQij.z,REQij.w );
+                E +=eij;
+                fx+=fij.x;
+                fy+=fij.y;
+                fz+=fij.z;
+            }
+        }
+        fapos[ia].add( Vec3d{fx,fy,fz} );
+        return E;
+    }
+    __attribute__((hot))  
+    double evalLJQs_PBC_simd(){
+        //printf("NBFF::evalLJQs_PBC_simd()\n" );
+        double E=0;
+        const double Fmax2 = FmaxNonBonded*FmaxNonBonded;
+        for(int ia=0; ia<natoms; ia++){  
+            //printf("ffls[%i].evalLJQs_PBC_simd(%i)\n", id, ia ); 
+            E+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); 
+        }
+        return E;
+    }
 
     // evaluate all non-bonding interactions using Lenard-Jones potential and Coulomb potential in periodic boundary conditions with OpenMP SIMD parallelization
+    __attribute__((hot))  
     double evalLJQs_ng4_PBC_atom_omp(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         //printf("DEBUG 1 id=%i ia=%i REQs=%li \n", id, ia, REQs );
@@ -307,12 +471,14 @@ class NBFF: public Atoms{ public:
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
                 // --- If atoms are bonded we don't use the computed non-bonding interaction energy and force
-                if(bBonded){
+                if(bBonded) [[unlikely]]  { 
                     if(   ((j==ng.x)&&(ipbc==ngC.x))
                         ||((j==ng.y)&&(ipbc==ngC.y))
                         ||((j==ng.z)&&(ipbc==ngC.z))
                         ||((j==ng.w)&&(ipbc==ngC.w))
-                    ){ continue;}
+                    ) [[unlikely]]  { 
+                        continue;
+                    }
                 }
                 E +=eij;
                 fx+=fij.x;
@@ -325,6 +491,7 @@ class NBFF: public Atoms{ public:
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
+    __attribute__((hot))  
     double evalLJQs_ng4_PBC_simd(){
         //printf("NBFF::evalLJQs_ng4_PBC_simd()\n" );
         double E=0;
@@ -334,20 +501,16 @@ class NBFF: public Atoms{ public:
         }
         return E;
     }
-
-    double evalLJQs_ng4_atom_omp( const int ia ){
+    __attribute__((hot))  
+    double evalLJQs_atom_omp( const int ia, const double Fmax2 ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi   = apos     [ia];
-        const Quat4d  REQi = REQs     [ia];
-        const Quat4i ng   = neighs   [ia];
-        const Quat4i ngC  = neighCell[ia];
+        const Quat4d REQi = REQs     [ia];
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
-
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
-            if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) continue;
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;
@@ -362,12 +525,159 @@ class NBFF: public Atoms{ public:
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
+    __attribute__((hot))  
+    double evalLJQs_simd(){
+        //printf("NBFF::evalLJQs_simd()\n" );
+        double E=0;
+        const double Fmax2 = FmaxNonBonded*FmaxNonBonded;
+        for(int ia=0; ia<natoms; ia++){ E+=evalLJQs_atom_omp(ia, Fmax2 ); }
+        return E;
+    }
+
+    __attribute__((hot))  
+    double evalLJQs_ng4_atom_omp( const int ia ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi   = apos     [ia];
+        const Quat4d  REQi = REQs     [ia];
+        const Quat4i ng   = neighs   [ia];
+        Vec3d fi = Vec3dZero;
+        double E=0,fx=0,fy=0,fz=0;
+
+        #pragma omp simd reduction(+:E,fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) [[unlikely]]  { continue; }
+            const Quat4d& REQj  = REQs[j];
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Vec3d dp      = apos[j]-pi;
+            Vec3d fij           = Vec3dZero;
+            double eij = getLJQH( dp, fij, REQij, R2damp );
+            E +=eij;
+            fx+=fij.x;
+            fy+=fij.y;
+            fz+=fij.z;
+            //fi+=fij; 
+        }
+        fapos[ia].add( Vec3d{fx,fy,fz} );
+        return E;
+    }
+    __attribute__((hot))  
     double evalLJQs_ng4_simd(){
         //printf("NBFF::evalLJQs_ng4_simd()\n" );
         double E=0;
         for(int ia=0; ia<natoms; ia++){ E+=evalLJQs_ng4_atom_omp(ia); }
         return E;
     }
+
+    __attribute__((hot))  
+    Quat4d evalLJQs( Vec3d pi, Quat4d REQi, double Rdamp )const{
+        const double R2damp = Rdamp*Rdamp;
+        Quat4d fe = Quat4dZero;
+        for(int i=0; i<natoms; i++){
+            const Quat4d  REQij = _mixREQ(REQi,(REQs[i])); 
+            Vec3d dp = pi - apos[i];
+            Vec3d fij;
+            fe.e += getLJQH( dp, fij, REQij, R2damp );
+            fe.f.add(fij);
+        }
+        return fe;
+    }
+
+#ifdef WITH_AVX
+    __attribute__((hot))  
+    double evalLJQs_atom_avx( const int ia, const double Fmax2 ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi_   = apos[ia];
+        
+        const Vec3sd pi = Vec3sd{ 
+            _mm256_set_pd( pi_.x, pi_.x, pi_.x, pi_.x ), 
+            _mm256_set_pd( pi_.y, pi_.y, pi_.y, pi_.y ), 
+            _mm256_set_pd( pi_.z, pi_.z, pi_.z, pi_.z ) 
+        };
+        const Quat4d REQi_ = REQs[ia];
+        const Vec4sd REQi = Vec4sd{ 
+            _mm256_set_pd( REQi_.x, REQi_.x, REQi_.x, REQi_.x ), 
+            _mm256_set_pd( REQi_.y, REQi_.y, REQi_.y, REQi_.y ), 
+            _mm256_set_pd( REQi_.z, REQi_.z, REQi_.z, REQi_.z ), 
+            _mm256_set_pd( REQi_.w, REQi_.w, REQi_.w, REQi_.w ) 
+        };
+        Vec3sd fi = Vec3sd{ _mm256_set_pd( 0.,0.,0.,0. ), _mm256_set_pd( pi_.y, pi_.y, pi_.y, pi_.y ), _mm256_set_pd( pi_.z, pi_.z, pi_.z, pi_.z ) };
+        __m256d E = _mm256_set_pd( 0.,0.,0.,0. );
+        for (int j=0; j<natoms; j++){ 
+            const Vec4sd& REQj  = REQs_simd[j];
+
+            const __m256d Rij = REQi.x+REQj.x;
+            const __m256d Eij = REQi.y*REQj.y;
+            const __m256d Qij = REQi.z*REQj.z;
+            const __m256d Hij = REQi.w*REQj.w;
+            const Vec3sd dp      = apos_simd[j]-pi;
+
+            const __m256d  r2  = dp.norm2();
+            __m256d F;
+            // ---- Electrostatic
+            const __m256d ir2_ = 1./( r2 + R2damp  );
+            E +=  COULOMB_CONST* ( Qij*_mm256_sqrt_pd( ir2_ ) );
+            F  =  E*ir2_ ;
+            // --- LJ 
+            const __m256d  ir2 = 1./r2;
+            const __m256d  u2  = Rij*Rij*ir2;
+            const __m256d  u6  = u2*u2*u2;
+            const __m256d vdW  = u6*Eij;
+            const __m256d   H  = u6*u6* ((Hij<0) ? Hij : 0.0);  // H-bond correction
+            E   +=  (u6-2.)*vdW + H             ;
+            F   += ((u6-1.)*vdW + H )*ir2*12 ;
+            fi.add_mul( dp, -F );
+        }
+        fapos[ia].add( 
+            hsum_double_avx( fi.x),
+            hsum_double_avx( fi.y),
+            hsum_double_avx( fi.z)       
+        );
+        return hsum_double_avx( E );
+    }
+#endif // WITH_AVX
+
+    double evalCollisionDamp_atom_omp( const int ia, double damp_rate, double dRcut1=-0.2, double dRcut2=0.3 ){
+        //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi     = apos [ia];
+        const Vec3d  vi     = vapos[ia];
+        const double Ri     = REQs [ia].x;
+        Vec3d fi = Vec3dZero;
+        double fx=0,fy=0,fz=0;
+
+        //#pragma omp simd reduction(+:fx,fy,fz)
+        for (int j=0; j<natoms; j++){ 
+            double R = Ri + REQs[j].x;
+            const Vec3d d  = apos[j]-pi;
+            double r2 = d.norm2();
+            if(j == ia) continue;
+            // reduced_mass = mi*mj/(mi+mj) = mi*mj/m_cog
+            // delta_v      = reduced_mass * dv
+            // fi           = mi * delta_v/dt
+            // for masses = 1.0 we have reduced_mass = 1*1/(1+1) = 0.5
+            // fi           = 0.5 * dv/dt = 0.5 * damp_rate .... because damp_rate = 1/(dt*ndampstep)
+
+            double w    = damp_rate * 0.5 * smoothstep_down(sqrt(r2), R+dRcut1, R+dRcut2 ); // ToDo : we can optimize this by using some other cutoff function which depends only on r2 (no sqrt)
+            //double w    = damp_rate * 0.5 * R8down         (r2,      R, R+dRcut );
+            double fcol = w * d.dot( vapos[j]-vi );                                // collisionDamping ~ 1/(dt*ndampstep);     f = m*a = m*dv/dt
+            Vec3d fij; fij.set_mul( d, fcol/r2 ); //  vII = d*d.fot(v)/|d|^2 
+            fx+=fij.x;
+            fy+=fij.y;
+            fz+=fij.z;
+            //fi+=fij; 
+        }
+        fapos[ia].add( Vec3d{fx,fy,fz} );
+        return 0;
+    }
+    double evalCollisionDamp_omp( double damp_rate, double dRcut=0.5 ){
+        //printf("NBFF::evalCollisionDamp_omp()\n" );
+        double E=0;
+        for(int ia=0; ia<natoms; ia++){ E+=evalCollisionDamp_atom_omp(ia, damp_rate, dRcut ); }
+        return E;
+    }
+
 
     double evalLJQs_ng4_PBC_atom(const int ia ){
         //printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );

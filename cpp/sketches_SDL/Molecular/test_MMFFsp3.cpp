@@ -1,6 +1,7 @@
 
 
-int verbosity = 0;
+#include <globals.h>
+//int verbosity = 0;
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,8 +43,6 @@ int verbosity = 0;
 #include "AppSDL2OGL_3D.h"
 
 bool bPrint = true;
-constexpr int  ntmp_str=2048;
-char tmp_str[ntmp_str];
 
 // ===========================================
 // ================= MAIN CLASS ==============
@@ -51,7 +50,7 @@ char tmp_str[ntmp_str];
 
 class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 
-    int verbosity = 2;
+    //int verbosity = 2;
 
 	Molecule    mol;
 	MMFFparams  params;
@@ -198,7 +197,7 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     params.loadAtomTypes( "common_resources/AtomTypes.dat" );
     params.loadBondTypes( "common_resources/BondTypes.dat" );
     builder.bindParams(&params);
-    builder.verbosity = verbosity;
+    //builder.verbosity = verbosity;
 
     readMatrix( "common_resources/polymer-2.lvs", 3, 3, (double*)&builder.lvec );
     printf( "builder.lvec \n" ); builder.lvec.print();

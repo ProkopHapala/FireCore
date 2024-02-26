@@ -238,17 +238,18 @@ class GridShape{ public:
     }
 
     template<typename T>
-    void saveXSF( const char * fname,const T* FF, int pitch=1, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
-        printf( "saving %s\n", fname );
+    int saveXSF( const char * fname,const T* FF, int pitch=1, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
+        //printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");
-        if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return; }
+        if( fout==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); return -1; }
         if(natoms>0){
             if (bPrimCoord){ primcoordToXSF( fout,  natoms, atypes, apos );  }
             else           { atomsToXSF    ( fout,  natoms, atypes, apos );  }
         } 
         toXSF( fout, FF, pitch, offset );
         fclose(fout);
+        return 0;
     }
 
     double Laplace( const double* f, double* out )const{
@@ -597,7 +598,7 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, 
             for ( ic=nz-1; ic>1; ic-- ){
                 int ibuff_ = ibuff + nxy*ic;
                 fz = FF[ibuff_].z;
-                //if( isnan(fz)||isinf(fz) ){ printf("ERROR in getIsoSurfZ()[%i,%i,%i] fz=%g \n", ia,ib,ic, fz ); exit(0); }
+                //if( isnan(fz)||isinf(fz) )[[unlikely]]{ printf("ERROR in getIsoSurfZ()[%i,%i,%i] fz=%g \n", ia,ib,ic, fz ); exit(0); }
                 if( (fz>isoval)==sign ){
                     ibuff = ibuff_;
                     break;
@@ -608,7 +609,7 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, 
             double fc = 0.0;
             if( fabs(ofz-fz)>1.e-8 ){  fc = 1-((ofz-isoval)/(ofz-fz)); }
             //if( fabs(ofz-fz)>1.e-8 ){  fc = ((ofz-isoval)/(ofz-fz)); }
-            if( isnan(fc)||isinf(fc) ){ printf("ERROR in getIsoSurfZ()[%i,%i] fc=%g fz=%g ofz=%g isoval=%g \n", ia,ib,ic, fc, fz, ofz, isoval ); exit(0); }
+            if( isnan(fc)||isinf(fc) )[[unlikely]]{ printf("ERROR in getIsoSurfZ()[%i,%i] fc=%g fz=%g ofz=%g isoval=%g \n", ia,ib,ic, fc, fz, ofz, isoval ); exit(0); }
             //double fc = 0;
             int ibxy  = ib*nx + ia;
             //printf( "ibxy %i %i \n", ibxy, ibuff );

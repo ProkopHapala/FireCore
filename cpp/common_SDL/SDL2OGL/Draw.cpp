@@ -5,9 +5,14 @@
 
 void Draw::colorScale( double d, int ncol, const uint32_t * colors ){
     constexpr float inv255 = 1.0f/255.0f;
+    //double d_bak = d;
     d*=(ncol-1);
     int icol = (int)d;
-    d-=icol; double md = 1-d;
+    if(icol<0) Draw::setRGB( colors[0] );
+    else if(icol>=ncol-1){ uint32_t i=colors[ncol-1];  glColor3f( ((i)&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255  ); return; }
+    else if(icol<      0){ uint32_t i=colors[    0 ];  glColor3f( ((i)&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255  ); return; }
+    //if(icol>=ncol-1){ printf( "ERROR: Draw::colorScale() icol(%i)>=ncol(%i)-1 d=%g  d_bak=%g \n", icol, ncol, d, d_bak ); }
+    d-=icol; double md = 1-d; // linear interpolation coefficients
     //printf( "d,md %g %g \n", d, md );
     uint32_t clr1=colors[icol  ];
     uint32_t clr2=colors[icol+1];
@@ -16,6 +21,8 @@ void Draw::colorScale( double d, int ncol, const uint32_t * colors ){
         ( d*((clr2>>8 )&0xFF) + md*((clr1>>8 )&0xFF ))*inv255,
         ( d*((clr2>>16)&0xFF) + md*((clr1>>16)&0xFF ))*inv255
     );
+    // From setRGB( uint32_t i ){
+    //glColor3f( ((i>>16)&0xFF)*inv255, ((i>>8)&0xFF)*inv255, (i&0xFF)*inv255  );
 };
 
 uint32_t Draw::icolorScale( double d, int ncol, const uint32_t * colors ){
@@ -53,16 +60,19 @@ void Draw::billboardCam( ){
     glLoadMatrixf(glMat);
 };
 
-void Draw::billboardCamProj( float scale ){
+void Draw::billboardCamProj( float scale_ ){
     //printf( "billboardCamProj(%g) \n", scale );
     float glCam  [16];
     float glModel[16];
     glGetFloatv (GL_MODELVIEW_MATRIX,  glModel );
     glGetFloatv (GL_PROJECTION_MATRIX, glCam   );
     Mat3f mat;
-    mat.a.set(glCam[0],glCam[1],glCam[2]);   mat.a.mul(scale);
-    mat.b.set(glCam[4],glCam[5],glCam[6]);   mat.b.mul(scale);
-    mat.c.set(glCam[8],glCam[9],glCam[10]);  mat.c.mul(scale);
+    mat.a.set(glCam[0],glCam[1],glCam[2]);       //mat.a.mul(1/mat.a.norm2());
+    mat.b.set(glCam[4],glCam[5],glCam[6]);       //mat.b.mul(1/mat.b.norm2());
+    mat.c.set(glCam[8],glCam[9],glCam[10]);      //mat.c.mul(1/mat.c.norm2());
+    //float scale = 1/( scale_ * ( mat.a.norm2() + mat.b.norm2() + mat.c.norm2() ) );
+    float scale = 1/( mat.a.norm2() + mat.b.norm2() + mat.c.norm2() );
+    mat.a.mul(scale); mat.b.mul(scale);mat.c.mul(scale);
     glModel[0 ] = mat.a.x;   glModel[1 ] = mat.b.x;   glModel[2 ] = mat.c.x;
     glModel[4 ] = mat.a.y;   glModel[5 ] = mat.b.y;   glModel[6 ] = mat.c.y;
     glModel[8 ] = mat.a.z;   glModel[9 ] = mat.b.z;   glModel[10] = mat.c.z;

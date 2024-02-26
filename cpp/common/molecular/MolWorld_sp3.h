@@ -22,10 +22,12 @@
 static MMFFparams* params_glob;
 
 //#include "raytrace.h"
+#include "constants.h"
 #include "Forces.h"
 #include "MMFFsp3.h"
 #include "MMFFsp3_loc.h"
 #include "MMFFf4.h"
+#include "UFF.h"
 
 #include "NBFF.h"
 #include "GridFF.h"
@@ -50,6 +52,12 @@ static MMFFparams* params_glob;
 #include "SVG_render.h"
 
 
+enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
+//static inline MolWorldVersion operator|(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) | ((int)b)  );  };
+//static inline MolWorldVersion operator&(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) & ((int)b)  );  };
+static inline int operator|(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) | ((int)b)  );  };
+static inline int operator&(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) & ((int)b)  );  };
+
 
 #include "MolecularDatabase.h"
 
@@ -62,8 +70,11 @@ static MMFFparams* params_glob;
  * This class inherits from SolverInterface and provides functionality for manipulating and simulating molecular systems.
  * It contains various member variables and methods for handling molecular data, force fields, dynamics, and more.
  */
+
 class MolWorld_sp3 : public SolverInterface { public:
-    const char* data_dir     = "common_resources";
+    bool isInitialized=false;
+    //const char* data_dir     = "common_resources";
+    const char* data_dir     = 0;
     const char* xyz_name     = "input";
     //const char* surf_name    = "surf";
     const char* surf_name       = 0;
@@ -80,6 +91,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     OptLog opt_log;
     Vec3i nPBC_save{1,1,1};                         // Vector for saving Periodic Boundary Conditions
 
+    // ---  Parameters for Molecular Dynamics at non-zero temperature
+    double bThermalSampling = 0.0;   // if >0 then we do thermal sampling
+    double T_target         = 0.0;   // target temperature for thermal sampling (if bThermalSampling>0)
+    double T_current        = 0.0;   // current temperature for thermal sampling (if bThermalSampling>0)
+    double gamma_damp       = 0.1;   // damping factor for thermal sampling (if bThermalSampling>0)
 
     double fAutoCharges=-1;
     bool bEpairs = false;
@@ -94,14 +110,16 @@ class MolWorld_sp3 : public SolverInterface { public:
     Mat3d debug_rot; // This was used for debuging molecular orientation
 
 	// Building
-	MMFFparams   params;
+	MMFFparams    params;
+    //MMFFparams*   params = null;
 	MM::Builder  builder;
 	SMILESparser smiles;
 
 	// Force-Fields & Dynamics
 	MMFFsp3      ff;
     MMFFsp3_loc  ffl;
-    MMFFf4       ff4;
+    //MMFFf4     ff4;
+    UFF          ffu;
 	Constrains   constrs;
 	//NBFF_old   nff;
     NBFF surf, nbmol; // Non-bonded force fields for surface and molecule
@@ -128,10 +146,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     double gridStep = 0.1; 
     //double gridStep = 0.2; 
     //Vec3i nPBC{0,0,0};   // just debug
-    //Vec3i nPBC{1,1,0};
-    Vec3i nPBC{1,3,0};
+    Vec3i nPBC{1,1,0};
+    //Vec3i nPBC{1,3,0};
     int    npbc       = 0;
     Vec3d* pbc_shifts = 0;
+    int    ipbc0=0;
 
     bool bConverged = false; // Boolean flag indicating if the simulation has converged
     double Etot = 0;         // Total energy of the system
@@ -143,6 +162,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     // force-eval-switchefs
     int  imethod=0;
 
+
     bool doBonded          = false; // If true, the program considers bonded interactions.
     bool bNonBonded        = true;  // If true, the program considers non-bonded interactions.
     bool bConstrains       = false; // If true, the program applies certain constraints (like bond lengths or angles).
@@ -150,6 +170,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bGridFF           = false; // If true, the program uses a grid-based force field.
     bool bPlaneSurfForce   = false; // If true, the program applies a force related to a plane surface.
     bool bMMFF             = true;  // If true, the program uses the Merck Molecular Force Field for calculations.
+    bool bUFF              = false; 
+    bool b141              = true;   // seems not to be used in assignUFFtypes()
+    bool bSimple           = false;  // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
+    bool bConj             = true;   // manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation) in assignUFFtypes()
+    bool bCumulene         = true;   // exception to avoid cumulenes in assignUFFtypes()
     bool bRigid            = false; // If true, the program treats the molecule as rigid (no internal degrees of freedom).
     bool bOptimizer        = true;  // If true, the program uses an optimizer to find the lowest energy state.
     bool bPBC              = false; // If true, the program uses Periodic Boundary Conditions.
@@ -158,11 +183,14 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bChargeUpdated    = false; // If true, the program updates the charges on atoms during the simulation.
     bool bAnimManipulation = false; // If true, the program allows for manipulation of the animation of the molecule.
 
+
     Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
 
 	// Selecteion & Manipulasion
-	std::vector<int> selection;
+	std::vector<int>            selection;
+    //std::unordered_map<int,int> selection_map;
+    std::unordered_set<int>     selection_set;
 	Vec3d manipulation_p0=Vec3dZero; 
 	Vec3d manipulation_ax=Vec3dZ;
 	int*  manipulation_sel=0;
@@ -186,113 +214,175 @@ class MolWorld_sp3 : public SolverInterface { public:
 
 	// IO temp & aux
 	FILE* xyz_file=0;
-	char* tmpstr;
+	//char* tmpstr;
 
-    double Kpick = -2.0;
+    double Kpick  = -2.0;
+    double QEpair = -0.2;
+    //int nEp=0;    // number of electron pairs
+    //int etyp=0;   // electron pair type
 
     int itest = 0;
 
     //int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
 
+    // ========== from python interface
 
-// ========== Render to SVG
+    virtual MolWorldVersion getMolWorldVersion() const { return MolWorldVersion::BASIC; };
 
-void renderSVG( const char* fname, Vec3d nPBC=Vec3d{0,0,0}, Mat3d rotMat=Mat3dIdentity, bool bAtoms=true, bool bBonds=true, bool bCaps=true, bool bAtomIndex=false, float Rsc=0.25, float Rsub=0.5 ){
-    
-    svg.rot = rotMat;
-    Vec3d cog =  cog_bbox( ffl.natoms, ffl.apos );  svg.cog = cog;
-
-    char str[256];
-
-    int na = ffl.nnode;
-    if(bCaps) na = ffl.natoms; 
-    svg.findViewport( na, ffl.apos );
-    svg.open(fname);
-
-    //bool bOrig = true;
-
-    // order of rendering:    arrange atoms from back to front (using z-order in the current view)
-    std::vector<int>   z_order(na);
-    std::vector<float> zs     (na);
-    for(int ia=0; ia<na; ia++){ 
-        Vec3d p; rotMat.dot_to( ffl.apos[ia], p );
-        zs     [ia] = p.z; 
-        z_order[ia] = ia;
+    virtual void init(){
+        printf( "MolWorld_sp3::init() \n" );
+        //params.verbosity=verbosity;
+        //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
+        if( params.atypes.size() == 0 ){
+            initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
+        }
+        // initialization global optimizer
+        gopt.solver = this;
+        params_glob = &params;
+        if(verbosity>0){
+            printf("\n#### MolWorld_sp3::init()\n");
+            if(smile_name   )printf("smile_name  (%s)\n", smile_name );
+            if(data_dir     )printf("data_dir    (%s)\n", data_dir );
+            if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
+            if(surf_name    )printf("surf_name   (%s)\n", surf_name );
+            if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
+            // TBD we should also print if we use UFF or not...
+            printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
+        }
+        if(surf_name ){
+            bGridFF = true;
+            loadSurf( surf_name, bGridFF, idebug>0 );
+        }
+        if ( smile_name ){               
+            insertSMILES( smile_name );    
+            builder.addAllCapTopo();       
+            builder.randomizeAtomPos(1.0); 
+            bMMFF=true;
+        }else if ( xyz_name ){
+            if( bMMFF ){ 
+                buildMolecule_xyz( xyz_name );
+            }else{
+                loadNBmol( xyz_name ); 
+                if(bRigid)initRigid();
+            }
+        }
+        builder.randomFragmentCollors();
+        if(bMMFF){     
+            makeFFs();
+        }
+        if(!bUFF){ builder.setup_atom_permut( true ); }
+        if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
+        if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems 
+        //builder.printAtoms();
+        //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
+        //ffl.printNeighs();
+        if(verbosity>0) 
+        printf( "#### MolWorld_sp3::init() DONE\n\n");
     }
-    //sort( z_order.begin(), z_order.end(), [&zs](int i1, int i2){ return zs[i1]<zs[i2]; } ); // sort indexes by z
-    quickSort<float>( &zs[0], &z_order[0], 0, na-1 );
 
-    for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
-        for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
-            for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
-                svg.cog = cog + ffl.lvec.a*ix + ffl.lvec.b*iy + ffl.lvec.c*iz;
-                printf( "ix,iy,iz %i %i %i cog(%g,%g,%g) \n", ix,iy,iz, svg.cog.x,svg.cog.y,svg.cog.z );
-                bool bOrig = (ix==0)&&(iy==0)&&(iz==0);
 
-                // --- bonds
-                if(bBonds){
-                    svg.stroke_opacity = 1.0;
-                    svg.stroke_width   = 3.0;
-                    svg.beginPath();
-                    for(int ia=0; ia<na;    ia++){
-                        for(int j=0; j<4; j++){
-                            int ib = ffl.neighs[ia].array[j];
-                            if (ib<0)                         continue; 
-                            if ( (!bCaps) && (ia>ffl.nnode) ) continue;
-                            svg.path_move( ffl.apos[ia] );
-                            Vec3d pj = ffl.apos[ib];
-                            if(ffl.shifts) pj.add( ffl.shifts[ffl.neighCell[ia].array[j]]);
-                            svg.path_line( pj );
+
+    // ========== Render to SVG
+
+    void renderSVG( const char* fname, Vec3d nPBC=Vec3d{0,0,0}, Mat3d rotMat=Mat3dIdentity, bool bAtoms=true, bool bBonds=true, bool bCaps=true, bool bAtomIndex=false, float Rsc=0.25, float Rsub=0.5 ){
+    
+        svg.rot = rotMat;
+        Vec3d cog =  cog_bbox( ffl.natoms, ffl.apos );  svg.cog = cog;
+
+        char str[256];
+
+        int na = ffl.nnode;
+        if(bCaps) na = ffl.natoms; 
+        svg.findViewport( na, ffl.apos );
+        svg.open(fname);
+
+        //bool bOrig = true;
+
+        // order of rendering:    arrange atoms from back to front (using z-order in the current view)
+        std::vector<int>   z_order(na);
+        std::vector<float> zs     (na);
+        for(int ia=0; ia<na; ia++){ 
+            Vec3d p; rotMat.dot_to( ffl.apos[ia], p );
+            zs     [ia] = p.z; 
+            z_order[ia] = ia;
+        }
+        //sort( z_order.begin(), z_order.end(), [&zs](int i1, int i2){ return zs[i1]<zs[i2]; } ); // sort indexes by z
+        quickSort<float>( &zs[0], &z_order[0], 0, na-1 );
+
+        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+            for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    svg.cog = cog + ffl.lvec.a*ix + ffl.lvec.b*iy + ffl.lvec.c*iz;
+                    printf( "ix,iy,iz %i %i %i cog(%g,%g,%g) \n", ix,iy,iz, svg.cog.x,svg.cog.y,svg.cog.z );
+                    bool bOrig = (ix==0)&&(iy==0)&&(iz==0);
+
+                    // --- bonds
+                    if(bBonds){
+                        svg.stroke_opacity = 1.0;
+                        svg.stroke_width   = 3.0;
+                        svg.beginPath();
+                        for(int ia=0; ia<na;    ia++){
+                            for(int j=0; j<4; j++){
+                                int ib = ffl.neighs[ia].array[j];
+                                if (ib<0)                         continue; 
+                                if ( (!bCaps) && (ia>ffl.nnode) ) continue;
+                                svg.path_move( ffl.apos[ia] );
+                                Vec3d pj = ffl.apos[ib];
+                                if(ffl.shifts) pj.add( ffl.shifts[ffl.neighCell[ia].array[j]]);
+                                svg.path_line( pj );
+                            }
+                        }
+                        svg.endPath();
+                    }
+
+                    // --- atoms
+                    svg.stroke_width   = 1.0;
+                    svg.stroke_opacity = 0.5;
+                    const char* atom_style = "atom_style";
+                    svg.writeCurrentStyle( atom_style );
+                    if(bAtoms){
+                        for(int i=0; i<na; i++){
+                            int ia = z_order[i]; 
+                            //int ia = i;
+                            //printf( "zorder[i=%i] ia=%i \n", i, ia );
+                            int it         = ffl.atypes[ia];
+                            svg.color_fill = params_glob->atypes[it].color;
+                            float r        = (params_glob->atypes[it].RvdW-Rsub)*Rsc; 
+                            svg.drawCircle( ffl.apos[ia], r, atom_style ); 
                         }
                     }
-                    svg.endPath();
-                }
-
-                // --- atoms
-                svg.stroke_width   = 1.0;
-                svg.stroke_opacity = 0.5;
-                const char* atom_style = "atom_style";
-                svg.writeCurrentStyle( atom_style );
-                if(bAtoms){
-                    for(int i=0; i<na; i++){
-                        int ia = z_order[i]; 
-                        //int ia = i;
-                        //printf( "zorder[i=%i] ia=%i \n", i, ia );
-                        int it         = ffl.atypes[ia];
-                        svg.color_fill = params_glob->atypes[it].color;
-                        float r        = (params_glob->atypes[it].RvdW-Rsub)*Rsc; 
-                        svg.drawCircle( ffl.apos[ia], r, atom_style ); 
+                    
+                    if(bOrig & bAtomIndex){
+                        const char* label_style = "label_style";
+                        svg.beginStyle( label_style );
+                        svg.print("font-family: \"DejaVu Mono, monospace\"\n");
+                        svg.print("font-size: 20\n");
+                        svg.print("fill: #000000\n");
+                        svg.endStyle();
+                        svg.color_fill = 0x000000;
+                        svg.font_size = 15;
+                        for(int ia=0; ia<ffl.natoms;    ia++){
+                            sprintf(str,"%i",ia);
+                            if(bAtomIndex) svg.drawText( str, ffl.apos[ia], label_style );
+                        }
                     }
+        
                 }
-                
-                if(bOrig & bAtomIndex){
-                    const char* label_style = "label_style";
-                    svg.beginStyle( label_style );
-                    svg.print("font-family: \"DejaVu Mono, monospace\"\n");
-                    svg.print("font-size: 20\n");
-                    svg.print("fill: #000000\n");
-                    svg.endStyle();
-                    svg.color_fill = 0x000000;
-                    svg.font_size = 15;
-                    for(int ia=0; ia<ffl.natoms;    ia++){
-                        sprintf(str,"%i",ia);
-                        if(bAtomIndex) svg.drawText( str, ffl.apos[ia], label_style );
-                    }
-                }
-    
-    }}}
-    svg.close();
-}
+            }
+        }
+        svg.close();
+    }
 
 
-// ===============================================
-//       Implement    SolverInterface
-// ===============================================
+    // ===============================================
+    //       Implement    SolverInterface
+    // ===============================================
 
     virtual int getHOMO(){ return 0; };
     virtual int projectOrbital(int iMO, double*& ewfaux ){ ewfaux=0; return 0; };  
     virtual int projectDensity(         double*& ewfaux ){ ewfaux=0; return 0; };
+
 
 /**
  * Adds a distance constraint between two atoms to the molecular world.
@@ -493,6 +583,10 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     
 }
 
+
+}
+
+
 virtual void upload_pop( const char* fname ){
     printf("MolWorld_sp3::upload_pop(%s) : We do lattice constant relaxation here \n", fname );
     gopt.loadPopXYZ( fname );
@@ -523,6 +617,7 @@ virtual char* getStatusString( char* s, int nmax ){
 virtual void swith_method(){ bGridFF=!bGridFF; };
 virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGridFF %i ffl.bAngleCosHalf %i \n", bGridFF, ffl.bAngleCosHalf ); return str; }
 
+    // =================== PBC Shifts ( Should go to ForceField class ? )
 
 /**
  * @brief Evaluates the periodic boundary condition (PBC) shifts for a given set of PBC and lattice vectors.
@@ -535,6 +630,7 @@ virtual char* info_str   ( char* str=0 ){ if(str==0)str=tmpstr; sprintf(str,"bGr
 int evalPBCshifts( Vec3i nPBC, const Mat3d& lvec, Quat4f* shifts ){
     int ipbc=0;
     for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+        if( (ix==0) && (iy==0) && (iz==0) ) ipbc0 = ipbc;
         shifts[ipbc].f = (Vec3f)( (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz) );   
         //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
         ipbc++; 
@@ -546,12 +642,12 @@ int evalPBCshifts( Vec3i nPBC, const Mat3d& lvec, Vec3d* shifts ){
     int ipbc=0;
     for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
         shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+        if( (ix==0) && (iy==0) && (iz==0) ) ipbc0 = ipbc;
         //printf( "shifts[%3i=%2i,%2i,%2i] (%7.3f,%7.3f,%7.3f)\n",  ipbc, ix,iy,iz, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
         ipbc++; 
     }}}
     return ipbc;
 }
-
 
 /**
  * @brief Calculates the periodic boundary condition (PBC) shifts for a given set of PBC and lattice vectors.
@@ -566,7 +662,7 @@ int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
     //pbc_shifts = new Vec3d[npbc];
     _realloc(pbc_shifts,npbc);
     int npbc_eval = evalPBCshifts( nPBC, lvec, pbc_shifts );
-    if(npbc!=npbc_eval){ printf( "ERORRO in MolWorld_sp3::makePBCshifts() final ipbc(%i)!=nbpc(%i) => Exit()\n", npbc_eval,npbc ); exit(0); }
+    if(npbc!=npbc_eval){ printf( "ERROR in MolWorld_sp3::makePBCshifts() final ipbc(%i)!=nbpc(%i) => Exit()\n", npbc_eval,npbc ); exit(0); }
     return npbc;
 }
 
@@ -575,177 +671,7 @@ void printPBCshifts(){
     for(int i=0; i<npbc; i++){ printf("pbc_shift[%i] (%6.3f,%6.3f,%6.3f)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
 }
 
-/**
- * Calculates the auto charges for the molecules in the molecular world.
- * This function assigns charges to the atoms based on the given force field parameters.
- * It also applies constraints to certain atom types and performs charge relaxation using molecular dynamics.
- * After the charges are calculated, they are copied to the corresponding molecules in the molecular world.
- */
-void autoCharges(){
-    if(verbosity>0)printf("MolWorld_sp3::autoCharges() \n");
-    qeq.realloc( ff.natoms );
-    params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );
-    int iconstr = params.getAtomType("E");    //printf("constrain type %i \n", iconstr );
-    qeq.constrainTypes( ff.atype, iconstr );
-    qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.1 );
-    copy( qeq.n, 1, 0, (double*)qeq.qs, 3, 2, (double*)nbmol.REQs );
-    bChargeUpdated=true;
-}
-
-/**
- * Automatically calculates the number of periodic boundary conditions (nPBC) based on minimum length.
- * 
- * @param cell The cell dimensions represented by a 3x3 matrix (Mat3d).
- * @param nPBC The number of periodic boundary conditions in each direction (x, y, z). This parameter will be modified by the function.
- * @param Lmin The minimum length for calculating the number of periodic boundary conditions. Default value is 30.0.
- */
-static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
-    if(nPBC.x!=0){ nPBC.x=(int)Lmin/cell.a.norm(); }
-    if(nPBC.y!=0){ nPBC.y=(int)Lmin/cell.b.norm(); }
-    if(nPBC.z!=0){ nPBC.z=(int)Lmin/cell.c.norm(); }
-    printf("autoNPBC(): (%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
-}
-
-/**
- * Saves the grid data in XSF format for debugging purposes.
- * 
- * @param bE Whether to save the energy-related grids (default: true)
- * @param bFz Whether to save the force-related grids (default: true)
- * @param bComb Whether to save the combined forcefield grid (default: true)
- * @param testREQ The test Quat4d value for evaluating the combined forcefield (default: Quat4d{ 1.487, 0.02609214441, 0., 0.})
- */
-void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d testREQ=Quat4d{ 1.487, 0.02609214441, 0., 0.} ){
-    // not testREQ.y [eV^0.5] = sqrt(Eii), 
-    // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
-    // e.g. for Carbon   0.06106717612 ev^0.5 = sqrt( 0.0037292 eV )
-    if(bE){
-        if(gridFF.FFPaul) gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLond, 4,3  );
-        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec, 4,3  );
-        if(gridFF.FFelec) gridFF.grid.saveXSF( "FFPaul_E.xsf", (float*)gridFF.FFPaul, 4,3  );
-    }
-    if(bFz){
-        if(gridFF.FFPaul) gridFF.grid.saveXSF( "FFLond_z.xsf", (float*)gridFF.FFLond, 4,2  );
-        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_z.xsf", (float*)gridFF.FFelec, 4,2  );
-        if(gridFF.FFelec) gridFF.grid.saveXSF( "FFPaul_z.xsf", (float*)gridFF.FFPaul, 4,2  );
-    }
-    // ---- Save combined forcefield
-    if(bComb){
-        Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot()];
-        gridFF.evalCombindGridFF ( testREQ, FFtot );
-        gridFF.grid.saveXSF( "E_PLQ.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
-        delete [] FFtot;
-    }
-}
-
-/**
- * Initializes the grid-based force field (GridFF)
- * 
- * @param name The name of the grid file.
- * @param bGrid Flag indicating whether to enable grid-based force field.
- * @param bSaveDebugXSFs Flag indicating whether to save debug XSF files.
- * @param z0 The z-coordinate of the cell origin.
- * @param cel0 The initial cell position.
- * @param bAutoNPBC Flag indicating whether to automatically set non-periodic boundary conditions.
- */
-virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
-    if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
-    sprintf(tmpstr, "%s.lvs", name );
-    if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
-    if( !gridFF.bCellSet ){
-        bGridFF=false; 
-        printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
-        return;
-    }
-    if(bGrid){
-        gridFF.grid.center_cell( cel0 );
-        bGridFF=true;
-        gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
-        if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
-        gridFF.grid.pos0.z=z0;
-        //gridFF.grid.pos0.z=-5;
-        if(verbosity>1)gridFF.grid.printCell();
-        gridFF.allocateFFs();
-        //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-        gridFF.nPBC=Vec3i{1,1,0};
-        if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
-        //gridFF.nPBC = (Vec3i){0,0,0};
-        //gridFF.nPBC = (Vec3i){1,1,0};
-        //gridFF.nPBC = (Vec3i){10,10,0};
-        gridFF.lvec = gridFF.grid.cell;     // ToDo: We should unify this
-        gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
-        gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
-        //bSaveDebugXSFs=true;
-        gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false );
-        gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
-        if(bSaveDebugXSFs)saveGridXsfDebug();
-        bGridFF   =true; 
-        //bSurfAtoms=false;
-    }
-    gridFF.shift0 = Vec3d{0.,0.,-2.0};
-    //gridFF.shift0 = Vec3d{0.,0.,0.0};
-    gridFF.evalCheck();
-}
-
-/**
- * Initializes the non-bonded molecules
- * 
- * @param na The number of atoms.
- * @param apos An array of Vec3d representing the positions of the atoms.
- * @param fapos An array of Vec3d representing the final positions of the atoms.
- * @param atypes An array of integers representing the atom types.
- * @param bCleanCharge A boolean indicating whether to clean the charges of atoms not present in the builder.
- */
-void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
-    if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
-	nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
-    //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
-    //builder.export_atypes( nbmol.atypes );     
-	builder.export_REQs( nbmol.REQs   );    
-    nbmol  .makePLQs   ( gridFF.alphaMorse );  
-    ffl.PLQs=nbmol.PLQs; 
-    if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
-    params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
-    if(verbosity>1)nbmol.print();                              
-}
-
-/**
- * Loads a molecular structure from an XYZ file.
- * 
- * @param name The name of the XYZ file.
- */
-void loadNBmol( const char* name){
-    if(verbosity>0)printf( "MolWorld_sp3::loadNBmol() \n" );
-	sprintf(tmpstr, "%s.xyz", name );
-    params.loadXYZ( tmpstr, nbmol.natoms, &nbmol.apos, &nbmol.REQs, &nbmol.atypes );
-    _realloc(nbmol.fapos,nbmol.natoms);
-    nbmol  .makePLQs     ( gridFF.alphaMorse );  
-    ffl.PLQs=nbmol.PLQs; 
-    if(verbosity>1)nbmol.print();                              
-}
-
-/**
- * @brief Loads a surface from a file and initializes the necessary data structures.
- * 
- * @param name The name of the file to load the surface from.
- * @param bGrid Flag indicating whether to generate a grid.
- * @param bSaveDebugXSFs Flag indicating whether to save debug XSF files.
- * @param z0 The z-coordinate of the surface.
- * @param cel0 The initial cell coordinates.
- * @return True if the surface is successfully loaded, false otherwise.
- */
-bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
-    sprintf(tmpstr, "%s.xyz", name );
-	int ret = params.loadXYZ( tmpstr, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
-	if     ( ret<0 ){ printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found => Exit() \n",         tmpstr ); exit(0); }
-    if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", tmpstr ); exit(0); }
-    else if( ret>0 ){ gridFF.grid.updateCell(gridStep); gridFF.bCellSet=true;  }
-    //gridFF.grid.printCell(); 
-    if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
-    //surf.print();
-	bSurfAtoms=true;
-    initGridFF( name,bGrid,bSaveDebugXSFs,z0,cel0 );
-	return true;
-}
+    // =================== Building / Modifying Molecule or ForceField
 
 /**
  * Substitutes a molecule in the builder.
@@ -771,7 +697,7 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &axSwap, &debug_rot );
     int ja = builder.substituteMolecule( mol, Vec3dZ, ib, ipivot, false, 0, &debug_rot );
     //builder.substituteMolecule( mol, Vec3dZ, 4, 0, false, &(Vec3i{2,1,0}), &debug_rot );
-    builder.addCappingTypesByIz(1);
+    //builder.addCappingTypesByIz(1);
     builder.tryAddConfsToAtoms( 0, -1 );    
     builder.sortConfAtomsFirst();              
     builder.tryAddBondsToConfs( );      
@@ -794,155 +720,11 @@ int findBridgeBonds(){
     //LimitedGraph graph;
     //graph.init( builder.na, builder.bonds.size(), builder.bonds.data() );
     builder.toLimitedGraph( graph );
-    graph.bPrint = true;
+    if(verbosity>2)graph.bPrint = true; // Debug
     graph.bridge();
-    printf( "graph.found.size() %i \n", graph.found.size() );
+    if(verbosity>0)printf( "MolWorld_sp3::findBridgeBonds()  graph.found.size() %i \n", graph.found.size() );
     return graph.found.size();
 }
-
-
-
-/**
- * Loads the geometry from a file and inserts it into the molecular world.
- * 
- * @param name The name of the file containing the geometry.
- * @return The index of the inserted fragment in the builder.
- */
-int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
-    if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n",  name );
-    // ------ Load geometry
-    sprintf(tmpstr, "%s.xyz", name ); //printf("tmpstr=`%s`\n", tmpstr);
-    int imol  = builder.loadMolType( tmpstr, name );
-    int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
-    int ifrag = builder.frags.size()-1;
-    if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
-    builder.addCappingTypesByIz(1);
-    //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
-    builder.tryAddConfsToAtoms( 0, -1 );
-    builder.cleanPis();
-    if(verbosity>2)builder.printAtomConfs(false);
-    //builder.export_atypes(atypes);
-    // ------- Load lattice vectros
-    sprintf(tmpstr, "%s.lvs", name );
-    //builder.printAtomConfs(true);
-    if( file_exist(tmpstr) ){
-        builder.bPBC=true;
-        readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
-    }
-    bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
-    if( bPBC ){ builder.autoBondsPBC(); }
-    else      { builder.autoBonds();    }
-    builder.checkNumberOfBonds( true, true );
-    if(verbosity>2)builder.printBonds ();
-    return ifrag;
-}
-
-// int loadmol(const char* fname_mol ){
-//     int imol = builder.loadMolType( fname_mol, "molecule" );
-//     builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
-//     return imol;
-// }
-
-/**
- * Inserts a SMILES string into the molecular world.
- * 
- * @param s The SMILES string to be inserted.
- */
-void insertSMILES(const char* s){
-    smiles.builder=&builder;
-    smiles.parseString( 10000, s );
-}
-
-/**
- * Sets the optimizer for the molecular world.
- * 
- * @param n The number of degrees of freedom.
- * @param ps Pointer to the array of positions.
- * @param fs Pointer to the array of forces.
- */
-void setOptimizer( int n, double* ps, double* fs ){
-    //opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
-    opt.bindOrAlloc( n, ps, 0, fs, 0 );
-    double dtopt=ff.optimalTimeStep(); 
-    if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimnal time step = %g \n", dtopt);
-    opt.initOpt( dtopt );
-    opt.cleanVel();
-    //opt.verbosity=2;
-}
-void setOptimizer(){ setOptimizer( ff.nDOFs, ff.DOFs, ff.fDOFs ); };
-
-/**
- * Initializes the rigid bodies
- */
-void initRigid(){
-    int nrb = builder.frags.size();
-    //printf("# --- initRigid() nrb=%i \n", nrb);
-    int n0rot=nrb*3;
-    optRB.bindOrAlloc( n0rot + nrb*4, 0, 0, 0, 0);
-    rbff.realloc( nrb, (Vec3d*)optRB.pos, (Quat4d*)(optRB.pos+n0rot), (Vec3d*)(optRB.force+n0rot), (Vec3d*)(optRB.vel+n0rot), 0, 0 );
-    int natom=0;
-    //printf("# --- initRigid() rbff.n=%i \n", rbff.n );
-    for(int i=0; i<nrb; i++){
-        const MM::Fragment& frag = builder.frags[i]; // problem - some atoms are not in builder - e.g. Epair
-        int i0 = frag.atomRange.x;
-        int ni = frag.atomRange.y - i0;
-        //printf("# initRigid[%i] i0 %i ni %i \n", i, i0, ni );
-        nbmol.apos + i0;
-        rbff.mols[i].bindOrRealloc(ni, nbmol.apos+i0, nbmol.fapos+i0, nbmol.REQs+i0, nbmol.atypes+i0 );
-        natom+=ni;
-    }
-    rbff.makePos0s();
-    //printf("# --- initRigid() END \n");
-}
-
-/**
- * @brief Initializes the MolWorld_sp3 object with a SMILES string.
- * 
- * @param s The SMILES string to initialize the object with.
- * @param bPrint Flag indicating whether to print debug information.
- * @param bCap Flag indicating whether to add all-cap topology.
- * @param bNonBonded_ Flag indicating whether to initialize non-bonded interactions. #spare
- * @param bOptimizer_ Flag indicating whether to set up an optimizer.
- */
-void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
-    params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
-    //params.printAtomTypeDict();
-    //params.printAtomTypes();
-    //params.printBond();
-	builder.bindParams(&params);
-    insertSMILES( s );
-    if(bCap)builder.addAllCapTopo();
-    //builder.autoAngles( 10.0, 10.0 );
-    builder.randomizeAtomPos(1.0);
-    builder.toMMFFsp3( ff );
-    if(bPrint){   
-        printf("=============\n"); printf("%s\n", s);
-        ff.printBonds();
-        ff.printNeighs();
-    }
-    //if(bNonBonded)init_nonbond();
-    if(bOptimizer){ setOptimizer(); }
-    _realloc( manipulation_sel, ff.natoms );
-	printf( "... MolWorld_sp3::initWithSMILES() DONE\n" );
-}
-
-
-// void ini_in_dir(){
-//     params.init( "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
-//     builder.bindParams(&params);
-//     int nheavy = 0;  // ---- Load Atomic Type Parameters
-//     if( file_exist("cel.lvs") ){ 
-//         loadGeom( "mm" ); 
-//         if(bGridFF)makeGridFF();
-//         // ----- Optimizer setup
-//         //opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.fapos, 0 );
-//         setOptimizer();
-//         //double E = ff.eval(true);
-//     }else{
-// 		printf("WARNING: cel.lvs not found => molecular system not initialized in [MolWorld_sp3::ini_in_dir()] \n" );
-// 	}
-// }
-
 
 /**
  * Multiplies the periodic boundary conditions (PBC) for a given fragment.
@@ -996,6 +778,393 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
     //builder.printAtomConfs();
     //builder.printBonds();    
 }
+void hideEPairs(){
+    //printf( "plotNonBondGrid() removing EPairs %i \n" );
+    int etyp = params.getAtomType("E");
+    ffl.chargeToEpairs( -QEpair, etyp );
+    selectByType( params.getElementType("E"), true );
+    int nEp = selection.size();
+    nbmol.natoms -= nEp;
+}
+
+void unHideEPairs(){
+    //if(nEp)
+    //nbmol.natoms += nEp;
+    nbmol.natoms = ffl.natoms;
+    int etyp = params.getAtomType("E");
+    ffl.chargeToEpairs( QEpair, etyp );
+    //nEp = -1;
+}
+
+/**
+ * Calculates the auto charges for the molecules in the molecular world.
+ * This function assigns charges to the atoms based on the given force field parameters.
+ * It also applies constraints to certain atom types and performs charge relaxation using molecular dynamics.
+ * After the charges are calculated, they are copied to the corresponding molecules in the molecular world.
+ */
+void autoCharges(bool bVerbose=false, bool bFromScratch=false ){
+    //if(verbosity>0)
+    //printf("MolWorld_sp3::autoCharges() \n");
+    //printf("MolWorld_sp3::autoCharges() START REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
+    //bVerbose=true;
+    qeq.realloc( ff.natoms );
+    params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );
+    int etyp = params.getAtomType("E");    //Constrain electron pairs
+    qeq.constrainTypes( ff.atype, etyp );
+    if(!bFromScratch){ copy( qeq.n, 4,2,(double*)nbmol.REQs, 1,0,(double*)qeq.qs ); }  // Initial charges 
+    //for(int i=0; i<qeq.n; i++){ printf( "qeq.qs[%i]=%g  REQ.z=%g  \n", i, qeq.qs[i], nbmol.REQs[i].z );}
+    qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.0, bVerbose, bFromScratch );
+    copy( qeq.n, 1,0,(double*)qeq.qs, 4,2,(double*)nbmol.REQs );
+    if(bFromScratch){ ffl.chargeToEpairs( QEpair, etyp ); }
+    nbmol.evalPLQs(gridFF.alphaMorse);
+    printf("MolWorld_sp3::autoCharges() END REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
+    bChargeUpdated=true;
+}
+
+/**
+ * Automatically calculates the number of periodic boundary conditions (nPBC) based on minimum length.
+ * 
+ * @param cell The cell dimensions represented by a 3x3 matrix (Mat3d).
+ * @param nPBC The number of periodic boundary conditions in each direction (x, y, z). This parameter will be modified by the function.
+ * @param Lmin The minimum length for calculating the number of periodic boundary conditions. Default value is 30.0.
+ */
+static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
+    if(nPBC.x!=0){ nPBC.x=(int)Lmin/cell.a.norm(); }
+    if(nPBC.y!=0){ nPBC.y=(int)Lmin/cell.b.norm(); }
+    if(nPBC.z!=0){ nPBC.z=(int)Lmin/cell.c.norm(); }
+    printf("autoNPBC(): (%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
+}
+
+    // =================== Initialization of different parts of the system ( different force-fields )
+
+/**
+ * Saves the grid data in XSF format for debugging purposes.
+ * 
+ * @param bE Whether to save the energy-related grids (default: true)
+ * @param bFz Whether to save the force-related grids (default: true)
+ * @param bComb Whether to save the combined forcefield grid (default: true)
+ * @param testREQ The test Quat4d value for evaluating the combined forcefield (default: Quat4d{ 1.487, 0.02609214441, 0., 0.})
+ */
+void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d testREQ=Quat4d{ 1.487, 0.02609214441, 0., 0.} ){
+    // not testREQ.y [eV^0.5] = sqrt(Eii), 
+    // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
+    // e.g. for Carbon   0.06106717612 ev^0.5 = sqrt( 0.0037292 eV )
+    if(bE){
+        if(gridFF.FFPaul) gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLond, 4,3  );
+        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec, 4,3  );
+        if(gridFF.FFelec) gridFF.grid.saveXSF( "FFPaul_E.xsf", (float*)gridFF.FFPaul, 4,3  );
+    }
+    if(bFz){
+        if(gridFF.FFPaul) gridFF.grid.saveXSF( "FFLond_z.xsf", (float*)gridFF.FFLond, 4,2  );
+        if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_z.xsf", (float*)gridFF.FFelec, 4,2  );
+        if(gridFF.FFelec) gridFF.grid.saveXSF( "FFPaul_z.xsf", (float*)gridFF.FFPaul, 4,2  );
+    }
+    // ---- Save combined forcefield
+    if(bComb){
+        Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot()];
+        gridFF.evalCombindGridFF ( testREQ, FFtot );
+        gridFF.grid.saveXSF( "E_PLQ.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
+        delete [] FFtot;
+    }
+}
+
+/**
+ * Initializes the grid-based force field (GridFF)
+ * 
+ * @param name The name of the grid file.
+ * @param bGrid Flag indicating whether to enable grid-based force field.
+ * @param bSaveDebugXSFs Flag indicating whether to save debug XSF files.
+ * @param z0 The z-coordinate of the cell origin.
+ * @param cel0 The initial cell position.
+ * @param bAutoNPBC Flag indicating whether to automatically set non-periodic boundary conditions.
+ */
+
+virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
+    if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
+    sprintf(tmpstr, "%s.lvs", name );
+    if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
+    if( !gridFF.bCellSet ){
+        bGridFF=false; 
+        printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
+        return;
+    }
+    if(bGrid){
+        gridFF.grid.center_cell( cel0 );
+        //bGridFF=true;
+        gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
+        if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+        gridFF.grid.pos0.z=z0;
+        //gridFF.grid.pos0.z=-5;
+        if(verbosity>1)gridFF.grid.printCell();
+        gridFF.allocateFFs();
+        //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
+        gridFF.nPBC=Vec3i{1,1,0};
+        if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
+        //gridFF.nPBC = (Vec3i){0,0,0};
+        //gridFF.nPBC = (Vec3i){1,1,0};
+        //gridFF.nPBC = (Vec3i){10,10,0};
+        gridFF.lvec = gridFF.grid.cell;     // ToDo: We should unify this
+        gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
+        gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
+        //bSaveDebugXSFs=true;
+        gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false );
+        gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
+        if(bSaveDebugXSFs)saveGridXsfDebug();
+        //bGridFF   =true; 
+        //bSurfAtoms=false;
+    }
+    gridFF.shift0 = Vec3d{0.,0.,-2.0};
+    //gridFF.shift0 = Vec3d{0.,0.,0.0};
+    gridFF.evalCheck();
+}
+
+/**
+ * Initializes the non-bonded molecules
+ * 
+ * @param na The number of atoms.
+ * @param apos An array of Vec3d representing the positions of the atoms.
+ * @param fapos An array of Vec3d representing the final positions of the atoms.
+ * @param atypes An array of integers representing the atom types.
+ * @param bCleanCharge A boolean indicating whether to clean the charges of atoms not present in the builder.
+ */
+void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
+    if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
+    nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
+    //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
+    //builder.export_atypes( nbmol.atypes );     
+    builder.export_REQs( nbmol.REQs   );    
+    nbmol  .makePLQs   ( gridFF.alphaMorse );  
+    ffl.PLQs=nbmol.PLQs; 
+    if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
+    params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
+    if(verbosity>1)nbmol.print();                              
+}
+
+/**
+ * Loads a molecular structure from an XYZ file.
+ * 
+ * @param name The name of the XYZ file.
+ */
+void loadNBmol( const char* name){
+    if(verbosity>0)printf( "MolWorld_sp3::loadNBmol() \n" );
+    sprintf(tmpstr, "%s.xyz", name );
+    params.loadXYZ( tmpstr, nbmol.natoms, &nbmol.apos, &nbmol.REQs, &nbmol.atypes );
+    _realloc(nbmol.fapos,nbmol.natoms);
+    nbmol  .makePLQs     ( gridFF.alphaMorse );  
+    ffl.PLQs=nbmol.PLQs; 
+    if(verbosity>1)nbmol.print();                              
+}
+
+/**
+ * @brief Loads a surface from a file and initializes the necessary data structures.
+ * 
+ * @param name The name of the file to load the surface from.
+ * @param bGrid Flag indicating whether to generate a grid.
+ * @param bSaveDebugXSFs Flag indicating whether to save debug XSF files.
+ * @param z0 The z-coordinate of the surface.
+ * @param cel0 The initial cell coordinates.
+ * @return True if the surface is successfully loaded, false otherwise.
+ */
+bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
+    sprintf(tmpstr, "%s.xyz", name );
+    int ret = params.loadXYZ( tmpstr, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
+    if     ( ret<0 ){ printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found => Exit() \n",         tmpstr ); exit(0); }
+    if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", tmpstr ); exit(0); }
+    else if( ret>0 ){ gridFF.grid.updateCell(gridStep); gridFF.bCellSet=true;  }
+    //gridFF.grid.printCell(); 
+    if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
+    //surf.print();
+    bSurfAtoms=true;
+    initGridFF( name,bGrid,bSaveDebugXSFs,z0,cel0 );
+    return true;
+}
+
+int insertMolecule( const char* fname, const char* name=0, Vec3d pos={0,0,0}, Mat3d rot=Mat3dIdentity ){
+    // ToDo: we should be able to insert molecule without actually creating molecule-type
+    //sprintf(tmpstr, "%s.xyz", name );
+    int iret=-1;
+    // {   // Previous version using Molecule class
+    //     if(name==0){ name=fname; }
+    //     int imol  = builder.loadMolType( fname, name );
+    //     if (imol<0){ printf("ERROR MolWorld_sp3::builder.loadMolType(%s) imol=%i \n", name, imol ); exit(0); }
+    //     iret  = builder.insertFlexibleMolecule( imol, pos, Mat3dIdentity, -1 );
+    //     if (iret<0){ printf("ERROR MolWorld_sp3::insertMolecule(%s) iret=%i \n", name, iret ); exit(0); }
+    // }
+    {   // New version using Atoms class
+        iret = builder.loadXYZ_Atoms( fname, &params, -1, false, pos, rot );
+    }
+    //int ifrag = builder.frags.size()-1;
+    //return ifrag;
+    return iret;
+}
+
+void makeMoleculeTopology(){
+    // ToDo: this will make topology for the whole system (all molecules), in future we should think how to make topology for individual molecules separately
+    //builder.addCappingTypesByIz(1);
+    builder.tryAddConfsToAtoms( 0, -1 );
+    builder.cleanPis();
+    //if(verbosity>2)builder.printAtomConfs(false);
+    // --- we assume the lattice vectors are already loaded, and bPBC is set
+    if( bPBC ){ builder.autoBondsPBC(); }
+    else      { builder.autoBonds();    }
+    builder.checkNumberOfBonds( true, true );
+    //if(verbosity>2)builder.printBonds ();
+}
+
+void assingMoleculeTopoTypes(){
+    if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
+    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+    //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+    builder.autoAllConfEPi  (           ); 
+    builder.setPiLoop       ( 0, -1, 10 ); // setup pi-orbitals
+    if(bEpairs)builder.addAllEpairsByPi( );    
+    //builder.printAtomConfs(false, false );
+    //builder.printAtomConfs(false, true );
+    // TBD here FF params are assigned already, but types are not yet found out...
+    builder.assignAllBondParams();    //if(verbosity>1) 
+}
+
+/**
+ * Loads the geometry from a file and inserts it into the molecular world.
+ * 
+ * @param name The name of the file containing the geometry.
+ * @return The index of the inserted fragment in the builder.
+ */
+int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
+    if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n", name );
+    // ------ Load geometry
+    sprintf(tmpstr, "%s.xyz", name );
+    /*
+    int imol  = builder.loadMolType( tmpstr, name );
+    int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
+    int ifrag = builder.frags.size()-1;
+    */
+    int ifrag = insertMolecule( tmpstr, name, {0,0,0}, Mat3dIdentity );
+    builder.addCappingTypesByIz(1);
+    builder.tryAddConfsToAtoms( 0, -1 );
+    builder.cleanPis();
+    if(verbosity>2)builder.printAtomConfs(false);
+    // ------- Load lattice vectros
+    sprintf(tmpstr, "%s.lvs", name );
+    if( file_exist(tmpstr) ){
+        if ( builder.bPBC ) printf("WARNING: Lattice vectors were already read from XYZ. Now they will be overwritten by the content of the file %s.\n", tmpstr);
+        builder.bPBC=true;
+        readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
+    }
+    bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
+    if( bPBC ){ builder.autoBondsPBC(); }
+    else      { builder.autoBonds();    }
+    builder.checkNumberOfBonds( true, true );
+    if(verbosity>2)builder.printBonds ();
+    return ifrag;
+}    
+
+// int loadmol(const char* fname_mol ){
+//     int imol = builder.loadMolType( fname_mol, "molecule" );
+//     builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
+//     return imol;
+// }
+
+/**
+ * Inserts a SMILES string into the molecular world.
+ * 
+ * @param s The SMILES string to be inserted.
+ */
+void insertSMILES(const char* s){
+    smiles.builder=&builder;
+    smiles.parseString( 10000, s );
+}
+
+/**
+ * Sets the optimizer for the molecular world.
+ * 
+ * @param n The number of degrees of freedom.
+ * @param ps Pointer to the array of positions.
+ * @param fs Pointer to the array of forces.
+ */
+void setOptimizer( int n, double* ps, double* fs, double* vs=0 ){
+    //opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
+    opt.bindOrAlloc( n, ps, vs, fs, 0 );
+    double dtopt=ff.optimalTimeStep(); 
+    if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimal time step = %g \n", dtopt);
+    opt.initOpt( dtopt );
+    opt.cleanVel();
+    //opt.verbosity=2;
+} 
+
+void setOptimizer(){ setOptimizer( ff.nDOFs, ff.DOFs, ff.fDOFs ); };
+
+/**
+ * Initializes the rigid bodies
+ */
+void initRigid(){
+    int nrb = builder.frags.size();
+    //printf("# --- initRigid() nrb=%i \n", nrb);
+    int n0rot=nrb*3;
+    optRB.bindOrAlloc( n0rot + nrb*4, 0, 0, 0, 0);
+    rbff.realloc( nrb, (Vec3d*)optRB.pos, (Quat4d*)(optRB.pos+n0rot), (Vec3d*)(optRB.force+n0rot), (Vec3d*)(optRB.vel+n0rot), 0, 0 );
+    int natom=0;
+    //printf("# --- initRigid() rbff.n=%i \n", rbff.n );
+    for(int i=0; i<nrb; i++){
+        const MM::Fragment& frag = builder.frags[i]; // problem - some atoms are not in builder - e.g. Epair
+        int i0 = frag.atomRange.x;
+        int ni = frag.atomRange.y - i0;
+        //printf("# initRigid[%i] i0 %i ni %i \n", i, i0, ni );
+        nbmol.apos + i0;
+        rbff.mols[i].bindOrRealloc(ni, nbmol.apos+i0, nbmol.fapos+i0, nbmol.REQs+i0, nbmol.atypes+i0 );
+        natom+=ni;
+    }
+    rbff.makePos0s();
+    //printf("# --- initRigid() END \n");
+}
+
+/**
+ * @brief Initializes the MolWorld_sp3 object with a SMILES string.
+ * 
+ * @param s The SMILES string to initialize the object with.
+ * @param bPrint Flag indicating whether to print debug information.
+ * @param bCap Flag indicating whether to add all-cap topology.
+ * @param bNonBonded_ Flag indicating whether to initialize non-bonded interactions. #spare
+ * @param bOptimizer_ Flag indicating whether to set up an optimizer.
+ */
+void initWithSMILES(const char* s, bool bPrint=false, bool bCap=true, bool bNonBonded_=false, bool bOptimizer_=true ){
+    params.init("common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+    //params.printAtomTypeDict();
+    //params.printAtomTypes();
+    //params.printBond();
+    builder.bindParams(&params);
+    insertSMILES( s );
+    if(bCap)builder.addAllCapTopo();
+    //builder.autoAngles( 10.0, 10.0 );
+    builder.randomizeAtomPos(1.0);
+    builder.toMMFFsp3( ff );
+    if(bPrint){   
+        printf("=============\n"); printf("%s\n", s);
+        ff.printBonds();
+        ff.printNeighs();
+    }
+    //if(bNonBonded)init_nonbond();
+    if(bOptimizer){ setOptimizer(); }
+    _realloc( manipulation_sel, ff.natoms );
+    printf( "... MolWorld_sp3::initWithSMILES() DONE\n" );
+}
+
+
+// void ini_in_dir(){
+//     params.init( "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
+//     builder.bindParams(&params);
+//     int nheavy = 0;  // ---- Load Atomic Type Parameters
+//     if( file_exist("cel.lvs") ){ 
+//         loadGeom( "mm" ); 
+//         if(bGridFF)makeGridFF();
+//         // ----- Optimizer setup
+//         //opt.bindOrAlloc( 3*ff.natoms, (double*)ff.apos, 0, (double*)ff.fapos, 0 );
+//         setOptimizer();
+//         //double E = ff.eval(true);
+//     }else{
+// 		printf("WARNING: cel.lvs not found => molecular system not initialized in [MolWorld_sp3::ini_in_dir()] \n" );
+// 	}
+// }
 
 /**
  * Initializes the parameters for the MolWorld_sp3 class.
@@ -1017,8 +1186,8 @@ void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBo
     //params.printAtomTypeDict();
     //params.printAtomTypes();
     //params.printBond();
-    params.printAngleTypes();
-    params.printDihedralTypes();
+    //params.printAngleTypes();
+    //params.printDihedralTypes();
 }
 
 /**
@@ -1029,20 +1198,22 @@ void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBo
  */
 int buildMolecule_xyz( const char* xyz_name ){
     int ifrag = loadGeom( xyz_name );
+    //printf( "MolWorld_sp3::buildMolecule_xyz(%s) ifrag=%i \n", xyz_name, ifrag );
     int ia0=builder.frags[ifrag].atomRange.a;
     int ic0=builder.frags[ifrag].confRange.a;
-    //builder.printBonds();
-    //builder.printAtomConfs(true, false );
+    // TBD not sure that I got how charges are assigned in here...
     if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
     if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
     if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-    builder.autoAllConfEPi  ( ia0 ); 
+    builder.autoAllConfEPi  ( ia0 );
     builder.setPiLoop       ( ic0, -1, 10 );
-    if(bEpairs)builder.addAllEpairsByPi( ia0=0 );    
+    if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
     //builder.printAtomConfs(false, false );
     //builder.printAtomConfs(false, true );
+    // TBD here FF params are assigned already, but types are not yet found out...
     builder.assignAllBondParams();    //if(verbosity>1)
     builder.finishFragment(ifrag);    
+    //builder.printAtoms();
     //printf( "buildMolecule_xyz: nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
     //if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
     //if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
@@ -1057,42 +1228,63 @@ int buildMolecule_xyz( const char* xyz_name ){
  * periodic boundary conditions if enabled.
  */
 void makeMMFFs(){
-    //builder.printAtoms();          
-    //if( builder.checkBondsOrdered( false, true ) ) { printf("ERROR Bonds are not ordered => exit"); exit(0); };
+    // check if all bonds are in atom neighbors
     if( builder.checkBondsInNeighs(true) ) { 
         printf("ERROR some bonds are not in atom neighbors => exit"); 
         exit(0); 
     };
+    // reshuffling atoms in order to have non-capping first
     builder.numberAtoms();
     builder.sortConfAtomsFirst();
-    //builder.printAtomConfs(false,true);
     builder.checkBondsOrdered( true, false );
-    builder.assignTypes();
-    //builder.printAtomTypes();
-    if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
 
-    // --- find bridge bonds
-    findBridgeBonds();
-    
-    builder.toMMFFsp3_loc( ffl, true, bEpairs );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
-    if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
-    builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
-    builder.toMMFFsp3    ( ff , true, bEpairs );
-    
-    ffl.flipPis( Vec3dOne );
-    ff4.flipPis( Vec3fOne );
-    if(bPBC){  
-        //ff.printAtomParams();
-        ff.bPBCbyLvec = true;
-        ff .setLvec( builder.lvec);
-        ffl.setLvec( builder.lvec);   
-        ff4.setLvec((Mat3f)builder.lvec);
-        npbc = makePBCshifts( nPBC, builder.lvec );
-        ffl.bindShifts(npbc,pbc_shifts);
-        ff4.makeNeighCells  ( nPBC );       
-        //ffl.makeNeighCells( nPBC );      
-        ffl.makeNeighCells( npbc, pbc_shifts ); 
+    // make assignement of atom types and force field parameters
+    if( bUFF ){ 
+        // according to UFF
+        builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
+        builder.assignUFFparams( 0, true );
+    }else{ 
+        // according to MMFF
+        builder.assignTypes(); 
     }
+
+    // passing them to FFs
+    if ( bUFF ){
+        builder.toUFF( ffu, true );
+    }else{
+        if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
+        builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
+        if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
+        //builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
+        builder.toMMFFsp3    ( ff , true, bEpairs );
+        ffl.flipPis( Vec3dOne );
+        //ff4.flipPis( Vec3fOne );
+
+        //ffl.printAtomParams();
+        //ffl.print_nonbonded();
+    }
+
+    // setting up PBC
+    if(bPBC){
+        if ( bUFF ){
+            ffu.setLvec( builder.lvec);   
+            npbc = makePBCshifts( nPBC, builder.lvec );
+            ffu.bindShifts(npbc,pbc_shifts);
+            //ffu.makeNeighCells( nPBC );      
+            ffu.makeNeighCells( npbc, pbc_shifts ); 
+        }else{
+            ff.bPBCbyLvec = true;
+            ff .setLvec( builder.lvec);
+            ffl.setLvec( builder.lvec);   
+            //ff4.setLvec((Mat3f)builder.lvec);
+            npbc = makePBCshifts( nPBC, builder.lvec );
+            ffl.bindShifts(npbc,pbc_shifts);
+            //ff4.makeNeighCells  ( nPBC );       
+            //ffl.makeNeighCells( nPBC );      
+            ffl.makeNeighCells( npbc, pbc_shifts ); 
+        }
+    }
+
 }
 
 /**
@@ -1104,95 +1296,45 @@ void makeMMFFs(){
  */
 virtual void makeFFs(){
     makeMMFFs();
-    initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
-    setNonBond( bNonBonded );
-    bool bChargeToEpair=true;
-    //bool bChargeToEpair=false;
-    if(bChargeToEpair){
-        int etyp=-1; etyp=params.atomTypeDict["E"];
-        ff.chargeToEpairs( nbmol.REQs, -0.2, etyp );  
-    }
-    nbmol.evalPLQs(gridFF.alphaMorse);
-    { // check FFS
-        //ffl.printAtomParams();
-        //printf("npbc %i\n", npbc ); ffl.printNeighs();
-        //builder.printBonds();
-        //printf("!!!!! builder.toMMFFsp3() DONE \n");
-        idebug=1;
-        //printf( "!!!!!!!!!!!!!!!! ffl.checkREQlimits(); \n" );
-        ffl.checkREQlimits();
-        ffl.eval_check();
-        //ff4.eval_check();
-        //ff .eval_check();
-        idebug=0;
-    }
-    //ffl.print_nonbonded(); exit(0);
-    if(bOptimizer){ 
-        //setOptimizer(); 
-        //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
-        setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
-        if(bRelaxPi) ffl.relax_pi( 1000, 0.1, 1e-4 );
-        ffl.vapos = (Vec3d*)opt.vel;
-    }                         
-    _realloc( manipulation_sel, ff.natoms );
-}
-
-/**
- * Initializes the MolWorld_sp3 object.
- * 
- * @param bGrid A boolean indicating whether to initialize the grid.
- */
-virtual void init( bool bGrid ){
-    // params.init("common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat" );
-	// builder.bindParams(&params);
-    // params.printAtomTypes(true);
-    // //params.printAtomTypeDict();
-    // //params.printBond();
-    if( params.atypes.size() == 0 ){
-        initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
-    }
-    gopt.solver = this;
-    params_glob = &params;
-    builder.verbosity=verbosity;
-    if(verbosity>0){
-        printf("\n#### MolWorld_sp3::init()\n");
-        if(smile_name   )printf("smile_name  (%s)\n", smile_name );
-        if(data_dir     )printf("data_dir    (%s)\n", data_dir );
-        if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
-        if(surf_name    )printf("surf_name   (%s)\n", surf_name );
-        if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
-        //if(lvs_name     )printf("lvs_name    (%s)\n", lvs_name );
-        //if(surflvs_name )printf("surflvs_name(%s)\n", surflvs_name );
-        printf( "MolWorld_sp3::init() bMMFF %i bRigid %i \n", bMMFF, bRigid );
-        //for(int i=0; i<10; i++){ float x = -1.0+i*0.2; printf( "x %g ix %i wx %g \n", x, (int)x, x+1-(int)(x+1.5) ); }; exit(0);
-    }
-    if(surf_name )loadSurf( surf_name, bGrid, idebug>0 );
-    if ( smile_name ){               
-        insertSMILES( smile_name );    
-        builder.addAllCapTopo();       
-        builder.randomizeAtomPos(1.0); 
-        bMMFF=true;
-    }else if ( xyz_name ){
-        if( bMMFF ){ 
-            buildMolecule_xyz( xyz_name );
-        }else{
-            loadNBmol( xyz_name ); 
-            if(bRigid)initRigid();
+    if ( bUFF ){
+        initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
+        setNonBond( bNonBonded );
+        nbmol.evalPLQs(gridFF.alphaMorse);
+        if(bOptimizer){ 
+            //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
+            setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
+            ffu.vapos = (Vec3d*)opt.vel;
+        }                         
+    }else{
+        initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
+        setNonBond( bNonBonded );
+        bool bChargeToEpair=true;
+        //bool bChargeToEpair=false;
+        if(bChargeToEpair){
+            int etyp=-1; etyp=params.atomTypeDict["E"];
+            //ff.chargeToEpairs( nbmol.REQs, QEpair, etyp );  
+            ffl.chargeToEpairs( QEpair, etyp ); 
         }
+        nbmol.evalPLQs(gridFF.alphaMorse);
+        { // check FFS
+            idebug=1;
+            ffl.checkREQlimits();
+            ffl.eval_check();
+            //ff4.eval_check();
+            //ff .eval_check();
+            idebug=0;
+        }
+        //ffl.print_nonbonded(); exit(0);
+        if(bOptimizer){ 
+            //setOptimizer(); 
+            //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
+            setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
+            if(bRelaxPi) ffl.relax_pi( 1000, 0.1, 1e-4 );
+            ffl.vapos = (Vec3d*)opt.vel;
+        }                         
+        _realloc( manipulation_sel, ff.natoms );
     }
-    if(bMMFF){      
-        makeFFs();
-    }
-    builder.setup_atom_permut( true );
-    if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
-    if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems 
-
-    database = new MolecularDatabase;
-
-    //builder.printAtoms();
-    //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
-    //ffl.printNeighs();
-    if(verbosity>0) printf( "... MolWorld_sp3::init() DONE \n");
+    //ffl.print_nonbonded();
 }
 
 /**
@@ -1202,12 +1344,14 @@ virtual void init( bool bGrid ){
  * 
  * @param bParams Flag indicating whether to clear the parameters as well. Default is true.
  */
-virtual void clear( bool bParams=true ){
+virtual void clear( bool bParams=true, bool bSurf=false ){
     //printf("MolWorld_sp3.clear() \n");
     builder.clear();
+    selection.clear();
+    selection_set.clear();
     ffl.dealloc();
     ff.dealloc();
-    ff4.dealloc();
+    //ff4.dealloc();
     // --- nbmol
     nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
     nbmol.apos=0;  
@@ -1218,9 +1362,12 @@ virtual void clear( bool bParams=true ){
     opt.pos = 0;
     opt.force = 0;
     opt.dealloc();
-
     constrs.clear();
-
+    if(bSurf){  // ToDo: deallocate gridFF and surf ?
+        //gridFF.dealloc();
+        //gridFF.bCellSet=false;
+        //gridFF.bGridFF=false;
+    }
     if(bParams){
         params.clear();
     }
@@ -1274,18 +1421,18 @@ bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){
  * 
  * @return The energy evaluated using the ff4 potential.
  */
-double eval_f4(){
-    pack( ff4.natoms, ffl.apos , ff4.apos  );
-    pack( ff4.nnode,  ffl.pipos, ff4.pipos );
-    double E = ff4.eval();
-    //ff4.move_GD( 0.01);
-    unpack( ff4.natoms, ffl. apos, ff4. apos  );
-    unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
-    unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
-    unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
-    //for(int i=0; i<ff4.nnode; i++) printf("pi[%i] <fpi,pi> %g |pi| %g \n", i, ffl.fpipos[i].dot( ffl.pipos[i] ), ffl.pipos[i].norm() );
-    return E;   
-};
+// double eval_f4(){
+//     pack( ff4.natoms, ffl.apos , ff4.apos  );
+//     pack( ff4.nnode,  ffl.pipos, ff4.pipos );
+//     double E = ff4.eval();
+//     //ff4.move_GD( 0.01);
+//     unpack( ff4.natoms, ffl. apos, ff4. apos  );
+//     unpack( ff4.natoms, ffl.fapos, ff4.fapos  );
+//     unpack( ff4.nnode,  ffl. pipos,ff4. pipos );
+//     unpack( ff4.nnode,  ffl.fpipos,ff4.fpipos );
+//     //for(int i=0; i<ff4.nnode; i++) printf("pi[%i] <fpi,pi> %g |pi| %g \n", i, ffl.fpipos[i].dot( ffl.pipos[i] ), ffl.pipos[i].norm() );
+//     return E;   
+// };
 
 /**
  * Sets the non-bonded flag for the molecular world.
@@ -1294,15 +1441,41 @@ double eval_f4(){
  */
 void setNonBond( bool bNonBonded ){
     ffl.bSubtractAngleNonBond = bNonBonded;
-    ff4.bSubtractAngleNonBond = bNonBonded;
+    //ff4.bSubtractAngleNonBond = bNonBonded;
     if(bNonBonded){
         ffl.REQs = nbmol.REQs;
         ff .REQs = nbmol.REQs;
-        if(ff4.REQs==0){
-            ff4.REQs = new Quat4f[nbmol.natoms];
-            for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
-        }
+        // if(ff4.REQs==0){
+        //     ff4.REQs = new Quat4f[nbmol.natoms];
+        //     for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
+        // }
     }
+}
+
+int updateBuilderFromFF(bool bPos=true, bool bQ=true){
+    if( ffl.nnode  != builder.confs.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.nnode(%i)  != builder->confs.size(%i) \n", ffl.nnode,  builder.confs.size() ); exit(0); }
+    //if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
+    //printf( "MolWorld_sp3::updateBuilderFromFF(nnode=%i,ncap=%i) \n", ffl.nnode, ffl.natoms-ffl.nnode );
+    int na = builder.atoms.size();  if(na>ffl.natoms)na=ffl.natoms;
+    for(int i=0; i<na; i++){
+        if(bPos){ builder.atoms[i].pos   = ffl.apos[i];   }
+        if(bQ  ){ builder.atoms[i].REQ.z = ffl.REQs[i].z; }
+    }
+    return 0;
+}
+
+double evalEkTemp(){
+    double Ek = ffl.evalKineticEnergy();
+    int nDOFs = ffl.natoms*3;
+    //nDOFs += ffl.nnode*2; // pi-rotations
+    T_current = ( 2*Ek/ (const_kB*nDOFs) );
+    //printf( "MolWorld_sp3::evalEkTemp() T=%g[K] T_target=%g[K] gamma=%g[1/dtu] Ek=%g[eV] nDOFs=%i \n", T_current, T_target, gamma_damp, Ek, nDOFs );
+    return T_current;
+}
+
+void update_GOpt(){
+
+    go.nExplore = 0;
 }
 
 /**
@@ -1310,8 +1483,9 @@ void setNonBond( bool bNonBonded ){
  *
  * @return The calculated energy of the molecular system.
  */
+__attribute__((hot))  
 double eval( ){
-
+    if(verbosity>0) printf( "#### MolWorld_sp3::eval()\n");
     //ffl.doBonds       = false;
     //ffl.doPiPiI       = false;
     //ffl.doPiSigma     = false;
@@ -1326,18 +1500,10 @@ double eval( ){
     //ffl.print_pbc_shifts();
     //printf("lvec: ");printMat(builder.lvec);
     if(bMMFF){ 
-        //E += ff .eval();
-        E += ffl.eval(); 
-        //ffl.printDEBUG(  false, false );
-        //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }   
+        if(bUFF){ E += ffu.eval(); }
+        else{ E += ffl.eval(); }
         
-        //printf( "ffl.lvec\n" );    printMat( ffl.lvec    );
-        //printf( "ffl.invLvec\n" ); printMat( ffl.invLvec );
-        //exit(0);
-        //E += eval_f4();
-        //printf( "atom[0] nbmol(%g,%g,%g) ff(%g,%g,%g) ffl(%g,%g,%g) \n", nbmol.apos[0].x,nbmol.apos[0].y,nbmol.apos[0].z,  ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,  ffl.apos[0].x,ffl.apos[0].y,ffl.apos[0].z );
-        
-    }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
+    }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }      
     //bPBC=false;
     if(bNonBonded){
         //E += nbmol.evalLJQs_ng4_PBC_omp( );
@@ -1364,13 +1530,12 @@ double eval( ){
     */
     //printf( "eval() bSurfAtoms %i bGridFF %i \n", bSurfAtoms, bGridFF );
     //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
-    //ffl.printDEBUG(  false, false );
+    //ffl.printDebug(  false, false );
     //exit(0);
-
+    if(verbosity>0) printf( "#### MolWorld_sp3::eval() DONE\n\n");
 
     return E;
-}
-
+}                                  }   // atoms in cell ignoring bondede neighbors
 
 /**
  * Performs relaxation of the molecular system with FIRE algorithm.
@@ -1380,6 +1545,7 @@ double eval( ){
  * @param bWriteTrj Flag indicating whether to write trajectory information. Defaults to false.
  * @return True if relaxation converged, false otherwise.
  */
+ __attribute__((hot))  
 bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     printf( "MolWorld_sp3::relax() niter %i Ftol %g bWriteTrj %i \n", niter, Ftol, bWriteTrj );
     Etot=0.0;
@@ -1399,7 +1565,6 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
     return bConverged;
 }
 
-
 /**
  * Runs the simulation for a specified number of steps.
  * 
@@ -1412,7 +1577,8 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
  * @return The number of iterations performed.
  */
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
-virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ 
+__attribute__((hot))  
+virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){ 
     //printf( "MolWorld_sp3::run(%i) \n", nstepMax );
     //printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
     //printf( "opt.damp_max %g opt.damping %g \n", opt.damp_max, opt.damping );
@@ -1455,7 +1621,6 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
     return itr;
 }
 
-
 /**
  * Pulls an atom towards a target position using a spring force.
  * 
@@ -1480,7 +1645,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     for(int itr=0; itr<nIter; itr++){
         double E = eval();
         //ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
-		//if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
+        //if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
         //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
         //if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
         if(ipicked>=0){ pullAtom( ipicked );  }; // printf( "pullAtom(%i) E=%g\n", ipicked, E ); };
@@ -1504,15 +1669,15 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     }
     */
     
-    verbosity = 1;
-    
+    //verbosity = 1;
+    //ffl.run( nIter, 0.05, 1e-6, 1000.0 );
+    //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
 
-    
+    //run_no_omp( nIter, 0.05, 1e-6, 1000.0 );
 
-
-    //run_omp( 500, opt.dt, 1e-6, 1000.0 );
-    //ffl.run_omp( 10, 0.05, 1e-6, 1000.0 );
+    //run_omp( 1, 0.05, 1e-6, 1000.0 );
     run_omp( nIter, 0.05, 1e-6, 1000.0 );
+    
     //run_omp( 100, 0.05, 1e-6, 1000.0 );
     //run_omp( 1, opt.dt, 1e-6, 1000.0 );
     //run_omp( 2, opt.dt, 1e-6, 1000.0 );
@@ -1523,6 +1688,148 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     //run( nIter );
     
     bChargeUpdated=false;
+}
+
+__attribute__((hot))  
+int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+    if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
+    if(verbosity>1)printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
+    double F2conv=Fconv*Fconv;
+    long T0 = getCPUticks();
+    //bool bFIRE = false;
+    bConverged = false;
+    bool bFIRE = true;
+    int itr=0,niter=niter_max;
+    double E=0,cdamp=0;
+    cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
+    if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
+
+    //if(bToCOG){ printf("bToCOG=%i \n", bToCOG ); center(true); }
+    if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
+    
+    
+    //if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter_max, ffl.bCollisionDamping, ffl.bCollisionDampingNonBond, dt, 1-cdamp, ffl.col_damp*dt, ffl.col_damp_NB*dt );
+    if(verbosity>1)printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.cdampB*dt, ffl.colDamp.cdampAng*dt, ffl.colDamp.cdampNB*dt );
+    for(itr=0; itr<niter; itr++){
+        //double ff=0,vv=0,vf=0;
+        bool bExploring = false;
+        if(bGopt){
+            go.update();
+            bExploring       = go.bExploring; 
+            bThermalSampling = bExploring;
+            bConstrains      = bExploring;
+            if(bExploring) bConverged = false;
+        }
+
+        Vec3d cvf_bak = ffl.cvf;
+        E=0; ffl.cvf = Vec3dZero;
+        //------ eval forces
+        for(int ia=0; ia<ffl.natoms; ia++){ 
+            {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
+            if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
+            if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+            // ----- Error is HERE
+            if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+            else    { 
+                E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); 
+                if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.cdampNB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
+                //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
+            } 
+
+            if(ipicked==ia){ 
+                const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
+                ffl.fapos[ia].add( f );
+            }
+        }
+        // ---- assembling
+        for(int ia=0; ia<ffl.natoms; ia++){
+            ffl.assemble_atom( ia );
+        } 
+        if(bConstrains){
+            //printf( "run_no_omp() constrs[%li].apply() bThermalSampling=%i \n", constrs.bonds.size(), bThermalSampling );
+            #pragma omp single
+            {
+                //ffl.cleanForce();
+                //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
+                E+= constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
+            }
+        }
+        if(bFIRE){
+            for(int i=0; i<opt.n; i++){
+                double v=opt.vel  [i];
+                double f=opt.force[i];
+                //vv+=v*v; ff+=f*f; vf+=v*f;
+                ffl.cvf.x += v*f;
+                ffl.cvf.y += v*v;
+                ffl.cvf.z += f*f;
+            }
+            opt.vf=ffl.cvf.x;
+            opt.vv=ffl.cvf.y; 
+            opt.ff=ffl.cvf.z; 
+            opt.FIRE_update_params();
+        }else{
+            // ----- Dynamics
+            if(ffl.colDamp.medium<0){ cdamp=ffl.colDamp.tryAccel(); }
+            //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium;  }else{ cdamp=1+ffl.colDamp.medium*0.2; } }
+            //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium; }else{ cdamp=1+ffl.colDamp.medium; } }
+        }
+        for(int i=0; i<ffl.nvecs; i++){
+            if( bThermalSampling ){
+                //if(i==0)printf( "run_no_omp() move_atom_Langevin() gamma_damp%g T_target=%g \n", gamma_damp, T_target );
+                ffl.move_atom_Langevin( i, dt, 10000.0, gamma_damp, T_target );
+            }else if(bFIRE){
+                ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+            }else{
+                ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, cdamp ) );
+            }
+            //ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, 1.0 ) );
+            //ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, 1.01 ) );
+            //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
+            //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
+            //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+        }
+        if( (!bFIRE) && (!bThermalSampling) ){
+            //printf( "Acceleration: cdamp=%g(%g) nstepOK=%i \n", cdamp_, cdamp, ffl.colDamp.nstepOK );
+            //printf( "Kinetic energy decrease: factor=%g v2_new=%g v2_old=%g \n", ffl.cvf.y/cvf_bak.y,  ffl.cvf.y, cvf_bak.y );
+            double cos_vf = ffl.colDamp.update_acceleration( ffl.cvf );
+            if(ffl.cvf.x<0)[[unlikely]]{ ffl.cleanVelocity(); }else{
+                //double renorm_vf  = sqrt( ffl.cvf.y / ( ffl.cvf.z  + 1e-32 ) );
+                //for(int i=0; i<ffl.nvecs; i++){ ffl.vapos[i] = ffl.vapos[i]*(1-cdamp) + ffl.fapos[i]*( renorm_vf * cdamp ); }
+            }
+        }
+        Etot=E;
+        if(outE )outE [itr]=Etot;
+        if(outF )outF [itr]=sqrt(ffl.cvf.z);
+        if(outV )outV [itr]=sqrt(ffl.cvf.y);
+        if(outVF)outVF[itr]=ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y + 1e-32);
+        if( isnan(Etot) || isnan(ffl.cvf.z) || isnan(ffl.cvf.y) )[[unlikely]]{  printf( "MolWorld_sp3::run_no_omp(itr=%i) ERROR NaNs : E=%f cvf(%g,%g,%g)\n", itr, E, ffl.cvf.x, sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); return -itr; }
+        if( (trj_fname) && ( (itr%savePerNsteps==0) ||(niter==0) ) )[[unlikely]]{
+            sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(ffl.cvf.z) );
+            //printf( "run_no_omp::save() %s \n", tmpstr );
+            saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
+        }
+        if(ffl.cvf.z<F2conv)[[unlikely]]{ 
+            //niter=0; 
+            bConverged=true;
+            double t = (getCPUticks() - T0)*tick2second;
+            if(verbosity>1)printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
+            if(bGopt){
+                gopt_ifound++;
+                sprintf(tmpstr,"# %i E %g |F| %g", gopt_ifound, Etot, sqrt(ffl.cvf.z) );
+                printf( "run_no_omp::save() %s \n", tmpstr );
+                saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                go.startExploring();
+                bConverged=false;
+                go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
+            }
+            break;
+        }else{
+            if(verbosity>3) [[unlikely]] { printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) E=%g |F|=%g |v|=%g cos(v,f)=%g dt=%g cdamp=%g\n", itr,niter_max, E, sqrt(ffl.cvf.z), sqrt(ffl.cvf.y), ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), dt, cdamp ); }
+        }
+    }
+    double t = (getCPUticks() - T0)*tick2second;
+    if( (itr>=niter_max) && (verbosity>1) ) [[unlikely]] {printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr ); }
+    return itr;
 }
 
 /**
@@ -1537,14 +1844,15 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ){
  * @param outF Pointer to an array to store the squared force at each iteration (optional).
  * @return The number of iterations performed.
  */
-int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
+__attribute__((hot))  
+int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+    if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
     //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
-    if(dt>0){ opt.setTimeSteps(dt); }
     long T0 = getCPUticks();
     double E=0,F2=0,F2conv=Fconv*Fconv;
     double ff=0,vv=0,vf=0;
     int itr=0,niter=niter_max;
-
+    bConverged = false;
     //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
     #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0)
     while(itr<niter){
@@ -1568,19 +1876,19 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
             if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
             //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
-            
+
             if(ipicked==ia){ 
                 const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                 ffl.fapos[ia].add( f );
             }
 
         }
-        if(ffl.bTorsion){
-            #pragma omp for reduction(+:E)
-            for(int it=0; it<ffl.ntors; it++){ 
-                E+=ffl.eval_torsion(it); 
-            }
-        }
+        // if(ffl.bTorsion){
+        //     #pragma omp for reduction(+:E)
+        //     for(int it=0; it<ffl.ntors; it++){ 
+        //         E+=ffl.eval_torsion(it); 
+        //     }
+        // }
         if(bConstrains){
             #pragma omp single
             {
@@ -1601,7 +1909,7 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
         //     //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
         // }
         //#pragma omp barrier
-        
+
         //#pragma omp barrier
         { //  ==== FIRE
             #pragma omp for reduction(+:vf,vv,ff)
@@ -1615,11 +1923,23 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             // ------ move
             #pragma omp for
             for(int i=0; i<ffl.nvecs; i++){
-                ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
-                //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+                if( bThermalSampling ){
+                        // ---  Parameters for Molecular Dynamics at non-zero temperature
+                    // double bThermalSampling = 0.0;     // if >0 then we do thermal sampling
+                    // double T_target         = 300.0;   // target temperature for thermal sampling (if bThermalSampling>0)
+                    // double T_currnt         = 300.0;   // current temperature for thermal sampling (if bThermalSampling>0)
+                    // double gamma_damp       = 0.1;     // damping factor for thermal sampling (if bThermalSampling>0)
+                    ffl.move_atom_Langevin( i, dt, 10000.0, gamma_damp, T_target );
+                }else{
+                    //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
+                    //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
+                    //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
+                    ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+                    //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+                }
             }
         }
-        
+
         }
         //#pragma omp barrier
         #pragma omp single
@@ -1630,31 +1950,22 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
                 double t = (getCPUticks() - T0)*tick2second;
                 if(t>0.02){ 
                     niter=0; 
-                    if(verbosity>0)printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
+                    if(verbosity>1)printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
                 }
             }
             if(F2<F2conv){ 
                 niter=0; 
+                bConverged = true;
                 double t = (getCPUticks() - T0)*tick2second;
-                if(verbosity>0)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+                if(verbosity>1)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
             }
-
-            if(outE){ outE[itr]=Etot; }
-            if(outF){ outF[itr]=F2;   }
-
-            if( (trj_fname) && ( (itr%savePerNsteps==0) ||(niter==0) ) ){
-                sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
-                //printf( "run_omp::save() %s \n", tmpstr );
-                saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
-            }
-
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
             //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
             //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
         }
     }{
     double t = (getCPUticks() - T0)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp() NOT CONVERGED in %i/%i E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+    if(itr>=niter_max)if(verbosity>1)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr );
     }
     return itr;
 }
@@ -1715,7 +2026,8 @@ int toXYZ(const char* comment="#comment", bool bNodeOnly=false, FILE* file=0, bo
  */
 int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
     char str_tmp[1024];
-    sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment );
+    if(bPBC){ sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment ); }
+    else    { sprintf( str_tmp, "%s", comment ); }
     return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, str_tmp, nbmol.REQs, mode, true, nPBC, ffl.lvec ); 
 }
 //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
@@ -1778,6 +2090,16 @@ int splitAtBond( int ib, int* selection ){
     return n;
 }
 
+int selectByType( int itype, bool bByElement=false ){
+    selection.clear();
+    for(int i=0; i<ffl.natoms; i++){ 
+        int it = ffl.atypes[i];
+        if( bByElement ){ it = params.atypes[it].element; }
+        if( it == itype ){ selection.push_back( i ); }
+    }
+    return selection.size();
+}
+
 /**
  * Selects atoms within a rectangular region defined by two points in 3D space.
  * 
@@ -1785,7 +2107,8 @@ int splitAtBond( int ib, int* selection ){
  * @param p1 The second point defining the rectangular region.
  * @param rot The rotation matrix to transform the points to the desired coordinate system.
  */
-void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
+int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
+    printf( "MolWorld_sp3::selectRect() p0(%g,%g,%g) p1(%g,%g,%g) \n", p0.x,p0.y,p0.z, p1.x,p1.y,p1.z );
     Vec3d Tp0,Tp1,Tp;
     //Mat3d rot = (Mat3d)cam.rot;
     rot.dot_to(p0,Tp0);
@@ -1801,6 +2124,135 @@ void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
             selection.push_back( i );
         }
     }
+    return selection.size();
+}
+
+int selectFragment( int ifrag ){
+    //printf( "MolWorld_sp3::selectFragment() ifrag %i \n", ifrag );
+    selection.clear();
+    if(ifrag<0)selection.size();
+    // ToDo: this is not most efficient way to do it, but for know we don't have reliable way to get all atoms which belongs to the fragment when atoms are reordered
+    for(int i=0; i<builder.atoms.size(); i++ ){
+        const MM::Atom& a = builder.atoms[i];
+        if( a.frag == ifrag ){
+            selection.push_back( i );
+        }
+    }
+    return selection.size();
+}
+
+
+int selectAllBonded( int ia ){
+    selection_set.clear();
+    selection.clear();
+    if( (ia<0)||(ia>=builder.atoms.size()) ){  printf( "ERROR : MolWorld_sp3::selectAllBonded(ia=%i) but builder.atoms.size(%i) \n" );  exit(0); };
+    if( builder.atoms[ia].iconf == -1 ){  // if this atom is capping
+        for(int ib=0; ib<builder.bonds.size(); ib++){
+            const Vec2i b = builder.bonds[ib].atoms;
+            if(b.x==ia){ selection_set.insert( b.y ); }else if(b.y==ia){ selection_set.insert( b.x ); }
+        }
+    }else{
+        selection_set.insert( ia );
+    }
+    int nfound = 1;
+    while( nfound>0){
+        int osz = selection_set.size();
+        for( int ia : selection_set ){
+            int ic = builder.atoms[ia].iconf;
+            if( ic < 0 )continue;  
+            MM::AtomConf& conf = builder.confs[ic];
+            for( int j = 0; j<conf.nbond; j++ ){
+                int ib = conf.neighs[j];
+                int ja = builder.bonds[ib].getNeighborAtom(ia);
+                selection_set.insert( ja );
+            }
+        }
+        nfound = selection_set.size() - osz;
+    }
+    for( int ia : selection_set ){ selection.push_back( ia ); }
+    return selection.size();
+}
+
+// ========= Geometry operations on selected atoms
+
+bool trySel( int*& sel, int& n ){ 
+    if(sel==0){
+        sel=selection.data(); 
+        n  =selection.size();
+        return true; 
+    }
+    return false;
+}
+
+Vec3d center( bool dotIt=false, int* sel=0, int n=-1 ){
+    trySel( sel, n );
+    Vec3d c = Vec3dZero;
+    for(int i=0; i<n; i++){  // ToDo: is it better to do it with min/max ?
+        c.add( ffl.apos[selection[i]] ); 
+    }
+    c.mul( 1./n );
+    //printf( "getCenter() cog(%g,%g,%g) selection.size()=%i dotIt=%i \n", c.x,c.y,c.z, selection.size(), dotIt );
+    if(dotIt){ for(int i=0; i<n; i++){ ffl.apos[selection[i]].sub(c); } }
+    return c;
+}
+
+Mat3d getInertiaTensor( int* sel=0, int n=-1, Vec3d* cog=0 ){
+    trySel( sel, n );
+    Vec3d c;
+    if(cog){ c=*cog; }else{ c=center(0, sel, n ); }
+    Mat3d I = Mat3dZero;
+    for(int i=0; i<n; i++){
+        int ia = selection[i];
+        Vec3d p = ffl.apos[ia];
+        Vec3d d = p - c;
+        //printf( "getInertiaTensor()[%i->%i] d(%g,%g,%g) p(%g,%g,%g) \n", i, ia,  d.x,d.y,d.z, p.x,p.y,p.z );
+        I.addOuter(d,d, 1.0 );
+    }
+    //printf( "getInertiaTensor() I(%g,%g,%g) (%g,%g,%g) (%g,%g,%g) \n", I.a.x,I.a.y,I.a.z, I.b.x,I.b.y,I.b.z, I.c.x,I.c.y,I.c.z );
+    return I;
+}
+
+Mat3d alignToAxis( Vec3i ax={2,1,0}, Mat3d* I_=0, Vec3d* cog=0, bool doIt=true, int* sel=0, int n=-1 ){
+    trySel( sel, n );
+    Vec3d c; if(cog){ c=*cog;  }else{ c = center(0, sel, n ); }
+    Mat3d I; if(I_ ){ I = *I_; }else{ I = getInertiaTensor( sel, n, &c ); }
+    Vec3d ls; I.eigenvals(ls);
+    printf( "alignToAxis() evals(%g,%g,%g) \n", ls.x,ls.y,ls.z );
+    Mat3d rot;
+    I.eigenvec( ls.array[ax.x], rot.a );
+    I.eigenvec( ls.array[ax.y], rot.b );
+    I.eigenvec( ls.array[ax.z], rot.c );
+    if(doIt){
+        for(int i=0; i<n; i++){
+            int ia = selection[i];
+            Vec3d p; rot.dot_to( ffl.apos[ia]-c, p );
+            ffl.apos[ia] = p + c; 
+        }
+    }
+    return rot;
+}
+
+int fragmentsByBonds(){
+    builder.frags.clear();
+    for( MM::Atom& a : builder.atoms ){ a.frag = -1; }
+    //int nfound = 1;
+    for( int ia=0; ia<builder.atoms.size(); ia++ ){
+        if( builder.atoms[ia].frag == -1 ){
+            int nfound = selectAllBonded( ia );
+            int ifrag = builder.frags.size();
+            //builder.startFragment();
+            builder.frags.push_back( MM::Fragment() );
+            printf( "fragmentsByBonds() ifrag %i nfound %i \n", ifrag, nfound );
+            for( int i : selection ){
+                builder.atoms[i].frag = ifrag;
+                //builder.frags[ifrag].atoms.push_back( i );
+            }
+        }    
+    }
+    selection_set.clear();
+    selection.clear();
+    builder.randomFragmentCollors();
+    return builder.frags.size();
 }
 
 /**
@@ -1817,7 +2269,7 @@ void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
 void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,const char* trjName, bool bAddjustCaps=false ){
     //if(selection==0){ selection=manipulation_sel; n=manipulation_nsel; }
     //Vec3d d=(*(Vec3d*)(vec)); 
-	d.mul(1./nstep);
+    d.mul(1./nstep);
     FILE* file=0;
     if(trjName){ file=fopen( trjName, "w" ); }
     for(int i=0; i<nstep; i++){
@@ -1828,6 +2280,7 @@ void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,c
     }
     if(file){ fclose(file); }
 }
+
 /**
  * Performs a translation scan along the line connecting the atoms with indices ia0 and ia1 for a given number of steps.
  *
@@ -1873,6 +2326,7 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
     }
     if(file){ fclose(file); }
 }
+
 /**
  * Scans the rotation of the selected atoms around the axis defined by the atoms with indices iax0 and iax1 for a given number of steps.
  *
@@ -1887,7 +2341,6 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
  * @param trjName The name of the trajectory file to save the rotated configurations.
  */
 void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, const char* trjName ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, trjName ); };
-
 
 /**
  * Scans angles to axis.
@@ -1935,7 +2388,6 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Ve
 }
 
 
-
 /**
  * Calculates automaticaly the charges for a molecular system.
  *
@@ -1951,6 +2403,7 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Ve
  * @param damping The damping factor for the charge calculation (default: 0.1).
  * @param Fconv The convergence criterion for the charge calculation (default: 1e-6).
  */
+__attribute__((hot))  
 void autoCharges(int natoms, int* atypes, Quat4d* REQs, Quat4i* neighs, int nMaxIter=10, double K=1.0, double K0=1.0, double Q0=0.0, double dt=0.1, double damping=0.1, double Fconv=1e-6 ){
     std::vector<double> fs(natoms);
     std::vector<double> vs(natoms,0.);
@@ -1986,11 +2439,12 @@ void autoCharges(int natoms, int* atypes, Quat4d* REQs, Quat4i* neighs, int nMax
             qi        += v*dt;
             vs  [ia]   = v;
             REQs[ia].z = qi;
-            
+
         }
         if(f2<(Fconv*Fconv)){ break; }
     }
 }
+
 
 /**
  * Prints the current state of the switches used in MolWorld_sp3_simple.

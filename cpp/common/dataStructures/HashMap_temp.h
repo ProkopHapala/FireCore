@@ -249,11 +249,11 @@ class HashMap{
 	    int ifound = -1;
 	    for( int i=0; i<capacity; i++){
             if( fields[i].object == object ){
-                if( ifound >= 0 ){ printf( "ERROR: object found in and other place %i after %i \n", i, ifound ); }
+                if( ifound >= 0 )[[unlikely]]{ printf( "ERROR: object found in and other place %i after %i \n", i, ifound ); }
                 ifound = i;
             }
 	    }
-	    if( ifound < 0 ){
+	    if( ifound < 0 )[[unlikely]]{
             printf( "ERROR: object not found " );
 	    }
 	    return ifound;
@@ -267,7 +267,7 @@ class HashMap{
 			TYPE* obj_i = fields[ i ].object ;
 			if( obj_i != NULL ){
                 if( hash   == ( mask&hashFunc( fields[ i ].bucket ) ) ){
-                    if( n<=0 ){
+                    if( n<=0 )[[unlikely]]{
                         printf( "ERROR: n==0 but we found other object" );
                     }
                     n--;
@@ -276,7 +276,7 @@ class HashMap{
 			i=(i+1)&mask;
             if ( i=hash ) break;
 		}
-		if( n>0 ){
+		if( n>0 )[[unlikely]]{
             printf( "ERROR: we did not found all objects" );
 		}
 		return n;

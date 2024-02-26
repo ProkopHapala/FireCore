@@ -2,6 +2,9 @@
 #ifndef MolWorld_sp3_ocl_h
 #define MolWorld_sp3_ocl_h
 
+#include "MMFFf4.h"
+//#include "Molecule.h"
+//#include "MMFFBuilder.h"
 #include "MolWorld_sp3.h"
 //#include "OCL_DFT.h"
 //#include "OCL_PP.h"
@@ -148,6 +151,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     DynamicOpt*   opts=0;
     MMFFsp3_loc*  ffls=0;
 
+    MMFFf4     ff4;
+
     Quat4f* afm_ps=0;
 
     const char* uploadPopName=0;
@@ -211,14 +216,21 @@ void initMultiCPU(int nSys){
     }
 }
 
-virtual void init( bool bGrid ) override {
+virtual void init() override {
     int err = 0;
     printf("# ========== MolWorld_sp3_multi::init() START\n");
     gopt.msolver = this;
     int i_nvidia = ocl.print_devices(true);
     ocl.init(i_nvidia);
     ocl.makeKrenels_MM("common_resources/cl" );
-    MolWorld_sp3::init(bGrid);
+    MolWorld_sp3::init();
+
+    // initialization of ff4 is here because parrent MolWorld_sp3 does not contain ff4 anymore 
+    builder.toMMFFf4( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
+    ff4.flipPis( Vec3fOne );
+    ff4.setLvec((Mat3f)builder.lvec);
+    ff4.makeNeighCells  ( nPBC );
+
     // ----- init systems
     realloc( nSystems );
     //if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
@@ -894,31 +906,31 @@ void setup_MMFFf4_ocl(){
     printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() \n");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    if(!task_cleanF)   task_cleanF = ocl.setup_cleanForceMMFFf4( ff4.natoms, ff4.nnode       );
-    if(!task_move  )   task_move  = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode       );
-    if(!task_print )   task_print = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode       );
-    if(!task_MMFF  )   task_MMFF  = ocl.setup_getMMFFf4        ( ff4.natoms, ff4.nnode, bPBC );
+    if(!task_cleanF)   task_cleanF = ocl.setup_cleanForceMMFFf4( ffl.natoms, ffl.nnode       );
+    if(!task_move  )   task_move  = ocl.setup_updateAtomsMMFFf4( ffl.natoms, ffl.nnode       );
+    if(!task_print )   task_print = ocl.setup_printOnGPU       ( ffl.natoms, ffl.nnode       );
+    if(!task_MMFF  )   task_MMFF  = ocl.setup_getMMFFf4        ( ffl.natoms, ffl.nnode, bPBC );
 
     Vec3i nPBC_=nPBC; if(!bPBC){ nPBC_=Vec3iZero; }; printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() bPBC=%i nPBC(%i,%i,%i) n", bPBC, nPBC_.x,nPBC_.y,nPBC_.z );
-    if((!task_NBFF_Grid)&&bGridFF ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC_ ); } 
-    if(!task_NBFF                 ){ task_NBFF      = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC_ ); }
+    if((!task_NBFF_Grid)&&bGridFF ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ffl.natoms, ffl.nnode, nPBC_ ); } 
+    if(!task_NBFF                 ){ task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ ); }
     //exit(0);
 
     // if(!task_NBFF  ) { 
     //     if( bGridFF ){ task_NBFF  = ocl.setup_getNonBond_GridFF( ff4.natoms, ff4.nnode, nPBC ); } 
     //     else         { task_NBFF  = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC ); }
     // }
-    if(!task_cleanF)task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode       );
+    if(!task_cleanF)task_cleanF = ocl.setup_cleanForceMMFFf4 ( ffl.natoms, ffl.nnode       );
 }
 
 void setup_NBFF_ocl(){
     printf("MolWorld_sp3_multi::setup_NBFF_ocl() \n");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    if(!task_cleanF )task_cleanF = ocl.setup_cleanForceMMFFf4 ( ff4.natoms, ff4.nnode        );
-    if(!task_move   )task_move   = ocl.setup_updateAtomsMMFFf4( ff4.natoms, ff4.nnode        ); 
-    if(!task_print  )task_print  = ocl.setup_printOnGPU       ( ff4.natoms, ff4.nnode        );
-    if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC  );
+    if(!task_cleanF )task_cleanF = ocl.setup_cleanForceMMFFf4 ( ffl.natoms, ffl.nnode        );
+    if(!task_move   )task_move   = ocl.setup_updateAtomsMMFFf4( ffl.natoms, ffl.nnode        ); 
+    if(!task_print  )task_print  = ocl.setup_printOnGPU       ( ffl.natoms, ffl.nnode        );
+    if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC  );
 }
 
 void picked2GPU( int ipick,  double K ){
@@ -1748,25 +1760,25 @@ double eval_MMFFf4_ocl_debug( int niter ){
     //printf( "ocl.download(n=%i) \n", n );
     //ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs );
     //ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs );
-    ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
-    ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
+    //ocl.download( ocl.ibuff_aforces, ff4.fapos, ff4.nvecs, ff4.nvecs*iSystemCur );
+    //ocl.download( ocl.ibuff_atoms,   ff4.apos , ff4.nvecs, ff4.nvecs*iSystemCur );
     //for(int i=0; i<ff4.nvecs; i++){  printf("CPU[%i] p(%g,%g,%g) f(%g,%g,%g) pi %i \n", i, ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z, i>=ff4.natoms ); }
     err |= ocl.finishRaw();
     OCL_checkError(err, "eval_MMFFf4_ocl_debug.2");
 
-    for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
+    //for(int i=0; i<ff4.nvecs; i++){  printf("OCL[%4i] f(%10.5f,%10.5f,%10.5f) p(%10.5f,%10.5f,%10.5f) pi %i \n", i, ff4.fapos[i].x,ff4.fapos[i].y,ff4.fapos[i].z,  ff4.apos[i].x,ff4.apos[i].y,ff4.apos[i].z,  i>=ff4.natoms ); }
 
     //ffl.eval();   // We already computed this above
     bool ret=false;
-    printf("### Compare ffl.fapos,  GPU.fapos  \n"); ret |= compareVecs( ff4.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
-    printf("### Compare ffl.fpipos, GPU.fpipos \n"); ret |= compareVecs( ff4.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
-    if(ret){ printf("ERROR: GPU.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }else{ printf("CHECKED: GPU task_MMFF.eval() == CPU ffl.eval() \n"); }
+    //printf("### Compare ffl.fapos,  GPU.fapos  \n"); ret |= compareVecs( ffl.natoms, ffl.fapos,  ff4.fapos,  1e-4, true );
+    //printf("### Compare ffl.fpipos, GPU.fpipos \n"); ret |= compareVecs( ffl.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
+    //if(ret){ printf("ERROR: GPU.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }else{ printf("CHECKED: GPU task_MMFF.eval() == CPU ffl.eval() \n"); }
 
     //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
-    unpack( ff4.natoms, ffl.  apos, ff4.  apos );
-    unpack( ff4.natoms, ffl. fapos, ff4. fapos );
-    unpack( ff4.nnode,  ffl. pipos, ff4. pipos );
-    unpack( ff4.nnode,  ffl.fpipos, ff4.fpipos );
+    //unpack( ffl.natoms, ffl.  apos, ff4.  apos );
+    //unpack( ffl.natoms, ffl. fapos, ff4. fapos );
+    //unpack( ffl.nnode,  ffl. pipos, ff4. pipos );
+    //unpack( ffl.nnode,  ffl.fpipos, ff4.fpipos );
 
     // ---- Check Invariatns
     fcog  = sum ( ffl.natoms, ffl.fapos   );

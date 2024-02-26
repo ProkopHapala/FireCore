@@ -90,6 +90,8 @@ __kernel void mul(
     //if(i==0)printf( "DEBUG_GPU mul N %i \n", N );
     if(i<N){ 
         out[i] = A[i] * B[i]; 
+        //out[i] = A[i];
+        //out[i] = B[i];
         //out[i] = sin( i*0.1 ); 
         //if((i/100)<100)printf( "DEBUG_GPU mul[%i] A=%g B=%g out=%g \n", i, A[i], B[i], out[i] );
     }
@@ -238,7 +240,7 @@ __kernel void poissonW(
     const int   N,
     __global float2* A,
     __global float2* out,
-    const float4 dCell
+    const float4 dCell     // 
 ){
     const int ix = get_global_id(0);
     const int iy = get_global_id(1);
@@ -252,8 +254,8 @@ __kernel void poissonW(
     int i = ix + nx*( iy + ny*iz );
     //float4 k = (float4){ dCell.x*ix, dCell.y*iy, dCell.z*iz, 0};
     float4 k = (float4){ ix/(0.5f*nx), iy/(0.5f*ny), iz/(0.5f*nz), 0};
-    k = 1.0f-fabs(k-1.0f);
-    float  f = 1/dot( k, k ); 
+    k = 1.0f-fabs(k-1.0f);  // 
+    float  f = dCell.w/dot( k, k );    // dCell.w = 4*pi*eps0*dV - rescaling constant
     if(i==0)f=0;
     if(i<N){ 
         out[i] = A[i]*f;
@@ -499,9 +501,114 @@ __kernel void projectOrbDenToGrid_texture(
     }
     //outGrid[iG] = (float2){1.2f,2.3f};
     //if(iG==0){ printf( "GPU all DONE ! \n" ); }
-    //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
+    //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }    
+}
 
-    
+__kernel void projectDenmatToGrid_simp(
+    const int nAtoms,            //1
+    __global int*     sel,       //2
+    __global float4*  atoms,     //3
+    __global float16* denmat,    //4
+    __global float2*  outGrid,   //5
+    __read_only image2d_t imgIn, //6 
+    int4   nGrid,                //7
+    float4 grid_p0,              //8
+    float4 grid_dA,              //9
+    float4 grid_dB,              //10
+    float4 grid_dC,              //11
+    float2 acumCoef              //12
+){
+    const int iG = get_global_id (0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+    const int nMax = nab*nGrid.z;
+    if(iG==0){  printf("GPU: projectDenmatToGrid_texture_simp acumCoef %g,%g nAtoms %i nMax %i  nGrid(%i|%i,%i,%i)\n", acumCoef.x, acumCoef.y, nAtoms,nMax, nGrid.x*nGrid.y*nGrid.z, nGrid.x,nGrid.y,nGrid.z ); }    
+    if(iG>=nMax) return;
+    float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;    
+    // ToDo : Later we have to change the order of the loops
+    float dens   = 0.0f;
+    for (int i=0; i<nAtoms; i++ ){
+        const int    ia    = sel[i]; 
+        const float4 atomi = atoms [ia];
+        const float4 wfi = sp3_tex( (pos-atomi.xyz)*wf_tiles_per_angstroem, atomi.w, imgIn );
+        for (int j=0; j<nAtoms; j++ ){
+            const int ja = sel[j];
+            const float4  atomj  = atoms [ja];
+            const float16 coefs  = denmat[ia*nAtoms+ja];
+            const float4 wfj = sp3_tex( (pos-atomj.xyz)*wf_tiles_per_angstroem, atomj.w, imgIn );
+            dens += wfi.x*dot( coefs.lo.lo, wfj )
+                 +  wfi.y*dot( coefs.lo.hi, wfj )
+                 +  wfi.z*dot( coefs.hi.lo, wfj )
+                 +  wfi.w*dot( coefs.hi.hi, wfj );
+        } // j
+    } // i
+    if(fabs(acumCoef.x)<1e-8){                         // if c0==0 then we can just overwrite the grid (no density0 is used)
+        outGrid[iG] = (float2){dens,0.0f}*acumCoef.y;    
+    }else{                                             // if c0!=0 then we have to add the density to the grid rho_tot = c0*rho_0 + c1*rho_scf
+        outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
+    }    
+}
+
+__kernel void projectDenmatToGrid(
+    const int nAtoms,            //1
+    __global int*     sel,       //2
+    __global float4*  atoms,     //3
+    __global float16* denmat,    //4
+    __global float2*  outGrid,   //5
+    __read_only image2d_t imgIn, //6 
+    int4   nGrid,                //7
+    float4 grid_p0,              //8
+    float4 grid_dA,              //9
+    float4 grid_dB,              //10
+    float4 grid_dC,              //11
+    float2 acumCoef              //12
+){
+    __local float4  LATOMS[N_LOCAL];
+    __local float16 LCOEFS[N_LOCAL];
+    const int iG = get_global_id (0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab; 
+    const int nMax = nab*nGrid.z;
+    if(iG==0){  printf("GPU: projectDenmatToGrid_texture acumCoef %g,%g nAtoms %i iorb(%i,%i) nL %i nMax %i  nGrid(%i|%i,%i,%i)\n", acumCoef.x, acumCoef.y, nAtoms, nL, nMax, nGrid.x*nGrid.y*nGrid.z, nGrid.x,nGrid.y,nGrid.z ); }    
+    if(iG>=nMax) return;
+    float3 pos  = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;    
+    // ToDo : Later we have to change the order of the loops
+    float dens   = 0.0f;
+    for (int i=0; i<nAtoms; i++ ){
+        const int    ia    = sel[i]; 
+        const float4 atomi = atoms [ia];
+        const float4 wfi = sp3_tex( (pos-atomi.xyz)*wf_tiles_per_angstroem, atomi.w, imgIn );
+        for (int j0=0; j0<nAtoms; j0+=nL ){
+            const int j  = j0 + iL;
+            const int ja = sel[j];
+            LATOMS[iL] = atoms [ja];
+            LCOEFS[iL] = denmat[ia*nAtoms+ja];
+            barrier(CLK_LOCAL_MEM_FENCE);
+            for (int j=0; j<nL; j++){
+                if( (j+j0)<nAtoms ){ 
+                    const float4  atomj  = LATOMS[j];
+                    const float16 coefs  = LCOEFS[j];
+                    const float4 wfj = sp3_tex( (pos-atomj.xyz)*wf_tiles_per_angstroem, atomj.w, imgIn );
+                    dens += wfi.x*dot( coefs.lo.lo, wfj )
+                         +  wfi.y*dot( coefs.lo.hi, wfj )
+                         +  wfi.z*dot( coefs.hi.lo, wfj )
+                         +  wfi.w*dot( coefs.hi.hi, wfj );
+                }
+            } // j
+            barrier(CLK_LOCAL_MEM_FENCE);
+        } // i0
+    } // ia
+    if(fabs(acumCoef.x)<1e-8){                         // if c0==0 then we can just overwrite the grid (no density0 is used)
+        outGrid[iG] = (float2){dens,0.0f}*acumCoef.y;    
+    }else{                                             // if c0!=0 then we have to add the density to the grid rho_tot = c0*rho_0 + c1*rho_scf
+        outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
+    }    
 }
 
 __kernel void projectAtomDenToGrid_texture(
@@ -556,7 +663,7 @@ __kernel void projectAtomDenToGrid_texture(
         outGrid[iG] = outGrid[iG]*acumCoef.x + ((float2){dens,0.0f})*acumCoef.y;
     }
     //if(iG==0){ printf( "GPU all DONE ! \n" ); }
-    //if(iG==0){ printf("projectOrbDenToGrid_texture END \n"); }
+    //if(iG==0){ printf("projectAtomDenToGrid_texture END \n"); }
 }
 
 

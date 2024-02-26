@@ -23,6 +23,12 @@
 
 //#define _realloc(TYPE,arr,n){ if(var) delete [] arr; arr=new TYPE[n]; }
 
+// Get byte offset of a member in a struct ( call from outside the struct )
+#define mapByteOffset(offset_map,instance,member) { offset_map[#member] = ((char*)&instance.member) - ((char*)&instance); }
+// Get byte offset of a member in a struct ( call from inside the struct )
+#define mapByteOffIn(offset_map,member) { offset_map[#member] = ((char*)&(this->member)) - ((char*)this); }
+
+
 // ============= sorting
 inline int selectMinHigher(int a0, int n, int* arr){
     int amin=0x7FFFFFFF; // 32 int max
@@ -96,14 +102,14 @@ inline bool addFirstEmpty( int* arr, int n, int what, int empty=-1 ){
 #define _template_TN     template<typename T,size_t N>
 #define _inline_T        template<typename T> inline
 
-
 #define _checkNull(var) if(var==nullptr){ printf("ERROR %s is NULL => Exit()\n", #var ); exit(0); }
 
 template<typename T> void _vec2arr(T*out, const std::vector<T>& v){ for(int i=0;i<v.size();i++)out[i]=v[i];} 
 
 
 _inline_T void _swap  (T& a, T& b) { T t=a; a=b; b=t;   }
-_inline_T void _order (T& a, T& b) { if(a>b)_swap(a,b); }
+_inline_T void _order (T& a, T& b) { if(a>b){T t=a; a=b; b=t; }; }
+//_inline_T void _order (T& a, T& b) { if(a>b)_swap(a,b); }
 
 _inline_T const T& _min  (const T& a, const T& b){ return (a>b)?b:a; }
 _inline_T const T& _max  (const T& a, const T& b){ return (a<b)?b:a; }

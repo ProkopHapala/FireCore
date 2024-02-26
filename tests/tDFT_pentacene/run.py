@@ -18,69 +18,164 @@ from pyBall     import atomicUtils as au
 
 # ======= density operations
 
-def project_or_load_density( ngrid, iBuff=0, dcell=None, save_file=None ):
-    if dcell is None: dcell = [0.2,0.2,0.2,0.2]
+def project_or_load_density( fname="pentacene.xyz", ngrid=(128,64,32), dcell=[0.2,0.2,0.2,0.2], save_file=None, iBuff=0 ):
+    """
+    Obtain electron density for a molecule stored in .xyz. If the density is not saved, it is calculate it using the SCF procedure in Fireball and project it to the grid on GPU. If the density is already saved, it is loaded from the file.
+
+    Args:
+        fname     (str)  : The file path to the .xyz file. Defaults to "pentacene.xyz".
+        ngrid     (list) : the number of grid points in each direction, where nx,ny,nz are integers. Defaults to (128,64,32).
+        dcell     (list) : Step size of the grid in each direction. Defaults to [0.2,0.2,0.2,0.2]
+        save_file (str)  : The file path to save the density. Defaults to None. If None, the density is not saved.
+        iBuff     (int)  : The index of GPU buffer to be used for projection. Defaults to 0.
+    """
     if not os.path.exists( "dens.bin" ):
-        print("!!!!! job_convolve_density_with_CO :  PROJECT+SAVE ./dens.bin ")
-        xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
+        #print("!!!!! job_convolve_density_with_CO :  PROJECT+SAVE ./dens.bin ")
+        xyzs,Zs,enames,qs = au.loadAtomsNP( fname )
         jobs.projectDens( iOutBuff=iBuff, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=True )
         if save_file is not None: ocl.saveBuff(iBuff,save_file)
     else:
-        print("!!!!! job_convolve_density_with_CO :  LOAD ./dens.bin ")
+        #print("!!!!! job_convolve_density_with_CO :  LOAD ./dens.bin ")
         Ns = (ngrid[0],ngrid[1],ngrid[2])
         ocl.initFFTgrid( Ns, dcell=dcell )
         ocl.loadFromBin( "./dens.bin", iBuff )
 
-def test_job_Density_Gradient():
+def job_convolve_density_with_CO_orig( fname="pentacene.xyz", ngrid=(128,64,32), dcell=[0.2,0.2,0.2,0.2], CO_path="../test_CO/dens.bin", out_file="MCOconv.xsf", save_file=None, iA=0, ):
+    """
+    Calculated convolution of electron density of a molecule and the density of CO-tip. This is the original version of the function, which is not used anymore.
+
+    Args:
+        fname     (str)  : The file path to the .xyz file. Defaults to "pentacene.xyz".
+        ngrid     (list) : list of three integers (nx,ny,nz) representing the number of grid points in each direction. Defaults to (128,64,32).
+        dcell     (list) : Step size of the grid in each direction. Defaults to  [0.2,0.2,0.2,0.2]
+        CO_path   (str)  : The file path to the density of CO-tip. Defaults to "../test_CO/dens.bin".
+        out_file  (str)  : The file path to save the convolution. Defaults to "MCOconv.xsf".
+        save_file (str)  : The file path to save the density. Defaults to None. If None, the density is not saved.
+        iA        (int)  : The index of GPU buffer to be used for projection. Defaults to 0.
+        iC        (int)  : The index of GPU buffer to be used for Poisson equation. Defaults to 1.
+    """
+    ocl.setErrorCheck( 1 )
+    xyzs,Zs,enames,qs = au.loadAtomsNP( fname )
+    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell, save_file=save_file )
+    ibuff_MCOconv = 2
+    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
+    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
+    ocl.loadFromBin( CO_path, ibuff_densCO )
+    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
+    ocl.saveToXsf( out_file, ibuff_MCOconv )
+    ocl.release()
+    
+
+def job_convolve_density_with_CO( fname="pentacene.xyz", ngrid=(128,64,32), dcell=[0.2,0.2,0.2,0.2], CO_path="../tDFT_CO/dens_scf.bin", out_file="Mol_CO_conv.xsf", save_file=None, iA=0 ):
+    """
+    Calculated convolution of electron density of a molecule and the density of CO-tip. This is useful for evaluation of Pauli repulsion between the molecule and the tip.
+
+    Args:
+        fname     (str)  : The file path to the .xyz file. Defaults to "pentacene.xyz".
+        ngrid     (list) : list of three integers (nx,ny,nz) representing the number of grid points in each direction. Defaults to (128,64,32).
+        dcell     (list) : Step size of the grid in each direction. Defaults to  [0.2,0.2,0.2,0.2]
+        CO_path   (str)  : The file path to the density of CO-tip. Defaults to "../test_CO/dens.bin".
+        out_file  (str)  : The file path to save the convolution. Defaults to "MCOconv.xsf".
+        save_file (str)  : The file path to save the density. Defaults to None. If None, the density is not saved.
+        iA        (int)  : The index of GPU buffer to be used for projection. Defaults to 0.
+    """
+    #print( "JOB: convolve_density_with_CO() " )
+    ocl.setErrorCheck( 1 )
+    project_or_load_density( ngrid, iBuff=iA, dcell=dcell, save_file=save_file )
+    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
+    ibuff_MCOconv = ocl.newFFTbuffer( "MolCOconv" )
+    #print( "ibuff_densCO ibuff_MCOconv ", ibuff_densCO, ibuff_MCOconv )
+    ocl.loadFromBin( CO_path, ibuff_densCO )     # DEBUG : There seems to be to problem - it does not save & load the data correctly
+    #exit(0)
+    # ---- There is a problem - the two buffers contain the same data ( density of Pentacene, there is not CO-tip density in the file )
+    #ocl.saveToXsf( "Mol_dens_debug.xsf", iA )
+    #ocl.saveToXsf( "CO_dens_debug.xsf", ibuff_densCO )
+
+    ocl.convolve( iA, ibuff_densCO, ibuff_MCOconv  )
+    ocl.saveToXsf( out_file, ibuff_MCOconv )
+    ocl.release()
+
+
+def job_poisson_equation( fname="pentacene.xyz", ngrid = (128, 64, 32), dcell = [0.2, 0.2, 0.2, 0.2], out_file="Vout.xsf", iA=0, iC=1):
+    """
+    Solve the Poisson equation using OpenCL. The electron density is obtained from the .xyz file. This is useful for obtaining the Hartree potential for a given molecular system.
+    
+    Args:
+        fname     (str)  : The file path to the .xyz file. Defaults to "pentacene.xyz".
+        ngrid     (list) : list of three integers (nx,ny,nz) representing the number of grid points in each direction. Defaults to (128,64,32).
+        dcell     (list) : Step size of the grid in each direction. Defaults to  [0.2,0.2,0.2,0.2]
+        out_file  (str)  : The file path to save the convolution. Defaults to "MCOconv.xsf".
+        iA        (int)  : The index of GPU buffer to be used for the electron density. Defaults to 0.
+        iC        (int)  : The index of GPU buffer to be used for the Hartree potential. Defaults to 1.
+
+    Returns:
+        None
+    """
+    ocl.setErrorCheck(1)
+    project_or_load_density( fname=fname,  ngrid=ngrid, iBuff=iA, dcell=dcell)
+    ocl.poisson   ( iA=iA, iOut=iC, dcell=dcell )
+    ocl.saveToXsf ( out_file, iC )
+    ocl.release()
+
+def test_job_Density_Gradient( fname="pentacene.xyz", ngrid = (128, 64, 32), dcell = [0.2, 0.2, 0.2, 0.2], out_file="Vout.xsf", iA=0, iC=1, bSaveXsf=True  ):
+    """
+    Callculate gradient of electron density (or other function) for a given molecular system stored in .xyz. This can be used for evaluation of grid-forcefield from convoluation (e.g. Pauli repulsion, or electrostatic interaction).
+
+    Args:
+        fname (str): Path to the input file containing atomic positions and properties. Default is "pentacene.xyz".
+        ngrid (tuple): Number of grid points in each dimension. Default is (128, 64, 32).
+        dcell (list): Cell dimensions. Default is [0.2, 0.2, 0.2, 0.2].
+        out_file (str): Name of the output file. Default is "Vout.xsf".
+        iA (int): Index of the atom to calculate the density gradient for. Default is 0.
+        iC (int): Index of the atom type. Default is 1.
+        bSaveXsf (bool): Flag indicating whether to save the results in XSF format. Default is True.
+    """
     ocl.setErrorCheck( 1 )
     print( "# --- Preparation" )
-    apos,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
-    ngrid=(128,64,32)
-    dcell = [0.2,0.2,0.2,0.2]
-    iA=0; iC=1
-
+    apos,Zs,enames,qs = au.loadAtomsNP( fname )
     print( "# --- SCF density")
     jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=apos, iMO0=0, ngrid=ngrid, dcell=dcell, bSaveXsf=False, bSaveBin=False, bSCF=True, bDen0diff=False )
     ibuff_FE  = ocl.newFFTbuffer( "FE", 4 )
     ocl.gradient( iA, ibuff_FE, dcell)
-    ocl.saveToXsf( "F_x.xsf", ibuff_FE, stride=4, offset=0 )
-    ocl.saveToXsf( "F_y.xsf", ibuff_FE, stride=4, offset=1 )
-    ocl.saveToXsf( "F_z.xsf", ibuff_FE, stride=4, offset=2 )
-    ocl.saveToXsf( "F_w.xsf", ibuff_FE, stride=4, offset=3 )
-    #ocl.ocl.saveToXsf( "test.xsf", ibuff_FE, stride=4, offset=0 )
+    if bSaveXsf:
+        ocl.saveToXsf( "F_x.xsf", ibuff_FE, stride=4, offset=0 )
+        ocl.saveToXsf( "F_y.xsf", ibuff_FE, stride=4, offset=1 )
+        ocl.saveToXsf( "F_z.xsf", ibuff_FE, stride=4, offset=2 )
+        ocl.saveToXsf( "F_w.xsf", ibuff_FE, stride=4, offset=3 )
+        #ocl.ocl.saveToXsf( "test.xsf", ibuff_FE, stride=4, offset=0 )
+    ocl.release()
 
-def job_convolve_density_with_CO_orig( ):
-    ocl.setErrorCheck( 1 )
-    xyzs,Zs,enames,qs = au.loadAtomsNP( "pentacene.xyz")
-    ngrid=(128,64,32)
-    dcell = [0.2,0.2,0.2,0.2]
-    iA=0; iC=1
-    jobs.projectDens( iOutBuff=iA, atomType=Zs, atomPos=xyzs, iMO0=1, ngrid=ngrid, dcell=dcell )
-    ibuff_MCOconv = 2
-    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
-    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
-    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
-    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
-    ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
 
-def job_convolve_density_with_CO( iA=0 ):
-    print( "JOB: convolve_density_with_CO() " )
-    ocl.setErrorCheck( 1 )
-    ngrid=(128,64,32)
-    project_or_load_density( ngrid, iBuff=iA )
-    ibuff_densCO  = ocl.newFFTbuffer( "dens_CO" )
-    ibuff_MCOconv = ocl.newFFTbuffer( "MCOconv" )
-    ocl.loadFromBin( "../test_CO/dens.bin", ibuff_densCO )
-    ocl.convolve( iA,ibuff_densCO, ibuff_MCOconv  )
-    ocl.saveToXsf( "MCOconv.xsf", ibuff_MCOconv )
+#project_or_load_density( (128,64,32), iBuff=0, dcell=[0.2,0.2,0.2,0.2], save_file="density.xsf" )
 
-def job_poisson_equation( iA=0, iC=1 ):
-    ocl.setErrorCheck( 1 )
-    ngrid = (128,64,32)
-    dcell = [0.2,0.2,0.2,0.2]
-    project_or_load_density( ngrid, iBuff=iA, dcell=dcell )
-    ocl.poisson( iA=iA, iOut=iC, dcell=dcell )
-    ocl.saveToXsf( "Vout.xsf", iC )
+#job_convolve_density_with_CO_orig()
+#job_convolve_density_with_CO()
+#job_poisson_equation()
+#job_make_Eelec_Epauli()
+#test_job_Density_Gradient()
+#test_PP_sampleFF()
+#test_PP_makeFF_LJQ()
+#test_PP_scan_LJQ()
+
+jobs.check_PoissonScaling(  
+    atomType=[1,1,1], 
+    #atomPos=[[5.0,5.0,5.0],[6.0,5.0,5.0]], 
+    atomPos=[[-2.0,0.0,0.0],[0.0,0.0,0.0],[2.0,0.0,0.0]], 
+    atomQs=[1.0,-2.0,1.0],
+    #ngrid=(64,64,64), 
+    #dcell=[0.2,0.2,0.2,1.0], 
+    ngrid=(100,100,100),
+    #ngrid=(200,100,100),
+    dcell=[0.1,0.1,0.1,1.0], 
+    #dcell=[0.1,0.1,0.1,0.2], 
+    Rcuts=[4.5,4.5], 
+    acumCoef=[1.0,-1.0]  
+)
+
+
+
+exit()
+
 
 # ======= Probe Particle (PP) simulations
 
@@ -262,10 +357,10 @@ def job_make_Eelec_Epauli():
     ocl.saveToXsf( "E_elec.xsf",   ibuff_ConvOut )
 
 
-project_or_load_density( (128,64,32), iBuff=0, dcell=[0.2,0.2,0.2,0.2], save_file="density.xsf" )
+#project_or_load_density( (128,64,32), iBuff=0, dcell=[0.2,0.2,0.2,0.2], save_file="density.xsf" )
 
 #job_convolve_density_with_CO_orig()
-#job_convolve_density_with_CO()
+job_convolve_density_with_CO()
 #job_poisson_equation()
 #job_make_Eelec_Epauli()
 #test_job_Density_Gradient()

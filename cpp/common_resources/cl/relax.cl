@@ -766,6 +766,30 @@ float8 getLJC( float4 atom, float2 cLJ, float3 pos ){
      return (float8)(FLJ, ELJ, dp*(Eel*ir2), Eel );
 }
 
+float4 getR4repulsion( float3 d, float R, float Rcut, float A ){
+    // we use R4blob(r) = A * (1-r^2)^2
+    // such that at distance r=R we have force f = fmax
+    // f = -dR4blob/dr = 4*A*r*(1-r^2) = fmax
+    // A = fmax/(4*R*(1-R^2))
+    float R2    = R*R;
+    float R2cut = Rcut*Rcut;
+    float r2 = dot(d,d);
+    if( r2>R2cut ){ 
+        return (float4){0.0f,0.0f,0.0f,0.0f};
+    }else if( r2>R2 ){ 
+        float mr2 = R2cut-r2;
+        float fr = A*mr2;
+        return (float4){ d*(-4*fr), fr*mr2 };
+    }else{
+        float mr2 = R2cut-R2;
+        float fr  = A*mr2;
+        float r    = sqrt(r2);
+        float fmax = 4*R*fr;
+        return (float4){ d* (-fmax/r), fmax*(R-r) + fr*mr2 };
+    }
+}
+
+
 float getLorenz( float4 atom, float4 coefs, float3 pos ){
      float3  dp  =  pos - atom.xyz;
      return coefs.x/( dot(dp,dp) +  coefs.y*coefs.y );
