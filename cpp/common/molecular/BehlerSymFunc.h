@@ -123,6 +123,15 @@ class BehlerNNFF : public AnyShortRangeFF { public:
     */
 
 
+    /**
+     * Calculates the value of the radial symmetric function for a given atom and parameter.
+     * 
+     * @param iatom The index of the atom.
+     * @param ipar The index of the parameter.
+     * @param r The distance value.
+     * @param h The vector representing the position of the atom.
+     * @return The calculated value of the symmetric function
+     */
     inline double symfunc_R( int iatom, int ipar, double r, const Vec3d& h ){
         //int npow   = nsfs  [ipar];
         //double* tp = params[ipar];
