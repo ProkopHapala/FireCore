@@ -233,9 +233,10 @@ public:
         this->nMaxCell = n;
 
     };
+
     void addMember(Atoms* structure, Descriptor* descriptor){
         if(nMembers >= nMaxCell){
-            printf("Reallocating to maximaly store %d molecules\n", nMaxCell*2);
+            if(verbosity) printf("Reallocating to maximaly store %d molecules\n", nMaxCell*2);
             realloc(nMaxCell*2);
         }
         
@@ -244,6 +245,7 @@ public:
         if(nMembers == 0)   dimensionOfDescriptorSpace = descriptors[nMembers].dimensionOfDescriptorSpace;
         this->nMembers++;
     };
+
     void  print(){
         printf("nMembers: %d\n", nMembers);
         printf("%-10s", "Member");
@@ -260,7 +262,7 @@ public:
             printf("\n");
         }
     };
-    int getNMembers(){   return nMembers;   };
+    inline int getNMembers(){   return nMembers;   };
 
     Atoms loadAtoms(int i){
         if(!atoms || i > nMembers) return nullptr;
@@ -268,13 +270,18 @@ public:
     };
 
 
-    void setDescriptors( MMFFparams* params=0, Atoms* atoms=0, MolecularDatabaseDescriptor* md = 0, int nbOfUsedDescriptors_ = 0){
+    void setDescriptors( Atoms* atoms=0, MolecularDatabaseDescriptor* md = 0, int nbOfUsedDescriptors_ = 0){
+        if(verbosity) printf("MolecularDatabase::setDescriptors\n");
         if(nbOfUsedDescriptors_ == 0){
-            nbOfusedDescriptors = 2;
+            nbOfusedDescriptors = 4;
             usedDescriptors = new MolecularDatabaseDescriptor[nbOfusedDescriptors];
-            int ityp = atoms->atypes[1];
+            int ityp0 = atoms->atypes[0];
+            int ityp1 = atoms->atypes[1];
+            int ityp2 = atoms->atypes[2];
             usedDescriptors[0] = {principal_axes, -1}; 
-            usedDescriptors[1] = {number_of_atoms, -1};
+            usedDescriptors[1] = {principal_axes, ityp0};
+            usedDescriptors[2] = {principal_axes, ityp1};
+            usedDescriptors[3] = {principal_axes, ityp2};
         }
         else{
             nbOfusedDescriptors = nbOfUsedDescriptors_;
@@ -444,16 +451,31 @@ public:
 
 
 
-    void testHash(Atoms* a, MMFFparams* params=0){
+    int addIfNewDescriptor(Atoms* a, MMFFparams* params=0){
         Descriptor d;
+        int sameDescriptor = -1;
+        //if(verbosity) printf("testHash\n");
         for(int i = 0; i < nbOfusedDescriptors; i++){
             d.chooseDescriptor(usedDescriptors[i], a, params);
         }
-        hashDescriptors(&d);
-        if(1){
+        // for(int i = 0; i < nMembers; i++){
+        //     if(d.compareDescriptors(&descriptors[i]) < 1){
+        //         sameDescriptor = i;
+        //         break;
+        //     }
+        // }
+        //hashDescriptors(&d);
+        //if(sameDescriptor == -1){
             addMember(a, &d);
-        }
+        //}
 
+        for(int i = 0; i < nMembers-1; i++){
+            if(compareAtoms(nMembers-1, i) < 1){
+                sameDescriptor = i;
+                break;
+            }
+        }
+        return sameDescriptor;
     };
 
     int hashDescriptors(Descriptor* d){
