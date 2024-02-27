@@ -66,8 +66,8 @@ fi
 #./$name -x common_resources/nHexadecan_dicarboxylic  -T 100 0.01
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
-./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,1000 0.25,1.0
-
+#./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,1000 0.25,1.0 -verb 0
+./$name -x data/hexan-dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,1000 0.25,1.0 -verb 0
 
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons
 #./$name -x common_resources/nHexadecan_dicarboxylic -T 500.0
