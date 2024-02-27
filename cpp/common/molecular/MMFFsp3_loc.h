@@ -1102,7 +1102,7 @@ int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1
         // ------ eval MMFF
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<natoms; ia++){ 
-            if(verbosity>3)printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+            if(verbosity>3)[[unlikely]]{ printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  ); }
             {             fapos[ia       ] = Vec3dZero; } // atom pos force
             if(ia<nnode){ fapos[ia+natoms] = Vec3dZero; } // atom pi  force
             if(ia<nnode)E += eval_atom(ia);
@@ -1128,7 +1128,7 @@ int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1
             cvf.x=ff; cvf.y=vv; cvf.z=vf;
             if(cvf.x<0){ cleanVelocity(); };
             //if(cvf.z<F2conv)break;
-            if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(ff), omp_get_num_threads() );}
+            if(verbosity>2)[[unlikely]]{printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(ff), omp_get_num_threads() );}
         }
     }
     return itr;
@@ -1169,8 +1169,14 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
 
     // ----- Langevin
     f.add_mul( v, -gamma_damp );  // check the untis  ... cdamp/dt = gamma
-    Vec3d rnd = {-6.,-6.,-6.};
-    for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
+    
+    // --- generate randomg force from normal distribution (i.e. gaussian white noise)
+    // -- this is too costly
+    //Vec3d rnd = {-6.,-6.,-6.};
+    //for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
+    // -- keep uniform distribution for now
+    Vec3d rnd = {randf(-1.0,1.0),randf(-1.0,1.0),randf(-1.0,1.0)};
+
     //if(i==0){ printf( "dt=%g[arb.]  dt=%g[fs]\n", dt, dt*10.180505710774743  ); }
     f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp/dt ) );
 
@@ -1184,6 +1190,13 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
 
     return cvf;
 }
+Vec3d move_Langevin( const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){
+    Vec3d cvf = Vec3dZero;
+    for(int i=0; i<nvecs; i++){
+        cvf.add( move_atom_Langevin( i, dt, Flim, gamma_damp, T ) );
+    }
+    return cvf;
+};
 
 
 // update atom positions using molecular dynamics (damped leap-frog)
@@ -1274,6 +1287,19 @@ double move_GD(float dt, double Flim=100.0 ){
         F2sum += move_atom_GD(i, dt, Flim);
     }
     return F2sum;
+}
+
+Vec3d shiftBack(bool bPBC=false){
+    Vec3d cog=Vec3dZero;
+    for(int i=0; i<natoms; i++){ cog.add( apos[i] ); }
+    cog.mul( 1.0/natoms );
+    //Vec3d cog=average( ffl.natoms, ffl.apos );  
+    if( bPBC ){
+        Vec3i g  = invLvec.nearestCell( cog );
+        cog.add_lincomb( g.x,g.y,g.z, lvec.a, lvec.b, lvec.c );
+    }
+    for(int i=0; i<natoms; i++){ apos[i].sub( cog ); }
+    return cog;
 }
 
 // make list of back-neighbors
