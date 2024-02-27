@@ -9,7 +9,7 @@
 #include <math.h>
 
 #include <omp.h>
-#include <memory>
+
 #include "IO_utils.h"
 
 //#include "testUtils.h"
@@ -51,6 +51,7 @@ static MMFFparams* params_glob;
 #include "arrayAlgs.h"
 #include "SVG_render.h"
 
+#include "MolecularDatabase.h"
 
 enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
 //static inline MolWorldVersion operator|(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) | ((int)b)  );  };
@@ -59,7 +60,44 @@ static inline int operator|(MolWorldVersion a, MolWorldVersion b) { return ( ((i
 static inline int operator&(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) & ((int)b)  );  };
 
 
-#include "MolecularDatabase.h"
+
+struct GOpt{
+    bool bExploring = false;
+    int  istep   =0;
+    int  nExplore=0;
+    int  nRelax  =0;
+    double vel_kick = 1.0;
+    double pos_kick = 0.25;
+
+    void startExploring(){
+        //printf( "GOpt::startExploring()\n" );
+        bExploring = true;
+        istep=0;
+    }
+
+    bool update(){
+        istep++;
+        if(bExploring){
+            if(istep>=nExplore){ 
+                //printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
+                bExploring=false; istep=0; return true; 
+            }
+        }else{
+           // if(istep>=nRelax  ){ bExploring=true; istep=0; return true; }
+        }
+        return false;
+    }
+
+    void apply_kick( int n, Vec3d* pos=0, Vec3d* vel=0 ){
+        //printf( "GOpt::apply_kick() n=%i |pos|=%g |vel=%g|\n", n, pos_kick, vel_kick );
+        for(int i=0; i<n; i++){
+            if(pos) pos[i].add( randf(-pos_kick,pos_kick), randf(-pos_kick,pos_kick), randf(-pos_kick,pos_kick) );
+            if(vel) vel[i].add( randf(-vel_kick,vel_kick), randf(-vel_kick,vel_kick), randf(-vel_kick,vel_kick) );
+        }
+    }
+
+};
+
 
 
 
@@ -70,7 +108,6 @@ static inline int operator&(MolWorldVersion a, MolWorldVersion b) { return ( ((i
  * This class inherits from SolverInterface and provides functionality for manipulating and simulating molecular systems.
  * It contains various member variables and methods for handling molecular data, force fields, dynamics, and more.
  */
-
 class MolWorld_sp3 : public SolverInterface { public:
     bool isInitialized=false;
     //const char* data_dir     = "common_resources";
@@ -93,13 +130,13 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     // ---  Parameters for Molecular Dynamics at non-zero temperature
     double bThermalSampling = 0.0;   // if >0 then we do thermal sampling
-    double T_target         = 0.0;   // target temperature for thermal sampling (if bThermalSampling>0)
+    double T_target         = 300.0;   // target temperature for thermal sampling (if bThermalSampling>0)
     double T_current        = 0.0;   // current temperature for thermal sampling (if bThermalSampling>0)
-    double gamma_damp       = 0.1;   // damping factor for thermal sampling (if bThermalSampling>0)
+    double gamma_damp       = 0.01;  // damping factor for thermal sampling (if bThermalSampling>0)
 
     double fAutoCharges=-1;
     bool bEpairs = false;
-
+bool bToCOG=false;
     bool bCellBySurf=false;
     int   bySurf_ia0 =0;
     Vec2d bySurf_c0=Vec2dZero;                      // Vector for surface coordinates
@@ -132,6 +169,9 @@ class MolWorld_sp3 : public SolverInterface { public:
     LimitedGraph<N_NEIGH_MAX> graph; // used to find bridges in the molecule, and other topology-related algorithms
 
     GlobalOptimizer gopt;
+GOpt            go;
+    bool   bGopt =false;
+    int gopt_ifound=0;
 
     GridShape MOgrid;
 
@@ -277,6 +317,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
+        database = new MolecularDatabase();
         if(verbosity>0) 
         printf( "#### MolWorld_sp3::init() DONE\n\n");
     }
@@ -584,7 +625,6 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
 }
 
 
-}
 
 
 virtual void upload_pop( const char* fname ){
@@ -778,6 +818,7 @@ void changeCellBySurf( Vec2d a, Vec2d b, int ia0=-1, Vec2d c0=Vec2dZero ){
     //builder.printAtomConfs();
     //builder.printBonds();    
 }
+
 void hideEPairs(){
     //printf( "plotNonBondGrid() removing EPairs %i \n" );
     int etyp = params.getAtomType("E");
@@ -1535,7 +1576,7 @@ double eval( ){
     if(verbosity>0) printf( "#### MolWorld_sp3::eval() DONE\n\n");
 
     return E;
-}                                  }   // atoms in cell ignoring bondede neighbors
+}  
 
 /**
  * Performs relaxation of the molecular system with FIRE algorithm.
@@ -1853,13 +1894,24 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
     double ff=0,vv=0,vf=0;
     int itr=0,niter=niter_max;
     bConverged = false;
+    bool bExploring = false;
+    if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
     //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
-    #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0)
+    #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bExploring,bThermalSampling,bConstrains,bConverged)
     while(itr<niter){
         if(itr<niter){
         //#pragma omp barrier
         #pragma omp single
-        {E=0;F2=0;ff=0;vv=0;vf=0;}
+        {E=0;F2=0;ff=0;vv=0;vf=0;
+                bExploring = false;
+                if(bGopt){
+                    go.update();
+                    bExploring       = go.bExploring; 
+                    bThermalSampling = bExploring;
+                    bConstrains      = bExploring;
+                    if(bExploring) bConverged = false;
+                }
+            }
         //------ eval forces
         //#pragma omp barrier
         #pragma omp for reduction(+:E)
@@ -1877,7 +1929,7 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
             if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
             //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
 
-            if(ipicked==ia){ 
+            if(ipicked==ia)[[unlikely]]{ 
                 const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                 ffl.fapos[ia].add( f );
             }
@@ -1946,18 +1998,28 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
         { 
             Etot=E;
             itr++; 
-            if(timeLimit>0){
+            if(timeLimit>0)[[unlikely]]{
                 double t = (getCPUticks() - T0)*tick2second;
                 if(t>0.02){ 
                     niter=0; 
-                    if(verbosity>1)printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); 
+                    if(verbosity>1) [[unlikely]] { printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); } 
                 }
             }
-            if(F2<F2conv){ 
+            if(F2<F2conv)[[unlikely]]{ 
                 niter=0; 
                 bConverged = true;
                 double t = (getCPUticks() - T0)*tick2second;
-                if(verbosity>1)printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+                if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
+                    if(bGopt){
+                        gopt_ifound++;
+                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
+                        
+                        if(addSnapshotIfNew()){ saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );printf( "run_omp().save %s \n", tmpstr ); }
+                        else{ printf( "run_omp().skip %s \n", tmpstr ); gopt_ifound--; printDatabase();}
+                        go.startExploring();
+                        bConverged=false;
+                        go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
+                    }
             }
             //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
             //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
@@ -1965,7 +2027,7 @@ int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, doub
         }
     }{
     double t = (getCPUticks() - T0)*tick2second;
-    if(itr>=niter_max)if(verbosity>1)printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+    if( (itr>=niter_max)&&(verbosity>1)) [[unlikely]] {printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
     }
     return itr;
 }
@@ -2342,24 +2404,7 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
  */
 void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, const char* trjName ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, trjName ); };
 
-/**
- * Scans angles to axis.
- *
- * This function scans a set of angles and modifies the positions of atoms based on the given parameters.
- * The positions of atoms are adjusted by removing the axial component, renormalizing the radial component,
- * and adding back a new axial component. The energy of the system is evaluated at each step.
- *
- * @param n         The number of atoms in the selection.
- * @param selection An array of atom indices representing the selection.
- * @param r         The radial component parameter.
- * @param R         The renormalization parameter.
- * @param p0        The reference point for the axial component.
- * @param ax        The axial vector.
- * @param nstep     The number of steps to perform.
- * @param angs      An array of angles to scan.
- * @param Es        An array to store the evaluated energies.
- * @param trjName   The name of the trajectory file to write the positions to (optional).
- */
+
 void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Vec3d ax, int nstep, double* angs, double* Es, const char* trjName ){
     //printf( "scanAngleToAxis_ax()\n" );
     FILE* file=0;
@@ -2458,58 +2503,66 @@ virtual void printSwitches(){
 
 MolecularDatabase* database;
 
-
-void addSnapshot(){
-
+bool addSnapshotIfNew()
+{
     int nMembers = database->getNMembers();
-
-        database->setDescriptors(&params, &nbmol);
-
-srand(time(0));
-
-        double angle = randf() * 360;
-        Vec3d axis = {randf(), randf(), randf()};
-        Vec3d p0 = {randf()*5-2.5, randf()*5-2.5, randf()*5-2.5};
-        
-
-
-    for (int i = 0; i < nbmol.natoms/3; i++)
-    {    
-        double move_x = 0.25*randf();
-        double move_y = 0.25*randf();
-        double move_z = 0.25*randf();
-        nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
-        nbmol.apos[i].add({move_x, move_y, move_z});    
-    }
-
+    // if (verbosity)
+    //     printf("MolWorld_sp3::addSnapshot() #%d\n", nMembers);
     
+//srand(time(0));
 
-    // std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
-    // const char* cstr1 = trjName1.c_str();  
-    // FILE* file1=0;
-    // file1=fopen( cstr1, "w" );
-    // params.writeXYZ(file1, &nbmol, "#comment");
-    // fclose(file1);
 
-    database->testHash(&nbmol);   
 
-    //printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");
+    if(nMembers == 0)
+        database->setDescriptors(&nbmol);
+        
+    int sameIndex = database->addIfNewDescriptor(&nbmol);
+    if(sameIndex != -1){
+        printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");
+        double compareAtoms1 = database->compareAtoms(nMembers, sameIndex);
+        double compareDescriptors = database->compareDescriptors(nMembers, sameIndex);
+        printf("%-5d %-5d %-20lf %-20lf\n", sameIndex, nMembers, compareAtoms1, compareDescriptors);
+        return false;
+    }
+    return true;
+
+    database->addIfNewDescriptor(&nbmol);
+    //printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");}
     // for (int i = 0; i < nMembers; i++) {
     //     if(i == nMembers-1){
-    //         //double compareAtoms1 = database->compareAtoms(nMembers, i);
-    //         //double compareDescriptors = database->compareDescriptors(nMembers, i);
-    //         //double compareAtoms2 = database->compareAtoms(i, nMembers);
-    //         //printf("%-5d %-5d %-20lf %-20lf\n", i, nMembers, compareAtoms1, compareDescriptors);
+    //          double compareAtoms1 = database->compareAtoms(nMembers, i);
+    //          double compareDescriptors = database->compareDescriptors(nMembers, i);
+    //          //double compareAtoms2 = database->compareAtoms(i, nMembers);
+    //          printf("%-5d %-5d %-20lf %-20lf\n", i, nMembers, compareAtoms1, compareDescriptors);
     //     }
     // }
     
-     
+    std::string comment = "#" + std::to_string(nMembers);
+    const char* cstr = comment.c_str();
+    std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
+    const char* cstr1 = trjName1.c_str();  
+    FILE* file1=0;
+    file1=fopen( cstr1, "w" );
+    params.writeXYZ(file1, &nbmol, cstr);
+    fclose(file1);
 
+//     double angle = randf() * 360;
+//     double move_x = randf() * 0.5;
+//     double move_y = randf() * 0.5;
+//     double move_z = randf() * 0.5;
+//     Vec3d axis = {randf(), randf(), randf()};
+//     Vec3d p0 = {randf() * 5 - 2.5, randf() * 5 - 2.5, randf() * 5 - 2.5};
+//     for (int i = 0; i < nbmol.natoms; i++)
+//     {
+//         nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
+//         nbmol.apos[i].add({move_x, move_y, move_z});
+//     }
 
+// return true;
 }
 
 void printDatabase(){
-    //database->print();
+    database->print();
 }
 
 
