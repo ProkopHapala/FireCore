@@ -236,6 +236,8 @@ GOpt            go;
     //int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
 
+    MolecularDatabase* database;
+
     // ========== from python interface
 
     virtual MolWorldVersion getMolWorldVersion() const { return MolWorldVersion::BASIC; };
@@ -1463,6 +1465,8 @@ void setNonBond( bool bNonBonded ){
         //     for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
         // }
     }
+}
+
     int updateBuilderFromFF(bool bPos=true, bool bQ=true){
         if( ffl.nnode  != builder.confs.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.nnode(%i)  != builder->confs.size(%i) \n", ffl.nnode,  builder.confs.size() ); exit(0); }
         //if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
@@ -2491,7 +2495,7 @@ virtual void printSwitches(){
 }
 
 
-MolecularDatabase* database;
+
 
 bool addSnapshotIfNew()
 {
