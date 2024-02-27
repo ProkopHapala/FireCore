@@ -28,6 +28,8 @@ struct ForcedDriver{ public:
     }
     inline double interpolate_fDrive(double t)const{ return fDrives.x*(1-t) + fDrives.y*t; }
     inline double interpolate_fDrive()const{ double t=updateCounter/(float)nUpdate; return fDrives.x*(1-t) + fDrives.y*t; }
+
+    void printDriver(){ printf( "ForcedDriver nUpdate %i fDrive %g driving %i fDrives(%g,%g) updateCounter %i \n", nUpdate, fDrive, driving, fDrives.x,fDrives.y, updateCounter ); }
 };
 
 struct SplineConstr{ // HermiteCubic Spline
@@ -234,7 +236,9 @@ struct TorsionConstr : public ForcedDriver{ public:
     }
 
     void print(){ printf( "TorsionConstr ijkl(%i,%i,%i,%i) par(c0=%g,k=%g,n=%i) fDrive=%g nUpdate=%i driving=%i \n",   ijkl.x,ijkl.y,ijkl.z,ijkl.w,   par.x,par.y,nAng,  fDrive, nUpdate, driving ); };
+    void printDrive(){ printf( "TorsionConstr ijkl(%i,%i,%i,%i) fDrive=%g nUpdate=%i/%i driving=%i driving(%g,%g) \n",   ijkl.x,ijkl.y,ijkl.z,ijkl.w,   fDrive, nUpdate,updateCounter, driving, fDrives.x, fDrives.y ); }
 
+    //printDriver()
 };
 
 
@@ -375,6 +379,7 @@ class Constrains{ public:
 
     __attribute__((hot))  
     double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec=0, Mat3d* dlvec=0 ){
+        //printf( "Constrains::apply n=%i \n", torsions.size() );
         double E=0;  
         int i=0;
         //if(iDriveUpdate>=nDriveUpdate){ iDriveUpdate=0; }
@@ -396,7 +401,7 @@ class Constrains{ public:
     }
 
     int loadBonds( const char* fname, int* atom_permut=0, int _0=1 ){
-        //printf("Constrains::loadBonds(%s) atom_permut=%li _0=%i\n", fname, (long)atom_permut, _0 );
+        printf("!!!!!!!!!!!! Constrains::loadBonds(%s) atom_permut=%li _0=%i\n", fname, (long)atom_permut, _0 );
         FILE* pFile = fopen( fname, "r" );
         if(pFile==0){ printf("ERROR in Constrains::loadBonds(%s) - No Such File \n", fname ); return -1; }
         else{
@@ -433,6 +438,27 @@ class Constrains{ public:
             angles.shrink_to_fit();
             torsions.shrink_to_fit();
         }
+    }
+
+    void copy( const Constrains& c ){
+        //printf( "Constrains::copy() c.splines.size(%i) c.bonds.size(%i) c.angles.size(%i) c.torsions.size(%i)\n", c.splines.size(), c.bonds.size(), c.angles.size(), c.torsions.size() );
+        splines = c.splines;
+        bonds   = c.bonds;
+        angles  = c.angles;
+        torsions= c.torsions;
+    }
+
+    void update_drives(){
+        for( TorsionConstr& c : torsions ){ c.update_fDrive(); }
+    }
+
+    void printSizes( ){
+        printf( "Constrains::printSizes() splines.size(%i) bonds.size(%i) angles.size(%i) torsions.size(%i)\n", splines.size(), bonds.size(), angles.size(), torsions.size() );
+    }
+
+    void printDrives( ){
+        printf( "Constrains::printDrives() torsions.size(%i) \n", torsions.size() );
+        for( TorsionConstr& c : torsions ){ c.printDrive(); }
     }
     
 };

@@ -142,6 +142,22 @@ inline double evalBond( const Vec3d& h, double dl, double k, Vec3d& f ){
     return fr*dl*0.5;
 }
 
+inline double springbound( double x, double l, double k, double& f ){
+    double E;
+    if(x<0){
+        f =-x*k;
+        E = 0.5*x*x*k;
+    }else if( x>l ){
+        x-=l;
+        f=-x*k;
+        E = 0.5*x*x*k;
+    }else{
+        f=0;
+        E=0;
+    }
+    return E;
+}
+
 inline double spring( double l, Vec2d ls, Vec2d ks, double flim, double& f ){
     double E=0;
     f       =0;
