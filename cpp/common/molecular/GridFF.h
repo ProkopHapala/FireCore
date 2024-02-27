@@ -512,6 +512,13 @@ void getEFprofile( int n, Vec3d p0, Vec3d p1, Quat4d REQ, Quat4d* fes, bool bPri
     }
 }
 
+void getEFprofileToFile( const char* fname, int n, Vec3d p0, Vec3d p1, Quat4d REQ ){
+    freopen(fname, "w", stdout);
+    getEFprofile( n, p0, p1, REQ, 0, true );
+    fclose(stdout);
+    freopen("/dev/tty", "a", stdout);
+}
+
 double checkEFProfileVsNBFF( int n, Vec3d p0, Vec3d p1, const Quat4d& REQ, double tol=1e-2, bool bExit=false, bool bPrint=false, bool bWarn=true, const char* logfiflename="checkEFProfileVsNBFF.log" ){
     if(bPrint){ printf("GridFF::checkEFProfileVsNBFF(np=%i,natoms=%i,npbc=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, natoms,npbc, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
     FILE * logf=0;
