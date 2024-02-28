@@ -73,6 +73,9 @@ class NBFF: public ForceField{ public:
     int    npbc   =0;  // total number of periodic images
     Vec3d* shifts __attribute__((aligned(64))) =0;  // array of bond vectors shifts in periodic boundary conditions
     Quat4f *PLQs  __attribute__((aligned(64))) =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
+
+    Quat4d *PLQd  __attribute__((aligned(64))) =0; 
+
     Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
 
 #ifdef WITH_AVX
@@ -119,6 +122,19 @@ class NBFF: public ForceField{ public:
     void makePLQs(double K){
         _realloc(PLQs,natoms);
         evalPLQs(K);
+    }
+
+
+    // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
+    void evalPLQd(double K){
+        if(PLQd==0){ _realloc(PLQd,natoms);  }
+        for(int i=0; i<natoms; i++){
+            PLQd[i]=REQ2PLQ_d( REQs[i], K );
+        }
+    }
+    void makePLQd(double K){
+        _realloc(PLQd,natoms);
+        evalPLQd(K);
     }
 
     __attribute__((hot))  

@@ -13,6 +13,17 @@
 
 static bool bDebug__ = 0;
 
+
+template<typename T>
+T sum( int n, T* data, T t ){
+    for(int i=0; i<n; i++){ t.add(data[i]); }
+    return t;
+};
+
+
+
+
+
 inline double evalDipole( int n, Vec3d* ps, Quat4d* REQs, Vec3d& Dout, Vec3d& p0out ){
     // we want to approximate charge distribution by charge `Q` and dipole `D` around center `C`
     // we choose center `c` so that it minimizes size of dipole `|d|^2`
@@ -81,6 +92,11 @@ class GridFF : public NBFF{ public:
     Quat4f   *FFPaul = 0;
     Quat4f   *FFLond = 0;
     Quat4f   *FFelec = 0;
+
+
+    Quat4d   *FFPaul_d = 0;
+    Quat4d   *FFLond_d = 0;
+    Quat4d   *FFelec_d = 0;
     //Quat4f *FFtot    = 0; // total FF is not used since each atom-type has different linear combination
 
     // ------ ToDo: this should be put inside NBFF
@@ -105,13 +121,20 @@ class GridFF : public NBFF{ public:
         natoms=natoms_; atypes=atypes_; apos=apos_; REQs=REQs_;
     }
 
-    void allocateFFs(){
+    void allocateFFs( bool bDouble=false ){
         int ntot = grid.getNtot();
         _realloc( FFPaul, ntot );
         _realloc( FFLond, ntot );
         _realloc( FFelec, ntot );
+        if(bDouble){
+            printf( "GridFF::allocateFFs bDouble=%i \n", bDouble );
+            _realloc( FFPaul_d, ntot );
+            _realloc( FFLond_d, ntot );
+            _realloc( FFelec_d, ntot );
+        }
     }
     
+
     void allocateAtoms(int natoms_){
         natoms = natoms_;
         //_realloc( atypes = new int[natoms];
@@ -126,6 +149,7 @@ class GridFF : public NBFF{ public:
         printf( "GridFF::evalDipole(na=%i): D(%g,%g,%g|%g) p0(%g,%g,%g) \n", natoms, dip.x,dip.y,dip.z,Q,   dip_p0.x,dip_p0.y,dip_p0.z );
     }
 
+__attribute__((hot))  
 inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     #pragma omp SIMD
     {
@@ -138,9 +162,12 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
 
     // ---- PBC condiction ( within outer cell bboundaries ? )
-    u.x=(u.x-(int)u.x)*n.x;
-    u.y=(u.y-(int)u.y)*n.y;
-    u.z=(u.z-(int)u.z)*n.z;
+    //u.x=(u.x-(int)u.x)*n.x;
+    //u.y=(u.y-(int)u.y)*n.y;
+    //u.z=(u.z-(int)u.z)*n.z;
+    u.x=(u.x-((int)(u.x+10)-10))*n.x;
+    u.y=(u.y-((int)(u.y+10)-10))*n.y;
+    u.z=(u.z-((int)(u.z+10)-10))*n.z;
 
     //printf( "GridFF::getForce() u(%g,%g,%g) p(%g,%g,%g) shift(%g,%g,%g) p0(%g,%g,%g) \n", u.x,u.y,u.z,  p.x,p.y,p.z,  shift.x,shift.y,shift.z,   grid.pos0.x,grid.pos0.y,grid.pos0.z );
 
@@ -183,10 +210,12 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
         f001=mx*f01, f101=tx*f01,
         f010=mx*f10, f110=tx*f10,
         f011=mx*f11, f111=tx*f11;
-    { // DEBUG
-        Quat4f fDBG = FFPaul[ i000 ];
-        //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
-    }
+    // { // DEBUG
+    //     Quat4f fDBG = FFPaul[ i000 ];
+    //     //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
+    // }
+    //printf( "GridFF::getForce() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+
 	return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
           ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
          + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
@@ -206,35 +235,195 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     }
 }
 
+__attribute__((hot))  
 inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=true )const{
     Quat4f fe = getForce( p, PLQ, bSurf ); 
     f.add( (Vec3d)fe.f );   
     return fe.e;
 }
+__attribute__((hot))  
 double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf=true )const{ 
     double E=0;
     for(int ia=0; ia<natoms; ia++){ E+=addForce( apos[ia], PLQs[ia], fpos[ia], bSurf ); };
     return E;
 }
+__attribute__((hot))  
+inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
+    //printf( "GridFF::addForce() \n" );
+    //printf( "GridFF::addForce() pointers(%li,%li,%li)\n", FFPaul, FFLond, FFelec );
+    Vec3f gpos; grid.cartesian2grid(pos, gpos);
+    //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) pointers(%li,%li,%li)\n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z, FFPaul, FFLond, FFelec );
+    Quat4f fp=interpolate3DvecWrap( FFPaul,  grid.n, gpos );   fe.add_mul( fp, PLQ.x );
+    Quat4f fl=interpolate3DvecWrap( FFLond,  grid.n, gpos );   fe.add_mul( fl, PLQ.y );
+    Quat4f fq=interpolate3DvecWrap( FFelec,  grid.n, gpos );   fe.add_mul( fq, PLQ.z );
+    //Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, 1.0 );
+    //if(bDebug__)printf( "CPU[0] apos(%g,%g,%g)  PLQ(%g,%g,%g)\n", pos.x,pos.y,pos.z, fp.w,fl.w,fq.w );
+    //printf( "fp(%g,%g,%g|%g)*(%g) + fl((%g,%g,%g|%g)*(%g) + fq(%g,%g,%g|%g)*(%g) \n", fp.x,fp.y,fp.z,fp.e, PLQ.x,  fl.x,fl.y,fl.z,fl.e, PLQ.y,  fq.x,fq.y,fq.z,fq.e, PLQ.z );
+    //printf( "E(%g,%g,%g) PLQ(%g,%g,%g)\n", fp.e,fl.e,fq.e, PLQ.x,PLQ.y,PLQ.z );
+    //fe.add_mul( interpolate3DvecWrap( FFPaul,  grid.n, gpos ) , PLQ.x );
+    //fe.add_mul( interpolate3DvecWrap( FFLond, grid.n, gpos ) , PLQ.y );
+    //fe.add_mul( interpolate3DvecWrap( FFelec,   grid.n, gpos ) , PLQ.z );
+    //f = interpolate3DvecWrap( FFLond,  grid.n, gpos );
+    //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
+}
 
-    inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
-        //printf( "GridFF::addForce() \n" );
-        //printf( "GridFF::addForce() pointers(%li,%li,%li)\n", FFPaul, FFLond, FFelec );
-        Vec3f gpos; grid.cartesian2grid(pos, gpos);
-        //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) pointers(%li,%li,%li)\n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z, FFPaul, FFLond, FFelec );
-        Quat4f fp=interpolate3DvecWrap( FFPaul,  grid.n, gpos );   fe.add_mul( fp, PLQ.x );
-        Quat4f fl=interpolate3DvecWrap( FFLond,  grid.n, gpos );   fe.add_mul( fl, PLQ.y );
-        Quat4f fq=interpolate3DvecWrap( FFelec,  grid.n, gpos );   fe.add_mul( fq, PLQ.z );
-        //Quat4f fq=interpolate3DvecWrap( FFelec,    grid.n, gpos );   fe.add_mul( fq, 1.0 );
-        //if(bDebug__)printf( "CPU[0] apos(%g,%g,%g)  PLQ(%g,%g,%g)\n", pos.x,pos.y,pos.z, fp.w,fl.w,fq.w );
-        //printf( "fp(%g,%g,%g|%g)*(%g) + fl((%g,%g,%g|%g)*(%g) + fq(%g,%g,%g|%g)*(%g) \n", fp.x,fp.y,fp.z,fp.e, PLQ.x,  fl.x,fl.y,fl.z,fl.e, PLQ.y,  fq.x,fq.y,fq.z,fq.e, PLQ.z );
-        //printf( "E(%g,%g,%g) PLQ(%g,%g,%g)\n", fp.e,fl.e,fq.e, PLQ.x,PLQ.y,PLQ.z );
-        //fe.add_mul( interpolate3DvecWrap( FFPaul,  grid.n, gpos ) , PLQ.x );
-        //fe.add_mul( interpolate3DvecWrap( FFLond, grid.n, gpos ) , PLQ.y );
-        //fe.add_mul( interpolate3DvecWrap( FFelec,   grid.n, gpos ) , PLQ.z );
-        //f = interpolate3DvecWrap( FFLond,  grid.n, gpos );
-        //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
+__attribute__((hot))  
+inline Quat4d getForce_d( Vec3d p, const Quat4d& PLQ, bool bSurf=true ) const {
+    #pragma omp SIMD
+    {
+    Vec3d u;
+    p.sub(shift0);
+    p.sub(grid.pos0);
+    grid.iCell.dot_to( p, u );
+    Vec3i n = grid.n;
+    //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
+    if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
+
+    // ---- PBC condiction ( within outer cell bboundaries ? )
+    //u.x=(u.x-(int)u.x)*n.x;
+    //u.y=(u.y-(int)u.y)*n.y;
+    //u.z=(u.z-(int)u.z)*n.z;
+    u.x=(u.x-((int)(u.x+10)-10))*n.x;
+    u.y=(u.y-((int)(u.y+10)-10))*n.y;
+    u.z=(u.z-((int)(u.z+10)-10))*n.z;
+
+	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+    //------
+    int kx = ix+1; kx=(kx<n.x)?kx:0;
+    int ky = iy+1; ky=(ky<n.y)?ky:0;
+    int kz = iz+1; kz=(kz<n.z)?kz:0;
+	//------
+	const double f00 = my*mz; 
+    const double f10 = ty*mz; 
+    const double f01 = my*tz; 
+    const double f11 = ty*tz;
+    const int   i00 = n.x*(iy + n.y*iz);
+    const int   i01 = n.x*(iy + n.y*kz);
+    const int   i10 = n.x*(ky + n.y*iz);
+    const int   i11 = n.x*(ky + n.y*kz);
+    const int 
+        i000=ix+i00, i100=kx+i00,
+        i001=ix+i01, i101=kx+i01,
+        i010=ix+i10, i110=kx+i10,
+        i011=ix+i11, i111=kx+i11;
+    
+    //printf( "GridFF::getForce_d() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+
+    int ntot = grid.getNtot();
+    if( ((ix<0)||(ix>=n.x)) || 
+        ((iy<0)||(iy>=n.y)) ||
+        ((iz<0)||(iz>=n.z)) )[[unlikely]]{
+            printf( "ERROR GridFF::getForce_d() ntot=%i OUT_OF_RANGE((%i,%i)(%i,%i))((%i,%i)(%i,%i)) pos(%g,%g,%g) ixyz(%i,%i,%i) nxyz(%i,%i,%i) \n", p.x,p.y,p.z,   ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+            exit(0);
     }
+    if( (i000<0)||(i000>=ntot) || 
+        (i001<0)||(i001>=ntot) || 
+        (i010<0)||(i010>=ntot) || 
+        (i011<0)||(i011>=ntot) || 
+        (i100<0)||(i100>=ntot) || 
+        (i101<0)||(i101>=ntot) || 
+        (i110<0)||(i110>=ntot) || 
+        (i111<0)||(i111>=ntot) )[[unlikely]]{
+        printf( "ERROR GridFF::getForce_d() ntot=%i OUT_OF_RANGE((%i,%i)(%i,%i))((%i,%i)(%i,%i)) pos(%g,%g,%g) ixyz(%i,%i,%i) nxyz(%i,%i,%i) \n", p.x,p.y,p.z,   ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+        exit(0);
+    }
+        //printf( "GridFF::getForce_d() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+
+    const double 
+        f000=mx*f00, f100=tx*f00,
+        f001=mx*f01, f101=tx*f01,
+        f010=mx*f10, f110=tx*f10,
+        f011=mx*f11, f111=tx*f11;
+    // { // DEBUG
+    //     Quat4f fDBG = FFPaul[ i000 ];
+    //     //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
+    // }
+
+	return  // 3 * 8 * 4 = 96 doubles   // SIMD optimize ?????
+          ((FFPaul_d[ i000 ]*f000) + (FFPaul_d[ i100 ]*f100)
+         + (FFPaul_d[ i010 ]*f010) + (FFPaul_d[ i110 ]*f110)  
+         + (FFPaul_d[ i011 ]*f011) + (FFPaul_d[ i111 ]*f111)
+         + (FFPaul_d[ i001 ]*f001) + (FFPaul_d[ i101 ]*f101))*PLQ.x
+
+         +((FFLond_d[ i000 ]*f000) + (FFLond_d[ i100 ]*f100)
+         + (FFLond_d[ i010 ]*f010) + (FFLond_d[ i110 ]*f110)  
+         + (FFLond_d[ i011 ]*f011) + (FFLond_d[ i111 ]*f111)
+         + (FFLond_d[ i001 ]*f001) + (FFLond_d[ i101 ]*f101))*PLQ.y
+
+         +((FFelec_d[ i000 ]*f000) + (FFelec_d[ i100 ]*f100)
+         + (FFelec_d[ i010 ]*f010) + (FFelec_d[ i110 ]*f110)  
+         + (FFelec_d[ i011 ]*f011) + (FFelec_d[ i101 ]*f111)
+         + (FFelec_d[ i001 ]*f001) + (FFelec_d[ i101 ]*f101))*PLQ.z
+        ;
+
+        
+        //Quat4d fe = Quat4dZero;
+
+        // fe.add_mul( FFPaul_d[ i000 ], 1 );
+        // fe.add_mul( FFPaul_d[ i100 ], 1 );
+        // fe.add_mul( FFPaul_d[ i010 ], 1 );
+        // fe.add_mul( FFPaul_d[ i110 ], 1 );
+        // fe.add_mul( FFPaul_d[ i011 ], 1 );
+        // fe.add_mul( FFPaul_d[ i111 ], 1 );
+        // fe.add_mul( FFPaul_d[ i001 ], 1 );
+        // fe.add_mul( FFPaul_d[ i101 ], 1 );
+
+        // fe.add_mul( FFPaul_d[ i000 ], f000 );
+        // fe.add_mul( FFPaul_d[ i100 ], f100 );
+        // fe.add_mul( FFPaul_d[ i010 ], f010 );
+        // fe.add_mul( FFPaul_d[ i110 ], f110 );
+        // fe.add_mul( FFPaul_d[ i011 ], f011 );
+        // fe.add_mul( FFPaul_d[ i111 ], f111 );
+        // fe.add_mul( FFPaul_d[ i001 ], f001 );
+        // fe.add_mul( FFPaul_d[ i101 ], f101 );
+
+        // fe.add_mul( FFPaul_d[ i000 ], f000*PLQ.x );
+        // fe.add_mul( FFPaul_d[ i100 ], f100*PLQ.x );
+        // fe.add_mul( FFPaul_d[ i010 ], f010*PLQ.x );
+        // fe.add_mul( FFPaul_d[ i110 ], f110*PLQ.x );
+        // fe.add_mul( FFPaul_d[ i011 ], f011*PLQ.x );
+        // fe.add_mul( FFPaul_d[ i111 ], f111*PLQ.x );
+        // fe.add_mul( FFPaul_d[ i001 ], f001*PLQ.x );
+        // fe.add_mul( FFPaul_d[ i101 ], f101*PLQ.x );
+
+        //  fe.add_mul( 
+        //   ((FFPaul_d[ i000 ]*f000) + (FFPaul_d[ i100 ]*f100)
+        //  + (FFPaul_d[ i010 ]*f010) + (FFPaul_d[ i110 ]*f110)  
+        //  + (FFPaul_d[ i011 ]*f011) + (FFPaul_d[ i111 ]*f111)
+        //  + (FFPaul_d[ i001 ]*f001) + (FFPaul_d[ i101 ]*f101)), PLQ.x );
+
+        //  fe.add_mul( 
+        //   ((FFLond_d[ i000 ]*f000) + (FFLond_d[ i100 ]*f100)
+        //  + (FFLond_d[ i010 ]*f010) + (FFLond_d[ i110 ]*f110)  
+        //  + (FFLond_d[ i011 ]*f011) + (FFLond_d[ i111 ]*f111)
+        //  + (FFLond_d[ i001 ]*f001) + (FFLond_d[ i101 ]*f101)), PLQ.y );
+
+        // fe.add_mul( 
+        //   ((FFelec_d[ i000 ]*f000) + (FFelec_d[ i100 ]*f100)
+        //  + (FFelec_d[ i010 ]*f010) + (FFelec_d[ i110 ]*f110)  
+        //  + (FFelec_d[ i011 ]*f011) + (FFelec_d[ i101 ]*f111)
+        //  + (FFelec_d[ i001 ]*f001) + (FFelec_d[ i101 ]*f101)), PLQ.z );
+
+        //return fe;
+    }
+}
+__attribute__((hot))  
+inline double addForce_d( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool bSurf=true )const{
+    Quat4d fe = getForce_d( p, PLQ, bSurf ); 
+    f.add( fe.f );   
+    return fe.e;
+}
+__attribute__((hot))  
+double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSurf=true )const{ 
+    double E=0;
+    for(int ia=0; ia<natoms; ia++){ E+=addForce_d( apos[ia], PLQs[ia], fpos[ia], bSurf ); };
+    return E;
+}
+
+
+    __attribute__((hot))  
     inline void addForce_surf( Vec3d pos, const Quat4f PLQ, Quat4f& f ) const {
         pos.add( shift0 );
         if     ( pos.z > grid.cell.c.z ){ pos.z = grid.dCell.c.z*-0.1 + grid.cell.c.z; }
@@ -242,6 +431,7 @@ double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf
         return addForce( pos, PLQ, f );
     }
 
+    __attribute__((hot))  
     inline double eval( int n, const Vec3d* ps, const Quat4f* PLQs, Vec3d* fs, bool bSurf=false ) const {
         double E=0;
         //printf("GridFF::eval() n %i ps %li PLQs %li \n", n,  (long)ps,  (long)PLQs );
@@ -252,12 +442,12 @@ double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf
         return E;
     }
 
-    void init( Vec3i n, Mat3d cell, Vec3d pos0 ){
+    void init( Vec3i n, Mat3d cell, Vec3d pos0, bool bDouble=false ){
         grid.n     = n;
         grid.setCell(cell);
         grid.pos0  = pos0;
         //zmax = cell.c.z;
-        allocateFFs();
+        allocateFFs( bDouble );
     }
 
     void setAtoms( int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
@@ -267,6 +457,7 @@ double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf
         REQs  = REQs_;
     }
 
+    __attribute__((hot))  
     void evalGridFFel(int natoms, Vec3d * apos, Quat4d * REQs, Vec3d * FF ){
         //interateGrid3D( Vec3d{0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p)->void{
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
@@ -276,66 +467,7 @@ double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf
         });
     }
 
-    // void evalGridFFexp(int natoms, Vec3d * apos, Quat4d * REQs, double alpha, double A, Vec3d * FF ){
-    //     //interateGrid3D(  Vec3dZero, grid.n, grid.dCell, [=](int ibuff, Vec3d p){
-    //     interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-    //         Vec3d f =  Vec3dZero;
-    //         for(int ia=0; ia<natoms; ia++){
-    //             //printf( " %i (%g,%g,%g) (%g,%g)\n", ia, apos[ia].x, apos[ia].y, apos[ia].z,  aLJq[ia].x, aLJq[ia].y  );
-    //             addAtomicForceExp( p-apos[ia], f, REQs[ia].x, REQs[ia].y,    alpha );
-    //             //addAtomicForceExp( p-apos[ia], f, aLJq[ia].x, aLJq[ia].y,    alpha*2 );
-    //             //addAtomicForceExp( p-apos[ia], f, aLJq[ia].x, aLJq[ia].y*-2, alpha   );
-    //         }
-    //         //printf( " >> %i %i (%g,%g,%g) %g \n", ibuff, natoms, f.x, f.y, f.z, A  );
-    //         FF[ibuff]=f*A;
-    //         //printf( " %i (%g,%g,%g) \n", ibuff, p.x, p.y, p.z );
-    //         //FF[ibuff]=p;
-    //     });
-    // }
-
-    // void evalGridFFs(int natoms_, Vec3d * apos_, Quat4d * REQs_){
-    //     printf( "GridFF::evalGridFFs() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
-    //     //printf( "GridFF nPBC(%i,%i,%i) K %g R %g R2Q %g \n", nPBC.x,nPBC.y,nPBC.z, alpha, Rdamp, Rdamp*Rdamp );
-    //     //for(int i=0; i<natoms_; i++){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", i, apos_[i].x, apos_[i].y, apos_[i].z, REQs_[i].z ); }
-    //     //int Q=0; for(int i=0; i<natoms_; i++){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", i, apos_[i].x, apos_[i].y, apos_[i].z, REQs_[i].z ); Q+=REQs_[i].z; }; printf("evalGridFFs Qtot=%g \n", Q );
-    //     //Rdamp = 0.1; // WARRNIN DEBUG;
-    //     //Rdamp = 1.0; // WARRNIN DEBUG;
-    //     interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
-    //         const double R2damp=Rdamp*Rdamp;    
-    //         const double K=-alphaMorse;
-    //         Quat4d qp = Quat4dZero;
-    //         Quat4d ql = Quat4dZero;
-    //         Quat4d qe = Quat4dZero;
-    //         //if(ibuff<(grid.n.x*grid.n.y))printf( "evalGridFFs p(%g,%g,%g)\n", p.x,p.y,p.z );
-    //         for(int ia=0; ia<natoms_; ia++){
-    //             Vec3d dp0; dp0.set_sub( p, apos_[ia] );
-    //             Quat4d REQi = REQs_[ia];
-    //             //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }
-    //             for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
-    //                 Vec3d  dp = dp0 + grid.cell.a*ia + grid.cell.b*ib + grid.cell.c*ic;
-    //                 //Vec3d  dp = dp0;
-    //                 double r2     = dp.norm2();
-    //                 double r      = sqrt(r2);
-    //                 // ---- Coulomb
-    //                 double ir2    = 1/(r2+R2damp);
-    //                 double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
-    //                 // ----- Morse
-    //                 double e      = exp( K*(r-REQi.x) );
-    //                 double eM     = e*REQi.y;
-    //                 double de     = 2*K*eM/r;                    
-    //                 // --- store
-    //                 qp.e+=eM*e;  qp.f.add_mul( dp,  de*e   ); // repulsive part of Morse
-    //                 ql.e+=eM*-2; ql.f.add_mul( dp, -de     ); // attractive part of Morse
-    //                 qe.e+=eQ;    qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
-
-    //             }}}
-    //         }
-    //         if(FFPaul)FFPaul[ibuff]=(Quat4f)qp;
-    //         if(FFLond)FFLond[ibuff]=(Quat4f)ql;
-    //         if(FFelec)FFelec[ibuff]=(Quat4f)qe;
-    //     });
-    // }
-
+    __attribute__((hot))  
     void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
         printf( "GridFF::makeGridFF_omp() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );        
         if(shifts==0)makePBCshifts( nPBC, lvec );
@@ -384,6 +516,57 @@ double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf
     }
     void makeGridFF(){ makeGridFF_omp(natoms,apos,REQs); }
 
+
+    __attribute__((hot))  
+    void makeGridFF_omp_d(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
+        printf( "GridFF::makeGridFF_omp() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );        
+        if(shifts==0)makePBCshifts( nPBC, lvec );
+        const double R2damp=Rdamp*Rdamp;    
+        const double K=-alphaMorse;
+        #pragma omp parallel
+        {
+        #pragma omp for simd
+        for ( int iz=0; iz<grid.n.z; iz++ ){
+            for ( int iy=0; iy<grid.n.y; iy++ ){
+                for ( int ix=0; ix<grid.n.x; ix++ ){
+                    const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
+                    Quat4d qp = Quat4dZero;
+                    Quat4d ql = Quat4dZero;
+                    Quat4d qe = Quat4dZero;
+                    for(int ia=0; ia<natoms_; ia++){
+                        const Vec3d dp0   = pos - apos_[ia];
+                        const Quat4d REQi = REQs_[ia];
+                        //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
+                        for(int ipbc=0; ipbc<npbc; ipbc++ ){
+                            const Vec3d  dp = dp0 + shifts[ipbc];
+                            //Vec3d  dp = dp0;
+                            double r2     = dp.norm2();
+                            double r      = sqrt(r2 + 1e-32);
+                            // ---- Coulomb
+                            double ir2    = 1/(r2+R2damp);
+                            double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
+                            // ----- Morse
+                            double e      = exp( K*(r-REQi.x) );
+                            double eM     = e*REQi.y;
+                            double de     = 2*K*eM/r;                    
+                            // --- store
+                            qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
+                            ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
+                            qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+                        }
+                    }
+                    const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
+                    FFPaul_d[ibuff]=qp;
+                    FFLond_d[ibuff]=ql;
+                    FFelec_d[ibuff]=qe;
+                }
+            }
+        }
+        }
+    }
+    void makeGridFF_d(){ makeGridFF_omp_d(natoms,apos,REQs); }
+
+    __attribute__((hot))  
     void evalGridR(int natoms, Vec3d * apos, Quat4d * REQs ){
         printf( "GridFF::evalGridR() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
         double R2damp=Rdamp*Rdamp;
@@ -402,9 +585,9 @@ double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf
                     qe.e+=0;      
                 }}}
             }
-            if(FFPaul)  FFPaul [ibuff]=(Quat4f)qp;
+            if(FFPaul) FFPaul[ibuff]=(Quat4f)qp;
             if(FFLond) FFLond[ibuff]=(Quat4f)ql;
-            if(FFelec)   FFelec  [ibuff]=(Quat4f)qe;
+            if(FFelec) FFelec[ibuff]=(Quat4f)qe;
         });
     }
 
@@ -615,8 +798,24 @@ void log_z(const char* fname, int ix=0, int iy=0){
     fclose(logf);
 }
 
+void checkSum( bool bDouble ){
+    int n = grid.getNtot();
+    if( bDouble ){
+        Quat4d paul = sum( n, FFPaul_d, Quat4dZero );
+        Quat4d lond = sum( n, FFLond_d, Quat4dZero );
+        Quat4d elec = sum( n, FFelec_d, Quat4dZero );
+        printf( "GridFF::checkSum() bDouble=1 Pauli %g %g %g %g | London %g %g %g %g | Coulomb %g %g %g %g \n", paul.x,paul.y,paul.z,paul.w, lond.x,lond.y,lond.z,lond.w, elec.x,elec.y,elec.z,elec.w );
+    }else{
+        Quat4f paul = sum( n, FFPaul, Quat4fZero );
+        Quat4f lond = sum( n, FFLond, Quat4fZero );
+        Quat4f elec = sum( n, FFelec, Quat4fZero );
+        printf( "GridFF::checkSum() bDouble=0 Pauli %g %g %g %g | London %g %g %g %g | Coulomb %g %g %g %g \n", paul.x,paul.y,paul.z,paul.w, lond.x,lond.y,lond.z,lond.w, elec.x,elec.y,elec.z,elec.w );
+    }
+} 
+
+
  #ifdef IO_utils_h
-    bool tryLoad( const char* fname_Coul, const char* fname_Paul, const char* fname_Lond, bool recalcFF=false ){
+    bool tryLoad( const char* fname_Coul, const char* fname_Paul, const char* fname_Lond, bool recalcFF=false, bool bDouble=false ){
         //printf( "GridFF::tryLoad() \n" );
         //printf( "GridFF::tryLoad() fname_Pauli >>%s<< fname_London >>%s<< fname_Coulomb >>%s<< \n", fname_Pauli, fname_London, fname_Coulomb );
         //printDir( "../" );
@@ -627,20 +826,32 @@ void log_z(const char* fname, int ix=0, int iy=0){
         //printf( "GridFF::tryLoad() recalcFF %i \n", recalcFF );
         //printf( "fname_Pauli(%s) fname_London(%s) fname_Coulomb(%s) \n", fname_Pauli, fname_London, fname_Coulomb );
         //int nbyte= grid.getNtot()*sizeof(Vec3d);
-        int nbyte= grid.getNtot()*sizeof(Quat4f);
+        int nbyte = grid.getNtot()*sizeof(Quat4f);
+        char* cFFPaul = (char*)FFPaul;
+        char* cFFLond = (char*)FFLond;
+        char* cFFelec = (char*)FFelec;
+        if(bDouble){
+            printf( "GridFF::tryLoad() bDouble %i \n", bDouble );
+            nbyte = grid.getNtot()*sizeof(Quat4d);
+            cFFPaul = (char*)FFPaul_d;
+            cFFLond = (char*)FFLond_d;
+            cFFelec = (char*)FFelec_d;
+        }
         if( recalcFF ){
-            printf( "\nBuilding GridFF for substrate ... (please wait... )\n" );
-            makeGridFF_omp( apos_.size(), &apos_[0], &REQs_[0] );
-            if(FFPaul) saveBin( fname_Paul,  nbyte, (char*)FFPaul );
-            if(FFLond) saveBin( fname_Lond,  nbyte, (char*)FFLond );
-            if(FFelec) saveBin( fname_Coul,  nbyte, (char*)FFelec );
+            printf( "\nBuilding GridFF for substrate (bDouble=%i) ... (please wait... )\n", bDouble );
+            if(bDouble){ makeGridFF_omp_d( apos_.size(), &apos_[0], &REQs_[0] ); }
+            else       { makeGridFF_omp  ( apos_.size(), &apos_[0], &REQs_[0] ); }
+            if(cFFPaul) saveBin( fname_Paul,  nbyte, cFFPaul );
+            if(cFFLond) saveBin( fname_Lond,  nbyte, cFFLond );
+            if(cFFelec) saveBin( fname_Coul,  nbyte, cFFelec );
         }else{
-            if(FFPaul) loadBin( fname_Paul,  nbyte, (char*)FFPaul );
-            if(FFLond) loadBin( fname_Lond,  nbyte, (char*)FFLond );
-            if(FFelec) loadBin( fname_Coul,  nbyte, (char*)FFelec );
+            if(cFFPaul) loadBin( fname_Paul,  nbyte, cFFPaul );
+            if(cFFLond) loadBin( fname_Lond,  nbyte, cFFLond );
+            if(cFFelec) loadBin( fname_Coul,  nbyte, cFFelec );
         }
         return recalcFF;
     }
+
 #endif
 
 }; // RigidSubstrate
