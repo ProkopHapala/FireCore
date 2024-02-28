@@ -21,9 +21,6 @@ T sum( int n, T* data, T t ){
 };
 
 
-
-
-
 inline double evalDipole( int n, Vec3d* ps, Quat4d* REQs, Vec3d& Dout, Vec3d& p0out ){
     // we want to approximate charge distribution by charge `Q` and dipole `D` around center `C`
     // we choose center `c` so that it minimizes size of dipole `|d|^2`

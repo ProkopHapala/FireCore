@@ -144,7 +144,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     int  iParalelMin=0;
     bool bOcl=false; // used only in Ocl version
 
-    double gridStep = 0.1; 
+    //double gridStep = 0.1; 
+    double gridStep = 0.05; 
     //double gridStep = 0.2; 
     //Vec3i nPBC{0,0,0};   // just debug
     Vec3i nPBC{1,1,0};
@@ -1272,7 +1273,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             if(atomTrjFile){
                 double f = sqrt(cvf.z);
                 double v = sqrt(cvf.y);
-                fprintf( atomTrjFile, "%4i %4i   %20.15f %20.15f %20.15f   %20.15f %20.15f %20.15f    %20.15f %20.15f %20.15f    %6.4f %20.15f %20.15f \n", itr, imax, pi.x,pi.y,pi.z, fi.x,fi.y,fi.z, vi.x,vi.y,vi.z,   cvf.x/(f*v), v, f );
+                fprintf( atomTrjFile, "%4i %4i   %20.15f %20.15f %20.15f   %20.15f %20.15f %20.15f    %20.15f %20.15f %20.15f    %6.4f %20.15f %20.15f \n", itr, imax, pi.x,pi.y,pi.z, vi.x,vi.y,vi.z, fi.x,fi.y,fi.z,    cvf.x/(f*v), v, f );
             }
         }
         //if( nStuck>(nStuckMax-2) ){
