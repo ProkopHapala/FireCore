@@ -1272,7 +1272,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             if(atomTrjFile){
                 double f = sqrt(cvf.z);
                 double v = sqrt(cvf.y);
-                fprintf( atomTrjFile, "%4i %4i   %16.8f %16.8f %16.8f    %20.12f %20.12f %20.12f    %16.8f %16.8f %16.8f     %6.4f %16.8f %20.12f \n", itr, imax, pi.x,pi.y,pi.z, fi.x,fi.y,fi.z, vi.x,vi.y,vi.z,   cvf.x/(f*v), v, f );
+                fprintf( atomTrjFile, "%4i %4i   %20.15f %20.15f %20.15f   %20.15f %20.15f %20.15f    %20.15f %20.15f %20.15f    %6.4f %20.15f %20.15f \n", itr, imax, pi.x,pi.y,pi.z, fi.x,fi.y,fi.z, vi.x,vi.y,vi.z,   cvf.x/(f*v), v, f );
             }
         }
         //if( nStuck>(nStuckMax-2) ){
