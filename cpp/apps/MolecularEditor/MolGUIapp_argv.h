@@ -52,7 +52,7 @@
 
     funcs["-Ftol"]={1,[&](const char** ss){ sscanf(ss[0],"%lf", &W->Ftol_default ); printf( "ARG -Ftol Ftol_default=%g\n", W->Ftol_default ); }};  
     funcs["-seed"]={1,[&](const char** ss){ int seed; sscanf(ss[0],"%i", &seed ); srand(seed); irand=0; }}; 
-    funcs["-stuck"]={1,[&](const char** ss){ sscanf(ss[0],"%i,%lf", &W->nStuckMax, &W->RStuck );  W->bCheckStuck=true;  }};  
+    funcs["-stuck"]={1,[&](const char** ss){ sscanf(ss[0],"%i,%i,%lf", &W->nStuckMax, &W->nStuckTrj, &W->RStuck );  W->bCheckStuck=true;  }};  
     funcs["-zspring"]={1,[&](const char** ss){ sscanf(ss[0],"%lf,%lf,%lf", &W->ConstrZ_xmin, &W->ConstrZ_l, &W->ConstrZ_k ); W->ConstrZ_l-=W->ConstrZ_xmin; W->bConstrZ=true;   printf( "ARG: ConstrZ_xmin %g ConstrZ_l %g ConstrZ_k %g\n", W->ConstrZ_xmin, W->ConstrZ_l, W->ConstrZ_k ); }};  
     funcs["-iParalel"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iParalel); printf( "ARG -iParalel %i \n", W->iParalel ); }};         // paralelization model
     funcs["-dt"]={1,[&](const char** ss){ sscanf(ss[0],"%lf", &W->dt_default); printf( "ARG -dt dt_default=%g \n", W->dt_default ); }};

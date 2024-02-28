@@ -113,6 +113,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 	//NBFF_old   nff;
     NBFF         surf, nbmol;
 	GridFF       gridFF;
+    bool bGridDouble = true;
+
     RigidBodyFF  rbff;
     QEq          qeq;
 	DynamicOpt   opt;
@@ -743,7 +745,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             gridFF.grid.pos0.z=z0;
             //gridFF.grid.pos0.z=-5;
             if(verbosity>1)gridFF.grid.printCell();
-            gridFF.allocateFFs();
+            gridFF.allocateFFs( bGridDouble );
             //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
             gridFF.nPBC=Vec3i{1,1,0};
             if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
@@ -754,7 +756,12 @@ class MolWorld_sp3 : public SolverInterface { public:
             gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
             gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
             //bSaveDebugXSFs=true;
-            gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false );
+            gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, false );
+            gridFF.checkSum( false );
+            if(bGridDouble){  
+                gridFF.tryLoad( "FFelec_d.bin", "FFPaul_d.bin", "FFLond_d.bin", false, true ); 
+                gridFF.checkSum( true );
+            }
             gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
             if(bSaveDebugXSFs)saveGridXsfDebug();
             //bGridFF   =true; 
@@ -771,8 +778,8 @@ class MolWorld_sp3 : public SolverInterface { public:
         //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
         //builder.export_atypes( nbmol.atypes );     
         builder.export_REQs( nbmol.REQs   );    
-        nbmol  .makePLQs   ( gridFF.alphaMorse );  
-        ffl.PLQs=nbmol.PLQs; 
+        nbmol  .makePLQs   ( gridFF.alphaMorse );  ffl.PLQs=nbmol.PLQs; 
+        nbmol  .makePLQd   ( gridFF.alphaMorse );  ffl.PLQd=nbmol.PLQd; 
         if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
         params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
         if(verbosity>1)nbmol.print();                              
@@ -1238,6 +1245,8 @@ class MolWorld_sp3 : public SolverInterface { public:
         if(R2max>R2)[[unlikely]]{ 
             for(int ia=0; ia<ffl.natoms; ia++){ apos_bak[ia]=ffl.apos[ia]; }
             nStuck=0;
+            if(atomTrjFile)fclose(atomTrjFile); 
+            atomTrjFile=0;
             return true;
         }
         if( (atomTrjFile==0) && ( nStuck>=(nStuckMax-nStuckTrj) ) ){
@@ -1584,6 +1593,9 @@ class MolWorld_sp3 : public SolverInterface { public:
         double ff=0,vv=0,vf=0;
         int itr=0,niter=niter_max;
         bConverged = false;
+
+        //if( bGridDouble ){ printf( "run_omp() bGridDouble %i @ffl.PLQd=%li @FFPaul_d=%li @FFLond_d=%li @FFPaul_d=%li \n", bGridDouble, (long)ffl.PLQd, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFPaul_d );    }
+
         // if(bToCOG && (!bGridFF) ){ 
         //     Vec3d cog=average( ffl.natoms, ffl.apos );  
         //     move( ffl.natoms, ffl.apos, cog*-1.0 ); 
@@ -1613,7 +1625,9 @@ class MolWorld_sp3 : public SolverInterface { public:
                 // ----- Error is HERE
                 if(bPBC)   { E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
                 else       { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
-                if(bGridFF){ E+= gridFF.addForce       ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF
+                //if(bGridFF){ E+= gridFF.addForce       ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF  float
+                if(bGridFF){ E+= gridFF.addForce_d       ( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }  // GridFF  double
+
                 //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] ); }  // NBFF
                 if(bConstrZ){
                     springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );

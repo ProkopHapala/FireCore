@@ -16,18 +16,33 @@ dat = np.loadtxt('StuckAtomTrj.log' )
 #     plt.plot( dati[1]-x0,dati[2]-y0, ".-", label='atom#%i x,y' %a  )
 #     #plt.plot( dat[:,1],dat[:,2], ".", label='x,y')
 
-plt.figure( figsize=(15,5) )
+lw=0.5
+ms=1.5
+
+plt.figure( figsize=(15,15) )
 x0=dat[0,2]
 y0=dat[0,3]
 z0=dat[0,4]
-plt.subplot(1,3,1); plt.plot( dat[:,2]-x0, dat[:,3]-y0, ".-", label='x,y' ); plt.legend()
-plt.subplot(1,3,2); plt.plot( dat[:,2]-x0, dat[:,4]-z0, ".-", label='x,z' ); plt.legend()
-plt.subplot(1,3,3); plt.plot( dat[:,3]-y0, dat[:,4]-z0, ".-", label='y,z' ); plt.legend()
+plt.subplot(3,3,1); plt.plot( dat[:,2]-x0, dat[:,3]-y0, ".-",lw=lw,ms=ms, label='x,y' ); plt.legend()
+plt.subplot(3,3,2); plt.plot( dat[:,2]-x0, dat[:,4]-z0, ".-",lw=lw,ms=ms, label='x,z' ); plt.legend()
+plt.subplot(3,3,3); plt.plot( dat[:,3]-y0, dat[:,4]-z0, ".-",lw=lw,ms=ms, label='y,z' ); plt.legend()
 
+plt.subplot(3,3,4); plt.plot( dat[:,2+3], dat[:,3+3], ".-",lw=lw,ms=ms, label='v x,y' ); plt.legend()
+plt.subplot(3,3,5); plt.plot( dat[:,2+3], dat[:,4+3], ".-",lw=lw,ms=ms, label='v x,z' ); plt.legend()
+plt.subplot(3,3,6); plt.plot( dat[:,3+3], dat[:,4+3], ".-",lw=lw,ms=ms, label='v y,z' ); plt.legend()
 
-# plt.subplot(3,1,1); plt.plot( dat[:,-1], "-", label='|F|' ); plt.legend()
-# plt.subplot(3,1,2); plt.plot( dat[:,-2], "-", label='|v|' ); plt.legend()
-# plt.subplot(3,1,3); plt.plot( dat[:,-3], "-", label='cos(v,f)' ); plt.legend()
+plt.subplot(3,3,7); plt.plot( dat[:,2+6], dat[:,3+6], ".-",lw=lw,ms=ms, label='F x,y' ); plt.legend()
+plt.subplot(3,3,8); plt.plot( dat[:,2+6], dat[:,4+6], ".-",lw=lw,ms=ms, label='F x,z' ); plt.legend()
+plt.subplot(3,3,9); plt.plot( dat[:,3+6], dat[:,4+6], ".-",lw=lw,ms=ms, label='F y,z' ); plt.legend()
 
-plt.grid()
+plt.savefig('StuckAtomTrj_AtomTrj.png')
+
+plt.figure( figsize=(15,5) )
+plt.subplot(3,1,1); plt.plot( dat[:,-1], "-",lw=lw,ms=ms, label='|F|' ); plt.legend()
+plt.subplot(3,1,2); plt.plot( dat[:,-2], "-",lw=lw,ms=ms, label='|v|' ); plt.legend()
+plt.subplot(3,1,3); plt.plot( dat[:,-3], "-",lw=lw,ms=ms, label='cos(v,f)' ); plt.legend()
+
+plt.savefig('StuckAtomTrj_Conv.png')
+
+#plt.grid()
 plt.show()
