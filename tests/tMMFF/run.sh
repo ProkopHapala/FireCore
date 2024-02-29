@@ -36,7 +36,8 @@ export OMP_NUM_THREADS
 #python3 run_gui.py
 #python3 run_surf_lattice.py
 #python3 run_propandiol.py
-python3 run_sample.py
+#python3 run_sample.py
+python3 run_sample_tricubic.py
 #python3 run_sample_nonBond.py
 #python3 run_lat_scan.py
 

@@ -9,6 +9,8 @@
 #include "Forces.h"
 #include "MMFFparams.h"
 
+#include "InterpolateTricubic.h"
+
 #include "NBFF.h"
 
 static bool bDebug__ = 0;
