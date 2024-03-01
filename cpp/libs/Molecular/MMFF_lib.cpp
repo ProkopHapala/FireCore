@@ -213,7 +213,7 @@ void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol
 }
 
 void addSnapshot(){
-    W.addSnapshot();
+    W.addSnapshotIfNew();
 }
 
 void printDatabase(){

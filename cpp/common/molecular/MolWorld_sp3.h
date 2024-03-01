@@ -1999,12 +1999,17 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                     double t = (getCPUticks() - T0)*tick2second;
                     if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
 
-                    printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+                    if(verbosity) printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
                     if(bGopt  && (!go.bExploring) ){
                         gopt_ifound++;
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
-                        printf( "run_omp().save %s \n", tmpstr );
-                        saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                        bool IsNew = addSnapshotIfNew();
+                        if(IsNew){saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );printf( "run_omp().save %s \n", tmpstr );}
+                        else    {printf( "run_omp().skip %s \n", tmpstr ); saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save ); 
+                        printf("======================================================================================================================================================================================================");
+                         }
+                        
+                        
                         go.startExploring();
                         go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
                         bConverged=false;
@@ -2513,8 +2518,8 @@ bool addSnapshotIfNew()
     int sameIndex = database->addIfNewDescriptor(&nbmol);
     if(sameIndex != -1){
         printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");
-        double compareAtoms1 = database->compareAtoms(nMembers, sameIndex);
-        double compareDescriptors = database->compareDescriptors(nMembers, sameIndex);
+        double compareAtoms1 = database->compareAtoms(&nbmol, sameIndex);
+        double compareDescriptors = database->compareDescriptors(&nbmol, sameIndex);
         printf("%-5d %-5d %-20lf %-20lf\n", sameIndex, nMembers, compareAtoms1, compareDescriptors);
         return false;
     }
@@ -2531,14 +2536,14 @@ bool addSnapshotIfNew()
     //     }
     // }
     
-    std::string comment = "#" + std::to_string(nMembers);
-    const char* cstr = comment.c_str();
-    std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
-    const char* cstr1 = trjName1.c_str();  
-    FILE* file1=0;
-    file1=fopen( cstr1, "w" );
-    params.writeXYZ(file1, &nbmol, cstr);
-    fclose(file1);
+    // std::string comment = "#" + std::to_string(nMembers);
+    // const char* cstr = comment.c_str();
+    // std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
+    // const char* cstr1 = trjName1.c_str();  
+    // FILE* file1=0;
+    // file1=fopen( cstr1, "w" );
+    // params.writeXYZ(file1, &nbmol, cstr);
+    // fclose(file1);
 
 //     double angle = randf() * 360;
 //     double move_x = randf() * 0.5;
