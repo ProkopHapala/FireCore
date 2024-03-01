@@ -1,5 +1,6 @@
 ﻿
 #include "Forces.h"
+#include "InterpolateTricubic.h"
 
 extern "C"{
 
@@ -146,7 +147,10 @@ void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, doub
 }
 
 void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
-    Spline_Hermite::sample2D( *(Vec2d*)g0, *(Vec2d*) dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );
+    long t0 = getCPUticks();
+    //Spline_Hermite::sample2D( *(Vec2d*)g0, *(Vec2d*) dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );         //    82 [tick/point] with -Ofast
+    Spline_Hermite::sample2D_avx( *(Vec2d*)g0, *(Vec2d*) dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );   //   111 [tick/point] with -Ofast  
+    double t = (getCPUticks()-t0); printf( "sample2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
 }
 
 void sample_SplineHermite3D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
