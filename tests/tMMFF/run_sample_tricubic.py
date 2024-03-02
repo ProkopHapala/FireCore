@@ -67,11 +67,11 @@ ps = np.zeros((nsamp,2))
 
 
 #nsamp=200
-nsamp=10
+nsamp=100
 extent = [0.0,4.2,0.0,4.2]
 xs,ys = np.meshgrid( np.linspace(extent[0],extent[1],nsamp), np.linspace(extent[2],extent[3],nsamp) )
 ps = np.vstack([xs.flatten(), ys.flatten()]).T.copy()
-print("ps",ps)
+#print("ps",ps)
 print("ps.shape: ",ps.shape)
 
 FEs = mmff.sample_SplineHermite2D( ps, Eps, g0=[-0.1,-0.1], dg=[1.5,1.5] )  # ;print("Fs",Fs)
