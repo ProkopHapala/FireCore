@@ -102,7 +102,7 @@ inline Quat4T<T> ddbasis_val_old( T x ){
 
 __attribute__ ((pure))
 __attribute__((hot)) 
-Vec3d fe2d( const double tx, const double ty, const Quat4i i, const double* Es ){
+inline Vec3d fe2d( const double tx, const double ty, const Quat4i i, const double* Es ){
     alignas(32) Quat4d e,fx;
     {
         const Quat4d bx =  basis_val( tx );
@@ -139,7 +139,7 @@ Vec3d fe2d( const double tx, const double ty, const Quat4i i, const double* Es )
 
 __attribute__ ((pure))
 __attribute__((hot)) 
-Vec3d fe2d_v2( const double tx, const double ty, const Quat4i i, const double* Es ){
+inline Vec3d fe2d_v2( const double tx, const double ty, const Quat4i i, const double* Es ){
     Quat4d e,fy;
     {
         alignas(32) const Quat4d by =  basis_val( ty );
@@ -170,6 +170,113 @@ Vec3d fe2d_v2( const double tx, const double ty, const Quat4i i, const double* E
     };
 }
 
+
+__attribute__ ((pure))
+__attribute__((hot)) 
+inline Vec3d fe2d_v3( const Quat4d bx, const Quat4d dx, const Quat4d by, const Quat4d dy, const Quat4i i, const double* Es ){
+    Quat4d e,fy;
+    {
+        alignas(32) const Quat4d p1 = *(Quat4d*)(Es+i.x);
+        alignas(32) const Quat4d p2 = *(Quat4d*)(Es+i.y);
+        alignas(32) const Quat4d p3 = *(Quat4d*)(Es+i.z); 
+        alignas(32) const Quat4d p4 = *(Quat4d*)(Es+i.w); 
+
+        e.x = by.x*p1.x + by.y*p2.x + by.z*p3.x + by.w*p4.x;
+        e.y = by.x*p1.y + by.y*p2.y + by.z*p3.y + by.w*p4.y;
+        e.z = by.x*p1.z + by.y*p2.z + by.z*p3.z + by.w*p4.z;
+        e.w = by.x*p1.w + by.y*p2.w + by.z*p3.w + by.w*p4.w;
+
+        fy.x = dy.x*p1.x + dy.y*p2.x + dy.z*p3.x + dy.w*p4.x;
+        fy.y = dy.x*p1.y + dy.y*p2.y + dy.z*p3.y + dy.w*p4.y;
+        fy.z = dy.x*p1.z + dy.y*p2.z + dy.z*p3.z + dy.w*p4.z;
+        fy.w = dy.x*p1.w + dy.y*p2.w + dy.z*p3.w + dy.w*p4.w;
+
+    }
+    return Vec3d{
+        dx.dot(e ), // Fx
+        bx.dot(fy), // Fy
+        bx.dot(e )  // E
+    };
+}
+
+
+
+__attribute__ ((pure))
+__attribute__((hot)) 
+Vec3f fe2f( const float tx, const float ty, const Quat4i i, const float* Es ){
+    alignas(32) Quat4f e,fx;
+    {
+        const Quat4f bx =  basis_val( tx );
+        const Quat4f dx = dbasis_val( tx );
+        {
+            alignas(32) const Quat4f p = *(Quat4f*)(Es+i.x); // read 4 doubles from global memory at a time ( 4*8 = 32 bytes = 256 bits ) ideal for SIMD AVX2
+            e.x  = bx.dot(p);   // not sure how dot() is SIMD optimized => maybe we should flip the order of x and y strides ?
+            fx.x = dx.dot(p);
+        }
+        {
+            alignas(32) const Quat4f p = *(Quat4f*)(Es+i.y); 
+            e.y  = bx.dot(p);
+            fx.y = dx.dot(p);
+        }
+        {
+            alignas(32) const Quat4f p = *(Quat4f*)(Es+i.z); 
+            e.z  = bx.dot(p);
+            fx.z = dx.dot(p);
+        }
+        {
+            alignas(32) const Quat4f p = *(Quat4f*)(Es+i.w); 
+            e.w  = bx.dot(p);
+            fx.w = dx.dot(p);
+        }
+    }
+    alignas(32) const Quat4f by =  basis_val( ty );
+    alignas(32) const Quat4f dy = dbasis_val( ty );
+    return Vec3f{
+        by.dot(fx), // Fx
+        dy.dot(e ), // Fy
+        by.dot(e )  // E
+    };
+}
+
+__attribute__ ((pure))
+__attribute__((hot)) 
+Quat4d fe3d_v2( const Vec3d u, const Vec3i n, const double* Es ){
+    // We assume there are boundary added to simplify the index calculations
+	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+
+    if( 
+        ((ix<0)||(ix>=n.x-3)) ||
+        ((iy<0)||(iy>=n.y-3)) ||
+        ((iz<0)||(iz>=n.z-3))        
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+
+    alignas(32) const Quat4d bx =  basis_val( tx );
+    alignas(32) const Quat4d dx = dbasis_val( tx );
+    alignas(32) const Quat4d by =  basis_val( ty );
+    alignas(32) const Quat4d dy = dbasis_val( ty );
+    alignas(32) const Quat4d bz =  basis_val( tz );
+    alignas(32) const Quat4d dz = dbasis_val( tz );
+
+    //Quat4d E,Fx,Fy;
+    const int nxy = n.x*n.y;
+    int i0 = ix + n.x*( iy + n.y*iz );  const Vec3d Exy1 = fe2d_v3(bx,dx,by,dy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es ); // i0 += nxy;
+    int i1 = i0+nxy  ;                  const Vec3d Exy2 = fe2d_v3(bx,dx,by,dy, {i1,i1+n.x,i1+n.x*2,i1+3*n.x}, Es );  //i0 += nxy;
+    int i2 = i0+nxy*2;                  const Vec3d Exy3 = fe2d_v3(bx,dx,by,dy, {i2,i2+n.x,i2+n.x*2,i2+3*n.x}, Es );  //i0 += nxy;
+    int i3 = i0+nxy*3;                  const Vec3d Exy4 = fe2d_v3(bx,dx,by,dy, {i3,i3+n.x,i3+n.x*2,i3+3*n.x}, Es );
+    return Quat4d{
+        bz.dot( {Exy1.x, Exy2.x, Exy3.x, Exy4.x} ), // Fx
+        bz.dot( {Exy1.y, Exy2.y, Exy3.y, Exy4.y} ), // Fy
+        dz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // Fz
+        bz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // E
+        // Exy1.x*bz.x + Exy2.x*bz.y + Exy3.x*bz.z + Exy4.x*bz.w , // Fx
+        // Exy1.y*bz.x + Exy2.y*bz.y + Exy3.y*bz.z + Exy4.y*bz.w , // Fy
+        // Exy1.z*dz.x + Exy2.z*dz.x + Exy3.z*dz.x + Exy4.z*dz.x , // Fz
+        // Exy1.z*bz.x + Exy2.z*bz.x + Exy3.z*bz.x + Exy4.z*bz.x   // E
+    };
+} 
+
 __attribute__ ((pure))
 __attribute__((hot)) 
 Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
@@ -186,14 +293,51 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
 
     //Quat4d E,Fx,Fy;
     const int nxy = n.x*n.y;
-    int i0 = ix + n.x*( iy + n.y*iz ); 
-    const Vec3d Exy1 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
-    const Vec3d Exy2 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
-    const Vec3d Exy3 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
-    const Vec3d Exy4 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
+    //int i0 = ix + n.x*( iy + n.y*iz ); 
+    // const Vec3d Exy1 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    // const Vec3d Exy2 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    // const Vec3d Exy3 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    // const Vec3d Exy4 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
+
+    int i0 = ix + n.x*( iy + n.y*iz );  const Vec3d Exy1 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
+    int i1 = i0+nxy  ;                  const Vec3d Exy2 = fe2d(tx,ty, {i1,i1+n.x,i1+n.x*2,i1+3*n.x}, Es );
+    int i2 = i0+nxy*2;                  const Vec3d Exy3 = fe2d(tx,ty, {i2,i2+n.x,i2+n.x*2,i2+3*n.x}, Es );
+    int i3 = i0+nxy*3;                  const Vec3d Exy4 = fe2d(tx,ty, {i3,i3+n.x,i3+n.x*2,i3+3*n.x}, Es );
+
     const Quat4d bz =  basis_val( tz );
     const Quat4d dz = dbasis_val( tz );
     return Quat4d{
+        bz.dot( {Exy1.x, Exy2.x, Exy3.x, Exy4.x} ), // Fx
+        bz.dot( {Exy1.y, Exy2.y, Exy3.y, Exy4.y} ), // Fy
+        dz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // Fz
+        bz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // E
+    };
+} 
+
+__attribute__ ((pure))
+__attribute__((hot)) 
+Quat4f fe3f( const Vec3f u, const Vec3i n, const float* Es ){
+    // We assume there are boundary added to simplify the index calculations
+	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const float tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const float mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+
+    if( 
+        ((ix<0)||(ix>=n.x-3)) ||
+        ((iy<0)||(iy>=n.y-3)) ||
+        ((iz<0)||(iz>=n.z-3))        
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+
+    //Quat4d E,Fx,Fy;
+    const int nxy = n.x*n.y;
+    int i0 = ix + n.x*( iy + n.y*iz ); 
+    const Vec3f Exy1 = fe2f(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    const Vec3f Exy2 = fe2f(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    const Vec3f Exy3 = fe2f(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    const Vec3f Exy4 = fe2f(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
+    const Quat4f bz =  basis_val( tz );
+    const Quat4f dz = dbasis_val( tz );
+    return Quat4f{
         bz.dot( {Exy1.x, Exy2.x, Exy3.x, Exy4.x} ), // Fx
         bz.dot( {Exy1.y, Exy2.y, Exy3.y, Exy4.y} ), // Fy
         dz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // Fz
@@ -243,7 +387,18 @@ __attribute__((hot))
 void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
     Vec3d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
-        Quat4d fe = fe3d( (ps[i]-g0)*inv_dg, ng, Eg );
+        Quat4d fe = fe3d( (ps[i]-g0)*inv_dg, ng, Eg );        // sample3D(n=10000) time=2009.44[kTick] 200.944[tick/point]
+        //Quat4d fe = fe3d_v2( (ps[i]-g0)*inv_dg, ng, Eg );   // sample3D(n=10000) time=2175.84[kTick] 217.584[tick/point]
+        fe.f.mul(inv_dg);
+        fes[i] = fe;
+    }
+}
+
+__attribute__((hot)) 
+void sample3D( const Vec3f g0, const Vec3f dg, const Vec3i ng, const float* Eg, const int n, const Vec3f* ps, Quat4f* fes ){
+    Vec3f inv_dg; inv_dg.set_inv(dg); 
+    for(int i=0; i<n; i++ ){
+        Quat4f fe = fe3f( (ps[i]-g0)*inv_dg, ng, Eg );
         fe.f.mul(inv_dg);
         fes[i] = fe;
     }
