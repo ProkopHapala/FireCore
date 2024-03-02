@@ -437,7 +437,7 @@ class NBFF: public ForceField{ public:
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
-                if(bClampNonBonded)clampForce( fij, Fmax2 );
+                if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
                 //printf( "getLJQs_PBC_omp[%i] dp(%6.3f,%6.3f,%6.3f) REQ(%g,%g,%g,%g) \n", eij, dp.x,dp.y,dp.z, REQij.x,REQij.y,REQij.z,REQij.w );
                 E +=eij;
                 fx+=fij.x;
@@ -532,6 +532,7 @@ class NBFF: public ForceField{ public:
             const Vec3d dp      = apos[j]-pi;
             Vec3d fij           = Vec3dZero;
             double eij = getLJQH( dp, fij, REQij, R2damp );
+            if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
             E +=eij;
             fx+=fij.x;
             fy+=fij.y;
