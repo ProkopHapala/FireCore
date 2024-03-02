@@ -243,7 +243,7 @@ double optimalTimeStep(double m=1.0){
 // evaluate energy and forces for single atom (ia) depending on its neighbors
 __attribute__((hot))   
 double eval_atom(const int ia){
-    //printf( "MMFFsp3_loc::eval_atom(%i)\n", ia );
+    //printf( "MMFFsp3_loc::eval_atom(%i) bSubtractBondNonBond=%i \n", ia, bSubtractBondNonBond );
     double E=0;
     const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
     const double R2damp = Rdamp*Rdamp;
@@ -379,6 +379,9 @@ double eval_atom(const int ia){
 
                 // bond length force
                 E+= evalBond( h.f, l-bL[i], bK[i], f1 ); 
+                // { 
+                //     f1=Vec3dZero; // DEBUG
+                // } 
 
                 if(bSubtractBondNonBond) [[likely]] { // subtract non-bonded interactions between atoms which have common neighbor
                     Vec3d fij=Vec3dZero;
@@ -390,8 +393,9 @@ double eval_atom(const int ia){
                     //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
                     //bErr|=ckeckNaN( 1,3, (double*)&fij, [&]{ printf("atom[%i]fLJ2[%i,%i]",ia,i,j); } );
                     f1.sub(fij);
+                    //printf( "ffl:SubtractBondNonBond[%i|%i] r=%g fij(%g,%g,%g) REQ(%g,%g,%g)\n", ia,ing, dp.norm(), fij.x,fij.y,fij.z,  REQij.x,REQij.y,REQij.z);
                 }
-
+                
                 fbs[i].sub(f1);  fa.add(f1); 
 
                 //double Ebi = evalBond( h.f, l-bL[i], bK[i], f1 ); fbs[i].sub(f1);  fa.add(f1);
@@ -448,6 +452,11 @@ double eval_atom(const int ia){
     
     
     // ======= Angle Step : we compute forces due to angles between bonds, and also due to angles between bonds and pi-vectors
+
+    // {
+    //     doAngles = false; // DEBUG
+    // }
+
     if(doAngles){
 
     double  ssK,ssC0;
