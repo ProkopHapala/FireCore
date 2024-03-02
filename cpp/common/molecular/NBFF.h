@@ -429,6 +429,7 @@ class NBFF: public ForceField{ public:
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
+            if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;
@@ -525,8 +526,9 @@ class NBFF: public ForceField{ public:
         const Quat4d REQi = REQs     [ia];
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
-        #pragma omp simd reduction(+:E,fx,fy,fz)
+        //#pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
+            if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;
@@ -537,8 +539,15 @@ class NBFF: public ForceField{ public:
             fx+=fij.x;
             fy+=fij.y;
             fz+=fij.z;
-            //fi+=fij; 
+            //fi+=fij;
+            // {
+            //     glLineWidth(3.0);
+            //     glColor3d(0.0,0.0,1.0);  Draw3D::drawVecInPos( dp,  apos[ia] );
+            //     glColor3d(1.0,0.0,0.0);  Draw3D::drawVecInPos( fij, apos[ia] );
+            // } 
+            //printf( "evalLJQs_atom_omp(%i) E %g f(%g,%g,%g) \n", ia, E, fx, fy, fz );
         }
+        //printf( "evalLJQs_atom_omp(%i) E %g f(%g,%g,%g) \n", ia, E, fx, fy, fz );
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
