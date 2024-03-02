@@ -39,6 +39,9 @@
 
 #include "MethodDict.h"
 
+
+#include "DipoleMap.h"
+
 //using Action  = std::function<void(double val)>; 
 //using CommandDict = std::unordered_map<std::string,>;
 
@@ -162,8 +165,15 @@ class MolGUI : public AppSDL2OGL_3D { public:
     MultiPanel* panel_TestType=0;
     MultiPanel* panel_GridXY=0;
 
+    // https://docs.lammps.org/Howto_tip5p.html
+    // TIP5P - Transferable Intermolecular Potential 5 Point   - 5 particles   (  O(0.0e), H1(+0.241e), H1(+0.241), E1(-0.241e), E2(-0.241e) ), E ~ 0.7A from Oxygen
+    Quat4d particle_REQ { 1.187, sqrt(0.0006808    ), -0.24, 0.0 };
+    Quat4d particle_REQ2{ 1.750, sqrt(0.00260184625), +0.24, 0.0 };
+    double particle_Lbond = 1.0;
     std::vector<Quat4d> particles;
+    std::vector<Quat4d> particles2;
     std::vector<int>    particlePivots; // index of atom to which the particle is attached
+
 
     Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
 
