@@ -152,6 +152,7 @@ zs    =  xs*0.5
 ps = np.vstack([xs.flatten(), ys.flatten(), zs.flatten() ]).T.copy()    #;print("ps.shape: ",ps.shape)
 
 FEs = mmff.sample_SplineHermite3D( ps, Eg, g0=g0, dg=dg )
+#FEs = mmff.sample_SplineHermite3D_f( ps.astype(np.float32), Eg.astype(np.float32), g0=g0, dg=dg )
 FEs = FEs.reshape(nsamp,nsamp,4)
 
 cmap='plasma'

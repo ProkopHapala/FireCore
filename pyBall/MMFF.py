@@ -11,6 +11,7 @@ from . import cpp_utils_ as cpp_utils
 #import cpp_utils_ as cpp_utils
 
 c_double_p = ctypes.POINTER(c_double)
+c_float_p  = ctypes.POINTER(c_float)
 c_int_p    = ctypes.POINTER(c_int)
 c_bool_p   = ctypes.POINTER(c_bool)
 
@@ -126,6 +127,18 @@ def sample_SplineHermite3D( ps, Eg, g0, dg, fes=None):
     ng = np.array( Eg.shape, np.int32 )
     if fes is None: fes=np.zeros((n,4))
     lib.sample_SplineHermite3D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite3D_f( float* g0, float* dg, int* ng, float* Eg, int n, float* ps, float* fes ){
+lib.sample_SplineHermite3D_f.argtypes  = [c_float_p, c_float_p, c_int_p, c_float_p, c_int, c_float_p, c_float_p]
+lib.sample_SplineHermite3D_f.restype   =  None
+def sample_SplineHermite3D_f( ps, Eg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0, dtype=np.float32)
+    dg = np.array(dg, dtype=np.float32)
+    ng = np.array( Eg.shape, np.int32 )
+    if fes is None: fes=np.zeros((n,4), dtype=np.float32)
+    lib.sample_SplineHermite3D_f( _np_as(g0,c_float_p), _np_as(dg,c_float_p), _np_as(ng,c_int_p), _np_as(Eg,c_float_p), n, _np_as(ps,c_float_p), _np_as(fes,c_float_p) )
     return fes
 
 # void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
