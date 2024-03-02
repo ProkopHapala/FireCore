@@ -12,7 +12,7 @@
 namespace Spline_Hermite{
 
 template<typename T>
-inline Quat4T<T> basis_val_2( T x  ){
+inline Quat4T<T> basis_val( T x  ){
     //         x3     x2   x      1  
     //  p-1   -0.5   1.0  -0.5  -0.0
     //  p+0    1.5  -2.5   0.0   1.0  
@@ -30,7 +30,7 @@ inline Quat4T<T> basis_val_2( T x  ){
 
 
 template <class T>
-inline Quat4T<T> dbasis_val_2( T x ){
+inline Quat4T<T> dbasis_val( T x ){
     //  p-1  -1.5   2.0  -0.5   
     //  p+0   4.5  -5.0   0.0   
     //  p+1  -4.5   4.0   0.5   
@@ -45,7 +45,7 @@ inline Quat4T<T> dbasis_val_2( T x ){
 }
 
 template <class T>
-inline Quat4T<T> ddbasis_val_2( T x ){
+inline Quat4T<T> ddbasis_val( T x ){
     //  p-1   -3.0   2.  
     //  p+0   +9.0  -5.   
     //  p+1   -9.0   4.  
@@ -61,7 +61,7 @@ inline Quat4T<T> ddbasis_val_2( T x ){
 
 
 template<typename T>
-inline Quat4T<T> basis_val( T x  ){
+inline Quat4T<T> basis_val_old( T x  ){
 	const T x2 = x*x;
 	const T K  =  x2*(x - 1);
 	const T d0 =    K - x2 + x;       //      x3 - 2*x2 + x
@@ -75,7 +75,7 @@ inline Quat4T<T> basis_val( T x  ){
 }
 
 template <class T>
-inline Quat4T<T> dbasis_val( T x ){
+inline Quat4T<T> dbasis_val_old( T x ){
 	const T K    =  3*x*(x - 1);
     const T d0   =    K - x + 1;   //    3*x2 - 4*x + 1
 	const T d1   =    K + x    ;   //    3*x2 - 2*x
@@ -88,7 +88,7 @@ inline Quat4T<T> dbasis_val( T x ){
 }
 
 template <class T>
-inline Quat4T<T> ddbasis_val( T x ){
+inline Quat4T<T> ddbasis_val_old( T x ){
 	const T x6  =  6*x;
     const T d0  =  x6 -  4;        //     6*x - 4
 	const T d1  =  x6 -  2;        //     6*x - 2
@@ -103,41 +103,70 @@ inline Quat4T<T> ddbasis_val( T x ){
 __attribute__ ((pure))
 __attribute__((hot)) 
 Vec3d fe2d( const double tx, const double ty, const Quat4i i, const double* Es ){
-    Quat4d e,fx;
+    alignas(32) Quat4d e,fx;
     {
         const Quat4d bx =  basis_val( tx );
         const Quat4d dx = dbasis_val( tx );
         {
-            const Quat4d p = *(Quat4d*)(Es+i.x); // read 4 doubles from global memory at a time ( 4*8 = 32 bytes = 256 bits ) ideal for SIMD AVX2
+            alignas(32) const Quat4d p = *(Quat4d*)(Es+i.x); // read 4 doubles from global memory at a time ( 4*8 = 32 bytes = 256 bits ) ideal for SIMD AVX2
             e.x  = bx.dot(p);   // not sure how dot() is SIMD optimized => maybe we should flip the order of x and y strides ?
             fx.x = dx.dot(p);
-            //fy.y = bx.dot(p);
         }
         {
-            const Quat4d p = *(Quat4d*)(Es+i.y); 
+            alignas(32) const Quat4d p = *(Quat4d*)(Es+i.y); 
             e.y  = bx.dot(p);
             fx.y = dx.dot(p);
-            //fy.y = bx.dot(p);
         }
         {
-            const Quat4d p = *(Quat4d*)(Es+i.z); 
+            alignas(32) const Quat4d p = *(Quat4d*)(Es+i.z); 
             e.z  = bx.dot(p);
             fx.z = dx.dot(p);
-            //fy.z = bx.dot(p);
         }
         {
-            const Quat4d p = *(Quat4d*)(Es+i.w); 
+            alignas(32) const Quat4d p = *(Quat4d*)(Es+i.w); 
             e.w  = bx.dot(p);
             fx.w = dx.dot(p);
-            //fy.w = bx.dot(p);
         }
     }
-    const Quat4d by =  basis_val( ty );
-    const Quat4d dy = dbasis_val( ty );
+    alignas(32) const Quat4d by =  basis_val( ty );
+    alignas(32) const Quat4d dy = dbasis_val( ty );
     return Vec3d{
         by.dot(fx), // Fx
         dy.dot(e ), // Fy
         by.dot(e )  // E
+    };
+}
+
+__attribute__ ((pure))
+__attribute__((hot)) 
+Vec3d fe2d_v2( const double tx, const double ty, const Quat4i i, const double* Es ){
+    Quat4d e,fy;
+    {
+        alignas(32) const Quat4d by =  basis_val( ty );
+        alignas(32) const Quat4d dy = dbasis_val( ty );
+
+        alignas(32) const Quat4d p1 = *(Quat4d*)(Es+i.x);
+        alignas(32) const Quat4d p2 = *(Quat4d*)(Es+i.y);
+        alignas(32) const Quat4d p3 = *(Quat4d*)(Es+i.z); 
+        alignas(32) const Quat4d p4 = *(Quat4d*)(Es+i.w); 
+
+        e.x = by.x*p1.x + by.y*p2.x + by.z*p3.x + by.w*p4.x;
+        e.y = by.x*p1.y + by.y*p2.y + by.z*p3.y + by.w*p4.y;
+        e.z = by.x*p1.z + by.y*p2.z + by.z*p3.z + by.w*p4.z;
+        e.w = by.x*p1.w + by.y*p2.w + by.z*p3.w + by.w*p4.w;
+
+        fy.x = dy.x*p1.x + dy.y*p2.x + dy.z*p3.x + dy.w*p4.x;
+        fy.y = dy.x*p1.y + dy.y*p2.y + dy.z*p3.y + dy.w*p4.y;
+        fy.z = dy.x*p1.z + dy.y*p2.z + dy.z*p3.z + dy.w*p4.z;
+        fy.w = dy.x*p1.w + dy.y*p2.w + dy.z*p3.w + dy.w*p4.w;
+
+    }
+    alignas(32) const Quat4d bx =  basis_val( tx );
+    alignas(32) const Quat4d dx = dbasis_val( tx );
+    return Vec3d{
+        dx.dot(e ), // Fx
+        bx.dot(fy), // Fy
+        bx.dot(e )  // E
     };
 }
 
@@ -199,9 +228,10 @@ void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg,
         const Vec2d t  = (ps[i] - g0)*inv_dg; 
         const int ix = (int)t.x;
         const int iy = (int)t.y;
-        if( ((ix<0)||(ix>=ng.x-3)) || ((iy<0)||(iy>=ng.y-3)) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
+        //if( ((ix<0)||(ix>=ng.x-3)) || ((iy<0)||(iy>=ng.y-3)) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
         const int i0 = ix + ng.x*iy;
-        Vec3d fe = fe2d( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );
+        Vec3d fe = fe2d( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );        // sample2D(n=10000) time=527.478[kTick] 52.7478[tick/point]
+        //Vec3d fe = fe2d_v2( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );   // sample2D(n=10000) time=553.47[kTick] 55.347[tick/point]
         fe.x*=inv_dg.x;
         fe.y*=inv_dg.x;
         fes[i]=fe;
@@ -213,12 +243,15 @@ __attribute__((hot))
 void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
     Vec3d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
-        fes[i] = fe3d( (ps[i]-g0)*inv_dg, ng, Eg );
+        Quat4d fe = fe3d( (ps[i]-g0)*inv_dg, ng, Eg );
+        fe.f.mul(inv_dg);
+        fes[i] = fe;
     }
 }
 
 // =============== AVX2 version
 
+__attribute__((hot)) 
 inline void evalHermiteBasis_avx2( const Vec3d t, __m256d& bx, __m256d& by, __m256d& bz, __m256d& dx, __m256d& dy, __m256d& dz ){
     const __m256d mx = _mm256_set1_pd( t.x );
     const __m256d my = _mm256_set1_pd( t.y );
@@ -238,7 +271,6 @@ inline void evalHermiteBasis_avx2( const Vec3d t, __m256d& bx, __m256d& by, __m2
     dy = _mm256_fmadd_pd( _mm256_fmadd_pd( d2, my, d1 ),  my,  d0 );
     dz = _mm256_fmadd_pd( _mm256_fmadd_pd( d2, mz, d1 ),  mz,  d0 );
 }
-
 
 __attribute__((hot)) 
 inline void evalHermiteBasis_avx2( const int n, const double* ts, __m256d* bs, __m256d* ds, __m256d* dds=0 ){
@@ -288,7 +320,7 @@ inline void evalHermiteBasis_avx2( const int n, const double* ts, __m256d* bs, _
     //  p+0   +9.0  -5.   
     //  p+1   -9.0   4.  
     //  p+2    3.0  -1.  
-    if( dds ){
+    if( dds )[[unlikely]]{
         //const __m256d d1 = _mm256_set_pd( -3.0,  9.0, -9.0,  3.0 );
         //const __m256d d0 = _mm256_set_pd(  2.0, -5.0,  4.0, -1.0 );
         const __m256d d1 = _mm256_set_pd(  3.0, -9.0,  9.0, -3.0 );
@@ -337,30 +369,31 @@ Vec3d fe2d_avx( const __m256d mbx, const __m256d mdx, const Quat4d by, const Qua
 __attribute__((hot)) 
 Quat4d fe3d_avx( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
-	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
-    const Vec3d t{ u.x - ix  ,  u.y - iy  ,  u.z - iz  };
-
-    if( 
-        ((ix<0)||(ix>=n.x-3)) ||
-        ((iy<0)||(iy>=n.y-3)) ||
-        ((iz<0)||(iz>=n.z-3))        
-    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
-    //__m256d bx,by,bz,dx,dy,dz;
-    __m256d bs[3];
-    __m256d ds[3];
-
-    evalHermiteBasis_avx2( 3, (double*)&t, bs, ds  );
-    alignas(32) Quat4d qby; _mm256_store_pd( (double*)&qby, bs[1] );
-    alignas(32) Quat4d qdy; _mm256_store_pd( (double*)&qdy, bs[1] );
+	const int   ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const Vec3d dt{ u.x - ix  ,  u.y - iy  ,  u.z - iz  };
+    // if( 
+    //     ((ix<0)||(ix>=n.x-3)) ||
+    //     ((iy<0)||(iy>=n.y-3)) ||
+    //     ((iz<0)||(iz>=n.z-3))        
+    // )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    __m256d bx,by,bz,dx,dy,dz;
+    evalHermiteBasis_avx2( dt, bx,by,bz,dx,dy,dz );
+    alignas(32) Quat4d qby; _mm256_store_pd( (double*)&qby, by );
+    alignas(32) Quat4d qdy; _mm256_store_pd( (double*)&qdy, dy );
+    // __m256d bs[3];
+    // __m256d ds[3];
+    // evalHermiteBasis_avx2( 3, (double*)&dt, bs, ds  );
+    //alignas(32) Quat4d qby; _mm256_store_pd( (double*)&qby, bs[1] );
+    //alignas(32) Quat4d qdy; _mm256_store_pd( (double*)&qdy, ds[1] );
     //Quat4d E,Fx,Fy;
     const int nxy = n.x*n.y;
     int i0 = ix + n.x*( iy + n.y*iz ); 
-    const Vec3d Exy1 = fe2d_avx( bs[0],ds[0], qby,qdy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
-    const Vec3d Exy2 = fe2d_avx( bs[0],ds[0], qby,qdy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
-    const Vec3d Exy3 = fe2d_avx( bs[0],ds[0], qby,qdy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
-    const Vec3d Exy4 = fe2d_avx( bs[0],ds[0], qby,qdy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
-    alignas(32) Quat4d qbz; _mm256_store_pd( (double*)&qbz, bs[2] );
-    alignas(32) Quat4d qdz; _mm256_store_pd( (double*)&qdz, ds[2] );
+    const Vec3d Exy1 = fe2d_avx( bx,dx, qby,qdy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    const Vec3d Exy2 = fe2d_avx( bx,dx, qby,qdy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    const Vec3d Exy3 = fe2d_avx( bx,dx, qby,qdy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );  i0 += nxy;
+    const Vec3d Exy4 = fe2d_avx( bx,dx, qby,qdy, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
+    alignas(32) Quat4d qbz; _mm256_store_pd( (double*)&qbz, bz );
+    alignas(32) Quat4d qdz; _mm256_store_pd( (double*)&qdz, dz );
     return Quat4d{
         qbz.dot( {Exy1.x, Exy2.x, Exy3.x, Exy4.x} ), // Fx
         qbz.dot( {Exy1.y, Exy2.y, Exy3.y, Exy4.y} ), // Fy
@@ -435,6 +468,16 @@ void sample2D_avx( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double*
         fes[i]=fe;
         
         //printf( "sample2D()[%i] ps(%g,%g) E=%g Fxy(%g,%g)\n", i, ps[i].x,ps[i].y,  fes[i].z,fes[i].x,fes[i].y );
+    }
+}
+
+__attribute__((hot)) 
+void sample3D_avx( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
+    Vec3d inv_dg; inv_dg.set_inv(dg); 
+    for(int i=0; i<n; i++ ){
+        Quat4d fe = fe3d_avx( (ps[i]-g0)*inv_dg, ng, Eg );
+        fe.f.mul(inv_dg);
+        fes[i] = fe;
     }
 }
 
