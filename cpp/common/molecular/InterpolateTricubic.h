@@ -24,7 +24,7 @@ inline Quat4T<T> basis_val_2( T x  ){
 	   -0.5*x3 +  1.0*x2 +  -0.5*x,  
         1.5*x3 + -2.5*x2 +   0.0*x + 1.0, 
 	   -1.5*x3 +  2.0*x2 +   0.5*x,  
-        0.5*x3 + -0.5*x2 +   0.0*x, 
+        0.5*x3 + -0.5*x2 +   0.0*x
     };
 }
 
@@ -40,7 +40,7 @@ inline Quat4T<T> dbasis_val_2( T x ){
        -1.5*x2 +  2.0*x + -0.5,  
         4.5*x2 + -5.0*x,  
        -4.5*x2 +  4.0*x +  0.5,  
-        1.5*x2 + -1.0*x,  
+        1.5*x2 + -1.0*x
     };
 }
 
@@ -54,7 +54,7 @@ inline Quat4T<T> ddbasis_val_2( T x ){
        -3.0*x +  2.0,  
         9.0*x + -5.0,  
        -9.0*x +  4.0,  
-        3.0*x + -1.0,
+        3.0*x + -1.0
     };
 
 }
@@ -219,25 +219,25 @@ void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg,
 
 // =============== AVX2 version
 
-// inline void evalHermiteBasis_avx2( int n, Vec3d t, __m256d& bx, __m256d& by, __m256d& bz, __m256d& dx, __m256d& dy, __m256d& dz ){
-//     const __m256d mx = _mm256_set1_pd( t.x );
-//     const __m256d my = _mm256_set1_pd( t.y );
-//     const __m256d mz = _mm256_set1_pd( t.z );
-//     const __m256d c1 = _mm256_set_pd( -0.5,  1.5, -1.5,  0.5 );
-//     const __m256d c2 = _mm256_set_pd(  1.0, -2.5,  2.0, -0.5 );
-//     const __m256d c3 = _mm256_set_pd( -0.5,  0.0, +0.5,  0.0 );
-//     const __m256d c4 = _mm256_set_pd(  0.0,  1.0,  0.0,  0.0 );
-//     // poly = c1 + x*( c2 + x*( c3 + x*c4)))  -- Horner's scheme
-//     bx = _mm256_fmadd_pd( c1, mx, _mm256_fmadd_pd( c2, mx, _mm256_fmadd_pd( c3, mx, c4 ) ) );
-//     by = _mm256_fmadd_pd( c1, my, _mm256_fmadd_pd( c2, my, _mm256_fmadd_pd( c3, my, c4 ) ) );
-//     bz = _mm256_fmadd_pd( c1, mz, _mm256_fmadd_pd( c2, mz, _mm256_fmadd_pd( c3, mz, c4 ) ) );
-//     const __m256d d1 = _mm256_set_pd( -1.5, 4.5,-4.5,1.5 );
-//     const __m256d d2 = _mm256_set_pd(  2.0,-5.0, 4.0,1.5 );
-//     const __m256d d3 = _mm256_set_pd( -0.5,1.5,-1.5,0.5  );
-//     dx = _mm256_fmadd_pd( d1, mx, _mm256_fmadd_pd( d2, mx, d3 ) );
-//     dy = _mm256_fmadd_pd( d1, my, _mm256_fmadd_pd( d2, my, d3 ) );
-//     dz = _mm256_fmadd_pd( d1, mz, _mm256_fmadd_pd( d2, mz, d3 ) );
-// }
+inline void evalHermiteBasis_avx2( const Vec3d t, __m256d& bx, __m256d& by, __m256d& bz, __m256d& dx, __m256d& dy, __m256d& dz ){
+    const __m256d mx = _mm256_set1_pd( t.x );
+    const __m256d my = _mm256_set1_pd( t.y );
+    const __m256d mz = _mm256_set1_pd( t.z );
+    const __m256d c3 = _mm256_set_pd(  0.5, -1.5,  +1.5,  -0.5 );
+    const __m256d c2 = _mm256_set_pd( -0.5,  2.0,  -2.5,   1.0 );
+    const __m256d c1 = _mm256_set_pd(  0.0,  0.5,   0.0,  -0.5 );
+    const __m256d c0 = _mm256_set_pd(  0.0,  0.0,   1.0,   0.0 );
+    // poly = c1 + x*( c2 + x*( c3 + x*c4)))  -- Horner's scheme
+    bx = _mm256_fmadd_pd( _mm256_fmadd_pd( _mm256_fmadd_pd( c3, mx, c2 ), mx,  c1 ), mx, c0  );
+    by = _mm256_fmadd_pd( _mm256_fmadd_pd( _mm256_fmadd_pd( c3, my, c2 ), my,  c1 ), my, c0  );
+    bz = _mm256_fmadd_pd( _mm256_fmadd_pd( _mm256_fmadd_pd( c3, mz, c2 ), mz,  c1 ), mz, c0  );
+    const __m256d d2 = _mm256_set_pd(  1.5,  -4.5,    4.5,   -1.5  );
+    const __m256d d1 = _mm256_set_pd( -1.0,   4.0,   -5.0,    2.0  );
+    const __m256d d0 = _mm256_set_pd(  0.0,   0.5,    0.0,   -0.5  );
+    dx = _mm256_fmadd_pd( _mm256_fmadd_pd( d2, mx, d1 ),  mx,  d0 );
+    dy = _mm256_fmadd_pd( _mm256_fmadd_pd( d2, my, d1 ),  my,  d0 );
+    dz = _mm256_fmadd_pd( _mm256_fmadd_pd( d2, mz, d1 ),  mz,  d0 );
+}
 
 
 __attribute__((hot)) 
@@ -279,6 +279,7 @@ inline void evalHermiteBasis_avx2( const int n, const double* ts, __m256d* bs, _
         for( int i=0; i<n; i++ ){
             const __m256d mx = _mm256_set1_pd( ts[i] );
             ds[i] = _mm256_fmadd_pd( _mm256_fmadd_pd( d2, mx, d1 ),  mx,  d0 );
+            //ds[i] = _mm256_mul_pd( _mm256_mul_pd( d2, mx ),  mx );
         }
     }
     // -------- Acceleration
@@ -378,62 +379,61 @@ void sample2D_avx( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double*
         const int iy = (int)t.y;
         if( ((ix<0)||(ix>=ng.x-3)) || ((iy<0)||(iy>=ng.y-3)) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
         const int i0 = ix + ng.x*iy;
-        const Vec2d dt{ t.x-ix, t.y-iy };
-        __m256d bs[3];
-        __m256d ds[3];
-        __m256d as[3];
-        evalHermiteBasis_avx2( 2, (double*)&dt, bs, ds, as );
-        alignas(32) Quat4d qby; _mm256_store_pd( (double*)&qby, bs[1] );
-        alignas(32) Quat4d qdy; _mm256_store_pd( (double*)&qdy, bs[1] );
+        const Vec3d dt{ t.x-ix, t.y-iy, 0.0 };
+        // __m256d bs[3];
+        // __m256d ds[3];
+        // //__m256d as[3];
+        // evalHermiteBasis_avx2( 2, (double*)&dt, bs, ds );
+        // alignas(32) Quat4d qby; _mm256_store_pd( (double*)&qby, bs[1] );
+        // alignas(32) Quat4d qdy; _mm256_store_pd( (double*)&qdy, ds[1] );
 
-        {  // Check basis
-            alignas(32) Quat4d qbx; _mm256_store_pd( (double*)&qbx, bs[0] );
-            alignas(32) Quat4d qdx; _mm256_store_pd( (double*)&qdx, bs[0] );
-            alignas(32) Quat4d qax; _mm256_store_pd( (double*)&qax, as[0] );
+        __m256d bx,by,bz,dx,dy,dz;
+        evalHermiteBasis_avx2( dt, bx,by,bz,dx,dy,dz );
+        alignas(32) Quat4d qby; _mm256_store_pd( (double*)&qby, by );
+        alignas(32) Quat4d qdy; _mm256_store_pd( (double*)&qdy, dy );
 
-            const Quat4d ax =  ddbasis_val( dt.x );
+        // {  // Check basis
+        //     alignas(32) Quat4d qbx; _mm256_store_pd( (double*)&qbx, bs[0] );
+        //     alignas(32) Quat4d qdx; _mm256_store_pd( (double*)&qdx, ds[0] );
 
-            // const __m256d d1 = _mm256_set_pd( 0.0,  0.0, 0.0,  0.0 );
-            // //const __m256d d1 = _mm256_set_pd( -3.0,  9.0, -9.0,  4.0 );
-            // const __m256d d0 = _mm256_set_pd(  2.0, -5.0,  4.0, -1.0 );
-            // //const __m256d mx = _mm256_set1_pd( dt.x );
-            // //const __m256d mx = _mm256_set1_pd( 0.0 );
-            // const __m256d mx = _mm256_set1_pd( 1.0 );
-            // const __m256d max = _mm256_fmadd_pd( d0, mx, d1 );
-            // alignas(32) Quat4d qax; _mm256_store_pd( (double*)&qax, max );
+        //     // alignas(32) Quat4d qax; _mm256_store_pd( (double*)&qax, as[0] );
+        //     // const Quat4d ax =  ddbasis_val( dt.x );
+        //     // if( (qax-ax).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qax(%g,%g,%g,%g) != ax(%g,%g,%g,%g)\n",i, qax.x,qax.y,qax.z,qax.w, ax.x,ax.y,ax.z,ax.w ); err=true; }
 
-            if( (qax-ax).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qax(%g,%g,%g,%g) != ax(%g,%g,%g,%g)\n",i, qax.x,qax.y,qax.z,qax.w, ax.x,ax.y,ax.z,ax.w ); err=true; }
+        //     const Quat4d bx =  basis_val( dt.x );
+        //     const Quat4d dx = dbasis_val( dt.x );
+        //     const Quat4d by =  basis_val( dt.y );
+        //     const Quat4d dy = dbasis_val( dt.y );
 
+        //     const Quat4d bx_ =  basis_val_2( dt.x );
+        //     const Quat4d by_ =  basis_val_2( dt.y );
+        //     const Quat4d dx_ = dbasis_val_2( dt.x );
+        //     const Quat4d dy_ = dbasis_val_2( dt.y );
 
-            const Quat4d bx =  basis_val( dt.x );
-            const Quat4d dx = dbasis_val( dt.x );
-            const Quat4d by =  basis_val( dt.y );
-            const Quat4d dy = dbasis_val( dt.y );
+        //     if( (bx-bx_).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] bx_(%g,%g,%g,%g) != bx(%g,%g,%g,%g)\n",i, bx_.x,bx_.y,bx_.z,bx_.w, bx.x,bx.y,bx.z,bx.w ); err=true; }
+        //     if( (by-by_).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] by_(%g,%g,%g,%g) != by(%g,%g,%g,%g)\n",i, by_.x,by_.y,by_.z,by_.w, by.x,by.y,by.z,by.w ); err=true; }
+        //     if( (dx-dx_).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] dx_(%g,%g,%g,%g) != dx(%g,%g,%g,%g)\n",i, dx_.x,dx_.y,dx_.z,dx_.w, dx.x,dx.y,dx.z,dx.w ); err=true; }
+        //     if( (dy-dy_).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] dy_(%g,%g,%g,%g) != dy(%g,%g,%g,%g)\n",i, dy_.x,dy_.y,dy_.z,dy_.w, dy.x,dy.y,dy.z,dy.w ); err=true; }
 
-            const Quat4d bx_ =  basis_val_2( dt.x );
-            const Quat4d by_ =  basis_val_2( dt.y );
-            const Quat4d dx_ = dbasis_val_2( dt.x );
-            const Quat4d dy_ = dbasis_val_2( dt.y );
+        //     if( (bx-qbx).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qbx(%g,%g,%g,%g) != bx(%g,%g,%g,%g)\n",i, qbx.x,qbx.y,qbx.z,qbx.w, bx.x,bx.y,bx.z,bx.w ); err=true; }
+        //     if( (dx-qdx).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qdx(%g,%g,%g,%g) != dx(%g,%g,%g,%g)\n",i, qdx.x,qdx.y,qdx.z,qdx.w, dx.x,dx.y,dx.z,dx.w ); err=true; }
+        //     if( (by-qby).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qby(%g,%g,%g,%g) != by(%g,%g,%g,%g)\n",i, qby.x,qby.y,qby.z,qby.w, by.x,by.y,by.z,by.w ); err=true; }
+        //     if( (dy-qdy).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qdy(%g,%g,%g,%g) != dy(%g,%g,%g,%g)\n",i, qdy.x,qdy.y,qdy.z,qdy.w, dy.x,dy.y,dy.z,dy.w ); err=true; } 
 
-            if( (bx-bx_).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] bx_(%g,%g,%g,%g) != bx(%g,%g,%g,%g)\n",i, bx_.x,bx_.y,bx_.z,bx_.w, bx.x,bx.y,bx.z,bx.w ); err=true; }
-            if( (by-by_).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] by_(%g,%g,%g,%g) != by(%g,%g,%g,%g)\n",i, by_.x,by_.y,by_.z,by_.w, by.x,by.y,by.z,by.w ); err=true; }
-            if( (dx-dx_).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] dx_(%g,%g,%g,%g) != dx(%g,%g,%g,%g)\n",i, dx_.x,dx_.y,dx_.z,dx_.w, dx.x,dx.y,dx.z,dx.w ); err=true; }
-            if( (dy-dy_).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] dy_(%g,%g,%g,%g) != dy(%g,%g,%g,%g)\n",i, dy_.x,dy_.y,dy_.z,dy_.w, dy.x,dy.y,dy.z,dy.w ); err=true; }
+        //     if( (bx_-qbx).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qbx(%g,%g,%g,%g) != bx_(%g,%g,%g,%g)\n",i, qbx.x,qbx.y,qbx.z,qbx.w, bx_.x,bx_.y,bx_.z,bx_.w ); err=true; }
+        //     if( (dx_-qdx).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qdx(%g,%g,%g,%g) != dx_(%g,%g,%g,%g)\n",i, qdx.x,qdx.y,qdx.z,qdx.w, dx_.x,dx_.y,dx_.z,dx_.w ); err=true; }
+        //     if( (by_-qby).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qby(%g,%g,%g,%g) != by_(%g,%g,%g,%g)\n",i, qby.x,qby.y,qby.z,qby.w, by_.x,by_.y,by_.z,by_.w ); err=true; }
+        //     if( (dy_-qdy).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qdy(%g,%g,%g,%g) != dy_(%g,%g,%g,%g)\n",i, qdy.x,qdy.y,qdy.z,qdy.w, dy_.x,dy_.y,dy_.z,dy_.w ); err=true; } 
 
-            if( (bx-qbx).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qbx(%g,%g,%g,%g) != bx(%g,%g,%g,%g)\n",i, qbx.x,qbx.y,qbx.z,qbx.w, bx.x,bx.y,bx.z,bx.w ); err=true; }
-            if( (dx-qdx).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qdx(%g,%g,%g,%g) != dx(%g,%g,%g,%g)\n",i, qdx.x,qdx.y,qdx.z,qdx.w, dx.x,dx.y,dx.z,dx.w ); err=true; }
-            if( (by-qby).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qby(%g,%g,%g,%g) != by(%g,%g,%g,%g)\n",i, qby.x,qby.y,qby.z,qby.w, by.x,by.y,by.z,by.w ); err=true; }
-            if( (dy-qdy).norm2() > 1e-14 ){ printf( "ERROR: sample2D_avx()[%i] qdy(%g,%g,%g,%g) != dy(%g,%g,%g,%g)\n",i, qdy.x,qdy.y,qdy.z,qdy.w, dy.x,dy.y,dy.z,dy.w ); err=true; } 
+        //     if(err){ printf( "ERROR: sample2D_avx()[%i] p(%g,%g) t(%g,%g) \n", i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
+        // }
 
-            if(err){ printf( "ERROR: sample2D_avx()[%i] p(%g,%g) t(%g,%g) \n", i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
-        }
-
-        /*
-        Vec3d fe = fe2d_avx( bs[0],ds[0], qby,qdy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );
+        //Vec3d fe = fe2d_avx( bs[0],ds[0], qby,qdy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );
+        Vec3d fe = fe2d_avx( bx,dx, qby,qdy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );
         fe.x*=inv_dg.x;
         fe.y*=inv_dg.x;
         fes[i]=fe;
-        */
+        
         //printf( "sample2D()[%i] ps(%g,%g) E=%g Fxy(%g,%g)\n", i, ps[i].x,ps[i].y,  fes[i].z,fes[i].x,fes[i].y );
     }
 }
