@@ -43,13 +43,13 @@ fi
 #./$name -x common_resources/C2H4          -iParalel 0
 
 #./$name -x common_resources/H2O            -iParalel 0  -verb 0   -perframe 1 -dt 0.001
-./$name -x common_resources/H2O            -iParalel 0  -verb 0   -perframe 1 -dt 0.05
+#./$name -x common_resources/H2O            -iParalel 0  -verb 0   -perframe 1 -dt 0.05
 #./$name -x common_resources/H2O        -e  -iParalel 0  -verb 0
 
 #./$name -x common_resources/HCOOH         -iParalel 0
 #./$name -x common_resources/HCOOH     -e  -iParalel 0
 
-#./$name -x common_resources/HCOOH_xy  -e  -iParalel 0
+./$name -x common_resources/HCOOH_xy  -e  -iParalel 0
 #./$name -x common_resources/CH2O      -e  -iParalel 0
 
 #./$name -x common_resources/formic_dimer
