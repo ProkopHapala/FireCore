@@ -91,6 +91,33 @@ Vec2d evalNonBondGrid2D( const NBFF& ff, Quat4d REQi, double Rdamp, Vec2i ns, do
 // } // namespace Draw3D
 
 
+void drawDipoleMapGrid( DipoleMap& dipoleMap, Vec2d sc=Vec2d{1.,1.}, bool radial=true, bool azimuthal=true ){
+    int nphi = dipoleMap.nphi;
+    int nr   = dipoleMap.particles.size()/nphi;
+    if(radial)
+    for(int ip=0; ip<nphi; ip++ ){
+        glBegin(GL_LINE_STRIP);
+        for(int ir=0; ir<nr; ir++ ){
+            int i = ip + ir*nphi;
+            //printf( "drawDipoleMap()[%i|ip=%i,ir=%i]\n", i, ip, ir );
+            Vec3d p = dipoleMap.particles[i];
+            p.z    +=  dipoleMap.FE[i].e*sc.x + dipoleMap.FE2[i].e*sc.y;
+            glVertex3f( p.x, p.y, p.z );
+        }
+        glEnd();
+    }
+    if(azimuthal)
+    for(int ir=0; ir<nr; ir++ ){
+       glBegin(GL_LINE_STRIP);
+        for(int ip=0; ip<nphi; ip++ ){
+            int i = ip + ir*nphi;
+            Vec3d p = dipoleMap.particles[i];
+            p.z    +=  dipoleMap.FE[i].e*sc.x + dipoleMap.FE2[i].e*sc.y;
+            glVertex3f( p.x, p.y, p.z );
+        }
+        glEnd();
+    }
+}
 
 // ===========================================
 // ================= MAIN CLASS ==============
@@ -139,6 +166,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double subs_iso = 0.05;
 
     MolWorld_sp3* W=0;
+
+    bool bDipoleMap = false;
+    DipoleMap dipoleMap;
 
     // ---- GUI
 
@@ -344,6 +374,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void plotNonBondGridAxis();
     void relaxNonBondParticles( double dt = 0.2, double Fconv = 1e-6, int niter = 1000);
     void drawParticles();
+    void drawDipoleMap();
     //void drawParticleNonBonds();
     void showBonds();
     void printMSystem( int isys, int perAtom, int na, int nvec, bool bNg=true, bool bNgC=true, bool bPos=true );
@@ -536,7 +567,7 @@ void MolGUI::initWiggets(){
     MultiPanel* mp=0;
     // ------ Edit
     ylay.step( 1 ); ylay.step( 2 );
-    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-5); gui.addPanel( mp ); panel_NonBondPlot=mp;
+    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-5); gui.addPanel( mp ); //panel_NonBondPlot=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i); return 0; };
     mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ std::unordered_set<int> s(W->selection.begin(),W->selection.end()); W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++) if( !s.contains(i) )W->selection.push_back(i); return 0; };
@@ -544,6 +575,21 @@ void MolGUI::initWiggets(){
     mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->center(true);         return 0; };
     mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->alignToAxis({2,1,0}); return 0; };
     p=mp->addPanel( "save:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->saveXYZ(fname); return 0; }; p->inputText="out.xyz";
+
+    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.points_along_rim( R, {5.0,0.0,0.0}, Vec2d{0.0,0.1} );  bDipoleMap=true;  return 0; };
+    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.prepareRim( 5, {1.0,2.0}, {0.4,0.6}, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
+    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value;   double Rs[]{R,R+0.1,R+0.2,R+0.3,R+0.5};  dipoleMap.prepareRim2( 5, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
+    mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+        //double Rs[]{0.5,0.7,0.9,1.1,1.3,1.5,1.7,1.9,2.5,3.0,3.5,4.5,6.0,8.0,10.0};  
+        double Rs[20]{0.3, 0.4, 0.5, 0.6, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0, 3.5, 4.5, 6.0, 8.0, 10.0, 14.0, 20.0 };  
+        //dipoleMap.prepareRim2( 15, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} ); 
+        W->hideEPairs();
+        dipoleMap.genAndSample( 20, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} );
+        //dipoleMap.genAndSample( 1, Rs, 0.05, {0.0,-7.0,0.0}, {1.0,0.0} );
+
+        dipoleMap.saveToXyz( "dipoleMap.xyz" );
+        bDipoleMap=true;  return 0;      
+    };
 
     printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
     //exit(0);
@@ -576,6 +622,8 @@ void MolGUI::nonBondGUI(){
     chk->addBox( "lines ", &bDrawNonBondLines );
     chk->addBox( "gridXY", &bDrawNonBondGrid  );
     chk->addBox( "hideEp", &hideEp            );
+
+    
     //chk->addBox( "grid", &plot1.bGrid );
     //chk->addBox( "axes", &plot1.bAxes );
 
@@ -587,7 +635,7 @@ void MolGUI::nonBondGUI(){
     mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0,-6); gui.addPanel( mp ); panel_NonBondPlot=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Mode  : ", {0.0,2.0, 0.0},  1,0,1,1,0 );   // ToDo: perhaps it would be better to use bit-mask
-    mp->addPanel( "Ezoom : ", {-3.0,3.0,0.0},  1,0,0,1,0 );
+    mp->addPanel( "Ezoom : ", {-3.0,3.0,-1.0},  1,0,0,1,0 );
     mp->addPanel( "Rplot : ", {0.0,10.0,5.0},  1,0,0,1,0 );
     mp->addPanel( "dstep : ", {0.02,0.5,0.1},  1,0,0,1,0 );
     mp->addPanel( "Rdamp : ", {-2.0,2.0,0.1},  1,0,0,1,0 );
@@ -871,6 +919,63 @@ void MolGUI::drawParticles(){
     }
 }
 
+void MolGUI::drawDipoleMap(){
+    MultiPanel* mp=0;
+    //mp=panel_TestType;    
+    // Quat4d REQtest{ 
+    //     mp->subs[0]->value, 
+    //     sqrt(mp->subs[1]->value), 
+    //     mp->subs[2]->value, 
+    //     mp->subs[3]->value 
+    // };
+    //REQtest.w*=REQtest.y;  // Hbond = %H * sqrt(EvdW_ii)
+    // double dstep, Rplot, Ezoom, Rdamp, Rcut;
+    mp=panel_NonBondPlot; //Ezoom=pow(10.,mp->subs[1]->value);
+    double Ezoom=1/pow(10.,mp->subs[1]->value);
+    //printf( "drawDipoleMap() Ezoom=%g  val=%g \n", Ezoom, mp->subs[1]->value ); 
+
+
+    Draw3D::drawPointCross({5.0,0.0,0.0}, 0.2 );
+    Draw3D::drawPointCross( dipoleMap.particles[0], 0.1 );
+    for(int i=0; i<dipoleMap.particles.size(); i++ ){
+        glColor3f( 0.0, 0.0, 0.0 ); Draw3D::drawPointCross( dipoleMap.particles[i], 0.05 );
+        glColor3f( 0.0, 0.0, 1.0 ); Draw3D::drawLine      ( dipoleMap.particles[i], dipoleMap.particles2[i] );
+    }
+    
+    //int nphi = dipoleMap.nphi;
+    //int nr   = dipoleMap.FE.size() / nphi;
+    //printf( "drawDipoleMap() nphi=%i nr=%i FE.size(%i) particles.size(%i) \n", nphi, nr, dipoleMap.FE.size(), dipoleMap.particles.size(), nr*nphi );
+
+    // for(int ip=0; ip<nphi; ip++ ){
+    //     glBegin(GL_LINE_STRIP);
+    //     for(int ir=0; ir<nr; ir++ ){
+    //         int i = ip + ir*nphi;
+    //         //printf( "drawDipoleMap()[%i|ip=%i,ir=%i]\n", i, ip, ir );
+    //         Vec3d p = dipoleMap.particles[i];
+    //         p.z    += dipoleMap.FE[i].e/Ezoom;
+    //         glVertex3f( p.x, p.y, p.z );
+    //     }
+    //     glEnd();
+    // }    
+    // for(int ir=0; ir<nr; ir++ ){
+    //    glBegin(GL_LINE_STRIP);
+    //     for(int ip=0; ip<nphi; ip++ ){
+    //         int i = ip + ir*nphi;
+    //         Vec3d p = dipoleMap.particles[i];
+    //         p.z    += dipoleMap.FE[i].e/Ezoom;
+    //         glVertex3f( p.x, p.y, p.z );
+    //     }
+    //     glEnd();
+    // }
+
+    glLineWidth(1.0);
+    glColor3f( 0.0, 0.7, 0.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{1.0,1.0}*Ezoom, true, true );
+    glLineWidth(0.25);
+    glColor3f( 1.0, 0.5, 0.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{1.0,0.0}*Ezoom, true, true );
+    glColor3f( 0.0, 0.7, 1.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{0.0,1.0}*Ezoom, true, true );
+    glLineWidth(1.0);
+}
+
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
     printf( "MolGUI::MolGUI() \n" );
     if( W_ ) W=W_;
@@ -956,6 +1061,9 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
     //initGUI();
     initWiggets();
     updateGUI();
+    //dipoleMap.ff = &(W->ffl);
+    dipoleMap.ff     = &(W->nbmol);
+    dipoleMap.params = &(W->params);
     //if(verbosity>0)printf("... MolGUI::bindMolWorld() DONE\n");
 }
 
@@ -1115,6 +1223,8 @@ void MolGUI::draw(){
 
     plotNonuniformGrid();
 
+    if( bDipoleMap )drawDipoleMap();
+
     //if( ogl_MO && W->bConverged ){ 
     if( ogl_MO && (!bRunRelax) ){ 
         glPushMatrix();
@@ -1229,7 +1339,7 @@ void MolGUI::draw(){
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
 
-    //glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1);
+    glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1);
 };
 
 void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bool bNgC, bool bPos ){

@@ -660,13 +660,14 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printBonds();    
     }
 
-    void hideEPairs(){
+    int hideEPairs(){
         //printf( "plotNonBondGrid() removing EPairs %i \n" );
         int etyp = params.getAtomType("E");
         ffl.chargeToEpairs( -QEpair, etyp );
         selectByType( params.getElementType("E"), true );
         int nEp = selection.size();
         nbmol.natoms -= nEp;
+        return nEp;
     }
 
     void unHideEPairs(){
