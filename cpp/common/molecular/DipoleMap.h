@@ -308,14 +308,20 @@ class DipoleMap { public:
         return nphi;
     }
 
-    void saveToXyz( const char* fname )const{
+    void saveToXyz( const char* fname, bool bCharges=false )const{
         FILE* fout = fopen( fname, "w" );
         for(int i=0; i<particles.size(); i++){
             fprintf( fout, "%i \n",  ff->natoms+2   );
             fprintf( fout, "# %i FE %g %g %g %g  FE2 %g %g %g %g \n", i, FE[i].x, FE[i].y, FE[i].z, FE[i].w,   FE2[i].x, FE2[i].y, FE2[i].z, FE2[i].w );
-            fprintf( fout, "%s %15.10f   %15.10f   %15.10f  %5.2f\n",  name1, particles[i].x,  particles[i].y,  particles[i].z  , REQ.z );
-            fprintf( fout, "%s %15.10f   %15.10f   %15.10f  %5.2f\n",  name2, particles2[i].x, particles2[i].y, particles2[i].z , REQ2.z );
-            params->writeXYZ( fout, ff->natoms, ff->atypes, ff->apos, 0, ff->REQs, true, 0, Vec3i{1,1,1}, Mat3dIdentity, false );
+            if(bCharges){
+                fprintf( fout, "%s %15.10f   %15.10f   %15.10f  %5.2f\n",  name1, particles[i].x,  particles[i].y,  particles[i].z  , REQ.z );
+                fprintf( fout, "%s %15.10f   %15.10f   %15.10f  %5.2f\n",  name2, particles2[i].x, particles2[i].y, particles2[i].z , REQ2.z );
+                params->writeXYZ( fout, ff->natoms, ff->atypes, ff->apos, 0, ff->REQs, true, 0, Vec3i{1,1,1}, Mat3dIdentity, false );
+            }else{
+                fprintf( fout, "%s %15.10f   %15.10f   %15.10f\n",  name1, particles[i].x,  particles[i].y,  particles[i].z  , REQ.z );
+                fprintf( fout, "%s %15.10f   %15.10f   %15.10f\n",  name2, particles2[i].x, particles2[i].y, particles2[i].z , REQ2.z );
+                params->writeXYZ( fout, ff->natoms, ff->atypes, ff->apos, 0, 0, true, 0, Vec3i{1,1,1}, Mat3dIdentity, false );
+            }
         }
         fclose( fout );
     }
