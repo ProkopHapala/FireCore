@@ -901,6 +901,26 @@ def geomLines( apos, enames ):
         lines.append(  "%s %3.5f %3.5f %3.5f\n" %(enames[i], pos[0],pos[1],pos[2]) )
     return lines
 
+def tryAverage( ip, apos, _0=1 ):
+    if hasattr(ip, '__iter__'):
+        ip = np.array(ip) - _0
+        p0  = apos[ip].mean(axis=0)
+    else:
+        p0 = apos[ip-_0]
+    return p0
+
+def makeVectros( apos, ip0, b1, b2, _0=1 ):
+    p0 = tryAverage( ip0, apos, _0=_0 )
+    if ( b1==None ):
+        return p0, None, None
+    fw = tryAverage( b1[1], apos, _0=_0 ) - tryAverage( b1[0], apos, _0=_0 )
+    if ( ( b2==None ) or (len(apos)<3) ):
+        up = np.cross( fw, np.random.rand(3) )
+        up = up/np.linalg.norm(up)
+    else:
+        up = tryAverage( b2[1], apos, _0=_0 ) - tryAverage( b2[0], apos, _0=_0 )
+    return p0, fw, up
+
 # ========================== Class Geom
 
 class AtomicSystem( ):
@@ -1088,19 +1108,23 @@ class AtomicSystem( ):
         apos=self.apos  
         if(bCopy): apos=apos.copy()
         if p0 is not None: apos[:,:]-=p0[None,:]
-        mulpos( apos, rot )
+        if rot is not None: mulpos( apos, rot )
         return apos
 
     def orient_vs(self, fw, up, p0=None, trans=None, bCopy=False ):
-        rot = makeRotMat( fw, up )
-        if trans is not None: rot=rot[trans,:]
+        if fw is None:
+            rot = None
+        else:
+            rot = makeRotMat( fw, up )
+            if trans is not None: rot=rot[trans,:]
         return self.orient_mat( rot, p0, bCopy )
 
-    def orient( self, i0, ip1, ip2, _0=1, trans=None, bCopy=False ):
+    def orient( self, i0, b1, b2, _0=1, trans=None, bCopy=False ):
         #print( "orient i0 ", i0, " ip1 ", ip1, " ip2 ",ip2 )
-        p0  = self.apos[i0-_0]
-        fw  = self.apos[ip1[1]-_0]-self.apos[ip1[0]-_0]
-        up  = self.apos[ip2[1]-_0]-self.apos[ip2[0]-_0]
+        # p0  = self.apos[i0-_0]
+        # fw  = self.apos[ip1[1]-_0]-self.apos[ip1[0]-_0]
+        # up  = self.apos[ip2[1]-_0]-self.apos[ip2[0]-_0]
+        p0, fw, up = makeVectros( self.apos, i0, b1, b2, _0=_0 )
         return self.orient_vs( fw, up, p0, trans=trans, bCopy=bCopy )
     
     def orientPCA(self):
