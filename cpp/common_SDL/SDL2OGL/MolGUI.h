@@ -393,6 +393,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  clearGUI(int n);
     void initMemberOffsets();
     void initWiggets();
+    //void initWiggets_Run();
     void initCommands();
     void nonBondGUI();
     void drawingHex(double z0);
@@ -563,11 +564,12 @@ void MolGUI::initWiggets(){
             }
         );
 
-    GUIPanel* p=0;
-    MultiPanel* mp=0;
+    GUIPanel*     p   =0;
+    MultiPanel*   mp  =0;
+    CheckBoxList* chk =0;
     // ------ Edit
     ylay.step( 1 ); ylay.step( 2 );
-    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-5); gui.addPanel( mp ); //panel_NonBondPlot=mp;
+    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-6); gui.addPanel( mp ); //panel_NonBondPlot=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i); return 0; };
     mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ std::unordered_set<int> s(W->selection.begin(),W->selection.end()); W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++) if( !s.contains(i) )W->selection.push_back(i); return 0; };
@@ -590,13 +592,25 @@ void MolGUI::initWiggets(){
         dipoleMap.saveToXyz( "dipoleMap.xyz" );
         bDipoleMap=true;  return 0;      
     };
+    ylay.step( mp->nsubs*2 ); ylay.step( 2 );
+
+    // mp= new MultiPanel( "Run", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); //panel_NonBondPlot=mp;
+    // mp->addPanel( "NonBond"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBonded=!W->bNonBonded;         return 0; };
+    // mp->addPanel( "NonBondNG", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBondNeighs=!W->bNonBondNeighs; return 0; };
+    // mp->addPanel( "Grid",      {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bGridFF=!W->bGridFF;               return 0; };
+    
+    chk = new CheckBoxList( gx.x0, ylay.x0, gx.x1 );   gui.addPanel( chk );  chk->caption ="Run"; //chk->bgColor = 0xFFE0E0E0;
+    chk->addBox( "NonBond"   , &W->bNonBonded     );
+    chk->addBox( "NonBondNG" , &W->bNonBondNeighs );
+    chk->addBox( "GridFF"    , &W->bGridFF        );
+    ylay.step( chk->boxes.size()*2 ); ylay.step( 2 );
 
     printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
     //exit(0);
 
     if( W->getMolWorldVersion() & MolWorldVersion::QM ){ 
         // --- Selection of orbital to plot
-        ylay.step(3);
+        ylay.step(mp->nsubs*2); ylay.step( 2 );
         panel_iMO = ((GUIPanel*)gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
         panel_iMO->setRange(-5.0,5.0);
         panel_iMO->setValue(0.0);
@@ -606,6 +620,8 @@ void MolGUI::initWiggets(){
             renderOrbital( iHOMO + which_MO );
         return 0; });
     }
+
+
 
     MolGUI::nonBondGUI();
 }
@@ -1468,8 +1484,9 @@ void MolGUI::drawHUD(){
         //dt 0.132482 damp 3.12175e-17 n+ 164 | cfv 0.501563 |f| 3.58409e-10 |v| 6.23391e-09
         double v=sqrt(W->opt.vv);
         double f=sqrt(W->opt.ff);
-        s += sprintf(s,"bGopt=%i bExploring=%i go.istep=%i T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", W->bGopt, W->go.bExploring, W->go.istep, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
-        Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
+        //s += sprintf(s,"time/iter=%6.2f[us] bGopt=%i bExploring=%i go.istep=%i T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", time_per_iter, W->bGopt, W->go.bExploring, W->go.istep, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
+        s += sprintf(s,"time/iter=%6.2f[us] T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", W->time_per_iter, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
+        Draw::drawText( tmpstr, fontTex, fontSizeDef, {200,20} );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );
     }

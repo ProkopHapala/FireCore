@@ -56,6 +56,8 @@
     funcs["-zspring"]={1,[&](const char** ss){ sscanf(ss[0],"%lf,%lf,%lf", &W->ConstrZ_xmin, &W->ConstrZ_l, &W->ConstrZ_k ); W->ConstrZ_l-=W->ConstrZ_xmin; W->bConstrZ=true;   printf( "ARG: ConstrZ_xmin %g ConstrZ_l %g ConstrZ_k %g\n", W->ConstrZ_xmin, W->ConstrZ_l, W->ConstrZ_k ); }};  
     funcs["-iParalel"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iParalel); printf( "ARG -iParalel %i \n", W->iParalel ); }};         // paralelization model
     funcs["-dt"]={1,[&](const char** ss){ sscanf(ss[0],"%lf", &W->dt_default); printf( "ARG -dt dt_default=%g \n", W->dt_default ); }};
+    funcs["-NBneigh"]={0,[&](const char** ss){ W->bNonBondNeighs=true; }};
+    funcs["-noNB"]={0,[&](const char** ss){ W->bNonBonded=false; }};
 
 #endif // MolGUIapp_Lua
 
