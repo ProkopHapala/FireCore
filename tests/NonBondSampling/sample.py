@@ -118,7 +118,8 @@ def makeGeoms( ps, phis, Rs, A, B_, dirs=None, fname="out.xyz" ):
 #name2 = "H2O"
 #name2 = "NH3"
     
-mol2s = [ "HF", "H2O", "NH3" ]
+#mol2s = [ "HF", "H2O", "NH3" ]
+mol2s = [ "HCN", "HCl" ]
 
 #mol2s = [ "HF" ]
 

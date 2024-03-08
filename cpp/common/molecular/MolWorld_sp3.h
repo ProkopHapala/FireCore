@@ -164,6 +164,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     double  Ftol_default = 1e-4;
     double  dt_default   = 0.05;
 
+    double time_per_iter = 0;
+
     bool bWhichAtomNotConv = false;
     int  iAtomNotConv = -1;
     FILE* atomTrjFile=0;
@@ -190,6 +192,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bRelaxPi          = false;
     bool bChargeUpdated    = false;
     bool bAnimManipulation = false;
+    bool bNonBondNeighs    = false;
 	
     Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
@@ -1461,10 +1464,13 @@ class MolWorld_sp3 : public SolverInterface { public:
         double cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
         // if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
 
-        constexpr bool bNonBondNeighs = false;
+        //constexpr bool bNonBondNeighs = false;
         //constexpr bool bNonBondNeighs = true;
         double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
-        if(bNonBondNeighs){
+        if( !bNonBonded ){
+            ffl.bSubtractAngleNonBond = false;
+            ffl.bSubtractBondNonBond  = false;
+        }else if(bNonBondNeighs){
             ffl.bSubtractAngleNonBond = true;
             ffl.bSubtractBondNonBond  = false;
             ffl.bClampNonBonded       = false;
@@ -1502,12 +1508,14 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
                 if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
                 // ----- Error is HERE
-                if(bNonBondNeighs){
-                    if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                    else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
-                }else{
-                    if(bPBC){ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
-                    else    { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
+                if(bNonBonded){
+                    if(bNonBondNeighs){
+                        if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                        else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                    }else{
+                        if(bPBC){ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
+                        else    { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
+                    }
                 }
                 if   (bGridFF){ E+= gridFF.addForce       ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF
                 //if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.cdampNB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
@@ -1596,7 +1604,7 @@ class MolWorld_sp3 : public SolverInterface { public:
                 //niter=0; 
                 bConverged=true;
                 double t = (getCPUticks() - T0)*tick2second;
-                if(verbosity>1)[[unlikely]]{printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr ); }
+                if(verbosity>1)[[unlikely]]{printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time=%g[ms/%i](%g[us/iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), itr, t*1e+3, t*1e+6/itr ); }
                 if( bGopt && !go.bExploring )[[unlikely]]{
                     gopt_ifound++;
                     sprintf(tmpstr,"# %i E %g |F| %g istep=%i ", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
@@ -1615,7 +1623,12 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
         double ticks = (getCPUticks() - T0);
         double t = ticks*tick2second;
-        if( (itr>=niter_max) && (verbosity>1) ) [[unlikely]] {printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr ); }
+        if( (itr>=(niter_max-1)) && (verbosity>1) ) [[unlikely]] {
+            double c_smooth = 0.1;
+            time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/itr )*c_smooth;
+            //printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time=%g[ms/%i](%g[us/iter])\n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3,itr,t*1e+6/itr ); 
+            printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter])\n", bPBC,bGridFF,bNonBondNeighs,sqrt(F2max),opt.dt,niter, t*1e+3,itr, time_per_iter );
+        }
         return itr;
     }
 

@@ -49,7 +49,7 @@ fi
 #./$name -x common_resources/HCOOH         -iParalel 0
 #./$name -x common_resources/HCOOH     -e  -iParalel 0
 
-./$name -x common_resources/HCOOH_xy  -e  -iParalel 0
+#./$name -x common_resources/HCOOH_xy  -e  -iParalel 0
 #./$name -x common_resources/CH2O      -e  -iParalel 0
 
 #./$name -x common_resources/formic_dimer
@@ -57,8 +57,13 @@ fi
 #./$name -x common_resources/propandiol
 #./$name -x common_resources/butandiol
 
+#./$name -x common_resources/nHexadecan_dicarboxylic -iParalel 0 -T 100 0.01 -verb 2 -perframe 2000
+#./$name -x common_resources/nHexadecan_dicarboxylic -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -NBneigh
+#./$name -x common_resources/nHexadecan_dicarboxylic -iParalel 0 -T 100 0.01 -NBneigh
+#./$name -x common_resources/nHexadecan_dicarboxylic -iParalel 0
+#./$name -x common_resources/nHexadecan_dicarboxylic -iParalel 0 -NBneigh
 
-#./$name -x common_resources/nHexadecan_dicarboxylic
+
 #./$name -x common_resources/nHexadecan_dicarboxylic -perframe 1 -T 10 0.1
 #./$name -x common_resources/nHexadecan_dicarboxylic -perframe 1 -T 100 0.1
 #./$name -x common_resources/nHexadecan_dicarboxylic -perframe 1 -T 1000 0.1
@@ -112,6 +117,13 @@ fi
 #./$name -x common_resources/polymer-2_new -EachAngle
 #./$name -x common_resources/polymer-2_new -EachAngle -torsions
 
+
+#./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500
+#./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -NBneigh
+#./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -noNB
+
+
+
 # ====== Polymers On Substrate
 
 #./$name -x common_resources/polydiacetylene           -g common_resources/NaCl_1x1_L2
@@ -144,6 +156,8 @@ fi
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -drive polymer-2_new.cons -perframe 100  -gopt 1000,1000 0.0,0.0    -T 1000 0.1  -Ftol 1e-6 -seed 654654  -stuck 300,0.2 -iParalel 0   -dt 0.05
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -drive polymer-2_new.cons -perframe 100  -gopt 1000,1000 0.0,0.0    -T 1000 0.1  -Ftol 1e-6 -seed 654654  -stuck 300,0.2 -iParalel 1   -dt 0.05
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -drive polymer-2_new.cons -perframe 100  -gopt 1000,1000 0.0,0.0    -T 1000 0.1  -Ftol 1e-6 -seed 654654  -stuck 500,400,0.2 -iParalel 1   -dt 0.01
+
+./$name -x common_resources/polymer-2_new -g common_resources/NaCl_1x1_L2  -iParalel 0 -T 100 0.01 -verb 2 -perframe 500
 
 
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -perframe 100  -gopt 1000,1000 0.0,0.0    -T 2000 0.1  -Ftol 1e-6 -seed 654654   -verb 0  -stuck 100,0.2 
