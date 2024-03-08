@@ -436,18 +436,17 @@ def saveAtoms( atoms, fname, xyz=True ):
     fout.close() 
 
 def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None, other_lines=None ):
-    
+    na=len(xyzs)
     if(bHeader):
-        na=len(xyzs)
         if other_lines is not None:
             na += len(other_lines)
-        if ignore_es is not None:
-            mask = [ (  e not in ignore_es) for e in es ]
-            na = sum(mask)
-        else:
-            mask = [True]*na
         fout.write("%i\n"  %na )
         fout.write(comment+"\n")
+    if ignore_es is not None:
+        mask = [ (  e not in ignore_es) for e in es ]
+        na = sum(mask)
+    else:
+        mask = [True]*na
     if   (Rs is not None):
         for i,xyz in enumerate( xyzs ):
             if mask[i]: fout.write("%s %f %f %f %f %f \n"  %( es[i], xyz[0], xyz[1], xyz[2], qs[i], Rs[i] ) )
@@ -502,7 +501,8 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None ):
                 continue
         wds = line.split()
         try:
-            #print( "line", line, "wds: ", wds )
+            #print( "line", line )
+            #print( "wds", wds )
             xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )
             try:
                 iz    = int(wds[0]) 
@@ -525,7 +525,7 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None ):
             if bReadN and (ia==0):
                 try:
                     nmax=int(wds[0])
-                    #print("nmax: ", nmax)
+                    print("nmax: ", nmax)
                 except:
                     pass
         if(ia>=nmax): break
@@ -925,7 +925,7 @@ def makeVectros( apos, ip0, b1, b2, _0=1 ):
 
 class AtomicSystem( ):
 
-    def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None, ngs=None ) -> None:
+    def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None, ngs=None, bReadN=True ) -> None:
         self.apos    = apos
         self.atypes  = atypes
         self.enames  = enames
@@ -937,9 +937,9 @@ class AtomicSystem( ):
         self.aux_labels = None
         if fname is not None:
             if( '.mol' == fname.split('.')[0] ):
-                self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname, bReadN=True )
+                self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname, bReadN=bReadN )
             else:
-                self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname , bReadN=True )
+                self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname , bReadN=bReadN )
 
     def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True, other_lines=None ):
         if blvec and (self.lvec is not None):
@@ -955,8 +955,8 @@ class AtomicSystem( ):
         #    lines.append(  "%s %3.5f %3.5f %3.5f\n" %(self.enames[i], pos[0],pos[1],pos[2]) )
         return geomLines( self.apos, self.enames )
 
-    def toXYZ(self, fout ):
-        writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=False )
+    def toXYZ(self, fout, comment="#comment", ignore_es=None, other_lines=None, bHeader=False ):
+        writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=bHeader, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
 
     def print(self):
         #print( len(self.atypes), len(self.enames), len(self.apos) )
@@ -1107,7 +1107,7 @@ class AtomicSystem( ):
     def orient_mat(self, rot, p0=None, bCopy=False ):
         apos=self.apos  
         if(bCopy): apos=apos.copy()
-        if p0 is not None: apos[:,:]-=p0[None,:]
+        if p0  is not None: apos[:,:]-=p0[None,:]
         if rot is not None: mulpos( apos, rot )
         return apos
 
@@ -1140,12 +1140,13 @@ class AtomicSystem( ):
         if( self.aux_labels is not None ): self.aux_labels = [ v for i,v in enumerate(self.aux_labels) if i not in st ] 
 
     def append_atoms(self, B, pre="A" ):
-        if( self.aux_labels is None ):
+        if( self.aux_labels is None ) and ( B.aux_labels is not None ):
             #print( 'self.aux_labels is None', pre ) 
             self.aux_labels = [ str(i) for  i in range(len(self.apos)) ]
+            self.aux_labels += B.aux_labels
         
         #if( B.auxl is None ): B.auxl = [ pre+str(i) for  i in range(len(B.apos)) ]
-        self.aux_labels += B.aux_labels
+        #if( self.aux_labels is not None ):  self.aux_labels += B.aux_labels
 
         if( self.apos   is not None ): self.apos   =  np.append( self.apos,   B.apos, axis=0 )
         if( self.atypes is not None ): self.atypes =  np.append( self.atypes, B.atypes )
