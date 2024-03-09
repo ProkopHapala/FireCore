@@ -49,6 +49,7 @@ bool checkVec3Matches( int n, Vec3d* v, Vec3d* v_, const char* label, int iPrint
 class UFF : public NBFF { public:
 
     // === inherited
+    //int natoms;            // number of atoms
     //Vec3d *   apos  =0;    // [natoms] // from Atoms
     //Vec3d *  fapos  =0;    // [natoms] // from NBFF
     //Quat4i*  neighs =0;    // [natoms] // from NBFF
@@ -56,14 +57,11 @@ class UFF : public NBFF { public:
 
     // dimensions of the system
     double Etot, Eb, Ea, Ed, Ei;                          // total, bond, angle, dihedral, inversion energies
-    int natoms, nbonds, nangles, ndihedrals, ninversions, nf; // number of bonds, angles, dihedrals, inversions, number of force pieces
+    int    nbonds, nangles, ndihedrals, ninversions, nf; // number of bonds, angles, dihedrals, inversions, number of force pieces
     int i0dih,i0inv,i0ang,i0bon;                         
     //Vec3d * vapos __attribute__((aligned(64))) = 0;      // [natoms] velocities of atoms
 
     Mat3d   invLvec;    // inverse lattice vectors
-
-    bool    bSubtractBondNonBond  = true;  // if true we subtract bond energy from non-bonded energy
-    bool    bSubtractAngleNonBond = true;  // if true we subtract angle energy from non-bonded energy
     double  SubNBTorstionFactor   = 0.5;    // if >0 we subtract torsion energy from non-bonded energy
 
     // Auxiliary Variables
@@ -215,7 +213,8 @@ class UFF : public NBFF { public:
         for(int i=0; i<ndihedrals; i++){ const Quat4i& d = dihAtoms[i]; a2f.cellNs[d.x]++; a2f.cellNs[d.y]++; a2f.cellNs[d.z]++; a2f.cellNs[d.w]++; }
         for(int i=0; i<ninversions;i++){ const Quat4i& v = invAtoms[i]; a2f.cellNs[v.x]++; a2f.cellNs[v.y]++; a2f.cellNs[v.z]++; a2f.cellNs[v.w]++; }
         for(int i=0; i<nangles;    i++){ const Vec3i&  a = angAtoms[i]; a2f.cellNs[a.x]++; a2f.cellNs[a.y]++; a2f.cellNs[a.z]++;                    }
-        for(int i=0; i<nbonds;     i++){ const Vec2i&  b = bonAtoms[i]; a2f.cellNs[b.y]++;                                                          }
+        // --- We do not need to map bonds, because we calculate them for all atoms ( i.e. from both sides of the bond )
+        //for(int i=0; i<nbonds;     i++){ const Vec2i&  b = bonAtoms[i]; a2f.cellNs[b.y]++;                                                        }
         a2f.updateOffsets();
         for(int i=0; i<ndihedrals; i++){ 
             const Quat4i& d = dihAtoms[i]; 
@@ -240,20 +239,26 @@ class UFF : public NBFF { public:
             a2f.addToCell( a.y, i0+1 );
             a2f.addToCell( a.z, i0+2 );
         }
-        for(int i=0; i<nbonds;     i++){ 
-            const Vec2i&  b = bonAtoms[i];
-            //a2f.addToCell( b.x, i+i0bon );   // this is already done in evalAtomBonds()
-            a2f.addToCell( b.y, i+i0bon );
-        }
+        // --- We do not need to map bonds, because we calculate them for all atoms ( i.e. from both sides of the bond )
+        // for(int i=0; i<nbonds;     i++){ 
+        //     const Vec2i&  b = bonAtoms[i];
+        //     //a2f.addToCell( b.x, i+i0bon );   // this is already done in evalAtomBonds()
+        //     a2f.addToCell( b.y, i+i0bon );
+        // }
     }
 
     void makeNeighBs(){
-        for(int i=0; i<nbonds; i++){  
-            const Vec2i& b = bonAtoms[i];
-            int* ngi = neighBs[b.x].array;
-            int* ngj = neighBs[b.y].array;
-            for(int j=0; j<4; j++){ if(ngi[j]<0){ ngi[j]=i; break; } }
-            for(int j=0; j<4; j++){ if(ngj[j]<0){ ngj[j]=i; break; } }
+        for(int ia=0; ia<natoms; ia++){ 
+            for(int j=0; j<4; j++){ neighBs[ia].array[j]=-1; neighs[ia].array[j]=-1; };
+        }
+        for(int ib=0; ib<nbonds; ib++){  
+            const Vec2i& b = bonAtoms[ib];
+            int* ngi  = neighs [b.x].array;
+            int* ngj  = neighs [b.y].array;
+            int* ngbi = neighBs[b.x].array;
+            int* ngbj = neighBs[b.y].array;
+            for(int j=0; j<4; j++){ if(ngi[j]<0){ ngi[j]=b.y; ngbi[j]=ib; break; } }
+            for(int j=0; j<4; j++){ if(ngj[j]<0){ ngj[j]=b.x; ngbj[j]=ib; break; } }
         }
     };
 
@@ -561,6 +566,7 @@ class UFF : public NBFF { public:
 
     __attribute__((hot))  
     inline double evalAtomBonds(const int ia, const double R2damp, const double Fmax2){
+        //printf("UFF::evalAtomBonds(%i) ings{%i,%i,%i,%i} inbs{%i,%i,%i,%i} ingC{%i,%i,%i,%i} \n", ia,   neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,  neighBs[ia].x,neighBs[ia].y,neighBs[ia].z,neighBs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w );
         double E=0.0;
         const Vec3d   pa   = apos     [ia]; 
         const Quat4d& REQi = REQs     [ia];
@@ -569,6 +575,7 @@ class UFF : public NBFF { public:
         const int*    inbs = neighBs  [ia].array; // neighbors bond index
         for(int in=0; in<4; in++){
             const int ing = ings[in];
+            //printf("UFF::evalAtomBonds(%i) ing %i\n", ia, ing);
             if(ing<0) break;
             // --- Bond vectors
             const int inn=ia*4+in;
@@ -613,7 +620,8 @@ class UFF : public NBFF { public:
 
             //fbon[ib*2  ]=f; // force on atom i
             //f.mul(-1.0);
-            //fbon[ib*2+1]=f;      
+            //fbon[ib*2+1]=f;   
+            //fbon [ib]=f*-1.;    
             fapos[ia].add(f);
             //f.mul(-1.0); fbon[ib]=f; // should we do this ?   if we commented out if(ing<ia) continue; we don't need this
             // TBD exclude non-bonded interactions between 1-2 neighbors
@@ -1319,6 +1327,7 @@ class UFF : public NBFF { public:
    // ============== Move atoms in order to minimize energy
     __attribute__((hot))  
     int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
+        //printSizes();
         double F2conv = Fconv*Fconv;
         double E=0,ff=0,vv=0,vf=0;
         //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
@@ -1326,6 +1335,12 @@ class UFF : public NBFF { public:
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
         //printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
+        //setNonBondStrategy();
+
+        //bSubNonBond           = false;
+        bSubtractBondNonBond  = false;
+        bSubtractAngleNonBond = false;
+        SubNBTorstionFactor   = -1.0;
 
         int    itr;
         //if(itr_DBG==0)print_pipos();
@@ -1333,7 +1348,8 @@ class UFF : public NBFF { public:
         for(itr=0; itr<niter; itr++){
             E=0;
             // ------ eval UFF
-            // if(bClean)cleanForce();
+            //if(bClean)
+            cleanForce();
             Eb = evalBonds();
             Ea = evalAngles();
             Ed = evalDihedrals();
@@ -1341,10 +1357,17 @@ class UFF : public NBFF { public:
             // ---- assemble (we need to wait when all atoms are evaluated)
             for(int ia=0; ia<natoms; ia++){
                 assembleAtomForce(ia); 
-                if(bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
-                else    { Eb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
-                // // if(bPBC){ E+=evalLJQs_ng4_PBC_atom_omp( ia ); }
-                // // else    { E+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                //printf( "UFF::run() fapos[%i] (%g,%g,%g)\n", ia, fapos[ia].x, fapos[ia].y, fapos[ia].z );
+                // if(bNonBonded){
+                //     if(bNonBondNeighs){
+                //         if(bPBC){ Eb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                //         else    { Eb+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                //     }else{
+                //         if(bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, F2max ); }
+                //         else    { Eb+=evalLJQs_atom_omp    ( ia, F2max ); } 
+                //     }
+                // }
+                // if( atomForceFunc ) atomForceFunc( ia, apos[ia], fapos[ia] );
             }
             // ------ move
             cvf = Vec3dZero;
@@ -1416,7 +1439,7 @@ class UFF : public NBFF { public:
                 cvf.x=ff; cvf.y=vv; cvf.z=vf;
                 if(cvf.x<0){ cleanVelocity(); };
                 //if(cvf.z<F2conv)break;
-                if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, Etot, sqrt(ff), omp_get_num_threads() );}
+                //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, Etot, sqrt(ff), omp_get_num_threads() );}
             }
         }
         return itr;

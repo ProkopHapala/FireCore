@@ -182,7 +182,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bMMFF             = true;
     bool bUFF              = false; 
     bool b141              = true;   // seems not to be used in assignUFFtypes()
-    bool bSimple           = false;  // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
+    //bool bSimple           = false;  // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
+    bool bSimple           = true;   // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
     bool bConj             = true;   // manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation) in assignUFFtypes()
     bool bCumulene         = true;   // exception to avoid cumulenes in assignUFFtypes()
     bool bRigid            = false;
@@ -777,16 +778,30 @@ class MolWorld_sp3 : public SolverInterface { public:
         gridFF.evalCheck();
     }
 
-    void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
-        if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
-        nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
+    // void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
+    //     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
+    //     nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
+    //     //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
+    //     //builder.export_atypes( nbmol.atypes );     
+    //     builder.export_REQs( nbmol.REQs   );    
+    //     nbmol  .makePLQs   ( gridFF.alphaMorse );  ffl.PLQs=nbmol.PLQs; 
+    //     nbmol  .makePLQd   ( gridFF.alphaMorse );  ffl.PLQd=nbmol.PLQd; 
+    //     if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
+    //     params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
+    //     if(verbosity>1)nbmol.print();                              
+    // }
+
+    void initNBmol( NBFF* ff, bool bCleanCharge=true ){
+        if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", ff->natoms  );
+        //void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
+        nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, 0, ff->atypes );    
         //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
         //builder.export_atypes( nbmol.atypes );     
-        builder.export_REQs( nbmol.REQs   );    
-        nbmol  .makePLQs   ( gridFF.alphaMorse );  ffl.PLQs=nbmol.PLQs; 
-        nbmol  .makePLQd   ( gridFF.alphaMorse );  ffl.PLQd=nbmol.PLQd; 
-        if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
-        params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
+        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
+        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
+        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
+        if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
+        params.assignREs( ff->natoms, nbmol.atypes, nbmol.REQs, true, false  );
         if(verbosity>1)nbmol.print();                              
     }
 
@@ -1073,7 +1088,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     virtual void makeFFs(){
         makeMMFFs();
         if ( bUFF ){
-            initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
+            //initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
+            initNBmol( &ffu );
             setNonBond( bNonBonded );
             nbmol.evalPLQs(gridFF.alphaMorse);
             if(bOptimizer){ 
@@ -1082,7 +1098,8 @@ class MolWorld_sp3 : public SolverInterface { public:
                 ffu.vapos = (Vec3d*)opt.vel;
             }                         
         }else{
-            initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
+            //initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
+            initNBmol( &ffl );
             setNonBond( bNonBonded );
             bool bChargeToEpair=true;
             //bool bChargeToEpair=false;
@@ -1186,14 +1203,14 @@ class MolWorld_sp3 : public SolverInterface { public:
     void setNonBond( bool bNonBonded ){
         ffl.bSubtractAngleNonBond = bNonBonded;
         //ff4.bSubtractAngleNonBond = bNonBonded;
-        if(bNonBonded){
-            ffl.REQs = nbmol.REQs;
-            ff .REQs = nbmol.REQs;
-            // if(ff4.REQs==0){
-            //     ff4.REQs = new Quat4f[nbmol.natoms];
-            //     for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
-            // }
-        }
+        // if(bNonBonded){
+        //     ffl.REQs = nbmol.REQs;
+        //     ff .REQs = nbmol.REQs;
+        //     // if(ff4.REQs==0){
+        //     //     ff4.REQs = new Quat4f[nbmol.natoms];
+        //     //     for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
+        //     // }
+        // }
     }
 
     int updateBuilderFromFF(bool bPos=true, bool bQ=true){
@@ -1434,14 +1451,25 @@ class MolWorld_sp3 : public SolverInterface { public:
         //run_omp( 500, 0.05, Ftol, 1000.0 );
         //run_omp( 500, 0.05, Ftol, 1000.0 );
 
-        switch(iParalel){
-            case  0: run_no_omp( nIter, dt_default, Ftol, 1000.0 ); break;
-            case  1: run_omp   ( nIter, dt_default, Ftol, 1000.0 ); break;
-            //case  0: run_no_omp( nIter, 0.02, Ftol, 1000.0 ); break;
-            //case  1: run_omp   ( nIter, 0.02, Ftol, 1000.0 ); break;
-            default: [[unlikely]] {
-                printf( "ERROR: MolWorld_sp3::MDloop() iParalel(%i) not implemented (use 0=run_no_omp(), 1=run_omp()) \n", iParalel );
-                exit(0);
+        if(bUFF){
+            switch(iParalel){
+                case  0: ffu.run    ( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  1: ffu.run_omp( nIter, dt_default, Ftol, 1000.0 ); break;
+                default: [[unlikely]] {
+                    printf( "ERROR: MolWorld_sp3::MDloop() iParalel(%i) not implemented (use 0=run_no_omp(), 1=run_omp()) \n", iParalel );
+                    exit(0);
+                }
+            }
+        }else{
+            switch(iParalel){
+                case  0: run_no_omp( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  1: run_omp   ( nIter, dt_default, Ftol, 1000.0 ); break;
+                //case  0: run_no_omp( nIter, 0.02, Ftol, 1000.0 ); break;
+                //case  1: run_omp   ( nIter, 0.02, Ftol, 1000.0 ); break;
+                default: [[unlikely]] {
+                    printf( "ERROR: MolWorld_sp3::MDloop() iParalel(%i) not implemented (use 0=run_no_omp(), 1=run_omp()) \n", iParalel );
+                    exit(0);
+                }
             }
         }
                 

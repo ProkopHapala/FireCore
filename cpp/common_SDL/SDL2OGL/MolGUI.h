@@ -1798,9 +1798,13 @@ void MolGUI::bindMolecule(const MolWorld_sp3* W ){
     printf( "MolGUI::bindMolecule() \n" );
     //natoms=ff.natoms; nnode=ff.nnode; nbonds=ff.nbonds;
     //atypes=ff.atypes; apos=ff.apos; fapos=ff.fapos; REQs=ff.REQs; pipos=ff.pipos; fpipos=ff.fpipos; bond2atom=ff.bond2atom; pbcShifts=ff.pbcShifts;
-    bindMolecule( W->ffl.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
-    neighs    = W->ffl.neighs;
-    neighCell = W->ffl.neighCell;
+    if(W->bUFF){
+         bindMolecule( W->ffu.natoms, 0, W->ffu.nbonds, W->ffu.atypes, W->ffu.apos, W->ffu.fapos, W->ffu.REQs, 0, 0, W->ffu.bonAtoms, W->ffu.shifts  );
+    }else{    
+        bindMolecule( W->ffl.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+        neighs    = W->ffl.neighs;
+        neighCell = W->ffl.neighCell;
+    }
     constrs   = (Constrains*)&W->constrs;
 }
 
@@ -1880,7 +1884,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     if(bOrig){
         //printf( "MolGUI::drawSystem() bOrig(%i)  mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n", bOrig, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
         //if(bViewAtomP0s     &&  fapos           ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
-        //for(int i=0; i<natoms; i++){ printf( "fapos[%i] (%g,%g,%g)\n", i, fapos[i].x, fapos[i].y, fapos[i].z ); }
+        //for(int i=0; i<natoms; i++){ printf( "MolGUI::drawSystem() fapos[%i] (%g,%g,%g)\n", i, fapos[i].x, fapos[i].y, fapos[i].z ); }
         if(bViewAtomForces    &&  fapos           ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
         if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
         if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }

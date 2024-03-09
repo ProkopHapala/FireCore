@@ -56,7 +56,7 @@ else()
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     ### flags for optimize
-    SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native")
+    SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native -mtune=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native -fopt-info-vec-all")
 endif()
 if ( WITH_OMP )
