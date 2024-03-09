@@ -38,7 +38,7 @@ void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
 class NBFF: public ForceField{ public:
     
     // ---  inherited from Atoms
-    //int     n      =0; // from Atoms
+    //int     natoms =0; // from Atoms
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
     //Vec3d  *fapos  =0; // forces on atomic positions
@@ -1064,6 +1064,7 @@ class NBFF: public ForceField{ public:
 
     void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
         natoms=n_;
+        //printf( "NBFF::bindOrRealloc(natoms=%i) @apos_=%li @fapos_=%li @REQs_=%li @atypes_=%li \n", natoms, (long)apos_, (long)fapos_, (long)REQs_, (long)atypes_ );
         _bindOrRealloc(natoms, apos_  , apos   );
         _bindOrRealloc(natoms, fapos_ , fapos  );
         _bindOrRealloc(natoms, REQs_  , REQs   );

@@ -2606,6 +2606,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     void export_REQs(Quat4d* REQs, int i0=0, int n=-1)const{
         natom_def(n,i0);
         //_allocIfNull(REQs,n);
+        //printf( "export_REQs n %i @REQs=%li \n", n, (long)REQs );
         for(int i=0; i<n; i++){ 
             //printf( "export_REQs[%i] REQ(%g,%g,%g)\n", i, atoms[i0+i].REQ.x,atoms[i0+i].REQ.y,atoms[i0+i].REQ.z  );
             REQs[i]= atoms[i0+i].REQ; }
@@ -4245,7 +4246,6 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
     }
 
     void assignUFFtypes_findrings( double tol, int* neighs, double* BOs, int* BOs_int, bool* set_atom, bool* set_bond ){
-
         bool   explored[atoms.size()];
         for(int ia=0; ia<atoms.size(); ia++){explored[ia]=false;}
         std::vector<int>  nb(7);
@@ -4774,7 +4774,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
     }
 
     // UFF atom-type assignement
-    void assignUFFtypes( int* neighs=0, bool bCumulene=false, bool bDeallocNeighs=true, bool b141=true, bool bSimple=false, bool bConj=false ){ 
+    void assignUFFtypes( int* neighs=0, bool bCumulene=false, bool bDeallocNeighs=true, bool b141=true, bool bSimple=true, bool bConj=false ){ 
 
         // init working arrays
         double tol = 0.05;

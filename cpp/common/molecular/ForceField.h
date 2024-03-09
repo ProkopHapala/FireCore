@@ -9,6 +9,8 @@
 #include "Atoms.h"
 
 #include "Forces.h"
+#include <functional>
+
 
 // check if "vals" are within limits "vmin","vmax"
 bool checkLimits( int n, int m, const double* vals, const double* vmin, const double* vmax, const char* message, bool bPrint=true ){
@@ -125,7 +127,7 @@ class CollisionDamping{ public:
 class ForceField: public Atoms{ public:
 
     // ---  inherited from Atoms
-    //int     n      =0; // from Atoms
+    //int     natoms =0; // from Atoms
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
 
@@ -140,9 +142,33 @@ class ForceField: public Atoms{ public:
     int    npbc   =0;  // total number of periodic images
     Vec3d* shifts __attribute__((aligned(64))) =0;  // array of bond vectors shifts in periodic boundary conditions
 
+    bool  bNonBonded            = true;  // if true we calculate non-bonded interactions
+    bool  bNonBondNeighs        = false;
+    bool  bSubtractBondNonBond  = true;  // if true we subtract bond energy from non-bonded energy
+    bool  bSubtractAngleNonBond = true;  // if true we subtract angle energy from non-bonded energy
+    bool  bClampNonBonded       = true;  // if true we clamp non-bonded energy to zero
+    std::function<void(int,const Vec3d,Vec3d&)> atomForceFunc = nullptr;
+
     CollisionDamping colDamp;
 
     // ==================== Functions
+
+    inline void setNonBondStrategy( int imode=0 ){
+        if      ( imode>0 ){ bNonBondNeighs = true;  }
+        else if ( imode<0 ){ bNonBondNeighs = false; }
+        if( !bNonBonded ){
+            bSubtractAngleNonBond = false;
+            bSubtractBondNonBond  = false;
+        }else if(bNonBondNeighs){
+            bSubtractAngleNonBond = true;
+            bSubtractBondNonBond  = false;
+            bClampNonBonded       = false;
+        }else{ 
+            bSubtractAngleNonBond = true;
+            bSubtractBondNonBond  = true;
+            bClampNonBonded       = true;
+        }
+    }
 
     // update atom positions using molecular dynamics (damped leap-frog)
     inline Vec3d move_atom_MD( int i, const double dt, const double Flim, const double cdamp=0.9 ){
