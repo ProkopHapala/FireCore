@@ -1439,6 +1439,83 @@ class UFF : public NBFF { public:
         //printf( "UFF::run() itr=%i niter=%i \n", itr, niter );
         return itr;
     }
+
+    
+    template<bool _bExploring, bool _bNonBonded, bool _bNonBondNeighs, bool _bPBC>
+    __attribute__((hot))  int run_t( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
+        //printSizes();
+        double F2conv = Fconv*Fconv;
+        double E=0,ff=0,vv=0,vf=0;
+        //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+        double cdamp = colDamp.update( dt );
+        const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
+        //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
+        //printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
+        //setNonBondStrategy();
+
+        ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
+        //printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
+
+        const bool bExploring = go->bExploring;
+
+        int    itr=0;
+        //if(itr_DBG==0)print_pipos();
+        //bool bErr=0;
+        //long T0 = getCPUticks();
+        for(itr=0; itr<niter; itr++){
+            E=0;
+            // ------ eval UFF
+            //if(bClean)
+            cleanForce();
+            Eb = evalBonds();
+            Ea = evalAngles();
+            Ed = evalDihedrals();
+            Ei = evalInversions();
+            // ---- assemble (we need to wait when all atoms are evaluated)
+            for(int ia=0; ia<natoms; ia++){
+                assembleAtomForce(ia); 
+                //printf( "UFF::run() fapos[%i] (%g,%g,%g)\n", ia, fapos[ia].x, fapos[ia].y, fapos[ia].z );
+                if constexpr(_bNonBonded){
+                    if(_bNonBondNeighs){
+                        if constexpr(_bPBC){ Eb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                        else               { Eb+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                    }else{
+                        if constexpr(_bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
+                        else               { Eb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
+                    }
+                }
+                if( atomForceFunc ) atomForceFunc( ia, apos[ia], fapos[ia] );
+            }
+            // ------ move
+            cvf = Vec3dZero;
+            for(int i=0; i<natoms; i++){
+                //F2 += move_atom_GD( i, dt, Flim );
+                //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
+                if constexpr( _bExploring ){
+                    move_atom_Langevin( i, dt, 10000.0, go->gamma_damp, go->T_target );
+                }else{
+                    cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
+                }
+                //move_atom_MD( i, 0.05, 1000.0, 0.9 );
+                //F2 += move_atom_kvaziFIRE( i, dt, Flim );
+            }
+            if constexpr(!_bExploring) if (cvf.z<F2conv){
+                break;
+            }
+            if(cvf.x<0){ cleanVelocity(); };
+            //itr_DBG++;
+        }
+        // if( (itr>=(niter-1)) && (verbosity>1) ) [[unlikely]] { 
+        //     double ticks = (getCPUticks() - T0);
+        //     double c_smooth = 0.1;
+        //     time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/itr )*c_smooth;
+        //     printf( "UFF::run() NOT CONVERGED (bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter])\n", bPBC,bNonBonded,bNonBondNeighs,sqrt(cvf.z),dt,niter, t*1e+3,itr, time_per_iter );
+        // }
+        //printf( "UFF::run() itr=%i niter=%i \n", itr, niter );
+        return itr;
+    }
+
+
     __attribute__((hot))  
     int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
         double F2conv = Fconv*Fconv;
