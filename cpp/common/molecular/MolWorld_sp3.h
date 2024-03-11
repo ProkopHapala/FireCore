@@ -1444,6 +1444,10 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     virtual void MDloop( int nIter, double Ftol=-1 ){
         if(Ftol<0)Ftol=Ftol_default;
+        ffu.bNonBonded     = bNonBonded;
+        ffu.bNonBondNeighs = bNonBondNeighs;
+        //ffu.bNonBonded =  bGridFF;
+
         long T0 = getCPUticks();
         //printf( "MolWorld_sp3::MDloop() \n" );
         //ff.doPiPiI  =false;

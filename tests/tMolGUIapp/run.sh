@@ -63,8 +63,9 @@ fi
 #./$name -x common_resources/propandiol
 #./$name -x common_resources/butandiol
 
-./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 1
+#./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 1
 #./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 500
+./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 2000
 #./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 2000 -NBneigh
 
 

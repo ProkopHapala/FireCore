@@ -592,7 +592,7 @@ void MolGUI::initWiggets(){
         dipoleMap.saveToXyz( "dipoleMap.xyz" );
         bDipoleMap=true;  return 0;      
     };
-    ylay.step( mp->nsubs*2 ); ylay.step( 2 );
+    ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
 
     // mp= new MultiPanel( "Run", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); //panel_NonBondPlot=mp;
     // mp->addPanel( "NonBond"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBonded=!W->bNonBonded;         return 0; };
@@ -610,7 +610,7 @@ void MolGUI::initWiggets(){
 
     if( W->getMolWorldVersion() & MolWorldVersion::QM ){ 
         // --- Selection of orbital to plot
-        ylay.step(mp->nsubs*2); ylay.step( 2 );
+        ylay.step((mp->nsubs+1)*2); ylay.step( 2 );
         panel_iMO = ((GUIPanel*)gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
         panel_iMO->setRange(-5.0,5.0);
         panel_iMO->setValue(0.0);
