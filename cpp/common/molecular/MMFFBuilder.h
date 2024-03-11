@@ -4248,7 +4248,7 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
     void assignUFFtypes_findrings( double tol, int* neighs, double* BOs, int* BOs_int, bool* set_atom, bool* set_bond ){
         bool   explored[atoms.size()];
         for(int ia=0; ia<atoms.size(); ia++){explored[ia]=false;}
-        std::vector<int>  nb(7);
+        std::vector<int>  nb(8);
         for (; true; ) {
             bool changed = false;
             for(int ia=0; ia<atoms.size(); ia++){

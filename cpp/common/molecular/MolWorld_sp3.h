@@ -182,8 +182,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bMMFF             = true;
     bool bUFF              = false; 
     bool b141              = true;   // seems not to be used in assignUFFtypes()
-    //bool bSimple           = false;  // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
-    bool bSimple           = true;   // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
+    bool bSimple           = false;  // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
+    //bool bSimple           = true;   // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
     bool bConj             = true;   // manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation) in assignUFFtypes()
     bool bCumulene         = true;   // exception to avoid cumulenes in assignUFFtypes()
     bool bRigid            = false;
