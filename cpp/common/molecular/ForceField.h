@@ -55,7 +55,7 @@ class CollisionDamping{ public:
 
     int     nstep  = 10;    // how many steps it takes to decay velocity to to 1/e of the initial value
 
-    double  medium = 1.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
+    double  medium = 0.0;   // cdamp       = 1 -(damping_medium     /ndampstep     )
     double  bond   = 0.0;   // col_damp    =     collisionDamping   /(dt*ndampstep )
     double  ang    = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
     double  nonB   = 0.0;   // col_damp_NB =     collisionDamping_NB/(dt*ndampstep )
@@ -78,8 +78,8 @@ class CollisionDamping{ public:
         if( bBond ){ cdampB   = bond /(dt*nstep ); }else{ cdampB=0;   }
         if( bBond ){ cdampAng = ang  /(dt*nstep ); }else{ cdampAng=0; }
         if( bNonB ){ cdampNB  = nonB /(dt*nstep ); }else{ cdampNB=0;  }
-        //printf( "update_collisionDamping(dt=%g,ndampstep=%i,collisionDamping=%g,collisionDamping_NB=%g) cdamp=%g col_damp=%g col_damp_NB=%g \n", dt,  ndampstep, collisionDamping, collisionDamping_NB,    cdamp, col_damp, col_damp_NB  );
         double  cdamp = 1-(medium/nstep );  if(cdamp<0)cdamp=0;
+        //printf( "update_collisionDamping(dt=%g,nstep=%i|medium=%g,bond=%g,ang=%g,nonB=%g) cdamp=%g cdampAng=%g cdampNB=%g \n", dt, nstep, medium,bond,ang,nonB, cdamp, cdampB, cdampAng, cdampNB  );
         return cdamp;
     }
 
@@ -147,7 +147,9 @@ class ForceField: public Atoms{ public:
     bool  bSubtractBondNonBond  = true;  // if true we subtract bond energy from non-bonded energy
     bool  bSubtractAngleNonBond = true;  // if true we subtract angle energy from non-bonded energy
     bool  bClampNonBonded       = true;  // if true we clamp non-bonded energy to zero
-    std::function<void(int,const Vec3d,Vec3d&)> atomForceFunc = nullptr;
+    double  FmaxNonBonded       = 10.0;  // if bClampNonBonded>0 then we clamp non-bonded forces to this value
+    std::function<double(int,const Vec3d,Vec3d&)> atomForceFunc = nullptr;
+    double time_per_iter = 0;
 
     CollisionDamping colDamp;
 
@@ -171,6 +173,7 @@ class ForceField: public Atoms{ public:
     }
 
     // update atom positions using molecular dynamics (damped leap-frog)
+    __attribute__((hot))  
     inline Vec3d move_atom_MD( int i, const double dt, const double Flim, const double cdamp=0.9 ){
         Vec3d f = fapos[i];
         Vec3d v = vapos[i];
@@ -186,7 +189,31 @@ class ForceField: public Atoms{ public:
         return cvf;
     }
 
+    __attribute__((hot))  
+    inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){
+        Vec3d f = fapos[i];
+        Vec3d v = vapos[i];
+        Vec3d p = apos [i];
+        const Vec3d  cvf{ v.dot(f), v.norm2(), f.norm2() };
+        // ----- Langevin
+        f.add_mul( v, -gamma_damp );  // check the untis  ... cdamp/dt = gamma
+        // --- generate randomg force from normal distribution (i.e. gaussian white noise)
+        // -- this is too costly
+        //Vec3d rnd = {-6.,-6.,-6.};
+        //for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
+        // -- keep uniform distribution for now
+        Vec3d rnd = {randf(-1.0,1.0),randf(-1.0,1.0),randf(-1.0,1.0)};
+        //if(i==0){ printf( "dt=%g[arb.]  dt=%g[fs]\n", dt, dt*10.180505710774743  ); }
+        f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp/dt ) );
+        v.add_mul( f, dt );                         
+        p.add_mul( v, dt );
+        apos [i] = p;
+        vapos[i] = v;
+        return cvf;
+    }
+
     // update atom positions using FIRE (Fast Inertial Relaxation Engine)
+    __attribute__((hot))  
     inline double move_atom_FIRE( int i, const double dt, const double Flim, const double cv, const double cf ){
         Vec3d  f   = fapos[i];
         Vec3d  v   = vapos[i];
@@ -203,6 +230,7 @@ class ForceField: public Atoms{ public:
     }
 
     // update atom positions using modified FIRE algorithm
+    __attribute__((hot))  
     inline double move_atom_kvaziFIRE( int i, const double dt, const double Flim ){
         Vec3d  f   = fapos[i];
         Vec3d        v   = vapos[i];
@@ -226,6 +254,7 @@ class ForceField: public Atoms{ public:
     }
 
     // update atom positions using gradient descent
+    __attribute__((hot))  
     inline double move_atom_GD(int i, double dt, double Flim){
         Vec3d  f   = fapos[i];
         Vec3d  p = apos [i];
@@ -238,6 +267,7 @@ class ForceField: public Atoms{ public:
     }
 
     // update atom positions using gradient descent
+    __attribute__((hot))  
     double move_GD(float dt, double Flim=100.0 ){
         double F2sum=0;
         for(int i=0; i<natoms; i++){
@@ -247,6 +277,7 @@ class ForceField: public Atoms{ public:
     }
 
     // update atom positions using gradient descent
+    __attribute__((hot))  
     double move_MD(float dt, const double Flim=100.0, const double cdamp=0.9 ){
         cvf = Vec3dZero;
         for(int i=0; i<natoms; i++){

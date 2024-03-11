@@ -1091,7 +1091,21 @@ class MolWorld_sp3 : public SolverInterface { public:
             //initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
             initNBmol( &ffu );
             setNonBond( bNonBonded );
+            ffu.go = &go;
             nbmol.evalPLQs(gridFF.alphaMorse);
+            ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{    
+                //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
+                double E=0;
+                if   (bGridFF){ E+= gridFF.addForce( p, nbmol.PLQs[ia], f, true  ); }  // GridFF
+                if(bConstrZ){
+                    springbound( p.z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, f.z );
+                }
+                if(ipicked==ia)[[unlikely]]{ 
+                    const Vec3d fs = getForceSpringRay( p, pick_hray, pick_ray0,  Kpick ); 
+                    f.add( fs );
+                }
+                return E;
+            };
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
@@ -1430,6 +1444,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     virtual void MDloop( int nIter, double Ftol=-1 ){
         if(Ftol<0)Ftol=Ftol_default;
+        long T0 = getCPUticks();
         //printf( "MolWorld_sp3::MDloop() \n" );
         //ff.doPiPiI  =false;
         //ff.doPiPiT  =false;
@@ -1450,11 +1465,11 @@ class MolWorld_sp3 : public SolverInterface { public:
         //run_omp( 100, opt.dt, Ftol, 1000.0 );
         //run_omp( 500, 0.05, Ftol, 1000.0 );
         //run_omp( 500, 0.05, Ftol, 1000.0 );
-
+        int nitr=0;
         if(bUFF){
             switch(iParalel){
-                case  0: ffu.run    ( nIter, dt_default, Ftol, 1000.0 ); break;
-                case  1: ffu.run_omp( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  0: nitr=ffu.run    ( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  1: nitr=ffu.run_omp( nIter, dt_default, Ftol, 1000.0 ); break;
                 default: [[unlikely]] {
                     printf( "ERROR: MolWorld_sp3::MDloop() iParalel(%i) not implemented (use 0=run_no_omp(), 1=run_omp()) \n", iParalel );
                     exit(0);
@@ -1462,17 +1477,25 @@ class MolWorld_sp3 : public SolverInterface { public:
             }
         }else{
             switch(iParalel){
-                case  0: run_no_omp( nIter, dt_default, Ftol, 1000.0 ); break;
-                case  1: run_omp   ( nIter, dt_default, Ftol, 1000.0 ); break;
-                //case  0: run_no_omp( nIter, 0.02, Ftol, 1000.0 ); break;
-                //case  1: run_omp   ( nIter, 0.02, Ftol, 1000.0 ); break;
+                case  0: nitr=run_no_omp( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  1: nitr=run_omp   ( nIter, dt_default, Ftol, 1000.0 ); break;
+                //case  0: nitr=run_no_omp( nIter, 0.02, Ftol, 1000.0 ); break;
+                //case  1: nitr=run_omp   ( nIter, 0.02, Ftol, 1000.0 ); break;
                 default: [[unlikely]] {
                     printf( "ERROR: MolWorld_sp3::MDloop() iParalel(%i) not implemented (use 0=run_no_omp(), 1=run_omp()) \n", iParalel );
                     exit(0);
                 }
             }
         }
-                
+
+        { // Measure time 
+            double ticks = (getCPUticks() - T0);
+            double t = ticks*tick2second;
+            double c_smooth = 0.1;
+            time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/nitr )*c_smooth;
+            printf( "MolWorld_sp3::MDloop()  (bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bPBC,bNonBonded,bNonBondNeighs,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
+        }
+
         //run( nIter );
         
         bChargeUpdated=false;
@@ -1491,28 +1514,31 @@ class MolWorld_sp3 : public SolverInterface { public:
 
         double cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
         // if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
-
-        //constexpr bool bNonBondNeighs = false;
-        //constexpr bool bNonBondNeighs = true;
         double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
-        if( !bNonBonded ){
-            ffl.bSubtractAngleNonBond = false;
-            ffl.bSubtractBondNonBond  = false;
-        }else if(bNonBondNeighs){
-            ffl.bSubtractAngleNonBond = true;
-            ffl.bSubtractBondNonBond  = false;
-            ffl.bClampNonBonded       = false;
-            nbmol.bClampNonBonded     = false;
-        }else{ // check non-bonded clamp-and-subtract
-            //ffl.doAngles=false;
-            // ffl.doPiPiI =false;
-            // ffl.doPiPiT =false;
-            // ffl.doPiSigma=false;
-            ffl.bSubtractAngleNonBond = true;
-            ffl.bSubtractBondNonBond  = true;
-            ffl.bClampNonBonded       = true;
-            nbmol.bClampNonBonded     = true;
-        }
+
+        // //constexpr bool bNonBondNeighs = false;
+        // //constexpr bool bNonBondNeighs = true;
+        // if( !bNonBonded ){
+        //     ffl.bSubtractAngleNonBond = false;
+        //     ffl.bSubtractBondNonBond  = false;
+        // }else if(bNonBondNeighs){
+        //     ffl.bSubtractAngleNonBond = true;
+        //     ffl.bSubtractBondNonBond  = false;
+        //     ffl.bClampNonBonded       = false;
+        //     nbmol.bClampNonBonded     = false;
+        // }else{ // check non-bonded clamp-and-subtract
+        //     //ffl.doAngles=false;
+        //     // ffl.doPiPiI =false;
+        //     // ffl.doPiPiT =false;
+        //     // ffl.doPiSigma=false;
+        //     ffl.bSubtractAngleNonBond = true;
+        //     ffl.bSubtractBondNonBond  = true;
+        //     ffl.bClampNonBonded       = true;
+        //     nbmol.bClampNonBonded     = true;
+        // }
+
+        ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+        //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded );
 
         //if(bToCOG){ printf("bToCOG=%i \n", bToCOG ); center(true); }
         //if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
@@ -1528,7 +1554,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             Vec3d cvf_bak = ffl.cvf;
             E=0; ffl.cvf = Vec3dZero;
             //------ eval forces
-            long t1 = getCPUticks();
+            //long t1 = getCPUticks();
 
             for(int i=0; i<ffl.natoms; i++){ ffl.fapos[i]=Vec3dZero; }
             for(int ia=0; ia<ffl.natoms; ia++){ 
@@ -1556,7 +1582,7 @@ class MolWorld_sp3 : public SolverInterface { public:
                     ffl.fapos[ia].add( f );
                 }
             }
-            double t_eval = (getCPUticks()-t1);
+            //double t_eval = (getCPUticks()-t1);
             //printf( "MolWorld_sp3::run_no_omp() (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) %g[tick]\n", bPBC,bGridFF,bNonBondNeighs,sqrt(F2max),opt.dt,niter, t_eval );
             //for(int i=0; i<ffl.natoms; i++){ printf( "ffl.fapos[%i] (%g,%g,%g)\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
 

@@ -1302,8 +1302,14 @@ void MolGUI::draw(){
     //visual_FF_test();
 
     if(W->ipicked>-1){ 
-        Vec3d p = W->ffl.apos[W->ipicked];
-        Vec3d f = getForceSpringRay( W->ffl.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
+        Vec3d p,f;
+        if(W->bUFF){
+            p = W->ffu.apos[W->ipicked];
+            f = getForceSpringRay( W->ffu.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
+        }else{
+            p = W->ffl.apos[W->ipicked];
+            f = getForceSpringRay( W->ffl.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
+        }
         glColor3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
     }
 
@@ -1799,7 +1805,9 @@ void MolGUI::bindMolecule(const MolWorld_sp3* W ){
     //natoms=ff.natoms; nnode=ff.nnode; nbonds=ff.nbonds;
     //atypes=ff.atypes; apos=ff.apos; fapos=ff.fapos; REQs=ff.REQs; pipos=ff.pipos; fpipos=ff.fpipos; bond2atom=ff.bond2atom; pbcShifts=ff.pbcShifts;
     if(W->bUFF){
-         bindMolecule( W->ffu.natoms, 0, W->ffu.nbonds, W->ffu.atypes, W->ffu.apos, W->ffu.fapos, W->ffu.REQs, 0, 0, W->ffu.bonAtoms, W->ffu.shifts  );
+        bindMolecule( W->ffu.natoms, 0, W->ffu.nbonds, W->ffu.atypes, W->ffu.apos, W->ffu.fapos, W->ffu.REQs, 0, 0, W->ffu.bonAtoms, W->ffu.shifts  );
+        neighs    = W->ffu.neighs;
+        neighCell = W->ffu.neighCell;
     }else{    
         bindMolecule( W->ffl.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
         neighs    = W->ffl.neighs;

@@ -44,7 +44,8 @@ fi
 
 #./$name -x common_resources/H2O      -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.0001
 #./$name -x common_resources/H2O      -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.01
-./$name -x common_resources/butandiol -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.01
+#./$name -x common_resources/butandiol -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.01
+#./$name -x common_resources/butandiol   -iParalel 0  -verb 2   -perframe 1 -dt 0.01
 
 
 #./$name -x common_resources/H2O            -iParalel 0  -verb 0   -perframe 1 -dt 0.001
@@ -61,6 +62,11 @@ fi
 #./$name -x common_resources/pyridine -lua script.lua
 #./$name -x common_resources/propandiol
 #./$name -x common_resources/butandiol
+
+./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 1
+#./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 500
+#./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 2000 -NBneigh
+
 
 #./$name -x common_resources/nHexadecan_dicarboxylic -iParalel 0 -T 100 0.01 -verb 2 -perframe 2000
 #./$name -x common_resources/nHexadecan_dicarboxylic -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -NBneigh

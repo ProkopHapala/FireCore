@@ -118,10 +118,9 @@ class MMFFsp3_loc : public NBFF { public:
     Mat3d   invLvec; // inverse lattice vectors
 
     bool    bAngleCosHalf         = true;   // if true we use evalAngleCosHalf() instead of evalAngleCos() to compute anglular energy
-    bool    bSubtractAngleNonBond = false;  // if true we subtract angle energy from non-bonded energy
-    bool    bSubtractBondNonBond  = false;  // if true we subtract bond energy from non-bonded energy
-
-
+    // these are defined in ForceFiled.h
+    //bool    bSubtractAngleNonBond = false;  // if true we subtract angle energy from non-bonded energy
+    //bool    bSubtractBondNonBond  = false;  // if true we subtract bond energy from non-bonded energy
 
     //int itr_DBG=0;
 
