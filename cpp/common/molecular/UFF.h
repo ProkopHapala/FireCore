@@ -11,7 +11,7 @@
 #include "SMat3.h"             // Symmetric Matrix
 #include "molecular_utils.h"   // various molecular utilities
 #include "NBFF.h" // Non-Bonded Force Field
-
+#include "GOpt.h"
 #include "Buckets.h" // Buckets
 
 //#include "Draw3D.h"  // just for debug
@@ -101,6 +101,8 @@ class UFF : public NBFF { public:
     */
 
     Buckets a2f; // mapping from atoms to force pieces (bonds, angles, dihedrals, inversions) for fast force assembling
+
+    GOpt* go=0;
 
     // =========================== Functions
 
@@ -614,9 +616,24 @@ class UFF : public NBFF { public:
                 const Quat4d  REQij = _mixREQ(REQi,REQj); 
                 Vec3d fnb; 
                 E -= getLJQH( dp, fnb, REQij, R2damp );
-                if(bClampNonBonded)clampForce( fnb, Fmax2 );
-                f.add( fnb );
+                if(bClampNonBonded)[[likely]] { clampForce( fnb, Fmax2 ); }
+                f.sub( fnb );
             }
+
+            // //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); 
+            // if(bSubtractBondNonBond) [[likely]] { // subtract non-bonded interactions between atoms which have common neighbor
+            //     Vec3d fij=Vec3dZero;
+            //     //Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
+            //     Quat4d REQij = _mixREQ(REQs[ia],REQs[ing]);  // combine van der Waals parameters for the pair of atoms
+            //     Vec3d dp = h.f*l;
+            //     E -= getLJQH( dp, fij, REQij, R2damp ); // subtract non-bonded interactions 
+            //     if(bClampNonBonded)[[likely]] { clampForce( fij, Fmax2 ); }
+            //     //if(ia==ia_DBG)printf( "ffl:LJQ[%i|%i,%i] r=%g REQ(%g,%g,%g) fij(%g,%g,%g)\n", ia,ing,jng, dp.norm(), REQij.x,REQij.y,REQij.z, fij.x,fij.y,fij.z );
+            //     //bErr|=ckeckNaN( 1,3, (double*)&fij, [&]{ printf("atom[%i]fLJ2[%i,%i]",ia,i,j); } );
+            //     f1.sub(fij);
+            //     //printf( "ffl:SubtractBondNonBond[%i|%i] r=%g fij(%g,%g,%g) REQ(%g,%g,%g)\n", ia,ing, dp.norm(), fij.x,fij.y,fij.z,  REQij.x,REQij.y,REQij.z);
+            // }
+            //fbs[i].sub(f1);  fa.add(f1); 
 
             //fbon[ib*2  ]=f; // force on atom i
             //f.mul(-1.0);
@@ -1337,14 +1354,39 @@ class UFF : public NBFF { public:
         //printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
         //setNonBondStrategy();
 
-        //bSubNonBond           = false;
-        bSubtractBondNonBond  = false;
-        bSubtractAngleNonBond = false;
-        SubNBTorstionFactor   = -1.0;
+        // --- Non-Bonded using ng4-strategy (i.e. check for neighbors in NBFF) 
+        // bNonBonded            = true;
+        // bNonBondNeighs        = true;
+        // bSubtractBondNonBond  = false;
+        // bSubtractAngleNonBond = true;
+        // bClampNonBonded       = false;
+        // //SubNBTorstionFactor   = -1.0;
 
-        int    itr;
+        // // --- Non-Bonded using clamp-and-subtract strategy (i.e. no check for neighbors in NBFF) 
+        // bNonBonded            = true;
+        // bNonBondNeighs        = true;
+        // bSubtractBondNonBond  = true;
+        // bSubtractAngleNonBond = true;
+        // bClampNonBonded       = true;
+        // //SubNBTorstionFactor   = -1.0;
+
+
+        // //bSubNonBond         = false;
+        // bNonBondNeighs        = false;
+        // bSubtractBondNonBond  = false;
+        // bSubtractAngleNonBond = false;
+        // SubNBTorstionFactor   = -1.0;
+        //printf( "UFF::run() cdamp=%g \n", cdamp );
+
+        ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
+        //printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
+
+        const bool bExploring = go->bExploring;
+
+        int    itr=0;
         //if(itr_DBG==0)print_pipos();
         //bool bErr=0;
+        //long T0 = getCPUticks();
         for(itr=0; itr<niter; itr++){
             E=0;
             // ------ eval UFF
@@ -1358,30 +1400,43 @@ class UFF : public NBFF { public:
             for(int ia=0; ia<natoms; ia++){
                 assembleAtomForce(ia); 
                 //printf( "UFF::run() fapos[%i] (%g,%g,%g)\n", ia, fapos[ia].x, fapos[ia].y, fapos[ia].z );
-                // if(bNonBonded){
-                //     if(bNonBondNeighs){
-                //         if(bPBC){ Eb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
-                //         else    { Eb+=evalLJQs_ng4_atom_omp    ( ia ); } 
-                //     }else{
-                //         if(bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, F2max ); }
-                //         else    { Eb+=evalLJQs_atom_omp    ( ia, F2max ); } 
-                //     }
-                // }
-                // if( atomForceFunc ) atomForceFunc( ia, apos[ia], fapos[ia] );
+                if(bNonBonded){
+                    if(bNonBondNeighs){
+                        if(bPBC){ Eb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                        else    { Eb+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                    }else{
+                        if(bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
+                        else    { Eb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
+                    }
+                }
+                if( atomForceFunc ) atomForceFunc( ia, apos[ia], fapos[ia] );
             }
             // ------ move
             cvf = Vec3dZero;
             for(int i=0; i<natoms; i++){
                 //F2 += move_atom_GD( i, dt, Flim );
                 //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
-                cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
+                if( bExploring ){
+                    move_atom_Langevin( i, dt, 10000.0, go->gamma_damp, go->T_target );
+                }else{
+                    cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
+                }
                 //move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 //F2 += move_atom_kvaziFIRE( i, dt, Flim );
             }
-            if(cvf.z<F2conv)break;
+            if(  (!bExploring) && (cvf.z<F2conv)  ){
+                break;
+            }
             if(cvf.x<0){ cleanVelocity(); };
             //itr_DBG++;
         }
+        // if( (itr>=(niter-1)) && (verbosity>1) ) [[unlikely]] { 
+        //     double ticks = (getCPUticks() - T0);
+        //     double c_smooth = 0.1;
+        //     time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/itr )*c_smooth;
+        //     printf( "UFF::run() NOT CONVERGED (bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter])\n", bPBC,bNonBonded,bNonBondNeighs,sqrt(cvf.z),dt,niter, t*1e+3,itr, time_per_iter );
+        // }
+        //printf( "UFF::run() itr=%i niter=%i \n", itr, niter );
         return itr;
     }
     __attribute__((hot))  
