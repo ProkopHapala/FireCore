@@ -65,7 +65,7 @@ fi
 
 #./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 1
 #./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 500
-./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 2000
+#./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 2000
 #./$name -x common_resources/nHexadecan_dicarboxylic -uff -iParalel 0 -T 100 0.01 -verb 2 -perframe 2000 -NBneigh
 
 
@@ -99,7 +99,7 @@ fi
 
 # ====== Small Molecules On Substrate
 
-#./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2
+./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2  -lua makeGUI.lua
 #./$name -x  common_resources/H2O2     -g common_resources/NaCl_1x1_L2 -e
 #./$name -x common_resources/Molekuly  -g common_resources/NaCl_1x1_L2 -e

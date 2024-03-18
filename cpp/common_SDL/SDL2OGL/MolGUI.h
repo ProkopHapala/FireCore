@@ -386,6 +386,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
 
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
+    void scanSurfFF      ( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.},int evalMode=0, int viewMode=0,  double sc=1.0 );
     void debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.}, double sc=NAN );
 
     void initGUI();
@@ -1951,6 +1952,22 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
     SDL_FreeSurface(bitmap);
     delete[] screenPixels;
 }
+
+void MolGUI::scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, int evalMode, int viewMode, double sc ){
+    //if(isnan(sc)){ sc=ForceViewScale; }
+    Vec3d dp=p1-p0; dp.mul(1./n);
+    glBegin(GL_LINES);
+    Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
+    for(int i=0; i<n; i++){
+        Vec3d p,f;
+        W->gridFF.getForce( p, (Quat4f)PLQ, true );
+        Draw3D::vertex( p ); Draw3D::vertex(p + dp     );
+        Draw3D::vertex( p ); Draw3D::vertex(p + f*sc   );
+    }
+    glEnd();
+}
+
+
 
 void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc ){
     if(isnan(sc)){ sc=ForceViewScale; }
