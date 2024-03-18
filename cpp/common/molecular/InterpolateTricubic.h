@@ -9,6 +9,11 @@
 
 #include <immintrin.h>
 
+inline int fold_cubic( int i, int n ){
+    if( i==0 )[[unlikely]]{  return n-1; } else if (i>n)[[unlikely]]{ return i-n; } else [[likely]] {  return i-1; };
+}
+
+
 namespace Spline_Hermite{
 
 template<typename T>
@@ -97,6 +102,63 @@ inline Quat4T<T> ddbasis_val_old( T x ){
        x6 + x6 -  6 + d1*-0.5,  //  p+0 = c0 + -0.5*d1
 	    6 - x6 - x6 + d0* 0.5,  //  p+1 = c1 + +0.5*d0
 	                  d1* 0.5   //  p+2 =      +0.5*d1
+    };
+}
+
+__attribute__ ((pure))
+__attribute__((hot)) 
+inline Vec3d fe2d_v4( const double tx, const double ty, const Quat4i i, const Quat4d PLQH, const Quat4d* V ){
+    alignas(32) Quat4d e,fx;
+    {
+        const Quat4d bx =  basis_val( tx );
+        const Quat4d dx = dbasis_val( tx );
+        {
+            alignas(32) Quat4d p;
+            const Quat4d* Vi = V+i.x*4;
+            p.x = PLQH.dot( *(Vi  ) );
+            p.y = PLQH.dot( *(Vi+1) );
+            p.z = PLQH.dot( *(Vi+2) );
+            p.w = PLQH.dot( *(Vi+3) );
+            e.x  = bx.dot(p); 
+            fx.x = dx.dot(p);
+        }
+        {
+            alignas(32) Quat4d p;
+            const Quat4d* Vi = V+i.y*4;
+            p.x = PLQH.dot( *(Vi  ) );
+            p.y = PLQH.dot( *(Vi+1) );
+            p.z = PLQH.dot( *(Vi+2) );
+            p.w = PLQH.dot( *(Vi+3) );
+            e.y  = bx.dot(p);
+            fx.y = dx.dot(p);
+        }
+        {
+            alignas(32) Quat4d p;
+            const Quat4d* Vi = V+i.z*4;
+            p.x = PLQH.dot( *(Vi  ) );
+            p.y = PLQH.dot( *(Vi+1) );
+            p.z = PLQH.dot( *(Vi+2) );
+            p.w = PLQH.dot( *(Vi+3) );
+            e.z  = bx.dot(p);
+            fx.z = dx.dot(p);
+        }
+        {
+            alignas(32) Quat4d p;
+            const Quat4d* Vi = V+i.w*4;
+            p.x = PLQH.dot( *(Vi  ) );
+            p.y = PLQH.dot( *(Vi+1) );
+            p.z = PLQH.dot( *(Vi+2) );
+            p.w = PLQH.dot( *(Vi+3) );
+            e.w  = bx.dot(p);
+            fx.w = dx.dot(p);
+        }
+    }
+    alignas(32) const Quat4d by =  basis_val( ty );
+    alignas(32) const Quat4d dy = dbasis_val( ty );
+    return Vec3d{
+        by.dot(fx), // Fx
+        dy.dot(e ), // Fy
+        by.dot(e )  // E
     };
 }
 
@@ -313,6 +375,38 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
         bz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // E
     };
 } 
+
+
+
+__attribute__ ((pure))
+__attribute__((hot)) 
+Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V ){
+    // We assume there are boundary added to simplify the index calculations
+	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+    if( 
+        ((ix<0)||(ix>=n.x-3)) ||
+        ((iy<0)||(iy>=n.y-3)) ||
+        ((iz<0)||(iz>=n.z-3))        
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    //Quat4d E,Fx,Fy;
+    const int nxy = n.x*n.y;
+    int i0 = ix + n.x*( iy + n.y*iz );  const Vec3d Exy1 = fe2d_v4(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, PLQH, V );
+    int i1 = i0+nxy  ;                  const Vec3d Exy2 = fe2d_v4(tx,ty, {i1,i1+n.x,i1+n.x*2,i1+3*n.x}, PLQH, V );
+    int i2 = i0+nxy*2;                  const Vec3d Exy3 = fe2d_v4(tx,ty, {i2,i2+n.x,i2+n.x*2,i2+3*n.x}, PLQH, V );
+    int i3 = i0+nxy*3;                  const Vec3d Exy4 = fe2d_v4(tx,ty, {i3,i3+n.x,i3+n.x*2,i3+3*n.x}, PLQH, V );
+    const Quat4d bz =  basis_val( tz );
+    const Quat4d dz = dbasis_val( tz );
+    return Quat4d{
+        bz.dot( {Exy1.x, Exy2.x, Exy3.x, Exy4.x} ), // Fx
+        bz.dot( {Exy1.y, Exy2.y, Exy3.y, Exy4.y} ), // Fy
+        dz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // Fz
+        bz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // E
+    };
+} 
+
+
 
 __attribute__ ((pure))
 __attribute__((hot)) 

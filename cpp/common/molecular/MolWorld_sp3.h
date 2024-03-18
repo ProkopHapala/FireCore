@@ -767,6 +767,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             if(bGridDouble){  
                 gridFF.tryLoad( "FFelec_d.bin", "FFPaul_d.bin", "FFLond_d.bin", false, true ); 
                 gridFF.checkSum( true );
+                gridFF.makeVPLQH();
             }
             gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
             if(bSaveDebugXSFs)saveGridXsfDebug();

@@ -98,6 +98,9 @@ class GridFF : public NBFF{ public:
     Quat4d   *FFelec_d = 0;
     //Quat4f *FFtot    = 0; // total FF is not used since each atom-type has different linear combination
 
+    Vec3i gridN{0,0,0};
+    Quat4d   *VPLQH = 0;
+
     // ------ ToDo: this should be put inside NBFF
     std::vector<Vec3d>  apos_  ;
     std::vector<Quat4d> REQs_  ;
@@ -132,7 +135,25 @@ class GridFF : public NBFF{ public:
             _realloc( FFelec_d, ntot );
         }
     }
-    
+
+    void clear(){
+        _dealloc( FFPaul );
+        _dealloc( FFLond );
+        _dealloc( FFelec );
+
+        _dealloc( FFPaul_d );
+        _dealloc( FFLond_d );
+        _dealloc( FFelec_d );
+
+        _dealloc( VPLQH  );   
+
+        apos_  .clear();
+        REQs_  .clear();
+        atypes_.clear();
+
+        //NBFF::clear();
+
+    }
 
     void allocateAtoms(int natoms_){
         natoms = natoms_;
@@ -232,6 +253,15 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
          + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*PLQ.z
         ;
     }
+}
+
+__attribute__((hot))  
+inline Quat4d getForce_Tricubic( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
+    Vec3d u;
+    p.sub(shift0);
+    p.sub(grid.pos0);
+    grid.iCell.dot_to( p, u );
+	return Spline_Hermite::fe3d_v4( PLQH, u, grid.n, VPLQH );
 }
 
 __attribute__((hot))  
@@ -565,6 +595,27 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     }
     void makeGridFF_d(){ makeGridFF_omp_d(natoms,apos,REQs); }
 
+    void makeVPLQH(){
+        printf( "GridFF::makeVPLQH() \n" );
+        gridN.x = grid.n.x+3;
+        gridN.y = grid.n.y+3;
+        gridN.z = grid.n.z+3;
+        _realloc0( VPLQH, gridN.totprod(), Quat4dNAN );
+        for ( int iz=0; iz<gridN.z; iz++ ){
+            int iz_ = fold_cubic( iz, grid.n.z );
+            for ( int iy=0; iy<gridN.y; iy++ ){
+                int iy_ = fold_cubic( iy, grid.n.y );
+                for ( int ix=0; ix<gridN.x; ix++ ){
+                    const int i = ix + gridN.x*( iy + gridN.y * iz );
+                    int ix_ = fold_cubic( ix, grid.n.x );
+                    //if( (iz==0)&&(iy==0) ){  printf( "GridFF::makeVPLQH() ix(%i) -> ix(%i)\n", ix, ix_ ); }
+                    const int j = ix + grid.n.x*( iy + grid.n.y * iz );
+                    VPLQH[ i ] = Quat4d{ FFPaul_d[j].w, FFLond_d[j].w, FFLond_d[j].w, 0.0 };
+                }
+            }
+        }
+    }
+
     __attribute__((hot))  
     void evalGridR(int natoms, Vec3d * apos, Quat4d * REQs ){
         printf( "GridFF::evalGridR() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, grid.pos0.x,grid.pos0.y,grid.pos0.z );
@@ -811,7 +862,6 @@ void checkSum( bool bDouble ){
         printf( "GridFF::checkSum() bDouble=0 Pauli %g %g %g %g | London %g %g %g %g | Coulomb %g %g %g %g \n", paul.x,paul.y,paul.z,paul.w, lond.x,lond.y,lond.z,lond.w, elec.x,elec.y,elec.z,elec.w );
     }
 } 
-
 
  #ifdef IO_utils_h
     bool tryLoad( const char* fname_Coul, const char* fname_Paul, const char* fname_Lond, bool recalcFF=false, bool bDouble=false ){
