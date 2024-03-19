@@ -190,6 +190,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool bDrawParticles = false;
     bool hideEp           =false;
     CheckBoxList* panel_NBPlot=0;
+    MultiPanel* panel_Edit = 0;
     MultiPanel* panel_NonBondPlot=0;
     MultiPanel* panel_PickedType=0;
     MultiPanel* panel_TestType=0;
@@ -295,6 +296,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_MO = 0;
     int  ogl_nonBond = 0;
     int  ogl_trj = 0;
+    int  ogl_surf_scan = 0;
 
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
@@ -386,7 +388,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
 
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
-    void scanSurfFF      ( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.},int evalMode=0, int viewMode=0,  double sc=1.0 );
+    void scanSurfFF      ( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.}, int evalMode=0, int viewMode=0,  double sc=1.0, Vec3d hat=Vec3dX );
     void debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.}, double sc=NAN );
 
     void initGUI();
@@ -570,7 +572,7 @@ void MolGUI::initWiggets(){
     CheckBoxList* chk =0;
     // ------ Edit
     ylay.step( 1 ); ylay.step( 2 );
-    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-6); gui.addPanel( mp ); //panel_NonBondPlot=mp;
+    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-8); gui.addPanel( mp ); panel_Edit=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i); return 0; };
     mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ std::unordered_set<int> s(W->selection.begin(),W->selection.end()); W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++) if( !s.contains(i) )W->selection.push_back(i); return 0; };
@@ -589,10 +591,25 @@ void MolGUI::initWiggets(){
         W->hideEPairs();
         dipoleMap.genAndSample( 20, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} );
         //dipoleMap.genAndSample( 1, Rs, 0.05, {0.0,-7.0,0.0}, {1.0,0.0} );
-
         dipoleMap.saveToXyz( "dipoleMap.xyz" );
         bDipoleMap=true;  return 0;      
     };
+    //int npan = mp->subs.size();
+
+    auto lamb_scanSurf = [&](GUIAbstractPanel* p){ 
+        if(W->ipicked<0)return; 
+        //particle_REQ = 0.0;
+        int npan =6;
+        double sc = pow( 10., panel_Edit->subs[npan+0]->value );
+        int iview = panel_Edit->subs[npan+1]->value;
+        int iscan = panel_Edit->subs[npan+2]->value;
+        printf( "lamb_scanSurf() npan=%i iview=%i iscan=%i sc=%g SurfFF_view.range(%g,%g)\n", npan, iview, iscan, sc,  panel_Edit->subs[npan+1]->vmin, panel_Edit->subs[npan+1]->vmax  );
+        scanSurfFF( 100, apos[W->ipicked]+Vec3d{0.0,0.0,-5.0}, apos[W->ipicked]+Vec3d{0.0,0.0,+5.0}, W->ffl.REQs[W->ipicked], iscan, iview, sc, Vec3dX );
+        //scanSurfFF( 100, apos[W->ipicked]-Vec3d{0.0,0.0,5.0}, apos[W->ipicked]-Vec3d{0.0,0.0,1.0}, particle_REQ, iscan, iview, sc );
+    };
+    mp->addPanel( "scanSurfFF",  {-3.0,3.0,0.0}, 1,1,0,1,1 )->command = lamb_scanSurf;
+    mp->addPanel( "SurfFF_view", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;
+    mp->addPanel( "SurfFF_scan", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;
     ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
 
     // mp= new MultiPanel( "Run", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); //panel_NonBondPlot=mp;
@@ -621,8 +638,6 @@ void MolGUI::initWiggets(){
             renderOrbital( iHOMO + which_MO );
         return 0; });
     }
-
-
 
     MolGUI::nonBondGUI();
 }
@@ -1314,7 +1329,10 @@ void MolGUI::draw(){
         glColor3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
     }
 
+    if( ogl_surf_scan>0 ){ glCallList(ogl_surf_scan); }
+
     if(bDebug_scanSurfFF){ // --- GridFF debug_scanSurfFF()
+        // ------ Deprecated ?
         Vec3d p0=W->gridFF.grid.pos0; 
         if(W->ipicked>-1){ p0.z = W->ffl.apos[W->ipicked].z; }{
             p0.z = W->ffl.apos[0].z;
@@ -1953,21 +1971,34 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
     delete[] screenPixels;
 }
 
-void MolGUI::scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, int evalMode, int viewMode, double sc ){
-    //if(isnan(sc)){ sc=ForceViewScale; }
+void MolGUI::scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, int evalMode, int viewMode, double sc, Vec3d hat ){
+    printf( " MolGUI::scanSurfFF() evalMode=%i viewMode=%i n=%i p0(%g,%g,%g) p1(%g,%g,%g) REQ(%g,%g,%g,%g) ogl_surf_scan=%i sc=%g hat(%g,%g,%g)\n", evalMode,viewMode,  n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z,    REQ.x,REQ.y,REQ.z,REQ.w,    ogl_surf_scan, sc, hat.x,hat.y,hat.z );
+    if( !ogl_surf_scan ){ glDeleteLists(ogl_surf_scan,1); }
+    ogl_surf_scan = glGenLists(1);
     Vec3d dp=p1-p0; dp.mul(1./n);
+    glNewList(ogl_surf_scan, GL_COMPILE );
     glBegin(GL_LINES);
     Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
+    Vec3d op2;
     for(int i=0; i<n; i++){
-        Vec3d p,f;
-        W->gridFF.getForce( p, (Quat4f)PLQ, true );
-        Draw3D::vertex( p ); Draw3D::vertex(p + dp     );
-        Draw3D::vertex( p ); Draw3D::vertex(p + f*sc   );
+        Vec3d  p = p0 + dp*i;
+        Quat4d fe;
+        if     ( evalMode==0 ){ fe = W->gridFF.getForce_d       ( p, PLQ, true ); }
+        else if( evalMode==1 ){ fe = W->gridFF.getForce_Tricubic( p, PLQ, true ); }
+        //printf(   "MolGUI::scanSurfFF()[%i] p(%g,%g,%g) fe(%g,%g,%g|%g)\n", i, p.x,p.y,p.z,   fe.x,fe.y,fe.z,fe.w  );
+        Vec3d p2;
+        if     ( viewMode==0 ){ p2 = p + hat*fe.e*sc; }  // Energy
+        else if( viewMode==1 ){ p2 = p +     fe.f*sc; }  // force
+        Draw3D::vertex( p   ); Draw3D::vertex(p2);
+        if(i>0){ 
+            Draw3D::vertex( p-dp ); Draw3D::vertex(p);
+            Draw3D::vertex( op2  ); Draw3D::vertex(p2); 
+        }
+        op2=p2;
     }
     glEnd();
+    glEndList();
 }
-
-
 
 void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc ){
     if(isnan(sc)){ sc=ForceViewScale; }
