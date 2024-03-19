@@ -171,6 +171,7 @@ class GridFF : public NBFF{ public:
 
 __attribute__((hot))  
 inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
+    //printf(  "getForce() p(%g,%g,%g) PLQ(%g,%g,%g,%g) bSurf=%i @FFPaul=%li @FFLond=%li @FFelec=%li \n", p.x,p.y,p.z,  PLQ.x,PLQ.y,PLQ.z,PLQ.w, (long)FFPaul,(long)FFLond,(long)FFelec );
     #pragma omp SIMD
     {
     Vec3d u;
@@ -655,9 +656,9 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Quat4f f = Quat4fZero;
-            if(FFPaul ) f.add_mul( FFPaul [ibuff], PLQ.x );
+            if(FFPaul) f.add_mul( FFPaul [ibuff], PLQ.x );
             if(FFLond) f.add_mul( FFLond[ibuff], PLQ.y );
-            if(FFelec  ) f.add_mul( FFelec  [ibuff], PLQ.z );
+            if(FFelec) f.add_mul( FFelec  [ibuff], PLQ.z );
             FF[ibuff] =  f;
         });
     }

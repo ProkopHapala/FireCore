@@ -928,20 +928,19 @@ class NBFF: public ForceField{ public:
         return E;
     }
 
-/*
     double evalMorsePLQ( NBFF& B, Mat3d& cell, Vec3i nPBC, double K=-1.0, double RQ=1.0 ){
         //printf( "NBFF::evalMorsePLQ() PLQs %li \n", (long)PLQs, K, RQ );
         double E=0;
         //printf( "NBFF nPBC(%i,%i,%i) K %g RQ %g R2Q %g plq.z %g \n", nPBC.x,nPBC.y,nPBC.z, K, sqrt(R2Q), R2Q, plq.z );
         double R2Q=RQ*RQ;
-        for(int i=0; i<n; i++){
+        for(int i=0; i<natoms; i++){
             Vec3d fi = Vec3dZero;
             Vec3d pi = apos[i];
             //const Quat4d& REQi = REQs[i];
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
-            for(int j=0; j<B.n; j++){
+            for(int j=0; j<B.natoms; j++){
                 Vec3d dp0; dp0.set_sub( pi, B.apos[j] );
                 Quat4d REQj = B.REQs[j];
                 for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
@@ -974,7 +973,6 @@ class NBFF: public ForceField{ public:
         }
         return E;
     }
-*/
 
     double evalR( NBFF& B ){
         //printf( "NBFF::evalR() \n" );
