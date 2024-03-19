@@ -217,17 +217,26 @@ def sampleSurf( name, rs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp
     lib.sampleSurf( name, n, rs, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
     return Es,fs
 
-# void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
-lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
+# void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){  
+lib.sampleSurf_vecs.argtypes  = [ c_int, array2d, array2d, c_int, c_int,  c_double, c_double, c_double, c_double, c_double, c_int, c_bool] 
 lib.sampleSurf_vecs.restype   =  None
-def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False ):
-    if name is not None: name=name.encode('utf8')
-    n =len(poss)
-    if Es is None: Es=np.zeros(n)
-    if fs is None: fs=np.zeros((n,3))
-    pos0=np.array(pos0)
-    lib.sampleSurf_vecs( name, n, poss, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
-    return Es,fs
+def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q=0.0, K=+1.6, Rdamp=0.1, npbc=1, bSave=False ):
+    n =len(ps)
+    if FEs is None: FEs=np.zeros((n,4))
+    lib.sampleSurf_vecs( n, ps, FEs, kind, ityp, RvdW, EvdW, Q, K, Rdamp, npbc, bSave )
+    return FEs
+
+# # void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
+# lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
+# lib.sampleSurf_vecs.restype   =  None
+# def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False ):
+#     if name is not None: name=name.encode('utf8')
+#     n =len(poss)
+#     if Es is None: Es=np.zeros(n)
+#     if fs is None: fs=np.zeros((n,3))
+#     pos0=np.array(pos0)
+#     lib.sampleSurf_vecs( name, n, poss, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
+#     return Es,fs
 
 # void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut ){
 lib.setupCollisionDamping.argtypes  = [c_int, c_double, c_double, c_double, c_double, c_double, c_double]
