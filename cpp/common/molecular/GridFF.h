@@ -268,10 +268,10 @@ inline Quat4d getForce_Tricubic( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) 
     //u.mul(0.25);
 
     // ---- Boundary conditions
-    u.x=(u.x-((int)(u.x+10)-10))*grid.n.x;
-    u.y=(u.y-((int)(u.y+10)-10))*grid.n.y;
+    u.x=(u.x-((int)(u.x+10)-10))*grid.n.x-1;
+    u.y=(u.y-((int)(u.y+10)-10))*grid.n.y-1;
     //u.z=(u.z-((int)(u.z+10)-10))*n.z;
-    if(u.z<0.0){ u.z=0.0; }else if(u.z>1.0){ u.z=1.0; }; u.z=u.z*grid.n.z;
+    if(u.z<0.0){ u.z=0.0; }else if(u.z>1.0){ u.z=1.0; }; u.z=u.z*grid.n.z-1;
 	//return Spline_Hermite::fe3d_v4( PLQH, u, grid.n, VPLQH );
     //Quat4d PLQH_{0.,0.,1.0,0.0};
 
