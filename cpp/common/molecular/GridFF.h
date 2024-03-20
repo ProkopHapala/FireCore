@@ -99,7 +99,8 @@ class GridFF : public NBFF{ public:
     //Quat4f *FFtot    = 0; // total FF is not used since each atom-type has different linear combination
 
     Vec3i gridN{0,0,0};
-    Quat4d   *VPLQH = 0;
+    Quat4d   *VPLQH   = 0;
+    double   *V_debug = 0;
 
     // ------ ToDo: this should be put inside NBFF
     std::vector<Vec3d>  apos_  ;
@@ -145,7 +146,8 @@ class GridFF : public NBFF{ public:
         _dealloc( FFLond_d );
         _dealloc( FFelec_d );
 
-        _dealloc( VPLQH  );   
+        _dealloc( VPLQH   );   
+        _dealloc( V_debug );   
 
         apos_  .clear();
         REQs_  .clear();
@@ -262,7 +264,27 @@ inline Quat4d getForce_Tricubic( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) 
     p.sub(shift0);
     p.sub(grid.pos0);
     grid.iCell.dot_to( p, u );
-	return Spline_Hermite::fe3d_v4( PLQH, u, grid.n, VPLQH );
+
+    //u.mul(0.25);
+
+    // ---- Boundary conditions
+    u.x=(u.x-((int)(u.x+10)-10))*grid.n.x;
+    u.y=(u.y-((int)(u.y+10)-10))*grid.n.y;
+    //u.z=(u.z-((int)(u.z+10)-10))*n.z;
+    if(u.z<0.0){ u.z=0.0; }else if(u.z>1.0){ u.z=1.0; }; u.z=u.z*grid.n.z;
+	//return Spline_Hermite::fe3d_v4( PLQH, u, grid.n, VPLQH );
+    //Quat4d PLQH_{0.,0.,1.0,0.0};
+
+	//const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    //return Quat4d{ 0.0,0.0,0.0, FFelec[ix + grid.n.x*( iy + grid.n.y*iz )].w   };
+
+    //const int    ix = (int)u.x+1,  iy = (int)u.y+1,  iz = (int)u.z+1;
+    //return Quat4d{ 0.0,0.0,0.0, VPLQH[ix + gridN.x*( iy + gridN.y*iz )].z   };
+
+    //return Spline_Hermite::fe3d( u, gridN, V_debug );
+
+    return Spline_Hermite::fe3d_v4( PLQH, u, gridN, VPLQH );
+
 }
 
 __attribute__((hot))  
@@ -602,6 +624,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         gridN.y = grid.n.y+3;
         gridN.z = grid.n.z+3;
         _realloc0( VPLQH, gridN.totprod(), Quat4dNAN );
+        _realloc0( V_debug, gridN.totprod(), 0.0/0.0 );
         for ( int iz=0; iz<gridN.z; iz++ ){
             int iz_ = fold_cubic( iz, grid.n.z );
             for ( int iy=0; iy<gridN.y; iy++ ){
@@ -611,10 +634,13 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                     int ix_ = fold_cubic( ix, grid.n.x );
                     //if( (iz==0)&&(iy==0) ){  printf( "GridFF::makeVPLQH() ix(%i) -> ix(%i)\n", ix, ix_ ); }
                     const int j = ix + grid.n.x*( iy + grid.n.y * iz );
-                    VPLQH[ i ] = Quat4d{ FFPaul_d[j].w, FFLond_d[j].w, FFLond_d[j].w, 0.0 };
+                    VPLQH[ i ] = Quat4d{ FFPaul_d[j].w, FFLond_d[j].w, FFelec_d[j].w, 0.0 };
+
+                    V_debug[ i ] = FFelec_d[j].w; // debug
                 }
             }
         }
+        printf( "GridFF::makeVPLQH() DONE\n" );
     }
 
     __attribute__((hot))  

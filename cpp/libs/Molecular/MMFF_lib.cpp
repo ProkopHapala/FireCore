@@ -190,8 +190,11 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
         printf( "saveXSF() DONE \n" );
         delete [] FFtot;
     }
-    Quat4f PLQ   = REQ2PLQ  ( test_REQ, K );
-    Quat4d PLQ_d = REQ2PLQ_d( test_REQ, K );
+    // Quat4f PLQ   = REQ2PLQ  ( test_REQ, K );
+    // Quat4d PLQ_d = REQ2PLQ_d( test_REQ, K );
+    Quat4f PLQ   {0.0,0.0,1.0,0.0};
+    Quat4d PLQ_d {0.0,0.0,1.0,0.0};
+
     printf( "MMFF_lib::sampleSurf_vecs() PLQ(%g,%g,%g,%g) test_REQ(%g,%g,%g,%g) K=%g \n", PLQ.x,PLQ.y,PLQ.z,PLQ.w,  test_REQ.x,test_REQ.y,test_REQ.z,test_REQ.w, K  );
     double R2Q=RQ*RQ;
     Quat4d bak_REQ;
