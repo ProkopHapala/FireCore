@@ -39,6 +39,9 @@
 
 #include "MethodDict.h"
 
+
+#include "DipoleMap.h"
+
 //using Action  = std::function<void(double val)>; 
 //using CommandDict = std::unordered_map<std::string,>;
 
@@ -88,6 +91,33 @@ Vec2d evalNonBondGrid2D( const NBFF& ff, Quat4d REQi, double Rdamp, Vec2i ns, do
 // } // namespace Draw3D
 
 
+void drawDipoleMapGrid( DipoleMap& dipoleMap, Vec2d sc=Vec2d{1.,1.}, bool radial=true, bool azimuthal=true ){
+    int nphi = dipoleMap.nphi;
+    int nr   = dipoleMap.particles.size()/nphi;
+    if(radial)
+    for(int ip=0; ip<nphi; ip++ ){
+        glBegin(GL_LINE_STRIP);
+        for(int ir=0; ir<nr; ir++ ){
+            int i = ip + ir*nphi;
+            //printf( "drawDipoleMap()[%i|ip=%i,ir=%i]\n", i, ip, ir );
+            Vec3d p = dipoleMap.particles[i];
+            p.z    +=  dipoleMap.FE[i].e*sc.x + dipoleMap.FE2[i].e*sc.y;
+            glVertex3f( p.x, p.y, p.z );
+        }
+        glEnd();
+    }
+    if(azimuthal)
+    for(int ir=0; ir<nr; ir++ ){
+       glBegin(GL_LINE_STRIP);
+        for(int ip=0; ip<nphi; ip++ ){
+            int i = ip + ir*nphi;
+            Vec3d p = dipoleMap.particles[i];
+            p.z    +=  dipoleMap.FE[i].e*sc.x + dipoleMap.FE2[i].e*sc.y;
+            glVertex3f( p.x, p.y, p.z );
+        }
+        glEnd();
+    }
+}
 
 // ===========================================
 // ================= MAIN CLASS ==============
@@ -137,6 +167,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     MolWorld_sp3* W=0;
 
+    bool bDipoleMap = false;
+    DipoleMap dipoleMap;
+
     // ---- GUI
 
     Console console;
@@ -157,13 +190,21 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool bDrawParticles = false;
     bool hideEp           =false;
     CheckBoxList* panel_NBPlot=0;
+    MultiPanel* panel_Edit = 0;
     MultiPanel* panel_NonBondPlot=0;
     MultiPanel* panel_PickedType=0;
     MultiPanel* panel_TestType=0;
     MultiPanel* panel_GridXY=0;
 
+    // https://docs.lammps.org/Howto_tip5p.html
+    // TIP5P - Transferable Intermolecular Potential 5 Point   - 5 particles   (  O(0.0e), H1(+0.241e), H1(+0.241), E1(-0.241e), E2(-0.241e) ), E ~ 0.7A from Oxygen
+    Quat4d particle_REQ { 1.187, sqrt(0.0006808    ), -0.24, 0.0 };
+    Quat4d particle_REQ2{ 1.750, sqrt(0.00260184625), +0.24, 0.0 };
+    double particle_Lbond = 1.0;
     std::vector<Quat4d> particles;
+    std::vector<Quat4d> particles2;
     std::vector<int>    particlePivots; // index of atom to which the particle is attached
+
 
     Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
 
@@ -255,6 +296,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_MO = 0;
     int  ogl_nonBond = 0;
     int  ogl_trj = 0;
+    int  ogl_surf_scan = 0;
 
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
@@ -334,6 +376,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void plotNonBondGridAxis();
     void relaxNonBondParticles( double dt = 0.2, double Fconv = 1e-6, int niter = 1000);
     void drawParticles();
+    void drawDipoleMap();
     //void drawParticleNonBonds();
     void showBonds();
     void printMSystem( int isys, int perAtom, int na, int nvec, bool bNg=true, bool bNgC=true, bool bPos=true );
@@ -345,6 +388,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	void selectRect( const Vec3d& p0, const Vec3d& p1 );
 
 	void saveScreenshot( int i=0, const char* fname="data/screenshot_%04i.bmp" );
+    void scanSurfFF      ( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.}, int evalMode=0, int viewMode=0,  double sc=1.0, Vec3d hat=Vec3dX );
     void debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ=Quat4d{ 1.487, 0.02609214441, +0.2, 0.}, double sc=NAN );
 
     void initGUI();
@@ -352,6 +396,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  clearGUI(int n);
     void initMemberOffsets();
     void initWiggets();
+    //void initWiggets_Run();
     void initCommands();
     void nonBondGUI();
     void drawingHex(double z0);
@@ -522,11 +567,12 @@ void MolGUI::initWiggets(){
             }
         );
 
-    GUIPanel* p=0;
-    MultiPanel* mp=0;
+    GUIPanel*     p   =0;
+    MultiPanel*   mp  =0;
+    CheckBoxList* chk =0;
     // ------ Edit
     ylay.step( 1 ); ylay.step( 2 );
-    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-5); gui.addPanel( mp ); panel_NonBondPlot=mp;
+    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-8); gui.addPanel( mp ); panel_Edit=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i); return 0; };
     mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ std::unordered_set<int> s(W->selection.begin(),W->selection.end()); W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++) if( !s.contains(i) )W->selection.push_back(i); return 0; };
@@ -535,12 +581,54 @@ void MolGUI::initWiggets(){
     mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->alignToAxis({2,1,0}); return 0; };
     p=mp->addPanel( "save:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->saveXYZ(fname); return 0; }; p->inputText="out.xyz";
 
+    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.points_along_rim( R, {5.0,0.0,0.0}, Vec2d{0.0,0.1} );  bDipoleMap=true;  return 0; };
+    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.prepareRim( 5, {1.0,2.0}, {0.4,0.6}, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
+    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value;   double Rs[]{R,R+0.1,R+0.2,R+0.3,R+0.5};  dipoleMap.prepareRim2( 5, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
+    mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+        //double Rs[]{0.5,0.7,0.9,1.1,1.3,1.5,1.7,1.9,2.5,3.0,3.5,4.5,6.0,8.0,10.0};  
+        double Rs[20]{0.3, 0.4, 0.5, 0.6, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0, 3.5, 4.5, 6.0, 8.0, 10.0, 14.0, 20.0 };  
+        //dipoleMap.prepareRim2( 15, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} ); 
+        W->hideEPairs();
+        dipoleMap.genAndSample( 20, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} );
+        //dipoleMap.genAndSample( 1, Rs, 0.05, {0.0,-7.0,0.0}, {1.0,0.0} );
+        dipoleMap.saveToXyz( "dipoleMap.xyz" );
+        bDipoleMap=true;  return 0;      
+    };
+    //int npan = mp->subs.size();
+
+    auto lamb_scanSurf = [&](GUIAbstractPanel* p){ 
+        if(W->ipicked<0)return; 
+        //particle_REQ = 0.0;
+        int npan =6;
+        double sc = pow( 10., panel_Edit->subs[npan+0]->value );
+        int iview = panel_Edit->subs[npan+1]->value;
+        int iscan = panel_Edit->subs[npan+2]->value;
+        printf( "lamb_scanSurf() npan=%i iview=%i iscan=%i sc=%g SurfFF_view.range(%g,%g)\n", npan, iview, iscan, sc,  panel_Edit->subs[npan+1]->vmin, panel_Edit->subs[npan+1]->vmax  );
+        scanSurfFF( 100, apos[W->ipicked]+Vec3d{0.0,0.0,-5.0}, apos[W->ipicked]+Vec3d{0.0,0.0,+5.0}, W->ffl.REQs[W->ipicked], iscan, iview, sc, Vec3dX );
+        //scanSurfFF( 100, apos[W->ipicked]-Vec3d{0.0,0.0,5.0}, apos[W->ipicked]-Vec3d{0.0,0.0,1.0}, particle_REQ, iscan, iview, sc );
+    };
+    mp->addPanel( "scanSurfFF",  {-3.0,3.0,0.0}, 1,1,0,1,1 )->command = lamb_scanSurf;
+    mp->addPanel( "SurfFF_view", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;
+    mp->addPanel( "SurfFF_scan", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;
+    ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
+
+    // mp= new MultiPanel( "Run", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); //panel_NonBondPlot=mp;
+    // mp->addPanel( "NonBond"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBonded=!W->bNonBonded;         return 0; };
+    // mp->addPanel( "NonBondNG", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBondNeighs=!W->bNonBondNeighs; return 0; };
+    // mp->addPanel( "Grid",      {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bGridFF=!W->bGridFF;               return 0; };
+    
+    chk = new CheckBoxList( gx.x0, ylay.x0, gx.x1 );   gui.addPanel( chk );  chk->caption ="Run"; //chk->bgColor = 0xFFE0E0E0;
+    chk->addBox( "NonBond"   , &W->bNonBonded     );
+    chk->addBox( "NonBondNG" , &W->bNonBondNeighs );
+    chk->addBox( "GridFF"    , &W->bGridFF        );
+    ylay.step( chk->boxes.size()*2 ); ylay.step( 2 );
+
     printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
     //exit(0);
 
     if( W->getMolWorldVersion() & MolWorldVersion::QM ){ 
         // --- Selection of orbital to plot
-        ylay.step(3);
+        ylay.step((mp->nsubs+1)*2); ylay.step( 2 );
         panel_iMO = ((GUIPanel*)gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
         panel_iMO->setRange(-5.0,5.0);
         panel_iMO->setValue(0.0);
@@ -566,6 +654,8 @@ void MolGUI::nonBondGUI(){
     chk->addBox( "lines ", &bDrawNonBondLines );
     chk->addBox( "gridXY", &bDrawNonBondGrid  );
     chk->addBox( "hideEp", &hideEp            );
+
+    
     //chk->addBox( "grid", &plot1.bGrid );
     //chk->addBox( "axes", &plot1.bAxes );
 
@@ -577,7 +667,7 @@ void MolGUI::nonBondGUI(){
     mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0,-6); gui.addPanel( mp ); panel_NonBondPlot=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Mode  : ", {0.0,2.0, 0.0},  1,0,1,1,0 );   // ToDo: perhaps it would be better to use bit-mask
-    mp->addPanel( "Ezoom : ", {-3.0,3.0,0.0},  1,0,0,1,0 );
+    mp->addPanel( "Ezoom : ", {-3.0,3.0,-1.0},  1,0,0,1,0 );
     mp->addPanel( "Rplot : ", {0.0,10.0,5.0},  1,0,0,1,0 );
     mp->addPanel( "dstep : ", {0.02,0.5,0.1},  1,0,0,1,0 );
     mp->addPanel( "Rdamp : ", {-2.0,2.0,0.1},  1,0,0,1,0 );
@@ -861,6 +951,63 @@ void MolGUI::drawParticles(){
     }
 }
 
+void MolGUI::drawDipoleMap(){
+    MultiPanel* mp=0;
+    //mp=panel_TestType;    
+    // Quat4d REQtest{ 
+    //     mp->subs[0]->value, 
+    //     sqrt(mp->subs[1]->value), 
+    //     mp->subs[2]->value, 
+    //     mp->subs[3]->value 
+    // };
+    //REQtest.w*=REQtest.y;  // Hbond = %H * sqrt(EvdW_ii)
+    // double dstep, Rplot, Ezoom, Rdamp, Rcut;
+    mp=panel_NonBondPlot; //Ezoom=pow(10.,mp->subs[1]->value);
+    double Ezoom=1/pow(10.,mp->subs[1]->value);
+    //printf( "drawDipoleMap() Ezoom=%g  val=%g \n", Ezoom, mp->subs[1]->value ); 
+
+
+    Draw3D::drawPointCross({5.0,0.0,0.0}, 0.2 );
+    Draw3D::drawPointCross( dipoleMap.particles[0], 0.1 );
+    for(int i=0; i<dipoleMap.particles.size(); i++ ){
+        glColor3f( 0.0, 0.0, 0.0 ); Draw3D::drawPointCross( dipoleMap.particles[i], 0.05 );
+        glColor3f( 0.0, 0.0, 1.0 ); Draw3D::drawLine      ( dipoleMap.particles[i], dipoleMap.particles2[i] );
+    }
+    
+    //int nphi = dipoleMap.nphi;
+    //int nr   = dipoleMap.FE.size() / nphi;
+    //printf( "drawDipoleMap() nphi=%i nr=%i FE.size(%i) particles.size(%i) \n", nphi, nr, dipoleMap.FE.size(), dipoleMap.particles.size(), nr*nphi );
+
+    // for(int ip=0; ip<nphi; ip++ ){
+    //     glBegin(GL_LINE_STRIP);
+    //     for(int ir=0; ir<nr; ir++ ){
+    //         int i = ip + ir*nphi;
+    //         //printf( "drawDipoleMap()[%i|ip=%i,ir=%i]\n", i, ip, ir );
+    //         Vec3d p = dipoleMap.particles[i];
+    //         p.z    += dipoleMap.FE[i].e/Ezoom;
+    //         glVertex3f( p.x, p.y, p.z );
+    //     }
+    //     glEnd();
+    // }    
+    // for(int ir=0; ir<nr; ir++ ){
+    //    glBegin(GL_LINE_STRIP);
+    //     for(int ip=0; ip<nphi; ip++ ){
+    //         int i = ip + ir*nphi;
+    //         Vec3d p = dipoleMap.particles[i];
+    //         p.z    += dipoleMap.FE[i].e/Ezoom;
+    //         glVertex3f( p.x, p.y, p.z );
+    //     }
+    //     glEnd();
+    // }
+
+    glLineWidth(1.0);
+    glColor3f( 0.0, 0.7, 0.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{1.0,1.0}*Ezoom, true, true );
+    glLineWidth(0.25);
+    glColor3f( 1.0, 0.5, 0.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{1.0,0.0}*Ezoom, true, true );
+    glColor3f( 0.0, 0.7, 1.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{0.0,1.0}*Ezoom, true, true );
+    glLineWidth(1.0);
+}
+
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
     printf( "MolGUI::MolGUI() \n" );
     if( W_ ) W=W_;
@@ -946,6 +1093,9 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
     //initGUI();
     initWiggets();
     updateGUI();
+    //dipoleMap.ff = &(W->ffl);
+    dipoleMap.ff     = &(W->nbmol);
+    dipoleMap.params = &(W->params);
     //if(verbosity>0)printf("... MolGUI::bindMolWorld() DONE\n");
 }
 
@@ -1105,6 +1255,8 @@ void MolGUI::draw(){
 
     plotNonuniformGrid();
 
+    if( bDipoleMap )drawDipoleMap();
+
     //if( ogl_MO && W->bConverged ){ 
     if( ogl_MO && (!bRunRelax) ){ 
         glPushMatrix();
@@ -1166,12 +1318,21 @@ void MolGUI::draw(){
     //visual_FF_test();
 
     if(W->ipicked>-1){ 
-        Vec3d p = W->ffl.apos[W->ipicked];
-        Vec3d f = getForceSpringRay( W->ffl.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
+        Vec3d p,f;
+        if(W->bUFF){
+            p = W->ffu.apos[W->ipicked];
+            f = getForceSpringRay( W->ffu.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
+        }else{
+            p = W->ffl.apos[W->ipicked];
+            f = getForceSpringRay( W->ffl.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
+        }
         glColor3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
     }
 
+    if( ogl_surf_scan>0 ){ glCallList(ogl_surf_scan); }
+
     if(bDebug_scanSurfFF){ // --- GridFF debug_scanSurfFF()
+        // ------ Deprecated ?
         Vec3d p0=W->gridFF.grid.pos0; 
         if(W->ipicked>-1){ p0.z = W->ffl.apos[W->ipicked].z; }{
             p0.z = W->ffl.apos[0].z;
@@ -1348,8 +1509,9 @@ void MolGUI::drawHUD(){
         //dt 0.132482 damp 3.12175e-17 n+ 164 | cfv 0.501563 |f| 3.58409e-10 |v| 6.23391e-09
         double v=sqrt(W->opt.vv);
         double f=sqrt(W->opt.ff);
-        s += sprintf(s,"bGopt=%i bExploring=%i go.istep=%i T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", W->bGopt, W->go.bExploring, W->go.istep, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
-        Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
+        //s += sprintf(s,"time/iter=%6.2f[us] bGopt=%i bExploring=%i go.istep=%i T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", time_per_iter, W->bGopt, W->go.bExploring, W->go.istep, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
+        s += sprintf(s,"time/iter=%6.2f[us] T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", W->time_per_iter, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
+        Draw::drawText( tmpstr, fontTex, fontSizeDef, {200,20} );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
         Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );
     }
@@ -1661,9 +1823,15 @@ void MolGUI::bindMolecule(const MolWorld_sp3* W ){
     printf( "MolGUI::bindMolecule() \n" );
     //natoms=ff.natoms; nnode=ff.nnode; nbonds=ff.nbonds;
     //atypes=ff.atypes; apos=ff.apos; fapos=ff.fapos; REQs=ff.REQs; pipos=ff.pipos; fpipos=ff.fpipos; bond2atom=ff.bond2atom; pbcShifts=ff.pbcShifts;
-    bindMolecule( W->ffl.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
-    neighs    = W->ffl.neighs;
-    neighCell = W->ffl.neighCell;
+    if(W->bUFF){
+        bindMolecule( W->ffu.natoms, 0, W->ffu.nbonds, W->ffu.atypes, W->ffu.apos, W->ffu.fapos, W->ffu.REQs, 0, 0, W->ffu.bonAtoms, W->ffu.shifts  );
+        neighs    = W->ffu.neighs;
+        neighCell = W->ffu.neighCell;
+    }else{    
+        bindMolecule( W->ffl.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
+        neighs    = W->ffl.neighs;
+        neighCell = W->ffl.neighCell;
+    }
     constrs   = (Constrains*)&W->constrs;
 }
 
@@ -1737,13 +1905,14 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
     //printf( "MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
     //printf("MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
-    if( neighs ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(5.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
+    if( neighs ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
     //W->nbmol.print();
     if(bViewAtomSpheres&&mm_bAtoms                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     if(bOrig){
         //printf( "MolGUI::drawSystem() bOrig(%i)  mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n", bOrig, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
         //if(bViewAtomP0s     &&  fapos           ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
-        if(bViewAtomForces    &&  fapos           ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
+        //for(int i=0; i<natoms; i++){ printf( "MolGUI::drawSystem() fapos[%i] (%g,%g,%g)\n", i, fapos[i].x, fapos[i].y, fapos[i].z ); }
+        if(bViewAtomForces    &&  fapos           ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
         if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
         if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
         if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
@@ -1800,6 +1969,35 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
     SDL_SaveBMP(bitmap, tmpstr);   
     SDL_FreeSurface(bitmap);
     delete[] screenPixels;
+}
+
+void MolGUI::scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, int evalMode, int viewMode, double sc, Vec3d hat ){
+    printf( " MolGUI::scanSurfFF() evalMode=%i viewMode=%i n=%i p0(%g,%g,%g) p1(%g,%g,%g) REQ(%g,%g,%g,%g) ogl_surf_scan=%i sc=%g hat(%g,%g,%g)\n", evalMode,viewMode,  n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z,    REQ.x,REQ.y,REQ.z,REQ.w,    ogl_surf_scan, sc, hat.x,hat.y,hat.z );
+    if( !ogl_surf_scan ){ glDeleteLists(ogl_surf_scan,1); }
+    ogl_surf_scan = glGenLists(1);
+    Vec3d dp=p1-p0; dp.mul(1./n);
+    glNewList(ogl_surf_scan, GL_COMPILE );
+    glBegin(GL_LINES);
+    Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
+    Vec3d op2;
+    for(int i=0; i<n; i++){
+        Vec3d  p = p0 + dp*i;
+        Quat4d fe;
+        if     ( evalMode==0 ){ fe = W->gridFF.getForce_d       ( p, PLQ, true ); }
+        else if( evalMode==1 ){ fe = W->gridFF.getForce_Tricubic( p, PLQ, true ); }
+        //printf(   "MolGUI::scanSurfFF()[%i] p(%g,%g,%g) fe(%g,%g,%g|%g)\n", i, p.x,p.y,p.z,   fe.x,fe.y,fe.z,fe.w  );
+        Vec3d p2;
+        if     ( viewMode==0 ){ p2 = p + hat*fe.e*sc; }  // Energy
+        else if( viewMode==1 ){ p2 = p +     fe.f*sc; }  // force
+        Draw3D::vertex( p   ); Draw3D::vertex(p2);
+        if(i>0){ 
+            Draw3D::vertex( p-dp ); Draw3D::vertex(p);
+            Draw3D::vertex( op2  ); Draw3D::vertex(p2); 
+        }
+        op2=p2;
+    }
+    glEnd();
+    glEndList();
 }
 
 void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc ){

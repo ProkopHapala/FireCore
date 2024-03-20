@@ -117,7 +117,7 @@ inline char * fgetsNonComment(char * str, int num, FILE * stream, char commentCh
 
 inline int readMatrix( const char* fname, int nrow, int ncol, double* buff, bool bTranspose=0 ){
     FILE *file = fopen(fname, "r");
-    if ( file==0 ){
+    if ( file==0 )[[unlikely]]{
         printf( "ERROR in readMatrix(%s): no such file \n", fname );
         return -1;
     }
@@ -323,6 +323,7 @@ inline int saveBin( const char *fname, int n, char * data ){
     ptr_myfile=fopen( fname,"wb");
     if (!ptr_myfile){ printf("saveBin(): Unable to open file `%s` for writing !!!\n", fname ); return -1; }
     int nchar = 1024;
+    printf( "saveBin %s nbyte=%i @data=%li \n", fname, n, data );
     for( int i=1; i<=n; i+=nchar ){
         int len = nchar;
         if( (n-i)<nchar ) len = (n-i);

@@ -18,7 +18,7 @@
 inline bool clampForce( Vec3d& f, const double f2max ){
     const double f2   = f.norm2();
     const bool bClamp = f2>f2max;
-    if( bClamp ){
+    if( bClamp )[[unlikely]]{
         f.mul( sqrt(f2max/f2) );
     }
     return bClamp;
@@ -140,6 +140,22 @@ inline double evalBond( const Vec3d& h, double dl, double k, Vec3d& f ){
     //f1.add( h );
     //f2.sub( h );
     return fr*dl*0.5;
+}
+
+inline double springbound( double x, double l, double k, double& f ){
+    double E;
+    if(x<0){
+        f =-x*k;
+        E = 0.5*x*x*k;
+    }else if( x>l ){
+        x-=l;
+        f=-x*k;
+        E = 0.5*x*x*k;
+    }else{
+        f=0;
+        E=0;
+    }
+    return E;
 }
 
 inline double spring( double l, Vec2d ls, Vec2d ks, double flim, double& f ){

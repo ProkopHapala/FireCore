@@ -289,14 +289,15 @@ GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& 
     GUIAbstractPanel* active = NULL;
     if( check( x, y ) ){
         toRelative(x,y);
-        //printf( "  panel.onMouse %i %i \n", x, y );
+        //printf( "  panel.onMouse %i %i isSlider=%i \n", x, y, isSlider );
         if( ( event.type == SDL_MOUSEBUTTONDOWN ) ){
             active = this;
             if(isSlider && (event.button.button==SDL_BUTTON_RIGHT)){ // onSliderChange 
+                //printf( "  panel.onMouse SDL_BUTTON_RIGHT  \n" );
                 //value=( x*(vmax-vmin)/(xmax-xmin) ) + vmin;
-                value=x2val(x);
                 ivalchanged=1;
-                if(isInt)value=getIntVal();
+                value=x2val(x);
+                if(isInt){ value=getIntVal(); }
                 if(bCmdOnSlider) command(this);
                 //sprintf(val_text, "%3.3f", value );
                 //inputText = std::to_string(value);

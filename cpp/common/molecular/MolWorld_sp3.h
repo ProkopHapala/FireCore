@@ -45,6 +45,7 @@ static MMFFparams* params_glob;
 
 #include "MultiSolverInterface.h"
 #include "GlobalOptimizer.h"
+#include "GOpt.h"
 
 #include "datatypes_utils.h"
 
@@ -56,45 +57,6 @@ enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
 //static inline MolWorldVersion operator&(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) & ((int)b)  );  };
 static inline int operator|(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) | ((int)b)  );  };
 static inline int operator&(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) & ((int)b)  );  };
-
-
-struct GOpt{
-    bool bExploring = false;
-    int  istep   =0;
-    int  nExplore=0;
-    int  nRelax  =0;
-    double vel_kick = 1.0;
-    double pos_kick = 0.25;
-
-    void startExploring(){
-        //printf( "GOpt::startExploring()\n" );
-        bExploring = true;
-        istep=0;
-    }
-
-    bool update(){
-        istep++;
-        if(bExploring){
-            if(istep>=nExplore){ 
-                //printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
-                bExploring=false; istep=0; return true; 
-            }
-        }else{
-           // if(istep>=nRelax  ){ bExploring=true; istep=0; return true; }
-        }
-        return false;
-    }
-
-    void apply_kick( int n, Vec3d* pos=0, Vec3d* vel=0 ){
-        //printf( "GOpt::apply_kick() n=%i |pos|=%g |vel=%g|\n", n, pos_kick, vel_kick );
-        for(int i=0; i<n; i++){
-            if(pos) pos[i].add( randf(-pos_kick,pos_kick), randf(-pos_kick,pos_kick), randf(-pos_kick,pos_kick) );
-            if(vel) vel[i].add( randf(-vel_kick,vel_kick), randf(-vel_kick,vel_kick), randf(-vel_kick,vel_kick) );
-        }
-    }
-
-};
-
 
 class MolWorld_sp3 : public SolverInterface { public:
     bool isInitialized=false;
@@ -116,11 +78,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     OptLog opt_log;
     Vec3i nPBC_save{1,1,1};
 
-    // ---  Parameters for Molecular Dynamics at non-zero temperature
-    double bThermalSampling = 0.0;   // if >0 then we do thermal sampling
-    double T_target         = 300.0;   // target temperature for thermal sampling (if bThermalSampling>0)
-    double T_current        = 0.0;   // current temperature for thermal sampling (if bThermalSampling>0)
-    double gamma_damp       = 0.01;  // damping factor for thermal sampling (if bThermalSampling>0)
+    // ---  Parameters for Molecular Dynamics at non-zero temperature   -- Moved to GOpt go;
+    //bool bThermalSampling = false;   // if >0 then we do thermal sampling
+    //double T_target         = 300.0;   // target temperature for thermal sampling (if bThermalSampling>0)
+    //double T_current        = 0.0;   // current temperature for thermal sampling (if bThermalSampling>0)
+    //double gamma_damp       = 0.01;  // damping factor for thermal sampling (if bThermalSampling>0)
 
     double fAutoCharges=-1;
     bool bEpairs = false;
@@ -140,6 +102,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 	MM::Builder  builder;
 	SMILESparser smiles;
 
+    Vec3d* apos_bak=0;
+
 	// Force-Fields & Dynamics
 	MMFFsp3      ff;
     MMFFsp3_loc  ffl;
@@ -149,6 +113,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 	//NBFF_old   nff;
     NBFF         surf, nbmol;
 	GridFF       gridFF;
+    bool bGridDouble = true;
+
     RigidBodyFF  rbff;
     QEq          qeq;
 	DynamicOpt   opt;
@@ -160,18 +126,26 @@ class MolWorld_sp3 : public SolverInterface { public:
     GOpt            go;
     bool   bGopt =false;
     int gopt_ifound=0;
+    int gopt_nfoundMax=1000000;
+
+    bool bCheckStuck=false;
+    double RStuck=0.2;
+    int nStuckMax=100;
+    int nStuckTrj=10;
+    int nStuck=0;
 
     GridShape MOgrid;
 
     SVG_render svg;
 
     int  iterPerFrame=50;
-    int  iParalel=0; 
+    int  iParalel=1; 
     int  iParalelMax=1;
     int  iParalelMin=0;
     bool bOcl=false; // used only in Ocl version
 
-    double gridStep = 0.1; 
+    //double gridStep = 0.1; 
+    double gridStep = 0.05; 
     //double gridStep = 0.2; 
     //Vec3i nPBC{0,0,0};   // just debug
     Vec3i nPBC{1,1,0};
@@ -187,6 +161,14 @@ class MolWorld_sp3 : public SolverInterface { public:
 	double  maxFcog = 1e-9;
 	double  maxTg   = 1e-1;
 	double  Kmorse = -1.0;
+    double  Ftol_default = 1e-4;
+    double  dt_default   = 0.05;
+
+    double time_per_iter = 0;
+
+    bool bWhichAtomNotConv = false;
+    int  iAtomNotConv = -1;
+    FILE* atomTrjFile=0;
 
 	// force-eval-switchefs
     int  imethod=0;
@@ -201,6 +183,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bUFF              = false; 
     bool b141              = true;   // seems not to be used in assignUFFtypes()
     bool bSimple           = false;  // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
+    //bool bSimple           = true;   // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
     bool bConj             = true;   // manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation) in assignUFFtypes()
     bool bCumulene         = true;   // exception to avoid cumulenes in assignUFFtypes()
     bool bRigid            = false;
@@ -210,6 +193,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bRelaxPi          = false;
     bool bChargeUpdated    = false;
     bool bAnimManipulation = false;
+    bool bNonBondNeighs    = false;
 	
     Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
@@ -231,6 +215,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     int iangPicked = -1; // picket angle
     Vec3d* picked_lvec = 0;
     Vec3d pick_hray, pick_ray0;
+
+    bool   bConstrZ=false;
+    double ConstrZ_xmin=0.0;
+    double ConstrZ_l=0.0;
+    double ConstrZ_k=1.0;
 
     Mat3d* dlvec = 0;
 
@@ -297,6 +286,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         builder.randomFragmentCollors();
         if(bMMFF){     
             makeFFs();
+            if(bCheckStuck)apos_bak = new Vec3d[ffl.natoms];
         }
         if(!bUFF){ builder.setup_atom_permut( true ); }
         if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
@@ -674,13 +664,14 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printBonds();    
     }
 
-    void hideEPairs(){
+    int hideEPairs(){
         //printf( "plotNonBondGrid() removing EPairs %i \n" );
         int etyp = params.getAtomType("E");
         ffl.chargeToEpairs( -QEpair, etyp );
         selectByType( params.getElementType("E"), true );
         int nEp = selection.size();
         nbmol.natoms -= nEp;
+        return nEp;
     }
 
     void unHideEPairs(){
@@ -760,7 +751,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             gridFF.grid.pos0.z=z0;
             //gridFF.grid.pos0.z=-5;
             if(verbosity>1)gridFF.grid.printCell();
-            gridFF.allocateFFs();
+            gridFF.allocateFFs( bGridDouble );
             //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
             gridFF.nPBC=Vec3i{1,1,0};
             if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
@@ -771,7 +762,13 @@ class MolWorld_sp3 : public SolverInterface { public:
             gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
             gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
             //bSaveDebugXSFs=true;
-            gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false );
+            gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, false );
+            gridFF.checkSum( false );
+            if(bGridDouble){  
+                gridFF.tryLoad( "FFelec_d.bin", "FFPaul_d.bin", "FFLond_d.bin", false, true ); 
+                gridFF.checkSum( true );
+                gridFF.makeVPLQH();
+            }
             gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
             if(bSaveDebugXSFs)saveGridXsfDebug();
             //bGridFF   =true; 
@@ -782,16 +779,30 @@ class MolWorld_sp3 : public SolverInterface { public:
         gridFF.evalCheck();
     }
 
-    void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
-        if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
-        nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
+    // void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
+    //     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
+    //     nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
+    //     //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
+    //     //builder.export_atypes( nbmol.atypes );     
+    //     builder.export_REQs( nbmol.REQs   );    
+    //     nbmol  .makePLQs   ( gridFF.alphaMorse );  ffl.PLQs=nbmol.PLQs; 
+    //     nbmol  .makePLQd   ( gridFF.alphaMorse );  ffl.PLQd=nbmol.PLQd; 
+    //     if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
+    //     params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
+    //     if(verbosity>1)nbmol.print();                              
+    // }
+
+    void initNBmol( NBFF* ff, bool bCleanCharge=true ){
+        if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", ff->natoms  );
+        //void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
+        nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, 0, ff->atypes );    
         //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
         //builder.export_atypes( nbmol.atypes );     
-        builder.export_REQs( nbmol.REQs   );    
-        nbmol  .makePLQs   ( gridFF.alphaMorse );  
-        ffl.PLQs=nbmol.PLQs; 
-        if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
-        params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
+        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
+        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
+        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
+        if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
+        params.assignREs( ff->natoms, nbmol.atypes, nbmol.REQs, true, false  );
         if(verbosity>1)nbmol.print();                              
     }
 
@@ -907,9 +918,9 @@ class MolWorld_sp3 : public SolverInterface { public:
     void setOptimizer( int n, double* ps, double* fs, double* vs=0 ){
         //opt.bindOrAlloc( ff.nDOFs, ff.DOFs,0, ff.fDOFs, 0 );
         opt.bindOrAlloc( n, ps, vs, fs, 0 );
-        double dtopt=ff.optimalTimeStep(); 
-        if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimal time step = %g \n", dtopt);
-        opt.initOpt( dtopt );
+        if(dt_default<0){ dt_default=ffl.optimalTimeStep(); } 
+        if(verbosity>0)printf("MolWorld_sp3::setOptimizer(): optimal time_step = %g \n", dt_default);
+        opt.initOpt( dt_default );
         opt.cleanVel();
         //opt.verbosity=2;
     }
@@ -1078,16 +1089,32 @@ class MolWorld_sp3 : public SolverInterface { public:
     virtual void makeFFs(){
         makeMMFFs();
         if ( bUFF ){
-            initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
+            //initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
+            initNBmol( &ffu );
             setNonBond( bNonBonded );
+            ffu.go = &go;
             nbmol.evalPLQs(gridFF.alphaMorse);
+            ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{    
+                //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
+                double E=0;
+                if   (bGridFF){ E+= gridFF.addForce( p, nbmol.PLQs[ia], f, true  ); }  // GridFF
+                if(bConstrZ){
+                    springbound( p.z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, f.z );
+                }
+                if(ipicked==ia)[[unlikely]]{ 
+                    const Vec3d fs = getForceSpringRay( p, pick_hray, pick_ray0,  Kpick ); 
+                    f.add( fs );
+                }
+                return E;
+            };
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
                 ffu.vapos = (Vec3d*)opt.vel;
             }                         
         }else{
-            initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
+            //initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
+            initNBmol( &ffl );
             setNonBond( bNonBonded );
             bool bChargeToEpair=true;
             //bool bChargeToEpair=false;
@@ -1126,6 +1153,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         ffl.dealloc();
         ff.dealloc();
         //ff4.dealloc();
+        _dealloc( apos_bak );
         // --- nbmol
         nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
         nbmol.apos=0;  
@@ -1190,14 +1218,14 @@ class MolWorld_sp3 : public SolverInterface { public:
     void setNonBond( bool bNonBonded ){
         ffl.bSubtractAngleNonBond = bNonBonded;
         //ff4.bSubtractAngleNonBond = bNonBonded;
-        if(bNonBonded){
-            ffl.REQs = nbmol.REQs;
-            ff .REQs = nbmol.REQs;
-            // if(ff4.REQs==0){
-            //     ff4.REQs = new Quat4f[nbmol.natoms];
-            //     for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
-            // }
-        }
+        // if(bNonBonded){
+        //     ffl.REQs = nbmol.REQs;
+        //     ff .REQs = nbmol.REQs;
+        //     // if(ff4.REQs==0){
+        //     //     ff4.REQs = new Quat4f[nbmol.natoms];
+        //     //     for(int i=0; i<nbmol.natoms; i++ ){ ff4.REQs[i] = (Quat4f)nbmol.REQs[i]; };
+        //     // }
+        // }
     }
 
     int updateBuilderFromFF(bool bPos=true, bool bQ=true){
@@ -1216,9 +1244,9 @@ class MolWorld_sp3 : public SolverInterface { public:
         double Ek = ffl.evalKineticEnergy();
         int nDOFs = ffl.natoms*3;
         //nDOFs += ffl.nnode*2; // pi-rotations
-        T_current = ( 2*Ek/ (const_kB*nDOFs) );
+        go.T_current = ( 2*Ek/ (const_kB*nDOFs) );
         //printf( "MolWorld_sp3::evalEkTemp() T=%g[K] T_target=%g[K] gamma=%g[1/dtu] Ek=%g[eV] nDOFs=%i \n", T_current, T_target, gamma_damp, Ek, nDOFs );
-        return T_current;
+        return go.T_current;
     }
 
     void update_GOpt(){
@@ -1226,9 +1254,76 @@ class MolWorld_sp3 : public SolverInterface { public:
         go.nExplore = 0;
     }
 
+    double whichAtomNotConv( int& imax ){
+        double F2max=0;
+        imax =-1;
+        for(int ia=0; ia<ffl.natoms; ia++){
+            double r2 = ffl.fapos[ia].norm2();
+            if(r2>F2max){ F2max=r2; imax=ia; }
+        }
+        return sqrt(F2max);
+    }
+
+    double getMostDisplacedAtom( Vec3d* ps, int& imax ){
+        imax=-1;
+        double R2max =  0;
+        for(int ia=0; ia<ffl.natoms; ia++){
+            Vec3d d=ffl.apos[ia]-ps[ia];
+            double r2 = d.norm2();
+            if(r2>R2max){ R2max=r2; imax=ia; }
+        }
+        return sqrt(R2max);
+    }
+
+    bool checkStuck( double R ){
+        double R2 = R*R;
+        int imax  = -1;
+        double R2max = getMostDisplacedAtom( apos_bak, imax );
+        if(R2max>R2)[[unlikely]]{ 
+            for(int ia=0; ia<ffl.natoms; ia++){ apos_bak[ia]=ffl.apos[ia]; }
+            nStuck=0;
+            if(atomTrjFile)fclose(atomTrjFile); 
+            atomTrjFile=0;
+            return true;
+        }
+        if( (atomTrjFile==0) && ( nStuck>=(nStuckMax-nStuckTrj) ) ){
+            atomTrjFile=fopen( "StuckAtomTrj.log", "w" );
+        }
+        if( nStuck>nStuckMax )[[unlikely]]{
+            printf( "MolWorld_sp3::checkStuck() nStuck(%i)>nStuckMax(%i) => exit(0) \n", nStuck, nStuckMax );
+            //saveXYZ( "stuck.xyz", ffl.natoms, ffl.apos, ffl.atypes );
+            saveXYZ( "stuck.xyz", tmpstr, false, "a", nPBC_save );
+            if(atomTrjFile)fclose(atomTrjFile);
+            exit(0);
+        }
+        nStuck++;
+        return false;
+    }
+
+    void handleStuckAtom(int itr, Vec3d cvf ){
+        if( nStuck>=(nStuckMax-nStuckTrj) ){
+            int imax; double Fmax = whichAtomNotConv( imax );
+            Vec3d pi = ffl.apos [imax];
+            Vec3d fi = ffl.fapos[imax];
+            Vec3d vi = ffl.vapos[imax];
+            if(atomTrjFile){
+                double f = sqrt(cvf.z);
+                double v = sqrt(cvf.y);
+                fprintf( atomTrjFile, "%4i %4i   %20.15f %20.15f %20.15f   %20.15f %20.15f %20.15f    %20.15f %20.15f %20.15f    %6.4f %20.15f %20.15f \n", itr, imax, pi.x,pi.y,pi.z, vi.x,vi.y,vi.z, fi.x,fi.y,fi.z,    cvf.x/(f*v), v, f );
+            }
+        }
+        //if( nStuck>(nStuckMax-2) ){
+        // printf( "MolWorld_sp3::run_no_omp() Stuck due to atom[%i] |F[%i]|=%g fapos[%i](%g,%g,%g) apos[%i](%g,%g,%g) \n", imax, imax, Fmax, imax, fi.x,fi.y,fi.z, imax, pi.x,pi.y,pi.z );
+        // gridFF.getEFprofileToFile( "Stuck_Fx.txt", 100, pi-Vec3dX*0.1, pi+Vec3dX*0.1, ffl.REQs[imax] );
+        // gridFF.getEFprofileToFile( "Stuck_Fy.txt", 100, pi-Vec3dY*0.1, pi+Vec3dY*0.1, ffl.REQs[imax] );
+        // gridFF.getEFprofileToFile( "Stuck_Fz.txt", 100, pi-Vec3dZ*0.1, pi+Vec3dZ*0.1, ffl.REQs[imax] );
+        // exit(0);
+        //}
+    }
+
     __attribute__((hot))  
     double eval( ){
-        if(verbosity>0) printf( "#### MolWorld_sp3::eval()\n");
+        if(verbosity>0)[[unlikely]]{ printf( "#### MolWorld_sp3::eval()\n"); }
         //ffl.doBonds       = false;
         //ffl.doPiPiI       = false;
         //ffl.doPiSigma     = false;
@@ -1275,8 +1370,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         //for(int i=0; i<nbmol.natoms; i++){ printf("atom[%i] f(%g,%g,%g)\n", i, nbmol.fapos[i].x,nbmol.fapos[i].y,nbmol.fapos[i].z ); }    
         //ffl.printDebug(  false, false );
         //exit(0);
-        if(verbosity>0) printf( "#### MolWorld_sp3::eval() DONE\n\n");
-
+        if(verbosity>0)[[unlikely]]{ printf( "#### MolWorld_sp3::eval() DONE\n\n"); }
         return E;
     }
 
@@ -1326,15 +1420,15 @@ class MolWorld_sp3 : public SolverInterface { public:
             opt_log.set(itr, opt.cos_vf, opt.f_len, opt.v_len, opt.dt, opt.damping );
             if(outE){ outE[itr]=Etot; }
             if(outF){ outF[itr]=F2;   }
-            if( (trj_fname) && (itr%savePerNsteps==0) ){
+            if( (trj_fname) && (itr%savePerNsteps==0) )[[unlikely]]{
                 sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
                 saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
             }
-            if(verbosity>1){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
-            if(F2<F2conv){
+            if(verbosity>1)[[unlikely]]{ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
+            if(F2<F2conv)[[unlikely]]{
                 bConverged=true;
-                if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
-                if( trj_fname ){
+                if(verbosity>0)[[unlikely]]{ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+                if( trj_fname )[[unlikely]]{
                     sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
                     saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
                 }
@@ -1349,58 +1443,64 @@ class MolWorld_sp3 : public SolverInterface { public:
         Vec3d f = getForceSpringRay( apos[ia], pick_hray, pick_ray0, K ); fapos[ia].add( f );
     }
 
-    virtual void MDloop( int nIter, double Ftol = 1e-6 ){
+    virtual void MDloop( int nIter, double Ftol=-1 ){
+        if(Ftol<0)Ftol=Ftol_default;
+        ffu.bNonBonded     = bNonBonded;
+        ffu.bNonBondNeighs = bNonBondNeighs;
+        //ffu.bNonBonded =  bGridFF;
+
+        long T0 = getCPUticks();
         //printf( "MolWorld_sp3::MDloop() \n" );
         //ff.doPiPiI  =false;
         //ff.doPiPiT  =false;
         //ff.doPiSigma=false;
         //ff.doAngles =false;
 
-        /*
-        //ff.cleanAll();
-        for(int itr=0; itr<nIter; itr++){
-            double E = eval();
-            //ckeckNaN_d( nbmol.natoms, 3, (double*)nbmol.fapos, "nbmol.fapos" );
-            //if( bPlaneSurfForce )for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
-            //printf( "apos(%g,%g,%g) f(%g,%g,%g)\n", ff.apos[0].x,ff.apos[0].y,ff.apos[0].z,   ff.fapos[0].x,ff.fapos[0].y,ff.fapos[0].z );
-            //if(bCheckInvariants){ checkInvariants(maxVcog,maxFcog,maxTg); }
-            if(ipicked>=0){ pullAtom( ipicked );  }; // printf( "pullAtom(%i) E=%g\n", ipicked, E ); };
-            //ff.fapos[  10 ].set(0.0); // This is Hack to stop molecule from moving
-            //opt.move_GD(0.001);
-            //opt.move_LeapFrog(0.01);
-            //double f2=opt.move_MDquench();
-
-            double f2=0;
-            //opt.damp_max = 0.0;
-            //opt.cv_kill  = 0.5;
-            //double f2=opt.move_FIRE();
-            for(int i=0; i<ffl.nvecs; i++){ f2+=ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 ); } 
-            //double f2=opt.move_VSpread( 0.1,  0.01, 0.05 ); 
-            //printf( "[%i] E= %g [eV] |F|= %g [eV/A]\n", nloop, E, sqrt(f2) );
-            //double f2=1;
-            if(f2<sq(Ftol)){
-                bConverged=true;
-            }
-            nloop++;
-        }
-        */
-        
         //verbosity = 1;
-        //ffl.run( nIter, 0.05, 1e-6, 1000.0 );
-        //ffl.run_omp( nIter, 0.05, 1e-6, 1000.0 );
+        //ffl.run( nIter, 0.05, Ftol, 1000.0 );
+        //ffl.run_omp( nIter, 0.05, Ftol, 1000.0 );
+        //run_no_omp( nIter, 0.05, Ftol, 1000.0 );
 
-        //run_no_omp( nIter, 0.05, 1e-6, 1000.0 );
+        //run_omp( 1, 0.05, Ftol, 1000.0 );
+        //run_omp( nIter, 0.05, Ftol, 1000.0 );
+        
+        //run_omp( 100, 0.05, Ftol, 1000.0 );
+        //run_omp( 1, opt.dt, Ftol, 1000.0 );
+        //run_omp( 2, opt.dt, Ftol, 1000.0 );
+        //run_omp( 100, opt.dt, Ftol, 1000.0 );
+        //run_omp( 500, 0.05, Ftol, 1000.0 );
+        //run_omp( 500, 0.05, Ftol, 1000.0 );
+        int nitr=0;
+        if(bUFF){
+            switch(iParalel){
+                case  0: nitr=ffu.run    ( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  1: nitr=ffu.run_omp( nIter, dt_default, Ftol, 1000.0 ); break;
+                default: [[unlikely]] {
+                    printf( "ERROR: MolWorld_sp3::MDloop() iParalel(%i) not implemented (use 0=run_no_omp(), 1=run_omp()) \n", iParalel );
+                    exit(0);
+                }
+            }
+        }else{
+            switch(iParalel){
+                case  0: nitr=run_no_omp( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  1: nitr=run_omp   ( nIter, dt_default, Ftol, 1000.0 ); break;
+                //case  0: nitr=run_no_omp( nIter, 0.02, Ftol, 1000.0 ); break;
+                //case  1: nitr=run_omp   ( nIter, 0.02, Ftol, 1000.0 ); break;
+                default: [[unlikely]] {
+                    printf( "ERROR: MolWorld_sp3::MDloop() iParalel(%i) not implemented (use 0=run_no_omp(), 1=run_omp()) \n", iParalel );
+                    exit(0);
+                }
+            }
+        }
 
-        //run_omp( 1, 0.05, 1e-6, 1000.0 );
-        run_omp( nIter, 0.05, 1e-6, 1000.0 );
-        
-        //run_omp( 100, 0.05, 1e-6, 1000.0 );
-        //run_omp( 1, opt.dt, 1e-6, 1000.0 );
-        //run_omp( 2, opt.dt, 1e-6, 1000.0 );
-        //run_omp( 100, opt.dt, 1e-6, 1000.0 );
-        //run_omp( 500, 0.05, 1e-6, 1000.0 );
-        //run_omp( 500, 0.05, 1e-6, 1000.0 );
-        
+        { // Measure time 
+            double ticks = (getCPUticks() - T0);
+            double t = ticks*tick2second;
+            double c_smooth = 0.1;
+            time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/nitr )*c_smooth;
+            printf( "MolWorld_sp3::MDloop()  (bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bPBC,bNonBonded,bNonBondNeighs,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
+        }
+
         //run( nIter );
         
         bChargeUpdated=false;
@@ -1409,67 +1509,102 @@ class MolWorld_sp3 : public SolverInterface { public:
     __attribute__((hot))  
     int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
-        if(verbosity>1)printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
-        double F2conv=Fconv*Fconv;
+        //if(verbosity>1)[[unlikely]]{ printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF ); }
         long T0 = getCPUticks();
-        //bool bFIRE = false;
+        double E=0,F2=0,F2conv=Fconv*Fconv;
+        double ff=0,vv=0,vf=0;
+        int itr=0,niter=niter_max;
         bConverged = false;
         bool bFIRE = true;
-        int itr=0,niter=niter_max;
-        double E=0,cdamp=0;
-        cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
-        if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
+
+        double cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
+        // if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
+        double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
+
+        // //constexpr bool bNonBondNeighs = false;
+        // //constexpr bool bNonBondNeighs = true;
+        // if( !bNonBonded ){
+        //     ffl.bSubtractAngleNonBond = false;
+        //     ffl.bSubtractBondNonBond  = false;
+        // }else if(bNonBondNeighs){
+        //     ffl.bSubtractAngleNonBond = true;
+        //     ffl.bSubtractBondNonBond  = false;
+        //     ffl.bClampNonBonded       = false;
+        //     nbmol.bClampNonBonded     = false;
+        // }else{ // check non-bonded clamp-and-subtract
+        //     //ffl.doAngles=false;
+        //     // ffl.doPiPiI =false;
+        //     // ffl.doPiPiT =false;
+        //     // ffl.doPiSigma=false;
+        //     ffl.bSubtractAngleNonBond = true;
+        //     ffl.bSubtractBondNonBond  = true;
+        //     ffl.bClampNonBonded       = true;
+        //     nbmol.bClampNonBonded     = true;
+        // }
+
+        ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+        //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded );
 
         //if(bToCOG){ printf("bToCOG=%i \n", bToCOG ); center(true); }
-        if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
-        
-        
+        //if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
+        if(bCheckStuck){ checkStuck( RStuck ); }
         //if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter_max, ffl.bCollisionDamping, ffl.bCollisionDampingNonBond, dt, 1-cdamp, ffl.col_damp*dt, ffl.col_damp_NB*dt );
-        if(verbosity>1)printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.cdampB*dt, ffl.colDamp.cdampAng*dt, ffl.colDamp.cdampNB*dt );
+        //if(verbosity>1)[[unlikely]]{printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.cdampB*dt, ffl.colDamp.cdampAng*dt, ffl.colDamp.cdampNB*dt ); }
         for(itr=0; itr<niter; itr++){
             //double ff=0,vv=0,vf=0;
-            bool bExploring = false;
             if(bGopt){
-                go.update();
-                bExploring       = go.bExploring; 
-                bThermalSampling = bExploring;
-                bConstrains      = bExploring;
-                if(bExploring) bConverged = false;
+                if( bGopt         )go.update();
+                if( go.bExploring ) bConverged = false;
             }
-
             Vec3d cvf_bak = ffl.cvf;
             E=0; ffl.cvf = Vec3dZero;
             //------ eval forces
+            //long t1 = getCPUticks();
+
+            for(int i=0; i<ffl.natoms; i++){ ffl.fapos[i]=Vec3dZero; }
             for(int ia=0; ia<ffl.natoms; ia++){ 
                 {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
                 if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
                 if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
                 // ----- Error is HERE
-                if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                else    { 
-                    E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); 
-                    if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.cdampNB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
-                    //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
-                } 
-
-                if(ipicked==ia){ 
+                if(bNonBonded){
+                    if(bNonBondNeighs){
+                        if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                        else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                    }else{
+                        if(bPBC){ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
+                        else    { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
+                    }
+                }
+                if   (bGridFF){ E+= gridFF.addForce       ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF
+                //if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.cdampNB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
+                //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
+                if(bConstrZ){
+                    springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
+                }
+                if(ipicked==ia)[[unlikely]]{ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                     ffl.fapos[ia].add( f );
                 }
+            }
+            //double t_eval = (getCPUticks()-t1);
+            //printf( "MolWorld_sp3::run_no_omp() (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) %g[tick]\n", bPBC,bGridFF,bNonBondNeighs,sqrt(F2max),opt.dt,niter, t_eval );
+            //for(int i=0; i<ffl.natoms; i++){ printf( "ffl.fapos[%i] (%g,%g,%g)\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
+
+
+            if(bConstrains){
+                //printf( "run_no_omp() constrs[%li].apply() bThermalSampling=%i \n", constrs.bonds.size(), bThermalSampling );
+                //ffl.cleanForce();
+                //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
+                E+= constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
+            }
+            if( go.bExploring){
+                ffl.Etot += go.constrs.apply( ffl.apos, ffl.fapos, &(ffl.lvec) );
             }
             // ---- assembling
             for(int ia=0; ia<ffl.natoms; ia++){
                 ffl.assemble_atom( ia );
             } 
-            if(bConstrains){
-                //printf( "run_no_omp() constrs[%li].apply() bThermalSampling=%i \n", constrs.bonds.size(), bThermalSampling );
-                #pragma omp single
-                {
-                    //ffl.cleanForce();
-                    //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
-                    E+= constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
-                }
-            }
             if(bFIRE){
                 for(int i=0; i<opt.n; i++){
                     double v=opt.vel  [i];
@@ -1490,9 +1625,9 @@ class MolWorld_sp3 : public SolverInterface { public:
                 //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium; }else{ cdamp=1+ffl.colDamp.medium; } }
             }
             for(int i=0; i<ffl.nvecs; i++){
-                if( bThermalSampling ){
-                    //if(i==0)printf( "run_no_omp() move_atom_Langevin() gamma_damp%g T_target=%g \n", gamma_damp, T_target );
-                    ffl.move_atom_Langevin( i, dt, 10000.0, gamma_damp, T_target );
+                if( go.bExploring ){
+                    //if(i==0)printf( "run_no_omp() move_atom_Langevin() gamma_damp%g T_target=%g \n", go.gamma_damp, go.T_target );
+                    ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target );
                 }else if(bFIRE){
                     ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
                 }else{
@@ -1504,7 +1639,7 @@ class MolWorld_sp3 : public SolverInterface { public:
                 //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
             }
-            if( (!bFIRE) && (!bThermalSampling) ){
+            if( (!bFIRE) && (!go.bExploring) ){
                 //printf( "Acceleration: cdamp=%g(%g) nstepOK=%i \n", cdamp_, cdamp, ffl.colDamp.nstepOK );
                 //printf( "Kinetic energy decrease: factor=%g v2_new=%g v2_old=%g \n", ffl.cvf.y/cvf_bak.y,  ffl.cvf.y, cvf_bak.y );
                 double cos_vf = ffl.colDamp.update_acceleration( ffl.cvf );
@@ -1518,7 +1653,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             if(outF )outF [itr]=sqrt(ffl.cvf.z);
             if(outV )outV [itr]=sqrt(ffl.cvf.y);
             if(outVF)outVF[itr]=ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y + 1e-32);
-            if( isnan(Etot) || isnan(ffl.cvf.z) || isnan(ffl.cvf.y) )[[unlikely]]{  printf( "MolWorld_sp3::run_no_omp(itr=%i) ERROR NaNs : E=%f cvf(%g,%g,%g)\n", itr, E, ffl.cvf.x, sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); return -itr; }
+            //if( isnan(Etot) || isnan(ffl.cvf.z) || isnan(ffl.cvf.y) )[[unlikely]]{  printf( "MolWorld_sp3::run_no_omp(itr=%i) ERROR NaNs : E=%f cvf(%g,%g,%g)\n", itr, E, ffl.cvf.x, sqrt(ffl.cvf.y), sqrt(ffl.cvf.z) ); return -itr; }
             if( (trj_fname) && ( (itr%savePerNsteps==0) ||(niter==0) ) )[[unlikely]]{
                 sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(ffl.cvf.z) );
                 //printf( "run_no_omp::save() %s \n", tmpstr );
@@ -1528,23 +1663,31 @@ class MolWorld_sp3 : public SolverInterface { public:
                 //niter=0; 
                 bConverged=true;
                 double t = (getCPUticks() - T0)*tick2second;
-                if(verbosity>1)printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr );
-                if(bGopt){
+                if(verbosity>1)[[unlikely]]{printf( "MolWorld_sp3::run_no_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time=%g[ms/%i](%g[us/iter])\n", itr,niter_max, E, sqrt(ffl.cvf.z), itr, t*1e+3, t*1e+6/itr ); }
+                if( bGopt && !go.bExploring )[[unlikely]]{
                     gopt_ifound++;
-                    sprintf(tmpstr,"# %i E %g |F| %g", gopt_ifound, Etot, sqrt(ffl.cvf.z) );
+                    sprintf(tmpstr,"# %i E %g |F| %g istep=%i ", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
                     printf( "run_no_omp::save() %s \n", tmpstr );
                     saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
                     go.startExploring();
+                    //go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
                     bConverged=false;
-                    go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
                 }
                 break;
             }else{
+                //printf( "nStuck %i \n", nStuck );
+                if( bCheckStuck )[[unlikely]]{ handleStuckAtom(itr, ffl.cvf ); }
                 if(verbosity>3) [[unlikely]] { printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) E=%g |F|=%g |v|=%g cos(v,f)=%g dt=%g cdamp=%g\n", itr,niter_max, E, sqrt(ffl.cvf.z), sqrt(ffl.cvf.y), ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), dt, cdamp ); }
             }
         }
-        double t = (getCPUticks() - T0)*tick2second;
-        if( (itr>=niter_max) && (verbosity>1) ) [[unlikely]] {printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3, t*1e+6/itr, itr ); }
+        double ticks = (getCPUticks() - T0);
+        double t = ticks*tick2second;
+        if( (itr>=(niter_max-1)) && (verbosity>1) ) [[unlikely]] {
+            double c_smooth = 0.1;
+            time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/itr )*c_smooth;
+            //printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time=%g[ms/%i](%g[us/iter])\n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3,itr,t*1e+6/itr ); 
+            printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter])\n", bPBC,bGridFF,bNonBondNeighs,sqrt(F2max),opt.dt,niter, t*1e+3,itr, time_per_iter );
+        }
         return itr;
     }
 
@@ -1557,23 +1700,23 @@ class MolWorld_sp3 : public SolverInterface { public:
         double ff=0,vv=0,vf=0;
         int itr=0,niter=niter_max;
         bConverged = false;
-        bool bExploring = false;
-        if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
+
+        //if( bGridDouble ){ printf( "run_omp() bGridDouble %i @ffl.PLQd=%li @FFPaul_d=%li @FFLond_d=%li @FFPaul_d=%li \n", bGridDouble, (long)ffl.PLQd, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFPaul_d );    }
+
+        // if(bToCOG && (!bGridFF) ){ 
+        //     Vec3d cog=average( ffl.natoms, ffl.apos );  
+        //     move( ffl.natoms, ffl.apos, cog*-1.0 ); 
+        // }
+        if(bCheckStuck){ checkStuck( RStuck ); }
         //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
-        #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bExploring,bThermalSampling,bConstrains,bConverged)
+        #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bConstrains,bConverged)
         while(itr<niter){
             if(itr<niter){
             //#pragma omp barrier
             #pragma omp single
             {E=0;F2=0;ff=0;vv=0;vf=0;
-                bExploring = false;
-                if(bGopt){
-                    go.update();
-                    bExploring       = go.bExploring; 
-                    bThermalSampling = bExploring;
-                    bConstrains      = bExploring;
-                    if(bExploring) bConverged = false;
-                }
+                if( bGopt         ) go.update();
+                if( go.bExploring ) bConverged = false;
             }
             //------ eval forces
             //#pragma omp barrier
@@ -1587,16 +1730,19 @@ class MolWorld_sp3 : public SolverInterface { public:
                 //if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
 
                 // ----- Error is HERE
-                if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
-                if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
-                //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
-                
+                if(bPBC)   { E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                else       { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                //if(bGridFF){ E+= gridFF.addForce       ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF  float
+                if(bGridFF){ E+= gridFF.addForce_d       ( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }  // GridFF  double
+
+                //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] ); }  // NBFF
+                if(bConstrZ){
+                    springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
+                }
                 if(ipicked==ia)[[unlikely]]{ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                     ffl.fapos[ia].add( f );
                 }
-
             }
             // if(ffl.bTorsion){
             //     #pragma omp for reduction(+:E)
@@ -1604,12 +1750,10 @@ class MolWorld_sp3 : public SolverInterface { public:
             //         E+=ffl.eval_torsion(it); 
             //     }
             // }
-            if(bConstrains){
-                #pragma omp single
-                {
-                    //printf( "run_omp() constrs[%i].apply()\n", constrs.bonds.size() );
-                    E+= constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
-                }
+            #pragma omp single
+            {
+                if(bConstrains  ){ E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
+                if(go.bExploring){ go.constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
             }
             // ---- assemble (we need to wait when all atoms are evaluated)
             //#pragma omp barrier
@@ -1626,63 +1770,73 @@ class MolWorld_sp3 : public SolverInterface { public:
             //#pragma omp barrier
             
             //#pragma omp barrier
-            { //  ==== FIRE
-                #pragma omp for reduction(+:vf,vv,ff)
-                for(int i=0; i<opt.n; i++){
-                    double v=opt.vel  [i];
-                    double f=opt.force[i];
-                    vv+=v*v; ff+=f*f; vf+=v*f;
-                }
-                #pragma omp single
-                { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); }
-                // ------ move
-                #pragma omp for
-                for(int i=0; i<ffl.nvecs; i++){
-                    if( bThermalSampling ){
-                        ffl.move_atom_Langevin( i, dt, 10000.0, gamma_damp, T_target );
-                    }else{
-                        //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
-                        //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
-                        //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
-                        ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
-                        //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
-                    }
+            // --- FIRE pre
+            #pragma omp for reduction(+:vf,vv,ff)
+            for(int i=0; i<opt.n; i++){
+                double v=opt.vel  [i];
+                double f=opt.force[i];
+                vv+=v*v; ff+=f*f; vf+=v*f;
+            }
+            #pragma omp single
+            { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); }
+
+            // ------ move
+            #pragma omp for
+            for(int i=0; i<ffl.nvecs; i++){
+                if( go.bExploring ){
+                    ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target );
+                }else{
+                    //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
+                    //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
+                    //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
+                    ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+                    //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
                 }
             }
-            
-            }
+
             //#pragma omp barrier
             #pragma omp single
             { 
                 Etot=E;
                 itr++; 
-                if(timeLimit>0)[[unlikely]]{
-                    double t = (getCPUticks() - T0)*tick2second;
-                    if(t>0.02){ 
-                        niter=0; 
-                        if(verbosity>1) [[unlikely]] { printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); }
-                    }
-                }
+                // if(timeLimit>0)[[unlikely]]{
+                //     double t = (getCPUticks() - T0)*tick2second;
+                //     if(t>0.02){ 
+                //         niter=0; 
+                //         if(verbosity>1) [[unlikely]] { printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); }
+                //     }
+                // }
                 if(F2<F2conv)[[unlikely]]{ 
                     niter=0; 
                     bConverged = true;
                     double t = (getCPUticks() - T0)*tick2second;
                     if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
-                    if(bGopt){
+
+                    printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+                    if(bGopt  && (!go.bExploring) ){
                         gopt_ifound++;
-                        sprintf(tmpstr,"# %i E %g |F| %g", gopt_ifound, Etot, sqrt(ffl.cvf.z) );
-                        printf( "run_omp().save %s niter=%i \n", tmpstr, niter_max );
+                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(F2), go.istep );
+                        printf( "run_omp().save %s \n", tmpstr );
                         saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
                         go.startExploring();
+                        //go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
                         bConverged=false;
-                        go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
+                        // if(bToCOG && bGridFF ){ 
+                        //     Vec3d cog=average( ffl.natoms, ffl.apos );   cog.z=0;  
+                        //     move( ffl.natoms, ffl.apos, cog*-1.0 ); 
+                        // }
                     }
+                }else{
+                    if( bCheckStuck  )[[unlikely]]{ handleStuckAtom(itr, Vec3d{opt.vf,opt.vv,opt.ff} ); }
                 }
                 //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
                 //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
                 //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
             }
-        }{
+            } // if(itr<niter)
+        } // while(itr<niter)
+        
+        {
         double t = (getCPUticks() - T0)*tick2second;
         if( (itr>=niter_max)&&(verbosity>1)) [[unlikely]] {printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
         }

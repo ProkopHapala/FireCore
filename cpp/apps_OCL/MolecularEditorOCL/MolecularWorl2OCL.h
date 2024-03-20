@@ -111,12 +111,12 @@ class RigidMolecularWorldOCL{ public:
         int err = cl->buildProgram( fname );
         OCL_checkError(err, "cl.buildProgram");
 
-        int id_evalPLE = cl->newKernel("getForceRigidSystemSurfGrid");               DEBUG;
-        task_getForceRigidSystemSurfGrid = new OCLtask( cl, id_evalPLE, 1, -1, 32 ); DEBUG;
+        int id_evalPLE = cl->newKernel("getForceRigidSystemSurfGrid");              
+        task_getForceRigidSystemSurfGrid = new OCLtask( cl, id_evalPLE, 1, -1, 32 );
 
         if( bGetFEgrid ){
-            int id_getFEgrid = cl->newKernel("getFEgrid");              DEBUG;
-            task_getFEgrid   = new OCLtask( cl, id_getFEgrid, 1, -1, 1 );  DEBUG;
+            int id_getFEgrid = cl->newKernel("getFEgrid");             
+            task_getFEgrid   = new OCLtask( cl, id_getFEgrid, 1, -1, 1 );  
         }
     }
 
@@ -677,7 +677,7 @@ class GridFF_OCL{ public:
     }
 
     void uploadAtoms(int n, Vec3d* apos, Quat4d* REQs ){
-        if( nAtoms!=n ){ printf("ERROR: GridFF_OCL::uploadAtoms() Wrong Number  of Atoms: n(%i) != nAtoms(%i) \n, ", n, nAtoms ); exit(0); }
+        if( nAtoms!=n )[[unlikely]]{ printf("ERROR: GridFF_OCL::uploadAtoms() Wrong Number  of Atoms: n(%i) != nAtoms(%i) \n, ", n, nAtoms ); exit(0); }
         float * buff = new float[n*8];
         Vec3dTofloat8( n, apos, REQs, buff );
         cl->upload( id_atoms, buff );
@@ -705,7 +705,7 @@ class GridFF_OCL{ public:
     }
 
     void downloadFF(int n, Vec3d* FFPaul, Vec3d* FFLond, Vec3d* FFelec ){
-        if( nGridTot!=n ){ printf("ERROR: GridFF_OCL::downloadFF() Wrong number of grid points: n(%i) != nGrid(%i) \n, ", n, nGridTot ); exit(0); }
+        if( nGridTot!=n )[[unlikely]]{ printf("ERROR: GridFF_OCL::downloadFF() Wrong number of grid points: n(%i) != nGrid(%i) \n, ", n, nGridTot ); exit(0); }
         float * buff = new float[n*4];
         if(FFPaul){  cl->download( id_FFPaul, buff ); float4ToVec3d( n, buff, FFPaul ); printf("FFPaul downloaded\n"); }
         if(FFLond){  cl->download( id_FFLond, buff ); float4ToVec3d( n, buff, FFLond ); printf("FFLond downloaded\n"); }
@@ -715,7 +715,7 @@ class GridFF_OCL{ public:
 
     void downloadFF( GridFF& gridFF ){
         int n = gridFF.grid.getNtot();
-        if( nGridTot!=n){ printf("ERROR: GridFF_OCL::downloadFF() Wrong number of grid points: n(%i) != nGrid(%i) \n, ", n, nGridTot ); exit(0); }
+        if( nGridTot!=n)[[unlikely]]{ printf("ERROR: GridFF_OCL::downloadFF() Wrong number of grid points: n(%i) != nGrid(%i) \n, ", n, nGridTot ); exit(0); }
 
         gridFF.FFPaul_f = new Quat4f[nGridTot];
         gridFF.FFLond_f = new Quat4f[nGridTot];

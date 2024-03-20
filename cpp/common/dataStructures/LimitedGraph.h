@@ -73,9 +73,9 @@ bool fromBonds( int nb, const Vec2i* bonds, bool bIgnoreAtoms, bool bExitOnErro=
     bool err=0;
     for(int i=0; i<nb; i++){
         Vec2i b = bonds[i];
-        if( (b.a>=n) || (b.b>=n) ) if(bIgnoreAtoms){ continue; }else{ printf( "ERROR in LimitedGraph::fromBonds() bond[%i](%i,%i) out of range(0..%i) \n => Exit(); \n", i, b.a,b.b, n ); exit(0); };
+        if( (b.a>=n) || (b.b>=n) ) if(bIgnoreAtoms){ continue; }else[[unlikely]]{ printf( "ERROR in LimitedGraph::fromBonds() bond[%i](%i,%i) out of range(0..%i) \n => Exit(); \n", i, b.a,b.b, n ); exit(0); };
         bool err = addEdge(b.a, b.b);
-        if(err && bExitOnErro){ printf( "ERROR in LimitedGraph::fromBonds() cannot add bond[%i] neighs are filled nng[%i]=%i nng[%i]=%i  \n => Exit(); \n", i, b.a,nneighs[b.a], b.b,nneighs[b.b] ); exit(0); };
+        if(err && bExitOnErro)[[unlikely]]{ printf( "ERROR in LimitedGraph::fromBonds() cannot add bond[%i] neighs are filled nng[%i]=%i nng[%i]=%i  \n => Exit(); \n", i, b.a,nneighs[b.a], b.b,nneighs[b.b] ); exit(0); };
     }
     return err;
 }
