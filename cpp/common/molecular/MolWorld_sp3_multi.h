@@ -1220,6 +1220,67 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
     }
     return 0;
 }
+int run_omp( int niter_max, double Fconv=1e-3, double Flim=1000, double timeLimit=0.02 ){
+    //printf( "run_omp_ocl() niter_max=%i %dt=g Fconv%g \n", niter_max, dt, Fconv  ); 
+    double F2conv=Fconv*Fconv;
+    double F2max=0;
+    int itr=0,niter=niter_max;
+    long T0,T00;
+    double T1,T2;
+    int err=0;
+    T00 = getCPUticks();
+    //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
+    #pragma omp parallel shared(niter,itr,F2max,T0,T1,T2,err)
+    while(itr<niter){
+        if(itr<niter){
+        #pragma omp for
+        for( int isys=0; isys<nSystems; isys++ ){
+            //printf( "run_omp_ocl[itr=%i] isys=%i @cpu(%i/%i) \n", itr, isys, omp_get_thread_num(), omp_get_num_threads() );
+            ffls[isys].cleanForce();
+            ffls[isys].eval(false);
+            { // Non-Bonded
+                if(bPBC){ ffls[isys].Etot += ffls[isys].evalLJQs_ng4_PBC_simd(); }
+                else    { ffls[isys].Etot += ffls[isys].evalLJQs_ng4_simd    (); } 
+                if   (bGridFF){ gridFF.addForces( ffls[isys].natoms, ffls[isys].apos, ffls[isys].PLQs, ffls[isys].fapos ); }        // GridFF
+            }
+            if( (ipicked>=0) && (isys==iSystemCur) ){ 
+                pullAtom( ipicked, ffls[isys].apos, ffls[isys].fapos );  
+            };
+            if(bConstrains){
+                ffls[isys].Etot += constrs.apply( ffls[isys].apos, ffls[isys].fapos, &ffls[isys].lvec );
+            }
+        }        
+        #pragma omp barrier
+        #pragma omp single
+        {   F2max=0;}
+        #pragma omp for reduction(max:F2max)
+        for( int isys=0; isys<nSystems; isys++ ){
+            int i0v = isys*ocl.nvecs;
+            double F2 = opts[isys].move_FIRE();
+            F2max = fmax(F2max,F2);
+        }
+        #pragma omp single
+        { 
+            nloop++;
+            itr++; 
+            if(F2max<F2conv){ 
+                niter=0; 
+                T1 = (getCPUticks()-T00)*tick2second;
+                if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i,bGridFF=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel,bOcl,bGridFF, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
+                itr--;
+            }
+        }
+        }
+    } 
+    for(int i=0; i<ffl.nvecs; i++){
+        ffl.apos [i]=ffls[iSystemCur].apos [i];
+        ffl.fapos[i]=ffls[iSystemCur].fapos[i];
+    }
+    T1 = (getCPUticks()-T00)*tick2second;
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i,bGridFF=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems, iParalel,bOcl,bGridFF, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
+    return itr;
+}
+
 
 
 int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double timeLimit=0.02 ){
