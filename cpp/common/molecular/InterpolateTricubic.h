@@ -114,7 +114,7 @@ inline Vec3d fe2d_v4( const double tx, const double ty, const Quat4i i, const Qu
         const Quat4d dx = dbasis_val( tx );
         {
             alignas(32) Quat4d p;
-            const Quat4d* Vi = V+i.x*4;
+            const Quat4d* Vi = V+i.x;
             p.x = PLQH.dot( *(Vi  ) );
             p.y = PLQH.dot( *(Vi+1) );
             p.z = PLQH.dot( *(Vi+2) );
@@ -124,7 +124,7 @@ inline Vec3d fe2d_v4( const double tx, const double ty, const Quat4i i, const Qu
         }
         {
             alignas(32) Quat4d p;
-            const Quat4d* Vi = V+i.y*4;
+            const Quat4d* Vi = V+i.y;
             p.x = PLQH.dot( *(Vi  ) );
             p.y = PLQH.dot( *(Vi+1) );
             p.z = PLQH.dot( *(Vi+2) );
@@ -134,7 +134,7 @@ inline Vec3d fe2d_v4( const double tx, const double ty, const Quat4i i, const Qu
         }
         {
             alignas(32) Quat4d p;
-            const Quat4d* Vi = V+i.z*4;
+            const Quat4d* Vi = V+i.z;
             p.x = PLQH.dot( *(Vi  ) );
             p.y = PLQH.dot( *(Vi+1) );
             p.z = PLQH.dot( *(Vi+2) );
@@ -144,7 +144,7 @@ inline Vec3d fe2d_v4( const double tx, const double ty, const Quat4i i, const Qu
         }
         {
             alignas(32) Quat4d p;
-            const Quat4d* Vi = V+i.w*4;
+            const Quat4d* Vi = V+i.w;
             p.x = PLQH.dot( *(Vi  ) );
             p.y = PLQH.dot( *(Vi+1) );
             p.z = PLQH.dot( *(Vi+2) );
@@ -312,7 +312,7 @@ Quat4d fe3d_v2( const Vec3d u, const Vec3i n, const double* Es ){
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
         ((iz<0)||(iz>=n.z-3))        
-    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3d_v2() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
 
     alignas(32) const Quat4d bx =  basis_val( tx );
     alignas(32) const Quat4d dx = dbasis_val( tx );
@@ -351,7 +351,7 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
         ((iz<0)||(iz>=n.z-3))        
-    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
 
     //Quat4d E,Fx,Fy;
     const int nxy = n.x*n.y;
@@ -389,7 +389,7 @@ Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
         ((iz<0)||(iz>=n.z-3))        
-    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3d_v4() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
     //Quat4d E,Fx,Fy;
     const int nxy = n.x*n.y;
     int i0 = ix + n.x*( iy + n.y*iz );  const Vec3d Exy1 = fe2d_v4(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, PLQH, V );
@@ -404,6 +404,7 @@ Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V
         dz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // Fz
         bz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // E
     };
+    //return Quat4d{ 0.0,0.0,0.0, PLQH.dot( V[ix + n.x*( iy + n.y*iz )]  )   };
 } 
 
 
@@ -420,7 +421,7 @@ Quat4f fe3f( const Vec3f u, const Vec3i n, const float* Es ){
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
         ((iz<0)||(iz>=n.z-3))        
-    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3f() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
 
     //Quat4d E,Fx,Fy;
     const int nxy = n.x*n.y;
@@ -449,7 +450,7 @@ void sample1D( const double g0, const double dg, const int ng, const double* Eg,
         const double t = ((xs[i]-g0)*inv_dg);
         const int it   = (int)t;
         //printf( "sample_SplineHermite() x[%i]=%g t=%g it=%i | g0=%g dg=%g \n", i, xs[i], t, it, g0, dg );
-        if( (it<0)||(it>=ng-3) )[[unlikely]]{ printf( "ERROR: sample_SplineHermite it(%i) out of range (0,%i) | xs[%i]=%g -> t=%g \n", it, ng, i, xs[i], t ); exit(0); }
+        if( (it<0)||(it>=ng-3) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::sample1D it(%i) out of range (0,%i) | xs[%i]=%g -> t=%g \n", it, ng, i, xs[i], t ); exit(0); }
         double dt = t-it;
         const Quat4d bs = basis_val ( dt );
         const Quat4d ds = dbasis_val( dt );
@@ -466,7 +467,7 @@ void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg,
         const Vec2d t  = (ps[i] - g0)*inv_dg; 
         const int ix = (int)t.x;
         const int iy = (int)t.y;
-        //if( ((ix<0)||(ix>=ng.x-3)) || ((iy<0)||(iy>=ng.y-3)) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::interpolateTricubic() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
+        //if( ((ix<0)||(ix>=ng.x-3)) || ((iy<0)||(iy>=ng.y-3)) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::sample2D() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
         const int i0 = ix + ng.x*iy;
         Vec3d fe = fe2d( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );        // sample2D(n=10000) time=527.478[kTick] 52.7478[tick/point]
         //Vec3d fe = fe2d_v2( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );   // sample2D(n=10000) time=553.47[kTick] 55.347[tick/point]
