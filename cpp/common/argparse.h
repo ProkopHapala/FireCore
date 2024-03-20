@@ -23,7 +23,7 @@ void process_args( int argc, char *argv[], const LambdaDict& funcs, bool bExitOn
             const char** args = (const char** )(argv+i+1); 
             argf.func( args );
             i+=argf.n;
-        }else{
+        }else [[unlikely]]{
             if(bExitOnMiss){
                 printf("ERROR: process_args(%s) not found => Exit()\n", argv[i] );
                 exit(0);

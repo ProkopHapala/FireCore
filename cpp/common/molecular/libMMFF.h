@@ -1,5 +1,6 @@
 ﻿
 #include "Forces.h"
+#include "InterpolateTricubic.h"
 
 extern "C"{
 
@@ -140,6 +141,43 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 }
 
 // ========= Force-Field Component Sampling  
+
+void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* Es, double* Fs ){
+    Spline_Hermite::sample1D( g0,dg,ng,Eg, n, xs, Es, Fs );
+}
+
+void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
+    long t0 = getCPUticks();
+    Spline_Hermite::sample2D( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );     //    54 [tick/point] with -Ofast
+    //Spline_Hermite::sample2D_avx( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );   //   43 [tick/point] with -Ofast  
+    double t = (getCPUticks()-t0); printf( "sample2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_SplineHermite3D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
+    long t0 = getCPUticks();
+    Spline_Hermite::sample3D    ( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, Eg, n, (Vec3d*)ps, (Quat4d*)fes );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    //Spline_Hermite::sample3D_avx( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, Eg, n, (Vec3d*)ps, (Quat4d*)fes );  // sample3D(n=10000) time=2578.11[kTick] 257.811[tick/point]
+    double t = (getCPUticks()-t0); printf( "sample3D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_SplineHermite3D_f( float* g0, float* dg, int* ng, float* Eg, int n, float* ps, float* fes ){
+    long t0 = getCPUticks();
+    Spline_Hermite::sample3D( *(Vec3f*)g0, *(Vec3f*) dg, *(Vec3i*)ng, Eg, n, (Vec3f*)ps, (Quat4f*)fes );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    double t = (getCPUticks()-t0); printf( "sample3D_f(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
+    SplineConstr C( {0,1}, x0, dx, np, Eps );
+    Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};
+    Vec3d fs[2];
+    for(int i=0; i<n; i++ ){
+        ps[1]={xs[i],0.0,0.0};
+        fs[0]=Vec3dZero;
+        fs[1]=Vec3dZero;
+        Es[i] = C.apply( ps, fs );
+        Fs[i] = fs[0].x;
+    }
+}
 
 void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
     DistConstr C( {0,1}, {lmax,lmin}, {kmax,kmin}, flim  );

@@ -598,7 +598,7 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, 
             for ( ic=nz-1; ic>1; ic-- ){
                 int ibuff_ = ibuff + nxy*ic;
                 fz = FF[ibuff_].z;
-                //if( isnan(fz)||isinf(fz) ){ printf("ERROR in getIsoSurfZ()[%i,%i,%i] fz=%g \n", ia,ib,ic, fz ); exit(0); }
+                //if( isnan(fz)||isinf(fz) )[[unlikely]]{ printf("ERROR in getIsoSurfZ()[%i,%i,%i] fz=%g \n", ia,ib,ic, fz ); exit(0); }
                 if( (fz>isoval)==sign ){
                     ibuff = ibuff_;
                     break;
@@ -609,7 +609,7 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, 
             double fc = 0.0;
             if( fabs(ofz-fz)>1.e-8 ){  fc = 1-((ofz-isoval)/(ofz-fz)); }
             //if( fabs(ofz-fz)>1.e-8 ){  fc = ((ofz-isoval)/(ofz-fz)); }
-            if( isnan(fc)||isinf(fc) ){ printf("ERROR in getIsoSurfZ()[%i,%i] fc=%g fz=%g ofz=%g isoval=%g \n", ia,ib,ic, fc, fz, ofz, isoval ); exit(0); }
+            if( isnan(fc)||isinf(fc) )[[unlikely]]{ printf("ERROR in getIsoSurfZ()[%i,%i] fc=%g fz=%g ofz=%g isoval=%g \n", ia,ib,ic, fc, fz, ofz, isoval ); exit(0); }
             //double fc = 0;
             int ibxy  = ib*nx + ia;
             //printf( "ibxy %i %i \n", ibxy, ibuff );

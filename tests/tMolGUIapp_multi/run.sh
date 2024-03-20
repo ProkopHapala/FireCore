@@ -46,6 +46,20 @@ nsys=50
 #./$name -m 10 -x common_resources/pyridine
 #./$name -m 10 -x common_resources/propandiol
 
+#./$name -x common_resources/nHexadecan_dicarboxylic  -T 100 0.01
+#./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
+#./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
+#./$name -m 10 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 1000 -gopt 1000,1000 0.25,1.0
+#./$name -m 30 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 1000 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
+
+#./$name -m 60 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 100 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
+#./$name -m 120 -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 2 -perframe 100 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
+#./$name -m 60 -x common_resources/nHexadecan_dicarboxylic  -iParalel 1 -perframe 100 -gopt 1000,1000 0.0,0.0 -T 10000 0.01
+
+#./$name -m 60 -x common_resources/nHexadecan_dicarboxylic -iParalel 1 -perframe 100 -T 1000 0.02
+#./$name -m 120 -x common_resources/nHexadecan_dicarboxylic -iParalel 2 -perframe 100 -T 1000 0.02
+
+
 # ====== Polymers
 
 #./$name -m $nsys -x common_resources/polydiacetylene
@@ -57,6 +71,11 @@ nsys=50
 #./$name -m 4    -x common_resources/polymer-2_new
 #./$name -m 1    -x common_resources/polymer-2_new_crash
 #./$name -m 1    -x common_resources/polymer-2_new_crash_33
+
+
+#./$name -m 30    -x common_resources/polymer-2_new    -iParalel 1   -perframe 100  -gopt 1000,1000 0.25,1.0    -T 1000 0.02
+
+
 
 
 #./$name -m 1  -x common_resources/polymer-2_new
@@ -78,7 +97,7 @@ nsys=50
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,10 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+#./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,10 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 
 # ====== Small Molecules On Substrate
 
@@ -117,6 +136,10 @@ nsys=50
 #./$name -m 2 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
 #./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
+
+
+./$name -m 30  -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2    -iParalel 1   -perframe 100  -gopt 1000,1000 0.25,1.0    -T 10000 0.02  -Ftol 1e-2   -verb 0
+
 
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O

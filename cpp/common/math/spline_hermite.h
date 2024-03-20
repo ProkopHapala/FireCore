@@ -20,15 +20,31 @@
 // dy0   1   -2    1
 // dy1   1   -1
 
-
 //         x3   x2   x   1
 //  ----------------------
-//  p-1   -1   +2   -1       /2
-//  p0    +3   -5       +2   /2
-//  p1    -3   +4   +1       /2
-//  p2    +1   -1            /2
+//  p-1    -1   +2   -1       /2
+//  p+0    +3   -5       +2   /2
+//  p+1    -3   +4   +1       /2
+//  p+2    +1   -1            /2
 
-
+//         x3     x2   x      1  
+//  ----------------------------
+//  p-1   -0.5   1.0  -0.5  -0.0
+//  p+0    1.5  -2.5   0.0   1.0  
+//  p+1   -1.5   2.0   0.5   0.0 
+//  p+2    0.5  -0.5   0.0   0.0 
+// dHp:
+//         x2   x     1
+//  p-1  -1.5  +2.0  -0.5   
+//  p+0   4.5  -5.0   0.0   
+//  p+1  -4.5   4.0   0.5   
+//  p+2   1.5  -1.0   0.0    
+// ddHp:
+//          x    1  
+//  p-1   -3.0   2.  
+//  p+0   +9.0  -5.   
+//  p+1   -9.0   4.  
+//  p+2    3.0  -1.   
 
 // ============ optimized
 
@@ -154,6 +170,46 @@ inline void ddbasis( T x, T& c0, T& c1, T& d0, T& d1 ){
 	d0        =  x6 -  4;        //     6*x - 4
 	d1        =  x6 -  2;        //     6*x - 2
 }
+
+
+
+template <class T>
+inline void basis_val( T x, T* bs ){
+	const T x2 = x*x;
+	const T K  =  x2*(x - 1);
+	const T d0 =    K - x2 + x;       //      x3 - 2*x2 + x
+	const T d1 =    K         ;       //      x3 -   x2   
+	bs[0]  =                 d0*-0.5; //  p-1 =      -0.5*d0
+    bs[1]  =  2*K - x2 + 1 + d1*-0.5; //  p+0 = c0 + -0.5*d1
+	bs[2]  = -2*K + x2     + d0*0.5;  //  p+1 = c1 + +0.5*d0
+    bs[3]  =                 d1*0.5;  //  p+2 =      +0.5*d1
+}
+
+template <class T>
+inline void dbasis_val( T x,  T* bs ){
+	const T K    =  3*x*(x - 1);
+    const T d0   =    K - x + 1;   //    3*x2 - 4*x + 1
+	const T d1   =    K + x    ;   //    3*x2 - 2*x
+    bs[0]  =          d0*-0.5; //  p-1 =      -0.5*d0
+	bs[1]  =  2*K   + d1*-0.5; //  p+0 = c0 + -0.5*d1
+	bs[2]  = -2*K   + d0*0.5;  //  p+1 = c1 + +0.5*d0
+	bs[3]  =          d1*0.5;  //  p+2 =      +0.5*d1
+}
+
+template <class T>
+inline void ddbasis_val( T x,  T* bs ){
+	const T x6  =  6*x;
+    const T d0  =  x6 -  4;        //     6*x - 4
+	const T d1  =  x6 -  2;        //     6*x - 2
+	bs[0]       =                 d0*-0.5; //  p-1 =      -0.5*d0
+    bs[1]       =  x6 + x6 -  6 + d1*-0.5; //  p+0 = c0 + -0.5*d1
+	bs[2]       =   6 - x6 - x6 + d0*0.5;  //  p+1 = c1 + +0.5*d0
+	bs[3]       =                 d1*0.5;  //  p+2 =      +0.5*d1
+}
+
+
+
+
 
 template <class T>
 inline void curve_point( T u, const Vec3T<T>& p0, const Vec3T<T>& p1, const Vec3T<T>& t0, const Vec3T<T>& t1,	Vec3T<T>& p ){
