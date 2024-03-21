@@ -55,6 +55,7 @@ class Quat4T {
 	public:
 	union{
 		struct{ T x,y,z,w; };
+        struct{ VEC2 lo,hi;};
 		struct{ VEC f;T e; }; // like force and energy
 		struct{ VEC p;T s; }; // like molecular orbital basiset
 		T array[4];

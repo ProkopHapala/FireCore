@@ -100,7 +100,7 @@ fi
 # ====== Small Molecules On Substrate
 
 #./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2
-./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2 -tricubic
+#./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2 -tricubic
 
 #./$name -x common_resources/H2O       -g common_resources/NaCl_1x1_L2  -lua makeGUI.lua
 #./$name -x  common_resources/H2O2     -g common_resources/NaCl_1x1_L2 -e
@@ -154,6 +154,9 @@ fi
 #./$name -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 
 #./$name -x common_resources/polymer-2_new            -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/polymer-2_new            -g common_resources/NaCl_1x1_L2 -tricubic
+
+
 #./$name -x common_resources/polymer-2_new            -g common_resources/NaCl_1x1_L2  -e
 #./$name -x common_resources/polymer-2          -n 221 -g common_resources/NaCl_1x1_L2
 #./$name -x common_resources/polymer-2_new   -c 10     -g common_resources/NaCl_1x1_L2
@@ -172,6 +175,9 @@ fi
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -drive polymer-2_new.cons -perframe 100  -gopt 1000,1000 0.0,0.0    -T 1000 0.1  -Ftol 1e-6 -seed 654654  -stuck 500,400,0.2 -iParalel 1   -dt 0.01
 
 #./$name -x common_resources/polymer-2_new -g common_resources/NaCl_1x1_L2  -iParalel 0 -T 100 0.01 -verb 2 -perframe 500
+#./$name -x common_resources/polymer-2_new -g common_resources/NaCl_1x1_L2  -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -tricubic
+./$name -x common_resources/polymer-2_new -g common_resources/NaCl_1x1_L2  -iParalel 0 -verb 2 -perframe 500 -tricubic  -Ftol 0.0
+
 
 
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -perframe 100  -gopt 1000,1000 0.0,0.0    -T 2000 0.1  -Ftol 1e-6 -seed 654654   -verb 0  -stuck 100,0.2 
