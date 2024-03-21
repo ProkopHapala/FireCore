@@ -98,7 +98,8 @@ class GridFF : public NBFF{ public:
     Quat4d   *FFelec_d = 0;
     //Quat4f *FFtot    = 0; // total FF is not used since each atom-type has different linear combination
 
-    Vec3i gridN{0,0,0};
+    Quat4d  FEscale{0.0,0.0,0.0,1.0};
+    Vec3i   gridN{0,0,0};
     Quat4d   *VPLQH   = 0;
     double   *V_debug = 0;
 
@@ -270,27 +271,10 @@ inline Quat4d getForce_Tricubic( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) 
     p.sub(shift0);
     p.sub(grid.pos0);
     grid.iCell.dot_to( p, u );
-
-    //u.mul(0.25);
-
-    // ---- Boundary conditions
     u.x=(u.x-((int)(u.x+10)-10))*grid.n.x-1;
     u.y=(u.y-((int)(u.y+10)-10))*grid.n.y-1;
-    //u.z=(u.z-((int)(u.z+10)-10))*n.z;
     if(u.z<0.0){ u.z=0.0; }else if(u.z>1.0){ u.z=1.0; }; u.z=u.z*grid.n.z-1;
-	//return Spline_Hermite::fe3d_v4( PLQH, u, grid.n, VPLQH );
-    //Quat4d PLQH_{0.,0.,1.0,0.0};
-
-	//const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
-    //return Quat4d{ 0.0,0.0,0.0, FFelec[ix + grid.n.x*( iy + grid.n.y*iz )].w   };
-
-    //const int    ix = (int)u.x+1,  iy = (int)u.y+1,  iz = (int)u.z+1;
-    //return Quat4d{ 0.0,0.0,0.0, VPLQH[ix + gridN.x*( iy + gridN.y*iz )].z   };
-
-    //return Spline_Hermite::fe3d( u, gridN, V_debug );
-
-    return Spline_Hermite::fe3d_v4( PLQH, u, gridN, VPLQH );
-
+    return Spline_Hermite::fe3d_v4( PLQH, u, gridN, VPLQH ) * FEscale;
 }
 __attribute__((hot))  
 inline float addForce_Tricubic( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool bSurf=true )const{
@@ -580,6 +564,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         gridN.x = grid.n.x+3;
         gridN.y = grid.n.y+3;
         gridN.z = grid.n.z+3;
+        FEscale.set( -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz, 1.0 );  // NOTE: this will not work for non-orthogonal grids
         _realloc0( VPLQH, gridN.totprod(), Quat4dNAN );
         _realloc0( V_debug, gridN.totprod(), 0.0/0.0 );
         for ( int iz=0; iz<gridN.z; iz++ ){

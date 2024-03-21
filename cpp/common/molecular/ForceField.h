@@ -170,6 +170,7 @@ class ForceField: public Atoms{ public:
             bSubtractBondNonBond  = true;
             bClampNonBonded       = true;
         }
+        //printf( "ForceField::setNonBondStrategy() imode=%i bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", imode, bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
     }
 
     // update atom positions using molecular dynamics (damped leap-frog)

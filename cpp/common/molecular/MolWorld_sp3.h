@@ -1543,7 +1543,8 @@ class MolWorld_sp3 : public SolverInterface { public:
         //     nbmol.bClampNonBonded     = true;
         // }
 
-        ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+        ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+
         //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded );
 
         //if(bToCOG){ printf("bToCOG=%i \n", bToCOG ); center(true); }
@@ -1578,8 +1579,8 @@ class MolWorld_sp3 : public SolverInterface { public:
                     }
                 }
                 if   (bGridFF){ 
-                    if  (bTricubic){ E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
-                    else           { E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
+                    if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
+                    else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
                 }  // GridFF
                 //if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.cdampNB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
                 //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
@@ -1690,7 +1691,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             double c_smooth = 0.1;
             time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/itr )*c_smooth;
             //printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time=%g[ms/%i](%g[us/iter])\n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3,itr,t*1e+6/itr ); 
-            printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter])\n", bPBC,bGridFF,bNonBondNeighs,sqrt(F2max),opt.dt,niter, t*1e+3,itr, time_per_iter );
+            printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter]) | tick2second=%g ticks=%g \n", bPBC,bGridFF,bNonBondNeighs,sqrt(F2max),opt.dt,niter, t*1e+3,itr, time_per_iter,  tick2second,  ticks );
         }
         return itr;
     }

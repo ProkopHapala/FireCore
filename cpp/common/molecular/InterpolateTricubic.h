@@ -64,6 +64,41 @@ inline Quat4T<T> ddbasis_val( T x ){
 
 }
 
+template <class T>
+inline Quat4T<T> basis( T x ){
+	T x2   = x*x;
+	T K    =  x2*(x - 1);
+    return Quat4T<T>{
+	  2*K - x2 + 1,   //  c0 =  2*x3 - 3*x2 + 1
+	 -2*K + x2    ,   //  c1 = -2*x3 + 3*x2
+	    K - x2 + x,   //  d0 =    x3 - 2*x2 + x
+	    K         ,   //  d1 =    x3 -   x2
+    };
+}
+
+template <class T>
+inline Quat4T<T> dbasis( T x ){
+	T K    =  3*x*(x - 1);
+    return Quat4T<T>{
+	  2*K        ,   //  c0 =  6*x2 - 6*x
+	 -2*K        ,   //  c1 = -6*x2 + 6*x
+	    K - x + 1,   //  d0 =  3*x2 - 4*x + 1
+	    K + x    ,   //  d1 =  3*x2 - 2*x
+    };
+}
+
+template <class T>
+inline Quat4T<T> ddbasis( T x ){
+	T x6   =  6*x;
+    return Quat4T<T>{
+    //  x3     x2    x  1
+	    x6 + x6 -  6,  //  c0 =  12*x - 6
+	    6  - x6 - x6,  //  c1 = -12*x + 6
+	    x6 -  4,      //  d0 =   6*x - 4
+	    x6 -  2,      //  d1 =   6*x - 2
+    };
+}
+
 
 template<typename T>
 inline Quat4T<T> basis_val_old( T x  ){
@@ -105,7 +140,86 @@ inline Quat4T<T> ddbasis_val_old( T x ){
     };
 }
 
-__attribute__ ((pure))
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec2d fe2d_deriv( const double tx, const double ty, const Vec2i i, const Quat4d* FEs, const Quat4d* dFs, Quat4d& out ){
+    alignas(32) Quat4d fe1,fe2;
+    //alignas(32) Quat4d dfe;
+    double dxy1,dxy2,dzy1,dzy2;  //   dxy1 = dE/dxdy(1),  
+    double dxyz1,dxyz2;
+    {
+        const Quat4d bx =  basis( tx ); // 4 Hermite basis functions along x-axis
+        const Quat4d dx = dbasis( tx ); // 4 derivatives of Hermite basis functions along x-axis
+        { // x-line y1
+            alignas(32) const Quat4d p1 = FEs[i.x  ];  // (dx,dy,dz,E)       Energy and forces at point_1
+            alignas(32) const Quat4d d1 = dFs[i.x  ];  // (dyz,dxy,dxz,dxyz) 2nd derivatives at point_1
+            alignas(32) const Quat4d p2 = FEs[i.x+1];  // (dx,dy,dz,E)       Energy and forces at point_1
+            alignas(32) const Quat4d d2 = dFs[i.x+1];  // (dyz,dxy,dxz,dxyz) 2nd derivatives at point_2
+            
+            fe1.e  = bx.x*p1.e +  bx.y*p2.e + bx.z*p1.x + bx.w*p2.x;  // E       (x,0)
+            fe1.x  = dx.x*p1.e +  dx.y*p2.e + dx.z*p1.x + dx.w*p2.x;  // (dE/dx) (x,0)
+            fe1.y  = bx.x*p1.y +  bx.y*p2.y + bx.z*d1.y + bx.w*d2.y;  // (dE/dy) (x,0)
+            fe1.z  = bx.x*p1.z +  bx.y*p2.z + bx.z*d1.z + bx.w*d2.z;  // (dE/dz) (x,0)
+
+            dxy1   = dx.x*p1.y +  dx.y*p2.y + dx.z*d1.y  + dx.w*d2.y; // (d2E/dxdy)  (x,0)
+            dzy1   = bx.x*d1.x +  bx.y*d2.x + bx.z*d1.e  + bx.w*d2.e; // (d2E/dzdy)  (x,0)
+            dxyz1  = dx.x*d1.x +  dx.y*d2.x + dx.z*d1.e  + dx.w*d2.e; // (d3E/dxdydz)(x,0)
+        }
+        { // x-line y2
+            alignas(32) const Quat4d p1 = FEs[i.y  ]; 
+            alignas(32) const Quat4d d1 = dFs[i.y  ];  // (dxy,dxz,dyz,dxyz)
+            alignas(32) const Quat4d p2 = FEs[i.y+1]; 
+            alignas(32) const Quat4d d2 = dFs[i.y+1]; 
+
+            fe2.e  = bx.x*p1.e +  bx.y*p2.e + bx.z*p1.x  + bx.w*p2.x;  // E       (x,1)
+            fe2.x  = dx.x*p1.e +  dx.y*p2.e + dx.z*p1.x  + dx.w*p2.x;  // (dE/dx) (x,1)
+            fe2.y  = bx.x*p1.y +  bx.y*p2.y + bx.z*d1.y + bx.w*d2.y;   // (dE/dy) (x,1)
+            fe2.z  = bx.x*p1.z +  bx.y*p2.z + bx.z*d1.z + bx.w*d2.z;   // (dE/dz) (x,1)
+
+            dxy2  = dx.x*p1.y +  dx.y*p2.y + dx.z*d1.y  + dx.w*d2.y;   // (d2E/dxdy)   (x,1)
+            dzy2  = bx.x*d1.x +  bx.y*d2.x + bx.z*d1.e  + bx.w*d2.e;   // (d2E/dxdy)   (x,1)
+            dxyz2 = dx.x*d1.x +  dx.y*d2.x + dx.z*d1.e  + dx.w*d2.e;   // (d3E/dxdydz) (x,0)
+        }
+    }
+    alignas(32) const Quat4d by =  basis( ty );
+    alignas(32) const Quat4d dy = dbasis( ty );
+    out.w = by.x*fe1.e +  by.y*fe2.e + by.z*fe1.y + by.w*fe2.y; // E       (x,y)
+    out.y = dy.x*fe1.e +  dy.y*fe2.e + dy.z*fe1.y + dy.w*fe2.y; // (dE/dy) (x,y)
+    out.x = by.x*fe1.x +  by.y*fe2.x + by.z*dxy1  + by.w*dxy2;  // (dE/dx) (x,y)
+    out.z = by.x*fe1.z +  by.y*fe2.z + by.z*dzy1  + by.w*dzy2;  // (dE/dz) (x,y)
+    return Vec2d{
+        by.x*dzy1  + by.y*dzy2  + by.z*dxyz1 + by.w*dxyz2,      // (d2E/dxdz) (x,y)
+        dy.x*fe1.z + dy.y*fe2.z + dy.z*dzy1  + dy.w*dzy2,       // (d2E/dydz) (x,y)
+    };
+}
+
+__attribute__((pure))
+__attribute__((hot)) 
+Quat4d fe3d_deriv( const Vec3d u, const Vec3i n, const Quat4d* FEs, const Quat4d* dFs  ){
+    // We assume there are boundary added to simplify the index calculations
+	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+    if( 
+        ((ix<0)||(ix>=n.x-3)) ||
+        ((iy<0)||(iy>=n.y-3)) ||
+        ((iz<0)||(iz>=n.z-3))        
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    const int nxy = n.x*n.y;
+    Quat4d fe1,fe2;
+    const int i0  = ix + n.x*(iy + n.y*iz ); const Vec2d dfe1 = fe2d_deriv(tx,ty, {i0,i0+n.x}, FEs, dFs, fe1 );
+    const int i1  = i0+nxy;                  const Vec2d dfe2 = fe2d_deriv(tx,ty, {i1,i1+n.x}, FEs, dFs, fe2 );
+    const Quat4d bz =  basis( tz );
+    const Quat4d dz = dbasis( tz );
+    return Quat4d{
+        bz.dot( {fe1.x, fe2.x, dfe1.x, dfe2.x} ), // Fx
+        bz.dot( {fe1.y, fe2.y, dfe1.y, dfe2.y} ), // Fy
+        dz.dot( {fe1.e, fe2.e,  fe1.z,  fe2.z} ), // Fz
+        bz.dot( {fe1.e, fe2.e,  fe1.z,  fe2.z} ), // E
+    };
+} 
+
+__attribute__((pure))
 __attribute__((hot)) 
 inline Vec3d fe2d_v4( const double tx, const double ty, const Quat4i i, const Quat4d PLQH, const Quat4d* V ){
     alignas(32) Quat4d e,fx;
@@ -162,7 +276,7 @@ inline Vec3d fe2d_v4( const double tx, const double ty, const Quat4i i, const Qu
     };
 }
 
-__attribute__ ((pure))
+__attribute__((pure))
 __attribute__((hot)) 
 inline Vec3d fe2d( const double tx, const double ty, const Quat4i i, const double* Es ){
     alignas(32) Quat4d e,fx;
@@ -199,7 +313,7 @@ inline Vec3d fe2d( const double tx, const double ty, const Quat4i i, const doubl
     };
 }
 
-__attribute__ ((pure))
+__attribute__((pure))
 __attribute__((hot)) 
 inline Vec3d fe2d_v2( const double tx, const double ty, const Quat4i i, const double* Es ){
     Quat4d e,fy;
@@ -233,7 +347,7 @@ inline Vec3d fe2d_v2( const double tx, const double ty, const Quat4i i, const do
 }
 
 
-__attribute__ ((pure))
+__attribute__((pure))
 __attribute__((hot)) 
 inline Vec3d fe2d_v3( const Quat4d bx, const Quat4d dx, const Quat4d by, const Quat4d dy, const Quat4i i, const double* Es ){
     Quat4d e,fy;
@@ -263,7 +377,7 @@ inline Vec3d fe2d_v3( const Quat4d bx, const Quat4d dx, const Quat4d by, const Q
 
 
 
-__attribute__ ((pure))
+__attribute__((pure))
 __attribute__((hot)) 
 Vec3f fe2f( const float tx, const float ty, const Quat4i i, const float* Es ){
     alignas(32) Quat4f e,fx;
@@ -300,7 +414,7 @@ Vec3f fe2f( const float tx, const float ty, const Quat4i i, const float* Es ){
     };
 }
 
-__attribute__ ((pure))
+__attribute__((pure))
 __attribute__((hot)) 
 Quat4d fe3d_v2( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
@@ -339,7 +453,7 @@ Quat4d fe3d_v2( const Vec3d u, const Vec3i n, const double* Es ){
     };
 } 
 
-__attribute__ ((pure))
+__attribute__((pure))
 __attribute__((hot)) 
 Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
@@ -376,7 +490,7 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     };
 } 
 
-__attribute__ ((pure))
+__attribute__((pure))
 __attribute__((hot)) 
 Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V ){
     // We assume there are boundary added to simplify the index calculations
@@ -405,7 +519,7 @@ Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V
     //return Quat4d{ 0.0,0.0,0.0, PLQH.dot( V[ix + n.x*( iy + n.y*iz )]  )   };
 } 
 
-__attribute__ ((pure))
+__attribute__((pure))
 __attribute__((hot)) 
 Quat4f fe3f( const Vec3f u, const Vec3i n, const float* Es ){
     // We assume there are boundary added to simplify the index calculations
