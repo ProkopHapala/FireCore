@@ -600,6 +600,36 @@ void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg,
 }
 
 __attribute__((hot)) 
+void sample2D_deriv( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Quat4d* Eg, const Quat4d* dEg, const int n, const Vec2d* ps, Quat4d* fes ){
+    Vec2d inv_dg; inv_dg.set_inv(dg); 
+    for(int i=0; i<n; i++ ){
+        const Vec2d t  = (ps[i] - g0)*inv_dg; 
+        const int ix = (int)t.x;
+        const int iy = (int)t.y;
+        //if( ((ix<0)||(ix>=ng.x-3)) || ((iy<0)||(iy>=ng.y-3)) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::sample2D() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
+        const int i0 = ix + ng.x*iy;
+        Quat4d fe;
+        fe2d_deriv( t.x-ix,t.y-iy, {i0,i0+ng.x}, Eg, dEg, fe );        // sample2D(n=10000) time=527.478[kTick] 52.7478[tick/point]
+        //Vec3d fe = fe2d_v2( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );   // sample2D(n=10000) time=553.47[kTick] 55.347[tick/point]
+        fe.x*=inv_dg.x;
+        fe.y*=inv_dg.x;
+        fes[i]=fe;
+        //printf( "sample2D()[%i] ps(%g,%g) E=%g Fxy(%g,%g)\n", i, ps[i].x,ps[i].y,  fes[i].z,fes[i].x,fes[i].y );
+    }
+}
+
+__attribute__((hot)) 
+void sample3D_deriv( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Quat4d* Eg, const Quat4d* dEg, const int n, const Vec3d* ps, Quat4d* fes ){
+    Vec3d inv_dg; inv_dg.set_inv(dg); 
+    for(int i=0; i<n; i++ ){
+        Quat4d fe = fe3d_deriv( (ps[i]-g0)*inv_dg, ng, Eg, dEg );        // sample3D(n=10000) time=2009.44[kTick] 200.944[tick/point]
+        //Quat4d fe = fe3d_v2( (ps[i]-g0)*inv_dg, ng, Eg );   // sample3D(n=10000) time=2175.84[kTick] 217.584[tick/point]
+        fe.f.mul(inv_dg);
+        fes[i] = fe;
+    }
+}
+
+__attribute__((hot)) 
 void sample3D( const Vec3f g0, const Vec3f dg, const Vec3i ng, const float* Eg, const int n, const Vec3f* ps, Quat4f* fes ){
     Vec3f inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){

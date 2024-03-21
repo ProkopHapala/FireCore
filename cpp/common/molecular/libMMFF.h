@@ -166,6 +166,14 @@ void sample_SplineHermite3D_f( float* g0, float* dg, int* ng, float* Eg, int n, 
     double t = (getCPUticks()-t0); printf( "sample3D_f(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
 }
 
+void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+    Spline_Hermite::sample3D_deriv( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, (Quat4d*)Eg, (Quat4d*)dEg, n, (Vec3d*)ps, (Quat4d*)fes ); 
+}
+
+void sample_SplineHermite2D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+    Spline_Hermite::sample2D_deriv( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, (Quat4d*)Eg, (Quat4d*)dEg, n, (Vec2d*)ps, (Quat4d*)fes );  
+}
+
 void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
     SplineConstr C( {0,1}, x0, dx, np, Eps );
     Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};

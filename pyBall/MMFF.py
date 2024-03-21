@@ -105,6 +105,30 @@ def sample_SplineHermite( xs, Eps, x0=0.0, dx=1.0, Es=None, Fs=None):
     lib.sample_SplineHermite(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
     return Es,Fs
 
+#void sample_SplineHermite2D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+lib.sample_SplineHermite2D_deriv.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p]
+lib.sample_SplineHermite2D_deriv.restype   =  None
+def sample_SplineHermite2D_deriv( ps, Eg, dEg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Eg.shape, np.int32 )
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_SplineHermite2D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), _np_as(dEg,c_double_p),  n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+lib.sample_SplineHermite3D_deriv.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p]
+lib.sample_SplineHermite3D_deriv.restype   =  None
+def sample_SplineHermite3D_deriv( ps, Eg, dEg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Eg.shape, np.int32 )
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_SplineHermite3D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), _np_as(dEg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
 #void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
 lib.sample_SplineHermite2D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p]
 lib.sample_SplineHermite2D.restype   =  None
