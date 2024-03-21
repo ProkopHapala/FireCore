@@ -178,6 +178,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bConstrains       = false;
 	bool bSurfAtoms        = false;
     bool bGridFF           = false;
+    bool bTricubic         = false;
 	bool bPlaneSurfForce   = false;
     bool bMMFF             = true;
     bool bUFF              = false; 
@@ -1576,7 +1577,10 @@ class MolWorld_sp3 : public SolverInterface { public:
                         else    { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
                     }
                 }
-                if   (bGridFF){ E+= gridFF.addForce       ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF
+                if   (bGridFF){ 
+                    if  (bTricubic){ E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
+                    else           { E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
+                }  // GridFF
                 //if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.cdampNB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
                 //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
                 if(bConstrZ){
