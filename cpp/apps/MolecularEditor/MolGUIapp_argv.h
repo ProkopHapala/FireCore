@@ -58,6 +58,8 @@
     funcs["-dt"]={1,[&](const char** ss){ sscanf(ss[0],"%lf", &W->dt_default); printf( "ARG -dt dt_default=%g \n", W->dt_default ); }};
     funcs["-NBneigh"]={0,[&](const char** ss){ W->bNonBondNeighs=true; }};
     funcs["-noNB"]={0,[&](const char** ss){ W->bNonBonded=false; }};
+    funcs["-tricubic"]={0,[&](const char** ss){ W->bTricubic=true; }};
+
 
 #endif // MolGUIapp_Lua
 

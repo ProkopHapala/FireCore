@@ -257,6 +257,12 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
         ;
     }
 }
+__attribute__((hot))  
+inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=true )const{
+    Quat4f fe = getForce( p, PLQ, bSurf ); 
+    f.add( (Vec3d)fe.f );   
+    return fe.e;
+}
 
 __attribute__((hot))  
 inline Quat4d getForce_Tricubic( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
@@ -286,13 +292,14 @@ inline Quat4d getForce_Tricubic( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) 
     return Spline_Hermite::fe3d_v4( PLQH, u, gridN, VPLQH );
 
 }
-
 __attribute__((hot))  
-inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=true )const{
-    Quat4f fe = getForce( p, PLQ, bSurf ); 
+inline float addForce_Tricubic( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool bSurf=true )const{
+    Quat4d fe = getForce_Tricubic( p, PLQ, bSurf ); 
     f.add( (Vec3d)fe.f );   
     return fe.e;
 }
+
+
 __attribute__((hot))  
 double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf=true )const{ 
     double E=0;
@@ -409,56 +416,6 @@ inline Quat4d getForce_d( Vec3d p, const Quat4d& PLQ, bool bSurf=true ) const {
          + (FFelec_d[ i011 ]*f011) + (FFelec_d[ i101 ]*f111)
          + (FFelec_d[ i001 ]*f001) + (FFelec_d[ i101 ]*f101))*PLQ.z
         ;
-
-        
-        //Quat4d fe = Quat4dZero;
-
-        // fe.add_mul( FFPaul_d[ i000 ], 1 );
-        // fe.add_mul( FFPaul_d[ i100 ], 1 );
-        // fe.add_mul( FFPaul_d[ i010 ], 1 );
-        // fe.add_mul( FFPaul_d[ i110 ], 1 );
-        // fe.add_mul( FFPaul_d[ i011 ], 1 );
-        // fe.add_mul( FFPaul_d[ i111 ], 1 );
-        // fe.add_mul( FFPaul_d[ i001 ], 1 );
-        // fe.add_mul( FFPaul_d[ i101 ], 1 );
-
-        // fe.add_mul( FFPaul_d[ i000 ], f000 );
-        // fe.add_mul( FFPaul_d[ i100 ], f100 );
-        // fe.add_mul( FFPaul_d[ i010 ], f010 );
-        // fe.add_mul( FFPaul_d[ i110 ], f110 );
-        // fe.add_mul( FFPaul_d[ i011 ], f011 );
-        // fe.add_mul( FFPaul_d[ i111 ], f111 );
-        // fe.add_mul( FFPaul_d[ i001 ], f001 );
-        // fe.add_mul( FFPaul_d[ i101 ], f101 );
-
-        // fe.add_mul( FFPaul_d[ i000 ], f000*PLQ.x );
-        // fe.add_mul( FFPaul_d[ i100 ], f100*PLQ.x );
-        // fe.add_mul( FFPaul_d[ i010 ], f010*PLQ.x );
-        // fe.add_mul( FFPaul_d[ i110 ], f110*PLQ.x );
-        // fe.add_mul( FFPaul_d[ i011 ], f011*PLQ.x );
-        // fe.add_mul( FFPaul_d[ i111 ], f111*PLQ.x );
-        // fe.add_mul( FFPaul_d[ i001 ], f001*PLQ.x );
-        // fe.add_mul( FFPaul_d[ i101 ], f101*PLQ.x );
-
-        //  fe.add_mul( 
-        //   ((FFPaul_d[ i000 ]*f000) + (FFPaul_d[ i100 ]*f100)
-        //  + (FFPaul_d[ i010 ]*f010) + (FFPaul_d[ i110 ]*f110)  
-        //  + (FFPaul_d[ i011 ]*f011) + (FFPaul_d[ i111 ]*f111)
-        //  + (FFPaul_d[ i001 ]*f001) + (FFPaul_d[ i101 ]*f101)), PLQ.x );
-
-        //  fe.add_mul( 
-        //   ((FFLond_d[ i000 ]*f000) + (FFLond_d[ i100 ]*f100)
-        //  + (FFLond_d[ i010 ]*f010) + (FFLond_d[ i110 ]*f110)  
-        //  + (FFLond_d[ i011 ]*f011) + (FFLond_d[ i111 ]*f111)
-        //  + (FFLond_d[ i001 ]*f001) + (FFLond_d[ i101 ]*f101)), PLQ.y );
-
-        // fe.add_mul( 
-        //   ((FFelec_d[ i000 ]*f000) + (FFelec_d[ i100 ]*f100)
-        //  + (FFelec_d[ i010 ]*f010) + (FFelec_d[ i110 ]*f110)  
-        //  + (FFelec_d[ i011 ]*f011) + (FFelec_d[ i101 ]*f111)
-        //  + (FFelec_d[ i001 ]*f001) + (FFelec_d[ i101 ]*f101)), PLQ.z );
-
-        //return fe;
     }
 }
 __attribute__((hot))  

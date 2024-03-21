@@ -621,6 +621,7 @@ void MolGUI::initWiggets(){
     chk->addBox( "NonBond"   , &W->bNonBonded     );
     chk->addBox( "NonBondNG" , &W->bNonBondNeighs );
     chk->addBox( "GridFF"    , &W->bGridFF        );
+    chk->addBox( "tricubic"  , &W->bTricubic      );
     ylay.step( chk->boxes.size()*2 ); ylay.step( 2 );
 
     printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
