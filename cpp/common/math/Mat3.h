@@ -43,6 +43,7 @@ class Mat3T{
 
 	inline void setOne(        ){ xx=yy=zz=1; xy=xz=yx=yz=zx=zy=0; };
 	inline void set   ( T f ){ xx=yy=zz=f; xy=xz=yx=yz=zx=zy=0; };
+	inline void set   ( const T& xx_, const T& xy_, const T& xz_, const T& yx_, const T& yy_, const T& yz_, const T& zx_, const T& zy_, const T& zz_ ){ xx=xx_; xy=xy_; xz=xz_; yx=yx_; yy=yy_; yz=yz_; zx=zx_; zy=zy_; zz=zz_; };
 
 	inline void set  ( const VEC& va, const VEC& vb, const VEC& vc ){ a.set(va); b.set(vb); c.set(vc); }
 	inline void set  ( const MAT& M ){
@@ -666,7 +667,145 @@ class Mat3T{
 	}
 	*/
 
+	inline void mat_sqrt( const MAT& A ){
+		xx = std::sqrt(A.xx); xy = std::sqrt(A.xy); xz = std::sqrt(A.xz);
+		yx = std::sqrt(A.yx); yy = std::sqrt(A.yy); yz = std::sqrt(A.yz);
+		zx = std::sqrt(A.zx); zy = std::sqrt(A.zy); zz = std::sqrt(A.zz);
+	}
+
+	inline void SVD(MAT& rot, VEC& val){
+		MAT A;
+		A.set(*this);
+		
+
+		double tolerance = 1e-6;
+		int iteration_count = 0;
+        bool do51 = true; //"This is a way to deal with those nasty gotos in the FORTRAN code"
+        int iflag;
+        int ix;
+		int iy;
+		int iz;
+        double sigma;
+        double gamma;
+        double sg;
+        Vec3d bb, cc;
+        while (true)
+        {
+            if (do51)
+            {
+                iflag = 0;
+                ix = 0;
+            }
+
+            // If the number of iterations exceeds 500, give up
+            ++iteration_count;
+            if (iteration_count > 100)
+            {
+                break;
+            }
+
+			iy=ix+1;
+			if(iy>2) iy=0;
+			iz=3-ix-iy;
+
+			sigma = A.vecs[iz].array[iy] - A.vecs[iy].array[iz];
+			gamma = A.vecs[iy].array[iy] + A.vecs[iz].array[iz];
+
+            sg = sqrt(sigma * sigma + gamma * gamma);
+
+            if (sg == 0)
+            {
+                ++ix;
+                if (iflag == 0){break;}
+                if (ix < 3){do51 = false;}
+				else{do51 = true;}
+                continue;
+            }
+
+            sg = 1.0 / sg;
+            if (fabs(sigma) < (tolerance * fabs(gamma)))
+			{
+                ++ix;
+                if (iflag == 0){break;}
+                if (ix < 3){do51 = false;}
+                else{do51 = true;}
+                continue;
+            }
+
+			bb.set_add_mul(Vec3dZero, A.vecs[iy], gamma);
+			bb.add_mul(A.vecs[iz], sigma);
+			bb.mul(sg);
+			cc.set_add_mul(Vec3dZero, A.vecs[iz], gamma);
+			cc.add_mul(A.vecs[iy], 0-sigma);
+			cc.mul(sg);
+			A.vecs[iy] = bb;
+			A.vecs[iz] = cc;
+			
+			bb.set_add_mul(Vec3dZero, rot.vecs[iy], gamma);
+			bb.add_mul(rot.vecs[iz], sigma);
+			bb.mul(sg);
+			cc.set_add_mul(Vec3dZero, rot.vecs[iz], gamma);
+			cc.add_mul(rot.vecs[iy], 0-sigma);
+			cc.mul(sg);
+			rot.vecs[iy] = bb;
+			rot.vecs[iz] = cc;
+
+            iflag = 1;
+
+            ++ix;
+            if (iflag == 0){break;}
+            if (ix < 3){do51 = false;}
+            else{do51 = true;}
+            continue;
+        } // End while loop
+		
+		MAT rot2;
+		rot2.a=Vec3d{1,0,0};
+		rot2.b=Vec3d{0,1,0};
+		rot2.c=Vec3d{0,0,1};
+		A.eigenvals(val, true);
+		T temp1 = val.x;
+		val.x = val.z;
+		val.z = temp1;
+
+		A.eigenvec(val.x, rot2.a);
+		A.eigenvec(val.y, rot2.b);
+		A.eigenvec(val.z, rot2.c);
+
+		MAT temp;
+		temp.set_mmul(rot2, rot);
+		rot.set(temp);
+	}
+
+	inline void SVD2(MAT &U, VEC &val, MAT &V=0)
+	{
+		MAT A, Astar, B;
+		A.set(*this);
+
+		Astar.setT(A);
+		B.set_mmul(A, Astar);
+		B.eigenvals(val, true);
+		T temp1 = val.x;
+		val.x = val.z;
+		val.z = temp1;
+		B.eigenvec(val.x, U.a);
+		B.eigenvec(val.y, U.b);
+		B.eigenvec(val.z, U.c);
+
+		// if(!&V)
+		// {
+			B.set_mmul(Astar, A);
+			B.eigenvals(val, true);
+			temp1 = val.x;
+			val.x = val.z;
+			val.z = temp1;
+			B.eigenvec(val.x, V.a);
+			B.eigenvec(val.y, V.b);
+			B.eigenvec(val.z, V.c);
+		//}
+	}
 };
+
 
 
 
