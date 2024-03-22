@@ -554,7 +554,7 @@ Quat4f fe3f( const Vec3f u, const Vec3i n, const float* Es ){
 //#endif WITH_AVX
 
 __attribute__((hot)) 
-void sample1D( const double g0, const double dg, const int ng, const double* Eg, const int n, const double* xs, double* Es, double* Fs ){
+void sample1D( const double g0, const double dg, const int ng, const double* Eg, const int n, const double* xs, Vec2d* FEs ){
     const double inv_dg = 1/dg;
     for(int i=0; i<n; i++ ){
         const double t = ((xs[i]-g0)*inv_dg);
@@ -564,9 +564,9 @@ void sample1D( const double g0, const double dg, const int ng, const double* Eg,
         double dt = t-it;
         const Quat4d bs = basis_val ( dt );
         const Quat4d ds = dbasis_val( dt );
-        const Quat4d v = *(Quat4d*)(Eg+it);
-        Es[i] = bs.dot(v);
-        Fs[i] = ds.dot(v)*inv_dg;
+        const Quat4d v = *(Quat4d*)(Eg+it-1);
+        FEs[i].x = bs.dot(v);
+        FEs[i].y = ds.dot(v)*inv_dg;
     }
 }
 
@@ -638,6 +638,30 @@ void sample3D( const Vec3f g0, const Vec3f dg, const Vec3i ng, const float* Eg, 
         fes[i] = fe;
     }
 }
+
+//__attribute__((hot)) 
+void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d* FE, const int n, const double* ps, Vec2d* fes ){
+    const double inv_dg = 1/dg; 
+    for(int i=0; i<n; i++ ){
+        const double x = (ps[i] - g0)*inv_dg;  
+        const int    ix = (int)x;
+        const double tx = x-ix; 
+        const Quat4d p =  basis(tx);
+        const Quat4d d = dbasis(tx);
+        const Vec2d fe1 = FE[ix  ];
+        const Vec2d fe2 = FE[ix+1];
+        const Quat4d cs{ fe1.x, fe2.x, fe1.y*dg, fe2.y*dg };
+        //const Quat4d cs{ fe1.x, fe2.x, -fe1.y, -fe2.y };
+        //const Quat4d cs{ fe1.x, fe2.x, 0, 0 };
+        fes[i]=Vec2d{
+            p.dot( cs ),
+            d.dot( cs )*inv_dg,
+            //fe1.x,
+            //fe1.y,
+        };
+    }
+}
+
 
 // =============== AVX2 version
 

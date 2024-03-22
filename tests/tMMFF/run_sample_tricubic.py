@@ -7,6 +7,23 @@ sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
+def getLJ( x,y,z, R0, E0 ):
+    r = np.sqrt(x**2 + y**2 + z**2)
+    E  = E0*    ( (R0/r)**12 - 2*(R0/r)**6 )
+    fr = E0*-12*( (R0/r)**12 -   (R0/r)**6 )/(r*r)
+    return E,fr*x,fr*y,fr*z
+
+def getLJ_2( x,y,z, R0, E0 ):
+    R6   = R0**6
+    C6   = E0*R6
+    C#12  = E0*R6*R6
+    ir2  = 1/(x**2 + y**2 + z**2)
+    ir   = np.sqrt(ir2) 
+    E    = C6*   (      R6*ir**6 -   2*ir2**3 )
+    dE   = C6*12*(      R6*ir**6 -     ir2**3 )*ir2
+    ddE  = C6*12*(  168*R6*ir**6 -  96*ir2**3 )*ir2*ir
+    dddE = C6*12*( 2688*R6*ir**6 - 960*ir2**3 )*ir2*ir2
+    return E,dE*x,dE*y,dE*z, ddE*x*y,ddE*x*z,ddE*y*z, dddE*x*y*z
 
 def numDeriv( xs, Es): 
     dx = xs[1]-xs[0]
@@ -25,6 +42,36 @@ def makeGrid( atoms, ng, g0, dg ):
         Z = Zs-a[2]
         Eg += a[4]*( 1/( X**2 + Y**2 + Z**2 + a[3]**2 ) )
     return Eg
+
+def makeGrid_deriv_dir( atoms, ng, g0=(0.0,0.0,0.0), dg=(0.0,0.0,0.1) ):
+    g0=np.array(g0)
+    dg=np.array(dg)
+    lg =np.sqrt(np.dot(dg,dg))
+    Xs = g0[0] + np.arange(0, ng) * dg[0]
+    Ys = g0[1] + np.arange(0, ng) * dg[1]
+    Zs = g0[2] + np.arange(0, ng) * dg[2]
+    ls =  np.sqrt( (Xs-g0[0])**2 + (Ys-g0[0])**2 + (Zs-g0[0])**2 )
+    FE = np.zeros( (ng,2) )
+    #print( FE.shape, Xs.shape, Ys.shape, Zs.shape )
+    for i,a in enumerate(atoms):
+        X = Xs-a[0]
+        Y = Ys-a[1]
+        Z = Zs-a[2]
+        R2  = X**2 + Y**2 + Z**2 + a[3]**2;
+        #iR2 = 1/R2
+        #iR4 = iR2*iR2
+
+        E,fx,fy,fz = getLJ( X,Y,Z, 3.0, 1.0 )
+        FE[:,0]  = E
+        FE[:,1]  = ( fx*dg[0] + fy*dg[1] + fz*dg[2] )/lg 
+
+        #FE[:,0] +=    a[4]*iR2                                        # energy
+        #FE[:,1] += -2*a[4]*iR4*( X*dg[0] + Y*dg[1] + Z*dg[2] )/lg   # directional derivative
+
+
+        #FE[:,0] += Z**2
+        #FE[:,1] += 2*Z
+    return FE, ls
 
 def makeGrid_deriv( atoms, ng, g0, dg ):
     xs = np.arange(ng[0])*dg[0] + g0[0]   #;print("xs: ",xs)
@@ -48,14 +95,22 @@ def makeGrid_deriv( atoms, ng, g0, dg ):
 def make2dDeriv( FE, dg ):
     i3 = 1./3.
     dFE = np.zeros( FE.shape )
-    dFE[:,:,:,0] =  ( np.roll(FE[:,:,:,2], -1, axis=1) - FE[:,:,:,2] )*(0.5*dg[1])   + ( np.roll(FE[:,:,:,1], -1, axis=2) - FE[:,:,:,1] )*(0.5*dg[2])        # yz
-    dFE[:,:,:,1] =  ( np.roll(FE[:,:,:,0], -1, axis=1) - FE[:,:,:,0] )*(0.5*dg[1])   + ( np.roll(FE[:,:,:,1], -1, axis=0) - FE[:,:,:,1] )*(0.5*dg[0])        # xy
-    dFE[:,:,:,2] =  ( np.roll(FE[:,:,:,0], -1, axis=2) - FE[:,:,:,0] )*(0.5*dg[2])   + ( np.roll(FE[:,:,:,2], -1, axis=0) - FE[:,:,:,2] )*(0.5*dg[0])        # xz
+    dFE[:,:,:,0] =  ( np.roll(FE[:,:,:,2], -1, axis=1) - FE[:,:,:,2] )*(0.5/dg[1])   + ( np.roll(FE[:,:,:,1], -1, axis=2) - FE[:,:,:,1] )*(0.5/dg[2])        # yz
+    dFE[:,:,:,1] =  ( np.roll(FE[:,:,:,0], -1, axis=1) - FE[:,:,:,0] )*(0.5/dg[1])   + ( np.roll(FE[:,:,:,1], -1, axis=0) - FE[:,:,:,1] )*(0.5/dg[0])        # xy
+    dFE[:,:,:,2] =  ( np.roll(FE[:,:,:,0], -1, axis=2) - FE[:,:,:,0] )*(0.5/dg[2])   + ( np.roll(FE[:,:,:,2], -1, axis=0) - FE[:,:,:,2] )*(0.5/dg[0])        # xz
     dFE[:,:,:,2] = (       # xyz
-        ( np.roll(dFE[:,:,:,0], -1, axis=0) - dFE[:,:,:,0] )*(i3*dg[0])  +
-        ( np.roll(dFE[:,:,:,1], -1, axis=2) - dFE[:,:,:,1] )*(i3*dg[2])  +
-        ( np.roll(dFE[:,:,:,2], -1, axis=1) - dFE[:,:,:,2] )*(i3*dg[1])  )
+        ( np.roll(dFE[:,:,:,0], -1, axis=0) - dFE[:,:,:,0] )*(i3/dg[0])  +
+        ( np.roll(dFE[:,:,:,1], -1, axis=2) - dFE[:,:,:,1] )*(i3/dg[2])  +
+        ( np.roll(dFE[:,:,:,2], -1, axis=1) - dFE[:,:,:,2] )*(i3/dg[1])  )
     return dFE
+
+def getPoss( nsamp, extent ):
+    nsamp=100
+    extent = [0.0,4.2,0.0,4.2]
+    xs,ys = np.meshgrid( np.linspace(extent[0],extent[1],nsamp), np.linspace(extent[2],extent[3],nsamp) )
+    zs    =  xs*0.0
+    ps = np.vstack([xs.flatten(), ys.flatten(), zs.flatten() ]).T.copy()    #;print("ps.shape: ",ps.shape)
+    return ps
 
 # # ----- Test 1: sample_SplineHermite 1D 
 # dx    =  1.5
@@ -131,24 +186,108 @@ def make2dDeriv( FE, dg ):
 # ----- Test 3: sample_SplineHermite 3D
 
 ng = [6,6,6]
-g0=np.array( [-0.1, -0.1, 0.1 ] )
-dg=np.array( [ 1.5,  1.5, 1.5 ] )
+g0=np.array( [0.1, 0.1, 0.1 ] )
+#dg=np.array( [ 1.5,  1.5, 1.5 ] )
+dg=np.array( [ 0.2,  0.2, 0.2 ] )
 atoms = np.array([
- [2.0, 5.0, 3.0,  1.0,   1.0],
- [5.0, 1.5, 2.0,  0.5,  -1.0],
- [2.5, 3.5, 4.0,  0.8,   0.5],
+ [0.0, 0.0, 0.0,  1.0,   1.0],
+ #[5.0, 1.5, 2.0,  0.5,  -1.0],
+ #[2.5, 3.5, 4.0,  0.8,   0.5],
 ])
-Eg = makeGrid( atoms, ng, g0, dg )
 
-FE  = makeGrid_deriv( atoms, ng, g0, dg )
-dFE = make2dDeriv( FE, dg )
+g0 = 3.0-0.3
+dg = 0.1
+FEg, xg = makeGrid_deriv_dir( atoms, 60, g0=(0.0,0.0,g0), dg=(0.0,0.0,0.1) )
+Eg = FEg[:,0].copy()
+plt.plot( xg, FEg[:,0], 'ok', label="Eg   " )
+plt.plot( xg, FEg[:,1], 'or',label="Fg_an" )
+plt.plot( xg[1:-1], numDeriv( xg, FEg[:,0] ), '+g', label="Fg_num" )
+#plt.grid()
+#plt.legend()
+
+xs  = np.linspace( g0, 6.0, 1000 )
+FEs =  mmff.sample_SplineHermite1D_deriv( xs, FEg, g0, dg )
+plt.plot( xs, FEs[:,0], '-k', label="Es_deriv    ", lw=3 )
+plt.plot( xs, FEs[:,1], '-r', label="Fs_deriv_an ", lw=3 )
+plt.plot( xs[1:-1], numDeriv( xs, FEs[:,0] ), ':g', lw=3, label="Fs_deriv_num" )
+# plt.grid()
+# plt.legend()
 
 
-nsamp = 100
-xs    = np.linspace(0.0,4.2,nsamp)
-ps    = np.zeros((nsamp,3))
+xs  = np.linspace( g0, 6.0, 1000 )
+FEs =  mmff.sample_SplineHermite( xs, Eg, g0, dg )
+plt.plot( xs, FEs[:,0], '--', label="Es_findif    ", c='gray' )
+plt.plot( xs, FEs[:,1], '--', label="Fs_findif_an ", c='orange')
+#plt.plot( xs[1:-1], numDeriv( xs, FEs[:,0] ), ':', label="Fs_findif_num" )
+
+plt.xlim(2,5)
+plt.ylim(-2,1)
+plt.grid()
+plt.legend()
+
+
+# Eg  = makeGrid( atoms, ng, g0, dg )
+# FE  = makeGrid_deriv( atoms, ng, g0, dg )
+# dFE = make2dDeriv( FE, dg )
+
+
+
+# ----- Test 3: sample_SplineHermite3D_deriv   1D-plot
+
+# nsamp = 100
+# xs    = np.linspace(0.1,0.5,nsamp)
+# ps    = np.zeros((nsamp,3))
+# ps[:,0],ps[:,1],ps[:,2] = xs,0.2,0.2
+# FEs = mmff.sample_SplineHermite3D_deriv( ps, FE, dFE, g0=g0, dg=dg )
+# #FEs = mmff.sample_SplineHermite3D_deriv( ps, FE, dFE*0, g0=g0, dg=dg )
+# #FEs = mmff.sample_SplineHermite3D( ps, Eg, g0=g0, dg=dg )
+# plt.figure();
+# plt.plot( xs, FEs[:,3], '.-', label="E"  )
+# plt.plot( xs, FEs[:,0], '.-', label="Fx" )
+# # plt.plot( xs, FEs[:,1], '.-', label="Fy" )
+# # plt.plot( xs, FEs[:,2], '.-', label="Fz" )
+# plt.plot( xs[1:-1],numDeriv(xs,FEs[:,3]), ':',lw=2, label="Fx_num" )
+# plt.grid(); plt.legend()
+# FEs = mmff.sample_SplineHermite3D_deriv( ps, FE, dFE*0, g0=g0, dg=dg )
+# plt.figure();
+# plt.plot( xs, FEs[:,3], '.-', label="E"  )
+# plt.plot( xs, FEs[:,0], '.-', label="Fx" )
+# # plt.plot( xs, FEs[:,1], '.-', label="Fy" )
+# # plt.plot( xs, FEs[:,2], '.-', label="Fz" )
+# plt.plot( xs[1:-1],numDeriv(xs,FEs[:,3]), ':',lw=2, label="Fx_num" )
+# plt.grid(); plt.legend()
+
+
+
+# print(  "FE.shape, dFE.shape ",  FE.shape, dFE.shape )
+# nsamp=100
+# extent = [0.0,4.2,0.0,4.2]
+# ps = getPoss( nsamp, extent )
+# #FEs = mmff.sample_SplineHermite3D( ps, Eg, g0=g0, dg=dg )
+# FEs = mmff.sample_SplineHermite3D_deriv( ps, FE, dFE, g0=g0, dg=dg )
+# FEs = FEs.reshape(nsamp,nsamp,4)
+# cmap='plasma'
+# plt.figure(figsize=(15,5));
+# plt.subplot(1,4,1); plt.imshow( FEs[:,:,3], extent=extent, origin='lower', cmap=cmap ); plt.colorbar(); plt.title("E" )
+# plt.subplot(1,4,2); plt.imshow( FEs[:,:,0], extent=extent, origin='lower', cmap=cmap ); plt.colorbar(); plt.title("Fx")
+# plt.subplot(1,4,3); plt.imshow( FEs[:,:,1], extent=extent, origin='lower', cmap=cmap ); plt.colorbar(); plt.title("Fy")
+# plt.subplot(1,4,4); plt.imshow( FEs[:,:,2], extent=extent, origin='lower', cmap=cmap ); plt.colorbar(); plt.title("Fz")
+
+
+
+
+
+
+
+
+
+
+
 
 # # ----- Test 3.1: sample_SplineHermite2D --- line along x
+# nsamp = 100
+# xs    = np.linspace(0.0,4.2,nsamp)
+# ps    = np.zeros((nsamp,3))
 # ps[:,0],ps[:,1],ps[:,2] = xs,1.0,1.0
 # FEs = mmff.sample_SplineHermite3D( ps, Eg, g0=g0, dg=dg )
 # plt.figure();

@@ -142,8 +142,8 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 
 // ========= Force-Field Component Sampling  
 
-void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* Es, double* Fs ){
-    Spline_Hermite::sample1D( g0,dg,ng,Eg, n, xs, Es, Fs );
+void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
+    Spline_Hermite::sample1D( g0,dg,ng,Eg, n, xs, (Vec2d*)fes );
 }
 
 void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
@@ -172,6 +172,10 @@ void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, 
 
 void sample_SplineHermite2D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
     Spline_Hermite::sample2D_deriv( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, (Quat4d*)Eg, (Quat4d*)dEg, n, (Vec2d*)ps, (Quat4d*)fes );  
+}
+
+void sample_SplineHermite1D_deriv( double g0, double dg, int ng, double* EFg, int n, double* ps, double* fes ){
+    Spline_Hermite::sample1D_deriv( g0, dg, ng, (Vec2d*)EFg, n, ps, (Vec2d*)fes );  
 }
 
 void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
