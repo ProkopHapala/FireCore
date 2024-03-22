@@ -174,7 +174,7 @@ GOpt            go;
     bool bSurfAtoms        = false; // If true, the program considers surface atoms for some calculations.
     bool bGridFF           = false; // If true, the program uses a grid-based force field.
     bool bPlaneSurfForce   = false; // If true, the program applies a force related to a plane surface.
-    bool bMMFF             = true;  // If true, the program uses the Merck Molecular Force Field for calculations.
+    bool bMMFF             = true;  // If true, the program uses the MMFF for calculations.
     bool bUFF              = false; 
     bool b141              = true;   // seems not to be used in assignUFFtypes()
     bool bSimple           = false;  // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
@@ -290,7 +290,6 @@ GOpt            go;
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
-        database = new MolecularDatabase();
         if(verbosity>0) 
         printf( "#### MolWorld_sp3::init() DONE\n\n");
     }
@@ -892,7 +891,6 @@ void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d test
  * @param cel0 The initial cell position.
  * @param bAutoNPBC Flag indicating whether to automatically set non-periodic boundary conditions.
  */
-
 virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
     if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     sprintf(tmpstr, "%s.lvs", name );
@@ -1978,6 +1976,8 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                         //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
                     }
                 }
+                sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
+                saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
             }
             
             }
@@ -2500,64 +2500,237 @@ virtual void printSwitches(){
 }
 
 
-
+int * neighbours;
 
 bool addSnapshotIfNew()
 {
-    int nMembers = database->getNMembers();
-    // if (verbosity)
-    //     printf("MolWorld_sp3::addSnapshot() #%d\n", nMembers);
-    
-//srand(time(0));
-
-
-
-    if(nMembers == 0)
-        database->setDescriptors(&nbmol);
+    if(!database){
+        database = new MolecularDatabase();
+        database->setDescriptors();    
+        builder.bindParams(&params);    
+        builder.load_xyz("data/polymer.xyz");
+        neighbours = new int[builder.atoms.size()*4];
+        int i = 0;
         
-    int sameIndex = database->addIfNewDescriptor(&nbmol);
-    if(sameIndex != -1){
-        printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");
-        double compareAtoms1 = database->compareAtoms(&nbmol, sameIndex);
-        double compareDescriptors = database->compareDescriptors(&nbmol, sameIndex);
-        printf("%-5d %-5d %-20lf %-20lf\n", sameIndex, nMembers, compareAtoms1, compareDescriptors);
-        return false;
+        neighbours[i*4] = 1;
+        neighbours[i*4+1] = 7;
+        neighbours[i*4+2] = 23;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 0;
+        neighbours[i*4+1] = 9;
+        neighbours[i*4+2] = 24;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 3;
+        neighbours[i*4+1] = 6;
+        neighbours[i*4+2] = 25;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 2;
+        neighbours[i*4+1] = 12;
+        neighbours[i*4+2] = 26;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 5;
+        neighbours[i*4+1] = 11;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 4;
+        neighbours[i*4+1] = 10;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 2;
+        neighbours[i*4+1] = 14;
+        neighbours[i*4+2] = 31;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 0;
+        neighbours[i*4+1] = 15;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 9;
+        neighbours[i*4+1] = 10;
+        neighbours[i*4+2] = 27;
+        neighbours[i*4+3] = 28;
+        i++;
+        neighbours[i*4] = 1;
+        neighbours[i*4+1] = 8;
+        neighbours[i*4+2] = 17;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 5;
+        neighbours[i*4+1] = 8;
+        neighbours[i*4+2] = 11;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 4;
+        neighbours[i*4+1] = 10;
+        neighbours[i*4+2] = 13;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 3;
+        neighbours[i*4+1] = 13;
+        neighbours[i*4+2] = 16;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 11;
+        neighbours[i*4+1] = 12;
+        neighbours[i*4+2] = 29;
+        neighbours[i*4+3] = 30;
+        i++;
+        neighbours[i*4] = 6;
+        neighbours[i*4+1] = 16;
+        neighbours[i*4+2] = 18;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 7;
+        neighbours[i*4+1] = 17;
+        neighbours[i*4+2] = 19;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 12;
+        neighbours[i*4+1] = 14;
+        neighbours[i*4+2] = 20;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 9;
+        neighbours[i*4+1] = 15;
+        neighbours[i*4+2] = 21;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 14;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 15;
+        neighbours[i*4+1] = 22;
+        neighbours[i*4+2] = 32;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 16;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 17;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 19;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 0;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 1;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 2;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 3;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 8;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 8;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 13;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 13;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 6;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        i++;
+        neighbours[i*4] = 19;
+        neighbours[i*4+1] = -1;
+        neighbours[i*4+2] = -1;
+        neighbours[i*4+3] = -1;
+        
     }
+
+    
+
+    database->addMember(&nbmol);
+    int nMembers = database->getNMembers();
+    //builder.makeNeighs(neighbours, 4);
+
+
+
+
+    // int sameIndex = 0;
+    // if(sameIndex != -1){
+    //     printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");
+    //     double compareAtoms1 = database->compareAtoms(&nbmol, sameIndex);
+    //     double compareDescriptors = database->compareDescriptors(&nbmol, sameIndex);
+    //     printf("%-5d %-5d %-20lf %-20lf\n", sameIndex, nMembers, compareAtoms1, compareDescriptors);
+    //     //return false;
+    // }
+    if(nMembers>1){
+        database->as_rigid_as_possible(&nbmol, 0, neighbours);
+    }
+
+    std::string comment = "#" + std::to_string(nMembers);
+    const char* cstr = comment.c_str();
+    std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
+    const char* cstr1 = trjName1.c_str();  
+    FILE* file1=0;
+    file1=fopen( cstr1, "w" );
+    params.writeXYZ(file1, &nbmol, cstr);
+    fclose(file1);
+            double move_x = 0;//randf() * 0.5;
+            double move_y = 0;//randf() * 0.5;
+            double move_z = 0;//randf() * 0.5;
+
+    double angle =0;
+    if(nMembers==1)move_x = 0.2;//randf() * 360;
+
+        Vec3d axis = {0,0,1};//{randf(), randf(), randf()};
+        Vec3d p0 = Vec3dZero;//{randf() * 5 - 2.5, randf() * 5 - 2.5, randf() * 5 - 2.5};
+        for (int i = 0; i < nbmol.natoms; i++)
+        {            
+            
+
+            //if(i==0 && nMembers == 0) move_x = 5;//randf() * 0.5;
+            nbmol.apos[i].add({move_x, move_y, move_z});
+            nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
+        }
+
+
+
     return true;
 
-    database->addIfNewDescriptor(&nbmol);
-    //printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");}
-    // for (int i = 0; i < nMembers; i++) {
-    //     if(i == nMembers-1){
-    //          double compareAtoms1 = database->compareAtoms(nMembers, i);
-    //          double compareDescriptors = database->compareDescriptors(nMembers, i);
-    //          //double compareAtoms2 = database->compareAtoms(i, nMembers);
-    //          printf("%-5d %-5d %-20lf %-20lf\n", i, nMembers, compareAtoms1, compareDescriptors);
-    //     }
-    // }
-    
-    // std::string comment = "#" + std::to_string(nMembers);
-    // const char* cstr = comment.c_str();
-    // std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
-    // const char* cstr1 = trjName1.c_str();  
-    // FILE* file1=0;
-    // file1=fopen( cstr1, "w" );
-    // params.writeXYZ(file1, &nbmol, cstr);
-    // fclose(file1);
 
-//     double angle = randf() * 360;
-//     double move_x = randf() * 0.5;
-//     double move_y = randf() * 0.5;
-//     double move_z = randf() * 0.5;
-//     Vec3d axis = {randf(), randf(), randf()};
-//     Vec3d p0 = {randf() * 5 - 2.5, randf() * 5 - 2.5, randf() * 5 - 2.5};
-//     for (int i = 0; i < nbmol.natoms; i++)
-//     {
-//         nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
-//         nbmol.apos[i].add({move_x, move_y, move_z});
-//     }
-
-// return true;
 }
 
 void printDatabase(){
