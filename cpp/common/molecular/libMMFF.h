@@ -1,6 +1,7 @@
 ﻿
 #include "Forces.h"
 #include "InterpolateTricubic.h"
+#include "Bspline.h"
 
 extern "C"{
 
@@ -141,6 +142,18 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 }
 
 // ========= Force-Field Component Sampling  
+
+int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+    return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
+}
+int fitEF_Bspline( double dg, const int n, double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
+    return Bspline::fit1D_EF( dg, n, Gs,  (Vec2d*)fes, (Vec2d*)Ws, Ftol, nmaxiter, dt );
+}
+
+
+void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
+    Bspline::sample1D( g0,dg,ng,Gs, n, xs, (Vec2d*)fes );
+}
 
 void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
     Spline_Hermite::sample1D( g0,dg,ng,Eg, n, xs, (Vec2d*)fes );
