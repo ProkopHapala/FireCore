@@ -99,6 +99,11 @@ class GridFF : public NBFF{ public:
     int iDebugEvalR = 0;
     bool bCellSet = false;
 
+    /**
+     * Finds the maximum z-coordinate value among the atoms.
+     *
+     * @return The maximum z-coordinate value.
+     */
     double findTop(){ double zmax=-1e+300; for(int i=0;i<natoms; i++){ double z=apos[i].z; if(z>zmax)zmax=z; }; return zmax; }
 
     void bindSystem(int natoms_, int* atypes_, Vec3d* apos_, Quat4d* REQs_ ){
