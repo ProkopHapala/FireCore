@@ -673,11 +673,10 @@ class Mat3T{
 		zx = std::sqrt(A.zx); zy = std::sqrt(A.zy); zz = std::sqrt(A.zz);
 	}
 
-	inline void SVD(MAT& rot, VEC& val){
+	inline void symetrize_matrix_SVD(MAT& rot){
 		MAT A;
 		A.set(*this);
 		
-
 		double tolerance = 1e-6;
 		int iteration_count = 0;
         bool do51 = true; //"This is a way to deal with those nasty gotos in the FORTRAN code"
@@ -758,26 +757,9 @@ class Mat3T{
             else{do51 = true;}
             continue;
         } // End while loop
-		
-		MAT rot2;
-		rot2.a=Vec3d{1,0,0};
-		rot2.b=Vec3d{0,1,0};
-		rot2.c=Vec3d{0,0,1};
-		A.eigenvals(val, true);
-		T temp1 = val.x;
-		val.x = val.z;
-		val.z = temp1;
-
-		A.eigenvec(val.x, rot2.a);
-		A.eigenvec(val.y, rot2.b);
-		A.eigenvec(val.z, rot2.c);
-
-		MAT temp;
-		temp.set_mmul(rot2, rot);
-		rot.set(temp);
 	}
 
-	inline void SVD2(MAT &U, VEC &val, MAT &V=0)
+	inline void SVD(MAT &U, VEC &val, MAT &V)
 	{
 		MAT A, Astar, B;
 		A.set(*this);
