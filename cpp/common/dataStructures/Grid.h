@@ -57,6 +57,11 @@ class GridShape{ public:
         updateCell(step);
     }
 
+    /**
+     * Centers the cell at the specified position.
+     *
+     * @param c The position of the cell to center.
+     */
     void center_cell( Vec3d c ){ cell.dot_to_T( c, pos0 ); }
 
 	//inline Vec3d * allocateArray_Vec3d(){ return new Vec3d[n.x*n.y*n.z); }
