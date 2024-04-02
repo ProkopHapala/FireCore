@@ -275,6 +275,7 @@ GOpt            go;
             if( bMMFF ){ 
                 buildMolecule_xyz( xyz_name );
             }else{
+                printf("MolWorld_sp3::init() loading %s\n", xyz_name);
                 loadNBmol( xyz_name ); 
                 if(bRigid)initRigid();
             }
@@ -1383,6 +1384,10 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
     }
     if(bParams){
         params.clear();
+    }
+    if(database){
+        printf("MolWorld_sp3::clear() database->clear(); \n");
+        database->dealloc();
     }
 }
 
@@ -2506,199 +2511,36 @@ bool addSnapshotIfNew()
 {
     if(!database){
         database = new MolecularDatabase();
-        database->setDescriptors();    
-        builder.bindParams(&params);    
-        builder.load_xyz("data/polymer.xyz");
-        neighbours = new int[builder.atoms.size()*4];
-        int i = 0;
-        
-        neighbours[i*4] = 1;
-        neighbours[i*4+1] = 7;
-        neighbours[i*4+2] = 23;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 0;
-        neighbours[i*4+1] = 9;
-        neighbours[i*4+2] = 24;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 3;
-        neighbours[i*4+1] = 6;
-        neighbours[i*4+2] = 25;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 2;
-        neighbours[i*4+1] = 12;
-        neighbours[i*4+2] = 26;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 5;
-        neighbours[i*4+1] = 11;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 4;
-        neighbours[i*4+1] = 10;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 2;
-        neighbours[i*4+1] = 14;
-        neighbours[i*4+2] = 31;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 0;
-        neighbours[i*4+1] = 15;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 9;
-        neighbours[i*4+1] = 10;
-        neighbours[i*4+2] = 27;
-        neighbours[i*4+3] = 28;
-        i++;
-        neighbours[i*4] = 1;
-        neighbours[i*4+1] = 8;
-        neighbours[i*4+2] = 17;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 5;
-        neighbours[i*4+1] = 8;
-        neighbours[i*4+2] = 11;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 4;
-        neighbours[i*4+1] = 10;
-        neighbours[i*4+2] = 13;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 3;
-        neighbours[i*4+1] = 13;
-        neighbours[i*4+2] = 16;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 11;
-        neighbours[i*4+1] = 12;
-        neighbours[i*4+2] = 29;
-        neighbours[i*4+3] = 30;
-        i++;
-        neighbours[i*4] = 6;
-        neighbours[i*4+1] = 16;
-        neighbours[i*4+2] = 18;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 7;
-        neighbours[i*4+1] = 17;
-        neighbours[i*4+2] = 19;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 12;
-        neighbours[i*4+1] = 14;
-        neighbours[i*4+2] = 20;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 9;
-        neighbours[i*4+1] = 15;
-        neighbours[i*4+2] = 21;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 14;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 15;
-        neighbours[i*4+1] = 22;
-        neighbours[i*4+2] = 32;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 16;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 17;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 19;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 0;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 1;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 2;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 3;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 8;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 8;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 13;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 13;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 6;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        i++;
-        neighbours[i*4] = 19;
-        neighbours[i*4+1] = -1;
-        neighbours[i*4+2] = -1;
-        neighbours[i*4+3] = -1;
-        
+        database->setDescriptors();
     }
 
     
-
-    database->addMember(&nbmol);
     int nMembers = database->getNMembers();
-    //builder.makeNeighs(neighbours, 4);
 
-
-
-
-    // int sameIndex = 0;
-    // if(sameIndex != -1){
-    //     printf("%-5s %-5s %-20s %-20s\n", "i", "j", "compareAtoms", "compareDescriptors");
-    //     double compareAtoms1 = database->compareAtoms(&nbmol, sameIndex);
-    //     double compareDescriptors = database->compareDescriptors(&nbmol, sameIndex);
-    //     printf("%-5d %-5d %-20lf %-20lf\n", sameIndex, nMembers, compareAtoms1, compareDescriptors);
-    //     //return false;
-    // }
-    if(nMembers>1){
-        database->as_rigid_as_possible(&nbmol, 0, neighbours);
+    if(nMembers == 1){
+        builder.clear();
+        loadNBmol("data/polymer");
     }
+
+    // if(nMembers == 2){
+    //     database->loadAtoms(0, &nbmol);
+    // }
+
+    // if(nMembers == 3){
+    //     database->replace(database->GetAtoms(1), 0);
+    // }
+
+    if(nMembers == 4){
+        database->remove(1);
+    }
+    database->addMember(&nbmol);
+
+
+//if(nMembers>1)    printf("database->compareAtoms(&nbmol, 0) %g\n", database->compareAtoms(&nbmol, 0));
+
+    // if(nMembers>1){
+    //     database->as_rigid_as_possible(&nbmol, 0, neighbours);
+    // }
 
     std::string comment = "#" + std::to_string(nMembers);
     const char* cstr = comment.c_str();
@@ -2712,7 +2554,7 @@ bool addSnapshotIfNew()
             double move_y = 0;//randf() * 0.5;
             double move_z = 0;//randf() * 0.5;
 
-    double angle =0;
+    double angle =50;
     if(nMembers==1)move_x = 0.2;//randf() * 360;
 
         Vec3d axis = {0,0,1};//{randf(), randf(), randf()};
@@ -2726,15 +2568,14 @@ bool addSnapshotIfNew()
             nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
         }
 
-
-
+    
     return true;
 
 
 }
 
 void printDatabase(){
-    database->print();
+    database->print();    
 }
 
 
