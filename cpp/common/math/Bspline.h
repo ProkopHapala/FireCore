@@ -188,34 +188,39 @@ int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, 
             Ws[i].x = p.y;
         }
         // --- evaluate variatiaonal derivatives
-        for(int i=2; i<n-2; i++){
+        for(int i=1; i<n-1; i++){
             Vec2d fei = fes[i];
             //fei.y*=-1;
             const Vec2d dp  = fei - pfs[i];
-            fs[i] += dp.x*B0*0;
+            fs[i] += dp.x*B0;
             //if(i>0  )[[likely]]{ fs[i-1] += B1*dp.x*0 + -D1*dp.y; }
             //if(i<n-1)[[likely]]{ fs[i+1] += B1*dp.x*0 + +D1*dp.y; }
+            //fs[i-1] += B1*dp.x + -D1*dp.y*0;
+            //fs[i+1] += B1*dp.x + +D1*dp.y*0;
+
+            fs[i  ] += B0*dp.x*0;
             fs[i-1] += B1*dp.x*0 + -D1*dp.y;
             fs[i+1] += B1*dp.x*0 + +D1*dp.y;
         }
         for(int i=0; i<n; i++){  Ws[i].y = fs[i];  } // Debug
-
         // --- move
+        constexpr const int m = 2;
+        // --- eval velocity-to-force projection 
         double vf = 0.0;
         double ff = 0.0;
-        for(int i=0; i<n; i++){
+        for(int i=m; i<n-m; i++){
             ff += fs[i]*fs[i];
             vf += vs[i]*fs[i];
         }
-        printf( "|F[%i]|=%g \n",itr,  ff );
+        printf( "|F[%i]|=%g \n",itr,  sqrt(ff) );
         //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
         if(ff<F2max){ break; }
-        //if(vf<0){ for(int i=0; i<n; i++){ vs[i]=Vec2dZero; }; }
-        for(int i=2; i<n-2; i++){
-            //vs[i] += fs[i]*dt;
-            //Gs[i] += vs[i]*dt;
-
-            Gs[i] += fs[i]*dt;  // GD
+        if(vf<0){ for(int i=0; i<n; i++){ vs[i]=0; }; }
+        // --- update the points
+        for(int i=m; i<n-m; i++){
+            vs[i] += fs[i]*dt;
+            Gs[i] += vs[i]*dt;
+            //Gs[i] += fs[i]*dt;  // GD
         }
         
     }

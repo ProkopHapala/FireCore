@@ -7,6 +7,19 @@ sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
+def getHramonic( x,y,z, K ):
+    r = np.sqrt(x**2 + y**2 + z**2)
+    E  = (x*x + y*y + z*z)*K
+    fr = 2*K
+    return E,fr*x,fr*y,fr*z
+
+def getCosine( x,y,z, Ks ):
+    E  = np.cos( x*Ks[0] + y*Ks[1] + z*Ks[2] )
+    fx = -np.sin( x*Ks[0] )*Ks[0]
+    fy = -np.sin( y*Ks[1] )*Ks[1]
+    fz = -np.sin( z*Ks[2] )*Ks[2]
+    return E, fx ,fy, fz 
+
 def getLJ( x,y,z, R0, E0 ):
     r = np.sqrt(x**2 + y**2 + z**2)
     E  = E0*    ( (R0/r)**12 - 2*(R0/r)**6 )
@@ -61,13 +74,15 @@ def makeGrid_deriv_dir( atoms, ng, g0=(0.0,0.0,0.0), dg=(0.0,0.0,0.1) ):
         #iR2 = 1/R2
         #iR4 = iR2*iR2
 
-        E,fx,fy,fz = getLJ( X,Y,Z, 3.0, 1.0 )
+        # E,fx,fy,fz = getLJ( X,Y,Z, 3.0, 1.0 )
+        #E,fx,fy,fz = getHramonic(  X,Y,Z,  1.0 )
+        E,fx,fy,fz = getCosine(  X,Y,Z,  [1.0,1.0,5.0] )
+        
         FE[:,0]  = E
         FE[:,1]  = ( fx*dg[0] + fy*dg[1] + fz*dg[2] )/lg 
 
         #FE[:,0] +=    a[4]*iR2                                        # energy
         #FE[:,1] += -2*a[4]*iR4*( X*dg[0] + Y*dg[1] + Z*dg[2] )/lg   # directional derivative
-
 
         #FE[:,0] += Z**2
         #FE[:,1] += 2*Z
@@ -195,15 +210,18 @@ atoms = np.array([
  #[2.5, 3.5, 4.0,  0.8,   0.5],
 ])
 
+
 g0 = 3.0-0.3
 dg = 0.1
 FEg, xg = makeGrid_deriv_dir( atoms, 60, g0=(0.0,0.0,g0), dg=(0.0,0.0,dg) )
 Eg = FEg[:,0].copy()
+'''
 plt.plot( xg, FEg[:,0], 'ok', label="Eg   " )
 plt.plot( xg, FEg[:,1], 'or',label="Fg_an" )
 plt.plot( xg[1:-1], numDeriv( xg, FEg[:,0] ), '+g', label="Fg_num" )
 #plt.grid()
 #plt.legend()
+'''
 
 # xs  = np.linspace( g0, 6.0, 1000 )
 # FEs =  mmff.sample_SplineHermite1D_deriv( xs, FEg, g0, dg )
@@ -231,26 +249,35 @@ Emin=FEg[:,0].min()
 plt.plot( FEg[:,0], "ok", label="E_ref" )
 plt.plot( FEg[:,1], "or", label="F_ref" )
 
-Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=1, dt=1.0 )
-plt.plot( Ws[:,0], "-", label=("F_fit  " ),  c='r')
-plt.plot( (Ws[:,0]-FEg[:,1])*-1, "-", label=("Err W.x" ),  c='g' )
-plt.plot( Ws[:,1], "-", label=("dErr/dF W.y" ), c='m' )
+#Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=10, dt=1.0 )
+Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=100, dt=0.2, Ftol=1e-3 )
+
+plt.plot(  Ws[:,0],              "-", label=("F_fit  "     ), c='r' )
+plt.plot( (Ws[:,0]-FEg[:,1])*-1, "-", label=("Err W.x"     ), c='g' )
+plt.plot(  Ws[:,1],              "-", label=("dErr/dF W.y" ), c='m' )
 plt.legend()
 
-colors = [  'k', 'r', 'g', 'b', 'm' ]
-for i in range(1):
-    Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=1, dt=1.0 )
-    c=colors[i]
-    #plt.plot( Ws[:,0], "-", label=("E_fit[%i]" %i ) )
-    #plt.plot( Ws[:,1], "-", label=("E_fit[%i]" %i ) )
-    plt.plot( Ws[:,0], "-", label=("F_fit  [%i]" %i ),  c=c)
-    plt.plot( Ws[:,0]-FEg[:,1], "--", label=("Err   [%i]" %i ),  c=c)
-    plt.plot( Ws[:,1], ":", label=("dErr/dF[%i]" %i ), c=c)
-plt.legend()
+xs  = np.linspace( 0, 6.0, 1000 )
+FEs =  mmff.sample_Bspline( xs, Gs, x0=0, dx=dg )
+plt.plot( xs*10, FEs[:,0], '-', lw=3, label="Es_findif    ", c='gray' )
+#plt.plot( xs*10, FEs[:,1], '-', lw=3, label="Fs_findif_an ", c='orange')
+
+# colors = [  'k', 'r', 'g', 'b', 'm' ]
+# for i in range(1):
+#     Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=1, dt=1.0 )
+#     c=colors[i]
+#     #plt.plot( Ws[:,0], "-", label=("E_fit[%i]" %i ) )
+#     plt.plot( Ws[:,1], "-",           label=("E_fit[%i]" %i ) )
+#     plt.plot( Ws[:,0], "-",           label=("F_fit[%i]" %i ), c=c)
+#     plt.plot( Ws[:,0]-FEg[:,1], "--", label=("Err  [%i]" %i ), c=c)
+#     plt.plot( Ws[:,1], ":",           label=("Err_F[%i]" %i ), c=c)
+# plt.legend()
 
 plt.grid()
 #plt.ylim(-fmax, fmax*1.5 )
-plt.ylim(Emin*1.2, -Emin )
+plt.ylim(Emin*5.0, -Emin*5.0 )
+plt.show()
+exit()
 
 #plt.figure()
 # xs  = np.linspace( g0, 6.0, 1000 )
