@@ -116,6 +116,18 @@ def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
     lib.fitEF_Bspline( dg, n, _np_as(Gs,c_double_p), _np_as(Fes,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
     return Gs, Ws
 
+# int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
+lib.fit3D_Bspline.restype   =  None
+def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
+    ns = np.array( Es.shape, dtype=np.int32 ) 
+    n  = Es.size
+    if Ws is None: Ws = np.zeros( (n,2) )
+    if Gs is None:
+        Gs = Es[:].copy()
+    lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
+    return Gs, Ws
+
 # void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
 lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
 lib.sample_Bspline.restype   =  None
