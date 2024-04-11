@@ -211,10 +211,21 @@ atoms = np.array([
 ])
 
 
-g0 = 3.0-0.3
-dg = 0.1
-FEg, xg = makeGrid_deriv_dir( atoms, 60, g0=(0.0,0.0,g0), dg=(0.0,0.0,dg) )
-Eg = FEg[:,0].copy()
+EFg = makeGrid_deriv( atoms, ng, g0, dg )  # ;print( "Eg.shape ", EFg.shape )  ;exit()
+Eg  = EFg[:,:,:,3]  ; print( "Eg.shape ", Eg.shape )  #;exit()
+
+Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=100, dt=0.1 )
+
+
+
+
+# g0 = 3.0-0.3
+# dg = 0.1
+# FEg, xg = makeGrid_deriv_dir( atoms, 60, g0=(0.0,0.0,g0), dg=(0.0,0.0,dg) )
+# Eg = FEg[:,0].copy()
+
+#print( "Eg.shape ", Eg.shape ); exit(0)
+
 '''
 plt.plot( xg, FEg[:,0], 'ok', label="Eg   " )
 plt.plot( xg, FEg[:,1], 'or',label="Fg_an" )
@@ -231,7 +242,6 @@ plt.plot( xg[1:-1], numDeriv( xg, FEg[:,0] ), '+g', label="Fg_num" )
 # # plt.grid()
 # # plt.legend()
 
-
 # xs  = np.linspace( g0, 6.0, 1000 )
 # FEs =  mmff.sample_SplineHermite( xs, Eg, g0, dg )
 # plt.plot( xs, FEs[:,0], '--', label="Es_findif    ", c='gray' )
@@ -241,26 +251,26 @@ plt.plot( xg[1:-1], numDeriv( xg, FEg[:,0] ), '+g', label="Fg_num" )
 #FEg[:,1]*=-1
 #Gs, Ws = mmff.fit_Bspline( FEg[:,0].copy(), dt=0.4, nmaxiter=1000, Ftol=1e-5 )
 
-plt.figure()
-Eg = FEg[:,0].copy()
-Gs = FEg[:,0].copy()
-#fmax=FEg[:,1].max()
-Emin=FEg[:,0].min()
-plt.plot( FEg[:,0], "ok", label="E_ref" )
-plt.plot( FEg[:,1], "or", label="F_ref" )
+# plt.figure()
+# Eg = FEg[:,0].copy()
+# Gs = FEg[:,0].copy()
+# #fmax=FEg[:,1].max()
+# Emin=FEg[:,0].min()
+# plt.plot( FEg[:,0], "ok", label="E_ref" )
+# plt.plot( FEg[:,1], "or", label="F_ref" )
 
-#Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=10, dt=1.0 )
-Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=100, dt=0.2, Ftol=1e-3 )
+# #Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=10, dt=1.0 )
+# Gs, Ws =  mmff.fitEF_Bspline( dg, FEg, Gs=Gs, nmaxiter=100, dt=0.2, Ftol=1e-3 )
 
-plt.plot(  Ws[:,0],              "-", label=("F_fit  "     ), c='r' )
-plt.plot( (Ws[:,0]-FEg[:,1])*-1, "-", label=("Err W.x"     ), c='g' )
-plt.plot(  Ws[:,1],              "-", label=("dErr/dF W.y" ), c='m' )
-plt.legend()
+# plt.plot(  Ws[:,0],              "-", label=("F_fit  "     ), c='r' )
+# plt.plot( (Ws[:,0]-FEg[:,1])*-1, "-", label=("Err W.x"     ), c='g' )
+# plt.plot(  Ws[:,1],              "-", label=("dErr/dF W.y" ), c='m' )
+# plt.legend()
 
-xs  = np.linspace( 0, 6.0, 1000 )
-FEs =  mmff.sample_Bspline( xs, Gs, x0=0, dx=dg )
-plt.plot( xs*10, FEs[:,0], '-', lw=3, label="Es_findif    ", c='gray' )
-#plt.plot( xs*10, FEs[:,1], '-', lw=3, label="Fs_findif_an ", c='orange')
+# xs  = np.linspace( 0, 6.0, 1000 )
+# FEs =  mmff.sample_Bspline( xs, Gs, x0=0, dx=dg )
+# plt.plot( xs*10, FEs[:,0], '-', lw=3, label="Es_findif    ", c='gray' )
+# #plt.plot( xs*10, FEs[:,1], '-', lw=3, label="Fs_findif_an ", c='orange')
 
 # colors = [  'k', 'r', 'g', 'b', 'm' ]
 # for i in range(1):
@@ -273,11 +283,11 @@ plt.plot( xs*10, FEs[:,0], '-', lw=3, label="Es_findif    ", c='gray' )
 #     plt.plot( Ws[:,1], ":",           label=("Err_F[%i]" %i ), c=c)
 # plt.legend()
 
-plt.grid()
-#plt.ylim(-fmax, fmax*1.5 )
-plt.ylim(Emin*5.0, -Emin*5.0 )
-plt.show()
-exit()
+# plt.grid()
+# #plt.ylim(-fmax, fmax*1.5 )
+# plt.ylim(Emin*5.0, -Emin*5.0 )
+# plt.show()
+# exit()
 
 #plt.figure()
 # xs  = np.linspace( g0, 6.0, 1000 )

@@ -10,6 +10,7 @@
 #include "MMFFparams.h"
 
 #include "InterpolateTricubic.h"
+#include "Bspline.h"
 
 #include "NBFF.h"
 

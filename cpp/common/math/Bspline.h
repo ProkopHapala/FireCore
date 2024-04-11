@@ -111,6 +111,84 @@ void sample1D( const double g0, const double dg, const int ng, const double* Gs,
     }
 }
 
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec3d fe2d( const double tx, const double ty, const Quat4i i, const double* Es ){
+    alignas(32) Quat4d e,fx;
+    {
+        const Quat4d bx =  basis( tx );
+        const Quat4d dx = dbasis( tx );
+        {
+            alignas(32) const Quat4d p = *(Quat4d*)(Es+i.x); // read 4 doubles from global memory at a time ( 4*8 = 32 bytes = 256 bits ) ideal for SIMD AVX2
+            e.x  = bx.dot(p);                                // not sure how dot() is SIMD optimized => maybe we should flip the order of x and y strides ?
+            fx.x = dx.dot(p);
+        }
+        {
+            alignas(32) const Quat4d p = *(Quat4d*)(Es+i.y); 
+            e.y  = bx.dot(p);
+            fx.y = dx.dot(p);
+        }
+        {
+            alignas(32) const Quat4d p = *(Quat4d*)(Es+i.z); 
+            e.z  = bx.dot(p);
+            fx.z = dx.dot(p);
+        }
+        {
+            alignas(32) const Quat4d p = *(Quat4d*)(Es+i.w); 
+            e.w  = bx.dot(p);
+            fx.w = dx.dot(p);
+        }
+    }
+    alignas(32) const Quat4d by =  basis( ty );
+    alignas(32) const Quat4d dy = dbasis( ty );
+    return Vec3d{
+        by.dot(fx), // Fx
+        dy.dot(e ), // Fy
+        by.dot(e )  // E
+    };
+}
+
+__attribute__((pure))
+__attribute__((hot)) 
+Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
+    // We assume there are boundary added to simplify the index calculations
+	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+    if( 
+        ((ix<0)||(ix>=n.x-3)) ||
+        ((iy<0)||(iy>=n.y-3)) ||
+        ((iz<0)||(iz>=n.z-3))        
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    //Quat4d E,Fx,Fy;
+    const int nxy = n.x*n.y;
+
+    int i0 = ix + n.x*( iy + n.y*iz );  const Vec3d Exy1 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
+    int i1 = i0+nxy  ;                  const Vec3d Exy2 = fe2d(tx,ty, {i1,i1+n.x,i1+n.x*2,i1+3*n.x}, Es );
+    int i2 = i0+nxy*2;                  const Vec3d Exy3 = fe2d(tx,ty, {i2,i2+n.x,i2+n.x*2,i2+3*n.x}, Es );
+    int i3 = i0+nxy*3;                  const Vec3d Exy4 = fe2d(tx,ty, {i3,i3+n.x,i3+n.x*2,i3+3*n.x}, Es );
+
+    const Quat4d bz =  basis( tz );
+    const Quat4d dz = dbasis( tz );
+    return Quat4d{
+        bz.dot( {Exy1.x, Exy2.x, Exy3.x, Exy4.x} ), // Fx
+        bz.dot( {Exy1.y, Exy2.y, Exy3.y, Exy4.y} ), // Fy
+        dz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // Fz
+        bz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // E
+    };
+} 
+
+
+__attribute__((hot)) 
+void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
+    Vec3d inv_dg; inv_dg.set_inv(dg); 
+    for(int i=0; i<n; i++ ){
+        Quat4d fe = fe3d( (ps[i]-g0)*inv_dg, ng, Eg );        // sample3D(n=10000) time=2009.44[kTick] 200.944[tick/point]
+        //Quat4d fe = fe3d_v2( (ps[i]-g0)*inv_dg, ng, Eg );   // sample3D(n=10000) time=2175.84[kTick] 217.584[tick/point]
+        fe.f.mul(inv_dg);
+        fes[i] = fe;
+    }
+}
 
 __attribute__((hot)) 
 int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
@@ -225,6 +303,115 @@ int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, 
         
     }
     delete [] pfs;
+    delete [] fs;
+    delete [] vs;
+    return itr;
+}
+
+__attribute__((hot)) 
+int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+    printf( "Bspline::fit3D() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
+    const double F2max = Ftol*Ftol;
+    int n = ns.totprod();
+    double* ps = new double[n];
+    double* fs = new double[n];
+    double* vs = new double[n];
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    constexpr double B000=B0*B0*B0;
+    constexpr double B001=B0*B0*B1;
+    constexpr double B011=B0*B1*B1;
+    constexpr double B111=B1*B1*B1;
+    int itr=0;
+    const int nxy  = ns.x*ns.y;
+    const int nxyz = ns.x*ns.y*ns.z;
+    for(itr=0; itr<nmaxiter; itr++){
+
+        // --- evaluate current spline
+        for(int i=0; i<nxyz; i++){ fs[i] = 0; }
+
+        // --- evaluate current spline (in order to evelauet approximation error)
+        for(int iz=1; iz<ns.y-1; iz++){
+            int iiz = iz*ns.x*ns.y;
+            for(int iy=1; iy<ns.y-1; iy++){
+                int iiy = iy*ns.x;
+                for(int ix=1; ix<ns.x-1; ix++){
+                    double val=0; 
+                    int i  = ix + iiy + iiz;
+                    int i0 = i-ns.x;
+                    int i1 = i+ns.x;
+                    val += 
+                        + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
+                        + Gs[i -1]*B011 + Gs[i ]*B111 + Gs[i +1]*B011
+                        + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;
+                    i   -= nxy; i0 = i-ns.x; i1 = i+ns.x;
+                    val +=    
+                        + Gs[i0-1]*B011 + Gs[i0]*B001 + Gs[i0+1]*B011
+                        + Gs[i -1]*B001 + Gs[i ]*B000 + Gs[i +1]*B001
+                        + Gs[i1-1]*B011 + Gs[i1]*B001 + Gs[i1+1]*B011;
+                    i   += 2*nxy;  i0 = i-ns.x;i1 = i+ns.x;
+                    val +=
+                        + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
+                        + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
+                        + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111; 
+                        //double err = Es[i] - val;
+                    double d = val-Es[i];
+                    //printf( "[%i,%i,%i] %g %g %g \n", ix,iy,iz, d, val, Es[i] );
+                    ps[i] = d;
+                }
+            }
+        }
+
+        // --- distribute variational derivatives of approximation error
+        for(int iz=1; iz<ns.y-1; iz++){
+            int iiz = iz*ns.x*ns.y;
+            for(int iy=1; iy<ns.y-1; iy++){
+                int iiy = iy*ns.x;
+                for(int ix=1; ix<ns.x-1; ix++){
+                    double val=0; 
+                    int i  = ix + iiy + iiz;
+                    int i0 = i-ns.x;
+                    int i1 = i+ns.x;
+                    val += 
+                        + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
+                        + ps[i -1]*B011 + ps[i ]*B111 + ps[i +1]*B011
+                        + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111;
+                    i   -= nxy; i0 = i-ns.x; i1 = i+ns.x;
+                    val +=    
+                        + ps[i0-1]*B011 + ps[i0]*B001 + ps[i0+1]*B011
+                        + ps[i -1]*B001 + ps[i ]*B000 + ps[i +1]*B001
+                        + ps[i1-1]*B011 + ps[i1]*B001 + ps[i1+1]*B011;
+                    i   += 2*nxy;  i0 = i-ns.x;i1 = i+ns.x;
+                    val +=
+                        + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
+                        + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
+                        + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
+                        //double err = Es[i] - val;
+                    //printf( "[%i,%i,%i] %g \n", ix,iy,iz, val );
+                    fs[i] = -val;
+                }
+            }
+        }
+    
+        // --- move
+        double vf = 0.0;
+        double ff = 0.0;
+        for(int i=0; i<nxyz; i++){
+            ff += fs[i]*fs[i];
+            vf += vs[i]*fs[i];
+        }
+        printf( "|F[%i]|=%g \n",itr,  sqrt(ff) );
+        //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
+        if(ff<F2max){ break; }
+        if(vf<0){ for(int i=0; i<n; i++){ vs[i]=0; }; }
+        for(int i=0; i<n; i++){
+            vs[i] += fs[i]*dt;
+            Gs[i] += vs[i]*dt;
+            //Gs[i] += fs[i]*dt;  // GD
+        }
+        
+    }
+    delete [] ps;
     delete [] fs;
     delete [] vs;
     return itr;
