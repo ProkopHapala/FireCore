@@ -214,7 +214,10 @@ atoms = np.array([
 EFg = makeGrid_deriv( atoms, ng, g0, dg )  # ;print( "Eg.shape ", EFg.shape )  ;exit()
 Eg  = EFg[:,:,:,3]  ; print( "Eg.shape ", Eg.shape )  #;exit()
 
-Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=100, dt=0.1 )
+
+
+
+Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1000, dt=0.1 )
 
 
 
