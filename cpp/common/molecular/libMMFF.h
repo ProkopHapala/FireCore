@@ -1,5 +1,7 @@
 ﻿
 #include "Forces.h"
+#include "InterpolateTricubic.h"
+#include "Bspline.h"
 
 extern "C"{
 
@@ -140,6 +142,59 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 }
 
 // ========= Force-Field Component Sampling  
+
+int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+    return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
+}
+int fitEF_Bspline( double dg, const int n, double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
+    return Bspline::fit1D_EF( dg, n, Gs,  (Vec2d*)fes, (Vec2d*)Ws, Ftol, nmaxiter, dt );
+}
+
+int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+    return Bspline::fit3D( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt );
+}
+
+
+
+void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
+    Bspline::sample1D( g0,dg,ng,Gs, n, xs, (Vec2d*)fes );
+}
+
+void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
+    Spline_Hermite::sample1D( g0,dg,ng,Eg, n, xs, (Vec2d*)fes );
+}
+
+void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
+    long t0 = getCPUticks();
+    Spline_Hermite::sample2D( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );     //    54 [tick/point] with -Ofast
+    //Spline_Hermite::sample2D_avx( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );   //   43 [tick/point] with -Ofast  
+    double t = (getCPUticks()-t0); printf( "sample2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_SplineHermite3D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
+    long t0 = getCPUticks();
+    Spline_Hermite::sample3D    ( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, Eg, n, (Vec3d*)ps, (Quat4d*)fes );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    //Spline_Hermite::sample3D_avx( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, Eg, n, (Vec3d*)ps, (Quat4d*)fes );  // sample3D(n=10000) time=2578.11[kTick] 257.811[tick/point]
+    double t = (getCPUticks()-t0); printf( "sample3D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_SplineHermite3D_f( float* g0, float* dg, int* ng, float* Eg, int n, float* ps, float* fes ){
+    long t0 = getCPUticks();
+    Spline_Hermite::sample3D( *(Vec3f*)g0, *(Vec3f*) dg, *(Vec3i*)ng, Eg, n, (Vec3f*)ps, (Quat4f*)fes );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    double t = (getCPUticks()-t0); printf( "sample3D_f(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+    Spline_Hermite::sample3D_deriv( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, (Quat4d*)Eg, (Quat4d*)dEg, n, (Vec3d*)ps, (Quat4d*)fes ); 
+}
+
+void sample_SplineHermite2D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+    Spline_Hermite::sample2D_deriv( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, (Quat4d*)Eg, (Quat4d*)dEg, n, (Vec2d*)ps, (Quat4d*)fes );  
+}
+
+void sample_SplineHermite1D_deriv( double g0, double dg, int ng, double* EFg, int n, double* ps, double* fes ){
+    Spline_Hermite::sample1D_deriv( g0, dg, ng, (Vec2d*)EFg, n, ps, (Vec2d*)fes );  
+}
 
 void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
     SplineConstr C( {0,1}, x0, dx, np, Eps );
