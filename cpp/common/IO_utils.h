@@ -323,6 +323,7 @@ inline int saveBin( const char *fname, int n, char * data ){
     ptr_myfile=fopen( fname,"wb");
     if (!ptr_myfile){ printf("saveBin(): Unable to open file `%s` for writing !!!\n", fname ); return -1; }
     int nchar = 1024;
+    printf( "saveBin %s nbyte=%i @data=%li \n", fname, n, data );
     for( int i=1; i<=n; i+=nchar ){
         int len = nchar;
         if( (n-i)<nchar ) len = (n-i);

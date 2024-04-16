@@ -387,8 +387,16 @@ inline clamp( TYPE x, TYPE xmin, TYPE xmax ){
 
 // ========= random ===========
 
+static int irand = 0;
+
 const  float INV_RAND_MAX = 1.0f/RAND_MAX;
-inline float randf(){ return INV_RAND_MAX*rand(); }
+inline float randf(){
+    // int r = rand(); 
+    // printf( "RAND_MAX[%i] %i \n", irand, r );  
+    // irand++;  
+    // return INV_RAND_MAX*r; 
+    return INV_RAND_MAX*rand(); 
+}
 inline float randf( float min, float max ){ return randf()*( max - min ) + min; }
 
 // there are some examples of hash functions

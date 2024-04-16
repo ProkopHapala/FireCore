@@ -11,6 +11,7 @@ from . import cpp_utils_ as cpp_utils
 #import cpp_utils_ as cpp_utils
 
 c_double_p = ctypes.POINTER(c_double)
+c_float_p  = ctypes.POINTER(c_float)
 c_int_p    = ctypes.POINTER(c_int)
 c_bool_p   = ctypes.POINTER(c_bool)
 
@@ -48,6 +49,11 @@ header_strings = [
 #"void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj )",
 #"void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){",
 #"void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){",
+
+#void sample_SplineHermite( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs )
+#void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
+#void sample_SplineHermite3D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
+
 # void sample_SplineConstr( double lmin, double lmax, double dx, int n, double* Eps, double* Es, double* Fs ){    
 #"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){",
 #"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
@@ -87,6 +93,128 @@ glob_bMMFF    = True
 # ====================================
 # ========= C functions
 # ====================================
+
+
+#  int fit_Bspline( double dg, const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
+lib.fit_Bspline.restype   =  None
+def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
+    n = len(Es)
+    if Ws is None: Ws = np.zeros( n )
+    if Gs is None: Gs = Es.copy()
+    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
+    return Gs, Ws
+
+# int fitEF_Bspline( const int n, const double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
+lib.fitEF_Bspline.argtypes  = [ c_double,  c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
+lib.fitEF_Bspline.restype   =  None
+def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
+    n = len(Fes)
+    if Ws is None: Ws = np.zeros( (n,2) )
+    if Gs is None:
+        Gs = Fes[:,0].copy()
+    lib.fitEF_Bspline( dg, n, _np_as(Gs,c_double_p), _np_as(Fes,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
+    return Gs, Ws
+
+# int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
+lib.fit3D_Bspline.restype   =  None
+def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
+    ns = np.array( Es.shape, dtype=np.int32 ) 
+    n  = Es.size
+    if Ws is None: Ws = np.zeros( (n,2) )
+    if Gs is None:
+        Gs = Es[:].copy()
+    lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
+    return Gs, Ws
+
+# void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
+lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
+lib.sample_Bspline.restype   =  None
+def sample_Bspline( xs, Eps, x0=0.0, dx=1.0, fes=None ):
+    n = len(xs)
+    if fes is None: fes=np.zeros((n,2))
+    lib.sample_Bspline(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
+lib.sample_SplineHermite.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
+lib.sample_SplineHermite.restype   =  None
+def sample_SplineHermite( xs, Eps, x0=0.0, dx=1.0, fes=None ):
+    n = len(xs)
+    if fes is None: fes=np.zeros((n,2))
+    lib.sample_SplineHermite(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d* FE, const int n, const double* ps, Vec2d* fes ){
+lib.sample_SplineHermite1D_deriv.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
+lib.sample_SplineHermite1D_deriv.restype   =  None
+def sample_SplineHermite1D_deriv( ps, EFg, g0, dg, fes=None):
+    n = len(ps)
+    ng= len(EFg)
+    if fes is None: fes=np.zeros((n,2))
+    lib.sample_SplineHermite1D_deriv( g0, dg, ng, _np_as(EFg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite2D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+lib.sample_SplineHermite2D_deriv.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,  c_double_p, c_int, c_double_p, c_double_p]
+lib.sample_SplineHermite2D_deriv.restype   =  None
+def sample_SplineHermite2D_deriv( ps, Eg, dEg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Eg.shape, np.int32 )
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_SplineHermite2D_deriv( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), _np_as(dEg,c_double_p),  n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+lib.sample_SplineHermite3D_deriv.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_double_p,  c_int, c_double_p, c_double_p]
+lib.sample_SplineHermite3D_deriv.restype   =  None
+def sample_SplineHermite3D_deriv( ps, Eg, dEg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Eg.shape, np.int32 )
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_SplineHermite3D_deriv( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), _np_as(dEg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
+lib.sample_SplineHermite2D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p]
+lib.sample_SplineHermite2D.restype   =  None
+def sample_SplineHermite2D( ps, Eg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Eg.shape, np.int32 )
+    if fes is None: fes=np.zeros((n,3))
+    lib.sample_SplineHermite2D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite3D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
+lib.sample_SplineHermite3D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p]
+lib.sample_SplineHermite3D.restype   =  None
+def sample_SplineHermite3D( ps, Eg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Eg.shape, np.int32 )
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_SplineHermite3D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite3D_f( float* g0, float* dg, int* ng, float* Eg, int n, float* ps, float* fes ){
+lib.sample_SplineHermite3D_f.argtypes  = [c_float_p, c_float_p, c_int_p, c_float_p, c_int, c_float_p, c_float_p]
+lib.sample_SplineHermite3D_f.restype   =  None
+def sample_SplineHermite3D_f( ps, Eg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0, dtype=np.float32)
+    dg = np.array(dg, dtype=np.float32)
+    ng = np.array( Eg.shape, np.int32 )
+    if fes is None: fes=np.zeros((n,4), dtype=np.float32)
+    lib.sample_SplineHermite3D_f( _np_as(g0,c_float_p), _np_as(dg,c_float_p), _np_as(ng,c_int_p), _np_as(Eg,c_float_p), n, _np_as(ps,c_float_p), _np_as(fes,c_float_p) )
+    return fes
 
 # void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
 lib.sample_SplineConstr.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_double_p]
@@ -195,17 +323,26 @@ def sampleSurf( name, rs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp
     lib.sampleSurf( name, n, rs, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
     return Es,fs
 
-# void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
-lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
+# void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){  
+lib.sampleSurf_vecs.argtypes  = [ c_int, array2d, array2d, c_int, c_int,  c_double, c_double, c_double, c_double, c_double, c_int, c_bool] 
 lib.sampleSurf_vecs.restype   =  None
-def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False ):
-    if name is not None: name=name.encode('utf8')
-    n =len(poss)
-    if Es is None: Es=np.zeros(n)
-    if fs is None: fs=np.zeros((n,3))
-    pos0=np.array(pos0)
-    lib.sampleSurf_vecs( name, n, poss, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
-    return Es,fs
+def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q=0.0, K=+1.6, Rdamp=0.1, npbc=1, bSave=False ):
+    n =len(ps)
+    if FEs is None: FEs=np.zeros((n,4))
+    lib.sampleSurf_vecs( n, ps, FEs, kind, ityp, RvdW, EvdW, Q, K, Rdamp, npbc, bSave )
+    return FEs
+
+# # void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
+# lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
+# lib.sampleSurf_vecs.restype   =  None
+# def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False ):
+#     if name is not None: name=name.encode('utf8')
+#     n =len(poss)
+#     if Es is None: Es=np.zeros(n)
+#     if fs is None: fs=np.zeros((n,3))
+#     pos0=np.array(pos0)
+#     lib.sampleSurf_vecs( name, n, poss, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
+#     return Es,fs
 
 # void setupCollisionDamping( int ndampstep, double damping_medium, double collisionDamping, double collisionDamping_NB, double col_damp_dRcut ){
 lib.setupCollisionDamping.argtypes  = [c_int, c_double, c_double, c_double, c_double, c_double, c_double]

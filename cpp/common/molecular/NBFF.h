@@ -38,7 +38,7 @@ void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
 class NBFF: public ForceField{ public:
     
     // ---  inherited from Atoms
-    //int     n      =0; // from Atoms
+    //int     natoms =0; // from Atoms
     //int    *atypes =0; // from Atoms
     //Vec3d  *apos   =0; // from Atoms
     //Vec3d  *fapos  =0; // forces on atomic positions
@@ -57,8 +57,8 @@ class NBFF: public ForceField{ public:
     Buckets  pointBBs;    // buckets for collision detection
 
     // --- Parameters
-    bool    bClampNonBonded =  0.0; // if >0 then we clamp non-bonded forces to this value
-    double  FmaxNonBonded   = 10.0; // if bClampNonBonded>0 then we clamp non-bonded forces to this value
+    //bool    bClampNonBonded =  0.0; // if >0 then we clamp non-bonded forces to this value
+    //double  FmaxNonBonded   = 10.0; // if bClampNonBonded>0 then we clamp non-bonded forces to this value
 
     double drSR  = 0.5;     // R_SR = R_cut - drSR
     double ampSR = 0.15;   // Amplitude of short-range repulsion  = ampSR * EvdW
@@ -73,6 +73,9 @@ class NBFF: public ForceField{ public:
     int    npbc   =0;  // total number of periodic images
     Vec3d* shifts __attribute__((aligned(64))) =0;  // array of bond vectors shifts in periodic boundary conditions
     Quat4f *PLQs  __attribute__((aligned(64))) =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
+
+    Quat4d *PLQd  __attribute__((aligned(64))) =0; 
+
     Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
 
 #ifdef WITH_AVX
@@ -119,6 +122,19 @@ class NBFF: public ForceField{ public:
     void makePLQs(double K){
         _realloc(PLQs,natoms);
         evalPLQs(K);
+    }
+
+
+    // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
+    void evalPLQd(double K){
+        if(PLQd==0){ _realloc(PLQd,natoms);  }
+        for(int i=0; i<natoms; i++){
+            PLQd[i]=REQ2PLQ_d( REQs[i], K );
+        }
+    }
+    void makePLQd(double K){
+        _realloc(PLQd,natoms);
+        evalPLQd(K);
     }
 
     __attribute__((hot))  
@@ -413,6 +429,7 @@ class NBFF: public ForceField{ public:
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
+            if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;
@@ -421,7 +438,7 @@ class NBFF: public ForceField{ public:
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
-                if(bClampNonBonded)clampForce( fij, Fmax2 );
+                if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
                 //printf( "getLJQs_PBC_omp[%i] dp(%6.3f,%6.3f,%6.3f) REQ(%g,%g,%g,%g) \n", eij, dp.x,dp.y,dp.z, REQij.x,REQij.y,REQij.z,REQij.w );
                 E +=eij;
                 fx+=fij.x;
@@ -509,19 +526,28 @@ class NBFF: public ForceField{ public:
         const Quat4d REQi = REQs     [ia];
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
-        #pragma omp simd reduction(+:E,fx,fy,fz)
+        //#pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
+            if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;
             Vec3d fij           = Vec3dZero;
             double eij = getLJQH( dp, fij, REQij, R2damp );
+            if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
             E +=eij;
             fx+=fij.x;
             fy+=fij.y;
             fz+=fij.z;
-            //fi+=fij; 
+            //fi+=fij;
+            // {
+            //     glLineWidth(3.0);
+            //     glColor3d(0.0,0.0,1.0);  Draw3D::drawVecInPos( dp,  apos[ia] );
+            //     glColor3d(1.0,0.0,0.0);  Draw3D::drawVecInPos( fij, apos[ia] );
+            // } 
+            //printf( "evalLJQs_atom_omp(%i) E %g f(%g,%g,%g) \n", ia, E, fx, fy, fz );
         }
+        //printf( "evalLJQs_atom_omp(%i) E %g f(%g,%g,%g) \n", ia, E, fx, fy, fz );
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
@@ -902,20 +928,19 @@ class NBFF: public ForceField{ public:
         return E;
     }
 
-/*
     double evalMorsePLQ( NBFF& B, Mat3d& cell, Vec3i nPBC, double K=-1.0, double RQ=1.0 ){
         //printf( "NBFF::evalMorsePLQ() PLQs %li \n", (long)PLQs, K, RQ );
         double E=0;
         //printf( "NBFF nPBC(%i,%i,%i) K %g RQ %g R2Q %g plq.z %g \n", nPBC.x,nPBC.y,nPBC.z, K, sqrt(R2Q), R2Q, plq.z );
         double R2Q=RQ*RQ;
-        for(int i=0; i<n; i++){
+        for(int i=0; i<natoms; i++){
             Vec3d fi = Vec3dZero;
             Vec3d pi = apos[i];
             //const Quat4d& REQi = REQs[i];
             Quat4d qp = Quat4dZero;
             Quat4d ql = Quat4dZero;
             Quat4d qe = Quat4dZero;
-            for(int j=0; j<B.n; j++){
+            for(int j=0; j<B.natoms; j++){
                 Vec3d dp0; dp0.set_sub( pi, B.apos[j] );
                 Quat4d REQj = B.REQs[j];
                 for(int ia=-nPBC.a; ia<(nPBC.a+1); ia++){ for(int ib=-nPBC.b; ib<(nPBC.b+1); ib++){ for(int ic=-nPBC.c; ic<(nPBC.c+1); ic++){
@@ -948,7 +973,6 @@ class NBFF: public ForceField{ public:
         }
         return E;
     }
-*/
 
     double evalR( NBFF& B ){
         //printf( "NBFF::evalR() \n" );
@@ -1038,6 +1062,7 @@ class NBFF: public ForceField{ public:
 
     void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
         natoms=n_;
+        //printf( "NBFF::bindOrRealloc(natoms=%i) @apos_=%li @fapos_=%li @REQs_=%li @atypes_=%li \n", natoms, (long)apos_, (long)fapos_, (long)REQs_, (long)atypes_ );
         _bindOrRealloc(natoms, apos_  , apos   );
         _bindOrRealloc(natoms, fapos_ , fapos  );
         _bindOrRealloc(natoms, REQs_  , REQs   );

@@ -806,12 +806,14 @@ class MMFFparams{ public:
         return ret;
     }
 
-    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity ){
+    void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity, bool bHead=true )const{
         //printf( "MMFFparams::writeXYZ() n=%i REQs=%li just_Element=%i\n", n, (long)REQs, just_Element );
         int npbc = nPBC.totprod();
+        if(bHead){
         fprintf(pfile, "%i\n", (n+npi)*npbc );
         // TBD print lattice vectors
         fprintf(pfile, "%s \n", comment );
+        }
         //printf( "MM::Params::writeXYZ() nPBC={%i,%i,%i}\n", nPBC.x,nPBC.y,nPBC.z );
         for(int ic=0;ic<nPBC.z;ic++){ for(int ib=0;ib<nPBC.y;ib++){ for(int ia=0;ia<nPBC.x;ia++){
             Vec3d shift = lvec.a*ia + lvec.b*ib + lvec.c*ic; 
