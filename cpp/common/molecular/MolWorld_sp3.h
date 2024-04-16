@@ -2008,7 +2008,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                     if(bGopt  && (!go.bExploring) ){
                         gopt_ifound++;
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
-                        bool IsNew = addSnapshotIfNew();
+                        bool IsNew = addSnapshot();
                         if(IsNew){saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );printf( "run_omp().save %s \n", tmpstr );}
                         else    {printf( "run_omp().skip %s \n", tmpstr ); saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save ); 
                         printf("======================================================================================================================================================================================================");
@@ -2505,78 +2505,88 @@ virtual void printSwitches(){
 }
 
 
-int * neighbours;
 
-bool addSnapshotIfNew()
+bool addSnapshot(bool ifNew = false, char* fname = 0)
 {
     if(!database){
         database = new MolecularDatabase();
         database->setDescriptors();
     }
 
-    
     int nMembers = database->getNMembers();
 
-    if(nMembers == 1){
-        builder.clear();
-        loadNBmol("data/polymer");
-    }
-
-    // if(nMembers == 2){
-    //     database->loadAtoms(0, &nbmol);
-    // }
-
-    // if(nMembers == 3){
-    //     database->replace(database->GetAtoms(1), 0);
-    // }
-
-    if(nMembers == 4){
-        database->remove(1);
-    }
-    database->addMember(&nbmol);
+//     database->addMember(&nbmol);
 
 
-//if(nMembers>1)    printf("database->compareAtoms(&nbmol, 0) %g\n", database->compareAtoms(&nbmol, 0));
+// //if(nMembers>1)    printf("database->compareAtoms(&nbmol, 0) %g\n", database->compareAtoms(&nbmol, 0));
+// printf("ff.nbonds %i\n", ff.nbonds);
+//     if(nMembers>1){
+//         database->as_rigid_as_possible(&nbmol, 0, ff.nbonds, ff.bond2atom);
+//         //printf("nbmol.neighs[0]: %i %i %i %i\n", nbmol.neighs[0].x, nbmol.neighs[0].y, nbmol.neighs[0].z, nbmol.neighs[0].w);
+//     }
 
-    // if(nMembers>1){
-    //     database->as_rigid_as_possible(&nbmol, 0, neighbours);
-    // }
 
-    std::string comment = "#" + std::to_string(nMembers);
-    const char* cstr = comment.c_str();
-    std::string trjName1 = "trj" + std::to_string(nMembers) + "_0.xyz";        
-    const char* cstr1 = trjName1.c_str();  
-    FILE* file1=0;
-    file1=fopen( cstr1, "w" );
-    params.writeXYZ(file1, &nbmol, cstr);
-    fclose(file1);
-            double move_x = 0;//randf() * 0.5;
-            double move_y = 0;//randf() * 0.5;
-            double move_z = 0;//randf() * 0.5;
-
-    double angle =50;
-    if(nMembers==1)move_x = 0.2;//randf() * 360;
-
-        Vec3d axis = {0,0,1};//{randf(), randf(), randf()};
-        Vec3d p0 = Vec3dZero;//{randf() * 5 - 2.5, randf() * 5 - 2.5, randf() * 5 - 2.5};
-        for (int i = 0; i < nbmol.natoms; i++)
-        {            
+//     std::string comment = "#" + std::to_string(nMembers);
+//     const char* cstr = comment.c_str();
+//     std::string trjName1 = "trj" + std::to_string(nMembers) + "_1.xyz";        
+//     const char* cstr1 = trjName1.c_str();  
+//     FILE* file1=0;
+//     file1=fopen( cstr1, "w" );
+//     params.writeXYZ(file1, &nbmol, cstr);
+//     fclose(file1);
+//             double move_x = 0;//randf() * 0.5;
+//             double move_y = 0;//randf() * 0.5;
+//             double move_z = 0;//randf() * 0.5;
+//     double angle = 0;
+// if(nMembers==1)angle = randf() * 360;
+// printf("angle: %g\n", angle);
+//     //if(nMembers==1)move_x = 0.2;//;
+//         Vec3d axis = {randf(), randf(), randf()};
+//         Vec3d p0 = Vec3dZero;//{randf() * 5 - 2.5, randf() * 5 - 2.5, randf() * 5 - 2.5};
+//         for (int i = 0; i < nbmol.natoms; i++)
+//         {            
             
 
-            //if(i==0 && nMembers == 0) move_x = 5;//randf() * 0.5;
-            nbmol.apos[i].add({move_x, move_y, move_z});
-            nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
+//             //if(i==0 && nMembers == 0) move_x = 5;//randf() * 0.5;
+//             nbmol.apos[i].add({move_x, move_y, move_z});
+//             nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
+//         }
+
+
+//     return true;
+
+
+    if (fname)
+    {
+        loadNBmol(fname);
+        //buildMolecule_xyz(fname);
+    }
+    if (ifNew)
+    {
+        int ID = database->addIfNewDescriptor(&nbmol);
+        if (ID != -1)
+        {
+            printf("Same as %d\n", ID);
+            return false;
         }
-
-    
+    }
+    else
+    {
+        database->addMember(&nbmol);
+    }
     return true;
-
-
 }
 
 void printDatabase(){
-    database->print();    
+    if(database) database->print();    
 }
+
+double computeDistance(int i, int j){
+    if(database) return database->computeDistance(i, j);
+    printf("Error, database does not exist"); return -1;
+}
+
+
 
 
 

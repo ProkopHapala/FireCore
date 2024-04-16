@@ -14,6 +14,7 @@
 #include "MMFFparams.h"
 #include "AtomicConfiguration.h"
 #include "macroUtils.h"
+#include "LimitedGraph.h"
 
 #include "MMFFBuilder.h"
 
@@ -417,8 +418,8 @@ public:
             if (d.compareDescriptors(&descriptors[i]) < 0.2)
             {
                 // addMember(a, &d);
-                printf("compareAtoms: %lf\n", compareAtoms(a, &atoms[i]));
-                if (compareAtoms(a, &atoms[i]) > 1.0)
+
+                if (computeDistance(a, &atoms[i]) > 1.0)
                 {
                     nMembers--;
                 }
@@ -449,7 +450,6 @@ public:
         {
             atoms[i].realloc(a->natoms);
             atoms[i].copyOf(*a);
-            atoms[i].print();
 
             descriptors[i].dealloc();
             for (int j = 0; j < nbOfusedDescriptors; j++)
@@ -461,24 +461,6 @@ public:
         }
     }
 
-    void remove(int i)
-    {
-        if (i < nMembers && i >= 0)
-        {
-            atoms[i].dealloc();
-            descriptors[i].dealloc();
-            for (int j = i; j < nMembers - 1; j++)
-            {
-                atoms[j] = atoms[j + 1];
-                descriptors[j] = descriptors[j + 1];
-            }
-            nMembers--;
-        }
-        else
-        {
-            printf("Cannot remove: Index %d out of range\n", i);
-        }
-    }
 
     // ================= Comparing structures ================= //
 
@@ -492,9 +474,9 @@ public:
         return d.compareDescriptors(&descriptors[j]);
     };
 
-    double compareAtoms(int h, int i) { return compareAtoms(&atoms[h], &atoms[i]); }
+    double computeDistance(int h, int i) { return computeDistance(&atoms[h], &atoms[i]); }
 
-    double compareAtoms(Atoms *atoms_h, int i) { return compareAtoms(atoms_h, &atoms[i]); }
+    double computeDistance(Atoms *atoms_h, int i) { return computeDistance(atoms_h, &atoms[i]); }
 
     void orient(Vec3d center, Vec3d dir, Vec3d up, Atoms *a)
     {
@@ -507,7 +489,7 @@ public:
         }
     }
 
-    double compareAtoms(Atoms *atoms_h, Atoms *atoms_i)
+    double computeDistance(Atoms *atoms_h, Atoms *atoms_i)
     {
         if (atoms_h == nullptr || atoms_i == nullptr)
         {
@@ -515,7 +497,11 @@ public:
             return -1;
         }
         int natm = atoms_h->natoms;
-
+        if (abs(natm-atoms_i->natoms)>0.5)
+        {
+            printf("Different number of atoms\n");
+            return -1;
+        }
         double dist = 0;
 
         Vec3d x0_center = Vec3dZero;
@@ -632,13 +618,46 @@ public:
 
     // ================= Development ================= //
 
-    void as_rigid_as_possible(Atoms *atoms_h_, int index, int *neighs = 0, int nNeighs = 4)
+    void as_rigid_as_possible(Atoms *atoms_h_, int index, int nBonds, Vec2i *bonds, int *neighs = 0)
     {
-        printf("as_rigid_as_possible::Aligning new structure %d to atoms[%d]\n", nMembers - 1, index);
+        const int nNeighs = 4;
+        //printf("as_rigid_as_possible::Aligning new structure %d to atoms[%d]\n", nMembers - 1, index);
+        for(int i = 0; i < nBonds; i++)
+        {
+            printf("Bond %d: %d %d\n", i, bonds[i].a, bonds[i].b);
+        }
         if (!neighs)
         {
-            printf("No neighbours given\n");
-            return;
+            neighs = new int[nNeighs * atoms_h_->natoms];
+            for (int i = 0; i < atoms_h_->natoms; i++)
+            {
+                for (int j = 0; j < nNeighs; j++)
+                {
+                    neighs[nNeighs * i + j] = -1;
+                }
+            }
+            for (int i = 0; i < nBonds; i++)
+            {
+                int currentNeighs_a, currentNeighs_b;
+                for (int j = 0; j < nNeighs; j++)
+                {
+                    if (neighs[nNeighs * bonds[i].a + j] == -1)
+                    {
+                        currentNeighs_a = j;
+                        break;
+                    }
+                }
+                for (int j = 0; j < nNeighs; j++)
+                {
+                    if (neighs[nNeighs * bonds[i].b + j] == -1)
+                    {
+                        currentNeighs_b = j;
+                        break;
+                    }
+                }
+                neighs[nNeighs * bonds[i].a + currentNeighs_a] = bonds[i].b;
+                neighs[nNeighs * bonds[i].b + currentNeighs_b] = bonds[i].a;
+            }
         }
         Atoms *atoms_h = atoms_h_;
         // atoms_h.copyOf(atoms_h_);
@@ -650,20 +669,19 @@ public:
         Mat3d U, V;
         Vec3d *F = new Vec3d[natm];
         Vec3d temp;
+        Mat3d Rot;
         Quat4d *w_mat = new Quat4d[natm];
         double *w_vec = new double[natm];
-        double alpha = 0.01;
+        double alpha = 0.1 ;
         for (int j = 0; j < natm; j++)
         {
             R[j] = Mat3dZero;
             w_mat[j] = Quat4dOnes;
             w_vec[j] = 1;
-            // for(int k = 0; k < nNeighs; k++){
-            //     if(neighs[nNeighs*j+k] == -1) break;
-            //     w_mat[j].array[k] = atoms_h;
-            // }
-
         } // ToDo: set weights
+
+        atoms_h->print();
+        atoms_i->print();
 
         const int qmax = 1;
         int q = 0;
@@ -685,21 +703,38 @@ public:
                         break;
                     Vec3d e_h = atoms_h->apos[j] - atoms_h->apos[neighs[nNeighs * j + k]];
                     Vec3d e_i = atoms_i->apos[j] - atoms_i->apos[neighs[nNeighs * j + k]];
-                    // printf("e_h: %lf %lf %lf\n", e_h.x, e_h.y, e_h.z);
-                    // printf("e_i: %lf %lf %lf\n", e_i.x, e_i.y, e_i.z);
+                    //printf("e_h: %lf %lf %lf\n", e_h.x, e_h.y, e_h.z);
+                    //printf("e_i: %lf %lf %lf\n", e_i.x, e_i.y, e_i.z);
                     S.addOuter(e_h, e_i, w_mat[j].array[k]);
                 }
+                // printf("S: %d\n", j);
                 // S.print();
                 if (capping)
                     continue;
-
+                //  printf("U: %d\n", j);
+                //  U.print();
+                //  printf("V: %d\n", j);
+                //  V.print();
                 S.SVD(U, temp, V);
+                //  printf("U: %d\n", j);
+                //  U.print();
+                //  printf("V: %d\n", j);
+                //  V.print();
 
-                R[j].set_mmul_NT(V, U);
+                //  printf("temp: %lf %lf %lf\n", temp.x, temp.y, temp.z);
+                //  printf("R: %d\n", j);
+                
+    
+                R[j].set_mmul_NT(U,V);
+                // printf("R[%d].determinant(): %lf\n", j, R[j].determinant());
+                // R[j].print();
+
 
                 double E_j = 0;
                 for (int k = 0; k < nNeighs; k++)
-                {
+                {                    
+                    if (neighs[nNeighs * j + k] == -1)
+                        break;
                     Vec3d e_h = atoms_h->apos[j] - atoms_h->apos[neighs[nNeighs * j + k]];
                     Vec3d e_i = atoms_i->apos[j] - atoms_i->apos[neighs[nNeighs * j + k]];
                     double d = (e_h - R[j].dot(e_i)).norm2();
@@ -709,44 +744,63 @@ public:
             }
             for (int j = 0; j < natm; j++)
             {
-                Mat3d Rot;
-                F[j] = Vec3dZero;
+                F[j] = {0,0,0};
                 for (int k = 0; k < nNeighs; k++)
                 {
                     if (neighs[nNeighs * j + 1] == -1)
-                    {
                         break;
-                    }
                     if (neighs[nNeighs * j + k] == -1)
                         break;
                     Vec3d e_h = atoms_h->apos[j] - atoms_h->apos[neighs[nNeighs * j + k]];
                     Vec3d e_i = atoms_i->apos[j] - atoms_i->apos[neighs[nNeighs * j + k]];
+                    //printf("e_h: %lf %lf %lf\n", e_h.x, e_h.y, e_h.z);
+                    //printf("e_i: %lf %lf %lf\n", e_i.x, e_i.y, e_i.z);
                     Rot = Mat3dZero;
                     Rot.add(R[j]);
+                    //printf("Rot: %d\n", j);
+                    //Rot.print();
+                    //printf("\n");
                     Rot.add(R[neighs[nNeighs * j + k]]);
-                    F[j] = F[j] + (Rot.dot(e_h).mul(-0.5) + e_i).mul(4 * w_mat[j].array[k]);
+                    //printf("Rot:\n");
+                    //Rot.print();
+                    
+                    //printf("Rot.dot(e_h).mul(-0.5): %lf %lf %lf\n", Rot.dot(e_h).mul(-0.5).x, Rot.dot(e_h).mul(-0.5).y, Rot.dot(e_h).mul(-0.5).z);
+                    //printf("Rot.dot(e_h).mul(-0.5) + e_i: %lf %lf %lf\n", (Rot.dot(e_h).mul(-0.5) + e_i).x, (Rot.dot(e_h).mul(-0.5) + e_i).y, (Rot.dot(e_h).mul(-0.5) + e_i).z);
+                    F[j].add(Rot.dot(e_h).mul(-0.5) + e_i);//.mul(4 * w_mat[j].array[k]);
                 }
-                printf("%d F: %lf %lf %lf\n", j, F[j].x, F[j].y, F[j].z);
             }
+            //atoms_h->print();
             for (int j = 0; j < natm; j++)
-            {
+            {//printf("%d F: %lf %lf %lf\n", j, F[j].x, F[j].y, F[j].z);
                 if (neighs[nNeighs * j + 1] == -1)
                 {
-                    atoms_h->apos[j] = atoms_h->apos[j] - F[neighs[nNeighs * j]].mul(alpha);
+                    atoms_h->apos[j] = atoms_h->apos[j] + F[neighs[nNeighs * j]].mul(alpha);
                 }
                 else
                 {
-                    atoms_h->apos[j] = atoms_h->apos[j] - F[j].mul(alpha);
+                    atoms_h->apos[j] = atoms_h->apos[j] + F[j].mul(alpha);
                 }
             }
-            printf("%d: %lf\n", q, E);
+            
+
             q++;
-            atoms_h->print();
+            //atoms_h->print();
         }
+        atoms_h->print();
+        atoms_i->print();
+        for(int i = 0; i < natm; i++)
+        {
+            printf("F[%d]: %lf %lf %lf\n", i, F[i].x, F[i].y, F[i].z);
+        }
+        //printf("%d: E = %lf, F = %lf\n", q, E, F[0].norm());
         delete[] R;
+        printf("delete R\n");
         delete[] w_mat;
+        printf("delete w_mat\n");
         delete[] w_vec;
+        printf("delete w_vec\n");
         delete[] F;
+        printf("as_rigid_as_possible::End\n");
         // printf("S: %lf %lf %lf\n", S.x, S.y, S.z);
     }
 };

@@ -10,16 +10,21 @@ from pyBall import MMFF as mmff
 
 #======== Body
 
-mmff.setVerbosity( verbosity=1, idebug=0 )
+mmff.setVerbosity( verbosity=1, idebug=1 )
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2" )                             # all
-mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False  )              # without MMFF
+print(mmff.init( xyz_name="common_resources/pyridine", bMMFF=False  ))              # without MMFF
+mmff.addSnapshot(fname="common_resources/pyridine")
+mmff.addSnapshot()
+mmff.addSnapshot(fname="common_resources/pyridine")
+
+mmff.printDatabase()
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False, gridStep=-1 )  # without gridFF
-mmff.getBuffs()
-mmff.eval()
+#mmff.getBuffs()
+#mmff.eval()
 #mmff.relax(1000)
-print( "FORCES:\n mmff.fapos:\n ", mmff.fapos )
-mmff.plot(bForce=True, Fscale=10.0 )
-plt.show()
+#print( "FORCES:\n mmff.fapos:\n ", mmff.fapos )
+#mmff.plot(bForce=True, Fscale=10.0 )
+#plt.show()
 exit(0)
 
 
@@ -66,6 +71,8 @@ exit()
 #print( "Es(Etot,Eb,Ea,Eps,EppT,EppI):", mmff.Es )
 #nsel = mmff.splitAtBond(6-1)  ;print( "split to:\n", mmff.selection[:nsel],"\n", mmff.selection[nsel:] )
 '''
+
+
 
 # ============== Benzene_deriv.xyz
 mmff.initWithMolFile( "data/Benzene_deriv.xyz", bNonBonded=False, bOptimizer=True)
