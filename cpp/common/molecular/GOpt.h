@@ -38,7 +38,7 @@ struct GOpt{
     Constrains constrs;
 
     void startExploring(){
-        //printf( "GOpt::startExploring()\n" );
+        if(verbosity) printf( "GOpt::startExploring()\n" );
         bExploring = true;
         istep=0;
         constrs.update_drives();
@@ -49,7 +49,7 @@ struct GOpt{
         istep++;
         if(bExploring){
             if(istep>=nExplore){ 
-                //printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
+                if(verbosity) printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
                 bExploring=false; istep=0; return true; 
             }
         }else{
