@@ -8,10 +8,16 @@
 
 MolWorld_sp3 W;
 
+
+
 //============================
 
 #include "libMMFF.h"
 #include "libUtils.h"
+
+
+GridShape grid;
+double* grid_data=0;
 
 extern "C"{
 
@@ -107,6 +113,20 @@ void set_opt(
     //W.opt.v_limit  =  v_limit  ;
     //W.opt.dr_limit =  dr_limit ;
 
+}
+
+double* loadXSF( const char* fname, int* ns, double* cell ){
+    grid_data = grid.loadXSF<double>( fname, 0 );
+    if(ns  ){ *((Vec3i*)ns)   = grid.n;    }
+    if(cell){ *((Mat3d*)cell) = grid.cell; }
+    return grid_data;
+}
+
+void saveXSF( const char* fname, const double* data, int* ns, double* cell ){
+    if(ns  ){ grid.n    = *((Vec3i*)ns);    }
+    if(cell){ grid.cell = *((Mat3d*)cell); }
+    if(data==0){  data=grid_data; }
+    grid.saveXSF<double>( fname, data );
 }
 
 void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, int atyp, double Q, double K, double RQ, double* pos0_, bool bSave){

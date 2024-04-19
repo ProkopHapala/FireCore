@@ -771,6 +771,7 @@ class MolWorld_sp3 : public SolverInterface { public:
                 gridFF.makeVPLQH();
             }
             gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
+            bSaveDebugXSFs = true;
             if(bSaveDebugXSFs)saveGridXsfDebug();
             //bGridFF   =true; 
             //bSurfAtoms=false;

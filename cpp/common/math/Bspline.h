@@ -337,6 +337,16 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
                   B111+B011+B111 + B011+B001+B011 + B111+B011+B111  ;
     printf( "%g %g %g \n", sum1, sum2, sum3 ); // exit(0);
 
+    // int i=0;
+    // for(int iz=0; iz<ns.z; iz++){
+    //     for(int iy=0; iy<ns.y; iy++){
+    //         for(int ix=0; ix<ns.x; ix++){
+    //             printf( "[%i,%i,%i|%i] G %g E %g \n",    ix,iy,iz,i,    Gs[i], Es[i] );
+    //             i++;
+    //         }
+    //     }
+    // }
+
     int itr=0;
     for(itr=0; itr<nmaxiter; itr++){
 
@@ -351,11 +361,11 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
                 int iiy = iy*ns.x;
                 for(int ix=1; ix<ns.x-1; ix++){
                     double val=0; 
-                    int i  = ix + iiy + iiz;
-                    
+                    int        i = ix + iiy + iiz;
+                    const int j = i;
                     int i0 = i-ns.x;
                     int i1 = i+ns.x;
-
+                    
                     val += 
                         + Gs[i0-1]*B011 + Gs[i0]*B001 + Gs[i0+1]*B011
                         + Gs[i -1]*B001 + Gs[i ]*B000 + Gs[i +1]*B001
@@ -365,39 +375,44 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
                     val +=    
                         + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
                         + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
-                        + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;    
+                        + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;  
+
                     i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
                     val +=
                         + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
                         + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
                         + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;        
-
-                    // --- 2D works
-                    // val = 
-                    //     + Gs[i0-1]*B11 + Gs[i0]*B01 + Gs[i0+1]*B11
-                    //     + Gs[i -1]*B01 + Gs[i ]*B00 + Gs[i +1]*B01
-                    //     + Gs[i1-1]*B11 + Gs[i1]*B01 + Gs[i1+1]*B11;
-
-                    //val += Gs[i -1]*B1 + Gs[i ]*B0 + Gs[i +1]*B1;
-                    // val += Gs[i -nxy]*B1 + Gs[i ]*B0 + Gs[i +nxy]*B1;
-
+                
                     //val +=  Gs[i ];
-                    double err = Es[i] - val;
+                    double err = Es[j] - val;
+                    //double err = val;
                     //double d =  Gs[i ];
                     //printf( "[%i,%i,%i] %g %g %g \n", ix,iy,iz, d, val, Es[i] );
-                    ps[i] = err;
+                    ps[j] = err;
+                    Ws[j] = err;
+
+                    // if(itr==0){
+                    //     printf( "Gs[%i,%i,%i] G %g E %g p %g \n",    ix,iy,iz,    Gs[i], Es[i], ps[i] );
+                    // }
                 }
             }
         }
 
+        
         // --- distribute variational derivatives of approximation error
-        for(int iz=2; iz<ns.z-2; iz++){
+        // for(int iz=2; iz<ns.z-2; iz++){
+        //     int iiz = iz*nxy;
+        //     for(int iy=2; iy<ns.y-2; iy++){
+        //         int iiy = iy*ns.x;
+        //         for(int ix=2; ix<ns.x-2; ix++){
+        for(int iz=1; iz<ns.z-1; iz++){
             int iiz = iz*nxy;
-            for(int iy=2; iy<ns.y-2; iy++){
+            for(int iy=1; iy<ns.y-1; iy++){
                 int iiy = iy*ns.x;
-                for(int ix=2; ix<ns.x-2; ix++){
+                for(int ix=1; ix<ns.x-1; ix++){
                     double val=0; 
                     int i  = ix + iiy + iiz;
+                    const int j = i;
                     int i0 = i-ns.x;
                     int i1 = i+ns.x;
 
@@ -417,46 +432,17 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
                         + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
                         + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
 
-                    // --- 2D works
-                    // val = 
-                    //     + ps[i0-1]*B11 + ps[i0]*B01 + ps[i0+1]*B11
-                    //     + ps[i -1]*B01 + ps[i ]*B00 + ps[i +1]*B01
-                    //     + ps[i1-1]*B11 + ps[i1]*B01 + ps[i1+1]*B11;
-
-                    //val +=  ps[i -1]*B1 + ps[i ]*B0 + ps[i +1]*B1;
-                    //val +=  ps[i -nxy]*B1 + ps[i ]*B0 + ps[i +nxy]*B1;
-
                     //val = ps[i];
                     //printf( "[%i,%i,%i] %g \n", ix,iy,iz, val );
-                    fs[i] = val;
+                    fs[j] = val;
+                    // if(itr==0){
+                    //     printf( "Gs[%i,%i,%i] G %g p %g f %g\n", ix,iy,iz,  Gs[i], ps[i], fs[i]   );
+                    // }
+
                 }
             }
         }
-        
- /*      
-        for(int iz=1; iz<ns.z-1; iz++){
-            int iiz = iz*nxy;
-            int i = iiz;
-            double val = Gs[i-nxy]*B1 + Gs[i ]*B0 + Gs[i+nxy]*B1;
-            //val +=  Gs[i ];
-            double err = Es[i] - val;
-            //double d =  Gs[i ];
-            //printf( "D(%3i,%3i,%3i|%3i) %15.10f \n", i-nxy, i, i+nxy, nxyz, -err );
-            ps[i] = -err;
-            //Ws[i] = ps[i*2];
-        }
-        for(int iz=1; iz<ns.z-1; iz++){
-            int iiz = iz*nxy;
-            int i = iiz;
-            double val =  ps[i -nxy]*B1 + ps[i ]*B0 + ps[i +nxy]*B1;
-            //val = ps[i];
-            //printf( "[%i,%i,%i] %g \n", ix,iy,iz, val );
-            //printf( "F(%3i,%3i,%3i|%3i) %15.10f \n", i-nxy, i, i+nxy, nxyz, -val );
-            fs[i] = -val;
-            //Ws[i] = ps[i*2+1];
-        }
- */   
-    
+            
         // --- move
         double vf = 0.0;
         double ff = 0.0;
@@ -467,11 +453,11 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
         printf( "|F[%i]|=%g \n",itr,  sqrt(ff) );
         //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
         if(ff<F2max){ break; }
-        //if(vf<0){ for(int i=0; i<n; i++){ vs[i]=0; }; }
+        if(vf<0){ for(int i=0; i<nxyz; i++){ vs[i]=0; }; }
         for(int i=0; i<nxyz; i++){
-            //vs[i] += fs[i]*dt;
-            //Gs[i] += vs[i]*dt;
-            Gs[i] += fs[i]*dt;  // GD
+            vs[i] += fs[i]*dt;
+            Gs[i] += vs[i]*dt;
+            //Gs[i] += fs[i]*dt;  // GD
         }
         
     }

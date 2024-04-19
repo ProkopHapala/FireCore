@@ -238,7 +238,7 @@ class GridShape{ public:
     }
 
     template<typename T>
-    int saveXSF( const char * fname,const T* FF, int pitch=1, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
+    int saveXSF( const char * fname, const T* FF, int pitch=1, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
         //printf( "saving %s\n", fname );
         FILE *fout;
         fout = fopen(fname,"w");
@@ -250,6 +250,60 @@ class GridShape{ public:
         toXSF( fout, FF, pitch, offset );
         fclose(fout);
         return 0;
+    }
+
+    template<typename T>
+    T* loadXSF( const char * fname, T* FF=0, int pitch=1, int offset=0, int natoms=0, int* atypes=0, Vec3d* apos=0, bool bPrimCoord=true )const {
+        //printf( "saving %s\n", fname );
+        FILE *file;
+        file = fopen(fname,"r");
+        if( file==0 ){ printf( "ERROR saveXSF(%s) : Cannot open file for writing \n", fname ); exit(0); }
+        // ----- Search for grid-block start `BEGIN_BLOCK_DATAGRID_3D` (skip header)
+        char line[1024];
+        int iline = 0;
+        int nmaxheader = 1000;
+        for (iline=0; iline<nmaxheader; iline++){
+            if( fgets(line, sizeof(line), file) ) {  // Read each line
+                //printf( "line[%i]'%s'", iline, line );
+                if (strstr(line, "BEGIN_BLOCK_DATAGRID_3D") != NULL) {  // Check if line contains the substring
+                    //printf("Found 'BEGIN_BLOCK_DATAGRID_3D' in line %d: %s", iline, line);
+                    break;
+                }
+            }else{ printf( "ERROR: loadXSF(%s) fgets() returned 0 \n", fname );  exit(0); }
+        }
+        if(iline>=nmaxheader){ printf( "ERROR: loadXSF(%s) BEGIN_DATAGRID_3D not found within first %i lines \n", fname, iline );  exit(0);  }
+        // skip some lines
+        fgets(line, sizeof(line), file); // empty line some_datagrid
+        fgets(line, sizeof(line), file); // empty line DATAGRID_3D
+        // read grid sampling & dimensions
+        fscanf( file, "%i %i %i\n", &(n.x), &(n.y), &(n.z) );
+        //const T* FF = new T[n.x*n.y*n.z];
+        fscanf( file, "%lf %lf %lf\n", &(pos0.x),   &(pos0.y),  &(pos0.z)   );
+        fscanf( file, "%lf %lf %lf\n", &(cell.a.x), &(cell.a.y), &(cell.a.z) );
+        fscanf( file, "%lf %lf %lf\n", &(cell.b.x), &(cell.b.y), &(cell.b.z) );
+        fscanf( file, "%lf %lf %lf\n", &(cell.c.x), &(cell.c.y), &(cell.c.z) );
+        // printf( "pos0   (%g,%g,%g) \n", pos0.x, pos0.y, pos0.z );
+        // printf( "cell.a (%g,%g,%g) \n", cell.a.x, cell.a.y, cell.a.z );
+        // printf( "cell.b (%g,%g,%g) \n", cell.b.x, cell.b.y, cell.b.z );
+        // printf( "cell.c (%g,%g,%g) \n", cell.c.x, cell.c.y, cell.c.z  );
+        // allocate grid
+        int ntot = n.x*n.y*n.z;
+        if( FF==0 ){ FF = new T[ ntot * pitch]; }
+        int ig = 0;
+        double nums[8]; // maximum 8 number per line
+        for(int i=0; i<ntot; i++){ 
+            if( fgets(line, sizeof(line), file) == 0 ){ printf("ERROR loadXSF(%s) ended on for ig(%i) < ntot(%i) line=%i \n", ig, ntot, i ); }
+            int ntok = sscanf( line, "%lf %lf %lf %lf %lf %lf %lf %lf", nums+0, nums+1, nums+2, nums+3, nums+4, nums+5, nums+6, nums+7 );  // read up to 8 number per line
+            //printf("line[il=%i|ig=%i/ntot=%i] ntok=%i line=%s \n", iline, ig, ntot, ntok, line  ); 
+            for(int j=0; j<ntok; j++){ // copy the number from buffer to grid data
+                FF[ig] = nums[j];
+                ig++;
+            }
+            if(ig>=ntot){ break; }
+            iline++;
+        }
+        fclose(file);
+        return FF;
     }
 
     double Laplace( const double* f, double* out )const{
