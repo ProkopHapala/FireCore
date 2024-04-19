@@ -122,11 +122,33 @@ lib.fit3D_Bspline.restype   =  None
 def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
     ns = np.array( Es.shape, dtype=np.int32 ) 
     n  = Es.size
-    if Ws is None: Ws = np.zeros( (n,2) )
-    if Gs is None:
-        Gs = Es[:].copy()
+    if Ws is None: Ws = np.zeros( ns )
+    if Gs is None: Gs = Es[:].copy()
+    #print( "Es\n", Es  )
+    #print( "Gs\n", Gs  )
     lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
     return Gs, Ws
+
+# double* loadXSF( const char* fname, int* ns, double* cell ){
+lib.loadXSF.argtypes  = [ c_char_p, c_int_p, c_double_p ]
+lib.loadXSF.restype   =  c_double_p
+def loadXSF( name ):
+    if name is not None: name=name.encode('utf8')
+    cell = np.zeros((3,3))
+    ns   = np.zeros(3, dtype=np.int32 ) 
+    data_ptr = lib.loadXSF( name, _np_as(ns,c_int_p), _np_as(cell,c_double_p)  )
+    ff       = np.ctypeslib.as_array(data_ptr, (ns[2],ns[1],ns[0]) )
+    return ff, cell
+
+# double* loadXSF( const char* fname, int* ns, double* cell ){
+lib.saveXSF.argtypes  = [ c_char_p, c_double_p, c_int_p, c_double_p ]
+lib.saveXSF.restype   =  c_double_p
+def saveXSF( name, FF, cell=None ):
+    ns = FF.shape
+    ns   = np.array( (ns[2],ns[1],ns[0]) , dtype=np.int32 )
+    if cell is not None: cell = np.array( cell )
+    if name is not None: name = name.encode('utf8')
+    lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )
 
 # void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
 lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]

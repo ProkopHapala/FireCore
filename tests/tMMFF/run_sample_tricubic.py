@@ -127,6 +127,35 @@ def getPoss( nsamp, extent ):
     ps = np.vstack([xs.flatten(), ys.flatten(), zs.flatten() ]).T.copy()    #;print("ps.shape: ",ps.shape)
     return ps
 
+FF, cell = mmff.loadXSF( "../tMolGUIapp/E_PLQ.xsf" ); print( "FF.shape " , FF.shape, " cel=\n", cell  )
+Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=10000, dt=0.1 )
+#Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=100, dt=0.1 )
+#Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=0, dt=0.1 )
+
+
+mmff.saveXSF( "BsplineFit_FF.xsf", FF )
+mmff.saveXSF( "BsplineFit_G.xsf", Gs )
+
+
+plt.plot( FF[:,40,40], label='z-scan'  );
+plt.plot( FF[40,:,40], label='y-scan'  );
+plt.plot( FF[40,40,:], label='x-scan'  );
+
+
+'''
+vmin=FF.min()
+plt.ylim(vmin,-vmin*2)
+plt.show()
+'''
+
+
+
+
+exit()
+
+
+
+
 # # ----- Test 1: sample_SplineHermite 1D 
 # dx    =  1.5
 # x0    = -0.1 
@@ -212,22 +241,43 @@ atoms = np.array([
 
 
 EFg = makeGrid_deriv( atoms, ng, g0, dg )  # ;print( "Eg.shape ", EFg.shape )  ;exit()
-Eg  = EFg[:,:,:,3]  ; print( "Eg.shape ", Eg.shape )  #;exit()
+Eg  = EFg[:,:,:,3].copy()  ; print( "Eg.shape ", Eg.shape )  #;exit()
 
-
-
+Eg[:,:,:] = 0
+Eg[3,3,3] = 1.0
 
 Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1000, dt=0.1 )
 
+mp='bwr'
+plt.figure()
+plt.subplot(2,3,1); plt.imshow( Gs[:,:,3], cmap=mp ); plt.title("G x,y") ;plt.grid()
+plt.subplot(2,3,2); plt.imshow( Gs[:,3,:], cmap=mp ); plt.title("G x,z") ;plt.grid()
+plt.subplot(2,3,3); plt.imshow( Gs[3,:,:], cmap=mp ); plt.title("G y,z") ;plt.grid()
 
+plt.subplot(2,3,4); plt.imshow( Ws[:,:,3], cmap=mp ); plt.title("W x,y") ;plt.grid()
+plt.subplot(2,3,5); plt.imshow( Ws[:,3,:], cmap=mp ); plt.title("W x,z") ;plt.grid()
+plt.subplot(2,3,6); plt.imshow( Ws[3,:,:], cmap=mp ); plt.title("W y,z") ;plt.grid()
 
+'''
+vmin = -0.5
+mp='bwr'
+for iter in range(1):
+    #Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1, dt=0.5 )
+    plt.figure()
+    plt.subplot(2,3,1); plt.imshow( Gs[:,:,3], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("G x,y") ;plt.grid()
+    plt.subplot(2,3,2); plt.imshow( Gs[:,3,:], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("G x,z") ;plt.grid()
+    plt.subplot(2,3,3); plt.imshow( Gs[3,:,:], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("G y,z") ;plt.grid()
 
+    plt.subplot(2,3,4); plt.imshow( Ws[:,:,3], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("W x,y") ;plt.grid()
+    plt.subplot(2,3,5); plt.imshow( Ws[:,3,:], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("W x,z") ;plt.grid()
+    plt.subplot(2,3,6); plt.imshow( Ws[3,:,:], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("W y,z") ;plt.grid()
 # g0 = 3.0-0.3
 # dg = 0.1
 # FEg, xg = makeGrid_deriv_dir( atoms, 60, g0=(0.0,0.0,g0), dg=(0.0,0.0,dg) )
 # Eg = FEg[:,0].copy()
 
 #print( "Eg.shape ", Eg.shape ); exit(0)
+'''
 
 '''
 plt.plot( xg, FEg[:,0], 'ok', label="Eg   " )
