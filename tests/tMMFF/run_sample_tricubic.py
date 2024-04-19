@@ -128,30 +128,48 @@ def getPoss( nsamp, extent ):
     return ps
 
 FF, cell = mmff.loadXSF( "../tMolGUIapp/E_PLQ.xsf" ); print( "FF.shape " , FF.shape, " cel=\n", cell  )
-Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=10000, dt=0.1 )
+#Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=10000, dt=0.1 )
 #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=100, dt=0.1 )
 #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=0, dt=0.1 )
 
+vmin=FF.min()
 
-mmff.saveXSF( "BsplineFit_FF.xsf", FF )
-mmff.saveXSF( "BsplineFit_G.xsf", Gs )
+nsamp = 1000
+x0=0.5
+xmax=5.0
+xs    = np.linspace(x0,xmax,nsamp)
+ps    = np.zeros((nsamp,3))
+ps[:,0],ps[:,1],ps[:,2] = 1.0,1.0,xs
+
+g0 = (0.0,0.0,0.0)
+dg = (0.05,0.05,0.05)
+fes = mmff.sample_Bspline3D( ps, FF, g0=g0, dg=dg )
+
+plt.plot( xs, fes[:,3], '.-'  )
+x2 = 0.05*np.arange(FF.shape[0]);print("x2 ", x2 )
+plt.plot( x2, FF[:,10+1,10+1],  '.-', label='z-scan'  );
+
+plt.ylim(vmin,-2*vmin)
 
 
-plt.plot( FF[:,40,40], label='z-scan'  );
-plt.plot( FF[40,:,40], label='y-scan'  );
-plt.plot( FF[40,40,:], label='x-scan'  );
+#mmff.saveXSF( "BsplineFit_FF.xsf", FF )
+#mmff.saveXSF( "BsplineFit_G.xsf", Gs )
+
+
+#plt.plot( FF[:,40,40], label='z-scan'  );
+#plt.plot( FF[40,:,40], label='y-scan'  );
+#plt.plot( FF[40,40,:], label='x-scan'  );
 
 
 '''
 vmin=FF.min()
 plt.ylim(vmin,-vmin*2)
-plt.show()
+
 '''
 
 
 
-
-exit()
+plt.show(); exit()
 
 
 

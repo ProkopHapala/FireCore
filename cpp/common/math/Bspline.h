@@ -159,11 +159,20 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
         ((iz<0)||(iz>=n.z-3))        
-    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); }
+    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n",   ix,iy,iz,   n.x,n.y,n.z,   u.x,u.y,u.z ); 
+    
+    printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); 
+    
+    
+    exit(0); }
     //Quat4d E,Fx,Fy;
     const int nxy = n.x*n.y;
 
-    int i0 = ix + n.x*( iy + n.y*iz );  const Vec3d Exy1 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
+    //printf( "ixyz(%i,%i,%i)  (%g,%g,%g)\n", ix,iy,iz,  u.x,u.y,u.z );
+
+    int i0 = ix + n.x*( iy + n.y*iz );  
+    
+    const Vec3d Exy1 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
     int i1 = i0+nxy  ;                  const Vec3d Exy2 = fe2d(tx,ty, {i1,i1+n.x,i1+n.x*2,i1+3*n.x}, Es );
     int i2 = i0+nxy*2;                  const Vec3d Exy3 = fe2d(tx,ty, {i2,i2+n.x,i2+n.x*2,i2+3*n.x}, Es );
     int i3 = i0+nxy*3;                  const Vec3d Exy4 = fe2d(tx,ty, {i3,i3+n.x,i3+n.x*2,i3+3*n.x}, Es );
@@ -176,6 +185,10 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
         dz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // Fz
         bz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // E
     };
+    
+    
+    //return Quat4d{0.0,0.0,0.0,Es[i0]};
+
 } 
 
 
