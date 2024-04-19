@@ -158,6 +158,14 @@ void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs
     Bspline::sample1D( g0,dg,ng,Gs, n, xs, (Vec2d*)fes );
 }
 
+void sample_Bspline3D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
+    long t0 = getCPUticks();
+    Bspline::sample3D( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, G, n, (Vec3d*)ps, (Quat4d*)fes );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    double t = (getCPUticks()-t0); printf( "sample_Bspline3D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+
+
 void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
     Spline_Hermite::sample1D( g0,dg,ng,Eg, n, xs, (Vec2d*)fes );
 }
