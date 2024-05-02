@@ -135,8 +135,8 @@ FF, cell = mmff.loadXSF( "../tMolGUIapp/E_PLQ.xsf" ); print( "FF.shape " , FF.sh
 vmin=FF.min()
 
 nsamp = 1000
-x0=0.5
-xmax=5.0
+x0=0.0
+xmax=10.0
 xs    = np.linspace(x0,xmax,nsamp)
 ps    = np.zeros((nsamp,3))
 ps[:,0],ps[:,1],ps[:,2] = 1.0,1.0,xs
@@ -145,12 +145,13 @@ g0 = (0.0,0.0,0.0)
 dg = (0.05,0.05,0.05)
 fes = mmff.sample_Bspline3D( ps, FF, g0=g0, dg=dg )
 
-plt.plot( xs, fes[:,3], '.-'  )
-x2 = 0.05*np.arange(FF.shape[0]);print("x2 ", x2 )
-plt.plot( x2, FF[:,10+1,10+1],  '.-', label='z-scan'  );
+x_ref = 0.05*np.arange(FF.shape[0]);     #print("x2 ", x2 )
+plt.plot( xs,    fes[:,3], '.-', label='Bspline E'  )
+plt.plot( x_ref, FF [:,10+1,10+1],  '.-', label='Ref z-scan'  );
 
 plt.ylim(vmin,-2*vmin)
-
+plt.legend()
+plt.grid()
 
 #mmff.saveXSF( "BsplineFit_FF.xsf", FF )
 #mmff.saveXSF( "BsplineFit_G.xsf", Gs )
