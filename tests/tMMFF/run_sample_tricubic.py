@@ -139,7 +139,7 @@ x0    = 0.0
 xmax  = 10.0
 xs    = np.linspace(x0,xmax,nsamp)
 ps    = np.zeros((nsamp,3))
-ps[:,0],ps[:,1],ps[:,2] = 1.0,1.0,xs
+ps[:,0],ps[:,1],ps[:,2] = 1.0,0.5,xs
 
 g0 = (0.0,0.0,0.0)
 dg = (0.05,0.05,0.05)
@@ -149,7 +149,7 @@ x_ref = 0.05*(np.arange(FF.shape[0]) - 1);     #print("x2 ", x2 )
 #plt.plot( xs,    fes[:,3],          '.-', label='Bspline E'  )
 #plt.plot( x_ref, FF [:,10+1,10+1],  '.-', label='Ref z-scan' )
 
-plt.plot( x_ref, FF [:,20+1,20+1],  '-', label='Ref z-scan' )
+plt.plot( x_ref, FF [:,10+1,20+1],  '-', label='Ref z-scan' )
 plt.plot( xs,    fes[:,3],          '-', label='Bspline E'  )
 plt.plot( xs,    fes[:,2],          '-', label='Bspline Fz' )
 plt.plot( xs,    fes[:,1],          '-', label='Bspline Fy' )
