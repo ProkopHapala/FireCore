@@ -167,7 +167,7 @@ def sample_Bspline3D( ps, Eg, g0, dg, fes=None):
     n = len(ps)
     g0 = np.array(g0)
     dg = np.array(dg)
-    ng = np.array( Eg.shape, np.int32 )
+    ng = np.array( Eg.shape[::-1], np.int32 )
     if fes is None: fes=np.zeros((n,4))
     lib.sample_Bspline3D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes

@@ -159,12 +159,11 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
         ((iz<0)||(iz>=n.z-3))        
-    )[[unlikely]]{ printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n",   ix,iy,iz,   n.x,n.y,n.z,   u.x,u.y,u.z ); 
-    
-    printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) t(%g,%g,%g)\n", ix,iz,iy, n.x,n.y,n.z, u.x,u.y,u.z ); 
-    
-    
-    exit(0); }
+    )[[unlikely]]{ 
+        printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) u(%g,%g,%g)\n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z ); 
+        //printf( "DETAILS:",   u.x ); 
+        exit(0); 
+    }
     //Quat4d E,Fx,Fy;
     const int nxy = n.x*n.y;
 
@@ -194,8 +193,13 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
 
 __attribute__((hot)) 
 void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
+    printf( "Bspline::sample3D() ng[%i,%i,%i] dg(%g,%g,%g) g0(%g,%g,%g)\n",   ng.x,ng.y,ng.z, dg.x,dg.y,dg.z,   g0.x,g0.y,g0.z   );
+
+    printf( "Bspline::sample3D() ps[0](%g,%g,%g) ps[%i](%g,%g,%g)\n",   ps[0].x,ps[0].y,ps[0].z,  n-1,  ps[n-1].x,ps[n-1].y,ps[n-1].z );
+
     Vec3d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
+        //printf( "Bspline::sample3D()[%i] p(%g,%g,%g) g0(%g,%g,%g) dg(%g,%g,%g)\n", i,  ps[i].x,ps[i].y,ps[i].z,    g0.x,g0.y,g0.z,    dg.x,dg.y,dg.z  );
         Quat4d fe = fe3d( (ps[i]-g0)*inv_dg, ng, Eg );        // sample3D(n=10000) time=2009.44[kTick] 200.944[tick/point]
         //Quat4d fe = fe3d_v2( (ps[i]-g0)*inv_dg, ng, Eg );   // sample3D(n=10000) time=2175.84[kTick] 217.584[tick/point]
         fe.f.mul(inv_dg);

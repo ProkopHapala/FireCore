@@ -282,11 +282,13 @@ class GridShape{ public:
         fscanf( file, "%lf %lf %lf\n", &(cell.a.x), &(cell.a.y), &(cell.a.z) );
         fscanf( file, "%lf %lf %lf\n", &(cell.b.x), &(cell.b.y), &(cell.b.z) );
         fscanf( file, "%lf %lf %lf\n", &(cell.c.x), &(cell.c.y), &(cell.c.z) );
-        // printf( "pos0   (%g,%g,%g) \n", pos0.x, pos0.y, pos0.z );
-        // printf( "cell.a (%g,%g,%g) \n", cell.a.x, cell.a.y, cell.a.z );
-        // printf( "cell.b (%g,%g,%g) \n", cell.b.x, cell.b.y, cell.b.z );
-        // printf( "cell.c (%g,%g,%g) \n", cell.c.x, cell.c.y, cell.c.z  );
-        // allocate grid
+        
+        printf( "GridShape::loadXSF() ng     (%i,%i,%i) \n", n.x,    n.y,    n.z    );
+        printf( "GridShape::loadXSF() pos0   (%g,%g,%g) \n", pos0.x, pos0.y, pos0.z );
+        printf( "GridShape::loadXSF() cell.a (%g,%g,%g) \n", cell.a.x, cell.a.y, cell.a.z );
+        printf( "GridShape::loadXSF() cell.b (%g,%g,%g) \n", cell.b.x, cell.b.y, cell.b.z );
+        printf( "GridShape::loadXSF() cell.c (%g,%g,%g) \n", cell.c.x, cell.c.y, cell.c.z  );
+
         int ntot = n.x*n.y*n.z;
         if( FF==0 ){ FF = new T[ ntot * pitch]; }
         int ig = 0;
