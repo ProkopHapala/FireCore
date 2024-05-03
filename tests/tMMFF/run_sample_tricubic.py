@@ -127,12 +127,30 @@ def getPoss( nsamp, extent ):
     ps = np.vstack([xs.flatten(), ys.flatten(), zs.flatten() ]).T.copy()    #;print("ps.shape: ",ps.shape)
     return ps
 
-FF, cell = mmff.loadXSF( "../tMolGUIapp/E_PLQ.xsf" ); print( "FF.shape " , FF.shape, " cel=\n", cell  )
+Eg, cell = mmff.loadXSF( "../tMolGUIapp/E_PLQ.xsf" ); print( "Eg.shape " , Eg.shape, " cel=\n", cell  )
 #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=10000, dt=0.1 )
 #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=100, dt=0.1 )
 #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=0, dt=0.1 )
 
-vmin=FF.min()
+Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1000, dt=0.1 )
+mmff.saveXSF( "../tMolGUIapp/G_PLQ.xsf", Gs, cell=cell ); print( "Gs.shape " , Gs.shape, " cel=\n", cell  )
+
+plt.figure(figsize=(10,5))
+vmin=-0.01
+plt.subplot(1,2,1); plt.imshow(  Eg[:,:,10], cmap='bwr', vmin=vmin, vmax=-vmin ); plt.title("Eg (Ref)")
+plt.subplot(1,2,2); plt.imshow(  Gs[:,:,10], cmap='bwr', vmin=vmin, vmax=-vmin ); plt.title("G (Fit)" )
+plt.show()
+exit()
+
+
+
+
+
+
+
+
+
+vmin=Eg.min()
 
 nsamp = 1000
 x0    = 0.0
@@ -143,18 +161,20 @@ ps[:,0],ps[:,1],ps[:,2] = 1.0,0.5,xs
 
 g0 = (0.0,0.0,0.0)
 dg = (0.05,0.05,0.05)
-fes = mmff.sample_Bspline3D( ps, FF, g0=g0, dg=dg )
+fes = mmff.sample_Bspline3D( ps, Eg, g0=g0, dg=dg )
 
-x_ref = 0.05*(np.arange(FF.shape[0]) - 1);     #print("x2 ", x2 )
+x_ref = 0.05*(np.arange(Eg.shape[0]) - 1);     #print("x2 ", x2 )
 #plt.plot( xs,    fes[:,3],          '.-', label='Bspline E'  )
 #plt.plot( x_ref, FF [:,10+1,10+1],  '.-', label='Ref z-scan' )
 
-plt.plot( x_ref, FF [:,10+1,20+1],  '-', label='Ref z-scan' )
+plt.plot( x_ref, Eg [:,10+1,20+1],  '-', label='Eg z-scan' )
+plt.plot( x_ref, Gs [:,10+1,20+1],  '-', label='Gs z-scan' )
+'''
 plt.plot( xs,    fes[:,3],          '-', label='Bspline E'  )
 plt.plot( xs,    fes[:,2],          '-', label='Bspline Fz' )
 plt.plot( xs,    fes[:,1],          '-', label='Bspline Fy' )
 plt.plot( xs,    fes[:,0],          ':', label='Bspline Fx' )
-
+'''
 plt.ylim(vmin,-2*vmin)
 plt.legend()
 plt.grid()
