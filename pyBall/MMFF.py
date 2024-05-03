@@ -120,7 +120,7 @@ def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
 lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
 lib.fit3D_Bspline.restype   =  None
 def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
-    ns = np.array( Es.shape, dtype=np.int32 ) 
+    ns = np.array( Es.shape[::-1], dtype=np.int32 ) 
     n  = Es.size
     if Ws is None: Ws = np.zeros( ns )
     if Gs is None: Gs = Es[:].copy()

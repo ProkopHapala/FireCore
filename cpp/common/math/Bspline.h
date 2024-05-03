@@ -362,7 +362,36 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     //     }
     // }
 
+
+    // for(int i=0; i<nxyz; i++){ Gs[i]=0; }
+    // for(int iz=1; iz<ns.z-1; iz++){
+    //     int iiz = iz*nxy;
+    //     for(int iy=1; iy<ns.y-1; iy++){
+    //         int iiy = iy*ns.x;
+    //         for(int ix=1; ix<ns.x-1; ix++){
+    //             double val=0; 
+    //             int        i = ix + iiy + iiz;
+    //             Gs[i] = 10.0;
+    //             //Gs[i] = ix;
+    //         }
+    //     }
+    // }
+
+    // for(int iz=0; iz<ns.z; iz++){
+    //     int iiz = iz*nxy;
+    //     for(int iy=0; iy<ns.y; iy++){
+    //         int iiy = iy*ns.x;
+    //         for(int ix=0; ix<ns.x; ix++){
+    //             double val=0; 
+    //             int        i = ix + iiy + iiz;
+    //             Gs[i] = 0;
+    //             //Gs[i] = ix;
+    //         }
+    //     }
+    // }
+
     int itr=0;
+    //while(false){
     for(itr=0; itr<nmaxiter; itr++){
 
         // --- evaluate current spline
@@ -420,16 +449,62 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
         //     for(int iy=2; iy<ns.y-2; iy++){
         //         int iiy = iy*ns.x;
         //         for(int ix=2; ix<ns.x-2; ix++){
-        for(int iz=1; iz<ns.z-1; iz++){
+        // for(int iz=1; iz<ns.z-1; iz++){
+        //     int iiz = iz*nxy;
+        //     for(int iy=1; iy<ns.y-1; iy++){
+        //         int iiy = iy*ns.x;
+        //         for(int ix=1; ix<ns.x-1; ix++){
+        //             double val=0; 
+        //             int i  = ix + iiy + iiz;
+        //             const int j = i;
+        //             int i0 = i-ns.x;
+        //             int i1 = i+ns.x;
+
+        //             val += 
+        //                 + ps[i0-1]*B011 + ps[i0]*B001 + ps[i0+1]*B011
+        //                 + ps[i -1]*B001 + ps[i ]*B000 + ps[i +1]*B001
+        //                 + ps[i1-1]*B011 + ps[i1]*B001 + ps[i1+1]*B011;
+
+        //             i   -= nxy;    i0 = i-ns.x;  i1 = i+ns.x;
+        //             val +=    
+        //                 + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
+        //                 + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
+        //                 + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
+        //             i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
+        //             val +=
+        //                 + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
+        //                 + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
+        //                 + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
+
+        //             //val = ps[i];
+        //             //printf( "[%i,%i,%i] %g \n", ix,iy,iz, val );
+        //             fs[j] = val;
+        //             // if(itr==0){
+        //             //     printf( "Gs[%i,%i,%i] G %g p %g f %g\n", ix,iy,iz,  Gs[i], ps[i], fs[i]   );
+        //             // }
+
+        //         }
+        //     }
+        // }
+
+
+        for(int iz=0; iz<ns.z; iz++){
             int iiz = iz*nxy;
-            for(int iy=1; iy<ns.y-1; iy++){
+            for(int iy=0; iy<ns.y; iy++){
                 int iiy = iy*ns.x;
-                for(int ix=1; ix<ns.x-1; ix++){
+                for(int ix=0; ix<ns.x; ix++){
                     double val=0; 
                     int i  = ix + iiy + iiz;
                     const int j = i;
                     int i0 = i-ns.x;
                     int i1 = i+ns.x;
+
+
+                    if(  
+                        (ix>0)&&(ix<(ns.x-1)) &&
+                        (iy>0)&&(ix<(ns.y-1)) &&
+                        (iz>0)&&(ix<(ns.z-1))           
+                    ){
 
                     val += 
                         + ps[i0-1]*B011 + ps[i0]*B001 + ps[i0+1]*B011
@@ -453,6 +528,11 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
                     // if(itr==0){
                     //     printf( "Gs[%i,%i,%i] G %g p %g f %g\n", ix,iy,iz,  Gs[i], ps[i], fs[i]   );
                     // }
+
+                    }else{
+                        fs[j] = 0;
+                        Gs[j] = 0;
+                    }
 
                 }
             }

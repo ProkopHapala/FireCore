@@ -73,12 +73,14 @@ print( "types1"   , fit.types1   )
 #print( "types3"   , fit.types3   )
 
 # ------ obtain energy profile from classical model (fit)
-Es     = fit.getEs( imodel=imodel, bRigid=False)     #;print( "Es_noH", Es     )
+#Es     = fit.getEs( imodel=imodel, bRigid=False)     #;print( "Es_noH", Es     )
+Es     = fit.getEs( imodel=imodel )     #;print( "Es_noH", Es     )
 
 # ------ obtain energy progile with HBond correction set to zero
 typREQs[0,3] = 0.0              # set HBond correction to zero
 fit.setType(0, typREQs[0,:] )   # set atom type 0
-Es_noH = fit.getEs( imodel=imodel, bRigid=False)     #;print( "Es_noH", Es_noH )
+#Es_noH = fit.getEs( imodel=imodel, bRigid=False)     #;print( "Es_noH", Es_noH )
+Es_noH = fit.getEs( imodel=imodel )     #;print( "Es_noH", Es_noH )
 
 #exit()
 n2=6
