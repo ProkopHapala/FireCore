@@ -132,7 +132,7 @@ Eg, cell = mmff.loadXSF( "../tMolGUIapp/E_PLQ.xsf" ); print( "Eg.shape " , Eg.sh
 #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=100, dt=0.1 )
 #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=0, dt=0.1 )
 
-Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1000, dt=0.1 )
+Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1000, dt=0.5 )
 mmff.saveXSF( "../tMolGUIapp/G_PLQ.xsf", Gs, cell=cell ); print( "Gs.shape " , Gs.shape, " cel=\n", cell  )
 
 plt.figure(figsize=(10,5))
