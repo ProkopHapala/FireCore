@@ -3,6 +3,9 @@
 #define  Bspline_h
 
 #include "quaternion.h"
+#include "CG.h"
+
+
 
 /// Cubic B-spline 
 /// See:  https://www.studocu.com/en-us/document/university-of-michigan/computer-graphics/lecture-notes-lecture-37/839972
@@ -323,6 +326,121 @@ int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, 
     return itr;
 }
 
+
+void getVariations3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double* fs, double* ps ){
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    // constexpr double B00=B0*B0;
+    // constexpr double B01=B0*B1;
+    // constexpr double B11=B1*B1;
+    constexpr double B000=B0*B0*B0;
+    constexpr double B001=B0*B0*B1;
+    constexpr double B011=B0*B1*B1;
+    constexpr double B111=B1*B1*B1;
+    const int nxy  = ns.x*ns.y;
+    const int nxyz = ns.x*ns.y*ns.z;
+
+    // --- evaluate current spline
+    for(int i=0; i<nxyz; i++){ fs[i]=0; ps[i]=0;  }
+
+    // --- evaluate current spline (in order to evelauet approximation error)
+    for(int iz=1; iz<ns.z-1; iz++){
+        int iiz = iz*nxy;
+        for(int iy=1; iy<ns.y-1; iy++){
+            int iiy = iy*ns.x;
+            for(int ix=1; ix<ns.x-1; ix++){
+                double val=0; 
+                int        i = ix + iiy + iiz;
+                const int j = i;
+                int i0 = i-ns.x;
+                int i1 = i+ns.x;
+                
+                val += 
+                    + Gs[i0-1]*B011 + Gs[i0]*B001 + Gs[i0+1]*B011
+                    + Gs[i -1]*B001 + Gs[i ]*B000 + Gs[i +1]*B001
+                    + Gs[i1-1]*B011 + Gs[i1]*B001 + Gs[i1+1]*B011;
+
+                i   -= nxy;    i0 = i-ns.x;  i1 = i+ns.x;
+                val +=    
+                    + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
+                    + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
+                    + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;  
+
+                i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
+                val +=
+                    + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
+                    + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
+                    + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;        
+            
+                //val +=  Gs[i ];
+                double err = Es[j] - val;
+                //double err = val;
+                //double d =  Gs[i ];
+                //printf( "[%i,%i,%i] %g %g %g \n", ix,iy,iz, d, val, Es[i] );
+                ps[j] = err;
+                Ws[j] = err;
+
+                // if(itr==0){
+                //     printf( "Gs[%i,%i,%i] G %g E %g p %g \n",    ix,iy,iz,    Gs[i], Es[i], ps[i] );
+                // }
+            }
+        }
+    }
+
+    // --- distribute variational derivatives of approximation error
+    for(int iz=0; iz<ns.z; iz++){
+        int iiz = iz*nxy;
+        for(int iy=0; iy<ns.y; iy++){
+            int iiy = iy*ns.x;
+            for(int ix=0; ix<ns.x; ix++){
+                double val=0; 
+                int i  = ix + iiy + iiz;
+                const int j = i;
+                int i0 = i-ns.x;
+                int i1 = i+ns.x;
+
+
+                if(  
+                    (ix>0)&&(ix<(ns.x-1)) &&
+                    (iy>0)&&(ix<(ns.y-1)) &&
+                    (iz>0)&&(ix<(ns.z-1))           
+                ){
+
+                val += 
+                    + ps[i0-1]*B011 + ps[i0]*B001 + ps[i0+1]*B011
+                    + ps[i -1]*B001 + ps[i ]*B000 + ps[i +1]*B001
+                    + ps[i1-1]*B011 + ps[i1]*B001 + ps[i1+1]*B011;
+
+                i   -= nxy;    i0 = i-ns.x;  i1 = i+ns.x;
+                val +=    
+                    + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
+                    + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
+                    + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
+                i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
+                val +=
+                    + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
+                    + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
+                    + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
+
+                //val = ps[i];
+                //printf( "[%i,%i,%i] %g \n", ix,iy,iz, val );
+                fs[j] = val;
+                // if(itr==0){
+                //     printf( "Gs[%i,%i,%i] G %g p %g f %g\n", ix,iy,iz,  Gs[i], ps[i], fs[i]   );
+                // }
+
+                }else{
+                    fs[j] = 0;
+                    Gs[j] = 0;
+                }
+
+            }
+        }
+    }
+
+}
+
+
 __attribute__((hot)) 
 int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
     printf( "Bspline::fit3D() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
@@ -332,212 +450,10 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     double* ps = new double[nxyz];
     double* fs = new double[nxyz];
     double* vs = new double[nxyz];
-    constexpr double B0=2.0/3.0;
-    constexpr double B1=1.0/6.0;
-
-    constexpr double B00=B0*B0;
-    constexpr double B01=B0*B1;
-    constexpr double B11=B1*B1;
-
-    constexpr double B000=B0*B0*B0;
-    constexpr double B001=B0*B0*B1;
-    constexpr double B011=B0*B1*B1;
-    constexpr double B111=B1*B1*B1;
-
-    double sum1 = B1+B0+B1;
-    double sum2 = B01+B00+B01 + B11+B01+B11 + B11+B01+B11;
-    double sum3 = 
-                  B111+B011+B111 + B011+B001+B011 + B111+B011+B111  +
-                  B011+B001+B011 + B001+B000+B001 + B011+B001+B011  +
-                  B111+B011+B111 + B011+B001+B011 + B111+B011+B111  ;
-    printf( "%g %g %g \n", sum1, sum2, sum3 ); // exit(0);
-
-    // int i=0;
-    // for(int iz=0; iz<ns.z; iz++){
-    //     for(int iy=0; iy<ns.y; iy++){
-    //         for(int ix=0; ix<ns.x; ix++){
-    //             printf( "[%i,%i,%i|%i] G %g E %g \n",    ix,iy,iz,i,    Gs[i], Es[i] );
-    //             i++;
-    //         }
-    //     }
-    // }
-
-
-    // for(int i=0; i<nxyz; i++){ Gs[i]=0; }
-    // for(int iz=1; iz<ns.z-1; iz++){
-    //     int iiz = iz*nxy;
-    //     for(int iy=1; iy<ns.y-1; iy++){
-    //         int iiy = iy*ns.x;
-    //         for(int ix=1; ix<ns.x-1; ix++){
-    //             double val=0; 
-    //             int        i = ix + iiy + iiz;
-    //             Gs[i] = 10.0;
-    //             //Gs[i] = ix;
-    //         }
-    //     }
-    // }
-
-    // for(int iz=0; iz<ns.z; iz++){
-    //     int iiz = iz*nxy;
-    //     for(int iy=0; iy<ns.y; iy++){
-    //         int iiy = iy*ns.x;
-    //         for(int ix=0; ix<ns.x; ix++){
-    //             double val=0; 
-    //             int        i = ix + iiy + iiz;
-    //             Gs[i] = 0;
-    //             //Gs[i] = ix;
-    //         }
-    //     }
-    // }
-
     int itr=0;
     //while(false){
     for(itr=0; itr<nmaxiter; itr++){
-
-        // --- evaluate current spline
-        for(int i=0; i<nxyz; i++){ fs[i]=0; ps[i]=0;  }
-
-
-        // --- evaluate current spline (in order to evelauet approximation error)
-        for(int iz=1; iz<ns.z-1; iz++){
-            int iiz = iz*nxy;
-            for(int iy=1; iy<ns.y-1; iy++){
-                int iiy = iy*ns.x;
-                for(int ix=1; ix<ns.x-1; ix++){
-                    double val=0; 
-                    int        i = ix + iiy + iiz;
-                    const int j = i;
-                    int i0 = i-ns.x;
-                    int i1 = i+ns.x;
-                    
-                    val += 
-                        + Gs[i0-1]*B011 + Gs[i0]*B001 + Gs[i0+1]*B011
-                        + Gs[i -1]*B001 + Gs[i ]*B000 + Gs[i +1]*B001
-                        + Gs[i1-1]*B011 + Gs[i1]*B001 + Gs[i1+1]*B011;
-
-                    i   -= nxy;    i0 = i-ns.x;  i1 = i+ns.x;
-                    val +=    
-                        + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
-                        + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
-                        + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;  
-
-                    i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
-                    val +=
-                        + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
-                        + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
-                        + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;        
-                
-                    //val +=  Gs[i ];
-                    double err = Es[j] - val;
-                    //double err = val;
-                    //double d =  Gs[i ];
-                    //printf( "[%i,%i,%i] %g %g %g \n", ix,iy,iz, d, val, Es[i] );
-                    ps[j] = err;
-                    Ws[j] = err;
-
-                    // if(itr==0){
-                    //     printf( "Gs[%i,%i,%i] G %g E %g p %g \n",    ix,iy,iz,    Gs[i], Es[i], ps[i] );
-                    // }
-                }
-            }
-        }
-
-        
-        // --- distribute variational derivatives of approximation error
-        // for(int iz=2; iz<ns.z-2; iz++){
-        //     int iiz = iz*nxy;
-        //     for(int iy=2; iy<ns.y-2; iy++){
-        //         int iiy = iy*ns.x;
-        //         for(int ix=2; ix<ns.x-2; ix++){
-        // for(int iz=1; iz<ns.z-1; iz++){
-        //     int iiz = iz*nxy;
-        //     for(int iy=1; iy<ns.y-1; iy++){
-        //         int iiy = iy*ns.x;
-        //         for(int ix=1; ix<ns.x-1; ix++){
-        //             double val=0; 
-        //             int i  = ix + iiy + iiz;
-        //             const int j = i;
-        //             int i0 = i-ns.x;
-        //             int i1 = i+ns.x;
-
-        //             val += 
-        //                 + ps[i0-1]*B011 + ps[i0]*B001 + ps[i0+1]*B011
-        //                 + ps[i -1]*B001 + ps[i ]*B000 + ps[i +1]*B001
-        //                 + ps[i1-1]*B011 + ps[i1]*B001 + ps[i1+1]*B011;
-
-        //             i   -= nxy;    i0 = i-ns.x;  i1 = i+ns.x;
-        //             val +=    
-        //                 + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
-        //                 + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
-        //                 + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
-        //             i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
-        //             val +=
-        //                 + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
-        //                 + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
-        //                 + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
-
-        //             //val = ps[i];
-        //             //printf( "[%i,%i,%i] %g \n", ix,iy,iz, val );
-        //             fs[j] = val;
-        //             // if(itr==0){
-        //             //     printf( "Gs[%i,%i,%i] G %g p %g f %g\n", ix,iy,iz,  Gs[i], ps[i], fs[i]   );
-        //             // }
-
-        //         }
-        //     }
-        // }
-
-
-        for(int iz=0; iz<ns.z; iz++){
-            int iiz = iz*nxy;
-            for(int iy=0; iy<ns.y; iy++){
-                int iiy = iy*ns.x;
-                for(int ix=0; ix<ns.x; ix++){
-                    double val=0; 
-                    int i  = ix + iiy + iiz;
-                    const int j = i;
-                    int i0 = i-ns.x;
-                    int i1 = i+ns.x;
-
-
-                    if(  
-                        (ix>0)&&(ix<(ns.x-1)) &&
-                        (iy>0)&&(ix<(ns.y-1)) &&
-                        (iz>0)&&(ix<(ns.z-1))           
-                    ){
-
-                    val += 
-                        + ps[i0-1]*B011 + ps[i0]*B001 + ps[i0+1]*B011
-                        + ps[i -1]*B001 + ps[i ]*B000 + ps[i +1]*B001
-                        + ps[i1-1]*B011 + ps[i1]*B001 + ps[i1+1]*B011;
-
-                    i   -= nxy;    i0 = i-ns.x;  i1 = i+ns.x;
-                    val +=    
-                        + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
-                        + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
-                        + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
-                    i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
-                    val +=
-                        + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
-                        + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
-                        + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
-
-                    //val = ps[i];
-                    //printf( "[%i,%i,%i] %g \n", ix,iy,iz, val );
-                    fs[j] = val;
-                    // if(itr==0){
-                    //     printf( "Gs[%i,%i,%i] G %g p %g f %g\n", ix,iy,iz,  Gs[i], ps[i], fs[i]   );
-                    // }
-
-                    }else{
-                        fs[j] = 0;
-                        Gs[j] = 0;
-                    }
-
-                }
-            }
-        }
-            
+        getVariations3D( ns, Gs, Es, Ws, fs, ps );
         // --- move
         double vf = 0.0;
         double ff = 0.0;
@@ -545,10 +461,13 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
             ff += fs[i]*fs[i];
             vf += vs[i]*fs[i];
         }
-        printf( "|F[%i]|=%g \n",itr,  sqrt(ff) );
+        printf( "|F[%i]|=%g  <v|f>=%g \n",itr,  sqrt(ff), vf );
         //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
         if(ff<F2max){ break; }
-        if(vf<0){ for(int i=0; i<nxyz; i++){ vs[i]=0; }; }
+        if(vf<0){ 
+            //printf( "<v|f>[%i]=%g < 0  => v=0 \n", itr, vf );
+            for(int i=0; i<nxyz; i++){ vs[i]=0; }; 
+        }
         for(int i=0; i<nxyz; i++){
             vs[i] += fs[i]*dt;
             Gs[i] += vs[i]*dt;
@@ -561,6 +480,52 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     delete [] vs;
     return itr;
 }
+
+
+
+
+
+
+__attribute__((hot)) 
+int fit3D_CG( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+    printf( "Bspline::fit3D() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
+    const double F2max = Ftol*Ftol;
+    const int nxy  = ns.x*ns.y;
+    const int nxyz = ns.x*ns.y*ns.z;
+    double* ps = new double[nxyz];
+    double* fs = new double[nxyz];
+    double* vs = new double[nxyz];
+    int itr=0;
+    //while(false){
+    for(itr=0; itr<nmaxiter; itr++){
+        getVariations3D( ns, Gs, Es, Ws, fs, ps );
+        // --- move
+        double vf = 0.0;
+        double ff = 0.0;
+        for(int i=0; i<nxyz; i++){
+            ff += fs[i]*fs[i];
+            vf += vs[i]*fs[i];
+        }
+        printf( "|F[%i]|=%g  <v|f>=%g \n",itr,  sqrt(ff), vf );
+        //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
+        if(ff<F2max){ break; }
+        if(vf<0){ 
+            //printf( "<v|f>[%i]=%g < 0  => v=0 \n", itr, vf );
+            for(int i=0; i<nxyz; i++){ vs[i]=0; }; 
+        }
+        for(int i=0; i<nxyz; i++){
+            vs[i] += fs[i]*dt;
+            Gs[i] += vs[i]*dt;
+            //Gs[i] += fs[i]*dt;  // GD
+        }
+        
+    }
+    delete [] ps;
+    delete [] fs;
+    delete [] vs;
+    return itr;
+}
+
 
 } // namespace SplineBcub{
 

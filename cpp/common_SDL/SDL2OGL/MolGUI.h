@@ -2257,11 +2257,9 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     }break;
                 //case SDLK_u: W->upload_pop        ( "population.xyz" ); break;
                 //case SDLK_o: W->optimizeLattice_1d( 0,2, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
-                //case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
-                //case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
 
-                //case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
-                //case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
+                case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
+                case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
 
                 //case SDLK_LEFTBRACKET:  myAngle-=0.1; printf( "myAngle %g \n", myAngle ); break;
                 //case SDLK_RIGHTBRACKET: myAngle+=0.1; printf( "myAngle %g \n", myAngle );  break;

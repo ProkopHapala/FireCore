@@ -137,10 +137,10 @@ nsys=50
 #./$name -m 1 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 #./$name -m 2 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
-#./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
+./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
 
-./$name -m 30  -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2    -iParalel 1   -perframe 100  -gopt 1000,1000 0.25,1.0    -T 10000 0.02  -Ftol 1e-2   -verb 0
+#./$name -m 30  -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2    -iParalel 1   -perframe 100  -gopt 1000,1000 0.25,1.0    -T 10000 0.02  -Ftol 1e-2   -verb 0
 
 
 
@@ -149,4 +149,4 @@ nsys=50
 #valgrind --leak-check=yes --track-origins=yes  --log-file="valgrind.log" ./$name -x common_resources/HCOOH -m 10
 
 
-grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log
+#grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log
