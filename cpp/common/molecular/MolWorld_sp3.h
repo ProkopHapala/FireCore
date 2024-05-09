@@ -144,8 +144,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     int  iParalelMin=0;
     bool bOcl=false; // used only in Ocl version
 
-    //double gridStep = 0.1; 
-    double gridStep = 0.05; 
+    double gridStep = 0.1; 
+    //double gridStep = 0.05; 
     //double gridStep = 0.2; 
     //Vec3i nPBC{0,0,0};   // just debug
     Vec3i nPBC{1,1,0};

@@ -120,6 +120,7 @@ def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
 lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
 lib.fit3D_Bspline.restype   =  None
 def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
+    #ns = np.array( Es.shape, dtype=np.int32 ) 
     ns = np.array( Es.shape[::-1], dtype=np.int32 ) 
     n  = Es.size
     if Ws is None: Ws = np.zeros( ns )
@@ -128,6 +129,49 @@ def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
     #print( "Gs\n", Gs  )
     lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
     return Gs, Ws
+
+#void setupGrid( int* ns, double* cell, bool bAlloc ){
+lib.setupGrid.argtypes  = [ c_int_p, c_double_p, c_bool ]
+lib.setupGrid.restype   =  c_double_p
+def setupGrid( ns, cell=None, bAlloc=True ):
+    ns = np.array( (ns[2],ns[1],ns[0]) , dtype=np.int32 )
+    if cell is not None: cell = np.array( cell )
+    data_ptr =  lib.setupGrid( _np_as(ns,c_int_p), _np_as(cell,c_double_p), bAlloc )
+    ff = None
+    if( bAlloc ):
+        ff   = np.ctypeslib.as_array(data_ptr, (ns[2],ns[1],ns[0]) )
+    return ff
+
+#void loadBin_d( const char* fname, double* data ){
+lib.loadBin_f.argtypes  = [ c_char_p, c_float_p ]
+lib.loadBin_f.restype   = c_int
+def loadBin_f( name , data=None, ns=None):
+    print( "ns ", ns )
+    if data is None: data=np.zeros( ns[::-1], dtype=np.float32 )
+    print( "data.shape ", data.shape )
+    name=name.encode('utf8')
+    ret = lib.loadBin_f( name, _np_as(data,c_float_p) )
+    return data
+
+#void loadBin_d( const char* fname, double* data ){
+lib.loadBin_d.argtypes  = [ c_char_p, c_double_p ]
+lib.loadBin_d.restype   = c_int
+def loadBin_d( name , data=None, ns=None, chan=None ):
+    print( "ns ", ns )
+    ns[::-1]
+    if chan is not None: ns = ns + (chan,)
+    if data is None:     data=np.zeros( ns )
+    print( "data.shape ", data.shape )
+    name=name.encode('utf8')
+    ret = lib.loadBin_d( name, _np_as(data,c_double_p) )
+    return data
+
+#void saveBin_d( const char* fname, double* data ){
+lib.saveBin_d.argtypes  = [ c_char_p, c_double_p ]
+lib.saveBin_d.restype   =  c_int
+def saveBin_d( name, data):
+    name=name.encode('utf8')
+    return lib.saveBin_d( name, _np_as(data,c_double_p) )
 
 # double* loadXSF( const char* fname, int* ns, double* cell ){
 lib.loadXSF.argtypes  = [ c_char_p, c_int_p, c_double_p ]
@@ -146,6 +190,7 @@ lib.saveXSF.restype   =  c_double_p
 def saveXSF( name, FF, cell=None ):
     ns = FF.shape
     ns   = np.array( (ns[2],ns[1],ns[0]) , dtype=np.int32 )
+    #ns   = np.array( ns, dtype=np.int32 )
     if cell is not None: cell = np.array( cell )
     if name is not None: name = name.encode('utf8')
     lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )

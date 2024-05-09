@@ -115,6 +115,26 @@ void set_opt(
 
 }
 
+double* setupGrid( int* ns, double* cell, bool bAlloc ){
+    if( ns     ){ grid.n    = *((Vec3i*)ns);   }
+    if( cell   ){ grid.cell = *((Mat3d*)cell); }
+    if( bAlloc ) _realloc( grid_data, grid.getNtot() );
+     return grid_data;
+}
+
+int loadBin_d( const char* fname, double* data ){
+    return loadBin( fname, grid.getNtot() * sizeof(double), (char*)data );
+}
+
+int loadBin_f( const char* fname, float* data ){
+    return loadBin( fname, grid.getNtot() * sizeof(float), (char*)data );
+}
+
+
+int saveBin_d( const char* fname, double* data ){
+    return saveBin( fname, grid.getNtot() * sizeof(double), (char*)data );
+}
+
 double* loadXSF( const char* fname, int* ns, double* cell ){
     grid_data = grid.loadXSF<double>( fname, 0 );
     if(ns  ){ *((Vec3i*)ns)   = grid.n;    }
