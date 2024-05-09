@@ -221,18 +221,28 @@ class GridShape{ public:
 
     template<typename T>
     void toXSF( FILE* fout, const T* FF, int pitch, int offset ) const {
-        //printf( "DEBUG GridShale::toXSF() stride %i offset %i \n", pitch, offset );
+        printf( "GridShape::toXSF() stride %i offset %i ns(%i,%i,%i)\n", pitch, offset, n.x, n.y, n.z );
         headerToXsf( fout );
         int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
+
+        double vmin=1e+300;
+        double vmax=-1e+300;
         for ( int ic=0; ic<nz; ic++ ){
             //printf("toXSF[%i] pitch,offset(%i,%i)\n", ic, pitch, offset );
             for ( int ib=0; ib<ny; ib++ ){
                 for ( int ia=0; ia<nx; ia++ ){
                    int i = i3D( ia, ib, ic );
                    fprintf( fout, "%6.5e\n", FF[i*pitch+offset] );
+
+                    vmin=fmin( vmin, FF[i*pitch+offset]);
+                    vmax=fmax( vmax, FF[i*pitch+offset]);
+
                 }
             }
         }
+
+        printf( "GridShape::toXSF() vmin %g vmax %g \n", vmin, vmax);
+
         fprintf( fout, "   END_DATAGRID_3D\n" );
         fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
     }

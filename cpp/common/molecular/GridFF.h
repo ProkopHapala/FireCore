@@ -850,14 +850,14 @@ void checkSum( bool bDouble ){
         char* cFFLond = (char*)FFLond;
         char* cFFelec = (char*)FFelec;
         if(bDouble){
-            printf( "GridFF::tryLoad() bDouble %i \n", bDouble );
+            printf( "GridFF::tryLoad() bDouble %i grid.n(%i,%i,%i)\n", bDouble, grid.n.x, grid.n.y, grid.n.z );
             nbyte = grid.getNtot()*sizeof(Quat4d);
             cFFPaul = (char*)FFPaul_d;
             cFFLond = (char*)FFLond_d;
             cFFelec = (char*)FFelec_d;
         }
         if( recalcFF ){
-            printf( "\nBuilding GridFF for substrate (bDouble=%i) ... (please wait... )\n", bDouble );
+            printf( "\nBuilding GridFF for substrate (bDouble=%i) grid.n(%i,%i,%i) ... (please wait... )\n", bDouble, grid.n.x, grid.n.y, grid.n.z );
             if(bDouble){ makeGridFF_omp_d( apos_.size(), &apos_[0], &REQs_[0] ); }
             else       { makeGridFF_omp  ( apos_.size(), &apos_[0], &REQs_[0] ); }
             if(cFFPaul) saveBin( fname_Paul,  nbyte, cFFPaul );

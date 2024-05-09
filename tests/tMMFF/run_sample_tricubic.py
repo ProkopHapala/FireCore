@@ -122,18 +122,94 @@ def make2dDeriv( FE, dg ):
 def getPoss( nsamp, extent ):
     nsamp=100
     extent = [0.0,4.2,0.0,4.2]
-    xs,ys = np.meshgrid( np.linspace(extent[0],extent[1],nsamp), np.linspace(extent[2],extent[3],nsamp) )
+    xs,ys = np.meshWrid( np.linspace(extent[0],extent[1],nsamp), np.linspace(extent[2],extent[3],nsamp) )
     zs    =  xs*0.0
     ps = np.vstack([xs.flatten(), ys.flatten(), zs.flatten() ]).T.copy()    #;print("ps.shape: ",ps.shape)
     return ps
 
-Eg, cell = mmff.loadXSF( "../tMolGUIapp/E_PLQ.xsf" ); print( "Eg.shape " , Eg.shape, " cel=\n", cell  )
-#Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=10000, dt=0.1 )
-#Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=100, dt=0.1 )
-#Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=0, dt=0.1 )
 
+def fitXSF( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", Ftol=1e-6, nmaxiter=1000, dt=0.5 ):
+    Eg, cell = mmff.loadXSF( fname );
+    #print( "Eg.shape ", Eg.shape, " cel=\n", cell  )
+    #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=10000, dt=0.1 )
+    #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=100, dt=0.1 )
+    #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=0, dt=0.1 )
+    Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=Ftol, nmaxiter=nmaxiter, dt=dt )
+    mmff.saveXSF( foutname, Gs, cell=cell ); 
+    #print( "Gs.shape " , Gs.shape, " cel=\n", cell  )
+
+def fitBin( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", ns=None, Ftol=1e-6, nmaxiter=1000, dt=0.5, cell=None, bXSF=False, chan=4 ):
+    Eg     = mmff.loadBin_d( fname, ns=ns, chan=4 );   print( "Eg.shape ", Eg.shape)
+    if chan is not None:
+        Eg_ = Eg[:,:,:,3].copy()
+        del Eg
+        Eg=Eg_
+    Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=Ftol, nmaxiter=100, dt=dt )
+    mmff.saveBin_d( foutname, Gs ); 
+
+    plt.figure()
+    plt.subplot(2,1,1); plt.imshow( Eg[:,:,10], vmax=0.0001,vmin=-0.0001, cmap='bwr' )
+    plt.subplot(2,1,2); plt.imshow( Gs[:,:,10], vmax=0.0001,vmin=-0.0001, cmap='bwr' )
+
+    #plt.show()
+    #exit()
+
+    if bXSF:
+        mmff.saveXSF( foutname+".E.xsf", FF=Eg, cell=cell ); 
+        mmff.saveXSF( foutname+".G.xsf", FF=Gs, cell=cell ); 
+        #print( "Gs.shape " , Gs.shape, " cel=\n", cell  )
+
+
+ns   = (200,40,40);
+#ns   = (40,40,200);
+cell = [[4.0,0.0,0.0],[0.0,4.0,0.0],[0.0,0.0,20.0]];
+#mmff.setupGrid( ns[::-1], cell=cell, bAlloc=False )
+mmff.setupGrid( ns, cell=cell, bAlloc=False )
+
+#fitBin( fname="../tMolGUIapp/FFPaul.bin",  foutname="../tMolGUIapp/G_Paul.bin", ns=ns, cell=cell, bXSF=True, dt=0.1 )
+#fitBin( fname="../tMolGUIapp/FFlond.bin",  foutname="../tMolGUIapp/G_Lond.bin", ns=ns, cell=cell, bXSF=True, dt=0.1 )
+fitBin( fname="../tMolGUIapp/FFelec.bin",  foutname="../tMolGUIapp/G_elec.bin", ns=ns, cell=cell, bXSF=True, dt=0.1 )
+
+plt.show()
+exit()
+
+'''
+Eg = mmff.loadBin_d( "../tMolGUIapp/FFelec.bin", ns=ns, chan=4 );  
 Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1000, dt=0.5 )
-mmff.saveXSF( "../tMolGUIapp/G_PLQ.xsf", Gs, cell=cell ); print( "Gs.shape " , Gs.shape, " cel=\n", cell  )
+
+# print( "Eg.shape", Eg.shape )
+# #Eg   = mmff.loadBin_f( "../tMolGUIapp/FFelec.bin", ns=ns );  
+# plt.imshow( Eg[:,:,10,3], vmax=0.1,vmin=-0.1, cmap='bwr' )
+
+mmff.saveXSF( "../tMolGUIapp/FFelec.bin.xsf", FF=Eg, cell=cell ); 
+mmff.saveXSF( "../tMolGUIapp/FFelec.G.xsf",   FF=Gs, cell=cell ); 
+mmff.saveBin_d( "../tMolGUIapp/FFelec_G.bin", Gs ); 
+plt.show(); exit()
+'''
+
+
+
+
+# print( "Eg min,max ", Eg.min(), Eg.max(), ) 
+# print( "Eg.shape "  , Eg.shape  )
+# mmff.saveXSF( "../tMolGUIapp/FFelec.bin.xsf", FF=Eg, cell=cell ); 
+
+'''
+mmff.setupGrid( ns, cell=cell, bAlloc=False )
+#fitBin( fname="../tMolGUIapp/FFPaul.bin",  foutname="../tMolGUIapp/G_Paul.bin", ns=ns, cell=cell, bXSF=True, dt=0.1 )
+
+#fitBin( fname="../tMolGUIapp/E_PLQ.bin",  foutname="../tMolGUIapp/G_Paul.bin", ns=ns, cell=cell, bXSF=True, dt=0.5 )
+
+fitXSF( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", Ftol=1e-6, nmaxiter=1000, dt=0.5 )
+#fitXSF( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", Ftol=1e-6, nmaxiter=1000, dt=0.5 )
+#fitXSF( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", Ftol=1e-6, nmaxiter=1000, dt=0.5 )
+'''
+
+
+
+exit()
+
+
 
 plt.figure(figsize=(10,5))
 vmin=-0.01
@@ -141,13 +217,6 @@ plt.subplot(1,2,1); plt.imshow(  Eg[:,:,10], cmap='bwr', vmin=vmin, vmax=-vmin )
 plt.subplot(1,2,2); plt.imshow(  Gs[:,:,10], cmap='bwr', vmin=vmin, vmax=-vmin ); plt.title("G (Fit)" )
 plt.show()
 exit()
-
-
-
-
-
-
-
 
 
 vmin=Eg.min()
