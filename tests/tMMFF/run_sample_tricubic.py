@@ -144,7 +144,7 @@ def fitBin( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf",
         Eg_ = Eg[:,:,:,3].copy()
         del Eg
         Eg=Eg_
-    Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=Ftol, nmaxiter=100, dt=dt )
+    Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=Ftol, nmaxiter=nmaxiter, dt=dt )
     mmff.saveBin_d( foutname, Gs ); 
 
     plt.figure()
