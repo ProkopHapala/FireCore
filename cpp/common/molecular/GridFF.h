@@ -118,7 +118,8 @@ class GridFF : public NBFF{ public:
 
     //double Rdamp  =  1.0;
     int iDebugEvalR = 0;
-    bool bCellSet = false;
+    bool bCellSet    = false;
+    bool bSymetrized = false;
 
     double findTop(){ double zmax=-1e+300; for(int i=0;i<natoms; i++){ double z=apos[i].z; if(z>zmax)zmax=z; }; return zmax; }
 
@@ -510,6 +511,32 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     }
     void makeGridFF(){ makeGridFF_omp(natoms,apos,REQs); }
 
+    double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d fi, int natoms, Vec3d * apos, Quat4d * REQs ){
+        const double R2damp=Rdamp*Rdamp;    
+        const double K =-alphaMorse;
+        double       E = 0;
+        printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
+        if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
+        if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };
+                
+        for(int j=0; j<natoms; j++){    // atom-atom
+            Vec3d fij = Vec3dZero;
+            Vec3d dp0 = pi - apos[j];
+            Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
+            //printf( "GridFF::evalMorsePBC() j %i/%i \n", j,natoms );
+            for(int ipbc=0; ipbc<npbc; ipbc++ ){
+                //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
+                const Vec3d  dp = dp0 + shifts[ipbc];
+                Vec3d fij;
+                E += addAtomicForceMorseQ( apos[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                { // debug draw
+                    Draw3D::drawLine( apos[j] - shifts[ipbc], pi  );
+                }
+            }
+        }
+        return E;
+    }
+    double evalMorsePBC_sym(  Vec3d pi, Quat4d REQi, Vec3d fi){ return evalMorsePBC( pi, REQi, fi, apos_.size(), &apos_[0], &REQs_[0] ); }
 
     __attribute__((hot))  
     void makeGridFF_omp_d(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
@@ -689,6 +716,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Quat4d* REQs, double d
     }
     printf( "setAtomsSymetrized() END na_new=%i na_old=%i \n", atypes_.size(), n );
     bindSystem( atypes_.size(), &atypes_[0], &apos_[0], &REQs_[0] );
+    bSymetrized = true;
 }
 
 void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){

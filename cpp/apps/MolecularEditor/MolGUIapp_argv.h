@@ -61,6 +61,10 @@
     funcs["-tricubic"]={0,[&](const char** ss){ W->bTricubic=true; }};
 
 
+
+    funcs2["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
+
+
 #endif // MolGUIapp_Lua
 
 

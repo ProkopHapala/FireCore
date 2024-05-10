@@ -1500,7 +1500,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             double t = ticks*tick2second;
             double c_smooth = 0.1;
             time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/nitr )*c_smooth;
-            printf( "MolWorld_sp3::MDloop()  (bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bPBC,bNonBonded,bNonBondNeighs,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
+            printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,bPBC,bNonBonded,bNonBondNeighs,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
         }
 
         //run( nIter );
@@ -1571,18 +1571,29 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
                 // ----- Error is HERE
                 if(bNonBonded){
-                    if(bNonBondNeighs){
-                        if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                    if(bNonBondNeighs)[[likely]]{
+                        if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
                         else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
                     }else{
-                        if(bPBC){ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
+                        if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
                         else    { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
                     }
                 }
-                if   (bGridFF){ 
-                    if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
-                    else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
-                }  // GridFF
+                if(bSurfAtoms)[[likely]]{ 
+                    if(bGridFF)[[likely]]{ 
+                        if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
+                        else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
+                    }  // GridFF
+                    else               { 
+                        //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
+                        //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
+                        { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }
+                    }
+                }
+                // if   (bGridFF){ 
+                //     if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
+                //     else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
+                // }  // GridFF
                 //if( ffl.colDamp.bNonB ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.colDamp.cdampNB, ffl.colDamp.dRcut1, ffl.colDamp.dRcut2 ); }
                 //if( ffl.bCollisionDampingNonBond ){ ffl.evalCollisionDamp_atom_omp( ia, ffl.col_damp_NB, ffl.col_damp_dRcut1, ffl.col_damp_dRcut2 ); }
                 if(bConstrZ){
