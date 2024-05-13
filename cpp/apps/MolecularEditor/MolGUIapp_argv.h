@@ -61,7 +61,7 @@
     funcs["-tricubic"]={0,[&](const char** ss){ W->bTricubic=true; }};
 
 
-
+    funcs ["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs2["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
 
 

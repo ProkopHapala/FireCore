@@ -511,14 +511,13 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     }
     void makeGridFF(){ makeGridFF_omp(natoms,apos,REQs); }
 
-    double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d fi, int natoms, Vec3d * apos, Quat4d * REQs ){
+    double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
         const double R2damp=Rdamp*Rdamp;    
         const double K =-alphaMorse;
         double       E = 0;
-        printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
+        //printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
         if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
-        if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };
-                
+        if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
         for(int j=0; j<natoms; j++){    // atom-atom
             Vec3d fij = Vec3dZero;
             Vec3d dp0 = pi - apos[j];
@@ -537,7 +536,12 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         }
         return E;
     }
-    double evalMorsePBC_sym(  Vec3d pi, Quat4d REQi, Vec3d fi){ return evalMorsePBC( pi, REQi, fi, apos_.size(), &apos_[0], &REQs_[0] ); }
+    double evalMorsePBC_sym     (         Vec3d  pi, Quat4d  REQi, Vec3d& fi     ){ return evalMorsePBC( pi, REQi, fi, apos_.size(), &apos_[0], &REQs_[0] ); }
+    double evalMorsePBCatoms_sym( int na, Vec3d* ps, Quat4d* REQs, Vec3d* forces ){
+        double E = 0;
+        for(int ia=0; ia<na; ia++){ evalMorsePBC_sym( ps[ia], REQs[ia], forces[ia] ); };
+        return E;
+    }
 
     __attribute__((hot))  
     void makeGridFF_omp_d(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){

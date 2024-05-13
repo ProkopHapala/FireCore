@@ -139,6 +139,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_cleanF=0;
     OCLtask* task_NBFF=0;
     OCLtask* task_NBFF_Grid=0;
+    OCLtask* task_SurfAtoms=0;
     OCLtask* task_MMFF=0;
     OCLtask* task_move=0;
     OCLtask* task_print=0;
@@ -147,6 +148,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_MMFFloc1=0;
     OCLtask* task_MMFFloc2=0;
     OCLtask* task_MMFFloc_test=0;
+
+    bool bDONE_surf2ocl = false;
 
     DynamicOpt*   opts=0;
     MMFFsp3_loc*  ffls=0;
@@ -927,7 +930,19 @@ void setup_MMFFf4_ocl(){
 
     Vec3i nPBC_=nPBC; if(!bPBC){ nPBC_=Vec3iZero; }; printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() bPBC=%i nPBC(%i,%i,%i) n", bPBC, nPBC_.x,nPBC_.y,nPBC_.z );
     if((!task_NBFF_Grid)&&bGridFF ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ffl.natoms, ffl.nnode, nPBC_ ); } 
-    if(!task_NBFF                 ){ task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ ); }
+    if(!task_NBFF                 ){ 
+        task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ ); 
+    }
+
+    // OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
+    if(!task_SurfAtoms && bSurfAtoms ){ 
+        if( bDONE_surf2ocl==false ){ printf("ERROR in MolWorld_sp3_multi::setup_MMFFf4_ocl() must call MolWorld_sp3_multi::surf2ocl() first\n"); }
+        task_SurfAtoms = ocl.getSurfMorse( nPBC, gridFF.natoms, 0,0,0,0,0,false ); 
+    } 
+    // ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
+    /// HERE_HERE
+
+
     //exit(0);
 
     // if(!task_NBFF  ) { 
@@ -1154,13 +1169,19 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             }
             */
             {
-            
-            if(dovdW){
-                if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
-                else       { err |= task_NBFF      ->enque_raw(); }
-            }
-            err |= task_MMFF->enque_raw();
-            err |= task_move->enque_raw(); 
+                if(dovdW){
+                    if(bSurfAtoms){
+                        if  (bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
+                        else         { 
+                            printf( "task_NBFF(), task_SurfAtoms() \n" );
+                            err |= task_NBFF     ->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
+                            err |= task_SurfAtoms->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
+                        }
+                    }
+                    else       { err |= task_NBFF      ->enque_raw(); }
+                }
+                err |= task_MMFF->enque_raw();
+                err |= task_move->enque_raw(); 
             }
             niterdone++;
             nloop++;
@@ -1194,14 +1215,14 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             double t=(getCPUticks()-T0)*tick2second;
             //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
             if(verbosity>0)
-            printf( "run_ocl_opt(nSys=%i|iPara=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
             return niterdone; 
         }
 
     }
 
     double t=(getCPUticks()-T0)*tick2second;
-    printf( "run_ocl_opt(nSys=%i|iPara=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g [ms]( %g [us/step]) bGridFF=%i iSysFMax=%i dovdW=%i \n", nSystems, iParalel, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF, iSysFMax, dovdW ); 
+    printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g [ms]( %g [us/step]) bGridFF=%i iSysFMax=%i dovdW=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF,  niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF, iSysFMax, dovdW ); 
     //err |= ocl.finishRaw(); 
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     return niterdone;
@@ -1315,10 +1336,18 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
         if(bOcl){
             T0 = getCPUticks();
             ocl.upload( ocl.ibuff_atoms, atoms  );
-            if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
-            else       { err |= task_NBFF      ->enque_raw(); }
+            if( bSurfAtoms ){
+                if(bGridFF){ 
+                    err |= task_NBFF_Grid ->enque_raw(); 
+                }else{
+                    err |= task_NBFF     ->enque_raw(); 
+                    err |= task_SurfAtoms->enque_raw(); 
+                }
+            }else{ err |= task_NBFF      ->enque_raw(); }
             ocl.download( ocl.ibuff_aforces , aforces );
             //ocl.download( ocl.ibuff_avel    , avel    );
+
+            
         }
         }
         #pragma omp for
@@ -1331,7 +1360,10 @@ int run_omp_ocl( int niter_max, double Fconv=1e-3, double Flim=1000, double time
                 if(bPBC){ ffls[isys].Etot += ffls[isys].evalLJQs_ng4_PBC_simd(); }
                 else    { ffls[isys].Etot += ffls[isys].evalLJQs_ng4_simd    (); } 
                 //ffls[isys].evalLJQs_ng4_simd    ();
-                if   (bGridFF){ gridFF.addForces( ffls[isys].natoms, ffls[isys].apos, ffls[isys].PLQs, ffls[isys].fapos ); }        // GridFF
+                if(bSurfAtoms)[[likely]]{ 
+                    if   (bGridFF)[[likely]]{ gridFF.addForces            ( ffls[isys].natoms, ffls[isys].apos, ffls[isys].PLQs, ffls[isys].fapos ); }        // GridFF
+                    else                    { gridFF.evalMorsePBCatoms_sym( ffls[isys].natoms, ffls[isys].apos, ffls[isys].REQs, ffls[isys].fapos ); }
+                }
             }
             if( (ipicked>=0) && (isys==iSystemCur) ){ 
                 pullAtom( ipicked, ffls[isys].apos, ffls[isys].fapos );  
@@ -1734,7 +1766,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     long T0=getCPUticks();
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
     Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
-    pack( gridFF.natoms, gridFF.apos,  atoms_surf, sq(gridFF.Rdamp) );
+    pack( gridFF.natoms, gridFF.apos, atoms_surf, sq(gridFF.Rdamp) );
     pack( gridFF.natoms, gridFF.REQs, REQs_surf                     );   // ToDo: H-bonds should be here
     long T1=getCPUticks();
     ocl.GFFparams.x = gridFF.Rdamp;
@@ -1763,6 +1795,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     ocl.buffers[ocl.ibuff_atoms_surf].release();
     ocl.buffers[ocl.ibuff_REQs_surf ].release();
     err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.atoms_surf.release");
+    bDONE_surf2ocl = true;
     //exit(0);
 }
 
