@@ -529,9 +529,10 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 Vec3d fij;
                 E += addAtomicForceMorseQ( apos[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
-                { // debug draw
-                    Draw3D::drawLine( apos[j] - shifts[ipbc], pi  );
-                }
+                fi.add( fij );
+                // if(shifts[ipbc].norm2()<1e-6){ // debug draw
+                //     Draw3D::drawLine( apos[j] - shifts[ipbc], pi  );
+                // }
             }
         }
         return E;
