@@ -150,6 +150,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "updateAtomsMMFFf4"      ,program_relax, 2);
         newTask( "printOnGPU"             ,program_relax, 2);
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
+        newTask( "getSurfMorse"           ,program_relax, 2);
         newTask( "make_GridFF"            ,program_relax, 1);
         newTask( "sampleGridFF"           ,program_relax, 1);
         newTask( "addDipoleField"         ,program_relax, 1);
@@ -554,6 +555,69 @@ class OCL_MM: public OCLsystem { public:
         Mat3_to_cl( grid.diCell , cl_diGrid    );
         Mat3_to_cl( grid.cell   , cl_grid_lvec );
         Mat3_to_cl( grid.iCell  , cl_grid_ilvec );
+    }
+
+    OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
+        v2i4( nPBC_, nPBC );
+        if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        printf( "OCL_MM::getSurfMorse() grid_n(%i,%i,%i)\n", grid_n.x,grid_n.y,grid_n.z );
+        int err=0;
+        err |= finishRaw();       OCL_checkError(err, "getSurfMorse().imgAlloc" );
+        //OCLtask* task = tasks[ task_dict["getSurfMorse"] ];
+        nDOFs.x = nAtoms;
+        nDOFs.y = natom_surf; 
+        if(task==0) task = getTask("getSurfMorse");
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        int nloc  = 32;
+        //int nloc = 64;
+        task->local.x  = nloc;
+        task->global.x = nAtoms + nloc-(na%nloc);
+        task->global.y = nSystems;
+        if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "getSurfMorse().upload(atoms)" ); natom_surf = na; }
+        if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "getSurfMorse().upload(REQs )" ); }
+        useKernel( task->ikernel );
+
+        err |= _useArg   ( nDOFs );            // 1
+        err |= useArgBuff( ibuff_atoms      ); // 2
+        err |= useArgBuff( ibuff_REQs       ); // 3
+        err |= useArgBuff( ibuff_aforces    ); // 4
+        err |= useArgBuff( ibuff_atoms_surf ); // 5
+        err |= useArgBuff( ibuff_REQs_surf  ); // 6
+        err |= _useArg( nPBC            );     // 7       
+        err |= _useArg( cl_grid_lvec    );     // 8
+        err |= _useArg( grid_p0         );     // 9
+        err |= _useArg( GFFparams       );     // 10
+
+        // err |= _useArg   ( nDOFs );            OCL_checkError(err, "arg[1]: " );  // 1
+        // err |= useArgBuff( ibuff_atoms      ); OCL_checkError(err, "arg[2]: " );// 2
+        // err |= useArgBuff( ibuff_REQs       ); OCL_checkError(err, "arg[3]: " );// 3
+        // err |= useArgBuff( ibuff_aforces    ); OCL_checkError(err, "arg[4]: " );// 4
+        // err |= useArgBuff( ibuff_atoms_surf ); OCL_checkError(err, "arg[5]: " );// 5
+        // err |= useArgBuff( ibuff_REQs_surf  ); OCL_checkError(err, "arg[6]: " );// 6
+        // err |= _useArg( nPBC            );     OCL_checkError(err, "arg[7]: " );// 7       
+        // err |= _useArg( cl_grid_lvec    );     OCL_checkError(err, "arg[8]: " );// 8
+        // err |= _useArg( grid_p0         );     OCL_checkError(err, "arg[9]: " );// 9
+        // err |= _useArg( GFFparams       );     OCL_checkError(err, "arg[10]: " );// 10
+        OCL_checkError(err, "getSurfMorse().setup");
+        if(bRun){
+            err |= task->enque_raw(); OCL_checkError(err, "getSurfMorse().enque"  );
+            err |= finishRaw();       OCL_checkError(err, "getSurfMorse().finish" );
+        }
+        return task;
+        // const int4 ns,                // 1
+        // __global float4*  atoms,      // 2
+        // __global float4*  REQs,       // 3
+        // __global float4*  forces,     // 4
+        // __global float4*  atoms_s,    // 5
+        // __global float4*  REQ_s,      // 6
+        // const int4        nPBC,       // 7
+        // const cl_Mat3     lvec,       // 8
+        // const float4      pos0,       // 9
+        // const float4      GFFParams   // 10
+
     }
 
     OCLtask* makeGridFF( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, bool bRun=true, OCLtask* task=0 ){

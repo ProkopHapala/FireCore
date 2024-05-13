@@ -161,6 +161,23 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
     return  (float4){ dp*fr, E };
 }
 
+inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
+    float r2    = dot(dp,dp);
+    float ir2_  = 1/(r2+R2damp);
+    float r     = sqrt( r2   );
+    float ir_   = sqrt( ir2_ );     // ToDo: we can save some cost if we approximate r^2 = r^2 + R2damp;
+    float e     = exp ( K*(r-REQH.x));
+    //double e2    = e*e;
+    //double fMors =  E0*  2*K*( e2 -   e ); // Morse
+    //double EMors =  E0*      ( e2 - 2*e );
+    float   Ae  = REQH.y*e;
+    float fMors = Ae*  2*K*(e - 1); // Morse
+    float EMors = Ae*      (e - 2);
+    float Eel   = COULOMB_CONST*REQH.z*ir_;
+    float fr    = fMors/r - Eel*ir2_ ;
+    return  (float4){ dp*fr, EMors+Eel };
+}
+
 // evaluate damped Coulomb potential and force 
 inline float4 getCoulomb( float3 dp, float R2damp ){
     // ---- Electrostatic
@@ -1936,6 +1953,84 @@ __kernel void make_GridFF(
     write_imagef( FE_Lond, coord, fe_Lond );
     write_imagef( FE_Coul, coord, fe_Coul );
 }
+
+
+__kernel void getSurfMorse(
+    const int4 ns,                // 1
+    __global float4*  atoms,      // 2
+    __global float4*  REQs,       // 3
+    __global float4*  forces,     // 3
+    __global float4*  atoms_s,    // 4
+    __global float4*  REQ_s,      // 5
+    const int4     nPBC,          // 6
+    const cl_Mat3  lvec,          // 7
+    const float4   pos0,          // 8
+    const float4   GFFParams      // 9
+){
+
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+
+    const int nAtoms  = ns.x;
+    const int na_surf = ns.y;
+
+    if(iG==0){  printf("GPU::getSurfMorse()\n"); }
+
+    if(iG>=nAtoms) return;
+
+    const float  alphaMorse = GFFParams.y;
+    const float  R2damp     = GFFParams.x*GFFParams.x;
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
+    const float3 pos  = atoms[iG].xyz + pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    const float4 REQi = REQs [iG];
+    float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
+
+    for (int j0=0; j0<na_surf; j0+= nL ){
+        const int i = j0 + iL;
+        LATOMS[iL] = atoms[i];
+        LCLJS [iL] = REQs [i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int jl=0; jl<nL; jl++){
+            const int ja=jl+j0;
+            if( ja<nAtoms ){ 
+                const float4 REQH =       LCLJS [jl];
+                float3       dp   = pos - LATOMS[jl].xyz;
+                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                            fe += getMorseQH( dp,  REQH, alphaMorse, R2damp );
+                            dp   +=lvec.a.xyz;
+                            //shift+=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                        //shift+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp   +=shift_c;
+                    //shift+=shift_c;
+                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
+                    //dp+=lvec.c.xyz;
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    forces[iG] += fe;
+
+}
+
+
 
 // ======================================
 // ======================================

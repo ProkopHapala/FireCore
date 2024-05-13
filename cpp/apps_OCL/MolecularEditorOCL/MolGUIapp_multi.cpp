@@ -6,7 +6,8 @@
 
 //MMFFsp3 W;
 MolGUI* app=0;
-LambdaDict funcs;
+LambdaDict funcs; // functions to be called before initMol
+LambdaDict funcs2; // functions to be called after initMol
 
 int iParalel=-100; 
 
@@ -65,6 +66,24 @@ int main(int argc, char *argv[]){
     //W->go.constrs.printSizes();
     app->bindMolWorld( W );
     //W->go.constrs.printSizes();
+
+    // // ========== After initMol
+    // #ifdef WITH_LUA
+    //     app->console.callback = [&](const char* str)->bool{
+    //     lua_State* L=theLua;
+    //         printf( "console.lua_callback: %s\n", str );
+    //         if (luaL_dostring(L, str) != LUA_OK) {
+    //             // If there's an error, print it
+    //             //fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+    //             printf( "Error: %s\n", lua_tostring(L, -1) );
+    //             lua_pop(L, 1);  // Remove error message from the stack
+    //             return false;
+    //         }
+    //         return true;
+    //     };
+    //     funcs2["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
+    // #endif // WITH_LUA
+    process_args( argc, argv, funcs2, false );
 
     // --- Apply after-initialization settings and hacks 
     //if(iParalel>-100){ W->iParalel=iParalel; printf( "#### W->iParalel set to %i \n", W->iParalel ); };
