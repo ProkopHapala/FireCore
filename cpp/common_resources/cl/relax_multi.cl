@@ -1994,59 +1994,60 @@ __kernel void getSurfMorse(
 
 
     if( (iG==0) && (iS==0) ){  
-        printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  ); 
+        printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  ); 
+        //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  ); 
         //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
     }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
 
-    // if(iG>=nAtoms) return;
+    if(iG>=nAtoms) return;
 
-    // const float  alphaMorse = GFFParams.y;
-    // const float  R2damp     = GFFParams.x*GFFParams.x;
-    // const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
-    // const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+    const float  alphaMorse = GFFParams.y;
+    const float  R2damp     = GFFParams.x*GFFParams.x;
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
 
-    // const float3 pos  = atoms[iaa].xyz + pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
-    // const float4 REQi = REQs [iaa];
+    const float3 pos  = atoms[iaa].xyz + pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    const float4 REQi = REQs [iaa];
 
     // ToDo: perhaps it is efficient to share surface along isys direction ( all system operate with the same surface atoms )
 
-    // for (int j0=0; j0<na_surf; j0+= nL ){
-    //     const int i = j0 + iL;
-    //     LATOMS[iL] = atoms[i];
-    //     LCLJS [iL] = REQs [i];
-    //     barrier(CLK_LOCAL_MEM_FENCE);
-    //     for (int jl=0; jl<nL; jl++){
-    //         const int ja=jl+j0;
-    //         if( ja<na_surf ){ 
-    //             const float4 REQH =       LCLJS [jl];
-    //             float3       dp   = pos - LATOMS[jl].xyz;
-    //             //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
-    //             //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
-    //             //float3 shift=shift0; 
-    //             for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
-    //                 for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
-    //                     for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
-    //                         fe += getMorseQH( dp,  REQH, alphaMorse, R2damp );
-    //                         dp   +=lvec.a.xyz;
-    //                         //shift+=lvec.a.xyz;
-    //                     }
-    //                     dp   +=shift_b;
-    //                     //shift+=shift_b;
-    //                     //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
-    //                     //dp+=lvec.b.xyz;
-    //                 }
-    //                 dp   +=shift_c;
-    //                 //shift+=shift_c;
-    //                 //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
-    //                 //dp+=lvec.c.xyz;
-    //             }
-    //         }
-    //     }
-    //     barrier(CLK_LOCAL_MEM_FENCE);
-    // }
+    for (int j0=0; j0<na_surf; j0+= nL ){
+        const int i = j0 + iL;
+        LATOMS[iL] = atoms[i];
+        LCLJS [iL] = REQs [i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int jl=0; jl<nL; jl++){
+            const int ja=jl+j0;
+            if( ja<na_surf ){ 
+                const float4 REQH =       LCLJS [jl];
+                float3       dp   = pos - LATOMS[jl].xyz;
+                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                            fe += getMorseQH( dp,  REQH, alphaMorse, R2damp );
+                            dp   +=lvec.a.xyz;
+                            //shift+=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                        //shift+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp   +=shift_c;
+                    //shift+=shift_c;
+                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
+                    //dp+=lvec.c.xyz;
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
 
-    //forces[iav] += fe;
+    forces[iav] += fe;  
 
 }
 
