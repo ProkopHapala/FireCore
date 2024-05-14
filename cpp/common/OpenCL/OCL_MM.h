@@ -566,15 +566,19 @@ class OCL_MM: public OCLsystem { public:
         err |= finishRaw();       OCL_checkError(err, "getSurfMorse().imgAlloc" );
         //OCLtask* task = tasks[ task_dict["getSurfMorse"] ];
         nDOFs.x = nAtoms;
-        nDOFs.y = natom_surf; 
+        nDOFs.y = nnode;
+        nDOFs.z = natom_surf; 
         if(task==0) task = getTask("getSurfMorse");
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc  = 32;
+        //int nloc  = 32;
         //int nloc = 64;
-        task->local.x  = nloc;
-        task->global.x = nAtoms + nloc-(na%nloc);
+        //task->local.x = nloc;
+        //task->global.x = nAtoms + nloc-(na%nloc);
+        task->local.x = 1;
+        task->local.y = 1;
+        task->global.x = nAtoms;
         task->global.y = nSystems;
         if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "getSurfMorse().upload(atoms)" ); natom_surf = na; }
         if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "getSurfMorse().upload(REQs )" ); }

@@ -1959,74 +1959,94 @@ __kernel void getSurfMorse(
     const int4 ns,                // 1
     __global float4*  atoms,      // 2
     __global float4*  REQs,       // 3
-    __global float4*  forces,     // 3
-    __global float4*  atoms_s,    // 4
-    __global float4*  REQ_s,      // 5
-    const int4     nPBC,          // 6
-    const cl_Mat3  lvec,          // 7
-    const float4   pos0,          // 8
-    const float4   GFFParams      // 9
+    __global float4*  forces,     // 4
+    __global float4*  atoms_s,    // 5
+    __global float4*  REQ_s,      // 6
+    const int4     nPBC,          // 7
+    const cl_Mat3  lvec,          // 8
+    const float4   pos0,          // 9
+    const float4   GFFParams      // 10
 ){
 
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
-    const int iG = get_global_id (0);
-    const int nG = get_global_size(0);
-    const int iL = get_local_id  (0);
-    const int nL = get_local_size(0);
 
     const int nAtoms  = ns.x;
-    const int na_surf = ns.y;
 
-    if(iG==0){  printf("GPU::getSurfMorse()\n"); }
+    const int iG = get_global_id  (0); // index of atom in the system
+    const int iS = get_global_id  (1); // index of system
+    const int iL = get_local_id   (0); // index of atom in the local memory chunk
+    const int nG = get_global_size(0); // total number of atoms in the system
+    const int nS = get_global_size(1); // total number of systems
+    const int nL = get_local_size (0); // number of atoms in the local memory chunk
 
-    if(iG>=nAtoms) return;
+    const int natoms  = ns.x;         // number of atoms in the system
+    const int nnode   = ns.y;         // number of nodes in the system
+    const int nvec    = natoms+nnode; // number of vectos (atoms and pi-orbitals) in the system
+    const int na_surf = ns.z;         //
 
-    const float  alphaMorse = GFFParams.y;
-    const float  R2damp     = GFFParams.x*GFFParams.x;
-    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
-    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+    //const int i0n = iS*nnode;    // index of the first node in the system
+    const int i0a = iS*natoms;     // index of the first atom in the system
+    const int i0v = iS*nvec;       // index of the first vector (atom or pi-orbital) in the system
+    //const int ian = iG + i0n;    // index of the atom in the system
+    const int iaa = iG + i0a;      // index of the atom in the system
+    const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
 
-    const float3 pos  = atoms[iG].xyz + pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
-    const float4 REQi = REQs [iG];
+
+    if( (iG==0) && (iS==0) ){  
+        printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  ); 
+        //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
+    }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
 
-    for (int j0=0; j0<na_surf; j0+= nL ){
-        const int i = j0 + iL;
-        LATOMS[iL] = atoms[i];
-        LCLJS [iL] = REQs [i];
-        barrier(CLK_LOCAL_MEM_FENCE);
-        for (int jl=0; jl<nL; jl++){
-            const int ja=jl+j0;
-            if( ja<nAtoms ){ 
-                const float4 REQH =       LCLJS [jl];
-                float3       dp   = pos - LATOMS[jl].xyz;
-                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
-                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
-                //float3 shift=shift0; 
-                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
-                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
-                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
-                            fe += getMorseQH( dp,  REQH, alphaMorse, R2damp );
-                            dp   +=lvec.a.xyz;
-                            //shift+=lvec.a.xyz;
-                        }
-                        dp   +=shift_b;
-                        //shift+=shift_b;
-                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
-                        //dp+=lvec.b.xyz;
-                    }
-                    dp   +=shift_c;
-                    //shift+=shift_c;
-                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
-                    //dp+=lvec.c.xyz;
-                }
-            }
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
+    // if(iG>=nAtoms) return;
 
-    forces[iG] += fe;
+    // const float  alphaMorse = GFFParams.y;
+    // const float  R2damp     = GFFParams.x*GFFParams.x;
+    // const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    // const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
+    // const float3 pos  = atoms[iaa].xyz + pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    // const float4 REQi = REQs [iaa];
+
+    // ToDo: perhaps it is efficient to share surface along isys direction ( all system operate with the same surface atoms )
+
+    // for (int j0=0; j0<na_surf; j0+= nL ){
+    //     const int i = j0 + iL;
+    //     LATOMS[iL] = atoms[i];
+    //     LCLJS [iL] = REQs [i];
+    //     barrier(CLK_LOCAL_MEM_FENCE);
+    //     for (int jl=0; jl<nL; jl++){
+    //         const int ja=jl+j0;
+    //         if( ja<na_surf ){ 
+    //             const float4 REQH =       LCLJS [jl];
+    //             float3       dp   = pos - LATOMS[jl].xyz;
+    //             //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+    //             //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+    //             //float3 shift=shift0; 
+    //             for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+    //                 for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+    //                     for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+    //                         fe += getMorseQH( dp,  REQH, alphaMorse, R2damp );
+    //                         dp   +=lvec.a.xyz;
+    //                         //shift+=lvec.a.xyz;
+    //                     }
+    //                     dp   +=shift_b;
+    //                     //shift+=shift_b;
+    //                     //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    //                     //dp+=lvec.b.xyz;
+    //                 }
+    //                 dp   +=shift_c;
+    //                 //shift+=shift_c;
+    //                 //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
+    //                 //dp+=lvec.c.xyz;
+    //             }
+    //         }
+    //     }
+    //     barrier(CLK_LOCAL_MEM_FENCE);
+    // }
+
+    //forces[iav] += fe;
 
 }
 
