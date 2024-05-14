@@ -267,7 +267,7 @@ class OCL_MM: public OCLsystem { public:
 
     OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond_GridFF(na=%i,nnode=%i) itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i\n", na, nNode,  itex_FE_Paul,itex_FE_Lond,itex_FE_Coul );
-        if((itex_FE_Paul<=0)||(itex_FE_Paul<=0)||(itex_FE_Paul<=0)){ printf( "ERROR in setup_getNonBond_GridFF() GridFF textures not initialized(itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i) => Exit() \n", itex_FE_Paul,itex_FE_Lond,itex_FE_Coul ); exit(0); }
+        if((itex_FE_Paul<0)||(itex_FE_Paul<=0)||(itex_FE_Paul<=0)){ printf( "ERROR in setup_getNonBond_GridFF() GridFF textures not initialized(itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i) => Exit() \n", itex_FE_Paul,itex_FE_Lond,itex_FE_Coul ); exit(0); }
         if(task==0) task = getTask("getNonBond_GridFF");        
         //int nloc = 1;
         //int nloc = 4;
@@ -489,15 +489,15 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* sampleGridFF( int n, Quat4f* fs=0, Quat4f* ps=0, Quat4f* REQs=0, bool bRun=true, OCLtask* task=0){
         //printf("OCL_MM::sampleGridFF() n=%i bRun=%i fs=%li ps=%li REQs=%li\n", n, bRun, fs,ps,REQs );
         int err=0;
-        if((itex_FE_Paul<=0)||(itex_FE_Lond<=0 )||(itex_FE_Coul<=0)){ printf("ERROR in OCL_MM::sampleGridFF() textures not initialized itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i => Exit()\n",  itex_FE_Paul, itex_FE_Lond,  itex_FE_Coul ); }
-        //if(( ibuff_atoms<=0)||(ibuff_aforces<=0)||(ibuff_REQs<=0  )){ printf("ERROR in OCL_MM::sampleGridFF() buffers  not initialized ibuff_atoms=%i ibuff_aforces=%i ibuff_REQs=%i => Exit()\n",    ibuff_atoms,  ibuff_aforces, ibuff_REQs   ); }
+        if((itex_FE_Paul<0)||(itex_FE_Lond<0 )||(itex_FE_Coul<0)){ printf("ERROR in OCL_MM::sampleGridFF() textures not initialized itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i => Exit()\n",  itex_FE_Paul, itex_FE_Lond,  itex_FE_Coul ); }
+        if(( ibuff_atoms<0)||(ibuff_aforces<0)||(ibuff_REQs<0  )){ printf("ERROR in OCL_MM::sampleGridFF() buffers  not initialized ibuff_atoms=%i ibuff_aforces=%i ibuff_REQs=%i => Exit()\n",    ibuff_atoms,  ibuff_aforces, ibuff_REQs   ); }
         // DEBUG
         // //if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   n, sizeof(float4), 0, CL_MEM_WRITE_ONLY  );   DEBUG
         
         int nalloc = _max(n,1000);
-        if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   nalloc, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
-        if(ibuff_samp_ps <=0)ibuff_samp_ps   = newBuffer( "samp_ps",   nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        if(ibuff_samp_REQ<=0)ibuff_samp_REQ  = newBuffer( "samp_REQ",  nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        if(ibuff_samp_fs <0)ibuff_samp_fs   = newBuffer( "samp_fs",   nalloc, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
+        if(ibuff_samp_ps <0)ibuff_samp_ps   = newBuffer( "samp_ps",   nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        if(ibuff_samp_REQ<0)ibuff_samp_REQ  = newBuffer( "samp_REQ",  nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         if( buffers[ibuff_samp_ps].n < n ){ printf("ERROR in OCL_MM::sampleGridFF() buffer samp_ps.n(%i)<n(%i) => Exit() \n", buffers[ibuff_samp_ps].n, n ); exit(0); }
         //if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         //if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
@@ -559,9 +559,9 @@ class OCL_MM: public OCLsystem { public:
 
     OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
         v2i4( nPBC_, nPBC );
-        if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        printf( "OCL_MM::getSurfMorse() grid_n(%i,%i,%i)\n", grid_n.x,grid_n.y,grid_n.z );
+        //if(ibuff_atoms_surf<0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        //if(ibuff_REQs_surf <0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        printf( "!!!!!!!!!! OCL_MM::getSurfMorse() ibuffs: atoms_surf(%i) REQs_surf(%i) atoms(%i) REQs(%i) aforces(%i) \n", ibuff_atoms_surf, ibuff_REQs_surf, ibuff_atoms, ibuff_REQs, ibuff_aforces );
         int err=0;
         err |= finishRaw();       OCL_checkError(err, "getSurfMorse().imgAlloc" );
         //OCLtask* task = tasks[ task_dict["getSurfMorse"] ];
@@ -572,22 +572,23 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        //int nloc  = 32;
+        int nloc  = 32;
         //int nloc = 64;
-        //task->local.x = nloc;
-        //task->global.x = nAtoms + nloc-(na%nloc);
-        task->local.x = 1;
+        task->local.x = nloc;
+        task->global.x = nAtoms + nloc-(nAtoms%nloc);
+        //task->local.x = 1;
         task->local.y = 1;
-        task->global.x = nAtoms;
+        //task->global.x = nAtoms;
         task->global.y = nSystems;
-        if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "getSurfMorse().upload(atoms)" ); natom_surf = na; }
-        if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "getSurfMorse().upload(REQs )" ); }
+        //if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "getSurfMorse().upload(atoms)" ); natom_surf = na; }
+        //if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "getSurfMorse().upload(REQs )" ); }
         useKernel( task->ikernel );
 
         err |= _useArg   ( nDOFs );            // 1
         err |= useArgBuff( ibuff_atoms      ); // 2
         err |= useArgBuff( ibuff_REQs       ); // 3
         err |= useArgBuff( ibuff_aforces    ); // 4
+        //   Still good - no segfault
         err |= useArgBuff( ibuff_atoms_surf ); // 5
         err |= useArgBuff( ibuff_REQs_surf  ); // 6
         err |= _useArg( nPBC            );     // 7       
@@ -621,14 +622,14 @@ class OCL_MM: public OCLsystem { public:
         // const cl_Mat3     lvec,       // 8
         // const float4      pos0,       // 9
         // const float4      GFFParams   // 10
-
+        exit(0);
     }
 
     OCLtask* makeGridFF( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, bool bRun=true, OCLtask* task=0 ){
         setGridShape( grid );
         v2i4( nPBC_, nPBC );
-        if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_atoms_surf<0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_REQs_surf <0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         printf( "OCL_MM::makeGridFF() grid_n(%i,%i,%i)\n", grid_n.x,grid_n.y,grid_n.z );
         if(itex_FE_Paul<=0) itex_FE_Paul         = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Lond<=0) itex_FE_Lond         = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
@@ -685,8 +686,8 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* addDipoleField( const GridShape& grid, Vec3i nPBC_, int n=0, float4* dipole_ps=0, float4* dipoles=0, bool bRun=true, OCLtask* task=0 ){
         setGridShape( grid );
         v2i4( nPBC_, nPBC );
-        if(ibuff_dipole_ps<=0) ibuff_dipole_ps = newBuffer( "dipole_ps", n, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        if(ibuff_dipoles  <=0) ibuff_dipoles   = newBuffer( "dipoles",   n, sizeof(float4), 0, CL_MEM_READ_ONLY );        
+        if(ibuff_dipole_ps<0) ibuff_dipole_ps = newBuffer( "dipole_ps", n, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_dipoles  <0) ibuff_dipoles   = newBuffer( "dipoles",   n, sizeof(float4), 0, CL_MEM_READ_ONLY );        
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
         if(task==0) task = getTask("addDipoleField");
         task->global.x = grid_n.x*grid_n.y*grid_n.z;

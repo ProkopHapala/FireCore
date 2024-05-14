@@ -1177,7 +1177,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                             err |= task_NBFF     ->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
                             DEBUG
                             err |= task_SurfAtoms->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
-                            DEBUG
+        
                         }
                     }
                     else       { err |= task_NBFF      ->enque_raw(); }
@@ -1794,8 +1794,9 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     }
     delete [] atoms_surf;
     delete [] REQs_surf;
-    ocl.buffers[ocl.ibuff_atoms_surf].release();
-    ocl.buffers[ocl.ibuff_REQs_surf ].release();
+    //  ToDo: We do no release these buffers because we use them for kernell:: getSurfMorse()
+    //ocl.buffers[ocl.ibuff_atoms_surf].release();
+    //ocl.buffers[ocl.ibuff_REQs_surf ].release();
     err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.atoms_surf.release");
     bDONE_surf2ocl = true;
     //exit(0);
