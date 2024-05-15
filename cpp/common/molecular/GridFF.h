@@ -512,6 +512,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     void makeGridFF(){ makeGridFF_omp(natoms,apos,REQs); }
 
     double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
+        printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
         const double R2damp=Rdamp*Rdamp;    
         const double K =-alphaMorse;
         double       E = 0;
@@ -520,18 +521,22 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
         for(int j=0; j<natoms; j++){    // atom-atom
             Vec3d fij = Vec3dZero;
-            Vec3d dp0 = pi - apos[j];
+            Vec3d dp0 = pi - apos[j] + grid.pos0;
             Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
             //printf( "GridFF::evalMorsePBC() j %i/%i \n", j,natoms );
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
                 //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
                 const Vec3d  dp = dp0 + shifts[ipbc];
-                Vec3d fij;
-                E += addAtomicForceMorseQ( apos[j]-pi, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                Vec3d fij=Vec3dZero;
+                E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
                 fi.add( fij );
-                // if(shifts[ipbc].norm2()<1e-6){ // debug draw
-                //     Draw3D::drawLine( apos[j] - shifts[ipbc], pi  );
-                // }
+                if(shifts[ipbc].norm2()<1e-6){ // debug draw
+                    //Draw3D::drawLine( apos[j] - shifts[ipbc], pi  );
+                    //E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                    //fi.add( fij );
+                    //printf( "CPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f)   apos[%i](%10.6f,%10.6f,%10.6f) pi(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", j,ipbc,npbc,  j,  dp.x,dp.y,dp.z,   apos[j].x,apos[j].y,apos[j].z,          pi.x,pi.y,pi.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
+                    printf( "CPU[%3i|%3i/%3i] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", j,ipbc,npbc, K, R2damp, dp.norm(), dp.x,dp.y,dp.z, REQij.x, REQij.y, REQij.z, REQij.w, fij.x,fij.y,fij.z );
+                }
             }
         }
         return E;
