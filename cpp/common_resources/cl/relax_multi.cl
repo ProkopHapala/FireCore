@@ -1997,12 +1997,13 @@ __kernel void getSurfMorse(
         printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  ); 
         //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  ); 
         //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
+        for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
     }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
 
     if(iG>=nAtoms) return;
 
-    const float  alphaMorse = GFFParams.y;
+    const float  K          = -GFFParams.y;
     const float  R2damp     = GFFParams.x*GFFParams.x;
     const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
     const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
@@ -2014,21 +2015,31 @@ __kernel void getSurfMorse(
 
     for (int j0=0; j0<na_surf; j0+= nL ){
         const int i = j0 + iL;
-        LATOMS[iL] = atoms[i];
-        LCLJS [iL] = REQs [i];
+        LATOMS[iL] = atoms_s[i];
+        LCLJS [iL] = REQ_s  [i];
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int jl=0; jl<nL; jl++){
             const int ja=jl+j0;
             if( ja<na_surf ){ 
-                const float4 REQH =       LCLJS [jl];
-                float3       dp   = pos - LATOMS[jl].xyz;
+                float4 REQH =       LCLJS [jl];
+                float3 dp   = pos - LATOMS[jl].xyz;
+
+                REQH.x   += REQi.x;
+                REQH.yzw *= REQi.yzw;
+
                 //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
                 //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
                 //float3 shift=shift0; 
                 for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
                     for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
                         for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
-                            fe += getMorseQH( dp,  REQH, alphaMorse, R2damp );
+
+                            const float4 fej = getMorseQH( dp,  REQH, K, R2damp );
+                            fe += fej;
+                            if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
+                                //printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
+                                printf( "GPU[%3i|%3i/%3i] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", ja,0,0, K,R2damp, length(dp), dp.x,dp.y,dp.z,  REQH.x, REQH.y, REQH.z, REQH.w,  fej.x,fej.y,fej.z );
+                            }
                             dp   +=lvec.a.xyz;
                             //shift+=lvec.a.xyz;
                         }

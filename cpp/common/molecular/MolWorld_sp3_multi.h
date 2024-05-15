@@ -1136,9 +1136,39 @@ int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){
 }
 
 
+
+int debug_eval(){
+    printf("MolWorld_sp3_multi::debug_eval()\n" );
+    int err  = 0;
+    int isys = 0;
+    int ia   = 0;
+    ffls[isys].cleanForce();
+
+    gridFF.evalMorsePBC_sym( ffls[isys].apos[ia], ffls[isys].REQs[ia], ffls[isys].fapos[ia] ); 
+
+    //gridFF.evalMorsePBCatoms_sym( ffls[isys].natoms, ffls[isys].apos, ffls[isys].REQs, ffls[isys].fapos );
+    // for(int i=0; i<ffls[isys].natoms; i++){
+    //     Vec3d f = ffls[isys].fapos[i];
+    //     printf( "cpu_aforces[%i] f(%g,%g,%g)\n", i, f.x, f.y, f.z );
+    // }
+    err = task_cleanF->enque_raw();                    OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().task_cleanF()"     ); 
+    err = task_SurfAtoms->enque_raw();                 OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().task_SurfAtoms()"  );  
+    err = ocl.download( ocl.ibuff_atoms,    atoms   ); OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().download(atoms)"   ); 
+    err = ocl.download( ocl.ibuff_aforces,  aforces ); OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().download(aforces)" ); 
+
+    // for(int i=0; i<ffls[isys].natoms; i++){
+    //     //Vec3d f = ffls[isys].fapos;
+    //     printf( "gpu_aforces[%i]  f(%g,%g,%g)\n", aforces[i].x, aforces[i].y, aforces[i].z );
+    // }
+    exit(0);
+}
+
+
 int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
+    debug_eval(); return 0;
+
     double F2conv = Fconv*Fconv;
     picked2GPU( ipicked,  1.0 );
     int err=0;
@@ -1173,11 +1203,9 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                     if(bSurfAtoms){
                         if  (bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
                         else         { 
-                            printf( "task_NBFF(), task_SurfAtoms() \n" );
-                            err |= task_NBFF     ->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
-                            DEBUG
-                            err |= task_SurfAtoms->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
-        
+                            //printf( "task_NBFF(), task_SurfAtoms() \n" );
+                            err |= task_NBFF     ->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
+                            err |= task_SurfAtoms->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
                         }
                     }
                     else       { err |= task_NBFF      ->enque_raw(); }
@@ -1808,7 +1836,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
     gridFF.grid.center_cell( cel0 );
     bGridFF=true;
-    gridFF.bindSystem      (surf.natoms, surf.atypes, surf.apos, surf.REQs );
+    gridFF.bindSystem        ( surf  .natoms, surf  .atypes, surf.apos  , surf.REQs        );
     gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
     //gridFF.setAtomsSymetrized(surf.natoms, surf.atypes, surf.apos, surf.REQs );
     gridFF.evalCellDipole();
@@ -1820,7 +1848,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     //gridFF.grid.printCell();
     gridFF.nPBC=Vec3i{1,1,0};
     if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
-    gridFF.makePBCshifts ( gridFF.nPBC, gridFF.lvec );
+    gridFF.makePBCshifts   ( gridFF.nPBC,      gridFF.lvec       );
     long T0 = getCPUticks();
     //bSurfAtoms=false;
     //gridFF.shift0 = Vec3d{0.,0., 0.0};

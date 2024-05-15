@@ -1508,6 +1508,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         bChargeUpdated=false;
     }
 
+
     __attribute__((hot))  
     int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
@@ -1556,7 +1557,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         for(itr=0; itr<niter; itr++){
             //double ff=0,vv=0,vf=0;
             if(bGopt){
-                if( bGopt         )go.update();
+                if( bGopt         ) go.update();
                 if( go.bExploring ) bConverged = false;
             }
             Vec3d cvf_bak = ffl.cvf;
@@ -1573,10 +1574,10 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if(bNonBonded){
                     if(bNonBondNeighs)[[likely]]{
                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                        else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                        else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
                     }else{
                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
-                        else    { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
+                        else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
                     }
                 }
                 if(bSurfAtoms)[[likely]]{ 
@@ -1693,8 +1694,8 @@ class MolWorld_sp3 : public SolverInterface { public:
                 break;
             }else{
                 //printf( "nStuck %i \n", nStuck );
-                if( bCheckStuck )[[unlikely]]{ handleStuckAtom(itr, ffl.cvf ); }
-                if(verbosity>3) [[unlikely]] { printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) E=%g |F|=%g |v|=%g cos(v,f)=%g dt=%g cdamp=%g\n", itr,niter_max, E, sqrt(ffl.cvf.z), sqrt(ffl.cvf.y), ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), dt, cdamp ); }
+                if( bCheckStuck )[[unlikely]] { handleStuckAtom(itr, ffl.cvf ); }
+                if(verbosity>3)  [[unlikely]] { printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) E=%g |F|=%g |v|=%g cos(v,f)=%g dt=%g cdamp=%g\n", itr,niter_max, E, sqrt(ffl.cvf.z), sqrt(ffl.cvf.y), ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), dt, cdamp ); }
             }
         }
         double ticks = (getCPUticks() - T0);
