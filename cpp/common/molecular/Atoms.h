@@ -22,10 +22,11 @@ class Atoms{ public:
     double Energy  =0;
     long   id      =0;
     int    n0      =0; // number of atoms in the first part of the system (e.g. ligand) 
+    double* charge =0; // [natoms] array of atom charges
 
-    void realloc ( int n, bool bAtypes=true ){ natoms=n;  _realloc(apos,natoms); if(bAtypes)_realloc(atypes,natoms); }
-    void allocNew( int n, bool bAtypes=true ){ natoms=n;  _alloc(apos,natoms);   if(bAtypes)_alloc(atypes,natoms);   }
-    void dealloc (        bool bAtypes=true ){            _dealloc(apos);        if(bAtypes)_dealloc(atypes);        }
+    void realloc ( int n, bool bAtypes=true, bool bCharge=true  ){ natoms=n;  _realloc(apos,natoms); if(bCharge)_realloc(charge,natoms); if(bAtypes)_realloc(atypes,natoms); }
+    void allocNew( int n, bool bAtypes=true, bool bCharge=true  ){ natoms=n;  _alloc(apos,natoms);   if(bCharge)_alloc(charge,natoms);   if(bAtypes)_alloc(atypes,natoms);  }
+    void dealloc (        bool bAtypes=true, bool bCharge=true  ){            _dealloc(apos);        if(bCharge)_dealloc(charge);        if(bAtypes)_dealloc(atypes);    }
     void bind    ( int n, int* atypes_, Vec3d* apos_ ){ natoms=n; atypes=atypes_; apos=apos_; }
 
     //void bindOrRealloc(){}

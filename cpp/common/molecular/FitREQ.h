@@ -362,62 +362,49 @@ bool checkToClose(double Rfac){
  * 
  * @return The total energy of the system.
  */
-double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps,   int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
+double evalExampleDerivs_LJQH( int n, int* types, Vec3d* ps, double* aq, int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0 ){
     if( jpos==0 ){   
         nj   =system0->natoms;
         jtyp =system0->atypes;
         jpos =system0->apos;
     }
     double Etot=0;
-    double Qtot=0;
-    //printf( "evalExampleDerivs_LJQH (n=%i,nj=%i ) \n", n,nj );
-    for(int i=0; i<n; i++){
-        int   ti          = types[i];
+    printf( "evalExampleDerivs_LJQH (n=%i,nj=%i)\n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti           = types[i];
         const Vec3d&  pi   = ps[i]; 
         const Quat4d& REQi = typeREQs[ti];
         Quat4d fsi         = Quat4dZero;
-        Qtot+=REQi.z;
-        for(int j=0; j<nj; j++){
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
             int tj              = jtyp[j];
-            const Quat4d& REQj  = typeREQs[tj];
-            //const Quat4d& REQj = REQ0[j]; // optimization
+            const Quat4d& REQj  = typeREQs[tj]; //const Quat4d& REQj = REQ0[j]; // optimization
             Vec3d d             = jpos[j] - pi;
-            double R  = REQi.x+REQj.x;
-            double E0 = REQi.y*REQj.y;
-            double Q  = REQi.z*REQj.z;
-            double H  = REQi.w*REQj.w;
-
-            //printf( "ij[%i=%i,%i=%i] REQij(%6.3f,%10.7f,%6.3f,%6.3f) test:REQi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
-
-            // --- Eectrostatic
-            //double ir2     = 1/( d.norm2() + 1e-4 );
+            double R0  = REQi.x+REQj.x; //double R  = REQi.x+REQj.x; // old line
+            double eps = sqrt(REQi.y*REQj.y); //double E0 = REQi.y*REQj.y; // old line
+            double Q  = aq[i]*jq[j]; // charges from xyz //double Q  = REQi.z*REQj.z; // charges from types
+            double H  = std::max(0.0,-REQi.w*REQj.w); //double H  = REQi.w*REQj.w; // old line
+            // --- Electrostatic
             double ir2     = 1/( d.norm2() );
             double ir      = sqrt(ir2);
             double dE_dQ   = ir * COULOMB_CONST;
             double Eel     = Q*dE_dQ;
-            // --- Lenard-Jones
-            double u2   = ir2*(R*R);
+            // --- Lennard-Jones
+            double u2   = ir2*(R0*R0); //double u2   = ir2*(R*R); // old line
             double u4   = u2*u2;
             double u6   = u4*u2;
-
-            // ELJ      = E0*( (R/r)^12 - 2*(R/r)^6 )
-            // dELJ/dR  = E0*( 12*(R/r)^11/r - 12*(R/r)^5/r    )
-
-            double dE_dE = u6   *( u6 - 2 );
-            double dE_dH = u6;
-            double dE_dR = E0*12*ir*( u6*u4 - u4 );
-            double ELJ   = E0*dE_dE + H*dE_dH;
-
+            double dE_dR0  = 12/R0*u6*(eps*u6-eps-H); //double dE_dR = E0*12*ir*( u6*u4 - u4 ); // old line
+            double dE_deps = u6*(u6-2); //double dE_dE = u6   *( u6 - 2 ); // old line
+            double dE_dH   = -2*u6; //double dE_dH = u6; // old line
+            double ELJ   = eps*dE_deps + H*dE_dH; //double ELJ   = E0*dE_dE + H*dE_dH; // old line
+            // --- Energy and forces
             Etot  += ELJ + Eel;
-
-            fsi.x += dE_dR;        // dEtot/dRi
-            fsi.y += dE_dE*REQj.y; // dEtot/dEi
-            fsi.z += dE_dQ*REQj.z; // dEtot/dQi
-            fsi.w += dE_dH*REQj.w; // dEtot/dHi
+            fsi.x -= dE_dR0;                 // -dEtot/dR0i  //fsi.x += dE_dR;        // old line
+            fsi.y -= dE_deps*0.5/eps*REQj.y; // -dEtot/depsi //fsi.y += dE_dE*REQj.y; // old line
+            fsi.z -= dE_dQ*jq[j];            // -dEtot/dQi   //fsi.z += dE_dQ*REQj.z; // old line
+            fsi.w -= dE_dH*H/REQi.w;         // -dEtot/dHi   //fsi.w += dE_dH*REQj.w; // old line
         }
         fs[i].add(fsi);
     }
-
     return Etot;
 }
 
@@ -430,78 +417,49 @@ double evalExampleDerivs_LJQH(int n, int* types, Vec3d* ps,   int nj=0, int* jty
  * 
  * @return The total energy of the system.
  */
-double evalExampleDerivs_LJQH2(int n, int* types, Vec3d* ps,   int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
+double evalExampleDerivs_LJQH2( int n, int* types, Vec3d* ps, double* aq, int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0 ){
     if( jpos==0 ){   
         nj   =system0->natoms;
         jtyp =system0->atypes;
         jpos =system0->apos;
     }
     double Etot=0;
-    double Qtot=0;
-    //printf( "evalExampleDerivs_LJQH2 (sys:n=%i,sys0:nj=%i ) \n", n,nj );
-
-    double Rfac2 = Rfac_tooClose*Rfac_tooClose;
+    printf( "evalExampleDerivs_LJQH2 (n=%i,nj=%i)\n", n,nj );
     for(int i=0; i<n; i++){ // loop over all atoms[i] in system
-        int   ti          = types[i];
+        int   ti           = types[i];
         const Vec3d&  pi   = ps[i]; 
         const Quat4d& REQi = typeREQs[ti];
         Quat4d fsi         = Quat4dZero;
-        Qtot+=REQi.z;
         for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
             int tj              = jtyp[j];
-            const Quat4d& REQj  = typeREQs[tj];
-            //const Quat4d& REQj = REQ0[j]; // optimization
+            const Quat4d& REQj  = typeREQs[tj]; //const Quat4d& REQj = REQ0[j]; // optimization
             Vec3d d             = jpos[j] - pi;
-            double R  = REQi.x+REQj.x;
-            double E0 = REQi.y*REQj.y;
-            double Q  = REQi.z*REQj.z;
-            double H  = REQi.w*REQj.w;
-
-            double r2 = d.norm2();
-            if( r2 < (R*R*Rfac2) ){ 
-                if(verbosity>0) printf( "L{s%i,%i}=%4.2f(<%2.1f*%4.2f(=%4.2f+%4.2f) => skip", j,i, sqrt(r2), Rfac_tooClose, R, REQj.x, REQi.x );
-                return 1.1e+300; 
-            }
-
-            if(H>0) H=0;
-
-            //printf( "ij[%i=%i,%i=%i] REQHij(%6.3f,%10.7f,%6.3f,%6.3f) sys:REQHi(%6.3f,%10.7f,%6.3f,%6.3f) sys0:REQHj(%6.3f,%10.7f,%6.3f,%6.3f)\n", i,ti, j,tj,  R,E0,Q,H,   REQi.x,REQi.y,REQi.z,REQi.w,   REQj.x,REQj.y,REQj.z,REQj.w );
-
-            // --- Eectrostatic
-            //double ir2     = 1/( d.norm2() + 1e-4 );
-            double ir2     = 1/( r2 );
+            double R0  = REQi.x+REQj.x; //double R  = REQi.x+REQj.x; // old line
+            double eps = sqrt(REQi.y*REQj.y); //double E0 = REQi.y*REQj.y; // old line
+            double Q  = aq[i]*jq[j]; // charges from xyz //double Q  = REQi.z*REQj.z; // charges from types
+            double H  = std::max(0.0,-REQi.w*REQj.w); //double H  = REQi.w*REQj.w; // old line
+            // --- Electrostatic
+            double ir2     = 1/( d.norm2() );
             double ir      = sqrt(ir2);
             double dE_dQ   = ir * COULOMB_CONST;
             double Eel     = Q*dE_dQ;
-            // --- Lenard-Jones
-            double u2   = ir2*(R*R);
+            // --- Lennard-Jones
+            double u2   = ir2*(R0*R0); //double u2   = ir2*(R*R); // old line
             double u4   = u2*u2;
             double u6   = u4*u2;
-
-            //if( (i==0) && (j==nj) ){ printf( "r %g \n", 1/ir ); }
-            //if( i==0 ){ printf( "[%i,%i] r %g \n", i,j, 1/ir ); }
-
-
-            // ELJ      = E0*( (R/r)^12 - 2*(R/r)^6 )
-            // dELJ/dR  = E0*( 12*(R/r)^11/r - 12*(R/r)^5/r    )
-
-            double dE_dE = u6   *( u6 - 2 );
-            double dE_dH = u6*u6;
-            double dE_dR = E0*12*ir*( u6*u4 - u4 );
-            double ELJ   = E0*dE_dE + H*dE_dH;
-
-            //printf( "ij[%i=%i,%i=%i] EH %g EPaul %g EvdW %g Eel %g REQij(%6.3f,%10.7f,%6.3f,%6.3f) \n", i,ti, j,tj,  H*u6*u6, E0*u6*u6, E0*u6*-2, Q*dE_dQ,  R,E0,Q,H  );
-
+            double dE_dR0  = 12/R0*u6*((eps-H)*u6-eps); //double dE_dR = E0*12*ir*( u6*u4 - u4 ); // old line
+            double dE_deps = u6*(u6-2); //double dE_dE = u6   *( u6 - 2 ); // old line
+            double dE_dH   = -u6*u6; //double dE_dH = u6*u6; // old line
+            double ELJ     = eps*dE_deps + H*dE_dH; //double ELJ   = E0*dE_dE + H*dE_dH; // old line
+            // --- Energy and forces
             Etot  += ELJ + Eel;
-
-            fsi.x += dE_dR;        // dEtot/dRi
-            fsi.y += dE_dE*REQj.y; // dEtot/dEi
-            fsi.z += dE_dQ*REQj.z; // dEtot/dQi
-            fsi.w += dE_dH*REQj.w; // dEtot/dHi
+            fsi.x -= dE_dR0;                 // dEtot/dRi //fsi.x += dE_dR;        // old line
+            fsi.y -= dE_deps*0.5/eps*REQj.y; // dEtot/dEi //fsi.y += dE_dE*REQj.y; // old line
+            fsi.z -= dE_dQ*jq[j];            // dEtot/dQi //fsi.z += dE_dQ*REQj.z; // old line
+            fsi.w -= dE_dH*H/REQi.w;         // dEtot/dHi //fsi.w += dE_dH*REQj.w; // old line
         }
         fs[i].add(fsi);
     }
-
     return Etot;
 }
 
@@ -959,9 +917,11 @@ double evalDerivsSamp( double* Eout=0 ){
         int    nj       = atoms->n0;
         int*   jtyp     = atoms->atypes;
         Vec3d* jpos     = atoms->apos;
+        double* jq      = atoms->charge;
         int    na       = atoms->natoms - atoms->n0;
         int*   atypes   = atoms->atypes + atoms->n0;
         Vec3d* apos     = atoms->apos   + atoms->n0;
+        double* aq      = atoms->charge + atoms->n0;
         //printf( "evalDerivsSamp[%i] na %i n0 %i imodel %i \n", i, na, atoms->n0, imodel );
         double Eref=atoms->Energy;
         double wi = 1; 
@@ -970,8 +930,8 @@ double evalDerivsSamp( double* Eout=0 ){
         clean_fs(na);
         double E=0;
         switch (imodel){
-            case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos, nj, jtyp, jpos ); break; 
-            case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos, nj, jtyp, jpos ); break;
+            case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
+            case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
             case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, nj, jtyp, jpos ); break;
             case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos, nj, jtyp, jpos ); break;
         }
@@ -1008,10 +968,11 @@ double evalDerivs( double* Eout=0 ){
         clean_fs(C.natoms);
         double E=0;
         switch (imodel){
-            case 1: E = evalExampleDerivs_LJQH         (C.natoms, C.atypes, C.apos ); break;
-            case 2: E = evalExampleDerivs_LJQH2        (C.natoms, C.atypes, C.apos ); break;
-            case 3: E = evalExampleDerivs_MorseQH2     (C.natoms, C.atypes, C.apos ); break;
-            case 4: E = evalExampleDerivs_BuckinghamQH2(C.natoms, C.atypes, C.apos ); break;
+            // TBD
+            //case 1: E = evalExampleDerivs_LJQH         (C.natoms, C.atypes, C.apos ); break;
+            //case 2: E = evalExampleDerivs_LJQH2        (C.natoms, C.atypes, C.apos ); break;
+            //case 3: E = evalExampleDerivs_MorseQH2     (C.natoms, C.atypes, C.apos ); break;
+            //case 4: E = evalExampleDerivs_BuckinghamQH2(C.natoms, C.atypes, C.apos ); break;
         }
         if( E>1e+300 ){
             if(verbosity>0) printf( "skipped sample [%i] atoms too close \n", i );
@@ -1047,10 +1008,11 @@ double evalDerivsRigid( double* Eout=0 ){
         clean_fs(C.natoms);
         double E =0;
         switch (imodel){
-            case 1: E = evalExampleDerivs_LJQH (C.natoms, C.atypes, C.apos ); break;
-            case 2: E = evalExampleDerivs_LJQH2(C.natoms, C.atypes, C.apos ); break;
-            case 3: E = evalExampleDerivs_MorseQH2     (C.natoms, C.atypes, C.apos ); break;
-            case 4: E = evalExampleDerivs_BuckinghamQH2(C.natoms, C.atypes, C.apos ); break;
+            // TBD
+            //case 1: E = evalExampleDerivs_LJQH (C.natoms, C.atypes, C.apos ); break;
+            //case 2: E = evalExampleDerivs_LJQH2(C.natoms, C.atypes, C.apos ); break;
+            //case 3: E = evalExampleDerivs_MorseQH2     (C.natoms, C.atypes, C.apos ); break;
+            //case 4: E = evalExampleDerivs_BuckinghamQH2(C.natoms, C.atypes, C.apos ); break;
         }
         if( E>1e+300 ){
 
@@ -1235,6 +1197,7 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
             //printf( "[%i] `%s` (%g,%g,%g) q %g \n", i, at_name, x, y, z, q );
             atoms->apos[i].set(x,y,z);
             atoms->atypes[i]=params->getAtomType(at_name);
+            atoms->charge[i]=q;
         }
         il++;
         if( il >= atoms->natoms+2 ){    // ---- store sample atoms to batch

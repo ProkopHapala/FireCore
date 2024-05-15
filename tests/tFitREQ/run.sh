@@ -1,13 +1,13 @@
 name=FitREQ_lib
 dir=../../cpp/Build/libs/Molecular
-ln -s ../../cpp/common_resources common_resources
-ln -s ../../cpp/common_resources data
+ln -sf ../../cpp/common_resources common_resources
+ln -sf ../../cpp/common_resources data
 
 
 wd=`pwd`
 cd $dir
-pwd
-rm lib$name.so
+#pwd
+#rm -f lib$name.so
 make -j4 $name
 cd $wd
 
@@ -23,7 +23,7 @@ cd $wd
 #python3 fit_manual_2d.py
 #python3 fit_manual_OH.py
 
-python3 fit_manual_samp.py
-
+#python3 fit_manual_samp.py
+python3 fit_manual_test.py
 
 
