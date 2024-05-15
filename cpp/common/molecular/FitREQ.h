@@ -382,7 +382,7 @@ double evalExampleDerivs_LJQH( int n, int* types, Vec3d* ps, double* aq, int nj=
             double R0  = REQi.x+REQj.x; //double R  = REQi.x+REQj.x; // old line
             double eps = sqrt(REQi.y*REQj.y); //double E0 = REQi.y*REQj.y; // old line
             double Q  = aq[i]*jq[j]; // charges from xyz //double Q  = REQi.z*REQj.z; // charges from types
-            double H  = std::max(0.0,-REQi.w*REQj.w); //double H  = REQi.w*REQj.w; // old line
+            double H  = fmax(0.0,-REQi.w*REQj.w); //double H  = REQi.w*REQj.w; // old line
             // --- Electrostatic
             double ir2     = 1/( d.norm2() );
             double ir      = sqrt(ir2);
@@ -437,7 +437,7 @@ double evalExampleDerivs_LJQH2( int n, int* types, Vec3d* ps, double* aq, int nj
             double R0  = REQi.x+REQj.x; //double R  = REQi.x+REQj.x; // old line
             double eps = sqrt(REQi.y*REQj.y); //double E0 = REQi.y*REQj.y; // old line
             double Q  = aq[i]*jq[j]; // charges from xyz //double Q  = REQi.z*REQj.z; // charges from types
-            double H  = std::max(0.0,-REQi.w*REQj.w); //double H  = REQi.w*REQj.w; // old line
+            double H  = fmax(0.0,-REQi.w*REQj.w); //double H  = REQi.w*REQj.w; // old line
             // --- Electrostatic
             double ir2     = 1/( d.norm2() );
             double ir      = sqrt(ir2);
