@@ -1138,7 +1138,7 @@ int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){
 
 
 int debug_eval(){
-    printf("MolWorld_sp3_multi::debug_eval() GridFF.npbc(%i)  GridFF.nBPC(%i,%i,%i) \n", gridFF.nPBC.x,gridFF.nPBC.y,gridFF.nPBC.z, gridFF.npbc);
+    printf("MolWorld_sp3_multi::debug_eval() GridFF.npbc(%i)  GridFF.nPBC(%i,%i,%i) \n", gridFF.nPBC.x,gridFF.nPBC.y,gridFF.nPBC.z, gridFF.npbc);
     int err  = 0;
     int isys = 0;
     int ia   = 0;
@@ -1153,7 +1153,6 @@ int debug_eval(){
     err = task_SurfAtoms->enque_raw();                 OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().task_SurfAtoms()"  );  
     err = ocl.download( ocl.ibuff_atoms,    atoms   ); OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().download(atoms)"   ); 
     err = ocl.download( ocl.ibuff_aforces,  aforces ); OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().download(aforces)" ); 
-
     for(int i=0; i<ffls[isys].natoms; i++){
         //Vec3d f = ffls[isys].fapos;
         printf( "gpu_aforces[%i]  f(%g,%g,%g)\n", i, aforces[i].x, aforces[i].y, aforces[i].z );
@@ -1185,17 +1184,6 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     ocl.bSubtractVdW=dovdW;
     for(int i=0; i<nVFs; i++){
         for(int j=0; j<nPerVFs; j++){
-            /*
-            {
-            err |= task_cleanF->enque_raw();
-            err |= task_MMFF->enque_raw();
-            if(dovdW){
-                if(bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
-                else       { err |= task_NBFF      ->enque_raw(); }
-            }
-            err |= task_move->enque_raw(); 
-            }
-            */
             {
                 if(dovdW){
                     if(bSurfAtoms){
@@ -1802,6 +1790,8 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     //v2f4( gridFF.grid.pos0, ocl.grid_p0 );
     ocl.grid_p0.f     = (Vec3f)gridFF.grid.pos0;
     ocl.grid_shift0.f = (Vec3f)gridFF.shift0;
+    //printf( "grid_p0(%g,%g,%g) grid_shift0(%g,%g,%g)\n", ocl.grid_p0.x,ocl.grid_p0.y,ocl.grid_p0.z,    ocl.grid_shift0.x,ocl.grid_shift0.y,ocl.grid_shift0.z  );
+    //exit(0);
     ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.finish");
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );

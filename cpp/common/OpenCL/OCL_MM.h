@@ -100,6 +100,7 @@ class OCL_MM: public OCLsystem { public:
     //float4  grid_shift0   { 0.f, 0.f, 0.f, 0.f };
     //float4  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f };
 
+    //Quat4f  surf_p0       { 0.f, 0.f, 0.f, 0.f }; // surface shift0
     Quat4f  grid_p0       { 0.f, 0.f, 0.f, 0.f }; // grid origin
     Quat4f  grid_shift0   { 0.f, 0.f, 0.f, 0.f }; // grid shift
     Quat4f  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f }; // grid shift + origin
@@ -593,7 +594,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_REQs_surf  ); // 6
         err |= _useArg( nPBC            );     // 7       
         err |= _useArg( cl_grid_lvec    );     // 8
-        err |= _useArg( grid_p0         );     // 9
+        //err |= _useArg( grid_p0         );     // 9
+        err |= _useArg( grid_shift0     );     // 9
         err |= _useArg( GFFparams       );     // 10
 
         // err |= _useArg   ( nDOFs );            OCL_checkError(err, "arg[1]: " );  // 1
