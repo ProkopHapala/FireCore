@@ -512,10 +512,11 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     void makeGridFF(){ makeGridFF_omp(natoms,apos,REQs); }
 
     double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
-        printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
+        //printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
         const double R2damp=Rdamp*Rdamp;    
         const double K =-alphaMorse;
         double       E = 0;
+        fi = Vec3dZero;
         //printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
         if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
         if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
@@ -530,15 +531,17 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                 Vec3d fij=Vec3dZero;
                 E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
                 fi.add( fij );
-                if(shifts[ipbc].norm2()<1e-6){ // debug draw
-                    //Draw3D::drawLine( apos[j] - shifts[ipbc], pi  );
-                    //E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
-                    //fi.add( fij );
-                    //printf( "CPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f)   apos[%i](%10.6f,%10.6f,%10.6f) pi(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", j,ipbc,npbc,  j,  dp.x,dp.y,dp.z,   apos[j].x,apos[j].y,apos[j].z,          pi.x,pi.y,pi.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
-                    printf( "CPU[%3i|%3i/%3i] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", j,ipbc,npbc, K, R2damp, dp.norm(), dp.x,dp.y,dp.z, REQij.x, REQij.y, REQij.z, REQij.w, fij.x,fij.y,fij.z );
-                }
+                //if(shifts[ipbc].norm2()<1e-6){ // debug draw
+                // if(j==0){
+                //     //Draw3D::drawLine( apos[j] - shifts[ipbc], pi  );
+                //     //E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                //     //fi.add( fij );
+                //     //printf( "CPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f)   apos[%i](%10.6f,%10.6f,%10.6f) pi(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", j,ipbc,npbc,  j,  dp.x,dp.y,dp.z,   apos[j].x,apos[j].y,apos[j].z,          pi.x,pi.y,pi.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
+                //     printf( "CPU[%3i|%3i/%3i] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", j,ipbc,npbc, K, R2damp, dp.norm(), dp.x,dp.y,dp.z, REQij.x, REQij.y, REQij.z, REQij.w, fij.x,fij.y,fij.z );
+                // }
             }
         }
+        //printf( "CPU[iG=0,iS=0] fe(%10.6f,%10.6f,%10.6f)\n", fi.x,fi.y,fi.z );
         return E;
     }
     double evalMorsePBC_sym     (         Vec3d  pi, Quat4d  REQi, Vec3d& fi     ){ return evalMorsePBC( pi, REQi, fi, apos_.size(), &apos_[0], &REQs_[0] ); }

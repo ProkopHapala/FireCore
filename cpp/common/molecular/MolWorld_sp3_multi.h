@@ -937,7 +937,7 @@ void setup_MMFFf4_ocl(){
     // OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
     if(!task_SurfAtoms && bSurfAtoms ){ 
         if( bDONE_surf2ocl==false ){ printf("ERROR in MolWorld_sp3_multi::setup_MMFFf4_ocl() must call MolWorld_sp3_multi::surf2ocl() first\n"); }
-        task_SurfAtoms = ocl.getSurfMorse( nPBC, gridFF.natoms, 0,0,0,0,0,false ); 
+        task_SurfAtoms = ocl.getSurfMorse( gridFF.nPBC, gridFF.natoms, 0,0,0,0,0,false ); 
     } 
     // ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     /// HERE_HERE
@@ -1138,28 +1138,26 @@ int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){
 
 
 int debug_eval(){
-    printf("MolWorld_sp3_multi::debug_eval()\n" );
+    printf("MolWorld_sp3_multi::debug_eval() GridFF.npbc(%i)  GridFF.nBPC(%i,%i,%i) \n", gridFF.nPBC.x,gridFF.nPBC.y,gridFF.nPBC.z, gridFF.npbc);
     int err  = 0;
     int isys = 0;
     int ia   = 0;
     ffls[isys].cleanForce();
-
-    gridFF.evalMorsePBC_sym( ffls[isys].apos[ia], ffls[isys].REQs[ia], ffls[isys].fapos[ia] ); 
-
-    //gridFF.evalMorsePBCatoms_sym( ffls[isys].natoms, ffls[isys].apos, ffls[isys].REQs, ffls[isys].fapos );
-    // for(int i=0; i<ffls[isys].natoms; i++){
-    //     Vec3d f = ffls[isys].fapos[i];
-    //     printf( "cpu_aforces[%i] f(%g,%g,%g)\n", i, f.x, f.y, f.z );
-    // }
+    //gridFF.evalMorsePBC_sym( ffls[isys].apos[ia], ffls[isys].REQs[ia], ffls[isys].fapos[ia] ); 
+    gridFF.evalMorsePBCatoms_sym( ffls[isys].natoms, ffls[isys].apos, ffls[isys].REQs, ffls[isys].fapos );
+    for(int i=0; i<ffls[isys].natoms; i++){
+        Vec3d f = ffls[isys].fapos[i];
+        printf( "cpu_aforces[%i] f(%g,%g,%g)\n", i, f.x, f.y, f.z );
+    }
     err = task_cleanF->enque_raw();                    OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().task_cleanF()"     ); 
     err = task_SurfAtoms->enque_raw();                 OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().task_SurfAtoms()"  );  
     err = ocl.download( ocl.ibuff_atoms,    atoms   ); OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().download(atoms)"   ); 
     err = ocl.download( ocl.ibuff_aforces,  aforces ); OCL_checkError(err, "MolWorld_sp3_multi::debug_eval().download(aforces)" ); 
 
-    // for(int i=0; i<ffls[isys].natoms; i++){
-    //     //Vec3d f = ffls[isys].fapos;
-    //     printf( "gpu_aforces[%i]  f(%g,%g,%g)\n", aforces[i].x, aforces[i].y, aforces[i].z );
-    // }
+    for(int i=0; i<ffls[isys].natoms; i++){
+        //Vec3d f = ffls[isys].fapos;
+        printf( "gpu_aforces[%i]  f(%g,%g,%g)\n", i, aforces[i].x, aforces[i].y, aforces[i].z );
+    }
     exit(0);
 }
 
