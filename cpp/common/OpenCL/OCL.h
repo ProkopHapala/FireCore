@@ -605,7 +605,7 @@ class OCLsystem{ public:
 //=======================================================================
 
 int OCLtask::enque_raw(  ){
-    printf("enque_raw ikernel %li(%i) idim %li global(%li,%li,%li) local(%li,%li,%li)\n", ikernel, cl->kernels[ikernel], dim, global.x,global.y,global.z, local.x,local.y,local.z );    
+    //printf("enque_raw ikernel %li(%i) idim %li global(%li,%li,%li) local(%li,%li,%li)\n", ikernel, cl->kernels[ikernel], dim, global.x,global.y,global.z, local.x,local.y,local.z );    
     if(local.x==0){ return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, (size_t*)&global, NULL,            0, NULL, NULL );   }
     else{           return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, (size_t*)&global, (size_t*)&local, 0, NULL, NULL );   }
 }
