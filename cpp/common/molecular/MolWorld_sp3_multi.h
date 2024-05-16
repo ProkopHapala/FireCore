@@ -1164,7 +1164,7 @@ int debug_eval(){
 int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
     //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
-    debug_eval(); return 0;
+    //debug_eval(); return 0;
 
     double F2conv = Fconv*Fconv;
     picked2GPU( ipicked,  1.0 );
