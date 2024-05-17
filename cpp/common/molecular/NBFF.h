@@ -921,10 +921,10 @@ class NBFF: public ForceField{ public:
                     //if(i==0)printf("fi(%g,%g,%g) \n",  fij.x,fij.y,fij.z );
                     fi.add(fij);
 
-                    if((ia==0)&&(ib==0)&&(ic==0)){ // debug draw
-                        const Vec3d shift = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);
-                        Draw3D::drawLine( B.apos[j] - shift , pi_  );
-                    }
+                    // if((ia==0)&&(ib==0)&&(ic==0)){ // debug draw
+                    //     const Vec3d shift = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);
+                    //     Draw3D::drawLine( B.apos[j] - shift , pi_  );
+                    // }
 
                 }
             }}} // nPBC

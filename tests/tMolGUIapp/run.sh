@@ -172,7 +172,7 @@ fi
 
 
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-6 -iParalel 0  -dt 0.05 -nogridff -perframe 1
-./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-6 -iParalel 0  -dt 0.05 -nogridff -perframe 100
+./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-12 -iParalel 0  -dt 0.05 -nogridff -perframe 100
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-6 -iParalel 0  -dt 0.05
 
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -drive polymer-2_new.cons -perframe 100  -gopt 1000,1000 0.0,0.0    -T 1000 0.1  -Ftol 1e-6 -seed 654654  -stuck 300,0.2 -iParalel 0   -dt 0.05   -nogridff

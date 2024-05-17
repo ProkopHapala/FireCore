@@ -33,32 +33,39 @@ plt.ylim(Emin*1.2,-2*Emin)
 plt.grid()
 '''
 
+
 # ========== Test 1b: 1D plot different FFs
 
 n  = 1000
 xs = np.linspace( -10., 10.0,  n )    #;print(xs)
 ps = np.zeros( (n,3) )
 ps[:,2] = xs
-FEs_f   = mmff.sampleSurf_vecs( ps, kind=12, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
-FEs_d   = mmff.sampleSurf_vecs( ps, kind=13, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
-FEs_cub = mmff.sampleSurf_vecs( ps, kind=14, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+print("DEBUG 1")
+FEs_atm = mmff.sampleSurf_vecs( ps, kind=9, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 1.1")
+FEs_f   = mmff.sampleSurf_vecs( ps, kind=12, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 2")
+#FEs_d   = mmff.sampleSurf_vecs( ps, kind=13, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 3")
+#FEs_cub = mmff.sampleSurf_vecs( ps, kind=14, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 4")
+print("DEBUG 5")
 Emin = FEs_f[:,3].min(); print( "Emin ", Emin ) 
 Fmin = FEs_f[:,2].min(); print( "Fmin ", Fmin ) 
 plt.figure( figsize=(5,10))
 plt.subplot(2,1,1)
+plt.plot( xs, FEs_atm[:,3],label='E_atom'    )
 plt.plot( xs, FEs_f  [:,3],label='E_float'    )
-plt.plot( xs, FEs_d  [:,3],label='E_double'   )
-plt.plot( xs, FEs_cub[:,3],label='E_tricubic' )
+#plt.plot( xs, FEs_d  [:,3],label='E_double'   )
+#plt.plot( xs, FEs_cub[:,3],label='E_tricubic' )
 plt.ylim(Emin*1.2,-2*Emin)
 plt.grid()
 plt.legend()
 plt.subplot(2,1,2)
+plt.plot( xs, FEs_atm[:,2],label='Fz_atom'    )
 plt.plot( xs, FEs_f  [:,2],label='Fz_float'    )
-plt.plot( xs, FEs_d  [:,2],label='Fz_double'   )
-plt.plot( xs, FEs_cub[:,2],label='Fz_tricubic' )
+#plt.plot( xs, FEs_d  [:,2],label='Fz_double'   )
+#plt.plot( xs, FEs_cub[:,2],label='Fz_tricubic' )
 plt.ylim(Fmin*1.2,-2*Fmin)
 plt.grid()
 plt.legend()
+
 
 
 

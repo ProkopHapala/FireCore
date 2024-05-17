@@ -204,7 +204,7 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
     Vec3d* poss =(Vec3d*)poss_;
     //Vec3d* fs =(Vec3d*)fs_;
     Quat4d* FEs = (Quat4d*)FEs_;
-    Quat4d test_REQ{ RvdW, sqrt(EvdW), Q }; 
+    Quat4d  test_REQ{ RvdW, sqrt(EvdW), Q }; 
     if( ityp>0 ){
         AtomType atyp = W.params.atypes[ityp];
         test_REQ.x = atyp.RvdW;        // UFF natural bond radius
@@ -234,7 +234,6 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
     Quat4d PLQ_d = REQ2PLQ_d( test_REQ, K );
     // Quat4f PLQ   {0.0,0.0,1.0,0.0};
     // Quat4d PLQ_d {0.0,0.0,1.0,0.0};
-
     printf( "MMFF_lib::sampleSurf_vecs() PLQ(%g,%g,%g,%g) test_REQ(%g,%g,%g,%g) K=%g \n", PLQ.x,PLQ.y,PLQ.z,PLQ.w,  test_REQ.x,test_REQ.y,test_REQ.z,test_REQ.w, K  );
     double R2Q=RQ*RQ;
     Quat4d bak_REQ;
@@ -267,6 +266,9 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
             // see gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs ) in MolWorld_sp3::initGridFF()
             //double evalMorsePLQ( NBFF& B, Mat3d& cell, Vec3i nPBC, double K=-1.0, double RQ=1.0 ){
             // nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );
+            
+            // evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
+            case  9:         fe_d.e = W.gridFF.evalMorsePBC_sym( pos, test_REQ, fe_d.f );  FEs[i]=fe_d;  break;
             case 10:         W.gridFF.addForce_surf    (pos, {1.,0.,0.}, fe );  FEs[i]=(Quat4d)fe;  break;
             case 11:         W.gridFF.addForce_surf    (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
             //case 12:         W.gridFF.addForce         (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
