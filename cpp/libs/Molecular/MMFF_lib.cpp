@@ -199,7 +199,7 @@ void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
 
 //void sampleSurf_vecs(char* name, int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, double* pos0_, int npbc, bool bSave){
 void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){    
-    printf( "MMFF_lib::sampleSurf_vecs() kind=%i n=%i \n", kind, n );
+    printf( "MMFF_lib::sampleSurf_vecs() kind=%i n=%i dCell(%g,%g,%g)\n", kind, n, W.gridFF.grid.dCell.xx,W.gridFF.grid.dCell.yy,W.gridFF.grid.dCell.zz );
     Vec3i nPBC{npbc,npbc,0};
     Vec3d* poss =(Vec3d*)poss_;
     //Vec3d* fs =(Vec3d*)fs_;
@@ -273,6 +273,10 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
             case 11:         W.gridFF.addForce_surf    (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
             //case 12:         W.gridFF.addForce         (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
             case 12: fe   = W.gridFF.getForce         (pos, PLQ     );         FEs[i]=(Quat4d)fe;  break;
+
+            case  8: fe   = W.gridFF.getForce         (pos+Vec3d{W.gridFF.grid.dCell.xx*1.0,W.gridFF.grid.dCell.yy*1.0,W.gridFF.grid.dCell.zz*1.0}, PLQ     );         FEs[i]=(Quat4d)fe;  break;
+
+
             case 13: fe_d = W.gridFF.getForce_d       (pos, PLQ_d   );         FEs[i]=fe_d;        break;
             case 14: fe_d = W.gridFF.getForce_Tricubic(pos, PLQ_d   );         FEs[i]=fe_d;        break;
         }
