@@ -40,27 +40,40 @@ n  = 1000
 xs = np.linspace( -10., 10.0,  n )    #;print(xs)
 ps = np.zeros( (n,3) )
 ps[:,2] = xs
-print("DEBUG 1")
-FEs_atm = mmff.sampleSurf_vecs( ps, kind=9, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 1.1")
-FEs_f_  = mmff.sampleSurf_vecs( ps, kind=8, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 1.2")
-FEs_f   = mmff.sampleSurf_vecs( ps, kind=12, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 2")
-#FEs_d   = mmff.sampleSurf_vecs( ps, kind=13, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 3")
-#FEs_cub = mmff.sampleSurf_vecs( ps, kind=14, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   ;print("DEBUG 4")
-print("DEBUG 5")
-Emin = FEs_f[:,3].min(); print( "Emin ", Emin ) 
-Fmin = FEs_f[:,2].min(); print( "Fmin ", Fmin ) 
+FEs_a     = mmff.sampleSurf_vecs( ps, kind=12,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
+FEs_g_req = mmff.sampleSurf_vecs( ps, kind=9,   RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
+FEs_g_plq = mmff.sampleSurf_vecs( ps, kind=18,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )  
+#FEs_s    = mmff.sampleSurf_vecs( ps, kind=11, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   
+#FEs_f_   = mmff.sampleSurf_vecs( ps, kind=8,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
+#FEs_f    = mmff.sampleSurf_vecs( ps, kind=12, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )  
+#FEs_f    = mmff.sampleSurf_vecs( ps, kind=15, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )  
+#FEs_f_   = mmff.sampleSurf_vecs( ps-np.array([0.1,0.1,0.1])[None,:], kind=15, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+#FEs_d    = mmff.sampleSurf_vecs( ps, kind=13, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
+#FEs_cub  = mmff.sampleSurf_vecs( ps, kind=14, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
+Emin = FEs_g_req[:,3].min(); print( "Emin ", Emin ) 
+Fmin = FEs_g_req[:,2].min(); print( "Fmin ", Fmin ) 
+
 plt.figure( figsize=(5,10))
 plt.subplot(2,1,1)
-plt.plot( xs, FEs_atm[:,3],label='E_atom'    )
-plt.plot( xs, FEs_f_ [:,3],label='E_float_'    )
-plt.plot( xs, FEs_f  [:,3],label='E_float'    )
+plt.plot( xs, FEs_a    [:,3],label='E_atom'     )
+plt.plot( xs, FEs_g_req[:,3],label='E_grid_REQ' )
+plt.plot( xs, FEs_g_plq[:,3],label='E_grid_PLQ' )
+#plt.plot( xs, FEs_s  [:,3],label='E_addForce_surf' )
+# plt.plot( xs, FEs_f_ [:,3],label='E_grid_'    )
+# plt.plot( xs, FEs_f  [:,3],label='E_grid'    )
 #plt.plot( xs, FEs_d  [:,3],label='E_double'   )
 #plt.plot( xs, FEs_cub[:,3],label='E_tricubic' )
+
+#Emin = -0.01
 plt.ylim(Emin*1.2,-2*Emin)
+#plt.ylim(-0.0,1.1)
 plt.grid()
 plt.legend()
+
+'''
 plt.subplot(2,1,2)
 plt.plot( xs, FEs_atm[:,2],label='Fz_atom'    )
+#plt.plot( xs, FEs_s  [:,2],label='Fz_addForce_surf'    )
 plt.plot( xs, FEs_f_ [:,2],label='Fz_float_'    )
 plt.plot( xs, FEs_f  [:,2],label='Fz_float'    )
 #plt.plot( xs, FEs_d  [:,2],label='Fz_double'   )
@@ -68,7 +81,7 @@ plt.plot( xs, FEs_f  [:,2],label='Fz_float'    )
 plt.ylim(Fmin*1.2,-2*Fmin)
 plt.grid()
 plt.legend()
-
+'''
 
 
 

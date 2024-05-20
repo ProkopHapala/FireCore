@@ -199,7 +199,7 @@ void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
 
 //void sampleSurf_vecs(char* name, int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, double* pos0_, int npbc, bool bSave){
 void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){    
-    printf( "MMFF_lib::sampleSurf_vecs() kind=%i n=%i dCell(%g,%g,%g)\n", kind, n, W.gridFF.grid.dCell.xx,W.gridFF.grid.dCell.yy,W.gridFF.grid.dCell.zz );
+    //printf( "MMFF_lib::sampleSurf_vecs() kind=%i n=%i dCell(%g,%g,%g)\n", kind, n, W.gridFF.grid.dCell.xx,W.gridFF.grid.dCell.yy,W.gridFF.grid.dCell.zz );
     Vec3i nPBC{npbc,npbc,0};
     Vec3d* poss =(Vec3d*)poss_;
     //Vec3d* fs =(Vec3d*)fs_;
@@ -234,7 +234,7 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
     Quat4d PLQ_d = REQ2PLQ_d( test_REQ, K );
     // Quat4f PLQ   {0.0,0.0,1.0,0.0};
     // Quat4d PLQ_d {0.0,0.0,1.0,0.0};
-    printf( "MMFF_lib::sampleSurf_vecs() PLQ(%g,%g,%g,%g) test_REQ(%g,%g,%g,%g) K=%g \n", PLQ.x,PLQ.y,PLQ.z,PLQ.w,  test_REQ.x,test_REQ.y,test_REQ.z,test_REQ.w, K  );
+    printf( "MMFF_lib::sampleSurf_vecs() kind=%3i n=%6i dCell(%g,%g,%g) PLQ(%g,%g,%g,%g) test_REQ(%g,%g,%g,%g) K=%g alphaMorse=%g \n", kind, n, W.gridFF.grid.dCell.xx,W.gridFF.grid.dCell.yy,W.gridFF.grid.dCell.zz, PLQ.x,PLQ.y,PLQ.z,PLQ.w,  test_REQ.x,test_REQ.y,test_REQ.z,test_REQ.w, K, W.gridFF.alphaMorse );
     double R2Q=RQ*RQ;
     Quat4d bak_REQ;
     Quat4f bak_PLQ;
@@ -247,6 +247,9 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
         bak_PLQ=W.nbmol.PLQs[0]; W.nbmol.PLQs[0]=PLQ;
         bak_pos=W.nbmol.apos[0];
     }
+    //W.gridFF.alphaMorse = 1.6;
+    //printf( "!!!!!!!! MMFF_lib::sampleSurf_vecs() K=%g alphaMorse=%g \n", K, W.gridFF.alphaMorse  );
+    if( fabs(K-W.gridFF.alphaMorse) > 1e-6 ){ printf("ERROR in sampleSurf_vecs K(%20.10f) does not match gridFF.alphaMorse(%20.10f) => exit()\n", K, W.gridFF.alphaMorse );  exit(0); }
     for(int i=0; i<n; i++){
         //printf( "sampleSurf_vecs()[%i]\n", i  );
         Quat4f fe  =Quat4fZero;
@@ -271,10 +274,14 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
             case  9:         fe_d.e = W.gridFF.evalMorsePBC_sym( pos, test_REQ, fe_d.f );  FEs[i]=fe_d;  break;
             case 10:         W.gridFF.addForce_surf    (pos, {1.,0.,0.}, fe );  FEs[i]=(Quat4d)fe;  break;
             case 11:         W.gridFF.addForce_surf    (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
-            //case 12:         W.gridFF.addForce         (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
-            case 12: fe   = W.gridFF.getForce         (pos, PLQ     );         FEs[i]=(Quat4d)fe;  break;
-
-            case  8: fe   = W.gridFF.getForce         (pos+Vec3d{W.gridFF.grid.dCell.xx*1.0,W.gridFF.grid.dCell.yy*1.0,W.gridFF.grid.dCell.zz*1.0}, PLQ     );         FEs[i]=(Quat4d)fe;  break;
+            //case 12:        W.gridFF.addForce         (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
+            case 12: fe     = W.gridFF.getForce         (pos, PLQ        );         FEs[i]=(Quat4d)fe;  break;
+            case 15: fe     = W.gridFF.getForce         (pos, {1.,0.,0.} );         FEs[i]=(Quat4d)fe;  break;
+            case 16: fe     = W.gridFF.getForce         (pos, {0.,1.,0.} );         FEs[i]=(Quat4d)fe;  break;
+            case 18: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, PLQ_d ); break;
+            case 19: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, {1.,0.,0.,0.} ); break;
+            case 20: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, {0.,1.,0.,0.} ); break;
+            case  8: fe     = W.gridFF.getForce         (pos+Vec3d{W.gridFF.grid.dCell.xx*1.0,W.gridFF.grid.dCell.yy*1.0,W.gridFF.grid.dCell.zz*1.0}, PLQ     );         FEs[i]=(Quat4d)fe;  break;
 
 
             case 13: fe_d = W.gridFF.getForce_d       (pos, PLQ_d   );         FEs[i]=fe_d;        break;

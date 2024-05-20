@@ -259,6 +259,14 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
          + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*PLQ.z
         ;
     }
+
+
+	// return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
+    //       ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
+    //      + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
+    //      + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
+    //      + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101));
+    // }
 }
 __attribute__((hot))  
 inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=true )const{
@@ -498,12 +506,19 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                             qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
                             ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
                             qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+                            
+                            //qp.e += exp( -r2/0.16 ); // Debug
                         }
                     }
                     const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
                     FFPaul[ibuff]=(Quat4f)qp;
                     FFLond[ibuff]=(Quat4f)ql;
                     FFelec[ibuff]=(Quat4f)qe;
+
+                    // Debug
+                    // FFPaul[ibuff]=(Quat4f)qp;
+                    // FFLond[ibuff]=Quat4fZero;
+                    // FFelec[ibuff]=Quat4fZero;                    
                 }
             }
         }
@@ -530,6 +545,9 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 Vec3d fij=Vec3dZero;
                 E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+
+                //E  += exp(-dp.norm2()/0.16 );
+
                 f.sub( fij );
                 //if(shifts[ipbc].norm2()<1e-6){
                 //     if( j==2 ){ // debug draw
@@ -564,6 +582,56 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         for(int ia=0; ia<na; ia++){ evalMorsePBC_sym( ps[ia], REQs[ia], forces[ia] ); };
         return E;
     }
+
+    Quat4d evalMorsePBC_PLQ(  Vec3d pi, Quat4d PLQH, int natoms, Vec3d * apos, Quat4d * REQs ){
+        //printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
+        const double R2damp=Rdamp*Rdamp;    
+        const double K =-alphaMorse;
+        double       E = 0;
+        Quat4d fe = Quat4dZero;
+        //printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
+        if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
+        if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
+        for(int j=0; j<natoms; j++){    // atom-atom
+            Vec3d fij = Vec3dZero;
+            Vec3d dp0 = pi - apos[j] - shift0;
+            //Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
+            Quat4d REQj = REQs[j];
+            //printf( "GridFF::evalMorsePBC() j %i/%i \n", j,natoms );
+            for(int ipbc=0; ipbc<npbc; ipbc++ ){
+                //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
+                const Vec3d  dp = dp0 + shifts[ipbc];
+                Vec3d fij=Vec3dZero;
+                //Vec3d  dp = dp0;
+                double r2     = dp.norm2();
+                double r      = sqrt(r2 + 1e-32);
+                // ---- Coulomb
+                double ir2    = 1/(r2+R2damp);
+                double eQ     = COULOMB_CONST*REQj.z*sqrt(ir2);
+                // ----- Morse
+                double e      = exp( K*(r-REQj.x) );
+                double eM     = e*REQj.y;
+                double de     = 2*K*eM/r;                    
+                // --- store
+                // qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
+                // ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
+                // qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+                fe.e+= PLQH.x* eM*e;   fe.f.add_mul( dp, -de*e   *PLQH.x ); // repulsive part of Morse
+                fe.e+= PLQH.y* eM*-2.; fe.f.add_mul( dp,  de     *PLQH.y ); // attractive part of Morse
+                fe.e+= PLQH.z* eQ;     fe.f.add_mul( dp,  eQ*ir2 *PLQH.z ); // Coulomb
+
+            }
+        }
+        return fe;
+    }
+    Quat4d evalMorsePBC_PLQ_sym( Vec3d  pi, Quat4d  PLQH ){ return evalMorsePBC_PLQ( pi, PLQH, apos_.size(), &apos_[0], &REQs_[0] ); }
+    // Quat4d evalMorsePBCatoms_PLQ_sym( int na, Vec3d* ps, Quat4d* REQs, Vec3d* forces ){
+    //     double E = 0;
+    //     for(int ia=0; ia<na; ia++){ evalMorsePBC_PLQ_sym( ps[ia], REQs[ia], forces[ia] ); };
+    //     return E;
+    // }
+
+
 
     __attribute__((hot))  
     void makeGridFF_omp_d(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
