@@ -778,7 +778,9 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
         gridFF.shift0 = Vec3d{0.,0.,-2.0};
         //gridFF.shift0 = Vec3d{0.,0.,0.0};
-        gridFF.evalCheck();
+        
+        //gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
+
     }
 
     // void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
