@@ -227,6 +227,8 @@ void initMultiCPU(int nSys){
         gopts[isys].print();
         gopts[isys].constrs.printSizes();  // Debug
         gopts[isys].constrs.printDrives( );
+
+        gopts[isys].nExplore = 1000;
     }
 }
 
@@ -515,15 +517,17 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, Quat4f& TDrive 
     MDpar.y = 1 - fire.damping;
     MDpar.z = fire.cv;
     MDpar.w = fire.cf;
-
-    // temperature and drived dynamics
-    TDrive.x = 100; // Temperature [K]
-    TDrive.y = 0.1;    // gamma_damp
-    TDrive.z = 0;    // ?
-    TDrive.w = randf(-1.0,1.0);   // seed
+    // // temperature and drived dynamics
+    // TDrive.x = 100; // Temperature [K]
+    // TDrive.y = -0.1;    // gamma_damp
+    // TDrive.z = 0;    // ?
+    // if(icurIter==0){
+    //     TDrive.w = randf(-1.0,1.0);   // seed
+    // }
 }
 
-double evalVFs(){
+double evalVFs( double Fconv=1e-6 ){
+    double F2conv = Fconv*Fconv;
     //printf("MolWorld_sp3_multi::evalVFs()\n");
     int err=0;
     //ocl.download( ocl.ibuff_aforces , aforces );
@@ -539,6 +543,23 @@ double evalVFs(){
         evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], TDrive[isys] );
         double f2 = fire[isys].ff;
         if(f2>F2max){ F2max=f2; iSysFMax=isys; }
+
+        // -------- Global Optimization
+        if( f2 < 1e-8 ){
+            //printf( "evalVFs() iSys=%i CONVERGED |F|=%g \n", isys, sqrt(f2) );
+            gopts[isys].startExploring();
+        }
+        gopts[isys].update();
+        if( gopts[isys].bExploring ){
+            TDrive[isys].x = 1000;  // Temperature [K]
+            TDrive[isys].y = 0.1;  // gamma_damp
+            TDrive[isys].z = 0;    // ?
+            TDrive[isys].w = randf(-1.0,1.0); 
+        }else{
+            TDrive[isys].y = -1.0; // gamma_damp
+        }
+        //printf( "evalVFs()[iSys=%i]  bExploring=%i (%i/%i)  |F|=%g \n", isys, gopts[isys].bExploring,   gopts[isys].istep, gopts[isys].nExplore,  sqrt(f2) );
+
         //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
         //F2max = fmax( F2max, fire[isys].ff );
     }
@@ -1214,7 +1235,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         }
         ocl.download( ocl.ibuff_atoms,    atoms   );
         ocl.download( ocl.ibuff_aforces,  aforces );
-        F2 = evalVFs();
+        F2 = evalVFs( Fconv );
         /*
         { // ======= DEBUG - Check vs CPU
             int iS=iSystemCur;
@@ -1669,6 +1690,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     }
     */
     
+    icurIter+=nitrdione;
     bChargeUpdated=false;
 }
 
