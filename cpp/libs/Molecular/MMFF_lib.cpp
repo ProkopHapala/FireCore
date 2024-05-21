@@ -272,12 +272,12 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
             
             // evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
             case  9:         fe_d.e = W.gridFF.evalMorsePBC_sym( pos, test_REQ, fe_d.f );  FEs[i]=fe_d;  break;
-            case 10:         W.gridFF.addForce_surf    (pos, {1.,0.,0.}, fe );  FEs[i]=(Quat4d)fe;  break;
-            case 11:         W.gridFF.addForce_surf    (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
+            case 10:         W.gridFF.addForce_surf     (pos, {1.,0.,0.}, fe );   FEs[i]=(Quat4d)fe;  break;
+            case 11:         W.gridFF.addForce_surf     (pos, PLQ, fe );          FEs[i]=(Quat4d)fe;  break;
             //case 12:        W.gridFF.addForce         (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
-            case 12: fe     = W.gridFF.getForce         (pos, PLQ        );         FEs[i]=(Quat4d)fe;  break;
-            case 15: fe     = W.gridFF.getForce         (pos, {1.,0.,0.} );         FEs[i]=(Quat4d)fe;  break;
-            case 16: fe     = W.gridFF.getForce         (pos, {0.,1.,0.} );         FEs[i]=(Quat4d)fe;  break;
+            case 12: fe     = W.gridFF.getForce         (pos, PLQ        );      FEs[i]=(Quat4d)fe;  break;
+            case 15: fe     = W.gridFF.getForce         (pos, {1.,0.,0.} );      FEs[i]=(Quat4d)fe;  break;
+            case 16: fe     = W.gridFF.getForce         (pos, {0.,1.,0.} );      FEs[i]=(Quat4d)fe;  break;
             case 18: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, PLQ_d ); break;
             case 19: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, {1.,0.,0.,0.} ); break;
             case 20: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, {0.,1.,0.,0.} ); break;

@@ -114,8 +114,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* avel       =0;
     Quat4f* cvfs       =0;
 
-    FIRE*   fire         =0;
-    Quat4f* MDpars       =0;
+    FIRE*   fire       =0;  // FIRE-relaxation state
+    Quat4f* MDpars     =0;  // Molecular dynamics params
+    Quat4f* TDrive     =0;  // temperature and drived dynamics
 
     Quat4f* constr     =0;
 
@@ -194,6 +195,7 @@ void realloc( int nSystems_ ){
     _realloc( lvecs,     nSystems  );
     _realloc( ilvecs,    nSystems  );
     _realloc( MDpars,    nSystems  );
+    _realloc( TDrive,    nSystems  );
 
     _realloc( pbcshifts, ocl.npbc*nSystems );
 
@@ -498,7 +500,7 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     MDpar.w = fire.cf;
 }
 
-void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar ){
+void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, Quat4f& TDrive ){
     //printf("evalVF() fire[%i]\n", fire.id );
     Vec3f cvf=Vec3fZero;
     for(int i=0; i<n; i++){ 
@@ -513,6 +515,12 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar ){
     MDpar.y = 1 - fire.damping;
     MDpar.z = fire.cv;
     MDpar.w = fire.cf;
+
+    // temperature and drived dynamics
+    TDrive.x = 100; // Temperature [K]
+    TDrive.y = 0.1;    // gamma_damp
+    TDrive.z = 0;    // ?
+    TDrive.w = randf(-1.0,1.0);   // seed
 }
 
 double evalVFs(){
@@ -528,7 +536,7 @@ double evalVFs(){
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
         //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
-        evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys] );
+        evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], TDrive[isys] );
         double f2 = fire[isys].ff;
         if(f2>F2max){ F2max=f2; iSysFMax=isys; }
         //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
@@ -536,6 +544,7 @@ double evalVFs(){
     }
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
     err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
+    err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
     err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
     //err |= ocl.finishRaw();  
     OCL_checkError(err, "evalVFs().2");
@@ -1185,16 +1194,17 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     for(int i=0; i<nVFs; i++){
         for(int j=0; j<nPerVFs; j++){
             {
-                if(dovdW){
-                    if(bSurfAtoms){
-                        if  (bGridFF){ err |= task_NBFF_Grid ->enque_raw(); }
-                        else         { 
+                if(dovdW)[[likely]]{
+                    if(bSurfAtoms)[[likely]]{
+                        if  (bGridFF)[[likely]]{ err |= task_NBFF_Grid ->enque_raw(); }
+                        else                   { 
                             //printf( "task_NBFF(), task_SurfAtoms() \n" );
                             err |= task_NBFF     ->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
                             err |= task_SurfAtoms->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
                         }
+                    }else{ 
+                        err |= task_NBFF      ->enque_raw(); 
                     }
-                    else       { err |= task_NBFF      ->enque_raw(); }
                 }
                 err |= task_MMFF->enque_raw();
                 err |= task_move->enque_raw(); 
@@ -1205,7 +1215,6 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         ocl.download( ocl.ibuff_atoms,    atoms   );
         ocl.download( ocl.ibuff_aforces,  aforces );
         F2 = evalVFs();
-
         /*
         { // ======= DEBUG - Check vs CPU
             int iS=iSystemCur;
@@ -1225,7 +1234,6 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             unpack( ffl.nvecs, ffl.apos, atoms+i0v );
         }
         */
-
         //F2 = evalF2();
         if( F2<F2conv  ){ 
             double t=(getCPUticks()-T0)*tick2second;
@@ -1234,7 +1242,6 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
             return niterdone; 
         }
-
     }
 
     double t=(getCPUticks()-T0)*tick2second;

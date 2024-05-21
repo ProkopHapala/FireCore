@@ -545,33 +545,10 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 Vec3d fij=Vec3dZero;
                 E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
-
                 //E  += exp(-dp.norm2()/0.16 );
-
                 f.sub( fij );
-                //if(shifts[ipbc].norm2()<1e-6){
-                //     if( j==2 ){ // debug draw
-                //         //f.sub( fij );
-                //         glColor3f(0.8,1.0,0.8); Draw3D::drawLine      ( pi-dp, pi  );
-                //     }
-                //glColor3f(0.0,0.5,0.0); Draw3D::drawLine      ( pi-dp, pi  );
-                // if(j==0){
-                //        glColor3f(0.0,0.0,0.0); Draw3D::drawPointCross( apos[j]+shift0, 0.1 );
-                        //glColor3f(0.0,0.5,0.0); Draw3D::drawLine      ( apos[j] - shifts[ipbc], pi  );
-                //        glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos  ( fij, pi  );
-                //     //Draw3D::drawLine( apos[j] - shifts[ipbc], pi  );
-                //     //E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
-                //     //fi.add( fij );
-                //     printf( "CPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f)   apos[%i](%10.6f,%10.6f,%10.6f) pi(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", j,ipbc,npbc,  j,  dp.x,dp.y,dp.z,   apos[j].x,apos[j].y,apos[j].z,          pi.x,pi.y,pi.z,    shift0.x,shift0.y,shift0.z );
-                //    printf( "CPU[%3i|%3i/%3i] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", j,ipbc,npbc, K, R2damp, dp.norm(), dp.x,dp.y,dp.z, REQij.x, REQij.y, REQij.z, REQij.w, fij.x,fij.y,fij.z );
-                //}
             }
         }
-        // { // draw debug
-        //     glLineWidth(3.0);
-        //     glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( f, pi );
-        //     glLineWidth(1.0);
-        // }
         fi.add( f );
         //printf( "CPU[iG=0,iS=0] fe(%10.6f,%10.6f,%10.6f)\n", fi.x,fi.y,fi.z );
         return E;
@@ -602,7 +579,8 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                 //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 Vec3d fij=Vec3dZero;
-                //Vec3d  dp = dp0;
+
+                // ---- replaced addAtomicForceMorseQ()
                 double r2     = dp.norm2();
                 double r      = sqrt(r2 + 1e-32);
                 // ---- Coulomb
