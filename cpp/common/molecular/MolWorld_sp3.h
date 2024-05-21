@@ -138,6 +138,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     SVG_render svg;
 
+    int  icurIter = 0;
     int  iterPerFrame=50;
     int  iParalel=1; 
     int  iParalelMax=1;
@@ -1506,7 +1507,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
 
         //run( nIter );
-        
+        icurIter+=nitr;
         bChargeUpdated=false;
     }
 

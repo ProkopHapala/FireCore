@@ -768,6 +768,7 @@ __kernel void updateAtomsMMFFf4(
     const int iav = iG + iS*nvec;    // index of atom in vectors array
 
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
+    const float4 TDrive = TDrives[iS];
 
     // if((iS==0)&&(iG==0)){ 
     //     //printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
@@ -823,14 +824,13 @@ __kernel void updateAtomsMMFFf4(
     float4 pe = apos[iav]; // position of atom or pi-orbital
 
     // -------constrains
-    if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
-       float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
-       if( cons.w>0.f ){            // if stiffness is positive, we have constraint
-            fe.xyz += (pe.xyz - cons.xyz)*-cons.w; // add constraint force
-            //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
-       }
-       
-    }
+    // if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
+    //    float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
+    //    if( cons.w>0.f ){            // if stiffness is positive, we have constraint
+    //         fe.xyz += (pe.xyz - cons.xyz)*-cons.w; // add constraint force
+    //         //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
+    //    }
+    // }
     
     /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
@@ -955,25 +955,35 @@ __kernel void getNonBond(
     apos[iav] = pe;
     */
     
-    
+    const bool bDrive = TDrive.y > 0.0f;
+
     // ------ Move (Leap-Frog)
     if(bPi){ // if pi-orbital, we need to make sure that it has unit length
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght, 
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
     }else{
         // Thermal driving  - Langevin thermostat, see C++ MMFFsp3_loc::move_atom_Langevin()
-        const float4 TDrive = TDrives[iS];
-        if( TDrive.y>0 ){ // if gamma>0
+        if( bDrive ){ // if gamma>0
             fe.xyz    += ve.xyz * -TDrive.y ;  // damping,  check the untis  ... cdamp/dt = gamma
             //const float3 rnd = (float3){ hashf_wang(ve.x+TDrive.w,-1.0,1.0),hashf_wang(ve.y+TDrive.w,-1.0,1.0),hashf_wang(ve.z+TDrive.w,-1.0,1.0)};
-            __private float4 ix; 
+            __private float3 ix; 
             // + (float3){TDrive.w,TDrive.w,TDrive.w}
-            const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};
+            //const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};  // changes every frame
+            const float3 rvec = (float3){  // random vector depending on the index
+                (((iG+136  + (int)(1000.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f, 
+                (((iG+778  + (int)(1013.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
+                (((iG+4578 + (int)( 998.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f
+            };
+            //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
+            const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
+            //if(iS==3){  printf( "atom[%i] seed=%g rvec(%g,%g,%g) rnd(%g,%g,%g) \n", iG, TDrive.w, rvec.x,rvec.y,rvec.z, rnd.x,rnd.y,rnd.z ); }
             fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
         }
     }
     cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
-    //ve.xyz *= MDpars.z;             // friction, velocity damping
+    //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
+    ve.xyz *= MDpars.z; // friction, velocity damping
+    
     ve.xyz += fe.xyz*MDpars.x;      // acceleration
     pe.xyz += ve.xyz*MDpars.x;      // move
     //ve     *= 0.99f;              // friction, velocity damping
