@@ -76,7 +76,9 @@ typedef struct __attribute__ ((packed)){
 #define  float2Zero  (float3){0.f,0.f,0.f}
 
 #define R2SAFE          1e-4f
-#define COULOMB_CONST   14.3996448915f  // [eV*Ang/e^2]
+#define COULOMB_CONST   14.3996448915f       // [ eV*Ang/e^2 ]
+#define const_kB        8.617333262145e-5f   // [ eV/K ]
+
 
 
 inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*b.y,  a.y*b.x - a.x*b.y }; }     // divison of unitary complex numbers (i.e. rotation backwards)
@@ -724,6 +726,21 @@ float2 KvaziFIREdamp( float c, float2 clim, float2 damps ){
     return cvf;
 }
 
+unsigned int hash_wang(unsigned int bits) {
+    //unsigned int bits = __float_as_int(value);
+    bits = (bits ^ 61) ^ (bits >> 16);
+    bits *= 9;
+    bits = bits ^ (bits >> 4);
+    bits *= 0x27d4eb2d;
+    bits = bits ^ (bits >> 15);
+    return bits;
+}
+
+float hashf_wang( float val, float xmin, float xmax) {
+    //return ( (float)(bits)*(2147483647.0f );
+    return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin;
+}
+
 // Assemble recoil forces from neighbors and  update atoms positions and velocities 
 __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
@@ -735,7 +752,8 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
     __global int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces)
     __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
-    __global float4*  MDparams      // 9 // MD parameters (dt,damp,Flimit)
+    __global float4*  MDparams,     // 9 // MD parameters (dt,damp,Flimit)
+    __global float4*  TDrives      // 10 // Thermal driving (T,gamma_damp,seed,?)
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -749,9 +767,14 @@ __kernel void updateAtomsMMFFf4(
     const int iaa = iG + iS*natoms;  // index of atom in atoms array
     const int iav = iG + iS*nvec;    // index of atom in vectors array
 
-    const float4 MDpars = MDparams[iS]; // (dt,damp,Flimit)
+    const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
 
-    //if((iS==0)&&(iG==0)){ printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  }
+    // if((iS==0)&&(iG==0)){ 
+    //     //printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
+    //     for(int i=0; i<nS; i++){
+    //         printf( "TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+    //     }
+    // }
 
     const int iS_DBG = 5; // debug system
     //const int iG_DBG = 0;
@@ -937,9 +960,20 @@ __kernel void getNonBond(
     if(bPi){ // if pi-orbital, we need to make sure that it has unit length
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght, 
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
+    }else{
+        // Thermal driving  - Langevin thermostat, see C++ MMFFsp3_loc::move_atom_Langevin()
+        const float4 TDrive = TDrives[iS];
+        if( TDrive.y>0 ){ // if gamma>0
+            fe.xyz    += ve.xyz * -TDrive.y ;  // damping,  check the untis  ... cdamp/dt = gamma
+            //const float3 rnd = (float3){ hashf_wang(ve.x+TDrive.w,-1.0,1.0),hashf_wang(ve.y+TDrive.w,-1.0,1.0),hashf_wang(ve.z+TDrive.w,-1.0,1.0)};
+            __private float4 ix; 
+            // + (float3){TDrive.w,TDrive.w,TDrive.w}
+            const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};
+            fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
+        }
     }
     cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
-    ve.xyz  = ve.xyz*MDpars.z;      // friction, velocity damping
+    //ve.xyz *= MDpars.z;             // friction, velocity damping
     ve.xyz += fe.xyz*MDpars.x;      // acceleration
     pe.xyz += ve.xyz*MDpars.x;      // move
     //ve     *= 0.99f;              // friction, velocity damping

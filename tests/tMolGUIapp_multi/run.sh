@@ -141,7 +141,9 @@ nsys=50
 #./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 500
 
 
-./$name -m 200 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100
+./$name -m 10 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 3
+#./$name -m 200 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 3
+#./$name -m 200 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 2
 
 
 #./$name -m 30  -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2    -iParalel 1   -perframe 100  -gopt 1000,1000 0.25,1.0    -T 10000 0.02  -Ftol 1e-2   -verb 0
