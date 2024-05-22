@@ -173,8 +173,6 @@ void tryRealocTemp_rigid(){
     }
 }
 
-
-
 /**
  * Load a file of types involved in the parameter fitting. The file should contain lines with the following format:
  * atom_name mask_RvdW mask_EvdW mask_Q mask_Hb
@@ -216,9 +214,20 @@ int loadTypeSelection( const char* fname ){
     return ntypesel;
 }
 
-
+/**
+ * Initializes the types of the FitREQ object. This function calculates the number of degrees of freedom (nDOFs) and initializes the typToREQ array, which maps each atom type to its corresponding REQ values.
+ * @param ntype_ The number of types.
+ * @param ntypesel The number of selected types.
+ * @param tsel An array of integers representing the selected types.
+ * @param typeMask An array of Quat4i indicating which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
+ * @param typeREQs An array of Quat4d objects representing the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+ * @param typeREQsMin An array of Quat4d objects representing the minimum values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+ * @param typeREQsMax An array of Quat4d objects representing the maximum values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+ * @param typeREQs0 An array of Quat4d objects representing the equilibrium values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+ * @param typeKreg An array of Quat4d objects representing the regularization stiffness for each type.
+ * @return The number of degrees of freedom.
+ */
 int init_types_new( int ntypesel, int* tsel, Quat4i* typeMask ){
-    
     int ntype_ = params->atypes.size();
     printf( "FitREQ::init_types_new() ntypesel=%i ntypes=%i \n", ntypesel, ntype_ );
     int nDOFs=0;
@@ -429,7 +438,6 @@ bool checkToClose(double Rfac){
 }
 */
 
-
 // ======================================
 // =========  EVAL DERIVS  ==============
 // ======================================
@@ -491,7 +499,7 @@ double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0
             fsj.y = dE_deps * 0.5 / (eps+1e-15) * REQi.y;         // dEtot/depsj
             fsj.z = dE_dQ * aq[i];                                // dEtot/dQj
             fs[j].add(fsj);
-            //printf( "debug i=%i j=%i fsi.x=%g fsi.y=%g fsi.z=%g fsj.x=%g fsj.y=%g fsj.z=%g\n", i, j, fsi.x, fsi.y, fsi.z, fsj.x, fsj.y, fsj.z );
+            //printf( "debug i=%i j=%i fsi.x=%g fsi.y=%g fsi.z=%g fsj.x=%g fsj.y=%g fsj.z=%g\n", nj+i+1, j+1, fsi.x, fsi.y, fsi.z, fsj.x, fsj.y, fsj.z );
             //printf( "debug   j=%i type=%i R0=%g eps=%g Q=%g\n", j, tj, REQj.x, REQj.y, jq[j] );
         }
         fs[nj+i].add(fsi);
