@@ -669,6 +669,75 @@ __kernel void getMMFFf4_bak(
 }
 
 // ======================================================================
+//                     updateGroups()
+// ======================================================================
+
+__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void updateGroups(
+    int               ngroup,      // 1 // number of groups (total, for all systems)
+    __global int2*    granges,     // 2 // (i0,n) range of indexes specifying the group
+    __global int*     g2a,         // 3 // indexes of atoms corresponding to groups defined by granges
+    __global float4*  apos,        // 4 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] ) 
+    __global float4*  gcenters     // 5 // centers of each groups (CoGs)
+){
+    const int iG = get_global_id  (0); // index of atom
+    if(iG>=ngroup) return; // make sure we are not out of bounds of current system
+    const int2 grange = granges[iG];
+    
+    float4 cog = (float4){0.0f,0.0f,0.0f,0.0f};
+    for(int i=0; i<grange.y; i++){
+        int ia = g2a[ grange.x + i ];
+        //const float4 pe = apos[ia];
+        cog.xyz += apos[ia].xyz;
+    }
+    gcenters[iG] = cog;
+}
+
+// ======================================================================
+//                     groupForce()
+// ======================================================================
+
+__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void groupForce(
+    const int4        n,            // 1 // (natoms,nnode) dimensions of the system
+    __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+    __global float4*  aforce,       // 3 // forces on atoms
+    __global int*     a2g,          // 4 // atom to group maping (index)   
+    __global float4*  gforces,      // 5 // linar forces appliaed to atoms of the group
+    __global float4*  gtorqs,       // 6 // {hx,hy,hz,t} torques applied to atoms of the group
+    __global float4*  gcenters      // 7 // centers of rotation (for evaluation of the torque
+){
+    const int natoms=n.x;           // number of atoms
+    const int nnode =n.y;           // number of node atoms
+    const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
+    const int iG = get_global_id  (0); // index of atom
+
+    if(iG>=(natoms)) return; // make sure we are not out of bounds of current system
+
+    const int iS = get_global_id  (1); // index of system
+    const int nG = get_global_size(0); // number of atoms
+    const int nS = get_global_size(1); // number of systems
+
+    //const int ian = iG + iS*nnode; 
+    const int iaa = iG + iS*natoms;  // index of atom in atoms array
+    const int iav = iG + iS*nvec;    // index of atom in vectors array
+    
+    float4 fe    = aforce[iav]; // position of atom or pi-orbital
+    const int ig = a2g[iav];  // index of the group to which this atom belongs 
+
+    // --- apply linear forece from the group
+    fe.xyz += gforces[ig].xyz;  
+
+    // --- apply torque from the group
+    const float3 dp  = apos[iav].xyz - gcenters[ig].xyz; 
+    const float4 tq  = gtorqs[ig];
+    fe.xyz          += cross( dp, tq.xyz ) * tq.x;
+    
+    // --- store results
+    aforce[iav] = fe;
+}
+
+// ======================================================================
 //                     updateAtomsMMFFf4()
 // ======================================================================
 

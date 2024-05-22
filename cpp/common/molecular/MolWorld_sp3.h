@@ -115,6 +115,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 	GridFF       gridFF;
     bool bGridDouble = true;
 
+    std::vector<int> atom2group;
+
     RigidBodyFF  rbff;
     QEq          qeq;
 	DynamicOpt   opt;
@@ -300,7 +302,8 @@ class MolWorld_sp3 : public SolverInterface { public:
         printf( "#### MolWorld_sp3::init() DONE\n\n");
     }
 
-
+    virtual void pre_loop(){
+    }
 
     // ========== Render to SVG
 
