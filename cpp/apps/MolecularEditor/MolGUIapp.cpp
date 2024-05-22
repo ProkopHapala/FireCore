@@ -80,6 +80,7 @@ int main(int argc, char *argv[]){
     process_args( argc, argv, funcs2, false );
     
     if(prelat_nstep>0)W->change_lvec_relax( prelat_nstep, prelat_nItrMax, 1e-3, prelat_dlvec );
+    W->pre_loop();
 	app->loop( 1000000 );
 	return 0;
 }

@@ -145,6 +145,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_move=0;
     OCLtask* task_print=0;
 
+    OCLtask* task_GroupUpdate=0;
+    OCLtask* task_GroupForce=0;
+
     OCLtask* task_MMFFloc =0;
     OCLtask* task_MMFFloc1=0;
     OCLtask* task_MMFFloc2=0;
@@ -260,6 +263,7 @@ virtual void init() override {
     }
     initMultiCPU(nSystems);
     //for(int i=0;i<nSystems; i++){ printMSystem(i); }
+
     upload( true, false );
     //bGridFF=false;
     bOcl   =false;
@@ -282,6 +286,22 @@ virtual void init() override {
 
 
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
+}
+
+virtual void pre_loop() override {
+    printf("MolWorld_sp3_multi::pre_loop()\n" );
+    int ngroup = 0;
+    printf("atom2group.size()==%i\n", atom2group.size() );
+    for(int i=0; i<atom2group.size(); i++){ 
+        //printf("atom2group[%i]==%i\n", i, atom2group[i]);
+        ngroup=_max(ngroup,atom2group[i]); 
+    }
+    ngroup+=1;
+    //exit(0);
+    if(ngroup>0){
+        ocl.initAtomGroups( ngroup );
+        ocl.setGroupMapping( &atom2group[0] );
+    }
 }
 
 // ==================================
@@ -972,6 +992,8 @@ void setup_MMFFf4_ocl(){
     // ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     /// HERE_HERE
 
+    task_GroupUpdate=ocl.setup_updateGroups( );
+    task_GroupForce =ocl.setup_groupForce(   );
 
     //exit(0);
 
