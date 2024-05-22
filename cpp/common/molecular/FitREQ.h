@@ -89,7 +89,8 @@ class FitREQ{ public:
 
     // parameters
     double Kneutral      = 1.0;
-    double max_step      = 0.01345;
+    //double max_step      = 0.1345;
+    double max_step      = 0.05; // maximal variation (in percentage) of any parameters allowed in one step during optimization
     double Rfac_tooClose = 0.0;
     double kMorse        = 1.6;
 
@@ -129,7 +130,7 @@ class FitREQ{ public:
     Quat4d** Ejlines = 0;
 
 
-//void realoc( int nR=0, int nE=0, int nQ=0 ){
+
 /**
  * @brief Reallocates the DOFs (degrees of freedom) array to the given size. affects the size of the fDOFs and vDOFs arrays as well.
  * 
@@ -174,7 +175,90 @@ void tryRealocTemp_rigid(){
 
 
 
+/**
+ * Load a file of types involved in the parameter fitting. The file should contain lines with the following format:
+ * atom_name mask_RvdW mask_EvdW mask_Q mask_Hb
+ * where mask_RvdW, mask_EvdW, mask_Q, and mask_Hb are integers representing the indices of the fitting parameters for the RvdW, EvdW, Q, and Hb parameters, respectively.
+ * @param fname The name of the file to load.
+ * @return The number of types loaded.
+*/
+int loadTypeSelection( const char* fname ){
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    char at_name[8];
+    int ntypesel = 0;
+    while( fgets(line, nline, fin) ){
+        if(line[0]=='#')continue;
+        Quat4i tm;
+        int nw = sscanf( line, "%s %i %i %i %i\n", at_name, &tm.x,&tm.y,&tm.z,&tm.w ); 
+        if(nw==5){ ntypesel++; }
+    }
+    fseek( fin, 0, SEEK_SET );
+    std::vector<int> t;
+    std::vector<Quat4i> typeMask;
+    //std::vector<Quat4d> tREQs;
+    while( fgets(line, nline, fin) ){
+        if(line[0]=='#')continue;
+        Quat4i tm;
+        int nw = sscanf( line, "%s %i %i %i %i\n", at_name, &tm.x,&tm.y,&tm.z,&tm.w ); 
+        if(nw!=5)continue;
+        typeMask.push_back( tm );
+        int ityp = params->getAtomType(at_name);
+        t.push_back( ityp );
+        AtomType& t  = params->atypes[ityp];  
+        //tREQs.push_back( Quat4d{ t.RvdW, t.EvdW, t.Qbase, t.Hb } );
+    }
+    fclose(fin);
+    //init_types( ntypesel, &typeMask[0], &tREQs[0], true );
+    init_types_new( ntypesel, &t[0], &typeMask[0] );
+    return ntypesel;
+}
 
+
+int init_types_new( int ntypesel, int* tsel, Quat4i* typeMask ){
+    
+    int ntype_ = params->atypes.size();
+    printf( "FitREQ::init_types_new() ntypesel=%i ntypes=%i \n", ntypesel, ntype_ );
+    int nDOFs=0;
+    typToREQ = new Quat4i[ntype_];
+    for(int i=0; i<ntype_; i++){
+        bool bFound=false;
+        for(int j=0; j<ntypesel; j++){
+            if(tsel[j]==i){
+                const Quat4i& tm=typeMask[j];
+                Quat4i&       tt=typToREQ[i];
+                for(int k=0; k<4; k++){
+                    if(tm.array[k]){
+                        tt.array[k]=nDOFs;
+                        nDOFs++;
+                    }else{
+                        tt.array[k]=-1;
+                    }
+                }
+                printf(  "init_types_new() [%i] typeMask(%i,%i,%i,%i) typToREQ(%i,%i,%i,%i) nDOF %i\n", i, tm.x,tm.y,tm.z,tm.w, tt.x,tt.y,tt.z,tt.w, nDOFs );
+                bFound=true;
+                break;
+            }
+        }
+        if(!bFound){
+            Quat4i&       tt=typToREQ[i];
+            for(int j=0; j<4; j++){
+                tt.array[j]=-1;
+            }
+        }
+    }
+    realloc(nDOFs);
+    ntype = ntype_; 
+    typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = Quat4d{ params->atypes[i].RvdW, params->atypes[i].EvdW, params->atypes[i].Qbase, params->atypes[i].Hb }; }
+    typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4d{ 0.0,    0.0,   -1e+300, 0.0    }; }
+    typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4d{ 1e+300, 1e+300, 1e+300, 1e+300 }; }
+    typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = typeREQs[i]; }
+    typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero; }
+    DOFsFromTypes(); 
+    return nDOFs;
+}
 
 /**
  * Initializes the types of the FitREQ object.
@@ -200,7 +284,7 @@ int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false 
                 tt.array[j]=-1;
             }
         }
-        printf(  "init_types() [%i] typeMask(%i,%i,%i) typToREQ(%i,%i,%i)  nDOF %i  tREQs(%g,%g,%g,%g) \n", i, tm.x,tm.y,tm.z, tt.x,tt.y,tt.z, nDOFs, tREQs[i].x,tREQs[i].y,tREQs[i].z,tREQs[i].w );
+        printf(  "init_types() [%i] typeMask(%i,%i,%i,%i) typToREQ(%i,%i,%i,%i)  nDOF %i  tREQs(%g,%g,%g,%g) \n", i, tm.x,tm.y,tm.z,tm.w, tt.x,tt.y,tt.z,tt.w, nDOFs, tREQs[i].x,tREQs[i].y,tREQs[i].z,tREQs[i].w );
     }
     realloc(nDOFs);
     //poses = new Mat3d[nbatch];
@@ -224,7 +308,6 @@ int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false 
     //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
     return nDOFs;
 }
-
 
 /**
  * Initializes the types and parameters for fitting the REQ (Quadrupole) values.
@@ -266,8 +349,6 @@ int init_types_par(){
     //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
     return nDOFs;
 }
-
-
 
 /**
  * Sets one instace of atomic system
@@ -354,11 +435,83 @@ bool checkToClose(double Rfac){
 // ======================================
 
 /**
+ * Calculates the total energy and forces of a system of atoms interacting through the Lennard-Jones potential and electrostatic interactions.
+ * 
+ * @param n The number of atoms in system(=second molecule).
+ * @param types An array of integers representing the type of each atom in system(=second molecule).
+ * @param ps An array of Vec3d representing the position of each atom in system(=second molecule).
+ * @param aq An array of doubles representing the charge of each atom in system(=second molecule).
+ * @param nj The number of atoms in the system0(=first molecule).
+ * @param jtyp An array of integers representing the type of each atom in system0(=first molecule).
+ * @param jpos An array of Vec3d representing the position of each atom in system0(=first molecule).
+ * @param jq An array of doubles representing the charge of each atom in system0(=first molecule).
+ * 
+ * @return The total energy of the system.
+ */
+double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0 ){
+    /*if( jpos==0 ){   
+        nj   =system0->natoms;
+        jtyp =system0->atypes;
+        jpos =system0->apos;
+    }*/
+    double Etot=0;
+    //printf( "evalExampleDerivs_LJQ (n=%i,nj=%i)\n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti           = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        //printf( "debug i=%i type=%i R0=%g eps=%g Q=%g\n", i, ti, REQi.x, REQi.y, aq[i] );
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj             = jtyp[j];
+            const Quat4d& REQj = typeREQs[tj];
+            Vec3d d            = jpos[j] - pi;
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x; 
+            double eps = sqrt( REQi.y * REQj.y );
+            //printf( "  debug i=%i j=%i R0=%g eps=%g REQi.y=%g REQj.y=%g\n", i, j, R0, eps, REQi.y, REQj.y); 
+            double Q   = aq[i] * jq[j]; 
+            // --- Electrostatic
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
+            double dE_dQ   = ir * COULOMB_CONST;
+            double Eel     = Q * dE_dQ;
+            // --- Lennard-Jones
+            double u2   = ir2 * ( R0 * R0 );
+            double u4   = u2 * u2;
+            double u6   = u4 * u2;
+            double dE_deps = u6 * ( u6 - 2.0 );
+            double ELJ   = eps * dE_deps;
+            // --- Energy and forces
+            Etot  += ELJ + Eel;
+            fsi.x += 12.0 * eps / (R0+1e-15) * u6 * ( u6 - 1.0 ); // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-15) * REQj.y;        // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                               // dEtot/dQi
+            fsj.x = 12.0 * eps / (R0+1e-15) * u6 * ( u6 - 1.0 );  // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-15) * REQi.y;         // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                                // dEtot/dQj
+            fs[j].add(fsj);
+            //printf( "debug i=%i j=%i fsi.x=%g fsi.y=%g fsi.z=%g fsj.x=%g fsj.y=%g fsj.z=%g\n", i, j, fsi.x, fsi.y, fsi.z, fsj.x, fsj.y, fsj.z );
+            //printf( "debug   j=%i type=%i R0=%g eps=%g Q=%g\n", j, tj, REQj.x, REQj.y, jq[j] );
+        }
+        fs[nj+i].add(fsi);
+    }
+    //printf( "debug Etot %g\n", Etot );
+    //exit(0);
+    return Etot;
+}
+
+/**
  * Calculates the total energy and forces of a system of atoms interacting through the Lennard-Jones potential, electrostatic interactions and hydrogen bond correction H1.
  * 
- * @param n The number of atoms in the system.
- * @param types An array of integers representing the type of each atom.
- * @param ps An array of Vec3d representing the position of each atom
+ * @param n The number of atoms in system(=second molecule).
+ * @param types An array of integers representing the type of each atom in system(=second molecule).
+ * @param ps An array of Vec3d representing the position of each atom in system(=second molecule).
+ * @param aq An array of doubles representing the charge of each atom in system(=second molecule).
+ * @param nj The number of atoms in the system0(=first molecule).
+ * @param jtyp An array of integers representing the type of each atom in system0(=first molecule).
+ * @param jpos An array of Vec3d representing the position of each atom in system0(=first molecule).
+ * @param jq An array of doubles representing the charge of each atom in system0(=first molecule).
  * 
  * @return The total energy of the system.
  */
@@ -369,12 +522,34 @@ double evalExampleDerivs_LJQH( int n, int* types, Vec3d* ps, double* aq, int nj=
         jpos =system0->apos;
     }
     double Etot=0;
-    printf( "evalExampleDerivs_LJQH (n=%i,nj=%i)\n", n,nj );
+
+    //printf( "debug0\n" );
+    /*const Atoms* C = samples[0];
+    printf( "debug1 %i\n", C->natoms );
+    for(int i=0; i<C->natoms; i++){
+        printf( "debug atom=%i\n", i);
+        int   ti           = C->atypes[i];
+        printf( "debug atom=%i type=%i\n", i, ti);
+        const Quat4d& REQi = typeREQs[ti];
+        printf( "debug atom=%i type=%i REQ=(%g %g %g %g)\n", i, ti, REQi.x, REQi.y, REQi.z, REQi.w);
+    }//exit(0);*/
+    /*uat4d& REQi = typeREQs[0];
+    printf( "debug type=%i REQ=(%g %g %g %g)\n", 0, REQi.x, REQi.y, REQi.z, REQi.w);
+    REQi = typeREQs[1];
+    printf( "debug type=%i REQ=(%g %g %g %g)\n", 1, REQi.x, REQi.y, REQi.z, REQi.w);
+    REQi = typeREQs[2];
+    printf( "debug type=%i REQ=(%g %g %g %g)\n", 2, REQi.x, REQi.y, REQi.z, REQi.w);
+    REQi = typeREQs[3];
+    printf( "debug type=%i REQ=(%g %g %g %g)\n", 3, REQi.x, REQi.y, REQi.z, REQi.w);
+    exit(0);*/
+
+    //printf( "evalExampleDerivs_LJQH (n=%i,nj=%i)\n", n,nj );
     for(int i=0; i<n; i++){ // loop over all atoms[i] in system
         int   ti           = types[i];
         const Vec3d&  pi   = ps[i]; 
         const Quat4d& REQi = typeREQs[ti];
         Quat4d fsi         = Quat4dZero;
+        //printf( "debug i=%i type=%i R0=%g eps=%g Q=%g H=%g\n", i, ti, REQi.x, REQi.y, aq[i], REQi.w);
         for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
             int tj              = jtyp[j];
             const Quat4d& REQj  = typeREQs[tj]; //const Quat4d& REQj = REQ0[j]; // optimization
@@ -399,12 +574,16 @@ double evalExampleDerivs_LJQH( int n, int* types, Vec3d* ps, double* aq, int nj=
             // --- Energy and forces
             Etot  += ELJ + Eel;
             fsi.x -= dE_dR0;                 // -dEtot/dR0i  //fsi.x += dE_dR;        // old line
-            fsi.y -= dE_deps*0.5/eps*REQj.y; // -dEtot/depsi //fsi.y += dE_dE*REQj.y; // old line
+            fsi.y -= dE_deps*0.5/(eps+1e-300)*REQj.y; // -dEtot/depsi //fsi.y += dE_dE*REQj.y; // old line
             fsi.z -= dE_dQ*jq[j];            // -dEtot/dQi   //fsi.z += dE_dQ*REQj.z; // old line
-            fsi.w -= dE_dH*H/REQi.w;         // -dEtot/dHi   //fsi.w += dE_dH*REQj.w; // old line
+            fsi.w -= dE_dH*H/(REQi.w+1e-300);         // -dEtot/dHi   //fsi.w += dE_dH*REQj.w; // old line
+            //printf( "debug   j=%i type=%i R0=%g eps=%g Q=%g H=%g\n", j, tj, REQj.x, REQj.y, jq[j], REQj.w);
         }
         fs[i].add(fsi);
     }
+    //printf( "debug Etot %g\n", Etot );
+    //for(int i=0; i<n; i++){ int ti=types[i]; Quat4d fsi=fs[i]; printf( "debug i=%i type=%i dE_dR0=%g dE_deps=%g dE_dQ=%g dE_dH=%g\n", i, ti, fsi.x,fsi.y,fsi.z,fsi.w); }
+    //exit(0);
     return Etot;
 }
 
@@ -807,7 +986,6 @@ inline void DOFsToType(int ityp){
 void DOFsToTypes(){ for(int i=0; i<ntype; i++ ){ DOFsToType(i); } }
 void getType(int i, Quat4d& REQ ){ typeREQs[i]=REQ; DOFsToType(i); }
 
-
 /**
  * @brief writes non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not writen.  
  * 
@@ -836,12 +1014,13 @@ void acumDerivs( int n, int* types, double dE){
         int t            = types[i];
         const Quat4i& tt = typToREQ[t];
         const Quat4d  f  = fs[i];
-        //printf( "acumDerivs[%i] t %i tt(%i,%i,%i) f(%g,%g,%g)\n", i, t, tt.x,tt.y,tt.z,  f.x,f.y,f.z );
         if(tt.x>=0)fDOFs[tt.x]+=f.x*dE;
         if(tt.y>=0)fDOFs[tt.y]+=f.y*dE;
         if(tt.z>=0)fDOFs[tt.z]+=f.z*dE;
         if(tt.w>=0)fDOFs[tt.w]+=f.w*dE;
+        //printf( "acumDerivs[%i] t %i tt(%i,%i,%i,%i) f(%g,%g,%g,%g)\n", i, t, tt.x,tt.y,tt.z,tt.w, f.x,f.y,f.z,f.w );
     }
+    //exit(0);
 }
 
 /**
@@ -891,11 +1070,13 @@ void limit_params(){
  * 
  * @param R The target sum of weights after renormalization.
  */
-void renormWeights(double R){ 
+void renormWeights(double R=1.0){ 
     double s=0; 
     for(int i=0; i<nbatch; i++){ s+=weights[i]; }
+    //printf( "renormWeights() s=%g R=%g R/s=%g \n", s,R, R/s );
     s=R/s; 
     for(int i=0; i<nbatch; i++){ weights[i]*=s; }
+    //for(int i=0; i<nbatch; i++){ printf("W.weights[%i]=%g\n",i,weights[i]); }       
 }
 
 void clean_fs(int n){
@@ -911,7 +1092,7 @@ void clean_fs(int n){
 double evalDerivsSamp( double* Eout=0 ){ 
     //printf( "FitREQ::evalDerivsSamp() nbatch %i imodel %i verbosity %i \n", samples.size(), imodel, verbosity );
     tryRealocSamp();
-    double Error = 0;
+    double Error = 0.0;
     for(int i=0; i<samples.size(); i++){
         const Atoms* atoms = samples[i];
         int    nj       = atoms->n0;
@@ -924,26 +1105,34 @@ double evalDerivsSamp( double* Eout=0 ){
         double* aq      = atoms->charge + atoms->n0;
         //printf( "evalDerivsSamp[%i] na %i n0 %i imodel %i \n", i, na, atoms->n0, imodel );
         double Eref=atoms->Energy;
-        double wi = 1; 
+        double wi = 1.0; 
         if(weights) wi = weights[i];
         // ToDo: we need to initialize fs acording to DOFs before calling clean_fs()
-        clean_fs(na);
-        double E=0;
+        //clean_fs(na);
+        clean_fs(atoms->natoms);
+        double E;
         switch (imodel){
+            case 0: E = evalExampleDerivs_LJQ          (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
             case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
             case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
             case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, nj, jtyp, jpos ); break;
             case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos, nj, jtyp, jpos ); break;
         }
+        //for(int i=0; i<atoms->natoms; i++){ int ti=jtyp[i]; Quat4d fsi=fs[i]; printf( "debug i=%i type=%i dE_dR0=%g dE_deps=%g dE_dQ=%g dE_dH=%g\n", i, ti, fsi.x,fsi.y,fsi.z,fsi.w); }
+        //exit(0);
         if( E>1e+300 ){
             if(verbosity>0) printf( "skipped sample [%i] atoms too close \n", i );
             continue;
         } 
         if(Eout){ Eout[i]=E; };
-        double dE = (E - Eref)*wi;
-        Error += dE;
-        acumDerivs(na, atypes, dE );
+        double dE = (E - Eref);
+        Error += dE*dE*wi;
+        //acumDerivs( na, atypes, dE );
+        acumDerivs( atoms->natoms, jtyp, 2.0*dE*wi );
+        //printf("i= %i dE= %g dE^2= %g wi*dE^2= %g Error= %g\n", i+1, dE, dE*dE, wi*dE*dE, Error);
     }
+    //printf("Error=%g\n", Error);
+    //exit(0);
     return Error;
 }
 
@@ -1174,7 +1363,8 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
         //fout = fopen("out.xyz","w");
     }
     int il   = 0;
-    int nbatch=0;
+    //int nbatch=0;
+    nbatch=0; // use the global
     Atoms* atoms=0;
     while( fgets(line, nline, fin) ){
         //printf( "LINE:%s", line );
@@ -1224,6 +1414,7 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     }
     if(fout)fclose(fout);
     fclose(fin);
+    //init_types_new();
     return nbatch;
 }
 
@@ -1242,10 +1433,14 @@ void clean_derivs(){
  */
 double limit_dt(double dt){
     double fm=0;
-    for(int i=0; i<nDOFs; i++){fm=_max(fm,fabs(fDOFs[i]));}
+    int ifm;
+    //for(int i=0; i<nDOFs; i++){fm=_max(fm,fabs(fDOFs[i]));}
+    for(int i=0; i<nDOFs; i++){double f=fabs(fDOFs[i]/DOFs[i]); if(f>fm){fm=f; ifm=i;}}
     if(dt*fm>max_step){
+        //dt = max_step/fm;
         dt = max_step/fm;
-        printf( "limit_dt %g \n", dt );
+        //printf( "limit_dt %g max variation[%i] %g old %g -> new %g \n", dt, ifm+1, -fDOFs[ifm]/DOFs[ifm]*dt, DOFs[ifm], DOFs[ifm]-fDOFs[ifm]*dt );
+        printf( "limit_dt %g\n", dt );
     }
     return dt;
 }
@@ -1256,16 +1451,16 @@ double limit_dt(double dt){
  * @return Sum of squares of the variatinal derivatives of the fitting error with respect to all fitting parameters.
  */
 double move_GD( double dt ){
+    //printf("now in move_GD\n");
     double F2 = 0;
     if(max_step>0){ dt=limit_dt(dt);};
     for(int i=0; i<nDOFs; i++){
         double f = fDOFs[i];
-        DOFs[i] += f*dt;
+        DOFs[i] -= f*dt;
         F2 += f*f;
     }
     return F2;
 }
-
 
 /**
  * Moves fitting parameters using the damped molecular dynamics (leap-frog algorithm) in order to minimize the fitting error.

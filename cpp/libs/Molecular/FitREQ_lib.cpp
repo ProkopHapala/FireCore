@@ -25,6 +25,10 @@ void init_types(int ntyp, int* typeMask, double* typREQs, bool bCopy ){
     W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
 }
 
+int loadTypeSelection( const char* fname ){
+    return W.loadTypeSelection( fname );
+}
+
 void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
     W.setSystem( isys, na, types, (Vec3d*)ps, bCopy );
 }
@@ -46,32 +50,54 @@ void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
     W.init_types_par();
 }
 
+void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
+    params.loadElementTypes( fname_ElemTypes );
+    params.loadAtomTypes( fname_AtomTypes ); 
+    W.params=&params;
+}
+
 int loadXYZ_new( const char* fname, bool bAddEpairs, bool bOutXYZ ){
     return W.loadXYZ_new( fname, bAddEpairs, bOutXYZ );
 }
 
-double run( int imodel,  int nstep, double Fmax, double dt, bool bRigid , int ialg, bool bRegularize, bool bClamp){
+
+void setWeights( int n, double* weights ){
+   _realloc( W.weights, n );
+   for(int i=0; i<n; i++){ W.weights[i]=weights[i]; }
+   //for(int i=0; i<n; i++){ printf("init.weights[%i]=%g\n",i,W.weights[i]); }
+   //W.renormWeights(n);   // Prokop: it was not working because W.nbatch was =0 (modified loadXYZ_new to set nbatch=samples.size() ) 
+   //for(int i=0; i<n; i++){ printf("lib.weights[%i]=%g\n",i,W.weights[i]); }       
+}
+
+double run( int imodel,  int nstep, double Fmax, double dt, int ialg, int isampmode, bool bRegularize, bool bClamp ){
     W.imodel=imodel;
     double Err=0;
-    printf( "run( nstep %i Fmax %g dt %g bRigid %i )\n", nstep, Fmax, dt, bRigid  );
+    printf( "run( nstep %i Fmax %g dt %g isamp %i )\n", nstep, Fmax, dt, isampmode  );
     double F2max=Fmax*Fmax;
     for(int i=0; i<nstep; i++){
+        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
         W.DOFsToTypes(); 
         W.clean_derivs();
-        if(bRigid){ Err= W.evalDerivsRigid(); }
-        else      { Err= W.evalDerivs     (); }
-        if(bRegularize){ W.regularization_force(); }
-        if(bClamp     ){ W.limit_params();         }
-        //printf(" DOFs=");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-        //printf("fDOFs=");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W.fDOFs[j]); };printf("\n");
-        double F2=1;
+        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
+        switch(isampmode){
+            case 0: Err = W.evalDerivsRigid(); break;
+            case 1: Err = W.evalDerivs     (); break;
+            case 2: Err = W.evalDerivsSamp (); break;
+        }   
+        printf("step= %i DOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
+        double F2;
         switch(ialg){
             case 0: F2 = W.move_GD( dt ); break;
             case 1: F2 = W.move_MD( dt ); break;
         }
-        printf("[%i] RMS=%g |F|=%g\n", i, sqrt(Err), sqrt(F2) );
-        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); break; }
+        // regularization must be done before evaluation of derivatives
+        if(bRegularize){ W.regularization_force(); }
+        if(bClamp     ){ W.limit_params();         }
+        printf("step= %i RMSE= %g |F|= %g\n", i, sqrt(Err), sqrt(F2) );
+        //printf("[%i]\n", i );
+        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n"); break; }
     }
+    printf("step= %i DOFs= ", nstep);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
     return Err;
 }
 

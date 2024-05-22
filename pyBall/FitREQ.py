@@ -87,11 +87,18 @@ def setRigidSamples(Es, poses, bCopy=False, bAlloc=False):
     if poses is not None: n = len(poses)
     return lib.setRigidSamples(n, _np_as(Es,c_double_p), _np_as(poses,c_double_p), bCopy, bAlloc)
 
+#void setWeights( int n, double* weights ){
+lib.setWeights.argtypes  = [c_int, c_double_p]
+lib.setWeights.restype   =  None
+def setWeights(weights):
+    n = len(weights)
+    return lib.setWeights(n, _np_as(weights,c_double_p))
+
 #  double run( int nstep, double ErrMax, double dt, bool bRigid ){
-lib.run.argtypes  = [c_int, c_int, c_double, c_double, c_bool, c_int, c_bool ] 
+lib.run.argtypes  = [c_int, c_int, c_double, c_double, c_int, c_int, c_bool, c_bool, c_double ] 
 lib.run.restype   =  c_double
-def run( nstep, ErrMax=1e-6, dt=0.1, bRigid=False, imodel=1, ialg=1, bRegularize=False, bClamp=False ):
-    return lib.run(imodel, nstep, ErrMax, dt, bRigid, ialg, bRegularize )
+def run( nstep, ErrMax=1e-6, dt=0.1, imodel=1, isampmode=2, ialg=1, bRegularize=False, bClamp=False, wfact=0.0 ):
+    return lib.run(imodel, nstep, ErrMax, dt, ialg, isampmode, bRegularize, bClamp, wfact )
 
 #void getEs( double* Es, bool bRigid ){
 lib.getEs.argtypes  = [ c_int, c_double_p,  c_int] 
@@ -100,6 +107,7 @@ def getEs( imodel=1, Es=None, isampmode=0 ):
     if Es is None: Es = np.zeros( nbatch )
     Eerr = lib.getEs( imodel, _np_as(Es,c_double_p), isampmode )
     return Es
+
 
 #  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
 lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p ] 
@@ -120,6 +128,18 @@ lib.loadTypes.argtypes  = [c_char_p, c_char_p ]
 lib.loadTypes.restype   =  None
 def loadTypes( fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat" ):
     return lib.loadTypes( cstr(fEtypes), cstr(fAtypes) )
+
+# void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
+lib.loadTypes_new.argtypes  = [c_char_p, c_char_p ]
+lib.loadTypes_new.restype   =  None
+def loadTypes_new( fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat" ):
+    return lib.loadTypes_new( cstr(fEtypes), cstr(fAtypes) )
+
+# int loadTypeSelection( const char* fname ){
+lib.loadTypeSelection.argtypes  = [c_char_p ]
+lib.loadTypeSelection.restype   =  c_int
+def loadTypeSelection( fname="typeSelection.dat" ):
+    return lib.loadTypeSelection( cstr(fname) )
 
 # int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
 lib.loadXYZ_new.argtypes  = [c_char_p, c_bool, c_bool ]
@@ -194,7 +214,7 @@ def getBuffs():
     typeREQsMax= getBuff ( "typeREQsMax", (ntype,4)  )
     typeKreg   = getBuff ( "typeKreg",    (ntype,4)  )
     
-    #weights = getBuff ( "weights",  nbatch )
+    weights = getBuff ( "weights",  nbatch )
     Es       = getBuff ( "Es",       nbatch ) 
     poses    = getBuff ( "poses",  (nbatch,3,3) )
     ps1      = getBuff ( "ps1",    (n0,3)    )
