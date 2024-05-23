@@ -175,6 +175,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
+virtual MolWorldVersion getMolWorldVersion() const override { return MolWorldVersion::GPU; };
 
 // ==================================
 //         Initialization
@@ -296,6 +297,11 @@ virtual void init() override {
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
 
+
+virtual int getGroupPos( Quat4f*& gpos ) override { 
+    gpos = gcenters + iSystemCur*ocl.nvecs; 
+    return ocl.nGroup; 
+};
 
 void init_groups(){
     printf("MolWorld_sp3_multi::init_groups()\n" );
