@@ -682,6 +682,23 @@ __kernel void updateGroups(
 ){
     const int iG = get_global_id  (0); // index of atom
     if(iG>=ngroup) return; // make sure we are not out of bounds of current system
+
+    // if(iG==0){
+    //     printf( "GPU ngroup=%i \n", ngroup );
+    //     for(int i=0; i<ngroup; i++){ 
+    //         const int2 grange = granges[i];
+    //         printf("GPU granges[%i] i0=%i n=%i ", i, grange.x, grange.y  ); 
+    //         for(int j=0; j<grange.y; j++){
+    //             int ia = g2a[ grange.x + j ];
+    //             //printf( "[%i] %i \n", j, ia );
+    //             printf( " %i", ia );
+    //         }
+    //         printf("\n");
+    //     }
+
+    // }
+
+    
     const int2 grange = granges[iG];
     
     float4 cog = (float4){0.0f,0.0f,0.0f,0.0f};
@@ -690,7 +707,9 @@ __kernel void updateGroups(
         //const float4 pe = apos[ia];
         cog.xyz += apos[ia].xyz;
     }
+    cog.xyz *= (1.f/grange.y);
     gcenters[iG] = cog;
+    
 }
 
 // ======================================================================

@@ -227,8 +227,27 @@ class OCL_MM: public OCLsystem { public:
         return ibuff_atoms;
     }
 
+    int initAtomGroups( int nGroup_ ){
+        printf( "OCL_MM::initAtomGroups() nAtoms=%i nGroup=%i nSystems=%i \n", nAtoms, nGroup_, nSystems );
+        nGroup=nGroup_;
+        nGroupTot = nGroup*nSystems;
+        ibuff_granges  = newBuffer( "granges"  , nSystems*nGroup, sizeof(int2  ), 0, CL_MEM_READ_ONLY  );    
+        ibuff_a2g      = newBuffer( "a2g"      , nSystems*nAtoms, sizeof(int   ), 0, CL_MEM_READ_ONLY  );    
+        ibuff_g2a      = newBuffer( "g2a"      , nSystems*nAtoms, sizeof(int   ), 0, CL_MEM_READ_ONLY  );         
+        ibuff_gforces  = newBuffer( "gforces"  , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );      
+        ibuff_gtorqs   = newBuffer( "gtorqs"   , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );       
+        ibuff_gcenters = newBuffer( "gcenters" , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );      
+        // __global int2*    granges,  // (i0,i1) range of indexes specifying the group
+        // __global int*     g2a,      // (i0,i1) atom to group mapping
+        // __global int*     a2g,      // atom to group maping (index)   
+        // __global float4*  gforces,  // linar forces appliaed to atoms of the group
+        // __global float4*  gtorqs,   // {hx,hy,hz,t} torques applied to atoms of the group
+        // __global float4*  gcenters  // centers of rotation (for evaluation of the torque
+        return ibuff_atoms;
+    }
+
     void setGroupMapping( int* a2g_){
-        printf( "OCL_MM::setGroupMapping() nAtoms=%i nGroup=%i nSystems=%i nvecs=%i\n", nAtoms, nGroup, nSystems, nvecs );
+        printf( "OCL_MM::setGroupMapping() nAtoms=%i nGroup=%i nGroupTot=%i nSystems=%i nvecs=%i\n", nAtoms, nGroup, nGroupTot, nSystems, nvecs );
         int nAtomTot  = nvecs*nSystems;
         int*  a2g     = new int [nAtomTot];
         int*  g2a     = new int [nAtomTot];
@@ -279,42 +298,24 @@ class OCL_MM: public OCLsystem { public:
             g.y++;
         }
         //for(int i=0; i<nGroupTot; i++){ granges[i].y=granges[i].y+granges[i].x; }
-        // // --- print Group->Atom mapping
-        // for(int ig=0; ig<nGroupTot; ig++){ 
-        //     int2 ni=granges[ig];
-        //     int isys = ig/nGroup;
-        //     for(int i=0; i<ni.y; i++){
-        //         int ia = g2a[i + ni.x];
-        //         printf( "group[%i][%i] iaG=%i iaL=%i \n", ig, i, ia, ia - isys*nvecs  );
-        //     }
-        // }
+        // --- print Group->Atom mapping
+        for(int ig=0; ig<nGroupTot; ig++){ 
+            int2 ni  = granges[ig];
+            int isys = ig/nGroup;
+            printf( "--- group[%i] grange i0=%i n=%i \n", ig, ni.x, ni.y );
+            for(int i=0; i<ni.y; i++){
+                int ia = g2a[i + ni.x];
+                printf( "group[%i][%i] iaG=%i iaL=%i \n", ig, i, ia, ia - isys*nvecs  );
+            }
+        }
         //for(int i=0; i<nAtoms; i++){    printf( "atom[%i] -> group # %i \n", i, a2g_[i] );}
         upload( ibuff_granges, granges );
         upload( ibuff_a2g,     a2g     );
         upload( ibuff_g2a,     g2a     );
-        DEBUG
         delete [] a2g;
         delete [] granges;
         delete [] g2a;
-    }
-
-    int initAtomGroups( int nGroup_ ){
-        printf( "OCL_MM::initAtomGroups() nAtoms=%i nGroup=%i nSystems=%i \n", nAtoms, nGroup_, nSystems );
-        nGroup=nGroup_;
-        nGroupTot = nGroup*nSystems;
-        ibuff_granges  = newBuffer( "granges"  , nSystems*nGroup, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );    
-        ibuff_a2g      = newBuffer( "a2g"      , nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );    
-        ibuff_g2a      = newBuffer( "g2a"      , nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );         
-        ibuff_gforces  = newBuffer( "gforces"  , nSystems*nGroup, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );      
-        ibuff_gtorqs   = newBuffer( "gtorqs"   , nSystems*nGroup, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );       
-        ibuff_gcenters = newBuffer( "gcenters" , nSystems*nGroup, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );      
-        // __global int2*    granges,  // (i0,i1) range of indexes specifying the group
-        // __global int*     g2a,      // (i0,i1) atom to group mapping
-        // __global int*     a2g,      // atom to group maping (index)   
-        // __global float4*  gforces,  // linar forces appliaed to atoms of the group
-        // __global float4*  gtorqs,   // {hx,hy,hz,t} torques applied to atoms of the group
-        // __global float4*  gcenters  // centers of rotation (for evaluation of the torque
-        return ibuff_atoms;
+        //exit(0);
     }
 
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
@@ -587,7 +588,7 @@ class OCL_MM: public OCLsystem { public:
     }
 
     OCLtask* setup_updateGroups( OCLtask* task=0 ){
-        printf( "setup_updateGroups() \n" );
+        printf( "setup_updateGroups() nGroupTot=%i \n", nGroupTot );
         if(task==0) task = getTask("updateGroups");
         task->global.x = nGroupTot;
         // ToDo: make workgroup by 32-threads
@@ -599,6 +600,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_atoms    ); // 4
         err |= useArgBuff( ibuff_gcenters ); // 5
         OCL_checkError(err, "setup_updateGroups");
+        //exit(0);
         return task;
         // int               ngroup,      // 1 // (i0,i1) range of indexes specifying the group
         // __global int2*    granges,     // 2 // (i0,i1) range of indexes specifying the group
