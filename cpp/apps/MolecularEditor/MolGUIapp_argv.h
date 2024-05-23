@@ -66,6 +66,7 @@
     
     funcs2["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs2["-group"]={2,[&](const char** ss){  
+        W->bGroups = true;
         int ig;             sscanf(ss[0], "%i", &ig);
         int a2g[16]; int ng=sscanf(ss[1], "%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i", a2g+0,a2g+1,a2g+2,a2g+3,a2g+4,a2g+5,a2g+6,a2g+7,a2g+8,a2g+9,a2g+10,a2g+11,a2g+12,a2g+13,a2g+14,a2g+15);
         //printf( "--------- group[%i] n=%i\n", ig, ng );

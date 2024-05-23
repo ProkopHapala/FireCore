@@ -178,6 +178,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
 	bool doBonded          = false;
 	bool bNonBonded        = true;
+    bool bGroups           = false; 
     bool bConstrains       = false;
 	bool bSurfAtoms        = false;
     bool bGridFF           = false;

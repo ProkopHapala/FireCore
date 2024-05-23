@@ -94,7 +94,7 @@ struct GOpt{
         T_target = go.T_target;
         gamma_damp = go.gamma_damp;
         constrs.copy( go.constrs );
-        printf( "GOpt::copy() nExplore=%i nRelax=%i vel_kick=%g pos_kick=%g T_target=%g gamma_damp=%g \n", nExplore, nRelax, vel_kick, pos_kick, T_target, gamma_damp );
+        //printf( "GOpt::copy() nExplore=%i nRelax=%i vel_kick=%g pos_kick=%g T_target=%g gamma_damp=%g \n", nExplore, nRelax, vel_kick, pos_kick, T_target, gamma_damp );
     }
 
 
