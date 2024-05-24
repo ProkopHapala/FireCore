@@ -428,7 +428,10 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
         printf("setup_getMMFFf4(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFf4");
-        task->global.x = nNode;
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = nNode + nloc-(nNode%nloc); // round up to multiple of nloc
+        //task->global.x = nNode;
         task->global.y = nSystems;
         useKernel( task->ikernel );
         nDOFs.x=na; 
@@ -481,9 +484,14 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_updateAtomsMMFFf4( int na, int nNode,  OCLtask* task=0 ){
         printf( "setup_updateAtomsMMFFf4() \n" );
         if(task==0) task = getTask("updateAtomsMMFFf4");
-        task->global.x = na+nNode;
-        task->global.y = nSystems;
+        int nvec = na+nNode;
         //task->local .x = 1;
+        int nloc=32;
+        task->local.x   = nloc;
+        task->global.x  = nvec + nloc-(nvec%nloc);
+        //task->global.x = nvec;
+        task->global.y = nSystems;
+        printf( "setup_updateAtomsMMFFf4() global.x=%i local.x=%i glob/loc=%g \n",  task->local.x, task->global.x, (task->global.x)/((float)task->local.x)  );
         //task->roundSizes();
         //if(n >=0  ) 
         nDOFs.x=na; 
@@ -571,7 +579,11 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_cleanForceMMFFf4( int na, int nNode,  OCLtask* task=0 ){
         printf( "setup_cleanForceMMFFf4() \n" );
         if(task==0) task = getTask("cleanForceMMFFf4");
-        task->global.x = na+nNode;
+        int nvec = nAtoms + nNode;        
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = nvec + nloc-(nvec%nloc); // round up to multiple of nloc
+        //task->global.x = nvec;
         task->global.y = nSystems;
         nDOFs.x=na; 
         nDOFs.y=nNode;
@@ -590,7 +602,10 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_updateGroups( OCLtask* task=0 ){
         printf( "setup_updateGroups() nGroupTot=%i \n", nGroupTot );
         if(task==0) task = getTask("updateGroups");
-        task->global.x = nGroupTot;
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = nGroupTot + nloc-(nGroupTot%nloc); // round up to multiple of nloc
+        //task->global.x = nGroupTot;
         // ToDo: make workgroup by 32-threads
         int err=0; 
         useKernel( task->ikernel );
@@ -613,7 +628,10 @@ class OCL_MM: public OCLsystem { public:
         printf( "setup_groupForce() \n" );
         if(task==0) task = getTask("groupForce");
         // ToDo: make workgroup by 32-threads
-        task->global.x = nAtoms;
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = nAtoms + nloc-(nAtoms%nloc); // round up to multiple of nloc
+        //task->global.x = nAtoms;
         task->global.y = nSystems;
         nDOFs.x=nAtoms; 
         nDOFs.y=nnode; 

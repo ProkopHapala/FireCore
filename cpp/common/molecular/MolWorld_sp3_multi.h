@@ -1042,10 +1042,10 @@ void setup_MMFFf4_ocl(){
     printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() \n");
     ocl.nDOFs.x=ff.natoms;
     ocl.nDOFs.y=ff.nnode;
-    if(!task_cleanF)   task_cleanF = ocl.setup_cleanForceMMFFf4( ffl.natoms, ffl.nnode       );
-    if(!task_move  )   task_move  = ocl.setup_updateAtomsMMFFf4( ffl.natoms, ffl.nnode       );
-    if(!task_print )   task_print = ocl.setup_printOnGPU       ( ffl.natoms, ffl.nnode       );
-    if(!task_MMFF  )   task_MMFF  = ocl.setup_getMMFFf4        ( ffl.natoms, ffl.nnode, bPBC );
+    if(!task_cleanF)   task_cleanF = ocl.setup_cleanForceMMFFf4 ( ffl.natoms, ffl.nnode       );
+    if(!task_move  )   task_move   = ocl.setup_updateAtomsMMFFf4( ffl.natoms, ffl.nnode       );
+    if(!task_print )   task_print  = ocl.setup_printOnGPU       ( ffl.natoms, ffl.nnode       );
+    if(!task_MMFF  )   task_MMFF   = ocl.setup_getMMFFf4        ( ffl.natoms, ffl.nnode, bPBC );
 
     Vec3i nPBC_=nPBC; if(!bPBC){ nPBC_=Vec3iZero; }; printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() bPBC=%i nPBC(%i,%i,%i) n", bPBC, nPBC_.x,nPBC_.y,nPBC_.z );
     if((!task_NBFF_Grid)&&bGridFF ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ffl.natoms, ffl.nnode, nPBC_ ); } 
@@ -1071,6 +1071,8 @@ void setup_MMFFf4_ocl(){
     //     else         { task_NBFF  = ocl.setup_getNonBond       ( ff4.natoms, ff4.nnode, nPBC ); }
     // }
     if(!task_cleanF)task_cleanF = ocl.setup_cleanForceMMFFf4 ( ffl.natoms, ffl.nnode       );
+
+    //exit(0);
 }
 
 void setup_NBFF_ocl(){
@@ -1320,20 +1322,21 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
                 if(dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
-                        if  (bGridFF)[[likely]]{ err |= task_NBFF_Grid ->enque_raw(); }
-                        else                   { 
+                        if  (bGridFF)[[likely]]{ 
+                            err |= task_NBFF_Grid ->enque_raw();    //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                        }else { 
                             //printf( "task_NBFF(), task_SurfAtoms() \n" );
                             err |= task_NBFF     ->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
                             err |= task_SurfAtoms->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
                         }
                     }else{ 
-                        err |= task_NBFF      ->enque_raw(); 
+                        err |= task_NBFF      ->enque_raw();     //OCL_checkError(err, "task_NBFF->enque_raw();");
                     }
                 }
-                err |= task_MMFF->enque_raw();
+                err |= task_MMFF->enque_raw();    //OCL_checkError(err, "task_MMFF->enque_raw()");
 
                 if( bGroupDrive ) err |= task_GroupForce->enque_raw();
-                err |= task_move->enque_raw(); 
+                err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
             }
             niterdone++;
             nloop++;
@@ -1415,7 +1418,7 @@ double eval_NBFF_ocl( int niter, bool bForce=false ){
     return 0;
 }
 int run_omp( int niter_max, double Fconv=1e-3, double Flim=1000, double timeLimit=0.02 ){
-    //printf( "run_omp_ocl() niter_max=%i %dt=g Fconv%g \n", niter_max, dt, Fconv  ); 
+    //printf( "run_omp() niter_max=%i %dt=g Fconv%g \n", niter_max, dt, Fconv  ); 
     double F2conv=Fconv*Fconv;
     double F2max=0;
     int itr=0,niter=niter_max;
@@ -1429,7 +1432,7 @@ int run_omp( int niter_max, double Fconv=1e-3, double Flim=1000, double timeLimi
         if(itr<niter){
         #pragma omp for
         for( int isys=0; isys<nSystems; isys++ ){
-            //printf( "run_omp_ocl[itr=%i] isys=%i @cpu(%i/%i) \n", itr, isys, omp_get_thread_num(), omp_get_num_threads() );
+            //printf( "run_omp[itr=%i] isys=%i @cpu(%i/%i) \n", itr, isys, omp_get_thread_num(), omp_get_num_threads() );
             ffls[isys].cleanForce();
             ffls[isys].eval(false);
             { // Non-Bonded
@@ -1460,7 +1463,7 @@ int run_omp( int niter_max, double Fconv=1e-3, double Flim=1000, double timeLimi
             if(F2max<F2conv){ 
                 niter=0; 
                 T1 = (getCPUticks()-T00)*tick2second;
-                if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i,bGridFF=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel,bOcl,bGridFF, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
+                if(verbosity>0)printf( "run_omp(nSys=%i|iPara=%i,bOcl=%i,bGridFF=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step] \n", nSystems, iParalel,bOcl,bGridFF, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/itr );
                 itr--;
             }
         }
@@ -1471,7 +1474,7 @@ int run_omp( int niter_max, double Fconv=1e-3, double Flim=1000, double timeLimi
         ffl.fapos[i]=ffls[iSystemCur].fapos[i];
     }
     T1 = (getCPUticks()-T00)*tick2second;
-    if(itr>=niter_max)if(verbosity>0)printf( "run_omp_ocl(nSys=%i|iPara=%i,bOcl=%i,bGridFF=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems, iParalel,bOcl,bGridFF, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
+    if(itr>=niter_max)if(verbosity>0)printf( "run_omp(nSys=%i|iPara=%i,bOcl=%i,bGridFF=%i) NOT CONVERGED in %i/%i nsteps |F|=%g time=%g[ms] %g[us/step]\n", nSystems, iParalel,bOcl,bGridFF, itr,niter_max, sqrt(F2max), T1*1000, T1*1e+6/niter_max );
     return itr;
 }
 
