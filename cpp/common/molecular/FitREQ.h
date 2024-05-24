@@ -86,11 +86,13 @@ class FitREQ{ public:
     double*   DOFs =0;       // [nDOFs]
     double*   fDOFs=0;       // [nDOFs]
     double*   vDOFs=0;       // [nDOFs]
+    double*   DOFs_old =0;       // [nDOFs]
+    double*   fDOFs_old=0;       // [nDOFs]
 
     // parameters
     double Kneutral      = 1.0;
     //double max_step      = 0.1345;
-    double max_step      = 0.05; // maximal variation (in percentage) of any parameters allowed in one step during optimization
+    double max_step      = 0.5; // maximal variation (in percentage) of any parameters allowed in one step during optimization
     double Rfac_tooClose = 0.0;
     double kMorse        = 1.6;
 
@@ -129,8 +131,6 @@ class FitREQ{ public:
     Quat4d** Eilines = 0;
     Quat4d** Ejlines = 0;
 
-
-
 /**
  * @brief Reallocates the DOFs (degrees of freedom) array to the given size. affects the size of the fDOFs and vDOFs arrays as well.
  * 
@@ -139,9 +139,11 @@ class FitREQ{ public:
 void realloc( int nDOFs_ ){
     //nDOFs=nR+nE+nQ;
     nDOFs=nDOFs_;
-    _realloc(  DOFs , nDOFs );
-    _realloc( fDOFs , nDOFs );
-    _realloc( vDOFs , nDOFs ); for(int i=0;i<nDOFs;i++){vDOFs[i]=0;}
+    _realloc(  DOFs, nDOFs );
+    _realloc( fDOFs, nDOFs );
+    _realloc( vDOFs, nDOFs ); for(int i=0;i<nDOFs;i++){vDOFs[i]=0;}
+    _realloc(  DOFs_old, nDOFs );
+    _realloc( fDOFs_old, nDOFs );
     //Rs=DOFs;Es=DOFs+nR;Qs=DOFs+nR+nE;
     //fRs=fDOFs;fEs=fDOFs+nR;fQs=fDOFs+nR+nE;
 }
@@ -151,26 +153,10 @@ void realloc( int nDOFs_ ){
  * It first determines the maximum number of atoms in any batch and then checks if it is greater than the current maximum number of atoms.
  * If it is, then it reallocates the memory for the fs array to accommodate the new maximum number of atoms.
  */
-void tryRealocTemp(){
-    int n=nmax;
-    for(int i=0; i<nbatch; i++){ int ni = batch[i].natoms; if(ni>n){ n=ni;} }
-    if(n>nmax){ _realloc( fs, n );  nmax=n; };
-}
-
 void tryRealocSamp(){
     int n=nmax;
     for(int i=0; i<samples.size(); i++){ int ni = samples[i]->natoms; if(ni>n){ n=ni;} }
     if(n>nmax){ _realloc( fs, n );  nmax=n; };
-}
-
-/**
- * This function checks if the current number of atoms in the system exceeds the maximum number of atoms allowed. If so, it reallocates memory for the force array to accommodate the new number of atoms.
- */
-void tryRealocTemp_rigid(){
-    if(nmax<systemTest0->natoms){
-        nmax=systemTest0->natoms;
-        _realloc( fs, nmax );
-    }
 }
 
 /**
@@ -202,6 +188,7 @@ int loadTypeSelection( const char* fname ){
         Quat4i tm;
         int nw = sscanf( line, "%s %i %i %i %i\n", at_name, &tm.x,&tm.y,&tm.z,&tm.w ); 
         if(nw!=5)continue;
+        if(tm.z!=0){printf("ERROR: FitREQ::loadTypeSelection() mask_Q should be 0 for now\n"); exit(0); }
         typeMask.push_back( tm );
         int ityp = params->getAtomType(at_name);
         t.push_back( ityp );
@@ -261,8 +248,8 @@ int init_types_new( int ntypesel, int* tsel, Quat4i* typeMask ){
     realloc(nDOFs);
     ntype = ntype_; 
     typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = Quat4d{ params->atypes[i].RvdW, params->atypes[i].EvdW, params->atypes[i].Qbase, params->atypes[i].Hb }; }
-    typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4d{ 0.0,    0.0,   -1e+300, 0.0    }; }
-    typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4d{ 1e+300, 1e+300, 1e+300, 1e+300 }; }
+    typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4d{ 0.0,    0.0,   -1e+300, -1e+300 }; }
+    typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4d{ 1e+300, 1e+300, 1e+300,  1e+300 }; }
     typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = typeREQs[i]; }
     typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero; }
     DOFsFromTypes(); 
@@ -270,177 +257,201 @@ int init_types_new( int ntypesel, int* tsel, Quat4i* typeMask ){
 }
 
 /**
- * Initializes the types of the FitREQ object.
- * @param ntype_ The number of types.
- * @param typeMask An array of Quat4i indicating which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
- * @param tREQs An array of Quat4d objects representing the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
- * @param bCopy A boolean indicating whether to copy the input arrays to newly allocated internal arrays.
- * @return The number of degrees of freedom.
- */
-int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false ){
-    
-    printf( "FitREQ::init_types() ntype_=%i ntype=%i bCopy=%i tREQs=%li \n", ntype_, ntype, bCopy, (long)tREQs );
-    int nDOFs=0;
-    typToREQ = new Quat4i[ntype_];
-    for(int i=0; i<ntype_; i++){
-        const Quat4i& tm=typeMask[i];
-        Quat4i&       tt=typToREQ[i];
-        for(int j=0; j<4; j++){
-            if(tm.array[j]){
-                tt.array[j]=nDOFs;
-                nDOFs++;
-            }else{
-                tt.array[j]=-1;
-            }
-        }
-        printf(  "init_types() [%i] typeMask(%i,%i,%i,%i) typToREQ(%i,%i,%i,%i)  nDOF %i  tREQs(%g,%g,%g,%g) \n", i, tm.x,tm.y,tm.z,tm.w, tt.x,tt.y,tt.z,tt.w, nDOFs, tREQs[i].x,tREQs[i].y,tREQs[i].z,tREQs[i].w );
-    }
-    realloc(nDOFs);
-    //poses = new Mat3d[nbatch];
-    //if( bRigid){
-    //    poses = new Mat3d[nbatch];
-    //}
-    if(tREQs){
-        ntype = ntype_; 
-        if(bCopy){
-            typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = tREQs[i]; }
-            typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4dmin; }
-            typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4dmax; }
-            typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = tREQs[i]; }
-            typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero; }
-        }else{ 
-            typeREQs = tREQs; 
-        }
-        DOFsFromTypes(); 
-    }
-    //for(int i=0; i<ntype; i++){ printf( "init_types()[%i] typeREQs(%g,%g,%g,%g) \n", i,  ); }
-    //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
-    return nDOFs;
-}
-
-/**
- * Initializes the types and parameters for fitting the REQ (Quadrupole) values.
- * This function calculates the number of degrees of freedom (nDOFs) and initializes the typToREQ array, which maps each atom type to its corresponding REQ values.
- * The params->atypes array is used to initialize the typeREQs array. t->sym controls which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
- * It also initializes other arrays related to typeREQs.
+ * Loads XYZ file and creates Atoms objects for each molecule inside it. It saves the molecules to the "samples" vector.
+ * Optionally adds electron pairs and outputs XYZ file with epairs.
  *
- * @return The number of degrees of freedom (nDOFs).
+ * @param fname The name of the XYZ file to load.
+ * @param bAddEpairs Flag indicating whether to add epairs to the loaded atoms.
+ * @param bOutXYZ Flag indicating whether to output XYZ file with epairs.
+ * @return The number of batches created.
  */
-int init_types_par(){
-    printf( "FitREQ::init_types_par()\n" );
-    int ntype_ = params->atypes.size();
-    int nDOFs=0;
-    typToREQ = new Quat4i[ntype_];
-    for(int i=0; i<params->atypes.size(); i++){
-        AtomType& t  = params->atypes[i];        
-        Quat4i&   tt = typToREQ[i];
-        int bitmask = 1;
-        for(int j=0; j<4; j++){
-            if( bitmask & t.sym ){
-                tt.array[j]=nDOFs;
-                nDOFs++;
-            }else{
-                tt.array[j]=-1;
+int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
+    //printf( "FitREQ::loadXYZ_new() fname `%s` bAddEpairs %i bOutXYZ %i \n", fname, bAddEpairs, bOutXYZ  );
+    //params->printElementTypes();
+    //params->printAtomTypes();
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    char at_name[8];
+    // --- Open output file
+    FILE* fout=0;
+    if(bAddEpairs && bOutXYZ){
+        sprintf(line,"%s_Epairs.xyz", fname );
+        fout = fopen(line,"w");
+        //fout = fopen("out.xyz","w");
+    }
+    int il   = 0;
+    //int nbatch=0;
+    nbatch=0; // use the global
+    Atoms* atoms=0;
+    while( fgets(line, nline, fin) ){
+        //printf( "LINE:%s", line );
+        if      ( il==0 ){               // --- Read number of atoms
+            int na=-1;
+            sscanf( line, "%i", &na );
+            if( (na>0)&&(na<10000) ){
+                atoms = new Atoms(na);
+            }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
+        }else if( il==1 ){               // --- Read comment line ( read reference energy )
+            // comment - ToDo : Here we can read the reference Energy directly from .xyz 
+            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+            //printf( "n0 %i E %g \n", n0, E );
+        }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
+            double x,y,z,q;
+            //printf( ">>%s<<\n", line );
+            int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
+            if(nret<5){q=0;}
+            int i=il-2;
+            //printf( "[%i] `%s` (%g,%g,%g) q %g \n", i, at_name, x, y, z, q );
+            atoms->apos[i].set(x,y,z);
+            atoms->atypes[i]=params->getAtomType(at_name);
+            atoms->charge[i]=q;
+        }
+        il++;
+        if( il >= atoms->natoms+2 ){    // ---- store sample atoms to batch
+            if(bAddEpairs){
+                //printf( "converting to Epairs sample[%i] natoms %i \n", samples.size(), atoms->natoms  ); 
+                Atoms* bak = atoms; 
+                atoms = addEpairs( atoms );
+                atoms->n0 = bak->n0;
+                atoms->Energy = bak->Energy;
+                delete bak;
+                if(fout){
+                    //for(int ia=0; ia<atoms->natoms; ia++){ Vec3d& p = atoms->apos[ia]; printf(  "out.atom[%i] typ=%i pos(%g,%g,%g)\n", ia, atoms->atypes[ia], p.x, p.y, p.z ); }
+                    //atoms->atomsToXYZ( fout, true, true );
+                    // comment: #	n0 3 E_tot   0.0108320770
+                    sprintf(line,"#	n0 %i E_tot %g", atoms->n0, atoms->Energy ); 
+                    params->writeXYZ( fout, atoms, line, 0, true );
+                }
             }
-            bitmask<<=1;
+            samples.push_back( atoms );
+            //printf( "===== FitREQ::loadXYZ_new() isys %i na %i n0 %i E %g \n", nbatch, atoms->natoms, atoms->n0, atoms->Energy  );
+            //for(int i=0; i<atoms->natoms; i++ ){ printf( "a[%2i] type %2i pos(%7.3f,%7.3f,%7.3f)\n", i, atoms->atypes[i], atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z ); }
+            il=0; nbatch++;
         }
-        //printf(  "init_types() [%i] typeMask(%i,%i,%i) typToREQ(%i,%i,%i)  nDOF %i  tREQs(%g,%g,%g,%g) \n", i, tm.x,tm.y,tm.z, tt.x,tt.y,tt.z, nDOFs, tREQs[i].x,tREQs[i].y,tREQs[i].z,tREQs[i].w );
     }
-    realloc(nDOFs);
-    ntype = ntype_; 
-    typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = Quat4d{ params->atypes[i].RvdW, params->atypes[i].EvdW, params->atypes[i].Qbase, params->atypes[i].Hb }; }
-    typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = typeREQs[i]; }
-    typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4dmin;   }
-    typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4dmax;   }
-    typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero;  }
-    DOFsFromTypes(); 
-    //for(int i=0; i<ntype; i++){ printf( "init_types()[%i] typeREQs(%g,%g,%g,%g) \n", i,  ); }
-    //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
-    return nDOFs;
+    if(fout)fclose(fout);
+    fclose(fin);
+    //init_types_new();
+    return nbatch;
 }
 
 /**
- * Sets one instace of atomic system
- * @param isys The index of the training system to set. If isys is negative, we set systemTest(-3), systemTest0(-2), or system0(-1).
- * @param na The number of atoms in the system.
- * @param types An array of integers representing the atom types.
- * @param ps An array of Vec3d representing the positions of the atoms.
- * @param bCopy A boolean indicating whether to copy the input arrays to newly allocated internal arrays. default=false
+ * @brief reads non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not read.  
+ * @param ityp Index of the type
  */
-void setSystem( int isys, int na, int* types, Vec3d* ps, bool bCopy=false ){
-    
-    printf( "FitREQ::setSystem(%i) \n", isys );
-    Atoms** pS;
-    Atoms*  S;
-    if(isys<0){
-        if     (isys==-3){ pS=&systemTest;  n1=na; }
-        else if(isys==-2){ pS=&systemTest0; n1=na; }
-        else if(isys==-1){ pS=&system0;     n0=na; }
-        if(*pS==0   ){ *pS = new Atoms(na); }
-        S=*pS;
-    }else             { S=&batch[isys]; }
-    if(bCopy){
-        if(S->natoms!=na){ printf("ERORRO FitREQ.setSystem() na(%i)!=S.n(%i) \n", na, S->natoms ); exit(0); }
-        for(int i=0; i<na; i++){ S->atypes[i]=types[i]; S->apos[i]=ps[i]; }
-    }else{
-        S->natoms =na;
-        S->atypes =types;
-        S->apos   =ps;
-    }
+inline void DOFsToType(int ityp){
+    const Quat4i& tt = typToREQ[ityp];
+    Quat4d& REQ      = typeREQs[ityp];
+    if(tt.x>=0)REQ.x = DOFs[tt.x];
+    if(tt.y>=0)REQ.y = DOFs[tt.y];
+    if(tt.z>=0)REQ.z = DOFs[tt.z];
+    if(tt.w>=0)REQ.w = DOFs[tt.w];
 }
+void DOFsToTypes(){ for(int i=0; i<ntype; i++ ){ DOFsToType(i); } }
+void getType(int i, Quat4d& REQ ){ typeREQs[i]=REQ; DOFsToType(i); }
 
 /**
- * Sets the rigid samples (i.e. poses=translation,rotation) of the atomic system to be fitted.
- * @param n The number of samples.
- * @param Es_     array of doubles containing the energies of each sample.
- * @param poses_  array of Mat3d   containing the rotation and translation of each sample (a=translation, b,c=rotation)
- * @param bCopy  If true, the function will allocate memory and copy the input arrays. If false, the function will only store the pointers to the input arrays.
- * @param bAlloc If true, the function will allocate memory for the arrays. If false, the function will assume that the arrays have already been allocated.
+ * @brief writes non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not writen.  
+ * 
+ * @param ityp The index of the type.
  */
-void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy=false, bool bAlloc=false ){
-
-    printf( "FitREQ::setRigidSamples() \n" );
-    nbatch = n; 
-    if(bCopy){
-        if(Es_   ){Es    = new double[nbatch]; }
-        if(poses_){poses = new Mat3d [nbatch]; }
-        if(Es_   )for(int i=0;i<nbatch; i++){ Es   [i]=Es_   [i]; }
-        if(poses_)for(int i=0;i<nbatch; i++){ poses[i]=poses_[i]; }
-    }else{
-        if(Es_   )Es = Es_; 
-        if(poses_)poses = poses_;
-    }
+inline void DOFsFromType(int ityp){
+    const Quat4i& tt  = typToREQ[ityp];
+    const Quat4d& REQ = typeREQs[ityp];
+    if(tt.x>=0)DOFs[tt.x] = REQ.x;
+    if(tt.y>=0)DOFs[tt.y] = REQ.y;
+    if(tt.z>=0)DOFs[tt.z] = REQ.z;
+    if(tt.w>=0)DOFs[tt.w] = REQ.w;
 }
-
-/*
-bool checkToClose(double Rfac){
-    int    nj   =system0->natoms;
-    int*   jtyp =system0->atypes;
-    Vec3d* jpos =system0->apos;
-    for(int i=0; i<n; i++){
-        int   ti          = types[i];
-        const Vec3d&  pi   = ps[i]; 
-        const Quat4d& REQi = typeREQs[ti];
-        Qtot+=REQi.z;
-        for(int j=0; j<nj; j++){
-            int tj              = jtyp[j];
-            const Quat4d& REQj  = typeREQs[tj];
-            Vec3d d             = jpos[j] - pi;
-            double R  = REQi.x+REQj.x;
-
-            double r2 = d.norm2();
-            if( r2 < (R*R*Rfac2) ){ return true; }
-           
-        }
-        fs[i].add(fsi);
-    }
-    return false
-}
-*/
+void DOFsFromTypes(){ for(int i=0; i<ntype; i++ ){ DOFsFromType(i); } }
+void setType(int i, Quat4d REQ ){ typeREQs[i]=REQ; DOFsFromType(i); }
 
 // ======================================
 // =========  EVAL DERIVS  ==============
 // ======================================
+
+void clean_fs(int n){ for(int i=0; i<n; i++){fs[i]=Quat4dZero;} }
+
+/**
+ * @brief Evaluates the variational derivatives of the fitting error (sumed batch training samples) with respect to all fitting parameters (i.e. non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) for each atom type). The atomic systems are not assumed rigid (i.e. the atomic positions can vary freely from sample to sample).
+ * 
+ * @param Eout array to store the non-covalent interaction energy values of each atomic system in the batch. if Eout==null, the function will not store the energy values.
+ * @return double, returns the total fitting error.
+ */
+double evalDerivsSamp( double* Eout=0 ){ 
+    //printf( "FitREQ::evalDerivsSamp() nbatch %i imodel %i verbosity %i \n", samples.size(), imodel, verbosity );
+    tryRealocSamp();
+    double Error = 0.0;
+    for(int i=0; i<samples.size(); i++){
+        const Atoms* atoms = samples[i];
+        int    nj       = atoms->n0;
+        int*   jtyp     = atoms->atypes;
+        Vec3d* jpos     = atoms->apos;
+        double* jq      = atoms->charge;
+        int    na       = atoms->natoms - atoms->n0;
+        int*   atypes   = atoms->atypes + atoms->n0;
+        Vec3d* apos     = atoms->apos   + atoms->n0;
+        double* aq      = atoms->charge + atoms->n0;
+        //printf( "evalDerivsSamp[%i] na %i n0 %i imodel %i \n", i, na, atoms->n0, imodel );
+        double Eref=atoms->Energy;
+        double wi = 1.0; 
+        if(weights) wi = weights[i];
+        // ToDo: we need to initialize fs acording to DOFs before calling clean_fs()
+        //clean_fs(na);
+        clean_fs(atoms->natoms);
+        double E;
+        switch (imodel){
+            case 0: E = evalExampleDerivs_LJQ          (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
+            case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
+            case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
+            case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, nj, jtyp, jpos ); break;
+            case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos, nj, jtyp, jpos ); break;
+        }
+        //for(int i=0; i<atoms->natoms; i++){ int ti=jtyp[i]; Quat4d fsi=fs[i]; printf( "debug i=%i type=%i dE_dR0=%g dE_deps=%g dE_dQ=%g dE_dH=%g\n", i, ti, fsi.x,fsi.y,fsi.z,fsi.w); }
+        //exit(0);
+        if( E>1e+300 ){
+            if(verbosity>0) printf( "skipped sample [%i] atoms too close \n", i );
+            continue;
+        } 
+        if(Eout){ Eout[i]=E; };
+        double dE = (E - Eref);
+        //const double dEmax = 0.01;
+        //if(  (E>0.0) && ( dE>dEmax ) ) dE=0.0;  
+        Error += dE*dE*wi;
+        //acumDerivs( na, atypes, dE );
+        //printf("Eref=%g E=%g dE=%g wi=%g Error=%g\n", Eref, E, dE, wi, Error );
+        //printf("Eref=%g E=%g 2*dE*w=%g f.y=%g fDOF=%g\n", Eref, E, 2.0*dE*wi, fs[0].y, fs[0].y*2.0*dE*wi );
+        acumDerivs( atoms->natoms, jtyp, 2.0*dE*wi );
+        //printf("i= %i dE= %g dE^2= %g wi*dE^2= %g Error= %g\n", i+1, dE, dE*dE, wi*dE*dE, Error);
+    }
+    //printf("Error=%g\n", Error);
+    //exit(0);
+    return Error;
+}
+
+/**
+ * Accumulates the derivatives of the non-covalent interaction energy with respect to fitting parameters in the array fDOFs.
+ * @param n The number of atoms in the system.
+ * @param types An array of integers representing the types of atoms in the system.
+ * @param dE The difference between the energy of the system and the reference energy (scalled by the weight for this sample (system)
+*/
+void acumDerivs( int n, int* types, double dEw){
+    
+    for(int i=0; i<n; i++){
+        int t            = types[i];
+        const Quat4i& tt = typToREQ[t];
+        const Quat4d  f  = fs[i];
+        if(tt.x>=0)fDOFs[tt.x]+=f.x*dEw;
+        if(tt.y>=0)fDOFs[tt.y]+=f.y*dEw;
+        if(tt.z>=0)fDOFs[tt.z]+=f.z*dEw;
+        if(tt.w>=0)fDOFs[tt.w]+=f.w*dEw;
+        //if((tt.y>=0)&&(i==0))printf( "acumDerivs i= %i f= %g f*dEw= %g fDOFs= %g\n", i, f.y, f.y*dEw, fDOFs[tt.y] );
+        //if((tt.x>=0)||(tt.y>=0))printf( "acumDerivs i= %i dE= %g f.x= %g fDOFs= %g f.y= %g fDOFs= %g\n", i, dE, f.x, fDOFs[tt.x], f.y, fDOFs[tt.y] );
+    }
+    //exit(0);
+}
 
 /**
  * Calculates the total energy and forces of a system of atoms interacting through the Lennard-Jones potential and electrostatic interactions.
@@ -457,11 +468,6 @@ bool checkToClose(double Rfac){
  * @return The total energy of the system.
  */
 double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0 ){
-    /*if( jpos==0 ){   
-        nj   =system0->natoms;
-        jtyp =system0->atypes;
-        jpos =system0->apos;
-    }*/
     double Etot=0;
     //printf( "evalExampleDerivs_LJQ (n=%i,nj=%i)\n", n,nj );
     for(int i=0; i<n; i++){ // loop over all atoms[i] in system
@@ -469,7 +475,6 @@ double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0
         const Vec3d&  pi   = ps[i]; 
         const Quat4d& REQi = typeREQs[ti];
         Quat4d fsi         = Quat4dZero;
-        //printf( "debug i=%i type=%i R0=%g eps=%g Q=%g\n", i, ti, REQi.x, REQi.y, aq[i] );
         for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
             int tj             = jtyp[j];
             const Quat4d& REQj = typeREQs[tj];
@@ -477,8 +482,8 @@ double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0
             Quat4d fsj;
             double R0  = REQi.x + REQj.x; 
             double eps = sqrt( REQi.y * REQj.y );
-            //printf( "  debug i=%i j=%i R0=%g eps=%g REQi.y=%g REQj.y=%g\n", i, j, R0, eps, REQi.y, REQj.y); 
             double Q   = aq[i] * jq[j]; 
+//double Q=0.0;            
             // --- Electrostatic
             double ir2     = 1.0 / ( d.norm2() );
             double ir      = sqrt( ir2 );
@@ -492,20 +497,18 @@ double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0
             double ELJ   = eps * dE_deps;
             // --- Energy and forces
             Etot  += ELJ + Eel;
-            fsi.x += 12.0 * eps / (R0+1e-15) * u6 * ( u6 - 1.0 ); // dEtot/dR0i
-            fsi.y += dE_deps * 0.5 / (eps+1e-15) * REQj.y;        // dEtot/depsi
-            fsi.z += dE_dQ * jq[j];                               // dEtot/dQi
-            fsj.x = 12.0 * eps / (R0+1e-15) * u6 * ( u6 - 1.0 );  // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-15) * REQi.y;         // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                                // dEtot/dQj
+            fsi.x += 12.0 * eps / (R0+1e-300) * u6 * ( u6 - 1.0 ); // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y;        // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                                // dEtot/dQi
+            fsj.x = 12.0 * eps / (R0+1e-300) * u6 * ( u6 - 1.0 );  // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;         // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                                 // dEtot/dQj
             fs[j].add(fsj);
-            //printf( "debug i=%i j=%i fsi.x=%g fsi.y=%g fsi.z=%g fsj.x=%g fsj.y=%g fsj.z=%g\n", nj+i+1, j+1, fsi.x, fsi.y, fsi.z, fsj.x, fsj.y, fsj.z );
-            //printf( "debug   j=%i type=%i R0=%g eps=%g Q=%g\n", j, tj, REQj.x, REQj.y, jq[j] );
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
         fs[nj+i].add(fsi);
     }
-    //printf( "debug Etot %g\n", Etot );
-    //exit(0);
+//printf( "Etot= %g\n", Etot );exit(0);    
     return Etot;
 }
 
@@ -524,74 +527,51 @@ double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0
  * @return The total energy of the system.
  */
 double evalExampleDerivs_LJQH( int n, int* types, Vec3d* ps, double* aq, int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0 ){
-    if( jpos==0 ){   
-        nj   =system0->natoms;
-        jtyp =system0->atypes;
-        jpos =system0->apos;
-    }
     double Etot=0;
-
-    //printf( "debug0\n" );
-    /*const Atoms* C = samples[0];
-    printf( "debug1 %i\n", C->natoms );
-    for(int i=0; i<C->natoms; i++){
-        printf( "debug atom=%i\n", i);
-        int   ti           = C->atypes[i];
-        printf( "debug atom=%i type=%i\n", i, ti);
-        const Quat4d& REQi = typeREQs[ti];
-        printf( "debug atom=%i type=%i REQ=(%g %g %g %g)\n", i, ti, REQi.x, REQi.y, REQi.z, REQi.w);
-    }//exit(0);*/
-    /*uat4d& REQi = typeREQs[0];
-    printf( "debug type=%i REQ=(%g %g %g %g)\n", 0, REQi.x, REQi.y, REQi.z, REQi.w);
-    REQi = typeREQs[1];
-    printf( "debug type=%i REQ=(%g %g %g %g)\n", 1, REQi.x, REQi.y, REQi.z, REQi.w);
-    REQi = typeREQs[2];
-    printf( "debug type=%i REQ=(%g %g %g %g)\n", 2, REQi.x, REQi.y, REQi.z, REQi.w);
-    REQi = typeREQs[3];
-    printf( "debug type=%i REQ=(%g %g %g %g)\n", 3, REQi.x, REQi.y, REQi.z, REQi.w);
-    exit(0);*/
-
     //printf( "evalExampleDerivs_LJQH (n=%i,nj=%i)\n", n,nj );
     for(int i=0; i<n; i++){ // loop over all atoms[i] in system
         int   ti           = types[i];
         const Vec3d&  pi   = ps[i]; 
         const Quat4d& REQi = typeREQs[ti];
         Quat4d fsi         = Quat4dZero;
-        //printf( "debug i=%i type=%i R0=%g eps=%g Q=%g H=%g\n", i, ti, REQi.x, REQi.y, aq[i], REQi.w);
         for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
             int tj              = jtyp[j];
-            const Quat4d& REQj  = typeREQs[tj]; //const Quat4d& REQj = REQ0[j]; // optimization
+            const Quat4d& REQj  = typeREQs[tj];
             Vec3d d             = jpos[j] - pi;
-            double R0  = REQi.x+REQj.x; //double R  = REQi.x+REQj.x; // old line
-            double eps = sqrt(REQi.y*REQj.y); //double E0 = REQi.y*REQj.y; // old line
-            double Q  = aq[i]*jq[j]; // charges from xyz //double Q  = REQi.z*REQj.z; // charges from types
-            double H  = fmax(0.0,-REQi.w*REQj.w); //double H  = REQi.w*REQj.w; // old line
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x;
+            double eps = sqrt( REQi.y * REQj.y );
+            double Q   = aq[i] * jq[j];
+            double H  = fmax( 0.0, -REQi.w * REQj.w );
             // --- Electrostatic
-            double ir2     = 1/( d.norm2() );
-            double ir      = sqrt(ir2);
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
             double dE_dQ   = ir * COULOMB_CONST;
-            double Eel     = Q*dE_dQ;
+            double Eel     = Q * dE_dQ;
             // --- Lennard-Jones
-            double u2   = ir2*(R0*R0); //double u2   = ir2*(R*R); // old line
-            double u4   = u2*u2;
-            double u6   = u4*u2;
-            double dE_dR0  = 12/R0*u6*(eps*u6-eps-H); //double dE_dR = E0*12*ir*( u6*u4 - u4 ); // old line
-            double dE_deps = u6*(u6-2); //double dE_dE = u6   *( u6 - 2 ); // old line
-            double dE_dH   = -2*u6; //double dE_dH = u6; // old line
-            double ELJ   = eps*dE_deps + H*dE_dH; //double ELJ   = E0*dE_dE + H*dE_dH; // old line
+            double u2   = ir2 * ( R0 * R0 );
+            double u4   = u2 * u2;
+            double u6   = u4 * u2;
+            double dE_dR0  = 12.0 / (R0+1e-300) * u6 * (  eps * u6 - eps - H );
+            double dE_deps = u6 * ( u6 - 2.0 );
+            double dE_dH   = -2.0 * u6;
+            double ELJ   = eps * dE_deps + H * dE_dH;
             // --- Energy and forces
             Etot  += ELJ + Eel;
-            fsi.x -= dE_dR0;                 // -dEtot/dR0i  //fsi.x += dE_dR;        // old line
-            fsi.y -= dE_deps*0.5/(eps+1e-300)*REQj.y; // -dEtot/depsi //fsi.y += dE_dE*REQj.y; // old line
-            fsi.z -= dE_dQ*jq[j];            // -dEtot/dQi   //fsi.z += dE_dQ*REQj.z; // old line
-            fsi.w -= dE_dH*H/(REQi.w+1e-300);         // -dEtot/dHi   //fsi.w += dE_dH*REQj.w; // old line
-            //printf( "debug   j=%i type=%i R0=%g eps=%g Q=%g H=%g\n", j, tj, REQj.x, REQj.y, jq[j], REQj.w);
+            fsi.x += dE_dR0;                                // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
+            fsj.x = dE_dR0;                                // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fs[j].add(fsj);
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
-        fs[i].add(fsi);
+        fs[nj+i].add(fsi);
     }
-    //printf( "debug Etot %g\n", Etot );
-    //for(int i=0; i<n; i++){ int ti=types[i]; Quat4d fsi=fs[i]; printf( "debug i=%i type=%i dE_dR0=%g dE_deps=%g dE_dQ=%g dE_dH=%g\n", i, ti, fsi.x,fsi.y,fsi.z,fsi.w); }
-    //exit(0);
+//printf( "Etot= %g\n", Etot );exit(0);    
     return Etot;
 }
 
@@ -824,10 +804,400 @@ double evalExampleDerivs_BuckinghamQH2(int n, int* types, Vec3d* ps,  int nj=0, 
     return Etot;
 }
 
+// ======================================
+// =========  OPTIMIZE  =================
+// ======================================
 
-// ======================================
-// =========  EVAL ENERGY  ==============
-// ======================================
+/**
+ * Calculates the regularization force for each degree of freedom (DOF) based on the difference between the current and target values of the fitted non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb).
+ * The regularization force tries to minimize the difference between the current (REQ) and the default value (REQ0) of the parameters. Its strength is controlled by the regularization stiffness (Kreg).
+ * The resulting forces are stored in the fDOFs array.
+ */
+void regularization_force(){
+    for(int i=0; i<ntype; i++ ){
+        const Quat4i& tt   = typToREQ [i];
+        const Quat4d& REQ  = typeREQs [i];
+        const Quat4d& REQ0 = typeREQs0[i];
+        const Quat4d& K    = typeKreg [i];
+        if(tt.x>=0)fDOFs[tt.x] = (REQ0.x-REQ.x)*K.x;
+        if(tt.y>=0)fDOFs[tt.y] = (REQ0.y-REQ.y)*K.y;
+        if(tt.z>=0)fDOFs[tt.z] = (REQ0.z-REQ.z)*K.z;
+        if(tt.w>=0)fDOFs[tt.w] = (REQ0.w-REQ.w)*K.w;
+    }
+}
+
+/**
+ * Limits the fitted non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) to be btween minimum and maximum (REQmin and REQmax).
+ * 
+ * @param none
+ * @return void
+ */
+void limit_params(){
+    for(int i=0; i<ntype; i++ ){
+        const Quat4i& tt     = typToREQ[i];
+        const Quat4d& REQ    = typeREQs [i];
+        const Quat4d& REQmin = typeREQsMin[i];
+        const Quat4d& REQmax = typeREQsMax[i];
+        // Note: should we limit derivatives or the value itself?
+        if(tt.x>=0){ DOFs[tt.x]=_clamp(DOFs[tt.x],REQmin.x,REQmax.x ); }
+        if(tt.y>=0){ DOFs[tt.y]=_clamp(DOFs[tt.y],REQmin.y,REQmax.y ); }
+        if(tt.z>=0){ DOFs[tt.z]=_clamp(DOFs[tt.z],REQmin.z,REQmax.z ); }
+        if(tt.w>=0){ DOFs[tt.w]=_clamp(DOFs[tt.w],REQmin.w,REQmax.w ); }
+        //if(tt.x>=0){ fDOFs[tt.x]=_clamp(fDOFs[tt.x],REQmin.x,REQmax.x ); }
+        //if(tt.y>=0){ fDOFs[tt.y]=_clamp(fDOFs[tt.y],REQmin.y,REQmax.y ); }
+        //if(tt.z>=0){ fDOFs[tt.z]=_clamp(fDOFs[tt.z],REQmin.z,REQmax.z ); }
+        //if(tt.w>=0){ fDOFs[tt.w]=_clamp(fDOFs[tt.w],REQmin.w,REQmax.w ); }
+    }
+}
+
+/**
+ * This function limits the time step based on the maximum step size and the actual maximum force magnitude in the fDOFs array. It is used in the gradient descent and molecular dynamics optimization algorithms to make sure it is stable.
+ * @param dt The time step to be limited.
+ * @return The limited time step.
+ */
+double limit_dt(double dt){
+    double fm=0;
+    int ifm;
+    //for(int i=0; i<nDOFs; i++){fm=_max(fm,fabs(fDOFs[i]));}
+    for(int i=0; i<nDOFs; i++){double f=fabs(fDOFs[i]/DOFs[i]); if(f>fm){fm=f; ifm=i;}}
+    if(dt*fm>max_step){
+        //dt = max_step/fm;
+        dt = max_step/fm;
+        //printf( "limit_dt %g max variation[%i] %g old %g -> new %g \n", dt, ifm+1, -fDOFs[ifm]/DOFs[ifm]*dt, DOFs[ifm], DOFs[ifm]-fDOFs[ifm]*dt );
+        printf( "limit_dt %g\n", dt );
+    }
+    return dt;
+}
+
+/**
+ * Moves fitting parameters using the gradient descent (GD) method in order to minimize the fitting error.
+ * @param dt The time step ( the higher the value, the faster the convergence, but the less stable the algorithm is).
+ * @return Sum of squares of the variatinal derivatives of the fitting error with respect to all fitting parameters.
+ */
+double move_GD( double dt ){
+    //printf("now in move_GD\n");
+    double F2 = 0;
+    if(max_step>0){ dt=limit_dt(dt);};
+    for(int i=0; i<nDOFs; i++){
+        double f = fDOFs[i];
+        DOFs[i] -= f*dt;
+        F2 += f*f;
+    }
+    return F2;
+}
+
+double move_GD_BB( int step, double dt ){
+    double F2 = 0;
+    // compute optimal dt according to the Barzilai-Borwein method
+    if(step>0){
+        //double dxdx = 0.0;
+        double dxdg = 0.0;
+        double dgdg = 0.0;
+        for(int i=0; i<nDOFs; i++){
+            double dx = DOFs[i] - DOFs_old[i];
+            double dg = fDOFs[i] - fDOFs_old[i];
+            //dxdx += dx*dx;
+            dxdg += dx*dg;
+            dgdg += dg*dg;
+        }
+        //dt = dxdx/fabs(dxdg); // long BB step
+        dt = fabs(dxdg)/dgdg; // short BB step
+        //dt = dxdx/dxdg; // long BB step
+        //dt = dxdg/dgdg; // short BB step
+    }
+    if(max_step>0){ dt=limit_dt(dt);};
+    for(int i=0; i<nDOFs; i++){
+        DOFs_old[i] = DOFs[i];
+        fDOFs_old[i] = fDOFs[i];
+        double f = fDOFs[i];
+        DOFs[i] -= f*dt;
+        F2 += f*f;
+    }
+    printf("step= %i dt= %g\n", step, dt );
+    return F2;
+}
+
+/**
+ * Moves fitting parameters using the damped molecular dynamics (leap-frog algorithm) in order to minimize the fitting error.
+ * @param dt The time step ( the higher the value, the faster the convergence, but the less stable the algorithm is).
+ * @param damp The damping factor to apply to the velocity of each degree of freedom. Default value is 0.1.
+ * @return Sum of squares of the variatinal derivatives of the fitting error with respect to all fitting parameters.
+ */
+double move_MD( double dt, double damp=0.1 ){
+    double cdamp = 1-damp;
+    double F2 = 0;
+    //if(max_step>0){ dt=sqrt(limit_dt(dt));};
+    for(int i=0; i<nDOFs; i++){
+        double f = fDOFs[i];
+        double v = vDOFs[i];
+        v*=cdamp;
+        v+=f*dt;
+        vDOFs[i] = v;
+        DOFs[i] += v*dt;
+        F2      += f*f;
+    }
+    return F2;
+}
+
+// ------------------------------------------------------------------------------------------------
+// --------------------------- NOT USED (ANYMORE OR YET) ------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
+Atoms* addEpairs( Atoms* mol ){
+    //MM::Builder builder;
+    builder.params = params;
+    builder.clear();
+    if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
+    builder.insertAtoms(*mol);
+    //int ia0=builder.frags[ifrag].atomRange.a;
+    //int ic0=builder.frags[ifrag].confRange.a;
+    //builder.printBonds();
+    //builder.printAtomConfs(true, false );
+    //if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
+    //builder.addCappingTypesByIz(1);  // insert H caps
+    //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
+    builder.tryAddConfsToAtoms( 0, -1 );
+    builder.cleanPis();
+    //if(verbosity>2)
+    //builder.printAtomConfs(false);
+    //builder.export_atypes(atypes);
+    // ------- Load lattice vectros
+    // NOTE: ERROR IS HERE:  autoBonds() -> insertBond() -> tryAddBondToAtomConf( int ib, int ia, bool bCheck )
+    //       probably we try to add multiple bonds for hydrogen ?
+    if( builder.bPBC ){ 
+        builder.autoBondsPBC( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+        builder.autoBondsPBC( -.5,  mol->n0, mol->natoms ); 
+    }else{ 
+        builder.autoBonds( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+        builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
+    }
+    builder.checkNumberOfBonds( true, true );
+    //if(verbosity>2)
+    //builder.printBonds ();
+    //if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
+    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+    //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+    // --- Add Epairs
+    builder.bDummyEpair = true;
+    builder.autoAllConfEPi( ); 
+    // --- add Epairs to atoms like =O (i.e. with 2 just one neighbor)
+    builder.setPiLoop       ( 0, -1, 10 );
+    builder.addAllEpairsByPi( 0, -1 );    
+    //builder.printAtomConfs( false, true );
+    //builder.assignAllBondParams();    //if(verbosity>1)
+    //builder.finishFragment(ifrag);    
+    return builder.exportAtoms(); 
+}
+
+/**
+ * @brief Cleans the derivative array by setting all its elements to zero.
+ * 
+ */
+void clean_derivs(){ for(int i=0; i<nDOFs; i++){fDOFs[i]=0;} }
+
+/**
+ * @brief Renormalizes the weights of a batch of data points. The sum of weights is set to R.
+ * 
+ * @param R The target sum of weights after renormalization.
+ */
+void renormWeights(double R=1.0){ 
+    double s=0; 
+    for(int i=0; i<nbatch; i++){ s+=weights[i]; }
+    //printf( "renormWeights() s=%g R=%g R/s=%g \n", s,R, R/s );
+    s=R/s; 
+    for(int i=0; i<nbatch; i++){ weights[i]*=s; }
+    //for(int i=0; i<nbatch; i++){ printf("W.weights[%i]=%g\n",i,weights[i]); }       
+}
+
+/**
+ * This function reallocates the memory for the fs array if the number of atoms in any batch is greater than the current maximum number of atoms.
+ * It first determines the maximum number of atoms in any batch and then checks if it is greater than the current maximum number of atoms.
+ * If it is, then it reallocates the memory for the fs array to accommodate the new maximum number of atoms.
+ */
+void tryRealocTemp(){
+    int n=nmax;
+    for(int i=0; i<nbatch; i++){ int ni = batch[i].natoms; if(ni>n){ n=ni;} }
+    if(n>nmax){ _realloc( fs, n );  nmax=n; };
+}
+
+/**
+ * This function checks if the current number of atoms in the system exceeds the maximum number of atoms allowed. If so, it reallocates memory for the force array to accommodate the new number of atoms.
+ */
+void tryRealocTemp_rigid(){
+    if(nmax<systemTest0->natoms){
+        nmax=systemTest0->natoms;
+        _realloc( fs, nmax );
+    }
+}
+
+/**
+ * Initializes the types of the FitREQ object.
+ * @param ntype_ The number of types.
+ * @param typeMask An array of Quat4i indicating which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
+ * @param tREQs An array of Quat4d objects representing the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+ * @param bCopy A boolean indicating whether to copy the input arrays to newly allocated internal arrays.
+ * @return The number of degrees of freedom.
+ */
+int init_types( int ntype_, Quat4i* typeMask, Quat4d* tREQs=0, bool bCopy=false ){
+    
+    printf( "FitREQ::init_types() ntype_=%i ntype=%i bCopy=%i tREQs=%li \n", ntype_, ntype, bCopy, (long)tREQs );
+    int nDOFs=0;
+    typToREQ = new Quat4i[ntype_];
+    for(int i=0; i<ntype_; i++){
+        const Quat4i& tm=typeMask[i];
+        Quat4i&       tt=typToREQ[i];
+        for(int j=0; j<4; j++){
+            if(tm.array[j]){
+                tt.array[j]=nDOFs;
+                nDOFs++;
+            }else{
+                tt.array[j]=-1;
+            }
+        }
+        printf(  "init_types() [%i] typeMask(%i,%i,%i,%i) typToREQ(%i,%i,%i,%i)  nDOF %i  tREQs(%g,%g,%g,%g) \n", i, tm.x,tm.y,tm.z,tm.w, tt.x,tt.y,tt.z,tt.w, nDOFs, tREQs[i].x,tREQs[i].y,tREQs[i].z,tREQs[i].w );
+    }
+    realloc(nDOFs);
+    //poses = new Mat3d[nbatch];
+    //if( bRigid){
+    //    poses = new Mat3d[nbatch];
+    //}
+    if(tREQs){
+        ntype = ntype_; 
+        if(bCopy){
+            typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = tREQs[i]; }
+            typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4dmin; }
+            typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4dmax; }
+            typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = tREQs[i]; }
+            typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero; }
+        }else{ 
+            typeREQs = tREQs; 
+        }
+        DOFsFromTypes(); 
+    }
+    //for(int i=0; i<ntype; i++){ printf( "init_types()[%i] typeREQs(%g,%g,%g,%g) \n", i,  ); }
+    //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
+    return nDOFs;
+}
+
+/**
+ * Initializes the types and parameters for fitting the REQ (Quadrupole) values.
+ * This function calculates the number of degrees of freedom (nDOFs) and initializes the typToREQ array, which maps each atom type to its corresponding REQ values.
+ * The params->atypes array is used to initialize the typeREQs array. t->sym controls which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
+ * It also initializes other arrays related to typeREQs.
+ *
+ * @return The number of degrees of freedom (nDOFs).
+ */
+int init_types_par(){
+    printf( "FitREQ::init_types_par()\n" );
+    int ntype_ = params->atypes.size();
+    int nDOFs=0;
+    typToREQ = new Quat4i[ntype_];
+    for(int i=0; i<params->atypes.size(); i++){
+        AtomType& t  = params->atypes[i];        
+        Quat4i&   tt = typToREQ[i];
+        int bitmask = 1;
+        for(int j=0; j<4; j++){
+            if( bitmask & t.sym ){
+                tt.array[j]=nDOFs;
+                nDOFs++;
+            }else{
+                tt.array[j]=-1;
+            }
+            bitmask<<=1;
+        }
+        //printf(  "init_types() [%i] typeMask(%i,%i,%i) typToREQ(%i,%i,%i)  nDOF %i  tREQs(%g,%g,%g,%g) \n", i, tm.x,tm.y,tm.z, tt.x,tt.y,tt.z, nDOFs, tREQs[i].x,tREQs[i].y,tREQs[i].z,tREQs[i].w );
+    }
+    realloc(nDOFs);
+    ntype = ntype_; 
+    typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = Quat4d{ params->atypes[i].RvdW, params->atypes[i].EvdW, params->atypes[i].Qbase, params->atypes[i].Hb }; }
+    typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = typeREQs[i]; }
+    typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4dmin;   }
+    typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4dmax;   }
+    typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero;  }
+    DOFsFromTypes(); 
+    //for(int i=0; i<ntype; i++){ printf( "init_types()[%i] typeREQs(%g,%g,%g,%g) \n", i,  ); }
+    //printf(" DOFs=");for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
+    return nDOFs;
+}
+
+/**
+ * Sets one instace of atomic system
+ * @param isys The index of the training system to set. If isys is negative, we set systemTest(-3), systemTest0(-2), or system0(-1).
+ * @param na The number of atoms in the system.
+ * @param types An array of integers representing the atom types.
+ * @param ps An array of Vec3d representing the positions of the atoms.
+ * @param bCopy A boolean indicating whether to copy the input arrays to newly allocated internal arrays. default=false
+ */
+void setSystem( int isys, int na, int* types, Vec3d* ps, bool bCopy=false ){
+    
+    printf( "FitREQ::setSystem(%i) \n", isys );
+    Atoms** pS;
+    Atoms*  S;
+    if(isys<0){
+        if     (isys==-3){ pS=&systemTest;  n1=na; }
+        else if(isys==-2){ pS=&systemTest0; n1=na; }
+        else if(isys==-1){ pS=&system0;     n0=na; }
+        if(*pS==0   ){ *pS = new Atoms(na); }
+        S=*pS;
+    }else             { S=&batch[isys]; }
+    if(bCopy){
+        if(S->natoms!=na){ printf("ERORRO FitREQ.setSystem() na(%i)!=S.n(%i) \n", na, S->natoms ); exit(0); }
+        for(int i=0; i<na; i++){ S->atypes[i]=types[i]; S->apos[i]=ps[i]; }
+    }else{
+        S->natoms =na;
+        S->atypes =types;
+        S->apos   =ps;
+    }
+}
+
+/**
+ * Sets the rigid samples (i.e. poses=translation,rotation) of the atomic system to be fitted.
+ * @param n The number of samples.
+ * @param Es_     array of doubles containing the energies of each sample.
+ * @param poses_  array of Mat3d   containing the rotation and translation of each sample (a=translation, b,c=rotation)
+ * @param bCopy  If true, the function will allocate memory and copy the input arrays. If false, the function will only store the pointers to the input arrays.
+ * @param bAlloc If true, the function will allocate memory for the arrays. If false, the function will assume that the arrays have already been allocated.
+ */
+void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy=false, bool bAlloc=false ){
+
+    printf( "FitREQ::setRigidSamples() \n" );
+    nbatch = n; 
+    if(bCopy){
+        if(Es_   ){Es    = new double[nbatch]; }
+        if(poses_){poses = new Mat3d [nbatch]; }
+        if(Es_   )for(int i=0;i<nbatch; i++){ Es   [i]=Es_   [i]; }
+        if(poses_)for(int i=0;i<nbatch; i++){ poses[i]=poses_[i]; }
+    }else{
+        if(Es_   )Es = Es_; 
+        if(poses_)poses = poses_;
+    }
+}
+
+/*
+bool checkToClose(double Rfac){
+    int    nj   =system0->natoms;
+    int*   jtyp =system0->atypes;
+    Vec3d* jpos =system0->apos;
+    for(int i=0; i<n; i++){
+        int   ti          = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Qtot+=REQi.z;
+        for(int j=0; j<nj; j++){
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            Vec3d d             = jpos[j] - pi;
+            double R  = REQi.x+REQj.x;
+
+            double r2 = d.norm2();
+            if( r2 < (R*R*Rfac2) ){ return true; }
+           
+        }
+        fs[i].add(fsi);
+    }
+    return false
+}
+*/
 
 /**
  * Calculates the energy components of a Lenard-Jones potential, electrostatic interactions and hydrogen bond correction H1 between two systems of atoms
@@ -977,171 +1347,6 @@ double evalExampleDerivs_Qneutral(int n, int* types, Vec3d* ps, double Qtot ){
         E       += Kneutral*Qtot*Qtot;
     }
     return  E;
-}
-
-/**
- * @brief reads non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not read.  
- * @param ityp Index of the type
- */
-inline void DOFsToType(int ityp){
-    const Quat4i& tt = typToREQ[ityp];
-    Quat4d& REQ      = typeREQs[ityp];
-    if(tt.x>=0)REQ.x = DOFs[tt.x];
-    if(tt.y>=0)REQ.y = DOFs[tt.y];
-    if(tt.z>=0)REQ.z = DOFs[tt.z];
-    if(tt.w>=0)REQ.w = DOFs[tt.w];
-}
-void DOFsToTypes(){ for(int i=0; i<ntype; i++ ){ DOFsToType(i); } }
-void getType(int i, Quat4d& REQ ){ typeREQs[i]=REQ; DOFsToType(i); }
-
-/**
- * @brief writes non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not writen.  
- * 
- * @param ityp The index of the type.
- */
-inline void DOFsFromType(int ityp){
-    const Quat4i& tt  = typToREQ[ityp];
-    const Quat4d& REQ = typeREQs[ityp];
-    if(tt.x>=0)DOFs[tt.x] = REQ.x;
-    if(tt.y>=0)DOFs[tt.y] = REQ.y;
-    if(tt.z>=0)DOFs[tt.z] = REQ.z;
-    if(tt.w>=0)DOFs[tt.w] = REQ.w;
-}
-void DOFsFromTypes(){ for(int i=0; i<ntype; i++ ){ DOFsFromType(i); } }
-void setType(int i, Quat4d REQ ){ typeREQs[i]=REQ; DOFsFromType(i); }
-
-/**
- * Accumulates the derivatives of the non-covalent interaction energy with respect to fitting parameters in the array fDOFs.
- * @param n The number of atoms in the system.
- * @param types An array of integers representing the types of atoms in the system.
- * @param dE The difference between the energy of the system and the reference energy (scalled by the weight for this sample (system)
-*/
-void acumDerivs( int n, int* types, double dE){
-    
-    for(int i=0; i<n; i++){
-        int t            = types[i];
-        const Quat4i& tt = typToREQ[t];
-        const Quat4d  f  = fs[i];
-        if(tt.x>=0)fDOFs[tt.x]+=f.x*dE;
-        if(tt.y>=0)fDOFs[tt.y]+=f.y*dE;
-        if(tt.z>=0)fDOFs[tt.z]+=f.z*dE;
-        if(tt.w>=0)fDOFs[tt.w]+=f.w*dE;
-        //printf( "acumDerivs[%i] t %i tt(%i,%i,%i,%i) f(%g,%g,%g,%g)\n", i, t, tt.x,tt.y,tt.z,tt.w, f.x,f.y,f.z,f.w );
-    }
-    //exit(0);
-}
-
-/**
- * Calculates the regularization force for each degree of freedom (DOF) based on the difference between the current and target values of the fitted non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb).
- * The regularization force tries to minimize the difference between the current (REQ) and the default value (REQ0) of the parameters. Its strength is controlled by the regularization stiffness (Kreg).
- * The resulting forces are stored in the fDOFs array.
- */
-void regularization_force(){
-    for(int i=0; i<ntype; i++ ){
-        const Quat4i& tt   = typToREQ [i];
-        const Quat4d& REQ  = typeREQs [i];
-        const Quat4d& REQ0 = typeREQs0[i];
-        const Quat4d& K    = typeKreg [i];
-        if(tt.x>=0)fDOFs[tt.x] = (REQ0.x-REQ.x)*K.x;
-        if(tt.y>=0)fDOFs[tt.y] = (REQ0.y-REQ.y)*K.y;
-        if(tt.z>=0)fDOFs[tt.z] = (REQ0.z-REQ.z)*K.z;
-        if(tt.w>=0)fDOFs[tt.w] = (REQ0.w-REQ.w)*K.w;
-    }
-}
-
-/**
- * Limits the fitted non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) to be btween minimum and maximum (REQmin and REQmax).
- * 
- * @param none
- * @return void
- */
-void limit_params(){
-    for(int i=0; i<ntype; i++ ){
-        const Quat4i& tt     = typToREQ[i];
-        const Quat4d& REQ    = typeREQs [i];
-        const Quat4d& REQmin = typeREQsMin[i];
-        const Quat4d& REQmax = typeREQsMax[i];
-        // Note: should we limit derivatives or the value itself?
-        if(tt.x>=0){ DOFs[tt.x]=_clamp(DOFs[tt.x],REQmin.x,REQmax.x ); }
-        if(tt.y>=0){ DOFs[tt.y]=_clamp(DOFs[tt.y],REQmin.y,REQmax.y ); }
-        if(tt.z>=0){ DOFs[tt.z]=_clamp(DOFs[tt.z],REQmin.z,REQmax.z ); }
-        if(tt.w>=0){ DOFs[tt.w]=_clamp(DOFs[tt.w],REQmin.w,REQmax.w ); }
-        //if(tt.x>=0){ fDOFs[tt.x]=_clamp(fDOFs[tt.x],REQmin.x,REQmax.x ); }
-        //if(tt.y>=0){ fDOFs[tt.y]=_clamp(fDOFs[tt.y],REQmin.y,REQmax.y ); }
-        //if(tt.z>=0){ fDOFs[tt.z]=_clamp(fDOFs[tt.z],REQmin.z,REQmax.z ); }
-        //if(tt.w>=0){ fDOFs[tt.w]=_clamp(fDOFs[tt.w],REQmin.w,REQmax.w ); }
-    }
-}
-
-/**
- * @brief Renormalizes the weights of a batch of data points. The sum of weights is set to R.
- * 
- * @param R The target sum of weights after renormalization.
- */
-void renormWeights(double R=1.0){ 
-    double s=0; 
-    for(int i=0; i<nbatch; i++){ s+=weights[i]; }
-    //printf( "renormWeights() s=%g R=%g R/s=%g \n", s,R, R/s );
-    s=R/s; 
-    for(int i=0; i<nbatch; i++){ weights[i]*=s; }
-    //for(int i=0; i<nbatch; i++){ printf("W.weights[%i]=%g\n",i,weights[i]); }       
-}
-
-void clean_fs(int n){
-    for(int i=0; i<n; i++){ fs[i]=Quat4dZero; }
-}
-
-/**
- * @brief Evaluates the variational derivatives of the fitting error (sumed batch training samples) with respect to all fitting parameters (i.e. non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) for each atom type). The atomic systems are not assumed rigid (i.e. the atomic positions can vary freely from sample to sample).
- * 
- * @param Eout array to store the non-covalent interaction energy values of each atomic system in the batch. if Eout==null, the function will not store the energy values.
- * @return double, returns the total fitting error.
- */
-double evalDerivsSamp( double* Eout=0 ){ 
-    //printf( "FitREQ::evalDerivsSamp() nbatch %i imodel %i verbosity %i \n", samples.size(), imodel, verbosity );
-    tryRealocSamp();
-    double Error = 0.0;
-    for(int i=0; i<samples.size(); i++){
-        const Atoms* atoms = samples[i];
-        int    nj       = atoms->n0;
-        int*   jtyp     = atoms->atypes;
-        Vec3d* jpos     = atoms->apos;
-        double* jq      = atoms->charge;
-        int    na       = atoms->natoms - atoms->n0;
-        int*   atypes   = atoms->atypes + atoms->n0;
-        Vec3d* apos     = atoms->apos   + atoms->n0;
-        double* aq      = atoms->charge + atoms->n0;
-        //printf( "evalDerivsSamp[%i] na %i n0 %i imodel %i \n", i, na, atoms->n0, imodel );
-        double Eref=atoms->Energy;
-        double wi = 1.0; 
-        if(weights) wi = weights[i];
-        // ToDo: we need to initialize fs acording to DOFs before calling clean_fs()
-        //clean_fs(na);
-        clean_fs(atoms->natoms);
-        double E;
-        switch (imodel){
-            case 0: E = evalExampleDerivs_LJQ          (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
-            case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
-            case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
-            case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, nj, jtyp, jpos ); break;
-            case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos, nj, jtyp, jpos ); break;
-        }
-        //for(int i=0; i<atoms->natoms; i++){ int ti=jtyp[i]; Quat4d fsi=fs[i]; printf( "debug i=%i type=%i dE_dR0=%g dE_deps=%g dE_dQ=%g dE_dH=%g\n", i, ti, fsi.x,fsi.y,fsi.z,fsi.w); }
-        //exit(0);
-        if( E>1e+300 ){
-            if(verbosity>0) printf( "skipped sample [%i] atoms too close \n", i );
-            continue;
-        } 
-        if(Eout){ Eout[i]=E; };
-        double dE = (E - Eref);
-        Error += dE*dE*wi;
-        //acumDerivs( na, atypes, dE );
-        acumDerivs( atoms->natoms, jtyp, 2.0*dE*wi );
-        //printf("i= %i dE= %g dE^2= %g wi*dE^2= %g Error= %g\n", i+1, dE, dE*dE, wi*dE*dE, Error);
-    }
-    //printf("Error=%g\n", Error);
-    //exit(0);
-    return Error;
 }
 
 /**
@@ -1297,199 +1502,6 @@ int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* t
     atoms.dealloc();
     fclose(fin);
     return nbatch;
-}
-
-Atoms* addEpairs( Atoms* mol ){
-    //MM::Builder builder;
-    builder.params = params;
-    builder.clear();
-    if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
-    builder.insertAtoms(*mol);
-    //int ia0=builder.frags[ifrag].atomRange.a;
-    //int ic0=builder.frags[ifrag].confRange.a;
-    //builder.printBonds();
-    //builder.printAtomConfs(true, false );
-    //if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
-    //builder.addCappingTypesByIz(1);  // insert H caps
-    //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
-    builder.tryAddConfsToAtoms( 0, -1 );
-    builder.cleanPis();
-    //if(verbosity>2)
-    //builder.printAtomConfs(false);
-    //builder.export_atypes(atypes);
-    // ------- Load lattice vectros
-    // NOTE: ERROR IS HERE:  autoBonds() -> insertBond() -> tryAddBondToAtomConf( int ib, int ia, bool bCheck )
-    //       probably we try to add multiple bonds for hydrogen ?
-    if( builder.bPBC ){ 
-        builder.autoBondsPBC( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
-        builder.autoBondsPBC( -.5,  mol->n0, mol->natoms ); 
-    }else{ 
-        builder.autoBonds( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
-        builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
-    }
-    builder.checkNumberOfBonds( true, true );
-    //if(verbosity>2)
-    //builder.printBonds ();
-    //if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
-    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
-    //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-    // --- Add Epairs
-    builder.bDummyEpair = true;
-    builder.autoAllConfEPi( ); 
-    // --- add Epairs to atoms like =O (i.e. with 2 just one neighbor)
-    builder.setPiLoop       ( 0, -1, 10 );
-    builder.addAllEpairsByPi( 0, -1 );    
-    //builder.printAtomConfs( false, true );
-    //builder.assignAllBondParams();    //if(verbosity>1)
-    //builder.finishFragment(ifrag);    
-    return builder.exportAtoms(); 
-}
-
-/**
- * Loads XYZ file and creates Atoms objects for each molecule inside it. It saves the molecules to the "samples" vector.
- * Optionally adds electron pairs and outputs XYZ file with epairs.
- *
- * @param fname The name of the XYZ file to load.
- * @param bAddEpairs Flag indicating whether to add epairs to the loaded atoms.
- * @param bOutXYZ Flag indicating whether to output XYZ file with epairs.
- * @return The number of batches created.
- */
-int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
-    //printf( "FitREQ::loadXYZ_new() fname `%s` bAddEpairs %i bOutXYZ %i \n", fname, bAddEpairs, bOutXYZ  );
-    //params->printElementTypes();
-    //params->printAtomTypes();
-    FILE* fin = fopen( fname, "r" );
-    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
-    const int nline=1024;
-    char line[1024];
-    char at_name[8];
-    // --- Open output file
-    FILE* fout=0;
-    if(bAddEpairs && bOutXYZ){
-        sprintf(line,"%s_Epairs.xyz", fname );
-        fout = fopen(line,"w");
-        //fout = fopen("out.xyz","w");
-    }
-    int il   = 0;
-    //int nbatch=0;
-    nbatch=0; // use the global
-    Atoms* atoms=0;
-    while( fgets(line, nline, fin) ){
-        //printf( "LINE:%s", line );
-        if      ( il==0 ){               // --- Read number of atoms
-            int na=-1;
-            sscanf( line, "%i", &na );
-            if( (na>0)&&(na<10000) ){
-                atoms = new Atoms(na);
-            }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
-        }else if( il==1 ){               // --- Read comment line ( read reference energy )
-            // comment - ToDo : Here we can read the reference Energy directly from .xyz 
-            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
-            //printf( "n0 %i E %g \n", n0, E );
-        }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
-            double x,y,z,q;
-            //printf( ">>%s<<\n", line );
-            int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
-            if(nret<5){q=0;}
-            int i=il-2;
-            //printf( "[%i] `%s` (%g,%g,%g) q %g \n", i, at_name, x, y, z, q );
-            atoms->apos[i].set(x,y,z);
-            atoms->atypes[i]=params->getAtomType(at_name);
-            atoms->charge[i]=q;
-        }
-        il++;
-        if( il >= atoms->natoms+2 ){    // ---- store sample atoms to batch
-            if(bAddEpairs){
-                //printf( "converting to Epairs sample[%i] natoms %i \n", samples.size(), atoms->natoms  ); 
-                Atoms* bak = atoms; 
-                atoms = addEpairs( atoms );
-                atoms->n0 = bak->n0;
-                atoms->Energy = bak->Energy;
-                delete bak;
-                if(fout){
-                    //for(int ia=0; ia<atoms->natoms; ia++){ Vec3d& p = atoms->apos[ia]; printf(  "out.atom[%i] typ=%i pos(%g,%g,%g)\n", ia, atoms->atypes[ia], p.x, p.y, p.z ); }
-                    //atoms->atomsToXYZ( fout, true, true );
-                    // comment: #	n0 3 E_tot   0.0108320770
-                    sprintf(line,"#	n0 %i E_tot %g", atoms->n0, atoms->Energy ); 
-                    params->writeXYZ( fout, atoms, line, 0, true );
-                }
-            }
-            samples.push_back( atoms );
-            //printf( "===== FitREQ::loadXYZ_new() isys %i na %i n0 %i E %g \n", nbatch, atoms->natoms, atoms->n0, atoms->Energy  );
-            //for(int i=0; i<atoms->natoms; i++ ){ printf( "a[%2i] type %2i pos(%7.3f,%7.3f,%7.3f)\n", i, atoms->atypes[i], atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z ); }
-            il=0; nbatch++;
-        }
-    }
-    if(fout)fclose(fout);
-    fclose(fin);
-    //init_types_new();
-    return nbatch;
-}
-
-/**
- * @brief Cleans the derivative array by setting all its elements to zero.
- * 
- */
-void clean_derivs(){
-    for(int i=0; i<nDOFs; i++){ fDOFs[i]=0; }
-}
-
-/**
- * This function limits the time step based on the maximum step size and the actual maximum force magnitude in the fDOFs array. It is used in the gradient descent and molecular dynamics optimization algorithms to make sure it is stable.
- * @param dt The time step to be limited.
- * @return The limited time step.
- */
-double limit_dt(double dt){
-    double fm=0;
-    int ifm;
-    //for(int i=0; i<nDOFs; i++){fm=_max(fm,fabs(fDOFs[i]));}
-    for(int i=0; i<nDOFs; i++){double f=fabs(fDOFs[i]/DOFs[i]); if(f>fm){fm=f; ifm=i;}}
-    if(dt*fm>max_step){
-        //dt = max_step/fm;
-        dt = max_step/fm;
-        //printf( "limit_dt %g max variation[%i] %g old %g -> new %g \n", dt, ifm+1, -fDOFs[ifm]/DOFs[ifm]*dt, DOFs[ifm], DOFs[ifm]-fDOFs[ifm]*dt );
-        printf( "limit_dt %g\n", dt );
-    }
-    return dt;
-}
-
-/**
- * Moves fitting parameters using the gradient descent (GD) method in order to minimize the fitting error.
- * @param dt The time step ( the higher the value, the faster the convergence, but the less stable the algorithm is).
- * @return Sum of squares of the variatinal derivatives of the fitting error with respect to all fitting parameters.
- */
-double move_GD( double dt ){
-    //printf("now in move_GD\n");
-    double F2 = 0;
-    if(max_step>0){ dt=limit_dt(dt);};
-    for(int i=0; i<nDOFs; i++){
-        double f = fDOFs[i];
-        DOFs[i] -= f*dt;
-        F2 += f*f;
-    }
-    return F2;
-}
-
-/**
- * Moves fitting parameters using the damped molecular dynamics (leap-frog algorithm) in order to minimize the fitting error.
- * @param dt The time step ( the higher the value, the faster the convergence, but the less stable the algorithm is).
- * @param damp The damping factor to apply to the velocity of each degree of freedom. Default value is 0.1.
- * @return Sum of squares of the variatinal derivatives of the fitting error with respect to all fitting parameters.
- */
-double move_MD( double dt, double damp=0.1 ){
-    double cdamp = 1-damp;
-    double F2 = 0;
-    //if(max_step>0){ dt=sqrt(limit_dt(dt));};
-    for(int i=0; i<nDOFs; i++){
-        double f = fDOFs[i];
-        double v = vDOFs[i];
-        v*=cdamp;
-        v+=f*dt;
-        vDOFs[i] = v;
-        DOFs[i] += v*dt;
-        F2      += f*f;
-    }
-    return F2;
 }
 
 // void atomsToXYZ(FILE* fout, int n, int* types, Vec3d* ps){

@@ -60,7 +60,6 @@ int loadXYZ_new( const char* fname, bool bAddEpairs, bool bOutXYZ ){
     return W.loadXYZ_new( fname, bAddEpairs, bOutXYZ );
 }
 
-
 void setWeights( int n, double* weights ){
    _realloc( W.weights, n );
    for(int i=0; i<n; i++){ W.weights[i]=weights[i]; }
@@ -74,6 +73,7 @@ double run( int imodel,  int nstep, double Fmax, double dt, int ialg, int isampm
     double Err=0;
     printf( "run( nstep %i Fmax %g dt %g isamp %i )\n", nstep, Fmax, dt, isampmode  );
     double F2max=Fmax*Fmax;
+    double F2;
     for(int i=0; i<nstep; i++){
         //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
         W.DOFsToTypes(); 
@@ -84,18 +84,20 @@ double run( int imodel,  int nstep, double Fmax, double dt, int ialg, int isampm
             case 1: Err = W.evalDerivs     (); break;
             case 2: Err = W.evalDerivsSamp (); break;
         }   
-        printf("step= %i DOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-        double F2;
+        printf("step= %i DOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W.DOFs[j]); };printf("\n");
+        printf("step= %i fDOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W.fDOFs[j]); };printf("\n");
         switch(ialg){
-            case 0: F2 = W.move_GD( dt ); break;
+            //case 0: F2 = W.move_GD( dt ); break;
+            case 0: F2 = W.move_GD_BB( i, dt ); break;
             case 1: F2 = W.move_MD( dt ); break;
         }
         // regularization must be done before evaluation of derivatives
         if(bRegularize){ W.regularization_force(); }
         if(bClamp     ){ W.limit_params();         }
+        //printf("step= %i dt= %g\n", i, dt );
         printf("step= %i RMSE= %g |F|= %g\n", i, sqrt(Err), sqrt(F2) );
-        //printf("[%i]\n", i );
-        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n"); break; }
+        printf("[%i]\n", i );
+        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n"); return Err; }
     }
     printf("step= %i DOFs= ", nstep);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
     return Err;
