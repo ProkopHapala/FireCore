@@ -232,8 +232,8 @@ class OCL_MM: public OCLsystem { public:
         nGroup=nGroup_;
         nGroupTot = nGroup*nSystems;
         ibuff_granges  = newBuffer( "granges"  , nSystems*nGroup, sizeof(int2  ), 0, CL_MEM_READ_ONLY  );    
-        ibuff_a2g      = newBuffer( "a2g"      , nSystems*nAtoms, sizeof(int   ), 0, CL_MEM_READ_ONLY  );    
-        ibuff_g2a      = newBuffer( "g2a"      , nSystems*nAtoms, sizeof(int   ), 0, CL_MEM_READ_ONLY  );         
+        ibuff_a2g      = newBuffer( "a2g"      , nSystems*nvecs, sizeof(int   ), 0, CL_MEM_READ_ONLY  );    
+        ibuff_g2a      = newBuffer( "g2a"      , nSystems*nvecs, sizeof(int   ), 0, CL_MEM_READ_ONLY  );         
         ibuff_gforces  = newBuffer( "gforces"  , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );      
         ibuff_gtorqs   = newBuffer( "gtorqs"   , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );       
         ibuff_gcenters = newBuffer( "gcenters" , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );      
@@ -616,6 +616,8 @@ class OCL_MM: public OCLsystem { public:
         task->global.x = nAtoms;
         task->global.y = nSystems;
         nDOFs.x=nAtoms; 
+        nDOFs.y=nnode; 
+        nDOFs.w=nGroup; 
         int err=0; 
         useKernel( task->ikernel );
         err |= _useArg( nDOFs             ); // 1
