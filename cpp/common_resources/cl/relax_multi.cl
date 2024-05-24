@@ -726,9 +726,10 @@ __kernel void groupForce(
     __global float4*  gtorqs,       // 6 // {hx,hy,hz,t} torques applied to atoms of the group
     __global float4*  gcenters      // 7 // centers of rotation (for evaluation of the torque
 ){
-    const int natoms=n.x;           // number of atoms
-    const int nnode =n.y;           // number of node atoms
-    const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
+    const int natoms = n.x;           // number of atoms
+    const int nnode  = n.y;           // number of node atoms
+    const int nGrpup = n.w;           // number of node atoms
+    const int nvec   = natoms+nnode; // number of vectors (atoms+node atoms)
     const int iG = get_global_id  (0); // index of atom
 
     if(iG>=(natoms)) return; // make sure we are not out of bounds of current system
@@ -736,6 +737,34 @@ __kernel void groupForce(
     const int iS = get_global_id  (1); // index of system
     const int nG = get_global_size(0); // number of atoms
     const int nS = get_global_size(1); // number of systems
+
+    // if( (iG==0) && (iS==0) ){
+    //     printf( "GPU::groupForce() natom=%i nnode=%i nvec=%i \n", natoms, nnode, nvec );
+    //     int ig_sel = 0;
+    //     int is = 0;
+    //     // for(int ia=0; ia<natoms; ia++){
+    //     //      int iav = ia + is*nvec; 
+    //     //     printf( "%i ", a2g[iav] );
+    //     // }
+    //     // printf("\n");
+
+    //      for(int is=0; is<nS; is++){
+    //         // printf( "sys[%i] ", is );
+    //         // for(int ia=0; ia<natoms; ia++){
+    //         //     int iav = ia + is*nvec; 
+    //         //     printf( "%i ", a2g[iav] );
+    //         // }
+    //         // printf("\n");
+    //         for(int ia=0; ia<natoms; ia++){
+    //             int iav = ia + is*nvec; 
+    //             const int ig = a2g[iav]; 
+    //             if(ig==ig_sel){
+    //                 printf( "GPU:atom[%i|%i,%i] ig=%i(%i/%i) gforces(%10.6f,%10.6f,%10.6f)\n", is, ia, iav, ig, ig-is*nGrpup,nGrpup, gforces[ig].x, gforces[ig].y, gforces[ig].z  );
+    //             }
+    //         }
+    //     }
+    // }
+
 
     //const int ian = iG + iS*nnode; 
     const int iaa = iG + iS*natoms;  // index of atom in atoms array
@@ -754,6 +783,7 @@ __kernel void groupForce(
     
     // --- store results
     aforce[iav] = fe;
+
 }
 
 // ======================================================================

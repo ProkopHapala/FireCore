@@ -593,6 +593,8 @@ double evalVFs( double Fconv=1e-6 ){
     double F2max = 0;
     iSysFMax=-1;
 
+    float fsc = 0.005;
+
     bool bGroupUpdate=false;
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
@@ -602,17 +604,17 @@ double evalVFs( double Fconv=1e-6 ){
         if(f2>F2max){ F2max=f2; iSysFMax=isys; }
 
         // -------- Global Optimization
-        if( f2 < 1e-8 ){            // Start Exploring
+        if( (f2 < 1e-8) && (!gopts[isys].bExploring) ){            // Start Exploring
             //printf( "evalVFs() iSys=%i CONVERGED |F|=%g \n", isys, sqrt(f2) );
             gopts[isys].startExploring();
             bGroupUpdate=true;
-            printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, 1.0 ); }
+            //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
+            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }
         }
         if( gopts[isys].update() ){ // Stop Exploring
             bGroupUpdate=true;
-            printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, 0.0 ); }
+            //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
+            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero ); }
         };
         // if( gopts[isys].bExploring ){
         //     TDrive[isys].x = 1000;  // Temperature [K]
@@ -633,7 +635,7 @@ double evalVFs( double Fconv=1e-6 ){
     err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
     //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
     if(bGroupUpdate){
-        printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
+        //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
         err |= ocl.upload( ocl.ibuff_gforces, gforces );
         err |= ocl.upload( ocl.ibuff_gtorqs , gtorqs  );
     }
@@ -642,17 +644,16 @@ double evalVFs( double Fconv=1e-6 ){
     return F2max;
 }
 
-void setGroupDrive(int isys, int ig, float fsc){
+void setGroupDrive(int isys, int ig, Vec3f fsc){
     int igs = ig + isys*ocl.nGroup;
-    gforces[igs] = Quat4f{randf(-fsc,fsc),randf(-fsc,fsc),randf(-fsc,fsc),0.0};
+    gforces[igs] = Quat4f{randf(-fsc.x,fsc.x),randf(-fsc.y,fsc.y),randf(-fsc.z,fsc.z),0.0};
     gtorqs [igs] = Quat4fZero;
 }
 
 void setGroupDrives(){
-    double fsc=1.0;
     for(int isys=0; isys<nSystems; isys++){
         for(int ig=0; ig<ocl.nGroup; ig++){
-           setGroupDrive(isys, ig, fsc);
+           setGroupDrive(isys, ig,  {1.0,1.0,0.0} );
         }
     }
     int err=0;
@@ -1310,9 +1311,13 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         //     ocl.upload( ocl.ibuff_gforces, gforces );
         // }
 
+        bool bExplore = false;
+        for(int isys=0; isys<nSystems; isys++){ if(gopts[isys].bExploring) bExplore = true; }
+        bool bGroupDrive = bGroups && bExplore;
+
         for(int j=0; j<nPerVFs; j++){
             {
-                if(bGroups)err |= task_GroupUpdate->enque_raw();
+                if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
                 if(dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{ err |= task_NBFF_Grid ->enque_raw(); }
@@ -1327,7 +1332,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                 }
                 err |= task_MMFF->enque_raw();
 
-                //if(bGroups) err |= task_GroupForce->enque_raw();
+                if( bGroupDrive ) err |= task_GroupForce->enque_raw();
                 err |= task_move->enque_raw(); 
             }
             niterdone++;
