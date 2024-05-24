@@ -46,6 +46,7 @@ static MMFFparams* params_glob;
 #include "MultiSolverInterface.h"
 #include "GlobalOptimizer.h"
 #include "GOpt.h"
+#include "Groups.h"
 
 #include "datatypes_utils.h"
 

@@ -302,10 +302,10 @@ class OCL_MM: public OCLsystem { public:
         for(int ig=0; ig<nGroupTot; ig++){ 
             int2 ni  = granges[ig];
             int isys = ig/nGroup;
-            printf( "--- group[%i] grange i0=%i n=%i \n", ig, ni.x, ni.y );
+            //printf( "--- group[%i] grange i0=%i n=%i \n", ig, ni.x, ni.y );
             for(int i=0; i<ni.y; i++){
                 int ia = g2a[i + ni.x];
-                printf( "group[%i][%i] iaG=%i iaL=%i \n", ig, i, ia, ia - isys*nvecs  );
+                //printf( "group[%i][%i] iaG=%i iaL=%i \n", ig, i, ia, ia - isys*nvecs  );
             }
         }
         //for(int i=0; i<nAtoms; i++){    printf( "atom[%i] -> group # %i \n", i, a2g_[i] );}

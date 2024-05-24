@@ -41,7 +41,7 @@ ilv2 = 1/|v2|
 */
 
 
-class Group{ public:
+class CGroup{ public:
     int     n = 0;   // number of atoms
     int*    iatoms;  // atom indexes belonging to the group
     Quat4f* cs;      // projection coefficients
@@ -109,7 +109,7 @@ class Confs{ public:
     Quat4f* atoms      =0;
     Quat4f* aforces    =0;
 
-    std::vector<Group> groups;
+    std::vector<CGroup> groups;
 
     float dist2( int isys1, int isys2 ){   // distance between two systems
         int ng = groups.size();
@@ -117,7 +117,7 @@ class Confs{ public:
         int i2 = isys2*nvec;
         float l2 = 0; 
         for(int ig=0; ig<ng; ig++ ){
-            const Group& G = groups[ig];
+            const CGroup& G = groups[ig];
             //Vec3f L = pose_distance( ps1, ps2 );
             Vec3f cog1, u1, v1; G.pose( atoms+i1, cog1, u1, v1 );
             Vec3f cog2, u2, v2; G.pose( atoms+i2, cog2, u2, v2 );
@@ -135,7 +135,7 @@ class Confs{ public:
         float l2 = 0; 
         // ---- evaluate configuration distances (reduction)
         for(int ig=0; ig<ng; ig++ ){
-            const Group& G = groups[ig];
+            const CGroup& G = groups[ig];
             //Vec3f L = pose_distance( ps1, ps2 );
             Vec3f cog1, u1, v1; G.pose( atoms+i1, cog1, u1, v1 );
             Vec3f cog2, u2, v2; G.pose( atoms+i2, cog2, u2, v2 );
@@ -150,7 +150,7 @@ class Confs{ public:
         float f_r = k*dl/l;
         // ---- apply force
         for(int ig=0; ig<ng; ig++ ){
-            const Group& G = groups[ig];
+            const CGroup& G = groups[ig];
             Vec3f fcog1;  // TO BE DONE 
             Vec3f fu1;    // TO BE DONE
             Vec3f fv1;    // TO BE DONE
