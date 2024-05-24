@@ -594,6 +594,7 @@ double evalVFs( double Fconv=1e-6 ){
     iSysFMax=-1;
 
     float fsc = 0.005;
+    float tsc = 0.3;
 
     bool bGroupUpdate=false;
     for(int isys=0; isys<nSystems; isys++){
@@ -609,12 +610,13 @@ double evalVFs( double Fconv=1e-6 ){
             gopts[isys].startExploring();
             bGroupUpdate=true;
             //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }
+            //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
+            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,tsc,tsc} ); }   // group rotate driver
         }
         if( gopts[isys].update() ){ // Stop Exploring
             bGroupUpdate=true;
             //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero ); }
+            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig ); }
         };
         // if( gopts[isys].bExploring ){
         //     TDrive[isys].x = 1000;  // Temperature [K]
@@ -644,10 +646,12 @@ double evalVFs( double Fconv=1e-6 ){
     return F2max;
 }
 
-void setGroupDrive(int isys, int ig, Vec3f fsc){
+void setGroupDrive(int isys, int ig, Vec3f fsc=Vec3fZero, Vec3f tsc=Vec3fZero){
     int igs = ig + isys*ocl.nGroup;
     gforces[igs] = Quat4f{randf(-fsc.x,fsc.x),randf(-fsc.y,fsc.y),randf(-fsc.z,fsc.z),0.0};
-    gtorqs [igs] = Quat4fZero;
+    gtorqs [igs]   = Quat4f{randf(-tsc.x,tsc.x),randf(-tsc.y,tsc.y),randf(-tsc.z,tsc.z),0.0};
+    //gforces[igs] = Quat4fZero;
+    //gtorqs [igs] = Quat4fZero;
 }
 
 void setGroupDrives(){
