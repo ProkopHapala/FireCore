@@ -233,7 +233,7 @@ float4 getR4repulsion( float3 d, float R, float Rcut, float A ){
 
 // 1.  getMMFFf4() - computes bonding interactions between atoms and nodes and its neighbors (max. 4 neighbors allowed), the resulting forces on atoms are stored "fapos" array and recoil forces on neighbors are stored in "fneigh" array
 //                   kernel run over all atoms and all systems in parallel to exploit GPU parallelism
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void getMMFFf4(
     const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
     // Dynamical
@@ -266,6 +266,8 @@ __kernel void getMMFFf4(
     const int nnode =nDOFs.y;  // number of nodes in the system
     //const int nvec  = nAtoms+nnode;
 
+    if(iG>=nnode) return;
+
     const int i0a   = iS*nAtoms;         // index of first atom      in the system
     const int i0n   = iS*nnode;          // index of first node atom in the system
     const int i0v   = iS*(nAtoms+nnode); // index of first vector    in the system ( either atom or pi-orbital )
@@ -273,7 +275,6 @@ __kernel void getMMFFf4(
     const int iaa = iG + i0a;  // index of current atom (either node or capping atom)
     const int ian = iG + i0n;  // index of current node atom
     const int iav = iG + i0v;  // index of current vector ( either atom or pi-orbital )
-    
 
     #define NNEIGH 4
     
@@ -421,7 +422,7 @@ __kernel void getMMFFf4(
 }
 
 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void getMMFFf4_bak(
     const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
     // Dynamical
@@ -672,7 +673,7 @@ __kernel void getMMFFf4_bak(
 //                     updateGroups()
 // ======================================================================
 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateGroups(
     int               ngroup,      // 1 // number of groups (total, for all systems)
     __global int2*    granges,     // 2 // (i0,n) range of indexes specifying the group
@@ -716,7 +717,7 @@ __kernel void updateGroups(
 //                     groupForce()
 // ======================================================================
 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void groupForce(
     const int4        n,            // 1 // (natoms,nnode) dimensions of the system
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
@@ -732,7 +733,7 @@ __kernel void groupForce(
     const int nvec   = natoms+nnode; // number of vectors (atoms+node atoms)
     const int iG = get_global_id  (0); // index of atom
 
-    if(iG>=(natoms)) return; // make sure we are not out of bounds of current system
+    if(iG>=natoms) return; // make sure we are not out of bounds of current system
 
     const int iS = get_global_id  (1); // index of system
     const int nG = get_global_size(0); // number of atoms
@@ -860,7 +861,7 @@ float hashf_wang( float val, float xmin, float xmax) {
 }
 
 // Assemble recoil forces from neighbors and  update atoms positions and velocities 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
     const int4        n,            // 1 // (natoms,nnode) dimensions of the system
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
@@ -877,6 +878,9 @@ __kernel void updateAtomsMMFFf4(
     const int nnode =n.y;           // number of node atoms
     const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
     const int iG = get_global_id  (0); // index of atom
+
+    if(iG>=nvec) return;
+
     const int iS = get_global_id  (1); // index of system
     const int nG = get_global_size(0); // number of atoms
     const int nS = get_global_size(1); // number of systems
@@ -1136,7 +1140,7 @@ __kernel void getNonBond(
 //                     printOnGPU()
 // ======================================================================
 // Print atoms and forces on GPU
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void printOnGPU(
     const int4        n,            // 1
     const int4        mask,         // 2
@@ -1202,7 +1206,7 @@ __kernel void printOnGPU(
 //                     cleanForceMMFFf4()
 // ======================================================================
 // Clean forces on atoms and neighbors to prepare for next forcefield evaluation
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void cleanForceMMFFf4(
     const int4        n,           // 2
     __global float4*  aforce,      // 5
@@ -1869,7 +1873,7 @@ __kernel void getNonBond_GridFF(
 //                           sampleGridFF()
 // ======================================================================
 // this is just to test interpolation of Grid-Force-Field (GFF) on GPU
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void sampleGridFF(
     const int4 ns,                  // 1
     __global float4*  atoms,        // 2
@@ -2380,7 +2384,7 @@ float3 update_FIRE( float3 f, float3 v, float* dt, float* damp,    float dtmin, 
     //p  += v * dt;
 }
 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void PPAFM_scan(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
@@ -2490,7 +2494,7 @@ __kernel void PPAFM_scan(
 }
 
 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void PPAFM_scan_df(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
