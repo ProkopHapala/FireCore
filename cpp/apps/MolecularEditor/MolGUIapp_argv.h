@@ -66,12 +66,24 @@
     
     funcs2["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs2["-group"]={2,[&](const char** ss){  
+        printf( "MolGUIapp_argv.h :: GROUPS: \n" );
         W->bGroups = true;
-        int ig;             sscanf(ss[0], "%i", &ig);
-        int a2g[16]; int ng=sscanf(ss[1], "%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i", a2g+0,a2g+1,a2g+2,a2g+3,a2g+4,a2g+5,a2g+6,a2g+7,a2g+8,a2g+9,a2g+10,a2g+11,a2g+12,a2g+13,a2g+14,a2g+15);
+        //int ig;               sscanf(ss[0], "%i", &ig);
+        int i0;Vec2i ifw,iup; sscanf(ss[0], "%i,%i,%i,%i,%i", &ifw.x,&ifw.y,&iup.x,&iup.y, &i0);  printf( "MolGUIapp_argv.h::GROUPS ifw(%i,%i),iup(%i,%i) i0=%i \n", ifw.x,ifw.y,  iup.x,iup.y, i0 );
+        int a2g[16]; int   ng=sscanf(ss[1], "%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i,%i", a2g+0,a2g+1,a2g+2,a2g+3,a2g+4,a2g+5,a2g+6,a2g+7,a2g+8,a2g+9,a2g+10,a2g+11,a2g+12,a2g+13,a2g+14,a2g+15);
         //printf( "--------- group[%i] n=%i\n", ig, ng );
         if(W->atom2group.size()==0){ W->atom2group.resize( W->ffl.natoms ); for(int i=0;i<W->ffl.natoms;i++){ W->atom2group[i]=-1; } }
-        for(int i=0; i<ng;i++){ W->atom2group[a2g[i]]=ig;}
+        
+        if( W->groups.a2g == 0 ){
+            W->groups.bindAtoms(W->ffl.apos, W->ffl.fapos);
+            W->groups.realloc(W->ffl.natoms);
+
+        }
+        int ig = W->groups.addGroup( ng, a2g ); 
+        W->groups.defPoseByAtoms( ig, ifw, iup, i0 );     
+        //W->groups.evalRot(ig);
+
+        for(int i=0; i<ng;i++){ W->atom2group[a2g[i]]=ig;}   
         //exit(0);
     }}; // AutoCharge
     
