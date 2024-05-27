@@ -309,19 +309,20 @@ class MolWorld_sp3 : public SolverInterface { public:
     }
 
     virtual void pre_loop(){
-        int ngroup = 0;
-        printf("atom2group.size()==%i\n", atom2group.size() );
-        for(int i=0; i<atom2group.size(); i++){ 
-            //printf("atom2group[%i]==%i\n", i, atom2group[i]);
-            ngroup=_max(ngroup,atom2group[i]); 
-        } 
-        ngroup++;
-        if( ngroup>0 ){
-            groups.setGroupMapping( ffl.natoms, ngroup, &atom2group[0] );
-            groups.bindAtoms(ffl.apos, ffl.fapos);
-            groups.initWeights(ffl.natoms);
-            groups.evalAllPoses();
-        }
+        groups.print_groups2atoms(); //exit(0);
+        // int ngroup = 0;
+        // printf("atom2group.size()==%i\n", atom2group.size() );
+        // for(int i=0; i<atom2group.size(); i++){ 
+        //     //printf("atom2group[%i]==%i\n", i, atom2group[i]);
+        //     ngroup=_max(ngroup,atom2group[i]); 
+        // } 
+        // ngroup++;
+        // if( ngroup>0 ){
+        //     groups.setGroupMapping( ffl.natoms, ngroup, &atom2group[0] );
+        //     groups.bindAtoms(ffl.apos, ffl.fapos);
+        //     //groups.initWeights(ffl.natoms);
+        //     groups.evalAllPoses();
+        // }
     }
 
     // ========== Render to SVG
@@ -1585,6 +1586,11 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if( bGopt         ) go.update();
                 if( go.bExploring ) bConverged = false;
             }
+
+            if(bGroups){
+                groups.evalAllPoses();
+            }
+
             Vec3d cvf_bak = ffl.cvf;
             E=0; ffl.cvf = Vec3dZero;
             //------ eval forces

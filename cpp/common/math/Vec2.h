@@ -109,6 +109,14 @@ class Vec2T {
 	inline void set_perp( const VEC& a )  {         x=-a.y; y=a.x; }
 	inline T cross ( const VEC& a ) const { return x*a.y - y*a.x;  }
 
+    inline T crammer( const VEC& v, const VEC& a, const VEC& b ){
+        T det   = a.x * b.y - a.y * b.x;
+        T idet  = 1/det;
+        x = (v.x * b.y  - v.y * b.x)*idet;
+        y = (a.x * v.y  - a.y * v.x)*idet;
+        return det;
+    }
+
 	bool isBetweenRotations( const VEC& a, const VEC& b ){ return (cross(a)<0)&&(cross(b)>0);  }
 
     // what about using bitwize operators for this ^ (multiplication) and | (division) ?
