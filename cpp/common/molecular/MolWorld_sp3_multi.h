@@ -142,6 +142,13 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* gtorqs   = 0; // [ nSystems*nGroup ]   
     Quat4f* gcenters = 0; // [ nSystems*nGroup ] 
 
+    Quat4f* gfws      = 0; // [ nSystems*nGroup ] 
+    Quat4f* gups      = 0; // [ nSystems*nGroup ]    
+    Quat4f* gweights  = 0; // [ nSystems*nGroup ]   
+    Vec2f*  gfweights = 0; // [ nSystems*nGroup ] 
+
+
+
     cl_Mat3*  lvecs    =0;
     cl_Mat3* ilvecs    =0;
     Quat4f*   pbcshifts =0;
@@ -298,20 +305,59 @@ virtual void init() override {
 }
 
 
-virtual int getGroupPos( Quat4f*& gpos ) override { 
+virtual int getGroupPose( Quat4f*& gpos, Quat4f*& gfw, Quat4f*& gup ) override { 
     gpos = gcenters + iSystemCur*ocl.nvecs; 
+    gfw  = gfws     + iSystemCur*ocl.nvecs;
+    gup  = gups     + iSystemCur*ocl.nvecs;
     return ocl.nGroup; 
 };
 
-void init_groups(){
-    printf("MolWorld_sp3_multi::init_groups()\n" );
-    int ngroup = 0;
-    printf("atom2group.size()==%i\n", atom2group.size() );
-    for(int i=0; i<atom2group.size(); i++){ 
-        //printf("atom2group[%i]==%i\n", i, atom2group[i]);
-        ngroup=_max(ngroup,atom2group[i]); 
+void groups2ocl( int isys, bool bForce=true, bool bPose=false, bool bWeights=true ){
+    int nG = ocl.nGroup;
+    if( nG != groups.groups.size() ){  printf("ERROR ocl.nGroup(%i)!=groups.size(%i) => exit() \n", ocl.nGroup, groups.groups.size() ); exit(0); }
+    int i0g = isys*nG;
+    int i0a = isys*ocl.nvecs;
+    for(int ig=0; ig<nG; ig++){
+        Group& g = groups.groups[ig];
+        int i = ig + i0g;
+        if(bPose){
+            gcenters[i].f = (Vec3f)g.cog;
+            gfws    [i].f = (Vec3f)g.fw;
+            gups    [i].f = (Vec3f)g.up;
+        }
+        if(bForce){
+            gforces [i].f = (Vec3f)g.force;
+            gtorqs  [i].f = (Vec3f)g.torq;
+        }
+        if(bWeights){
+            printf( "CPU [isys=%i,ig=%i]\n", isys, ig );
+            for(int j=0; j<g.i0n.y; j++){
+                int ia = groups.g2a[ j + g.i0n.x ];
+                //int ia = g2a[ i0g + j ];
+                int iia = i0a + ia;
+                gweights [ iia ] = groups. weights[ia];
+                gfweights[ iia ] = groups.fweights[ia];
+
+                printf( "CPU gweights[%i](%g,%g,%g,%g)\n", iia, gweights[iia].x,gweights[iia].y,gweights[iia].z,gweights[iia].w );
+            }
+        }
     }
-    ngroup+=1;
+}
+
+
+int init_groups(){
+    printf("MolWorld_sp3_multi::init_groups()\n" );
+    // int ngroup = -1;
+    // printf("atom2group.size()==%i\n", atom2group.size() );
+    // for(int i=0; i<atom2group.size(); i++){ 
+    //     //printf("atom2group[%i]==%i\n", i, atom2group[i]);
+    //     ngroup=_max(ngroup,atom2group[i]); 
+    // }
+    // ngroup+=1;
+    int ngroup = groups.groups.size();
+
+    if(ngroup<=0) return -1;
+
     // int2*   granges  = 0; // [ nSystems*nGroup ]    
     // int*    a2g      = 0; // [ nSystems*nAtoms ]  
     // int*    g2a      = 0; // [ nSystems*nAtoms ]       
@@ -320,18 +366,29 @@ void init_groups(){
     // Quat4f* gcenters = 0; // [ nSystems*nGroup ] 
 
     int nGroupTot = ngroup*ocl.nSystems;
-    int nAtomTot  = ocl.nAtoms*ocl.nSystems;
+    int nAtomTot  = ocl.nvecs*ocl.nSystems;
     _realloc0( gforces,  nGroupTot, Quat4fZero );
     _realloc0( gtorqs,   nGroupTot, Quat4fZero );
     _realloc0( gcenters, nGroupTot, Quat4fZero );
     _realloc0( granges,  nGroupTot, Vec2iZero  );
+    _realloc0( gfws,     nGroupTot, Quat4fZero  );
+    _realloc0( gups,     nGroupTot, Quat4fZero  );
+
+    _realloc0( gweights, nAtomTot, Quat4fZero  );
+    _realloc0( gfweights,nAtomTot, Vec2fZero   );
     _realloc0( a2g, nAtomTot, -1 );
     _realloc0( g2a, nAtomTot, -1 );
+
     //exit(0);
-    if(ngroup>0){
-        ocl.initAtomGroups( ngroup );
-        ocl.setGroupMapping( &atom2group[0] );
+    ocl.initAtomGroups( ngroup );
+    ocl.setGroupMapping( &atom2group[0] );
+    for(int isys=0; isys<nSystems; isys++){
+        groups2ocl( isys, true, false, true );
     }
+    int err=0;
+    err|= ocl.upload( ocl.ibuff_gweights,  gweights  ); OCL_checkError(err, "init_groups.upload(gweights)");
+    err|= ocl.upload( ocl.ibuff_gfweights, gfweights ); OCL_checkError(err, "init_groups.upload(gfweights)");
+    return err;
 }
 
 virtual void pre_loop() override {
@@ -1323,7 +1380,8 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 
         for(int j=0; j<nPerVFs; j++){
             {
-                if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
+                //if( bGroupDrive )
+                err |= task_GroupUpdate->enque_raw();
                 if(dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{ 
@@ -1385,6 +1443,12 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
             return niterdone; 
         }
+    }
+
+    if(bGroups){
+        ocl.download( ocl.ibuff_gcenters, gcenters );
+        ocl.download( ocl.ibuff_gfws, gfws );
+        ocl.download( ocl.ibuff_gups, gups );
     }
 
     double t=(getCPUticks()-T0)*tick2second;
@@ -1773,6 +1837,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
         default:
             eval_NBFF_ocl_debug();
     }
+
     unpack_system( iSystemCur, ffl, true, true );
 
     /*

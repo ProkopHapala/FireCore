@@ -679,7 +679,10 @@ __kernel void updateGroups(
     __global int2*    granges,     // 2 // (i0,n) range of indexes specifying the group
     __global int*     g2a,         // 3 // indexes of atoms corresponding to groups defined by granges
     __global float4*  apos,        // 4 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] ) 
-    __global float4*  gcenters     // 5 // centers of each groups (CoGs)
+    __global float4*  gcenters,    // 5 // centers of each groups (CoGs)
+    __global float4*  gfws,        // 6 // forwad  orietantian vector for each group
+    __global float4*  gups,        // 7 // up      orietantian vector for each group
+    __global float4*  gweights     // 8 // up      orietantian vector for each group
 ){
     const int iG = get_global_id  (0); // index of atom
     if(iG>=ngroup) return; // make sure we are not out of bounds of current system
@@ -688,29 +691,50 @@ __kernel void updateGroups(
     //     printf( "GPU ngroup=%i \n", ngroup );
     //     for(int i=0; i<ngroup; i++){ 
     //         const int2 grange = granges[i];
-    //         printf("GPU granges[%i] i0=%i n=%i ", i, grange.x, grange.y  ); 
+    //         printf("GPU granges[%i] i0=%i n=%i \n", i, grange.x, grange.y  ); 
     //         for(int j=0; j<grange.y; j++){
     //             int ia = g2a[ grange.x + j ];
     //             //printf( "[%i] %i \n", j, ia );
-    //             printf( " %i", ia );
+    //             printf( "GPU gweights[%i](%g,%g,%g,%g)\n", ia, gweights[ia].x,gweights[ia].y,gweights[ia].z,gweights[ia].w );
     //         }
     //         printf("\n");
     //     }
-
     // }
 
-    
     const int2 grange = granges[iG];
     
-    float4 cog = (float4){0.0f,0.0f,0.0f,0.0f};
+    float3 cog = (float3){0.0f,0.0f,0.0f};
+
+    float wsum = 0.f;
     for(int i=0; i<grange.y; i++){
         int ia = g2a[ grange.x + i ];
         //const float4 pe = apos[ia];
-        cog.xyz += apos[ia].xyz;
+        const float4 w = gweights[ia];
+        cog    += apos[ia].xyz * w.x;
+        wsum   += w.x;
     }
-    cog.xyz *= (1.f/grange.y);
-    gcenters[iG] = cog;
-    
+    cog *= ( 1.f/wsum );
+    gcenters[iG] = (float4){cog,0.0f};
+
+    float3 up  = (float3){0.0f,0.0f,0.0f};
+    float3 fw  = (float3){0.0f,0.0f,0.0f};
+    for(int i=0; i<grange.y; i++){
+        int ia = g2a[ grange.x + i ];
+        //const float4 pe = apos[ia];
+        const float4 w = gweights[ia];
+        const float3 d = apos[ia].xyz - cog.xyz;
+        fw.xyz += d * w.y;
+        up.xyz += d * w.z;
+    }
+    {  // Orthonormalize
+        fw  = normalize( fw );
+        up += fw * -dot( fw, up );
+        up  = normalize( up );
+    }
+
+    //printf( "GPU[iG=%i] cog(%g,%g,%g) fw(%g,%g,%g) up(%g,%g,%g) \n", iG, cog.x,cog.y,cog.z,   fw.x,fw.y,fw.z,  up.x,up.y,up.z );
+    gfws[iG] = (float4){fw,0.0f};
+    gups[iG] = (float4){up,0.0f};    
 }
 
 // ======================================================================
@@ -725,7 +749,10 @@ __kernel void groupForce(
     __global int*     a2g,          // 4 // atom to group maping (index)   
     __global float4*  gforces,      // 5 // linar forces appliaed to atoms of the group
     __global float4*  gtorqs,       // 6 // {hx,hy,hz,t} torques applied to atoms of the group
-    __global float4*  gcenters      // 7 // centers of rotation (for evaluation of the torque
+    __global float4*  gcenters,     // 7 // centers of rotation (for evaluation of the torque
+    __global float4*  gfws,         // 8 // forward vector of group orientation
+    __global float4*  gups,         // 9 // up      vector of group orientation
+    __global float2*  gfweights    // 10 // weights for application of forces on atoms
 ){
     const int natoms = n.x;           // number of atoms
     const int nnode  = n.y;           // number of node atoms
@@ -774,13 +801,21 @@ __kernel void groupForce(
     float4 fe    = aforce[iav]; // position of atom or pi-orbital
     const int ig = a2g[iav];  // index of the group to which this atom belongs 
 
+    float2  w = gfweights[ig];
+
     // --- apply linear forece from the group
-    fe.xyz += gforces[ig].xyz;  
+    fe.xyz += gforces[ig].xyz * w.x;  
+
+    // ToDo: group vectors may be stored in Local Memory ?
+    const float3 torq = gtorqs[ig].xyz;
+    const float3 fw   = gfws  [ig].xyz;
+    const float3 up   = gups  [ig].xyz;
+    const float3 lf   = normalize( cross(fw,up) ); 
+    const float3 tq   = fw * torq.x   +  up * torq.y    +   lf * torq.z; 
 
     // --- apply torque from the group
-    const float3 dp  = apos[iav].xyz - gcenters[ig].xyz; 
-    const float4 tq  = gtorqs[ig];
-    fe.xyz          += cross( dp, tq.xyz ) * tq.x;
+    const float3 dp  = apos[iav].xyz - gcenters[ig].xyz;
+    fe.xyz          += cross( dp, tq.xyz ) * w.x;
     
     // --- store results
     aforce[iav] = fe;

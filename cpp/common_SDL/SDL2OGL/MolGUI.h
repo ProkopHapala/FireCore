@@ -1258,26 +1258,27 @@ void MolGUI::draw(){
     // ----- Visualization of the Groups of Atoms
     if( W->bGroups ){
 
-        for(int ig=0; ig<W->groups.groups.size(); ig++){
-            Group& g = W->groups.groups[ig];
-            Draw::color_of_hash(ig*15467+545);
-            Draw3D::drawVecInPos( g.fw, g.cog );
-            Draw3D::drawVecInPos( g.up, g.cog );
-        }
+        // for(int ig=0; ig<W->groups.groups.size(); ig++){
+        //     Group& g = W->groups.groups[ig];
+        //     Draw::color_of_hash(ig*15467+545);
+        //     Draw3D::drawVecInPos( g.fw, g.cog );
+        //     Draw3D::drawVecInPos( g.up, g.cog );
+        // }
 
-        for(int ig=0; ig<W->groups.groups.size(); ig++){
-            Quat4f* ws = W->groups.weights;
-            //Vec2i i0n  = W->groups.groups[ig].i0n;
-            Group& g = W->groups.groups[ig];
-            for(int i=0; i<g.i0n.y; i++){
-                int ia = W->groups.g2a[i+g.i0n.x];
-                Vec3d p = W->groups.apos[ia];
-                double wi = ws[ia].y;
-                if( wi>0 ){ glColor3f(0.0,0.0,1.0); }else{ glColor3f(1.0,0.0,0.0); };
-                Draw3D::drawSphereOctLines(8,fabs(wi)*0.2,apos[ia]);
-                //Draw3D::drawSphereOctLines(8,.5,apos[ia]);
-            }
-        }
+        // for(int ig=0; ig<W->groups.groups.size(); ig++){
+        //     Quat4f* ws = W->groups.weights;
+        //     //Vec2i i0n  = W->groups.groups[ig].i0n;
+        //     Group& g = W->groups.groups[ig];
+        //     for(int i=0; i<g.i0n.y; i++){
+        //         int ia = W->groups.g2a[i+g.i0n.x];
+        //         Vec3d p = W->groups.apos[ia];
+        //         double wi = ws[ia].y;
+        //         if( wi>0 ){ glColor3f(0.0,0.0,1.0); }else{ glColor3f(1.0,0.0,0.0); };
+        //         Draw3D::drawSphereOctLines(8,fabs(wi)*0.2,apos[ia]);
+        //         //Draw3D::drawSphereOctLines(8,.5,apos[ia]);
+        //     }
+        // }
+
 
         // for(int ia=0; ia<W->atom2group.size(); ia++){
         //     int ig = W->atom2group[ia];
@@ -1287,13 +1288,15 @@ void MolGUI::draw(){
         //     }
         // }
 
-        // Quat4f* gpos=0; int ng=W->getGroupPos( gpos );
-        // if(gpos){
-        //     for(int ig=0; ig<ng; ig++){
-        //         Draw::color_of_hash(ig*15467+545);
-        //         Draw3D::drawPointCross( gpos[ig].f, 2.0);
-        //     }
-        // }
+        Quat4f *gpos=0,*gfw=0,*gup=0; int ng=W->getGroupPose( gpos, gfw, gup );
+        if(gpos){
+            for(int ig=0; ig<ng; ig++){
+                //Draw::color_of_hash(ig*15467+545); Draw3D::drawPointCross( gpos[ig].f, 2.0);
+                glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( gfw[ig].f*5., gpos[ig].f );
+                glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f );
+                glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
+            }
+        }
     }
 
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
