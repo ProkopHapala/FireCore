@@ -80,7 +80,8 @@
 
         }
         int ig = W->groups.addGroup( ng, a2g ); 
-        W->groups.defPoseByAtoms( ig, ifw, iup, i0 );     
+        W->groups.defPoseByAtoms( ig, ifw, iup, i0 );
+        W->groups.groups[ig].torq = Vec3d{1.0,0.0,0.0};     
         //W->groups.evalRot(ig);
 
         for(int i=0; i<ng;i++){ W->atom2group[a2g[i]]=ig;}   

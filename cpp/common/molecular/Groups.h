@@ -8,11 +8,16 @@
 #include "quaternion.h"
 #include "Mat3.h"
 
+#include "Draw3D.h" // debug
+
 struct Group{
     Vec2i i0n;
     Vec3d cog;
     Vec3d fw;
     Vec3d up;
+    
+    Vec3d force=Vec3dZero;
+    Vec3d torq =Vec3dZero;
 
     Mat3d rotMat()const{
         Vec3d lf = cross(fw,up);
@@ -78,16 +83,69 @@ class Groups{ public:
         }
     }
 
-    void applyTorq( int ig, Vec3d dir, double scale, bool bLocal=true ){
+    void applyTorq( int ig, Vec3d torq, bool bLocal=true ){
         const Group& g = groups[ig];
-        Mat3d M  = g.rotMat();
-        Vec3d tq;  
-        M.dot_to_T( dir, tq );
+        Vec3d tq;
+        if(bLocal){
+            Mat3d M  = g.rotMat();
+            M.dot_to_T( torq, tq );
+            {
+                glColor3f( 1.0f,0.0f,0.0f ); Draw3D::drawVecInPos( M.a, g.cog );
+                glColor3f( 0.0f,1.0f,0.0f ); Draw3D::drawVecInPos( M.b, g.cog );
+                glColor3f( 0.0f,0.0f,1.0f ); Draw3D::drawVecInPos( M.c, g.cog );
+                glColor3f( 1.0f,1.0f,1.0f ); Draw3D::drawVecInPos( tq*10.0, g.cog );
+            }
+        }else{
+            tq=torq;
+        }
+        Vec3d fcog = Vec3dZero;
+        double wsum =0;
         for(int i=0; i<g.i0n.y; i++){
             int ia  = g2a[i + g.i0n.x];
             Vec3d dp = apos[ia] - g.cog;
             Vec3d ft = cross( tq, dp );
-            fapos[ia].add_mul( ft,  fweights[ia].y*scale  );
+            double w = fweights[ia].y; 
+            wsum+=w;
+            ft.mul(w);
+            fcog.add(ft);
+            fapos[ia].add( ft );
+            {
+                glColor3f( 1.0f,0.0f,0.0f );
+                Draw3D::drawVecInPos( ft*10.0, apos[ia] );
+            }
+        }
+        fcog.mul(-1/wsum);
+        for(int i=0; i<g.i0n.y; i++){
+            int ia  = g2a[i + g.i0n.x];
+            fapos[ia].add_mul( fcog, fweights[ia].y );
+            // {
+            //     glColor3f( 1.0f,0.0f,0.0f );
+            //     Draw3D::drawVecInPos( fapos[ia]*10.0, apos[ia] );
+            // }
+        }
+    }
+
+    void applyAllForces( double fsc=1.0, double tsc=1.0, bool bLocalTq=true, bool bLocalF=false ){
+        for(int ig=0; ig<groups.size(); ig++){
+            const Group& g = groups[ig];
+            applyForce( ig, g.force*fsc, bLocalF );
+            applyTorq ( ig, g.torq*tsc,  bLocalTq );
+        }
+    }
+
+    void forceAtom(int ia){
+        int ig = a2g[ia];
+        if(ig>=0){
+            const Group& g = groups[ig];
+            const Vec3d dp = apos[ia] - g.cog;
+            const Mat3d rot = g.rotMat();
+            Vec3d tq; rot.dot_to_T( g.torq, tq ); 
+            const Vec3d ft  = cross( tq, dp );
+            //fapos[ia].add( ft + g.force );
+            {
+                glColor3f( 1.0f,0.0f,0.0f );
+                Draw3D::drawVecInPos( ft, apos[ia] );
+            }
         }
     }
 
