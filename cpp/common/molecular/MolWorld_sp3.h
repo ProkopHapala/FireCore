@@ -254,7 +254,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     virtual MolWorldVersion getMolWorldVersion() const { return MolWorldVersion::BASIC; };
 
-    virtual int getGroupPos( Quat4f*& gpos ){ gpos=0; return 0; };
+    virtual int getGroupPose( Quat4f*& gpos, Quat4f*& gfw, Quat4f*& gup ){ gpos=0; gfw=0; gup=0; return 0; };
 
     virtual void init(){
         printf( "MolWorld_sp3::init() \n" );

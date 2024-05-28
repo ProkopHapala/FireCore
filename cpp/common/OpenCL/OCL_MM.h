@@ -91,12 +91,16 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_dipole_ps=-1;
     int ibuff_dipoles  =-1;
 
-    int ibuff_granges=-1;     // 2 // (i0,i1) range of indexes specifying the group
-    int ibuff_g2a=-1;         // 3 // (i0,i1) atom to group mapping
-    int ibuff_a2g=-1;          // 5 // atom to group maping (index)   
-    int ibuff_gforces=-1;      // 6 // linar forces appliaed to atoms of the group
-    int ibuff_gtorqs=-1;       // 7 // {hx,hy,hz,t} torques applied to atoms of the group
-    int ibuff_gcenters=-1;      // 8 // centers of rotation (for evaluation of the torque
+    int ibuff_granges   = -1;  // 2 // (i0,i1) range of indexes specifying the group
+    int ibuff_g2a       = -1;  // 3 // (i0,i1) atom to group mapping
+    int ibuff_a2g       = -1;  // 5 // atom to group maping (index)   
+    int ibuff_gforces   = -1;  // 6 // linar forces appliaed to atoms of the group
+    int ibuff_gtorqs    = -1;  // 7 // {hx,hy,hz,t} torques applied to atoms of the group
+    int ibuff_gcenters  = -1;  // 8 // centers of rotation (for evaluation of the torque
+    int ibuff_gfws      = -1;
+    int ibuff_gups      = -1; 
+    int ibuff_gweights  = -1;
+    int ibuff_gfweights = -1; 
 
     // ------- Grid
     //size_t Ns[4]; // = {N0, N1, N2};
@@ -235,8 +239,14 @@ class OCL_MM: public OCLsystem { public:
         ibuff_a2g      = newBuffer( "a2g"      , nSystems*nvecs, sizeof(int   ), 0, CL_MEM_READ_ONLY  );    
         ibuff_g2a      = newBuffer( "g2a"      , nSystems*nvecs, sizeof(int   ), 0, CL_MEM_READ_ONLY  );         
         ibuff_gforces  = newBuffer( "gforces"  , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );      
-        ibuff_gtorqs   = newBuffer( "gtorqs"   , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );       
-        ibuff_gcenters = newBuffer( "gcenters" , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );      
+        ibuff_gtorqs   = newBuffer( "gtorqs"   , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_gweights  = newBuffer( "gweights" ,  nSystems*nvecs, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_gfweights = newBuffer( "gfweights" , nSystems*nvecs, sizeof(float2), 0, CL_MEM_READ_ONLY  );
+
+        ibuff_gcenters = newBuffer( "gcenters" , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_gfws     = newBuffer( "gfws"     , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_gups     = newBuffer( "gups"     , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+
         // __global int2*    granges,  // (i0,i1) range of indexes specifying the group
         // __global int*     g2a,      // (i0,i1) atom to group mapping
         // __global int*     a2g,      // atom to group maping (index)   
@@ -609,11 +619,14 @@ class OCL_MM: public OCLsystem { public:
         // ToDo: make workgroup by 32-threads
         int err=0; 
         useKernel( task->ikernel );
-        err |= _useArg   ( nGroupTot      ); // 1
-        err |= useArgBuff( ibuff_granges  ); // 2
-        err |= useArgBuff( ibuff_g2a      ); // 3
-        err |= useArgBuff( ibuff_atoms    ); // 4
-        err |= useArgBuff( ibuff_gcenters ); // 5
+        err |= _useArg   ( nGroupTot      ); OCL_checkError(err, "setup_updateGroups.1"); // 1
+        err |= useArgBuff( ibuff_granges  ); OCL_checkError(err, "setup_updateGroups.2"); // 2
+        err |= useArgBuff( ibuff_g2a      ); OCL_checkError(err, "setup_updateGroups.3"); // 3
+        err |= useArgBuff( ibuff_atoms    ); OCL_checkError(err, "setup_updateGroups.4"); // 4
+        err |= useArgBuff( ibuff_gcenters ); OCL_checkError(err, "setup_updateGroups.5"); // 5
+        err |= useArgBuff( ibuff_gfws     ); OCL_checkError(err, "setup_updateGroups.6"); // 6
+        err |= useArgBuff( ibuff_gups     ); OCL_checkError(err, "setup_updateGroups.7"); // 7
+        err |= useArgBuff( ibuff_gweights ); OCL_checkError(err, "setup_updateGroups.8"); // 8   
         OCL_checkError(err, "setup_updateGroups");
         //exit(0);
         return task;
@@ -622,10 +635,13 @@ class OCL_MM: public OCLsystem { public:
         // __global int*     g2a,         // 3 // (i0,i1) atom to group mapping
         // __global float4*  apos,        // 4 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] ) 
         // __global float4*  gcenters     // 5 // centers of rotation (for evaluation of the torque
+        // __global float4*  gfws,        // 6 // forwad  orietantian vector for each group
+        // __global float4*  gups,        // 7 // up      orietantian vector for each group
+        // __global float4*  gweights     // 8 // up      orietantian vector for each group
     }
 
     OCLtask* setup_groupForce( OCLtask* task=0 ){
-        printf( "setup_groupForce() \n" );
+        printf( "setup_groupForce() nAtoms=%i nGroupTot=%i \n", nAtoms, nGroup );
         if(task==0) task = getTask("groupForce");
         // ToDo: make workgroup by 32-threads
         int nloc = 32;
@@ -645,6 +661,9 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_gforces  ); // 5
         err |= useArgBuff( ibuff_gtorqs   ); // 6
         err |= useArgBuff( ibuff_gcenters ); // 7
+        err |= useArgBuff( ibuff_gfws     ); // 8
+        err |= useArgBuff( ibuff_gups     ); // 9
+        err |= useArgBuff( ibuff_gfweights ); // 10
         OCL_checkError(err, "setup_groupForce");
         return task;
         // const int4        n,            // 1 // (natoms,nnode) dimensions of the system
@@ -654,6 +673,9 @@ class OCL_MM: public OCLsystem { public:
         // __global float4*  gforces,      // 5 // linar forces appliaed to atoms of the group
         // __global float4*  gtorqs,       // 6 // {hx,hy,hz,t} torques applied to atoms of the group
         // __global float4*  gcenters      // 7 // centers of rotation (for evaluation of the torque
+        // __global float4*  gfws,         // 8 // forward vector of group orientation
+        // __global float4*  gups,         // 9 // up      vector of group orientation
+        // __global float2*  gfweights     // 10 // weights for application of forces on atoms
     }
 
 
