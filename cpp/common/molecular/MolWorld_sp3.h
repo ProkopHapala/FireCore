@@ -1537,6 +1537,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     __attribute__((hot))  
     int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+        nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
         //if(verbosity>1)[[unlikely]]{ printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF ); }
         long T0 = getCPUticks();
@@ -1631,16 +1632,19 @@ class MolWorld_sp3 : public SolverInterface { public:
                 if(bConstrZ){
                     springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
                 }
+                //if(bGroups){ groups.forceAtom(ia); }
                 if(ipicked==ia)[[unlikely]]{ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                     ffl.fapos[ia].add( f );
                 }
             }
+            // ---- assembling
+            for(int ia=0; ia<ffl.natoms; ia++){
+                ffl.assemble_atom( ia );
+            } 
             //double t_eval = (getCPUticks()-t1);
             //printf( "MolWorld_sp3::run_no_omp() (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) %g[tick]\n", bPBC,bGridFF,bNonBondNeighs,sqrt(F2max),opt.dt,niter, t_eval );
             //for(int i=0; i<ffl.natoms; i++){ printf( "ffl.fapos[%i] (%g,%g,%g)\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
-
-
             if(bConstrains){
                 //printf( "run_no_omp() constrs[%li].apply() bThermalSampling=%i \n", constrs.bonds.size(), bThermalSampling );
                 //ffl.cleanForce();
@@ -1650,10 +1654,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             if( go.bExploring){
                 ffl.Etot += go.constrs.apply( ffl.apos, ffl.fapos, &(ffl.lvec) );
             }
-            // ---- assembling
-            for(int ia=0; ia<ffl.natoms; ia++){
-                ffl.assemble_atom( ia );
-            } 
+            if(bGroups){ groups.applyAllForces(0.0, 0.2*sin(nloop*0.02) ); }
             if(bFIRE){
                 for(int i=0; i<opt.n; i++){
                     double v=opt.vel  [i];
@@ -1742,6 +1743,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     __attribute__((hot))  
     int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+        nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
         //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
         long T0 = getCPUticks();
