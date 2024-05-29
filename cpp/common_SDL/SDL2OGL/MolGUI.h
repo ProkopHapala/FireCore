@@ -1579,6 +1579,22 @@ void MolGUI::drawHUD(){
     }
     glPopMatrix();
 
+
+    if( W->getMolWorldVersion() == MolWorldVersion::GPU ){
+        glPushMatrix();
+        bool  bExplors[W->nSystems];
+        float Fconvs  [W->nSystems];
+        W->getMultiConf( Fconvs , bExplors );
+        glTranslatef( 0.0,fontSizeDef*2*30,0.0 );
+        glColor3f(0.5,0.,1.);
+        for( int i=0; i<W->nSystems; i++ ){  
+            sprintf( tmpstr, "SYS[%3i][%i]|F|=%g \n", i, bExplors[i], Fconvs[i] );
+            Draw::drawText( tmpstr, fontTex, fontSizeDef, {200,20} ); 
+            glTranslatef( 0.0,fontSizeDef*2,0.0 );
+        };
+        glPopMatrix();
+    }
+
     /*
     glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
     if( !bondsToShow_shifts ){
@@ -2399,6 +2415,9 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
                 case SDLK_SPACE: 
                     bRunRelax=!bRunRelax;  
+
+                    if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
+
                     // printf( "bRunRelax %i \n", bRunRelax );
                     if(bRunRelax)W->setConstrains();                  
                     if(!bRunRelax){ if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  } }

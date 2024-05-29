@@ -766,34 +766,33 @@ __kernel void groupForce(
     const int nG = get_global_size(0); // number of atoms
     const int nS = get_global_size(1); // number of systems
 
-    if( (iG==0) && (iS==0) ){
-        printf( "GPU::groupForce() natom=%i nnode=%i nvec=%i \n", natoms, nnode, nvec );
-    //     int ig_sel = 0;
-    //     int is = 0;
-    //     // for(int ia=0; ia<natoms; ia++){
-    //     //      int iav = ia + is*nvec; 
-    //     //     printf( "%i ", a2g[iav] );
-    //     // }
-    //     // printf("\n");
+    // if( (iG==0) && (iS==0) ){
+    //     printf( "GPU::groupForce() natom=%i nnode=%i nvec=%i \n", natoms, nnode, nvec );
+    // //     int ig_sel = 0;
+    // //     int is = 0;
+    // //     // for(int ia=0; ia<natoms; ia++){
+    // //     //      int iav = ia + is*nvec; 
+    // //     //     printf( "%i ", a2g[iav] );
+    // //     // }
+    // //     // printf("\n");
 
-        for(int is=0; is<nS; is++){
-            // printf( "sys[%i] ", is );
-            // for(int ia=0; ia<natoms; ia++){
-            //     int iav = ia + is*nvec; 
-            //     printf( "%i ", a2g[iav] );
-            // }
-            // printf("\n");
-            for(int ia=0; ia<natoms; ia++){
-                int iav = ia + is*nvec; 
-                const int ig = a2g[iav]; 
-                if(ig>=0){
-                    //printf( "GPU:atom[%i|%i,%i] ig=%i(%i/%i) gforces(%10.6f,%10.6f,%10.6f)\n", is, ia, iav, ig, ig-is*nGrpup,nGrpup, gforces[ig].x, gforces[ig].y, gforces[ig].z  );
-                    printf( "GPU:atom[isys=%i|ia=%i] gfweights[iav=%i](%10.6f,%10.6f) gtorqs[ig=%i](%10.6f,%10.6f,%10.6f,%10.6f)\n", is, ia,     iav,  gfweights[iav].x,gfweights[iav].y,    ig, gtorqs[ig].x, gtorqs[ig].y, gtorqs[ig].z, gtorqs[ig].w  );
-                }
-            }
-        }
-    }
-
+    //     for(int is=0; is<nS; is++){
+    //         // printf( "sys[%i] ", is );
+    //         // for(int ia=0; ia<natoms; ia++){
+    //         //     int iav = ia + is*nvec; 
+    //         //     printf( "%i ", a2g[iav] );
+    //         // }
+    //         // printf("\n");
+    //         for(int ia=0; ia<natoms; ia++){
+    //             int iav = ia + is*nvec; 
+    //             const int ig = a2g[iav]; 
+    //             if(ig>=0){
+    //                 //printf( "GPU:atom[%i|%i,%i] ig=%i(%i/%i) gforces(%10.6f,%10.6f,%10.6f)\n", is, ia, iav, ig, ig-is*nGrpup,nGrpup, gforces[ig].x, gforces[ig].y, gforces[ig].z  );
+    //                 printf( "GPU:atom[isys=%i|ia=%i] gfweights[iav=%i](%10.6f,%10.6f) gtorqs[ig=%i](%10.6f,%10.6f,%10.6f,%10.6f)\n", is, ia,     iav,  gfweights[iav].x,gfweights[iav].y,    ig, gtorqs[ig].x, gtorqs[ig].y, gtorqs[ig].z, gtorqs[ig].w  );
+    //             }
+    //         }
+    //     }
+    // }
 
     //const int ian = iG + iS*nnode; 
     const int iaa = iG + iS*natoms;  // index of atom in atoms array
@@ -930,8 +929,11 @@ __kernel void updateAtomsMMFFf4(
 
     // if((iS==0)&&(iG==0)){ 
     //     //printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
-    //     for(int i=0; i<nS; i++){
-    //         printf( "TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+    //     for(int is=0; is<nS; is++){
+    //         //printf( "TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+    //         for(int ia=0; ia<natoms; ia++){
+    //             if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g)\n", is, ia, constr[ia+is*natoms].x,constr[ia+is*natoms].y,constr[ia+is*natoms].z,constr[ia+is*natoms].w );
+    //         }
     //     }
     // }
 
@@ -1140,8 +1142,7 @@ __kernel void getNonBond(
     }
     cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
     //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
-    ve.xyz *= MDpars.z; // friction, velocity damping
-    
+    ve.xyz *= MDpars.z;             // friction, velocity damping
     ve.xyz += fe.xyz*MDpars.x;      // acceleration
     pe.xyz += ve.xyz*MDpars.x;      // move
     //ve     *= 0.99f;              // friction, velocity damping
