@@ -280,7 +280,7 @@ class Groups{ public:
     void realloc(int natom){
         printf( "Groups::realloc(natom=%i)\n", natom );
         _realloc0( weights,  natom, Quat4fZero );
-        _realloc0( fweights, natom, Vec2fZero );
+        _realloc0( fweights, natom, Vec2fOnes );
         _realloc0( a2g,      natom, -1 );
         _realloc0( g2a,      natom, -1 );
     }

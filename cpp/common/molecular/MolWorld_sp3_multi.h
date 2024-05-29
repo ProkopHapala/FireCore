@@ -338,7 +338,7 @@ void groups2ocl( int isys, bool bForce=true, bool bPose=false, bool bWeights=tru
                 gweights [ iia ] = groups. weights[ia];
                 gfweights[ iia ] = groups.fweights[ia];
 
-                printf( "CPU gweights[%i](%g,%g,%g,%g)\n", iia, gweights[iia].x,gweights[iia].y,gweights[iia].z,gweights[iia].w );
+                printf( "CPU gweights[%i](%g,%g,%g,%g) gfweights(%g,%g)\n", iia, gweights[iia].x,gweights[iia].y,gweights[iia].z,gweights[iia].w,  gfweights[iia].x,gfweights[iia].y );
             }
         }
     }
@@ -368,14 +368,16 @@ int init_groups(){
     int nGroupTot = ngroup*ocl.nSystems;
     int nAtomTot  = ocl.nvecs*ocl.nSystems;
     _realloc0( gforces,  nGroupTot, Quat4fZero );
-    _realloc0( gtorqs,   nGroupTot, Quat4fZero );
+    //_realloc0( gtorqs,   nGroupTot, Quat4fZero );
+    _realloc0( gtorqs,   nGroupTot, Quat4f{1.0f,0.0f,0.0f,0.0f} );
+
     _realloc0( gcenters, nGroupTot, Quat4fZero );
     _realloc0( granges,  nGroupTot, Vec2iZero  );
     _realloc0( gfws,     nGroupTot, Quat4fZero  );
     _realloc0( gups,     nGroupTot, Quat4fZero  );
 
     _realloc0( gweights, nAtomTot, Quat4fZero  );
-    _realloc0( gfweights,nAtomTot, Vec2fZero   );
+    _realloc0( gfweights,nAtomTot, Vec2fOnes   );
     _realloc0( a2g, nAtomTot, -1 );
     _realloc0( g2a, nAtomTot, -1 );
 
@@ -388,6 +390,10 @@ int init_groups(){
     int err=0;
     err|= ocl.upload( ocl.ibuff_gweights,  gweights  ); OCL_checkError(err, "init_groups.upload(gweights)");
     err|= ocl.upload( ocl.ibuff_gfweights, gfweights ); OCL_checkError(err, "init_groups.upload(gfweights)");
+
+    err|= ocl.upload( ocl.ibuff_gforces, gforces );     OCL_checkError(err, "init_groups.upload(gforces)");
+    err|= ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );     OCL_checkError(err, "init_groups.upload(gtorqs)");
+    
     return err;
 }
 
@@ -1378,27 +1384,35 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         for(int isys=0; isys<nSystems; isys++){ if(gopts[isys].bExploring) bExplore = true; }
         bool bGroupDrive = bGroups && bExplore;
 
+
+        bGroupDrive = true;
+        // if(bGroupDrive){
+        //     for(int ig=0; ig=ocl.nGroupTot; ig++){
+        //         gtorqs[ig] = Quat4f{ 0.2f*sin(nloop*0.02f), 0.0f,0.0f,0.0f  };
+        //     }
+        //     err |= ocl.upload( ocl.ibuff_gtorqs, gtorqs );  OCL_checkError(err, "task_MMFF->enque_raw()");
+        // }
+
         for(int j=0; j<nPerVFs; j++){
             {
-                //if( bGroupDrive )
-                err |= task_GroupUpdate->enque_raw();
+                if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
                 if(dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{ 
-                            err |= task_NBFF_Grid ->enque_raw();    //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                            err |= task_NBFF_Grid ->enque_raw();    OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
                         }else { 
                             //printf( "task_NBFF(), task_SurfAtoms() \n" );
-                            err |= task_NBFF     ->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
-                            err |= task_SurfAtoms->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
+                            err |= task_NBFF     ->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
+                            err |= task_SurfAtoms->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
                         }
                     }else{ 
-                        err |= task_NBFF      ->enque_raw();     //OCL_checkError(err, "task_NBFF->enque_raw();");
+                        err |= task_NBFF      ->enque_raw();     OCL_checkError(err, "task_NBFF->enque_raw();");
                     }
                 }
-                err |= task_MMFF->enque_raw();    //OCL_checkError(err, "task_MMFF->enque_raw()");
+                err |= task_MMFF->enque_raw();    OCL_checkError(err, "task_MMFF->enque_raw()");
 
                 if( bGroupDrive ) err |= task_GroupForce->enque_raw();
-                err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
+                err |= task_move->enque_raw();    OCL_checkError(err, "task_move->enque_raw()");
             }
             niterdone++;
             nloop++;
