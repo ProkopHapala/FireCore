@@ -52,7 +52,7 @@ static MMFFparams* params_glob;
 #include "arrayAlgs.h"
 #include "SVG_render.h"
 
-#include "MolecularDatabase.h"
+
 
 enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
 //static inline MolWorldVersion operator|(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) | ((int)b)  );  };
@@ -157,6 +157,7 @@ GOpt            go;
 	  // state
     double  Ftol_default = 1e-4;
     bool bConverged = false; // Boolean flag indicating if the simulation has converged
+    bool bRelax    = false; // Boolean flag indicating if the simulation is in relaxation mode (currently only for global optimization)
     double Etot = 0;         // Total energy of the system
     double maxVcog = 1e-9;   // Maximum velocity of the center of gravity
     double maxFcog = 1e-9;   // Maximum force on the center of gravity
@@ -236,7 +237,6 @@ GOpt            go;
     //int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
 
-    MolecularDatabase* database;
 
     // ========== from python interface
 
@@ -246,6 +246,7 @@ GOpt            go;
         printf( "MolWorld_sp3::init() \n" );
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
+        printf("params.atypes.size() %i\n", params.atypes.size() );
         if( params.atypes.size() == 0 ){
             initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
         }
@@ -273,6 +274,7 @@ GOpt            go;
             bMMFF=true;
         }else if ( xyz_name ){
             if( bMMFF ){ 
+                printf("buildMolecule_xyz( %s )\n", xyz_name);
                 buildMolecule_xyz( xyz_name );
             }else{
                 printf("MolWorld_sp3::init() loading %s\n", xyz_name);
@@ -495,15 +497,16 @@ virtual void change_lvec_relax( int nstep, int nMaxIter, double tol, const Mat3d
  * @return The total energy of the system.
  */
 virtual double solve( int nmax, double tol )override{
-    //printf( "MolWorld::solve(nmax=%i,tol=%g)\n", nmax, tol );
-    //ffl.print_apos();
-    //printf("ffl.lvec\n"    ); printMat( ffl.lvec    );
-    //printf("ffl.invLvec\n" ); printMat( ffl.invLvec );
-    //printf("npbc %i nPBC(%i,%i,%i) \n", npbc, nPBC.x,nPBC.y,nPBC.z );
-    //nmax = 10;
+    if(nmax>1){
+        bRelax=true;
+    }else{
+        bRelax=false;
+    }
+
     long t0=getCPUticks();
-    int nitr = run_omp( nmax, opt.dt_max, tol, 1000.0, -1. );
-    long t=(getCPUticks()-t0); printf( "time run_omp[%i] %g[Mtick] %g[ktick/iter]  %g[s] %g[ms/iter]\n", nitr, t*1e-6, t*1.e-3/nitr, t*tick2second, t*tick2second*1000/nitr  );
+    int nitr = run_omp_Milan( nmax, opt.dt_max, tol, 1000.0, -1. );
+    long t=(getCPUticks()-t0); if(verbosity>1)printf( "time run_omp[%i] %g[Mtick] %g[ktick/iter]  %g[s] %g[ms/iter]\n", nitr, t*1e-6, t*1.e-3/nitr, t*tick2second, t*tick2second*1000/nitr  );
+    if(std::isnan(Etot)){ printf( "ERROR: Etot is NaN\n" ); }
     return Etot;
 }
 
@@ -517,7 +520,7 @@ virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
     //printf( "MolWorld::setGeom()\n" );
     //printf("ffl.lvec\n"    ); printMat( ffl.lvec );
     //printf("   *lvec\n"    ); printMat(    *lvec );
-    change_lvec( *lvec );
+    //change_lvec( *lvec );
     //printMat( ffl.lvec );
     //printPBCshifts();
     for(int i=0; i<ffl.natoms; i++){
@@ -525,7 +528,7 @@ virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
         ffl.apos[i] = ps[i];
         ffl.vapos[i] = Vec3dZero;
     }
-    ffl.initPi( pbc_shifts );
+    //ffl.initPi( pbc_shifts );
 }
 
 /**
@@ -1385,10 +1388,10 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
     if(bParams){
         params.clear();
     }
-    if(database){
-        printf("MolWorld_sp3::clear() database->clear(); \n");
-        database->dealloc();
-    }
+    // if(database){
+    //     printf("MolWorld_sp3::clear() database->clear(); \n");
+    //     database->dealloc();
+    // }
 }
 
 virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*& M_apos, int& nvec ){
@@ -1578,6 +1581,175 @@ void setNonBond( bool bNonBonded ){
         if(verbosity>0)[[unlikely]]{ printf( "#### MolWorld_sp3::eval() DONE\n\n"); }
         return E;
     }
+
+
+
+
+
+
+
+   __attribute__((hot))  
+    int run_omp_Milan( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+        if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
+        //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
+        long T0 = getCPUticks();
+        double E=0,F2=0,F2conv=Fconv*Fconv;
+        double ff=0,vv=0,vf=0;
+        int itr=0,niter=niter_max;
+        bConverged = false;
+        if(bToCOG && (!bGridFF) ){ 
+            Vec3d cog=average( ffl.natoms, ffl.apos );  
+            move( ffl.natoms, ffl.apos, cog*-1.0 ); 
+        }
+        if(bCheckStuck){ checkStuck( RStuck ); }
+        //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
+        #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bConstrains,bConverged)
+        while(itr<niter || bConverged) {
+            if(itr<niter){
+            //#pragma omp barrier
+            #pragma omp single
+            {E=0;F2=0;ff=0;vv=0;vf=0;
+            }
+
+            //------ eval forces
+            //#pragma omp barrier
+            #pragma omp for reduction(+:E)
+            for(int ia=0; ia<ffl.natoms; ia++){ 
+                {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
+                if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
+
+if(std::isnan(E)){printf("Before eval_atom\n");exit(1);}
+                if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+
+
+if(std::isnan(E)){printf("After eval_atom\n");exit(1);}
+                // ----- Error is HERE
+                if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+if(std::isnan(E)){printf("After evalLJQs_ng4_atom_omp\n");exit(1);}
+bGridFF=false;
+                if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
+
+                if(ipicked==ia)[[unlikely]]{ 
+                    const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
+                    ffl.fapos[ia].add( f );
+                }
+
+                if(bConstrZ){
+                    springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
+                }
+
+            }
+            // if(ffl.bTorsion){
+            //     #pragma omp for reduction(+:E)
+            //     for(int it=0; it<ffl.ntors; it++){ 
+            //         E+=ffl.eval_torsion(it); 
+            //     }
+            // }
+            #pragma omp single
+            {
+                if(bConstrains  ){ /*std::cout<<"E before constrains :" << E;*/ E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); /*std::cout<<" E after constrains :" << E <<std::endl;*/ }
+                if(!bRelax){ gopt.constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
+            }
+            // ---- assemble (we need to wait when all atoms are evaluated)
+            //#pragma omp barrier
+            #pragma omp for
+            for(int ia=0; ia<ffl.natoms; ia++){
+                ffl.assemble_atom( ia );
+            }
+            
+            //#pragma omp barrier
+            { //  ==== FIRE
+                #pragma omp for reduction(+:vf,vv,ff)
+                for(int i=0; i<opt.n; i++){
+                    double v=opt.vel  [i];
+                    double f=opt.force[i];
+                    vv+=v*v; ff+=f*f; vf+=v*f;
+                }
+                #pragma omp single
+                { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); }
+                // ------ move
+                #pragma omp for
+                for(int i=0; i<ffl.nvecs; i++){
+                    if( bRelax ){
+                        ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+                        //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+                    }
+                }
+                sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
+            }
+            
+            } 
+            
+            //#pragma omp barrier
+            #pragma omp single
+            { 
+                Etot=E;
+                itr++; 
+                if(timeLimit>0)[[unlikely]]{
+                    double t = (getCPUticks() - T0)*tick2second;
+                    if(t>0.02){ 
+                        niter=0; 
+                        if(verbosity>1) [[unlikely]] { printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); }
+                    }
+                }
+                if(F2<F2conv)[[unlikely]]{ 
+                    niter=0; 
+                    bConverged = true;
+                    double t = (getCPUticks() - T0)*tick2second;
+                    if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
+
+                    if(verbosity) printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+                    if(bGopt  && bRelax ){
+                        gopt_ifound++;
+                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
+                        saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );printf( "run_omp().save %s \n", tmpstr );//}
+                    }
+                }
+            }
+           
+        }{
+        double t = (getCPUticks() - T0)*tick2second;
+        if( (itr>=niter_max)&&(verbosity>1)) [[unlikely]] {printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
+        }
+        return itr;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   
 /**
  * Performs relaxation of the molecular system with FIRE algorithm.
@@ -1914,13 +2086,18 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                 if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
                 //if(verbosity>3)
                 //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+if(std::isnan(E)){printf("Before eval_atom\n");exit(1);}
                 if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
                 //if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
 
+if(std::isnan(E)){printf("After eval_atom\n");exit(1);}
                 // ----- Error is HERE
                 if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
                 else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+if(std::isnan(E)){printf("After evalLJQs_ng4_atom_omp\n");exit(1);}
+bGridFF=false;
                 if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
+
                 //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia]       ); }    // NBFF
                 
                 if(ipicked==ia)[[unlikely]]{ 
@@ -1941,7 +2118,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
             // }
             #pragma omp single
             {
-                if(bConstrains  ){ E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
+                if(bConstrains  ){ /*std::cout<<"E before constrains :" << E;*/ E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); /*std::cout<<" E after constrains :" << E <<std::endl;*/ }
                 if(go.bExploring){ go.constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
             }
             // ---- assemble (we need to wait when all atoms are evaluated)
@@ -1972,7 +2149,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                 #pragma omp for
                 for(int i=0; i<ffl.nvecs; i++){
                     if( go.bExploring ){
-                        ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target );
+                        ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target ); 
                     }else{
                         //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
                         //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
@@ -1982,10 +2159,11 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                     }
                 }
                 sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
-                saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                //saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
             }
             
-            }
+            } 
+            
             //#pragma omp barrier
             #pragma omp single
             { 
@@ -2008,11 +2186,11 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                     if(bGopt  && (!go.bExploring) ){
                         gopt_ifound++;
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
-                        bool IsNew = addSnapshot();
-                        if(IsNew){saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );printf( "run_omp().save %s \n", tmpstr );}
-                        else    {printf( "run_omp().skip %s \n", tmpstr ); saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save ); 
-                        printf("======================================================================================================================================================================================================");
-                         }
+                        //bool IsNew = addSnapshot();
+                        /*if(IsNew){*/saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );printf( "run_omp().save %s \n", tmpstr );//}
+                        //else    {printf( "run_omp().skip %s \n", tmpstr ); saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save ); 
+                        //printf("======================================================================================================================================================================================================");
+                        // }
                         
                         
                         go.startExploring();
@@ -2029,6 +2207,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                 //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
                 //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
             }
+           
         }{
         double t = (getCPUticks() - T0)*tick2second;
         if( (itr>=niter_max)&&(verbosity>1)) [[unlikely]] {printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
@@ -2508,23 +2687,14 @@ virtual void printSwitches(){
 
 bool addSnapshot(bool ifNew = false, char* fname = 0)
 {
-    if(!database){
-        database = new MolecularDatabase();
-        database->setDescriptors();
+    if(!gopt.database){
+        gopt.database = new MolecularDatabase();
+        gopt.database->setDescriptors();
     }
-
-    int nMembers = database->getNMembers();
+//     loadNBmol("butan");
+//     int nMembers = database->getNMembers();
 
 //     database->addMember(&nbmol);
-
-
-// //if(nMembers>1)    printf("database->compareAtoms(&nbmol, 0) %g\n", database->compareAtoms(&nbmol, 0));
-// printf("ff.nbonds %i\n", ff.nbonds);
-//     if(nMembers>1){
-//         database->as_rigid_as_possible(&nbmol, 0, ff.nbonds, ff.bond2atom);
-//         //printf("nbmol.neighs[0]: %i %i %i %i\n", nbmol.neighs[0].x, nbmol.neighs[0].y, nbmol.neighs[0].z, nbmol.neighs[0].w);
-//     }
-
 
 //     std::string comment = "#" + std::to_string(nMembers);
 //     const char* cstr = comment.c_str();
@@ -2534,14 +2704,17 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
 //     file1=fopen( cstr1, "w" );
 //     params.writeXYZ(file1, &nbmol, cstr);
 //     fclose(file1);
+// srand(457);
+
+
 //             double move_x = 0;//randf() * 0.5;
 //             double move_y = 0;//randf() * 0.5;
 //             double move_z = 0;//randf() * 0.5;
 //     double angle = 0;
-// if(nMembers==1)angle = randf() * 360;
-// printf("angle: %g\n", angle);
+// if(nMembers==0)angle = 0;//randf() * 360;
+// //printf("angle: %g\n", angle);
 //     //if(nMembers==1)move_x = 0.2;//;
-//         Vec3d axis = {randf(), randf(), randf()};
+//         Vec3d axis ={1,1,1};// {randf(), randf(), randf()};
 //         Vec3d p0 = Vec3dZero;//{randf() * 5 - 2.5, randf() * 5 - 2.5, randf() * 5 - 2.5};
 //         for (int i = 0; i < nbmol.natoms; i++)
 //         {            
@@ -2550,11 +2723,41 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
 //             //if(i==0 && nMembers == 0) move_x = 5;//randf() * 0.5;
 //             nbmol.apos[i].add({move_x, move_y, move_z});
 //             nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
-//         }
+//          }
+// //if(nMembers>1)    printf("database->compareAtoms(&nbmol, 0) %g\n", database->compareAtoms(&nbmol, 0));
+// //printf("ff.nbonds %i\n", ff.nbonds);
+// loadNBmol("changed_butan");
+// //buildMolecule_xyz("changed_butan");
+
+// int nbFixed = 2;
+// int* fixed = new int[nbFixed];
+//     while(nMembers < 100){
+//     nMembers = database->getNMembers();
+
+//     database->addMember(&nbmol);
+
+//     std::string comment = "#" + std::to_string(nMembers);
+//     const char* cstr = comment.c_str();
+//     std::string trjName1 = "trj" + std::to_string(nMembers) + "_1.xyz";        
+//     const char* cstr1 = trjName1.c_str();  
+//     FILE* file1=0;
+//     file1=fopen( cstr1, "w" );
+//     params.writeXYZ(file1, &nbmol, cstr);
+//     fclose(file1);
 
 
-//     return true;
+        
+//         fixed[0] = -1;
+//         fixed[1] = -1;
+//         database->as_rigid_as_possible(&nbmol, 0, ff.nbonds, ff.bond2atom, nbFixed, fixed);
+        
+//         //printf("nbmol.neighs[0]: %i %i %i %i\n", nbmol.neighs[0].x, nbmol.neighs[0].y, nbmol.neighs[0].z, nbmol.neighs[0].w);
+//     }
+// delete[] fixed;
 
+
+
+//    return true;
 
     if (fname)
     {
@@ -2563,7 +2766,7 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
     }
     if (ifNew)
     {
-        int ID = database->addIfNewDescriptor(&nbmol);
+        int ID = gopt.database->addIfNewDescriptor(&nbmol);
         if (ID != -1)
         {
             printf("Same as %d\n", ID);
@@ -2572,21 +2775,59 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
     }
     else
     {
-        database->addMember(&nbmol);
+        gopt.database->addMember(&nbmol);
     }
     return true;
 }
 
 void printDatabase(){
-    if(database) database->print();    
+    //if(database) database->print();
+
+    int Findex = 0;
+    std::vector<double> a;
+    std::vector<double> b;
+    std::vector<int> boundaryRules;
+    for (int i = 0; i < nbmol.natoms * 3; i++)
+    {
+        a.push_back(-20);
+        b.push_back(20);
+        boundaryRules.push_back(1);
+    }
+    double Fstar = 0;
+    int maxeval = 15000;
+    int nRelax = 500;
+    int nExplore = __INT_MAX__;
+    int bShow = 1;
+    int bSave = 0;
+    int bDatabase = 0;
+    runGlobalOptimization(Findex, &a, &b, &boundaryRules, Fstar, maxeval, nRelax, nExplore, bShow, bSave, bDatabase);
+
 }
 
 double computeDistance(int i, int j){
-    if(database) return database->computeDistance(i, j);
+    if(gopt.database) return gopt.database->computeDistance(i, j);
     printf("Error, database does not exist"); return -1;
 }
 
+void runGlobalOptimization(int Findex, std::vector<double>* a, std::vector<double>* b, std::vector<int>* boundaryRules, 
+    double Fstar, int maxeval, int nRelax, int nExploring, int bShow, int bSave, int bDatabase){
+    //gopt.init_heur(nbmol, params, Findex, a, b, boundaryRules, Fstar, maxeval, nRelax, nExploring, bShow, bSave, bDatabase)
 
+
+    std::vector<double> par_mut = {0.01};
+    std::vector<double> par_alg = {1e-5, 100, maxeval, 100};    
+    
+    constrs.loadBonds("hexan-dicarboxylic.cons");
+    printf("\nbConstrains: %i\n", bConstrains);
+    bConstrains = true;
+
+    
+    gopt.init_heur(&nbmol, &params, Findex, a, b, boundaryRules, 0, maxeval, nRelax, nExploring, bShow, 2, 0);
+    gopt.SPSA(0, &par_mut, &par_alg);
+    //gopt.randomBrutal(&nbmol, &params, 0, 0, 0, &boundaryRules, 0, maxeval, bShow, 3, &par_mut, &par_alg);
+    //nbmol.print();
+printf("after optimization\n");
+}
 
 
 

@@ -572,23 +572,179 @@ class Mat3T{
 		else if (imax == 1) { evec.set_mul( r0xr2, 1/sqrt(d1) ); }
 		else                { evec.set_mul( r1xr2, 1/sqrt(d2) ); }
 	}
+
+	inline void gaussElimination()
+	{
+		double tolerance = 1e-10;
+		Vec3d temp;
+		if (abs(xx) < tolerance)
+		{
+			temp = a;
+			a = b;
+			b = temp;
+			if (abs(xx) < tolerance)
+			{
+				temp = a;
+				a = c;
+				c = temp;
+			}
+		}
+		if (abs(xx) > tolerance)
+		{
+			a.mul(1 / xx);
+			temp.set_mul(a, yx);
+			b.sub(temp);
+			temp.set_mul(a, zx);
+			c.sub(temp);
+		}
+		else
+		{
+			temp = a;
+			a = b;
+			b = c;
+			c = temp;
+		}
+		if (abs(yy) < tolerance)
+		{
+			temp = b;
+			b = c;
+			c = temp;
+		}
+		if (abs(yy) > tolerance)
+		{
+			b.mul(1 / yy);
+			temp.set_mul(b, zy);
+			c.sub(temp);
+			if(abs(xx) < tolerance){
+				temp.set_mul(b, xy);
+				a.sub(temp);
+				temp = a;
+				a = b;
+				b = temp;
+			}
+		}
+		else if(abs(zz) > tolerance && abs(yz) > tolerance)
+		{
+				yz = 1;
+				zz = 0;
+		}
+		if(abs(zz) > tolerance)
+		{
+			c.mul(1/zz);
+		}
+	}
+	inline int backPropagation(Mat3T& v){
+		int count = 1;
+		double tolerance = 1e-10;
+		v.a.z = 1;
+		if(abs(yy) > tolerance){
+			v.a.y = -yz/yy;
+			a.sub(b.mul(xy/yy));
+		}
+		else if(abs(yz) > tolerance){
+			v.a.z = 0;
+			v.a.y = 1;
+		}
+		else{
+			count = 2;
+			v.a.y = 1;
+			v.a.z = 0;
+			v.b.y = 0;
+			v.b.z = 1;
+		}
+		if(abs(xx) > tolerance){
+			v.a.x = -v.a.z*xz/xx;
+			if(abs(xz) < tolerance){
+				v.a.x = -xy/xx;
+			}
+			if(count > 1){
+				v.b.x = -xy/xx;
+			}
+		}
+		else if(abs(xy) > tolerance){
+			v.a.x = 1;
+			v.b.x = 1;
+			v.a.y = -v.a.z*xz/xy;
+			v.b.y = -v.b.z*xz/xy;
+		}else if(abs(xz) > tolerance){
+			v.a.x = 1;
+			v.b.x = 1;
+			v.a.y = 0;
+			v.b.y = 1;
+			v.a.z = 0;
+			v.b.z = 0;
+		}
+		else{
+			count = 3;
+			v.set({1,0,0,0,1,0,0,0,1});
+		}
+		return count;
+	}
 /**
  * Calculates the eigenvectors of the 3x3 hermitian matrix and stores them in the given evecs matrix.
  * https://hal.science/hal-01501221/document
 */
 	inline void eigenvec_and_eigenvals( VEC& evals, MAT& evecs ) const{
 		double tolerance = 1e-10;
-		//
-		// if (abs(xy) < tolerance && abs(xz) < tolerance && abs(yz) < tolerance)
-		// {
-		// 	printf("All off-diagonal elements are zero\n");
-		// 	evals = {xx,yy,zz};
+
+		if (abs(xy) < tolerance && abs(xz) < tolerance && abs(yz) < tolerance)
+		{
+			evals = {xx,yy,zz};
 			
-		// 	evecs.a = {1,0,0};
-		// 	evecs.b = {0,1,0};
-		// 	evecs.c = {0,0,1};
-		// 	return;
-		// }
+			evecs.a = {1,0,0};
+			evecs.b = {0,1,0};
+			evecs.c = {0,0,1};
+			return;
+		}
+
+		double x1 = xx*xx+yy*yy+zz*zz-xx*yy-yy*zz-zz*xx+3*(xy*xy+yz*yz+xz*xz);
+		double x2 = 0-(2*xx-yy-zz)*(2*yy-zz-xx)*(2*zz-xx-yy)+9*((2*zz-xx-yy)*xy*xy+(2*yy-xx-zz)*xz*xz+(2*xx-yy-zz)*yz*yz)-54*xy*xz*yz;
+		double phi;
+		if (x2 > tolerance)
+		{
+			phi = atan(sqrt(4 * x1 * x1 * x1 - x2 * x2) / x2);
+		}
+		else if (x2 < -tolerance)
+		{
+			phi = atan(sqrt(4 * x1 * x1 * x1 - x2 * x2) / x2) + M_PI;
+		}
+		else
+		{
+			phi = M_PI / 2;
+		}
+		if(4 * x1 * x1 * x1 - x2 * x2 < tolerance) phi = M_PI;
+		evals.x = (xx+yy+zz-2*sqrt(x1)*cos(phi/3))/3;
+		evals.y = (xx+yy+zz+2*sqrt(x1)*cos((phi-M_PI)/3))/3;
+		evals.z = (xx+yy+zz+2*sqrt(x1)*cos((phi+M_PI)/3))/3;
+
+		Mat3T temp, W;
+		temp.set( xx-evals.x, xy, xz, yx, yy-evals.x, yz, zx, zy, zz-evals.x );
+		temp.gaussElimination();
+		int rank = temp.backPropagation(W);
+		evecs.a = W.a;
+
+
+		temp.set( xx-evals.y, xy, xz, yx, yy-evals.y, yz, zx, zy, zz-evals.y );
+		temp.gaussElimination();
+		rank = temp.backPropagation(W);
+
+		evecs.b = W.a;
+
+
+		temp.set( xx-evals.z, xy, xz, yx, yy-evals.z, yz, zx, zy, zz-evals.z );
+		temp.gaussElimination();
+		rank = temp.backPropagation(W);
+		evecs.c = W.a;
+
+
+
+		
+
+
+
+
+		//
+
 		// if(abs(xy) < tolerance && abs(xz) < tolerance){
 		// 	printf("xy and xz are zero\n");
 		// 	evals.x = xx;
@@ -621,33 +777,27 @@ class Mat3T{
 		// 	return;
 		// }
 
-		double x1 = xx*xx+yy*yy+zz*zz-xx*yy-yy*zz-zz*xx+3*(xy*xy+yz*yz+xz*xz);
-		double x2 = 0-(2*xx-yy-zz)*(2*yy-zz-xx)*(2*zz-xx-yy)+9*((2*zz-xx-yy)*xy*xy+(2*yy-xx-zz)*xz*xz+(2*xx-yy-zz)*yz*yz)-54*xy*xz*yz;
-		double phi;
-		if (x2 > tolerance)
-		{
-			phi = atan(sqrt(4 * x1 * x1 * x1 - x2 * x2) / x2);
-		}
-		else if (x2 < -tolerance)
-		{
-			phi = atan(sqrt(4 * x1 * x1 * x1 - x2 * x2) / x2) + M_PI;
-		}
-		else
-		{
-			phi = M_PI / 2;
-		}
-		evals.x = (xx+yy+zz-2*sqrt(x1)*cos(phi/3))/3;
-		evals.y = (xx+yy+zz+2*sqrt(x1)*cos((phi-M_PI)/3))/3;
-		evals.z = (xx+yy+zz+2*sqrt(x1)*cos((phi+M_PI)/3))/3;
+		// if(xy < tolerance && xz < tolerance && yz < tolerance)
+		// {
+		// 	evals.x = xx;
+		// 	evals.y = yy;
+		// 	evals.z = zz;
+		// 	evecs.a = {1,0,0};
+		// 	evecs.b = {0,1,0};
+		// 	evecs.c = {0,0,1};
+		// 	return;
+		// }
 
 
-		double m1 = (xy*(zz-evals.x)-yz*xz)/(xz*(yy-evals.x)-xy*yz);
-		double m2 = (xy*(zz-evals.y)-yz*xz)/(xz*(yy-evals.y)-xy*yz);
-		double m3 = (xy*(zz-evals.z)-yz*xz)/(xz*(yy-evals.z)-xy*yz);
 
-		evecs.a = {(evals.x-zz-yz*m1)/xz, m1, 1};
-		evecs.b = {(evals.y-zz-yz*m2)/xz, m2, 1};
-		evecs.c = {(evals.z-zz-yz*m3)/xz, m3, 1};
+
+		// double m1 = (xy*(zz-evals.x)-yz*xz)/(xz*(yy-evals.x)-xy*yz);
+		// double m2 = (xy*(zz-evals.y)-yz*xz)/(xz*(yy-evals.y)-xy*yz);
+		// double m3 = (xy*(zz-evals.z)-yz*xz)/(xz*(yy-evals.z)-xy*yz);
+
+		// evecs.a = {(evals.x-zz-yz*m1)/xz, m1, 1};
+		// evecs.b = {(evals.y-zz-yz*m2)/xz, m2, 1};
+		// evecs.c = {(evals.z-zz-yz*m3)/xz, m3, 1};
 	}
 
 	inline void print() const {
@@ -842,25 +992,54 @@ class Mat3T{
 		A.set(*this);
 
 		B.set_mmul_TN(A, A);
+		//B.diag_add(1e-8);
 		B.eigenvec_and_eigenvals(val, V);
-		V.a.normalize();
-		V.b = V.b - V.a * V.a.dot(V.b);
-		V.b.normalize();
-		V.c = V.c - V.a * V.a.dot(V.c) - V.b * V.b.dot(V.c);
-		V.c.normalize();
 
+		V.orthogonalize(0, 1, 2);
+		V.c.set_cross(V.a, V.b);
 
-		val.x = sqrt(val.x);
-		val.y = sqrt(val.y);
-		val.z = sqrt(val.z);
+		val.x = sqrt(abs(val.x));
+		val.y = sqrt(abs(val.y));
+		val.z = sqrt(abs(val.z));
+		int zeroValue = -1;
+		for (int i = 0; i < 3; i++)
+		{
+			if (val.array[i] < 1e-10)
+			{
+				val.array[i] = 1;
+				zeroValue = i;
+			}
+		}
 
-		U.set_mmul(A, V);
-		U.div(val);
-		U.a.normalize();
-		U.b = U.b - U.a * U.a.dot(U.b);
-		U.b.normalize();
-		U.c = U.c - U.a * U.a.dot(U.c) - U.b * U.b.dot(U.c);
-		U.c.normalize();
+		U.set_mmul_NT(A, V);
+		U.divT(val);
+
+		U.makeT();
+		int zerovec = -1;
+		for (int i = 0; i < 3; i++)
+		{
+			if (U.vecs[i].norm2() < 1e-10)
+			{
+				zerovec = i;
+			}
+		}
+		if (zerovec == 0)
+		{
+			U.vecs[0].set_cross(U.vecs[1], U.vecs[2]);
+		}
+		else if (zerovec == 1)
+		{
+			U.vecs[1].set_cross(U.vecs[2], U.vecs[0]);
+		}
+		else if (zerovec == 2)
+		{
+			U.vecs[2].set_cross(U.vecs[0], U.vecs[1]);
+		}
+		U.makeT();
+		V.makeT();
+		if(zeroValue != -1){
+            val.array[zeroValue] = 0;
+        }
 
 		// B.set_mmul_NT(A, A);
 		// B.eigenvec_and_eigenvals(val, U);
