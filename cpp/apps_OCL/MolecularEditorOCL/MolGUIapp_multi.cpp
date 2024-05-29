@@ -24,7 +24,6 @@ int main(int argc, char *argv[]){
 
     #include "MolGUIapp_argv.h"
     funcs["-m"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &W->nSystems ); }}; // number of systems
-    funcs["-iParalel"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &iParalel); printf( "#### -iParalel %i \n", iParalel ); }};         // paralelization model
 
 	// // --------- using argparse & LabdaDict;
 	// funcs["-m"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &W->nSystems ); }}; // number of systems
@@ -68,7 +67,7 @@ int main(int argc, char *argv[]){
     //W->go.constrs.printSizes();
 
     // --- Apply after-initialization settings and hacks 
-    if(iParalel>-100){ W->iParalel=iParalel; printf( "#### W->iParalel set to %i \n", W->iParalel ); };
+    //if(iParalel>-100){ W->iParalel=iParalel; printf( "#### W->iParalel set to %i \n", W->iParalel ); };
 
 	app->loop( 1000000 );
 	return 0;

@@ -12,12 +12,17 @@ from pyBall import MMFF as mmff
 
 mmff.setVerbosity( verbosity=1, idebug=1 )
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2" )                             # all
-print(mmff.init( xyz_name="common_resources/pyridine", bMMFF=False  ))              # without MMFF
-mmff.addSnapshot(fname="common_resources/pyridine")
-mmff.addSnapshot()
-mmff.addSnapshot(fname="common_resources/pyridine")
+mmff.init( xyz_name="data/nHexadecan_dicarboxylic", bMMFF=True  )              # without MMFF
+# E = 0.0
+# mmff.run(omp=True, nstepMax=20)
+# print( "E=", E )
+#for i in range(200):
+#mmff.addSnapshot()
+with open("gopt_trajectory.xyz", "w") as file:
+    pass
 
 mmff.printDatabase()
+
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False, gridStep=-1 )  # without gridFF
 #mmff.getBuffs()
 #mmff.eval()
