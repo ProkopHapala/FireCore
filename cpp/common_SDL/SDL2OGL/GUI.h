@@ -207,7 +207,10 @@ class GUIPanel : public GUIAbstractPanel { public:
     inline int    getIntVal()        { return round(value); };
     //inline void   val2text()         { if(isInt){ inputText = std::to_string(getIntVal()); }else{  inputText = std::doubleToString(value,ndigits); }; };
     inline void   val2text()         { if(isInt){ inputText = std::to_string(getIntVal()); }else{ char str[20]; sprintf(str, "%.*f", ndigits, value); inputText=str; }; };
-	inline double x2val( float  x   ){ return ( x*(vmax-vmin)/(xmax-xmin) )+ vmin; };
+	inline double x2val( float  x   ){  
+        //printf( "GUIPanel::x2val() x(%g) vmax(%g)-vmin(%g) xmax(%g)-xmin(%g) ->  val(%g)\n", x,vmax,vmin,xmax,xmin,  (x*(vmax-vmin)/(xmax-xmin))+ vmin ); 
+        return ( x*(vmax-vmin)/(xmax-xmin) )+ vmin; 
+    };
 	inline float  val2x( double val ){ return (val-vmin)*(xmax-xmin)/(vmax-vmin);  };
 
 	inline int   x2val_int( float  x   ){ return round( x*(vmax-vmin)/(xmax-xmin) )+ vmin; };

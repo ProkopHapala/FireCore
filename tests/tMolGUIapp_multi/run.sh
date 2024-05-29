@@ -105,6 +105,8 @@ nsys=50
 #valgrind --leak-check=yes ./$name -m 10 -x common_resources/H2O -n     -g common_resources/NaCl_1x1_L2
 
 #./$name -m 10    -x common_resources/H2O           -g common_resources/NaCl_1x1_L2
+#./$name -m 10    -x common_resources/H2O           -g common_resources/NaCl_1x1_L2 -tricubic
+
 #./$name -m $nsys -x common_resources/pyridine      -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/pyridine  110 -g common_resources/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/PTCDA         -g common_resources/NaCl_1x1_L2
