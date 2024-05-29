@@ -247,7 +247,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     int itest = 0;
 
-    //int nSystems    = 1;
+    int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
 
     // ========== from python interface
@@ -255,6 +255,9 @@ class MolWorld_sp3 : public SolverInterface { public:
     virtual MolWorldVersion getMolWorldVersion() const { return MolWorldVersion::BASIC; };
 
     virtual int getGroupPose( Quat4f*& gpos, Quat4f*& gfw, Quat4f*& gup ){ gpos=0; gfw=0; gup=0; return 0; };
+    virtual void stopExploring (){ go.bExploring=false; };
+    virtual void startExploring(){ go.startExploring(); };
+    virtual int getMultiConf( float* Fconvs , bool* bExplors ){ return 0; };
 
     virtual void init(){
         printf( "MolWorld_sp3::init() \n" );
