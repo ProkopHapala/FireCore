@@ -143,8 +143,9 @@ nsys=50
 
 
 #./$name -m 3 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 1  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
-./$name -m 3 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 1  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -c 10,1.,1.,0.0
+#./$name -m 3 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 1  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -c 10,1.,1.,0.0
 #./$name -m 3 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 1  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -c 10,0.,0.,1.0
+./$name -m 100 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 100  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17   -c 10,1.,1.,0.0
 #./$name -m 100 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 100  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17   -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
 #./$name -m 1000 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17   -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
 #./$name -m 1000 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -c 10

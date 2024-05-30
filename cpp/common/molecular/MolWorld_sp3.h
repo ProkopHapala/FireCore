@@ -441,7 +441,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         double Kfix=Kfix_;
         for(int i=0; i<ffl.natoms; i++){ ffl.constr[i].w=-1; }
         for(int i: constrain_list     ){ 
-            printf( "setConstrains %i \n", i );
+            //printf( "setConstrains %i \n", i );
             ffl.constr[i].w=Kfix; ffl.constr[i].f=ffl.apos[i]; 
         }
     }
