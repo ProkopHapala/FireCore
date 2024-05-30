@@ -122,10 +122,153 @@ def make2dDeriv( FE, dg ):
 def getPoss( nsamp, extent ):
     nsamp=100
     extent = [0.0,4.2,0.0,4.2]
-    xs,ys = np.meshgrid( np.linspace(extent[0],extent[1],nsamp), np.linspace(extent[2],extent[3],nsamp) )
+    xs,ys = np.meshWrid( np.linspace(extent[0],extent[1],nsamp), np.linspace(extent[2],extent[3],nsamp) )
     zs    =  xs*0.0
     ps = np.vstack([xs.flatten(), ys.flatten(), zs.flatten() ]).T.copy()    #;print("ps.shape: ",ps.shape)
     return ps
+
+
+def fitXSF( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", Ftol=1e-6, nmaxiter=1000, dt=0.5 ):
+    Eg, cell = mmff.loadXSF( fname );
+    #print( "Eg.shape ", Eg.shape, " cel=\n", cell  )
+    #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=10000, dt=0.1 )
+    #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=100, dt=0.1 )
+    #Gs, Ws = mmff.fit3D_Bspline( FF, Ftol=1e-6, nmaxiter=0, dt=0.1 )
+    Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=Ftol, nmaxiter=nmaxiter, dt=dt )
+    mmff.saveXSF( foutname, Gs, cell=cell ); 
+    #print( "Gs.shape " , Gs.shape, " cel=\n", cell  )
+
+def fitBin( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", ns=None, Ftol=1e-6, nmaxiter=1000, dt=0.5, cell=None, bXSF=False, chan=4 ):
+    Eg     = mmff.loadBin_d( fname, ns=ns, chan=4 );   print( "Eg.shape ", Eg.shape)
+    if chan is not None:
+        Eg_ = Eg[:,:,:,3].copy()
+        del Eg
+        Eg=Eg_
+    Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=Ftol, nmaxiter=nmaxiter, dt=dt )
+    mmff.saveBin_d( foutname, Gs ); 
+
+    plt.figure()
+    plt.subplot(2,1,1); plt.imshow( Eg[:,:,10], vmax=0.0001,vmin=-0.0001, cmap='bwr' )
+    plt.subplot(2,1,2); plt.imshow( Gs[:,:,10], vmax=0.0001,vmin=-0.0001, cmap='bwr' )
+
+    #plt.show()
+    #exit()
+
+    if bXSF:
+        mmff.saveXSF( foutname+".E.xsf", FF=Eg, cell=cell ); 
+        mmff.saveXSF( foutname+".G.xsf", FF=Gs, cell=cell ); 
+        #print( "Gs.shape " , Gs.shape, " cel=\n", cell  )
+
+
+ns   = (200,40,40);
+#ns   = (40,40,200);
+cell = [[4.0,0.0,0.0],[0.0,4.0,0.0],[0.0,0.0,20.0]];
+#mmff.setupGrid( ns[::-1], cell=cell, bAlloc=False )
+mmff.setupGrid( ns, cell=cell, bAlloc=False )
+
+#fitBin( fname="../tMolGUIapp/FFPaul.bin",  foutname="../tMolGUIapp/G_Paul.bin", ns=ns, cell=cell, bXSF=True, dt=0.1 )
+#fitBin( fname="../tMolGUIapp/FFlond.bin",  foutname="../tMolGUIapp/G_Lond.bin", ns=ns, cell=cell, bXSF=True, dt=0.1 )
+fitBin( fname="../tMolGUIapp/FFelec.bin",  foutname="../tMolGUIapp/G_elec.bin", ns=ns, cell=cell, bXSF=True, dt=0.1 )
+
+plt.show()
+exit()
+
+'''
+Eg = mmff.loadBin_d( "../tMolGUIapp/FFelec.bin", ns=ns, chan=4 );  
+Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1000, dt=0.5 )
+
+# print( "Eg.shape", Eg.shape )
+# #Eg   = mmff.loadBin_f( "../tMolGUIapp/FFelec.bin", ns=ns );  
+# plt.imshow( Eg[:,:,10,3], vmax=0.1,vmin=-0.1, cmap='bwr' )
+
+mmff.saveXSF( "../tMolGUIapp/FFelec.bin.xsf", FF=Eg, cell=cell ); 
+mmff.saveXSF( "../tMolGUIapp/FFelec.G.xsf",   FF=Gs, cell=cell ); 
+mmff.saveBin_d( "../tMolGUIapp/FFelec_G.bin", Gs ); 
+plt.show(); exit()
+'''
+
+
+
+
+# print( "Eg min,max ", Eg.min(), Eg.max(), ) 
+# print( "Eg.shape "  , Eg.shape  )
+# mmff.saveXSF( "../tMolGUIapp/FFelec.bin.xsf", FF=Eg, cell=cell ); 
+
+'''
+mmff.setupGrid( ns, cell=cell, bAlloc=False )
+#fitBin( fname="../tMolGUIapp/FFPaul.bin",  foutname="../tMolGUIapp/G_Paul.bin", ns=ns, cell=cell, bXSF=True, dt=0.1 )
+
+#fitBin( fname="../tMolGUIapp/E_PLQ.bin",  foutname="../tMolGUIapp/G_Paul.bin", ns=ns, cell=cell, bXSF=True, dt=0.5 )
+
+fitXSF( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", Ftol=1e-6, nmaxiter=1000, dt=0.5 )
+#fitXSF( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", Ftol=1e-6, nmaxiter=1000, dt=0.5 )
+#fitXSF( fname="../tMolGUIapp/E_PLQ.xsf", foutname="../tMolGUIapp/G_PLQ.xsf", Ftol=1e-6, nmaxiter=1000, dt=0.5 )
+'''
+
+
+
+exit()
+
+
+
+plt.figure(figsize=(10,5))
+vmin=-0.01
+plt.subplot(1,2,1); plt.imshow(  Eg[:,:,10], cmap='bwr', vmin=vmin, vmax=-vmin ); plt.title("Eg (Ref)")
+plt.subplot(1,2,2); plt.imshow(  Gs[:,:,10], cmap='bwr', vmin=vmin, vmax=-vmin ); plt.title("G (Fit)" )
+plt.show()
+exit()
+
+
+vmin=Eg.min()
+
+nsamp = 1000
+x0    = 0.0
+xmax  = 10.0
+xs    = np.linspace(x0,xmax,nsamp)
+ps    = np.zeros((nsamp,3))
+ps[:,0],ps[:,1],ps[:,2] = 1.0,0.5,xs
+
+g0 = (0.0,0.0,0.0)
+dg = (0.05,0.05,0.05)
+fes = mmff.sample_Bspline3D( ps, Eg, g0=g0, dg=dg )
+
+x_ref = 0.05*(np.arange(Eg.shape[0]) - 1);     #print("x2 ", x2 )
+#plt.plot( xs,    fes[:,3],          '.-', label='Bspline E'  )
+#plt.plot( x_ref, FF [:,10+1,10+1],  '.-', label='Ref z-scan' )
+
+plt.plot( x_ref, Eg [:,10+1,20+1],  '-', label='Eg z-scan' )
+plt.plot( x_ref, Gs [:,10+1,20+1],  '-', label='Gs z-scan' )
+'''
+plt.plot( xs,    fes[:,3],          '-', label='Bspline E'  )
+plt.plot( xs,    fes[:,2],          '-', label='Bspline Fz' )
+plt.plot( xs,    fes[:,1],          '-', label='Bspline Fy' )
+plt.plot( xs,    fes[:,0],          ':', label='Bspline Fx' )
+'''
+plt.ylim(vmin,-2*vmin)
+plt.legend()
+plt.grid()
+
+#mmff.saveXSF( "BsplineFit_FF.xsf", FF )
+#mmff.saveXSF( "BsplineFit_G.xsf", Gs )
+
+
+#plt.plot( FF[:,40,40], label='z-scan'  );
+#plt.plot( FF[40,:,40], label='y-scan'  );
+#plt.plot( FF[40,40,:], label='x-scan'  );
+
+
+'''
+vmin=FF.min()
+plt.ylim(vmin,-vmin*2)
+
+'''
+
+
+
+plt.show(); exit()
+
+
+
 
 # # ----- Test 1: sample_SplineHermite 1D 
 # dx    =  1.5
@@ -212,22 +355,43 @@ atoms = np.array([
 
 
 EFg = makeGrid_deriv( atoms, ng, g0, dg )  # ;print( "Eg.shape ", EFg.shape )  ;exit()
-Eg  = EFg[:,:,:,3]  ; print( "Eg.shape ", Eg.shape )  #;exit()
+Eg  = EFg[:,:,:,3].copy()  ; print( "Eg.shape ", Eg.shape )  #;exit()
 
-
-
+Eg[:,:,:] = 0
+Eg[3,3,3] = 1.0
 
 Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1000, dt=0.1 )
 
+mp='bwr'
+plt.figure()
+plt.subplot(2,3,1); plt.imshow( Gs[:,:,3], cmap=mp ); plt.title("G x,y") ;plt.grid()
+plt.subplot(2,3,2); plt.imshow( Gs[:,3,:], cmap=mp ); plt.title("G x,z") ;plt.grid()
+plt.subplot(2,3,3); plt.imshow( Gs[3,:,:], cmap=mp ); plt.title("G y,z") ;plt.grid()
 
+plt.subplot(2,3,4); plt.imshow( Ws[:,:,3], cmap=mp ); plt.title("W x,y") ;plt.grid()
+plt.subplot(2,3,5); plt.imshow( Ws[:,3,:], cmap=mp ); plt.title("W x,z") ;plt.grid()
+plt.subplot(2,3,6); plt.imshow( Ws[3,:,:], cmap=mp ); plt.title("W y,z") ;plt.grid()
 
+'''
+vmin = -0.5
+mp='bwr'
+for iter in range(1):
+    #Gs, Ws = mmff.fit3D_Bspline( Eg, Ftol=1e-6, nmaxiter=1, dt=0.5 )
+    plt.figure()
+    plt.subplot(2,3,1); plt.imshow( Gs[:,:,3], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("G x,y") ;plt.grid()
+    plt.subplot(2,3,2); plt.imshow( Gs[:,3,:], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("G x,z") ;plt.grid()
+    plt.subplot(2,3,3); plt.imshow( Gs[3,:,:], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("G y,z") ;plt.grid()
 
+    plt.subplot(2,3,4); plt.imshow( Ws[:,:,3], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("W x,y") ;plt.grid()
+    plt.subplot(2,3,5); plt.imshow( Ws[:,3,:], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("W x,z") ;plt.grid()
+    plt.subplot(2,3,6); plt.imshow( Ws[3,:,:], cmap=mp, vmin=vmin,vmax=-vmin  ); plt.title("W y,z") ;plt.grid()
 # g0 = 3.0-0.3
 # dg = 0.1
 # FEg, xg = makeGrid_deriv_dir( atoms, 60, g0=(0.0,0.0,g0), dg=(0.0,0.0,dg) )
 # Eg = FEg[:,0].copy()
 
 #print( "Eg.shape ", Eg.shape ); exit(0)
+'''
 
 '''
 plt.plot( xg, FEg[:,0], 'ok', label="Eg   " )

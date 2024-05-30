@@ -137,10 +137,26 @@ nsys=50
 #./$name -m 1 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 #./$name -m 2 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
 
-#./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2
+#./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2  -nogridff
+#./$name -m 40 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 500
 
 
-./$name -m 30  -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2    -iParalel 1   -perframe 100  -gopt 1000,1000 0.25,1.0    -T 10000 0.02  -Ftol 1e-2   -verb 0
+
+#./$name -m 3 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 1  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
+#./$name -m 3 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 1  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -c 10
+#./$name -m 100 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 100  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17   -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
+./$name -m 1000 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17   -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
+#./$name -m 1000 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -c 10
+
+
+#./$name -m 5 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 3    -group 0 0,1,9,17,15,7,21,27,28,25,26,36 -group 1 2,3,6,12,14,16,18,24,30,29,35
+#./$name -m 1000 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 200  -iParalel 3
+#./$name -m 200 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 3
+#./$name -m 200 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 3
+#./$name -m 200 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 2
+
+
+#./$name -m 30  -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2    -iParalel 1   -perframe 100  -gopt 1000,1000 0.25,1.0    -T 10000 0.02  -Ftol 1e-2   -verb 0
 
 
 
@@ -149,4 +165,4 @@ nsys=50
 #valgrind --leak-check=yes --track-origins=yes  --log-file="valgrind.log" ./$name -x common_resources/HCOOH -m 10
 
 
-grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log
+#grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log

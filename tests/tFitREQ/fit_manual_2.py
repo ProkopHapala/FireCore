@@ -49,13 +49,15 @@ fit.init_types( typeMask, typREQs, bCopy=True )
 fit.loadXYZ( fname+"_scan.xyz", [0,1,2], [3,4,5], types0=[1,0,0], testtypes=[1,0,0]  )     # load reference geometry
 
 # ------ obtain energy profile from classical model (fit)
-Es     = fit.getEs( imodel=2, bRigid=False)
+#Es     = fit.getEs( imodel=2, bRigid=False)
+Es     = fit.getEs( imodel=2 )
 
 # ------ obtain energy progile with HBond correction set to zero
 typREQs[0,3] = 0.0              # set HBond correction to zero
 fit.setType(0, typREQs[0,:] )   # set atom type 0
 fit.setType(1, typREQs[1,:] )   # set atom type 1
-Es_noH = fit.getEs( imodel=1, bRigid=False) # get energy profile
+#Es_noH = fit.getEs( imodel=1, bRigid=False) # get energy profile
+Es_noH = fit.getEs( imodel=1 ) # get energy profile
 
 print( "Es_noH", Es     )
 print( "Es_noH", Es_noH )

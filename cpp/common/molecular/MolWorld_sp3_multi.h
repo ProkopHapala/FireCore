@@ -119,6 +119,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* TDrive     =0;  // temperature and drived dynamics
 
     Quat4f* constr     =0;
+    Quat4f* constrK    =0;
+    cl_Mat3*  bboxes   =0;
 
     Quat4i* neighs     =0;
     Quat4i* neighCell  =0;
@@ -200,6 +202,8 @@ void realloc( int nSystems_ ){
     _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
+    _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
+    _realloc0( bboxes,   nSystems, cl_Mat3{cl_float4{-1e+8,-1e+8,-1e+8,-1e+8,},cl_float4{+1e+8,+1e+8,+1e+8,+1e+8,}, cl_float4{-1.,-1.,-1.,-1.} }   );
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
     _realloc( neighCell, ocl.nAtoms*nSystems );
@@ -215,7 +219,8 @@ void realloc( int nSystems_ ){
     _realloc( lvecs,     nSystems  );
     _realloc( ilvecs,    nSystems  );
     _realloc( MDpars,    nSystems  );
-    _realloc0( TDrive,    nSystems, Quat4f{0.0,-1.0,0.0,0.0} );
+    _realloc0( TDrive,   nSystems, Quat4f{0.0,-1.0,0.0,0.0} );
+
 
     _realloc( pbcshifts, ocl.npbc*nSystems );
 
@@ -399,6 +404,9 @@ int init_groups(){
     ocl.setGroupMapping( &atom2group[0] );
     for(int isys=0; isys<nSystems; isys++){
         groups2ocl( isys, true, false, true );
+
+        Mat3_to_cl( bbox, bboxes[isys] );        // ToDo: this may need to go to different place
+
     }
     int err=0;
     err|= ocl.upload( ocl.ibuff_gweights,  gweights  ); OCL_checkError(err, "init_groups.upload(gweights)");
@@ -406,6 +414,8 @@ int init_groups(){
 
     err|= ocl.upload( ocl.ibuff_gforces, gforces );     OCL_checkError(err, "init_groups.upload(gforces)");
     err|= ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );     OCL_checkError(err, "init_groups.upload(gtorqs)");
+    err|= ocl.upload( ocl.ibuff_bboxes,  bboxes  );     OCL_checkError(err, "init_groups.upload(bboxes)");  // ToDo: this may need to go to different place
+
     
     return err;
 }
@@ -516,8 +526,10 @@ void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, b
     int i0v   = isys * ocl.nvecs;
     int i0a   = isys * ocl.nAtoms;
     int err=0;
-    err|= ocl.upload( ocl.ibuff_atoms,  atoms,  ocl.nvecs,  i0v );
-    err|= ocl.upload( ocl.ibuff_constr, constr, ocl.nAtoms, i0a );
+    err|= ocl.upload( ocl.ibuff_atoms,  atoms,    ocl.nvecs,  i0v );
+    err|= ocl.upload( ocl.ibuff_constr,  constr,  ocl.nAtoms, i0a );
+    err|= ocl.upload( ocl.ibuff_constrK, constrK, ocl.nAtoms, i0a );
+    err|= ocl.upload( ocl.ibuff_bboxes,  bboxes, 1, isys  );
     if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces, ocl.nvecs, i0v ); }
     if(bVel   ){ 
         err|= ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v ); 
@@ -567,7 +579,9 @@ void upload(  bool bParams=false, bool bForces=0, bool bVel=true, bool blvec=tru
     //printf("MolWorld_sp3_multi::upload() \n");
     int err=0;
     err|= ocl.upload( ocl.ibuff_atoms,  atoms  );
-    err|= ocl.upload( ocl.ibuff_constr, constr );
+    err|= ocl.upload( ocl.ibuff_constr,  constr );
+    err|= ocl.upload( ocl.ibuff_constrK, constrK );
+    err|= ocl.upload( ocl.ibuff_bboxes,  bboxes );
     if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces ); }
     if(bVel   ){ err|= ocl.upload( ocl.ibuff_avel,    avel    ); }
     if(blvec){
@@ -666,7 +680,8 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
     //}
 }
 
-bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.005, float tsc = 0.3 ){
+
+bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 ){
     int err=0;
     double F2conv = Fconv*Fconv;
     bool bGroupUpdate=false;
@@ -678,13 +693,14 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.005, float tsc = 0.3
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
             gopts[isys].startExploring();
             bGroupUpdate=true;
-            printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
+            //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
             //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
+            //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
+            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }   // Shift driver
         }
         if( gopts[isys].update() ){ // Stop Exploring
             bGroupUpdate=true;
-            printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
+            //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
             for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
         };
         bExploring |= gopts[isys].bExploring;
@@ -1399,7 +1415,7 @@ int debug_eval(){
 }
 
 int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
-    //printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() niter=%i \n", niter );
+    //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i \n", niter );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
 
@@ -1441,6 +1457,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         bool bGroupDrive = bGroups && bExplore;
         //bGroupDrive = false;
 
+        //printf( "CPU::bbox(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", bbox.a.x,bbox.a.y,bbox.a.z,   bbox.b.x,bbox.b.y,bbox.b.z,   bbox.c.x,bbox.c.y,bbox.c.z );
         //bGroupDrive = true;
         // if(bGroupDrive){
         //     for(int ig=0; ig<ocl.nGroupTot; ig++){

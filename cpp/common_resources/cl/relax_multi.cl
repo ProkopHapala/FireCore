@@ -76,7 +76,9 @@ typedef struct __attribute__ ((packed)){
 #define  float2Zero  (float3){0.f,0.f,0.f}
 
 #define R2SAFE          1e-4f
-#define COULOMB_CONST   14.3996448915f  // [eV*Ang/e^2]
+#define COULOMB_CONST   14.3996448915f       // [ eV*Ang/e^2 ]
+#define const_kB        8.617333262145e-5f   // [ eV/K ]
+
 
 
 inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2){  a.x*b.x + a.y*b.y,  a.y*b.x - a.x*b.y }; }     // divison of unitary complex numbers (i.e. rotation backwards)
@@ -161,6 +163,23 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
     return  (float4){ dp*fr, E };
 }
 
+inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
+    float r2    = dot(dp,dp);
+    float ir2_  = 1/(r2+R2damp);
+    float r     = sqrt( r2   );
+    float ir_   = sqrt( ir2_ );     // ToDo: we can save some cost if we approximate r^2 = r^2 + R2damp;
+    float e     = exp ( K*(r-REQH.x));
+    //double e2    = e*e;
+    //double fMors =  E0*  2*K*( e2 -   e ); // Morse
+    //double EMors =  E0*      ( e2 - 2*e );
+    float   Ae  = REQH.y*e;
+    float fMors = Ae*  2*K*(e - 1); // Morse
+    float EMors = Ae*      (e - 2);
+    float Eel   = COULOMB_CONST*REQH.z*ir_;
+    float fr    = fMors/r - Eel*ir2_ ;
+    return  (float4){ dp*fr, EMors+Eel };
+}
+
 // evaluate damped Coulomb potential and force 
 inline float4 getCoulomb( float3 dp, float R2damp ){
     // ---- Electrostatic
@@ -214,7 +233,7 @@ float4 getR4repulsion( float3 d, float R, float Rcut, float A ){
 
 // 1.  getMMFFf4() - computes bonding interactions between atoms and nodes and its neighbors (max. 4 neighbors allowed), the resulting forces on atoms are stored "fapos" array and recoil forces on neighbors are stored in "fneigh" array
 //                   kernel run over all atoms and all systems in parallel to exploit GPU parallelism
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void getMMFFf4(
     const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
     // Dynamical
@@ -247,6 +266,8 @@ __kernel void getMMFFf4(
     const int nnode =nDOFs.y;  // number of nodes in the system
     //const int nvec  = nAtoms+nnode;
 
+    if(iG>=nnode) return;
+
     const int i0a   = iS*nAtoms;         // index of first atom      in the system
     const int i0n   = iS*nnode;          // index of first node atom in the system
     const int i0v   = iS*(nAtoms+nnode); // index of first vector    in the system ( either atom or pi-orbital )
@@ -254,7 +275,6 @@ __kernel void getMMFFf4(
     const int iaa = iG + i0a;  // index of current atom (either node or capping atom)
     const int ian = iG + i0n;  // index of current node atom
     const int iav = iG + i0v;  // index of current vector ( either atom or pi-orbital )
-    
 
     #define NNEIGH 4
     
@@ -402,7 +422,7 @@ __kernel void getMMFFf4(
 }
 
 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void getMMFFf4_bak(
     const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
     // Dynamical
@@ -650,6 +670,159 @@ __kernel void getMMFFf4_bak(
 }
 
 // ======================================================================
+//                     updateGroups()
+// ======================================================================
+
+//__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void updateGroups(
+    int               ngroup,      // 1 // number of groups (total, for all systems)
+    __global int2*    granges,     // 2 // (i0,n) range of indexes specifying the group
+    __global int*     g2a,         // 3 // indexes of atoms corresponding to groups defined by granges
+    __global float4*  apos,        // 4 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] ) 
+    __global float4*  gcenters,    // 5 // centers of each groups (CoGs)
+    __global float4*  gfws,        // 6 // forwad  orietantian vector for each group
+    __global float4*  gups,        // 7 // up      orietantian vector for each group
+    __global float4*  gweights     // 8 // up      orietantian vector for each group
+){
+    const int iG = get_global_id  (0); // index of atom
+    if(iG>=ngroup) return; // make sure we are not out of bounds of current system
+
+    // if(iG==0){
+    //     printf( "GPU ngroup=%i \n", ngroup );
+    //     for(int i=0; i<ngroup; i++){ 
+    //         const int2 grange = granges[i];
+    //         printf("GPU granges[%i] i0=%i n=%i \n", i, grange.x, grange.y  ); 
+    //         for(int j=0; j<grange.y; j++){
+    //             int ia = g2a[ grange.x + j ];
+    //             //printf( "[%i] %i \n", j, ia );
+    //             printf( "GPU gweights[%i](%g,%g,%g,%g)\n", ia, gweights[ia].x,gweights[ia].y,gweights[ia].z,gweights[ia].w );
+    //         }
+    //         printf("\n");
+    //     }
+    // }
+
+    const int2 grange = granges[iG];
+    
+    float3 cog = (float3){0.0f,0.0f,0.0f};
+
+    float wsum = 0.f;
+    for(int i=0; i<grange.y; i++){
+        int ia = g2a[ grange.x + i ];
+        //const float4 pe = apos[ia];
+        const float4 w = gweights[ia];
+        cog    += apos[ia].xyz * w.x;
+        wsum   += w.x;
+    }
+    cog *= ( 1.f/wsum );
+    gcenters[iG] = (float4){cog,0.0f};
+
+    float3 up  = (float3){0.0f,0.0f,0.0f};
+    float3 fw  = (float3){0.0f,0.0f,0.0f};
+    for(int i=0; i<grange.y; i++){
+        int ia = g2a[ grange.x + i ];
+        //const float4 pe = apos[ia];
+        const float4 w = gweights[ia];
+        const float3 d = apos[ia].xyz - cog.xyz;
+        fw.xyz += d * w.y;
+        up.xyz += d * w.z;
+    }
+    {  // Orthonormalize
+        fw  = normalize( fw );
+        up += fw * -dot( fw, up );
+        up  = normalize( up );
+    }
+
+    //printf( "GPU[iG=%i] cog(%g,%g,%g) fw(%g,%g,%g) up(%g,%g,%g) \n", iG, cog.x,cog.y,cog.z,   fw.x,fw.y,fw.z,  up.x,up.y,up.z );
+    gfws[iG] = (float4){fw,0.0f};
+    gups[iG] = (float4){up,0.0f};    
+}
+
+// ======================================================================
+//                     groupForce()
+// ======================================================================
+
+//__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void groupForce(
+    const int4        n,            // 1 // (natoms,nnode) dimensions of the system
+    __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+    __global float4*  aforce,       // 3 // forces on atoms
+    __global int*     a2g,          // 4 // atom to group maping (index)   
+    __global float4*  gforces,      // 5 // linar forces appliaed to atoms of the group
+    __global float4*  gtorqs,       // 6 // {hx,hy,hz,t} torques applied to atoms of the group
+    __global float4*  gcenters,     // 7 // centers of rotation (for evaluation of the torque
+    __global float4*  gfws,         // 8 // forward vector of group orientation
+    __global float4*  gups,         // 9 // up      vector of group orientation
+    __global float2*  gfweights    // 10 // weights for application of forces on atoms
+){
+    const int natoms = n.x;           // number of atoms
+    const int nnode  = n.y;           // number of node atoms
+    const int nGrpup = n.w;           // number of node atoms
+    const int nvec   = natoms+nnode; // number of vectors (atoms+node atoms)
+    const int iG = get_global_id  (0); // index of atom
+
+    if(iG>=natoms) return; // make sure we are not out of bounds of current system
+
+    const int iS = get_global_id  (1); // index of system
+    const int nG = get_global_size(0); // number of atoms
+    const int nS = get_global_size(1); // number of systems
+
+    // if( (iG==0) && (iS==0) ){
+    //     printf( "GPU::groupForce() natom=%i nnode=%i nvec=%i \n", natoms, nnode, nvec );
+    // //     int ig_sel = 0;
+    // //     int is = 0;
+    // //     // for(int ia=0; ia<natoms; ia++){
+    // //     //      int iav = ia + is*nvec; 
+    // //     //     printf( "%i ", a2g[iav] );
+    // //     // }
+    // //     // printf("\n");
+
+    //     for(int is=0; is<nS; is++){
+    //         // printf( "sys[%i] ", is );
+    //         // for(int ia=0; ia<natoms; ia++){
+    //         //     int iav = ia + is*nvec; 
+    //         //     printf( "%i ", a2g[iav] );
+    //         // }
+    //         // printf("\n");
+    //         for(int ia=0; ia<natoms; ia++){
+    //             int iav = ia + is*nvec; 
+    //             const int ig = a2g[iav]; 
+    //             if(ig>=0){
+    //                 //printf( "GPU:atom[%i|%i,%i] ig=%i(%i/%i) gforces(%10.6f,%10.6f,%10.6f)\n", is, ia, iav, ig, ig-is*nGrpup,nGrpup, gforces[ig].x, gforces[ig].y, gforces[ig].z  );
+    //                 printf( "GPU:atom[isys=%i|ia=%i] gfweights[iav=%i](%10.6f,%10.6f) gtorqs[ig=%i](%10.6f,%10.6f,%10.6f,%10.6f)\n", is, ia,     iav,  gfweights[iav].x,gfweights[iav].y,    ig, gtorqs[ig].x, gtorqs[ig].y, gtorqs[ig].z, gtorqs[ig].w  );
+    //             }
+    //         }
+    //     }
+    // }
+
+    //const int ian = iG + iS*nnode; 
+    const int iaa = iG + iS*natoms;  // index of atom in atoms array
+    const int iav = iG + iS*nvec;    // index of atom in vectors array
+    
+    float4 fe    = aforce[iav]; // position of atom or pi-orbital
+    const int ig = a2g[iav];  // index of the group to which this atom belongs 
+
+    float2  w = gfweights[ig];
+
+    // --- apply linear forece from the group
+    fe.xyz += gforces[ig].xyz * w.x;  
+
+    // ToDo: group vectors may be stored in Local Memory ?
+    const float3 torq = gtorqs[ig].xyz;
+    const float3 fw   = gfws  [ig].xyz;
+    const float3 up   = gups  [ig].xyz;
+    const float3 lf   = normalize( cross(fw,up) ); 
+    const float3 tq   = fw * torq.x   +  up * torq.y    +   lf * torq.z; 
+
+    // --- apply torque from the group
+    const float3 dp  = apos[iav].xyz - gcenters[ig].xyz;
+    fe.xyz          += cross( dp, tq.xyz ) * w.x;
+    
+    // --- store results
+    aforce[iav] = fe;
+
+}
+
+// ======================================================================
 //                     updateAtomsMMFFf4()
 // ======================================================================
 
@@ -707,8 +880,23 @@ float2 KvaziFIREdamp( float c, float2 clim, float2 damps ){
     return cvf;
 }
 
+unsigned int hash_wang(unsigned int bits) {
+    //unsigned int bits = __float_as_int(value);
+    bits = (bits ^ 61) ^ (bits >> 16);
+    bits *= 9;
+    bits = bits ^ (bits >> 4);
+    bits *= 0x27d4eb2d;
+    bits = bits ^ (bits >> 15);
+    return bits;
+}
+
+float hashf_wang( float val, float xmin, float xmax) {
+    //return ( (float)(bits)*(2147483647.0f );
+    return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin;
+}
+
 // Assemble recoil forces from neighbors and  update atoms positions and velocities 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
     const int4        n,            // 1 // (natoms,nnode) dimensions of the system
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
@@ -718,12 +906,18 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
     __global int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces)
     __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
-    __global float4*  MDparams      // 9 // MD parameters (dt,damp,Flimit)
+    __global float4*  constrKs,     // 9 // constraints stiffness (kx,ky,kz,?) for each atom
+    __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
+    __global float4*  TDrives,       // 11 // Thermal driving (T,gamma_damp,seed,?)
+    __global cl_Mat3* bboxes        // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
     const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
     const int iG = get_global_id  (0); // index of atom
+
+    if(iG>=nvec) return;
+
     const int iS = get_global_id  (1); // index of system
     const int nG = get_global_size(0); // number of atoms
     const int nS = get_global_size(1); // number of systems
@@ -732,9 +926,19 @@ __kernel void updateAtomsMMFFf4(
     const int iaa = iG + iS*natoms;  // index of atom in atoms array
     const int iav = iG + iS*nvec;    // index of atom in vectors array
 
-    const float4 MDpars = MDparams[iS]; // (dt,damp,Flimit)
+    const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
+    const float4 TDrive = TDrives[iS];
 
-    //if((iS==0)&&(iG==0)){ printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  }
+    // if((iS==0)&&(iG==0)){ 
+    //     //printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
+    //     for(int is=0; is<nS; is++){
+    //         //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+    //         printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
+    //         // for(int ia=0; ia<natoms; ia++){
+    //         //     if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g)\n", is, ia, constr[ia+is*natoms].x,constr[ia+is*natoms].y,constr[ia+is*natoms].z,constr[ia+is*natoms].w );
+    //         // }
+    //     }
+    // }
 
     const int iS_DBG = 5; // debug system
     //const int iG_DBG = 0;
@@ -782,14 +986,19 @@ __kernel void updateAtomsMMFFf4(
     float4 ve = avel[iav]; // velocity of atom or pi-orbital
     float4 pe = apos[iav]; // position of atom or pi-orbital
 
-    // -------constrains
+    
     if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
-       float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
-       if( cons.w>0.f ){            // if stiffness is positive, we have constraint
-            fe.xyz += (pe.xyz - cons.xyz)*-cons.w; // add constraint force
-            //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
-       }
-       
+        // ------- bboxes
+        const cl_Mat3 B = bboxes[iS];
+        if(B.c.x>0.0f){ if(pe.x<B.a.x){ fe.x+=(B.a.x-pe.x)*B.c.x; }else if(pe.x>B.b.x){ fe.x+=(B.b.x-pe.x)*B.c.x; }; }
+        if(B.c.y>0.0f){ if(pe.y<B.a.y){ fe.y+=(B.a.y-pe.y)*B.c.y; }else if(pe.y>B.b.y){ fe.y+=(B.b.y-pe.y)*B.c.y; }; }
+        if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
+        // ------- constrains
+    //    float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
+    //    if( cons.w>0.f ){            // if stiffness is positive, we have constraint
+    //         fe.xyz += (pe.xyz - cons.xyz)*-cons.w; // add constraint force
+    //         //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
+    //    }
     }
     
     /*
@@ -915,14 +1124,34 @@ __kernel void getNonBond(
     apos[iav] = pe;
     */
     
-    
+    const bool bDrive = TDrive.y > 0.0f;
+
     // ------ Move (Leap-Frog)
     if(bPi){ // if pi-orbital, we need to make sure that it has unit length
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght, 
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
+    }else{
+        // Thermal driving  - Langevin thermostat, see C++ MMFFsp3_loc::move_atom_Langevin()
+        if( bDrive ){ // if gamma>0
+            fe.xyz    += ve.xyz * -TDrive.y ;  // damping,  check the untis  ... cdamp/dt = gamma
+            //const float3 rnd = (float3){ hashf_wang(ve.x+TDrive.w,-1.0,1.0),hashf_wang(ve.y+TDrive.w,-1.0,1.0),hashf_wang(ve.z+TDrive.w,-1.0,1.0)};
+            __private float3 ix; 
+            // + (float3){TDrive.w,TDrive.w,TDrive.w}
+            //const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};  // changes every frame
+            const float3 rvec = (float3){  // random vector depending on the index
+                (((iG+136  + (int)(1000.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f, 
+                (((iG+778  + (int)(1013.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
+                (((iG+4578 + (int)( 998.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f
+            };
+            //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
+            const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
+            //if(iS==3){  printf( "atom[%i] seed=%g rvec(%g,%g,%g) rnd(%g,%g,%g) \n", iG, TDrive.w, rvec.x,rvec.y,rvec.z, rnd.x,rnd.y,rnd.z ); }
+            fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
+        }
     }
     cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
-    ve.xyz  = ve.xyz*MDpars.z;      // friction, velocity damping
+    //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
+    ve.xyz *= MDpars.z;             // friction, velocity damping
     ve.xyz += fe.xyz*MDpars.x;      // acceleration
     pe.xyz += ve.xyz*MDpars.x;      // move
     //ve     *= 0.99f;              // friction, velocity damping
@@ -957,7 +1186,7 @@ __kernel void getNonBond(
 //                     printOnGPU()
 // ======================================================================
 // Print atoms and forces on GPU
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void printOnGPU(
     const int4        n,            // 1
     const int4        mask,         // 2
@@ -1023,7 +1252,7 @@ __kernel void printOnGPU(
 //                     cleanForceMMFFf4()
 // ======================================================================
 // Clean forces on atoms and neighbors to prepare for next forcefield evaluation
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void cleanForceMMFFf4(
     const int4        n,           // 2
     __global float4*  aforce,      // 5
@@ -1514,7 +1743,7 @@ __kernel void getNonBond_GridFF(
     __read_only image3d_t  FE_Coul, // 12 // Grid-Force-Field (GFF) for Coulomb interaction
     const cl_Mat3  diGrid,          // 13 // inverse of grid spacing
     const float4   grid_p0          // 14 // origin of the grid
-    
+    //__global cl_Mat3* bboxes      // 15 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
     __local float4 LATOMS[32];         // local memory chumk of positions of atoms 
     __local float4 LCLJS [32];         // local memory chumk of atom parameters
@@ -1626,7 +1855,9 @@ __kernel void getNonBond_GridFF(
 
     // ========== Interaction with Grid-Force-Field (GFF) ==================
     const float3 posg  = posi - grid_p0.xyz;                                                                                   // position of the atom with respect to the origin of the grid
-    const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );          // normalized grid coordinates of the atom
+
+    float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );          // normalized grid coordinates of the atom
+    coord.z = clamp( coord.z, 0.0001f, 0.99f );  // prevent periodic boundary in z-direction
     // #if 0
         //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
         const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff_norm, coord );    // interpolate Grid-Force-Field (GFF) for Pauli repulsion
@@ -1642,7 +1873,8 @@ __kernel void getNonBond_GridFF(
     const float cL   = ej*REQKi.y;                   // prefactor London dispersion (attractive part of Morse potential)
     const float cP   = ej*cL;                        // prefactor Pauli repulsion   (repulsive part of Morse potential)
     fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQKi.z;  // total GridFF force and energy on the atom (including Morse(London+Pauli) and Coulomb )
-    
+
+
     /*
     if((iG==0)&&(iS==0)){
         printf("GPU:getNonBond_GridFF(natoms=%i)\n", natoms);
@@ -1690,7 +1922,7 @@ __kernel void getNonBond_GridFF(
 //                           sampleGridFF()
 // ======================================================================
 // this is just to test interpolation of Grid-Force-Field (GFF) on GPU
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void sampleGridFF(
     const int4 ns,                  // 1
     __global float4*  atoms,        // 2
@@ -1937,6 +2169,120 @@ __kernel void make_GridFF(
     write_imagef( FE_Coul, coord, fe_Coul );
 }
 
+
+__kernel void getSurfMorse(
+    const int4 ns,                // 1
+    __global float4*  atoms,      // 2
+    __global float4*  REQs,       // 3
+    __global float4*  forces,     // 4
+    __global float4*  atoms_s,    // 5
+    __global float4*  REQ_s,      // 6
+    const int4     nPBC,          // 7
+    const cl_Mat3  lvec,          // 8
+    const float4   pos0,          // 9
+    const float4   GFFParams      // 10
+){
+
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+
+    const int nAtoms  = ns.x;
+
+    const int iG = get_global_id  (0); // index of atom in the system
+    const int iS = get_global_id  (1); // index of system
+    const int iL = get_local_id   (0); // index of atom in the local memory chunk
+    const int nG = get_global_size(0); // total number of atoms in the system
+    const int nS = get_global_size(1); // total number of systems
+    const int nL = get_local_size (0); // number of atoms in the local memory chunk
+
+    const int natoms  = ns.x;         // number of atoms in the system
+    const int nnode   = ns.y;         // number of nodes in the system
+    const int nvec    = natoms+nnode; // number of vectos (atoms and pi-orbitals) in the system
+    const int na_surf = ns.z;         //
+
+    //const int i0n = iS*nnode;    // index of the first node in the system
+    const int i0a = iS*natoms;     // index of the first atom in the system
+    const int i0v = iS*nvec;       // index of the first vector (atom or pi-orbital) in the system
+    //const int ian = iG + i0n;    // index of the atom in the system
+    const int iaa = iG + i0a;      // index of the atom in the system
+    const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
+
+    // if( (iG==0) && (iS==0) ){  
+    //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  ); 
+    //     //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  ); 
+    //     //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
+    //     for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
+    // }
+    float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
+
+    if(iG>=nAtoms) return;
+
+    const float  K          = -GFFParams.y;
+    const float  R2damp     =  GFFParams.x*GFFParams.x;
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
+    const float3 pos  = atoms[iav].xyz - pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    const float4 REQi = REQs [iaa];
+
+    // ToDo: perhaps it is efficient to share surface along isys direction ( all system operate with the same surface atoms )
+
+    for (int j0=0; j0<na_surf; j0+= nL ){
+        const int i = j0 + iL;
+        LATOMS[iL] = atoms_s[i];
+        LCLJS [iL] = REQ_s  [i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int jl=0; jl<nL; jl++){
+            const int ja=jl+j0;
+            if( ja<na_surf ){ 
+                float4 REQH =       LCLJS [jl];
+                float3 dp   = pos - LATOMS[jl].xyz;
+                REQH.x   += REQi.x;
+                REQH.yzw *= REQi.yzw;
+                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                            const float4 fej = getMorseQH( dp,  REQH, K, R2damp );
+                            fe -= fej;
+                            //if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
+                            //if( (iG==0) && (iS==0) && (jl==0) ){
+                            // if( (iG==0) && (jl==0)   && (iz==0)&&(iy==0)&&(ix==0)  ){
+                            //    printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
+                            //    //printf( "GPU[%3i(%3i,%3i,%3i)] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", ja, ix,iy,iz,  K,R2damp, length(dp), dp.x,dp.y,dp.z,  REQH.x, REQH.y, REQH.z, REQH.w,  fej.x,fej.y,fej.z );
+                            // }
+                            dp   +=lvec.a.xyz;
+                            //shift+=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                        //shift+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp   +=shift_c;
+                    //shift+=shift_c;
+                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
+                    //dp+=lvec.c.xyz;
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    // if( (iG==0) && (iS==0) ){
+    //      printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
+    // }
+
+    // if( (iG==0) ){
+    //       printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
+    // }
+    forces[iav] += fe;  
+
+}
+
+
+
 // ======================================
 // ======================================
 //               PP-AFM
@@ -2087,7 +2433,7 @@ float3 update_FIRE( float3 f, float3 v, float* dt, float* damp,    float dtmin, 
     //p  += v * dt;
 }
 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void PPAFM_scan(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
@@ -2197,7 +2543,7 @@ __kernel void PPAFM_scan(
 }
 
 
-__attribute__((reqd_work_group_size(1,1,1)))
+//__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void PPAFM_scan_df(
     __read_only image3d_t  imgIn,   // 1 
     __global  float4*      points,  // 2
