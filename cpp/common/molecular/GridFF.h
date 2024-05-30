@@ -118,13 +118,9 @@ class GridFF : public NBFF{ public:
 
     //double Rdamp  =  1.0;
     int iDebugEvalR = 0;
-    bool bCellSet = false;
+    bool bCellSet    = false;
+    bool bSymetrized = false;
 
-    /**
-     * Finds the maximum z-coordinate value among the atoms.
-     *
-     * @return The maximum z-coordinate value.
-     */
     double findTop(){ double zmax=-1e+300; for(int i=0;i<natoms; i++){ double z=apos[i].z; if(z>zmax)zmax=z; }; return zmax; }
 
     void bindSystem(int natoms_, int* atypes_, Vec3d* apos_, Quat4d* REQs_ ){
@@ -263,6 +259,14 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
          + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*PLQ.z
         ;
     }
+
+
+	// return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
+    //       ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
+    //      + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
+    //      + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
+    //      + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101));
+    // }
 }
 __attribute__((hot))  
 inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=true )const{
@@ -502,18 +506,109 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                             qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
                             ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
                             qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+                            
+                            //qp.e += exp( -r2/0.16 ); // Debug
                         }
                     }
                     const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
                     FFPaul[ibuff]=(Quat4f)qp;
                     FFLond[ibuff]=(Quat4f)ql;
                     FFelec[ibuff]=(Quat4f)qe;
+
+                    // Debug
+                    // FFPaul[ibuff]=(Quat4f)qp;
+                    // FFLond[ibuff]=Quat4fZero;
+                    // FFelec[ibuff]=Quat4fZero;                    
                 }
             }
         }
         }
     }
     void makeGridFF(){ makeGridFF_omp(natoms,apos,REQs); }
+
+    double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
+        //printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
+        const double R2damp=Rdamp*Rdamp;    
+        const double K =-alphaMorse;
+        double       E = 0;
+        Vec3d f = Vec3dZero;
+        //printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
+        if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
+        if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
+        for(int j=0; j<natoms; j++){    // atom-atom
+            Vec3d fij = Vec3dZero;
+            Vec3d dp0 = pi - apos[j] - shift0;
+            Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
+            //printf( "GridFF::evalMorsePBC() j %i/%i \n", j,natoms );
+            for(int ipbc=0; ipbc<npbc; ipbc++ ){
+                //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
+                const Vec3d  dp = dp0 + shifts[ipbc];
+                Vec3d fij=Vec3dZero;
+                E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                //E  += exp(-dp.norm2()/0.16 );
+                f.sub( fij );
+            }
+        }
+        fi.add( f );
+        //printf( "CPU[iG=0,iS=0] fe(%10.6f,%10.6f,%10.6f)\n", fi.x,fi.y,fi.z );
+        return E;
+    }
+    double evalMorsePBC_sym     (         Vec3d  pi, Quat4d  REQi, Vec3d& fi     ){ return evalMorsePBC( pi, REQi, fi, apos_.size(), &apos_[0], &REQs_[0] ); }
+    double evalMorsePBCatoms_sym( int na, Vec3d* ps, Quat4d* REQs, Vec3d* forces ){
+        double E = 0;
+        for(int ia=0; ia<na; ia++){ evalMorsePBC_sym( ps[ia], REQs[ia], forces[ia] ); };
+        return E;
+    }
+
+    Quat4d evalMorsePBC_PLQ(  Vec3d pi, Quat4d PLQH, int natoms, Vec3d * apos, Quat4d * REQs ){
+        //printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
+        const double R2damp=Rdamp*Rdamp;    
+        const double K =-alphaMorse;
+        double       E = 0;
+        Quat4d fe = Quat4dZero;
+        //printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
+        if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
+        if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
+        for(int j=0; j<natoms; j++){    // atom-atom
+            Vec3d fij = Vec3dZero;
+            Vec3d dp0 = pi - apos[j] - shift0;
+            //Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
+            Quat4d REQj = REQs[j];
+            //printf( "GridFF::evalMorsePBC() j %i/%i \n", j,natoms );
+            for(int ipbc=0; ipbc<npbc; ipbc++ ){
+                //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
+                const Vec3d  dp = dp0 + shifts[ipbc];
+                Vec3d fij=Vec3dZero;
+
+                // ---- replaced addAtomicForceMorseQ()
+                double r2     = dp.norm2();
+                double r      = sqrt(r2 + 1e-32);
+                // ---- Coulomb
+                double ir2    = 1/(r2+R2damp);
+                double eQ     = COULOMB_CONST*REQj.z*sqrt(ir2);
+                // ----- Morse
+                double e      = exp( K*(r-REQj.x) );
+                double eM     = e*REQj.y;
+                double de     = 2*K*eM/r;                    
+                // --- store
+                // qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
+                // ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
+                // qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+                fe.e+= PLQH.x* eM*e;   fe.f.add_mul( dp, -de*e   *PLQH.x ); // repulsive part of Morse
+                fe.e+= PLQH.y* eM*-2.; fe.f.add_mul( dp,  de     *PLQH.y ); // attractive part of Morse
+                fe.e+= PLQH.z* eQ;     fe.f.add_mul( dp,  eQ*ir2 *PLQH.z ); // Coulomb
+
+            }
+        }
+        return fe;
+    }
+    Quat4d evalMorsePBC_PLQ_sym( Vec3d  pi, Quat4d  PLQH ){ return evalMorsePBC_PLQ( pi, PLQH, apos_.size(), &apos_[0], &REQs_[0] ); }
+    // Quat4d evalMorsePBCatoms_PLQ_sym( int na, Vec3d* ps, Quat4d* REQs, Vec3d* forces ){
+    //     double E = 0;
+    //     for(int ia=0; ia<na; ia++){ evalMorsePBC_PLQ_sym( ps[ia], REQs[ia], forces[ia] ); };
+    //     return E;
+    // }
+
 
 
     __attribute__((hot))  
@@ -694,6 +789,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Quat4d* REQs, double d
     }
     printf( "setAtomsSymetrized() END na_new=%i na_old=%i \n", atypes_.size(), n );
     bindSystem( atypes_.size(), &atypes_[0], &apos_[0], &REQs_[0] );
+    bSymetrized = true;
 }
 
 void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){
@@ -855,14 +951,14 @@ void checkSum( bool bDouble ){
         char* cFFLond = (char*)FFLond;
         char* cFFelec = (char*)FFelec;
         if(bDouble){
-            printf( "GridFF::tryLoad() bDouble %i \n", bDouble );
+            printf( "GridFF::tryLoad() bDouble %i grid.n(%i,%i,%i)\n", bDouble, grid.n.x, grid.n.y, grid.n.z );
             nbyte = grid.getNtot()*sizeof(Quat4d);
             cFFPaul = (char*)FFPaul_d;
             cFFLond = (char*)FFLond_d;
             cFFelec = (char*)FFelec_d;
         }
         if( recalcFF ){
-            printf( "\nBuilding GridFF for substrate (bDouble=%i) ... (please wait... )\n", bDouble );
+            printf( "\nBuilding GridFF for substrate (bDouble=%i) grid.n(%i,%i,%i) ... (please wait... )\n", bDouble, grid.n.x, grid.n.y, grid.n.z );
             if(bDouble){ makeGridFF_omp_d( apos_.size(), &apos_[0], &REQs_[0] ); }
             else       { makeGridFF_omp  ( apos_.size(), &apos_[0], &REQs_[0] ); }
             if(cFFPaul) saveBin( fname_Paul,  nbyte, cFFPaul );

@@ -120,13 +120,80 @@ def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
 lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
 lib.fit3D_Bspline.restype   =  None
 def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
-    ns = np.array( Es.shape, dtype=np.int32 ) 
+    #ns = np.array( Es.shape, dtype=np.int32 ) 
+    ns = np.array( Es.shape[::-1], dtype=np.int32 ) 
     n  = Es.size
-    if Ws is None: Ws = np.zeros( (n,2) )
-    if Gs is None:
-        Gs = Es[:].copy()
+    if Ws is None: Ws = np.zeros( ns )
+    if Gs is None: Gs = Es[:].copy()
+    #print( "Es\n", Es  )
+    #print( "Gs\n", Gs  )
     lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
     return Gs, Ws
+
+#void setupGrid( int* ns, double* cell, bool bAlloc ){
+lib.setupGrid.argtypes  = [ c_int_p, c_double_p, c_bool ]
+lib.setupGrid.restype   =  c_double_p
+def setupGrid( ns, cell=None, bAlloc=True ):
+    ns = np.array( (ns[2],ns[1],ns[0]) , dtype=np.int32 )
+    if cell is not None: cell = np.array( cell )
+    data_ptr =  lib.setupGrid( _np_as(ns,c_int_p), _np_as(cell,c_double_p), bAlloc )
+    ff = None
+    if( bAlloc ):
+        ff   = np.ctypeslib.as_array(data_ptr, (ns[2],ns[1],ns[0]) )
+    return ff
+
+#void loadBin_d( const char* fname, double* data ){
+lib.loadBin_f.argtypes  = [ c_char_p, c_float_p ]
+lib.loadBin_f.restype   = c_int
+def loadBin_f( name , data=None, ns=None):
+    print( "ns ", ns )
+    if data is None: data=np.zeros( ns[::-1], dtype=np.float32 )
+    print( "data.shape ", data.shape )
+    name=name.encode('utf8')
+    ret = lib.loadBin_f( name, _np_as(data,c_float_p) )
+    return data
+
+#void loadBin_d( const char* fname, double* data ){
+lib.loadBin_d.argtypes  = [ c_char_p, c_double_p ]
+lib.loadBin_d.restype   = c_int
+def loadBin_d( name , data=None, ns=None, chan=None ):
+    print( "ns ", ns )
+    ns[::-1]
+    if chan is not None: ns = ns + (chan,)
+    if data is None:     data=np.zeros( ns )
+    print( "data.shape ", data.shape )
+    name=name.encode('utf8')
+    ret = lib.loadBin_d( name, _np_as(data,c_double_p) )
+    return data
+
+#void saveBin_d( const char* fname, double* data ){
+lib.saveBin_d.argtypes  = [ c_char_p, c_double_p ]
+lib.saveBin_d.restype   =  c_int
+def saveBin_d( name, data):
+    name=name.encode('utf8')
+    return lib.saveBin_d( name, _np_as(data,c_double_p) )
+
+# double* loadXSF( const char* fname, int* ns, double* cell ){
+lib.loadXSF.argtypes  = [ c_char_p, c_int_p, c_double_p ]
+lib.loadXSF.restype   =  c_double_p
+def loadXSF( name ):
+    if name is not None: name=name.encode('utf8')
+    cell = np.zeros((3,3))
+    ns   = np.zeros(3, dtype=np.int32 ) 
+    data_ptr = lib.loadXSF( name, _np_as(ns,c_int_p), _np_as(cell,c_double_p)  )
+    ff       = np.ctypeslib.as_array(data_ptr, (ns[2],ns[1],ns[0]) )
+    return ff, cell
+
+# double* loadXSF( const char* fname, int* ns, double* cell ){
+lib.saveXSF.argtypes  = [ c_char_p, c_double_p, c_int_p, c_double_p ]
+lib.saveXSF.restype   =  c_double_p
+def saveXSF( name, FF, cell=None ):
+    ns = FF.shape
+    ns   = np.array( (ns[2],ns[1],ns[0]) , dtype=np.int32 )
+    #ns   = np.array( ns, dtype=np.int32 )
+    if cell is not None: cell = np.array( cell )
+    if name is not None: name = name.encode('utf8')
+    lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )
 
 # void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
 lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
@@ -135,6 +202,19 @@ def sample_Bspline( xs, Eps, x0=0.0, dx=1.0, fes=None ):
     n = len(xs)
     if fes is None: fes=np.zeros((n,2))
     lib.sample_Bspline(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_Bspline3D            ( double* g0, double* dg, int* ng, double* G,               int n, double* ps, double* fes ){
+#void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
+lib.sample_Bspline3D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p]
+lib.sample_Bspline3D.restype   =  None
+def sample_Bspline3D( ps, Eg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Eg.shape[::-1], np.int32 )
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_Bspline3D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 
 #void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
@@ -229,23 +309,7 @@ def sample_SplineConstr( xs, Eps, x0=0.0, dx=1.0, Es=None, Fs=None):
 #  void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
 lib.sample_DistConstr.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
 lib.sample_DistConstr.restype   =  None
-def sample_DistConstr(xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None):
-    """
-    Sample distance constraints for a given set of coordinates.
-
-    Args:
-        xs (list): List of coordinates.
-        lmin (int): Minimum length constraint (default: 1).
-        lmax (int): Maximum length constraint (default: 1).
-        kmin (int): Minimum force constant constraint (default: 1).
-        kmax (int): Maximum force constant constraint (default: 1).
-        flim (float): Maximum force (default: 1e+300).
-        Es (list): List of energy values (default: None).
-        Fs (list): List of force values (default: None).
-
-    Returns:
-        tuple: Tuple containing the updated energy values (Es) and force values (Fs).
-    """
+def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None):
     n = len(xs)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
@@ -255,22 +319,7 @@ def sample_DistConstr(xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, 
 #  void sample_evalPiAling( double K, double c0, int n, double* angles, double* Es, double* Fs ){
 lib.sample_evalPiAling.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
 lib.sample_evalPiAling.restype   =  None
-def sample_evalPiAling(angles, K=1.0, ang0=0.0, r1=1., r2=1., Es=None, Fs=None):
-    """
-    Calculates the energy and force components (based on Pi-Pi alignment) for a given set of angles.
-
-    Args:
-        angles (list): List of angles.
-        K (float, optional): Force constant. Defaults to 1.0.
-        ang0 (float, optional): Reference angle. Defaults to 0.0.
-        r1 (float, optional): Parameter r1. Defaults to 1.0.
-        r2 (float, optional): Parameter r2. Defaults to 1.0.
-        Es (list, optional): List to store the energy components. Defaults to None.
-        Fs (list, optional): List to store the force components. Defaults to None.
-
-    Returns:
-        tuple: A tuple containing the energy components (Es) and force components (Fs).
-    """
+def sample_evalPiAling( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
     n = len(angles)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
@@ -326,7 +375,7 @@ def sampleSurf( name, rs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp
 # void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){  
 lib.sampleSurf_vecs.argtypes  = [ c_int, array2d, array2d, c_int, c_int,  c_double, c_double, c_double, c_double, c_double, c_int, c_bool] 
 lib.sampleSurf_vecs.restype   =  None
-def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q=0.0, K=+1.6, Rdamp=0.1, npbc=1, bSave=False ):
+def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q=0.0, K=+1.5, Rdamp=0.1, npbc=1, bSave=False ):
     n =len(ps)
     if FEs is None: FEs=np.zeros((n,4))
     lib.sampleSurf_vecs( n, ps, FEs, kind, ityp, RvdW, EvdW, Q, K, Rdamp, npbc, bSave )
@@ -789,7 +838,6 @@ def computeDistance(ia,ib,dist=None):
     return lib.computeDistance(ia,ib,_np_as(dist,c_double_p))
 
 
-
 # ====================================
 # ========= Python Functions
 # ====================================
@@ -844,3 +892,7 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
 # if __name__ == "__main__":
 #     import matplotlib.pyplot as plt
 #     plt.show()
+
+
+
+

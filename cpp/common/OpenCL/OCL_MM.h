@@ -55,7 +55,7 @@ class OCL_MM: public OCLsystem { public:
     cl_program program_relax=0;
 
     // dimensions
-    int nAtoms=0; 
+    int nAtoms=0, nGroup=0, nGroupTot=0; 
     int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0, nbkng=0, ncap=0; // nnode: number of node atoms; nvecs: number of vectors (atoms and pi-orbitals); nneigh: number of neighbors); npi: number of pi orbitals; nSystems: number of system replicas; nbkng: number of back-neighbors; ncap: number of capping atoms
 
     int4   print_mask{1,1,1,1};  // what to print on GPU
@@ -77,7 +77,7 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
     int ibuff_avel=-1,ibuff_cvf=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
-    int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_pbcshifts=-1; 
+    int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_TDrive=-1, ibuff_pbcshifts=-1; 
     int ibuff_constr=-1;
     int ibuff_samp_ps=-1;
     int ibuff_samp_fs=-1;
@@ -91,6 +91,17 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_dipole_ps=-1;
     int ibuff_dipoles  =-1;
 
+    int ibuff_granges   = -1;  // 2 // (i0,i1) range of indexes specifying the group
+    int ibuff_g2a       = -1;  // 3 // (i0,i1) atom to group mapping
+    int ibuff_a2g       = -1;  // 5 // atom to group maping (index)   
+    int ibuff_gforces   = -1;  // 6 // linar forces appliaed to atoms of the group
+    int ibuff_gtorqs    = -1;  // 7 // {hx,hy,hz,t} torques applied to atoms of the group
+    int ibuff_gcenters  = -1;  // 8 // centers of rotation (for evaluation of the torque
+    int ibuff_gfws      = -1;
+    int ibuff_gups      = -1; 
+    int ibuff_gweights  = -1;
+    int ibuff_gfweights = -1; 
+
     // ------- Grid
     //size_t Ns[4]; // = {N0, N1, N2};
     //size_t Ntot;
@@ -100,6 +111,7 @@ class OCL_MM: public OCLsystem { public:
     //float4  grid_shift0   { 0.f, 0.f, 0.f, 0.f };
     //float4  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f };
 
+    //Quat4f  surf_p0       { 0.f, 0.f, 0.f, 0.f }; // surface shift0
     Quat4f  grid_p0       { 0.f, 0.f, 0.f, 0.f }; // grid origin
     Quat4f  grid_shift0   { 0.f, 0.f, 0.f, 0.f }; // grid shift
     Quat4f  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f }; // grid shift + origin
@@ -147,9 +159,12 @@ class OCL_MM: public OCLsystem { public:
         newTask( "getNonBond"             ,program_relax, 2);
         newTask( "getMMFFf4"              ,program_relax, 2);
         newTask( "cleanForceMMFFf4"       ,program_relax, 2);
+        newTask( "updateGroups"           ,program_relax, 1);
+        newTask( "groupForce"             ,program_relax, 2);
         newTask( "updateAtomsMMFFf4"      ,program_relax, 2);
         newTask( "printOnGPU"             ,program_relax, 2);
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
+        newTask( "getSurfMorse"           ,program_relax, 2);
         newTask( "make_GridFF"            ,program_relax, 1);
         newTask( "sampleGridFF"           ,program_relax, 1);
         newTask( "addDipoleField"         ,program_relax, 1);
@@ -189,11 +204,11 @@ class OCL_MM: public OCLsystem { public:
         //ibuff_constr0    = newBuffer( "constr0",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
         //ibuff_constrK    = newBuffer( "constrK",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
 
-        ibuff_bkNeighs     = newBuffer( "bkNeighs", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );     // back neighbors
-        ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs,  sizeof(int4  ), 0, CL_MEM_READ_ONLY  );   
-        ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,  sizeof(float4), 0, CL_MEM_READ_WRITE );     // atoms velocities (x,y,z,m)
-        ibuff_cvf        = newBuffer( "cvf",        nSystems*nvecs , sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_neighForce = newBuffer( "neighForce", nSystems*nbkng,  sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_bkNeighs     = newBuffer( "bkNeighs", nSystems*nvecs,     sizeof(int4  ), 0, CL_MEM_READ_ONLY  );     // back neighbors
+        ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );   
+        ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,     sizeof(float4), 0, CL_MEM_READ_WRITE );     // atoms velocities (x,y,z,m)
+        ibuff_cvf        = newBuffer( "cvf",        nSystems*nvecs ,    sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_neighForce = newBuffer( "neighForce", nSystems*nbkng,     sizeof(float4), 0, CL_MEM_READ_WRITE );
 
         ibuff_MMpars     = newBuffer( "MMpars",     nSystems*nnode,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
         ibuff_BLs        = newBuffer( "BLs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -202,6 +217,7 @@ class OCL_MM: public OCLsystem { public:
         ibuff_Kpp        = newBuffer( "Kpp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
 
         ibuff_MDpars     = newBuffer( "MDpars",     nSystems,        sizeof(float4),  0, CL_MEM_READ_ONLY  );
+        ibuff_TDrive     = newBuffer( "TDrive",     nSystems,        sizeof(float4),  0, CL_MEM_READ_ONLY  );
         ibuff_lvecs      = newBuffer( "lvecs",      nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
         ibuff_ilvecs     = newBuffer( "ilvecs",     nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
 
@@ -215,6 +231,102 @@ class OCL_MM: public OCLsystem { public:
         return ibuff_atoms;
     }
 
+    int initAtomGroups( int nGroup_ ){
+        printf( "OCL_MM::initAtomGroups() nAtoms=%i nGroup=%i nSystems=%i \n", nAtoms, nGroup_, nSystems );
+        nGroup=nGroup_;
+        nGroupTot = nGroup*nSystems;
+        ibuff_granges  = newBuffer( "granges"  , nSystems*nGroup, sizeof(int2  ), 0, CL_MEM_READ_ONLY  );    
+        ibuff_a2g      = newBuffer( "a2g"      , nSystems*nvecs, sizeof(int   ), 0, CL_MEM_READ_ONLY  );    
+        ibuff_g2a      = newBuffer( "g2a"      , nSystems*nvecs, sizeof(int   ), 0, CL_MEM_READ_ONLY  );         
+        ibuff_gforces  = newBuffer( "gforces"  , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );      
+        ibuff_gtorqs   = newBuffer( "gtorqs"   , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_gweights  = newBuffer( "gweights" ,  nSystems*nvecs, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_gfweights = newBuffer( "gfweights" , nSystems*nvecs, sizeof(float2), 0, CL_MEM_READ_ONLY  );
+
+        ibuff_gcenters = newBuffer( "gcenters" , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_gfws     = newBuffer( "gfws"     , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        ibuff_gups     = newBuffer( "gups"     , nSystems*nGroup, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+
+        // __global int2*    granges,  // (i0,i1) range of indexes specifying the group
+        // __global int*     g2a,      // (i0,i1) atom to group mapping
+        // __global int*     a2g,      // atom to group maping (index)   
+        // __global float4*  gforces,  // linar forces appliaed to atoms of the group
+        // __global float4*  gtorqs,   // {hx,hy,hz,t} torques applied to atoms of the group
+        // __global float4*  gcenters  // centers of rotation (for evaluation of the torque
+        return ibuff_atoms;
+    }
+
+    void setGroupMapping( int* a2g_){
+        printf( "OCL_MM::setGroupMapping() nAtoms=%i nGroup=%i nGroupTot=%i nSystems=%i nvecs=%i\n", nAtoms, nGroup, nGroupTot, nSystems, nvecs );
+        int nAtomTot  = nvecs*nSystems;
+        int*  a2g     = new int [nAtomTot];
+        int*  g2a     = new int [nAtomTot];
+        int2* granges = new int2[nGroupTot];
+
+        //for(int i=0; i<nAtoms; i++){ printf( "atom[%i] -> group # %i \n", i, a2g_[i] ); }
+        //exit(0);
+
+        //DEBUG
+        // --- map groups to all system replicas
+        for(int i=0; i<nAtomTot;  i++){ a2g[i]=-1; };
+        for(int isys=0;isys<nSystems;isys++){   // broadcast a2g mapping to all system replicas
+            int* a2g_s = a2g + isys*nvecs;
+            int goff   = isys*nGroup; 
+            for(int ia=0;ia<nAtoms;ia++){
+                int ig = a2g_[ia];
+                if(ig>=0){ 
+                    ig += goff; 
+                    a2g_s[ia] = ig;
+                    int iaa = ia + isys*nvecs;
+                    //printf( "[isys=%i,ia=%i] ig=%i   a2g[%i]==%i \n", isys, ia, ig, iaa, a2g[iaa] );
+                }; // -1 is not-defined group (make sure it is preserved)
+            }
+        }
+        // --- map from a2g to g2a
+        // -- count number of atoms in each group
+        for(int i=0; i<nGroupTot; i++){ granges[i]=(int2){0,0}; }  
+        for(int i=0; i<nAtomTot;  i++){ // count number of atoms in each group
+            int ig = a2g[i];
+            if(ig>=0){
+                //printf( "ia(%i) -> ig(%i) \n", i, ig );
+                granges[ig].y++;
+            } 
+        } 
+        int nsum=0;
+        for(int i=0; i<nGroupTot; i++){ int ni=granges[i].y; granges[i].x=nsum; nsum+=ni; } // accumulate group2atom index offsets
+        //for(int i=0; i<nGroupTot; i++){ printf( "granges[%i] i0,n(%i,%i)\n", i, granges[i].x, granges[i].y  ); } 
+        for(int i=0; i<nGroupTot; i++){ granges[i].y=0; }  // clean atoms in group count
+        // -- back mapping
+        for(int i=0; i<nAtomTot; i++){
+            //printf( "[%i] ", i );
+            int  ig =  a2g[i];
+            if(ig<0) continue;
+            int2& g = granges[ig];
+            int j   = g.x + g.y;
+            //printf( " i=%i ig=%i j=%i  | nAtomTot %i \n", i, ig, j, nAtomTot );
+            g2a[j] = i;
+            g.y++;
+        }
+        //for(int i=0; i<nGroupTot; i++){ granges[i].y=granges[i].y+granges[i].x; }
+        // --- print Group->Atom mapping
+        for(int ig=0; ig<nGroupTot; ig++){ 
+            int2 ni  = granges[ig];
+            int isys = ig/nGroup;
+            //printf( "--- group[%i] grange i0=%i n=%i \n", ig, ni.x, ni.y );
+            for(int i=0; i<ni.y; i++){
+                int ia = g2a[i + ni.x];
+                //printf( "group[%i][%i] iaG=%i iaL=%i \n", ig, i, ia, ia - isys*nvecs  );
+            }
+        }
+        //for(int i=0; i<nAtoms; i++){    printf( "atom[%i] -> group # %i \n", i, a2g_[i] );}
+        upload( ibuff_granges, granges );
+        upload( ibuff_a2g,     a2g     );
+        upload( ibuff_g2a,     g2a     );
+        delete [] a2g;
+        delete [] granges;
+        delete [] g2a;
+        //exit(0);
+    }
 
     OCLtask* setup_getNonBond( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond(na=%i,nnode=%i) \n", na, nNode);
@@ -266,7 +378,7 @@ class OCL_MM: public OCLsystem { public:
 
     OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond_GridFF(na=%i,nnode=%i) itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i\n", na, nNode,  itex_FE_Paul,itex_FE_Lond,itex_FE_Coul );
-        if((itex_FE_Paul<=0)||(itex_FE_Paul<=0)||(itex_FE_Paul<=0)){ printf( "ERROR in setup_getNonBond_GridFF() GridFF textures not initialized(itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i) => Exit() \n", itex_FE_Paul,itex_FE_Lond,itex_FE_Coul ); exit(0); }
+        if((itex_FE_Paul<0)||(itex_FE_Paul<=0)||(itex_FE_Paul<=0)){ printf( "ERROR in setup_getNonBond_GridFF() GridFF textures not initialized(itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i) => Exit() \n", itex_FE_Paul,itex_FE_Lond,itex_FE_Coul ); exit(0); }
         if(task==0) task = getTask("getNonBond_GridFF");        
         //int nloc = 1;
         //int nloc = 4;
@@ -326,7 +438,10 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
         printf("setup_getMMFFf4(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFf4");
-        task->global.x = nNode;
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = nNode + nloc-(nNode%nloc); // round up to multiple of nloc
+        //task->global.x = nNode;
         task->global.y = nSystems;
         useKernel( task->ikernel );
         nDOFs.x=na; 
@@ -379,9 +494,14 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_updateAtomsMMFFf4( int na, int nNode,  OCLtask* task=0 ){
         printf( "setup_updateAtomsMMFFf4() \n" );
         if(task==0) task = getTask("updateAtomsMMFFf4");
-        task->global.x = na+nNode;
-        task->global.y = nSystems;
+        int nvec = na+nNode;
         //task->local .x = 1;
+        int nloc=32;
+        task->local.x   = nloc;
+        task->global.x  = nvec + nloc-(nvec%nloc);
+        //task->global.x = nvec;
+        task->global.y = nSystems;
+        printf( "setup_updateAtomsMMFFf4() global.x=%i local.x=%i glob/loc=%g \n",  task->local.x, task->global.x, (task->global.x)/((float)task->local.x)  );
         //task->roundSizes();
         //if(n >=0  ) 
         nDOFs.x=na; 
@@ -397,6 +517,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_bkNeighs   ); // 7
         err |= useArgBuff( ibuff_constr     ); // 8
         err |= useArgBuff( ibuff_MDpars     ); // 9
+        err |= useArgBuff( ibuff_TDrive     ); // 10
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         // const int4        n,            // 1
@@ -468,7 +589,11 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_cleanForceMMFFf4( int na, int nNode,  OCLtask* task=0 ){
         printf( "setup_cleanForceMMFFf4() \n" );
         if(task==0) task = getTask("cleanForceMMFFf4");
-        task->global.x = na+nNode;
+        int nvec = nAtoms + nNode;        
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = nvec + nloc-(nvec%nloc); // round up to multiple of nloc
+        //task->global.x = nvec;
         task->global.y = nSystems;
         nDOFs.x=na; 
         nDOFs.y=nNode;
@@ -484,19 +609,88 @@ class OCL_MM: public OCLsystem { public:
         // __global float4*  fneigh       // 6
     }
 
+    OCLtask* setup_updateGroups( OCLtask* task=0 ){
+        printf( "setup_updateGroups() nGroupTot=%i \n", nGroupTot );
+        if(task==0) task = getTask("updateGroups");
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = nGroupTot + nloc-(nGroupTot%nloc); // round up to multiple of nloc
+        //task->global.x = nGroupTot;
+        // ToDo: make workgroup by 32-threads
+        int err=0; 
+        useKernel( task->ikernel );
+        err |= _useArg   ( nGroupTot      ); OCL_checkError(err, "setup_updateGroups.1"); // 1
+        err |= useArgBuff( ibuff_granges  ); OCL_checkError(err, "setup_updateGroups.2"); // 2
+        err |= useArgBuff( ibuff_g2a      ); OCL_checkError(err, "setup_updateGroups.3"); // 3
+        err |= useArgBuff( ibuff_atoms    ); OCL_checkError(err, "setup_updateGroups.4"); // 4
+        err |= useArgBuff( ibuff_gcenters ); OCL_checkError(err, "setup_updateGroups.5"); // 5
+        err |= useArgBuff( ibuff_gfws     ); OCL_checkError(err, "setup_updateGroups.6"); // 6
+        err |= useArgBuff( ibuff_gups     ); OCL_checkError(err, "setup_updateGroups.7"); // 7
+        err |= useArgBuff( ibuff_gweights ); OCL_checkError(err, "setup_updateGroups.8"); // 8   
+        OCL_checkError(err, "setup_updateGroups");
+        //exit(0);
+        return task;
+        // int               ngroup,      // 1 // (i0,i1) range of indexes specifying the group
+        // __global int2*    granges,     // 2 // (i0,i1) range of indexes specifying the group
+        // __global int*     g2a,         // 3 // (i0,i1) atom to group mapping
+        // __global float4*  apos,        // 4 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] ) 
+        // __global float4*  gcenters     // 5 // centers of rotation (for evaluation of the torque
+        // __global float4*  gfws,        // 6 // forwad  orietantian vector for each group
+        // __global float4*  gups,        // 7 // up      orietantian vector for each group
+        // __global float4*  gweights     // 8 // up      orietantian vector for each group
+    }
+
+    OCLtask* setup_groupForce( OCLtask* task=0 ){
+        printf( "setup_groupForce() nAtoms=%i nGroupTot=%i \n", nAtoms, nGroup );
+        if(task==0) task = getTask("groupForce");
+        // ToDo: make workgroup by 32-threads
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = nAtoms + nloc-(nAtoms%nloc); // round up to multiple of nloc
+        //task->global.x = nAtoms;
+        task->global.y = nSystems;
+        nDOFs.x=nAtoms; 
+        nDOFs.y=nnode; 
+        nDOFs.w=nGroup; 
+        int err=0; 
+        useKernel( task->ikernel );
+        err |= _useArg( nDOFs             ); // 1
+        err |= useArgBuff( ibuff_atoms    ); // 2
+        err |= useArgBuff( ibuff_aforces  ); // 3
+        err |= useArgBuff( ibuff_a2g      ); // 4
+        err |= useArgBuff( ibuff_gforces  ); // 5
+        err |= useArgBuff( ibuff_gtorqs   ); // 6
+        err |= useArgBuff( ibuff_gcenters ); // 7
+        err |= useArgBuff( ibuff_gfws     ); // 8
+        err |= useArgBuff( ibuff_gups     ); // 9
+        err |= useArgBuff( ibuff_gfweights ); // 10
+        OCL_checkError(err, "setup_groupForce");
+        return task;
+        // const int4        n,            // 1 // (natoms,nnode) dimensions of the system
+        // __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+        // __global float4*  aforce,       // 3 // forces on atoms
+        // __global int*     a2g,          // 4 // atom to group maping (index)   
+        // __global float4*  gforces,      // 5 // linar forces appliaed to atoms of the group
+        // __global float4*  gtorqs,       // 6 // {hx,hy,hz,t} torques applied to atoms of the group
+        // __global float4*  gcenters      // 7 // centers of rotation (for evaluation of the torque
+        // __global float4*  gfws,         // 8 // forward vector of group orientation
+        // __global float4*  gups,         // 9 // up      vector of group orientation
+        // __global float2*  gfweights     // 10 // weights for application of forces on atoms
+    }
+
 
     OCLtask* sampleGridFF( int n, Quat4f* fs=0, Quat4f* ps=0, Quat4f* REQs=0, bool bRun=true, OCLtask* task=0){
         //printf("OCL_MM::sampleGridFF() n=%i bRun=%i fs=%li ps=%li REQs=%li\n", n, bRun, fs,ps,REQs );
         int err=0;
-        if((itex_FE_Paul<=0)||(itex_FE_Lond<=0 )||(itex_FE_Coul<=0)){ printf("ERROR in OCL_MM::sampleGridFF() textures not initialized itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i => Exit()\n",  itex_FE_Paul, itex_FE_Lond,  itex_FE_Coul ); }
-        //if(( ibuff_atoms<=0)||(ibuff_aforces<=0)||(ibuff_REQs<=0  )){ printf("ERROR in OCL_MM::sampleGridFF() buffers  not initialized ibuff_atoms=%i ibuff_aforces=%i ibuff_REQs=%i => Exit()\n",    ibuff_atoms,  ibuff_aforces, ibuff_REQs   ); }
+        if((itex_FE_Paul<0)||(itex_FE_Lond<0 )||(itex_FE_Coul<0)){ printf("ERROR in OCL_MM::sampleGridFF() textures not initialized itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i => Exit()\n",  itex_FE_Paul, itex_FE_Lond,  itex_FE_Coul ); }
+        if(( ibuff_atoms<0)||(ibuff_aforces<0)||(ibuff_REQs<0  )){ printf("ERROR in OCL_MM::sampleGridFF() buffers  not initialized ibuff_atoms=%i ibuff_aforces=%i ibuff_REQs=%i => Exit()\n",    ibuff_atoms,  ibuff_aforces, ibuff_REQs   ); }
         // DEBUG
         // //if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   n, sizeof(float4), 0, CL_MEM_WRITE_ONLY  );   DEBUG
         
         int nalloc = _max(n,1000);
-        if(ibuff_samp_fs <=0)ibuff_samp_fs   = newBuffer( "samp_fs",   nalloc, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
-        if(ibuff_samp_ps <=0)ibuff_samp_ps   = newBuffer( "samp_ps",   nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        if(ibuff_samp_REQ<=0)ibuff_samp_REQ  = newBuffer( "samp_REQ",  nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        if(ibuff_samp_fs <0)ibuff_samp_fs   = newBuffer( "samp_fs",   nalloc, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
+        if(ibuff_samp_ps <0)ibuff_samp_ps   = newBuffer( "samp_ps",   nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        if(ibuff_samp_REQ<0)ibuff_samp_REQ  = newBuffer( "samp_REQ",  nalloc, sizeof(float4), 0, CL_MEM_READ_ONLY  );
         if( buffers[ibuff_samp_ps].n < n ){ printf("ERROR in OCL_MM::sampleGridFF() buffer samp_ps.n(%i)<n(%i) => Exit() \n", buffers[ibuff_samp_ps].n, n ); exit(0); }
         //if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         //if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
@@ -556,11 +750,80 @@ class OCL_MM: public OCLsystem { public:
         Mat3_to_cl( grid.iCell  , cl_grid_ilvec );
     }
 
+    OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
+        v2i4( nPBC_, nPBC );
+        //if(ibuff_atoms_surf<0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        //if(ibuff_REQs_surf <0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        printf( "!!!!!!!!!! OCL_MM::getSurfMorse() ibuffs: atoms_surf(%i) REQs_surf(%i) atoms(%i) REQs(%i) aforces(%i) \n", ibuff_atoms_surf, ibuff_REQs_surf, ibuff_atoms, ibuff_REQs, ibuff_aforces );
+        int err=0;
+        err |= finishRaw();       OCL_checkError(err, "getSurfMorse().imgAlloc" );
+        //OCLtask* task = tasks[ task_dict["getSurfMorse"] ];
+        nDOFs.x = nAtoms;
+        nDOFs.y = nnode;
+        nDOFs.z = natom_surf; 
+        if(task==0) task = getTask("getSurfMorse");
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        int nloc  = 32;
+        //int nloc = 64;
+        task->local.x = nloc;
+        task->global.x = nAtoms + nloc-(nAtoms%nloc);
+        //task->local.x = 1;
+        task->local.y = 1;
+        //task->global.x = nAtoms;
+        task->global.y = nSystems;
+        //if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "getSurfMorse().upload(atoms)" ); natom_surf = na; }
+        //if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "getSurfMorse().upload(REQs )" ); }
+        useKernel( task->ikernel );
+
+        err |= _useArg   ( nDOFs );            // 1
+        err |= useArgBuff( ibuff_atoms      ); // 2
+        err |= useArgBuff( ibuff_REQs       ); // 3
+        err |= useArgBuff( ibuff_aforces    ); // 4
+        //   Still good - no segfault
+        err |= useArgBuff( ibuff_atoms_surf ); // 5
+        err |= useArgBuff( ibuff_REQs_surf  ); // 6
+        err |= _useArg( nPBC            );     // 7       
+        err |= _useArg( cl_grid_lvec    );     // 8
+        //err |= _useArg( grid_p0         );     // 9
+        err |= _useArg( grid_shift0     );     // 9
+        err |= _useArg( GFFparams       );     // 10
+
+        // err |= _useArg   ( nDOFs );            OCL_checkError(err, "arg[1]: " );  // 1
+        // err |= useArgBuff( ibuff_atoms      ); OCL_checkError(err, "arg[2]: " );// 2
+        // err |= useArgBuff( ibuff_REQs       ); OCL_checkError(err, "arg[3]: " );// 3
+        // err |= useArgBuff( ibuff_aforces    ); OCL_checkError(err, "arg[4]: " );// 4
+        // err |= useArgBuff( ibuff_atoms_surf ); OCL_checkError(err, "arg[5]: " );// 5
+        // err |= useArgBuff( ibuff_REQs_surf  ); OCL_checkError(err, "arg[6]: " );// 6
+        // err |= _useArg( nPBC            );     OCL_checkError(err, "arg[7]: " );// 7       
+        // err |= _useArg( cl_grid_lvec    );     OCL_checkError(err, "arg[8]: " );// 8
+        // err |= _useArg( grid_p0         );     OCL_checkError(err, "arg[9]: " );// 9
+        // err |= _useArg( GFFparams       );     OCL_checkError(err, "arg[10]: " );// 10
+        OCL_checkError(err, "getSurfMorse().setup");
+        if(bRun){
+            err |= task->enque_raw(); OCL_checkError(err, "getSurfMorse().enque"  );
+            err |= finishRaw();       OCL_checkError(err, "getSurfMorse().finish" );
+        }
+        return task;
+        // const int4 ns,                // 1
+        // __global float4*  atoms,      // 2
+        // __global float4*  REQs,       // 3
+        // __global float4*  forces,     // 4
+        // __global float4*  atoms_s,    // 5
+        // __global float4*  REQ_s,      // 6
+        // const int4        nPBC,       // 7
+        // const cl_Mat3     lvec,       // 8
+        // const float4      pos0,       // 9
+        // const float4      GFFParams   // 10
+        exit(0);
+    }
+
     OCLtask* makeGridFF( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, bool bRun=true, OCLtask* task=0 ){
         setGridShape( grid );
         v2i4( nPBC_, nPBC );
-        if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_atoms_surf<0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_REQs_surf <0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         printf( "OCL_MM::makeGridFF() grid_n(%i,%i,%i)\n", grid_n.x,grid_n.y,grid_n.z );
         if(itex_FE_Paul<=0) itex_FE_Paul         = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Lond<=0) itex_FE_Lond         = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
@@ -617,8 +880,8 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* addDipoleField( const GridShape& grid, Vec3i nPBC_, int n=0, float4* dipole_ps=0, float4* dipoles=0, bool bRun=true, OCLtask* task=0 ){
         setGridShape( grid );
         v2i4( nPBC_, nPBC );
-        if(ibuff_dipole_ps<=0) ibuff_dipole_ps = newBuffer( "dipole_ps", n, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        if(ibuff_dipoles  <=0) ibuff_dipoles   = newBuffer( "dipoles",   n, sizeof(float4), 0, CL_MEM_READ_ONLY );        
+        if(ibuff_dipole_ps<0) ibuff_dipole_ps = newBuffer( "dipole_ps", n, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_dipoles  <0) ibuff_dipoles   = newBuffer( "dipoles",   n, sizeof(float4), 0, CL_MEM_READ_ONLY );        
         //OCLtask* task = tasks[ task_dict["make_GridFF"] ];
         if(task==0) task = getTask("addDipoleField");
         task->global.x = grid_n.x*grid_n.y*grid_n.z;
