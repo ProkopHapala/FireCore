@@ -8,10 +8,16 @@
 
 MolWorld_sp3 W;
 
+
+
 //============================
 
 #include "libMMFF.h"
 #include "libUtils.h"
+
+
+GridShape grid;
+double* grid_data=0;
 
 extern "C"{
 
@@ -109,6 +115,40 @@ void set_opt(
 
 }
 
+double* setupGrid( int* ns, double* cell, bool bAlloc ){
+    if( ns     ){ grid.n    = *((Vec3i*)ns);   }
+    if( cell   ){ grid.cell = *((Mat3d*)cell); }
+    if( bAlloc ) _realloc( grid_data, grid.getNtot() );
+     return grid_data;
+}
+
+int loadBin_d( const char* fname, double* data ){
+    return loadBin( fname, grid.getNtot() * sizeof(double), (char*)data );
+}
+
+int loadBin_f( const char* fname, float* data ){
+    return loadBin( fname, grid.getNtot() * sizeof(float), (char*)data );
+}
+
+
+int saveBin_d( const char* fname, double* data ){
+    return saveBin( fname, grid.getNtot() * sizeof(double), (char*)data );
+}
+
+double* loadXSF( const char* fname, int* ns, double* cell ){
+    grid_data = grid.loadXSF<double>( fname, 0 );
+    if(ns  ){ *((Vec3i*)ns)   = grid.n;    }
+    if(cell){ *((Mat3d*)cell) = grid.cell; }
+    return grid_data;
+}
+
+void saveXSF( const char* fname, const double* data, int* ns, double* cell ){
+    if(ns  ){ grid.n    = *((Vec3i*)ns);    }
+    if(cell){ grid.cell = *((Mat3d*)cell); }
+    if(data==0){  data=grid_data; }
+    grid.saveXSF<double>( fname, data );
+}
+
 void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, int atyp, double Q, double K, double RQ, double* pos0_, bool bSave){
     if(name){
         W.ff.realloc( 1,0,0,0, true );
@@ -159,12 +199,12 @@ void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
 
 //void sampleSurf_vecs(char* name, int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, double* pos0_, int npbc, bool bSave){
 void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){    
-    printf( "MMFF_lib::sampleSurf_vecs() kind=%i n=%i \n", kind, n );
+    //printf( "MMFF_lib::sampleSurf_vecs() kind=%i n=%i dCell(%g,%g,%g)\n", kind, n, W.gridFF.grid.dCell.xx,W.gridFF.grid.dCell.yy,W.gridFF.grid.dCell.zz );
     Vec3i nPBC{npbc,npbc,0};
     Vec3d* poss =(Vec3d*)poss_;
     //Vec3d* fs =(Vec3d*)fs_;
     Quat4d* FEs = (Quat4d*)FEs_;
-    Quat4d test_REQ{ RvdW, sqrt(EvdW), Q }; 
+    Quat4d  test_REQ{ RvdW, sqrt(EvdW), Q }; 
     if( ityp>0 ){
         AtomType atyp = W.params.atypes[ityp];
         test_REQ.x = atyp.RvdW;        // UFF natural bond radius
@@ -194,8 +234,7 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
     Quat4d PLQ_d = REQ2PLQ_d( test_REQ, K );
     // Quat4f PLQ   {0.0,0.0,1.0,0.0};
     // Quat4d PLQ_d {0.0,0.0,1.0,0.0};
-
-    printf( "MMFF_lib::sampleSurf_vecs() PLQ(%g,%g,%g,%g) test_REQ(%g,%g,%g,%g) K=%g \n", PLQ.x,PLQ.y,PLQ.z,PLQ.w,  test_REQ.x,test_REQ.y,test_REQ.z,test_REQ.w, K  );
+    printf( "MMFF_lib::sampleSurf_vecs() kind=%3i n=%6i dCell(%g,%g,%g) PLQ(%g,%g,%g,%g) test_REQ(%g,%g,%g,%g) K=%g alphaMorse=%g \n", kind, n, W.gridFF.grid.dCell.xx,W.gridFF.grid.dCell.yy,W.gridFF.grid.dCell.zz, PLQ.x,PLQ.y,PLQ.z,PLQ.w,  test_REQ.x,test_REQ.y,test_REQ.z,test_REQ.w, K, W.gridFF.alphaMorse );
     double R2Q=RQ*RQ;
     Quat4d bak_REQ;
     Quat4f bak_PLQ;
@@ -208,6 +247,9 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
         bak_PLQ=W.nbmol.PLQs[0]; W.nbmol.PLQs[0]=PLQ;
         bak_pos=W.nbmol.apos[0];
     }
+    //W.gridFF.alphaMorse = 1.6;
+    //printf( "!!!!!!!! MMFF_lib::sampleSurf_vecs() K=%g alphaMorse=%g \n", K, W.gridFF.alphaMorse  );
+    if( fabs(K-W.gridFF.alphaMorse) > 1e-6 ){ printf("ERROR in sampleSurf_vecs K(%20.10f) does not match gridFF.alphaMorse(%20.10f) => exit()\n", K, W.gridFF.alphaMorse );  exit(0); }
     for(int i=0; i<n; i++){
         //printf( "sampleSurf_vecs()[%i]\n", i  );
         Quat4f fe  =Quat4fZero;
@@ -227,10 +269,21 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
             // see gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs ) in MolWorld_sp3::initGridFF()
             //double evalMorsePLQ( NBFF& B, Mat3d& cell, Vec3i nPBC, double K=-1.0, double RQ=1.0 ){
             // nbmol .evalMorsePBC( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );
-            case 10:         W.gridFF.addForce_surf    (pos, {1.,0.,0.}, fe );  FEs[i]=(Quat4d)fe;  break;
-            case 11:         W.gridFF.addForce_surf    (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
-            //case 12:         W.gridFF.addForce         (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
-            case 12: fe   = W.gridFF.getForce         (pos, PLQ     );         FEs[i]=(Quat4d)fe;  break;
+            
+            // evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
+            case  9:         fe_d.e = W.gridFF.evalMorsePBC_sym( pos, test_REQ, fe_d.f );  FEs[i]=fe_d;  break;
+            case 10:         W.gridFF.addForce_surf     (pos, {1.,0.,0.}, fe );   FEs[i]=(Quat4d)fe;  break;
+            case 11:         W.gridFF.addForce_surf     (pos, PLQ, fe );          FEs[i]=(Quat4d)fe;  break;
+            //case 12:        W.gridFF.addForce         (pos, PLQ, fe );         FEs[i]=(Quat4d)fe;  break;
+            case 12: fe     = W.gridFF.getForce         (pos, PLQ        );      FEs[i]=(Quat4d)fe;  break;
+            case 15: fe     = W.gridFF.getForce         (pos, {1.,0.,0.} );      FEs[i]=(Quat4d)fe;  break;
+            case 16: fe     = W.gridFF.getForce         (pos, {0.,1.,0.} );      FEs[i]=(Quat4d)fe;  break;
+            case 18: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, PLQ_d ); break;
+            case 19: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, {1.,0.,0.,0.} ); break;
+            case 20: FEs[i] = W.gridFF.evalMorsePBC_PLQ_sym( pos, {0.,1.,0.,0.} ); break;
+            case  8: fe     = W.gridFF.getForce         (pos+Vec3d{W.gridFF.grid.dCell.xx*1.0,W.gridFF.grid.dCell.yy*1.0,W.gridFF.grid.dCell.zz*1.0}, PLQ     );         FEs[i]=(Quat4d)fe;  break;
+
+
             case 13: fe_d = W.gridFF.getForce_d       (pos, PLQ_d   );         FEs[i]=fe_d;        break;
             case 14: fe_d = W.gridFF.getForce_Tricubic(pos, PLQ_d   );         FEs[i]=fe_d;        break;
         }
@@ -257,6 +310,8 @@ void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol
     W.gopt.initMode =initMode; 
     W.optimizeLattice_1d( n1, n2, *(Mat3d*)dlvec );
 }
+
+
 
 void addSnapshot(bool ifNew = false, char* fname = 0){
     W.addSnapshot(ifNew, fname);

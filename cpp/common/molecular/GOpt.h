@@ -38,7 +38,7 @@ struct GOpt{
     Constrains constrs;
 
     void startExploring(){
-        if(verbosity) printf( "GOpt::startExploring()\n" );
+        //printf( "GOpt::startExploring()\n" );
         bExploring = true;
         istep=0;
         constrs.update_drives();
@@ -49,7 +49,7 @@ struct GOpt{
         istep++;
         if(bExploring){
             if(istep>=nExplore){ 
-                if(verbosity) printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
+                //printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
                 bExploring=false; istep=0; return true; 
             }
         }else{
@@ -94,7 +94,7 @@ struct GOpt{
         T_target = go.T_target;
         gamma_damp = go.gamma_damp;
         constrs.copy( go.constrs );
-        printf( "GOpt::copy() nExplore=%i nRelax=%i vel_kick=%g pos_kick=%g T_target=%g gamma_damp=%g \n", nExplore, nRelax, vel_kick, pos_kick, T_target, gamma_damp );
+        //printf( "GOpt::copy() nExplore=%i nRelax=%i vel_kick=%g pos_kick=%g T_target=%g gamma_damp=%g \n", nExplore, nRelax, vel_kick, pos_kick, T_target, gamma_damp );
     }
 
 
