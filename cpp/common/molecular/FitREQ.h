@@ -12,7 +12,7 @@
 
 #include "MMFFBuilder.h"
 
-
+#include "MolecularDatabase.h"
 
 /**
  * Saves the coordinates of composite system comprising atoms stored in two systems A and B to a file in XYZ format. 
@@ -71,7 +71,7 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
  * 
  * The class provides methods for initializing the types of atoms, setting the system, setting rigid samples, and evaluating the derivatives of the system.
  */
-class FitREQ{ public:
+class FitREQ : public MolecularDatabase{ public:
     
     //NBFF* nbff;
     int nDOFs=0,ntype=0,nbatch=0,n0=0,n1=0;

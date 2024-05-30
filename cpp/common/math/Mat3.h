@@ -43,6 +43,7 @@ class Mat3T{
 
 	inline void setOne(        ){ xx=yy=zz=1; xy=xz=yx=yz=zx=zy=0; };
 	inline void set   ( T f ){ xx=yy=zz=f; xy=xz=yx=yz=zx=zy=0; };
+	inline void set   ( const T& xx_, const T& xy_, const T& xz_, const T& yx_, const T& yy_, const T& yz_, const T& zx_, const T& zy_, const T& zz_ ){ xx=xx_; xy=xy_; xz=xz_; yx=yx_; yy=yy_; yz=yz_; zx=zx_; zy=zy_; zz=zz_; };
 
 	inline void set  ( const VEC& va, const VEC& vb, const VEC& vc ){ a.set(va); b.set(vb); c.set(vc); }
 	inline void set  ( const MAT& M ){
@@ -268,7 +269,7 @@ class Mat3T{
 
 	inline void invert_to( MAT& Mout ) const{
         T idet = 1/determinant(); // we dont check det|M|=0
-		printf("Mat3d::invert_to() idet = %g \n", idet);
+		//printf("Mat3d::invert_to() idet = %g \n", idet);
         Mout.xx = ( yy * zz - yz * zy ) * idet;
         Mout.xy = ( xz * zy - xy * zz ) * idet;
         Mout.xz = ( xy * yz - xz * yy ) * idet;
@@ -357,7 +358,7 @@ class Mat3T{
 	inline void fromDirUp( const VEC& dir, const VEC& up ){
 		// make orthonormal rotation matrix c=dir; b=(up-<b|c>c)/|b|; a=(c x b)/|a|;
 		c.set(dir);
-		//c.normalize(); // we assume dir is already normalized
+		c.normalize(); // we assume dir is already normalized
 		b.set(up);
 		b.add_mul( c, -b.dot(c) );   //
 		b.normalize();
@@ -572,6 +573,233 @@ class Mat3T{
 		else                { evec.set_mul( r1xr2, 1/sqrt(d2) ); }
 	}
 
+	inline void gaussElimination()
+	{
+		double tolerance = 1e-10;
+		Vec3d temp;
+		if (abs(xx) < tolerance)
+		{
+			temp = a;
+			a = b;
+			b = temp;
+			if (abs(xx) < tolerance)
+			{
+				temp = a;
+				a = c;
+				c = temp;
+			}
+		}
+		if (abs(xx) > tolerance)
+		{
+			a.mul(1 / xx);
+			temp.set_mul(a, yx);
+			b.sub(temp);
+			temp.set_mul(a, zx);
+			c.sub(temp);
+		}
+		else
+		{
+			temp = a;
+			a = b;
+			b = c;
+			c = temp;
+		}
+		if (abs(yy) < tolerance)
+		{
+			temp = b;
+			b = c;
+			c = temp;
+		}
+		if (abs(yy) > tolerance)
+		{
+			b.mul(1 / yy);
+			temp.set_mul(b, zy);
+			c.sub(temp);
+			if(abs(xx) < tolerance){
+				temp.set_mul(b, xy);
+				a.sub(temp);
+				temp = a;
+				a = b;
+				b = temp;
+			}
+		}
+		else if(abs(zz) > tolerance && abs(yz) > tolerance)
+		{
+				yz = 1;
+				zz = 0;
+		}
+		if(abs(zz) > tolerance)
+		{
+			c.mul(1/zz);
+		}
+	}
+	inline int backPropagation(Mat3T& v){
+		int count = 1;
+		double tolerance = 1e-10;
+		v.a.z = 1;
+		if(abs(yy) > tolerance){
+			v.a.y = -yz/yy;
+			a.sub(b.mul(xy/yy));
+		}
+		else if(abs(yz) > tolerance){
+			v.a.z = 0;
+			v.a.y = 1;
+		}
+		else{
+			count = 2;
+			v.a.y = 1;
+			v.a.z = 0;
+			v.b.y = 0;
+			v.b.z = 1;
+		}
+		if(abs(xx) > tolerance){
+			v.a.x = -v.a.z*xz/xx;
+			if(abs(xz) < tolerance){
+				v.a.x = -xy/xx;
+			}
+			if(count > 1){
+				v.b.x = -xy/xx;
+			}
+		}
+		else if(abs(xy) > tolerance){
+			v.a.x = 1;
+			v.b.x = 1;
+			v.a.y = -v.a.z*xz/xy;
+			v.b.y = -v.b.z*xz/xy;
+		}else if(abs(xz) > tolerance){
+			v.a.x = 1;
+			v.b.x = 1;
+			v.a.y = 0;
+			v.b.y = 1;
+			v.a.z = 0;
+			v.b.z = 0;
+		}
+		else{
+			count = 3;
+			v.set({1,0,0,0,1,0,0,0,1});
+		}
+		return count;
+	}
+/**
+ * Calculates the eigenvectors of the 3x3 hermitian matrix and stores them in the given evecs matrix.
+ * https://hal.science/hal-01501221/document
+*/
+	inline void eigenvec_and_eigenvals( VEC& evals, MAT& evecs ) const{
+		double tolerance = 1e-10;
+
+		if (abs(xy) < tolerance && abs(xz) < tolerance && abs(yz) < tolerance)
+		{
+			evals = {xx,yy,zz};
+			
+			evecs.a = {1,0,0};
+			evecs.b = {0,1,0};
+			evecs.c = {0,0,1};
+			return;
+		}
+
+		double x1 = xx*xx+yy*yy+zz*zz-xx*yy-yy*zz-zz*xx+3*(xy*xy+yz*yz+xz*xz);
+		double x2 = 0-(2*xx-yy-zz)*(2*yy-zz-xx)*(2*zz-xx-yy)+9*((2*zz-xx-yy)*xy*xy+(2*yy-xx-zz)*xz*xz+(2*xx-yy-zz)*yz*yz)-54*xy*xz*yz;
+		double phi;
+		if (x2 > tolerance)
+		{
+			phi = atan(sqrt(4 * x1 * x1 * x1 - x2 * x2) / x2);
+		}
+		else if (x2 < -tolerance)
+		{
+			phi = atan(sqrt(4 * x1 * x1 * x1 - x2 * x2) / x2) + M_PI;
+		}
+		else
+		{
+			phi = M_PI / 2;
+		}
+		if(4 * x1 * x1 * x1 - x2 * x2 < tolerance) phi = M_PI;
+		evals.x = (xx+yy+zz-2*sqrt(x1)*cos(phi/3))/3;
+		evals.y = (xx+yy+zz+2*sqrt(x1)*cos((phi-M_PI)/3))/3;
+		evals.z = (xx+yy+zz+2*sqrt(x1)*cos((phi+M_PI)/3))/3;
+
+		Mat3T temp, W;
+		temp.set( xx-evals.x, xy, xz, yx, yy-evals.x, yz, zx, zy, zz-evals.x );
+		temp.gaussElimination();
+		int rank = temp.backPropagation(W);
+		evecs.a = W.a;
+
+
+		temp.set( xx-evals.y, xy, xz, yx, yy-evals.y, yz, zx, zy, zz-evals.y );
+		temp.gaussElimination();
+		rank = temp.backPropagation(W);
+
+		evecs.b = W.a;
+
+
+		temp.set( xx-evals.z, xy, xz, yx, yy-evals.z, yz, zx, zy, zz-evals.z );
+		temp.gaussElimination();
+		rank = temp.backPropagation(W);
+		evecs.c = W.a;
+
+
+
+		
+
+
+
+
+		//
+
+		// if(abs(xy) < tolerance && abs(xz) < tolerance){
+		// 	printf("xy and xz are zero\n");
+		// 	evals.x = xx;
+		// 	evecs.a = {1,0,0};
+		// 	double D = sqrt(4*yz*yz+(yy-zz)*(yy-zz));
+		// 	evals.y = (yy+zz-D)/2;
+		// 	evals.z = (yy+zz+D)/2;
+		// 	evecs.b = {(yy-zz+D)/(2*yz), 1, 0};
+		// 	evecs.c = {(yy-zz-D)/(2*yz), 1, 0};
+		// 	return;
+		// }
+		// if(abs(xz) < tolerance && abs(yz) < tolerance){
+		// 	printf("xz and yz are zero\n");
+		// 	evals.z = zz;
+		// 	evecs.c = {0,0,1};
+		// 	double D = sqrt(4*xy*xy+(xx-yy)*(xx-yy));
+		// 	evals.y = (xx+yy-D)/2;
+		// 	evals.x = (xx+yy+D)/2;
+		// 	evecs.b = {(xx-yy+D)/(2*xy), 1, 0};
+		// 	evecs.a = {(xx-yy-D)/(2*xy), 1, 0};
+		// 	return;
+		// }
+		// if(abs(xz) < tolerance)
+		// {
+		// 	printf("xz is zero\n");
+		// 	eigenvals(evals);
+		// 	eigenvec(evals.a, evecs.a);
+		// 	eigenvec(evals.b, evecs.b);
+		// 	eigenvec(evals.c, evecs.c);
+		// 	return;
+		// }
+
+		// if(xy < tolerance && xz < tolerance && yz < tolerance)
+		// {
+		// 	evals.x = xx;
+		// 	evals.y = yy;
+		// 	evals.z = zz;
+		// 	evecs.a = {1,0,0};
+		// 	evecs.b = {0,1,0};
+		// 	evecs.c = {0,0,1};
+		// 	return;
+		// }
+
+
+
+
+		// double m1 = (xy*(zz-evals.x)-yz*xz)/(xz*(yy-evals.x)-xy*yz);
+		// double m2 = (xy*(zz-evals.y)-yz*xz)/(xz*(yy-evals.y)-xy*yz);
+		// double m3 = (xy*(zz-evals.z)-yz*xz)/(xz*(yy-evals.z)-xy*yz);
+
+		// evecs.a = {(evals.x-zz-yz*m1)/xz, m1, 1};
+		// evecs.b = {(evals.y-zz-yz*m2)/xz, m2, 1};
+		// evecs.c = {(evals.z-zz-yz*m3)/xz, m3, 1};
+	}
+
 	inline void print() const {
         printf( " %f %f %f \n", ax, ay, az );
         printf( " %f %f %f \n", bx, by, bz );
@@ -666,7 +894,207 @@ class Mat3T{
 	}
 	*/
 
+	inline void mat_sqrt( const MAT& A ){
+		xx = std::sqrt(A.xx); xy = std::sqrt(A.xy); xz = std::sqrt(A.xz);
+		yx = std::sqrt(A.yx); yy = std::sqrt(A.yy); yz = std::sqrt(A.yz);
+		zx = std::sqrt(A.zx); zy = std::sqrt(A.zy); zz = std::sqrt(A.zz);
+	}
+
+	inline void symetrize_matrix_SVD(MAT& rot){
+		MAT A;
+		A.set(*this);
+		
+		double tolerance = 1e-6;
+		int iteration_count = 0;
+        bool do51 = true; //"This is a way to deal with those nasty gotos in the FORTRAN code"
+        int iflag;
+        int ix;
+		int iy;
+		int iz;
+        double sigma;
+        double gamma;
+        double sg;
+        Vec3d bb, cc;
+        while (true)
+        {
+            if (do51)
+            {
+                iflag = 0;
+                ix = 0;
+            }
+
+            // If the number of iterations exceeds 500, give up
+            ++iteration_count;
+            if (iteration_count > 100)
+            {
+                break;
+            }
+
+			iy=ix+1;
+			if(iy>2) iy=0;
+			iz=3-ix-iy;
+
+			sigma = A.vecs[iz].array[iy] - A.vecs[iy].array[iz];
+			gamma = A.vecs[iy].array[iy] + A.vecs[iz].array[iz];
+
+            sg = sqrt(sigma * sigma + gamma * gamma);
+
+            if (sg == 0)
+            {
+                ++ix;
+                if (iflag == 0){break;}
+                if (ix < 3){do51 = false;}
+				else{do51 = true;}
+                continue;
+            }
+
+            sg = 1.0 / sg;
+            if (fabs(sigma) < (tolerance * fabs(gamma)))
+			{
+                ++ix;
+                if (iflag == 0){break;}
+                if (ix < 3){do51 = false;}
+                else{do51 = true;}
+                continue;
+            }
+
+			bb.set_add_mul(Vec3dZero, A.vecs[iy], gamma);
+			bb.add_mul(A.vecs[iz], sigma);
+			bb.mul(sg);
+			cc.set_add_mul(Vec3dZero, A.vecs[iz], gamma);
+			cc.add_mul(A.vecs[iy], 0-sigma);
+			cc.mul(sg);
+			A.vecs[iy] = bb;
+			A.vecs[iz] = cc;
+			
+			bb.set_add_mul(Vec3dZero, rot.vecs[iy], gamma);
+			bb.add_mul(rot.vecs[iz], sigma);
+			bb.mul(sg);
+			cc.set_add_mul(Vec3dZero, rot.vecs[iz], gamma);
+			cc.add_mul(rot.vecs[iy], 0-sigma);
+			cc.mul(sg);
+			rot.vecs[iy] = bb;
+			rot.vecs[iz] = cc;
+
+            iflag = 1;
+
+            ++ix;
+            if (iflag == 0){break;}
+            if (ix < 3){do51 = false;}
+            else{do51 = true;}
+            continue;
+        } // End while loop
+	}
+
+	inline void SVD(MAT &U, VEC &val, MAT &V)
+	{
+		MAT A, B;
+		A.set(*this);
+
+		B.set_mmul_TN(A, A);
+		//B.diag_add(1e-8);
+		B.eigenvec_and_eigenvals(val, V);
+
+		V.orthogonalize(0, 1, 2);
+		V.c.set_cross(V.a, V.b);
+
+		val.x = sqrt(abs(val.x));
+		val.y = sqrt(abs(val.y));
+		val.z = sqrt(abs(val.z));
+		int zeroValue = -1;
+		for (int i = 0; i < 3; i++)
+		{
+			if (val.array[i] < 1e-10)
+			{
+				val.array[i] = 1;
+				zeroValue = i;
+			}
+		}
+
+		U.set_mmul_NT(A, V);
+		U.divT(val);
+
+		U.makeT();
+		int zerovec = -1;
+		for (int i = 0; i < 3; i++)
+		{
+			if (U.vecs[i].norm2() < 1e-10)
+			{
+				zerovec = i;
+			}
+		}
+		if (zerovec == 0)
+		{
+			U.vecs[0].set_cross(U.vecs[1], U.vecs[2]);
+		}
+		else if (zerovec == 1)
+		{
+			U.vecs[1].set_cross(U.vecs[2], U.vecs[0]);
+		}
+		else if (zerovec == 2)
+		{
+			U.vecs[2].set_cross(U.vecs[0], U.vecs[1]);
+		}
+		U.makeT();
+		V.makeT();
+		if(zeroValue != -1){
+            val.array[zeroValue] = 0;
+        }
+
+		// B.set_mmul_NT(A, A);
+		// B.eigenvec_and_eigenvals(val, U);
+		// U.a.normalize();
+		// U.b.normalize();
+		// U.c.normalize();
+		// // if(U.determinant() < 0)
+		// // {
+		// // 	int min_val = 0;
+		// // 	if (val.x > val.y)
+		// // 	{
+		// // 		min_val = 1;
+		// // 	}
+		// // 	if (val.x > val.z)
+		// // 	{
+		// // 		min_val = 2;
+		// // 	}
+		// // 	if (val.z > val.y)
+		// // 	{
+		// // 		min_val = 1;
+		// // 	}
+		// // 	U.vecs[min_val].mul(-1);
+		// // }
+		//printf("U.det %f\n", U.determinant());
+
+		// // double max_val = val.x;
+		// // VEC tmp;
+		// // if(val.x < val.y){ max_val = val.y; val.y = val.x; val.x = max_val; tmp = U.a; U.a = U.b; U.b = tmp; tmp = A.a; A.a = A.b; A.b = tmp; }
+		// // if(val.y < val.z){ max_val = val.z; val.z = val.y; val.y = max_val; tmp = U.b; U.b = U.c; U.c = tmp; tmp = A.b; A.b = A.c; A.c = tmp; }
+		// // if(val.x < val.y){ max_val = val.y; val.y = val.x; val.x = max_val; tmp = U.a; U.a = U.b; U.b = tmp; tmp = A.a; A.a = A.b; A.b = tmp; }
+		// // printf("val %f %f %f\n", val.x, val.y, val.z);
+		
+		// val.x = sqrt(val.x);
+		// val.y = sqrt(val.y);
+		// val.z = sqrt(val.z);		
+		// // V.a = A.dotT(U.a);
+		// // V.b = A.dotT(U.b);
+		// // V.c = A.dotT(U.c);
+		// V.set_mmul_TN(A, U);
+		// V.div(val);
+		//printf("V.det %f\n", V.determinant());
+		// // B.set_mmul_TN(A, A);
+		// // B.eigenvec_and_eigenvals(val, V);
+		// // V.a.normalize();
+		// // V.b.normalize();
+		// // V.c.normalize();
+		// // max_val = val.x;
+		// // if(val.x < val.y){ max_val = val.y; val.y = val.x; val.x = max_val; tmp = V.a; V.a = V.b; V.b = tmp; }
+		// // if(val.y < val.z){ max_val = val.z; val.z = val.y; val.y = max_val; tmp = V.b; V.b = V.c; V.c = tmp; }
+		// // if(val.x < val.y){ max_val = val.y; val.y = val.x; val.x = max_val; tmp = V.a; V.a = V.b; V.b = tmp; }
+
+
+	}
 };
+
 
 
 

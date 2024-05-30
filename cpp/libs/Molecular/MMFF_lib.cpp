@@ -312,4 +312,17 @@ void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol
 }
 
 
+
+void addSnapshot(bool ifNew = false, char* fname = 0){
+    W.addSnapshot(ifNew, fname);
+}
+
+void printDatabase(){
+    W.printDatabase();
+}
+
+void computeDistance(int i, int j, double* dist){
+    *dist = W.computeDistance(i,j);
+}
+
 } // extern "C"

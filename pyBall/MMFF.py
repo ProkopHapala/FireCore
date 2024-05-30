@@ -823,7 +823,19 @@ def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False)
     return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
 
 
+# =====================================
+# ========= Database
+# =====================================
 
+def addSnapshot(ifNew=False, fname=None):
+    lib.addSnapshot(ifNew, cstr(fname))
+
+def printDatabase():
+    lib.printDatabase()
+
+def computeDistance(ia,ib,dist=None):
+    if dist is None: dist=np.zeros(1)
+    return lib.computeDistance(ia,ib,_np_as(dist,c_double_p))
 
 
 # ====================================
@@ -880,3 +892,7 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
 # if __name__ == "__main__":
 #     import matplotlib.pyplot as plt
 #     plt.show()
+
+
+
+
