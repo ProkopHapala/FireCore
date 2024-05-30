@@ -421,6 +421,15 @@ virtual void pre_loop() override {
     //printf("MolWorld_sp3_multi::pre_loop()\n" );
     init_groups();
 
+    
+    for(int isys=0; isys<nSystems; isys++){
+        for(int ia=0; ia<ffl.natoms; ia++ ){
+            int iaa = isys * ocl.nAtoms + ia;
+            constr [iaa] = (Quat4f)ffl.constr[ia];
+            constrK[iaa] = (Quat4f)ffl.constrK[ia];
+        }
+    }
+
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
     //         int i0a   = isys * ocl.nAtoms;
@@ -1215,7 +1224,7 @@ void setup_NBFF_ocl(){
 }
 
 void picked2GPU( int ipick,  double K ){
-    //printf( "picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
+    printf( "picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
     int i0a = ocl.nAtoms*iSystemCur;
     int i0v = ocl.nvecs *iSystemCur;
     if(ipick>=0){
@@ -1229,10 +1238,15 @@ void picked2GPU( int ipick,  double K ){
     }else{
         for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
         for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
-
+        // for(int ia=0; ia<ocl.nAtoms; ia++){ 
+        //     int iaa = i0a + ia; 
+        //     constr [iaa].w=ffls[iSystemCur]->constr [ia];
+        //     constrK[iaa].w=ffls[iSystemCur]->constrK[ia];
+        // };
     }
     //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
-    ocl.upload( ocl.ibuff_constr, constr );   // ToDo: instead of updating the whole buffer we may update just relevant part?
+    ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
+    ocl.upload( ocl.ibuff_constrK, constrK );
 }
 
 // ==================================
@@ -1454,6 +1468,11 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         //bGroupDrive = false;
 
         //printf( "CPU::bbox(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", bbox.a.x,bbox.a.y,bbox.a.z,   bbox.b.x,bbox.b.y,bbox.b.z,   bbox.c.x,bbox.c.y,bbox.c.z );
+        for(int ia=0; ia<ffl.natoms; ia++){
+            if( ffl.constr[ia].w > 0 ) printf( "CPU:atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w,   ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z,ffl.constrK[ia].w  );
+        }
+
+
         //bGroupDrive = true;
         // if(bGroupDrive){
         //     for(int ig=0; ig<ocl.nGroupTot; ig++){

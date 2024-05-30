@@ -112,7 +112,8 @@ class MMFFsp3_loc : public NBFF { public:
     Quat4i*  tors2atom  __attribute__((aligned(64))) =0; // [ntors]  torsion atoms
     Quat4d*  torsParams __attribute__((aligned(64))) =0; // [ntors]  torsion parameters
 
-    Quat4d* constr __attribute__((aligned(64))) = 0; // [natom]  constraints
+    Quat4d* constr  __attribute__((aligned(64))) = 0; // [natom]  constraints
+    Quat4d* constrK __attribute__((aligned(64))) = 0; // [natom]  constraints
     //Vec3d * vapos  __attribute__((aligned(64))) = 0; // [natom]  velocities of atoms
 
     Mat3d   invLvec; // inverse lattice vectors
@@ -163,6 +164,7 @@ void realloc( int nnode_, int ncap_, int ntors_=0 ){
     _realloc0( torsParams, ntors, Quat4dNAN  ); 
 
     _realloc0( constr    , natoms, Quat4dOnes*-1. );
+    _realloc0( constrK   , natoms, Quat4dOnes*-1. );
 }
 
 // clone from another MMFFsp3_loc
