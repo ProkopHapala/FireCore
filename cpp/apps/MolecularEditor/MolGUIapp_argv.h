@@ -67,12 +67,11 @@
 
     funcs2["-c"]={1,[&](const char** ss){ 
         printf( "MolGUIapp_argv.h :: [-c] `%s`\n", ss[0] );
-        int ic=-1; Quat4d k=Quat4d{W->Kfix,W->Kfix,W->Kfix,0};    DEBUG
-        int nret = sscanf( ss[0], "%i,%lf,%lf,%lf", &ic, &k.x,&k.y,&k.z ); DEBUG
-        if(nret==2){ k.y=k.x; k.z=k.x; }; DEBUG
-        W->ffl.constr[ic].w=1; DEBUG
-        W->ffl.constrK[ic]=k; DEBUG
-        
+        int ic=-1; Quat4d k=Quat4d{W->Kfix,W->Kfix,W->Kfix,0};  
+        int nret = sscanf( ss[0], "%i,%lf,%lf,%lf", &ic, &k.x,&k.y,&k.z ); 
+        if(nret==2){ k.y=k.x; k.z=k.x; }; 
+        W->ffl.constr [ic].w=1; 
+        W->ffl.constrK[ic]=k;
         }}; //
     funcs2["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs2["-group"]={2,[&](const char** ss){  
