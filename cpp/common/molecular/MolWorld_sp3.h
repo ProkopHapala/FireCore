@@ -118,6 +118,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     std::vector<int> atom2group;
     Groups groups;
+    Mat3d bbox{   -1e+8,-1e+8,-1e+8,  +1e+8,+1e+8,+1e+8,    -1,-1,-1 };
 
 
     RigidBodyFF  rbff;
