@@ -221,6 +221,7 @@ void realloc( int nSystems_ ){
     _realloc( MDpars,    nSystems  );
     _realloc0( TDrive,   nSystems, Quat4f{0.0,-1.0,0.0,0.0} );
 
+
     _realloc( pbcshifts, ocl.npbc*nSystems );
 
     _realloc( fire,      nSystems  );
@@ -403,7 +404,9 @@ int init_groups(){
     ocl.setGroupMapping( &atom2group[0] );
     for(int isys=0; isys<nSystems; isys++){
         groups2ocl( isys, true, false, true );
+
         Mat3_to_cl( bbox, bboxes[isys] );        // ToDo: this may need to go to different place
+
     }
     int err=0;
     err|= ocl.upload( ocl.ibuff_gweights,  gweights  ); OCL_checkError(err, "init_groups.upload(gweights)");
@@ -411,8 +414,8 @@ int init_groups(){
 
     err|= ocl.upload( ocl.ibuff_gforces, gforces );     OCL_checkError(err, "init_groups.upload(gforces)");
     err|= ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );     OCL_checkError(err, "init_groups.upload(gtorqs)");
-
     err|= ocl.upload( ocl.ibuff_bboxes,  bboxes  );     OCL_checkError(err, "init_groups.upload(bboxes)");  // ToDo: this may need to go to different place
+
     
     return err;
 }
@@ -676,6 +679,7 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
         MDpar.w = fire.cf;
     //}
 }
+
 
 bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 ){
     int err=0;
