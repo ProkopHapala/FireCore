@@ -41,13 +41,15 @@ fit.loadXYZ( "scan_H2O_b3lyp_cc-pvdz.xyz", [3,4,5], [0,1,2], types0=[0,1,0], tes
 
 
 
-Es     = fit.getEs( imodel=2, bRigid=False)
+#Es     = fit.getEs( imodel=2, bRigid=False)
+Es     = fit.getEs( imodel=2)
 
 typREQs[0,3] = 0.0
 fit.setType(0, typREQs[0,:] )
 fit.setType(1, typREQs[1,:] )
 
-Es_noH = fit.getEs( imodel=1, bRigid=False)
+#Es_noH = fit.getEs( imodel=1, bRigid=False)
+Es_noH = fit.getEs( imodel=1)
 
 print( Es )
 

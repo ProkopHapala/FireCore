@@ -79,6 +79,8 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
     int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_TDrive=-1, ibuff_pbcshifts=-1; 
     int ibuff_constr=-1;
+    int ibuff_constrK=-1;
+    int ibuff_bboxes=-1;
     int ibuff_samp_ps=-1;
     int ibuff_samp_fs=-1;
     int ibuff_samp_REQ=-1;
@@ -200,9 +202,11 @@ class OCL_MM: public OCLsystem { public:
         ibuff_neighs     = newBuffer( "neighs",     nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_neighCell  = newBuffer( "neighCell" , nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
 
-        ibuff_constr     = newBuffer( "constr",    nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_constr     = newBuffer( "constr",     nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_constrK    = newBuffer( "constrK",    nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
         //ibuff_constr0    = newBuffer( "constr0",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
         //ibuff_constrK    = newBuffer( "constrK",   nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_bboxes     = newBuffer( "bboxes",      nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
 
         ibuff_bkNeighs     = newBuffer( "bkNeighs", nSystems*nvecs,     sizeof(int4  ), 0, CL_MEM_READ_ONLY  );     // back neighbors
         ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );   
@@ -516,19 +520,24 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_neighForce ); // 6
         err |= useArgBuff( ibuff_bkNeighs   ); // 7
         err |= useArgBuff( ibuff_constr     ); // 8
-        err |= useArgBuff( ibuff_MDpars     ); // 9
-        err |= useArgBuff( ibuff_TDrive     ); // 10
+        err |= useArgBuff( ibuff_constrK    ); // 9
+        err |= useArgBuff( ibuff_MDpars     ); // 10
+        err |= useArgBuff( ibuff_TDrive     ); // 11
+        err |= useArgBuff( ibuff_bboxes     ); // 12
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
-        // const int4        n,            // 1
-        // __global float4*  apos,         // 2
-        // __global float4*  avel,         // 3
-        // __global float4*  aforce,       // 4
-        // __global float4*  cvf,          // 5
-        // __global float4*  fneigh,       // 6
-        // __global int4*    bkNeighs,     // 7
-        // __global float4*  constr,       // 8
-        // __global float4*  MDparams      // 9
+        // const int4        n,            // 1 // (natoms,nnode) dimensions of the system
+        // __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+        // __global float4*  avel,         // 3 // velocities of atoms 
+        // __global float4*  aforce,       // 4 // forces on atoms
+        // __global float4*  cvf,          // 5 // damping coefficients for velocity and force
+        // __global float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
+        // __global int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces)
+        // __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
+        // __global float4*  constrKs,     // 9 // constraints stiffness (kx,ky,kz,?) for each atom
+        // __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
+        // __global float4*  TDrives,       // 11 // Thermal driving (T,gamma_damp,seed,?)
+        // __global cl_Mat3* bboxes        // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
     }
 
     void printOnGPU( int isys, int4 mask=int4{1,1,1,1}, OCLtask* task=0 ){

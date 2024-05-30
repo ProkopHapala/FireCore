@@ -293,6 +293,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_sph=0;
     int  ogl_mol=0;
     int  ogl_isosurf=0;
+    int  ogl_surfatoms=0;
     int  ogl_MO = 0;
     int  ogl_nonBond = 0;
     int  ogl_trj = 0;
@@ -353,6 +354,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     //void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
+    int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=1, float Rsc=1, float Rsub=0 );
     void renderGridFF( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
     void renderAFM( int iz, int offset );
@@ -1184,6 +1186,10 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 //                   DRAW()
 //=================================================
 
+// void MolGUI::preRender(){
+//     Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., false, W->gridFF.shift0 );
+// }
+
 void MolGUI::draw(){
     //printf( "MolGUI::draw() 1 \n" );
     //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
@@ -1198,7 +1204,7 @@ void MolGUI::draw(){
     //printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
     if(W->bLatScan){ lattice_scan( W->latscan_n.x, W->latscan_n.y, *W->latscan_dlvec ); quit(); }
 
-    if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
+    //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
     //if( ogl_esp==0 ){ renderESP(); }
 
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
@@ -1236,12 +1242,68 @@ void MolGUI::draw(){
 
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
 
-    if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
+    if( bViewSubstrate ){
+        if( W->bGridFF ){
+            //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
+            //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
+            Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
+            if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
+            viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+        }else{
+            if( ogl_surfatoms==0 ){ogl_surfatoms = renderSurfAtoms(  W->gridFF.nPBC, false );  }
+            glCallList( ogl_surfatoms );
+        }
+    }
+
+    // ----- Visualization of the Groups of Atoms
+    if( W->bGroups ){
+
+        // for(int ig=0; ig<W->groups.groups.size(); ig++){
+        //     Group& g = W->groups.groups[ig];
+        //     Draw::color_of_hash(ig*15467+545);
+        //     Draw3D::drawVecInPos( g.fw, g.cog );
+        //     Draw3D::drawVecInPos( g.up, g.cog );
+        // }
+
+        // for(int ig=0; ig<W->groups.groups.size(); ig++){
+        //     Quat4f* ws = W->groups.weights;
+        //     //Vec2i i0n  = W->groups.groups[ig].i0n;
+        //     Group& g = W->groups.groups[ig];
+        //     for(int i=0; i<g.i0n.y; i++){
+        //         int ia = W->groups.g2a[i+g.i0n.x];
+        //         Vec3d p = W->groups.apos[ia];
+        //         double wi = ws[ia].y;
+        //         if( wi>0 ){ glColor3f(0.0,0.0,1.0); }else{ glColor3f(1.0,0.0,0.0); };
+        //         Draw3D::drawSphereOctLines(8,fabs(wi)*0.2,apos[ia]);
+        //         //Draw3D::drawSphereOctLines(8,.5,apos[ia]);
+        //     }
+        // }
+
+
+        // for(int ia=0; ia<W->atom2group.size(); ia++){
+        //     int ig = W->atom2group[ia];
+        //     if(ig>=0){
+        //         Draw::color_of_hash(ig*15467+545);
+        //         Draw3D::drawSphereOctLines(8,0.5,apos[ia]);
+        //     }
+        // }
+
+        Quat4f *gpos=0,*gfw=0,*gup=0; int ng=W->getGroupPose( gpos, gfw, gup );
+        if(gpos){
+            for(int ig=0; ig<ng; ig++){
+                //Draw::color_of_hash(ig*15467+545); Draw3D::drawPointCross( gpos[ig].f, 2.0);
+                glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( gfw[ig].f*5., gpos[ig].f );
+                glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f );
+                glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
+            }
+        }
+    }
+
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
     //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 10, 10, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
-    if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+    //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
     if( ogl_esp     ){ glCallList(ogl_esp);      }
     if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
@@ -1283,7 +1345,6 @@ void MolGUI::draw(){
             Draw3D::drawShifts( W->npbc, W->pbc_shifts, W->ipbc0, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
         }else{ drawSystem(); }
-
         //drawSystem(); // debug
         //Draw3D::drawNeighs( W->ff, -1.0 );    
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
@@ -1518,6 +1579,22 @@ void MolGUI::drawHUD(){
     }
     glPopMatrix();
 
+
+    if( W->getMolWorldVersion() == MolWorldVersion::GPU ){
+        glPushMatrix();
+        bool  bExplors[W->nSystems];
+        float Fconvs  [W->nSystems];
+        W->getMultiConf( Fconvs , bExplors );
+        glTranslatef( 0.0,fontSizeDef*2*30,0.0 );
+        glColor3f(0.5,0.,1.);
+        for( int i=0; i<W->nSystems; i++ ){  
+            sprintf( tmpstr, "SYS[%3i][%i]|F|=%g \n", i, bExplors[i], Fconvs[i] );
+            Draw::drawText( tmpstr, fontTex, fontSizeDef, {200,20} ); 
+            glTranslatef( 0.0,fontSizeDef*2,0.0 );
+        };
+        glPopMatrix();
+    }
+
     /*
     glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
     if( !bondsToShow_shifts ){
@@ -1613,6 +1690,32 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     glEndList();
     delete [] FFtot;
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
+}
+
+int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub ){
+    if(verbosity>0) printf( "MolGUI::renderSurfAtoms()\n" );
+    int ogl = glGenLists(1);
+    glNewList(ogl, GL_COMPILE);
+    glShadeModel( GL_SMOOTH );
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    glPushMatrix();
+    Mat3d& lvec =  W->gridFF.grid.cell;
+    for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+        for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+            for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                Vec3d shift = lvec.a*ix + lvec.b*iy + lvec.c*iz;
+                glTranslatef( shift.x,shift.y,shift.z);
+                Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
+                glTranslatef( -shift.x,-shift.y,-shift.z);
+            }
+        } 
+    }
+    glPopMatrix();
+    glEndList();
+    if(verbosity>0) printf( "... MolGUI::renderSurfAtoms() DONE\n" );
+    //exit(0);
+    return ogl;
 }
 
 void MolGUI::renderESP( Quat4d REQ){
@@ -2257,11 +2360,9 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     }break;
                 //case SDLK_u: W->upload_pop        ( "population.xyz" ); break;
                 //case SDLK_o: W->optimizeLattice_1d( 0,2, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
-                //case SDLK_LEFTBRACKET:  {iSystemCur++; int nsys=W->gopt.population.size(); if(iSystemCur>=nsys)iSystemCur=0;  W->gopt.setGeom( iSystemCur ); } break;
-                //case SDLK_RIGHTBRACKET: {iSystemCur--; int nsys=W->gopt.population.size(); if(iSystemCur<0)iSystemCur=nsys-1; W->gopt.setGeom( iSystemCur ); } break;
 
-                //case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
-                //case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
+                case SDLK_LEFTBRACKET:  W->prevSystemReplica(); break;
+                case SDLK_RIGHTBRACKET: W->nextSystemReplica(); break;
 
                 //case SDLK_LEFTBRACKET:  myAngle-=0.1; printf( "myAngle %g \n", myAngle ); break;
                 //case SDLK_RIGHTBRACKET: myAngle+=0.1; printf( "myAngle %g \n", myAngle );  break;
@@ -2314,6 +2415,9 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
                 case SDLK_SPACE: 
                     bRunRelax=!bRunRelax;  
+
+                    if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
+
                     // printf( "bRunRelax %i \n", bRunRelax );
                     if(bRunRelax)W->setConstrains();                  
                     if(!bRunRelax){ if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  } }

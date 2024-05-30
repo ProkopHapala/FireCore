@@ -920,10 +920,16 @@ class NBFF: public ForceField{ public:
                     //E=0; fij = B.apos[j]-pi;  // Test - dr
                     //if(i==0)printf("fi(%g,%g,%g) \n",  fij.x,fij.y,fij.z );
                     fi.add(fij);
+
+                    // if((ia==0)&&(ib==0)&&(ic==0)){ // debug draw
+                    //     const Vec3d shift = (lvec.a*ia) + (lvec.b*ib) + (lvec.c*ic);
+                    //     Draw3D::drawLine( B.apos[j] - shift , pi_  );
+                    // }
+
                 }
             }}} // nPBC
             //if(i==0){ printf( "CPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", i, fi.x,fi.y,fi.z,E, REQi.z ); }
-            fapos[i].add(fi);
+            //fapos[i].add(fi);
         }
         return E;
     }

@@ -3,6 +3,7 @@
 #define LimitedGraph_h
 
 #include <vector>
+#include <array>
 
 #include "macroUtils.h"
 
@@ -37,8 +38,14 @@ class LimitedGraph{ public:
 
 void realloc(int n_){
     n=n_;
-    _realloc( nneighs,n );  for(int i=0; i<n; i++){ nneighs[i]=0;       }
-    _realloc( neighs ,n );  for(int i=0; i<n; i++){ neighs[i].fill(-1); }
+    _realloc( nneighs,n );  
+    for(int i=0; i<n; i++){ 
+        nneighs[i]=0;       
+    }
+    _realloc( neighs ,n );  
+    for(int i=0; i<n; i++){ 
+        neighs[i].fill(-1); 
+    }
 
     _realloc( visited,n );
     _realloc( disc   ,n );
