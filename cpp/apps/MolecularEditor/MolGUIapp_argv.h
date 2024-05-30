@@ -59,7 +59,7 @@
     funcs["-NBneigh"]={0,[&](const char** ss){ W->bNonBondNeighs=true; }};
     funcs["-noNB"]={0,[&](const char** ss){ W->bNonBonded=false; }};
     funcs["-tricubic"]={0,[&](const char** ss){ W->bTricubic=true; }};
-
+    funcs["-bbox"]={1,[&](const char** ss){ Mat3d m;  sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf",  &m.ax,&m.ay,&m.az,  &m.bx,&m.by,&m.bz,  &m.cx,&m.cy,&m.cz );  W->bbox=m; }};
 
     funcs["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs["-group"]={2,[&](const char** ss){  }};

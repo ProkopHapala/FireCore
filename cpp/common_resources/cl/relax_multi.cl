@@ -906,8 +906,10 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
     __global int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces)
     __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
-    __global float4*  MDparams,     // 9 // MD parameters (dt,damp,Flimit)
-    __global float4*  TDrives      // 10 // Thermal driving (T,gamma_damp,seed,?)
+    __global float4*  constrKs,     // 9 // constraints stiffness (kx,ky,kz,?) for each atom
+    __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
+    __global float4*  TDrives,       // 11 // Thermal driving (T,gamma_damp,seed,?)
+    __global cl_Mat3* bboxes        // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -930,10 +932,11 @@ __kernel void updateAtomsMMFFf4(
     // if((iS==0)&&(iG==0)){ 
     //     //printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
     //     for(int is=0; is<nS; is++){
-    //         //printf( "TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
-    //         for(int ia=0; ia<natoms; ia++){
-    //             if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g)\n", is, ia, constr[ia+is*natoms].x,constr[ia+is*natoms].y,constr[ia+is*natoms].z,constr[ia+is*natoms].w );
-    //         }
+    //         //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+    //         printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
+    //         // for(int ia=0; ia<natoms; ia++){
+    //         //     if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g)\n", is, ia, constr[ia+is*natoms].x,constr[ia+is*natoms].y,constr[ia+is*natoms].z,constr[ia+is*natoms].w );
+    //         // }
     //     }
     // }
 
@@ -983,14 +986,20 @@ __kernel void updateAtomsMMFFf4(
     float4 ve = avel[iav]; // velocity of atom or pi-orbital
     float4 pe = apos[iav]; // position of atom or pi-orbital
 
-    // -------constrains
-    // if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
+    
+    if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
+        // ------- bboxes
+        const cl_Mat3 B = bboxes[iS];
+        if(B.c.x>0.0f){ if(pe.x<B.a.x){ fe.x+=(B.a.x-pe.x)*B.c.x; }else if(pe.x>B.b.x){ fe.x+=(B.b.x-pe.x)*B.c.x; }; }
+        if(B.c.y>0.0f){ if(pe.y<B.a.y){ fe.y+=(B.a.y-pe.y)*B.c.y; }else if(pe.y>B.b.y){ fe.y+=(B.b.y-pe.y)*B.c.y; }; }
+        if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
+        // ------- constrains
     //    float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
     //    if( cons.w>0.f ){            // if stiffness is positive, we have constraint
     //         fe.xyz += (pe.xyz - cons.xyz)*-cons.w; // add constraint force
     //         //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
     //    }
-    // }
+    }
     
     /*
     // ------ Move (kvazi-FIRE)    - proper FIRE need to reduce dot(f,v),|f|,|v| over whole system (3*N dimensions), this complicates paralell implementaion, therefore here we do it only over individual particles (3 dimensions)
@@ -1734,7 +1743,7 @@ __kernel void getNonBond_GridFF(
     __read_only image3d_t  FE_Coul, // 12 // Grid-Force-Field (GFF) for Coulomb interaction
     const cl_Mat3  diGrid,          // 13 // inverse of grid spacing
     const float4   grid_p0          // 14 // origin of the grid
-    
+    //__global cl_Mat3* bboxes      // 15 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
     __local float4 LATOMS[32];         // local memory chumk of positions of atoms 
     __local float4 LCLJS [32];         // local memory chumk of atom parameters
@@ -1846,7 +1855,9 @@ __kernel void getNonBond_GridFF(
 
     // ========== Interaction with Grid-Force-Field (GFF) ==================
     const float3 posg  = posi - grid_p0.xyz;                                                                                   // position of the atom with respect to the origin of the grid
-    const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );          // normalized grid coordinates of the atom
+
+    float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );          // normalized grid coordinates of the atom
+    coord.z = clamp( coord.z, 0.0001f, 0.99f );  // prevent periodic boundary in z-direction
     // #if 0
         //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
         const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff_norm, coord );    // interpolate Grid-Force-Field (GFF) for Pauli repulsion
@@ -1862,7 +1873,8 @@ __kernel void getNonBond_GridFF(
     const float cL   = ej*REQKi.y;                   // prefactor London dispersion (attractive part of Morse potential)
     const float cP   = ej*cL;                        // prefactor Pauli repulsion   (repulsive part of Morse potential)
     fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQKi.z;  // total GridFF force and energy on the atom (including Morse(London+Pauli) and Coulomb )
-    
+
+
     /*
     if((iG==0)&&(iS==0)){
         printf("GPU:getNonBond_GridFF(natoms=%i)\n", natoms);
