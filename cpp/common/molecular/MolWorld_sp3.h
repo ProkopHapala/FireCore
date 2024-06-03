@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <vector>
 #include <math.h>
@@ -764,7 +765,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     }
 
     virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
-        if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
+        //if(verbosity>0)
+        printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,bGridDouble=%i,gridStep=%g,z0=%g,cel0={%g,%g,%g} )\n",  name, bGrid, bGridDouble, gridStep, z0, cel0.x,cel0.y,cel0.z  );
         sprintf(tmpstr, "%s.lvs", name );
         if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
         if( !gridFF.bCellSet ){
@@ -791,6 +793,19 @@ class MolWorld_sp3 : public SolverInterface { public:
             gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
             gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
             //bSaveDebugXSFs=true;
+
+            // ========== Directory
+            struct stat statbuf;
+            if (stat(surf_name, &statbuf) != 0) {   // Check if directory exists
+                if (mkdir(surf_name, 0755) == -1  ) { printf("ERROR in MolWorld_sp3::initGridFF() cannot mkdir(`%s`) => exit()\n",                       surf_name ); exit(0); }
+            }else if ( ! S_ISDIR(statbuf.st_mode) ) { printf("ERROR in MolWorld_sp3::initGridFF() path `%s` exists but is not a directory. => exit()\n", surf_name ); exit(0); }
+            getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
+            if (chdir(surf_name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", surf_name ); exit(0); }
+            getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
+
+            // char name_P[256]; sprintf(name_P, "/FFelec_d.bin" );
+            // char name_L[256]; sprintf(name_P, "/FFelec_d.bin" );
+            // char name_Q[256]; sprintf(name_P, "/FFelec_d.bin" );
             gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, false );
             gridFF.checkSum( false );
             if(bGridDouble){  
@@ -803,6 +818,9 @@ class MolWorld_sp3 : public SolverInterface { public:
             if(bSaveDebugXSFs)saveGridXsfDebug();
             //bGridFF   =true; 
             //bSurfAtoms=false;
+
+            if ( chdir("..") == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(..) => exit()\n" ); exit(0); }
+
         }
         gridFF.shift0 = Vec3d{0.,0.,-2.0};
         //gridFF.shift0 = Vec3d{0.,0.,0.0};
