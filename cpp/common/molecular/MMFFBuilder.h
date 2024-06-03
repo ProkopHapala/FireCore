@@ -3022,7 +3022,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     int loadXYZ_Atoms(const char* fname, MMFFparams* params_=0, int iH=-1, bool bCOG=false, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
-        //printf( "MM::Builder::loadXYZ_Atoms(%s) \n", fname );
+        printf( "MM::Builder::loadXYZ_Atoms(%s) \n", fname );
         if(params_!=0) params=params_;
         //  this is a bit stupid - we allocate and deallocate mol just because we need some temporary storage for calling params->loadXYZ()
         Atoms   mol;
