@@ -1498,7 +1498,6 @@ class MolWorld_sp3 : public SolverInterface { public:
         ffu.bNonBonded     = bNonBonded;
         ffu.bNonBondNeighs = bNonBondNeighs;
         //ffu.bNonBonded =  bGridFF;
-
         long T0 = getCPUticks();
         //printf( "MolWorld_sp3::MDloop() \n" );
         //ff.doPiPiI  =false;
@@ -1548,7 +1547,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             double t = ticks*tick2second;
             double c_smooth = 0.1;
             time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/nitr )*c_smooth;
-            printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,bPBC,bNonBonded,bNonBondNeighs,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
+            printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,bPBC,bNonBonded,bNonBondNeighs,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
         }
 
         //run( nIter );
@@ -1758,7 +1757,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             double c_smooth = 0.1;
             time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/itr )*c_smooth;
             //printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time=%g[ms/%i](%g[us/iter])\n", itr,niter_max, opt.dt, E,  sqrt(ffl.cvf.z), t*1e+3,itr,t*1e+6/itr ); 
-            printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter]) | tick2second=%g ticks=%g \n", bPBC,bGridFF,bNonBondNeighs,sqrt(F2max),opt.dt,niter, t*1e+3,itr, time_per_iter,  tick2second,  ticks );
+            printf( "MolWorld_sp3::run_no_omp() NOT CONVERGED (bPBC=%i,bGridFF=%i,bNonBondNeighs=%i,go.bExploring=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter]) | tick2second=%g ticks=%g \n", bPBC,bGridFF,bNonBondNeighs,go.bExploring,sqrt(F2max),opt.dt,niter, t*1e+3,itr, time_per_iter,  tick2second,  ticks );
         }
         return itr;
     }

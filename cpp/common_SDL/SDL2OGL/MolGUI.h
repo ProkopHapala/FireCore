@@ -242,6 +242,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     bool   mm_bAtoms        = true;
     bool   bViewMolCharges  = false;
+    bool   bViewHBondCharges = false;
     bool   bViewAtomLabels  = true;
     bool   bViewAtomTypes   = false;
     bool   bViewColorFrag   = false;
@@ -2020,6 +2021,8 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
         if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
         if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
+        if(bViewHBondCharges && (W->nbmol.REQs!=0)){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
+
         //if(W->ff.pi0s                           ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
     
         {// Graph
@@ -2331,10 +2334,15 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     W->saveXYZ( "screenshot_3x3.xyz", "#comment", false, "w", {3,3,1} );
                 }break;
 
-                case SDLK_h:if( ( W->getMolWorldVersion() & MolWorldVersion::QM ) ){ printf( "makeAFM(): is supported only in GPU version of MolWorld \n" ); }else{
-                    //int iMO = which_MO;
-                    int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
-                    renderOrbital( iHOMO + which_MO ); break;
+                // case SDLK_h:if( ( W->getMolWorldVersion() & MolWorldVersion::QM ) ){ printf( "makeAFM(): is supported only in GPU version of MolWorld \n" ); }else{
+                //     //int iMO = which_MO;
+                //     int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
+                //     renderOrbital( iHOMO + which_MO ); break;
+                // }break;
+
+                case SDLK_h:{
+                    bViewHBondCharges  ^= 1;
+                    //printf( "view Hydrogen Bonds \n" );
                 }break;
                 
                 //case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
@@ -2416,7 +2424,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_SPACE: 
                     bRunRelax=!bRunRelax;  
 
-                    if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
+                    //if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
 
                     // printf( "bRunRelax %i \n", bRunRelax );
                     if(bRunRelax)W->setConstrains();                  

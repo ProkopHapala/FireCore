@@ -690,12 +690,12 @@ class MMFFparams{ public:
     }
 
     // vector with all non-bonded parameters
-    inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false )const{
+    inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false, bool bHB=true )const{
         REQ.x    = atypes[ityp].RvdW;
         double e = atypes[ityp].EvdW;
         if(bSqrtE) e=sqrt(e);
         REQ.y = e;
-        REQ.w = atypes[ityp].Hb; // Hbond Correction
+        //if(bHB) REQ.w = atypes[ityp].Hb; // Hbond Correction
     }
 
     void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=false, bool bQ0=false )const{
@@ -758,7 +758,7 @@ class MMFFparams{ public:
 
     // read an xyz file
     int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Quat4d** REQs_=0, int** atype_=0, int** npis_=0, Mat3d* lvec=0, int verbosity=0 )const{
-        //printf( "MMFFparams::loadXYZ(%s) @apos_=%li @REQs_=%li @atype_=%li @npis_=%li \n", fname, (long)apos_, (long)REQs_, (long)atype_, (long)npis_ );
+        printf( "MMFFparams::loadXYZ(%s) @apos_=%li @REQs_=%li @atype_=%li @npis_=%li \n", fname, (long)apos_, (long)REQs_, (long)atype_, (long)npis_ );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -770,10 +770,10 @@ class MMFFparams{ public:
         // read the number of atoms
         line = fgets( buff, nbuf, pFile );
         sscanf( line, "%i", &natoms );
-        Vec3d* apos  =_allocPointer( apos_,  natoms );
+        Vec3d*  apos  =_allocPointer( apos_,  natoms );
         Quat4d* REQs =_allocPointer( REQs_,  natoms );
-        int*   atype =_allocPointer( atype_, natoms );
-        int*   npis  =_allocPointer( npis_,  natoms );
+        int*    atype =_allocPointer( atype_, natoms );
+        int*    npis  =_allocPointer( npis_,  natoms );
         // read cell vectors (if present)
         line = fgets( buff, nbuf, pFile );
         int ret=0;
@@ -786,7 +786,8 @@ class MMFFparams{ public:
         for(int i=0; i<natoms; i++){
             line = fgets( buff, nbuf, pFile );
             //int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &npi );
-            int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &H, &npi  );
+            int nret = sscanf( line, "%s %lf %lf %lf %lf %lf %i", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &H, &npi  );
+            printf( "MMFFparams::loadXYZ() atom[%i] %s xyz(%12.6f,%12.6f,%12.6f) Q,Hb(%12.6f,%12.6f) npi=%i\n", i, at_name, apos[i].x, apos[i].y, apos[i].z, Q, H, npi  );
             if( nret < 4 ){ printf( "ERROR in MMFFparams::loadXYZ: position of atom %i is not complete => Exit()\n", i  ); printf("%s\n", line ); exit(0); }
             if( nret < 5 ){ Q=0; };
             if( nret < 6 ){ H=0; };
