@@ -243,9 +243,11 @@ private:
     int nMaxCell = 0;
     MolecularDatabaseDescriptor *usedDescriptors = nullptr;
     int nbOfusedDescriptors = 0;
+    
 
 public:
     // ================= Constructor and Destructor ================= //
+    std::vector<bool> convergedStructure;
     MolecularDatabase()
     {
         nMaxCell = 100;
@@ -416,13 +418,7 @@ public:
         {
             if (d.compareDescriptors(&descriptors[i]) < 0.2)
             {
-                // addMember(a, &d);
-
-                if (computeDistance(a, &atoms[i]) > 1.0)
-                {
-                    nMembers--;
-                }
-                else
+                if (computeDistance(a, &atoms[i]) < 1.0)
                 {
                     sameDescriptor = i;
                     break;
