@@ -231,6 +231,9 @@ class MolWorld_sp3 : public SolverInterface { public:
     double ConstrZ_l=0.0;
     double ConstrZ_k=1.0;
 
+
+    std::vector<Vec3i> Hbonds;
+
     Mat3d* dlvec = 0;
 
     // lattice scan
@@ -1957,6 +1960,78 @@ class MolWorld_sp3 : public SolverInterface { public:
     }
     //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
     //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs ); }
+
+    // ========= Analysis
+
+    double findHbonds_PBC( int ia, double Rcut, double Hcut, double cosMin, Vec3d dir, std::vector<Vec3i>& out ){
+        //printf( "MolWorld_sp3::findHbonds_PBC(%i) Rcut=%g Hcut=%g\n", ia, Rcut, Hcut );
+        const double R2cut = Rcut*Rcut;
+        const NBFF&  ff   = ffl;
+        const Vec3d  pi   = ff.apos     [ia];
+        const Quat4d REQi = ff.REQs     [ia];
+        if( REQi.w < 0 ) return 0;
+        const Quat4i ng   = ff.neighs   [ia];
+        const Quat4i ngC  = ff.neighCell[ia];
+        double E=0,fx=0,fy=0,fz=0;
+        for (int j=0; j<ff.natoms; j++){ 
+            if(ia==j)continue;
+            const Quat4d& REQj  = ff.REQs[j];
+            if( REQj.w > 0 ) continue;
+            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Vec3d dp     = ff.apos[j]-pi;
+            Vec3d fij          = Vec3dZero;
+            const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
+            for(int ipbc=0; ipbc<npbc; ipbc++){
+                //printf( "[ia=%i,j=%i,ipbc=%i]\n", ia, j, ipbc );
+                // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
+                const Vec3d dpc = dp + ff.shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
+                //double eij      = getLJQH( dpc, fij, REQij, R2damp );
+                // --- If atoms are bonded we don't use the computed non-bonding interaction energy and force
+                double r2 = dpc.norm2();
+                if( (r2>R2cut) || (REQij.w>-Hcut) )[[likely]] continue;
+                //if( (r2>R2cut) )[[likely]] continue;
+                if(bBonded) [[unlikely]]  { 
+                    if(   ((j==ng.x)&&(ipbc==ngC.x))
+                        ||((j==ng.y)&&(ipbc==ngC.y))
+                        ||((j==ng.z)&&(ipbc==ngC.z))
+                        ||((j==ng.w)&&(ipbc==ngC.w))
+                    ) [[unlikely]]  { 
+                        continue;
+                    }
+                }
+                double c = dir.dot( dpc )/sqrt(r2);
+                //printf( "[ia=%i,j=%i,ipbc=%i] r=%g/Rcut(%g) cos=%g/cosMin(%g)\n", ia, j, ipbc,  sqrt(r2), Rcut, c, cosMin );
+                if( c<cosMin ) continue;
+                //printf( "[ia=%i,j=%i,ipbc=%i] found  r=%g/Rcut(%g) \n", ia, j, ipbc,  sqrt(r2), Rcut );
+                out.push_back( Vec3i{ ia, j, ipbc } );
+            }
+        }
+        return E;
+    }
+    double findHbonds_PBC( double Rcut, double Hcut, double angMax, std::vector<Vec3i>* out =0 ){
+        //printf( "MolWorld_sp3::findHbonds_PBC()\n" );
+        double cosMin = cos(angMax);
+        if(out==0){ out = &Hbonds; }
+        double E=0;
+        const NBFF&  ff   = ffl;
+        for(int ia=0; ia<ffl.natoms; ia++){ 
+
+            if( ff.REQs[ia].w < Hcut ) continue;
+
+            // --- find vector of hydrogen bond to base
+            const Quat4i ng  = ff.neighs   [ia];
+            const Quat4i ngC = ff.neighCell[ia];
+            Vec3d dir = ffl.apos[ia] - ffl.apos[ng.x] + ff.shifts[ngC.x]; 
+            dir.normalize();
+            //printf( "[ia=%i,j=%i,ipbc=%i] dir(%g,%g,%g) \n", ia, ng.x, ngC.x, dir.x,dir.y,dir.z );
+            //out->push_back( Vec3i{ ia, ng.x, ngC.x } );
+
+            E+=findHbonds_PBC( ia, Rcut, Hcut, cosMin, dir, *out );
+        }
+        //printf( "MolWorld_sp3::findHbonds_PBC() DONE\n" );
+        return E;
+    }
+
 
     // ========= Manipulation with the molecule
 
