@@ -256,7 +256,7 @@ class MMFFparams{ public:
 
     // read and store element types
     int loadElementTypes(const char * fname, bool exitIfFail=true){
-        printf(  "MMFFparams:loadElementTypes() verbosity = %i \n", verbosity );
+        if(verbosity>0)printf(  "MMFFparams::loadElementTypes(fname=%s)\n", fname );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -282,6 +282,7 @@ class MMFFparams{ public:
 
     // read and store atom types
     int loadAtomTypes(const char * fname, bool exitIfFail=true){
+        if(verbosity>0)printf(  "MMFFparams::loadAtomTypes(fname=%s)\n", fname, verbosity );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -308,6 +309,7 @@ class MMFFparams{ public:
 
     // read and store bond types
     int loadBondTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true){
+        if(verbosity>0)printf(  "MMFFparams::loadBondTypes(fname=%s)\n", fname, verbosity );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -347,6 +349,7 @@ class MMFFparams{ public:
    
     // read and store angle types
     int loadAngleTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true ){
+       if(verbosity>0) printf(  "MMFFparams::loadAngleTypes(fname=%s)\n", fname, verbosity );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -386,6 +389,7 @@ class MMFFparams{ public:
 
     // read and store dihedral angles
     int loadDihedralTypes(const char * fname, bool exitIfFail=true, bool bWarnFlip=true){
+        if(verbosity>0)printf(  "MMFFparams::loadDihedralTypes(fname=%s)\n", fname, verbosity );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -660,6 +664,7 @@ class MMFFparams{ public:
     // TBD should we do it here?
     // assigning bond parameters
     bool getBondParams( int ityp, int jtyp, int order,  double& l0, double& k, bool bParrents=true, bool bElem=true )const{
+        //printf( "MMFFBuilder::getBondParams() types(%i,%i) order=%i bParrents=%i bElem=%i \n",  ityp, jtyp, order, bParrents, bElem );
         BondType* bp = getBondType( ityp, jtyp, order, bParrents, bElem );
         if( bp==0 ){ l0=bp->length; k=bp->stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
     }
@@ -758,7 +763,7 @@ class MMFFparams{ public:
 
     // read an xyz file
     int loadXYZ(const char* fname, int& natoms, Vec3d** apos_, Quat4d** REQs_=0, int** atype_=0, int** npis_=0, Mat3d* lvec=0, int verbosity=0 )const{
-        printf( "MMFFparams::loadXYZ(%s) @apos_=%li @REQs_=%li @atype_=%li @npis_=%li \n", fname, (long)apos_, (long)REQs_, (long)atype_, (long)npis_ );
+        //printf( "MMFFparams::loadXYZ(%s) @apos_=%li @REQs_=%li @atype_=%li @npis_=%li \n", fname, (long)apos_, (long)REQs_, (long)atype_, (long)npis_ );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -787,7 +792,7 @@ class MMFFparams{ public:
             line = fgets( buff, nbuf, pFile );
             //int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &npi );
             int nret = sscanf( line, "%s %lf %lf %lf %lf %lf %i", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &H, &npi  );
-            printf( "MMFFparams::loadXYZ() atom[%i] %s xyz(%12.6f,%12.6f,%12.6f) Q,Hb(%12.6f,%12.6f) npi=%i\n", i, at_name, apos[i].x, apos[i].y, apos[i].z, Q, H, npi  );
+            //printf( "MMFFparams::loadXYZ() atom[%i] %s xyz(%12.6f,%12.6f,%12.6f) Q,Hb(%12.6f,%12.6f) npi=%i\n", i, at_name, apos[i].x, apos[i].y, apos[i].z, Q, H, npi  );
             if( nret < 4 ){ printf( "ERROR in MMFFparams::loadXYZ: position of atom %i is not complete => Exit()\n", i  ); printf("%s\n", line ); exit(0); }
             if( nret < 5 ){ Q=0; };
             if( nret < 6 ){ H=0; };
