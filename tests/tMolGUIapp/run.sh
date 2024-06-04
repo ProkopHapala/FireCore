@@ -177,7 +177,7 @@ fi
 
 
 #./$name  -x common_resources/polymer-2_new-OH  -Ftol 1e-4 -iParalel 0 -perframe 1
-./$name  -x common_resources/polymer-2_new-OH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
+./$name -verb 2 -x common_resources/polymer-2_new-OH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
 #./$name  -x common_resources/polymer-2_new-COOH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
 
 

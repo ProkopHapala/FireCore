@@ -265,7 +265,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     virtual int getMultiConf( float* Fconvs , bool* bExplors ){ return 0; };
 
     virtual void init(){
-        printf( "MolWorld_sp3::init() \n" );
+        printf( "MolWorld_sp3::init() verbosity=%i\n", verbosity );
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
         if( params.atypes.size() == 0 ){
@@ -938,8 +938,10 @@ class MolWorld_sp3 : public SolverInterface { public:
         int ifrag = builder.frags.size()-1;
         */
         int ifrag = insertMolecule( tmpstr, name, {0,0,0}, Mat3dIdentity );
-        builder.addCappingTypesByIz(1);
+        builder.printAtomConfs(false, true );
+        builder.addCappingTypesByIz(1);   // Find all hydrogen cappings
         builder.tryAddConfsToAtoms( 0, -1 );
+        //builder.printAtomConfs(false, true );
         builder.cleanPis();
         if(verbosity>2)builder.printAtomConfs(false);
         // ------- Load lattice vectros
@@ -1056,7 +1058,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     int buildMolecule_xyz( const char* xyz_name ){
         int ifrag = loadGeom( xyz_name );
-        //printf( "MolWorld_sp3::buildMolecule_xyz(%s) ifrag=%i \n", xyz_name, ifrag );
+        printf( "MolWorld_sp3::buildMolecule_xyz(%s) ifrag=%i \n", xyz_name, ifrag );
         int ia0=builder.frags[ifrag].atomRange.a;
         int ic0=builder.frags[ifrag].confRange.a;
         // TBD not sure that I got how charges are assigned in here...

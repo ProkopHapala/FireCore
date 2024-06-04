@@ -62,9 +62,10 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     // read and store parameters from tables
     // TBD pass bUFF to MMFFparams::init so that if true, no need to read bonds, angles nor dihedrals...
     //W.params.verbosity = verbosity;
-    W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
+    //W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
     // bring names of atom types into builder (H is capping atom, E is electron pair)
-	W.builder.bindParams(&W.params);
+	//W.builder.bindParams(&W.params);
+    W.initParams( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
     bool bGrid = gridStep>0;
     // initialize the main
     //W.init( bGrid, bUFF );
