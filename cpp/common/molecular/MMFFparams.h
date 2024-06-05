@@ -775,10 +775,10 @@ class MMFFparams{ public:
         // read the number of atoms
         line = fgets( buff, nbuf, pFile );
         sscanf( line, "%i", &natoms );
-        Vec3d*  apos  =_allocPointer( apos_,  natoms );
-        Quat4d* REQs =_allocPointer( REQs_,  natoms );
-        int*    atype =_allocPointer( atype_, natoms );
-        int*    npis  =_allocPointer( npis_,  natoms );
+        Vec3d* apos  =_reallocPointer( apos_,  natoms );
+        Quat4d* REQs =_reallocPointer( REQs_,  natoms );
+        int*   atype =_reallocPointer( atype_, natoms );
+        int*   npis  =_reallocPointer( npis_,  natoms );
         // read cell vectors (if present)
         line = fgets( buff, nbuf, pFile );
         int ret=0;

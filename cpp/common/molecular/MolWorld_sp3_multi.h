@@ -184,6 +184,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
+    MolecularDatabase* database = 0;
+
 virtual MolWorldVersion getMolWorldVersion() const override { return MolWorldVersion::GPU; };
 
 // ==================================
@@ -220,6 +222,7 @@ void realloc( int nSystems_ ){
     _realloc( ilvecs,    nSystems  );
     _realloc( MDpars,    nSystems  );
     _realloc0( TDrive,   nSystems, Quat4f{0.0,-1.0,0.0,0.0} );
+
 
     _realloc( pbcshifts, ocl.npbc*nSystems );
 
@@ -314,6 +317,10 @@ virtual void init() override {
     iParalel=3;
     //iParalel=iParalelMax;
 
+    if(!database){
+        database = new MolecularDatabase();
+        database->setDescriptors();
+    }
     
     printf( "uploadPopName @ %li", uploadPopName );
     if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)", uploadPopName );  upload_pop( uploadPopName ); }
@@ -403,7 +410,9 @@ int init_groups(){
     ocl.setGroupMapping( &atom2group[0] );
     for(int isys=0; isys<nSystems; isys++){
         groups2ocl( isys, true, false, true );
+
         Mat3_to_cl( bbox, bboxes[isys] );        // ToDo: this may need to go to different place
+
     }
     int err=0;
     err|= ocl.upload( ocl.ibuff_gweights,  gweights  ); OCL_checkError(err, "init_groups.upload(gweights)");
@@ -411,8 +420,8 @@ int init_groups(){
 
     err|= ocl.upload( ocl.ibuff_gforces, gforces );     OCL_checkError(err, "init_groups.upload(gforces)");
     err|= ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );     OCL_checkError(err, "init_groups.upload(gtorqs)");
-
     err|= ocl.upload( ocl.ibuff_bboxes,  bboxes  );     OCL_checkError(err, "init_groups.upload(bboxes)");  // ToDo: this may need to go to different place
+
     
     return err;
 }
@@ -705,6 +714,14 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
             for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }   // Shift driver
         }
+        else if( gopts[isys].istep > 1e4 && (!gopts[isys].bExploring)){
+            gopts[isys].startExploring();
+            bGroupUpdate=true;
+            database->convergedStructure.push_back(false);
+            int i0v = isys * ocl.nvecs;
+            unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
+            database->addIfNewDescriptor(&ffls[isys]);
+        }
         if( gopts[isys].update() ){ // Stop Exploring
             bGroupUpdate=true;
             //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
@@ -740,15 +757,19 @@ double evalVFs( double Fconv=1e-6 ){
         evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], gopts[isys].bExploring );
         double f2 = fire[isys].ff;
         if(f2>F2max){ F2max=f2; iSysFMax=isys; }
-        // // -------- Global Optimization
-        // if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
-        //     //printf( "evalVFs() iSys=%i CONVERGED |F|=%g \n", isys, sqrt(f2) );
-        //     gopts[isys].startExploring();
-        //     bGroupUpdate=true;
-        //     //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
-        //     //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
-        //     for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
-        // }
+        // -------- Global Optimization
+        if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
+            int i0v = isys * ocl.nvecs;
+            unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
+            database->addIfNewDescriptor(&ffls[isys]);
+            database->convergedStructure.push_back(true);
+            // //printf( "evalVFs() iSys=%i CONVERGED |F|=%g \n", isys, sqrt(f2) );
+            // gopts[isys].startExploring();
+            // bGroupUpdate=true;
+            // //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
+            // //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
+            // for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
+        }
         // if( gopts[isys].update() ){ // Stop Exploring
         //     bGroupUpdate=true;
         //     //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
@@ -1577,6 +1598,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 
     double t=(getCPUticks()-T0)*tick2second;
     printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g [ms]( %g [us/step]) bGridFF=%i iSysFMax=%i dovdW=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore,  niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF, iSysFMax, dovdW ); 
+    //if(database->getNMembers()>0)    printf("%i  converged: %s\n", database->getNMembers(), database->convergedStructure.back() ? "true" : "false");
     //err |= ocl.finishRaw(); 
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     return niterdone;

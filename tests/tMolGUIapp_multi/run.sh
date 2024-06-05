@@ -129,7 +129,7 @@ nsys=50
 #./$name -m $nsys -x common_resources/polydiacetylene    -n 141 -g common_resources/NaCl_1x1_L2 -subs 4,common_resources/-COOH.xyz  -ng 2,-1,3,4 -q 0.05
 
 #./$name -m $nsys -x common_resources/polydiacetylene_OH -n 141 -g common_resources/NaCl_1x1_L2 -ng 2,-1,3,4
-#./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2;
 #./$name -m $nsys -x common_resources/polydiacetylene_OH        -g common_resources/NaCl_1x1_L2
 
 #./$name -m $nsys -x common_resources/polymer-2_new              -g common_resources/NaCl_1x1_L2
