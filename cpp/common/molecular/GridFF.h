@@ -943,7 +943,7 @@ void checkSum( bool bDouble ){
         { FILE* f=fopen( fname_Paul,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Paul); recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_Lond,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Lond); recalcFF=true; }else{ fclose(f); };} // Test if file exist
         { FILE* f=fopen( fname_Coul,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Coul); recalcFF=true; }else{ fclose(f); };} // Test if file exist
-        //printf( "GridFF::tryLoad() recalcFF %i \n", recalcFF );
+        printf( "GridFF::tryLoad() recalcFF %i \n", recalcFF );
         //printf( "fname_Pauli(%s) fname_London(%s) fname_Coulomb(%s) \n", fname_Pauli, fname_London, fname_Coulomb );
         //int nbyte= grid.getNtot()*sizeof(Vec3d);
         int nbyte = grid.getNtot()*sizeof(Quat4f);
