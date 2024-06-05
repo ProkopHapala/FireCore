@@ -717,6 +717,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
         };
         bExploring |= gopts[isys].bExploring;
+        //printf("gopts[%i].bExploring=%i\n", isys, gopts[isys].bExploring );
     }
     //err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
     //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
@@ -789,6 +790,29 @@ double evalVFs( double Fconv=1e-6 ){
     //err |= ocl.finishRaw();  
     OCL_checkError(err, "evalVFs().2");
     return F2max;
+}
+
+void checkBorders(){
+    int err=0;
+    ocl.download( ocl.ibuff_atoms, atoms );
+    err |= ocl.finishRaw();  OCL_checkError(err, "checkBorders().1");
+    Vec3d period = {bbox.b.x-bbox.a.x, bbox.b.y-bbox.a.y, bbox.b.z-bbox.a.z};
+    for(int isys=0; isys<nSystems; isys++){
+        int i0v = isys * ocl.nvecs;
+        for(int i=0; i<ocl.nvecs; i++){
+            Vec3f p = atoms[i0v+i].f;
+            if( p.x < bbox.a.x - period.a){ for(int j=0; j<ocl.nvecs; j++)atoms[i0v+j].f.x += 2*period.a; break; }
+            if( p.x > bbox.b.x + period.a){ for(int j=0; j<ocl.nvecs; j++)atoms[i0v+j].f.x -= 2*period.a; break; }
+            if( p.y < bbox.a.y - period.b){ for(int j=0; j<ocl.nvecs; j++)atoms[i0v+j].f.y += 2*period.b; break; }
+            if( p.y > bbox.b.y + period.b){ for(int j=0; j<ocl.nvecs; j++)atoms[i0v+j].f.y -= 2*period.b; break; }
+            if( p.z < bbox.a.z - period.c){ for(int j=0; j<ocl.nvecs; j++)atoms[i0v+j].f.z += 2*period.c; break; }
+            if( p.z > bbox.b.z + period.c){ for(int j=0; j<ocl.nvecs; j++)atoms[i0v+j].f.z -= 2*period.c; break; }
+            //atoms[i0v+i].f = p;
+        }
+    }
+    err |= ocl.upload( ocl.ibuff_atoms, atoms );
+    err |= ocl.finishRaw();  OCL_checkError(err, "checkBorders().2");
+
 }
 
 void setGroupDrive(int isys, int ig, Vec3f fsc=Vec3fZero, Vec3f tsc=Vec3fZero){
@@ -1510,6 +1534,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             niterdone++;
             nloop++;
         }
+        checkBorders();
         //ocl.download( ocl.ibuff_atoms,    atoms   );
         //ocl.download( ocl.ibuff_aforces,  aforces );
         F2 = evalVFs( Fconv );

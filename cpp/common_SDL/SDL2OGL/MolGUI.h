@@ -2414,10 +2414,14 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LEFTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, +rotation_step ); break;
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
                 case SDLK_SPACE: 
+                    printf("W->go.bExploring %i \n", W->go.bExploring );
+                    printf("bRunRelax %i \n", bRunRelax );
                     bRunRelax=!bRunRelax;  
 
-                    if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
 
+                    if( bRunRelax ){ if (W->go.bExploring){ W->startExploring(); }else{ W->stopExploring(); }; }
+                    printf("W->go.bExploring %i \n", W->go.bExploring );
+                    printf("bRunRelax %i \n", bRunRelax );
                     // printf( "bRunRelax %i \n", bRunRelax );
                     if(bRunRelax)W->setConstrains();                  
                     if(!bRunRelax){ if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  } }
