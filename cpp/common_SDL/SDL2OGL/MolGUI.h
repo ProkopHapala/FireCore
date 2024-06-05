@@ -242,6 +242,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     bool   mm_bAtoms        = true;
     bool   bViewMolCharges  = false;
+    bool   bViewHBondCharges = false;
     bool   bViewAtomLabels  = true;
     bool   bViewAtomTypes   = false;
     bool   bViewColorFrag   = false;
@@ -296,6 +297,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_surfatoms=0;
     int  ogl_MO = 0;
     int  ogl_nonBond = 0;
+    int  ogl_Hbonds  = 0;
     int  ogl_trj = 0;
     int  ogl_surf_scan = 0;
 
@@ -657,6 +659,7 @@ void MolGUI::nonBondGUI(){
     chk->addBox( "lines ", &bDrawNonBondLines );
     chk->addBox( "gridXY", &bDrawNonBondGrid  );
     chk->addBox( "hideEp", &hideEp            );
+    //chk->addBox( "findHb", &findHb            );
 
     
     //chk->addBox( "grid", &plot1.bGrid );
@@ -667,14 +670,15 @@ void MolGUI::nonBondGUI(){
 
     // ----- 1D plot option
     gx.step( 2 ); gx.step( 8+10 );
-    mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0,-6); gui.addPanel( mp ); panel_NonBondPlot=mp;
+    mp= new MultiPanel( "PlotNonBond", gx.x0, 10, gx.x1, 0,-7); gui.addPanel( mp ); panel_NonBondPlot=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     mp->addPanel( "Mode  : ", {0.0,2.0, 0.0},  1,0,1,1,0 );   // ToDo: perhaps it would be better to use bit-mask
-    mp->addPanel( "Ezoom : ", {-3.0,3.0,-1.0},  1,0,0,1,0 );
+    mp->addPanel( "Ezoom : ", {-3.0,3.0,-1.0}, 1,0,0,1,0 );
     mp->addPanel( "Rplot : ", {0.0,10.0,5.0},  1,0,0,1,0 );
     mp->addPanel( "dstep : ", {0.02,0.5,0.1},  1,0,0,1,0 );
     mp->addPanel( "Rdamp : ", {-2.0,2.0,0.1},  1,0,0,1,0 );
     mp->addPanel( "Rcut  : ", {-2.0,2.0,10.1}, 1,0,0,1,0 );
+    mp->addPanel( "findHb:",  {1.5,5.0,4.0},   1,1,0,1,1 )->command = [&](GUIAbstractPanel* p){ double Rc = ((GUIPanel*)p)->value; W->Hbonds.clear(); W->findHbonds_PBC( Rc, 0.01, 30.0*deg2rad ); };
 
     // ----- TestAtom Params
     gx.step( 2 ); gx.step( 8+10 );
@@ -1350,6 +1354,30 @@ void MolGUI::draw(){
         //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
     }
 
+    if( W->Hbonds.size() > 0 ){
+        //int nfound = W->Hbonds.size();
+        //printf( "findHb() Rc=%g nfound=%i \n", Rc, nfound );
+        //if(ogl_Hbonds>0){ glDeleteLists(ogl_Hbonds,0); ogl_Hbonds=0; }
+        //if( nfound>0 ){
+        // glNewList( ogl_Hbonds, GL_COMPILE )
+        glLineWidth(5.0);
+        //printf( "W->Hbonds.size(%i)\n", W->Hbonds.size() ); 
+        glBegin(GL_LINES);
+        glColor3f( 0.0,1.0,0.0 );
+        for( Vec3i b: W->Hbonds ){
+            //printf( "Hbonds(%i,%i,%i)\n", b.x,b.y,b.z ); 
+            Draw3D::vertex( W->ffl.apos[b.a]                      );
+            Draw3D::vertex( W->ffl.apos[b.b] + W->ffl.shifts[b.c] );
+            Draw3D::vertex( W->ffl.apos[b.a] - W->ffl.shifts[b.c] );
+            Draw3D::vertex( W->ffl.apos[b.b]  );
+            //Draw3D::vertex( W->ffl.apos[b.b] + Vec3d{5.0,5.0,5.0}  );
+        }
+        glEnd();
+        glLineWidth(1.0);
+        // glEndList();
+        //}
+    }
+
     if(constrs){
         // bond constrains
         glColor3f(0.0f,0.7f,0.0f);
@@ -1985,7 +2013,7 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
     if( bViewBonds ){
         glDisable(GL_LIGHTING);
         glColor3f(0.0f,0.0f,0.0f);
-        glLineWidth(5.0);
+        glLineWidth(3.0f);
         glBegin(GL_LINES);
         for(int ib=0; ib<B.bonds.size(); ib++){
             Vec2i b  = B.bonds[ib].atoms;
@@ -2020,6 +2048,8 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
         if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
         if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
+        if(bViewHBondCharges && (W->nbmol.REQs!=0)){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
+
         //if(W->ff.pi0s                           ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
     
         {// Graph
@@ -2331,10 +2361,15 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     W->saveXYZ( "screenshot_3x3.xyz", "#comment", false, "w", {3,3,1} );
                 }break;
 
-                case SDLK_h:if( ( W->getMolWorldVersion() & MolWorldVersion::QM ) ){ printf( "makeAFM(): is supported only in GPU version of MolWorld \n" ); }else{
-                    //int iMO = which_MO;
-                    int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
-                    renderOrbital( iHOMO + which_MO ); break;
+                // case SDLK_h:if( ( W->getMolWorldVersion() & MolWorldVersion::QM ) ){ printf( "makeAFM(): is supported only in GPU version of MolWorld \n" ); }else{
+                //     //int iMO = which_MO;
+                //     int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
+                //     renderOrbital( iHOMO + which_MO ); break;
+                // }break;
+
+                case SDLK_h:{
+                    bViewHBondCharges  ^= 1;
+                    //printf( "view Hydrogen Bonds \n" );
                 }break;
                 
                 //case SDLK_o: W->optimizeLattice_1d( 10,40, Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  } ); break;
@@ -2416,7 +2451,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_SPACE: 
                     bRunRelax=!bRunRelax;  
 
-                    if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
+                    //if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
 
                     // printf( "bRunRelax %i \n", bRunRelax );
                     if(bRunRelax)W->setConstrains();                  

@@ -64,9 +64,18 @@
     funcs["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs["-group"]={2,[&](const char** ss){  }};
     
+
+    funcs2["-c"]={1,[&](const char** ss){ 
+        printf( "MolGUIapp_argv.h :: [-c] `%s`\n", ss[0] );
+        int ic=-1; Quat4d k=Quat4d{W->Kfix,W->Kfix,W->Kfix,0};  
+        int nret = sscanf( ss[0], "%i,%lf,%lf,%lf", &ic, &k.x,&k.y,&k.z ); 
+        if(nret==2){ k.y=k.x; k.z=k.x; }; 
+        W->ffl.constr [ic].w=1; 
+        W->ffl.constrK[ic]=k;
+        }}; //
     funcs2["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs2["-group"]={2,[&](const char** ss){  
-        printf( "MolGUIapp_argv.h :: GROUPS: \n" );
+        printf( "MolGUIapp_argv.h :: [-group] \n" );
         W->bGroups = true;
         //int ig;               sscanf(ss[0], "%i", &ig);
         int i0;Vec2i ifw,iup; sscanf(ss[0], "%i,%i,%i,%i,%i", &ifw.x,&ifw.y,&iup.x,&iup.y, &i0);  printf( "MolGUIapp_argv.h::GROUPS ifw(%i,%i),iup(%i,%i) i0=%i \n", ifw.x,ifw.y,  iup.x,iup.y, i0 );
