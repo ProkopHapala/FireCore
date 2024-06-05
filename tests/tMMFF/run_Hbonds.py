@@ -39,7 +39,7 @@ rs = np.linspace(1.5,20.0, 100 )
 nb = mmff.findHbonds( Rcut=4.0, angMax=30.0 );
 for ib in range( nb ):
     c = clrs[ib]
-    Es,Fs,s = mmff.sampleHbond( ib, rs                       );    plt.plot( rs, Es - Es[-1], c=c, ls='-',  label="Hb #"+str(ib)         )
+    Es,Fs,s = mmff.sampleHbond( ib, rs                   , kind=2, dcomp=3.0 );    plt.plot( rs, Es - Es[-1], c=c, ls='-',  label="Hb #"+str(ib) + s         )
     #Es,Fs,s = mmff.sampleHbond( ib, rs,           maskH=0.0  );    plt.plot( rs, Es - Es[-1], c=c, ls='--', label="Hb #"+str(ib)+" noHb" )
     #Es,Fs,s = mmff.sampleHbond( ib, rs, maskQ=0.0            );    plt.plot( rs, Es - Es[-1], c=c, ls='-',  label="Hb #"+str(ib)+" noQ |"+s  )
     #Es,Fs,s = mmff.sampleHbond( ib, rs, maskQ=0.0, maskH=0.0 );    plt.plot( rs, Es - Es[-1], c=c, ls=':',  label="Hb #"+str(ib)+" noQ |"+s  )

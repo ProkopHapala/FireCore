@@ -367,15 +367,15 @@ def findHbonds( Rcut=4.0, Hcut=0.0001, angMax=30.0 ):
     return lib.findHbonds( Rcut, Hcut, angMax )
 
 #  int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, Vec2d mask, double K, double Rdamp ){
-lib.sampleHbond.argtypes  = [c_int,c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_char_p ] 
+lib.sampleHbond.argtypes  = [c_int,c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_double, c_char_p ] 
 lib.sampleHbond.restype   =  c_int
-def sampleHbond( ib, rs, Es=None, Fs=None, kind=1, maskQ=1.0, maskH=1.0, K=-1.0, Rdamp=1.0 ):
+def sampleHbond( ib, rs, Es=None, Fs=None, kind=1, maskQ=1.0, maskH=1.0, K=-1.0, Rdamp=1.0, dcomp=1.0 ):
     n =len(rs)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
     rs  =np.array(rs)
     s = ctypes.create_string_buffer(1024)
-    lib.sampleHbond(ib, n, rs, Es, Fs, kind, maskQ, maskH, K, Rdamp, s )
+    lib.sampleHbond(ib, n, rs, Es, Fs, kind, maskQ, maskH, K, Rdamp, dcomp, s )
     s = s.value.decode('utf-8')
     return Es,Fs,s
 
