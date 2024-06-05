@@ -61,6 +61,11 @@ struct SplineConstr{ // HermiteCubic Spline
         Quat4d c = *(Quat4d*)(Eps+i);
         Spline_Hermite::valdval( du, E, f, c.y, c.z, (c.z-c.x)*0.5, (c.w-c.y)*0.5 );
 
+        // https://en.wikipedia.org/wiki/Cubic_Hermite_spline
+        //f1 = ( Eps[i+2]-Eps[i  ] )*0.5;
+        //f2 = ( Eps[i+3]-Eps[i+1] )*0.5;
+        //Spline_Hermite::valdval( du, E, f, Eps[i],  Eps[i+1], f1, f2 );
+
         d.mul(f*inv_dx/l);
         fs[ias.b].sub(d);
         fs[ias.a].add(d);

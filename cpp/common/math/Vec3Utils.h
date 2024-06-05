@@ -13,7 +13,7 @@ static inline T getCOG( int n, const Vec3T<T>* vs, const T* ws, Vec3T<T>& cog ){
     cog.set(0.0);
     T wsum=0;
     for(int i=0; i<n; i++){ T w=ws[i]; wsum+=w; cog.add_mul(vs[i],w); }
-    cog.mul( wsum );
+    cog.mul( 1/wsum );
     return wsum;
 }
 

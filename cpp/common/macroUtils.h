@@ -128,7 +128,19 @@ _inline_T bool _bindOrRealloc(int n, T* from, T*& arr ){ if(from){ arr=from; ret
 
 _inline_T void _realloc0(T*& arr, int n, const T& v0){  _realloc(arr,n); for(int i=0;i<n;i++){ arr[i]=v0; } }
 
-_inline_T T* _allocPointer( T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; }; 
+_inline_T T* _allocPointer( T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; };
+
+_inline_T T* _reallocPointer(T**& pp, int n)
+{
+    if (pp)
+    {
+        if ((*pp))  
+            delete[] (*pp);
+        (*pp) = new T[n];
+        return (*pp);
+    }
+    return 0;
+}
 
 _inline_T  bool _clone( int i0, int imax, T* from, T*& arr, int n){
     bool ret = _allocIfNull(arr,n);
