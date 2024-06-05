@@ -13,7 +13,9 @@ from pyBall import MMFF as mmff
 
 nmaxiter = 10000
 #xyz_name = "butandiol-2"
-xyz_name = "polymer-2_new-OH"
+#xyz_name = "polymer-2_new-OH"
+xyz_name = "formic_dimer"
+
 
 
 ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Mithun/HBond_Fit_Radial_Scans/energy_angle_0/"

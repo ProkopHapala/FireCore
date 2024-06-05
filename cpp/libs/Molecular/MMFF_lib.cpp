@@ -193,7 +193,7 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
 
 int findHbonds( double Rcut, double Hcut, double angMax ){
     W.Hbonds.clear();
-    W.findHbonds_PBC( Rcut, Hcut, angMax );
+    W.findHbonds_PBC( Rcut, Hcut, angMax*deg2rad );
     return W.Hbonds.size();
 }
 

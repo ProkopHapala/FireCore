@@ -55,10 +55,15 @@ fi
 #./$name -x common_resources/HCOOH         -iParalel 0
 #./$name -x common_resources/HCOOH     -e  -iParalel 0
 
+#./$name -x common_resources/HCOOH     -e  -iParalel 0
+
+
 #./$name -x common_resources/HCOOH_xy  -e  -iParalel 0
 #./$name -x common_resources/CH2O      -e  -iParalel 0
 
 #./$name -x common_resources/formic_dimer
+./$name -x common_resources/formic_dimer -e -iParalel 0
+
 #./$name -x common_resources/pyridine -lua script.lua
 #./$name -x common_resources/propandiol
 #./$name -x common_resources/butandiol
@@ -177,7 +182,7 @@ fi
 
 
 #./$name  -x common_resources/polymer-2_new-OH  -Ftol 1e-4 -iParalel 0 -perframe 1
-./$name -verb 2 -e -x common_resources/polymer-2_new-OH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
+#./$name -verb 2 -e -x common_resources/polymer-2_new-OH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
 #./$name  -x common_resources/polymer-2_new-COOH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
 
 
