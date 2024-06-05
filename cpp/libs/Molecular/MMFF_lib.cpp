@@ -197,7 +197,7 @@ int findHbonds( double Rcut, double Hcut, double angMax ){
     return W.Hbonds.size();
 }
 
-int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, double maskQ, double maskH, double K, double Rdamp, char* s ){
+int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, double maskQ, double maskH, double K, double Rdamp, double dcomp, char* s ){
     int nb = W.Hbonds.size();
     if( (ib<0) || (ib>nb)){  return nb;}
     Vec3i b = W.Hbonds[ib];
@@ -212,12 +212,20 @@ int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, do
     Vec3d pi=Vec3dZero;
     Vec3d pj=Vec3dZero;
     double R2damp=Rdamp*Rdamp;
+    Vec3d d{dcomp,0.0,0.0};
     for(int i=0; i<n; i++){
         double E;
         Vec3d  f=Vec3dZero;
         pj.x=rs[i];
         switch(kind){
-            case 1: E = getLJQH( pj-pi, f, REQij, R2damp );
+            case 1:{ E = getLJQH( pj-pi, f, REQij, R2damp ); } break;
+            case 2:{ 
+                Vec3d fi=Vec3dZero;
+                E  = getLJQH( pj-pi    , fi, REQij                       , R2damp );  f.add(fi);
+                E += getLJQH( pj-pi+d  , fi, Quat4d{1.0,0.0,-REQij.z,0.0}, R2damp );  f.add(fi);
+                E += getLJQH( pj-pi+d  , fi, Quat4d{1.0,0.0,-REQij.z,0.0}, R2damp );  f.add(fi);
+                E += getLJQH( pj-pi+d+d, fi, Quat4d{1.0,0.0, REQij.z,0.0}, R2damp );  f.add(fi);
+                } break;
             //case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K, R2damp ); break;  // Morse
             //case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                                break;  // Lenard Jones
             //case 3: double fr; E=erfx_e6( pj.x, K, fr ); f.x=fr; break;  // gauss damped electrostatics
