@@ -116,6 +116,8 @@ class AtomType{ public:
         if(bParams)printf( "REQH(%g,%g,%g,%g) MMFF(%g,%g,%g,%g,%g,%g)", RvdW,EvdW,Qbase,Hb,  Ass,Asp, Kss,Ksp,Kep,Kpp ); 
         printf( "\n"  ); 
     }
+
+    Quat4d assignREQH()const{ return Quat4d{ RvdW, sqrt(EvdW), Qbase, Hb }; }
 };
 
 
@@ -494,6 +496,7 @@ class MMFFparams{ public:
         }
         return found->second;  // should we rather return pointer? 
     }
+    inline const ElementType*  getElementTypeObj(const char* s, bool bErr=true)const{  return &etypes[getElementType(s,bErr)]; };
 
     int getAtomType(const char* s, bool bErr=true)const{
         //printf( "getAtomType(%s) bErr=%i \n", s, bErr );
@@ -504,6 +507,8 @@ class MMFFparams{ public:
         }
         return found->second; // should we rather return pointer?
     }
+    inline const AtomType* getAtomTypeObj(const char* s, bool bErr=true)const{ return &atypes[getAtomType(s,bErr)];  }
+
 
     inline const ElementType* elementOfAtomType( int it )const{ return &etypes[atypes[it].element]; }
 

@@ -379,6 +379,18 @@ def sampleHbond( ib, rs, Es=None, Fs=None, kind=1, maskQ=1.0, maskH=1.0, K=-1.0,
     s = s.value.decode('utf-8')
     return Es,Fs,s
 
+#void sampleNonBondTypes( int n, double* rs, double* Es, double* fs, int kind, double qH, double qX, double K, double Rdamp, double dcomp, char* type_str ){
+lib.sampleNonBondTypes.argtypes  = [ c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_double, c_char_p ] 
+lib.sampleNonBondTypes.restype   =  c_int
+def sampleNonBondTypes( type_str, rs, Es=None, Fs=None, kind=1, qH=1.0, qX=1.0, K=-1.0, Rdamp=1.0, dcomp=1.0 ):
+    n =len(rs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    rs  =np.array(rs)
+    s = type_str.encode('utf8')
+    lib.sampleNonBondTypes( n, rs, Es, Fs, kind, qH, qX, K, Rdamp, dcomp, s )
+    return Es,Fs
+
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
 lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
 lib.sampleSurf.restype   =  None
