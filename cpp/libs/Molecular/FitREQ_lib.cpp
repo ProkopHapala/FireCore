@@ -95,8 +95,9 @@ double run( int imodel,  int nstep, double Fmax, double dt, int ialg, int isampm
         if(bRegularize){ W.regularization_force(); }
         if(bClamp     ){ W.limit_params();         }
         //printf("step= %i dt= %g\n", i, dt );
-        printf("step= %i RMSE= %g |F|= %g\n", i, sqrt(Err), sqrt(F2) );
+        printf("step= %i RMSE= %g |F|= %g\n", i, sqrt(Err), sqrt(abs(F2)) );
         printf("[%i]\n", i );
+        if( F2<0.0 ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n"); return Err; }
         if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n"); return Err; }
     }
     printf("step= %i DOFs= ", nstep);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");

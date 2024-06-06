@@ -406,8 +406,14 @@ double evalDerivsSamp( double* Eout=0 ){
             case 0: E = evalExampleDerivs_LJQ          (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
             case 1: E = evalExampleDerivs_LJQH         (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break; 
             case 2: E = evalExampleDerivs_LJQH2        (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
-            case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, nj, jtyp, jpos ); break;
-            case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos, nj, jtyp, jpos ); break;
+            case 3: E = evalExampleDerivs_BuckQ        (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
+            case 4: E = evalExampleDerivs_BuckQH       (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
+            case 5: E = evalExampleDerivs_BuckQH2      (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
+            case 6: E = evalExampleDerivs_MorseQ       (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
+            case 7: E = evalExampleDerivs_MorseQH      (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
+            case 8: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, aq, nj, jtyp, jpos, jq ); break;
+            //case 3: E = evalExampleDerivs_MorseQH2     (na, atypes, apos, nj, jtyp, jpos ); break;
+            //case 4: E = evalExampleDerivs_BuckinghamQH2(na, atypes, apos, nj, jtyp, jpos ); break;
         }
         //for(int i=0; i<atoms->natoms; i++){ int ti=jtyp[i]; Quat4d fsi=fs[i]; printf( "debug i=%i type=%i dE_dR0=%g dE_deps=%g dE_dQ=%g dE_dH=%g\n", i, ti, fsi.x,fsi.y,fsi.z,fsi.w); }
         //exit(0);
@@ -483,7 +489,6 @@ double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0
             double R0  = REQi.x + REQj.x; 
             double eps = sqrt( REQi.y * REQj.y );
             double Q   = aq[i] * jq[j]; 
-//double Q=0.0;            
             // --- Electrostatic
             double ir2     = 1.0 / ( d.norm2() );
             double ir      = sqrt( ir2 );
@@ -493,16 +498,17 @@ double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0
             double u2   = ir2 * ( R0 * R0 );
             double u4   = u2 * u2;
             double u6   = u4 * u2;
+            double dE_dR0 = 12.0 * eps / (R0+1e-300) * u6 * ( u6 - 1.0 );
             double dE_deps = u6 * ( u6 - 2.0 );
             double ELJ   = eps * dE_deps;
             // --- Energy and forces
             Etot  += ELJ + Eel;
-            fsi.x += 12.0 * eps / (R0+1e-300) * u6 * ( u6 - 1.0 ); // dEtot/dR0i
-            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y;        // dEtot/depsi
-            fsi.z += dE_dQ * jq[j];                                // dEtot/dQi
-            fsj.x = 12.0 * eps / (R0+1e-300) * u6 * ( u6 - 1.0 );  // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;         // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                                 // dEtot/dQj
+            fsi.x += dE_dR0;                                // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsj.x = dE_dR0;                                // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -585,13 +591,8 @@ double evalExampleDerivs_LJQH( int n, int* types, Vec3d* ps, double* aq, int nj=
  * @return The total energy of the system.
  */
 double evalExampleDerivs_LJQH2( int n, int* types, Vec3d* ps, double* aq, int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0 ){
-    if( jpos==0 ){   
-        nj   =system0->natoms;
-        jtyp =system0->atypes;
-        jpos =system0->apos;
-    }
     double Etot=0;
-    printf( "evalExampleDerivs_LJQH2 (n=%i,nj=%i)\n", n,nj );
+    //printf( "evalExampleDerivs_LJQH2 (n=%i,nj=%i)\n", n,nj );
     for(int i=0; i<n; i++){ // loop over all atoms[i] in system
         int   ti           = types[i];
         const Vec3d&  pi   = ps[i]; 
@@ -599,34 +600,42 @@ double evalExampleDerivs_LJQH2( int n, int* types, Vec3d* ps, double* aq, int nj
         Quat4d fsi         = Quat4dZero;
         for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
             int tj              = jtyp[j];
-            const Quat4d& REQj  = typeREQs[tj]; //const Quat4d& REQj = REQ0[j]; // optimization
+            const Quat4d& REQj  = typeREQs[tj];
             Vec3d d             = jpos[j] - pi;
-            double R0  = REQi.x+REQj.x; //double R  = REQi.x+REQj.x; // old line
-            double eps = sqrt(REQi.y*REQj.y); //double E0 = REQi.y*REQj.y; // old line
-            double Q  = aq[i]*jq[j]; // charges from xyz //double Q  = REQi.z*REQj.z; // charges from types
-            double H  = fmax(0.0,-REQi.w*REQj.w); //double H  = REQi.w*REQj.w; // old line
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x;
+            double eps = sqrt( REQi.y * REQj.y );
+            double Q  = aq[i] * jq[j];
+            double H  = fmax( 0.0, -REQi.w * REQj.w );
             // --- Electrostatic
-            double ir2     = 1/( d.norm2() );
-            double ir      = sqrt(ir2);
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
             double dE_dQ   = ir * COULOMB_CONST;
-            double Eel     = Q*dE_dQ;
+            double Eel     = Q * dE_dQ;
             // --- Lennard-Jones
-            double u2   = ir2*(R0*R0); //double u2   = ir2*(R*R); // old line
-            double u4   = u2*u2;
-            double u6   = u4*u2;
-            double dE_dR0  = 12/R0*u6*((eps-H)*u6-eps); //double dE_dR = E0*12*ir*( u6*u4 - u4 ); // old line
-            double dE_deps = u6*(u6-2); //double dE_dE = u6   *( u6 - 2 ); // old line
-            double dE_dH   = -u6*u6; //double dE_dH = u6*u6; // old line
-            double ELJ     = eps*dE_deps + H*dE_dH; //double ELJ   = E0*dE_dE + H*dE_dH; // old line
+            double u2   = ir2 * ( R0 * R0 );
+            double u4   = u2 * u2;
+            double u6   = u4 * u2;
+            double dE_dR0  = 12.0 / (R0+1e-300) * u6 * ( ( eps - H) * u6 - eps );
+            double dE_deps = u6 * ( u6 - 2.0 );
+            double dE_dH   = -u6 * u6;
+            double ELJ     = eps * dE_deps + H * dE_dH;
             // --- Energy and forces
             Etot  += ELJ + Eel;
-            fsi.x -= dE_dR0;                 // dEtot/dRi //fsi.x += dE_dR;        // old line
-            fsi.y -= dE_deps*0.5/eps*REQj.y; // dEtot/dEi //fsi.y += dE_dE*REQj.y; // old line
-            fsi.z -= dE_dQ*jq[j];            // dEtot/dQi //fsi.z += dE_dQ*REQj.z; // old line
-            fsi.w -= dE_dH*H/REQi.w;         // dEtot/dHi //fsi.w += dE_dH*REQj.w; // old line
+            fsi.x += dE_dR0;                                // dEtot/dRi
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/dEi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
+            fsj.x = dE_dR0;                                // dEtot/dRj
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/dEj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fs[j].add(fsj);
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
-        fs[i].add(fsi);
+        fs[nj+i].add(fsi);
     }
+//printf( "Etot= %g\n", Etot );exit(0);    
     return Etot;
 }
 
@@ -639,87 +648,7 @@ double evalExampleDerivs_LJQH2( int n, int* types, Vec3d* ps, double* aq, int nj
  * 
  * @return The total energy of the system.
  */
-double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps,   int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
-    //printf( "evalExampleDerivs_MorseQH2() \n" );
-    if( jpos==0 ){   
-        nj   =system0->natoms;
-        jtyp =system0->atypes;
-        jpos =system0->apos;
-    }
-    double Etot=0;
-    double Qtot=0;
-    printf( "evalExampleDerivs_MorseQH2(sys:n=%i,sys0:nj=%i ) \n", n,nj );
-
-    double Rfac2 = Rfac_tooClose*Rfac_tooClose;
-    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
-        int   ti          = types[i];
-        const Vec3d&  pi   = ps[i]; 
-        const Quat4d& REQi = typeREQs[ti];
-        Quat4d fsi         = Quat4dZero;
-        Qtot+=REQi.z;
-        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
-            int tj              = jtyp[j];
-            const Quat4d& REQj  = typeREQs[tj];
-            //const Quat4d& REQj = REQ0[j]; // optimization
-            Vec3d d             = jpos[j] - pi;
-            double R  = REQi.x+REQj.x;
-            double E0 = REQi.y*REQj.y;
-            double Q  = REQi.z*REQj.z;
-            double H  = REQi.w*REQj.w;
-
-            double r2 = d.norm2();
-            if( r2 < (R*R*Rfac2) ){ 
-                if(verbosity>0) printf( "L{s%i,%i}=%4.2f(<%2.1f*%4.2f(=%4.2f+%4.2f) => skip", j,i, sqrt(r2), Rfac_tooClose, R, REQj.x, REQi.x );
-                return 1.1e+300; 
-            }
-
-            if(H>0) H=0;
-
-            //printf( "H %g REQi.w %g REQj.w %g \n", H, REQi.w, REQj.w );
-
-            // --- Buckingham
-            double r = sqrt(r2);
-            double e = exp( (R-r) * kMorse );
-
-            // --- Eectrostatic
-            //double ir2     = 1/( d.norm2() + 1e-4 );
-            //double ir2     = 1/( r2 );
-            double ir      = 1/r;
-            double dE_dQ   = ir * COULOMB_CONST;
-
-            double dE_dE = e*(e - 2);
-            double dE_dH = e*e;
-            double dE_dR = H*e*kMorse - E0*(e - 2)*kMorse;
-
-            //Etot  += dE_dE*E0 + dE_dH*H + dE_dQ*Q;
-            Etot  += (E0+H)*e*e - E0*2*e + dE_dQ*Q;
-            //Etot  += e*e - 2*e;
-
-            //Etot  += exp( (R-r) * kMorse );
-
-            printf( "ij[%i=%i,%i=%i] EH %g EPaul %g EvdW %g Eel %g REQij(%6.3f,%10.7f,%6.3f,%6.3f) \n", i,ti, j,tj,  H*e*e, E0*e*e, - E0*2*e, dE_dQ*Q,  R,E0,Q,H  );
-
-            fsi.x += dE_dR;        // dEtot/dRi
-            fsi.y += dE_dE*REQj.y; // dEtot/dEi
-            fsi.z += dE_dQ*REQj.z; // dEtot/dQi
-            fsi.w += dE_dH*REQj.w; // dEtot/dHi
-        }
-        fs[i].add(fsi);
-    }
-
-    return Etot;
-}
-
-/**
- * Calculates the total energy and forces of a system of atoms interacting through the Lennard-Jones potential, electrostatic interactions and hydrogen bond correction H2.
- * 
- * @param n The number of atoms in the system.
- * @param types An array of integers representing the type of each atom.
- * @param ps An array of Vec3d representing the position of each atom
- * 
- * @return The total energy of the system.
- */
-double evalExampleDerivs_BuckinghamQH2(int n, int* types, Vec3d* ps,  int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
+/*double evalExampleDerivs_BuckinghamQH2(int n, int* types, Vec3d* ps,  int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
     if( jpos==0 ){   
         nj   =system0->natoms;
         jtyp =system0->atypes;
@@ -801,6 +730,447 @@ double evalExampleDerivs_BuckinghamQH2(int n, int* types, Vec3d* ps,  int nj=0, 
         fs[i].add(fsi);
     }
 
+    return Etot;
+}*/
+
+// TBD to be tested!
+double evalExampleDerivs_BuckQ(int n, int* types, Vec3d* ps, double* aq,  int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
+    // the Buckingham potential can be written in the form:
+    // E = epsilon * { 6/(alpha-6) * exp[alpha*(1-r/R0)] - alpha/(alpha-6) * (R0/r)^6 }
+    // alpha is a free parameter; it can be chosen such as:
+    // - alpha = 12, which corresponds to the same dispersion part of the LJ potential
+    // - alpha = 19/2 + sqrt(73)/2, which corresponds to the same curvature at the minimum of the LJ potential
+    // - alpha is fitted to reference data (not implemented yet)
+    double alpha = 12.0; 
+    //double alpha = 19.0/2.0 + sqrt(73.0)/2.0;
+    double ia6 = 1.0 / ( alpha - 6.0 );
+    double Etot=0;
+    //printf( "evalExampleDerivs_BuckQ (n=%i,nj=%i)\n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti           = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            Vec3d d             = jpos[j] - pi;
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x;
+            double eps = sqrt( REQi.y * REQj.y );
+            double Q   = aq[i] * jq[j];
+            // --- Electrostatic
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
+            double dE_dQ   = ir * COULOMB_CONST;
+            double Eel     = Q * dE_dQ;
+            // --- Lennard-Jones
+            double u1   = ir * R0;
+            double u2   = u1 * u1;
+            double u4   = u2 * u2;
+            double u6   = u4 * u2;
+            // --- Buckingham
+            double iu1 = 1.0 / u1;
+            double e = exp( alpha * ( 1.0 - iu1 ) );
+            double dE_dR0 = 6.0 * eps / (R0+1e-300) * ( ia6 * iu1 * e - alpha * ia6 * u6 );
+            double dE_deps = 6.0 * ia6 * e - alpha * ia6 * u6;
+            double EBuck   = eps * dE_deps;
+            // --- Energy and forces
+            Etot  += EBuck + Eel;
+            fsi.x += dE_dR0;                                // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsj.x = dE_dR0;                                // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fs[j].add(fsj);
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
+        }
+        fs[nj+i].add(fsi);
+    }
+//printf( "Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+// TBD to be tested!
+double evalExampleDerivs_BuckQH(int n, int* types, Vec3d* ps, double* aq,  int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
+    // the Buckingham potential can be written in the form:
+    // E = epsilon * { 6/(alpha-6) * exp[alpha*(1-r/R0)] - alpha/(alpha-6) * (R0/r)^6 }
+    // alpha is a free parameter; it can be chosen such as:
+    // - alpha = 12, which corresponds to the same dispersion part of the LJ potential
+    // - alpha = 19/2 + sqrt(73)/2, which corresponds to the same curvature at the minimum of the LJ potential
+    // - alpha is fitted to reference data (not implemented yet)
+    double alpha = 12.0; 
+    //double alpha = 19.0/2.0 + sqrt(73.0)/2.0;
+    double ia6 = 1.0 / ( alpha - 6.0 );
+    double Etot=0;
+    //printf( "evalExampleDerivs_BuckQH (n=%i,nj=%i)\n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti           = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            Vec3d d             = jpos[j] - pi;
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x;
+            double eps = sqrt( REQi.y * REQj.y );
+            double Q  = aq[i] * jq[j];
+            double H  = fmax( 0.0, -REQi.w * REQj.w );
+            // --- Electrostatic
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
+            double dE_dQ   = ir * COULOMB_CONST;
+            double Eel     = Q * dE_dQ;
+            // --- Lennard-Jones
+            double u1   = ir * R0;
+            double u2   = u1 * u1;
+            double u4   = u2 * u2;
+            double u6   = u4 * u2;
+            // --- Buckingham
+            double iu1 = 1.0 / u1;
+            double e = exp( alpha * ( 1.0 - iu1 ) );
+            double dE_dR0 = 6.0 * alpha * ia6 / (R0+1e-300) * ( eps * iu1 * e - ( eps + H ) * u6 );
+            double dE_deps = 6.0 * ia6 * e - alpha * ia6 * u6;
+            double dE_dH   = -alpha * ia6 * u6;
+            double EBuck   = eps * dE_deps + H * dE_dH;
+            // --- Energy and forces
+            Etot  += EBuck + Eel;
+            fsi.x += dE_dR0;                                // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
+            fsj.x = dE_dR0;                                // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fs[j].add(fsj);
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
+        }
+        fs[nj+i].add(fsi);
+    }
+//printf( "Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+// TBD to be tested!
+double evalExampleDerivs_BuckQH2(int n, int* types, Vec3d* ps, double* aq,  int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
+    // the Buckingham potential can be written in the form:
+    // E = epsilon * { 6/(alpha-6) * exp[alpha*(1-r/R0)] - alpha/(alpha-6) * (R0/r)^6 }
+    // alpha is a free parameter; it can be chosen such as:
+    // - alpha = 12, which corresponds to the same dispersion part of the LJ potential
+    // - alpha = 19/2 + sqrt(73)/2, which corresponds to the same curvature at the minimum of the LJ potential
+    // - alpha is fitted to reference data (not implemented yet)
+    double alpha = 12.0; 
+    //double alpha = 19.0/2.0 + sqrt(73.0)/2.0;
+    double ia6 = 1.0 / ( alpha - 6.0 );
+    double Etot=0;
+    //printf( "evalExampleDerivs_BuckQH2 (n=%i,nj=%i)\n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti           = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            Vec3d d             = jpos[j] - pi;
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x;
+            double eps = sqrt( REQi.y * REQj.y );
+            double Q  = aq[i] * jq[j];
+            double H  = fmax( 0.0, -REQi.w * REQj.w );
+            // --- Electrostatic
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
+            double dE_dQ   = ir * COULOMB_CONST;
+            double Eel     = Q * dE_dQ;
+            // --- Lennard-Jones
+            double u1   = ir * R0;
+            double u2   = u1 * u1;
+            double u4   = u2 * u2;
+            double u6   = u4 * u2;
+            // --- Buckingham
+            double iu1 = 1.0 / u1;
+            double e = exp( alpha * ( 1.0 - iu1 ) );
+            double dE_dR0 = 6.0 * alpha * ia6 / (R0+1e-300) * ( ( eps - H ) * iu1 * e - eps * u6 );
+            double dE_deps = 6.0 * ia6 * e - alpha * ia6 * u6;
+            double dE_dH   = -6.0 * ia6 * e;
+            double EBuck   = eps * dE_deps + H * dE_dH;
+            // --- Energy and forces
+            Etot  += EBuck + Eel;
+            fsi.x += dE_dR0;                                // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
+            fsj.x = dE_dR0;                                // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fs[j].add(fsj);
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
+        }
+        fs[nj+i].add(fsi);
+    }
+//printf( "Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+/**
+ * Calculates the total energy and forces of a system of atoms interacting through the Lennard-Jones potential, electrostatic interactions and hydrogen bond correction H2.
+ * 
+ * @param n The number of atoms in the system.
+ * @param types An array of integers representing the type of each atom.
+ * @param ps An array of Vec3d representing the position of each atom
+ * 
+ * @return The total energy of the system.
+ */
+/*double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps,   int nj=0, int* jtyp=0, Vec3d* jpos=0  ){
+    //printf( "evalExampleDerivs_MorseQH2() \n" );
+    if( jpos==0 ){   
+        nj   =system0->natoms;
+        jtyp =system0->atypes;
+        jpos =system0->apos;
+    }
+    double Etot=0;
+    double Qtot=0;
+    printf( "evalExampleDerivs_MorseQH2(sys:n=%i,sys0:nj=%i ) \n", n,nj );
+
+    double Rfac2 = Rfac_tooClose*Rfac_tooClose;
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti          = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        Qtot+=REQi.z;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            //const Quat4d& REQj = REQ0[j]; // optimization
+            Vec3d d             = jpos[j] - pi;
+            double R  = REQi.x+REQj.x;
+            double E0 = REQi.y*REQj.y;
+            double Q  = REQi.z*REQj.z;
+            double H  = REQi.w*REQj.w;
+
+            double r2 = d.norm2();
+            if( r2 < (R*R*Rfac2) ){ 
+                if(verbosity>0) printf( "L{s%i,%i}=%4.2f(<%2.1f*%4.2f(=%4.2f+%4.2f) => skip", j,i, sqrt(r2), Rfac_tooClose, R, REQj.x, REQi.x );
+                return 1.1e+300; 
+            }
+
+            if(H>0) H=0;
+
+            //printf( "H %g REQi.w %g REQj.w %g \n", H, REQi.w, REQj.w );
+
+            // --- Buckingham
+            double r = sqrt(r2);
+            double e = exp( (R-r) * kMorse );
+
+            // --- Eectrostatic
+            //double ir2     = 1/( d.norm2() + 1e-4 );
+            //double ir2     = 1/( r2 );
+            double ir      = 1/r;
+            double dE_dQ   = ir * COULOMB_CONST;
+
+            double dE_dE = e*(e - 2);
+            double dE_dH = e*e;
+            double dE_dR = H*e*kMorse - E0*(e - 2)*kMorse;
+
+            //Etot  += dE_dE*E0 + dE_dH*H + dE_dQ*Q;
+            Etot  += (E0+H)*e*e - E0*2*e + dE_dQ*Q;
+            //Etot  += e*e - 2*e;
+
+            //Etot  += exp( (R-r) * kMorse );
+
+            printf( "ij[%i=%i,%i=%i] EH %g EPaul %g EvdW %g Eel %g REQij(%6.3f,%10.7f,%6.3f,%6.3f) \n", i,ti, j,tj,  H*e*e, E0*e*e, - E0*2*e, dE_dQ*Q,  R,E0,Q,H  );
+
+            fsi.x += dE_dR;        // dEtot/dRi
+            fsi.y += dE_dE*REQj.y; // dEtot/dEi
+            fsi.z += dE_dQ*REQj.z; // dEtot/dQi
+            fsi.w += dE_dH*REQj.w; // dEtot/dHi
+        }
+        fs[i].add(fsi);
+    }
+
+    return Etot;
+}*/
+
+// TBD to be tested!
+double evalExampleDerivs_MorseQ(int n, int* types, Vec3d* ps, double* aq,   int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
+    // the Morse potential can be written in the form:
+    // E = epsilon * { exp[-2*alpha*(r-R0)] - 2 * exp[-alpha*(r-R0)] }
+    // so that it goes to zero as r goes to infinity
+    // alpha is a free parameter; it can be chosen such as:
+    // - alpha = 6/R0, which corresponds to the same curvature at the minimum of the LJ potential
+    // - have the dispersion part as close as possible to LJ (not derived yet)
+    // - alpha is fitted to reference data (not implemented yet)
+    double Etot=0;
+    //printf( "evalExampleDerivs_MorseQ (n=%i,nj=%i)\n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti           = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            Vec3d d             = jpos[j] - pi;
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x;
+            double eps = sqrt( REQi.y * REQj.y );
+            double Q  = aq[i] * jq[j];
+            // --- Electrostatic
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
+            double dE_dQ   = ir * COULOMB_CONST;
+            double Eel     = Q * dE_dQ;
+            // --- Morse
+            double alpha = 6.0 / R0;
+            double r     = 1.0 / ir;
+            double e = exp( -alpha * ( r - R0 ) );
+            double e2 = e * e;
+            double dE_dR0 = 2.0 * alpha * eps * ( e2 - e );
+            double dE_deps = e2 - 2.0 * e;
+            double EMorse  = eps * dE_deps;
+            // --- Energy and forces
+            Etot  += EMorse + Eel;
+            fsi.x += dE_dR0;                                // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsj.x = dE_dR0;                                // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fs[j].add(fsj);
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
+        }
+        fs[nj+i].add(fsi);
+    }
+//printf( "Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+double evalExampleDerivs_MorseQH(int n, int* types, Vec3d* ps, double* aq,   int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
+    // the Morse potential can be written in the form:
+    // E = epsilon * { exp[-2*alpha*(r-R0)] - 2 * exp[-alpha*(r-R0)] }
+    // so that it goes to zero as r goes to infinity
+    // alpha is a free parameter; it can be chosen such as:
+    // - alpha = 6/R0, which corresponds to the same curvature at the minimum of the LJ potential
+    // - have the dispersion part as close as possible to LJ (not derived yet)
+    // - alpha is fitted to reference data (not implemented yet)
+    double Etot=0;
+    //printf( "evalExampleDerivs_MorseQH (n=%i,nj=%i)\n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti           = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            Vec3d d             = jpos[j] - pi;
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x;
+            double eps = sqrt( REQi.y * REQj.y );
+            double Q  = aq[i] * jq[j];
+            double H  = fmax( 0.0, -REQi.w * REQj.w );
+            // --- Electrostatic
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
+            double dE_dQ   = ir * COULOMB_CONST;
+            double Eel     = Q * dE_dQ;
+            // --- Lennard-Jones
+            double u2   = ir2 * ( R0 * R0 );
+            double u4   = u2 * u2;
+            double u6   = u4 * u2;
+            // --- Morse
+            double alpha = 6.0 / R0;
+            double r     = 1.0 / ir;
+            double e = exp( -alpha * ( r - R0 ) );
+            double e2 = e * e;
+            double dE_dR0 = 2.0 * alpha * ( eps * e2 - ( eps + H ) * e );
+            double dE_deps = e2 - 2.0 * e;
+            double dE_dH   = -2.0 * e;
+            double EMorse  = eps * dE_deps + H * dE_dH;
+            // --- Energy and forces
+            Etot  += EMorse + Eel;
+            fsi.x += dE_dR0;                                // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
+            fsj.x = dE_dR0;                                // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fs[j].add(fsj);
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
+        }
+        fs[nj+i].add(fsi);
+    }
+//printf( "Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps, double* aq,   int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
+    // the Morse potential can be written in the form:
+    // E = epsilon * { exp[-2*alpha*(r-R0)] - 2 * exp[-alpha*(r-R0)] }
+    // so that it goes to zero as r goes to infinity
+    // alpha is a free parameter; it can be chosen such as:
+    // - alpha = 6/R0, which corresponds to the same curvature at the minimum of the LJ potential
+    // - have the dispersion part as close as possible to LJ (not derived yet)
+    // - alpha is fitted to reference data (not implemented yet)
+    double Etot=0;
+    //printf( "evalExampleDerivs_MorseQH2 (n=%i,nj=%i)\n", n,nj );
+    for(int i=0; i<n; i++){ // loop over all atoms[i] in system
+        int   ti           = types[i];
+        const Vec3d&  pi   = ps[i]; 
+        const Quat4d& REQi = typeREQs[ti];
+        Quat4d fsi         = Quat4dZero;
+        for(int j=0; j<nj; j++){ // loop over all atoms[j] in system0
+            int tj              = jtyp[j];
+            const Quat4d& REQj  = typeREQs[tj];
+            Vec3d d             = jpos[j] - pi;
+            Quat4d fsj;
+            double R0  = REQi.x + REQj.x;
+            double eps = sqrt( REQi.y * REQj.y );
+            double Q  = aq[i] * jq[j];
+            double H  = fmax( 0.0, -REQi.w * REQj.w );
+            // --- Electrostatic
+            double ir2     = 1.0 / ( d.norm2() );
+            double ir      = sqrt( ir2 );
+            double dE_dQ   = ir * COULOMB_CONST;
+            double Eel     = Q * dE_dQ;
+            // --- Lennard-Jones
+            double u2   = ir2 * ( R0 * R0 );
+            double u4   = u2 * u2;
+            double u6   = u4 * u2;
+            // --- Morse
+            double alpha = 6.0 / R0;
+            double r     = 1.0 / ir;
+            double e = exp( -alpha * ( r - R0 ) );
+            double e2 = e * e;
+            double dE_dR0 = 2.0 * alpha * ( ( eps - H ) * e2 - eps * e );
+            double dE_deps = e2 - 2.0 * e;
+            double dE_dH   = -e2;
+            double EMorse  = eps * dE_deps + H * dE_dH;
+            // --- Energy and forces
+            Etot  += EMorse + Eel;
+            fsi.x += dE_dR0;                                // dEtot/dR0i
+            fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
+            fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
+            fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
+            fsj.x = dE_dR0;                                // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fs[j].add(fsj);
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
+        }
+        fs[nj+i].add(fsi);
+    }
+//printf( "Etot= %g\n", Etot );exit(0);    
     return Etot;
 }
 
@@ -914,6 +1284,8 @@ double move_GD_BB( int step, double dt ){
         F2 += f*f;
     }
     printf("step= %i dt= %g\n", step, dt );
+    // stop the algorithm if the step is too small
+    if(dt<1e-10){ return -F2; }
     return F2;
 }
 
