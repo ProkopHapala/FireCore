@@ -288,6 +288,55 @@ void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*R
     }
 }
 
+void sampleNonBondTypes( int n, double* rs, double* Es, double* fs, int kind, double qH, double qX, double K, double Rdamp, double dcomp, char* type_str ){
+    char nameH[16];
+    char nameX[16];
+    sscanf( type_str, "%s %s", nameH, nameX );
+    //int iH = W.params.getAtomType( nameH );
+    //int iX = W.params.getAtomType( nameX );
+    const AtomType* tH = W.params.getAtomTypeObj( nameH );
+    const AtomType* tX = W.params.getAtomTypeObj( nameX );
+    int itE = tX->ePairType;
+    if( (itE<0)||(itE>W.params.atypes.size())){ printf("ERROR: type(%s).ePairType=%i => exit()\n", nameX, itE ); exit(0); };
+    const AtomType* tE = &W.params.atypes[ tX->ePairType ];
+    Quat4d REQi = tH->assignREQH();   REQi.z=qH;
+    Quat4d REQj = tX->assignREQH();   REQj.z=qX;
+    Quat4d REQe = tE->assignREQH();
+    Quat4d REQdi{ 1.0,0.0,-REQi.z, 0.0 };
+    Quat4d REQdj{ 1.0,0.0,-REQj.z, 0.0 };
+    REQj.z -= tE->Qbase;
+    double de = tE->Ruff;
+    printf( "REQ_H %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tH->name, REQi.x,REQi.y,REQi.z,REQi.w );
+    printf( "REQ_X %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tX->name, REQj.x,REQj.y,REQj.z,REQj.w );
+    printf( "REQ_E %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tE->name, REQe.x,REQe.y,REQe.z,REQe.w );
+    //sprintf( s, "%s[%i]-%s[%i] (%4.2f,%5.4f,%4.2f,%4.2f) (%4.2f,%5.4f,%4.2f,%4.2f)", W.params.atypes[ W.ffl.atypes[b.x]].name, b.x, W.params.atypes[ W.ffl.atypes[b.y]].name, b.y, REQi.x,REQi.y,REQi.z,REQi.w,  REQj.x,REQj.y,REQj.z,REQj.w  );
+    double R2damp=Rdamp*Rdamp;
+    Vec3d d{dcomp,0.0,0.0};
+    for(int i=0; i<n; i++){
+        double E = 0;
+        Vec3d  f = Vec3dZero;
+        double r = rs[i];
+        Quat4d REQ;
+        switch(kind){
+            case 1:{
+                Vec3d f_=Vec3dZero;
+                combineREQ( REQi, REQj,  REQ ); E += getLJQH( Vec3d{0.0,0.0,r         }, f_, REQ, R2damp );  f.add(f_);
+                combineREQ( REQi, REQdj, REQ ); E += getLJQH( Vec3d{0.0,0.0,r+dcomp   }, f_, REQ, R2damp );  f.add(f_);
+                combineREQ( REQj, REQdi, REQ ); E += getLJQH( Vec3d{0.0,0.0,r+dcomp   }, f_, REQ, R2damp );  f.add(f_);
+                combineREQ( REQdi,REQdj, REQ ); E += getLJQH( Vec3d{0.0,0.0,r+dcomp*2 }, f_, REQ, R2damp );  f.add(f_);
+
+                combineREQ( REQe, REQdi, REQ ); E += getLJQH( Vec3d{0.0,0.0,r+dcomp-de}, f_, REQ, R2damp );  f.add(f_);
+                combineREQ( REQe, REQi,  REQ ); E += getLJQH( Vec3d{0.0,0.0,r-de      }, f_, REQ, R2damp );  f.add(f_);
+
+                } break;
+        }
+        //printf( "i %i r %g E %g f %g \n", i, pj.x, E, f.x );
+        fs[i]=f.x;
+        Es[i]=E;
+    }
+    //return nb;
+}
+
 int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, bool bOnlyFirstNeigh, int* atoms_ ){
     W.builder.selectBondsBetweenTypes( imin, imax, it1, it2, byZ, bOnlyFirstNeigh );
     Vec2i* atoms = (Vec2i*)atoms_;
