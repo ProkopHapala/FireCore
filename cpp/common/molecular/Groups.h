@@ -8,7 +8,7 @@
 #include "quaternion.h"
 #include "Mat3.h"
 
-#include "Draw3D.h" // debug
+//#include "Draw3D.h" // debug
 
 struct Group{
     Vec2i i0n;
@@ -89,12 +89,12 @@ class Groups{ public:
         if(bLocal){
             Mat3d M  = g.rotMat();
             M.dot_to_T( torq, tq );
-            {
-                glColor3f( 1.0f,0.0f,0.0f ); Draw3D::drawVecInPos( M.a, g.cog );
-                glColor3f( 0.0f,1.0f,0.0f ); Draw3D::drawVecInPos( M.b, g.cog );
-                glColor3f( 0.0f,0.0f,1.0f ); Draw3D::drawVecInPos( M.c, g.cog );
-                glColor3f( 1.0f,1.0f,1.0f ); Draw3D::drawVecInPos( tq*10.0, g.cog );
-            }
+            // {
+            //     glColor3f( 1.0f,0.0f,0.0f ); Draw3D::drawVecInPos( M.a, g.cog );
+            //     glColor3f( 0.0f,1.0f,0.0f ); Draw3D::drawVecInPos( M.b, g.cog );
+            //     glColor3f( 0.0f,0.0f,1.0f ); Draw3D::drawVecInPos( M.c, g.cog );
+            //     glColor3f( 1.0f,1.0f,1.0f ); Draw3D::drawVecInPos( tq*10.0, g.cog );
+            // }
         }else{
             tq=torq;
         }
@@ -109,10 +109,10 @@ class Groups{ public:
             ft.mul(w);
             fcog.add(ft);
             fapos[ia].add( ft );
-            {
-                glColor3f( 1.0f,0.0f,0.0f );
-                Draw3D::drawVecInPos( ft*10.0, apos[ia] );
-            }
+            // {
+            //     glColor3f( 1.0f,0.0f,0.0f );
+            //     Draw3D::drawVecInPos( ft*10.0, apos[ia] );
+            // }
         }
         fcog.mul(-1/wsum);
         for(int i=0; i<g.i0n.y; i++){
@@ -142,10 +142,10 @@ class Groups{ public:
             Vec3d tq; rot.dot_to_T( g.torq, tq ); 
             const Vec3d ft  = cross( tq, dp );
             //fapos[ia].add( ft + g.force );
-            {
-                glColor3f( 1.0f,0.0f,0.0f );
-                Draw3D::drawVecInPos( ft, apos[ia] );
-            }
+            // {
+            //     glColor3f( 1.0f,0.0f,0.0f );
+            //     Draw3D::drawVecInPos( ft, apos[ia] );
+            // }
         }
     }
 

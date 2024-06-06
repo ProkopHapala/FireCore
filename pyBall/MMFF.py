@@ -43,6 +43,7 @@ header_strings = [
 #"void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* Es, bool bWriteTrj )",
 #"void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )",
 #"void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){",
+#"int  sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, double K, double Rdamp ){",
 #"#void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){",
 #"void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){",
 #"void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj )",
@@ -359,6 +360,23 @@ def sampleNonBond( rs, Es=None, Fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQ
     lib.sampleNonBond(n, rs, Es, Fs, kind, REQi, REQj, K, Rdamp)
     return Es,Fs
 
+#  int findHbonds( double Rcut, double Hcut, double angMax ){
+lib.findHbonds.argtypes  = [ c_double, c_double, c_double] 
+lib.findHbonds.restype   =  c_int
+def findHbonds( Rcut=4.0, Hcut=0.0001, angMax=30.0 ):
+    return lib.findHbonds( Rcut, Hcut, angMax )
+
+#  int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, Vec2d mask, double K, double Rdamp ){
+lib.sampleHbond.argtypes  = [c_int,c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double ] 
+lib.sampleHbond.restype   =  c_int
+def sampleHbond( ib, rs, Es=None, Fs=None, kind=1, maskQ=1.0, maskH=1.0, K=-1.0, Rdamp=1.0 ):
+    n =len(rs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    rs  =np.array(rs)
+    lib.sampleHbond(ib, n, rs, Es, Fs, kind, maskQ, maskH, K, Rdamp)
+    return Es,Fs
+
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
 lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
 lib.sampleSurf.restype   =  None
@@ -538,11 +556,11 @@ def init(
         xyz_name  =None, 
         surf_name =None, 
         smile_name=None, 
-        sElementTypes = "data/ElementTypes.dat",
-        sAtomTypes = "data/AtomTypes.dat", 
-        sBondTypes = "data/BondTypes.dat", 
-        sAngleTypes= "data/AngleTypes.dat",
-        sDihedralTypes= "data/DihedralTypes.dat",
+        sElementTypes  = "data/ElementTypes.dat",
+        sAtomTypes     = "data/AtomTypes.dat", 
+        sBondTypes     = "data/BondTypes.dat", 
+        sAngleTypes    = "data/AngleTypes.dat",
+        sDihedralTypes = "data/DihedralTypes.dat",
         bMMFF=True, 
         bEpairs=False,  
         nPBC=(1,3,0), 

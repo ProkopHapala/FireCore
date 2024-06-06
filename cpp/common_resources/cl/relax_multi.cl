@@ -906,9 +906,9 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
     __global int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces)
     __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
-    __global float4*  constrKs,     // 9 // constraints stiffness (kx,ky,kz,?) for each atom
+    __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
     __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
-    __global float4*  TDrives,       // 11 // Thermal driving (T,gamma_damp,seed,?)
+    __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
     __global cl_Mat3* bboxes        // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
     const int natoms=n.x;           // number of atoms
@@ -933,10 +933,11 @@ __kernel void updateAtomsMMFFf4(
     //     //printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
     //     for(int is=0; is<nS; is++){
     //         //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
-    //         printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
-    //         // for(int ia=0; ia<natoms; ia++){
-    //         //     if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g)\n", is, ia, constr[ia+is*natoms].x,constr[ia+is*natoms].y,constr[ia+is*natoms].z,constr[ia+is*natoms].w );
-    //         // }
+    //         //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
+    //         for(int ia=0; ia<natoms; ia++){
+    //             int ic = ia+is*natoms;
+    //             if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
+    //         }
     //     }
     // }
 
@@ -986,7 +987,7 @@ __kernel void updateAtomsMMFFf4(
     float4 ve = avel[iav]; // velocity of atom or pi-orbital
     float4 pe = apos[iav]; // position of atom or pi-orbital
 
-    
+    // -------- Fixed Atoms and Bounding Box
     if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
         // ------- bboxes
         const cl_Mat3 B = bboxes[iS];
@@ -994,11 +995,12 @@ __kernel void updateAtomsMMFFf4(
         // if(B.c.y>0.0f){ if(pe.y<B.a.y){ fe.y+=(B.a.y-pe.y)*B.c.y; }else if(pe.y>B.b.y){ fe.y+=(B.b.y-pe.y)*B.c.y; }; }
         if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
         // ------- constrains
-    //    float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
-    //    if( cons.w>0.f ){            // if stiffness is positive, we have constraint
-    //         fe.xyz += (pe.xyz - cons.xyz)*-cons.w; // add constraint force
-    //         //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
-    //    }
+        float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
+        if( cons.w>0.f ){            // if stiffness is positive, we have constraint
+            float4 cK = constrK[ iaa ];
+            fe.xyz += (cons.xyz - pe.xyz)*cK.xyz; // add constraint force
+            //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
+        }
     }
     
     /*
