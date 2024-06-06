@@ -355,14 +355,14 @@ void groups2ocl( int isys, bool bForce=true, bool bPose=false, bool bWeights=tru
             gtorqs  [i].f = (Vec3f)g.torq;
         }
         if(bWeights){
-            printf( "CPU [isys=%i,ig=%i]\n", isys, ig );
+            //printf( "CPU [isys=%i,ig=%i]\n", isys, ig );
             for(int j=0; j<g.i0n.y; j++){
                 int ia = groups.g2a[ j + g.i0n.x ];
                 //int ia = g2a[ i0g + j ];
                 int iia = i0a + ia;
                 gweights [ iia ] = groups. weights[ia];
                 gfweights[ iia ] = groups.fweights[ia];
-                printf( "CPU gweights[%i](%g,%g,%g,%g) gfweights(%g,%g)\n", iia, gweights[iia].x,gweights[iia].y,gweights[iia].z,gweights[iia].w,  gfweights[iia].x,gfweights[iia].y );
+                //printf( "CPU gweights[%i](%g,%g,%g,%g) gfweights(%g,%g)\n", iia, gweights[iia].x,gweights[iia].y,gweights[iia].z,gweights[iia].w,  gfweights[iia].x,gfweights[iia].y );
             }
         }
     }
@@ -427,9 +427,20 @@ int init_groups(){
 }
 
 virtual void pre_loop() override {
-    //printf("MolWorld_sp3_multi::pre_loop()\n" );
+    printf("MolWorld_sp3_multi::pre_loop()\n" );
     init_groups();
 
+    for(int isys=0; isys<nSystems; isys++){
+        for(int ia=0; ia<ffl.natoms; ia++ ){
+            int iaa = isys * ocl.nAtoms + ia;
+            //constr [iaa] = (Quat4f)ffl.constr[ia];
+            //constrK[iaa] = (Quat4f)ffl.constrK[ia];
+            ffls[isys].constr [ia] = ffl.constr [ia];
+            ffls[isys].constrK[ia] = ffl.constrK[ia];
+            //if(isys==0){    printf( "pre_loop() ffl[ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w, ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z ); }
+        }
+    }
+    //DEBUG;printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
     //         int i0a   = isys * ocl.nAtoms;
@@ -475,23 +486,23 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
     }
     */
 
-    //Mat3d lvec0=ff.lvec;  // DEBUG
+    //Mat3d lvec0=ff.lvec;  
     if(bForces){ pack( ff.nvecs, ff.fapos, aforces+i0v ); }
     //if(bVel   ){ pack( ff.nvecs, opt.vel,  avel   +i0v ); }
     if(bParams){
 
 
-        //Mat3d lvec=lvec0; lvec.a.addRandomCube(1.5); ffl.setLvec(lvec);  // DEBUG 
-        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[isys]; ffl.setLvec(lvec);  // DEBUG 
-        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[16]; ffl.setLvec(lvec);  // DEBUG 
-        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[3]; ffl.setLvec(lvec);  // DEBUG 
-        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.5); ffl.setLvec(lvec);  // DEBUG
-        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.4); ffl.setLvec(lvec);  // DEBUG
-        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.25); ffl.setLvec(lvec);  // DEBUG
-        //Mat3d lvec=lvec0; lvec.b.x += randf(-0.5,0.5); ffl.setLvec(lvec);  // DEBUG
-        //Mat3d lvec=lvec0; lvec.b.x += isys*0.00163; ffl.setLvec(lvec);  // DEBUG
-        //Mat3d lvec=lvec0; lvec.b.x += isys*0.15; ffl.setLvec(lvec);  // DEBUG
-        //Mat3d lvec=lvec0; lvec.a.y += isys*2.25; ffl.setLvec(lvec);  // DEBUG
+        //Mat3d lvec=lvec0; lvec.a.addRandomCube(1.5); ffl.setLvec(lvec);  
+        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[isys]; ffl.setLvec(lvec);  
+        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[16]; ffl.setLvec(lvec); 
+        //Mat3d lvec=lvec0; lvec.a=crashed_lvecs_a[3]; ffl.setLvec(lvec);  
+        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.5); ffl.setLvec(lvec); 
+        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.4); ffl.setLvec(lvec);  
+        //Mat3d lvec=lvec0; lvec.a.addRandomCube(0.25); ffl.setLvec(lvec);  
+        //Mat3d lvec=lvec0; lvec.b.x += randf(-0.5,0.5); ffl.setLvec(lvec); 
+        //Mat3d lvec=lvec0; lvec.b.x += isys*0.00163; ffl.setLvec(lvec); 
+        //Mat3d lvec=lvec0; lvec.b.x += isys*0.15; ffl.setLvec(lvec); 
+        //Mat3d lvec=lvec0; lvec.a.y += isys*2.25; ffl.setLvec(lvec);  
         //printf( "   Vec3d{%g,%g,%g}, \n",  lvec.a.x, lvec.a.y, lvec.a.z  );
 
         copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
@@ -655,8 +666,8 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     fire.vf=vf;
     fire.update_params();
     MDpar.x = fire.dt;
-    //MDpar.x = fire.dt * 0.5; // DEBUG
-    //MDpar.x = 0.01; // DEBUG
+    //MDpar.x = fire.dt * 0.5; 
+    //MDpar.x = 0.01; 
     MDpar.y = 1 - fire.damping;
     MDpar.z = fire.cv;
     MDpar.w = fire.cf;
@@ -855,6 +866,17 @@ double evalF2(){
 //       Implement    MultiSolverInterface
 // ===============================================
 
+void printConstrains(){
+    printf( "MolWorld_sp3_multi::printConstrains()\n" );
+    for(int isys=0; isys<nSystems; isys++){
+        int i0a   = isys * ocl.nAtoms;
+        int i0v   = isys * ocl.nvecs;
+        for(int ia=0; ia<ffls[isys].natoms; ia++){
+            if(ffls[isys].constr[ia].w>0)printf( "ffls[isys=%i,ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffls[isys].constr[ia].x,ffls[isys].constr[ia].y,ffls[isys].constr[ia].z,ffls[isys].constr[ia].w, ffls[isys].constrK[ia].x,ffls[isys].constrK[ia].y,ffls[isys].constrK[ia].z ); 
+        }
+    }
+}
+
 void move_MultiConstrain( Vec3d d, Vec3d di, float Kfixmin=0.001f ){
     printf( "MolWorld_sp3_multi::move_MultiConstrain()\n" );
     for(int isys=0; isys<nSystems; isys++){
@@ -862,9 +884,13 @@ void move_MultiConstrain( Vec3d d, Vec3d di, float Kfixmin=0.001f ){
         int i0v   = isys * ocl.nvecs;
         for(int ia=0; ia<ffls[isys].natoms; ia++){
             if( ffls[isys].constr[ia].w > Kfixmin ){
+                int iaa = ia+i0a;
                 //ffls[isys].constr[ia].w=1.0f;
-                ffls[isys].constr[ia].f.add( d + di*isys ); 
-                constr[ia+i0a]=(Quat4f)ffls[isys].constr[ia];
+                //ffls[isys].constr[ia].f.add( d + di*isys );   // Shift Constrains by di per isys
+                ffls[isys].constr[ia].f.add( d );   // Shift Constrains by di per isys
+                constr [iaa]=(Quat4f)ffls[isys].constr[ia];
+                constrK[iaa]=(Quat4f)ffls[isys].constrK[ia];
+                //printf( "ffls[isys=%i,ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffls[isys].constr[ia].x,ffls[isys].constr[ia].y,ffls[isys].constr[ia].z,ffls[isys].constr[ia].w, ffls[isys].constrK[ia].x,ffls[isys].constrK[ia].y,ffls[isys].constrK[ia].z );
             };
         };
     }
@@ -874,6 +900,7 @@ void move_MultiConstrain( Vec3d d, Vec3d di, float Kfixmin=0.001f ){
 
 virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
     printf("MolWorld_sp3_multi::setConstrains()\n");
+    //DEBUG;printConstrains();
     MolWorld_sp3::setConstrains( bClear, Kfix );
     for(int isys=0; isys<nSystems; isys++){
         int i0a   = isys * ocl.nAtoms;
@@ -885,7 +912,8 @@ virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
         for( int i=0; i<ffls[isys].natoms; i++ ){ ffls[isys].constr[i].w=-1;                            }
         for( int i : constrain_list            ){ ffls[isys].constr[i].w=Kfix; ffls[isys].constr[i].f=ffls[isys].apos[i]; }
     }
-    move_MultiConstrain( Vec3d{0.0, 0.4, 5.0}, Vec3d{0.0, 0.4, 0.0} );
+    //DEBUG;printConstrains();
+    move_MultiConstrain( Vec3d{0.0, 0.0, 5.0}, Vec3d{0.0, 0.4, 0.0} );
     /*
     // temporary hack to show up paralell manipulation
     double Kfixmin = 0.001; 
@@ -1133,7 +1161,7 @@ void saveDebugXYZreplicas( int itr, double F ){
     ocl.download( ocl.ibuff_atoms   , atoms   );
     err|=ocl.finishRaw();  OCL_checkError(err, "saveDebugXYZreplicas()");
     for(int isys=0; isys<nSystems; isys++){
-        sprintf( fname  , "DEBUG_sys%03i.xyz", isys );
+        sprintf( fname  , "debug_sys%03i.xyz", isys );
         sprintf( commnet, "# itr %i |F| %g ", itr, F );
         unpack_system( isys, ffl, false, false );
         if( ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.apos, fname, false ) ){ printf( "saveDebugXYZreplicas(itr=%i) NaNs in replica[%i] => Exit() \n", itr, isys  ); exit(0); };
@@ -1274,10 +1302,15 @@ void picked2GPU( int ipick,  double K ){
     }else{
         for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
         for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
-
+        // for(int ia=0; ia<ocl.nAtoms; ia++){ 
+        //     int iaa = i0a + ia; 
+        //     constr [iaa].w=ffls[iSystemCur]->constr [ia];
+        //     constrK[iaa].w=ffls[iSystemCur]->constrK[ia];
+        // };
     }
     //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
-    ocl.upload( ocl.ibuff_constr, constr );   // ToDo: instead of updating the whole buffer we may update just relevant part?
+    ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
+    ocl.upload( ocl.ibuff_constrK, constrK );
 }
 
 // ==================================
@@ -1339,9 +1372,9 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
             niterdone++;
 
             /*
-            { //DEBUG
+            { 
                 download( true, true );
-                err|=ocl.finishRaw();  OCL_checkError(err, "eval_MMFFf4_ocl().DEBUG.download");
+                err|=ocl.finishRaw();  OCL_checkError(err, "eval_MMFFf4_ocl().debug.download");
                 for(int isys=0; isys<nSystems; isys++){
                     unpack_system( isys, ffl, false, false );
 
@@ -1350,13 +1383,13 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
                     berr|= ckeckRange( ffl.nvecs, 3, (double*)ffl.apos,  -frange, frange, "apos",  true );
                     berr|= ckeckRange( ffl.nvecs, 3, (double*)ffl.fapos, -frange, frange, "fapos", true );
                     berr|= ckeckRange( ffl.nvecs, 3, (double*)ffl.vapos, -frange, frange, "vapos", true );
-                    if(berr){ printf( "ERROR eval_MMFFf4_ocl().DEBUG outOfRange(%g) in replica[%i].apos  => Exit() \n", frange, isys ); exit(0); };
+                    if(berr){ printf( "ERROR eval_MMFFf4_ocl().debug outOfRange(%g) in replica[%i].apos  => Exit() \n", frange, isys ); exit(0); };
 
                     berr=false;
                     berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.apos,  "apos",  true );
                     berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.fapos, "fapos", true );
                     berr|= ckeckNaN_d( ffl.nvecs, 3, (double*)ffl.vapos, "vapos", true );
-                    if(berr){ printf( "ERROR eval_MMFFf4_ocl().DEBUG NaNs in replica[%i].apos  => Exit() \n", isys ); exit(0); };
+                    if(berr){ printf( "ERROR eval_MMFFf4_ocl().debug NaNs in replica[%i].apos  => Exit() \n", isys ); exit(0); };
                 }
                 //saveDebugXYZreplicas( niterdone, 0.0 );
             }
@@ -1499,6 +1532,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         //bGroupDrive = false;
 
         //printf( "CPU::bbox(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", bbox.a.x,bbox.a.y,bbox.a.z,   bbox.b.x,bbox.b.y,bbox.b.z,   bbox.c.x,bbox.c.y,bbox.c.z );
+        //for(int ia=0; ia<ffl.natoms; ia++){      if( ffl.constr[ia].w > 0 ) printf( "CPU:atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w,   ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z,ffl.constrK[ia].w  ); }
         //bGroupDrive = true;
         // if(bGroupDrive){
         //     for(int ig=0; ig<ocl.nGroupTot; ig++){
@@ -1549,7 +1583,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         // }
 
         /*
-        { // ======= DEBUG - Check vs CPU
+        { // ======= Check vs CPU
             int iS=iSystemCur;
             //printf( "MDpars[%i](dt=%g,damp=%g,cv=%g,cf=%g)cos_vf=%g\n", iSystemCur, MDpars[iS].x,MDpars[iS].y,MDpars[iS].z,MDpars[iS].w, fire[iS].cos_vf );
             int i0v = iSystemCur * ocl.nvecs; 
@@ -2281,7 +2315,7 @@ double eval_MMFFf4_ocl_debug( int niter ){
     //printf("### Compare ffl.fpipos, GPU.fpipos \n"); ret |= compareVecs( ffl.nnode,  ffl.fpipos, ff4.fpipos, 1e-4, true ); 
     //if(ret){ printf("ERROR: GPU.eval() and ffl.eval() produce different results => exit() \n"); exit(0); }else{ printf("CHECKED: GPU task_MMFF.eval() == CPU ffl.eval() \n"); }
 
-    //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
+    //printf("GPU AFTER assemble() \n"); ff4.printDebug( false,false );
     //unpack( ffl.natoms, ffl.  apos, ff4.  apos );
     //unpack( ffl.natoms, ffl. fapos, ff4. fapos );
     //unpack( ffl.nnode,  ffl. pipos, ff4. pipos );
@@ -2340,11 +2374,11 @@ double eval_NBFF_ocl_debug( bool bCompareToCPU=true, bool bMove=false, bool bPri
         if(ret){ printf("ERROR: GPU task_NBFF.eval() != ffl.nbmol.evalLJQs_ng4_PBC() => exit() \n"); exit(0); }else{ printf("CHECKED: GPU task_NBFF.eval() == ffl.nbmol.evalLJQs_ng4_PBC() \n"); }
     }
 
-    //printf("GPU AFTER assemble() \n"); ff4.printDEBUG( false,false );
+    //printf("GPU AFTER assemble() \n"); ff4.printDebug( false,false );
     unpack( ff4.natoms, ffl.  apos, ff4.  apos );
     unpack( ff4.natoms, ffl. fapos, ff4. fapos );
     //opt.move_FIRE();
-    //ff4.printDEBUG( false, false );
+    //ff4.printDebug( false, false );
     // ============== CHECKS
     // ---- Check Invariatns
     fcog  = sum ( ffl.natoms, ffl.fapos   );

@@ -432,10 +432,14 @@ class Builder{  public:
     }
 
     int addCappingTypesByIz( int iZ ){
+        printf( "Builder::addCappingTypesByIz()\n" );
         int n=0; 
         for( int i=0; i<params->atypes.size(); i++ ){ 
-            if(params->atypes[i].iZ==iZ) capping_types.insert(i); 
-            n++; 
+            if(params->atypes[i].iZ==iZ){ 
+                capping_types.insert(i);
+                printf( "Builder::addCappingTypesByIz()[%i] `%s`\n", i, params->atypes[i].name );
+                n++;
+            } 
         } 
         return n; 
     }
@@ -795,7 +799,9 @@ class Builder{  public:
     }
 
     void assignBondParams( int ib ){
+        //printf( "MMFFBuilder::assignBondParams(ib=%i)\n", ib );
         Bond& b = bonds[ib];
+        //printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) order=%g \n", ib, b.atoms.i, b.atoms.j, b.order );
         const Atom& ai = atoms[b.atoms.i];
         const Atom& aj = atoms[b.atoms.j];
         int order=1;
@@ -803,7 +809,7 @@ class Builder{  public:
             const AtomConf& ci = confs[ai.iconf];
             const AtomConf& cj = confs[aj.iconf];
             order+=_min( ci.npi, cj.npi ); 
-            //printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, confs[ai.iconf].npi, confs[aj.iconf].npi );
+            printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, ci.npi, cj.npi );
 
             // Assign pi-pi allignment 
             bool bpi=ci.npi>0;
@@ -812,6 +818,7 @@ class Builder{  public:
             else if( bpi&&(cj.ne>0) || bpj&&(ci.ne>0) ){ b.kpp=Kpp_e_default; }  // pi-epair alignment
 
         }
+        //printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) types(%i,%i) order=%i \n", ib, b.atoms.i, b.atoms.j, ai.type, aj.type, order );
         //getBondTypeId( ai.type, aj.type, uint8_t order );
         params->getBondParams( ai.type, aj.type, order, b.l0, b.k );
         //printf("assignBondParams[%i] (%i,%i|%i) -> l0 %g k %g \n", ib,  ai.type, aj.type, order,   b.l0, b.k );
@@ -3022,12 +3029,15 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     int loadXYZ_Atoms(const char* fname, MMFFparams* params_=0, int iH=-1, bool bCOG=false, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity ){
-        //printf( "MM::Builder::loadXYZ_Atoms(%s) \n", fname );
+        printf( "MM::Builder::loadXYZ_Atoms(%s) \n", fname );
         if(params_!=0) params=params_;
         //  this is a bit stupid - we allocate and deallocate mol just because we need some temporary storage for calling params->loadXYZ()
         Atoms   mol;
         Quat4d* REQs=0;
         int iret =  params->loadXYZ( fname, mol.natoms, &mol.apos, &REQs, &mol.atypes, 0, &lvec );
+        DEBUG
+        printAtomConfs(false, true );
+        DEBUG
         int ifrag=-1;
         if( iret>=0  ){ 
             if( iret==0 ){ bPBC=false; }else{ bPBC=true; }
@@ -3054,6 +3064,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 atoms[ia].frag = ifrag;
             }
         }
+        DEBUG
+        printAtomConfs(false, true );
+        DEBUG
         delete [] REQs;
         //printf( "MM::Builder::loadXYZ_Atoms(%s) ifrag=%i DONE \n", fname, ifrag );
         return ifrag;

@@ -346,7 +346,7 @@ inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const doub
     const double  u2  = REQH.x*REQH.x*ir2;
     const double  u6  = u2*u2*u2;
     const double vdW  = u6*REQH.y;
-    const double   H  = u6*u6* ((REQH.w<0) ? REQH.w : 0.0);  // H-bond correction
+    const double   H  = u6*u6* ((REQH.w<0) ? REQH.w*REQH.y : 0.0);  // H-bond correction
     E   +=  (u6-2.)*vdW + H             ;
     F   += ((u6-1.)*vdW + H )*ir2*12 ;
     f.set_mul( dp, -F );
@@ -365,7 +365,7 @@ inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const d
     const double  r  = sqrt( r2   );
     const double  e  = exp( -K*(r-REQH.x) );
     const double  Ae = REQH.y*e;
-    const double  He = REQH.w*e; // H-bond correction
+    const double  He  = e * ( (REQH.w<0) ? REQH.w*REQH.y : 0.0 );  // H-bond correction
     E +=  Ae*(e - 2)   + He;
     F += (Ae*(e - 1)*2 + He)*-K/r;
     f.set_mul( dp, F );
@@ -392,7 +392,7 @@ inline double getLJQH_cut( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const 
         const double  u2  = REQH.x*REQH.x*ir2;
         const double  u6  = u2*u2*u2;
         const double vdW  = u6*REQH.y;
-        const double   H  = u6*REQH.w;  // H-bond correction
+        const double   H  = u6*( (REQH.w<0) ? REQH.w*REQH.y : 0.0 );  // H-bond correction
         E   +=       (u6-2.)*vdW            ;
         F   +=  (12.*(u6-1.)*vdW + H*6.)*ir2;
     }
