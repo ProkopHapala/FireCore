@@ -84,6 +84,48 @@ array2d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=2, flags='CONTIGUOUS')
 array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 
 
+class AtomType(ctypes.Structure):
+    _fields_ = [
+        ("name",      ctypes.c_char * 8),
+        ("iZ",        ctypes.c_uint8),
+        ("valence",   ctypes.c_uint8),
+        ("nepair",    ctypes.c_uint8),
+        ("npi",       ctypes.c_uint8),
+        ("sym",       ctypes.c_uint8),
+        ("color",     ctypes.c_uint32),
+        ("Ruff",      ctypes.c_double),
+        ("RvdW",      ctypes.c_double),
+        ("EvdW",      ctypes.c_double),
+        ("Qbase",     ctypes.c_double),
+        ("Hb",        ctypes.c_double),
+        ("parrent",   ctypes.c_int),
+        ("element",   ctypes.c_int),
+        ("ePairType", ctypes.c_int),
+        ("bMMFF",     ctypes.c_bool),
+        ("Ass",       ctypes.c_double),
+        ("Asp",       ctypes.c_double),
+        ("Kss",       ctypes.c_double),
+        ("Ksp",       ctypes.c_double),
+        ("Kep",       ctypes.c_double),
+        ("Kpp",       ctypes.c_double),
+        ("subTyp_x",  ctypes.c_int),
+        ("subTyp_y",  ctypes.c_int),
+        ("subTyp_z",  ctypes.c_int),
+        #Vec3i     subTypes=Vec3iZero;  // sp1 sp2 sp3    // Q1 Q2 Q3 (polarized)
+    ]
+
+p_AtomType = ctypes.POINTER(AtomType)
+
+lib.getAtomTypes.restype     = p_AtomType
+lib.getAtomTypeCount.restype = c_int
+
+def getAtomTypes():
+    ptr = lib.getAtomTypes()
+    n   = lib.getAtomTypeCount()
+    array_type = AtomType * n
+    arr = ctypes.cast(ptr, ctypes.POINTER(array_type)).contents
+    return arr, n
+
 # ====================================
 # ========= Globals
 # ====================================

@@ -54,6 +54,10 @@ int saveXYZ( const char* fname, const char* comment, int imod){
     return ret;  
 }
 
+
+AtomType* getAtomTypes()    { return &W.params.atypes[0];    }
+int       getAtomTypeCount(){ return W.params.atypes.size(); }
+
 // ================ RUN / EVAL
 
 void setupCollisionDamping( int nstep, double medium, double bond, double ang, double nonB, double dRcut1, double dRcut2 ){
@@ -306,9 +310,9 @@ void sampleNonBondTypes( int n, double* rs, double* Es, double* fs, int kind, do
     Quat4d REQdj{ 1.0,0.0,-REQj.z, 0.0 };
     REQj.z -= tE->Qbase;
     double de = tE->Ruff;
-    printf( "REQ_H %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tH->name, REQi.x,REQi.y,REQi.z,REQi.w );
-    printf( "REQ_X %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tX->name, REQj.x,REQj.y,REQj.z,REQj.w );
-    printf( "REQ_E %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tE->name, REQe.x,REQe.y,REQe.z,REQe.w );
+    //printf( "REQ_H %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tH->name, REQi.x,REQi.y,REQi.z,REQi.w );
+    //printf( "REQ_X %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tX->name, REQj.x,REQj.y,REQj.z,REQj.w );
+    //printf( "REQ_E %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tE->name, REQe.x,REQe.y,REQe.z,REQe.w );
     //sprintf( s, "%s[%i]-%s[%i] (%4.2f,%5.4f,%4.2f,%4.2f) (%4.2f,%5.4f,%4.2f,%4.2f)", W.params.atypes[ W.ffl.atypes[b.x]].name, b.x, W.params.atypes[ W.ffl.atypes[b.y]].name, b.y, REQi.x,REQi.y,REQi.z,REQi.w,  REQj.x,REQj.y,REQj.z,REQj.w  );
     double R2damp=Rdamp*Rdamp;
     Vec3d d{dcomp,0.0,0.0};
