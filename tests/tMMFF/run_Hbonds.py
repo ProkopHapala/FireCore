@@ -99,15 +99,15 @@ def getOffsets(what):
     #np.zeros( (len(what),2),dtype=np.int32)
     return [ (i,mmff.AtomType.__dict__[s].offset) for i,s in what  ]
 
-lims    = np.array( [ [+0.6,+0.999], [-0.999,-0.6],  [0.0,0.1]  ] )
-rndlims = np.array( [ [-0.01,0.01],  [-0.01,0.01],   [0.0,0.0]  ] )
+lims    = np.array( [ [+0.7,+0.99], [-0.99,-0.7],  [-0.6,0.6]  ] )
+rndlims = np.array( [ [-0.01,0.01],  [-0.01,0.01], [-0.01,0.01]  ] )
 what = [
     [42,'Hb'],
     [11,'Hb'],
-    [11,'EvdW'],
+    [2,'Qbase'],
 ]
 
-def run_rnd_opt( typstr, fname, nitr = 100, qH=0.2, qX=-0.2, xshift=-0.3, clr=None, bPlt=True, bPltW=True, errSc=10.0 ):
+def run_rnd_opt( typstr, fname, nitr = 1000, qH=0.2, qX=-0.2, xshift=-0.3, clr=None, bPlt=True, bPltW=True, errSc=10.0 ):
     atyps, ntyp = mmff.getAtomTypes() 
     indexes     = getOffsets(what)
     ref         = np.genfromtxt(ref_path+fname ); 
@@ -132,7 +132,7 @@ def run_rnd_opt( typstr, fname, nitr = 100, qH=0.2, qX=-0.2, xshift=-0.3, clr=No
         RMS  = np.sqrt((error**2).sum())
         if (itr>0) and (RMS < RMS_old ):
             xs = x_new
-            print("ACCEPT  RMS=%g <(%g)" %(RMS, RMS_old), xs )
+            print("ACCEPT[%i]  RMS=%g <(%g)" %(itr,RMS, RMS_old), xs )
             RMS_old = RMS
             if bPlt:
                 plt.plot( rs,             Es, '.-', c=clr,  label=("itr=%i RMS(%g)" %(itr,RMS) )   )
