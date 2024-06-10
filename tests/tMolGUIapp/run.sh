@@ -61,8 +61,8 @@ fi
 #./$name -x common_resources/HCOOH_xy  -e  -iParalel 0
 #./$name -x common_resources/CH2O      -e  -iParalel 0
 
-#./$name -x common_resources/formic_dimer
-./$name -x common_resources/formic_dimer -e -iParalel 0
+./$name -x common_resources/formic_dimer
+#./$name -x common_resources/formic_dimer -e -iParalel 0
 
 #./$name -x common_resources/pyridine -lua script.lua
 #./$name -x common_resources/propandiol

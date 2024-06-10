@@ -235,10 +235,12 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     // ---- small balls and sticks for debugging
     // double ForceViewScale = 100.0;
-    double mm_Rsc         = 0.05;
+    double mm_Rsc         = 0.1;
     double mm_Rsub        = 0.0;
 
     bool   bViewBuilder     = false;
+    bool   bViewAxis        = false;
+    bool   bViewCell        = false;
 
     bool   mm_bAtoms        = true;
     bool   bViewMolCharges  = false;
@@ -1347,7 +1349,7 @@ void MolGUI::draw(){
             //printf( "draw() W->npbc=%i \n", W->npbc );
             //Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             Draw3D::drawShifts( W->npbc, W->pbc_shifts, W->ipbc0, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-            glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} );
+            if(bViewCell){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} ); }
         }else{ drawSystem(); }
         //drawSystem(); // debug
         //Draw3D::drawNeighs( W->ff, -1.0 );    
@@ -1470,7 +1472,7 @@ void MolGUI::draw(){
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
 
-    glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1);
+    if(bViewAxis){ glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1); }
 };
 
 void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bool bNgC, bool bPos ){
