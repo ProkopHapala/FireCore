@@ -50,7 +50,7 @@ int main(int argc, char *argv[]){
 
     // ========== Before initMol
 #ifdef WITH_LUA
-    initMyLua();
+    theLua = initMyLua();
     funcs["-lua0"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua0] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
 #endif // WITH_LUA
 

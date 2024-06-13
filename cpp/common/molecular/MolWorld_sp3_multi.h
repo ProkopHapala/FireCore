@@ -528,6 +528,12 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
     }
 }
 
+void pack_systems( bool bParams=0, bool bForces=false, bool bVel=false, bool blvec=true, float l_rnd=-1 ){
+    for(int isys=0; isys<nSystems; isys++){
+        pack_system( isys, ffls[isys], bParams, bForces, bVel, blvec, l_rnd );
+    }
+}
+
 void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=false ){
     //rintf("MolWorld_sp3_multi::unpack_system(%i) \n", isys);
     int i0n = isys * ocl.nnode;
@@ -712,7 +718,11 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
             //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
             //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }   // Shift driver
+            for(int ig=0; ig<ocl.nGroup; ig++){ 
+                Vec2f fDrive = groups.groups[ig].fDrive; 
+                setGroupDrive(isys, ig, {fDrive.x,fDrive.x,0.0}, {fDrive.y,0.0,0.0} ); 
+                //setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); 
+            }   // Shift driver
         }
         else if( gopts[isys].istep > 1e4 && (!gopts[isys].bExploring)){
             gopts[isys].startExploring();

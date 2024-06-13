@@ -235,28 +235,28 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     // ---- small balls and sticks for debugging
     // double ForceViewScale = 100.0;
-    double mm_Rsc         = 0.1;
-    double mm_Rsub        = 0.0;
+    double mm_Rsc            = 0.1;
+    double mm_Rsub           = 0.0;
 
-    bool   bViewBuilder     = false;
-    bool   bViewAxis        = false;
-    bool   bViewCell        = false;
+    bool   bViewBuilder      = false;
+    bool   bViewAxis         = false;
+    bool   bViewCell         = false;
 
-    bool   mm_bAtoms        = true;
-    bool   bViewMolCharges  = false;
+    bool   mm_bAtoms         = true;
+    bool   bViewMolCharges   = false;
     bool   bViewHBondCharges = false;
-    bool   bViewAtomLabels  = true;
-    bool   bViewAtomTypes   = false;
-    bool   bViewColorFrag   = false;
-    bool   bViewBondLabels  = false;
-    bool   bViewAtomSpheres = true;
-    bool   bViewAtomForces  = true;
-    bool   bViewBondLenghts = false;
-    bool   bViewBonds       = true;
-    bool   bViewPis         = false;
-    bool   bViewSubstrate   = true;
+    bool   bViewAtomLabels   = true;
+    bool   bViewAtomTypes    = false;
+    bool   bViewColorFrag    = false;
+    bool   bViewBondLabels   = false;
+    bool   bViewAtomSpheres  = true;
+    bool   bViewAtomForces   = true;
+    bool   bViewBondLenghts  = false;
+    bool   bViewBonds        = true;
+    bool   bViewPis          = false;
+    bool   bViewSubstrate    = true;
     bool   isoSurfRenderType = 1;
-    bool bDebug_scanSurfFF = false;
+    bool   bDebug_scanSurfFF = false;
     Quat4d testREQ;
     Quat4f testPLQ;
 
@@ -269,13 +269,13 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
     int    natoms=0,nnode=0,nbonds=0;
     int*   atypes;
-    Vec2i* bond2atom=0; 
-    Vec3d* pbcShifts=0; 
-    Vec3d* apos     =0;
-    Vec3d* fapos    =0;
-    Vec3d* pipos    =0;
-    Vec3d* fpipos   =0;
-    Quat4d* REQs     =0;
+    Vec2i* bond2atom = 0; 
+    Vec3d* pbcShifts = 0; 
+    Vec3d* apos      = 0;
+    Vec3d* fapos     = 0;
+    Vec3d* pipos     = 0;
+    Vec3d* fpipos    = 0;
+    Quat4d* REQs     = 0;
 
     Quat4i* neighs    = 0;
     Quat4i* neighCell = 0;
@@ -290,17 +290,17 @@ class MolGUI : public AppSDL2OGL_3D { public:
     // ---- Graphics objects    // ToDO: maybe move to globals.h
     int  fontTex=-1,fontTex3D=-1;
 
-    int  ogl_afm=0;
-    int  ogl_afm_trj=0;
-    int  ogl_esp=0;
-    int  ogl_sph=0;
-    int  ogl_mol=0;
-    int  ogl_isosurf=0;
-    int  ogl_surfatoms=0;
-    int  ogl_MO = 0;
-    int  ogl_nonBond = 0;
-    int  ogl_Hbonds  = 0;
-    int  ogl_trj = 0;
+    int  ogl_afm       = 0;
+    int  ogl_afm_trj   = 0;
+    int  ogl_esp       = 0;
+    int  ogl_sph       = 0;
+    int  ogl_mol       = 0;
+    int  ogl_isosurf   = 0;
+    int  ogl_surfatoms = 0;
+    int  ogl_MO        = 0;
+    int  ogl_nonBond   = 0;
+    int  ogl_Hbonds    = 0;
+    int  ogl_trj       = 0;
     int  ogl_surf_scan = 0;
 
     std::vector<Quat4f> debug_ps;
