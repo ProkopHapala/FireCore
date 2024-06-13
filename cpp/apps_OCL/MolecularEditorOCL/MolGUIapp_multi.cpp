@@ -57,6 +57,7 @@ int main(int argc, char *argv[]){
 
     W->pre_loop();
 	app->loop( 1000000 );
+    W->database->print();
 	return 0;
 }
 
