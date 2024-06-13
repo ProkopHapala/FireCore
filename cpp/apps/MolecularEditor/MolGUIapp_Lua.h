@@ -150,11 +150,14 @@ int l_makeFF(lua_State *L){
     return 0; // number of return values to Lua environment
 }
 
-int initMyLua(){
+lua_State* initMyLua( lua_State* L =0 ){
     printf( "initMyLua()\n" );
-    theLua         = luaL_newstate();
-    lua_State  * L = theLua;
-    luaL_openlibs(L);
+    //theLua         = luaL_newstate();
+    //lua_State  * L = theLua;
+    if(L==0){ 
+        L =  luaL_newstate(); 
+        luaL_openlibs(L);
+    }
     lua_register(L, "fix",     l_fixAtom  );
     lua_register(L, "natom",   l_getAtomCount  );
     lua_register(L, "apos",    l_getAtomPos  );
@@ -169,7 +172,7 @@ int initMyLua(){
     lua_register(L, "button",    l_addGUIpanel );
     lua_register(L, "clear_gui", l_clearGUI    );
     printf( "initMyLua() DONE\n" );
-    return 1;
+    return L;
 }
 
 #endif // MolGUIapp_Lua
