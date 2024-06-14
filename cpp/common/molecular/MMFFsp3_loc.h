@@ -1434,6 +1434,8 @@ void print_pipos    (      ){ printf("MMFFsp3_loc::print_pipos()\n"     ); for(i
 void print_apos     (      ){ printf("MMFFsp3_loc::print_apos()\n"      ); for(int i=0; i<natoms; i++){ printf( "apos [%i](%g,%g,%g)\n",      i, apos[i].x ,apos[i].y ,apos[i].z                   ); } }
 void print_pbc_shifts(     ){ printf("MMFFsp3_loc::print_pbc_shifts()\n"); for(int i=0; i<npbc;   i++){ printf( "pbc_shifts[%i](%g,%g,%g)\n", i, shifts[i].x,shifts[i].y,shifts[i].z                   ); } }
 
+void print_constrains(){ printf("MMFFsp3_loc::print_constrains()\n"   );    for(int i=0; i<natoms;   i++){ if(constr[i].w>0)printf( "constr[%3i](%8.5f,%8.5f,%8.5f|%g)K(%8.5f,%8.5f,%8.5f|%8.5f)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w,  constrK[i].x,constrK[i].y,constrK[i].z,constrK[i].w   ); }  }
+
 void printAngles(int ia){
     Vec3d* angles_i = angles+(ia*6);
     int* ings       = neighs[ia].array; 

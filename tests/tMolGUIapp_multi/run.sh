@@ -120,7 +120,7 @@ nsys=50
 
 
 
-./$name -m 10 -x common_resources/PTCDA  -c 59      -g common_resources/NaCl_1x1_L2     -iParalel 3   -perframe 100    -Ftol 1e-4    -lua0 scan_replicas.lua
+./$name -m 100 -x common_resources/PTCDA  -c 29,1.0      -g common_resources/NaCl_1x1_L2     -iParalel 3   -perframe 100    -Ftol 1e-4    -lua0 scan_replicas.lua
 
 
 

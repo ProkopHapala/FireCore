@@ -65,10 +65,11 @@
     funcs["-group"]={3,[&](const char** ss){  }};
     
     funcs2["-c"]={1,[&](const char** ss){ 
-        printf( "MolGUIapp_argv.h :: [-c] `%s`\n", ss[0] );
+        //printf( "MolGUIapp_argv.h :: [-c] `%s`\n", ss[0] );
         int ic=-1; Quat4d k=Quat4d{W->Kfix,W->Kfix,W->Kfix,0};  
         int nret = sscanf( ss[0], "%i,%lf,%lf,%lf", &ic, &k.x,&k.y,&k.z ); 
         if(nret==2){ k.y=k.x; k.z=k.x; }; 
+        if( (ic<0)||(ic>W->ffl.natoms) ){  printf( "ERROR in MolGUIapp_argv.h `-c` ic(%i) out of range 0 .. natoms(%i) => exit() \n", ic, W->ffl.natoms ); exit(0); };
         W->ffl.constr [ic].w=1; 
         W->ffl.constrK[ic]=k;
         }}; //
