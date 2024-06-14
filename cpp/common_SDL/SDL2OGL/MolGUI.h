@@ -2456,7 +2456,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     //if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
 
                     // printf( "bRunRelax %i \n", bRunRelax );
-                    if(bRunRelax)W->setConstrains();                  
+                    //if(bRunRelax)W->setConstrains();                  
                     if(!bRunRelax){ if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  } }
                     break;
                 // case SDLK_d: {

@@ -286,7 +286,6 @@ virtual void init() override {
     ff4.flipPis( Vec3fOne );
     ff4.setLvec((Mat3f)builder.lvec);
     ff4.makeNeighCells  ( nPBC );
-
     // ----- init systems
     realloc( nSystems );
     //if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
@@ -300,7 +299,6 @@ virtual void init() override {
     }
     initMultiCPU(nSystems);
     //for(int i=0;i<nSystems; i++){ printMSystem(i); }
-
     upload( true, false );
     //bGridFF=false;
     bOcl   =false;
@@ -324,7 +322,6 @@ virtual void init() override {
     
     printf( "uploadPopName @ %li", uploadPopName );
     if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)", uploadPopName );  upload_pop( uploadPopName ); }
-
 
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
 }
@@ -440,6 +437,7 @@ virtual void pre_loop() override {
             //if(isys==0){    printf( "pre_loop() ffl[ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w, ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z ); }
         }
     }
+
     //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
@@ -474,7 +472,14 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
     }
     
     pack( ff.nvecs, ff.apos, atoms+i0v );
-    for(int i=0; i<ocl.nAtoms; i++){ Quat4f a=atoms[i+i0v]; a.w=-1.0; constr[i+i0a] = a; }  // contrains
+    for(int i=0; i<ocl.nAtoms; i++){ 
+        Quat4f a=atoms[i+i0v]; 
+        //a.w=-1.0;
+        a.w = ffl.constr[i].w; 
+        constr [i+i0a] = a; 
+        constrK[i+i0a] = (Quat4f)ffl.constrK[i]; 
+        //printf(  "atom[%3i|sys=%i](%8.5f,%8.5f,%8.5f) constr(%8.5f,%8.5f,%8.5f|%8.5f)\n", i, isys, ff.apos[i].x,ff.apos[i].y,ff.apos[i].z,     a.x,a.y,a.z,a.w );
+    }  // contrains
     /*
     if(l_rnd>0){ 
         printf("WARRNING: random noise added to apos \n");
@@ -924,6 +929,7 @@ virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
     */
 
     upload( ocl.ibuff_constr, constr );
+    exit(0);
 }
 
 
@@ -1518,6 +1524,8 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             
         // }
 
+        if(bAnimManipulation){ animate(); }
+
         bExplore = updateMultiExploring( Fconv );
 
         bool bGroupDrive = bGroups && bExplore;
@@ -1956,6 +1964,22 @@ double eval( ){
 //                 MDloop
 // ==================================
 
+
+virtual void animate(){
+    int err=0;
+    double phase = sin( icurIter * anim_speed );
+    Vec3f d = (Vec3f)( anim_vec * phase );
+    for(int isys=0; isys<nSystems; isys++){
+        int i0a   = isys * ocl.nAtoms;
+        for(int ia=0; ia<ocl.nAtoms; ia++){
+            if( constr[ia+i0a].w >0 ) constr[ia+i0a].f.add( d ); 
+            //constrK[i+i0a] = (Quat4f)ffl.constrK[i]; 
+        }
+    }
+    err|= ocl.upload( ocl.ibuff_constr,  constr );
+    //err|= ocl.upload( ocl.ibuff_constrK, constrK );
+}
+
 virtual char* getStatusString( char* s, int nmax ) override {
     //double F2 = evalVFs();
     double  F2max=0;
@@ -1977,10 +2001,10 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     //bMMFF=false;
 
 
-    if(bAnimManipulation){
-        float dir_sign = ((nloop/10000)%2)*2 - 1 ; //printf("AnimManipulation dir_sign=%f \n", dir_sign);
-        move_MultiConstrain( Vec3d{ 0.2*dir_sign, 0.0, 0.0}, Vec3dZero );
-    }
+    // if(bAnimManipulation){
+    //     float dir_sign = ((nloop/10000)%2)*2 - 1 ; //printf("AnimManipulation dir_sign=%f \n", dir_sign);
+    //     move_MultiConstrain( Vec3d{ 0.2*dir_sign, 0.0, 0.0}, Vec3dZero );
+    // }
 
     // //run_omp_ocl( 1 );
     // run_omp_ocl( 50 );

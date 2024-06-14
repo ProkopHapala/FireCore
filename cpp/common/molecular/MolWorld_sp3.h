@@ -208,6 +208,9 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bChargeUpdated    = false;
     bool bAnimManipulation = false;
     bool bNonBondNeighs    = false;
+
+    Vec3d anim_vec;
+    float anim_speed;
 	
     Vec3d cog,vcog,fcog,tqcog;
     int nloop=0;
@@ -750,8 +753,8 @@ void printPBCshifts(){
  * @return The index of the substituted molecule in the builder.
  */
     int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool bSwapBond=false, const Vec3i* axSwap=0 ){
-        builder.printAtomConfs(false);
-        builder.printBonds();
+        //builder.printAtomConfs(false);
+        //builder.printBonds();
         printf( " ===================== Substitute molecule START !!! \n");
         Molecule* mol = new Molecule(); mol->init_xyz( fname, &params, true );
         //Vec3i axSwap={2,1,0};
@@ -1139,7 +1142,7 @@ void printPBCshifts(){
         int ifrag = builder.frags.size()-1;
         */
         int ifrag = insertMolecule( tmpstr, name, {0,0,0}, Mat3dIdentity );
-        builder.printAtomConfs(false, true );
+        //builder.printAtomConfs(false, true );
         builder.addCappingTypesByIz(1);   // Find all hydrogen cappings
         builder.tryAddConfsToAtoms( 0, -1 );
         //builder.printAtomConfs(false, true );

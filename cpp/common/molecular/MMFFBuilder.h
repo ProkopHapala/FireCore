@@ -432,12 +432,12 @@ class Builder{  public:
     }
 
     int addCappingTypesByIz( int iZ ){
-        printf( "Builder::addCappingTypesByIz()\n" );
+        //printf( "Builder::addCappingTypesByIz()\n" );
         int n=0; 
         for( int i=0; i<params->atypes.size(); i++ ){ 
             if(params->atypes[i].iZ==iZ){ 
                 capping_types.insert(i);
-                printf( "Builder::addCappingTypesByIz()[%i] `%s`\n", i, params->atypes[i].name );
+                //printf( "Builder::addCappingTypesByIz()[%i] `%s`\n", i, params->atypes[i].name );
                 n++;
             } 
         } 
@@ -809,7 +809,7 @@ class Builder{  public:
             const AtomConf& ci = confs[ai.iconf];
             const AtomConf& cj = confs[aj.iconf];
             order+=_min( ci.npi, cj.npi ); 
-            printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, ci.npi, cj.npi );
+            //printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, ci.npi, cj.npi );
 
             // Assign pi-pi allignment 
             bool bpi=ci.npi>0;

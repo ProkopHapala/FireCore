@@ -30,8 +30,13 @@ int l_shiftReplica(lua_State *L){
 }
 
 int l_systemsToGPU( lua_State *L ){
+    //for(int i=0; i<W->ffl.natoms; i++){ printf( "ffl.constrs[%i]=%g \n", i, W->ffl.constr[i].w );  }
     W->pack_systems();
     W->upload();
+
+    W->bAnimManipulation = true;
+    W->anim_vec   = Vec3d{0.0,0.0,0.005};
+    W->anim_speed = 0.0001;
     return 0; 
 }
 
