@@ -440,7 +440,7 @@ virtual void pre_loop() override {
             //if(isys==0){    printf( "pre_loop() ffl[ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w, ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z ); }
         }
     }
-    //DEBUG;printConstrains();
+    //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
     //         int i0a   = isys * ocl.nAtoms;
@@ -714,28 +714,32 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
         // -------- Global Optimization
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
             gopts[isys].startExploring();
-            bGroupUpdate=true;
-            //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
-            //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
-            //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
-            for(int ig=0; ig<ocl.nGroup; ig++){ 
-                Vec2f fDrive = groups.groups[ig].fDrive; 
-                setGroupDrive(isys, ig, {fDrive.x,fDrive.x,0.0}, {fDrive.y,0.0,0.0} ); 
-                //setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); 
-            }   // Shift driver
+            if(bGroups){
+                bGroupUpdate=true;
+                //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
+                //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
+                //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
+                for(int ig=0; ig<ocl.nGroup; ig++){ 
+                    Vec2f fDrive = groups.groups[ig].fDrive; 
+                    setGroupDrive(isys, ig, {fDrive.x,fDrive.x,0.0}, {fDrive.y,0.0,0.0} ); 
+                    //setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); 
+                }   // Shift driver
+            }
         }
         else if( gopts[isys].istep > 1e4 && (!gopts[isys].bExploring)){
             gopts[isys].startExploring();
-            bGroupUpdate=true;
+            if(bGroups){ bGroupUpdate=true; }
             database->convergedStructure.push_back(false);
             int i0v = isys * ocl.nvecs;
             unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
             database->addIfNewDescriptor(&ffls[isys]);
         }
         if( gopts[isys].update() ){ // Stop Exploring
-            bGroupUpdate=true;
-            //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
+            if(bGroups){
+                bGroupUpdate=true;
+                //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
+                for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
+            }
         };
         bExploring |= gopts[isys].bExploring;
     }
@@ -886,7 +890,7 @@ void move_MultiConstrain( Vec3d d, Vec3d di, float Kfixmin=0.001f ){
 
 virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
     printf("MolWorld_sp3_multi::setConstrains()\n");
-    //DEBUG;printConstrains();
+    //printConstrains();
     MolWorld_sp3::setConstrains( bClear, Kfix );
     for(int isys=0; isys<nSystems; isys++){
         int i0a   = isys * ocl.nAtoms;
@@ -898,7 +902,7 @@ virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
         for( int i=0; i<ffls[isys].natoms; i++ ){ ffls[isys].constr[i].w=-1;                            }
         for( int i : constrain_list            ){ ffls[isys].constr[i].w=Kfix; ffls[isys].constr[i].f=ffls[isys].apos[i]; }
     }
-    //DEBUG;printConstrains();
+    //printConstrains();
     move_MultiConstrain( Vec3d{0.0, 0.0, 5.0}, Vec3d{0.0, 0.4, 0.0} );
     /*
     // temporary hack to show up paralell manipulation
@@ -1249,9 +1253,10 @@ void setup_MMFFf4_ocl(){
     // ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
     /// HERE_HERE
 
-    task_GroupUpdate=ocl.setup_updateGroups( );
-    task_GroupForce =ocl.setup_groupForce(   );
-
+    if( ocl.nGroupTot > 0 ){
+        task_GroupUpdate=ocl.setup_updateGroups( );
+        task_GroupForce =ocl.setup_groupForce(   );
+    }
     //exit(0);
 
     // if(!task_NBFF  ) { 
@@ -1496,6 +1501,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     //bool dovdW=false;
     ocl.bSubtractVdW=dovdW;
     
+    if(ocl.nGroupTot<=0){ bGroups = false; };
     bool bExplore = false;
     //for(int isys=0; isys<nSystems; isys++){ if(gopts[isys].bExploring) bExplore = true; }
 
@@ -1517,6 +1523,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         bool bGroupDrive = bGroups && bExplore;
         //bGroupDrive = false;
 
+        
         //printf( "CPU::bbox(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", bbox.a.x,bbox.a.y,bbox.a.z,   bbox.b.x,bbox.b.y,bbox.b.z,   bbox.c.x,bbox.c.y,bbox.c.z );
         //for(int ia=0; ia<ffl.natoms; ia++){      if( ffl.constr[ia].w > 0 ) printf( "CPU:atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w,   ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z,ffl.constrK[ia].w  ); }
         //bGroupDrive = true;
@@ -1530,6 +1537,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         // }
 
         for(int j=0; j<nPerVFs; j++){
+            //printf("run_ocl_opt[i=%i,j=%i]\n",  i, j );
             //if(bGroupDrive)printf( "bGroupDrive==true\n" );
             {    
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();

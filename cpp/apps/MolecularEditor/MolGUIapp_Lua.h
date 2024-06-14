@@ -29,6 +29,41 @@ int l_addGUIpanel(lua_State *L){
     return 1;
 }
 
+int l_addLuaButton(lua_State *L){
+    const char* label     = Lua::getString(L,1);
+    Vec3i xyw             = Lua::getVec3i (L,2);
+    Vec3i SliderButtonInt = Lua::getVec3i (L,3);
+    Vec3d MinMaxCur       = Lua::getVec3  (L,4);
+    const char* command   = Lua::getString(L,5);
+    DEBUG
+    int ipanel = app->gui.panels.size();
+    printf( "l_addLuaButton: label(%s) command(%s) xyw(%i,%i,%i) SliderButtonInt(%i,%i,%i) MinMaxCur(%g,%g,%g)\n",  label, command,  xyw.x, xyw.y, xyw.z,  SliderButtonInt.x,SliderButtonInt.y,SliderButtonInt.z, MinMaxCur.x,MinMaxCur.y,MinMaxCur.z  );
+    GUIPanel* panel = (GUIPanel*)app->gui.addPanel( new GUIPanel( label, xyw.x,xyw.y, xyw.x+xyw.z*fontSizeDef,xyw.y+fontSizeDef*2, SliderButtonInt.x>0, SliderButtonInt.y>0, SliderButtonInt.z>0 ) );
+    //GUIPanel* panel = ((GUIPanel*)app->gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
+    panel->setRange(MinMaxCur.x,MinMaxCur.y);
+    panel->setValue(MinMaxCur.z);
+    DEBUG
+    panel->setCommand( [&](GUIAbstractPanel* p){ 
+        DEBUG
+        GUIPanel* p_ = (GUIPanel*)p;
+        printf( "l_addLuaButton.caption(%s) @L=%li \n", p->caption.c_str(), (long)L );
+        const char* command = p->caption.c_str();
+        if (luaL_dostring(theLua, command) != LUA_OK) {
+            printf( "Error: %s\n", lua_tostring(L, -1) );
+            lua_pop(L, 1);  // Remove error message from the stack
+            return false;
+        }
+        return true;
+    } );
+    DEBUG
+    //panel->setCommand( app->actions.get( command ) );
+    //app->setPanelAction( ipanel, command  );
+    lua_pushinteger(L, ipanel);
+    return 1;
+}
+
+
+
 int l_clearGUI   (lua_State *L){
     int n = Lua::getInt(L,1);
     int ret = app->clearGUI( n );
@@ -169,8 +204,9 @@ lua_State* initMyLua( lua_State* L =0 ){
     lua_register(L, "autoCharges", l_autoCharges  );
     lua_register(L, "frags",   l_autoFrags  );
 
-    lua_register(L, "button",    l_addGUIpanel );
-    lua_register(L, "clear_gui", l_clearGUI    );
+    lua_register(L, "button",     l_addGUIpanel  );
+    lua_register(L, "lua_button", l_addLuaButton );
+    lua_register(L, "clear_gui", l_clearGUI      );
     printf( "initMyLua() DONE\n" );
     return L;
 }
