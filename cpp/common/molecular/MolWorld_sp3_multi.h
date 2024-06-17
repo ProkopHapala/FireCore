@@ -187,6 +187,13 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     const char* uploadPopName=0;
 
     MolecularDatabase* database = 0;
+    long nStepConvSum = 0;
+    long nStepNonConvSum = 0;
+    long nStepExplorSum = 0;
+    int  nbConverged=0;
+    int  nbNonConverged=0;
+    int  nbEvaluation=0;
+    int  nExploring=0;
 
 virtual MolWorldVersion getMolWorldVersion() const override { return MolWorldVersion::GPU; };
 
@@ -699,13 +706,6 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
     //}
 }
 
-long nStepConvSum = 0;
-long nStepNonConvSum = 0;
-long nStepExplorSum = 0;
-int  nbConverged=0;
-int  nbNonConverged=0;
-int  nbEvaluation=0;
-int  nExploring=0;
 
 bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 ){
     int err=0;
