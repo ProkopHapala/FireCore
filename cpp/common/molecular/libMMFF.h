@@ -54,6 +54,10 @@ int saveXYZ( const char* fname, const char* comment, int imod){
     return ret;  
 }
 
+
+AtomType* getAtomTypes()    { return &W.params.atypes[0];    }
+int       getAtomTypeCount(){ return W.params.atypes.size(); }
+
 // ================ RUN / EVAL
 
 void setupCollisionDamping( int nstep, double medium, double bond, double ang, double nonB, double dRcut1, double dRcut2 ){
@@ -288,40 +292,53 @@ void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*R
     }
 }
 
-int findHbonds( double Rcut, double Hcut, double angMax ){
-    W.Hbonds.clear();
-    W.findHbonds_PBC( Rcut, Hcut, angMax );
-    return W.Hbonds.size();
-}
-
-int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, double maskQ, double maskH, double K, double Rdamp ){
-    int nb = W.Hbonds.size();
-    if( (ib<0) || (ib>nb)){  return nb;}
-    Vec3i b = W.Hbonds[ib];
-    Quat4d REQi = W.ffl.REQs[b.x];
-    Quat4d REQj = W.ffl.REQs[b.y];
-    Quat4d REQij; combineREQ( REQi, REQj, REQij );
-    REQij.z*=maskQ; // Mask Electrostatics
-    REQij.w*=maskH; // Mask HBond
-    Vec3d pi=Vec3dZero;
-    Vec3d pj=Vec3dZero;
+void sampleNonBondTypes( int n, double* rs, double* Es, double* fs, int kind, double qH, double qX, double K, double Rdamp, double dcomp, char* type_str ){
+    char nameH[16];
+    char nameX[16];
+    sscanf( type_str, "%s %s", nameH, nameX );
+    //int iH = W.params.getAtomType( nameH );
+    //int iX = W.params.getAtomType( nameX );
+    const AtomType* tH = W.params.getAtomTypeObj( nameH );
+    const AtomType* tX = W.params.getAtomTypeObj( nameX );
+    int itE = tX->ePairType;
+    if( (itE<0)||(itE>W.params.atypes.size())){ printf("ERROR: type(%s).ePairType=%i => exit()\n", nameX, itE ); exit(0); };
+    const AtomType* tE = &W.params.atypes[ tX->ePairType ];
+    Quat4d REQi = tH->assignREQH();   REQi.z=qH;
+    Quat4d REQj = tX->assignREQH();   REQj.z=qX;
+    Quat4d REQe = tE->assignREQH();
+    Quat4d REQdi{ 1.0,0.0,-REQi.z, 0.0 };
+    Quat4d REQdj{ 1.0,0.0,-REQj.z, 0.0 };
+    REQj.z -= tE->Qbase;
+    double de = tE->Ruff;
+    //printf( "REQ_H %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tH->name, REQi.x,REQi.y,REQi.z,REQi.w );
+    //printf( "REQ_X %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tX->name, REQj.x,REQj.y,REQj.z,REQj.w );
+    //printf( "REQ_E %-8s R=%5.3f E=%7.5f Q=%6.3f H=%6.3f \n",  tE->name, REQe.x,REQe.y,REQe.z,REQe.w );
+    //sprintf( s, "%s[%i]-%s[%i] (%4.2f,%5.4f,%4.2f,%4.2f) (%4.2f,%5.4f,%4.2f,%4.2f)", W.params.atypes[ W.ffl.atypes[b.x]].name, b.x, W.params.atypes[ W.ffl.atypes[b.y]].name, b.y, REQi.x,REQi.y,REQi.z,REQi.w,  REQj.x,REQj.y,REQj.z,REQj.w  );
     double R2damp=Rdamp*Rdamp;
+    Vec3d d{dcomp,0.0,0.0};
     for(int i=0; i<n; i++){
-        double E;
-        Vec3d  f=Vec3dZero;
-        pj.x=rs[i];
+        double E = 0;
+        Vec3d  f = Vec3dZero;
+        double r = rs[i];
+        Quat4d REQ;
         switch(kind){
-            case 1: E = getLJQH( pj-pi, f, REQij, R2damp );
-            //case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K, R2damp ); break;  // Morse
-            //case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                                break;  // Lenard Jones
-            //case 3: double fr; E=erfx_e6( pj.x, K, fr ); f.x=fr; break;  // gauss damped electrostatics
-            //case 4: E=repulsion_R4( pj-pi, f, REQij.x-Rdamp, REQij.x, K );
+            case 1:{
+                Vec3d f_=Vec3dZero;
+                combineREQ( REQi, REQj,  REQ ); E += getLJQH( Vec3d{0.0,0.0,r         }, f_, REQ, R2damp );  f.add(f_);
+                combineREQ( REQi, REQdj, REQ ); E += getLJQH( Vec3d{0.0,0.0,r+dcomp   }, f_, REQ, R2damp );  f.add(f_);
+                combineREQ( REQj, REQdi, REQ ); E += getLJQH( Vec3d{0.0,0.0,r+dcomp   }, f_, REQ, R2damp );  f.add(f_);
+                combineREQ( REQdi,REQdj, REQ ); E += getLJQH( Vec3d{0.0,0.0,r+dcomp*2 }, f_, REQ, R2damp );  f.add(f_);
+
+                combineREQ( REQe, REQdi, REQ ); E += getLJQH( Vec3d{0.0,0.0,r+dcomp-de}, f_, REQ, R2damp );  f.add(f_);
+                combineREQ( REQe, REQi,  REQ ); E += getLJQH( Vec3d{0.0,0.0,r-de      }, f_, REQ, R2damp );  f.add(f_);
+
+                } break;
         }
         //printf( "i %i r %g E %g f %g \n", i, pj.x, E, f.x );
         fs[i]=f.x;
         Es[i]=E;
     }
-    return nb;
+    //return nb;
 }
 
 int selectBondsBetweenTypes( int imin, int imax, int it1, int it2, bool byZ, bool bOnlyFirstNeigh, int* atoms_ ){

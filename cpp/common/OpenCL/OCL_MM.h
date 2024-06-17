@@ -763,7 +763,7 @@ class OCL_MM: public OCLsystem { public:
         v2i4( nPBC_, nPBC );
         //if(ibuff_atoms_surf<0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         //if(ibuff_REQs_surf <0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        printf( "!!!!!!!!!! OCL_MM::getSurfMorse() ibuffs: atoms_surf(%i) REQs_surf(%i) atoms(%i) REQs(%i) aforces(%i) \n", ibuff_atoms_surf, ibuff_REQs_surf, ibuff_atoms, ibuff_REQs, ibuff_aforces );
+        //printf( "!!!!!!!!!! OCL_MM::getSurfMorse() ibuffs: atoms_surf(%i) REQs_surf(%i) atoms(%i) REQs(%i) aforces(%i) \n", ibuff_atoms_surf, ibuff_REQs_surf, ibuff_atoms, ibuff_REQs, ibuff_aforces );
         int err=0;
         err |= finishRaw();       OCL_checkError(err, "getSurfMorse().imgAlloc" );
         //OCLtask* task = tasks[ task_dict["getSurfMorse"] ];

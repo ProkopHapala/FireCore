@@ -84,6 +84,48 @@ array2d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=2, flags='CONTIGUOUS')
 array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 
 
+class AtomType(ctypes.Structure):
+    _fields_ = [
+        ("name",      ctypes.c_char * 8),
+        ("iZ",        ctypes.c_uint8),
+        ("valence",   ctypes.c_uint8),
+        ("nepair",    ctypes.c_uint8),
+        ("npi",       ctypes.c_uint8),
+        ("sym",       ctypes.c_uint8),
+        ("color",     ctypes.c_uint32),
+        ("Ruff",      ctypes.c_double),
+        ("RvdW",      ctypes.c_double),
+        ("EvdW",      ctypes.c_double),
+        ("Qbase",     ctypes.c_double),
+        ("Hb",        ctypes.c_double),
+        ("parrent",   ctypes.c_int),
+        ("element",   ctypes.c_int),
+        ("ePairType", ctypes.c_int),
+        ("bMMFF",     ctypes.c_bool),
+        ("Ass",       ctypes.c_double),
+        ("Asp",       ctypes.c_double),
+        ("Kss",       ctypes.c_double),
+        ("Ksp",       ctypes.c_double),
+        ("Kep",       ctypes.c_double),
+        ("Kpp",       ctypes.c_double),
+        ("subTyp_x",  ctypes.c_int),
+        ("subTyp_y",  ctypes.c_int),
+        ("subTyp_z",  ctypes.c_int),
+        #Vec3i     subTypes=Vec3iZero;  // sp1 sp2 sp3    // Q1 Q2 Q3 (polarized)
+    ]
+
+p_AtomType = ctypes.POINTER(AtomType)
+
+lib.getAtomTypes.restype     = p_AtomType
+lib.getAtomTypeCount.restype = c_int
+
+def getAtomTypes():
+    ptr = lib.getAtomTypes()
+    n   = lib.getAtomTypeCount()
+    array_type = AtomType * n
+    arr = ctypes.cast(ptr, ctypes.POINTER(array_type)).contents
+    return arr, n
+
 # ====================================
 # ========= Globals
 # ====================================
@@ -367,14 +409,28 @@ def findHbonds( Rcut=4.0, Hcut=0.0001, angMax=30.0 ):
     return lib.findHbonds( Rcut, Hcut, angMax )
 
 #  int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, Vec2d mask, double K, double Rdamp ){
-lib.sampleHbond.argtypes  = [c_int,c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double ] 
+lib.sampleHbond.argtypes  = [c_int,c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_double, c_char_p ] 
 lib.sampleHbond.restype   =  c_int
-def sampleHbond( ib, rs, Es=None, Fs=None, kind=1, maskQ=1.0, maskH=1.0, K=-1.0, Rdamp=1.0 ):
+def sampleHbond( ib, rs, Es=None, Fs=None, kind=1, maskQ=1.0, maskH=1.0, K=-1.0, Rdamp=1.0, dcomp=1.0 ):
     n =len(rs)
     if Es is None: Es=np.zeros(n)
     if Fs is None: Fs=np.zeros(n)
     rs  =np.array(rs)
-    lib.sampleHbond(ib, n, rs, Es, Fs, kind, maskQ, maskH, K, Rdamp)
+    s = ctypes.create_string_buffer(1024)
+    lib.sampleHbond(ib, n, rs, Es, Fs, kind, maskQ, maskH, K, Rdamp, dcomp, s )
+    s = s.value.decode('utf-8')
+    return Es,Fs,s
+
+#void sampleNonBondTypes( int n, double* rs, double* Es, double* fs, int kind, double qH, double qX, double K, double Rdamp, double dcomp, char* type_str ){
+lib.sampleNonBondTypes.argtypes  = [ c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_double, c_char_p ] 
+lib.sampleNonBondTypes.restype   =  c_int
+def sampleNonBondTypes( type_str, rs, Es=None, Fs=None, kind=1, qH=1.0, qX=1.0, K=-1.0, Rdamp=1.0, dcomp=1.0 ):
+    n =len(rs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    rs  =np.array(rs)
+    s = type_str.encode('utf8')
+    lib.sampleNonBondTypes( n, rs, Es, Fs, kind, qH, qX, K, Rdamp, dcomp, s )
     return Es,Fs
 
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
