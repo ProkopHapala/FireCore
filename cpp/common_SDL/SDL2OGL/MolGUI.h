@@ -1227,7 +1227,6 @@ void MolGUI::draw(){
         bool bRelaxOld = W->bConverged;
         //printf( "MolGUI::draw().W->MDloop(%i) \n", perFrame );    
         W->MDloop(perFrame); 
-
         // if( W->bConverged && !bRelaxOld ){  // it relaxed just now
         //     if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  }
         //     //updateGUI(); 
@@ -1349,7 +1348,9 @@ void MolGUI::draw(){
             //printf( "draw() W->npbc=%i \n", W->npbc );
             //Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
             Draw3D::drawShifts( W->npbc, W->pbc_shifts, W->ipbc0, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-            if(bViewCell){ glColor3f(0.,0.5,0.5); Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.,0.,0.}, Vec3d{1.,1.,1.} ); }
+
+            Draw3D::drawBBox( W->bbox.a, W->bbox.b );
+
         }else{ drawSystem(); }
         //drawSystem(); // debug
         //Draw3D::drawNeighs( W->ff, -1.0 );    
