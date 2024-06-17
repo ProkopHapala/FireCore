@@ -1550,8 +1550,6 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     
     bool bExplore = false;
     //for(int isys=0; isys<nSystems; isys++){ if(gopts[isys].bExploring) bExplore = true; }
-    for(int i=0; i<1; i++)
-    {if(nbEvaluation%1000<100) printf( "%d ", gopts[i].bExploring); }
 
 
     for(int i=0; i<nVFs; i++){
