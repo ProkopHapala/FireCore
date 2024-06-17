@@ -10,7 +10,7 @@ add_executable( ${NAME}_main
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers(${NAME}_main )
-target_link_libraries( ${NAME}_main ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+target_link_libraries( ${NAME}_main ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
 
 
 add_executable( MolecularBrowser
@@ -19,7 +19,7 @@ add_executable( MolecularBrowser
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers( MolecularBrowser )
-target_link_libraries( MolecularBrowser ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+target_link_libraries( MolecularBrowser ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
 
 
 add_executable( FireCoreVisual
@@ -28,7 +28,7 @@ add_executable( FireCoreVisual
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers( FireCoreVisual )
-target_link_libraries( FireCoreVisual ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} -rdynamic -ldl -lm )
+target_link_libraries( FireCoreVisual ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} -rdynamic -ldl -lm )
 
 
 add_executable( MolGUIapp
@@ -46,7 +46,7 @@ add_executable( MolGUIapp_QMMM
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers( MolGUIapp_QMMM )
-target_link_libraries( MolGUIapp_QMMM ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+target_link_libraries( MolGUIapp_QMMM ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
 
 
 add_executable( FireCoreMMFFmini
@@ -55,7 +55,7 @@ add_executable( FireCoreMMFFmini
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers( FireCoreMMFFmini )
-target_link_libraries( FireCoreMMFFmini ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} -rdynamic -ldl -lm )
+target_link_libraries( FireCoreMMFFmini ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} -rdynamic -ldl -lm )
 
 
 #add_executable( ${NAME}_old_main
@@ -75,7 +75,7 @@ add_executable( ConfSearch
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers( ConfSearch )
-target_link_libraries( ConfSearch ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} )
+target_link_libraries( ConfSearch ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
 
 #add_executable( test_reset 	test_reset.cpp 	$<TARGET_OBJECTS:DynamicOpt> 	$<TARGET_OBJECTS:SDL2OGL>   )
 #target_link_libraries( test_reset ${OPENGL_LIBRARIES}   ${SDL2_LIBRARIES} )

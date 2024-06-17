@@ -191,6 +191,53 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
     }
 }
 
+int findHbonds( double Rcut, double Hcut, double angMax ){
+    W.Hbonds.clear();
+    W.findHbonds_PBC( Rcut, Hcut, angMax*deg2rad );
+    return W.Hbonds.size();
+}
+
+int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, double maskQ, double maskH, double K, double Rdamp, double dcomp, char* s ){
+    int nb = W.Hbonds.size();
+    if( (ib<0) || (ib>nb)){  return nb;}
+    Vec3i b = W.Hbonds[ib];
+    Quat4d REQi = W.ffl.REQs[b.x];
+    Quat4d REQj = W.ffl.REQs[b.y];
+    Quat4d REQij; combineREQ( REQi, REQj, REQij );
+    //printf( "@s=%li\n", (long)s );
+    //printf( "type_name[%i]=%s\n", b.x, W.params.atypes[ W.ffl.atypes[b.x]].name );
+    sprintf( s, "%s[%i]-%s[%i] (%4.2f,%5.4f,%4.2f,%4.2f) (%4.2f,%5.4f,%4.2f,%4.2f)", W.params.atypes[ W.ffl.atypes[b.x]].name, b.x, W.params.atypes[ W.ffl.atypes[b.y]].name, b.y, REQi.x,REQi.y,REQi.z,REQi.w,  REQj.x,REQj.y,REQj.z,REQj.w  );
+    REQij.z*=maskQ; // Mask Electrostatics
+    REQij.w*=maskH; // Mask HBond
+    Vec3d pi=Vec3dZero;
+    Vec3d pj=Vec3dZero;
+    double R2damp=Rdamp*Rdamp;
+    Vec3d d{dcomp,0.0,0.0};
+    for(int i=0; i<n; i++){
+        double E;
+        Vec3d  f=Vec3dZero;
+        pj.x=rs[i];
+        switch(kind){
+            case 1:{ E = getLJQH( pj-pi, f, REQij, R2damp ); } break;
+            case 2:{ 
+                Vec3d fi=Vec3dZero;
+                E  = getLJQH( pj-pi    , fi, REQij                       , R2damp );  f.add(fi);
+                E += getLJQH( pj-pi+d  , fi, Quat4d{1.0,0.0,-REQij.z,0.0}, R2damp );  f.add(fi);
+                E += getLJQH( pj-pi+d  , fi, Quat4d{1.0,0.0,-REQij.z,0.0}, R2damp );  f.add(fi);
+                E += getLJQH( pj-pi+d+d, fi, Quat4d{1.0,0.0, REQij.z,0.0}, R2damp );  f.add(fi);
+                } break;
+            //case 1: E=addAtomicForceMorseQ( pj-pi, f, REQij.x, REQij.y, REQij.z, K, R2damp ); break;  // Morse
+            //case 2: E=addAtomicForceLJQ   ( pj-pi, f, REQij );                                break;  // Lenard Jones
+            //case 3: double fr; E=erfx_e6( pj.x, K, fr ); f.x=fr; break;  // gauss damped electrostatics
+            //case 4: E=repulsion_R4( pj-pi, f, REQij.x-Rdamp, REQij.x, K );
+        }
+        //printf( "i %i r %g E %g f %g \n", i, pj.x, E, f.x );
+        fs[i]=f.x;
+        Es[i]=E;
+    }
+    return nb;
+}
+
 void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
     W.ffl.printSizes();
     if( bParams ) W.ffl.printAtomParams();

@@ -15,6 +15,7 @@ struct Group{
     Vec3d cog;
     Vec3d fw;
     Vec3d up;
+    Vec2f fDrive = Vec2fZero;  // {fsc,tsc} 
     
     Vec3d force=Vec3dZero;
     Vec3d torq =Vec3dZero;
@@ -34,6 +35,7 @@ class Groups{ public:
     Vec3d*  fapos    = 0;
     Quat4f* weights  = 0; // {wcog,wfw,wup}
     Vec2f*  fweights = 0; // {wpush, wtorq}
+    
 
     Vec3d evalCog( int ig ){
         Group& g = groups[ig];
