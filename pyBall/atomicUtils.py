@@ -28,6 +28,121 @@ def findAllBonds( atoms, Rcut=3.0, RvdwCut=0.7 ):
                 bondsVecs.append( ( rij, dp[j]/rij ) )
     return bonds, bondsVecs
 
+def convert_to_adjacency_list(graph):
+    adj_list = {i: list(neighbors) for i, neighbors in enumerate(graph)}
+    return adj_list
+
+def preprocess_graph(graph):
+    changed = True
+    while changed:
+        changed = False
+        to_remove = [node for node in graph if len(graph[node]) == 1]
+        if to_remove:
+            changed = True
+            for node in to_remove:
+                neighbor = graph[node][0]
+                graph[neighbor].remove(node)
+                del graph[node]
+    return graph
+
+def find_cycles(graph, max_length=7):
+    def unblock(node, blocked, blocked_nodes):
+        stack = [node]
+        while stack:
+            n = stack.pop()
+            if n in blocked:
+                blocked.remove(n)
+                stack.extend(blocked_nodes[n])
+                blocked_nodes[n].clear()
+
+    def circuit(node, start, blocked, blocked_nodes, stack):
+        found_cycle = False
+        stack.append(node)
+        blocked.add(node)
+        #print( graph )
+        gnd = graph.get( node, None )
+        if gnd is not None:
+            for neighbor in gnd:
+                if neighbor == start and len(stack) <= max_length:
+                    cycles.append(stack[:])
+                    found_cycle = True
+                elif neighbor not in blocked and len(stack) < max_length:
+                    if circuit(neighbor, start, blocked, blocked_nodes, stack):
+                        found_cycle = True
+            if found_cycle:
+                unblock(node, blocked, blocked_nodes)
+            else:
+                for neighbor in gnd:
+                    if node not in blocked_nodes[neighbor]:
+                        blocked_nodes[neighbor].append(node)
+        stack.pop()
+        return found_cycle
+
+    def find_all_cycles():
+        blocked = set()
+        blocked_nodes = {node: [] for node in graph}
+        stack = []
+        nodes = list(graph.keys())
+        for start in nodes:
+            circuit(start, start, blocked, blocked_nodes, stack)
+            while nodes and nodes[0] != start:
+                nodes.pop(0)
+            graph.pop(start, None)
+
+    cycles = []
+    find_all_cycles()
+    return [cycle for cycle in cycles if 3 <= len(cycle) <= max_length]
+
+def filterBonds( bonds, enames, ignore ):
+    return [ (i,j) for (i,j) in bonds if not ( ( enames[i] in ignore ) or ( enames[j] in ignore ) ) ]
+
+def makeBondSamples( bonds, apos, where=[-0.2,0.0,0.2] ):
+    bsamp = []
+    for ib,(i,j) in enumerate(bonds):
+        p1 = apos[i,:2]
+        p2 = apos[j,:2]
+        c  = 0.5*(p1+p2)
+        d  = (p2-p1)
+        d /=np.sum(d*d)
+        q  = d[[1,0]]; q[0]*=-1
+        for w in where: 
+            bsamp.append( c + q*w )
+    return np.array(bsamp)
+
+def makeAtomSamples( neighs, apos, enames, ignore=set(['H']), where=[-0.5,0.0,0.5] ):
+    samps = []
+    nw = len(where)
+    for ia,ngs in enumerate(neighs):
+        if enames[ia] in ignore: continue
+        p1 = apos[ia,:2]
+        samps.append( p1 )
+        if nw > 0:
+            for j in ngs:
+                p2 = apos[j,:2]
+                d  = (p2-p1)
+                d /=np.sum(d*d)
+                for w in where: 
+                    samps.append( p1 + d*w )
+    return np.array(samps)
+
+def makeEndAtomSamples( neighs, apos,enames, ignore=set(['H']),  whereX=[-0.6, +0.6 ], whereY=[0.0,+0.6] ):
+    samps = []
+    nw = len(whereY)*len(whereX)
+    for ia,ngs in enumerate(neighs):
+        if len(ngs) != 1:        continue
+        if enames[ia] in ignore: continue
+        p1 = apos[ia,:2]
+        (j,)  = ngs
+        p2 = apos[j,:2]
+        d  = (p1-p2)
+        d /=np.sum(d*d)
+        q  = d[[1,0]]; q[0]*=-1
+        for x in whereX:
+            for y in whereY: 
+                #print( x,y, d, q )
+                samps.append( p1 + d*y + q*x )
+    return np.array(samps)
+
 def getRvdWs( atypes, eparams=elements.ELEMENTS ):
     #print( eparams[ 6 ][7], eparams[ 6 ] )
     return [ eparams[ ei ][7] for ei in atypes ]
@@ -959,7 +1074,7 @@ class AtomicSystem( ):
         writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=bHeader, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
 
     def print(self):
-        #print( len(self.atypes), len(self.enames), len(self.apos) )
+        print( len(self.atypes), len(self.enames), len(self.apos) )
         for i in range(len(self.apos)):
             print( "[%i] %i=%s p(%10.5f,%10.5f,%10.5f)" %( i, self.atypes[i],self.enames[i], self.apos[i,0], self.apos[i,1], self.apos[i,2] ), end =" " )
             if(self.aux_labels is not None): print(self.aux_labels[i], end =" ")
