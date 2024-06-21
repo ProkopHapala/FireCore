@@ -13,12 +13,11 @@ mol = au.AtomicSystem( "../../cpp/common_resources/PTCDA-.xyz" )  #; mol.print()
 #mol = au.AtomicSystem( "../../cpp/common_resources/formic_dimer.xyz" )  #; mol.print()
 
 
-mol.findBonds()                                             ; print( "mol.bonds ", mol.bonds )
-bonds = au.filterBonds( mol.bonds, mol.enames, set('H') )   ; print( "bonds2 ", bonds )
-
-bsamp = au.makeBondSamples( bonds, mol.apos, where=[-0.4,0.0,0.4] )
-
-
+mol.findBonds()                                             #; print( "mol.bonds ", mol.bonds )
+bonds = au.filterBonds( mol.bonds, mol.enames, set('H') )   #; print( "bonds2 ", bonds )
+#bsamp       = au.makeBondSamples( bonds, mol.apos, where=[-0.4,0.0,0.4] )
+bsamp        = au.makeBondSamples( bonds, mol.apos, where=None )
+centers, cis = au.colapse_to_means( bsamp, R=0.7 )
 
 #plt.show()
 
@@ -27,27 +26,27 @@ neighs = au.neigh_atoms( len(mol.enames), mol.bonds )
 
 asamp = au.makeAtomSamples( neighs, mol.apos,mol.enames, ignore=set(['H']), where=[-0.6] )
 esamp = au.makeEndAtomSamples( neighs, mol.apos, mol.enames, ignore=set(['H']),  whereX=[-0.6, +0.6 ], whereY=[0.0,+0.6] )
+ksamp = au.makeKinkAtomSamples( neighs, mol.apos, where=[-0.6, +0.6 ] )
 
-def makeKinkAtomSamples( neighs, apos, where=[-0.6, +0.6 ] ):
-    samps = []
-    for ia,ngs in enumerate(neighs):
-        if len(ngs) != 2:        continue
-        p0 = apos[ia,:2]
-        (i,j)  = ngs
-        d1  = (apos[i,:2]-p0);  d1/=np.sum(d1*d1)
-        d2  = (apos[j,:2]-p0);  d2/=np.sum(d2*d2)
-        d = d1  + d2;           d2/=np.sum(d2*d2)
-        for x in where:
-            #print( x,y, d, q )
-            samps.append( p0 + d*x )
-    return np.array(samps)
+nbsamp = len(bsamp)
+nasamp = len(asamp)
+nesamp = len(esamp)
+nksamp = len(ksamp)
+                                       
+print( " tot npoint= ", nbsamp+nasamp+nesamp+nksamp ," nbsamp=", nbsamp," nasamp=", nasamp," nasamp=", nesamp," nksamp=", nksamp )
 
-ksamp = makeKinkAtomSamples( neighs, mol.apos, where=[-0.6, +0.6 ] )
 
-plt.plot( esamp[:,0],esamp[:,1], "." )
-plt.plot( ksamp[:,0],ksamp[:,1], "." )
-plt.plot( asamp[:,0],asamp[:,1], "." )
+plt.plot( mol.apos[:,0],mol.apos[:,1], "o", ms=10, )
+plt.plot( centers[:,0],centers[:,1], "o", ms=15. )
 plt.plot( bsamp[:,0],bsamp[:,1], "." )
+
+#plt.plot( esamp[:,0],esamp[:,1], "." )
+#plt.plot( ksamp[:,0],ksamp[:,1], "." )
+#plt.plot( asamp[:,0],asamp[:,1], "." )
+
+
+
+
 
 #print( "neighs ", neighs )
 #cycles = au.find_cycles( neighs, max_length=7)

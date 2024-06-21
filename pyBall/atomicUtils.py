@@ -96,6 +96,31 @@ def find_cycles(graph, max_length=7):
 def filterBonds( bonds, enames, ignore ):
     return [ (i,j) for (i,j) in bonds if not ( ( enames[i] in ignore ) or ( enames[j] in ignore ) ) ]
 
+def colapse_to_means( bsamp, R=0.7 ):
+    R2 = R*R
+    cs = [ ]
+    ns = [ ]
+    ci = [ ]
+    for ip,p in enumerate(bsamp):
+        imin  = -1
+        for ic,c in enumerate(cs):
+            r2 = np.sum( (p-c)**2 )
+            if( r2<R2 ):
+                n = ns[ic]
+                cs[ic] = (c*n + p)/(n+1.0)
+                ci[ic].append(ip)
+                ns[ic] +=1
+                imin    = ic
+                break
+        if imin<0:
+            cs.append( p  )
+            ns.append( 1. )
+            ci.append( [] )
+    print( "centers ", cs)
+    cs = np.array( cs )
+    return cs, ci
+
+
 def makeBondSamples( bonds, apos, where=[-0.2,0.0,0.2] ):
     bsamp = []
     for ib,(i,j) in enumerate(bonds):
@@ -103,9 +128,14 @@ def makeBondSamples( bonds, apos, where=[-0.2,0.0,0.2] ):
         p2 = apos[j,:2]
         c  = 0.5*(p1+p2)
         d  = (p2-p1)
-        d /=np.sum(d*d)
+        l = np.sqrt(np.sum(d*d))
+        d /=l
         q  = d[[1,0]]; q[0]*=-1
-        for w in where: 
+        if where is None:
+            ws = [-l,l]
+        else:
+            ws = where    
+        for w in ws: 
             bsamp.append( c + q*w )
     return np.array(bsamp)
 
@@ -120,7 +150,7 @@ def makeAtomSamples( neighs, apos, enames, ignore=set(['H']), where=[-0.5,0.0,0.
             for j in ngs:
                 p2 = apos[j,:2]
                 d  = (p2-p1)
-                d /=np.sum(d*d)
+                d /= np.sqrt(np.sum(d*d))
                 for w in where: 
                     samps.append( p1 + d*w )
     return np.array(samps)
@@ -135,12 +165,26 @@ def makeEndAtomSamples( neighs, apos,enames, ignore=set(['H']),  whereX=[-0.6, +
         (j,)  = ngs
         p2 = apos[j,:2]
         d  = (p1-p2)
-        d /=np.sum(d*d)
+        d /= np.sqrt(np.sum(d*d))
         q  = d[[1,0]]; q[0]*=-1
         for x in whereX:
             for y in whereY: 
                 #print( x,y, d, q )
                 samps.append( p1 + d*y + q*x )
+    return np.array(samps)
+
+def makeKinkAtomSamples( neighs, apos, where=[-0.6, +0.6 ] ):
+    samps = []
+    for ia,ngs in enumerate(neighs):
+        if len(ngs) != 2:        continue
+        p0 = apos[ia,:2]
+        (i,j)  = ngs
+        d1  = (apos[i,:2]-p0);  d1/=np.sqrt(np.sum(d1*d1))
+        d2  = (apos[j,:2]-p0);  d2/=np.sqrt(np.sum(d2*d2))
+        d = d1  + d2;           d2/=np.sqrt(np.sum(d2*d2))
+        for x in where:
+            #print( x,y, d, q )
+            samps.append( p0 + d*x )
     return np.array(samps)
 
 def getRvdWs( atypes, eparams=elements.ELEMENTS ):
