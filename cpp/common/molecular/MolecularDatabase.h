@@ -2,6 +2,8 @@
 #define MolecularDatabase_h
 
 #include <cmath>
+#include <chrono>  // for std::chrono
+
 
 #include <string.h>
 #include <stdio.h>
@@ -248,6 +250,9 @@ private:
 public:
     // ================= Constructor and Destructor ================= //
     std::vector<bool> convergedStructure;
+    std::vector<int> structureOccurence;
+    std::vector<std::chrono::high_resolution_clock::time_point> structureTimestamps;
+    int totalEntries = 0;
     MolecularDatabase()
     {
         nMaxCell = 100;
@@ -322,22 +327,30 @@ public:
         }
     }
 
+
+    
+
     void print()
     {
         printf("nMembers: %d\n", nMembers);
-        printf("%-10s", "Member");
+        printf("convergedStructure: %lu\n", convergedStructure.size());
+        printf("%10s %10s %13s %13s %13s", "Member", "Occurence", "Age (sec)", "Occ/sec", "Converged?");
         for (int j = 0; j < dimensionOfDescriptorSpace; j++)
         {
-            printf(" %-10s", ("Desc" + std::to_string(j)).c_str());
+            printf("     %-12s", ("Desc" + std::to_string(j)).c_str());
         }
         printf("\n");
 
+        auto currentTime = std::chrono::high_resolution_clock::now();
+
         for (int i = 0; i < nMembers; i++)
         {
-            printf("%-10d", i);
+            double age = std::chrono::duration<double, std::ratio<1, 1>>(currentTime - structureTimestamps[i]).count();
+            double occurencePerTime = structureOccurence[i] / age;
+            printf("%10d %10d %13.1f %13.1f %13s", i, structureOccurence[i], age, occurencePerTime, convergedStructure[i] ? "true" : "false");
             for (int j = 0; j < dimensionOfDescriptorSpace; j++)
             {
-                printf(" %-10lf", descriptors[i].descs[j]);
+                printf("     %-12lf", descriptors[i].descs[j]);
             }
             printf("\n");
         }
@@ -403,10 +416,13 @@ public:
         if (nMembers == 0)
             dimensionOfDescriptorSpace = descriptors[nMembers].dimensionOfDescriptorSpace;
         this->nMembers++;
+        structureTimestamps.push_back(std::chrono::high_resolution_clock::now());
     };
+
 
     int addIfNewDescriptor(Atoms *a, MMFFparams *params = 0)
     {
+        totalEntries++;
         Descriptor d;
         int sameDescriptor = -1;
         // if(verbosity) printf("testHash\n");
@@ -416,10 +432,11 @@ public:
         }
         for (int i = 0; i < nMembers; i++)
         {
-            if (d.compareDescriptors(&descriptors[i]) < 0.2)
+            if (d.compareDescriptors(&descriptors[i]) < 5)
             {
-                if (computeDistance(a, &atoms[i]) < 1.0)
+                if (computeDistance(a, &atoms[i])/a->natoms < 0.1)
                 {
+                    //printf("computeDistance: %lf\n", computeDistance(a, &atoms[i]));
                     sameDescriptor = i;
                     break;
                 }
@@ -428,6 +445,11 @@ public:
         if (sameDescriptor == -1)
         {
             addMember(a, &d);
+            structureOccurence.push_back(1);
+        }
+        else
+        {
+            structureOccurence[sameDescriptor]++;
         }
         // hashDescriptors(&d);
 
