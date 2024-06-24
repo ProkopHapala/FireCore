@@ -102,8 +102,10 @@ fi
 
 
 #./$name -x common_resources/Si10_H
+#.$name -x common_resources/Si10_H -iParalel 0
+
 #./$name -x Si255_H_relaxed
-#./$name -x Si405_H_relaxed
+./$name -x Si405_H_relaxed
 #./$name -x Si705_relaxed.xyz
 
 
@@ -145,7 +147,7 @@ fi
 
 #./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500
 #./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -NBneigh
-./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -noNB
+#./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -noNB
 
 
 

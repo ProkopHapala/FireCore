@@ -379,6 +379,7 @@ double eval_atom(const int ia){
                 }
 
                 // bond length force
+                //printf( "bond[%i,%i] l=%g bL=%g bK=%g f=%g \n", ia, ing, l, bL[i], bK[i], f1 );
                 E+= evalBond( h.f, l-bL[i], bK[i], f1 ); 
                 // { 
                 //     f1=Vec3dZero; // DEBUG

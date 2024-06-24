@@ -1364,7 +1364,9 @@ void printPBCshifts(){
             builder.toUFF( ffu, true );
         }else{
             if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
-            builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
+            builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   
+            //ffl.printAtomParams();
+            if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
             if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
             //builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
             builder.toMMFFsp3    ( ff , true, bEpairs );
@@ -2295,6 +2297,15 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         double ff=0,vv=0,vf=0;
         int itr=0,niter=niter_max;
         bConverged = false;
+        bool bFIRE = true;
+
+        double cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
+        // if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
+        double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
+
+        ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+        //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded );
+
 
         //if( bGridDouble ){ printf( "run_omp() bGridDouble %i @ffl.PLQd=%li @FFPaul_d=%li @FFLond_d=%li @FFPaul_d=%li \n", bGridDouble, (long)ffl.PLQd, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFPaul_d );    }
 
@@ -2325,10 +2336,29 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                 //if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
 
                 // ----- Error is HERE
-                if(bPBC)   { E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                else       { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
-                //if(bGridFF){ E+= gridFF.addForce       ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF  float
-                if(bGridFF){ E+= gridFF.addForce_d       ( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }  // GridFF  double
+                if(bNonBonded){
+                    if(bNonBondNeighs)[[likely]]{
+                        if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                        else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                    }else{
+                        if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
+                        else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
+                    }
+                }
+
+                //if(bGridFF){ E+= gridFF.addForce    ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF  float
+                //if(bGridFF){ E+= gridFF.addForce_d  ( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }  // GridFF  double
+                if(bSurfAtoms)[[likely]]{ 
+                    if(bGridFF)[[likely]]{ 
+                        if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
+                        else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
+                    }  // GridFF
+                    else               { 
+                        //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
+                        //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
+                        { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }
+                    }
+                }
 
                 //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] ); }  // NBFF
                 if(bConstrZ){
