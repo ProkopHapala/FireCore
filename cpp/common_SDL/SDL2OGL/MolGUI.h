@@ -287,6 +287,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     Constrains* constrs = 0;
 
+    double* bL0s = 0;
+
     // ---- Graphics objects    // ToDO: maybe move to globals.h
     int  fontTex=-1,fontTex3D=-1;
 
@@ -366,6 +368,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float* dfout );
     void makeAFM();
     void lattice_scan( int n1, int n2, const Mat3d& dlvec );
+    void makeBondLengths0();
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
     void bindMolecule(const MolWorld_sp3* W );
@@ -373,6 +376,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void unBindMolecule();
 	void drawSystem ( Vec3i ixyz=Vec3iZero );
     void drawBuilder( Vec3i ixyz=Vec3iZero );
+    
     void drawPi0s( float sc );
     void  showAtomGrid( char* s, int ia, bool bDraw=true );
     Vec3d showNonBond ( char* s, Vec2i b, bool bDraw=true );
@@ -1975,6 +1979,17 @@ void MolGUI::unBindMolecule(){
     neighs=0; neighCell=0;
 }
 
+void MolGUI::makeBondLengths0(){
+    int nb = W->builder.bonds.size();
+    _realloc0( bL0s, nb, -1. );
+    for( int i=0; i<nb; i++ ){
+        const MM::Bond& b = W->builder.bonds[i];
+        //printf( "MolGUI::makeBondLengths0() [%i] l0=%g \n", i, b.l0 );
+        bL0s[i] = b.l0; 
+    }
+
+}
+
 void MolGUI::drawBuilder( Vec3i ixyz ){
     //printf( "MolGUI::drawBuilder() ixyz(%i,%i,%i)\n", ixyz.x,ixyz.y,ixyz.z );
     //float textSize=0.015;
@@ -2040,7 +2055,8 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
     //printf( "MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
     //printf("MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
-    if( neighs ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
+    if( neighs && (!bViewBondLenghts) ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
+
     //W->nbmol.print();
     if(bViewAtomSpheres&&mm_bAtoms                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     if(bOrig){
@@ -2052,6 +2068,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
         if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
         if(bViewHBondCharges && (W->nbmol.REQs!=0)){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
+        glEnable( GL_DEPTH_TEST );
 
         //if(W->ff.pi0s                           ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
     
@@ -2084,10 +2101,18 @@ void MolGUI::drawSystem( Vec3i ixyz ){
             //if(mm_bAtoms         ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D               ); }                    
             if( bViewBondLabels    ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,  textSize  ); }
             //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex3D, float sz=0.02 );
+            glEnable( GL_DEPTH_TEST );
             //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );
             //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
         }
-        if(bViewBondLenghts &&  bOrig ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( nbonds, bond2atom, apos, fontTex3D, textSize ); }
+        if(bViewBondLenghts &&  bOrig ){ 
+            glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( nbonds, bond2atom, apos, fontTex3D, textSize ); 
+            glEnable( GL_DEPTH_TEST );
+            if(bL0s==0){ makeBondLengths0(); }
+            glLineWidth( 10.0 );
+            Draw3D::bondLengthColorMap( nbonds, bond2atom, apos, bL0s, 0.01 );
+            glLineWidth( 1.0 );
+        }
     }
 
 }
