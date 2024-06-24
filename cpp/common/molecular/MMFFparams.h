@@ -709,10 +709,11 @@ class MMFFparams{ public:
     }
 
     void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=false, bool bQ0=false )const{
-        //printf( "assignREs(%i) %li \n", n, itypes );
+        printf( "assignREs(%i) %li \n", n, (long)itypes );
         for(int i=0; i<n; i++){
-            //printf( " assignREs[%i] %i \n", i, itypes[i] );
-            assignRE( itypes[i], REQs[i], bSqrtE );
+            const int ityp = itypes[i];
+            //printf( " assignREs[%i] %i RE(%g,%g) name=%s\n", i, ityp, atypes[ityp].RvdW, atypes[ityp].EvdW, atypes[ityp].name );
+            assignRE( ityp, REQs[i], bSqrtE );
             if(bQ0) REQs[i].z=0;
         }
     }

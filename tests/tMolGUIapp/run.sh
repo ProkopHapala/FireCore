@@ -98,9 +98,15 @@ fi
 #./$name -x common_resources/nHexadecan_dicarboxylic -T 500.0
 
 
-
-
 #./$name -uff -x common_resources/C2H4
+
+
+#./$name -x common_resources/Si10_H
+#./$name -x Si255_H_relaxed
+#./$name -x Si405_H_relaxed
+#./$name -x Si705_relaxed.xyz
+
+
 
 # ====== Small Molecules On Substrate
 
@@ -139,7 +145,7 @@ fi
 
 #./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500
 #./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -NBneigh
-#./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -noNB
+./$name -x common_resources/polymer-2_new   -iParalel 0 -T 100 0.01 -verb 2 -perframe 500 -noNB
 
 
 
@@ -182,7 +188,7 @@ fi
 
 
 #./$name  -x common_resources/polymer-2_new-OH                                                -Ftol 1e-4 -iParalel 0 -perframe 1
-./$name -verb 2 -e -x common_resources/polymer-2_new-OH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 200
+#./$name -verb 2 -e -x common_resources/polymer-2_new-OH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 200
 #./$name  -x common_resources/polymer-2_new-COOH           -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
 
 

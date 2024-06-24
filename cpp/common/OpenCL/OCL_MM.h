@@ -57,6 +57,7 @@ class OCL_MM: public OCLsystem { public:
     // dimensions
     int nAtoms=0, nGroup=0, nGroupTot=0; 
     int nnode=0, nvecs=0, nneigh=0, npi=0, nSystems=0, nbkng=0, ncap=0; // nnode: number of node atoms; nvecs: number of vectors (atoms and pi-orbitals); nneigh: number of neighbors); npi: number of pi orbitals; nSystems: number of system replicas; nbkng: number of back-neighbors; ncap: number of capping atoms
+    int nMaxSysNeighs = 64;
 
     int4   print_mask{1,1,1,1};  // what to print on GPU
     int4   nDOFs    {0,0,0,0};   // number of DOFs (nAtoms,nnode,nSystems,0)
@@ -81,6 +82,9 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_constr=-1;
     int ibuff_constrK=-1;
     int ibuff_bboxes=-1;
+    int ibuff_sysneighs=-1;
+    int ibuff_sysbonds=-1;
+
     int ibuff_samp_ps=-1;
     int ibuff_samp_fs=-1;
     int ibuff_samp_REQ=-1;
@@ -226,6 +230,9 @@ class OCL_MM: public OCLsystem { public:
         ibuff_ilvecs     = newBuffer( "ilvecs",     nSystems,        sizeof(cl_Mat3), 0, CL_MEM_READ_ONLY  );
 
         ibuff_pbcshifts  = newBuffer( "pbcshifts",  nSystems*npbc,   sizeof(float4), 0, CL_MEM_READ_ONLY  );
+
+        ibuff_sysneighs  = newBuffer( "sysneighs",  nSystems*nMaxSysNeighs,  sizeof(int),    0, CL_MEM_READ_ONLY  );   // for each system contains array int[nMaxSysNeighs] of nearby other systems
+        ibuff_sysbonds   = newBuffer( "sysbonds",   nSystems*nMaxSysNeighs,  sizeof(float4), 0, CL_MEM_READ_ONLY  );   // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
 
         // int nsamp_max = 1000; DEBUG
         // ibuff_samp_fs   = newBuffer( "samp_fs",   nsamp_max, sizeof(float4), 0, CL_MEM_READ_WRITE );   DEBUG
@@ -510,6 +517,8 @@ class OCL_MM: public OCLsystem { public:
         //if(n >=0  ) 
         nDOFs.x=na; 
         nDOFs.y=nNode; 
+        //nDOFs.w=nMaxSysNeighs;
+        nDOFs.w=0;
         int err=0;
         useKernel( task->ikernel  );
         err |= _useArg( nDOFs     );           // 1
@@ -524,6 +533,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_MDpars     ); // 10
         err |= useArgBuff( ibuff_TDrive     ); // 11
         err |= useArgBuff( ibuff_bboxes     ); // 12
+        err |= useArgBuff( ibuff_sysneighs  ); // 13
+        err |= useArgBuff( ibuff_sysbonds   ); // 14
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         // const int4        n,            // 1 // (natoms,nnode) dimensions of the system
